@@ -11,13 +11,13 @@ use mimorya_db::repositories::audit::append_audit;
 use mimorya_db::repositories::role_assignments::holds_role;
 use mimorya_db::repositories::roles::{
     NewRole, RolePatch, RoleRow, create_role as insert_role, delete_custom_role, get_role,
-    role_name_taken, update_custom_role,
+    role_key_taken, role_name_taken, update_custom_role,
 };
 use mimorya_db::{Database, TenantTx};
 use serde_json::json;
 use uuid::Uuid;
 
-use super::{audit_entry, begin_change, is_unique_violation};
+use super::{audit_entry, begin_change};
 use crate::services::{AccessContext, AccessService};
 
 const PERMISSION: &str = "role:manage";
@@ -37,12 +37,7 @@ pub async fn create_role(
     input: RoleInput,
 ) -> anyhow::Result<Uuid> {
     access.require_tenant_wide(PERMISSION)?;
-    let Some(key) = custom_role_key(&input.name) else {
-        return Err(DomainError::validation(
-            "Le nom doit contenir au moins une lettre ou un chiffre",
-        )
-        .into());
-    };
+    let base_key = key_of(&input.name)?;
     let permissions =
         normalize_role_permissions(&input.permissions, catalog).map_err(DomainError::validation)?;
     let tenant_id = access.subject.tenant_id;
@@ -50,7 +45,8 @@ pub async fn create_role(
     if role_name_taken(&mut tx, &input.name, None).await? {
         return Err(DomainError::conflict(NAME_TAKEN).into());
     }
-    let created = insert_role(
+    let key = free_key(&mut tx, &base_key).await?;
+    let id = insert_role(
         &mut tx,
         NewRole {
             tenant_id,
@@ -60,15 +56,7 @@ pub async fn create_role(
             permissions: permissions.clone(),
         },
     )
-    .await;
-    let id = match created {
-        Ok(id) => id,
-        // Another name giving the same key ("Chef d’équipe" / "Chef d'équipe").
-        Err(error) if is_unique_violation(&error) => {
-            return Err(DomainError::conflict(NAME_TAKEN).into());
-        }
-        Err(error) => return Err(error.into()),
-    };
+    .await?;
     append_audit(
         &mut tx,
         audit_entry(access, "role.created", "role", id)
@@ -97,6 +85,9 @@ pub async fn update_role(
     changes: RoleChanges,
 ) -> anyhow::Result<()> {
     access.require_tenant_wide(PERMISSION)?;
+    if let Some(name) = &changes.name {
+        key_of(name)?;
+    }
     let permissions = changes
         .permissions
         .map(|p| normalize_role_permissions(&p, catalog))
@@ -120,7 +111,14 @@ pub async fn update_role(
         ))
         .into());
     }
-    let metadata = json!({ "key": role.key, "permissions": permissions });
+    let metadata = json!({
+        "key": role.key,
+        "name": changes.name,
+        "previousName": changes.name.as_ref().map(|_| &role.name),
+        "descriptionChanged": changes.description.is_some(),
+        "permissions": permissions,
+        "previousPermissions": permissions.as_ref().map(|_| &role.permissions),
+    });
     update_custom_role(
         &mut tx,
         id,
@@ -167,6 +165,30 @@ pub async fn delete_role(
     tx.commit().await?;
     access_service.invalidate(access.subject.tenant_id);
     Ok(())
+}
+
+/// The key a name gives, or why the name is refused.
+fn key_of(name: &str) -> Result<String, DomainError> {
+    custom_role_key(name).ok_or_else(|| {
+        DomainError::validation("Le nom doit contenir au moins une lettre ou un chiffre")
+    })
+}
+
+/// The first free key from `base` (`base`, `base_2`, `base_3`…): a renamed
+/// role keeps its key, which its former name would otherwise give again.
+/// Read under the administration lock, so no other creation takes it meanwhile.
+async fn free_key(tx: &mut TenantTx, base: &str) -> anyhow::Result<String> {
+    for n in 1..=1000 {
+        let key = if n == 1 {
+            base.to_string()
+        } else {
+            format!("{base}_{n}")
+        };
+        if !role_key_taken(tx, &key).await? {
+            return Ok(key);
+        }
+    }
+    Err(DomainError::conflict("Trop de rôles portent un nom proche").into())
 }
 
 /// The custom role, as stored now, that the administrator may change.

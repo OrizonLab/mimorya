@@ -11,7 +11,7 @@ use validator::Validate;
 use crate::app::AppState;
 use crate::auth::credentials::MIN_PASSWORD_CHARS;
 use crate::http::{ApiError, ApiResult, Body};
-use crate::plugins::Auth;
+use crate::plugins::AuthPendingPasswordChange;
 use crate::services::account::{self, PasswordChange};
 
 pub fn routes() -> Router<AppState> {
@@ -29,7 +29,8 @@ struct PasswordBody {
 
 async fn change_password(
     State(state): State<AppState>,
-    Auth(identity): Auth,
+    // The route that lets an account replace its temporary password.
+    AuthPendingPasswordChange(identity): AuthPendingPasswordChange,
     Body(body): Body<PasswordBody>,
 ) -> ApiResult<Json<Value>> {
     if body.new_password == body.current_password {

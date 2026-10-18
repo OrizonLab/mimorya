@@ -1,8 +1,9 @@
 //! Session resolution: the session cookie is resolved on every request into
 //! an `AuthIdentity`, and the idle expiry is extended at most once per
-//! interval. Routes obtain the identity through the `Auth` extractor. An
-//! account holding a temporary password only reaches what it needs to replace
-//! it.
+//! interval. Routes obtain the identity through the `Auth` extractor, which
+//! refuses an account holding a temporary password: only the routes that let
+//! it replace that password take `AuthPendingPasswordChange` instead. Routes
+//! needing no identity (login, health) are not concerned.
 
 use std::convert::Infallible;
 
@@ -21,9 +22,6 @@ use crate::auth::credentials::{SESSION_IDLE, SESSION_TOUCH_INTERVAL, hash_token}
 use crate::http::{ApiError, ApiResult};
 use crate::services::AuthIdentity;
 
-/// What an account holding a temporary password may still reach.
-const WHILE_PASSWORD_CHANGE_REQUIRED: &[&str] = &["/auth/me", "/auth/logout", "/account/password"];
-
 pub async fn resolve_identity(
     State(state): State<AppState>,
     mut request: Request,
@@ -32,11 +30,6 @@ pub async fn resolve_identity(
     if let Some(token) = session_token(request.headers()) {
         match resolve(&state, &token).await {
             Ok(Some(identity)) => {
-                if identity.must_change_password
-                    && !WHILE_PASSWORD_CHANGE_REQUIRED.contains(&request.uri().path())
-                {
-                    return ApiError::from(password_change_required()).into_response();
-                }
                 request.extensions_mut().insert(identity);
             }
             Ok(None) => {}
@@ -78,20 +71,40 @@ async fn extend_if_due(state: &AppState, session: &ResolvedSession) -> ApiResult
     Ok(())
 }
 
-/// The signed-in user; answers 401 otherwise.
+/// The signed-in user; answers 401 otherwise, and 403 while the account must
+/// replace a temporary password.
 pub struct Auth(pub AuthIdentity);
 
 impl<S: Send + Sync> FromRequestParts<S> for Auth {
     type Rejection = ApiError;
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        parts
-            .extensions
-            .get::<AuthIdentity>()
-            .copied()
-            .map(Self)
-            .ok_or_else(|| DomainError::unauthenticated("Authentification requise").into())
+        let identity = signed_in(parts)?;
+        if identity.must_change_password {
+            return Err(password_change_required().into());
+        }
+        Ok(Self(identity))
     }
+}
+
+/// The signed-in user, even while their password is temporary: for the
+/// routes that let them see who they are and replace it.
+pub struct AuthPendingPasswordChange(pub AuthIdentity);
+
+impl<S: Send + Sync> FromRequestParts<S> for AuthPendingPasswordChange {
+    type Rejection = ApiError;
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        signed_in(parts).map(Self)
+    }
+}
+
+fn signed_in(parts: &Parts) -> Result<AuthIdentity, ApiError> {
+    parts
+        .extensions
+        .get::<AuthIdentity>()
+        .copied()
+        .ok_or_else(|| DomainError::unauthenticated("Authentification requise").into())
 }
 
 /// The signed-in user, if any.

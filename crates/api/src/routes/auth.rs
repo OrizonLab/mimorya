@@ -26,7 +26,7 @@ use crate::auth::credentials::{
     SESSION_ABSOLUTE, SESSION_IDLE, new_session_token, verify_password_async,
 };
 use crate::http::{ApiError, ApiResult, Body, trimmed};
-use crate::plugins::{Auth, MaybeAuth, RequestContext};
+use crate::plugins::{AuthPendingPasswordChange, MaybeAuth, RequestContext};
 use crate::services::permission_catalog::permission_catalog;
 
 const INVALID_CREDENTIALS: &str = "Identifiants invalides";
@@ -185,7 +185,10 @@ async fn logout(
     ))
 }
 
-async fn me(State(state): State<AppState>, Auth(identity): Auth) -> ApiResult<Json<Value>> {
+async fn me(
+    State(state): State<AppState>,
+    AuthPendingPasswordChange(identity): AuthPendingPasswordChange,
+) -> ApiResult<Json<Value>> {
     let access = state.access.context(identity).await?;
     let catalog: BTreeSet<&str> = permission_catalog()
         .into_iter()

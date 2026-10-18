@@ -195,6 +195,21 @@ async fn honours_administration_permissions_on_the_whole_company_only() {
         partial
             .delete(&format!("/admin/org-units/{}", unit::TEAM_NORTH))
             .await,
+        partial
+            .post(
+                "/admin/roles",
+                json!({ "name": "Rôle partiel", "permissions": ["intervention:read"] }),
+            )
+            .await,
+        partial
+            .patch(
+                &format!("/admin/roles/{}", role::TECHNICIAN),
+                json!({ "permissions": ["intervention:read", "planning:apply"] }),
+            )
+            .await,
+        partial
+            .delete(&format!("/admin/roles/{}", role::ADMIN_STAFF))
+            .await,
     ];
     for (index, attempt) in attempts.iter().enumerate() {
         assert_eq!(

@@ -119,7 +119,8 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
     une désactivation ou un changement de mot de passe validé pendant sa vérification ;
   - un compte qui détient un mot de passe provisoire (création, réinitialisation)
     n'atteint que son identité, la déconnexion et le changement de mot de passe tant
-    qu'il ne l'a pas remplacé (contrôle dans la résolution de session, ADR-021) ;
+    qu'il ne l'a pas remplacé (contrôle par l'extracteur d'identité `Auth`, ADR-021 ;
+    la connexion reste possible) ;
   - rôles personnalisés (ADR-021) : construits à partir du catalogue de permissions,
     sans joker ; les rôles de la plateforme ne se modifient pas ; personne ne modifie
     ni ne supprime un rôle qu'il détient ; un rôle qui contient une permission

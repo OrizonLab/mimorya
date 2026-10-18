@@ -79,6 +79,21 @@ async fn a_reset_requires_a_new_choice_and_logging_out_stays_possible() {
         .to_string();
     let session = api.sign_in_with(&account.email, &temporary).await;
     assert_held_back(&session).await;
+    // Routes needing no identity stay open with that cookie: the login page
+    // works, for this account as for another one.
+    assert_eq!(session.get("/health").await.status, StatusCode::OK);
+    for (email, password) in [
+        (account.email.clone(), temporary.clone()),
+        (support::email(user::MARC), support::PASSWORD.to_string()),
+    ] {
+        let login = session
+            .post(
+                "/auth/login",
+                json!({ "email": email, "password": password }),
+            )
+            .await;
+        assert_eq!(login.status, StatusCode::OK, "{email}: {}", login.text());
+    }
     assert_eq!(
         session.post("/auth/logout", json!({})).await.status,
         StatusCode::OK

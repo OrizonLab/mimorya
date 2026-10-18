@@ -274,7 +274,8 @@ elle est remplacée par une nouvelle entrée qui la référence (« remplace ADR
 - **Décision** :
   - un rôle personnalisé n'accorde que des permissions du catalogue (plateforme et
     connecteurs), écrites en toutes lettres, sans joker : il ne grandit pas avec le
-    catalogue ; sa clé (`custom_…`) est dérivée de son nom à la création ;
+    catalogue ; sa clé (`custom_…`) est dérivée de son nom à la création, avec un
+    suffixe (`_2`, `_3`…) si elle est déjà prise (un rôle renommé garde sa clé) ;
   - les rôles de la plateforme ne se modifient ni ne se suppriment ; personne ne
     modifie ni ne supprime un rôle qu'il détient (même règle que pour ses propres
     habilitations) ; un rôle qui contient une permission d'administration reste
@@ -284,9 +285,13 @@ elle est remplacée par une nouvelle entrée qui la référence (« remplace ADR
     revérification des droits de l'auteur relit les rôles et les politiques en base,
     et une attribution relit le rôle attribué ;
   - un compte créé ou réinitialisé porte `must_change_password` ; la résolution de
-    session le renvoie, et la couche de session refuse alors toute requête sauf
-    `/auth/me`, `/auth/logout` et `/account/password` ; le changement de mot de passe
-    lève l'obligation, la session courante continue.
+    session le renvoie, et l'extracteur d'identité `Auth` refuse alors toute route
+    authentifiée ; seules `/auth/me` et `/account/password` acceptent cette identité
+    (`AuthPendingPasswordChange`), la déconnexion reste possible et les routes sans
+    identité (connexion, santé) ne sont pas concernées ; le changement de mot de
+    passe lève l'obligation, la session courante continue.
 - **Conséquences** : migration `0007` (colonne et fonction `auth_resolve_session`
   recréée) ; l'interface montre un écran dédié tant que le mot de passe est
-  provisoire ; l'invitation par e-mail reste à faire.
+  provisoire ; l'invitation par e-mail reste à faire ; sur une instance déjà en
+  service, les comptes créés ou réinitialisés avant la migration ne sont pas
+  concernés (à réinitialiser au besoin).

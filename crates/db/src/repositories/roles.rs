@@ -54,6 +54,13 @@ pub async fn role_name_taken(
     .await
 }
 
+pub async fn role_key_taken(conn: &mut PgConnection, key: &str) -> sqlx::Result<bool> {
+    sqlx::query_scalar("select exists (select 1 from roles where key = $1)")
+        .bind(key)
+        .fetch_one(conn)
+        .await
+}
+
 #[derive(Debug, Clone)]
 pub struct NewRole {
     pub tenant_id: Uuid,

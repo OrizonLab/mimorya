@@ -6,7 +6,8 @@
 mod support;
 
 use axum::http::StatusCode;
-use mimorya_core::demo::{role, unit, user};
+use mimorya_core::demo::{role, tenant, unit, user};
+use mimorya_db::testing::OTHER_TENANT_ID;
 use serde_json::{Value, json};
 use support::accounts::{activate, assignment_of, create_account, permissions};
 use support::{Client, TestApi};
@@ -92,10 +93,15 @@ async fn custom_roles_grant_their_permissions_and_follow_their_changes() {
 async fn refuses_invalid_names_and_permissions() {
     let api = TestApi::start().await;
     let paul = api.sign_in(user::PAUL).await;
-    create_role(&paul, "Astreinte", &["intervention:read"]).await;
+    let id = create_role(&paul, "Astreinte", &["intervention:read"]).await;
     let attempts = [
         (
             json!({ "name": "ASTREINTE", "permissions": ["intervention:read"] }),
+            StatusCode::CONFLICT,
+        ),
+        // The name of a demo business role (key `technician`, not `custom_…`).
+        (
+            json!({ "name": "Technicien", "permissions": ["intervention:read"] }),
             StatusCode::CONFLICT,
         ),
         (
@@ -119,6 +125,92 @@ async fn refuses_invalid_names_and_permissions() {
         let response = paul.post("/admin/roles", body.clone()).await;
         assert_eq!(response.status, expected, "{body}: {}", response.text());
     }
+    // Renaming follows the same rules.
+    let url = format!("/admin/roles/{id}");
+    for (name, expected) in [
+        ("technicien", StatusCode::CONFLICT),
+        ("— !", StatusCode::BAD_REQUEST),
+    ] {
+        let response = paul.patch(&url, json!({ "name": name })).await;
+        assert_eq!(response.status, expected, "{name}: {}", response.text());
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_renamed_role_frees_its_former_name() {
+    let api = TestApi::start().await;
+    let paul = api.sign_in(user::PAUL).await;
+    let id = create_role(&paul, "Garde", &["intervention:read"]).await;
+    let renamed = paul
+        .patch(
+            &format!("/admin/roles/{id}"),
+            json!({ "name": "Garde de nuit" }),
+        )
+        .await;
+    assert_eq!(renamed.status, StatusCode::OK);
+    // The renamed role keeps its key; the new one takes the next free key.
+    let again = create_role(&paul, "Garde", &["planning:read"]).await;
+    assert_eq!(listed(&paul, &id).await.unwrap()["key"], "custom_garde");
+    assert_eq!(
+        listed(&paul, &again).await.unwrap()["key"],
+        "custom_garde_2"
+    );
+
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    let metadata: Value = sqlx::query_scalar(
+        "select metadata from audit_log where action = 'role.updated' and resource_id = $1",
+    )
+    .bind(&id)
+    .fetch_one(&mut *tx)
+    .await
+    .unwrap();
+    assert_eq!(metadata["previousName"], "Garde");
+    assert_eq!(metadata["name"], "Garde de nuit");
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn roles_of_another_company_do_not_exist_from_here() {
+    let api = TestApi::start().await;
+    let paul = api.sign_in(user::PAUL).await;
+    let foreign = Uuid::new_v4();
+    let mut other = api.app.services.db.begin(OTHER_TENANT_ID).await.unwrap();
+    sqlx::query(
+        "insert into roles (id, tenant_id, key, name, permissions) \
+         values ($1, $2, 'custom_etranger', 'Étranger', '{intervention:read}')",
+    )
+    .bind(foreign)
+    .bind(OTHER_TENANT_ID)
+    .execute(&mut *other)
+    .await
+    .unwrap();
+    other.commit().await.unwrap();
+
+    let url = format!("/admin/roles/{foreign}");
+    let widened = json!({ "permissions": ["intervention:read", "user:manage"] });
+    assert_eq!(
+        paul.patch(&url, widened).await.status,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(paul.delete(&url).await.status, StatusCode::NOT_FOUND);
+    let account = create_account(&paul, "role.etranger").await;
+    let grant = paul
+        .post(
+            &format!("/admin/users/{}/assignments", account.id),
+            json!({ "roleId": foreign, "scope": { "type": "tenant" } }),
+        )
+        .await;
+    assert_eq!(grant.status, StatusCode::BAD_REQUEST);
+
+    let mut other = api.app.services.db.begin(OTHER_TENANT_ID).await.unwrap();
+    let permissions: Vec<String> =
+        sqlx::query_scalar("select permissions from roles where id = $1")
+            .bind(foreign)
+            .fetch_one(&mut *other)
+            .await
+            .unwrap();
+    assert_eq!(permissions, vec!["intervention:read".to_string()]);
 }
 
 #[tokio::test]

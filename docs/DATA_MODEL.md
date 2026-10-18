@@ -66,11 +66,11 @@ MVP : un compte appartient à **une** entreprise. Une identité multi-entreprise
 
 ### 3.2 Autorisations
 
-| Table              | Rôle                        | Champs clés                                                                                                                 |
-| ------------------ | --------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `roles`            | Ensemble de permissions     | `key` unique par entreprise, `permissions text[]` (motifs `domaine:action`, `domaine:*`), `is_system`                       |
-| `role_assignments` | Rôle × personne × périmètre | `scope_type` (`tenant`, `org_unit`, `self`), `scope_org_unit_id`, `include_descendants`, `expires_at`, `granted_by_user_id` |
-| `access_policies`  | Règles ABAC                 | `effect` (`allow`/`deny`), `permissions text[]`, `condition jsonb` (langage de conditions de `core`), `enabled`             |
+| Table              | Rôle                        | Champs clés                                                                                                                                                                       |
+| ------------------ | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `roles`            | Ensemble de permissions     | `key` unique par entreprise, `permissions text[]` (motifs `domaine:action`, `domaine:*` ; rôles personnalisés : clé `custom_…`, permissions du catalogue sans joker), `is_system` |
+| `role_assignments` | Rôle × personne × périmètre | `scope_type` (`tenant`, `org_unit`, `self`), `scope_org_unit_id`, `include_descendants`, `expires_at`, `granted_by_user_id`                                                       |
+| `access_policies`  | Règles ABAC                 | `effect` (`allow`/`deny`), `permissions text[]`, `condition jsonb` (langage de conditions de `core`), `enabled`                                                                   |
 
 ### 3.3 Conversations, missions et exécutions
 

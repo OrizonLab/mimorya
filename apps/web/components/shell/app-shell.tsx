@@ -14,7 +14,8 @@ import { useCurrentUser, usePendingApprovals } from './use-session';
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { me, logout } = useCurrentUser();
-  const pending = usePendingApprovals(me !== null, pathname);
+  // Nothing else is reachable while the password is temporary.
+  const pending = usePendingApprovals(me !== null && !me.user.mustChangePassword, pathname);
   const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => setMenuOpen(false), [pathname]);
