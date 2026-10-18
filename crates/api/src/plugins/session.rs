@@ -1,6 +1,8 @@
 //! Session resolution: the session cookie is resolved on every request into
 //! an `AuthIdentity`, and the idle expiry is extended at most once per
-//! interval. Routes obtain the identity through the `Auth` extractor.
+//! interval. Routes obtain the identity through the `Auth` extractor. An
+//! account holding a temporary password only reaches what it needs to replace
+//! it.
 
 use std::convert::Infallible;
 
@@ -11,12 +13,16 @@ use axum::response::{IntoResponse, Response};
 use chrono::Utc;
 use mimorya_core::DomainError;
 use mimorya_db::repositories::auth::{ResolvedSession, resolve_session, touch_session};
+use serde_json::json;
 
 use crate::app::AppState;
 use crate::auth::cookies::session_token;
 use crate::auth::credentials::{SESSION_IDLE, SESSION_TOUCH_INTERVAL, hash_token};
 use crate::http::{ApiError, ApiResult};
 use crate::services::AuthIdentity;
+
+/// What an account holding a temporary password may still reach.
+const WHILE_PASSWORD_CHANGE_REQUIRED: &[&str] = &["/auth/me", "/auth/logout", "/account/password"];
 
 pub async fn resolve_identity(
     State(state): State<AppState>,
@@ -26,6 +32,11 @@ pub async fn resolve_identity(
     if let Some(token) = session_token(request.headers()) {
         match resolve(&state, &token).await {
             Ok(Some(identity)) => {
+                if identity.must_change_password
+                    && !WHILE_PASSWORD_CHANGE_REQUIRED.contains(&request.uri().path())
+                {
+                    return ApiError::from(password_change_required()).into_response();
+                }
                 request.extensions_mut().insert(identity);
             }
             Ok(None) => {}
@@ -44,7 +55,13 @@ async fn resolve(state: &AppState, token: &str) -> ApiResult<Option<AuthIdentity
         tenant_id: session.tenant_id,
         user_id: session.user_id,
         session_id: session.session_id,
+        must_change_password: session.must_change_password,
     }))
+}
+
+fn password_change_required() -> DomainError {
+    DomainError::forbidden("Choisissez un nouveau mot de passe pour continuer.")
+        .with_details(json!({ "reason": "password_change_required" }))
 }
 
 /// Sliding expiry, bounded by the absolute expiry of the session.

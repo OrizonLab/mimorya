@@ -10,9 +10,7 @@ use axum::response::{AppendHeaders, IntoResponse};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use chrono::Utc;
-use mimorya_connectors::connector_types;
 use mimorya_core::DomainError;
-use mimorya_core::authz::PLATFORM_PERMISSIONS;
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::auth::{
     NewSession, create_session, find_login, lock_login_state, revoke_session,
@@ -29,6 +27,7 @@ use crate::auth::credentials::{
 };
 use crate::http::{ApiError, ApiResult, Body, trimmed};
 use crate::plugins::{Auth, MaybeAuth, RequestContext};
+use crate::services::permission_catalog::permission_catalog;
 
 const INVALID_CREDENTIALS: &str = "Identifiants invalides";
 
@@ -188,14 +187,9 @@ async fn logout(
 
 async fn me(State(state): State<AppState>, Auth(identity): Auth) -> ApiResult<Json<Value>> {
     let access = state.access.context(identity).await?;
-    let catalog: BTreeSet<&str> = PLATFORM_PERMISSIONS
-        .iter()
+    let catalog: BTreeSet<&str> = permission_catalog()
+        .into_iter()
         .map(|p| p.permission)
-        .chain(
-            connector_types()
-                .iter()
-                .flat_map(|c| c.info().permissions.iter().map(|p| p.permission)),
-        )
         .collect();
     let permissions: Vec<&str> = catalog.into_iter().filter(|p| access.holds(p)).collect();
     let org_unit = access
@@ -209,6 +203,7 @@ async fn me(State(state): State<AppState>, Auth(identity): Auth) -> ApiResult<Js
             "displayName": access.profile.display_name,
             "jobTitle": access.profile.job_title,
             "orgUnit": org_unit,
+            "mustChangePassword": identity.must_change_password,
         },
         "tenant": {
             "id": access.tenant.id,

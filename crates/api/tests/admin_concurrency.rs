@@ -10,10 +10,12 @@ mod support;
 
 use axum::http::StatusCode;
 use mimorya_api::services::admin::{
-    UnitChanges, UserChanges, revoke_role, update_unit, update_user,
+    RoleChanges, UnitChanges, UserChanges, grant_role, revoke_role, update_role, update_unit,
+    update_user,
 };
+use mimorya_api::services::permission_catalog::permission_catalog;
 use mimorya_api::services::{AccessContext, AuthIdentity};
-use mimorya_core::authz::Sensitivity;
+use mimorya_core::authz::{AssignmentScope, Sensitivity};
 use mimorya_core::demo::{role, tenant, unit, user};
 use mimorya_core::memory::{MemoryKind, MemoryScope, MemorySource, MemoryStatus};
 use mimorya_core::{DomainError, ErrorCode};
@@ -30,6 +32,7 @@ async fn context_of(api: &TestApi, user_id: Uuid) -> AccessContext {
         tenant_id: tenant::ID,
         user_id,
         session_id: Uuid::nil(),
+        must_change_password: false,
     };
     api.app.services.access.context(identity).await.unwrap()
 }
@@ -201,4 +204,97 @@ async fn deleting_a_unit_waits_for_what_is_being_written_into_it() {
         .await
         .unwrap();
     assert_eq!(kept, 1, "the memory is not dropped by a cascade");
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_narrowed_role_no_longer_empowers_its_holder() {
+    let api = TestApi::start().await;
+    let services = &api.app.services;
+    let paul = api.sign_in(user::PAUL).await;
+    // A second administrator whose powers come from a custom role.
+    let created = paul
+        .post(
+            "/admin/roles",
+            json!({
+                "name": "Administration déléguée",
+                "permissions": ["role:manage", "user:manage", "user:read"],
+            }),
+        )
+        .await;
+    assert_eq!(created.status, StatusCode::CREATED);
+    let role_id: Uuid = created.json()["id"].as_str().unwrap().parse().unwrap();
+    let account = create_account(&paul, "administration.deleguee").await;
+    let granted = paul
+        .post(
+            &format!("/admin/users/{}/assignments", account.id),
+            json!({ "roleId": role_id, "scope": { "type": "tenant" } }),
+        )
+        .await;
+    assert_eq!(granted.status, StatusCode::CREATED);
+
+    // Paul narrows the role while its holder, from a view loaded before,
+    // removes Paul's own administrator role.
+    let from_paul = context_of(&api, user::PAUL).await;
+    let from_holder = context_of(&api, account.id).await;
+    let paul_role = assignment_of(&paul, user::PAUL, role::TENANT_ADMIN)
+        .await
+        .parse()
+        .unwrap();
+    let catalog: Vec<&str> = permission_catalog().iter().map(|p| p.permission).collect();
+    let narrowed = RoleChanges {
+        permissions: Some(vec!["user:read".to_string()]),
+        ..RoleChanges::default()
+    };
+    update_role(
+        &services.db,
+        &services.access,
+        &from_paul,
+        &catalog,
+        role_id,
+        narrowed,
+    )
+    .await
+    .unwrap();
+    let crossed = revoke_role(&services.db, &from_holder, paul_role).await;
+    assert_eq!(code_of(crossed), ErrorCode::Forbidden);
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_grant_checks_the_role_as_stored() {
+    let api = TestApi::start().await;
+    let services = &api.app.services;
+    let paul = api.sign_in(user::PAUL).await;
+    let created = paul
+        .post(
+            "/admin/roles",
+            json!({ "name": "Planification", "permissions": ["planning:read"] }),
+        )
+        .await;
+    let role_id: Uuid = created.json()["id"].as_str().unwrap().parse().unwrap();
+    let account = create_account(&paul, "planification").await;
+
+    // The grant's view still shows a business role; it became an
+    // administration role meanwhile, which a unit cannot receive.
+    let granting = context_of(&api, user::PAUL).await;
+    let widening = context_of(&api, user::PAUL).await;
+    let catalog: Vec<&str> = permission_catalog().iter().map(|p| p.permission).collect();
+    let widened = RoleChanges {
+        permissions: Some(vec!["planning:read".to_string(), "user:manage".to_string()]),
+        ..RoleChanges::default()
+    };
+    update_role(
+        &services.db,
+        &services.access,
+        &widening,
+        &catalog,
+        role_id,
+        widened,
+    )
+    .await
+    .unwrap();
+    let on_unit = AssignmentScope::subtree(unit::TEAM_SOUTH);
+    let granted = grant_role(&services.db, &granting, account.id, role_id, on_unit, None).await;
+    assert_eq!(code_of(granted.map(|_| ())), ErrorCode::Validation);
 }

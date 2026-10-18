@@ -24,6 +24,8 @@ pub struct AuthIdentity {
     pub tenant_id: Uuid,
     pub user_id: Uuid,
     pub session_id: Uuid,
+    /// The account holds a temporary password it must replace first.
+    pub must_change_password: bool,
 }
 
 pub struct AccessContext {

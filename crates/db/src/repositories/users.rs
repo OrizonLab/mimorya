@@ -49,10 +49,11 @@ pub struct NewUser {
     pub password_hash: String,
 }
 
+/// The account starts with a temporary password it must replace.
 pub async fn create_user(conn: &mut PgConnection, input: NewUser) -> sqlx::Result<Uuid> {
     sqlx::query_scalar(
-        "insert into users (tenant_id, email, display_name, job_title, clearance, password_hash) \
-         values ($1, $2, $3, $4, $5, $6) returning id",
+        "insert into users (tenant_id, email, display_name, job_title, clearance, password_hash, \
+         must_change_password) values ($1, $2, $3, $4, $5, $6, true) returning id",
     )
     .bind(input.tenant_id)
     .bind(input.email)
@@ -132,17 +133,26 @@ pub async fn get_password_hash(conn: &mut PgConnection, id: Uuid) -> sqlx::Resul
     Ok(hash.flatten())
 }
 
-pub async fn set_password_hash(conn: &mut PgConnection, id: Uuid, hash: &str) -> sqlx::Result<()> {
-    sqlx::query("update users set password_hash = $2, updated_at = now() where id = $1")
-        .bind(id)
-        .bind(hash)
-        .execute(conn)
-        .await?;
+/// Gives the account a temporary password, which it must replace.
+pub async fn set_temporary_password_hash(
+    conn: &mut PgConnection,
+    id: Uuid,
+    hash: &str,
+) -> sqlx::Result<()> {
+    sqlx::query(
+        "update users set password_hash = $2, must_change_password = true, updated_at = now() \
+         where id = $1",
+    )
+    .bind(id)
+    .bind(hash)
+    .execute(conn)
+    .await?;
     Ok(())
 }
 
 /// Replaces the password only if it is still `current_hash`: a change made in
-/// between (an administrator's reset) wins. Returns whether it was replaced.
+/// between (an administrator's reset) wins. The new password is the user's
+/// own: no change is required any more. Returns whether it was replaced.
 pub async fn replace_password_hash(
     conn: &mut PgConnection,
     id: Uuid,
@@ -150,8 +160,8 @@ pub async fn replace_password_hash(
     new_hash: &str,
 ) -> sqlx::Result<bool> {
     let result = sqlx::query(
-        "update users set password_hash = $3, updated_at = now() \
-         where id = $1 and password_hash = $2",
+        "update users set password_hash = $3, must_change_password = false, \
+         updated_at = now() where id = $1 and password_hash = $2",
     )
     .bind(id)
     .bind(current_hash)

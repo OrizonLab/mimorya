@@ -1,10 +1,9 @@
-//! What the platform is configured with: roles and the permission catalog,
-//! connector instances and types, skills.
+//! What the platform is configured with: connector instances and types,
+//! skills.
 
 use axum::Json;
 use axum::extract::State;
 use mimorya_connectors::connector_types;
-use mimorya_core::authz::{PLATFORM_PERMISSIONS, PermissionInfo};
 use mimorya_db::repositories::connectors::list_connector_instances;
 use mimorya_db::repositories::skills::list_skills;
 use serde_json::{Value, json};
@@ -12,35 +11,6 @@ use serde_json::{Value, json};
 use crate::app::AppState;
 use crate::http::{ApiResult, iso};
 use crate::plugins::Auth;
-
-pub async fn roles(State(state): State<AppState>, Auth(identity): Auth) -> ApiResult<Json<Value>> {
-    let access = state.access.context(identity).await?;
-    access.require_tenant_wide("role:manage")?;
-    let roles: Vec<Value> = access
-        .roles
-        .iter()
-        .map(|r| {
-            json!({
-                "id": r.definition.id,
-                "key": r.definition.key,
-                "name": r.definition.name,
-                "description": r.description,
-                "isSystem": r.is_system,
-                "permissions": r.definition.permissions,
-            })
-        })
-        .collect();
-    let catalog: Vec<PermissionInfo> = PLATFORM_PERMISSIONS
-        .iter()
-        .copied()
-        .chain(
-            connector_types()
-                .iter()
-                .flat_map(|c| c.info().permissions.iter().copied()),
-        )
-        .collect();
-    Ok(Json(json!({ "roles": roles, "catalog": catalog })))
-}
 
 pub async fn connectors(
     State(state): State<AppState>,

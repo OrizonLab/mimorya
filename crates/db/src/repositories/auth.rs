@@ -31,6 +31,8 @@ pub struct ResolvedSession {
     pub tenant_id: Uuid,
     pub expires_at: DateTime<Utc>,
     pub absolute_expires_at: DateTime<Utc>,
+    /// The account holds a temporary password it must replace first.
+    pub must_change_password: bool,
 }
 
 /// Only valid sessions of active users in active tenants are returned.
@@ -39,8 +41,8 @@ pub async fn resolve_session(
     token_hash: &str,
 ) -> sqlx::Result<Option<ResolvedSession>> {
     sqlx::query_as(
-        "select session_id, user_id, tenant_id, expires_at, absolute_expires_at \
-         from auth_resolve_session($1)",
+        "select session_id, user_id, tenant_id, expires_at, absolute_expires_at, \
+         must_change_password from auth_resolve_session($1)",
     )
     .bind(token_hash)
     .fetch_optional(pool)

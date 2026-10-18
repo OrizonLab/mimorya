@@ -4,6 +4,7 @@ import { Menu, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
+import { FirstPasswordScreen } from '@/components/account';
 import { Badge, Spinner } from '@/components/ui';
 import { MeContext } from '@/lib/me-context';
 import { Sidebar } from './sidebar';
@@ -24,6 +25,10 @@ export function AppShell({ children }: { children: ReactNode }) {
         <Spinner />
       </div>
     );
+  }
+
+  if (me.user.mustChangePassword) {
+    return <FirstPasswordScreen me={me} onLogout={() => void logout()} />;
   }
 
   const sidebar = (

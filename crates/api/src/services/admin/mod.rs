@@ -1,4 +1,5 @@
-//! Workspace administration: accounts, organisation and role assignments.
+//! Workspace administration: accounts, organisation, custom roles and role
+//! assignments.
 //! Every operation requires its permission on the whole company, refuses to
 //! act on the administrator's own account, runs in one transaction with its
 //! audit entry, and refreshes the cached authorization data of the tenant.
@@ -10,16 +11,18 @@
 
 mod assignments;
 mod org_units;
+mod roles;
 mod users;
 
 pub use assignments::{grant_role, revoke_role};
 pub use org_units::{NewUnitInput, UnitChanges, create_unit, delete_unit, update_unit};
+pub use roles::{RoleChanges, RoleInput, create_role, delete_role, update_role};
 pub use users::{NewUserInput, UserChanges, create_user, reset_password, update_user};
 
 use mimorya_core::DomainError;
-use mimorya_core::authz::{Actor, DataScope, OrgTree};
+use mimorya_core::authz::{Actor, AuthorizationEngine, DataScope, OrgTree};
 use mimorya_db::repositories::audit::AuditEntry;
-use mimorya_db::repositories::org::{load_org_units, load_user_access};
+use mimorya_db::repositories::org::{load_authorization_data, load_org_units, load_user_access};
 use mimorya_db::{Database, TenantTx};
 use uuid::Uuid;
 
@@ -27,7 +30,9 @@ use crate::services::AccessContext;
 
 /// Opens the transaction of a change under the company's administration lock,
 /// once the administrator still holds `permission` company-wide on the stored
-/// data (another administrator may have revoked or disabled them meanwhile).
+/// data: their account and assignments, and the roles and policies themselves
+/// (another administrator may have revoked, disabled or narrowed them
+/// meanwhile; the request's cached view would not show it).
 async fn begin_change(
     db: &Database,
     access: &AccessContext,
@@ -35,14 +40,14 @@ async fn begin_change(
 ) -> anyhow::Result<TenantTx> {
     let mut tx = db.begin(access.subject.tenant_id).await?;
     tx.lock_administration().await?;
+    let data = load_authorization_data(&mut tx).await?;
+    let definitions = data.roles.into_iter().map(|r| r.definition).collect();
+    let engine = AuthorizationEngine::new(OrgTree::new(data.units)?, definitions, data.policies);
     let current = load_user_access(&mut tx, access.subject.user_id).await?;
     let allowed = current
         .filter(|a| a.profile.status == "active")
         .is_some_and(|a| {
-            access
-                .engine
-                .data_scope(&a.subject, permission, &Actor::user())
-                == DataScope::All
+            engine.data_scope(&a.subject, permission, &Actor::user()) == DataScope::All
         });
     if !allowed {
         return Err(DomainError::forbidden(format!(

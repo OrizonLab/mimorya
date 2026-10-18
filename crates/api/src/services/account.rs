@@ -15,20 +15,28 @@ use uuid::Uuid;
 use crate::auth::credentials::{hash_password_async, verify_password_async};
 use crate::services::AccessContext;
 
+/// How a change ended, when no race or failure refused it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PasswordChange {
+    Changed,
+    /// The only outcome that counts as a guess of the current password.
+    WrongCurrentPassword,
+}
+
 pub async fn change_password(
     db: &Database,
     access: &AccessContext,
     session_id: Uuid,
     current_password: String,
     new_password: String,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<PasswordChange> {
     let (tenant_id, user_id) = (access.subject.tenant_id, access.subject.user_id);
     let mut tx = db.begin(tenant_id).await?;
     let current_hash = get_password_hash(&mut tx, user_id).await?;
     tx.commit().await?;
     let verified = verify_password_async(current_hash.clone(), current_password).await;
     let (true, Some(current_hash)) = (verified, current_hash) else {
-        return Err(DomainError::forbidden("Mot de passe actuel incorrect").into());
+        return Ok(PasswordChange::WrongCurrentPassword);
     };
 
     let new_hash = hash_password_async(new_password).await?;
@@ -53,5 +61,5 @@ pub async fn change_password(
     )
     .await?;
     tx.commit().await?;
-    Ok(())
+    Ok(PasswordChange::Changed)
 }

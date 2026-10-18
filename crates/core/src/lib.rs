@@ -5,6 +5,7 @@
 pub mod administration;
 pub mod authz;
 pub mod autonomy;
+pub mod custom_roles;
 pub mod demo;
 pub mod error;
 pub mod memory;

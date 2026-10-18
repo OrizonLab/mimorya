@@ -9,7 +9,7 @@ use mimorya_db::repositories::role_assignments::{
 };
 use mimorya_db::repositories::users::{
     NewUser, UserPatch, create_user as insert_user, get_user, revoke_user_sessions,
-    set_password_hash, set_primary_unit, update_user as patch_user,
+    set_primary_unit, set_temporary_password_hash, update_user as patch_user,
 };
 use mimorya_db::{Database, TenantTx};
 use serde_json::json;
@@ -180,7 +180,7 @@ pub async fn reset_password(
     if get_user(&mut tx, user_id).await?.is_none() {
         return Err(DomainError::not_found("Compte introuvable").into());
     }
-    set_password_hash(&mut tx, user_id, &hash).await?;
+    set_temporary_password_hash(&mut tx, user_id, &hash).await?;
     revoke_user_sessions(&mut tx, user_id, None).await?;
     append_audit(
         &mut tx,

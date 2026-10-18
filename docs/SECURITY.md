@@ -117,6 +117,15 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
     verrouillée, que le mot de passe vérifié est toujours celui en base et que le
     compte est actif : une connexion en cours ne survit pas à une réinitialisation,
     une désactivation ou un changement de mot de passe validé pendant sa vérification ;
+  - un compte qui détient un mot de passe provisoire (création, réinitialisation)
+    n'atteint que son identité, la déconnexion et le changement de mot de passe tant
+    qu'il ne l'a pas remplacé (contrôle dans la résolution de session, ADR-021) ;
+  - rôles personnalisés (ADR-021) : construits à partir du catalogue de permissions,
+    sans joker ; les rôles de la plateforme ne se modifient pas ; personne ne modifie
+    ni ne supprime un rôle qu'il détient ; un rôle qui contient une permission
+    d'administration reste attribué sur toute l'entreprise ; un rôle encore attribué
+    ne se supprime pas ; un changement s'applique aussitôt à ses détenteurs, et la
+    revérification des droits sous verrou relit les rôles et les politiques en base ;
   - limites assumées :
     - la règle « pas d'administration de soi-même » évite les erreurs, ce n'est **pas
       une frontière contre un administrateur malveillant** : il peut créer un compte,

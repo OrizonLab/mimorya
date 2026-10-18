@@ -12,6 +12,7 @@ pub mod memory;
 pub mod org;
 pub mod org_units;
 pub mod role_assignments;
+pub mod roles;
 pub mod run_events;
 pub mod runs;
 pub mod skills;

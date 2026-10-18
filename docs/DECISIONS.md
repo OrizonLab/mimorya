@@ -265,3 +265,28 @@ elle est remplacée par une nouvelle entrée qui la référence (« remplace ADR
   `account_password.rs`, `login_races.rs`) ; comme personne ne retire ses
   propres droits et que chaque retrait revérifie les droits de son auteur, il reste
   toujours au moins un administrateur actif (hors échéance d'habilitation choisie).
+
+## ADR-021 — Rôles personnalisés et mot de passe provisoire à remplacer
+
+- **Date** : 2026-10-18 · **Statut** : acceptée
+- **Contexte** : une entreprise doit pouvoir définir ses propres rôles métier, et un
+  mot de passe provisoire transmis par un administrateur ne doit pas rester en usage.
+- **Décision** :
+  - un rôle personnalisé n'accorde que des permissions du catalogue (plateforme et
+    connecteurs), écrites en toutes lettres, sans joker : il ne grandit pas avec le
+    catalogue ; sa clé (`custom_…`) est dérivée de son nom à la création ;
+  - les rôles de la plateforme ne se modifient ni ne se suppriment ; personne ne
+    modifie ni ne supprime un rôle qu'il détient (même règle que pour ses propres
+    habilitations) ; un rôle qui contient une permission d'administration reste
+    attribué sur toute l'entreprise (une modification qui laisserait une habilitation
+    limitée à une unité est refusée) ; un rôle encore attribué ne se supprime pas ;
+  - ces changements passent sous le verrou d'administration (ADR-020) ; la
+    revérification des droits de l'auteur relit les rôles et les politiques en base,
+    et une attribution relit le rôle attribué ;
+  - un compte créé ou réinitialisé porte `must_change_password` ; la résolution de
+    session le renvoie, et la couche de session refuse alors toute requête sauf
+    `/auth/me`, `/auth/logout` et `/account/password` ; le changement de mot de passe
+    lève l'obligation, la session courante continue.
+- **Conséquences** : migration `0007` (colonne et fonction `auth_resolve_session`
+  recréée) ; l'interface montre un écran dédié tant que le mot de passe est
+  provisoire ; l'invitation par e-mail reste à faire.
