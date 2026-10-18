@@ -21,12 +21,12 @@ export async function getApproval(tx: Executor, id: string): Promise<ApprovalRow
 export async function listApprovalsForUser(
   tx: Executor,
   userId: string,
-  statuses: ApprovalStatus[] = ['pending'],
+  statuses: readonly ApprovalStatus[] = ['pending'],
 ): Promise<ApprovalRow[]> {
   return tx
     .select()
     .from(approvals)
-    .where(and(eq(approvals.requestedForUserId, userId), inArray(approvals.status, statuses)))
+    .where(and(eq(approvals.requestedForUserId, userId), inArray(approvals.status, [...statuses])))
     .orderBy(desc(approvals.createdAt))
     .limit(100);
 }

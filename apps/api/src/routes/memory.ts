@@ -22,8 +22,9 @@ import {
 } from '@mimorya/db';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { requireAuth, type AppServices } from '../app';
-import { parse } from '../http';
+import { idParams, parse } from '../http';
+import { requireAuth } from '../plugins/session';
+import type { AppServices } from '../services';
 import type { AccessContext } from '../services/access';
 
 function canManage(
@@ -119,7 +120,7 @@ export function registerMemoryRoutes(app: FastifyInstance, services: AppServices
 
   app.delete('/memory/:id', async (request) => {
     const ctx = await access.context(requireAuth(request));
-    const { id } = parse(z.object({ id: z.uuid() }), request.params);
+    const { id } = parse(idParams, request.params);
     await withTenant(db, ctx.subject.tenantId, async (tx) => {
       const memory = await getMemory(tx, id);
       if (!memory || !canManage(ctx, memory))
@@ -142,7 +143,7 @@ export function registerMemoryRoutes(app: FastifyInstance, services: AppServices
 
   app.post('/memory/:id/review', async (request) => {
     const ctx = await access.context(requireAuth(request));
-    const { id } = parse(z.object({ id: z.uuid() }), request.params);
+    const { id } = parse(idParams, request.params);
     const { decision } = parse(z.object({ decision: z.enum(['approve', 'reject']) }), request.body);
     await withTenant(db, ctx.subject.tenantId, async (tx) => {
       const memory = await getMemory(tx, id);

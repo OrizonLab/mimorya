@@ -12,8 +12,9 @@ import {
 } from '@mimorya/db';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { requireAuth, type AppServices } from '../app';
 import { parse } from '../http';
+import { requireAuth } from '../plugins/session';
+import type { AppServices } from '../services';
 import { describeScope } from '../services/access';
 
 export function registerAdminRoutes(app: FastifyInstance, services: AppServices) {

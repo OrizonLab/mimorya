@@ -3,7 +3,6 @@ import { DomainError, PLATFORM_PERMISSIONS, type Permission } from '@mimorya/cor
 import { appendAudit, createSession, findLogin, revokeSession, withTenant } from '@mimorya/db';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { requireAuth, type AppServices } from '../app';
 import {
   newSessionToken,
   SESSION_ABSOLUTE_MS,
@@ -12,6 +11,8 @@ import {
   verifyPassword,
 } from '../auth/credentials';
 import { parse } from '../http';
+import { requireAuth } from '../plugins/session';
+import type { AppServices } from '../services';
 
 const loginSchema = z.object({
   email: z.string().trim().toLowerCase().email().max(254),

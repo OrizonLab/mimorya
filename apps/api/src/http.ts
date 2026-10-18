@@ -1,6 +1,6 @@
 import { DomainError, ValidationError } from '@mimorya/core';
 import type { FastifyError, FastifyReply, FastifyRequest } from 'fastify';
-import type { z } from 'zod';
+import { z } from 'zod';
 
 const STATUS: Record<DomainError['code'], number> = {
   validation: 400,
@@ -43,3 +43,6 @@ export function errorHandler(
   request.log.error({ err: error }, 'Unhandled error');
   return reply.status(500).send({ error: { code: 'internal', message: 'Erreur interne' } });
 }
+
+/** Route parameters of the form `/:id`. */
+export const idParams = z.object({ id: z.uuid() });

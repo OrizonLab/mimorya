@@ -4,6 +4,9 @@ import { check, index, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-cor
 import { oneOf, tenantIsolation, timestamps } from './common';
 import { orgUnits, tenants, users } from './tenancy';
 
+/** Title given to a new conversation until its first message names it. */
+export const DEFAULT_CONVERSATION_TITLE = 'Nouvelle conversation';
+
 export const conversations = pgTable(
   'conversations',
   {
@@ -14,7 +17,7 @@ export const conversations = pgTable(
     ownerUserId: uuid('owner_user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    title: text('title').notNull().default('Nouvelle conversation'),
+    title: text('title').notNull().default(DEFAULT_CONVERSATION_TITLE),
     visibility: text('visibility').notNull().default('private'),
     orgUnitId: uuid('org_unit_id').references(() => orgUnits.id, { onDelete: 'set null' }),
     archivedAt: timestamp('archived_at', { withTimezone: true }),

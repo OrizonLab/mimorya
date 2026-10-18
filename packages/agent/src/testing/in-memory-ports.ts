@@ -201,4 +201,3 @@ function score(terms: string[], text: string): number {
   const words = new Set(tokenize(text));
   return terms.filter((t) => words.has(t)).length;
 }
-

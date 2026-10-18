@@ -23,7 +23,7 @@ import {
   type Database,
   type DeliverableRow,
 } from '@mimorya/db';
-import type { RunEventBus } from './event-bus';
+import type { RunEventBus } from '../event-bus';
 
 export interface RunScope {
   tenantId: string;

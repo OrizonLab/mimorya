@@ -10,10 +10,9 @@ import {
 } from '@mimorya/db';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { requireAuth, type AppServices } from '../app';
-import { parse } from '../http';
-
-const idParams = z.object({ id: z.uuid() });
+import { idParams, parse } from '../http';
+import { requireAuth } from '../plugins/session';
+import type { AppServices } from '../services';
 
 export function registerConversationRoutes(app: FastifyInstance, services: AppServices) {
   const { db, access, runs } = services;
@@ -53,10 +52,9 @@ export function registerConversationRoutes(app: FastifyInstance, services: AppSe
       if (!conversation || conversation.ownerUserId !== identity.userId) {
         throw new NotFoundError('Conversation introuvable');
       }
-      const [messages, recentRuns] = await Promise.all([
-        listMessages(tx, id),
-        listRunsForConversation(tx, id),
-      ]);
+      // One transaction is one connection: queries run one after the other.
+      const messages = await listMessages(tx, id);
+      const recentRuns = await listRunsForConversation(tx, id);
       return {
         conversation: {
           id: conversation.id,
