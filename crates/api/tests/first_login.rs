@@ -5,10 +5,11 @@
 mod support;
 
 use axum::http::StatusCode;
-use mimorya_core::demo::user;
+use mimorya_core::demo::{role, user};
 use serde_json::json;
 use support::accounts::{OWN_PASSWORD, activate, create_account};
 use support::{Client, TestApi};
+use uuid::Uuid;
 
 async fn assert_held_back(session: &Client<'_>) {
     let me = session.get("/auth/me").await;
@@ -102,4 +103,77 @@ async fn a_reset_requires_a_new_choice_and_logging_out_stays_possible() {
         session.get("/auth/me").await.status,
         StatusCode::UNAUTHORIZED
     );
+}
+
+/// Every route needing an identity (placeholder identifiers): keep it in step
+/// with the router when a route is added.
+const AUTHENTICATED_ROUTES: &[(&str, &str)] = &[
+    ("GET", "/conversations"),
+    ("POST", "/conversations"),
+    ("GET", "/conversations/{id}"),
+    ("PATCH", "/conversations/{id}"),
+    ("POST", "/conversations/{id}/messages"),
+    ("GET", "/runs"),
+    ("GET", "/runs/{id}"),
+    ("GET", "/runs/{id}/events"),
+    ("GET", "/approvals"),
+    ("POST", "/approvals/{id}/decision"),
+    ("GET", "/memory"),
+    ("POST", "/memory"),
+    ("DELETE", "/memory/{id}"),
+    ("POST", "/memory/{id}/review"),
+    ("GET", "/admin/organization"),
+    ("POST", "/admin/org-units"),
+    ("PATCH", "/admin/org-units/{id}"),
+    ("DELETE", "/admin/org-units/{id}"),
+    ("GET", "/admin/users"),
+    ("POST", "/admin/users"),
+    ("PATCH", "/admin/users/{id}"),
+    ("POST", "/admin/users/{id}/password"),
+    ("POST", "/admin/users/{id}/assignments"),
+    ("DELETE", "/admin/assignments/{id}"),
+    ("GET", "/admin/roles"),
+    ("POST", "/admin/roles"),
+    ("PATCH", "/admin/roles/{id}"),
+    ("DELETE", "/admin/roles/{id}"),
+    ("GET", "/admin/policies"),
+    ("POST", "/admin/policies"),
+    ("PATCH", "/admin/policies/{id}"),
+    ("DELETE", "/admin/policies/{id}"),
+    ("GET", "/admin/connectors"),
+    ("GET", "/admin/skills"),
+    ("GET", "/admin/audit"),
+    ("GET", "/admin/usage"),
+];
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn every_authenticated_route_holds_a_temporary_password_back() {
+    let api = TestApi::start().await;
+    let paul = api.sign_in(user::PAUL).await;
+    let account = create_account(&paul, "administrateur.provisoire").await;
+    // A company-wide administrator: only the temporary password holds it back.
+    let granted = paul
+        .post(
+            &format!("/admin/users/{}/assignments", account.id),
+            json!({ "roleId": role::TENANT_ADMIN, "scope": { "type": "tenant" } }),
+        )
+        .await;
+    assert_eq!(granted.status, StatusCode::CREATED);
+    let session = api.sign_in_with(&account.email, &account.password).await;
+    for (method, path) in AUTHENTICATED_ROUTES {
+        let url = path.replace("{id}", &Uuid::new_v4().to_string());
+        let response = match *method {
+            "GET" => session.get(&url).await,
+            "POST" => session.post(&url, json!({})).await,
+            "PATCH" => session.patch(&url, json!({})).await,
+            _ => session.delete(&url).await,
+        };
+        assert_eq!(response.status, StatusCode::FORBIDDEN, "{method} {path}");
+        assert_eq!(
+            response.json()["error"]["details"]["reason"],
+            "password_change_required",
+            "{method} {path}"
+        );
+    }
 }

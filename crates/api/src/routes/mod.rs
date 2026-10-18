@@ -1,6 +1,9 @@
 //! HTTP routes, one module per resource. Every route resolves the caller with
 //! `Auth`, builds the authorization context server-side and checks the
-//! permission or the ownership of the resource before answering.
+//! permission or the ownership of the resource before answering. Exceptions:
+//! login and health need no identity; logout takes `MaybeAuth`; `/auth/me`
+//! and `/account/password` take `AuthPendingPasswordChange`, so that an
+//! account holding a temporary password can replace it.
 
 mod account;
 mod admin;

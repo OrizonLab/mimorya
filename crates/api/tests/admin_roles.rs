@@ -78,6 +78,19 @@ async fn custom_roles_grant_their_permissions_and_follow_their_changes() {
     let me = session.get("/auth/me").await.json();
     assert!(!permissions(&me).contains(&"planning:apply".to_string()));
     assert!(permissions(&me).contains(&"intervention:read".to_string()));
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    let audited: Value = sqlx::query_scalar(
+        "select metadata from audit_log where action = 'role.updated' and resource_id = $1",
+    )
+    .bind(&id)
+    .fetch_one(&mut *tx)
+    .await
+    .unwrap();
+    assert_eq!(
+        audited["previousPermissions"],
+        json!(["intervention:read", "planning:apply"])
+    );
+    assert_eq!(audited["permissions"], json!(["intervention:read"]));
 
     let refused = marc
         .post(

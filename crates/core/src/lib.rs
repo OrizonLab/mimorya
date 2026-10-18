@@ -9,6 +9,7 @@ pub mod custom_roles;
 pub mod demo;
 pub mod error;
 pub mod memory;
+pub mod policy_rules;
 pub mod roles;
 pub mod tools;
 

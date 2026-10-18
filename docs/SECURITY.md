@@ -84,7 +84,11 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   entreprise). La position hiérarchique (responsable d'unité) **n'accorde rien** seule.
 - **ABAC** : politiques `allow` / `deny` à conditions JSON (attributs du sujet, de la
   ressource, du contexte), `deny` prioritaire ; exemple livré : le service
-  administratif ne consulte que les interventions terminées.
+  administratif ne consulte que les interventions terminées. L'administration n'écrit
+  que des politiques de refus, sur des permissions métier (jamais d'administration),
+  avec une condition vérifiée avant stockage ; les politiques d'autorisation, qui
+  pourraient ouvrir les données métier à leur auteur, restent en lecture seule jusqu'à
+  la double validation (ADR-022).
 - **Sensibilité** : `public < internal < confidential < restricted`, comparée à
   l'habilitation (`clearance`) de la personne ; le propriétaire voit toujours ses
   propres données.
@@ -140,6 +144,9 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
       avec une adresse déjà utilisée ailleurs est refusé (409), ce qui révèle à
       l'administrateur qu'elle existe dans une autre entreprise. Limite levée avec
       l'invitation par e-mail ;
+    - les comptes créés ou réinitialisés avant la migration `0007` ne sont pas tenus
+      de remplacer leur mot de passe provisoire (ADR-021) : sur une instance déjà en
+      service, les réinitialiser au besoin ;
     - un run d'agent déjà lancé garde les droits calculés à son démarrage jusqu'à sa
       fin (bornée par son budget de durée), même si le compte est désactivé ou perd
       une habilitation entre-temps.

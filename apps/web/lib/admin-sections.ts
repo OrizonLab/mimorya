@@ -3,6 +3,7 @@ export const ADMIN_SECTIONS = [
   { key: 'org', label: 'Organisation', permission: 'org:read' },
   { key: 'users', label: 'Utilisateurs', permission: 'user:read' },
   { key: 'roles', label: 'Rôles', permission: 'role:manage' },
+  { key: 'policies', label: 'Politiques d’accès', permission: 'policy:manage' },
   { key: 'audit', label: 'Journal d’audit', permission: 'audit:read' },
   { key: 'usage', label: 'Consommation', permission: 'usage:read' },
   { key: 'connectors', label: 'Connecteurs', permission: 'connector:manage' },

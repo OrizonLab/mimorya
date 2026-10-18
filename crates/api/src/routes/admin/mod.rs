@@ -6,6 +6,7 @@ mod activity;
 mod assignments;
 mod catalog;
 mod organization;
+mod policies;
 mod roles;
 mod users;
 
@@ -31,6 +32,14 @@ pub fn routes() -> Router<AppState> {
         .route(
             "/admin/roles/{id}",
             patch(roles::update).delete(roles::remove),
+        )
+        .route(
+            "/admin/policies",
+            get(policies::list).post(policies::create),
+        )
+        .route(
+            "/admin/policies/{id}",
+            patch(policies::update).delete(policies::remove),
         )
         .route("/admin/connectors", get(catalog::connectors))
         .route("/admin/skills", get(catalog::skills))

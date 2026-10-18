@@ -295,3 +295,32 @@ elle est remplacée par une nouvelle entrée qui la référence (« remplace ADR
   provisoire ; l'invitation par e-mail reste à faire ; sur une instance déjà en
   service, les comptes créés ou réinitialisés avant la migration ne sont pas
   concernés (à réinitialiser au besoin).
+
+## ADR-022 — Politiques d'accès : l'administration n'écrit que des refus
+
+- **Date** : 2026-10-18 · **Statut** : acceptée
+- **Contexte** : les politiques ABAC (`access_policies`) complètent les rôles. Une
+  politique d'**autorisation** accorde l'accès à une ressource hors du périmètre des
+  rôles ; écrite par un administrateur, elle peut viser ce même administrateur (une
+  condition sur son identifiant, ou une condition large) et lui ouvrir les données
+  métier, contournant la règle « pas d'administration de soi-même » (ADR-019) que
+  seule une double validation (phase 3) peut garantir. Une politique illisible par le
+  moteur empêcherait en outre de charger les autorisations de toute l'entreprise.
+- **Décision** :
+  - depuis l'administration (`policy:manage`, sur toute l'entreprise), on crée,
+    modifie, active, désactive et supprime des politiques de **refus** uniquement ;
+    les politiques d'autorisation existantes sont listées en lecture seule ;
+  - une politique porte sur des permissions du catalogue ou sur `domaine:*`, jamais
+    sur une permission d'administration (`TENANT_WIDE_PERMISSIONS`) : un refus ne peut
+    pas bloquer les administrateurs ;
+  - la condition est désérialisée strictement puis vérifiée (`core::policy_rules`) :
+    attributs sous `subject.`, `resource.` ou `context.`, au moins un attribut par
+    comparaison, valeur requise sauf pour « est renseigné », listes pour « fait partie
+    de », nombres pour les comparaisons d'ordre, pas de groupe vide, profondeur et
+    longueur bornées ; c'est la forme sérialisée de la condition typée qui est stockée ;
+  - les changements passent sous le verrou d'administration (ADR-020), sont audités
+    (avec l'état précédent) et s'appliquent aussitôt (cache invalidé).
+- **Conséquences** : les entreprises ne peuvent pas encore élargir l'accès par
+  politique (elles le font par rôles) ; les attributs des collaborateurs utilisés par
+  les conditions (`subject.attributes.*`) ne sont pas encore modifiables depuis
+  l'interface.
