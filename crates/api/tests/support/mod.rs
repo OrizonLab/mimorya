@@ -4,7 +4,9 @@
 //! session cookie.
 #![allow(dead_code)] // not every test binary uses every helper
 
+pub mod accounts;
 mod client;
+pub mod locks;
 pub mod planning;
 
 pub use client::{Client, TestResponse};
@@ -183,5 +185,22 @@ impl TestApi {
     pub async fn sign_in(&self, user_id: Uuid) -> Client<'_> {
         let session = self.login(user_id).await;
         self.as_user(&session)
+    }
+
+    /// Signs in with explicit credentials (accounts created by a test).
+    pub async fn sign_in_with(&self, email: &str, password: &str) -> Client<'_> {
+        let response = self.try_login(email, password).await;
+        assert_eq!(response.status, StatusCode::OK, "{}", response.text());
+        self.session_from(&response)
+    }
+
+    /// The session opened by a successful login response.
+    pub fn session_from(&self, login: &TestResponse) -> Client<'_> {
+        let cookie = login.headers["set-cookie"].to_str().unwrap();
+        let token = cookie
+            .strip_prefix("mimorya_session=")
+            .and_then(|rest| rest.split(';').next())
+            .expect("session cookie");
+        self.as_user(token)
     }
 }

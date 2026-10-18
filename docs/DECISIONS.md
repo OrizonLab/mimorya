@@ -202,3 +202,66 @@ elle est remplacée par une nouvelle entrée qui la référence (« remplace ADR
   - les types de réponse de l'API sont maintenus à la main côté web
     (`apps/web/lib/api/types.ts`) ; leur génération depuis le serveur est à prévoir ;
   - compilation plus longue qu'en TypeScript, compensée par la vérification statique.
+
+## ADR-019 — Administration : périmètre entreprise, pas d'auto-administration, mots de passe provisoires
+
+- **Date** : 2026-10-18 · **Statut** : acceptée
+- **Contexte** : l'administration passe en écriture (comptes, organisation,
+  habilitations). Une permission d'administration détenue sur une seule unité
+  donnait déjà accès à des écrans couvrant toute l'entreprise (audit, connecteurs) ;
+  aucun service d'envoi d'e-mails n'existe encore.
+- **Décision** :
+  - les permissions d'administration (`TENANT_WIDE_PERMISSIONS`, `crates/core`) ne
+    sont honorées qu'avec un périmètre entreprise, et un rôle qui en contient ne peut
+    être attribué qu'à ce périmètre ;
+  - un administrateur ne modifie ni son propre compte ni ses propres habilitations ;
+  - un compte est créé (ou réinitialisé) avec un mot de passe provisoire aléatoire,
+    affiché une fois à l'administrateur, que la personne remplace depuis « Mon compte »
+    (ses autres sessions sont alors fermées) ;
+  - une unité ne peut être supprimée que si plus rien n'en dépend (sous-unités,
+    membres, habilitations, mémoire) ; les comptes ne sont jamais supprimés par
+    l'application (désactivation).
+- **Conséquences** : le dernier administrateur ne peut pas se retirer ses droits ;
+  la transmission du mot de passe provisoire repose sur l'administrateur jusqu'à
+  l'invitation par e-mail ; la séparation des pouvoirs complète (double validation
+  des actions d'administration) reste à faire (phase 3).
+
+## ADR-020 — Changements d'administration sérialisés par entreprise
+
+- **Date** : 2026-10-18 · **Statut** : acceptée
+- **Contexte** : chaque requête charge une vue des droits et de l'organigramme
+  (organigramme mis en cache 30 s). Deux administrateurs agissant au même instant
+  pouvaient valider leurs changements sur des vues périmées : deux déplacements croisés
+  créaient un cycle (l'organigramme ne se chargeait plus et toute l'entreprise
+  devenait inaccessible), deux retraits croisés laissaient l'entreprise sans
+  administrateur, une habilitation créée pendant une suppression d'unité disparaissait
+  par cascade.
+- **Décision** :
+  - tout changement d'administration (comptes, habilitations, organisation) s'exécute
+    dans une transaction qui prend d'abord un verrou consultatif PostgreSQL propre à
+    l'entreprise (`pg_advisory_xact_lock`, `TenantTx::lock_administration`) : les
+    changements d'une même entreprise passent l'un après l'autre, sans nouvelle
+    infrastructure ;
+  - sous ce verrou, le changement revérifie sur les données en base que
+    l'administrateur est toujours actif et détient la permission sur toute
+    l'entreprise, et applique les règles de l'organigramme à l'arbre relu en base
+    (pas au cache) ;
+  - la suppression d'une unité verrouille sa ligne (`FOR UPDATE`) avant de compter ce
+    qui en dépend : ce qui la référencerait entre-temps (mémoire écrite par un run,
+    par exemple) attend puis échoue ;
+  - le cache des autorisations ne réenregistre pas des données chargées pendant une
+    invalidation (génération incrémentée à chaque invalidation) ;
+  - le changement de son propre mot de passe, hors verrou d'administration, n'écrit
+    que si l'empreinte lue n'a pas changé et que la session appelante est toujours
+    ouverte : une réinitialisation simultanée par un administrateur l'emporte ;
+  - une connexion relit la ligne du compte, verrouillée (`FOR NO KEY UPDATE`), avant
+    d'ouvrir sa session : elle est refusée si le mot de passe vérifié a changé ou si
+    le compte n'est plus actif, et une révocation en attente passe après elle ;
+  - ordre des verrous commun à ces opérations : ligne du compte, puis sessions.
+- **Conséquences** : les changements d'administration d'une entreprise ne sont pas
+  parallèles (sans effet pratique à cette échelle) ; ces courses sont testées de façon
+  déterministe : le test tient les lignes concernées et attend que les requêtes soient
+  en file dans `pg_locks` (`crates/api/tests/support/locks.rs`, `admin_concurrency.rs`,
+  `account_password.rs`, `login_races.rs`) ; comme personne ne retire ses
+  propres droits et que chaque retrait revérifie les droits de son auteur, il reste
+  toujours au moins un administrateur actif (hors échéance d'habilitation choisie).

@@ -38,6 +38,8 @@ Repères à l'intérieur des crates :
   par outil), `connectors/src/mcp/`, `connectors/src/bin/mcp_demo_docs.rs`.
 - `api/src/plugins/` (contexte de requête, limitation de débit, CSRF, session,
   balayage des runs), `api/src/routes/` (un module par ressource, `admin/`),
+  `api/src/services/admin/` (comptes, organisation, habilitations, sous verrou par
+  entreprise), `api/src/services/account.rs` (son propre compte),
   `api/src/services/runs/` (tour de conversation, décisions, contexte, exécution,
   ports PostgreSQL, résultat), `api/tests/` (intégration, harnais dans `support/`).
 - `web/components/<fonctionnalité>/` (admin, approvals, chat, memory, operations,

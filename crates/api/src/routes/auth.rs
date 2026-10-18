@@ -14,7 +14,9 @@ use mimorya_connectors::connector_types;
 use mimorya_core::DomainError;
 use mimorya_core::authz::PLATFORM_PERMISSIONS;
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
-use mimorya_db::repositories::auth::{NewSession, create_session, find_login, revoke_session};
+use mimorya_db::repositories::auth::{
+    NewSession, create_session, find_login, lock_login_state, revoke_session,
+};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -121,6 +123,17 @@ async fn login(
     let (token, token_hash) = new_session_token();
     let now = Utc::now();
     let mut tx = state.db.begin(login.tenant_id).await?;
+    // A reset, a disabling or a password change committed during the
+    // verification wins: no session is opened with what it replaced.
+    let still_valid = lock_login_state(&mut tx, login.user_id)
+        .await?
+        .is_some_and(|(hash, status)| hash == login.password_hash && status == "active");
+    if !still_valid {
+        let entry = login_audit(login.tenant_id, login.user_id, "denied", &context)
+            .reason("Compte modifié pendant la connexion");
+        record_in_background(state.clone(), entry);
+        return Err(DomainError::unauthenticated(INVALID_CREDENTIALS).into());
+    }
     create_session(
         &mut tx,
         NewSession {
@@ -184,7 +197,7 @@ async fn me(State(state): State<AppState>, Auth(identity): Auth) -> ApiResult<Js
                 .flat_map(|c| c.info().permissions.iter().map(|p| p.permission)),
         )
         .collect();
-    let permissions: Vec<&str> = catalog.into_iter().filter(|p| access.has(p)).collect();
+    let permissions: Vec<&str> = catalog.into_iter().filter(|p| access.holds(p)).collect();
     let org_unit = access
         .profile
         .primary_unit_id

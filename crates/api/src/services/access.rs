@@ -2,17 +2,21 @@
 //! briefly per tenant) and the subject of the authenticated user, always
 //! loaded from the database, never from the client.
 
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::sync::Arc;
+use std::time::Duration;
 
 use mimorya_core::DomainError;
-use mimorya_core::authz::{Actor, AssignmentScope, AuthorizationEngine, OrgTree, Subject};
+use mimorya_core::administration::is_tenant_wide;
+use mimorya_core::authz::{
+    Actor, AssignmentScope, AuthorizationEngine, DataScope, OrgTree, Subject,
+};
 use mimorya_db::Database;
 use mimorya_db::repositories::org::{
     RoleRecord, TenantRecord, UserProfile, load_authorization_data, load_user_access,
 };
 use uuid::Uuid;
+
+use super::tenant_cache::TenantCache;
 
 /// The signed-in user, as resolved from the session cookie.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,6 +56,30 @@ impl AccessContext {
         }
     }
 
+    /// Whether the permission is effective for the user: a company-wide one
+    /// (`TENANT_WIDE_PERMISSIONS`) only counts when held on the whole company.
+    pub fn holds(&self, permission: &str) -> bool {
+        if is_tenant_wide(permission) {
+            self.require_tenant_wide(permission).is_ok()
+        } else {
+            self.has(permission)
+        }
+    }
+
+    /// Company-wide screens and actions (`TENANT_WIDE_PERMISSIONS`): the
+    /// permission must be held on the whole company, not on some unit.
+    pub fn require_tenant_wide(&self, permission: &str) -> Result<(), DomainError> {
+        match self
+            .engine
+            .data_scope(&self.subject, permission, &Actor::user())
+        {
+            DataScope::All => Ok(()),
+            _ => Err(DomainError::forbidden(format!(
+                "Permission requise sur toute l’entreprise : {permission}"
+            ))),
+        }
+    }
+
     /// Tenant settings flag `demo`: the workspace holds fictional data.
     pub fn is_demo(&self) -> bool {
         self.tenant.settings.get("demo").and_then(|v| v.as_bool()) == Some(true)
@@ -62,26 +90,23 @@ struct TenantAccess {
     tenant: TenantRecord,
     roles: Arc<Vec<RoleRecord>>,
     engine: Arc<AuthorizationEngine>,
-    loaded_at: Instant,
 }
 
 pub struct AccessService {
     db: Database,
-    ttl: Duration,
-    cache: Mutex<HashMap<Uuid, Arc<TenantAccess>>>,
+    cache: TenantCache<TenantAccess>,
 }
 
 impl AccessService {
     pub fn new(db: Database) -> Self {
         Self {
             db,
-            ttl: Duration::from_secs(30),
-            cache: Mutex::new(HashMap::new()),
+            cache: TenantCache::new(Duration::from_secs(30)),
         }
     }
 
     pub fn invalidate(&self, tenant_id: Uuid) {
-        self.cache.lock().expect("access cache").remove(&tenant_id);
+        self.cache.invalidate(tenant_id);
     }
 
     pub async fn context(&self, identity: AuthIdentity) -> anyhow::Result<AccessContext> {
@@ -115,11 +140,12 @@ impl AccessService {
     }
 
     async fn tenant_access(&self, tenant_id: Uuid) -> anyhow::Result<Arc<TenantAccess>> {
-        if let Some(cached) = self.cache.lock().expect("access cache").get(&tenant_id)
-            && cached.loaded_at.elapsed() < self.ttl
-        {
-            return Ok(cached.clone());
-        }
+        // The generation is read before loading: an invalidation that happens
+        // while the data loads then keeps the (possibly older) data out of the cache.
+        let generation = match self.cache.get(tenant_id) {
+            Ok(cached) => return Ok(cached),
+            Err(generation) => generation,
+        };
         let mut tx = self.db.begin(tenant_id).await?;
         let data = load_authorization_data(&mut tx).await?;
         tx.commit().await?;
@@ -129,12 +155,8 @@ impl AccessService {
             tenant: data.tenant,
             roles: Arc::new(data.roles),
             engine: Arc::new(AuthorizationEngine::new(tree, definitions, data.policies)),
-            loaded_at: Instant::now(),
         });
-        self.cache
-            .lock()
-            .expect("access cache")
-            .insert(tenant_id, entry.clone());
+        self.cache.store(tenant_id, generation, entry.clone());
         Ok(entry)
     }
 }

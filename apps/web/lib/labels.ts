@@ -40,3 +40,25 @@ export const AUTONOMY_LABELS: Record<string, string> = {
   execute_with_approval: 'Exécution après validation',
   autonomous_limited: 'Autonomie limitée',
 };
+
+export const CLEARANCE_LABELS: Record<string, string> = {
+  public: 'Public',
+  internal: 'Interne',
+  confidential: 'Confidentiel',
+  restricted: 'Restreint',
+};
+
+export const ACCOUNT_STATUS: Record<string, ToneLabel> = {
+  active: { label: 'Actif', tone: 'ok' },
+  invited: { label: 'Invité', tone: 'neutral' },
+  disabled: { label: 'Désactivé', tone: 'danger' },
+};
+
+export const UNIT_TYPES: Record<string, string> = {
+  company: 'Entreprise',
+  site: 'Établissement',
+  direction: 'Direction',
+  department: 'Département',
+  service: 'Service',
+  team: 'Équipe',
+};

@@ -15,7 +15,7 @@ use crate::plugins::Auth;
 
 pub async fn roles(State(state): State<AppState>, Auth(identity): Auth) -> ApiResult<Json<Value>> {
     let access = state.access.context(identity).await?;
-    access.require("role:manage")?;
+    access.require_tenant_wide("role:manage")?;
     let roles: Vec<Value> = access
         .roles
         .iter()
@@ -47,7 +47,7 @@ pub async fn connectors(
     Auth(identity): Auth,
 ) -> ApiResult<Json<Value>> {
     let access = state.access.context(identity).await?;
-    access.require("connector:manage")?;
+    access.require_tenant_wide("connector:manage")?;
     let mut tx = state.db.begin(identity.tenant_id).await?;
     let instances = list_connector_instances(&mut tx, false).await?;
     tx.commit().await?;
@@ -84,7 +84,7 @@ pub async fn connectors(
 /// Every member reads skills through the agent; this screen is for their managers.
 pub async fn skills(State(state): State<AppState>, Auth(identity): Auth) -> ApiResult<Json<Value>> {
     let access = state.access.context(identity).await?;
-    access.require("skill:manage")?;
+    access.require_tenant_wide("skill:manage")?;
     let mut tx = state.db.begin(identity.tenant_id).await?;
     let skills = list_skills(&mut tx).await?;
     tx.commit().await?;

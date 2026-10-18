@@ -27,7 +27,7 @@ pub async fn audit(
     Query(params): Query<AuditParams>,
 ) -> ApiResult<Json<Value>> {
     let access = state.access.context(identity).await?;
-    access.require("audit:read")?;
+    access.require_tenant_wide("audit:read")?;
     let mut tx = state.db.begin(identity.tenant_id).await?;
     let rows = list_audit(
         &mut tx,
@@ -73,7 +73,7 @@ pub async fn usage(
     Query(params): Query<UsageParams>,
 ) -> ApiResult<Json<Value>> {
     let access = state.access.context(identity).await?;
-    access.require("usage:read")?;
+    access.require_tenant_wide("usage:read")?;
     let since = Utc::now() - Duration::days(params.days.unwrap_or(30));
     let mut tx = state.db.begin(identity.tenant_id).await?;
     let rows = usage_summary(&mut tx, since).await?;

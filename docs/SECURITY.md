@@ -94,6 +94,45 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   comptes, rôles, politiques, connecteurs, compétences, paramètres, lecture de l'audit,
   décision de validation. C'est ce qui empêche une injection ou une auto-amélioration
   de s'accorder des privilèges.
+- **Administration** (ADR-019) :
+  - les permissions d'administration (`TENANT_WIDE_PERMISSIONS` : organisation,
+    comptes, rôles, politiques, connecteurs, compétences, paramètres, mémoire, audit,
+    consommation) ne valent que détenues **sur toute l'entreprise** ; un rôle qui en
+    contient ne s'attribue qu'à ce périmètre ;
+  - personne ne modifie depuis l'administration son propre compte, son statut ou ses
+    habilitations : il faut un autre administrateur (pas de modification directe de
+    ses propres droits, pas de blocage de soi-même) ;
+  - les changements d'administration d'une entreprise sont sérialisés (verrou
+    PostgreSQL par entreprise, ADR-020) et revérifient sur les données en base les
+    droits de leur auteur et les règles de l'organigramme : deux administrateurs
+    simultanés ne peuvent ni créer de cycle, ni se retirer mutuellement leurs droits ;
+  - un compte créé ou réinitialisé reçoit un mot de passe provisoire aléatoire
+    (96 bits), affiché une seule fois à l'administrateur (`Cache-Control: no-store`),
+    jamais journalisé ; la réinitialisation et la désactivation ferment immédiatement
+    les sessions ; le changement de son mot de passe exige l'actuel (tentatives
+    limitées comme la connexion), ferme les autres sessions et n'écrase jamais une
+    réinitialisation ou une révocation faite au même moment par un administrateur
+    (écriture conditionnée à l'ancienne empreinte, session vérifiée sous verrou) ;
+  - une connexion n'ouvre sa session qu'après avoir relu, ligne du compte
+    verrouillée, que le mot de passe vérifié est toujours celui en base et que le
+    compte est actif : une connexion en cours ne survit pas à une réinitialisation,
+    une désactivation ou un changement de mot de passe validé pendant sa vérification ;
+  - limites assumées :
+    - la règle « pas d'administration de soi-même » évite les erreurs, ce n'est **pas
+      une frontière contre un administrateur malveillant** : il peut créer un compte,
+      lui attribuer un rôle d'administration et agir par ce compte ; la
+      réinitialisation d'un mot de passe lui permet de se connecter à la place de la
+      personne (y compris un autre administrateur) et donc de lire ses conversations et
+      sa mémoire personnelle. Tout est tracé (`user.created`, `role.assigned`,
+      `user.password_reset`…) ; la double validation des actions d'administration est
+      prévue en phase 3 ;
+    - les adresses e-mail sont uniques entre entreprises (ADR-011) : créer un compte
+      avec une adresse déjà utilisée ailleurs est refusé (409), ce qui révèle à
+      l'administrateur qu'elle existe dans une autre entreprise. Limite levée avec
+      l'invitation par e-mail ;
+    - un run d'agent déjà lancé garde les droits calculés à son démarrage jusqu'à sa
+      fin (bornée par son budget de durée), même si le compte est désactivé ou perd
+      une habilitation entre-temps.
 
 ## 6. Sécurité de l'agent
 

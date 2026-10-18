@@ -49,8 +49,14 @@ export function Sidebar({
         );
       })}
       <div className="mt-auto border-t border-line px-2 pt-3">
-        <p className="truncate text-sm font-medium">{me.user.displayName}</p>
-        <p className="truncate text-xs text-muted">{me.user.jobTitle}</p>
+        <Link
+          href="/account"
+          aria-current={pathname === '/account' ? 'page' : undefined}
+          className="block rounded-md hover:text-accent"
+        >
+          <span className="block truncate text-sm font-medium">{me.user.displayName}</span>
+          <span className="block truncate text-xs text-muted">Mon compte · {me.user.jobTitle}</span>
+        </Link>
         <button
           type="button"
           onClick={onLogout}

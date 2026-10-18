@@ -76,6 +76,19 @@ impl TenantTx {
     pub async fn commit(self) -> sqlx::Result<()> {
         self.tx.commit().await
     }
+
+    /// Serialises the administration changes of the tenant (accounts, rights,
+    /// organisation) until the end of the transaction: what a change checked
+    /// on the current data stays true until it commits.
+    pub async fn lock_administration(&mut self) -> sqlx::Result<()> {
+        sqlx::query(
+            "select pg_advisory_xact_lock(hashtextextended('mimorya.administration:' || $1, 0))",
+        )
+        .bind(self.tenant_id.to_string())
+        .execute(&mut *self.tx)
+        .await?;
+        Ok(())
+    }
 }
 
 impl Deref for TenantTx {

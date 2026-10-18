@@ -75,11 +75,7 @@ pub async fn load_authorization_data(conn: &mut PgConnection) -> anyhow::Result<
         .fetch_optional(&mut *conn)
         .await?
         .context("Tenant context missing")?;
-    let units: Vec<UnitRow> = sqlx::query_as(
-        "select id, parent_id, name, type, lead_user_id from org_units order by created_at",
-    )
-    .fetch_all(&mut *conn)
-    .await?;
+    let units = load_org_units(&mut *conn).await?;
     let roles: Vec<RoleRow> = sqlx::query_as(
         "select id, key, name, description, permissions, is_system from roles order by name",
     )
@@ -100,19 +96,7 @@ pub async fn load_authorization_data(conn: &mut PgConnection) -> anyhow::Result<
                 _ => Map::new(),
             },
         },
-        units: units
-            .into_iter()
-            .map(|u| {
-                Ok(OrgUnit {
-                    id: u.id,
-                    parent_id: u.parent_id,
-                    name: u.name,
-                    unit_type: OrgUnitType::parse(&u.unit_type)
-                        .ok_or_else(|| anyhow!("unknown org unit type {}", u.unit_type))?,
-                    lead_user_id: u.lead_user_id,
-                })
-            })
-            .collect::<anyhow::Result<_>>()?,
+        units,
         roles: roles
             .into_iter()
             .map(|r| RoleRecord {
@@ -144,6 +128,28 @@ pub async fn load_authorization_data(conn: &mut PgConnection) -> anyhow::Result<
             })
             .collect::<anyhow::Result<_>>()?,
     })
+}
+
+/// The organisation units of the tenant, as stored now.
+pub async fn load_org_units(conn: &mut PgConnection) -> anyhow::Result<Vec<OrgUnit>> {
+    let units: Vec<UnitRow> = sqlx::query_as(
+        "select id, parent_id, name, type, lead_user_id from org_units order by created_at",
+    )
+    .fetch_all(conn)
+    .await?;
+    units
+        .into_iter()
+        .map(|u| {
+            Ok(OrgUnit {
+                id: u.id,
+                parent_id: u.parent_id,
+                name: u.name,
+                unit_type: OrgUnitType::parse(&u.unit_type)
+                    .ok_or_else(|| anyhow!("unknown org unit type {}", u.unit_type))?,
+                lead_user_id: u.lead_user_id,
+            })
+        })
+        .collect()
 }
 
 #[derive(Debug, Clone)]
@@ -194,7 +200,7 @@ struct AssignmentRow {
     role_name: String,
 }
 
-fn to_scope(
+pub(crate) fn to_scope(
     scope_type: &str,
     org_unit_id: Option<Uuid>,
     include_descendants: bool,
@@ -275,59 +281,4 @@ pub async fn load_user_access(
         },
         assignments,
     }))
-}
-
-#[derive(Debug, Clone, sqlx::FromRow)]
-pub struct DirectoryEntry {
-    pub id: Uuid,
-    pub email: String,
-    pub display_name: String,
-    pub job_title: Option<String>,
-    pub status: String,
-    pub primary_unit_id: Option<Uuid>,
-    pub last_login_at: Option<DateTime<Utc>>,
-}
-
-pub async fn list_users(conn: &mut PgConnection) -> sqlx::Result<Vec<DirectoryEntry>> {
-    sqlx::query_as(
-        "select u.id, u.email::text as email, u.display_name, u.job_title, u.status, u.last_login_at, \
-         (select m.org_unit_id from org_memberships m where m.user_id = u.id and m.is_primary limit 1) \
-           as primary_unit_id \
-         from users u order by u.display_name",
-    )
-    .fetch_all(conn)
-    .await
-}
-
-#[derive(Debug, Clone, sqlx::FromRow)]
-pub struct RoleAssignmentRow {
-    pub user_id: Uuid,
-    pub role_id: Uuid,
-    pub role_name: String,
-    pub scope_type: String,
-    pub scope_org_unit_id: Option<Uuid>,
-    pub include_descendants: bool,
-    pub expires_at: Option<DateTime<Utc>>,
-}
-
-impl RoleAssignmentRow {
-    pub fn scope(&self) -> AssignmentScope {
-        to_scope(
-            &self.scope_type,
-            self.scope_org_unit_id,
-            self.include_descendants,
-        )
-    }
-}
-
-pub async fn list_role_assignments(
-    conn: &mut PgConnection,
-) -> sqlx::Result<Vec<RoleAssignmentRow>> {
-    sqlx::query_as(
-        "select a.user_id, a.role_id, r.name as role_name, a.scope_type, a.scope_org_unit_id, \
-         a.include_descendants, a.expires_at \
-         from role_assignments a join roles r on r.id = a.role_id",
-    )
-    .fetch_all(conn)
-    .await
 }

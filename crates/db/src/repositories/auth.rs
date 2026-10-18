@@ -60,6 +60,20 @@ pub struct NewSession {
 
 const MAX_USER_AGENT_CHARS: usize = 500;
 
+/// The account as stored now, its row locked until the end of the
+/// transaction: a login opens its session only if the password it verified is
+/// still the stored one and the account still active, and a reset, a
+/// disabling or a password change waits for it (then ends that session).
+pub async fn lock_login_state(
+    conn: &mut PgConnection,
+    user_id: Uuid,
+) -> sqlx::Result<Option<(Option<String>, String)>> {
+    sqlx::query_as("select password_hash, status from users where id = $1 for no key update")
+        .bind(user_id)
+        .fetch_optional(conn)
+        .await
+}
+
 /// Opens a session and records the login time.
 pub async fn create_session(conn: &mut PgConnection, input: NewSession) -> sqlx::Result<Uuid> {
     let user_agent = input
@@ -98,6 +112,19 @@ pub async fn touch_session(
     .execute(conn)
     .await?;
     Ok(())
+}
+
+/// Whether the session is still open; its row stays locked until the end of
+/// the transaction, so it cannot be revoked meanwhile.
+pub async fn lock_open_session(conn: &mut PgConnection, session_id: Uuid) -> sqlx::Result<bool> {
+    let found: Option<Uuid> = sqlx::query_scalar(
+        "select id from sessions where id = $1 and revoked_at is null and expires_at > now() \
+         and absolute_expires_at > now() for update",
+    )
+    .bind(session_id)
+    .fetch_optional(conn)
+    .await?;
+    Ok(found.is_some())
 }
 
 pub async fn revoke_session(conn: &mut PgConnection, session_id: Uuid) -> sqlx::Result<()> {

@@ -1,19 +1,31 @@
-//! Read-only administration endpoints, each reserved to its permission
-//! (management screens come next, see docs/ROADMAP.md).
+//! Administration endpoints, each reserved to its permission. Reading the
+//! directory and the organisation is open to members; managing them, and the
+//! company-wide screens, require the permission on the whole company.
 
 mod activity;
+mod assignments;
 mod catalog;
-mod directory;
+mod organization;
+mod users;
 
 use axum::Router;
-use axum::routing::get;
+use axum::routing::{delete, get, patch, post};
 
 use crate::app::AppState;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/admin/organization", get(directory::organization))
-        .route("/admin/users", get(directory::users))
+        .route("/admin/organization", get(organization::organization))
+        .route("/admin/org-units", post(organization::create))
+        .route(
+            "/admin/org-units/{id}",
+            patch(organization::update).delete(organization::remove),
+        )
+        .route("/admin/users", get(users::list).post(users::create))
+        .route("/admin/users/{id}", patch(users::update))
+        .route("/admin/users/{id}/password", post(users::reset))
+        .route("/admin/users/{id}/assignments", post(assignments::grant))
+        .route("/admin/assignments/{id}", delete(assignments::revoke))
         .route("/admin/roles", get(catalog::roles))
         .route("/admin/connectors", get(catalog::connectors))
         .route("/admin/skills", get(catalog::skills))
