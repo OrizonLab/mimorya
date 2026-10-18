@@ -31,3 +31,8 @@ Thumbs.db
 # Local data
 /data/
 *.sqlite
+next-env.d.ts
+**/.drift-*/
+
+# Rust
+/target/

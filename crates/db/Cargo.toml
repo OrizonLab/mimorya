@@ -1,0 +1,28 @@
+[package]
+name = "mimorya-db"
+description = "PostgreSQL access: migrations, row-level security, repositories, demo seed."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[features]
+# Test database reset helpers, used by the integration tests of other crates.
+testing = []
+
+[dependencies]
+anyhow.workspace = true
+chrono.workspace = true
+mimorya-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+tokio.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+mimorya-db = { path = ".", features = ["testing"] }
+
+[lints]
+workspace = true

@@ -1,0 +1,88 @@
+//! Reviews a final answer candidate: deterministic checks first (empty,
+//! truncated, ungrounded identifiers), then — when enabled and success
+//! criteria exist — a model-based review. A failing reviewer never blocks the
+//! answer.
+
+use mimorya_core::tools::Citation;
+use regex::Regex;
+
+use super::verification::{JudgeInput, VerificationReport, check_grounding, judge_answer};
+use crate::llm::{LlmProvider, LlmResponse};
+use crate::tools::ToolRegistry;
+
+pub struct AnswerReview<'a> {
+    pub answer: &'a str,
+    pub truncated: bool,
+    pub evidence: &'a [Citation],
+    pub registry: &'a ToolRegistry,
+    pub objective: &'a str,
+    pub success_criteria: &'a [String],
+    /// Reviewer model; when absent the model-based review is skipped.
+    pub judge: Option<&'a dyn LlmProvider>,
+}
+
+/// The report, and the reviewer's response to account for (if a review ran).
+pub async fn review_answer(review: AnswerReview<'_>) -> (VerificationReport, Option<LlmResponse>) {
+    let mut issues = Vec::new();
+    if review.answer.is_empty() {
+        issues.push("La réponse est vide.".to_string());
+    }
+    if review.truncated {
+        issues.push("La réponse a été tronquée : fournis une version plus concise.".to_string());
+    }
+    let patterns: Vec<&Regex> = review
+        .registry
+        .all()
+        .iter()
+        .filter_map(|t| t.info.citation_pattern.as_ref())
+        .collect();
+    issues.extend(check_grounding(review.answer, &patterns, review.evidence));
+
+    let mut judged = false;
+    let mut judge_response = None;
+    if let (true, Some(judge)) = (
+        issues.is_empty() && !review.success_criteria.is_empty(),
+        review.judge,
+    ) {
+        let input = JudgeInput {
+            objective: review.objective,
+            criteria: review.success_criteria,
+            answer: review.answer,
+            evidence: review.evidence,
+        };
+        // A failing reviewer leaves the answer unjudged.
+        if let Ok((verdict, response)) = judge_answer(judge, input).await {
+            judge_response = Some(response);
+            if let Some(verdict) = verdict {
+                judged = true;
+                if !verdict.pass {
+                    if verdict.issues.is_empty() {
+                        issues.push("Critères non satisfaits.".to_string());
+                    } else {
+                        issues.extend(verdict.issues);
+                    }
+                }
+            }
+        }
+    }
+    (
+        VerificationReport {
+            passed: issues.is_empty(),
+            issues,
+            judged,
+        },
+        judge_response,
+    )
+}
+
+/// Final text shown to the user: residual issues are never hidden.
+pub fn present_answer(answer: &str, report: &VerificationReport) -> String {
+    if report.passed {
+        return answer.to_string();
+    }
+    let issues: Vec<String> = report.issues.iter().map(|i| format!("- {i}")).collect();
+    format!(
+        "{answer}\n\n---\n⚠️ **Points non vérifiés par le contrôle qualité :**\n{}",
+        issues.join("\n")
+    )
+}

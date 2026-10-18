@@ -1,0 +1,49 @@
+[package]
+name = "mimorya-api"
+description = "HTTP API: sessions, conversations, agent runs and their event stream, approvals, memory, administration."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "mimorya-api"
+path = "src/main.rs"
+
+[[bin]]
+name = "mimorya-seed"
+path = "src/bin/seed.rs"
+
+[dependencies]
+anyhow.workspace = true
+argon2.workspace = true
+async-trait.workspace = true
+axum.workspace = true
+base64.workspace = true
+chrono.workspace = true
+dotenvy.workspace = true
+futures.workspace = true
+mimorya-agent.workspace = true
+mimorya-connectors.workspace = true
+mimorya-core.workspace = true
+mimorya-db.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+sqlx.workspace = true
+tokio.workspace = true
+tokio-stream.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+uuid.workspace = true
+validator.workspace = true
+
+[dev-dependencies]
+mimorya-agent = { workspace = true, features = ["testing"] }
+mimorya-db = { workspace = true, features = ["testing"] }
+regex.workspace = true
+tower.workspace = true
+
+[lints]
+workspace = true
