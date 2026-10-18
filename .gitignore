@@ -33,3 +33,6 @@ Thumbs.db
 *.sqlite
 next-env.d.ts
 **/.drift-*/
+
+# Rust
+/target/
