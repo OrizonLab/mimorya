@@ -12,7 +12,7 @@
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "generate": "drizzle-kit generate",
-    "migrate": "tsx src/scripts/migrate.ts",
+    "migrate": "tsx --env-file-if-exists=../../.env src/scripts/migrate.ts",
     "seed": "tsx src/scripts/seed.ts"
   },
   "dependencies": {

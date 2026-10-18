@@ -1,0 +1,21 @@
+# Development services. Usage: docker compose up -d db
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: mimorya
+      POSTGRES_PASSWORD: mimorya
+      POSTGRES_DB: mimorya
+    ports:
+      - '5432:5432'
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U mimorya']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  db-data:

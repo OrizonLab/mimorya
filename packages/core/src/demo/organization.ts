@@ -141,6 +141,7 @@ export const DEMO_ROLE_DEFINITIONS: readonly DemoRole[] = [
       'planning:read',
       'planning:propose',
       'planning:apply',
+      'memory:read',
       'memory:write',
       'approval:decide',
     ],
