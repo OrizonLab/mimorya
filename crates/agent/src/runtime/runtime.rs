@@ -40,7 +40,7 @@ pub struct AgentRuntime {
 }
 
 enum ModelTurn {
-    Response(LlmResponse),
+    Response(Box<LlmResponse>),
     Failed(String),
 }
 
@@ -307,7 +307,7 @@ impl AgentRuntime {
             Ok(response) => {
                 state.usage.steps += 1;
                 record_model_usage(&deps.ports, &deps.prices, state, &response).await?;
-                Ok(ModelTurn::Response(response))
+                Ok(ModelTurn::Response(Box::new(response)))
             }
             Err(error) if error.kind == LlmErrorKind::Aborted => {
                 Ok(ModelTurn::Failed("Exécution annulée".into()))

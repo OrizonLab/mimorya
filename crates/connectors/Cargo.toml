@@ -1,0 +1,33 @@
+[package]
+name = "mimorya-connectors"
+description = "Connectors: the demo interventions connector and the MCP bridge."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "mcp-demo-docs"
+path = "src/bin/mcp_demo_docs.rs"
+
+[dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+chrono.workspace = true
+mimorya-core.workspace = true
+regex.workspace = true
+rmcp.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+validator.workspace = true
+
+[dev-dependencies]
+mimorya-agent = { workspace = true, features = ["testing"] }
+
+[lints]
+workspace = true

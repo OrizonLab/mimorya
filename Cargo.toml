@@ -13,16 +13,18 @@ publish = false
 mimorya-core = { path = "crates/core" }
 mimorya-db = { path = "crates/db" }
 mimorya-agent = { path = "crates/agent" }
+mimorya-connectors = { path = "crates/connectors" }
 anyhow = "1"
 async-trait = "0.1"
 chrono-tz = "0.10"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "std"] }
 futures = "0.3"
 regex = "1"
+rmcp = { version = "3.5.1", features = ["client", "macros", "server", "transport-child-process", "transport-io", "transport-streamable-http-client-reqwest"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
 schemars = { version = "1", features = ["chrono04", "uuid1"] }
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["preserve_order"] }
 sqlx = { version = "0.8.6", default-features = false, features = ["chrono", "json", "macros", "migrate", "postgres", "runtime-tokio", "tls-rustls-ring-webpki", "uuid"] }
 thiserror = "2"
 tokio = { version = "1", features = ["full"] }
