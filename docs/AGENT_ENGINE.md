@@ -1,7 +1,8 @@
 # Moteur agentique et mémoire
 
-Code : `packages/agent` (moteur), `packages/core` (autorisation, autonomie, contrat
-d'outil), `packages/connectors` (outils). Statut des briques : [ROADMAP.md](ROADMAP.md).
+Code : `crates/agent` (moteur), `crates/core` (autorisation, autonomie, contrat
+d'outil), `crates/connectors` (outils), `crates/api/src/services/runs` (exécution et
+ports PostgreSQL). Statut des briques : [ROADMAP.md](ROADMAP.md).
 
 ## 1. Principes
 
@@ -20,7 +21,7 @@ d'outil), `packages/connectors` (outils). Statut des briques : [ROADMAP.md](ROAD
 
 ```mermaid
 flowchart TB
-  subgraph Engine["packages/agent"]
+  subgraph Engine["crates/agent"]
     RT[AgentRuntime<br/>boucle]
     CB[ContextBuilder<br/>consignes · contexte orga · mémoires · compétences]
     PR[LlmProvider<br/>Anthropic · OpenAI-compatible · Script]
@@ -31,7 +32,7 @@ flowchart TB
     SK[SkillLibrary]
     DL[Delegation<br/>sous-agents]
   end
-  subgraph Ports["Interfaces (implémentées par packages/db)"]
+  subgraph Ports["Ports (implémentés par crates/api sur crates/db)"]
     RS[RunStore]
     AS[AuditSink]
     AP[ApprovalStore]
@@ -86,7 +87,7 @@ modèle de repli configuré (phase 2), ou arrêt.
 Pour chaque appel d'outil, dans cet ordre :
 
 1. outil connu et activé pour l'entreprise ;
-2. validation de l'entrée (schéma Zod) ;
+2. validation stricte de l'entrée (structure Rust : serde + validator, champs inconnus refusés) ;
 3. **permissions requises** détenues par l'utilisateur **et** autorisées pour l'agent
    (permissions non délégables exclues, plafond du run) ;
 4. **niveau d'autonomie** × **risque de l'outil** (`read`, `draft`, `write`, `external`,
@@ -235,7 +236,7 @@ Nord ; envoyé par Lucas (technicien), sur ses propres interventions ; envoyé p
 
 ## 11. Fournisseurs et routage des modèles
 
-- `LlmProvider` normalise messages, outils (JSON Schema dérivé de Zod), appels
+- `LlmProvider` normalise messages, outils (JSON Schema dérivé des structures Rust par schemars), appels
   d'outils, raisons d'arrêt et usage.
 - Configuration par entreprise : fournisseur et modèle par classe de tâche (`chat`,
   `planning`, `verification`, `summarize`, `embedding`), contraintes (régions,

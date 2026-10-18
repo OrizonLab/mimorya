@@ -173,3 +173,32 @@ elle est remplacée par une nouvelle entrée qui la référence (« remplace ADR
   l'assistant sont rejoués tels quels (blocs de raisonnement compris).
 - **Conséquences** : le modèle ayant réellement servi la réponse est celui enregistré
   dans la consommation ; option désactivable (`serverSideFallback: false`).
+
+## ADR-018 — Serveur en Rust, interface web en Next.js
+
+- **Date** : 2026-10-18 · **Statut** : acceptée
+- **Remplace** : ADR-001 (langage du serveur), ADR-006 (Fastify), ADR-007 (SDK
+  TypeScript), ADR-008 (Drizzle) et ADR-015 (`tsx`). ADR-010 reste valable : le moteur
+  d'autorisation est désormais en Rust dans `crates/core`.
+- **Contexte** : le porteur du produit a demandé un développement en Rust ; une première
+  version complète existait en TypeScript (référence : commit `63defdf`). Choix retenu :
+  « option A » — toute la logique serveur en Rust, l'interface reste en Next.js.
+- **Décision** : le serveur est un espace de travail Cargo (`crates/core`, `db`,
+  `agent`, `connectors`, `api`) ; l'interface `apps/web` ne communique qu'en HTTP via
+  `/api/*`. Bibliothèques : axum + tokio (HTTP, SSE), sqlx (SQL paramétré, migrations
+  SQL versionnées dans `crates/db/migrations`, appliquées par le rôle propriétaire),
+  serde + schemars + validator (une structure donne le JSON Schema montré au modèle et
+  la validation stricte), reqwest (adaptateurs Anthropic et OpenAI-compatible écrits
+  sur l'API HTTP), rmcp (MCP), argon2 (mots de passe). Le contrat JSON de l'API est
+  conservé à l'identique ; les migrations existantes sont reprises telles quelles.
+- **Conséquences** :
+  - les migrations SQL deviennent la source de vérité du schéma (plus de schéma
+    TypeScript ni de contrôle de dérive) ; le test d'isolation vérifie que chaque table
+    portant `tenant_id` a la RLS active et une politique ;
+  - deux binaires compilés (`mimorya-api`, `mimorya-seed`) ; tests unitaires par
+    `cargo test`, tests PostgreSQL par `cargo test-int` (marqués `#[ignore]`) ;
+  - les bases de développement créées par drizzle-kit doivent être recréées (table de
+    suivi des migrations différente : `_sqlx_migrations`) ;
+  - les types de réponse de l'API sont maintenus à la main côté web
+    (`apps/web/lib/api/types.ts`) ; leur génération depuis le serveur est à prévoir ;
+  - compilation plus longue qu'en TypeScript, compensée par la vérification statique.

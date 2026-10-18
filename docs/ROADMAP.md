@@ -9,13 +9,13 @@ Légende des statuts — tenue à jour à chaque contribution :
 | 🟡     | Partiel : socle en place, fonctionnalité incomplète (détail indiqué)       |
 | 🔜     | Planifié, non implémenté                                                   |
 
-Dernière mise à jour : 2026-10-18 (fondations du MVP).
+Dernière mise à jour : 2026-10-18 (serveur traduit en Rust, ADR-018).
 
 ## Phase 1 — Fondations et MVP fonctionnel
 
 | Brique                                               | Statut | Détail                                                                                                                                                                                                                                                   |
 | ---------------------------------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Monorepo, outillage, CI                              | ✅     | pnpm, TypeScript strict, ESLint, Prettier, Vitest, GitHub Actions (PostgreSQL + pgvector)                                                                                                                                                                |
+| Dépôt, outillage, CI                                 | ✅     | Serveur : espace de travail Cargo (rustfmt, clippy sans avertissement, tests unitaires et PostgreSQL) ; web : pnpm, TypeScript strict, ESLint, Prettier ; GitHub Actions (PostgreSQL + pgvector)                                                         |
 | Interface web                                        | ✅     | Next.js : connexion, conversations avec suivi en direct (SSE), validations, opérations, mémoire, administration (lecture) ; responsive                                                                                                                   |
 | Authentification multi-utilisateurs                  | ✅     | E-mail + mot de passe Argon2id, sessions opaques révocables, anti-CSRF, limitation de débit                                                                                                                                                              |
 | Entreprise, établissements, services, collaborateurs | 🟡     | Modèle, profondeur illimitée, affichage ; **création/modification via l'interface à faire** (seed uniquement)                                                                                                                                            |
@@ -34,21 +34,21 @@ Dernière mise à jour : 2026-10-18 (fondations du MVP).
 
 ### Critères d'acceptation du MVP
 
-| #   | Critère vérifiable                                                                                                                                                         | Preuve                                                                                        | Statut |
-| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | ------ |
-| A1  | Aucune lecture ni écriture entre entreprises, même par requête forgée                                                                                                      | `packages/db/src/isolation.int.test.ts`                                                       | ✅     |
-| A2  | Technicien, chef d'équipe, responsable, direction et administratif voient exactement leur périmètre d'interventions                                                        | `core/.../engine.test.ts`, `connectors/.../connector.test.ts`                                 | ✅     |
-| A3  | La position hiérarchique n'accorde rien ; l'administrateur technique n'a aucun accès métier                                                                                | idem + `scenario.test.ts`                                                                     | ✅     |
-| A4  | L'agent ne peut jamais exercer une permission non délégable, ni dépasser le plafond du run                                                                                 | `engine.test.ts`, `runtime.test.ts`                                                           | ✅     |
-| A5  | Toute action `write`/`external`/`irreversible` attend une validation ; les paramètres validés sont exécutés tels quels ; seul le demandeur décide ; pas de double décision | `runtime.test.ts`, `api.int.test.ts`                                                          | ✅     |
-| A6  | Un identifiant cité sans source est détecté et corrigé ; les points non vérifiés restent visibles                                                                          | `runtime.test.ts`                                                                             | ✅     |
-| A7  | Une injection dans un résultat d'outil ne peut ni sortir de son enveloppe ni contourner le PEP                                                                             | `runtime.test.ts`                                                                             | ✅     |
-| A8  | La mémoire personnelle n'est visible que par son propriétaire (pas par son responsable) ; la mémoire d'équipe par l'équipe ; l'utilisateur peut supprimer la sienne        | `memory.int.test.ts`, `api.int.test.ts`                                                       | ✅     |
-| A9  | Chaque appel d'outil est tracé avec sa décision ; le journal d'audit ne peut être ni modifié ni effacé par l'application                                                   | `isolation.int.test.ts`, `scenario.test.ts`                                                   | ✅     |
-| A10 | Les budgets arrêtent proprement une exécution                                                                                                                              | `runtime.test.ts`                                                                             | ✅     |
-| A11 | Scénario de référence de bout en bout                                                                                                                                      | `connectors/src/scenario.test.ts` (modèle scénarisé) ✅ — **avec un modèle réel : à valider** | 🟡     |
-| A12 | MCP : validation par défaut, association par l'administrateur, désactivation                                                                                               | `connectors/src/mcp/bridge.test.ts`                                                           | ✅     |
-| A13 | Parcours web complet (connexion, demande, suivi en direct, validation, résultat, opérations, mémoire, administration)                                                      | Vérifié manuellement (Playwright, modèle scénarisé) ; **tests e2e automatisés 🔜**            | 🟡     |
+| #   | Critère vérifiable                                                                                                                                                         | Preuve                                                                                                              | Statut |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ------ |
+| A1  | Aucune lecture ni écriture entre entreprises, même par requête forgée                                                                                                      | `crates/db/tests/isolation.rs`                                                                                      | ✅     |
+| A2  | Technicien, chef d'équipe, responsable, direction et administratif voient exactement leur périmètre d'interventions                                                        | `crates/core/tests/authz_engine.rs`, `crates/connectors/tests/demo_connector.rs`                                    | ✅     |
+| A3  | La position hiérarchique n'accorde rien ; l'administrateur technique n'a aucun accès métier                                                                                | idem + `crates/connectors/tests/scenario.rs`                                                                        | ✅     |
+| A4  | L'agent ne peut jamais exercer une permission non délégable, ni dépasser le plafond du run                                                                                 | `crates/core/tests/authz_engine.rs`, `crates/agent/tests/runtime_tools.rs`                                          | ✅     |
+| A5  | Toute action `write`/`external`/`irreversible` attend une validation ; les paramètres validés sont exécutés tels quels ; seul le demandeur décide ; pas de double décision | `crates/agent/tests/runtime_approvals.rs`, `crates/api/tests/approvals.rs`, `crates/api/tests/conversation_runs.rs` | ✅     |
+| A6  | Un identifiant cité sans source est détecté et corrigé ; les points non vérifiés restent visibles                                                                          | `crates/agent/tests/runtime_verification.rs`                                                                        | ✅     |
+| A7  | Une injection dans un résultat d'outil ne peut ni sortir de son enveloppe ni contourner le PEP                                                                             | `crates/agent/tests/runtime_tools.rs`                                                                               | ✅     |
+| A8  | La mémoire personnelle n'est visible que par son propriétaire (pas par son responsable) ; la mémoire d'équipe par l'équipe ; l'utilisateur peut supprimer la sienne        | `crates/db/tests/memory.rs`, `crates/api/tests/memory.rs`                                                           | ✅     |
+| A9  | Chaque appel d'outil est tracé avec sa décision ; le journal d'audit ne peut être ni modifié ni effacé par l'application                                                   | `crates/db/tests/isolation.rs`, `crates/connectors/tests/scenario.rs`                                               | ✅     |
+| A10 | Les budgets arrêtent proprement une exécution                                                                                                                              | `crates/agent/tests/runtime_verification.rs`                                                                        | ✅     |
+| A11 | Scénario de référence de bout en bout                                                                                                                                      | `crates/connectors/tests/scenario.rs` (modèle scénarisé) ✅ — **avec un modèle réel : à valider**                   | 🟡     |
+| A12 | MCP : validation par défaut, association par l'administrateur, désactivation                                                                                               | `crates/connectors/tests/mcp_bridge.rs`                                                                             | ✅     |
+| A13 | Parcours web complet (connexion, demande, suivi en direct, validation, résultat, opérations, mémoire, administration)                                                      | Vérifié manuellement contre l'API Rust (Playwright, modèle scénarisé) ; **tests e2e automatisés 🔜**                | 🟡     |
 
 ### Reste à faire pour clore la phase 1 (par priorité)
 
@@ -56,8 +56,9 @@ Dernière mise à jour : 2026-10-18 (fondations du MVP).
 2. **Administration en écriture** : collaborateurs (invitation, désactivation), unités, rôles, affectations, politiques ABAC — avec audit et invalidation du cache d'autorisation.
 3. **Configuration LLM par entreprise** (fournisseur, modèle, clé chiffrée) et **magasin de secrets chiffrés** (AES-256-GCM, `MIMORYA_MASTER_KEY`).
 4. **Configuration des connecteurs MCP** via l'interface (transport, association outil → permissions/risque, test de connexion).
-5. **Tests e2e** Playwright en CI avec modèle scénarisé ; images Docker (API, web) pour l'installation privée.
-6. **En-têtes de sécurité** : CSP stricte (nonces Next.js) et HSTS au niveau du reverse proxy.
+5. **Tests e2e** Playwright en CI avec modèle scénarisé ; images Docker (API Rust, web) pour l'installation privée.
+6. **Types de l'API partagés** : générer `apps/web/lib/api/types.ts` depuis les structures Rust (aujourd'hui maintenus à la main).
+7. **En-têtes de sécurité** : CSP stricte (nonces Next.js) et HSTS au niveau du reverse proxy.
 
 ## Phase 2 — Intelligence avancée
 

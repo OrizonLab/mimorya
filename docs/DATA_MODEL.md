@@ -1,7 +1,8 @@
 # Modèle de données
 
-Source de vérité : `packages/db/src/schema/*.ts` (Drizzle) et les migrations SQL de
-`packages/db/drizzle/`. Ce document en donne la lecture métier.
+Source de vérité : les migrations SQL de `crates/db/migrations/` (appliquées par
+`sqlx`, ADR-018). Les dépôts de `crates/db/src/repositories/` en sont l'accès typé.
+Ce document en donne la lecture métier.
 
 ## 1. Conventions
 

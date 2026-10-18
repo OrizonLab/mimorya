@@ -23,15 +23,19 @@ l'expérience validée.
 
 ## Démarrage local
 
-Prérequis : Node.js 22, pnpm 10, Docker (ou PostgreSQL 16 avec l'extension pgvector).
+Le serveur (API, moteur agentique, connecteurs) est écrit en **Rust** ; l'interface
+web en **Next.js** (ADR-018).
+
+Prérequis : Rust stable (1.88 ou plus récent), Node.js 22 et pnpm 10 pour l'interface,
+Docker (ou PostgreSQL 16 avec l'extension pgvector).
 
 ```bash
 cp .env.example .env               # renseigner ANTHROPIC_API_KEY (ou un autre fournisseur)
 docker compose up -d db
-pnpm install
-pnpm db:seed                       # migrations + entreprise fictive « Néo Maintenance »
-pnpm dev:api                       # http://localhost:4000
-NEXT_PUBLIC_DEMO_MODE=true pnpm dev:web   # http://localhost:3000
+pnpm install                       # dépendances de l'interface web
+pnpm db:seed                       # = cargo run --bin mimorya-seed : migrations + entreprise fictive
+pnpm dev:api                       # = cargo run --bin mimorya-api : http://localhost:4000
+NEXT_PUBLIC_DEMO_MODE=true pnpm dev:web   # http://localhost:3000 (comptes de démo affichés)
 ```
 
 Sans Docker, créer les rôles et les extensions comme dans
@@ -49,6 +53,17 @@ sont désactivées (message explicite).
 ## Qualité
 
 ```bash
-pnpm check        # typecheck, lint, format, tests unitaires
-pnpm test:int     # tests d'intégration PostgreSQL (TEST_DATABASE_URL / TEST_DATABASE_APP_URL)
+pnpm check        # Rust : fmt, clippy, tests unitaires ; web : typecheck, lint, format
+pnpm test:int     # = cargo test-int : tests PostgreSQL (TEST_DATABASE_URL / TEST_DATABASE_APP_URL)
 ```
+
+## Organisation du dépôt
+
+| Chemin              | Contenu                                                                    |
+| ------------------- | -------------------------------------------------------------------------- |
+| `crates/core`       | Domaine pur : autorisation, organigramme, autonomie, contrat d'outil, démo |
+| `crates/db`         | Migrations SQL, RLS, dépôts, seed                                          |
+| `crates/agent`      | Fournisseurs LLM, boucle agentique, PEP, vérification, budgets             |
+| `crates/connectors` | Connecteur de démonstration, pont MCP                                      |
+| `crates/api`        | Serveur HTTP (axum), binaires `mimorya-api` et `mimorya-seed`              |
+| `apps/web`          | Interface Next.js                                                          |

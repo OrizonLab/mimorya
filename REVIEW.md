@@ -7,10 +7,11 @@ l'agent).
 
 ## 1. Isolation multi-entreprises
 
-- [ ] Toute nouvelle table métier a `tenant_id`, la politique `tenantIsolation()` et
-      apparaît dans le test d'isolation.
-- [ ] Tout accès base au runtime passe par `withTenant()` avec le rôle applicatif ; aucun
-      usage du rôle propriétaire hors migrations et seed.
+- [ ] Toute nouvelle table métier a `tenant_id`, la RLS active et la politique
+      `tenant_isolation` (le test `protects_every_tenant_scoped_table_with_rls_and_a_policy`
+      échoue sinon).
+- [ ] Tout accès base au runtime passe par `Database::begin(tenant_id)` (`TenantTx`) avec
+      le rôle applicatif ; aucun usage du rôle propriétaire hors migrations et seed.
 - [ ] Aucune nouvelle lecture inter-entreprises, sauf fonction `SECURITY DEFINER`
       minimale (`auth_*`, `system_*`) avec `search_path` figé et droits révoqués à
       `PUBLIC`.
@@ -19,12 +20,13 @@ l'agent).
 
 ## 2. Autorisations et agent
 
-- [ ] Chaque route appelle `requireAuth` et vérifie permission **ou** propriété côté
+- [ ] Chaque route extrait `Auth` et vérifie permission **ou** propriété côté
       serveur ; une ressource hors périmètre répond 404, sans révéler son existence.
 - [ ] Toute nouvelle permission d'administration est non délégable
       (`delegable: false`).
-- [ ] Tout nouvel outil déclare `requiredPermissions`, `risk`, un schéma Zod strict,
-      `describeAction` s'il modifie quelque chose, filtre ses données avec `ctx.authz`
+- [ ] Tout nouvel outil déclare ses permissions requises (`ToolInfo::requires`), son
+      `risk`, une entrée stricte (`#[serde(deny_unknown_fields)]` + `validator`),
+      `describe_action` s'il modifie quelque chose, filtre ses données avec `ctx.authz`
       et renvoie des `citations`.
 - [ ] Les actions `write`, `external` et `irreversible` passent par une validation
       humaine (sauf liste d'autonomie explicite) ; les paramètres validés sont exécutés
@@ -35,8 +37,9 @@ l'agent).
 
 ## 3. Données, migrations et secrets
 
-- [ ] Les migrations déjà présentes sur `main` ne sont pas modifiées ; une évolution
-      du schéma est accompagnée de sa migration générée et relue.
+- [ ] Les migrations déjà présentes sur `main` (`crates/db/migrations`) ne sont pas
+      modifiées ; une évolution du schéma est une nouvelle migration SQL numérotée,
+      relue, avec RLS pour toute nouvelle table.
 - [ ] Aucun secret, jeton, mot de passe ni contenu de message dans les logs, l'audit,
       les réponses d'API ou le contexte du modèle.
 - [ ] Toute nouvelle donnée personnelle a une règle de rétention, d'export et de
@@ -65,13 +68,15 @@ l'agent).
 - [ ] Un fichier = une responsabilité ; fichiers source sous ~250 lignes, **400 au
       maximum** (les données de démonstration et tests peuvent dépasser s'ils restent
       cohérents, sinon ils sont découpés par thème).
-- [ ] Frontières de paquets respectées : `core` sans E/S, `agent` sans dépendance à
+- [ ] Frontières de crates respectées : `core` sans E/S, `agent` sans dépendance à
       `db`, `web` uniquement via `/api/*`.
-- [ ] Code rangé par domaine (dossiers de fonctionnalité) avec un `index.ts` qui
-      n'expose que l'API publique du dossier.
+- [ ] Code rangé par domaine (modules de fonctionnalité) dont le `mod.rs` n'expose que
+      l'API publique du module (`pub use`), le reste restant privé.
+- [ ] Pas de `unwrap()`/`expect()` sur une entrée externe ; erreurs propagées avec `?`
+      et converties en réponse HTTP par `ApiError`.
 - [ ] Noms explicites, en-tête de module qui dit ce que fait le fichier et pourquoi ;
       commentaires sur le « pourquoi », pas sur le « quoi ».
-- [ ] Pas de duplication de règle métier entre paquets (une règle vit dans `core`).
+- [ ] Pas de duplication de règle métier entre crates (une règle vit dans `core`).
 
 ## 7. Interface web
 

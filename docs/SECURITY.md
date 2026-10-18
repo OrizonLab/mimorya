@@ -124,10 +124,13 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
 
 ## 10. Sécurité applicative
 
-- Validation de toutes les entrées (Zod) ; requêtes SQL paramétrées (Drizzle).
+- Validation de toutes les entrées (serde + validator, messages en français) ; requêtes SQL
+  paramétrées (sqlx) ; aucun `unsafe` (`unsafe_code = "forbid"` sur tout l'espace de travail).
 - En-têtes de sécurité (CSP, HSTS, `X-Content-Type-Options`, `Referrer-Policy`).
-- Limitation de débit globale et par route sensible.
-- Dépendances verrouillées (`pnpm-lock.yaml`), audit des vulnérabilités en CI
+- Limitation de débit globale et par route sensible (connexion), par adresse cliente :
+  derrière le relais web, la dernière entrée de `X-Forwarded-For` (`TRUST_PROXY=false`
+  si l'API est exposée directement).
+- Dépendances verrouillées (`Cargo.lock`, `pnpm-lock.yaml`), audit des vulnérabilités en CI
   (phase 2), revue des licences (MIT/Apache/BSD privilégiées, AGPL exclue).
 - Sauvegardes chiffrées, restauration testée périodiquement (phase 3).
 

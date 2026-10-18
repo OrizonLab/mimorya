@@ -6,8 +6,8 @@ Statut : **référence vivante**. Toute évolution structurante est tracée dans
 
 ## 1. Vue d'ensemble
 
-**Monolithe modulaire TypeScript** (ADR-001), découpé en paquets à frontières nettes,
-déployé en trois processus issus du même dépôt :
+**Monolithe modulaire en Rust** (ADR-001, ADR-018), découpé en crates à frontières
+nettes, avec une interface web Next.js ; déployé en trois processus issus du même dépôt :
 
 ```mermaid
 flowchart LR
@@ -17,7 +17,7 @@ flowchart LR
   end
   subgraph Plateforme
     WEB[web<br/>Next.js SSR]
-    API[api<br/>Fastify · REST + SSE]
+    API[api<br/>Rust · axum · REST + SSE]
     WRK[worker<br/>exécutions longues,<br/>tâches planifiées]
   end
   subgraph Données
@@ -55,22 +55,24 @@ Pourquoi pas des microservices : une équipe réduite, un domaine encore mouvant
 transactions qui traversent plusieurs modules (autorisation + audit + exécution). Les
 frontières de paquets permettent d'extraire un service plus tard si la charge l'exige.
 
-## 2. Paquets et dépendances
+## 2. Crates et dépendances
 
 ```
-apps/
-  web/          Interface (Next.js, React, Tailwind)
-  api/          Serveur HTTP (Fastify), composition des modules, SSE, worker embarqué
-packages/
+crates/                 Espace de travail Cargo (serveur)
   core/         Domaine pur : autorisation RBAC/ABAC, organigramme, autonomie,
                 contrat d'outil, règles de mémoire, données de démo. Aucune E/S.
-  db/           Schéma Drizzle, migrations SQL, RLS, dépôts (repositories), seed
+  db/           Migrations SQL (sqlx), RLS, transactions par entreprise, dépôts, seed
   agent/        Moteur agentique : fournisseurs LLM, boucle, PEP outils, budgets,
-                vérification, mémoire, compétences, sous-agents
-  connectors/   Cadre de connecteurs, connecteur de démonstration, pont MCP
+                vérification, outils mémoire et compétences
+  connectors/   Contrat de connecteur, connecteur de démonstration, pont MCP (rmcp)
+  api/          Serveur HTTP (axum) : sessions, routes, SSE, exécution des runs,
+                binaires `mimorya-api` et `mimorya-seed`
+apps/
+  web/          Interface (Next.js, React, Tailwind) — seul paquet Node du dépôt
 ```
 
-Règles de dépendance (vérifiées en revue, à outiller plus tard) :
+Règles de dépendance (imposées par les `Cargo.toml` : une dépendance non déclarée ne
+compile pas) :
 
 ```mermaid
 flowchart BT
@@ -79,35 +81,36 @@ flowchart BT
   agent --> core
   connectors --> core
   api --> db & agent & connectors & core
-  web -. types uniquement .-> core
+  web -. HTTP /api/* uniquement .-> api
 ```
 
-- `core` ne dépend de rien d'autre que `zod`.
-- `agent` ne connaît pas la base : il dépend d'**interfaces** (`RunStore`,
-  `MemoryStore`, `AuditSink`, `ApprovalStore`…) implémentées par `db` et injectées par
-  `api`. Le moteur est ainsi testable en mémoire, sans base ni réseau.
-- Les paquets internes exposent leur source TypeScript (`exports: ./src/index.ts`),
-  consommée par `tsx`, Vitest et Next.js. En MVP, l'API s'exécute aussi en production
-  via `tsx` (ADR-015) ; une compilation dédiée viendra avec les images Docker.
+- `core` n'effectue aucune E/S (dépendances : `serde`, `schemars`, `validator`,
+  `regex`, `chrono`, `uuid`).
+- `agent` ne connaît pas la base : il dépend de **ports** (`RunStore`, `MemoryStore`,
+  `AuditSink`, `ApprovalStore`… dans `runtime/ports.rs`) implémentés par `api` sur les
+  dépôts de `db`. Le moteur est ainsi testable en mémoire, sans base ni réseau
+  (`ScriptedProvider`, `InMemoryPorts`, fonctionnalité `testing`).
+- `web` ne partage aucun code avec le serveur : il consomme le contrat JSON de l'API,
+  décrit dans `apps/web/lib/api/types.ts`.
 
 ## 3. Pile technique retenue
 
-| Domaine         | Choix                                                                                           | Justification                                                                                                                                                                               |
-| --------------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Langage         | TypeScript (strict) partout                                                                     | Un seul langage front/back, types partagés, SDK officiels Anthropic/OpenAI/MCP de premier rang. Python réservé à d'éventuels traitements spécialisés (OCR, ML) en service annexe (ADR-001). |
-| Frontend        | Next.js 16, React 19, Tailwind CSS 4                                                            | Standard du marché, SSR, responsive, écosystème de composants accessible.                                                                                                                   |
-| API             | Fastify 5                                                                                       | Performant, validation par schéma, écosystème de plugins (cookies, rate-limit, helmet), streaming natif pour SSE (ADR-006).                                                                 |
-| Base            | PostgreSQL 16                                                                                   | Transactions, JSONB, RLS pour l'isolation, FTS, extensions ; une seule base à opérer pour une PME (ADR-003).                                                                                |
-| Vectoriel       | pgvector (HNSW, cosinus, 1024 dims) + FTS PostgreSQL                                            | Recherche hybride sans infrastructure supplémentaire (ADR-004).                                                                                                                             |
-| ORM             | Drizzle ORM + migrations SQL versionnées                                                        | Proche du SQL, typé, compatible RLS (`SET LOCAL`), migrations lisibles (ADR-008).                                                                                                           |
-| Validation      | Zod 4                                                                                           | Schémas d'entrée des outils → JSON Schema pour les LLM, validation API.                                                                                                                     |
-| Files d'attente | PostgreSQL (`FOR UPDATE SKIP LOCKED`, baux)                                                     | Pas de composant supplémentaire en MVP ; Redis/pg-boss évalués à la montée en charge (ADR-005, ADR-012).                                                                                    |
-| LLM             | Couche d'abstraction maison sur SDK officiels (`@anthropic-ai/sdk`, `openai`)                   | Contrôle fin des appels d'outils, du coût et du routage ; OpenAI-compatible couvre OpenRouter, Gemini, Mistral, Ollama, vLLM (ADR-007).                                                     |
-| MCP             | `@modelcontextprotocol/sdk` (client)                                                            | SDK officiel ; transports stdio (privé) et Streamable HTTP (SaaS).                                                                                                                          |
-| Mots de passe   | Argon2id (`@node-rs/argon2`)                                                                    | Recommandation OWASP ; SSO/OIDC en phase 2 (ADR-009).                                                                                                                                       |
-| Tests           | Vitest (unitaires + intégration sur PostgreSQL réel)                                            | Rapide, ESM natif, un seul outil.                                                                                                                                                           |
-| Observabilité   | Logs JSON structurés (pino via Fastify), identifiants de corrélation ; OpenTelemetry en phase 3 | Exploitable tout de suite, standard ouvert ensuite.                                                                                                                                         |
-| Conteneurs      | Docker + docker-compose (dev, déploiement privé simple)                                         | Reproductible ; Kubernetes seulement si nécessaire.                                                                                                                                         |
+| Domaine         | Choix                                                                                        | Justification                                                                                                                                                                       |
+| --------------- | -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Langage         | Rust (édition 2024) pour le serveur ; TypeScript (strict) pour l'interface                   | Sûreté mémoire, typage fort de bout en bout, performances et binaire unique à déployer (ADR-018). Python réservé à d'éventuels traitements spécialisés (OCR, ML) en service annexe. |
+| Frontend        | Next.js 16, React 19, Tailwind CSS 4                                                         | Standard du marché, SSR, responsive, écosystème de composants accessible.                                                                                                           |
+| API             | axum 0.8 + tokio                                                                             | Standard de l'écosystème Rust, middlewares composables, SSE natif (ADR-006, ADR-018).                                                                                               |
+| Base            | PostgreSQL 16                                                                                | Transactions, JSONB, RLS pour l'isolation, FTS, extensions ; une seule base à opérer pour une PME (ADR-003).                                                                        |
+| Vectoriel       | pgvector (HNSW, cosinus, 1024 dims) + FTS PostgreSQL                                         | Recherche hybride sans infrastructure supplémentaire (ADR-004).                                                                                                                     |
+| Accès base      | sqlx 0.8 (requêtes SQL paramétrées) + migrations SQL versionnées                             | SQL explicite, compatible RLS (`set_config` transactionnel), migrations lisibles (ADR-008 remplacé par ADR-018).                                                                    |
+| Validation      | serde + schemars + validator                                                                 | Une seule structure Rust donne le JSON Schema montré au modèle et la validation stricte des entrées (outils, API).                                                                  |
+| Files d'attente | PostgreSQL (`FOR UPDATE SKIP LOCKED`, baux)                                                  | Pas de composant supplémentaire en MVP ; Redis/pg-boss évalués à la montée en charge (ADR-005, ADR-012).                                                                            |
+| LLM             | Adaptateurs maison sur HTTP (`reqwest`) : Anthropic Messages (flux SSE) et OpenAI-compatible | Contrôle fin des appels d'outils, du cache, du coût et du routage ; OpenAI-compatible couvre OpenRouter, Gemini, Mistral, Ollama, vLLM (ADR-007).                                   |
+| MCP             | `rmcp` (SDK Rust officiel, client)                                                           | SDK officiel ; transports stdio (privé) et Streamable HTTP (SaaS).                                                                                                                  |
+| Mots de passe   | Argon2id (crate `argon2`, paramètres OWASP)                                                  | Recommandation OWASP ; SSO/OIDC en phase 2 (ADR-009).                                                                                                                               |
+| Tests           | `cargo test` (unitaires) + tests d'intégration sur PostgreSQL réel (`cargo test-int`)        | Un seul outil, exécution en série des suites qui partagent la base de test.                                                                                                         |
+| Observabilité   | Logs structurés (`tracing`), identifiant de requête ; OpenTelemetry en phase 3               | Exploitable tout de suite, standard ouvert ensuite.                                                                                                                                 |
+| Conteneurs      | Docker + docker-compose (dev, déploiement privé simple)                                      | Reproductible ; Kubernetes seulement si nécessaire.                                                                                                                                 |
 
 ## 4. Flux principaux
 
@@ -172,7 +175,7 @@ Détaillés dans [AGENT_ENGINE.md](AGENT_ENGINE.md). En résumé :
 ## 6. Connecteurs et outils
 
 - Un **connecteur** déclare : ses permissions métier (ex. `intervention:read`), ses
-  outils (schéma d'entrée Zod, niveau de risque, permissions requises), sa
+  outils (structure d'entrée validée, niveau de risque, permissions requises), sa
   configuration et ses secrets.
 - Une **instance de connecteur** est activée par entreprise, avec sa configuration, ses
   secrets chiffrés, sa table de correspondance permissions/risques et son journal.
@@ -222,8 +225,8 @@ en mémoire du processus ; avec plusieurs instances, elle passera par
 
 ## 10. Observabilité et exploitation
 
-- Logs JSON structurés avec `request_id`, `tenant_id`, `run_id` ; **jamais** de
-  secrets, de mots de passe ni de jetons (liste de rédaction centralisée).
+- Logs structurés (`tracing`) avec `request_id` et `run_id` ; **jamais** d'en-têtes,
+  de secrets, de mots de passe, de jetons ni de contenu de message.
 - Journal d'audit métier séparé (table `audit_log`, en ajout seul).
 - Événements de run persistés : rejouables pour le support et l'analyse.
 - Phase 3 : OpenTelemetry (traces), métriques Prometheus, tableaux de bord
@@ -233,7 +236,7 @@ en mémoire du processus ; avec plusieurs instances, elle passera par
 
 | Mode          | Description                                                                                             |
 | ------------- | ------------------------------------------------------------------------------------------------------- |
-| Développement | `docker compose up db` + `pnpm dev:api` / `pnpm dev:web`                                                |
+| Développement | `docker compose up db` + `cargo run --bin mimorya-api` / `pnpm dev:web`                                 |
 | Privé (PME)   | `docker compose` : web, api (worker embarqué), PostgreSQL ; sauvegardes `pg_dump`/WAL                   |
 | SaaS          | Images web/api/worker séparées, PostgreSQL managé, montée en charge horizontale de l'API et des workers |
 
@@ -256,7 +259,7 @@ système d'exploitation. Certains éléments du catalogue de plugins sont sous G
 
 | Mécanisme Hermes                                                                                            | Décision                     | Adaptation                                                                                                              |
 | ----------------------------------------------------------------------------------------------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| Boucle agentique (`run_conversation`, budgets d'itérations, classification d'erreurs, repli de fournisseur) | **Concept repris**           | Réimplémentée en TS, avec PEP, budgets de coût, persistance et reprise.                                                 |
+| Boucle agentique (`run_conversation`, budgets d'itérations, classification d'erreurs, repli de fournisseur) | **Concept repris**           | Réimplémentée en Rust, avec PEP, budgets de coût, persistance et reprise.                                               |
 | Compression de contexte (élagage des sorties d'outils, protection tête/queue, résumé par modèle auxiliaire) | **Concept repris**           | Phase 2 ; prompt système stable pour le cache fournisseur.                                                              |
 | Mémoire `MEMORY.md` / `USER.md` bornée, chargée en début de session                                         | **Concept repris**           | Devient la mémoire personnelle bornée ; plus espaces d'équipe/entreprise/expérience, en base, filtrés par autorisation. |
 | Recherche dans les sessions passées (SQLite FTS5)                                                           | **Concept repris**           | FTS PostgreSQL + pgvector, filtrée par utilisateur.                                                                     |
@@ -264,7 +267,7 @@ système d'exploitation. Certains éléments du catalogue de plugins sont sous G
 | Création/patch autonome de skills, revue post-tour, « curator » qui archive                                 | **Concept repris, encadré**  | Propositions en statut `draft`/`candidate`, jamais actives sans validation ; aucune skill ne porte de permission.       |
 | Délégation (`delegate_task`, outils interdits aux enfants, profondeur 1, parallélisme borné)                | **Concept repris**           | Sous-agents en runs enfants persistés, plafond de permissions ⊆ parent.                                                 |
 | Registre d'outils, toolsets, approbation des commandes dangereuses                                          | **Concept repris**           | Contrat d'outil typé avec niveau de risque ; approbations liées aux niveaux d'autonomie ; pas de shell libre.           |
-| Client MCP (stdio, HTTP, OAuth)                                                                             | **Concept repris**           | SDK MCP TypeScript officiel ; association permissions/risques par l'administrateur.                                     |
+| Client MCP (stdio, HTTP, OAuth)                                                                             | **Concept repris**           | SDK MCP Rust officiel (`rmcp`) ; association permissions/risques par l'administrateur.                                  |
 | Passerelles (Telegram, Discord, Slack, e-mail…) et clé de session par plateforme                            | **Concept repris** (phase 2) | Identité de canal **liée à un compte utilisateur** ; permissions identiques à celles du web.                            |
 | Cron (`jobs.json`, tick 60 s)                                                                               | **Concept repris** (phase 2) | Tâches en base, exécutées par les workers, appartenant à un utilisateur.                                                |
 | Abstraction fournisseurs (format OpenAI interne, Anthropic natif, OpenRouter)                               | **Concept repris**           | Même approche : adaptateur natif Anthropic + OpenAI-compatible.                                                         |

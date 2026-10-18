@@ -9,7 +9,7 @@ export default tseslint.config(
       '**/dist/**',
       '**/.next/**',
       '**/coverage/**',
-      '**/drizzle/**',
+      'target/**',
       '**/next-env.d.ts',
     ],
   },
@@ -28,9 +28,5 @@ export default tseslint.config(
       'no-console': ['warn', { allow: ['warn', 'error'] }],
       eqeqeq: ['error', 'always'],
     },
-  },
-  {
-    files: ['**/*.test.ts', '**/scripts/**', '**/seed*.ts'],
-    rules: { 'no-console': 'off' },
   },
 );

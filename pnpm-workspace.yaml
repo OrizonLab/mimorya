@@ -1,7 +1,6 @@
+# Only the web application is a Node package; the server is the Cargo workspace.
 packages:
   - apps/*
-  - packages/*
 
 onlyBuiltDependencies:
-  - esbuild
   - sharp

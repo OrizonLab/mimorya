@@ -7,21 +7,17 @@
     "node": ">=22.12.0"
   },
   "scripts": {
-    "dev:api": "pnpm --filter @mimorya/api dev",
+    "dev:api": "cargo run --bin mimorya-api",
     "dev:web": "pnpm --filter @mimorya/web dev",
-    "build": "pnpm -r --if-present build",
-    "typecheck": "pnpm -r --if-present typecheck",
+    "db:seed": "cargo run --bin mimorya-seed",
+    "build": "cargo build --release --bin mimorya-api --bin mimorya-seed && pnpm --filter @mimorya/web build",
+    "check": "pnpm check:rust && pnpm check:web",
+    "check:rust": "cargo fmt --all --check && cargo clippy --workspace --all-targets --all-features -- -D warnings && cargo test --workspace",
+    "check:web": "pnpm --filter @mimorya/web typecheck && pnpm lint && pnpm format:check",
+    "test:int": "cargo test-int",
     "lint": "eslint .",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
-    "test": "vitest run --project unit",
-    "test:int": "vitest run --project integration",
-    "test:all": "vitest run",
-    "db:generate": "pnpm --filter @mimorya/db generate",
-    "db:migrate": "pnpm --filter @mimorya/db migrate",
-    "db:seed": "pnpm --filter @mimorya/api seed",
-    "check": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test",
-    "db:check-drift": "pnpm --filter @mimorya/db check:drift"
+    "format": "prettier --write . && cargo fmt --all",
+    "format:check": "prettier --check ."
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
@@ -29,10 +25,7 @@
     "eslint": "^9.39.5",
     "globals": "^17.13.0",
     "prettier": "^3.9.10",
-    "tsx": "^4.23.15",
     "typescript": "5.9.3",
-    "typescript-eslint": "^8.71.2",
-    "vite": "^7.3.7",
-    "vitest": "^5.0.5"
+    "typescript-eslint": "^8.71.2"
   }
 }
