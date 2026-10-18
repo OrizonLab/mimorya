@@ -6,6 +6,7 @@
  */
 import type { Sensitivity } from '@mimorya/core';
 import { DEMO_UNITS, DEMO_USERS } from '@mimorya/core/demo';
+import { isoDate, mondayOf } from './dates';
 
 export type InterventionStatus = 'planned' | 'in_progress' | 'completed' | 'cancelled';
 
@@ -33,19 +34,6 @@ export interface Absence {
   endTime: string;
   reason: string;
 }
-
-/** Monday (UTC) of the week containing `date`. */
-export function mondayOf(date: Date): Date {
-  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-  const day = d.getUTCDay(); // 0 = Sunday
-  d.setUTCDate(d.getUTCDate() - ((day + 6) % 7));
-  return d;
-}
-
-export function isoDate(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
-
 function dayOffset(monday: Date, offset: number): string {
   const d = new Date(monday);
   d.setUTCDate(d.getUTCDate() + offset);
@@ -367,19 +355,4 @@ export function buildDemoDataset(reference: Date): {
   ];
 
   return { interventions, absences };
-}
-
-/** Inconsistencies detectable without interpretation (the model looks for the rest). */
-export function detectAnomalies(i: Intervention): string[] {
-  const anomalies: string[] = [];
-  if (i.status === 'completed' && i.partsPending) {
-    anomalies.push(`Statut « terminée » alors qu’une pièce est en attente (${i.partsPending})`);
-  }
-  if (i.status === 'completed' && !i.clientSignature) {
-    anomalies.push('Intervention terminée sans signature du client');
-  }
-  if ((i.status === 'completed' || i.status === 'in_progress') && i.report.trim() === '') {
-    anomalies.push('Compte rendu vide');
-  }
-  return anomalies;
 }

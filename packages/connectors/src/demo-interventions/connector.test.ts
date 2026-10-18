@@ -2,8 +2,9 @@ import { ToolExecutor, ToolRegistry } from '@mimorya/agent';
 import { InMemoryPorts } from '@mimorya/agent/testing';
 import { DEMO_USERS, demoAuthorizationEngine, demoSubject } from '@mimorya/core/demo';
 import { describe, expect, it } from 'vitest';
-import { createDemoInterventionTools, DemoInterventionsStore } from './connector';
-import { mondayOf } from './dataset';
+import { createDemoInterventionTools } from './connector';
+import { DemoInterventionsStore } from './store';
+import { mondayOf } from './dates';
 
 const engine = demoAuthorizationEngine();
 const REFERENCE = new Date('2026-10-14T10:00:00Z'); // Wednesday
