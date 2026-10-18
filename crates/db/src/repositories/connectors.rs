@@ -16,6 +16,7 @@ pub struct ConnectorInstanceRow {
     pub config: Value,
     pub tool_policies: Value,
     pub status: String,
+    pub secret_id: Option<Uuid>,
     pub last_error: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -26,7 +27,7 @@ pub async fn list_connector_instances(
     only_enabled: bool,
 ) -> sqlx::Result<Vec<ConnectorInstanceRow>> {
     sqlx::query_as(
-        "select id, tenant_id, type, name, enabled, config, tool_policies, status, last_error, \
+        "select id, tenant_id, type, name, enabled, config, tool_policies, status, secret_id, last_error, \
          created_at, updated_at from connector_instances where (not $1 or enabled) \
          order by created_at desc",
     )

@@ -14,10 +14,15 @@ mimorya-core = { path = "crates/core" }
 mimorya-db = { path = "crates/db" }
 mimorya-agent = { path = "crates/agent" }
 mimorya-connectors = { path = "crates/connectors" }
+mimorya-api = { path = "crates/api" }
 anyhow = "1"
+argon2 = "0.5"
 async-trait = "0.1"
-chrono-tz = "0.10"
+axum = "0.8"
+base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "std"] }
+chrono-tz = "0.10"
+dotenvy = "0.15"
 futures = "0.3"
 regex = "1"
 rmcp = { version = "3.5.1", features = ["client", "macros", "server", "transport-child-process", "transport-io", "transport-streamable-http-client-reqwest"] }
@@ -25,10 +30,14 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 schemars = { version = "1", features = ["chrono04", "uuid1"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
+sha2 = "0.10"
 sqlx = { version = "0.8.6", default-features = false, features = ["chrono", "json", "macros", "migrate", "postgres", "runtime-tokio", "tls-rustls-ring-webpki", "uuid"] }
 thiserror = "2"
 tokio = { version = "1", features = ["full"] }
+tokio-stream = "0.1"
+tower = { version = "0.5", features = ["util"] }
 tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 uuid = { version = "1", features = ["serde", "v4"] }
 validator = { version = "0.21", features = ["derive"] }
 
