@@ -14,7 +14,7 @@ use mimorya_core::memory::{
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::memory::{
     MemoryRow, NewMemory, create_memory, delete_memory, get_memory, list_visible_memory,
-    set_memory_status,
+    settle_memory_proposal,
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -245,7 +245,9 @@ async fn review(
     } else {
         MemoryStatus::Archived
     };
-    set_memory_status(&mut tx, id, status.as_str()).await?;
+    if !settle_memory_proposal(&mut tx, id, status).await? {
+        return Err(DomainError::not_found("Proposition introuvable").into());
+    }
     let action = if approve {
         "memory.approved"
     } else {

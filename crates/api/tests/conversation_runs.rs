@@ -3,12 +3,18 @@
 
 mod support;
 
+use std::time::Duration;
+
 use axum::http::StatusCode;
 use mimorya_agent::testing::{ScriptedStep, call};
-use mimorya_core::demo::user;
+use mimorya_core::autonomy::AutonomyLevel;
+use mimorya_core::demo::{tenant, user};
+use mimorya_db::repositories::conversations::lock_conversation;
+use mimorya_db::repositories::runs::{NewRun, create_run};
 use serde_json::{Value, json};
 use support::planning::{apply_proposal, propose};
 use support::{TestApi, week};
+use uuid::Uuid;
 
 fn ids(value: &Value, key: &str) -> Vec<String> {
     value[key]
@@ -175,25 +181,41 @@ async fn runs_a_turn_pauses_for_validation_and_resumes_after_the_decision() {
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
-async fn opens_a_single_turn_when_two_messages_arrive_together() {
+async fn waits_for_a_concurrent_turn_then_refuses_a_second_one() {
     let api = TestApi::start().await;
-    api.script(vec![ScriptedStep::text("Bien reçu.")]);
     let marc = api.sign_in(user::MARC).await;
     let conversation = marc.post("/conversations", json!({})).await.json();
-    let id = conversation["conversation"]["id"].as_str().unwrap();
-    let url = format!("/conversations/{id}/messages");
-    let (first, second) = tokio::join!(
-        marc.post(&url, json!({ "content": "Première demande" })),
-        marc.post(&url, json!({ "content": "Seconde demande" })),
-    );
-    let mut statuses = [first.status, second.status];
-    statuses.sort();
-    assert_eq!(statuses, [StatusCode::ACCEPTED, StatusCode::CONFLICT]);
-    api.idle().await;
+    let id: Uuid = conversation["conversation"]["id"]
+        .as_str()
+        .unwrap()
+        .parse()
+        .unwrap();
 
-    let thread = marc.get(&format!("/conversations/{id}")).await.json();
-    assert_eq!(thread["messages"].as_array().unwrap().len(), 2);
-    assert_eq!(thread["runs"].as_array().unwrap().len(), 1);
+    // A concurrent turn holds the conversation while it opens its run.
+    let mut concurrent = api.app.services.db.begin(tenant::ID).await.unwrap();
+    lock_conversation(&mut concurrent, id).await.unwrap();
+    let url = format!("/conversations/{id}/messages");
+    let mut second = Box::pin(marc.post(&url, json!({ "content": "Seconde demande" })));
+    let waited = tokio::time::timeout(Duration::from_millis(300), &mut second).await;
+    assert!(waited.is_err(), "the second turn must wait for the first");
+    create_run(
+        &mut concurrent,
+        NewRun {
+            tenant_id: tenant::ID,
+            conversation_id: Some(id),
+            initiated_by_user_id: user::MARC,
+            on_behalf_of_user_id: user::MARC,
+            objective: "Première demande".into(),
+            success_criteria: Vec::new(),
+            autonomy_level: AutonomyLevel::ExecuteWithApproval,
+            budget: json!({}),
+        },
+    )
+    .await
+    .unwrap();
+    concurrent.commit().await.unwrap();
+
+    assert_eq!(second.await.status, StatusCode::CONFLICT);
 }
 
 #[tokio::test]

@@ -194,17 +194,22 @@ pub async fn mark_memory_used(conn: &mut PgConnection, ids: &[Uuid]) -> sqlx::Re
     Ok(())
 }
 
-pub async fn set_memory_status(
+/// Settles a proposal (`active` or `archived`) unless it was settled
+/// meanwhile: two concurrent decisions cannot both apply. Returns whether the
+/// proposal was settled.
+pub async fn settle_memory_proposal(
     conn: &mut PgConnection,
     id: Uuid,
-    status: &str,
-) -> sqlx::Result<()> {
-    sqlx::query("update memory_items set status = $2, updated_at = now() where id = $1")
-        .bind(id)
-        .bind(status)
-        .execute(conn)
-        .await?;
-    Ok(())
+    status: MemoryStatus,
+) -> sqlx::Result<bool> {
+    let result = sqlx::query(
+        "update memory_items set status = $2, updated_at = now() where id = $1 and status = 'proposed'",
+    )
+    .bind(id)
+    .bind(status.as_str())
+    .execute(conn)
+    .await?;
+    Ok(result.rows_affected() > 0)
 }
 
 /// Hard delete (right to erasure); the audit log keeps the trace without the content.

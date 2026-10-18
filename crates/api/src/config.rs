@@ -12,7 +12,7 @@ pub enum Environment {
     Production,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct AppConfig {
     pub env: Environment,
     pub host: String,
@@ -34,6 +34,30 @@ pub struct AppConfig {
     pub llm_judge: bool,
     /// Login attempts allowed per client address and per minute.
     pub login_rate_limit_per_minute: u32,
+}
+
+/// The database URL carries the role's password: it never appears in debug
+/// output (the provider configuration redacts its own key).
+impl std::fmt::Debug for AppConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AppConfig")
+            .field("env", &self.env)
+            .field("host", &self.host)
+            .field("port", &self.port)
+            .field("log_level", &self.log_level)
+            .field("database_app_url", &"<redacted>")
+            .field("web_origin", &self.web_origin)
+            .field("secure_cookies", &self.secure_cookies)
+            .field("trust_proxy", &self.trust_proxy)
+            .field("assistant_name", &self.assistant_name)
+            .field("llm", &self.llm)
+            .field("llm_judge", &self.llm_judge)
+            .field(
+                "login_rate_limit_per_minute",
+                &self.login_rate_limit_per_minute,
+            )
+            .finish()
+    }
 }
 
 impl AppConfig {
@@ -221,6 +245,20 @@ mod tests {
         assert!(error.contains("DATABASE_APP_URL"));
         assert!(error.contains("PORT"));
         assert!(error.contains("LLM_PROVIDER"));
+    }
+
+    #[test]
+    fn never_prints_credentials_in_debug_output() {
+        let config = load(&[
+            (
+                "DATABASE_APP_URL",
+                "postgres://app:s3cret-db@localhost/mimorya",
+            ),
+            ("ANTHROPIC_API_KEY", "sk-s3cret"),
+        ])
+        .unwrap();
+        let printed = format!("{config:?}");
+        assert!(!printed.contains("s3cret"), "{printed}");
     }
 
     #[test]

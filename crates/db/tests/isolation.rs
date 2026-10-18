@@ -135,7 +135,7 @@ async fn keeps_the_audit_log_append_only() {
 #[ignore = "requires PostgreSQL"]
 async fn cannot_erase_audit_entries_through_their_references() {
     let db = app().await;
-    for table in ["tenants", "users", "agent_runs"] {
+    for table in ["tenants", "users", "conversations", "agent_runs"] {
         let mut tx = db.begin(tenant::ID).await.unwrap();
         let delete = sqlx::query(&format!("delete from {table}"))
             .execute(&mut *tx)

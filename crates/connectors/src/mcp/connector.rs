@@ -16,7 +16,8 @@ use tokio::process::Command;
 use super::bridge::{McpToolsetOptions, create_mcp_toolset};
 use crate::types::{Connector, ConnectorCloser, ConnectorInfo, ConnectorRuntime};
 
-#[derive(Debug, Clone, Deserialize)]
+/// No `Debug`: `env` may carry credentials of the MCP server.
+#[derive(Clone, Deserialize)]
 #[serde(tag = "transport", rename_all = "snake_case")]
 pub enum McpConnectorConfig {
     Stdio {

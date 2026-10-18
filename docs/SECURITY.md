@@ -59,10 +59,16 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   requêtes modifiantes + vérification d'`Origin`.
 - Limitation de débit sur la connexion :
   - **par compte** : 10 échecs par quart d'heure et par adresse e-mail, comptes
-    inconnus compris (rien ne distingue un compte existant) ; non contournable en
-    changeant d'adresse ;
+    inconnus compris (rien ne distingue un compte existant). Chaque tentative réserve
+    sa place avant la vérification du mot de passe, rendue en cas de succès : ni des
+    tentatives simultanées ni un changement d'adresse ne dépassent la limite.
+    Contrepartie assumée : une fois la limite atteinte, même le bon mot de passe est
+    refusé jusqu'à la fin de la fenêtre, ce qui permet de bloquer temporairement un
+    compte ciblé (la MFA et l'OIDC de la phase 2 réduiront ce risque) ;
   - **par adresse cliente** (`LOGIN_RATE_LIMIT_PER_MINUTE`, 10 par défaut), en plus
-    d'une limite globale de 600 requêtes par minute et par adresse.
+    d'une limite globale de 600 requêtes par minute et par adresse. Sans reverse
+    proxy (voir ci-dessous), ces limites s'appliquent à toute la plateforme, puisque
+    tous les utilisateurs partagent alors une même adresse.
 - Adresse cliente : par défaut, l'adresse TCP de l'appelant (`TRUST_PROXY=false`).
   Derrière le seul relais web, tous les utilisateurs partagent l'adresse du serveur
   Next.js, qui transmet tel quel un `X-Forwarded-For` fourni par le client. En

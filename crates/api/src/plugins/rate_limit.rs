@@ -47,14 +47,9 @@ impl RateLimiter {
         })
     }
 
-    /// Whether `key` already reached the limit in the current window (counts nothing).
-    pub fn exhausted(&self, key: &str) -> bool {
-        self.with_window(key, |count, limit| *count >= limit)
-    }
-
-    /// Counts one event for `key`, e.g. a failed login.
-    pub fn record(&self, key: &str) {
-        self.with_window(key, |count, _| *count += 1);
+    /// Gives back a slot taken by `allow`, e.g. once a login succeeded.
+    pub fn release(&self, key: &str) {
+        self.with_window(key, |count, _| *count = count.saturating_sub(1));
     }
 
     fn with_window<T>(&self, key: &str, apply: impl FnOnce(&mut u32, u32) -> T) -> T {
@@ -76,8 +71,8 @@ pub struct RateLimits {
     pub global: RateLimiter,
     /// Login attempts, per client address.
     pub login: RateLimiter,
-    /// Failed logins, per account (email): addresses can be shared or forged,
-    /// accounts cannot.
+    /// Login attempts per account (email), given back when the login succeeds:
+    /// only failures count. Addresses can be shared or multiplied, accounts cannot.
     pub failed_logins: RateLimiter,
 }
 
@@ -110,13 +105,12 @@ mod tests {
     }
 
     #[test]
-    fn counts_events_without_consuming_checks() {
-        let limiter = RateLimiter::new(2, Duration::from_secs(60));
-        assert!(!limiter.exhausted("a"));
-        limiter.record("a");
-        limiter.record("a");
-        assert!(limiter.exhausted("a"));
-        assert!(!limiter.exhausted("b"));
+    fn gives_back_released_slots() {
+        let limiter = RateLimiter::new(1, Duration::from_secs(60));
+        assert!(limiter.allow("a"));
+        limiter.release("a");
+        assert!(limiter.allow("a"));
+        assert!(!limiter.allow("a"));
     }
 
     #[test]

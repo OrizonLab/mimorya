@@ -85,8 +85,10 @@ async fn login(
         return Err(ApiError::RateLimited);
     }
     let email = body.email.to_lowercase();
-    // Same treatment for unknown and existing accounts: nothing reveals which exist.
-    if state.limits.failed_logins.exhausted(&email) {
+    // The slot is taken before verifying, atomically: concurrent attempts
+    // cannot all pass the check. Unknown and existing accounts are treated
+    // alike, so nothing reveals which exist.
+    if !state.limits.failed_logins.allow(&email) {
         return Err(ApiError::RateLimited);
     }
     let login = find_login(state.db.pool(), &email).await?;
@@ -97,10 +99,11 @@ async fn login(
     .await;
     let login = match login {
         Some(login) if valid && login.status == "active" && login.tenant_status == "active" => {
+            // Only failures count against the account.
+            state.limits.failed_logins.release(&email);
             login
         }
         other => {
-            state.limits.failed_logins.record(&email);
             if let Some(login) = other {
                 let reason = if valid {
                     "Compte ou entreprise inactif"

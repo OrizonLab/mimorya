@@ -88,7 +88,7 @@ pub async fn lock_conversation(
     id: Uuid,
 ) -> sqlx::Result<Option<ConversationRow>> {
     sqlx::query_as(&format!(
-        "select {CONVERSATION_COLUMNS} from conversations where id = $1 for update"
+        "select {CONVERSATION_COLUMNS} from conversations where id = $1 for no key update"
     ))
     .bind(id)
     .fetch_optional(conn)
