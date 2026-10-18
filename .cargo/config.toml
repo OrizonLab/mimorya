@@ -1,0 +1,4 @@
+[alias]
+# PostgreSQL integration tests (marked #[ignore]), run one at a time: they
+# share the recreated test database.
+test-int = "test --workspace -- --ignored --test-threads=1"
