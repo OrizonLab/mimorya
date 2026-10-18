@@ -253,9 +253,15 @@ elle est remplacée par une nouvelle entrée qui la référence (« remplace ADR
     invalidation (génération incrémentée à chaque invalidation) ;
   - le changement de son propre mot de passe, hors verrou d'administration, n'écrit
     que si l'empreinte lue n'a pas changé et que la session appelante est toujours
-    ouverte : une réinitialisation simultanée par un administrateur l'emporte.
+    ouverte : une réinitialisation simultanée par un administrateur l'emporte ;
+  - une connexion relit la ligne du compte, verrouillée (`FOR NO KEY UPDATE`), avant
+    d'ouvrir sa session : elle est refusée si le mot de passe vérifié a changé ou si
+    le compte n'est plus actif, et une révocation en attente passe après elle ;
+  - ordre des verrous commun à ces opérations : ligne du compte, puis sessions.
 - **Conséquences** : les changements d'administration d'une entreprise ne sont pas
   parallèles (sans effet pratique à cette échelle) ; ces courses sont testées de façon
-  déterministe (`crates/api/tests/admin_concurrency.rs`, verrous tenus par le test) ; comme personne ne retire ses
+  déterministe : le test tient les lignes concernées et attend que les requêtes soient
+  en file dans `pg_locks` (`crates/api/tests/support/locks.rs`, `admin_concurrency.rs`,
+  `account_password.rs`, `login_races.rs`) ; comme personne ne retire ses
   propres droits et que chaque retrait revérifie les droits de son auteur, il reste
   toujours au moins un administrateur actif (hors échéance d'habilitation choisie).

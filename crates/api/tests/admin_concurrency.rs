@@ -8,8 +8,6 @@
 
 mod support;
 
-use std::time::Duration;
-
 use axum::http::StatusCode;
 use mimorya_api::services::admin::{
     UnitChanges, UserChanges, revoke_role, update_unit, update_user,
@@ -22,6 +20,7 @@ use mimorya_core::{DomainError, ErrorCode};
 use mimorya_db::repositories::memory::{NewMemory, create_memory};
 use serde_json::json;
 use support::accounts::{assignment_of, create_account};
+use support::locks::{hold_rows, release_after};
 use support::{Client, TestApi};
 use uuid::Uuid;
 
@@ -89,23 +88,18 @@ async fn crossed_moves_keep_the_tree_a_tree() {
         new_team(&paul, "Équipe A").await,
         new_team(&paul, "Équipe B").await,
     );
-    let mut hold = services.db.begin(tenant::ID).await.unwrap();
-    sqlx::query("select id from org_units where id = any($1) for update")
-        .bind(vec![a, b])
-        .fetch_all(&mut *hold)
-        .await
-        .unwrap();
+    let hold = hold_rows(&api, "org_units", &[a, b]).await;
     let (url_a, url_b) = (
         format!("/admin/org-units/{a}"),
         format!("/admin/org-units/{b}"),
     );
+    // Released once both requests wait: on the row, or on the lock. Two
+    // sessions, so that they share no session row.
+    let other_paul = api.sign_in(user::PAUL).await;
     let (one, other, ()) = tokio::join!(
         paul.patch(&url_a, json!({ "parentId": b })),
-        paul.patch(&url_b, json!({ "parentId": a })),
-        async {
-            tokio::time::sleep(Duration::from_millis(500)).await;
-            hold.commit().await.unwrap();
-        },
+        other_paul.patch(&url_b, json!({ "parentId": a })),
+        release_after(&api, 2, hold),
     );
     let mut statuses = [one.status, other.status];
     statuses.sort();
@@ -196,10 +190,8 @@ async fn deleting_a_unit_waits_for_what_is_being_written_into_it() {
     .await
     .unwrap();
     let url = format!("/admin/org-units/{id}");
-    let (deleted, ()) = tokio::join!(paul.delete(&url), async {
-        tokio::time::sleep(Duration::from_millis(500)).await;
-        writing.commit().await.unwrap();
-    });
+    // The memory commits once the deletion waits behind its insert.
+    let (deleted, ()) = tokio::join!(paul.delete(&url), release_after(&api, 1, writing));
     assert_eq!(deleted.status, StatusCode::CONFLICT, "{}", deleted.text());
 
     let mut check = services.db.begin(tenant::ID).await.unwrap();

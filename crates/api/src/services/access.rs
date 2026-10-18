@@ -140,6 +140,8 @@ impl AccessService {
     }
 
     async fn tenant_access(&self, tenant_id: Uuid) -> anyhow::Result<Arc<TenantAccess>> {
+        // The generation is read before loading: an invalidation that happens
+        // while the data loads then keeps the (possibly older) data out of the cache.
         let generation = match self.cache.get(tenant_id) {
             Ok(cached) => return Ok(cached),
             Err(generation) => generation,

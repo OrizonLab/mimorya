@@ -113,6 +113,10 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
     limitées comme la connexion), ferme les autres sessions et n'écrase jamais une
     réinitialisation ou une révocation faite au même moment par un administrateur
     (écriture conditionnée à l'ancienne empreinte, session vérifiée sous verrou) ;
+  - une connexion n'ouvre sa session qu'après avoir relu, ligne du compte
+    verrouillée, que le mot de passe vérifié est toujours celui en base et que le
+    compte est actif : une connexion en cours ne survit pas à une réinitialisation,
+    une désactivation ou un changement de mot de passe validé pendant sa vérification ;
   - limites assumées :
     - la règle « pas d'administration de soi-même » évite les erreurs, ce n'est **pas
       une frontière contre un administrateur malveillant** : il peut créer un compte,
