@@ -75,11 +75,7 @@ pub async fn load_authorization_data(conn: &mut PgConnection) -> anyhow::Result<
         .fetch_optional(&mut *conn)
         .await?
         .context("Tenant context missing")?;
-    let units: Vec<UnitRow> = sqlx::query_as(
-        "select id, parent_id, name, type, lead_user_id from org_units order by created_at",
-    )
-    .fetch_all(&mut *conn)
-    .await?;
+    let units = load_org_units(&mut *conn).await?;
     let roles: Vec<RoleRow> = sqlx::query_as(
         "select id, key, name, description, permissions, is_system from roles order by name",
     )
@@ -100,19 +96,7 @@ pub async fn load_authorization_data(conn: &mut PgConnection) -> anyhow::Result<
                 _ => Map::new(),
             },
         },
-        units: units
-            .into_iter()
-            .map(|u| {
-                Ok(OrgUnit {
-                    id: u.id,
-                    parent_id: u.parent_id,
-                    name: u.name,
-                    unit_type: OrgUnitType::parse(&u.unit_type)
-                        .ok_or_else(|| anyhow!("unknown org unit type {}", u.unit_type))?,
-                    lead_user_id: u.lead_user_id,
-                })
-            })
-            .collect::<anyhow::Result<_>>()?,
+        units,
         roles: roles
             .into_iter()
             .map(|r| RoleRecord {
@@ -144,6 +128,28 @@ pub async fn load_authorization_data(conn: &mut PgConnection) -> anyhow::Result<
             })
             .collect::<anyhow::Result<_>>()?,
     })
+}
+
+/// The organisation units of the tenant, as stored now.
+pub async fn load_org_units(conn: &mut PgConnection) -> anyhow::Result<Vec<OrgUnit>> {
+    let units: Vec<UnitRow> = sqlx::query_as(
+        "select id, parent_id, name, type, lead_user_id from org_units order by created_at",
+    )
+    .fetch_all(conn)
+    .await?;
+    units
+        .into_iter()
+        .map(|u| {
+            Ok(OrgUnit {
+                id: u.id,
+                parent_id: u.parent_id,
+                name: u.name,
+                unit_type: OrgUnitType::parse(&u.unit_type)
+                    .ok_or_else(|| anyhow!("unknown org unit type {}", u.unit_type))?,
+                lead_user_id: u.lead_user_id,
+            })
+        })
+        .collect()
 }
 
 #[derive(Debug, Clone)]

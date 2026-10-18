@@ -4,6 +4,7 @@
 //! session cookie.
 #![allow(dead_code)] // not every test binary uses every helper
 
+pub mod accounts;
 mod client;
 pub mod planning;
 

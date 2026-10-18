@@ -4,7 +4,7 @@
 
 use uuid::Uuid;
 
-use crate::authz::{AssignmentScope, OrgTree, matches_permission};
+use crate::authz::{AssignmentScope, OrgTree, OrgUnitType, matches_permission};
 
 /// Permissions whose screens and actions cover the whole company: they are
 /// only honoured, and only assignable, with a company-wide scope. Granted on a
@@ -71,6 +71,16 @@ pub fn move_problem(tree: &OrgTree, unit: Uuid, new_parent: Uuid) -> Option<&'st
     None
 }
 
+/// Why a unit cannot have this type, in French; `None` when it can. The
+/// company type belongs to the root, and only to it.
+pub fn unit_type_problem(is_root: bool, unit_type: OrgUnitType) -> Option<&'static str> {
+    match (is_root, unit_type == OrgUnitType::Company) {
+        (true, false) => Some("L’unité racine reste de type « Entreprise »"),
+        (false, true) => Some("Le type « Entreprise » est réservé à l’unité racine"),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -112,5 +122,13 @@ mod tests {
         assert!(move_problem(&tree, unit::TECHNICAL, unit::TECHNICAL).is_some());
         assert!(move_problem(&tree, unit::TEAM_NORTH, uuid::Uuid::new_v4()).is_some());
         assert_eq!(move_problem(&tree, unit::TEAM_NORTH, unit::DIRECTION), None);
+    }
+
+    #[test]
+    fn keeps_the_company_type_for_the_root() {
+        assert!(unit_type_problem(false, OrgUnitType::Company).is_some());
+        assert!(unit_type_problem(true, OrgUnitType::Team).is_some());
+        assert_eq!(unit_type_problem(true, OrgUnitType::Company), None);
+        assert_eq!(unit_type_problem(false, OrgUnitType::Team), None);
     }
 }

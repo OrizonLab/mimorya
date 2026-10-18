@@ -1,6 +1,7 @@
-//! Changes to the organisation tree. Reading it for authorization lives in
-//! `org.rs`; the tree rules (no cycle, root fixed) are checked by the caller
-//! with `mimorya_core::administration`.
+//! Changes to the organisation tree. Reading it lives in `org.rs`; the tree
+//! rules (no cycle, root fixed) are checked by the caller with
+//! `mimorya_core::administration`, on the tree read under the administration
+//! lock (`TenantTx::lock_administration`).
 
 use sqlx::PgConnection;
 use uuid::Uuid;
@@ -83,6 +84,18 @@ pub async fn org_unit_usage(conn: &mut PgConnection, id: Uuid) -> sqlx::Result<O
     .bind(id)
     .fetch_one(conn)
     .await
+}
+
+/// Locks the unit's row until the end of the transaction: rows that would
+/// reference it (memberships, assignments, memory) wait, then see it gone.
+/// Returns whether the unit exists.
+pub async fn lock_org_unit(conn: &mut PgConnection, id: Uuid) -> sqlx::Result<bool> {
+    let found: Option<Uuid> =
+        sqlx::query_scalar("select id from org_units where id = $1 for update")
+            .bind(id)
+            .fetch_optional(conn)
+            .await?;
+    Ok(found.is_some())
 }
 
 pub async fn delete_org_unit(conn: &mut PgConnection, id: Uuid) -> sqlx::Result<bool> {

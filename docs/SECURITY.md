@@ -100,14 +100,33 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
     consommation) ne valent que détenues **sur toute l'entreprise** ; un rôle qui en
     contient ne s'attribue qu'à ce périmètre ;
   - personne ne modifie depuis l'administration son propre compte, son statut ou ses
-    habilitations : il faut un autre administrateur (ni auto-élévation, ni blocage
-    de soi-même) ;
+    habilitations : il faut un autre administrateur (pas de modification directe de
+    ses propres droits, pas de blocage de soi-même) ;
+  - les changements d'administration d'une entreprise sont sérialisés (verrou
+    PostgreSQL par entreprise, ADR-020) et revérifient sur les données en base les
+    droits de leur auteur et les règles de l'organigramme : deux administrateurs
+    simultanés ne peuvent ni créer de cycle, ni se retirer mutuellement leurs droits ;
   - un compte créé ou réinitialisé reçoit un mot de passe provisoire aléatoire
-    (96 bits), affiché une seule fois à l'administrateur, jamais journalisé ;
-    la désactivation ferme immédiatement les sessions ;
-  - limite assumée : un administrateur peut créer un compte et lui attribuer des
-    rôles métier ; chaque action est tracée (`user.created`, `role.assigned`…) et la
-    double validation des actions d'administration est prévue en phase 3.
+    (96 bits), affiché une seule fois à l'administrateur (`Cache-Control: no-store`),
+    jamais journalisé ; la réinitialisation et la désactivation ferment immédiatement
+    les sessions ; le changement de son mot de passe exige l'actuel (tentatives
+    limitées comme la connexion) et ferme les autres sessions ;
+  - limites assumées :
+    - la règle « pas d'administration de soi-même » évite les erreurs, ce n'est **pas
+      une frontière contre un administrateur malveillant** : il peut créer un compte,
+      lui attribuer un rôle d'administration et agir par ce compte ; la
+      réinitialisation d'un mot de passe lui permet de se connecter à la place de la
+      personne (y compris un autre administrateur) et donc de lire ses conversations et
+      sa mémoire personnelle. Tout est tracé (`user.created`, `role.assigned`,
+      `user.password_reset`…) ; la double validation des actions d'administration est
+      prévue en phase 3 ;
+    - les adresses e-mail sont uniques entre entreprises (ADR-011) : créer un compte
+      avec une adresse déjà utilisée ailleurs est refusé (409), ce qui révèle à
+      l'administrateur qu'elle existe dans une autre entreprise. Limite levée avec
+      l'invitation par e-mail ;
+    - un run d'agent déjà lancé garde les droits calculés à son démarrage jusqu'à sa
+      fin (bornée par son budget de durée), même si le compte est désactivé ou perd
+      une habilitation entre-temps.
 
 ## 6. Sécurité de l'agent
 

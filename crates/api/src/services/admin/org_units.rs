@@ -1,21 +1,25 @@
 //! Organisation tree changes: add, rename, retype, move, change the lead,
-//! delete an unused unit. The cached tree of the tenant is refreshed after
+//! delete an unused unit. The rules are checked on the tree as stored, under
+//! the administration lock; the cached tree of the tenant is refreshed after
 //! each change.
 
 use mimorya_core::DomainError;
-use mimorya_core::administration::move_problem;
+use mimorya_core::administration::{move_problem, unit_type_problem};
 use mimorya_core::authz::OrgUnitType;
 use mimorya_db::Database;
 use mimorya_db::repositories::audit::append_audit;
 use mimorya_db::repositories::org_units::{
-    NewOrgUnit, OrgUnitPatch, create_org_unit, delete_org_unit, org_unit_usage, update_org_unit,
+    NewOrgUnit, OrgUnitPatch, create_org_unit, delete_org_unit, lock_org_unit, org_unit_usage,
+    update_org_unit,
 };
 use mimorya_db::repositories::users::get_user;
 use serde_json::json;
 use uuid::Uuid;
 
-use super::audit_entry;
+use super::{audit_entry, begin_change, current_tree};
 use crate::services::{AccessContext, AccessService};
+
+const PERMISSION: &str = "org:manage";
 
 pub struct NewUnitInput {
     pub parent_id: Uuid,
@@ -29,12 +33,15 @@ pub async fn create_unit(
     access: &AccessContext,
     input: NewUnitInput,
 ) -> anyhow::Result<Uuid> {
-    access.require_tenant_wide("org:manage")?;
-    if access.org_tree().get(input.parent_id).is_none() {
-        return Err(DomainError::validation("Unité parente inconnue").into());
+    access.require_tenant_wide(PERMISSION)?;
+    if let Some(problem) = unit_type_problem(false, input.unit_type) {
+        return Err(DomainError::validation(problem).into());
     }
     let tenant_id = access.subject.tenant_id;
-    let mut tx = db.begin(tenant_id).await?;
+    let mut tx = begin_change(db, access, PERMISSION).await?;
+    if current_tree(&mut tx).await?.get(input.parent_id).is_none() {
+        return Err(DomainError::validation("Unité parente inconnue").into());
+    }
     let id = create_org_unit(
         &mut tx,
         NewOrgUnit {
@@ -72,18 +79,23 @@ pub async fn update_unit(
     id: Uuid,
     changes: UnitChanges,
 ) -> anyhow::Result<()> {
-    access.require_tenant_wide("org:manage")?;
-    let tree = access.org_tree();
-    if tree.get(id).is_none() {
+    access.require_tenant_wide(PERMISSION)?;
+    let tenant_id = access.subject.tenant_id;
+    let mut tx = begin_change(db, access, PERMISSION).await?;
+    let tree = current_tree(&mut tx).await?;
+    let Some(unit) = tree.get(id) else {
         return Err(DomainError::not_found("Unité introuvable").into());
+    };
+    if let Some(unit_type) = changes.unit_type
+        && let Some(problem) = unit_type_problem(unit.parent_id.is_none(), unit_type)
+    {
+        return Err(DomainError::validation(problem).into());
     }
     if let Some(parent) = changes.parent_id
-        && let Some(problem) = move_problem(tree, id, parent)
+        && let Some(problem) = move_problem(&tree, id, parent)
     {
         return Err(DomainError::conflict(problem).into());
     }
-    let tenant_id = access.subject.tenant_id;
-    let mut tx = db.begin(tenant_id).await?;
     if let Some(Some(lead)) = changes.lead_user_id
         && get_user(&mut tx, lead).await?.is_none()
     {
@@ -115,22 +127,25 @@ pub async fn update_unit(
 }
 
 /// Only an unused unit can be deleted: deleting a used one would silently
-/// drop memberships, role assignments and team memory (cascades).
+/// drop memberships, role assignments and team memory (cascades). The unit's
+/// row is locked before counting, so nothing new can reference it meanwhile.
 pub async fn delete_unit(
     db: &Database,
     access_service: &AccessService,
     access: &AccessContext,
     id: Uuid,
 ) -> anyhow::Result<()> {
-    access.require_tenant_wide("org:manage")?;
-    let Some(unit) = access.org_tree().get(id) else {
+    access.require_tenant_wide(PERMISSION)?;
+    let tenant_id = access.subject.tenant_id;
+    let mut tx = begin_change(db, access, PERMISSION).await?;
+    let tree = current_tree(&mut tx).await?;
+    let Some(unit) = tree.get(id) else {
         return Err(DomainError::not_found("Unité introuvable").into());
     };
     if unit.parent_id.is_none() {
         return Err(DomainError::conflict("L’unité racine ne peut pas être supprimée").into());
     }
-    let tenant_id = access.subject.tenant_id;
-    let mut tx = db.begin(tenant_id).await?;
+    lock_org_unit(&mut tx, id).await?;
     let usage = org_unit_usage(&mut tx, id).await?;
     if !usage.is_unused() {
         let uses: Vec<String> = [

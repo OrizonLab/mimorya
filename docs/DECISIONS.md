@@ -225,3 +225,33 @@ elle est remplacée par une nouvelle entrée qui la référence (« remplace ADR
   la transmission du mot de passe provisoire repose sur l'administrateur jusqu'à
   l'invitation par e-mail ; la séparation des pouvoirs complète (double validation
   des actions d'administration) reste à faire (phase 3).
+
+## ADR-020 — Changements d'administration sérialisés par entreprise
+
+- **Date** : 2026-10-18 · **Statut** : acceptée
+- **Contexte** : chaque requête charge une vue des droits et de l'organigramme
+  (organigramme mis en cache 30 s). Deux administrateurs agissant au même instant
+  pouvaient valider leurs changements sur des vues périmées : deux déplacements croisés
+  créaient un cycle (l'organigramme ne se chargeait plus et toute l'entreprise
+  devenait inaccessible), deux retraits croisés laissaient l'entreprise sans
+  administrateur, une habilitation créée pendant une suppression d'unité disparaissait
+  par cascade.
+- **Décision** :
+  - tout changement d'administration (comptes, habilitations, organisation) s'exécute
+    dans une transaction qui prend d'abord un verrou consultatif PostgreSQL propre à
+    l'entreprise (`pg_advisory_xact_lock`, `TenantTx::lock_administration`) : les
+    changements d'une même entreprise passent l'un après l'autre, sans nouvelle
+    infrastructure ;
+  - sous ce verrou, le changement revérifie sur les données en base que
+    l'administrateur est toujours actif et détient la permission sur toute
+    l'entreprise, et applique les règles de l'organigramme à l'arbre relu en base
+    (pas au cache) ;
+  - la suppression d'une unité verrouille sa ligne (`FOR UPDATE`) avant de compter ce
+    qui en dépend : ce qui la référencerait entre-temps (mémoire écrite par un run,
+    par exemple) attend puis échoue ;
+  - le cache des autorisations ne réenregistre pas des données chargées pendant une
+    invalidation.
+- **Conséquences** : les changements d'administration d'une entreprise ne sont pas
+  parallèles (sans effet pratique à cette échelle) ; comme personne ne retire ses
+  propres droits et que chaque retrait revérifie les droits de son auteur, il reste
+  toujours au moins un administrateur actif (hors échéance d'habilitation choisie).

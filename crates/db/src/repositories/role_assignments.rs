@@ -61,18 +61,46 @@ pub struct NewRoleAssignment {
     pub expires_at: Option<DateTime<Utc>>,
 }
 
-pub async fn create_role_assignment(
-    conn: &mut PgConnection,
-    input: NewRoleAssignment,
-) -> sqlx::Result<Uuid> {
-    let (scope_type, unit, descendants) = match input.scope {
+/// Stored form of a scope: `scope_type`, `scope_org_unit_id`, `include_descendants`.
+fn scope_columns(scope: &AssignmentScope) -> (&'static str, Option<Uuid>, bool) {
+    match *scope {
         AssignmentScope::Tenant => ("tenant", None, true),
         AssignmentScope::OrgUnit {
             org_unit_id,
             include_descendants,
         } => ("org_unit", Some(org_unit_id), include_descendants),
         AssignmentScope::Own => ("self", None, true),
-    };
+    }
+}
+
+/// Whether the user already holds the role on exactly this scope (an expired
+/// assignment does not count).
+pub async fn has_role_assignment(
+    conn: &mut PgConnection,
+    user_id: Uuid,
+    role_id: Uuid,
+    scope: &AssignmentScope,
+) -> sqlx::Result<bool> {
+    let (scope_type, unit, descendants) = scope_columns(scope);
+    sqlx::query_scalar(
+        "select exists (select 1 from role_assignments where user_id = $1 and role_id = $2 \
+         and scope_type = $3 and scope_org_unit_id is not distinct from $4 \
+         and include_descendants = $5 and (expires_at is null or expires_at > now()))",
+    )
+    .bind(user_id)
+    .bind(role_id)
+    .bind(scope_type)
+    .bind(unit)
+    .bind(descendants)
+    .fetch_one(conn)
+    .await
+}
+
+pub async fn create_role_assignment(
+    conn: &mut PgConnection,
+    input: NewRoleAssignment,
+) -> sqlx::Result<Uuid> {
+    let (scope_type, unit, descendants) = scope_columns(&input.scope);
     sqlx::query_scalar(
         "insert into role_assignments (tenant_id, user_id, role_id, scope_type, scope_org_unit_id, \
          include_descendants, granted_by_user_id, expires_at) \

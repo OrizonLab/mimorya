@@ -184,7 +184,7 @@ async fn me(State(state): State<AppState>, Auth(identity): Auth) -> ApiResult<Js
                 .flat_map(|c| c.info().permissions.iter().map(|p| p.permission)),
         )
         .collect();
-    let permissions: Vec<&str> = catalog.into_iter().filter(|p| access.has(p)).collect();
+    let permissions: Vec<&str> = catalog.into_iter().filter(|p| access.holds(p)).collect();
     let org_unit = access
         .profile
         .primary_unit_id

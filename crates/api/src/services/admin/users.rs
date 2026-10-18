@@ -2,8 +2,7 @@
 //! password reset. A disabled account loses its sessions at once.
 
 use mimorya_core::DomainError;
-use mimorya_core::authz::AssignmentScope;
-use mimorya_core::authz::Sensitivity;
+use mimorya_core::authz::{AssignmentScope, OrgTree, Sensitivity};
 use mimorya_db::repositories::audit::append_audit;
 use mimorya_db::repositories::role_assignments::{
     NewRoleAssignment, create_role_assignment, find_role_id,
@@ -16,12 +15,14 @@ use mimorya_db::{Database, TenantTx};
 use serde_json::json;
 use uuid::Uuid;
 
-use super::{audit_entry, is_unique_violation, refuse_self};
+use super::{audit_entry, begin_change, current_tree, is_unique_violation, refuse_self};
 use crate::auth::credentials::{generate_temporary_password, hash_password_async};
 use crate::services::AccessContext;
 
 /// Base role every account receives on its own data (agent, directory…).
 const BASE_ROLE_KEY: &str = "member";
+
+const PERMISSION: &str = "user:manage";
 
 pub struct NewUserInput {
     pub email: String,
@@ -37,13 +38,13 @@ pub async fn create_user(
     access: &AccessContext,
     input: NewUserInput,
 ) -> anyhow::Result<(Uuid, String)> {
-    access.require_tenant_wide("user:manage")?;
-    check_unit(access, input.org_unit_id)?;
+    access.require_tenant_wide(PERMISSION)?;
     let password = generate_temporary_password();
     let password_hash = hash_password_async(password.clone()).await?;
     let tenant_id = access.subject.tenant_id;
 
-    let mut tx = db.begin(tenant_id).await?;
+    let mut tx = begin_change(db, access, PERMISSION).await?;
+    check_unit(&current_tree(&mut tx).await?, input.org_unit_id)?;
     let id = match insert_user(
         &mut tx,
         NewUser {
@@ -116,13 +117,13 @@ pub async fn update_user(
     user_id: Uuid,
     changes: UserChanges,
 ) -> anyhow::Result<()> {
-    access.require_tenant_wide("user:manage")?;
+    access.require_tenant_wide(PERMISSION)?;
     refuse_self(access, user_id)?;
-    if let Some(unit) = changes.org_unit_id {
-        check_unit(access, unit)?;
-    }
     let tenant_id = access.subject.tenant_id;
-    let mut tx = db.begin(tenant_id).await?;
+    let mut tx = begin_change(db, access, PERMISSION).await?;
+    if let Some(unit) = changes.org_unit_id {
+        check_unit(&current_tree(&mut tx).await?, unit)?;
+    }
     let status = changes
         .active
         .map(|a| if a { "active" } else { "disabled" });
@@ -171,11 +172,11 @@ pub async fn reset_password(
     access: &AccessContext,
     user_id: Uuid,
 ) -> anyhow::Result<String> {
-    access.require_tenant_wide("user:manage")?;
+    access.require_tenant_wide(PERMISSION)?;
     refuse_self(access, user_id)?;
     let password = generate_temporary_password();
     let hash = hash_password_async(password.clone()).await?;
-    let mut tx = db.begin(access.subject.tenant_id).await?;
+    let mut tx = begin_change(db, access, PERMISSION).await?;
     if get_user(&mut tx, user_id).await?.is_none() {
         return Err(DomainError::not_found("Compte introuvable").into());
     }
@@ -190,11 +191,9 @@ pub async fn reset_password(
     Ok(password)
 }
 
-fn check_unit(access: &AccessContext, unit: Option<Uuid>) -> Result<(), DomainError> {
+fn check_unit(tree: &OrgTree, unit: Option<Uuid>) -> Result<(), DomainError> {
     match unit {
-        Some(id) if access.org_tree().get(id).is_none() => {
-            Err(DomainError::validation("Unité inconnue"))
-        }
+        Some(id) if tree.get(id).is_none() => Err(DomainError::validation("Unité inconnue")),
         _ => Ok(()),
     }
 }

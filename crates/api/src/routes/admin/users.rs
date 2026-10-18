@@ -4,6 +4,7 @@
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
+use axum::http::header::CACHE_CONTROL;
 use mimorya_core::authz::Sensitivity;
 use mimorya_db::repositories::role_assignments::{RoleAssignmentRow, list_role_assignments};
 use mimorya_db::repositories::users::list_users;
@@ -111,11 +112,18 @@ pub struct CreateUserBody {
     clearance: Sensitivity,
 }
 
+/// Responses carrying a temporary password are never stored by a cache.
+type Secret = ([(axum::http::HeaderName, &'static str); 1], Json<Value>);
+
+fn secret(body: Value) -> Secret {
+    ([(CACHE_CONTROL, "no-store")], Json(body))
+}
+
 pub async fn create(
     State(state): State<AppState>,
     Auth(identity): Auth,
     Body(body): Body<CreateUserBody>,
-) -> ApiResult<(StatusCode, Json<Value>)> {
+) -> ApiResult<(StatusCode, Secret)> {
     let access = state.access.context(identity).await?;
     let input = NewUserInput {
         email: body.email,
@@ -127,7 +135,7 @@ pub async fn create(
     let (id, password) = create_user(&state.db, &access, input).await?;
     Ok((
         StatusCode::CREATED,
-        Json(json!({ "id": id, "temporaryPassword": password })),
+        secret(json!({ "id": id, "temporaryPassword": password })),
     ))
 }
 
@@ -186,8 +194,8 @@ pub async fn reset(
     State(state): State<AppState>,
     Auth(identity): Auth,
     PathId(id): PathId,
-) -> ApiResult<Json<Value>> {
+) -> ApiResult<Secret> {
     let access = state.access.context(identity).await?;
     let password = reset_password(&state.db, &access, id).await?;
-    Ok(Json(json!({ "temporaryPassword": password })))
+    Ok(secret(json!({ "temporaryPassword": password })))
 }

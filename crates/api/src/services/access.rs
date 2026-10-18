@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use mimorya_core::DomainError;
+use mimorya_core::administration::is_tenant_wide;
 use mimorya_core::authz::{
     Actor, AssignmentScope, AuthorizationEngine, DataScope, OrgTree, Subject,
 };
@@ -54,6 +55,16 @@ impl AccessContext {
         }
     }
 
+    /// Whether the permission is effective for the user: a company-wide one
+    /// (`TENANT_WIDE_PERMISSIONS`) only counts when held on the whole company.
+    pub fn holds(&self, permission: &str) -> bool {
+        if is_tenant_wide(permission) {
+            self.require_tenant_wide(permission).is_ok()
+        } else {
+            self.has(permission)
+        }
+    }
+
     /// Company-wide screens and actions (`TENANT_WIDE_PERMISSIONS`): the
     /// permission must be held on the whole company, not on some unit.
     pub fn require_tenant_wide(&self, permission: &str) -> Result<(), DomainError> {
@@ -81,10 +92,18 @@ struct TenantAccess {
     loaded_at: Instant,
 }
 
+#[derive(Default)]
+struct Cache {
+    entries: HashMap<Uuid, Arc<TenantAccess>>,
+    /// Bumped by every invalidation: data loaded across one is not cached,
+    /// it may predate the change that caused it.
+    generation: u64,
+}
+
 pub struct AccessService {
     db: Database,
     ttl: Duration,
-    cache: Mutex<HashMap<Uuid, Arc<TenantAccess>>>,
+    cache: Mutex<Cache>,
 }
 
 impl AccessService {
@@ -92,12 +111,14 @@ impl AccessService {
         Self {
             db,
             ttl: Duration::from_secs(30),
-            cache: Mutex::new(HashMap::new()),
+            cache: Mutex::new(Cache::default()),
         }
     }
 
     pub fn invalidate(&self, tenant_id: Uuid) {
-        self.cache.lock().expect("access cache").remove(&tenant_id);
+        let mut cache = self.cache.lock().expect("access cache");
+        cache.entries.remove(&tenant_id);
+        cache.generation += 1;
     }
 
     pub async fn context(&self, identity: AuthIdentity) -> anyhow::Result<AccessContext> {
@@ -131,11 +152,15 @@ impl AccessService {
     }
 
     async fn tenant_access(&self, tenant_id: Uuid) -> anyhow::Result<Arc<TenantAccess>> {
-        if let Some(cached) = self.cache.lock().expect("access cache").get(&tenant_id)
-            && cached.loaded_at.elapsed() < self.ttl
-        {
-            return Ok(cached.clone());
-        }
+        let generation = {
+            let cache = self.cache.lock().expect("access cache");
+            if let Some(cached) = cache.entries.get(&tenant_id)
+                && cached.loaded_at.elapsed() < self.ttl
+            {
+                return Ok(cached.clone());
+            }
+            cache.generation
+        };
         let mut tx = self.db.begin(tenant_id).await?;
         let data = load_authorization_data(&mut tx).await?;
         tx.commit().await?;
@@ -147,10 +172,10 @@ impl AccessService {
             engine: Arc::new(AuthorizationEngine::new(tree, definitions, data.policies)),
             loaded_at: Instant::now(),
         });
-        self.cache
-            .lock()
-            .expect("access cache")
-            .insert(tenant_id, entry.clone());
+        let mut cache = self.cache.lock().expect("access cache");
+        if cache.generation == generation {
+            cache.entries.insert(tenant_id, entry.clone());
+        }
         Ok(entry)
     }
 }

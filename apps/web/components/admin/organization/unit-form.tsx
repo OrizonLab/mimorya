@@ -23,6 +23,8 @@ export function UnitForm({
   const [parentId, setParentId] = useState(unit?.parentId ?? parent?.id ?? '');
   const [leadUserId, setLeadUserId] = useState(unit?.leadUserId ?? '');
   const action = useAction();
+  // The root keeps the company type, which no other unit can take.
+  const isRoot = unit !== undefined && !unit.parentId;
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -30,7 +32,7 @@ export function UnitForm({
       unit
         ? api.patch(`/admin/org-units/${unit.id}`, {
             name,
-            type,
+            ...(isRoot ? {} : { type }),
             ...(unit.parentId && parentId !== unit.parentId ? { parentId } : {}),
             leadUserId: leadUserId || null,
           })
@@ -45,17 +47,19 @@ export function UnitForm({
         <Field label="Nom">
           <Input required value={name} onChange={(e) => setName(e.target.value)} maxLength={120} />
         </Field>
-        <Field label="Type">
-          <Select value={type} onChange={(e) => setType(e.target.value)}>
-            {Object.entries(UNIT_TYPES)
-              .filter(([key]) => key !== 'company')
-              .map(([key, label]) => (
-                <option key={key} value={key}>
-                  {label}
-                </option>
-              ))}
-          </Select>
-        </Field>
+        {!isRoot && (
+          <Field label="Type">
+            <Select value={type} onChange={(e) => setType(e.target.value)}>
+              {Object.entries(UNIT_TYPES)
+                .filter(([key]) => key !== 'company')
+                .map(([key, label]) => (
+                  <option key={key} value={key}>
+                    {label}
+                  </option>
+                ))}
+            </Select>
+          </Field>
+        )}
         {unit?.parentId && (
           <Field label="Rattachée à">
             <Select value={parentId} onChange={(e) => setParentId(e.target.value)}>
