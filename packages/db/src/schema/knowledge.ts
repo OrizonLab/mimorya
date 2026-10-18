@@ -17,7 +17,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { oneOf, tenantIsolation, timestamps, tsvector } from './common';
 import { orgUnits, tenants, users } from './tenancy';
-import { agentRuns } from './work';
+import { agentRuns } from './runs';
 
 export const EMBEDDING_DIMENSIONS = 1024;
 

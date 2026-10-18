@@ -19,7 +19,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { oneOf, tenantIsolation, timestamps } from './common';
 import { tenants, users } from './tenancy';
-import { agentRuns } from './work';
+import { agentRuns } from './runs';
 
 const bytea = customType<{ data: Buffer }>({ dataType: () => 'bytea' });
 
