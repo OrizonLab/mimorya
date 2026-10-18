@@ -3,7 +3,7 @@
 use axum::extract::State;
 use axum::routing::post;
 use axum::{Json, Router};
-use mimorya_core::DomainError;
+use mimorya_core::{DomainError, ErrorCode};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use validator::Validate;
@@ -41,14 +41,21 @@ async fn change_password(
     if !state.limits.failed_logins.allow(&account_key) {
         return Err(ApiError::RateLimited);
     }
-    account::change_password(
+    let changed = account::change_password(
         &state.db,
         &access,
         identity.session_id,
         body.current_password,
         body.new_password,
     )
-    .await?;
-    state.limits.failed_logins.release(&account_key);
+    .await;
+    // Only a wrong current password counts against the account; a change
+    // refused because of a reset or a revocation made meanwhile does not.
+    let wrong_password = matches!(&changed, Err(error)
+        if error.downcast_ref::<DomainError>().is_some_and(|e| e.code == ErrorCode::Forbidden));
+    if !wrong_password {
+        state.limits.failed_logins.release(&account_key);
+    }
+    changed?;
     Ok(Json(json!({ "ok": true })))
 }

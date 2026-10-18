@@ -25,14 +25,18 @@ pub async fn hold_rows(api: &TestApi, table: &str, ids: &[Uuid]) -> TenantTx {
     tx
 }
 
-/// Waits until at least `count` lock requests are queued in the database.
+/// Waits until at least `count` lock requests are queued by connections to
+/// this test database (other databases of the cluster are ignored).
 pub async fn wait_for_waiters(api: &TestApi, count: i64) {
     for _ in 0..600 {
         let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
-        let waiting: i64 = sqlx::query_scalar("select count(*) from pg_locks where not granted")
-            .fetch_one(&mut *tx)
-            .await
-            .unwrap();
+        let waiting: i64 = sqlx::query_scalar(
+            "select count(*) from pg_locks l join pg_stat_activity a on a.pid = l.pid \
+             where not l.granted and a.datname = current_database()",
+        )
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap();
         tx.commit().await.unwrap();
         if waiting >= count {
             return;

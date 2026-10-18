@@ -191,7 +191,12 @@ impl TestApi {
     pub async fn sign_in_with(&self, email: &str, password: &str) -> Client<'_> {
         let response = self.try_login(email, password).await;
         assert_eq!(response.status, StatusCode::OK, "{}", response.text());
-        let cookie = response.headers["set-cookie"].to_str().unwrap();
+        self.session_from(&response)
+    }
+
+    /// The session opened by a successful login response.
+    pub fn session_from(&self, login: &TestResponse) -> Client<'_> {
+        let cookie = login.headers["set-cookie"].to_str().unwrap();
         let token = cookie
             .strip_prefix("mimorya_session=")
             .and_then(|rest| rest.split(';').next())

@@ -129,6 +129,9 @@ async fn login(
         .await?
         .is_some_and(|(hash, status)| hash == login.password_hash && status == "active");
     if !still_valid {
+        let entry = login_audit(login.tenant_id, login.user_id, "denied", &context)
+            .reason("Compte modifié pendant la connexion");
+        record_in_background(state.clone(), entry);
         return Err(DomainError::unauthenticated(INVALID_CREDENTIALS).into());
     }
     create_session(
