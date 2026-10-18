@@ -57,6 +57,7 @@ Dernière mise à jour : 2026-10-18 (fondations du MVP).
 3. **Configuration LLM par entreprise** (fournisseur, modèle, clé chiffrée) et **magasin de secrets chiffrés** (AES-256-GCM, `MIMORYA_MASTER_KEY`).
 4. **Configuration des connecteurs MCP** via l'interface (transport, association outil → permissions/risque, test de connexion).
 5. **Tests e2e** Playwright en CI avec modèle scénarisé ; images Docker (API, web) pour l'installation privée.
+6. **En-têtes de sécurité** : CSP stricte (nonces Next.js) et HSTS au niveau du reverse proxy.
 
 ## Phase 2 — Intelligence avancée
 

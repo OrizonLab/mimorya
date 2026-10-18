@@ -25,7 +25,7 @@ export function registerAuthRoutes(app: FastifyInstance, services: AppServices) 
 
   app.post(
     '/auth/login',
-    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    { config: { rateLimit: { max: config.loginRateLimitPerMinute, timeWindow: '1 minute' } } },
     async (request, reply) => {
       const body = parse(loginSchema, request.body);
       const login = await findLogin(db, body.email);

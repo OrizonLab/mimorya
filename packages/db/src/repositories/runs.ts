@@ -55,6 +55,12 @@ export async function getRun(tx: Executor, id: string): Promise<RunRow | null> {
   return row ?? null;
 }
 
+/** Locks the run row until the end of the transaction (serialises decisions on a run). */
+export async function lockRun(tx: Executor, id: string): Promise<RunRow | null> {
+  const [row] = await tx.select().from(agentRuns).where(eq(agentRuns.id, id)).for('update');
+  return row ?? null;
+}
+
 export async function updateRun(
   tx: Executor,
   id: string,
@@ -183,6 +189,13 @@ export async function listApprovalsForRun(tx: Executor, runId: string): Promise<
     .from(approvals)
     .where(eq(approvals.runId, runId))
     .orderBy(asc(approvals.createdAt));
+}
+
+export async function expireApproval(tx: Executor, id: string): Promise<void> {
+  await tx
+    .update(approvals)
+    .set({ status: 'expired' })
+    .where(and(eq(approvals.id, id), eq(approvals.status, 'pending')));
 }
 
 /** Records a decision only if the approval is still pending (no double decision). */

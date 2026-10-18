@@ -29,12 +29,14 @@ import {
   appendAudit,
   createRun,
   decideApproval,
+  expireApproval,
   getApproval,
   getConversation,
-  getRun,
   listActiveSkills,
   listApprovalsForRun,
   listMessages,
+  listRunsForConversation,
+  lockRun,
   markMemoryUsed,
   searchMemory,
   updateConversation,
@@ -98,6 +100,13 @@ export class RunService {
         if (!conversation || conversation.ownerUserId !== identity.userId) {
           throw new NotFoundError('Conversation introuvable');
         }
+        const [latest] = await listRunsForConversation(tx, conversationId, 1);
+        if (latest && (latest.status === 'running' || latest.status === 'awaiting_approval')) {
+          throw new DomainError(
+            'conflict',
+            'Une demande est déjà en cours dans cette conversation : attendez sa fin ou sa validation.',
+          );
+        }
         const previous = await listMessages(tx, conversationId, HISTORY_LIMIT);
         const userMessage = await addMessage(tx, {
           tenantId: identity.tenantId,
@@ -144,44 +153,60 @@ export class RunService {
       if (!approval || approval.requestedForUserId !== identity.userId) {
         throw new NotFoundError('Demande de validation introuvable');
       }
-      const decided = await decideApproval(tx, {
-        id: approvalId,
-        approved,
-        decidedByUserId: identity.userId,
-        comment: comment ?? null,
-      });
-      if (!decided) throw new DomainError('conflict', 'Cette demande a déjà été traitée');
+      // Concurrent decisions on the same run are serialised: exactly one of them
+      // observes the last pending approval and resumes the run.
+      const run = await lockRun(tx, approval.runId);
+      const expired =
+        approval.status === 'pending' && !!approval.expiresAt && approval.expiresAt <= new Date();
+      let decided = null;
+      if (expired) {
+        await expireApproval(tx, approvalId);
+      } else {
+        decided = await decideApproval(tx, {
+          id: approvalId,
+          approved,
+          decidedByUserId: identity.userId,
+          comment: comment ?? null,
+        });
+        if (!decided) throw new DomainError('conflict', 'Cette demande a déjà été traitée');
+      }
       await appendAudit(tx, {
         tenantId: identity.tenantId,
         actorType: 'user',
         actorUserId: identity.userId,
         runId: approval.runId,
-        action: approved ? 'approval.approved' : 'approval.rejected',
-        outcome: 'success',
+        action: expired ? 'approval.expired' : approved ? 'approval.approved' : 'approval.rejected',
+        outcome: expired ? 'failure' : 'success',
         resourceType: 'approval',
         resourceId: approvalId,
         metadata: { toolName: approval.toolName, risk: approval.risk },
       });
-      const run = await getRun(tx, approval.runId);
       const all = await listApprovalsForRun(tx, approval.runId);
-      return { decided, run, all };
+      const resume =
+        !!run &&
+        run.status === 'awaiting_approval' &&
+        !!run.state &&
+        all.every((a) => a.status !== 'pending');
+      if (resume) await updateRun(tx, run.id, { status: 'running' });
+      return { expired, decided, run, all, resume };
     });
 
-    const { run, all } = outcome;
-    const pending = all.filter((a) => a.status === 'pending');
-    if (run && run.status === 'awaiting_approval' && pending.length === 0 && run.state) {
+    const { run, all, resume } = outcome;
+    if (resume && run) {
+      // Expired requests are reported to the agent as refusals.
       const decisions: Record<string, ApprovalDecision> = {};
       for (const a of all) {
-        if (a.status === 'approved' || a.status === 'rejected') {
+        if (a.status === 'approved' || a.status === 'rejected' || a.status === 'expired') {
           decisions[a.id] = {
             approved: a.status === 'approved',
-            ...(a.decisionComment ? { comment: a.decisionComment } : {}),
+            ...(a.status === 'expired'
+              ? { comment: 'demande de validation expirée' }
+              : a.decisionComment
+                ? { comment: a.decisionComment }
+                : {}),
           };
         }
       }
-      await withTenant(this.deps.db, identity.tenantId, (tx) =>
-        updateRun(tx, run.id, { status: 'running' }),
-      );
       this.track(
         this.execute(access, run, {
           kind: 'resume',
@@ -190,7 +215,8 @@ export class RunService {
         }),
       );
     }
-    return { approval: outcome.decided, resumed: pending.length === 0 };
+    if (outcome.expired) throw new DomainError('conflict', 'Cette demande de validation a expiré');
+    return { approval: outcome.decided!, resumed: resume };
   }
 
   private autonomyLevel(access: AccessContext): AutonomyLevel {

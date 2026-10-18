@@ -21,6 +21,8 @@ const envSchema = z.object({
   LLM_API_KEY: z.string().optional(),
   LLM_BASE_URL: z.string().url().optional(),
   ANTHROPIC_API_KEY: z.string().optional(),
+  /** Login attempts allowed per IP and per minute. */
+  LOGIN_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(10),
   /** Run a model-based review when success criteria are given. */
   MIMORYA_LLM_JUDGE: booleanString.default(false),
 });
@@ -36,6 +38,7 @@ export interface AppConfig {
   assistantName: string;
   llm: ProviderConfig | null;
   llmJudge: boolean;
+  loginRateLimitPerMinute: number;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -66,5 +69,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
             ...(e.LLM_BASE_URL ? { baseURL: e.LLM_BASE_URL } : {}),
           },
     llmJudge: e.MIMORYA_LLM_JUDGE,
+    loginRateLimitPerMinute: e.LOGIN_RATE_LIMIT_PER_MINUTE,
   };
 }
