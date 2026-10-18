@@ -1,4 +1,4 @@
-/** Built-in tools: memory and skills. */
+/** Built-in memory tools: search the memories the user may read, propose new ones. */
 import {
   canWriteMemory,
   defineTool,
@@ -9,13 +9,12 @@ import {
   type OrgTree,
 } from '@mimorya/core';
 import { z } from 'zod';
-import type { MemoryStore, SkillStore } from '../runtime/ports';
+import type { MemoryStore } from '../../runtime/ports';
 
-export interface PlatformToolDeps {
+export interface MemoryToolDeps {
   engine: AuthorizationEngine;
   orgTree: OrgTree;
   memory: MemoryStore;
-  skills: SkillStore;
 }
 
 const MEMORY_SPACES = {
@@ -24,7 +23,7 @@ const MEMORY_SPACES = {
   company: 'Mémoire de l’entreprise',
 } as const;
 
-export function createPlatformTools(deps: PlatformToolDeps): AnyToolDefinition[] {
+export function createMemoryTools(deps: MemoryToolDeps): AnyToolDefinition[] {
   const memorySearch = defineTool({
     name: 'memory_search',
     title: 'Recherche dans la mémoire',
@@ -111,25 +110,5 @@ export function createPlatformTools(deps: PlatformToolDeps): AnyToolDefinition[]
     },
   });
 
-  const skillRead = defineTool({
-    name: 'skill_read',
-    title: 'Lecture d’une compétence',
-    description:
-      'Charge le contenu complet d’une compétence (procédure validée par l’entreprise) listée dans les consignes. À utiliser avant d’exécuter une tâche couverte par une compétence.',
-    inputSchema: z.object({ name: z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/) }),
-    risk: 'read',
-    requiredPermissions: ['skill:read'],
-    async execute(input) {
-      const skill = await deps.skills.getActive(input.name);
-      if (!skill)
-        return { content: { erreur: `Compétence « ${input.name} » introuvable` }, isError: true };
-      return {
-        content: skill.content,
-        summary: `Compétence ${skill.name} v${skill.version}`,
-        citations: [{ type: 'skill', id: `${skill.name}@${skill.version}` }],
-      };
-    },
-  });
-
-  return [memorySearch, memoryRemember, skillRead];
+  return [memorySearch, memoryRemember];
 }

@@ -10,21 +10,12 @@
  */
 import Anthropic from '@anthropic-ai/sdk';
 import type {
-  BetaContentBlock,
-  BetaContentBlockParam,
-  BetaMessageParam,
   BetaToolUnion,
   MessageCreateParamsNonStreaming,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages';
-import {
-  LlmError,
-  type LlmMessage,
-  type LlmProvider,
-  type LlmRequest,
-  type LlmResponse,
-  type LlmToolCall,
-  type StopReason,
-} from './types';
+import type { LlmProvider, LlmRequest, LlmResponse } from '../types';
+import { toLlmError } from './errors';
+import { extractText, extractToolCalls, mapStopReason, toAnthropicMessages } from './messages';
 
 export const DEFAULT_ANTHROPIC_MODEL = 'claude-opus-5-5';
 
@@ -115,97 +106,4 @@ export class AnthropicProvider implements LlmProvider {
       throw toLlmError(error);
     }
   }
-}
-
-function toAnthropicMessages(messages: LlmMessage[]): BetaMessageParam[] {
-  return messages.map((m): BetaMessageParam => {
-    if (m.role === 'user') return { role: 'user', content: m.content };
-    if (m.role === 'tool_results') {
-      return {
-        role: 'user',
-        content: m.results.map((r) => ({
-          type: 'tool_result' as const,
-          tool_use_id: r.toolCallId,
-          content: r.content,
-          ...(r.isError ? { is_error: true } : {}),
-        })),
-      };
-    }
-    if (m.native?.provider === 'anthropic') {
-      return { role: 'assistant', content: m.native.content as BetaContentBlockParam[] };
-    }
-    const blocks: BetaContentBlockParam[] = [];
-    if (m.content) blocks.push({ type: 'text', text: m.content });
-    for (const call of m.toolCalls) {
-      blocks.push({ type: 'tool_use', id: call.id, name: call.name, input: call.input ?? {} });
-    }
-    return { role: 'assistant', content: blocks.length > 0 ? blocks : m.content };
-  });
-}
-
-function extractText(content: BetaContentBlock[]): string {
-  return content
-    .filter((b): b is Extract<BetaContentBlock, { type: 'text' }> => b.type === 'text')
-    .map((b) => b.text)
-    .join('');
-}
-
-function extractToolCalls(content: BetaContentBlock[]): LlmToolCall[] {
-  return content
-    .filter((b): b is Extract<BetaContentBlock, { type: 'tool_use' }> => b.type === 'tool_use')
-    .map((b) => ({ id: b.id, name: b.name, input: b.input }));
-}
-
-function mapStopReason(reason: string | null): StopReason {
-  switch (reason) {
-    case 'end_turn':
-    case 'stop_sequence':
-      return 'end_turn';
-    case 'tool_use':
-      return 'tool_use';
-    case 'max_tokens':
-    case 'model_context_window_exceeded':
-      return 'max_tokens';
-    case 'refusal':
-      return 'refusal';
-    default:
-      return 'other';
-  }
-}
-
-function toLlmError(error: unknown): LlmError {
-  if (error instanceof LlmError) return error;
-  const opts = { cause: error };
-  if (error instanceof Anthropic.APIUserAbortError) {
-    return new LlmError('anthropic', 'aborted', 'Requête annulée', opts);
-  }
-  if (
-    error instanceof Anthropic.AuthenticationError ||
-    error instanceof Anthropic.PermissionDeniedError
-  ) {
-    return new LlmError('anthropic', 'auth', 'Authentification refusée par Anthropic', opts);
-  }
-  if (error instanceof Anthropic.RateLimitError) {
-    return new LlmError('anthropic', 'rate_limit', 'Limite de débit Anthropic atteinte', opts);
-  }
-  if (error instanceof Anthropic.BadRequestError) {
-    const overflow = /prompt is too long|context window/i.test(error.message);
-    return new LlmError(
-      'anthropic',
-      overflow ? 'context_overflow' : 'invalid_request',
-      error.message,
-      opts,
-    );
-  }
-  if (error instanceof Anthropic.InternalServerError) {
-    return new LlmError('anthropic', 'overloaded', 'Service Anthropic indisponible', opts);
-  }
-  if (error instanceof Anthropic.APIConnectionError) {
-    return new LlmError('anthropic', 'network', 'Connexion à Anthropic impossible', opts);
-  }
-  if (error instanceof Anthropic.APIError) {
-    return new LlmError('anthropic', 'unknown', error.message, opts);
-  }
-  // Not an API error: the stream could not be parsed (e.g. malformed tool input JSON).
-  return new LlmError('anthropic', 'malformed_output', 'Réponse du modèle illisible', opts);
 }

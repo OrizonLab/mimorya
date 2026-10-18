@@ -1,7 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { describe, expect, it } from 'vitest';
-import { AnthropicProvider } from './anthropic';
-import { PriceTable } from './pricing';
+import { AnthropicProvider } from './provider';
+import { PriceTable } from '../pricing';
 
 /** Minimal stand-in for the SDK streaming helper (no network). */
 function fakeClient(finalMessage: unknown) {

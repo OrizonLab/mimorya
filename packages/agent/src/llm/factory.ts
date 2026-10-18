@@ -1,3 +1,4 @@
+/** Builds a provider from configuration (server environment or tenant settings). */
 import { AnthropicProvider, DEFAULT_ANTHROPIC_MODEL } from './anthropic';
 import { OpenAICompatibleProvider } from './openai-compatible';
 import type { LlmProvider } from './types';
@@ -46,21 +47,4 @@ export function createProvider(config: ProviderConfig): LlmProvider {
     ...(config.apiKey ? { apiKey: config.apiKey } : {}),
     ...(baseURL ? { baseURL } : {}),
   });
-}
-
-export type TaskClass = 'agent' | 'verification';
-
-/**
- * Chooses a provider per task class. Tenants can route verification to a
- * different (cheaper, or local) model; by default every class uses the
- * agent provider.
- */
-export class ModelRouter {
-  constructor(
-    private readonly providers: { agent: LlmProvider } & Partial<Record<TaskClass, LlmProvider>>,
-  ) {}
-
-  for(task: TaskClass): LlmProvider {
-    return this.providers[task] ?? this.providers.agent;
-  }
 }
