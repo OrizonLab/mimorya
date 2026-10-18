@@ -100,6 +100,19 @@ pub async fn touch_session(
     Ok(())
 }
 
+/// Whether the session is still open; its row stays locked until the end of
+/// the transaction, so it cannot be revoked meanwhile.
+pub async fn lock_open_session(conn: &mut PgConnection, session_id: Uuid) -> sqlx::Result<bool> {
+    let found: Option<Uuid> = sqlx::query_scalar(
+        "select id from sessions where id = $1 and revoked_at is null and expires_at > now() \
+         and absolute_expires_at > now() for update",
+    )
+    .bind(session_id)
+    .fetch_optional(conn)
+    .await?;
+    Ok(found.is_some())
+}
+
 pub async fn revoke_session(conn: &mut PgConnection, session_id: Uuid) -> sqlx::Result<()> {
     sqlx::query("update sessions set revoked_at = now() where id = $1")
         .bind(session_id)

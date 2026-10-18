@@ -110,7 +110,9 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
     (96 bits), affiché une seule fois à l'administrateur (`Cache-Control: no-store`),
     jamais journalisé ; la réinitialisation et la désactivation ferment immédiatement
     les sessions ; le changement de son mot de passe exige l'actuel (tentatives
-    limitées comme la connexion) et ferme les autres sessions ;
+    limitées comme la connexion), ferme les autres sessions et n'écrase jamais une
+    réinitialisation ou une révocation faite au même moment par un administrateur
+    (écriture conditionnée à l'ancienne empreinte, session vérifiée sous verrou) ;
   - limites assumées :
     - la règle « pas d'administration de soi-même » évite les erreurs, ce n'est **pas
       une frontière contre un administrateur malveillant** : il peut créer un compte,

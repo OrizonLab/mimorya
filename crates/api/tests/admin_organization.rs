@@ -215,6 +215,13 @@ async fn checks_parents_types_and_leads() {
         )
         .await;
     assert_eq!(unknown.status, StatusCode::NOT_FOUND);
+    let moved_to_nowhere = paul
+        .patch(
+            &format!("/admin/org-units/{}", unit::TEAM_NORTH),
+            json!({ "parentId": Uuid::new_v4() }),
+        )
+        .await;
+    assert_eq!(moved_to_nowhere.status, StatusCode::BAD_REQUEST);
 
     // A lead from another company does not exist from here.
     let north = format!("/admin/org-units/{}", unit::TEAM_NORTH);

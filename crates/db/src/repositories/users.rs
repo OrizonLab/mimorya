@@ -141,6 +141,26 @@ pub async fn set_password_hash(conn: &mut PgConnection, id: Uuid, hash: &str) ->
     Ok(())
 }
 
+/// Replaces the password only if it is still `current_hash`: a change made in
+/// between (an administrator's reset) wins. Returns whether it was replaced.
+pub async fn replace_password_hash(
+    conn: &mut PgConnection,
+    id: Uuid,
+    current_hash: &str,
+    new_hash: &str,
+) -> sqlx::Result<bool> {
+    let result = sqlx::query(
+        "update users set password_hash = $3, updated_at = now() \
+         where id = $1 and password_hash = $2",
+    )
+    .bind(id)
+    .bind(current_hash)
+    .bind(new_hash)
+    .execute(conn)
+    .await?;
+    Ok(result.rows_affected() > 0)
+}
+
 /// Ends every open session of the user, but `except` (the caller's own).
 pub async fn revoke_user_sessions(
     conn: &mut PgConnection,

@@ -136,6 +136,11 @@ async fn disables_accounts_at_once() {
             .status,
         StatusCode::OK
     );
+    // Sessions ended by the disabling stay ended (a stolen cookie included).
+    assert_eq!(
+        session.get("/auth/me").await.status,
+        StatusCode::UNAUTHORIZED
+    );
 }
 
 #[tokio::test]

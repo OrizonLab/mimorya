@@ -250,8 +250,12 @@ elle est remplacée par une nouvelle entrée qui la référence (« remplace ADR
     qui en dépend : ce qui la référencerait entre-temps (mémoire écrite par un run,
     par exemple) attend puis échoue ;
   - le cache des autorisations ne réenregistre pas des données chargées pendant une
-    invalidation.
+    invalidation (génération incrémentée à chaque invalidation) ;
+  - le changement de son propre mot de passe, hors verrou d'administration, n'écrit
+    que si l'empreinte lue n'a pas changé et que la session appelante est toujours
+    ouverte : une réinitialisation simultanée par un administrateur l'emporte.
 - **Conséquences** : les changements d'administration d'une entreprise ne sont pas
-  parallèles (sans effet pratique à cette échelle) ; comme personne ne retire ses
+  parallèles (sans effet pratique à cette échelle) ; ces courses sont testées de façon
+  déterministe (`crates/api/tests/admin_concurrency.rs`, verrous tenus par le test) ; comme personne ne retire ses
   propres droits et que chaque retrait revérifie les droits de son auteur, il reste
   toujours au moins un administrateur actif (hors échéance d'habilitation choisie).

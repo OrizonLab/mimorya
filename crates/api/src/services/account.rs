@@ -1,11 +1,15 @@
 //! The signed-in user's own account: changing their password (e.g. after an
 //! administrator gave them a temporary one). Other sessions end; the caller's
-//! stays.
+//! stays. A reset or a revocation made meanwhile by an administrator wins:
+//! the change is refused rather than silently undoing it.
 
 use mimorya_core::DomainError;
 use mimorya_db::Database;
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
-use mimorya_db::repositories::users::{get_password_hash, revoke_user_sessions, set_password_hash};
+use mimorya_db::repositories::auth::lock_open_session;
+use mimorya_db::repositories::users::{
+    get_password_hash, replace_password_hash, revoke_user_sessions,
+};
 use uuid::Uuid;
 
 use crate::auth::credentials::{hash_password_async, verify_password_async};
@@ -22,13 +26,23 @@ pub async fn change_password(
     let mut tx = db.begin(tenant_id).await?;
     let current_hash = get_password_hash(&mut tx, user_id).await?;
     tx.commit().await?;
-    if !verify_password_async(current_hash, current_password).await {
+    let verified = verify_password_async(current_hash.clone(), current_password).await;
+    let (true, Some(current_hash)) = (verified, current_hash) else {
         return Err(DomainError::forbidden("Mot de passe actuel incorrect").into());
-    }
+    };
 
-    let hash = hash_password_async(new_password).await?;
+    let new_hash = hash_password_async(new_password).await?;
     let mut tx = db.begin(tenant_id).await?;
-    set_password_hash(&mut tx, user_id, &hash).await?;
+    // The account row first, then the sessions: the order a reset uses too.
+    if !replace_password_hash(&mut tx, user_id, &current_hash, &new_hash).await? {
+        return Err(DomainError::conflict(
+            "Votre mot de passe vient d’être modifié par ailleurs : reconnectez-vous.",
+        )
+        .into());
+    }
+    if !lock_open_session(&mut tx, session_id).await? {
+        return Err(DomainError::unauthenticated("Session expirée : reconnectez-vous.").into());
+    }
     // Other sessions (another device, a stolen cookie) end; this one stays.
     revoke_user_sessions(&mut tx, user_id, Some(session_id)).await?;
     append_audit(

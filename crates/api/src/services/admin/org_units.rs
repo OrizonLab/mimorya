@@ -91,10 +91,13 @@ pub async fn update_unit(
     {
         return Err(DomainError::validation(problem).into());
     }
-    if let Some(parent) = changes.parent_id
-        && let Some(problem) = move_problem(&tree, id, parent)
-    {
-        return Err(DomainError::conflict(problem).into());
+    if let Some(parent) = changes.parent_id {
+        if tree.get(parent).is_none() {
+            return Err(DomainError::validation("Unité parente inconnue").into());
+        }
+        if let Some(problem) = move_problem(&tree, id, parent) {
+            return Err(DomainError::conflict(problem).into());
+        }
     }
     if let Some(Some(lead)) = changes.lead_user_id
         && get_user(&mut tx, lead).await?.is_none()

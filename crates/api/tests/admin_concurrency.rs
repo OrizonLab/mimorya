@@ -2,17 +2,24 @@
 //! the stored data under the company's administration lock, not on the view
 //! its request loaded: crossed moves cannot build a cycle in the tree (which
 //! would lock the whole company out), crossed revocations cannot leave the
-//! company without an administrator.
+//! company without an administrator, and a unit being deleted cannot take
+//! away what was written into it meanwhile. Races are made deterministic by
+//! holding row locks in a test transaction while the requests run.
 
 mod support;
+
+use std::time::Duration;
 
 use axum::http::StatusCode;
 use mimorya_api::services::admin::{
     UnitChanges, UserChanges, revoke_role, update_unit, update_user,
 };
 use mimorya_api::services::{AccessContext, AuthIdentity};
+use mimorya_core::authz::Sensitivity;
 use mimorya_core::demo::{role, tenant, unit, user};
+use mimorya_core::memory::{MemoryKind, MemoryScope, MemorySource, MemoryStatus};
 use mimorya_core::{DomainError, ErrorCode};
+use mimorya_db::repositories::memory::{NewMemory, create_memory};
 use serde_json::json;
 use support::accounts::{assignment_of, create_account};
 use support::{Client, TestApi};
@@ -75,18 +82,30 @@ async fn crossed_moves_keep_the_tree_a_tree() {
     let crossed = update_unit(&services.db, &services.access, &second, y, move_under(x)).await;
     assert_eq!(code_of(crossed), ErrorCode::Conflict);
 
-    // The same race over HTTP: one move wins, the other is refused.
+    // The same race over HTTP, truly concurrent: the units' rows are held by
+    // the test, so without the administration lock both requests would check
+    // the same tree, wait on their update, then both succeed.
     let (a, b) = (
         new_team(&paul, "Équipe A").await,
         new_team(&paul, "Équipe B").await,
     );
+    let mut hold = services.db.begin(tenant::ID).await.unwrap();
+    sqlx::query("select id from org_units where id = any($1) for update")
+        .bind(vec![a, b])
+        .fetch_all(&mut *hold)
+        .await
+        .unwrap();
     let (url_a, url_b) = (
         format!("/admin/org-units/{a}"),
         format!("/admin/org-units/{b}"),
     );
-    let (one, other) = tokio::join!(
+    let (one, other, ()) = tokio::join!(
         paul.patch(&url_a, json!({ "parentId": b })),
         paul.patch(&url_b, json!({ "parentId": a })),
+        async {
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            hold.commit().await.unwrap();
+        },
     );
     let mut statuses = [one.status, other.status];
     statuses.sort();
@@ -145,4 +164,49 @@ async fn crossed_revocations_leave_an_administrator() {
     let crossed = update_user(&services.db, &from_second, user::PAUL, disable()).await;
     assert_eq!(code_of(crossed), ErrorCode::Forbidden);
     assert_eq!(paul.get("/auth/me").await.status, StatusCode::OK);
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn deleting_a_unit_waits_for_what_is_being_written_into_it() {
+    let api = TestApi::start().await;
+    let services = &api.app.services;
+    let paul = api.sign_in(user::PAUL).await;
+    let id = new_team(&paul, "Équipe éphémère").await;
+
+    // A run writes a team memory into the unit; it commits during the deletion.
+    let mut writing = services.db.begin(tenant::ID).await.unwrap();
+    let memory = create_memory(
+        &mut writing,
+        NewMemory {
+            tenant_id: tenant::ID,
+            scope: MemoryScope::OrgUnit,
+            owner_user_id: None,
+            org_unit_id: Some(id),
+            kind: MemoryKind::Lesson,
+            title: "Accès au chantier".into(),
+            content: "Prévenir le gardien la veille.".into(),
+            sensitivity: Sensitivity::Internal,
+            status: MemoryStatus::Active,
+            source: MemorySource::manual(None),
+            created_by_user_id: Some(user::PAUL),
+            created_by_run_id: None,
+        },
+    )
+    .await
+    .unwrap();
+    let url = format!("/admin/org-units/{id}");
+    let (deleted, ()) = tokio::join!(paul.delete(&url), async {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        writing.commit().await.unwrap();
+    });
+    assert_eq!(deleted.status, StatusCode::CONFLICT, "{}", deleted.text());
+
+    let mut check = services.db.begin(tenant::ID).await.unwrap();
+    let kept: i64 = sqlx::query_scalar("select count(*) from memory_items where id = $1")
+        .bind(memory)
+        .fetch_one(&mut *check)
+        .await
+        .unwrap();
+    assert_eq!(kept, 1, "the memory is not dropped by a cascade");
 }
