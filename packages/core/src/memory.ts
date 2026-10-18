@@ -11,7 +11,8 @@
  * `memory:write` on that scope. Personal memory is never shared through the
  * hierarchy: a manager cannot read a collaborator's personal memory.
  */
-import type { Actor, AuthorizationEngine, Subject } from './authz/engine';
+import type { AuthorizationEngine } from './authz/engine';
+import type { Actor, Subject } from './authz/types';
 import type { OrgTree } from './authz/org-tree';
 
 export const MEMORY_SCOPES = ['user', 'org_unit', 'tenant', 'experience'] as const;

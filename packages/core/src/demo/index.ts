@@ -1,14 +1,17 @@
-import { AuthorizationEngine, type Subject } from '../authz/engine';
+import { AuthorizationEngine } from '../authz/engine';
+import type { Subject } from '../authz/types';
 import { OrgTree } from '../authz/org-tree';
-import {
-  DEMO_ORG_UNITS,
-  DEMO_POLICIES,
-  DEMO_ROLE_DEFINITIONS,
-  DEMO_TENANT,
-  DEMO_USER_LIST,
-} from './organization';
+import { DEMO_TENANT } from './ids';
+import { DEMO_ORG_UNITS } from './org-units';
+import { DEMO_POLICIES } from './policies';
+import { DEMO_ROLE_DEFINITIONS } from './roles';
+import { DEMO_USER_LIST } from './users';
 
-export * from './organization';
+export * from './ids';
+export * from './org-units';
+export * from './roles';
+export * from './users';
+export * from './policies';
 
 export function demoOrgTree(): OrgTree {
   return new OrgTree(DEMO_ORG_UNITS);

@@ -6,7 +6,7 @@
  */
 import type { z } from 'zod';
 import type { ToolRisk } from './autonomy';
-import type { Actor, DataScope, Decision, ResourceRef, Subject } from './authz/engine';
+import type { Actor, DataScope, Decision, ResourceRef, Subject } from './authz/types';
 import type { Permission } from './authz/permissions';
 
 /** LLM providers accept `^[a-zA-Z0-9_-]{1,64}$`; we use `<namespace>_<action>`. */

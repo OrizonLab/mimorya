@@ -3,6 +3,7 @@ export * from './authz/permissions';
 export * from './authz/sensitivity';
 export * from './authz/conditions';
 export * from './authz/org-tree';
+export * from './authz/types';
 export * from './authz/engine';
 export * from './autonomy';
 export * from './tools';

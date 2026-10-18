@@ -7,7 +7,8 @@ import {
   demoAuthorizationEngine,
   demoSubject,
 } from '../demo';
-import { scopeIncludes, type ResourceRef, type Subject } from './engine';
+import { scopeIncludes } from './engine';
+import type { ResourceRef, Subject } from './types';
 
 const engine = demoAuthorizationEngine();
 
