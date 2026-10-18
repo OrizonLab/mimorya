@@ -2,6 +2,7 @@
 //! lifecycle. No business rule lives here.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::Router;
 use axum::extract::DefaultBodyLimit;
@@ -24,6 +25,9 @@ use crate::services::{AccessService, ConnectorService, RunEventBus, RunService};
 
 const BODY_LIMIT_BYTES: usize = 1_000_000;
 const GLOBAL_RATE_LIMIT_PER_MINUTE: u32 = 600;
+/// Failed logins allowed per account before it is throttled for the window.
+const FAILED_LOGINS_PER_ACCOUNT: u32 = 10;
+const FAILED_LOGIN_WINDOW: Duration = Duration::from_secs(15 * 60);
 
 pub struct Services {
     pub config: AppConfig,
@@ -81,6 +85,7 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
     let limits = RateLimits {
         global: RateLimiter::per_minute(GLOBAL_RATE_LIMIT_PER_MINUTE),
         login: RateLimiter::per_minute(config.login_rate_limit_per_minute),
+        failed_logins: RateLimiter::new(FAILED_LOGINS_PER_ACCOUNT, FAILED_LOGIN_WINDOW),
     };
     let services = Arc::new(Services {
         runs: RunService::new(db.clone(), access.clone(), executor),

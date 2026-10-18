@@ -2,10 +2,11 @@
 //! test database is dropped and recreated by `reset_test_database()`.
 
 use std::str::FromStr;
+use std::time::Duration;
 
 use serde_json::json;
 use sqlx::postgres::PgConnectOptions;
-use sqlx::{ConnectOptions, Connection};
+use sqlx::{ConnectOptions, Connection, PgConnection};
 use uuid::Uuid;
 
 use crate::client::{Database, PoolOptions};
@@ -40,6 +41,28 @@ pub fn test_database_urls() -> TestDatabaseUrls {
     }
 }
 
+/// How long to wait for the sessions of a previous test binary to end.
+const DROP_ATTEMPTS: u32 = 100;
+const DROP_RETRY_DELAY: Duration = Duration::from_millis(100);
+
+/// Drops the test database. `WITH (FORCE)` cannot terminate the sessions of
+/// another role unless the owner is a superuser (or has `pg_signal_backend`):
+/// the sessions a finished test binary left behind are then waited for.
+async fn drop_database(conn: &mut PgConnection, database: &str) -> anyhow::Result<()> {
+    let statement = format!("drop database if exists \"{database}\" with (force)");
+    let mut attempt = 1;
+    loop {
+        match sqlx::query(&statement).execute(&mut *conn).await {
+            Ok(_) => return Ok(()),
+            Err(_) if attempt < DROP_ATTEMPTS => {
+                attempt += 1;
+                tokio::time::sleep(DROP_RETRY_DELAY).await;
+            }
+            Err(error) => return Err(error.into()),
+        }
+    }
+}
+
 /// A second, unrelated tenant used by isolation tests.
 pub const OTHER_TENANT_ID: Uuid = Uuid::from_u128(0x0000_0000_0000_4000_8000_0000_000f_0001);
 pub const OTHER_USER_ID: Uuid = Uuid::from_u128(0x0000_0000_0000_4000_8000_0000_000f_0002);
@@ -50,12 +73,7 @@ pub async fn reset_test_database(
     let urls = test_database_urls();
     let admin = PgConnectOptions::from_str(&urls.owner)?.database("postgres");
     let mut conn = admin.connect().await?;
-    sqlx::query(&format!(
-        "drop database if exists \"{}\" with (force)",
-        urls.database
-    ))
-    .execute(&mut conn)
-    .await?;
+    drop_database(&mut conn, &urls.database).await?;
     sqlx::query(&format!("create database \"{}\"", urls.database))
         .execute(&mut conn)
         .await?;

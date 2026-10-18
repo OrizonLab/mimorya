@@ -172,3 +172,60 @@ async fn runs_a_turn_pauses_for_validation_and_resumes_after_the_decision() {
     let from_query = marc.get(&format!("{run_url}/events?after=1000")).await;
     assert_eq!(from_query.text(), "");
 }
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn opens_a_single_turn_when_two_messages_arrive_together() {
+    let api = TestApi::start().await;
+    api.script(vec![ScriptedStep::text("Bien reçu.")]);
+    let marc = api.sign_in(user::MARC).await;
+    let conversation = marc.post("/conversations", json!({})).await.json();
+    let id = conversation["conversation"]["id"].as_str().unwrap();
+    let url = format!("/conversations/{id}/messages");
+    let (first, second) = tokio::join!(
+        marc.post(&url, json!({ "content": "Première demande" })),
+        marc.post(&url, json!({ "content": "Seconde demande" })),
+    );
+    let mut statuses = [first.status, second.status];
+    statuses.sort();
+    assert_eq!(statuses, [StatusCode::ACCEPTED, StatusCode::CONFLICT]);
+    api.idle().await;
+
+    let thread = marc.get(&format!("/conversations/{id}")).await.json();
+    assert_eq!(thread["messages"].as_array().unwrap().len(), 2);
+    assert_eq!(thread["runs"].as_array().unwrap().len(), 1);
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn keeps_other_users_out_of_a_conversation() {
+    let api = TestApi::start().await;
+    let marc = api.sign_in(user::MARC).await;
+    let julien = api.sign_in(user::JULIEN).await;
+    let conversation = marc.post("/conversations", json!({})).await.json();
+    let id = conversation["conversation"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let url = format!("/conversations/{id}");
+
+    let rename = julien.patch(&url, json!({ "title": "Détourné" })).await;
+    assert_eq!(rename.status, StatusCode::NOT_FOUND);
+    let message = julien
+        .post(&format!("{url}/messages"), json!({ "content": "Bonjour" }))
+        .await;
+    assert_eq!(message.status, StatusCode::NOT_FOUND);
+
+    let renamed = marc.patch(&url, json!({ "title": "  Suivi Nord  " })).await;
+    assert_eq!(renamed.status, StatusCode::OK);
+    assert_eq!(
+        marc.get(&url).await.json()["conversation"]["title"],
+        "Suivi Nord"
+    );
+    assert_eq!(
+        marc.patch(&url, json!({ "archived": true })).await.status,
+        StatusCode::OK
+    );
+    let listed = marc.get("/conversations").await.json();
+    assert!(!ids(&listed, "conversations").contains(&id));
+}

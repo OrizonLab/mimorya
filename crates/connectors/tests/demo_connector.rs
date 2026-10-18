@@ -7,6 +7,7 @@ use std::collections::HashSet;
 use mimorya_agent::tools::ToolCallEvaluation;
 use mimorya_connectors::demo_interventions::dates::monday_of;
 use mimorya_core::demo::user;
+use mimorya_core::tools::DeliverableInput;
 use serde_json::json;
 use support::{ConnectorHarness, executor, ids, reference, week};
 
@@ -207,5 +208,56 @@ async fn requires_approval_to_apply_a_planning_then_updates_availability() {
             .status
             .as_str(),
         "applied"
+    );
+}
+
+#[tokio::test]
+async fn refuses_to_apply_slots_outside_the_planning_apply_scope() {
+    let julien = ConnectorHarness::new(user::JULIEN);
+    // A proposal reaching beyond Julien's team, as a broader propose scope
+    // (or a forged deliverable) could produce.
+    let proposal = julien
+        .ports
+        .ports()
+        .deliverables
+        .create(DeliverableInput {
+            kind: "planning_proposal".into(),
+            title: "Suivi".into(),
+            content: json!({
+                "items": [
+                    slot("INT-2043", user::LUCAS, "2026-10-20", "13:00", "Pose du circulateur"),
+                    slot("INT-2042", user::HUGO, "2026-10-20", "09:00", "Vanne"),
+                ],
+            }),
+            org_unit_id: None,
+        })
+        .await
+        .unwrap();
+    let tool = julien
+        .executor
+        .registry()
+        .get("planning_apply")
+        .unwrap()
+        .clone();
+    let (result, _) = julien
+        .executor
+        .execute(&tool, json!({ "proposalId": proposal.id.to_string() }))
+        .await;
+    assert!(result.is_error);
+    assert!(
+        result.content["erreur"]
+            .as_str()
+            .unwrap()
+            .contains("INT-2042")
+    );
+    assert!(julien.store.applied().is_empty());
+    assert_eq!(
+        julien
+            .ports
+            .deliverable(proposal.id)
+            .unwrap()
+            .status
+            .as_str(),
+        "draft"
     );
 }

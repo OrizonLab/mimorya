@@ -8,4 +8,4 @@ pub mod untrusted;
 
 pub use executor::{ToolCallEvaluation, ToolExecutor};
 pub use registry::{RegisteredTool, ToolOverride, ToolRegistry, to_tool_spec};
-pub use untrusted::{truncate, wrap_untrusted};
+pub use untrusted::wrap_untrusted;

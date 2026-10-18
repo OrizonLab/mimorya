@@ -143,24 +143,47 @@ pub struct RunPatch {
     pub finished_at: Option<DateTime<Utc>>,
 }
 
+const UPDATE_RUN: &str = "update agent_runs set status = coalesce($2, status), \
+    state = coalesce($3, state), usage = coalesce($4, usage), result = coalesce($5, result), \
+    verification = coalesce($6, verification), error = coalesce($7, error), \
+    finished_at = coalesce($8, finished_at), updated_at = now() where id = $1";
+
+fn bind_patch<'q>(
+    query: sqlx::query::Query<'q, sqlx::Postgres, sqlx::postgres::PgArguments>,
+    id: Uuid,
+    patch: RunPatch,
+) -> sqlx::query::Query<'q, sqlx::Postgres, sqlx::postgres::PgArguments> {
+    query
+        .bind(id)
+        .bind(patch.status.map(RunStatus::as_str))
+        .bind(patch.state)
+        .bind(patch.usage)
+        .bind(patch.result)
+        .bind(patch.verification)
+        .bind(patch.error)
+        .bind(patch.finished_at)
+}
+
 pub async fn update_run(conn: &mut PgConnection, id: Uuid, patch: RunPatch) -> sqlx::Result<()> {
-    sqlx::query(
-        "update agent_runs set status = coalesce($2, status), state = coalesce($3, state), \
-         usage = coalesce($4, usage), result = coalesce($5, result), \
-         verification = coalesce($6, verification), error = coalesce($7, error), \
-         finished_at = coalesce($8, finished_at), updated_at = now() where id = $1",
-    )
-    .bind(id)
-    .bind(patch.status.map(RunStatus::as_str))
-    .bind(patch.state)
-    .bind(patch.usage)
-    .bind(patch.result)
-    .bind(patch.verification)
-    .bind(patch.error)
-    .bind(patch.finished_at)
-    .execute(conn)
-    .await?;
+    bind_patch(sqlx::query(UPDATE_RUN), id, patch)
+        .execute(conn)
+        .await?;
     Ok(())
+}
+
+/// Same as `update_run`, only while the run has not finished: a finished run
+/// (completed, failed by the stale-run sweeper, cancelled) is never rewritten.
+/// Returns whether the run was updated.
+pub async fn update_active_run(
+    conn: &mut PgConnection,
+    id: Uuid,
+    patch: RunPatch,
+) -> sqlx::Result<bool> {
+    let sql = format!("{UPDATE_RUN} and status in ('queued', 'running', 'awaiting_approval')");
+    let result = bind_patch(sqlx::query(&sql), id, patch)
+        .execute(conn)
+        .await?;
+    Ok(result.rows_affected() > 0)
 }
 
 pub async fn list_runs_for_conversation(

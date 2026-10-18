@@ -9,7 +9,7 @@ use mimorya_db::TenantTx;
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::conversations::{
     ConversationPatch, DEFAULT_CONVERSATION_TITLE, MessageRow, NewMessage, add_message,
-    get_conversation, list_messages, update_conversation,
+    list_messages, lock_conversation, update_conversation,
 };
 use mimorya_db::repositories::runs::{
     NewRun, RunRow, RunStatus, create_run, list_runs_for_conversation,
@@ -35,7 +35,8 @@ pub async fn open_conversation_turn(
     text: &str,
     autonomy: AutonomyLevel,
 ) -> anyhow::Result<OpenedTurn> {
-    let conversation = get_conversation(tx, conversation_id)
+    // Locked: a concurrent turn waits here, then sees the run opened by this one.
+    let conversation = lock_conversation(tx, conversation_id)
         .await?
         .filter(|c| c.owner_user_id == identity.user_id)
         .ok_or_else(|| DomainError::not_found("Conversation introuvable"))?;

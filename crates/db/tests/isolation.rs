@@ -133,6 +133,22 @@ async fn keeps_the_audit_log_append_only() {
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
+async fn cannot_erase_audit_entries_through_their_references() {
+    let db = app().await;
+    for table in ["tenants", "users", "agent_runs"] {
+        let mut tx = db.begin(tenant::ID).await.unwrap();
+        let delete = sqlx::query(&format!("delete from {table}"))
+            .execute(&mut *tx)
+            .await;
+        assert!(
+            support::db_error(delete).contains("permission denied"),
+            "{table}"
+        );
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
 async fn protects_every_tenant_scoped_table_with_rls_and_a_policy() {
     let db = app().await;
     let rows: Vec<(String, bool, i64)> = sqlx::query_as(

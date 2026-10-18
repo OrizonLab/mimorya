@@ -59,6 +59,22 @@ fn login_audit(
     entry
 }
 
+/// Written off the response path, so that response time does not depend on
+/// whether the account exists.
+fn record_in_background(state: AppState, entry: AuditEntry) {
+    tokio::spawn(async move {
+        let tenant_id = entry.tenant_id;
+        let written = async {
+            let mut tx = state.db.begin(tenant_id).await?;
+            append_audit(&mut tx, entry).await?;
+            tx.commit().await
+        };
+        if let Err(error) = written.await {
+            tracing::warn!(error = %error, "Failed to audit a denied login");
+        }
+    });
+}
+
 async fn login(
     State(state): State<AppState>,
     context: RequestContext,
@@ -69,6 +85,10 @@ async fn login(
         return Err(ApiError::RateLimited);
     }
     let email = body.email.to_lowercase();
+    // Same treatment for unknown and existing accounts: nothing reveals which exist.
+    if state.limits.failed_logins.exhausted(&email) {
+        return Err(ApiError::RateLimited);
+    }
     let login = find_login(state.db.pool(), &email).await?;
     let valid = verify_password_async(
         login.as_ref().and_then(|l| l.password_hash.clone()),
@@ -80,19 +100,16 @@ async fn login(
             login
         }
         other => {
+            state.limits.failed_logins.record(&email);
             if let Some(login) = other {
                 let reason = if valid {
                     "Compte ou entreprise inactif"
                 } else {
                     "Mot de passe invalide"
                 };
-                let mut tx = state.db.begin(login.tenant_id).await?;
-                append_audit(
-                    &mut tx,
-                    login_audit(login.tenant_id, login.user_id, "denied", &context).reason(reason),
-                )
-                .await?;
-                tx.commit().await?;
+                let entry =
+                    login_audit(login.tenant_id, login.user_id, "denied", &context).reason(reason);
+                record_in_background(state.clone(), entry);
             }
             return Err(DomainError::unauthenticated(INVALID_CREDENTIALS).into());
         }

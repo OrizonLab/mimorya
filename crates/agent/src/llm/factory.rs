@@ -17,13 +17,25 @@ pub const PROVIDER_KINDS: [&str; 6] = [
     "openai_compatible",
 ];
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct ProviderConfig {
     /// One of `PROVIDER_KINDS`.
     pub kind: String,
     pub model: Option<String>,
     pub api_key: Option<String>,
     pub base_url: Option<String>,
+}
+
+/// The API key never appears in debug output (logs, panics).
+impl std::fmt::Debug for ProviderConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ProviderConfig")
+            .field("kind", &self.kind)
+            .field("model", &self.model)
+            .field("api_key", &self.api_key.as_ref().map(|_| "<redacted>"))
+            .field("base_url", &self.base_url)
+            .finish()
+    }
 }
 
 fn default_endpoint(kind: &str) -> Option<&'static str> {

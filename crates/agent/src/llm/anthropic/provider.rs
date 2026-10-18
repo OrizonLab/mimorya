@@ -22,7 +22,8 @@ use crate::llm::types::{LlmError, LlmProvider, LlmRequest, LlmResponse};
 
 pub const DEFAULT_BASE_URL: &str = "https://api.anthropic.com";
 
-#[derive(Debug, Clone, Default)]
+/// No `Debug`: it would print the API key.
+#[derive(Clone, Default)]
 pub struct AnthropicOptions {
     /// Defaults to `ANTHROPIC_API_KEY`.
     pub api_key: Option<String>,

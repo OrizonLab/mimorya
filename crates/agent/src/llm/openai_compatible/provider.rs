@@ -14,7 +14,8 @@ use crate::llm::types::{LlmError, LlmProvider, LlmRequest, LlmResponse, LlmToolC
 
 pub const OPENAI_BASE_URL: &str = "https://api.openai.com/v1";
 
-#[derive(Debug, Clone)]
+/// No `Debug`: it would print the API key.
+#[derive(Clone)]
 pub struct OpenAiCompatibleOptions {
     /// Identifier used in usage records, e.g. "openai", "openrouter", "ollama".
     pub id: String,

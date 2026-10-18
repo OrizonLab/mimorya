@@ -31,8 +31,9 @@ impl RequestContext {
     }
 }
 
-/// With one trusted relay in front (the web server), the client is the last
-/// address appended to `X-Forwarded-For`; earlier entries are client-supplied.
+/// Behind a trusted reverse proxy (`TRUST_PROXY`), the client is the last
+/// address the proxy appended to `X-Forwarded-For`; earlier entries are
+/// client-supplied. Otherwise the header is ignored: anyone can send it.
 fn client_ip(request: &Request, trust_proxy: bool) -> Option<IpAddr> {
     let forwarded = trust_proxy
         .then(|| request.headers().get("x-forwarded-for"))

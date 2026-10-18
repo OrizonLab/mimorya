@@ -10,7 +10,8 @@ use super::ports::{
 };
 use super::state::{PendingApproval, RunCheckpoint};
 use crate::llm::{LlmMessage, LlmToolCall, LlmToolResult};
-use crate::tools::{RegisteredTool, ToolCallEvaluation, ToolExecutor, truncate, wrap_untrusted};
+use crate::tools::executor::INVALID_INPUT;
+use crate::tools::{RegisteredTool, ToolCallEvaluation, ToolExecutor, wrap_untrusted};
 
 #[derive(Debug, Default)]
 pub struct TurnToolResults {
@@ -164,7 +165,7 @@ impl ToolCallProcessor {
             .await?;
         Ok(LlmToolResult {
             tool_call_id: tool_call_id.into(),
-            content: truncate(wrap_untrusted(name, &result.content)),
+            content: wrap_untrusted(name, &result.content),
             is_error: result.is_error,
         })
     }
@@ -220,7 +221,7 @@ impl ToolCallProcessor {
                 outcome: "denied",
                 resource_type: Some("tool".into()),
                 resource_id: Some(call.name.clone()),
-                reason: Some(reason.clone()),
+                reason: Some(audit_reason(&reason)),
                 metadata: json!({}),
             })
             .await?;
@@ -322,4 +323,14 @@ fn error_text(content: &Value, summary: &str) -> String {
     content["erreur"]
         .as_str()
         .map_or_else(|| summary.to_string(), str::to_string)
+}
+
+/// The audit keeps why a call was refused, never the input it carried
+/// (validation messages may quote it); the tool log keeps the detail.
+fn audit_reason(reason: &str) -> String {
+    if reason.starts_with(INVALID_INPUT) {
+        INVALID_INPUT.to_string()
+    } else {
+        reason.to_string()
+    }
 }

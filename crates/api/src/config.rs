@@ -24,8 +24,9 @@ pub struct AppConfig {
     /// Public origin of the web application, compared with the `Origin` header.
     pub web_origin: String,
     pub secure_cookies: bool,
-    /// The API sits behind the web relay: the client address is read from
-    /// `X-Forwarded-For`. Disable when the API is exposed directly.
+    /// A trusted reverse proxy appends the client address to `X-Forwarded-For`
+    /// (the web relay alone does not: it forwards the client's header as is).
+    /// Off by default: the client address is then the TCP peer.
     pub trust_proxy: bool,
     pub assistant_name: String,
     pub llm: Option<ProviderConfig>,
@@ -75,7 +76,7 @@ impl AppConfig {
         };
         let secure_cookies =
             reader.boolean("SESSION_SECURE_COOKIE", env == Environment::Production);
-        let trust_proxy = reader.boolean("TRUST_PROXY", true);
+        let trust_proxy = reader.boolean("TRUST_PROXY", false);
         let assistant_name = reader
             .value("MIMORYA_ASSISTANT_NAME")
             .unwrap_or_else(|| "Mimorya".to_string());

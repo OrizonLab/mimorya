@@ -15,6 +15,8 @@ use super::registry::{RegisteredTool, ToolRegistry};
 use crate::llm::LlmToolCall;
 
 const MAX_REPORTED_ISSUES: usize = 5;
+/// Prefix of the refusal of a call whose input failed validation.
+pub const INVALID_INPUT: &str = "Paramètres invalides";
 
 pub enum ToolCallEvaluation {
     Allow {
@@ -102,7 +104,7 @@ impl ToolExecutor {
                 let issues: Vec<String> = issues.into_iter().take(MAX_REPORTED_ISSUES).collect();
                 return ToolCallEvaluation::Deny {
                     tool: Some(tool),
-                    reason: format!("Paramètres invalides — {}", issues.join(" ; ")),
+                    reason: format!("{INVALID_INPUT} — {}", issues.join(" ; ")),
                 };
             }
         };

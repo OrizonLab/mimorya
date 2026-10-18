@@ -4,13 +4,16 @@
 //! session cookie.
 #![allow(dead_code)] // not every test binary uses every helper
 
+mod client;
 pub mod planning;
+
+pub use client::{Client, TestResponse};
 
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};
 
-use axum::body::{Body, Bytes, to_bytes};
-use axum::http::{HeaderMap, Method, Request, StatusCode};
+use axum::body::{Body, to_bytes};
+use axum::http::{Request, StatusCode};
 use chrono::{Days, Utc};
 use mimorya_agent::llm::LlmProvider;
 use mimorya_agent::testing::{ScriptedProvider, ScriptedStep};
@@ -62,34 +65,6 @@ pub fn next_monday() -> String {
     iso_date(monday_of(Utc::now().date_naive()) + Days::new(7))
 }
 
-pub struct TestResponse {
-    pub status: StatusCode,
-    pub headers: HeaderMap,
-    pub body: Bytes,
-}
-
-impl TestResponse {
-    pub fn json(&self) -> Value {
-        serde_json::from_slice(&self.body).unwrap_or_else(|_| {
-            panic!(
-                "JSON body expected, got {:?}",
-                String::from_utf8_lossy(&self.body)
-            )
-        })
-    }
-
-    pub fn text(&self) -> String {
-        String::from_utf8_lossy(&self.body).into_owned()
-    }
-
-    pub fn error_message(&self) -> String {
-        self.json()["error"]["message"]
-            .as_str()
-            .unwrap_or_default()
-            .to_string()
-    }
-}
-
 pub struct TestApi {
     pub app: App,
     /// The scripted model, when the app has one.
@@ -99,21 +74,27 @@ pub struct TestApi {
 impl TestApi {
     /// App backed by the scripted model; queue its answers with `script`.
     pub async fn start() -> Self {
+        Self::start_with(&[]).await
+    }
+
+    /// Same, with configuration variables overridden.
+    pub async fn start_with(env: &[(&str, &str)]) -> Self {
         let model = Arc::new(ScriptedProvider::new(Vec::new()));
         let provider: Arc<dyn LlmProvider> = model.clone();
-        Self::build(Some(provider), Some(model)).await
+        Self::build(Some(provider), Some(model), env).await
     }
 
     /// App without any model provider configured.
     pub async fn without_llm() -> Self {
-        Self::build(None, None).await
+        Self::build(None, None, &[]).await
     }
 
     async fn build(
         provider: Option<Arc<dyn LlmProvider>>,
         model: Option<Arc<ScriptedProvider>>,
+        env: &[(&str, &str)],
     ) -> Self {
-        let vars: HashMap<&str, String> = HashMap::from([
+        let mut vars: HashMap<&str, String> = HashMap::from([
             ("MIMORYA_ENV", "test".to_string()),
             ("LOG_LEVEL", "off".to_string()),
             ("DATABASE_APP_URL", urls().app.clone()),
@@ -121,6 +102,7 @@ impl TestApi {
             ("LLM_PROVIDER", "none".to_string()),
             ("LOGIN_RATE_LIMIT_PER_MINUTE", "1000".to_string()),
         ]);
+        vars.extend(env.iter().map(|(k, v)| (*k, (*v).to_string())));
         let config = AppConfig::from_vars(|key| vars.get(key).cloned()).expect("config");
         let options = BuildOptions {
             provider: Some(provider),
@@ -159,15 +141,26 @@ impl TestApi {
     }
 
     pub async fn try_login(&self, email: &str, password: &str) -> TestResponse {
-        let request = Request::post("/auth/login")
+        self.try_login_from(email, password, None).await
+    }
+
+    /// A login claiming to come from `forwarded_for` (`X-Forwarded-For`).
+    pub async fn try_login_from(
+        &self,
+        email: &str,
+        password: &str,
+        forwarded_for: Option<&str>,
+    ) -> TestResponse {
+        let mut builder = Request::post("/auth/login")
             .header("x-mimorya-request", "1")
             .header("origin", WEB_ORIGIN)
-            .header("content-type", "application/json")
-            .body(Body::from(
-                json!({ "email": email, "password": password }).to_string(),
-            ))
-            .unwrap();
-        self.send(request).await
+            .header("content-type", "application/json");
+        if let Some(address) = forwarded_for {
+            builder = builder.header("x-forwarded-for", address);
+        }
+        let payload = json!({ "email": email, "password": password });
+        self.send(builder.body(Body::from(payload.to_string())).unwrap())
+            .await
     }
 
     /// Signs in as a demo user and returns the session token.
@@ -184,63 +177,11 @@ impl TestApi {
     }
 
     pub fn as_user(&self, session: &str) -> Client<'_> {
-        Client {
-            api: self,
-            session: session.to_string(),
-        }
+        Client::new(self, session)
     }
 
     pub async fn sign_in(&self, user_id: Uuid) -> Client<'_> {
         let session = self.login(user_id).await;
         self.as_user(&session)
-    }
-}
-
-pub struct Client<'a> {
-    api: &'a TestApi,
-    pub session: String,
-}
-
-impl Client<'_> {
-    fn request(&self, method: Method, url: &str) -> axum::http::request::Builder {
-        let builder = Request::builder()
-            .method(method.clone())
-            .uri(url)
-            .header("cookie", format!("mimorya_session={}", self.session));
-        if method == Method::GET {
-            builder
-        } else {
-            builder.header("x-mimorya-request", "1")
-        }
-    }
-
-    pub async fn get(&self, url: &str) -> TestResponse {
-        let request = self.request(Method::GET, url).body(Body::empty()).unwrap();
-        self.api.send(request).await
-    }
-
-    pub async fn get_with(&self, url: &str, headers: &[(&str, &str)]) -> TestResponse {
-        let mut builder = self.request(Method::GET, url);
-        for (name, value) in headers {
-            builder = builder.header(*name, *value);
-        }
-        self.api.send(builder.body(Body::empty()).unwrap()).await
-    }
-
-    pub async fn post(&self, url: &str, payload: Value) -> TestResponse {
-        let request = self
-            .request(Method::POST, url)
-            .header("content-type", "application/json")
-            .body(Body::from(payload.to_string()))
-            .unwrap();
-        self.api.send(request).await
-    }
-
-    pub async fn delete(&self, url: &str) -> TestResponse {
-        let request = self
-            .request(Method::DELETE, url)
-            .body(Body::empty())
-            .unwrap();
-        self.api.send(request).await
     }
 }

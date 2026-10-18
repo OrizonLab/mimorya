@@ -16,7 +16,7 @@ use mimorya_agent::runtime::{
 use mimorya_core::authz::Actor;
 use mimorya_core::autonomy::{AutonomyLevel, AutonomyPolicy};
 use mimorya_db::Database;
-use mimorya_db::repositories::runs::RunRow;
+use mimorya_db::repositories::runs::{RunRow, RunStatus};
 
 use super::context::{build_run_system_prompt, build_tool_registry, recall_memories};
 use super::db_ports::{RunScope, engine_ports};
@@ -66,12 +66,14 @@ impl RunExecutor {
             Err(_) => "panic".to_string(),
         };
         tracing::error!(run_id = %run.id, error, "Run crashed");
-        if let Err(error) = record_crash(&self.db, scope).await {
+        let status = record_crash(&self.db, scope).await.unwrap_or_else(|error| {
             tracing::error!(run_id = %run.id, error = format!("{error:#}"), "Failed to record run failure");
-        }
+            RunStatus::Failed
+        });
+        // Clients following the run learn how it ended, whatever the path.
         let finished = RunEvent::RunFinished {
-            status: "failed".into(),
-            error: Some("Erreur interne".into()),
+            status: status.as_str().into(),
+            error: (status == RunStatus::Failed).then(|| "Erreur interne".into()),
         };
         if let Err(error) = ports.events.emit(finished).await {
             tracing::warn!(run_id = %run.id, error = format!("{error:#}"), "Failed to announce run failure");

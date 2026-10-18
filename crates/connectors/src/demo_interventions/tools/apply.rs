@@ -1,5 +1,6 @@
 //! Tool `planning_apply`: applies a draft planning to the calendars (requires validation).
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -11,7 +12,9 @@ use serde_json::json;
 use uuid::Uuid;
 use validator::Validate;
 
+use crate::demo_interventions::access::can_read;
 use crate::demo_interventions::dates::parse_date;
+use crate::demo_interventions::directory::technicians_in_scope;
 use crate::demo_interventions::store::{DemoInterventionsStore, ScheduledSlot};
 
 pub struct PlanningApply {
@@ -39,6 +42,26 @@ struct StoredSlot {
 #[derive(Deserialize)]
 struct ProposalContent {
     items: Vec<StoredSlot>,
+}
+
+impl PlanningApply {
+    /// Interventions of the slots the subject may not apply.
+    fn out_of_scope(&self, items: &[StoredSlot], ctx: &ToolContext) -> Vec<String> {
+        let technicians: HashSet<Uuid> = technicians_in_scope(&ctx.authz.scope("planning:apply"))
+            .into_iter()
+            .collect();
+        items
+            .iter()
+            .filter(|item| {
+                let readable = self
+                    .store
+                    .find(&item.intervention_id)
+                    .is_some_and(|i| can_read(ctx, i));
+                !readable || !technicians.contains(&item.technician_id)
+            })
+            .map(|item| item.intervention_id.clone())
+            .collect()
+    }
 }
 
 #[async_trait]
@@ -83,6 +106,15 @@ impl TypedTool for PlanningApply {
             )));
         }
         let content: ProposalContent = serde_json::from_value(proposal.content)?;
+        // The proposal was checked against the propose scope; applying it must
+        // fit the (possibly narrower) apply scope, slot by slot.
+        let out_of_scope = self.out_of_scope(&content.items, ctx);
+        if !out_of_scope.is_empty() {
+            return Ok(ToolResult::error(format!(
+                "Proposition hors de votre périmètre d’application ({}) : rien n’a été appliqué",
+                out_of_scope.join(", ")
+            )));
+        }
         let count = content.items.len();
         let slots = content
             .items

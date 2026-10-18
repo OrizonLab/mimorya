@@ -48,14 +48,27 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
 ## 4. Authentification et sessions
 
 - MVP : e-mail + mot de passe haché **Argon2id** ; messages d'erreur identiques
-  (compte inconnu / mauvais mot de passe) et vérification à temps constant.
+  (compte inconnu / mauvais mot de passe), vérification contre une empreinte factice
+  pour un compte inconnu et journalisation des échecs hors du chemin de réponse : la
+  durée de réponse ne révèle pas l'existence d'un compte.
 - Jetons de session **opaques** (256 bits aléatoires), seule leur empreinte SHA-256 est
   stockée ; cookie `HttpOnly`, `Secure` (hors développement), `SameSite=Lax` ; durée
   glissante (défaut 12 h), absolue (7 jours), révocation à la déconnexion et à la
   désactivation du compte.
 - Protection CSRF : `SameSite=Lax` + exigence d'un en-tête personnalisé sur toutes les
   requêtes modifiantes + vérification d'`Origin`.
-- Limitation de débit sur la connexion (par IP et par compte).
+- Limitation de débit sur la connexion :
+  - **par compte** : 10 échecs par quart d'heure et par adresse e-mail, comptes
+    inconnus compris (rien ne distingue un compte existant) ; non contournable en
+    changeant d'adresse ;
+  - **par adresse cliente** (`LOGIN_RATE_LIMIT_PER_MINUTE`, 10 par défaut), en plus
+    d'une limite globale de 600 requêtes par minute et par adresse.
+- Adresse cliente : par défaut, l'adresse TCP de l'appelant (`TRUST_PROXY=false`).
+  Derrière le seul relais web, tous les utilisateurs partagent l'adresse du serveur
+  Next.js, qui transmet tel quel un `X-Forwarded-For` fourni par le client. En
+  production, un reverse proxy de confiance (TLS) **ajoute** l'adresse du client à
+  `X-Forwarded-For` ; avec `TRUST_PROXY=true`, l'API retient alors la dernière entrée
+  de cet en-tête.
 - Phase 2 : **SSO OIDC** (Microsoft Entra ID, Google Workspace, Keycloak…),
   provisionnement SCIM (phase 3), MFA déléguée à l'IdP ; MFA TOTP locale si besoin.
 
@@ -96,8 +109,10 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   maître fournie par l'environnement (`MIMORYA_MASTER_KEY`, 32 octets base64) ou un
   KMS (phase 3) ; `key_version` permet la rotation.
 - Jamais renvoyés par l'API, jamais injectés dans le contexte du modèle, jamais
-  journalisés (rédaction centralisée des champs `password`, `token`, `secret`,
-  `authorization`, `cookie`, `api_key`).
+  journalisés : les journaux de requêtes ne contiennent ni en-têtes ni corps (seuls
+  méthode, chemin, statut, durée et identifiant de requête), et les structures qui
+  portent une clé (`ProviderConfig`, options des fournisseurs) n'affichent jamais sa
+  valeur en débogage. Le journal d'audit ne recopie jamais une entrée refusée.
 - Clés LLM et clé maître : variables d'environnement / gestionnaire de secrets ; jamais
   committées (`.env` ignoré, `.env.example` sans valeur réelle).
 
@@ -127,9 +142,8 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
 - Validation de toutes les entrées (serde + validator, messages en français) ; requêtes SQL
   paramétrées (sqlx) ; aucun `unsafe` (`unsafe_code = "forbid"` sur tout l'espace de travail).
 - En-têtes de sécurité (CSP, HSTS, `X-Content-Type-Options`, `Referrer-Policy`).
-- Limitation de débit globale et par route sensible (connexion), par adresse cliente :
-  derrière le relais web, la dernière entrée de `X-Forwarded-For` (`TRUST_PROXY=false`
-  si l'API est exposée directement).
+- Limitation de débit globale et par route sensible (connexion, par adresse et par
+  compte), voir §4 pour la détermination de l'adresse cliente.
 - Dépendances verrouillées (`Cargo.lock`, `pnpm-lock.yaml`), audit des vulnérabilités en CI
   (phase 2), revue des licences (MIT/Apache/BSD privilégiées, AGPL exclue).
 - Sauvegardes chiffrées, restauration testée périodiquement (phase 3).

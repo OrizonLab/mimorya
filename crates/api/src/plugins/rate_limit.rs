@@ -1,6 +1,6 @@
-//! Fixed-window rate limiting per client address, in memory (single
-//! instance, like the event bus). A global limit protects every route; the
-//! login route has its own, stricter one.
+//! Fixed-window rate limiting, in memory (single instance, like the event
+//! bus). A global limit per client address protects every route; logins are
+//! also limited per address and, for failures, per account.
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -38,6 +38,26 @@ impl RateLimiter {
 
     /// Counts one request for `key`; `false` when the limit is reached.
     pub fn allow(&self, key: &str) -> bool {
+        self.with_window(key, |count, limit| {
+            if *count >= limit {
+                return false;
+            }
+            *count += 1;
+            true
+        })
+    }
+
+    /// Whether `key` already reached the limit in the current window (counts nothing).
+    pub fn exhausted(&self, key: &str) -> bool {
+        self.with_window(key, |count, limit| *count >= limit)
+    }
+
+    /// Counts one event for `key`, e.g. a failed login.
+    pub fn record(&self, key: &str) {
+        self.with_window(key, |count, _| *count += 1);
+    }
+
+    fn with_window<T>(&self, key: &str, apply: impl FnOnce(&mut u32, u32) -> T) -> T {
         let now = Instant::now();
         let mut windows = self.windows.lock().expect("rate limiter");
         if windows.len() > PURGE_THRESHOLD {
@@ -47,17 +67,18 @@ impl RateLimiter {
         if now.duration_since(entry.0) >= self.window {
             *entry = (now, 0);
         }
-        if entry.1 >= self.limit {
-            return false;
-        }
-        entry.1 += 1;
-        true
+        apply(&mut entry.1, self.limit)
     }
 }
 
 pub struct RateLimits {
+    /// Every request, per client address.
     pub global: RateLimiter,
+    /// Login attempts, per client address.
     pub login: RateLimiter,
+    /// Failed logins, per account (email): addresses can be shared or forged,
+    /// accounts cannot.
+    pub failed_logins: RateLimiter,
 }
 
 pub async fn global_rate_limit(
@@ -86,6 +107,16 @@ mod tests {
         assert!(limiter.allow("a"));
         assert!(!limiter.allow("a"));
         assert!(limiter.allow("b"));
+    }
+
+    #[test]
+    fn counts_events_without_consuming_checks() {
+        let limiter = RateLimiter::new(2, Duration::from_secs(60));
+        assert!(!limiter.exhausted("a"));
+        limiter.record("a");
+        limiter.record("a");
+        assert!(limiter.exhausted("a"));
+        assert!(!limiter.exhausted("b"));
     }
 
     #[test]

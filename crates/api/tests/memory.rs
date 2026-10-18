@@ -3,7 +3,10 @@
 mod support;
 
 use axum::http::StatusCode;
-use mimorya_core::demo::user;
+use mimorya_core::authz::Sensitivity;
+use mimorya_core::demo::{tenant, unit, user};
+use mimorya_core::memory::{MemoryKind, MemoryScope, MemorySource, MemoryStatus};
+use mimorya_db::repositories::memory::{NewMemory, create_memory};
 use serde_json::{Value, json};
 use support::TestApi;
 
@@ -85,4 +88,64 @@ async fn writes_only_into_spaces_the_user_may_write() {
         )
         .await;
     assert_eq!(invalid.status, StatusCode::BAD_REQUEST);
+}
+
+/// A team memory proposed for the north team, as the agent records it.
+async fn propose_team_memory(api: &TestApi) -> String {
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    let id = create_memory(
+        &mut tx,
+        NewMemory {
+            tenant_id: tenant::ID,
+            scope: MemoryScope::OrgUnit,
+            owner_user_id: None,
+            org_unit_id: Some(unit::TEAM_NORTH),
+            kind: MemoryKind::Lesson,
+            title: "Accès au local technique".into(),
+            content: "Demander le badge au gardien la veille.".into(),
+            sensitivity: Sensitivity::Internal,
+            status: MemoryStatus::Proposed,
+            source: MemorySource::manual(None),
+            created_by_user_id: Some(user::LUCAS),
+            created_by_run_id: None,
+        },
+    )
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+    id.to_string()
+}
+
+fn status_of(listing: &Value, id: &str) -> Option<String> {
+    listing["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|i| i["id"] == id)
+        .map(|i| i["status"].as_str().unwrap().to_string())
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn shows_and_settles_proposals_only_for_those_who_may_write_the_space() {
+    let api = TestApi::start().await;
+    let id = propose_team_memory(&api).await;
+    let lucas = api.sign_in(user::LUCAS).await;
+    let julien = api.sign_in(user::JULIEN).await;
+    let review = format!("/memory/{id}/review");
+
+    assert_eq!(status_of(&lucas.get("/memory").await.json(), &id), None);
+    let refused = lucas.post(&review, json!({ "decision": "approve" })).await;
+    assert_eq!(refused.status, StatusCode::NOT_FOUND);
+
+    let listing = julien.get("/memory").await.json();
+    assert_eq!(status_of(&listing, &id).as_deref(), Some("proposed"));
+    let approved = julien.post(&review, json!({ "decision": "approve" })).await;
+    assert_eq!(approved.status, StatusCode::OK);
+    assert_eq!(
+        status_of(&lucas.get("/memory").await.json(), &id).as_deref(),
+        Some("active")
+    );
+    let again = julien.post(&review, json!({ "decision": "reject" })).await;
+    assert_eq!(again.status, StatusCode::NOT_FOUND);
 }

@@ -165,4 +165,12 @@ async fn rejects_invalid_tool_inputs_and_lets_the_model_correct_them() {
         .map(|r| r.status)
         .collect();
     assert_eq!(statuses, vec!["denied", "succeeded"]);
+    // The audit records the refusal without quoting the rejected input.
+    let denied = h
+        .ports
+        .audit_entries()
+        .into_iter()
+        .find(|e| e.action == "agent.tool.denied")
+        .unwrap();
+    assert_eq!(denied.reason.as_deref(), Some("Paramètres invalides"));
 }

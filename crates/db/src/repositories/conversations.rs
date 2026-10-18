@@ -81,6 +81,20 @@ pub async fn get_conversation(
     .await
 }
 
+/// Same as `get_conversation`, locking the row until the transaction ends:
+/// concurrent turns of one conversation are serialised.
+pub async fn lock_conversation(
+    conn: &mut PgConnection,
+    id: Uuid,
+) -> sqlx::Result<Option<ConversationRow>> {
+    sqlx::query_as(&format!(
+        "select {CONVERSATION_COLUMNS} from conversations where id = $1 for update"
+    ))
+    .bind(id)
+    .fetch_optional(conn)
+    .await
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct ConversationPatch {
     pub title: Option<String>,

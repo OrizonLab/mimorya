@@ -16,8 +16,8 @@ Dernière mise à jour : 2026-10-18 (serveur traduit en Rust, ADR-018).
 | Brique                                               | Statut | Détail                                                                                                                                                                                                                                                   |
 | ---------------------------------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Dépôt, outillage, CI                                 | ✅     | Serveur : espace de travail Cargo (rustfmt, clippy sans avertissement, tests unitaires et PostgreSQL) ; web : pnpm, TypeScript strict, ESLint, Prettier ; GitHub Actions (PostgreSQL + pgvector)                                                         |
-| Interface web                                        | ✅     | Next.js : connexion, conversations avec suivi en direct (SSE), validations, opérations, mémoire, administration (lecture) ; responsive                                                                                                                   |
-| Authentification multi-utilisateurs                  | ✅     | E-mail + mot de passe Argon2id, sessions opaques révocables, anti-CSRF, limitation de débit                                                                                                                                                              |
+| Interface web                                        | 🟡     | Next.js : connexion, conversations avec suivi en direct (SSE), validations, opérations, mémoire, administration (lecture) ; responsive ; vérifiée manuellement (Playwright), **tests e2e automatisés 🔜**                                                |
+| Authentification multi-utilisateurs                  | ✅     | E-mail + mot de passe Argon2id, sessions opaques révocables, anti-CSRF, limitation de débit par compte et par adresse (adresse fiable seulement derrière un reverse proxy, voir SECURITY.md §4)                                                          |
 | Entreprise, établissements, services, collaborateurs | 🟡     | Modèle, profondeur illimitée, affichage ; **création/modification via l'interface à faire** (seed uniquement)                                                                                                                                            |
 | Permissions effectives RBAC + ABAC                   | 🟡     | Moteur, stockage, application côté API et outils ✅ ; **édition des rôles, affectations et politiques à faire**                                                                                                                                          |
 | Isolation multi-entreprises                          | ✅     | RLS sur toutes les tables, rôle applicatif sans `BYPASSRLS`, tests d'isolation                                                                                                                                                                           |
@@ -59,6 +59,12 @@ Dernière mise à jour : 2026-10-18 (serveur traduit en Rust, ADR-018).
 5. **Tests e2e** Playwright en CI avec modèle scénarisé ; images Docker (API Rust, web) pour l'installation privée.
 6. **Types de l'API partagés** : générer `apps/web/lib/api/types.ts` depuis les structures Rust (aujourd'hui maintenus à la main).
 7. **En-têtes de sécurité** : CSP stricte (nonces Next.js) et HSTS au niveau du reverse proxy.
+
+### Points relevés par l'audit de la PR #1, à traiter (non bloquants)
+
+- **Connecteurs MCP** : deux outils dont les noms donnent le même identifiant font échouer le registre de toute l'entreprise (à isoler en « connecteur indisponible ») ; l'instanciation d'un serveur lent bloque le chargement des outils des autres entreprises (verrou par instance) ; borner et rendre remplaçables par l'administrateur les descriptions d'outils fournies par le serveur.
+- **Permissions d'administration à périmètre** : `audit:read`, `connector:manage`, `role:manage` donnent accès à toute l'entreprise même si elles sont affectées sur une seule unité ; exiger un périmètre entreprise lors de l'affectation (avec l'administration en écriture).
+- **Runs marqués en échec par le balayage** : l'événement `run_finished` n'est pas émis ; un client déjà abonné au flux ne l'apprend qu'en se reconnectant.
 
 ## Phase 2 — Intelligence avancée
 
