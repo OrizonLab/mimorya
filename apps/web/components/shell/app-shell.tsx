@@ -4,6 +4,7 @@ import { Menu, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
+import { FirstPasswordScreen } from '@/components/account';
 import { Badge, Spinner } from '@/components/ui';
 import { MeContext } from '@/lib/me-context';
 import { Sidebar } from './sidebar';
@@ -13,7 +14,8 @@ import { useCurrentUser, usePendingApprovals } from './use-session';
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { me, logout } = useCurrentUser();
-  const pending = usePendingApprovals(me !== null, pathname);
+  // Nothing else is reachable while the password is temporary.
+  const pending = usePendingApprovals(me !== null && !me.user.mustChangePassword, pathname);
   const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => setMenuOpen(false), [pathname]);
@@ -24,6 +26,10 @@ export function AppShell({ children }: { children: ReactNode }) {
         <Spinner />
       </div>
     );
+  }
+
+  if (me.user.mustChangePassword) {
+    return <FirstPasswordScreen me={me} onLogout={() => void logout()} />;
   }
 
   const sidebar = (

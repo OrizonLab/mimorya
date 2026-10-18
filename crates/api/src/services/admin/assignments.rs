@@ -12,6 +12,7 @@ use mimorya_db::repositories::role_assignments::{
     NewRoleAssignment, create_role_assignment, delete_role_assignment, get_role_assignment,
     has_role_assignment,
 };
+use mimorya_db::repositories::roles::get_role;
 use mimorya_db::repositories::users::get_user;
 use serde_json::json;
 use uuid::Uuid;
@@ -31,9 +32,6 @@ pub async fn grant_role(
 ) -> anyhow::Result<Uuid> {
     access.require_tenant_wide(PERMISSION)?;
     refuse_self(access, user_id)?;
-    let Some(role) = access.roles.iter().find(|r| r.definition.id == role_id) else {
-        return Err(DomainError::validation("Rôle inconnu").into());
-    };
     if expires_at.is_some_and(|at| at <= Utc::now()) {
         return Err(DomainError::validation("La date d’échéance doit être dans le futur").into());
     }
@@ -42,8 +40,12 @@ pub async fn grant_role(
     if get_user(&mut tx, user_id).await?.is_none() {
         return Err(DomainError::not_found("Compte introuvable").into());
     }
+    // As stored now: an administrator may have just changed its permissions.
+    let Some(role) = get_role(&mut tx, role_id).await? else {
+        return Err(DomainError::validation("Rôle inconnu").into());
+    };
     let tree = current_tree(&mut tx).await?;
-    if let Some(problem) = assignment_problem(&role.definition.permissions, &scope, &tree) {
+    if let Some(problem) = assignment_problem(&role.permissions, &scope, &tree) {
         return Err(DomainError::validation(problem).into());
     }
     if has_role_assignment(&mut tx, user_id, role_id, &scope).await? {
@@ -65,7 +67,7 @@ pub async fn grant_role(
         &mut tx,
         audit_entry(access, "role.assigned", "user", user_id).metadata(json!({
             "assignmentId": id,
-            "role": role.definition.key,
+            "role": role.key,
             "scope": scope,
             "expiresAt": expires_at,
         })),

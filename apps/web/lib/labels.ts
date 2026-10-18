@@ -62,3 +62,22 @@ export const UNIT_TYPES: Record<string, string> = {
   service: 'Service',
   team: 'Équipe',
 };
+
+/** Permission groups, by the resource before the colon (`planning:apply`). */
+export const PERMISSION_GROUPS: Record<string, string> = {
+  agent: 'Agent',
+  org: 'Organisation',
+  user: 'Comptes',
+  role: 'Rôles',
+  policy: 'Politiques d’accès',
+  memory: 'Mémoire',
+  mission: 'Missions',
+  approval: 'Validations',
+  skill: 'Compétences',
+  connector: 'Connecteurs',
+  audit: 'Audit',
+  settings: 'Paramètres',
+  usage: 'Consommation',
+  intervention: 'Interventions',
+  planning: 'Planning',
+};

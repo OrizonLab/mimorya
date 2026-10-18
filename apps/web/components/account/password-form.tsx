@@ -7,7 +7,7 @@ import { api, useAction } from '@/lib/api';
 const MIN_LENGTH = 12;
 
 /** Replaces the user's password; their other sessions are closed by the API. */
-export function PasswordForm() {
+export function PasswordForm({ onChanged }: { onChanged?: () => void } = {}) {
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [confirmation, setConfirmation] = useState('');
@@ -27,6 +27,7 @@ export function PasswordForm() {
       setNext('');
       setConfirmation('');
       setDone(true);
+      onChanged?.();
     }
   }
 

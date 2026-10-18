@@ -7,6 +7,8 @@ export interface Me {
     displayName: string;
     jobTitle: string | null;
     orgUnit: { id: string; path: string } | null;
+    /** Temporary password: nothing else is reachable until it is replaced. */
+    mustChangePassword: boolean;
   };
   tenant: { id: string; name: string; demo: boolean };
   grants: string[];

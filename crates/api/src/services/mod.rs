@@ -6,6 +6,7 @@ pub mod admin;
 pub mod background;
 pub mod connectors;
 pub mod event_bus;
+pub mod permission_catalog;
 pub mod runs;
 pub mod tenant_cache;
 

@@ -10,4 +10,4 @@ pub mod stale_run_sweeper;
 
 pub use rate_limit::{RateLimiter, RateLimits};
 pub use request_context::RequestContext;
-pub use session::{Auth, MaybeAuth};
+pub use session::{Auth, AuthPendingPasswordChange, MaybeAuth};

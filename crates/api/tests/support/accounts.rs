@@ -1,6 +1,7 @@
 //! Accounts created by the administration tests: a newcomer created by Paul
-//! (technical administrator), and an administrator limited to one team, as
-//! if the role had been granted before the company-wide rule existed.
+//! (technical administrator), the same once it chose its own password, and an
+//! administrator limited to one team, as if the role had been granted before
+//! the company-wide rule existed.
 
 use axum::http::StatusCode;
 use mimorya_core::authz::AssignmentScope;
@@ -10,6 +11,9 @@ use serde_json::{Value, json};
 use uuid::Uuid;
 
 use super::{Client, TestApi};
+
+/// The password an account chooses to replace its temporary one.
+pub const OWN_PASSWORD: &str = "phrase-de-passe-choisie";
 
 pub struct NewAccount {
     pub id: Uuid,
@@ -38,6 +42,21 @@ pub async fn create_account(admin: &Client<'_>, login: &str) -> NewAccount {
         email,
         password: body["temporaryPassword"].as_str().unwrap().to_string(),
     }
+}
+
+/// Signs the account in and replaces its temporary password, so that it can
+/// use the application; returns that session.
+pub async fn activate<'a>(api: &'a TestApi, account: &mut NewAccount) -> Client<'a> {
+    let session = api.sign_in_with(&account.email, &account.password).await;
+    let changed = session
+        .post(
+            "/account/password",
+            json!({ "currentPassword": account.password, "newPassword": OWN_PASSWORD }),
+        )
+        .await;
+    assert_eq!(changed.status, StatusCode::OK, "{}", changed.text());
+    account.password = OWN_PASSWORD.to_string();
+    session
 }
 
 /// An account holding the technical administrator role on the north team

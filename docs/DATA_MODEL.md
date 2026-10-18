@@ -53,24 +53,24 @@ erDiagram
 
 ### 3.1 Organisation et identité
 
-| Table             | Rôle                                | Champs clés                                                                                                                                                                                |
-| ----------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `tenants`         | Entreprise cliente                  | `slug` unique, `name`, `status` (`active`/`suspended`), `settings` (autonomie par défaut, routage LLM, rétention)                                                                          |
-| `org_units`       | Organigramme à profondeur illimitée | `parent_id` (auto-référence), `type` (`company`, `site`, `direction`, `department`, `service`, `team`), `lead_user_id` (**informatif, n'accorde aucun droit**)                             |
-| `users`           | Compte personnel                    | `email` (citext, unique global), `display_name`, `job_title`, `status`, `password_hash` (argon2id, nul si SSO), `clearance` (niveau de sensibilité maximal), `attributes` (ABAC), `locale` |
-| `org_memberships` | Rattachement personne ↔ unité       | `is_primary` (une seule unité principale par personne)                                                                                                                                     |
-| `sessions`        | Sessions web                        | `token_hash` (SHA-256 du jeton opaque), `expires_at`, `revoked_at`, `ip`, `user_agent`                                                                                                     |
+| Table             | Rôle                                | Champs clés                                                                                                                                                                                                                                              |
+| ----------------- | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tenants`         | Entreprise cliente                  | `slug` unique, `name`, `status` (`active`/`suspended`), `settings` (autonomie par défaut, routage LLM, rétention)                                                                                                                                        |
+| `org_units`       | Organigramme à profondeur illimitée | `parent_id` (auto-référence), `type` (`company`, `site`, `direction`, `department`, `service`, `team`), `lead_user_id` (**informatif, n'accorde aucun droit**)                                                                                           |
+| `users`           | Compte personnel                    | `email` (citext, unique global), `display_name`, `job_title`, `status`, `password_hash` (argon2id, nul si SSO), `must_change_password` (mot de passe provisoire à remplacer), `clearance` (niveau de sensibilité maximal), `attributes` (ABAC), `locale` |
+| `org_memberships` | Rattachement personne ↔ unité       | `is_primary` (une seule unité principale par personne)                                                                                                                                                                                                   |
+| `sessions`        | Sessions web                        | `token_hash` (SHA-256 du jeton opaque), `expires_at`, `revoked_at`, `ip`, `user_agent`                                                                                                                                                                   |
 
 MVP : un compte appartient à **une** entreprise. Une identité multi-entreprises
 (consultant, groupe) passera par une table `identities` en phase 3.
 
 ### 3.2 Autorisations
 
-| Table              | Rôle                        | Champs clés                                                                                                                 |
-| ------------------ | --------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `roles`            | Ensemble de permissions     | `key` unique par entreprise, `permissions text[]` (motifs `domaine:action`, `domaine:*`), `is_system`                       |
-| `role_assignments` | Rôle × personne × périmètre | `scope_type` (`tenant`, `org_unit`, `self`), `scope_org_unit_id`, `include_descendants`, `expires_at`, `granted_by_user_id` |
-| `access_policies`  | Règles ABAC                 | `effect` (`allow`/`deny`), `permissions text[]`, `condition jsonb` (langage de conditions de `core`), `enabled`             |
+| Table              | Rôle                        | Champs clés                                                                                                                                                                       |
+| ------------------ | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `roles`            | Ensemble de permissions     | `key` unique par entreprise, `permissions text[]` (motifs `domaine:action`, `domaine:*` ; rôles personnalisés : clé `custom_…`, permissions du catalogue sans joker), `is_system` |
+| `role_assignments` | Rôle × personne × périmètre | `scope_type` (`tenant`, `org_unit`, `self`), `scope_org_unit_id`, `include_descendants`, `expires_at`, `granted_by_user_id`                                                       |
+| `access_policies`  | Règles ABAC                 | `effect` (`allow`/`deny`), `permissions text[]`, `condition jsonb` (langage de conditions de `core`), `enabled`                                                                   |
 
 ### 3.3 Conversations, missions et exécutions
 
@@ -128,7 +128,7 @@ Phase 2 : `skill_eval_runs`, `documents` / `document_chunks` (GED, ingestion),
 - Des fonctions `SECURITY DEFINER` minimales (chemin de recherche figé) couvrent les
   seuls besoins qui traversent les entreprises : `auth_find_login` (retrouver un compte
   par e-mail à la connexion), `auth_resolve_session` (résoudre une session par
-  l'empreinte de son jeton) et `system_fail_stale_runs` (marquer en échec les runs
+  l'empreinte de son jeton, avec l'obligation éventuelle de changer de mot de passe) et `system_fail_stale_runs` (marquer en échec les runs
   restés sans progression).
 
 ## 5. Rétention (valeurs par défaut, configurables par entreprise)

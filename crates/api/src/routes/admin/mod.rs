@@ -6,6 +6,7 @@ mod activity;
 mod assignments;
 mod catalog;
 mod organization;
+mod roles;
 mod users;
 
 use axum::Router;
@@ -26,7 +27,11 @@ pub fn routes() -> Router<AppState> {
         .route("/admin/users/{id}/password", post(users::reset))
         .route("/admin/users/{id}/assignments", post(assignments::grant))
         .route("/admin/assignments/{id}", delete(assignments::revoke))
-        .route("/admin/roles", get(catalog::roles))
+        .route("/admin/roles", get(roles::list).post(roles::create))
+        .route(
+            "/admin/roles/{id}",
+            patch(roles::update).delete(roles::remove),
+        )
         .route("/admin/connectors", get(catalog::connectors))
         .route("/admin/skills", get(catalog::skills))
         .route("/admin/audit", get(activity::audit))

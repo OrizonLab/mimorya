@@ -126,6 +126,21 @@ pub async fn delete_role_assignment(conn: &mut PgConnection, id: Uuid) -> sqlx::
     Ok(result.rows_affected() > 0)
 }
 
+/// Whether the user holds the role, on any scope.
+pub async fn holds_role(
+    conn: &mut PgConnection,
+    user_id: Uuid,
+    role_id: Uuid,
+) -> sqlx::Result<bool> {
+    sqlx::query_scalar(
+        "select exists (select 1 from role_assignments where user_id = $1 and role_id = $2)",
+    )
+    .bind(user_id)
+    .bind(role_id)
+    .fetch_one(conn)
+    .await
+}
+
 /// Identifier of a role of the tenant by its key (e.g. `member`).
 pub async fn find_role_id(conn: &mut PgConnection, key: &str) -> sqlx::Result<Option<Uuid>> {
     sqlx::query_scalar("select id from roles where key = $1")

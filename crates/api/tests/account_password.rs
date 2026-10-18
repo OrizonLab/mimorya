@@ -174,6 +174,11 @@ async fn a_change_based_on_a_replaced_password_is_refused() {
     let paul = api.sign_in(user::PAUL).await;
     let account = create_account(&paul, "course.empreinte").await;
     let session = api.sign_in_with(&account.email, &account.password).await;
+    for n in 0..9 {
+        let guess = json!({ "currentPassword": format!("essai-{n}"), "newPassword": NEW_PASSWORD });
+        let wrong = session.post("/account/password", guess).await;
+        assert_eq!(wrong.status, StatusCode::FORBIDDEN);
+    }
 
     // Another change commits while this one waits: same password, new salt,
     // no session ended. Only the conditional write can refuse it.
@@ -193,6 +198,14 @@ async fn a_change_based_on_a_replaced_password_is_refused() {
         },
     );
     assert_eq!(changed.status, StatusCode::CONFLICT, "{}", changed.text());
+    // The refused change knew the current password: it is not counted as the
+    // tenth failed guess, so the account can still sign in.
+    assert_eq!(
+        api.try_login(&account.email, &account.password)
+            .await
+            .status,
+        StatusCode::OK
+    );
     assert_eq!(
         api.try_login(&account.email, NEW_PASSWORD).await.status,
         StatusCode::UNAUTHORIZED

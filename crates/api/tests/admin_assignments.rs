@@ -10,7 +10,9 @@ use mimorya_core::demo::{role, unit, user};
 use mimorya_db::testing::OTHER_USER_ID;
 use serde_json::json;
 use support::TestApi;
-use support::accounts::{assignment_of, create_account, create_partial_admin, permissions};
+use support::accounts::{
+    activate, assignment_of, create_account, create_partial_admin, permissions,
+};
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
@@ -127,8 +129,9 @@ async fn grants_nothing_to_an_account_of_another_company() {
 async fn honours_administration_permissions_on_the_whole_company_only() {
     let api = TestApi::start().await;
     let paul = api.sign_in(user::PAUL).await;
-    let account = create_partial_admin(&api, &paul, "admin.partiel").await;
-    let partial = api.sign_in_with(&account.email, &account.password).await;
+    let mut account = create_partial_admin(&api, &paul, "admin.partiel").await;
+    // Its own password chosen: every refusal below comes from the scope rule.
+    let partial = activate(&api, &mut account).await;
     let me = partial.get("/auth/me").await.json();
     for permission in ["user:manage", "role:manage", "org:manage", "audit:read"] {
         assert!(
@@ -191,6 +194,21 @@ async fn honours_administration_permissions_on_the_whole_company_only() {
             .await,
         partial
             .delete(&format!("/admin/org-units/{}", unit::TEAM_NORTH))
+            .await,
+        partial
+            .post(
+                "/admin/roles",
+                json!({ "name": "Rôle partiel", "permissions": ["intervention:read"] }),
+            )
+            .await,
+        partial
+            .patch(
+                &format!("/admin/roles/{}", role::TECHNICIAN),
+                json!({ "permissions": ["intervention:read", "planning:apply"] }),
+            )
+            .await,
+        partial
+            .delete(&format!("/admin/roles/{}", role::ADMIN_STAFF))
             .await,
     ];
     for (index, attempt) in attempts.iter().enumerate() {
