@@ -46,9 +46,10 @@ flowchart LR
   `/api/*` est relayé vers l'API (cookies `SameSite=Lax`, pas de CORS en production).
 - **api** : authentification, API REST, flux temps réel SSE, exécution des tours de
   conversation, webhooks entrants.
-- **worker** : exécutions longues (missions), reprises après interruption, tâches
-  planifiées, ingestion de documents. En MVP, l'API peut embarquer le worker
-  (`MIMORYA_PROCESS_ROLE=all`) pour simplifier le déploiement d'une PME.
+- **worker** (phase 2) : exécutions longues (missions), reprises après interruption,
+  tâches planifiées, ingestion de documents. En MVP, l'API exécute les runs en arrière-plan
+  dans son propre processus et un balayage périodique marque en échec les runs restés
+  sans progression ; le worker sera le même code lancé avec un autre point d'entrée.
 
 Pourquoi pas des microservices : une équipe réduite, un domaine encore mouvant et des
 transactions qui traversent plusieurs modules (autorisation + audit + exécution). Les
@@ -86,8 +87,8 @@ flowchart BT
   `MemoryStore`, `AuditSink`, `ApprovalStore`…) implémentées par `db` et injectées par
   `api`. Le moteur est ainsi testable en mémoire, sans base ni réseau.
 - Les paquets internes exposent leur source TypeScript (`exports: ./src/index.ts`),
-  consommée par `tsx`, Vitest et Next.js (`transpilePackages`). L'API est empaquetée
-  avec esbuild pour la production.
+  consommée par `tsx`, Vitest et Next.js. En MVP, l'API s'exécute aussi en production
+  via `tsx` (ADR-015) ; une compilation dédiée viendra avec les images Docker.
 
 ## 3. Pile technique retenue
 

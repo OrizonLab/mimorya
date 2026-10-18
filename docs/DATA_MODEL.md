@@ -119,9 +119,11 @@ Phase 2 : `skill_eval_runs`, `documents` / `document_chunks` (GED, ingestion),
 - Chaque table : `ENABLE ROW LEVEL SECURITY` + politique
   `tenant_id = current_setting('app.tenant_id', true)::uuid` (lecture **et** écriture).
 - Le contexte est posé par transaction : `SELECT set_config('app.tenant_id', $1, true)`.
-- Deux fonctions `SECURITY DEFINER` (chemin de recherche figé) couvrent les seuls
-  besoins antérieurs à la connaissance de l'entreprise : retrouver un compte par e-mail
-  à la connexion, résoudre une session par l'empreinte de son jeton.
+- Des fonctions `SECURITY DEFINER` minimales (chemin de recherche figé) couvrent les
+  seuls besoins qui traversent les entreprises : `auth_find_login` (retrouver un compte
+  par e-mail à la connexion), `auth_resolve_session` (résoudre une session par
+  l'empreinte de son jeton) et `system_fail_stale_runs` (marquer en échec les runs
+  restés sans progression).
 
 ## 5. Rétention (valeurs par défaut, configurables par entreprise)
 

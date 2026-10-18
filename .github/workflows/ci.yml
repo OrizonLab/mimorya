@@ -44,3 +44,7 @@ jobs:
       - run: pnpm lint
       - run: pnpm format:check
       - run: pnpm test:all
+      - name: Build the web application
+        run: pnpm --filter @mimorya/web build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'

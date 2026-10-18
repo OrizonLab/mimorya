@@ -11,9 +11,9 @@ elle est remplacée par une nouvelle entrée qui la référence (« remplace ADR
 - **Contexte** : produit ambitieux mais équipe réduite ; domaine encore mouvant ;
   besoin de transactions traversant autorisation, audit et exécution.
 - **Décision** : un dépôt pnpm, TypeScript strict de bout en bout ; paquets `core`,
-  `db`, `agent`, `connectors` ; applications `api` (Fastify) et `web` (Next.js). Un
-  même code d'API sert de worker (`MIMORYA_PROCESS_ROLE`). Python n'est introduit que
-  pour un besoin spécifique (OCR, ML) sous forme de service annexe.
+  `db`, `agent`, `connectors` ; applications `api` (Fastify) et `web` (Next.js). Le
+  futur worker réutilisera le code de l'API avec un autre point d'entrée. Python n'est
+  introduit que pour un besoin spécifique (OCR, ML) sous forme de service annexe.
 - **Conséquences** : types partagés, un seul outillage, déploiement simple pour une PME.
   Les frontières de paquets doivent être respectées pour pouvoir extraire des services.
 
@@ -138,3 +138,38 @@ elle est remplacée par une nouvelle entrée qui la référence (« remplace ADR
   sous-ensemble.
 - **Conséquences** : l'administration reste une action humaine explicite ; aucune
   injection ni compétence ne peut élever des privilèges.
+
+## ADR-015 — Exécution de l'API via `tsx` en MVP
+
+- **Date** : 2026-10-18 · **Statut** : acceptée
+- **Contexte** : les paquets internes exposent leur source TypeScript ; un bundle
+  esbuild complet de Fastify et des SDK est fragile, et une compilation par paquet
+  ajoute de l'outillage avant que le besoin de performance au démarrage existe.
+- **Décision** : l'API est lancée avec `tsx` en développement comme en production
+  (MVP). La compilation (tsc par paquet ou bundle) sera introduite avec les images
+  Docker de déploiement privé.
+- **Conséquences** : démarrage un peu plus lent et transpilation à la volée ; aucun
+  impact fonctionnel.
+
+## ADR-016 — Exécution des runs dans le processus de l'API (MVP)
+
+- **Date** : 2026-10-18 · **Statut** : acceptée
+- **Contexte** : les tours de conversation sont courts (secondes à minutes) et l'état
+  est persisté à chaque étape.
+- **Décision** : l'API lance les runs en arrière-plan dans son processus et diffuse les
+  événements en mémoire (SSE). Un balayage périodique marque en échec les runs sans
+  progression depuis 15 minutes (`system_fail_stale_runs`). La reprise automatique
+  après arrêt et le worker séparé arrivent en phase 2 (ADR-012).
+- **Conséquences** : une seule instance d'API en MVP ; le passage à plusieurs instances
+  impose la diffusion via PostgreSQL `LISTEN/NOTIFY` et le worker.
+
+## ADR-017 — Repli serveur et cache de prompt chez Anthropic
+
+- **Date** : 2026-10-18 · **Statut** : acceptée
+- **Décision** : l'adaptateur Anthropic active le cache de prompt sur le préfixe stable
+  (outils + consignes) et, sur les modèles qui le permettent, le repli côté serveur
+  (`fallbacks: "default"`) : une demande refusée pour raison de politique est rejouée
+  sur le modèle de repli défini par Anthropic au lieu d'échouer. Les tours de
+  l'assistant sont rejoués tels quels (blocs de raisonnement compris).
+- **Conséquences** : le modèle ayant réellement servi la réponse est celui enregistré
+  dans la consommation ; option désactivable (`serverSideFallback: false`).

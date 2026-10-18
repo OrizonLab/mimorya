@@ -39,9 +39,9 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   Les migrations utilisent un rôle distinct.
 - Le contexte `app.tenant_id` est posé **par transaction** (`set_config(..., true)`),
   jamais au niveau de la connexion (pas de fuite par le pool).
-- Les seules recherches antérieures à la connaissance de l'entreprise (connexion,
-  résolution de session) passent par deux fonctions `SECURITY DEFINER` au périmètre
-  minimal et au `search_path` figé.
+- Les seules opérations qui traversent les entreprises (connexion, résolution de
+  session, marquage des runs bloqués) passent par des fonctions `SECURITY DEFINER` au
+  périmètre minimal et au `search_path` figé (`auth_*`, `system_*`).
 - Tests d'intégration obligatoires : lecture croisée impossible même par requête
   directe, insertion croisée refusée, absence de contexte = aucune ligne.
 
