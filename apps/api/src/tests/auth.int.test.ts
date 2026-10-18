@@ -62,6 +62,9 @@ describe('administration', () => {
     const marc = as(await login(DEMO_USERS.marc));
     expect((await paul.get('/admin/audit')).statusCode).toBe(200);
     expect((await marc.get('/admin/audit')).statusCode).toBe(403);
+    // Reading skills is a member right; the administration screen is not.
+    expect((await paul.get('/admin/skills')).statusCode).toBe(200);
+    expect((await marc.get('/admin/skills')).statusCode).toBe(403);
     const users = json<{ users: Array<{ grants?: string[] }> }>(await paul.get('/admin/users'));
     expect(users.users).toHaveLength(10);
     expect(users.users[0]!.grants).toBeDefined();

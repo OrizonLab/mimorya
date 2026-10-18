@@ -2,8 +2,9 @@
 
 import { ShieldAlert } from 'lucide-react';
 import { useState } from 'react';
+import { Badge, Button, ErrorNote } from '@/components/ui';
 import { api, ApiError } from '@/lib/api';
-import { Badge, Button, ErrorNote, RISK_LABELS } from '../ui';
+import { RISK_LABELS } from '@/lib/labels';
 
 export interface ApprovalLike {
   id: string;

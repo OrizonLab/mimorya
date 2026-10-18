@@ -150,9 +150,10 @@ export function registerAdminRoutes(app: FastifyInstance, services: AppServices)
     };
   });
 
+  // Every member reads skills through the agent; this screen is for their managers.
   app.get('/admin/skills', async (request) => {
     const ctx = await access.context(requireAuth(request));
-    ctx.require('skill:read');
+    ctx.require('skill:manage');
     const skills = await withTenant(db, ctx.subject.tenantId, (tx) => listSkills(tx));
     return { skills };
   });

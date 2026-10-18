@@ -3,8 +3,8 @@
 import { AlertTriangle, ShieldCheck } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { Badge, cx } from '@/components/ui';
 import type { Message } from '@/lib/api';
-import { Badge, cx } from '../ui';
 
 const SOURCE_LABELS: Record<string, string> = {
   intervention: 'Intervention',

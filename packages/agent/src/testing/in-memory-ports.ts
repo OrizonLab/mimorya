@@ -25,6 +25,7 @@ import type {
   UsageRecord,
 } from '../runtime/ports';
 import type { RunCheckpoint } from '../runtime/state';
+import type { RunOutcome } from '../runtime/types';
 
 export interface StoredMemory extends NewMemory {
   id: string;
@@ -58,6 +59,8 @@ export class InMemoryPorts implements EnginePorts {
   readonly usageRecords: UsageRecord[] = [];
   readonly memories: StoredMemory[] = [];
   readonly checkpoints: RunCheckpoint[] = [];
+  /** Recorded outcomes, with the number of events emitted before each one. */
+  readonly finished: Array<{ status: RunOutcome['status']; eventsBefore: number }> = [];
   readonly deliverableItems = new Map<string, Deliverable>();
 
   constructor(
@@ -91,6 +94,10 @@ export class InMemoryPorts implements EnginePorts {
   usage = { record: async (entry: UsageRecord) => void this.usageRecords.push(entry) };
   runs = {
     checkpoint: async (state: RunCheckpoint) => void this.checkpoints.push(structuredClone(state)),
+    finish: async (outcome: RunOutcome) => {
+      this.checkpoints.push(structuredClone(outcome.checkpoint));
+      this.finished.push({ status: outcome.status, eventsBefore: this.emitted.length });
+    },
   };
 
   approvals = {

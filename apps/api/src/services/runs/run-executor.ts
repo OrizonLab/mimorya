@@ -12,7 +12,6 @@ import {
   type ModelRouter,
   type PriceTable,
   type RunCheckpoint,
-  type RunOutcome,
 } from '@mimorya/agent';
 import type { AutonomyLevel } from '@mimorya/core';
 import type { Database, RunRow } from '@mimorya/db';
@@ -22,7 +21,7 @@ import type { ConnectorService } from '../connectors';
 import type { RunEventBus } from '../event-bus';
 import { createDbPorts } from './db-ports';
 import { buildRunSystemPrompt, buildToolRegistry, recallMemories } from './run-context';
-import { persistOutcome, recordCrash } from './run-outcome';
+import { recordCrash } from './run-outcome';
 
 export interface RunExecutorDeps {
   db: Database;
@@ -48,15 +47,17 @@ export class RunExecutor {
   async execute(access: AccessContext, run: RunRow, mode: ExecutionMode): Promise<void> {
     const { db, bus, logger } = this.deps;
     const tenantId = access.subject.tenantId;
-    const ports = createDbPorts(
-      db,
-      { tenantId, runId: run.id, userId: access.subject.userId },
-      bus,
-    );
+    const scope = {
+      tenantId,
+      runId: run.id,
+      userId: access.subject.userId,
+      conversationId: run.conversationId,
+    };
+    const ports = createDbPorts(db, scope, bus);
 
     try {
       const runtime = await this.runtimeFor(access, run, ports);
-      let outcome: RunOutcome;
+      // The runtime records the outcome through its ports before announcing it.
       if (mode.kind === 'start') {
         const system = await buildRunSystemPrompt(
           db,
@@ -65,18 +66,17 @@ export class RunExecutor {
           this.deps.now?.() ?? new Date(),
         );
         const memories = await recallMemories(db, access, mode.text);
-        outcome = await runtime.start({
+        await runtime.start({
           system,
           history: mode.history,
           userTurn: buildUserTurn(mode.text, memories),
         });
       } else {
-        outcome = await runtime.resume(mode.checkpoint, mode.decisions);
+        await runtime.resume(mode.checkpoint, mode.decisions);
       }
-      await persistOutcome(db, access, run, outcome);
     } catch (error) {
       logger.error({ err: error, runId: run.id }, 'Run crashed');
-      await recordCrash(db, tenantId, run).catch((e: unknown) =>
+      await recordCrash(db, scope).catch((e: unknown) =>
         logger.error({ err: e }, 'Failed to record run failure'),
       );
       await ports.events

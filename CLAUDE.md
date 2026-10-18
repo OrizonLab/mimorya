@@ -21,6 +21,23 @@ Lire d'abord : `docs/PRODUCT_VISION.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY.
 | `apps/api`            | Fastify : sessions, routes, SSE, orchestration des runs                                       | Compose les paquets ; aucune règle métier dupliquée.  |
 | `apps/web`            | Next.js                                                                                       | Parle uniquement à `/api/*` (relayé vers l'API).      |
 
+Repères à l'intérieur des paquets :
+
+- `core/src/authz/` (types, moteur, conditions ABAC, organigramme), `core/src/demo/`
+  (entreprise fictive par thème).
+- `db/src/schema/` et `db/src/repositories/` : un fichier par entité ; `db/src/seed/`
+  (organisation, connecteurs, mémoires, compétences de démonstration).
+- `agent/src/llm/<fournisseur>/`, `agent/src/runtime/` (boucle, appels modèle, appels
+  d'outils, revue de réponse), `agent/src/tools/platform/`, `agent/src/testing/`.
+- `connectors/src/demo-interventions/` (données, planning, accès, `tools/` un fichier par
+  outil), `connectors/src/mcp/`.
+- `api/src/plugins/` (CSRF, session, nettoyage des runs), `api/src/routes/`,
+  `api/src/services/runs/` (tour de conversation, décisions, contexte, exécution,
+  résultat), `api/src/tests/` (intégration, harnais partagé).
+- `web/components/<fonctionnalité>/` (admin, approvals, chat, memory, operations,
+  shell), `web/components/ui/`, `web/lib/api/` (client, types, `useApiData`),
+  `web/lib/labels.ts`, `web/lib/format.ts`.
+
 ## Commandes
 
 ```bash

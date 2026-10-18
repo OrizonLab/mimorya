@@ -24,12 +24,15 @@ import {
   type DeliverableRow,
 } from '@mimorya/db';
 import type { RunEventBus } from '../event-bus';
+import { persistOutcome } from './run-outcome';
 
 export interface RunScope {
   tenantId: string;
   runId: string;
   /** User on whose behalf the agent acts. */
   userId: string;
+  /** Conversation that receives the answer, if the run belongs to one. */
+  conversationId: string | null;
 }
 
 function toDeliverable(row: DeliverableRow): Deliverable {
@@ -152,6 +155,7 @@ export function createDbPorts(db: Database, scope: RunScope, bus: RunEventBus): 
     runs: {
       checkpoint: (state: RunCheckpoint) =>
         tx((t) => updateRun(t, runId, { state, usage: state.usage })),
+      finish: (outcome) => persistOutcome(db, scope, outcome),
     },
     deliverables: {
       create: async (input) =>

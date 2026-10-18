@@ -115,6 +115,13 @@ systématiquement une validation (`requiresApproval`).
 - `approval:decide` est **non délégable** : l'agent ne peut jamais valider lui-même.
 - Après décision, l'outil est exécuté **avec les paramètres validés** (aucune
   modification possible entre validation et exécution) et le run reprend.
+- Une décision n'est enregistrée que si le run est effectivement en pause
+  (`awaiting_approval`, ligne verrouillée) : avant, rien ne le reprendrait ; après sa
+  fin, l'action ne peut plus être exécutée. Dans les deux cas l'API répond 409 sans
+  rien enregistrer.
+- Le moteur **enregistre l'issue d'un run** (pause, fin, échec : statut, réponse,
+  audit) via `RunStore.finish` **avant** d'émettre `run_finished` : un client qui
+  recharge sur cet événement trouve toujours l'état à jour.
 
 ## 6. Vérification et correction
 

@@ -173,10 +173,13 @@ export class AgentRuntime {
 
       const finalAnswer = presentAnswer(answer, report);
       state.elapsedMs = Date.now() - startedAt;
-      await ports.runs.checkpoint(state);
       await ports.events.emit({ type: 'assistant_message', text: finalAnswer, final: true });
-      await ports.events.emit({ type: 'run_finished', status: 'completed' });
-      return { status: 'completed', answer: finalAnswer, verification: report, checkpoint: state };
+      return this.conclude({
+        status: 'completed',
+        answer: finalAnswer,
+        verification: report,
+        checkpoint: state,
+      });
     }
   }
 
@@ -231,9 +234,7 @@ export class AgentRuntime {
     const { results, awaiting } = await this.tools.processTurn(state, response.toolCalls, signal);
     if (awaiting.length > 0) {
       state.pending = { completedResults: results, approvals: awaiting };
-      await ports.runs.checkpoint(state);
-      await ports.events.emit({ type: 'run_finished', status: 'awaiting_approval' });
-      return { status: 'awaiting_approval', approvals: awaiting, checkpoint: state };
+      return this.conclude({ status: 'awaiting_approval', approvals: awaiting, checkpoint: state });
     }
     state.messages.push({ role: 'tool_results', results });
     await ports.runs.checkpoint(state);
@@ -241,9 +242,19 @@ export class AgentRuntime {
   }
 
   private async fail(state: RunCheckpoint, error: string): Promise<RunOutcome> {
-    await this.deps.ports.runs.checkpoint(state);
-    await this.deps.ports.events.emit({ type: 'run_finished', status: 'failed', error });
-    return { status: 'failed', error, checkpoint: state };
+    return this.conclude({ status: 'failed', error, checkpoint: state });
+  }
+
+  /** Records the outcome, then announces it: listeners must find it saved. */
+  private async conclude(outcome: RunOutcome): Promise<RunOutcome> {
+    const { ports } = this.deps;
+    await ports.runs.finish(outcome);
+    await ports.events.emit(
+      outcome.status === 'failed'
+        ? { type: 'run_finished', status: 'failed', error: outcome.error }
+        : { type: 'run_finished', status: outcome.status },
+    );
+    return outcome;
   }
 }
 

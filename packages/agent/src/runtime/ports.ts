@@ -12,6 +12,7 @@ import type {
   ToolRisk,
 } from '@mimorya/core';
 import type { RunCheckpoint } from './state';
+import type { RunOutcome } from './types';
 
 export type RunEvent =
   | { type: 'run_started'; objective: string }
@@ -156,7 +157,15 @@ export interface SkillStore {
 }
 
 export interface RunStore {
+  /** Saves progress so that the run can resume after a pause or a restart. */
   checkpoint(state: RunCheckpoint): Promise<void>;
+  /**
+   * Durably records how the run ended or paused (status, answer, audit). The
+   * runtime calls it before announcing `run_finished`: clients reload on that
+   * event and must find the outcome saved, and a decision on an approval must
+   * find the run paused.
+   */
+  finish(outcome: RunOutcome): Promise<void>;
 }
 
 export interface EnginePorts {

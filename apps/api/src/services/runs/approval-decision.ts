@@ -18,6 +18,8 @@ import {
 } from '@mimorya/db';
 import type { AuthIdentity } from '../access';
 
+const FINISHED = new Set(['completed', 'failed', 'cancelled']);
+
 export interface DecisionInput {
   approvalId: string;
   approved: boolean;
@@ -43,9 +45,22 @@ export async function recordApprovalDecision(
   if (!approval || approval.requestedForUserId !== identity.userId) {
     throw new NotFoundError('Demande de validation introuvable');
   }
+  if (approval.status !== 'pending') {
+    throw new DomainError('conflict', 'Cette demande a déjà été traitée');
+  }
   // Concurrent decisions on the same run are serialised: exactly one of them
   // observes the last pending approval and resumes the run.
   const run = await lockRun(tx, approval.runId);
+  // A decision is only accepted once the run is paused: before that, nothing
+  // would resume it; after it ended, the action can no longer be carried out.
+  if (!run || run.status !== 'awaiting_approval') {
+    throw new DomainError(
+      'conflict',
+      run && FINISHED.has(run.status)
+        ? 'Cette exécution est terminée : la demande ne peut plus être traitée.'
+        : 'La demande de validation est en cours de préparation : réessayez dans un instant.',
+    );
+  }
   const expired =
     approval.status === 'pending' && !!approval.expiresAt && approval.expiresAt <= now;
 
@@ -79,11 +94,7 @@ export async function recordApprovalDecision(
   });
 
   const approvals = await listApprovalsForRun(tx, approval.runId);
-  const canResume =
-    !!run &&
-    run.status === 'awaiting_approval' &&
-    !!run.state &&
-    approvals.every((a) => a.status !== 'pending');
+  const canResume = !!run.state && approvals.every((a) => a.status !== 'pending');
   if (!canResume) return { expired, decided, resume: null };
 
   await updateRun(tx, run.id, { status: 'running' });

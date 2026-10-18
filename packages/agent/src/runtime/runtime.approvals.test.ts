@@ -64,4 +64,25 @@ describe('AgentRuntime — human validation', () => {
     expect(outcome.status).toBe('completed');
     expect(applied).toHaveLength(0);
   });
+
+  it('records every outcome before announcing it', async () => {
+    const { runtime, start, ports } = setup([
+      { text: '', toolCalls: [{ name: 'planning_apply', input: { slots: 1 }, id: 'c1' }] },
+      { text: 'Planning appliqué.' },
+    ]);
+    const first = await start();
+    if (first.status !== 'awaiting_approval') throw new Error('expected a pause');
+    const approvalId = first.approvals[0]!.approvalId;
+    await runtime.resume(first.checkpoint, { [approvalId]: { approved: true } });
+
+    // Clients reload on run_finished: the outcome must already be saved.
+    const announced = ports.emitted.flatMap((e, index) =>
+      e.type === 'run_finished' ? [{ status: e.status, index }] : [],
+    );
+    expect(announced.map((a) => a.status)).toEqual(['awaiting_approval', 'completed']);
+    expect(ports.finished.map((f) => f.status)).toEqual(['awaiting_approval', 'completed']);
+    announced.forEach((a, i) => {
+      expect(ports.finished[i]!.eventsBefore).toBeLessThanOrEqual(a.index);
+    });
+  });
 });
