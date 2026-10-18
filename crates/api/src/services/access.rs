@@ -7,7 +7,9 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use mimorya_core::DomainError;
-use mimorya_core::authz::{Actor, AssignmentScope, AuthorizationEngine, OrgTree, Subject};
+use mimorya_core::authz::{
+    Actor, AssignmentScope, AuthorizationEngine, DataScope, OrgTree, Subject,
+};
 use mimorya_db::Database;
 use mimorya_db::repositories::org::{
     RoleRecord, TenantRecord, UserProfile, load_authorization_data, load_user_access,
@@ -49,6 +51,20 @@ impl AccessContext {
             Err(DomainError::forbidden(format!(
                 "Permission requise : {permission}"
             )))
+        }
+    }
+
+    /// Company-wide screens and actions (`TENANT_WIDE_PERMISSIONS`): the
+    /// permission must be held on the whole company, not on some unit.
+    pub fn require_tenant_wide(&self, permission: &str) -> Result<(), DomainError> {
+        match self
+            .engine
+            .data_scope(&self.subject, permission, &Actor::user())
+        {
+            DataScope::All => Ok(()),
+            _ => Err(DomainError::forbidden(format!(
+                "Permission requise sur toute l’entreprise : {permission}"
+            ))),
         }
     }
 

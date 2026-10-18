@@ -94,6 +94,20 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   comptes, rôles, politiques, connecteurs, compétences, paramètres, lecture de l'audit,
   décision de validation. C'est ce qui empêche une injection ou une auto-amélioration
   de s'accorder des privilèges.
+- **Administration** (ADR-019) :
+  - les permissions d'administration (`TENANT_WIDE_PERMISSIONS` : organisation,
+    comptes, rôles, politiques, connecteurs, compétences, paramètres, mémoire, audit,
+    consommation) ne valent que détenues **sur toute l'entreprise** ; un rôle qui en
+    contient ne s'attribue qu'à ce périmètre ;
+  - personne ne modifie depuis l'administration son propre compte, son statut ou ses
+    habilitations : il faut un autre administrateur (ni auto-élévation, ni blocage
+    de soi-même) ;
+  - un compte créé ou réinitialisé reçoit un mot de passe provisoire aléatoire
+    (96 bits), affiché une seule fois à l'administrateur, jamais journalisé ;
+    la désactivation ferme immédiatement les sessions ;
+  - limite assumée : un administrateur peut créer un compte et lui attribuer des
+    rôles métier ; chaque action est tracée (`user.created`, `role.assigned`…) et la
+    double validation des actions d'administration est prévue en phase 3.
 
 ## 6. Sécurité de l'agent
 

@@ -2,6 +2,7 @@
 //! `Auth`, builds the authorization context server-side and checks the
 //! permission or the ownership of the resource before answering.
 
+mod account;
 mod admin;
 mod approvals;
 mod auth;
@@ -21,6 +22,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .merge(health::routes())
         .merge(auth::routes())
+        .merge(account::routes())
         .merge(conversations::routes())
         .merge(runs::routes())
         .merge(run_events::routes())

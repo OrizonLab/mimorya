@@ -2,6 +2,7 @@
 //! organisation tree, autonomy levels, the tool contract, memory visibility
 //! rules and the fictional demo company. No I/O.
 
+pub mod administration;
 pub mod authz;
 pub mod autonomy;
 pub mod demo;

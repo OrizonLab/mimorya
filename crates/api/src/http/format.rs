@@ -26,6 +26,27 @@ pub fn trimmed_opt<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<
     Ok(Option::<String>::deserialize(deserializer)?.map(|s| s.trim().to_string()))
 }
 
+/// `deserialize_with` helper for fields that can be cleared: absent → `None`,
+/// `null` or blank → `Some(None)`, text → `Some(Some(trimmed))`. Combine with
+/// `#[serde(default)]`.
+pub fn trimmed_nullable<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<Option<String>>, D::Error> {
+    let value = Option::<String>::deserialize(deserializer)?;
+    Ok(Some(
+        value
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty()),
+    ))
+}
+
+/// `deserialize_with` helper: absent → `None`, `null` → `Some(None)`.
+pub fn nullable<'de, D: Deserializer<'de>, T: Deserialize<'de>>(
+    deserializer: D,
+) -> Result<Option<Option<T>>, D::Error> {
+    Ok(Some(Option::<T>::deserialize(deserializer)?))
+}
+
 #[cfg(test)]
 mod tests {
     use chrono::TimeZone;

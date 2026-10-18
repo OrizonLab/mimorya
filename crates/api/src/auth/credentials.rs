@@ -59,6 +59,18 @@ pub async fn verify_password_async(password_hash: Option<String>, password: Stri
         .unwrap_or(false)
 }
 
+/// Shortest password accepted when a user chooses one.
+pub const MIN_PASSWORD_CHARS: u64 = 12;
+
+/// Password given once to an administrator for a new or reset account
+/// (96 random bits, 16 URL-safe characters). It is never stored in clear,
+/// logged nor audited.
+pub fn generate_temporary_password() -> String {
+    let mut bytes = [0_u8; 12];
+    OsRng.fill_bytes(&mut bytes);
+    URL_SAFE_NO_PAD.encode(bytes)
+}
+
 /// Opaque 256-bit token; only its SHA-256 digest is stored.
 pub fn new_session_token() -> (String, String) {
     let mut bytes = [0_u8; 32];
@@ -87,6 +99,14 @@ mod tests {
         assert!(!verify_password(Some(&hash), "autre"));
         assert!(!verify_password(None, "dummy-password-for-timing"));
         assert!(!verify_password(Some("not-a-hash"), "secret-de-test"));
+    }
+
+    #[test]
+    fn generates_strong_temporary_passwords() {
+        let password = generate_temporary_password();
+        assert_eq!(password.chars().count(), 16);
+        assert!(password.chars().count() as u64 >= MIN_PASSWORD_CHARS);
+        assert_ne!(password, generate_temporary_password());
     }
 
     #[test]

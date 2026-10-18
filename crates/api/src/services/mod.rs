@@ -1,6 +1,7 @@
 //! Application services, built once per server and shared by the routes.
 
 pub mod access;
+pub mod admin;
 pub mod background;
 pub mod connectors;
 pub mod event_bus;

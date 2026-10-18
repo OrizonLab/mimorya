@@ -184,4 +184,16 @@ impl TestApi {
         let session = self.login(user_id).await;
         self.as_user(&session)
     }
+
+    /// Signs in with explicit credentials (accounts created by a test).
+    pub async fn sign_in_with(&self, email: &str, password: &str) -> Client<'_> {
+        let response = self.try_login(email, password).await;
+        assert_eq!(response.status, StatusCode::OK, "{}", response.text());
+        let cookie = response.headers["set-cookie"].to_str().unwrap();
+        let token = cookie
+            .strip_prefix("mimorya_session=")
+            .and_then(|rest| rest.split(';').next())
+            .expect("session cookie");
+        self.as_user(token)
+    }
 }

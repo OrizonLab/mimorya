@@ -194,7 +194,7 @@ struct AssignmentRow {
     role_name: String,
 }
 
-fn to_scope(
+pub(crate) fn to_scope(
     scope_type: &str,
     org_unit_id: Option<Uuid>,
     include_descendants: bool,
@@ -275,59 +275,4 @@ pub async fn load_user_access(
         },
         assignments,
     }))
-}
-
-#[derive(Debug, Clone, sqlx::FromRow)]
-pub struct DirectoryEntry {
-    pub id: Uuid,
-    pub email: String,
-    pub display_name: String,
-    pub job_title: Option<String>,
-    pub status: String,
-    pub primary_unit_id: Option<Uuid>,
-    pub last_login_at: Option<DateTime<Utc>>,
-}
-
-pub async fn list_users(conn: &mut PgConnection) -> sqlx::Result<Vec<DirectoryEntry>> {
-    sqlx::query_as(
-        "select u.id, u.email::text as email, u.display_name, u.job_title, u.status, u.last_login_at, \
-         (select m.org_unit_id from org_memberships m where m.user_id = u.id and m.is_primary limit 1) \
-           as primary_unit_id \
-         from users u order by u.display_name",
-    )
-    .fetch_all(conn)
-    .await
-}
-
-#[derive(Debug, Clone, sqlx::FromRow)]
-pub struct RoleAssignmentRow {
-    pub user_id: Uuid,
-    pub role_id: Uuid,
-    pub role_name: String,
-    pub scope_type: String,
-    pub scope_org_unit_id: Option<Uuid>,
-    pub include_descendants: bool,
-    pub expires_at: Option<DateTime<Utc>>,
-}
-
-impl RoleAssignmentRow {
-    pub fn scope(&self) -> AssignmentScope {
-        to_scope(
-            &self.scope_type,
-            self.scope_org_unit_id,
-            self.include_descendants,
-        )
-    }
-}
-
-pub async fn list_role_assignments(
-    conn: &mut PgConnection,
-) -> sqlx::Result<Vec<RoleAssignmentRow>> {
-    sqlx::query_as(
-        "select a.user_id, a.role_id, r.name as role_name, a.scope_type, a.scope_org_unit_id, \
-         a.include_descendants, a.expires_at \
-         from role_assignments a join roles r on r.id = a.role_id",
-    )
-    .fetch_all(conn)
-    .await
 }

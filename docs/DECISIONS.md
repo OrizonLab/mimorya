@@ -202,3 +202,26 @@ elle est remplacée par une nouvelle entrée qui la référence (« remplace ADR
   - les types de réponse de l'API sont maintenus à la main côté web
     (`apps/web/lib/api/types.ts`) ; leur génération depuis le serveur est à prévoir ;
   - compilation plus longue qu'en TypeScript, compensée par la vérification statique.
+
+## ADR-019 — Administration : périmètre entreprise, pas d'auto-administration, mots de passe provisoires
+
+- **Date** : 2026-10-18 · **Statut** : acceptée
+- **Contexte** : l'administration passe en écriture (comptes, organisation,
+  habilitations). Une permission d'administration détenue sur une seule unité
+  donnait déjà accès à des écrans couvrant toute l'entreprise (audit, connecteurs) ;
+  aucun service d'envoi d'e-mails n'existe encore.
+- **Décision** :
+  - les permissions d'administration (`TENANT_WIDE_PERMISSIONS`, `crates/core`) ne
+    sont honorées qu'avec un périmètre entreprise, et un rôle qui en contient ne peut
+    être attribué qu'à ce périmètre ;
+  - un administrateur ne modifie ni son propre compte ni ses propres habilitations ;
+  - un compte est créé (ou réinitialisé) avec un mot de passe provisoire aléatoire,
+    affiché une fois à l'administrateur, que la personne remplace depuis « Mon compte »
+    (ses autres sessions sont alors fermées) ;
+  - une unité ne peut être supprimée que si plus rien n'en dépend (sous-unités,
+    membres, habilitations, mémoire) ; les comptes ne sont jamais supprimés par
+    l'application (désactivation).
+- **Conséquences** : le dernier administrateur ne peut pas se retirer ses droits ;
+  la transmission du mot de passe provisoire repose sur l'administrateur jusqu'à
+  l'invitation par e-mail ; la séparation des pouvoirs complète (double validation
+  des actions d'administration) reste à faire (phase 3).
