@@ -125,6 +125,10 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
 ## 8. Journal d'audit
 
 - Table `audit_log` en **ajout seul** : le rôle applicatif n'a que `INSERT` et `SELECT`.
+- Ni effacement ni réécriture indirecte : le rôle applicatif ne peut pas supprimer les
+  entreprises, utilisateurs, conversations et runs que l'audit référence (les clés
+  étrangères effaceraient ou videraient des entrées). Leur suppression relève du rôle
+  propriétaire (voir [DATA_MODEL.md](DATA_MODEL.md) §4).
 - Contenu : qui (utilisateur, agent pour le compte de…), quoi (action, ressource),
   résultat (succès, refus, échec), pourquoi (raison de la décision), contexte
   (requête, run, IP). Pas de contenu de message ni de secret.

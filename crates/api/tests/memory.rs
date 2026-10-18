@@ -2,6 +2,8 @@
 
 mod support;
 
+use std::time::Duration;
+
 use axum::http::StatusCode;
 use mimorya_core::authz::Sensitivity;
 use mimorya_core::demo::{tenant, unit, user};
@@ -9,6 +11,7 @@ use mimorya_core::memory::{MemoryKind, MemoryScope, MemorySource, MemoryStatus};
 use mimorya_db::repositories::memory::{NewMemory, create_memory};
 use serde_json::{Value, json};
 use support::TestApi;
+use uuid::Uuid;
 
 fn find<'a>(items: &'a [Value], title: &str) -> &'a Value {
     items
@@ -148,4 +151,32 @@ async fn shows_and_settles_proposals_only_for_those_who_may_write_the_space() {
     );
     let again = julien.post(&review, json!({ "decision": "reject" })).await;
     assert_eq!(again.status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn settles_a_proposal_once_when_decisions_cross() {
+    let api = TestApi::start().await;
+    let id = propose_team_memory(&api).await;
+    let julien = api.sign_in(user::JULIEN).await;
+
+    // Another manager is approving the proposal at the same moment.
+    let mut concurrent = api.app.services.db.begin(tenant::ID).await.unwrap();
+    sqlx::query("update memory_items set status = 'active' where id = $1")
+        .bind(id.parse::<Uuid>().unwrap())
+        .execute(&mut *concurrent)
+        .await
+        .unwrap();
+    let review = format!("/memory/{id}/review");
+    let mut rejecting = Box::pin(julien.post(&review, json!({ "decision": "reject" })));
+    let waited = tokio::time::timeout(Duration::from_millis(300), &mut rejecting).await;
+    assert!(
+        waited.is_err(),
+        "the second decision must wait for the first"
+    );
+    concurrent.commit().await.unwrap();
+
+    assert_eq!(rejecting.await.status, StatusCode::NOT_FOUND);
+    let listing = julien.get("/memory").await.json();
+    assert_eq!(status_of(&listing, &id).as_deref(), Some("active"));
 }

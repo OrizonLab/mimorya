@@ -115,8 +115,13 @@ Phase 2 : `skill_eval_runs`, `documents` / `document_chunks` (GED, ingestion),
 
 - Rôle **propriétaire** (`DATABASE_URL`) : exécute les migrations et le seed.
 - Rôle **applicatif** `mimorya_app` (`DATABASE_APP_URL`) : `NOSUPERUSER NOBYPASSRLS`,
-  non propriétaire ; droits DML sur les tables, **`INSERT`/`SELECT` seulement** sur
-  `audit_log`.
+  non propriétaire ; droits DML sur les tables, avec ces restrictions :
+  - `audit_log` : **`INSERT`/`SELECT` seulement** ;
+  - `tenants`, `users`, `conversations`, `agent_runs` : **pas de `DELETE`**. Leur
+    suppression effacerait ou réécrirait des entrées d'audit par les clés étrangères
+    (`ON DELETE cascade` / `set null`) ; elle est réservée au rôle propriétaire, qui
+    devra conserver la trace (procédures d'effacement et purges de rétention à venir) ;
+  - `_sqlx_migrations` (journal des migrations) : aucun droit.
 - Chaque table : `ENABLE ROW LEVEL SECURITY` + politique
   `tenant_id = current_setting('app.tenant_id', true)::uuid` (lecture **et** écriture).
 - Le contexte est posé par transaction : `SELECT set_config('app.tenant_id', $1, true)`.

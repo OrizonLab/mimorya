@@ -112,3 +112,24 @@ async fn audits_denied_logins_without_their_content() {
     assert_eq!(reason.as_deref(), Some("Mot de passe invalide"));
     assert!(!metadata.to_string().contains("mauvais-secret"));
 }
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn counts_only_failures_against_the_account() {
+    let api = TestApi::start().await;
+    let julien = email(user::JULIEN);
+    for _ in 0..9 {
+        let failure = api.try_login(&julien, "incorrect").await;
+        assert_eq!(failure.status, StatusCode::UNAUTHORIZED);
+    }
+    // A successful login gives its attempt back…
+    assert_eq!(
+        api.try_login(&julien, PASSWORD).await.status,
+        StatusCode::OK
+    );
+    // …so the tenth failure is still verified, and the next one is throttled.
+    let tenth = api.try_login(&julien, "incorrect").await;
+    assert_eq!(tenth.status, StatusCode::UNAUTHORIZED);
+    let eleventh = api.try_login(&julien, "incorrect").await;
+    assert_eq!(eleventh.status, StatusCode::TOO_MANY_REQUESTS);
+}
