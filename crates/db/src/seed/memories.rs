@@ -3,7 +3,7 @@
 
 use mimorya_core::authz::Sensitivity;
 use mimorya_core::demo::{tenant, unit, user};
-use mimorya_core::memory::{MemoryKind, MemoryScope};
+use mimorya_core::memory::{MemoryKind, MemoryScope, MemoryStatus};
 use sqlx::PgConnection;
 use uuid::Uuid;
 
@@ -80,7 +80,7 @@ pub(super) async fn insert(conn: &mut PgConnection) -> sqlx::Result<()> {
                 title: memory.title.into(),
                 content: memory.content.into(),
                 sensitivity: Sensitivity::Internal,
-                status: "active",
+                status: MemoryStatus::Active,
                 source: MemorySource::manual(Some("Données de démonstration")),
                 created_by_user_id: Some(memory.author),
                 created_by_run_id: None,

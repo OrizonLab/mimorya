@@ -4,7 +4,7 @@ mod support;
 
 use mimorya_core::authz::{Actor, Sensitivity};
 use mimorya_core::demo::{self, tenant, unit, user};
-use mimorya_core::memory::{MemoryKind, MemoryScope, memory_read_filter};
+use mimorya_core::memory::{MemoryKind, MemoryScope, MemoryStatus, memory_read_filter};
 use mimorya_db::Database;
 use mimorya_db::repositories::memory::{
     MemorySource, NewMemory, create_memory, list_visible_memory, search_memory, to_or_tsquery,
@@ -30,7 +30,7 @@ fn add_team_south_procedure(urls: &mimorya_db::testing::TestDatabaseUrls) {
                     title: "Retours chantier équipe Sud".into(),
                     content: "Les retours chantier de l’équipe Sud ont lieu le mardi matin.".into(),
                     sensitivity: Sensitivity::Internal,
-                    status: "active",
+                    status: MemoryStatus::Active,
                     source: MemorySource::manual(None),
                     created_by_user_id: None,
                     created_by_run_id: None,

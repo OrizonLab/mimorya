@@ -4,33 +4,12 @@
 
 use chrono::{DateTime, Utc};
 use mimorya_core::authz::Sensitivity;
-use mimorya_core::memory::{MemoryKind, MemoryReadFilter, MemoryScope, UnitFilter};
-use serde::{Deserialize, Serialize};
+use mimorya_core::memory::{MemoryKind, MemoryReadFilter, MemoryScope, MemoryStatus, UnitFilter};
+
+pub use mimorya_core::memory::MemorySource;
 use sqlx::PgConnection;
 use sqlx::types::Json;
 use uuid::Uuid;
-
-/// Where a memory comes from.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct MemorySource {
-    /// `conversation`, `run`, `document` or `manual`.
-    #[serde(rename = "type")]
-    pub kind: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub label: Option<String>,
-}
-
-impl MemorySource {
-    pub fn manual(label: Option<&str>) -> Self {
-        Self {
-            kind: "manual".into(),
-            id: None,
-            label: label.map(Into::into),
-        }
-    }
-}
 
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct MemoryRow {
@@ -165,8 +144,7 @@ pub struct NewMemory {
     pub title: String,
     pub content: String,
     pub sensitivity: Sensitivity,
-    /// `active` or `proposed`.
-    pub status: &'static str,
+    pub status: MemoryStatus,
     pub source: MemorySource,
     pub created_by_user_id: Option<Uuid>,
     pub created_by_run_id: Option<Uuid>,
@@ -186,7 +164,7 @@ pub async fn create_memory(conn: &mut PgConnection, input: NewMemory) -> sqlx::R
     .bind(input.title)
     .bind(input.content)
     .bind(input.sensitivity.as_str())
-    .bind(input.status)
+    .bind(input.status.as_str())
     .bind(Json(input.source))
     .bind(input.created_by_user_id)
     .bind(input.created_by_run_id)

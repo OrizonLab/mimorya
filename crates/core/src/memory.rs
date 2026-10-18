@@ -156,3 +156,51 @@ pub fn can_write_memory(
         }
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MemoryStatus {
+    Active,
+    /// Waiting for validation by someone holding `memory:write` on the space.
+    Proposed,
+    Archived,
+}
+
+impl MemoryStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Active => "active",
+            Self::Proposed => "proposed",
+            Self::Archived => "archived",
+        }
+    }
+}
+
+/// Where a memory comes from (`conversation`, `run`, `document` or `manual`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemorySource {
+    #[serde(rename = "type")]
+    pub kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+}
+
+impl MemorySource {
+    pub fn manual(label: Option<&str>) -> Self {
+        Self {
+            kind: "manual".into(),
+            id: None,
+            label: label.map(Into::into),
+        }
+    }
+
+    pub fn run(run_id: impl ToString) -> Self {
+        Self {
+            kind: "run".into(),
+            id: Some(run_id.to_string()),
+            label: None,
+        }
+    }
+}
