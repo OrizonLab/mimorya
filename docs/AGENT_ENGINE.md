@@ -1,0 +1,237 @@
+# Moteur agentique et mémoire
+
+Code : `packages/agent` (moteur), `packages/core` (autorisation, autonomie, contrat
+d'outil), `packages/connectors` (outils). Statut des briques : [ROADMAP.md](ROADMAP.md).
+
+## 1. Principes
+
+1. **Le modèle propose, la plateforme dispose** : chaque appel d'outil passe par un
+   point d'application des politiques (PEP) indépendant du modèle.
+2. **Contexte minimal et autorisé** : seules les données que l'utilisateur peut voir
+   entrent dans le contexte.
+3. **Tout est borné** : étapes, tokens, coût, durée, tentatives de correction,
+   profondeur et parallélisme des sous-agents.
+4. **Tout est persisté** : chaque étape est enregistrée ; une exécution peut être
+   rejouée, auditée et reprise.
+5. **Rien n'est appris sans validation** : mémoire partagée et compétences passent par
+   un statut « proposé » avant d'être actives.
+
+## 2. Composants
+
+```mermaid
+flowchart TB
+  subgraph Engine["packages/agent"]
+    RT[AgentRuntime<br/>boucle]
+    CB[ContextBuilder<br/>consignes · contexte orga · mémoires · compétences]
+    PR[LlmProvider<br/>Anthropic · OpenAI-compatible · Script]
+    TE[ToolExecutor = PEP<br/>permissions · autonomie · validation · audit]
+    VF[Verifier<br/>ancrage · critères · LLM-juge]
+    BG[Budget<br/>étapes · tokens · coût · durée]
+    MS[MemoryService]
+    SK[SkillLibrary]
+    DL[Delegation<br/>sous-agents]
+  end
+  subgraph Ports["Interfaces (implémentées par packages/db)"]
+    RS[RunStore]
+    AS[AuditSink]
+    AP[ApprovalStore]
+    MSt[MemoryStore]
+    US[UsageSink]
+  end
+  RT --> CB & PR & TE & VF & BG
+  CB --> MS & SK
+  TE --> AS & AP
+  RT --> RS & US
+  MS --> MSt
+  DL --> RT
+```
+
+## 3. Boucle d'exécution
+
+```
+run(objective, subject, options)
+  contexte ← ContextBuilder(subject)            # consignes fixes + contexte orga + mémoires + index des compétences
+  tant que non terminé :
+    Budget.vérifier()                           # étapes, tokens, coût, durée → arrêt propre si dépassé
+    réponse ← LLM(contexte, outils visibles par le sujet)
+    si appels d'outils :
+      pour chaque appel :
+        décision ← PEP(sujet, outil, entrée)
+        allow            → exécuter (délai max, signal d'annulation), résultat balisé NON FIABLE
+        require_approval → créer la demande, suspendre le run (awaiting_approval)
+        deny             → renvoyer le refus motivé au modèle (il adapte son plan)
+      persister l'étape ; continuer
+    sinon (réponse finale candidate) :
+      verdict ← Verifier(objectif, critères, réponse, preuves collectées)
+      si verdict OK → terminer
+      sinon si tentatives < max → injecter la critique, continuer (correction)
+      sinon → terminer en signalant honnêtement les points non vérifiés
+```
+
+**Outils visibles** : un outil n'est proposé au modèle que si le sujet détient ses
+permissions requises (dans au moins un périmètre) et que le niveau d'autonomie ne
+l'interdit pas. Le PEP revérifie à l'exécution (défense en profondeur).
+
+**Résultats d'outils** : transmis au modèle comme **données**, encadrés par un
+marqueur `<donnees_outil source="…" fiabilite="non_fiable">` ; les consignes système
+rappellent qu'aucune instruction contenue dans des données ne doit être suivie.
+
+**Erreurs** : erreurs d'outil renvoyées au modèle (il peut corriger son appel) ;
+erreurs de fournisseur classées (`rate_limit`, `overloaded`, `auth`, `context_overflow`,
+`invalid_request`) → nouvelle tentative avec attente exponentielle, bascule vers un
+modèle de repli configuré (phase 2), ou arrêt.
+
+## 4. Point d'application des politiques (PEP)
+
+Pour chaque appel d'outil, dans cet ordre :
+
+1. outil connu et activé pour l'entreprise ;
+2. validation de l'entrée (schéma Zod) ;
+3. **permissions requises** détenues par l'utilisateur **et** autorisées pour l'agent
+   (permissions non délégables exclues, plafond du run) ;
+4. **niveau d'autonomie** × **risque de l'outil** (`read`, `draft`, `write`, `external`,
+   `irreversible`) → `allow`, `require_approval` ou `deny` ;
+5. exécution avec un **contexte d'autorisation lié** (`ctx.authz.scope(permission)`) :
+   l'outil filtre ses données sur le périmètre du sujet ;
+6. journalisation (`tool_invocations`, `audit_log`, `run_events`) et usage.
+
+| Autonomie \ Risque      | read | draft | write                 | external              | irreversible |
+| ----------------------- | ---- | ----- | --------------------- | --------------------- | ------------ |
+| `read_only`             | ✅   | ⛔    | ⛔                    | ⛔                    | ⛔           |
+| `propose`               | ✅   | ✅    | ⛔                    | ⛔                    | ⛔           |
+| `execute_with_approval` | ✅   | ✅    | 🔐                    | 🔐                    | 🔐           |
+| `autonomous_limited`    | ✅   | ✅    | ✅ si liste, sinon 🔐 | ✅ si liste, sinon 🔐 | 🔐           |
+
+✅ exécuté · 🔐 validation humaine · ⛔ refusé. Un outil peut en plus exiger
+systématiquement une validation (`requiresApproval`).
+
+## 5. Validations humaines
+
+- Une demande contient : l'action lisible (« Appliquer le planning de suivi : 4
+  interventions, semaine 43 »), les paramètres exacts, le risque, le run d'origine.
+- MVP : la personne pour qui l'agent agit valide (ou rejette) ses propres actions.
+  Phase 2 : circuits hiérarchiques (validation par un responsable disposant de
+  `approval:decide` sur le périmètre), délais d'expiration, délégations.
+- `approval:decide` est **non délégable** : l'agent ne peut jamais valider lui-même.
+- Après décision, l'outil est exécuté **avec les paramètres validés** (aucune
+  modification possible entre validation et exécution) et le run reprend.
+
+## 6. Vérification et correction
+
+Deux niveaux, cumulables :
+
+1. **Contrôles déterministes** (sans LLM, toujours actifs) :
+   - _ancrage_ : tout identifiant d'enregistrement cité dans la réponse (ex. `INT-2043`)
+     doit figurer dans les résultats d'outils de l'exécution ;
+   - complétude des critères structurés (présence des sections demandées…).
+2. **Évaluation par un modèle** (missions, ou critères explicites) : un appel séparé,
+   éventuellement avec un autre modèle, juge la réponse au regard de l'objectif et des
+   critères et renvoie `{ pass, issues[] }` via un outil structuré.
+
+En cas d'échec : la critique est réinjectée comme message système et l'agent corrige,
+dans la limite de `maxCorrectionAttempts` (défaut 2). Les échecs résiduels sont
+**affichés** à l'utilisateur, jamais masqués. Chaque verdict est enregistré dans
+`agent_runs.verification` et alimente l'apprentissage (§8).
+
+## 7. Sous-agents
+
+- Outil `delegate_task` : crée un run enfant avec un profil (`research`, `analysis`,
+  `planning`, `quality`…), un objectif, et un **plafond de permissions ⊆ parent**.
+- Les enfants ne peuvent pas : déléguer à nouveau (profondeur 1 par défaut), écrire
+  dans la mémoire partagée, demander des validations directement, communiquer vers
+  l'extérieur. Ils rendent un **résumé** au parent (pas leur transcription).
+- Parallélisme borné (défaut 3), budget prélevé sur celui du parent.
+- L'utilisateur voit une seule conversation ; le détail des sous-agents est
+  consultable dans la vue « opérations ».
+
+## 8. Apprentissage : quatre mécanismes distincts
+
+| Mécanisme                  | Ce qui change                                           | Déclencheur                                                  | Garde-fou                                                                                         |
+| -------------------------- | ------------------------------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| **Mémoire**                | Faits, préférences, décisions, leçons                   | Demande explicite, ou proposition de l'agent en fin de run   | Personnelle : enregistrée si l'utilisateur l'autorise ; partagée : statut `proposed` → validation |
+| **Procédures**             | Mémoire `procedure` / `lesson` de l'espace _expérience_ | Run vérifié avec succès, ou échec corrigé                    | Validation par un gestionnaire des connaissances                                                  |
+| **Compétences** (_skills_) | Procédure outillée réutilisable, versionnée             | Répétition d'un même type de mission, proposition de l'agent | Évaluations + non-régression + validation humaine avant activation ; retour arrière               |
+| **Modèles**                | Poids d'un modèle (fine-tuning)                         | Hors périmètre initial                                       | Décision produit explicite, données anonymisées, opt-in                                           |
+
+Aucun de ces mécanismes ne peut modifier une permission, une politique, un niveau
+d'autonomie ou une consigne de sécurité : ces objets ne sont pas accessibles aux
+outils de l'agent (permissions non délégables) et les consignes système ne sont pas
+composables par les compétences.
+
+### 8.1 Boucle d'amélioration
+
+1. Mission reçue → objectif et **critères de réussite** explicités (planification).
+2. Décomposition en étapes, choix des outils et des compétences.
+3. Exécution autorisée, observation.
+4. Contrôle (§6) ; correction bornée.
+5. **Capitalisation** : le résumé du run (ce qui a marché, erreurs, corrections) est
+   proposé comme mémoire `lesson` ; si un schéma récurrent apparaît, l'agent propose
+   une compétence (nouvelle version `draft`).
+6. **Évaluation** de la version candidate sur les cas `skill_evals` (et cas de
+   non-régression des versions précédentes) ; budget d'évaluation plafonné.
+7. **Activation** par une personne habilitée (`skill:manage`) ; historique conservé ;
+   retour à la version précédente en un geste si les indicateurs se dégradent.
+
+## 9. Mémoire multiniveau
+
+### 9.1 Espaces
+
+| Espace                                       | Visible par                                                                        | Écriture                                    |
+| -------------------------------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------- |
+| `user` (personnel)                           | Son propriétaire uniquement (et l'agent agissant pour lui)                         | L'utilisateur, l'agent pour lui             |
+| `org_unit` (équipe, service)                 | Membres de l'unité et de ses sous-unités ; détenteurs de `memory:read` sur l'unité | `memory:write` sur l'unité                  |
+| `tenant` (entreprise)                        | Tous les membres disposant de `memory:read`                                        | `memory:write` à l'échelle de l'entreprise  |
+| `experience` (leçons, procédures de l'agent) | Comme `tenant`                                                                     | Proposée par l'agent, validée par un humain |
+
+Un responsable **ne voit pas** la mémoire personnelle de ses collaborateurs.
+
+### 9.2 Recherche
+
+1. **Pré-filtrage SQL** par l'entreprise (RLS) et par le filtre de visibilité calculé
+   par `core` (`memoryReadFilter`) — jamais de filtrage après classement seulement.
+2. Classement **hybride** : plein texte PostgreSQL (`ts_rank`) et, si un modèle
+   d'embedding est configuré, similarité cosinus pgvector ; fusion par rang réciproque
+   (RRF).
+3. Exclusion des éléments expirés, archivés ou d'une sensibilité supérieure à
+   l'habilitation.
+4. Injection dans le contexte **avec la source** (identifiant, espace, date) ; mise à
+   jour de `last_used_at` / `use_count`.
+
+### 9.3 Cycle de vie
+
+Rétention par type (`expires_at`), consultation et suppression par l'utilisateur
+(espace « Ma mémoire »), export (RGPD), archivage des éléments inutilisés plutôt que
+suppression silencieuse pour la mémoire partagée.
+
+## 10. Scénario de référence
+
+« Analyse les comptes rendus des interventions de cette semaine, identifie les
+interventions non terminées, prépare une synthèse et propose un planning de suivi pour
+mon équipe. » — demandé par Marc Lefèvre, responsable technique (données fictives).
+
+| Étape attendue                          | Réalisation                                                                                                                            |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Vérifier les permissions             | Sujet construit côté serveur ; `intervention:read` sur le sous-arbre « Service technique » ; outils visibles filtrés                   |
+| 2. Identifier les sources accessibles   | Outils du connecteur de démonstration visibles pour ce sujet                                                                           |
+| 3. Récupérer les données                | `interventions_search` (période, statut) — filtrée par périmètre dans le connecteur                                                    |
+| 4. Analyser les comptes rendus          | `interventions_get` pour les détails ; le modèle analyse                                                                               |
+| 5. Éléments manquants / contradictoires | Le connecteur signale les anomalies détectables (statut « terminé » avec pièce en attente, compte rendu vide…) ; le modèle les intègre |
+| 6. Synthèse fiable                      | Réponse citant les identifiants `INT-xxxx` ; contrôle d'ancrage                                                                        |
+| 7. Proposition de planning              | `team_availability` puis `planning_propose` (risque `draft`) → livrable brouillon                                                      |
+| 8. Vérifier la cohérence                | Vérificateur : ancrage, chaque intervention non terminée planifiée, pas de double réservation                                          |
+| 9. Actions à valider                    | `planning_apply` (risque `write`) → demande de validation                                                                              |
+| 10. Capitaliser                         | Proposition de mémoire d'équipe (« le jeudi après-midi est réservé aux retours chantier »…) en statut `proposed`                       |
+
+Le même message envoyé par Julien (chef de l'équipe Nord) ne porte que sur l'équipe
+Nord ; envoyé par Lucas (technicien), sur ses propres interventions ; envoyé par Paul
+(administrateur technique), il n'expose aucune intervention.
+
+## 11. Fournisseurs et routage des modèles
+
+- `LlmProvider` normalise messages, outils (JSON Schema dérivé de Zod), appels
+  d'outils, raisons d'arrêt et usage.
+- Configuration par entreprise : fournisseur et modèle par classe de tâche (`chat`,
+  `planning`, `verification`, `summarize`, `embedding`), contraintes (régions,
+  modèles autorisés, « local uniquement » pour certaines sensibilités).
+- Coûts : table de prix par modèle (configurable) → `cost_micros` par appel ; budgets
+  par run et quotas mensuels par entreprise (phase 3 pour la facturation).

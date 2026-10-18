@@ -1,0 +1,17 @@
+{
+  "name": "@mimorya/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Domain model, authorization engine (RBAC + ABAC) and autonomy policies. Pure, no I/O.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./demo": "./src/demo/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "zod": "^4.6.7"
+  }
+}

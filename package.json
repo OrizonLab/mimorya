@@ -1,0 +1,37 @@
+{
+  "name": "mimorya",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev:api": "pnpm --filter @mimorya/api dev",
+    "dev:web": "pnpm --filter @mimorya/web dev",
+    "build": "pnpm -r --if-present build",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run --project unit",
+    "test:int": "vitest run --project integration",
+    "test:all": "vitest run",
+    "db:generate": "pnpm --filter @mimorya/db generate",
+    "db:migrate": "pnpm --filter @mimorya/db migrate",
+    "db:seed": "pnpm --filter @mimorya/db seed",
+    "check": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@types/node": "^22.20.5",
+    "eslint": "^9.39.5",
+    "globals": "^17.13.0",
+    "prettier": "^3.9.10",
+    "tsx": "^4.23.15",
+    "typescript": "5.9.3",
+    "typescript-eslint": "^8.71.2",
+    "vite": "^7.3.7",
+    "vitest": "^5.0.5"
+  }
+}
