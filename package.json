@@ -20,7 +20,8 @@
     "db:generate": "pnpm --filter @mimorya/db generate",
     "db:migrate": "pnpm --filter @mimorya/db migrate",
     "db:seed": "pnpm --filter @mimorya/api seed",
-    "check": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test"
+    "check": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test",
+    "db:check-drift": "pnpm --filter @mimorya/db check:drift"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

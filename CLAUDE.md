@@ -32,9 +32,44 @@ pnpm dev:web                       # Web sur :3000
 pnpm check                         # typecheck + lint + format + tests unitaires
 pnpm test:int                      # tests d'intégration (PostgreSQL requis, base *_test recréée)
 pnpm db:generate                   # migration à partir du schéma Drizzle
+pnpm db:check-drift                # échoue si le schéma a changé sans migration
 ```
 
 Avant chaque commit : `pnpm check && pnpm test:int` doivent passer.
+
+## Processus de contribution
+
+1. Travailler sur une branche dédiée, en commits cohérents ; ouvrir une PR (brouillon)
+   vers `main`.
+2. **Audit obligatoire avant fusion** : lancer l'agent `code-auditor`
+   (`.claude/agents/code-auditor.md`, grille `REVIEW.md`) sur la branche. Il est en
+   lecture seule, exécute tous les contrôles et rend un verdict.
+3. Corriger chaque constat BLOQUANT et MAJEUR, pousser, puis relancer l'audit
+   jusqu'au verdict **APPROUVÉ** (les constats MINEUR/SUGGESTION sont notés dans la PR
+   ou la feuille de route).
+4. CI verte sur le dernier commit + verdict APPROUVÉ → passer la PR en « prête »,
+   fusionner dans `main` (squash, message de commit descriptif), puis repartir de
+   `main` à jour pour la suite.
+5. Ne jamais fusionner avec un contrôle rouge ou non exécuté, ni désactiver un test
+   pour obtenir le vert.
+
+## Structure du code
+
+- **Une responsabilité par fichier.** Viser moins de 250 lignes par fichier source,
+  400 au maximum ; au-delà, découper par sous-domaine. Les tests suivent la même
+  règle (un fichier par thème, données de test partagées dans `*.fixtures.ts`).
+- **Dossiers par domaine** (fonctionnalité), pas par type technique : chaque dossier
+  expose son API publique via un `index.ts` ; le reste est interne au dossier.
+- **Nommage** : fichiers en `kebab-case`, composants React en `PascalCase`, fonctions
+  et variables en `camelCase`, constantes partagées en `UPPER_SNAKE_CASE`.
+- **En-tête de module** : un commentaire court en tête des fichiers non triviaux dit
+  ce que fait le module et pourquoi il existe.
+- **API (`apps/api`)** : un module de routes par ressource (`routes/<ressource>.ts`),
+  les hooks transverses dans `plugins/`, la logique d'orchestration dans
+  `services/<domaine>/`.
+- **Web (`apps/web`)** : pages minces qui composent des composants ; un composant par
+  fichier dans `components/<fonctionnalité>/` ; primitives d'interface dans
+  `components/ui/` ; accès API et types dans `lib/api/`.
 
 ## Règles d'architecture
 

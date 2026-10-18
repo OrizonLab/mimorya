@@ -43,6 +43,8 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm format:check
+      - name: Check that migrations match the schema
+        run: pnpm db:check-drift
       - run: pnpm test:all
       - name: Build the web application
         run: pnpm --filter @mimorya/web build

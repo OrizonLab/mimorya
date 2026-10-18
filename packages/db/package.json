@@ -13,7 +13,8 @@
     "typecheck": "tsc -p tsconfig.json",
     "generate": "drizzle-kit generate",
     "migrate": "tsx --env-file-if-exists=../../.env src/scripts/migrate.ts",
-    "seed": "tsx src/scripts/seed.ts"
+    "seed": "tsx src/scripts/seed.ts",
+    "check:drift": "node scripts/check-drift.mjs"
   },
   "dependencies": {
     "@mimorya/core": "workspace:*",
