@@ -86,20 +86,45 @@ pub fn typescript() -> String {
     declarations.add::<admin::AuditLog>();
     declarations.add::<admin::UsageSummary>();
     declarations.add::<ErrorBody>();
-    // Request bodies.
-    declarations.add::<Credentials>();
-    declarations.add::<PasswordUpdate>();
-    declarations.add::<ResetLinkRequest>();
-    declarations.add::<LinkToken>();
-    declarations.add::<LinkPassword>();
-    declarations.add::<NewConversation>();
-    declarations.add::<ConversationChanges>();
-    declarations.add::<NewMessage>();
-    declarations.add::<ApprovalVerdict>();
-    declarations.add::<ManualMemory>();
-    declarations.add::<MemoryReview>();
+    macro_rules! declare {
+        ($($body:ty),*) => { $(declarations.add::<$body>();)* };
+    }
+    request_bodies!(declare);
     declarations.render()
 }
+
+/// Every request body (ADR-039), for `typescript()` and for the test that
+/// each one refuses an unknown field: `$apply!(Type, …)`.
+macro_rules! request_bodies {
+    ($apply:ident) => {
+        $apply!(
+            Credentials,
+            PasswordUpdate,
+            ResetLinkRequest,
+            LinkToken,
+            LinkPassword,
+            NewConversation,
+            ConversationChanges,
+            NewMessage,
+            ApprovalVerdict,
+            ManualMemory,
+            MemoryReview,
+            admin::NewAccount,
+            admin::AccountUpdate,
+            admin::RoleGrant,
+            admin::NewOrgUnit,
+            admin::OrgUnitUpdate,
+            admin::NewRole,
+            admin::RoleUpdate,
+            admin::NewPolicy,
+            admin::PolicyUpdate,
+            admin::NewConnector,
+            admin::ConnectorUpdate,
+            admin::LlmChoice
+        )
+    };
+}
+use request_bodies;
 
 #[cfg(test)]
 mod tests;

@@ -1,14 +1,17 @@
-//! Access policies (`policy:manage`): every policy, and what a deny policy
-//! may restrict and read (ADR-022).
+//! Access policies (`policy:manage`): every policy, what a deny policy may
+//! restrict and read, and a deny policy as the administration writes it
+//! (ADR-022).
 
+use mimorya_core::authz::Condition;
 use mimorya_db::repositories::access_policies::PolicyRow;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use ts_rs::TS;
 use uuid::Uuid;
+use validator::Validate;
 
 use crate::contract::stored_text;
-use crate::http::iso;
+use crate::http::{iso, trimmed, trimmed_opt};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "snake_case")]
@@ -75,4 +78,42 @@ pub struct Policies {
     /// Domains a policy may restrict as a whole (`domain:*`).
     pub domains: Vec<String>,
     pub attributes: Vec<ConditionAttribute>,
+}
+
+/// Body of `POST /admin/policies`: a deny policy.
+#[derive(Deserialize, Validate, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NewPolicy {
+    #[serde(deserialize_with = "trimmed")]
+    #[validate(length(min = 3, max = 300))]
+    pub description: String,
+    #[validate(length(max = 50))]
+    pub permissions: Vec<String>,
+    /// `{ all }`, `{ any }`, `{ not }` or a comparison, as `PolicyView.condition`.
+    #[ts(type = "Record<string, unknown>")]
+    pub condition: Condition,
+    /// Absent: enabled.
+    #[serde(default)]
+    #[ts(optional)]
+    pub enabled: Option<bool>,
+}
+
+/// Body of `PATCH /admin/policies/{id}`: only the fields sent change.
+#[derive(Deserialize, Validate, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PolicyUpdate {
+    #[serde(default, deserialize_with = "trimmed_opt")]
+    #[validate(length(min = 3, max = 300))]
+    #[ts(optional)]
+    pub description: Option<String>,
+    #[serde(default)]
+    #[validate(length(max = 50))]
+    #[ts(optional)]
+    pub permissions: Option<Vec<String>>,
+    #[serde(default)]
+    #[ts(optional, type = "Record<string, unknown>")]
+    pub condition: Option<Condition>,
+    #[serde(default)]
+    #[ts(optional)]
+    pub enabled: Option<bool>,
 }

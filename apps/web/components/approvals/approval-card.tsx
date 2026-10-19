@@ -35,7 +35,7 @@ export function ApprovalCard({
     try {
       await api.post(`/approvals/${approval.id}/decision`, {
         approved,
-        ...(comment.trim() ? { comment: comment.trim() } : {}),
+        comment: comment.trim() || undefined,
       } satisfies ApprovalVerdict);
       onDecided(approved);
     } catch (e) {

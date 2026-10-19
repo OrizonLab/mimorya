@@ -119,9 +119,10 @@ Avant chaque commit : `pnpm check && pnpm test:int` doivent passer.
 - **API (`crates/api`)** : un module de routes par ressource (`routes/<ressource>.rs`),
   les middlewares transverses dans `plugins/`, la logique d'orchestration dans
   `services/<domaine>/`. Une réponse nouvelle ou modifiée est un type de `contract/`
-  (pas de `json!`), de même qu'un corps de requête (strict : `deny_unknown_fields`),
-  puis `pnpm contract` ; l'interface l'importe depuis `@/lib/api` (corps envoyés avec
-  `satisfies`).
+  (pas de `json!`), de même qu'un corps de requête (strict : `deny_unknown_fields`,
+  listé dans `request_bodies!`), puis `pnpm contract` ; l'interface l'importe depuis
+  `@/lib/api` (corps envoyés avec `satisfies`, champs écrits un à un : pas de
+  décomposition conditionnelle `...(c ? {…} : {})`, que `satisfies` ne vérifie pas).
 - **Web (`apps/web`)** : pages minces qui composent des composants ; un composant par
   fichier dans `components/<fonctionnalité>/` ; primitives d'interface dans
   `components/ui/` ; accès API et types dans `lib/api/`.

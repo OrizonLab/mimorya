@@ -1,10 +1,12 @@
 //! Request bodies are strict: a body the web client may send (with only its
 //! required fields, or with every field) is read, and the same body with an
 //! unknown field is refused, so that a misnamed field cannot be ignored.
+//! Every body of the contract's list refuses one (ADR-039).
 
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
+use crate::contract::admin::*;
 use crate::contract::*;
 
 /// `minimal` and `complete` are read; `complete` with one more field is not.
@@ -54,4 +56,124 @@ fn conversation_approval_and_memory_bodies_refuse_unknown_fields() {
     strict::<ManualMemory>(memory.clone(), memory);
     let review = json!({ "decision": "approve" });
     strict::<MemoryReview>(review.clone(), review);
+}
+
+/// Read alone, an unknown field is refused before any missing one.
+fn refuses_unknown<T: DeserializeOwned>(name: &str) {
+    match serde_json::from_value::<T>(json!({ "inconnu": true })) {
+        Ok(_) => panic!("{name} reads an unknown field"),
+        Err(e) => assert!(
+            e.to_string().starts_with("unknown field `inconnu`"),
+            "{name}: {e}"
+        ),
+    }
+}
+
+#[test]
+fn every_request_body_of_the_contract_refuses_unknown_fields() {
+    macro_rules! refuse {
+        ($($body:ty),*) => { $(refuses_unknown::<$body>(stringify!($body));)* };
+    }
+    crate::contract::request_bodies!(refuse);
+}
+
+#[test]
+fn administration_bodies_read_what_the_web_client_sends() {
+    let unit = "8d5ba3d6-0c4c-4b2c-9c51-2f8e6a3c1b7e";
+    strict::<NewAccount>(
+        json!({ "email": "a@neo-maintenance.example", "displayName": "Anne Martin" }),
+        json!({
+            "email": "a@neo-maintenance.example",
+            "displayName": "Anne Martin",
+            "jobTitle": "Technicienne",
+            "orgUnitId": unit,
+            "clearance": "confidential",
+        }),
+    );
+    strict::<AccountUpdate>(
+        json!({}),
+        json!({
+            "displayName": "Anne Martin",
+            "jobTitle": null,
+            "orgUnitId": null,
+            "clearance": "internal",
+            "status": "disabled",
+            "attributes": { "department": "technique" },
+        }),
+    );
+    strict::<RoleGrant>(
+        json!({ "roleId": unit, "scope": { "type": "tenant" } }),
+        json!({
+            "roleId": unit,
+            "scope": { "type": "org_unit", "orgUnitId": unit, "includeDescendants": true },
+            "expiresAt": "2030-01-01T00:00:00Z",
+        }),
+    );
+    strict::<NewOrgUnit>(
+        json!({ "parentId": unit, "name": "Équipe Est", "type": "team" }),
+        json!({ "parentId": unit, "name": "Équipe Est", "type": "team" }),
+    );
+    strict::<OrgUnitUpdate>(
+        json!({}),
+        json!({ "name": "Équipe Est", "type": "team", "parentId": unit, "leadUserId": null }),
+    );
+    strict::<NewRole>(
+        json!({ "name": "Planificateur", "permissions": [] }),
+        json!({ "name": "Planificateur", "description": "Planning", "permissions": ["planning:read"] }),
+    );
+    strict::<RoleUpdate>(
+        json!({}),
+        json!({ "name": "Planificateur", "description": "", "permissions": [] }),
+    );
+    let condition = json!({
+        "op": "eq",
+        "left": { "attr": "subject.attributes.contractType" },
+        "right": { "value": "interim" },
+    });
+    strict::<NewPolicy>(
+        json!({ "description": "Intérimaires", "permissions": ["intervention:read"], "condition": condition }),
+        json!({
+            "description": "Intérimaires",
+            "permissions": ["intervention:read"],
+            "condition": condition,
+            "enabled": false,
+        }),
+    );
+    strict::<PolicyUpdate>(
+        json!({}),
+        json!({ "description": "Intérimaires", "enabled": true }),
+    );
+    strict::<NewConnector>(
+        json!({ "name": "Documents", "prefix": "docs", "url": "https://mcp.example/mcp" }),
+        json!({
+            "name": "Documents",
+            "prefix": "docs",
+            "url": "https://mcp.example/mcp",
+            "token": "jeton",
+            "enabled": false,
+        }),
+    );
+    strict::<ConnectorUpdate>(
+        json!({}),
+        json!({
+            "name": "Documents",
+            "enabled": true,
+            "url": "https://mcp.example/mcp",
+            "token": null,
+            "toolPolicies": { "search": { "enabled": true, "risk": "read", "permissions": [] } },
+        }),
+    );
+    strict::<LlmChoice>(
+        json!({ "provider": "anthropic" }),
+        json!({ "provider": "openai_compatible", "model": "m", "baseUrl": "https://llm.example/v1", "apiKey": "cle" }),
+    );
+}
+
+/// A tool policy and a role's scope refuse unknown fields too.
+#[test]
+fn nested_administration_values_refuse_unknown_fields() {
+    let policy = json!({ "enabled": true, "inconnu": 1 });
+    assert!(serde_json::from_value::<ToolPolicyChange>(policy).is_err());
+    let scope = json!({ "type": "org_unit", "orgUnitId": "8d5ba3d6-0c4c-4b2c-9c51-2f8e6a3c1b7e", "includeDescendants": true, "inconnu": 1 });
+    assert!(serde_json::from_value::<AssignmentScope>(scope).is_err());
 }

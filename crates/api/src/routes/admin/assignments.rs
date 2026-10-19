@@ -1,36 +1,20 @@
 //! Role assignments of an account (`role:manage`, company-wide).
 
-use axum::Json;
-use axum::extract::State;
-use axum::http::StatusCode;
-use chrono::{DateTime, Utc};
-use mimorya_core::authz::AssignmentScope;
-use serde::Deserialize;
-use uuid::Uuid;
-use validator::Validate;
-
 use crate::app::AppState;
+use crate::contract::admin::RoleGrant;
 use crate::contract::{Created, Done};
 use crate::http::{ApiResult, Body, PathId};
 use crate::plugins::Auth;
 use crate::services::admin::{grant_role, revoke_role};
-
-#[derive(Deserialize, Validate)]
-#[serde(rename_all = "camelCase")]
-pub struct GrantBody {
-    role_id: Uuid,
-    /// `{"type": "tenant"}`, `{"type": "self"}` or
-    /// `{"type": "org_unit", "orgUnitId": …, "includeDescendants": …}`.
-    scope: AssignmentScope,
-    #[serde(default)]
-    expires_at: Option<DateTime<Utc>>,
-}
+use axum::Json;
+use axum::extract::State;
+use axum::http::StatusCode;
 
 pub async fn grant(
     State(state): State<AppState>,
     Auth(identity): Auth,
     PathId(user_id): PathId,
-    Body(body): Body<GrantBody>,
+    Body(body): Body<RoleGrant>,
 ) -> ApiResult<(StatusCode, Json<Created>)> {
     let access = state.access.context(identity).await?;
     let id = grant_role(
@@ -38,7 +22,7 @@ pub async fn grant(
         &access,
         user_id,
         body.role_id,
-        body.scope,
+        body.scope.into(),
         body.expires_at,
     )
     .await?;

@@ -2,7 +2,14 @@
 
 import { useState, type FormEvent } from 'react';
 import { Button, ErrorNote, Field, Input, Select } from '@/components/ui';
-import { api, useAction, type OrgUnitView, type RoleView } from '@/lib/api';
+import {
+  api,
+  useAction,
+  type AssignmentScope,
+  type OrgUnitView,
+  type RoleGrant,
+  type RoleView,
+} from '@/lib/api';
 import { unitOptions } from '../organization/types';
 
 type ScopeChoice = 'tenant' | 'subtree' | 'unit' | 'self';
@@ -14,7 +21,7 @@ const SCOPES: Record<ScopeChoice, string> = {
   self: 'Ses propres données',
 };
 
-function scopeBody(choice: ScopeChoice, orgUnitId: string) {
+function scopeBody(choice: ScopeChoice, orgUnitId: string): AssignmentScope {
   if (choice === 'tenant' || choice === 'self') return { type: choice };
   return { type: 'org_unit', orgUnitId, includeDescendants: choice === 'subtree' };
 }
@@ -43,8 +50,8 @@ export function GrantRoleForm({
       api.post(`/admin/users/${userId}/assignments`, {
         roleId,
         scope: scopeBody(scope, orgUnitId),
-        expiresAt: until ? new Date(`${until}T23:59:59`).toISOString() : null,
-      }),
+        expiresAt: until ? new Date(`${until}T23:59:59`).toISOString() : undefined,
+      } satisfies RoleGrant),
     );
     if (granted) onGranted();
   }

@@ -3,7 +3,7 @@
 import { Plus, X } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { Button, ErrorNote, Field, Input, Select } from '@/components/ui';
-import { api, useAction, type DirectoryUser } from '@/lib/api';
+import { api, useAction, type AccountUpdate, type DirectoryUser } from '@/lib/api';
 import {
   ATTRIBUTE_KINDS,
   fromRows,
@@ -62,7 +62,8 @@ function RowsEditor({
     const { attributes, error } = fromRows(rows);
     setProblem(error ?? null);
     if (!attributes) return;
-    const saved = await action.run(() => api.patch(`/admin/users/${user.id}`, { attributes }));
+    const update = { attributes } satisfies AccountUpdate;
+    const saved = await action.run(() => api.patch(`/admin/users/${user.id}`, update));
     if (saved) onChanged();
   }
 

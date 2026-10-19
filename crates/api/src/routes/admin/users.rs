@@ -10,24 +10,18 @@ use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::http::header::CACHE_CONTROL;
-use mimorya_core::accounts::{DISPLAY_NAME_MAX_CHARS, DISPLAY_NAME_MIN_CHARS, EMAIL_MAX_LEN};
-use mimorya_core::authz::Sensitivity;
 use mimorya_db::repositories::invitations::pending_invitations;
 use mimorya_db::repositories::role_assignments::{RoleAssignmentRow, list_role_assignments};
 use mimorya_db::repositories::users::list_users;
-use serde::Deserialize;
-use serde_json::{Map, Value};
-use uuid::Uuid;
-use validator::Validate;
 
 use crate::app::AppState;
 use crate::contract::Done;
 use crate::contract::admin::{
-    Assignment, Directory, DirectoryRights, DirectoryUser, InvitationIssued, ResetLinkSent,
-    TemporaryPassword, UserCreated,
+    AccountUpdate, Assignment, Directory, DirectoryRights, DirectoryUser, InvitationIssued,
+    NewAccount, ResetLinkSent, StatusChange, TemporaryPassword, UserCreated,
 };
 use crate::contract::stored_text;
-use crate::http::{ApiResult, Body, PathId, iso, nullable, trimmed, trimmed_nullable, trimmed_opt};
+use crate::http::{ApiResult, Body, PathId, iso};
 use crate::plugins::Auth;
 use crate::services::access::{AccessContext, describe_scope};
 use crate::services::admin::{
@@ -114,24 +108,6 @@ fn assignment_view(access: &AccessContext, a: &RoleAssignmentRow) -> Assignment 
     }
 }
 
-#[derive(Deserialize, Validate)]
-#[serde(rename_all = "camelCase")]
-pub struct CreateUserBody {
-    #[serde(deserialize_with = "trimmed")]
-    #[validate(email, length(max = EMAIL_MAX_LEN))]
-    email: String,
-    #[serde(deserialize_with = "trimmed")]
-    #[validate(length(min = DISPLAY_NAME_MIN_CHARS, max = DISPLAY_NAME_MAX_CHARS))]
-    display_name: String,
-    #[serde(default, deserialize_with = "trimmed_opt")]
-    #[validate(length(max = 120))]
-    job_title: Option<String>,
-    #[serde(default)]
-    org_unit_id: Option<Uuid>,
-    #[serde(default)]
-    clearance: Sensitivity,
-}
-
 /// Responses carrying a temporary password or an invitation link are never
 /// stored by a cache.
 type Secret<T> = ([(axum::http::HeaderName, &'static str); 1], Json<T>);
@@ -143,7 +119,7 @@ fn secret<T>(body: T) -> Secret<T> {
 pub async fn create(
     State(state): State<AppState>,
     Auth(identity): Auth,
-    Body(body): Body<CreateUserBody>,
+    Body(body): Body<NewAccount>,
 ) -> ApiResult<(StatusCode, Secret<UserCreated>)> {
     let access = state.access.context(identity).await?;
     let input = NewUserInput {
@@ -151,7 +127,7 @@ pub async fn create(
         display_name: body.display_name,
         job_title: body.job_title.filter(|t| !t.is_empty()),
         org_unit_id: body.org_unit_id,
-        clearance: body.clearance,
+        clearance: body.clearance.map(Into::into).unwrap_or_default(),
     };
     let id = create_user(&state.db, &access, input).await?;
     let invitation = issue_invitation(&link_sender(&state), &access, id).await?;
@@ -187,37 +163,11 @@ fn link_sender(state: &AppState) -> LinkSender<'_> {
     }
 }
 
-#[derive(Deserialize, Clone, Copy, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-enum StatusChange {
-    Active,
-    Disabled,
-}
-
-#[derive(Deserialize, Validate)]
-#[serde(rename_all = "camelCase")]
-pub struct UpdateUserBody {
-    #[serde(default, deserialize_with = "trimmed_opt")]
-    #[validate(length(min = DISPLAY_NAME_MIN_CHARS, max = DISPLAY_NAME_MAX_CHARS))]
-    display_name: Option<String>,
-    #[serde(default, deserialize_with = "trimmed_nullable")]
-    job_title: Option<Option<String>>,
-    #[serde(default, deserialize_with = "nullable")]
-    org_unit_id: Option<Option<Uuid>>,
-    #[serde(default)]
-    clearance: Option<Sensitivity>,
-    #[serde(default)]
-    status: Option<StatusChange>,
-    /// Replaces every attribute; `{}` removes them all.
-    #[serde(default)]
-    attributes: Option<Map<String, Value>>,
-}
-
 pub async fn update(
     State(state): State<AppState>,
     Auth(identity): Auth,
     PathId(id): PathId,
-    Body(body): Body<UpdateUserBody>,
+    Body(body): Body<AccountUpdate>,
 ) -> ApiResult<Json<Done>> {
     if body
         .job_title
@@ -234,7 +184,7 @@ pub async fn update(
         display_name: body.display_name,
         job_title: body.job_title,
         org_unit_id: body.org_unit_id,
-        clearance: body.clearance,
+        clearance: body.clearance.map(Into::into),
         active: body.status.map(|s| s == StatusChange::Active),
         attributes: body.attributes,
     };

@@ -2,7 +2,14 @@
 
 import { useState, type FormEvent } from 'react';
 import { Button, ErrorNote, Field, Input } from '@/components/ui';
-import { api, useAction, type PermissionView, type RoleView } from '@/lib/api';
+import {
+  api,
+  useAction,
+  type NewRole,
+  type PermissionView,
+  type RoleUpdate,
+  type RoleView,
+} from '@/lib/api';
 import { groupCatalog } from './types';
 
 /** Creates a custom role, or edits `role`: name, description, permissions. */
@@ -31,9 +38,15 @@ export function RoleForm({
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    const body = { name, description, permissions: [...granted] };
+    const permissions = [...granted];
     const saved = await action.run(() =>
-      role ? api.patch(`/admin/roles/${role.id}`, body) : api.post('/admin/roles', body),
+      role
+        ? api.patch(`/admin/roles/${role.id}`, {
+            name,
+            description,
+            permissions,
+          } satisfies RoleUpdate)
+        : api.post('/admin/roles', { name, description, permissions } satisfies NewRole),
     );
     if (saved) onDone(true);
   }

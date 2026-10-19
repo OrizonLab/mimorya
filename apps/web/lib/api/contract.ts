@@ -4,6 +4,23 @@
 export type AccountStatus = "active" | "invited" | "disabled";
 
 /**
+ * Body of `PATCH /admin/users/{id}`: only the fields sent change.
+ */
+export type AccountUpdate = { displayName?: string,
+/**
+ * `null` or blank clears it.
+ */
+jobTitle?: string | null,
+/**
+ * `null`: no primary unit.
+ */
+orgUnitId?: string | null, clearance?: Sensitivity, status?: StatusChange,
+/**
+ * Replaces every attribute; `{}` removes them all.
+ */
+attributes?: Record<string, unknown>, };
+
+/**
  * An action of the agent waiting for (or given) a human decision.
  */
 export type Approval = { id: string, runId: string, toolName: string, actionSummary: string,
@@ -120,6 +137,19 @@ export type ConnectorType = { type: string, name: string, description: string,
  * Serves fictitious data, labelled as such.
  */
 demo: boolean, };
+
+/**
+ * Body of `PATCH /admin/connectors/{id}`: only the fields sent change.
+ */
+export type ConnectorUpdate = { name?: string, enabled?: boolean, url?: string,
+/**
+ * A text replaces the token, `null` or blank removes it.
+ */
+token?: string | null,
+/**
+ * Replaces every tool's policy.
+ */
+toolPolicies?: { [key in string]: ToolPolicyChange }, };
 
 export type ConnectorView = { id: string, type: string, name: string, enabled: boolean, status: ConnectorStatus, lastError: string | null,
 /**
@@ -289,6 +319,19 @@ export type LinkPassword = { token: string, password: string, };
 export type LinkToken = { token: string, };
 
 /**
+ * Body of `PUT /admin/llm`: the company's own provider.
+ */
+export type LlmChoice = { provider: string,
+/**
+ * Absent or blank: the provider's default model.
+ */
+model?: string, baseUrl?: string,
+/**
+ * Absent: the stored key is kept (same endpoint only).
+ */
+apiKey?: string, };
+
+/**
  * The company's own provider.
  */
 export type LlmSettingsView = { provider: string, model: string, baseUrl: string | null, keyStored: boolean,
@@ -439,6 +482,29 @@ evidence?: Array<Citation>, verification?: Verification, };
 export type MessageRole = "user" | "assistant";
 
 /**
+ * Body of `POST /admin/users`: the account is invited (ADR-027).
+ */
+export type NewAccount = { email: string, displayName: string, jobTitle?: string, orgUnitId?: string,
+/**
+ * Absent: `internal`.
+ */
+clearance?: Sensitivity, };
+
+/**
+ * Body of `POST /admin/connectors`: an MCP server over HTTPS. The prefix,
+ * address and token are checked by the platform (ADR-025).
+ */
+export type NewConnector = { name: string, prefix: string, url: string,
+/**
+ * Absent or blank: none.
+ */
+token?: string,
+/**
+ * Absent: enabled.
+ */
+enabled?: boolean, };
+
+/**
  * Body of `POST /conversations`.
  */
 export type NewConversation = { title?: string, };
@@ -447,6 +513,34 @@ export type NewConversation = { title?: string, };
  * Body of `POST /conversations/{id}/messages`.
  */
 export type NewMessage = { content: string, };
+
+/**
+ * Body of `POST /admin/org-units`. The type is checked by the route, which
+ * names an unknown one in French.
+ */
+export type NewOrgUnit = { parentId: string, name: string, type: OrgUnitType, };
+
+/**
+ * Body of `POST /admin/policies`: a deny policy.
+ */
+export type NewPolicy = { description: string, permissions: Array<string>,
+/**
+ * `{ all }`, `{ any }`, `{ not }` or a comparison, as `PolicyView.condition`.
+ */
+condition: Record<string, unknown>,
+/**
+ * Absent: enabled.
+ */
+enabled?: boolean, };
+
+/**
+ * Body of `POST /admin/roles`: a custom role and its permissions.
+ */
+export type NewRole = { name: string,
+/**
+ * Absent: none.
+ */
+description?: string, permissions: Array<string>, };
 
 /**
  * An account as the organisation screen names it.
@@ -460,6 +554,15 @@ export type OrgUnitRef = { id: string,
 path: string, };
 
 export type OrgUnitType = "company" | "site" | "direction" | "department" | "service" | "team";
+
+/**
+ * Body of `PATCH /admin/org-units/{id}`: only the fields sent change.
+ */
+export type OrgUnitUpdate = { name?: string, type?: OrgUnitType, parentId?: string,
+/**
+ * `null`: no lead.
+ */
+leadUserId?: string | null, };
 
 export type OrgUnitView = { id: string, parentId: string | null, name: string, type: OrgUnitType,
 /**
@@ -506,6 +609,11 @@ export type Policies = { policies: Array<PolicyView>, permissions: Array<Restric
 domains: Array<string>, attributes: Array<ConditionAttribute>, };
 
 export type PolicyEffect = "allow" | "deny";
+
+/**
+ * Body of `PATCH /admin/policies/{id}`: only the fields sent change.
+ */
+export type PolicyUpdate = { description?: string, permissions?: Array<string>, condition?: Record<string, unknown>, enabled?: boolean, };
 
 export type PolicyView = { id: string, description: string, effect: PolicyEffect, permissions: Array<string>,
 /**
@@ -554,6 +662,20 @@ perResource: boolean, };
  * What becomes of a proposed memory: kept as active, or archived.
  */
 export type ReviewDecision = "approve" | "reject";
+
+/**
+ * Body of `POST /admin/users/{id}/assignments`.
+ */
+export type RoleGrant = { roleId: string, scope: AssignmentScope,
+/**
+ * ISO 8601; absent, the role is held until revoked.
+ */
+expiresAt?: string, };
+
+/**
+ * Body of `PATCH /admin/roles/{id}`: only the fields sent change.
+ */
+export type RoleUpdate = { name?: string, description?: string, permissions?: Array<string>, };
 
 export type RoleView = { id: string, key: string, name: string, description: string,
 /**
@@ -640,6 +762,11 @@ export type SkillStatus = "draft" | "active" | "retired";
 export type SkillView = { id: string, name: string, description: string, status: SkillStatus, activeVersion: number | null, updatedAt: string, };
 
 /**
+ * What an account's status may be set to (an invitation is issued, not set).
+ */
+export type StatusChange = "active" | "disabled";
+
+/**
  * `POST /admin/users/{id}/password`: shown once, replaced at next sign-in.
  */
 export type TemporaryPassword = { temporaryPassword: string, };
@@ -666,6 +793,12 @@ export type ToolInvocation = { id: string, toolName: string, decision: ToolDecis
  * optional: absent or `null`, the tool's own declaration applies.
  */
 export type ToolPolicy = { enabled?: boolean | null, permissions?: Array<string> | null, risk?: ToolRisk | null, requiresApproval?: boolean | null, };
+
+/**
+ * One tool's policy as an administrator writes it: absent fields keep the
+ * tool's own declaration.
+ */
+export type ToolPolicyChange = { enabled?: boolean, risk?: ToolRisk, permissions?: Array<string>, };
 
 export type ToolResultEvent = { toolCallId: string, toolName: string, summary: string, isError: boolean, durationMs: number, };
 

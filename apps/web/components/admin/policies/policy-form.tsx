@@ -2,7 +2,14 @@
 
 import { useState, type FormEvent } from 'react';
 import { Button, ErrorNote, Field, Input } from '@/components/ui';
-import { api, useAction, type Policies, type PolicyView } from '@/lib/api';
+import {
+  api,
+  useAction,
+  type NewPolicy,
+  type Policies,
+  type PolicyUpdate,
+  type PolicyView,
+} from '@/lib/api';
 import { PERMISSION_GROUPS } from '@/lib/labels';
 import { ConditionEditor, editorCondition, initialEditor } from './condition-editor';
 
@@ -38,13 +45,15 @@ export function PolicyForm({
     const { condition, error } = editorCondition(editor);
     setProblem(error ?? null);
     if (!condition) return;
-    const body = {
-      description,
-      permissions: [...restricted],
-      ...(policy && !conditionChanged ? {} : { condition }),
-    };
+    const permissions = [...restricted];
     const saved = await action.run(() =>
-      policy ? api.patch(`/admin/policies/${policy.id}`, body) : api.post('/admin/policies', body),
+      policy
+        ? api.patch(`/admin/policies/${policy.id}`, {
+            description,
+            permissions,
+            condition: conditionChanged ? condition : undefined,
+          } satisfies PolicyUpdate)
+        : api.post('/admin/policies', { description, permissions, condition } satisfies NewPolicy),
     );
     if (saved) onDone(true);
   }

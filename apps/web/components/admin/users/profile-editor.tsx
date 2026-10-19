@@ -2,7 +2,14 @@
 
 import { useState, type FormEvent } from 'react';
 import { Button, ErrorNote, Field, Input, Select } from '@/components/ui';
-import { api, useAction, type DirectoryUser, type OrgUnitView, type Sensitivity } from '@/lib/api';
+import {
+  api,
+  useAction,
+  type AccountUpdate,
+  type DirectoryUser,
+  type OrgUnitView,
+  type Sensitivity,
+} from '@/lib/api';
 import { CLEARANCE_LABELS } from '@/lib/labels';
 import { unitOptions } from '../organization/types';
 import { CredentialActions } from './credential-actions';
@@ -38,7 +45,7 @@ export function ProfileEditor({
         jobTitle: jobTitle || null,
         orgUnitId: orgUnitId || null,
         clearance,
-      }),
+      } satisfies AccountUpdate),
     );
     if (saved) onChanged();
   }
@@ -49,7 +56,8 @@ export function ProfileEditor({
       : `Réactiver le compte de ${user.displayName} ?`;
     if (!window.confirm(message)) return;
     const status = active ? 'disabled' : 'active';
-    if (await action.run(() => api.patch(`/admin/users/${user.id}`, { status }))) onChanged();
+    const update = { status } satisfies AccountUpdate;
+    if (await action.run(() => api.patch(`/admin/users/${user.id}`, update))) onChanged();
   }
 
   return (

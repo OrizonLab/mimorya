@@ -2,7 +2,14 @@
 
 import { useState, type FormEvent } from 'react';
 import { Button, Card, ErrorNote, Field, Input, Select } from '@/components/ui';
-import { api, useAction, type OrgUnitView, type UserCreated } from '@/lib/api';
+import {
+  api,
+  useAction,
+  type NewAccount,
+  type OrgUnitView,
+  type Sensitivity,
+  type UserCreated,
+} from '@/lib/api';
 import { CLEARANCE_LABELS } from '@/lib/labels';
 import { unitOptions } from '../organization/types';
 import type { AccountNotice } from './types';
@@ -20,7 +27,7 @@ export function NewUserForm({
   const [displayName, setDisplayName] = useState('');
   const [jobTitle, setJobTitle] = useState('');
   const [orgUnitId, setOrgUnitId] = useState('');
-  const [clearance, setClearance] = useState('internal');
+  const [clearance, setClearance] = useState<Sensitivity>('internal');
   const action = useAction();
 
   async function submit(event: FormEvent) {
@@ -30,9 +37,9 @@ export function NewUserForm({
         email,
         displayName,
         jobTitle,
-        orgUnitId: orgUnitId || null,
+        orgUnitId: orgUnitId || undefined,
         clearance,
-      }),
+      } satisfies NewAccount),
     );
     if (!created) return;
     onCreated({ kind: 'invitation', who: displayName, email, invitation: created.invitation });
@@ -79,7 +86,7 @@ export function NewUserForm({
             </Select>
           </Field>
           <Field label="Niveau d’habilitation aux données">
-            <Select value={clearance} onChange={(e) => setClearance(e.target.value)}>
+            <Select value={clearance} onChange={(e) => setClearance(e.target.value as Sensitivity)}>
               {Object.entries(CLEARANCE_LABELS).map(([key, label]) => (
                 <option key={key} value={key}>
                   {label}

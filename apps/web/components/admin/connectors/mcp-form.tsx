@@ -2,7 +2,14 @@
 
 import { useState, type FormEvent } from 'react';
 import { Button, ErrorNote, Field, Input } from '@/components/ui';
-import { api, useAction, type ConnectorView, type Connectors } from '@/lib/api';
+import {
+  api,
+  useAction,
+  type ConnectorUpdate,
+  type ConnectorView,
+  type Connectors,
+  type NewConnector,
+} from '@/lib/api';
 
 /** Adds an MCP server, or changes its name, address and token. */
 export function McpForm({
@@ -28,14 +35,15 @@ export function McpForm({
         ? api.patch(`/admin/connectors/${connector.id}`, {
             name,
             url,
-            ...(token.trim() ? { token: token.trim() } : {}),
-          })
+            // Left out when blank: the stored token is kept.
+            token: token.trim() || undefined,
+          } satisfies ConnectorUpdate)
         : api.post('/admin/connectors', {
             name,
             prefix,
             url,
-            ...(token.trim() ? { token: token.trim() } : {}),
-          }),
+            token: token.trim() || undefined,
+          } satisfies NewConnector),
     );
     if (saved) onDone(true);
   }
