@@ -11,11 +11,17 @@ fail() {
   exit 1
 }
 
-# The stack may still be starting: retry until the proxy answers.
-for _ in $(seq 1 60); do
-  if curl -skf -o /dev/null "$base/api/health"; then break; fi
+# The stack may still be starting: wait until the proxy reaches both the
+# API and the web application.
+ready=false
+for _ in $(seq 1 90); do
+  if curl -skf -o /dev/null "$base/api/health" && curl -skf -o /dev/null "$base/login"; then
+    ready=true
+    break
+  fi
   sleep 2
 done
+$ready || fail "the stack did not answer through the proxy within 3 minutes"
 
 page=$(curl -sk -D - -o /dev/null "$base/login")
 grep -qi '^strict-transport-security: max-age=63072000' <<<"$page" || fail "no HSTS on the page"
