@@ -1,14 +1,15 @@
 //! Role assignments of an account (`role:manage`, company-wide).
 
+use axum::Json;
+use axum::extract::State;
+use axum::http::StatusCode;
+
 use crate::app::AppState;
 use crate::contract::admin::RoleGrant;
 use crate::contract::{Created, Done};
 use crate::http::{ApiResult, Body, PathId};
 use crate::plugins::Auth;
 use crate::services::admin::{grant_role, revoke_role};
-use axum::Json;
-use axum::extract::State;
-use axum::http::StatusCode;
 
 pub async fn grant(
     State(state): State<AppState>,

@@ -1164,7 +1164,14 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     `Record<string, unknown>`, comme dans `PolicyView` ;
   - une valeur par défaut autre que l'absence (compte `internal`, politique ou
     connecteur activé, rôle sans description) devient un champ facultatif que la route
-    complète : le champ est facultatif en TypeScript aussi ;
+    complète : le champ est facultatif en TypeScript aussi. `null` y vaut l'absence
+    (il était refusé par 400 avant) ; l'interface n'en envoie pas, son type ne
+    l'autorisant pas ;
+  - la portée d'une habilitation est stricte pour chaque variante : celles sans données
+    (`tenant`, `self`) s'écrivent `Tenant {}` et `Own {}`, car serde ignore ce qui
+    accompagne l'étiquette d'une variante unitaire (`{"type": "tenant", "orgUnitId": …}`
+    était accepté, l'unité ignorée) ; le JSON écrit et le type TypeScript sont
+    inchangés ;
   - une seule liste, `request_bodies!` (`contract/mod.rs`), déclare chaque corps dans le
     module TypeScript et dans le test qui vérifie qu'il refuse un champ inconnu ;
   - l'interface écrit ses corps champ par champ (`champ: valeur || undefined`, omis par

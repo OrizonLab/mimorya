@@ -8,6 +8,7 @@ import {
   type ConnectorUpdate,
   type Connectors,
   type TestedTool,
+  type ToolPolicyChange,
   type ToolRisk,
 } from '@/lib/api';
 import { RISK_LABELS } from '@/lib/labels';
@@ -53,7 +54,7 @@ export function ToolPolicies({
           enabled: p.enabled,
           risk: p.risk,
           permissions: p.permissions.filter((x) => x !== ALWAYS),
-        },
+        } satisfies ToolPolicyChange,
       ]),
     );
     const update = { toolPolicies } satisfies ConnectorUpdate;

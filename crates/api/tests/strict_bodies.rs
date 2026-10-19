@@ -76,4 +76,20 @@ async fn administration_bodies_are_strict_too() {
         paul.post("/admin/roles", role).await.status,
         StatusCode::BAD_REQUEST
     );
+
+    // A unit given with the whole company: refused, nothing granted.
+    let account = support::accounts::create_account(&paul, "portee.stricte").await;
+    let grants = format!("/admin/users/{}/assignments", account.id);
+    let held = support::accounts::directory_entry(&paul, account.id).await["assignments"].clone();
+    let ambiguous = json!({
+        "roleId": mimorya_core::demo::role::TEAM_LEAD,
+        "scope": { "type": "tenant", "orgUnitId": mimorya_core::demo::unit::TEAM_SOUTH, "includeDescendants": false },
+    });
+    let granted = paul.post(&grants, ambiguous).await;
+    assert_eq!(granted.status, StatusCode::BAD_REQUEST);
+    assert!(granted.text().contains("orgUnitId"), "{}", granted.text());
+    assert_eq!(
+        support::accounts::directory_entry(&paul, account.id).await["assignments"],
+        held
+    );
 }

@@ -10,16 +10,15 @@ use mimorya_connectors::mcp::{CONNECTOR_USE, MAX_TOOLS, tool_namespace};
 use mimorya_core::DomainError;
 use mimorya_core::authz::PermissionInfo;
 use mimorya_core::autonomy::ToolRisk;
-use serde::Deserialize;
 use serde_json::Value;
 
 /// One policy per tool a server may declare.
 pub const MAX_TOOL_POLICIES: usize = MAX_TOOLS;
 pub const MAX_TOOL_PERMISSIONS: usize = 10;
 
-/// One tool's policy as an administrator writes it.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+/// One tool's policy as an administrator writes it (read from the API's
+/// `ToolPolicyChange`).
+#[derive(Debug, Clone)]
 pub struct ToolPolicyInput {
     pub enabled: Option<bool>,
     pub risk: Option<ToolRisk>,
@@ -114,6 +113,8 @@ mod tests {
     use mimorya_core::authz::Enforcement;
     use serde_json::json;
 
+    use crate::contract::admin::ToolPolicyChange;
+
     use super::*;
 
     const CATALOG: &[PermissionInfo] = &[
@@ -138,7 +139,10 @@ mod tests {
     ];
 
     fn policies(value: Value) -> HashMap<String, ToolPolicyInput> {
-        serde_json::from_value(value).unwrap()
+        let read: HashMap<String, ToolPolicyChange> = serde_json::from_value(value).unwrap();
+        read.into_iter()
+            .map(|(tool, policy)| (tool, policy.into()))
+            .collect()
     }
 
     #[test]
@@ -175,12 +179,6 @@ mod tests {
                 "{refused}"
             );
         }
-        assert!(
-            serde_json::from_value::<HashMap<String, ToolPolicyInput>>(
-                json!({ "mcp_docs_search": { "requiresApproval": false } })
-            )
-            .is_err()
-        );
     }
 
     #[test]

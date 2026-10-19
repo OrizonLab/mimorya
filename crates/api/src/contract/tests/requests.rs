@@ -1,7 +1,7 @@
 //! Request bodies are strict: a body the web client may send (with only its
 //! required fields, or with every field) is read, and the same body with an
 //! unknown field is refused, so that a misnamed field cannot be ignored.
-//! Every body of the contract's list refuses one (ADR-039).
+//! Every body of the contract's list refuses one (ADR-039, ADR-040).
 
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
@@ -72,7 +72,7 @@ fn refuses_unknown<T: DeserializeOwned>(name: &str) {
 #[test]
 fn every_request_body_of_the_contract_refuses_unknown_fields() {
     macro_rules! refuse {
-        ($($body:ty),*) => { $(refuses_unknown::<$body>(stringify!($body));)* };
+        ($($body:ty),* $(,)?) => { $(refuses_unknown::<$body>(stringify!($body));)* };
     }
     crate::contract::request_bodies!(refuse);
 }
@@ -174,6 +174,29 @@ fn administration_bodies_read_what_the_web_client_sends() {
 fn nested_administration_values_refuse_unknown_fields() {
     let policy = json!({ "enabled": true, "inconnu": 1 });
     assert!(serde_json::from_value::<ToolPolicyChange>(policy).is_err());
-    let scope = json!({ "type": "org_unit", "orgUnitId": "8d5ba3d6-0c4c-4b2c-9c51-2f8e6a3c1b7e", "includeDescendants": true, "inconnu": 1 });
-    assert!(serde_json::from_value::<AssignmentScope>(scope).is_err());
+    let unit = "8d5ba3d6-0c4c-4b2c-9c51-2f8e6a3c1b7e";
+    // Every variant: a unit's fields on the whole company or on one's own
+    // data would otherwise be ignored without a word.
+    for scope in [
+        json!({ "type": "org_unit", "orgUnitId": unit, "includeDescendants": true, "inconnu": 1 }),
+        json!({ "type": "tenant", "inconnu": 1 }),
+        json!({ "type": "tenant", "orgUnitId": unit, "includeDescendants": false }),
+        json!({ "type": "self", "orgUnitId": unit, "includeDescendants": true }),
+    ] {
+        assert!(
+            serde_json::from_value::<AssignmentScope>(scope.clone()).is_err(),
+            "{scope}"
+        );
+    }
+    // And they are answered as before.
+    for (scope, written) in [
+        (AssignmentScope::Tenant {}, json!({ "type": "tenant" })),
+        (AssignmentScope::Own {}, json!({ "type": "self" })),
+    ] {
+        assert_eq!(serde_json::to_value(&scope).unwrap(), written);
+        assert_eq!(
+            serde_json::from_value::<AssignmentScope>(written).unwrap(),
+            scope
+        );
+    }
 }

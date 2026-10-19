@@ -87,13 +87,13 @@ pub fn typescript() -> String {
     declarations.add::<admin::UsageSummary>();
     declarations.add::<ErrorBody>();
     macro_rules! declare {
-        ($($body:ty),*) => { $(declarations.add::<$body>();)* };
+        ($($body:ty),* $(,)?) => { $(declarations.add::<$body>();)* };
     }
     request_bodies!(declare);
     declarations.render()
 }
 
-/// Every request body (ADR-039), for `typescript()` and for the test that
+/// Every request body (ADR-039, ADR-040), for `typescript()` and for the test that
 /// each one refuses an unknown field: `$apply!(Type, …)`.
 macro_rules! request_bodies {
     ($apply:ident) => {

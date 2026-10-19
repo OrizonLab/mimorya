@@ -9,10 +9,12 @@ use uuid::Uuid;
 use validator::Validate;
 
 /// Where a role applies.
+// The variants without data are written `{}` so that `deny_unknown_fields`
+// applies to them too: serde ignores whatever comes with a unit variant's tag.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AssignmentScope {
-    Tenant,
+    Tenant {},
     OrgUnit {
         #[serde(rename = "orgUnitId")]
         org_unit_id: Uuid,
@@ -21,13 +23,13 @@ pub enum AssignmentScope {
     },
     /// The holder's own data only.
     #[serde(rename = "self")]
-    Own,
+    Own {},
 }
 
 impl From<&CoreScope> for AssignmentScope {
     fn from(scope: &CoreScope) -> Self {
         match scope {
-            CoreScope::Tenant => Self::Tenant,
+            CoreScope::Tenant => Self::Tenant {},
             CoreScope::OrgUnit {
                 org_unit_id,
                 include_descendants,
@@ -35,7 +37,7 @@ impl From<&CoreScope> for AssignmentScope {
                 org_unit_id: *org_unit_id,
                 include_descendants: *include_descendants,
             },
-            CoreScope::Own => Self::Own,
+            CoreScope::Own => Self::Own {},
         }
     }
 }
@@ -56,7 +58,7 @@ pub struct Assignment {
 impl From<AssignmentScope> for CoreScope {
     fn from(scope: AssignmentScope) -> Self {
         match scope {
-            AssignmentScope::Tenant => Self::Tenant,
+            AssignmentScope::Tenant {} => Self::Tenant,
             AssignmentScope::OrgUnit {
                 org_unit_id,
                 include_descendants,
@@ -64,7 +66,7 @@ impl From<AssignmentScope> for CoreScope {
                 org_unit_id,
                 include_descendants,
             },
-            AssignmentScope::Own => Self::Own,
+            AssignmentScope::Own {} => Self::Own,
         }
     }
 }

@@ -64,7 +64,7 @@ label: string, expiresAt: string | null, };
 /**
  * Where a role applies.
  */
-export type AssignmentScope = { "type": "tenant" } | { "type": "org_unit", orgUnitId: string, includeDescendants: boolean, } | { "type": "self" };
+export type AssignmentScope = { "type": "tenant", } | { "type": "org_unit", orgUnitId: string, includeDescendants: boolean, } | { "type": "self", };
 
 export type AssistantDelta = { text: string, };
 
