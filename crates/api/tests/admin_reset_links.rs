@@ -11,7 +11,7 @@ use chrono::{DateTime, Duration, Utc};
 use mimorya_core::demo::{tenant, user};
 use mimorya_db::testing::OTHER_USER_ID;
 use serde_json::json;
-use support::accounts::{create_partial_admin, invite_account};
+use support::accounts::{activate, create_partial_admin, invite_account};
 use support::resets::{RESET_PASSWORD, complete_reset, last_reset_token};
 use support::{PASSWORD, TestApi, email};
 
@@ -158,10 +158,14 @@ async fn without_a_relay_the_temporary_password_remains() {
         "Aucun serveur d’e-mail n’est configuré : donnez plutôt un mot de passe provisoire"
     );
     // Rights come first: a team administrator learns nothing about the relay.
-    let partial = create_partial_admin(&api, &paul, "lien.partiel").await;
-    let partial = api.sign_in_with(&partial.email, &partial.password).await;
+    let mut partial = create_partial_admin(&api, &paul, "lien.partiel").await;
+    let partial = activate(&api, &mut partial).await;
     let denied = partial.post(&link_url(user::LUCAS), json!({})).await;
-    assert_eq!(denied.status, StatusCode::FORBIDDEN);
+    assert_eq!(denied.status, StatusCode::FORBIDDEN, "{}", denied.text());
+    assert_eq!(
+        denied.error_message(),
+        "Permission requise sur toute l’entreprise : user:manage"
+    );
 }
 
 #[tokio::test]
