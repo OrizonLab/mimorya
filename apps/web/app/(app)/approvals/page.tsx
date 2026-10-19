@@ -3,11 +3,11 @@
 import Link from 'next/link';
 import { ApprovalCard, ApprovalHistory } from '@/components/approvals';
 import { EmptyState, Loaded, PageHeader } from '@/components/ui';
-import { useApiData, type Approval } from '@/lib/api';
+import { useApiData, type ApprovalList } from '@/lib/api';
 import { formatDate } from '@/lib/format';
 
 export default function ApprovalsPage() {
-  const state = useApiData<{ approvals: Approval[] }>('/approvals?status=all');
+  const state = useApiData<ApprovalList>('/approvals?status=all');
 
   return (
     <div className="mx-auto w-full max-w-4xl px-4 py-8">

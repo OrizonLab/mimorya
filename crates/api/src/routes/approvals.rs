@@ -3,15 +3,13 @@
 use axum::extract::State;
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use mimorya_db::repositories::approvals::{
-    APPROVAL_STATUSES, ApprovalRow, list_approvals_for_user,
-};
+use mimorya_db::repositories::approvals::{APPROVAL_STATUSES, list_approvals_for_user};
 use serde::Deserialize;
-use serde_json::{Value, json};
 use validator::Validate;
 
 use crate::app::AppState;
-use crate::http::{ApiResult, Body, PathId, Query, iso, iso_opt, trimmed_opt};
+use crate::contract::{ApprovalDecided, ApprovalList};
+use crate::http::{ApiResult, Body, PathId, Query, trimmed_opt};
 use crate::plugins::Auth;
 use crate::services::runs::DecisionInput;
 
@@ -19,22 +17,6 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/approvals", get(list))
         .route("/approvals/{id}/decision", post(decide))
-}
-
-pub fn approval_view(a: &ApprovalRow) -> Value {
-    json!({
-        "id": a.id,
-        "runId": a.run_id,
-        "toolName": a.tool_name,
-        "actionSummary": a.action_summary,
-        "payload": a.payload,
-        "risk": a.risk,
-        "reason": a.reason,
-        "status": a.status,
-        "decisionComment": a.decision_comment,
-        "createdAt": iso(&a.created_at),
-        "decidedAt": iso_opt(&a.decided_at),
-    })
 }
 
 #[derive(Deserialize, Default)]
@@ -55,7 +37,7 @@ async fn list(
     State(state): State<AppState>,
     Auth(identity): Auth,
     Query(query): Query<ListQuery>,
-) -> ApiResult<Json<Value>> {
+) -> ApiResult<Json<ApprovalList>> {
     let statuses: &[&str] = match query.status {
         StatusFilter::Pending => &["pending"],
         StatusFilter::All => &APPROVAL_STATUSES,
@@ -63,8 +45,9 @@ async fn list(
     let mut tx = state.db.begin(identity.tenant_id).await?;
     let rows = list_approvals_for_user(&mut tx, identity.user_id, statuses).await?;
     tx.commit().await?;
-    let approvals: Vec<Value> = rows.iter().map(approval_view).collect();
-    Ok(Json(json!({ "approvals": approvals })))
+    Ok(Json(ApprovalList {
+        approvals: rows.iter().map(Into::into).collect(),
+    }))
 }
 
 #[derive(Deserialize, Validate)]
@@ -80,7 +63,7 @@ async fn decide(
     Auth(identity): Auth,
     PathId(id): PathId,
     Body(body): Body<DecisionBody>,
-) -> ApiResult<Json<Value>> {
+) -> ApiResult<Json<ApprovalDecided>> {
     let result = state
         .runs
         .decide(
@@ -92,8 +75,8 @@ async fn decide(
             },
         )
         .await?;
-    Ok(Json(json!({
-        "approval": approval_view(&result.approval),
-        "resumed": result.resumed,
-    })))
+    Ok(Json(ApprovalDecided {
+        approval: (&result.approval).into(),
+        resumed: result.resumed,
+    }))
 }

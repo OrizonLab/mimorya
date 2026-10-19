@@ -1,11 +1,11 @@
 'use client';
 
-import { RunList, type RunListItem } from '@/components/operations';
+import { RunList } from '@/components/operations';
 import { EmptyState, Loaded, PageHeader } from '@/components/ui';
-import { useApiData } from '@/lib/api';
+import { useApiData, type RunList as Runs } from '@/lib/api';
 
 export default function OperationsPage() {
-  const state = useApiData<{ runs: RunListItem[] }>('/runs');
+  const state = useApiData<Runs>('/runs');
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-8">
       <PageHeader

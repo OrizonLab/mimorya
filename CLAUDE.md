@@ -38,7 +38,8 @@ Repères à l'intérieur des crates :
   par outil), `connectors/src/mcp/`, `connectors/src/bin/mcp_demo_docs.rs`.
 - `api/src/plugins/` (contexte de requête, limitation de débit, CSRF, session,
   en-têtes de sécurité, maintenance périodique : runs bloqués, liens expirés),
-  `api/src/routes/` (un module par ressource, `admin/`),
+  `api/src/routes/` (un module par ressource, `admin/`), `api/src/contract/` (réponses
+  typées, un fichier par ressource, dont sont générés les types TypeScript, ADR-036),
   `api/src/services/admin/` (comptes, organisation, habilitations, sous verrou par
   entreprise), `api/src/services/account.rs` (son propre compte),
   `api/src/services/runs/` (tour de conversation, décisions, contexte, exécution,
@@ -50,8 +51,8 @@ Repères à l'intérieur des crates :
   `api/src/mail/` (envoi SMTP), `api/src/secrets/` (chiffrement AES-256-GCM des secrets),
   `api/tests/` (intégration, harnais dans `support/`).
 - `web/components/<fonctionnalité>/` (account, admin, approvals, chat, memory,
-  operations, shell), `web/components/ui/`, `web/lib/api/` (client, types du contrat
-  JSON, `useApiData`), `web/lib/labels.ts`, `web/lib/format.ts`, `web/proxy.ts` et
+  operations, shell), `web/components/ui/`, `web/lib/api/` (client, `contract.ts`
+  généré par `pnpm contract`, `useApiData`), `web/lib/labels.ts`, `web/lib/format.ts`, `web/proxy.ts` et
   `web/lib/security/` (CSP à nonce par page, ADR-030), `web/e2e/` (tests de bout en
   bout, un fichier par parcours, `support/`) et `api/examples/e2e_server/` (l'API qu'ils
   pilotent, ADR-031).
@@ -72,6 +73,7 @@ pnpm db:seed                       # cargo run --bin mimorya-seed (DATABASE_URL,
 pnpm db:migrate                    # mimorya-admin migrate : migrations seules (ADR-033)
 pnpm dev:api                       # cargo run --bin mimorya-api : API sur :4000 (lit .env)
 pnpm dev:web                       # Web sur :3000
+pnpm contract                      # régénère apps/web/lib/api/contract.ts depuis crates/api/src/contract (ADR-036)
 pnpm check                         # Rust : fmt + clippy -D warnings + tests ; web : typecheck + lint + format
 pnpm test:int                      # cargo test-int : tests PostgreSQL (en série, base *_test recréée)
 pnpm test:e2e                      # Playwright : parcours web contre l'API à modèle scénarisé (ADR-031)
@@ -114,7 +116,8 @@ Avant chaque commit : `pnpm check && pnpm test:int` doivent passer.
   `unwrap()`/`expect()` sur une donnée externe ; aucun `unsafe` (interdit par les lints).
 - **API (`crates/api`)** : un module de routes par ressource (`routes/<ressource>.rs`),
   les middlewares transverses dans `plugins/`, la logique d'orchestration dans
-  `services/<domaine>/`.
+  `services/<domaine>/`. Une réponse nouvelle ou modifiée est un type de `contract/`
+  (pas de `json!`), puis `pnpm contract` ; l'interface l'importe depuis `@/lib/api`.
 - **Web (`apps/web`)** : pages minces qui composent des composants ; un composant par
   fichier dans `components/<fonctionnalité>/` ; primitives d'interface dans
   `components/ui/` ; accès API et types dans `lib/api/`.

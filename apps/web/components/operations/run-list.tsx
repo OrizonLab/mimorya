@@ -1,18 +1,10 @@
 import Link from 'next/link';
 import { Card, LabelBadge } from '@/components/ui';
-import type { RunStatus, RunUsage } from '@/lib/api';
+import type { RunSummary } from '@/lib/api';
 import { formatCost, formatDate } from '@/lib/format';
 import { RUN_STATUS } from '@/lib/labels';
 
-export interface RunListItem {
-  id: string;
-  objective: string;
-  status: RunStatus;
-  usage: RunUsage;
-  createdAt: string;
-}
-
-export function RunList({ runs }: { runs: RunListItem[] }) {
+export function RunList({ runs }: { runs: RunSummary[] }) {
   return (
     <Card className="overflow-hidden">
       <ul className="divide-y divide-line">

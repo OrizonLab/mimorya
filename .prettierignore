@@ -3,3 +3,5 @@ target/
 **/.next/
 **/dist/
 coverage/
+# Generated from the API's Rust types (`pnpm contract`).
+apps/web/lib/api/contract.ts

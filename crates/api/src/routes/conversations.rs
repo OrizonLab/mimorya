@@ -12,11 +12,13 @@ use mimorya_db::repositories::conversations::{
 };
 use mimorya_db::repositories::runs::list_runs_for_conversation;
 use serde::Deserialize;
-use serde_json::{Value, json};
 use validator::Validate;
 
 use crate::app::AppState;
-use crate::http::{ApiResult, Body, PathId, iso, trimmed, trimmed_opt};
+use crate::contract::{
+    ConversationCreated, ConversationDetail, ConversationList, Done, Message, MessageAccepted,
+};
+use crate::http::{ApiResult, Body, PathId, trimmed, trimmed_opt};
 use crate::plugins::Auth;
 use crate::services::AuthIdentity;
 
@@ -30,16 +32,16 @@ pub fn routes() -> Router<AppState> {
         .route("/conversations/{id}/messages", post(post_message))
 }
 
-fn summary(c: &ConversationRow) -> Value {
-    json!({ "id": c.id, "title": c.title, "updatedAt": iso(&c.updated_at) })
-}
-
-async fn list(State(state): State<AppState>, Auth(identity): Auth) -> ApiResult<Json<Value>> {
+async fn list(
+    State(state): State<AppState>,
+    Auth(identity): Auth,
+) -> ApiResult<Json<ConversationList>> {
     let mut tx = state.db.begin(identity.tenant_id).await?;
     let rows = list_conversations(&mut tx, identity.user_id).await?;
     tx.commit().await?;
-    let conversations: Vec<Value> = rows.iter().map(summary).collect();
-    Ok(Json(json!({ "conversations": conversations })))
+    Ok(Json(ConversationList {
+        conversations: rows.iter().map(Into::into).collect(),
+    }))
 }
 
 #[derive(Deserialize, Validate)]
@@ -53,7 +55,7 @@ async fn create(
     State(state): State<AppState>,
     Auth(identity): Auth,
     Body(body): Body<CreateBody>,
-) -> ApiResult<(StatusCode, Json<Value>)> {
+) -> ApiResult<(StatusCode, Json<ConversationCreated>)> {
     state.access.context(identity).await?.require("agent:use")?;
     let mut tx = state.db.begin(identity.tenant_id).await?;
     let row = create_conversation(
@@ -66,7 +68,9 @@ async fn create(
     tx.commit().await?;
     Ok((
         StatusCode::CREATED,
-        Json(json!({ "conversation": summary(&row) })),
+        Json(ConversationCreated {
+            conversation: (&row).into(),
+        }),
     ))
 }
 
@@ -86,34 +90,20 @@ async fn detail(
     State(state): State<AppState>,
     Auth(identity): Auth,
     PathId(id): PathId,
-) -> ApiResult<Json<Value>> {
+) -> ApiResult<Json<ConversationDetail>> {
     let mut tx = state.db.begin(identity.tenant_id).await?;
     let conversation = owned(&mut tx, identity, id).await?;
     let messages = list_messages(&mut tx, id, MESSAGE_PAGE).await?;
     let runs = list_runs_for_conversation(&mut tx, id, RUN_PAGE).await?;
     tx.commit().await?;
-    let messages: Vec<Value> = messages
-        .iter()
-        .map(|m| {
-            json!({
-                "id": m.id,
-                "role": m.role,
-                "content": m.content,
-                "runId": m.run_id,
-                "metadata": m.metadata,
-                "createdAt": iso(&m.created_at),
-            })
-        })
-        .collect();
-    let runs: Vec<Value> = runs
-        .iter()
-        .map(|r| json!({ "id": r.id, "status": r.status, "createdAt": iso(&r.created_at) }))
-        .collect();
-    Ok(Json(json!({
-        "conversation": summary(&conversation),
-        "messages": messages,
-        "runs": runs,
-    })))
+    Ok(Json(ConversationDetail {
+        conversation: (&conversation).into(),
+        messages: messages
+            .iter()
+            .map(Message::from_row)
+            .collect::<anyhow::Result<_>>()?,
+        runs: runs.iter().map(Into::into).collect(),
+    }))
 }
 
 #[derive(Deserialize, Validate)]
@@ -130,7 +120,7 @@ async fn update(
     Auth(identity): Auth,
     PathId(id): PathId,
     Body(body): Body<UpdateBody>,
-) -> ApiResult<Json<Value>> {
+) -> ApiResult<Json<Done>> {
     let mut tx = state.db.begin(identity.tenant_id).await?;
     owned(&mut tx, identity, id).await?;
     let patch = ConversationPatch {
@@ -139,7 +129,7 @@ async fn update(
     };
     update_conversation(&mut tx, id, patch).await?;
     tx.commit().await?;
-    Ok(Json(json!({ "ok": true })))
+    Ok(Json(Done::OK))
 }
 
 #[derive(Deserialize, Validate)]
@@ -154,13 +144,16 @@ async fn post_message(
     Auth(identity): Auth,
     PathId(id): PathId,
     Body(body): Body<MessageBody>,
-) -> ApiResult<(StatusCode, Json<Value>)> {
+) -> ApiResult<(StatusCode, Json<MessageAccepted>)> {
     let started = state
         .runs
         .start_conversation_turn(identity, id, &body.content)
         .await?;
     Ok((
         StatusCode::ACCEPTED,
-        Json(json!({ "runId": started.run_id, "messageId": started.message_id })),
+        Json(MessageAccepted {
+            run_id: started.run_id,
+            message_id: started.message_id,
+        }),
     ))
 }

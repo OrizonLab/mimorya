@@ -91,8 +91,11 @@ flowchart BT
   `AuditSink`, `ApprovalStore`… dans `runtime/ports.rs`) implémentés par `api` sur les
   dépôts de `db`. Le moteur est ainsi testable en mémoire, sans base ni réseau
   (`ScriptedProvider`, `InMemoryPorts`, fonctionnalité `testing`).
-- `web` ne partage aucun code avec le serveur : il consomme le contrat JSON de l'API,
-  décrit dans `apps/web/lib/api/types.ts`.
+- `web` ne partage aucun code avec le serveur : il consomme le contrat JSON de l'API.
+  Ses types sont générés depuis les réponses typées du serveur (`crates/api/src/contract`
+  → `apps/web/lib/api/contract.ts`, ADR-036) ; les réponses pas encore passées au
+  contrat (administration, mémoire, compte) sont décrites à la main près de leurs
+  composants.
 
 ## 3. Pile technique retenue
 

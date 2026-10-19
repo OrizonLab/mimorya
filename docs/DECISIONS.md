@@ -202,7 +202,8 @@ cité, renvoi) y sont faites sur place.
   - les bases de développement créées par drizzle-kit doivent être recréées (table de
     suivi des migrations différente : `_sqlx_migrations`) ;
   - les types de réponse de l'API sont maintenus à la main côté web
-    (`apps/web/lib/api/types.ts`) ; leur génération depuis le serveur est à prévoir ;
+    (`apps/web/lib/api/types.ts`) ; leur génération depuis le serveur est à prévoir
+    (commencée par l'ADR-036) ;
   - compilation plus longue qu'en TypeScript, compensée par la vérification statique.
 
 ## ADR-019 — Administration : périmètre entreprise, pas d'auto-administration, mots de passe provisoires
@@ -996,3 +997,39 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     suspension d'une entreprise arrête aussi ses runs en cours (« Arrêt : l'entreprise
     est suspendue ») : elle se fait en base (aucune route ni commande ne la fait encore),
     donc dans ce même délai de 30 s au plus.
+
+## ADR-036 — Contrat de l'API typé, types de l'interface générés (complète ADR-018)
+
+- **Date** : 2026-10-19 · **Statut** : acceptée
+- **Contexte** : les routes construisaient leurs réponses avec `json!` et l'interface
+  en décrivait la forme à la main (`apps/web/lib/api/types.ts`, ADR-018). Rien ne
+  garantissait que les deux concordent : un champ renommé ou retiré côté serveur
+  cassait l'interface sans aucune erreur de compilation.
+- **Décision** :
+  - module `crates/api/src/contract/`, un fichier par ressource : chaque réponse est une
+    structure typée (`Serialize`, champs en `camelCase`), construite depuis les lignes
+    des dépôts ; les routes renvoient `Json<Type>` ;
+  - les colonnes JSON écrites par la plateforme (consommation, budget et vérification
+    d'un run, métadonnées d'un message) sont relues dans leur type du contrat. Un écart
+    est une erreur interne dont le message nomme la colonne sans citer la valeur (elle
+    peut contenir un message). Des tests vérifient que les types du moteur
+    (`RunUsageTotals`, `BudgetLimits`, `VerificationReport`, `Citation`) s'y relisent
+    sans perte ;
+  - `ts-rs` (licence MIT), dans la seule crate `api`, décrit ces types en TypeScript.
+    `contract::typescript()` assemble un module unique, chaque type une fois, trié par
+    nom : `apps/web/lib/api/contract.ts`, commité et exclu de Prettier. `pnpm contract`
+    le régénère ; un test unitaire (`cargo test`, donc `pnpm check` et la CI) échoue
+    s'il ne correspond plus au contrat ;
+  - l'interface importe ces types depuis `@/lib/api` ; ce qui est propre au navigateur
+    (formulaires, état local) reste déclaré côté web ;
+  - entiers en `number` (valeurs très en deçà de 2^53), dates en chaînes ISO 8601,
+    contenus libres (paramètres d'une validation, données d'un événement) en `unknown`.
+- **Conséquences** :
+  - première étape : session (`/auth/me`, `/auth/options`), conversations et messages,
+    runs et leur trace, validations. Restent décrits à la main jusqu'à leur passage au
+    contrat : administration, mémoire, compte, invitations et mot de passe oublié,
+    événements du flux SSE, corps des requêtes ;
+  - modifier une réponse impose de régénérer le fichier, et le typage de l'interface
+    signale chaque usage à adapter ;
+  - une valeur stockée hors contrat (jamais écrite par la plateforme) fait répondre la
+    route en erreur 500 plutôt que par une réponse incomplète.
