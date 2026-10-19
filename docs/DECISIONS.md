@@ -980,8 +980,8 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     contexte (sujet et acteur liés) ;
   - tests : moteur (`crates/agent/tests/runtime_access.rs`, droits successifs simulés
     par `testing::TestAccess`) et API (`crates/api/tests/run_access.rs` : compte
-    désactivé, droit `agent:use` retiré, rôles métier retirés, pendant la réponse du
-    modèle).
+    désactivé, droit `agent:use` retiré, rôles métier retirés, entreprise suspendue,
+    pendant la réponse du modèle).
 - **Conséquences** :
   - une à trois lectures en base par étape : quelques requêtes, négligeables devant un
     appel au modèle ;
@@ -992,5 +992,7 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     (outils activés, permissions et risques des connecteurs) jusqu'à la pause ou la
     fin, et le niveau d'autonomie du run ;
   - les règles de l'entreprise modifiées directement en base, hors administration, ne
-    comptent qu'à l'expiration du cache (30 s), comme pour les requêtes ; la suspension
-    d'une entreprise n'arrête pas encore un run en cours (elle ferme les sessions).
+    comptent qu'à l'expiration du cache (30 s), comme pour les requêtes. Depuis, la
+    suspension d'une entreprise arrête aussi ses runs en cours (« Arrêt : l'entreprise
+    est suspendue ») : elle se fait en base (aucune route ni commande ne la fait encore),
+    donc dans ce même délai de 30 s au plus.

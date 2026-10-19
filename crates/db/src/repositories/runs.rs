@@ -214,12 +214,21 @@ pub async fn list_runs(
     .await
 }
 
+/// A run the sweep failed, for its `run_finished` event.
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct StaleRun {
+    pub tenant_id: Uuid,
+    pub run_id: Uuid,
+    pub error: String,
+}
+
 /// Marks runs left `running` without progress since `before` as failed
 /// (crashed or stuck process), across tenants, through a narrowly scoped
-/// database function. Resuming a run interrupted mid-step is not supported yet.
-pub async fn fail_stale_runs(pool: &PgPool, before: DateTime<Utc>) -> sqlx::Result<i32> {
-    sqlx::query_scalar("select system_fail_stale_runs($1)")
+/// database function, and returns them. Resuming a run interrupted mid-step
+/// is not supported yet.
+pub async fn fail_stale_runs(pool: &PgPool, before: DateTime<Utc>) -> sqlx::Result<Vec<StaleRun>> {
+    sqlx::query_as("select tenant_id, run_id, error from system_fail_stale_runs($1)")
         .bind(before)
-        .fetch_one(pool)
+        .fetch_all(pool)
         .await
 }

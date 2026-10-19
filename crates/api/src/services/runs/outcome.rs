@@ -6,6 +6,7 @@ use mimorya_agent::runtime::RunOutcome;
 use mimorya_db::Database;
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::conversations::{NewMessage, add_message};
+use mimorya_db::repositories::run_events::run_end_recorded;
 use mimorya_db::repositories::runs::{RunPatch, RunStatus, get_run, update_active_run};
 use serde_json::json;
 
@@ -106,8 +107,9 @@ pub async fn persist_outcome(
 
 /// Marks a run that crashed as failed, without exposing the internal error.
 /// A run that already finished (outcome saved before the crash, or failed by
-/// the stale-run sweeper) keeps its status. Returns the status it ends with.
-pub async fn record_crash(db: &Database, scope: RunScope) -> anyhow::Result<RunStatus> {
+/// the stale-run sweep) keeps its status. Returns the status to announce, or
+/// `None` when the run's end is already announced (by the sweep, typically).
+pub async fn record_crash(db: &Database, scope: RunScope) -> anyhow::Result<Option<RunStatus>> {
     let mut tx = db.begin(scope.tenant_id).await?;
     let failed = update_active_run(
         &mut tx,
@@ -121,8 +123,11 @@ pub async fn record_crash(db: &Database, scope: RunScope) -> anyhow::Result<RunS
     )
     .await?;
     if !failed {
+        if run_end_recorded(&mut tx, scope.run_id).await? {
+            return Ok(None);
+        }
         let run = get_run(&mut tx, scope.run_id).await?;
-        return Ok(run.map_or(RunStatus::Failed, |r| r.status()));
+        return Ok(Some(run.map_or(RunStatus::Failed, |r| r.status())));
     }
     if let Some(conversation_id) = scope.conversation_id {
         add_message(
@@ -140,5 +145,5 @@ pub async fn record_crash(db: &Database, scope: RunScope) -> anyhow::Result<RunS
         .await?;
     }
     tx.commit().await?;
-    Ok(RunStatus::Failed)
+    Ok(Some(RunStatus::Failed))
 }
