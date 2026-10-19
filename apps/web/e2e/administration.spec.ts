@@ -1,8 +1,8 @@
 // The administration's forms, submitted to the API (whose request bodies are
 // strict, ADR-040), and what they changed read back from it: a custom role, a
 // deny policy, an organisation unit and an account's profile, attributes and
-// rights. What a test creates it deletes, except the account (the API deletes
-// none), whose address is its own and which keeps no business role.
+// rights. What a test creates it deletes, except the accounts (the API deletes
+// none), whose addresses are their own and which keep no business role.
 import type { Directory } from '../lib/api/contract';
 import { cardWith, openAdmin, selectContaining } from './support/admin';
 import { expect, noError, test } from './support/fixtures';
@@ -120,5 +120,64 @@ test('an account’s profile, attributes and rights are changed', async ({ page 
 
   await page.getByRole('button', { name: /^Retirer Responsable d’équipe/ }).click();
   await expect(grant).toHaveCount(0);
+  await noError(page);
+});
+
+test('an account’s forms wait for the reloaded directory', async ({ page }) => {
+  const email = 'victor.chassagne@neo-maintenance.example';
+  await openAdmin(page, 'Utilisateurs');
+  await page.getByRole('button', { name: 'Ajouter un collaborateur' }).click();
+  await page.getByLabel('Nom affiché').fill('Victor Chassagne');
+  await page.getByLabel('Adresse e-mail').fill(email);
+  await page.getByRole('button', { name: 'Créer le compte' }).click();
+  await expect(page.getByText(`Invitation envoyée à ${email}`)).toBeVisible();
+
+  const row = page.getByRole('row').filter({ hasText: email }).first();
+  await row.getByRole('button', { name: 'Gérer' }).click();
+  // Once held, the directory waits until the test lets it through.
+  let held = Promise.resolve();
+  let release = () => {};
+  await page.route('**/api/admin/users', async (route) => {
+    if (route.request().method() === 'GET') await held;
+    await route.continue();
+  });
+  const reloading = () => {
+    held = new Promise<void>((done) => (release = done));
+    return page.waitForRequest((r) => r.method() === 'GET' && r.url().endsWith('/api/admin/users'));
+  };
+  const reopen = async () => {
+    await row.getByRole('button', { name: 'Fermer' }).click();
+    await row.getByRole('button', { name: 'Gérer' }).click();
+  };
+  const saveProfile = page.getByRole('button', { name: 'Enregistrer', exact: true });
+  const saveAttributes = page.getByRole('button', { name: 'Enregistrer les attributs' });
+
+  let reload = reloading();
+  await page.getByLabel('Fonction').fill('Chef d’équipe');
+  await saveProfile.click();
+  await reload;
+  await reopen();
+  // Reopened from the former directory: nothing can be saved from it...
+  await expect(page.getByLabel('Fonction')).toHaveValue('');
+  await expect(saveProfile).toBeDisabled();
+  await expect(saveAttributes).toBeDisabled();
+  release();
+  // ...until the directory arrives, with what the API saved.
+  await expect(page.getByLabel('Fonction')).toHaveValue('Chef d’équipe');
+  await expect(saveProfile).toBeEnabled();
+
+  reload = reloading();
+  await page.getByRole('button', { name: 'Ajouter un attribut' }).click();
+  await page.getByLabel('Nom', { exact: true }).fill('department');
+  await page.getByLabel('Valeur').fill('technique');
+  await saveAttributes.click();
+  await reload;
+  await reopen();
+  await expect(page.getByText('Aucun attribut.')).toBeVisible();
+  await expect(saveAttributes).toBeDisabled();
+  release();
+  await expect(page.getByLabel('Nom', { exact: true })).toHaveValue('department');
+  await expect(page.getByLabel('Valeur')).toHaveValue('technique');
+  await expect(saveAttributes).toBeEnabled();
   await noError(page);
 });

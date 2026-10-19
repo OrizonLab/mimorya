@@ -17,6 +17,7 @@ export function UserRow({
   canManage,
   emailEnabled,
   isSelf,
+  reloading,
   onChanged,
   onNotice,
 }: {
@@ -25,6 +26,8 @@ export function UserRow({
   canManage: Directory['canManage'];
   emailEnabled: boolean;
   isSelf: boolean;
+  /** The directory is reloading: `user` may be the former account. */
+  reloading: boolean;
   onChanged: () => void;
   onNotice: (notice: AccountNotice) => void;
 }) {
@@ -79,6 +82,7 @@ export function UserRow({
                   user={user}
                   units={units}
                   emailEnabled={emailEnabled}
+                  reloading={reloading}
                   onChanged={onChanged}
                   onNotice={onNotice}
                 />
@@ -86,7 +90,7 @@ export function UserRow({
               {canManage.users && (
                 <section>
                   <h3 className="mb-2 text-sm font-medium">Attributs</h3>
-                  <AttributesEditor user={user} onChanged={onChanged} />
+                  <AttributesEditor user={user} reloading={reloading} onChanged={onChanged} />
                 </section>
               )}
               {canManage.roles && (
