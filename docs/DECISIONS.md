@@ -740,3 +740,44 @@ cité, renvoi) y sont faites sur place.
     par un test automatisé : les tests de bout en bout en CI devront vérifier le nonce
     de l'en-tête et des scripts, et l'absence de violation sur la connexion et sur une
     adresse inconnue. Les en-têtes de l'API sont testés.
+
+## ADR-031 — Tests de bout en bout : Playwright contre l'API à modèle scénarisé
+
+- **Date** : 2026-10-19 · **Statut** : acceptée
+- **Contexte** : le parcours web complet (A13) et la CSP des pages (ADR-030) n'étaient
+  vérifiés qu'à la main, dans un navigateur piloté au coup par coup ; une régression de
+  l'interface ou de sa politique de sécurité pouvait passer la CI.
+- **Décision** :
+  - les tests de bout en bout vivent dans `apps/web/e2e/` (un fichier par parcours,
+    aides dans `support/`) et tournent avec `@playwright/test` (Apache-2.0, dépendance
+    de développement de l'unique paquet Node, version alignée sur le navigateur
+    installé) dans Chromium ;
+  - ils pilotent **la vraie API et la vraie base** : l'exemple Cargo
+    `crates/api/examples/e2e_server` démarre le serveur avec le **modèle scénarisé**
+    (le scénario de référence : comptes rendus, proposition de planning, validation,
+    synthèse) et écrit chaque e-mail dans un dossier (`E2E_MAIL_DIR`) au lieu de
+    l'envoyer. C'est un exemple, pas un binaire : il n'entre dans aucune version
+    publiée ;
+  - la configuration (`playwright.config.ts`) recrée l'entreprise de démonstration
+    (`mimorya-seed --reset`), démarre l'API puis l'application web construite pour la
+    production (`next start`), et exécute les tests un par un (ils partagent
+    l'entreprise et le script du modèle) ;
+  - chaque test échoue si une page viole la CSP ou lève une erreur (fixture
+    automatique) ; les requêtes vers un hôte réservé (`exemple.invalid`) sont refusées
+    exprès ;
+  - parcours couverts : scénario de référence (demande, suivi en direct jusqu'à la
+    validation, validation, synthèse, exécution dans les opérations) ; invitation
+    reçue par e-mail et activation ; mot de passe oublié et lien à usage unique ; lien
+    de réinitialisation envoyé par l'administrateur, sans qu'il le voie ; ouverture de
+    tous les écrans et onglets d'administration ; CSP (nonce de l'en-tête et des
+    scripts, renouvelé à chaque page ; page introuvable ; image étrangère refusée ;
+    en-têtes de l'API à travers le relais web) ;
+  - un job de CI (`End-to-end (Playwright)`) les exécute à chaque PR sur une base
+    PostgreSQL neuve et conserve les traces des tests en échec.
+- **Conséquences** :
+  - en local, `pnpm test:e2e` recrée l'entreprise de démonstration de la base désignée
+    par `E2E_DATABASE_URL` (par défaut celle du développement) et occupe les ports 3000
+    et 4000 ;
+  - le modèle scénarisé consomme ses réponses dans l'ordre : un seul test converse ; un
+    test qui en ajouterait un autre devra mettre en file son propre scénario ;
+  - le parcours avec un modèle réel reste à valider (A11).

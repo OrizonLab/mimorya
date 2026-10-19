@@ -15,6 +15,7 @@
     "check:rust": "cargo fmt --all --check && cargo clippy --workspace --all-targets --all-features -- -D warnings && cargo test --workspace",
     "check:web": "pnpm --filter @mimorya/web typecheck && pnpm lint && pnpm format:check",
     "test:int": "cargo test-int",
+    "test:e2e": "pnpm --filter @mimorya/web build && pnpm --filter @mimorya/web e2e",
     "lint": "eslint .",
     "format": "prettier --write . && cargo fmt --all",
     "format:check": "prettier --check ."
