@@ -16,7 +16,7 @@ use mimorya_db::repositories::password_resets::{
 use serde_json::json;
 use uuid::Uuid;
 
-use super::{RESET_VALIDITY, ResetMail, reset_link, reset_mail};
+use super::{RESET_VALIDITY, ResetMail, reset_link, reset_mail, reset_refusal};
 use crate::auth::credentials::new_session_token;
 use crate::mail::Mailer;
 
@@ -39,7 +39,7 @@ pub struct ResetRequest {
 
 /// Issues and sends the link if the address designates an account that may
 /// have one. Failures are logged, never with the address or the link.
-pub async fn send_reset_link(sender: ResetSender, request: ResetRequest) {
+pub async fn send_requested_link(sender: ResetSender, request: ResetRequest) {
     if let Err(error) = issue(&sender, &request).await {
         tracing::warn!(error = %error, "Password reset link not issued");
     }
@@ -67,11 +67,8 @@ async fn issue(sender: &ResetSender, request: &ResetRequest) -> anyhow::Result<(
     let Some(recipient) = lock_reset_recipient(&mut tx, login.user_id).await? else {
         return Ok(());
     };
-    // An invited account has no password yet: its invitation link serves.
-    if recipient.status != "active"
-        || recipient.tenant_status != "active"
-        || !recipient.has_password
-    {
+    // Whatever the reason, the caller learns nothing.
+    if reset_refusal(&recipient).is_some() {
         return Ok(());
     }
     put_password_reset(

@@ -17,7 +17,9 @@ use uuid::Uuid;
 use super::{LinkSender, audit_entry, begin_change, refuse_self};
 use crate::auth::credentials::new_session_token;
 use crate::services::AccessContext;
-use crate::services::password_reset::{ResetMail, SENT_RESET_VALIDITY, reset_link, reset_mail};
+use crate::services::password_reset::{
+    ResetMail, ResetRefusal, SENT_RESET_VALIDITY, reset_link, reset_mail, reset_refusal,
+};
 
 const PERMISSION: &str = "user:manage";
 const NO_RELAY: &str =
@@ -42,25 +44,17 @@ pub async fn send_reset_link(
     let Some(recipient) = lock_reset_recipient(&mut tx, user_id).await? else {
         return Err(DomainError::not_found("Compte introuvable").into());
     };
-    match (recipient.status.as_str(), recipient.has_password) {
-        ("active", true) => {}
-        ("invited", _) => {
-            return Err(DomainError::conflict(
+    if let Some(refusal) = reset_refusal(&recipient) {
+        let reason = match refusal {
+            ResetRefusal::Invited => {
                 "Ce compte n’a pas encore choisi son mot de passe : renvoyez-lui plutôt son \
-                 invitation",
-            )
-            .into());
-        }
-        ("active", false) => {
-            return Err(
-                DomainError::conflict("Ce compte n’a pas de mot de passe à réinitialiser").into(),
-            );
-        }
-        _ => {
-            return Err(
-                DomainError::conflict("Ce compte est désactivé : réactivez-le d’abord").into(),
-            );
-        }
+                 invitation"
+            }
+            ResetRefusal::Disabled => "Ce compte est désactivé : réactivez-le d’abord",
+            ResetRefusal::NoPassword => "Ce compte n’a pas de mot de passe à réinitialiser",
+            ResetRefusal::CompanySuspended => "L’entreprise est suspendue",
+        };
+        return Err(DomainError::conflict(reason).into());
     }
     put_password_reset(
         &mut tx,

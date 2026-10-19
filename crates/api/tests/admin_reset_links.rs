@@ -12,6 +12,7 @@ use mimorya_core::demo::{tenant, user};
 use mimorya_db::testing::OTHER_USER_ID;
 use serde_json::json;
 use support::accounts::{activate, create_partial_admin, invite_account};
+use support::mcp::capture_logs;
 use support::resets::{RESET_PASSWORD, complete_reset, last_reset_token};
 use support::{PASSWORD, TestApi, email};
 
@@ -174,9 +175,20 @@ async fn a_link_that_could_not_be_sent_is_withdrawn() {
     let api = TestApi::start_with_mailer().await;
     api.mail.fail();
     let paul = api.sign_in(user::PAUL).await;
+    let logs = capture_logs();
     let failed = paul.post(&link_url(user::HUGO), json!({})).await;
+    let logged = logs.text();
+    drop(logs);
+    // The relay's answer is the administrator's, not the logs'.
+    assert!(
+        logged.contains("Password reset e-mail not sent"),
+        "{logged}"
+    );
+    assert!(!logged.contains(&email(user::HUGO)), "{logged}");
+    assert!(!logged.contains("relais injoignable"), "{logged}");
     assert_eq!(failed.status, StatusCode::SERVICE_UNAVAILABLE);
     let problem = failed.error_message();
+    assert!(problem.contains("relais injoignable"), "{problem}");
     assert!(
         problem.starts_with("L’e-mail n’a pas pu être envoyé (")
             && problem.ends_with(") : donnez plutôt un mot de passe provisoire"),

@@ -37,7 +37,8 @@ Repères à l'intérieur des crates :
 - `connectors/src/demo_interventions/` (données, planning, accès, `tools/` un fichier
   par outil), `connectors/src/mcp/`, `connectors/src/bin/mcp_demo_docs.rs`.
 - `api/src/plugins/` (contexte de requête, limitation de débit, CSRF, session,
-  maintenance périodique : runs bloqués, liens expirés), `api/src/routes/` (un module par ressource, `admin/`),
+  en-têtes de sécurité, maintenance périodique : runs bloqués, liens expirés),
+  `api/src/routes/` (un module par ressource, `admin/`),
   `api/src/services/admin/` (comptes, organisation, habilitations, sous verrou par
   entreprise), `api/src/services/account.rs` (son propre compte),
   `api/src/services/runs/` (tour de conversation, décisions, contexte, exécution,
@@ -46,9 +47,10 @@ Repères à l'intérieur des crates :
   `api/src/services/password_reset/` (mot de passe oublié, ADR-028),
   `api/src/mail/` (envoi SMTP), `api/src/secrets/` (chiffrement AES-256-GCM des secrets),
   `api/tests/` (intégration, harnais dans `support/`).
-- `web/components/<fonctionnalité>/` (admin, approvals, chat, memory, operations,
-  shell), `web/components/ui/`, `web/lib/api/` (client, types du contrat JSON,
-  `useApiData`), `web/lib/labels.ts`, `web/lib/format.ts`.
+- `web/components/<fonctionnalité>/` (account, admin, approvals, chat, memory,
+  operations, shell), `web/components/ui/`, `web/lib/api/` (client, types du contrat
+  JSON, `useApiData`), `web/lib/labels.ts`, `web/lib/format.ts`, `web/proxy.ts` et
+  `web/lib/security/` (CSP à nonce par page, ADR-030).
 
 ## Commandes
 

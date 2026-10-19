@@ -6,7 +6,6 @@
 
 use chrono::{DateTime, Utc};
 use mimorya_core::DomainError;
-use mimorya_db::Database;
 use mimorya_db::repositories::audit::append_audit;
 use mimorya_db::repositories::auth::lock_login_state;
 use mimorya_db::repositories::invitations::{NewInvitation, put_invitation};
@@ -14,9 +13,8 @@ use mimorya_db::repositories::users::get_user;
 use serde_json::json;
 use uuid::Uuid;
 
-use super::{audit_entry, begin_change};
+use super::{LinkSender, audit_entry, begin_change};
 use crate::auth::credentials::new_session_token;
-use crate::mail::Mailer;
 use crate::services::AccessContext;
 use crate::services::invitations::{
     INVITATION_VALIDITY, InvitationMail, invitation_link, invitation_mail,
@@ -24,16 +22,6 @@ use crate::services::invitations::{
 
 const PERMISSION: &str = "user:manage";
 const NO_RELAY: &str = "Aucun serveur d’e-mail n’est configuré : transmettez ce lien vous-même";
-
-/// What sends a one-time link (an invitation, a reset link) besides the
-/// database.
-pub struct LinkSender<'a> {
-    pub db: &'a Database,
-    pub mailer: Option<&'a dyn Mailer>,
-    /// The web application's address, where the link leads.
-    pub web_origin: &'a str,
-    pub product: &'a str,
-}
 
 pub struct IssuedInvitation {
     pub expires_at: DateTime<Utc>,

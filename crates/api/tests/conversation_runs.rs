@@ -173,6 +173,8 @@ async fn runs_a_turn_pauses_for_validation_and_resumes_after_the_decision() {
     let stream = marc.get(&format!("{run_url}/events")).await;
     let content_type = stream.headers["content-type"].to_str().unwrap();
     assert!(content_type.contains("text/event-stream"));
+    // Its own cache policy, which the API's default does not override.
+    assert_eq!(stream.headers["cache-control"], "no-cache, no-transform");
     let body = stream.text();
     assert!(body.contains("event: approval_requested"));
     assert!(body.contains("event: run_finished"));
