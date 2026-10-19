@@ -1,7 +1,7 @@
 //! HTTP routes, one module per resource. Every route resolves the caller with
 //! `Auth`, builds the authorization context server-side and checks the
 //! permission or the ownership of the resource before answering. Exceptions:
-//! login and health need no identity; logout takes `MaybeAuth`; `/auth/me`
+//! login, invitation links and health need no identity; logout takes `MaybeAuth`; `/auth/me`
 //! and `/account/password` take `AuthPendingPasswordChange`, so that an
 //! account holding a temporary password can replace it.
 
@@ -11,6 +11,7 @@ mod approvals;
 mod auth;
 mod conversations;
 mod health;
+mod invitations;
 mod memory;
 mod run_events;
 mod runs;
@@ -25,6 +26,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .merge(health::routes())
         .merge(auth::routes())
+        .merge(invitations::routes())
         .merge(account::routes())
         .merge(conversations::routes())
         .merge(runs::routes())

@@ -9,7 +9,7 @@ Légende des statuts — tenue à jour à chaque contribution :
 | 🟡     | Partiel : socle en place, fonctionnalité incomplète (détail indiqué)       |
 | 🔜     | Planifié, non implémenté                                                   |
 
-Dernière mise à jour : 2026-10-19 (connecteurs MCP : jeton masqué aussi échappé en JSON ou encodé dans une URL, ADR-026).
+Dernière mise à jour : 2026-10-19 (invitation des nouveaux comptes par lien à usage unique, ADR-027).
 
 ## Phase 1 — Fondations et MVP fonctionnel
 
@@ -53,7 +53,7 @@ Dernière mise à jour : 2026-10-19 (connecteurs MCP : jeton masqué aussi écha
 ### Reste à faire pour clore la phase 1 (par priorité)
 
 1. **Validation avec un modèle réel** (clé Anthropic ou autre) sur le scénario de référence, et ajustement des consignes et descriptions d'outils.
-2. **Administration en écriture, suite** : invitation par e-mail (aujourd'hui : mot de passe provisoire transmis par l'administrateur, à remplacer à la première connexion).
+2. **Administration en écriture, suite** : réinitialisation du mot de passe par lien envoyé par e-mail (aujourd'hui : mot de passe provisoire transmis par l'administrateur, à remplacer à la connexion suivante ; l'invitation des nouveaux comptes par lien est faite, ADR-027).
 3. **Tests e2e** Playwright en CI avec modèle scénarisé ; images Docker (API Rust, web) pour l'installation privée.
 4. **Types de l'API partagés** : générer `apps/web/lib/api/types.ts` depuis les structures Rust (aujourd'hui maintenus à la main).
 5. **En-têtes de sécurité** : CSP stricte (nonces Next.js) et HSTS au niveau du reverse proxy.

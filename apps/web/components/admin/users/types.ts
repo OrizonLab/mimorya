@@ -20,8 +20,25 @@ export interface UserView {
   clearance?: string;
   /** Read by access policies as `subject.attributes.*`. */
   attributes?: Record<string, unknown>;
+  /** When the pending invitation link of an `invited` account expires. */
+  invitationExpiresAt?: string | null;
   assignments?: AssignmentView[];
 }
+
+/** An invitation link just issued: e-mailed, or to transmit. */
+export interface IssuedInvitation {
+  expiresAt: string;
+  emailed: boolean;
+  /** Shown once, when no e-mail went out. */
+  link: string | null;
+  /** Why no e-mail went out. */
+  problem: string | null;
+}
+
+/** What an administrator is shown once after creating or resetting an account. */
+export type AccountNotice =
+  | { kind: 'password'; who: string; password: string }
+  | { kind: 'invitation'; who: string; email: string; invitation: IssuedInvitation };
 
 export interface DirectoryView {
   users: UserView[];

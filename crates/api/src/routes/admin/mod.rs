@@ -28,6 +28,7 @@ pub fn routes() -> Router<AppState> {
         .route("/admin/users", get(users::list).post(users::create))
         .route("/admin/users/{id}", patch(users::update))
         .route("/admin/users/{id}/password", post(users::reset))
+        .route("/admin/users/{id}/invitation", post(users::invite))
         .route("/admin/users/{id}/assignments", post(assignments::grant))
         .route("/admin/assignments/{id}", delete(assignments::revoke))
         .route("/admin/roles", get(roles::list).post(roles::create))

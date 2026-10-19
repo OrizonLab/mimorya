@@ -135,6 +135,7 @@ const AUTHENTICATED_ROUTES: &[(&str, &str)] = &[
     ("POST", "/admin/users"),
     ("PATCH", "/admin/users/{id}"),
     ("POST", "/admin/users/{id}/password"),
+    ("POST", "/admin/users/{id}/invitation"),
     ("POST", "/admin/users/{id}/assignments"),
     ("DELETE", "/admin/assignments/{id}"),
     ("GET", "/admin/roles"),
@@ -197,6 +198,8 @@ async fn every_authenticated_route_holds_a_temporary_password_back() {
 const OTHER_ROUTES: &[(&str, &str)] = &[
     ("GET", "/health"),
     ("POST", "/auth/login"),
+    ("POST", "/auth/invitation"),
+    ("POST", "/auth/invitation/accept"),
     ("POST", "/auth/logout"),
     ("GET", "/auth/me"),
     ("POST", "/account/password"),

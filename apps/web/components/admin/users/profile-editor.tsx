@@ -5,26 +5,28 @@ import { Button, ErrorNote, Field, Input, Select } from '@/components/ui';
 import { api, useAction } from '@/lib/api';
 import { CLEARANCE_LABELS } from '@/lib/labels';
 import { unitOptions, type OrgUnitView } from '../organization/types';
-import type { UserView } from './types';
+import type { AccountNotice, IssuedInvitation, UserView } from './types';
 
-/** Profile, status and password of an account (`user:manage`). */
+/** Profile, status and password (or invitation) of an account (`user:manage`). */
 export function ProfileEditor({
   user,
   units,
   onChanged,
-  onPassword,
+  onNotice,
 }: {
   user: UserView;
   units: OrgUnitView[];
   onChanged: () => void;
-  onPassword: (temporaryPassword: string) => void;
+  onNotice: (notice: AccountNotice) => void;
 }) {
   const [displayName, setDisplayName] = useState(user.displayName);
   const [jobTitle, setJobTitle] = useState(user.jobTitle ?? '');
   const [orgUnitId, setOrgUnitId] = useState(user.orgUnitId ?? '');
   const [clearance, setClearance] = useState(user.clearance ?? 'internal');
   const action = useAction();
-  const active = user.status === 'active';
+  // An invited account is enabled: it is waiting for its password.
+  const active = user.status !== 'disabled';
+  const invited = user.status === 'invited';
 
   async function save(event: FormEvent) {
     event.preventDefault();
@@ -53,7 +55,28 @@ export function ProfileEditor({
     const reset = await action.run(() =>
       api.post<{ temporaryPassword: string }>(`/admin/users/${user.id}/password`),
     );
-    if (reset) onPassword(reset.temporaryPassword);
+    if (reset)
+      onNotice({ kind: 'password', who: user.displayName, password: reset.temporaryPassword });
+  }
+
+  async function resendInvitation() {
+    if (
+      !window.confirm(
+        `Envoyer une nouvelle invitation à ${user.displayName} ? L’ancien lien ne fonctionnera plus.`,
+      )
+    )
+      return;
+    const issued = await action.run(() =>
+      api.post<{ invitation: IssuedInvitation }>(`/admin/users/${user.id}/invitation`),
+    );
+    if (issued) {
+      onNotice({
+        kind: 'invitation',
+        who: user.displayName,
+        email: user.email ?? '',
+        invitation: issued.invitation,
+      });
+    }
   }
 
   return (
@@ -96,9 +119,15 @@ export function ProfileEditor({
         <Button type="submit" loading={action.pending}>
           Enregistrer
         </Button>
-        <Button type="button" variant="secondary" onClick={resetPassword}>
-          Réinitialiser le mot de passe
-        </Button>
+        {invited ? (
+          <Button type="button" variant="secondary" onClick={resendInvitation}>
+            Renvoyer l’invitation
+          </Button>
+        ) : (
+          <Button type="button" variant="secondary" onClick={resetPassword}>
+            Réinitialiser le mot de passe
+          </Button>
+        )}
         <Button type="button" variant={active ? 'danger' : 'secondary'} onClick={toggleStatus}>
           {active ? 'Désactiver le compte' : 'Réactiver le compte'}
         </Button>

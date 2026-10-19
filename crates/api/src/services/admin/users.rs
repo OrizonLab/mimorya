@@ -1,6 +1,6 @@
-//! Accounts: creation with a temporary password, profile, attributes (read by
-//! access policies) and status changes, password reset. A disabled account
-//! loses its sessions at once.
+//! Accounts: creation (invited, ADR-027), profile, attributes (read by access
+//! policies) and status changes, password reset to a temporary password. A
+//! disabled account loses its sessions and its pending invitation at once.
 
 use std::collections::BTreeSet;
 
@@ -8,6 +8,7 @@ use mimorya_core::DomainError;
 use mimorya_core::authz::{AssignmentScope, OrgTree, Sensitivity};
 use mimorya_core::collaborator_attributes::normalize_attributes;
 use mimorya_db::repositories::audit::append_audit;
+use mimorya_db::repositories::invitations::delete_invitation_of;
 use mimorya_db::repositories::role_assignments::{
     NewRoleAssignment, create_role_assignment, find_role_id,
 };
@@ -36,15 +37,14 @@ pub struct NewUserInput {
     pub clearance: Sensitivity,
 }
 
-/// Returns the new account and its temporary password (shown once).
+/// Creates an `invited` account, without password: it chooses one through
+/// its invitation link (`issue_invitation`, ADR-027).
 pub async fn create_user(
     db: &Database,
     access: &AccessContext,
     input: NewUserInput,
-) -> anyhow::Result<(Uuid, String)> {
+) -> anyhow::Result<Uuid> {
     access.require_tenant_wide(PERMISSION)?;
-    let password = generate_temporary_password();
-    let password_hash = hash_password_async(password.clone()).await?;
     let tenant_id = access.subject.tenant_id;
 
     let mut tx = begin_change(db, access, PERMISSION).await?;
@@ -57,7 +57,7 @@ pub async fn create_user(
             display_name: input.display_name,
             job_title: input.job_title,
             clearance: input.clearance,
-            password_hash,
+            password_hash: None,
         },
     )
     .await
@@ -78,7 +78,7 @@ pub async fn create_user(
     )
     .await?;
     tx.commit().await?;
-    Ok((id, password))
+    Ok(id)
 }
 
 async fn grant_base_role(
@@ -169,6 +169,7 @@ pub async fn update_user(
     }
     if changes.active == Some(false) {
         revoke_user_sessions(&mut tx, user_id, None).await?;
+        delete_invitation_of(&mut tx, user_id).await?;
     }
     let action = match changes.active {
         Some(true) => "user.enabled",
@@ -201,8 +202,14 @@ pub async fn reset_password(
     let password = generate_temporary_password();
     let hash = hash_password_async(password.clone()).await?;
     let mut tx = begin_change(db, access, PERMISSION).await?;
-    if get_user(&mut tx, user_id).await?.is_none() {
+    let Some(user) = get_user(&mut tx, user_id).await? else {
         return Err(DomainError::not_found("Compte introuvable").into());
+    };
+    if user.status == "invited" {
+        return Err(DomainError::conflict(
+            "Ce compte n’a pas encore choisi son mot de passe : renvoyez-lui plutôt son invitation",
+        )
+        .into());
     }
     set_temporary_password_hash(&mut tx, user_id, &hash).await?;
     revoke_user_sessions(&mut tx, user_id, None).await?;

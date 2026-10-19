@@ -7,6 +7,7 @@ pub mod auth;
 pub mod config;
 pub mod http;
 pub mod logging;
+pub mod mail;
 pub mod plugins;
 pub mod routes;
 pub mod secrets;

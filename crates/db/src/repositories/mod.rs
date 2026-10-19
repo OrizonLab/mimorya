@@ -9,6 +9,7 @@ pub mod auth;
 pub mod connectors;
 pub mod conversations;
 pub mod deliverables;
+pub mod invitations;
 pub mod llm_settings;
 pub mod memory;
 pub mod org;

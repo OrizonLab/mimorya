@@ -1,4 +1,4 @@
-//! Account administration: creation with a temporary password, profile,
+//! Account administration: creation with an invitation link, profile,
 //! status and password changes, and what an administrator cannot reach
 //! (unknown units, accounts of another company).
 
@@ -8,12 +8,12 @@ use axum::http::StatusCode;
 use mimorya_core::demo::{unit, user};
 use mimorya_db::testing::OTHER_USER_ID;
 use serde_json::json;
-use support::TestApi;
-use support::accounts::{create_account, directory_entry, permissions};
+use support::accounts::{INVITED_PASSWORD, accept, create_account, directory_entry, permissions};
+use support::{TestApi, WEB_ORIGIN};
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
-async fn creates_accounts_that_sign_in_with_a_temporary_password() {
+async fn creates_accounts_that_sign_in_once_their_invitation_is_accepted() {
     let api = TestApi::start().await;
     let paul = api.sign_in(user::PAUL).await;
     let marc = api.sign_in(user::MARC).await;
@@ -24,13 +24,17 @@ async fn creates_accounts_that_sign_in_with_a_temporary_password() {
         )
         .await;
     assert_eq!(created.status, StatusCode::CREATED);
-    // The temporary password is shown once and never kept by a cache.
+    // Without an e-mail relay, the link is shown once and never kept by a cache.
     assert_eq!(created.headers["cache-control"], "no-store");
     let body = created.json();
     let email = "nouveau.collegue@neo-maintenance.example";
-    let password = body["temporaryPassword"].as_str().unwrap();
+    let link = body["invitation"]["link"].as_str().unwrap();
+    assert_eq!(body["invitation"]["emailed"], false);
+    assert!(link.starts_with(&format!("{WEB_ORIGIN}/invitation#")));
 
-    let newcomer = api.sign_in_with(email, password).await;
+    let accepted = accept(&api, link, INVITED_PASSWORD).await;
+    assert_eq!(accepted.status, StatusCode::OK, "{}", accepted.text());
+    let newcomer = api.session_from(&accepted);
     let me = newcomer.get("/auth/me").await.json();
     assert!(permissions(&me).contains(&"agent:use".to_string()));
 

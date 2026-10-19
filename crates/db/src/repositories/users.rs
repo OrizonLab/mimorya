@@ -49,14 +49,16 @@ pub struct NewUser {
     pub display_name: String,
     pub job_title: Option<String>,
     pub clearance: Sensitivity,
-    pub password_hash: String,
+    /// A temporary password the account must replace, or `None`: the
+    /// account is `invited` until it chooses its own (ADR-027).
+    pub password_hash: Option<String>,
 }
 
-/// The account starts with a temporary password it must replace.
 pub async fn create_user(conn: &mut PgConnection, input: NewUser) -> sqlx::Result<Uuid> {
     sqlx::query_scalar(
         "insert into users (tenant_id, email, display_name, job_title, clearance, password_hash, \
-         must_change_password) values ($1, $2, $3, $4, $5, $6, true) returning id",
+         must_change_password, status) values ($1, $2, $3, $4, $5, $6, $6 is not null, \
+         case when $6 is null then 'invited' else 'active' end) returning id",
     )
     .bind(input.tenant_id)
     .bind(input.email)
@@ -74,7 +76,8 @@ pub struct UserPatch {
     pub display_name: Option<String>,
     pub job_title: Option<Option<String>>,
     pub clearance: Option<Sensitivity>,
-    /// `active` or `disabled`.
+    /// `active` or `disabled`; an account that never chose a password goes
+    /// back to `invited`, not `active`.
     pub status: Option<&'static str>,
     /// Replaces every attribute (checked by the caller).
     pub attributes: Option<Value>,
@@ -89,7 +92,9 @@ pub async fn update_user(
     let result = sqlx::query(
         "update users set display_name = coalesce($2, display_name), \
          job_title = case when $3 then $4 else job_title end, \
-         clearance = coalesce($5, clearance), status = coalesce($6, status), \
+         clearance = coalesce($5, clearance), \
+         status = case when $6 = 'active' and password_hash is null then 'invited' \
+           else coalesce($6, status) end, \
          attributes = coalesce($7, attributes), updated_at = now() where id = $1",
     )
     .bind(id)
@@ -203,4 +208,22 @@ pub async fn list_attribute_keys(conn: &mut PgConnection) -> sqlx::Result<Vec<St
     )
     .fetch_all(conn)
     .await
+}
+
+/// An invited account chooses its password and becomes active; `false` if
+/// it is no longer `invited` (disabled meanwhile, or already active).
+pub async fn activate_invited_user(
+    conn: &mut PgConnection,
+    id: Uuid,
+    password_hash: &str,
+) -> sqlx::Result<bool> {
+    let result = sqlx::query(
+        "update users set password_hash = $2, must_change_password = false, status = 'active', \
+         updated_at = now() where id = $1 and status = 'invited'",
+    )
+    .bind(id)
+    .bind(password_hash)
+    .execute(conn)
+    .await?;
+    Ok(result.rows_affected() > 0)
 }

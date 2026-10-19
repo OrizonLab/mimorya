@@ -9,10 +9,12 @@ pub mod accounts;
 mod client;
 pub mod llm;
 pub mod locks;
+pub mod mail;
 pub mod mcp;
 pub mod planning;
 
 pub use client::{Client, TestResponse};
+use mail::RecordingMailer;
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -23,6 +25,7 @@ use chrono::{Days, Utc};
 use mimorya_agent::llm::{LlmProvider, ProviderConfig};
 use mimorya_agent::testing::{ScriptedProvider, ScriptedStep};
 use mimorya_api::auth::credentials::hash_password;
+use mimorya_api::mail::Mailer;
 use mimorya_api::services::ProviderFactory;
 use mimorya_api::{App, AppConfig, BuildOptions, build_app};
 use mimorya_connectors::demo_interventions::dates::{iso_date, monday_of};
@@ -39,6 +42,11 @@ static URLS: OnceLock<TestDatabaseUrls> = OnceLock::new();
 
 /// Resets the test database on first use (in a dedicated runtime, so that
 /// each test keeps its own).
+/// The owner role's URL, for what the application role may not write.
+pub fn owner_url() -> &'static str {
+    &urls().owner
+}
+
 fn urls() -> &'static TestDatabaseUrls {
     URLS.get_or_init(|| {
         std::thread::spawn(|| {
@@ -79,6 +87,8 @@ pub struct TestApi {
     pub company_model: Arc<ScriptedProvider>,
     /// Every configuration a company provider was built from (key included).
     pub built: Arc<Mutex<Vec<ProviderConfig>>>,
+    /// What the app e-mailed, when started with `start_with_mailer`.
+    pub mail: Arc<RecordingMailer>,
 }
 
 impl TestApi {
@@ -91,18 +101,26 @@ impl TestApi {
     pub async fn start_with(env: &[(&str, &str)]) -> Self {
         let model = Arc::new(ScriptedProvider::new(Vec::new()));
         let provider: Arc<dyn LlmProvider> = model.clone();
-        Self::build(Some(provider), Some(model), env).await
+        Self::build(Some(provider), Some(model), env, false).await
+    }
+
+    /// Same, with e-mails recorded in `mail` instead of sent.
+    pub async fn start_with_mailer() -> Self {
+        let model = Arc::new(ScriptedProvider::new(Vec::new()));
+        let provider: Arc<dyn LlmProvider> = model.clone();
+        Self::build(Some(provider), Some(model), &[], true).await
     }
 
     /// App without any model provider configured.
     pub async fn without_llm() -> Self {
-        Self::build(None, None, &[]).await
+        Self::build(None, None, &[], false).await
     }
 
     async fn build(
         provider: Option<Arc<dyn LlmProvider>>,
         model: Option<Arc<ScriptedProvider>>,
         env: &[(&str, &str)],
+        record_mail: bool,
     ) -> Self {
         let mut vars: HashMap<&str, String> = HashMap::from([
             ("MIMORYA_ENV", "test".to_string()),
@@ -124,9 +142,11 @@ impl TestApi {
                 Ok(provider)
             })
         };
+        let mail = Arc::new(RecordingMailer::default());
         let options = BuildOptions {
             provider: Some(provider),
             provider_factory: Some(factory),
+            mailer: record_mail.then(|| Some(mail.clone() as Arc<dyn Mailer>)),
         };
         let app = build_app(config, options).await.expect("app");
         Self {
@@ -134,7 +154,13 @@ impl TestApi {
             model,
             company_model,
             built,
+            mail,
         }
+    }
+
+    /// Requests without a session (pages before sign-in).
+    pub fn anonymous(&self) -> Client<'_> {
+        self.as_user("")
     }
 
     pub fn script(&self, steps: Vec<ScriptedStep>) {

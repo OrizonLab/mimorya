@@ -5,16 +5,16 @@ import { DataTable, Loaded } from '@/components/ui';
 import { useApiData } from '@/lib/api';
 import { useMe } from '@/lib/me-context';
 import type { OrganizationView } from '../organization/types';
+import { AccountNoticeCard } from './account-notice';
 import { NewUserForm } from './new-user-form';
-import { TemporaryPassword } from './temporary-password';
-import type { DirectoryView } from './types';
+import type { AccountNotice, DirectoryView } from './types';
 import { UserRow } from './user-row';
 
 export function UsersTab() {
   const me = useMe();
   const directory = useApiData<DirectoryView>('/admin/users');
   const organization = useApiData<OrganizationView>('/admin/organization');
-  const [secret, setSecret] = useState<{ who: string; password: string } | null>(null);
+  const [notice, setNotice] = useState<AccountNotice | null>(null);
 
   return (
     <Loaded state={directory}>
@@ -22,18 +22,12 @@ export function UsersTab() {
         <Loaded state={organization}>
           {(org) => (
             <>
-              {secret && (
-                <TemporaryPassword
-                  who={secret.who}
-                  password={secret.password}
-                  onClose={() => setSecret(null)}
-                />
-              )}
+              {notice && <AccountNoticeCard notice={notice} onClose={() => setNotice(null)} />}
               {data.canManage.users && (
                 <NewUserForm
                   units={org.units}
-                  onCreated={(who, password) => {
-                    setSecret({ who, password });
+                  onCreated={(created) => {
+                    setNotice(created);
                     directory.reload();
                   }}
                 />
@@ -49,7 +43,10 @@ export function UsersTab() {
                     canManage={data.canManage}
                     isSelf={u.id === me.user.id}
                     onChanged={directory.reload}
-                    onPassword={(who, password) => setSecret({ who, password })}
+                    onNotice={(issued) => {
+                      setNotice(issued);
+                      directory.reload();
+                    }}
                   />
                 ))}
               </DataTable>

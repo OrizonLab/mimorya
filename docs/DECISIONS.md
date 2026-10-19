@@ -564,3 +564,46 @@ cité, renvoi) y sont faites sur place.
     sans caractère échappé n'y figure pas, puis une fois par graphie (150 au plus pour
     un jeton de l'alphabet) ;
   - un jeton hors alphabet doit être saisi de nouveau.
+
+## ADR-027 — Invitation des nouveaux comptes par lien à usage unique (complète ADR-021)
+
+- **Date** : 2026-10-19 · **Statut** : acceptée
+- **Contexte** : un nouveau compte recevait un mot de passe provisoire que
+  l'administrateur devait transmettre lui-même, puis que la personne devait remplacer.
+  Ce mot de passe transitait par un canal choisi au hasard (messagerie, papier) et
+  restait utilisable tant qu'il n'était pas remplacé.
+- **Décision** :
+  - un compte créé par l'administration est `invited`, sans mot de passe : il ne peut
+    pas se connecter. Il reçoit un **lien d'invitation** à usage unique
+    (`<WEB_ORIGIN>/invitation#<jeton>`, jeton aléatoire de 256 bits dont seule
+    l'empreinte SHA-256 est conservée, table `user_invitations`), valable 7 jours ;
+  - le jeton voyage dans le fragment de l'adresse (jamais envoyé avec la page ni dans
+    `Referer`) puis dans le corps des requêtes `POST /auth/invitation` (ce que le lien
+    ouvre : nom, adresse, entreprise, échéance) et `POST /auth/invitation/accept`
+    (mot de passe choisi, 12 caractères au moins) ; ces routes sans identité sont
+    limitées par client comme la connexion. La lecture avant connexion passe par la
+    seule fonction `auth_find_invitation` (SECURITY DEFINER) ;
+  - l'acceptation supprime l'invitation (une acceptation concurrente ne trouve plus
+    rien), active le compte avec son mot de passe et ouvre une session ; un lien
+    utilisé, expiré, remplacé, inconnu, ou celui d'un compte désactivé ou d'une
+    entreprise suspendue reçoit la même réponse ;
+  - l'administrateur (`user:manage` sur toute l'entreprise) peut renvoyer une
+    invitation à un compte qui n'a pas encore choisi son mot de passe : le nouveau lien
+    remplace l'ancien. Désactiver le compte supprime son invitation ; réactivé, il
+    redevient `invited`. Un compte invité ne se réinitialise pas (on lui renvoie
+    l'invitation), et la réinitialisation d'un compte actif reste un mot de passe
+    provisoire (ADR-021) ;
+  - **envoi** : si l'exploitant configure un relais (`SMTP_URL`, `MAIL_FROM` ; TLS par
+    rustls, identifiants seulement sur `smtps://` ou `?tls=required`, jamais
+    affichés), le lien part par e-mail en texte brut et n'est pas montré à
+    l'administrateur. Sans relais, ou si l'envoi échoue, le lien lui est montré une
+    seule fois (`Cache-Control: no-store`) avec la raison, pour qu'il le transmette ;
+  - l'audit trace `user.invited` (échéance, mode d'envoi), `user.invitation_not_sent`
+    et `user.invitation_accepted`, jamais le lien ni le jeton ; le journal
+    d'exploitation ne retient pas la réponse du relais (elle peut nommer le
+    destinataire).
+- **Conséquences** :
+  - migration `0010` ; dépendance `lettre` (SMTP) ;
+  - un compte créé avant cette migration garde le parcours du mot de passe provisoire ;
+  - la réinitialisation d'un mot de passe par e-mail (lien plutôt que mot de passe
+    provisoire) et l'invitation dans la langue du destinataire restent à faire.

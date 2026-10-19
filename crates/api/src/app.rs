@@ -13,6 +13,7 @@ use tokio::sync::watch;
 use tokio::task::JoinHandle;
 
 use crate::config::AppConfig;
+use crate::mail::{Mailer, SmtpMailer};
 use crate::plugins::csrf::csrf_protection;
 use crate::plugins::rate_limit::global_rate_limit;
 use crate::plugins::request_context::request_context;
@@ -43,6 +44,8 @@ pub struct Services {
     /// The model provider of each company's runs.
     pub llm: Arc<LlmService>,
     pub runs: RunService,
+    /// Sends the invitation e-mails; `None` when no relay is configured.
+    pub mailer: Option<Arc<dyn Mailer>>,
     pub limits: RateLimits,
     /// Flips to `true` when the server stops: long-lived streams end.
     pub shutdown: watch::Sender<bool>,
@@ -57,6 +60,9 @@ pub struct BuildOptions {
     pub provider: Option<Option<Arc<dyn LlmProvider>>>,
     /// Replaces how a company's own provider is built (tests).
     pub provider_factory: Option<ProviderFactory>,
+    /// Replaces the mailer built from configuration (tests); `Some(None)`
+    /// sends nothing.
+    pub mailer: Option<Option<Arc<dyn Mailer>>>,
 }
 
 pub struct App {
@@ -113,8 +119,16 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
         login: RateLimiter::per_minute(config.login_rate_limit_per_minute),
         failed_logins: RateLimiter::new(FAILED_LOGINS_PER_ACCOUNT, FAILED_LOGIN_WINDOW),
     };
+    let mailer = match options.mailer {
+        Some(mailer) => mailer,
+        None => match &config.mail {
+            Some(settings) => Some(Arc::new(SmtpMailer::new(settings)?) as Arc<dyn Mailer>),
+            None => None,
+        },
+    };
     let services = Arc::new(Services {
         runs: RunService::new(db.clone(), access.clone(), executor),
+        mailer,
         config,
         db: db.clone(),
         access,
