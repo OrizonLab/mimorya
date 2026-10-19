@@ -9,18 +9,18 @@ use std::collections::HashMap;
 use mimorya_connectors::mcp::{token_problem, tool_namespace, url_problem};
 use mimorya_core::DomainError;
 use mimorya_core::authz::PermissionInfo;
-use mimorya_db::Database;
 use mimorya_db::repositories::audit::append_audit;
 use mimorya_db::repositories::connectors::{
     ConnectorInstanceRow, ConnectorPatch, NewConnectorInstance, create_connector_instance,
     delete_connector_instance, get_connector_instance, list_connector_instances,
     update_connector_instance,
 };
+use mimorya_db::{Database, is_unique_violation};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
 use super::connector_rules::{ToolPolicyInput, checked_policies, prefix_problem};
-use super::{audit_entry, begin_change, is_unique_violation};
+use super::{audit_entry, begin_change};
 use crate::secrets::SecretStore;
 use crate::services::AccessContext;
 use crate::services::connectors::{ConnectorService, token_secret_name};

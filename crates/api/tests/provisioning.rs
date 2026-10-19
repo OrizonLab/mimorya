@@ -2,34 +2,19 @@
 //! company starts with its root unit, the platform roles and one invited
 //! administrator, who manages the workspace without any business access and
 //! reaches nothing of another company; a slug or an address already taken
-//! leaves nothing behind; only an account still waiting for its password gets
-//! a new link, which replaces the former one.
+//! leaves nothing behind; an invalid request changes nothing.
 
 mod support;
 
 use axum::http::StatusCode;
-use mimorya_api::services::provisioning::{CreatedCompany, NewCompany, create_company, reinvite};
+use mimorya_api::services::provisioning::{NewCompany, create_company};
 use mimorya_core::demo::{tenant, user};
 use mimorya_core::{DomainError, ErrorCode};
 use serde_json::{Value, json};
 use support::accounts::{INVITED_PASSWORD, accept};
+use support::companies::{company, create};
 use support::mail::token_of;
 use support::{TestApi, WEB_ORIGIN, email};
-
-fn company(slug: &str, admin_email: &str) -> NewCompany {
-    NewCompany {
-        name: " Acme Industrie ".into(),
-        slug: slug.into(),
-        admin_email: admin_email.into(),
-        admin_name: "Jeanne Martin".into(),
-    }
-}
-
-async fn create(api: &TestApi, slug: &str, admin_email: &str) -> CreatedCompany {
-    create_company(&api.app.services.db, WEB_ORIGIN, company(slug, admin_email))
-        .await
-        .expect("company")
-}
 
 async fn refused(api: &TestApi, input: NewCompany) -> DomainError {
     let error = create_company(&api.app.services.db, WEB_ORIGIN, input)
@@ -92,10 +77,25 @@ async fn a_new_company_starts_with_its_invited_administrator_only() {
     for granted in ["agent:use", "user:manage", "role:manage", "settings:manage"] {
         assert!(permissions.contains(&granted), "{granted}: {permissions:?}");
     }
-    // The workspace's administration gives no business data.
+    // The workspace's administration gives no business data, and the base
+    // role (memories, missions) covers the administrator's own data only.
     for withheld in ["intervention:read", "planning:read", "memory:write"] {
         assert!(!permissions.contains(&withheld), "{withheld}");
     }
+    let mut grants: Vec<&str> = me["grants"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|g| g.as_str().unwrap())
+        .collect();
+    grants.sort();
+    assert_eq!(
+        grants,
+        [
+            "Administrateur technique — toute l’entreprise",
+            "Collaborateur — ses propres données",
+        ]
+    );
 
     let organization = jeanne.get("/admin/organization").await.json();
     assert_eq!(organization["units"].as_array().unwrap().len(), 1);
@@ -206,41 +206,5 @@ async fn invalid_requests_are_refused_before_any_change() {
         "vide@acme.example",
     ] {
         create(&api, &address.replace("@acme.example", "-ok"), address).await;
-    }
-}
-
-#[tokio::test]
-#[ignore = "requires PostgreSQL"]
-async fn only_an_account_waiting_for_its_password_gets_a_new_link() {
-    let api = TestApi::start().await;
-    let db = &api.app.services.db;
-    let created = create(&api, "nouveau-lien", "admin@nouveau-lien.example").await;
-
-    let renewed = reinvite(db, WEB_ORIGIN, " ADMIN@Nouveau-Lien.example ")
-        .await
-        .expect("new link");
-    assert_ne!(renewed.link, created.invitation.link);
-    let former = accept(&api, &created.invitation.link, INVITED_PASSWORD).await;
-    assert_eq!(former.status, StatusCode::NOT_FOUND, "{}", former.text());
-    let accepted = accept(&api, &renewed.link, INVITED_PASSWORD).await;
-    assert_eq!(accepted.status, StatusCode::OK, "{}", accepted.text());
-
-    for (address, code) in [
-        (
-            "admin@nouveau-lien.example".to_string(),
-            ErrorCode::Conflict,
-        ),
-        (email(user::LUCAS), ErrorCode::Conflict),
-        (
-            "inconnu@nouveau-lien.example".to_string(),
-            ErrorCode::NotFound,
-        ),
-    ] {
-        let error = reinvite(db, WEB_ORIGIN, &address)
-            .await
-            .err()
-            .expect("refusal");
-        let refusal = error.downcast::<DomainError>().expect("domain error");
-        assert_eq!(refusal.code, code, "{address}");
     }
 }

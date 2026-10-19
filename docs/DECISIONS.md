@@ -854,14 +854,22 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - ce premier administrateur est **invité** (ADR-027) : aucun mot de passe ne passe par
     l'exploitant. Le lien, valable 7 jours, est affiché une seule fois sur la sortie de
     la commande, pour être transmis par un canal sûr ; il n'est ni conservé en clair,
-    ni journalisé, ni audité ;
+    ni journalisé, ni audité. La commande se lance dans un terminal, pas comme une tâche
+    dont un collecteur garde la sortie ;
   - `invite --email` donne un nouveau lien (le précédent cesse de fonctionner) à un
     compte qui n'a pas encore choisi son mot de passe : lien expiré ou perdu, sans autre
-    administrateur pour le renvoyer. Elle refuse un compte actif ou désactivé ;
+    administrateur pour le renvoyer. Elle refuse un compte actif ou désactivé, et un
+    compte d'une entreprise suspendue ;
+  - l'émission d'un lien (verrou du compte, statut « invité », jeton, échéance) est la
+    même que celle des administrateurs (`services::invitations::renew_invitation`), et
+    les limites d'un compte (adresse, nom affiché) sont partagées avec l'administration
+    (`mimorya_core::accounts`) ;
   - `create-company` et `invite` écrivent avec `DATABASE_APP_URL` (rôle `mimorya_app`,
     RLS appliquée) : la transaction est ouverte sur la nouvelle entreprise, que la
-    politique de `tenants` laisse écrire. La seule lecture entre entreprises est celle de
-    la connexion (`auth_find_login`), pour trouver le compte d'une adresse ;
+    politique de `tenants` laisse écrire, et elle seule (`crates/db/tests/isolation.rs`
+    tente d'en écrire une autre, ou hors de toute entreprise). La seule lecture entre
+    entreprises est celle de la connexion (`auth_find_login`), pour trouver le compte
+    d'une adresse ;
   - chaque création est auditée dans l'entreprise par l'acteur `system`
     (`tenant.created`, `user.created`, `role.assigned`, `user.invited` avec
     `delivery: "operator"`) ; l'invitation n'a pas d'auteur (`created_by_user_id` nul) ;

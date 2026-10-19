@@ -118,7 +118,8 @@ Phase 2 : `skill_eval_runs`, `documents` / `document_chunks` (GED, ingestion),
 
 ## 4. Isolation et rôles PostgreSQL
 
-- Rôle **propriétaire** (`DATABASE_URL`) : exécute les migrations et le seed.
+- Rôle **propriétaire** (`DATABASE_URL`) : exécute les migrations (`mimorya-admin migrate`,
+  ADR-033) et le seed de démonstration.
 - Rôle **applicatif** `mimorya_app` (`DATABASE_APP_URL`) : `NOSUPERUSER NOBYPASSRLS`,
   non propriétaire ; droits DML sur les tables, avec ces restrictions :
   - `audit_log` : **`INSERT`/`SELECT` seulement** ;
@@ -132,7 +133,8 @@ Phase 2 : `skill_eval_runs`, `documents` / `document_chunks` (GED, ingestion),
 - Le contexte est posé par transaction : `SELECT set_config('app.tenant_id', $1, true)`.
 - Des fonctions `SECURITY DEFINER` minimales (chemin de recherche figé) couvrent les
   seuls besoins qui traversent les entreprises : `auth_find_login` (retrouver un compte
-  par e-mail à la connexion), `auth_resolve_session` (résoudre une session par
+  par e-mail à la connexion, et pour un nouveau lien d'invitation donné par l'exploitant,
+  ADR-033), `auth_resolve_session` (résoudre une session par
   l'empreinte de son jeton, avec l'obligation éventuelle de changer de mot de passe),
   `auth_find_invitation` (lire, avant connexion, l'invitation désignée par l'empreinte
   du jeton de son lien, ADR-027), `auth_find_password_reset` (de même pour un lien de

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Checks the operator commands of the API image (ADR-033) on the running
 # demonstration stack: the migrations apply again without change, a real
-# company is created next to the demo one, and its first administrator's
-# invitation link opens through the reverse proxy.
+# company (its slug unique to each run) is created next to the demo one, and
+# its first administrator's invitation link opens through the reverse proxy.
 #   DEMO_PASSWORD=… infra/docker/operator-test.sh [https://localhost]
 set -euo pipefail
 
@@ -17,9 +17,10 @@ fail() {
 "${compose[@]}" run --rm --no-deps seed mimorya-admin migrate >/dev/null ||
   fail "migrations not applied"
 
+slug=verification-$(date +%s)
 output=$("${compose[@]}" exec -T api mimorya-admin create-company \
-  --name 'Entreprise de vérification' --slug verification \
-  --admin-email admin@verification.example --admin-name 'Administrateur de vérification') ||
+  --name 'Entreprise de vérification' --slug "$slug" \
+  --admin-email "admin@$slug.example" --admin-name 'Administrateur de vérification') ||
   fail "company not created"
 link=$(grep -o "$base/invitation#[A-Za-z0-9_-]*" <<<"$output") ||
   fail "no invitation link leading to $base"

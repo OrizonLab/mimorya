@@ -5,23 +5,23 @@
 //! the rest from the administration. All of it or nothing.
 
 use mimorya_core::DomainError;
+use mimorya_core::accounts::{EMAIL_MAX_LEN, display_name_fits};
 use mimorya_core::authz::{AssignmentScope, Sensitivity};
-use mimorya_core::provisioning::slug_problem;
+use mimorya_core::provisioning::{company_name_problem, slug_problem};
 use mimorya_core::roles::PLATFORM_ROLE_TEMPLATES;
-use mimorya_db::Database;
 use mimorya_db::repositories::audit::append_audit;
 use mimorya_db::repositories::org_units::create_root_unit;
 use mimorya_db::repositories::role_assignments::{NewRoleAssignment, create_role_assignment};
 use mimorya_db::repositories::roles::create_platform_role;
 use mimorya_db::repositories::tenants::{NewTenant, create_tenant};
 use mimorya_db::repositories::users::{NewUser, create_user, set_primary_unit};
+use mimorya_db::{Database, is_unique_violation};
 use serde_json::json;
 use uuid::Uuid;
 use validator::ValidateEmail;
 
 use super::invitation::{OperatorInvitation, issue};
 use super::system_entry;
-use crate::services::admin::is_unique_violation;
 
 /// The first administrator's roles: the base role on their own data, and
 /// the workspace's administration (no business data) on the whole company.
@@ -47,18 +47,17 @@ impl NewCompany {
             admin_email: self.admin_email.trim().to_lowercase(),
             admin_name: self.admin_name.trim().to_string(),
         };
-        let sized = |text: &str| (2..=120).contains(&text.chars().count());
-        let problem = if !sized(&company.name) {
-            Some("Le nom de l’entreprise compte de 2 à 120 caractères")
-        } else if let Some(problem) = slug_problem(&company.slug) {
-            Some(problem)
-        } else if company.admin_email.len() > 254 || !company.admin_email.validate_email() {
-            Some("L’adresse e-mail de l’administrateur n’est pas valide")
-        } else if !sized(&company.admin_name) {
-            Some("Le nom de l’administrateur compte de 2 à 120 caractères")
-        } else {
-            None
-        };
+        let email = &company.admin_email;
+        let problem = company_name_problem(&company.name)
+            .or_else(|| slug_problem(&company.slug))
+            .or_else(|| {
+                (email.chars().count() as u64 > EMAIL_MAX_LEN || !email.validate_email())
+                    .then_some("L’adresse e-mail de l’administrateur n’est pas valide")
+            })
+            .or_else(|| {
+                (!display_name_fits(&company.admin_name))
+                    .then_some("Le nom de l’administrateur compte de 2 à 120 caractères")
+            });
         match problem {
             Some(problem) => Err(DomainError::validation(problem)),
             None => Ok(company),

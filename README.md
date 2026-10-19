@@ -77,7 +77,17 @@ démonstration (voir la feuille de route).
 
 Sans données fictives : la commande d'exploitation `mimorya-admin` (ADR-033), livrée dans
 l'image de l'API, applique les migrations puis crée chaque entreprise avec son premier
-administrateur, invité par un lien :
+administrateur, invité par un lien.
+
+Prérequis : PostgreSQL 16 avec l'extension pgvector ; un rôle propriétaire du schéma
+(`DATABASE_URL`) qui peut créer les extensions `citext` et `vector` ; le rôle applicatif
+`mimorya_app` créé **avant** les migrations, avec la connexion et un mot de passe choisi
+(sinon les migrations le créent sans droit de connexion : `ALTER ROLE mimorya_app LOGIN
+PASSWORD '…'` ensuite) :
+
+```sql
+CREATE ROLE mimorya_app LOGIN PASSWORD '…' NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
+```
 
 ```bash
 mimorya-admin migrate          # DATABASE_URL (rôle propriétaire) : schéma seul, sans données
@@ -89,7 +99,9 @@ mimorya-admin invite --email jeanne.martin@acme.example   # nouveau lien, si le 
 `create-company` et `invite` utilisent `DATABASE_APP_URL` et `WEB_ORIGIN` comme l'API. Le
 lien d'invitation (valable 7 jours) n'est affiché qu'une fois : transmettez-le par un canal
 sûr, l'administrateur y choisit son mot de passe puis construit son organisation depuis
-l'administration. En développement : `pnpm db:migrate`. Il n'existe pas encore de pile
+l'administration. Lancez ces commandes dans un terminal (par exemple
+`docker compose exec api mimorya-admin …`), pas comme une tâche dont la sortie est
+conservée par un collecteur de journaux : le lien y resterait. En développement : `pnpm db:migrate`. Il n'existe pas encore de pile
 conteneurisée de production (voir la feuille de route) : l'API, l'interface (sans
 `NEXT_PUBLIC_DEMO_MODE`) et PostgreSQL se déploient avec vos propres identifiants.
 
@@ -108,11 +120,11 @@ développement) et utilisent les ports 3000 et 4000 : arrêtez d'abord `pnpm dev
 
 ## Organisation du dépôt
 
-| Chemin              | Contenu                                                                    |
-| ------------------- | -------------------------------------------------------------------------- |
-| `crates/core`       | Domaine pur : autorisation, organigramme, autonomie, contrat d'outil, démo |
-| `crates/db`         | Migrations SQL, RLS, dépôts, seed                                          |
-| `crates/agent`      | Fournisseurs LLM, boucle agentique, PEP, vérification, budgets             |
-| `crates/connectors` | Connecteur de démonstration, pont MCP                                      |
-| `crates/api`        | Serveur HTTP (axum), binaires `mimorya-api` et `mimorya-seed`              |
-| `apps/web`          | Interface Next.js                                                          |
+| Chemin              | Contenu                                                                        |
+| ------------------- | ------------------------------------------------------------------------------ |
+| `crates/core`       | Domaine pur : autorisation, organigramme, autonomie, contrat d'outil, démo     |
+| `crates/db`         | Migrations SQL, RLS, dépôts, seed                                              |
+| `crates/agent`      | Fournisseurs LLM, boucle agentique, PEP, vérification, budgets                 |
+| `crates/connectors` | Connecteur de démonstration, pont MCP                                          |
+| `crates/api`        | Serveur HTTP (axum), binaires `mimorya-api`, `mimorya-admin` et `mimorya-seed` |
+| `apps/web`          | Interface Next.js                                                              |

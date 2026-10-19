@@ -10,6 +10,7 @@ use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::http::header::CACHE_CONTROL;
+use mimorya_core::accounts::{DISPLAY_NAME_MAX_CHARS, DISPLAY_NAME_MIN_CHARS, EMAIL_MAX_LEN};
 use mimorya_core::authz::Sensitivity;
 use mimorya_db::repositories::invitations::pending_invitations;
 use mimorya_db::repositories::role_assignments::{RoleAssignmentRow, list_role_assignments};
@@ -119,10 +120,10 @@ fn assignment_view(access: &AccessContext, a: &RoleAssignmentRow) -> Value {
 #[serde(rename_all = "camelCase")]
 pub struct CreateUserBody {
     #[serde(deserialize_with = "trimmed")]
-    #[validate(email, length(max = 254))]
+    #[validate(email, length(max = EMAIL_MAX_LEN))]
     email: String,
     #[serde(deserialize_with = "trimmed")]
-    #[validate(length(min = 2, max = 120))]
+    #[validate(length(min = DISPLAY_NAME_MIN_CHARS, max = DISPLAY_NAME_MAX_CHARS))]
     display_name: String,
     #[serde(default, deserialize_with = "trimmed_opt")]
     #[validate(length(max = 120))]
@@ -205,7 +206,7 @@ enum AccountStatus {
 #[serde(rename_all = "camelCase")]
 pub struct UpdateUserBody {
     #[serde(default, deserialize_with = "trimmed_opt")]
-    #[validate(length(min = 2, max = 120))]
+    #[validate(length(min = DISPLAY_NAME_MIN_CHARS, max = DISPLAY_NAME_MAX_CHARS))]
     display_name: Option<String>,
     #[serde(default, deserialize_with = "trimmed_nullable")]
     job_title: Option<Option<String>>,

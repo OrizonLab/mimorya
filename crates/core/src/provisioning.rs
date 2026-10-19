@@ -1,6 +1,14 @@
 //! Rules of a company created by the platform's operator (ADR-033): its
-//! short name (`slug`), unique across the platform, identifies it in the
-//! operator's commands.
+//! name, and its short name (`slug`), unique across the platform.
+
+/// Why `name` (trimmed by the caller) cannot name a company, if it cannot.
+pub fn company_name_problem(name: &str) -> Option<&'static str> {
+    if (2..=120).contains(&name.chars().count()) {
+        None
+    } else {
+        Some("Le nom de l’entreprise compte de 2 à 120 caractères")
+    }
+}
 
 /// Why `slug` cannot name a company, if it cannot: 2 to 63 lower-case ASCII
 /// letters and digits, with single hyphens between them.
@@ -22,7 +30,15 @@ pub fn slug_problem(slug: &str) -> Option<&'static str> {
 
 #[cfg(test)]
 mod tests {
-    use super::slug_problem;
+    use super::{company_name_problem, slug_problem};
+
+    #[test]
+    fn names_a_company_with_2_to_120_characters() {
+        assert_eq!(company_name_problem("Lé"), None);
+        assert_eq!(company_name_problem(&"é".repeat(120)), None);
+        assert!(company_name_problem("L").is_some());
+        assert!(company_name_problem(&"é".repeat(121)).is_some());
+    }
 
     #[test]
     fn accepts_lower_case_words_joined_by_hyphens() {
