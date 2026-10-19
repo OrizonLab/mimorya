@@ -1,8 +1,6 @@
-# Development database: docker compose up -d db
-#
-# Containerised demonstration stack (ADR-032), with FICTIONAL demo data,
-# behind Caddy on https://localhost:
-#   docker compose --profile demo up -d --build
+# Development database, reachable from this machine only:
+#   docker compose up -d db
+# The containerised demonstration stack has its own file: compose.demo.yml.
 services:
   db:
     image: pgvector/pgvector:pg16
@@ -11,7 +9,7 @@ services:
       POSTGRES_PASSWORD: mimorya
       POSTGRES_DB: mimorya
     ports:
-      - '5432:5432'
+      - '127.0.0.1:5432:5432'
     volumes:
       - db-data:/var/lib/postgresql/data
       - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
@@ -21,69 +19,5 @@ services:
       timeout: 5s
       retries: 10
 
-  # Migrations and the fictional demo company (owner role), then it stops.
-  seed:
-    profiles: [demo]
-    image: mimorya-api:local
-    build:
-      context: .
-      dockerfile: infra/docker/api.Dockerfile
-    command: ['mimorya-seed']
-    environment:
-      DATABASE_URL: postgres://mimorya:mimorya@db:5432/mimorya
-      MIMORYA_ENV: production
-      DEMO_PASSWORD: ${DEMO_PASSWORD:-demo-mimorya}
-    depends_on:
-      db:
-        condition: service_healthy
-
-  api:
-    profiles: [demo]
-    image: mimorya-api:local
-    build:
-      context: .
-      dockerfile: infra/docker/api.Dockerfile
-    environment:
-      MIMORYA_ENV: production
-      DATABASE_APP_URL: postgres://mimorya_app:mimorya_app@db:5432/mimorya
-      WEB_ORIGIN: https://${MIMORYA_DOMAIN:-localhost}
-      TRUST_PROXY: 'true'
-      LLM_PROVIDER: ${LLM_PROVIDER:-none}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      MIMORYA_MASTER_KEY: ${MIMORYA_MASTER_KEY:-}
-      SMTP_URL: ${SMTP_URL:-}
-      MAIL_FROM: ${MAIL_FROM:-}
-    depends_on:
-      seed:
-        condition: service_completed_successfully
-
-  web:
-    profiles: [demo]
-    image: mimorya-web:local
-    build:
-      context: .
-      dockerfile: infra/docker/web.Dockerfile
-      args:
-        API_URL: http://api:4000
-        NEXT_PUBLIC_DEMO_MODE: 'true'
-    depends_on:
-      - api
-
-  proxy:
-    profiles: [demo]
-    image: caddy:2.10-alpine
-    ports:
-      - '80:80'
-      - '443:443'
-    environment:
-      MIMORYA_DOMAIN: ${MIMORYA_DOMAIN:-localhost}
-    volumes:
-      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data
-    depends_on:
-      - web
-      - api
-
 volumes:
   db-data:
-  caddy-data:
