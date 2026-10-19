@@ -43,7 +43,7 @@ export function CredentialActions({
   async function sendResetLink() {
     if (
       !window.confirm(
-        `Envoyer à ${user.displayName} un lien pour choisir un nouveau mot de passe ? Son mot de passe actuel reste valable jusqu’à ce qu’il l’utilise.`,
+        `Envoyer à ${user.displayName} un lien pour choisir un nouveau mot de passe ? Son mot de passe actuel reste valable jusqu’à l’utilisation du lien.`,
       )
     )
       return;

@@ -23,7 +23,7 @@ export function ResetLinkNotice({
       </p>
       <p className="text-sm">
         Lien envoyé à {email}, valable jusqu’au {formatDate(expiresAt)}. Son mot de passe actuel
-        reste valable jusqu’à ce qu’il choisisse le nouveau.
+        reste valable jusqu’à l’utilisation du lien.
       </p>
       <Button variant="secondary" className="w-fit" onClick={onClose}>
         Fermer
