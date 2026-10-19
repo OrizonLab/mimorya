@@ -18,7 +18,10 @@ export interface AttributeRow {
 
 function toRow(key: string, value: unknown): AttributeRow | null {
   if (typeof value === 'string') return { key, kind: 'text', value };
-  if (typeof value === 'number') return { key, kind: 'number', value: String(value) };
+  // An integer beyond 2^53 was already rounded when read: never written back.
+  if (typeof value === 'number' && !(Number.isInteger(value) && !Number.isSafeInteger(value))) {
+    return { key, kind: 'number', value: String(value) };
+  }
   if (typeof value === 'boolean') return { key, kind: 'boolean', value: String(value) };
   if (Array.isArray(value) && value.every((item) => typeof item === 'string')) {
     return { key, kind: 'list', value: value.join('\n') };
@@ -49,7 +52,9 @@ export function fromRows(rows: AttributeRow[]): {
   for (const row of rows) {
     const key = row.key.trim();
     if (!key) return { error: 'Chaque attribut porte un nom.' };
-    if (key in attributes) return { error: `L’attribut « ${key} » figure deux fois.` };
+    if (Object.hasOwn(attributes, key)) {
+      return { error: `L’attribut « ${key} » figure deux fois.` };
+    }
     if (row.kind === 'number') {
       const number = Number(row.value.trim());
       if (row.value.trim() === '' || !Number.isFinite(number)) {

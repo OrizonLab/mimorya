@@ -363,14 +363,20 @@ elle est remplacée par une nouvelle entrée qui la référence (« remplace ADR
     - 20 attributs au plus ;
     - nom : une minuscule puis des lettres ou des chiffres, 40 caractères au plus,
       lisible dans un chemin à points ;
-    - valeur : un texte d'une ligne (200 caractères au plus, sans caractère de
-      contrôle), un nombre, oui/non, ou une liste de 1 à 20 textes ;
-  - le changement passe sous le verrou d'administration (ADR-020). Il est audité
-    avec l'état précédent (`attributes`, `previousAttributes`), car il change la
-    portée des politiques. Il s'applique à la requête suivante : le sujet est relu à
-    chaque requête ;
-  - les attributs ne sont montrés qu'aux administrateurs des comptes et des rôles.
-    L'éditeur de politiques propose les noms en usage dans l'entreprise ;
+    - valeur : un texte d'une ligne visible (200 caractères au plus, sans caractère
+      de contrôle, de mise en forme invisible comme l'espace sans largeur ou le
+      forçage de sens, ni séparateur de ligne), un nombre (entier exact dans un
+      navigateur, ±2^53−1), oui/non, ou une liste de 1 à 20 textes ;
+  - le changement passe sous le verrou d'administration (ADR-020). L'audit nomme
+    les attributs ajoutés, retirés ou modifiés (`attributesChanged`), **jamais leurs
+    valeurs** : ce sont des données personnelles, et le journal, en ajout seul et
+    conservé longtemps, garde la trace sans le contenu ;
+  - le changement s'applique à la requête suivante : le sujet est relu à chaque
+    requête. Un run déjà lancé garde le sujet calculé à son démarrage (SECURITY.md
+    §5) ;
+  - les valeurs ne sont montrées qu'aux administrateurs des comptes (`user:manage`
+    sur toute l'entreprise). L'éditeur de politiques propose les noms en usage dans
+    l'entreprise, sans les valeurs ;
   - l'interface type chaque valeur (texte, nombre, oui/non, liste, un élément par
     ligne). Des attributs écrits hors de l'interface sous une autre forme ne s'y
     modifient pas, pour ne pas les altérer.

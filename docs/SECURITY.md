@@ -94,8 +94,8 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   Une condition remplie par tous retire la permission à toute l'entreprise,
   administrateurs compris : le formulaire le signale. Les attributs des
   collaborateurs (`subject.attributes.*`) sont posés par un administrateur des comptes,
-  jamais sur son propre compte. Ils sont typés, courts, et leur changement est audité
-  avec l'état précédent (ADR-023). Les
+  jamais sur son propre compte. Ils sont typés et courts. L'audit nomme les attributs
+  modifiés, jamais leurs valeurs (ADR-023). Les
   politiques d'autorisation, qui pourraient ouvrir les données métier à leur auteur,
   restent en lecture seule jusqu'à la double validation (ADR-022).
 - **Sensibilité** : `public < internal < confidential < restricted`, comparée à

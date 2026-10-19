@@ -1,16 +1,17 @@
 //! Collaborator attributes (ADR-023): set by a company-wide account
 //! administrator, never on their own account; checked before storage; read
-//! at once by access policies (`subject.attributes.*`) and audited with the
-//! previous state.
+//! at once by access policies (`subject.attributes.*`); the audit names the
+//! attributes that changed, never their values (personal data).
 
 mod support;
 
 use axum::http::StatusCode;
 use mimorya_core::demo::{tenant, user};
+use mimorya_db::testing::OTHER_USER_ID;
 use serde_json::{Value, json};
-use support::TestApi;
 use support::access::reads;
-use support::accounts::{activate, create_partial_admin, directory_entry};
+use support::accounts::{activate, create_account, create_partial_admin, directory_entry};
+use support::{Client, TestApi};
 use uuid::Uuid;
 
 fn url(user_id: Uuid) -> String {
@@ -50,6 +51,13 @@ async fn attributes_change_who_a_policy_applies_to_at_once() {
     assert!(paths.contains(&"subject.attributes.department"));
     assert!(paths.contains(&"subject.attributes.sites"));
 
+    let one_site = paul
+        .patch(
+            &url(user::LUCAS),
+            json!({ "attributes": { "department": "administratif", "sites": ["Arras"] } }),
+        )
+        .await;
+    assert_eq!(one_site.status, StatusCode::OK);
     let cleared = paul
         .patch(&url(user::LUCAS), json!({ "attributes": {} }))
         .await;
@@ -65,12 +73,21 @@ async fn attributes_change_who_a_policy_applies_to_at_once() {
     .fetch_all(&mut *tx)
     .await
     .unwrap();
-    let last = audited.last().unwrap();
-    assert_eq!(last["attributes"], json!({}));
+    let changed: Vec<&Value> = audited[audited.len() - 3..]
+        .iter()
+        .map(|m| &m["attributesChanged"])
+        .collect();
     assert_eq!(
-        last["previousAttributes"],
-        json!({ "department": "administratif", "sites": ["Lille"] })
+        changed,
+        [
+            &json!(["department", "sites"]),
+            &json!(["sites"]),
+            &json!(["department", "sites"])
+        ]
     );
+    let last = audited.last().unwrap();
+    assert_eq!(last["attributesChanged"], json!(["department", "sites"]));
+    assert!(!last.to_string().contains("administratif"), "{last}");
     // Other changes leave the attributes as they are.
     let renamed = paul
         .patch(
@@ -137,10 +154,70 @@ async fn attributes_follow_the_rules_and_the_administration_rights() {
             .iter()
             .all(|u| u.get("attributes").is_none())
     );
-    assert_eq!(
-        paul.patch(&url(Uuid::new_v4()), json!({ "attributes": {} }))
-            .await
-            .status,
-        StatusCode::NOT_FOUND
-    );
+    for unknown in [Uuid::new_v4(), OTHER_USER_ID] {
+        assert_eq!(
+            paul.patch(&url(unknown), json!({ "attributes": {} }))
+                .await
+                .status,
+            StatusCode::NOT_FOUND
+        );
+    }
+}
+
+/// A new account holding only this custom role, company-wide.
+async fn holder_of<'a>(
+    api: &'a TestApi,
+    paul: &Client<'_>,
+    login: &str,
+    permissions: &[&str],
+) -> Client<'a> {
+    let role = paul
+        .post(
+            "/admin/roles",
+            json!({ "name": format!("Rôle {login}"), "description": "Rôle de test", "permissions": permissions }),
+        )
+        .await;
+    assert_eq!(role.status, StatusCode::CREATED, "{}", role.text());
+    let mut account = create_account(paul, login).await;
+    let granted = paul
+        .post(
+            &format!("/admin/users/{}/assignments", account.id),
+            json!({ "roleId": role.json()["id"], "scope": { "type": "tenant" } }),
+        )
+        .await;
+    assert_eq!(granted.status, StatusCode::CREATED, "{}", granted.text());
+    activate(api, &mut account).await
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn attribute_values_reach_neither_the_audit_nor_other_administrators() {
+    let api = TestApi::start().await;
+    let paul = api.sign_in(user::PAUL).await;
+    let officer = holder_of(&api, &paul, "referent.conformite", &["audit:read"]).await;
+    let roles_admin = holder_of(&api, &paul, "gestion.roles", &["role:manage", "user:read"]).await;
+
+    let value = "CDD fin 2026-12";
+    let set = paul
+        .patch(
+            &url(user::EMMA),
+            json!({ "attributes": { "contractType": value } }),
+        )
+        .await;
+    assert_eq!(set.status, StatusCode::OK);
+    let audit = officer.get("/admin/audit").await;
+    assert_eq!(audit.status, StatusCode::OK);
+    assert!(audit.text().contains("contractType"));
+    assert!(!audit.text().contains(value));
+
+    // Shown to account administrators only, not to role administrators.
+    let directory = roles_admin.get("/admin/users").await;
+    assert_eq!(directory.status, StatusCode::OK);
+    assert!(directory.json()["canManage"]["roles"] == true);
+    assert!(!directory.text().contains(value));
+    assert!(paul.get("/admin/users").await.text().contains(value));
+    let cleared = paul
+        .patch(&url(user::EMMA), json!({ "attributes": {} }))
+        .await;
+    assert_eq!(cleared.status, StatusCode::OK);
 }

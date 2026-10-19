@@ -3,12 +3,15 @@
 //! administrator sets them; values stay short and typed, so that a condition
 //! compares them reliably and nothing sensitive lands there by accident.
 
-use serde_json::{Map, Value};
+use serde_json::{Map, Number, Value};
+use unicode_properties::{GeneralCategory, UnicodeGeneralCategory};
 
 pub const MAX_ATTRIBUTES: usize = 20;
 pub const MAX_ATTRIBUTE_KEY_CHARS: usize = 40;
 pub const MAX_ATTRIBUTE_TEXT_CHARS: usize = 200;
 pub const MAX_ATTRIBUTE_LIST_ITEMS: usize = 20;
+/// Integers beyond this lose precision in the browser (`Number.MAX_SAFE_INTEGER`).
+pub const MAX_SAFE_INTEGER: u64 = (1 << 53) - 1;
 
 /// The attributes with their texts trimmed, or why they are refused (in
 /// French). A key starts with a lowercase letter followed by letters and
@@ -44,6 +47,9 @@ fn key_problem(key: &str) -> Option<String> {
 fn normalized(key: &str, value: &Value) -> Result<Value, String> {
     match value {
         Value::String(text) => Ok(Value::String(text_value(key, text)?)),
+        Value::Number(number) if !is_exact(number) => Err(format!(
+            "« {key} » : entier trop grand (±{MAX_SAFE_INTEGER} au plus)"
+        )),
         Value::Number(_) | Value::Bool(_) => Ok(value.clone()),
         Value::Array(items) if !items.is_empty() && items.len() <= MAX_ATTRIBUTE_LIST_ITEMS => {
             items
@@ -64,6 +70,28 @@ fn normalized(key: &str, value: &Value) -> Result<Value, String> {
     }
 }
 
+/// Whether the number reads back the same everywhere (decimals always do).
+fn is_exact(number: &Number) -> bool {
+    match (number.as_i64(), number.as_u64()) {
+        (_, Some(n)) => n <= MAX_SAFE_INTEGER,
+        (Some(n), None) => n.unsigned_abs() <= MAX_SAFE_INTEGER,
+        (None, None) => true,
+    }
+}
+
+/// Characters that break a single visible line or hide in it: controls,
+/// invisible formatting (zero-width space, direction overrides…) and line or
+/// paragraph separators. A value shown « administratif » must be exactly that.
+fn is_hidden(c: char) -> bool {
+    matches!(
+        c.general_category(),
+        GeneralCategory::Control
+            | GeneralCategory::Format
+            | GeneralCategory::LineSeparator
+            | GeneralCategory::ParagraphSeparator
+    )
+}
+
 fn text_value(key: &str, text: &str) -> Result<String, String> {
     let text = text.trim();
     if text.is_empty() {
@@ -76,10 +104,11 @@ fn text_value(key: &str, text: &str) -> Result<String, String> {
             "« {key} » : {MAX_ATTRIBUTE_TEXT_CHARS} caractères au plus"
         ));
     }
-    // One line of text: a list is edited one item per line.
-    if text.chars().any(char::is_control) {
+    // One visible line: a list is edited one item per line.
+    if text.chars().any(is_hidden) {
         return Err(format!(
-            "« {key} » : caractère de contrôle interdit (retour à la ligne, tabulation…)"
+            "« {key} » : caractère invisible ou de contrôle interdit (retour à la ligne, \
+             tabulation, espace sans largeur…)"
         ));
     }
     Ok(text.to_string())
@@ -104,6 +133,8 @@ mod tests {
             "department": "  administratif ",
             "site": ["Lille", " Arras"],
             "seniority": 4,
+            "maxId": MAX_SAFE_INTEGER,
+            "rate": 0.5,
             "onCall": true,
         }));
         assert_eq!(
@@ -112,6 +143,8 @@ mod tests {
                 "department": "administratif",
                 "site": ["Lille", "Arras"],
                 "seniority": 4,
+                "maxId": MAX_SAFE_INTEGER,
+                "rate": 0.5,
                 "onCall": true,
             })))
         );
@@ -136,6 +169,11 @@ mod tests {
             json!({ "department": long_text }),
             json!({ "department": "a\u{0}b" }),
             json!({ "sites": ["Lille\nArras"] }),
+            json!({ "department": "admini\u{200B}stratif" }),
+            json!({ "department": "a\u{2028}b" }),
+            json!({ "department": "\u{202E}abc" }),
+            json!({ "matricule": 9_007_199_254_740_992_u64 }),
+            json!({ "matricule": -9_007_199_254_740_992_i64 }),
             json!({ "department": null }),
             json!({ "department": { "name": "x" } }),
             json!({ "sites": [] }),

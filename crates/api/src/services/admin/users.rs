@@ -2,6 +2,8 @@
 //! access policies) and status changes, password reset. A disabled account
 //! loses its sessions at once.
 
+use std::collections::BTreeSet;
+
 use mimorya_core::DomainError;
 use mimorya_core::authz::{AssignmentScope, OrgTree, Sensitivity};
 use mimorya_core::collaborator_attributes::normalize_attributes;
@@ -135,9 +137,13 @@ pub async fn update_user(
     if let Some(unit) = changes.org_unit_id {
         check_unit(&current_tree(&mut tx).await?, unit)?;
     }
-    // Who a policy applies to may change: the audit keeps both states.
-    let previous_attributes = match &attributes {
-        Some(_) => get_user(&mut tx, user_id).await?.map(|u| u.attributes),
+    // Who a policy applies to may change: the audit names the attributes
+    // that changed, never their values (personal data, kept as long as the log).
+    let changed_attributes = match &attributes {
+        Some(next) => {
+            let previous = get_user(&mut tx, user_id).await?.map(|u| u.attributes);
+            Some(changed_names(previous.as_ref(), next))
+        }
         None => None,
     };
     let status = changes
@@ -172,8 +178,7 @@ pub async fn update_user(
     let metadata = json!({
         "clearance": changes.clearance.map(Sensitivity::as_str),
         "orgUnitChanged": changes.org_unit_id.is_some(),
-        "attributes": attributes,
-        "previousAttributes": previous_attributes,
+        "attributesChanged": changed_attributes,
     });
     append_audit(
         &mut tx,
@@ -208,6 +213,19 @@ pub async fn reset_password(
     .await?;
     tx.commit().await?;
     Ok(password)
+}
+
+/// The attributes added, removed or given another value, sorted.
+fn changed_names(previous: Option<&Value>, next: &Value) -> Vec<String> {
+    let empty = Map::new();
+    let previous = previous.and_then(Value::as_object).unwrap_or(&empty);
+    let next = next.as_object().unwrap_or(&empty);
+    let names: BTreeSet<&String> = previous
+        .keys()
+        .chain(next.keys())
+        .filter(|name| previous.get(*name) != next.get(*name))
+        .collect();
+    names.into_iter().cloned().collect()
 }
 
 fn check_unit(tree: &OrgTree, unit: Option<Uuid>) -> Result<(), DomainError> {

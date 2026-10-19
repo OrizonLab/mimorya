@@ -51,6 +51,9 @@ pub async fn list(State(state): State<AppState>, Auth(identity): Auth) -> ApiRes
                 view["lastLoginAt"] = iso_opt(&u.last_login_at);
                 view["orgUnitId"] = json!(u.primary_unit_id);
                 view["clearance"] = json!(u.clearance);
+            }
+            // Only to those who set them (ADR-023).
+            if manage_users {
                 view["attributes"] = u.attributes.clone();
             }
             if manage_roles {
