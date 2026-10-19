@@ -1,7 +1,9 @@
 'use client';
 
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
+import { AuthFrame } from '@/components/account';
 import { Button, Card, ErrorNote } from '@/components/ui';
 import { api, ApiError } from '@/lib/api';
 
@@ -38,62 +40,59 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-dvh items-center justify-center px-4 py-10">
-      <div className="w-full max-w-sm">
-        <div className="mb-6 text-center">
-          <h1 className="text-2xl font-semibold tracking-tight">Mimorya</h1>
-          <p className="mt-1 text-sm text-muted">Votre collaborateur IA d’entreprise</p>
-        </div>
-        <Card className="p-6">
-          <form onSubmit={submit} className="flex flex-col gap-4">
-            <label className="flex flex-col gap-1.5 text-sm">
-              <span className="font-medium">Adresse e-mail professionnelle</span>
-              <input
-                type="email"
-                required
-                autoComplete="username"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="rounded-lg border border-line bg-surface px-3 py-2 outline-none focus:border-accent"
-              />
-            </label>
-            <label className="flex flex-col gap-1.5 text-sm">
-              <span className="font-medium">Mot de passe</span>
-              <input
-                type="password"
-                required
-                autoComplete="current-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="rounded-lg border border-line bg-surface px-3 py-2 outline-none focus:border-accent"
-              />
-            </label>
-            {error && <ErrorNote message={error} />}
-            <Button type="submit" loading={loading}>
-              Se connecter
-            </Button>
-          </form>
+    <AuthFrame>
+      <Card className="p-6">
+        <form onSubmit={submit} className="flex flex-col gap-4">
+          <label className="flex flex-col gap-1.5 text-sm">
+            <span className="font-medium">Adresse e-mail professionnelle</span>
+            <input
+              type="email"
+              required
+              autoComplete="username"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="rounded-lg border border-line bg-surface px-3 py-2 outline-none focus:border-accent"
+            />
+          </label>
+          <label className="flex flex-col gap-1.5 text-sm">
+            <span className="font-medium">Mot de passe</span>
+            <input
+              type="password"
+              required
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="rounded-lg border border-line bg-surface px-3 py-2 outline-none focus:border-accent"
+            />
+          </label>
+          {error && <ErrorNote message={error} />}
+          <Button type="submit" loading={loading}>
+            Se connecter
+          </Button>
+          <Link href="/forgot-password" className="text-center text-sm text-muted hover:text-fg">
+            Mot de passe oublié ?
+          </Link>
+        </form>
+      </Card>
+      {demo && (
+        <Card className="mt-4 p-4">
+          <p className="text-sm font-medium">Comptes de démonstration (entreprise fictive)</p>
+          <p className="mb-2 text-xs text-muted">Mot de passe : valeur de DEMO_PASSWORD.</p>
+          <ul className="flex flex-col gap-1">
+            {DEMO_ACCOUNTS.map((a) => (
+              <li key={a.email}>
+                <button
+                  type="button"
+                  onClick={() => setEmail(a.email)}
+                  className="w-full rounded-md px-2 py-1 text-left text-sm text-muted hover:bg-surface-2 hover:text-fg"
+                >
+                  {a.label}
+                </button>
+              </li>
+            ))}
+          </ul>
         </Card>
-        {demo && (
-          <Card className="mt-4 p-4">
-            <p className="text-sm font-medium">Comptes de démonstration (entreprise fictive)</p>
-            <p className="mb-2 text-xs text-muted">Mot de passe : valeur de DEMO_PASSWORD.</p>
-            <ul className="flex flex-col gap-1">
-              {DEMO_ACCOUNTS.map((a) => (
-                <li key={a.email}>
-                  <button
-                    type="button"
-                    onClick={() => setEmail(a.email)}
-                    className="w-full rounded-md px-2 py-1 text-left text-sm text-muted hover:bg-surface-2 hover:text-fg"
-                  >
-                    {a.label}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </Card>
-        )}
-      </div>
-    </div>
+      )}
+    </AuthFrame>
   );
 }

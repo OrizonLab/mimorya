@@ -103,6 +103,7 @@ async fn an_account_disabled_meanwhile_is_not_activated() {
     let link = link(&invitation);
     let url = format!("/admin/users/{}", account.id);
 
+    // Both lock the account before its invitation: no deadlock.
     let hold = hold_rows(&api, "users", &[account.id]).await;
     let (disabled, accepted, ()) = tokio::join!(
         paul.patch(&url, json!({ "status": "disabled" })),
@@ -129,7 +130,6 @@ async fn an_acceptance_then_a_disabling_both_complete() {
     let link = link(&invitation);
     let url = format!("/admin/users/{}", account.id);
 
-    // Both lock the account before its invitation: no deadlock.
     let hold = hold_rows(&api, "users", &[account.id]).await;
     let (accepted, disabled, ()) = tokio::join!(
         accept(&api, &link, INVITED_PASSWORD),
@@ -157,12 +157,19 @@ async fn an_invitation_expiring_meanwhile_is_refused() {
     let (account, invitation) = invite_account(&paul, "course.echeance").await;
     let link = link(&invitation);
 
-    // Checked while valid, then it expires before the account is activated.
+    // Checked while valid, then it expires while the acceptance waits for
+    // the account: after the acceptance's transaction began, before its
+    // statement that takes the link.
     let hold = hold_rows(&api, "users", &[account.id]).await;
     let (late, ()) = tokio::join!(accept(&api, &link, INVITED_PASSWORD), async {
         wait_for_waiters(&api, 1).await;
         let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
-        sqlx::query("update user_invitations set expires_at = now() - interval '1 second'")
+        // Fails rather than hangs if the acceptance ever held the link.
+        sqlx::query("set local lock_timeout = '5s'")
+            .execute(&mut *tx)
+            .await
+            .unwrap();
+        sqlx::query("update user_invitations set expires_at = clock_timestamp()")
             .execute(&mut *tx)
             .await
             .unwrap();

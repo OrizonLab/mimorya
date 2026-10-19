@@ -7,7 +7,7 @@ mod message;
 use std::time::Duration;
 
 pub use accept::{InvitationView, accept_invitation, inspect_invitation};
-pub use message::{InvitationMail, expiry_label, invitation_mail};
+pub use message::{InvitationMail, invitation_mail};
 
 /// How long a link works.
 pub const INVITATION_VALIDITY: Duration = Duration::from_secs(7 * 24 * 3600);

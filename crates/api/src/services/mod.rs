@@ -8,6 +8,7 @@ pub mod connectors;
 pub mod event_bus;
 pub mod invitations;
 pub mod llm;
+pub mod password_reset;
 pub mod permission_catalog;
 pub mod runs;
 pub mod tenant_cache;

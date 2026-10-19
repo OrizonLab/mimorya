@@ -607,3 +607,50 @@ cité, renvoi) y sont faites sur place.
   - un compte créé avant cette migration garde le parcours du mot de passe provisoire ;
   - la réinitialisation d'un mot de passe par e-mail (lien plutôt que mot de passe
     provisoire) et l'invitation dans la langue du destinataire restent à faire.
+
+## ADR-028 — Réinitialisation du mot de passe par lien envoyé par e-mail (complète ADR-021 et ADR-027)
+
+- **Date** : 2026-10-19 · **Statut** : acceptée
+- **Contexte** : un compte actif qui avait oublié son mot de passe dépendait d'un
+  administrateur, qui lui transmettait un mot de passe provisoire par le canal de son
+  choix et pouvait, ce faisant, se connecter à sa place.
+- **Décision** :
+  - depuis la page de connexion (« Mot de passe oublié ? »), une personne demande un
+    **lien de réinitialisation** pour son adresse (`POST /auth/password-reset`). La
+    réponse est toujours la même (202) et le lien est préparé en arrière-plan : ni le
+    contenu ni la durée de la réponse ne révèlent si l'adresse correspond à un compte.
+    Seul un compte `active` qui a déjà un mot de passe, dans une entreprise active,
+    reçoit un lien ; un compte invité se sert de son invitation ;
+  - lien à usage unique `<WEB_ORIGIN>/reset-password#<jeton>` (jeton aléatoire de
+    256 bits dont seule l'empreinte SHA-256 est conservée, table `password_resets`, un
+    lien en cours au plus par compte : une nouvelle demande remplace l'ancien), valable
+    **une heure**. Il part **seulement par e-mail** : sans relais SMTP, la demande
+    répond 503 et renvoie vers l'administrateur. Le lien n'est jamais montré,
+    journalisé ni audité ;
+  - le jeton voyage dans le fragment de l'adresse puis dans le corps de
+    `POST /auth/password-reset/link` (adresse du compte, échéance) et
+    `POST /auth/password-reset/complete` (nouveau mot de passe, 12 caractères au
+    moins). L'usage verrouille la ligne du compte, supprime le lien (avec ce jeton, non
+    expiré à l'instant de l'instruction), pose le mot de passe (plus d'obligation de le
+    changer), **ferme toutes les sessions** du compte et en ouvre une. La lecture avant
+    connexion passe par la seule fonction `auth_find_password_reset` (SECURITY
+    DEFINER) ; un lien utilisé, expiré, remplacé, inconnu, celui d'un compte qui n'est
+    plus actif ou d'une entreprise suspendue reçoit la même réponse ;
+  - un lien cesse de fonctionner dès que le mot de passe change par un autre chemin
+    (changement par la personne, réinitialisation par un administrateur) ou que le
+    compte n'est plus actif : un déclencheur sur `users` le supprime, quel que soit le
+    code à l'origine du changement ; une modification du profil ne le touche pas ;
+  - limites : les trois routes sont limitées par client comme la connexion, et la
+    demande à **3 par heure et par adresse** e-mail, connue ou non (une boîte ne peut
+    pas être inondée de liens) ; les liens expirés sont purgés chaque minute par la
+    maintenance périodique (`system_purge_expired_password_resets`) ;
+  - audit : `user.password_reset_requested` (échéance), `user.password_reset_not_sent`
+    et `user.password_reset_completed`, jamais le jeton ; le journal d'exploitation ne
+    retient ni l'adresse ni la réponse du relais.
+- **Conséquences** :
+  - migration `0011` ; le travail laissé en arrière-plan par une requête (liens,
+    audit des connexions refusées) est attendu à l'arrêt du serveur ;
+  - qui contrôle la boîte aux lettres d'un compte peut en prendre la main : c'est le
+    modèle habituel de la réinitialisation par e-mail, que la MFA (phase 2) renforcera ;
+  - la réinitialisation par un administrateur reste un mot de passe provisoire
+    (ADR-021) ; lui faire envoyer un lien à la place reste à faire.
