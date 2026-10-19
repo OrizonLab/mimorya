@@ -1212,3 +1212,34 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - test : `apps/web/e2e/administration.spec.ts` retient l'annuaire, vérifie que la
     fiche rouverte n'est pas enregistrable, puis qu'elle montre ce que l'API a
     enregistré.
+
+## ADR-042 — Tout écran chargé par l'API est verrouillé pendant son rechargement (complète ADR-041)
+
+- **Date** : 2026-10-19 · **Statut** : acceptée
+- **Contexte** : ADR-041 verrouillait la seule fiche d'un compte. Les autres formulaires
+  de modification (rôle, politique, unité, serveur MCP, modèle) se ferment à
+  l'enregistrement, et la liste se recharge ensuite. Rouverts avant son arrivée, ils
+  partaient de l'ancienne ressource et l'enregistraient. De même, un bouton
+  d'activation ou de suppression agissait d'après l'ancienne liste. Enfin, `loading`
+  ne passait à vrai qu'à l'effet suivant un changement d'adresse (audit de la PR #29).
+- **Décision** :
+  - `Loaded`, qui affiche les données de `useApiData`, place son contenu dans un
+    `<fieldset disabled>` (`display: contents`, sans effet sur la mise en page)
+    tant qu'une requête est en cours. Tous ses contrôles sont désactivés :
+    formulaires, boutons d'ouverture, d'activation et de suppression. Cela vaut pour
+    tous les écrans qui l'utilisent (administration, validations, mémoire) ;
+  - `useApiData` compare la requête dont la réponse est affichée à la dernière
+    demandée (version et adresse) : `loading` est vrai dès le rendu qui la demande ;
+  - le verrou par formulaire d'ADR-041 et sa propriété `reloading` sont retirés ; un
+    formulaire qui reste ouvert après un enregistrement (fiche d'un compte) suit
+    toujours la liste par `useSyncedState`.
+- **Conséquences** :
+  - après une modification, l'écran est brièvement désactivé, le temps du rechargement,
+    et le contrôle qui avait le focus le perd ;
+  - un écran nouveau qui affiche ses données par `Loaded` est protégé sans rien
+    ajouter ;
+  - test : `apps/web/e2e/reloads.spec.ts` retient la liste. Il vérifie que ni la fiche
+    d'un compte ni un rôle ne se modifient, ne se ferment ni ne se rouvrent d'après
+    l'ancienne liste, puis qu'ils montrent ce que l'API a enregistré. Il vérifie aussi
+    qu'une fiche restée ouverte reprend, au rechargement suivant, la modification d'un
+    autre administrateur.
