@@ -1048,12 +1048,14 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     validation) sont relues par `stored_text` dans leur énumération : une valeur
     inconnue est une erreur interne qui ne la cite pas. Les contraintes `CHECK` de la
     base fixent déjà ces valeurs ; des tests parcourent leurs sources (`ALL` des
-    énumérations du core, `ToolCallEvaluation::KINDS`) ;
+    énumérations du core, `ToolCallEvaluation::KINDS`, dont le moteur écrit aussi le
+    journal des appels d'outils) ;
   - `RunStreamEvent` déclare chaque événement du flux (nom et données, union
     discriminée sur `type` en TypeScript). Un test vérifie que chaque événement écrit
     par le moteur, et le texte diffusé (`assistant_delta`, construit avec ce type), se
     relit dans son type sans perte ni clé inconnue ; ajouter une sorte d'événement au
-    moteur ne compile plus tant que le test ne la connaît pas ;
+    moteur ne compile plus tant que le test (`_covered`) ne la nomme pas, et son
+    échantillon est à ajouter à `every_engine_event` ;
   - l'interface reçoit, pour chaque gestionnaire du flux, le type de données de son
     événement.
 - **Conséquences** :

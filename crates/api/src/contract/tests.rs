@@ -146,17 +146,13 @@ fn every_engine_event() -> Vec<RunEvent> {
             cost_micros: None,
         },
     ];
-    for (decision, reason) in
-        ToolCallEvaluation::KINDS
-            .into_iter()
-            .zip([None, Some("Risque"), Some("Refus")])
-    {
+    for decision in ToolCallEvaluation::KINDS {
         events.push(RunEvent::ToolCall {
             tool_call_id: "call-2".into(),
             tool_name: "planning_apply".into(),
             title: "Appliquer le planning".into(),
             decision: decision.into(),
-            reason: reason.map(Into::into),
+            reason: (decision != ToolCallEvaluation::ALLOW).then(|| "Motif".into()),
         });
     }
     for risk in ToolRisk::ALL {
