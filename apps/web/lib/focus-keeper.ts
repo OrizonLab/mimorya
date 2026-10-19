@@ -1,9 +1,10 @@
 /**
  * Gives the focus back to a control that lost it by being disabled: by its
- * own pending action, or by the lock of a reloading screen (ADR-042, ADR-043).
- * The browser moves such a focus to the page itself, from where a keyboard
- * user would start again from the top. Once the control is enabled again,
- * and unless the focus went elsewhere meanwhile, it gets the focus back.
+ * own pending action, by the lock of a reloading screen (ADR-042, ADR-043),
+ * or otherwise (the chat's composer during a run). Chromium moves such a
+ * focus to the page itself, where Enter or Space do nothing and a screen
+ * reader loses its place. Once the control is enabled again, and unless
+ * another element got the focus meanwhile, it gets the focus back.
  */
 export function keepFocusAcrossDisabling(): () => void {
   let lost: HTMLElement | null = null;

@@ -1206,7 +1206,7 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - appliqué d'abord à la fiche d'un compte (profil et attributs).
 - **Conséquences** :
   - après un enregistrement, la fiche est brièvement désactivée, le temps du
-    rechargement, et le contrôle qui avait le focus le perd ;
+    rechargement, et le contrôle qui avait le focus le perd (rendu par ADR-043) ;
   - les autres formulaires de modification (rôle, politique, unité, serveur MCP,
     politique d'outil, modèle) restent à traiter de la même façon (`docs/ROADMAP.md`) ;
   - test : `apps/web/e2e/reloads.spec.ts` (d'abord dans `administration.spec.ts`)
@@ -1271,8 +1271,10 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
 - **Contexte** : un contrôle désactivé perd le focus, que le navigateur donne à la page
   (vérifié sous Chromium : par son propre attribut comme par un `fieldset`). C'est le
   cas d'un bouton pendant son action (`loading`) et de tout l'écran pendant le
-  verrou d'un rechargement (ADR-042) : au clavier, on repartait du haut de la page
-  après chaque modification.
+  verrou d'un rechargement (ADR-042) : après chaque modification, plus aucun
+  contrôle n'avait le focus. « Entrée » ou « Espace » n'agissaient plus et un
+  lecteur d'écran perdait sa position ; Tab repartait du contrôle suivant, Chromium
+  gardant le point de départ de la navigation au clavier.
 - **Décision** :
   - un module unique, `apps/web/lib/focus-keeper.ts`, installé une fois pour toutes
     les pages (`FocusKeeper` dans la mise en page racine), retient le contrôle qui
@@ -1281,11 +1283,20 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - dès qu'il est réactivé (observation de l'attribut `disabled`, le sien ou celui
     d'un `fieldset`), il reprend le focus, sans faire défiler la page, si le focus est
     resté sur la page ;
-  - tout autre focus entre-temps (clic, tabulation) annule ce rendu ; un contrôle
-    retiré de la page (formulaire fermé) n'est pas remplacé.
+  - un focus donné entre-temps à un autre élément (tabulation, clic sur un contrôle)
+    annule ce rendu ; un clic sur le fond de la page, qui ne donne le focus à rien,
+    ne l'annule pas ; un contrôle retiré de la page (formulaire fermé) n'est pas
+    remplacé.
 - **Conséquences** :
   - après « Entrée » dans un champ ou un clic sur un bouton suivi d'un rechargement,
     le focus revient au même contrôle s'il est toujours affiché ;
   - le formulaire qui se ferme à l'enregistrement laisse encore le focus à la page ;
-  - test : `apps/web/e2e/reloads.spec.ts` (champ « Fonction » validé par « Entrée »,
-    bouton « Tester la connexion ») ; ils échouent sans le module.
+  - le module vaut pour tout contrôle désactivé : la zone de saisie du chat,
+    désactivée pendant tout un run, reprend le focus à sa fin (validation comprise)
+    si le focus est resté sur la page ;
+  - vérifié sous Chromium seulement (seul navigateur des tests) ; un navigateur qui
+    garderait le focus ou n'émettrait pas de `focusout` ne déclenche rien ;
+  - test : `apps/web/e2e/reloads.spec.ts` vérifie que le champ « Fonction », validé
+    par « Entrée », et le bouton « Tester la connexion » perdent le focus pendant le
+    verrou puis le retrouvent, et qu'un focus donné entre-temps à un onglet y reste.
+    Ils échouent sans le module, et le dernier sans la règle d'annulation.

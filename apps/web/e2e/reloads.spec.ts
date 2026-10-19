@@ -88,10 +88,13 @@ test('an account’s forms wait for, then follow, the reloaded directory', async
   await expect(saveProfile).toBeDisabled();
   await expect(saveAttributes).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Ajouter un collaborateur' })).toBeDisabled();
+  // Disabled, the field has lost the focus to the page...
+  await expect(jobTitle).not.toBeFocused();
   directory.release();
   await expect(saveProfile).toBeEnabled();
   // The row shows the account as the reloaded directory lists it.
   await expect(row).toContainText('Chef d’équipe');
+  // ...and gets it back once the directory has arrived.
   await expect(jobTitle).toBeFocused();
 
   // Another administrator changes the account while its form is open...
@@ -111,8 +114,13 @@ test('an account’s forms wait for, then follow, the reloaded directory', async
   await saveAttributes.click();
   await reload;
   await expect(jobTitle).toHaveValue('Chef d’équipe');
+  // The focus taken elsewhere meanwhile (a tab, outside the lock) stays there.
+  const tab = page.getByRole('tab', { name: 'Utilisateurs' });
+  await tab.focus();
   directory.release();
   await expect(jobTitle).toHaveValue('Responsable de secteur');
+  await expect(saveAttributes).toBeEnabled();
+  await expect(tab).toBeFocused();
   await expect
     .poll(async () => {
       const response = await page.request.get('/api/admin/users');
@@ -201,9 +209,17 @@ test('tool policies start again from each connection test', async ({ page }) => 
 
   const card = cardWith(page, SERVER, 'Tester la connexion');
   const testButton = card.getByRole('button', { name: 'Tester la connexion' });
+  await expect(testButton).toBeEnabled();
+  const connectors = await holdList(page, '/api/admin/connectors');
+  const reload = connectors.arm();
   await testButton.click();
+  await reload;
+  // Disabled while testing, then by the reload's lock: it has lost the focus...
+  await expect(testButton).toBeDisabled();
+  await expect(testButton).not.toBeFocused();
+  connectors.release();
   await expect(card.getByLabel('Risque de mcp_oute_search')).toHaveValue('read');
-  // Disabled while testing, then by the reload's lock: it gets the focus back.
+  // ...and gets it back once the list has arrived.
   await expect(testButton).toBeFocused();
   await testButton.click();
   // The second test's rules, not the first's: saving them keeps what it brought.
