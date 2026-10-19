@@ -45,9 +45,10 @@ export function PoliciesTab() {
             />
           ))}
           <p className="text-xs text-muted">
-            Les politiques s’ajoutent aux rôles et ne peuvent que restreindre l’accès. Les
-            politiques d’autorisation, qui élargiraient l’accès au-delà des rôles, ne se créent pas
-            depuis l’administration.
+            Les politiques s’ajoutent aux rôles et ne peuvent que restreindre l’accès, sur les
+            permissions que la plateforme vérifie. Les permissions d’administration et celles que
+            lisent ses écrans n’en relèvent pas. Les politiques d’autorisation, qui élargiraient
+            l’accès au-delà des rôles, ne se créent pas depuis l’administration.
           </p>
         </div>
       )}

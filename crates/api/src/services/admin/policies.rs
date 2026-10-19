@@ -5,8 +5,8 @@
 //! Changes apply at once (cache refreshed).
 
 use mimorya_core::DomainError;
-use mimorya_core::authz::Condition;
-use mimorya_core::policy_rules::{condition_problem, normalize_policy_permissions};
+use mimorya_core::authz::{Condition, PermissionInfo};
+use mimorya_core::policy_rules::{condition_problem, normalize_policy_permissions, scope_problem};
 use mimorya_db::repositories::access_policies::{
     NewDenyPolicy, PolicyPatch, PolicyRow, create_deny_policy, delete_deny_policy, get_policy,
     update_deny_policy,
@@ -32,12 +32,13 @@ pub async fn create_policy(
     db: &Database,
     access_service: &AccessService,
     access: &AccessContext,
-    catalog: &[&str],
+    catalog: &[PermissionInfo],
     input: PolicyInput,
 ) -> anyhow::Result<Uuid> {
     access.require_tenant_wide(PERMISSION)?;
     let permissions = checked_permissions(&input.permissions, catalog)?;
     let condition = checked_condition(&input.condition)?;
+    checked_scope(&permissions, &input.condition, catalog)?;
     let tenant_id = access.subject.tenant_id;
     let mut tx = begin_change(db, access, PERMISSION).await?;
     let id = create_deny_policy(
@@ -79,7 +80,7 @@ pub async fn update_policy(
     db: &Database,
     access_service: &AccessService,
     access: &AccessContext,
-    catalog: &[&str],
+    catalog: &[PermissionInfo],
     id: Uuid,
     changes: PolicyChanges,
 ) -> anyhow::Result<()> {
@@ -95,13 +96,23 @@ pub async fn update_policy(
         .transpose()?;
     let mut tx = begin_change(db, access, PERMISSION).await?;
     let previous = editable_policy(&mut tx, id).await?;
+    // The policy as it will stand: what changes, and what is stored. A stored
+    // condition is read again, so that enabling never loads an unreadable one.
+    let stored_condition = match changes.condition.clone() {
+        Some(condition) => condition,
+        None => stored_condition(&previous)?,
+    };
+    let effective_permissions = permissions.as_ref().unwrap_or(&previous.permissions);
+    checked_scope(effective_permissions, &stored_condition, catalog)?;
     let metadata = json!({
         "description": changes.description,
+        "previousDescription": changes.description.as_ref().map(|_| &previous.description),
         "permissions": permissions,
         "previousPermissions": permissions.as_ref().map(|_| &previous.permissions),
         "condition": condition,
         "previousCondition": condition.as_ref().map(|_| &previous.condition),
         "enabled": changes.enabled,
+        "previousEnabled": changes.enabled.map(|_| previous.enabled),
     });
     update_deny_policy(
         &mut tx,
@@ -148,8 +159,37 @@ pub async fn delete_policy(
     Ok(())
 }
 
-fn checked_permissions(requested: &[String], catalog: &[&str]) -> Result<Vec<String>, DomainError> {
+fn checked_permissions(
+    requested: &[String],
+    catalog: &[PermissionInfo],
+) -> Result<Vec<String>, DomainError> {
     normalize_policy_permissions(requested, catalog).map_err(DomainError::validation)
+}
+
+fn checked_scope(
+    permissions: &[String],
+    condition: &Condition,
+    catalog: &[PermissionInfo],
+) -> Result<(), DomainError> {
+    match scope_problem(permissions, condition, catalog) {
+        Some(problem) => Err(DomainError::validation(problem)),
+        None => Ok(()),
+    }
+}
+
+/// The stored condition, read and checked again (it may predate a rule).
+fn stored_condition(policy: &PolicyRow) -> Result<Condition, DomainError> {
+    let refused = || {
+        DomainError::validation(
+            "La condition enregistrée n’est plus valide : remplacez-la en modifiant la politique",
+        )
+    };
+    let condition: Condition =
+        serde_json::from_value(policy.condition.clone()).map_err(|_| refused())?;
+    if condition_problem(&condition).is_some() {
+        return Err(refused());
+    }
+    Ok(condition)
 }
 
 /// The condition as it will be stored, once it passed the checks.

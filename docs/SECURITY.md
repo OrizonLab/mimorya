@@ -85,10 +85,13 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
 - **ABAC** : politiques `allow` / `deny` à conditions JSON (attributs du sujet, de la
   ressource, du contexte), `deny` prioritaire ; exemple livré : le service
   administratif ne consulte que les interventions terminées. L'administration n'écrit
-  que des politiques de refus, sur des permissions métier (jamais d'administration),
-  avec une condition vérifiée avant stockage ; les politiques d'autorisation, qui
-  pourraient ouvrir les données métier à leur auteur, restent en lecture seule jusqu'à
-  la double validation (ADR-022).
+  que des politiques de refus, sur des permissions métier que la plateforme vérifie
+  (jamais d'administration, ni `org:read`/`user:read`), avec une condition vérifiée
+  avant stockage. Un refus portant sur le collaborateur ou le contexte s'applique
+  partout où la permission est vérifiée, outils de l'agent compris ; un refus portant
+  sur la ressource seulement aux permissions vérifiées ressource par ressource. Les
+  politiques d'autorisation, qui pourraient ouvrir les données métier à leur auteur,
+  restent en lecture seule jusqu'à la double validation (ADR-022).
 - **Sensibilité** : `public < internal < confidential < restricted`, comparée à
   l'habilitation (`clearance`) de la personne ; le propriétaire voit toujours ses
   propres données.

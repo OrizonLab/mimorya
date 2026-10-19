@@ -311,16 +311,28 @@ elle est remplacée par une nouvelle entrée qui la référence (« remplace ADR
     modifie, active, désactive et supprime des politiques de **refus** uniquement ;
     les politiques d'autorisation existantes sont listées en lecture seule ;
   - une politique porte sur des permissions du catalogue ou sur `domaine:*`, jamais
-    sur une permission d'administration (`TENANT_WIDE_PERMISSIONS`) : un refus ne peut
-    pas bloquer les administrateurs ;
+    sur une permission d'administration (`TENANT_WIDE_PERMISSIONS`) ni sur celles que
+    lisent ses écrans (`org:read`, `user:read`) : un refus ne peut pas bloquer les
+    administrateurs ;
+  - chaque permission déclare où la plateforme la vérifie (`Enforcement` : pas encore,
+    sur la personne, ressource par ressource). Une politique ne vise que des
+    permissions vérifiées (un refus sur une permission jamais vérifiée n'aurait aucun
+    effet). Le moteur applique dans `data_scope` (donc routes, outils de l'agent,
+    périmètres de liste, `/auth/me`) les refus dont la condition ne lit que le
+    collaborateur et le contexte ; une condition sur la ressource ne s'évalue que
+    là où chaque ressource est vérifiée (`check`) et n'est acceptée que pour ces
+    permissions ;
   - la condition est désérialisée strictement puis vérifiée (`core::policy_rules`) :
     attributs sous `subject.`, `resource.` ou `context.`, au moins un attribut par
     comparaison, valeur requise sauf pour « est renseigné », listes pour « fait partie
     de », nombres pour les comparaisons d'ordre, pas de groupe vide, profondeur et
-    longueur bornées ; c'est la forme sérialisée de la condition typée qui est stockée ;
+    longueur bornées, valeurs courtes (texte, nombre ou liste), sans caractère nul ;
+    c'est la forme sérialisée de la condition typée qui est stockée, et une condition
+    stockée est relue avant toute modification ou activation ;
   - les changements passent sous le verrou d'administration (ADR-020), sont audités
     (avec l'état précédent) et s'appliquent aussitôt (cache invalidé).
 - **Conséquences** : les entreprises ne peuvent pas encore élargir l'accès par
-  politique (elles le font par rôles) ; les attributs des collaborateurs utilisés par
-  les conditions (`subject.attributes.*`) ne sont pas encore modifiables depuis
+  politique (elles le font par rôles) ; un nouveau connecteur déclare l'`Enforcement`
+  de chacune de ses permissions ; les attributs des collaborateurs utilisés par les
+  conditions (`subject.attributes.*`) ne sont pas encore modifiables depuis
   l'interface.

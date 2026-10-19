@@ -20,6 +20,8 @@ export function PolicyForm({
   const [description, setDescription] = useState(policy?.description ?? '');
   const [restricted, setRestricted] = useState(new Set(policy?.permissions ?? []));
   const [editor, setEditor] = useState(() => initialEditor(policy?.condition));
+  // An edit sends the condition only when it was changed.
+  const [conditionChanged, setConditionChanged] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const action = useAction();
 
@@ -37,7 +39,11 @@ export function PolicyForm({
     const { condition, error } = editorCondition(editor);
     setProblem(error ?? null);
     if (!condition) return;
-    const body = { description, permissions: [...restricted], condition };
+    const body = {
+      description,
+      permissions: [...restricted],
+      ...(policy && !conditionChanged ? {} : { condition }),
+    };
     const saved = await action.run(() =>
       policy ? api.patch(`/admin/policies/${policy.id}`, body) : api.post('/admin/policies', body),
     );
@@ -89,17 +95,31 @@ export function PolicyForm({
                     checked={restricted.has(p.permission)}
                     onChange={() => toggle(p.permission)}
                   />
-                  <span>{p.label}</span>
+                  <span>
+                    {p.label}
+                    {p.perResource && <span className="text-muted"> · par ressource</span>}
+                  </span>
                 </label>
               ))}
             </fieldset>
           );
         })}
       </div>
-      <ConditionEditor value={editor} attributes={data.attributes} onChange={setEditor} />
+      <ConditionEditor
+        value={editor}
+        attributes={data.attributes}
+        onChange={(state) => {
+          setEditor(state);
+          setConditionChanged(true);
+        }}
+      />
       <p className="text-xs text-muted">
-        Une politique ne fait que refuser : elle retire l’accès quand sa condition est remplie, même
-        si un rôle l’accorde. Les permissions d’administration ne se règlent pas par politique.
+        Une politique ne fait que refuser : quand sa condition est remplie, elle retire la
+        permission même si un rôle l’accorde. Une condition sur le collaborateur ou le contexte (
+        <code>subject.</code>, <code>context.</code>) vaut partout où la permission est vérifiée,
+        outils de l’agent compris ; une condition sur la ressource (<code>resource.</code>) ne
+        s’accepte que pour les permissions vérifiées « par ressource ». Valeurs : <code>12</code>{' '}
+        est un nombre, <code>"12"</code> un texte.
       </p>
       {problem && <ErrorNote message={problem} />}
       {action.error && <ErrorNote message={action.error} />}

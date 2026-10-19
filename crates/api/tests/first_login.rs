@@ -4,8 +4,13 @@
 
 mod support;
 
+use std::collections::BTreeSet;
+use std::fs;
+use std::path::Path;
+
 use axum::http::StatusCode;
 use mimorya_core::demo::{role, user};
+use regex::Regex;
 use serde_json::json;
 use support::accounts::{OWN_PASSWORD, activate, create_account};
 use support::{Client, TestApi};
@@ -174,6 +179,46 @@ async fn every_authenticated_route_holds_a_temporary_password_back() {
             response.json()["error"]["details"]["reason"],
             "password_change_required",
             "{method} {path}"
+        );
+    }
+}
+
+/// Routes reachable without the restriction: no identity, or the ones that
+/// let a temporary password be replaced.
+const OTHER_ROUTES: &[&str] = &[
+    "/health",
+    "/auth/login",
+    "/auth/logout",
+    "/auth/me",
+    "/account/password",
+];
+
+#[test]
+fn the_route_list_follows_the_router() {
+    let declared = Regex::new(r#"\.route\(\s*"([^"]+)""#).unwrap();
+    let mut paths = BTreeSet::new();
+    let mut directories = vec![Path::new(env!("CARGO_MANIFEST_DIR")).join("src/routes")];
+    while let Some(directory) = directories.pop() {
+        for entry in fs::read_dir(directory).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                directories.push(path);
+            } else {
+                let source = fs::read_to_string(&path).unwrap();
+                paths.extend(declared.captures_iter(&source).map(|c| c[1].to_string()));
+            }
+        }
+    }
+    let listed: BTreeSet<&str> = AUTHENTICATED_ROUTES
+        .iter()
+        .map(|(_, path)| *path)
+        .chain(OTHER_ROUTES.iter().copied())
+        .collect();
+    assert!(!paths.is_empty());
+    for path in &paths {
+        assert!(
+            listed.contains(path.as_str()),
+            "{path} is missing from AUTHENTICATED_ROUTES"
         );
     }
 }

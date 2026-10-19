@@ -99,10 +99,41 @@ async fn deny_policies_apply_at_once_and_can_be_switched_off() {
         metadata["previousPermissions"],
         json!(["intervention:read"])
     );
+    assert_eq!(metadata["previousEnabled"], false);
+
+    let renamed = paul
+        .patch(
+            &url,
+            json!({ "description": "Annulées : plus de consultation", "condition": { "op": "eq", "left": { "attr": "resource.attributes.status" }, "right": { "value": "canceled" } } }),
+        )
+        .await;
+    assert_eq!(renamed.status, StatusCode::OK);
+    let metadata: Value = sqlx::query_scalar(
+        "select metadata from audit_log where action = 'policy.updated' and resource_id = $1 \
+         and metadata->'condition' <> 'null'::jsonb",
+    )
+    .bind(&id)
+    .fetch_one(&mut *tx)
+    .await
+    .unwrap();
+    assert_eq!(metadata["previousCondition"], cancelled_only());
+    assert_eq!(
+        metadata["previousDescription"],
+        "Les interventions annulées ne se consultent plus"
+    );
 
     assert_eq!(paul.delete(&url).await.status, StatusCode::OK);
     assert!(reads(&api, user::LUCAS, "cancelled").await);
     assert_eq!(paul.delete(&url).await.status, StatusCode::NOT_FOUND);
+    let deleted: Value = sqlx::query_scalar(
+        "select metadata from audit_log where action = 'policy.deleted' and resource_id = $1",
+    )
+    .bind(&id)
+    .fetch_one(&mut *tx)
+    .await
+    .unwrap();
+    assert_eq!(deleted["description"], "Annulées : plus de consultation");
+    assert_eq!(deleted["permissions"], json!(["intervention:*"]));
 }
 
 #[tokio::test]
@@ -184,6 +215,7 @@ async fn refuses_policies_outside_the_rules() {
             json!({ "op": "matches", "left": { "attr": "resource.type" }, "right": { "value": "x" } }),
         ),
         with("condition", json!("resource.type == 'intervention'")),
+        with("description", json!("Caractère nul \u{0}")),
     ];
     for body in refused {
         let response = paul.post("/admin/policies", body.clone()).await;
@@ -194,6 +226,44 @@ async fn refuses_policies_outside_the_rules() {
             response.text()
         );
     }
+
+    // The same rules hold when an existing policy is changed.
+    let id = create(&paul, valid.clone()).await;
+    let url = format!("/admin/policies/{id}");
+    let changes = [
+        json!({ "permissions": ["user:manage"] }),
+        json!({ "permissions": ["memory:*"] }),
+        json!({ "permissions": ["*"] }),
+        json!({ "permissions": [] }),
+        json!({ "permissions": ["org:read"] }),
+        json!({ "permissions": ["mission:read"] }),
+        json!({ "permissions": ["planning:apply"] }),
+        json!({ "condition": { "all": [] } }),
+        json!({ "condition": { "op": "eq", "left": { "attr": "user.x" }, "right": { "value": "y" } } }),
+        json!({ "effect": "allow" }),
+        json!({ "description": "Avec un caractère nul \u{0}" }),
+    ];
+    for change in changes {
+        let response = paul.patch(&url, change.clone()).await;
+        assert_eq!(
+            response.status,
+            StatusCode::BAD_REQUEST,
+            "{change}: {}",
+            response.text()
+        );
+    }
+    let stored = paul.get("/admin/policies").await.json()["policies"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["id"] == json!(id))
+        .unwrap()
+        .clone();
+    assert_eq!(stored["permissions"], json!(["intervention:read"]));
+    assert_eq!(stored["condition"], cancelled_only());
+    assert_eq!(stored["description"], "Politique de test");
+    // The tests of this file share a database.
+    assert_eq!(paul.delete(&url).await.status, StatusCode::OK);
     assert_eq!(
         marc.get("/admin/policies").await.status,
         StatusCode::FORBIDDEN
@@ -250,4 +320,46 @@ async fn allow_policies_and_other_companies_policies_are_out_of_reach() {
         paul.delete(&foreign_url).await.status,
         StatusCode::NOT_FOUND
     );
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn an_unreadable_stored_condition_is_never_enabled() {
+    let api = TestApi::start().await;
+    let paul = api.sign_in(user::PAUL).await;
+    // Written by hand, disabled: the engine never loads it.
+    let id = Uuid::new_v4();
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    sqlx::query(
+        "insert into access_policies (id, tenant_id, description, effect, permissions, \
+         condition, enabled) values ($1, $2, 'Écrite à la main', 'deny', '{intervention:read}', \
+         $3, false)",
+    )
+    .bind(id)
+    .bind(tenant::ID)
+    .bind(json!({ "all": [] }))
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+
+    let url = format!("/admin/policies/{id}");
+    let enabled = paul.patch(&url, json!({ "enabled": true })).await;
+    assert_eq!(
+        enabled.status,
+        StatusCode::BAD_REQUEST,
+        "{}",
+        enabled.text()
+    );
+    // Replacing the condition makes it usable again.
+    let fixed = paul
+        .patch(
+            &url,
+            json!({ "enabled": true, "condition": cancelled_only() }),
+        )
+        .await;
+    assert_eq!(fixed.status, StatusCode::OK, "{}", fixed.text());
+    assert_eq!(paul.get("/auth/me").await.status, StatusCode::OK);
+    // The tests of this file share a database.
+    assert_eq!(paul.delete(&url).await.status, StatusCode::OK);
 }

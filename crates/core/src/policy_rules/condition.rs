@@ -1,89 +1,21 @@
-//! Rules for the access policies an administrator writes (ADR-022): only
-//! restrictive (deny) policies, on business permissions, with a small
-//! condition that is checked before it is stored. Allow policies widen access
-//! beyond the role scopes, and an administrator could aim one at themselves:
-//! they stay out of reach until administration actions need a second approval.
+//! Checks a policy condition before it is stored: known attribute roots, at
+//! least one attribute per comparison, the operands each operator needs, small
+//! literal values, bounded depth and length. What is stored is then always
+//! readable by the engine (an unreadable policy would stop the company's
+//! authorization from loading).
 
 use serde_json::Value;
 
-use crate::administration::TENANT_WIDE_PERMISSIONS;
-use crate::authz::{ComparisonOp, Condition, Operand, matches_permission};
+use crate::authz::{ComparisonOp, Condition, Operand};
 
-pub const MAX_POLICY_PERMISSIONS: usize = 50;
 pub const MAX_CONDITION_COMPARISONS: usize = 40;
 pub const MAX_CONDITION_DEPTH: usize = 6;
 const MAX_ATTRIBUTE_CHARS: usize = 200;
+const MAX_TEXT_CHARS: usize = 500;
+const MAX_LIST_ITEMS: usize = 100;
 
 /// Where an attribute path may start (see `authz::conditions`).
 pub const ATTRIBUTE_ROOTS: &[&str] = &["subject", "resource", "context"];
-
-/// Attributes every evaluation provides, with their French label; free keys
-/// can also be read under `subject.attributes.`, `resource.attributes.` and
-/// `context.`.
-pub const KNOWN_ATTRIBUTES: &[(&str, &str)] = &[
-    ("subject.userId", "Identifiant du collaborateur"),
-    ("subject.orgUnitIds", "Unités du collaborateur"),
-    (
-        "subject.clearanceRank",
-        "Habilitation du collaborateur (0 à 3)",
-    ),
-    ("resource.type", "Type de la ressource"),
-    ("resource.ownerUserId", "Propriétaire de la ressource"),
-    ("resource.orgUnitId", "Unité de la ressource"),
-    (
-        "resource.sensitivityRank",
-        "Sensibilité de la ressource (0 à 3)",
-    ),
-    ("context.actorType", "Acteur : « user » ou « agent »"),
-    ("context.channel", "Canal de la demande"),
-];
-
-/// The permissions a policy restricts, trimmed, deduplicated and sorted, or
-/// why they are refused (in French). A catalog permission, or `domaine:*` for
-/// a domain of the catalog; never an administration permission, which a
-/// policy could otherwise use to lock every administrator out.
-pub fn normalize_policy_permissions(
-    requested: &[String],
-    catalog: &[&str],
-) -> Result<Vec<String>, String> {
-    let mut permissions: Vec<String> = requested.iter().map(|p| p.trim().to_string()).collect();
-    permissions.sort();
-    permissions.dedup();
-    if permissions.is_empty() {
-        return Err("Une politique porte sur au moins une permission".into());
-    }
-    if permissions.len() > MAX_POLICY_PERMISSIONS {
-        return Err(format!(
-            "Une politique porte sur au plus {MAX_POLICY_PERMISSIONS} permissions"
-        ));
-    }
-    for permission in &permissions {
-        if !is_catalog_pattern(permission, catalog) {
-            return Err(format!("Permission inconnue : {permission}"));
-        }
-        if TENANT_WIDE_PERMISSIONS
-            .iter()
-            .any(|admin| matches_permission(permission, admin))
-        {
-            return Err(format!(
-                "Les permissions d’administration ne se règlent pas par politique : {permission}"
-            ));
-        }
-    }
-    Ok(permissions)
-}
-
-fn is_catalog_pattern(permission: &str, catalog: &[&str]) -> bool {
-    if catalog.contains(&permission) {
-        return true;
-    }
-    match permission.strip_suffix(":*") {
-        Some(domain) if !domain.is_empty() && !domain.contains([':', '*']) => {
-            catalog.iter().any(|p| p.split(':').next() == Some(domain))
-        }
-        _ => false,
-    }
-}
 
 /// Why a condition is refused (in French); `None` when it can be stored.
 pub fn condition_problem(condition: &Condition) -> Option<String> {
@@ -119,10 +51,12 @@ fn check(condition: &Condition, depth: usize, comparisons: &mut usize) -> Option
 
 fn comparison_problem(op: ComparisonOp, left: &Operand, right: Option<&Operand>) -> Option<String> {
     for operand in [Some(left), right].into_iter().flatten() {
-        if let Operand::Attr(attr) = operand
-            && let Some(problem) = attribute_problem(&attr.attr)
-        {
-            return Some(problem);
+        let problem = match operand {
+            Operand::Attr(attr) => attribute_problem(&attr.attr),
+            Operand::Value(literal) => value_problem(&literal.value),
+        };
+        if problem.is_some() {
+            return problem;
         }
     }
     let is_attr = |o: &Operand| matches!(o, Operand::Attr(_));
@@ -158,12 +92,44 @@ fn literal(operand: Option<&Operand>) -> Option<&Value> {
     }
 }
 
+/// A literal is a short scalar, or a short list of them.
+fn value_problem(value: &Value) -> Option<String> {
+    match value {
+        Value::Array(items) if items.len() > MAX_LIST_ITEMS => Some(format!(
+            "Liste trop longue ({MAX_LIST_ITEMS} valeurs au plus)"
+        )),
+        Value::Array(items) => items.iter().find_map(|item| match item {
+            Value::Array(_) | Value::Object(_) => {
+                Some("Une liste ne contient que des valeurs simples".into())
+            }
+            scalar => value_problem(scalar),
+        }),
+        Value::Object(_) => {
+            Some("Une valeur à comparer est un texte, un nombre ou une liste".into())
+        }
+        Value::String(text) => text_problem(text),
+        _ => None,
+    }
+}
+
+fn text_problem(text: &str) -> Option<String> {
+    if text.chars().count() > MAX_TEXT_CHARS {
+        return Some(format!(
+            "Valeur trop longue ({MAX_TEXT_CHARS} caractères au plus)"
+        ));
+    }
+    // PostgreSQL cannot store it.
+    text.contains('\0')
+        .then(|| "Caractère nul interdit dans une valeur".into())
+}
+
 fn attribute_problem(path: &str) -> Option<String> {
     let mut segments = path.split('.');
     let root_known = segments
         .next()
         .is_some_and(|root| ATTRIBUTE_ROOTS.contains(&root));
-    let well_formed = path.len() <= MAX_ATTRIBUTE_CHARS && path.split('.').count() >= 2;
+    let well_formed =
+        path.len() <= MAX_ATTRIBUTE_CHARS && path.split('.').count() >= 2 && !path.contains('\0');
     if !root_known || !well_formed || segments.any(str::is_empty) {
         return Some(format!(
             "Attribut invalide : « {path} » (il commence par subject., resource. ou context.)"
@@ -178,46 +144,17 @@ mod tests {
 
     use super::*;
 
-    const CATALOG: &[&str] = &[
-        "intervention:read",
-        "planning:apply",
-        "memory:read",
-        "memory:manage",
-    ];
-
-    fn perms(list: &[&str]) -> Vec<String> {
-        list.iter().map(|p| (*p).to_string()).collect()
-    }
-
     fn condition(value: serde_json::Value) -> Condition {
         serde_json::from_value(value).expect("well-formed condition")
-    }
-
-    #[test]
-    fn restricts_business_permissions_only() {
-        assert_eq!(
-            normalize_policy_permissions(&perms(&["planning:apply", "intervention:*"]), CATALOG),
-            Ok(perms(&["intervention:*", "planning:apply"]))
-        );
-        assert!(normalize_policy_permissions(&[], CATALOG).is_err());
-        assert!(normalize_policy_permissions(&perms(&["*"]), CATALOG).is_err());
-        assert!(normalize_policy_permissions(&perms(&["facture:*"]), CATALOG).is_err());
-        // memory:* would cover memory:manage, an administration permission.
-        assert!(normalize_policy_permissions(&perms(&["memory:*"]), CATALOG).is_err());
-        assert!(normalize_policy_permissions(&perms(&["memory:manage"]), CATALOG).is_err());
-        assert!(normalize_policy_permissions(&perms(&["memory:read"]), CATALOG).is_ok());
     }
 
     #[test]
     fn checks_conditions_before_they_are_stored() {
         let department = json!({ "op": "eq", "left": { "attr": "subject.attributes.department" }, "right": { "value": "administratif" } });
         assert_eq!(condition_problem(&condition(department.clone())), None);
-        assert_eq!(
-            condition_problem(&condition(
-                json!({ "all": [department, { "op": "exists", "left": { "attr": "resource.attributes.status" } }] })
-            )),
-            None
-        );
+        let listed = json!({ "all": [department, { "op": "in", "left": { "attr": "resource.attributes.status" }, "right": { "value": ["planned", 3] } }] });
+        assert_eq!(condition_problem(&condition(listed)), None);
+        let long_text = "x".repeat(MAX_TEXT_CHARS + 1);
         let refused = [
             json!({ "all": [] }),
             json!({ "op": "eq", "left": { "attr": "user.department" }, "right": { "value": "x" } }),
@@ -228,6 +165,11 @@ mod tests {
             json!({ "op": "exists", "left": { "attr": "resource.type" }, "right": { "value": 1 } }),
             json!({ "op": "in", "left": { "attr": "resource.type" }, "right": { "value": "intervention" } }),
             json!({ "op": "gt", "left": { "attr": "resource.sensitivityRank" }, "right": { "value": "2" } }),
+            json!({ "op": "eq", "left": { "attr": "resource.type" }, "right": { "value": long_text } }),
+            json!({ "op": "eq", "left": { "attr": "resource.type" }, "right": { "value": "a\u{0}b" } }),
+            json!({ "op": "eq", "left": { "attr": "resource.type" }, "right": { "value": { "attr": "x" } } }),
+            json!({ "op": "in", "left": { "attr": "resource.type" }, "right": { "value": [["nested"]] } }),
+            json!({ "op": "in", "left": { "attr": "resource.type" }, "right": { "value": vec![1; MAX_LIST_ITEMS + 1] } }),
         ];
         for value in refused {
             assert!(
@@ -240,7 +182,8 @@ mod tests {
             deep = json!({ "not": deep });
         }
         assert!(condition_problem(&condition(deep)).is_some());
-        let long = json!({ "any": vec![json!({ "op": "exists", "left": { "attr": "resource.type" } }); MAX_CONDITION_COMPARISONS + 1] });
+        let one = json!({ "op": "exists", "left": { "attr": "resource.type" } });
+        let long = json!({ "any": vec![one; MAX_CONDITION_COMPARISONS + 1] });
         assert!(condition_problem(&condition(long)).is_some());
     }
 }

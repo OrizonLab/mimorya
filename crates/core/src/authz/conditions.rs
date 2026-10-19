@@ -121,6 +121,18 @@ impl Operand {
     }
 }
 
+/// Whether the condition reads an attribute of the resource: such a condition
+/// can only be evaluated where a resource is checked.
+pub fn reads_resource(condition: &Condition) -> bool {
+    let is_resource = |operand: &Operand| matches!(operand, Operand::Attr(a) if a.attr == "resource" || a.attr.starts_with("resource."));
+    match condition {
+        Condition::All(c) => c.all.iter().any(reads_resource),
+        Condition::Any(c) => c.any.iter().any(reads_resource),
+        Condition::Not(c) => reads_resource(&c.not),
+        Condition::Compare(c) => is_resource(&c.left) || c.right.as_ref().is_some_and(is_resource),
+    }
+}
+
 /// Walks object keys (and array indexes) only; anything else resolves to nothing.
 fn resolve_path<'a>(env: &'a Value, path: &str) -> Option<&'a Value> {
     path.split('.').try_fold(env, |current, key| match current {

@@ -10,8 +10,8 @@ mod support;
 
 use axum::http::StatusCode;
 use mimorya_api::services::admin::{
-    RoleChanges, UnitChanges, UserChanges, grant_role, revoke_role, update_role, update_unit,
-    update_user,
+    PolicyChanges, RoleChanges, UnitChanges, UserChanges, grant_role, revoke_role, update_policy,
+    update_role, update_unit, update_user,
 };
 use mimorya_api::services::permission_catalog::permission_catalog;
 use mimorya_api::services::{AccessContext, AuthIdentity};
@@ -297,4 +297,60 @@ async fn a_grant_checks_the_role_as_stored() {
     let on_unit = AssignmentScope::subtree(unit::TEAM_SOUTH);
     let granted = grant_role(&services.db, &granting, account.id, role_id, on_unit, None).await;
     assert_eq!(code_of(granted.map(|_| ())), ErrorCode::Validation);
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_narrowed_role_no_longer_writes_policies() {
+    let api = TestApi::start().await;
+    let services = &api.app.services;
+    let paul = api.sign_in(user::PAUL).await;
+    let created = paul
+        .post(
+            "/admin/roles",
+            json!({ "name": "Gestion des politiques", "permissions": ["policy:manage"] }),
+        )
+        .await;
+    let role_id: Uuid = created.json()["id"].as_str().unwrap().parse().unwrap();
+    let account = create_account(&paul, "gestion.politiques").await;
+    paul.post(
+        &format!("/admin/users/{}/assignments", account.id),
+        json!({ "roleId": role_id, "scope": { "type": "tenant" } }),
+    )
+    .await;
+
+    // The holder's view predates the narrowing of their role.
+    let from_holder = context_of(&api, account.id).await;
+    let from_paul = context_of(&api, user::PAUL).await;
+    let catalog = permission_catalog();
+    let keys: Vec<&str> = catalog.iter().map(|p| p.permission).collect();
+    let narrowed = RoleChanges {
+        permissions: Some(vec!["user:read".to_string()]),
+        ..RoleChanges::default()
+    };
+    update_role(
+        &services.db,
+        &services.access,
+        &from_paul,
+        &keys,
+        role_id,
+        narrowed,
+    )
+    .await
+    .unwrap();
+    let disable = PolicyChanges {
+        enabled: Some(false),
+        ..PolicyChanges::default()
+    };
+    let demo_policy = mimorya_core::demo::demo_id(400);
+    let crossed = update_policy(
+        &services.db,
+        &services.access,
+        &from_holder,
+        &catalog,
+        demo_policy,
+        disable,
+    )
+    .await;
+    assert_eq!(code_of(crossed), ErrorCode::Forbidden);
 }
