@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState, type FormEvent } from 'react';
 import { AuthFrame } from '@/components/account';
 import { Button, Card, ErrorNote } from '@/components/ui';
-import { api, ApiError, type AuthOptions } from '@/lib/api';
+import { api, ApiError, type AuthOptions, type Credentials } from '@/lib/api';
 
 // Fictional demo accounts (seeded by `pnpm db:seed`), shown only in demo mode.
 const DEMO_ACCOUNTS = [
@@ -39,7 +39,7 @@ export default function LoginPage() {
     setLoading(true);
     setError(null);
     try {
-      await api.post('/auth/login', { email, password });
+      await api.post('/auth/login', { email, password } satisfies Credentials);
       router.replace('/chat');
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Connexion impossible');

@@ -9,7 +9,7 @@ Légende des statuts — tenue à jour à chaque contribution :
 | 🟡     | Partiel : socle en place, fonctionnalité incomplète (détail indiqué)       |
 | 🔜     | Planifié, non implémenté                                                   |
 
-Dernière mise à jour : 2026-10-19 (points mineurs des audits : statuts de fin d'un run en un seul endroit, adresse des refus d'administration vérifiée, annonce de fin d'un run balayé en échec).
+Dernière mise à jour : 2026-10-19 (contrat de l'API : corps des requêtes hors administration, stricts).
 
 ## Phase 1 — Fondations et MVP fonctionnel
 
@@ -54,7 +54,7 @@ Dernière mise à jour : 2026-10-19 (points mineurs des audits : statuts de fin 
 
 1. **Validation avec un modèle réel** (clé Anthropic ou autre) sur le scénario de référence, et ajustement des consignes et descriptions d'outils.
 2. **Installation privée de production** : publication des images dans un registre et cache de leur construction en CI (faits : images Docker et pile de démonstration derrière Caddy, ADR-032 ; migrations seules et création d'une entreprise réelle par `mimorya-admin`, ADR-033 ; pile conteneurisée de production aux identifiants choisis à l'installation, vérifiée en CI jusqu'à la première connexion, ADR-034).
-3. **Types de l'API partagés** : toutes les réponses de l'API, l'enveloppe de ses erreurs et les événements du flux en direct sont des types du serveur, dont sont générés ceux de l'interface (ADR-036, ADR-037, `pnpm contract`, vérifié par `cargo test`) ; les colonnes que le contrat lit comme énumérations sont vérifiées contre les contraintes de la base. Restent à passer au contrat : les corps des requêtes.
+3. **Types de l'API partagés** : toutes les réponses de l'API, l'enveloppe de ses erreurs et les événements du flux en direct sont des types du serveur, dont sont générés ceux de l'interface (ADR-036, ADR-037, `pnpm contract`, vérifié par `cargo test`) ; les colonnes que le contrat lit comme énumérations sont vérifiées contre les contraintes de la base. Les corps des requêtes hors administration (connexion, compte, liens, conversations, validations, mémoire) sont des types stricts du contrat, qui refusent un champ inconnu (ADR-039). Restent à passer au contrat : les corps des requêtes de l'administration.
 
 ### Points relevés par les audits, à traiter (non bloquants)
 

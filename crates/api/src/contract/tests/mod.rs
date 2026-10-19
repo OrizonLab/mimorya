@@ -3,6 +3,7 @@
 
 mod admin;
 mod records;
+mod requests;
 mod stream;
 
 use std::path::PathBuf;

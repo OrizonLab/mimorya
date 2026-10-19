@@ -1,5 +1,5 @@
 import { Button, Card } from '@/components/ui';
-import type { MemoryItem } from '@/lib/api';
+import type { MemoryItem, ReviewDecision } from '@/lib/api';
 
 /** Knowledge proposed by the agent for a shared space the user is responsible for. */
 export function MemoryProposals({
@@ -7,7 +7,7 @@ export function MemoryProposals({
   onReview,
 }: {
   items: MemoryItem[];
-  onReview: (id: string, decision: 'approve' | 'reject') => void;
+  onReview: (id: string, decision: ReviewDecision) => void;
 }) {
   return (
     <Card className="mb-6 p-4">

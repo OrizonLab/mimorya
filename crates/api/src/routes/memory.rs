@@ -8,21 +8,20 @@ use axum::{Json, Router};
 use mimorya_core::DomainError;
 use mimorya_core::authz::{Actor, Sensitivity};
 use mimorya_core::memory::{
-    MemoryKind, MemoryScope, MemorySource, MemoryStatus, MemoryTarget, can_write_memory,
-    memory_read_filter,
+    MemoryScope, MemorySource, MemoryStatus, MemoryTarget, can_write_memory, memory_read_filter,
 };
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::memory::{
     MemoryRow, NewMemory, create_memory, delete_memory, get_memory, list_visible_memory,
     settle_memory_proposal,
 };
-use serde::Deserialize;
 use serde_json::json;
-use validator::Validate;
 
 use crate::app::AppState;
-use crate::contract::{Created, Done, MemoryItem, MemoryList};
-use crate::http::{ApiResult, Body, PathId, trimmed};
+use crate::contract::{
+    Created, Done, ManualMemory, MemoryItem, MemoryList, MemoryReview, MemorySpace, ReviewDecision,
+};
+use crate::http::{ApiResult, Body, PathId};
 use crate::plugins::Auth;
 use crate::services::AccessContext;
 
@@ -84,64 +83,22 @@ async fn list(State(state): State<AppState>, Auth(identity): Auth) -> ApiResult<
     Ok(Json(MemoryList { items }))
 }
 
-#[derive(Deserialize, Clone, Copy, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-enum Space {
-    Personal,
-    Team,
-    Company,
-}
-
-#[derive(Deserialize, Clone, Copy)]
-#[serde(rename_all = "lowercase")]
-enum ManualKind {
-    Preference,
-    Fact,
-    Procedure,
-    Decision,
-    Lesson,
-}
-
-impl ManualKind {
-    fn kind(self) -> MemoryKind {
-        match self {
-            Self::Preference => MemoryKind::Preference,
-            Self::Fact => MemoryKind::Fact,
-            Self::Procedure => MemoryKind::Procedure,
-            Self::Decision => MemoryKind::Decision,
-            Self::Lesson => MemoryKind::Lesson,
-        }
-    }
-}
-
-#[derive(Deserialize, Validate)]
-struct CreateBody {
-    space: Space,
-    kind: ManualKind,
-    #[serde(deserialize_with = "trimmed")]
-    #[validate(length(min = 3, max = 120))]
-    title: String,
-    #[serde(deserialize_with = "trimmed")]
-    #[validate(length(min = 3, max = 4000))]
-    content: String,
-}
-
 async fn create(
     State(state): State<AppState>,
     Auth(identity): Auth,
-    Body(body): Body<CreateBody>,
+    Body(body): Body<ManualMemory>,
 ) -> ApiResult<(StatusCode, Json<Created>)> {
     let access = state.access.context(identity).await?;
     let target = match body.space {
-        Space::Personal => MemoryTarget {
+        MemorySpace::Personal => MemoryTarget {
             scope: MemoryScope::User,
             org_unit_id: None,
         },
-        Space::Team => MemoryTarget {
+        MemorySpace::Team => MemoryTarget {
             scope: MemoryScope::OrgUnit,
             org_unit_id: access.profile.primary_unit_id,
         },
-        Space::Company => MemoryTarget {
+        MemorySpace::Company => MemoryTarget {
             scope: MemoryScope::Tenant,
             org_unit_id: None,
         },
@@ -159,7 +116,7 @@ async fn create(
             scope: target.scope,
             owner_user_id: (target.scope == MemoryScope::User).then_some(identity.user_id),
             org_unit_id: target.org_unit_id,
-            kind: body.kind.kind(),
+            kind: body.kind.into(),
             title: body.title,
             content: body.content,
             sensitivity: Sensitivity::Internal,
@@ -207,23 +164,11 @@ async fn remove(
     Ok(Json(Done::OK))
 }
 
-#[derive(Deserialize, Clone, Copy, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-enum ReviewDecision {
-    Approve,
-    Reject,
-}
-
-#[derive(Deserialize, Validate)]
-struct ReviewBody {
-    decision: ReviewDecision,
-}
-
 async fn review(
     State(state): State<AppState>,
     Auth(identity): Auth,
     PathId(id): PathId,
-    Body(body): Body<ReviewBody>,
+    Body(body): Body<MemoryReview>,
 ) -> ApiResult<Json<Done>> {
     let access = state.access.context(identity).await?;
     let mut tx = state.db.begin(identity.tenant_id).await?;

@@ -13,6 +13,7 @@ import {
   type ConversationSummary,
   type Message,
   type MessageAccepted,
+  type NewMessage,
   type RunStatus,
 } from '@/lib/api';
 import { useRunStream } from './use-run-stream';
@@ -95,7 +96,7 @@ export function useConversation(conversationId: string | null) {
         }
         const started = await api.post<MessageAccepted>(`/conversations/${id}/messages`, {
           content,
-        });
+        } satisfies NewMessage);
         if (id !== conversationId) {
           router.push(`/chat/${id}`);
           return true;

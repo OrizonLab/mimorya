@@ -8,8 +8,8 @@ use serde::Deserialize;
 use validator::Validate;
 
 use crate::app::AppState;
-use crate::contract::{Approval, ApprovalDecided, ApprovalList};
-use crate::http::{ApiResult, Body, PathId, Query, trimmed_opt};
+use crate::contract::{Approval, ApprovalDecided, ApprovalList, ApprovalVerdict};
+use crate::http::{ApiResult, Body, PathId, Query};
 use crate::plugins::Auth;
 use crate::services::runs::DecisionInput;
 
@@ -53,19 +53,11 @@ async fn list(
     }))
 }
 
-#[derive(Deserialize, Validate)]
-struct DecisionBody {
-    approved: bool,
-    #[serde(default, deserialize_with = "trimmed_opt")]
-    #[validate(length(max = 500))]
-    comment: Option<String>,
-}
-
 async fn decide(
     State(state): State<AppState>,
     Auth(identity): Auth,
     PathId(id): PathId,
-    Body(body): Body<DecisionBody>,
+    Body(body): Body<ApprovalVerdict>,
 ) -> ApiResult<Json<ApprovalDecided>> {
     let result = state
         .runs

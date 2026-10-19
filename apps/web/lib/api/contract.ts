@@ -31,6 +31,11 @@ export type ApprovalRequestedEvent = { approvalId: string, toolName: string, act
 export type ApprovalResolvedEvent = { approvalId: string, approved: boolean, };
 
 /**
+ * Body of `POST /approvals/{id}/decision`.
+ */
+export type ApprovalVerdict = { approved: boolean, comment?: string, };
+
+/**
  * A role held by an account.
  */
 export type Assignment = { id: string, roleId: string, roleName: string, scope: AssignmentScope,
@@ -137,6 +142,11 @@ secretsAvailable: boolean,
 allowPrivateNetwork: boolean, };
 
 /**
+ * Body of `PATCH /conversations/{id}`.
+ */
+export type ConversationChanges = { title?: string, archived?: boolean, };
+
+/**
  * `POST /conversations`.
  */
 export type ConversationCreated = { conversation: ConversationSummary, };
@@ -157,6 +167,11 @@ export type ConversationSummary = { id: string, title: string, updatedAt: string
  * A resource created (`201`): its identifier.
  */
 export type Created = { id: string, };
+
+/**
+ * Body of `POST /auth/login`.
+ */
+export type Credentials = { email: string, password: string, };
 
 /**
  * A permission a tool may require: one an agent can hold.
@@ -262,6 +277,18 @@ link: string | null,
 problem: string | null, };
 
 /**
+ * Body of `POST /auth/invitation/accept` and `POST /auth/password-reset/complete`:
+ * the password chosen with a link.
+ */
+export type LinkPassword = { token: string, password: string, };
+
+/**
+ * Body of `POST /auth/invitation` and `POST /auth/password-reset/link`: the
+ * link to open.
+ */
+export type LinkToken = { token: string, };
+
+/**
  * The company's own provider.
  */
 export type LlmSettingsView = { provider: string, model: string, baseUrl: string | null, keyStored: boolean,
@@ -299,6 +326,16 @@ secretsAvailable: boolean, platform: PlatformModel | null, settings: LlmSettings
  * Endpoints the operator lists for self-hosted providers.
  */
 endpoints: Array<string>, };
+
+/**
+ * Body of `POST /memory`.
+ */
+export type ManualMemory = { space: MemorySpace, kind: ManualMemoryKind, title: string, content: string, };
+
+/**
+ * What a user may write by hand (episodes come from runs).
+ */
+export type ManualMemoryKind = "preference" | "fact" | "procedure" | "decision" | "lesson";
 
 /**
  * An MCP server reached over HTTPS (editable from the administration).
@@ -356,6 +393,11 @@ export type MemoryKind = "preference" | "fact" | "procedure" | "decision" | "les
 export type MemoryList = { items: Array<MemoryItem>, };
 
 /**
+ * Body of `POST /memory/{id}/review`: the decision on a proposed memory.
+ */
+export type MemoryReview = { decision: ReviewDecision, };
+
+/**
  * The space a memory belongs to.
  */
 export type MemoryScope = "user" | "org_unit" | "tenant" | "experience";
@@ -364,6 +406,11 @@ export type MemoryScope = "user" | "org_unit" | "tenant" | "experience";
  * Where a memory comes from: written by hand, or by a run of the assistant.
  */
 export type MemorySource = { type: string, id?: string, label?: string, };
+
+/**
+ * Where a user adds a memory: their own, their team's, the company's.
+ */
+export type MemorySpace = "personal" | "team" | "company";
 
 export type MemoryStatus = "active" | "proposed" | "archived";
 
@@ -390,6 +437,16 @@ status?: RunStatus,
 evidence?: Array<Citation>, verification?: Verification, };
 
 export type MessageRole = "user" | "assistant";
+
+/**
+ * Body of `POST /conversations`.
+ */
+export type NewConversation = { title?: string, };
+
+/**
+ * Body of `POST /conversations/{id}/messages`.
+ */
+export type NewMessage = { content: string, };
 
 /**
  * An account as the organisation screen names it.
@@ -422,6 +479,11 @@ export type Organization = { units: Array<OrgUnitView>, users: Array<OrgPerson>,
  * Changing the tree requires `org:manage` on the whole company.
  */
 canManage: boolean, };
+
+/**
+ * Body of `POST /account/password`.
+ */
+export type PasswordUpdate = { currentPassword: string, newPassword: string, };
 
 export type PermissionView = { permission: string, label: string,
 /**
@@ -470,6 +532,11 @@ listedEndpoint: boolean, defaultModel: string | null, };
 export type ResetDetails = { email: string, expiresAt: string, };
 
 /**
+ * Body of `POST /auth/password-reset`: the address to send a link to.
+ */
+export type ResetLinkRequest = { email: string, };
+
+/**
  * `POST /admin/users/{id}/password-link`: the administrator never sees the link.
  */
 export type ResetLinkSent = { expiresAt: string, };
@@ -482,6 +549,11 @@ export type RestrictablePermission = { permission: string, label: string,
  * Checked resource by resource: a condition on the resource applies.
  */
 perResource: boolean, };
+
+/**
+ * What becomes of a proposed memory: kept as active, or archived.
+ */
+export type ReviewDecision = "approve" | "reject";
 
 export type RoleView = { id: string, key: string, name: string, description: string,
 /**

@@ -1,6 +1,7 @@
-//! The API contract: the JSON the routes answer with, as typed structures.
-//! The web client's types are generated from them
+//! The API contract: the JSON the routes accept and answer with, as typed
+//! structures. The web client's types are generated from them
 //! (`apps/web/lib/api/contract.ts`, ADR-036), so that both change together.
+//! A request body is strict: an unknown field is refused, not ignored.
 
 pub mod admin;
 mod approvals;
@@ -16,16 +17,20 @@ mod session;
 mod stored;
 mod typescript;
 
-pub use approvals::{Approval, ApprovalDecided, ApprovalList};
+pub use approvals::{Approval, ApprovalDecided, ApprovalList, ApprovalVerdict};
 pub use common::{Created, Done};
 pub use conversations::{
-    Citation, ConversationCreated, ConversationDetail, ConversationList, ConversationSummary,
-    Message, MessageAccepted, MessageMetadata, MessageRole,
+    Citation, ConversationChanges, ConversationCreated, ConversationDetail, ConversationList,
+    ConversationSummary, Message, MessageAccepted, MessageMetadata, MessageRole, NewConversation,
+    NewMessage,
 };
 pub use errors::{ErrorBody, ErrorDetail, ErrorKind};
 pub use health::Health;
-pub use links::{InvitationDetails, ResetDetails};
-pub use memory::{MemoryItem, MemoryKind, MemoryList, MemoryScope, MemorySource, MemoryStatus};
+pub use links::{InvitationDetails, LinkPassword, LinkToken, ResetDetails, ResetLinkRequest};
+pub use memory::{
+    ManualMemory, ManualMemoryKind, MemoryItem, MemoryKind, MemoryList, MemoryReview, MemoryScope,
+    MemorySource, MemorySpace, MemoryStatus, ReviewDecision,
+};
 pub use run_stream::{
     ApprovalRequestedEvent, ApprovalResolvedEvent, AssistantDelta, AssistantMessage, RunFinished,
     RunStarted, RunStreamEvent, ToolCallEvent, ToolDecision, ToolResultEvent, ToolRisk, UsageEvent,
@@ -35,13 +40,15 @@ pub use runs::{
     RunBudget, RunDetail, RunEventRecord, RunList, RunListItem, RunRef, RunStatus, RunUsage,
     RunView, ToolInvocation, Verification,
 };
-pub use session::{AssistantStatus, AuthOptions, Me, MeTenant, MeUser, OrgUnitRef};
+pub use session::{
+    AssistantStatus, AuthOptions, Credentials, Me, MeTenant, MeUser, OrgUnitRef, PasswordUpdate,
+};
 
 pub(crate) use stored::stored_text;
 use typescript::Declarations;
 
-/// The TypeScript module of the contract: every response, with the types
-/// it refers to.
+/// The TypeScript module of the contract: every response and request body,
+/// with the types they refer to.
 pub fn typescript() -> String {
     let mut declarations = Declarations::new();
     declarations.add::<Me>();
@@ -79,6 +86,18 @@ pub fn typescript() -> String {
     declarations.add::<admin::AuditLog>();
     declarations.add::<admin::UsageSummary>();
     declarations.add::<ErrorBody>();
+    // Request bodies.
+    declarations.add::<Credentials>();
+    declarations.add::<PasswordUpdate>();
+    declarations.add::<ResetLinkRequest>();
+    declarations.add::<LinkToken>();
+    declarations.add::<LinkPassword>();
+    declarations.add::<NewConversation>();
+    declarations.add::<ConversationChanges>();
+    declarations.add::<NewMessage>();
+    declarations.add::<ApprovalVerdict>();
+    declarations.add::<ManualMemory>();
+    declarations.add::<MemoryReview>();
     declarations.render()
 }
 

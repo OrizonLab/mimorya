@@ -12,15 +12,11 @@ use axum::response::{AppendHeaders, IntoResponse};
 use axum::routing::post;
 use axum::{Json, Router};
 use mimorya_core::DomainError;
-use mimorya_core::accounts::EMAIL_MAX_LEN;
-use serde::Deserialize;
-use validator::Validate;
 
 use crate::app::AppState;
 use crate::auth::cookies::session_cookie;
-use crate::auth::credentials::MIN_PASSWORD_CHARS;
-use crate::contract::{Done, ResetDetails};
-use crate::http::{ApiError, ApiResult, Body, trimmed};
+use crate::contract::{Done, LinkPassword, LinkToken, ResetDetails, ResetLinkRequest};
+use crate::http::{ApiError, ApiResult, Body};
 use crate::plugins::RequestContext;
 use crate::services::password_reset::{
     ResetRequest, ResetSender, complete_reset, inspect_reset, send_requested_link,
@@ -40,31 +36,10 @@ pub fn routes() -> Router<AppState> {
         .route("/auth/password-reset/complete", post(complete))
 }
 
-#[derive(Deserialize, Validate)]
-struct RequestBody {
-    #[serde(deserialize_with = "trimmed")]
-    #[validate(email, length(max = EMAIL_MAX_LEN))]
-    email: String,
-}
-
-#[derive(Deserialize, Validate)]
-struct TokenBody {
-    #[validate(length(min = 1, max = 200))]
-    token: String,
-}
-
-#[derive(Deserialize, Validate)]
-struct CompleteBody {
-    #[validate(length(min = 1, max = 200))]
-    token: String,
-    #[validate(length(min = "MIN_PASSWORD_CHARS", max = 512))]
-    password: String,
-}
-
 async fn request(
     State(state): State<AppState>,
     context: RequestContext,
-    Body(body): Body<RequestBody>,
+    Body(body): Body<ResetLinkRequest>,
 ) -> ApiResult<impl IntoResponse> {
     let Some(mailer) = state.mailer.clone() else {
         return Err(DomainError::unavailable(NO_RELAY).into());
@@ -96,7 +71,7 @@ async fn request(
 async fn inspect(
     State(state): State<AppState>,
     context: RequestContext,
-    Body(body): Body<TokenBody>,
+    Body(body): Body<LinkToken>,
 ) -> ApiResult<Json<ResetDetails>> {
     if !state.limits.login.allow(&context.client_key()) {
         return Err(ApiError::RateLimited);
@@ -109,7 +84,7 @@ async fn complete(
     State(state): State<AppState>,
     context: RequestContext,
     headers: HeaderMap,
-    Body(body): Body<CompleteBody>,
+    Body(body): Body<LinkPassword>,
 ) -> ApiResult<impl IntoResponse> {
     if !state.limits.login.allow(&context.client_key()) {
         return Err(ApiError::RateLimited);

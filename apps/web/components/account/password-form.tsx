@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from 'react';
 import { Button, Card, ErrorNote, Field, Input } from '@/components/ui';
-import { api, useAction } from '@/lib/api';
+import { api, useAction, type PasswordUpdate } from '@/lib/api';
 import { EMPTY_NEW_PASSWORD, NewPasswordFields, passwordsDiffer } from './new-password-fields';
 
 /** Replaces the user's password; their other sessions are closed by the API. */
@@ -18,7 +18,10 @@ export function PasswordForm({ onChanged }: { onChanged?: () => void } = {}) {
     if (mismatch) return;
     setDone(false);
     const changed = await action.run(() =>
-      api.post('/account/password', { currentPassword: current, newPassword: next.password }),
+      api.post('/account/password', {
+        currentPassword: current,
+        newPassword: next.password,
+      } satisfies PasswordUpdate),
     );
     if (changed) {
       setCurrent('');

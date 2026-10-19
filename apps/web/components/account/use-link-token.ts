@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, type LinkToken } from '@/lib/api';
 
 /** A link opened before sign-in, once checked by the API. */
 export type LinkState<T> =
@@ -28,7 +28,7 @@ export function useLinkToken<T>(path: string, unchecked: string): LinkState<T> {
       }
       setState({ kind: 'loading' });
       api
-        .post<T>(path, { token })
+        .post<T>(path, { token } satisfies LinkToken)
         .then((view) => setState({ kind: 'ready', token, view }))
         .catch((e: unknown) =>
           setState({ kind: 'invalid', message: e instanceof ApiError ? e.message : unchecked }),

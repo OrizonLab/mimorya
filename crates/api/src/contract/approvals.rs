@@ -1,15 +1,16 @@
 //! Approval requests, as listed to the user they are addressed to and as
-//! shown in a run's trace.
+//! shown in a run's trace, and the decision taken on one.
 
 use mimorya_db::repositories::approvals::ApprovalRow;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use ts_rs::TS;
 use uuid::Uuid;
+use validator::Validate;
 
 use super::run_stream::ToolRisk;
 use super::stored::stored_text;
-use crate::http::iso;
+use crate::http::{iso, trimmed_opt};
 
 /// An action of the agent waiting for (or given) a human decision.
 #[derive(Debug, Serialize, TS)]
@@ -60,4 +61,15 @@ pub struct ApprovalDecided {
     pub approval: Approval,
     /// True when this decision was the run's last one awaited: the run resumes.
     pub resumed: bool,
+}
+
+/// Body of `POST /approvals/{id}/decision`.
+#[derive(Deserialize, Validate, TS)]
+#[serde(deny_unknown_fields)]
+pub struct ApprovalVerdict {
+    pub approved: bool,
+    #[serde(default, deserialize_with = "trimmed_opt")]
+    #[validate(length(max = 500))]
+    #[ts(optional)]
+    pub comment: Option<String>,
 }

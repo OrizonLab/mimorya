@@ -3,7 +3,7 @@
 import { ShieldAlert } from 'lucide-react';
 import { useState } from 'react';
 import { Badge, Button, ErrorNote } from '@/components/ui';
-import { api, ApiError, type ToolRisk } from '@/lib/api';
+import { api, ApiError, type ApprovalVerdict, type ToolRisk } from '@/lib/api';
 import { RISK_LABELS } from '@/lib/labels';
 import { useCan } from '@/lib/me-context';
 
@@ -36,7 +36,7 @@ export function ApprovalCard({
       await api.post(`/approvals/${approval.id}/decision`, {
         approved,
         ...(comment.trim() ? { comment: comment.trim() } : {}),
-      });
+      } satisfies ApprovalVerdict);
       onDecided(approved);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Décision impossible');

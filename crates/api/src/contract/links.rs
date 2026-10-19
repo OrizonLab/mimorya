@@ -1,10 +1,14 @@
-//! Invitation and password reset links: what their page shows before the
-//! password is chosen.
+//! Invitation and password reset links: asking for a reset link, what a
+//! link's page shows, and the password chosen with it. The token travels in
+//! the request body, never in a URL.
 
-use serde::Serialize;
+use mimorya_core::accounts::EMAIL_MAX_LEN;
+use serde::{Deserialize, Serialize};
 use ts_rs::TS;
+use validator::Validate;
 
-use crate::http::iso;
+use crate::auth::credentials::MIN_PASSWORD_CHARS;
+use crate::http::{iso, trimmed};
 use crate::services::invitations::InvitationView;
 use crate::services::password_reset::ResetView;
 
@@ -44,4 +48,33 @@ impl From<&ResetView> for ResetDetails {
             expires_at: iso(&reset.expires_at),
         }
     }
+}
+
+/// Body of `POST /auth/password-reset`: the address to send a link to.
+#[derive(Deserialize, Validate, TS)]
+#[serde(deny_unknown_fields)]
+pub struct ResetLinkRequest {
+    #[serde(deserialize_with = "trimmed")]
+    #[validate(email, length(max = EMAIL_MAX_LEN))]
+    pub email: String,
+}
+
+/// Body of `POST /auth/invitation` and `POST /auth/password-reset/link`: the
+/// link to open.
+#[derive(Deserialize, Validate, TS)]
+#[serde(deny_unknown_fields)]
+pub struct LinkToken {
+    #[validate(length(min = 1, max = 200))]
+    pub token: String,
+}
+
+/// Body of `POST /auth/invitation/accept` and `POST /auth/password-reset/complete`:
+/// the password chosen with a link.
+#[derive(Deserialize, Validate, TS)]
+#[serde(deny_unknown_fields)]
+pub struct LinkPassword {
+    #[validate(length(min = 1, max = 200))]
+    pub token: String,
+    #[validate(length(min = "MIN_PASSWORD_CHARS", max = 512))]
+    pub password: String,
 }
