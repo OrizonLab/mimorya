@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { Badge, Button, ErrorNote } from '@/components/ui';
 import { api, ApiError } from '@/lib/api';
 import { RISK_LABELS } from '@/lib/labels';
+import { useCan } from '@/lib/me-context';
 
 export interface ApprovalLike {
   id: string;
@@ -24,6 +25,8 @@ export function ApprovalCard({
   const [comment, setComment] = useState('');
   const [busy, setBusy] = useState<'approve' | 'reject' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Deciding resumes the agent: without it, the request is left to expire.
+  const canDecide = useCan('agent:use');
   const risk = RISK_LABELS[approval.risk] ?? { label: approval.risk, tone: 'neutral' as const };
 
   async function decide(approved: boolean) {
@@ -60,34 +63,44 @@ export function ApprovalCard({
               </pre>
             </details>
           )}
-          <input
-            value={comment}
-            onChange={(e) => setComment(e.target.value)}
-            placeholder="Commentaire (facultatif)"
-            className="mt-3 w-full rounded-lg border border-line bg-surface px-3 py-1.5 text-sm outline-none focus:border-accent"
-          />
-          {error && (
-            <div className="mt-2">
-              <ErrorNote message={error} />
-            </div>
+          {!canDecide && (
+            <p className="mt-3 text-sm text-muted">
+              Vous n’avez plus accès à l’agent : cette demande ne peut pas être décidée et expirera
+              d’elle-même.
+            </p>
           )}
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Button
-              onClick={() => decide(true)}
-              loading={busy === 'approve'}
-              disabled={busy !== null}
-            >
-              Valider
-            </Button>
-            <Button
-              variant="danger"
-              onClick={() => decide(false)}
-              loading={busy === 'reject'}
-              disabled={busy !== null}
-            >
-              Refuser
-            </Button>
-          </div>
+          {canDecide && (
+            <>
+              <input
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                placeholder="Commentaire (facultatif)"
+                className="mt-3 w-full rounded-lg border border-line bg-surface px-3 py-1.5 text-sm outline-none focus:border-accent"
+              />
+              {error && (
+                <div className="mt-2">
+                  <ErrorNote message={error} />
+                </div>
+              )}
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button
+                  onClick={() => decide(true)}
+                  loading={busy === 'approve'}
+                  disabled={busy !== null}
+                >
+                  Valider
+                </Button>
+                <Button
+                  variant="danger"
+                  onClick={() => decide(false)}
+                  loading={busy === 'reject'}
+                  disabled={busy !== null}
+                >
+                  Refuser
+                </Button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

@@ -150,7 +150,10 @@ fn resolve<'a>(env: &'a Value, operand: Option<&'a Operand>) -> Option<&'a Value
 }
 
 /// Equality by value: `2` and `2.0` are the same number, as an administrator
-/// (and the web editor, which reads both as `2`) expects.
+/// (and the web editor, which reads both as `2`) expects; lists compare item
+/// by item. Limits: objects compare strictly (a literal is never one, only
+/// two attributes could be compared so), and an integer beyond 2^53 meets a
+/// float through `f64`.
 fn same(a: &Value, b: &Value) -> bool {
     match (a, b) {
         (Value::Number(x), Value::Number(y)) => {

@@ -214,12 +214,19 @@ fn declared_routes(source: &str) -> Vec<(String, String)> {
             })
             .map_or(call.len(), |(i, _)| i);
         let arguments = &call[..end];
-        let Some(declared) = path.captures(arguments) else {
-            continue;
-        };
+        let declared = path
+            .captures(arguments)
+            .unwrap_or_else(|| panic!("unreadable route: .route({arguments})"));
+        let before = routes.len();
         for found in method.captures_iter(arguments) {
             routes.push((found[1].to_uppercase(), declared[1].to_string()));
         }
+        // `any(…)`, `on(…)` or a service: extend this test before using one.
+        assert!(
+            routes.len() > before,
+            "no known method for {}",
+            &declared[1]
+        );
     }
     routes
 }

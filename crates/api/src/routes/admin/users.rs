@@ -9,7 +9,7 @@ use mimorya_core::authz::Sensitivity;
 use mimorya_db::repositories::role_assignments::{RoleAssignmentRow, list_role_assignments};
 use mimorya_db::repositories::users::list_users;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 use uuid::Uuid;
 use validator::Validate;
 
@@ -51,6 +51,7 @@ pub async fn list(State(state): State<AppState>, Auth(identity): Auth) -> ApiRes
                 view["lastLoginAt"] = iso_opt(&u.last_login_at);
                 view["orgUnitId"] = json!(u.primary_unit_id);
                 view["clearance"] = json!(u.clearance);
+                view["attributes"] = u.attributes.clone();
             }
             if manage_roles {
                 let own: Vec<&RoleAssignmentRow> =
@@ -160,6 +161,9 @@ pub struct UpdateUserBody {
     clearance: Option<Sensitivity>,
     #[serde(default)]
     status: Option<AccountStatus>,
+    /// Replaces every attribute; `{}` removes them all.
+    #[serde(default)]
+    attributes: Option<Map<String, Value>>,
 }
 
 pub async fn update(
@@ -185,6 +189,7 @@ pub async fn update(
         org_unit_id: body.org_unit_id,
         clearance: body.clearance,
         active: body.status.map(|s| s == AccountStatus::Active),
+        attributes: body.attributes,
     };
     update_user(&state.db, &access, id, changes).await?;
     Ok(Json(json!({ "ok": true })))

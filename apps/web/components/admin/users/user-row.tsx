@@ -6,6 +6,7 @@ import { formatDate } from '@/lib/format';
 import { ACCOUNT_STATUS } from '@/lib/labels';
 import type { OrgUnitView } from '../organization/types';
 import { AssignmentsEditor } from './assignments-editor';
+import { AttributesEditor } from './attributes-editor';
 import { ProfileEditor } from './profile-editor';
 import type { DirectoryView, UserView } from './types';
 
@@ -75,6 +76,12 @@ export function UserRow({
                   onChanged={onChanged}
                   onPassword={(password) => onPassword(user.displayName, password)}
                 />
+              )}
+              {canManage.users && (
+                <section>
+                  <h3 className="mb-2 text-sm font-medium">Attributs</h3>
+                  <AttributesEditor user={user} onChanged={onChanged} />
+                </section>
               )}
               {canManage.roles && (
                 <section>

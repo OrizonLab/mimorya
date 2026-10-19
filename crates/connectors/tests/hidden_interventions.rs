@@ -34,27 +34,24 @@ fn hiding(intervention: &str) -> AuthorizationEngine {
 #[tokio::test]
 async fn availability_shows_an_unreadable_intervention_as_taken_only() {
     let monday = json!({ "from": "2026-10-12", "to": "2026-10-12" });
-    let (_, visible) = ConnectorHarness::new(user::MARC)
-        .call("team_availability", monday.clone())
-        .await;
-    assert!(
-        visible
-            .unwrap()
-            .content
-            .to_string()
-            .contains("08:30-10:30 INT-2041")
-    );
-
-    let marc = ConnectorHarness::with_engine(user::MARC, hiding("INT-2041"));
     // A follow-up of the same intervention, applied earlier.
-    marc.store.apply(vec![ScheduledSlot {
+    let follow_up = || ScheduledSlot {
         intervention_id: "INT-2041".into(),
         technician_id: user::LUCAS,
         date: reference() - Days::new(2),
         start_time: "14:00".into(),
         duration_hours: 1.0,
         label: "Suivi INT-2041".into(),
-    }]);
+    };
+    let reader = ConnectorHarness::new(user::MARC);
+    reader.store.apply(vec![follow_up()]);
+    let (_, visible) = reader.call("team_availability", monday.clone()).await;
+    let visible = visible.unwrap().content.to_string();
+    assert!(visible.contains("08:30-10:30 INT-2041"), "{visible}");
+    assert!(visible.contains("14:00-15:00 Suivi INT-2041"), "{visible}");
+
+    let marc = ConnectorHarness::with_engine(user::MARC, hiding("INT-2041"));
+    marc.store.apply(vec![follow_up()]);
     let (_, hidden) = marc.call("team_availability", monday).await;
     let hidden = hidden.unwrap().content.to_string();
     assert!(!hidden.contains("INT-2041"), "{hidden}");

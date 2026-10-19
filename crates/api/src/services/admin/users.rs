@@ -1,8 +1,10 @@
-//! Accounts: creation with a temporary password, profile and status changes,
-//! password reset. A disabled account loses its sessions at once.
+//! Accounts: creation with a temporary password, profile, attributes (read by
+//! access policies) and status changes, password reset. A disabled account
+//! loses its sessions at once.
 
 use mimorya_core::DomainError;
 use mimorya_core::authz::{AssignmentScope, OrgTree, Sensitivity};
+use mimorya_core::collaborator_attributes::normalize_attributes;
 use mimorya_db::repositories::audit::append_audit;
 use mimorya_db::repositories::role_assignments::{
     NewRoleAssignment, create_role_assignment, find_role_id,
@@ -12,7 +14,7 @@ use mimorya_db::repositories::users::{
     set_primary_unit, set_temporary_password_hash, update_user as patch_user,
 };
 use mimorya_db::{Database, TenantTx};
-use serde_json::json;
+use serde_json::{Map, Value, json};
 use uuid::Uuid;
 
 use super::{audit_entry, begin_change, current_tree, is_unique_violation, refuse_self};
@@ -109,6 +111,8 @@ pub struct UserChanges {
     pub clearance: Option<Sensitivity>,
     /// `true` to enable, `false` to disable the account.
     pub active: Option<bool>,
+    /// Replaces every attribute (`subject.attributes.*` in policy conditions).
+    pub attributes: Option<Map<String, Value>>,
 }
 
 pub async fn update_user(
@@ -119,11 +123,23 @@ pub async fn update_user(
 ) -> anyhow::Result<()> {
     access.require_tenant_wide(PERMISSION)?;
     refuse_self(access, user_id)?;
+    let attributes = changes
+        .attributes
+        .as_ref()
+        .map(normalize_attributes)
+        .transpose()
+        .map_err(DomainError::validation)?
+        .map(Value::Object);
     let tenant_id = access.subject.tenant_id;
     let mut tx = begin_change(db, access, PERMISSION).await?;
     if let Some(unit) = changes.org_unit_id {
         check_unit(&current_tree(&mut tx).await?, unit)?;
     }
+    // Who a policy applies to may change: the audit keeps both states.
+    let previous_attributes = match &attributes {
+        Some(_) => get_user(&mut tx, user_id).await?.map(|u| u.attributes),
+        None => None,
+    };
     let status = changes
         .active
         .map(|a| if a { "active" } else { "disabled" });
@@ -135,6 +151,7 @@ pub async fn update_user(
             job_title: changes.job_title,
             clearance: changes.clearance,
             status,
+            attributes: attributes.clone(),
         },
     )
     .await?;
@@ -155,6 +172,8 @@ pub async fn update_user(
     let metadata = json!({
         "clearance": changes.clearance.map(Sensitivity::as_str),
         "orgUnitChanged": changes.org_unit_id.is_some(),
+        "attributes": attributes,
+        "previousAttributes": previous_attributes,
     });
     append_audit(
         &mut tx,
