@@ -142,9 +142,16 @@ async fn asking_reveals_nothing_and_links_only_active_accounts() {
     assert_eq!(stored, 0);
     drop(tx);
 
-    // The same answer for an active account, which gets its link.
+    // The same answer for an active account, which gets its link; it does
+    // not work while the company is suspended.
     let token = new_reset_token(&api, &email(user::EMMA)).await;
     assert_eq!(api.mail.sent().len(), invitations + 1);
+    suspend("suspended").await.unwrap();
+    let refused = inspect_reset(&api, &token).await;
+    let refused_use = complete_reset(&api, &token, RESET_PASSWORD).await;
+    suspend("active").await.unwrap();
+    assert_eq!(refused.status, StatusCode::NOT_FOUND);
+    assert_eq!(refused_use.status, StatusCode::NOT_FOUND);
     assert_eq!(inspect_reset(&api, &token).await.status, StatusCode::OK);
 }
 

@@ -1,6 +1,6 @@
 //! Reset links under concurrency (ADR-028): two uses of one link, a use while
-//! an administrator resets the password, while the link expires, and a link
-//! asked for while the account is disabled. Each runs in a known order
+//! a newer link is issued, while an administrator resets the password, while
+//! the link expires, and a link asked for while the account is disabled. Each runs in a known order
 //! (`support::locks`: the account's row is held until the requests wait for
 //! it) and ends in one consistent state.
 
@@ -36,6 +36,34 @@ async fn one_link_resets_once() {
     api.sign_in_with(&address, RESET_PASSWORD).await;
     let refused = api.try_login(&address, OTHER_PASSWORD).await;
     assert_eq!(refused.status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_link_replaced_meanwhile_is_refused() {
+    let api = TestApi::start_with_mailer().await;
+    let address = email(user::NADIA);
+    let former = new_reset_token(&api, &address).await;
+
+    // The newer link is stored first (in the background), then the former
+    // one, already checked, is used.
+    let anonymous = api.anonymous();
+    let hold = hold_rows(&api, "users", &[user::NADIA]).await;
+    let (asked, late, ()) = tokio::join!(
+        anonymous.post("/auth/password-reset", json!({ "email": address })),
+        async {
+            wait_for_waiters(&api, 1).await;
+            complete_reset(&api, &former, RESET_PASSWORD).await
+        },
+        release_after(&api, 2, hold),
+    );
+    api.idle().await;
+    assert_eq!(asked.status, StatusCode::ACCEPTED);
+    assert_eq!(late.status, StatusCode::NOT_FOUND);
+    let newer = support::resets::last_reset_token(&api, &address);
+    assert_ne!(newer, former);
+    let used = complete_reset(&api, &newer, OTHER_PASSWORD).await;
+    assert_eq!(used.status, StatusCode::OK, "{}", used.text());
 }
 
 #[tokio::test]
