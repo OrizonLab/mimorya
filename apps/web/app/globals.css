@@ -136,3 +136,20 @@ body {
   color: var(--accent);
   text-decoration: underline;
 }
+
+/*
+ * A control locked by a reload (disabled by the fieldset of `Loaded`, not by
+ * its own `disabled` attribute, ADR-042) keeps its look for 150 ms, then takes
+ * its disabled look: a quick reload does not flash the screen. An animation,
+ * unlike a transition, also delays a control shown while the lock holds. The
+ * missing `to` keyframe is the control's own (disabled) style.
+ */
+fieldset:disabled :disabled:not([disabled]) {
+  animation: locked-dim 0s 150ms both;
+}
+
+@keyframes locked-dim {
+  from {
+    opacity: 1;
+  }
+}

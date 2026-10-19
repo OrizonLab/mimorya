@@ -1238,9 +1238,12 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     serait reparti de l'ancienne ressource ; le verrou prend le relais au
     rechargement ;
   - les règles des outils d'un serveur MCP repartent de chaque test de connexion ;
-  - le verrou est signalé (`aria-busy`), et les contrôles (`Button`, `Input`,
-    `Select`, et les autres par `DISABLED_LOOK`) ne s'atténuent qu'au-delà de 150 ms,
-    pour qu'un rechargement rapide ne fasse pas clignoter l'écran.
+  - le verrou est signalé (`aria-busy`) ; un contrôle qu'il désactive garde son aspect
+    150 ms avant de prendre son aspect désactivé, pour qu'un rechargement rapide ne
+    fasse pas clignoter l'écran. C'est une animation CSS (`app/globals.css`), qui vaut
+    aussi pour un contrôle affiché pendant le verrou, et ne touche pas un contrôle
+    désactivé pour une autre raison (son propre attribut `disabled`). Exception : une
+    case à cocher native prend aussitôt l'aspect désactivé du navigateur.
 - **Conséquences** :
   - après une modification, l'écran est brièvement désactivé, le temps du rechargement,
     et le contrôle qui avait le focus le perd (à rendre, `docs/ROADMAP.md`) ;

@@ -40,10 +40,13 @@ export function ConnectorCard({
   const status = STATUS[connector.status] ?? STATUS.error;
 
   async function test() {
-    setTests((n) => n + 1);
-    setTested(
-      await action.run(() => api.post<ConnectorTest>(`/admin/connectors/${connector.id}/test`)),
+    const result = await action.run(() =>
+      api.post<ConnectorTest>(`/admin/connectors/${connector.id}/test`),
     );
+    // Counted with its answer, in the same render: the tool policies start
+    // again from this test's tools, not from the former ones.
+    setTests((n) => n + 1);
+    setTested(result);
     onChanged();
   }
 

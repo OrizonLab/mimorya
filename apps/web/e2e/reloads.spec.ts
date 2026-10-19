@@ -1,15 +1,23 @@
 // While a screen reloads its list after a change, nothing can be changed from
 // the former one: its controls are disabled until the list arrives, then the
 // forms show what the API saved, and an open form what another administrator
-// changed (ADR-041, ADR-042). Each test holds the list
-// until it lets it through. The account it creates keeps no business role;
-// the role it creates is deleted, even when it fails.
+// changed (ADR-041, ADR-042). Each test holds the list until it lets it
+// through. The account it creates keeps no business role; the role and the
+// MCP server it creates are deleted, even when it fails.
 import type { Page } from '@playwright/test';
-import type { AccountUpdate, Directory, Roles } from '../lib/api/contract';
-import { openAdmin } from './support/admin';
-import { expect, noError, test } from './support/fixtures';
+import type {
+  AccountUpdate,
+  ConnectorTest,
+  Connectors,
+  Directory,
+  Roles,
+  TestedTool,
+} from '../lib/api/contract';
+import { cardWith, openAdmin } from './support/admin';
+import { expect, FOREIGN_HOST, noError, test } from './support/fixtures';
 
 const ROLE = 'Réviseur e2e';
+const SERVER = 'Outils e2e';
 const WRITE = { 'X-Mimorya-Request': '1' };
 
 test.afterEach(async ({ page }) => {
@@ -19,6 +27,15 @@ test.afterEach(async ({ page }) => {
   const { roles } = (await listed.json()) as Roles;
   for (const role of roles.filter((r) => r.name === ROLE)) {
     const deleted = await page.request.delete(`/api/admin/roles/${role.id}`, { headers: WRITE });
+    expect(deleted.status()).toBe(200);
+  }
+  const connectors = await page.request.get('/api/admin/connectors');
+  expect(connectors.status()).toBe(200);
+  const { instances } = (await connectors.json()) as Connectors;
+  for (const connector of instances.filter((c) => c.name === SERVER)) {
+    const deleted = await page.request.delete(`/api/admin/connectors/${connector.id}`, {
+      headers: WRITE,
+    });
     expect(deleted.status()).toBe(200);
   }
 });
@@ -135,6 +152,12 @@ test('a role is edited again only from the reloaded list', async ({ page }) => {
   await expect(page.getByText('Relit les plannings')).toBeVisible();
   await expect(edit).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Nouveau rôle' })).toBeDisabled();
+  // Shown during the lock, the card's button is dimmed past 150 ms all the same;
+  // a button disabled on its own (a role still granted) is left as it was.
+  await expect(edit).toHaveCSS('animation-name', 'locked-dim');
+  await expect(edit).toHaveCSS('opacity', '0.5');
+  const granted = page.getByRole('button', { name: 'Supprimer Responsable d’équipe' });
+  await expect(granted).toHaveCSS('animation-name', 'none');
   roles.release();
   await expect(page.getByText('Relit et commente les plannings')).toBeVisible();
   await edit.click();
@@ -144,4 +167,43 @@ test('a role is edited again only from the reloaded list', async ({ page }) => {
 
   await page.getByRole('button', { name: `Supprimer ${ROLE}` }).click();
   await expect(page.getByText(ROLE, { exact: true })).toHaveCount(0);
+});
+
+test('tool policies start again from each connection test', async ({ page }) => {
+  page.on('dialog', (dialog) => dialog.accept());
+  const tool = (name: string, risk: TestedTool['risk']): TestedTool => ({
+    name,
+    title: name,
+    description: 'Outil e2e',
+    enabled: true,
+    risk,
+    permissions: ['connector:use'],
+  });
+  // The server is never reached: each test gets the answer given here.
+  const answers: ConnectorTest[] = [
+    { ok: true, error: null, tools: [tool('mcp_oute_search', 'read')] },
+    {
+      ok: true,
+      error: null,
+      tools: [tool('mcp_oute_search', 'write'), tool('mcp_oute_delete', 'irreversible')],
+    },
+  ];
+  await page.route('**/api/admin/connectors/*/test', (route) =>
+    route.fulfill({ json: answers.shift() }),
+  );
+  await openAdmin(page, 'Connecteurs');
+  await page.getByRole('button', { name: 'Ajouter un serveur MCP' }).click();
+  await page.getByLabel('Nom').fill(SERVER);
+  await page.getByLabel('Préfixe des outils (définitif)').fill('oute');
+  await page.getByLabel(/^Adresse du serveur/).fill(`https://mcp.${FOREIGN_HOST}/mcp`);
+  await page.getByRole('button', { name: 'Ajouter le serveur' }).click();
+
+  const card = cardWith(page, SERVER, 'Tester la connexion');
+  await card.getByRole('button', { name: 'Tester la connexion' }).click();
+  await expect(card.getByLabel('Risque de mcp_oute_search')).toHaveValue('read');
+  await card.getByRole('button', { name: 'Tester la connexion' }).click();
+  // The second test's rules, not the first's: saving them keeps what it brought.
+  await expect(card.getByLabel('Risque de mcp_oute_delete')).toHaveValue('irreversible');
+  await expect(card.getByLabel('Risque de mcp_oute_search')).toHaveValue('write');
+  await noError(page);
 });
