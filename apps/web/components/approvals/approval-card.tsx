@@ -2,7 +2,7 @@
 
 import { ShieldAlert } from 'lucide-react';
 import { useState } from 'react';
-import { Badge, Button, ErrorNote } from '@/components/ui';
+import { Badge, Button, cx, DISABLED_LOOK, ErrorNote } from '@/components/ui';
 import { api, ApiError, type ApprovalVerdict, type ToolRisk } from '@/lib/api';
 import { RISK_LABELS } from '@/lib/labels';
 import { useCan } from '@/lib/me-context';
@@ -75,7 +75,10 @@ export function ApprovalCard({
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
                 placeholder="Commentaire (facultatif)"
-                className="mt-3 w-full rounded-lg border border-line bg-surface px-3 py-1.5 text-sm outline-none focus:border-accent"
+                className={cx(
+                  'mt-3 w-full rounded-lg border border-line bg-surface px-3 py-1.5 text-sm outline-none focus:border-accent',
+                  DISABLED_LOOK,
+                )}
               />
               {error && (
                 <div className="mt-2">

@@ -102,7 +102,14 @@ export function LlmForm({ data, onDone }: { data: LlmView; onDone: (changed: boo
         <Button type="submit" loading={action.pending}>
           Enregistrer
         </Button>
-        <Button type="button" variant="ghost" onClick={() => onDone(false)}>
+        <Button
+          type="button"
+          variant="ghost"
+          // Closed before its change is answered, it could be reopened from the
+          // former resource, and that change overwritten.
+          disabled={action.pending}
+          onClick={() => onDone(false)}
+        >
           Annuler
         </Button>
       </div>

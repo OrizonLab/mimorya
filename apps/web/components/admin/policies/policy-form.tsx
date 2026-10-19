@@ -140,7 +140,14 @@ export function PolicyForm({
         <Button type="submit" loading={action.pending} disabled={restricted.size === 0}>
           {policy ? 'Enregistrer' : 'Créer la politique'}
         </Button>
-        <Button type="button" variant="ghost" onClick={() => onDone(false)}>
+        <Button
+          type="button"
+          variant="ghost"
+          // Closed before its change is answered, it could be reopened from the
+          // former resource, and that change overwritten.
+          disabled={action.pending}
+          onClick={() => onDone(false)}
+        >
           Annuler
         </Button>
       </div>

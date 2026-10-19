@@ -1,7 +1,7 @@
 'use client';
 
 import { Plus, X } from 'lucide-react';
-import { Button, Field, Input, Select } from '@/components/ui';
+import { Button, cx, DISABLED_LOOK, Field, Input, Select } from '@/components/ui';
 import type { Policies } from '@/lib/api';
 import {
   OPERATORS,
@@ -86,7 +86,10 @@ export function ConditionEditor({
       <div className="flex flex-col gap-2">
         <Field label="Condition (JSON)">
           <textarea
-            className="min-h-40 rounded-lg border border-line bg-surface p-2 font-mono text-xs"
+            className={cx(
+              'min-h-40 rounded-lg border border-line bg-surface p-2 font-mono text-xs',
+              DISABLED_LOOK,
+            )}
             value={value.json}
             onChange={(e) => onChange({ mode: 'json', json: e.target.value })}
           />

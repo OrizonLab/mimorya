@@ -21,14 +21,12 @@ export function ProfileEditor({
   user,
   units,
   emailEnabled,
-  reloading,
   onChanged,
   onNotice,
 }: {
   user: DirectoryUser;
   units: OrgUnitView[];
   emailEnabled: boolean;
-  reloading: boolean;
   onChanged: () => void;
   onNotice: (notice: AccountNotice) => void;
 }) {
@@ -65,58 +63,55 @@ export function ProfileEditor({
   }
 
   return (
-    <form onSubmit={save}>
-      {/* Until the directory is reloaded, nothing is changed from a former account. */}
-      <fieldset disabled={reloading} className="flex flex-col gap-3">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Nom affiché">
-            <Input
-              required
-              minLength={2}
-              maxLength={120}
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-            />
-          </Field>
-          <Field label="Fonction">
-            <Input maxLength={120} value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} />
-          </Field>
-          <Field label="Unité de rattachement">
-            <Select value={orgUnitId} onChange={(e) => setOrgUnitId(e.target.value)}>
-              <option value="">Aucune</option>
-              {unitOptions(units).map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.label}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Niveau d’habilitation aux données">
-            <Select value={clearance} onChange={(e) => setClearance(e.target.value as Sensitivity)}>
-              {Object.entries(CLEARANCE_LABELS).map(([key, label]) => (
-                <option key={key} value={key}>
-                  {label}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        </div>
-        {action.error && <ErrorNote message={action.error} />}
-        <div className="flex flex-wrap gap-2">
-          <Button type="submit" loading={action.pending}>
-            Enregistrer
-          </Button>
-          <CredentialActions
-            user={user}
-            emailEnabled={emailEnabled}
-            action={action}
-            onNotice={onNotice}
+    <form onSubmit={save} className="flex flex-col gap-3">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Nom affiché">
+          <Input
+            required
+            minLength={2}
+            maxLength={120}
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
           />
-          <Button type="button" variant={active ? 'danger' : 'secondary'} onClick={toggleStatus}>
-            {active ? 'Désactiver le compte' : 'Réactiver le compte'}
-          </Button>
-        </div>
-      </fieldset>
+        </Field>
+        <Field label="Fonction">
+          <Input maxLength={120} value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} />
+        </Field>
+        <Field label="Unité de rattachement">
+          <Select value={orgUnitId} onChange={(e) => setOrgUnitId(e.target.value)}>
+            <option value="">Aucune</option>
+            {unitOptions(units).map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.label}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Niveau d’habilitation aux données">
+          <Select value={clearance} onChange={(e) => setClearance(e.target.value as Sensitivity)}>
+            {Object.entries(CLEARANCE_LABELS).map(([key, label]) => (
+              <option key={key} value={key}>
+                {label}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      </div>
+      {action.error && <ErrorNote message={action.error} />}
+      <div className="flex flex-wrap gap-2">
+        <Button type="submit" loading={action.pending}>
+          Enregistrer
+        </Button>
+        <CredentialActions
+          user={user}
+          emailEnabled={emailEnabled}
+          action={action}
+          onNotice={onNotice}
+        />
+        <Button type="button" variant={active ? 'danger' : 'secondary'} onClick={toggleStatus}>
+          {active ? 'Désactiver le compte' : 'Réactiver le compte'}
+        </Button>
+      </div>
     </form>
   );
 }

@@ -33,14 +33,20 @@ export function ConnectorCard({
 }) {
   const [editing, setEditing] = useState(false);
   const [tested, setTested] = useState<ConnectorTest | null>(null);
+  // Counts the connection tests: the tool policies start again from each.
+  const [tests, setTests] = useState(0);
   const action = useAction();
   const type = data.types.find((t) => t.type === connector.type);
   const status = STATUS[connector.status] ?? STATUS.error;
 
   async function test() {
-    setTested(
-      await action.run(() => api.post<ConnectorTest>(`/admin/connectors/${connector.id}/test`)),
+    const result = await action.run(() =>
+      api.post<ConnectorTest>(`/admin/connectors/${connector.id}/test`),
     );
+    // Counted with its answer, in the same render: the tool policies start
+    // again from this test's tools, not from the former ones.
+    setTests((n) => n + 1);
+    setTested(result);
     onChanged();
   }
 
@@ -113,6 +119,9 @@ export function ConnectorCard({
           </p>
           {connector.mcp && tested.tools.length > 0 && (
             <ToolPolicies
+              // Each test brings the server's tools and their current rules: the
+              // form starts again from them, never from a former test.
+              key={tests}
               connectorId={connector.id}
               data={data}
               tools={tested.tools}

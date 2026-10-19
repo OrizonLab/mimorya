@@ -1209,6 +1209,55 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     rechargement, et le contrôle qui avait le focus le perd ;
   - les autres formulaires de modification (rôle, politique, unité, serveur MCP,
     politique d'outil, modèle) restent à traiter de la même façon (`docs/ROADMAP.md`) ;
-  - test : `apps/web/e2e/administration.spec.ts` retient l'annuaire, vérifie que la
-    fiche rouverte n'est pas enregistrable, puis qu'elle montre ce que l'API a
-    enregistré.
+  - test : `apps/web/e2e/reloads.spec.ts` (d'abord dans `administration.spec.ts`)
+    retient l'annuaire, vérifie que la fiche rouverte n'est pas enregistrable, puis
+    qu'elle montre ce que l'API a enregistré.
+
+## ADR-042 — Tout écran chargé par l'API est verrouillé pendant son rechargement (complète ADR-041 et en remplace le verrou par formulaire)
+
+- **Date** : 2026-10-19 · **Statut** : acceptée
+- **Contexte** : ADR-041 verrouillait la seule fiche d'un compte. Les autres formulaires
+  de modification (rôle, politique, unité, serveur MCP, modèle) se ferment à
+  l'enregistrement, et la liste se recharge ensuite. Rouverts avant son arrivée, ils
+  partaient de l'ancienne ressource et l'enregistraient. De même, un bouton
+  d'activation ou de suppression agissait d'après l'ancienne liste. Enfin, `loading`
+  ne passait à vrai qu'à l'effet suivant un changement d'adresse (audit de la PR #29).
+- **Décision** :
+  - `Loaded`, qui affiche les données de `useApiData`, place son contenu dans un
+    `<fieldset disabled>` (`display: contents`, sans effet sur la mise en page)
+    tant qu'une requête est en cours. Tous ses contrôles sont désactivés :
+    formulaires, boutons d'ouverture, d'activation et de suppression. Cela vaut pour
+    tous les écrans qui l'utilisent (administration, validations, mémoire) ;
+  - `useApiData` compare la requête dont la réponse est affichée à la dernière
+    demandée (version et adresse) : `loading` est vrai dès le rendu qui la demande ;
+  - le verrou par formulaire d'ADR-041 et sa propriété `reloading` sont retirés ; un
+    formulaire qui reste ouvert après un enregistrement (fiche d'un compte) suit
+    toujours la liste par `useSyncedState` ;
+  - « Annuler » est désactivé dans un formulaire de modification tant que sa
+    modification n'a pas reçu de réponse : refermé puis rouvert pendant ce temps, il
+    serait reparti de l'ancienne ressource ; le verrou prend le relais au
+    rechargement ;
+  - les règles des outils d'un serveur MCP repartent de chaque test de connexion ;
+  - le verrou est signalé (`aria-busy`) ; un contrôle qu'il désactive garde son aspect
+    150 ms avant de prendre son aspect désactivé, pour qu'un rechargement rapide ne
+    fasse pas clignoter l'écran. C'est une animation CSS (`app/globals.css`), qui vaut
+    aussi pour un contrôle affiché pendant le verrou, et ne touche pas un contrôle
+    désactivé pour une autre raison (son propre attribut `disabled`). Exception : une
+    case à cocher native prend aussitôt l'aspect désactivé du navigateur.
+- **Conséquences** :
+  - après une modification, l'écran est brièvement désactivé, le temps du rechargement,
+    et le contrôle qui avait le focus le perd (à rendre, `docs/ROADMAP.md`) ;
+  - dans les onglets où un seul formulaire est ouvert à la fois (rôles, politiques,
+    organisation), « Modifier » sur une autre carte ferme encore le formulaire dont la
+    modification attend sa réponse ; rouvert avant celle-ci, il repart de l'ancienne
+    ressource. La fenêtre est celle de la requête : sa réponse referme le formulaire
+    rouvert ;
+  - une lecture qui ne répond pas laisse l'écran verrouillé : les requêtes n'ont pas
+    encore de délai (`docs/ROADMAP.md`) ;
+  - un écran nouveau qui affiche ses données par `Loaded` est protégé sans rien
+    ajouter ;
+  - test : `apps/web/e2e/reloads.spec.ts` retient la liste. Il vérifie que la fiche
+    d'un compte ne se modifie ni ne se ferme, et qu'un rôle ne se rouvre pas, d'après
+    l'ancienne liste, puis que la liste et le formulaire rouvert montrent ce que l'API
+    a enregistré. Il vérifie aussi qu'une fiche restée ouverte reprend, au
+    rechargement suivant, la modification faite entre-temps hors de la page.

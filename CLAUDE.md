@@ -53,7 +53,8 @@ Repères à l'intérieur des crates :
   `api/src/mail/` (envoi SMTP), `api/src/secrets/` (chiffrement AES-256-GCM des secrets),
   `api/tests/` (intégration, harnais dans `support/`).
 - `web/components/<fonctionnalité>/` (account, admin, approvals, chat, memory,
-  operations, shell), `web/components/ui/`, `web/lib/api/` (client, `contract.ts`
+  operations, shell), `web/components/ui/` (`Loaded` verrouille son contenu pendant un rechargement,
+  ADR-042), `web/lib/api/` (client, `contract.ts`
   généré par `pnpm contract`, `useApiData`), `web/lib/use-synced-state.ts` (état d'un
   formulaire repris de la liste rechargée, ADR-041), `web/lib/labels.ts`, `web/lib/format.ts`, `web/proxy.ts` et
   `web/lib/security/` (CSP à nonce par page, ADR-030), `web/e2e/` (tests de bout en

@@ -1,6 +1,6 @@
 import { Trash2 } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { Badge, Card, EmptyState } from '@/components/ui';
+import { Badge, Card, cx, DISABLED_LOOK, EmptyState } from '@/components/ui';
 import { formatDate } from '@/lib/format';
 import type { MemoryItem } from '@/lib/api';
 import { MEMORY_KINDS, type MemorySpaceInfo } from './spaces';
@@ -43,7 +43,10 @@ export function MemorySpace({
                   type="button"
                   aria-label={`Supprimer « ${m.title} »`}
                   onClick={() => onDelete(m.id)}
-                  className="rounded-md p-1.5 text-muted hover:bg-danger-soft hover:text-danger"
+                  className={cx(
+                    'rounded-md p-1.5 text-muted hover:bg-danger-soft hover:text-danger',
+                    DISABLED_LOOK,
+                  )}
                 >
                   <Trash2 className="size-4" />
                 </button>
