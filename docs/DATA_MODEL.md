@@ -62,7 +62,7 @@ erDiagram
 | `users`            | Compte personnel                                   | `email` (citext, unique global), `display_name`, `job_title`, `status` (`invited` tant que le compte n'a pas choisi son mot de passe, `active`, `disabled`), `password_hash` (argon2id, nul pour un compte invité ou SSO), `must_change_password` (mot de passe provisoire à remplacer), `clearance` (niveau de sensibilité maximal), `attributes` (ABAC : objet de 20 entrées au plus, valeurs texte, nombre, oui/non ou liste de textes, posées par l'administration, ADR-023), `locale` |
 | `org_memberships`  | Rattachement personne ↔ unité                      | `is_primary` (une seule unité principale par personne)                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `sessions`         | Sessions web                                       | `token_hash` (SHA-256 du jeton opaque), `expires_at`, `revoked_at`, `ip`, `user_agent`                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `user_invitations` | Lien d'invitation d'un compte (ADR-027)            | `user_id` (unique : une invitation en cours au plus), `token_hash` (SHA-256 du jeton du lien), `created_by_user_id`, `expires_at` (7 jours) ; supprimée à l'acceptation, au renvoi (remplacée) ou à la désactivation du compte                                                                                                                                                                                                                                                             |
+| `user_invitations` | Lien d'invitation d'un compte (ADR-027)            | `user_id` (unique : une invitation en cours au plus), `token_hash` (SHA-256 du jeton du lien), `created_by_user_id` (nul si l'exploitant l'a émise, ADR-033), `expires_at` (7 jours) ; supprimée à l'acceptation, au renvoi (remplacée) ou à la désactivation du compte                                                                                                                                                                                                                    |
 | `password_resets`  | Lien de réinitialisation du mot de passe (ADR-028) | `user_id` (unique : un lien en cours au plus), `token_hash` (SHA-256 du jeton du lien), `expires_at` (1 heure ; 24 heures s'il est envoyé par un administrateur, ADR-029) ; supprimé à l'usage, à une nouvelle demande ou un envoi par un administrateur (remplacé), si son envoi par un administrateur échoue, à tout changement du mot de passe ou du statut du compte (déclencheur sur `users`) et, expiré, par la maintenance périodique                                               |
 
 MVP : un compte appartient à **une** entreprise. Une identité multi-entreprises
@@ -118,7 +118,8 @@ Phase 2 : `skill_eval_runs`, `documents` / `document_chunks` (GED, ingestion),
 
 ## 4. Isolation et rôles PostgreSQL
 
-- Rôle **propriétaire** (`DATABASE_URL`) : exécute les migrations et le seed.
+- Rôle **propriétaire** (`DATABASE_URL`) : exécute les migrations (`mimorya-admin migrate`,
+  ADR-033) et le seed de démonstration.
 - Rôle **applicatif** `mimorya_app` (`DATABASE_APP_URL`) : `NOSUPERUSER NOBYPASSRLS`,
   non propriétaire ; droits DML sur les tables, avec ces restrictions :
   - `audit_log` : **`INSERT`/`SELECT` seulement** ;
@@ -132,7 +133,8 @@ Phase 2 : `skill_eval_runs`, `documents` / `document_chunks` (GED, ingestion),
 - Le contexte est posé par transaction : `SELECT set_config('app.tenant_id', $1, true)`.
 - Des fonctions `SECURITY DEFINER` minimales (chemin de recherche figé) couvrent les
   seuls besoins qui traversent les entreprises : `auth_find_login` (retrouver un compte
-  par e-mail à la connexion), `auth_resolve_session` (résoudre une session par
+  par e-mail à la connexion, et pour un nouveau lien d'invitation donné par l'exploitant,
+  ADR-033), `auth_resolve_session` (résoudre une session par
   l'empreinte de son jeton, avec l'obligation éventuelle de changer de mot de passe),
   `auth_find_invitation` (lire, avant connexion, l'invitation désignée par l'empreinte
   du jeton de son lien, ADR-027), `auth_find_password_reset` (de même pour un lien de

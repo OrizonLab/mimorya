@@ -16,11 +16,11 @@ use mimorya_db::repositories::users::{
     NewUser, UserPatch, create_user as insert_user, get_user, revoke_user_sessions,
     set_primary_unit, set_temporary_password_hash, update_user as patch_user,
 };
-use mimorya_db::{Database, TenantTx};
+use mimorya_db::{Database, TenantTx, is_unique_violation};
 use serde_json::{Map, Value, json};
 use uuid::Uuid;
 
-use super::{audit_entry, begin_change, current_tree, is_unique_violation, refuse_self};
+use super::{audit_entry, begin_change, current_tree, refuse_self};
 use crate::auth::credentials::{generate_temporary_password, hash_password_async};
 use crate::services::AccessContext;
 

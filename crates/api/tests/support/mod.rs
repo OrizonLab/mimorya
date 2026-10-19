@@ -7,6 +7,7 @@
 pub mod access;
 pub mod accounts;
 mod client;
+pub mod companies;
 pub mod llm;
 pub mod locks;
 pub mod mail;

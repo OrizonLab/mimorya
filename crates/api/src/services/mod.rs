@@ -10,6 +10,7 @@ pub mod invitations;
 pub mod llm;
 pub mod password_reset;
 pub mod permission_catalog;
+pub mod provisioning;
 pub mod runs;
 pub mod tenant_cache;
 

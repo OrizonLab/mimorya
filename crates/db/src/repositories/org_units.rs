@@ -27,6 +27,21 @@ pub async fn create_org_unit(conn: &mut PgConnection, input: NewOrgUnit) -> sqlx
     .await
 }
 
+/// The root of a new company's tree: the company itself.
+pub async fn create_root_unit(
+    conn: &mut PgConnection,
+    tenant_id: Uuid,
+    name: &str,
+) -> sqlx::Result<Uuid> {
+    sqlx::query_scalar(
+        "insert into org_units (tenant_id, name, type) values ($1, $2, 'company') returning id",
+    )
+    .bind(tenant_id)
+    .bind(name)
+    .fetch_one(conn)
+    .await
+}
+
 /// Fields left to `None` are unchanged; `lead_user_id: Some(None)` clears it.
 #[derive(Debug, Clone, Default)]
 pub struct OrgUnitPatch {

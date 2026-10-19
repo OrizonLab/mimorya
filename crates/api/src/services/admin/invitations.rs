@@ -7,17 +7,14 @@
 use chrono::{DateTime, Utc};
 use mimorya_core::DomainError;
 use mimorya_db::repositories::audit::append_audit;
-use mimorya_db::repositories::auth::lock_login_state;
-use mimorya_db::repositories::invitations::{NewInvitation, put_invitation};
 use mimorya_db::repositories::users::get_user;
 use serde_json::json;
 use uuid::Uuid;
 
 use super::{LinkSender, audit_entry, begin_change};
-use crate::auth::credentials::new_session_token;
 use crate::services::AccessContext;
 use crate::services::invitations::{
-    INVITATION_VALIDITY, InvitationMail, invitation_link, invitation_mail,
+    InvitationMail, RenewedInvitation, invitation_link, invitation_mail, renew_invitation,
 };
 
 const PERMISSION: &str = "user:manage";
@@ -38,34 +35,12 @@ pub async fn issue_invitation(
     user_id: Uuid,
 ) -> anyhow::Result<IssuedInvitation> {
     access.require_tenant_wide(PERMISSION)?;
-    let (token, token_hash) = new_session_token();
-    let expires_at = Utc::now() + INVITATION_VALIDITY;
     let mut tx = begin_change(sender.db, access, PERMISSION).await?;
-    // The account's row locked before its invitation, as an acceptance does:
-    // the status read here holds until the new link is stored.
-    let Some((_, status)) = lock_login_state(&mut tx, user_id).await? else {
-        return Err(DomainError::not_found("Compte introuvable").into());
-    };
+    let RenewedInvitation { token, expires_at } =
+        renew_invitation(&mut tx, user_id, Some(access.subject.user_id)).await?;
     let Some(user) = get_user(&mut tx, user_id).await? else {
         return Err(DomainError::not_found("Compte introuvable").into());
     };
-    if status != "invited" {
-        return Err(DomainError::conflict(
-            "Ce compte a déjà choisi son mot de passe ou est désactivé : pas d’invitation",
-        )
-        .into());
-    }
-    put_invitation(
-        &mut tx,
-        NewInvitation {
-            tenant_id: access.subject.tenant_id,
-            user_id,
-            token_hash: &token_hash,
-            created_by_user_id: access.subject.user_id,
-            expires_at,
-        },
-    )
-    .await?;
     let delivery = if sender.mailer.is_some() {
         "email"
     } else {

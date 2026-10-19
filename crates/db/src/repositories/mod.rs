@@ -21,6 +21,7 @@ pub mod run_events;
 pub mod runs;
 pub mod secrets;
 pub mod skills;
+pub mod tenants;
 pub mod tool_invocations;
 pub mod usage;
 pub mod users;

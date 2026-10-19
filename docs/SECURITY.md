@@ -41,6 +41,7 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   jamais au niveau de la connexion (pas de fuite par le pool).
 - Les seules opérations qui traversent les entreprises (connexion, résolution de
   session, lecture d'une invitation ou d'un lien de réinitialisation avant connexion,
+  recherche du compte d'une adresse par la commande d'exploitation `invite` (ADR-033),
   marquage des runs bloqués, purge des liens de réinitialisation expirés) passent par
   des fonctions `SECURITY DEFINER` au périmètre minimal et au `search_path` figé
   (`auth_*`, `system_*`).
@@ -139,7 +140,10 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
     (ADR-027) : jeton de 256 bits dont seule l'empreinte est conservée, envoyé par
     e-mail si un relais SMTP est configuré, sinon montré une seule fois à
     l'administrateur (`Cache-Control: no-store`), jamais journalisé ni audité ; la
-    personne y choisit son mot de passe. Pour réinitialiser un compte, l'administrateur
+    personne y choisit son mot de passe. Le premier administrateur d'une entreprise
+    est invité de même par l'exploitant de la plateforme (`mimorya-admin`, ADR-033) :
+    le lien n'apparaît que sur la sortie de sa commande, à transmettre par un canal
+    sûr. Pour réinitialiser un compte, l'administrateur
     lui envoie, si un relais est configuré, un lien de réinitialisation valable
     24 heures (ADR-029) qu'il ne voit jamais (le mot de passe actuel et les sessions
     restent valables jusqu'à son usage), ou lui donne un mot de passe provisoire

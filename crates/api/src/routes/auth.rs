@@ -10,6 +10,7 @@ use axum::response::{AppendHeaders, IntoResponse};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use mimorya_core::DomainError;
+use mimorya_core::accounts::EMAIL_MAX_LEN;
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::auth::{find_login, lock_login_state, revoke_session};
 use serde::Deserialize;
@@ -38,7 +39,7 @@ pub fn routes() -> Router<AppState> {
 #[derive(Deserialize, Validate)]
 struct LoginBody {
     #[serde(deserialize_with = "trimmed")]
-    #[validate(email, length(max = 254))]
+    #[validate(email, length(max = EMAIL_MAX_LEN))]
     email: String,
     #[validate(length(min = 1, max = 512))]
     password: String,

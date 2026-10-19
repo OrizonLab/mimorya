@@ -149,6 +149,8 @@ jobs:
           | jq '[.services | to_entries[] | select(.key != "proxy" and (.value.ports // []) != [])] | length')" = 0
       - name: Smoke test through the reverse proxy
         run: infra/docker/smoke-test.sh https://localhost
+      - name: Operator commands in the image
+        run: infra/docker/operator-test.sh https://localhost
       - name: Logs of the stack
         if: always()
         run: docker compose -f compose.demo.yml logs --no-color | tail -n 200

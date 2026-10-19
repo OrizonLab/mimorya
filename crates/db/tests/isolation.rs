@@ -4,8 +4,10 @@ mod support;
 
 use mimorya_core::demo::{tenant, user};
 use mimorya_db::Database;
+use mimorya_db::repositories::tenants::{NewTenant, create_tenant};
 use mimorya_db::testing::OTHER_TENANT_ID;
 use serde_json::json;
+use uuid::Uuid;
 
 async fn app() -> Database {
     support::connect(&support::urls(|_| {}).app).await
@@ -102,6 +104,49 @@ async fn rejects_writes_into_another_tenant() {
         .execute(&mut *tx)
         .await;
     assert!(support::db_error(update).contains("row-level security"));
+}
+
+/// The application role creates companies (ADR-033): only the one its
+/// transaction is opened for.
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn writes_no_company_but_the_transaction_s_own() {
+    let db = app().await;
+    let mut tx = db.begin(tenant::ID).await.unwrap();
+    let foreign = create_tenant(
+        &mut tx,
+        NewTenant {
+            id: Uuid::new_v4(),
+            slug: "entreprise-forgee",
+            name: "Entreprise forgée",
+        },
+    )
+    .await;
+    assert!(support::db_error(foreign).contains("row-level security"));
+    drop(tx);
+
+    let mut tx = db.begin(tenant::ID).await.unwrap();
+    let renamed = sqlx::query("update tenants set name = 'Reprise' where id = $1")
+        .bind(OTHER_TENANT_ID)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    assert_eq!(renamed.rows_affected(), 0);
+    drop(tx);
+
+    // Outside any company's transaction, no company can be written either.
+    let mut conn = db.pool().acquire().await.unwrap();
+    let id = Uuid::new_v4();
+    let unscoped = create_tenant(
+        &mut conn,
+        NewTenant {
+            id,
+            slug: "entreprise-sans-contexte",
+            name: "Entreprise sans contexte",
+        },
+    )
+    .await;
+    assert!(support::db_error(unscoped).contains("row-level security"));
 }
 
 #[tokio::test]

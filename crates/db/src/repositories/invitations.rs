@@ -38,7 +38,8 @@ pub struct NewInvitation<'a> {
     pub tenant_id: Uuid,
     pub user_id: Uuid,
     pub token_hash: &'a str,
-    pub created_by_user_id: Uuid,
+    /// `None` when the platform's operator issued it (ADR-033).
+    pub created_by_user_id: Option<Uuid>,
     pub expires_at: DateTime<Utc>,
 }
 

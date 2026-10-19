@@ -103,10 +103,3 @@ fn refuse_self(access: &AccessContext, user_id: Uuid) -> Result<(), DomainError>
     }
     Ok(())
 }
-
-fn is_unique_violation(error: &sqlx::Error) -> bool {
-    error
-        .as_database_error()
-        .and_then(|e| e.code())
-        .is_some_and(|code| code == "23505")
-}
