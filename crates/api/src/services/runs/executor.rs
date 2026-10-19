@@ -22,7 +22,8 @@ use mimorya_db::repositories::runs::{RunRow, RunStatus};
 use super::context::{build_run_system_prompt, build_tool_registry, recall_memories};
 use super::db_ports::{RunScope, engine_ports};
 use super::outcome::record_crash;
-use crate::services::access::AccessContext;
+use super::run_access::RunAccess;
+use crate::services::access::{AccessContext, AccessService};
 use crate::services::connectors::ConnectorService;
 use crate::services::event_bus::RunEventBus;
 use crate::services::llm::LlmService;
@@ -31,6 +32,8 @@ const MAX_CORRECTION_ATTEMPTS: u32 = 2;
 
 pub struct RunExecutor {
     pub db: Database,
+    /// Where each step of a run reads its user's rights again (ADR-035).
+    pub access: Arc<AccessService>,
     pub llm: Arc<LlmService>,
     pub prices: Arc<PriceTable>,
     pub connectors: Arc<ConnectorService>,
@@ -137,7 +140,11 @@ impl RunExecutor {
             .ok_or_else(|| anyhow::anyhow!("unknown autonomy level {}", run.autonomy_level))?;
         let deps = RuntimeDeps::new(
             router,
-            access.engine.clone(),
+            Arc::new(RunAccess::new(
+                self.access.clone(),
+                access.subject.tenant_id,
+                access.subject.user_id,
+            )),
             Arc::new(registry),
             ports.clone(),
             self.prices.clone(),
@@ -146,7 +153,6 @@ impl RunExecutor {
             deps,
             RunConfig {
                 run_id: run.id,
-                subject: access.subject.clone(),
                 actor,
                 objective: run.objective.clone(),
                 autonomy: AutonomyPolicy::new(level),

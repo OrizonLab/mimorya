@@ -116,6 +116,7 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
     let bus = Arc::new(RunEventBus::default());
     let executor = RunExecutor {
         db: db.clone(),
+        access: access.clone(),
         llm: llm.clone(),
         prices: llm.prices().clone(),
         connectors: connectors.clone(),

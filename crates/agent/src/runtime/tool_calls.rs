@@ -1,17 +1,23 @@
 //! Handling of the tool calls of one assistant turn: each call goes through
-//! the policy enforcement point, then is denied, queued for human validation
-//! or executed. Every outcome is logged, audited and streamed.
+//! the policy enforcement point, with the rights of the current step, then is
+//! denied, queued for human validation or executed. Every outcome is logged,
+//! audited and streamed.
 
+use std::sync::Arc;
+use std::time::Duration;
+
+use mimorya_core::authz::Actor;
+use mimorya_core::autonomy::AutonomyPolicy;
 use serde_json::{Value, json};
 use uuid::Uuid;
 
-use super::ports::{
-    ApprovalRequest, EngineAuditEntry, EnginePorts, RunEvent, ToolInvocationRecord,
-};
+use super::ports::{CurrentAccess, EngineAuditEntry, EnginePorts, RunEvent, ToolInvocationRecord};
 use super::state::{PendingApproval, RunCheckpoint};
+use super::types::{RunConfig, RuntimeDeps};
 use crate::llm::{LlmMessage, LlmToolCall, LlmToolResult};
-use crate::tools::executor::INVALID_INPUT;
-use crate::tools::{RegisteredTool, ToolCallEvaluation, ToolExecutor, wrap_untrusted};
+use crate::tools::{
+    RegisteredTool, ToolCallEvaluation, ToolExecutor, ToolRegistry, wrap_untrusted,
+};
 
 #[derive(Debug, Default)]
 pub struct TurnToolResults {
@@ -22,27 +28,54 @@ pub struct TurnToolResults {
 }
 
 pub struct ToolCallProcessor {
-    executor: ToolExecutor,
-    ports: EnginePorts,
+    registry: Arc<ToolRegistry>,
+    actor: Actor,
+    autonomy: AutonomyPolicy,
+    run_id: Uuid,
+    timeout: Duration,
+    pub(super) ports: EnginePorts,
 }
 
 impl ToolCallProcessor {
-    pub fn new(executor: ToolExecutor, ports: EnginePorts) -> Self {
-        Self { executor, ports }
+    pub fn new(deps: &RuntimeDeps, config: &RunConfig) -> Self {
+        Self {
+            registry: deps.registry.clone(),
+            actor: config.actor.clone(),
+            autonomy: config.autonomy.clone(),
+            run_id: config.run_id,
+            timeout: deps.tool_timeout,
+            ports: deps.ports.clone(),
+        }
     }
 
     pub fn tool(&self, name: &str) -> Option<RegisteredTool> {
-        self.executor.registry().get(name).cloned()
+        self.registry.get(name).cloned()
+    }
+
+    /// The policy enforcement point with the rights of the current step.
+    fn executor(&self, access: &CurrentAccess) -> ToolExecutor {
+        ToolExecutor::new(
+            access.engine.clone(),
+            self.registry.clone(),
+            access.subject.clone(),
+            self.actor.clone(),
+            self.autonomy.clone(),
+            self.run_id,
+            self.ports.deliverables.clone(),
+            self.timeout,
+        )
     }
 
     pub async fn process_turn(
         &self,
         state: &mut RunCheckpoint,
         calls: &[LlmToolCall],
+        access: &CurrentAccess,
     ) -> anyhow::Result<TurnToolResults> {
+        let executor = self.executor(access);
         let mut turn = TurnToolResults::default();
         for call in calls {
-            let evaluation = self.executor.evaluate(call);
+            let evaluation = executor.evaluate(call);
             let (title, reason) = match &evaluation {
                 ToolCallEvaluation::Allow { tool, .. } => (tool.info.title.clone(), None),
                 ToolCallEvaluation::RequireApproval { tool, reason, .. } => {
@@ -78,15 +111,18 @@ impl ToolCallProcessor {
                         .push(self.request_approval(call, &tool, input, reason).await?);
                 }
                 ToolCallEvaluation::Allow { tool, input } => {
-                    turn.results
-                        .push(self.run(state, &tool, &call.id, input, None).await?);
+                    turn.results.push(
+                        self.run(state, &tool, &call.id, input, None, access)
+                            .await?,
+                    );
                 }
             }
         }
         Ok(turn)
     }
 
-    /// Executes an allowed (or human-approved) call and turns its result into model input.
+    /// Executes an allowed (or human-approved) call, with the rights of the
+    /// current step, and turns its result into model input.
     pub async fn run(
         &self,
         state: &mut RunCheckpoint,
@@ -94,8 +130,9 @@ impl ToolCallProcessor {
         tool_call_id: &str,
         input: Value,
         approval_id: Option<Uuid>,
+        access: &CurrentAccess,
     ) -> anyhow::Result<LlmToolResult> {
-        let (result, duration_ms) = self.executor.execute(tool, input.clone()).await;
+        let (result, duration_ms) = self.executor(access).execute(tool, input.clone()).await;
         state.usage.tool_calls += 1;
         if !result.is_error {
             state.evidence.extend(result.citations.iter().cloned());
@@ -169,138 +206,6 @@ impl ToolCallProcessor {
             is_error: result.is_error,
         })
     }
-
-    /// A call refused by a human (or whose tool disappeared) is reported to the model.
-    pub async fn reject(
-        &self,
-        approval: &PendingApproval,
-        reason: String,
-    ) -> anyhow::Result<LlmToolResult> {
-        self.ports
-            .tool_log
-            .record(ToolInvocationRecord {
-                tool_call_id: approval.tool_call_id.clone(),
-                tool_name: approval.tool_name.clone(),
-                input: approval.input.clone(),
-                decision: "require_approval",
-                decision_reason: Some(reason.clone()),
-                status: "rejected",
-                output_summary: None,
-                error: None,
-                duration_ms: None,
-                approval_id: Some(approval.approval_id),
-            })
-            .await?;
-        Ok(LlmToolResult {
-            tool_call_id: approval.tool_call_id.clone(),
-            content: json!({ "erreur": reason }).to_string(),
-            is_error: true,
-        })
-    }
-
-    async fn deny(&self, call: &LlmToolCall, reason: String) -> anyhow::Result<LlmToolResult> {
-        self.ports
-            .tool_log
-            .record(ToolInvocationRecord {
-                tool_call_id: call.id.clone(),
-                tool_name: call.name.clone(),
-                input: call.input.clone(),
-                decision: "deny",
-                decision_reason: Some(reason.clone()),
-                status: "denied",
-                output_summary: None,
-                error: None,
-                duration_ms: None,
-                approval_id: None,
-            })
-            .await?;
-        self.ports
-            .audit
-            .record(EngineAuditEntry {
-                action: "agent.tool.denied".into(),
-                outcome: "denied",
-                resource_type: Some("tool".into()),
-                resource_id: Some(call.name.clone()),
-                reason: Some(audit_reason(&reason)),
-                metadata: json!({}),
-            })
-            .await?;
-        Ok(LlmToolResult {
-            tool_call_id: call.id.clone(),
-            content: json!({
-                "erreur": format!("Refusé par la plateforme : {reason}"),
-                "consigne": "Ne tente pas de contourner ce refus ; adapte ta réponse ou explique la limite.",
-            })
-            .to_string(),
-            is_error: true,
-        })
-    }
-
-    async fn request_approval(
-        &self,
-        call: &LlmToolCall,
-        tool: &RegisteredTool,
-        input: Value,
-        reason: String,
-    ) -> anyhow::Result<PendingApproval> {
-        let action_summary = tool
-            .tool
-            .describe_action(&input)
-            .unwrap_or_else(|| format!("{} ({})", tool.info.title, call.name));
-        let approval_id = self
-            .ports
-            .approvals
-            .create(ApprovalRequest {
-                tool_name: tool.info.name.clone(),
-                tool_call_id: call.id.clone(),
-                action_summary: action_summary.clone(),
-                payload: input.clone(),
-                risk: tool.info.risk,
-                reason: reason.clone(),
-            })
-            .await?;
-        self.ports
-            .tool_log
-            .record(ToolInvocationRecord {
-                tool_call_id: call.id.clone(),
-                tool_name: tool.info.name.clone(),
-                input: input.clone(),
-                decision: "require_approval",
-                decision_reason: Some(reason.clone()),
-                status: "awaiting_approval",
-                output_summary: None,
-                error: None,
-                duration_ms: None,
-                approval_id: Some(approval_id),
-            })
-            .await?;
-        self.ports
-            .audit
-            .record(EngineAuditEntry {
-                action: "agent.approval.requested".into(),
-                outcome: "success",
-                resource_type: Some("approval".into()),
-                resource_id: Some(approval_id.to_string()),
-                reason: Some(reason),
-                metadata: json!({ "toolName": tool.info.name, "risk": tool.info.risk }),
-            })
-            .await?;
-        self.ports
-            .events
-            .emit(RunEvent::ApprovalRequested {
-                approval_id,
-                tool_name: tool.info.name.clone(),
-                action_summary,
-                risk: tool.info.risk,
-            })
-            .await?;
-        Ok(PendingApproval {
-            approval_id,
-            tool_call_id: call.id.clone(),
-            tool_name: tool.info.name.clone(),
-            input,
-        })
-    }
 }
 
 /// Tool results are returned in the order the model requested the calls.
@@ -323,14 +228,4 @@ fn error_text(content: &Value, summary: &str) -> String {
     content["erreur"]
         .as_str()
         .map_or_else(|| summary.to_string(), str::to_string)
-}
-
-/// The audit keeps why a call was refused, never the input it carried
-/// (validation messages may quote it); the tool log keeps the detail.
-fn audit_reason(reason: &str) -> String {
-    if reason.starts_with(INVALID_INPUT) {
-        INVALID_INPUT.to_string()
-    } else {
-        reason.to_string()
-    }
 }

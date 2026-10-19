@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use mimorya_core::authz::Sensitivity;
+use mimorya_core::authz::{AuthorizationEngine, Sensitivity, Subject};
 use mimorya_core::autonomy::ToolRisk;
 use mimorya_core::memory::{MemoryKind, MemoryReadFilter, MemoryScope, MemorySource, MemoryStatus};
 use mimorya_core::tools::DeliverableService;
@@ -234,6 +234,31 @@ pub trait RunStore: Send + Sync {
     /// on that event and must find the outcome saved, and a decision on an
     /// approval must find the run paused.
     async fn finish(&self, outcome: &RunOutcome) -> anyhow::Result<()>;
+}
+
+/// The rights a run acts with at one step: the company's rules and the user's
+/// assignments and attributes.
+#[derive(Clone)]
+pub struct CurrentAccess {
+    pub engine: Arc<AuthorizationEngine>,
+    pub subject: Arc<Subject>,
+}
+
+/// What a run may do at one step.
+#[derive(Clone)]
+pub enum StepAccess {
+    /// The rights it acts with.
+    Granted(CurrentAccess),
+    /// The run must stop here: why, as the user reads it (French).
+    Ended(String),
+}
+
+/// Where a run reads its user's rights before each step (ADR-035): an account
+/// disabled, or a right withdrawn, while the run goes on stops counting at
+/// the next step instead of at the end of the run.
+#[async_trait]
+pub trait AccessSource: Send + Sync {
+    async fn current(&self) -> anyhow::Result<StepAccess>;
 }
 
 #[derive(Clone)]

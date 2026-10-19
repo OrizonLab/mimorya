@@ -13,6 +13,7 @@ use uuid::Uuid;
 
 use crate::authz::{Actor, AuthorizationEngine, DataScope, Decision, ResourceRef, Subject};
 use crate::autonomy::ToolRisk;
+use crate::memory::{MemoryReadFilter, MemoryTarget, can_write_memory, memory_read_filter};
 
 /// LLM providers accept `^[a-zA-Z0-9_-]{1,64}$`; we use `<namespace>_<action>`.
 static TOOL_NAME_RE: LazyLock<Regex> =
@@ -224,6 +225,16 @@ impl BoundAuthorization {
             subject,
             actor,
         }
+    }
+
+    /// The memories the subject may read through this actor.
+    pub fn memory_read_filter(&self) -> MemoryReadFilter {
+        memory_read_filter(&self.engine, &self.subject, &self.actor)
+    }
+
+    /// Whether the subject may write `target` directly through this actor.
+    pub fn can_write_memory(&self, target: MemoryTarget) -> bool {
+        can_write_memory(&self.engine, &self.subject, target, &self.actor)
     }
 
     pub fn scope(&self, permission: &str) -> DataScope {

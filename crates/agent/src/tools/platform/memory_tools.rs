@@ -3,12 +3,8 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use mimorya_core::authz::AuthorizationEngine;
 use mimorya_core::autonomy::ToolRisk;
-use mimorya_core::memory::{
-    MemoryKind, MemoryScope, MemorySource, MemoryStatus, MemoryTarget, can_write_memory,
-    memory_read_filter,
-};
+use mimorya_core::memory::{MemoryKind, MemoryScope, MemorySource, MemoryStatus, MemoryTarget};
 use mimorya_core::tools::{Citation, ToolContext, ToolInfo, ToolResult, TypedTool};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -20,7 +16,6 @@ use crate::runtime::ports::{MemoryStore, NewMemory};
 const DEFAULT_SEARCH_LIMIT: u32 = 5;
 
 pub struct MemorySearch {
-    pub engine: Arc<AuthorizationEngine>,
     pub memory: Arc<dyn MemoryStore>,
 }
 
@@ -50,7 +45,7 @@ impl TypedTool for MemorySearch {
     }
 
     async fn run(&self, input: MemorySearchInput, ctx: &ToolContext) -> anyhow::Result<ToolResult> {
-        let filter = memory_read_filter(&self.engine, &ctx.subject, &ctx.actor);
+        let filter = ctx.authz.memory_read_filter();
         let limit = input.limit.unwrap_or(DEFAULT_SEARCH_LIMIT);
         let hits = self
             .memory
@@ -122,7 +117,6 @@ impl From<RememberedKind> for MemoryKind {
 }
 
 pub struct MemoryRemember {
-    pub engine: Arc<AuthorizationEngine>,
     pub memory: Arc<dyn MemoryStore>,
 }
 
@@ -184,7 +178,7 @@ impl TypedTool for MemoryRemember {
         }
         // Proposals to shared spaces are allowed for every member; they only
         // become visible once validated by someone holding memory:write.
-        let direct = can_write_memory(&self.engine, &ctx.subject, target, &ctx.actor);
+        let direct = ctx.authz.can_write_memory(target);
         let status = if matches!(input.space, MemorySpace::Personal) && direct {
             MemoryStatus::Active
         } else {

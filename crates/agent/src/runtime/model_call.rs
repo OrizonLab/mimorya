@@ -1,10 +1,70 @@
-//! Model calls with bounded retries, and the accounting of what they cost.
+//! Model calls with the tools the user may use at this step, bounded
+//! retries, and the accounting of what they cost.
 
+use std::sync::Arc;
 use std::time::Duration;
 
-use super::ports::{EnginePorts, RunEvent, UsageRecord};
+use super::ports::{CurrentAccess, EnginePorts, RunEvent, UsageRecord};
 use super::state::RunCheckpoint;
-use crate::llm::{LlmError, LlmProvider, LlmRequest, LlmResponse, PriceTable};
+use super::types::{RunConfig, RuntimeDeps};
+use crate::llm::{
+    LlmError, LlmErrorKind, LlmProvider, LlmRequest, LlmResponse, PriceTable, TaskClass,
+};
+use crate::tools::to_tool_spec;
+
+pub enum ModelTurn {
+    Response(Box<LlmResponse>),
+    Failed(String),
+}
+
+/// One model call with the tools visible to the subject at this step;
+/// provider failures end the run.
+pub async fn call_model(
+    deps: &RuntimeDeps,
+    config: &RunConfig,
+    state: &mut RunCheckpoint,
+    access: &CurrentAccess,
+) -> anyhow::Result<ModelTurn> {
+    let tools = deps
+        .registry
+        .visible_to(
+            &access.engine,
+            &access.subject,
+            &config.actor,
+            &config.autonomy,
+        )
+        .into_iter()
+        .map(to_tool_spec)
+        .collect();
+    let events = deps.ports.events.clone();
+    let request = LlmRequest {
+        system: state.system.clone(),
+        messages: state.messages.clone(),
+        tools,
+        max_output_tokens: None,
+        effort: config.effort,
+        on_text_delta: Some(Arc::new(move |text: &str| events.publish_delta(text))),
+    };
+    let provider = deps.router.provider_for(TaskClass::Agent);
+    match complete_with_retry(
+        provider.as_ref(),
+        &request,
+        deps.max_provider_retries,
+        deps.retry_delay,
+    )
+    .await
+    {
+        Ok(response) => {
+            state.usage.steps += 1;
+            record_model_usage(&deps.ports, &deps.prices, state, &response).await?;
+            Ok(ModelTurn::Response(Box::new(response)))
+        }
+        Err(error) if error.kind == LlmErrorKind::Aborted => {
+            Ok(ModelTurn::Failed("Exécution annulée".into()))
+        }
+        Err(error) => Ok(ModelTurn::Failed(error.message)),
+    }
+}
 
 /// Retries retryable provider errors with exponential backoff.
 pub async fn complete_with_retry(

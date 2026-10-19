@@ -182,9 +182,15 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
     - les comptes créés ou réinitialisés avant la migration `0007` ne sont pas tenus
       de remplacer leur mot de passe provisoire (ADR-021) : sur une instance déjà en
       service, les réinitialiser au besoin ;
-    - un run d'agent déjà lancé garde les droits calculés à son démarrage jusqu'à sa
-      fin (bornée par son budget de durée), même si le compte est désactivé ou perd
-      une habilitation entre-temps.
+    - un run d'agent en cours relit les droits de son utilisateur avant chaque appel au
+      modèle, avant les appels d'outils qu'il renvoie, avant de conclure une réponse et
+      à la reprise après validation (ADR-035) : un compte désactivé, ou privé de
+      `agent:use`, l'arrête à ce moment ; une habilitation retirée ne compte plus. Restent
+      acquis au run : ses consignes et mémoires rappelées au démarrage, les résultats
+      d'outils déjà obtenus, l'outil en cours d'exécution (délai borné), le registre
+      d'outils jusqu'à la pause ou la fin et le niveau d'autonomie. Les règles de
+      l'entreprise (rôles, politiques) viennent de son cache, invalidé par chaque
+      changement d'administration de cette instance de l'API.
 
 ## 6. Sécurité de l'agent
 
