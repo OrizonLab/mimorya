@@ -264,8 +264,8 @@ DENY`, `Permissions-Policy` et `Cross-Origin-Opener-Policy: same-origin` ;
 default-src 'none'; frame-ancestors 'none'`, `X-Content-Type-Options: nosniff`,
     `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer` et `Cache-Control:
 no-store` (le flux d'événements garde `no-cache, no-transform`) ;
-  - **HSTS** : à poser par le reverse proxy qui termine TLS (exemple fourni :
-    `infra/caddy/Caddyfile`, ADR-032), par exemple
+  - **HSTS** : à poser par le reverse proxy qui termine TLS (fourni :
+    `infra/caddy/Caddyfile`, ADR-032 et ADR-034), par exemple
     `Strict-Transport-Security: max-age=63072000; includeSubDomains` (ajouter
     `preload` seulement après inscription du domaine). L'application ne le pose pas :
     elle ne sait pas si elle est servie en HTTPS.

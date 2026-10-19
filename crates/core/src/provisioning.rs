@@ -1,13 +1,19 @@
 //! Rules of a company created by the platform's operator (ADR-033): its
 //! name, and its short name (`slug`), unique across the platform.
 
+/// Shortest company name, in characters.
+pub const COMPANY_NAME_MIN_CHARS: usize = 2;
+/// Longest company name, in characters.
+pub const COMPANY_NAME_MAX_CHARS: usize = 120;
+
 /// Why `name` (trimmed by the caller) cannot name a company, if it cannot.
-pub fn company_name_problem(name: &str) -> Option<&'static str> {
-    if (2..=120).contains(&name.chars().count()) {
-        None
-    } else {
-        Some("Le nom de l’entreprise compte de 2 à 120 caractères")
-    }
+pub fn company_name_problem(name: &str) -> Option<String> {
+    let chars = name.chars().count();
+    (!(COMPANY_NAME_MIN_CHARS..=COMPANY_NAME_MAX_CHARS).contains(&chars)).then(|| {
+        format!(
+            "Le nom de l’entreprise compte de {COMPANY_NAME_MIN_CHARS} à {COMPANY_NAME_MAX_CHARS} caractères"
+        )
+    })
 }
 
 /// Why `slug` cannot name a company, if it cannot: 2 to 63 lower-case ASCII

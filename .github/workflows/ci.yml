@@ -131,26 +131,44 @@ jobs:
           retention-days: 7
 
   docker:
-    name: Docker images (demonstration stack)
+    name: Docker images (demonstration and production stacks)
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      # Not a secret: the stack only lives for this job.
+      # Not secrets: the stacks only live for this job.
       DEMO_PASSWORD: ci-demo-${{ github.run_id }}
+      MIMORYA_DOMAIN: localhost
+      MIMORYA_TLS: internal
     steps:
       - uses: actions/checkout@v4
+      - name: Choose the production stack's database passwords
+        run: |
+          echo "POSTGRES_PASSWORD=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
+          echo "MIMORYA_APP_DB_PASSWORD=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
       - name: Build the images
-        run: docker compose -f compose.demo.yml build
+        run: |
+          docker compose -f compose.demo.yml build
+          docker compose -f compose.production.yml build
+      - name: Only the proxy publishes ports
+        run: |
+          for file in compose.demo.yml compose.production.yml; do
+            published=$(docker compose -f "$file" config --format json |
+              jq '[.services | to_entries[] | select(.key != "proxy" and (.value.ports // []) != [])] | length')
+            test "$published" = 0 || { echo "$file publishes ports besides the proxy" >&2; exit 1; }
+          done
       - name: Start the demonstration stack
         run: docker compose -f compose.demo.yml up -d
-      - name: Only the proxy publishes ports
-        run: >-
-          test "$(docker compose -f compose.demo.yml config --format json
-          | jq '[.services | to_entries[] | select(.key != "proxy" and (.value.ports // []) != [])] | length')" = 0
-      - name: Smoke test through the reverse proxy
+      - name: Smoke test of the demonstration stack
         run: infra/docker/smoke-test.sh https://localhost
-      - name: Operator commands in the image
-        run: infra/docker/operator-test.sh https://localhost
-      - name: Logs of the stack
+      - name: Logs of the demonstration stack
         if: always()
         run: docker compose -f compose.demo.yml logs --no-color | tail -n 200
+      - name: Stop the demonstration stack
+        run: docker compose -f compose.demo.yml down -v
+      - name: Start the production stack
+        run: docker compose -f compose.production.yml up -d
+      - name: Installation test of the production stack
+        run: infra/docker/production-test.sh https://localhost
+      - name: Logs of the production stack
+        if: always()
+        run: docker compose -f compose.production.yml logs --no-color | tail -n 200

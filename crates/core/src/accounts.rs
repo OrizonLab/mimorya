@@ -9,21 +9,30 @@ pub const DISPLAY_NAME_MIN_CHARS: u64 = 2;
 /// Longest display name, in characters.
 pub const DISPLAY_NAME_MAX_CHARS: u64 = 120;
 
-/// Whether `name` (trimmed by the caller) has an acceptable length.
-pub fn display_name_fits(name: &str) -> bool {
+/// Why `name` (trimmed by the caller) cannot be the display name of `whom`
+/// (« de l’administrateur »…), if it cannot.
+pub fn display_name_problem(name: &str, whom: &str) -> Option<String> {
     let chars = name.chars().count() as u64;
-    (DISPLAY_NAME_MIN_CHARS..=DISPLAY_NAME_MAX_CHARS).contains(&chars)
+    (!(DISPLAY_NAME_MIN_CHARS..=DISPLAY_NAME_MAX_CHARS).contains(&chars)).then(|| {
+        format!(
+            "Le nom {whom} compte de {DISPLAY_NAME_MIN_CHARS} à {DISPLAY_NAME_MAX_CHARS} caractères"
+        )
+    })
 }
 
 #[cfg(test)]
 mod tests {
-    use super::display_name_fits;
+    use super::display_name_problem;
 
     #[test]
     fn counts_characters_not_bytes() {
-        assert!(display_name_fits("Lé"));
-        assert!(display_name_fits(&"é".repeat(120)));
-        assert!(!display_name_fits("L"));
-        assert!(!display_name_fits(&"é".repeat(121)));
+        let whom = "de l’administrateur";
+        assert_eq!(display_name_problem("Lé", whom), None);
+        assert_eq!(display_name_problem(&"é".repeat(120), whom), None);
+        assert_eq!(
+            display_name_problem("L", whom).as_deref(),
+            Some("Le nom de l’administrateur compte de 2 à 120 caractères")
+        );
+        assert!(display_name_problem(&"é".repeat(121), whom).is_some());
     }
 }

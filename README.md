@@ -64,8 +64,8 @@ infra/docker/smoke-test.sh                       # vérification : HSTS, CSP, AP
 Seul Caddy publie des ports (80 et 443) ; la base n'est joignable que par les conteneurs
 de la pile. Variables facultatives (fichier `.env` ou environnement) : `ANTHROPIC_API_KEY`
 (ou `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL`) pour converser,
-`MIMORYA_MASTER_KEY`, `SMTP_URL` et `MAIL_FROM`, `MIMORYA_DOMAIN` (puis retirer
-`tls internal` de `infra/caddy/Caddyfile` pour un certificat public).
+`MIMORYA_MASTER_KEY`, `SMTP_URL` et `MAIL_FROM`, `MIMORYA_DOMAIN` et `MIMORYA_TLS` (une
+adresse e-mail pour un certificat public ; `internal` par défaut, certificat local).
 
 **À savoir avant de l'exposer** : la pile contient des comptes d'administration fictifs
 que la page de connexion liste, et qui se connectent tous avec `DEMO_PASSWORD` ; choisissez
@@ -101,9 +101,38 @@ lien d'invitation (valable 7 jours) n'est affiché qu'une fois : transmettez-le 
 sûr, l'administrateur y choisit son mot de passe puis construit son organisation depuis
 l'administration. Lancez ces commandes dans un terminal (par exemple
 `docker compose exec api mimorya-admin …`), pas comme une tâche dont la sortie est
-conservée par un collecteur de journaux : le lien y resterait. En développement : `pnpm db:migrate`. Il n'existe pas encore de pile
-conteneurisée de production (voir la feuille de route) : l'API, l'interface (sans
-`NEXT_PUBLIC_DEMO_MODE`) et PostgreSQL se déploient avec vos propres identifiants.
+conservée par un collecteur de journaux : le lien y resterait. En développement :
+`pnpm db:migrate`.
+
+### Pile conteneurisée de production
+
+`compose.production.yml` (ADR-034) installe la même chose en conteneurs, sans données
+fictives : PostgreSQL (rôles créés avec vos mots de passe), migrations, API, interface et
+Caddy (HTTPS, HSTS). Seul Caddy publie des ports. Les identifiants se choisissent dans un
+fichier d'environnement gardé hors du dépôt :
+
+```bash
+cat > .env.production <<VARIABLES
+POSTGRES_PASSWORD=$(openssl rand -hex 32)
+MIMORYA_APP_DB_PASSWORD=$(openssl rand -hex 32)
+MIMORYA_DOMAIN=mimorya.acme.example
+MIMORYA_TLS=exploitation@acme.example
+VARIABLES
+docker compose --env-file .env.production -f compose.production.yml up -d --build
+docker compose --env-file .env.production -f compose.production.yml exec api \
+  mimorya-admin create-company --name 'Acme Industrie' --slug acme \
+  --admin-email jeanne.martin@acme.example --admin-name 'Jeanne Martin'
+```
+
+Les deux mots de passe de base passent dans des URL de connexion : lettres et chiffres
+seulement, 16 au moins (la base refuse de s'initialiser sinon ; supprimez alors son volume
+avant de recommencer). `MIMORYA_TLS` vaut une adresse e-mail pour un certificat public
+(ports 80 et 443 joignables depuis Internet) ou `internal` (certificat local de Caddy).
+Mêmes variables facultatives que la pile de démonstration (fournisseur de modèle,
+`MIMORYA_MASTER_KEY`, relais SMTP). La vérification de la CI
+(`infra/docker/production-test.sh`) suit ce parcours jusqu'à la première connexion de
+l'administrateur. Restent à faire : publication des images dans un registre, sauvegardes
+(voir la feuille de route).
 
 ## Qualité
 

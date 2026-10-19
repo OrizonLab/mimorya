@@ -873,8 +873,9 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - chaque création est auditée dans l'entreprise par l'acteur `system`
     (`tenant.created`, `user.created`, `role.assigned`, `user.invited` avec
     `delivery: "operator"`) ; l'invitation n'a pas d'auteur (`created_by_user_id` nul) ;
-  - un job de CI exécute ces commandes dans l'image, sur la pile de démonstration
-    (`infra/docker/operator-test.sh`), jusqu'à l'ouverture du lien à travers le proxy.
+  - un job de CI exécute ces commandes dans l'image jusqu'à l'ouverture du lien à travers
+    le proxy (sur la pile de production depuis l'ADR-034 :
+    `infra/docker/production-test.sh`).
 - **Conséquences** :
   - une installation privée démarre sans données fictives : migrations, puis entreprise
     et administrateur, puis l'API et l'interface (`NEXT_PUBLIC_DEMO_MODE` non activé) ;
@@ -884,6 +885,49 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - l'exploitant, qui détient les accès à la base, crée des entreprises sans autre
     contrôle : c'est le rôle de la plateforme, pas une fonction offerte aux entreprises.
     L'inscription en libre-service reste en phase 3 ;
-  - il manque encore une pile conteneurisée de production : la pile de démonstration
-    (ADR-032) garde ses rôles de base aux mots de passe de développement, acceptables
-    seulement parce que la base n'y est jamais publiée (feuille de route).
+  - la pile conteneurisée de production est venue ensuite (ADR-034) ; la pile de
+    démonstration (ADR-032) garde ses rôles de base aux mots de passe de développement,
+    acceptables seulement parce que la base n'y est jamais publiée.
+
+## ADR-034 — Pile conteneurisée de production
+
+- **Date** : 2026-10-19 · **Statut** : acceptée
+- **Contexte** : la pile de démonstration (ADR-032) n'existe qu'avec les données fictives
+  et des rôles de base aux mots de passe de développement ; les commandes d'exploitation
+  (ADR-033) permettent désormais de démarrer sans données fictives. Il manquait la pile
+  qui les assemble pour une installation privée.
+- **Décision** : `compose.production.yml` (projet `mimorya`) :
+  - `db` : PostgreSQL 16 + pgvector, sans port publié, volume propre. Les mots de passe
+    du propriétaire du schéma (`POSTGRES_PASSWORD`) et du rôle applicatif
+    (`MIMORYA_APP_DB_PASSWORD`) sont **obligatoires** et choisis à l'installation ;
+    `infra/postgres/init-production.sh` crée `mimorya_app` (connexion, sans
+    `BYPASSRLS`) avec le second et les extensions. Comme ils passent dans des URL de
+    connexion, il exige des lettres et des chiffres seulement, 16 au moins
+    (`openssl rand -hex 32`), et fait échouer l'initialisation sinon ;
+  - `migrate` : `mimorya-admin migrate` (rôle propriétaire), puis arrêt ; l'API ne
+    démarre qu'après son succès ;
+  - `api` (production, `TRUST_PROXY`, rôle applicatif), `web` construite **sans** mode
+    démonstration (image `mimorya-web:production` ; celle de la démonstration devient
+    `mimorya-web:demo`) et Caddy ; `restart: unless-stopped` sur les services durables ;
+  - le Caddyfile, commun aux deux piles, prend le mode TLS dans `MIMORYA_TLS` :
+    `internal` (autorité locale de Caddy, défaut de la démonstration) ou une adresse
+    e-mail (certificat public ACME). La pile de production l'exige, ainsi que
+    `MIMORYA_DOMAIN` ;
+  - la CI construit les images des deux piles, vérifie que seul le proxy publie des
+    ports dans chacune, teste la démonstration, l'arrête, puis installe la production
+    avec des mots de passe tirés au hasard et la vérifie à travers le proxy
+    (`infra/docker/production-test.sh`) : en-têtes, API, conteneurs `api` et `web` hors
+    root, aucun compte de démonstration (page et connexion), entreprise créée par
+    `mimorya-admin`, invitation acceptée, session `Secure` dans une entreprise qui n'est
+    pas une démonstration. Les vérifications communes aux deux piles sont dans
+    `infra/docker/checks.sh`.
+- **Conséquences** :
+  - une installation privée se fait en deux commandes (démarrage, création de la
+    première entreprise), sans aucun identifiant connu d'avance ;
+  - si l'initialisation de la base échoue (mot de passe refusé), son répertoire de
+    données existe déjà : il faut supprimer le volume avant de recommencer (README) ;
+  - restent à faire : publication des images dans un registre et cache de leur
+    construction en CI, sauvegardes chiffrées et restauration testée (phase 3) ;
+  - les images de base ne sont pas épinglées par empreinte (`rust:1-bookworm`,
+    `node:22-bookworm-slim`, `caddy:2.10-alpine`, `pgvector/pgvector:pg16`) : une
+    reconstruction peut prendre une version corrective plus récente.
