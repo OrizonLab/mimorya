@@ -10,13 +10,13 @@ use axum::response::{AppendHeaders, IntoResponse};
 use axum::routing::post;
 use axum::{Json, Router};
 use serde::Deserialize;
-use serde_json::{Value, json};
 use validator::Validate;
 
 use crate::app::AppState;
 use crate::auth::cookies::session_cookie;
 use crate::auth::credentials::MIN_PASSWORD_CHARS;
-use crate::http::{ApiError, ApiResult, Body, iso};
+use crate::contract::{Done, InvitationDetails};
+use crate::http::{ApiError, ApiResult, Body};
 use crate::plugins::RequestContext;
 use crate::services::invitations::{accept_invitation, inspect_invitation};
 
@@ -44,17 +44,12 @@ async fn inspect(
     State(state): State<AppState>,
     context: RequestContext,
     Body(body): Body<TokenBody>,
-) -> ApiResult<Json<Value>> {
+) -> ApiResult<Json<InvitationDetails>> {
     if !state.limits.login.allow(&context.client_key()) {
         return Err(ApiError::RateLimited);
     }
     let invitation = inspect_invitation(&state.db, &body.token).await?;
-    Ok(Json(json!({
-        "email": invitation.email,
-        "displayName": invitation.display_name,
-        "company": invitation.company,
-        "expiresAt": iso(&invitation.expires_at),
-    })))
+    Ok(Json((&invitation).into()))
 }
 
 async fn accept(
@@ -69,8 +64,5 @@ async fn accept(
     let session =
         accept_invitation(&state.db, &body.token, body.password, &context, &headers).await?;
     let cookie = session_cookie(&session, state.config.secure_cookies);
-    Ok((
-        AppendHeaders([(SET_COOKIE, cookie)]),
-        Json(json!({ "ok": true })),
-    ))
+    Ok((AppendHeaders([(SET_COOKIE, cookie)]), Json(Done::OK)))
 }

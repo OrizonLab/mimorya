@@ -2,15 +2,9 @@
 
 import { useState, type FormEvent } from 'react';
 import { Button, Card, ErrorNote } from '@/components/ui';
-import { api, useAction } from '@/lib/api';
+import { api, useAction, type ResetDetails } from '@/lib/api';
 import { formatDate } from '@/lib/format';
 import { EMPTY_NEW_PASSWORD, NewPasswordFields, passwordsDiffer } from './new-password-fields';
-
-/** What a reset link opens, as returned by `/auth/password-reset/link`. */
-export interface ResetView {
-  email: string;
-  expiresAt: string;
-}
 
 /** Chooses the new password; the API ends every other session and signs this one in. */
 export function ResetPasswordForm({
@@ -19,7 +13,7 @@ export function ResetPasswordForm({
   onReset,
 }: {
   token: string;
-  reset: ResetView;
+  reset: ResetDetails;
   onReset: () => void;
 }) {
   const [chosen, setChosen] = useState(EMPTY_NEW_PASSWORD);

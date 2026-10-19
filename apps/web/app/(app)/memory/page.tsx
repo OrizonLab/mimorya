@@ -6,13 +6,12 @@ import {
   MemoryProposals,
   MemorySpace,
   PersonalMemoryForm,
-  type MemoryItem,
 } from '@/components/memory';
 import { ErrorNote, Loaded, PageHeader } from '@/components/ui';
-import { api, ApiError, useApiData } from '@/lib/api';
+import { api, ApiError, useApiData, type MemoryList } from '@/lib/api';
 
 export default function MemoryPage() {
-  const state = useApiData<{ items: MemoryItem[] }>('/memory');
+  const state = useApiData<MemoryList>('/memory');
   const [error, setError] = useState<string | null>(null);
 
   /** Runs a change, then reloads the list; returns whether it succeeded. */

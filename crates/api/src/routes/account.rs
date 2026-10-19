@@ -5,11 +5,11 @@ use axum::routing::post;
 use axum::{Json, Router};
 use mimorya_core::DomainError;
 use serde::Deserialize;
-use serde_json::{Value, json};
 use validator::Validate;
 
 use crate::app::AppState;
 use crate::auth::credentials::MIN_PASSWORD_CHARS;
+use crate::contract::Done;
 use crate::http::{ApiError, ApiResult, Body};
 use crate::plugins::AuthPendingPasswordChange;
 use crate::services::account::{self, PasswordChange};
@@ -32,7 +32,7 @@ async fn change_password(
     // The route that lets an account replace its temporary password.
     AuthPendingPasswordChange(identity): AuthPendingPasswordChange,
     Body(body): Body<PasswordBody>,
-) -> ApiResult<Json<Value>> {
+) -> ApiResult<Json<Done>> {
     if body.new_password == body.current_password {
         return Err(DomainError::validation("Le nouveau mot de passe doit être différent").into());
     }
@@ -56,7 +56,7 @@ async fn change_password(
         state.limits.failed_logins.release(&account_key);
     }
     match outcome? {
-        PasswordChange::Changed => Ok(Json(json!({ "ok": true }))),
+        PasswordChange::Changed => Ok(Json(Done::OK)),
         PasswordChange::WrongCurrentPassword => {
             Err(DomainError::forbidden("Mot de passe actuel incorrect").into())
         }

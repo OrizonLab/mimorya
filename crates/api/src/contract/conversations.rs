@@ -1,7 +1,6 @@
 //! Conversations of the signed-in user, their messages and the runs they
 //! started.
 
-use anyhow::bail;
 use mimorya_core::tools::Citation as ToolCitation;
 use mimorya_db::repositories::conversations::{ConversationRow, MessageRow};
 use serde::{Deserialize, Serialize};
@@ -9,7 +8,7 @@ use ts_rs::TS;
 use uuid::Uuid;
 
 use super::runs::{RunRef, RunStatus, Verification};
-use super::stored::stored;
+use super::stored::{stored, stored_text};
 use crate::http::iso;
 
 #[derive(Debug, Serialize, TS)]
@@ -42,7 +41,7 @@ pub struct ConversationCreated {
     pub conversation: ConversationSummary,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "lowercase")]
 pub enum MessageRole {
     User,
@@ -103,14 +102,9 @@ pub struct Message {
 
 impl Message {
     pub fn from_row(m: &MessageRow) -> anyhow::Result<Self> {
-        let role = match m.role.as_str() {
-            "user" => MessageRole::User,
-            "assistant" => MessageRole::Assistant,
-            _ => bail!("stored message role does not match the API contract"),
-        };
         Ok(Self {
             id: m.id,
-            role,
+            role: stored_text("message role", &m.role)?,
             content: m.content.clone(),
             run_id: m.run_id,
             metadata: stored("message metadata", &m.metadata)?,

@@ -1,10 +1,11 @@
 'use client';
 
-import { InvitationForm, LinkPage, useLinkToken, type InvitationView } from '@/components/account';
+import { InvitationForm, LinkPage, useLinkToken } from '@/components/account';
+import type { InvitationDetails } from '@/lib/api';
 
 /** Opened from an invitation link (`/invitation#<token>`), before any sign-in. */
 export default function InvitationPage() {
-  const state = useLinkToken<InvitationView>(
+  const state = useLinkToken<InvitationDetails>(
     '/auth/invitation',
     'Invitation impossible à vérifier',
   );

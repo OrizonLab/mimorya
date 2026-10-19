@@ -14,13 +14,13 @@ use axum::{Json, Router};
 use mimorya_core::DomainError;
 use mimorya_core::accounts::EMAIL_MAX_LEN;
 use serde::Deserialize;
-use serde_json::{Value, json};
 use validator::Validate;
 
 use crate::app::AppState;
 use crate::auth::cookies::session_cookie;
 use crate::auth::credentials::MIN_PASSWORD_CHARS;
-use crate::http::{ApiError, ApiResult, Body, iso, trimmed};
+use crate::contract::{Done, ResetDetails};
+use crate::http::{ApiError, ApiResult, Body, trimmed};
 use crate::plugins::RequestContext;
 use crate::services::password_reset::{
     ResetRequest, ResetSender, complete_reset, inspect_reset, send_requested_link,
@@ -90,22 +90,19 @@ async fn request(
         request_id: context.id.to_string(),
     };
     state.background.spawn(send_requested_link(sender, request));
-    Ok((StatusCode::ACCEPTED, Json(json!({ "ok": true }))))
+    Ok((StatusCode::ACCEPTED, Json(Done::OK)))
 }
 
 async fn inspect(
     State(state): State<AppState>,
     context: RequestContext,
     Body(body): Body<TokenBody>,
-) -> ApiResult<Json<Value>> {
+) -> ApiResult<Json<ResetDetails>> {
     if !state.limits.login.allow(&context.client_key()) {
         return Err(ApiError::RateLimited);
     }
     let reset = inspect_reset(&state.db, &body.token).await?;
-    Ok(Json(json!({
-        "email": reset.email,
-        "expiresAt": iso(&reset.expires_at),
-    })))
+    Ok(Json((&reset).into()))
 }
 
 async fn complete(
@@ -119,8 +116,5 @@ async fn complete(
     }
     let session = complete_reset(&state.db, &body.token, body.password, &context, &headers).await?;
     let cookie = session_cookie(&session, state.config.secure_cookies);
-    Ok((
-        AppendHeaders([(SET_COOKIE, cookie)]),
-        Json(json!({ "ok": true })),
-    ))
+    Ok((AppendHeaders([(SET_COOKIE, cookie)]), Json(Done::OK)))
 }

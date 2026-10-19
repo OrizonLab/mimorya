@@ -17,11 +17,12 @@ use mimorya_db::repositories::memory::{
     settle_memory_proposal,
 };
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::json;
 use validator::Validate;
 
 use crate::app::AppState;
-use crate::http::{ApiResult, Body, PathId, iso, iso_opt, trimmed};
+use crate::contract::{Done, MemoryCreated, MemoryItem, MemoryList};
+use crate::http::{ApiResult, Body, PathId, trimmed};
 use crate::plugins::Auth;
 use crate::services::AccessContext;
 
@@ -53,24 +54,15 @@ fn can_manage(access: &AccessContext, memory: &MemoryRow) -> bool {
     )
 }
 
-fn item_view(access: &AccessContext, m: &MemoryRow) -> Value {
-    json!({
-        "id": m.id,
-        "scope": m.scope,
-        "orgUnit": m.org_unit_id.and_then(|id| access.org_tree().get(id)).map(|u| u.name.clone()),
-        "kind": m.kind,
-        "title": m.title,
-        "content": m.content,
-        "status": m.status,
-        "source": m.source,
-        "useCount": m.use_count,
-        "lastUsedAt": iso_opt(&m.last_used_at),
-        "updatedAt": iso(&m.updated_at),
-        "canManage": can_manage(access, m),
-    })
+fn item_view(access: &AccessContext, m: &MemoryRow) -> anyhow::Result<MemoryItem> {
+    let org_unit = m
+        .org_unit_id
+        .and_then(|id| access.org_tree().get(id))
+        .map(|u| u.name.clone());
+    MemoryItem::from_row(m, org_unit, can_manage(access, m))
 }
 
-async fn list(State(state): State<AppState>, Auth(identity): Auth) -> ApiResult<Json<Value>> {
+async fn list(State(state): State<AppState>, Auth(identity): Auth) -> ApiResult<Json<MemoryList>> {
     let access = state.access.context(identity).await?;
     let filter = memory_read_filter(&access.engine, &access.subject, &Actor::user());
     let mut tx = state.db.begin(identity.tenant_id).await?;
@@ -83,13 +75,13 @@ async fn list(State(state): State<AppState>, Auth(identity): Auth) -> ApiResult<
     )
     .await?;
     tx.commit().await?;
-    let items: Vec<Value> = rows
+    let items = rows
         .iter()
         // Proposals are only shown to those who can validate them.
         .filter(|m| m.status == "active" || can_manage(&access, m))
         .map(|m| item_view(&access, m))
-        .collect();
-    Ok(Json(json!({ "items": items })))
+        .collect::<anyhow::Result<_>>()?;
+    Ok(Json(MemoryList { items }))
 }
 
 #[derive(Deserialize, Clone, Copy, PartialEq, Eq)]
@@ -138,7 +130,7 @@ async fn create(
     State(state): State<AppState>,
     Auth(identity): Auth,
     Body(body): Body<CreateBody>,
-) -> ApiResult<(StatusCode, Json<Value>)> {
+) -> ApiResult<(StatusCode, Json<MemoryCreated>)> {
     let access = state.access.context(identity).await?;
     let target = match body.space {
         Space::Personal => MemoryTarget {
@@ -187,14 +179,14 @@ async fn create(
     )
     .await?;
     tx.commit().await?;
-    Ok((StatusCode::CREATED, Json(json!({ "id": id }))))
+    Ok((StatusCode::CREATED, Json(MemoryCreated { id })))
 }
 
 async fn remove(
     State(state): State<AppState>,
     Auth(identity): Auth,
     PathId(id): PathId,
-) -> ApiResult<Json<Value>> {
+) -> ApiResult<Json<Done>> {
     let access = state.access.context(identity).await?;
     let mut tx = state.db.begin(identity.tenant_id).await?;
     let memory = get_memory(&mut tx, id)
@@ -212,7 +204,7 @@ async fn remove(
     )
     .await?;
     tx.commit().await?;
-    Ok(Json(json!({ "ok": true })))
+    Ok(Json(Done::OK))
 }
 
 #[derive(Deserialize, Clone, Copy, PartialEq, Eq)]
@@ -232,7 +224,7 @@ async fn review(
     Auth(identity): Auth,
     PathId(id): PathId,
     Body(body): Body<ReviewBody>,
-) -> ApiResult<Json<Value>> {
+) -> ApiResult<Json<Done>> {
     let access = state.access.context(identity).await?;
     let mut tx = state.db.begin(identity.tenant_id).await?;
     get_memory(&mut tx, id)
@@ -261,5 +253,5 @@ async fn review(
     )
     .await?;
     tx.commit().await?;
-    Ok(Json(json!({ "ok": true })))
+    Ok(Json(Done::OK))
 }

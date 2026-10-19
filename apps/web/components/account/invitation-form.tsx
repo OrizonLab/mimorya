@@ -2,17 +2,9 @@
 
 import { useState, type FormEvent } from 'react';
 import { Button, Card, ErrorNote } from '@/components/ui';
-import { api, useAction } from '@/lib/api';
+import { api, useAction, type InvitationDetails } from '@/lib/api';
 import { formatDate } from '@/lib/format';
 import { EMPTY_NEW_PASSWORD, NewPasswordFields, passwordsDiffer } from './new-password-fields';
-
-/** What an invitation link opens, as returned by `/auth/invitation`. */
-export interface InvitationView {
-  email: string;
-  displayName: string;
-  company: string;
-  expiresAt: string;
-}
 
 /** The invited person chooses a password; the API activates the account and signs it in. */
 export function InvitationForm({
@@ -21,7 +13,7 @@ export function InvitationForm({
   onAccepted,
 }: {
   token: string;
-  invitation: InvitationView;
+  invitation: InvitationDetails;
   onAccepted: () => void;
 }) {
   const [chosen, setChosen] = useState(EMPTY_NEW_PASSWORD);

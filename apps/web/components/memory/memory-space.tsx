@@ -2,7 +2,8 @@ import { Trash2 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Badge, Card, EmptyState } from '@/components/ui';
 import { formatDate } from '@/lib/format';
-import { MEMORY_KINDS, type MemoryItem, type MemorySpaceInfo } from './spaces';
+import type { MemoryItem } from '@/lib/api';
+import { MEMORY_KINDS, type MemorySpaceInfo } from './spaces';
 
 /** Active memories of one space; the user may delete the ones they manage. */
 export function MemorySpace({

@@ -4,6 +4,10 @@
 
 mod approvals;
 mod conversations;
+mod health;
+mod links;
+mod memory;
+mod run_stream;
 mod runs;
 mod session;
 mod stored;
@@ -13,6 +17,16 @@ pub use approvals::{Approval, ApprovalDecided, ApprovalList};
 pub use conversations::{
     Citation, ConversationCreated, ConversationDetail, ConversationList, ConversationSummary,
     Message, MessageAccepted, MessageMetadata, MessageRole,
+};
+pub use health::Health;
+pub use links::{InvitationDetails, ResetDetails};
+pub use memory::{
+    MemoryCreated, MemoryItem, MemoryKind, MemoryList, MemoryScope, MemorySource, MemoryStatus,
+};
+pub use run_stream::{
+    ApprovalRequestedEvent, ApprovalResolvedEvent, AssistantDelta, AssistantMessage, RunFinished,
+    RunStarted, RunStreamEvent, ToolCallEvent, ToolDecision, ToolResultEvent, ToolRisk, UsageEvent,
+    VerificationEvent,
 };
 pub use runs::{
     RunBudget, RunDetail, RunEventRecord, RunList, RunListItem, RunRef, RunStatus, RunUsage,
@@ -37,6 +51,12 @@ pub fn typescript() -> String {
     declarations.add::<RunDetail>();
     declarations.add::<ApprovalList>();
     declarations.add::<ApprovalDecided>();
+    declarations.add::<RunStreamEvent>();
+    declarations.add::<MemoryList>();
+    declarations.add::<MemoryCreated>();
+    declarations.add::<InvitationDetails>();
+    declarations.add::<ResetDetails>();
+    declarations.add::<Health>();
     declarations.render()
 }
 
