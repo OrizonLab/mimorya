@@ -1,4 +1,5 @@
-//! Tool `team_availability`: busy and free slots of the technicians in scope.
+//! Tool `team_availability`: busy and free slots of the technicians in scope;
+//! a slot taken by an intervention the user may not read only shows as taken.
 
 use std::sync::Arc;
 
@@ -10,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use validator::Validate;
 
+use crate::demo_interventions::access::can_read;
 use crate::demo_interventions::dates::{dates_between, is_weekday, iso_date, parse_date};
 use crate::demo_interventions::directory::{technician_name, technicians_in_scope};
 use crate::demo_interventions::schedule::{WORK_END, WORK_START, busy_slots, to_time};
@@ -60,7 +62,8 @@ impl TypedTool for TeamAvailability {
                 let jours: Vec<_> = days
                     .iter()
                     .map(|date| {
-                        let busy = busy_slots(&self.store, *technician, *date);
+                        let busy =
+                            busy_slots(&self.store, *technician, *date, &|i| can_read(ctx, i));
                         let mut free = Vec::new();
                         let mut cursor = WORK_START;
                         for slot in &busy {

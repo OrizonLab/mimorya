@@ -94,6 +94,9 @@ impl RunService {
         input: DecisionInput,
     ) -> anyhow::Result<DecisionResult> {
         let access = self.access.context(identity).await?;
+        // Deciding resumes the agent: whoever may no longer use it leaves the
+        // request to expire.
+        access.require("agent:use")?;
         let mut tx = self.db.begin(identity.tenant_id).await?;
         let recorded = record_approval_decision(&mut tx, identity, &input, Utc::now()).await?;
         tx.commit().await?;

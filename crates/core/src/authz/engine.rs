@@ -12,6 +12,10 @@
 //!   6. ABAC allow policies
 //!   7. default deny
 //!
+//! `data_scope()` (and so `has()`, routes, tools and list scopes) applies the
+//! agent ceiling and the deny policies whose condition reads no resource
+//! attribute: they hold for the person and the actor whatever the resource.
+//!
 //! Hierarchical position never grants anything by itself: a manager sees their
 //! team's data only through a role assignment scoped to that team.
 
@@ -22,7 +26,7 @@ use chrono::{DateTime, Utc};
 use serde_json::{Map, Value, json};
 use uuid::Uuid;
 
-use super::conditions::evaluate_condition;
+use super::conditions::{evaluate_condition, reads_resource};
 use super::org_tree::OrgTree;
 use super::permissions::{is_non_delegable, matches_permission};
 use super::types::{
@@ -36,6 +40,8 @@ pub struct AuthorizationEngine {
     org_tree: OrgTree,
     roles: HashMap<Uuid, RoleDefinition>,
     policies: Vec<AbacPolicy>,
+    /// Deny policies whose condition reads no resource attribute.
+    holder_denials: Vec<usize>,
     now: Clock,
 }
 
@@ -50,10 +56,17 @@ impl std::fmt::Debug for AuthorizationEngine {
 
 impl AuthorizationEngine {
     pub fn new(org_tree: OrgTree, roles: Vec<RoleDefinition>, policies: Vec<AbacPolicy>) -> Self {
+        let holder_denials = policies
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| p.effect == PolicyEffect::Deny && !reads_resource(&p.condition))
+            .map(|(i, _)| i)
+            .collect();
         Self {
             org_tree,
             roles: roles.into_iter().map(|r| (r.id, r)).collect(),
             policies,
+            holder_denials,
             now: Arc::new(Utc::now),
         }
     }
@@ -72,7 +85,9 @@ impl AuthorizationEngine {
     /// (SQL WHERE clauses, connector filters). ABAC refinements still apply per
     /// resource through `check()`.
     pub fn data_scope(&self, subject: &Subject, permission: &str, actor: &Actor) -> DataScope {
-        if agent_ceiling_denies(permission, actor) {
+        if agent_ceiling_denies(permission, actor)
+            || self.denied_to_holder(subject, permission, actor)
+        {
             return DataScope::None;
         }
 
@@ -212,6 +227,30 @@ impl AuthorizationEngine {
     }
 }
 
+impl AuthorizationEngine {
+    /// Whether a deny policy about the person or the actor (no resource
+    /// attribute in its condition) withdraws the permission.
+    fn denied_to_holder(&self, subject: &Subject, permission: &str, actor: &Actor) -> bool {
+        let applicable = self
+            .holder_denials
+            .iter()
+            .map(|&i| &self.policies[i])
+            .filter(|p| {
+                p.permissions
+                    .iter()
+                    .any(|pattern| matches_permission(pattern, permission))
+            });
+        let mut env = None;
+        for policy in applicable {
+            let env = env.get_or_insert_with(|| holder_env(subject, actor));
+            if evaluate_condition(&policy.condition, env) {
+                return true;
+            }
+        }
+        false
+    }
+}
+
 fn agent_ceiling_denies(permission: &str, actor: &Actor) -> bool {
     if !actor.is_agent() {
         return false;
@@ -223,6 +262,18 @@ fn agent_ceiling_denies(permission: &str, actor: &Actor) -> bool {
         .allowed_permissions
         .as_ref()
         .is_some_and(|allowed| !allowed.contains(permission))
+}
+
+/// The evaluation environment without any resource.
+fn holder_env(subject: &Subject, actor: &Actor) -> Value {
+    let mut env = build_env(
+        subject,
+        &ResourceRef::new("", subject.tenant_id),
+        actor,
+        Map::new(),
+    );
+    env["resource"] = json!({});
+    env
 }
 
 fn build_env(

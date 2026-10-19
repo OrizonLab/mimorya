@@ -1,6 +1,6 @@
 //! ABAC condition language: operators, combinators and JSON validation.
 
-use mimorya_core::authz::{Condition, evaluate_condition};
+use mimorya_core::authz::{Condition, evaluate_condition, reads_resource};
 use serde_json::{Value, json};
 
 fn env() -> Value {
@@ -91,6 +91,54 @@ fn never_matches_unknown_attributes_nor_walks_into_scalars() {
 fn does_not_compare_numbers_with_non_numbers() {
     let condition = cond(json!({ "op": "gt", "left": { "value": "3" }, "right": { "value": 1 } }));
     assert!(!evaluate_condition(&condition, &env()));
+}
+
+#[test]
+fn compares_numbers_by_value() {
+    // `2.0` stored through the API means 2, as the web editor shows it.
+    for (op, right, expected) in [
+        ("eq", json!(2.0), true),
+        ("neq", json!(2.0), false),
+        ("in", json!([0.0, 2.0]), true),
+        ("not_in", json!([2.0]), false),
+        ("eq", json!(2.5), false),
+        ("eq", json!("2"), false),
+    ] {
+        let condition = cond(
+            json!({ "op": op, "left": { "attr": "resource.sensitivityRank" }, "right": { "value": right } }),
+        );
+        assert_eq!(
+            evaluate_condition(&condition, &env()),
+            expected,
+            "{op} {right}"
+        );
+    }
+    let contains =
+        cond(json!({ "op": "contains", "left": { "value": [1, 2] }, "right": { "value": 2.0 } }));
+    assert!(evaluate_condition(&contains, &env()));
+}
+
+#[test]
+fn tells_which_conditions_read_the_resource() {
+    let person = json!({ "op": "eq", "left": { "attr": "subject.attributes.department" }, "right": { "value": "administratif" } });
+    let reading = [
+        json!({ "op": "neq", "left": { "attr": "subject.userId" }, "right": { "attr": "resource.ownerUserId" } }),
+        json!({ "all": [person, { "op": "eq", "left": { "attr": "resource.attributes.status" }, "right": { "value": "planned" } }] }),
+        json!({ "any": [person, { "op": "exists", "left": { "attr": "resource.type" } }] }),
+        json!({ "not": { "op": "gte", "left": { "attr": "resource.sensitivityRank" }, "right": { "value": 2 } } }),
+        json!({ "op": "exists", "left": { "attr": "resource.orgUnitId" } }),
+    ];
+    for condition in reading {
+        assert!(reads_resource(&cond(condition.clone())), "{condition}");
+    }
+    let not_reading = [
+        person.clone(),
+        json!({ "all": [person, { "op": "eq", "left": { "attr": "context.actorType" }, "right": { "value": "agent" } }] }),
+        json!({ "op": "eq", "left": { "attr": "subject.attributes.resource" }, "right": { "value": "x" } }),
+    ];
+    for condition in not_reading {
+        assert!(!reads_resource(&cond(condition.clone())), "{condition}");
+    }
 }
 
 #[test]

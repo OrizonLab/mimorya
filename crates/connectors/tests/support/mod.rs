@@ -18,7 +18,7 @@ use mimorya_agent::testing::{
 };
 use mimorya_agent::tools::{ToolCallEvaluation, ToolExecutor, ToolRegistry};
 use mimorya_connectors::demo_interventions::{DemoInterventionsStore, demo_intervention_tools};
-use mimorya_core::authz::Actor;
+use mimorya_core::authz::{Actor, AuthorizationEngine};
 use mimorya_core::autonomy::{AutonomyLevel, AutonomyPolicy};
 use mimorya_core::demo::{self, unit, user};
 use mimorya_core::memory::{MemoryKind, MemoryScope, memory_read_filter};
@@ -44,9 +44,18 @@ pub fn executor_for(
     user_id: Uuid,
     ports: &Arc<InMemoryPorts>,
 ) -> ToolExecutor {
+    executor_with_engine(registry, user_id, ports, demo::authorization_engine())
+}
+
+pub fn executor_with_engine(
+    registry: ToolRegistry,
+    user_id: Uuid,
+    ports: &Arc<InMemoryPorts>,
+    engine: AuthorizationEngine,
+) -> ToolExecutor {
     let run_id = Uuid::new_v4();
     ToolExecutor::new(
-        Arc::new(demo::authorization_engine()),
+        Arc::new(engine),
         Arc::new(registry),
         Arc::new(demo::subject(user_id)),
         Actor::agent(Some(run_id)),
@@ -65,9 +74,16 @@ pub struct ConnectorHarness {
 
 impl ConnectorHarness {
     pub fn new(user_id: Uuid) -> Self {
+        Self::with_engine(user_id, demo::authorization_engine())
+    }
+
+    /// The same, under another authorization (extra policies, for instance).
+    pub fn with_engine(user_id: Uuid, engine: AuthorizationEngine) -> Self {
         let store = Arc::new(DemoInterventionsStore::new(reference()));
         let ports = InMemoryPorts::new(user_id, Uuid::new_v4());
-        let executor = executor(demo_intervention_tools(store.clone()), user_id, &ports);
+        let registry =
+            ToolRegistry::new(demo_intervention_tools(store.clone()), &HashMap::new()).unwrap();
+        let executor = executor_with_engine(registry, user_id, &ports, engine);
         Self {
             store,
             ports,

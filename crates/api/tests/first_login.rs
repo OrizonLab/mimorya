@@ -4,11 +4,17 @@
 
 mod support;
 
+use std::collections::BTreeSet;
+use std::fs;
+use std::path::Path;
+
 use axum::http::StatusCode;
-use mimorya_core::demo::user;
+use mimorya_core::demo::{role, user};
+use regex::Regex;
 use serde_json::json;
 use support::accounts::{OWN_PASSWORD, activate, create_account};
 use support::{Client, TestApi};
+use uuid::Uuid;
 
 async fn assert_held_back(session: &Client<'_>) {
     let me = session.get("/auth/me").await;
@@ -101,5 +107,145 @@ async fn a_reset_requires_a_new_choice_and_logging_out_stays_possible() {
     assert_eq!(
         session.get("/auth/me").await.status,
         StatusCode::UNAUTHORIZED
+    );
+}
+
+/// Every route needing an identity (placeholder identifiers): keep it in step
+/// with the router when a route is added.
+const AUTHENTICATED_ROUTES: &[(&str, &str)] = &[
+    ("GET", "/conversations"),
+    ("POST", "/conversations"),
+    ("GET", "/conversations/{id}"),
+    ("PATCH", "/conversations/{id}"),
+    ("POST", "/conversations/{id}/messages"),
+    ("GET", "/runs"),
+    ("GET", "/runs/{id}"),
+    ("GET", "/runs/{id}/events"),
+    ("GET", "/approvals"),
+    ("POST", "/approvals/{id}/decision"),
+    ("GET", "/memory"),
+    ("POST", "/memory"),
+    ("DELETE", "/memory/{id}"),
+    ("POST", "/memory/{id}/review"),
+    ("GET", "/admin/organization"),
+    ("POST", "/admin/org-units"),
+    ("PATCH", "/admin/org-units/{id}"),
+    ("DELETE", "/admin/org-units/{id}"),
+    ("GET", "/admin/users"),
+    ("POST", "/admin/users"),
+    ("PATCH", "/admin/users/{id}"),
+    ("POST", "/admin/users/{id}/password"),
+    ("POST", "/admin/users/{id}/assignments"),
+    ("DELETE", "/admin/assignments/{id}"),
+    ("GET", "/admin/roles"),
+    ("POST", "/admin/roles"),
+    ("PATCH", "/admin/roles/{id}"),
+    ("DELETE", "/admin/roles/{id}"),
+    ("GET", "/admin/policies"),
+    ("POST", "/admin/policies"),
+    ("PATCH", "/admin/policies/{id}"),
+    ("DELETE", "/admin/policies/{id}"),
+    ("GET", "/admin/connectors"),
+    ("GET", "/admin/skills"),
+    ("GET", "/admin/audit"),
+    ("GET", "/admin/usage"),
+];
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn every_authenticated_route_holds_a_temporary_password_back() {
+    let api = TestApi::start().await;
+    let paul = api.sign_in(user::PAUL).await;
+    let account = create_account(&paul, "administrateur.provisoire").await;
+    // A company-wide administrator: only the temporary password holds it back.
+    let granted = paul
+        .post(
+            &format!("/admin/users/{}/assignments", account.id),
+            json!({ "roleId": role::TENANT_ADMIN, "scope": { "type": "tenant" } }),
+        )
+        .await;
+    assert_eq!(granted.status, StatusCode::CREATED);
+    let session = api.sign_in_with(&account.email, &account.password).await;
+    for (method, path) in AUTHENTICATED_ROUTES {
+        let url = path.replace("{id}", &Uuid::new_v4().to_string());
+        let response = match *method {
+            "GET" => session.get(&url).await,
+            "POST" => session.post(&url, json!({})).await,
+            "PATCH" => session.patch(&url, json!({})).await,
+            _ => session.delete(&url).await,
+        };
+        assert_eq!(response.status, StatusCode::FORBIDDEN, "{method} {path}");
+        assert_eq!(
+            response.json()["error"]["details"]["reason"],
+            "password_change_required",
+            "{method} {path}"
+        );
+    }
+}
+
+/// Routes reachable without the restriction: no identity, or the ones that
+/// let a temporary password be replaced.
+const OTHER_ROUTES: &[(&str, &str)] = &[
+    ("GET", "/health"),
+    ("POST", "/auth/login"),
+    ("POST", "/auth/logout"),
+    ("GET", "/auth/me"),
+    ("POST", "/account/password"),
+];
+
+/// The `(method, path)` pairs a routes file declares, read from the arguments
+/// of each `.route(…)` call.
+fn declared_routes(source: &str) -> Vec<(String, String)> {
+    let path = Regex::new(r#"^\s*"([^"]+)""#).unwrap();
+    let method = Regex::new(r"\b(get|post|patch|put|delete)\(").unwrap();
+    let mut routes = Vec::new();
+    for call in source.split(".route(").skip(1) {
+        // The call's own arguments, up to its closing parenthesis.
+        let mut depth = 1;
+        let end = call
+            .char_indices()
+            .find(|(_, c)| {
+                depth += match c {
+                    '(' => 1,
+                    ')' => -1,
+                    _ => 0,
+                };
+                depth == 0
+            })
+            .map_or(call.len(), |(i, _)| i);
+        let arguments = &call[..end];
+        let Some(declared) = path.captures(arguments) else {
+            continue;
+        };
+        for found in method.captures_iter(arguments) {
+            routes.push((found[1].to_uppercase(), declared[1].to_string()));
+        }
+    }
+    routes
+}
+
+#[test]
+fn the_route_list_follows_the_router() {
+    let mut declared = BTreeSet::new();
+    let mut directories = vec![Path::new(env!("CARGO_MANIFEST_DIR")).join("src/routes")];
+    while let Some(directory) = directories.pop() {
+        for entry in fs::read_dir(directory).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                directories.push(path);
+            } else {
+                declared.extend(declared_routes(&fs::read_to_string(&path).unwrap()));
+            }
+        }
+    }
+    let listed: BTreeSet<(String, String)> = AUTHENTICATED_ROUTES
+        .iter()
+        .chain(OTHER_ROUTES)
+        .map(|(method, path)| ((*method).to_string(), (*path).to_string()))
+        .collect();
+    assert!(!declared.is_empty());
+    assert_eq!(
+        declared, listed,
+        "AUTHENTICATED_ROUTES or OTHER_ROUTES no longer match the router"
     );
 }

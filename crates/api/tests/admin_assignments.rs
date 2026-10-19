@@ -10,6 +10,10 @@ use mimorya_core::demo::{role, unit, user};
 use mimorya_db::testing::OTHER_USER_ID;
 use serde_json::json;
 use support::TestApi;
+use uuid::Uuid;
+
+/// The demo deny policy (administrative staff and interventions in progress).
+const DEMO_POLICY: Uuid = mimorya_core::demo::demo_id(400);
 use support::accounts::{
     activate, assignment_of, create_account, create_partial_admin, permissions,
 };
@@ -143,6 +147,7 @@ async fn honours_administration_permissions_on_the_whole_company_only() {
     for screen in [
         "/admin/audit",
         "/admin/roles",
+        "/admin/policies",
         "/admin/connectors",
         "/admin/skills",
     ] {
@@ -209,6 +214,25 @@ async fn honours_administration_permissions_on_the_whole_company_only() {
             .await,
         partial
             .delete(&format!("/admin/roles/{}", role::ADMIN_STAFF))
+            .await,
+        partial
+            .post(
+                "/admin/policies",
+                json!({
+                    "description": "Politique partielle",
+                    "permissions": ["intervention:read"],
+                    "condition": { "op": "exists", "left": { "attr": "resource.type" } },
+                }),
+            )
+            .await,
+        partial
+            .patch(
+                &format!("/admin/policies/{DEMO_POLICY}"),
+                json!({ "enabled": false }),
+            )
+            .await,
+        partial
+            .delete(&format!("/admin/policies/{DEMO_POLICY}"))
             .await,
     ];
     for (index, attempt) in attempts.iter().enumerate() {

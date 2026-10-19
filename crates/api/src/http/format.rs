@@ -18,12 +18,23 @@ pub fn iso_opt(instant: &Option<DateTime<Utc>>) -> Value {
 
 /// `deserialize_with` helper: surrounding whitespace is removed before validation.
 pub fn trimmed<'de, D: Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
-    Ok(String::deserialize(deserializer)?.trim().to_string())
+    storable::<D>(String::deserialize(deserializer)?.trim().to_string())
+}
+
+/// PostgreSQL cannot store a NUL character: refused as invalid input (400)
+/// rather than failing at the database (500).
+fn storable<'de, D: Deserializer<'de>>(text: String) -> Result<String, D::Error> {
+    if text.contains('\0') {
+        return Err(serde::de::Error::custom("caractère nul interdit"));
+    }
+    Ok(text)
 }
 
 /// Same as `trimmed`, for optional fields (combine with `#[serde(default)]`).
 pub fn trimmed_opt<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<String>, D::Error> {
-    Ok(Option::<String>::deserialize(deserializer)?.map(|s| s.trim().to_string()))
+    Option::<String>::deserialize(deserializer)?
+        .map(|s| storable::<D>(s.trim().to_string()))
+        .transpose()
 }
 
 /// `deserialize_with` helper for fields that can be cleared: absent → `None`,
@@ -32,12 +43,10 @@ pub fn trimmed_opt<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<
 pub fn trimmed_nullable<'de, D: Deserializer<'de>>(
     deserializer: D,
 ) -> Result<Option<Option<String>>, D::Error> {
-    let value = Option::<String>::deserialize(deserializer)?;
-    Ok(Some(
-        value
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty()),
-    ))
+    let value = Option::<String>::deserialize(deserializer)?
+        .map(|s| storable::<D>(s.trim().to_string()))
+        .transpose()?;
+    Ok(Some(value.filter(|s| !s.is_empty())))
 }
 
 /// `deserialize_with` helper: absent → `None`, `null` → `Some(None)`.

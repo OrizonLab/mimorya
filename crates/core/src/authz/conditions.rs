@@ -121,6 +121,18 @@ impl Operand {
     }
 }
 
+/// Whether the condition reads an attribute of the resource: such a condition
+/// can only be evaluated where a resource is checked.
+pub fn reads_resource(condition: &Condition) -> bool {
+    let is_resource = |operand: &Operand| matches!(operand, Operand::Attr(a) if a.attr == "resource" || a.attr.starts_with("resource."));
+    match condition {
+        Condition::All(c) => c.all.iter().any(reads_resource),
+        Condition::Any(c) => c.any.iter().any(reads_resource),
+        Condition::Not(c) => reads_resource(&c.not),
+        Condition::Compare(c) => is_resource(&c.left) || c.right.as_ref().is_some_and(is_resource),
+    }
+}
+
 /// Walks object keys (and array indexes) only; anything else resolves to nothing.
 fn resolve_path<'a>(env: &'a Value, path: &str) -> Option<&'a Value> {
     path.split('.').try_fold(env, |current, key| match current {
@@ -135,6 +147,24 @@ fn resolve<'a>(env: &'a Value, operand: Option<&'a Operand>) -> Option<&'a Value
         Operand::Attr(attr) => resolve_path(env, &attr.attr),
         Operand::Value(literal) => Some(&literal.value),
     }
+}
+
+/// Equality by value: `2` and `2.0` are the same number, as an administrator
+/// (and the web editor, which reads both as `2`) expects.
+fn same(a: &Value, b: &Value) -> bool {
+    match (a, b) {
+        (Value::Number(x), Value::Number(y)) => {
+            x == y || ((x.is_f64() || y.is_f64()) && x.as_f64() == y.as_f64())
+        }
+        (Value::Array(x), Value::Array(y)) => {
+            x.len() == y.len() && x.iter().zip(y).all(|(a, b)| same(a, b))
+        }
+        _ => a == b,
+    }
+}
+
+fn holds(items: &[Value], item: &Value) -> bool {
+    items.iter().any(|candidate| same(candidate, item))
 }
 
 /// Numbers only: `"3" > 1` is false.
@@ -159,18 +189,18 @@ pub fn evaluate_condition(condition: &Condition, env: &Value) -> bool {
 
     match comparison.op {
         ComparisonOp::Exists => left.is_some_and(|v| !v.is_null()),
-        ComparisonOp::Eq => matches!((left, right), (Some(a), Some(b)) if a == b),
-        ComparisonOp::Neq => left.is_some_and(|a| right != Some(a)),
+        ComparisonOp::Eq => matches!((left, right), (Some(a), Some(b)) if same(a, b)),
+        ComparisonOp::Neq => left.is_some_and(|a| !right.is_some_and(|b| same(a, b))),
         ComparisonOp::In => match (left, right.and_then(Value::as_array)) {
-            (Some(a), Some(items)) => items.contains(a),
+            (Some(a), Some(items)) => holds(items, a),
             _ => false,
         },
         ComparisonOp::NotIn => match (left, right.and_then(Value::as_array)) {
-            (Some(a), Some(items)) => !items.contains(a),
+            (Some(a), Some(items)) => !holds(items, a),
             _ => false,
         },
         ComparisonOp::Contains => match (left.and_then(Value::as_array), right) {
-            (Some(items), Some(b)) => items.contains(b),
+            (Some(items), Some(b)) => holds(items, b),
             _ => false,
         },
         ComparisonOp::Gt => compare_numbers(left, right, |a, b| a > b),

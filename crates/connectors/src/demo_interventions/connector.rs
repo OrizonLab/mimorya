@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::{NaiveDate, Utc};
-use mimorya_core::authz::PermissionInfo;
+use mimorya_core::authz::{Enforcement, PermissionInfo};
 use mimorya_core::tools::{ToolRef, typed_tool};
 use serde_json::Value;
 
@@ -40,26 +40,33 @@ const PERMISSIONS: &[PermissionInfo] = &[
         permission: "intervention:read",
         label: "Consulter les interventions",
         delegable: true,
+        // Each intervention is checked (`access.rs`).
+        enforcement: Enforcement::PerResource,
     },
     PermissionInfo {
         permission: "intervention:write",
         label: "Modifier les interventions",
         delegable: true,
+        // No tool writes interventions yet.
+        enforcement: Enforcement::NotYet,
     },
     PermissionInfo {
         permission: "planning:read",
         label: "Consulter les plannings",
         delegable: true,
+        enforcement: Enforcement::Holder,
     },
     PermissionInfo {
         permission: "planning:propose",
         label: "Proposer des plannings",
         delegable: true,
+        enforcement: Enforcement::Holder,
     },
     PermissionInfo {
         permission: "planning:apply",
         label: "Appliquer des plannings",
         delegable: true,
+        enforcement: Enforcement::Holder,
     },
 ];
 

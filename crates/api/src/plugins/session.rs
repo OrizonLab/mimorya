@@ -107,7 +107,8 @@ fn signed_in(parts: &Parts) -> Result<AuthIdentity, ApiError> {
         .ok_or_else(|| DomainError::unauthenticated("Authentification requise").into())
 }
 
-/// The signed-in user, if any.
+/// The signed-in user, if any, including one whose password is temporary:
+/// reserved to the logout, which must stay possible for them.
 pub struct MaybeAuth(pub Option<AuthIdentity>);
 
 impl<S: Send + Sync> FromRequestParts<S> for MaybeAuth {

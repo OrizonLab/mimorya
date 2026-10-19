@@ -2,6 +2,7 @@
 //! `TenantTx` (row-level security applies); only the `auth_*`/`system_*`
 //! functions take the raw pool.
 
+pub mod access_policies;
 pub mod approvals;
 pub mod audit;
 pub mod auth;

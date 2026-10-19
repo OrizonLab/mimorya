@@ -10,6 +10,8 @@ use super::dates::monday_of;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ScheduledSlot {
+    /// The intervention followed up: its readers alone see the label.
+    pub intervention_id: String,
     pub technician_id: Uuid,
     pub date: NaiveDate,
     pub start_time: String,

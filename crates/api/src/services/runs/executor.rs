@@ -91,9 +91,14 @@ impl RunExecutor {
         let runtime = self.runtime_for(access, run, ports, actor.clone()).await?;
         match mode {
             ExecutionMode::Start { history, text } => {
-                let system =
-                    build_run_system_prompt(&self.db, access, &self.assistant_name, Utc::now())
-                        .await?;
+                let system = build_run_system_prompt(
+                    &self.db,
+                    access,
+                    &actor,
+                    &self.assistant_name,
+                    Utc::now(),
+                )
+                .await?;
                 let memories = recall_memories(&self.db, access, &actor, &text).await?;
                 runtime
                     .start(StartInput {

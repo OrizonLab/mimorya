@@ -295,3 +295,54 @@ elle est remplacée par une nouvelle entrée qui la référence (« remplace ADR
   provisoire ; l'invitation par e-mail reste à faire ; sur une instance déjà en
   service, les comptes créés ou réinitialisés avant la migration ne sont pas
   concernés (à réinitialiser au besoin).
+
+## ADR-022 — Politiques d'accès : l'administration n'écrit que des refus
+
+- **Date** : 2026-10-18 · **Statut** : acceptée
+- **Contexte** : les politiques ABAC (`access_policies`) complètent les rôles. Une
+  politique d'**autorisation** accorde l'accès à une ressource hors du périmètre des
+  rôles ; écrite par un administrateur, elle peut viser ce même administrateur (une
+  condition sur son identifiant, ou une condition large) et lui ouvrir les données
+  métier, contournant la règle « pas d'administration de soi-même » (ADR-019) que
+  seule une double validation (phase 3) peut garantir. Une politique illisible par le
+  moteur empêcherait en outre de charger les autorisations de toute l'entreprise.
+- **Décision** :
+  - depuis l'administration (`policy:manage`, sur toute l'entreprise), on crée,
+    modifie, active, désactive et supprime des politiques de **refus** uniquement ;
+    les politiques d'autorisation existantes sont listées en lecture seule ;
+  - une politique porte sur des permissions du catalogue ou sur `domaine:*`, jamais
+    sur une permission d'administration (`TENANT_WIDE_PERMISSIONS`) ni sur celles que
+    lisent ses écrans (`org:read`, `user:read`) : un refus ne peut pas bloquer les
+    administrateurs ;
+  - chaque permission déclare où la plateforme la vérifie (`Enforcement` : pas encore,
+    sur la personne, ressource par ressource). Une politique ne vise que des
+    permissions vérifiées (un refus sur une permission jamais vérifiée n'aurait aucun
+    effet). Le moteur applique dans `data_scope` (donc routes, outils de l'agent,
+    périmètres de liste, `/auth/me`) les refus dont la condition ne lit que le
+    collaborateur et le contexte ; une condition sur la ressource ne s'évalue que
+    là où chaque ressource est vérifiée (`check`) et n'est acceptée que pour ces
+    permissions ;
+  - la condition est désérialisée strictement puis vérifiée (`core::policy_rules`) :
+    attributs sous `subject.`, `resource.` ou `context.`, au moins un attribut par
+    comparaison, valeur requise sauf pour « est renseigné », listes pour « fait partie
+    de », nombres pour les comparaisons d'ordre, pas de groupe vide, profondeur et
+    longueur bornées, valeurs courtes (texte, nombre ou liste), sans caractère nul ;
+    c'est la forme sérialisée de la condition typée qui est stockée. Une politique
+    active, ou qu'on active, ou dont les permissions ou la condition changent, est
+    revérifiée en entier avec ce qui est stocké (permissions et condition peuvent
+    précéder une règle, ou avoir été écrites hors de l'API) ; une politique inactive
+    se renomme ou reste désactivée quoi qu'elle contienne ;
+  - les nombres se comparent par valeur (`2` et `2.0` sont égaux), comme l'éditeur
+    web les affiche ;
+  - là où la plateforme montre qu'une ressource existe sans la lire, un refus de
+    lecture s'applique aussi : le créneau d'une intervention illisible n'apparaît que
+    comme « occupé » (disponibilités, chevauchements d'une proposition) ; l'index des
+    compétences du prompt suit `skill:read` de l'agent ; valider une action en
+    attente reprend l'agent et exige donc `agent:use` ;
+  - les changements passent sous le verrou d'administration (ADR-020), sont audités
+    (avec l'état précédent) et s'appliquent aussitôt (cache invalidé).
+- **Conséquences** : les entreprises ne peuvent pas encore élargir l'accès par
+  politique (elles le font par rôles) ; un nouveau connecteur déclare l'`Enforcement`
+  de chacune de ses permissions ; les attributs des collaborateurs utilisés par les
+  conditions (`subject.attributes.*`) ne sont pas encore modifiables depuis
+  l'interface.

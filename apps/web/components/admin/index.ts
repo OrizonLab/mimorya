@@ -1,6 +1,7 @@
 export { AuditTab } from './audit-tab';
 export { ConnectorsTab } from './connectors-tab';
 export { OrganizationTab } from './organization/organization-tab';
+export { PoliciesTab } from './policies/policies-tab';
 export { RolesTab } from './roles/roles-tab';
 export { SkillsTab } from './skills-tab';
 export { TabBar } from './tab-bar';

@@ -71,7 +71,7 @@ impl PlanningPropose {
             if start < WORK_START || end > WORK_END {
                 problems.push(format!("{label} : en dehors des horaires 08:00-17:00"));
             }
-            for conflict in busy_slots(&self.store, item.technician_id, date)
+            for conflict in busy_slots(&self.store, item.technician_id, date, &|i| can_read(ctx, i))
                 .iter()
                 .filter(|b| b.overlaps(start, end))
             {
