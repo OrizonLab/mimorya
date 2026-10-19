@@ -32,6 +32,8 @@ export function ChatView({ conversationId }: { conversationId: string | null }) 
     <div className="flex min-h-0 flex-1">
       <ConversationList
         conversations={chat.conversations}
+        error={chat.listError}
+        onRetry={chat.reloadConversations}
         activeId={conversationId}
         open={listOpen}
         onClose={() => setListOpen(false)}

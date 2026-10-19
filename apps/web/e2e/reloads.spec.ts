@@ -4,7 +4,6 @@
 // changed (ADR-041, ADR-042). Each test holds the list until it lets it
 // through. The account it creates keeps no business role; the role and the
 // MCP server it creates are deleted, even when it fails.
-import type { Page } from '@playwright/test';
 import type {
   AccountUpdate,
   ConnectorTest,
@@ -13,9 +12,9 @@ import type {
   Roles,
   TestedTool,
 } from '../lib/api/contract';
-import { READ_TIMEOUT_MS } from '../lib/api/client';
 import { cardWith, openAdmin } from './support/admin';
 import { expect, FOREIGN_HOST, noError, test } from './support/fixtures';
+import { holdList } from './support/hold';
 
 const ROLE = 'Réviseur e2e';
 const SERVER = 'Outils e2e';
@@ -40,27 +39,6 @@ test.afterEach(async ({ page }) => {
     expect(deleted.status()).toBe(200);
   }
 });
-
-/**
- * Holds the list at `path` once armed: `arm()` before the change that reloads
- * it resolves when the reload is sent, `release()` lets it through.
- */
-async function holdList(page: Page, path: string) {
-  let held = Promise.resolve();
-  let release = () => {};
-  await page.route(`**${path}`, async (route) => {
-    if (route.request().method() === 'GET') await held;
-    // A read the page gave up on (its time ran out) is no longer there.
-    await route.continue().catch(() => undefined);
-  });
-  return {
-    arm: () => {
-      held = new Promise<void>((done) => (release = done));
-      return page.waitForRequest((r) => r.method() === 'GET' && r.url().endsWith(path));
-    },
-    release: () => release(),
-  };
-}
 
 test('an account’s forms wait for, then follow, the reloaded directory', async ({ page }) => {
   const email = 'victor.chassagne@neo-maintenance.example';
@@ -230,36 +208,5 @@ test('tool policies start again from each connection test', async ({ page }) => 
   // The second test's rules, not the first's: saving them keeps what it brought.
   await expect(card.getByLabel('Risque de mcp_oute_delete')).toHaveValue('irreversible');
   await expect(card.getByLabel('Risque de mcp_oute_search')).toHaveValue('write');
-  await noError(page);
-});
-
-test('a reload left without answer gives way to a retry', async ({ page }) => {
-  page.on('dialog', (dialog) => dialog.accept());
-  // The page's clock: the read's time runs out without waiting for it.
-  await page.clock.install();
-  await openAdmin(page, 'Rôles');
-  await page.getByRole('button', { name: 'Nouveau rôle' }).click();
-  await page.getByLabel('Nom').fill(ROLE);
-  await page.getByRole('checkbox', { name: 'Consulter les plannings' }).check();
-  await page.getByRole('button', { name: 'Créer le rôle' }).click();
-  const remove = page.getByRole('button', { name: `Supprimer ${ROLE}` });
-  await expect(remove).toBeEnabled();
-
-  const roles = await holdList(page, '/api/admin/roles');
-  const reload = roles.arm();
-  await remove.click();
-  await reload;
-  const create = page.getByRole('button', { name: 'Nouveau rôle' });
-  await expect(create).toBeDisabled();
-  // Past its time, the read fails: the screen is no longer locked on it...
-  await page.clock.fastForward(READ_TIMEOUT_MS);
-  await expect(
-    page.getByText('Le serveur ne répond pas. Réessayez dans un instant.'),
-  ).toBeVisible();
-  roles.release();
-  // ...and can be loaded again.
-  await page.getByRole('button', { name: 'Réessayer' }).click();
-  await expect(create).toBeEnabled();
-  await expect(page.getByText(ROLE, { exact: true })).toHaveCount(0);
   await noError(page);
 });

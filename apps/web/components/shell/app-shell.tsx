@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 import { FirstPasswordScreen } from '@/components/account';
-import { Badge, Spinner } from '@/components/ui';
+import { Badge, Failure, Spinner } from '@/components/ui';
 import { MeContext } from '@/lib/me-context';
 import { Sidebar } from './sidebar';
 import { useCurrentUser, usePendingApprovals } from './use-session';
@@ -13,7 +13,7 @@ import { useCurrentUser, usePendingApprovals } from './use-session';
 /** Authenticated layout: navigation (sidebar, or drawer on small screens) and content. */
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const { me, logout } = useCurrentUser();
+  const { me, error, retry, logout } = useCurrentUser();
   // Nothing else is reachable while the password is temporary.
   const pending = usePendingApprovals(me !== null && !me.user.mustChangePassword, pathname);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -22,8 +22,8 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   if (!me) {
     return (
-      <div className="flex min-h-dvh items-center justify-center">
-        <Spinner />
+      <div className="flex min-h-dvh items-center justify-center px-4">
+        {error ? <Failure message={error} onRetry={retry} /> : <Spinner />}
       </div>
     );
   }

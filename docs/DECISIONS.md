@@ -1294,14 +1294,16 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - le module vaut pour tout contrôle désactivé : la zone de saisie du chat,
     désactivée pendant tout un run, reprend le focus à sa fin si le focus est resté
     sur la page. Une validation décidée depuis la carte du chat donne le focus à son
-    bouton, ce qui annule ce rendu ; décidée ailleurs (page des validations), elle le
-    laisse revenir à la zone de saisie ;
+    bouton, ce qui annule ce rendu ; décidée depuis la page des validations ouverte
+    dans un autre onglet, elle le laisse revenir à la zone de saisie ;
   - vérifié sous Chromium seulement (seul navigateur des tests) ; un navigateur qui
     garderait le focus ou n'émettrait pas de `focusout` ne déclenche rien ;
   - test : `apps/web/e2e/reloads.spec.ts` vérifie que le champ « Fonction », validé
     par « Entrée », et le bouton « Tester la connexion » perdent le focus pendant le
-    verrou puis le retrouvent, et qu'un focus donné entre-temps à un onglet y reste.
-    Ils échouent sans le module, et le dernier sans la règle d'annulation.
+    verrou puis le retrouvent, et qu'un focus donné entre-temps à un onglet, puis
+    rendu à la page, annule ce rendu (le bouton ne le reprend pas). Ils échouent sans
+    le module, et le dernier sans annulation (le `focusout` de l'élément quitté et
+    `focusin` annulent chacun : retirer l'un seul ne le fait pas échouer).
 
 ## ADR-044 — Une lecture de l'API a un délai ; un échec de chargement se réessaie
 
@@ -1319,12 +1321,23 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - une modification n'a pas de délai : abandonnée côté client, elle pourrait avoir
     été appliquée par le serveur sans qu'on le sache ;
   - `Loaded` affiche l'échec d'un chargement avec un bouton « Réessayer » qui relance
-    la lecture.
+    la lecture (`Failure`) ; les lectures faites hors de `Loaded` le font aussi : la
+    liste des conversations (qui affichait « Aucune conversation » sur un échec) et
+    la session (`/auth/me`, dont l'échec laissait un indicateur de chargement sans
+    fin) ; le détail d'une conversation donne le message de l'échec.
 - **Conséquences** :
   - un écran n'est jamais verrouillé plus de 30 s : passé ce délai, il montre l'échec
     et propose de réessayer ;
   - une lecture légitime plus longue que 30 s échouerait : aucune ne l'est
     aujourd'hui (le flux d'un run passe par `EventSource`, hors de ce client) ;
-  - test : `apps/web/e2e/reloads.spec.ts` retient le rechargement de la liste des
-    rôles, avance l'horloge de la page de 30 s, vérifie le message, puis
-    « Réessayer » ; il échoue sans le délai.
+  - « Réessayer » est retiré de la page quand la lecture reprend : le focus qu'il
+    avait n'est pas rendu (ADR-043 ne remplace pas un contrôle retiré) ;
+  - une modification sans réponse laisse son bouton en cours et « Annuler »
+    désactivé tant qu'elle n'a pas répondu ;
+  - en développement et dans les tests de bout en bout, `/api/*` passe par le relais
+    de Next.js, qui coupe lui-même une requête sans activité au bout de 30 s (réponse 500) : le premier des deux délais l'emporte. En démonstration et en production,
+    Caddy relaie `/api/*` directement à l'API : le délai du client est le seul ;
+  - test : `apps/web/e2e/timeouts.spec.ts` retient une lecture et avance l'horloge
+    de la page de 30 s : le rechargement des rôles, la liste des conversations et la
+    session montrent le message, puis « Réessayer » charge l'écran. Chacun échoue
+    sans ce qu'il vérifie (délai, liste donnée pour vide, session muette).
