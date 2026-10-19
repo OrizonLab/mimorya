@@ -1246,7 +1246,7 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     case à cocher native prend aussitôt l'aspect désactivé du navigateur.
 - **Conséquences** :
   - après une modification, l'écran est brièvement désactivé, le temps du rechargement,
-    et le contrôle qui avait le focus le perd (à rendre, `docs/ROADMAP.md`) ;
+    et le contrôle qui avait le focus le perd (rendu par ADR-043) ;
   - dans les onglets où un seul formulaire est ouvert à la fois (rôles, politiques,
     organisation), « Modifier » sur une autre carte ferme encore le formulaire dont la
     modification attend sa réponse ; rouvert avant celle-ci, il repart de l'ancienne
@@ -1260,4 +1260,32 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     d'un compte ne se modifie ni ne se ferme, et qu'un rôle ne se rouvre pas, d'après
     l'ancienne liste, puis que la liste et le formulaire rouvert montrent ce que l'API
     a enregistré. Il vérifie aussi qu'une fiche restée ouverte reprend, au
-    rechargement suivant, la modification faite entre-temps hors de la page.
+    rechargement suivant, la modification faite entre-temps hors de la page ; que
+    « Annuler » est désactivé pendant l'envoi ; que l'animation du verrou s'applique à
+    une carte affichée pendant celui-ci et pas à un bouton désactivé par son propre
+    attribut ; et que les règles des outils montrent le dernier test de connexion.
+
+## ADR-043 — Le focus est rendu au contrôle qui l'a perdu en étant désactivé
+
+- **Date** : 2026-10-19 · **Statut** : acceptée
+- **Contexte** : un contrôle désactivé perd le focus, que le navigateur donne à la page
+  (vérifié sous Chromium : par son propre attribut comme par un `fieldset`). C'est le
+  cas d'un bouton pendant son action (`loading`) et de tout l'écran pendant le
+  verrou d'un rechargement (ADR-042) : au clavier, on repartait du haut de la page
+  après chaque modification.
+- **Décision** :
+  - un module unique, `apps/web/lib/focus-keeper.ts`, installé une fois pour toutes
+    les pages (`FocusKeeper` dans la mise en page racine), retient le contrôle qui
+    perd le focus sans destination (`focusout` sans `relatedTarget`) alors qu'il est
+    désactivé ;
+  - dès qu'il est réactivé (observation de l'attribut `disabled`, le sien ou celui
+    d'un `fieldset`), il reprend le focus, sans faire défiler la page, si le focus est
+    resté sur la page ;
+  - tout autre focus entre-temps (clic, tabulation) annule ce rendu ; un contrôle
+    retiré de la page (formulaire fermé) n'est pas remplacé.
+- **Conséquences** :
+  - après « Entrée » dans un champ ou un clic sur un bouton suivi d'un rechargement,
+    le focus revient au même contrôle s'il est toujours affiché ;
+  - le formulaire qui se ferme à l'enregistrement laisse encore le focus à la page ;
+  - test : `apps/web/e2e/reloads.spec.ts` (champ « Fonction » validé par « Entrée »,
+    bouton « Tester la connexion ») ; ils échouent sans le module.

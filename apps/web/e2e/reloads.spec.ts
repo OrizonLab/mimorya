@@ -78,7 +78,8 @@ test('an account’s forms wait for, then follow, the reloaded directory', async
 
   let reload = directory.arm();
   await jobTitle.fill('Chef d’équipe');
-  await saveProfile.click();
+  // Saved from the keyboard: the field keeps the focus across the lock.
+  await jobTitle.press('Enter');
   await reload;
   // Until the directory arrives, nothing on the screen can be changed, nor
   // the account closed and reopened from the former directory.
@@ -91,6 +92,7 @@ test('an account’s forms wait for, then follow, the reloaded directory', async
   await expect(saveProfile).toBeEnabled();
   // The row shows the account as the reloaded directory lists it.
   await expect(row).toContainText('Chef d’équipe');
+  await expect(jobTitle).toBeFocused();
 
   // Another administrator changes the account while its form is open...
   const listed = await page.request.get('/api/admin/users');
@@ -170,7 +172,6 @@ test('a role is edited again only from the reloaded list', async ({ page }) => {
 });
 
 test('tool policies start again from each connection test', async ({ page }) => {
-  page.on('dialog', (dialog) => dialog.accept());
   const tool = (name: string, risk: TestedTool['risk']): TestedTool => ({
     name,
     title: name,
@@ -199,9 +200,12 @@ test('tool policies start again from each connection test', async ({ page }) => 
   await page.getByRole('button', { name: 'Ajouter le serveur' }).click();
 
   const card = cardWith(page, SERVER, 'Tester la connexion');
-  await card.getByRole('button', { name: 'Tester la connexion' }).click();
+  const testButton = card.getByRole('button', { name: 'Tester la connexion' });
+  await testButton.click();
   await expect(card.getByLabel('Risque de mcp_oute_search')).toHaveValue('read');
-  await card.getByRole('button', { name: 'Tester la connexion' }).click();
+  // Disabled while testing, then by the reload's lock: it gets the focus back.
+  await expect(testButton).toBeFocused();
+  await testButton.click();
   // The second test's rules, not the first's: saving them keeps what it brought.
   await expect(card.getByLabel('Risque de mcp_oute_delete')).toHaveValue('irreversible');
   await expect(card.getByLabel('Risque de mcp_oute_search')).toHaveValue('write');

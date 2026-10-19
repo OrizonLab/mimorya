@@ -56,7 +56,8 @@ Repères à l'intérieur des crates :
   operations, shell), `web/components/ui/` (`Loaded` verrouille son contenu pendant un rechargement,
   ADR-042), `web/lib/api/` (client, `contract.ts`
   généré par `pnpm contract`, `useApiData`), `web/lib/use-synced-state.ts` (état d'un
-  formulaire repris de la liste rechargée, ADR-041), `web/lib/labels.ts`, `web/lib/format.ts`, `web/proxy.ts` et
+  formulaire repris de la liste rechargée, ADR-041), `web/lib/focus-keeper.ts` (focus rendu
+  au contrôle réactivé, ADR-043), `web/lib/labels.ts`, `web/lib/format.ts`, `web/proxy.ts` et
   `web/lib/security/` (CSP à nonce par page, ADR-030), `web/e2e/` (tests de bout en
   bout, un fichier par parcours, `support/`) et `api/examples/e2e_server/` (l'API qu'ils
   pilotent, ADR-031).
