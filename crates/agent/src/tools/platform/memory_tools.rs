@@ -4,10 +4,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use mimorya_core::autonomy::ToolRisk;
-use mimorya_core::memory::{
-    MemoryKind, MemoryScope, MemorySource, MemoryStatus, MemoryTarget, can_write_memory,
-    memory_read_filter,
-};
+use mimorya_core::memory::{MemoryKind, MemoryScope, MemorySource, MemoryStatus, MemoryTarget};
 use mimorya_core::tools::{Citation, ToolContext, ToolInfo, ToolResult, TypedTool};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -48,7 +45,7 @@ impl TypedTool for MemorySearch {
     }
 
     async fn run(&self, input: MemorySearchInput, ctx: &ToolContext) -> anyhow::Result<ToolResult> {
-        let filter = memory_read_filter(ctx.authz.engine(), &ctx.subject, &ctx.actor);
+        let filter = ctx.authz.memory_read_filter();
         let limit = input.limit.unwrap_or(DEFAULT_SEARCH_LIMIT);
         let hits = self
             .memory
@@ -181,7 +178,7 @@ impl TypedTool for MemoryRemember {
         }
         // Proposals to shared spaces are allowed for every member; they only
         // become visible once validated by someone holding memory:write.
-        let direct = can_write_memory(ctx.authz.engine(), &ctx.subject, target, &ctx.actor);
+        let direct = ctx.authz.can_write_memory(target);
         let status = if matches!(input.space, MemorySpace::Personal) && direct {
             MemoryStatus::Active
         } else {

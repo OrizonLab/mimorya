@@ -11,13 +11,10 @@ use mimorya_core::autonomy::AutonomyPolicy;
 use serde_json::{Value, json};
 use uuid::Uuid;
 
-use super::ports::{
-    ApprovalRequest, CurrentAccess, EngineAuditEntry, EnginePorts, RunEvent, ToolInvocationRecord,
-};
+use super::ports::{CurrentAccess, EngineAuditEntry, EnginePorts, RunEvent, ToolInvocationRecord};
 use super::state::{PendingApproval, RunCheckpoint};
 use super::types::{RunConfig, RuntimeDeps};
 use crate::llm::{LlmMessage, LlmToolCall, LlmToolResult};
-use crate::tools::executor::INVALID_INPUT;
 use crate::tools::{
     RegisteredTool, ToolCallEvaluation, ToolExecutor, ToolRegistry, wrap_untrusted,
 };
@@ -36,7 +33,7 @@ pub struct ToolCallProcessor {
     autonomy: AutonomyPolicy,
     run_id: Uuid,
     timeout: Duration,
-    ports: EnginePorts,
+    pub(super) ports: EnginePorts,
 }
 
 impl ToolCallProcessor {
@@ -209,138 +206,6 @@ impl ToolCallProcessor {
             is_error: result.is_error,
         })
     }
-
-    /// A call refused by a human (or whose tool disappeared) is reported to the model.
-    pub async fn reject(
-        &self,
-        approval: &PendingApproval,
-        reason: String,
-    ) -> anyhow::Result<LlmToolResult> {
-        self.ports
-            .tool_log
-            .record(ToolInvocationRecord {
-                tool_call_id: approval.tool_call_id.clone(),
-                tool_name: approval.tool_name.clone(),
-                input: approval.input.clone(),
-                decision: "require_approval",
-                decision_reason: Some(reason.clone()),
-                status: "rejected",
-                output_summary: None,
-                error: None,
-                duration_ms: None,
-                approval_id: Some(approval.approval_id),
-            })
-            .await?;
-        Ok(LlmToolResult {
-            tool_call_id: approval.tool_call_id.clone(),
-            content: json!({ "erreur": reason }).to_string(),
-            is_error: true,
-        })
-    }
-
-    async fn deny(&self, call: &LlmToolCall, reason: String) -> anyhow::Result<LlmToolResult> {
-        self.ports
-            .tool_log
-            .record(ToolInvocationRecord {
-                tool_call_id: call.id.clone(),
-                tool_name: call.name.clone(),
-                input: call.input.clone(),
-                decision: "deny",
-                decision_reason: Some(reason.clone()),
-                status: "denied",
-                output_summary: None,
-                error: None,
-                duration_ms: None,
-                approval_id: None,
-            })
-            .await?;
-        self.ports
-            .audit
-            .record(EngineAuditEntry {
-                action: "agent.tool.denied".into(),
-                outcome: "denied",
-                resource_type: Some("tool".into()),
-                resource_id: Some(call.name.clone()),
-                reason: Some(audit_reason(&reason)),
-                metadata: json!({}),
-            })
-            .await?;
-        Ok(LlmToolResult {
-            tool_call_id: call.id.clone(),
-            content: json!({
-                "erreur": format!("Refusé par la plateforme : {reason}"),
-                "consigne": "Ne tente pas de contourner ce refus ; adapte ta réponse ou explique la limite.",
-            })
-            .to_string(),
-            is_error: true,
-        })
-    }
-
-    async fn request_approval(
-        &self,
-        call: &LlmToolCall,
-        tool: &RegisteredTool,
-        input: Value,
-        reason: String,
-    ) -> anyhow::Result<PendingApproval> {
-        let action_summary = tool
-            .tool
-            .describe_action(&input)
-            .unwrap_or_else(|| format!("{} ({})", tool.info.title, call.name));
-        let approval_id = self
-            .ports
-            .approvals
-            .create(ApprovalRequest {
-                tool_name: tool.info.name.clone(),
-                tool_call_id: call.id.clone(),
-                action_summary: action_summary.clone(),
-                payload: input.clone(),
-                risk: tool.info.risk,
-                reason: reason.clone(),
-            })
-            .await?;
-        self.ports
-            .tool_log
-            .record(ToolInvocationRecord {
-                tool_call_id: call.id.clone(),
-                tool_name: tool.info.name.clone(),
-                input: input.clone(),
-                decision: "require_approval",
-                decision_reason: Some(reason.clone()),
-                status: "awaiting_approval",
-                output_summary: None,
-                error: None,
-                duration_ms: None,
-                approval_id: Some(approval_id),
-            })
-            .await?;
-        self.ports
-            .audit
-            .record(EngineAuditEntry {
-                action: "agent.approval.requested".into(),
-                outcome: "success",
-                resource_type: Some("approval".into()),
-                resource_id: Some(approval_id.to_string()),
-                reason: Some(reason),
-                metadata: json!({ "toolName": tool.info.name, "risk": tool.info.risk }),
-            })
-            .await?;
-        self.ports
-            .events
-            .emit(RunEvent::ApprovalRequested {
-                approval_id,
-                tool_name: tool.info.name.clone(),
-                action_summary,
-                risk: tool.info.risk,
-            })
-            .await?;
-        Ok(PendingApproval {
-            approval_id,
-            tool_call_id: call.id.clone(),
-            tool_name: tool.info.name.clone(),
-            input,
-        })
-    }
 }
 
 /// Tool results are returned in the order the model requested the calls.
@@ -363,14 +228,4 @@ fn error_text(content: &Value, summary: &str) -> String {
     content["erreur"]
         .as_str()
         .map_or_else(|| summary.to_string(), str::to_string)
-}
-
-/// The audit keeps why a call was refused, never the input it carried
-/// (validation messages may quote it); the tool log keeps the detail.
-fn audit_reason(reason: &str) -> String {
-    if reason.starts_with(INVALID_INPUT) {
-        INVALID_INPUT.to_string()
-    } else {
-        reason.to_string()
-    }
 }

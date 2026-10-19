@@ -1,9 +1,9 @@
 //! Agent run loop: call the model, enforce policies on every tool call, pause
 //! for human validation, verify the final answer and correct it within
 //! bounds. Every step is checkpointed so that a run can be resumed. The
-//! user's rights are read again before each model call and before the tool
-//! calls it returns (ADR-035): an account no longer active ends the run, a
-//! right withdrawn no longer counts.
+//! user's rights are read again before each model call, before the tool
+//! calls it returns, before concluding and when resuming (ADR-035): a run
+//! its user may no longer use ends there, a right withdrawn no longer counts.
 //!
 //! The loop only orchestrates; the details live next to it:
 //!   tool_calls.rs     policy enforcement and execution of tool calls
@@ -17,7 +17,7 @@ use serde_json::json;
 use super::answer_review::{AnswerReview, present_answer, review_answer};
 use super::budget::check_budget;
 use super::model_call::{ModelTurn, call_model, record_model_usage};
-use super::ports::{CurrentAccess, RunEvent};
+use super::ports::{CurrentAccess, RunEvent, StepAccess};
 use super::state::{PendingCalls, RunCheckpoint};
 use super::tool_calls::{ToolCallProcessor, order_by_request};
 use super::types::{ApprovalDecisions, RunConfig, RunOutcome, RuntimeDeps};
@@ -86,8 +86,18 @@ impl AgentRuntime {
             });
         }
 
-        let Some(access) = self.deps.access.current().await? else {
-            return self.end_for_inactive_account(checkpoint).await;
+        let access = match self.deps.access.current().await? {
+            StepAccess::Granted(access) => access,
+            StepAccess::Ended(reason) => {
+                // Every pending call gets its outcome in the log: not run.
+                let not_run = format!("Non exécuté — {reason}");
+                for approval in &pending.approvals {
+                    self.tools
+                        .abandon(approval, &decisions[&approval.approval_id], &not_run)
+                        .await?;
+                }
+                return self.end_without_access(checkpoint, reason).await;
+            }
         };
         let mut state = checkpoint;
         let mut results = pending.completed_results;
@@ -162,8 +172,9 @@ impl AgentRuntime {
                     .await;
             }
 
-            let Some(access) = self.deps.access.current().await? else {
-                return self.end_for_inactive_account(state).await;
+            let access = match self.deps.access.current().await? {
+                StepAccess::Granted(access) => access,
+                StepAccess::Ended(reason) => return self.end_without_access(state, reason).await,
             };
 
             let response = match call_model(&self.deps, &self.config, &mut state, &access).await? {
@@ -196,8 +207,11 @@ impl AgentRuntime {
             if !response.tool_calls.is_empty() {
                 // The model may have taken a while: its calls are judged with
                 // the rights as they stand now.
-                let Some(access) = self.deps.access.current().await? else {
-                    return self.end_for_inactive_account(state).await;
+                let access = match self.deps.access.current().await? {
+                    StepAccess::Granted(access) => access,
+                    StepAccess::Ended(reason) => {
+                        return self.end_without_access(state, reason).await;
+                    }
                 };
                 if let Some(paused) = self
                     .handle_tool_turn(&mut state, &response, &access)
@@ -208,7 +222,11 @@ impl AgentRuntime {
                 continue;
             }
 
-            // Final answer candidate.
+            // Final answer candidate: reviewed (possibly by a model) and
+            // concluded only while the user may still use the agent.
+            if let StepAccess::Ended(reason) = self.deps.access.current().await? {
+                return self.end_without_access(state, reason).await;
+            }
             let answer = response.text.trim().to_string();
             let judge = self
                 .config
@@ -321,15 +339,14 @@ impl AgentRuntime {
         Ok(None)
     }
 
-    async fn end_for_inactive_account(
+    /// Ends the run when its user may no longer act through it.
+    async fn end_without_access(
         &self,
         checkpoint: RunCheckpoint,
+        error: String,
     ) -> anyhow::Result<RunOutcome> {
-        self.conclude(RunOutcome::Failed {
-            error: ACCOUNT_INACTIVE.into(),
-            checkpoint,
-        })
-        .await
+        self.conclude(RunOutcome::Failed { error, checkpoint })
+            .await
     }
 
     /// Records the outcome, then announces it: listeners must find it saved.

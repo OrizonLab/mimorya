@@ -244,14 +244,21 @@ pub struct CurrentAccess {
     pub subject: Arc<Subject>,
 }
 
+/// What a run may do at one step.
+#[derive(Clone)]
+pub enum StepAccess {
+    /// The rights it acts with.
+    Granted(CurrentAccess),
+    /// The run must stop here: why, as the user reads it (French).
+    Ended(String),
+}
+
 /// Where a run reads its user's rights before each step (ADR-035): an account
 /// disabled, or a right withdrawn, while the run goes on stops counting at
 /// the next step instead of at the end of the run.
 #[async_trait]
 pub trait AccessSource: Send + Sync {
-    /// The rights as they stand now; `None` when the account is no longer
-    /// active.
-    async fn current(&self) -> anyhow::Result<Option<CurrentAccess>>;
+    async fn current(&self) -> anyhow::Result<StepAccess>;
 }
 
 #[derive(Clone)]

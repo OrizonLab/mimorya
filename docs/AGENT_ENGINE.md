@@ -55,7 +55,7 @@ run(objective, subject, options)
   contexte ← ContextBuilder(subject)            # consignes fixes + contexte orga + mémoires + index des compétences
   tant que non terminé :
     Budget.vérifier()                           # étapes, tokens, coût, durée → arrêt propre si dépassé
-    sujet ← AccessSource.actuel()               # droits relus ; compte inactif → arrêt (ADR-035)
+    sujet ← AccessSource.actuel()               # droits relus ; plus le droit d'agir → arrêt (ADR-035)
     réponse ← LLM(contexte, outils visibles par le sujet)
     si appels d'outils :
       sujet ← AccessSource.actuel()             # relus encore : la réponse a pu prendre du temps
@@ -78,9 +78,11 @@ l'interdit pas. Le PEP revérifie à l'exécution (défense en profondeur).
 
 **Droits relus à chaque étape** (ADR-035) : le sujet n'est pas figé au démarrage. Le port
 `AccessSource` le relit avant chaque appel au modèle, avant les appels d'outils qu'il
-renvoie et à la reprise après validation : un compte désactivé arrête le run à ce
-moment (« Arrêt : le compte de l'utilisateur n'est plus actif »), une habilitation
-retirée ne compte plus, ni pour les outils proposés ni pour les appels encore demandés.
+renvoie, avant de conclure une réponse et à la reprise après validation. Un compte
+désactivé, ou privé du droit d'utiliser l'assistant (`agent:use`), arrête le run à ce
+moment, avec son motif ; une habilitation retirée ne compte plus, ni pour les outils
+proposés ni pour les appels encore demandés. Ce que le run détient déjà (consignes,
+mémoires rappelées au démarrage, résultats obtenus) reste dans sa conversation.
 
 **Résultats d'outils** : transmis au modèle comme **données**, encadrés par un
 marqueur `<donnees_outil source="…" fiabilite="non_fiable">` ; les consignes système

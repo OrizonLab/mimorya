@@ -955,28 +955,42 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   run pouvait donc encore agir par l'agent jusqu'à la fin du budget de durée (relevé
   par les audits, SECURITY.md §5).
 - **Décision** :
-  - nouveau port du moteur, `AccessSource` (`crates/agent/src/runtime/ports.rs`) : il
-    rend les droits actuels (`CurrentAccess` : règles de l'entreprise et sujet), ou
-    `None` quand le compte n'est plus actif. `RuntimeDeps` le porte à la place du
-    moteur d'autorisation figé, et `RunConfig` ne porte plus de sujet ;
+  - nouveau port du moteur, `AccessSource` (`crates/agent/src/runtime/ports.rs`) : à
+    chaque lecture, `StepAccess::Granted` (règles de l'entreprise et sujet actuels) ou
+    `StepAccess::Ended(motif)`. `RuntimeDeps` le porte à la place du moteur
+    d'autorisation figé, et `RunConfig` ne porte plus de sujet ;
   - la boucle le relit **avant chaque appel au modèle** (outils proposés), **avant les
-    appels d'outils** que renvoie la réponse (elle a pu prendre du temps) et **à la
-    reprise** après validation (les appels approuvés s'exécutent avec les droits de ce
-    moment). Un compte inactif termine le run en échec (« Arrêt : le compte de
-    l'utilisateur n'est plus actif »), sans autre appel au modèle ni action ;
-  - les outils mémoire lisent les règles dans le contexte d'autorisation de l'appel
-    (`ctx.authz.engine()`), plus dans une copie prise à la construction du registre ;
+    appels d'outils** que renvoie la réponse (elle a pu prendre du temps), **avant de
+    conclure une réponse** (et donc avant l'appel éventuel au juge) et **à la reprise**
+    après validation (les appels approuvés s'exécutent avec les droits de ce moment).
+    Un run qui ne peut plus agir se termine en échec avec le motif, sans autre appel
+    au modèle ni action ; à la reprise, chaque appel validé reçoit son issue (annonce
+    de la décision, journal « non exécuté » avec le motif). Une lecture impossible
+    (base injoignable) arrête aussi le run ;
   - l'API l'implémente avec le service d'accès des requêtes (`RunAccess`,
-    `AccessService::user_context`) : règles de l'entreprise depuis son cache (invalidé
-    par chaque changement d'administration), compte, habilitations et attributs depuis
-    la base, à chaque lecture ;
+    `AccessService::active_context`) : règles de l'entreprise depuis son cache
+    (invalidé par chaque changement d'administration), compte, habilitations et
+    attributs depuis la base, à chaque lecture. Le run continue tant que le compte est
+    actif **et** détient `agent:use`, comme au démarrage et à la reprise (« Arrêt : le
+    compte de l'utilisateur n'est plus actif », « Arrêt : l'utilisateur n'a plus le
+    droit d'utiliser l'assistant ») ;
+  - les outils mémoire passent par le contexte d'autorisation lié de l'appel
+    (`ctx.authz.memory_read_filter()`, `ctx.authz.can_write_memory()`), plus par une
+    copie du moteur prise à la construction du registre ; le moteur reste privé à ce
+    contexte (sujet et acteur liés) ;
   - tests : moteur (`crates/agent/tests/runtime_access.rs`, droits successifs simulés
     par `testing::TestAccess`) et API (`crates/api/tests/run_access.rs` : compte
-    désactivé, puis rôle retiré, pendant la réponse du modèle).
+    désactivé, droit `agent:use` retiré, rôles métier retirés, pendant la réponse du
+    modèle).
 - **Conséquences** :
-  - une lecture de plus en base par étape (et par tour d'outils) : quelques requêtes,
-    négligeables devant un appel au modèle ;
-  - un outil déjà en cours d'exécution n'est pas interrompu (son délai est borné) ;
+  - une à trois lectures en base par étape : quelques requêtes, négligeables devant un
+    appel au modèle ;
+  - ce que le run détient déjà reste dans sa conversation : consignes système (rôles,
+    index des compétences) et mémoires rappelées au démarrage, résultats d'outils déjà
+    obtenus ; un outil déjà en cours d'exécution n'est pas interrompu (délai borné) ;
+  - restent figés pour la durée d'une exécution : le registre d'outils de l'entreprise
+    (outils activés, permissions et risques des connecteurs) jusqu'à la pause ou la
+    fin, et le niveau d'autonomie du run ;
   - les règles de l'entreprise modifiées directement en base, hors administration, ne
     comptent qu'à l'expiration du cache (30 s), comme pour les requêtes ; la suspension
     d'une entreprise n'arrête pas encore un run en cours (elle ferme les sessions).

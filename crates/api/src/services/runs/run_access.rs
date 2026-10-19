@@ -1,16 +1,21 @@
 //! The rights a run reads before each step (ADR-035): its user's access as it
 //! stands now, through the same service as requests. The company's rules come
 //! from its cache, invalidated by every administration change; the account,
-//! its assignments and attributes from the database.
+//! its assignments and attributes from the database. The run goes on only
+//! while the account is active and may still use the agent, as when it
+//! started (`services::runs::service`).
 
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use mimorya_agent::runtime::{AccessSource, CurrentAccess};
-use mimorya_core::{DomainError, ErrorCode};
+use mimorya_agent::runtime::{ACCOUNT_INACTIVE, AccessSource, CurrentAccess, StepAccess};
 use uuid::Uuid;
 
 use crate::services::access::AccessService;
+
+/// Why a run stops once its user lost the right to use the agent.
+pub const AGENT_USE_WITHDRAWN: &str =
+    "Arrêt : l’utilisateur n’a plus le droit d’utiliser l’assistant";
 
 pub struct RunAccess {
     access: Arc<AccessService>,
@@ -30,21 +35,22 @@ impl RunAccess {
 
 #[async_trait]
 impl AccessSource for RunAccess {
-    async fn current(&self) -> anyhow::Result<Option<CurrentAccess>> {
-        match self.access.user_context(self.tenant_id, self.user_id).await {
-            Ok(context) => Ok(Some(CurrentAccess {
-                engine: context.engine,
-                subject: context.subject,
-            })),
-            // The account is no longer active (disabled, or gone).
-            Err(error)
-                if error
-                    .downcast_ref::<DomainError>()
-                    .is_some_and(|e| e.code == ErrorCode::Forbidden) =>
+    async fn current(&self) -> anyhow::Result<StepAccess> {
+        Ok(
+            match self
+                .access
+                .active_context(self.tenant_id, self.user_id)
+                .await?
             {
-                Ok(None)
-            }
-            Err(error) => Err(error),
-        }
+                None => StepAccess::Ended(ACCOUNT_INACTIVE.into()),
+                Some(context) if !context.has("agent:use") => {
+                    StepAccess::Ended(AGENT_USE_WITHDRAWN.into())
+                }
+                Some(context) => StepAccess::Granted(CurrentAccess {
+                    engine: context.engine,
+                    subject: context.subject,
+                }),
+            },
+        )
     }
 }

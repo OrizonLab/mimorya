@@ -10,6 +10,7 @@ pub mod ports;
 pub mod runtime;
 pub mod state;
 pub mod tool_calls;
+mod tool_refusals;
 pub mod types;
 pub mod verification;
 
@@ -18,7 +19,8 @@ pub use context::{UserProfileContext, build_system_prompt, build_user_turn, fren
 pub use ports::{
     AccessSource, ApprovalRequest, ApprovalStore, AuditSink, CurrentAccess, EngineAuditEntry,
     EnginePorts, MemoryHit, MemoryStore, NewMemory, RunEvent, RunEventSink, RunStore, SkillContent,
-    SkillStore, SkillSummary, ToolInvocationLog, ToolInvocationRecord, UsageRecord, UsageSink,
+    SkillStore, SkillSummary, StepAccess, ToolInvocationLog, ToolInvocationRecord, UsageRecord,
+    UsageSink,
 };
 pub use runtime::{ACCOUNT_INACTIVE, AgentRuntime, StartInput};
 pub use state::{PendingApproval, PendingCalls, RunCheckpoint, RunUsageTotals};

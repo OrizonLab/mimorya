@@ -1,13 +1,15 @@
 //! A run reads its user's rights again before each model call and before the
-//! tool calls it returns (ADR-035): an account disabled while the model
-//! answers ends the run before any of those calls runs; a role withdrawn
-//! meanwhile no longer counts for them.
+//! tool calls it returns (ADR-035): an account disabled, or deprived of the
+//! right to use the agent, while the model answers ends the run before any of
+//! those calls runs; business roles withdrawn meanwhile no longer count for
+//! them.
 
 mod support;
 
 use axum::http::StatusCode;
 use mimorya_agent::runtime::ACCOUNT_INACTIVE;
 use mimorya_agent::testing::{ScriptedReply, ScriptedStep, call};
+use mimorya_api::services::runs::AGENT_USE_WITHDRAWN;
 use mimorya_core::demo::user;
 use serde_json::json;
 use support::{Client, TestApi, owner_url, week};
@@ -100,12 +102,38 @@ async fn an_account_disabled_while_the_model_answers_runs_none_of_its_calls() {
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
-async fn a_role_withdrawn_while_the_model_answers_no_longer_counts() {
+async fn the_right_to_use_the_agent_withdrawn_while_the_model_answers_ends_the_run() {
     let api = TestApi::start().await;
-    let julien = api.sign_in(user::JULIEN).await;
+    let isabelle = api.sign_in(user::ISABELLE).await;
+    // Only the base role carries agent:use; her business role stays.
     script_change_then_search(
         &api,
-        "delete from role_assignments where user_id = $1",
+        "delete from role_assignments where user_id = $1 \
+         and role_id in (select id from roles where key = 'member')",
+        user::ISABELLE,
+    );
+
+    let run_id = start_run(&isabelle).await;
+    api.idle().await;
+
+    let (status, error, calls) = outcome(run_id).await;
+    assert_eq!(status, "failed");
+    assert_eq!(error.as_deref(), Some(AGENT_USE_WITHDRAWN));
+    assert!(calls.is_empty(), "{calls:?}");
+    assert_eq!(api.model.as_ref().unwrap().remaining(), 1);
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn business_roles_withdrawn_while_the_model_answers_no_longer_count() {
+    let api = TestApi::start().await;
+    let julien = api.sign_in(user::JULIEN).await;
+    // His business roles go (team lead, technician); the base role
+    // (agent:use) stays.
+    script_change_then_search(
+        &api,
+        "delete from role_assignments where user_id = $1 \
+         and role_id in (select id from roles where key <> 'member')",
         user::JULIEN,
     );
 
