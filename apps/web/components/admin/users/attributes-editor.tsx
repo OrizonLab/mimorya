@@ -37,7 +37,16 @@ export function AttributesEditor({
       </div>
     );
   }
-  return <RowsEditor user={user} initial={initial} onChanged={onChanged} />;
+  // Rebuilt from the attributes the directory now lists: saving a form opened
+  // before a reload would otherwise replace them with former ones.
+  return (
+    <RowsEditor
+      key={JSON.stringify(user.attributes ?? {})}
+      user={user}
+      initial={initial}
+      onChanged={onChanged}
+    />
+  );
 }
 
 function RowsEditor({

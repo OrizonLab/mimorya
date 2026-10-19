@@ -10,6 +10,11 @@ import { AttributesEditor } from './attributes-editor';
 import { ProfileEditor } from './profile-editor';
 import type { AccountNotice } from './types';
 
+/** What the profile form shows: when it changes, the form starts again from it. */
+function profileKey(user: DirectoryUser): string {
+  return JSON.stringify([user.displayName, user.jobTitle, user.orgUnitId, user.clearance]);
+}
+
 /** A directory row; administrators open it to manage the account. */
 export function UserRow({
   user,
@@ -76,6 +81,9 @@ export function UserRow({
             <div className="flex flex-col gap-6">
               {canManage.users && (
                 <ProfileEditor
+                  // Rebuilt from the account as the directory now lists it: a
+                  // form opened before a reload never keeps former values.
+                  key={profileKey(user)}
                   user={user}
                   units={units}
                   emailEnabled={emailEnabled}
