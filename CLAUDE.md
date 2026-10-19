@@ -50,7 +50,9 @@ Repères à l'intérieur des crates :
 - `web/components/<fonctionnalité>/` (account, admin, approvals, chat, memory,
   operations, shell), `web/components/ui/`, `web/lib/api/` (client, types du contrat
   JSON, `useApiData`), `web/lib/labels.ts`, `web/lib/format.ts`, `web/proxy.ts` et
-  `web/lib/security/` (CSP à nonce par page, ADR-030).
+  `web/lib/security/` (CSP à nonce par page, ADR-030), `web/e2e/` (tests de bout en
+  bout, un fichier par parcours, `support/`) et `api/examples/e2e_server/` (l'API qu'ils
+  pilotent, ADR-031).
 
 ## Commandes
 
@@ -62,6 +64,7 @@ pnpm dev:api                       # cargo run --bin mimorya-api : API sur :4000
 pnpm dev:web                       # Web sur :3000
 pnpm check                         # Rust : fmt + clippy -D warnings + tests ; web : typecheck + lint + format
 pnpm test:int                      # cargo test-int : tests PostgreSQL (en série, base *_test recréée)
+pnpm test:e2e                      # Playwright : parcours web contre l'API à modèle scénarisé (ADR-031)
 ```
 
 Avant chaque commit : `pnpm check && pnpm test:int` doivent passer.
@@ -159,6 +162,10 @@ Avant chaque commit : `pnpm check && pnpm test:int` doivent passer.
   (en série ; base `mimorya_test` recréée une fois par binaire de test).
 - Le modèle est simulé avec `ScriptedProvider` (`mimorya_agent::testing`, fonctionnalité
   `testing`) ; les ports avec `InMemoryPorts`. Aucun test n'appelle un fournisseur réel.
+- Bout en bout : `apps/web/e2e/` (Playwright, `pnpm test:e2e`, en CI à chaque PR) contre
+  l'exemple `e2e_server` (modèle scénarisé, e-mails écrits dans un dossier) ; chaque test
+  échoue sur une violation de la CSP ou une erreur de page. Un parcours web nouveau ou
+  modifié s'accompagne de son test.
 - Toute règle d'autorisation ou d'isolation nouvelle s'accompagne d'un test qui tente
   de la contourner.
 

@@ -55,7 +55,13 @@ sont désactivées (message explicite).
 ```bash
 pnpm check        # Rust : fmt, clippy, tests unitaires ; web : typecheck, lint, format
 pnpm test:int     # = cargo test-int : tests PostgreSQL (TEST_DATABASE_URL / TEST_DATABASE_APP_URL)
+pnpm test:e2e     # parcours dans Chromium (Playwright) contre l'API avec un modèle scénarisé
 ```
+
+Les tests de bout en bout (ADR-031) recréent l'entreprise de démonstration de la base
+désignée par `E2E_DATABASE_URL` / `E2E_DATABASE_APP_URL` (par défaut, celle du
+développement) et utilisent les ports 3000 et 4000 : arrêtez d'abord `pnpm dev:api` et
+`pnpm dev:web`. Navigateur : `pnpm --filter @mimorya/web exec playwright install chromium`.
 
 ## Organisation du dépôt
 
