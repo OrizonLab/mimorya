@@ -91,6 +91,13 @@ async fn only_an_account_administrator_sends_one_to_another_active_account() {
         )
         .await;
     assert_eq!(disabled.status, StatusCode::OK);
+    // An active account without a password (as a future single sign-on one).
+    let owner = sqlx::PgPool::connect(support::owner_url()).await.unwrap();
+    sqlx::query("update users set password_hash = null where id = $1")
+        .bind(user::NADIA)
+        .execute(&owner)
+        .await
+        .unwrap();
     let mails = api.mail.sent().len();
 
     let refusals = [
@@ -108,6 +115,10 @@ async fn only_an_account_administrator_sends_one_to_another_active_account() {
         ),
         (
             paul.post(&link_url(user::ISABELLE), json!({})).await,
+            StatusCode::CONFLICT,
+        ),
+        (
+            paul.post(&link_url(user::NADIA), json!({})).await,
             StatusCode::CONFLICT,
         ),
         (
