@@ -1,23 +1,24 @@
 //! A run reads its user's rights again before each model call and before the
 //! tool calls it returns (ADR-035): an account disabled, or deprived of the
-//! right to use the agent, while the model answers ends the run before any of
-//! those calls runs; business roles withdrawn meanwhile no longer count for
-//! them.
+//! right to use the agent, or whose company is suspended, while the model
+//! answers ends the run before any of those calls runs; business roles
+//! withdrawn meanwhile no longer count for them.
 
 mod support;
 
 use axum::http::StatusCode;
 use mimorya_agent::runtime::ACCOUNT_INACTIVE;
 use mimorya_agent::testing::{ScriptedReply, ScriptedStep, call};
-use mimorya_api::services::runs::AGENT_USE_WITHDRAWN;
-use mimorya_core::demo::user;
+use mimorya_api::services::runs::{AGENT_USE_WITHDRAWN, COMPANY_SUSPENDED};
+use mimorya_core::demo::{tenant, user};
 use serde_json::json;
 use support::{Client, TestApi, owner_url, week};
 use uuid::Uuid;
 
-/// Runs `sql` (`$1`: the account) with the owner role, from inside the
-/// scripted model's answer: as an administrator acting while the model works.
-fn while_the_model_answers(sql: &'static str, account: Uuid) {
+/// Runs `sql` (`$1`: the account) with the owner role, blocking: callable
+/// from inside the scripted model's answer, as an administrator acting while
+/// the model works.
+fn as_owner(sql: &'static str, account: Uuid) {
     std::thread::spawn(move || {
         tokio::runtime::Runtime::new()
             .expect("runtime")
@@ -39,7 +40,7 @@ fn while_the_model_answers(sql: &'static str, account: Uuid) {
 fn script_change_then_search(api: &TestApi, sql: &'static str, account: Uuid) {
     api.script(vec![
         ScriptedStep::dynamic(move |_| {
-            while_the_model_answers(sql, account);
+            as_owner(sql, account);
             ScriptedReply::calls("Je cherche.", vec![call("interventions_search", week())])
         }),
         ScriptedStep::text("Synthèse."),
@@ -149,4 +150,34 @@ async fn business_roles_withdrawn_while_the_model_answers_no_longer_count() {
             Some("Permission intervention:read requise".to_string())
         )]
     );
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_company_suspended_while_the_model_answers_ends_the_run() {
+    const SUSPEND: &str = "update tenants set status = 'suspended' where id = (select tenant_id from users where id = $1)";
+    const RESUME: &str = "update tenants set status = 'active' where id = (select tenant_id from users where id = $1)";
+    let api = TestApi::start().await;
+    let claire = api.sign_in(user::CLAIRE).await;
+    let access = api.app.services.access.clone();
+    api.script(vec![
+        ScriptedStep::dynamic(move |_| {
+            as_owner(SUSPEND, user::CLAIRE);
+            // As when the company's cached rules expire.
+            access.invalidate(tenant::ID);
+            ScriptedReply::calls("Je cherche.", vec![call("interventions_search", week())])
+        }),
+        ScriptedStep::text("Synthèse."),
+    ]);
+
+    let run_id = start_run(&claire).await;
+    api.idle().await;
+    as_owner(RESUME, user::CLAIRE);
+    api.app.services.access.invalidate(tenant::ID);
+
+    let (status, error, calls) = outcome(run_id).await;
+    assert_eq!(status, "failed");
+    assert_eq!(error.as_deref(), Some(COMPANY_SUSPENDED));
+    assert!(calls.is_empty(), "{calls:?}");
+    assert_eq!(api.model.as_ref().unwrap().remaining(), 1);
 }

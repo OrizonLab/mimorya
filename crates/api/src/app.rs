@@ -144,7 +144,7 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
         db: db.clone(),
         access,
         connectors,
-        bus,
+        bus: bus.clone(),
         llm,
         limits,
         background: Arc::new(BackgroundTasks::default()),
@@ -166,7 +166,7 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
     Ok(App {
         router,
         services,
-        maintenance: spawn_maintenance(db),
+        maintenance: spawn_maintenance(db, bus),
     })
 }
 

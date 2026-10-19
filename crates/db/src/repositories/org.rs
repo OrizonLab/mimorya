@@ -15,6 +15,8 @@ use uuid::Uuid;
 pub struct TenantRecord {
     pub id: Uuid,
     pub name: String,
+    /// `active` or `suspended`.
+    pub status: String,
     pub settings: Map<String, Value>,
 }
 
@@ -38,6 +40,7 @@ pub struct AuthorizationData {
 struct TenantRow {
     id: Uuid,
     name: String,
+    status: String,
     settings: Value,
 }
 
@@ -71,7 +74,7 @@ struct PolicyRow {
 }
 
 pub async fn load_authorization_data(conn: &mut PgConnection) -> anyhow::Result<AuthorizationData> {
-    let tenant: TenantRow = sqlx::query_as("select id, name, settings from tenants")
+    let tenant: TenantRow = sqlx::query_as("select id, name, status, settings from tenants")
         .fetch_optional(&mut *conn)
         .await?
         .context("Tenant context missing")?;
@@ -91,6 +94,7 @@ pub async fn load_authorization_data(conn: &mut PgConnection) -> anyhow::Result<
         tenant: TenantRecord {
             id: tenant.id,
             name: tenant.name,
+            status: tenant.status,
             settings: match tenant.settings {
                 Value::Object(map) => map,
                 _ => Map::new(),

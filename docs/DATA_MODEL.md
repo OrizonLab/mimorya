@@ -139,7 +139,7 @@ Phase 2 : `skill_eval_runs`, `documents` / `document_chunks` (GED, ingestion),
   `auth_find_invitation` (lire, avant connexion, l'invitation désignée par l'empreinte
   du jeton de son lien, ADR-027), `auth_find_password_reset` (de même pour un lien de
   réinitialisation, ADR-028), `system_fail_stale_runs` (marquer en échec les runs
-  restés sans progression) et `system_purge_expired_password_resets` (supprimer les
+  restés sans progression, et les rendre pour annoncer leur fin) et `system_purge_expired_password_resets` (supprimer les
   liens de réinitialisation expirés).
 
 ## 5. Rétention (valeurs par défaut, configurables par entreprise)

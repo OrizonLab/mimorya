@@ -3,7 +3,9 @@
 //! from its cache, invalidated by every administration change; the account,
 //! its assignments and attributes from the database. The run goes on only
 //! while the account is active and may still use the agent, as when it
-//! started (`services::runs::service`).
+//! started (`services::runs::service`), and while its company is active (a
+//! suspension made outside the administration counts once the company's
+//! cached rules expire).
 
 use std::sync::Arc;
 
@@ -16,6 +18,8 @@ use crate::services::access::AccessService;
 /// Why a run stops once its user lost the right to use the agent.
 pub const AGENT_USE_WITHDRAWN: &str =
     "Arrêt : l’utilisateur n’a plus le droit d’utiliser l’assistant";
+/// Why a run stops once its company is suspended.
+pub const COMPANY_SUSPENDED: &str = "Arrêt : l’entreprise est suspendue";
 
 pub struct RunAccess {
     access: Arc<AccessService>,
@@ -43,6 +47,9 @@ impl AccessSource for RunAccess {
                 .await?
             {
                 None => StepAccess::Ended(ACCOUNT_INACTIVE.into()),
+                Some(context) if context.tenant.status != "active" => {
+                    StepAccess::Ended(COMPANY_SUSPENDED.into())
+                }
                 Some(context) if !context.has("agent:use") => {
                     StepAccess::Ended(AGENT_USE_WITHDRAWN.into())
                 }

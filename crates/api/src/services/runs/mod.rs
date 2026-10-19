@@ -14,5 +14,5 @@ mod service;
 
 pub use approval_decision::DecisionInput;
 pub use executor::RunExecutor;
-pub use run_access::AGENT_USE_WITHDRAWN;
+pub use run_access::{AGENT_USE_WITHDRAWN, COMPANY_SUSPENDED};
 pub use service::{DecisionResult, RunService, StartedTurn};

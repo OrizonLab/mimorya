@@ -66,6 +66,7 @@ run(objective, subject, options)
         deny             → renvoyer le refus motivé au modèle (il adapte son plan)
       persister l'étape ; continuer
     sinon (réponse finale candidate) :
+      sujet ← AccessSource.actuel()             # relus avant le juge et la conclusion
       verdict ← Verifier(objectif, critères, réponse, preuves collectées)
       si verdict OK → terminer
       sinon si tentatives < max → injecter la critique, continuer (correction)
