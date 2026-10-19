@@ -1,5 +1,7 @@
 //! Run records and message metadata, as the engine and the platform write
-//! them, and memory columns, as the core names their values.
+//! them; memory columns, message roles and tool decisions, as their sources
+//! name their values; and the error codes and risks the contract maps from
+//! the core, value for value.
 
 use mimorya_agent::runtime::{BudgetLimits, DEFAULT_BUDGET, RunUsageTotals, VerificationReport};
 use mimorya_agent::tools::ToolCallEvaluation;
