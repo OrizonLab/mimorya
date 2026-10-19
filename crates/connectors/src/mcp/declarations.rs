@@ -1,5 +1,5 @@
-//! What an MCP server declares about its tools, read with care. Pages are
-//! read until `MAX_TOOLS` at most; the token is masked in every title,
+//! What an MCP server declares about its tools, read with care. At most
+//! `MAX_TOOLS` tools and `MAX_PAGES` pages are read; the token is masked in every title,
 //! description and schema before anything is shortened, and a tool name may
 //! not quote it (an identifier cannot be masked). Names, schemas and the
 //! declarations as a whole are bounded, and two tools may not share an
@@ -17,6 +17,8 @@ use super::failure::call_failed;
 use super::redact::Redactor;
 
 pub const MAX_TOOLS: usize = 200;
+/// Pages may be short, not endless.
+const MAX_PAGES: usize = 50;
 const MAX_TOOL_NAME: usize = 64;
 /// The length the MCP specification recommends for a tool name.
 const MAX_REMOTE_NAME_CHARS: usize = 128;
@@ -78,7 +80,7 @@ pub async fn declared_tools(
 ) -> anyhow::Result<Vec<Declared>> {
     let mut tools = Vec::new();
     let mut cursor = None;
-    loop {
+    for _ in 0..MAX_PAGES {
         let params = PaginatedRequestParams::default().with_cursor(cursor);
         let page = client
             .list_tools(Some(params))
@@ -93,6 +95,7 @@ pub async fn declared_tools(
             return checked(tools, prefix, redactor);
         }
     }
+    bail!("Le serveur répartit ses outils sur plus de {MAX_PAGES} pages")
 }
 
 /// The declarations the platform keeps, or why the server is refused.

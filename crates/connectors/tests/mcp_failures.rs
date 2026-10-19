@@ -71,7 +71,10 @@ async fn bounds_what_a_server_declares() {
     assert!(message.contains("plus de 200 outils"), "{message}");
     let url = serve_mcp_http(None, Quirk::EndlessPages).await;
     let message = failure(&url, None, PRIVATE).await;
-    assert!(message.contains("plus de 200 outils"), "{message}");
+    assert!(message.contains("plus de 50 pages"), "{message}");
+    let url = serve_mcp_http(None, Quirk::EndlessEmptyPages).await;
+    let message = failure(&url, None, PRIVATE).await;
+    assert!(message.contains("plus de 50 pages"), "{message}");
     let url = serve_mcp_http(None, Quirk::HugeSchema).await;
     let message = failure(&url, None, PRIVATE).await;
     assert!(message.contains("dépasse 32 Kio"), "{message}");
@@ -92,6 +95,18 @@ async fn never_quotes_the_token_a_server_sends_back_at_start() {
     assert!(message.starts_with(NOT_MCP), "{message}");
     // No type name of the MCP library.
     assert!(!message.contains("rmcp::"), "{message}");
+}
+
+#[tokio::test]
+async fn never_quotes_the_token_a_server_sends_back_escaped() {
+    let token = "jeton/de+test=0123456789";
+    let url = serve_mcp_http(Some(token), Quirk::EchoesEscapedTokenOnStart).await;
+    let message = failure(&url, Some(token), PRIVATE).await;
+    assert!(
+        message.contains(&format!(r#""message":"Bearer {MASK}""#)),
+        "{message}"
+    );
+    assert!(!message.contains("0123456789"), "{message}");
 }
 
 #[tokio::test]

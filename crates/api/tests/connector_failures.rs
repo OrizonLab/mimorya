@@ -1,7 +1,8 @@
 //! One MCP connector failing never breaks a company's runs (ADR-025): tools
 //! sharing an identifier, unreadable policies, a token quoted back by the
 //! server, a server that never answers. Each one sets its own connector
-//! aside, says why to its administrators, and never shows the token.
+//! aside, says why to its administrators, and never shows the token. A start
+//! outdated by a change is no failure.
 
 mod support;
 
@@ -148,11 +149,13 @@ async fn a_token_quoted_back_reaches_neither_logs_nor_administrators_nor_the_mod
         .tools_for(tenant::ID)
         .await
         .unwrap();
-    for tool in tools
+    let echoed: Vec<_> = tools
         .tools
         .iter()
         .filter(|t| t.info().name.starts_with("mcp_echo_"))
-    {
+        .collect();
+    assert_eq!(echoed.len(), 1, "{:?}", tools.issues);
+    for tool in echoed {
         let declared = format!("{:?} {}", tool.info(), tool.input_schema());
         assert!(!declared.contains(TOKEN), "{declared}");
     }
@@ -264,4 +267,43 @@ async fn a_mute_server_delays_one_run_per_retry_delay() {
             StatusCode::OK
         );
     }
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_start_outdated_by_a_change_is_not_a_failure() {
+    let api = TestApi::start_with(&PRIVATE_DEPLOYMENT).await;
+    let paul = api.sign_in(user::PAUL).await;
+    let slow = serve_mcp_http(None, Quirk::SlowStart).await;
+    let id = add(&paul, mcp_body("Lent", "lent", &slow, None)).await;
+    let connectors = &api.app.services.connectors;
+
+    // Renamed while a run starts it: that start serves no configuration.
+    let logs = capture_logs();
+    let renamed = async {
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        paul.patch(
+            &format!("/admin/connectors/{id}"),
+            json!({ "name": "Lent renommé" }),
+        )
+        .await
+    };
+    let (tools, renamed) = tokio::join!(connectors.tools_for(tenant::ID), renamed);
+    let logged = logs.text();
+    drop(logs);
+    assert_eq!(renamed.status, StatusCode::OK);
+    assert_eq!(tools.unwrap().issues.len(), 1);
+    assert!(!logged.contains("Connector unavailable"), "{logged}");
+    let instance = listed(&paul, &id).await;
+    assert_eq!(instance["status"], "untested", "{instance}");
+    assert_eq!(instance["lastError"], serde_json::Value::Null);
+
+    // The next run starts the current configuration.
+    let tools = connectors.tools_for(tenant::ID).await.unwrap();
+    assert!(tools.issues.is_empty());
+    assert_eq!(listed(&paul, &id).await["status"], "ok");
+    assert_eq!(
+        paul.delete(&format!("/admin/connectors/{id}")).await.status,
+        StatusCode::OK
+    );
 }

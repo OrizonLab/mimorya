@@ -9,7 +9,7 @@ Légende des statuts — tenue à jour à chaque contribution :
 | 🟡     | Partiel : socle en place, fonctionnalité incomplète (détail indiqué)       |
 | 🔜     | Planifié, non implémenté                                                   |
 
-Dernière mise à jour : 2026-10-19 (connecteurs MCP depuis l'administration, ADR-025).
+Dernière mise à jour : 2026-10-19 (connecteurs MCP : jeton masqué sous toutes ses formes, ADR-025).
 
 ## Phase 1 — Fondations et MVP fonctionnel
 

@@ -40,7 +40,8 @@ pub fn prefix_problem(prefix: &str) -> Option<String> {
     })
 }
 
-/// Sent as `Authorization: Bearer …`: visible ASCII only.
+/// Sent as `Authorization: Bearer …`: the `b64token` of RFC 6750, which
+/// leaves out what JSON always escapes (`"`, `\\`).
 pub fn token_problem(token: &str) -> Option<String> {
     let length = token.chars().count();
     if !(MIN_TOKEN_CHARS..=MAX_TOKEN_CHARS).contains(&length) {
@@ -48,8 +49,15 @@ pub fn token_problem(token: &str) -> Option<String> {
             "Jeton de {MIN_TOKEN_CHARS} à {MAX_TOKEN_CHARS} caractères"
         ));
     }
-    (!token.chars().all(|c| c.is_ascii_graphic()))
-        .then(|| "Jeton invalide : caractères visibles, sans espace".into())
+    let body = token.trim_end_matches('=');
+    let well_formed = !body.is_empty()
+        && body
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "-._~+/".contains(c));
+    (!well_formed).then(|| {
+        "Jeton invalide : lettres, chiffres et - . _ ~ + / seulement, puis éventuellement des ="
+            .into()
+    })
 }
 
 /// The policies to store, or why they are refused (in French). Each names a
@@ -204,7 +212,16 @@ mod tests {
             assert!(prefix_problem(refused).is_some(), "{refused}");
         }
         assert_eq!(token_problem("jeton-0123456789"), None);
-        for refused in ["court", "avec espace 123", "accentu\u{e9}-123"] {
+        assert_eq!(token_problem("ab/cd+ef_gh.ij~kl=="), None);
+        for refused in [
+            "court",
+            "avec espace 123",
+            "accentu\u{e9}-123",
+            "guillemet\"0123",
+            "barre\\0123456",
+            "egal=au-milieu",
+            "==========",
+        ] {
             assert!(token_problem(refused).is_some(), "{refused}");
         }
     }
