@@ -6,17 +6,17 @@
 use std::collections::{BTreeSet, HashMap};
 
 use mimorya_agent::tools::ToolOverride;
+use mimorya_connectors::mcp::{CONNECTOR_USE, MAX_TOOLS, tool_namespace};
 use mimorya_core::DomainError;
 use mimorya_core::authz::PermissionInfo;
 use mimorya_core::autonomy::ToolRisk;
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::services::connectors::CONNECTOR_USE;
-
 pub const MIN_TOKEN_CHARS: usize = 8;
 pub const MAX_TOKEN_CHARS: usize = 2000;
-pub const MAX_TOOL_POLICIES: usize = 200;
+/// One policy per tool a server may declare.
+pub const MAX_TOOL_POLICIES: usize = MAX_TOOLS;
 pub const MAX_TOOL_PERMISSIONS: usize = 10;
 
 /// One tool's policy as an administrator writes it.
@@ -65,7 +65,7 @@ pub fn checked_policies(
             "{MAX_TOOL_POLICIES} outils au plus"
         )));
     }
-    let namespace = format!("mcp_{prefix}_");
+    let namespace = tool_namespace(prefix);
     let mut stored = HashMap::new();
     for (name, policy) in policies {
         let well_formed = name.starts_with(&namespace)

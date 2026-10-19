@@ -21,6 +21,7 @@ use crate::plugins::stale_run_sweeper::spawn_stale_run_sweeper;
 use crate::plugins::{RateLimiter, RateLimits};
 use crate::routes;
 use crate::secrets::SecretStore;
+use crate::services::connectors::ConnectorSettings;
 use crate::services::llm::{LlmServiceOptions, default_factory};
 use crate::services::runs::RunExecutor;
 use crate::services::{
@@ -92,7 +93,10 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
     let connectors = Arc::new(ConnectorService::new(
         db.clone(),
         SecretStore::new(config.secrets.clone()),
-        config.mcp_network,
+        ConnectorSettings {
+            network: config.mcp_network,
+            start_timeout: config.mcp_start_timeout,
+        },
     ));
     let bus = Arc::new(RunEventBus::default());
     let executor = RunExecutor {

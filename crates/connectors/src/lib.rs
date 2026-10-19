@@ -9,4 +9,7 @@ pub mod testing;
 pub mod types;
 
 pub use registry::{connector_type, connector_types};
-pub use types::{Connector, ConnectorCloser, ConnectorInfo, ConnectorRuntime, InstanceContext};
+pub use types::{
+    Connector, ConnectorCloser, ConnectorInfo, ConnectorRuntime, DEFAULT_START_TIMEOUT,
+    InstanceContext,
+};

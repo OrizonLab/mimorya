@@ -22,7 +22,14 @@ async fn start(
 ) -> anyhow::Result<ConnectorRuntime> {
     connector_type("mcp")
         .unwrap()
-        .instantiate(&config, InstanceContext { secret, network })
+        .instantiate(
+            &config,
+            InstanceContext {
+                secret,
+                network,
+                ..InstanceContext::default()
+            },
+        )
         .await
 }
 

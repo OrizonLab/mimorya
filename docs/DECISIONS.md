@@ -472,7 +472,7 @@ elle est remplacée par une nouvelle entrée qui la référence (« remplace ADR
     verrou d'administration), une entreprise ajoute, modifie, active, désactive,
     teste et supprime des serveurs MCP **Streamable HTTP**. Le connecteur de
     démonstration et les serveurs stdio de l'exploitant ne changent ici que de nom et
-    d'activation ;
+    d'activation, et ne se suppriment pas d'ici ;
   - **adresses** : `https://` vers une adresse publique, sans identifiants, paramètres
     ni fragment dans l'URL. Le client HTTP des connecteurs (`connectors::mcp::network`) :
     - résout les noms en adresses publiques seulement, au moment de la connexion (un
@@ -484,23 +484,46 @@ elle est remplacée par une nouvelle entrée qui la référence (« remplace ADR
     (`MIMORYA_MCP_ALLOW_PRIVATE_NETWORK`). Le transport stdio n'est démarré que si
     l'exploitant l'autorise (`MIMORYA_MCP_ALLOW_STDIO`) ;
   - **jeton** : envoyé en `Authorization: Bearer`, scellé dans le magasin de secrets
-    (`connector.<id>.token`, ADR-024), jamais renvoyé, audité ni écrit dans la
-    dernière erreur. Il ne suit pas le connecteur vers une autre adresse ;
+    (`connector.<id>.token`, ADR-024), jamais renvoyé ni audité. Il ne suit pas le
+    connecteur vers une autre adresse, et une configuration est toujours lue avec
+    son jeton dans un même instantané. Un serveur peut recopier l'en-tête dans ses
+    erreurs : le connecteur masque le jeton dans tout ce que le serveur renvoie
+    (erreurs de démarrage et d'appel, résultats d'outils) avant que cela n'atteigne
+    les journaux, l'administrateur ou le modèle. Les journaux de la bibliothèque
+    `rmcp`, qui recopient les réponses des serveurs, sont coupés par défaut
+    (`rmcp=off`, sauf si `LOG_LEVEL` la nomme) ;
   - **politiques par outil** : risque, activation et permissions requises (permissions
     du catalogue délégables à l'agent). `connector:use` est toujours exigé. Les
     politiques d'un connecteur ne portent que sur ses propres outils
-    (`mcp_<préfixe>_…`), et le préfixe est unique et définitif ;
-  - **robustesse** :
-    - connexion et découverte des outils bornées à 20 s, descriptions bornées ;
-    - un serveur lent ne bloque plus les autres connecteurs ;
-    - en cas de panne, état `error` et dernière erreur pour l'administrateur ; les
-      autres connecteurs restent disponibles ;
+    (`mcp_<préfixe>_…`), et le préfixe est unique (serveurs de l'exploitant compris)
+    et définitif ;
+  - **robustesse** : une panne d'un connecteur ne le rend indisponible que lui, et ne
+    fait jamais échouer les runs de l'entreprise :
+    - connexion et découverte des outils bornées à 20 s
+      (`MIMORYA_MCP_START_TIMEOUT_SECS`) ; au plus 200 outils, schémas d'entrée de
+      32 Kio au plus, titres et descriptions bornés ;
+    - les connecteurs démarrent en parallèle, et un échec est mémorisé 60 s pour la
+      configuration en cours : un serveur muet retarde un run par minute, du délai
+      de démarrage au plus, puis les runs s'en passent sans attendre. Un changement
+      de configuration ou un test réussi fait réessayer aussitôt ;
+    - deux outils d'un même serveur qui donnent le même identifiant, des politiques
+      illisibles, un jeton illisible : ce connecteur est écarté ;
     - deux connecteurs qui nomment le même outil : le plus ancien le garde, l'autre
-      est signalé ;
+      est écarté ;
+  - **état affiché** : `untested` (« Non testé ») tant qu'aucun démarrage n'a eu lieu
+    depuis la création, un changement d'adresse ou de jeton, ou la réactivation ;
+    puis `ok` ou `error` avec la dernière erreur, en français (cause technique
+    abrégée, jeton masqué). Un état calculé sur une configuration antérieure est
+    ignoré ;
   - **test de connexion** : il démarre une instance neuve, liste les outils avec la
-    politique en vigueur pour chacun et enregistre l'état.
+    politique effective de chacun (celle que les runs appliquent) et enregistre
+    l'état.
 - **Conséquences** :
   - les serveurs MCP d'une entreprise doivent être joignables publiquement en HTTPS
     (ou sur le réseau d'un déploiement privé qui l'autorise) ;
+  - la taille des réponses d'un serveur n'est pas bornée par la bibliothèque MCP
+    (corps lus en entier, dans la limite du délai de démarrage ou d'appel) ;
+  - la vivacité d'une session MCP gardée en cache n'est pas vérifiée : la plateforme
+    ne la reconstruit qu'au changement de configuration suivant ou au redémarrage ;
   - restent à faire : OAuth des serveurs MCP, test avant enregistrement, mandataire
     sortant configurable, descriptions remplaçables par l'administrateur.

@@ -9,6 +9,7 @@ import { ToolPolicies } from './tool-policies';
 import type { ConnectorTest, ConnectorView, ConnectorsView } from './types';
 
 const STATUS = {
+  untested: { label: 'Non testé', tone: 'neutral' },
   ok: { label: 'Opérationnel', tone: 'ok' },
   error: { label: 'En erreur', tone: 'danger' },
   disabled: { label: 'Désactivé', tone: 'neutral' },

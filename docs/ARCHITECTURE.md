@@ -185,8 +185,12 @@ Détaillés dans [AGENT_ENGINE.md](AGENT_ENGINE.md). En résumé :
   donc soumis à validation) ; les résultats sont traités comme non fiables. Une
   entreprise ajoute ses serveurs en HTTPS depuis l'administration ; le serveur ne les
   joint qu'à des adresses publiques (ADR-025). Les politiques d'un connecteur ne
-  portent que sur ses propres outils, et un serveur lent ou en panne n'affecte que son
-  connecteur (état et dernière erreur affichés à l'administrateur).
+  portent que sur ses propres outils. Les connecteurs démarrent en parallèle ; une
+  panne (serveur, jeton, politiques, noms d'outils en collision) n'écarte que son
+  connecteur, et un échec est mémorisé une minute : un serveur muet retarde un run
+  par minute, du délai de démarrage au plus. L'état (« Non testé », « Opérationnel »,
+  « En erreur ») et la dernière erreur, jeton masqué, sont affichés à
+  l'administrateur.
 - Les secrets ne transitent jamais par le contexte du modèle ni par les journaux.
 
 Connecteurs prévus : démonstration (MVP), MCP générique (MVP), webhooks/REST générique,

@@ -43,6 +43,13 @@ pub struct ConnectorAdmin<'a> {
     pub catalog: &'a [PermissionInfo],
 }
 
+/// The prefix of any MCP instance, operator-written ones included.
+fn mcp_prefix(instance: &ConnectorInstanceRow) -> Option<&str> {
+    (instance.connector_type == "mcp")
+        .then(|| instance.config["prefix"].as_str())
+        .flatten()
+}
+
 /// The prefix and address of an MCP instance configured over HTTP.
 pub fn http_config(instance: &ConnectorInstanceRow) -> Option<(String, String)> {
     let config = &instance.config;
@@ -71,11 +78,12 @@ pub async fn create_mcp_connector(
     }
     let tenant_id = access.subject.tenant_id;
     let mut tx = begin_change(admin.db, access, PERMISSION).await?;
+    // Unique among every MCP server, operator-written ones included.
     let taken = list_connector_instances(&mut tx, false)
         .await?
         .iter()
-        .filter_map(http_config)
-        .any(|(prefix, _)| prefix == input.prefix);
+        .filter_map(mcp_prefix)
+        .any(|prefix| prefix == input.prefix);
     if taken {
         return Err(
             DomainError::conflict("Ce préfixe est déjà utilisé par un autre connecteur").into(),
@@ -181,6 +189,7 @@ pub async fn update_connector(
             patch.tool_policies = Some(checked_policies(policies, &prefix, admin.catalog)?);
         }
         let moved = changes.url.as_ref().is_some_and(|url| *url != current_url);
+        patch.reachability_changed = moved || changes.token.is_some();
         if let Some(url) = &changes.url {
             patch.config = Some(json!({ "transport": "http", "prefix": prefix, "url": url }));
         }
@@ -238,9 +247,9 @@ pub async fn delete_connector(
     let Some(instance) = get_connector_instance(&mut tx, id).await? else {
         return Err(DomainError::not_found("Connecteur introuvable").into());
     };
-    if instance.connector_type != "mcp" {
+    if http_config(&instance).is_none() {
         return Err(DomainError::validation(
-            "Seuls les serveurs MCP se suppriment ici ; désactivez plutôt ce connecteur",
+            "Seuls les serveurs MCP ajoutés ici se suppriment ici ; désactivez plutôt ce connecteur",
         )
         .into());
     }

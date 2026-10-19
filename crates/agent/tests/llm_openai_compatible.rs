@@ -68,12 +68,14 @@ async fn maps_requests_and_responses() {
         response.tool_calls[1].input,
         json!({ "__invalid_json__": "{oops" })
     );
+    // `prompt_tokens` includes the cached tokens: they are counted once.
+    assert_eq!(response.usage.input_total(), 50);
     assert_eq!(
         (
             response.usage.input_tokens,
             response.usage.cache_read_tokens
         ),
-        (50, 10)
+        (40, 10)
     );
     assert_eq!(response.provider, "ollama");
 }

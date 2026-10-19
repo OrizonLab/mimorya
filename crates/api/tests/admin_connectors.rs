@@ -186,6 +186,25 @@ async fn the_rules_and_rights_of_connector_changes() {
         StatusCode::BAD_REQUEST
     );
     assert_eq!(paul.delete(&demo_url).await.status, StatusCode::BAD_REQUEST);
+    // Its test shows what runs require: its own permissions, not connector:use.
+    let tested = paul
+        .post(&format!("{demo_url}/test"), json!({}))
+        .await
+        .json();
+    assert_eq!(tested["ok"], true, "{tested}");
+    let tools = tested["tools"].as_array().unwrap();
+    assert!(tools.iter().all(|t| {
+        !t["permissions"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("connector:use"))
+    }));
+    assert!(tools.iter().any(|t| {
+        t["permissions"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("intervention:read"))
+    }));
     assert_eq!(
         paul.patch(&demo_url, json!({ "enabled": false }))
             .await

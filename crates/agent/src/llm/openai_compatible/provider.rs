@@ -119,6 +119,10 @@ impl LlmProvider for OpenAiCompatibleProvider {
             })
             .collect();
         let usage = &completion["usage"];
+        // `prompt_tokens` includes the cached ones.
+        let cached = usage["prompt_tokens_details"]["cached_tokens"]
+            .as_u64()
+            .unwrap_or(0);
         Ok(LlmResponse {
             stop_reason: map_finish_reason(
                 choice["finish_reason"].as_str(),
@@ -127,11 +131,12 @@ impl LlmProvider for OpenAiCompatibleProvider {
             text,
             tool_calls,
             usage: LlmUsage {
-                input_tokens: usage["prompt_tokens"].as_u64().unwrap_or(0),
-                output_tokens: usage["completion_tokens"].as_u64().unwrap_or(0),
-                cache_read_tokens: usage["prompt_tokens_details"]["cached_tokens"]
+                input_tokens: usage["prompt_tokens"]
                     .as_u64()
-                    .unwrap_or(0),
+                    .unwrap_or(0)
+                    .saturating_sub(cached),
+                output_tokens: usage["completion_tokens"].as_u64().unwrap_or(0),
+                cache_read_tokens: cached,
                 cache_write_tokens: 0,
             },
             provider: self.id.clone(),

@@ -36,7 +36,7 @@ pub async fn record_model_usage(
 ) -> anyhow::Result<()> {
     let cost = prices.cost_micros(&response.model, &response.usage);
     let usage = response.usage;
-    let input_tokens = usage.input_tokens + usage.cache_read_tokens + usage.cache_write_tokens;
+    let input_tokens = usage.input_total();
     state.usage.input_tokens += input_tokens;
     state.usage.output_tokens += usage.output_tokens;
     state.usage.cost_micros += cost.unwrap_or(0);
@@ -54,7 +54,7 @@ pub async fn record_model_usage(
     ports
         .events
         .emit(RunEvent::Usage {
-            input_tokens: usage.input_tokens,
+            input_tokens,
             output_tokens: usage.output_tokens,
             cost_micros: cost,
         })

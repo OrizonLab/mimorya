@@ -143,6 +143,8 @@ pub enum StopReason {
     Other,
 }
 
+/// Token counts of one model call. `input_tokens` excludes the tokens read
+/// from or written to the cache: each provider adapter splits them so.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LlmUsage {
@@ -150,6 +152,13 @@ pub struct LlmUsage {
     pub output_tokens: u64,
     pub cache_read_tokens: u64,
     pub cache_write_tokens: u64,
+}
+
+impl LlmUsage {
+    /// Every input token, cached or not.
+    pub fn input_total(&self) -> u64 {
+        self.input_tokens + self.cache_read_tokens + self.cache_write_tokens
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

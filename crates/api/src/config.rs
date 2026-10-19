@@ -3,6 +3,7 @@
 //! silently.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use mimorya_agent::llm::{PROVIDER_KINDS, ProviderConfig};
 use mimorya_connectors::mcp::NetworkPolicy;
@@ -44,6 +45,9 @@ pub struct AppConfig {
     /// What MCP connectors may reach (`MIMORYA_MCP_ALLOW_PRIVATE_NETWORK`,
     /// `MIMORYA_MCP_ALLOW_STDIO`): public HTTPS servers only by default.
     pub mcp_network: NetworkPolicy,
+    /// How long an MCP server may take to connect and list its tools
+    /// (`MIMORYA_MCP_START_TIMEOUT_SECS`, 20 by default).
+    pub mcp_start_timeout: Duration,
     /// Model-based review of answers when success criteria are given.
     pub llm_judge: bool,
     /// Login attempts allowed per client address and per minute.
@@ -68,6 +72,7 @@ impl std::fmt::Debug for AppConfig {
             .field("secrets", &self.secrets)
             .field("tenant_llm_endpoints", &self.tenant_llm_endpoints)
             .field("mcp_network", &self.mcp_network)
+            .field("mcp_start_timeout", &self.mcp_start_timeout)
             .field("llm_judge", &self.llm_judge)
             .field(
                 "login_rate_limit_per_minute",
@@ -128,6 +133,11 @@ impl AppConfig {
             allow_private_network: reader.boolean("MIMORYA_MCP_ALLOW_PRIVATE_NETWORK", false),
             allow_stdio: reader.boolean("MIMORYA_MCP_ALLOW_STDIO", false),
         };
+        let start_seconds = reader.parsed("MIMORYA_MCP_START_TIMEOUT_SECS", 20_u64);
+        if !(1..=120).contains(&start_seconds) {
+            reader.issue("MIMORYA_MCP_START_TIMEOUT_SECS", "entre 1 et 120 secondes");
+        }
+        let mcp_start_timeout = Duration::from_secs(start_seconds);
         let llm_judge = reader.boolean("MIMORYA_LLM_JUDGE", false);
         let login_rate_limit_per_minute = reader.parsed("LOGIN_RATE_LIMIT_PER_MINUTE", 10_u32);
         if login_rate_limit_per_minute == 0 {
@@ -151,6 +161,7 @@ impl AppConfig {
             secrets,
             tenant_llm_endpoints,
             mcp_network,
+            mcp_start_timeout,
             llm_judge,
             login_rate_limit_per_minute,
         })

@@ -11,7 +11,7 @@ export interface ConnectorView {
   type: string;
   name: string;
   enabled: boolean;
-  status: 'ok' | 'error' | 'disabled';
+  status: 'untested' | 'ok' | 'error' | 'disabled';
   lastError: string | null;
   toolPolicies: Record<string, ToolPolicy>;
   /** An MCP server configured over HTTPS (editable here). */

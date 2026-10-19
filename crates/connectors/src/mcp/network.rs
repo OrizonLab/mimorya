@@ -59,9 +59,13 @@ fn is_public_v6(ip: Ipv6Addr) -> bool {
     !(ip.is_loopback()
         || ip.is_unspecified()
         || ip.is_multicast()
-        // Unique local fc00::/7, link-local fe80::/10, documentation 2001:db8::/32.
+        // Unique local fc00::/7, link-local fe80::/10, deprecated site-local
+        // fec0::/10, documentation 2001:db8::/32.
         || (first & 0xfe00) == 0xfc00
         || (first & 0xffc0) == 0xfe80
+        || (first & 0xffc0) == 0xfec0
+        // Deprecated IPv4-compatible ::/96.
+        || ip.segments()[..6].iter().all(|s| *s == 0)
         || (first == 0x2001 && ip.segments()[1] == 0x0db8)
         // NAT64 64:ff9b::/96 and 6to4 2002::/16 embed an IPv4 address.
         || (first == 0x0064 && ip.segments()[1] == 0xff9b)
@@ -192,6 +196,9 @@ mod tests {
             "::ffff:10.0.0.1",
             "64:ff9b::a00:1",
             "2002:a00:1::1",
+            "::127.0.0.1",
+            "::808:808",
+            "fec0::1",
         ] {
             assert!(!is_public_ip(private.parse().unwrap()), "{private}");
         }

@@ -48,17 +48,30 @@ impl Database {
     /// Starts a transaction bound to a tenant. Dropping it without `commit`
     /// rolls everything back.
     pub async fn begin(&self, tenant_id: Uuid) -> sqlx::Result<TenantTx> {
-        let mut tx = self.pool.begin().await?;
-        sqlx::query("select set_config('app.tenant_id', $1, true)")
-            .bind(tenant_id.to_string())
-            .execute(&mut *tx)
+        bound(self.pool.begin().await?, tenant_id).await
+    }
+
+    /// A read-only transaction whose reads all see the same snapshot: rows
+    /// read together (a configuration and its secret) match each other.
+    pub async fn begin_snapshot(&self, tenant_id: Uuid) -> sqlx::Result<TenantTx> {
+        let tx = self
+            .pool
+            .begin_with("begin isolation level repeatable read read only")
             .await?;
-        Ok(TenantTx { tx, tenant_id })
+        bound(tx, tenant_id).await
     }
 
     pub async fn close(&self) {
         self.pool.close().await;
     }
+}
+
+async fn bound(mut tx: Transaction<'static, Postgres>, tenant_id: Uuid) -> sqlx::Result<TenantTx> {
+    sqlx::query("select set_config('app.tenant_id', $1, true)")
+        .bind(tenant_id.to_string())
+        .execute(&mut *tx)
+        .await?;
+    Ok(TenantTx { tx, tenant_id })
 }
 
 /// A transaction in which row-level security sees exactly one tenant.

@@ -3,8 +3,6 @@
 //! administrator maps them knowingly. How it went is recorded on the
 //! instance; the audit keeps the outcome, never the token.
 
-use std::collections::HashMap;
-
 use mimorya_agent::tools::ToolOverride;
 use mimorya_core::DomainError;
 use mimorya_core::autonomy::ToolRisk;
@@ -16,7 +14,9 @@ use uuid::Uuid;
 use super::audit_entry;
 use super::connectors::ConnectorAdmin;
 use crate::services::AccessContext;
-use crate::services::connectors::{CONNECTOR_USE, failure, opened, token_secret_name};
+use crate::services::connectors::{
+    failure, opened, read_policies, scoped_overrides, token_secret_name,
+};
 
 const PERMISSION: &str = "connector:manage";
 
@@ -42,7 +42,8 @@ pub async fn test_connector(
 ) -> anyhow::Result<ConnectorTestOutcome> {
     access.require_tenant_wide(PERMISSION)?;
     let tenant_id = access.subject.tenant_id;
-    let mut tx = admin.db.begin(tenant_id).await?;
+    // The instance and its token from one snapshot.
+    let mut tx = admin.db.begin_snapshot(tenant_id).await?;
     let Some(instance) = get_connector_instance(&mut tx, id).await? else {
         return Err(DomainError::not_found("Connecteur introuvable").into());
     };
@@ -53,25 +54,34 @@ pub async fn test_connector(
             .await?,
     );
     tx.commit().await?;
-    let policies: HashMap<String, ToolOverride> =
-        serde_json::from_value(instance.tool_policies.clone()).unwrap_or_default();
 
-    let outcome = match secret {
-        Err(error) => ConnectorTestOutcome {
+    let outcome = match (read_policies(&instance), secret) {
+        (Err(error), _) => ConnectorTestOutcome {
+            tools: Vec::new(),
+            error: Some(error),
+        },
+        (_, Err(error)) => ConnectorTestOutcome {
             tools: Vec::new(),
             error: Some(error.to_string()),
         },
-        Ok(token) => {
+        (Ok(policies), Ok(token)) => {
             let started = admin
                 .connectors
                 .start(&instance.connector_type, &instance.config, token.as_deref())
                 .await;
             match started {
                 Ok(runtime) => {
+                    let names: Vec<String> = runtime
+                        .tools
+                        .iter()
+                        .map(|t| t.info().name.clone())
+                        .collect();
+                    // As runs apply them.
+                    let effective = scoped_overrides(&instance, policies, &names);
                     let tools = runtime
                         .tools
                         .iter()
-                        .map(|tool| tested(tool.info(), policies.get(&tool.info().name)))
+                        .map(|tool| tested(tool.info(), effective.get(&tool.info().name)))
                         .collect();
                     if let Some(closer) = &runtime.closer {
                         closer.close().await;
@@ -85,8 +95,11 @@ pub async fn test_connector(
             }
         }
     };
+    if outcome.error.is_none() {
+        admin.connectors.retry_now(id).await;
+    }
     let mut tx = admin.db.begin(tenant_id).await?;
-    report_connector_status(&mut tx, id, outcome.error.as_deref()).await?;
+    report_connector_status(&mut tx, id, instance.updated_at, outcome.error.as_deref()).await?;
     append_audit(
         &mut tx,
         audit_entry(access, "connector.tested", "connector", id).metadata(json!({
@@ -99,20 +112,16 @@ pub async fn test_connector(
     Ok(outcome)
 }
 
-/// The tool as runs would see it: its declaration, then the policy.
+/// The tool as runs see it: its declaration, then its effective policy.
 fn tested(info: &mimorya_core::tools::ToolInfo, policy: Option<&ToolOverride>) -> TestedTool {
-    let mut permissions: Vec<String> = policy
-        .and_then(|p| p.permissions.clone())
-        .unwrap_or_else(|| info.required_permissions.clone());
-    if !permissions.iter().any(|p| p == CONNECTOR_USE) {
-        permissions.push(CONNECTOR_USE.into());
-    }
     TestedTool {
         name: info.name.clone(),
         title: info.title.clone(),
         description: info.description.clone(),
         enabled: policy.and_then(|p| p.enabled).unwrap_or(true),
         risk: policy.and_then(|p| p.risk).unwrap_or(info.risk),
-        permissions,
+        permissions: policy
+            .and_then(|p| p.permissions.clone())
+            .unwrap_or_else(|| info.required_permissions.clone()),
     }
 }
