@@ -12,6 +12,17 @@ use super::SecretCipher;
 /// The API key of the company's model provider.
 pub const LLM_API_KEY: &str = "llm.api_key";
 
+/// A secret as found: a failure to open it is an answer, not an error (only
+/// the database failing is).
+pub enum SecretRead {
+    Absent,
+    Value(String),
+    /// Stored, but this server has no master key to open it.
+    NoMasterKey,
+    /// Stored, but it does not open (other master key, altered row).
+    Unreadable,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct SecretStore {
     /// `None` when the server has no master key: nothing can be stored.
@@ -53,18 +64,24 @@ impl SecretStore {
         Ok(())
     }
 
-    /// The value, if one is stored; an error if it cannot be opened (other
-    /// master key, altered row).
-    pub async fn get(
+    /// The stored value and whether it opens; an error only when the
+    /// database fails.
+    pub async fn read(
         &self,
         tx: &mut TenantTx,
         tenant_id: Uuid,
         name: &str,
-    ) -> anyhow::Result<Option<String>> {
+    ) -> anyhow::Result<SecretRead> {
         let Some(sealed) = get_secret(tx, name).await? else {
-            return Ok(None);
+            return Ok(SecretRead::Absent);
         };
-        Ok(Some(self.cipher()?.open(tenant_id, name, &sealed)?))
+        let Some(cipher) = self.cipher.as_deref() else {
+            return Ok(SecretRead::NoMasterKey);
+        };
+        Ok(match cipher.open(tenant_id, name, &sealed) {
+            Ok(value) => SecretRead::Value(value),
+            Err(_) => SecretRead::Unreadable,
+        })
     }
 
     /// Whether a value is stored (without opening it).

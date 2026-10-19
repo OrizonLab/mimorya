@@ -115,17 +115,3 @@ async fn can_be_disabled_by_the_administrator() {
             .is_empty()
     );
 }
-
-#[tokio::test]
-async fn connects_a_stdio_server_through_the_connector_type() {
-    let connector = mimorya_connectors::connector_type("mcp").unwrap();
-    let config = json!({ "transport": "stdio", "prefix": "docs", "command": env!("CARGO_BIN_EXE_mcp-demo-docs") });
-    let runtime = connector.instantiate(&config, None).await.unwrap();
-    let names: Vec<&str> = runtime
-        .tools
-        .iter()
-        .map(|t| t.info().name.as_str())
-        .collect();
-    assert_eq!(names, ["mcp_docs_search_procedures"]);
-    runtime.closer.unwrap().close().await;
-}

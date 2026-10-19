@@ -182,7 +182,11 @@ Détaillés dans [AGENT_ENGINE.md](AGENT_ENGINE.md). En résumé :
 - **MCP** : un pont transforme chaque outil d'un serveur MCP en outil de la plateforme.
   Les serveurs MCP ignorent tout de nos utilisateurs : l'administrateur **associe**
   chaque outil MCP à des permissions et à un niveau de risque (par défaut `write`,
-  donc soumis à validation) ; les résultats sont traités comme non fiables.
+  donc soumis à validation) ; les résultats sont traités comme non fiables. Une
+  entreprise ajoute ses serveurs en HTTPS depuis l'administration ; le serveur ne les
+  joint qu'à des adresses publiques (ADR-025). Les politiques d'un connecteur ne
+  portent que sur ses propres outils, et un serveur lent ou en panne n'affecte que son
+  connecteur (état et dernière erreur affichés à l'administrateur).
 - Les secrets ne transitent jamais par le contexte du modèle ni par les journaux.
 
 Connecteurs prévus : démonstration (MVP), MCP générique (MVP), webhooks/REST générique,

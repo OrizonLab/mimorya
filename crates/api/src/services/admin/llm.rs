@@ -188,7 +188,13 @@ pub async fn test_llm(
                         .unwrap_or(0),
                     provider: response.provider,
                     model: response.model.clone(),
-                    input_tokens: i32::try_from(response.usage.input_tokens).unwrap_or(i32::MAX),
+                    // Counted as runs count them: cached tokens are input too.
+                    input_tokens: i32::try_from(
+                        response.usage.input_tokens
+                            + response.usage.cache_read_tokens
+                            + response.usage.cache_write_tokens,
+                    )
+                    .unwrap_or(i32::MAX),
                     output_tokens: i32::try_from(response.usage.output_tokens).unwrap_or(i32::MAX),
                 },
             )

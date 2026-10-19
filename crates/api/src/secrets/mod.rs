@@ -6,4 +6,4 @@ mod cipher;
 mod store;
 
 pub use cipher::{MASTER_KEY_LEN, SecretCipher};
-pub use store::{LLM_API_KEY, SecretStore};
+pub use store::{LLM_API_KEY, SecretRead, SecretStore};

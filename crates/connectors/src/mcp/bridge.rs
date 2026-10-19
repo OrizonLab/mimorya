@@ -18,6 +18,18 @@ use serde_json::{Value, json};
 pub type McpClient = RunningService<RoleClient, ()>;
 
 const MAX_TOOL_NAME: usize = 64;
+/// What a server says about its tools reaches the model: kept short.
+const MAX_TITLE_CHARS: usize = 120;
+const MAX_DESCRIPTION_CHARS: usize = 1000;
+
+fn bounded(text: &str, max: usize) -> String {
+    if text.chars().count() <= max {
+        return text.to_string();
+    }
+    let mut kept: String = text.chars().take(max - 1).collect();
+    kept.push('…');
+    kept
+}
 
 #[derive(Debug, Clone)]
 pub struct McpToolsetOptions {
@@ -143,11 +155,14 @@ pub async fn create_mcp_toolset(
         let description = format!(
             "[Serveur MCP « {} »] {}",
             options.prefix,
-            tool.description.as_deref().unwrap_or(&tool.name)
+            bounded(
+                tool.description.as_deref().unwrap_or(&tool.name),
+                MAX_DESCRIPTION_CHARS
+            )
         );
         let info = ToolInfo::try_new(
             &mcp_tool_name(&options.prefix, &tool.name),
-            &title,
+            &bounded(&title, MAX_TITLE_CHARS),
             &description,
             options.default_risk,
         )

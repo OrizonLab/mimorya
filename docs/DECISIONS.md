@@ -450,4 +450,57 @@ elle est remplacée par une nouvelle entrée qui la référence (« remplace ADR
   - la rotation de la clé maîtresse (`key_version`) et un KMS restent à faire
     (phase 3) ;
   - avec plusieurs instances de l'API, un changement met jusqu'à 60 s à atteindre
-    les autres.
+    les autres ;
+  - un run déjà lancé garde le fournisseur résolu à son démarrage (ou à sa reprise
+    après une validation) jusqu'à sa fin ou sa prochaine pause, dans la limite de son
+    budget ;
+  - la liste d'adresses de l'exploitant est lue au démarrage : en retirer une prend
+    effet au redémarrage suivant.
+
+## ADR-025 — Serveurs MCP ajoutés par les entreprises : HTTPS public, jeton chiffré
+
+- **Date** : 2026-10-19 · **Statut** : acceptée
+- **Contexte** : jusqu'ici, un serveur MCP ne s'ajoutait qu'en écrivant en base. Une
+  entreprise doit pouvoir brancher ses propres serveurs (documentation, outils
+  métier) et décider de ce que l'agent peut en faire. Or une adresse choisie par une
+  entreprise est appelée par le serveur de la plateforme : sans précaution, elle mène
+  au réseau interne de l'exploitant (SSRF). Le transport stdio, lui, lance un
+  processus sur ce serveur. Enfin, le client HTTP de `rmcp` n'avait pas de TLS dans
+  notre configuration.
+- **Décision** :
+  - depuis l'administration (`connector:manage`, sur toute l'entreprise, sous le
+    verrou d'administration), une entreprise ajoute, modifie, active, désactive,
+    teste et supprime des serveurs MCP **Streamable HTTP**. Le connecteur de
+    démonstration et les serveurs stdio de l'exploitant ne changent ici que de nom et
+    d'activation ;
+  - **adresses** : `https://` vers une adresse publique, sans identifiants, paramètres
+    ni fragment dans l'URL. Le client HTTP des connecteurs (`connectors::mcp::network`) :
+    - résout les noms en adresses publiques seulement, au moment de la connexion (un
+      nom ne peut pas être redirigé vers le réseau interne après la vérification) ;
+    - refuse les adresses privées écrites en clair ;
+    - ne suit aucune redirection et n'utilise pas le mandataire de l'environnement ;
+    - porte une configuration TLS explicite (rustls, `ring`, racines webpki) ;
+  - un déploiement privé peut autoriser son réseau et le `http` simple
+    (`MIMORYA_MCP_ALLOW_PRIVATE_NETWORK`). Le transport stdio n'est démarré que si
+    l'exploitant l'autorise (`MIMORYA_MCP_ALLOW_STDIO`) ;
+  - **jeton** : envoyé en `Authorization: Bearer`, scellé dans le magasin de secrets
+    (`connector.<id>.token`, ADR-024), jamais renvoyé, audité ni écrit dans la
+    dernière erreur. Il ne suit pas le connecteur vers une autre adresse ;
+  - **politiques par outil** : risque, activation et permissions requises (permissions
+    du catalogue délégables à l'agent). `connector:use` est toujours exigé. Les
+    politiques d'un connecteur ne portent que sur ses propres outils
+    (`mcp_<préfixe>_…`), et le préfixe est unique et définitif ;
+  - **robustesse** :
+    - connexion et découverte des outils bornées à 20 s, descriptions bornées ;
+    - un serveur lent ne bloque plus les autres connecteurs ;
+    - en cas de panne, état `error` et dernière erreur pour l'administrateur ; les
+      autres connecteurs restent disponibles ;
+    - deux connecteurs qui nomment le même outil : le plus ancien le garde, l'autre
+      est signalé ;
+  - **test de connexion** : il démarre une instance neuve, liste les outils avec la
+    politique en vigueur pour chacun et enregistre l'état.
+- **Conséquences** :
+  - les serveurs MCP d'une entreprise doivent être joignables publiquement en HTTPS
+    (ou sur le réseau d'un déploiement privé qui l'autorise) ;
+  - restent à faire : OAuth des serveurs MCP, test avant enregistrement, mandataire
+    sortant configurable, descriptions remplaçables par l'administrateur.

@@ -103,6 +103,21 @@ async fn an_unusable_company_provider_never_falls_back_to_the_platform() {
         admin.post("/admin/llm/test", json!({})).await.status,
         StatusCode::SERVICE_UNAVAILABLE
     );
+    // A server without any master key says so.
+    let keyless = TestApi::start().await;
+    let shown = keyless
+        .sign_in(user::PAUL)
+        .await
+        .get("/admin/llm")
+        .await
+        .json();
+    assert!(
+        shown["settings"]["problem"]
+            .as_str()
+            .unwrap()
+            .contains("MIMORYA_MASTER_KEY"),
+        "{shown}"
+    );
     // The configuration can be replaced or removed from there.
     assert_eq!(admin.delete("/admin/llm").await.status, StatusCode::OK);
     assert_eq!(

@@ -10,6 +10,9 @@
 //! each other's rights.
 
 mod assignments;
+mod connector_rules;
+mod connector_test;
+mod connectors;
 mod llm;
 mod org_units;
 mod policies;
@@ -17,6 +20,12 @@ mod roles;
 mod users;
 
 pub use assignments::{grant_role, revoke_role};
+pub use connector_rules::ToolPolicyInput;
+pub use connector_test::{ConnectorTestOutcome, TestedTool, test_connector};
+pub use connectors::{
+    ConnectorAdmin, ConnectorChanges, NewMcpConnector, TokenChange, create_mcp_connector,
+    delete_connector, http_config, update_connector,
+};
 pub use llm::{LlmInput, LlmTestOutcome, configure_llm, reset_llm, test_llm};
 pub use org_units::{NewUnitInput, UnitChanges, create_unit, delete_unit, update_unit};
 pub use policies::{PolicyChanges, PolicyInput, create_policy, delete_policy, update_policy};

@@ -89,7 +89,11 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
         },
     ));
     let access = Arc::new(AccessService::new(db.clone()));
-    let connectors = Arc::new(ConnectorService::new(db.clone()));
+    let connectors = Arc::new(ConnectorService::new(
+        db.clone(),
+        SecretStore::new(config.secrets.clone()),
+        config.mcp_network,
+    ));
     let bus = Arc::new(RunEventBus::default());
     let executor = RunExecutor {
         db: db.clone(),

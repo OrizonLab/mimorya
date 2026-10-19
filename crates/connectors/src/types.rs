@@ -6,6 +6,8 @@ use mimorya_core::authz::PermissionInfo;
 use mimorya_core::tools::ToolRef;
 use serde_json::Value;
 
+use crate::mcp::NetworkPolicy;
+
 #[derive(Debug, Clone)]
 pub struct ConnectorInfo {
     pub connector_type: &'static str,
@@ -29,12 +31,21 @@ pub struct ConnectorRuntime {
     pub closer: Option<Box<dyn ConnectorCloser>>,
 }
 
+/// What an instance is given besides its configuration.
+#[derive(Clone, Copy, Default)]
+pub struct InstanceContext<'a> {
+    /// The instance's secret (an access token), opened from the secret store.
+    pub secret: Option<&'a str>,
+    /// What the operator lets connectors reach.
+    pub network: NetworkPolicy,
+}
+
 #[async_trait]
 pub trait Connector: Send + Sync {
     fn info(&self) -> ConnectorInfo;
     async fn instantiate(
         &self,
         config: &Value,
-        secret: Option<&str>,
+        context: InstanceContext<'_>,
     ) -> anyhow::Result<ConnectorRuntime>;
 }

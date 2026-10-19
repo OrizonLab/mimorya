@@ -1,4 +1,6 @@
-//! Connector instances configured by each tenant.
+//! Connector instances configured by each tenant. A change of configuration,
+//! policies or state bumps `updated_at` (the live instance is rebuilt); a
+//! status report does not.
 
 use chrono::{DateTime, Utc};
 use serde_json::Value;
@@ -22,16 +24,110 @@ pub struct ConnectorInstanceRow {
     pub updated_at: DateTime<Utc>,
 }
 
+const SELECT: &str = "select id, tenant_id, type, name, enabled, config, tool_policies, status, \
+    secret_id, last_error, created_at, updated_at from connector_instances";
+
 pub async fn list_connector_instances(
     conn: &mut PgConnection,
     only_enabled: bool,
 ) -> sqlx::Result<Vec<ConnectorInstanceRow>> {
-    sqlx::query_as(
-        "select id, tenant_id, type, name, enabled, config, tool_policies, status, secret_id, last_error, \
-         created_at, updated_at from connector_instances where (not $1 or enabled) \
-         order by created_at desc",
-    )
+    sqlx::query_as(&format!(
+        "{SELECT} where (not $1 or enabled) order by created_at desc"
+    ))
     .bind(only_enabled)
     .fetch_all(conn)
     .await
+}
+
+pub async fn get_connector_instance(
+    conn: &mut PgConnection,
+    id: Uuid,
+) -> sqlx::Result<Option<ConnectorInstanceRow>> {
+    sqlx::query_as(&format!("{SELECT} where id = $1"))
+        .bind(id)
+        .fetch_optional(conn)
+        .await
+}
+
+pub struct NewConnectorInstance<'a> {
+    pub tenant_id: Uuid,
+    pub connector_type: &'a str,
+    pub name: &'a str,
+    pub enabled: bool,
+    pub config: &'a Value,
+}
+
+pub async fn create_connector_instance(
+    conn: &mut PgConnection,
+    input: NewConnectorInstance<'_>,
+) -> sqlx::Result<Uuid> {
+    sqlx::query_scalar(
+        "insert into connector_instances (tenant_id, type, name, enabled, config, status) \
+         values ($1, $2, $3, $4, $5, case when $4 then 'ok' else 'disabled' end) returning id",
+    )
+    .bind(input.tenant_id)
+    .bind(input.connector_type)
+    .bind(input.name)
+    .bind(input.enabled)
+    .bind(input.config)
+    .fetch_one(conn)
+    .await
+}
+
+/// Fields left to `None` are unchanged.
+#[derive(Default)]
+pub struct ConnectorPatch {
+    pub name: Option<String>,
+    pub enabled: Option<bool>,
+    pub config: Option<Value>,
+    pub tool_policies: Option<Value>,
+}
+
+/// Returns whether the instance exists (in the transaction's tenant).
+pub async fn update_connector_instance(
+    conn: &mut PgConnection,
+    id: Uuid,
+    patch: ConnectorPatch,
+) -> sqlx::Result<bool> {
+    let result = sqlx::query(
+        "update connector_instances set name = coalesce($2, name), \
+         enabled = coalesce($3, enabled), config = coalesce($4, config), \
+         tool_policies = coalesce($5, tool_policies), \
+         status = case when coalesce($3, enabled) then \
+           (case when status = 'disabled' then 'ok' else status end) else 'disabled' end, \
+         updated_at = now() where id = $1",
+    )
+    .bind(id)
+    .bind(patch.name)
+    .bind(patch.enabled)
+    .bind(patch.config)
+    .bind(patch.tool_policies)
+    .execute(conn)
+    .await?;
+    Ok(result.rows_affected() > 0)
+}
+
+pub async fn delete_connector_instance(conn: &mut PgConnection, id: Uuid) -> sqlx::Result<bool> {
+    let result = sqlx::query("delete from connector_instances where id = $1")
+        .bind(id)
+        .execute(conn)
+        .await?;
+    Ok(result.rows_affected() > 0)
+}
+
+/// Records how the last start went, without rebuilding the live instance.
+pub async fn report_connector_status(
+    conn: &mut PgConnection,
+    id: Uuid,
+    error: Option<&str>,
+) -> sqlx::Result<()> {
+    sqlx::query(
+        "update connector_instances set status = case when $2::text is null then 'ok' else 'error' end, \
+         last_error = $2 where id = $1 and enabled",
+    )
+    .bind(id)
+    .bind(error)
+    .execute(conn)
+    .await?;
+    Ok(())
 }
