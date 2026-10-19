@@ -154,7 +154,7 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
     // Layers run from the last added to the first: security headers (on
     // every response, refusals included), context, rate limit, CSRF, then
     // session resolution.
-    let router = routes::router()
+    let router = routes::router(&services)
         .layer(from_fn_with_state(services.clone(), resolve_identity))
         .layer(from_fn_with_state(services.clone(), csrf_protection))
         .layer(from_fn_with_state(services.clone(), global_rate_limit))

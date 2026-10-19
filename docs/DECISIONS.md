@@ -1063,3 +1063,46 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     l'enveloppe des erreurs ;
   - les données d'un événement relu depuis le journal d'un run (`RunDetail.events`)
     restent en `unknown` : leur forme est celle de `RunStreamEvent`.
+
+## ADR-038 — Modifications d'administration refusées tracées avec leur raison
+
+- **Date** : 2026-10-19 · **Statut** : acceptée
+- **Contexte** : l'audit gardait les modifications d'administration faites, pas celles
+  refusées : un administrateur qui tente de modifier son propre compte, un
+  administrateur limité à une équipe, un membre sans rôle d'administration ou une
+  tentative sur un rôle de la plateforme ne laissaient aucune trace. Les refus naissent
+  à plusieurs endroits (vérification de la permission, permission sur toute
+  l'entreprise, verrou de l'administration, règles propres à une ressource).
+- **Décision** :
+  - un refus (`DomainError` de code `Forbidden`) porte, dans les extensions de sa
+    réponse, son message (`Refusal`) ; il n'est jamais envoyé, le message figurant déjà
+    dans le corps ;
+  - une couche posée sur les routes d'administration (`plugins/refusal_audit.rs`,
+    `route_layer`, dernier appel du routeur) trace, pour une requête modifiante d'un
+    utilisateur connecté dont la réponse porte un refus, une entrée `admin.refused`
+    (`denied`) : l'utilisateur, la raison (le message du refus), la méthode et la route
+    (`MatchedPath`, sans les valeurs), la ressource désignée par l'identifiant de la
+    route, l'IP et l'identifiant de requête. La ressource est nommée par la collection
+    de la route (`user`, `role`, `org_unit`, `policy`, `connector` ; une révocation
+    refusée nomme l'habilitation, `assignment`, là où l'audit d'une révocation faite
+    nomme le compte) ; seul un UUID est retenu, sans vérification : quand le refus
+    précède toute lecture (permission absente), il peut désigner une ressource absente
+    ou d'une autre entreprise, et la réponse reste la même. L'entrée est écrite dans sa
+    propre transaction, après celle de la requête, annulée, et avant l'envoi de la
+    réponse ;
+  - les messages de refus sont écrits par la plateforme (au plus le nom d'une
+    permission) : hormis l'identifiant du chemin, rien de ce que la requête a envoyé
+    n'atteint l'audit. Le refus d'un compte qui doit remplacer son mot de passe
+    temporaire (extracteur `Auth`) est tracé comme les autres ;
+  - un échec d'écriture de la trace est journalisé ; la réponse reste le refus.
+- **Conséquences** :
+  - ne sont pas tracés : les lectures refusées, les requêtes invalides ou anonymes, les
+    refus anti-CSRF (en-tête `X-Mimorya-Request` absent, origine non autorisée), que
+    prononce une couche placée avant la résolution de la session, et les ressources
+    qu'un administrateur habilité trouve absentes ou hors de son périmètre, qui
+    répondent 404 sans distinguer l'une de l'autre ; tracer les secondes demanderait de
+    les distinguer côté serveur (feuille de route) ;
+  - une route d'administration nouvelle est couverte d'office ; une collection nouvelle
+    à identifiant est à nommer dans `resource_of`, sans quoi l'entrée n'a pas de
+    ressource (la route reste dans les métadonnées) ;
+  - le volume de ces entrées est borné par la limitation de débit globale.

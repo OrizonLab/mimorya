@@ -10,6 +10,12 @@ use serde_json::{Value, json};
 
 use crate::contract::{ErrorBody, ErrorDetail, ErrorKind};
 
+/// Carried by a refusal's response (`Forbidden`) for the layers that record
+/// it, such as refused administration changes (ADR-038). Never sent: the
+/// message is already in the body.
+#[derive(Debug, Clone)]
+pub struct Refusal(pub String);
+
 #[derive(Debug)]
 pub enum ApiError {
     Domain(DomainError),
@@ -95,11 +101,19 @@ fn body(code: ErrorKind, message: &str, details: Option<Value>) -> Json<ErrorBod
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         match self {
-            Self::Domain(error) => (
-                status_of(error.code),
-                body(error.code.into(), &error.message, error.details),
-            )
-                .into_response(),
+            Self::Domain(error) => {
+                let refusal =
+                    (error.code == ErrorCode::Forbidden).then(|| Refusal(error.message.clone()));
+                let mut response = (
+                    status_of(error.code),
+                    body(error.code.into(), &error.message, error.details),
+                )
+                    .into_response();
+                if let Some(refusal) = refusal {
+                    response.extensions_mut().insert(refusal);
+                }
+                response
+            }
             Self::Request { status, message } => {
                 (status, body(ErrorKind::Request, &message, None)).into_response()
             }
