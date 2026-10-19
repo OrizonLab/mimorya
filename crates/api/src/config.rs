@@ -2,7 +2,11 @@
 //! values stop the server with the list of problems instead of falling back
 //! silently.
 
+use std::sync::Arc;
+
 use mimorya_agent::llm::{PROVIDER_KINDS, ProviderConfig};
+
+use crate::secrets::SecretCipher;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum Environment {
@@ -30,6 +34,12 @@ pub struct AppConfig {
     pub trust_proxy: bool,
     pub assistant_name: String,
     pub llm: Option<ProviderConfig>,
+    /// Seals the companies' secrets (`MIMORYA_MASTER_KEY`); without it, none
+    /// can be stored.
+    pub secrets: Option<Arc<SecretCipher>>,
+    /// Endpoints a company may choose for a local or private model server
+    /// (`MIMORYA_TENANT_LLM_ENDPOINTS`): no other address is ever reached.
+    pub tenant_llm_endpoints: Vec<String>,
     /// Model-based review of answers when success criteria are given.
     pub llm_judge: bool,
     /// Login attempts allowed per client address and per minute.
@@ -51,6 +61,8 @@ impl std::fmt::Debug for AppConfig {
             .field("trust_proxy", &self.trust_proxy)
             .field("assistant_name", &self.assistant_name)
             .field("llm", &self.llm)
+            .field("secrets", &self.secrets)
+            .field("tenant_llm_endpoints", &self.tenant_llm_endpoints)
             .field("llm_judge", &self.llm_judge)
             .field(
                 "login_rate_limit_per_minute",
@@ -105,6 +117,8 @@ impl AppConfig {
             .value("MIMORYA_ASSISTANT_NAME")
             .unwrap_or_else(|| "Mimorya".to_string());
         let llm = reader.llm();
+        let secrets = reader.master_key();
+        let tenant_llm_endpoints = reader.endpoints("MIMORYA_TENANT_LLM_ENDPOINTS");
         let llm_judge = reader.boolean("MIMORYA_LLM_JUDGE", false);
         let login_rate_limit_per_minute = reader.parsed("LOGIN_RATE_LIMIT_PER_MINUTE", 10_u32);
         if login_rate_limit_per_minute == 0 {
@@ -125,6 +139,8 @@ impl AppConfig {
             trust_proxy,
             assistant_name,
             llm,
+            secrets,
+            tenant_llm_endpoints,
             llm_judge,
             login_rate_limit_per_minute,
         })
@@ -172,6 +188,33 @@ impl Reader<'_> {
             Some("false" | "0") => false,
             Some(_) => self.invalid(key, "true, false, 1 ou 0 attendu"),
         }
+    }
+
+    fn master_key(&mut self) -> Option<Arc<SecretCipher>> {
+        let encoded = self.value("MIMORYA_MASTER_KEY")?;
+        match SecretCipher::from_base64(&encoded) {
+            Ok(cipher) => Some(Arc::new(cipher)),
+            Err(_) => self.invalid(
+                "MIMORYA_MASTER_KEY",
+                "base64 de 32 octets attendu (openssl rand -base64 32)",
+            ),
+        }
+    }
+
+    /// Comma-separated http(s) URLs.
+    fn endpoints(&mut self, key: &str) -> Vec<String> {
+        let endpoints: Vec<String> = self
+            .value(key)
+            .unwrap_or_default()
+            .split(',')
+            .map(str::trim)
+            .filter(|url| !url.is_empty())
+            .map(str::to_string)
+            .collect();
+        if endpoints.iter().any(|url| !is_http_url(url)) {
+            self.issue(key, "URL http(s) séparées par des virgules attendues");
+        }
+        endpoints
     }
 
     fn llm(&mut self) -> Option<ProviderConfig> {
@@ -255,10 +298,44 @@ mod tests {
                 "postgres://app:s3cret-db@localhost/mimorya",
             ),
             ("ANTHROPIC_API_KEY", "sk-s3cret"),
+            ("MIMORYA_MASTER_KEY", MASTER_KEY),
         ])
         .unwrap();
         let printed = format!("{config:?}");
         assert!(!printed.contains("s3cret"), "{printed}");
+        assert!(!printed.contains(MASTER_KEY), "{printed}");
+    }
+
+    /// Base64 of 32 bytes.
+    const MASTER_KEY: &str = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=";
+
+    #[test]
+    fn reads_the_master_key_and_the_listed_endpoints() {
+        let config = load(&[
+            DB,
+            ("MIMORYA_MASTER_KEY", MASTER_KEY),
+            (
+                "MIMORYA_TENANT_LLM_ENDPOINTS",
+                " http://ollama.interne:11434/v1, https://llm.interne/v1 ",
+            ),
+        ])
+        .unwrap();
+        assert!(config.secrets.is_some());
+        assert_eq!(
+            config.tenant_llm_endpoints,
+            ["http://ollama.interne:11434/v1", "https://llm.interne/v1"]
+        );
+        let without = load(&[DB]).unwrap();
+        assert!(without.secrets.is_none() && without.tenant_llm_endpoints.is_empty());
+        let error = load(&[
+            DB,
+            ("MIMORYA_MASTER_KEY", "trop-court"),
+            ("MIMORYA_TENANT_LLM_ENDPOINTS", "ftp://x"),
+        ])
+        .unwrap_err()
+        .to_string();
+        assert!(error.contains("MIMORYA_MASTER_KEY"));
+        assert!(error.contains("MIMORYA_TENANT_LLM_ENDPOINTS"));
     }
 
     #[test]

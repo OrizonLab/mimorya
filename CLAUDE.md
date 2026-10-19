@@ -41,7 +41,9 @@ Repères à l'intérieur des crates :
   `api/src/services/admin/` (comptes, organisation, habilitations, sous verrou par
   entreprise), `api/src/services/account.rs` (son propre compte),
   `api/src/services/runs/` (tour de conversation, décisions, contexte, exécution,
-  ports PostgreSQL, résultat), `api/tests/` (intégration, harnais dans `support/`).
+  ports PostgreSQL, résultat), `api/src/services/llm.rs` (fournisseur de modèle de
+  chaque entreprise), `api/src/secrets/` (chiffrement AES-256-GCM des secrets),
+  `api/tests/` (intégration, harnais dans `support/`).
 - `web/components/<fonctionnalité>/` (admin, approvals, chat, memory, operations,
   shell), `web/components/ui/`, `web/lib/api/` (client, types du contrat JSON,
   `useApiData`), `web/lib/labels.ts`, `web/lib/format.ts`.

@@ -1,5 +1,5 @@
 //! Workspace administration: accounts, organisation, custom roles, role
-//! assignments and access policies.
+//! assignments, access policies and the company's model provider.
 //! Every operation requires its permission on the whole company, refuses to
 //! act on the administrator's own account, runs in one transaction with its
 //! audit entry, and refreshes the cached authorization data of the tenant.
@@ -10,12 +10,14 @@
 //! each other's rights.
 
 mod assignments;
+mod llm;
 mod org_units;
 mod policies;
 mod roles;
 mod users;
 
 pub use assignments::{grant_role, revoke_role};
+pub use llm::{LlmInput, LlmTestOutcome, configure_llm, reset_llm, test_llm};
 pub use org_units::{NewUnitInput, UnitChanges, create_unit, delete_unit, update_unit};
 pub use policies::{PolicyChanges, PolicyInput, create_policy, delete_policy, update_policy};
 pub use roles::{RoleChanges, RoleInput, create_role, delete_role, update_role};

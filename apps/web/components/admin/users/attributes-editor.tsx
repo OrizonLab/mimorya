@@ -66,7 +66,8 @@ function RowsEditor({
       <p className="text-xs text-muted">
         Les politiques d’accès les lisent sous <code>subject.attributes.nom</code> (par exemple «
         department » = « administratif »). Nom : une minuscule puis des lettres ou des chiffres. N’y
-        placez aucune donnée sensible (santé, opinions, vie privée).
+        placez aucune donnée sensible (santé, opinions, vie privée), ni dans la valeur ni dans le
+        nom : le nom reste visible dans le journal d’audit et l’éditeur de politiques.
       </p>
       {rows.length === 0 && <p className="text-sm text-muted">Aucun attribut.</p>}
       {rows.map((row, index) => (

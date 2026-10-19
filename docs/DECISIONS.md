@@ -381,5 +381,73 @@ elle est remplacée par une nouvelle entrée qui la référence (« remplace ADR
     ligne). Des attributs écrits hors de l'interface sous une autre forme ne s'y
     modifient pas, pour ne pas les altérer.
 - **Conséquences** : les attributs font partie du compte. Ils suivent sa rétention,
-  son export et sa suppression. L'interface rappelle de n'y placer aucune donnée
-  sensible.
+  son export et sa suppression. Le **nom** d'un attribut, lui, reste dans l'audit et
+  dans l'éditeur de politiques : l'interface rappelle de ne placer de donnée sensible
+  ni dans la valeur ni dans le nom (un nom comme « enArretMaladie » en est une). Les
+  textes sont enregistrés en forme canonique (NFC) et sans caractère ignoré à
+  l'affichage (`Default_Ignorable_Code_Point`, dont les jointeurs sans chasse). Les
+  valeurs texte des politiques suivent la même règle (`core::plain_text`) : une valeur
+  collée en forme décomposée correspond toujours à l'attribut.
+
+## ADR-024 — Modèle par entreprise et magasin de secrets chiffrés
+
+- **Date** : 2026-10-19 · **Statut** : acceptée
+- **Contexte** : jusqu'ici, toutes les entreprises utilisaient le fournisseur de modèle
+  du serveur (`LLM_PROVIDER`). Or une entreprise doit pouvoir choisir son fournisseur,
+  avec sa propre clé : c'est elle qui décide où partent ses données (sous-traitant,
+  région) et qui paie sa consommation. Une clé d'API ne peut pas être stockée en
+  clair.
+- **Décision** :
+  - **magasin de secrets** (`crates/api/src/secrets`) :
+    - chiffrement AES-256-GCM (`ring`) sous une clé maîtresse fournie par
+      l'environnement (`MIMORYA_MASTER_KEY`, 32 octets en base64), avec un nonce
+      aléatoire par écriture ;
+    - l'entreprise et le nom du secret servent de données associées : une valeur
+      copiée vers une autre entreprise ou un autre nom ne s'ouvre pas ;
+    - la table `secrets` (déjà prévue) ne reçoit que le texte chiffré, le nonce, le
+      tag et la version de clé ;
+    - sans clé maîtresse, aucun secret ne peut être enregistré (503 explicite) ;
+  - **choix du fournisseur** (`tenant_llm_settings`, migration 0008, sous RLS) :
+    fournisseur, modèle et adresse. La clé est le secret `llm.api_key`. La
+    modification exige `settings:manage` sur toute l'entreprise et passe sous le
+    verrou d'administration ;
+  - **adresses** :
+    - Anthropic, OpenAI, OpenRouter et Gemini s'utilisent à leur adresse officielle,
+      sans adresse à saisir ;
+    - Ollama et « compatible OpenAI » ne s'utilisent qu'à une adresse listée par
+      l'exploitant (`MIMORYA_TENANT_LLM_ENDPOINTS`). La liste est commune : chaque
+      adresse est visible et utilisable par toutes les entreprises (une liste par
+      entreprise viendra si un serveur doit être réservé à l'une d'elles) ;
+    - une entreprise ne fait donc jamais appeler par le serveur une adresse de son
+      choix (réseau interne de l'exploitant) ;
+    - l'adresse officielle est écrite dans la configuration construite, et la clé
+      est toujours celle de l'entreprise : rien ne vient de l'environnement du
+      serveur (`ANTHROPIC_BASE_URL`, clé de la plateforme) ;
+  - **clé** :
+    - jamais renvoyée par l'API ni écrite dans l'audit ou les journaux ;
+    - elle ne sert qu'au fournisseur et à l'adresse pour lesquels elle a été saisie :
+      changer de fournisseur ou d'adresse exige de la saisir de nouveau, sinon
+      l'ancienne est effacée ;
+  - **résolution** (`LlmService`, mise en cache 60 s par entreprise et invalidée à
+    chaque changement) :
+    - sans configuration, les runs utilisent le fournisseur du serveur ;
+    - avec une configuration, ils n'utilisent qu'elle. Elle est revérifiée à chaque
+      chargement avec les règles du moment : une adresse que l'exploitant retire de
+      la liste n'est plus jamais appelée ;
+    - si elle devient inutilisable (adresse retirée, clé illisible après un
+      changement de clé maîtresse, clé absente), les runs s'arrêtent : **pas de
+      repli vers la plateforme**, qui enverrait les données ailleurs que là où
+      l'entreprise l'a décidé. La raison est montrée aux administrateurs, et le refus
+      est mis en cache comme le reste ; une panne passagère du serveur n'est pas
+      présentée comme un refus ;
+  - un **test de connexion** envoie une courte requête au fournisseur résolu ; sa
+    consommation est enregistrée ;
+  - **audit** : `llm.configured` (fournisseur, modèle, adresse, clé remplacée ou non,
+    état précédent), `llm.reset` et `llm.tested`, sans clé.
+- **Conséquences** :
+  - perdre la clé maîtresse rend illisibles les clés enregistrées : les entreprises
+    concernées doivent les saisir de nouveau ;
+  - la rotation de la clé maîtresse (`key_version`) et un KMS restent à faire
+    (phase 3) ;
+  - avec plusieurs instances de l'API, un changement met jusqu'à 60 s à atteindre
+    les autres.

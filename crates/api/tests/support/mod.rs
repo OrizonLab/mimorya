@@ -7,20 +7,22 @@
 pub mod access;
 pub mod accounts;
 mod client;
+pub mod llm;
 pub mod locks;
 pub mod planning;
 
 pub use client::{Client, TestResponse};
 
 use std::collections::HashMap;
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
 use chrono::{Days, Utc};
-use mimorya_agent::llm::LlmProvider;
+use mimorya_agent::llm::{LlmProvider, ProviderConfig};
 use mimorya_agent::testing::{ScriptedProvider, ScriptedStep};
 use mimorya_api::auth::credentials::hash_password;
+use mimorya_api::services::ProviderFactory;
 use mimorya_api::{App, AppConfig, BuildOptions, build_app};
 use mimorya_connectors::demo_interventions::dates::{iso_date, monday_of};
 use mimorya_core::demo;
@@ -72,6 +74,10 @@ pub struct TestApi {
     pub app: App,
     /// The scripted model, when the app has one.
     pub model: Option<Arc<ScriptedProvider>>,
+    /// Serves the runs of a company that chose its own provider.
+    pub company_model: Arc<ScriptedProvider>,
+    /// Every configuration a company provider was built from (key included).
+    pub built: Arc<Mutex<Vec<ProviderConfig>>>,
 }
 
 impl TestApi {
@@ -107,11 +113,27 @@ impl TestApi {
         ]);
         vars.extend(env.iter().map(|(k, v)| (*k, (*v).to_string())));
         let config = AppConfig::from_vars(|key| vars.get(key).cloned()).expect("config");
+        let company_model = Arc::new(ScriptedProvider::new(Vec::new()));
+        let built = Arc::new(Mutex::new(Vec::new()));
+        let factory: ProviderFactory = {
+            let (company_model, built) = (company_model.clone(), built.clone());
+            Arc::new(move |config: &ProviderConfig| {
+                built.lock().expect("built").push(config.clone());
+                let provider: Arc<dyn LlmProvider> = company_model.clone();
+                Ok(provider)
+            })
+        };
         let options = BuildOptions {
             provider: Some(provider),
+            provider_factory: Some(factory),
         };
         let app = build_app(config, options).await.expect("app");
-        Self { app, model }
+        Self {
+            app,
+            model,
+            company_model,
+            built,
+        }
     }
 
     pub fn script(&self, steps: Vec<ScriptedStep>) {

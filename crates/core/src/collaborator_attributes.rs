@@ -3,8 +3,8 @@
 //! administrator sets them; values stay short and typed, so that a condition
 //! compares them reliably and nothing sensitive lands there by accident.
 
+use crate::plain_text::{canonical, is_hidden};
 use serde_json::{Map, Number, Value};
-use unicode_properties::{GeneralCategory, UnicodeGeneralCategory};
 
 pub const MAX_ATTRIBUTES: usize = 20;
 pub const MAX_ATTRIBUTE_KEY_CHARS: usize = 40;
@@ -79,21 +79,11 @@ fn is_exact(number: &Number) -> bool {
     }
 }
 
-/// Characters that break a single visible line or hide in it: controls,
-/// invisible formatting (zero-width space, direction overrides…) and line or
-/// paragraph separators. A value shown « administratif » must be exactly that.
-fn is_hidden(c: char) -> bool {
-    matches!(
-        c.general_category(),
-        GeneralCategory::Control
-            | GeneralCategory::Format
-            | GeneralCategory::LineSeparator
-            | GeneralCategory::ParagraphSeparator
-    )
-}
-
+/// Trimmed and in canonical form (NFC): the same word typed on two systems
+/// is stored the same way.
 fn text_value(key: &str, text: &str) -> Result<String, String> {
-    let text = text.trim();
+    let text = canonical(text.trim());
+    let text = text.as_str();
     if text.is_empty() {
         return Err(format!(
             "« {key} » : valeur vide (retirez plutôt l’attribut)"
@@ -149,6 +139,11 @@ mod tests {
             })))
         );
         assert_eq!(normalize_attributes(&Map::new()), Ok(Map::new()));
+        // Decomposed « é » (e + combining acute) is stored composed.
+        assert_eq!(
+            normalize_attributes(&map(json!({ "site": "Ze\u{301}lande" }))),
+            Ok(map(json!({ "site": "Z\u{e9}lande" })))
+        );
     }
 
     #[test]
@@ -171,6 +166,10 @@ mod tests {
             json!({ "sites": ["Lille\nArras"] }),
             json!({ "department": "admini\u{200B}stratif" }),
             json!({ "department": "a\u{2028}b" }),
+            json!({ "department": "a\u{2029}b" }),
+            json!({ "department": "admini\u{034F}stratif" }),
+            json!({ "department": "admini\u{FE0F}stratif" }),
+            json!({ "department": "\u{3164}" }),
             json!({ "department": "\u{202E}abc" }),
             json!({ "matricule": 9_007_199_254_740_992_u64 }),
             json!({ "matricule": -9_007_199_254_740_992_i64 }),

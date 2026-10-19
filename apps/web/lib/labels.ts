@@ -81,3 +81,13 @@ export const PERMISSION_GROUPS: Record<string, string> = {
   intervention: 'Interventions',
   planning: 'Planning',
 };
+
+/** Model providers a company can choose (ADR-024). */
+export const LLM_PROVIDERS: Record<string, string> = {
+  anthropic: 'Anthropic (Claude)',
+  openai: 'OpenAI',
+  openrouter: 'OpenRouter',
+  gemini: 'Google Gemini',
+  ollama: 'Ollama (serveur de l’exploitant)',
+  openai_compatible: 'Compatible OpenAI (serveur de l’exploitant)',
+};

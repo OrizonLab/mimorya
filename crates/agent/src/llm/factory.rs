@@ -38,7 +38,7 @@ impl std::fmt::Debug for ProviderConfig {
     }
 }
 
-fn default_endpoint(kind: &str) -> Option<&'static str> {
+pub(crate) fn default_endpoint(kind: &str) -> Option<&'static str> {
     match kind {
         "openrouter" => Some("https://openrouter.ai/api/v1"),
         "gemini" => Some("https://generativelanguage.googleapis.com/v1beta/openai/"),

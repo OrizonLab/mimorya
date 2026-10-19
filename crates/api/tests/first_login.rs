@@ -145,6 +145,10 @@ const AUTHENTICATED_ROUTES: &[(&str, &str)] = &[
     ("POST", "/admin/policies"),
     ("PATCH", "/admin/policies/{id}"),
     ("DELETE", "/admin/policies/{id}"),
+    ("GET", "/admin/llm"),
+    ("PUT", "/admin/llm"),
+    ("DELETE", "/admin/llm"),
+    ("POST", "/admin/llm/test"),
     ("GET", "/admin/connectors"),
     ("GET", "/admin/skills"),
     ("GET", "/admin/audit"),
@@ -172,6 +176,7 @@ async fn every_authenticated_route_holds_a_temporary_password_back() {
             "GET" => session.get(&url).await,
             "POST" => session.post(&url, json!({})).await,
             "PATCH" => session.patch(&url, json!({})).await,
+            "PUT" => session.put(&url, json!({})).await,
             _ => session.delete(&url).await,
         };
         assert_eq!(response.status, StatusCode::FORBIDDEN, "{method} {path}");

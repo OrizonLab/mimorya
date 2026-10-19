@@ -16,6 +16,7 @@ schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+unicode-normalization.workspace = true
 unicode-properties.workspace = true
 uuid.workspace = true
 validator.workspace = true

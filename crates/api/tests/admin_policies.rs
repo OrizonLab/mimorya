@@ -263,3 +263,44 @@ async fn refuses_policies_outside_the_rules() {
         StatusCode::FORBIDDEN
     );
 }
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn text_values_are_stored_as_attributes_are() {
+    let api = TestApi::start().await;
+    let paul = api.sign_in(user::PAUL).await;
+    // Pasted decomposed (e + combining acute), stored composed like attributes.
+    let id = create(
+        &paul,
+        json!({
+            "description": "Pas de planning pour la Zélande",
+            "permissions": ["planning:apply"],
+            "condition": { "op": "eq", "left": { "attr": "subject.attributes.site" }, "right": { "value": "Ze\u{301}lande" } },
+        }),
+    )
+    .await;
+    let stored = paul.get("/admin/policies").await.json()["policies"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["id"] == json!(id))
+        .unwrap()["condition"]["right"]["value"]
+        .clone();
+    assert_eq!(stored, json!("Z\u{e9}lande"));
+    let hidden = paul
+        .post(
+            "/admin/policies",
+            json!({
+                "description": "Valeur piégée",
+                "permissions": ["planning:apply"],
+                "condition": { "op": "eq", "left": { "attr": "subject.attributes.site" }, "right": { "value": "Lil\u{200B}le" } },
+            }),
+        )
+        .await;
+    assert_eq!(hidden.status, StatusCode::BAD_REQUEST);
+    // The tests of this file share a database.
+    assert_eq!(
+        paul.delete(&format!("/admin/policies/{id}")).await.status,
+        StatusCode::OK
+    );
+}

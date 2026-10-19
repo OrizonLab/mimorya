@@ -7,6 +7,7 @@
 use serde_json::Value;
 
 use crate::authz::{ComparisonOp, Condition, Operand};
+use crate::plain_text::{canonical, is_hidden};
 
 pub const MAX_CONDITION_COMPARISONS: usize = 40;
 pub const MAX_CONDITION_DEPTH: usize = 6;
@@ -118,9 +119,54 @@ fn text_problem(text: &str) -> Option<String> {
             "Valeur trop longue ({MAX_TEXT_CHARS} caractères au plus)"
         ));
     }
-    // PostgreSQL cannot store it.
-    text.contains('\0')
-        .then(|| "Caractère nul interdit dans une valeur".into())
+    // Invisible, it would make a value differ from what is shown (and
+    // PostgreSQL cannot store the null character).
+    text.chars()
+        .any(is_hidden)
+        .then(|| "Caractère invisible ou de contrôle interdit dans une valeur".into())
+}
+
+/// The condition with its text values in canonical form (NFC), the form
+/// collaborator attributes are stored in: a value pasted decomposed still
+/// matches.
+pub fn canonical_condition(condition: Condition) -> Condition {
+    match condition {
+        Condition::All(mut c) => {
+            c.all = c.all.into_iter().map(canonical_condition).collect();
+            Condition::All(c)
+        }
+        Condition::Any(mut c) => {
+            c.any = c.any.into_iter().map(canonical_condition).collect();
+            Condition::Any(c)
+        }
+        Condition::Not(mut c) => {
+            c.not = Box::new(canonical_condition(*c.not));
+            Condition::Not(c)
+        }
+        Condition::Compare(mut c) => {
+            c.left = canonical_operand(c.left);
+            c.right = c.right.map(canonical_operand);
+            Condition::Compare(c)
+        }
+    }
+}
+
+fn canonical_operand(operand: Operand) -> Operand {
+    match operand {
+        Operand::Value(mut literal) => {
+            literal.value = canonical_value(literal.value);
+            Operand::Value(literal)
+        }
+        attribute => attribute,
+    }
+}
+
+fn canonical_value(value: Value) -> Value {
+    match value {
+        Value::String(text) => Value::String(canonical(&text)),
+        Value::Array(items) => Value::Array(items.into_iter().map(canonical_value).collect()),
+        other => other,
+    }
 }
 
 fn attribute_problem(path: &str) -> Option<String> {
@@ -168,6 +214,8 @@ mod tests {
             json!({ "op": "gt", "left": { "attr": "resource.sensitivityRank" }, "right": { "value": "2" } }),
             json!({ "op": "eq", "left": { "attr": "resource.type" }, "right": { "value": long_text } }),
             json!({ "op": "eq", "left": { "attr": "resource.type" }, "right": { "value": "a\u{0}b" } }),
+            json!({ "op": "eq", "left": { "attr": "subject.attributes.department" }, "right": { "value": "admini\u{200B}stratif" } }),
+            json!({ "op": "in", "left": { "attr": "subject.attributes.site" }, "right": { "value": ["Lille", "Ar\u{034F}ras"] } }),
             json!({ "op": "eq", "left": { "attr": "resource.type" }, "right": { "value": { "attr": "x" } } }),
             json!({ "op": "in", "left": { "attr": "resource.type" }, "right": { "value": [["nested"]] } }),
             json!({ "op": "in", "left": { "attr": "resource.type" }, "right": { "value": vec![1; MAX_LIST_ITEMS + 1] } }),
@@ -186,5 +234,18 @@ mod tests {
         let one = json!({ "op": "exists", "left": { "attr": "resource.type" } });
         let long = json!({ "any": vec![one; MAX_CONDITION_COMPARISONS + 1] });
         assert!(condition_problem(&condition(long)).is_some());
+    }
+
+    #[test]
+    fn stores_text_values_in_canonical_form() {
+        let decomposed = condition(json!({ "all": [
+            { "op": "eq", "left": { "attr": "subject.attributes.site" }, "right": { "value": "Ze\u{301}lande" } },
+            { "not": { "op": "in", "left": { "attr": "resource.attributes.city" }, "right": { "value": ["Ze\u{301}lande", 3] } } }
+        ] }));
+        let composed = condition(json!({ "all": [
+            { "op": "eq", "left": { "attr": "subject.attributes.site" }, "right": { "value": "Z\u{e9}lande" } },
+            { "not": { "op": "in", "left": { "attr": "resource.attributes.city" }, "right": { "value": ["Z\u{e9}lande", 3] } } }
+        ] }));
+        assert_eq!(canonical_condition(decomposed), composed);
     }
 }

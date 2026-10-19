@@ -18,8 +18,10 @@ async fn main() -> anyhow::Result<()> {
 
     let address = format!("{}:{}", config.host, config.port);
     let app = build_app(config, BuildOptions::default()).await?;
-    if !app.services.runs.llm_available() {
-        tracing::warn!("No LLM provider configured (LLM_PROVIDER): conversations are disabled.");
+    if app.services.llm.platform().is_none() {
+        tracing::warn!(
+            "No platform LLM provider (LLM_PROVIDER): only companies with their own provider can converse."
+        );
     }
     let listener = TcpListener::bind(&address).await?;
     tracing::info!(address, "Listening");

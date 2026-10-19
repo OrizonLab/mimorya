@@ -12,7 +12,8 @@
 mod condition;
 
 pub use condition::{
-    ATTRIBUTE_ROOTS, MAX_CONDITION_COMPARISONS, MAX_CONDITION_DEPTH, condition_problem,
+    ATTRIBUTE_ROOTS, MAX_CONDITION_COMPARISONS, MAX_CONDITION_DEPTH, canonical_condition,
+    condition_problem,
 };
 
 use crate::administration::TENANT_WIDE_PERMISSIONS;

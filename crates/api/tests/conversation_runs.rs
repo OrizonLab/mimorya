@@ -39,7 +39,14 @@ async fn refuses_to_start_a_run_when_no_model_provider_is_configured() {
         )
         .await;
     assert_eq!(response.status, StatusCode::SERVICE_UNAVAILABLE);
-    assert!(!api.app.services.runs.llm_available());
+    assert!(api.app.services.llm.platform().is_none());
+    assert!(
+        !api.app
+            .services
+            .llm
+            .available(mimorya_core::demo::tenant::ID)
+            .await
+    );
 }
 
 #[tokio::test]
