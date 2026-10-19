@@ -1,86 +1,25 @@
 //! Refused administration changes leave a trace with their reason, like the
 //! changes made (ADR-038): on oneself, without the permission on the whole
-//! company, on a platform role, without the permission at all. Reads,
-//! absent or out-of-scope resources, invalid requests and anonymous
-//! requests do not; nor does anything the request sent.
+//! company, on a platform role, without the permission at all, before the
+//! temporary password is replaced. Reads, resources an authorised
+//! administrator finds absent or out of scope, invalid requests and
+//! anonymous requests do not; nor does anything the request sent but the
+//! path's identifier. A refusal stands when its trace cannot be written.
 
 mod support;
 
 use axum::http::StatusCode;
-use mimorya_core::demo::{role, tenant, user};
+use mimorya_core::demo::{role, unit, user};
 use mimorya_db::testing::OTHER_USER_ID;
 use serde_json::{Value, json};
 use support::TestApi;
 use support::accounts::{activate, create_account, create_partial_admin};
+use support::mcp::capture_logs;
+use support::refusals::{entries_since, latest_entry, refusals_since};
 use uuid::Uuid;
 
 /// Sent in refused requests: it must reach no entry.
 const MARKER: &str = "Marqueur 7f3a";
-
-#[derive(Debug)]
-struct Refused {
-    resource: Option<(String, String)>,
-    reason: Option<String>,
-    metadata: Value,
-    request_id: Option<String>,
-}
-
-#[derive(sqlx::FromRow)]
-struct RefusalRow {
-    actor_user_id: Option<Uuid>,
-    outcome: String,
-    resource_type: Option<String>,
-    resource_id: Option<String>,
-    reason: Option<String>,
-    metadata: Value,
-    request_id: Option<String>,
-}
-
-/// The id of the latest audit entry, before the requests a test checks.
-async fn latest_entry(api: &TestApi) -> i64 {
-    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
-    sqlx::query_scalar("select coalesce(max(id), 0) from audit_log")
-        .fetch_one(&mut *tx)
-        .await
-        .unwrap()
-}
-
-/// The refusals audited after `since`, in order, for every user.
-async fn refusals_since(api: &TestApi, since: i64) -> Vec<(Uuid, Refused)> {
-    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
-    let rows: Vec<RefusalRow> = sqlx::query_as(
-        "select actor_user_id, outcome, resource_type, resource_id, reason, metadata, \
-         request_id from audit_log where action = 'admin.refused' and id > $1 order by id",
-    )
-    .bind(since)
-    .fetch_all(&mut *tx)
-    .await
-    .unwrap();
-    rows.into_iter()
-        .map(|row| {
-            assert_eq!(row.outcome, "denied");
-            let refused = Refused {
-                resource: row.resource_type.zip(row.resource_id),
-                reason: row.reason,
-                metadata: row.metadata,
-                request_id: row.request_id,
-            };
-            (row.actor_user_id.expect("an actor"), refused)
-        })
-        .collect()
-}
-
-/// Every entry written after `since`, as text.
-async fn entries_since(api: &TestApi, since: i64) -> String {
-    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
-    let rows: Vec<Value> =
-        sqlx::query_scalar("select to_jsonb(audit_log) from audit_log where id > $1 order by id")
-            .bind(since)
-            .fetch_all(&mut *tx)
-            .await
-            .unwrap();
-    Value::from(rows).to_string()
-}
 
 fn route(method: &str, route: &str) -> Value {
     json!({ "method": method, "route": route })
@@ -175,7 +114,7 @@ async fn refusals_for_lack_of_permission_name_the_permission() {
     let unit = partial
         .post(
             "/admin/org-units",
-            json!({ "parentId": mimorya_core::demo::unit::TEAM_NORTH, "name": MARKER, "type": "team" }),
+            json!({ "parentId": unit::TEAM_NORTH, "name": MARKER, "type": "team" }),
         )
         .await;
     assert_eq!(unit.status, StatusCode::FORBIDDEN);
@@ -263,4 +202,62 @@ async fn only_refused_changes_are_audited_as_refusals() {
     assert_eq!(anonymous.status, StatusCode::UNAUTHORIZED);
 
     assert!(refusals_since(&api, since).await.is_empty());
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn refusals_before_the_temporary_password_is_replaced_are_audited() {
+    let api = TestApi::start().await;
+    let paul = api.sign_in(user::PAUL).await;
+    let account = create_account(&paul, "mot.de.passe.temporaire").await;
+    let pending = api.sign_in_with(&account.email, &account.password).await;
+    let since = latest_entry(&api).await;
+
+    let disabled = pending
+        .patch(
+            &format!("/admin/users/{}", user::LUCAS),
+            json!({ "status": "disabled" }),
+        )
+        .await;
+    assert_eq!(disabled.status, StatusCode::FORBIDDEN);
+
+    let refused = refusals_since(&api, since).await;
+    assert_eq!(refused.len(), 1, "{refused:?}");
+    let (actor, entry) = &refused[0];
+    assert_eq!(*actor, account.id);
+    assert_eq!(
+        entry.reason.as_deref(),
+        Some(disabled.error_message().as_str())
+    );
+    assert!(disabled.error_message().contains("mot de passe"));
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_refusal_stands_when_its_trace_cannot_be_written() {
+    let api = TestApi::start().await;
+    let paul = api.sign_in(user::PAUL).await;
+    let since = latest_entry(&api).await;
+    let owner = sqlx::PgPool::connect(support::owner_url()).await.unwrap();
+    let logs = capture_logs();
+
+    sqlx::query("revoke insert on audit_log from mimorya_app")
+        .execute(&owner)
+        .await
+        .unwrap();
+    let own = format!("/admin/users/{}", user::PAUL);
+    let disabled = paul.patch(&own, json!({ "status": "disabled" })).await;
+    // Given back before any assertion, for the tests that follow.
+    sqlx::query("grant insert on audit_log to mimorya_app")
+        .execute(&owner)
+        .await
+        .unwrap();
+
+    assert_eq!(disabled.status, StatusCode::FORBIDDEN);
+    assert!(disabled.error_message().contains("votre propre compte"));
+    assert!(refusals_since(&api, since).await.is_empty());
+    assert!(
+        logs.text()
+            .contains("Failed to audit a refused administration change")
+    );
 }

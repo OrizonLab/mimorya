@@ -65,5 +65,6 @@ pub fn routes(state: &AppState) -> Router<AppState> {
         .route("/admin/skills", get(catalog::skills))
         .route("/admin/audit", get(activity::audit))
         .route("/admin/usage", get(activity::usage))
+        // Last: a route layer only wraps the routes declared before it.
         .route_layer(from_fn_with_state(state.clone(), audit_refusals))
 }

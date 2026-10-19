@@ -242,16 +242,20 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
 - Contenu : qui (utilisateur, agent pour le compte de…), quoi (action, ressource),
   résultat (succès, refus, échec), pourquoi (raison de la décision), contexte
   (requête, run, IP). Pas de contenu de message ni de secret.
-- Actions d'administration refusées (ADR-038) : toute modification refusée (403) sur
+- Actions d'administration refusées (ADR-038) : toute modification refusée (403) par
   une route d'administration, pour un utilisateur connecté, est tracée
   (`admin.refused`, résultat `denied`) avec sa raison (le message du refus, écrit par
   la plateforme : sur soi-même, permission absente ou limitée à une équipe, rôle de la
-  plateforme…), la méthode et la route, la ressource visée si la route en désigne une
-  par son identifiant, l'IP et l'identifiant de requête. Rien de ce que la requête a
-  envoyé n'y figure. Ne sont pas tracées : les lectures refusées, les ressources
-  absentes ou hors périmètre (404, indiscernables à dessein), les requêtes invalides
-  et les requêtes anonymes. Un échec d'écriture de cette trace est journalisé et ne
-  change pas la réponse.
+  plateforme, mot de passe temporaire à remplacer…), la méthode et la route,
+  l'identifiant (UUID) que porte le chemin, l'IP et l'identifiant de requête. Hormis
+  cet identifiant, rien de ce que la requête a envoyé n'y figure ; il n'est pas
+  vérifié : quand le refus précède toute lecture (permission absente), il peut
+  désigner une ressource absente ou d'une autre entreprise, sans que la réponse en
+  dise rien. Ne sont pas tracés : les lectures refusées, les refus anti-CSRF (en-tête
+  ou origine, prononcés avant la résolution de la session), les ressources qu'un
+  administrateur habilité trouve absentes ou hors périmètre (404, indiscernables à
+  dessein), les requêtes invalides et les requêtes anonymes. Un échec d'écriture de
+  cette trace est journalisé et ne change pas la réponse.
 - Phase 3 : chaînage cryptographique des entrées et export vers un SIEM.
 
 ## 9. Protection des données (RGPD)
