@@ -11,12 +11,13 @@ use mimorya_agent::runtime::{
     RunEvent, RunEventSink, RunOutcome, RunStore, ToolInvocationLog, ToolInvocationRecord,
     UsageRecord, UsageSink,
 };
-use mimorya_db::repositories::{approvals, audit, run_events, runs, tool_invocations, usage};
+use mimorya_db::repositories::{approvals, audit, runs, tool_invocations, usage};
 use mimorya_db::{Database, TenantTx};
 use serde_json::json;
 use uuid::Uuid;
 
 use super::deliverables::DbDeliverables;
+use super::events::record_run_event;
 use super::outcome::persist_outcome;
 use crate::services::event_bus::{BusEvent, RunEventBus};
 
@@ -72,26 +73,14 @@ fn saturating_i32(value: u64) -> i32 {
 #[async_trait]
 impl RunEventSink for DbPorts {
     async fn emit(&self, event: RunEvent) -> anyhow::Result<()> {
-        let (event_type, data) = event.into_parts();
-        let mut tx = self.tx().await?;
-        let row = run_events::append_run_event(
-            &mut tx,
+        record_run_event(
+            &self.db,
+            &self.bus,
             self.scope.tenant_id,
             self.scope.run_id,
-            &event_type,
-            &data,
+            event,
         )
-        .await?;
-        tx.commit().await?;
-        self.bus.publish(
-            self.scope.run_id,
-            BusEvent {
-                seq: Some(row.seq),
-                event_type,
-                data,
-            },
-        );
-        Ok(())
+        .await
     }
 
     fn publish_delta(&self, text: &str) {

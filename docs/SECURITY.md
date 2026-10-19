@@ -185,8 +185,9 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
     - un run d'agent en cours relit les droits de son utilisateur avant chaque appel au
       modèle, avant les appels d'outils qu'il renvoie, avant de conclure une réponse et
       à la reprise après validation (ADR-035) : un compte désactivé, ou privé de
-      `agent:use`, ou une entreprise suspendue, l'arrête à ce moment ; une habilitation
-      retirée ne compte plus. Restent
+      `agent:use`, l'arrête à ce moment, une entreprise suspendue dans les 30 s au plus
+      (la suspension se fait en base, l'API le voit à l'expiration du cache de
+      l'entreprise) ; une habilitation retirée ne compte plus. Restent
       acquis au run : ses consignes et mémoires rappelées au démarrage, les résultats
       d'outils déjà obtenus, l'outil en cours d'exécution (délai borné), le registre
       d'outils jusqu'à la pause ou la fin et le niveau d'autonomie. Les règles de

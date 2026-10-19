@@ -3,9 +3,10 @@
 //! from its cache, invalidated by every administration change; the account,
 //! its assignments and attributes from the database. The run goes on only
 //! while the account is active and may still use the agent, as when it
-//! started (`services::runs::service`), and while its company is active (a
-//! suspension made outside the administration counts once the company's
-//! cached rules expire).
+//! started (`services::runs::service`), and while its company is active. A
+//! company is suspended in the database only (no route nor command does it
+//! yet): the run learns it once the company's cached rules expire (30 s at
+//! most).
 
 use std::sync::Arc;
 

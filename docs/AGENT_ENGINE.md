@@ -81,7 +81,7 @@ l'interdit pas. Le PEP revérifie à l'exécution (défense en profondeur).
 `AccessSource` le relit avant chaque appel au modèle, avant les appels d'outils qu'il
 renvoie, avant de conclure une réponse et à la reprise après validation. Un compte
 désactivé, ou privé du droit d'utiliser l'assistant (`agent:use`), arrête le run à ce
-moment, avec son motif ; une habilitation retirée ne compte plus, ni pour les outils
+moment, avec son motif (une entreprise suspendue aussi, dans les 30 s au plus) ; une habilitation retirée ne compte plus, ni pour les outils
 proposés ni pour les appels encore demandés. Ce que le run détient déjà (consignes,
 mémoires rappelées au démarrage, résultats obtenus) reste dans sa conversation.
 

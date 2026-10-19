@@ -38,6 +38,16 @@ pub async fn append_run_event(
     .await
 }
 
+/// Whether the run's end (`run_finished`) is already in its journal.
+pub async fn run_end_recorded(conn: &mut PgConnection, run_id: Uuid) -> sqlx::Result<bool> {
+    sqlx::query_scalar(
+        "select exists (select 1 from run_events where run_id = $1 and type = 'run_finished')",
+    )
+    .bind(run_id)
+    .fetch_one(conn)
+    .await
+}
+
 pub async fn list_run_events(
     conn: &mut PgConnection,
     run_id: Uuid,

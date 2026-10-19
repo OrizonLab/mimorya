@@ -156,10 +156,11 @@ async fn business_roles_withdrawn_while_the_model_answers_no_longer_count() {
 #[ignore = "requires PostgreSQL"]
 async fn a_company_suspended_while_the_model_answers_ends_the_run() {
     const SUSPEND: &str = "update tenants set status = 'suspended' where id = (select tenant_id from users where id = $1)";
-    const RESUME: &str = "update tenants set status = 'active' where id = (select tenant_id from users where id = $1)";
     let api = TestApi::start().await;
     let claire = api.sign_in(user::CLAIRE).await;
     let access = api.app.services.access.clone();
+    // The demo company is active again for the next tests, even on failure.
+    let _resumed = ResumeOnDrop(api.app.services.access.clone());
     api.script(vec![
         ScriptedStep::dynamic(move |_| {
             as_owner(SUSPEND, user::CLAIRE);
@@ -172,12 +173,23 @@ async fn a_company_suspended_while_the_model_answers_ends_the_run() {
 
     let run_id = start_run(&claire).await;
     api.idle().await;
-    as_owner(RESUME, user::CLAIRE);
-    api.app.services.access.invalidate(tenant::ID);
 
     let (status, error, calls) = outcome(run_id).await;
     assert_eq!(status, "failed");
     assert_eq!(error.as_deref(), Some(COMPANY_SUSPENDED));
     assert!(calls.is_empty(), "{calls:?}");
     assert_eq!(api.model.as_ref().unwrap().remaining(), 1);
+}
+
+/// Reactivates the demo company when dropped, the access cache with it.
+struct ResumeOnDrop(std::sync::Arc<mimorya_api::services::AccessService>);
+
+impl Drop for ResumeOnDrop {
+    fn drop(&mut self) {
+        as_owner(
+            "update tenants set status = 'active' where id = (select tenant_id from users where id = $1)",
+            user::CLAIRE,
+        );
+        self.0.invalidate(tenant::ID);
+    }
 }

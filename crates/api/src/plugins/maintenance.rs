@@ -2,7 +2,10 @@
 //! progress for a while belong to a crashed or stuck process and are marked
 //! as failed, their `run_finished` event recorded and broadcast to the
 //! clients following them; expired password reset links are deleted
-//! (ADR-028).
+//! (ADR-028). A stuck process that wakes up later finds its run finished: it
+//! announces nothing more (`outcome::record_crash`), though a step it was
+//! taking may still append an event after that end, which clients ignore
+//! (they stop at the first `run_finished`).
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -11,11 +14,11 @@ use chrono::Utc;
 use mimorya_agent::runtime::RunEvent;
 use mimorya_db::Database;
 use mimorya_db::repositories::password_resets::purge_expired_password_resets;
-use mimorya_db::repositories::run_events::append_run_event;
-use mimorya_db::repositories::runs::{StaleRun, fail_stale_runs};
+use mimorya_db::repositories::runs::fail_stale_runs;
 use tokio::task::JoinHandle;
 
-use crate::services::event_bus::{BusEvent, RunEventBus};
+use crate::services::event_bus::RunEventBus;
+use crate::services::runs::record_run_event;
 
 const STALE_AFTER: chrono::Duration = chrono::Duration::minutes(15);
 const SWEEP_INTERVAL: Duration = Duration::from_secs(60);
@@ -47,29 +50,13 @@ pub async fn sweep_stale_runs(
 ) -> anyhow::Result<usize> {
     let failed = fail_stale_runs(db.pool(), Utc::now() - stale_after).await?;
     for run in &failed {
-        if let Err(error) = announce_end(db, bus, run).await {
+        let end = RunEvent::RunFinished {
+            status: "failed".into(),
+            error: Some(run.error.clone()),
+        };
+        if let Err(error) = record_run_event(db, bus, run.tenant_id, run.run_id, end).await {
             tracing::warn!(run_id = %run.run_id, error = format!("{error:#}"), "Stale run end not announced");
         }
     }
     Ok(failed.len())
-}
-
-async fn announce_end(db: &Database, bus: &RunEventBus, run: &StaleRun) -> anyhow::Result<()> {
-    let (event_type, data) = RunEvent::RunFinished {
-        status: "failed".into(),
-        error: Some(run.error.clone()),
-    }
-    .into_parts();
-    let mut tx = db.begin(run.tenant_id).await?;
-    let row = append_run_event(&mut tx, run.tenant_id, run.run_id, &event_type, &data).await?;
-    tx.commit().await?;
-    bus.publish(
-        run.run_id,
-        BusEvent {
-            seq: Some(row.seq),
-            event_type,
-            data,
-        },
-    );
-    Ok(())
 }

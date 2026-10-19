@@ -71,10 +71,15 @@ impl RunExecutor {
             Err(_) => "panic".to_string(),
         };
         tracing::error!(run_id = %run.id, error, "Run crashed");
-        let status = record_crash(&self.db, scope).await.unwrap_or_else(|error| {
-            tracing::error!(run_id = %run.id, error = format!("{error:#}"), "Failed to record run failure");
-            RunStatus::Failed
-        });
+        let status = match record_crash(&self.db, scope).await {
+            Ok(Some(status)) => status,
+            // Its end is already announced (the stale-run sweep failed it).
+            Ok(None) => return,
+            Err(error) => {
+                tracing::error!(run_id = %run.id, error = format!("{error:#}"), "Failed to record run failure");
+                RunStatus::Failed
+            }
+        };
         // Clients following the run learn how it ended, whatever the path.
         let finished = RunEvent::RunFinished {
             status: status.as_str().into(),
