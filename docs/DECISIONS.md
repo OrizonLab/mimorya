@@ -684,7 +684,8 @@ cité, renvoi) y sont faites sur place.
   - compléments à l'ADR-028 :
     - une demande faite depuis la page de connexion est anonyme : son audit est inscrit
       au nom de la plateforme (`system`), pas du titulaire du compte ;
-    - le statut de l'entreprise est relu sous le même verrou que celui du compte ;
+    - le statut de l'entreprise est relu dans la même lecture que le compte, que celle-ci
+      verrouille ;
     - la page de connexion ne propose « Mot de passe oublié ? » que si les e-mails
       partent (`GET /auth/options`, sans identité) ;
     - **contrepartie assumée** de la limite par adresse : n'importe qui peut épuiser

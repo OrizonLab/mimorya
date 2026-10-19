@@ -22,11 +22,15 @@ use crate::auth::credentials::MIN_PASSWORD_CHARS;
 use crate::http::{ApiError, ApiResult, Body, iso, trimmed};
 use crate::plugins::RequestContext;
 use crate::services::password_reset::{
-    ResetRequest, ResetSender, complete_reset, inspect_reset, send_reset_link,
+    ResetRequest, ResetSender, complete_reset, inspect_reset, send_requested_link,
 };
 
 const NO_RELAY: &str = "La réinitialisation par e-mail n’est pas disponible : demandez à votre \
      administrateur de réinitialiser votre mot de passe";
+
+/// The window lasts an hour, and anyone may have used it up (ADR-029).
+const TOO_MANY_LINKS: &str = "Trop de liens demandés pour cette adresse : réessayez dans une \
+     heure, ou demandez à votre administrateur de vous en envoyer un";
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -71,7 +75,7 @@ async fn request(
     // mailbox is flooded with links.
     let email = body.email.to_lowercase();
     if !state.limits.reset_requests.allow(&email) {
-        return Err(ApiError::RateLimited);
+        return Err(ApiError::Throttled(TOO_MANY_LINKS));
     }
     let sender = ResetSender {
         db: state.db.clone(),
@@ -84,7 +88,7 @@ async fn request(
         ip: context.ip_string(),
         request_id: context.id.to_string(),
     };
-    state.background.spawn(send_reset_link(sender, request));
+    state.background.spawn(send_requested_link(sender, request));
     Ok((StatusCode::ACCEPTED, Json(json!({ "ok": true }))))
 }
 

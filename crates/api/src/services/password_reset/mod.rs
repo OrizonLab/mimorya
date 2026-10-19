@@ -6,14 +6,16 @@
 //! (`services::admin`, ADR-029).
 
 mod complete;
+mod eligibility;
 mod message;
 mod request;
 
 use std::time::Duration;
 
 pub use complete::{ResetView, complete_reset, inspect_reset};
+pub use eligibility::{ResetRefusal, reset_refusal};
 pub use message::{ResetMail, reset_mail};
-pub use request::{ResetRequest, ResetSender, send_reset_link};
+pub use request::{ResetRequest, ResetSender, send_requested_link};
 
 /// How long a link asked for from the login page works.
 pub const RESET_VALIDITY: Duration = Duration::from_secs(3600);

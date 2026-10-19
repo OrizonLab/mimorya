@@ -8,6 +8,8 @@ import type { AccountNotice, IssuedInvitation, UserView } from './types';
  * How an administrator gets an account (back) into the application: a new
  * invitation while it never chose its password; otherwise a reset link by
  * e-mail when a relay is configured (ADR-029), or a temporary password.
+ * Disabled while a request runs: a second click would replace the link
+ * just sent.
  */
 export function CredentialActions({
   user,
@@ -76,24 +78,39 @@ export function CredentialActions({
 
   if (user.status === 'invited') {
     return (
-      <Button type="button" variant="secondary" onClick={resendInvitation}>
+      <Button
+        type="button"
+        variant="secondary"
+        disabled={action.pending}
+        onClick={resendInvitation}
+      >
         Renvoyer l’invitation
       </Button>
     );
   }
   if (!emailEnabled || user.status !== 'active') {
     return (
-      <Button type="button" variant="secondary" onClick={giveTemporaryPassword}>
+      <Button
+        type="button"
+        variant="secondary"
+        disabled={action.pending}
+        onClick={giveTemporaryPassword}
+      >
         Réinitialiser le mot de passe
       </Button>
     );
   }
   return (
     <>
-      <Button type="button" variant="secondary" onClick={sendResetLink}>
+      <Button type="button" variant="secondary" disabled={action.pending} onClick={sendResetLink}>
         Envoyer un lien de réinitialisation
       </Button>
-      <Button type="button" variant="ghost" onClick={giveTemporaryPassword}>
+      <Button
+        type="button"
+        variant="ghost"
+        disabled={action.pending}
+        onClick={giveTemporaryPassword}
+      >
         Mot de passe provisoire
       </Button>
     </>

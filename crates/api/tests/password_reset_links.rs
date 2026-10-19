@@ -157,6 +157,12 @@ async fn asking_is_limited_per_address_known_or_not() {
         }
         let limited = ask_reset(&api, &address.to_uppercase()).await;
         assert_eq!(limited.status, StatusCode::TOO_MANY_REQUESTS);
+        // The window lasts an hour: the message says so, and the way out.
+        assert_eq!(
+            limited.error_message(),
+            "Trop de liens demandés pour cette adresse : réessayez dans une heure, ou demandez \
+             à votre administrateur de vous en envoyer un"
+        );
     }
     assert_eq!(api.mail.sent().len(), 3);
 }

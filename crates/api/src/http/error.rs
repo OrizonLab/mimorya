@@ -17,6 +17,8 @@ pub enum ApiError {
         message: String,
     },
     RateLimited,
+    /// A limit whose window or way out differs from the per-minute ones.
+    Throttled(&'static str),
     Internal(anyhow::Error),
 }
 
@@ -104,6 +106,11 @@ impl IntoResponse for ApiError {
                     "Trop de requêtes : réessayez dans une minute.",
                     None,
                 ),
+            )
+                .into_response(),
+            Self::Throttled(message) => (
+                StatusCode::TOO_MANY_REQUESTS,
+                body(json!("rate_limited"), message, None),
             )
                 .into_response(),
             Self::Internal(error) => {
