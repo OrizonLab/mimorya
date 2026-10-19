@@ -6,11 +6,17 @@
 mod support;
 
 use axum::http::StatusCode;
+use mimorya_agent::testing::ScriptedStep;
+use mimorya_api::services::admin::{LlmInput, RoleChanges, configure_llm, update_role};
+use mimorya_api::services::permission_catalog::permission_catalog;
 use mimorya_core::demo::{tenant, user};
+use mimorya_core::{DomainError, ErrorCode};
 use serde_json::{Value, json};
 use support::TestApi;
-use support::accounts::{activate, create_partial_admin};
-use support::llm::{API_KEY, ENDPOINT, MASTER_KEY};
+use support::access::context_of;
+use support::accounts::{activate, create_account, create_partial_admin};
+use support::llm::{API_KEY, ENDPOINT, MASTER_KEY, ask};
+use uuid::Uuid;
 
 fn anthropic(key: Option<&str>) -> Value {
     let mut body = json!({ "provider": "anthropic", "model": "claude-opus-5-5" });
@@ -174,4 +180,99 @@ async fn without_a_master_key_no_key_can_be_stored() {
     let local = json!({ "provider": "ollama", "model": "llama3.3", "baseUrl": ENDPOINT });
     assert_eq!(paul.put("/admin/llm", local).await.status, StatusCode::OK);
     assert_eq!(paul.delete("/admin/llm").await.status, StatusCode::OK);
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_key_never_moves_to_another_listed_endpoint() {
+    const OTHER_ENDPOINT: &str = "http://llm.autre.test/v1";
+    let api = TestApi::start_with(&[
+        ("MIMORYA_MASTER_KEY", MASTER_KEY),
+        (
+            "MIMORYA_TENANT_LLM_ENDPOINTS",
+            &format!("{ENDPOINT},{OTHER_ENDPOINT}"),
+        ),
+    ])
+    .await;
+    let paul = api.sign_in(user::PAUL).await;
+    let marc = api.sign_in(user::MARC).await;
+    let at = |endpoint: &str| json!({ "provider": "openai_compatible", "model": "m", "baseUrl": endpoint });
+    let mut first = at(ENDPOINT);
+    first["apiKey"] = json!(API_KEY);
+    assert_eq!(paul.put("/admin/llm", first).await.status, StatusCode::OK);
+    assert_eq!(
+        paul.get("/admin/llm").await.json()["settings"]["keyStored"],
+        true
+    );
+    // Same kind, other server: the key stays behind.
+    assert_eq!(
+        paul.put("/admin/llm", at(OTHER_ENDPOINT)).await.status,
+        StatusCode::OK
+    );
+    assert_eq!(
+        paul.get("/admin/llm").await.json()["settings"]["keyStored"],
+        false
+    );
+    api.company_model
+        .push([ScriptedStep::text("Réponse du serveur privé.")]);
+    let (status, _) = ask(&api, &marc, "Bonjour").await;
+    assert_eq!(status, StatusCode::ACCEPTED);
+    let built = api.built.lock().unwrap().last().cloned().unwrap();
+    assert_eq!(built.base_url.as_deref(), Some(OTHER_ENDPOINT));
+    assert_eq!(built.api_key, None);
+    assert_eq!(paul.delete("/admin/llm").await.status, StatusCode::OK);
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_narrowed_settings_role_no_longer_configures_the_model() {
+    let api = TestApi::start_with(&[("MIMORYA_MASTER_KEY", MASTER_KEY)]).await;
+    let services = &api.app.services;
+    let paul = api.sign_in(user::PAUL).await;
+    let created = paul
+        .post(
+            "/admin/roles",
+            json!({ "name": "Paramètres", "permissions": ["settings:manage"] }),
+        )
+        .await;
+    let role_id: Uuid = created.json()["id"].as_str().unwrap().parse().unwrap();
+    let account = create_account(&paul, "gestion.parametres").await;
+    paul.post(
+        &format!("/admin/users/{}/assignments", account.id),
+        json!({ "roleId": role_id, "scope": { "type": "tenant" } }),
+    )
+    .await;
+    // The holder's view predates the narrowing of their role.
+    let from_holder = context_of(&api, account.id).await;
+    let from_paul = context_of(&api, user::PAUL).await;
+    let catalog = permission_catalog();
+    let keys: Vec<&str> = catalog.iter().map(|p| p.permission).collect();
+    let narrowed = RoleChanges {
+        permissions: Some(vec!["user:read".to_string()]),
+        ..RoleChanges::default()
+    };
+    update_role(
+        &services.db,
+        &services.access,
+        &from_paul,
+        &keys,
+        role_id,
+        narrowed,
+    )
+    .await
+    .unwrap();
+    let input = LlmInput {
+        provider: "anthropic".into(),
+        model: None,
+        base_url: None,
+        api_key: Some(API_KEY.into()),
+    };
+    let crossed = configure_llm(&services.db, &services.llm, &from_holder, input).await;
+    let code = crossed
+        .expect_err("refused")
+        .downcast::<DomainError>()
+        .expect("domain error")
+        .code;
+    assert_eq!(code, ErrorCode::Forbidden);
+    assert_eq!(paul.get("/admin/llm").await.json()["settings"], Value::Null);
 }

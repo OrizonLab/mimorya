@@ -15,6 +15,7 @@ use super::conversation_turn::{open_conversation_turn, tenant_autonomy_level};
 use super::executor::{ExecutionMode, RunExecutor};
 use crate::services::access::{AccessService, AuthIdentity};
 use crate::services::background::BackgroundTasks;
+use crate::services::llm::Unusable;
 
 pub struct StartedTurn {
     pub run_id: Uuid,
@@ -63,8 +64,8 @@ impl RunService {
                 )
                 .into());
             }
-            Err(error) => {
-                tracing::warn!(tenant_id = %identity.tenant_id, error = %error, "Company model provider unusable");
+            Err(error) if !error.is::<Unusable>() => return Err(error),
+            Err(_) => {
                 return Err(DomainError::unavailable(
                     "Le modèle choisi par votre entreprise ne peut pas être utilisé : un \
                      administrateur doit revoir sa configuration (Administration › Modèle d’IA).",

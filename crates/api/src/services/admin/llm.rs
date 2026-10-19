@@ -17,6 +17,7 @@ use serde_json::json;
 
 use super::{audit_entry, begin_change};
 use crate::secrets::LLM_API_KEY;
+use crate::services::llm::Unusable;
 use crate::services::{AccessContext, LlmService};
 
 const PERMISSION: &str = "settings:manage";
@@ -33,7 +34,6 @@ pub async fn configure_llm(
     db: &Database,
     llm: &LlmService,
     access: &AccessContext,
-    listed_endpoints: &[String],
     input: LlmInput,
 ) -> anyhow::Result<()> {
     access.require_tenant_wide(PERMISSION)?;
@@ -41,7 +41,7 @@ pub async fn configure_llm(
         &input.provider,
         input.model.as_deref(),
         input.base_url.as_deref(),
-        listed_endpoints,
+        llm.listed_endpoints(),
     )
     .map_err(DomainError::validation)?;
     if let Some(problem) = input.api_key.as_deref().and_then(api_key_problem) {
@@ -154,13 +154,15 @@ pub async fn test_llm(
     let provider = match llm.provider_for(tenant_id).await {
         Ok(Some(provider)) => provider,
         Ok(None) => return Err(DomainError::unavailable("Aucun modèle n’est configuré").into()),
-        Err(_) => {
-            return Err(DomainError::unavailable(
-                "La configuration enregistrée ne peut pas être utilisée (clé illisible ou \
-                 fournisseur refusé) : enregistrez-la de nouveau",
-            )
-            .into());
-        }
+        Err(error) => match error.downcast::<Unusable>() {
+            Ok(Unusable(reason)) => {
+                return Err(DomainError::unavailable(format!(
+                    "La configuration enregistrée ne peut pas être utilisée : {reason}"
+                ))
+                .into());
+            }
+            Err(error) => return Err(error),
+        },
     };
     let request = LlmRequest {
         system: "Réponds uniquement « OK ».".into(),

@@ -4,8 +4,9 @@
 //! would let it reach the operator's internal network), and a key never moves
 //! from one endpoint to another.
 
-use super::anthropic::DEFAULT_ANTHROPIC_MODEL;
-use super::factory::PROVIDER_KINDS;
+use super::anthropic::{DEFAULT_ANTHROPIC_MODEL, DEFAULT_BASE_URL};
+use super::factory::{PROVIDER_KINDS, ProviderConfig, default_endpoint};
+use super::openai_compatible::OPENAI_BASE_URL;
 
 pub const MAX_MODEL_CHARS: usize = 100;
 pub const MIN_API_KEY_CHARS: usize = 8;
@@ -86,6 +87,44 @@ pub fn check_tenant_llm(
     })
 }
 
+/// The public endpoint of a hosted kind, written out so that nothing comes
+/// from the server's environment (`ANTHROPIC_BASE_URL`…).
+pub fn official_endpoint(kind: &str) -> Option<&'static str> {
+    match kind {
+        "anthropic" => Some(DEFAULT_BASE_URL),
+        "openai" => Some(OPENAI_BASE_URL),
+        "openrouter" | "gemini" => default_endpoint(kind),
+        _ => None,
+    }
+}
+
+/// The configuration a company's runs use, from what it stored, checked again
+/// against the rules as they stand now (an endpoint the operator removed from
+/// the list is refused) and with its endpoint and key written out: nothing is
+/// taken from the server's environment (its endpoint or its own key). The
+/// refusal is in French, for the company's administrators.
+pub fn company_provider_config(
+    provider: &str,
+    model: &str,
+    base_url: Option<&str>,
+    api_key: Option<String>,
+    listed_endpoints: &[String],
+) -> Result<ProviderConfig, String> {
+    let choice = check_tenant_llm(provider, Some(model), base_url, listed_endpoints)?;
+    if requires_api_key(&choice.provider) && api_key.is_none() {
+        return Err("Aucune clé d’API n’est enregistrée pour ce fournisseur".into());
+    }
+    let base_url = choice
+        .base_url
+        .or_else(|| official_endpoint(&choice.provider).map(str::to_string));
+    Ok(ProviderConfig {
+        kind: choice.provider,
+        model: Some(choice.model),
+        api_key,
+        base_url,
+    })
+}
+
 /// Why an API key is refused (in French), if it is.
 pub fn api_key_problem(key: &str) -> Option<String> {
     let length = key.chars().count();
@@ -158,6 +197,34 @@ mod tests {
                 "{provider} {model:?} {base_url:?}"
             );
         }
+    }
+
+    #[test]
+    fn rechecks_what_was_stored_and_writes_the_endpoint_out() {
+        let hosted = company_provider_config(
+            "anthropic",
+            "claude-opus-5-5",
+            None,
+            Some("k".repeat(10)),
+            &[],
+        )
+        .unwrap();
+        assert_eq!(hosted.base_url.as_deref(), Some(DEFAULT_BASE_URL));
+        assert_eq!(
+            company_provider_config("openrouter", "m", None, Some("k".repeat(10)), &[])
+                .unwrap()
+                .base_url
+                .as_deref(),
+            Some("https://openrouter.ai/api/v1")
+        );
+        // No key: never the server's own.
+        assert!(company_provider_config("anthropic", "claude-opus-5-5", None, None, &[]).is_err());
+        // An endpoint the operator no longer lists.
+        let endpoint = "http://ollama.interne:11434/v1";
+        assert!(
+            company_provider_config("ollama", "llama", Some(endpoint), None, &listed()).is_ok()
+        );
+        assert!(company_provider_config("ollama", "llama", Some(endpoint), None, &[]).is_err());
     }
 
     #[test]

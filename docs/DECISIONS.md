@@ -385,7 +385,9 @@ elle est remplacée par une nouvelle entrée qui la référence (« remplace ADR
   dans l'éditeur de politiques : l'interface rappelle de ne placer de donnée sensible
   ni dans la valeur ni dans le nom (un nom comme « enArretMaladie » en est une). Les
   textes sont enregistrés en forme canonique (NFC) et sans caractère ignoré à
-  l'affichage (`Default_Ignorable_Code_Point`, dont les jointeurs sans chasse).
+  l'affichage (`Default_Ignorable_Code_Point`, dont les jointeurs sans chasse). Les
+  valeurs texte des politiques suivent la même règle (`core::plain_text`) : une valeur
+  collée en forme décomposée correspond toujours à l'attribut.
 
 ## ADR-024 — Modèle par entreprise et magasin de secrets chiffrés
 
@@ -413,9 +415,14 @@ elle est remplacée par une nouvelle entrée qui la référence (« remplace ADR
     - Anthropic, OpenAI, OpenRouter et Gemini s'utilisent à leur adresse officielle,
       sans adresse à saisir ;
     - Ollama et « compatible OpenAI » ne s'utilisent qu'à une adresse listée par
-      l'exploitant (`MIMORYA_TENANT_LLM_ENDPOINTS`) ;
+      l'exploitant (`MIMORYA_TENANT_LLM_ENDPOINTS`). La liste est commune : chaque
+      adresse est visible et utilisable par toutes les entreprises (une liste par
+      entreprise viendra si un serveur doit être réservé à l'une d'elles) ;
     - une entreprise ne fait donc jamais appeler par le serveur une adresse de son
       choix (réseau interne de l'exploitant) ;
+    - l'adresse officielle est écrite dans la configuration construite, et la clé
+      est toujours celle de l'entreprise : rien ne vient de l'environnement du
+      serveur (`ANTHROPIC_BASE_URL`, clé de la plateforme) ;
   - **clé** :
     - jamais renvoyée par l'API ni écrite dans l'audit ou les journaux ;
     - elle ne sert qu'au fournisseur et à l'adresse pour lesquels elle a été saisie :
@@ -424,10 +431,15 @@ elle est remplacée par une nouvelle entrée qui la référence (« remplace ADR
   - **résolution** (`LlmService`, mise en cache 60 s par entreprise et invalidée à
     chaque changement) :
     - sans configuration, les runs utilisent le fournisseur du serveur ;
-    - avec une configuration, ils n'utilisent qu'elle. Si elle devient inutilisable
-      (clé illisible après un changement de clé maîtresse, fournisseur refusé), ils
-      s'arrêtent : **pas de repli vers la plateforme**, qui enverrait les données
-      ailleurs que là où l'entreprise l'a décidé ;
+    - avec une configuration, ils n'utilisent qu'elle. Elle est revérifiée à chaque
+      chargement avec les règles du moment : une adresse que l'exploitant retire de
+      la liste n'est plus jamais appelée ;
+    - si elle devient inutilisable (adresse retirée, clé illisible après un
+      changement de clé maîtresse, clé absente), les runs s'arrêtent : **pas de
+      repli vers la plateforme**, qui enverrait les données ailleurs que là où
+      l'entreprise l'a décidé. La raison est montrée aux administrateurs, et le refus
+      est mis en cache comme le reste ; une panne passagère du serveur n'est pas
+      présentée comme un refus ;
   - un **test de connexion** envoie une courte requête au fournisseur résolu ; sa
     consommation est enregistrée ;
   - **audit** : `llm.configured` (fournisseur, modèle, adresse, clé remplacée ou non,

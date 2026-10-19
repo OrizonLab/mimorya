@@ -13,8 +13,8 @@ pub use factory::{PROVIDER_KINDS, ProviderConfig, create_provider};
 pub use pricing::{ModelPrice, PriceTable};
 pub use router::{ModelRouter, TaskClass};
 pub use settings::{
-    TenantLlmChoice, api_key_problem, check_tenant_llm, default_model, requires_api_key,
-    uses_listed_endpoint,
+    TenantLlmChoice, api_key_problem, check_tenant_llm, company_provider_config, default_model,
+    official_endpoint, requires_api_key, uses_listed_endpoint,
 };
 pub use types::{
     Effort, LlmError, LlmErrorKind, LlmMessage, LlmProvider, LlmRequest, LlmResponse, LlmToolCall,

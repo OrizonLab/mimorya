@@ -15,6 +15,7 @@ use crate::http::{ApiResult, Body, iso, trimmed, trimmed_opt};
 use crate::plugins::Auth;
 use crate::secrets::LLM_API_KEY;
 use crate::services::admin::{LlmInput, configure_llm, reset_llm, test_llm};
+use crate::services::llm::Resolution;
 
 const PERMISSION: &str = "settings:manage";
 
@@ -26,18 +27,22 @@ pub async fn show(State(state): State<AppState>, Auth(identity): Auth) -> ApiRes
     let key_stored = state.llm.secrets().exists(&mut tx, LLM_API_KEY).await?;
     tx.commit().await?;
     let prices = state.llm.prices();
-    let settings = match settings {
-        Some(s) => Some(json!({
+    let problem = match state.llm.resolve(identity.tenant_id).await?.as_ref() {
+        Resolution::Refused(reason) => Some(reason.clone()),
+        _ => None,
+    };
+    let settings = settings.map(|s| {
+        json!({
             "provider": s.provider,
             "model": s.model,
             "baseUrl": s.base_url,
             "keyStored": key_stored,
             "priced": prices.has(&s.model),
-            "usable": state.llm.available(identity.tenant_id).await,
+            "usable": problem.is_none(),
+            "problem": problem,
             "updatedAt": iso(&s.updated_at),
-        })),
-        None => None,
-    };
+        })
+    });
     let platform = state.llm.platform().map(
         |p| json!({ "provider": p.id(), "model": p.model(), "priced": prices.has(p.model()) }),
     );
@@ -57,7 +62,7 @@ pub async fn show(State(state): State<AppState>, Auth(identity): Auth) -> ApiRes
         "platform": platform,
         "settings": settings,
         "providers": providers,
-        "endpoints": state.config.tenant_llm_endpoints,
+        "endpoints": state.llm.listed_endpoints(),
     })))
 }
 
@@ -88,14 +93,7 @@ pub async fn configure(
         base_url: body.base_url.filter(|u| !u.is_empty()),
         api_key: body.api_key.filter(|k| !k.is_empty()),
     };
-    configure_llm(
-        &state.db,
-        &state.llm,
-        &access,
-        &state.config.tenant_llm_endpoints,
-        input,
-    )
-    .await?;
+    configure_llm(&state.db, &state.llm, &access, input).await?;
     Ok(Json(json!({ "ok": true })))
 }
 

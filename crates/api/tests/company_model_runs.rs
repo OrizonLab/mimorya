@@ -5,11 +5,14 @@
 mod support;
 
 use axum::http::StatusCode;
+use mimorya_agent::llm::official_endpoint;
 use mimorya_agent::testing::ScriptedStep;
+use mimorya_api::services::llm::Resolution;
 use mimorya_core::demo::{tenant, user};
+use mimorya_db::testing::OTHER_TENANT_ID;
 use serde_json::{Value, json};
 use support::TestApi;
-use support::llm::{API_KEY, MASTER_KEY, OTHER_MASTER_KEY, ask};
+use support::llm::{API_KEY, ENDPOINT, MASTER_KEY, OTHER_MASTER_KEY, ask};
 
 fn company_choice() -> Value {
     json!({ "provider": "anthropic", "model": "claude-sonnet-5-5", "apiKey": API_KEY })
@@ -45,7 +48,8 @@ async fn a_company_provider_answers_with_its_own_key() {
     assert_eq!(built.kind, "anthropic");
     assert_eq!(built.model.as_deref(), Some("claude-sonnet-5-5"));
     assert_eq!(built.api_key.as_deref(), Some(API_KEY));
-    assert_eq!(built.base_url, None);
+    // The official endpoint, written out: never the server's ANTHROPIC_BASE_URL.
+    assert_eq!(built.base_url.as_deref(), official_endpoint("anthropic"));
 
     // The connection test goes to the same provider, and is counted.
     api.company_model.push([ScriptedStep::text("OK")]);
@@ -105,4 +109,72 @@ async fn an_unusable_company_provider_never_falls_back_to_the_platform() {
         marc.get("/auth/me").await.json()["assistant"]["available"],
         true
     );
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_company_provider_serves_its_company_only() {
+    let api = TestApi::start_with(&[("MIMORYA_MASTER_KEY", MASTER_KEY)]).await;
+    let llm = &api.app.services.llm;
+    let paul = api.sign_in(user::PAUL).await;
+    assert_eq!(
+        paul.put("/admin/llm", company_choice()).await.status,
+        StatusCode::OK
+    );
+    // Resolved (and cached) for the company first, then for another one.
+    assert!(matches!(
+        llm.resolve(tenant::ID).await.unwrap().as_ref(),
+        Resolution::Company(_)
+    ));
+    assert!(matches!(
+        llm.resolve(OTHER_TENANT_ID).await.unwrap().as_ref(),
+        Resolution::Platform(Some(_))
+    ));
+    assert_eq!(api.built.lock().unwrap().len(), 1);
+    // Its settings and key are not even visible from the other company.
+    let mut other = api.app.services.db.begin(OTHER_TENANT_ID).await.unwrap();
+    for table in ["secrets", "tenant_llm_settings"] {
+        let visible: i64 = sqlx::query_scalar(&format!("select count(*) from {table}"))
+            .fetch_one(&mut *other)
+            .await
+            .unwrap();
+        assert_eq!(visible, 0, "{table}");
+    }
+    drop(other);
+    assert_eq!(paul.delete("/admin/llm").await.status, StatusCode::OK);
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn an_endpoint_the_operator_removed_is_no_longer_reached() {
+    let listed = TestApi::start_with(&[
+        ("MIMORYA_MASTER_KEY", MASTER_KEY),
+        ("MIMORYA_TENANT_LLM_ENDPOINTS", ENDPOINT),
+    ])
+    .await;
+    let paul = listed.sign_in(user::PAUL).await;
+    let local = json!({ "provider": "ollama", "model": "llama3.3", "baseUrl": ENDPOINT });
+    assert_eq!(paul.put("/admin/llm", local).await.status, StatusCode::OK);
+
+    // The operator restarts without that endpoint.
+    let unlisted = TestApi::start_with(&[("MIMORYA_MASTER_KEY", MASTER_KEY)]).await;
+    let marc = unlisted.sign_in(user::MARC).await;
+    assert_eq!(
+        marc.get("/auth/me").await.json()["assistant"]["available"],
+        false
+    );
+    let (status, _) = ask(&unlisted, &marc, "Bonjour").await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert!(unlisted.built.lock().unwrap().is_empty());
+    assert!(unlisted.model.as_ref().unwrap().requests().is_empty());
+    let admin = unlisted.sign_in(user::PAUL).await;
+    let shown = admin.get("/admin/llm").await.json();
+    assert_eq!(shown["settings"]["usable"], false);
+    assert!(
+        shown["settings"]["problem"]
+            .as_str()
+            .unwrap()
+            .contains("adresse")
+    );
+    assert_eq!(admin.delete("/admin/llm").await.status, StatusCode::OK);
 }

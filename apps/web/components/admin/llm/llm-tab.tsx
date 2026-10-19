@@ -51,10 +51,13 @@ export function LlmTab() {
                   {!data.settings.priced && (
                     <Badge tone="warn">Coût non estimé : modèle absent de la grille</Badge>
                   )}
-                  {!data.settings.usable && (
-                    <Badge tone="danger">Inutilisable : enregistrez-le de nouveau</Badge>
-                  )}
+                  {!data.settings.usable && <Badge tone="danger">Inutilisable</Badge>}
                 </div>
+                {data.settings.problem && (
+                  <ErrorNote
+                    message={`Vos conversations sont arrêtées : ${data.settings.problem}.`}
+                  />
+                )}
                 <p className="text-xs text-muted">
                   Modifié le {formatDate(data.settings.updatedAt)}. Vos conversations n’utilisent
                   que ce fournisseur : s’il devient inutilisable, elles s’arrêtent plutôt que de

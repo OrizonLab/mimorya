@@ -186,8 +186,9 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
 - Clé du modèle d'une entreprise : écriture seule (`keyStored` seulement), jamais dans
   l'audit, et liée au fournisseur et à l'adresse pour lesquels elle a été saisie. Les
   adresses d'un fournisseur local ou privé sont choisies dans la liste de l'exploitant
-  (`MIMORYA_TENANT_LLM_ENDPOINTS`) : une entreprise ne fait jamais appeler par le
-  serveur une adresse de son choix (SSRF). Si le modèle choisi par l'entreprise devient
+  (`MIMORYA_TENANT_LLM_ENDPOINTS`, commune à toutes les entreprises) : une entreprise
+  ne fait jamais appeler par le serveur une adresse de son choix (SSRF), et une
+  adresse retirée de la liste n'est plus appelée (configuration revérifiée à l'usage). Si le modèle choisi par l'entreprise devient
   inutilisable, ses runs s'arrêtent, sans repli vers le fournisseur de la plateforme.
 - Jamais renvoyés par l'API, jamais injectés dans le contexte du modèle, jamais
   journalisés : les journaux de requêtes ne contiennent ni en-têtes ni corps (seuls

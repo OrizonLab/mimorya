@@ -21,7 +21,7 @@ use crate::plugins::stale_run_sweeper::spawn_stale_run_sweeper;
 use crate::plugins::{RateLimiter, RateLimits};
 use crate::routes;
 use crate::secrets::SecretStore;
-use crate::services::llm::default_factory;
+use crate::services::llm::{LlmServiceOptions, default_factory};
 use crate::services::runs::RunExecutor;
 use crate::services::{
     AccessService, ConnectorService, LlmService, ProviderFactory, RunEventBus, RunService,
@@ -80,10 +80,13 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
 
     let llm = Arc::new(LlmService::new(
         db.clone(),
-        provider,
-        SecretStore::new(config.secrets.clone()),
-        options.provider_factory.unwrap_or_else(default_factory),
-        Arc::new(PriceTable::default()),
+        LlmServiceOptions {
+            platform: provider,
+            secrets: SecretStore::new(config.secrets.clone()),
+            listed_endpoints: config.tenant_llm_endpoints.clone(),
+            factory: options.provider_factory.unwrap_or_else(default_factory),
+            prices: Arc::new(PriceTable::default()),
+        },
     ));
     let access = Arc::new(AccessService::new(db.clone()));
     let connectors = Arc::new(ConnectorService::new(db.clone()));

@@ -6,7 +6,9 @@
 
 use mimorya_core::DomainError;
 use mimorya_core::authz::{Condition, PermissionInfo};
-use mimorya_core::policy_rules::{condition_problem, normalize_policy_permissions, scope_problem};
+use mimorya_core::policy_rules::{
+    canonical_condition, condition_problem, normalize_policy_permissions, scope_problem,
+};
 use mimorya_db::repositories::access_policies::{
     NewDenyPolicy, PolicyPatch, PolicyRow, create_deny_policy, delete_deny_policy, get_policy,
     update_deny_policy,
@@ -213,12 +215,15 @@ fn stored_condition(policy: &PolicyRow) -> Result<Condition, DomainError> {
     Ok(condition)
 }
 
-/// The condition as it will be stored, once it passed the checks.
+/// The condition as it will be stored, once it passed the checks: its text
+/// values in canonical form, like the attributes they are compared with.
 fn checked_condition(condition: &Condition) -> anyhow::Result<Value> {
     if let Some(problem) = condition_problem(condition) {
         return Err(DomainError::validation(problem).into());
     }
-    Ok(serde_json::to_value(condition)?)
+    Ok(serde_json::to_value(canonical_condition(
+        condition.clone(),
+    ))?)
 }
 
 /// The policy, as stored now, if an administrator may change it.

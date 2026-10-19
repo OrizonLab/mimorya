@@ -3,9 +3,8 @@
 //! administrator sets them; values stay short and typed, so that a condition
 //! compares them reliably and nothing sensitive lands there by accident.
 
+use crate::plain_text::{canonical, is_hidden};
 use serde_json::{Map, Number, Value};
-use unicode_normalization::UnicodeNormalization;
-use unicode_properties::{GeneralCategory, UnicodeGeneralCategory};
 
 pub const MAX_ATTRIBUTES: usize = 20;
 pub const MAX_ATTRIBUTE_KEY_CHARS: usize = 40;
@@ -80,49 +79,10 @@ fn is_exact(number: &Number) -> bool {
     }
 }
 
-/// Characters that break a single visible line or hide in it: controls,
-/// invisible formatting (zero-width space, direction overrides…), line or
-/// paragraph separators, and the other characters Unicode ignores by default
-/// when drawing (grapheme joiner, variation selectors, Hangul fillers…). A
-/// value shown « administratif » must be exactly that.
-fn is_hidden(c: char) -> bool {
-    matches!(
-        c.general_category(),
-        GeneralCategory::Control
-            | GeneralCategory::Format
-            | GeneralCategory::LineSeparator
-            | GeneralCategory::ParagraphSeparator
-    ) || is_default_ignorable(c)
-}
-
-/// Unicode's `Default_Ignorable_Code_Point` (DerivedCoreProperties).
-fn is_default_ignorable(c: char) -> bool {
-    matches!(
-        u32::from(c),
-        0x00AD
-            | 0x034F
-            | 0x061C
-            | 0x115F..=0x1160
-            | 0x17B4..=0x17B5
-            | 0x180B..=0x180F
-            | 0x200B..=0x200F
-            | 0x202A..=0x202E
-            | 0x2060..=0x206F
-            | 0x3164
-            | 0xFE00..=0xFE0F
-            | 0xFEFF
-            | 0xFFA0
-            | 0xFFF0..=0xFFF8
-            | 0x1BCA0..=0x1BCA3
-            | 0x1D173..=0x1D17A
-            | 0xE0000..=0xE0FFF
-    )
-}
-
 /// Trimmed and in canonical form (NFC): the same word typed on two systems
 /// is stored the same way.
 fn text_value(key: &str, text: &str) -> Result<String, String> {
-    let text: String = text.trim().nfc().collect();
+    let text = canonical(text.trim());
     let text = text.as_str();
     if text.is_empty() {
         return Err(format!(

@@ -15,8 +15,10 @@ export interface LlmSettingsView {
   keyStored: boolean;
   /** Present in the price table: costs are estimated. */
   priced: boolean;
-  /** The stored configuration can serve runs (key readable, provider built). */
+  /** The stored configuration can serve runs (key readable, endpoint still listed…). */
   usable: boolean;
+  /** Why it cannot, when it cannot (French). */
+  problem: string | null;
   updatedAt: string;
 }
 
