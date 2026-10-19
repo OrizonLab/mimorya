@@ -123,55 +123,61 @@ test('an account’s profile, attributes and rights are changed', async ({ page 
   await noError(page);
 });
 
-test('a form reopened before the directory reloads shows what was saved', async ({ page }) => {
-  const email = 'paul.renard@neo-maintenance.example';
+test('an account’s forms wait for the reloaded directory', async ({ page }) => {
+  const email = 'victor.chassagne@neo-maintenance.example';
   await openAdmin(page, 'Utilisateurs');
   await page.getByRole('button', { name: 'Ajouter un collaborateur' }).click();
-  await page.getByLabel('Nom affiché').fill('Paul Renard');
+  await page.getByLabel('Nom affiché').fill('Victor Chassagne');
   await page.getByLabel('Adresse e-mail').fill(email);
   await page.getByRole('button', { name: 'Créer le compte' }).click();
   await expect(page.getByText(`Invitation envoyée à ${email}`)).toBeVisible();
 
   const row = page.getByRole('row').filter({ hasText: email }).first();
   await row.getByRole('button', { name: 'Gérer' }).click();
-  // From now on, the directory arrives late: the forms are reopened with the
-  // account as it was listed before the save.
+  // Once held, the directory waits until the test lets it through.
+  let held = Promise.resolve();
+  let release = () => {};
   await page.route('**/api/admin/users', async (route) => {
-    if (route.request().method() === 'GET') await new Promise((done) => setTimeout(done, 1_500));
+    if (route.request().method() === 'GET') await held;
     await route.continue();
   });
-  const reloads = () =>
-    page.waitForRequest((r) => r.method() === 'GET' && r.url().endsWith('/api/admin/users'));
+  const reloading = () => {
+    held = new Promise<void>((done) => (release = done));
+    return page.waitForRequest((r) => r.method() === 'GET' && r.url().endsWith('/api/admin/users'));
+  };
+  const reopen = async () => {
+    await row.getByRole('button', { name: 'Fermer' }).click();
+    await row.getByRole('button', { name: 'Gérer' }).click();
+  };
+  const saveProfile = page.getByRole('button', { name: 'Enregistrer', exact: true });
+  const saveAttributes = page.getByRole('button', { name: 'Enregistrer les attributs' });
 
-  let reload = reloads();
+  let reload = reloading();
   await page.getByLabel('Fonction').fill('Chef d’équipe');
-  await page.getByRole('button', { name: 'Enregistrer', exact: true }).click();
+  await saveProfile.click();
   await reload;
-  await row.getByRole('button', { name: 'Fermer' }).click();
-  await row.getByRole('button', { name: 'Gérer' }).click();
-  // Once the directory arrives, the form shows what the API saved.
+  await reopen();
+  // Reopened from the former directory: nothing can be saved from it...
+  await expect(page.getByLabel('Fonction')).toHaveValue('');
+  await expect(saveProfile).toBeDisabled();
+  await expect(saveAttributes).toBeDisabled();
+  release();
+  // ...until the directory arrives, with what the API saved.
   await expect(page.getByLabel('Fonction')).toHaveValue('Chef d’équipe');
+  await expect(saveProfile).toBeEnabled();
 
-  reload = reloads();
+  reload = reloading();
   await page.getByRole('button', { name: 'Ajouter un attribut' }).click();
   await page.getByLabel('Nom', { exact: true }).fill('department');
   await page.getByLabel('Valeur').fill('technique');
-  await page.getByRole('button', { name: 'Enregistrer les attributs' }).click();
+  await saveAttributes.click();
   await reload;
-  await row.getByRole('button', { name: 'Fermer' }).click();
-  await row.getByRole('button', { name: 'Gérer' }).click();
+  await reopen();
+  await expect(page.getByText('Aucun attribut.')).toBeVisible();
+  await expect(saveAttributes).toBeDisabled();
+  release();
   await expect(page.getByLabel('Nom', { exact: true })).toHaveValue('department');
   await expect(page.getByLabel('Valeur')).toHaveValue('technique');
-  // Saved again, they keep what the first saves wrote.
-  await page.getByRole('button', { name: 'Enregistrer', exact: true }).click();
-  await page.getByRole('button', { name: 'Enregistrer les attributs' }).click();
-  await expect
-    .poll(async () => {
-      const response = await page.request.get('/api/admin/users');
-      if (response.status() !== 200) return `HTTP ${response.status()}`;
-      const user = ((await response.json()) as Directory).users.find((u) => u.email === email);
-      return [user?.jobTitle, user?.attributes];
-    })
-    .toEqual(['Chef d’équipe', { department: 'technique' }]);
+  await expect(saveAttributes).toBeEnabled();
   await noError(page);
 });

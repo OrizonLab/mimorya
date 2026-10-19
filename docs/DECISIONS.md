@@ -1184,3 +1184,31 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     (`crates/api/tests/strict_bodies.rs`) ;
   - un corps ajouté hors de `request_bodies!` n'est ni décrit en TypeScript, ni testé :
     l'interface ne peut pas l'importer, ce qui le signale.
+
+## ADR-041 — Formulaires de modification : verrouillés pendant le rechargement de leur liste
+
+- **Date** : 2026-10-19 · **Statut** : acceptée
+- **Contexte** : un formulaire de modification copie la ressource dans son état à son
+  ouverture. `useApiData` garde l'ancienne liste pendant un rechargement, sans le
+  signaler. Une fiche de compte rouverte juste après un enregistrement partait donc de
+  l'ancien compte, et l'enregistrer réécrivait les anciennes valeurs, jusqu'à tous les
+  attributs (le PATCH les remplace). Reconstruire le formulaire par une clé React ne
+  suffisait pas : il restait enregistrable avant l'arrivée de la liste, et la
+  reconstruction perdait la requête en cours et le focus (audit de la PR #29).
+- **Décision** :
+  - `useApiData` expose `loading` : une requête est en cours, et `data`, s'il existe,
+    est l'ancienne ;
+  - pendant ce temps, le formulaire est verrouillé (`<fieldset disabled>`) : ni saisie
+    ni enregistrement à partir d'une ressource peut-être périmée ;
+  - chaque champ prend son état par `useSyncedState(valeur de la liste)`, repris quand
+    cette valeur change, sans reconstruire le composant (requête en cours, message
+    et focus conservés) ;
+  - appliqué d'abord à la fiche d'un compte (profil et attributs).
+- **Conséquences** :
+  - après un enregistrement, la fiche est brièvement désactivée, le temps du
+    rechargement ;
+  - les autres formulaires de modification (rôle, politique, unité, serveur MCP,
+    politique d'outil, modèle) restent à traiter de la même façon (`docs/ROADMAP.md`) ;
+  - test : `apps/web/e2e/administration.spec.ts` retient l'annuaire, vérifie que la
+    fiche rouverte n'est pas enregistrable, puis qu'elle montre ce que l'API a
+    enregistré.

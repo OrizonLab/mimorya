@@ -10,11 +10,6 @@ import { AttributesEditor } from './attributes-editor';
 import { ProfileEditor } from './profile-editor';
 import type { AccountNotice } from './types';
 
-/** What the profile form shows: when it changes, the form starts again from it. */
-function profileKey(user: DirectoryUser): string {
-  return JSON.stringify([user.displayName, user.jobTitle, user.orgUnitId, user.clearance]);
-}
-
 /** A directory row; administrators open it to manage the account. */
 export function UserRow({
   user,
@@ -22,6 +17,7 @@ export function UserRow({
   canManage,
   emailEnabled,
   isSelf,
+  reloading,
   onChanged,
   onNotice,
 }: {
@@ -30,6 +26,8 @@ export function UserRow({
   canManage: Directory['canManage'];
   emailEnabled: boolean;
   isSelf: boolean;
+  /** The directory is reloading: `user` may be the former account. */
+  reloading: boolean;
   onChanged: () => void;
   onNotice: (notice: AccountNotice) => void;
 }) {
@@ -81,12 +79,10 @@ export function UserRow({
             <div className="flex flex-col gap-6">
               {canManage.users && (
                 <ProfileEditor
-                  // Rebuilt from the account as the directory now lists it: a
-                  // form opened before a reload never keeps former values.
-                  key={profileKey(user)}
                   user={user}
                   units={units}
                   emailEnabled={emailEnabled}
+                  reloading={reloading}
                   onChanged={onChanged}
                   onNotice={onNotice}
                 />
@@ -94,7 +90,7 @@ export function UserRow({
               {canManage.users && (
                 <section>
                   <h3 className="mb-2 text-sm font-medium">Attributs</h3>
-                  <AttributesEditor user={user} onChanged={onChanged} />
+                  <AttributesEditor user={user} reloading={reloading} onChanged={onChanged} />
                 </section>
               )}
               {canManage.roles && (
