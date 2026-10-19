@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { ApiError, api } from './client';
+import { api, loadFailure } from './client';
 
 export interface ApiData<T> {
   data: T | null;
@@ -27,10 +27,7 @@ export function useApiData<T>(path: string): ApiData<T> {
     api
       .get<T>(path)
       .then((value) => !cancelled && setData(value))
-      .catch(
-        (e: unknown) =>
-          !cancelled && setError(e instanceof ApiError ? e.message : 'Chargement impossible'),
-      )
+      .catch((e: unknown) => !cancelled && setError(loadFailure(e)))
       .finally(() => !cancelled && setSettled(`${version} ${path}`));
     return () => {
       cancelled = true;

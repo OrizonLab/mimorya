@@ -10,7 +10,8 @@ export async function holdList(page: Page, path: string) {
   await page.route(`**${path}`, async (route) => {
     if (route.request().method() === 'GET') await held;
     await route.continue().catch((error: unknown) => {
-      // A read the page gave up on (its time ran out) is no longer there.
+      // A guard only: Playwright already ignores continuing a read the page
+      // gave up on (its time ran out); anything else is still reported.
       if (route.request().failure() === null) throw error;
     });
   });

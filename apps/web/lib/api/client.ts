@@ -11,6 +11,11 @@ export class ApiError extends Error {
   }
 }
 
+/** What a failed load says: the API's message (a timeout's included), or a general one. */
+export function loadFailure(error: unknown): string {
+  return error instanceof ApiError ? error.message : 'Chargement impossible';
+}
+
 /**
  * How long a read may wait for its answer: past it, it fails rather than
  * leave its screen locked (ADR-042, ADR-044). Changes are not cut short: an

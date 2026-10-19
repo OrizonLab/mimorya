@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
-import { api, ApiError, type Me } from '@/lib/api';
+import { api, ApiError, loadFailure, type Me } from '@/lib/api';
 
 const PENDING_REFRESH_MS = 20_000;
 
@@ -28,7 +28,7 @@ export function useCurrentUser(): {
       .then(setMe)
       .catch((failure: unknown) => {
         if (failure instanceof ApiError && failure.status === 401) router.replace('/login');
-        else setError(failure instanceof ApiError ? failure.message : 'Chargement impossible');
+        else setError(loadFailure(failure));
       });
   }, [router, attempt]);
 

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   api,
   ApiError,
+  loadFailure,
   type Approval,
   type ApprovalList,
   type ConversationCreated,
@@ -31,6 +32,7 @@ export function useConversation(conversationId: string | null) {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [listError, setListError] = useState<string | null>(null);
+  const [approvalsError, setApprovalsError] = useState<string | null>(null);
 
   const loadConversations = useCallback(() => {
     setListError(null);
@@ -38,12 +40,18 @@ export function useConversation(conversationId: string | null) {
       .get<ConversationList>('/conversations')
       .then((r) => setConversations(r.conversations))
       // Said as such: an empty list would claim there is no conversation.
-      .catch((e: unknown) => setListError(failure(e)));
+      .catch((e: unknown) => setListError(loadFailure(e)));
   }, []);
 
+  // A failure is kept apart: the run waits on these, which can be loaded again.
   const loadApprovals = useCallback(async (runId: string) => {
-    const r = await api.get<ApprovalList>('/approvals');
-    setApprovals(r.approvals.filter((a) => a.runId === runId));
+    setApprovalsError(null);
+    try {
+      const r = await api.get<ApprovalList>('/approvals');
+      setApprovals(r.approvals.filter((a) => a.runId === runId));
+    } catch (e) {
+      setApprovalsError(loadFailure(e));
+    }
   }, []);
 
   const loadDetail = useCallback(async () => {
@@ -56,7 +64,9 @@ export function useConversation(conversationId: string | null) {
       if (active?.status === 'awaiting_approval') await loadApprovals(active.id);
       else setApprovals([]);
     } catch (e) {
-      setError(e instanceof ApiError && e.status === 404 ? 'Conversation introuvable' : failure(e));
+      setError(
+        e instanceof ApiError && e.status === 404 ? 'Conversation introuvable' : loadFailure(e),
+      );
     }
   }, [conversationId, loadApprovals]);
 
@@ -70,7 +80,7 @@ export function useConversation(conversationId: string | null) {
   const onRunFinished = useCallback(
     (status: RunStatus) => {
       if (status === 'awaiting_approval' && activeRunId) {
-        loadApprovals(activeRunId).catch((e: unknown) => setError(failure(e)));
+        void loadApprovals(activeRunId);
         return;
       }
       void loadDetail();
@@ -127,6 +137,8 @@ export function useConversation(conversationId: string | null) {
     reloadConversations: loadConversations,
     detail,
     error,
+    approvalsError,
+    reloadApprovals: () => void (activeRunId && loadApprovals(activeRunId)),
     sending,
     busy: activeRunId !== null,
     activity,
@@ -134,11 +146,6 @@ export function useConversation(conversationId: string | null) {
     send,
     dismissApproval,
   };
-}
-
-/** What a failed load says: the API's message (a timeout's included), or a general one. */
-function failure(error: unknown): string {
-  return error instanceof ApiError ? error.message : 'Chargement impossible';
 }
 
 /** Optimistic copy of the user's message until the conversation is reloaded. */
