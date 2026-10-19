@@ -53,7 +53,7 @@ Dernière mise à jour : 2026-10-19 (en-têtes de sécurité : CSP à nonce, ré
 ### Reste à faire pour clore la phase 1 (par priorité)
 
 1. **Validation avec un modèle réel** (clé Anthropic ou autre) sur le scénario de référence, et ajustement des consignes et descriptions d'outils.
-2. **Tests e2e** Playwright en CI avec modèle scénarisé ; images Docker (API Rust, web) pour l'installation privée.
+2. **Tests e2e** Playwright en CI avec modèle scénarisé, dont la CSP des pages (nonce de l'en-tête et des scripts, aucune violation sur la connexion et sur une adresse inconnue, ADR-030) ; images Docker (API Rust, web) et exemple de reverse proxy (TLS, HSTS) pour l'installation privée.
 3. **Types de l'API partagés** : générer `apps/web/lib/api/types.ts` depuis les structures Rust (aujourd'hui maintenus à la main).
 
 ### Points relevés par les audits, à traiter (non bloquants)

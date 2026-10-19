@@ -715,8 +715,12 @@ cité, renvoi) y sont faites sur place.
     développement s'y ajoutent `'unsafe-eval'` (débogage de React) et les styles en
     ligne (surcouche du serveur de développement). Le nonce imposant un rendu à chaque
     requête, la mise en page racine attend la requête (`connection()`) : plus aucune
-    page n'est construite à l'avance, ce qui est sans effet ici (toutes les pages sont
-    des composants clients derrière une session) ;
+    page n'est construite à l'avance. Les pages derrière une session ne changent pas ;
+    les pages publiques (connexion, mot de passe oublié, invitation, réinitialisation),
+    légères, sont désormais rendues à chaque requête ;
+  - les pages d'erreur de Next.js se mettent en forme par des styles en ligne, que la
+    CSP refuse : l'application a ses propres pages « introuvable » (`not-found.tsx`)
+    et « erreur » (`global-error.tsx`), en français, mises en forme par des classes ;
   - en complément, toutes les pages gardent `X-Content-Type-Options`,
     `Referrer-Policy`, `X-Frame-Options`, `Permissions-Policy` et reçoivent
     `Cross-Origin-Opener-Policy: same-origin` ;
@@ -731,6 +735,8 @@ cité, renvoi) y sont faites sur place.
   - une image distante dans une réponse du modèle n'est pas chargée (refus de la CSP) ;
   - un script tiers ou un style en ligne ajouté plus tard devra porter le nonce, ou la
     politique être revue par une nouvelle entrée ;
-  - la CSP des pages est vérifiée dans un navigateur (aucune violation sur toutes les
-    pages, image étrangère refusée) mais pas encore par un test automatisé : ce sera
-    l'objet des tests de bout en bout en CI. Les en-têtes de l'API sont testés.
+  - la CSP des pages est vérifiée dans un navigateur (aucune violation sur les pages de
+    l'application ni sur une adresse inconnue, image étrangère refusée) mais pas encore
+    par un test automatisé : les tests de bout en bout en CI devront vérifier le nonce
+    de l'en-tête et des scripts, et l'absence de violation sur la connexion et sur une
+    adresse inconnue. Les en-têtes de l'API sont testés.

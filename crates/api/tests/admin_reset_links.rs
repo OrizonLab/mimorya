@@ -185,8 +185,10 @@ async fn a_link_that_could_not_be_sent_is_withdrawn() {
         "{logged}"
     );
     assert!(!logged.contains(&email(user::HUGO)), "{logged}");
+    assert!(!logged.contains("relais injoignable"), "{logged}");
     assert_eq!(failed.status, StatusCode::SERVICE_UNAVAILABLE);
     let problem = failed.error_message();
+    assert!(problem.contains("relais injoignable"), "{problem}");
     assert!(
         problem.starts_with("L’e-mail n’a pas pu être envoyé (")
             && problem.ends_with(") : donnez plutôt un mot de passe provisoire"),
