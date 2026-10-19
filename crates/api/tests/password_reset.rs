@@ -112,6 +112,12 @@ async fn asking_reveals_nothing_and_links_only_active_accounts() {
     let invitations = api.mail.sent().len();
 
     let owner = sqlx::PgPool::connect(owner_url()).await.unwrap();
+    // An active account without a password (as a future single sign-on one).
+    sqlx::query("update users set password_hash = null where id = $1")
+        .bind(user::NADIA)
+        .execute(&owner)
+        .await
+        .unwrap();
     let suspend = |status: &'static str| {
         sqlx::query("update tenants set status = $1 where id = $2")
             .bind(status)
@@ -126,6 +132,7 @@ async fn asking_reveals_nothing_and_links_only_active_accounts() {
         ask_reset(&api, "personne@nulle-part.example").await,
         ask_reset(&api, &invited.email).await,
         ask_reset(&api, &email(user::ISABELLE)).await,
+        ask_reset(&api, &email(user::NADIA)).await,
     ];
     for answer in &answers {
         assert_eq!(answer.status, StatusCode::ACCEPTED);
@@ -135,7 +142,7 @@ async fn asking_reveals_nothing_and_links_only_active_accounts() {
     let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
     let stored: i64 =
         sqlx::query_scalar("select count(*) from password_resets where user_id = any($1)")
-            .bind([user::EMMA, user::ISABELLE, invited.id])
+            .bind([user::EMMA, user::ISABELLE, user::NADIA, invited.id])
             .fetch_one(&mut *tx)
             .await
             .unwrap();
@@ -182,6 +189,23 @@ async fn a_link_that_could_not_be_sent_is_audited_but_not_logged() {
         "{logged}"
     );
     assert!(!logged.contains(&email(user::HUGO)), "{logged}");
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn the_server_stops_once_the_links_asked_for_are_sent() {
+    let api = TestApi::start_with_mailer().await;
+    let asked = api
+        .anonymous()
+        .post(
+            "/auth/password-reset",
+            json!({ "email": email(user::JULIEN) }),
+        )
+        .await;
+    assert_eq!(asked.status, StatusCode::ACCEPTED);
+    let TestApi { app, mail, .. } = api;
+    app.shutdown().await;
+    assert_eq!(mail.sent().len(), 1);
 }
 
 #[tokio::test]
