@@ -185,18 +185,48 @@ async fn every_authenticated_route_holds_a_temporary_password_back() {
 
 /// Routes reachable without the restriction: no identity, or the ones that
 /// let a temporary password be replaced.
-const OTHER_ROUTES: &[&str] = &[
-    "/health",
-    "/auth/login",
-    "/auth/logout",
-    "/auth/me",
-    "/account/password",
+const OTHER_ROUTES: &[(&str, &str)] = &[
+    ("GET", "/health"),
+    ("POST", "/auth/login"),
+    ("POST", "/auth/logout"),
+    ("GET", "/auth/me"),
+    ("POST", "/account/password"),
 ];
+
+/// The `(method, path)` pairs a routes file declares, read from the arguments
+/// of each `.route(…)` call.
+fn declared_routes(source: &str) -> Vec<(String, String)> {
+    let path = Regex::new(r#"^\s*"([^"]+)""#).unwrap();
+    let method = Regex::new(r"\b(get|post|patch|put|delete)\(").unwrap();
+    let mut routes = Vec::new();
+    for call in source.split(".route(").skip(1) {
+        // The call's own arguments, up to its closing parenthesis.
+        let mut depth = 1;
+        let end = call
+            .char_indices()
+            .find(|(_, c)| {
+                depth += match c {
+                    '(' => 1,
+                    ')' => -1,
+                    _ => 0,
+                };
+                depth == 0
+            })
+            .map_or(call.len(), |(i, _)| i);
+        let arguments = &call[..end];
+        let Some(declared) = path.captures(arguments) else {
+            continue;
+        };
+        for found in method.captures_iter(arguments) {
+            routes.push((found[1].to_uppercase(), declared[1].to_string()));
+        }
+    }
+    routes
+}
 
 #[test]
 fn the_route_list_follows_the_router() {
-    let declared = Regex::new(r#"\.route\(\s*"([^"]+)""#).unwrap();
-    let mut paths = BTreeSet::new();
+    let mut declared = BTreeSet::new();
     let mut directories = vec![Path::new(env!("CARGO_MANIFEST_DIR")).join("src/routes")];
     while let Some(directory) = directories.pop() {
         for entry in fs::read_dir(directory).unwrap() {
@@ -204,21 +234,18 @@ fn the_route_list_follows_the_router() {
             if path.is_dir() {
                 directories.push(path);
             } else {
-                let source = fs::read_to_string(&path).unwrap();
-                paths.extend(declared.captures_iter(&source).map(|c| c[1].to_string()));
+                declared.extend(declared_routes(&fs::read_to_string(&path).unwrap()));
             }
         }
     }
-    let listed: BTreeSet<&str> = AUTHENTICATED_ROUTES
+    let listed: BTreeSet<(String, String)> = AUTHENTICATED_ROUTES
         .iter()
-        .map(|(_, path)| *path)
-        .chain(OTHER_ROUTES.iter().copied())
+        .chain(OTHER_ROUTES)
+        .map(|(method, path)| ((*method).to_string(), (*path).to_string()))
         .collect();
-    assert!(!paths.is_empty());
-    for path in &paths {
-        assert!(
-            listed.contains(path.as_str()),
-            "{path} is missing from AUTHENTICATED_ROUTES"
-        );
-    }
+    assert!(!declared.is_empty());
+    assert_eq!(
+        declared, listed,
+        "AUTHENTICATED_ROUTES or OTHER_ROUTES no longer match the router"
+    );
 }

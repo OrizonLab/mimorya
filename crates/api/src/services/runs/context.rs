@@ -33,15 +33,22 @@ pub async fn build_tool_registry(
     ToolRegistry::new(tools, &connector_tools.overrides)
 }
 
+/// The system prompt; the skills index only when the agent may read skills.
 pub async fn build_run_system_prompt(
     db: &Database,
     access: &AccessContext,
+    actor: &Actor,
     assistant_name: &str,
     now: DateTime<Utc>,
 ) -> anyhow::Result<String> {
-    let mut tx = db.begin(access.subject.tenant_id).await?;
-    let skills = list_active_skills(&mut tx).await?;
-    tx.commit().await?;
+    let skills = if access.engine.has(&access.subject, "skill:read", actor) {
+        let mut tx = db.begin(access.subject.tenant_id).await?;
+        let skills = list_active_skills(&mut tx).await?;
+        tx.commit().await?;
+        skills
+    } else {
+        Vec::new()
+    };
     let skills: Vec<SkillSummary> = skills
         .into_iter()
         .map(|s| SkillSummary {

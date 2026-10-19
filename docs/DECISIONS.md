@@ -327,8 +327,18 @@ elle est remplacée par une nouvelle entrée qui la référence (« remplace ADR
     comparaison, valeur requise sauf pour « est renseigné », listes pour « fait partie
     de », nombres pour les comparaisons d'ordre, pas de groupe vide, profondeur et
     longueur bornées, valeurs courtes (texte, nombre ou liste), sans caractère nul ;
-    c'est la forme sérialisée de la condition typée qui est stockée, et une condition
-    stockée est relue avant toute modification ou activation ;
+    c'est la forme sérialisée de la condition typée qui est stockée. Une politique
+    active, ou qu'on active, ou dont les permissions ou la condition changent, est
+    revérifiée en entier avec ce qui est stocké (permissions et condition peuvent
+    précéder une règle, ou avoir été écrites hors de l'API) ; une politique inactive
+    se renomme ou reste désactivée quoi qu'elle contienne ;
+  - les nombres se comparent par valeur (`2` et `2.0` sont égaux), comme l'éditeur
+    web les affiche ;
+  - là où la plateforme montre qu'une ressource existe sans la lire, un refus de
+    lecture s'applique aussi : le créneau d'une intervention illisible n'apparaît que
+    comme « occupé » (disponibilités, chevauchements d'une proposition) ; l'index des
+    compétences du prompt suit `skill:read` de l'agent ; valider une action en
+    attente reprend l'agent et exige donc `agent:use` ;
   - les changements passent sous le verrou d'administration (ADR-020), sont audités
     (avec l'état précédent) et s'appliquent aussitôt (cache invalidé).
 - **Conséquences** : les entreprises ne peuvent pas encore élargir l'accès par

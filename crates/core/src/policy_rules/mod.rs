@@ -209,4 +209,43 @@ mod tests {
             None
         );
     }
+
+    #[test]
+    fn a_resource_read_anywhere_in_the_condition_needs_per_resource_checks() {
+        let person = json!({ "op": "eq", "left": { "attr": "subject.attributes.department" }, "right": { "value": "administratif" } });
+        for reading in [
+            json!({ "op": "neq", "left": { "attr": "subject.userId" }, "right": { "attr": "resource.ownerUserId" } }),
+            json!({ "all": [person, { "not": { "op": "eq", "left": { "attr": "resource.attributes.status" }, "right": { "value": "completed" } } }] }),
+            json!({ "any": [person, { "op": "eq", "left": { "attr": "resource.type" }, "right": { "value": "intervention" } }] }),
+            json!({ "op": "gte", "left": { "attr": "resource.sensitivityRank" }, "right": { "value": 2 } }),
+        ] {
+            let condition: Condition = serde_json::from_value(reading.clone()).unwrap();
+            assert!(
+                scope_problem(&perms(&["planning:apply"]), &condition, CATALOG).is_some(),
+                "{reading}"
+            );
+            assert_eq!(
+                scope_problem(&perms(&["intervention:read"]), &condition, CATALOG),
+                None,
+                "{reading}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_domain_checked_partly_on_the_person_refuses_resource_conditions() {
+        const MIXED: &[PermissionInfo] = &[
+            permission("contrat:read", Enforcement::PerResource),
+            permission("contrat:export", Enforcement::Holder),
+        ];
+        let on_resource: Condition = serde_json::from_value(json!({
+            "op": "exists", "left": { "attr": "resource.attributes.status" }
+        }))
+        .unwrap();
+        assert!(scope_problem(&perms(&["contrat:*"]), &on_resource, MIXED).is_some());
+        assert_eq!(
+            scope_problem(&perms(&["contrat:read"]), &on_resource, MIXED),
+            None
+        );
+    }
 }

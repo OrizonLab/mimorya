@@ -1,7 +1,7 @@
 //! Access policies (ADR-022): administrators write deny policies on business
 //! permissions, which apply at once; allow policies, administration
-//! permissions and malformed conditions are refused; another company's
-//! policies do not exist from here.
+//! permissions and malformed conditions are refused. Policies written outside
+//! the API: `admin_policy_storage.rs`.
 
 mod support;
 
@@ -9,7 +9,6 @@ use axum::http::StatusCode;
 use mimorya_api::services::{AccessContext, AuthIdentity};
 use mimorya_core::authz::{Actor, ResourceRef};
 use mimorya_core::demo::{tenant, user};
-use mimorya_db::testing::OTHER_TENANT_ID;
 use serde_json::{Value, json};
 use support::{Client, TestApi};
 use uuid::Uuid;
@@ -264,6 +263,25 @@ async fn refuses_policies_outside_the_rules() {
     assert_eq!(stored["description"], "Politique de test");
     // The tests of this file share a database.
     assert_eq!(paul.delete(&url).await.status, StatusCode::OK);
+
+    // A new condition is checked against the stored permissions too.
+    let for_agents = json!({ "op": "eq", "left": { "attr": "context.actorType" }, "right": { "value": "agent" } });
+    let id = create(
+        &paul,
+        json!({ "description": "Pas d’application par l’agent", "permissions": ["planning:apply"], "condition": for_agents }),
+    )
+    .await;
+    let url = format!("/admin/policies/{id}");
+    let on_resource = paul
+        .patch(&url, json!({ "condition": cancelled_only() }))
+        .await;
+    assert_eq!(on_resource.status, StatusCode::BAD_REQUEST);
+    assert!(
+        on_resource
+            .error_message()
+            .contains("ressource par ressource")
+    );
+    assert_eq!(paul.delete(&url).await.status, StatusCode::OK);
     assert_eq!(
         marc.get("/admin/policies").await.status,
         StatusCode::FORBIDDEN
@@ -272,94 +290,4 @@ async fn refuses_policies_outside_the_rules() {
         marc.post("/admin/policies", valid).await.status,
         StatusCode::FORBIDDEN
     );
-}
-
-#[tokio::test]
-#[ignore = "requires PostgreSQL"]
-async fn allow_policies_and_other_companies_policies_are_out_of_reach() {
-    let api = TestApi::start().await;
-    let paul = api.sign_in(user::PAUL).await;
-    let (allow, foreign) = (Uuid::new_v4(), Uuid::new_v4());
-    let insert = "insert into access_policies (id, tenant_id, description, effect, permissions, \
-                  condition) values ($1, $2, 'Insérée par le test', $3, '{intervention:read}', $4)";
-    for (id, tenant_id, effect) in [
-        (allow, tenant::ID, "allow"),
-        (foreign, OTHER_TENANT_ID, "deny"),
-    ] {
-        let mut tx = api.app.services.db.begin(tenant_id).await.unwrap();
-        sqlx::query(insert)
-            .bind(id)
-            .bind(tenant_id)
-            .bind(effect)
-            .bind(cancelled_only())
-            .execute(&mut *tx)
-            .await
-            .unwrap();
-        tx.commit().await.unwrap();
-    }
-
-    let listing = paul.get("/admin/policies").await.json();
-    let policies = listing["policies"].as_array().unwrap();
-    let listed_allow = policies.iter().find(|p| p["id"] == json!(allow)).unwrap();
-    assert_eq!(listed_allow["editable"], false);
-    assert!(policies.iter().all(|p| p["id"] != json!(foreign)));
-
-    let narrowed = json!({ "permissions": ["planning:read"] });
-    let allow_url = format!("/admin/policies/{allow}");
-    assert_eq!(
-        paul.patch(&allow_url, narrowed.clone()).await.status,
-        StatusCode::FORBIDDEN
-    );
-    assert_eq!(paul.delete(&allow_url).await.status, StatusCode::FORBIDDEN);
-    let foreign_url = format!("/admin/policies/{foreign}");
-    assert_eq!(
-        paul.patch(&foreign_url, narrowed).await.status,
-        StatusCode::NOT_FOUND
-    );
-    assert_eq!(
-        paul.delete(&foreign_url).await.status,
-        StatusCode::NOT_FOUND
-    );
-}
-
-#[tokio::test]
-#[ignore = "requires PostgreSQL"]
-async fn an_unreadable_stored_condition_is_never_enabled() {
-    let api = TestApi::start().await;
-    let paul = api.sign_in(user::PAUL).await;
-    // Written by hand, disabled: the engine never loads it.
-    let id = Uuid::new_v4();
-    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
-    sqlx::query(
-        "insert into access_policies (id, tenant_id, description, effect, permissions, \
-         condition, enabled) values ($1, $2, 'Écrite à la main', 'deny', '{intervention:read}', \
-         $3, false)",
-    )
-    .bind(id)
-    .bind(tenant::ID)
-    .bind(json!({ "all": [] }))
-    .execute(&mut *tx)
-    .await
-    .unwrap();
-    tx.commit().await.unwrap();
-
-    let url = format!("/admin/policies/{id}");
-    let enabled = paul.patch(&url, json!({ "enabled": true })).await;
-    assert_eq!(
-        enabled.status,
-        StatusCode::BAD_REQUEST,
-        "{}",
-        enabled.text()
-    );
-    // Replacing the condition makes it usable again.
-    let fixed = paul
-        .patch(
-            &url,
-            json!({ "enabled": true, "condition": cancelled_only() }),
-        )
-        .await;
-    assert_eq!(fixed.status, StatusCode::OK, "{}", fixed.text());
-    assert_eq!(paul.get("/auth/me").await.status, StatusCode::OK);
-    // The tests of this file share a database.
-    assert_eq!(paul.delete(&url).await.status, StatusCode::OK);
 }

@@ -3,7 +3,7 @@
 use chrono::NaiveDate;
 use uuid::Uuid;
 
-use super::dataset::InterventionStatus;
+use super::dataset::{Intervention, InterventionStatus};
 use super::store::DemoInterventionsStore;
 
 /// Working day in minutes since midnight (08:00 – 17:00).
@@ -37,10 +37,17 @@ impl Busy {
     }
 }
 
+/// How a slot taken by an intervention the user may not read is shown: taken,
+/// without saying by what (ADR-022: a deny on `intervention:read` holds here too).
+pub const HIDDEN_SLOT: &str = "Occupé (intervention hors de votre périmètre)";
+
+/// The technician's busy slots that day; `readable` tells which interventions
+/// the user may read, the others are only shown as taken.
 pub fn busy_slots(
     store: &DemoInterventionsStore,
     technician_id: Uuid,
     date: NaiveDate,
+    readable: &dyn Fn(&Intervention) -> bool,
 ) -> Vec<Busy> {
     let mut busy: Vec<Busy> = store
         .interventions
@@ -55,7 +62,11 @@ pub fn busy_slots(
             Busy {
                 start,
                 end: end_of(start, i.duration_hours),
-                label: format!("{} {}", i.id, i.kind),
+                label: if readable(i) {
+                    format!("{} {}", i.id, i.kind)
+                } else {
+                    HIDDEN_SLOT.to_string()
+                },
             }
         })
         .collect();
@@ -77,10 +88,15 @@ pub fn busy_slots(
             .filter(|s| s.technician_id == technician_id && s.date == date)
             .map(|s| {
                 let start = to_minutes(&s.start_time);
+                let shown = store
+                    .interventions
+                    .iter()
+                    .find(|i| i.id == s.intervention_id)
+                    .is_some_and(readable);
                 Busy {
                     start,
                     end: end_of(start, s.duration_hours),
-                    label: s.label,
+                    label: if shown { s.label } else { HIDDEN_SLOT.into() },
                 }
             }),
     );

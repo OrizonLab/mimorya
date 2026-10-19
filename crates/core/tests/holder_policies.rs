@@ -5,6 +5,7 @@
 
 use mimorya_core::authz::{
     AbacPolicy, Actor, AuthorizationEngine, Condition, DataScope, PolicyEffect, ResourceRef,
+    Sensitivity,
 };
 use mimorya_core::demo::{self, tenant, user};
 use serde_json::json;
@@ -94,4 +95,82 @@ fn a_deny_reading_the_resource_only_applies_per_resource() {
             .check(&lucas, "intervention:read", &job("in_progress"), &me)
             .allowed
     );
+}
+
+/// Lucas's own intervention, in this status and of this sensitivity.
+fn own_job(status: &str, sensitivity: Sensitivity) -> ResourceRef {
+    ResourceRef::new("intervention", tenant::ID)
+        .owner(Some(user::LUCAS))
+        .sensitivity(Some(sensitivity))
+        .attribute("status", status)
+}
+
+#[test]
+fn a_resource_read_anywhere_in_the_condition_keeps_the_deny_per_resource() {
+    // Each of these is true for an unknown resource: applied to the holder,
+    // it would withdraw the permission altogether.
+    let lucas = demo::subject(user::LUCAS);
+    let me = Actor::user();
+    let is_lucas = json!({ "op": "eq", "left": { "attr": "subject.userId" }, "right": { "value": user::LUCAS } });
+    let unfinished = json!({ "not": { "op": "eq", "left": { "attr": "resource.attributes.status" }, "right": { "value": "completed" } } });
+    let cases = [
+        // The resource on the right of a comparison.
+        (
+            json!({ "op": "neq", "left": { "attr": "subject.userId" }, "right": { "attr": "resource.ownerUserId" } }),
+            ("in_progress", Sensitivity::Internal, true),
+        ),
+        // Next to a condition about the person.
+        (
+            json!({ "all": [is_lucas, unfinished] }),
+            ("in_progress", Sensitivity::Internal, false),
+        ),
+        (
+            json!({ "any": [{ "op": "eq", "left": { "attr": "subject.userId" }, "right": { "value": user::MARC } }, unfinished] }),
+            ("in_progress", Sensitivity::Internal, false),
+        ),
+        // A resource attribute outside `resource.attributes`.
+        (
+            json!({ "not": { "op": "lt", "left": { "attr": "resource.sensitivityRank" }, "right": { "value": 2 } } }),
+            ("in_progress", Sensitivity::Confidential, false),
+        ),
+    ];
+    for (condition, (status, sensitivity, readable)) in cases {
+        let engine = engine_with(deny(&["intervention:read"], condition.clone()));
+        assert!(engine.has(&lucas, "intervention:read", &me), "{condition}");
+        assert!(
+            engine
+                .check(
+                    &lucas,
+                    "intervention:read",
+                    &own_job("completed", Sensitivity::Internal),
+                    &me
+                )
+                .allowed,
+            "{condition}"
+        );
+        assert_eq!(
+            engine
+                .check(
+                    &lucas,
+                    "intervention:read",
+                    &own_job(status, sensitivity),
+                    &me
+                )
+                .allowed,
+            readable,
+            "{condition}"
+        );
+    }
+}
+
+#[test]
+fn an_allow_policy_never_withdraws_a_permission() {
+    let mut allow = deny(
+        &["agent:use"],
+        json!({ "op": "eq", "left": { "attr": "subject.userId" }, "right": { "value": user::LUCAS } }),
+    );
+    allow.effect = PolicyEffect::Allow;
+    let engine = engine_with(allow);
+    let lucas = demo::subject(user::LUCAS);
+    assert!(engine.has(&lucas, "agent:use", &Actor::user()));
 }

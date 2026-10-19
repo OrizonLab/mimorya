@@ -1,6 +1,6 @@
 //! Where a deny policy acts (ADR-022): a condition about the person or the
 //! actor withdraws the permission wherever it is checked (routes, the agent's
-//! tools, `/auth/me`); a condition on the resource is only accepted for
+//! tools and skills index, `/auth/me`); a condition on the resource is only accepted for
 //! permissions checked resource by resource; permissions the platform does not
 //! check yet are refused rather than restricted in name only.
 
@@ -13,6 +13,9 @@ use serde_json::{Value, json};
 use support::accounts::permissions;
 use support::planning::{apply_proposal, propose};
 use support::{Client, TestApi, week};
+
+/// The heading of the skills index in the system prompt.
+const SKILL_INDEX: &str = "Compétences de l’entreprise";
 
 fn agents_only() -> Value {
     json!({ "op": "eq", "left": { "attr": "context.actorType" }, "right": { "value": "agent" } })
@@ -129,6 +132,37 @@ async fn a_deny_about_a_person_withdraws_the_permission_from_routes() {
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
+async fn a_deny_on_reading_skills_leaves_them_out_of_the_prompt() {
+    let api = TestApi::start().await;
+    let paul = api.sign_in(user::PAUL).await;
+    let marc = api.sign_in(user::MARC).await;
+    let ask = async || {
+        api.script(vec![ScriptedStep::text("Bonjour.")]);
+        let conversation = marc.post("/conversations", json!({})).await.json();
+        let id = conversation["conversation"]["id"].as_str().unwrap();
+        let sent = marc
+            .post(
+                &format!("/conversations/{id}/messages"),
+                json!({ "content": "Bonjour" }),
+            )
+            .await;
+        assert_eq!(sent.status, StatusCode::ACCEPTED);
+        api.idle().await;
+        let requests = api.model.as_ref().unwrap().requests();
+        requests.last().unwrap().system.clone()
+    };
+    assert!(ask().await.contains(SKILL_INDEX));
+
+    let id = create(&paul, policy(&["skill:read"], agents_only())).await;
+    assert!(!ask().await.contains(SKILL_INDEX));
+    assert_eq!(
+        paul.delete(&format!("/admin/policies/{id}")).await.status,
+        StatusCode::OK
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
 async fn accepts_only_what_the_platform_can_enforce() {
     let api = TestApi::start().await;
     let paul = api.sign_in(user::PAUL).await;
@@ -162,7 +196,7 @@ async fn accepts_only_what_the_platform_can_enforce() {
     }
 
     let listing = paul.get("/admin/policies").await.json();
-    let listed: Vec<(&str, bool)> = listing["permissions"]
+    let mut listed: Vec<(&str, bool)> = listing["permissions"]
         .as_array()
         .unwrap()
         .iter()
@@ -173,11 +207,21 @@ async fn accepts_only_what_the_platform_can_enforce() {
             )
         })
         .collect();
-    assert!(listed.contains(&("intervention:read", true)));
-    assert!(listed.contains(&("planning:apply", false)));
-    assert!(
-        listed
-            .iter()
-            .all(|(p, _)| !["mission:read", "org:read", "intervention:write"].contains(p))
+    listed.sort_unstable();
+    // How each permission is checked, as the code checks it: changing a
+    // classification changes what policies may say, so it must show here.
+    assert_eq!(
+        listed,
+        [
+            ("agent:use", false),
+            ("connector:use", false),
+            ("intervention:read", true),
+            ("memory:read", false),
+            ("memory:write", false),
+            ("planning:apply", false),
+            ("planning:propose", false),
+            ("planning:read", false),
+            ("skill:read", false),
+        ]
     );
 }

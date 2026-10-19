@@ -1,5 +1,6 @@
-//! Decisions on approval requests: an expired request counts as a refusal, and
-//! a decision is only recorded while the run is actually paused for it.
+//! Decisions on approval requests: an expired request counts as a refusal, a
+//! decision is only recorded while the run is actually paused for it, and only
+//! by someone who may still use the agent it resumes.
 
 mod support;
 
@@ -167,4 +168,40 @@ async fn records_a_decision_only_while_the_run_is_paused_for_it() {
     assert_eq!(approvals, ["approved"]);
     let replay = marc.post(&decision_url, approve).await;
     assert_eq!(replay.status, StatusCode::CONFLICT);
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn deciding_resumes_the_agent_so_it_needs_agent_use() {
+    let api = TestApi::start().await;
+    let marc = api.sign_in(user::MARC).await;
+    let paul = api.sign_in(user::PAUL).await;
+    let run = paused_run(
+        &api,
+        &marc,
+        ("INT-2049", "11:00"),
+        ScriptedStep::text("Le planning de INT-2049 est appliqué."),
+    )
+    .await;
+    let only_marc = json!({ "op": "eq", "left": { "attr": "subject.userId" }, "right": { "value": user::MARC } });
+    let created = paul
+        .post(
+            "/admin/policies",
+            json!({ "description": "Plus d’agent pour Marc", "permissions": ["agent:use"], "condition": only_marc }),
+        )
+        .await;
+    assert_eq!(created.status, StatusCode::CREATED, "{}", created.text());
+    let policy = format!("/admin/policies/{}", created.json()["id"].as_str().unwrap());
+
+    let decision_url = format!("/approvals/{}/decision", run.approval_id);
+    let approve = json!({ "approved": true });
+    let refused = marc.post(&decision_url, approve.clone()).await;
+    assert_eq!(refused.status, StatusCode::FORBIDDEN);
+    assert_eq!(statuses(&marc, &run.run_id).await.1, ["pending"]);
+
+    assert_eq!(paul.delete(&policy).await.status, StatusCode::OK);
+    let accepted = marc.post(&decision_url, approve).await;
+    assert_eq!(accepted.status, StatusCode::OK, "{}", accepted.text());
+    api.idle().await;
+    assert_eq!(statuses(&marc, &run.run_id).await.1, ["approved"]);
 }

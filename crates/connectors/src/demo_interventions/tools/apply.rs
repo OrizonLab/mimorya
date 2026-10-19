@@ -126,6 +126,7 @@ impl TypedTool for PlanningApply {
                     start_time: item.start_time,
                     duration_hours: item.duration_hours,
                     label: format!("Suivi {}", item.intervention_id),
+                    intervention_id: item.intervention_id,
                 })
             })
             .collect();

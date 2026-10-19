@@ -149,6 +149,24 @@ fn resolve<'a>(env: &'a Value, operand: Option<&'a Operand>) -> Option<&'a Value
     }
 }
 
+/// Equality by value: `2` and `2.0` are the same number, as an administrator
+/// (and the web editor, which reads both as `2`) expects.
+fn same(a: &Value, b: &Value) -> bool {
+    match (a, b) {
+        (Value::Number(x), Value::Number(y)) => {
+            x == y || ((x.is_f64() || y.is_f64()) && x.as_f64() == y.as_f64())
+        }
+        (Value::Array(x), Value::Array(y)) => {
+            x.len() == y.len() && x.iter().zip(y).all(|(a, b)| same(a, b))
+        }
+        _ => a == b,
+    }
+}
+
+fn holds(items: &[Value], item: &Value) -> bool {
+    items.iter().any(|candidate| same(candidate, item))
+}
+
 /// Numbers only: `"3" > 1` is false.
 fn compare_numbers(left: Option<&Value>, right: Option<&Value>, f: fn(f64, f64) -> bool) -> bool {
     match (left.and_then(Value::as_f64), right.and_then(Value::as_f64)) {
@@ -171,18 +189,18 @@ pub fn evaluate_condition(condition: &Condition, env: &Value) -> bool {
 
     match comparison.op {
         ComparisonOp::Exists => left.is_some_and(|v| !v.is_null()),
-        ComparisonOp::Eq => matches!((left, right), (Some(a), Some(b)) if a == b),
-        ComparisonOp::Neq => left.is_some_and(|a| right != Some(a)),
+        ComparisonOp::Eq => matches!((left, right), (Some(a), Some(b)) if same(a, b)),
+        ComparisonOp::Neq => left.is_some_and(|a| !right.is_some_and(|b| same(a, b))),
         ComparisonOp::In => match (left, right.and_then(Value::as_array)) {
-            (Some(a), Some(items)) => items.contains(a),
+            (Some(a), Some(items)) => holds(items, a),
             _ => false,
         },
         ComparisonOp::NotIn => match (left, right.and_then(Value::as_array)) {
-            (Some(a), Some(items)) => !items.contains(a),
+            (Some(a), Some(items)) => !holds(items, a),
             _ => false,
         },
         ComparisonOp::Contains => match (left.and_then(Value::as_array), right) {
-            (Some(items), Some(b)) => items.contains(b),
+            (Some(items), Some(b)) => holds(items, b),
             _ => false,
         },
         ComparisonOp::Gt => compare_numbers(left, right, |a, b| a > b),

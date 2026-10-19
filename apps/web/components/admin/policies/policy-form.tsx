@@ -121,6 +121,11 @@ export function PolicyForm({
         s’accepte que pour les permissions vérifiées « par ressource ». Valeurs : <code>12</code>{' '}
         est un nombre, <code>"12"</code> un texte.
       </p>
+      <p className="text-xs text-muted">
+        Attention : une condition remplie par tout le monde (par exemple « Identifiant du
+        collaborateur est renseigné ») retire la permission à toute l’entreprise, administrateurs
+        compris.
+      </p>
       {problem && <ErrorNote message={problem} />}
       {action.error && <ErrorNote message={action.error} />}
       <div className="flex gap-2">

@@ -96,14 +96,22 @@ pub async fn update_policy(
         .transpose()?;
     let mut tx = begin_change(db, access, PERMISSION).await?;
     let previous = editable_policy(&mut tx, id).await?;
-    // The policy as it will stand: what changes, and what is stored. A stored
-    // condition is read again, so that enabling never loads an unreadable one.
-    let stored_condition = match changes.condition.clone() {
-        Some(condition) => condition,
-        None => stored_condition(&previous)?,
-    };
-    let effective_permissions = permissions.as_ref().unwrap_or(&previous.permissions);
-    checked_scope(effective_permissions, &stored_condition, catalog)?;
+    // The policy as it will stand is checked whenever it acts or its rule
+    // changes: what is stored may predate a rule or have been written by
+    // hand, and enabling must never load what the API would refuse. A
+    // disabled policy can still be renamed, or switched off, whatever it holds.
+    let acts = changes.enabled.unwrap_or(previous.enabled);
+    if acts || permissions.is_some() || changes.condition.is_some() {
+        let effective_permissions = match &permissions {
+            Some(permissions) => permissions.clone(),
+            None => stored_permissions(&previous, catalog)?,
+        };
+        let effective_condition = match changes.condition.clone() {
+            Some(condition) => condition,
+            None => stored_condition(&previous)?,
+        };
+        checked_scope(&effective_permissions, &effective_condition, catalog)?;
+    }
     let metadata = json!({
         "description": changes.description,
         "previousDescription": changes.description.as_ref().map(|_| &previous.description),
@@ -175,6 +183,19 @@ fn checked_scope(
         Some(problem) => Err(DomainError::validation(problem)),
         None => Ok(()),
     }
+}
+
+/// The stored permissions, checked again (they may predate a rule).
+fn stored_permissions(
+    policy: &PolicyRow,
+    catalog: &[PermissionInfo],
+) -> Result<Vec<String>, DomainError> {
+    normalize_policy_permissions(&policy.permissions, catalog).map_err(|problem| {
+        DomainError::validation(format!(
+            "Les permissions enregistrées ne sont plus acceptées ({problem}) : modifiez-les \
+             ou désactivez la politique"
+        ))
+    })
 }
 
 /// The stored condition, read and checked again (it may predate a rule).

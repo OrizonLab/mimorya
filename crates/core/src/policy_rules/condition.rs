@@ -160,6 +160,7 @@ mod tests {
             json!({ "op": "eq", "left": { "attr": "user.department" }, "right": { "value": "x" } }),
             json!({ "op": "eq", "left": { "attr": "subject" }, "right": { "value": "x" } }),
             json!({ "op": "eq", "left": { "attr": "subject..x" }, "right": { "value": "x" } }),
+            json!({ "op": "exists", "left": { "attr": "resource.attributes.st\u{0}tus" } }),
             json!({ "op": "eq", "left": { "value": 1 }, "right": { "value": 1 } }),
             json!({ "op": "eq", "left": { "attr": "resource.type" } }),
             json!({ "op": "exists", "left": { "attr": "resource.type" }, "right": { "value": 1 } }),

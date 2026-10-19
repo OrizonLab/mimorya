@@ -89,7 +89,10 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   (jamais d'administration, ni `org:read`/`user:read`), avec une condition vérifiée
   avant stockage. Un refus portant sur le collaborateur ou le contexte s'applique
   partout où la permission est vérifiée, outils de l'agent compris ; un refus portant
-  sur la ressource seulement aux permissions vérifiées ressource par ressource. Les
+  sur la ressource seulement aux permissions vérifiées ressource par ressource (un
+  créneau d'intervention illisible n'apparaît que comme « occupé » dans le planning).
+  Une condition remplie par tous retire la permission à toute l'entreprise,
+  administrateurs compris : le formulaire le signale. Les
   politiques d'autorisation, qui pourraient ouvrir les données métier à leur auteur,
   restent en lecture seule jusqu'à la double validation (ADR-022).
 - **Sensibilité** : `public < internal < confidential < restricted`, comparée à
