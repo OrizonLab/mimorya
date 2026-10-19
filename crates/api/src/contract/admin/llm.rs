@@ -1,12 +1,13 @@
 //! The company's model provider (`settings:manage`, ADR-024): what its runs
-//! use, what it may choose, and the connection test. The API key is never
-//! returned, only whether one is stored.
+//! use, what it may choose, its choice, and the connection test. The API key
+//! is write-only: never returned, only whether one is stored.
 
 use mimorya_db::repositories::llm_settings::LlmSettingsRow;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use ts_rs::TS;
+use validator::Validate;
 
-use crate::http::iso;
+use crate::http::{iso, trimmed, trimmed_opt};
 use crate::services::admin::LlmTestOutcome;
 
 /// A kind of provider a company may choose.
@@ -97,4 +98,24 @@ impl From<LlmTestOutcome> for LlmTestResult {
             error: outcome.error,
         }
     }
+}
+
+/// Body of `PUT /admin/llm`: the company's own provider.
+#[derive(Deserialize, Validate, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LlmChoice {
+    #[serde(deserialize_with = "trimmed")]
+    #[validate(length(min = 1, max = 40))]
+    pub provider: String,
+    /// Absent or blank: the provider's default model.
+    #[serde(default, deserialize_with = "trimmed_opt")]
+    #[ts(optional)]
+    pub model: Option<String>,
+    #[serde(default, deserialize_with = "trimmed_opt")]
+    #[ts(optional)]
+    pub base_url: Option<String>,
+    /// Absent: the stored key is kept (same endpoint only).
+    #[serde(default, deserialize_with = "trimmed_opt")]
+    #[ts(optional)]
+    pub api_key: Option<String>,
 }

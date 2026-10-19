@@ -2,7 +2,15 @@
 
 import { useState, type FormEvent } from 'react';
 import { Button, ErrorNote, Field, Input, Select } from '@/components/ui';
-import { api, useAction, type OrgUnitType, type OrgUnitView, type Organization } from '@/lib/api';
+import {
+  api,
+  useAction,
+  type NewOrgUnit,
+  type OrgUnitType,
+  type OrgUnitUpdate,
+  type OrgUnitView,
+  type Organization,
+} from '@/lib/api';
 import { UNIT_TYPES } from '@/lib/labels';
 import { unitOptions } from './types';
 
@@ -32,11 +40,11 @@ export function UnitForm({
       unit
         ? api.patch(`/admin/org-units/${unit.id}`, {
             name,
-            ...(isRoot ? {} : { type }),
-            ...(unit.parentId && parentId !== unit.parentId ? { parentId } : {}),
+            type: isRoot ? undefined : type,
+            parentId: unit.parentId && parentId !== unit.parentId ? parentId : undefined,
             leadUserId: leadUserId || null,
-          })
-        : api.post('/admin/org-units', { parentId, name, type }),
+          } satisfies OrgUnitUpdate)
+        : api.post('/admin/org-units', { parentId, name, type } satisfies NewOrgUnit),
     );
     if (saved) onDone(true);
   }

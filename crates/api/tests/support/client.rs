@@ -90,14 +90,8 @@ impl<'a> Client<'a> {
         payload: Value,
         headers: &[(&str, &str)],
     ) -> TestResponse {
-        let mut builder = self
-            .request(Method::PATCH, url)
-            .header("content-type", "application/json");
-        for (name, value) in headers {
-            builder = builder.header(*name, *value);
-        }
-        let request = builder.body(Body::from(payload.to_string())).unwrap();
-        self.api.send(request).await
+        self.send_json_with(Method::PATCH, url, payload, headers)
+            .await
     }
 
     pub async fn put(&self, url: &str, payload: Value) -> TestResponse {
@@ -105,11 +99,23 @@ impl<'a> Client<'a> {
     }
 
     async fn send_json(&self, method: Method, url: &str, payload: Value) -> TestResponse {
-        let request = self
+        self.send_json_with(method, url, payload, &[]).await
+    }
+
+    async fn send_json_with(
+        &self,
+        method: Method,
+        url: &str,
+        payload: Value,
+        headers: &[(&str, &str)],
+    ) -> TestResponse {
+        let mut builder = self
             .request(method, url)
-            .header("content-type", "application/json")
-            .body(Body::from(payload.to_string()))
-            .unwrap();
+            .header("content-type", "application/json");
+        for (name, value) in headers {
+            builder = builder.header(*name, *value);
+        }
+        let request = builder.body(Body::from(payload.to_string())).unwrap();
         self.api.send(request).await
     }
 

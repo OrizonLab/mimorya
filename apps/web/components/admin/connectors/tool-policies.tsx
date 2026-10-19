@@ -2,7 +2,15 @@
 
 import { useState } from 'react';
 import { Button, ErrorNote, Select } from '@/components/ui';
-import { api, useAction, type Connectors, type TestedTool, type ToolRisk } from '@/lib/api';
+import {
+  api,
+  useAction,
+  type ConnectorUpdate,
+  type Connectors,
+  type TestedTool,
+  type ToolPolicyChange,
+  type ToolRisk,
+} from '@/lib/api';
 import { RISK_LABELS } from '@/lib/labels';
 
 const ALWAYS = 'connector:use';
@@ -46,10 +54,11 @@ export function ToolPolicies({
           enabled: p.enabled,
           risk: p.risk,
           permissions: p.permissions.filter((x) => x !== ALWAYS),
-        },
+        } satisfies ToolPolicyChange,
       ]),
     );
-    if (await action.run(() => api.patch(`/admin/connectors/${connectorId}`, { toolPolicies }))) {
+    const update = { toolPolicies } satisfies ConnectorUpdate;
+    if (await action.run(() => api.patch(`/admin/connectors/${connectorId}`, update))) {
       onSaved();
     }
   }

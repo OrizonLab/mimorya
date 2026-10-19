@@ -7,14 +7,11 @@ use axum::http::StatusCode;
 use mimorya_core::DomainError;
 use mimorya_core::authz::OrgUnitType;
 use mimorya_db::repositories::users::list_users;
-use serde::Deserialize;
-use uuid::Uuid;
-use validator::Validate;
 
 use crate::app::AppState;
-use crate::contract::admin::{OrgUnitView, Organization};
+use crate::contract::admin::{NewOrgUnit, OrgUnitUpdate, OrgUnitView, Organization};
 use crate::contract::{Created, Done};
-use crate::http::{ApiResult, Body, PathId, nullable, trimmed, trimmed_opt};
+use crate::http::{ApiResult, Body, PathId};
 use crate::plugins::Auth;
 use crate::services::admin::{NewUnitInput, UnitChanges, create_unit, delete_unit, update_unit};
 
@@ -51,21 +48,10 @@ fn unit_type(value: &str) -> Result<OrgUnitType, DomainError> {
     OrgUnitType::parse(value).ok_or_else(|| DomainError::validation("Type d’unité inconnu"))
 }
 
-#[derive(Deserialize, Validate)]
-#[serde(rename_all = "camelCase")]
-pub struct CreateUnitBody {
-    parent_id: Uuid,
-    #[serde(deserialize_with = "trimmed")]
-    #[validate(length(min = 1, max = 120))]
-    name: String,
-    #[serde(rename = "type")]
-    unit_type: String,
-}
-
 pub async fn create(
     State(state): State<AppState>,
     Auth(identity): Auth,
-    Body(body): Body<CreateUnitBody>,
+    Body(body): Body<NewOrgUnit>,
 ) -> ApiResult<(StatusCode, Json<Created>)> {
     let access = state.access.context(identity).await?;
     let input = NewUnitInput {
@@ -77,25 +63,11 @@ pub async fn create(
     Ok((StatusCode::CREATED, Json(Created { id })))
 }
 
-#[derive(Deserialize, Validate)]
-#[serde(rename_all = "camelCase")]
-pub struct UpdateUnitBody {
-    #[serde(default, deserialize_with = "trimmed_opt")]
-    #[validate(length(min = 1, max = 120))]
-    name: Option<String>,
-    #[serde(default, rename = "type")]
-    unit_type: Option<String>,
-    #[serde(default)]
-    parent_id: Option<Uuid>,
-    #[serde(default, deserialize_with = "nullable")]
-    lead_user_id: Option<Option<Uuid>>,
-}
-
 pub async fn update(
     State(state): State<AppState>,
     Auth(identity): Auth,
     PathId(id): PathId,
-    Body(body): Body<UpdateUnitBody>,
+    Body(body): Body<OrgUnitUpdate>,
 ) -> ApiResult<Json<Done>> {
     let access = state.access.context(identity).await?;
     let changes = UnitChanges {

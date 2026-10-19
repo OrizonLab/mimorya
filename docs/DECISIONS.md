@@ -1141,3 +1141,46 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     suivent ;
   - un client qui envoyait un champ en trop reçoit désormais une erreur 400 ; les tests
     d'intégration et de bout en bout n'en envoient aucun.
+
+## ADR-040 — Corps des requêtes de l'administration au contrat (complète ADR-039)
+
+- **Date** : 2026-10-19 · **Statut** : acceptée
+- **Contexte** : après ADR-039, les corps des requêtes de l'administration restaient des
+  structures privées des routes ; ceux des comptes, de l'organisation, des
+  habilitations et des rôles ignoraient un champ inconnu. L'audit d'ADR-039 a aussi
+  relevé que `satisfies` ne vérifie pas les clés d'une décomposition conditionnelle
+  (`...(c ? { comment } : {})`) et que la liste des corps testés était tenue à part.
+- **Décision** :
+  - chaque corps de l'administration est un type strict du contrat, dans le fichier de
+    sa ressource : `NewAccount`, `AccountUpdate`, `RoleGrant` (avec la portée,
+    déplacée dans `contract/admin/assignments.rs`), `NewOrgUnit`, `OrgUnitUpdate`,
+    `NewRole`, `RoleUpdate`, `NewPolicy`, `PolicyUpdate`, `NewConnector`,
+    `ConnectorUpdate` (et `ToolPolicyChange` pour la politique d'un outil),
+    `LlmChoice` ;
+  - un corps n'emploie que des types du contrat (sensibilité, risque, portée), convertis
+    vers ceux du core par la route ; une valeur que la route vérifie elle-même, avec son
+    propre message, garde son type texte et est décrite en TypeScript par celui du
+    contrat (`type` d'une unité : `OrgUnitType`) ; une condition ABAC reste
+    `Record<string, unknown>`, comme dans `PolicyView` ;
+  - une valeur par défaut autre que l'absence (compte `internal`, politique ou
+    connecteur activé, rôle sans description) devient un champ facultatif que la route
+    complète : le champ est facultatif en TypeScript aussi. `null` y vaut l'absence
+    (il était refusé par 400 avant) ; l'interface n'en envoie pas, son type ne
+    l'autorisant pas ;
+  - la portée d'une habilitation est stricte pour chaque variante : celles sans données
+    (`tenant`, `self`) s'écrivent `Tenant {}` et `Own {}`, car serde ignore ce qui
+    accompagne l'étiquette d'une variante unitaire (`{"type": "tenant", "orgUnitId": …}`
+    était accepté, l'unité ignorée) ; le JSON écrit et le type TypeScript sont
+    inchangés ;
+  - une seule liste, `request_bodies!` (`contract/mod.rs`), déclare chaque corps dans le
+    module TypeScript et dans le test qui vérifie qu'il refuse un champ inconnu ;
+  - l'interface écrit ses corps champ par champ (`champ: valeur || undefined`, omis par
+    `JSON.stringify`), sans décomposition conditionnelle.
+- **Conséquences** :
+  - tous les corps de requêtes de l'API sont au contrat ; seuls les paramètres de
+    requête restent déclarés par leur route ;
+  - un champ mal nommé dans un corps de l'administration (comptes, organisation,
+    habilitations, rôles) reçoit désormais une erreur 400 au lieu d'être ignoré
+    (`crates/api/tests/strict_bodies.rs`) ;
+  - un corps ajouté hors de `request_bodies!` n'est ni décrit en TypeScript, ni testé :
+    l'interface ne peut pas l'importer, ce qui le signale.

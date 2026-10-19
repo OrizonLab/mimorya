@@ -1,10 +1,14 @@
-//! The organisation tree as the administration shows it (`org:read`).
+//! The organisation tree as the administration shows it (`org:read`), and
+//! its changes (`org:manage`).
 
 use mimorya_core::authz::{OrgUnit, OrgUnitType as CoreUnitType};
 use mimorya_db::repositories::users::DirectoryEntry;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use uuid::Uuid;
+use validator::Validate;
+
+use crate::http::{nullable, trimmed, trimmed_opt};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "snake_case")]
@@ -84,4 +88,38 @@ pub struct Organization {
     pub users: Vec<OrgPerson>,
     /// Changing the tree requires `org:manage` on the whole company.
     pub can_manage: bool,
+}
+
+/// Body of `POST /admin/org-units`. The type is checked by the route, which
+/// names an unknown one in French.
+#[derive(Deserialize, Validate, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NewOrgUnit {
+    pub parent_id: Uuid,
+    #[serde(deserialize_with = "trimmed")]
+    #[validate(length(min = 1, max = 120))]
+    pub name: String,
+    #[serde(rename = "type")]
+    #[ts(as = "OrgUnitType")]
+    pub unit_type: String,
+}
+
+/// Body of `PATCH /admin/org-units/{id}`: only the fields sent change.
+#[derive(Deserialize, Validate, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct OrgUnitUpdate {
+    #[serde(default, deserialize_with = "trimmed_opt")]
+    #[validate(length(min = 1, max = 120))]
+    #[ts(optional)]
+    pub name: Option<String>,
+    #[serde(default, rename = "type")]
+    #[ts(optional, as = "Option<OrgUnitType>")]
+    pub unit_type: Option<String>,
+    #[serde(default)]
+    #[ts(optional)]
+    pub parent_id: Option<Uuid>,
+    /// `null`: no lead.
+    #[serde(default, deserialize_with = "nullable")]
+    #[ts(optional)]
+    pub lead_user_id: Option<Option<Uuid>>,
 }

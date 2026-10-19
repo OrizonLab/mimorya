@@ -102,6 +102,18 @@ impl From<CoreRisk> for ToolRisk {
     }
 }
 
+impl From<ToolRisk> for CoreRisk {
+    fn from(risk: ToolRisk) -> Self {
+        match risk {
+            ToolRisk::Read => Self::Read,
+            ToolRisk::Draft => Self::Draft,
+            ToolRisk::Write => Self::Write,
+            ToolRisk::External => Self::External,
+            ToolRisk::Irreversible => Self::Irreversible,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ApprovalRequestedEvent {

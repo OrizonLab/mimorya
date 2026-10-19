@@ -6,15 +6,13 @@ use axum::Json;
 use axum::extract::State;
 use mimorya_agent::llm::{PROVIDER_KINDS, default_model, requires_api_key, uses_listed_endpoint};
 use mimorya_db::repositories::llm_settings::get_llm_settings;
-use serde::Deserialize;
-use validator::Validate;
 
 use crate::app::AppState;
 use crate::contract::Done;
 use crate::contract::admin::{
-    LlmSettingsView, LlmTestResult, LlmView, PlatformModel, ProviderKind,
+    LlmChoice, LlmSettingsView, LlmTestResult, LlmView, PlatformModel, ProviderKind,
 };
-use crate::http::{ApiResult, Body, trimmed, trimmed_opt};
+use crate::http::{ApiResult, Body};
 use crate::plugins::Auth;
 use crate::secrets::LLM_API_KEY;
 use crate::services::admin::{LlmInput, configure_llm, reset_llm, test_llm};
@@ -59,25 +57,10 @@ pub async fn show(State(state): State<AppState>, Auth(identity): Auth) -> ApiRes
     }))
 }
 
-#[derive(Deserialize, Validate)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct LlmBody {
-    #[serde(deserialize_with = "trimmed")]
-    #[validate(length(min = 1, max = 40))]
-    provider: String,
-    #[serde(default, deserialize_with = "trimmed_opt")]
-    model: Option<String>,
-    #[serde(default, deserialize_with = "trimmed_opt")]
-    base_url: Option<String>,
-    /// Omitted: the stored key is kept (same endpoint only).
-    #[serde(default, deserialize_with = "trimmed_opt")]
-    api_key: Option<String>,
-}
-
 pub async fn configure(
     State(state): State<AppState>,
     Auth(identity): Auth,
-    Body(body): Body<LlmBody>,
+    Body(body): Body<LlmChoice>,
 ) -> ApiResult<Json<Done>> {
     let access = state.access.context(identity).await?;
     let input = LlmInput {

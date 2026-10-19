@@ -3,27 +3,24 @@
 //! per-tool policies, activation), deleting it and testing it. Tokens are
 //! write-only.
 
-use std::collections::HashMap;
-
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
 use mimorya_connectors::connector_types;
 use mimorya_db::repositories::connectors::list_connector_instances;
-use serde::Deserialize;
-use validator::Validate;
 
 use crate::app::AppState;
 use crate::contract::admin::{
-    ConnectorTest, ConnectorView, Connectors, DelegablePermission, McpEndpoint, risks,
+    ConnectorTest, ConnectorUpdate, ConnectorView, Connectors, DelegablePermission, McpEndpoint,
+    NewConnector, risks,
 };
 use crate::contract::{Created, Done};
-use crate::http::{ApiResult, Body, PathId, trimmed, trimmed_nullable, trimmed_opt};
+use crate::http::{ApiResult, Body, PathId};
 use crate::plugins::Auth;
 use crate::secrets::SecretStore;
 use crate::services::admin::{
-    ConnectorAdmin, ConnectorChanges, NewMcpConnector, TokenChange, ToolPolicyInput,
-    create_mcp_connector, delete_connector, http_config, test_connector, update_connector,
+    ConnectorAdmin, ConnectorChanges, NewMcpConnector, TokenChange, create_mcp_connector,
+    delete_connector, http_config, test_connector, update_connector,
 };
 use crate::services::connectors::token_secret_name;
 use crate::services::permission_catalog::permission_catalog;
@@ -78,26 +75,6 @@ pub async fn list(
     }))
 }
 
-const fn enabled_by_default() -> bool {
-    true
-}
-
-#[derive(Deserialize, Validate)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct CreateConnectorBody {
-    #[serde(deserialize_with = "trimmed")]
-    #[validate(length(min = 2, max = 80))]
-    name: String,
-    #[serde(deserialize_with = "trimmed")]
-    prefix: String,
-    #[serde(deserialize_with = "trimmed")]
-    url: String,
-    #[serde(default, deserialize_with = "trimmed_opt")]
-    token: Option<String>,
-    #[serde(default = "enabled_by_default")]
-    enabled: bool,
-}
-
 fn admin<'a>(
     state: &'a AppState,
     store: &'a SecretStore,
@@ -114,7 +91,7 @@ fn admin<'a>(
 pub async fn create(
     State(state): State<AppState>,
     Auth(identity): Auth,
-    Body(body): Body<CreateConnectorBody>,
+    Body(body): Body<NewConnector>,
 ) -> ApiResult<(StatusCode, Json<Created>)> {
     let access = state.access.context(identity).await?;
     let (store, catalog) = (secrets(&state), permission_catalog());
@@ -123,34 +100,17 @@ pub async fn create(
         prefix: body.prefix,
         url: body.url,
         token: body.token.filter(|t| !t.is_empty()),
-        enabled: body.enabled,
+        enabled: body.enabled.unwrap_or(true),
     };
     let id = create_mcp_connector(&admin(&state, &store, &catalog), &access, input).await?;
     Ok((StatusCode::CREATED, Json(Created { id })))
-}
-
-#[derive(Deserialize, Validate)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct UpdateConnectorBody {
-    #[serde(default, deserialize_with = "trimmed_opt")]
-    #[validate(length(min = 2, max = 80))]
-    name: Option<String>,
-    #[serde(default)]
-    enabled: Option<bool>,
-    #[serde(default, deserialize_with = "trimmed_opt")]
-    url: Option<String>,
-    /// A text replaces the token, `null` removes it.
-    #[serde(default, deserialize_with = "trimmed_nullable")]
-    token: Option<Option<String>>,
-    #[serde(default)]
-    tool_policies: Option<HashMap<String, ToolPolicyInput>>,
 }
 
 pub async fn update(
     State(state): State<AppState>,
     Auth(identity): Auth,
     PathId(id): PathId,
-    Body(body): Body<UpdateConnectorBody>,
+    Body(body): Body<ConnectorUpdate>,
 ) -> ApiResult<Json<Done>> {
     let access = state.access.context(identity).await?;
     let (store, catalog) = (secrets(&state), permission_catalog());
@@ -164,7 +124,12 @@ pub async fn update(
                 Some(value) => TokenChange::Replace(value),
                 None => TokenChange::Remove,
             }),
-        tool_policies: body.tool_policies,
+        tool_policies: body.tool_policies.map(|policies| {
+            policies
+                .into_iter()
+                .map(|(tool, policy)| (tool, policy.into()))
+                .collect()
+        }),
     };
     update_connector(&admin(&state, &store, &catalog), &access, id, changes).await?;
     Ok(Json(Done::OK))

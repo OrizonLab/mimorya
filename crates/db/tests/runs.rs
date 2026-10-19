@@ -39,23 +39,33 @@ async fn never_rewrites_a_finished_run() {
     // Rolled back when dropped: nothing is left behind.
     let mut tx = db.begin(tenant::ID).await.unwrap();
 
-    // Failed by the stale-run sweeper, then a late outcome arrives.
-    let swept = create_run(&mut tx, new_run()).await.unwrap();
-    update_run(&mut tx, swept.id, status(RunStatus::Failed))
-        .await
-        .unwrap();
-    let rewritten = update_active_run(&mut tx, swept.id, status(RunStatus::Completed))
-        .await
-        .unwrap();
-    assert!(!rewritten);
-    let stored = get_run(&mut tx, swept.id).await.unwrap().unwrap();
-    assert_eq!(stored.status(), RunStatus::Failed);
+    // Finished (failed by the stale-run sweeper, for one), then a late
+    // outcome arrives.
+    for finished in RunStatus::FINISHED {
+        let run = create_run(&mut tx, new_run()).await.unwrap();
+        update_run(&mut tx, run.id, status(finished)).await.unwrap();
+        let late = if finished == RunStatus::Failed {
+            RunStatus::Completed
+        } else {
+            RunStatus::Failed
+        };
+        let rewritten = update_active_run(&mut tx, run.id, status(late))
+            .await
+            .unwrap();
+        assert!(!rewritten, "{finished:?}");
+        let stored = get_run(&mut tx, run.id).await.unwrap().unwrap();
+        assert_eq!(stored.status(), finished);
+    }
 
-    let active = create_run(&mut tx, new_run()).await.unwrap();
-    let updated = update_active_run(&mut tx, active.id, status(RunStatus::Completed))
-        .await
-        .unwrap();
-    assert!(updated);
+    // Every other status is still updated.
+    for current in RunStatus::ALL.into_iter().filter(|s| !s.is_finished()) {
+        let run = create_run(&mut tx, new_run()).await.unwrap();
+        update_run(&mut tx, run.id, status(current)).await.unwrap();
+        let updated = update_active_run(&mut tx, run.id, status(RunStatus::Completed))
+            .await
+            .unwrap();
+        assert!(updated, "{current:?}");
+    }
 }
 
 #[tokio::test]

@@ -1,6 +1,9 @@
 //! Connectors (`connector:manage`, ADR-025): the company's instances with
-//! their state, what may be added, and the test of a server. Tokens are
-//! never returned, only whether one is stored.
+//! their state, what may be added, the test of a server, and an MCP server
+//! as the administration writes it. Tokens are never returned, only whether
+//! one is stored.
+
+use std::collections::HashMap;
 
 use mimorya_connectors::ConnectorInfo;
 use mimorya_core::autonomy::ToolRisk as CoreRisk;
@@ -9,10 +12,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use ts_rs::TS;
 use uuid::Uuid;
+use validator::Validate;
 
 use crate::contract::{ToolRisk, stored_text};
-use crate::http::iso;
-use crate::services::admin::{ConnectorTestOutcome, TestedTool as Tested};
+use crate::http::{iso, trimmed, trimmed_nullable, trimmed_opt};
+use crate::services::admin::{ConnectorTestOutcome, TestedTool as Tested, ToolPolicyInput};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "snake_case")]
@@ -176,4 +180,76 @@ impl From<&ConnectorTestOutcome> for ConnectorTest {
 /// Every risk class, from harmless to irreversible.
 pub fn risks() -> Vec<ToolRisk> {
     CoreRisk::ALL.into_iter().map(Into::into).collect()
+}
+
+/// Body of `POST /admin/connectors`: an MCP server over HTTPS. The prefix,
+/// address and token are checked by the platform (ADR-025).
+#[derive(Deserialize, Validate, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NewConnector {
+    #[serde(deserialize_with = "trimmed")]
+    #[validate(length(min = 2, max = 80))]
+    pub name: String,
+    #[serde(deserialize_with = "trimmed")]
+    pub prefix: String,
+    #[serde(deserialize_with = "trimmed")]
+    pub url: String,
+    /// Absent or blank: none.
+    #[serde(default, deserialize_with = "trimmed_opt")]
+    #[ts(optional)]
+    pub token: Option<String>,
+    /// Absent: enabled.
+    #[serde(default)]
+    #[ts(optional)]
+    pub enabled: Option<bool>,
+}
+
+/// One tool's policy as an administrator writes it: absent fields keep the
+/// tool's own declaration.
+#[derive(Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ToolPolicyChange {
+    #[serde(default)]
+    #[ts(optional)]
+    pub enabled: Option<bool>,
+    #[serde(default)]
+    #[ts(optional)]
+    pub risk: Option<ToolRisk>,
+    #[serde(default)]
+    #[ts(optional)]
+    pub permissions: Option<Vec<String>>,
+}
+
+impl From<ToolPolicyChange> for ToolPolicyInput {
+    fn from(change: ToolPolicyChange) -> Self {
+        Self {
+            enabled: change.enabled,
+            risk: change.risk.map(Into::into),
+            permissions: change.permissions,
+        }
+    }
+}
+
+/// Body of `PATCH /admin/connectors/{id}`: only the fields sent change.
+#[derive(Deserialize, Validate, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ConnectorUpdate {
+    #[serde(default, deserialize_with = "trimmed_opt")]
+    #[validate(length(min = 2, max = 80))]
+    #[ts(optional)]
+    pub name: Option<String>,
+    #[serde(default)]
+    #[ts(optional)]
+    pub enabled: Option<bool>,
+    #[serde(default, deserialize_with = "trimmed_opt")]
+    #[ts(optional)]
+    pub url: Option<String>,
+    /// A text replaces the token, `null` or blank removes it.
+    #[serde(default, deserialize_with = "trimmed_nullable")]
+    #[ts(optional)]
+    pub token: Option<Option<String>>,
+    /// Replaces every tool's policy.
+    #[serde(default)]
+    #[ts(optional)]
+    pub tool_policies: Option<HashMap<String, ToolPolicyChange>>,
 }

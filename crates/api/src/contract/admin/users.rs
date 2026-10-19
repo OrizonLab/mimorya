@@ -1,14 +1,18 @@
-//! The user directory (`user:read`) and what account management returns
-//! (`user:manage`, `role:manage`). Emails, logins, rights and attributes are
-//! only sent to administrators: absent, not `null`, for everyone else.
+//! The user directory (`user:read`), what account management returns
+//! (`user:manage`, `role:manage`) and what it writes. Emails, logins, rights
+//! and attributes are only sent to administrators: absent, not `null`, for
+//! everyone else.
 
-use mimorya_core::authz::{AssignmentScope as CoreScope, Sensitivity as CoreSensitivity};
+use mimorya_core::accounts::{DISPLAY_NAME_MAX_CHARS, DISPLAY_NAME_MIN_CHARS, EMAIL_MAX_LEN};
+use mimorya_core::authz::Sensitivity as CoreSensitivity;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Map, Value};
 use ts_rs::TS;
 use uuid::Uuid;
+use validator::Validate;
 
-use crate::http::iso;
+use super::assignments::Assignment;
+use crate::http::{iso, nullable, trimmed, trimmed_nullable, trimmed_opt};
 use crate::services::admin::IssuedInvitation as Issued;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -41,49 +45,15 @@ impl From<CoreSensitivity> for Sensitivity {
     }
 }
 
-/// Where a role applies.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum AssignmentScope {
-    Tenant,
-    OrgUnit {
-        #[serde(rename = "orgUnitId")]
-        org_unit_id: Uuid,
-        #[serde(rename = "includeDescendants")]
-        include_descendants: bool,
-    },
-    /// The holder's own data only.
-    #[serde(rename = "self")]
-    Own,
-}
-
-impl From<&CoreScope> for AssignmentScope {
-    fn from(scope: &CoreScope) -> Self {
-        match scope {
-            CoreScope::Tenant => Self::Tenant,
-            CoreScope::OrgUnit {
-                org_unit_id,
-                include_descendants,
-            } => Self::OrgUnit {
-                org_unit_id: *org_unit_id,
-                include_descendants: *include_descendants,
-            },
-            CoreScope::Own => Self::Own,
+impl From<Sensitivity> for CoreSensitivity {
+    fn from(sensitivity: Sensitivity) -> Self {
+        match sensitivity {
+            Sensitivity::Public => Self::Public,
+            Sensitivity::Internal => Self::Internal,
+            Sensitivity::Confidential => Self::Confidential,
+            Sensitivity::Restricted => Self::Restricted,
         }
     }
-}
-
-/// A role held by an account.
-#[derive(Debug, Serialize, TS)]
-#[serde(rename_all = "camelCase")]
-pub struct Assignment {
-    pub id: Uuid,
-    pub role_id: Uuid,
-    pub role_name: String,
-    pub scope: AssignmentScope,
-    /// Role and scope, readable.
-    pub label: String,
-    pub expires_at: Option<String>,
 }
 
 #[derive(Debug, Serialize, TS)]
@@ -191,4 +161,63 @@ pub struct TemporaryPassword {
 #[serde(rename_all = "camelCase")]
 pub struct ResetLinkSent {
     pub expires_at: String,
+}
+
+/// Body of `POST /admin/users`: the account is invited (ADR-027).
+#[derive(Deserialize, Validate, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NewAccount {
+    #[serde(deserialize_with = "trimmed")]
+    #[validate(email, length(max = EMAIL_MAX_LEN))]
+    pub email: String,
+    #[serde(deserialize_with = "trimmed")]
+    #[validate(length(min = DISPLAY_NAME_MIN_CHARS, max = DISPLAY_NAME_MAX_CHARS))]
+    pub display_name: String,
+    #[serde(default, deserialize_with = "trimmed_opt")]
+    #[validate(length(max = 120))]
+    #[ts(optional)]
+    pub job_title: Option<String>,
+    #[serde(default)]
+    #[ts(optional)]
+    pub org_unit_id: Option<Uuid>,
+    /// Absent: `internal`.
+    #[serde(default)]
+    #[ts(optional)]
+    pub clearance: Option<Sensitivity>,
+}
+
+/// What an account's status may be set to (an invitation is issued, not set).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, TS)]
+#[serde(rename_all = "lowercase")]
+pub enum StatusChange {
+    Active,
+    Disabled,
+}
+
+/// Body of `PATCH /admin/users/{id}`: only the fields sent change.
+#[derive(Deserialize, Validate, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AccountUpdate {
+    #[serde(default, deserialize_with = "trimmed_opt")]
+    #[validate(length(min = DISPLAY_NAME_MIN_CHARS, max = DISPLAY_NAME_MAX_CHARS))]
+    #[ts(optional)]
+    pub display_name: Option<String>,
+    /// `null` or blank clears it.
+    #[serde(default, deserialize_with = "trimmed_nullable")]
+    #[ts(optional)]
+    pub job_title: Option<Option<String>>,
+    /// `null`: no primary unit.
+    #[serde(default, deserialize_with = "nullable")]
+    #[ts(optional)]
+    pub org_unit_id: Option<Option<Uuid>>,
+    #[serde(default)]
+    #[ts(optional)]
+    pub clearance: Option<Sensitivity>,
+    #[serde(default)]
+    #[ts(optional)]
+    pub status: Option<StatusChange>,
+    /// Replaces every attribute; `{}` removes them all.
+    #[serde(default)]
+    #[ts(optional, type = "Record<string, unknown>")]
+    pub attributes: Option<Map<String, Value>>,
 }

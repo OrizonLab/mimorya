@@ -8,14 +8,12 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use mimorya_core::authz::PermissionInfo;
 use mimorya_db::repositories::roles::list_roles;
-use serde::Deserialize;
 use uuid::Uuid;
-use validator::Validate;
 
 use crate::app::AppState;
-use crate::contract::admin::{RoleView, Roles};
+use crate::contract::admin::{NewRole, RoleUpdate, RoleView, Roles};
 use crate::contract::{Created, Done};
-use crate::http::{ApiResult, Body, PathId, trimmed, trimmed_opt};
+use crate::http::{ApiResult, Body, PathId};
 use crate::plugins::Auth;
 use crate::services::admin::{RoleChanges, RoleInput, create_role, delete_role, update_role};
 use crate::services::permission_catalog::permission_catalog;
@@ -45,29 +43,16 @@ fn catalog_keys(catalog: &[PermissionInfo]) -> Vec<&'static str> {
     catalog.iter().map(|p| p.permission).collect()
 }
 
-#[derive(Deserialize, Validate)]
-#[serde(rename_all = "camelCase")]
-pub struct CreateRoleBody {
-    #[serde(deserialize_with = "trimmed")]
-    #[validate(length(min = 2, max = 80))]
-    name: String,
-    #[serde(default, deserialize_with = "trimmed")]
-    #[validate(length(max = 500))]
-    description: String,
-    #[validate(length(max = 100))]
-    permissions: Vec<String>,
-}
-
 pub async fn create(
     State(state): State<AppState>,
     Auth(identity): Auth,
-    Body(body): Body<CreateRoleBody>,
+    Body(body): Body<NewRole>,
 ) -> ApiResult<(StatusCode, Json<Created>)> {
     let access = state.access.context(identity).await?;
     let catalog = permission_catalog();
     let input = RoleInput {
         name: body.name,
-        description: body.description,
+        description: body.description.unwrap_or_default(),
         permissions: body.permissions,
     };
     let id = create_role(
@@ -81,25 +66,11 @@ pub async fn create(
     Ok((StatusCode::CREATED, Json(Created { id })))
 }
 
-#[derive(Deserialize, Validate)]
-#[serde(rename_all = "camelCase")]
-pub struct UpdateRoleBody {
-    #[serde(default, deserialize_with = "trimmed_opt")]
-    #[validate(length(min = 2, max = 80))]
-    name: Option<String>,
-    #[serde(default, deserialize_with = "trimmed_opt")]
-    #[validate(length(max = 500))]
-    description: Option<String>,
-    #[serde(default)]
-    #[validate(length(max = 100))]
-    permissions: Option<Vec<String>>,
-}
-
 pub async fn update(
     State(state): State<AppState>,
     Auth(identity): Auth,
     PathId(id): PathId,
-    Body(body): Body<UpdateRoleBody>,
+    Body(body): Body<RoleUpdate>,
 ) -> ApiResult<Json<Done>> {
     let access = state.access.context(identity).await?;
     let catalog = permission_catalog();

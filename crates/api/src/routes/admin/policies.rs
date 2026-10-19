@@ -7,18 +7,17 @@ use std::collections::BTreeSet;
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
-use mimorya_core::authz::Condition;
 use mimorya_core::authz::Enforcement;
 use mimorya_core::policy_rules::{KNOWN_ATTRIBUTES, is_restrictable};
 use mimorya_db::repositories::access_policies::list_policies;
 use mimorya_db::repositories::users::list_attribute_keys;
-use serde::Deserialize;
-use validator::Validate;
 
 use crate::app::AppState;
-use crate::contract::admin::{ConditionAttribute, Policies, PolicyView, RestrictablePermission};
+use crate::contract::admin::{
+    ConditionAttribute, NewPolicy, Policies, PolicyUpdate, PolicyView, RestrictablePermission,
+};
 use crate::contract::{Created, Done};
-use crate::http::{ApiResult, Body, PathId, trimmed, trimmed_opt};
+use crate::http::{ApiResult, Body, PathId};
 use crate::plugins::Auth;
 use crate::services::admin::{
     PolicyChanges, PolicyInput, create_policy, delete_policy, update_policy,
@@ -79,27 +78,10 @@ pub async fn list(
     }))
 }
 
-const fn enabled_by_default() -> bool {
-    true
-}
-
-#[derive(Deserialize, Validate)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct CreatePolicyBody {
-    #[serde(deserialize_with = "trimmed")]
-    #[validate(length(min = 3, max = 300))]
-    description: String,
-    #[validate(length(max = 50))]
-    permissions: Vec<String>,
-    condition: Condition,
-    #[serde(default = "enabled_by_default")]
-    enabled: bool,
-}
-
 pub async fn create(
     State(state): State<AppState>,
     Auth(identity): Auth,
-    Body(body): Body<CreatePolicyBody>,
+    Body(body): Body<NewPolicy>,
 ) -> ApiResult<(StatusCode, Json<Created>)> {
     let access = state.access.context(identity).await?;
     let catalog = permission_catalog();
@@ -107,32 +89,17 @@ pub async fn create(
         description: body.description,
         permissions: body.permissions,
         condition: body.condition,
-        enabled: body.enabled,
+        enabled: body.enabled.unwrap_or(true),
     };
     let id = create_policy(&state.db, &state.access, &access, &catalog, input).await?;
     Ok((StatusCode::CREATED, Json(Created { id })))
-}
-
-#[derive(Deserialize, Validate)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct UpdatePolicyBody {
-    #[serde(default, deserialize_with = "trimmed_opt")]
-    #[validate(length(min = 3, max = 300))]
-    description: Option<String>,
-    #[serde(default)]
-    #[validate(length(max = 50))]
-    permissions: Option<Vec<String>>,
-    #[serde(default)]
-    condition: Option<Condition>,
-    #[serde(default)]
-    enabled: Option<bool>,
 }
 
 pub async fn update(
     State(state): State<AppState>,
     Auth(identity): Auth,
     PathId(id): PathId,
-    Body(body): Body<UpdatePolicyBody>,
+    Body(body): Body<PolicyUpdate>,
 ) -> ApiResult<Json<Done>> {
     let access = state.access.context(identity).await?;
     let catalog = permission_catalog();

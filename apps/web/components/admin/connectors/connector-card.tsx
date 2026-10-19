@@ -2,7 +2,14 @@
 
 import { useState } from 'react';
 import { Badge, Button, Card, ErrorNote } from '@/components/ui';
-import { api, useAction, type ConnectorTest, type ConnectorView, type Connectors } from '@/lib/api';
+import {
+  api,
+  useAction,
+  type ConnectorTest,
+  type ConnectorUpdate,
+  type ConnectorView,
+  type Connectors,
+} from '@/lib/api';
 import { formatDate } from '@/lib/format';
 import { McpForm } from './mcp-form';
 import { ToolPolicies } from './tool-policies';
@@ -38,8 +45,8 @@ export function ConnectorCard({
   }
 
   async function toggle() {
-    const enabled = !connector.enabled;
-    if (await action.run(() => api.patch(`/admin/connectors/${connector.id}`, { enabled }))) {
+    const update = { enabled: !connector.enabled } satisfies ConnectorUpdate;
+    if (await action.run(() => api.patch(`/admin/connectors/${connector.id}`, update))) {
       onChanged();
     }
   }

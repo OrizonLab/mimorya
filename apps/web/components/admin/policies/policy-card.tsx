@@ -2,7 +2,7 @@
 
 import { Pencil, Trash2 } from 'lucide-react';
 import { Badge, Button, Card, ErrorNote } from '@/components/ui';
-import { api, useAction, type Policies, type PolicyView } from '@/lib/api';
+import { api, useAction, type Policies, type PolicyUpdate, type PolicyView } from '@/lib/api';
 import { describeCondition } from './describe';
 import { PolicyForm } from './policy-form';
 
@@ -25,7 +25,7 @@ export function PolicyCard({
   const attributeLabels = new Map(data.attributes.map((a) => [a.path, a.label]));
 
   async function toggle() {
-    const body = { enabled: !policy.enabled };
+    const body = { enabled: !policy.enabled } satisfies PolicyUpdate;
     if (await action.run(() => api.patch(`/admin/policies/${policy.id}`, body))) onChanged();
   }
 

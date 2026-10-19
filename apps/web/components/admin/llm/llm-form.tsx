@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from 'react';
 import { Button, ErrorNote, Field, Input, Select } from '@/components/ui';
-import { api, useAction, type LlmView } from '@/lib/api';
+import { api, useAction, type LlmChoice, type LlmView } from '@/lib/api';
 import { LLM_PROVIDERS } from '@/lib/labels';
 
 /** Chooses the company's own provider; the key is write-only. */
@@ -23,12 +23,13 @@ export function LlmForm({ data, onDone }: { data: LlmView; onDone: (changed: boo
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    // An absent field is left out of the JSON.
     const body = {
       provider,
-      ...(model.trim() ? { model: model.trim() } : {}),
-      ...(listed ? { baseUrl } : {}),
-      ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}),
-    };
+      model: model.trim() || undefined,
+      baseUrl: listed ? baseUrl : undefined,
+      apiKey: apiKey.trim() || undefined,
+    } satisfies LlmChoice;
     if (await action.run(() => api.put('/admin/llm', body))) onDone(true);
   }
 

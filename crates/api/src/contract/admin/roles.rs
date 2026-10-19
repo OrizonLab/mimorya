@@ -1,5 +1,5 @@
-//! Roles and the permission catalog (`role:manage`), and the company's
-//! skills (`skill:manage`).
+//! Roles and the permission catalog (`role:manage`), custom roles as the
+//! administration writes them, and the company's skills (`skill:manage`).
 
 use mimorya_core::authz::{Enforcement as CoreEnforcement, PermissionInfo};
 use mimorya_db::repositories::roles::RoleRow;
@@ -7,9 +7,10 @@ use mimorya_db::repositories::skills::SkillRow;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use uuid::Uuid;
+use validator::Validate;
 
 use crate::contract::stored::stored_text;
-use crate::http::iso;
+use crate::http::{iso, trimmed, trimmed_opt};
 
 #[derive(Debug, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -126,4 +127,38 @@ impl SkillView {
 #[derive(Debug, Serialize, TS)]
 pub struct SkillList {
     pub skills: Vec<SkillView>,
+}
+
+/// Body of `POST /admin/roles`: a custom role and its permissions.
+#[derive(Deserialize, Validate, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NewRole {
+    #[serde(deserialize_with = "trimmed")]
+    #[validate(length(min = 2, max = 80))]
+    pub name: String,
+    /// Absent: none.
+    #[serde(default, deserialize_with = "trimmed_opt")]
+    #[validate(length(max = 500))]
+    #[ts(optional)]
+    pub description: Option<String>,
+    #[validate(length(max = 100))]
+    pub permissions: Vec<String>,
+}
+
+/// Body of `PATCH /admin/roles/{id}`: only the fields sent change.
+#[derive(Deserialize, Validate, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RoleUpdate {
+    #[serde(default, deserialize_with = "trimmed_opt")]
+    #[validate(length(min = 2, max = 80))]
+    #[ts(optional)]
+    pub name: Option<String>,
+    #[serde(default, deserialize_with = "trimmed_opt")]
+    #[validate(length(max = 500))]
+    #[ts(optional)]
+    pub description: Option<String>,
+    #[serde(default)]
+    #[validate(length(max = 100))]
+    #[ts(optional)]
+    pub permissions: Option<Vec<String>>,
 }
