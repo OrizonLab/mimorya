@@ -17,19 +17,30 @@ use uuid::Uuid;
 /// How long a failed start is remembered before the next run tries again.
 pub const RETRY_AFTER: Duration = Duration::from_secs(60);
 
+/// Where an unavailability comes from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Origin {
+    /// Found now: logged and recorded on the instance.
+    Fresh,
+    /// Remembered from an earlier start: already logged and recorded.
+    Remembered,
+    /// The instance changed during its start: not a failure of any
+    /// configuration, neither logged nor recorded.
+    Changed,
+}
+
 /// Why an instance is not available to a run.
 #[derive(Debug, Clone)]
 pub struct Unavailable {
     pub message: String,
-    /// Remembered from an earlier start: already logged and recorded.
-    pub remembered: bool,
+    pub origin: Origin,
 }
 
 impl Unavailable {
     pub fn new(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
-            remembered: false,
+            origin: Origin::Fresh,
         }
     }
 }
@@ -97,7 +108,7 @@ impl RuntimeCache {
                 }) if *v == version && Instant::now() < *until => {
                     return Err(Unavailable {
                         message: message.clone(),
-                        remembered: true,
+                        origin: Origin::Remembered,
                     });
                 }
                 _ => {}
@@ -120,9 +131,10 @@ impl RuntimeCache {
             }
             return match newer {
                 Some(runtime) if !stale => Ok(runtime),
-                _ => Err(Unavailable::new(
-                    "Le connecteur a changé pendant son démarrage",
-                )),
+                _ => Err(Unavailable {
+                    message: "Le connecteur a changé pendant son démarrage".into(),
+                    origin: Origin::Changed,
+                }),
             };
         }
         match started {
@@ -234,14 +246,15 @@ mod tests {
             Err::<ConnectorRuntime, _>("injoignable".to_string())
         };
         let first = unavailable(cache.get_or_start(id, v1, 0, failing).await);
-        assert!(!first.remembered);
+        assert_eq!(first.origin, Origin::Fresh);
         let again = unavailable(cache.get_or_start(id, v1, 0, failing).await);
-        assert!(again.remembered);
+        assert_eq!(again.origin, Origin::Remembered);
         assert_eq!(again.message, "injoignable");
         assert_eq!(starts.load(Ordering::SeqCst), 1);
         // A tested instance is tried again at once.
         cache.retry_now(id).await;
-        assert!(!unavailable(cache.get_or_start(id, v1, 0, failing).await).remembered);
+        let retried = unavailable(cache.get_or_start(id, v1, 0, failing).await);
+        assert_eq!(retried.origin, Origin::Fresh);
         assert_eq!(starts.load(Ordering::SeqCst), 2);
 
         // A new version starts again, then stays live.
@@ -272,7 +285,7 @@ mod tests {
                 })
                 .await,
         );
-        assert!(invalidated.message.contains("a changé"));
+        assert_eq!(invalidated.origin, Origin::Changed);
         // Nothing was kept: the next run (a later ticket) starts again.
         let starts = AtomicUsize::new(0);
         let ticket = cache.ticket().await;

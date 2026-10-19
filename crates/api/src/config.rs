@@ -312,6 +312,21 @@ mod tests {
     }
 
     #[test]
+    fn bounds_the_mcp_start_timeout() {
+        let url = ("DATABASE_APP_URL", "postgres://app@localhost/mimorya");
+        let key = "MIMORYA_MCP_START_TIMEOUT_SECS";
+        assert_eq!(
+            load(&[url]).unwrap().mcp_start_timeout,
+            Duration::from_secs(20)
+        );
+        let five = load(&[url, (key, "5")]).unwrap();
+        assert_eq!(five.mcp_start_timeout, Duration::from_secs(5));
+        for refused in ["0", "121", "x"] {
+            assert!(load(&[url, (key, refused)]).is_err(), "{refused}");
+        }
+    }
+
+    #[test]
     fn never_prints_credentials_in_debug_output() {
         let config = load(&[
             (

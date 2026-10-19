@@ -29,7 +29,7 @@ use mimorya_db::repositories::connectors::{
 use uuid::Uuid;
 
 pub use cache::RETRY_AFTER;
-use cache::{RuntimeCache, Unavailable};
+use cache::{Origin, RuntimeCache, Unavailable};
 pub use failures::{failure, opened};
 pub use mimorya_connectors::mcp::CONNECTOR_USE;
 pub use policies::{Policies, read_policies, scoped_overrides};
@@ -133,13 +133,17 @@ impl ConnectorService {
                     None
                 }
                 Err(unavailable) => {
-                    if !unavailable.remembered {
-                        tracing::warn!(connector = %instance.id, error = %unavailable.message, "Connector unavailable");
-                    }
                     result.issues.push(ConnectorIssue {
                         connector: instance.name.clone(),
                         message: "Connecteur indisponible".into(),
                     });
+                    match unavailable.origin {
+                        Origin::Changed => continue,
+                        Origin::Remembered => {}
+                        Origin::Fresh => {
+                            tracing::warn!(connector = %instance.id, error = %unavailable.message, "Connector unavailable");
+                        }
+                    }
                     Some(unavailable.message)
                 }
             };

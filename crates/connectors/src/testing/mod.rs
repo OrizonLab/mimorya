@@ -31,11 +31,10 @@ pub async fn serve_mcp_http(token: Option<&str>, quirk: Quirk) -> String {
 /// The same, on a given local port (a server coming back where it was).
 pub async fn serve_mcp_http_on(port: u16, token: Option<&str>, quirk: Quirk) -> String {
     let router = match quirk {
-        Quirk::CollidingTools
-        | Quirk::TooManyTools
-        | Quirk::HugeSchema
-        | Quirk::EchoesTokenInResults => mcp_router(move || DeclaredToolsServer::new(quirk)),
-        _ => mcp_router(DemoDocsServer::default),
+        Quirk::None | Quirk::EchoesTokenOnStart | Quirk::EchoesTokenOnCall => {
+            mcp_router(DemoDocsServer::default)
+        }
+        _ => mcp_router(move || DeclaredToolsServer::new(quirk)),
     };
     let expected = token.map(|t| format!("Bearer {t}"));
     let router = router.layer(middleware::from_fn(move |request: Request, next: Next| {

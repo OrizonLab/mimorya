@@ -67,11 +67,16 @@ async fn the_state_shows_only_what_was_observed() {
     assert_eq!(tested.json()["ok"], true);
     assert_eq!(state(&paul, &id).await.0, "ok");
 
-    // Switched off, then on again.
+    // Switched off: a test does not make it look in service. Then on again.
     for (enabled, expected) in [(false, "disabled"), (true, "untested")] {
         let switched = paul.patch(&instance, json!({ "enabled": enabled })).await;
         assert_eq!(switched.status, StatusCode::OK);
         assert_eq!(state(&paul, &id).await.0, expected);
+        if !enabled {
+            let tested = paul.post(&format!("{instance}/test"), json!({})).await;
+            assert_eq!(tested.json()["ok"], true);
+            assert_eq!(state(&paul, &id).await.0, "disabled");
+        }
     }
 
     // A report made on the previous configuration is ignored.
@@ -106,22 +111,43 @@ async fn operator_servers_keep_their_prefix_and_stay() {
     let paul = api.sign_in(user::PAUL).await;
     let operated = Uuid::new_v4();
     let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
-    sqlx::query(
-        "insert into connector_instances (id, tenant_id, type, name, config) values ($1, $2, 'mcp', 'Interne', $3)",
-    )
-    .bind(operated)
-    .bind(tenant::ID)
-    .bind(json!({ "transport": "stdio", "prefix": "ops", "command": "mcp-interne" }))
-    .execute(&mut *tx)
-    .await
-    .unwrap();
+    for (id, name, prefix) in [
+        (operated, "Interne", "Ops-Docs"),
+        (Uuid::new_v4(), "Archives", "Docs2"),
+    ] {
+        sqlx::query(
+            "insert into connector_instances (id, tenant_id, type, name, config) values ($1, $2, 'mcp', $3, $4)",
+        )
+        .bind(id)
+        .bind(tenant::ID)
+        .bind(name)
+        .bind(json!({ "transport": "stdio", "prefix": prefix, "command": "mcp-interne" }))
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    }
     tx.commit().await.unwrap();
 
     let url = serve_demo_docs_http(None).await;
-    let taken = paul
-        .post("/admin/connectors", mcp_body("Autre", "ops", &url, None))
-        .await;
-    assert_eq!(taken.status, StatusCode::CONFLICT, "{}", taken.text());
+    // Their tools are named mcp_ops_docs_… and mcp_docs2_…: a namespace
+    // that is the same or nests with one of them is taken.
+    for prefix in ["ops", "docs2"] {
+        let body = mcp_body("Autre", prefix, &url, None);
+        let taken = paul.post("/admin/connectors", body).await;
+        assert_eq!(
+            taken.status,
+            StatusCode::CONFLICT,
+            "{prefix}: {}",
+            taken.text()
+        );
+    }
+    let other = add(&paul, mcp_body("Autre", "opsdocs", &url, None)).await;
+    assert_eq!(
+        paul.delete(&format!("/admin/connectors/{other}"))
+            .await
+            .status,
+        StatusCode::OK
+    );
     let instance = format!("/admin/connectors/{operated}");
     assert_eq!(paul.delete(&instance).await.status, StatusCode::BAD_REQUEST);
     let renamed = paul
@@ -130,8 +156,7 @@ async fn operator_servers_keep_their_prefix_and_stay() {
     assert_eq!(renamed.status, StatusCode::OK);
 
     let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
-    sqlx::query("delete from connector_instances where id = $1")
-        .bind(operated)
+    sqlx::query("delete from connector_instances where config->>'transport' = 'stdio'")
         .execute(&mut *tx)
         .await
         .unwrap();

@@ -1,6 +1,7 @@
 //! How a test MCP server misbehaves: what it declares (names colliding once
-//! namespaced, too many tools, a huge schema), or errors quoting the
-//! `Authorization` header back (some servers do), at start or on tool calls.
+//! namespaced, too many tools, endless pages, a huge schema, the token quoted
+//! back), or errors and results quoting the `Authorization` header back (some
+//! servers do).
 
 use axum::body::{Body, to_bytes};
 use axum::extract::Request;
@@ -37,11 +38,16 @@ pub enum Quirk {
     /// Tools quoting the token in their results: `echo_text` as text,
     /// `echo_structured` as structured content.
     EchoesTokenInResults,
+    /// A tool whose title, description and schema quote the token.
+    EchoesTokenInDeclarations,
+    /// One tool per page, and always a next page.
+    EndlessPages,
 }
 
 /// A server declaring the tools a quirk calls for; each answers "ok".
 #[derive(Clone)]
 pub struct DeclaredToolsServer {
+    quirk: Quirk,
     tools: Vec<Tool>,
 }
 
@@ -66,8 +72,21 @@ impl DeclaredToolsServer {
             ],
             _ => vec![tool("get_item".into(), 0)],
         };
-        Self { tools }
+        Self { quirk, tools }
     }
+}
+
+fn authorization<R>(context: &RequestContext<R>) -> String
+where
+    R: rmcp::service::ServiceRole,
+{
+    context
+        .extensions
+        .get::<axum::http::request::Parts>()
+        .and_then(|parts| parts.headers.get(header::AUTHORIZATION))
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default()
+        .to_string()
 }
 
 impl ServerHandler for DeclaredToolsServer {
@@ -78,10 +97,35 @@ impl ServerHandler for DeclaredToolsServer {
 
     async fn list_tools(
         &self,
-        _request: Option<PaginatedRequestParams>,
-        _context: RequestContext<RoleServer>,
+        request: Option<PaginatedRequestParams>,
+        context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, ErrorData> {
-        Ok(ListToolsResult::with_all_items(self.tools.clone()))
+        match self.quirk {
+            Quirk::EchoesTokenInDeclarations => {
+                let quoted = authorization(&context);
+                let mut schema = JsonObject::new();
+                schema.insert("type".into(), json!("object"));
+                schema.insert("description".into(), json!(format!("Debug: {quoted}")));
+                let mut tool = Tool::new("debug", format!("Debug: {quoted}"), Arc::new(schema));
+                tool.title = Some(format!("Débogage {quoted}"));
+                Ok(ListToolsResult::with_all_items(vec![tool]))
+            }
+            Quirk::EndlessPages => {
+                let page: u64 = request
+                    .and_then(|r| r.cursor)
+                    .and_then(|c| c.parse().ok())
+                    .unwrap_or(0);
+                let tool = Tool::new(
+                    format!("tool_{page}"),
+                    "Lit un élément.",
+                    Arc::new(JsonObject::new()),
+                );
+                let mut result = ListToolsResult::with_all_items(vec![tool]);
+                result.next_cursor = Some((page + 1).to_string());
+                Ok(result)
+            }
+            _ => Ok(ListToolsResult::with_all_items(self.tools.clone())),
+        }
     }
 
     async fn call_tool(
@@ -89,13 +133,7 @@ impl ServerHandler for DeclaredToolsServer {
         request: CallToolRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, ErrorData> {
-        let authorization = context
-            .extensions
-            .get::<axum::http::request::Parts>()
-            .and_then(|parts| parts.headers.get(header::AUTHORIZATION))
-            .and_then(|value| value.to_str().ok())
-            .unwrap_or_default()
-            .to_string();
+        let authorization = authorization(&context);
         let result = match request.name.as_ref() {
             "echo_text" => {
                 CallToolResult::success(vec![ContentBlock::text(format!("reçu : {authorization}"))])

@@ -68,7 +68,10 @@ async fn refuses_a_server_whose_tools_share_an_identifier() {
 async fn bounds_what_a_server_declares() {
     let url = serve_mcp_http(None, Quirk::TooManyTools).await;
     let message = failure(&url, None, PRIVATE).await;
-    assert!(message.contains("201 outils : 200 au plus"), "{message}");
+    assert!(message.contains("plus de 200 outils"), "{message}");
+    let url = serve_mcp_http(None, Quirk::EndlessPages).await;
+    let message = failure(&url, None, PRIVATE).await;
+    assert!(message.contains("plus de 200 outils"), "{message}");
     let url = serve_mcp_http(None, Quirk::HugeSchema).await;
     let message = failure(&url, None, PRIVATE).await;
     assert!(message.contains("dépasse 32 Kio"), "{message}");
@@ -158,6 +161,32 @@ async fn never_shows_the_token_a_tool_result_quotes() {
         assert!(!shown.contains(TOKEN), "{shown}");
         assert!(shown.contains(&format!("Bearer {MASK}")), "{shown}");
     }
+    runtime.closer.unwrap().close().await;
+}
+
+#[tokio::test]
+async fn never_shows_the_token_a_server_quotes_in_its_declarations() {
+    let url = serve_mcp_http(Some(TOKEN), Quirk::EchoesTokenInDeclarations).await;
+    let runtime = start_with(&url, Some(TOKEN), PRIVATE, Duration::from_secs(10))
+        .await
+        .unwrap();
+    let tool = &runtime.tools[0];
+    let shown = format!(
+        "{} {} {}",
+        tool.info().title,
+        tool.info().description,
+        tool.input_schema()
+    );
+    assert!(!shown.contains(TOKEN), "{shown}");
+    let masked = format!("Bearer {MASK}");
+    assert!(tool.info().title.ends_with(&masked), "{shown}");
+    assert!(
+        tool.info()
+            .description
+            .ends_with(&format!("Debug: {masked}")),
+        "{shown}"
+    );
+    assert!(tool.input_schema().to_string().contains(&masked), "{shown}");
     runtime.closer.unwrap().close().await;
 }
 

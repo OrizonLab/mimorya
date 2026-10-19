@@ -488,26 +488,32 @@ elle est remplacée par une nouvelle entrée qui la référence (« remplace ADR
     connecteur vers une autre adresse, et une configuration est toujours lue avec
     son jeton dans un même instantané. Un serveur peut recopier l'en-tête dans ses
     erreurs : le connecteur masque le jeton dans tout ce que le serveur renvoie
-    (erreurs de démarrage et d'appel, résultats d'outils) avant que cela n'atteigne
+    (déclarations d'outils, erreurs de démarrage et d'appel, résultats d'outils),
+    avant toute troncature et avant que cela n'atteigne
     les journaux, l'administrateur ou le modèle. Les journaux de la bibliothèque
     `rmcp`, qui recopient les réponses des serveurs, sont coupés par défaut
     (`rmcp=off`, sauf si `LOG_LEVEL` la nomme) ;
   - **politiques par outil** : risque, activation et permissions requises (permissions
     du catalogue délégables à l'agent). `connector:use` est toujours exigé. Les
     politiques d'un connecteur ne portent que sur ses propres outils
-    (`mcp_<préfixe>_…`), et le préfixe est unique (serveurs de l'exploitant compris)
-    et définitif ;
+    (`mcp_<préfixe>_…`), et le préfixe est définitif ; deux serveurs n'ont jamais le
+    même espace de noms ni l'un inclus dans l'autre (serveurs de l'exploitant
+    compris) ;
   - **robustesse** : une panne d'un connecteur ne le rend indisponible que lui, et ne
     fait jamais échouer les runs de l'entreprise :
     - connexion et découverte des outils bornées à 20 s
-      (`MIMORYA_MCP_START_TIMEOUT_SECS`) ; au plus 200 outils, schémas d'entrée de
-      32 Kio au plus, titres et descriptions bornés ;
+      (`MIMORYA_MCP_START_TIMEOUT_SECS`) ; déclarations lues page par page jusqu'à
+      200 outils au plus, noms de 128 caractères au plus, schémas d'entrée de
+      32 Kio au plus et 256 Kio de déclarations par serveur, titres et
+      descriptions bornés ;
     - les connecteurs démarrent en parallèle, et un échec est mémorisé 60 s pour la
-      configuration en cours : un serveur muet retarde un run par minute, du délai
-      de démarrage au plus, puis les runs s'en passent sans attendre. Un changement
-      de configuration ou un test réussi fait réessayer aussitôt ;
-    - deux outils d'un même serveur qui donnent le même identifiant, des politiques
-      illisibles, un jeton illisible : ce connecteur est écarté ;
+      configuration en cours : un serveur muet ne retarde que les runs lancés
+      pendant une tentative de démarrage (une par minute), du délai de démarrage
+      au plus ; entre deux tentatives, les runs s'en passent sans attendre. Un
+      changement de configuration ou un test réussi fait réessayer aussitôt ;
+    - deux outils d'un même serveur qui donnent le même identifiant, un nom d'outil
+      qui recopie le jeton, des politiques illisibles, un jeton illisible : ce
+      connecteur est écarté ;
     - deux connecteurs qui nomment le même outil : le plus ancien le garde, l'autre
       est écarté ;
   - **état affiché** : `untested` (« Non testé ») tant qu'aucun démarrage n'a eu lieu

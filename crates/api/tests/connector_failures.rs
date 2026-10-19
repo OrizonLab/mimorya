@@ -134,6 +134,33 @@ async fn a_token_quoted_back_reaches_neither_logs_nor_administrators_nor_the_mod
         StatusCode::OK
     );
 
+    // Quoted in the declarations: neither the test nor the model sees it.
+    let declaring = serve_mcp_http(Some(TOKEN), Quirk::EchoesTokenInDeclarations).await;
+    let id = add(&paul, mcp_body("Bavard", "echo", &declaring, Some(TOKEN))).await;
+    let tested = test_of(&paul, &id).await;
+    assert_eq!(tested["ok"], true, "{tested}");
+    assert!(!tested.to_string().contains(TOKEN), "{tested}");
+    assert!(tested.to_string().contains("Bearer ***"), "{tested}");
+    let tools = api
+        .app
+        .services
+        .connectors
+        .tools_for(tenant::ID)
+        .await
+        .unwrap();
+    for tool in tools
+        .tools
+        .iter()
+        .filter(|t| t.info().name.starts_with("mcp_echo_"))
+    {
+        let declared = format!("{:?} {}", tool.info(), tool.input_schema());
+        assert!(!declared.contains(TOKEN), "{declared}");
+    }
+    assert_eq!(
+        paul.delete(&format!("/admin/connectors/{id}")).await.status,
+        StatusCode::OK
+    );
+
     // Quoted back by a tool call: what the run keeps and the model reads.
     let on_call = serve_mcp_http(Some(TOKEN), Quirk::EchoesTokenOnCall).await;
     let id = add(&paul, mcp_body("Bavard", "echo", &on_call, Some(TOKEN))).await;

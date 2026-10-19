@@ -6,7 +6,7 @@
 
 use std::collections::HashMap;
 
-use mimorya_connectors::mcp::url_problem;
+use mimorya_connectors::mcp::{tool_namespace, url_problem};
 use mimorya_core::DomainError;
 use mimorya_core::authz::PermissionInfo;
 use mimorya_db::Database;
@@ -78,12 +78,14 @@ pub async fn create_mcp_connector(
     }
     let tenant_id = access.subject.tenant_id;
     let mut tx = begin_change(admin.db, access, PERMISSION).await?;
-    // Unique among every MCP server, operator-written ones included.
+    // Tool namespaces never overlap, operator-written servers included.
+    let namespace = tool_namespace(&input.prefix);
     let taken = list_connector_instances(&mut tx, false)
         .await?
         .iter()
         .filter_map(mcp_prefix)
-        .any(|prefix| prefix == input.prefix);
+        .map(tool_namespace)
+        .any(|other| other.starts_with(&namespace) || namespace.starts_with(&other));
     if taken {
         return Err(
             DomainError::conflict("Ce préfixe est déjà utilisé par un autre connecteur").into(),

@@ -18,6 +18,13 @@ impl Redactor {
         Self(secret.filter(|s| !s.is_empty()).map(Arc::from))
     }
 
+    /// Whether the text quotes the secret.
+    pub fn reveals(&self, text: &str) -> bool {
+        self.0
+            .as_ref()
+            .is_some_and(|secret| text.contains(&**secret))
+    }
+
     pub fn text(&self, text: &str) -> String {
         match &self.0 {
             Some(secret) => text.replace(&**secret, MASK),
@@ -60,6 +67,9 @@ mod tests {
     fn masks_the_secret_in_text_and_in_every_string_of_a_value() {
         let redactor = Redactor::new(Some("s3cr\"et"));
         assert_eq!(redactor.text("Bearer s3cr\"et!"), "Bearer ***!");
+        assert!(redactor.reveals("x s3cr\"et"));
+        assert!(!redactor.reveals("s3cr"));
+        assert!(!Redactor::default().reveals("s3cr\"et"));
         let value = json!({ "a": ["x s3cr\"et", 1], "s3cr\"et": { "b": "s3cr\"et" } });
         assert_eq!(
             redactor.value(value),
