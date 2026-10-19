@@ -131,6 +131,14 @@ fn refuses_the_tests_public_master_keys_in_production() {
         .to_string();
         assert!(error.contains("MIMORYA_MASTER_KEY"), "{error}");
         assert!(!error.contains(key), "{error}");
+        // Surrounding spaces, which the cipher ignores, do not hide them.
+        let padded = format!(" {key}\n");
+        let padded = [
+            DB,
+            ("MIMORYA_ENV", "production"),
+            ("MIMORYA_MASTER_KEY", &padded),
+        ];
+        assert!(load(&padded).is_err());
         // Outside production, the tests use them.
         assert!(
             load(&[DB, ("MIMORYA_MASTER_KEY", key)])
@@ -139,4 +147,23 @@ fn refuses_the_tests_public_master_keys_in_production() {
                 .is_some()
         );
     }
+}
+
+/// The end-to-end tests' key is one of the refused ones: a key copied from
+/// their configuration does not start a production server.
+#[test]
+fn the_end_to_end_tests_use_a_refused_key() {
+    let config = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../apps/web/playwright.config.ts");
+    let config = std::fs::read_to_string(config).expect("playwright.config.ts");
+    let line = config
+        .lines()
+        .find(|line| line.contains("MIMORYA_MASTER_KEY:"))
+        .expect("the e2e server's master key");
+    assert!(
+        crate::secrets::PUBLIC_TEST_MASTER_KEYS
+            .iter()
+            .any(|key| line.contains(key)),
+        "{line}"
+    );
 }

@@ -9,7 +9,7 @@ Légende des statuts — tenue à jour à chaque contribution :
 | 🟡     | Partiel : socle en place, fonctionnalité incomplète (détail indiqué)       |
 | 🔜     | Planifié, non implémenté                                                   |
 
-Dernière mise à jour : 2026-10-19 (parcours de bout en bout : formulaires d'administration soumis, mémoire personnelle ; critère A13 couvert).
+Dernière mise à jour : 2026-10-19 (clés maîtres publiques des tests refusées en production ; parcours de bout en bout : attente de ce que l'API a enregistré).
 
 ## Phase 1 — Fondations et MVP fonctionnel
 

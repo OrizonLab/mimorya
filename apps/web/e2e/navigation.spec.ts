@@ -2,8 +2,7 @@
 // page error nor a policy violation (the fixture checks the last two),
 // including each administration tab.
 import type { Page } from '@playwright/test';
-import { noError } from './support/admin';
-import { demo, expect, signIn, test } from './support/fixtures';
+import { demo, expect, noError, signIn, test } from './support/fixtures';
 
 const PAGES = [
   ['/approvals', 'Validations'],

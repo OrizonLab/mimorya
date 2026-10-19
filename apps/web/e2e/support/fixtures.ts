@@ -71,3 +71,8 @@ export async function signIn(page: Page, email: string, password = DEMO_PASSWORD
   await page.getByRole('button', { name: 'Se connecter' }).click();
   await page.waitForURL('**/chat');
 }
+
+/** No error message is shown (Next.js's route announcer is an empty alert). */
+export async function noError(page: Page) {
+  await expect(page.getByRole('alert').filter({ hasText: /\S/ })).toHaveCount(0);
+}

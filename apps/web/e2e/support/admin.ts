@@ -27,8 +27,3 @@ export async function selectContaining(select: Locator, text: string) {
   const value = await select.locator('option', { hasText: text }).first().getAttribute('value');
   await select.selectOption(value ?? '');
 }
-
-/** No error message is shown (Next.js's route announcer is an empty alert). */
-export async function noError(page: Page) {
-  await expect(page.getByRole('alert').filter({ hasText: /\S/ })).toHaveCount(0);
-}
