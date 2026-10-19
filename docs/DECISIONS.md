@@ -1201,12 +1201,12 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - pendant ce temps, le formulaire est verrouillé (`<fieldset disabled>`) : ni saisie
     ni enregistrement à partir d'une ressource peut-être périmée ;
   - chaque champ prend son état par `useSyncedState(valeur de la liste)`, repris quand
-    cette valeur change, sans reconstruire le composant (requête en cours, message
-    et focus conservés) ;
+    cette valeur change, sans reconstruire le composant (requête en cours et message
+    conservés) ;
   - appliqué d'abord à la fiche d'un compte (profil et attributs).
 - **Conséquences** :
   - après un enregistrement, la fiche est brièvement désactivée, le temps du
-    rechargement ;
+    rechargement, et le contrôle qui avait le focus le perd ;
   - les autres formulaires de modification (rôle, politique, unité, serveur MCP,
     politique d'outil, modèle) restent à traiter de la même façon (`docs/ROADMAP.md`) ;
   - test : `apps/web/e2e/administration.spec.ts` retient l'annuaire, vérifie que la

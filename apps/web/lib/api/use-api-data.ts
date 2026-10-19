@@ -35,6 +35,10 @@ export function useApiData<T>(path: string): ApiData<T> {
     };
   }, [path, version]);
 
-  const reload = useCallback(() => setVersion((v) => v + 1), []);
+  // Loading from now on, not from the effect: nothing reads the former data as current.
+  const reload = useCallback(() => {
+    setLoading(true);
+    setVersion((v) => v + 1);
+  }, []);
   return { data, error, loading, reload };
 }
