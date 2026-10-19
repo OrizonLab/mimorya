@@ -128,10 +128,11 @@ docker compose --env-file .env.production -f compose.production.yml exec api \
 
 Les deux mots de passe de base passent dans des URL de connexion : lettres et chiffres
 seulement, 16 au moins. La base refuse de démarrer sinon, sans rien créer, et le redit à
-chaque redémarrage jusqu'à correction. Ils ne servent qu'à la création de la base : pour
-en changer ensuite, modifiez d'abord le rôle
-(`docker compose … exec db psql -U mimorya -c "ALTER ROLE mimorya_app PASSWORD '…'"`, de
-même pour `mimorya`), puis la variable, puis relancez `up -d`. `MIMORYA_TLS` vaut une
+chaque redémarrage jusqu'à correction. La base ne les lit qu'à sa création ; les migrations
+et l'API s'en servent à chaque démarrage. Pour en changer, modifiez d'abord le rôle, la
+saisie restant masquée et hors de l'historique (`docker compose … exec db psql -U mimorya`,
+puis `\password mimorya_app`, de même pour `mimorya`), puis la variable, puis relancez
+`up -d`. `MIMORYA_TLS` vaut une
 adresse e-mail pour un certificat public (ports 80 et 443 joignables depuis Internet) ou
 `internal` (certificat local de Caddy). Mêmes variables facultatives que la pile de
 démonstration (fournisseur de modèle, `MIMORYA_MASTER_KEY`, relais SMTP). La CI suit ce

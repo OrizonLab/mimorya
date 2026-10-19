@@ -938,8 +938,9 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
 - **Conséquences** :
   - une installation privée se fait en deux commandes (démarrage, création de la
     première entreprise), sans aucun identifiant connu d'avance ;
-  - les mots de passe de base ne servent qu'à la création de la base : en changer
-    ensuite demande `ALTER ROLE` avant la variable (README) ;
+  - la base ne lit ses mots de passe qu'à sa création (les migrations et l'API s'en
+    servent à chaque démarrage) : en changer ensuite demande de modifier le rôle
+    (`\password` dans psql) avant la variable (README) ;
   - restent à faire : publication des images dans un registre et cache de leur
     construction en CI, sauvegardes chiffrées et restauration testée (phase 3) ;
   - les images de base ne sont pas épinglées par empreinte (`rust:1-bookworm`,

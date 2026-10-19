@@ -22,7 +22,7 @@ services:
     image: pgvector/pgvector:pg16
     restart: unless-stopped
     # The passwords are checked before anything is created.
-    entrypoint: ['/usr/local/bin/entrypoint-production.sh']
+    entrypoint: ['bash', '/usr/local/bin/entrypoint-production.sh']
     command: ['postgres']
     environment:
       POSTGRES_USER: mimorya
