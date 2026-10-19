@@ -43,10 +43,6 @@ impl RunService {
         }
     }
 
-    pub fn llm_available(&self) -> bool {
-        self.executor.router.is_some()
-    }
-
     /// Resolves when no run is executing in the background (tests, shutdown).
     pub async fn idle(&self) {
         self.tasks.idle().await;
@@ -58,11 +54,23 @@ impl RunService {
         conversation_id: Uuid,
         text: &str,
     ) -> anyhow::Result<StartedTurn> {
-        if !self.llm_available() {
-            return Err(DomainError::unavailable(
-                "Aucun fournisseur de modèle n’est configuré. Renseignez LLM_PROVIDER et la clé correspondante.",
-            )
-            .into());
+        match self.executor.llm.provider_for(identity.tenant_id).await {
+            Ok(Some(_)) => {}
+            Ok(None) => {
+                return Err(DomainError::unavailable(
+                    "Aucun modèle n’est disponible : la plateforme n’en fournit pas et votre \
+                     entreprise n’en a pas configuré (Administration › Modèle d’IA).",
+                )
+                .into());
+            }
+            Err(error) => {
+                tracing::warn!(tenant_id = %identity.tenant_id, error = %error, "Company model provider unusable");
+                return Err(DomainError::unavailable(
+                    "Le modèle choisi par votre entreprise ne peut pas être utilisé : un \
+                     administrateur doit revoir sa configuration (Administration › Modèle d’IA).",
+                )
+                .into());
+            }
         }
         let access = self.access.context(identity).await?;
         access.require("agent:use")?;

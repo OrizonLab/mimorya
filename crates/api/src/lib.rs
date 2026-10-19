@@ -8,6 +8,7 @@ pub mod config;
 pub mod http;
 pub mod plugins;
 pub mod routes;
+pub mod secrets;
 pub mod services;
 
 pub use app::{App, AppState, BuildOptions, Services, build_app};

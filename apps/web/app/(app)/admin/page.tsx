@@ -4,6 +4,7 @@ import { useState, type ComponentType } from 'react';
 import {
   AuditTab,
   ConnectorsTab,
+  LlmTab,
   OrganizationTab,
   PoliciesTab,
   RolesTab,
@@ -23,6 +24,7 @@ const SECTION_VIEWS: Record<AdminSectionKey, ComponentType> = {
   policies: PoliciesTab,
   audit: AuditTab,
   usage: UsageTab,
+  llm: LlmTab,
   connectors: ConnectorsTab,
   skills: SkillsTab,
 };

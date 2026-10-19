@@ -176,9 +176,19 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
 
 ## 7. Secrets
 
-- Secrets d'entreprise (jetons API, OAuth) chiffrés en **AES-256-GCM** avec une clé
-  maître fournie par l'environnement (`MIMORYA_MASTER_KEY`, 32 octets base64) ou un
-  KMS (phase 3) ; `key_version` permet la rotation.
+- Secrets d'entreprise (clé d'API du modèle de l'entreprise aujourd'hui ; jetons des
+  connecteurs ensuite) chiffrés en **AES-256-GCM** (`ring`) avec une clé maître fournie
+  par l'environnement (`MIMORYA_MASTER_KEY`, 32 octets base64), un nonce aléatoire par
+  écriture, et l'entreprise et le nom du secret comme données associées : une valeur
+  déplacée vers une autre entreprise ou un autre nom ne s'ouvre pas (ADR-024). Sans
+  clé maître, aucun secret n'est enregistré. `key_version` prépare la rotation (avec
+  un KMS, phase 3 : pas encore faite).
+- Clé du modèle d'une entreprise : écriture seule (`keyStored` seulement), jamais dans
+  l'audit, et liée au fournisseur et à l'adresse pour lesquels elle a été saisie. Les
+  adresses d'un fournisseur local ou privé sont choisies dans la liste de l'exploitant
+  (`MIMORYA_TENANT_LLM_ENDPOINTS`) : une entreprise ne fait jamais appeler par le
+  serveur une adresse de son choix (SSRF). Si le modèle choisi par l'entreprise devient
+  inutilisable, ses runs s'arrêtent, sans repli vers le fournisseur de la plateforme.
 - Jamais renvoyés par l'API, jamais injectés dans le contexte du modèle, jamais
   journalisés : les journaux de requêtes ne contiennent ni en-têtes ni corps (seuls
   méthode, chemin, statut, durée et identifiant de requête), et les structures qui

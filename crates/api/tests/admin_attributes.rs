@@ -85,9 +85,16 @@ async fn attributes_change_who_a_policy_applies_to_at_once() {
             &json!(["department", "sites"])
         ]
     );
-    let last = audited.last().unwrap();
-    assert_eq!(last["attributesChanged"], json!(["department", "sites"]));
-    assert!(!last.to_string().contains("administratif"), "{last}");
+    // No value in any of them.
+    for entry in &audited[audited.len() - 3..] {
+        let text = entry.to_string();
+        assert!(
+            ["administratif", "Lille", "Arras"]
+                .iter()
+                .all(|value| !text.contains(value)),
+            "{text}"
+        );
+    }
     // Other changes leave the attributes as they are.
     let renamed = paul
         .patch(

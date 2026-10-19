@@ -9,6 +9,7 @@ use std::sync::Arc;
 use chrono::Utc;
 use futures::FutureExt;
 use mimorya_agent::llm::{Effort, LlmMessage, ModelRouter, PriceTable};
+
 use mimorya_agent::runtime::{
     AgentRuntime, ApprovalDecisions, BudgetLimits, EnginePorts, RunCheckpoint, RunConfig, RunEvent,
     RuntimeDeps, StartInput, VerificationConfig, build_user_turn,
@@ -24,12 +25,13 @@ use super::outcome::record_crash;
 use crate::services::access::AccessContext;
 use crate::services::connectors::ConnectorService;
 use crate::services::event_bus::RunEventBus;
+use crate::services::llm::LlmService;
 
 const MAX_CORRECTION_ATTEMPTS: u32 = 2;
 
 pub struct RunExecutor {
     pub db: Database,
-    pub router: Option<ModelRouter>,
+    pub llm: Arc<LlmService>,
     pub prices: Arc<PriceTable>,
     pub connectors: Arc<ConnectorService>,
     pub bus: Arc<RunEventBus>,
@@ -123,10 +125,12 @@ impl RunExecutor {
         ports: &EnginePorts,
         actor: Actor,
     ) -> anyhow::Result<AgentRuntime> {
-        // A run awaiting approval may be resumed after a restart without a provider.
-        let Some(router) = self.router.clone() else {
+        // A run awaiting approval may be resumed after a restart without a
+        // provider, or after its company changed or removed its own.
+        let Some(provider) = self.llm.provider_for(access.subject.tenant_id).await? else {
             anyhow::bail!("no model provider configured");
         };
+        let router = ModelRouter::new(provider);
         let registry = build_tool_registry(access, ports, &self.connectors).await?;
         let budget: BudgetLimits = serde_json::from_value(run.budget.clone())?;
         let level = AutonomyLevel::parse(&run.autonomy_level)

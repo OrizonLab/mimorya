@@ -7,7 +7,7 @@ use std::time::Duration;
 use axum::Router;
 use axum::extract::DefaultBodyLimit;
 use axum::middleware::from_fn_with_state;
-use mimorya_agent::llm::{LlmProvider, ModelRouter, PriceTable, create_provider};
+use mimorya_agent::llm::{LlmProvider, PriceTable, create_provider};
 use mimorya_db::{Database, PoolOptions};
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
@@ -20,8 +20,12 @@ use crate::plugins::session::resolve_identity;
 use crate::plugins::stale_run_sweeper::spawn_stale_run_sweeper;
 use crate::plugins::{RateLimiter, RateLimits};
 use crate::routes;
+use crate::secrets::SecretStore;
+use crate::services::llm::default_factory;
 use crate::services::runs::RunExecutor;
-use crate::services::{AccessService, ConnectorService, RunEventBus, RunService};
+use crate::services::{
+    AccessService, ConnectorService, LlmService, ProviderFactory, RunEventBus, RunService,
+};
 
 const BODY_LIMIT_BYTES: usize = 1_000_000;
 const GLOBAL_RATE_LIMIT_PER_MINUTE: u32 = 600;
@@ -35,6 +39,8 @@ pub struct Services {
     pub access: Arc<AccessService>,
     pub connectors: Arc<ConnectorService>,
     pub bus: Arc<RunEventBus>,
+    /// The model provider of each company's runs.
+    pub llm: Arc<LlmService>,
     pub runs: RunService,
     pub limits: RateLimits,
     /// Flips to `true` when the server stops: long-lived streams end.
@@ -48,6 +54,8 @@ pub struct BuildOptions {
     /// Replaces the provider built from configuration (tests); `Some(None)`
     /// runs the server without any provider.
     pub provider: Option<Option<Arc<dyn LlmProvider>>>,
+    /// Replaces how a company's own provider is built (tests).
+    pub provider_factory: Option<ProviderFactory>,
 }
 
 pub struct App {
@@ -70,13 +78,20 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
         None => config.llm.as_ref().map(create_provider).transpose()?,
     };
 
+    let llm = Arc::new(LlmService::new(
+        db.clone(),
+        provider,
+        SecretStore::new(config.secrets.clone()),
+        options.provider_factory.unwrap_or_else(default_factory),
+        Arc::new(PriceTable::default()),
+    ));
     let access = Arc::new(AccessService::new(db.clone()));
     let connectors = Arc::new(ConnectorService::new(db.clone()));
     let bus = Arc::new(RunEventBus::default());
     let executor = RunExecutor {
         db: db.clone(),
-        router: provider.map(ModelRouter::new),
-        prices: Arc::new(PriceTable::default()),
+        llm: llm.clone(),
+        prices: llm.prices().clone(),
         connectors: connectors.clone(),
         bus: bus.clone(),
         assistant_name: config.assistant_name.clone(),
@@ -94,6 +109,7 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
         access,
         connectors,
         bus,
+        llm,
         limits,
         shutdown: watch::channel(false).0,
     });

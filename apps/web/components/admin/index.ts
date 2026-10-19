@@ -1,5 +1,6 @@
 export { AuditTab } from './audit-tab';
 export { ConnectorsTab } from './connectors-tab';
+export { LlmTab } from './llm/llm-tab';
 export { OrganizationTab } from './organization/organization-tab';
 export { PoliciesTab } from './policies/policies-tab';
 export { RolesTab } from './roles/roles-tab';

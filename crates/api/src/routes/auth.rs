@@ -217,7 +217,7 @@ async fn me(
         "permissions": permissions,
         "assistant": {
             "name": state.config.assistant_name,
-            "available": state.runs.llm_available(),
+            "available": state.llm.available(access.subject.tenant_id).await,
         },
     })))
 }

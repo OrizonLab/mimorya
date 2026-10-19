@@ -80,6 +80,10 @@ impl<'a> Client<'a> {
         self.send_json(Method::PATCH, url, payload).await
     }
 
+    pub async fn put(&self, url: &str, payload: Value) -> TestResponse {
+        self.send_json(Method::PUT, url, payload).await
+    }
+
     async fn send_json(&self, method: Method, url: &str, payload: Value) -> TestResponse {
         let request = self
             .request(method, url)

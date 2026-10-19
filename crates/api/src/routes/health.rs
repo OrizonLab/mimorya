@@ -15,6 +15,6 @@ pub fn routes() -> Router<AppState> {
 async fn health(State(state): State<AppState>) -> ApiResult<Json<Value>> {
     sqlx::query("select 1").execute(state.db.pool()).await?;
     Ok(Json(
-        json!({ "status": "ok", "llm": state.runs.llm_available() }),
+        json!({ "status": "ok", "llm": state.llm.platform().is_some() }),
     ))
 }
