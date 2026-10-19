@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use axum::Router;
 use axum::extract::DefaultBodyLimit;
-use axum::middleware::from_fn_with_state;
+use axum::middleware::{from_fn, from_fn_with_state};
 use mimorya_agent::llm::{LlmProvider, PriceTable, create_provider};
 use mimorya_db::{Database, PoolOptions};
 use tokio::sync::watch;
@@ -18,6 +18,7 @@ use crate::plugins::csrf::csrf_protection;
 use crate::plugins::maintenance::spawn_maintenance;
 use crate::plugins::rate_limit::global_rate_limit;
 use crate::plugins::request_context::request_context;
+use crate::plugins::security_headers::security_headers;
 use crate::plugins::session::resolve_identity;
 use crate::plugins::{RateLimiter, RateLimits};
 use crate::routes;
@@ -149,14 +150,16 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
         shutdown: watch::channel(false).0,
     });
 
-    // Layers run from the last added to the first: context, rate limit,
-    // CSRF, then session resolution.
+    // Layers run from the last added to the first: security headers (on
+    // every response, refusals included), context, rate limit, CSRF, then
+    // session resolution.
     let router = routes::router()
         .layer(from_fn_with_state(services.clone(), resolve_identity))
         .layer(from_fn_with_state(services.clone(), csrf_protection))
         .layer(from_fn_with_state(services.clone(), global_rate_limit))
         .layer(from_fn_with_state(services.clone(), request_context))
         .layer(DefaultBodyLimit::max(BODY_LIMIT_BYTES))
+        .layer(from_fn(security_headers))
         .with_state(services.clone());
 
     Ok(App {

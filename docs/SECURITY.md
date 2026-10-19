@@ -249,7 +249,21 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
 
 - Validation de toutes les entrées (serde + validator, messages en français) ; requêtes SQL
   paramétrées (sqlx) ; aucun `unsafe` (`unsafe_code = "forbid"` sur tout l'espace de travail).
-- En-têtes de sécurité (CSP, HSTS, `X-Content-Type-Options`, `Referrer-Policy`).
+- En-têtes de sécurité (ADR-030) :
+  - **pages web** : CSP stricte avec un nonce de 128 bits nouveau à chaque page
+    (`proxy.ts`) ; scripts et styles de l'origine portant le nonce, images et connexions
+    vers l'origine seulement (une image distante dans une réponse du modèle n'est pas
+    chargée : pas de fuite par son adresse), ni `object`, ni `base`, ni cadre. S'y
+    ajoutent `X-Content-Type-Options: nosniff`, `Referrer-Policy`, `X-Frame-Options:
+DENY`, `Permissions-Policy` et `Cross-Origin-Opener-Policy: same-origin` ;
+  - **API** : toute réponse, refus compris, porte `Content-Security-Policy:
+default-src 'none'; frame-ancestors 'none'`, `X-Content-Type-Options: nosniff`,
+    `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer` et `Cache-Control:
+no-store` (le flux d'événements garde `no-cache, no-transform`) ;
+  - **HSTS** : à poser par le reverse proxy qui termine TLS, par exemple
+    `Strict-Transport-Security: max-age=63072000; includeSubDomains` (ajouter
+    `preload` seulement après inscription du domaine). L'application ne le pose pas :
+    elle ne sait pas si elle est servie en HTTPS.
 - Limitation de débit globale et par route sensible (connexion, par adresse et par
   compte), voir §4 pour la détermination de l'adresse cliente.
 - Dépendances verrouillées (`Cargo.lock`, `pnpm-lock.yaml`), audit des vulnérabilités en CI

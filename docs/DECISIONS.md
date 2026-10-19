@@ -695,3 +695,42 @@ cité, renvoi) y sont faites sur place.
       lien.
 - **Conséquences** : pas de migration. Le mot de passe provisoire reste la voie sans
   relais, ou quand la personne n'a pas accès à sa messagerie.
+
+## ADR-030 — En-têtes de sécurité : CSP à nonce par page, réponses de l'API durcies
+
+- **Date** : 2026-10-19 · **Statut** : acceptée
+- **Contexte** : l'interface affiche des contenus venus d'ailleurs (réponses du modèle
+  en Markdown, résultats d'outils, données des connecteurs). React échappe le texte,
+  mais une politique de sécurité du contenu (CSP) borne ce qu'une injection pourrait
+  faire, y compris faire fuiter des données par l'adresse d'une image. Les réponses de
+  l'API, qui portent des données personnelles, n'avaient pas d'en-têtes de cache ni de
+  durcissement communs.
+- **Décision** :
+  - **pages web** : un `proxy.ts` (Next.js 16) donne à chaque page une CSP avec un
+    **nonce aléatoire de 128 bits, nouveau à chaque requête** ; Next.js le pose sur ses
+    propres scripts et styles. Politique : scripts de l'origine portant le nonce
+    (`'strict-dynamic'`), styles de l'origine portant le nonce, images de l'origine (et
+    `data:`, `blob:`) seulement, connexions vers l'origine seulement, ni `object`, ni
+    `base`, ni cadre (`frame-ancestors 'none'`), formulaires vers l'origine. En
+    développement s'y ajoutent `'unsafe-eval'` (débogage de React) et les styles en
+    ligne (surcouche du serveur de développement). Le nonce imposant un rendu à chaque
+    requête, la mise en page racine attend la requête (`connection()`) : plus aucune
+    page n'est construite à l'avance, ce qui est sans effet ici (toutes les pages sont
+    des composants clients derrière une session) ;
+  - en complément, toutes les pages gardent `X-Content-Type-Options`,
+    `Referrer-Policy`, `X-Frame-Options`, `Permissions-Policy` et reçoivent
+    `Cross-Origin-Opener-Policy: same-origin` ;
+  - **API** : une couche ajoute à **toutes** les réponses, refus compris (CSRF, limite
+    de débit, 404) : `Content-Security-Policy: default-src 'none'; frame-ancestors
+'none'`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
+    `Referrer-Policy: no-referrer` et `Cache-Control: no-store`, sauf si la route a
+    choisi sa propre politique de cache (flux d'événements) ;
+  - **HSTS** : posé par le reverse proxy qui termine TLS, pas par l'application (elle
+    ne sait pas si elle est servie en HTTPS). SECURITY.md §10 donne la valeur attendue.
+- **Conséquences** :
+  - une image distante dans une réponse du modèle n'est pas chargée (refus de la CSP) ;
+  - un script tiers ou un style en ligne ajouté plus tard devra porter le nonce, ou la
+    politique être revue par une nouvelle entrée ;
+  - la CSP des pages est vérifiée dans un navigateur (aucune violation sur toutes les
+    pages, image étrangère refusée) mais pas encore par un test automatisé : ce sera
+    l'objet des tests de bout en bout en CI. Les en-têtes de l'API sont testés.

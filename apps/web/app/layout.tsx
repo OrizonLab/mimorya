@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next';
+import { connection } from 'next/server';
 import type { ReactNode } from 'react';
 import './globals.css';
 
@@ -12,7 +13,10 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  // Rendered per request: the Content Security Policy nonce (proxy.ts) is new
+  // for every page, which a page built in advance could not carry.
+  await connection();
   return (
     <html lang="fr">
       <body>{children}</body>
