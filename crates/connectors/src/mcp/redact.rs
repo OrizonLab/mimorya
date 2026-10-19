@@ -1,8 +1,9 @@
 //! The access token of an MCP server reaches neither the logs, nor the
 //! administrators, nor the model: whatever the server sends back (an error
 //! quoting the request, a tool result) is masked before leaving the connector,
-//! in every spelling a server may give it back: as is, escaped in JSON
-//! (`\/`, `\u002B`…) or encoded in a URL (`%2F`…).
+//! as is, escaped in JSON (`\/`, `\u002B`…) or encoded in a URL (`%2F`…), each
+//! character of `/ + = " \` written one way throughout (ADR-026). HTML
+//! entities, double escaping and mixed spellings are not covered.
 
 use std::fmt;
 use std::sync::Arc;
@@ -167,6 +168,7 @@ mod tests {
             "ab/cd\\u002Bef==",
             "ab\\/cd\\u002bef\\u003D\\u003D",
             "ab%2Fcd%2Bef%3D%3D",
+            "ab%2fcd%2bef%3d%3d",
         ] {
             let text = format!("Bearer {written} refusé");
             assert_eq!(redactor.text(&text), "Bearer *** refusé", "{written}");

@@ -116,7 +116,7 @@ async fn refuses_a_saved_token_the_masking_cannot_follow() {
     let token = "ancien\"jeton-0123";
     let url = serve_mcp_http(Some(token), Quirk::None).await;
     let message = failure(&url, Some(token), PRIVATE).await;
-    assert!(message.contains("saisissez-le de nouveau"), "{message}");
+    assert!(message.contains("saisissez un jeton conforme"), "{message}");
     assert!(!message.contains(token), "{message}");
 }
 

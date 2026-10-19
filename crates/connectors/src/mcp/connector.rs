@@ -132,8 +132,8 @@ async fn start(
                 .is_some_and(|token| token_problem(token).is_some())
             {
                 bail!(
-                    "Le jeton enregistré n’a plus un format accepté (RFC 6750) : saisissez-le de \
-                     nouveau"
+                    "Le jeton enregistré n’a plus un format accepté (RFC 6750) : saisissez un \
+                     jeton conforme"
                 );
             }
             let mut config = StreamableHttpClientTransportConfig::with_uri(url);

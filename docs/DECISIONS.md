@@ -1,7 +1,9 @@
 # Journal des décisions d'architecture (ADR)
 
 Format court : contexte, décision, conséquences. Une décision n'est jamais modifiée :
-elle est remplacée par une nouvelle entrée qui la référence (« remplace ADR-00X »).
+elle est remplacée ou complétée par une nouvelle entrée qui la référence (« remplace
+ADR-00X », « complète ADR-00X »). Seules des corrections rédactionnelles (libellé
+cité, renvoi) y sont faites sur place.
 
 ---
 
@@ -549,7 +551,7 @@ elle est remplacée par une nouvelle entrée qui la référence (« remplace ADR
     chiffres, `- . _ ~ + /`, puis éventuellement des `=`). La règle
     (`connectors::mcp::token_problem`) vaut à l'enregistrement et à chaque démarrage :
     un jeton enregistré avant elle et hors alphabet rend le connecteur indisponible,
-    avec le message « saisissez-le de nouveau » ;
+    avec le message « saisissez un jeton conforme » ;
   - **graphies masquées** : le jeton est masqué tel quel, échappé en JSON (`\/`,
     `\"`, `\\`, `\uXXXX` en majuscules ou minuscules) ou encodé dans une URL (`%XX`),
     pour `/ + = " \`, chaque caractère écrit d'une même façon dans tout le jeton. Les

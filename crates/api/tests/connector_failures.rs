@@ -12,7 +12,9 @@ use axum::http::StatusCode;
 use mimorya_agent::testing::{ScriptedStep, call};
 use mimorya_agent::tools::ToolRegistry;
 use mimorya_connectors::mcp::TOO_SLOW;
-use mimorya_connectors::testing::{Quirk, serve_demo_docs_http, serve_mcp_http, serve_mute};
+use mimorya_connectors::testing::{
+    Quirk, serve_demo_docs_http, serve_held_mcp_http, serve_mcp_http, serve_mute,
+};
 use mimorya_core::demo::{tenant, user};
 use serde_json::json;
 use support::TestApi;
@@ -274,19 +276,22 @@ async fn a_mute_server_delays_one_run_per_retry_delay() {
 async fn a_start_outdated_by_a_change_is_not_a_failure() {
     let api = TestApi::start_with(&PRIVATE_DEPLOYMENT).await;
     let paul = api.sign_in(user::PAUL).await;
-    let slow = serve_mcp_http(None, Quirk::SlowStart).await;
-    let id = add(&paul, mcp_body("Lent", "lent", &slow, None)).await;
+    let (held, hold) = serve_held_mcp_http().await;
+    let id = add(&paul, mcp_body("Lent", "lent", &held, None)).await;
     let connectors = &api.app.services.connectors;
 
     // Renamed while a run starts it: that start serves no configuration.
     let logs = capture_logs();
     let renamed = async {
-        tokio::time::sleep(Duration::from_millis(200)).await;
-        paul.patch(
-            &format!("/admin/connectors/{id}"),
-            json!({ "name": "Lent renommé" }),
-        )
-        .await
+        hold.reached().await;
+        let renamed = paul
+            .patch(
+                &format!("/admin/connectors/{id}"),
+                json!({ "name": "Lent renommé" }),
+            )
+            .await;
+        hold.release();
+        renamed
     };
     let (tools, renamed) = tokio::join!(connectors.tools_for(tenant::ID), renamed);
     let logged = logs.text();
