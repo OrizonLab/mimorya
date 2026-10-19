@@ -1,6 +1,6 @@
 /** French labels of the statuses and levels shown in the interface. */
 import type { ToneLabel } from '@/components/ui';
-import type { AccountStatus, OrgUnitType, Sensitivity } from '@/lib/api';
+import type { AccountStatus, OrgUnitType, Sensitivity, SkillStatus } from '@/lib/api';
 
 export const RISK_LABELS: Record<string, ToneLabel> = {
   read: { label: 'Lecture', tone: 'neutral' },
@@ -53,6 +53,12 @@ export const ACCOUNT_STATUS: Record<AccountStatus, ToneLabel> = {
   active: { label: 'Actif', tone: 'ok' },
   invited: { label: 'Invité', tone: 'neutral' },
   disabled: { label: 'Désactivé', tone: 'danger' },
+};
+
+export const SKILL_STATUS: Record<SkillStatus, ToneLabel> = {
+  draft: { label: 'Brouillon', tone: 'neutral' },
+  active: { label: 'Active', tone: 'ok' },
+  retired: { label: 'Retirée', tone: 'neutral' },
 };
 
 export const UNIT_TYPES: Record<OrgUnitType, string> = {

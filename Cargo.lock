@@ -1337,6 +1337,7 @@ dependencies = [
  "chrono",
  "mimorya-core",
  "mimorya-db",
+ "regex",
  "serde",
  "serde_json",
  "sqlx",

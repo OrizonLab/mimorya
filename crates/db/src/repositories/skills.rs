@@ -4,6 +4,9 @@ use chrono::{DateTime, Utc};
 use sqlx::PgConnection;
 use uuid::Uuid;
 
+/// Every status of a skill (`skills_status_check`).
+pub const SKILL_STATUSES: [&str; 3] = ["draft", "active", "retired"];
+
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct SkillSummary {
     pub name: String,

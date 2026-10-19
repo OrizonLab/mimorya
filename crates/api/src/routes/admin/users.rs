@@ -189,7 +189,7 @@ fn link_sender(state: &AppState) -> LinkSender<'_> {
 
 #[derive(Deserialize, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
-enum AccountStatus {
+enum StatusChange {
     Active,
     Disabled,
 }
@@ -207,7 +207,7 @@ pub struct UpdateUserBody {
     #[serde(default)]
     clearance: Option<Sensitivity>,
     #[serde(default)]
-    status: Option<AccountStatus>,
+    status: Option<StatusChange>,
     /// Replaces every attribute; `{}` removes them all.
     #[serde(default)]
     attributes: Option<Map<String, Value>>,
@@ -235,7 +235,7 @@ pub async fn update(
         job_title: body.job_title,
         org_unit_id: body.org_unit_id,
         clearance: body.clearance,
-        active: body.status.map(|s| s == AccountStatus::Active),
+        active: body.status.map(|s| s == StatusChange::Active),
         attributes: body.attributes,
     };
     update_user(&state.db, &access, id, changes).await?;

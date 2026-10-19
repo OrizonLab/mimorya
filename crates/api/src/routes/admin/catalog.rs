@@ -1,12 +1,13 @@
 //! The company's skills (managed elsewhere: this screen lists them).
 
+use axum::Json;
+use axum::extract::State;
+use mimorya_db::repositories::skills::list_skills;
+
 use crate::app::AppState;
 use crate::contract::admin::{SkillList, SkillView};
 use crate::http::ApiResult;
 use crate::plugins::Auth;
-use axum::Json;
-use axum::extract::State;
-use mimorya_db::repositories::skills::list_skills;
 
 /// Every member reads skills through the agent; this screen is for their managers.
 pub async fn skills(

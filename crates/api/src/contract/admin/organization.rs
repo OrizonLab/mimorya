@@ -2,11 +2,11 @@
 
 use mimorya_core::authz::{OrgUnit, OrgUnitType as CoreUnitType};
 use mimorya_db::repositories::users::DirectoryEntry;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use ts_rs::TS;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "snake_case")]
 pub enum OrgUnitType {
     Company,

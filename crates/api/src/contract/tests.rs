@@ -7,12 +7,15 @@ use mimorya_agent::runtime::{
     BudgetLimits, DEFAULT_BUDGET, RunEvent, RunUsageTotals, VerificationReport,
 };
 use mimorya_agent::tools::ToolCallEvaluation;
+use mimorya_core::authz::Sensitivity as CoreSensitivity;
 use mimorya_core::autonomy::ToolRisk;
 use mimorya_core::memory::{
     MemoryKind as CoreMemoryKind, MemoryScope as CoreMemoryScope, MemoryStatus as CoreMemoryStatus,
 };
 use mimorya_core::tools::Citation as ToolCitation;
 use mimorya_db::repositories::runs::RunStatus as DbRunStatus;
+use mimorya_db::repositories::skills::SKILL_STATUSES;
+use mimorya_db::repositories::users::USER_STATUSES;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
@@ -219,4 +222,22 @@ fn memory_columns_read_back_as_their_contract_values() {
     }
     let error = stored_text::<MemoryScope>("memory scope", "secret").unwrap_err();
     assert!(!error.to_string().contains("secret"));
+}
+
+#[test]
+fn administration_columns_read_back_as_their_contract_values() {
+    for status in USER_STATUSES {
+        let read: admin::AccountStatus = stored_text("account status", status).unwrap();
+        assert_eq!(serde_json::to_value(read).unwrap(), status);
+    }
+    for clearance in CoreSensitivity::ALL {
+        let read: admin::Sensitivity =
+            stored_text("account clearance", clearance.as_str()).unwrap();
+        assert_eq!(read, clearance.into());
+        assert_eq!(serde_json::to_value(read).unwrap(), clearance.as_str());
+    }
+    for status in SKILL_STATUSES {
+        let read: admin::SkillStatus = stored_text("skill status", status).unwrap();
+        assert_eq!(serde_json::to_value(read).unwrap(), status);
+    }
 }

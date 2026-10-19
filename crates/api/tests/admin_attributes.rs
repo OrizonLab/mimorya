@@ -9,9 +9,9 @@ use axum::http::StatusCode;
 use mimorya_core::demo::{tenant, user};
 use mimorya_db::testing::OTHER_USER_ID;
 use serde_json::{Value, json};
+use support::TestApi;
 use support::access::reads;
-use support::accounts::{activate, create_account, create_partial_admin, directory_entry};
-use support::{Client, TestApi};
+use support::accounts::{activate, create_partial_admin, directory_entry, holder_of};
 use uuid::Uuid;
 
 fn url(user_id: Uuid) -> String {
@@ -169,31 +169,6 @@ async fn attributes_follow_the_rules_and_the_administration_rights() {
             StatusCode::NOT_FOUND
         );
     }
-}
-
-/// A new account holding only this custom role, company-wide.
-async fn holder_of<'a>(
-    api: &'a TestApi,
-    paul: &Client<'_>,
-    login: &str,
-    permissions: &[&str],
-) -> Client<'a> {
-    let role = paul
-        .post(
-            "/admin/roles",
-            json!({ "name": format!("Rôle {login}"), "description": "Rôle de test", "permissions": permissions }),
-        )
-        .await;
-    assert_eq!(role.status, StatusCode::CREATED, "{}", role.text());
-    let mut account = create_account(paul, login).await;
-    let granted = paul
-        .post(
-            &format!("/admin/users/{}/assignments", account.id),
-            json!({ "roleId": role.json()["id"], "scope": { "type": "tenant" } }),
-        )
-        .await;
-    assert_eq!(granted.status, StatusCode::CREATED, "{}", granted.text());
-    activate(api, &mut account).await
 }
 
 #[tokio::test]
