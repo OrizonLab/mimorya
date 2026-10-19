@@ -5,8 +5,9 @@ import { defineConfig, devices } from '@playwright/test';
 /**
  * End-to-end tests (ADR-031): the real API, started with a scripted model
  * (`cargo run --example e2e_server`) on a freshly seeded database, behind the
- * production build of the web application. One worker: the tests share the
- * demo company and the model's script.
+ * production build of the web application. One worker and one pass per
+ * start, without retry: the tests share the demo company and the model's
+ * script, which a pass uses up.
  */
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 export const MAIL_DIR = path.join(root, 'target/e2e/mail');
@@ -21,6 +22,7 @@ export default defineConfig({
   workers: 1,
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
+  retries: 0,
   timeout: 60_000,
   reporter: process.env.CI ? [['list'], ['github']] : 'list',
   use: {
@@ -31,8 +33,10 @@ export default defineConfig({
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: [
     {
-      // The demo company is recreated, then the API starts with no e-mail left over.
-      command: `rm -rf ${MAIL_DIR} && cargo run --bin mimorya-seed -- --reset && cargo run -p mimorya-api --example e2e_server`,
+      // The demo company is recreated, then the API starts (it deletes the
+      // e-mails of a former start).
+      command:
+        'cargo run --bin mimorya-seed -- --reset && cargo run -p mimorya-api --example e2e_server',
       cwd: root,
       url: 'http://localhost:4000/health',
       timeout: 900_000,

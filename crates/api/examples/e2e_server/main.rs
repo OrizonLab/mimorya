@@ -6,7 +6,9 @@
 //!   cargo run -p mimorya-api --example e2e_server
 //!
 //! Reads the usual configuration (`DATABASE_APP_URL`, `WEB_ORIGIN`…) and
-//! `E2E_MAIL_DIR`, where each e-mail becomes a JSON file.
+//! `E2E_MAIL_DIR`, where each e-mail becomes a JSON file (the ones a former
+//! start left are deleted). One pass of the tests per start: the model's
+//! script and the demo company are used up.
 
 mod mailbox;
 mod scenario;
@@ -21,8 +23,12 @@ use mimorya_api::mail::Mailer;
 use mimorya_api::services::ProviderFactory;
 use mimorya_api::{AppConfig, BuildOptions, build_app, log_filter};
 
-/// Reference scenarios queued for the platform model.
-const SCENARIOS: usize = 20;
+/// Reference scenarios queued for the platform model: one per test that
+/// converses (`reference-scenario.spec.ts`).
+const SCENARIOS: usize = 1;
+
+/// Company providers' answers to their connection test.
+const CONNECTION_TESTS: usize = 20;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -33,7 +39,7 @@ async fn main() -> anyhow::Result<()> {
     let mail_dir = PathBuf::from(
         std::env::var("E2E_MAIL_DIR").unwrap_or_else(|_| "target/e2e/mail".to_string()),
     );
-    std::fs::create_dir_all(&mail_dir)?;
+    mailbox::empty(&mail_dir)?;
 
     let model = Arc::new(ScriptedProvider::new(Vec::new()));
     for _ in 0..SCENARIOS {
@@ -43,7 +49,9 @@ async fn main() -> anyhow::Result<()> {
     // A company's own provider answers « OK » (its connection test).
     let factory: ProviderFactory = Arc::new(|_config| {
         let provider: Arc<dyn LlmProvider> = Arc::new(ScriptedProvider::new(
-            (0..SCENARIOS).map(|_| ScriptedStep::text("OK")).collect(),
+            (0..CONNECTION_TESTS)
+                .map(|_| ScriptedStep::text("OK"))
+                .collect(),
         ));
         Ok(provider)
     });

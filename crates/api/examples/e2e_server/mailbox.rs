@@ -1,12 +1,28 @@
 //! E-mails written as JSON files instead of sent, for the tests to read the
 //! links they carry.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use async_trait::async_trait;
 use mimorya_api::mail::{Mail, Mailer};
 use serde_json::json;
+
+/// Creates `dir` if needed and deletes the e-mails a former start wrote
+/// there (only them: `*.json` files), so that no stale link is read.
+pub fn empty(dir: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dir)?;
+    for entry in std::fs::read_dir(dir)? {
+        let path = entry?.path();
+        if path
+            .extension()
+            .is_some_and(|extension| extension == "json")
+        {
+            std::fs::remove_file(path)?;
+        }
+    }
+    Ok(())
+}
 
 pub struct DirectoryMailer {
     dir: PathBuf,

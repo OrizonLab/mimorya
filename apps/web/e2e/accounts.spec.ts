@@ -1,15 +1,14 @@
 // Getting into an account through an e-mailed link (ADR-027, ADR-028,
 // ADR-029): a newcomer's invitation, a forgotten password, a reset link sent
 // by an administrator who never sees it.
-import { demo, DEMO_PASSWORD, expect, signIn, test, watch } from './support/fixtures';
+import { demo, DEMO_PASSWORD, expect, signIn, test } from './support/fixtures';
 import { lastLink, mailCount } from './support/mail';
 
 const CHOSEN = 'phrase-de-passe-choisie-e2e';
 
 test('a newcomer activates the account from the e-mailed invitation', async ({
   page,
-  browser,
-  violations,
+  newContext,
 }) => {
   const email = 'zoe.leroy@neo-maintenance.example';
   await signIn(page, demo.paul);
@@ -23,25 +22,24 @@ test('a newcomer activates the account from the e-mailed invitation', async ({
 
   const { link, mail } = await lastLink(email, 'invitation');
   expect(mail.text).toContain('Paul Renaud vous a créé un compte');
-  const context = await browser.newContext();
-  await watch(context, violations);
-  const newcomer = await context.newPage();
+  const newcomer = await (await newContext()).newPage();
   await newcomer.goto(link);
   await expect(newcomer.getByText('Bienvenue, Zoé Leroy')).toBeVisible();
   await newcomer.getByLabel('Mot de passe (12 caractères minimum)').fill(CHOSEN);
   await newcomer.getByLabel('Confirmation').fill(CHOSEN);
   await newcomer.getByRole('button', { name: 'Activer mon compte' }).click();
   await newcomer.waitForURL('**/chat');
-  await context.close();
 });
 
 test('a forgotten password is replaced through the e-mailed link, once', async ({
   page,
-  browser,
-  violations,
+  newContext,
 }) => {
   await page.goto('/login');
   await page.getByRole('link', { name: 'Mot de passe oublié ?' }).click();
+  // The sign-in page has a field of the same name: fill the next page's.
+  await page.waitForURL('**/forgot-password');
+  await expect(page.getByText('Indiquez l’adresse de votre compte')).toBeVisible();
   await page.getByLabel('Adresse e-mail professionnelle').fill(demo.hugo);
   await page.getByRole('button', { name: 'Recevoir un lien' }).click();
   await expect(page.getByText('Demande enregistrée')).toBeVisible();
@@ -54,16 +52,13 @@ test('a forgotten password is replaced through the e-mailed link, once', async (
   await page.getByRole('button', { name: 'Enregistrer et me connecter' }).click();
   await page.waitForURL('**/chat');
 
-  const context = await browser.newContext();
-  await watch(context, violations);
-  const later = await context.newPage();
+  const later = await (await newContext()).newPage();
   await later.goto(link);
   await expect(later.getByText('Ce lien de réinitialisation n’est plus valable')).toBeVisible();
   await signIn(later, demo.hugo, CHOSEN);
-  await context.close();
 });
 
-test('an administrator e-mails a reset link without seeing it', async ({ page }) => {
+test('an administrator e-mails a reset link without seeing it', async ({ page, newContext }) => {
   const before = await mailCount(demo.lucas);
   page.on('dialog', (dialog) => dialog.accept());
   await signIn(page, demo.paul);
@@ -79,8 +74,6 @@ test('an administrator e-mails a reset link without seeing it', async ({ page })
   expect(mail.text).toContain('Paul Renaud vous envoie ce lien');
   expect(link).toContain('/reset-password#');
   // The current password works until the link is used.
-  const context = await page.context().browser()!.newContext();
-  const lucas = await context.newPage();
+  const lucas = await (await newContext()).newPage();
   await signIn(lucas, demo.lucas, DEMO_PASSWORD);
-  await context.close();
 });

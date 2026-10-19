@@ -762,14 +762,15 @@ cité, renvoi) y sont faites sur place.
     (`mimorya-seed --reset`), démarre l'API puis l'application web construite pour la
     production (`next start`), et exécute les tests un par un (ils partagent
     l'entreprise et le script du modèle) ;
-  - chaque test échoue si une page viole la CSP ou lève une erreur (fixture
-    automatique) ; les requêtes vers un hôte réservé (`exemple.invalid`) sont refusées
-    exprès ;
+  - chaque test échoue si une page de l'un de ses contextes viole la CSP ou lève une
+    erreur (fixture automatique ; les contextes supplémentaires viennent d'une fixture
+    qui les surveille, pour qu'aucun ne soit oublié) ; les requêtes vers un hôte réservé
+    (`exemple.invalid`) sont refusées exprès ;
   - parcours couverts : scénario de référence (demande, suivi en direct jusqu'à la
     validation, validation, synthèse, exécution dans les opérations) ; invitation
     reçue par e-mail et activation ; mot de passe oublié et lien à usage unique ; lien
-    de réinitialisation envoyé par l'administrateur, sans qu'il le voie ; ouverture de
-    tous les écrans et onglets d'administration ; CSP (nonce de l'en-tête et des
+    de réinitialisation envoyé par l'administrateur, sans qu'il le voie ; chargement de
+    tous les écrans et onglets d'administration sans message d'erreur ; CSP (nonce de l'en-tête et des
     scripts, renouvelé à chaque page ; page introuvable ; image étrangère refusée ;
     en-têtes de l'API à travers le relais web) ;
   - un job de CI (`End-to-end (Playwright)`) les exécute à chaque PR sur une base
@@ -778,6 +779,9 @@ cité, renvoi) y sont faites sur place.
   - en local, `pnpm test:e2e` recrée l'entreprise de démonstration de la base désignée
     par `E2E_DATABASE_URL` (par défaut celle du développement) et occupe les ports 3000
     et 4000 ;
-  - le modèle scénarisé consomme ses réponses dans l'ordre : un seul test converse ; un
-    test qui en ajouterait un autre devra mettre en file son propre scénario ;
+  - une passe par démarrage, sans nouvel essai (`retries: 0`) : le modèle scénarisé
+    consomme ses réponses dans l'ordre (un scénario en file pour l'unique test qui
+    converse ; un test de conversation de plus devra ajouter le sien dans
+    `e2e_server`) et les tests modifient l'entreprise de démonstration, recréée à chaque
+    démarrage ; l'API supprime au démarrage les e-mails d'une exécution précédente ;
   - le parcours avec un modèle réel reste à valider (A11).

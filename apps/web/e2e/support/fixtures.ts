@@ -14,7 +14,7 @@ export const demo = {
 };
 
 /** Reports into `found` what breaks the policy or throws in `context`'s pages. */
-export async function watch(context: BrowserContext, found: string[]) {
+async function watch(context: BrowserContext, found: string[]) {
   await context.addInitScript(() => {
     document.addEventListener('securitypolicyviolation', (event) => {
       console.error(`CSP violation: ${event.violatedDirective} ${event.blockedURI}`);
@@ -26,12 +26,20 @@ export async function watch(context: BrowserContext, found: string[]) {
   context.on('weberror', (error) => found.push(`page error: ${error.error().message}`));
 }
 
+interface Fixtures {
+  /** What broke the policy or threw so far, in any context of the test. */
+  violations: string[];
+  /** Opens another browser context (another person), watched like the first one. */
+  newContext: () => Promise<BrowserContext>;
+}
+
 /**
- * Each test fails if a page of its context, or of one it `watch`es, breaks
- * the Content Security Policy (ADR-030) or throws; requests to
- * `FOREIGN_HOST` are refused on purpose.
+ * Each test fails if a page of any of its contexts breaks the Content
+ * Security Policy (ADR-030) or throws; requests to `FOREIGN_HOST` are
+ * refused on purpose. Contexts come from `newContext`, which watches them,
+ * so that none can be forgotten.
  */
-export const test = base.extend<{ violations: string[] }>({
+export const test = base.extend<Fixtures>({
   violations: [
     async ({ context }, use) => {
       const found: string[] = [];
@@ -41,6 +49,17 @@ export const test = base.extend<{ violations: string[] }>({
     },
     { auto: true },
   ],
+  newContext: async ({ browser, violations }, use) => {
+    const opened: BrowserContext[] = [];
+    await use(async () => {
+      const context = await browser.newContext();
+      await watch(context, violations);
+      opened.push(context);
+      return context;
+    });
+    // Closed before `violations` checks what they reported.
+    await Promise.all(opened.map((context) => context.close()));
+  },
 });
 
 export { expect };
