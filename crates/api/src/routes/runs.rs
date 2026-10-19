@@ -10,7 +10,7 @@ use mimorya_db::repositories::runs::{get_run, list_runs};
 use mimorya_db::repositories::tool_invocations::list_tool_invocations;
 
 use crate::app::AppState;
-use crate::contract::{RunDetail, RunList, RunSummary, RunView};
+use crate::contract::{RunDetail, RunList, RunListItem, RunView};
 use crate::http::{ApiResult, PathId};
 use crate::plugins::Auth;
 
@@ -28,7 +28,7 @@ async fn list(State(state): State<AppState>, Auth(identity): Auth) -> ApiResult<
     tx.commit().await?;
     let runs = rows
         .iter()
-        .map(RunSummary::from_row)
+        .map(RunListItem::from_row)
         .collect::<anyhow::Result<_>>()?;
     Ok(Json(RunList { runs }))
 }

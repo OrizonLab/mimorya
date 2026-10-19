@@ -15,7 +15,7 @@ pub use conversations::{
     Message, MessageAccepted, MessageMetadata, MessageRole,
 };
 pub use runs::{
-    RunBudget, RunDetail, RunEventRecord, RunList, RunRef, RunStatus, RunSummary, RunUsage,
+    RunBudget, RunDetail, RunEventRecord, RunList, RunListItem, RunRef, RunStatus, RunUsage,
     RunView, ToolInvocation, Verification,
 };
 pub use session::{AssistantStatus, AuthOptions, Done, Me, MeTenant, MeUser, OrgUnitRef};

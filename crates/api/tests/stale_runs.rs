@@ -8,6 +8,7 @@ mod support;
 
 use std::time::Duration;
 
+use mimorya_agent::runtime::DEFAULT_BUDGET;
 use mimorya_agent::testing::{ScriptedReply, ScriptedStep};
 use mimorya_api::plugins::maintenance::sweep_stale_runs;
 use mimorya_api::services::RunEventBus;
@@ -36,7 +37,7 @@ async fn running_run(api: &TestApi, tenant_id: Uuid, user_id: Uuid) -> Uuid {
             objective: "Synthèse".into(),
             success_criteria: Vec::new(),
             autonomy_level: AutonomyLevel::ExecuteWithApproval,
-            budget: json!({}),
+            budget: serde_json::to_value(DEFAULT_BUDGET).unwrap(),
         },
     )
     .await

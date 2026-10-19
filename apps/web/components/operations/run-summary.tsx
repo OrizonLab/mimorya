@@ -1,11 +1,11 @@
 import { Badge, Card, ErrorNote, LabelBadge } from '@/components/ui';
-import type { RunDetail } from '@/lib/api';
+import type { RunView } from '@/lib/api';
 import { formatCost, formatDate, formatNumber } from '@/lib/format';
 import { AUTONOMY_LABELS, RUN_STATUS } from '@/lib/labels';
 import { Stat } from './stat';
 
 /** Objective, status, autonomy, usage and verification of one run. */
-export function RunSummary({ run }: { run: RunDetail['run'] }) {
+export function RunSummary({ run }: { run: RunView }) {
   return (
     <Card className="mb-6 p-4">
       <p className="text-sm">{run.objective}</p>

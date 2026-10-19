@@ -6,6 +6,7 @@ mod support;
 use std::time::Duration;
 
 use axum::http::StatusCode;
+use mimorya_agent::runtime::DEFAULT_BUDGET;
 use mimorya_agent::testing::{ScriptedStep, call};
 use mimorya_core::autonomy::AutonomyLevel;
 use mimorya_core::demo::{tenant, user};
@@ -155,6 +156,19 @@ async fn runs_a_turn_pauses_for_validation_and_resumes_after_the_decision() {
             .unwrap()
             .contains("INT-2049")
     );
+    // How the run ended, its sources and the checks of its answer.
+    assert_eq!(thread["messages"][0]["metadata"], json!({}));
+    let metadata = &thread["messages"][1]["metadata"];
+    assert_eq!(metadata["status"], "completed");
+    assert!(
+        metadata["evidence"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|c| c["type"] == "intervention" && c["id"] == "INT-2049"),
+        "{metadata}"
+    );
+    assert_eq!(metadata["verification"]["passed"], true, "{metadata}");
     assert!(
         ids(&marc.get("/conversations").await.json(), "conversations").contains(&conversation_id)
     );
@@ -217,7 +231,7 @@ async fn waits_for_a_concurrent_turn_then_refuses_a_second_one() {
             objective: "Première demande".into(),
             success_criteria: Vec::new(),
             autonomy_level: AutonomyLevel::ExecuteWithApproval,
-            budget: json!({}),
+            budget: serde_json::to_value(DEFAULT_BUDGET).unwrap(),
         },
     )
     .await

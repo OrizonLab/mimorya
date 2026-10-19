@@ -7,7 +7,7 @@ use mimorya_agent::runtime::{BudgetLimits, DEFAULT_BUDGET, RunUsageTotals, Verif
 use mimorya_core::tools::Citation as ToolCitation;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
-use serde_json::{Value, json};
+use serde_json::json;
 
 use super::stored::stored;
 use super::*;
@@ -25,9 +25,15 @@ fn the_web_client_s_types_are_generated_from_the_contract() {
         return;
     }
     let committed = std::fs::read_to_string(contract_file()).unwrap_or_default();
+    let same_lines = generated
+        .lines()
+        .zip(committed.lines())
+        .take_while(|(expected, found)| expected == found)
+        .count();
     assert!(
         committed == generated,
-        "apps/web/lib/api/contract.ts is not generated from the current contract: run `pnpm contract`"
+        "apps/web/lib/api/contract.ts differs from the contract from line {}: run `pnpm contract`",
+        same_lines + 1
     );
 }
 
@@ -55,9 +61,10 @@ fn run_records_read_back_as_their_contract_types() {
     });
 }
 
+/// The engine's sources and checks become the message's metadata unchanged.
 #[test]
-fn message_metadata_reads_back_as_its_contract_type() {
-    let evidence = vec![
+fn message_metadata_carries_the_engine_s_sources_and_checks() {
+    let evidence = [
         ToolCitation::new("intervention", "INT-2026-0142"),
         ToolCitation::new("skill", "planning").labelled("Planification"),
     ];
@@ -66,19 +73,34 @@ fn message_metadata_reads_back_as_its_contract_type() {
         issues: Vec::new(),
         judged: false,
     };
-    for metadata in [
-        json!({}),
-        json!({ "status": "failed" }),
-        json!({ "status": "completed", "evidence": evidence, "verification": report }),
-    ] {
-        reads_back::<Value, MessageMetadata>(&metadata);
-    }
+    let metadata = MessageMetadata {
+        status: Some(RunStatus::Completed),
+        evidence: Some(evidence.iter().map(Into::into).collect()),
+        verification: Some((&report).into()),
+    };
+    let written = serde_json::to_value(&metadata).unwrap();
+    assert_eq!(
+        written,
+        json!({ "status": "completed", "evidence": evidence, "verification": report })
+    );
+    reads_back::<_, MessageMetadata>(&metadata);
+    reads_back::<_, MessageMetadata>(&MessageMetadata::default());
 }
 
 #[test]
 fn a_stored_value_off_the_contract_is_an_error_that_does_not_quote_it() {
-    let error = stored::<MessageMetadata>("message metadata", &json!({ "status": "secret" }))
-        .unwrap_err()
-        .to_string();
-    assert!(!error.contains("secret"), "{error}");
+    for stored_value in [
+        json!({ "status": "secret" }),
+        // A key the contract does not know is not dropped silently.
+        json!({ "status": "completed", "sources": ["secret"] }),
+        json!({ "evidence": [{ "type": "intervention", "id": "INT-1", "secret": true }] }),
+    ] {
+        let error = stored::<MessageMetadata>("message metadata", &stored_value)
+            .unwrap_err()
+            .to_string();
+        assert!(!error.contains("secret"), "{error}");
+    }
+    let usage = json!({ "steps": 1, "toolCalls": 0, "inputTokens": 1, "outputTokens": 1,
+                        "costMicros": 0, "cachedTokens": 1 });
+    assert!(stored::<RunUsage>("usage", &usage).is_err());
 }

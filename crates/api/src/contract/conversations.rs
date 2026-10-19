@@ -2,6 +2,7 @@
 //! started.
 
 use anyhow::bail;
+use mimorya_core::tools::Citation as ToolCitation;
 use mimorya_db::repositories::conversations::{ConversationRow, MessageRow};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -50,6 +51,7 @@ pub enum MessageRole {
 
 /// A source the agent's answer relies on: an identifier returned by a tool.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
 pub struct Citation {
     #[serde(rename = "type")]
     pub kind: String,
@@ -59,8 +61,21 @@ pub struct Citation {
     pub label: Option<String>,
 }
 
-/// What the platform records with an assistant's message.
+impl From<&ToolCitation> for Citation {
+    fn from(c: &ToolCitation) -> Self {
+        Self {
+            kind: c.kind.clone(),
+            id: c.id.clone(),
+            label: c.label.clone(),
+        }
+    }
+}
+
+/// What the platform records with a message (`messages.metadata`): written
+/// with this type (`services::runs`), read back with it, a key off the
+/// contract being an error.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
 pub struct MessageMetadata {
     /// How the run that wrote the message ended.
     #[serde(default, skip_serializing_if = "Option::is_none")]

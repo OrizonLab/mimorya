@@ -1,6 +1,7 @@
 //! Agent runs as the web client sees them: list, detail with its trace, and
 //! the run records stored as JSON (usage, budget, verification).
 
+use mimorya_agent::runtime::VerificationReport;
 use mimorya_db::repositories::run_events::RunEventRow;
 use mimorya_db::repositories::runs::{self, RunRow};
 use mimorya_db::repositories::tool_invocations::ToolInvocationRow;
@@ -39,7 +40,7 @@ impl From<runs::RunStatus> for RunStatus {
 
 /// What a run has consumed so far (`agent_runs.usage`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RunUsage {
     pub steps: u32,
     pub tool_calls: u32,
@@ -51,7 +52,7 @@ pub struct RunUsage {
 
 /// The limits a run stops at (`agent_runs.budget`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RunBudget {
     pub max_steps: u32,
     pub max_input_tokens: u64,
@@ -62,6 +63,7 @@ pub struct RunBudget {
 
 /// Checks of a run's final answer.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
 pub struct Verification {
     pub passed: bool,
     pub issues: Vec<String>,
@@ -69,10 +71,20 @@ pub struct Verification {
     pub judged: bool,
 }
 
+impl From<&VerificationReport> for Verification {
+    fn from(report: &VerificationReport) -> Self {
+        Self {
+            passed: report.passed,
+            issues: report.issues.clone(),
+            judged: report.judged,
+        }
+    }
+}
+
 /// A run in the list of the user's runs.
 #[derive(Debug, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
-pub struct RunSummary {
+pub struct RunListItem {
     pub id: Uuid,
     pub conversation_id: Option<Uuid>,
     pub objective: String,
@@ -83,7 +95,7 @@ pub struct RunSummary {
     pub finished_at: Option<String>,
 }
 
-impl RunSummary {
+impl RunListItem {
     pub fn from_row(run: &RunRow) -> anyhow::Result<Self> {
         Ok(Self {
             id: run.id,
@@ -101,7 +113,7 @@ impl RunSummary {
 /// `GET /runs`.
 #[derive(Debug, Serialize, TS)]
 pub struct RunList {
-    pub runs: Vec<RunSummary>,
+    pub runs: Vec<RunListItem>,
 }
 
 /// A run of a conversation, listed with its messages.

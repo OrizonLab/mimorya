@@ -99,7 +99,9 @@ export type Message = { id: string, role: MessageRole, content: string, runId: s
 export type MessageAccepted = { runId: string, messageId: string, };
 
 /**
- * What the platform records with an assistant's message.
+ * What the platform records with a message (`messages.metadata`): written
+ * with this type (`services::runs`), read back with it, a key off the
+ * contract being an error.
  */
 export type MessageMetadata = {
 /**
@@ -137,7 +139,12 @@ export type RunEventRecord = { seq: number, type: string, data: unknown, created
 /**
  * `GET /runs`.
  */
-export type RunList = { runs: Array<RunSummary>, };
+export type RunList = { runs: Array<RunListItem>, };
+
+/**
+ * A run in the list of the user's runs.
+ */
+export type RunListItem = { id: string, conversationId: string | null, objective: string, status: RunStatus, usage: RunUsage, error: string | null, createdAt: string, finishedAt: string | null, };
 
 /**
  * A run of a conversation, listed with its messages.
@@ -145,11 +152,6 @@ export type RunList = { runs: Array<RunSummary>, };
 export type RunRef = { id: string, status: RunStatus, createdAt: string, };
 
 export type RunStatus = "queued" | "running" | "awaiting_approval" | "completed" | "failed" | "cancelled";
-
-/**
- * A run in the list of the user's runs.
- */
-export type RunSummary = { id: string, conversationId: string | null, objective: string, status: RunStatus, usage: RunUsage, error: string | null, createdAt: string, finishedAt: string | null, };
 
 /**
  * What a run has consumed so far (`agent_runs.usage`).

@@ -11,6 +11,7 @@ use mimorya_db::repositories::runs::{RunPatch, RunStatus, get_run, update_active
 use serde_json::json;
 
 use super::db_ports::RunScope;
+use crate::contract::{self, MessageMetadata};
 
 const MAX_EVIDENCE_IN_MESSAGE: usize = 50;
 
@@ -30,7 +31,7 @@ pub async fn persist_outcome(
     };
     let mut tx = db.begin(scope.tenant_id).await?;
 
-    let (content, mut metadata) = match outcome {
+    let (content, verification) = match outcome {
         RunOutcome::AwaitingApproval { .. } => {
             patch.status = Some(RunStatus::AwaitingApproval);
             if !update_active_run(&mut tx, scope.run_id, patch).await? {
@@ -46,34 +47,37 @@ pub async fn persist_outcome(
             patch.status = Some(RunStatus::Completed);
             patch.result = Some(json!({ "answer": answer }));
             patch.verification = Some(serde_json::to_value(verification)?);
-            (
-                answer.clone(),
-                json!({ "verification": serde_json::to_value(verification)? }),
-            )
+            (answer.clone(), Some(verification.into()))
         }
         RunOutcome::Failed { error, .. } => {
             patch.status = Some(RunStatus::Failed);
             patch.error = Some(error.clone());
             (
                 format!("Je n’ai pas pu terminer cette demande : {error}"),
-                json!({}),
+                None,
             )
         }
     };
     patch.finished_at = Some(Utc::now());
+    let status = patch.status.map(contract::RunStatus::from);
     // A run failed meanwhile (stale-run sweeper) keeps its status.
     if !update_active_run(&mut tx, scope.run_id, patch).await? {
         anyhow::bail!("run {} already finished", scope.run_id);
     }
 
     if let Some(conversation_id) = scope.conversation_id {
-        let evidence: Vec<_> = checkpoint
-            .evidence
-            .iter()
-            .take(MAX_EVIDENCE_IN_MESSAGE)
-            .collect();
-        metadata["status"] = json!(outcome.status());
-        metadata["evidence"] = serde_json::to_value(evidence)?;
+        let metadata = MessageMetadata {
+            status,
+            evidence: Some(
+                checkpoint
+                    .evidence
+                    .iter()
+                    .take(MAX_EVIDENCE_IN_MESSAGE)
+                    .map(Into::into)
+                    .collect(),
+            ),
+            verification,
+        };
         add_message(
             &mut tx,
             NewMessage {
@@ -83,7 +87,7 @@ pub async fn persist_outcome(
                 content,
                 author_user_id: None,
                 run_id: Some(scope.run_id),
-                metadata,
+                metadata: serde_json::to_value(metadata)?,
             },
         )
         .await?;
@@ -139,7 +143,10 @@ pub async fn record_crash(db: &Database, scope: RunScope) -> anyhow::Result<Opti
                 content: CRASH_MESSAGE.into(),
                 author_user_id: None,
                 run_id: Some(scope.run_id),
-                metadata: json!({ "status": "failed" }),
+                metadata: serde_json::to_value(MessageMetadata {
+                    status: Some(contract::RunStatus::Failed),
+                    ..MessageMetadata::default()
+                })?,
             },
         )
         .await?;

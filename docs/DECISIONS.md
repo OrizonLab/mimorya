@@ -1010,9 +1010,11 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     structure typée (`Serialize`, champs en `camelCase`), construite depuis les lignes
     des dépôts ; les routes renvoient `Json<Type>` ;
   - les colonnes JSON écrites par la plateforme (consommation, budget et vérification
-    d'un run, métadonnées d'un message) sont relues dans leur type du contrat. Un écart
-    est une erreur interne dont le message nomme la colonne sans citer la valeur (elle
-    peut contenir un message). Des tests vérifient que les types du moteur
+    d'un run, métadonnées d'un message) sont relues dans leur type du contrat, qui
+    refuse les clés inconnues (`deny_unknown_fields`) : un écart, champ manquant ou en
+    trop, est une erreur interne dont le message nomme la colonne sans citer la valeur
+    (elle peut contenir un message). Les métadonnées d'un message sont écrites avec ce
+    même type (`MessageMetadata`) ; des tests vérifient que les types du moteur
     (`RunUsageTotals`, `BudgetLimits`, `VerificationReport`, `Citation`) s'y relisent
     sans perte ;
   - `ts-rs` (licence MIT), dans la seule crate `api`, décrit ces types en TypeScript.
