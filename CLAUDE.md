@@ -185,7 +185,13 @@ Avant chaque commit : `pnpm check && pnpm test:int` doivent passer.
 - Bout en bout : `apps/web/e2e/` (Playwright, `pnpm test:e2e`, en CI à chaque PR) contre
   l'exemple `e2e_server` (modèle scénarisé, e-mails écrits dans un dossier) ; chaque test
   échoue sur une violation de la CSP ou une erreur de page. Un parcours web nouveau ou
-  modifié s'accompagne de son test.
+  modifié s'accompagne de son test. Les tests partagent l'entreprise de démonstration
+  (recréée à chaque démarrage) et s'exécutent dans l'ordre des fichiers : chacun la
+  laisse sans effet sur les suivants. Ce qu'il crée, il le supprime quand l'API le
+  permet, même s'il échoue quand l'effet serait gênant (`afterEach`) ; un compte, que
+  l'API ne supprime pas, porte une adresse propre au test et ne garde aucun rôle métier.
+  Une assertion vérifie ce que l'API a enregistré (relu après rechargement), pas l'état
+  local d'un formulaire.
 - Toute règle d'autorisation ou d'isolation nouvelle s'accompagne d'un test qui tente
   de la contourner.
 
