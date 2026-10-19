@@ -17,28 +17,59 @@ const MAX_SPELLINGS: usize = 1000;
 
 /// Masks one secret wherever it appears. No `Debug` of the secret.
 #[derive(Clone, Default)]
-pub struct Redactor(Option<Arc<[String]>>);
+pub struct Redactor(Option<Arc<Spellings>>);
+
+struct Spellings {
+    /// The longest run of the secret without an escaped character: every
+    /// spelling holds it, so a text without it is read once, not once per
+    /// spelling.
+    core: String,
+    all: Vec<String>,
+}
+
+impl Spellings {
+    /// The spellings the text may hold.
+    fn within<'a>(&'a self, text: &'a str) -> impl Iterator<Item = &'a String> {
+        let possible = text.contains(self.core.as_str());
+        self.all
+            .iter()
+            .filter(move |spelling| possible && text.contains(spelling.as_str()))
+    }
+}
 
 impl Redactor {
     pub fn new(secret: Option<&str>) -> Self {
-        Self(
-            secret
-                .filter(|s| !s.is_empty())
-                .map(|s| spellings(s).into()),
-        )
+        Self(secret.filter(|s| !s.is_empty()).map(|secret| {
+            let core = secret
+                .split(|c| ESCAPED.contains(&c))
+                .max_by_key(|run| run.len())
+                .unwrap_or_default();
+            Arc::new(Spellings {
+                core: core.to_string(),
+                all: spellings(secret),
+            })
+        }))
     }
 
     /// Whether the text quotes the secret.
     pub fn reveals(&self, text: &str) -> bool {
         self.0
             .as_ref()
-            .is_some_and(|spellings| spellings.iter().any(|s| text.contains(s.as_str())))
+            .is_some_and(|spellings| spellings.within(text).next().is_some())
     }
 
     pub fn text(&self, text: &str) -> String {
         let mut masked = text.to_string();
-        for spelling in self.0.iter().flat_map(|s| s.iter()) {
-            masked = masked.replace(spelling.as_str(), MASK);
+        let Some(spellings) = &self.0 else {
+            return masked;
+        };
+        if !text.contains(spellings.core.as_str()) {
+            return masked;
+        }
+        for spelling in &spellings.all {
+            if masked.contains(spelling.as_str()) {
+                masked = masked.replace(spelling.as_str(), MASK);
+            }
         }
         masked
     }
@@ -142,6 +173,9 @@ mod tests {
             assert!(redactor.reveals(&text), "{written}");
         }
         assert!(!redactor.reveals("ab cd ef"));
+        // Made of escaped characters only: no shortcut, still masked.
+        let only = Redactor::new(Some("+/+/"));
+        assert_eq!(only.text("x %2B%2F%2B%2F y"), "x *** y");
         // A plain token has one spelling.
         assert_eq!(spellings("abcdef0123"), ["abcdef0123"]);
     }

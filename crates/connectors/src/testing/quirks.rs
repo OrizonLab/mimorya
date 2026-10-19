@@ -40,7 +40,7 @@ pub enum Quirk {
     EchoesTokenInResults,
     /// A tool whose title, description and schema quote the token.
     EchoesTokenInDeclarations,
-    /// One tool per page, and always a next page.
+    /// Ten tools per page, and always a next page.
     EndlessPages,
     /// Empty pages, and always a next page.
     EndlessEmptyPages,
@@ -122,16 +122,17 @@ impl ServerHandler for DeclaredToolsServer {
                     .and_then(|r| r.cursor)
                     .and_then(|c| c.parse().ok())
                     .unwrap_or(0);
-                let tool = Tool::new(
-                    format!("tool_{page}"),
-                    "Lit un élément.",
-                    Arc::new(JsonObject::new()),
-                );
-                let tools = if self.quirk == Quirk::EndlessPages {
-                    vec![tool]
+                let per_page = if self.quirk == Quirk::EndlessPages {
+                    10
                 } else {
-                    Vec::new()
+                    0
                 };
+                let tools = (0..per_page)
+                    .map(|i| {
+                        let name = format!("tool_{page}_{i}");
+                        Tool::new(name, "Lit un élément.", Arc::new(JsonObject::new()))
+                    })
+                    .collect();
                 let mut result = ListToolsResult::with_all_items(tools);
                 result.next_cursor = Some((page + 1).to_string());
                 Ok(result)

@@ -1,7 +1,7 @@
 //! What an administrator may write about an MCP connector (ADR-025): a short
-//! prefix naming its tools, an address the server may reach, an access token
-//! fit for an HTTP header, and per-tool policies that only narrow access with
-//! business permissions an agent can hold.
+//! prefix naming its tools and per-tool policies that only narrow access with
+//! business permissions an agent can hold. The address and the token follow
+//! the rules of `connectors::mcp` (`url_problem`, `token_problem`).
 
 use std::collections::{BTreeSet, HashMap};
 
@@ -13,8 +13,6 @@ use mimorya_core::autonomy::ToolRisk;
 use serde::Deserialize;
 use serde_json::Value;
 
-pub const MIN_TOKEN_CHARS: usize = 8;
-pub const MAX_TOKEN_CHARS: usize = 2000;
 /// One policy per tool a server may declare.
 pub const MAX_TOOL_POLICIES: usize = MAX_TOOLS;
 pub const MAX_TOOL_PERMISSIONS: usize = 10;
@@ -37,26 +35,6 @@ pub fn prefix_problem(prefix: &str) -> Option<String> {
         && (2..=16).contains(&prefix.len());
     (!well_formed).then(|| {
         "Préfixe invalide : une minuscule puis des minuscules ou des chiffres (2 à 16)".into()
-    })
-}
-
-/// Sent as `Authorization: Bearer …`: the `b64token` of RFC 6750, which
-/// leaves out what JSON always escapes (`"`, `\\`).
-pub fn token_problem(token: &str) -> Option<String> {
-    let length = token.chars().count();
-    if !(MIN_TOKEN_CHARS..=MAX_TOKEN_CHARS).contains(&length) {
-        return Some(format!(
-            "Jeton de {MIN_TOKEN_CHARS} à {MAX_TOKEN_CHARS} caractères"
-        ));
-    }
-    let body = token.trim_end_matches('=');
-    let well_formed = !body.is_empty()
-        && body
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || "-._~+/".contains(c));
-    (!well_formed).then(|| {
-        "Jeton invalide : lettres, chiffres et - . _ ~ + / seulement, puis éventuellement des ="
-            .into()
     })
 }
 
@@ -206,23 +184,10 @@ mod tests {
     }
 
     #[test]
-    fn checks_prefixes_and_tokens() {
+    fn checks_prefixes() {
         assert_eq!(prefix_problem("docs2"), None);
         for refused in ["d", "Docs", "2docs", "docs_x", "abcdefghijklmnopq"] {
             assert!(prefix_problem(refused).is_some(), "{refused}");
-        }
-        assert_eq!(token_problem("jeton-0123456789"), None);
-        assert_eq!(token_problem("ab/cd+ef_gh.ij~kl=="), None);
-        for refused in [
-            "court",
-            "avec espace 123",
-            "accentu\u{e9}-123",
-            "guillemet\"0123",
-            "barre\\0123456",
-            "egal=au-milieu",
-            "==========",
-        ] {
-            assert!(token_problem(refused).is_some(), "{refused}");
         }
     }
 }

@@ -6,7 +6,7 @@
 
 use std::collections::HashMap;
 
-use mimorya_connectors::mcp::{tool_namespace, url_problem};
+use mimorya_connectors::mcp::{token_problem, tool_namespace, url_problem};
 use mimorya_core::DomainError;
 use mimorya_core::authz::PermissionInfo;
 use mimorya_db::Database;
@@ -19,7 +19,7 @@ use mimorya_db::repositories::connectors::{
 use serde_json::{Value, json};
 use uuid::Uuid;
 
-use super::connector_rules::{ToolPolicyInput, checked_policies, prefix_problem, token_problem};
+use super::connector_rules::{ToolPolicyInput, checked_policies, prefix_problem};
 use super::{audit_entry, begin_change, is_unique_violation};
 use crate::secrets::SecretStore;
 use crate::services::AccessContext;
