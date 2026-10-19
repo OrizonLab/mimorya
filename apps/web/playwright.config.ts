@@ -48,8 +48,8 @@ export default defineConfig({
         DEMO_PASSWORD: 'demo-mimorya',
         WEB_ORIGIN: 'http://localhost:3000',
         LLM_PROVIDER: 'none',
-        // A test key, so that the administration can store secrets (a token,
-        // an API key): they are sealed with it.
+        // A public test key (`PUBLIC_TEST_MASTER_KEYS`, refused in production),
+        // so that the administration can store secrets (a token, an API key).
         MIMORYA_MASTER_KEY: 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=',
         LOGIN_RATE_LIMIT_PER_MINUTE: '1000',
         LOG_LEVEL: 'warn',

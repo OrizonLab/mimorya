@@ -135,7 +135,7 @@ impl AppConfig {
             .value("MIMORYA_ASSISTANT_NAME")
             .unwrap_or_else(|| "Mimorya".to_string());
         let llm = reader.llm();
-        let secrets = reader.master_key();
+        let secrets = reader.master_key(env);
         let tenant_llm_endpoints = reader.endpoints("MIMORYA_TENANT_LLM_ENDPOINTS");
         let mcp_network = NetworkPolicy {
             allow_private_network: reader.boolean("MIMORYA_MCP_ALLOW_PRIVATE_NETWORK", false),

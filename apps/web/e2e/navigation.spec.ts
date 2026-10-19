@@ -2,6 +2,7 @@
 // page error nor a policy violation (the fixture checks the last two),
 // including each administration tab.
 import type { Page } from '@playwright/test';
+import { noError } from './support/admin';
 import { demo, expect, signIn, test } from './support/fixtures';
 
 const PAGES = [
@@ -27,8 +28,7 @@ const ADMIN_TABS = [
 /** Waits for what the screen loads, then checks that nothing failed. */
 async function loadedWithoutError(page: Page) {
   await expect(page.getByText('Chargement…')).toHaveCount(0);
-  // An error message is an alert with text (Next.js's route announcer is empty).
-  await expect(page.getByRole('alert').filter({ hasText: /\S/ })).toHaveCount(0);
+  await noError(page);
 }
 
 test('every screen of an administrator loads', async ({ page }) => {

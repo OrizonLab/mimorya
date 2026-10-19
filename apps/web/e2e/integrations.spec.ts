@@ -16,13 +16,19 @@ test.beforeEach(({ page }) => {
 });
 
 test.afterEach(async ({ page }) => {
-  // With the test's session; nothing to undo answers an error, ignored.
-  await page.request.delete('/api/admin/llm', { headers: WRITE });
+  // With the test's session. 404: the platform's model is already in use;
+  // 401: the test never signed in, so changed nothing.
+  const reset = await page.request.delete('/api/admin/llm', { headers: WRITE });
+  expect([200, 401, 404]).toContain(reset.status());
+  if (reset.status() === 401) return;
   const listed = await page.request.get('/api/admin/connectors');
-  if (!listed.ok()) return;
+  expect(listed.ok()).toBe(true);
   const { instances } = (await listed.json()) as Connectors;
   for (const connector of instances.filter((c) => c.name === SERVER)) {
-    await page.request.delete(`/api/admin/connectors/${connector.id}`, { headers: WRITE });
+    const deleted = await page.request.delete(`/api/admin/connectors/${connector.id}`, {
+      headers: WRITE,
+    });
+    expect(deleted.ok()).toBe(true);
   }
 });
 

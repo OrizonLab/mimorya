@@ -5,8 +5,9 @@ use std::sync::Arc;
 
 use mimorya_agent::llm::{PROVIDER_KINDS, ProviderConfig};
 
+use super::Environment;
 use crate::mail::MailSettings;
-use crate::secrets::SecretCipher;
+use crate::secrets::{PUBLIC_TEST_MASTER_KEYS, SecretCipher};
 
 pub(super) fn is_http_url(value: &str) -> bool {
     value.starts_with("http://") || value.starts_with("https://")
@@ -51,8 +52,15 @@ impl Reader<'_> {
         }
     }
 
-    pub(super) fn master_key(&mut self) -> Option<Arc<SecretCipher>> {
+    pub(super) fn master_key(&mut self, env: Environment) -> Option<Arc<SecretCipher>> {
         let encoded = self.value("MIMORYA_MASTER_KEY")?;
+        if env == Environment::Production && PUBLIC_TEST_MASTER_KEYS.contains(&encoded.trim()) {
+            return self.invalid(
+                "MIMORYA_MASTER_KEY",
+                "clé publiée par les tests, refusée en production : générez-en une \
+                 (openssl rand -base64 32)",
+            );
+        }
         match SecretCipher::from_base64(&encoded) {
             Ok(cipher) => Some(Arc::new(cipher)),
             Err(_) => self.invalid(
