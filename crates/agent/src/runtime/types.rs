@@ -4,12 +4,12 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use mimorya_core::authz::{Actor, AuthorizationEngine, Subject};
+use mimorya_core::authz::Actor;
 use mimorya_core::autonomy::AutonomyPolicy;
 use uuid::Uuid;
 
 use super::budget::BudgetLimits;
-use super::ports::EnginePorts;
+use super::ports::{AccessSource, EnginePorts};
 use super::state::{PendingApproval, RunCheckpoint};
 use super::verification::VerificationReport;
 use crate::llm::{Effort, ModelRouter, PriceTable};
@@ -18,7 +18,8 @@ use crate::tools::ToolRegistry;
 #[derive(Clone)]
 pub struct RuntimeDeps {
     pub router: ModelRouter,
-    pub engine: Arc<AuthorizationEngine>,
+    /// The user's rights, read again before each step.
+    pub access: Arc<dyn AccessSource>,
     pub registry: Arc<ToolRegistry>,
     pub ports: EnginePorts,
     pub prices: Arc<PriceTable>,
@@ -31,14 +32,14 @@ pub struct RuntimeDeps {
 impl RuntimeDeps {
     pub fn new(
         router: ModelRouter,
-        engine: Arc<AuthorizationEngine>,
+        access: Arc<dyn AccessSource>,
         registry: Arc<ToolRegistry>,
         ports: EnginePorts,
         prices: Arc<PriceTable>,
     ) -> Self {
         Self {
             router,
-            engine,
+            access,
             registry,
             ports,
             prices,
@@ -59,7 +60,6 @@ pub struct VerificationConfig {
 #[derive(Debug, Clone)]
 pub struct RunConfig {
     pub run_id: Uuid,
-    pub subject: Arc<Subject>,
     pub actor: Actor,
     pub objective: String,
     pub autonomy: AutonomyPolicy,

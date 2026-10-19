@@ -12,7 +12,7 @@ use mimorya_agent::runtime::{
     AgentRuntime, BudgetLimits, DEFAULT_BUDGET, RunConfig, RunOutcome, RuntimeDeps, StartInput,
     VerificationConfig,
 };
-use mimorya_agent::testing::{InMemoryPorts, ScriptedProvider, ScriptedStep};
+use mimorya_agent::testing::{InMemoryPorts, ScriptedProvider, ScriptedStep, TestAccess};
 use mimorya_agent::tools::ToolRegistry;
 use mimorya_core::authz::{Actor, ResourceRef, Subject};
 use mimorya_core::autonomy::{AutonomyLevel, AutonomyPolicy, ToolRisk};
@@ -191,6 +191,8 @@ impl TypedTool for DocRead {
 #[derive(Default)]
 pub struct Options {
     pub subject: Option<Subject>,
+    /// The rights read at each step (by default, the subject's all along).
+    pub access: Option<Arc<TestAccess>>,
     pub budget: Option<BudgetLimits>,
     pub criteria: Vec<String>,
     pub judge: Option<Vec<ScriptedStep>>,
@@ -252,9 +254,12 @@ pub fn setup(steps: Vec<ScriptedStep>, options: Options) -> Harness {
     if let Some(judge) = &judge {
         router = router.with_verification(judge.clone());
     }
+    let access = options.access.unwrap_or_else(|| {
+        TestAccess::fixed(Arc::new(demo::authorization_engine()), subject.clone())
+    });
     let mut deps = RuntimeDeps::new(
         router,
-        Arc::new(demo::authorization_engine()),
+        access,
         Arc::new(ToolRegistry::new(tools, &HashMap::new()).unwrap()),
         ports.ports(),
         Arc::new(PriceTable::default()),
@@ -262,7 +267,6 @@ pub fn setup(steps: Vec<ScriptedStep>, options: Options) -> Harness {
     deps.retry_delay = Duration::from_millis(1);
     let config = RunConfig {
         run_id,
-        subject,
         actor: Actor::agent(Some(run_id)),
         objective: "Synthèse des interventions".into(),
         autonomy: AutonomyPolicy::new(AutonomyLevel::ExecuteWithApproval),

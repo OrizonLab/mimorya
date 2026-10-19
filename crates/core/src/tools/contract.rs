@@ -226,6 +226,11 @@ impl BoundAuthorization {
         }
     }
 
+    /// The rules the call is evaluated with (as they stood when it started).
+    pub fn engine(&self) -> &AuthorizationEngine {
+        &self.engine
+    }
+
     pub fn scope(&self, permission: &str) -> DataScope {
         self.engine
             .data_scope(&self.subject, permission, &self.actor)

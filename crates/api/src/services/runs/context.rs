@@ -24,11 +24,7 @@ pub async fn build_tool_registry(
     connectors: &ConnectorService,
 ) -> anyhow::Result<ToolRegistry> {
     let connector_tools = connectors.tools_for(access.subject.tenant_id).await?;
-    let mut tools = platform_tools(
-        access.engine.clone(),
-        ports.memory.clone(),
-        ports.skills.clone(),
-    );
+    let mut tools = platform_tools(ports.memory.clone(), ports.skills.clone());
     tools.extend(connector_tools.tools);
     ToolRegistry::new(tools, &connector_tools.overrides)
 }

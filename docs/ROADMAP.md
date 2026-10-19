@@ -9,7 +9,7 @@ Légende des statuts — tenue à jour à chaque contribution :
 | 🟡     | Partiel : socle en place, fonctionnalité incomplète (détail indiqué)       |
 | 🔜     | Planifié, non implémenté                                                   |
 
-Dernière mise à jour : 2026-10-19 (pile conteneurisée de production, ADR-034).
+Dernière mise à jour : 2026-10-19 (droits d'un run relus à chaque étape, ADR-035).
 
 ## Phase 1 — Fondations et MVP fonctionnel
 
@@ -61,7 +61,7 @@ Dernière mise à jour : 2026-10-19 (pile conteneurisée de production, ADR-034)
 - **Connecteurs MCP** : rendre remplaçables par l'administrateur les descriptions d'outils fournies par le serveur (elles sont désormais bornées) ; tester un serveur avant de l'enregistrer ; mandataire HTTP sortant configurable pour les serveurs MCP. Borner la taille des réponses des serveurs MCP (la bibliothèque `rmcp` lit les corps en entier, dans la limite du délai) ; vérifier la vivacité d’une session MCP gardée en cache (la plateforme ne la reconstruit qu’au changement de configuration suivant ou au redémarrage) ; les runs lancés pendant une tentative de démarrage (une par minute au plus après un échec) l’attendent chacun, jusqu’au délai : partager la tentative en cours, ou démarrer en arrière-plan sans faire attendre les runs ; signaler aux runs les connecteurs indisponibles (`TenantTools.issues` n’est aujourd’hui lu que par les tests).
 - **Modèle par entreprise** : enregistrer dans `usage_records` si un appel a utilisé le fournisseur de la plateforme ou celui de l'entreprise (avec la facturation, phase 3) ; comparer après NFC les attributs de ressource quand des connecteurs externes en fourniront.
 - **Runs marqués en échec par le balayage** : l'événement `run_finished` n'est pas émis ; un client déjà abonné au flux ne l'apprend qu'en se reconnectant.
-- **Administration** : tracer aussi les actions d'administration refusées (sur soi-même, sans périmètre entreprise) avec leur raison ; interrompre ou réévaluer les runs en cours d'un compte désactivé ou privé d'une habilitation (aujourd'hui : droits figés au démarrage du run, SECURITY.md §5).
+- **Administration** : tracer aussi les actions d'administration refusées (sur soi-même, sans périmètre entreprise) avec leur raison. (Fait : les runs en cours relisent les droits à chaque étape, ADR-035.)
 
 ## Phase 2 — Intelligence avancée
 

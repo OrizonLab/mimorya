@@ -14,7 +14,8 @@ use mimorya_agent::runtime::{
     StartInput, UserProfileContext, VerificationConfig, build_system_prompt, build_user_turn,
 };
 use mimorya_agent::testing::{
-    InMemoryPorts, RecordedRequest, ScriptedProvider, ScriptedStep, SkillFixture, memory_fixture,
+    InMemoryPorts, RecordedRequest, ScriptedProvider, ScriptedStep, SkillFixture, TestAccess,
+    memory_fixture,
 };
 use mimorya_agent::tools::{ToolCallEvaluation, ToolExecutor, ToolRegistry};
 use mimorya_connectors::demo_interventions::{DemoInterventionsStore, demo_intervention_tools};
@@ -165,7 +166,6 @@ impl Scenario {
         let store = Arc::new(DemoInterventionsStore::new(reference()));
         let engine_ports = ports.ports();
         let mut tools = mimorya_agent::tools::platform::platform_tools(
-            engine.clone(),
             engine_ports.memory.clone(),
             engine_ports.skills.clone(),
         );
@@ -173,7 +173,7 @@ impl Scenario {
         let provider = Arc::new(ScriptedProvider::new(steps));
         let mut deps = RuntimeDeps::new(
             ModelRouter::new(provider.clone()),
-            engine,
+            TestAccess::fixed(engine, subject),
             Arc::new(ToolRegistry::new(tools, &HashMap::new()).unwrap()),
             engine_ports,
             Arc::new(PriceTable::default()),
@@ -181,7 +181,6 @@ impl Scenario {
         deps.retry_delay = Duration::from_millis(1);
         let config = RunConfig {
             run_id,
-            subject,
             actor: Actor::agent(Some(run_id)),
             objective: REQUEST.into(),
             autonomy: AutonomyPolicy::new(AutonomyLevel::ExecuteWithApproval),

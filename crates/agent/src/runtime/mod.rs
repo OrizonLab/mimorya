@@ -16,11 +16,11 @@ pub mod verification;
 pub use budget::{BudgetLimits, DEFAULT_BUDGET, check_budget};
 pub use context::{UserProfileContext, build_system_prompt, build_user_turn, french_date};
 pub use ports::{
-    ApprovalRequest, ApprovalStore, AuditSink, EngineAuditEntry, EnginePorts, MemoryHit,
-    MemoryStore, NewMemory, RunEvent, RunEventSink, RunStore, SkillContent, SkillStore,
-    SkillSummary, ToolInvocationLog, ToolInvocationRecord, UsageRecord, UsageSink,
+    AccessSource, ApprovalRequest, ApprovalStore, AuditSink, CurrentAccess, EngineAuditEntry,
+    EnginePorts, MemoryHit, MemoryStore, NewMemory, RunEvent, RunEventSink, RunStore, SkillContent,
+    SkillStore, SkillSummary, ToolInvocationLog, ToolInvocationRecord, UsageRecord, UsageSink,
 };
-pub use runtime::{AgentRuntime, StartInput};
+pub use runtime::{ACCOUNT_INACTIVE, AgentRuntime, StartInput};
 pub use state::{PendingApproval, PendingCalls, RunCheckpoint, RunUsageTotals};
 pub use types::{
     ApprovalDecision, ApprovalDecisions, RunConfig, RunOutcome, RuntimeDeps, VerificationConfig,

@@ -1,30 +1,31 @@
 //! Agent run loop: call the model, enforce policies on every tool call, pause
 //! for human validation, verify the final answer and correct it within
-//! bounds. Every step is checkpointed so that a run can be resumed.
+//! bounds. Every step is checkpointed so that a run can be resumed. The
+//! user's rights are read again before each model call and before the tool
+//! calls it returns (ADR-035): an account no longer active ends the run, a
+//! right withdrawn no longer counts.
 //!
 //! The loop only orchestrates; the details live next to it:
 //!   tool_calls.rs     policy enforcement and execution of tool calls
-//!   model_call.rs     retries and usage accounting of model calls
+//!   model_call.rs     model calls, their retries and usage accounting
 //!   answer_review.rs  verification of the final answer
 
-use std::sync::Arc;
 use std::time::Instant;
 
 use serde_json::json;
 
 use super::answer_review::{AnswerReview, present_answer, review_answer};
 use super::budget::check_budget;
-use super::model_call::{complete_with_retry, record_model_usage};
-use super::ports::RunEvent;
+use super::model_call::{ModelTurn, call_model, record_model_usage};
+use super::ports::{CurrentAccess, RunEvent};
 use super::state::{PendingCalls, RunCheckpoint};
 use super::tool_calls::{ToolCallProcessor, order_by_request};
 use super::types::{ApprovalDecisions, RunConfig, RunOutcome, RuntimeDeps};
 use super::verification::correction_message;
-use crate::llm::{
-    LlmErrorKind, LlmMessage, LlmRequest, LlmResponse, LlmToolCall, LlmToolResult, StopReason,
-    TaskClass,
-};
-use crate::tools::{ToolExecutor, to_tool_spec};
+use crate::llm::{LlmMessage, LlmResponse, LlmToolCall, LlmToolResult, StopReason, TaskClass};
+
+/// Why a run stops when its user's account is no longer active.
+pub const ACCOUNT_INACTIVE: &str = "Arrêt : le compte de l’utilisateur n’est plus actif";
 
 pub struct StartInput {
     pub system: String,
@@ -39,24 +40,9 @@ pub struct AgentRuntime {
     tools: ToolCallProcessor,
 }
 
-enum ModelTurn {
-    Response(Box<LlmResponse>),
-    Failed(String),
-}
-
 impl AgentRuntime {
     pub fn new(deps: RuntimeDeps, config: RunConfig) -> Self {
-        let executor = ToolExecutor::new(
-            deps.engine.clone(),
-            deps.registry.clone(),
-            config.subject.clone(),
-            config.actor.clone(),
-            config.autonomy.clone(),
-            config.run_id,
-            deps.ports.deliverables.clone(),
-            deps.tool_timeout,
-        );
-        let tools = ToolCallProcessor::new(executor, deps.ports.clone());
+        let tools = ToolCallProcessor::new(&deps, &config);
         Self {
             deps,
             config,
@@ -100,6 +86,9 @@ impl AgentRuntime {
             });
         }
 
+        let Some(access) = self.deps.access.current().await? else {
+            return self.end_for_inactive_account(checkpoint).await;
+        };
         let mut state = checkpoint;
         let mut results = pending.completed_results;
         for approval in &pending.approvals {
@@ -142,6 +131,7 @@ impl AgentRuntime {
                             &approval.tool_call_id,
                             approval.input.clone(),
                             Some(approval.approval_id),
+                            &access,
                         )
                         .await?
                 }
@@ -172,7 +162,11 @@ impl AgentRuntime {
                     .await;
             }
 
-            let response = match self.call_model(&mut state).await? {
+            let Some(access) = self.deps.access.current().await? else {
+                return self.end_for_inactive_account(state).await;
+            };
+
+            let response = match call_model(&self.deps, &self.config, &mut state, &access).await? {
                 ModelTurn::Response(response) => response,
                 ModelTurn::Failed(error) => {
                     return self
@@ -200,7 +194,15 @@ impl AgentRuntime {
             }
 
             if !response.tool_calls.is_empty() {
-                if let Some(paused) = self.handle_tool_turn(&mut state, &response).await? {
+                // The model may have taken a while: its calls are judged with
+                // the rights as they stand now.
+                let Some(access) = self.deps.access.current().await? else {
+                    return self.end_for_inactive_account(state).await;
+                };
+                if let Some(paused) = self
+                    .handle_tool_turn(&mut state, &response, &access)
+                    .await?
+                {
                     return self.conclude(paused).await;
                 }
                 continue;
@@ -272,55 +274,12 @@ impl AgentRuntime {
         }
     }
 
-    /// One model call with the tools visible to the subject; provider failures end the run.
-    async fn call_model(&self, state: &mut RunCheckpoint) -> anyhow::Result<ModelTurn> {
-        let deps = &self.deps;
-        let tools = deps
-            .registry
-            .visible_to(
-                &deps.engine,
-                &self.config.subject,
-                &self.config.actor,
-                &self.config.autonomy,
-            )
-            .into_iter()
-            .map(to_tool_spec)
-            .collect();
-        let events = deps.ports.events.clone();
-        let request = LlmRequest {
-            system: state.system.clone(),
-            messages: state.messages.clone(),
-            tools,
-            max_output_tokens: None,
-            effort: self.config.effort,
-            on_text_delta: Some(Arc::new(move |text: &str| events.publish_delta(text))),
-        };
-        let provider = deps.router.provider_for(TaskClass::Agent);
-        match complete_with_retry(
-            provider.as_ref(),
-            &request,
-            deps.max_provider_retries,
-            deps.retry_delay,
-        )
-        .await
-        {
-            Ok(response) => {
-                state.usage.steps += 1;
-                record_model_usage(&deps.ports, &deps.prices, state, &response).await?;
-                Ok(ModelTurn::Response(Box::new(response)))
-            }
-            Err(error) if error.kind == LlmErrorKind::Aborted => {
-                Ok(ModelTurn::Failed("Exécution annulée".into()))
-            }
-            Err(error) => Ok(ModelTurn::Failed(error.message)),
-        }
-    }
-
     /// Returns an outcome when the run must pause for validation.
     async fn handle_tool_turn(
         &self,
         state: &mut RunCheckpoint,
         response: &LlmResponse,
+        access: &CurrentAccess,
     ) -> anyhow::Result<Option<RunOutcome>> {
         let ports = &self.deps.ports;
         if !response.text.is_empty() {
@@ -341,7 +300,10 @@ impl AgentRuntime {
             return Ok(None);
         }
 
-        let turn = self.tools.process_turn(state, &response.tool_calls).await?;
+        let turn = self
+            .tools
+            .process_turn(state, &response.tool_calls, access)
+            .await?;
         if !turn.awaiting.is_empty() {
             state.pending = Some(PendingCalls {
                 completed_results: turn.results,
@@ -357,6 +319,17 @@ impl AgentRuntime {
         });
         ports.runs.checkpoint(state).await?;
         Ok(None)
+    }
+
+    async fn end_for_inactive_account(
+        &self,
+        checkpoint: RunCheckpoint,
+    ) -> anyhow::Result<RunOutcome> {
+        self.conclude(RunOutcome::Failed {
+            error: ACCOUNT_INACTIVE.into(),
+            checkpoint,
+        })
+        .await
     }
 
     /// Records the outcome, then announces it: listeners must find it saved.

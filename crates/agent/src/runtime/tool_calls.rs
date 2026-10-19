@@ -1,17 +1,26 @@
 //! Handling of the tool calls of one assistant turn: each call goes through
-//! the policy enforcement point, then is denied, queued for human validation
-//! or executed. Every outcome is logged, audited and streamed.
+//! the policy enforcement point, with the rights of the current step, then is
+//! denied, queued for human validation or executed. Every outcome is logged,
+//! audited and streamed.
 
+use std::sync::Arc;
+use std::time::Duration;
+
+use mimorya_core::authz::Actor;
+use mimorya_core::autonomy::AutonomyPolicy;
 use serde_json::{Value, json};
 use uuid::Uuid;
 
 use super::ports::{
-    ApprovalRequest, EngineAuditEntry, EnginePorts, RunEvent, ToolInvocationRecord,
+    ApprovalRequest, CurrentAccess, EngineAuditEntry, EnginePorts, RunEvent, ToolInvocationRecord,
 };
 use super::state::{PendingApproval, RunCheckpoint};
+use super::types::{RunConfig, RuntimeDeps};
 use crate::llm::{LlmMessage, LlmToolCall, LlmToolResult};
 use crate::tools::executor::INVALID_INPUT;
-use crate::tools::{RegisteredTool, ToolCallEvaluation, ToolExecutor, wrap_untrusted};
+use crate::tools::{
+    RegisteredTool, ToolCallEvaluation, ToolExecutor, ToolRegistry, wrap_untrusted,
+};
 
 #[derive(Debug, Default)]
 pub struct TurnToolResults {
@@ -22,27 +31,54 @@ pub struct TurnToolResults {
 }
 
 pub struct ToolCallProcessor {
-    executor: ToolExecutor,
+    registry: Arc<ToolRegistry>,
+    actor: Actor,
+    autonomy: AutonomyPolicy,
+    run_id: Uuid,
+    timeout: Duration,
     ports: EnginePorts,
 }
 
 impl ToolCallProcessor {
-    pub fn new(executor: ToolExecutor, ports: EnginePorts) -> Self {
-        Self { executor, ports }
+    pub fn new(deps: &RuntimeDeps, config: &RunConfig) -> Self {
+        Self {
+            registry: deps.registry.clone(),
+            actor: config.actor.clone(),
+            autonomy: config.autonomy.clone(),
+            run_id: config.run_id,
+            timeout: deps.tool_timeout,
+            ports: deps.ports.clone(),
+        }
     }
 
     pub fn tool(&self, name: &str) -> Option<RegisteredTool> {
-        self.executor.registry().get(name).cloned()
+        self.registry.get(name).cloned()
+    }
+
+    /// The policy enforcement point with the rights of the current step.
+    fn executor(&self, access: &CurrentAccess) -> ToolExecutor {
+        ToolExecutor::new(
+            access.engine.clone(),
+            self.registry.clone(),
+            access.subject.clone(),
+            self.actor.clone(),
+            self.autonomy.clone(),
+            self.run_id,
+            self.ports.deliverables.clone(),
+            self.timeout,
+        )
     }
 
     pub async fn process_turn(
         &self,
         state: &mut RunCheckpoint,
         calls: &[LlmToolCall],
+        access: &CurrentAccess,
     ) -> anyhow::Result<TurnToolResults> {
+        let executor = self.executor(access);
         let mut turn = TurnToolResults::default();
         for call in calls {
-            let evaluation = self.executor.evaluate(call);
+            let evaluation = executor.evaluate(call);
             let (title, reason) = match &evaluation {
                 ToolCallEvaluation::Allow { tool, .. } => (tool.info.title.clone(), None),
                 ToolCallEvaluation::RequireApproval { tool, reason, .. } => {
@@ -78,15 +114,18 @@ impl ToolCallProcessor {
                         .push(self.request_approval(call, &tool, input, reason).await?);
                 }
                 ToolCallEvaluation::Allow { tool, input } => {
-                    turn.results
-                        .push(self.run(state, &tool, &call.id, input, None).await?);
+                    turn.results.push(
+                        self.run(state, &tool, &call.id, input, None, access)
+                            .await?,
+                    );
                 }
             }
         }
         Ok(turn)
     }
 
-    /// Executes an allowed (or human-approved) call and turns its result into model input.
+    /// Executes an allowed (or human-approved) call, with the rights of the
+    /// current step, and turns its result into model input.
     pub async fn run(
         &self,
         state: &mut RunCheckpoint,
@@ -94,8 +133,9 @@ impl ToolCallProcessor {
         tool_call_id: &str,
         input: Value,
         approval_id: Option<Uuid>,
+        access: &CurrentAccess,
     ) -> anyhow::Result<LlmToolResult> {
-        let (result, duration_ms) = self.executor.execute(tool, input.clone()).await;
+        let (result, duration_ms) = self.executor(access).execute(tool, input.clone()).await;
         state.usage.tool_calls += 1;
         if !result.is_error {
             state.evidence.extend(result.citations.iter().cloned());

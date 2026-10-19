@@ -9,6 +9,7 @@ mod deliverables;
 mod executor;
 mod knowledge_ports;
 mod outcome;
+mod run_access;
 mod service;
 
 pub use approval_decision::DecisionInput;

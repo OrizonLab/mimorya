@@ -946,3 +946,37 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - les images de base ne sont pas épinglées par empreinte (`rust:1-bookworm`,
     `node:22-bookworm-slim`, `caddy:2.10-alpine`, `pgvector/pgvector:pg16`) : une
     reconstruction peut prendre une version corrective plus récente.
+
+## ADR-035 — Droits d'un run relus à chaque étape
+
+- **Date** : 2026-10-19 · **Statut** : acceptée
+- **Contexte** : un run calculait les droits de son utilisateur à son démarrage et les
+  gardait jusqu'à sa fin. Un compte désactivé, ou privé d'une habilitation, pendant un
+  run pouvait donc encore agir par l'agent jusqu'à la fin du budget de durée (relevé
+  par les audits, SECURITY.md §5).
+- **Décision** :
+  - nouveau port du moteur, `AccessSource` (`crates/agent/src/runtime/ports.rs`) : il
+    rend les droits actuels (`CurrentAccess` : règles de l'entreprise et sujet), ou
+    `None` quand le compte n'est plus actif. `RuntimeDeps` le porte à la place du
+    moteur d'autorisation figé, et `RunConfig` ne porte plus de sujet ;
+  - la boucle le relit **avant chaque appel au modèle** (outils proposés), **avant les
+    appels d'outils** que renvoie la réponse (elle a pu prendre du temps) et **à la
+    reprise** après validation (les appels approuvés s'exécutent avec les droits de ce
+    moment). Un compte inactif termine le run en échec (« Arrêt : le compte de
+    l'utilisateur n'est plus actif »), sans autre appel au modèle ni action ;
+  - les outils mémoire lisent les règles dans le contexte d'autorisation de l'appel
+    (`ctx.authz.engine()`), plus dans une copie prise à la construction du registre ;
+  - l'API l'implémente avec le service d'accès des requêtes (`RunAccess`,
+    `AccessService::user_context`) : règles de l'entreprise depuis son cache (invalidé
+    par chaque changement d'administration), compte, habilitations et attributs depuis
+    la base, à chaque lecture ;
+  - tests : moteur (`crates/agent/tests/runtime_access.rs`, droits successifs simulés
+    par `testing::TestAccess`) et API (`crates/api/tests/run_access.rs` : compte
+    désactivé, puis rôle retiré, pendant la réponse du modèle).
+- **Conséquences** :
+  - une lecture de plus en base par étape (et par tour d'outils) : quelques requêtes,
+    négligeables devant un appel au modèle ;
+  - un outil déjà en cours d'exécution n'est pas interrompu (son délai est borné) ;
+  - les règles de l'entreprise modifiées directement en base, hors administration, ne
+    comptent qu'à l'expiration du cache (30 s), comme pour les requêtes ; la suspension
+    d'une entreprise n'arrête pas encore un run en cours (elle ferme les sessions).

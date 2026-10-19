@@ -33,6 +33,7 @@ flowchart TB
     DL[Delegation<br/>sous-agents]
   end
   subgraph Ports["Ports (implémentés par crates/api sur crates/db)"]
+    AC[AccessSource]
     RS[RunStore]
     AS[AuditSink]
     AP[ApprovalStore]
@@ -42,7 +43,7 @@ flowchart TB
   RT --> CB & PR & TE & VF & BG
   CB --> MS & SK
   TE --> AS & AP
-  RT --> RS & US
+  RT --> RS & US & AC
   MS --> MSt
   DL --> RT
 ```
@@ -54,8 +55,10 @@ run(objective, subject, options)
   contexte ← ContextBuilder(subject)            # consignes fixes + contexte orga + mémoires + index des compétences
   tant que non terminé :
     Budget.vérifier()                           # étapes, tokens, coût, durée → arrêt propre si dépassé
+    sujet ← AccessSource.actuel()               # droits relus ; compte inactif → arrêt (ADR-035)
     réponse ← LLM(contexte, outils visibles par le sujet)
     si appels d'outils :
+      sujet ← AccessSource.actuel()             # relus encore : la réponse a pu prendre du temps
       pour chaque appel :
         décision ← PEP(sujet, outil, entrée)
         allow            → exécuter (délai max, signal d'annulation), résultat balisé NON FIABLE
@@ -72,6 +75,12 @@ run(objective, subject, options)
 **Outils visibles** : un outil n'est proposé au modèle que si le sujet détient ses
 permissions requises (dans au moins un périmètre) et que le niveau d'autonomie ne
 l'interdit pas. Le PEP revérifie à l'exécution (défense en profondeur).
+
+**Droits relus à chaque étape** (ADR-035) : le sujet n'est pas figé au démarrage. Le port
+`AccessSource` le relit avant chaque appel au modèle, avant les appels d'outils qu'il
+renvoie et à la reprise après validation : un compte désactivé arrête le run à ce
+moment (« Arrêt : le compte de l'utilisateur n'est plus actif »), une habilitation
+retirée ne compte plus, ni pour les outils proposés ni pour les appels encore demandés.
 
 **Résultats d'outils** : transmis au modèle comme **données**, encadrés par un
 marqueur `<donnees_outil source="…" fiabilite="non_fiable">` ; les consignes système

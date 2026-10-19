@@ -112,9 +112,21 @@ impl AccessService {
     }
 
     pub async fn context(&self, identity: AuthIdentity) -> anyhow::Result<AccessContext> {
-        let tenant = self.tenant_access(identity.tenant_id).await?;
-        let mut tx = self.db.begin(identity.tenant_id).await?;
-        let access = load_user_access(&mut tx, identity.user_id).await?;
+        self.user_context(identity.tenant_id, identity.user_id)
+            .await
+    }
+
+    /// The rights of an account as they stand now, outside any request (a
+    /// run reads them before each step, ADR-035); refused with « Compte
+    /// inactif » once the account is no longer active.
+    pub async fn user_context(
+        &self,
+        tenant_id: Uuid,
+        user_id: Uuid,
+    ) -> anyhow::Result<AccessContext> {
+        let tenant = self.tenant_access(tenant_id).await?;
+        let mut tx = self.db.begin(tenant_id).await?;
+        let access = load_user_access(&mut tx, user_id).await?;
         tx.commit().await?;
         let Some(access) = access.filter(|a| a.profile.status == "active") else {
             return Err(DomainError::forbidden("Compte inactif").into());
