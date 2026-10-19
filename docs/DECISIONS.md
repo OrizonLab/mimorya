@@ -1233,16 +1233,22 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - le verrou par formulaire d'ADR-041 et sa propriété `reloading` sont retirés ; un
     formulaire qui reste ouvert après un enregistrement (fiche d'un compte) suit
     toujours la liste par `useSyncedState` ;
-  - un formulaire de modification ne se ferme pas (« Annuler » désactivé) tant que sa
+  - « Annuler » est désactivé dans un formulaire de modification tant que sa
     modification n'a pas reçu de réponse : refermé puis rouvert pendant ce temps, il
     serait reparti de l'ancienne ressource ; le verrou prend le relais au
     rechargement ;
   - les règles des outils d'un serveur MCP repartent de chaque test de connexion ;
-  - le verrou est signalé (`aria-busy`), et les contrôles ne s'atténuent qu'au-delà
-    de 150 ms, pour qu'un rechargement rapide ne fasse pas clignoter l'écran.
+  - le verrou est signalé (`aria-busy`), et les contrôles (`Button`, `Input`,
+    `Select`, et les autres par `DISABLED_LOOK`) ne s'atténuent qu'au-delà de 150 ms,
+    pour qu'un rechargement rapide ne fasse pas clignoter l'écran.
 - **Conséquences** :
   - après une modification, l'écran est brièvement désactivé, le temps du rechargement,
     et le contrôle qui avait le focus le perd (à rendre, `docs/ROADMAP.md`) ;
+  - dans les onglets où un seul formulaire est ouvert à la fois (rôles, politiques,
+    organisation), « Modifier » sur une autre carte ferme encore le formulaire dont la
+    modification attend sa réponse ; rouvert avant celle-ci, il repart de l'ancienne
+    ressource. La fenêtre est celle de la requête : sa réponse referme le formulaire
+    rouvert ;
   - une lecture qui ne répond pas laisse l'écran verrouillé : les requêtes n'ont pas
     encore de délai (`docs/ROADMAP.md`) ;
   - un écran nouveau qui affiche ses données par `Loaded` est protégé sans rien

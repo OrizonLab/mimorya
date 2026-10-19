@@ -116,10 +116,19 @@ test('a role is edited again only from the reloaded list', async ({ page }) => {
   await expect(edit).toBeEnabled();
 
   const roles = await holdList(page, '/api/admin/roles');
+  // The change itself is held too: its form cannot be closed before its answer.
+  let answer = () => {};
+  const answered = new Promise<void>((done) => (answer = done));
+  await page.route('**/api/admin/roles/*', async (route) => {
+    if (route.request().method() === 'PATCH') await answered;
+    await route.continue();
+  });
   const reload = roles.arm();
   await edit.click();
   await page.getByLabel('Description').fill('Relit et commente les plannings');
   await page.getByRole('button', { name: 'Enregistrer' }).click();
+  await expect(page.getByRole('button', { name: 'Annuler' })).toBeDisabled();
+  answer();
   await reload;
   // The card is back, as the former list shows it: it cannot be edited again
   // from there, nor can anything else on the screen be changed.

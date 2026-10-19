@@ -2,7 +2,7 @@
 
 import { Plus, X } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
-import { Button, ErrorNote, Field, Input, Select } from '@/components/ui';
+import { Button, DISABLED_LOOK, ErrorNote, Field, Input, Select } from '@/components/ui';
 import { api, useAction, type AccountUpdate, type DirectoryUser } from '@/lib/api';
 import { useSyncedState } from '@/lib/use-synced-state';
 import {
@@ -13,8 +13,7 @@ import {
   type AttributeRow,
 } from './attributes';
 
-const TEXTAREA =
-  'rounded-lg border border-line bg-surface px-3 py-2 text-sm text-fg outline-none focus:border-accent disabled:opacity-60';
+const TEXTAREA = `rounded-lg border border-line bg-surface px-3 py-2 text-sm text-fg outline-none focus:border-accent ${DISABLED_LOOK}`;
 
 /** The attributes access policies read (`subject.attributes.<nom>`). */
 export function AttributesEditor({

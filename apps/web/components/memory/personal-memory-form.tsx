@@ -1,7 +1,12 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
-import { Button } from '@/components/ui';
+import { Button, cx, DISABLED_LOOK } from '@/components/ui';
+
+const FIELD = cx(
+  'rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-accent',
+  DISABLED_LOOK,
+);
 
 /** Adds a personal preference; the fields are cleared once it is saved. */
 export function PersonalMemoryForm({
@@ -32,7 +37,7 @@ export function PersonalMemoryForm({
         onChange={(e) => setTitle(e.target.value)}
         placeholder="Intitulé (ex. Format préféré)"
         aria-label="Intitulé"
-        className="rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-accent disabled:opacity-60 sm:w-56"
+        className={cx(FIELD, 'sm:w-56')}
       />
       <input
         required
@@ -41,7 +46,7 @@ export function PersonalMemoryForm({
         onChange={(e) => setContent(e.target.value)}
         placeholder="Ce que l’agent doit retenir"
         aria-label="Contenu"
-        className="flex-1 rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-accent disabled:opacity-60"
+        className={cx(FIELD, 'flex-1')}
       />
       <Button type="submit" variant="secondary" loading={saving}>
         Ajouter
