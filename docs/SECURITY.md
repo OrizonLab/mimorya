@@ -249,7 +249,8 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   plateforme, mot de passe temporaire à remplacer…), la méthode et la route,
   l'identifiant (UUID) que porte le chemin, l'IP et l'identifiant de requête. Hormis
   cet identifiant, rien de ce que la requête a envoyé n'y figure ; il n'est pas
-  vérifié : quand le refus précède toute lecture (permission absente), il peut
+  vérifié : quand le refus précède toute lecture (permission absente, mot de passe
+  temporaire à remplacer, compte inactif), il peut
   désigner une ressource absente ou d'une autre entreprise, sans que la réponse en
   dise rien. Ne sont pas tracés : les lectures refusées, les refus anti-CSRF (en-tête
   ou origine, prononcés avant la résolution de la session), les ressources qu'un

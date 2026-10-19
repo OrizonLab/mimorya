@@ -41,8 +41,17 @@ impl RunStatus {
         Self::ALL.into_iter().find(|s| s.as_str() == value)
     }
 
+    /// Where a run ends: a finished run is never rewritten, and its stream
+    /// closes.
+    pub const FINISHED: [RunStatus; 3] = [Self::Completed, Self::Failed, Self::Cancelled];
+
     pub fn is_finished(self) -> bool {
-        matches!(self, Self::Completed | Self::Failed | Self::Cancelled)
+        Self::FINISHED.contains(&self)
+    }
+
+    /// The stored values of `FINISHED`, for queries.
+    pub fn finished_values() -> Vec<&'static str> {
+        Self::FINISHED.map(Self::as_str).to_vec()
     }
 }
 
@@ -179,8 +188,9 @@ pub async fn update_active_run(
     id: Uuid,
     patch: RunPatch,
 ) -> sqlx::Result<bool> {
-    let sql = format!("{UPDATE_RUN} and status in ('queued', 'running', 'awaiting_approval')");
+    let sql = format!("{UPDATE_RUN} and status <> all($9)");
     let result = bind_patch(sqlx::query(&sql), id, patch)
+        .bind(RunStatus::finished_values())
         .execute(conn)
         .await?;
     Ok(result.rows_affected() > 0)

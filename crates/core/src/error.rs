@@ -29,6 +29,21 @@ impl ErrorCode {
     ];
 }
 
+/// A new code stops compiling here: list it in `ErrorCode::ALL` too, which
+/// the API contract's tests go through.
+#[cfg(test)]
+fn _listed(code: ErrorCode) {
+    match code {
+        ErrorCode::Forbidden
+        | ErrorCode::NotFound
+        | ErrorCode::Validation
+        | ErrorCode::Conflict
+        | ErrorCode::Unauthenticated
+        | ErrorCode::BudgetExceeded
+        | ErrorCode::Unavailable => {}
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
 #[error("{message}")]
 pub struct DomainError {

@@ -1086,7 +1086,8 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     de la route (`user`, `role`, `org_unit`, `policy`, `connector` ; une révocation
     refusée nomme l'habilitation, `assignment`, là où l'audit d'une révocation faite
     nomme le compte) ; seul un UUID est retenu, sans vérification : quand le refus
-    précède toute lecture (permission absente), il peut désigner une ressource absente
+    précède toute lecture (permission absente, mot de passe temporaire à remplacer, compte
+    inactif), il peut désigner une ressource absente
     ou d'une autre entreprise, et la réponse reste la même. L'entrée est écrite dans sa
     propre transaction, après celle de la requête, annulée, et avant l'envoi de la
     réponse ;
