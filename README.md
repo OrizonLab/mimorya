@@ -108,16 +108,18 @@ conservée par un collecteur de journaux : le lien y resterait. En développemen
 
 `compose.production.yml` (ADR-034) installe la même chose en conteneurs, sans données
 fictives : PostgreSQL (rôles créés avec vos mots de passe), migrations, API, interface et
-Caddy (HTTPS, HSTS). Seul Caddy publie des ports. Les identifiants se choisissent dans un
-fichier d'environnement gardé hors du dépôt :
+Caddy (HTTPS, HSTS), dans son propre projet (`mimorya-production`, à part de la base de
+développement). Seul Caddy publie des ports. Les identifiants se choisissent dans un
+fichier d'environnement gardé hors du dépôt, lisible par vous seul :
 
 ```bash
-cat > .env.production <<VARIABLES
+(umask 077 && cat > .env.production <<VARIABLES
 POSTGRES_PASSWORD=$(openssl rand -hex 32)
 MIMORYA_APP_DB_PASSWORD=$(openssl rand -hex 32)
 MIMORYA_DOMAIN=mimorya.acme.example
 MIMORYA_TLS=exploitation@acme.example
 VARIABLES
+)
 docker compose --env-file .env.production -f compose.production.yml up -d --build
 docker compose --env-file .env.production -f compose.production.yml exec api \
   mimorya-admin create-company --name 'Acme Industrie' --slug acme \
@@ -125,13 +127,17 @@ docker compose --env-file .env.production -f compose.production.yml exec api \
 ```
 
 Les deux mots de passe de base passent dans des URL de connexion : lettres et chiffres
-seulement, 16 au moins (la base refuse de s'initialiser sinon ; supprimez alors son volume
-avant de recommencer). `MIMORYA_TLS` vaut une adresse e-mail pour un certificat public
-(ports 80 et 443 joignables depuis Internet) ou `internal` (certificat local de Caddy).
-Mêmes variables facultatives que la pile de démonstration (fournisseur de modèle,
-`MIMORYA_MASTER_KEY`, relais SMTP). La vérification de la CI
-(`infra/docker/production-test.sh`) suit ce parcours jusqu'à la première connexion de
-l'administrateur. Restent à faire : publication des images dans un registre, sauvegardes
+seulement, 16 au moins. La base refuse de démarrer sinon, sans rien créer, et le redit à
+chaque redémarrage jusqu'à correction. Ils ne servent qu'à la création de la base : pour
+en changer ensuite, modifiez d'abord le rôle
+(`docker compose … exec db psql -U mimorya -c "ALTER ROLE mimorya_app PASSWORD '…'"`, de
+même pour `mimorya`), puis la variable, puis relancez `up -d`. `MIMORYA_TLS` vaut une
+adresse e-mail pour un certificat public (ports 80 et 443 joignables depuis Internet) ou
+`internal` (certificat local de Caddy). Mêmes variables facultatives que la pile de
+démonstration (fournisseur de modèle, `MIMORYA_MASTER_KEY`, relais SMTP). La CI suit ce
+parcours jusqu'à la première connexion de l'administrateur
+(`infra/docker/production-test.sh`, réservé à une pile jetable : il y laisse une
+entreprise de vérification). Restent à faire : publication des images dans un registre, sauvegardes
 (voir la feuille de route).
 
 ## Qualité

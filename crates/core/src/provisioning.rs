@@ -16,20 +16,28 @@ pub fn company_name_problem(name: &str) -> Option<String> {
     })
 }
 
-/// Why `slug` cannot name a company, if it cannot: 2 to 63 lower-case ASCII
-/// letters and digits, with single hyphens between them.
-pub fn slug_problem(slug: &str) -> Option<&'static str> {
-    if !(2..=63).contains(&slug.len()) {
-        return Some("Le sigle compte de 2 à 63 caractères");
+/// Shortest slug.
+pub const SLUG_MIN_LEN: usize = 2;
+/// Longest slug (a DNS label's length).
+pub const SLUG_MAX_LEN: usize = 63;
+
+/// Why `slug` cannot name a company, if it cannot: lower-case ASCII letters
+/// and digits, with single hyphens between them.
+pub fn slug_problem(slug: &str) -> Option<String> {
+    if !(SLUG_MIN_LEN..=SLUG_MAX_LEN).contains(&slug.len()) {
+        return Some(format!(
+            "Le sigle compte de {SLUG_MIN_LEN} à {SLUG_MAX_LEN} caractères"
+        ));
     }
     let allowed = |c: char| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-';
     if !slug.chars().all(allowed) {
         return Some(
-            "Le sigle ne contient que des minuscules sans accent, des chiffres et des tirets",
+            "Le sigle ne contient que des minuscules sans accent, des chiffres et des tirets"
+                .into(),
         );
     }
     if slug.starts_with('-') || slug.ends_with('-') || slug.contains("--") {
-        return Some("Le sigle ne commence ni ne finit par un tiret, et n’en double aucun");
+        return Some("Le sigle ne commence ni ne finit par un tiret, et n’en double aucun".into());
     }
     None
 }

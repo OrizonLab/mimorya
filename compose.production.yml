@@ -13,13 +13,17 @@
 #     mimorya-admin create-company --name … --slug … --admin-email … --admin-name …
 #
 # Only Caddy publishes ports; the database is reachable from the stack's own
-# containers only.
-name: mimorya
+# containers only, with its own project name and volume (apart from the
+# development database's).
+name: mimorya-production
 
 services:
   db:
     image: pgvector/pgvector:pg16
     restart: unless-stopped
+    # The passwords are checked before anything is created.
+    entrypoint: ['/usr/local/bin/entrypoint-production.sh']
+    command: ['postgres']
     environment:
       POSTGRES_USER: mimorya
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?choose the schema owner's password (POSTGRES_PASSWORD)}
@@ -27,6 +31,7 @@ services:
       MIMORYA_APP_DB_PASSWORD: ${MIMORYA_APP_DB_PASSWORD:?choose the application role's password (MIMORYA_APP_DB_PASSWORD)}
     volumes:
       - db-data:/var/lib/postgresql/data
+      - ./infra/postgres/entrypoint-production.sh:/usr/local/bin/entrypoint-production.sh:ro
       - ./infra/postgres/init-production.sh:/docker-entrypoint-initdb.d/00-init.sh:ro
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U mimorya']

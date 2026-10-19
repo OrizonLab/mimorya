@@ -143,8 +143,11 @@ jobs:
       - uses: actions/checkout@v4
       - name: Choose the production stack's database passwords
         run: |
-          echo "POSTGRES_PASSWORD=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
-          echo "MIMORYA_APP_DB_PASSWORD=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
+          for name in POSTGRES_PASSWORD MIMORYA_APP_DB_PASSWORD; do
+            value=$(openssl rand -hex 24)
+            echo "::add-mask::$value"
+            echo "$name=$value" >> "$GITHUB_ENV"
+          done
       - name: Build the images
         run: |
           docker compose -f compose.demo.yml build
@@ -165,9 +168,31 @@ jobs:
         run: docker compose -f compose.demo.yml logs --no-color | tail -n 200
       - name: Stop the demonstration stack
         run: docker compose -f compose.demo.yml down -v
+      - name: The Caddyfile also reads with a public certificate (ACME)
+        run: |
+          adapted=$(docker run --rm -e MIMORYA_DOMAIN=mimorya.example.com \
+            -e MIMORYA_TLS=exploitation@example.com \
+            -v "$PWD/infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2.10-alpine \
+            caddy adapt --config /etc/caddy/Caddyfile)
+          grep -q 'exploitation@example.com' <<<"$adapted"
+      - name: The production database refuses a password unfit for a URL, creating nothing
+        run: |
+          if output=$(timeout 120 docker compose -f compose.production.yml run --rm --no-deps -T \
+            -e POSTGRES_PASSWORD=Mot-de-passe-2026 db 2>&1); then
+            echo "the database started with a refused password" >&2
+            exit 1
+          fi
+          grep -q 'POSTGRES_PASSWORD: at least 16 letters and digits' <<<"$output" ||
+            { echo "$output" >&2; exit 1; }
+          left=$(docker run --rm --entrypoint ls -v mimorya-production_db-data:/data \
+            pgvector/pgvector:pg16 -A /data)
+          test -z "$left" || { echo "data left behind: $left" >&2; exit 1; }
       - name: Start the production stack
         run: docker compose -f compose.production.yml up -d
       - name: Installation test of the production stack
+        env:
+          # The test leaves a company and its administrator behind.
+          DISPOSABLE_STACK: 'yes'
         run: infra/docker/production-test.sh https://localhost
       - name: Logs of the production stack
         if: always()

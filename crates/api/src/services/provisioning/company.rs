@@ -49,7 +49,7 @@ impl NewCompany {
         };
         let email = &company.admin_email;
         let problem = company_name_problem(&company.name)
-            .or_else(|| slug_problem(&company.slug).map(String::from))
+            .or_else(|| slug_problem(&company.slug))
             .or_else(|| {
                 (email.chars().count() as u64 > EMAIL_MAX_LEN || !email.validate_email())
                     .then(|| "L’adresse e-mail de l’administrateur n’est pas valide".into())

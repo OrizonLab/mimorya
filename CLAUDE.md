@@ -57,9 +57,10 @@ Repères à l'intérieur des crates :
   pilotent, ADR-031).
 - `infra/` : `docker/` (images de l'API et de l'interface, test de fumée de la démonstration,
   test d'installation de la production, vérifications partagées `checks.sh`), `caddy/`
-  (reverse proxy : TLS, HSTS), `postgres/` (rôles et extensions ; `init-production.sh` : rôle applicatif au mot de
-  passe choisi) ; `docker-compose.yml`
-  (base de développement, sur 127.0.0.1) et `compose.demo.yml` (pile de démonstration,
+  (reverse proxy : TLS, HSTS), `postgres/` (rôles et extensions ; production : `entrypoint-production.sh` vérifie les
+  mots de passe, `init-production.sh` crée le rôle applicatif) ; `docker-compose.yml`
+  (base de développement, sur 127.0.0.1), `compose.production.yml` (pile de production,
+  ADR-034) et `compose.demo.yml` (pile de démonstration,
   ADR-032).
 
 ## Commandes

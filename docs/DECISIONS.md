@@ -875,7 +875,8 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     `delivery: "operator"`) ; l'invitation n'a pas d'auteur (`created_by_user_id` nul) ;
   - un job de CI exécute ces commandes dans l'image jusqu'à l'ouverture du lien à travers
     le proxy (sur la pile de production depuis l'ADR-034 :
-    `infra/docker/production-test.sh`).
+    `infra/docker/production-test.sh`, qui relance aussi les migrations sur une base
+    déjà migrée).
 - **Conséquences** :
   - une installation privée démarre sans données fictives : migrations, puis entreprise
     et administrateur, puis l'API et l'interface (`NEXT_PUBLIC_DEMO_MODE` non activé) ;
@@ -896,16 +897,23 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   et des rôles de base aux mots de passe de développement ; les commandes d'exploitation
   (ADR-033) permettent désormais de démarrer sans données fictives. Il manquait la pile
   qui les assemble pour une installation privée.
-- **Décision** : `compose.production.yml` (projet `mimorya`) :
+- **Décision** : `compose.production.yml`, projet `mimorya-production` (distinct de
+  celui de la base de développement, dont le volume et le conteneur portent sinon le
+  même nom dans un clone nommé `mimorya`) :
   - `db` : PostgreSQL 16 + pgvector, sans port publié, volume propre. Les mots de passe
     du propriétaire du schéma (`POSTGRES_PASSWORD`) et du rôle applicatif
-    (`MIMORYA_APP_DB_PASSWORD`) sont **obligatoires** et choisis à l'installation ;
+    (`MIMORYA_APP_DB_PASSWORD`) sont **obligatoires** et choisis à l'installation.
+    Comme ils passent dans des URL de connexion, `infra/postgres/entrypoint-production.sh`
+    exige des lettres et des chiffres seulement, 16 au moins (`openssl rand -hex 32`),
+    **avant** le point d'entrée de l'image : un mot de passe refusé ne crée aucun
+    répertoire de données (sinon, au redémarrage automatique, l'image sauterait
+    l'initialisation et démarrerait sans rôle applicatif). Puis
     `infra/postgres/init-production.sh` crée `mimorya_app` (connexion, sans
-    `BYPASSRLS`) avec le second et les extensions. Comme ils passent dans des URL de
-    connexion, il exige des lettres et des chiffres seulement, 16 au moins
-    (`openssl rand -hex 32`), et fait échouer l'initialisation sinon ;
+    `BYPASSRLS`) et les extensions ; psql lit le mot de passe dans l'environnement
+    (`\getenv`), jamais en argument visible dans la liste des processus ;
   - `migrate` : `mimorya-admin migrate` (rôle propriétaire), puis arrêt ; l'API ne
-    démarre qu'après son succès ;
+    démarre qu'après son succès. Chaque `up -d` la relance sur la base existante : c'est
+    le chemin des mises à jour ;
   - `api` (production, `TRUST_PROXY`, rôle applicatif), `web` construite **sans** mode
     démonstration (image `mimorya-web:production` ; celle de la démonstration devient
     `mimorya-web:demo`) et Caddy ; `restart: unless-stopped` sur les services durables ;
@@ -913,19 +921,25 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     `internal` (autorité locale de Caddy, défaut de la démonstration) ou une adresse
     e-mail (certificat public ACME). La pile de production l'exige, ainsi que
     `MIMORYA_DOMAIN` ;
-  - la CI construit les images des deux piles, vérifie que seul le proxy publie des
-    ports dans chacune, teste la démonstration, l'arrête, puis installe la production
-    avec des mots de passe tirés au hasard et la vérifie à travers le proxy
-    (`infra/docker/production-test.sh`) : en-têtes, API, conteneurs `api` et `web` hors
-    root, aucun compte de démonstration (page et connexion), entreprise créée par
-    `mimorya-admin`, invitation acceptée, session `Secure` dans une entreprise qui n'est
-    pas une démonstration. Les vérifications communes aux deux piles sont dans
-    `infra/docker/checks.sh`.
+  - la CI construit les images des deux piles et vérifie que seul le proxy publie des
+    ports dans chacune. Elle teste la démonstration (dont la liste des comptes de
+    démonstration sur la page de connexion, témoin de la vérification inverse) et
+    l'arrête. Elle lit le Caddyfile en mode ACME (`caddy adapt`), puis prouve qu'un mot
+    de passe refusé fait échouer la base sans rien laisser dans son volume. Enfin, elle
+    installe la production avec des mots de passe tirés au hasard (masqués dans les
+    journaux) et la vérifie à travers le proxy (`infra/docker/production-test.sh`) :
+    en-têtes et API ; conteneurs `api` et `web` hors root ; migrations relancées sans
+    erreur ; aucune entreprise de démonstration en base et aucune liste de comptes de
+    démonstration sur la page ; entreprise créée par `mimorya-admin` ; invitation
+    acceptée avec un mot de passe tiré au hasard ; session `Secure` dans une entreprise
+    qui n'est pas une démonstration. Ce test laisse son entreprise derrière lui : il
+    exige `DISPOSABLE_STACK=yes`, réservé à une pile jetable. Les vérifications communes
+    aux deux piles sont dans `infra/docker/checks.sh`.
 - **Conséquences** :
   - une installation privée se fait en deux commandes (démarrage, création de la
     première entreprise), sans aucun identifiant connu d'avance ;
-  - si l'initialisation de la base échoue (mot de passe refusé), son répertoire de
-    données existe déjà : il faut supprimer le volume avant de recommencer (README) ;
+  - les mots de passe de base ne servent qu'à la création de la base : en changer
+    ensuite demande `ALTER ROLE` avant la variable (README) ;
   - restent à faire : publication des images dans un registre et cache de leur
     construction en CI, sauvegardes chiffrées et restauration testée (phase 3) ;
   - les images de base ne sont pas épinglées par empreinte (`rust:1-bookworm`,
