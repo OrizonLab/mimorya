@@ -4,6 +4,9 @@ use chrono::{DateTime, Utc};
 use sqlx::PgConnection;
 use uuid::Uuid;
 
+/// What was used (`usage_records_kind_check`).
+pub const USAGE_KINDS: [&str; 3] = ["llm", "embedding", "tool"];
+
 #[derive(Debug, Clone)]
 pub struct NewUsage {
     pub tenant_id: Uuid,

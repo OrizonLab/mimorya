@@ -3,14 +3,13 @@
 import { Plus } from 'lucide-react';
 import { useState } from 'react';
 import { Badge, Button, Card, EmptyState, Loaded } from '@/components/ui';
-import { useApiData } from '@/lib/api';
+import { useApiData, type Connectors } from '@/lib/api';
 import { ConnectorCard } from './connector-card';
 import { McpForm } from './mcp-form';
-import type { ConnectorsView } from './types';
 
 /** The company's connectors, and adding an MCP server. */
 export function ConnectorsTab() {
-  const state = useApiData<ConnectorsView>('/admin/connectors');
+  const state = useApiData<Connectors>('/admin/connectors');
   const [adding, setAdding] = useState(false);
   return (
     <Loaded state={state}>

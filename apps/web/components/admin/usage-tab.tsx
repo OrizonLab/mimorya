@@ -1,24 +1,11 @@
 'use client';
 
 import { Card, Cell, DataTable, EmptyState, Loaded } from '@/components/ui';
-import { useApiData } from '@/lib/api';
+import { useApiData, type UsageSummary } from '@/lib/api';
 import { formatCost, formatNumber } from '@/lib/format';
 
-interface UsageView {
-  since: string;
-  rows: Array<{
-    provider: string;
-    model: string;
-    kind: string;
-    calls: number;
-    inputTokens: number;
-    outputTokens: number;
-    costMicros: number;
-  }>;
-}
-
 export function UsageTab() {
-  const state = useApiData<UsageView>('/admin/usage?days=30');
+  const state = useApiData<UsageSummary>('/admin/usage?days=30');
   return (
     <Loaded state={state}>
       {(data) => (

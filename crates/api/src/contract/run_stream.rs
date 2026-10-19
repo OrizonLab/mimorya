@@ -3,6 +3,7 @@
 //! writes them (`RunEvent`); a test checks that every one of them reads back
 //! as its type here.
 
+use mimorya_core::autonomy::ToolRisk as CoreRisk;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use uuid::Uuid;
@@ -87,6 +88,18 @@ pub enum ToolRisk {
     Write,
     External,
     Irreversible,
+}
+
+impl From<CoreRisk> for ToolRisk {
+    fn from(risk: CoreRisk) -> Self {
+        match risk {
+            CoreRisk::Read => Self::Read,
+            CoreRisk::Draft => Self::Draft,
+            CoreRisk::Write => Self::Write,
+            CoreRisk::External => Self::External,
+            CoreRisk::Irreversible => Self::Irreversible,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]

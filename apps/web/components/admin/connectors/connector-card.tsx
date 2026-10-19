@@ -2,11 +2,10 @@
 
 import { useState } from 'react';
 import { Badge, Button, Card, ErrorNote } from '@/components/ui';
-import { api, useAction } from '@/lib/api';
+import { api, useAction, type ConnectorTest, type ConnectorView, type Connectors } from '@/lib/api';
 import { formatDate } from '@/lib/format';
 import { McpForm } from './mcp-form';
 import { ToolPolicies } from './tool-policies';
-import type { ConnectorTest, ConnectorView, ConnectorsView } from './types';
 
 const STATUS = {
   untested: { label: 'Non testé', tone: 'neutral' },
@@ -22,7 +21,7 @@ export function ConnectorCard({
   onChanged,
 }: {
   connector: ConnectorView;
-  data: ConnectorsView;
+  data: Connectors;
   onChanged: () => void;
 }) {
   const [editing, setEditing] = useState(false);

@@ -2,8 +2,7 @@
 
 import { useState, type FormEvent } from 'react';
 import { Button, ErrorNote, Field, Input } from '@/components/ui';
-import { api, useAction } from '@/lib/api';
-import type { ConnectorView, ConnectorsView } from './types';
+import { api, useAction, type ConnectorView, type Connectors } from '@/lib/api';
 
 /** Adds an MCP server, or changes its name, address and token. */
 export function McpForm({
@@ -11,7 +10,7 @@ export function McpForm({
   connector,
   onDone,
 }: {
-  data: ConnectorsView;
+  data: Connectors;
   connector?: ConnectorView;
   onDone: (changed: boolean) => void;
 }) {

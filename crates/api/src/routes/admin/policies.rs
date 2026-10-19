@@ -13,11 +13,12 @@ use mimorya_core::policy_rules::{KNOWN_ATTRIBUTES, is_restrictable};
 use mimorya_db::repositories::access_policies::list_policies;
 use mimorya_db::repositories::users::list_attribute_keys;
 use serde::Deserialize;
-use serde_json::{Value, json};
 use validator::Validate;
 
 use crate::app::AppState;
-use crate::http::{ApiResult, Body, PathId, iso, trimmed, trimmed_opt};
+use crate::contract::admin::{ConditionAttribute, Policies, PolicyView, RestrictablePermission};
+use crate::contract::{Created, Done};
+use crate::http::{ApiResult, Body, PathId, trimmed, trimmed_opt};
 use crate::plugins::Auth;
 use crate::services::admin::{
     PolicyChanges, PolicyInput, create_policy, delete_policy, update_policy,
@@ -26,41 +27,31 @@ use crate::services::permission_catalog::permission_catalog;
 
 const PERMISSION: &str = "policy:manage";
 
-pub async fn list(State(state): State<AppState>, Auth(identity): Auth) -> ApiResult<Json<Value>> {
+pub async fn list(
+    State(state): State<AppState>,
+    Auth(identity): Auth,
+) -> ApiResult<Json<Policies>> {
     let access = state.access.context(identity).await?;
     access.require_tenant_wide(PERMISSION)?;
     let mut tx = state.db.begin(identity.tenant_id).await?;
     let policies = list_policies(&mut tx).await?;
     let attribute_keys = list_attribute_keys(&mut tx).await?;
     tx.commit().await?;
-    let policies: Vec<Value> = policies
+    let policies = policies
         .iter()
-        .map(|p| {
-            json!({
-                "id": p.id,
-                "description": p.description,
-                "effect": p.effect,
-                "permissions": p.permissions,
-                "condition": p.condition,
-                "enabled": p.enabled,
-                "editable": p.effect == "deny",
-                "updatedAt": iso(&p.updated_at),
-            })
-        })
-        .collect();
+        .map(PolicyView::from_row)
+        .collect::<anyhow::Result<_>>()?;
 
     let catalog = permission_catalog();
     // What a policy may restrict, and whether a condition on the resource
     // applies to it (checked resource by resource).
-    let permissions: Vec<Value> = catalog
+    let permissions = catalog
         .iter()
         .filter(|p| is_restrictable(p.permission, &catalog))
-        .map(|p| {
-            json!({
-                "permission": p.permission,
-                "label": p.label,
-                "perResource": p.enforcement == Enforcement::PerResource,
-            })
+        .map(|p| RestrictablePermission {
+            permission: p.permission.into(),
+            label: p.label.into(),
+            per_resource: p.enforcement == Enforcement::PerResource,
         })
         .collect();
     let domains: BTreeSet<&str> = catalog
@@ -69,22 +60,23 @@ pub async fn list(State(state): State<AppState>, Auth(identity): Auth) -> ApiRes
         .filter(|domain| is_restrictable(&format!("{domain}:*"), &catalog))
         .collect();
     // The collaborators' own attributes, as the company named them.
-    let attributes: Vec<Value> = KNOWN_ATTRIBUTES
+    let attributes = KNOWN_ATTRIBUTES
         .iter()
-        .map(|(path, label)| json!({ "path": path, "label": label }))
-        .chain(attribute_keys.iter().map(|key| {
-            json!({
-                "path": format!("subject.attributes.{key}"),
-                "label": format!("Attribut du collaborateur : {key}"),
-            })
+        .map(|(path, label)| ConditionAttribute {
+            path: (*path).into(),
+            label: (*label).into(),
+        })
+        .chain(attribute_keys.iter().map(|key| ConditionAttribute {
+            path: format!("subject.attributes.{key}"),
+            label: format!("Attribut du collaborateur : {key}"),
         }))
         .collect();
-    Ok(Json(json!({
-        "policies": policies,
-        "permissions": permissions,
-        "domains": domains,
-        "attributes": attributes,
-    })))
+    Ok(Json(Policies {
+        policies,
+        permissions,
+        domains: domains.into_iter().map(String::from).collect(),
+        attributes,
+    }))
 }
 
 const fn enabled_by_default() -> bool {
@@ -108,7 +100,7 @@ pub async fn create(
     State(state): State<AppState>,
     Auth(identity): Auth,
     Body(body): Body<CreatePolicyBody>,
-) -> ApiResult<(StatusCode, Json<Value>)> {
+) -> ApiResult<(StatusCode, Json<Created>)> {
     let access = state.access.context(identity).await?;
     let catalog = permission_catalog();
     let input = PolicyInput {
@@ -118,7 +110,7 @@ pub async fn create(
         enabled: body.enabled,
     };
     let id = create_policy(&state.db, &state.access, &access, &catalog, input).await?;
-    Ok((StatusCode::CREATED, Json(json!({ "id": id }))))
+    Ok((StatusCode::CREATED, Json(Created { id })))
 }
 
 #[derive(Deserialize, Validate)]
@@ -141,7 +133,7 @@ pub async fn update(
     Auth(identity): Auth,
     PathId(id): PathId,
     Body(body): Body<UpdatePolicyBody>,
-) -> ApiResult<Json<Value>> {
+) -> ApiResult<Json<Done>> {
     let access = state.access.context(identity).await?;
     let catalog = permission_catalog();
     let changes = PolicyChanges {
@@ -151,15 +143,15 @@ pub async fn update(
         enabled: body.enabled,
     };
     update_policy(&state.db, &state.access, &access, &catalog, id, changes).await?;
-    Ok(Json(json!({ "ok": true })))
+    Ok(Json(Done::OK))
 }
 
 pub async fn remove(
     State(state): State<AppState>,
     Auth(identity): Auth,
     PathId(id): PathId,
-) -> ApiResult<Json<Value>> {
+) -> ApiResult<Json<Done>> {
     let access = state.access.context(identity).await?;
     delete_policy(&state.db, &state.access, &access, id).await?;
-    Ok(Json(json!({ "ok": true })))
+    Ok(Json(Done::OK))
 }

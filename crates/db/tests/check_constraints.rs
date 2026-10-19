@@ -1,16 +1,21 @@
-//! The values a `CHECK` constraint allows are those of the list the platform
-//! writes them from: the API contract reads these columns as enumerations
-//! built from the same lists (ADR-037), so a value added to one side only
-//! fails here rather than as an internal error on a screen.
+//! The values a `CHECK` constraint allows are exactly those of their
+//! reference list (an enumeration of the core, or a constant of the
+//! repositories), against which the API contract's enumerations are tested
+//! (ADR-037): a value added to one side only fails here rather than as an
+//! internal error on a screen.
 
 mod support;
 
 use mimorya_core::authz::Sensitivity;
 use mimorya_core::autonomy::ToolRisk;
 use mimorya_core::memory::{MemoryKind, MemoryScope, MemoryStatus};
+use mimorya_db::repositories::access_policies::POLICY_EFFECTS;
 use mimorya_db::repositories::approvals::APPROVAL_STATUSES;
+use mimorya_db::repositories::audit::{AUDIT_ACTORS, AUDIT_OUTCOMES};
+use mimorya_db::repositories::connectors::CONNECTOR_STATUSES;
 use mimorya_db::repositories::runs::RunStatus;
 use mimorya_db::repositories::skills::SKILL_STATUSES;
+use mimorya_db::repositories::usage::USAGE_KINDS;
 use mimorya_db::repositories::users::USER_STATUSES;
 use regex::Regex;
 
@@ -67,6 +72,14 @@ async fn constrained_columns_allow_exactly_the_platform_s_values() {
         (
             "agent_runs_status_check",
             owned(RunStatus::ALL.map(RunStatus::as_str)),
+        ),
+        ("audit_log_actor_check", owned(AUDIT_ACTORS)),
+        ("audit_log_outcome_check", owned(AUDIT_OUTCOMES)),
+        ("usage_records_kind_check", owned(USAGE_KINDS)),
+        ("access_policies_effect_check", owned(POLICY_EFFECTS)),
+        (
+            "connector_instances_status_check",
+            owned(CONNECTOR_STATUSES),
         ),
     ];
     for (constraint, values) in expected {

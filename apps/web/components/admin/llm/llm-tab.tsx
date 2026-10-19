@@ -2,11 +2,10 @@
 
 import { useState } from 'react';
 import { Badge, Button, Card, ErrorNote, Loaded } from '@/components/ui';
-import { api, useAction, useApiData } from '@/lib/api';
+import { api, useAction, useApiData, type LlmTestResult, type LlmView } from '@/lib/api';
 import { formatDate } from '@/lib/format';
 import { LLM_PROVIDERS } from '@/lib/labels';
 import { LlmForm } from './llm-form';
-import type { LlmTestResult, LlmView } from './types';
 
 const label = (provider: string) => LLM_PROVIDERS[provider] ?? provider;
 

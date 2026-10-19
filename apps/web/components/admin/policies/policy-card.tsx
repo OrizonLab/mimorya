@@ -2,10 +2,9 @@
 
 import { Pencil, Trash2 } from 'lucide-react';
 import { Badge, Button, Card, ErrorNote } from '@/components/ui';
-import { api, useAction } from '@/lib/api';
+import { api, useAction, type Policies, type PolicyView } from '@/lib/api';
 import { describeCondition } from './describe';
 import { PolicyForm } from './policy-form';
-import type { PoliciesView, PolicyView } from './types';
 
 /** One policy, in plain French; deny policies can be switched, edited, deleted. */
 export function PolicyCard({
@@ -16,7 +15,7 @@ export function PolicyCard({
   onChanged,
 }: {
   policy: PolicyView;
-  data: PoliciesView;
+  data: Policies;
   editing: boolean;
   onEdit: (editing: boolean) => void;
   onChanged: () => void;

@@ -5,6 +5,11 @@ use serde_json::{Value, json};
 use sqlx::PgConnection;
 use uuid::Uuid;
 
+/// Who acted (`audit_log_actor_check`).
+pub const AUDIT_ACTORS: [&str; 3] = ["user", "agent", "system"];
+/// How it ended (`audit_log_outcome_check`).
+pub const AUDIT_OUTCOMES: [&str; 3] = ["success", "denied", "failure"];
+
 #[derive(Debug, Clone)]
 pub struct AuditEntry {
     pub tenant_id: Uuid,

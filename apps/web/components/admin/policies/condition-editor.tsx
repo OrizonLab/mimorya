@@ -2,13 +2,13 @@
 
 import { Plus, X } from 'lucide-react';
 import { Button, Field, Input, Select } from '@/components/ui';
+import type { Policies } from '@/lib/api';
 import {
   OPERATORS,
   fromSimple,
   toSimple,
   type ConditionJson,
   type Operator,
-  type PoliciesView,
   type SimpleCondition,
 } from './types';
 
@@ -52,7 +52,7 @@ export function ConditionEditor({
   onChange,
 }: {
   value: EditorState;
-  attributes: PoliciesView['attributes'];
+  attributes: Policies['attributes'];
   onChange: (state: EditorState) => void;
 }) {
   function toJson() {

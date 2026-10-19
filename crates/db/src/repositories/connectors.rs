@@ -8,6 +8,9 @@ use serde_json::Value;
 use sqlx::PgConnection;
 use uuid::Uuid;
 
+/// The state of an instance (`connector_instances_status_check`).
+pub const CONNECTOR_STATUSES: [&str; 4] = ["untested", "ok", "error", "disabled"];
+
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct ConnectorInstanceRow {
     pub id: Uuid,

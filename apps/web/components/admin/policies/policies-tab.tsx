@@ -3,14 +3,13 @@
 import { Plus } from 'lucide-react';
 import { useState } from 'react';
 import { Button, Card, EmptyState, Loaded } from '@/components/ui';
-import { useApiData } from '@/lib/api';
+import { useApiData, type Policies } from '@/lib/api';
 import { PolicyCard } from './policy-card';
 import { PolicyForm } from './policy-form';
-import type { PoliciesView } from './types';
 
 /** Access policies: restrictions applied on top of the roles. */
 export function PoliciesTab() {
-  const state = useApiData<PoliciesView>('/admin/policies');
+  const state = useApiData<Policies>('/admin/policies');
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   return (

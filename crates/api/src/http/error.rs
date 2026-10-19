@@ -8,6 +8,8 @@ use axum::response::{IntoResponse, Response};
 use mimorya_core::{DomainError, ErrorCode};
 use serde_json::{Value, json};
 
+use crate::contract::{ErrorBody, ErrorDetail, ErrorKind};
+
 #[derive(Debug)]
 pub enum ApiError {
     Domain(DomainError),
@@ -80,12 +82,14 @@ fn status_of(code: ErrorCode) -> StatusCode {
     }
 }
 
-fn body(code: Value, message: &str, details: Option<Value>) -> Json<Value> {
-    let mut error = json!({ "code": code, "message": message });
-    if let Some(details) = details {
-        error["details"] = details;
-    }
-    Json(json!({ "error": error }))
+fn body(code: ErrorKind, message: &str, details: Option<Value>) -> Json<ErrorBody> {
+    Json(ErrorBody {
+        error: ErrorDetail {
+            code,
+            message: message.into(),
+            details,
+        },
+    })
 }
 
 impl IntoResponse for ApiError {
@@ -93,16 +97,16 @@ impl IntoResponse for ApiError {
         match self {
             Self::Domain(error) => (
                 status_of(error.code),
-                body(json!(error.code), &error.message, error.details),
+                body(error.code.into(), &error.message, error.details),
             )
                 .into_response(),
             Self::Request { status, message } => {
-                (status, body(json!("request"), &message, None)).into_response()
+                (status, body(ErrorKind::Request, &message, None)).into_response()
             }
             Self::RateLimited => (
                 StatusCode::TOO_MANY_REQUESTS,
                 body(
-                    json!("rate_limited"),
+                    ErrorKind::RateLimited,
                     "Trop de requêtes : réessayez dans une minute.",
                     None,
                 ),
@@ -110,14 +114,14 @@ impl IntoResponse for ApiError {
                 .into_response(),
             Self::Throttled(message) => (
                 StatusCode::TOO_MANY_REQUESTS,
-                body(json!("rate_limited"), message, None),
+                body(ErrorKind::RateLimited, message, None),
             )
                 .into_response(),
             Self::Internal(error) => {
                 tracing::error!(error = format!("{error:#}"), "Unhandled error");
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    body(json!("internal"), "Erreur interne", None),
+                    body(ErrorKind::Internal, "Erreur interne", None),
                 )
                     .into_response()
             }

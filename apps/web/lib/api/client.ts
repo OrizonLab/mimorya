@@ -1,4 +1,5 @@
 /** Thin client for the API (relayed under /api by Next.js). */
+import type { ErrorBody } from './contract';
 
 export class ApiError extends Error {
   constructor(
@@ -22,9 +23,8 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
   if (!res.ok) {
-    const payload = (await res.json().catch(() => null)) as {
-      error?: { code?: string; message?: string };
-    } | null;
+    // The API's error body, or anything else (a proxy's page, an empty body).
+    const payload = (await res.json().catch(() => null)) as Partial<ErrorBody> | null;
     throw new ApiError(
       res.status,
       payload?.error?.code ?? 'error',
