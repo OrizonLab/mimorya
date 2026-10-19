@@ -11,14 +11,13 @@ use mimorya_db::repositories::conversations::{
     list_messages, update_conversation,
 };
 use mimorya_db::repositories::runs::list_runs_for_conversation;
-use serde::Deserialize;
-use validator::Validate;
 
 use crate::app::AppState;
 use crate::contract::{
-    ConversationCreated, ConversationDetail, ConversationList, Done, Message, MessageAccepted,
+    ConversationChanges, ConversationCreated, ConversationDetail, ConversationList, Done, Message,
+    MessageAccepted, NewConversation, NewMessage,
 };
-use crate::http::{ApiResult, Body, PathId, trimmed, trimmed_opt};
+use crate::http::{ApiResult, Body, PathId};
 use crate::plugins::Auth;
 use crate::services::AuthIdentity;
 
@@ -44,17 +43,10 @@ async fn list(
     }))
 }
 
-#[derive(Deserialize, Validate)]
-struct CreateBody {
-    #[serde(default, deserialize_with = "trimmed_opt")]
-    #[validate(length(min = 1, max = 120))]
-    title: Option<String>,
-}
-
 async fn create(
     State(state): State<AppState>,
     Auth(identity): Auth,
-    Body(body): Body<CreateBody>,
+    Body(body): Body<NewConversation>,
 ) -> ApiResult<(StatusCode, Json<ConversationCreated>)> {
     state.access.context(identity).await?.require("agent:use")?;
     let mut tx = state.db.begin(identity.tenant_id).await?;
@@ -106,20 +98,11 @@ async fn detail(
     }))
 }
 
-#[derive(Deserialize, Validate)]
-struct UpdateBody {
-    #[serde(default, deserialize_with = "trimmed_opt")]
-    #[validate(length(min = 1, max = 120))]
-    title: Option<String>,
-    #[serde(default)]
-    archived: Option<bool>,
-}
-
 async fn update(
     State(state): State<AppState>,
     Auth(identity): Auth,
     PathId(id): PathId,
-    Body(body): Body<UpdateBody>,
+    Body(body): Body<ConversationChanges>,
 ) -> ApiResult<Json<Done>> {
     let mut tx = state.db.begin(identity.tenant_id).await?;
     owned(&mut tx, identity, id).await?;
@@ -132,18 +115,11 @@ async fn update(
     Ok(Json(Done::OK))
 }
 
-#[derive(Deserialize, Validate)]
-struct MessageBody {
-    #[serde(deserialize_with = "trimmed")]
-    #[validate(length(min = 1, max = 8000))]
-    content: String,
-}
-
 async fn post_message(
     State(state): State<AppState>,
     Auth(identity): Auth,
     PathId(id): PathId,
-    Body(body): Body<MessageBody>,
+    Body(body): Body<NewMessage>,
 ) -> ApiResult<(StatusCode, Json<MessageAccepted>)> {
     let started = state
         .runs

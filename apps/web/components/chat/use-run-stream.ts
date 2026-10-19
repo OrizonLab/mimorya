@@ -40,7 +40,8 @@ const INITIAL: RunActivity = {
   error: null,
 };
 
-const TERMINAL = new Set(['completed', 'failed', 'cancelled']);
+/** Where a run ends (the server's `RunStatus::FINISHED`). */
+const TERMINAL: ReadonlySet<RunStatus> = new Set<RunStatus>(['completed', 'failed', 'cancelled']);
 
 /**
  * Follows a run through server-sent events. The browser reconnects on its own

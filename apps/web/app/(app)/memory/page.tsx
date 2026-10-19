@@ -8,7 +8,15 @@ import {
   PersonalMemoryForm,
 } from '@/components/memory';
 import { ErrorNote, Loaded, PageHeader } from '@/components/ui';
-import { api, ApiError, useApiData, type MemoryList } from '@/lib/api';
+import {
+  api,
+  ApiError,
+  useApiData,
+  type ManualMemory,
+  type MemoryList,
+  type MemoryReview,
+  type ReviewDecision,
+} from '@/lib/api';
 
 export default function MemoryPage() {
   const state = useApiData<MemoryList>('/memory');
@@ -27,11 +35,18 @@ export default function MemoryPage() {
     }
   }
 
-  const review = (id: string, decision: 'approve' | 'reject') =>
-    void change(() => api.post(`/memory/${id}/review`, { decision }));
+  const review = (id: string, decision: ReviewDecision) =>
+    void change(() => api.post(`/memory/${id}/review`, { decision } satisfies MemoryReview));
   const remove = (id: string) => void change(() => api.delete(`/memory/${id}`));
   const add = (title: string, content: string) =>
-    change(() => api.post('/memory', { space: 'personal', kind: 'preference', title, content }));
+    change(() =>
+      api.post('/memory', {
+        space: 'personal',
+        kind: 'preference',
+        title,
+        content,
+      } satisfies ManualMemory),
+    );
 
   return (
     <div className="mx-auto w-full max-w-4xl px-4 py-8">

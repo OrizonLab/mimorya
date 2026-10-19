@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from 'react';
 import { Button, Card, ErrorNote, Field, Input } from '@/components/ui';
-import { api, useAction } from '@/lib/api';
+import { api, useAction, type ResetLinkRequest } from '@/lib/api';
 
 /**
  * Asks for a reset link. The API answers the same whether the address
@@ -15,7 +15,9 @@ export function ResetRequestForm() {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    const sent = await action.run(() => api.post('/auth/password-reset', { email }));
+    const sent = await action.run(() =>
+      api.post('/auth/password-reset', { email } satisfies ResetLinkRequest),
+    );
     if (sent) setAsked(email.trim());
   }
 

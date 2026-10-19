@@ -1107,3 +1107,31 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     à identifiant est à nommer dans `resource_of`, sans quoi l'entrée n'a pas de
     ressource (la route reste dans les métadonnées) ;
   - le volume de ces entrées est borné par la limitation de débit globale.
+
+## ADR-039 — Corps des requêtes au contrat, stricts (complète ADR-036)
+
+- **Date** : 2026-10-19 · **Statut** : acceptée
+- **Contexte** : les corps des requêtes étaient décrits deux fois, par une structure
+  privée de chaque route et par l'objet littéral que l'interface envoie. Un champ mal
+  nommé côté interface (`job_title` pour `jobTitle`, `titre` pour `title`) était ignoré
+  en silence par le serveur : la requête réussissait sans rien changer.
+- **Décision** :
+  - chaque corps de requête est un type de `crates/api/src/contract/`, dans le fichier
+    de sa ressource (`Deserialize`, `Validate`, champs publics), décrit en TypeScript
+    comme les réponses ; un champ facultatif (`Option`, `#[serde(default)]`) l'est aussi
+    en TypeScript (`#[ts(optional)]`) ;
+  - ces types refusent un champ inconnu (`deny_unknown_fields`) : la route répond 400
+    au lieu d'ignorer le champ. Un test unitaire (`contract/tests/requests.rs`) lit
+    chaque corps sous sa forme minimale et complète, et vérifie qu'il refuse un champ
+    de plus ;
+  - l'interface envoie ses corps avec `satisfies <Type>` : un champ inconnu, manquant
+    ou mal typé est une erreur de compilation ;
+  - `ts-rs` est compilé avec `no-serde-warnings` : les attributs propres à la lecture
+    (`deserialize_with`) ne le concernent pas ;
+  - les paramètres de requête (`?status=`, `?limit=`) restent déclarés par leur route.
+- **Conséquences** :
+  - première étape : connexion, compte, liens d'invitation et de réinitialisation,
+    conversations, validations, mémoire. Les corps des requêtes de l'administration
+    suivent ;
+  - un client qui envoyait un champ en trop reçoit désormais une erreur 400 ; les tests
+    d'intégration et de bout en bout n'en envoient aucun.

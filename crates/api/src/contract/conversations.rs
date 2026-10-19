@@ -1,15 +1,16 @@
 //! Conversations of the signed-in user, their messages and the runs they
-//! started.
+//! started; starting, renaming or archiving one, and sending a message.
 
 use mimorya_core::tools::Citation as ToolCitation;
 use mimorya_db::repositories::conversations::{ConversationRow, MessageRow};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use uuid::Uuid;
+use validator::Validate;
 
 use super::runs::{RunRef, RunStatus, Verification};
 use super::stored::{stored, stored_text};
-use crate::http::iso;
+use crate::http::{iso, trimmed, trimmed_opt};
 
 #[derive(Debug, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -127,4 +128,36 @@ pub struct ConversationDetail {
 pub struct MessageAccepted {
     pub run_id: Uuid,
     pub message_id: Uuid,
+}
+
+/// `POST /conversations`.
+#[derive(Deserialize, Validate, TS)]
+#[serde(deny_unknown_fields)]
+pub struct NewConversation {
+    #[serde(default, deserialize_with = "trimmed_opt")]
+    #[validate(length(min = 1, max = 120))]
+    #[ts(optional)]
+    pub title: Option<String>,
+}
+
+/// `PATCH /conversations/{id}`.
+#[derive(Deserialize, Validate, TS)]
+#[serde(deny_unknown_fields)]
+pub struct ConversationChanges {
+    #[serde(default, deserialize_with = "trimmed_opt")]
+    #[validate(length(min = 1, max = 120))]
+    #[ts(optional)]
+    pub title: Option<String>,
+    #[serde(default)]
+    #[ts(optional)]
+    pub archived: Option<bool>,
+}
+
+/// `POST /conversations/{id}/messages`.
+#[derive(Deserialize, Validate, TS)]
+#[serde(deny_unknown_fields)]
+pub struct NewMessage {
+    #[serde(deserialize_with = "trimmed")]
+    #[validate(length(min = 1, max = 8000))]
+    pub content: String,
 }

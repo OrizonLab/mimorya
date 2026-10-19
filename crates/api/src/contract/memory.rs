@@ -1,14 +1,15 @@
 //! What the assistant remembers, as listed to a user: their own memories and
-//! the shared ones they may read.
+//! the shared ones they may read; what a user adds or decides on a proposal.
 
-use mimorya_core::memory::MemorySource as StoredSource;
+use mimorya_core::memory::{MemoryKind as StoredKind, MemorySource as StoredSource};
 use mimorya_db::repositories::memory::MemoryRow;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use uuid::Uuid;
+use validator::Validate;
 
 use super::stored::stored_text;
-use crate::http::iso;
+use crate::http::{iso, trimmed};
 
 /// The space a memory belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -114,4 +115,64 @@ impl MemoryItem {
 #[derive(Debug, Serialize, TS)]
 pub struct MemoryList {
     pub items: Vec<MemoryItem>,
+}
+
+/// Where a user adds a memory: their own, their team's, the company's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, TS)]
+#[serde(rename_all = "lowercase")]
+pub enum MemorySpace {
+    Personal,
+    Team,
+    Company,
+}
+
+/// What a user may write by hand (episodes come from runs).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, TS)]
+#[serde(rename_all = "lowercase")]
+pub enum ManualMemoryKind {
+    Preference,
+    Fact,
+    Procedure,
+    Decision,
+    Lesson,
+}
+
+impl From<ManualMemoryKind> for StoredKind {
+    fn from(kind: ManualMemoryKind) -> Self {
+        match kind {
+            ManualMemoryKind::Preference => Self::Preference,
+            ManualMemoryKind::Fact => Self::Fact,
+            ManualMemoryKind::Procedure => Self::Procedure,
+            ManualMemoryKind::Decision => Self::Decision,
+            ManualMemoryKind::Lesson => Self::Lesson,
+        }
+    }
+}
+
+/// `POST /memory`.
+#[derive(Deserialize, Validate, TS)]
+#[serde(deny_unknown_fields)]
+pub struct ManualMemory {
+    pub space: MemorySpace,
+    pub kind: ManualMemoryKind,
+    #[serde(deserialize_with = "trimmed")]
+    #[validate(length(min = 3, max = 120))]
+    pub title: String,
+    #[serde(deserialize_with = "trimmed")]
+    #[validate(length(min = 3, max = 4000))]
+    pub content: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, TS)]
+#[serde(rename_all = "lowercase")]
+pub enum ReviewDecision {
+    Approve,
+    Reject,
+}
+
+/// `POST /memory/{id}/review`: the decision on a proposed memory.
+#[derive(Deserialize, Validate, TS)]
+#[serde(deny_unknown_fields)]
+pub struct MemoryReview {
+    pub decision: ReviewDecision,
 }

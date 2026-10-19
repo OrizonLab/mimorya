@@ -1,9 +1,14 @@
 //! The signed-in user's session: who they are, their company, what they may
-//! do.
+//! do; signing in and changing one's password.
 
-use serde::Serialize;
+use mimorya_core::accounts::EMAIL_MAX_LEN;
+use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use uuid::Uuid;
+use validator::Validate;
+
+use crate::auth::credentials::MIN_PASSWORD_CHARS;
+use crate::http::trimmed;
 
 /// `GET /auth/me`.
 #[derive(Debug, Serialize, TS)]
@@ -57,4 +62,25 @@ pub struct AssistantStatus {
 pub struct AuthOptions {
     /// An e-mail relay is configured: "forgotten password" can send a link.
     pub password_reset: bool,
+}
+
+/// `POST /auth/login`.
+#[derive(Deserialize, Validate, TS)]
+#[serde(deny_unknown_fields)]
+pub struct Credentials {
+    #[serde(deserialize_with = "trimmed")]
+    #[validate(email, length(max = EMAIL_MAX_LEN))]
+    pub email: String,
+    #[validate(length(min = 1, max = 512))]
+    pub password: String,
+}
+
+/// `POST /account/password`.
+#[derive(Deserialize, Validate, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PasswordUpdate {
+    #[validate(length(min = 1, max = 512))]
+    pub current_password: String,
+    #[validate(length(min = "MIN_PASSWORD_CHARS", max = 512))]
+    pub new_password: String,
 }

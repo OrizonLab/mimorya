@@ -40,7 +40,8 @@ Repères à l'intérieur des crates :
   en-têtes de sécurité, audit des modifications d'administration refusées,
   maintenance périodique : runs bloqués, liens expirés),
   `api/src/routes/` (un module par ressource, `admin/`), `api/src/contract/` (réponses
-  typées, un fichier par ressource, dont sont générés les types TypeScript, ADR-036),
+  et corps de requêtes typés, un fichier par ressource, dont sont générés les types
+  TypeScript, ADR-036, ADR-039),
   `api/src/services/admin/` (comptes, organisation, habilitations, sous verrou par
   entreprise), `api/src/services/account.rs` (son propre compte),
   `api/src/services/runs/` (tour de conversation, décisions, contexte, exécution,
@@ -118,7 +119,9 @@ Avant chaque commit : `pnpm check && pnpm test:int` doivent passer.
 - **API (`crates/api`)** : un module de routes par ressource (`routes/<ressource>.rs`),
   les middlewares transverses dans `plugins/`, la logique d'orchestration dans
   `services/<domaine>/`. Une réponse nouvelle ou modifiée est un type de `contract/`
-  (pas de `json!`), puis `pnpm contract` ; l'interface l'importe depuis `@/lib/api`.
+  (pas de `json!`), de même qu'un corps de requête (strict : `deny_unknown_fields`),
+  puis `pnpm contract` ; l'interface l'importe depuis `@/lib/api` (corps envoyés avec
+  `satisfies`).
 - **Web (`apps/web`)** : pages minces qui composent des composants ; un composant par
   fichier dans `components/<fonctionnalité>/` ; primitives d'interface dans
   `components/ui/` ; accès API et types dans `lib/api/`.

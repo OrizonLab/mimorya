@@ -10,19 +10,18 @@ use axum::response::{AppendHeaders, IntoResponse};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use mimorya_core::DomainError;
-use mimorya_core::accounts::EMAIL_MAX_LEN;
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::auth::{find_login, lock_login_state, revoke_session};
-use serde::Deserialize;
 use uuid::Uuid;
-use validator::Validate;
 
 use crate::app::AppState;
 use crate::auth::cookies::{cleared_session_cookie, session_cookie};
 use crate::auth::credentials::verify_password_async;
 use crate::auth::sessions::open_session;
-use crate::contract::{AssistantStatus, AuthOptions, Done, Me, MeTenant, MeUser, OrgUnitRef};
-use crate::http::{ApiError, ApiResult, Body, trimmed};
+use crate::contract::{
+    AssistantStatus, AuthOptions, Credentials, Done, Me, MeTenant, MeUser, OrgUnitRef,
+};
+use crate::http::{ApiError, ApiResult, Body};
 use crate::plugins::{AuthPendingPasswordChange, MaybeAuth, RequestContext};
 use crate::services::permission_catalog::permission_catalog;
 
@@ -34,15 +33,6 @@ pub fn routes() -> Router<AppState> {
         .route("/auth/logout", post(logout))
         .route("/auth/options", get(options))
         .route("/auth/me", get(me))
-}
-
-#[derive(Deserialize, Validate)]
-struct LoginBody {
-    #[serde(deserialize_with = "trimmed")]
-    #[validate(email, length(max = EMAIL_MAX_LEN))]
-    email: String,
-    #[validate(length(min = 1, max = 512))]
-    password: String,
 }
 
 fn login_audit(
@@ -79,7 +69,7 @@ async fn login(
     State(state): State<AppState>,
     context: RequestContext,
     headers: HeaderMap,
-    Body(body): Body<LoginBody>,
+    Body(body): Body<Credentials>,
 ) -> ApiResult<impl IntoResponse> {
     if !state.limits.login.allow(&context.client_key()) {
         return Err(ApiError::RateLimited);

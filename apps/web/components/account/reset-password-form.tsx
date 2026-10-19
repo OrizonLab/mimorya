@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from 'react';
 import { Button, Card, ErrorNote } from '@/components/ui';
-import { api, useAction, type ResetDetails } from '@/lib/api';
+import { api, useAction, type LinkPassword, type ResetDetails } from '@/lib/api';
 import { formatDate } from '@/lib/format';
 import { EMPTY_NEW_PASSWORD, NewPasswordFields, passwordsDiffer } from './new-password-fields';
 
@@ -24,7 +24,10 @@ export function ResetPasswordForm({
     event.preventDefault();
     if (mismatch) return;
     const done = await action.run(() =>
-      api.post('/auth/password-reset/complete', { token, password: chosen.password }),
+      api.post('/auth/password-reset/complete', {
+        token,
+        password: chosen.password,
+      } satisfies LinkPassword),
     );
     if (done) onReset();
   }
