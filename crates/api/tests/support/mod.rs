@@ -14,6 +14,7 @@ pub mod mail;
 pub mod mcp;
 pub mod planning;
 pub mod resets;
+pub mod runs;
 
 pub use client::{Client, TestResponse};
 use mail::RecordingMailer;
@@ -45,6 +46,11 @@ static URLS: OnceLock<TestDatabaseUrls> = OnceLock::new();
 /// The owner role's URL, for what the application role may not write.
 pub fn owner_url() -> &'static str {
     &urls().owner
+}
+
+/// The application role's URL (row-level security applies).
+pub fn app_url() -> &'static str {
+    &urls().app
 }
 
 /// Resets the test database on first use (in a dedicated runtime, so that

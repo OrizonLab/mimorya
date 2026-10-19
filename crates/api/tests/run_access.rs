@@ -6,13 +6,12 @@
 
 mod support;
 
-use axum::http::StatusCode;
 use mimorya_agent::runtime::ACCOUNT_INACTIVE;
 use mimorya_agent::testing::{ScriptedReply, ScriptedStep, call};
 use mimorya_api::services::runs::{AGENT_USE_WITHDRAWN, COMPANY_SUSPENDED};
 use mimorya_core::demo::{tenant, user};
-use serde_json::json;
-use support::{Client, TestApi, owner_url, week};
+use support::runs::start_run;
+use support::{TestApi, owner_url, week};
 use uuid::Uuid;
 
 /// Runs `sql` (`$1`: the account) with the owner role, blocking: callable
@@ -45,19 +44,6 @@ fn script_change_then_search(api: &TestApi, sql: &'static str, account: Uuid) {
         }),
         ScriptedStep::text("Synthèse."),
     ]);
-}
-
-async fn start_run(client: &Client<'_>) -> Uuid {
-    let conversation = client.post("/conversations", json!({})).await.json();
-    let id = conversation["conversation"]["id"].as_str().unwrap();
-    let started = client
-        .post(
-            &format!("/conversations/{id}/messages"),
-            json!({ "content": "Fais le point sur la semaine" }),
-        )
-        .await;
-    assert_eq!(started.status, StatusCode::ACCEPTED, "{}", started.text());
-    started.json()["runId"].as_str().unwrap().parse().unwrap()
 }
 
 /// Status and error of the run, and its tool invocations (status, reason).
