@@ -16,7 +16,7 @@ use mimorya_db::{Database, TenantTx};
 use uuid::Uuid;
 
 use super::tenant_cache::TenantCache;
-use crate::secrets::{LLM_API_KEY, SecretStore};
+use crate::secrets::{LLM_API_KEY, SecretRead, SecretStore};
 
 /// Builds a provider from a configuration (tests substitute a scripted one).
 pub type ProviderFactory =
@@ -62,7 +62,8 @@ pub struct LlmService {
 pub struct LlmServiceOptions {
     pub platform: Option<Arc<dyn LlmProvider>>,
     pub secrets: SecretStore,
-    /// `MIMORYA_TENANT_LLM_ENDPOINTS`, read again at each load.
+    /// `MIMORYA_TENANT_LLM_ENDPOINTS` (read at startup), checked again at
+    /// each load.
     pub listed_endpoints: Vec<String>,
     pub factory: ProviderFactory,
     pub prices: Arc<PriceTable>,
@@ -119,12 +120,23 @@ impl LlmService {
         let Some(settings) = get_llm_settings(tx).await? else {
             return Ok(Resolution::Platform(self.platform.clone()));
         };
-        let Ok(api_key) = self.secrets.get(tx, tenant_id, LLM_API_KEY).await else {
-            return Ok(Resolution::Refused(
-                "La clé enregistrée ne peut pas être déchiffrée (clé maîtresse du serveur \
-                 changée ?) : saisissez-la de nouveau"
-                    .into(),
-            ));
+        let api_key = match self.secrets.read(tx, tenant_id, LLM_API_KEY).await? {
+            SecretRead::Absent => None,
+            SecretRead::Value(key) => Some(key),
+            SecretRead::NoMasterKey => {
+                return Ok(Resolution::Refused(
+                    "Ce serveur n’a pas de clé maîtresse (MIMORYA_MASTER_KEY) : la clé \
+                     enregistrée ne peut pas être lue"
+                        .into(),
+                ));
+            }
+            SecretRead::Unreadable => {
+                return Ok(Resolution::Refused(
+                    "La clé enregistrée ne peut pas être déchiffrée (clé maîtresse du serveur \
+                     changée ?) : saisissez-la de nouveau"
+                        .into(),
+                ));
+            }
         };
         let config = match company_provider_config(
             &settings.provider,

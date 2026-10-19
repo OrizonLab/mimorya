@@ -5,6 +5,7 @@
 mod activity;
 mod assignments;
 mod catalog;
+mod connectors;
 mod llm;
 mod organization;
 mod policies;
@@ -47,7 +48,15 @@ pub fn routes() -> Router<AppState> {
             get(llm::show).put(llm::configure).delete(llm::reset),
         )
         .route("/admin/llm/test", post(llm::test))
-        .route("/admin/connectors", get(catalog::connectors))
+        .route(
+            "/admin/connectors",
+            get(connectors::list).post(connectors::create),
+        )
+        .route(
+            "/admin/connectors/{id}",
+            patch(connectors::update).delete(connectors::remove),
+        )
+        .route("/admin/connectors/{id}/test", post(connectors::test))
         .route("/admin/skills", get(catalog::skills))
         .route("/admin/audit", get(activity::audit))
         .route("/admin/usage", get(activity::usage))

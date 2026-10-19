@@ -3,8 +3,10 @@
 //! silently.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use mimorya_agent::llm::{PROVIDER_KINDS, ProviderConfig};
+use mimorya_connectors::mcp::NetworkPolicy;
 
 use crate::secrets::SecretCipher;
 
@@ -40,6 +42,12 @@ pub struct AppConfig {
     /// Endpoints a company may choose for a local or private model server
     /// (`MIMORYA_TENANT_LLM_ENDPOINTS`): no other address is ever reached.
     pub tenant_llm_endpoints: Vec<String>,
+    /// What MCP connectors may reach (`MIMORYA_MCP_ALLOW_PRIVATE_NETWORK`,
+    /// `MIMORYA_MCP_ALLOW_STDIO`): public HTTPS servers only by default.
+    pub mcp_network: NetworkPolicy,
+    /// How long an MCP server may take to connect and list its tools
+    /// (`MIMORYA_MCP_START_TIMEOUT_SECS`, 20 by default).
+    pub mcp_start_timeout: Duration,
     /// Model-based review of answers when success criteria are given.
     pub llm_judge: bool,
     /// Login attempts allowed per client address and per minute.
@@ -63,6 +71,8 @@ impl std::fmt::Debug for AppConfig {
             .field("llm", &self.llm)
             .field("secrets", &self.secrets)
             .field("tenant_llm_endpoints", &self.tenant_llm_endpoints)
+            .field("mcp_network", &self.mcp_network)
+            .field("mcp_start_timeout", &self.mcp_start_timeout)
             .field("llm_judge", &self.llm_judge)
             .field(
                 "login_rate_limit_per_minute",
@@ -119,6 +129,15 @@ impl AppConfig {
         let llm = reader.llm();
         let secrets = reader.master_key();
         let tenant_llm_endpoints = reader.endpoints("MIMORYA_TENANT_LLM_ENDPOINTS");
+        let mcp_network = NetworkPolicy {
+            allow_private_network: reader.boolean("MIMORYA_MCP_ALLOW_PRIVATE_NETWORK", false),
+            allow_stdio: reader.boolean("MIMORYA_MCP_ALLOW_STDIO", false),
+        };
+        let start_seconds = reader.parsed("MIMORYA_MCP_START_TIMEOUT_SECS", 20_u64);
+        if !(1..=120).contains(&start_seconds) {
+            reader.issue("MIMORYA_MCP_START_TIMEOUT_SECS", "entre 1 et 120 secondes");
+        }
+        let mcp_start_timeout = Duration::from_secs(start_seconds);
         let llm_judge = reader.boolean("MIMORYA_LLM_JUDGE", false);
         let login_rate_limit_per_minute = reader.parsed("LOGIN_RATE_LIMIT_PER_MINUTE", 10_u32);
         if login_rate_limit_per_minute == 0 {
@@ -141,6 +160,8 @@ impl AppConfig {
             llm,
             secrets,
             tenant_llm_endpoints,
+            mcp_network,
+            mcp_start_timeout,
             llm_judge,
             login_rate_limit_per_minute,
         })
@@ -288,6 +309,21 @@ mod tests {
         assert!(error.contains("DATABASE_APP_URL"));
         assert!(error.contains("PORT"));
         assert!(error.contains("LLM_PROVIDER"));
+    }
+
+    #[test]
+    fn bounds_the_mcp_start_timeout() {
+        let url = ("DATABASE_APP_URL", "postgres://app@localhost/mimorya");
+        let key = "MIMORYA_MCP_START_TIMEOUT_SECS";
+        assert_eq!(
+            load(&[url]).unwrap().mcp_start_timeout,
+            Duration::from_secs(20)
+        );
+        let five = load(&[url, (key, "5")]).unwrap();
+        assert_eq!(five.mcp_start_timeout, Duration::from_secs(5));
+        for refused in ["0", "121", "x"] {
+            assert!(load(&[url, (key, refused)]).is_err(), "{refused}");
+        }
     }
 
     #[test]

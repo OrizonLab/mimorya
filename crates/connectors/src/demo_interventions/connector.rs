@@ -15,7 +15,7 @@ use super::store::DemoInterventionsStore;
 use super::tools::{
     InterventionsGet, InterventionsSearch, PlanningApply, PlanningPropose, TeamAvailability,
 };
-use crate::types::{Connector, ConnectorInfo, ConnectorRuntime};
+use crate::types::{Connector, ConnectorInfo, ConnectorRuntime, InstanceContext};
 
 pub fn demo_intervention_tools(store: Arc<DemoInterventionsStore>) -> Vec<ToolRef> {
     vec![
@@ -88,7 +88,7 @@ impl Connector for DemoInterventionsConnector {
     async fn instantiate(
         &self,
         config: &Value,
-        _secret: Option<&str>,
+        _context: InstanceContext<'_>,
     ) -> anyhow::Result<ConnectorRuntime> {
         let reference = config["referenceDate"]
             .as_str()

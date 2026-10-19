@@ -42,6 +42,7 @@ validator.workspace = true
 
 [dev-dependencies]
 mimorya-agent = { workspace = true, features = ["testing"] }
+mimorya-connectors = { workspace = true, features = ["testing"] }
 mimorya-db = { workspace = true, features = ["testing"] }
 regex.workspace = true
 tower.workspace = true

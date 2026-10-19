@@ -1,9 +1,13 @@
-//! The "MCP server" connector type: connects a server over stdio (child
-//! process) or Streamable HTTP and exposes its tools through the bridge.
+//! The "MCP server" connector type: connects a server over Streamable HTTP
+//! (what companies configure, ADR-025) or stdio (a child process, written by
+//! the operator of a private deployment only) and exposes its tools through
+//! the bridge. Connecting and listing the tools are bounded in time; a
+//! failure is explained in French, without the token (`failure`, `redact`).
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use anyhow::bail;
 use async_trait::async_trait;
 use rmcp::ServiceExt;
 use rmcp::service::RunningServiceCancellationToken;
@@ -13,12 +17,15 @@ use serde::Deserialize;
 use serde_json::Value;
 use tokio::process::Command;
 
-use super::bridge::{McpToolsetOptions, create_mcp_toolset};
-use crate::types::{Connector, ConnectorCloser, ConnectorInfo, ConnectorRuntime};
+use super::bridge::{McpClient, McpToolsetOptions, create_mcp_toolset};
+use super::failure::{TOO_SLOW, start_failed};
+use super::network::{http_client, url_problem};
+use super::redact::Redactor;
+use crate::types::{Connector, ConnectorCloser, ConnectorInfo, ConnectorRuntime, InstanceContext};
 
 /// No `Debug`: `env` may carry credentials of the MCP server.
 #[derive(Clone, Deserialize)]
-#[serde(tag = "transport", rename_all = "snake_case")]
+#[serde(tag = "transport", rename_all = "snake_case", deny_unknown_fields)]
 pub enum McpConnectorConfig {
     Stdio {
         prefix: String,
@@ -65,43 +72,90 @@ impl Connector for McpConnector {
     async fn instantiate(
         &self,
         config: &Value,
-        secret: Option<&str>,
+        context: InstanceContext<'_>,
     ) -> anyhow::Result<ConnectorRuntime> {
         let config: McpConnectorConfig = serde_json::from_value(config.clone())?;
-        let (client, prefix) = match config {
-            McpConnectorConfig::Stdio {
-                prefix,
-                command,
-                args,
-                env,
-            } => {
-                let command = Command::new(command).configure(|cmd| {
-                    cmd.args(&args);
-                    // Only explicitly configured variables (plus PATH/HOME) reach the child.
-                    cmd.env_clear();
-                    for key in INHERITED_ENV {
-                        if let Ok(value) = std::env::var(key) {
-                            cmd.env(key, value);
-                        }
+        // Connecting to the server and listing its tools, together.
+        match tokio::time::timeout(context.start_timeout, start(config, context)).await {
+            Ok(started) => started,
+            Err(_) => {
+                let seconds = context.start_timeout.as_secs_f32().to_string();
+                bail!("{TOO_SLOW} (délai de {} s)", seconds.replace('.', ","))
+            }
+        }
+    }
+}
+
+async fn start(
+    config: McpConnectorConfig,
+    context: InstanceContext<'_>,
+) -> anyhow::Result<ConnectorRuntime> {
+    let (client, prefix): (McpClient, String) = match config {
+        McpConnectorConfig::Stdio {
+            prefix,
+            command,
+            args,
+            env,
+        } => {
+            if !context.network.allow_stdio {
+                bail!("Les serveurs lancés en local (stdio) ne sont pas autorisés sur ce serveur");
+            }
+            let command = Command::new(command).configure(|cmd| {
+                cmd.args(&args);
+                // Only explicitly configured variables (plus PATH/HOME) reach the child.
+                cmd.env_clear();
+                for key in INHERITED_ENV {
+                    if let Ok(value) = std::env::var(key) {
+                        cmd.env(key, value);
                     }
-                    cmd.envs(&env);
-                });
-                (().serve(TokioChildProcess::new(command)?).await?, prefix)
-            }
-            McpConnectorConfig::Http { prefix, url } => {
-                let mut config = StreamableHttpClientTransportConfig::with_uri(url);
-                if let Some(token) = secret {
-                    config = config.auth_header(token);
                 }
-                let transport = StreamableHttpClientTransport::from_config(config);
-                (().serve(transport).await?, prefix)
+                cmd.envs(&env);
+            });
+            let process = TokioChildProcess::new(command).map_err(|error| {
+                anyhow::anyhow!("Le programme du serveur MCP n’a pas pu être lancé ({error})")
+            })?;
+            let client = ()
+                .serve(process)
+                .await
+                .map_err(|error| start_failed(&error.into(), &Redactor::default()))?;
+            (client, prefix)
+        }
+        McpConnectorConfig::Http { prefix, url } => {
+            // Checked again here: the operator may have narrowed the policy.
+            if let Some(problem) = url_problem(&url, context.network) {
+                bail!("{problem}");
             }
-        };
-        let token = client.cancellation_token();
-        let tools = create_mcp_toolset(Arc::new(client), &McpToolsetOptions::new(prefix)).await?;
-        Ok(ConnectorRuntime {
+            let mut config = StreamableHttpClientTransportConfig::with_uri(url);
+            if let Some(token) = context.secret {
+                config = config.auth_header(token);
+            }
+            let transport =
+                StreamableHttpClientTransport::with_client(http_client(context.network)?, config);
+            let client = ()
+                .serve(transport)
+                .await
+                .map_err(|error| start_failed(&error.into(), &Redactor::new(context.secret)))?;
+            (client, prefix)
+        }
+    };
+    let token = client.cancellation_token();
+    let options = McpToolsetOptions {
+        redactor: Redactor::new(context.secret),
+        ..McpToolsetOptions::new(prefix)
+    };
+    // Its messages may quote what the server declared.
+    let tools = create_mcp_toolset(Arc::new(client), &options)
+        .await
+        .map_err(|error| anyhow::anyhow!(options.redactor.text(&format!("{error:#}"))));
+    let closer = Cancel(std::sync::Mutex::new(Some(token)));
+    match tools {
+        Ok(tools) => Ok(ConnectorRuntime {
             tools,
-            closer: Some(Box::new(Cancel(std::sync::Mutex::new(Some(token))))),
-        })
+            closer: Some(Box::new(closer)),
+        }),
+        Err(error) => {
+            closer.close().await;
+            Err(error)
+        }
     }
 }

@@ -4,6 +4,9 @@
 //! every MCP tool defaults to risk `write` (human validation required) and to
 //! the `connector:use` permission, until an administrator maps it explicitly
 //! (connector `tool_policies`). Results are untrusted data like any tool output.
+//!
+//! What a server declares is read and checked by `declarations`; what its
+//! tools return has the token masked.
 
 use std::sync::Arc;
 
@@ -15,9 +18,14 @@ use rmcp::model::CallToolRequestParams;
 use rmcp::service::RunningService;
 use serde_json::{Value, json};
 
+use super::declarations::declared_tools;
+use super::failure::call_failed;
+use super::redact::Redactor;
+
 pub type McpClient = RunningService<RoleClient, ()>;
 
-const MAX_TOOL_NAME: usize = 64;
+/// Every MCP tool requires it, whatever its policy says (ADR-025).
+pub const CONNECTOR_USE: &str = "connector:use";
 
 #[derive(Debug, Clone)]
 pub struct McpToolsetOptions {
@@ -25,6 +33,8 @@ pub struct McpToolsetOptions {
     pub prefix: String,
     pub default_risk: ToolRisk,
     pub default_permissions: Vec<String>,
+    /// Masks the server's token in what it declares and its tools return.
+    pub redactor: Redactor,
 }
 
 impl McpToolsetOptions {
@@ -32,29 +42,10 @@ impl McpToolsetOptions {
         Self {
             prefix: prefix.into(),
             default_risk: ToolRisk::Write,
-            default_permissions: vec!["connector:use".into()],
+            default_permissions: vec![CONNECTOR_USE.into()],
+            redactor: Redactor::default(),
         }
     }
-}
-
-fn slug(value: &str) -> String {
-    let mut slug = String::new();
-    for c in value.to_lowercase().chars() {
-        if c.is_ascii_lowercase() || c.is_ascii_digit() {
-            slug.push(c);
-        } else if !slug.ends_with('_') {
-            slug.push('_');
-        }
-    }
-    slug.trim_matches('_').to_string()
-}
-
-/// Namespaced tool name within provider limits.
-pub fn mcp_tool_name(prefix: &str, tool: &str) -> String {
-    format!("mcp_{}_{}", slug(prefix), slug(tool))
-        .chars()
-        .take(MAX_TOOL_NAME)
-        .collect()
 }
 
 struct McpTool {
@@ -63,6 +54,7 @@ struct McpTool {
     prefix: String,
     input_schema: Value,
     client: Arc<McpClient>,
+    redactor: Redactor,
 }
 
 #[async_trait]
@@ -97,12 +89,16 @@ impl Tool for McpTool {
             _ => serde_json::Map::new(),
         };
         let params = CallToolRequestParams::new(self.remote_name.clone()).with_arguments(arguments);
-        let result = self.client.call_tool(params).await?;
+        let result = self
+            .client
+            .call_tool(params)
+            .await
+            .map_err(|error| call_failed(&error, &self.redactor))?;
         let text: Vec<String> = result
             .content
             .iter()
             .map(|part| match part.as_text() {
-                Some(text) => text.text.clone(),
+                Some(text) => self.redactor.text(&text.text),
                 None => {
                     let kind = serde_json::to_value(part)
                         .ok()
@@ -113,9 +109,10 @@ impl Tool for McpTool {
             .collect();
         let is_error = result.is_error == Some(true);
         Ok(ToolResult {
-            content: result
-                .structured_content
-                .unwrap_or_else(|| json!(text.join("\n"))),
+            content: match result.structured_content {
+                Some(content) => self.redactor.value(content),
+                None => json!(text.join("\n")),
+            },
             is_error,
             summary: Some(if is_error {
                 format!("Erreur MCP ({})", self.remote_name)
@@ -132,33 +129,20 @@ pub async fn create_mcp_toolset(
     client: Arc<McpClient>,
     options: &McpToolsetOptions,
 ) -> anyhow::Result<Vec<ToolRef>> {
-    let tools = client.list_all_tools().await?;
-    let mut result: Vec<ToolRef> = Vec::with_capacity(tools.len());
-    for tool in tools {
-        let title = tool
-            .title
-            .clone()
-            .or_else(|| tool.annotations.as_ref().and_then(|a| a.title.clone()))
-            .unwrap_or_else(|| tool.name.to_string());
-        let description = format!(
-            "[Serveur MCP « {} »] {}",
-            options.prefix,
-            tool.description.as_deref().unwrap_or(&tool.name)
-        );
-        let info = ToolInfo::try_new(
-            &mcp_tool_name(&options.prefix, &tool.name),
-            &title,
-            &description,
-            options.default_risk,
-        )
-        .map_err(anyhow::Error::msg)?
-        .requires(options.default_permissions.clone());
+    let declared = declared_tools(&client, &options.prefix, &options.redactor).await?;
+    let mut result: Vec<ToolRef> = Vec::with_capacity(declared.len());
+    for tool in declared {
+        let description = format!("[Serveur MCP « {} »] {}", options.prefix, tool.description);
+        let info = ToolInfo::try_new(&tool.name, &tool.title, &description, options.default_risk)
+            .map_err(anyhow::Error::msg)?
+            .requires(options.default_permissions.clone());
         result.push(Arc::new(McpTool {
             info,
-            remote_name: tool.name.to_string(),
+            remote_name: tool.remote_name,
             prefix: options.prefix.clone(),
-            input_schema: Value::Object((*tool.input_schema).clone()),
+            input_schema: tool.input_schema,
             client: client.clone(),
+            redactor: options.redactor.clone(),
         }));
     }
     Ok(result)

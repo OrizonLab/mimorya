@@ -3,9 +3,8 @@
 
 use std::net::SocketAddr;
 
-use mimorya_api::{AppConfig, BuildOptions, build_app};
+use mimorya_api::{AppConfig, BuildOptions, build_app, log_filter};
 use tokio::net::TcpListener;
-use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -13,7 +12,7 @@ async fn main() -> anyhow::Result<()> {
     let _ = dotenvy::dotenv();
     let config = AppConfig::from_env()?;
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::try_new(&config.log_level)?)
+        .with_env_filter(log_filter(&config.log_level)?)
         .init();
 
     let address = format!("{}:{}", config.host, config.port);

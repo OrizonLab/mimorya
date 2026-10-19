@@ -9,6 +9,7 @@ pub mod accounts;
 mod client;
 pub mod llm;
 pub mod locks;
+pub mod mcp;
 pub mod planning;
 
 pub use client::{Client, TestResponse};
