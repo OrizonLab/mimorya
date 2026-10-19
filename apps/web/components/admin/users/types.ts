@@ -38,12 +38,15 @@ export interface IssuedInvitation {
 /** What an administrator is shown once after creating or resetting an account. */
 export type AccountNotice =
   | { kind: 'password'; who: string; password: string }
-  | { kind: 'invitation'; who: string; email: string; invitation: IssuedInvitation };
+  | { kind: 'invitation'; who: string; email: string; invitation: IssuedInvitation }
+  | { kind: 'resetLink'; who: string; email: string; expiresAt: string };
 
 export interface DirectoryView {
   users: UserView[];
   /** Account and role management, each requiring its permission company-wide. */
   canManage: { users: boolean; roles: boolean };
+  /** Whether invitations and reset links go by e-mail. */
+  emailEnabled: boolean;
 }
 
 export interface RoleOption {

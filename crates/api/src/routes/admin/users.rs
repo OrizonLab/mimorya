@@ -1,6 +1,8 @@
 //! The user directory (`user:read`) and account management (`user:manage`,
 //! company-wide): a new account gets an invitation link (ADR-027), e-mailed
-//! or shown once. Emails, logins and rights are only shown to administrators.
+//! or shown once; a password is reset by an e-mailed link (ADR-029) or a
+//! temporary password shown once. Emails, logins and rights are only shown
+//! to administrators.
 
 use std::collections::HashMap;
 
@@ -24,8 +26,8 @@ use crate::http::{
 use crate::plugins::Auth;
 use crate::services::access::{AccessContext, describe_scope};
 use crate::services::admin::{
-    Inviter, IssuedInvitation, NewUserInput, UserChanges, create_user, issue_invitation,
-    reset_password, update_user,
+    IssuedInvitation, LinkSender, NewUserInput, UserChanges, create_user, issue_invitation,
+    reset_password, send_reset_link, update_user,
 };
 
 pub async fn list(State(state): State<AppState>, Auth(identity): Auth) -> ApiResult<Json<Value>> {
@@ -89,6 +91,8 @@ pub async fn list(State(state): State<AppState>, Auth(identity): Auth) -> ApiRes
     Ok(Json(json!({
         "users": users,
         "canManage": { "users": manage_users, "roles": manage_roles },
+        // Whether invitations and reset links go by e-mail.
+        "emailEnabled": state.mailer.is_some(),
     })))
 }
 
@@ -151,7 +155,7 @@ pub async fn create(
         clearance: body.clearance,
     };
     let id = create_user(&state.db, &access, input).await?;
-    let invitation = issue_invitation(&inviter(&state), &access, id).await?;
+    let invitation = issue_invitation(&link_sender(&state), &access, id).await?;
     Ok((
         StatusCode::CREATED,
         secret(json!({ "id": id, "invitation": invitation_view(&invitation) })),
@@ -166,14 +170,14 @@ pub async fn invite(
     PathId(id): PathId,
 ) -> ApiResult<Secret> {
     let access = state.access.context(identity).await?;
-    let invitation = issue_invitation(&inviter(&state), &access, id).await?;
+    let invitation = issue_invitation(&link_sender(&state), &access, id).await?;
     Ok(secret(
         json!({ "invitation": invitation_view(&invitation) }),
     ))
 }
 
-fn inviter(state: &AppState) -> Inviter<'_> {
-    Inviter {
+fn link_sender(state: &AppState) -> LinkSender<'_> {
+    LinkSender {
         db: &state.db,
         mailer: state.mailer.as_deref(),
         web_origin: &state.config.web_origin,
@@ -253,4 +257,16 @@ pub async fn reset(
     let access = state.access.context(identity).await?;
     let password = reset_password(&state.db, &access, id).await?;
     Ok(secret(json!({ "temporaryPassword": password })))
+}
+
+/// A reset link e-mailed to the account (ADR-029); the administrator never
+/// sees it.
+pub async fn send_link(
+    State(state): State<AppState>,
+    Auth(identity): Auth,
+    PathId(id): PathId,
+) -> ApiResult<Json<Value>> {
+    let access = state.access.context(identity).await?;
+    let expires_at = send_reset_link(&link_sender(&state), &access, id).await?;
+    Ok(Json(json!({ "expiresAt": iso(&expires_at) })))
 }

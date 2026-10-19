@@ -1,7 +1,7 @@
 //! The life of a reset link (ADR-028): a newer link replaces the former one;
-//! links expire and are purged; any other change of the password or of the
-//! account's status retires the link, a profile change does not; asking is
-//! limited per address and per client.
+//! links expire and the periodic maintenance purges them; any other change
+//! of the password or of the account's status retires the link, a profile
+//! change does not; asking is limited per address and per client.
 
 mod support;
 
@@ -57,6 +57,38 @@ async fn a_newer_link_replaces_the_former_one_and_links_expire() {
     drop(tx);
     assert_eq!(left, [user::HUGO]);
     assert_eq!(inspect_reset(&api, &current).await.status, StatusCode::OK);
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn the_periodic_maintenance_purges_expired_links() {
+    let first = TestApi::start_with_mailer().await;
+    new_reset_token(&first, &email(user::JULIEN)).await;
+    let mut tx = first.app.services.db.begin(tenant::ID).await.unwrap();
+    sqlx::query("update password_resets set expires_at = now() where user_id = $1")
+        .bind(user::JULIEN)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+
+    // A server starting runs the maintenance at once.
+    let second = TestApi::start().await;
+    for _ in 0..100 {
+        let mut tx = second.app.services.db.begin(tenant::ID).await.unwrap();
+        let left: i64 =
+            sqlx::query_scalar("select count(*) from password_resets where user_id = $1")
+                .bind(user::JULIEN)
+                .fetch_one(&mut *tx)
+                .await
+                .unwrap();
+        drop(tx);
+        if left == 0 {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    panic!("expired link not purged");
 }
 
 #[tokio::test]

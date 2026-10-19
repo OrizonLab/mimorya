@@ -15,6 +15,7 @@ export function UserRow({
   user,
   units,
   canManage,
+  emailEnabled,
   isSelf,
   onChanged,
   onNotice,
@@ -22,6 +23,7 @@ export function UserRow({
   user: UserView;
   units: OrgUnitView[];
   canManage: DirectoryView['canManage'];
+  emailEnabled: boolean;
   isSelf: boolean;
   onChanged: () => void;
   onNotice: (notice: AccountNotice) => void;
@@ -76,6 +78,7 @@ export function UserRow({
                 <ProfileEditor
                   user={user}
                   units={units}
+                  emailEnabled={emailEnabled}
                   onChanged={onChanged}
                   onNotice={onNotice}
                 />

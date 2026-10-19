@@ -654,3 +654,43 @@ cité, renvoi) y sont faites sur place.
     modèle habituel de la réinitialisation par e-mail, que la MFA (phase 2) renforcera ;
   - la réinitialisation par un administrateur reste un mot de passe provisoire
     (ADR-021) ; lui faire envoyer un lien à la place reste à faire.
+
+## ADR-029 — Lien de réinitialisation envoyé par l'administrateur (complète ADR-021 et ADR-028)
+
+- **Date** : 2026-10-19 · **Statut** : acceptée
+- **Contexte** : pour réinitialiser le mot de passe d'un compte, l'administrateur ne
+  disposait que du mot de passe provisoire (ADR-021) : il le voit, le transmet par le
+  canal de son choix et peut s'en servir pour se connecter à la place de la personne.
+  Le lien de réinitialisation (ADR-028) n'était accessible que depuis la page de
+  connexion.
+- **Décision** :
+  - quand un relais SMTP est configuré, l'administrateur (`user:manage` sur toute
+    l'entreprise, jamais pour son propre compte) peut **envoyer un lien de
+    réinitialisation** à un compte actif qui a un mot de passe
+    (`POST /admin/users/{id}/password-link`). C'est le même lien qu'à l'ADR-028 (même
+    table, même usage unique, même fermeture des sessions à l'usage), valable
+    **24 heures** pour laisser à la personne le temps de lire son courrier. Le message
+    nomme l'administrateur. Le lien n'est **jamais montré à l'administrateur** ;
+  - le mot de passe actuel et les sessions restent valables jusqu'à l'usage du lien :
+    pour couper l'accès tout de suite, l'administrateur désactive le compte ou donne
+    un mot de passe provisoire, qui reste disponible ;
+  - sans relais, la route répond 503 et l'interface ne propose que le mot de passe
+    provisoire. Si l'envoi échoue, le lien est supprimé aussitôt (personne ne l'a
+    reçu) et l'administrateur reçoit la raison. Un compte invité se voit renvoyer son
+    invitation ; un compte désactivé est refusé (409) ;
+  - audit : `user.password_reset_link_sent` (échéance) au nom de l'administrateur,
+    `user.password_reset_not_sent`, puis `user.password_reset_completed` au nom du
+    compte ;
+  - compléments à l'ADR-028 :
+    - une demande faite depuis la page de connexion est anonyme : son audit est inscrit
+      au nom de la plateforme (`system`), pas du titulaire du compte ;
+    - le statut de l'entreprise est relu sous le même verrou que celui du compte ;
+    - la page de connexion ne propose « Mot de passe oublié ? » que si les e-mails
+      partent (`GET /auth/options`, sans identité) ;
+    - **contrepartie assumée** de la limite par adresse : n'importe qui peut épuiser
+      les 3 demandes par heure d'une adresse, et la vraie demande de la personne est
+      alors refusée (429) jusqu'à la fin de la fenêtre. C'est le prix d'une limite qui
+      ne distingue pas les adresses connues ; l'administrateur peut toujours envoyer un
+      lien.
+- **Conséquences** : pas de migration. Le mot de passe provisoire reste la voie sans
+  relais, ou quand la personne n'a pas accès à sa messagerie.

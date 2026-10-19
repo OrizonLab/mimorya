@@ -18,10 +18,11 @@ use support::{PASSWORD, TestApi, email, owner_url};
 const UNUSABLE: &str = "Ce lien de réinitialisation n’est plus valable : demandez-en un nouveau \
      depuis la page de connexion";
 
-async fn audited(api: &TestApi, user_id: uuid::Uuid) -> Vec<(String, Value)> {
+/// Action, actor type and metadata of the account's reset entries.
+async fn audited(api: &TestApi, user_id: uuid::Uuid) -> Vec<(String, String, Value)> {
     let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
     sqlx::query_as(
-        "select action, metadata from audit_log where resource_id = $1 \
+        "select action, actor_type, metadata from audit_log where resource_id = $1 \
          and action like 'user.password_reset%' order by id",
     )
     .bind(user_id.to_string())
@@ -84,16 +85,24 @@ async fn a_link_resets_the_password_once_and_ends_every_session() {
         assert_eq!(used.status, StatusCode::NOT_FOUND);
         assert_eq!(used.error_message(), UNUSABLE);
     }
+    // Whoever asked is anonymous: the request is the platform's.
     let audited = audited(&api, user::LUCAS).await;
-    let actions: Vec<&str> = audited.iter().map(|(a, _)| a.as_str()).collect();
+    let entries: Vec<(&str, &str)> = audited
+        .iter()
+        .map(|(a, by, _)| (a.as_str(), by.as_str()))
+        .collect();
     assert_eq!(
-        actions,
+        entries,
         [
-            "user.password_reset_requested",
-            "user.password_reset_completed"
+            ("user.password_reset_requested", "system"),
+            ("user.password_reset_completed", "user")
         ]
     );
-    assert!(audited.iter().all(|(_, m)| !m.to_string().contains(&token)));
+    assert!(
+        audited
+            .iter()
+            .all(|(.., m)| !m.to_string().contains(&token))
+    );
 }
 
 #[tokio::test]
@@ -175,7 +184,7 @@ async fn a_link_that_could_not_be_sent_is_audited_but_not_logged() {
     let actions: Vec<String> = audited(&api, user::HUGO)
         .await
         .into_iter()
-        .map(|(action, _)| action)
+        .map(|(action, ..)| action)
         .collect();
     assert_eq!(
         actions,
@@ -212,6 +221,12 @@ async fn the_server_stops_once_the_links_asked_for_are_sent() {
 #[ignore = "requires PostgreSQL"]
 async fn without_a_relay_no_link_can_be_asked() {
     let api = TestApi::start().await;
+    // The sign-in page does not offer it.
+    let options = api.anonymous().get("/auth/options").await;
+    assert_eq!(options.json(), json!({ "passwordReset": false }));
+    let with_relay = TestApi::start_with_mailer().await;
+    let options = with_relay.anonymous().get("/auth/options").await;
+    assert_eq!(options.json(), json!({ "passwordReset": true }));
     let refused = api
         .anonymous()
         .post(

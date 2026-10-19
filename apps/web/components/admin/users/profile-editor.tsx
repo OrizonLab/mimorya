@@ -5,17 +5,20 @@ import { Button, ErrorNote, Field, Input, Select } from '@/components/ui';
 import { api, useAction } from '@/lib/api';
 import { CLEARANCE_LABELS } from '@/lib/labels';
 import { unitOptions, type OrgUnitView } from '../organization/types';
-import type { AccountNotice, IssuedInvitation, UserView } from './types';
+import { CredentialActions } from './credential-actions';
+import type { AccountNotice, UserView } from './types';
 
 /** Profile, status and password (or invitation) of an account (`user:manage`). */
 export function ProfileEditor({
   user,
   units,
+  emailEnabled,
   onChanged,
   onNotice,
 }: {
   user: UserView;
   units: OrgUnitView[];
+  emailEnabled: boolean;
   onChanged: () => void;
   onNotice: (notice: AccountNotice) => void;
 }) {
@@ -26,7 +29,6 @@ export function ProfileEditor({
   const action = useAction();
   // An invited account is enabled: it is waiting for its password.
   const active = user.status !== 'disabled';
-  const invited = user.status === 'invited';
 
   async function save(event: FormEvent) {
     event.preventDefault();
@@ -48,35 +50,6 @@ export function ProfileEditor({
     if (!window.confirm(message)) return;
     const status = active ? 'disabled' : 'active';
     if (await action.run(() => api.patch(`/admin/users/${user.id}`, { status }))) onChanged();
-  }
-
-  async function resetPassword() {
-    if (!window.confirm(`Remplacer le mot de passe de ${user.displayName} ?`)) return;
-    const reset = await action.run(() =>
-      api.post<{ temporaryPassword: string }>(`/admin/users/${user.id}/password`),
-    );
-    if (reset)
-      onNotice({ kind: 'password', who: user.displayName, password: reset.temporaryPassword });
-  }
-
-  async function resendInvitation() {
-    if (
-      !window.confirm(
-        `Envoyer une nouvelle invitation à ${user.displayName} ? L’ancien lien ne fonctionnera plus.`,
-      )
-    )
-      return;
-    const issued = await action.run(() =>
-      api.post<{ invitation: IssuedInvitation }>(`/admin/users/${user.id}/invitation`),
-    );
-    if (issued) {
-      onNotice({
-        kind: 'invitation',
-        who: user.displayName,
-        email: user.email ?? '',
-        invitation: issued.invitation,
-      });
-    }
   }
 
   return (
@@ -119,15 +92,12 @@ export function ProfileEditor({
         <Button type="submit" loading={action.pending}>
           Enregistrer
         </Button>
-        {invited ? (
-          <Button type="button" variant="secondary" onClick={resendInvitation}>
-            Renvoyer l’invitation
-          </Button>
-        ) : (
-          <Button type="button" variant="secondary" onClick={resetPassword}>
-            Réinitialiser le mot de passe
-          </Button>
-        )}
+        <CredentialActions
+          user={user}
+          emailEnabled={emailEnabled}
+          action={action}
+          onNotice={onNotice}
+        />
         <Button type="button" variant={active ? 'danger' : 'secondary'} onClick={toggleStatus}>
           {active ? 'Désactiver le compte' : 'Réactiver le compte'}
         </Button>

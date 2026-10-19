@@ -1,8 +1,8 @@
-//! Issuing a reset link, off the response path: the caller gets the same
-//! answer, after the same time, whether the address belongs to an account or
-//! not. Only an active account that has a password, in an active company,
-//! gets a link; the former one stops working. The link is never stored in
-//! clear, logged nor audited.
+//! Issuing a reset link asked for from the login page, off the response
+//! path: the caller gets the same answer, after the same time, whether the
+//! address belongs to an account or not. Only an active account that has a
+//! password, in an active company, gets a link; the former one stops
+//! working. The link is never stored in clear, logged nor audited.
 
 use std::sync::Arc;
 
@@ -45,9 +45,10 @@ pub async fn send_reset_link(sender: ResetSender, request: ResetRequest) {
     }
 }
 
+/// Recorded as the platform's: whoever asked is anonymous, not necessarily
+/// the account's holder.
 fn audit(tenant_id: Uuid, user_id: Uuid, action: &str, request: &ResetRequest) -> AuditEntry {
-    let mut entry = AuditEntry::new(tenant_id, "user", action, "success")
-        .by_user(user_id)
+    let mut entry = AuditEntry::new(tenant_id, "system", action, "success")
         .resource("user", user_id)
         .ip(request.ip.clone());
     entry.request_id = Some(request.request_id.clone());
@@ -58,9 +59,6 @@ async fn issue(sender: &ResetSender, request: &ResetRequest) -> anyhow::Result<(
     let Some(login) = find_login(sender.db.pool(), &request.email).await? else {
         return Ok(());
     };
-    if login.tenant_status != "active" {
-        return Ok(());
-    }
     let (token, token_hash) = new_session_token();
     let expires_at = Utc::now() + RESET_VALIDITY;
     let mut tx = sender.db.begin(login.tenant_id).await?;
@@ -70,7 +68,10 @@ async fn issue(sender: &ResetSender, request: &ResetRequest) -> anyhow::Result<(
         return Ok(());
     };
     // An invited account has no password yet: its invitation link serves.
-    if recipient.status != "active" || !recipient.has_password {
+    if recipient.status != "active"
+        || recipient.tenant_status != "active"
+        || !recipient.has_password
+    {
         return Ok(());
     }
     put_password_reset(
@@ -104,6 +105,7 @@ async fn issue(sender: &ResetSender, request: &ResetRequest) -> anyhow::Result<(
         email: &recipient.email,
         link: &link,
         expires_at,
+        sent_by: None,
     });
     if sender.mailer.send(&mail).await.is_err() {
         // The relay's answer may name the recipient: not logged.

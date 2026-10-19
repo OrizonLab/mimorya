@@ -1,5 +1,5 @@
-//! Sign-in, sign-out and the profile of the signed-in user with the
-//! permissions computed server-side.
+//! Sign-in, sign-out, what the sign-in page may offer, and the profile of
+//! the signed-in user with the permissions computed server-side.
 
 use std::collections::BTreeSet;
 
@@ -31,6 +31,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/auth/login", post(login))
         .route("/auth/logout", post(logout))
+        .route("/auth/options", get(options))
         .route("/auth/me", get(me))
 }
 
@@ -141,6 +142,12 @@ async fn login(
         AppendHeaders([(SET_COOKIE, cookie)]),
         Json(json!({ "ok": true })),
     ))
+}
+
+/// What the sign-in page offers: a reset link can be asked for only when
+/// e-mails go out (ADR-028).
+async fn options(State(state): State<AppState>) -> Json<Value> {
+    Json(json!({ "passwordReset": state.mailer.is_some() }))
 }
 
 async fn logout(
