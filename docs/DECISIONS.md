@@ -803,8 +803,9 @@ cité, renvoi) y sont faites sur place.
   - `compose.demo.yml` (projet distinct de la base de développement) : base **sans
     port publié**, joignable des seuls conteneurs de la pile et sur son propre volume ;
     `seed` (migrations et entreprise fictive, puis arrêt) avec un `DEMO_PASSWORD`
-    **obligatoire** (le garde-fou de production du seed reste effectif : aucun mot de
-    passe connu d'avance) ; API (`MIMORYA_ENV=production`, cookies `Secure`,
+    **obligatoire** : en production, le seed exige un mot de passe et refuse la valeur
+    publique de développement (`demo-mimorya`), que `.env.example` ne fixe plus, pour
+    qu'un `.env` copié du modèle ne la fournisse pas en silence ; API (`MIMORYA_ENV=production`, cookies `Secure`,
     `TRUST_PROXY=true`, fournisseur de modèle et relais SMTP repris de l'environnement),
     interface et **Caddy** (`infra/caddy/Caddyfile`) : HTTPS (certificat local par
     défaut, public pour un vrai domaine), `Strict-Transport-Security: max-age=63072000;

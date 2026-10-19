@@ -56,7 +56,7 @@ Images Docker de l'API et de l'interface, derrière Caddy (HTTPS, HSTS), avec l'
 **fictive** de démonstration (ADR-032) :
 
 ```bash
-export DEMO_PASSWORD='…'                         # obligatoire : mot de passe de tous les comptes de démo
+export DEMO_PASSWORD='…'                         # obligatoire (autre que demo-mimorya) : comptes de démo
 docker compose -f compose.demo.yml up -d --build # https://localhost (certificat local de Caddy)
 infra/docker/smoke-test.sh                       # vérification : HSTS, CSP, API, connexion
 ```

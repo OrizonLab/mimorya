@@ -187,5 +187,5 @@ Avant chaque commit : `pnpm check && pnpm test:int` doivent passer.
 Entreprise fictive « Néo Maintenance » (`crates/core/src/demo`), connecteur
 `demo_interventions` (`crates/connectors/src/demo_interventions`). Comptes
 `prenom.nom@neo-maintenance.example`, mot de passe `DEMO_PASSWORD` (défaut de
-développement : `demo-mimorya`). Le serveur de démonstration MCP :
+développement : `demo-mimorya`, refusé en production). Le serveur de démonstration MCP :
 `cargo run -p mimorya-connectors --bin mcp-demo-docs`.
