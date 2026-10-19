@@ -1,11 +1,15 @@
 //! The user directory (`user:read`) and account management (`user:manage`,
-//! company-wide). Emails, logins and rights are only shown to administrators.
+//! company-wide): a new account gets an invitation link (ADR-027), e-mailed
+//! or shown once. Emails, logins and rights are only shown to administrators.
+
+use std::collections::HashMap;
 
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::http::header::CACHE_CONTROL;
 use mimorya_core::authz::Sensitivity;
+use mimorya_db::repositories::invitations::pending_invitations;
 use mimorya_db::repositories::role_assignments::{RoleAssignmentRow, list_role_assignments};
 use mimorya_db::repositories::users::list_users;
 use serde::Deserialize;
@@ -15,11 +19,14 @@ use validator::Validate;
 
 use crate::app::AppState;
 use crate::http::{
-    ApiResult, Body, PathId, iso_opt, nullable, trimmed, trimmed_nullable, trimmed_opt,
+    ApiResult, Body, PathId, iso, iso_opt, nullable, trimmed, trimmed_nullable, trimmed_opt,
 };
 use crate::plugins::Auth;
 use crate::services::access::{AccessContext, describe_scope};
-use crate::services::admin::{NewUserInput, UserChanges, create_user, reset_password, update_user};
+use crate::services::admin::{
+    Inviter, IssuedInvitation, NewUserInput, UserChanges, create_user, issue_invitation,
+    reset_password, update_user,
+};
 
 pub async fn list(State(state): State<AppState>, Auth(identity): Auth) -> ApiResult<Json<Value>> {
     let access = state.access.context(identity).await?;
@@ -32,6 +39,11 @@ pub async fn list(State(state): State<AppState>, Auth(identity): Auth) -> ApiRes
         list_role_assignments(&mut tx).await?
     } else {
         Vec::new()
+    };
+    let invitations = if manage_users {
+        pending_invitations(&mut tx).await?
+    } else {
+        HashMap::new()
     };
     tx.commit().await?;
 
@@ -55,6 +67,7 @@ pub async fn list(State(state): State<AppState>, Auth(identity): Auth) -> ApiRes
             // Only to those who set them (ADR-023).
             if manage_users {
                 view["attributes"] = u.attributes.clone();
+                view["invitationExpiresAt"] = iso_opt(&invitations.get(&u.id).copied());
             }
             if manage_roles {
                 let own: Vec<&RoleAssignmentRow> =
@@ -116,7 +129,8 @@ pub struct CreateUserBody {
     clearance: Sensitivity,
 }
 
-/// Responses carrying a temporary password are never stored by a cache.
+/// Responses carrying a temporary password or an invitation link are never
+/// stored by a cache.
 type Secret = ([(axum::http::HeaderName, &'static str); 1], Json<Value>);
 
 fn secret(body: Value) -> Secret {
@@ -136,11 +150,44 @@ pub async fn create(
         org_unit_id: body.org_unit_id,
         clearance: body.clearance,
     };
-    let (id, password) = create_user(&state.db, &access, input).await?;
+    let id = create_user(&state.db, &access, input).await?;
+    let invitation = issue_invitation(&inviter(&state), &access, id).await?;
     Ok((
         StatusCode::CREATED,
-        secret(json!({ "id": id, "temporaryPassword": password })),
+        secret(json!({ "id": id, "invitation": invitation_view(&invitation) })),
     ))
+}
+
+/// A new link for an account that never chose its password; the former
+/// one stops working.
+pub async fn invite(
+    State(state): State<AppState>,
+    Auth(identity): Auth,
+    PathId(id): PathId,
+) -> ApiResult<Secret> {
+    let access = state.access.context(identity).await?;
+    let invitation = issue_invitation(&inviter(&state), &access, id).await?;
+    Ok(secret(
+        json!({ "invitation": invitation_view(&invitation) }),
+    ))
+}
+
+fn inviter(state: &AppState) -> Inviter<'_> {
+    Inviter {
+        db: &state.db,
+        mailer: state.mailer.as_deref(),
+        web_origin: &state.config.web_origin,
+        product: &state.config.assistant_name,
+    }
+}
+
+fn invitation_view(invitation: &IssuedInvitation) -> Value {
+    json!({
+        "expiresAt": iso(&invitation.expires_at),
+        "emailed": invitation.emailed,
+        "link": invitation.link,
+        "problem": invitation.problem,
+    })
 }
 
 #[derive(Deserialize, Clone, Copy, PartialEq, Eq)]

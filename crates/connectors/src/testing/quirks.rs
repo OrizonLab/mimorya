@@ -44,8 +44,6 @@ pub enum Quirk {
     EndlessPages,
     /// Empty pages, and always a next page.
     EndlessEmptyPages,
-    /// Answers each request after 300 ms.
-    SlowStart,
     /// Every request is refused with a JSON error quoting the token escaped
     /// (`\/` for `/`, `\u002B` for `+`), as some encoders write it.
     EchoesEscapedTokenOnStart,
@@ -193,9 +191,6 @@ pub(super) async fn guarded(
                 given.unwrap_or_default()
             )))
             .expect("response");
-    }
-    if quirk == Quirk::SlowStart {
-        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
     }
     if quirk == Quirk::EchoesEscapedTokenOnStart {
         let escaped = given

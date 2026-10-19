@@ -20,7 +20,7 @@ export function TemporaryPassword({
       </p>
       <code className="w-fit rounded bg-surface-2 px-2 py-1 text-sm select-all">{password}</code>
       <p className="text-xs text-muted">
-        Transmettez-le par un canal sûr : il ne sera plus affiché. À sa première connexion, la
+        Transmettez-le par un canal sûr : il ne sera plus affiché. À sa prochaine connexion, la
         personne devra le remplacer par un mot de passe de son choix.
       </p>
       <Button variant="secondary" className="w-fit" onClick={onClose}>

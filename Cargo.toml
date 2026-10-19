@@ -24,6 +24,8 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "serd
 chrono-tz = "0.10"
 dotenvy = "0.15"
 futures = "0.3"
+# Invitation e-mails over SMTP: TLS by rustls (ring, webpki roots).
+lettre = { version = "0.11.23", default-features = false, features = ["builder", "hostname", "pool", "smtp-transport", "tokio1-rustls-tls"] }
 regex = "1"
 rmcp = { version = "3.5.1", features = ["client", "macros", "server", "transport-child-process", "transport-io", "transport-streamable-http-client-reqwest"] }
 ring = "0.17"

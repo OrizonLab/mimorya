@@ -5,16 +5,13 @@ use std::collections::BTreeSet;
 
 use axum::extract::State;
 use axum::http::HeaderMap;
-use axum::http::header::{SET_COOKIE, USER_AGENT};
+use axum::http::header::SET_COOKIE;
 use axum::response::{AppendHeaders, IntoResponse};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use chrono::Utc;
 use mimorya_core::DomainError;
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
-use mimorya_db::repositories::auth::{
-    NewSession, create_session, find_login, lock_login_state, revoke_session,
-};
+use mimorya_db::repositories::auth::{find_login, lock_login_state, revoke_session};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -22,9 +19,8 @@ use validator::Validate;
 
 use crate::app::AppState;
 use crate::auth::cookies::{cleared_session_cookie, session_cookie};
-use crate::auth::credentials::{
-    SESSION_ABSOLUTE, SESSION_IDLE, new_session_token, verify_password_async,
-};
+use crate::auth::credentials::verify_password_async;
+use crate::auth::sessions::open_session;
 use crate::http::{ApiError, ApiResult, Body, trimmed};
 use crate::plugins::{AuthPendingPasswordChange, MaybeAuth, RequestContext};
 use crate::services::permission_catalog::permission_catalog;
@@ -119,8 +115,6 @@ async fn login(
         }
     };
 
-    let (token, token_hash) = new_session_token();
-    let now = Utc::now();
     let mut tx = state.db.begin(login.tenant_id).await?;
     // A reset, a disabling or a password change committed during the
     // verification wins: no session is opened with what it replaced.
@@ -133,22 +127,7 @@ async fn login(
         record_in_background(state.clone(), entry);
         return Err(DomainError::unauthenticated(INVALID_CREDENTIALS).into());
     }
-    create_session(
-        &mut tx,
-        NewSession {
-            tenant_id: login.tenant_id,
-            user_id: login.user_id,
-            token_hash,
-            expires_at: now + SESSION_IDLE,
-            absolute_expires_at: now + SESSION_ABSOLUTE,
-            ip: context.ip_string(),
-            user_agent: headers
-                .get(USER_AGENT)
-                .and_then(|v| v.to_str().ok())
-                .map(str::to_string),
-        },
-    )
-    .await?;
+    let token = open_session(&mut tx, login.user_id, &context, &headers).await?;
     append_audit(
         &mut tx,
         login_audit(login.tenant_id, login.user_id, "success", &context),

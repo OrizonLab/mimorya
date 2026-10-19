@@ -13,6 +13,7 @@ mod assignments;
 mod connector_rules;
 mod connector_test;
 mod connectors;
+mod invitations;
 mod llm;
 mod org_units;
 mod policies;
@@ -26,6 +27,7 @@ pub use connectors::{
     ConnectorAdmin, ConnectorChanges, NewMcpConnector, TokenChange, create_mcp_connector,
     delete_connector, http_config, update_connector,
 };
+pub use invitations::{Inviter, IssuedInvitation, issue_invitation};
 pub use llm::{LlmInput, LlmTestOutcome, configure_llm, reset_llm, test_llm};
 pub use org_units::{NewUnitInput, UnitChanges, create_unit, delete_unit, update_unit};
 pub use policies::{PolicyChanges, PolicyInput, create_policy, delete_policy, update_policy};

@@ -5,10 +5,14 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use mimorya_agent::llm::{PROVIDER_KINDS, ProviderConfig};
+use mimorya_agent::llm::ProviderConfig;
 use mimorya_connectors::mcp::NetworkPolicy;
 
+use crate::mail::MailSettings;
 use crate::secrets::SecretCipher;
+use reader::{Reader, is_http_url};
+
+mod reader;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum Environment {
@@ -48,6 +52,9 @@ pub struct AppConfig {
     /// How long an MCP server may take to connect and list its tools
     /// (`MIMORYA_MCP_START_TIMEOUT_SECS`, 20 by default).
     pub mcp_start_timeout: Duration,
+    /// Sends the invitation e-mails (`SMTP_URL`, `MAIL_FROM`); without it,
+    /// the administrator transmits the invitation link (ADR-027).
+    pub mail: Option<MailSettings>,
     /// Model-based review of answers when success criteria are given.
     pub llm_judge: bool,
     /// Login attempts allowed per client address and per minute.
@@ -73,6 +80,7 @@ impl std::fmt::Debug for AppConfig {
             .field("tenant_llm_endpoints", &self.tenant_llm_endpoints)
             .field("mcp_network", &self.mcp_network)
             .field("mcp_start_timeout", &self.mcp_start_timeout)
+            .field("mail", &self.mail)
             .field("llm_judge", &self.llm_judge)
             .field(
                 "login_rate_limit_per_minute",
@@ -138,6 +146,7 @@ impl AppConfig {
             reader.issue("MIMORYA_MCP_START_TIMEOUT_SECS", "entre 1 et 120 secondes");
         }
         let mcp_start_timeout = Duration::from_secs(start_seconds);
+        let mail = reader.mail();
         let llm_judge = reader.boolean("MIMORYA_LLM_JUDGE", false);
         let login_rate_limit_per_minute = reader.parsed("LOGIN_RATE_LIMIT_PER_MINUTE", 10_u32);
         if login_rate_limit_per_minute == 0 {
@@ -162,221 +171,12 @@ impl AppConfig {
             tenant_llm_endpoints,
             mcp_network,
             mcp_start_timeout,
+            mail,
             llm_judge,
             login_rate_limit_per_minute,
         })
     }
 }
 
-fn is_http_url(value: &str) -> bool {
-    value.starts_with("http://") || value.starts_with("https://")
-}
-
-struct Reader<'a> {
-    get: &'a dyn Fn(&str) -> Option<String>,
-    issues: Vec<String>,
-}
-
-impl Reader<'_> {
-    fn value(&self, key: &str) -> Option<String> {
-        (self.get)(key)
-    }
-
-    fn issue(&mut self, key: &str, message: &str) {
-        self.issues.push(format!("- {key}: {message}"));
-    }
-
-    /// Records the issue and returns a placeholder (the configuration is rejected anyway).
-    fn invalid<T: Default>(&mut self, key: &str, message: &str) -> T {
-        self.issue(key, message);
-        T::default()
-    }
-
-    fn parsed<T: std::str::FromStr + Copy>(&mut self, key: &str, default: T) -> T {
-        match self.value(key) {
-            None => default,
-            Some(raw) => raw.trim().parse().unwrap_or_else(|_| {
-                self.issue(key, "nombre invalide");
-                default
-            }),
-        }
-    }
-
-    fn boolean(&mut self, key: &str, default: bool) -> bool {
-        match self.value(key).as_deref() {
-            None => default,
-            Some("true" | "1") => true,
-            Some("false" | "0") => false,
-            Some(_) => self.invalid(key, "true, false, 1 ou 0 attendu"),
-        }
-    }
-
-    fn master_key(&mut self) -> Option<Arc<SecretCipher>> {
-        let encoded = self.value("MIMORYA_MASTER_KEY")?;
-        match SecretCipher::from_base64(&encoded) {
-            Ok(cipher) => Some(Arc::new(cipher)),
-            Err(_) => self.invalid(
-                "MIMORYA_MASTER_KEY",
-                "base64 de 32 octets attendu (openssl rand -base64 32)",
-            ),
-        }
-    }
-
-    /// Comma-separated http(s) URLs.
-    fn endpoints(&mut self, key: &str) -> Vec<String> {
-        let endpoints: Vec<String> = self
-            .value(key)
-            .unwrap_or_default()
-            .split(',')
-            .map(str::trim)
-            .filter(|url| !url.is_empty())
-            .map(str::to_string)
-            .collect();
-        if endpoints.iter().any(|url| !is_http_url(url)) {
-            self.issue(key, "URL http(s) séparées par des virgules attendues");
-        }
-        endpoints
-    }
-
-    fn llm(&mut self) -> Option<ProviderConfig> {
-        let anthropic_key = self.value("ANTHROPIC_API_KEY");
-        let kind = self.value("LLM_PROVIDER").unwrap_or_else(|| {
-            if anthropic_key.is_some() {
-                "anthropic".into()
-            } else {
-                "none".into()
-            }
-        });
-        if kind == "none" {
-            return None;
-        }
-        if !PROVIDER_KINDS.contains(&kind.as_str()) {
-            let expected = format!("{} ou none attendu", PROVIDER_KINDS.join(", "));
-            self.issue("LLM_PROVIDER", &expected);
-            return None;
-        }
-        let base_url = self.value("LLM_BASE_URL");
-        if base_url.as_deref().is_some_and(|url| !is_http_url(url)) {
-            self.issue("LLM_BASE_URL", "URL http(s) attendue");
-        }
-        let api_key = self
-            .value("LLM_API_KEY")
-            .or_else(|| (kind == "anthropic").then_some(anthropic_key).flatten());
-        Some(ProviderConfig {
-            kind,
-            model: self.value("LLM_MODEL"),
-            api_key,
-            base_url,
-        })
-    }
-}
-
 #[cfg(test)]
-mod tests {
-    use std::collections::HashMap;
-
-    use super::*;
-
-    fn load(vars: &[(&str, &str)]) -> anyhow::Result<AppConfig> {
-        let map: HashMap<String, String> = vars
-            .iter()
-            .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
-            .collect();
-        AppConfig::from_vars(|key| map.get(key).cloned())
-    }
-
-    const DB: (&str, &str) = ("DATABASE_APP_URL", "postgres://app:app@localhost/mimorya");
-
-    #[test]
-    fn applies_defaults_and_infers_the_anthropic_provider() {
-        let config = load(&[DB, ("ANTHROPIC_API_KEY", "sk-test")]).unwrap();
-        assert_eq!(config.port, 4000);
-        assert_eq!(config.web_origin, "http://localhost:3000");
-        assert!(!config.secure_cookies);
-        let llm = config.llm.unwrap();
-        assert_eq!(llm.kind, "anthropic");
-        assert_eq!(llm.api_key.as_deref(), Some("sk-test"));
-
-        let without = load(&[DB, ("LLM_PROVIDER", "")]).unwrap();
-        assert!(without.llm.is_none());
-    }
-
-    #[test]
-    fn rejects_invalid_values_with_every_issue() {
-        let error = load(&[("PORT", "abc"), ("LLM_PROVIDER", "unknown")])
-            .unwrap_err()
-            .to_string();
-        assert!(error.contains("DATABASE_APP_URL"));
-        assert!(error.contains("PORT"));
-        assert!(error.contains("LLM_PROVIDER"));
-    }
-
-    #[test]
-    fn bounds_the_mcp_start_timeout() {
-        let url = ("DATABASE_APP_URL", "postgres://app@localhost/mimorya");
-        let key = "MIMORYA_MCP_START_TIMEOUT_SECS";
-        assert_eq!(
-            load(&[url]).unwrap().mcp_start_timeout,
-            Duration::from_secs(20)
-        );
-        let five = load(&[url, (key, "5")]).unwrap();
-        assert_eq!(five.mcp_start_timeout, Duration::from_secs(5));
-        for refused in ["0", "121", "x"] {
-            assert!(load(&[url, (key, refused)]).is_err(), "{refused}");
-        }
-    }
-
-    #[test]
-    fn never_prints_credentials_in_debug_output() {
-        let config = load(&[
-            (
-                "DATABASE_APP_URL",
-                "postgres://app:s3cret-db@localhost/mimorya",
-            ),
-            ("ANTHROPIC_API_KEY", "sk-s3cret"),
-            ("MIMORYA_MASTER_KEY", MASTER_KEY),
-        ])
-        .unwrap();
-        let printed = format!("{config:?}");
-        assert!(!printed.contains("s3cret"), "{printed}");
-        assert!(!printed.contains(MASTER_KEY), "{printed}");
-    }
-
-    /// Base64 of 32 bytes.
-    const MASTER_KEY: &str = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=";
-
-    #[test]
-    fn reads_the_master_key_and_the_listed_endpoints() {
-        let config = load(&[
-            DB,
-            ("MIMORYA_MASTER_KEY", MASTER_KEY),
-            (
-                "MIMORYA_TENANT_LLM_ENDPOINTS",
-                " http://ollama.interne:11434/v1, https://llm.interne/v1 ",
-            ),
-        ])
-        .unwrap();
-        assert!(config.secrets.is_some());
-        assert_eq!(
-            config.tenant_llm_endpoints,
-            ["http://ollama.interne:11434/v1", "https://llm.interne/v1"]
-        );
-        let without = load(&[DB]).unwrap();
-        assert!(without.secrets.is_none() && without.tenant_llm_endpoints.is_empty());
-        let error = load(&[
-            DB,
-            ("MIMORYA_MASTER_KEY", "trop-court"),
-            ("MIMORYA_TENANT_LLM_ENDPOINTS", "ftp://x"),
-        ])
-        .unwrap_err()
-        .to_string();
-        assert!(error.contains("MIMORYA_MASTER_KEY"));
-        assert!(error.contains("MIMORYA_TENANT_LLM_ENDPOINTS"));
-    }
-
-    #[test]
-    fn secures_cookies_in_production() {
-        let config = load(&[DB, ("MIMORYA_ENV", "production")]).unwrap();
-        assert!(config.secure_cookies);
-    }
-}
+mod tests;

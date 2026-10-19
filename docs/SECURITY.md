@@ -40,7 +40,7 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
 - Le contexte `app.tenant_id` est posé **par transaction** (`set_config(..., true)`),
   jamais au niveau de la connexion (pas de fuite par le pool).
 - Les seules opérations qui traversent les entreprises (connexion, résolution de
-  session, marquage des runs bloqués) passent par des fonctions `SECURITY DEFINER` au
+  session, lecture d'une invitation avant connexion, marquage des runs bloqués) passent par des fonctions `SECURITY DEFINER` au
   périmètre minimal et au `search_path` figé (`auth_*`, `system_*`).
 - Tests d'intégration obligatoires : lecture croisée impossible même par requête
   directe, insertion croisée refusée, absence de contexte = aucune ligne.
@@ -119,10 +119,14 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
     PostgreSQL par entreprise, ADR-020) et revérifient sur les données en base les
     droits de leur auteur et les règles de l'organigramme : deux administrateurs
     simultanés ne peuvent ni créer de cycle, ni se retirer mutuellement leurs droits ;
-  - un compte créé ou réinitialisé reçoit un mot de passe provisoire aléatoire
-    (96 bits), affiché une seule fois à l'administrateur (`Cache-Control: no-store`),
-    jamais journalisé ; la réinitialisation et la désactivation ferment immédiatement
-    les sessions ; le changement de son mot de passe exige l'actuel (tentatives
+  - un compte créé reçoit un lien d'invitation à usage unique, valable 7 jours
+    (ADR-027) : jeton de 256 bits dont seule l'empreinte est conservée, envoyé par
+    e-mail si un relais SMTP est configuré, sinon montré une seule fois à
+    l'administrateur (`Cache-Control: no-store`), jamais journalisé ni audité ; la
+    personne y choisit son mot de passe. Un compte réinitialisé reçoit un mot de passe
+    provisoire aléatoire (96 bits), montré de même ; la réinitialisation et la
+    désactivation ferment immédiatement les sessions (et la désactivation supprime
+    l'invitation en cours) ; le changement de son mot de passe exige l'actuel (tentatives
     limitées comme la connexion), ferme les autres sessions et n'écrase jamais une
     réinitialisation ou une révocation faite au même moment par un administrateur
     (écriture conditionnée à l'ancienne empreinte, session vérifiée sous verrou) ;
@@ -130,8 +134,7 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
     verrouillée, que le mot de passe vérifié est toujours celui en base et que le
     compte est actif : une connexion en cours ne survit pas à une réinitialisation,
     une désactivation ou un changement de mot de passe validé pendant sa vérification ;
-  - un compte qui détient un mot de passe provisoire (création, réinitialisation)
-    n'atteint que son identité, la déconnexion et le changement de mot de passe tant
+  - un compte qui détient un mot de passe provisoire (réinitialisation) n'atteint que son identité, la déconnexion et le changement de mot de passe tant
     qu'il ne l'a pas remplacé (contrôle par l'extracteur d'identité `Auth`, ADR-021 ;
     la connexion reste possible) ;
   - rôles personnalisés (ADR-021) : construits à partir du catalogue de permissions,
@@ -151,8 +154,8 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
       prévue en phase 3 ;
     - les adresses e-mail sont uniques entre entreprises (ADR-011) : créer un compte
       avec une adresse déjà utilisée ailleurs est refusé (409), ce qui révèle à
-      l'administrateur qu'elle existe dans une autre entreprise. Limite levée avec
-      l'invitation par e-mail ;
+      l'administrateur qu'elle existe dans une autre entreprise. L'invitation par
+      e-mail ne lève pas cette limite (un compte appartient à une seule entreprise) ;
     - les comptes créés ou réinitialisés avant la migration `0007` ne sont pas tenus
       de remplacer leur mot de passe provisoire (ADR-021) : sur une instance déjà en
       service, les réinitialiser au besoin ;

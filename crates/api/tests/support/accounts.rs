@@ -1,7 +1,7 @@
-//! Accounts created by the administration tests: a newcomer created by Paul
-//! (technical administrator), the same once it chose its own password, and an
-//! administrator limited to one team, as if the role had been granted before
-//! the company-wide rule existed.
+//! Accounts created by the administration tests: a newcomer invited by Paul
+//! (technical administrator), the same holding a temporary password or once
+//! it chose its own, and an administrator limited to one team, as if the role
+//! had been granted before the company-wide rule existed.
 
 use axum::http::StatusCode;
 use mimorya_core::authz::AssignmentScope;
@@ -10,7 +10,8 @@ use mimorya_db::repositories::role_assignments::{NewRoleAssignment, create_role_
 use serde_json::{Value, json};
 use uuid::Uuid;
 
-use super::{Client, TestApi};
+use super::mail::token_of;
+use super::{Client, TestApi, TestResponse};
 
 /// The password an account chooses to replace its temporary one.
 pub const OWN_PASSWORD: &str = "phrase-de-passe-choisie";
@@ -21,8 +22,12 @@ pub struct NewAccount {
     pub password: String,
 }
 
-/// Creates an account in the north team as `admin`.
-pub async fn create_account(admin: &Client<'_>, login: &str) -> NewAccount {
+/// The password an invited account chooses through its link.
+pub const INVITED_PASSWORD: &str = "mot-de-passe-de-bienvenue";
+
+/// Creates an account in the north team as `admin`; returns it with the
+/// response's invitation (no e-mail relay: the link is in it).
+pub async fn invite_account(admin: &Client<'_>, login: &str) -> (NewAccount, Value) {
     let email = format!("{login}@neo-maintenance.example");
     let created = admin
         .post(
@@ -37,11 +42,45 @@ pub async fn create_account(admin: &Client<'_>, login: &str) -> NewAccount {
         .await;
     assert_eq!(created.status, StatusCode::CREATED, "{}", created.text());
     let body = created.json();
-    NewAccount {
+    let account = NewAccount {
         id: body["id"].as_str().unwrap().parse().unwrap(),
         email,
-        password: body["temporaryPassword"].as_str().unwrap().to_string(),
-    }
+        password: String::new(),
+    };
+    (account, body["invitation"].clone())
+}
+
+/// Accepts an invitation link with `password`; returns the response.
+pub async fn accept(api: &TestApi, link: &str, password: &str) -> TestResponse {
+    api.anonymous()
+        .post(
+            "/auth/invitation/accept",
+            json!({ "token": token_of(link), "password": password }),
+        )
+        .await
+}
+
+/// Creates an account in the north team as `admin`, activated through its
+/// invitation, then reset by `admin` to a temporary password: the state most
+/// administration tests start from.
+pub async fn create_account(admin: &Client<'_>, login: &str) -> NewAccount {
+    let (mut account, invitation) = invite_account(admin, login).await;
+    let accepted = accept(
+        admin.api(),
+        invitation["link"].as_str().unwrap(),
+        INVITED_PASSWORD,
+    )
+    .await;
+    assert_eq!(accepted.status, StatusCode::OK, "{}", accepted.text());
+    let reset = admin
+        .post(&format!("/admin/users/{}/password", account.id), json!({}))
+        .await;
+    assert_eq!(reset.status, StatusCode::OK, "{}", reset.text());
+    account.password = reset.json()["temporaryPassword"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    account
 }
 
 /// Signs the account in and replaces its temporary password, so that it can

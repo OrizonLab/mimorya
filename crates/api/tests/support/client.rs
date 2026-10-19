@@ -47,6 +47,10 @@ impl<'a> Client<'a> {
         }
     }
 
+    pub fn api(&self) -> &'a TestApi {
+        self.api
+    }
+
     fn request(&self, method: Method, url: &str) -> axum::http::request::Builder {
         let builder = Request::builder()
             .method(method.clone())

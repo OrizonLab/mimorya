@@ -8,7 +8,7 @@ import type { OrgUnitView } from '../organization/types';
 import { AssignmentsEditor } from './assignments-editor';
 import { AttributesEditor } from './attributes-editor';
 import { ProfileEditor } from './profile-editor';
-import type { DirectoryView, UserView } from './types';
+import type { AccountNotice, DirectoryView, UserView } from './types';
 
 /** A directory row; administrators open it to manage the account. */
 export function UserRow({
@@ -17,14 +17,14 @@ export function UserRow({
   canManage,
   isSelf,
   onChanged,
-  onPassword,
+  onNotice,
 }: {
   user: UserView;
   units: OrgUnitView[];
   canManage: DirectoryView['canManage'];
   isSelf: boolean;
   onChanged: () => void;
-  onPassword: (displayName: string, temporaryPassword: string) => void;
+  onNotice: (notice: AccountNotice) => void;
 }) {
   const [open, setOpen] = useState(false);
   const manageable = (canManage.users || canManage.roles) && !isSelf;
@@ -36,6 +36,9 @@ export function UserRow({
           <p className="text-xs text-muted">{user.jobTitle}</p>
           {user.email && <p className="text-xs text-muted">{user.email}</p>}
           {user.status !== 'active' && <LabelBadge labels={ACCOUNT_STATUS} value={user.status} />}
+          {user.status === 'invited' && canManage.users && (
+            <p className="text-xs text-muted">{invitationState(user.invitationExpiresAt)}</p>
+          )}
         </Cell>
         <Cell className="text-muted">{user.orgUnit ?? '—'}</Cell>
         <Cell>
@@ -74,7 +77,7 @@ export function UserRow({
                   user={user}
                   units={units}
                   onChanged={onChanged}
-                  onPassword={(password) => onPassword(user.displayName, password)}
+                  onNotice={onNotice}
                 />
               )}
               {canManage.users && (
@@ -95,4 +98,11 @@ export function UserRow({
       )}
     </>
   );
+}
+
+/** Where the account's invitation stands. */
+function invitationState(expiresAt: string | null | undefined): string {
+  if (!expiresAt) return 'Aucune invitation en cours';
+  if (new Date(expiresAt).getTime() <= Date.now()) return 'Invitation expirée';
+  return `Invitation valable jusqu’au ${formatDate(expiresAt)}`;
 }

@@ -5,14 +5,15 @@ import { Button, Card, ErrorNote, Field, Input, Select } from '@/components/ui';
 import { api, useAction } from '@/lib/api';
 import { CLEARANCE_LABELS } from '@/lib/labels';
 import { unitOptions, type OrgUnitView } from '../organization/types';
+import type { AccountNotice, IssuedInvitation } from './types';
 
-/** Creates an account; the parent shows the temporary password it receives. */
+/** Creates an account; the parent shows the invitation it receives. */
 export function NewUserForm({
   units,
   onCreated,
 }: {
   units: OrgUnitView[];
-  onCreated: (displayName: string, temporaryPassword: string) => void;
+  onCreated: (notice: AccountNotice) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState('');
@@ -25,7 +26,7 @@ export function NewUserForm({
   async function submit(event: FormEvent) {
     event.preventDefault();
     const created = await action.run(() =>
-      api.post<{ temporaryPassword: string }>('/admin/users', {
+      api.post<{ invitation: IssuedInvitation }>('/admin/users', {
         email,
         displayName,
         jobTitle,
@@ -34,7 +35,7 @@ export function NewUserForm({
       }),
     );
     if (!created) return;
-    onCreated(displayName, created.temporaryPassword);
+    onCreated({ kind: 'invitation', who: displayName, email, invitation: created.invitation });
     setEmail('');
     setDisplayName('');
     setJobTitle('');
