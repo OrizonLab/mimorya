@@ -153,9 +153,9 @@ impl ToolCallProcessor {
                 tool_name: name.clone(),
                 input,
                 decision: if approval_id.is_some() {
-                    "require_approval"
+                    ToolCallEvaluation::REQUIRE_APPROVAL
                 } else {
-                    "allow"
+                    ToolCallEvaluation::ALLOW
                 },
                 decision_reason: None,
                 status: if result.is_error {

@@ -35,12 +35,17 @@ pub enum ToolCallEvaluation {
 }
 
 impl ToolCallEvaluation {
-    /// `allow`, `require_approval` or `deny`.
+    pub const ALLOW: &'static str = "allow";
+    pub const REQUIRE_APPROVAL: &'static str = "require_approval";
+    pub const DENY: &'static str = "deny";
+    /// Every value of `kind`, as streamed and recorded in the tool log.
+    pub const KINDS: [&'static str; 3] = [Self::ALLOW, Self::REQUIRE_APPROVAL, Self::DENY];
+
     pub fn kind(&self) -> &'static str {
         match self {
-            Self::Allow { .. } => "allow",
-            Self::RequireApproval { .. } => "require_approval",
-            Self::Deny { .. } => "deny",
+            Self::Allow { .. } => Self::ALLOW,
+            Self::RequireApproval { .. } => Self::REQUIRE_APPROVAL,
+            Self::Deny { .. } => Self::DENY,
         }
     }
 }

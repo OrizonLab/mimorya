@@ -8,7 +8,7 @@ use serde::Deserialize;
 use validator::Validate;
 
 use crate::app::AppState;
-use crate::contract::{ApprovalDecided, ApprovalList};
+use crate::contract::{Approval, ApprovalDecided, ApprovalList};
 use crate::http::{ApiResult, Body, PathId, Query, trimmed_opt};
 use crate::plugins::Auth;
 use crate::services::runs::DecisionInput;
@@ -46,7 +46,10 @@ async fn list(
     let rows = list_approvals_for_user(&mut tx, identity.user_id, statuses).await?;
     tx.commit().await?;
     Ok(Json(ApprovalList {
-        approvals: rows.iter().map(Into::into).collect(),
+        approvals: rows
+            .iter()
+            .map(Approval::from_row)
+            .collect::<anyhow::Result<_>>()?,
     }))
 }
 
@@ -76,7 +79,7 @@ async fn decide(
         )
         .await?;
     Ok(Json(ApprovalDecided {
-        approval: (&result.approval).into(),
+        approval: Approval::from_row(&result.approval)?,
         resumed: result.resumed,
     }))
 }

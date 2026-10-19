@@ -1,26 +1,24 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import type { RunStatus } from '@/lib/api';
+import type {
+  ApprovalRequestedEvent,
+  RunStatus,
+  RunStreamEvent,
+  ToolCallEvent,
+  VerificationEvent,
+} from '@/lib/api';
 
-export interface ActivityStep {
-  toolCallId: string;
-  toolName: string;
-  title: string;
-  decision: 'allow' | 'require_approval' | 'deny';
-  reason?: string;
+export type ActivityStep = ToolCallEvent & {
   summary?: string;
   isError?: boolean;
   done: boolean;
-}
+};
 
-export interface PendingApprovalView {
-  approvalId: string;
-  toolName: string;
-  actionSummary: string;
-  risk: string;
-  resolved?: boolean;
-}
+export type PendingApprovalView = ApprovalRequestedEvent & { resolved?: boolean };
+
+/** The data of the stream's events named `K`. */
+type EventData<K extends RunStreamEvent['type']> = Extract<RunStreamEvent, { type: K }>['data'];
 
 export interface RunActivity {
   status: RunStatus;
@@ -28,7 +26,7 @@ export interface RunActivity {
   notes: string[];
   steps: ActivityStep[];
   approvals: PendingApprovalView[];
-  verification: { attempt: number; passed: boolean; issues: string[] } | null;
+  verification: VerificationEvent | null;
   error: string | null;
 }
 
@@ -58,20 +56,18 @@ export function useRunStream(runId: string | null, onFinished: (status: RunStatu
     if (!runId) return;
     setActivity(INITIAL);
     const source = new EventSource(`/api/runs/${runId}/events`);
-    const on = <T>(type: string, handler: (data: T) => void) =>
+    const on = <K extends RunStreamEvent['type']>(type: K, handler: (data: EventData<K>) => void) =>
       source.addEventListener(type, (event) =>
-        handler(JSON.parse((event as MessageEvent).data) as T),
+        handler(JSON.parse((event as MessageEvent).data) as EventData<K>),
       );
 
-    on<{ text: string }>('assistant_delta', ({ text }) =>
-      setActivity((a) => ({ ...a, draft: a.draft + text })),
-    );
-    on<{ text: string; final: boolean }>('assistant_message', ({ text, final }) =>
+    on('assistant_delta', ({ text }) => setActivity((a) => ({ ...a, draft: a.draft + text })));
+    on('assistant_message', ({ text, final }) =>
       setActivity((a) =>
         final ? { ...a, draft: '' } : { ...a, draft: '', notes: [...a.notes, text] },
       ),
     );
-    on<Omit<ActivityStep, 'done'>>('tool_call', (step) =>
+    on('tool_call', (step) =>
       setActivity((a) => ({
         ...a,
         draft: '',
@@ -79,7 +75,7 @@ export function useRunStream(runId: string | null, onFinished: (status: RunStatu
         steps: [...a.steps, { ...step, done: step.decision === 'deny' }],
       })),
     );
-    on<{ toolCallId: string; summary: string; isError: boolean }>('tool_result', (r) =>
+    on('tool_result', (r) =>
       setActivity((a) => ({
         ...a,
         steps: a.steps.map((s) =>
@@ -89,10 +85,10 @@ export function useRunStream(runId: string | null, onFinished: (status: RunStatu
         ),
       })),
     );
-    on<PendingApprovalView>('approval_requested', (approval) =>
+    on('approval_requested', (approval) =>
       setActivity((a) => ({ ...a, approvals: [...a.approvals, approval] })),
     );
-    on<{ approvalId: string }>('approval_resolved', ({ approvalId }) =>
+    on('approval_resolved', ({ approvalId }) =>
       setActivity((a) => ({
         ...a,
         status: 'running',
@@ -101,10 +97,8 @@ export function useRunStream(runId: string | null, onFinished: (status: RunStatu
         ),
       })),
     );
-    on<RunActivity['verification']>('verification', (verification) =>
-      setActivity((a) => ({ ...a, verification })),
-    );
-    on<{ status: RunStatus; error?: string }>('run_finished', ({ status, error }) => {
+    on('verification', (verification) => setActivity((a) => ({ ...a, verification })));
+    on('run_finished', ({ status, error }) => {
       setActivity((a) => ({ ...a, status, error: error ?? null, draft: '' }));
       // Closing first prevents the browser from reconnecting to an ended stream.
       if (TERMINAL.has(status)) source.close();

@@ -33,16 +33,16 @@ impl ToolRisk {
         }
     }
 
+    pub const ALL: [ToolRisk; 5] = [
+        Self::Read,
+        Self::Draft,
+        Self::Write,
+        Self::External,
+        Self::Irreversible,
+    ];
+
     pub fn parse(value: &str) -> Option<Self> {
-        [
-            Self::Read,
-            Self::Draft,
-            Self::Write,
-            Self::External,
-            Self::Irreversible,
-        ]
-        .into_iter()
-        .find(|r| r.as_str() == value)
+        Self::ALL.into_iter().find(|r| r.as_str() == value)
     }
 
     fn has_side_effect(self) -> bool {

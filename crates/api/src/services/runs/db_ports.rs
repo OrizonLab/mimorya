@@ -13,12 +13,12 @@ use mimorya_agent::runtime::{
 };
 use mimorya_db::repositories::{approvals, audit, runs, tool_invocations, usage};
 use mimorya_db::{Database, TenantTx};
-use serde_json::json;
 use uuid::Uuid;
 
 use super::deliverables::DbDeliverables;
 use super::events::record_run_event;
 use super::outcome::persist_outcome;
+use crate::contract::AssistantDelta;
 use crate::services::event_bus::{BusEvent, RunEventBus};
 
 /// Approval requests left unanswered expire after a week.
@@ -89,7 +89,9 @@ impl RunEventSink for DbPorts {
             BusEvent {
                 seq: None,
                 event_type: "assistant_delta".into(),
-                data: json!({ "text": text }),
+                // A text always serialises.
+                data: serde_json::to_value(AssistantDelta { text: text.into() })
+                    .unwrap_or_default(),
             },
         );
     }

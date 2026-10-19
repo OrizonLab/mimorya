@@ -10,8 +10,8 @@ use super::state::PendingApproval;
 use super::tool_calls::ToolCallProcessor;
 use super::types::ApprovalDecision;
 use crate::llm::{LlmToolCall, LlmToolResult};
-use crate::tools::RegisteredTool;
 use crate::tools::executor::INVALID_INPUT;
+use crate::tools::{RegisteredTool, ToolCallEvaluation};
 
 impl ToolCallProcessor {
     /// A call refused by a human (or whose tool disappeared) is reported to the model.
@@ -26,7 +26,7 @@ impl ToolCallProcessor {
                 tool_call_id: approval.tool_call_id.clone(),
                 tool_name: approval.tool_name.clone(),
                 input: approval.input.clone(),
-                decision: "require_approval",
+                decision: ToolCallEvaluation::REQUIRE_APPROVAL,
                 decision_reason: Some(reason.clone()),
                 status: "rejected",
                 output_summary: None,
@@ -53,7 +53,7 @@ impl ToolCallProcessor {
                 tool_call_id: call.id.clone(),
                 tool_name: call.name.clone(),
                 input: call.input.clone(),
-                decision: "deny",
+                decision: ToolCallEvaluation::DENY,
                 decision_reason: Some(reason.clone()),
                 status: "denied",
                 output_summary: None,
@@ -113,7 +113,7 @@ impl ToolCallProcessor {
                 tool_call_id: call.id.clone(),
                 tool_name: tool.info.name.clone(),
                 input: input.clone(),
-                decision: "require_approval",
+                decision: ToolCallEvaluation::REQUIRE_APPROVAL,
                 decision_reason: Some(reason.clone()),
                 status: "awaiting_approval",
                 output_summary: None,

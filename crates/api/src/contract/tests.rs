@@ -3,13 +3,22 @@
 
 use std::path::PathBuf;
 
-use mimorya_agent::runtime::{BudgetLimits, DEFAULT_BUDGET, RunUsageTotals, VerificationReport};
+use mimorya_agent::runtime::{
+    BudgetLimits, DEFAULT_BUDGET, RunEvent, RunUsageTotals, VerificationReport,
+};
+use mimorya_agent::tools::ToolCallEvaluation;
+use mimorya_core::autonomy::ToolRisk;
+use mimorya_core::memory::{
+    MemoryKind as CoreMemoryKind, MemoryScope as CoreMemoryScope, MemoryStatus as CoreMemoryStatus,
+};
 use mimorya_core::tools::Citation as ToolCitation;
+use mimorya_db::repositories::runs::RunStatus as DbRunStatus;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
-use serde_json::json;
+use serde_json::{Value, json};
+use uuid::Uuid;
 
-use super::stored::stored;
+use super::stored::{stored, stored_text};
 use super::*;
 
 fn contract_file() -> PathBuf {
@@ -103,4 +112,111 @@ fn a_stored_value_off_the_contract_is_an_error_that_does_not_quote_it() {
     let usage = json!({ "steps": 1, "toolCalls": 0, "inputTokens": 1, "outputTokens": 1,
                         "costMicros": 0, "cachedTokens": 1 });
     assert!(stored::<RunUsage>("usage", &usage).is_err());
+}
+
+/// Every event the engine writes, one of each kind.
+fn every_engine_event() -> Vec<RunEvent> {
+    let mut events = vec![
+        RunEvent::RunStarted {
+            objective: "Planifier la semaine".into(),
+        },
+        RunEvent::AssistantMessage {
+            text: "Je regarde le planning.".into(),
+            is_final: false,
+        },
+        RunEvent::ToolResult {
+            tool_call_id: "call-1".into(),
+            tool_name: "interventions_search".into(),
+            summary: "3 interventions".into(),
+            is_error: false,
+            duration_ms: 42,
+        },
+        RunEvent::ApprovalResolved {
+            approval_id: Uuid::new_v4(),
+            approved: true,
+        },
+        RunEvent::Verification {
+            attempt: 1,
+            passed: false,
+            issues: vec!["Source manquante".into()],
+        },
+        RunEvent::Usage {
+            input_tokens: 1_000,
+            output_tokens: 200,
+            cost_micros: None,
+        },
+    ];
+    for decision in ToolCallEvaluation::KINDS {
+        events.push(RunEvent::ToolCall {
+            tool_call_id: "call-2".into(),
+            tool_name: "planning_apply".into(),
+            title: "Appliquer le planning".into(),
+            decision: decision.into(),
+            reason: (decision != ToolCallEvaluation::ALLOW).then(|| "Motif".into()),
+        });
+    }
+    for risk in ToolRisk::ALL {
+        events.push(RunEvent::ApprovalRequested {
+            approval_id: Uuid::new_v4(),
+            tool_name: "planning_apply".into(),
+            action_summary: "Programmer INT-2049".into(),
+            risk,
+        });
+    }
+    for status in DbRunStatus::ALL {
+        events.push(RunEvent::RunFinished {
+            status: status.as_str().into(),
+            error: (status == DbRunStatus::Failed).then(|| "Erreur interne".into()),
+        });
+    }
+    events
+}
+
+/// A new kind of engine event stops compiling here: add it to
+/// `every_engine_event` too.
+fn _covered(event: &RunEvent) {
+    match event {
+        RunEvent::RunStarted { .. }
+        | RunEvent::AssistantMessage { .. }
+        | RunEvent::ToolCall { .. }
+        | RunEvent::ToolResult { .. }
+        | RunEvent::ApprovalRequested { .. }
+        | RunEvent::ApprovalResolved { .. }
+        | RunEvent::Verification { .. }
+        | RunEvent::Usage { .. }
+        | RunEvent::RunFinished { .. } => {}
+    }
+}
+
+#[test]
+fn every_event_of_the_stream_reads_back_as_its_contract_type() {
+    let mut streamed: Vec<(String, Value)> = every_engine_event()
+        .into_iter()
+        .map(RunEvent::into_parts)
+        .collect();
+    let delta = serde_json::to_value(AssistantDelta { text: "Je ".into() }).unwrap();
+    streamed.push(("assistant_delta".into(), delta));
+    for (name, data) in streamed {
+        let event = json!({ "type": name, "data": data });
+        let read: RunStreamEvent = stored("event", &event).expect("event matches the contract");
+        assert_eq!(serde_json::to_value(read).unwrap(), event);
+    }
+}
+
+#[test]
+fn memory_columns_read_back_as_their_contract_values() {
+    for scope in CoreMemoryScope::ALL {
+        let read: MemoryScope = stored_text("memory scope", scope.as_str()).unwrap();
+        assert_eq!(serde_json::to_value(read).unwrap(), scope.as_str());
+    }
+    for kind in CoreMemoryKind::ALL {
+        let read: MemoryKind = stored_text("memory kind", kind.as_str()).unwrap();
+        assert_eq!(serde_json::to_value(read).unwrap(), kind.as_str());
+    }
+    for status in CoreMemoryStatus::ALL {
+        let read: MemoryStatus = stored_text("memory status", status.as_str()).unwrap();
+        assert_eq!(serde_json::to_value(read).unwrap(), status.as_str());
+    }
+    let error = stored_text::<MemoryScope>("memory scope", "secret").unwrap_err();
+    assert!(!error.to_string().contains("secret"));
 }

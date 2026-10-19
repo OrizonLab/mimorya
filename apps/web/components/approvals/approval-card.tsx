@@ -3,7 +3,7 @@
 import { ShieldAlert } from 'lucide-react';
 import { useState } from 'react';
 import { Badge, Button, ErrorNote } from '@/components/ui';
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, type ToolRisk } from '@/lib/api';
 import { RISK_LABELS } from '@/lib/labels';
 import { useCan } from '@/lib/me-context';
 
@@ -11,7 +11,7 @@ export interface ApprovalLike {
   id: string;
   toolName: string;
   actionSummary: string;
-  risk: string;
+  risk: ToolRisk;
   payload?: unknown;
 }
 

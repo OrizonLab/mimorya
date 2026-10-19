@@ -94,8 +94,7 @@ flowchart BT
 - `web` ne partage aucun code avec le serveur : il consomme le contrat JSON de l'API.
   Ses types sont générés depuis les réponses typées du serveur (`crates/api/src/contract`
   → `apps/web/lib/api/contract.ts`, ADR-036) ; les réponses pas encore passées au
-  contrat (administration, mémoire, compte) sont décrites à la main près de leurs
-  composants.
+  contrat (administration) et l'enveloppe des erreurs sont décrites à la main.
 
 ## 3. Pile technique retenue
 

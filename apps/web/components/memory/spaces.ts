@@ -1,19 +1,6 @@
+import type { MemoryKind, MemoryScope } from '@/lib/api';
+
 /** Memory spaces as shown to users, and the kinds of memories. */
-export type MemoryScope = 'user' | 'org_unit' | 'tenant' | 'experience';
-
-export interface MemoryItem {
-  id: string;
-  scope: MemoryScope;
-  orgUnit: string | null;
-  kind: string;
-  title: string;
-  content: string;
-  status: 'active' | 'proposed' | 'archived';
-  useCount: number;
-  updatedAt: string;
-  canManage: boolean;
-}
-
 export interface MemorySpaceInfo {
   scope: MemoryScope;
   title: string;
@@ -43,7 +30,7 @@ export const MEMORY_SPACES: MemorySpaceInfo[] = [
   },
 ];
 
-export const MEMORY_KINDS: Record<string, string> = {
+export const MEMORY_KINDS: Record<MemoryKind, string> = {
   preference: 'Préférence',
   fact: 'Fait',
   procedure: 'Procédure',

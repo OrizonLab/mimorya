@@ -1,5 +1,5 @@
 import { Button, Card } from '@/components/ui';
-import type { MemoryItem } from './spaces';
+import type { MemoryItem } from '@/lib/api';
 
 /** Knowledge proposed by the agent for a shared space the user is responsible for. */
 export function MemoryProposals({

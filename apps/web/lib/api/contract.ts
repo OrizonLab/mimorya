@@ -8,7 +8,7 @@ export type Approval = { id: string, runId: string, toolName: string, actionSumm
 /**
  * The validated input, executed as is once approved.
  */
-payload: unknown, risk: string, reason: string, status: string, decisionComment: string | null, createdAt: string, decidedAt: string | null, };
+payload: unknown, risk: ToolRisk, reason: string, status: string, decisionComment: string | null, createdAt: string, decidedAt: string | null, };
 
 /**
  * `POST /approvals/{id}/decision`.
@@ -23,6 +23,18 @@ resumed: boolean, };
  * `GET /approvals`.
  */
 export type ApprovalList = { approvals: Array<Approval>, };
+
+export type ApprovalRequestedEvent = { approvalId: string, toolName: string, actionSummary: string, risk: ToolRisk, };
+
+export type ApprovalResolvedEvent = { approvalId: string, approved: boolean, };
+
+export type AssistantDelta = { text: string, };
+
+export type AssistantMessage = { text: string,
+/**
+ * The answer, rather than a note written between tool calls.
+ */
+final: boolean, };
 
 export type AssistantStatus = { name: string,
 /**
@@ -67,6 +79,24 @@ export type ConversationSummary = { id: string, title: string, updatedAt: string
 export type Done = { ok: boolean, };
 
 /**
+ * `GET /health`: answered once the database answers.
+ */
+export type Health = {
+/**
+ * Always `ok`.
+ */
+status: string,
+/**
+ * A platform model provider is configured (companies may have their own).
+ */
+llm: boolean, };
+
+/**
+ * `POST /auth/invitation`: who the invitation is for.
+ */
+export type InvitationDetails = { email: string, displayName: string, company: string, expiresAt: string, };
+
+/**
  * `GET /auth/me`.
  */
 export type Me = { user: MeUser, tenant: MeTenant,
@@ -90,6 +120,44 @@ export type MeUser = { id: string, email: string, displayName: string, jobTitle:
  * Temporary password: nothing else is reachable until it is replaced.
  */
 mustChangePassword: boolean, };
+
+/**
+ * `POST /memory`.
+ */
+export type MemoryCreated = { id: string, };
+
+export type MemoryItem = { id: string, scope: MemoryScope,
+/**
+ * Name of the unit sharing it, for a unit's memory.
+ */
+orgUnit: string | null, kind: MemoryKind, title: string, content: string, status: MemoryStatus, source: MemorySource,
+/**
+ * How many times the assistant recalled it.
+ */
+useCount: number, lastUsedAt: string | null, updatedAt: string,
+/**
+ * The user may delete it (and validate it, when proposed).
+ */
+canManage: boolean, };
+
+export type MemoryKind = "preference" | "fact" | "procedure" | "decision" | "lesson" | "episode";
+
+/**
+ * `GET /memory`.
+ */
+export type MemoryList = { items: Array<MemoryItem>, };
+
+/**
+ * The space a memory belongs to.
+ */
+export type MemoryScope = "user" | "org_unit" | "tenant" | "experience";
+
+/**
+ * Where a memory comes from: written by hand, or by a run of the assistant.
+ */
+export type MemorySource = { type: string, id?: string, label?: string, };
+
+export type MemoryStatus = "active" | "proposed" | "archived";
 
 export type Message = { id: string, role: MessageRole, content: string, runId: string | null, metadata: MessageMetadata, createdAt: string, };
 
@@ -122,6 +190,11 @@ export type OrgUnitRef = { id: string,
 path: string, };
 
 /**
+ * `POST /auth/password-reset/link`: the account whose password is reset.
+ */
+export type ResetDetails = { email: string, expiresAt: string, };
+
+/**
  * The limits a run stops at (`agent_runs.budget`).
  */
 export type RunBudget = { maxSteps: number, maxInputTokens: number, maxOutputTokens: number, maxCostMicros: number, maxDurationMs: number, };
@@ -135,6 +208,11 @@ export type RunDetail = { run: RunView, tools: Array<ToolInvocation>, approvals:
  * An event of a run's journal, as replayed by its event stream.
  */
 export type RunEventRecord = { seq: number, type: string, data: unknown, createdAt: string, };
+
+/**
+ * The run stopped: ended, or paused for a validation (`awaiting_approval`).
+ */
+export type RunFinished = { status: RunStatus, error?: string, };
 
 /**
  * `GET /runs`.
@@ -151,7 +229,14 @@ export type RunListItem = { id: string, conversationId: string | null, objective
  */
 export type RunRef = { id: string, status: RunStatus, createdAt: string, };
 
+export type RunStarted = { objective: string, };
+
 export type RunStatus = "queued" | "running" | "awaiting_approval" | "completed" | "failed" | "cancelled";
+
+/**
+ * One event of the stream, by name.
+ */
+export type RunStreamEvent = { "type": "run_started", "data": RunStarted } | { "type": "assistant_delta", "data": AssistantDelta } | { "type": "assistant_message", "data": AssistantMessage } | { "type": "tool_call", "data": ToolCallEvent } | { "type": "tool_result", "data": ToolResultEvent } | { "type": "approval_requested", "data": ApprovalRequestedEvent } | { "type": "approval_resolved", "data": ApprovalResolvedEvent } | { "type": "verification", "data": VerificationEvent } | { "type": "usage", "data": UsageEvent } | { "type": "run_finished", "data": RunFinished };
 
 /**
  * What a run has consumed so far (`agent_runs.usage`).
@@ -164,10 +249,33 @@ costMicros: number, };
 
 export type RunView = { id: string, conversationId: string | null, objective: string, status: RunStatus, autonomyLevel: string, usage: RunUsage, budget: RunBudget, verification: Verification | null, error: string | null, createdAt: string, finishedAt: string | null, };
 
+export type ToolCallEvent = { toolCallId: string, toolName: string, title: string, decision: ToolDecision, reason?: string, };
+
+/**
+ * The policy's decision on a tool call.
+ */
+export type ToolDecision = "allow" | "require_approval" | "deny";
+
 /**
  * A tool call of a run, with the decision taken on it.
  */
-export type ToolInvocation = { id: string, toolName: string, decision: string, decisionReason: string | null, status: string, outputSummary: string | null, durationMs: number | null, createdAt: string, };
+export type ToolInvocation = { id: string, toolName: string, decision: ToolDecision, decisionReason: string | null, status: string, outputSummary: string | null, durationMs: number | null, createdAt: string, };
+
+export type ToolResultEvent = { toolCallId: string, toolName: string, summary: string, isError: boolean, durationMs: number, };
+
+/**
+ * Risk class of a tool, from harmless to irreversible.
+ */
+export type ToolRisk = "read" | "draft" | "write" | "external" | "irreversible";
+
+/**
+ * Tokens (and cost) of one model call.
+ */
+export type UsageEvent = { inputTokens: number, outputTokens: number,
+/**
+ * `null` when the model is not priced.
+ */
+costMicros: number | null, };
 
 /**
  * Checks of a run's final answer.
@@ -177,3 +285,8 @@ export type Verification = { passed: boolean, issues: Array<string>,
  * True when a model review ran and gave a usable verdict.
  */
 judged: boolean, };
+
+/**
+ * Checks of a candidate answer; a failed attempt may be followed by another.
+ */
+export type VerificationEvent = { attempt: number, passed: boolean, issues: Array<string>, };
