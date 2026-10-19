@@ -37,7 +37,8 @@ Repères à l'intérieur des crates :
 - `connectors/src/demo_interventions/` (données, planning, accès, `tools/` un fichier
   par outil), `connectors/src/mcp/`, `connectors/src/bin/mcp_demo_docs.rs`.
 - `api/src/plugins/` (contexte de requête, limitation de débit, CSRF, session,
-  en-têtes de sécurité, maintenance périodique : runs bloqués, liens expirés),
+  en-têtes de sécurité, audit des modifications d'administration refusées,
+  maintenance périodique : runs bloqués, liens expirés),
   `api/src/routes/` (un module par ressource, `admin/`), `api/src/contract/` (réponses
   typées, un fichier par ressource, dont sont générés les types TypeScript, ADR-036),
   `api/src/services/admin/` (comptes, organisation, habilitations, sous verrou par

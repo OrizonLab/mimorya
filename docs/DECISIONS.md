@@ -1063,3 +1063,37 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     l'enveloppe des erreurs ;
   - les données d'un événement relu depuis le journal d'un run (`RunDetail.events`)
     restent en `unknown` : leur forme est celle de `RunStreamEvent`.
+
+## ADR-038 — Modifications d'administration refusées tracées avec leur raison
+
+- **Date** : 2026-10-19 · **Statut** : acceptée
+- **Contexte** : l'audit gardait les modifications d'administration faites, pas celles
+  refusées : un administrateur qui tente de modifier son propre compte, un
+  administrateur limité à une équipe, un membre sans rôle d'administration ou une
+  tentative sur un rôle de la plateforme ne laissaient aucune trace. Les refus naissent
+  à plusieurs endroits (vérification de la permission, permission sur toute
+  l'entreprise, verrou de l'administration, règles propres à une ressource).
+- **Décision** :
+  - un refus (`DomainError` de code `Forbidden`) porte, dans les extensions de sa
+    réponse, son message (`Refusal`) ; il n'est jamais envoyé, le message figurant déjà
+    dans le corps ;
+  - une couche posée sur les routes d'administration (`plugins/refusal_audit.rs`,
+    `route_layer`) trace, pour une requête modifiante d'un utilisateur connecté dont la
+    réponse porte un refus, une entrée `admin.refused` (`denied`) : l'utilisateur, la
+    raison (le message du refus), la méthode et la route (`MatchedPath`, sans les
+    valeurs), la ressource désignée par l'identifiant de la route (nommée comme dans
+    l'audit des modifications faites ; seul un UUID est retenu), l'IP et l'identifiant
+    de requête. Elle est écrite dans sa propre transaction, après celle de la requête,
+    annulée ;
+  - les messages de refus sont écrits par la plateforme (au plus le nom d'une
+    permission) : rien de ce que la requête a envoyé n'atteint l'audit ;
+  - un échec d'écriture de la trace est journalisé ; la réponse reste le refus.
+- **Conséquences** :
+  - ne sont pas tracées : les lectures refusées, les requêtes invalides ou anonymes,
+    et les ressources absentes ou hors périmètre, qui répondent 404 sans distinguer
+    l'une de l'autre ; tracer les secondes demanderait de les distinguer côté serveur
+    (feuille de route) ;
+  - une route d'administration nouvelle est couverte d'office ; une collection nouvelle
+    à identifiant est à nommer dans `resource_of`, sans quoi l'entrée n'a pas de
+    ressource (la route reste dans les métadonnées) ;
+  - le volume de ces entrées est borné par la limitation de débit globale.

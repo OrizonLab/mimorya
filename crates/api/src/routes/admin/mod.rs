@@ -1,6 +1,7 @@
 //! Administration endpoints, each reserved to its permission. Reading the
 //! directory and the organisation is open to members; managing them, and the
-//! company-wide screens, require the permission on the whole company.
+//! company-wide screens, require the permission on the whole company. A
+//! refused change is audited with its reason (ADR-038).
 
 mod activity;
 mod assignments;
@@ -13,11 +14,13 @@ mod roles;
 mod users;
 
 use axum::Router;
+use axum::middleware::from_fn_with_state;
 use axum::routing::{delete, get, patch, post};
 
 use crate::app::AppState;
+use crate::plugins::refusal_audit::audit_refusals;
 
-pub fn routes() -> Router<AppState> {
+pub fn routes(state: &AppState) -> Router<AppState> {
     Router::new()
         .route("/admin/organization", get(organization::organization))
         .route("/admin/org-units", post(organization::create))
@@ -62,4 +65,5 @@ pub fn routes() -> Router<AppState> {
         .route("/admin/skills", get(catalog::skills))
         .route("/admin/audit", get(activity::audit))
         .route("/admin/usage", get(activity::usage))
+        .route_layer(from_fn_with_state(state.clone(), audit_refusals))
 }

@@ -24,7 +24,7 @@ use mimorya_core::DomainError;
 use crate::app::AppState;
 use crate::http::ApiError;
 
-pub fn router() -> Router<AppState> {
+pub fn router(state: &AppState) -> Router<AppState> {
     Router::new()
         .merge(health::routes())
         .merge(auth::routes())
@@ -36,7 +36,7 @@ pub fn router() -> Router<AppState> {
         .merge(run_events::routes())
         .merge(approvals::routes())
         .merge(memory::routes())
-        .merge(admin::routes())
+        .merge(admin::routes(state))
         .fallback(not_found)
 }
 

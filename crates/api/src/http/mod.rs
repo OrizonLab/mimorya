@@ -4,6 +4,6 @@ pub mod error;
 pub mod extract;
 pub mod format;
 
-pub use error::{ApiError, ApiResult};
+pub use error::{ApiError, ApiResult, Refusal};
 pub use extract::{Body, PathId, Query};
 pub use format::{iso, iso_opt, nullable, trimmed, trimmed_nullable, trimmed_opt};
