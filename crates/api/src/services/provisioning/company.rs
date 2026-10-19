@@ -5,7 +5,7 @@
 //! the rest from the administration. All of it or nothing.
 
 use mimorya_core::DomainError;
-use mimorya_core::accounts::{EMAIL_MAX_LEN, display_name_fits};
+use mimorya_core::accounts::{EMAIL_MAX_LEN, display_name_problem};
 use mimorya_core::authz::{AssignmentScope, Sensitivity};
 use mimorya_core::provisioning::{company_name_problem, slug_problem};
 use mimorya_core::roles::PLATFORM_ROLE_TEMPLATES;
@@ -52,12 +52,9 @@ impl NewCompany {
             .or_else(|| slug_problem(&company.slug))
             .or_else(|| {
                 (email.chars().count() as u64 > EMAIL_MAX_LEN || !email.validate_email())
-                    .then_some("L’adresse e-mail de l’administrateur n’est pas valide")
+                    .then(|| "L’adresse e-mail de l’administrateur n’est pas valide".into())
             })
-            .or_else(|| {
-                (!display_name_fits(&company.admin_name))
-                    .then_some("Le nom de l’administrateur compte de 2 à 120 caractères")
-            });
+            .or_else(|| display_name_problem(&company.admin_name, "de l’administrateur"));
         match problem {
             Some(problem) => Err(DomainError::validation(problem)),
             None => Ok(company),

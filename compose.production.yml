@@ -1,0 +1,109 @@
+# Private production stack (ADR-034): no demonstration data, every secret
+# chosen at installation, behind Caddy. In an env file (kept out of the
+# repository) or the environment:
+#   POSTGRES_PASSWORD         owner of the schema (migrations)
+#   MIMORYA_APP_DB_PASSWORD   the application's role (row-level security)
+#                             both: 16 letters and digits at least (`openssl rand -hex 32`)
+#   MIMORYA_DOMAIN            the name the stack is served on
+#   MIMORYA_TLS               an e-mail address for a public certificate (ACME),
+#                             or `internal` for Caddy's own local authority
+# then:
+#   docker compose --env-file .env.production -f compose.production.yml up -d --build
+#   docker compose --env-file .env.production -f compose.production.yml exec api \
+#     mimorya-admin create-company --name … --slug … --admin-email … --admin-name …
+#
+# Only Caddy publishes ports; the database is reachable from the stack's own
+# containers only, with its own project name and volume (apart from the
+# development database's).
+name: mimorya-production
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    # The passwords are checked before anything is created.
+    entrypoint: ['bash', '/usr/local/bin/entrypoint-production.sh']
+    command: ['postgres']
+    environment:
+      POSTGRES_USER: mimorya
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?choose the schema owner's password (POSTGRES_PASSWORD)}
+      POSTGRES_DB: mimorya
+      MIMORYA_APP_DB_PASSWORD: ${MIMORYA_APP_DB_PASSWORD:?choose the application role's password (MIMORYA_APP_DB_PASSWORD)}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./infra/postgres/entrypoint-production.sh:/usr/local/bin/entrypoint-production.sh:ro
+      - ./infra/postgres/init-production.sh:/docker-entrypoint-initdb.d/00-init.sh:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U mimorya']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # The migrations alone (owner role), then it stops.
+  migrate:
+    image: mimorya-api:local
+    build:
+      context: .
+      dockerfile: infra/docker/api.Dockerfile
+    command: ['mimorya-admin', 'migrate']
+    environment:
+      DATABASE_URL: postgres://mimorya:${POSTGRES_PASSWORD}@db:5432/mimorya
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    image: mimorya-api:local
+    build:
+      context: .
+      dockerfile: infra/docker/api.Dockerfile
+    restart: unless-stopped
+    environment:
+      MIMORYA_ENV: production
+      DATABASE_APP_URL: postgres://mimorya_app:${MIMORYA_APP_DB_PASSWORD}@db:5432/mimorya
+      WEB_ORIGIN: https://${MIMORYA_DOMAIN:?choose the domain the stack is served on (MIMORYA_DOMAIN)}
+      TRUST_PROXY: 'true'
+      # Unset: Anthropic if ANTHROPIC_API_KEY is, otherwise no model.
+      LLM_PROVIDER: ${LLM_PROVIDER:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      MIMORYA_MASTER_KEY: ${MIMORYA_MASTER_KEY:-}
+      SMTP_URL: ${SMTP_URL:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  web:
+    image: mimorya-web:production
+    build:
+      context: .
+      dockerfile: infra/docker/web.Dockerfile
+      args:
+        API_URL: http://api:4000
+        NEXT_PUBLIC_DEMO_MODE: 'false'
+    restart: unless-stopped
+    depends_on:
+      - api
+
+  proxy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    environment:
+      MIMORYA_DOMAIN: ${MIMORYA_DOMAIN}
+      MIMORYA_TLS: ${MIMORYA_TLS:?an e-mail address for a public certificate, or internal (MIMORYA_TLS)}
+    volumes:
+      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    depends_on:
+      - web
+      - api
+
+volumes:
+  db-data:
+  caddy-data:

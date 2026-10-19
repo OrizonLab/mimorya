@@ -55,10 +55,12 @@ Repères à l'intérieur des crates :
   `web/lib/security/` (CSP à nonce par page, ADR-030), `web/e2e/` (tests de bout en
   bout, un fichier par parcours, `support/`) et `api/examples/e2e_server/` (l'API qu'ils
   pilotent, ADR-031).
-- `infra/` : `docker/` (images de l'API et de l'interface, test de fumée, test des commandes
-  d'exploitation), `caddy/`
-  (reverse proxy : TLS, HSTS), `postgres/` (rôles et extensions) ; `docker-compose.yml`
-  (base de développement, sur 127.0.0.1) et `compose.demo.yml` (pile de démonstration,
+- `infra/` : `docker/` (images de l'API et de l'interface, test de fumée de la démonstration,
+  test d'installation de la production, vérifications partagées `checks.sh`), `caddy/`
+  (reverse proxy : TLS, HSTS), `postgres/` (rôles et extensions ; production : `entrypoint-production.sh` vérifie les
+  mots de passe, `init-production.sh` crée le rôle applicatif) ; `docker-compose.yml`
+  (base de développement, sur 127.0.0.1), `compose.production.yml` (pile de production,
+  ADR-034) et `compose.demo.yml` (pile de démonstration,
   ADR-032).
 
 ## Commandes
@@ -74,6 +76,7 @@ pnpm check                         # Rust : fmt + clippy -D warnings + tests ; w
 pnpm test:int                      # cargo test-int : tests PostgreSQL (en série, base *_test recréée)
 pnpm test:e2e                      # Playwright : parcours web contre l'API à modèle scénarisé (ADR-031)
 DEMO_PASSWORD=… docker compose -f compose.demo.yml up -d --build   # pile de démonstration (ADR-032)
+docker compose --env-file .env.production -f compose.production.yml up -d --build   # production (ADR-034)
 ```
 
 Avant chaque commit : `pnpm check && pnpm test:int` doivent passer.

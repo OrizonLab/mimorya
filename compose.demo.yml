@@ -63,7 +63,7 @@ services:
         condition: service_completed_successfully
 
   web:
-    image: mimorya-web:local
+    image: mimorya-web:demo
     build:
       context: .
       dockerfile: infra/docker/web.Dockerfile
@@ -80,6 +80,7 @@ services:
       - '443:443'
     environment:
       MIMORYA_DOMAIN: ${MIMORYA_DOMAIN:-localhost}
+      MIMORYA_TLS: ${MIMORYA_TLS:-internal}
     volumes:
       - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data

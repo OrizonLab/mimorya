@@ -1,13 +1,14 @@
-# Reverse proxy of the containerised stack (ADR-032): TLS, HSTS (ADR-030),
-# and one origin for the browser. /api/* goes straight to the API, which
-# then reads the client's address as the last X-Forwarded-For entry
-# (TRUST_PROXY=true); the rest goes to the web application.
+# Reverse proxy of the containerised stacks (ADR-032, ADR-034): TLS, HSTS
+# (ADR-030), and one origin for the browser. /api/* goes straight to the
+# API, which then reads the client's address as the last X-Forwarded-For
+# entry (TRUST_PROXY=true); the rest goes to the web application.
 #
-# MIMORYA_DOMAIN defaults to localhost, served with Caddy's own local
-# certificate authority. For a real domain, remove the `tls internal` line:
-# Caddy then obtains a public certificate (ports 80 and 443 reachable).
+# MIMORYA_DOMAIN defaults to localhost. MIMORYA_TLS is `internal` (Caddy's
+# own local certificate authority, the default) or an e-mail address: Caddy
+# then obtains a public certificate for the domain (ports 80 and 443
+# reachable from the Internet).
 {$MIMORYA_DOMAIN:localhost} {
-	tls internal
+	tls {$MIMORYA_TLS:internal}
 
 	header Strict-Transport-Security "max-age=63072000; includeSubDomains"
 
