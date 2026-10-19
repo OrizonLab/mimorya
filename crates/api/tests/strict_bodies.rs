@@ -1,6 +1,7 @@
-//! Request bodies are strict over HTTP (ADR-039), the administration's too:
-//! a misnamed or extra field is answered 400, naming the field, instead of
-//! being ignored while the request appears to succeed. Nothing is changed.
+//! Request bodies are strict over HTTP (ADR-039), the administration's too
+//! (ADR-040): a misnamed or extra field is answered 400, naming the field,
+//! instead of being ignored while the request appears to succeed. Nothing is
+//! changed.
 
 mod support;
 
