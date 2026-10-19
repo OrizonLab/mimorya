@@ -113,6 +113,9 @@ export function ConnectorCard({
           </p>
           {connector.mcp && tested.tools.length > 0 && (
             <ToolPolicies
+              // Each test brings the server's tools and their current rules: the
+              // form starts again from them, never from a former test.
+              key={JSON.stringify(tested.tools)}
               connectorId={connector.id}
               data={data}
               tools={tested.tools}

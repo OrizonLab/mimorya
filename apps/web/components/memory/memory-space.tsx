@@ -43,7 +43,7 @@ export function MemorySpace({
                   type="button"
                   aria-label={`Supprimer « ${m.title} »`}
                   onClick={() => onDelete(m.id)}
-                  className="rounded-md p-1.5 text-muted hover:bg-danger-soft hover:text-danger"
+                  className="rounded-md p-1.5 text-muted hover:bg-danger-soft hover:text-danger disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Trash2 className="size-4" />
                 </button>

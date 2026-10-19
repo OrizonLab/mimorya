@@ -113,7 +113,14 @@ export function McpForm({
         <Button type="submit" loading={action.pending}>
           {connector ? 'Enregistrer' : 'Ajouter le serveur'}
         </Button>
-        <Button type="button" variant="ghost" onClick={() => onDone(false)}>
+        <Button
+          type="button"
+          variant="ghost"
+          // Closed before its change is answered, it could be reopened from the
+          // former resource, and that change overwritten.
+          disabled={action.pending}
+          onClick={() => onDone(false)}
+        >
           Annuler
         </Button>
       </div>

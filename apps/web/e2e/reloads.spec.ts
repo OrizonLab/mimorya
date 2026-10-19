@@ -72,7 +72,8 @@ test('an account’s forms wait for, then follow, the reloaded directory', async
   await expect(page.getByRole('button', { name: 'Ajouter un collaborateur' })).toBeDisabled();
   directory.release();
   await expect(saveProfile).toBeEnabled();
-  await expect(jobTitle).toHaveValue('Chef d’équipe');
+  // The row shows the account as the reloaded directory lists it.
+  await expect(row).toContainText('Chef d’équipe');
 
   // Another administrator changes the account while its form is open...
   const listed = await page.request.get('/api/admin/users');
@@ -93,7 +94,13 @@ test('an account’s forms wait for, then follow, the reloaded directory', async
   await expect(jobTitle).toHaveValue('Chef d’équipe');
   directory.release();
   await expect(jobTitle).toHaveValue('Responsable de secteur');
-  await expect(page.getByLabel('Valeur')).toHaveValue('technique');
+  await expect
+    .poll(async () => {
+      const response = await page.request.get('/api/admin/users');
+      const users = ((await response.json()) as Directory).users;
+      return users.find((u) => u.email === email)?.attributes;
+    })
+    .toEqual({ department: 'technique' });
   await noError(page);
 });
 

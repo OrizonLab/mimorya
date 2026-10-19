@@ -25,7 +25,8 @@ export function Button({
       className={cx(
         'inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition',
         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
-        'disabled:cursor-not-allowed disabled:opacity-50',
+        // Dimmed only past 150 ms: a quick reload does not flash the screen.
+        'disabled:cursor-not-allowed disabled:opacity-50 disabled:delay-150',
         VARIANTS[variant],
         className,
       )}

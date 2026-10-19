@@ -75,7 +75,7 @@ export function ApprovalCard({
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
                 placeholder="Commentaire (facultatif)"
-                className="mt-3 w-full rounded-lg border border-line bg-surface px-3 py-1.5 text-sm outline-none focus:border-accent"
+                className="mt-3 w-full rounded-lg border border-line bg-surface px-3 py-1.5 text-sm outline-none focus:border-accent disabled:opacity-60"
               />
               {error && (
                 <div className="mt-2">

@@ -32,7 +32,7 @@ export function PersonalMemoryForm({
         onChange={(e) => setTitle(e.target.value)}
         placeholder="Intitulé (ex. Format préféré)"
         aria-label="Intitulé"
-        className="rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-accent sm:w-56"
+        className="rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-accent disabled:opacity-60 sm:w-56"
       />
       <input
         required
@@ -41,7 +41,7 @@ export function PersonalMemoryForm({
         onChange={(e) => setContent(e.target.value)}
         placeholder="Ce que l’agent doit retenir"
         aria-label="Contenu"
-        className="flex-1 rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-accent"
+        className="flex-1 rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-accent disabled:opacity-60"
       />
       <Button type="submit" variant="secondary" loading={saving}>
         Ajouter

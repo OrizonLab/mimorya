@@ -17,7 +17,7 @@ export function Loaded<T>({
   if (state.data === null) return <Spinner />;
   return (
     // `contents`: the content is laid out as if the fieldset were not there.
-    <fieldset disabled={state.loading} className="contents">
+    <fieldset disabled={state.loading} aria-busy={state.loading} className="contents">
       {children(state.data)}
     </fieldset>
   );

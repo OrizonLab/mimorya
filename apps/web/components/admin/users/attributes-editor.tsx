@@ -14,7 +14,7 @@ import {
 } from './attributes';
 
 const TEXTAREA =
-  'rounded-lg border border-line bg-surface px-3 py-2 text-sm text-fg outline-none focus:border-accent';
+  'rounded-lg border border-line bg-surface px-3 py-2 text-sm text-fg outline-none focus:border-accent disabled:opacity-60';
 
 /** The attributes access policies read (`subject.attributes.<nom>`). */
 export function AttributesEditor({

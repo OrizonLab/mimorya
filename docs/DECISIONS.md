@@ -1209,11 +1209,11 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     rechargement, et le contrôle qui avait le focus le perd ;
   - les autres formulaires de modification (rôle, politique, unité, serveur MCP,
     politique d'outil, modèle) restent à traiter de la même façon (`docs/ROADMAP.md`) ;
-  - test : `apps/web/e2e/administration.spec.ts` retient l'annuaire, vérifie que la
-    fiche rouverte n'est pas enregistrable, puis qu'elle montre ce que l'API a
-    enregistré.
+  - test : `apps/web/e2e/reloads.spec.ts` (d'abord dans `administration.spec.ts`)
+    retient l'annuaire, vérifie que la fiche rouverte n'est pas enregistrable, puis
+    qu'elle montre ce que l'API a enregistré.
 
-## ADR-042 — Tout écran chargé par l'API est verrouillé pendant son rechargement (complète ADR-041)
+## ADR-042 — Tout écran chargé par l'API est verrouillé pendant son rechargement (complète ADR-041 et en remplace le verrou par formulaire)
 
 - **Date** : 2026-10-19 · **Statut** : acceptée
 - **Contexte** : ADR-041 verrouillait la seule fiche d'un compte. Les autres formulaires
@@ -1232,14 +1232,23 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     demandée (version et adresse) : `loading` est vrai dès le rendu qui la demande ;
   - le verrou par formulaire d'ADR-041 et sa propriété `reloading` sont retirés ; un
     formulaire qui reste ouvert après un enregistrement (fiche d'un compte) suit
-    toujours la liste par `useSyncedState`.
+    toujours la liste par `useSyncedState` ;
+  - un formulaire de modification ne se ferme pas (« Annuler » désactivé) tant que sa
+    modification n'a pas reçu de réponse : refermé puis rouvert pendant ce temps, il
+    serait reparti de l'ancienne ressource ; le verrou prend le relais au
+    rechargement ;
+  - les règles des outils d'un serveur MCP repartent de chaque test de connexion ;
+  - le verrou est signalé (`aria-busy`), et les contrôles ne s'atténuent qu'au-delà
+    de 150 ms, pour qu'un rechargement rapide ne fasse pas clignoter l'écran.
 - **Conséquences** :
   - après une modification, l'écran est brièvement désactivé, le temps du rechargement,
-    et le contrôle qui avait le focus le perd ;
+    et le contrôle qui avait le focus le perd (à rendre, `docs/ROADMAP.md`) ;
+  - une lecture qui ne répond pas laisse l'écran verrouillé : les requêtes n'ont pas
+    encore de délai (`docs/ROADMAP.md`) ;
   - un écran nouveau qui affiche ses données par `Loaded` est protégé sans rien
     ajouter ;
-  - test : `apps/web/e2e/reloads.spec.ts` retient la liste. Il vérifie que ni la fiche
-    d'un compte ni un rôle ne se modifient, ne se ferment ni ne se rouvrent d'après
-    l'ancienne liste, puis qu'ils montrent ce que l'API a enregistré. Il vérifie aussi
-    qu'une fiche restée ouverte reprend, au rechargement suivant, la modification d'un
-    autre administrateur.
+  - test : `apps/web/e2e/reloads.spec.ts` retient la liste. Il vérifie que la fiche
+    d'un compte ne se modifie ni ne se ferme, et qu'un rôle ne se rouvre pas, d'après
+    l'ancienne liste, puis que la liste et le formulaire rouvert montrent ce que l'API
+    a enregistré. Il vérifie aussi qu'une fiche restée ouverte reprend, au
+    rechargement suivant, la modification faite entre-temps hors de la page.
