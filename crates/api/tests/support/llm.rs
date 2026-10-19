@@ -2,14 +2,15 @@
 //! of conversation to see which provider answers.
 
 use axum::http::StatusCode;
+use mimorya_api::secrets::PUBLIC_TEST_MASTER_KEYS;
 use serde_json::json;
 
 use super::Client;
 
-/// Base64 of 32 bytes: the server's master key.
-pub const MASTER_KEY: &str = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=";
+/// Base64 of 32 bytes: the server's master key (public, refused in production).
+pub const MASTER_KEY: &str = PUBLIC_TEST_MASTER_KEYS[0];
 /// Another server's master key.
-pub const OTHER_MASTER_KEY: &str = "Hx4dHBsaGRgXFhUUExIREA8ODQwLCgkIBwYFBAMCAQA=";
+pub const OTHER_MASTER_KEY: &str = PUBLIC_TEST_MASTER_KEYS[1];
 pub const API_KEY: &str = "sk-ant-api03-cle-de-test-0123456789";
 pub const ENDPOINT: &str = "http://ollama.test:11434/v1";
 

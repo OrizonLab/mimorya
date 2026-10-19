@@ -3,8 +3,9 @@
 // deny policy, an organisation unit and an account's profile, attributes and
 // rights. What a test creates it deletes, except the account (the API deletes
 // none), whose address is its own and which keeps no business role.
-import { cardWith, noError, openAdmin, selectContaining } from './support/admin';
-import { expect, test } from './support/fixtures';
+import type { Directory } from '../lib/api/contract';
+import { cardWith, openAdmin, selectContaining } from './support/admin';
+import { expect, noError, test } from './support/fixtures';
 
 test.beforeEach(({ page }) => {
   // Deletions and revocations ask for a confirmation.
@@ -91,9 +92,20 @@ test('an account’s profile, attributes and rights are changed', async ({ page 
   await page.getByLabel('Nom', { exact: true }).fill('department');
   await page.getByLabel('Valeur').fill('technique');
   await page.getByRole('button', { name: 'Enregistrer les attributs' }).click();
+  // What the API saved...
+  await expect
+    .poll(async () => {
+      const response = await page.request.get('/api/admin/users');
+      if (response.status() !== 200) return `HTTP ${response.status()}`;
+      const directory = (await response.json()) as Directory;
+      return directory.users.find((user) => user.email === email)?.attributes;
+    })
+    .toEqual({ department: 'technique' });
   await noError(page);
-  // Reopened, the account's form shows the attributes the API now lists.
-  await row.getByRole('button', { name: 'Fermer' }).click();
+  // ...as a page loaded afresh shows it: its form reads the directory it loads.
+  await page.reload();
+  await page.getByRole('tab', { name: 'Utilisateurs' }).click();
+  await expect(page.getByText('Chargement…')).toHaveCount(0);
   await row.getByRole('button', { name: 'Gérer' }).click();
   await expect(page.getByLabel('Nom', { exact: true })).toHaveValue('department');
   await expect(page.getByLabel('Valeur')).toHaveValue('technique');

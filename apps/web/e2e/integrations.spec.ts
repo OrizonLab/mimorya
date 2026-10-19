@@ -4,8 +4,8 @@
 // Whatever happens, the company keeps the platform's model and loses the test
 // server: the scenario that follows runs with them.
 import type { Connectors } from '../lib/api/contract';
-import { cardWith, noError, openAdmin } from './support/admin';
-import { expect, FOREIGN_HOST, test } from './support/fixtures';
+import { cardWith, openAdmin } from './support/admin';
+import { expect, FOREIGN_HOST, noError, test } from './support/fixtures';
 
 const SERVER = 'Documents e2e';
 const WRITE = { 'X-Mimorya-Request': '1' };
@@ -16,13 +16,19 @@ test.beforeEach(({ page }) => {
 });
 
 test.afterEach(async ({ page }) => {
-  // With the test's session; nothing to undo answers an error, ignored.
-  await page.request.delete('/api/admin/llm', { headers: WRITE });
+  // With the test's session. 404: the platform's model is already in use;
+  // 401: the test never signed in, so changed nothing.
+  const reset = await page.request.delete('/api/admin/llm', { headers: WRITE });
+  expect([200, 401, 404]).toContain(reset.status());
+  if (reset.status() === 401) return;
   const listed = await page.request.get('/api/admin/connectors');
-  if (!listed.ok()) return;
+  expect(listed.status()).toBe(200);
   const { instances } = (await listed.json()) as Connectors;
   for (const connector of instances.filter((c) => c.name === SERVER)) {
-    await page.request.delete(`/api/admin/connectors/${connector.id}`, { headers: WRITE });
+    const deleted = await page.request.delete(`/api/admin/connectors/${connector.id}`, {
+      headers: WRITE,
+    });
+    expect(deleted.status()).toBe(200);
   }
 });
 

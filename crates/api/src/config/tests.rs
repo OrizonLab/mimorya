@@ -82,7 +82,7 @@ fn never_prints_credentials_in_debug_output() {
 }
 
 /// Base64 of 32 bytes.
-const MASTER_KEY: &str = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=";
+const MASTER_KEY: &str = crate::secrets::PUBLIC_TEST_MASTER_KEYS[0];
 
 #[test]
 fn reads_the_master_key_and_the_listed_endpoints() {
@@ -117,4 +117,53 @@ fn reads_the_master_key_and_the_listed_endpoints() {
 fn secures_cookies_in_production() {
     let config = load(&[DB, ("MIMORYA_ENV", "production")]).unwrap();
     assert!(config.secure_cookies);
+}
+
+#[test]
+fn refuses_the_tests_public_master_keys_in_production() {
+    for key in crate::secrets::PUBLIC_TEST_MASTER_KEYS {
+        let error = load(&[
+            DB,
+            ("MIMORYA_ENV", "production"),
+            ("MIMORYA_MASTER_KEY", key),
+        ])
+        .unwrap_err()
+        .to_string();
+        assert!(error.contains("MIMORYA_MASTER_KEY"), "{error}");
+        assert!(!error.contains(key), "{error}");
+        // Surrounding spaces, which the cipher ignores, do not hide them.
+        let padded = format!(" {key}\n");
+        let padded = [
+            DB,
+            ("MIMORYA_ENV", "production"),
+            ("MIMORYA_MASTER_KEY", &padded),
+        ];
+        assert!(load(&padded).is_err());
+        // Outside production, the tests use them.
+        assert!(
+            load(&[DB, ("MIMORYA_MASTER_KEY", key)])
+                .unwrap()
+                .secrets
+                .is_some()
+        );
+    }
+}
+
+/// The end-to-end tests' key is one of the refused ones: a key copied from
+/// their configuration does not start a production server.
+#[test]
+fn the_end_to_end_tests_use_a_refused_key() {
+    let config = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../apps/web/playwright.config.ts");
+    let config = std::fs::read_to_string(config).expect("playwright.config.ts");
+    let line = config
+        .lines()
+        .find(|line| line.contains("MIMORYA_MASTER_KEY:"))
+        .expect("the e2e server's master key");
+    assert!(
+        crate::secrets::PUBLIC_TEST_MASTER_KEYS
+            .iter()
+            .any(|key| line.contains(key)),
+        "{line}"
+    );
 }

@@ -7,3 +7,10 @@ mod store;
 
 pub use cipher::{MASTER_KEY_LEN, SecretCipher};
 pub use store::{LLM_API_KEY, SecretRead, SecretStore};
+
+/// Master keys published by this repository's tests (integration and end to
+/// end): anyone can read them, so production refuses them.
+pub const PUBLIC_TEST_MASTER_KEYS: [&str; 2] = [
+    "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+    "Hx4dHBsaGRgXFhUUExIREA8ODQwLCgkIBwYFBAMCAQA=",
+];

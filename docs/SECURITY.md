@@ -215,7 +215,10 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   par l'environnement (`MIMORYA_MASTER_KEY`, 32 octets base64), un nonce aléatoire par
   écriture, et l'entreprise et le nom du secret comme données associées : une valeur
   déplacée vers une autre entreprise ou un autre nom ne s'ouvre pas (ADR-024). Sans
-  clé maître, aucun secret n'est enregistré. `key_version` prépare la rotation (avec
+  clé maître, aucun secret n'est enregistré. En production, les clés maîtres publiées
+  par les tests du dépôt (`PUBLIC_TEST_MASTER_KEYS`) sont refusées au démarrage : une
+  installation qui en utilisait une en génère une autre, et les secrets scellés avec
+  l'ancienne (clé du modèle, jetons des connecteurs) sont à ressaisir. `key_version` prépare la rotation (avec
   un KMS, phase 3 : pas encore faite).
 - Clé du modèle d'une entreprise : écriture seule (`keyStored` seulement), jamais dans
   l'audit, et liée au fournisseur et à l'adresse pour lesquels elle a été saisie. Les
