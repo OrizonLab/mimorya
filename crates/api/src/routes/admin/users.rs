@@ -16,22 +16,29 @@ use mimorya_db::repositories::invitations::pending_invitations;
 use mimorya_db::repositories::role_assignments::{RoleAssignmentRow, list_role_assignments};
 use mimorya_db::repositories::users::list_users;
 use serde::Deserialize;
-use serde_json::{Map, Value, json};
+use serde_json::{Map, Value};
 use uuid::Uuid;
 use validator::Validate;
 
 use crate::app::AppState;
-use crate::http::{
-    ApiResult, Body, PathId, iso, iso_opt, nullable, trimmed, trimmed_nullable, trimmed_opt,
+use crate::contract::Done;
+use crate::contract::admin::{
+    Assignment, Directory, DirectoryRights, DirectoryUser, InvitationIssued, ResetLinkSent,
+    TemporaryPassword, UserCreated,
 };
+use crate::contract::stored_text;
+use crate::http::{ApiResult, Body, PathId, iso, nullable, trimmed, trimmed_nullable, trimmed_opt};
 use crate::plugins::Auth;
 use crate::services::access::{AccessContext, describe_scope};
 use crate::services::admin::{
-    IssuedInvitation, LinkSender, NewUserInput, UserChanges, create_user, issue_invitation,
-    reset_password, send_reset_link, update_user,
+    LinkSender, NewUserInput, UserChanges, create_user, issue_invitation, reset_password,
+    send_reset_link, update_user,
 };
 
-pub async fn list(State(state): State<AppState>, Auth(identity): Auth) -> ApiResult<Json<Value>> {
+pub async fn list(
+    State(state): State<AppState>,
+    Auth(identity): Auth,
+) -> ApiResult<Json<Directory>> {
     let access = state.access.context(identity).await?;
     access.require("user:read")?;
     let manage_users = access.require_tenant_wide("user:manage").is_ok();
@@ -51,50 +58,41 @@ pub async fn list(State(state): State<AppState>, Auth(identity): Auth) -> ApiRes
     tx.commit().await?;
 
     let tree = access.org_tree();
-    let users: Vec<Value> = users
+    let users = users
         .iter()
         .map(|u| {
-            let mut view = json!({
-                "id": u.id,
-                "displayName": u.display_name,
-                "jobTitle": u.job_title,
-                "status": u.status,
-                "orgUnit": u.primary_unit_id.map(|unit| tree.path_label(unit)),
-            });
-            if manage_users || manage_roles {
-                view["email"] = json!(u.email);
-                view["lastLoginAt"] = iso_opt(&u.last_login_at);
-                view["orgUnitId"] = json!(u.primary_unit_id);
-                view["clearance"] = json!(u.clearance);
-            }
-            // Only to those who set them (ADR-023).
-            if manage_users {
-                view["attributes"] = u.attributes.clone();
-                view["invitationExpiresAt"] = iso_opt(&invitations.get(&u.id).copied());
-            }
-            if manage_roles {
-                let own: Vec<&RoleAssignmentRow> =
-                    assignments.iter().filter(|a| a.user_id == u.id).collect();
-                view["grants"] = json!(
-                    own.iter()
-                        .map(|a| grant_label(&access, a))
-                        .collect::<Vec<_>>()
-                );
-                view["assignments"] = json!(
-                    own.iter()
-                        .map(|a| assignment_view(&access, a))
-                        .collect::<Vec<_>>()
-                );
-            }
-            view
+            let admin = manage_users || manage_roles;
+            let own: Vec<&RoleAssignmentRow> =
+                assignments.iter().filter(|a| a.user_id == u.id).collect();
+            Ok(DirectoryUser {
+                id: u.id,
+                display_name: u.display_name.clone(),
+                job_title: u.job_title.clone(),
+                status: stored_text("account status", &u.status)?,
+                org_unit: u.primary_unit_id.map(|unit| tree.path_label(unit)),
+                email: admin.then(|| u.email.clone()),
+                last_login_at: admin.then(|| u.last_login_at.as_ref().map(iso)),
+                org_unit_id: admin.then_some(u.primary_unit_id),
+                clearance: admin
+                    .then(|| stored_text("account clearance", &u.clearance))
+                    .transpose()?,
+                // Only to those who set them (ADR-023).
+                attributes: manage_users.then(|| u.attributes.clone()),
+                invitation_expires_at: manage_users.then(|| invitations.get(&u.id).map(iso)),
+                grants: manage_roles.then(|| own.iter().map(|a| grant_label(&access, a)).collect()),
+                assignments: manage_roles
+                    .then(|| own.iter().map(|a| assignment_view(&access, a)).collect()),
+            })
         })
-        .collect();
-    Ok(Json(json!({
-        "users": users,
-        "canManage": { "users": manage_users, "roles": manage_roles },
-        // Whether invitations and reset links go by e-mail.
-        "emailEnabled": state.mailer.is_some(),
-    })))
+        .collect::<anyhow::Result<_>>()?;
+    Ok(Json(Directory {
+        users,
+        can_manage: DirectoryRights {
+            users: manage_users,
+            roles: manage_roles,
+        },
+        email_enabled: state.mailer.is_some(),
+    }))
 }
 
 fn grant_label(access: &AccessContext, a: &RoleAssignmentRow) -> String {
@@ -105,15 +103,15 @@ fn grant_label(access: &AccessContext, a: &RoleAssignmentRow) -> String {
     )
 }
 
-fn assignment_view(access: &AccessContext, a: &RoleAssignmentRow) -> Value {
-    json!({
-        "id": a.id,
-        "roleId": a.role_id,
-        "roleName": a.role_name,
-        "scope": a.scope(),
-        "label": grant_label(access, a),
-        "expiresAt": iso_opt(&a.expires_at),
-    })
+fn assignment_view(access: &AccessContext, a: &RoleAssignmentRow) -> Assignment {
+    Assignment {
+        id: a.id,
+        role_id: a.role_id,
+        role_name: a.role_name.clone(),
+        scope: (&a.scope()).into(),
+        label: grant_label(access, a),
+        expires_at: a.expires_at.as_ref().map(iso),
+    }
 }
 
 #[derive(Deserialize, Validate)]
@@ -136,9 +134,9 @@ pub struct CreateUserBody {
 
 /// Responses carrying a temporary password or an invitation link are never
 /// stored by a cache.
-type Secret = ([(axum::http::HeaderName, &'static str); 1], Json<Value>);
+type Secret<T> = ([(axum::http::HeaderName, &'static str); 1], Json<T>);
 
-fn secret(body: Value) -> Secret {
+fn secret<T>(body: T) -> Secret<T> {
     ([(CACHE_CONTROL, "no-store")], Json(body))
 }
 
@@ -146,7 +144,7 @@ pub async fn create(
     State(state): State<AppState>,
     Auth(identity): Auth,
     Body(body): Body<CreateUserBody>,
-) -> ApiResult<(StatusCode, Secret)> {
+) -> ApiResult<(StatusCode, Secret<UserCreated>)> {
     let access = state.access.context(identity).await?;
     let input = NewUserInput {
         email: body.email,
@@ -159,7 +157,10 @@ pub async fn create(
     let invitation = issue_invitation(&link_sender(&state), &access, id).await?;
     Ok((
         StatusCode::CREATED,
-        secret(json!({ "id": id, "invitation": invitation_view(&invitation) })),
+        secret(UserCreated {
+            id,
+            invitation: (&invitation).into(),
+        }),
     ))
 }
 
@@ -169,12 +170,12 @@ pub async fn invite(
     State(state): State<AppState>,
     Auth(identity): Auth,
     PathId(id): PathId,
-) -> ApiResult<Secret> {
+) -> ApiResult<Secret<InvitationIssued>> {
     let access = state.access.context(identity).await?;
     let invitation = issue_invitation(&link_sender(&state), &access, id).await?;
-    Ok(secret(
-        json!({ "invitation": invitation_view(&invitation) }),
-    ))
+    Ok(secret(InvitationIssued {
+        invitation: (&invitation).into(),
+    }))
 }
 
 fn link_sender(state: &AppState) -> LinkSender<'_> {
@@ -184,15 +185,6 @@ fn link_sender(state: &AppState) -> LinkSender<'_> {
         web_origin: &state.config.web_origin,
         product: &state.config.assistant_name,
     }
-}
-
-fn invitation_view(invitation: &IssuedInvitation) -> Value {
-    json!({
-        "expiresAt": iso(&invitation.expires_at),
-        "emailed": invitation.emailed,
-        "link": invitation.link,
-        "problem": invitation.problem,
-    })
 }
 
 #[derive(Deserialize, Clone, Copy, PartialEq, Eq)]
@@ -226,7 +218,7 @@ pub async fn update(
     Auth(identity): Auth,
     PathId(id): PathId,
     Body(body): Body<UpdateUserBody>,
-) -> ApiResult<Json<Value>> {
+) -> ApiResult<Json<Done>> {
     if body
         .job_title
         .as_ref()
@@ -247,17 +239,19 @@ pub async fn update(
         attributes: body.attributes,
     };
     update_user(&state.db, &access, id, changes).await?;
-    Ok(Json(json!({ "ok": true })))
+    Ok(Json(Done::OK))
 }
 
 pub async fn reset(
     State(state): State<AppState>,
     Auth(identity): Auth,
     PathId(id): PathId,
-) -> ApiResult<Secret> {
+) -> ApiResult<Secret<TemporaryPassword>> {
     let access = state.access.context(identity).await?;
     let password = reset_password(&state.db, &access, id).await?;
-    Ok(secret(json!({ "temporaryPassword": password })))
+    Ok(secret(TemporaryPassword {
+        temporary_password: password,
+    }))
 }
 
 /// A reset link e-mailed to the account (ADR-029); the administrator never
@@ -266,8 +260,10 @@ pub async fn send_link(
     State(state): State<AppState>,
     Auth(identity): Auth,
     PathId(id): PathId,
-) -> ApiResult<Json<Value>> {
+) -> ApiResult<Json<ResetLinkSent>> {
     let access = state.access.context(identity).await?;
     let expires_at = send_reset_link(&link_sender(&state), &access, id).await?;
-    Ok(Json(json!({ "expiresAt": iso(&expires_at) })))
+    Ok(Json(ResetLinkSent {
+        expires_at: iso(&expires_at),
+    }))
 }

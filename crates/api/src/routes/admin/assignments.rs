@@ -6,11 +6,11 @@ use axum::http::StatusCode;
 use chrono::{DateTime, Utc};
 use mimorya_core::authz::AssignmentScope;
 use serde::Deserialize;
-use serde_json::{Value, json};
 use uuid::Uuid;
 use validator::Validate;
 
 use crate::app::AppState;
+use crate::contract::{Created, Done};
 use crate::http::{ApiResult, Body, PathId};
 use crate::plugins::Auth;
 use crate::services::admin::{grant_role, revoke_role};
@@ -31,7 +31,7 @@ pub async fn grant(
     Auth(identity): Auth,
     PathId(user_id): PathId,
     Body(body): Body<GrantBody>,
-) -> ApiResult<(StatusCode, Json<Value>)> {
+) -> ApiResult<(StatusCode, Json<Created>)> {
     let access = state.access.context(identity).await?;
     let id = grant_role(
         &state.db,
@@ -42,15 +42,15 @@ pub async fn grant(
         body.expires_at,
     )
     .await?;
-    Ok((StatusCode::CREATED, Json(json!({ "id": id }))))
+    Ok((StatusCode::CREATED, Json(Created { id })))
 }
 
 pub async fn revoke(
     State(state): State<AppState>,
     Auth(identity): Auth,
     PathId(id): PathId,
-) -> ApiResult<Json<Value>> {
+) -> ApiResult<Json<Done>> {
     let access = state.access.context(identity).await?;
     revoke_role(&state.db, &access, id).await?;
-    Ok(Json(json!({ "ok": true })))
+    Ok(Json(Done::OK))
 }

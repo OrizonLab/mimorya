@@ -1,8 +1,8 @@
 'use client';
 
 import { Button } from '@/components/ui';
-import { api, type Action } from '@/lib/api';
-import type { AccountNotice, IssuedInvitation, UserView } from './types';
+import { api, type Action, type IssuedInvitation, type DirectoryUser } from '@/lib/api';
+import type { AccountNotice } from './types';
 
 /**
  * How an administrator gets an account (back) into the application: a new
@@ -17,7 +17,7 @@ export function CredentialActions({
   action,
   onNotice,
 }: {
-  user: UserView;
+  user: DirectoryUser;
   emailEnabled: boolean;
   action: Action;
   onNotice: (notice: AccountNotice) => void;

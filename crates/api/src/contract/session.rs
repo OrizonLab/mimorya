@@ -1,5 +1,5 @@
 //! The signed-in user's session: who they are, their company, what they may
-//! do; and the plain acknowledgement of a change.
+//! do.
 
 use serde::Serialize;
 use ts_rs::TS;
@@ -57,14 +57,4 @@ pub struct AssistantStatus {
 pub struct AuthOptions {
     /// An e-mail relay is configured: "forgotten password" can send a link.
     pub password_reset: bool,
-}
-
-/// A change done, with nothing else to return.
-#[derive(Debug, Serialize, TS)]
-pub struct Done {
-    pub ok: bool,
-}
-
-impl Done {
-    pub const OK: Done = Done { ok: true };
 }

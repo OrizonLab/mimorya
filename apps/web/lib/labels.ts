@@ -1,5 +1,6 @@
 /** French labels of the statuses and levels shown in the interface. */
 import type { ToneLabel } from '@/components/ui';
+import type { AccountStatus, OrgUnitType, Sensitivity } from '@/lib/api';
 
 export const RISK_LABELS: Record<string, ToneLabel> = {
   read: { label: 'Lecture', tone: 'neutral' },
@@ -41,20 +42,20 @@ export const AUTONOMY_LABELS: Record<string, string> = {
   autonomous_limited: 'Autonomie limitée',
 };
 
-export const CLEARANCE_LABELS: Record<string, string> = {
+export const CLEARANCE_LABELS: Record<Sensitivity, string> = {
   public: 'Public',
   internal: 'Interne',
   confidential: 'Confidentiel',
   restricted: 'Restreint',
 };
 
-export const ACCOUNT_STATUS: Record<string, ToneLabel> = {
+export const ACCOUNT_STATUS: Record<AccountStatus, ToneLabel> = {
   active: { label: 'Actif', tone: 'ok' },
   invited: { label: 'Invité', tone: 'neutral' },
   disabled: { label: 'Désactivé', tone: 'danger' },
 };
 
-export const UNIT_TYPES: Record<string, string> = {
+export const UNIT_TYPES: Record<OrgUnitType, string> = {
   company: 'Entreprise',
   site: 'Établissement',
   direction: 'Direction',

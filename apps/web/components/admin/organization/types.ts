@@ -1,19 +1,4 @@
-/** The organisation as returned by `/admin/organization`. */
-export interface OrgUnitView {
-  id: string;
-  parentId: string | null;
-  name: string;
-  type: string;
-  leadUserId: string | null;
-  members: string[];
-}
-
-export interface OrganizationView {
-  units: OrgUnitView[];
-  users: Array<{ id: string; displayName: string; jobTitle: string | null }>;
-  /** Changing the tree requires `org:manage` on the whole company. */
-  canManage: boolean;
-}
+import type { OrgUnitView } from '@/lib/api';
 
 /** Units in tree order, indented by depth, for selects. */
 export function unitOptions(units: OrgUnitView[]): Array<{ id: string; label: string }> {

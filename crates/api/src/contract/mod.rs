@@ -2,7 +2,9 @@
 //! The web client's types are generated from them
 //! (`apps/web/lib/api/contract.ts`, ADR-036), so that both change together.
 
+pub mod admin;
 mod approvals;
+mod common;
 mod conversations;
 mod health;
 mod links;
@@ -14,15 +16,14 @@ mod stored;
 mod typescript;
 
 pub use approvals::{Approval, ApprovalDecided, ApprovalList};
+pub use common::{Created, Done};
 pub use conversations::{
     Citation, ConversationCreated, ConversationDetail, ConversationList, ConversationSummary,
     Message, MessageAccepted, MessageMetadata, MessageRole,
 };
 pub use health::Health;
 pub use links::{InvitationDetails, ResetDetails};
-pub use memory::{
-    MemoryCreated, MemoryItem, MemoryKind, MemoryList, MemoryScope, MemorySource, MemoryStatus,
-};
+pub use memory::{MemoryItem, MemoryKind, MemoryList, MemoryScope, MemorySource, MemoryStatus};
 pub use run_stream::{
     ApprovalRequestedEvent, ApprovalResolvedEvent, AssistantDelta, AssistantMessage, RunFinished,
     RunStarted, RunStreamEvent, ToolCallEvent, ToolDecision, ToolResultEvent, ToolRisk, UsageEvent,
@@ -32,8 +33,9 @@ pub use runs::{
     RunBudget, RunDetail, RunEventRecord, RunList, RunListItem, RunRef, RunStatus, RunUsage,
     RunView, ToolInvocation, Verification,
 };
-pub use session::{AssistantStatus, AuthOptions, Done, Me, MeTenant, MeUser, OrgUnitRef};
+pub use session::{AssistantStatus, AuthOptions, Me, MeTenant, MeUser, OrgUnitRef};
 
+pub(crate) use stored::stored_text;
 use typescript::Declarations;
 
 /// The TypeScript module of the contract: every response, with the types
@@ -53,10 +55,18 @@ pub fn typescript() -> String {
     declarations.add::<ApprovalDecided>();
     declarations.add::<RunStreamEvent>();
     declarations.add::<MemoryList>();
-    declarations.add::<MemoryCreated>();
+    declarations.add::<Created>();
     declarations.add::<InvitationDetails>();
     declarations.add::<ResetDetails>();
     declarations.add::<Health>();
+    declarations.add::<admin::Organization>();
+    declarations.add::<admin::Directory>();
+    declarations.add::<admin::UserCreated>();
+    declarations.add::<admin::InvitationIssued>();
+    declarations.add::<admin::TemporaryPassword>();
+    declarations.add::<admin::ResetLinkSent>();
+    declarations.add::<admin::Roles>();
+    declarations.add::<admin::SkillList>();
     declarations.render()
 }
 

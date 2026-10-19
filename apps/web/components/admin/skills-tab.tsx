@@ -1,19 +1,10 @@
 'use client';
 
 import { Badge, Card, EmptyState, Loaded } from '@/components/ui';
-import { useApiData } from '@/lib/api';
-
-interface SkillView {
-  id: string;
-  name: string;
-  description: string;
-  status: string;
-  activeVersion: number | null;
-  updatedAt: string;
-}
+import { useApiData, type SkillList } from '@/lib/api';
 
 export function SkillsTab() {
-  const state = useApiData<{ skills: SkillView[] }>('/admin/skills');
+  const state = useApiData<SkillList>('/admin/skills');
   return (
     <Loaded state={state}>
       {(data) =>

@@ -9,17 +9,18 @@ use axum::http::StatusCode;
 use mimorya_core::authz::PermissionInfo;
 use mimorya_db::repositories::roles::list_roles;
 use serde::Deserialize;
-use serde_json::{Value, json};
 use uuid::Uuid;
 use validator::Validate;
 
 use crate::app::AppState;
+use crate::contract::admin::{RoleView, Roles};
+use crate::contract::{Created, Done};
 use crate::http::{ApiResult, Body, PathId, trimmed, trimmed_opt};
 use crate::plugins::Auth;
 use crate::services::admin::{RoleChanges, RoleInput, create_role, delete_role, update_role};
 use crate::services::permission_catalog::permission_catalog;
 
-pub async fn list(State(state): State<AppState>, Auth(identity): Auth) -> ApiResult<Json<Value>> {
+pub async fn list(State(state): State<AppState>, Auth(identity): Auth) -> ApiResult<Json<Roles>> {
     let access = state.access.context(identity).await?;
     access.require_tenant_wide("role:manage")?;
     let mut tx = state.db.begin(identity.tenant_id).await?;
@@ -31,23 +32,13 @@ pub async fn list(State(state): State<AppState>, Auth(identity): Auth) -> ApiRes
         .iter()
         .map(|a| a.role_id)
         .collect();
-    let roles: Vec<Value> = roles
-        .iter()
-        .map(|r| {
-            json!({
-                "id": r.id,
-                "key": r.key,
-                "name": r.name,
-                "description": r.description,
-                "isSystem": r.is_system,
-                "permissions": r.permissions,
-                "assignments": r.assignments,
-                "heldByYou": held.contains(&r.id),
-            })
-        })
-        .collect();
-    let catalog: Vec<PermissionInfo> = permission_catalog();
-    Ok(Json(json!({ "roles": roles, "catalog": catalog })))
+    Ok(Json(Roles {
+        roles: roles
+            .iter()
+            .map(|r| RoleView::new(r, held.contains(&r.id)))
+            .collect(),
+        catalog: permission_catalog().iter().map(Into::into).collect(),
+    }))
 }
 
 fn catalog_keys(catalog: &[PermissionInfo]) -> Vec<&'static str> {
@@ -71,7 +62,7 @@ pub async fn create(
     State(state): State<AppState>,
     Auth(identity): Auth,
     Body(body): Body<CreateRoleBody>,
-) -> ApiResult<(StatusCode, Json<Value>)> {
+) -> ApiResult<(StatusCode, Json<Created>)> {
     let access = state.access.context(identity).await?;
     let catalog = permission_catalog();
     let input = RoleInput {
@@ -87,7 +78,7 @@ pub async fn create(
         input,
     )
     .await?;
-    Ok((StatusCode::CREATED, Json(json!({ "id": id }))))
+    Ok((StatusCode::CREATED, Json(Created { id })))
 }
 
 #[derive(Deserialize, Validate)]
@@ -109,7 +100,7 @@ pub async fn update(
     Auth(identity): Auth,
     PathId(id): PathId,
     Body(body): Body<UpdateRoleBody>,
-) -> ApiResult<Json<Value>> {
+) -> ApiResult<Json<Done>> {
     let access = state.access.context(identity).await?;
     let catalog = permission_catalog();
     let changes = RoleChanges {
@@ -126,15 +117,15 @@ pub async fn update(
         changes,
     )
     .await?;
-    Ok(Json(json!({ "ok": true })))
+    Ok(Json(Done::OK))
 }
 
 pub async fn remove(
     State(state): State<AppState>,
     Auth(identity): Auth,
     PathId(id): PathId,
-) -> ApiResult<Json<Value>> {
+) -> ApiResult<Json<Done>> {
     let access = state.access.context(identity).await?;
     delete_role(&state.db, &state.access, &access, id).await?;
-    Ok(Json(json!({ "ok": true })))
+    Ok(Json(Done::OK))
 }

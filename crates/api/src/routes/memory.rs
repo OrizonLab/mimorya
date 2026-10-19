@@ -21,7 +21,7 @@ use serde_json::json;
 use validator::Validate;
 
 use crate::app::AppState;
-use crate::contract::{Done, MemoryCreated, MemoryItem, MemoryList};
+use crate::contract::{Created, Done, MemoryItem, MemoryList};
 use crate::http::{ApiResult, Body, PathId, trimmed};
 use crate::plugins::Auth;
 use crate::services::AccessContext;
@@ -130,7 +130,7 @@ async fn create(
     State(state): State<AppState>,
     Auth(identity): Auth,
     Body(body): Body<CreateBody>,
-) -> ApiResult<(StatusCode, Json<MemoryCreated>)> {
+) -> ApiResult<(StatusCode, Json<Created>)> {
     let access = state.access.context(identity).await?;
     let target = match body.space {
         Space::Personal => MemoryTarget {
@@ -179,7 +179,7 @@ async fn create(
     )
     .await?;
     tx.commit().await?;
-    Ok((StatusCode::CREATED, Json(MemoryCreated { id })))
+    Ok((StatusCode::CREATED, Json(Created { id })))
 }
 
 async fn remove(

@@ -2,12 +2,11 @@
 
 import { useState, type ReactNode } from 'react';
 import { Card, Loaded } from '@/components/ui';
-import { useApiData } from '@/lib/api';
-import type { OrganizationView } from './types';
+import { useApiData, type Organization } from '@/lib/api';
 import { UnitNode, type Editing } from './unit-node';
 
 export function OrganizationTab() {
-  const state = useApiData<OrganizationView>('/admin/organization');
+  const state = useApiData<Organization>('/admin/organization');
   const [editing, setEditing] = useState<Editing>(null);
   return (
     <Loaded state={state}>
@@ -43,7 +42,7 @@ function UnitTree({
   onEdit,
   onChanged,
 }: {
-  data: OrganizationView;
+  data: Organization;
   parentId: string | null;
   depth: number;
   editing: Editing;

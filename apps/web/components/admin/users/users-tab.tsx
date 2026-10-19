@@ -2,18 +2,17 @@
 
 import { useState } from 'react';
 import { DataTable, Loaded } from '@/components/ui';
-import { useApiData } from '@/lib/api';
+import { useApiData, type Organization, type Directory } from '@/lib/api';
 import { useMe } from '@/lib/me-context';
-import type { OrganizationView } from '../organization/types';
 import { AccountNoticeCard } from './account-notice';
 import { NewUserForm } from './new-user-form';
-import type { AccountNotice, DirectoryView } from './types';
+import type { AccountNotice } from './types';
 import { UserRow } from './user-row';
 
 export function UsersTab() {
   const me = useMe();
-  const directory = useApiData<DirectoryView>('/admin/users');
-  const organization = useApiData<OrganizationView>('/admin/organization');
+  const directory = useApiData<Directory>('/admin/users');
+  const organization = useApiData<Organization>('/admin/organization');
   const [notice, setNotice] = useState<AccountNotice | null>(null);
 
   return (
