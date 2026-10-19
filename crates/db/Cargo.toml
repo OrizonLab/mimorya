@@ -23,6 +23,7 @@ uuid.workspace = true
 
 [dev-dependencies]
 mimorya-db = { path = ".", features = ["testing"] }
+regex.workspace = true
 
 [lints]
 workspace = true

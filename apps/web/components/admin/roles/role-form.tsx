@@ -2,8 +2,8 @@
 
 import { useState, type FormEvent } from 'react';
 import { Button, ErrorNote, Field, Input } from '@/components/ui';
-import { api, useAction } from '@/lib/api';
-import { groupCatalog, type PermissionView, type RoleView } from './types';
+import { api, useAction, type PermissionView, type RoleView } from '@/lib/api';
+import { groupCatalog } from './types';
 
 /** Creates a custom role, or edits `role`: name, description, permissions. */
 export function RoleForm({

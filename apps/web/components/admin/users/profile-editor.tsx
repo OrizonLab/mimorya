@@ -2,11 +2,11 @@
 
 import { useState, type FormEvent } from 'react';
 import { Button, ErrorNote, Field, Input, Select } from '@/components/ui';
-import { api, useAction } from '@/lib/api';
+import { api, useAction, type DirectoryUser, type OrgUnitView, type Sensitivity } from '@/lib/api';
 import { CLEARANCE_LABELS } from '@/lib/labels';
-import { unitOptions, type OrgUnitView } from '../organization/types';
+import { unitOptions } from '../organization/types';
 import { CredentialActions } from './credential-actions';
-import type { AccountNotice, UserView } from './types';
+import type { AccountNotice } from './types';
 
 /** Profile, status and password (or invitation) of an account (`user:manage`). */
 export function ProfileEditor({
@@ -16,7 +16,7 @@ export function ProfileEditor({
   onChanged,
   onNotice,
 }: {
-  user: UserView;
+  user: DirectoryUser;
   units: OrgUnitView[];
   emailEnabled: boolean;
   onChanged: () => void;
@@ -78,7 +78,7 @@ export function ProfileEditor({
           </Select>
         </Field>
         <Field label="Niveau d’habilitation aux données">
-          <Select value={clearance} onChange={(e) => setClearance(e.target.value)}>
+          <Select value={clearance} onChange={(e) => setClearance(e.target.value as Sensitivity)}>
             {Object.entries(CLEARANCE_LABELS).map(([key, label]) => (
               <option key={key} value={key}>
                 {label}

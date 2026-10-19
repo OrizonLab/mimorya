@@ -3,14 +3,13 @@
 import { Plus } from 'lucide-react';
 import { useState } from 'react';
 import { Button, Card, Loaded } from '@/components/ui';
-import { useApiData } from '@/lib/api';
+import { useApiData, type Roles } from '@/lib/api';
 import { RoleCard } from './role-card';
 import { RoleForm } from './role-form';
-import type { RolesView } from './types';
 
 /** Platform roles (fixed) and the company's custom roles. */
 export function RolesTab() {
-  const state = useApiData<RolesView>('/admin/roles');
+  const state = useApiData<Roles>('/admin/roles');
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   return (

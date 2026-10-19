@@ -115,9 +115,3 @@ impl MemoryItem {
 pub struct MemoryList {
     pub items: Vec<MemoryItem>,
 }
-
-/// `POST /memory`.
-#[derive(Debug, Serialize, TS)]
-pub struct MemoryCreated {
-    pub id: Uuid,
-}

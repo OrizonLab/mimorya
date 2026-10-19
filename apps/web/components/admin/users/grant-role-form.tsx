@@ -2,9 +2,8 @@
 
 import { useState, type FormEvent } from 'react';
 import { Button, ErrorNote, Field, Input, Select } from '@/components/ui';
-import { api, useAction } from '@/lib/api';
-import { unitOptions, type OrgUnitView } from '../organization/types';
-import type { RoleOption } from './types';
+import { api, useAction, type OrgUnitView, type RoleView } from '@/lib/api';
+import { unitOptions } from '../organization/types';
 
 type ScopeChoice = 'tenant' | 'subtree' | 'unit' | 'self';
 
@@ -28,7 +27,7 @@ export function GrantRoleForm({
   onGranted,
 }: {
   userId: string;
-  roles: RoleOption[];
+  roles: RoleView[];
   units: OrgUnitView[];
   onGranted: () => void;
 }) {

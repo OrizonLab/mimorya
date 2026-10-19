@@ -3,8 +3,8 @@
 import { Mail } from 'lucide-react';
 import { useState } from 'react';
 import { Button, Card } from '@/components/ui';
+import type { IssuedInvitation } from '@/lib/api';
 import { formatDate } from '@/lib/format';
-import type { IssuedInvitation } from './types';
 
 /** An invitation just issued: sent by e-mail, or a link shown once to transmit. */
 export function InvitationNotice({

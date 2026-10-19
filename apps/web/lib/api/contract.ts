@@ -1,6 +1,8 @@
 // Generated from the API's Rust types (crates/api/src/contract, ADR-036): do not edit.
 // Regenerate with `pnpm contract`.
 
+export type AccountStatus = "active" | "invited" | "disabled";
+
 /**
  * An action of the agent waiting for (or given) a human decision.
  */
@@ -27,6 +29,20 @@ export type ApprovalList = { approvals: Array<Approval>, };
 export type ApprovalRequestedEvent = { approvalId: string, toolName: string, actionSummary: string, risk: ToolRisk, };
 
 export type ApprovalResolvedEvent = { approvalId: string, approved: boolean, };
+
+/**
+ * A role held by an account.
+ */
+export type Assignment = { id: string, roleId: string, roleName: string, scope: AssignmentScope,
+/**
+ * Role and scope, readable.
+ */
+label: string, expiresAt: string | null, };
+
+/**
+ * Where a role applies.
+ */
+export type AssignmentScope = { "type": "tenant" } | { "type": "org_unit", orgUnitId: string, includeDescendants: boolean, } | { "type": "self" };
 
 export type AssistantDelta = { text: string, };
 
@@ -74,9 +90,56 @@ export type ConversationList = { conversations: Array<ConversationSummary>, };
 export type ConversationSummary = { id: string, title: string, updatedAt: string, };
 
 /**
+ * A resource created (`201`): its identifier.
+ */
+export type Created = { id: string, };
+
+/**
+ * `GET /admin/users`.
+ */
+export type Directory = { users: Array<DirectoryUser>, canManage: DirectoryRights,
+/**
+ * Invitations and reset links go by e-mail.
+ */
+emailEnabled: boolean, };
+
+/**
+ * Account and role management, each requiring its permission company-wide.
+ */
+export type DirectoryRights = { users: boolean, roles: boolean, };
+
+export type DirectoryUser = { id: string, displayName: string, jobTitle: string | null, status: AccountStatus,
+/**
+ * Its primary unit, as a path from the root.
+ */
+orgUnit: string | null,
+/**
+ * To account or role managers only.
+ */
+email?: string, lastLoginAt?: string | null, orgUnitId?: string | null, clearance?: Sensitivity,
+/**
+ * To account managers only: read by access policies as
+ * `subject.attributes.*` (ADR-023).
+ */
+attributes?: Record<string, unknown>,
+/**
+ * To account managers only: when the pending invitation link expires.
+ */
+invitationExpiresAt?: string | null,
+/**
+ * To role managers only.
+ */
+grants?: Array<string>, assignments?: Array<Assignment>, };
+
+/**
  * A change done, with nothing else to return.
  */
 export type Done = { ok: boolean, };
+
+/**
+ * Where a permission is checked so far.
+ */
+export type Enforcement = "not_yet" | "holder" | "per_resource";
 
 /**
  * `GET /health`: answered once the database answers.
@@ -95,6 +158,24 @@ llm: boolean, };
  * `POST /auth/invitation`: who the invitation is for.
  */
 export type InvitationDetails = { email: string, displayName: string, company: string, expiresAt: string, };
+
+/**
+ * `POST /admin/users/{id}/invitation`: a new link; the former one stops working.
+ */
+export type InvitationIssued = { invitation: IssuedInvitation, };
+
+/**
+ * An invitation link just issued: e-mailed, or to transmit.
+ */
+export type IssuedInvitation = { expiresAt: string, emailed: boolean,
+/**
+ * Shown once, when no e-mail went out.
+ */
+link: string | null,
+/**
+ * Why no e-mail went out.
+ */
+problem: string | null, };
 
 /**
  * `GET /auth/me`.
@@ -120,11 +201,6 @@ export type MeUser = { id: string, email: string, displayName: string, jobTitle:
  * Temporary password: nothing else is reachable until it is replaced.
  */
 mustChangePassword: boolean, };
-
-/**
- * `POST /memory`.
- */
-export type MemoryCreated = { id: string, };
 
 export type MemoryItem = { id: string, scope: MemoryScope,
 /**
@@ -183,16 +259,68 @@ evidence?: Array<Citation>, verification?: Verification, };
 
 export type MessageRole = "user" | "assistant";
 
+/**
+ * An account as the organisation screen names it.
+ */
+export type OrgPerson = { id: string, displayName: string, jobTitle: string | null, };
+
 export type OrgUnitRef = { id: string,
 /**
  * Its place in the organisation, from the root.
  */
 path: string, };
 
+export type OrgUnitType = "company" | "site" | "direction" | "department" | "service" | "team";
+
+export type OrgUnitView = { id: string, parentId: string | null, name: string, type: OrgUnitType,
+/**
+ * Organisational lead: informational, it grants no access by itself.
+ */
+leadUserId: string | null,
+/**
+ * Accounts whose primary unit it is.
+ */
+members: Array<string>, };
+
+/**
+ * `GET /admin/organization`.
+ */
+export type Organization = { units: Array<OrgUnitView>, users: Array<OrgPerson>,
+/**
+ * Changing the tree requires `org:manage` on the whole company.
+ */
+canManage: boolean, };
+
+export type PermissionView = { permission: string, label: string,
+/**
+ * `false`: the agent can never exercise it.
+ */
+delegable: boolean, enforcement: Enforcement, };
+
 /**
  * `POST /auth/password-reset/link`: the account whose password is reset.
  */
 export type ResetDetails = { email: string, expiresAt: string, };
+
+/**
+ * `POST /admin/users/{id}/password-link`: the administrator never sees the link.
+ */
+export type ResetLinkSent = { expiresAt: string, };
+
+export type RoleView = { id: string, key: string, name: string, description: string,
+/**
+ * Provided by the platform: neither changed nor deleted.
+ */
+isSystem: boolean, permissions: Array<string>,
+/**
+ * Assignments of the role, expired ones included.
+ */
+assignments: number, heldByYou: boolean, };
+
+/**
+ * `GET /admin/roles`.
+ */
+export type Roles = { roles: Array<RoleView>, catalog: Array<PermissionView>, };
 
 /**
  * The limits a run stops at (`agent_runs.budget`).
@@ -249,6 +377,25 @@ costMicros: number, };
 
 export type RunView = { id: string, conversationId: string | null, objective: string, status: RunStatus, autonomyLevel: string, usage: RunUsage, budget: RunBudget, verification: Verification | null, error: string | null, createdAt: string, finishedAt: string | null, };
 
+/**
+ * Highest sensitivity of the data an account may read.
+ */
+export type Sensitivity = "public" | "internal" | "confidential" | "restricted";
+
+/**
+ * `GET /admin/skills`.
+ */
+export type SkillList = { skills: Array<SkillView>, };
+
+export type SkillStatus = "draft" | "active" | "retired";
+
+export type SkillView = { id: string, name: string, description: string, status: SkillStatus, activeVersion: number | null, updatedAt: string, };
+
+/**
+ * `POST /admin/users/{id}/password`: shown once, replaced at next sign-in.
+ */
+export type TemporaryPassword = { temporaryPassword: string, };
+
 export type ToolCallEvent = { toolCallId: string, toolName: string, title: string, decision: ToolDecision, reason?: string, };
 
 /**
@@ -276,6 +423,11 @@ export type UsageEvent = { inputTokens: number, outputTokens: number,
  * `null` when the model is not priced.
  */
 costMicros: number | null, };
+
+/**
+ * `POST /admin/users`.
+ */
+export type UserCreated = { id: string, invitation: IssuedInvitation, };
 
 /**
  * Checks of a run's final answer.

@@ -1,7 +1,8 @@
 //! Accounts created by the administration tests: a newcomer invited by Paul
 //! (technical administrator), the same holding a temporary password or once
-//! it chose its own, and an administrator limited to one team, as if the role
-//! had been granted before the company-wide rule existed.
+//! it chose its own, one holding a single custom role, and an administrator
+//! limited to one team, as if the role had been granted before the
+//! company-wide rule existed.
 
 use axum::http::StatusCode;
 use mimorya_core::authz::AssignmentScope;
@@ -96,6 +97,31 @@ pub async fn activate<'a>(api: &'a TestApi, account: &mut NewAccount) -> Client<
     assert_eq!(changed.status, StatusCode::OK, "{}", changed.text());
     account.password = OWN_PASSWORD.to_string();
     session
+}
+
+/// A new account holding only this custom role, company-wide.
+pub async fn holder_of<'a>(
+    api: &'a TestApi,
+    paul: &Client<'_>,
+    login: &str,
+    permissions: &[&str],
+) -> Client<'a> {
+    let role = paul
+        .post(
+            "/admin/roles",
+            json!({ "name": format!("Rôle {login}"), "description": "Rôle de test", "permissions": permissions }),
+        )
+        .await;
+    assert_eq!(role.status, StatusCode::CREATED, "{}", role.text());
+    let mut account = create_account(paul, login).await;
+    let granted = paul
+        .post(
+            &format!("/admin/users/{}/assignments", account.id),
+            json!({ "roleId": role.json()["id"], "scope": { "type": "tenant" } }),
+        )
+        .await;
+    assert_eq!(granted.status, StatusCode::CREATED, "{}", granted.text());
+    activate(api, &mut account).await
 }
 
 /// An account holding the technical administrator role on the north team

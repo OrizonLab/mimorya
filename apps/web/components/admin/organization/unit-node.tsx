@@ -3,9 +3,8 @@
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Badge, Button, ErrorNote } from '@/components/ui';
-import { api, useAction } from '@/lib/api';
+import { api, useAction, type OrgUnitView, type Organization } from '@/lib/api';
 import { UNIT_TYPES } from '@/lib/labels';
-import type { OrgUnitView, OrganizationView } from './types';
 import { UnitForm } from './unit-form';
 
 export type Editing = { unitId: string; mode: 'add' | 'edit' } | null;
@@ -20,7 +19,7 @@ export function UnitNode({
   onChanged,
   children,
 }: {
-  data: OrganizationView;
+  data: Organization;
   unit: OrgUnitView;
   depth: number;
   editing: Editing;

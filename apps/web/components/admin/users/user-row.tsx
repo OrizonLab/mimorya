@@ -4,11 +4,11 @@ import { useState } from 'react';
 import { Button, Cell, LabelBadge } from '@/components/ui';
 import { formatDate } from '@/lib/format';
 import { ACCOUNT_STATUS } from '@/lib/labels';
-import type { OrgUnitView } from '../organization/types';
+import type { Directory, DirectoryUser, OrgUnitView } from '@/lib/api';
 import { AssignmentsEditor } from './assignments-editor';
 import { AttributesEditor } from './attributes-editor';
 import { ProfileEditor } from './profile-editor';
-import type { AccountNotice, DirectoryView, UserView } from './types';
+import type { AccountNotice } from './types';
 
 /** A directory row; administrators open it to manage the account. */
 export function UserRow({
@@ -20,9 +20,9 @@ export function UserRow({
   onChanged,
   onNotice,
 }: {
-  user: UserView;
+  user: DirectoryUser;
   units: OrgUnitView[];
-  canManage: DirectoryView['canManage'];
+  canManage: Directory['canManage'];
   emailEnabled: boolean;
   isSelf: boolean;
   onChanged: () => void;

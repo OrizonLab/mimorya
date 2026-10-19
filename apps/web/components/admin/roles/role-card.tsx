@@ -2,9 +2,8 @@
 
 import { Pencil, Trash2 } from 'lucide-react';
 import { Badge, Button, Card, ErrorNote } from '@/components/ui';
-import { api, useAction } from '@/lib/api';
+import { api, useAction, type PermissionView, type RoleView } from '@/lib/api';
 import { RoleForm } from './role-form';
-import type { PermissionView, RoleView } from './types';
 
 /** One role and its permissions; custom roles can be edited or deleted. */
 export function RoleCard({

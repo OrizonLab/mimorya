@@ -2,11 +2,16 @@
 
 import { X } from 'lucide-react';
 import { Button, ErrorNote, Loaded } from '@/components/ui';
-import { api, useAction, useApiData } from '@/lib/api';
+import {
+  api,
+  useAction,
+  useApiData,
+  type OrgUnitView,
+  type RoleView,
+  type DirectoryUser,
+} from '@/lib/api';
 import { formatDate } from '@/lib/format';
-import type { OrgUnitView } from '../organization/types';
 import { GrantRoleForm } from './grant-role-form';
-import type { RoleOption, UserView } from './types';
 
 /** Roles held by an account, their revocation and new grants (`role:manage`). */
 export function AssignmentsEditor({
@@ -14,11 +19,11 @@ export function AssignmentsEditor({
   units,
   onChanged,
 }: {
-  user: UserView;
+  user: DirectoryUser;
   units: OrgUnitView[];
   onChanged: () => void;
 }) {
-  const roles = useApiData<{ roles: RoleOption[] }>('/admin/roles');
+  const roles = useApiData<{ roles: RoleView[] }>('/admin/roles');
   const revoke = useAction();
 
   async function revokeAssignment(id: string, label: string) {

@@ -2,9 +2,9 @@
 
 import { useState, type FormEvent } from 'react';
 import { Button, ErrorNote, Field, Input, Select } from '@/components/ui';
-import { api, useAction } from '@/lib/api';
+import { api, useAction, type OrgUnitType, type OrgUnitView, type Organization } from '@/lib/api';
 import { UNIT_TYPES } from '@/lib/labels';
-import { unitOptions, type OrgUnitView, type OrganizationView } from './types';
+import { unitOptions } from './types';
 
 /** Adds a sub-unit under `parent`, or edits `unit` (name, type, parent, lead). */
 export function UnitForm({
@@ -13,7 +13,7 @@ export function UnitForm({
   unit,
   onDone,
 }: {
-  data: OrganizationView;
+  data: Organization;
   parent?: OrgUnitView;
   unit?: OrgUnitView;
   onDone: (changed: boolean) => void;
@@ -49,7 +49,7 @@ export function UnitForm({
         </Field>
         {!isRoot && (
           <Field label="Type">
-            <Select value={type} onChange={(e) => setType(e.target.value)}>
+            <Select value={type} onChange={(e) => setType(e.target.value as OrgUnitType)}>
               {Object.entries(UNIT_TYPES)
                 .filter(([key]) => key !== 'company')
                 .map(([key, label]) => (

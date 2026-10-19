@@ -8,6 +8,9 @@ use serde_json::Value;
 use sqlx::PgConnection;
 use uuid::Uuid;
 
+/// Every status of an account (`users_status_check`).
+pub const USER_STATUSES: [&str; 3] = ["active", "invited", "disabled"];
+
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct DirectoryEntry {
     pub id: Uuid,

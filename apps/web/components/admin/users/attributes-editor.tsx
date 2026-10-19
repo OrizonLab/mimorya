@@ -3,7 +3,7 @@
 import { Plus, X } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { Button, ErrorNote, Field, Input, Select } from '@/components/ui';
-import { api, useAction } from '@/lib/api';
+import { api, useAction, type DirectoryUser } from '@/lib/api';
 import {
   ATTRIBUTE_KINDS,
   fromRows,
@@ -11,13 +11,18 @@ import {
   type AttributeKind,
   type AttributeRow,
 } from './attributes';
-import type { UserView } from './types';
 
 const TEXTAREA =
   'rounded-lg border border-line bg-surface px-3 py-2 text-sm text-fg outline-none focus:border-accent';
 
 /** The attributes access policies read (`subject.attributes.<nom>`). */
-export function AttributesEditor({ user, onChanged }: { user: UserView; onChanged: () => void }) {
+export function AttributesEditor({
+  user,
+  onChanged,
+}: {
+  user: DirectoryUser;
+  onChanged: () => void;
+}) {
   const initial = toRows(user.attributes);
   if (!initial) {
     return (
@@ -40,7 +45,7 @@ function RowsEditor({
   initial,
   onChanged,
 }: {
-  user: UserView;
+  user: DirectoryUser;
   initial: AttributeRow[];
   onChanged: () => void;
 }) {

@@ -2,10 +2,10 @@
 
 import { useState, type FormEvent } from 'react';
 import { Button, Card, ErrorNote, Field, Input, Select } from '@/components/ui';
-import { api, useAction } from '@/lib/api';
+import { api, useAction, type OrgUnitView, type IssuedInvitation } from '@/lib/api';
 import { CLEARANCE_LABELS } from '@/lib/labels';
-import { unitOptions, type OrgUnitView } from '../organization/types';
-import type { AccountNotice, IssuedInvitation } from './types';
+import { unitOptions } from '../organization/types';
+import type { AccountNotice } from './types';
 
 /** Creates an account; the parent shows the invitation it receives. */
 export function NewUserForm({
