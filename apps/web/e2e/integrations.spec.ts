@@ -1,35 +1,54 @@
 // What the company connects its assistant to, from the administration: an
 // MCP server with its token (ADR-025) and its own model provider with its
 // API key (ADR-024). Both secrets are write-only: never shown once saved.
-// Each test leaves the demo company as it found it.
-import { cardWith, openAdmin } from './support/admin';
+// Whatever happens, the company keeps the platform's model and loses the test
+// server: the scenario that follows runs with them.
+import type { Connectors } from '../lib/api/contract';
+import { cardWith, noError, openAdmin } from './support/admin';
 import { expect, FOREIGN_HOST, test } from './support/fixtures';
+
+const SERVER = 'Documents e2e';
+const WRITE = { 'X-Mimorya-Request': '1' };
 
 test.beforeEach(({ page }) => {
   // Deletions and the return to the platform's model ask for a confirmation.
   page.on('dialog', (dialog) => dialog.accept());
 });
 
+test.afterEach(async ({ page }) => {
+  // With the test's session; nothing to undo answers an error, ignored.
+  await page.request.delete('/api/admin/llm', { headers: WRITE });
+  const listed = await page.request.get('/api/admin/connectors');
+  if (!listed.ok()) return;
+  const { instances } = (await listed.json()) as Connectors;
+  for (const connector of instances.filter((c) => c.name === SERVER)) {
+    await page.request.delete(`/api/admin/connectors/${connector.id}`, { headers: WRITE });
+  }
+});
+
 test('an MCP server is added with its token, disabled and deleted', async ({ page }) => {
   const token = 'jeton-e2e-secret';
   await openAdmin(page, 'Connecteurs');
   await page.getByRole('button', { name: 'Ajouter un serveur MCP' }).click();
-  await page.getByLabel('Nom').fill('Documents e2e');
+  await page.getByLabel('Nom').fill(SERVER);
   await page.getByLabel('Préfixe des outils (définitif)').fill('doce');
   // Never reached: saving does not connect to the server.
   await page.getByLabel(/^Adresse du serveur/).fill(`https://mcp.${FOREIGN_HOST}/mcp`);
   await page.getByLabel(/^Jeton d’accès/).fill(token);
   await page.getByRole('button', { name: 'Ajouter le serveur' }).click();
 
-  const card = (button: string) => cardWith(page, 'Documents e2e', button);
+  const card = (button: string) => cardWith(page, SERVER, button);
   await expect(card('Désactiver').getByText('jeton enregistré')).toBeVisible();
-  await expect(page.getByText(token)).toHaveCount(0);
+  expect(await page.content()).not.toContain(token);
 
-  await card('Désactiver').getByRole('button', { name: 'Désactiver' }).click();
-  await expect(card('Activer').getByRole('button', { name: 'Activer' })).toBeVisible();
+  await card('Désactiver').getByRole('button', { name: 'Désactiver', exact: true }).click();
+  // The status the API now gives it, before anything else is sent.
+  await expect(card('Activer').getByText('Désactivé', { exact: true })).toBeVisible();
+  await noError(page);
 
-  await card('Supprimer').getByRole('button', { name: 'Supprimer' }).click();
-  await expect(page.getByText('Documents e2e', { exact: true })).toHaveCount(0);
+  await card('Supprimer').getByRole('button', { name: 'Supprimer', exact: true }).click();
+  await expect(page.getByText(SERVER, { exact: true })).toHaveCount(0);
+  await noError(page);
 });
 
 test('the company chooses its own model, then goes back to the platform’s', async ({ page }) => {
@@ -44,11 +63,12 @@ test('the company chooses its own model, then goes back to the platform’s', as
 
   await expect(page.getByText(/Fournisseur de votre entreprise : Anthropic/)).toBeVisible();
   await expect(page.getByText('Clé enregistrée')).toBeVisible();
-  await expect(page.getByText(key)).toHaveCount(0);
+  expect(await page.content()).not.toContain(key);
 
   await page.getByRole('button', { name: 'Revenir au modèle de la plateforme' }).click();
   await expect(page.getByText(/Fournisseur de votre entreprise/)).toHaveCount(0);
   await expect(
     page.getByRole('button', { name: 'Utiliser le fournisseur de votre entreprise' }),
   ).toBeVisible();
+  await noError(page);
 });
