@@ -1252,8 +1252,8 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     modification attend sa réponse ; rouvert avant celle-ci, il repart de l'ancienne
     ressource. La fenêtre est celle de la requête : sa réponse referme le formulaire
     rouvert ;
-  - une lecture qui ne répond pas laisse l'écran verrouillé : les requêtes n'ont pas
-    encore de délai (`docs/ROADMAP.md`) ;
+  - une lecture qui ne répond pas laisse l'écran verrouillé jusqu'à son délai
+    (ADR-044) ;
   - un écran nouveau qui affiche ses données par `Loaded` est protégé sans rien
     ajouter ;
   - test : `apps/web/e2e/reloads.spec.ts` retient la liste. Il vérifie que la fiche
@@ -1292,11 +1292,39 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     le focus revient au même contrôle s'il est toujours affiché ;
   - le formulaire qui se ferme à l'enregistrement laisse encore le focus à la page ;
   - le module vaut pour tout contrôle désactivé : la zone de saisie du chat,
-    désactivée pendant tout un run, reprend le focus à sa fin (validation comprise)
-    si le focus est resté sur la page ;
+    désactivée pendant tout un run, reprend le focus à sa fin si le focus est resté
+    sur la page. Une validation décidée depuis la carte du chat donne le focus à son
+    bouton, ce qui annule ce rendu ; décidée ailleurs (page des validations), elle le
+    laisse revenir à la zone de saisie ;
   - vérifié sous Chromium seulement (seul navigateur des tests) ; un navigateur qui
     garderait le focus ou n'émettrait pas de `focusout` ne déclenche rien ;
   - test : `apps/web/e2e/reloads.spec.ts` vérifie que le champ « Fonction », validé
     par « Entrée », et le bouton « Tester la connexion » perdent le focus pendant le
     verrou puis le retrouvent, et qu'un focus donné entre-temps à un onglet y reste.
     Ils échouent sans le module, et le dernier sans la règle d'annulation.
+
+## ADR-044 — Une lecture de l'API a un délai ; un échec de chargement se réessaie
+
+- **Date** : 2026-10-19 · **Statut** : acceptée
+- **Contexte** : depuis ADR-042, un écran est verrouillé tant que sa lecture n'a pas
+  répondu. Le client n'avait aucun délai : une lecture sans réponse (réseau coupé,
+  serveur bloqué) laissait l'écran verrouillé indéfiniment, sans message. Avant le
+  verrou, l'écran restait au moins utilisable.
+- **Décision** :
+  - une lecture (`GET`) qui n'a pas répondu en 30 s (`READ_TIMEOUT_MS`,
+    `apps/web/lib/api/client.ts`) est abandonnée et échoue avec « Le serveur ne
+    répond pas. Réessayez dans un instant. » ; le délai est une minuterie de la page
+    (`setTimeout`), que les tests de bout en bout avancent par l'horloge de
+    Playwright ;
+  - une modification n'a pas de délai : abandonnée côté client, elle pourrait avoir
+    été appliquée par le serveur sans qu'on le sache ;
+  - `Loaded` affiche l'échec d'un chargement avec un bouton « Réessayer » qui relance
+    la lecture.
+- **Conséquences** :
+  - un écran n'est jamais verrouillé plus de 30 s : passé ce délai, il montre l'échec
+    et propose de réessayer ;
+  - une lecture légitime plus longue que 30 s échouerait : aucune ne l'est
+    aujourd'hui (le flux d'un run passe par `EventSource`, hors de ce client) ;
+  - test : `apps/web/e2e/reloads.spec.ts` retient le rechargement de la liste des
+    rôles, avance l'horloge de la page de 30 s, vérifie le message, puis
+    « Réessayer » ; il échoue sans le délai.

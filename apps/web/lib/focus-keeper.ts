@@ -9,13 +9,15 @@
 export function keepFocusAcrossDisabling(): () => void {
   let lost: HTMLElement | null = null;
 
-  // Losing the focus to nothing while disabled: the browser took it.
+  // Losing the focus to nothing while disabled: the browser took it. Any
+  // other loss (a control the user left) cancels what was owed.
   const onFocusOut = (event: FocusEvent) => {
     const target = event.target;
     const disabled = target instanceof HTMLElement && target.matches(':disabled');
     lost = disabled && event.relatedTarget === null ? (target as HTMLElement) : null;
   };
-  // The focus went somewhere: nothing is owed any more.
+  // The focus went somewhere, even from the page itself (which emits no
+  // focusout): nothing is owed any more.
   const onFocusIn = () => {
     lost = null;
   };

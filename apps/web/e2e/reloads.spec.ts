@@ -13,6 +13,7 @@ import type {
   Roles,
   TestedTool,
 } from '../lib/api/contract';
+import { READ_TIMEOUT_MS } from '../lib/api/client';
 import { cardWith, openAdmin } from './support/admin';
 import { expect, FOREIGN_HOST, noError, test } from './support/fixtures';
 
@@ -49,7 +50,8 @@ async function holdList(page: Page, path: string) {
   let release = () => {};
   await page.route(`**${path}`, async (route) => {
     if (route.request().method() === 'GET') await held;
-    await route.continue();
+    // A read the page gave up on (its time ran out) is no longer there.
+    await route.continue().catch(() => undefined);
   });
   return {
     arm: () => {
@@ -78,7 +80,7 @@ test('an account’s forms wait for, then follow, the reloaded directory', async
 
   let reload = directory.arm();
   await jobTitle.fill('Chef d’équipe');
-  // Saved from the keyboard: the field keeps the focus across the lock.
+  // Saved from the keyboard: the field gets the focus back after the lock.
   await jobTitle.press('Enter');
   await reload;
   // Until the directory arrives, nothing on the screen can be changed, nor
@@ -114,13 +116,16 @@ test('an account’s forms wait for, then follow, the reloaded directory', async
   await saveAttributes.click();
   await reload;
   await expect(jobTitle).toHaveValue('Chef d’équipe');
-  // The focus taken elsewhere meanwhile (a tab, outside the lock) stays there.
+  await expect(saveAttributes).not.toBeFocused();
+  // A focus given elsewhere meanwhile (a tab, outside the lock), even if then
+  // left for the page, cancels giving it back.
   const tab = page.getByRole('tab', { name: 'Utilisateurs' });
   await tab.focus();
+  await tab.blur();
   directory.release();
   await expect(jobTitle).toHaveValue('Responsable de secteur');
   await expect(saveAttributes).toBeEnabled();
-  await expect(tab).toBeFocused();
+  await expect(saveAttributes).not.toBeFocused();
   await expect
     .poll(async () => {
       const response = await page.request.get('/api/admin/users');
@@ -225,5 +230,36 @@ test('tool policies start again from each connection test', async ({ page }) => 
   // The second test's rules, not the first's: saving them keeps what it brought.
   await expect(card.getByLabel('Risque de mcp_oute_delete')).toHaveValue('irreversible');
   await expect(card.getByLabel('Risque de mcp_oute_search')).toHaveValue('write');
+  await noError(page);
+});
+
+test('a reload left without answer gives way to a retry', async ({ page }) => {
+  page.on('dialog', (dialog) => dialog.accept());
+  // The page's clock: the read's time runs out without waiting for it.
+  await page.clock.install();
+  await openAdmin(page, 'Rôles');
+  await page.getByRole('button', { name: 'Nouveau rôle' }).click();
+  await page.getByLabel('Nom').fill(ROLE);
+  await page.getByRole('checkbox', { name: 'Consulter les plannings' }).check();
+  await page.getByRole('button', { name: 'Créer le rôle' }).click();
+  const remove = page.getByRole('button', { name: `Supprimer ${ROLE}` });
+  await expect(remove).toBeEnabled();
+
+  const roles = await holdList(page, '/api/admin/roles');
+  const reload = roles.arm();
+  await remove.click();
+  await reload;
+  const create = page.getByRole('button', { name: 'Nouveau rôle' });
+  await expect(create).toBeDisabled();
+  // Past its time, the read fails: the screen is no longer locked on it...
+  await page.clock.fastForward(READ_TIMEOUT_MS);
+  await expect(
+    page.getByText('Le serveur ne répond pas. Réessayez dans un instant.'),
+  ).toBeVisible();
+  roles.release();
+  // ...and can be loaded again.
+  await page.getByRole('button', { name: 'Réessayer' }).click();
+  await expect(create).toBeEnabled();
+  await expect(page.getByText(ROLE, { exact: true })).toHaveCount(0);
   await noError(page);
 });
