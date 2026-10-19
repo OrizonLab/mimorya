@@ -1,11 +1,10 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
-import { Button, Card, ErrorNote, Field, Input } from '@/components/ui';
+import { Button, Card, ErrorNote } from '@/components/ui';
 import { api, useAction } from '@/lib/api';
 import { formatDate } from '@/lib/format';
-
-const MIN_LENGTH = 12;
+import { EMPTY_NEW_PASSWORD, NewPasswordFields, passwordsDiffer } from './new-password-fields';
 
 /** What an invitation link opens, as returned by `/auth/invitation`. */
 export interface InvitationView {
@@ -25,16 +24,15 @@ export function InvitationForm({
   invitation: InvitationView;
   onAccepted: () => void;
 }) {
-  const [password, setPassword] = useState('');
-  const [confirmation, setConfirmation] = useState('');
+  const [chosen, setChosen] = useState(EMPTY_NEW_PASSWORD);
   const action = useAction();
-  const mismatch = confirmation.length > 0 && confirmation !== password;
+  const mismatch = passwordsDiffer(chosen);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (mismatch) return;
     const accepted = await action.run(() =>
-      api.post('/auth/invitation/accept', { token, password }),
+      api.post('/auth/invitation/accept', { token, password: chosen.password }),
     );
     if (accepted) onAccepted();
   }
@@ -50,26 +48,7 @@ export function InvitationForm({
             valable jusqu’au {formatDate(invitation.expiresAt)}).
           </p>
         </div>
-        <Field label={`Mot de passe (${MIN_LENGTH} caractères minimum)`}>
-          <Input
-            type="password"
-            required
-            minLength={MIN_LENGTH}
-            autoComplete="new-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </Field>
-        <Field label="Confirmation">
-          <Input
-            type="password"
-            required
-            autoComplete="new-password"
-            value={confirmation}
-            onChange={(e) => setConfirmation(e.target.value)}
-          />
-        </Field>
-        {mismatch && <ErrorNote message="Les deux saisies diffèrent." />}
+        <NewPasswordFields value={chosen} onChange={setChosen} />
         {action.error && <ErrorNote message={action.error} />}
         <Button type="submit" loading={action.pending} disabled={mismatch}>
           Activer mon compte

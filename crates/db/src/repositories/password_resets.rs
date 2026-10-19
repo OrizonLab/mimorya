@@ -40,6 +40,7 @@ pub struct ResetRecipient {
     pub display_name: String,
     pub company: String,
     pub status: String,
+    pub tenant_status: String,
     pub has_password: bool,
 }
 
@@ -49,7 +50,7 @@ pub async fn lock_reset_recipient(
 ) -> sqlx::Result<Option<ResetRecipient>> {
     sqlx::query_as(
         "select u.email::text as email, u.display_name, t.name as company, u.status, \
-         u.password_hash is not null as has_password \
+         t.status as tenant_status, u.password_hash is not null as has_password \
          from users u join tenants t on t.id = u.tenant_id where u.id = $1 for no key update of u",
     )
     .bind(user_id)
@@ -99,6 +100,16 @@ pub async fn take_password_reset(
     .bind(token_hash)
     .fetch_optional(conn)
     .await
+}
+
+/// Deletes the link holding this token, if still pending (a link that could
+/// not be sent).
+pub async fn delete_password_reset(conn: &mut PgConnection, token_hash: &str) -> sqlx::Result<()> {
+    sqlx::query("delete from password_resets where token_hash = $1")
+        .bind(token_hash)
+        .execute(conn)
+        .await?;
+    Ok(())
 }
 
 /// Deletes the expired links of every company; returns how many.

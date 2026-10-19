@@ -25,8 +25,9 @@ use crate::services::invitations::{
 const PERMISSION: &str = "user:manage";
 const NO_RELAY: &str = "Aucun serveur d’e-mail n’est configuré : transmettez ce lien vous-même";
 
-/// What issues an invitation besides the database.
-pub struct Inviter<'a> {
+/// What sends a one-time link (an invitation, a reset link) besides the
+/// database.
+pub struct LinkSender<'a> {
     pub db: &'a Database,
     pub mailer: Option<&'a dyn Mailer>,
     /// The web application's address, where the link leads.
@@ -44,14 +45,14 @@ pub struct IssuedInvitation {
 }
 
 pub async fn issue_invitation(
-    inviter: &Inviter<'_>,
+    sender: &LinkSender<'_>,
     access: &AccessContext,
     user_id: Uuid,
 ) -> anyhow::Result<IssuedInvitation> {
     access.require_tenant_wide(PERMISSION)?;
     let (token, token_hash) = new_session_token();
     let expires_at = Utc::now() + INVITATION_VALIDITY;
-    let mut tx = begin_change(inviter.db, access, PERMISSION).await?;
+    let mut tx = begin_change(sender.db, access, PERMISSION).await?;
     // The account's row locked before its invitation, as an acceptance does:
     // the status read here holds until the new link is stored.
     let Some((_, status)) = lock_login_state(&mut tx, user_id).await? else {
@@ -77,7 +78,7 @@ pub async fn issue_invitation(
         },
     )
     .await?;
-    let delivery = if inviter.mailer.is_some() {
+    let delivery = if sender.mailer.is_some() {
         "email"
     } else {
         "link"
@@ -90,18 +91,18 @@ pub async fn issue_invitation(
     .await?;
     tx.commit().await?;
 
-    let link = invitation_link(inviter.web_origin, &token);
+    let link = invitation_link(sender.web_origin, &token);
     let not_sent = |problem: String| IssuedInvitation {
         expires_at,
         emailed: false,
         link: Some(link.clone()),
         problem: Some(problem),
     };
-    let Some(mailer) = inviter.mailer else {
+    let Some(mailer) = sender.mailer else {
         return Ok(not_sent(NO_RELAY.into()));
     };
     let mail = invitation_mail(&InvitationMail {
-        product: inviter.product,
+        product: sender.product,
         company: &access.tenant.name,
         inviter: &access.profile.display_name,
         invited_name: &user.display_name,
@@ -120,7 +121,7 @@ pub async fn issue_invitation(
             // The relay's answer may name the recipient: kept for the
             // administrator, not for the logs.
             tracing::warn!(user = %user_id, "Invitation e-mail not sent");
-            let mut tx = inviter.db.begin(access.subject.tenant_id).await?;
+            let mut tx = sender.db.begin(access.subject.tenant_id).await?;
             append_audit(
                 &mut tx,
                 audit_entry(access, "user.invitation_not_sent", "user", user_id),

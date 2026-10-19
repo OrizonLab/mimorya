@@ -66,7 +66,11 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   un lien ; une nouvelle demande remplace le précédent ; tout changement de mot de
   passe ou de statut du compte le supprime (déclencheur en base) ; l'usage ferme
   toutes les sessions du compte. Demandes limitées à 3 par heure et par adresse
-  e-mail, connue ou non, en plus de la limite par client.
+  e-mail, connue ou non, en plus de la limite par client. Contrepartie assumée
+  (ADR-029) : un tiers peut épuiser ces 3 demandes et faire refuser, pendant le reste
+  de l'heure, la vraie demande de la personne ; l'administrateur peut alors lui
+  envoyer un lien. La page de connexion ne propose le lien que si un relais est
+  configuré ; l'audit d'une demande, anonyme, est inscrit au nom de la plateforme.
 - Protection CSRF : `SameSite=Lax` + exigence d'un en-tête personnalisé sur toutes les
   requêtes modifiantes + vérification d'`Origin`.
 - Limitation de débit sur la connexion :
@@ -135,9 +139,12 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
     (ADR-027) : jeton de 256 bits dont seule l'empreinte est conservée, envoyé par
     e-mail si un relais SMTP est configuré, sinon montré une seule fois à
     l'administrateur (`Cache-Control: no-store`), jamais journalisé ni audité ; la
-    personne y choisit son mot de passe. Un compte réinitialisé reçoit un mot de passe
-    provisoire aléatoire (96 bits), montré de même ; la réinitialisation et la
-    désactivation ferment immédiatement les sessions (et la désactivation supprime
+    personne y choisit son mot de passe. Pour réinitialiser un compte, l'administrateur
+    lui envoie, si un relais est configuré, un lien de réinitialisation valable
+    24 heures (ADR-029) qu'il ne voit jamais (le mot de passe actuel et les sessions
+    restent valables jusqu'à son usage), ou lui donne un mot de passe provisoire
+    aléatoire (96 bits), montré de même que le lien d'invitation ; ce mot de passe
+    provisoire et la désactivation ferment immédiatement les sessions (et la désactivation supprime
     l'invitation en cours) ; le changement de son mot de passe exige l'actuel (tentatives
     limitées comme la connexion), ferme les autres sessions et n'écrase jamais une
     réinitialisation ou une révocation faite au même moment par un administrateur
@@ -159,8 +166,8 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
     - la règle « pas d'administration de soi-même » évite les erreurs, ce n'est **pas
       une frontière contre un administrateur malveillant** : il peut créer un compte,
       lui attribuer un rôle d'administration et agir par ce compte ; la
-      réinitialisation d'un mot de passe lui permet de se connecter à la place de la
-      personne (y compris un autre administrateur) et donc de lire ses conversations et
+      réinitialisation par mot de passe provisoire lui permet de se connecter à la place
+      de la personne (y compris un autre administrateur) et donc de lire ses conversations et
       sa mémoire personnelle. Tout est tracé (`user.created`, `role.assigned`,
       `user.password_reset`…) ; la double validation des actions d'administration est
       prévue en phase 3 ;

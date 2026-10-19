@@ -1,5 +1,6 @@
-//! Background work started by requests (agent runs). The server waits for it
-//! on shutdown, and tests wait for it before asserting.
+//! Background work started by requests: agent runs, and what a request does
+//! not wait for (password reset links, audits of denied logins). The server
+//! waits for it on shutdown, and tests wait for it before asserting.
 
 use std::future::Future;
 use std::sync::Arc;

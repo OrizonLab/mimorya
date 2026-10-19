@@ -41,6 +41,7 @@ export function UsersTab() {
                     user={u}
                     units={org.units}
                     canManage={data.canManage}
+                    emailEnabled={data.emailEnabled}
                     isSelf={u.id === me.user.id}
                     onChanged={directory.reload}
                     onNotice={(issued) => {

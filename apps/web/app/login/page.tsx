@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { AuthFrame } from '@/components/account';
 import { Button, Card, ErrorNote } from '@/components/ui';
 import { api, ApiError } from '@/lib/api';
@@ -23,7 +23,16 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  // A reset link can be asked for only when the server sends e-mails.
+  const [passwordReset, setPasswordReset] = useState(false);
   const demo = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
+
+  useEffect(() => {
+    api
+      .get<{ passwordReset: boolean }>('/auth/options')
+      .then((options) => setPasswordReset(options.passwordReset))
+      .catch(() => setPasswordReset(false));
+  }, []);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -69,9 +78,11 @@ export default function LoginPage() {
           <Button type="submit" loading={loading}>
             Se connecter
           </Button>
-          <Link href="/forgot-password" className="text-center text-sm text-muted hover:text-fg">
-            Mot de passe oublié ?
-          </Link>
+          {passwordReset && (
+            <Link href="/forgot-password" className="text-center text-sm text-muted hover:text-fg">
+              Mot de passe oublié ?
+            </Link>
+          )}
         </form>
       </Card>
       {demo && (

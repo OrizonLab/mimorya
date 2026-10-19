@@ -135,6 +135,7 @@ const AUTHENTICATED_ROUTES: &[(&str, &str)] = &[
     ("POST", "/admin/users"),
     ("PATCH", "/admin/users/{id}"),
     ("POST", "/admin/users/{id}/password"),
+    ("POST", "/admin/users/{id}/password-link"),
     ("POST", "/admin/users/{id}/invitation"),
     ("POST", "/admin/users/{id}/assignments"),
     ("DELETE", "/admin/assignments/{id}"),
@@ -204,6 +205,7 @@ const OTHER_ROUTES: &[(&str, &str)] = &[
     ("POST", "/auth/password-reset/link"),
     ("POST", "/auth/password-reset/complete"),
     ("POST", "/auth/logout"),
+    ("GET", "/auth/options"),
     ("GET", "/auth/me"),
     ("POST", "/account/password"),
 ];
