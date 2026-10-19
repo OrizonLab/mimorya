@@ -12,6 +12,7 @@ pub mod error;
 pub mod memory;
 pub mod plain_text;
 pub mod policy_rules;
+pub mod provisioning;
 pub mod roles;
 pub mod tools;
 

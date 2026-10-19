@@ -61,7 +61,7 @@ pub async fn issue_invitation(
             tenant_id: access.subject.tenant_id,
             user_id,
             token_hash: &token_hash,
-            created_by_user_id: access.subject.user_id,
+            created_by_user_id: Some(access.subject.user_id),
             expires_at,
         },
     )

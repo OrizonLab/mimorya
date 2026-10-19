@@ -825,10 +825,57 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - c'est une **pile de démonstration** : elle ne s'installe qu'avec les données
     fictives, dont des comptes d'administration qui se connectent tous avec
     `DEMO_PASSWORD` et que la page de connexion liste ; exposée publiquement, elle donne
-    la main à qui connaît ce mot de passe. Une installation de production demande
-    encore des migrations sans données de démonstration et la création de la première
-    entreprise et de son administrateur (feuille de route) ;
+    la main à qui connaît ce mot de passe. Les migrations sans données de démonstration
+    et la création d'une entreprise réelle sont venues ensuite (ADR-033) ;
   - les images ne sont pas publiées dans un registre ; la CI les construit sans cache à
     chaque PR (plusieurs minutes) ;
   - le relais `/api/*` intégré à Next.js reste celui du développement ; derrière Caddy,
     il n'est pas utilisé.
+
+## ADR-033 — Commandes d'exploitation : migrations seules, création d'une entreprise réelle
+
+- **Date** : 2026-10-19 · **Statut** : acceptée
+- **Contexte** : jusqu'ici, seule la commande du jeu de démonstration (`mimorya-seed`)
+  appliquait les migrations, et aucune entreprise réelle ne pouvait naître : pas
+  d'inscription (phase 3), et l'administration n'agit que dans sa propre entreprise. Une
+  installation privée (PRODUCT_VISION) a besoin des deux, sans données fictives.
+- **Décision** : un binaire d'exploitation `mimorya-admin` (`crates/api/src/bin/admin/`),
+  livré dans l'image de l'API, lancé avec l'environnement de l'API :
+  - `migrate` applique les migrations avec `DATABASE_URL` (rôle propriétaire, comme le
+    seed), sans aucune donnée ; relancée, elle ne change rien ;
+  - `create-company --name --slug --admin-email --admin-name` crée, en une seule
+    transaction (tout ou rien), l'entreprise (sigle unique, de 2 à 63 minuscules sans
+    accent, chiffres et tirets : `mimorya_core::provisioning`), son unité racine (de type
+    entreprise), les rôles de plateforme (`PLATFORM_ROLE_TEMPLATES`) et son premier
+    administrateur : rôle de base sur ses propres données et administrateur technique sur
+    toute l'entreprise, sans aucun accès métier. Rien d'autre (ni rôle métier, ni
+    connecteur, ni mémoire, ni compétence) : l'administrateur construit la suite depuis
+    l'administration ;
+  - ce premier administrateur est **invité** (ADR-027) : aucun mot de passe ne passe par
+    l'exploitant. Le lien, valable 7 jours, est affiché une seule fois sur la sortie de
+    la commande, pour être transmis par un canal sûr ; il n'est ni conservé en clair,
+    ni journalisé, ni audité ;
+  - `invite --email` donne un nouveau lien (le précédent cesse de fonctionner) à un
+    compte qui n'a pas encore choisi son mot de passe : lien expiré ou perdu, sans autre
+    administrateur pour le renvoyer. Elle refuse un compte actif ou désactivé ;
+  - `create-company` et `invite` écrivent avec `DATABASE_APP_URL` (rôle `mimorya_app`,
+    RLS appliquée) : la transaction est ouverte sur la nouvelle entreprise, que la
+    politique de `tenants` laisse écrire. La seule lecture entre entreprises est celle de
+    la connexion (`auth_find_login`), pour trouver le compte d'une adresse ;
+  - chaque création est auditée dans l'entreprise par l'acteur `system`
+    (`tenant.created`, `user.created`, `role.assigned`, `user.invited` avec
+    `delivery: "operator"`) ; l'invitation n'a pas d'auteur (`created_by_user_id` nul) ;
+  - un job de CI exécute ces commandes dans l'image, sur la pile de démonstration
+    (`infra/docker/operator-test.sh`), jusqu'à l'ouverture du lien à travers le proxy.
+- **Conséquences** :
+  - une installation privée démarre sans données fictives : migrations, puis entreprise
+    et administrateur, puis l'API et l'interface (`NEXT_PUBLIC_DEMO_MODE` non activé) ;
+  - aucun envoi d'e-mail par ces commandes : l'exploitant transmet le lien. Un
+    administrateur qui a déjà choisi son mot de passe et l'oublie passe par « mot de
+    passe oublié » (relais SMTP) ou par un autre administrateur de son entreprise ;
+  - l'exploitant, qui détient les accès à la base, crée des entreprises sans autre
+    contrôle : c'est le rôle de la plateforme, pas une fonction offerte aux entreprises.
+    L'inscription en libre-service reste en phase 3 ;
+  - il manque encore une pile conteneurisée de production : la pile de démonstration
+    (ADR-032) garde ses rôles de base aux mots de passe de développement, acceptables
+    seulement parce que la base n'y est jamais publiée (feuille de route).

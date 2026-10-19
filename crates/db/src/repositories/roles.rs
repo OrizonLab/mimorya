@@ -2,6 +2,7 @@
 //! custom roles an administrator creates, edits and deletes, with how many
 //! assignments use each. Reading them for authorization lives in `org.rs`.
 
+use mimorya_core::roles::RoleTemplate;
 use sqlx::PgConnection;
 use uuid::Uuid;
 
@@ -80,6 +81,25 @@ pub async fn create_role(conn: &mut PgConnection, input: NewRole) -> sqlx::Resul
     .bind(input.name)
     .bind(input.description)
     .bind(input.permissions)
+    .fetch_one(conn)
+    .await
+}
+
+/// A platform role of a new company, from its template (fixed afterwards).
+pub async fn create_platform_role(
+    conn: &mut PgConnection,
+    tenant_id: Uuid,
+    template: &RoleTemplate,
+) -> sqlx::Result<Uuid> {
+    sqlx::query_scalar(
+        "insert into roles (tenant_id, key, name, description, permissions, is_system) \
+         values ($1, $2, $3, $4, $5, true) returning id",
+    )
+    .bind(tenant_id)
+    .bind(template.key)
+    .bind(template.name)
+    .bind(template.description)
+    .bind(template.permissions)
     .fetch_one(conn)
     .await
 }

@@ -66,7 +66,8 @@ crates/                 Espace de travail Cargo (serveur)
                 vérification, outils mémoire et compétences
   connectors/   Contrat de connecteur, connecteur de démonstration, pont MCP (rmcp)
   api/          Serveur HTTP (axum) : sessions, routes, SSE, exécution des runs,
-                binaires `mimorya-api` et `mimorya-seed`
+                binaires `mimorya-api`, `mimorya-admin` (exploitation, ADR-033)
+                et `mimorya-seed` (démonstration)
 apps/
   web/          Interface (Next.js, React, Tailwind) — seul paquet Node du dépôt
 ```

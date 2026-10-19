@@ -73,6 +73,26 @@ un mot de passe fort et n'ouvrez pas la pile à des personnes à qui vous ne le 
 Ce n'est pas une installation de production : elle n'existe qu'avec les données de
 démonstration (voir la feuille de route).
 
+## Installation privée (exploitation)
+
+Sans données fictives : la commande d'exploitation `mimorya-admin` (ADR-033), livrée dans
+l'image de l'API, applique les migrations puis crée chaque entreprise avec son premier
+administrateur, invité par un lien :
+
+```bash
+mimorya-admin migrate          # DATABASE_URL (rôle propriétaire) : schéma seul, sans données
+mimorya-admin create-company --name 'Acme Industrie' --slug acme \
+  --admin-email jeanne.martin@acme.example --admin-name 'Jeanne Martin'
+mimorya-admin invite --email jeanne.martin@acme.example   # nouveau lien, si le premier a expiré
+```
+
+`create-company` et `invite` utilisent `DATABASE_APP_URL` et `WEB_ORIGIN` comme l'API. Le
+lien d'invitation (valable 7 jours) n'est affiché qu'une fois : transmettez-le par un canal
+sûr, l'administrateur y choisit son mot de passe puis construit son organisation depuis
+l'administration. En développement : `pnpm db:migrate`. Il n'existe pas encore de pile
+conteneurisée de production (voir la feuille de route) : l'API, l'interface (sans
+`NEXT_PUBLIC_DEMO_MODE`) et PostgreSQL se déploient avec vos propres identifiants.
+
 ## Qualité
 
 ```bash

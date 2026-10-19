@@ -21,7 +21,7 @@ l'unique paquet Node (ADR-018).
 | `crates/db`         | Migrations SQL (sqlx), RLS, dépôts, seed                                                      | Tout accès tenant passe par `Database::begin(tenant_id)`. |
 | `crates/agent`      | Fournisseurs LLM, boucle, PEP, budgets, vérification, outils mémoire/compétences              | Dépend de ports (`runtime/ports.rs`), jamais de `db`.     |
 | `crates/connectors` | Connecteurs (démo, MCP)                                                                       | Chaque outil filtre ses données avec `ctx.authz`.         |
-| `crates/api`        | axum : sessions, routes, SSE, orchestration des runs, binaires `mimorya-api`/`mimorya-seed`   | Compose les crates ; aucune règle métier dupliquée.       |
+| `crates/api`        | axum : sessions, routes, SSE, orchestration des runs, binaires `mimorya-api`/`-admin`/`-seed` | Compose les crates ; aucune règle métier dupliquée.       |
 | `apps/web`          | Next.js                                                                                       | Parle uniquement à `/api/*` (relayé vers l'API).          |
 
 Repères à l'intérieur des crates :
@@ -45,6 +45,8 @@ Repères à l'intérieur des crates :
   ports PostgreSQL, résultat), `api/src/services/llm.rs` (fournisseur de modèle de
   chaque entreprise), `api/src/services/invitations/` (liens d'invitation, ADR-027),
   `api/src/services/password_reset/` (mot de passe oublié, ADR-028),
+  `api/src/services/provisioning/` et `api/src/bin/admin/` (commandes d'exploitation :
+  migrations, création d'une entreprise réelle et de son administrateur, ADR-033),
   `api/src/mail/` (envoi SMTP), `api/src/secrets/` (chiffrement AES-256-GCM des secrets),
   `api/tests/` (intégration, harnais dans `support/`).
 - `web/components/<fonctionnalité>/` (account, admin, approvals, chat, memory,
@@ -53,7 +55,8 @@ Repères à l'intérieur des crates :
   `web/lib/security/` (CSP à nonce par page, ADR-030), `web/e2e/` (tests de bout en
   bout, un fichier par parcours, `support/`) et `api/examples/e2e_server/` (l'API qu'ils
   pilotent, ADR-031).
-- `infra/` : `docker/` (images de l'API et de l'interface, test de fumée), `caddy/`
+- `infra/` : `docker/` (images de l'API et de l'interface, test de fumée, test des commandes
+  d'exploitation), `caddy/`
   (reverse proxy : TLS, HSTS), `postgres/` (rôles et extensions) ; `docker-compose.yml`
   (base de développement, sur 127.0.0.1) et `compose.demo.yml` (pile de démonstration,
   ADR-032).
@@ -64,6 +67,7 @@ Repères à l'intérieur des crates :
 pnpm install                       # dépendances de l'interface web
 docker compose up -d db            # PostgreSQL 16 + pgvector (ou instance locale, voir README)
 pnpm db:seed                       # cargo run --bin mimorya-seed (DATABASE_URL, DEMO_PASSWORD, --reset)
+pnpm db:migrate                    # mimorya-admin migrate : migrations seules (ADR-033)
 pnpm dev:api                       # cargo run --bin mimorya-api : API sur :4000 (lit .env)
 pnpm dev:web                       # Web sur :3000
 pnpm check                         # Rust : fmt + clippy -D warnings + tests ; web : typecheck + lint + format
