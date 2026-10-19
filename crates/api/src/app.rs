@@ -15,13 +15,14 @@ use tokio::task::JoinHandle;
 use crate::config::AppConfig;
 use crate::mail::{Mailer, SmtpMailer};
 use crate::plugins::csrf::csrf_protection;
+use crate::plugins::maintenance::spawn_maintenance;
 use crate::plugins::rate_limit::global_rate_limit;
 use crate::plugins::request_context::request_context;
 use crate::plugins::session::resolve_identity;
-use crate::plugins::stale_run_sweeper::spawn_stale_run_sweeper;
 use crate::plugins::{RateLimiter, RateLimits};
 use crate::routes;
 use crate::secrets::SecretStore;
+use crate::services::background::BackgroundTasks;
 use crate::services::connectors::ConnectorSettings;
 use crate::services::llm::{LlmServiceOptions, default_factory};
 use crate::services::runs::RunExecutor;
@@ -34,6 +35,9 @@ const GLOBAL_RATE_LIMIT_PER_MINUTE: u32 = 600;
 /// Failed logins allowed per account before it is throttled for the window.
 const FAILED_LOGINS_PER_ACCOUNT: u32 = 10;
 const FAILED_LOGIN_WINDOW: Duration = Duration::from_secs(15 * 60);
+/// Password reset links an address may ask for in the window.
+const RESET_REQUESTS_PER_ADDRESS: u32 = 3;
+const RESET_REQUEST_WINDOW: Duration = Duration::from_secs(60 * 60);
 
 pub struct Services {
     pub config: AppConfig,
@@ -44,9 +48,13 @@ pub struct Services {
     /// The model provider of each company's runs.
     pub llm: Arc<LlmService>,
     pub runs: RunService,
-    /// Sends the invitation e-mails; `None` when no relay is configured.
+    /// Sends the invitation and reset e-mails; `None` when no relay is
+    /// configured.
     pub mailer: Option<Arc<dyn Mailer>>,
     pub limits: RateLimits,
+    /// Work a request starts and does not wait for (reset links, audits of
+    /// denied logins): awaited on shutdown.
+    pub background: Arc<BackgroundTasks>,
     /// Flips to `true` when the server stops: long-lived streams end.
     pub shutdown: watch::Sender<bool>,
 }
@@ -68,7 +76,7 @@ pub struct BuildOptions {
 pub struct App {
     pub router: Router,
     pub services: AppState,
-    sweeper: JoinHandle<()>,
+    maintenance: JoinHandle<()>,
 }
 
 pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Result<App> {
@@ -118,6 +126,7 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
         global: RateLimiter::per_minute(GLOBAL_RATE_LIMIT_PER_MINUTE),
         login: RateLimiter::per_minute(config.login_rate_limit_per_minute),
         failed_logins: RateLimiter::new(FAILED_LOGINS_PER_ACCOUNT, FAILED_LOGIN_WINDOW),
+        reset_requests: RateLimiter::new(RESET_REQUESTS_PER_ADDRESS, RESET_REQUEST_WINDOW),
     };
     let mailer = match options.mailer {
         Some(mailer) => mailer,
@@ -136,6 +145,7 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
         bus,
         llm,
         limits,
+        background: Arc::new(BackgroundTasks::default()),
         shutdown: watch::channel(false).0,
     });
 
@@ -152,7 +162,7 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
     Ok(App {
         router,
         services,
-        sweeper: spawn_stale_run_sweeper(db),
+        maintenance: spawn_maintenance(db),
     })
 }
 
@@ -162,11 +172,13 @@ impl App {
         self.services.shutdown.send_replace(true);
     }
 
-    /// Waits for background runs, then releases connectors and connections.
+    /// Waits for background runs and requests' background work, then
+    /// releases connectors and connections.
     pub async fn shutdown(self) {
         self.begin_shutdown();
-        self.sweeper.abort();
+        self.maintenance.abort();
         self.services.runs.idle().await;
+        self.services.background.idle().await;
         self.services.connectors.close().await;
         self.services.db.close().await;
     }

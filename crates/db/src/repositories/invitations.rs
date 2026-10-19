@@ -62,16 +62,17 @@ pub async fn put_invitation(conn: &mut PgConnection, input: NewInvitation<'_>) -
 }
 
 /// Takes the invitation for its single use: deleted, and its account
-/// returned, only if it still holds this token and has not expired (a
-/// concurrent acceptance, or a resent link, leaves `None`).
+/// returned, only if it still holds this token and has not expired when this
+/// statement runs, after any wait for the account's row (a concurrent
+/// acceptance, or a resent link, leaves `None`).
 pub async fn take_invitation(
     conn: &mut PgConnection,
     invitation_id: Uuid,
     token_hash: &str,
 ) -> sqlx::Result<Option<Uuid>> {
     sqlx::query_scalar(
-        "delete from user_invitations where id = $1 and token_hash = $2 and expires_at > now() \
-         returning user_id",
+        "delete from user_invitations where id = $1 and token_hash = $2 \
+         and expires_at > statement_timestamp() returning user_id",
     )
     .bind(invitation_id)
     .bind(token_hash)

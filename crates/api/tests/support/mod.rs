@@ -12,6 +12,7 @@ pub mod locks;
 pub mod mail;
 pub mod mcp;
 pub mod planning;
+pub mod resets;
 
 pub use client::{Client, TestResponse};
 use mail::RecordingMailer;
@@ -106,9 +107,14 @@ impl TestApi {
 
     /// Same, with e-mails recorded in `mail` instead of sent.
     pub async fn start_with_mailer() -> Self {
+        Self::start_with_mailer_and(&[]).await
+    }
+
+    /// Same, with configuration variables overridden as well.
+    pub async fn start_with_mailer_and(env: &[(&str, &str)]) -> Self {
         let model = Arc::new(ScriptedProvider::new(Vec::new()));
         let provider: Arc<dyn LlmProvider> = model.clone();
-        Self::build(Some(provider), Some(model), &[], true).await
+        Self::build(Some(provider), Some(model), env, true).await
     }
 
     /// App without any model provider configured.
@@ -167,9 +173,11 @@ impl TestApi {
         self.model.as_ref().expect("scripted model").push(steps);
     }
 
-    /// Waits for every background run.
+    /// Waits for every background run, and for the work requests left in
+    /// the background (reset links, audits of denied logins).
     pub async fn idle(&self) {
         self.app.services.runs.idle().await;
+        self.app.services.background.idle().await;
     }
 
     pub async fn send(&self, request: Request<Body>) -> TestResponse {

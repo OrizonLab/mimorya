@@ -40,8 +40,10 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
 - Le contexte `app.tenant_id` est posé **par transaction** (`set_config(..., true)`),
   jamais au niveau de la connexion (pas de fuite par le pool).
 - Les seules opérations qui traversent les entreprises (connexion, résolution de
-  session, lecture d'une invitation avant connexion, marquage des runs bloqués) passent par des fonctions `SECURITY DEFINER` au
-  périmètre minimal et au `search_path` figé (`auth_*`, `system_*`).
+  session, lecture d'une invitation ou d'un lien de réinitialisation avant connexion,
+  marquage des runs bloqués, purge des liens de réinitialisation expirés) passent par
+  des fonctions `SECURITY DEFINER` au périmètre minimal et au `search_path` figé
+  (`auth_*`, `system_*`).
 - Tests d'intégration obligatoires : lecture croisée impossible même par requête
   directe, insertion croisée refusée, absence de contexte = aucune ligne.
 
@@ -55,6 +57,16 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   stockée ; cookie `HttpOnly`, `Secure` (hors développement), `SameSite=Lax` ; durée
   glissante (défaut 12 h), absolue (7 jours), révocation à la déconnexion et à la
   désactivation du compte.
+- Mot de passe oublié (ADR-028) : lien de réinitialisation à usage unique, valable une
+  heure, envoyé **seulement par e-mail** (sans relais SMTP, la demande est refusée et
+  renvoie vers l'administrateur) ; jeton de 256 bits dont seule l'empreinte est
+  conservée, jamais montré, journalisé ni audité. La demande reçoit toujours la même
+  réponse et le lien est préparé hors du chemin de réponse : rien ne révèle si
+  l'adresse correspond à un compte. Seul un compte actif qui a un mot de passe reçoit
+  un lien ; une nouvelle demande remplace le précédent ; tout changement de mot de
+  passe ou de statut du compte le supprime (déclencheur en base) ; l'usage ferme
+  toutes les sessions du compte. Demandes limitées à 3 par heure et par adresse
+  e-mail, connue ou non, en plus de la limite par client.
 - Protection CSRF : `SameSite=Lax` + exigence d'un en-tête personnalisé sur toutes les
   requêtes modifiantes + vérification d'`Origin`.
 - Limitation de débit sur la connexion :

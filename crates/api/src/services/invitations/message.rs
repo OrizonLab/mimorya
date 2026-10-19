@@ -2,10 +2,8 @@
 //! company, the link and until when it works.
 
 use chrono::{DateTime, Utc};
-use chrono_tz::Europe::Paris;
-use mimorya_agent::runtime::french_date;
 
-use crate::mail::Mail;
+use crate::mail::{Mail, expiry_label};
 
 pub struct InvitationMail<'a> {
     pub product: &'a str,
@@ -15,15 +13,6 @@ pub struct InvitationMail<'a> {
     pub invited_email: &'a str,
     pub link: &'a str,
     pub expires_at: DateTime<Utc>,
-}
-
-/// When the link stops working, as the invited person reads it.
-pub fn expiry_label(expires_at: DateTime<Utc>) -> String {
-    format!(
-        "{} à {} (heure de Paris)",
-        french_date(expires_at, Paris),
-        expires_at.with_timezone(&Paris).format("%H:%M")
-    )
 }
 
 pub fn invitation_mail(invitation: &InvitationMail<'_>) -> Mail {

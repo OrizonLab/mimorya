@@ -161,6 +161,24 @@ pub async fn set_temporary_password_hash(
     Ok(())
 }
 
+/// The password the person chose through a reset link (ADR-028): no change
+/// is required any more.
+pub async fn set_reset_password_hash(
+    conn: &mut PgConnection,
+    id: Uuid,
+    hash: &str,
+) -> sqlx::Result<()> {
+    sqlx::query(
+        "update users set password_hash = $2, must_change_password = false, updated_at = now() \
+         where id = $1",
+    )
+    .bind(id)
+    .bind(hash)
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
 /// Replaces the password only if it is still `current_hash`: a change made in
 /// between (an administrator's reset) wins. The new password is the user's
 /// own: no change is required any more. Returns whether it was replaced.

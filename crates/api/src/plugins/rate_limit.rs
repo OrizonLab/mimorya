@@ -1,6 +1,7 @@
 //! Fixed-window rate limiting, in memory (single instance, like the event
 //! bus). A global limit per client address protects every route; logins are
-//! also limited per address and, for failures, per account.
+//! also limited per address and, for failures, per account; reset links per
+//! e-mail address.
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -74,6 +75,8 @@ pub struct RateLimits {
     /// Login attempts per account (email), given back when the login succeeds:
     /// only failures count. Addresses can be shared or multiplied, accounts cannot.
     pub failed_logins: RateLimiter,
+    /// Password reset links asked for, per e-mail address, known or not.
+    pub reset_requests: RateLimiter,
 }
 
 pub async fn global_rate_limit(

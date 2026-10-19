@@ -59,10 +59,11 @@ fn login_audit(
 /// Written off the response path, so that response time does not depend on
 /// whether the account exists.
 fn record_in_background(state: AppState, entry: AuditEntry) {
-    tokio::spawn(async move {
+    let db = state.db.clone();
+    state.background.spawn(async move {
         let tenant_id = entry.tenant_id;
         let written = async {
-            let mut tx = state.db.begin(tenant_id).await?;
+            let mut tx = db.begin(tenant_id).await?;
             append_audit(&mut tx, entry).await?;
             tx.commit().await
         };
