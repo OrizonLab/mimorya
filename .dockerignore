@@ -1,0 +1,10 @@
+# Build context of the images (infra/docker): sources only.
+.git
+target
+**/node_modules
+**/.next
+apps/web/test-results
+apps/web/playwright-report
+*.log
+.env
+.env.*

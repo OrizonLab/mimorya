@@ -129,3 +129,19 @@ jobs:
           name: playwright-results
           path: apps/web/test-results
           retention-days: 7
+
+  docker:
+    name: Docker images (demonstration stack)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the images
+        run: docker compose --profile demo build
+      - name: Start the demonstration stack
+        run: docker compose --profile demo up -d
+      - name: Smoke test through the reverse proxy
+        run: infra/docker/smoke-test.sh https://localhost
+      - name: Logs of the stack
+        if: always()
+        run: docker compose --profile demo logs --no-color | tail -n 200

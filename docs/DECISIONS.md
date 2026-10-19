@@ -785,3 +785,37 @@ cité, renvoi) y sont faites sur place.
     `e2e_server`) et les tests modifient l'entreprise de démonstration, recréée à chaque
     démarrage ; l'API supprime au démarrage les e-mails d'une exécution précédente ;
   - le parcours avec un modèle réel reste à valider (A11).
+
+## ADR-032 — Images Docker et pile de démonstration derrière Caddy
+
+- **Date** : 2026-10-19 · **Statut** : acceptée
+- **Contexte** : l'installation privée (PRODUCT_VISION) suppose des images prêtes à
+  lancer et un reverse proxy qui termine TLS et pose HSTS (ADR-030). Le dépôt n'avait que
+  la base de développement en conteneur.
+- **Décision** :
+  - `infra/docker/api.Dockerfile` : compilation en mode release (`--locked`) de
+    `mimorya-api` et `mimorya-seed`, image d'exécution Debian minimale avec les seuls
+    certificats racine, utilisateur sans privilège ;
+  - `infra/docker/web.Dockerfile` : construction de l'interface en sortie autonome de
+    Next.js (`NEXT_OUTPUT=standalone`, activée seulement pour l'image), exécutée par Node
+    sous un utilisateur sans privilège. Le relais `/api/*` de Next.js est fixé à la
+    construction (`API_URL`), comme le mode démonstration (`NEXT_PUBLIC_DEMO_MODE`) ;
+  - `docker compose --profile demo` : base, `seed` (migrations et entreprise fictive,
+    puis arrêt), API (`MIMORYA_ENV=production`, cookies `Secure`, `TRUST_PROXY=true`),
+    interface et **Caddy** (`infra/caddy/Caddyfile`) : HTTPS (certificat local par
+    défaut, public pour un vrai domaine), `Strict-Transport-Security: max-age=63072000;
+includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du client
+    en dernière entrée de `X-Forwarded-For`), le reste à l'interface : une seule origine
+    pour le navigateur ;
+  - un job de CI construit les deux images, démarre la pile et la vérifie à travers le
+    proxy (`infra/docker/smoke-test.sh` : HSTS, CSP à nonce, API sous `/api`, connexion
+    d'un compte de démonstration avec cookie `Secure`).
+- **Conséquences** :
+  - c'est une **pile de démonstration** : elle ne s'installe qu'avec les données
+    fictives. Une installation de production demande encore des migrations sans
+    données de démonstration et la création de la première entreprise et de son
+    administrateur (feuille de route) ;
+  - les images ne sont pas publiées dans un registre ; la CI les construit sans cache à
+    chaque PR (plusieurs minutes) ;
+  - le relais `/api/*` intégré à Next.js reste celui du développement ; derrière Caddy,
+    il n'est pas utilisé.

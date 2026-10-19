@@ -53,6 +53,9 @@ Repères à l'intérieur des crates :
   `web/lib/security/` (CSP à nonce par page, ADR-030), `web/e2e/` (tests de bout en
   bout, un fichier par parcours, `support/`) et `api/examples/e2e_server/` (l'API qu'ils
   pilotent, ADR-031).
+- `infra/` : `docker/` (images de l'API et de l'interface, test de fumée), `caddy/`
+  (reverse proxy : TLS, HSTS), `postgres/` (rôles et extensions) ; `docker-compose.yml`
+  (base de développement, pile de démonstration, ADR-032).
 
 ## Commandes
 
@@ -65,6 +68,7 @@ pnpm dev:web                       # Web sur :3000
 pnpm check                         # Rust : fmt + clippy -D warnings + tests ; web : typecheck + lint + format
 pnpm test:int                      # cargo test-int : tests PostgreSQL (en série, base *_test recréée)
 pnpm test:e2e                      # Playwright : parcours web contre l'API à modèle scénarisé (ADR-031)
+docker compose --profile demo up -d --build   # pile de démonstration derrière Caddy (ADR-032)
 ```
 
 Avant chaque commit : `pnpm check && pnpm test:int` doivent passer.

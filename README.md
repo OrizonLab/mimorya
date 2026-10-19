@@ -50,6 +50,22 @@ Comptes de démonstration (données fictives) : `marc.lefevre@neo-maintenance.ex
 Sans fournisseur de modèle configuré, l'application fonctionne mais les conversations
 sont désactivées (message explicite).
 
+## Pile conteneurisée (démonstration)
+
+Images Docker de l'API et de l'interface, derrière Caddy (HTTPS, HSTS), avec l'entreprise
+**fictive** de démonstration (ADR-032) :
+
+```bash
+docker compose --profile demo up -d --build      # https://localhost (certificat local de Caddy)
+infra/docker/smoke-test.sh                       # vérification : HSTS, CSP, API, connexion
+```
+
+Variables facultatives (fichier `.env` ou environnement) : `LLM_PROVIDER` et
+`ANTHROPIC_API_KEY` pour converser, `MIMORYA_MASTER_KEY`, `SMTP_URL` et `MAIL_FROM`,
+`MIMORYA_DOMAIN` (puis retirer `tls internal` de `infra/caddy/Caddyfile` pour un
+certificat public), `DEMO_PASSWORD`. Ce n'est pas encore une installation de production :
+elle n'existe qu'avec les données de démonstration (voir la feuille de route).
+
 ## Qualité
 
 ```bash
