@@ -9,7 +9,7 @@ Légende des statuts — tenue à jour à chaque contribution :
 | 🟡     | Partiel : socle en place, fonctionnalité incomplète (détail indiqué)       |
 | 🔜     | Planifié, non implémenté                                                   |
 
-Dernière mise à jour : 2026-10-19 (fin des runs balayés annoncée, runs d'une entreprise suspendue arrêtés).
+Dernière mise à jour : 2026-10-19 (types de l'interface générés depuis le contrat de l'API, première étape, ADR-036).
 
 ## Phase 1 — Fondations et MVP fonctionnel
 
@@ -54,7 +54,7 @@ Dernière mise à jour : 2026-10-19 (fin des runs balayés annoncée, runs d'une
 
 1. **Validation avec un modèle réel** (clé Anthropic ou autre) sur le scénario de référence, et ajustement des consignes et descriptions d'outils.
 2. **Installation privée de production** : publication des images dans un registre et cache de leur construction en CI (faits : images Docker et pile de démonstration derrière Caddy, ADR-032 ; migrations seules et création d'une entreprise réelle par `mimorya-admin`, ADR-033 ; pile conteneurisée de production aux identifiants choisis à l'installation, vérifiée en CI jusqu'à la première connexion, ADR-034).
-3. **Types de l'API partagés** : générer `apps/web/lib/api/types.ts` depuis les structures Rust (aujourd'hui maintenus à la main).
+3. **Types de l'API partagés** : générés depuis les réponses typées du serveur pour la session, les conversations, les runs et les validations (ADR-036, `pnpm contract`, vérifié par `cargo test`) ; restent à passer au contrat : administration, mémoire, compte, invitations et mot de passe oublié, événements du flux, corps des requêtes.
 
 ### Points relevés par les audits, à traiter (non bloquants)
 

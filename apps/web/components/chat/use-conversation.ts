@@ -6,9 +6,13 @@ import {
   api,
   ApiError,
   type Approval,
+  type ApprovalList,
+  type ConversationCreated,
   type ConversationDetail,
+  type ConversationList,
   type ConversationSummary,
   type Message,
+  type MessageAccepted,
   type RunStatus,
 } from '@/lib/api';
 import { useRunStream } from './use-run-stream';
@@ -28,13 +32,13 @@ export function useConversation(conversationId: string | null) {
 
   const loadConversations = useCallback(() => {
     api
-      .get<{ conversations: ConversationSummary[] }>('/conversations')
+      .get<ConversationList>('/conversations')
       .then((r) => setConversations(r.conversations))
       .catch(() => setConversations([]));
   }, []);
 
   const loadApprovals = useCallback(async (runId: string) => {
-    const r = await api.get<{ approvals: Approval[] }>('/approvals');
+    const r = await api.get<ApprovalList>('/approvals');
     setApprovals(r.approvals.filter((a) => a.runId === runId));
   }, []);
 
@@ -86,10 +90,10 @@ export function useConversation(conversationId: string | null) {
       try {
         let id = conversationId;
         if (!id) {
-          const created = await api.post<{ conversation: ConversationSummary }>('/conversations');
+          const created = await api.post<ConversationCreated>('/conversations');
           id = created.conversation.id;
         }
-        const started = await api.post<{ runId: string }>(`/conversations/${id}/messages`, {
+        const started = await api.post<MessageAccepted>(`/conversations/${id}/messages`, {
           content,
         });
         if (id !== conversationId) {

@@ -147,6 +147,7 @@ entreprise de vérification). Restent à faire : publication des images dans un 
 pnpm check        # Rust : fmt, clippy, tests unitaires ; web : typecheck, lint, format
 pnpm test:int     # = cargo test-int : tests PostgreSQL (TEST_DATABASE_URL / TEST_DATABASE_APP_URL)
 pnpm test:e2e     # parcours dans Chromium (Playwright) contre l'API avec un modèle scénarisé
+pnpm contract     # régénère apps/web/lib/api/contract.ts après un changement du contrat de l'API (ADR-036)
 ```
 
 Les tests de bout en bout (ADR-031) recréent l'entreprise de démonstration de la base

@@ -17,6 +17,7 @@
     "check:web": "pnpm --filter @mimorya/web typecheck && pnpm lint && pnpm format:check",
     "test:int": "cargo test-int",
     "test:e2e": "pnpm --filter @mimorya/web build && pnpm --filter @mimorya/web e2e",
+    "contract": "MIMORYA_WRITE_CONTRACT=1 cargo test -p mimorya-api --lib contract::tests",
     "lint": "eslint .",
     "format": "prettier --write . && cargo fmt --all",
     "format:check": "prettier --check ."

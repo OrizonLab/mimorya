@@ -5,6 +5,7 @@
 pub mod app;
 pub mod auth;
 pub mod config;
+pub mod contract;
 pub mod http;
 pub mod logging;
 pub mod mail;

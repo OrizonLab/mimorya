@@ -1,18 +1,11 @@
 import Link from 'next/link';
 import { Card, LabelBadge } from '@/components/ui';
-import type { RunStatus, RunUsage } from '@/lib/api';
+import type { RunListItem } from '@/lib/api';
 import { formatCost, formatDate } from '@/lib/format';
 import { RUN_STATUS } from '@/lib/labels';
 
-export interface RunListItem {
-  id: string;
-  objective: string;
-  status: RunStatus;
-  usage: RunUsage;
-  createdAt: string;
-}
-
-export function RunList({ runs }: { runs: RunListItem[] }) {
+/** The user's latest runs, each linking to its trace. */
+export function RecentRuns({ runs }: { runs: RunListItem[] }) {
   return (
     <Card className="overflow-hidden">
       <ul className="divide-y divide-line">

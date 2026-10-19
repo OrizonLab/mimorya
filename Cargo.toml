@@ -45,6 +45,8 @@ unicode-properties = "0.1"
 tokio = { version = "1", features = ["full"] }
 tokio-stream = "0.1"
 tower = { version = "0.5", features = ["util"] }
+# TypeScript declarations of the API contract (apps/web/lib/api/contract.ts).
+ts-rs = { version = "12", features = ["uuid-impl"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 url = "2"

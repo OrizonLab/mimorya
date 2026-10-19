@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState, type FormEvent } from 'react';
 import { AuthFrame } from '@/components/account';
 import { Button, Card, ErrorNote } from '@/components/ui';
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, type AuthOptions } from '@/lib/api';
 
 // Fictional demo accounts (seeded by `pnpm db:seed`), shown only in demo mode.
 const DEMO_ACCOUNTS = [
@@ -29,7 +29,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     api
-      .get<{ passwordReset: boolean }>('/auth/options')
+      .get<AuthOptions>('/auth/options')
       .then((options) => setPasswordReset(options.passwordReset))
       .catch(() => setPasswordReset(false));
   }, []);

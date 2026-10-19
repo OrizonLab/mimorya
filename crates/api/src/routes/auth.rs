@@ -14,7 +14,6 @@ use mimorya_core::accounts::EMAIL_MAX_LEN;
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::auth::{find_login, lock_login_state, revoke_session};
 use serde::Deserialize;
-use serde_json::{Value, json};
 use uuid::Uuid;
 use validator::Validate;
 
@@ -22,6 +21,7 @@ use crate::app::AppState;
 use crate::auth::cookies::{cleared_session_cookie, session_cookie};
 use crate::auth::credentials::verify_password_async;
 use crate::auth::sessions::open_session;
+use crate::contract::{AssistantStatus, AuthOptions, Done, Me, MeTenant, MeUser, OrgUnitRef};
 use crate::http::{ApiError, ApiResult, Body, trimmed};
 use crate::plugins::{AuthPendingPasswordChange, MaybeAuth, RequestContext};
 use crate::services::permission_catalog::permission_catalog;
@@ -139,16 +139,15 @@ async fn login(
     tx.commit().await?;
 
     let cookie = session_cookie(&token, state.config.secure_cookies);
-    Ok((
-        AppendHeaders([(SET_COOKIE, cookie)]),
-        Json(json!({ "ok": true })),
-    ))
+    Ok((AppendHeaders([(SET_COOKIE, cookie)]), Json(Done::OK)))
 }
 
 /// What the sign-in page offers: a reset link can be asked for only when
 /// e-mails go out (ADR-028).
-async fn options(State(state): State<AppState>) -> Json<Value> {
-    Json(json!({ "passwordReset": state.mailer.is_some() }))
+async fn options(State(state): State<AppState>) -> Json<AuthOptions> {
+    Json(AuthOptions {
+        password_reset: state.mailer.is_some(),
+    })
 }
 
 async fn logout(
@@ -167,45 +166,45 @@ async fn logout(
         tx.commit().await?;
     }
     let cookie = cleared_session_cookie(state.config.secure_cookies);
-    Ok((
-        AppendHeaders([(SET_COOKIE, cookie)]),
-        Json(json!({ "ok": true })),
-    ))
+    Ok((AppendHeaders([(SET_COOKIE, cookie)]), Json(Done::OK)))
 }
 
 async fn me(
     State(state): State<AppState>,
     AuthPendingPasswordChange(identity): AuthPendingPasswordChange,
-) -> ApiResult<Json<Value>> {
+) -> ApiResult<Json<Me>> {
     let access = state.access.context(identity).await?;
     let catalog: BTreeSet<&str> = permission_catalog()
         .into_iter()
         .map(|p| p.permission)
         .collect();
-    let permissions: Vec<&str> = catalog.into_iter().filter(|p| access.holds(p)).collect();
-    let org_unit = access
-        .profile
-        .primary_unit_id
-        .map(|unit| json!({ "id": unit, "path": access.org_tree().path_label(unit) }));
-    Ok(Json(json!({
-        "user": {
-            "id": access.profile.id,
-            "email": access.profile.email,
-            "displayName": access.profile.display_name,
-            "jobTitle": access.profile.job_title,
-            "orgUnit": org_unit,
-            "mustChangePassword": identity.must_change_password,
+    let org_unit = access.profile.primary_unit_id.map(|id| OrgUnitRef {
+        id,
+        path: access.org_tree().path_label(id),
+    });
+    Ok(Json(Me {
+        user: MeUser {
+            id: access.profile.id,
+            email: access.profile.email.clone(),
+            display_name: access.profile.display_name.clone(),
+            job_title: access.profile.job_title.clone(),
+            org_unit,
+            must_change_password: identity.must_change_password,
         },
-        "tenant": {
-            "id": access.tenant.id,
-            "name": access.tenant.name,
-            "demo": access.is_demo(),
+        tenant: MeTenant {
+            id: access.tenant.id,
+            name: access.tenant.name.clone(),
+            demo: access.is_demo(),
         },
-        "grants": access.grants,
-        "permissions": permissions,
-        "assistant": {
-            "name": state.config.assistant_name,
-            "available": state.llm.available(access.subject.tenant_id).await,
+        permissions: catalog
+            .into_iter()
+            .filter(|p| access.holds(p))
+            .map(String::from)
+            .collect(),
+        grants: access.grants.clone(),
+        assistant: AssistantStatus {
+            name: state.config.assistant_name.clone(),
+            available: state.llm.available(access.subject.tenant_id).await,
         },
-    })))
+    }))
 }

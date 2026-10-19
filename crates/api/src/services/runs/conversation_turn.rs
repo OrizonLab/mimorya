@@ -14,9 +14,9 @@ use mimorya_db::repositories::conversations::{
 use mimorya_db::repositories::runs::{
     NewRun, RunRow, RunStatus, create_run, list_runs_for_conversation,
 };
-use serde_json::json;
 use uuid::Uuid;
 
+use crate::contract::MessageMetadata;
 use crate::services::access::{AccessContext, AuthIdentity};
 
 const HISTORY_LIMIT: i64 = 20;
@@ -63,7 +63,7 @@ pub async fn open_conversation_turn(
             content: text.to_string(),
             author_user_id: Some(identity.user_id),
             run_id: None,
-            metadata: json!({}),
+            metadata: serde_json::to_value(MessageMetadata::default())?,
         },
     )
     .await?;
