@@ -1,7 +1,14 @@
 'use client';
 
 import { Button } from '@/components/ui';
-import { api, type Action, type IssuedInvitation, type DirectoryUser } from '@/lib/api';
+import {
+  api,
+  type Action,
+  type DirectoryUser,
+  type InvitationIssued,
+  type ResetLinkSent,
+  type TemporaryPassword,
+} from '@/lib/api';
 import type { AccountNotice } from './types';
 
 /**
@@ -30,7 +37,7 @@ export function CredentialActions({
     )
       return;
     const issued = await action.run(() =>
-      api.post<{ invitation: IssuedInvitation }>(`/admin/users/${user.id}/invitation`),
+      api.post<InvitationIssued>(`/admin/users/${user.id}/invitation`),
     );
     if (issued) {
       onNotice({
@@ -50,7 +57,7 @@ export function CredentialActions({
     )
       return;
     const sent = await action.run(() =>
-      api.post<{ expiresAt: string }>(`/admin/users/${user.id}/password-link`),
+      api.post<ResetLinkSent>(`/admin/users/${user.id}/password-link`),
     );
     if (sent) {
       onNotice({
@@ -70,7 +77,7 @@ export function CredentialActions({
     )
       return;
     const reset = await action.run(() =>
-      api.post<{ temporaryPassword: string }>(`/admin/users/${user.id}/password`),
+      api.post<TemporaryPassword>(`/admin/users/${user.id}/password`),
     );
     if (reset)
       onNotice({ kind: 'password', who: user.displayName, password: reset.temporaryPassword });

@@ -13,8 +13,10 @@ use mimorya_db::repositories::access_policies::POLICY_EFFECTS;
 use mimorya_db::repositories::approvals::APPROVAL_STATUSES;
 use mimorya_db::repositories::audit::{AUDIT_ACTORS, AUDIT_OUTCOMES};
 use mimorya_db::repositories::connectors::CONNECTOR_STATUSES;
+use mimorya_db::repositories::conversations::MESSAGE_ROLES;
 use mimorya_db::repositories::runs::RunStatus;
 use mimorya_db::repositories::skills::SKILL_STATUSES;
+use mimorya_db::repositories::tool_invocations::TOOL_DECISIONS;
 use mimorya_db::repositories::usage::USAGE_KINDS;
 use mimorya_db::repositories::users::USER_STATUSES;
 use regex::Regex;
@@ -81,6 +83,8 @@ async fn constrained_columns_allow_exactly_the_platform_s_values() {
             "connector_instances_status_check",
             owned(CONNECTOR_STATUSES),
         ),
+        ("messages_role_check", owned(MESSAGE_ROLES)),
+        ("tool_invocations_decision_check", owned(TOOL_DECISIONS)),
     ];
     for (constraint, values) in expected {
         assert_eq!(allowed(&db, constraint).await, values, "{constraint}");
