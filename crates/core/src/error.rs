@@ -17,6 +17,18 @@ pub enum ErrorCode {
     Unavailable,
 }
 
+impl ErrorCode {
+    pub const ALL: [ErrorCode; 7] = [
+        Self::Forbidden,
+        Self::NotFound,
+        Self::Validation,
+        Self::Conflict,
+        Self::Unauthenticated,
+        Self::BudgetExceeded,
+        Self::Unavailable,
+    ];
+}
+
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
 #[error("{message}")]
 pub struct DomainError {

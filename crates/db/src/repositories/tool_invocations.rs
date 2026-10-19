@@ -5,6 +5,10 @@ use serde_json::Value;
 use sqlx::PgConnection;
 use uuid::Uuid;
 
+/// The policy's decision on a call (`tool_invocations_decision_check`):
+/// those of the engine's `ToolCallEvaluation::KINDS`.
+pub const TOOL_DECISIONS: [&str; 3] = ["allow", "require_approval", "deny"];
+
 #[derive(Debug, Clone)]
 pub struct NewToolInvocation {
     pub tenant_id: Uuid,

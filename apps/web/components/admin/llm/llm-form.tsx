@@ -2,9 +2,8 @@
 
 import { useState, type FormEvent } from 'react';
 import { Button, ErrorNote, Field, Input, Select } from '@/components/ui';
-import { api, useAction } from '@/lib/api';
+import { api, useAction, type LlmView } from '@/lib/api';
 import { LLM_PROVIDERS } from '@/lib/labels';
-import type { LlmView } from './types';
 
 /** Chooses the company's own provider; the key is write-only. */
 export function LlmForm({ data, onDone }: { data: LlmView; onDone: (changed: boolean) => void }) {

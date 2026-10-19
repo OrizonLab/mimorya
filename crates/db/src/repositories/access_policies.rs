@@ -8,6 +8,9 @@ use serde_json::Value;
 use sqlx::PgConnection;
 use uuid::Uuid;
 
+/// What a policy does (`access_policies_effect_check`).
+pub const POLICY_EFFECTS: [&str; 2] = ["allow", "deny"];
+
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct PolicyRow {
     pub id: Uuid,

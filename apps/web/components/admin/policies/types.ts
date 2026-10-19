@@ -1,27 +1,6 @@
-/** Access policies as the API lists them, and the simple form of a condition. */
+/** The simple form of a policy's condition, and its conversion from and to JSON. */
 
 export type ConditionJson = Record<string, unknown>;
-
-export interface PolicyView {
-  id: string;
-  description: string;
-  effect: 'allow' | 'deny';
-  permissions: string[];
-  condition: ConditionJson;
-  enabled: boolean;
-  /** Only deny policies are written from the administration (ADR-022). */
-  editable: boolean;
-  updatedAt: string;
-}
-
-export interface PoliciesView {
-  policies: PolicyView[];
-  /** The permissions a policy may restrict: business ones the platform checks. */
-  permissions: Array<{ permission: string; label: string; perResource: boolean }>;
-  /** Domains a policy may restrict as a whole (`domaine:*`). */
-  domains: string[];
-  attributes: Array<{ path: string; label: string }>;
-}
 
 export const OPERATORS = {
   eq: 'est égal à',

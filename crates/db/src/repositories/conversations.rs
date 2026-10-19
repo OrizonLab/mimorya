@@ -8,6 +8,9 @@ use uuid::Uuid;
 /// Title given to a new conversation until its first message names it.
 pub const DEFAULT_CONVERSATION_TITLE: &str = "Nouvelle conversation";
 
+/// Who wrote a message (`messages_role_check`).
+pub const MESSAGE_ROLES: [&str; 2] = ["user", "assistant"];
+
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct ConversationRow {
     pub id: Uuid,

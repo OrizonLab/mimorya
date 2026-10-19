@@ -7,8 +7,8 @@ import {
   useAction,
   useApiData,
   type OrgUnitView,
-  type RoleView,
   type DirectoryUser,
+  type Roles,
 } from '@/lib/api';
 import { formatDate } from '@/lib/format';
 import { GrantRoleForm } from './grant-role-form';
@@ -23,7 +23,7 @@ export function AssignmentsEditor({
   units: OrgUnitView[];
   onChanged: () => void;
 }) {
-  const roles = useApiData<{ roles: RoleView[] }>('/admin/roles');
+  const roles = useApiData<Roles>('/admin/roles');
   const revoke = useAction();
 
   async function revokeAssignment(id: string, label: string) {

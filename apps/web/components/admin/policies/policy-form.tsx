@@ -2,10 +2,9 @@
 
 import { useState, type FormEvent } from 'react';
 import { Button, ErrorNote, Field, Input } from '@/components/ui';
-import { api, useAction } from '@/lib/api';
+import { api, useAction, type Policies, type PolicyView } from '@/lib/api';
 import { PERMISSION_GROUPS } from '@/lib/labels';
 import { ConditionEditor, editorCondition, initialEditor } from './condition-editor';
-import type { PoliciesView, PolicyView } from './types';
 
 /** Creates a deny policy, or edits `policy`: description, permissions, condition. */
 export function PolicyForm({
@@ -13,7 +12,7 @@ export function PolicyForm({
   policy,
   onDone,
 }: {
-  data: PoliciesView;
+  data: Policies;
   policy?: PolicyView;
   onDone: (changed: boolean) => void;
 }) {
@@ -50,7 +49,7 @@ export function PolicyForm({
     if (saved) onDone(true);
   }
 
-  const byDomain = new Map<string, PoliciesView['permissions']>();
+  const byDomain = new Map<string, Policies['permissions']>();
   for (const p of data.permissions) {
     const domain = p.permission.split(':')[0] ?? p.permission;
     byDomain.set(domain, [...(byDomain.get(domain) ?? []), p]);

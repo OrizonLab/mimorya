@@ -6,6 +6,7 @@ pub mod admin;
 mod approvals;
 mod common;
 mod conversations;
+mod errors;
 mod health;
 mod links;
 mod memory;
@@ -21,6 +22,7 @@ pub use conversations::{
     Citation, ConversationCreated, ConversationDetail, ConversationList, ConversationSummary,
     Message, MessageAccepted, MessageMetadata, MessageRole,
 };
+pub use errors::{ErrorBody, ErrorDetail, ErrorKind};
 pub use health::Health;
 pub use links::{InvitationDetails, ResetDetails};
 pub use memory::{MemoryItem, MemoryKind, MemoryList, MemoryScope, MemorySource, MemoryStatus};
@@ -67,6 +69,16 @@ pub fn typescript() -> String {
     declarations.add::<admin::ResetLinkSent>();
     declarations.add::<admin::Roles>();
     declarations.add::<admin::SkillList>();
+    declarations.add::<admin::Policies>();
+    declarations.add::<admin::LlmView>();
+    declarations.add::<admin::LlmTestResult>();
+    declarations.add::<admin::Connectors>();
+    // Named by `ConnectorView.toolPolicies`, which holds the stored value.
+    declarations.add::<admin::ToolPolicy>();
+    declarations.add::<admin::ConnectorTest>();
+    declarations.add::<admin::AuditLog>();
+    declarations.add::<admin::UsageSummary>();
+    declarations.add::<ErrorBody>();
     declarations.render()
 }
 

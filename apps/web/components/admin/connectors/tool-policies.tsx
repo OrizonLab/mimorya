@@ -2,9 +2,8 @@
 
 import { useState } from 'react';
 import { Button, ErrorNote, Select } from '@/components/ui';
-import { api, useAction } from '@/lib/api';
+import { api, useAction, type Connectors, type TestedTool, type ToolRisk } from '@/lib/api';
 import { RISK_LABELS } from '@/lib/labels';
-import type { ConnectorsView, TestedTool } from './types';
 
 const ALWAYS = 'connector:use';
 
@@ -16,7 +15,7 @@ export function ToolPolicies({
   onSaved,
 }: {
   connectorId: string;
-  data: ConnectorsView;
+  data: Connectors;
   tools: TestedTool[];
   onSaved: () => void;
 }) {
@@ -77,7 +76,7 @@ export function ToolPolicies({
               className="self-start"
               aria-label={`Risque de ${tool.name}`}
               value={tool.risk}
-              onChange={(e) => change(tool.name, { risk: e.target.value })}
+              onChange={(e) => change(tool.name, { risk: e.target.value as ToolRisk })}
             >
               {data.risks.map((risk) => (
                 <option key={risk} value={risk}>

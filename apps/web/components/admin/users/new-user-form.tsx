@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from 'react';
 import { Button, Card, ErrorNote, Field, Input, Select } from '@/components/ui';
-import { api, useAction, type OrgUnitView, type IssuedInvitation } from '@/lib/api';
+import { api, useAction, type OrgUnitView, type UserCreated } from '@/lib/api';
 import { CLEARANCE_LABELS } from '@/lib/labels';
 import { unitOptions } from '../organization/types';
 import type { AccountNotice } from './types';
@@ -26,7 +26,7 @@ export function NewUserForm({
   async function submit(event: FormEvent) {
     event.preventDefault();
     const created = await action.run(() =>
-      api.post<{ invitation: IssuedInvitation }>('/admin/users', {
+      api.post<UserCreated>('/admin/users', {
         email,
         displayName,
         jobTitle,

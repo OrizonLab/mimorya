@@ -58,6 +58,21 @@ export type AssistantStatus = { name: string,
  */
 available: boolean, };
 
+export type AuditActor = "user" | "agent" | "system";
+
+/**
+ * One entry of the audit trail. It names what changed, never a secret or
+ * a message's content.
+ */
+export type AuditEntry = { id: number, occurredAt: string, actorType: AuditActor, actorUserId: string | null, onBehalfOfUserId: string | null, runId: string | null, action: string, resourceType: string | null, resourceId: string | null, outcome: AuditOutcome, reason: string | null, metadata: Record<string, unknown>, };
+
+/**
+ * `GET /admin/audit`, newest first.
+ */
+export type AuditLog = { entries: Array<AuditEntry>, };
+
+export type AuditOutcome = "success" | "denied" | "failure";
+
 /**
  * `GET /auth/options`: what the sign-in page may offer.
  */
@@ -71,6 +86,55 @@ passwordReset: boolean, };
  * A source the agent's answer relies on: an identifier returned by a tool.
  */
 export type Citation = { type: string, id: string, label?: string, };
+
+/**
+ * An attribute a condition can read.
+ */
+export type ConditionAttribute = {
+/**
+ * e.g. `subject.attributes.contractType`.
+ */
+path: string, label: string, };
+
+export type ConnectorStatus = "untested" | "ok" | "error" | "disabled";
+
+/**
+ * `POST /admin/connectors/{id}/test`.
+ */
+export type ConnectorTest = { ok: boolean, tools: Array<TestedTool>,
+/**
+ * Why it could not start (without the token).
+ */
+error: string | null, };
+
+/**
+ * A kind of connector the platform provides.
+ */
+export type ConnectorType = { type: string, name: string, description: string,
+/**
+ * Serves fictitious data, labelled as such.
+ */
+demo: boolean, };
+
+export type ConnectorView = { id: string, type: string, name: string, enabled: boolean, status: ConnectorStatus, lastError: string | null,
+/**
+ * As stored: a policy runs cannot read makes the connector unavailable,
+ * with `lastError` saying so, rather than hiding it here.
+ */
+toolPolicies: Record<string, ToolPolicy>, mcp: McpEndpoint | null, updatedAt: string, };
+
+/**
+ * `GET /admin/connectors`.
+ */
+export type Connectors = { instances: Array<ConnectorView>, types: Array<ConnectorType>, permissions: Array<DelegablePermission>, risks: Array<ToolRisk>,
+/**
+ * The server can seal tokens (`MIMORYA_MASTER_KEY`).
+ */
+secretsAvailable: boolean,
+/**
+ * The operator lets connectors reach its private network (private deployment).
+ */
+allowPrivateNetwork: boolean, };
 
 /**
  * `POST /conversations`.
@@ -93,6 +157,11 @@ export type ConversationSummary = { id: string, title: string, updatedAt: string
  * A resource created (`201`): its identifier.
  */
 export type Created = { id: string, };
+
+/**
+ * A permission a tool may require: one an agent can hold.
+ */
+export type DelegablePermission = { permission: string, label: string, };
 
 /**
  * `GET /admin/users`.
@@ -142,6 +211,21 @@ export type Done = { ok: boolean, };
 export type Enforcement = "not_yet" | "holder" | "per_resource";
 
 /**
+ * The body of every error response.
+ */
+export type ErrorBody = { error: ErrorDetail, };
+
+export type ErrorDetail = { code: ErrorKind, message: string,
+/**
+ * What the client may need beyond the message: the invalid fields
+ * (`{ issues: [{ path, message }] }`), or why access is held back
+ * (`{ reason: "password_change_required" }`).
+ */
+details?: unknown, };
+
+export type ErrorKind = "validation" | "unauthenticated" | "forbidden" | "not_found" | "conflict" | "budget_exceeded" | "unavailable" | "request" | "rate_limited" | "internal";
+
+/**
  * `GET /health`: answered once the database answers.
  */
 export type Health = {
@@ -176,6 +260,54 @@ link: string | null,
  * Why no e-mail went out.
  */
 problem: string | null, };
+
+/**
+ * The company's own provider.
+ */
+export type LlmSettingsView = { provider: string, model: string, baseUrl: string | null, keyStored: boolean,
+/**
+ * Present in the price table: costs are estimated.
+ */
+priced: boolean,
+/**
+ * The stored configuration can serve runs (key readable, endpoint still listed…).
+ */
+usable: boolean,
+/**
+ * Why it cannot, when it cannot (French).
+ */
+problem: string | null, updatedAt: string, };
+
+/**
+ * `POST /admin/llm/test`.
+ */
+export type LlmTestResult = { ok: boolean, provider: string, model: string,
+/**
+ * The provider's refusal, as shown to users (never the key).
+ */
+error: string | null, };
+
+/**
+ * `GET /admin/llm`.
+ */
+export type LlmView = {
+/**
+ * The server can seal keys (`MIMORYA_MASTER_KEY`).
+ */
+secretsAvailable: boolean, platform: PlatformModel | null, settings: LlmSettingsView | null, providers: Array<ProviderKind>,
+/**
+ * Endpoints the operator lists for self-hosted providers.
+ */
+endpoints: Array<string>, };
+
+/**
+ * An MCP server reached over HTTPS (editable from the administration).
+ */
+export type McpEndpoint = {
+/**
+ * Its tools are named `mcp_<prefix>_<tool>`.
+ */
+prefix: string, url: string, tokenStored: boolean, };
 
 /**
  * `GET /auth/me`.
@@ -298,6 +430,41 @@ export type PermissionView = { permission: string, label: string,
 delegable: boolean, enforcement: Enforcement, };
 
 /**
+ * The provider the platform offers every company.
+ */
+export type PlatformModel = { provider: string, model: string, priced: boolean, };
+
+/**
+ * `GET /admin/policies`.
+ */
+export type Policies = { policies: Array<PolicyView>, permissions: Array<RestrictablePermission>,
+/**
+ * Domains a policy may restrict as a whole (`domain:*`).
+ */
+domains: Array<string>, attributes: Array<ConditionAttribute>, };
+
+export type PolicyEffect = "allow" | "deny";
+
+export type PolicyView = { id: string, description: string, effect: PolicyEffect, permissions: Array<string>,
+/**
+ * The condition as stored: `{ all }`, `{ any }`, `{ not }` or a comparison.
+ */
+condition: Record<string, unknown>, enabled: boolean,
+/**
+ * Only deny policies are written from the administration (ADR-022).
+ */
+editable: boolean, updatedAt: string, };
+
+/**
+ * A kind of provider a company may choose.
+ */
+export type ProviderKind = { kind: string, requiresKey: boolean,
+/**
+ * Served at an endpoint the operator lists.
+ */
+listedEndpoint: boolean, defaultModel: string | null, };
+
+/**
  * `POST /auth/password-reset/link`: the account whose password is reset.
  */
 export type ResetDetails = { email: string, expiresAt: string, };
@@ -306,6 +473,15 @@ export type ResetDetails = { email: string, expiresAt: string, };
  * `POST /admin/users/{id}/password-link`: the administrator never sees the link.
  */
 export type ResetLinkSent = { expiresAt: string, };
+
+/**
+ * A permission a policy may restrict: a business one the platform checks.
+ */
+export type RestrictablePermission = { permission: string, label: string,
+/**
+ * Checked resource by resource: a condition on the resource applies.
+ */
+perResource: boolean, };
 
 export type RoleView = { id: string, key: string, name: string, description: string,
 /**
@@ -396,6 +572,11 @@ export type SkillView = { id: string, name: string, description: string, status:
  */
 export type TemporaryPassword = { temporaryPassword: string, };
 
+/**
+ * A tool a server declared, with the policy in force.
+ */
+export type TestedTool = { name: string, title: string, description: string, enabled: boolean, risk: ToolRisk, permissions: Array<string>, };
+
 export type ToolCallEvent = { toolCallId: string, toolName: string, title: string, decision: ToolDecision, reason?: string, };
 
 /**
@@ -407,6 +588,12 @@ export type ToolDecision = "allow" | "require_approval" | "deny";
  * A tool call of a run, with the decision taken on it.
  */
 export type ToolInvocation = { id: string, toolName: string, decision: ToolDecision, decisionReason: string | null, status: string, outputSummary: string | null, durationMs: number | null, createdAt: string, };
+
+/**
+ * An administrator's policy for one tool, as stored. Every field is
+ * optional: absent or `null`, the tool's own declaration applies.
+ */
+export type ToolPolicy = { enabled?: boolean | null, permissions?: Array<string> | null, risk?: ToolRisk | null, requiresApproval?: boolean | null, };
 
 export type ToolResultEvent = { toolCallId: string, toolName: string, summary: string, isError: boolean, durationMs: number, };
 
@@ -423,6 +610,26 @@ export type UsageEvent = { inputTokens: number, outputTokens: number,
  * `null` when the model is not priced.
  */
 costMicros: number | null, };
+
+export type UsageKind = "llm" | "embedding" | "tool";
+
+/**
+ * Usage of one model, summed over the period.
+ */
+export type UsageRow = { provider: string, model: string, kind: UsageKind, calls: number, inputTokens: number, outputTokens: number,
+/**
+ * Estimated cost, in millionths of the currency unit.
+ */
+costMicros: number, };
+
+/**
+ * `GET /admin/usage`.
+ */
+export type UsageSummary = {
+/**
+ * Start of the period.
+ */
+since: string, rows: Array<UsageRow>, };
 
 /**
  * `POST /admin/users`.

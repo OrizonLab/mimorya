@@ -6,10 +6,10 @@ use chrono::{Duration, Utc};
 use mimorya_db::repositories::audit::{AuditQuery, list_audit};
 use mimorya_db::repositories::usage::usage_summary;
 use serde::Deserialize;
-use serde_json::{Value, json};
 use validator::Validate;
 
 use crate::app::AppState;
+use crate::contract::admin::{AuditEntry, AuditLog, UsageRow, UsageSummary};
 use crate::http::{ApiResult, Query, iso};
 use crate::plugins::Auth;
 
@@ -25,7 +25,7 @@ pub async fn audit(
     State(state): State<AppState>,
     Auth(identity): Auth,
     Query(params): Query<AuditParams>,
-) -> ApiResult<Json<Value>> {
+) -> ApiResult<Json<AuditLog>> {
     let access = state.access.context(identity).await?;
     access.require_tenant_wide("audit:read")?;
     let mut tx = state.db.begin(identity.tenant_id).await?;
@@ -39,26 +39,12 @@ pub async fn audit(
     )
     .await?;
     tx.commit().await?;
-    let entries: Vec<Value> = rows
-        .iter()
-        .map(|e| {
-            json!({
-                "id": e.id,
-                "occurredAt": iso(&e.occurred_at),
-                "actorType": e.actor_type,
-                "actorUserId": e.actor_user_id,
-                "onBehalfOfUserId": e.on_behalf_of_user_id,
-                "runId": e.run_id,
-                "action": e.action,
-                "resourceType": e.resource_type,
-                "resourceId": e.resource_id,
-                "outcome": e.outcome,
-                "reason": e.reason,
-                "metadata": e.metadata,
-            })
-        })
-        .collect();
-    Ok(Json(json!({ "entries": entries })))
+    Ok(Json(AuditLog {
+        entries: rows
+            .iter()
+            .map(AuditEntry::from_row)
+            .collect::<anyhow::Result<_>>()?,
+    }))
 }
 
 #[derive(Deserialize, Validate)]
@@ -71,26 +57,18 @@ pub async fn usage(
     State(state): State<AppState>,
     Auth(identity): Auth,
     Query(params): Query<UsageParams>,
-) -> ApiResult<Json<Value>> {
+) -> ApiResult<Json<UsageSummary>> {
     let access = state.access.context(identity).await?;
     access.require_tenant_wide("usage:read")?;
     let since = Utc::now() - Duration::days(params.days.unwrap_or(30));
     let mut tx = state.db.begin(identity.tenant_id).await?;
     let rows = usage_summary(&mut tx, since).await?;
     tx.commit().await?;
-    let rows: Vec<Value> = rows
-        .iter()
-        .map(|r| {
-            json!({
-                "provider": r.provider,
-                "model": r.model,
-                "kind": r.kind,
-                "calls": r.calls,
-                "inputTokens": r.input_tokens,
-                "outputTokens": r.output_tokens,
-                "costMicros": r.cost_micros,
-            })
-        })
-        .collect();
-    Ok(Json(json!({ "since": iso(&since), "rows": rows })))
+    Ok(Json(UsageSummary {
+        since: iso(&since),
+        rows: rows
+            .iter()
+            .map(UsageRow::from_row)
+            .collect::<anyhow::Result<_>>()?,
+    }))
 }

@@ -93,9 +93,8 @@ flowchart BT
   (`ScriptedProvider`, `InMemoryPorts`, fonctionnalité `testing`).
 - `web` ne partage aucun code avec le serveur : il consomme le contrat JSON de l'API.
   Ses types sont générés depuis les réponses typées du serveur (`crates/api/src/contract`
-  → `apps/web/lib/api/contract.ts`, ADR-036) ; les réponses pas encore passées au
-  contrat (administration des politiques, des connecteurs, du modèle et de l'activité)
-  et l'enveloppe des erreurs sont décrites à la main.
+  → `apps/web/lib/api/contract.ts`, ADR-036) ; seuls les corps des requêtes sont
+  encore décrits à la main, côté interface.
 
 ## 3. Pile technique retenue
 

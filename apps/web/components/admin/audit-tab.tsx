@@ -1,34 +1,23 @@
 'use client';
 
 import { Cell, DataTable, LabelBadge, Loaded, type ToneLabel } from '@/components/ui';
-import { useApiData } from '@/lib/api';
+import { useApiData, type AuditActor, type AuditLog, type AuditOutcome } from '@/lib/api';
 import { formatDate } from '@/lib/format';
 
-interface AuditEntry {
-  id: number;
-  occurredAt: string;
-  actorType: string;
-  action: string;
-  outcome: string;
-  resourceType: string | null;
-  resourceId: string | null;
-  reason: string | null;
-}
-
-const ACTORS: Record<string, ToneLabel> = {
+const ACTORS: Record<AuditActor, ToneLabel> = {
   agent: { label: 'Agent', tone: 'accent' },
   user: { label: 'Utilisateur', tone: 'neutral' },
   system: { label: 'Système', tone: 'neutral' },
 };
 
-const OUTCOMES: Record<string, ToneLabel> = {
+const OUTCOMES: Record<AuditOutcome, ToneLabel> = {
   success: { label: 'Succès', tone: 'ok' },
   denied: { label: 'Refusé', tone: 'danger' },
   failure: { label: 'Échec', tone: 'warn' },
 };
 
 export function AuditTab() {
-  const state = useApiData<{ entries: AuditEntry[] }>('/admin/audit?limit=200');
+  const state = useApiData<AuditLog>('/admin/audit?limit=200');
   return (
     <Loaded state={state}>
       {(data) => (
