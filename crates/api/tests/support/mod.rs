@@ -13,6 +13,7 @@ pub mod locks;
 pub mod mail;
 pub mod mcp;
 pub mod planning;
+pub mod privileges;
 pub mod refusals;
 pub mod resets;
 pub mod runs;

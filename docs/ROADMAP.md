@@ -9,7 +9,7 @@ Légende des statuts — tenue à jour à chaque contribution :
 | 🟡     | Partiel : socle en place, fonctionnalité incomplète (détail indiqué)       |
 | 🔜     | Planifié, non implémenté                                                   |
 
-Dernière mise à jour : 2026-10-19 (modifications d'administration refusées tracées avec leur raison, ADR-038).
+Dernière mise à jour : 2026-10-19 (points mineurs des audits : statuts de fin d'un run en un seul endroit, adresse des refus d'administration vérifiée, annonce de fin d'un run balayé en échec).
 
 ## Phase 1 — Fondations et MVP fonctionnel
 

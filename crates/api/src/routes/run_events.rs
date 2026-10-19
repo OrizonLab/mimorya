@@ -15,7 +15,7 @@ use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::routing::get;
 use mimorya_core::DomainError;
 use mimorya_db::repositories::run_events::{RunEventRow, list_run_events};
-use mimorya_db::repositories::runs::get_run;
+use mimorya_db::repositories::runs::{RunStatus, get_run};
 use serde::Deserialize;
 use tokio::sync::{mpsc, watch};
 use tokio_stream::wrappers::ReceiverStream;
@@ -30,7 +30,6 @@ use crate::services::event_bus::Subscription;
 const HEARTBEAT: Duration = Duration::from_secs(15);
 /// How long a stream on an already finished run waits for its last events.
 const FINISH_GRACE: Duration = Duration::from_secs(5);
-const TERMINAL: [&str; 3] = ["completed", "failed", "cancelled"];
 
 type SseSender = mpsc::Sender<Result<Event, Infallible>>;
 
@@ -154,5 +153,6 @@ fn is_final(event: &BusEvent) -> bool {
     event.event_type == "run_finished"
         && event.data["status"]
             .as_str()
-            .is_some_and(|status| TERMINAL.contains(&status))
+            .and_then(RunStatus::parse)
+            .is_some_and(RunStatus::is_finished)
 }

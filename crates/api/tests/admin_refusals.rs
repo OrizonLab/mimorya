@@ -9,17 +9,21 @@
 mod support;
 
 use axum::http::StatusCode;
+use mimorya_api::plugins::refusal_audit::REFUSED_ACTION;
 use mimorya_core::demo::{role, unit, user};
 use mimorya_db::testing::OTHER_USER_ID;
 use serde_json::{Value, json};
 use support::TestApi;
 use support::accounts::{activate, create_account, create_partial_admin};
 use support::mcp::capture_logs;
+use support::privileges::without_insert;
 use support::refusals::{entries_since, latest_entry, refusals_since};
 use uuid::Uuid;
 
 /// Sent in refused requests: it must reach no entry.
 const MARKER: &str = "Marqueur 7f3a";
+/// The client's address, as a trusted proxy forwards it.
+const CLIENT: &str = "203.0.113.7";
 
 fn route(method: &str, route: &str) -> Value {
     json!({ "method": method, "route": route })
@@ -32,12 +36,18 @@ fn on(resource_type: &str, id: Uuid) -> Option<(String, String)> {
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
 async fn refused_changes_on_oneself_and_on_platform_roles_are_audited_with_their_reason() {
-    let api = TestApi::start().await;
+    let api = TestApi::start_with(&[("TRUST_PROXY", "true")]).await;
     let paul = api.sign_in(user::PAUL).await;
     let since = latest_entry(&api).await;
     let own = format!("/admin/users/{}", user::PAUL);
 
-    let renamed = paul.patch(&own, json!({ "displayName": MARKER })).await;
+    let renamed = paul
+        .patch_with(
+            &own,
+            json!({ "displayName": MARKER }),
+            &[("x-forwarded-for", CLIENT)],
+        )
+        .await;
     assert_eq!(renamed.status, StatusCode::FORBIDDEN);
     let reset = paul.post(&format!("{own}/password"), json!({})).await;
     assert_eq!(reset.status, StatusCode::FORBIDDEN);
@@ -76,6 +86,9 @@ async fn refused_changes_on_oneself_and_on_platform_roles_are_audited_with_their
         assert_eq!(entry.metadata, metadata);
         assert!(entry.request_id.is_some());
     }
+    // The address the trusted proxy forwarded, for the request that had one.
+    let addresses: Vec<Option<&str>> = refused.iter().map(|(_, e)| e.ip.as_deref()).collect();
+    assert_eq!(addresses, [Some(CLIENT), None, None]);
     assert!(
         refused[0]
             .1
@@ -92,7 +105,7 @@ async fn refused_changes_on_oneself_and_on_platform_roles_are_audited_with_their
         .as_array()
         .unwrap()
         .iter()
-        .filter(|e| e["action"] == "admin.refused" && e["outcome"] == "denied")
+        .filter(|e| e["action"] == REFUSED_ACTION && e["outcome"] == "denied")
         .count();
     assert!(shown >= 3);
 }
@@ -238,20 +251,14 @@ async fn a_refusal_stands_when_its_trace_cannot_be_written() {
     let api = TestApi::start().await;
     let paul = api.sign_in(user::PAUL).await;
     let since = latest_entry(&api).await;
-    let owner = sqlx::PgPool::connect(support::owner_url()).await.unwrap();
     let logs = capture_logs();
 
-    sqlx::query("revoke insert on audit_log from mimorya_app")
-        .execute(&owner)
-        .await
-        .unwrap();
     let own = format!("/admin/users/{}", user::PAUL);
-    let disabled = paul.patch(&own, json!({ "status": "disabled" })).await;
-    // Given back before any assertion, for the tests that follow.
-    sqlx::query("grant insert on audit_log to mimorya_app")
-        .execute(&owner)
-        .await
-        .unwrap();
+    let disabled = without_insert(
+        "audit_log",
+        paul.patch(&own, json!({ "status": "disabled" })),
+    )
+    .await;
 
     assert_eq!(disabled.status, StatusCode::FORBIDDEN);
     assert!(disabled.error_message().contains("votre propre compte"));

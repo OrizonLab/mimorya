@@ -3,6 +3,8 @@
 //! `run_finished` event is recorded (replayed by the event stream) in each
 //! run's own company, and broadcast. A run still making progress is left
 //! alone; a stuck run that wakes up after the sweep announces no second end.
+//! A run whose end cannot be announced is failed all the same, and the
+//! sweep goes on with the others.
 
 mod support;
 
@@ -19,6 +21,8 @@ use mimorya_db::repositories::runs::{NewRun, RunStatus, create_run, get_run};
 use mimorya_db::{Database, PoolOptions};
 use serde_json::json;
 use support::companies::create;
+use support::mcp::capture_logs;
+use support::privileges::without_insert;
 use support::runs::start_run;
 use support::{TestApi, app_url, owner_url};
 use uuid::Uuid;
@@ -180,4 +184,39 @@ async fn a_run_swept_while_its_model_answers_announces_its_end_once() {
     let run = get_run(&mut tx, run_id).await.unwrap().unwrap();
     assert_eq!(run.status(), RunStatus::Failed);
     assert_eq!(run.error.as_deref(), Some(INTERRUPTED));
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_run_whose_end_cannot_be_announced_is_failed_and_the_sweep_goes_on() {
+    let api = TestApi::start().await;
+    let services = &api.app.services;
+    let logs = capture_logs();
+    let first = running_run(&api, tenant::ID, user::CLAIRE).await;
+    let second = running_run(&api, tenant::ID, user::CLAIRE).await;
+
+    // No run event can be written: neither end is announced. The app's own
+    // sweep may take the runs meanwhile, to the same effect.
+    let swept = without_insert("run_events", async {
+        age(first).await;
+        age(second).await;
+        sweep_stale_runs(&services.db, &services.bus, chrono::Duration::minutes(15)).await
+    })
+    .await;
+    swept.unwrap();
+
+    let mut tx = services.db.begin(tenant::ID).await.unwrap();
+    let text = logs.text();
+    for run in [first, second] {
+        let failed = get_run(&mut tx, run).await.unwrap().unwrap();
+        assert_eq!(failed.status(), RunStatus::Failed);
+        assert_eq!(failed.error.as_deref(), Some(INTERRUPTED));
+        assert!(!run_end_recorded(&mut tx, run).await.unwrap());
+        let id = run.to_string();
+        assert!(
+            text.lines()
+                .any(|line| line.contains("Stale run end not announced") && line.contains(&id)),
+            "{text}"
+        );
+    }
 }

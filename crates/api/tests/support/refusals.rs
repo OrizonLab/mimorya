@@ -1,6 +1,7 @@
 //! What the audit says of refused administration changes (ADR-038), read
 //! with the application role in the demo company.
 
+use mimorya_api::plugins::refusal_audit::REFUSED_ACTION;
 use mimorya_core::demo::tenant;
 use serde_json::Value;
 use uuid::Uuid;
@@ -12,6 +13,7 @@ pub struct Refused {
     pub resource: Option<(String, String)>,
     pub reason: Option<String>,
     pub metadata: Value,
+    pub ip: Option<String>,
     pub request_id: Option<String>,
 }
 
@@ -23,6 +25,7 @@ struct RefusalRow {
     resource_id: Option<String>,
     reason: Option<String>,
     metadata: Value,
+    ip: Option<String>,
     request_id: Option<String>,
 }
 
@@ -40,8 +43,9 @@ pub async fn refusals_since(api: &TestApi, since: i64) -> Vec<(Uuid, Refused)> {
     let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
     let rows: Vec<RefusalRow> = sqlx::query_as(
         "select actor_user_id, outcome, resource_type, resource_id, reason, metadata, \
-         request_id from audit_log where action = 'admin.refused' and id > $1 order by id",
+         host(ip) as ip, request_id from audit_log where action = $1 and id > $2 order by id",
     )
+    .bind(REFUSED_ACTION)
     .bind(since)
     .fetch_all(&mut *tx)
     .await
@@ -53,6 +57,7 @@ pub async fn refusals_since(api: &TestApi, since: i64) -> Vec<(Uuid, Refused)> {
                 resource: row.resource_type.zip(row.resource_id),
                 reason: row.reason,
                 metadata: row.metadata,
+                ip: row.ip,
                 request_id: row.request_id,
             };
             (row.actor_user_id.expect("an actor"), refused)

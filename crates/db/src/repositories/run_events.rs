@@ -5,6 +5,8 @@ use serde_json::Value;
 use sqlx::PgConnection;
 use uuid::Uuid;
 
+use super::runs::RunStatus;
+
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct RunEventRow {
     pub id: i64,
@@ -43,9 +45,10 @@ pub async fn append_run_event(
 pub async fn run_end_recorded(conn: &mut PgConnection, run_id: Uuid) -> sqlx::Result<bool> {
     sqlx::query_scalar(
         "select exists (select 1 from run_events where run_id = $1 and type = 'run_finished' \
-         and data->>'status' in ('completed', 'failed', 'cancelled'))",
+         and data->>'status' = any($2))",
     )
     .bind(run_id)
+    .bind(RunStatus::finished_values())
     .fetch_one(conn)
     .await
 }
