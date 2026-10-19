@@ -9,6 +9,7 @@ use chrono::{DateTime, Utc};
 use mimorya_core::DomainError;
 use mimorya_db::Database;
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
+use mimorya_db::repositories::auth::lock_login_state;
 use mimorya_db::repositories::invitations::{InvitationRecord, find_invitation, take_invitation};
 use mimorya_db::repositories::users::activate_invited_user;
 
@@ -26,8 +27,8 @@ pub struct InvitationView {
     pub expires_at: DateTime<Utc>,
 }
 
-async fn usable(db: &Database, token: &str) -> anyhow::Result<InvitationRecord> {
-    match find_invitation(db.pool(), &hash_token(token)).await? {
+async fn usable(db: &Database, token_hash: &str) -> anyhow::Result<InvitationRecord> {
+    match find_invitation(db.pool(), token_hash).await? {
         Some(record)
             if record.expires_at > Utc::now()
                 && record.user_status == "invited"
@@ -40,7 +41,7 @@ async fn usable(db: &Database, token: &str) -> anyhow::Result<InvitationRecord> 
 }
 
 pub async fn inspect_invitation(db: &Database, token: &str) -> anyhow::Result<InvitationView> {
-    let record = usable(db, token).await?;
+    let record = usable(db, &hash_token(token)).await?;
     Ok(InvitationView {
         email: record.email,
         display_name: record.display_name,
@@ -58,14 +59,22 @@ pub async fn accept_invitation(
     context: &RequestContext,
     headers: &HeaderMap,
 ) -> anyhow::Result<String> {
-    let record = usable(db, token).await?;
+    let token_hash = hash_token(token);
+    let record = usable(db, &token_hash).await?;
     let password_hash = hash_password_async(password).await?;
     let mut tx = db.begin(record.tenant_id).await?;
-    // Deleted on use: a concurrent acceptance finds nothing left.
-    let taken = take_invitation(&mut tx, record.invitation_id).await?;
-    let still_valid = taken
-        .is_some_and(|(user_id, expires_at)| user_id == record.user_id && expires_at > Utc::now());
-    if !still_valid || !activate_invited_user(&mut tx, record.user_id, &password_hash).await? {
+    // The account's row first, as a resend or a disabling: they wait for
+    // each other instead of crossing.
+    let invited = lock_login_state(&mut tx, record.user_id)
+        .await?
+        .is_some_and(|(_, status)| status == "invited");
+    // Deleted on use, and only with this very token: a concurrent acceptance
+    // or a link resent meanwhile leaves nothing to take.
+    let taken = take_invitation(&mut tx, record.invitation_id, &token_hash).await?;
+    if !invited
+        || taken != Some(record.user_id)
+        || !activate_invited_user(&mut tx, record.user_id, &password_hash).await?
+    {
         return Err(DomainError::not_found(UNUSABLE).into());
     }
     let session = open_session(&mut tx, record.user_id, context, headers).await?;

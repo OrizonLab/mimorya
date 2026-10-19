@@ -10,7 +10,8 @@ use mimorya_core::demo::{tenant, user};
 use serde_json::json;
 use support::TestApi;
 use support::accounts::{INVITED_PASSWORD, accept, invite_account};
-use support::mail::{link_in, serve_smtp, token_of};
+use support::mail::{link_in, serve_smtp, serve_smtp_with, token_of};
+use support::mcp::capture_logs;
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
@@ -98,4 +99,31 @@ async fn a_real_smtp_relay_carries_the_invitation() {
         )
         .await;
     assert_eq!(accepted.status, StatusCode::OK, "{}", accepted.text());
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_relay_refusing_the_recipient_leaves_the_link_to_the_administrator() {
+    let (relay, received) = serve_smtp_with(true).await;
+    let api = TestApi::start_with(&[
+        ("SMTP_URL", &relay),
+        ("MAIL_FROM", "Mimorya <no-reply@neo-maintenance.example>"),
+    ])
+    .await;
+    let paul = api.sign_in(user::PAUL).await;
+    let logs = capture_logs();
+    let (account, invitation) = invite_account(&paul, "refus.relais").await;
+    let logged = logs.text();
+    drop(logs);
+    assert!(received.lock().unwrap().is_empty());
+    assert_eq!(invitation["emailed"], false);
+    let problem = invitation["problem"].as_str().unwrap();
+    assert!(problem.contains("550"), "{problem}");
+    assert!(problem.contains(&account.email), "{problem}");
+    assert!(!problem.contains(&relay), "{problem}");
+    let link = invitation["link"].as_str().unwrap();
+    // The logs keep neither the link nor the address the relay refused.
+    assert!(logged.contains("Invitation e-mail not sent"), "{logged}");
+    assert!(!logged.contains(&token_of(link)), "{logged}");
+    assert!(!logged.contains(&account.email), "{logged}");
 }

@@ -15,7 +15,7 @@ use uuid::Uuid;
 /// The demo deny policy (administrative staff and interventions in progress).
 const DEMO_POLICY: Uuid = mimorya_core::demo::demo_id(400);
 use support::accounts::{
-    activate, assignment_of, create_account, create_partial_admin, permissions,
+    activate, assignment_of, create_account, create_partial_admin, invite_account, permissions,
 };
 
 #[tokio::test]
@@ -167,6 +167,8 @@ async fn honours_administration_permissions_on_the_whole_company_only() {
     // Every change is refused, even on the team the role covers.
     let lucas = format!("/admin/users/{}", user::LUCAS);
     let lucas_member_role = assignment_of(&paul, user::LUCAS, role::TECHNICIAN).await;
+    // Invited in the team the role covers.
+    let (invited, _) = invite_account(&paul, "invitation.partielle").await;
     let attempts = [
         partial
             .post(
@@ -176,6 +178,12 @@ async fn honours_administration_permissions_on_the_whole_company_only() {
             .await,
         partial.patch(&lucas, json!({ "status": "disabled" })).await,
         partial.post(&format!("{lucas}/password"), json!({})).await,
+        partial
+            .post(
+                &format!("/admin/users/{}/invitation", invited.id),
+                json!({}),
+            )
+            .await,
         partial
             .post(
                 &format!("{lucas}/assignments"),

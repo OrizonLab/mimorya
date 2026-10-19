@@ -131,7 +131,9 @@ Phase 2 : `skill_eval_runs`, `documents` / `document_chunks` (GED, ingestion),
 - Des fonctions `SECURITY DEFINER` minimales (chemin de recherche figé) couvrent les
   seuls besoins qui traversent les entreprises : `auth_find_login` (retrouver un compte
   par e-mail à la connexion), `auth_resolve_session` (résoudre une session par
-  l'empreinte de son jeton, avec l'obligation éventuelle de changer de mot de passe) et `system_fail_stale_runs` (marquer en échec les runs
+  l'empreinte de son jeton, avec l'obligation éventuelle de changer de mot de passe),
+  `auth_find_invitation` (lire, avant connexion, l'invitation désignée par l'empreinte
+  du jeton de son lien, ADR-027) et `system_fail_stale_runs` (marquer en échec les runs
   restés sans progression).
 
 ## 5. Rétention (valeurs par défaut, configurables par entreprise)

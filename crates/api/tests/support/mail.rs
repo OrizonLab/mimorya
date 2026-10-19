@@ -56,6 +56,11 @@ pub fn link_in(mail: &Mail) -> String {
 /// A plain SMTP relay on a local port that accepts every message; returns
 /// its `smtp://` URL and the raw messages it received.
 pub async fn serve_smtp() -> (String, Arc<Mutex<Vec<String>>>) {
+    serve_smtp_with(false).await
+}
+
+/// The same relay, refusing every recipient (`550`) when asked.
+pub async fn serve_smtp_with(refuse_recipients: bool) -> (String, Arc<Mutex<Vec<String>>>) {
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("local port");
     let address = listener.local_addr().expect("local address");
     let received = Arc::new(Mutex::new(Vec::new()));
@@ -83,9 +88,15 @@ pub async fn serve_smtp() -> (String, Arc<Mutex<Vec<String>>>) {
                         continue;
                     }
                     let command = line.to_ascii_uppercase();
+                    // Refused recipients are named back, as real relays do.
+                    let refusal;
                     let reply: &[u8] = if command.starts_with("EHLO") || command.starts_with("HELO")
                     {
                         b"250 relais.test\r\n"
+                    } else if refuse_recipients && command.starts_with("RCPT") {
+                        let address = line.split_once(':').map(|(_, a)| a.trim()).unwrap_or("");
+                        refusal = format!("550 5.1.1 {address}: Recipient address rejected\r\n");
+                        refusal.as_bytes()
                     } else if command.starts_with("DATA") {
                         data = Some(String::new());
                         b"354 Go ahead\r\n"

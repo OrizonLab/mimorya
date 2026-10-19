@@ -8,6 +8,7 @@ use chrono::{DateTime, Utc};
 use mimorya_core::DomainError;
 use mimorya_db::Database;
 use mimorya_db::repositories::audit::append_audit;
+use mimorya_db::repositories::auth::lock_login_state;
 use mimorya_db::repositories::invitations::{NewInvitation, put_invitation};
 use mimorya_db::repositories::users::get_user;
 use serde_json::json;
@@ -51,10 +52,15 @@ pub async fn issue_invitation(
     let (token, token_hash) = new_session_token();
     let expires_at = Utc::now() + INVITATION_VALIDITY;
     let mut tx = begin_change(inviter.db, access, PERMISSION).await?;
+    // The account's row locked before its invitation, as an acceptance does:
+    // the status read here holds until the new link is stored.
+    let Some((_, status)) = lock_login_state(&mut tx, user_id).await? else {
+        return Err(DomainError::not_found("Compte introuvable").into());
+    };
     let Some(user) = get_user(&mut tx, user_id).await? else {
         return Err(DomainError::not_found("Compte introuvable").into());
     };
-    if user.status != "invited" {
+    if status != "invited" {
         return Err(DomainError::conflict(
             "Ce compte a déjà choisi son mot de passe ou est désactivé : pas d’invitation",
         )

@@ -40,13 +40,13 @@ pub const WEB_ORIGIN: &str = "http://localhost:3000";
 
 static URLS: OnceLock<TestDatabaseUrls> = OnceLock::new();
 
-/// Resets the test database on first use (in a dedicated runtime, so that
-/// each test keeps its own).
 /// The owner role's URL, for what the application role may not write.
 pub fn owner_url() -> &'static str {
     &urls().owner
 }
 
+/// Resets the test database on first use (in a dedicated runtime, so that
+/// each test keeps its own).
 fn urls() -> &'static TestDatabaseUrls {
     URLS.get_or_init(|| {
         std::thread::spawn(|| {

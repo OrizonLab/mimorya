@@ -18,10 +18,12 @@ impl MailSettings {
     pub fn new(smtp_url: &str, from: &str) -> Result<Self, (&'static str, String)> {
         let url = Url::parse(smtp_url)
             .map_err(|_| ("SMTP_URL", "URL smtp:// ou smtps:// attendue".to_string()))?;
+        // The first `tls` parameter, as the SMTP library reads it.
         let tls = url.scheme() == "smtps"
             || url
                 .query_pairs()
-                .any(|(key, value)| key == "tls" && value == "required");
+                .find(|(key, _)| key == "tls")
+                .is_some_and(|(_, value)| value == "required");
         if !matches!(url.scheme(), "smtp" | "smtps") || url.host_str().is_none_or(str::is_empty) {
             return Err(("SMTP_URL", "URL smtp:// ou smtps:// attendue".into()));
         }
@@ -76,6 +78,7 @@ mod tests {
         for refused in [
             "smtp://user:s3cret@smtp.exemple.fr:587",
             "smtp://user:s3cret@smtp.exemple.fr:587?tls=opportunistic",
+            "smtp://user:s3cret@smtp.exemple.fr:587?tls=opportunistic&tls=required",
             "http://smtp.exemple.fr",
             "smtp://",
             "pas une adresse",
