@@ -4,6 +4,8 @@ const apiUrl = process.env.API_URL ?? 'http://localhost:4000';
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // The Docker image runs Next.js's self-contained server (infra/docker).
+  output: process.env.NEXT_OUTPUT === 'standalone' ? 'standalone' : undefined,
   poweredByHeader: false,
   // The browser only talks to this origin; /api/* is relayed to the API so
   // that session cookies stay first-party and no CORS is needed.

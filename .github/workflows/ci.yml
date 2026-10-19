@@ -129,3 +129,26 @@ jobs:
           name: playwright-results
           path: apps/web/test-results
           retention-days: 7
+
+  docker:
+    name: Docker images (demonstration stack)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      # Not a secret: the stack only lives for this job.
+      DEMO_PASSWORD: ci-demo-${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the images
+        run: docker compose -f compose.demo.yml build
+      - name: Start the demonstration stack
+        run: docker compose -f compose.demo.yml up -d
+      - name: Only the proxy publishes ports
+        run: >-
+          test "$(docker compose -f compose.demo.yml config --format json
+          | jq '[.services | to_entries[] | select(.key != "proxy" and (.value.ports // []) != [])] | length')" = 0
+      - name: Smoke test through the reverse proxy
+        run: infra/docker/smoke-test.sh https://localhost
+      - name: Logs of the stack
+        if: always()
+        run: docker compose -f compose.demo.yml logs --no-color | tail -n 200

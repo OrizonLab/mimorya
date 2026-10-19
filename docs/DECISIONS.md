@@ -785,3 +785,50 @@ cité, renvoi) y sont faites sur place.
     `e2e_server`) et les tests modifient l'entreprise de démonstration, recréée à chaque
     démarrage ; l'API supprime au démarrage les e-mails d'une exécution précédente ;
   - le parcours avec un modèle réel reste à valider (A11).
+
+## ADR-032 — Images Docker et pile de démonstration derrière Caddy
+
+- **Date** : 2026-10-19 · **Statut** : acceptée
+- **Contexte** : l'installation privée (PRODUCT_VISION) suppose des images prêtes à
+  lancer et un reverse proxy qui termine TLS et pose HSTS (ADR-030). Le dépôt n'avait que
+  la base de développement en conteneur.
+- **Décision** :
+  - `infra/docker/api.Dockerfile` : compilation en mode release (`--locked`) de
+    `mimorya-api` et `mimorya-seed`, image d'exécution Debian minimale avec les seuls
+    certificats racine, utilisateur sans privilège ;
+  - `infra/docker/web.Dockerfile` : construction de l'interface en sortie autonome de
+    Next.js (`NEXT_OUTPUT=standalone`, activée seulement pour l'image), exécutée par Node
+    sous un utilisateur sans privilège. Le relais `/api/*` de Next.js est fixé à la
+    construction (`API_URL`), comme le mode démonstration (`NEXT_PUBLIC_DEMO_MODE`) ;
+  - `compose.demo.yml` (projet distinct de la base de développement) : base **sans
+    port publié**, joignable des seuls conteneurs de la pile et sur son propre volume ;
+    `seed` (migrations et entreprise fictive, puis arrêt) avec un `DEMO_PASSWORD`
+    **obligatoire** : en production, le seed exige un mot de passe et refuse la valeur
+    publique de développement (`demo-mimorya`), que `.env.example` ne fixe plus, pour
+    qu'un `.env` copié du modèle ne la fournisse pas en silence ; API (`MIMORYA_ENV=production`, cookies `Secure`,
+    `TRUST_PROXY=true`, fournisseur de modèle et relais SMTP repris de l'environnement),
+    interface et **Caddy** (`infra/caddy/Caddyfile`) : HTTPS (certificat local par
+    défaut, public pour un vrai domaine), `Strict-Transport-Security: max-age=63072000;
+includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du client
+    en dernière entrée de `X-Forwarded-For`), le reste à l'interface : une seule origine
+    pour le navigateur ;
+  - seul Caddy publie des ports ; la base de développement (`docker-compose.yml`)
+    n'écoute plus que sur `127.0.0.1` ;
+  - images : code de l'application à root, exécution sous un utilisateur sans
+    privilège qui n'écrit que dans le cache de Next.js ; aucun fichier `.env` dans le
+    contexte de construction, à aucune profondeur ;
+  - un job de CI construit les deux images, vérifie que seul le proxy publie des ports,
+    démarre la pile et la vérifie à travers le proxy (`infra/docker/smoke-test.sh` :
+    HSTS, CSP à nonce, API sous `/api`, connexion d'un compte de démonstration avec le
+    `DEMO_PASSWORD` de la pile et cookie `Secure`).
+- **Conséquences** :
+  - c'est une **pile de démonstration** : elle ne s'installe qu'avec les données
+    fictives, dont des comptes d'administration qui se connectent tous avec
+    `DEMO_PASSWORD` et que la page de connexion liste ; exposée publiquement, elle donne
+    la main à qui connaît ce mot de passe. Une installation de production demande
+    encore des migrations sans données de démonstration et la création de la première
+    entreprise et de son administrateur (feuille de route) ;
+  - les images ne sont pas publiées dans un registre ; la CI les construit sans cache à
+    chaque PR (plusieurs minutes) ;
+  - le relais `/api/*` intégré à Next.js reste celui du développement ; derrière Caddy,
+    il n'est pas utilisé.

@@ -1,0 +1,11 @@
+# Build context of the images (infra/docker): sources only, no local
+# environment file at any depth.
+.git
+target
+**/node_modules
+**/.next
+apps/web/test-results
+apps/web/playwright-report
+**/*.log
+**/.env
+**/.env.*

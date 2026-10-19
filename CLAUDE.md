@@ -53,6 +53,10 @@ Repères à l'intérieur des crates :
   `web/lib/security/` (CSP à nonce par page, ADR-030), `web/e2e/` (tests de bout en
   bout, un fichier par parcours, `support/`) et `api/examples/e2e_server/` (l'API qu'ils
   pilotent, ADR-031).
+- `infra/` : `docker/` (images de l'API et de l'interface, test de fumée), `caddy/`
+  (reverse proxy : TLS, HSTS), `postgres/` (rôles et extensions) ; `docker-compose.yml`
+  (base de développement, sur 127.0.0.1) et `compose.demo.yml` (pile de démonstration,
+  ADR-032).
 
 ## Commandes
 
@@ -65,6 +69,7 @@ pnpm dev:web                       # Web sur :3000
 pnpm check                         # Rust : fmt + clippy -D warnings + tests ; web : typecheck + lint + format
 pnpm test:int                      # cargo test-int : tests PostgreSQL (en série, base *_test recréée)
 pnpm test:e2e                      # Playwright : parcours web contre l'API à modèle scénarisé (ADR-031)
+DEMO_PASSWORD=… docker compose -f compose.demo.yml up -d --build   # pile de démonstration (ADR-032)
 ```
 
 Avant chaque commit : `pnpm check && pnpm test:int` doivent passer.
@@ -182,5 +187,5 @@ Avant chaque commit : `pnpm check && pnpm test:int` doivent passer.
 Entreprise fictive « Néo Maintenance » (`crates/core/src/demo`), connecteur
 `demo_interventions` (`crates/connectors/src/demo_interventions`). Comptes
 `prenom.nom@neo-maintenance.example`, mot de passe `DEMO_PASSWORD` (défaut de
-développement : `demo-mimorya`). Le serveur de démonstration MCP :
+développement : `demo-mimorya`, refusé en production). Le serveur de démonstration MCP :
 `cargo run -p mimorya-connectors --bin mcp-demo-docs`.

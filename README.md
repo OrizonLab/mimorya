@@ -50,6 +50,29 @@ Comptes de démonstration (données fictives) : `marc.lefevre@neo-maintenance.ex
 Sans fournisseur de modèle configuré, l'application fonctionne mais les conversations
 sont désactivées (message explicite).
 
+## Pile conteneurisée (démonstration)
+
+Images Docker de l'API et de l'interface, derrière Caddy (HTTPS, HSTS), avec l'entreprise
+**fictive** de démonstration (ADR-032) :
+
+```bash
+export DEMO_PASSWORD='…'                         # obligatoire (autre que demo-mimorya) : comptes de démo
+docker compose -f compose.demo.yml up -d --build # https://localhost (certificat local de Caddy)
+infra/docker/smoke-test.sh                       # vérification : HSTS, CSP, API, connexion
+```
+
+Seul Caddy publie des ports (80 et 443) ; la base n'est joignable que par les conteneurs
+de la pile. Variables facultatives (fichier `.env` ou environnement) : `ANTHROPIC_API_KEY`
+(ou `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL`) pour converser,
+`MIMORYA_MASTER_KEY`, `SMTP_URL` et `MAIL_FROM`, `MIMORYA_DOMAIN` (puis retirer
+`tls internal` de `infra/caddy/Caddyfile` pour un certificat public).
+
+**À savoir avant de l'exposer** : la pile contient des comptes d'administration fictifs
+que la page de connexion liste, et qui se connectent tous avec `DEMO_PASSWORD` ; choisissez
+un mot de passe fort et n'ouvrez pas la pile à des personnes à qui vous ne le confiez pas.
+Ce n'est pas une installation de production : elle n'existe qu'avec les données de
+démonstration (voir la feuille de route).
+
 ## Qualité
 
 ```bash

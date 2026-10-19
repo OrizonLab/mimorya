@@ -1,4 +1,6 @@
-# Development services. Usage: docker compose up -d db
+# Development database, reachable from this machine only:
+#   docker compose up -d db
+# The containerised demonstration stack has its own file: compose.demo.yml.
 services:
   db:
     image: pgvector/pgvector:pg16
@@ -7,7 +9,7 @@ services:
       POSTGRES_PASSWORD: mimorya
       POSTGRES_DB: mimorya
     ports:
-      - '5432:5432'
+      - '127.0.0.1:5432:5432'
     volumes:
       - db-data:/var/lib/postgresql/data
       - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro

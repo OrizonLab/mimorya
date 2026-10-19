@@ -1,0 +1,92 @@
+# Containerised demonstration stack (ADR-032), with the FICTIONAL demo
+# company, behind Caddy on https://localhost:
+#   DEMO_PASSWORD=… docker compose -f compose.demo.yml up -d --build
+#
+# Only Caddy publishes ports. The database is reachable from the stack's
+# own containers only, with its own volume (its fixed credentials never
+# leave that network). DEMO_PASSWORD is required: every demo account,
+# administrators included, signs in with it.
+name: mimorya-demo
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: mimorya
+      POSTGRES_PASSWORD: mimorya
+      POSTGRES_DB: mimorya
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U mimorya']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Migrations and the fictional demo company (owner role), then it stops.
+  seed:
+    image: mimorya-api:local
+    build:
+      context: .
+      dockerfile: infra/docker/api.Dockerfile
+    command: ['mimorya-seed']
+    environment:
+      DATABASE_URL: postgres://mimorya:mimorya@db:5432/mimorya
+      MIMORYA_ENV: production
+      DEMO_PASSWORD: ${DEMO_PASSWORD:?choose the demo accounts' password (DEMO_PASSWORD)}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    image: mimorya-api:local
+    build:
+      context: .
+      dockerfile: infra/docker/api.Dockerfile
+    environment:
+      MIMORYA_ENV: production
+      DATABASE_APP_URL: postgres://mimorya_app:mimorya_app@db:5432/mimorya
+      WEB_ORIGIN: https://${MIMORYA_DOMAIN:-localhost}
+      TRUST_PROXY: 'true'
+      # Unset: Anthropic if ANTHROPIC_API_KEY is, otherwise no model.
+      LLM_PROVIDER: ${LLM_PROVIDER:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      MIMORYA_MASTER_KEY: ${MIMORYA_MASTER_KEY:-}
+      SMTP_URL: ${SMTP_URL:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+
+  web:
+    image: mimorya-web:local
+    build:
+      context: .
+      dockerfile: infra/docker/web.Dockerfile
+      args:
+        API_URL: http://api:4000
+        NEXT_PUBLIC_DEMO_MODE: 'true'
+    depends_on:
+      - api
+
+  proxy:
+    image: caddy:2.10-alpine
+    ports:
+      - '80:80'
+      - '443:443'
+    environment:
+      MIMORYA_DOMAIN: ${MIMORYA_DOMAIN:-localhost}
+    volumes:
+      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    depends_on:
+      - web
+      - api
+
+volumes:
+  db-data:
+  caddy-data:
