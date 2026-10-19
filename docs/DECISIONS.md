@@ -1123,11 +1123,17 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - ces types refusent un champ inconnu (`deny_unknown_fields`) : la route répond 400
     au lieu d'ignorer le champ. Un test unitaire (`contract/tests/requests.rs`) lit
     chaque corps sous sa forme minimale et complète, et vérifie qu'il refuse un champ
-    de plus ;
+    de plus ; un test d'intégration (`crates/api/tests/strict_bodies.rs`) vérifie la
+    réponse 400, qui nomme le champ, sans rien changer ;
   - l'interface envoie ses corps avec `satisfies <Type>` : un champ inconnu, manquant
     ou mal typé est une erreur de compilation ;
   - `ts-rs` est compilé avec `no-serde-warnings` : les attributs propres à la lecture
-    (`deserialize_with`) ne le concernent pas ;
+    (`deserialize_with`) ne le concernent pas. La coupure vaut pour tout le contrat,
+    réponses comprises : ts-rs ne signale plus un attribut qu'il ne lit pas. Un
+    attribut qui change la forme d'une réponse (`serialize_with`, `into`,
+    `transparent`) s'accompagne donc de `#[ts(type = …)]` ou `#[ts(as = …)]`, comme
+    `#[serde(with)]`, que ts-rs refuse sans eux ; aucune réponse n'en utilise
+    aujourd'hui ;
   - les paramètres de requête (`?status=`, `?limit=`) restent déclarés par leur route.
 - **Conséquences** :
   - première étape : connexion, compte, liens d'invitation et de réinitialisation,

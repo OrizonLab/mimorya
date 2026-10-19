@@ -63,7 +63,7 @@ pub struct ApprovalDecided {
     pub resumed: bool,
 }
 
-/// `POST /approvals/{id}/decision`.
+/// Body of `POST /approvals/{id}/decision`.
 #[derive(Deserialize, Validate, TS)]
 #[serde(deny_unknown_fields)]
 pub struct ApprovalVerdict {

@@ -149,7 +149,7 @@ impl From<ManualMemoryKind> for StoredKind {
     }
 }
 
-/// `POST /memory`.
+/// Body of `POST /memory`.
 #[derive(Deserialize, Validate, TS)]
 #[serde(deny_unknown_fields)]
 pub struct ManualMemory {
@@ -163,6 +163,7 @@ pub struct ManualMemory {
     pub content: String,
 }
 
+/// What becomes of a proposed memory: kept as active, or archived.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, TS)]
 #[serde(rename_all = "lowercase")]
 pub enum ReviewDecision {
@@ -170,7 +171,7 @@ pub enum ReviewDecision {
     Reject,
 }
 
-/// `POST /memory/{id}/review`: the decision on a proposed memory.
+/// Body of `POST /memory/{id}/review`: the decision on a proposed memory.
 #[derive(Deserialize, Validate, TS)]
 #[serde(deny_unknown_fields)]
 pub struct MemoryReview {

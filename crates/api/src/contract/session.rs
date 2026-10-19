@@ -64,7 +64,7 @@ pub struct AuthOptions {
     pub password_reset: bool,
 }
 
-/// `POST /auth/login`.
+/// Body of `POST /auth/login`.
 #[derive(Deserialize, Validate, TS)]
 #[serde(deny_unknown_fields)]
 pub struct Credentials {
@@ -75,7 +75,7 @@ pub struct Credentials {
     pub password: String,
 }
 
-/// `POST /account/password`.
+/// Body of `POST /account/password`.
 #[derive(Deserialize, Validate, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PasswordUpdate {

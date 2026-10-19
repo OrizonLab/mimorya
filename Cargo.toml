@@ -47,7 +47,9 @@ tokio-stream = "0.1"
 tower = { version = "0.5", features = ["util"] }
 # TypeScript declarations of the API contract (apps/web/lib/api/contract.ts).
 # `no-serde-warnings`: request bodies use serde attributes that only reading
-# knows (`deserialize_with`), which ts-rs would report at every build.
+# knows (`deserialize_with`), which ts-rs would report at every build. It
+# silences every serde attribute ts-rs does not read, responses included
+# (ADR-039).
 ts-rs = { version = "12", features = ["uuid-impl", "no-serde-warnings"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }

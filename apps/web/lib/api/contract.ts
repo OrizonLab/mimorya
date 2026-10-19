@@ -31,7 +31,7 @@ export type ApprovalRequestedEvent = { approvalId: string, toolName: string, act
 export type ApprovalResolvedEvent = { approvalId: string, approved: boolean, };
 
 /**
- * `POST /approvals/{id}/decision`.
+ * Body of `POST /approvals/{id}/decision`.
  */
 export type ApprovalVerdict = { approved: boolean, comment?: string, };
 
@@ -142,7 +142,7 @@ secretsAvailable: boolean,
 allowPrivateNetwork: boolean, };
 
 /**
- * `PATCH /conversations/{id}`.
+ * Body of `PATCH /conversations/{id}`.
  */
 export type ConversationChanges = { title?: string, archived?: boolean, };
 
@@ -169,7 +169,7 @@ export type ConversationSummary = { id: string, title: string, updatedAt: string
 export type Created = { id: string, };
 
 /**
- * `POST /auth/login`.
+ * Body of `POST /auth/login`.
  */
 export type Credentials = { email: string, password: string, };
 
@@ -277,13 +277,14 @@ link: string | null,
 problem: string | null, };
 
 /**
- * `POST /auth/invitation/accept`, `POST /auth/password-reset/complete`: the
- * password chosen with a link.
+ * Body of `POST /auth/invitation/accept` and `POST /auth/password-reset/complete`:
+ * the password chosen with a link.
  */
 export type LinkPassword = { token: string, password: string, };
 
 /**
- * `POST /auth/invitation`, `POST /auth/password-reset/link`: the link to open.
+ * Body of `POST /auth/invitation` and `POST /auth/password-reset/link`: the
+ * link to open.
  */
 export type LinkToken = { token: string, };
 
@@ -327,7 +328,7 @@ secretsAvailable: boolean, platform: PlatformModel | null, settings: LlmSettings
 endpoints: Array<string>, };
 
 /**
- * `POST /memory`.
+ * Body of `POST /memory`.
  */
 export type ManualMemory = { space: MemorySpace, kind: ManualMemoryKind, title: string, content: string, };
 
@@ -392,7 +393,7 @@ export type MemoryKind = "preference" | "fact" | "procedure" | "decision" | "les
 export type MemoryList = { items: Array<MemoryItem>, };
 
 /**
- * `POST /memory/{id}/review`: the decision on a proposed memory.
+ * Body of `POST /memory/{id}/review`: the decision on a proposed memory.
  */
 export type MemoryReview = { decision: ReviewDecision, };
 
@@ -438,12 +439,12 @@ evidence?: Array<Citation>, verification?: Verification, };
 export type MessageRole = "user" | "assistant";
 
 /**
- * `POST /conversations`.
+ * Body of `POST /conversations`.
  */
 export type NewConversation = { title?: string, };
 
 /**
- * `POST /conversations/{id}/messages`.
+ * Body of `POST /conversations/{id}/messages`.
  */
 export type NewMessage = { content: string, };
 
@@ -480,7 +481,7 @@ export type Organization = { units: Array<OrgUnitView>, users: Array<OrgPerson>,
 canManage: boolean, };
 
 /**
- * `POST /account/password`.
+ * Body of `POST /account/password`.
  */
 export type PasswordUpdate = { currentPassword: string, newPassword: string, };
 
@@ -531,7 +532,7 @@ listedEndpoint: boolean, defaultModel: string | null, };
 export type ResetDetails = { email: string, expiresAt: string, };
 
 /**
- * `POST /auth/password-reset`: the address to send a link to.
+ * Body of `POST /auth/password-reset`: the address to send a link to.
  */
 export type ResetLinkRequest = { email: string, };
 
@@ -549,6 +550,9 @@ export type RestrictablePermission = { permission: string, label: string,
  */
 perResource: boolean, };
 
+/**
+ * What becomes of a proposed memory: kept as active, or archived.
+ */
 export type ReviewDecision = "approve" | "reject";
 
 export type RoleView = { id: string, key: string, name: string, description: string,

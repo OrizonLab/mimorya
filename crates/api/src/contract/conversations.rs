@@ -130,7 +130,7 @@ pub struct MessageAccepted {
     pub message_id: Uuid,
 }
 
-/// `POST /conversations`.
+/// Body of `POST /conversations`.
 #[derive(Deserialize, Validate, TS)]
 #[serde(deny_unknown_fields)]
 pub struct NewConversation {
@@ -140,7 +140,7 @@ pub struct NewConversation {
     pub title: Option<String>,
 }
 
-/// `PATCH /conversations/{id}`.
+/// Body of `PATCH /conversations/{id}`.
 #[derive(Deserialize, Validate, TS)]
 #[serde(deny_unknown_fields)]
 pub struct ConversationChanges {
@@ -153,7 +153,7 @@ pub struct ConversationChanges {
     pub archived: Option<bool>,
 }
 
-/// `POST /conversations/{id}/messages`.
+/// Body of `POST /conversations/{id}/messages`.
 #[derive(Deserialize, Validate, TS)]
 #[serde(deny_unknown_fields)]
 pub struct NewMessage {

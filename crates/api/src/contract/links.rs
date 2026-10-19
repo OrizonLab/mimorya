@@ -50,7 +50,7 @@ impl From<&ResetView> for ResetDetails {
     }
 }
 
-/// `POST /auth/password-reset`: the address to send a link to.
+/// Body of `POST /auth/password-reset`: the address to send a link to.
 #[derive(Deserialize, Validate, TS)]
 #[serde(deny_unknown_fields)]
 pub struct ResetLinkRequest {
@@ -59,7 +59,8 @@ pub struct ResetLinkRequest {
     pub email: String,
 }
 
-/// `POST /auth/invitation`, `POST /auth/password-reset/link`: the link to open.
+/// Body of `POST /auth/invitation` and `POST /auth/password-reset/link`: the
+/// link to open.
 #[derive(Deserialize, Validate, TS)]
 #[serde(deny_unknown_fields)]
 pub struct LinkToken {
@@ -67,8 +68,8 @@ pub struct LinkToken {
     pub token: String,
 }
 
-/// `POST /auth/invitation/accept`, `POST /auth/password-reset/complete`: the
-/// password chosen with a link.
+/// Body of `POST /auth/invitation/accept` and `POST /auth/password-reset/complete`:
+/// the password chosen with a link.
 #[derive(Deserialize, Validate, TS)]
 #[serde(deny_unknown_fields)]
 pub struct LinkPassword {
