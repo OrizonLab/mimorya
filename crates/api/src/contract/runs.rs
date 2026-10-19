@@ -11,7 +11,8 @@ use ts_rs::TS;
 use uuid::Uuid;
 
 use super::approvals::Approval;
-use super::stored::stored;
+use super::run_stream::ToolDecision;
+use super::stored::{stored, stored_text};
 use crate::http::iso;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -179,7 +180,7 @@ impl RunView {
 pub struct ToolInvocation {
     pub id: Uuid,
     pub tool_name: String,
-    pub decision: String,
+    pub decision: ToolDecision,
     pub decision_reason: Option<String>,
     pub status: String,
     pub output_summary: Option<String>,
@@ -187,18 +188,18 @@ pub struct ToolInvocation {
     pub created_at: String,
 }
 
-impl From<&ToolInvocationRow> for ToolInvocation {
-    fn from(t: &ToolInvocationRow) -> Self {
-        Self {
+impl ToolInvocation {
+    pub fn from_row(t: &ToolInvocationRow) -> anyhow::Result<Self> {
+        Ok(Self {
             id: t.id,
             tool_name: t.tool_name.clone(),
-            decision: t.decision.clone(),
+            decision: stored_text("tool decision", &t.decision)?,
             decision_reason: t.decision_reason.clone(),
             status: t.status.clone(),
             output_summary: t.output_summary.clone(),
             duration_ms: t.duration_ms,
             created_at: iso(&t.created_at),
-        }
+        })
     }
 }
 

@@ -10,7 +10,7 @@ use mimorya_db::repositories::runs::{get_run, list_runs};
 use mimorya_db::repositories::tool_invocations::list_tool_invocations;
 
 use crate::app::AppState;
-use crate::contract::{RunDetail, RunList, RunListItem, RunView};
+use crate::contract::{Approval, RunDetail, RunList, RunListItem, RunView, ToolInvocation};
 use crate::http::{ApiResult, PathId};
 use crate::plugins::Auth;
 
@@ -50,8 +50,14 @@ async fn detail(
 
     Ok(Json(RunDetail {
         run: RunView::from_row(&run)?,
-        tools: tools.iter().map(Into::into).collect(),
-        approvals: approvals.iter().map(Into::into).collect(),
+        tools: tools
+            .iter()
+            .map(ToolInvocation::from_row)
+            .collect::<anyhow::Result<_>>()?,
+        approvals: approvals
+            .iter()
+            .map(Approval::from_row)
+            .collect::<anyhow::Result<_>>()?,
         events: events.iter().map(Into::into).collect(),
     }))
 }

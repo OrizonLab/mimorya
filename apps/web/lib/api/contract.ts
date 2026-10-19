@@ -8,7 +8,7 @@ export type Approval = { id: string, runId: string, toolName: string, actionSumm
 /**
  * The validated input, executed as is once approved.
  */
-payload: unknown, risk: string, reason: string, status: string, decisionComment: string | null, createdAt: string, decidedAt: string | null, };
+payload: unknown, risk: ToolRisk, reason: string, status: string, decisionComment: string | null, createdAt: string, decidedAt: string | null, };
 
 /**
  * `POST /approvals/{id}/decision`.
@@ -259,7 +259,7 @@ export type ToolDecision = "allow" | "require_approval" | "deny";
 /**
  * A tool call of a run, with the decision taken on it.
  */
-export type ToolInvocation = { id: string, toolName: string, decision: string, decisionReason: string | null, status: string, outputSummary: string | null, durationMs: number | null, createdAt: string, };
+export type ToolInvocation = { id: string, toolName: string, decision: ToolDecision, decisionReason: string | null, status: string, outputSummary: string | null, durationMs: number | null, createdAt: string, };
 
 export type ToolResultEvent = { toolCallId: string, toolName: string, summary: string, isError: boolean, durationMs: number, };
 

@@ -6,8 +6,11 @@ use std::path::PathBuf;
 use mimorya_agent::runtime::{
     BudgetLimits, DEFAULT_BUDGET, RunEvent, RunUsageTotals, VerificationReport,
 };
+use mimorya_agent::tools::ToolCallEvaluation;
 use mimorya_core::autonomy::ToolRisk;
-use mimorya_core::memory::MemoryKind as CoreMemoryKind;
+use mimorya_core::memory::{
+    MemoryKind as CoreMemoryKind, MemoryScope as CoreMemoryScope, MemoryStatus as CoreMemoryStatus,
+};
 use mimorya_core::tools::Citation as ToolCitation;
 use mimorya_db::repositories::runs::RunStatus as DbRunStatus;
 use serde::Serialize;
@@ -143,11 +146,11 @@ fn every_engine_event() -> Vec<RunEvent> {
             cost_micros: None,
         },
     ];
-    for (decision, reason) in [
-        ("allow", None),
-        ("require_approval", Some("Risque")),
-        ("deny", Some("Refus")),
-    ] {
+    for (decision, reason) in
+        ToolCallEvaluation::KINDS
+            .into_iter()
+            .zip([None, Some("Risque"), Some("Refus")])
+    {
         events.push(RunEvent::ToolCall {
             tool_call_id: "call-2".into(),
             tool_name: "planning_apply".into(),
@@ -156,13 +159,7 @@ fn every_engine_event() -> Vec<RunEvent> {
             reason: reason.map(Into::into),
         });
     }
-    for risk in [
-        ToolRisk::Read,
-        ToolRisk::Draft,
-        ToolRisk::Write,
-        ToolRisk::External,
-        ToolRisk::Irreversible,
-    ] {
+    for risk in ToolRisk::ALL {
         events.push(RunEvent::ApprovalRequested {
             approval_id: Uuid::new_v4(),
             tool_name: "planning_apply".into(),
@@ -179,7 +176,8 @@ fn every_engine_event() -> Vec<RunEvent> {
     events
 }
 
-/// No engine event is left out of `every_engine_event` (compile-time check).
+/// A new kind of engine event stops compiling here: add it to
+/// `every_engine_event` too.
 fn _covered(event: &RunEvent) {
     match event {
         RunEvent::RunStarted { .. }
@@ -211,17 +209,17 @@ fn every_event_of_the_stream_reads_back_as_its_contract_type() {
 
 #[test]
 fn memory_columns_read_back_as_their_contract_values() {
-    for scope in ["user", "org_unit", "tenant", "experience"] {
-        let read: MemoryScope = stored_text("memory scope", scope).unwrap();
-        assert_eq!(serde_json::to_value(read).unwrap(), scope);
+    for scope in CoreMemoryScope::ALL {
+        let read: MemoryScope = stored_text("memory scope", scope.as_str()).unwrap();
+        assert_eq!(serde_json::to_value(read).unwrap(), scope.as_str());
     }
     for kind in CoreMemoryKind::ALL {
         let read: MemoryKind = stored_text("memory kind", kind.as_str()).unwrap();
         assert_eq!(serde_json::to_value(read).unwrap(), kind.as_str());
     }
-    for status in ["active", "proposed", "archived"] {
-        let read: MemoryStatus = stored_text("memory status", status).unwrap();
-        assert_eq!(serde_json::to_value(read).unwrap(), status);
+    for status in CoreMemoryStatus::ALL {
+        let read: MemoryStatus = stored_text("memory status", status.as_str()).unwrap();
+        assert_eq!(serde_json::to_value(read).unwrap(), status.as_str());
     }
     let error = stored_text::<MemoryScope>("memory scope", "secret").unwrap_err();
     assert!(!error.to_string().contains("secret"));

@@ -1035,3 +1035,29 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     signale chaque usage à adapter ;
   - une valeur stockée hors contrat (jamais écrite par la plateforme) fait répondre la
     route en erreur 500 plutôt que par une réponse incomplète.
+
+## ADR-037 — Contrat de l'API : colonnes texte et flux en direct (complète ADR-036)
+
+- **Date** : 2026-10-19 · **Statut** : acceptée
+- **Contexte** : la première étape du contrat (ADR-036) laissait décrits à la main la
+  mémoire, le compte, les pages de lien et les événements du flux en direct ; ceux-ci,
+  écrits par le moteur (`RunEvent`), n'avaient aucun type côté interface.
+- **Décision** :
+  - les colonnes texte qui portent une valeur du contrat (rôle d'un message, portée,
+    nature et statut d'une mémoire, décision sur un appel d'outil, risque d'une
+    validation) sont relues par `stored_text` dans leur énumération : une valeur
+    inconnue est une erreur interne qui ne la cite pas. Les contraintes `CHECK` de la
+    base fixent déjà ces valeurs ; des tests parcourent leurs sources (`ALL` des
+    énumérations du core, `ToolCallEvaluation::KINDS`) ;
+  - `RunStreamEvent` déclare chaque événement du flux (nom et données, union
+    discriminée sur `type` en TypeScript). Un test vérifie que chaque événement écrit
+    par le moteur, et le texte diffusé (`assistant_delta`, construit avec ce type), se
+    relit dans son type sans perte ni clé inconnue ; ajouter une sorte d'événement au
+    moteur ne compile plus tant que le test ne la connaît pas ;
+  - l'interface reçoit, pour chaque gestionnaire du flux, le type de données de son
+    événement.
+- **Conséquences** :
+  - restent décrits à la main : l'administration, les corps des requêtes et
+    l'enveloppe des erreurs ;
+  - les données d'un événement relu depuis le journal d'un run (`RunDetail.events`)
+    restent en `unknown` : leur forme est celle de `RunStreamEvent`.

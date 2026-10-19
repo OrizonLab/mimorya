@@ -54,7 +54,7 @@ Dernière mise à jour : 2026-10-19 (contrat de l'API : mémoire, liens, flux en
 
 1. **Validation avec un modèle réel** (clé Anthropic ou autre) sur le scénario de référence, et ajustement des consignes et descriptions d'outils.
 2. **Installation privée de production** : publication des images dans un registre et cache de leur construction en CI (faits : images Docker et pile de démonstration derrière Caddy, ADR-032 ; migrations seules et création d'une entreprise réelle par `mimorya-admin`, ADR-033 ; pile conteneurisée de production aux identifiants choisis à l'installation, vérifiée en CI jusqu'à la première connexion, ADR-034).
-3. **Types de l'API partagés** : générés depuis les réponses typées du serveur (ADR-036, `pnpm contract`, vérifié par `cargo test`) pour la session, les conversations, les runs, les validations, la mémoire, le compte, les liens d'invitation et de réinitialisation, et les événements du flux en direct (chaque événement émis par le moteur est vérifié contre son type) ; restent à passer au contrat : administration, corps des requêtes.
+3. **Types de l'API partagés** : générés depuis les réponses typées du serveur (ADR-036, `pnpm contract`, vérifié par `cargo test`) pour la session, les conversations, les runs, les validations, la mémoire, le compte, les liens d'invitation et de réinitialisation, et les événements du flux en direct (chaque événement émis par le moteur est vérifié contre son type) ; restent à passer au contrat : administration, corps des requêtes, enveloppe des erreurs (`{ error: { code, message, details } }`, typée à la main dans `lib/api/client.ts`).
 
 ### Points relevés par les audits, à traiter (non bloquants)
 

@@ -36,10 +36,10 @@ impl MemoryScope {
         }
     }
 
+    pub const ALL: [MemoryScope; 4] = [Self::User, Self::OrgUnit, Self::Tenant, Self::Experience];
+
     pub fn parse(value: &str) -> Option<Self> {
-        [Self::User, Self::OrgUnit, Self::Tenant, Self::Experience]
-            .into_iter()
-            .find(|s| s.as_str() == value)
+        Self::ALL.into_iter().find(|s| s.as_str() == value)
     }
 }
 
@@ -167,6 +167,8 @@ pub enum MemoryStatus {
 }
 
 impl MemoryStatus {
+    pub const ALL: [MemoryStatus; 3] = [Self::Active, Self::Proposed, Self::Archived];
+
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Active => "active",
