@@ -1,8 +1,9 @@
-// A read of the API left without answer gives up after READ_TIMEOUT_MS: the
-// screen says so and offers to try again, rather than stay locked or claim
-// there is nothing (ADR-044). The page's clock is moved on instead of waited
-// for; each test holds the read until it lets it through. The role a test
-// creates is deleted, even when it fails.
+// A read of the API that fails, or gets no answer within READ_TIMEOUT_MS,
+// says so and offers to try again, rather than stay locked or claim there is
+// nothing (ADR-044). The page's clock is moved on instead of waited for; each
+// test holds or fails the read until it lets it through. The role a test
+// creates is deleted, even when it fails; the conversation's run is ended.
+import type { Page } from '@playwright/test';
 import { READ_TIMEOUT_MS } from '../lib/api/client';
 import type { Roles } from '../lib/api/contract';
 import { openAdmin } from './support/admin';
@@ -10,6 +11,14 @@ import { demo, expect, noError, signIn, test } from './support/fixtures';
 import { holdList } from './support/hold';
 
 const ROLE = 'Délai e2e';
+
+/** Signed in, once the screen reached has done its own reads. */
+async function signedIn(page: Page, email: string) {
+  await signIn(page, email);
+  await expect(page.getByText('Chargement…')).toHaveCount(0);
+}
+const REQUEST =
+  'Fais le point sur les interventions de la semaine et planifie le suivi de celles qui ne sont pas terminées.';
 const NO_ANSWER = 'Le serveur ne répond pas. Réessayez dans un instant.';
 
 test.beforeEach(async ({ page }) => {
@@ -56,7 +65,7 @@ test('a reload left without answer gives way to a retry', async ({ page }) => {
 });
 
 test('the conversations list says it failed, never that it is empty', async ({ page }) => {
-  await signIn(page, demo.paul);
+  await signedIn(page, demo.paul);
   const list = await holdList(page, '/api/conversations');
   const read = list.arm();
   await page.goto('/chat');
@@ -72,7 +81,7 @@ test('the conversations list says it failed, never that it is empty', async ({ p
 });
 
 test('the session read says it failed and can be tried again', async ({ page }) => {
-  await signIn(page, demo.paul);
+  await signedIn(page, demo.paul);
   const session = await holdList(page, '/api/auth/me');
   const read = session.arm();
   await page.goto('/admin');
@@ -82,5 +91,32 @@ test('the session read says it failed and can be tried again', async ({ page }) 
   session.release();
   await page.getByRole('button', { name: 'Réessayer' }).click();
   await expect(page.getByRole('heading', { name: 'Administration' })).toBeVisible();
+  await noError(page);
+});
+
+test('the approval a run waits for says it could not be loaded', async ({ page }) => {
+  // The approvals fail until the test lets them through.
+  let failing = true;
+  await page.route('**/api/approvals', (route) =>
+    failing && route.request().method() === 'GET'
+      ? route.fulfill({ status: 503 })
+      : route.continue(),
+  );
+  await signedIn(page, demo.marc);
+  await page.getByLabel('Votre message').fill(REQUEST);
+  await page.getByRole('button', { name: 'Envoyer' }).click();
+
+  // The run waits for a validation the page could not load: it says so...
+  await expect(page.getByText('Erreur 503')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText('Chargement de la demande de validation…')).toHaveCount(0);
+  failing = false;
+  // ...and loads it again.
+  await page.getByRole('button', { name: 'Réessayer' }).click();
+  await expect(page.getByText('Validation requise')).toBeVisible();
+  // Refused, the run ends without changing the planning again.
+  await page.getByRole('button', { name: 'Refuser' }).click();
+  await expect(page.getByRole('heading', { name: 'Synthèse des interventions' })).toBeVisible({
+    timeout: 30_000,
+  });
   await noError(page);
 });

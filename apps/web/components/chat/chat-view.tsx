@@ -3,7 +3,7 @@
 import { PanelLeft } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { ApprovalCard } from '@/components/approvals';
-import { ErrorNote, Spinner } from '@/components/ui';
+import { ErrorNote, Failure, Spinner } from '@/components/ui';
 import { useMe } from '@/lib/me-context';
 import { ActivityPanel } from './activity-panel';
 import { Composer } from './composer';
@@ -59,9 +59,14 @@ export function ChatView({ conversationId }: { conversationId: string | null }) 
             {pendingApprovals.map((a) => (
               <ApprovalCard key={a.id} approval={a} onDecided={() => chat.dismissApproval(a.id)} />
             ))}
-            {activity.status === 'awaiting_approval' && pendingApprovals.length === 0 && busy && (
-              <p className="text-sm text-muted">Chargement de la demande de validation…</p>
-            )}
+            {activity.status === 'awaiting_approval' &&
+              pendingApprovals.length === 0 &&
+              busy &&
+              (chat.approvalsError ? (
+                <Failure message={chat.approvalsError} onRetry={chat.reloadApprovals} />
+              ) : (
+                <p className="text-sm text-muted">Chargement de la demande de validation…</p>
+              ))}
             {chat.error && <ErrorNote message={chat.error} />}
             <div ref={bottomRef} />
           </div>

@@ -12,7 +12,9 @@ use serde_json::json;
 /// The title of the scenario's last answer, which the tests wait for.
 const SUMMARY_TITLE: &str = "Synthèse des interventions";
 
-pub fn reference() -> Vec<ScriptedStep> {
+/// The scenario, its follow-up planned next Monday at `hour` (each run its
+/// own slot: a slot already taken would make the proposal fail).
+pub fn reference(hour: u32) -> Vec<ScriptedStep> {
     let monday = monday_of(Utc::now().date_naive());
     let week = json!({ "from": iso_date(monday), "to": iso_date(monday + Days::new(4)) });
     let next_monday = iso_date(monday + Days::new(7));
@@ -31,7 +33,7 @@ pub fn reference() -> Vec<ScriptedStep> {
                         "interventionId": "INT-2049",
                         "technicianId": user::LEA,
                         "date": next_monday,
-                        "startTime": "13:00",
+                        "startTime": format!("{hour:02}:00"),
                         "durationHours": 2,
                         "reason": "Terminer la mise en service",
                     }],
@@ -55,7 +57,7 @@ pub fn reference() -> Vec<ScriptedStep> {
         }),
         ScriptedStep::text(format!(
             "## {SUMMARY_TITLE}\n\n- **INT-2049** : intervention non terminée, suivi programmé \
-             lundi prochain à 13 h avec Léa.\n\nLe planning de suivi est appliqué."
+             lundi prochain à {hour} h avec Léa.\n\nLe planning de suivi est appliqué."
         )),
     ]
 }

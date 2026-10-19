@@ -9,7 +9,7 @@ Légende des statuts — tenue à jour à chaque contribution :
 | 🟡     | Partiel : socle en place, fonctionnalité incomplète (détail indiqué)       |
 | 🔜     | Planifié, non implémenté                                                   |
 
-Dernière mise à jour : 2026-10-19 (délai des lectures de l'API et « Réessayer » sur un chargement échoué, ADR-044).
+Dernière mise à jour : 2026-10-19 (validation attendue par un run : échec de chargement affiché, avec « Réessayer »).
 
 ## Phase 1 — Fondations et MVP fonctionnel
 

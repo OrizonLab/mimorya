@@ -23,9 +23,10 @@ use mimorya_api::mail::Mailer;
 use mimorya_api::services::ProviderFactory;
 use mimorya_api::{AppConfig, BuildOptions, build_app, log_filter};
 
-/// Reference scenarios queued for the platform model: one per test that
-/// converses (`reference-scenario.spec.ts`).
-const SCENARIOS: usize = 1;
+/// Reference scenarios queued for the platform model, by the hour of their
+/// follow-up: one per test that converses (`reference-scenario.spec.ts`, then
+/// `timeouts.spec.ts`).
+const SCENARIO_HOURS: [u32; 2] = [13, 15];
 
 /// Company providers' answers to their connection test.
 const CONNECTION_TESTS: usize = 20;
@@ -42,8 +43,8 @@ async fn main() -> anyhow::Result<()> {
     mailbox::empty(&mail_dir)?;
 
     let model = Arc::new(ScriptedProvider::new(Vec::new()));
-    for _ in 0..SCENARIOS {
-        model.push(scenario::reference());
+    for hour in SCENARIO_HOURS {
+        model.push(scenario::reference(hour));
     }
     let platform: Arc<dyn LlmProvider> = model;
     // A company's own provider answers « OK » (its connection test).
