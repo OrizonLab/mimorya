@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { connection } from 'next/server';
 import type { ReactNode } from 'react';
+import { FocusKeeper } from '@/components/shell/focus-keeper';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -19,7 +20,10 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   await connection();
   return (
     <html lang="fr">
-      <body>{children}</body>
+      <body>
+        <FocusKeeper />
+        {children}
+      </body>
     </html>
   );
 }

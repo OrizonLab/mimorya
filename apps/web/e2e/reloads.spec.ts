@@ -78,7 +78,8 @@ test('an account’s forms wait for, then follow, the reloaded directory', async
 
   let reload = directory.arm();
   await jobTitle.fill('Chef d’équipe');
-  await saveProfile.click();
+  // Saved from the keyboard: the field keeps the focus across the lock.
+  await jobTitle.press('Enter');
   await reload;
   // Until the directory arrives, nothing on the screen can be changed, nor
   // the account closed and reopened from the former directory.
@@ -87,10 +88,14 @@ test('an account’s forms wait for, then follow, the reloaded directory', async
   await expect(saveProfile).toBeDisabled();
   await expect(saveAttributes).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Ajouter un collaborateur' })).toBeDisabled();
+  // Disabled, the field has lost the focus to the page...
+  await expect(jobTitle).not.toBeFocused();
   directory.release();
   await expect(saveProfile).toBeEnabled();
   // The row shows the account as the reloaded directory lists it.
   await expect(row).toContainText('Chef d’équipe');
+  // ...and gets it back once the directory has arrived.
+  await expect(jobTitle).toBeFocused();
 
   // Another administrator changes the account while its form is open...
   const listed = await page.request.get('/api/admin/users');
@@ -109,8 +114,13 @@ test('an account’s forms wait for, then follow, the reloaded directory', async
   await saveAttributes.click();
   await reload;
   await expect(jobTitle).toHaveValue('Chef d’équipe');
+  // The focus taken elsewhere meanwhile (a tab, outside the lock) stays there.
+  const tab = page.getByRole('tab', { name: 'Utilisateurs' });
+  await tab.focus();
   directory.release();
   await expect(jobTitle).toHaveValue('Responsable de secteur');
+  await expect(saveAttributes).toBeEnabled();
+  await expect(tab).toBeFocused();
   await expect
     .poll(async () => {
       const response = await page.request.get('/api/admin/users');
@@ -170,7 +180,6 @@ test('a role is edited again only from the reloaded list', async ({ page }) => {
 });
 
 test('tool policies start again from each connection test', async ({ page }) => {
-  page.on('dialog', (dialog) => dialog.accept());
   const tool = (name: string, risk: TestedTool['risk']): TestedTool => ({
     name,
     title: name,
@@ -199,9 +208,20 @@ test('tool policies start again from each connection test', async ({ page }) => 
   await page.getByRole('button', { name: 'Ajouter le serveur' }).click();
 
   const card = cardWith(page, SERVER, 'Tester la connexion');
-  await card.getByRole('button', { name: 'Tester la connexion' }).click();
+  const testButton = card.getByRole('button', { name: 'Tester la connexion' });
+  await expect(testButton).toBeEnabled();
+  const connectors = await holdList(page, '/api/admin/connectors');
+  const reload = connectors.arm();
+  await testButton.click();
+  await reload;
+  // Disabled while testing, then by the reload's lock: it has lost the focus...
+  await expect(testButton).toBeDisabled();
+  await expect(testButton).not.toBeFocused();
+  connectors.release();
   await expect(card.getByLabel('Risque de mcp_oute_search')).toHaveValue('read');
-  await card.getByRole('button', { name: 'Tester la connexion' }).click();
+  // ...and gets it back once the list has arrived.
+  await expect(testButton).toBeFocused();
+  await testButton.click();
   // The second test's rules, not the first's: saving them keeps what it brought.
   await expect(card.getByLabel('Risque de mcp_oute_delete')).toHaveValue('irreversible');
   await expect(card.getByLabel('Risque de mcp_oute_search')).toHaveValue('write');

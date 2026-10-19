@@ -1206,7 +1206,7 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - appliqué d'abord à la fiche d'un compte (profil et attributs).
 - **Conséquences** :
   - après un enregistrement, la fiche est brièvement désactivée, le temps du
-    rechargement, et le contrôle qui avait le focus le perd ;
+    rechargement, et le contrôle qui avait le focus le perd (rendu par ADR-043) ;
   - les autres formulaires de modification (rôle, politique, unité, serveur MCP,
     politique d'outil, modèle) restent à traiter de la même façon (`docs/ROADMAP.md`) ;
   - test : `apps/web/e2e/reloads.spec.ts` (d'abord dans `administration.spec.ts`)
@@ -1246,7 +1246,7 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     case à cocher native prend aussitôt l'aspect désactivé du navigateur.
 - **Conséquences** :
   - après une modification, l'écran est brièvement désactivé, le temps du rechargement,
-    et le contrôle qui avait le focus le perd (à rendre, `docs/ROADMAP.md`) ;
+    et le contrôle qui avait le focus le perd (rendu par ADR-043) ;
   - dans les onglets où un seul formulaire est ouvert à la fois (rôles, politiques,
     organisation), « Modifier » sur une autre carte ferme encore le formulaire dont la
     modification attend sa réponse ; rouvert avant celle-ci, il repart de l'ancienne
@@ -1260,4 +1260,43 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     d'un compte ne se modifie ni ne se ferme, et qu'un rôle ne se rouvre pas, d'après
     l'ancienne liste, puis que la liste et le formulaire rouvert montrent ce que l'API
     a enregistré. Il vérifie aussi qu'une fiche restée ouverte reprend, au
-    rechargement suivant, la modification faite entre-temps hors de la page.
+    rechargement suivant, la modification faite entre-temps hors de la page ; que
+    « Annuler » est désactivé pendant l'envoi ; que l'animation du verrou s'applique à
+    une carte affichée pendant celui-ci et pas à un bouton désactivé par son propre
+    attribut ; et que les règles des outils montrent le dernier test de connexion.
+
+## ADR-043 — Le focus est rendu au contrôle qui l'a perdu en étant désactivé
+
+- **Date** : 2026-10-19 · **Statut** : acceptée
+- **Contexte** : un contrôle désactivé perd le focus, que le navigateur donne à la page
+  (vérifié sous Chromium : par son propre attribut comme par un `fieldset`). C'est le
+  cas d'un bouton pendant son action (`loading`) et de tout l'écran pendant le
+  verrou d'un rechargement (ADR-042) : après chaque modification, plus aucun
+  contrôle n'avait le focus. « Entrée » ou « Espace » n'agissaient plus et un
+  lecteur d'écran perdait sa position ; Tab repartait du contrôle suivant, Chromium
+  gardant le point de départ de la navigation au clavier.
+- **Décision** :
+  - un module unique, `apps/web/lib/focus-keeper.ts`, installé une fois pour toutes
+    les pages (`FocusKeeper` dans la mise en page racine), retient le contrôle qui
+    perd le focus sans destination (`focusout` sans `relatedTarget`) alors qu'il est
+    désactivé ;
+  - dès qu'il est réactivé (observation de l'attribut `disabled`, le sien ou celui
+    d'un `fieldset`), il reprend le focus, sans faire défiler la page, si le focus est
+    resté sur la page ;
+  - un focus donné entre-temps à un autre élément (tabulation, clic sur un contrôle)
+    annule ce rendu ; un clic sur le fond de la page, qui ne donne le focus à rien,
+    ne l'annule pas ; un contrôle retiré de la page (formulaire fermé) n'est pas
+    remplacé.
+- **Conséquences** :
+  - après « Entrée » dans un champ ou un clic sur un bouton suivi d'un rechargement,
+    le focus revient au même contrôle s'il est toujours affiché ;
+  - le formulaire qui se ferme à l'enregistrement laisse encore le focus à la page ;
+  - le module vaut pour tout contrôle désactivé : la zone de saisie du chat,
+    désactivée pendant tout un run, reprend le focus à sa fin (validation comprise)
+    si le focus est resté sur la page ;
+  - vérifié sous Chromium seulement (seul navigateur des tests) ; un navigateur qui
+    garderait le focus ou n'émettrait pas de `focusout` ne déclenche rien ;
+  - test : `apps/web/e2e/reloads.spec.ts` vérifie que le champ « Fonction », validé
+    par « Entrée », et le bouton « Tester la connexion » perdent le focus pendant le
+    verrou puis le retrouvent, et qu'un focus donné entre-temps à un onglet y reste.
+    Ils échouent sans le module, et le dernier sans la règle d'annulation.
