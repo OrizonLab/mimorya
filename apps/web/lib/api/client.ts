@@ -11,10 +11,40 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * How long a read may wait for its answer: past it, it fails rather than
+ * leave its screen locked (ADR-042, ADR-044). Changes are not cut short: an
+ * answer may still be on its way after the server applied them.
+ */
+export const READ_TIMEOUT_MS = 30_000;
+
+const NO_ANSWER = 'Le serveur ne répond pas. Réessayez dans un instant.';
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const read = method === 'GET';
+  const controller = new AbortController();
+  // A timer rather than AbortSignal.timeout: the page's clock drives it.
+  const timer = read ? setTimeout(() => controller.abort(), READ_TIMEOUT_MS) : undefined;
+  try {
+    return await send<T>(method, path, body, controller.signal);
+  } catch (error) {
+    if (controller.signal.aborted) throw new ApiError(0, 'timeout', NO_ANSWER);
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function send<T>(
+  method: string,
+  path: string,
+  body: unknown,
+  signal: AbortSignal,
+): Promise<T> {
   const res = await fetch(`/api${path}`, {
     method,
     credentials: 'same-origin',
+    signal,
     headers: {
       ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
       // Required by the API's CSRF protection on state-changing requests.

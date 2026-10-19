@@ -4,7 +4,6 @@
 // changed (ADR-041, ADR-042). Each test holds the list until it lets it
 // through. The account it creates keeps no business role; the role and the
 // MCP server it creates are deleted, even when it fails.
-import type { Page } from '@playwright/test';
 import type {
   AccountUpdate,
   ConnectorTest,
@@ -15,6 +14,7 @@ import type {
 } from '../lib/api/contract';
 import { cardWith, openAdmin } from './support/admin';
 import { expect, FOREIGN_HOST, noError, test } from './support/fixtures';
+import { holdList } from './support/hold';
 
 const ROLE = 'Réviseur e2e';
 const SERVER = 'Outils e2e';
@@ -40,26 +40,6 @@ test.afterEach(async ({ page }) => {
   }
 });
 
-/**
- * Holds the list at `path` once armed: `arm()` before the change that reloads
- * it resolves when the reload is sent, `release()` lets it through.
- */
-async function holdList(page: Page, path: string) {
-  let held = Promise.resolve();
-  let release = () => {};
-  await page.route(`**${path}`, async (route) => {
-    if (route.request().method() === 'GET') await held;
-    await route.continue();
-  });
-  return {
-    arm: () => {
-      held = new Promise<void>((done) => (release = done));
-      return page.waitForRequest((r) => r.method() === 'GET' && r.url().endsWith(path));
-    },
-    release: () => release(),
-  };
-}
-
 test('an account’s forms wait for, then follow, the reloaded directory', async ({ page }) => {
   const email = 'victor.chassagne@neo-maintenance.example';
   await openAdmin(page, 'Utilisateurs');
@@ -78,7 +58,7 @@ test('an account’s forms wait for, then follow, the reloaded directory', async
 
   let reload = directory.arm();
   await jobTitle.fill('Chef d’équipe');
-  // Saved from the keyboard: the field keeps the focus across the lock.
+  // Saved from the keyboard: the field gets the focus back after the lock.
   await jobTitle.press('Enter');
   await reload;
   // Until the directory arrives, nothing on the screen can be changed, nor
@@ -114,13 +94,16 @@ test('an account’s forms wait for, then follow, the reloaded directory', async
   await saveAttributes.click();
   await reload;
   await expect(jobTitle).toHaveValue('Chef d’équipe');
-  // The focus taken elsewhere meanwhile (a tab, outside the lock) stays there.
+  await expect(saveAttributes).not.toBeFocused();
+  // A focus given elsewhere meanwhile (a tab, outside the lock), even if then
+  // left for the page, cancels giving it back.
   const tab = page.getByRole('tab', { name: 'Utilisateurs' });
   await tab.focus();
+  await tab.blur();
   directory.release();
   await expect(jobTitle).toHaveValue('Responsable de secteur');
   await expect(saveAttributes).toBeEnabled();
-  await expect(tab).toBeFocused();
+  await expect(saveAttributes).not.toBeFocused();
   await expect
     .poll(async () => {
       const response = await page.request.get('/api/admin/users');
