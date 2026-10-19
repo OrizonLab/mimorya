@@ -344,5 +344,42 @@ elle est remplacée par une nouvelle entrée qui la référence (« remplace ADR
 - **Conséquences** : les entreprises ne peuvent pas encore élargir l'accès par
   politique (elles le font par rôles) ; un nouveau connecteur déclare l'`Enforcement`
   de chacune de ses permissions ; les attributs des collaborateurs utilisés par les
-  conditions (`subject.attributes.*`) ne sont pas encore modifiables depuis
-  l'interface.
+  conditions (`subject.attributes.*`) se modifient depuis l'administration
+  (ADR-023).
+
+## ADR-023 — Attributs des collaborateurs : posés par l'administration, typés et courts
+
+- **Date** : 2026-10-19 · **Statut** : acceptée
+- **Contexte** : les conditions des politiques lisent `subject.attributes.<nom>`
+  (service, site, type de contrat…). Jusqu'ici, seul le seed posait ces attributs.
+  Changer un attribut change les personnes que vise une politique, comme changer
+  l'habilitation.
+- **Décision** :
+  - un administrateur des comptes (`user:manage`, sur toute l'entreprise) remplace
+    l'ensemble des attributs d'un compte (`PATCH /admin/users/{id}`,
+    `attributes`), jamais sur son propre compte : il pourrait lever un refus qui le
+    vise ;
+  - règles (`core::collaborator_attributes`) :
+    - 20 attributs au plus ;
+    - nom : une minuscule puis des lettres ou des chiffres, 40 caractères au plus,
+      lisible dans un chemin à points ;
+    - valeur : un texte d'une ligne visible (200 caractères au plus, sans caractère
+      de contrôle, de mise en forme invisible comme l'espace sans largeur ou le
+      forçage de sens, ni séparateur de ligne), un nombre (entier exact dans un
+      navigateur, ±2^53−1), oui/non, ou une liste de 1 à 20 textes ;
+  - le changement passe sous le verrou d'administration (ADR-020). L'audit nomme
+    les attributs ajoutés, retirés ou modifiés (`attributesChanged`), **jamais leurs
+    valeurs** : ce sont des données personnelles, et le journal, en ajout seul et
+    conservé longtemps, garde la trace sans le contenu ;
+  - le changement s'applique à la requête suivante : le sujet est relu à chaque
+    requête. Un run déjà lancé garde le sujet calculé à son démarrage (SECURITY.md
+    §5) ;
+  - les valeurs ne sont montrées qu'aux administrateurs des comptes (`user:manage`
+    sur toute l'entreprise). L'éditeur de politiques propose les noms en usage dans
+    l'entreprise, sans les valeurs ;
+  - l'interface type chaque valeur (texte, nombre, oui/non, liste, un élément par
+    ligne). Des attributs écrits hors de l'interface sous une autre forme ne s'y
+    modifient pas, pour ne pas les altérer.
+- **Conséquences** : les attributs font partie du compte. Ils suivent sa rétention,
+  son export et sa suppression. L'interface rappelle de n'y placer aucune donnée
+  sensible.

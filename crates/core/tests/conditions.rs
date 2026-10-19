@@ -116,6 +116,31 @@ fn compares_numbers_by_value() {
     let contains =
         cond(json!({ "op": "contains", "left": { "value": [1, 2] }, "right": { "value": 2.0 } }));
     assert!(evaluate_condition(&contains, &env()));
+    // Lists compare item by item, by value too.
+    let env = json!({ "subject": { "attributes": { "levels": [1, 2] } } });
+    for (op, expected) in [("eq", true), ("neq", false)] {
+        let condition = cond(
+            json!({ "op": op, "left": { "attr": "subject.attributes.levels" }, "right": { "value": [1, 2.0] } }),
+        );
+        assert_eq!(evaluate_condition(&condition, &env), expected, "{op}");
+    }
+    let longer = cond(
+        json!({ "op": "eq", "left": { "attr": "subject.attributes.levels" }, "right": { "value": [1, 2, 3] } }),
+    );
+    assert!(!evaluate_condition(&longer, &env));
+}
+
+#[test]
+fn a_missing_right_attribute_differs_from_any_value() {
+    // A deny "not the owner" holds on a resource without owner.
+    let condition = cond(
+        json!({ "op": "neq", "left": { "attr": "subject.userId" }, "right": { "attr": "resource.ownerUserId" } }),
+    );
+    assert!(evaluate_condition(&condition, &env()));
+    let equal = cond(
+        json!({ "op": "eq", "left": { "attr": "subject.userId" }, "right": { "attr": "resource.ownerUserId" } }),
+    );
+    assert!(!evaluate_condition(&equal, &env()));
 }
 
 #[test]

@@ -11,6 +11,7 @@ use mimorya_core::authz::Condition;
 use mimorya_core::authz::Enforcement;
 use mimorya_core::policy_rules::{KNOWN_ATTRIBUTES, is_restrictable};
 use mimorya_db::repositories::access_policies::list_policies;
+use mimorya_db::repositories::users::list_attribute_keys;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use validator::Validate;
@@ -30,6 +31,7 @@ pub async fn list(State(state): State<AppState>, Auth(identity): Auth) -> ApiRes
     access.require_tenant_wide(PERMISSION)?;
     let mut tx = state.db.begin(identity.tenant_id).await?;
     let policies = list_policies(&mut tx).await?;
+    let attribute_keys = list_attribute_keys(&mut tx).await?;
     tx.commit().await?;
     let policies: Vec<Value> = policies
         .iter()
@@ -66,9 +68,16 @@ pub async fn list(State(state): State<AppState>, Auth(identity): Auth) -> ApiRes
         .filter_map(|p| p.permission.split(':').next())
         .filter(|domain| is_restrictable(&format!("{domain}:*"), &catalog))
         .collect();
+    // The collaborators' own attributes, as the company named them.
     let attributes: Vec<Value> = KNOWN_ATTRIBUTES
         .iter()
         .map(|(path, label)| json!({ "path": path, "label": label }))
+        .chain(attribute_keys.iter().map(|key| {
+            json!({
+                "path": format!("subject.attributes.{key}"),
+                "label": format!("Attribut du collaborateur : {key}"),
+            })
+        }))
         .collect();
     Ok(Json(json!({
         "policies": policies,

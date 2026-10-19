@@ -4,6 +4,7 @@
 
 use chrono::{DateTime, Utc};
 use mimorya_core::authz::Sensitivity;
+use serde_json::Value;
 use sqlx::PgConnection;
 use uuid::Uuid;
 
@@ -17,10 +18,12 @@ pub struct DirectoryEntry {
     pub clearance: String,
     pub primary_unit_id: Option<Uuid>,
     pub last_login_at: Option<DateTime<Utc>>,
+    /// Read by access policies as `subject.attributes.*`.
+    pub attributes: Value,
 }
 
 const DIRECTORY_SELECT: &str = "select u.id, u.email::text as email, u.display_name, u.job_title, \
-    u.status, u.clearance, u.last_login_at, \
+    u.status, u.clearance, u.last_login_at, u.attributes, \
     (select m.org_unit_id from org_memberships m where m.user_id = u.id and m.is_primary limit 1) \
       as primary_unit_id \
     from users u";
@@ -73,6 +76,8 @@ pub struct UserPatch {
     pub clearance: Option<Sensitivity>,
     /// `active` or `disabled`.
     pub status: Option<&'static str>,
+    /// Replaces every attribute (checked by the caller).
+    pub attributes: Option<Value>,
 }
 
 /// Returns whether the account exists (in the transaction's tenant).
@@ -85,7 +90,7 @@ pub async fn update_user(
         "update users set display_name = coalesce($2, display_name), \
          job_title = case when $3 then $4 else job_title end, \
          clearance = coalesce($5, clearance), status = coalesce($6, status), \
-         updated_at = now() where id = $1",
+         attributes = coalesce($7, attributes), updated_at = now() where id = $1",
     )
     .bind(id)
     .bind(patch.display_name)
@@ -93,6 +98,7 @@ pub async fn update_user(
     .bind(patch.job_title.flatten())
     .bind(patch.clearance.map(Sensitivity::as_str))
     .bind(patch.status)
+    .bind(patch.attributes)
     .execute(conn)
     .await?;
     Ok(result.rows_affected() > 0)
@@ -186,4 +192,15 @@ pub async fn revoke_user_sessions(
     .execute(conn)
     .await?;
     Ok(result.rows_affected())
+}
+
+/// The attribute names in use in the company, sorted: what policy conditions
+/// can read under `subject.attributes.`.
+pub async fn list_attribute_keys(conn: &mut PgConnection) -> sqlx::Result<Vec<String>> {
+    sqlx::query_scalar(
+        "select distinct jsonb_object_keys(attributes) as key from users \
+         where jsonb_typeof(attributes) = 'object' order by key",
+    )
+    .fetch_all(conn)
+    .await
 }

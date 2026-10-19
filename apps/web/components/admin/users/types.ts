@@ -18,6 +18,8 @@ export interface UserView {
   lastLoginAt?: string | null;
   orgUnitId?: string | null;
   clearance?: string;
+  /** Read by access policies as `subject.attributes.*`. */
+  attributes?: Record<string, unknown>;
   assignments?: AssignmentView[];
 }
 

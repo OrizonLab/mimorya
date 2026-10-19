@@ -6,42 +6,14 @@
 mod support;
 
 use axum::http::StatusCode;
-use mimorya_api::services::{AccessContext, AuthIdentity};
-use mimorya_core::authz::{Actor, ResourceRef};
 use mimorya_core::demo::{tenant, user};
 use serde_json::{Value, json};
+use support::access::reads;
 use support::{Client, TestApi};
 use uuid::Uuid;
 
 /// The demo policy: administrative staff only reads completed interventions.
 const DEMO_POLICY: Uuid = mimorya_core::demo::demo_id(400);
-
-async fn context_of(api: &TestApi, user_id: Uuid) -> AccessContext {
-    let identity = AuthIdentity {
-        tenant_id: tenant::ID,
-        user_id,
-        session_id: Uuid::nil(),
-        must_change_password: false,
-    };
-    api.app.services.access.context(identity).await.unwrap()
-}
-
-/// Whether the user may read an intervention they own, in this status.
-async fn reads(api: &TestApi, user_id: Uuid, status: &str) -> bool {
-    let access = context_of(api, user_id).await;
-    let intervention = ResourceRef::new("intervention", tenant::ID)
-        .owner(Some(user_id))
-        .attribute("status", status);
-    access
-        .engine
-        .check(
-            &access.subject,
-            "intervention:read",
-            &intervention,
-            &Actor::user(),
-        )
-        .allowed
-}
 
 fn cancelled_only() -> Value {
     json!({ "op": "eq", "left": { "attr": "resource.attributes.status" }, "right": { "value": "cancelled" } })
