@@ -533,3 +533,32 @@ elle est remplacée par une nouvelle entrée qui la référence (« remplace ADR
     ne la reconstruit qu'au changement de configuration suivant ou au redémarrage ;
   - restent à faire : OAuth des serveurs MCP, test avant enregistrement, mandataire
     sortant configurable, descriptions remplaçables par l'administrateur.
+
+## ADR-026 — Jeton MCP : alphabet RFC 6750 et graphies masquées (complète ADR-025)
+
+- **Date** : 2026-10-19 · **Statut** : acceptée
+- **Contexte** : ADR-025 masque le jeton d'un serveur MCP dans tout ce que le serveur
+  renvoie, mais seulement écrit tel quel. Or un serveur peut recopier l'en-tête
+  `Authorization` dans un corps JSON où un encodeur réécrit certains caractères
+  (`\/` en PHP, `+` avec System.Text.Json) : le jeton passait alors presque en
+  clair vers la dernière erreur, les journaux et le contexte du modèle. Un jeton peut
+  aussi contenir `"` ou `\`, que JSON échappe toujours. Enfin, un serveur qui renvoie
+  des pages vides sans fin faisait tourner la lecture des outils jusqu'au délai.
+- **Décision** :
+  - **alphabet** : un jeton suit le `b64token` de la RFC 6750 (lettres sans accent,
+    chiffres, `- . _ ~ + /`, puis éventuellement des `=`). La règle
+    (`connectors::mcp::token_problem`) vaut à l'enregistrement et à chaque démarrage :
+    un jeton enregistré avant elle et hors alphabet rend le connecteur indisponible,
+    avec le message « saisissez-le de nouveau » ;
+  - **graphies masquées** : le jeton est masqué tel quel, échappé en JSON (`\/`,
+    `\"`, `\\`, `\uXXXX` en majuscules ou minuscules) ou encodé dans une URL (`%XX`),
+    pour `/ + = " \`, chaque caractère écrit d'une même façon dans tout le jeton. Les
+    entités HTML, le double échappement et les graphies qui mêlent plusieurs formes
+    d'un même caractère ne sont pas couverts ;
+  - **lecture des outils** : 50 pages au plus, pages vides comprises, en plus de la
+    limite de 200 outils.
+- **Conséquences** :
+  - le masquage parcourt chaque texte une fois tant que le plus long segment du jeton
+    sans caractère échappé n'y figure pas, puis une fois par graphie (150 au plus pour
+    un jeton de l'alphabet) ;
+  - un jeton hors alphabet doit être saisi de nouveau.

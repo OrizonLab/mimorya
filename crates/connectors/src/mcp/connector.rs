@@ -21,6 +21,7 @@ use super::bridge::{McpClient, McpToolsetOptions, create_mcp_toolset};
 use super::failure::{TOO_SLOW, start_failed};
 use super::network::{http_client, url_problem};
 use super::redact::Redactor;
+use super::token::token_problem;
 use crate::types::{Connector, ConnectorCloser, ConnectorInfo, ConnectorRuntime, InstanceContext};
 
 /// No `Debug`: `env` may carry credentials of the MCP server.
@@ -124,6 +125,16 @@ async fn start(
             // Checked again here: the operator may have narrowed the policy.
             if let Some(problem) = url_problem(&url, context.network) {
                 bail!("{problem}");
+            }
+            // A token saved before the rule may hold what the masking cannot follow.
+            if context
+                .secret
+                .is_some_and(|token| token_problem(token).is_some())
+            {
+                bail!(
+                    "Le jeton enregistré n’a plus un format accepté (RFC 6750) : saisissez-le de \
+                     nouveau"
+                );
             }
             let mut config = StreamableHttpClientTransportConfig::with_uri(url);
             if let Some(token) = context.secret {

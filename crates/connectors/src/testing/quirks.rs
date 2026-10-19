@@ -40,8 +40,15 @@ pub enum Quirk {
     EchoesTokenInResults,
     /// A tool whose title, description and schema quote the token.
     EchoesTokenInDeclarations,
-    /// One tool per page, and always a next page.
+    /// Ten tools per page, and always a next page.
     EndlessPages,
+    /// Empty pages, and always a next page.
+    EndlessEmptyPages,
+    /// Answers each request after 300 ms.
+    SlowStart,
+    /// Every request is refused with a JSON error quoting the token escaped
+    /// (`\/` for `/`, `\u002B` for `+`), as some encoders write it.
+    EchoesEscapedTokenOnStart,
 }
 
 /// A server declaring the tools a quirk calls for; each answers "ok".
@@ -110,17 +117,23 @@ impl ServerHandler for DeclaredToolsServer {
                 tool.title = Some(format!("Débogage {quoted}"));
                 Ok(ListToolsResult::with_all_items(vec![tool]))
             }
-            Quirk::EndlessPages => {
+            Quirk::EndlessPages | Quirk::EndlessEmptyPages => {
                 let page: u64 = request
                     .and_then(|r| r.cursor)
                     .and_then(|c| c.parse().ok())
                     .unwrap_or(0);
-                let tool = Tool::new(
-                    format!("tool_{page}"),
-                    "Lit un élément.",
-                    Arc::new(JsonObject::new()),
-                );
-                let mut result = ListToolsResult::with_all_items(vec![tool]);
+                let per_page = if self.quirk == Quirk::EndlessPages {
+                    10
+                } else {
+                    0
+                };
+                let tools = (0..per_page)
+                    .map(|i| {
+                        let name = format!("tool_{page}_{i}");
+                        Tool::new(name, "Lit un élément.", Arc::new(JsonObject::new()))
+                    })
+                    .collect();
+                let mut result = ListToolsResult::with_all_items(tools);
                 result.next_cursor = Some((page + 1).to_string());
                 Ok(result)
             }
@@ -179,6 +192,20 @@ pub(super) async fn guarded(
                 "invalid credentials: {}",
                 given.unwrap_or_default()
             )))
+            .expect("response");
+    }
+    if quirk == Quirk::SlowStart {
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    }
+    if quirk == Quirk::EchoesEscapedTokenOnStart {
+        let escaped = given
+            .unwrap_or_default()
+            .replace('/', "\\/")
+            .replace('+', "\\u002B");
+        return Response::builder()
+            .status(StatusCode::BAD_REQUEST)
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(format!(r#"{{"message":"{escaped}"}}"#)))
             .expect("response");
     }
     next.run(Request::from_parts(parts, Body::from(body))).await

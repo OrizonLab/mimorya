@@ -69,9 +69,13 @@ async fn bounds_what_a_server_declares() {
     let url = serve_mcp_http(None, Quirk::TooManyTools).await;
     let message = failure(&url, None, PRIVATE).await;
     assert!(message.contains("plus de 200 outils"), "{message}");
+    // 200 tools at most across pages, 50 pages at most even if empty.
     let url = serve_mcp_http(None, Quirk::EndlessPages).await;
     let message = failure(&url, None, PRIVATE).await;
     assert!(message.contains("plus de 200 outils"), "{message}");
+    let url = serve_mcp_http(None, Quirk::EndlessEmptyPages).await;
+    let message = failure(&url, None, PRIVATE).await;
+    assert!(message.contains("plus de 50 pages"), "{message}");
     let url = serve_mcp_http(None, Quirk::HugeSchema).await;
     let message = failure(&url, None, PRIVATE).await;
     assert!(message.contains("dépasse 32 Kio"), "{message}");
@@ -92,6 +96,28 @@ async fn never_quotes_the_token_a_server_sends_back_at_start() {
     assert!(message.starts_with(NOT_MCP), "{message}");
     // No type name of the MCP library.
     assert!(!message.contains("rmcp::"), "{message}");
+}
+
+#[tokio::test]
+async fn never_quotes_the_token_a_server_sends_back_escaped() {
+    let token = "jeton/de+test0123456789==";
+    let url = serve_mcp_http(Some(token), Quirk::EchoesEscapedTokenOnStart).await;
+    let message = failure(&url, Some(token), PRIVATE).await;
+    assert!(
+        message.contains(&format!(r#""message":"Bearer {MASK}""#)),
+        "{message}"
+    );
+    assert!(!message.contains("0123456789"), "{message}");
+}
+
+#[tokio::test]
+async fn refuses_a_saved_token_the_masking_cannot_follow() {
+    // Saved before the RFC 6750 rule: a quote JSON would escape.
+    let token = "ancien\"jeton-0123";
+    let url = serve_mcp_http(Some(token), Quirk::None).await;
+    let message = failure(&url, Some(token), PRIVATE).await;
+    assert!(message.contains("saisissez-le de nouveau"), "{message}");
+    assert!(!message.contains(token), "{message}");
 }
 
 #[tokio::test]

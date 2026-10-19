@@ -58,13 +58,15 @@ pub fn call(name: &str, input: Value) -> ScriptedCall {
 pub struct ScriptedReply {
     pub text: String,
     pub tool_calls: Vec<ScriptedCall>,
+    /// 100 input and 20 output tokens when unset.
+    pub usage: Option<LlmUsage>,
 }
 
 impl ScriptedReply {
     pub fn text(text: impl Into<String>) -> Self {
         Self {
             text: text.into(),
-            tool_calls: Vec::new(),
+            ..Self::default()
         }
     }
 
@@ -72,7 +74,13 @@ impl ScriptedReply {
         Self {
             text: text.into(),
             tool_calls,
+            ..Self::default()
         }
+    }
+
+    pub fn with_usage(mut self, usage: LlmUsage) -> Self {
+        self.usage = Some(usage);
+        self
     }
 }
 
@@ -176,11 +184,11 @@ impl LlmProvider for ScriptedProvider {
                 StopReason::ToolUse
             },
             tool_calls,
-            usage: LlmUsage {
+            usage: reply.usage.unwrap_or(LlmUsage {
                 input_tokens: 100,
                 output_tokens: 20,
                 ..LlmUsage::default()
-            },
+            }),
             provider: "scripted".into(),
             model: "scripted-model".into(),
             native: None,

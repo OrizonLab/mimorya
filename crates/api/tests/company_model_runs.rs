@@ -5,8 +5,8 @@
 mod support;
 
 use axum::http::StatusCode;
-use mimorya_agent::llm::official_endpoint;
-use mimorya_agent::testing::ScriptedStep;
+use mimorya_agent::llm::{LlmUsage, official_endpoint};
+use mimorya_agent::testing::{ScriptedReply, ScriptedStep};
 use mimorya_api::services::llm::Resolution;
 use mimorya_core::demo::{tenant, user};
 use mimorya_db::testing::OTHER_TENANT_ID;
@@ -51,20 +51,29 @@ async fn a_company_provider_answers_with_its_own_key() {
     // The official endpoint, written out: never the server's ANTHROPIC_BASE_URL.
     assert_eq!(built.base_url.as_deref(), official_endpoint("anthropic"));
 
-    // The connection test goes to the same provider, and is counted.
-    api.company_model.push([ScriptedStep::text("OK")]);
+    // The connection test goes to the same provider, and is counted (cached
+    // input tokens once).
+    let cached = LlmUsage {
+        input_tokens: 40,
+        output_tokens: 2,
+        cache_read_tokens: 10,
+        cache_write_tokens: 5,
+    };
+    api.company_model.push([ScriptedStep::Fixed(
+        ScriptedReply::text("OK").with_usage(cached),
+    )]);
     let tested = paul.post("/admin/llm/test", json!({})).await;
     assert_eq!(tested.status, StatusCode::OK);
     assert_eq!(tested.json()["ok"], true);
     let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
-    let counted: i64 = sqlx::query_scalar(
-        "select count(*) from usage_records where run_id is null and user_id = $1",
+    let counted: Vec<i32> = sqlx::query_scalar(
+        "select input_tokens from usage_records where run_id is null and user_id = $1",
     )
     .bind(user::PAUL)
-    .fetch_one(&mut *tx)
+    .fetch_all(&mut *tx)
     .await
     .unwrap();
-    assert_eq!(counted, 1);
+    assert_eq!(counted, [55]);
     drop(tx);
 
     // Back to the platform.
