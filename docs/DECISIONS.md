@@ -1720,7 +1720,8 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - aucun texte que la plateforme encadre, résultat d'outil, compétence ou mémoire
     rappelée, ne peut ouvrir ni fermer l'une de ses enveloppes (`<donnees_outil>`,
     `<procedure_entreprise>`, `<contexte_memoire>`, `<connecteurs_indisponibles>`),
-    quelles que soient la casse et les espaces (`neutralise_envelopes`) : une mémoire
+    quelles que soient la casse, les espaces ou les caractères invisibles qui coupent
+    une balise (`neutralise_envelopes`) : une mémoire
     qu'écrit un détenteur de `memory:write` ne peut pas se faire passer pour une
     compétence ;
   - l'écran « Compétences » de l'administration liste les compétences, en écrit,
