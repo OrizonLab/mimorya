@@ -42,9 +42,14 @@ pub async fn grant_role(
     }
     // As stored now: an administrator may have just changed its permissions.
     let Some(role) = get_role(&mut tx, role_id).await? else {
-        return Err(DomainError::validation("Rôle inconnu").into());
+        return Err(DomainError::unknown("Rôle inconnu", "role", role_id).into());
     };
     let tree = current_tree(&mut tx).await?;
+    if let AssignmentScope::OrgUnit { org_unit_id, .. } = scope
+        && tree.get(org_unit_id).is_none()
+    {
+        return Err(DomainError::unknown("Unité inconnue", "org_unit", org_unit_id).into());
+    }
     if let Some(problem) = assignment_problem(&role.permissions, &scope, &tree) {
         return Err(DomainError::validation(problem).into());
     }

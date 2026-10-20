@@ -3,10 +3,13 @@
 //! needing a permission they do not hold on the whole company, one on a
 //! platform role… So are the changes aimed at a resource the route designates
 //! and answered as absent (ADR-047): it may be absent, or another company's,
-//! which the entry does not tell apart any more than the answer does.
-//! Layered on the administration routes; reads are not concerned. The reason
-//! is the answer's message, written by the platform: it never carries what
-//! the request sent.
+//! which the entry does not tell apart any more than the answer does. So are
+//! the changes that send in their body an identifier designating nothing the
+//! company has, answered as invalid (ADR-054): the entry keeps that
+//! identifier and what it was meant to designate, alike for an absent and a
+//! foreign one. Layered on the administration routes; reads are not
+//! concerned. The reason is the answer's message, written by the platform:
+//! besides the identifiers, it never carries what the request sent.
 
 use axum::RequestExt;
 use axum::extract::{MatchedPath, RawPathParams, Request, State};
@@ -17,6 +20,8 @@ use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use serde_json::json;
 use uuid::Uuid;
 
+use mimorya_core::UnknownReference;
+
 use crate::app::AppState;
 use crate::http::Refusal;
 use crate::plugins::RequestContext;
@@ -25,6 +30,8 @@ use crate::services::AuthIdentity;
 pub const REFUSED_ACTION: &str = "admin.refused";
 /// A change aimed at a resource answered as absent (ADR-047).
 pub const NOT_FOUND_ACTION: &str = "admin.not_found";
+/// A change sending an identifier that designates nothing (ADR-054).
+pub const UNKNOWN_REFERENCE_ACTION: &str = "admin.unknown_reference";
 
 /// A change attempted by a signed-in user, as the refusal's entry names it.
 struct Attempt {
@@ -65,18 +72,21 @@ pub async fn audit_refusals(
     };
     let response = next.run(request).await;
     let traced = match response.extensions().get::<Refusal>() {
-        Some(Refusal::Forbidden(reason)) => Some((REFUSED_ACTION, reason)),
+        Some(Refusal::Forbidden(reason)) => Some((REFUSED_ACTION, reason, None)),
         // Only the resource the route designates: the other answers of
         // absence (the company's own model, already the platform's) are no
         // attempt on someone else's resource.
         Some(Refusal::NotFound(reason)) if attempt.resource.is_some() => {
-            Some((NOT_FOUND_ACTION, reason))
+            Some((NOT_FOUND_ACTION, reason, None))
+        }
+        Some(Refusal::UnknownReference(reason, reference)) => {
+            Some((UNKNOWN_REFERENCE_ACTION, reason, Some(*reference)))
         }
         _ => None,
     };
-    if let Some((action, reason)) = traced {
+    if let Some((action, reason, reference)) = traced {
         // The answer stands whether or not its trace is written.
-        if let Err(error) = record(&state, attempt, action, reason).await {
+        if let Err(error) = record(&state, attempt, action, reason, reference).await {
             tracing::error!(
                 error = format!("{error:#}"),
                 action,
@@ -92,12 +102,17 @@ async fn record(
     attempt: Attempt,
     action: &str,
     reason: &str,
+    reference: Option<UnknownReference>,
 ) -> anyhow::Result<()> {
     let tenant_id = attempt.identity.tenant_id;
+    let mut metadata = json!({ "method": attempt.method.as_str(), "route": attempt.route });
+    if let Some(reference) = reference {
+        metadata["reference"] = json!({ "type": reference.resource_type, "id": reference.id });
+    }
     let mut entry = AuditEntry::new(tenant_id, "user", action, "denied")
         .by_user(attempt.identity.user_id)
         .reason(reason)
-        .metadata(json!({ "method": attempt.method.as_str(), "route": attempt.route }));
+        .metadata(metadata);
     if let Some((resource_type, id)) = attempt.resource {
         entry = entry.resource(resource_type, id);
     }
@@ -117,7 +132,8 @@ async fn record(
 /// refusals without resource and its absent resources untraced: a test
 /// reads the administration's router for that. An absence answered on such
 /// a route is taken as the path's resource: an unknown identifier sent in
-/// the body is answered as invalid, not as absent (ADR-047).
+/// the body is answered as invalid, not as absent (ADR-047), and traced as
+/// such (ADR-054).
 fn resource_of(route: &str, id: &str) -> Option<(&'static str, Uuid)> {
     let id = id.parse().ok()?;
     let collection = route.strip_prefix("/admin/")?.split('/').next()?;

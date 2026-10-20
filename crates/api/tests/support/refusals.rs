@@ -1,8 +1,11 @@
-//! What the audit says of refused administration changes (ADR-038) and of
-//! those aimed at a resource answered as absent (ADR-047), read with the
+//! What the audit says of refused administration changes (ADR-038), of
+//! those aimed at a resource answered as absent (ADR-047) and of those
+//! sending an identifier that designates nothing (ADR-054), read with the
 //! application role.
 
-use mimorya_api::plugins::refusal_audit::{NOT_FOUND_ACTION, REFUSED_ACTION};
+use mimorya_api::plugins::refusal_audit::{
+    NOT_FOUND_ACTION, REFUSED_ACTION, UNKNOWN_REFERENCE_ACTION,
+};
 use mimorya_core::demo::tenant;
 use serde_json::Value;
 use uuid::Uuid;
@@ -52,6 +55,11 @@ pub async fn refusals_since(api: &TestApi, since: i64) -> Vec<(Uuid, Refused)> {
 /// The changes on resources answered as absent audited after `since`.
 pub async fn not_found_since(api: &TestApi, since: i64) -> Vec<(Uuid, Refused)> {
     denied_since(api, NOT_FOUND_ACTION, since).await
+}
+
+/// The changes sending an unknown identifier audited after `since`.
+pub async fn unknown_references_since(api: &TestApi, since: i64) -> Vec<(Uuid, Refused)> {
+    denied_since(api, UNKNOWN_REFERENCE_ACTION, since).await
 }
 
 async fn denied_since(api: &TestApi, action: &str, since: i64) -> Vec<(Uuid, Refused)> {

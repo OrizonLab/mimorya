@@ -4,6 +4,7 @@
 
 use serde::Serialize;
 use serde_json::Value;
+use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -44,6 +45,16 @@ fn _listed(code: ErrorCode) {
     }
 }
 
+/// An identifier a request sent in its body that designates nothing the
+/// company has (absent, or another company's): never sent back, it lets the
+/// administration trace the attempt (ADR-054).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UnknownReference {
+    /// What the identifier was meant to designate (`role`, `org_unit`, `user`).
+    pub resource_type: &'static str,
+    pub id: Uuid,
+}
+
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
 #[error("{message}")]
 pub struct DomainError {
@@ -51,6 +62,8 @@ pub struct DomainError {
     /// Message shown to users (French).
     pub message: String,
     pub details: Option<Value>,
+    /// Set by `unknown`; not part of the answer. Boxed: errors stay small.
+    pub reference: Option<Box<UnknownReference>>,
 }
 
 impl DomainError {
@@ -59,6 +72,17 @@ impl DomainError {
             code,
             message: message.into(),
             details: None,
+            reference: None,
+        }
+    }
+
+    /// An identifier sent in the body that designates nothing the company
+    /// has: answered as an invalid request, like any other, the identifier
+    /// kept aside for the audit.
+    pub fn unknown(message: impl Into<String>, resource_type: &'static str, id: Uuid) -> Self {
+        Self {
+            reference: Some(Box::new(UnknownReference { resource_type, id })),
+            ..Self::validation(message)
         }
     }
 
