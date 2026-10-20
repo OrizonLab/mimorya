@@ -200,6 +200,12 @@ test('tool policies start again from each connection test', async ({ page }) => 
   // Disabled while testing, then by the reload's lock: it has lost the focus...
   await expect(testButton).toBeDisabled();
   await expect(testButton).not.toBeFocused();
+  // The rules shown during the lock: their checkboxes, drawn by the interface,
+  // are dimmed past 150 ms like the other controls.
+  const enabled = card.getByRole('checkbox', { name: /mcp_oute_search/ });
+  await expect(enabled).toBeDisabled();
+  await expect(enabled).toHaveCSS('appearance', 'none');
+  await expect(enabled).toHaveCSS('animation-name', 'locked-dim');
   connectors.release();
   await expect(card.getByLabel('Risque de mcp_oute_search')).toHaveValue('read');
   // ...and gets it back once the list has arrived.

@@ -1243,7 +1243,8 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     fasse pas clignoter l'écran. C'est une animation CSS (`app/globals.css`), qui vaut
     aussi pour un contrôle affiché pendant le verrou, et ne touche pas un contrôle
     désactivé pour une autre raison (son propre attribut `disabled`). Exception : une
-    case à cocher native prend aussitôt l'aspect désactivé du navigateur.
+    case à cocher native prend aussitôt l'aspect désactivé du navigateur (levée par
+    ADR-045).
 - **Conséquences** :
   - après une modification, l'écran est brièvement désactivé, le temps du rechargement,
     et le contrôle qui avait le focus le perd (rendu par ADR-043) ;
@@ -1327,7 +1328,7 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     la session (`/auth/me`, dont l'échec laissait un indicateur de chargement sans
     fin) ; le détail d'une conversation donne le message de l'échec ; la validation
     qu'attend un run, si elle n'a pu être chargée, montre l'échec et « Réessayer » au
-    lieu de « Chargement de la demande de validation… » ;
+    lieu de « Chargement de la demande de validation… ».
 - **Conséquences** :
   - un écran n'est jamais verrouillé plus de 30 s : passé ce délai, il montre l'échec
     et propose de réessayer ;
@@ -1346,3 +1347,23 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     sans ce qu'il vérifie (délai, liste donnée pour vide, session muette). Il fait
     aussi échouer le chargement de la validation qu'attend un run (second scénario du
     modèle scénarisé), puis la charge par « Réessayer ».
+
+## ADR-045 — Des cases à cocher dessinées par l'interface
+
+- **Date** : 2026-10-20 · **Statut** : acceptée
+- **Contexte** : ADR-042 retarde de 150 ms l'aspect désactivé des contrôles verrouillés
+  par un rechargement, pour qu'un rechargement rapide ne fasse pas clignoter l'écran.
+  Une case à cocher native y échappait : le navigateur la grise aussitôt, ce qu'aucune
+  règle CSS ne retarde.
+- **Décision** :
+  - `Checkbox` (`apps/web/components/ui/checkbox.tsx`) garde un vrai
+    `<input type="checkbox">` (étiquette, clavier, formulaire), sans l'apparence du
+    navigateur (`appearance: none`), et dessine la coche par-dessus ; son aspect
+    désactivé est une opacité, que la règle d'ADR-042 retarde ;
+  - toutes les cases à cocher de l'interface l'utilisent (rôles, politiques, règles
+    des outils d'un serveur MCP).
+- **Conséquences** :
+  - plus aucune exception au délai d'ADR-042 parmi les contrôles de l'interface ;
+  - une case à cocher nouvelle passe par `Checkbox` ;
+  - test : `apps/web/e2e/reloads.spec.ts` vérifie, pendant le verrou, qu'une case des
+    règles d'outils est désactivée, sans apparence native, et animée par le verrou.

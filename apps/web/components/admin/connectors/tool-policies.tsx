@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Button, ErrorNote, Select } from '@/components/ui';
+import { Button, Checkbox, ErrorNote, Select } from '@/components/ui';
 import {
   api,
   useAction,
@@ -68,9 +68,8 @@ export function ToolPolicies({
       {Object.values(policies).map((tool) => (
         <div key={tool.name} className="flex flex-col gap-2 rounded-lg bg-surface-2 p-3 text-sm">
           <label className="flex items-start gap-2">
-            <input
-              type="checkbox"
-              className="mt-1"
+            <Checkbox
+              className="mt-0.5"
               checked={tool.enabled}
               onChange={(e) => change(tool.name, { enabled: e.target.checked })}
             />
@@ -96,12 +95,11 @@ export function ToolPolicies({
             <fieldset className="flex flex-wrap gap-x-4 gap-y-1">
               <legend className="sr-only">Permissions requises pour {tool.name}</legend>
               <label className="flex items-center gap-1 text-muted">
-                <input type="checkbox" checked disabled /> Utiliser les connecteurs
+                <Checkbox checked disabled readOnly /> Utiliser les connecteurs
               </label>
               {choices.map((p) => (
                 <label key={p.permission} className="flex items-center gap-1">
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={tool.permissions.includes(p.permission)}
                     onChange={() => toggle(tool.name, p.permission)}
                   />

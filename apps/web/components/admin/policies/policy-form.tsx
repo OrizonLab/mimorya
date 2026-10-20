@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
-import { Button, ErrorNote, Field, Input } from '@/components/ui';
+import { Button, Checkbox, ErrorNote, Field, Input } from '@/components/ui';
 import {
   api,
   useAction,
@@ -86,9 +86,8 @@ export function PolicyForm({
               </legend>
               {wholeAllowed && (
                 <label className="flex items-start gap-2">
-                  <input
-                    type="checkbox"
-                    className="mt-1"
+                  <Checkbox
+                    className="mt-0.5"
                     checked={restricted.has(whole)}
                     onChange={() => toggle(whole)}
                   />
@@ -97,9 +96,8 @@ export function PolicyForm({
               )}
               {permissions.map((p) => (
                 <label key={p.permission} className="flex items-start gap-2">
-                  <input
-                    type="checkbox"
-                    className="mt-1"
+                  <Checkbox
+                    className="mt-0.5"
                     checked={restricted.has(p.permission)}
                     onChange={() => toggle(p.permission)}
                   />

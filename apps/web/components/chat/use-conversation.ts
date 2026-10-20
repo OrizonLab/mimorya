@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   api,
   ApiError,
@@ -43,14 +43,19 @@ export function useConversation(conversationId: string | null) {
       .catch((e: unknown) => setListError(loadFailure(e)));
   }, []);
 
-  // A failure is kept apart: the run waits on these, which can be loaded again.
+  // A failure is kept apart: the run waits on these, which can be loaded
+  // again. Only the latest load is shown (a conversation opened while its
+  // run waits loads them twice: from the detail and from the replayed event).
+  const approvalsLoad = useRef(0);
   const loadApprovals = useCallback(async (runId: string) => {
+    const load = ++approvalsLoad.current;
     setApprovalsError(null);
     try {
       const r = await api.get<ApprovalList>('/approvals');
-      setApprovals(r.approvals.filter((a) => a.runId === runId));
+      if (load === approvalsLoad.current)
+        setApprovals(r.approvals.filter((a) => a.runId === runId));
     } catch (e) {
-      setApprovalsError(loadFailure(e));
+      if (load === approvalsLoad.current) setApprovalsError(loadFailure(e));
     }
   }, []);
 
