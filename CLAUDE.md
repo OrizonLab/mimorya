@@ -33,7 +33,8 @@ Repères à l'intérieur des crates :
   `db/src/repositories/` (un fichier par entité), `db/src/seed/` (organisation,
   connecteurs, mémoires, compétences de démonstration), `db/src/testing.rs`.
 - `agent/src/llm/<fournisseur>/`, `agent/src/runtime/` (boucle, appels modèle, appels
-  d'outils, revue de réponse, ports), `agent/src/tools/` (registre, PEP,
+  d'outils, revue de réponse, reprise après un arrêt du service, ports),
+  `agent/src/tools/` (registre, PEP,
   `platform/`), `agent/src/testing/` (fonctionnalité `testing`).
 - `connectors/src/demo_interventions/` (données, planning, accès, `tools/` un fichier
   par outil), `connectors/src/mcp/`, `connectors/src/bin/mcp_demo_docs.rs`.
@@ -46,7 +47,7 @@ Repères à l'intérieur des crates :
   `api/src/services/admin/` (comptes, organisation, habilitations, compétences, sous
   verrou par entreprise), `api/src/services/account.rs` (son propre compte),
   `api/src/services/runs/` (tour de conversation, décisions, contexte, exécution,
-  ports PostgreSQL, résultat), `api/src/services/llm.rs` (fournisseur de modèle de
+  ports PostgreSQL, résultat, reprise au démarrage, ADR-053), `api/src/services/llm.rs` (fournisseur de modèle de
   chaque entreprise), `api/src/services/invitations/` (liens d'invitation, ADR-027),
   `api/src/services/password_reset/` (mot de passe oublié, ADR-028),
   `api/src/services/provisioning/` et `api/src/bin/admin/` (commandes d'exploitation :

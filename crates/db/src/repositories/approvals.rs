@@ -105,6 +105,18 @@ pub async fn list_approvals_for_run(
     .await
 }
 
+/// The run's requests still waiting for a decision are cancelled: they
+/// belonged to a step a stop of the service lost (ADR-053).
+pub async fn cancel_pending_approvals(conn: &mut PgConnection, run_id: Uuid) -> sqlx::Result<u64> {
+    let cancelled = sqlx::query(
+        "update approvals set status = 'cancelled' where run_id = $1 and status = 'pending'",
+    )
+    .bind(run_id)
+    .execute(conn)
+    .await?;
+    Ok(cancelled.rows_affected())
+}
+
 pub async fn expire_approval(conn: &mut PgConnection, id: Uuid) -> sqlx::Result<()> {
     sqlx::query("update approvals set status = 'expired' where id = $1 and status = 'pending'")
         .bind(id)

@@ -1743,3 +1743,46 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     non-régression avant activation, compétences propres à une unité (`org_unit_id`),
     import d'un `SKILL.md` avec son en-tête ; le détail d'une compétence renvoie le
     contenu de toutes ses versions, à paginer si elles deviennent nombreuses.
+
+## ADR-053 — Les runs interrompus par un arrêt du service sont repris au démarrage (complète ADR-016)
+
+- **Date** : 2026-10-20 · **Statut** : acceptée
+- **Contexte** : un run en cours quand le service s'arrête (redéploiement, arrêt brutal,
+  plantage) restait `running` jusqu'à ce que le balayage le passe en échec 15 minutes
+  plus tard (ADR-016) : la demande de l'utilisateur était perdue, même lorsque rien
+  n'empêchait de la poursuivre. L'état d'un run n'était enregistré qu'en fin de tour
+  d'outils, jamais avant le premier appel au modèle, et rien n'indiquait qu'une action
+  avait commencé avant d'en avoir le résultat.
+- **Décision** :
+  - au démarrage, avant de servir, l'API reprend chaque run encore `running`, dans sa
+    propre entreprise (`system_interrupted_runs`, fonction `SECURITY DEFINER` qui ne
+    donne que l'entreprise et l'identifiant). Une seule instance exécute les runs
+    (ADR-016) : à ce moment, chacun d'eux a été interrompu. Le balayage périodique ne
+    commence qu'une minute après le démarrage et ne concerne plus que les runs bloqués
+    d'un processus vivant ;
+  - un run est enregistré dès son démarrage, avant le premier appel au modèle, puis à
+    chaque étape comme avant. Il reprend à sa dernière étape enregistrée ; l'appel au
+    modèle et les appels d'outils lancés depuis sont perdus ;
+  - le moteur ne le reprend que si rien d'autre qu'une lecture n'a été lancé depuis
+    cette étape : les appels autorisés commencés depuis sont lus dans le journal du run
+    (événements `tool_call`), et chacun doit être un outil encore présent de risque
+    `read`. Une action qui a pu changer quelque chose (écriture, brouillon, envoi…) n'est
+    jamais relancée à l'aveugle : le run échoue en nommant l'action, dont l'effet est à
+    vérifier. Il échoue aussi s'il était en train d'exécuter des actions validées (leur
+    effet n'est pas connu), s'il a déjà été repris deux fois (`resumptions`, compté dans
+    son état), s'il n'avait encore aucune étape enregistrée, ou si son utilisateur ne
+    peut plus agir. Ensuite, chaque étape relit les droits comme avant (ADR-035) ;
+  - les demandes de validation encore en attente sont annulées : elles appartenaient à
+    l'étape perdue, et le run les redemande s'il en a besoin ;
+  - une reprise est annoncée (événement `run_resumed`, qui liste les lectures
+    interrompues) ; une fin est enregistrée et annoncée comme celle d'un run qui échoue
+    (statut, message dans la conversation, audit, `run_finished`).
+- **Conséquences** :
+  - un redéploiement ne coûte plus que l'étape en cours d'un run qui ne faisait que lire,
+    plus le délai du redémarrage ; l'appel au modèle perdu est facturé (enregistré dans
+    la consommation) mais absent du total du run ;
+  - le suivi en direct n'affiche pas encore la reprise : l'interface ignore
+    `run_resumed`, et une étape interrompue reste sans résultat dans le fil (à faire) ;
+  - restent à faire (phase 2, ADR-012) : plusieurs instances, avec un bail par run et un
+    worker séparé ; la reprise d'une étape dont les actions ont un identifiant
+    d'idempotence.

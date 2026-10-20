@@ -74,6 +74,13 @@ pub enum RunEvent {
         /// `None` when the model is not priced.
         cost_micros: Option<i64>,
     },
+    /// Taken up again from its last saved step after the service stopped
+    /// (ADR-053).
+    RunResumed {
+        /// Read-only actions under way when it stopped, whose results were
+        /// lost: the model may run them again.
+        interrupted: Vec<String>,
+    },
     RunFinished {
         /// `completed`, `awaiting_approval`, `failed` or `cancelled`.
         status: String,

@@ -28,10 +28,10 @@ pub struct DecisionResult {
 }
 
 pub struct RunService {
-    db: Database,
-    access: Arc<AccessService>,
-    executor: Arc<RunExecutor>,
-    tasks: Arc<BackgroundTasks>,
+    pub(super) db: Database,
+    pub(super) access: Arc<AccessService>,
+    pub(super) executor: Arc<RunExecutor>,
+    pub(super) tasks: Arc<BackgroundTasks>,
 }
 
 impl RunService {

@@ -1,8 +1,9 @@
 //! Periodic maintenance, at startup and then every minute: runs without
-//! progress for a while belong to a crashed or stuck process and are marked
-//! as failed, their `run_finished` event recorded and broadcast to the
-//! clients following them; expired password reset links are deleted
-//! (ADR-028). A stuck process that wakes up later finds its run finished: it
+//! progress for a while belong to a stuck process and are marked as failed,
+//! their `run_finished` event recorded and broadcast to the clients
+//! following them (from the second pass on: runs a stop of the service left
+//! running are taken up at startup first, ADR-053); expired password reset
+//! links are deleted (ADR-028). A stuck process that wakes up later finds its run finished: it
 //! announces nothing more (`outcome::record_crash`), though a step it was
 //! taking may still append an event after that end, which clients ignore
 //! (they stop at the first `run_finished`).
@@ -26,12 +27,15 @@ const SWEEP_INTERVAL: Duration = Duration::from_secs(60);
 pub fn spawn_maintenance(db: Database, bus: Arc<RunEventBus>) -> JoinHandle<()> {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(SWEEP_INTERVAL);
+        let mut at_startup = true;
         loop {
             interval.tick().await;
-            match sweep_stale_runs(&db, &bus, STALE_AFTER).await {
-                Ok(0) => {}
-                Ok(failed) => tracing::warn!(failed, "Stale runs marked as failed"),
-                Err(error) => tracing::warn!(error = %error, "Stale run sweep failed"),
+            if !std::mem::take(&mut at_startup) {
+                match sweep_stale_runs(&db, &bus, STALE_AFTER).await {
+                    Ok(0) => {}
+                    Ok(failed) => tracing::warn!(failed, "Stale runs marked as failed"),
+                    Err(error) => tracing::warn!(error = %error, "Stale run sweep failed"),
+                }
             }
             if let Err(error) = purge_expired_password_resets(db.pool()).await {
                 tracing::warn!(error = %error, "Expired reset link purge failed");

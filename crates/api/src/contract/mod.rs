@@ -33,8 +33,8 @@ pub use memory::{
 };
 pub use run_stream::{
     ApprovalRequestedEvent, ApprovalResolvedEvent, AssistantDelta, AssistantMessage,
-    ConnectorsUnavailable, RunFinished, RunStarted, RunStreamEvent, ToolCallEvent, ToolDecision,
-    ToolResultEvent, ToolRisk, UsageEvent, VerificationEvent,
+    ConnectorsUnavailable, RunFinished, RunResumed, RunStarted, RunStreamEvent, ToolCallEvent,
+    ToolDecision, ToolResultEvent, ToolRisk, UsageEvent, VerificationEvent,
 };
 pub use runs::{
     RunBudget, RunDetail, RunEventRecord, RunList, RunListItem, RunRef, RunStatus, RunUsage,

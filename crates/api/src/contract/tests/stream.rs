@@ -62,6 +62,9 @@ fn every_engine_event() -> Vec<RunEvent> {
             risk,
         });
     }
+    events.push(RunEvent::RunResumed {
+        interrupted: vec!["interventions_search".into()],
+    });
     for status in DbRunStatus::ALL {
         events.push(RunEvent::RunFinished {
             status: status.as_str().into(),
@@ -84,6 +87,7 @@ fn _covered(event: &RunEvent) {
         | RunEvent::ApprovalResolved { .. }
         | RunEvent::Verification { .. }
         | RunEvent::Usage { .. }
+        | RunEvent::RunResumed { .. }
         | RunEvent::RunFinished { .. } => {}
     }
 }

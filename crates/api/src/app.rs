@@ -171,6 +171,13 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
 }
 
 impl App {
+    /// Takes up again the runs a stop of the service left running (ADR-053);
+    /// how many there were. Once, at startup, before serving: the periodic
+    /// sweep of stuck runs only starts a minute later.
+    pub async fn recover_interrupted_runs(&self) -> anyhow::Result<usize> {
+        self.services.runs.recover_interrupted().await
+    }
+
     /// Ends event streams so that open connections can close.
     pub fn begin_shutdown(&self) {
         self.services.shutdown.send_replace(true);

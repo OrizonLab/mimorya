@@ -53,6 +53,23 @@ pub async fn run_end_recorded(conn: &mut PgConnection, run_id: Uuid) -> sqlx::Re
     .await
 }
 
+/// The tools a run started to run (calls allowed, in order) since `since`:
+/// those a stop of the service may have left half done (ADR-053).
+pub async fn tool_calls_since(
+    conn: &mut PgConnection,
+    run_id: Uuid,
+    since: DateTime<Utc>,
+) -> sqlx::Result<Vec<String>> {
+    sqlx::query_scalar(
+        "select data->>'toolName' from run_events where run_id = $1 and type = 'tool_call' \
+         and data->>'decision' = 'allow' and created_at >= $2 order by seq",
+    )
+    .bind(run_id)
+    .bind(since)
+    .fetch_all(conn)
+    .await
+}
+
 pub async fn list_run_events(
     conn: &mut PgConnection,
     run_id: Uuid,

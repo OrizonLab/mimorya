@@ -53,6 +53,12 @@ pub enum ExecutionMode {
         state: serde_json::Value,
         decisions: ApprovalDecisions,
     },
+    /// Taken up again after a stop of the service (ADR-053).
+    Recover {
+        state: serde_json::Value,
+        /// Tools the run started to run since that checkpoint.
+        interrupted: Vec<String>,
+    },
 }
 
 impl RunExecutor {
@@ -123,6 +129,10 @@ impl RunExecutor {
             ExecutionMode::Resume { state, decisions } => {
                 let checkpoint: RunCheckpoint = serde_json::from_value(state)?;
                 runtime.resume(checkpoint, &decisions).await?;
+            }
+            ExecutionMode::Recover { state, interrupted } => {
+                let checkpoint: RunCheckpoint = serde_json::from_value(state)?;
+                runtime.recover(checkpoint, interrupted).await?;
             }
         }
         Ok(())

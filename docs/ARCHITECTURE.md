@@ -158,6 +158,9 @@ sequenceDiagram
 2. Un worker le réserve (`FOR UPDATE SKIP LOCKED`, bail `lease_expires_at`).
 3. Chaque étape est **persistée** (messages, événements, état) : en cas d'arrêt, un
    autre worker reprend au dernier point de contrôle une fois le bail expiré.
+   Aujourd'hui (une seule instance, ADR-016), c'est l'API qui reprend au démarrage les
+   runs qu'un arrêt a interrompus, quand rien d'autre qu'une lecture n'était en cours
+   (ADR-053).
 4. Une validation humaine met le run en `awaiting_approval` ; la décision le remet en
    file.
 5. Les tâches récurrentes (phase 2) créent des runs selon une expression cron.

@@ -22,6 +22,14 @@ async fn main() -> anyhow::Result<()> {
             "No platform LLM provider (LLM_PROVIDER): only companies with their own provider can converse."
         );
     }
+    match app.recover_interrupted_runs().await {
+        Ok(0) => {}
+        Ok(runs) => tracing::warn!(runs, "Runs interrupted by a stop of the service taken up"),
+        Err(error) => tracing::error!(
+            error = format!("{error:#}"),
+            "Interrupted runs not taken up"
+        ),
+    }
     let listener = TcpListener::bind(&address).await?;
     tracing::info!(address, "Listening");
 
