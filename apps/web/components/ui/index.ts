@@ -5,7 +5,7 @@ export { Checkbox } from './checkbox';
 export { cx } from './cx';
 export { Failure } from './failure';
 export { EmptyState, ErrorNote, Spinner } from './feedback';
-export { DISABLED_LOOK, Field, Input, Select } from './field';
+export { DISABLED_LOOK, Field, Input, Select, Textarea } from './field';
 export { Loaded } from './loaded';
 export { PageHeader } from './page-header';
 export { Cell, DataTable } from './table';

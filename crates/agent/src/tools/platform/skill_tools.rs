@@ -16,6 +16,10 @@ use crate::runtime::ports::SkillStore;
 static SKILL_NAME_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[a-z0-9]+(-[a-z0-9]+)*$").expect("valid regex"));
 
+/// The tool that loads a skill: its result reaches the model as a procedure
+/// (ADR-052).
+pub const SKILL_READ: &str = "skill_read";
+
 pub struct SkillRead {
     pub skills: Arc<dyn SkillStore>,
 }
@@ -34,7 +38,7 @@ impl TypedTool for SkillRead {
 
     fn info(&self) -> ToolInfo {
         ToolInfo::new(
-            "skill_read",
+            SKILL_READ,
             "Lecture d’une compétence",
             "Charge le contenu complet d’une compétence (procédure validée par l’entreprise) listée dans les consignes. À utiliser avant d’exécuter une tâche couverte par une compétence.",
             ToolRisk::Read,

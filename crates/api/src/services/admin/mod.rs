@@ -1,5 +1,5 @@
 //! Workspace administration: accounts, organisation, custom roles, role
-//! assignments, access policies and the company's model provider.
+//! assignments, access policies, skills and the company's model provider.
 //! Every operation requires its permission on the whole company, refuses to
 //! act on the administrator's own account, runs in one transaction with its
 //! audit entry, and refreshes the cached authorization data of the tenant.
@@ -21,6 +21,7 @@ mod org_units;
 mod policies;
 mod reset_links;
 mod roles;
+mod skills;
 mod users;
 
 pub use assignments::{grant_role, revoke_role};
@@ -38,6 +39,10 @@ pub use org_units::{NewUnitInput, UnitChanges, create_unit, delete_unit, update_
 pub use policies::{PolicyChanges, PolicyInput, create_policy, delete_policy, update_policy};
 pub use reset_links::send_reset_link;
 pub use roles::{RoleChanges, RoleInput, create_role, delete_role, update_role};
+pub use skills::{
+    SkillInput, activate_skill, add_skill_version, create_skill, delete_skill, retire_skill,
+    update_skill,
+};
 pub use users::{NewUserInput, UserChanges, create_user, reset_password, update_user};
 
 use mimorya_core::DomainError;

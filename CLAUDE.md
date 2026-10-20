@@ -27,7 +27,8 @@ l'unique paquet Node (ADR-018).
 Repères à l'intérieur des crates :
 
 - `core/src/authz/` (types, moteur, conditions ABAC, organigramme), `core/src/tools/`
-  (contrat d'outil, outils typés), `core/src/demo/` (entreprise fictive par thème).
+  (contrat d'outil, outils typés), `core/src/skill_rules.rs` (ce qu'une compétence peut
+  contenir, ADR-052), `core/src/demo/` (entreprise fictive par thème).
 - `db/migrations/` (SQL numéroté, source de vérité du schéma),
   `db/src/repositories/` (un fichier par entité), `db/src/seed/` (organisation,
   connecteurs, mémoires, compétences de démonstration), `db/src/testing.rs`.
@@ -42,8 +43,8 @@ Repères à l'intérieur des crates :
   `api/src/routes/` (un module par ressource, `admin/`), `api/src/contract/` (réponses
   et corps de requêtes typés, un fichier par ressource, dont sont générés les types
   TypeScript, ADR-036, ADR-039),
-  `api/src/services/admin/` (comptes, organisation, habilitations, sous verrou par
-  entreprise), `api/src/services/account.rs` (son propre compte),
+  `api/src/services/admin/` (comptes, organisation, habilitations, compétences, sous
+  verrou par entreprise), `api/src/services/account.rs` (son propre compte),
   `api/src/services/runs/` (tour de conversation, décisions, contexte, exécution,
   ports PostgreSQL, résultat), `api/src/services/llm.rs` (fournisseur de modèle de
   chaque entreprise), `api/src/services/invitations/` (liens d'invitation, ADR-027),

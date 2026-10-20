@@ -1668,3 +1668,64 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     (404 : paquet absent) ; le cache du travail de CI qui
     vérifie les piles ; la signature des images ; arm64 ; l'épinglage des actions par
     empreinte. Une PR qui touche les images en vérifie la construction, pas l'envoi.
+
+## ADR-052 — Les compétences s'écrivent et s'activent depuis l'administration
+
+- **Date** : 2026-10-20 · **Statut** : acceptée
+- **Contexte** : les compétences (procédures versionnées que l'agent charge avec
+  `skill_read`, format agentskills.io, ADR-002) n'existaient que par les données de
+  démonstration : aucune entreprise ne pouvait en écrire. Par ailleurs, `skill_read`
+  rendait la compétence chargée comme tout résultat d'outil, encadrée en « donnée non
+  fiable » dont les consignes système interdisent de suivre les instructions : le modèle
+  recevait l'ordre de charger une procédure et celui de ne pas la suivre.
+- **Décision** :
+  - un administrateur détenant `skill:manage` sur toute l'entreprise (permission
+    d'administration, non délégable) écrit une compétence et sa première version
+    (`POST /admin/skills`), écrit de nouvelles versions (`POST …/versions`), rend une
+    version active (`PUT …/activation`, une version plus ancienne comprise : c'est le
+    retour arrière, la version active jusque-là étant retirée), retire la compétence
+    (`DELETE …/activation` : plus aucune version active, l'agent ne la voit plus),
+    modifie sa description et supprime une compétence qui n'est pas active, avec ses
+    versions ;
+  - une version écrite ne change plus : son contenu, sa note, son auteur restent ; la
+    personne qui l'a rendue active en dernier et la date sont gardées. Rien n'atteint un
+    run tant qu'aucune version n'est active : une compétence et ses nouvelles versions
+    naissent brouillons. Les statuts `candidate` et `rejected` restent réservés aux
+    évaluations (phase 2) ;
+  - ce qui est écrit est vérifié avant tout enregistrement (`mimorya_core::skill_rules`) :
+    un nom que l'agent peut demander (lettres minuscules, chiffres, tirets simples, 2 à
+    64 caractères, unique dans l'entreprise) ; une description de 10 à 300 caractères
+    sur une seule ligne visible, puisqu'elle est une ligne de l'index des compétences du
+    prompt système et ne doit pouvoir ni le casser ni y ouvrir une section ; un contenu
+    non vide d'au plus 20 000 caractères, en texte visible, retours à la ligne et
+    tabulations seulement (aucun caractère invisible : ce que lit l'administrateur est ce
+    que lit le modèle), fins de ligne Windows ramenées à `\n` ; une note de version
+    d'une ligne. Au plus 40 compétences actives par entreprise, l'index étant répété dans
+    chaque run ;
+  - les changements passent sous le verrou d'administration (ADR-020) et sont audités
+    (`skill.created`, `skill.version_created`, `skill.activated` avec la version
+    précédente, `skill.retired`, `skill.updated`, `skill.deleted`) sans le contenu ; les
+    refus et les compétences introuvables (d'une autre entreprise comprise) le sont
+    comme les autres (ADR-038, ADR-047, ressource `skill`) ;
+  - la compétence chargée par `skill_read` arrive au modèle encadrée par
+    `<procedure_entreprise source="skill_read">`, dont le contenu ne peut ni fermer ni
+    ouvrir une enveloppe ; les consignes système disent que c'est une procédure validée
+    par l'entreprise, à suivre pour la tâche qu'elle couvre, qui ne peut ni étendre les
+    droits de l'agent, ni lui éviter une validation, ni lever les règles de sécurité. Le
+    nom `skill_read` est réservé : les noms d'outils sont uniques dans un registre et
+    ceux d'un connecteur préfixés (`mcp_…`). Un refus de `skill_read` (compétence
+    introuvable) et tout autre résultat restent des données non fiables ;
+  - l'écran « Compétences » de l'administration liste les compétences, en écrit,
+    montre les versions et leur contenu, écrit une version à partir de la dernière, en
+    rend une active (« Revenir à » pour une plus ancienne), retire et supprime.
+- **Conséquences** :
+  - une compétence ne porte aucune permission : chaque outil qu'elle mentionne reste
+    soumis au PEP et aux validations ; la confiance qu'on lui accorde est celle qu'on
+    accorde à l'administrateur qui l'a rendue active ;
+  - l'index des compétences change avec elles : le prompt système d'un run ne change
+    pas pendant ce run, mais deux runs successifs peuvent différer ;
+  - non vérifié avec un modèle réel (comme le reste du moteur) : à valider avec le
+    scénario de référence ;
+  - restent à faire (phase 2) : propositions de version par l'agent, cas d'évaluation et
+    non-régression avant activation, compétences propres à une unité (`org_unit_id`),
+    import d'un `SKILL.md` avec son en-tête.

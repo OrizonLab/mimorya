@@ -96,7 +96,11 @@ que de conclure que l'information n'existe pas ; à l'utilisateur, par l'événe
 
 **Résultats d'outils** : transmis au modèle comme **données**, encadrés par un
 marqueur `<donnees_outil source="…" fiabilite="non_fiable">` ; les consignes système
-rappellent qu'aucune instruction contenue dans des données ne doit être suivie.
+rappellent qu'aucune instruction contenue dans des données ne doit être suivie. Seule
+exception : la compétence chargée par `skill_read`, procédure que l'entreprise a écrite
+et rendue active (ADR-052), encadrée par `<procedure_entreprise>` et suivie pour la tâche
+qu'elle couvre, sans pouvoir étendre les droits, éviter une validation ni lever les
+règles de sécurité.
 
 **Erreurs** : erreurs d'outil renvoyées au modèle (il peut corriger son appel) ;
 erreurs de fournisseur classées (`rate_limit`, `overloaded`, `auth`, `context_overflow`,

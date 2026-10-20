@@ -6,17 +6,17 @@
 
 mod activity;
 mod assignments;
-mod catalog;
 mod connectors;
 mod llm;
 mod organization;
 mod policies;
 mod roles;
+mod skills;
 mod users;
 
 use axum::Router;
 use axum::middleware::from_fn_with_state;
-use axum::routing::{delete, get, patch, post};
+use axum::routing::{delete, get, patch, post, put};
 
 use crate::app::AppState;
 use crate::plugins::refusal_audit::audit_refusals;
@@ -64,7 +64,18 @@ pub fn routes(state: &AppState) -> Router<AppState> {
         )
         .route("/admin/connectors/trial", post(connectors::trial))
         .route("/admin/connectors/{id}/test", post(connectors::test))
-        .route("/admin/skills", get(catalog::skills))
+        .route("/admin/skills", get(skills::list).post(skills::create))
+        .route(
+            "/admin/skills/{id}",
+            get(skills::show)
+                .patch(skills::update)
+                .delete(skills::remove),
+        )
+        .route("/admin/skills/{id}/versions", post(skills::add_version))
+        .route(
+            "/admin/skills/{id}/activation",
+            put(skills::activate).delete(skills::retire),
+        )
         .route("/admin/audit", get(activity::audit))
         .route("/admin/usage", get(activity::usage))
         // Last: a route layer only wraps the routes declared before it.

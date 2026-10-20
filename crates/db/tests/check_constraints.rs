@@ -15,7 +15,7 @@ use mimorya_db::repositories::audit::{AUDIT_ACTORS, AUDIT_OUTCOMES};
 use mimorya_db::repositories::connectors::CONNECTOR_STATUSES;
 use mimorya_db::repositories::conversations::MESSAGE_ROLES;
 use mimorya_db::repositories::runs::RunStatus;
-use mimorya_db::repositories::skills::SKILL_STATUSES;
+use mimorya_db::repositories::skills::{SKILL_STATUSES, SKILL_VERSION_STATUSES};
 use mimorya_db::repositories::tool_invocations::TOOL_DECISIONS;
 use mimorya_db::repositories::usage::USAGE_KINDS;
 use mimorya_db::repositories::users::USER_STATUSES;
@@ -54,6 +54,7 @@ async fn constrained_columns_allow_exactly_the_platform_s_values() {
             owned(Sensitivity::ALL.map(Sensitivity::as_str)),
         ),
         ("skills_status_check", owned(SKILL_STATUSES)),
+        ("skill_versions_status_check", owned(SKILL_VERSION_STATUSES)),
         (
             "memory_items_scope_check",
             owned(MemoryScope::ALL.map(MemoryScope::as_str)),

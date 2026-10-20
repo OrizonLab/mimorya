@@ -128,6 +128,7 @@ fn resource_of(route: &str, id: &str) -> Option<(&'static str, Uuid)> {
         "roles" => "role",
         "policies" => "policy",
         "connectors" => "connector",
+        "skills" => "skill",
         _ => return None,
     };
     Some((resource_type, id))
@@ -154,6 +155,9 @@ mod tests {
             ("/admin/policies/{id}", "policy"),
             ("/admin/connectors/{id}", "connector"),
             ("/admin/connectors/{id}/test", "connector"),
+            ("/admin/skills/{id}", "skill"),
+            ("/admin/skills/{id}/versions", "skill"),
+            ("/admin/skills/{id}/activation", "skill"),
         ] {
             assert_eq!(resource_of(route, ID), Some((resource_type, id)), "{route}");
         }
@@ -167,7 +171,7 @@ mod tests {
             .split('"')
             .filter(|s| s.starts_with("/admin/") && s.contains("{id}"))
             .collect();
-        assert!(routes.len() >= 11, "{routes:?}");
+        assert!(routes.len() >= 14, "{routes:?}");
         for route in routes {
             assert!(resource_of(route, ID).is_some(), "{route}");
         }

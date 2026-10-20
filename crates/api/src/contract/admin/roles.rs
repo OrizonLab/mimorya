@@ -1,16 +1,14 @@
-//! Roles and the permission catalog (`role:manage`), custom roles as the
-//! administration writes them, and the company's skills (`skill:manage`).
+//! Roles and the permission catalog (`role:manage`), and custom roles as the
+//! administration writes them.
 
 use mimorya_core::authz::{Enforcement as CoreEnforcement, PermissionInfo};
 use mimorya_db::repositories::roles::RoleRow;
-use mimorya_db::repositories::skills::SkillRow;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use uuid::Uuid;
 use validator::Validate;
 
-use crate::contract::stored::stored_text;
-use crate::http::{iso, trimmed, trimmed_opt};
+use crate::http::{trimmed, trimmed_opt};
 
 #[derive(Debug, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -89,44 +87,6 @@ impl From<&PermissionInfo> for PermissionView {
 pub struct Roles {
     pub roles: Vec<RoleView>,
     pub catalog: Vec<PermissionView>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "snake_case")]
-pub enum SkillStatus {
-    Draft,
-    Active,
-    Retired,
-}
-
-#[derive(Debug, Serialize, TS)]
-#[serde(rename_all = "camelCase")]
-pub struct SkillView {
-    pub id: Uuid,
-    pub name: String,
-    pub description: String,
-    pub status: SkillStatus,
-    pub active_version: Option<i32>,
-    pub updated_at: String,
-}
-
-impl SkillView {
-    pub fn from_row(s: &SkillRow) -> anyhow::Result<Self> {
-        Ok(Self {
-            id: s.id,
-            name: s.name.clone(),
-            description: s.description.clone(),
-            status: stored_text("skill status", &s.status)?,
-            active_version: s.active_version,
-            updated_at: iso(&s.updated_at),
-        })
-    }
-}
-
-/// `GET /admin/skills`.
-#[derive(Debug, Serialize, TS)]
-pub struct SkillList {
-    pub skills: Vec<SkillView>,
 }
 
 /// Body of `POST /admin/roles`: a custom role and its permissions.
