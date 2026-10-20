@@ -3,28 +3,17 @@
 
 mod support;
 
-use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-use mimorya_agent::llm::LlmToolCall;
-use mimorya_agent::testing::InMemoryPorts;
-use mimorya_agent::tools::{ToolCallEvaluation, ToolOverride, ToolRegistry};
+use mimorya_connectors::ConnectorRuntime;
 use mimorya_connectors::mcp::{
     ACCESS_DENIED, MASK, NOT_MCP, NOT_PUBLIC, NetworkPolicy, TOO_SLOW, UNREACHABLE,
 };
 use mimorya_connectors::testing::{Quirk, serve_mcp_http, serve_mute};
-use mimorya_connectors::{ConnectorRuntime, InstanceContext, connector_type};
-use mimorya_core::autonomy::ToolRisk;
-use mimorya_core::demo::user;
 use serde_json::json;
-use support::executor_for;
+use support::mcp::{PRIVATE, call_as_reader, http, start_mcp_within};
 
 const TOKEN: &str = "jeton-de-test-0123456789";
-
-const PRIVATE: NetworkPolicy = NetworkPolicy {
-    allow_private_network: true,
-    allow_stdio: false,
-};
 
 async fn start_with(
     url: &str,
@@ -32,16 +21,7 @@ async fn start_with(
     network: NetworkPolicy,
     start_timeout: Duration,
 ) -> anyhow::Result<ConnectorRuntime> {
-    let config = json!({ "transport": "http", "prefix": "docs", "url": url });
-    let context = InstanceContext {
-        secret,
-        network,
-        start_timeout,
-    };
-    connector_type("mcp")
-        .unwrap()
-        .instantiate(&config, context)
-        .await
+    start_mcp_within(http(url), secret, network, start_timeout).await
 }
 
 /// The message an administrator would read.
@@ -126,26 +106,8 @@ async fn never_quotes_the_token_a_server_sends_back_on_a_call() {
     let runtime = start_with(&url, Some(TOKEN), PRIVATE, Duration::from_secs(10))
         .await
         .unwrap();
-    let overrides = HashMap::from([(
-        "mcp_docs_search_procedures".to_string(),
-        ToolOverride {
-            risk: Some(ToolRisk::Read),
-            permissions: Some(vec!["intervention:read".into()]),
-            ..Default::default()
-        },
-    )]);
-    let registry = ToolRegistry::new(runtime.tools.clone(), &overrides).unwrap();
-    let ports = InMemoryPorts::new(user::LUCAS, uuid::Uuid::new_v4());
-    let lucas = executor_for(registry, user::LUCAS, &ports);
-    let call = LlmToolCall {
-        id: "1".into(),
-        name: "mcp_docs_search_procedures".into(),
-        input: json!({ "query": "circulateur" }),
-    };
-    let ToolCallEvaluation::Allow { tool, input } = lucas.evaluate(&call) else {
-        panic!("expected the mapped tool to run directly");
-    };
-    let (result, _) = lucas.execute(&tool, input).await;
+    let search = json!({ "query": "circulateur" });
+    let result = call_as_reader(&runtime, "mcp_docs_search_procedures", search).await;
     assert!(result.is_error);
     let shown = result.content.to_string();
     assert!(!shown.contains(TOKEN), "{shown}");
@@ -159,29 +121,8 @@ async fn never_shows_the_token_a_tool_result_quotes() {
     let runtime = start_with(&url, Some(TOKEN), PRIVATE, Duration::from_secs(10))
         .await
         .unwrap();
-    let read = ToolOverride {
-        risk: Some(ToolRisk::Read),
-        permissions: Some(vec!["intervention:read".into()]),
-        ..Default::default()
-    };
-    let names = ["mcp_docs_echo_text", "mcp_docs_echo_structured"];
-    let overrides = names
-        .iter()
-        .map(|name| (name.to_string(), read.clone()))
-        .collect();
-    let registry = ToolRegistry::new(runtime.tools.clone(), &overrides).unwrap();
-    let ports = InMemoryPorts::new(user::LUCAS, uuid::Uuid::new_v4());
-    let lucas = executor_for(registry, user::LUCAS, &ports);
-    for name in names {
-        let call = LlmToolCall {
-            id: "1".into(),
-            name: name.into(),
-            input: json!({}),
-        };
-        let ToolCallEvaluation::Allow { tool, input } = lucas.evaluate(&call) else {
-            panic!("expected {name} to run directly");
-        };
-        let (result, _) = lucas.execute(&tool, input).await;
+    for name in ["mcp_docs_echo_text", "mcp_docs_echo_structured"] {
+        let result = call_as_reader(&runtime, name, json!({})).await;
         let shown = result.content.to_string();
         assert!(!result.is_error, "{shown}");
         assert!(!shown.contains(TOKEN), "{shown}");

@@ -2,40 +2,15 @@
 //! token, only at an address a company may use; stdio only when the operator
 //! allows it.
 
+mod support;
+
+use mimorya_connectors::ConnectorRuntime;
 use mimorya_connectors::mcp::{NetworkPolicy, http_client};
 use mimorya_connectors::testing::serve_demo_docs_http;
-use mimorya_connectors::{ConnectorRuntime, InstanceContext, connector_type};
-use serde_json::{Value, json};
+use serde_json::json;
+use support::mcp::{PRIVATE, http, port_of, start_mcp as start};
 
 const TOKEN: &str = "jeton-de-test-0123456789";
-
-/// A private deployment: its own network is reachable.
-const PRIVATE: NetworkPolicy = NetworkPolicy {
-    allow_private_network: true,
-    allow_stdio: false,
-};
-
-async fn start(
-    config: Value,
-    secret: Option<&str>,
-    network: NetworkPolicy,
-) -> anyhow::Result<ConnectorRuntime> {
-    connector_type("mcp")
-        .unwrap()
-        .instantiate(
-            &config,
-            InstanceContext {
-                secret,
-                network,
-                ..InstanceContext::default()
-            },
-        )
-        .await
-}
-
-fn http(url: &str) -> Value {
-    json!({ "transport": "http", "prefix": "docs", "url": url })
-}
 
 fn names(runtime: &ConnectorRuntime) -> Vec<String> {
     runtime
@@ -63,12 +38,7 @@ async fn never_reaches_a_private_address_for_a_company() {
     let refused = start(http(&url), None, saas).await.err().unwrap();
     assert!(format!("{refused:#}").contains("https"), "{refused:#}");
     // A name resolving to a private address, over https.
-    let port = url
-        .trim_start_matches("http://127.0.0.1:")
-        .split('/')
-        .next()
-        .unwrap()
-        .to_string();
+    let port = port_of(&url);
     let named = format!("https://localhost:{port}/mcp");
     assert!(start(http(&named), None, saas).await.is_err());
     let literal = format!("https://127.0.0.1:{port}/mcp");
@@ -119,12 +89,7 @@ async fn never_follows_a_redirect() {
 #[tokio::test]
 async fn the_client_resolves_names_to_public_addresses_only() {
     let url = serve_demo_docs_http(None).await;
-    let port = url
-        .trim_start_matches("http://127.0.0.1:")
-        .split('/')
-        .next()
-        .unwrap()
-        .to_string();
+    let port = port_of(&url);
     let client = http_client(NetworkPolicy::default()).unwrap();
     let error = client
         .get(format!("https://localhost:{port}/mcp"))

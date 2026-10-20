@@ -1910,7 +1910,7 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     sont de nouveau retenus) ; un test unitaire vérifie qu'une autre entreprise n'est
     pas retenue.
 
-## ADR-056 — Session MCP gardée entre les runs : reprise d'un serveur redémarré, redémarrage d'une session fermée
+## ADR-056 — Session MCP gardée entre les runs : reprise d'un serveur redémarré, redémarrage d'une session fermée (complète ADR-025 et ADR-049)
 
 - **Date** : 2026-10-20 · **Statut** : acceptée
 - **Contexte** : une instance de connecteur démarrée est gardée entre les runs
@@ -1936,6 +1936,13 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
 - **Conséquences** :
   - un run déjà en cours garde l'instance qu'il a reçue : ses appels échouent jusqu'à
     sa fin ; le run suivant démarre une nouvelle session ;
+  - `is_closed` est lu sous le verrou du cache, avant chaque run servi : il lit un
+    état, sans jamais attendre le serveur ;
+  - limites restantes : un serveur stdio vivant mais muet ne se dit jamais fermé (ses
+    appels échouent au délai d'appel, jusqu'au redémarrage de la plateforme ou à un
+    changement de l'instance) ; un serveur HTTP qui ne répond pas 404 à une session
+    inconnue n'est pas rejoint ; un serveur stdio qui démarre puis s'arrête aussitôt est
+    démarré de nouveau par chaque run, sans le délai qui suit un démarrage échoué ;
   - tests : `crates/connectors/tests/mcp_sessions.rs` (un serveur HTTP arrêté puis
     relancé sur le même port est rejoint par la même session, qui ne se dit jamais
     fermée ; un serveur stdio arrêté laisse une session qui se dit fermée) et

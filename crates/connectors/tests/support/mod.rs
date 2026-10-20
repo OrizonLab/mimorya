@@ -2,6 +2,8 @@
 //! and the reference scenario's scripted run.
 #![allow(dead_code)] // not every test binary uses every fixture
 
+pub mod mcp;
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;

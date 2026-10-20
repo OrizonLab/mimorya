@@ -28,7 +28,9 @@ pub struct ConnectorInfo {
 pub trait ConnectorCloser: Send + Sync {
     async fn close(&self);
 
-    /// Whether the connection is closed and cannot recover by itself.
+    /// Whether the connection is closed and cannot recover by itself. Asked
+    /// before each run is served the instance, under the cache's lock: it
+    /// reads a state, never waits on the server.
     fn is_closed(&self) -> bool {
         false
     }

@@ -6,79 +6,25 @@
 
 mod support;
 
-use std::collections::HashMap;
 use std::time::Duration;
 
-use mimorya_agent::llm::LlmToolCall;
-use mimorya_agent::testing::InMemoryPorts;
-use mimorya_agent::tools::{ToolCallEvaluation, ToolOverride, ToolRegistry};
+use mimorya_connectors::ConnectorRuntime;
 use mimorya_connectors::mcp::NetworkPolicy;
 use mimorya_connectors::testing::serve_stoppable_demo_docs_http;
-use mimorya_connectors::{ConnectorRuntime, InstanceContext, connector_type};
-use mimorya_core::autonomy::ToolRisk;
-use mimorya_core::demo::user;
-use serde_json::{Value, json};
-use support::executor_for;
-
-const TOOL: &str = "mcp_docs_search_procedures";
-
-async fn start(config: Value, network: NetworkPolicy) -> ConnectorRuntime {
-    connector_type("mcp")
-        .unwrap()
-        .instantiate(
-            &config,
-            InstanceContext {
-                network,
-                ..InstanceContext::default()
-            },
-        )
-        .await
-        .unwrap()
-}
+use serde_json::json;
+use support::mcp::{PRIVATE, call_as_reader, http, port_of, start_mcp};
 
 /// Whether a search through the session's tool succeeds.
 async fn searched(runtime: &ConnectorRuntime) -> bool {
-    let overrides = HashMap::from([(
-        TOOL.to_string(),
-        ToolOverride {
-            risk: Some(ToolRisk::Read),
-            permissions: Some(vec!["intervention:read".into()]),
-            ..Default::default()
-        },
-    )]);
-    let registry = ToolRegistry::new(runtime.tools.clone(), &overrides).unwrap();
-    let ports = InMemoryPorts::new(user::LUCAS, uuid::Uuid::new_v4());
-    let executor = executor_for(registry, user::LUCAS, &ports);
-    let call = LlmToolCall {
-        id: "1".into(),
-        name: TOOL.into(),
-        input: json!({ "query": "circulateur" }),
-    };
-    let ToolCallEvaluation::Allow { tool, input } = executor.evaluate(&call) else {
-        panic!("expected the mapped tool to run");
-    };
-    !executor.execute(&tool, input).await.0.is_error
+    let search = json!({ "query": "circulateur" });
+    let result = call_as_reader(runtime, "mcp_docs_search_procedures", search).await;
+    !result.is_error
 }
 
 #[tokio::test]
 async fn an_http_session_reaches_its_server_again_after_a_restart() {
     let (url, stop) = serve_stoppable_demo_docs_http(0).await;
-    let port: u16 = url
-        .trim_start_matches("http://127.0.0.1:")
-        .split('/')
-        .next()
-        .unwrap()
-        .parse()
-        .unwrap();
-    let private = NetworkPolicy {
-        allow_private_network: true,
-        allow_stdio: false,
-    };
-    let runtime = start(
-        json!({ "transport": "http", "prefix": "docs", "url": url }),
-        private,
-    )
-    .await;
+    let runtime = start_mcp(http(&url), None, PRIVATE).await.unwrap();
     assert!(searched(&runtime).await);
 
     // Stopped: calls fail, but the session is not closed for good.
@@ -88,7 +34,7 @@ async fn an_http_session_reaches_its_server_again_after_a_restart() {
     assert!(!runtime.is_closed());
 
     // Back, without the old session: the same runtime reaches it again.
-    let (_, _running) = serve_stoppable_demo_docs_http(port).await;
+    let (_, _running) = serve_stoppable_demo_docs_http(port_of(&url)).await;
     assert!(searched(&runtime).await);
     assert!(!runtime.is_closed());
     runtime.closer.unwrap().close().await;
@@ -96,22 +42,29 @@ async fn an_http_session_reaches_its_server_again_after_a_restart() {
 
 #[tokio::test]
 async fn a_local_server_that_exits_leaves_a_session_that_says_it_is_closed() {
-    // The demo server, ended after a second.
-    let server = env!("CARGO_BIN_EXE_mcp-demo-docs");
+    // The demo server, its process known to the test, which ends it.
+    let pid_file = std::env::temp_dir().join(format!("mimorya-mcp-{}.pid", uuid::Uuid::new_v4()));
     let config = json!({
         "transport": "stdio",
         "prefix": "docs",
-        "command": "timeout",
-        "args": ["1", server],
+        "command": "sh",
+        "args": ["-c", "echo $$ > \"$0\" && exec \"$1\"", pid_file, env!("CARGO_BIN_EXE_mcp-demo-docs")],
     });
     let allowed = NetworkPolicy {
         allow_private_network: false,
         allow_stdio: true,
     };
-    let runtime = start(config, allowed).await;
-    assert!(!runtime.is_closed());
+    let runtime = start_mcp(config, None, allowed).await.unwrap();
     assert!(searched(&runtime).await);
+    assert!(!runtime.is_closed());
 
+    let pid = std::fs::read_to_string(&pid_file).unwrap();
+    let _ = std::fs::remove_file(&pid_file);
+    let killed = std::process::Command::new("kill")
+        .arg(pid.trim())
+        .status()
+        .unwrap();
+    assert!(killed.success());
     let closed = tokio::time::timeout(Duration::from_secs(10), async {
         while !runtime.is_closed() {
             tokio::time::sleep(Duration::from_millis(50)).await;

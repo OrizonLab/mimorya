@@ -122,7 +122,7 @@ impl RuntimeCache {
                 let mut state = self.state.lock().await;
                 if matches!(state.slots.get(&id), Some(Slot::Live { version: v, runtime }) if *v == version && runtime.is_closed())
                 {
-                    tracing::warn!(instance_id = %id, "A kept connector's session closed: starting it again");
+                    tracing::warn!(connector = %id, "A kept connector's session closed: starting it again");
                     release(state.slots.remove(&id));
                 }
                 let stale = state.stale(id, ticket);
