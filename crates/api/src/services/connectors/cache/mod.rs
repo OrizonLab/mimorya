@@ -118,10 +118,7 @@ impl RuntimeCache {
         let (_finished, done) = loop {
             let mut waiting = {
                 let mut state = self.state.lock().await;
-                // What the caller read has changed: a start would be discarded.
-                if state.stale(id, ticket) {
-                    return Err(Unavailable::changed());
-                }
+                let stale = state.stale(id, ticket);
                 match state.slots.get(&id) {
                     Some(Slot::Live {
                         version: v,
@@ -137,6 +134,10 @@ impl RuntimeCache {
                             origin: Origin::Remembered,
                         });
                     }
+                    // The instance of this version (same configuration, same
+                    // token) serves even a caller whose reading is stale; any
+                    // other start would be discarded.
+                    _ if stale => return Err(Unavailable::changed()),
                     // Unless the run making it gave it up (its sender is gone).
                     Some(Slot::Starting { version: v, done })
                         if *v == version && done.has_changed().is_ok() =>
@@ -159,6 +160,8 @@ impl RuntimeCache {
         };
         let started = start().await;
         let mut state = self.state.lock().await;
+        // Defensive: the outcome below replaces this start's slot anyway
+        // (an invalidation already removed it).
         if matches!(state.slots.get(&id), Some(Slot::Starting { done: d, .. }) if d.same_channel(&done))
         {
             state.slots.remove(&id);

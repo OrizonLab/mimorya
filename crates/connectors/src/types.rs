@@ -59,6 +59,8 @@ impl Default for InstanceContext<'_> {
 #[async_trait]
 pub trait Connector: Send + Sync {
     fn info(&self) -> ConnectorInfo;
+    /// Bounded in time (`InstanceContext::start_timeout` for what connects
+    /// to a server): every run that needs the instance waits for its start.
     async fn instantiate(
         &self,
         config: &Value,

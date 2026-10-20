@@ -1523,7 +1523,7 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   qu'une instance démarrait (après un changement de configuration, au premier run après
   un redémarrage, ou une minute après un échec) faisaient chacun leur propre tentative :
   autant de connexions au serveur MCP, chacune attendue jusqu'au délai de démarrage, et
-  autant d'instances aussitôt refermées sauf la dernière.
+  autant d'instances aussitôt refermées sauf la première terminée.
 - **Décision** :
   - une tentative en cours occupe l'emplacement de l'instance (`Slot::Starting`, avec sa
     version) ; un run qui a besoin de la même version attend son issue (un canal
@@ -1533,19 +1533,21 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - un run qui abandonne sa tentative (sa tâche annulée) lâche l'émetteur : les runs qui
     attendaient se réveillent, trouvent la tentative orpheline et l'un d'eux la reprend ;
   - un run qui a lu une instance modifiée depuis (son ticket précède l'invalidation)
-    n'en démarre plus aucune : il répond aussitôt « changé pendant son démarrage », ce
-    que la tentative aurait de toute façon donné ;
+    reçoit l'instance vivante de la version qu'il a lue (même configuration, même
+    jeton) ; il n'en attend ni n'en démarre aucune autre : il répond aussitôt « changé
+    pendant son démarrage », ce que la tentative aurait de toute façon donné ;
   - la règle de version est inchangée : une tentative d'une autre version remplace
     l'emplacement, l'instance d'une version plus récente l'emporte, une tentative
     invalidée n'est jamais gardée.
 - **Conséquences** :
   - un serveur qui ne répond pas retarde les runs d'une seule tentative (jusqu'au délai
-    de démarrage), puis, l'échec retenu, un run par minute ; les runs attendent toujours
+    de démarrage, que tout type de connecteur doit borner : `Connector::instantiate`), puis, l'échec retenu, un run par minute ; les runs attendent toujours
     la tentative en cours (la démarrer en arrière-plan sans les faire attendre reste à la
     feuille de route) ;
   - tests (`cache/tests.rs`) : deux runs simultanés obtiennent la même instance d'un seul
     démarrage ; un échec en cours est reçu une fois comme nouveau, puis comme retenu ; une
-    tentative abandonnée est reprise par le run qui l'attendait (borné : un run qui
-    attendrait toujours fait échouer le test) ; un run au ticket périmé ne démarre rien.
+    tentative abandonnée est reprise par le run qui l'attendait ; un run au ticket
+    périmé ne démarre rien mais reçoit l'instance vivante de sa version. Les tests où un
+    run attend sont bornés : un run qui attendrait toujours les fait échouer.
     Retirer l'attente, la reprise d'une tentative orpheline ou le refus d'un ticket
     périmé fait échouer ces tests.

@@ -191,8 +191,8 @@ Détaillés dans [AGENT_ENGINE.md](AGENT_ENGINE.md). En résumé :
   portent que sur ses propres outils. Les connecteurs démarrent en parallèle ; une
   panne (serveur, jeton, politiques, noms d'outils en collision) n'écarte que son
   connecteur, et un échec est mémorisé une minute : un serveur muet ne retarde que
-  les runs lancés pendant une tentative de démarrage (une par minute), du délai de
-  démarrage au plus. L'état (« Non testé », « Opérationnel »,
+  les runs lancés pendant une tentative de démarrage (une par minute, partagée par
+  les runs qui l'attendent, ADR-049), du délai de démarrage au plus. L'état (« Non testé », « Opérationnel »,
   « En erreur ») et la dernière erreur, jeton masqué, sont affichés à
   l'administrateur.
 - Les secrets ne transitent jamais par le contexte du modèle ni par les journaux.

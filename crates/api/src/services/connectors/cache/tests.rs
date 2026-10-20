@@ -98,17 +98,23 @@ async fn a_start_in_progress_is_shared_by_the_runs_that_need_it() {
         gate.notified().await;
         Ok(runtime())
     };
-    let (first, second, ()) = tokio::join!(
-        cache.get_or_start(id, version, 0, start),
-        async {
-            tokio::time::sleep(Duration::from_millis(10)).await;
-            cache.get_or_start(id, version, 0, start).await
-        },
-        async {
-            tokio::time::sleep(Duration::from_millis(50)).await;
-            gate.notify_waiters();
-        },
-    );
+    // Bounded: a second start would wait for the gate forever.
+    let both = async {
+        tokio::join!(
+            cache.get_or_start(id, version, 0, start),
+            async {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+                cache.get_or_start(id, version, 0, start).await
+            },
+            async {
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                gate.notify_waiters();
+            },
+        )
+    };
+    let Ok((first, second, ())) = tokio::time::timeout(Duration::from_secs(5), both).await else {
+        panic!("a run kept waiting");
+    };
     let (Ok(first), Ok(second)) = (first, second) else {
         panic!("expected the started instance");
     };
@@ -167,7 +173,8 @@ async fn a_start_given_up_is_taken_over_by_a_run_waiting_for_it() {
     assert_eq!(starts.load(Ordering::SeqCst), 2);
 }
 
-/// A run that read an instance since changed does not start it.
+/// A run that read an instance since changed does not start it, but gets
+/// the live instance of the version it read.
 #[tokio::test]
 async fn a_run_that_read_a_changed_instance_does_not_start_it() {
     let cache = RuntimeCache::default();
@@ -184,5 +191,26 @@ async fn a_run_that_read_a_changed_instance_does_not_start_it() {
             .await,
     );
     assert_eq!(changed.origin, Origin::Changed);
+    assert_eq!(starts.load(Ordering::SeqCst), 0);
+
+    // Started meanwhile for a run with a later reading: shared all the same.
+    let Ok(live) = cache
+        .get_or_start(id, version, cache.ticket().await, || async {
+            Ok(runtime())
+        })
+        .await
+    else {
+        panic!("expected a live instance");
+    };
+    let Ok(shared) = cache
+        .get_or_start(id, version, ticket, || async {
+            starts.fetch_add(1, Ordering::SeqCst);
+            Ok(runtime())
+        })
+        .await
+    else {
+        panic!("expected the live instance");
+    };
+    assert!(Arc::ptr_eq(&live, &shared));
     assert_eq!(starts.load(Ordering::SeqCst), 0);
 }
