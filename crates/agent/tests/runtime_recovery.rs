@@ -7,7 +7,7 @@ mod support;
 
 use mimorya_agent::llm::LlmMessage;
 use mimorya_agent::runtime::{
-    MAX_RESUMPTIONS, PendingApproval, PendingCalls, RunCheckpoint, RunOutcome,
+    InterruptedCall, MAX_RESUMPTIONS, PendingApproval, PendingCalls, RunCheckpoint, RunOutcome,
 };
 use mimorya_agent::testing::ScriptedStep;
 use std::collections::HashMap;
@@ -23,8 +23,26 @@ fn saved() -> RunCheckpoint {
     RunCheckpoint::new("SYSTEM".into(), vec![LlmMessage::user("Fais la synthèse")])
 }
 
+/// A call started before the stop, as the API reads it back from the run's
+/// journal: with its risk when recorded.
+fn call(name: &str, risk: Option<ToolRisk>) -> InterruptedCall {
+    let title = match name {
+        "jobs_search" => "Recherche",
+        "planning_apply" => "Application du planning",
+        "users_disable" => "Désactivation de compte",
+        "doc_read" => "Lecture de document",
+        other => other,
+    };
+    InterruptedCall {
+        tool_name: name.into(),
+        title: title.into(),
+        risk,
+    }
+}
+
+/// Recovers after calls recorded without their risk: judged by the tools.
 async fn recover(h: &Harness, checkpoint: RunCheckpoint, interrupted: &[&str]) -> RunOutcome {
-    let interrupted = interrupted.iter().map(|name| name.to_string()).collect();
+    let interrupted = interrupted.iter().map(|name| call(name, None)).collect();
     h.runtime.recover(checkpoint, interrupted).await.unwrap()
 }
 
@@ -167,5 +185,27 @@ async fn is_not_taken_up_forever() {
     checkpoint.resumptions = MAX_RESUMPTIONS;
     let outcome = recover(&h, checkpoint, &[]).await;
     assert!(error_of(&outcome).contains("à plusieurs reprises"));
+    assert!(h.provider.requests().is_empty());
+}
+
+#[tokio::test]
+async fn judges_a_call_by_the_risk_recorded_when_it_was_called() {
+    let h = setup(
+        vec![ScriptedStep::text("Synthèse : rien à signaler.")],
+        Options::default(),
+    );
+    // A read of a connector absent since: it only read.
+    let read = vec![call("mcp_docs_search", Some(ToolRisk::Read))];
+    let outcome = h.runtime.recover(saved(), read).await.unwrap();
+    assert_eq!(outcome.status(), "completed", "{outcome:?}");
+
+    // Recorded as a write (before its administrator made it a read): unknown.
+    let h = setup(
+        vec![ScriptedStep::text("Jamais appelé")],
+        Options::default(),
+    );
+    let written = vec![call("jobs_search", Some(ToolRisk::Write))];
+    let outcome = h.runtime.recover(saved(), written).await.unwrap();
+    assert!(error_of(&outcome).contains("« Recherche » : son effet n’est pas connu"));
     assert!(h.provider.requests().is_empty());
 }

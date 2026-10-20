@@ -11,8 +11,8 @@ use futures::FutureExt;
 use mimorya_agent::llm::{Effort, LlmMessage, ModelRouter, PriceTable};
 
 use mimorya_agent::runtime::{
-    AgentRuntime, ApprovalDecisions, BudgetLimits, EnginePorts, RunCheckpoint, RunConfig, RunEvent,
-    RuntimeDeps, StartInput, VerificationConfig, build_user_turn,
+    AgentRuntime, ApprovalDecisions, BudgetLimits, EnginePorts, InterruptedCall, RunCheckpoint,
+    RunConfig, RunEvent, RuntimeDeps, StartInput, VerificationConfig, build_user_turn,
 };
 use mimorya_core::authz::Actor;
 use mimorya_core::autonomy::{AutonomyLevel, AutonomyPolicy};
@@ -56,8 +56,11 @@ pub enum ExecutionMode {
     /// Taken up again after a stop of the service (ADR-053).
     Recover {
         state: serde_json::Value,
-        /// Tools the run started to run since that checkpoint.
-        interrupted: Vec<String>,
+        /// Calls the run started since that checkpoint, or the approved
+        /// actions it was running.
+        interrupted: Vec<InterruptedCall>,
+        /// Shown should the engine not even start: the actions to check.
+        crash_message: String,
     },
 }
 
@@ -72,7 +75,7 @@ impl RunExecutor {
         let ports = engine_ports(self.db.clone(), scope, self.bus.clone());
         // A run taken up that crashes says which actions to check.
         let message = match &mode {
-            ExecutionMode::Recover { interrupted, .. } => recovery_crash_message(interrupted),
+            ExecutionMode::Recover { crash_message, .. } => crash_message.clone(),
             _ => CRASH_MESSAGE.to_owned(),
         };
         let attempt = AssertUnwindSafe(self.run(&access, &run, &ports, mode)).catch_unwind();
@@ -135,7 +138,9 @@ impl RunExecutor {
                 let checkpoint: RunCheckpoint = serde_json::from_value(state)?;
                 runtime.resume(checkpoint, &decisions).await?;
             }
-            ExecutionMode::Recover { state, interrupted } => {
+            ExecutionMode::Recover {
+                state, interrupted, ..
+            } => {
                 let checkpoint: RunCheckpoint = serde_json::from_value(state)?;
                 runtime.recover(checkpoint, interrupted).await?;
             }
@@ -191,21 +196,4 @@ impl RunExecutor {
         );
         Ok((runtime, tools.unavailable_connectors))
     }
-}
-
-/// Shown when a run taken up after a stop of the service could not go on:
-/// the actions it had started may have had an effect (ADR-053).
-fn recovery_crash_message(interrupted: &[String]) -> String {
-    let start = "L’exécution, interrompue par un arrêt du service, n’a pas pu reprendre.";
-    if interrupted.is_empty() {
-        return format!("{start} Relancez votre demande.");
-    }
-    let names: Vec<String> = interrupted
-        .iter()
-        .map(|name| format!("« {name} »"))
-        .collect();
-    format!(
-        "{start} Vérifiez l’effet des actions qui étaient en cours ({}) avant de relancer votre demande.",
-        names.join(", ")
-    )
 }

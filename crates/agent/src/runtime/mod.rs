@@ -24,7 +24,7 @@ pub use ports::{
     SkillStore, SkillSummary, StepAccess, ToolInvocationLog, ToolInvocationRecord, UsageRecord,
     UsageSink,
 };
-pub use recovery::MAX_RESUMPTIONS;
+pub use recovery::{InterruptedCall, MAX_RESUMPTIONS, unknown_effect};
 pub use runtime::{ACCOUNT_INACTIVE, AgentRuntime, StartInput};
 pub use state::{PendingApproval, PendingCalls, RunCheckpoint, RunUsageTotals};
 pub use types::{

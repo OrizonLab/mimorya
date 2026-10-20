@@ -3,7 +3,7 @@
 
 use mimorya_agent::llm::LlmMessage;
 use mimorya_agent::runtime::{DEFAULT_BUDGET, RunCheckpoint, RunEvent};
-use mimorya_core::autonomy::AutonomyLevel;
+use mimorya_core::autonomy::{AutonomyLevel, ToolRisk};
 use mimorya_db::repositories::run_events::{append_run_event, list_run_events};
 use mimorya_db::repositories::runs::{NewRun, RunPatch, create_run, get_run, update_run};
 use serde_json::{Value, json};
@@ -11,15 +11,38 @@ use uuid::Uuid;
 
 use super::{Client, TestApi, owner_url};
 
+/// The title and risk the demo connector declares for its tools.
+fn demo_tool(tool: &str) -> (&str, Option<ToolRisk>) {
+    match tool {
+        "interventions_search" => ("Recherche d’interventions", Some(ToolRisk::Read)),
+        "planning_propose" => ("Proposition de planning", Some(ToolRisk::Draft)),
+        "planning_apply" => ("Application d’un planning", Some(ToolRisk::Write)),
+        other => (other, None),
+    }
+}
+
 /// A run of `user` (in `conversation`, if any) left running by a stop of the
 /// service at `state`, after it started the tools `started` (calls allowed,
-/// as the engine reports them).
+/// as the engine reports them, with their risk).
 pub async fn stopped_run(
     api: &TestApi,
     tenant_id: Uuid,
     user_id: Uuid,
     conversation: Option<Uuid>,
     state: Option<RunCheckpoint>,
+    started: &[&str],
+) -> Uuid {
+    let state = state.map(|s| serde_json::to_value(s).unwrap());
+    stopped_with(api, tenant_id, user_id, conversation, state, started).await
+}
+
+/// Same as `stopped_run`, its state saved as given (unreadable, say).
+pub async fn stopped_with(
+    api: &TestApi,
+    tenant_id: Uuid,
+    user_id: Uuid,
+    conversation: Option<Uuid>,
+    state: Option<Value>,
     started: &[&str],
 ) -> Uuid {
     let db = &api.app.services.db;
@@ -41,19 +64,21 @@ pub async fn stopped_run(
     .unwrap();
     if let Some(state) = state {
         let patch = RunPatch {
-            state: Some(serde_json::to_value(state).unwrap()),
+            state: Some(state),
             ..RunPatch::default()
         };
         update_run(&mut tx, run.id, patch).await.unwrap();
     }
     tx.commit().await.unwrap();
     for (n, tool) in started.iter().enumerate() {
+        let (title, risk) = demo_tool(tool);
         let (kind, data) = RunEvent::ToolCall {
             tool_call_id: format!("c{n}"),
             tool_name: (*tool).into(),
-            title: (*tool).into(),
+            title: title.into(),
             decision: "allow".into(),
             reason: None,
+            risk,
         }
         .into_parts();
         let mut tx = db.begin(tenant_id).await.unwrap();

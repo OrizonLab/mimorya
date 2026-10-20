@@ -851,7 +851,11 @@ export type TemporaryPassword = { temporaryPassword: string, };
  */
 export type TestedTool = { name: string, title: string, description: string, enabled: boolean, risk: ToolRisk, permissions: Array<string>, };
 
-export type ToolCallEvent = { toolCallId: string, toolName: string, title: string, decision: ToolDecision, reason?: string, };
+export type ToolCallEvent = { toolCallId: string, toolName: string, title: string, decision: ToolDecision, reason?: string,
+/**
+ * The tool's risk when it was called (an unknown tool has none).
+ */
+risk?: ToolRisk, };
 
 /**
  * The policy's decision on a tool call.

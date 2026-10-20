@@ -45,6 +45,10 @@ pub enum RunEvent {
         decision: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         reason: Option<String>,
+        /// The tool's risk when it was called (an unknown tool has none): what
+        /// a stop of the service may have left half done (ADR-053).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        risk: Option<ToolRisk>,
     },
     ToolResult {
         tool_call_id: String,

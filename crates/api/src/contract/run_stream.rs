@@ -78,6 +78,10 @@ pub struct ToolCallEvent {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub reason: Option<String>,
+    /// The tool's risk when it was called (an unknown tool has none).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub risk: Option<ToolRisk>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]

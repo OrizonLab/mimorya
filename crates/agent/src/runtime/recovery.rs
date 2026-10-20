@@ -17,15 +17,50 @@ use super::types::RunOutcome;
 /// goes on is not taken up forever.
 pub const MAX_RESUMPTIONS: u32 = 2;
 
+/// A tool call a stop of the service may have left half done.
+#[derive(Debug, Clone, PartialEq)]
+pub struct InterruptedCall {
+    pub tool_name: String,
+    /// As users know it (the tool's title, or the action validated).
+    pub title: String,
+    /// The tool's risk when it was called; `None` when not recorded.
+    pub risk: Option<ToolRisk>,
+}
+
+impl InterruptedCall {
+    /// Whether it only read, as recorded when it was called.
+    pub fn only_read(&self) -> bool {
+        self.risk == Some(ToolRisk::Read)
+    }
+}
+
+/// « l’action « A » : son effet n’est pas connu », or the plural, of actions
+/// that were `validated` or not.
+pub fn unknown_effect(calls: &[InterruptedCall], validated: bool) -> String {
+    let (one_kind, many_kind) = if validated {
+        ("l’action validée", "les actions validées")
+    } else {
+        ("l’action", "les actions")
+    };
+    let titles: Vec<String> = calls.iter().map(|c| format!("« {} »", c.title)).collect();
+    match titles.as_slice() {
+        [one] => format!("{one_kind} {one} : son effet n’est pas connu"),
+        many => format!(
+            "{many_kind} {} : leur effet n’est pas connu",
+            many.join(", ")
+        ),
+    }
+}
+
 impl AgentRuntime {
-    /// Goes on from `checkpoint`, the run's last saved step, once the tools
-    /// named in `interrupted` (calls started since that step, in order) are
-    /// known to only read. While approved actions were running (`pending`),
-    /// `interrupted` names those approved, and the run ends.
+    /// Goes on from `checkpoint`, the run's last saved step, once the calls
+    /// `interrupted` (started since that step, in order) are known to only
+    /// read. While approved actions were running (`pending`), `interrupted`
+    /// holds those approved, and the run ends.
     pub async fn recover(
         &self,
         mut checkpoint: RunCheckpoint,
-        interrupted: Vec<String>,
+        interrupted: Vec<InterruptedCall>,
     ) -> anyhow::Result<RunOutcome> {
         if let Some(error) = self.not_resumable(&checkpoint, &interrupted) {
             return self
@@ -33,6 +68,7 @@ impl AgentRuntime {
                 .await;
         }
         checkpoint.resumptions += 1;
+        let interrupted = interrupted.into_iter().map(|c| c.tool_name).collect();
         self.deps
             .ports
             .events
@@ -43,7 +79,11 @@ impl AgentRuntime {
     }
 
     /// Why the run cannot go on, in French; `None` when it can.
-    fn not_resumable(&self, checkpoint: &RunCheckpoint, interrupted: &[String]) -> Option<String> {
+    fn not_resumable(
+        &self,
+        checkpoint: &RunCheckpoint,
+        interrupted: &[InterruptedCall],
+    ) -> Option<String> {
         if checkpoint.resumptions >= MAX_RESUMPTIONS {
             return Some(
                 "Exécution interrompue à plusieurs reprises par un arrêt du service : elle \
@@ -52,7 +92,6 @@ impl AgentRuntime {
             );
         }
         if checkpoint.pending.is_some() {
-            // `interrupted` names the actions approved among those awaited.
             if interrupted.is_empty() {
                 return Some(
                     "Exécution interrompue par un arrêt du service après votre décision : \
@@ -61,54 +100,35 @@ impl AgentRuntime {
                         .into(),
                 );
             }
-            let approved: Vec<String> = interrupted.iter().map(|n| self.title_of(n)).collect();
             return Some(format!(
                 "Exécution interrompue par un arrêt du service pendant {}. Vérifiez-le avant de \
                  relancer votre demande.",
-                unknown_effect(&approved, true)
+                unknown_effect(interrupted, true)
             ));
         }
-        let unsafe_actions: Vec<String> = interrupted
+        let unknown: Vec<InterruptedCall> = interrupted
             .iter()
-            .filter(|name| {
-                self.tools
-                    .tool(name)
-                    .is_none_or(|tool| tool.info.risk != ToolRisk::Read)
-            })
-            .map(|name| self.title_of(name))
+            .filter(|call| !self.only_read(call))
+            .cloned()
             .collect();
-        (!unsafe_actions.is_empty()).then(|| {
+        (!unknown.is_empty()).then(|| {
             format!(
                 "Exécution interrompue par un arrêt du service pendant {}. Vérifiez-le avant de \
                  relancer votre demande.",
-                unknown_effect(&unsafe_actions, false)
+                unknown_effect(&unknown, false)
             )
         })
     }
 
-    /// « Title » of a tool as users know it, or its name once it is gone.
-    fn title_of(&self, name: &str) -> String {
-        let title = self
-            .tools
-            .tool(name)
-            .map_or_else(|| name.to_owned(), |tool| tool.info.title);
-        format!("« {title} »")
-    }
-}
-
-/// « l’action « A » : son effet n’est pas connu », or the plural, of actions
-/// that were `validated` or not.
-fn unknown_effect(titles: &[String], validated: bool) -> String {
-    let (one_kind, many_kind) = if validated {
-        ("l’action validée", "les actions validées")
-    } else {
-        ("l’action", "les actions")
-    };
-    match titles {
-        [one] => format!("{one_kind} {one} : son effet n’est pas connu"),
-        many => format!(
-            "{many_kind} {} : leur effet n’est pas connu",
-            many.join(", ")
-        ),
+    /// Whether a call only read: as recorded when it was called, or, for a
+    /// call recorded without its risk, as the tool still present declares.
+    fn only_read(&self, call: &InterruptedCall) -> bool {
+        match call.risk {
+            Some(risk) => risk == ToolRisk::Read,
+            None => self
+                .tools
+                .tool(&call.tool_name)
+                .is_some_and(|tool| tool.info.risk == ToolRisk::Read),
+        }
     }
 }

@@ -1,6 +1,6 @@
 //! Who takes up the runs a stop of the service left running, when, and in
 //! which company (ADR-053). Only the process that holds the run executor's
-//! lock does: a second one takes nothing up. The sweep of stuck runs leaves
+//! lock does: a second one refuses to start. The sweep of stuck runs leaves
 //! them alone at startup, while expired reset links are purged at once. A run
 //! interrupted for more than an hour ends instead of going on. Each run is
 //! taken up in its own company, and only those still running.
@@ -8,7 +8,9 @@
 mod support;
 
 use mimorya_agent::testing::ScriptedStep;
-use mimorya_api::services::runs::{INTERRUPTED_TOO_LONG, STOPPED_BEFORE_ITS_FIRST_STEP};
+use mimorya_api::services::runs::{
+    INTERRUPTED_TOO_LONG, LOCK_HELD_ELSEWHERE, STOPPED_BEFORE_ITS_FIRST_STEP,
+};
 use mimorya_core::demo::{tenant, user};
 use mimorya_db::testing::{OTHER_TENANT_ID, OTHER_USER_ID};
 use support::recovery::{events, interrupted_ago, restart, saved, status_and_error, stopped_run};
@@ -22,8 +24,10 @@ async fn a_second_process_takes_nothing_up_while_the_first_holds_the_lock() {
     restart(&first).await;
     let run_id = stopped_run(&first, tenant::ID, user::MARC, None, Some(saved()), &[]).await;
 
+    // The second process stops at startup.
     let second = TestApi::start().await;
-    assert_eq!(second.app.recover_interrupted_runs().await.unwrap(), 0);
+    let refused = second.app.recover_interrupted_runs().await.unwrap_err();
+    assert_eq!(refused.to_string(), LOCK_HELD_ELSEWHERE);
     second.idle().await;
     assert_eq!(
         status_and_error(&first, tenant::ID, run_id).await.0,
@@ -88,17 +92,34 @@ async fn the_sweep_at_startup_leaves_interrupted_runs_alone() {
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
-async fn a_run_interrupted_more_than_an_hour_ago_ends() {
+async fn a_run_interrupted_more_than_an_hour_ago_ends_naming_what_was_under_way() {
     let api = TestApi::start().await;
-    let run_id = stopped_run(&api, tenant::ID, user::MARC, None, Some(saved()), &[]).await;
-    interrupted_ago(run_id, 61).await;
+    let idle = stopped_run(&api, tenant::ID, user::MARC, None, Some(saved()), &[]).await;
+    let writing = stopped_run(
+        &api,
+        tenant::ID,
+        user::MARC,
+        None,
+        Some(saved()),
+        &["interventions_search", "planning_apply"],
+    )
+    .await;
+    interrupted_ago(idle, 61).await;
+    interrupted_ago(writing, 61).await;
     let calls_before = api.model.as_ref().unwrap().requests().len();
 
     restart(&api).await;
 
-    let (status, error) = status_and_error(&api, tenant::ID, run_id).await;
+    let (status, error) = status_and_error(&api, tenant::ID, idle).await;
     assert_eq!(status, "failed");
     assert_eq!(error.as_deref(), Some(INTERRUPTED_TOO_LONG));
+    // Never « relancez » while an action may have had an effect.
+    let error = status_and_error(&api, tenant::ID, writing).await.1.unwrap();
+    assert!(
+        error.contains("Lors de l’arrêt du service, l’action « Application d’un planning » : son effet n’est pas connu. Vérifiez-le"),
+        "{error}"
+    );
+    assert!(!error.contains("Recherche"), "{error}");
     assert_eq!(api.model.as_ref().unwrap().requests().len(), calls_before);
 }
 

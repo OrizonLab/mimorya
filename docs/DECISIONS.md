@@ -1758,11 +1758,11 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     dans sa propre entreprise (`system_interrupted_runs`, fonction `SECURITY DEFINER`
     qui ne donne que l'entreprise et l'identifiant). Une seule instance exécute les runs
     (ADR-016) : à ce moment, chacun d'eux a été interrompu. Ce n'est plus seulement
-    écrit : le processus qui reprend les runs tient, pour toute sa vie, un verrou
-    consultatif PostgreSQL de session (`pg_try_advisory_lock`, sur une connexion à lui) ;
-    un second processus ne l'obtient pas et ne reprend rien (erreur journalisée), au lieu
-    de reprendre les runs que le premier exécute encore. Il ne démarre ses reprises
-    qu'après avoir obtenu son port d'écoute ;
+    écrit : l'API tient, pour toute sa vie, un verrou consultatif PostgreSQL de session
+    (`pg_try_advisory_lock`, sur une connexion à elle) ; un second processus sur la même
+    base ne l'obtient pas et refuse de démarrer, au lieu de reprendre ou de doubler les
+    runs que le premier exécute. Le verrou n'est pris, et les runs repris, qu'une fois le
+    port d'écoute obtenu ;
   - le balayage des runs bloqués n'agit qu'une fois le processus en marche depuis aussi
     longtemps qu'un run met à devenir « bloqué » (15 minutes) : seuls ses propres runs
     peuvent alors l'être, et un run repris garde son ancienne heure d'enregistrement
@@ -1774,8 +1774,9 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     appels d'outils lancés depuis sont perdus ;
   - le moteur ne le reprend que si rien d'autre qu'une lecture n'a été lancé depuis
     cette étape : les appels autorisés commencés depuis sont les événements `tool_call`
-    postérieurs au repère, et chacun doit être un outil encore présent de risque `read`
-    (risque en vigueur au redémarrage, surcharge de l'administrateur comprise). Une
+    postérieurs au repère, et chacun doit avoir été de risque `read` au moment de l'appel
+    (risque désormais enregistré dans l'événement, surcharge de l'administrateur comprise ;
+    à défaut, pour un événement plus ancien, celui de l'outil encore présent). Une
     action qui a pu changer quelque chose (écriture, brouillon, envoi…) n'est jamais
     relancée à l'aveugle : le run échoue en nommant l'action, dont l'effet est à
     vérifier. Il échoue aussi s'il était en train d'exécuter des actions validées (en
@@ -1783,9 +1784,11 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     aucune ne l'avait été), s'il a déjà été repris deux fois (`resumptions`, compté dans
     son état), s'il n'avait encore aucune étape enregistrée, s'il est interrompu depuis
     plus d'une heure (sa demande peut avoir perdu son objet), ou si son utilisateur ne
-    peut plus agir ; et, si le moteur ne peut pas être reconstruit (fournisseur retiré…),
-    en nommant les actions qui étaient en cours. Ensuite, chaque étape relit les droits
-    comme avant (ADR-035) ;
+    peut plus agir, ou si le moteur ne peut pas être reconstruit (fournisseur retiré…).
+    Chacune de ces fins nomme, par leur titre, les actions qui étaient en cours et dont
+    l'effet n'est pas connu (toute action non enregistrée comme une lecture, ou validée) :
+    l'utilisateur est invité à vérifier, jamais à relancer à l'aveugle. Ensuite, chaque
+    étape relit les droits comme avant (ADR-035) ;
   - les demandes de validation encore en attente sont annulées et l'annulation est
     auditée (`approval.cancelled`, acteur système) : elles appartenaient à l'étape
     perdue, et le run les redemande s'il en a besoin ;
@@ -1799,9 +1802,9 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - le suivi en direct n'affiche pas encore la reprise : l'interface ignore
     `run_resumed`, une étape interrompue reste sans résultat dans le fil, et la carte
     d'une validation annulée y reste (une décision répond alors 409) (à faire) ;
-  - le risque d'un outil interrompu est jugé au redémarrage : un connecteur
-    indisponible à ce moment fait échouer le run même pour une lecture (enregistrer le
-    risque dans l'événement `tool_call` serait plus juste, à faire) ;
+  - le verrou disparaît avec sa connexion (redémarrage de PostgreSQL) sans que l'API le
+    reprenne : un second processus démarré ensuite pourrait l'obtenir. Une seule instance
+    reste une règle d'exploitation (ADR-016) ;
   - restent à faire (phase 2, ADR-012) : plusieurs instances, avec un bail par run et un
     worker séparé ; la reprise d'une étape dont les actions ont un identifiant
     d'idempotence.

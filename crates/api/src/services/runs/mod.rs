@@ -17,6 +17,6 @@ mod service;
 pub use approval_decision::DecisionInput;
 pub use events::record_run_event;
 pub use executor::RunExecutor;
-pub use recovery::{INTERRUPTED_TOO_LONG, STOPPED_BEFORE_ITS_FIRST_STEP};
+pub use recovery::{INTERRUPTED_TOO_LONG, LOCK_HELD_ELSEWHERE, STOPPED_BEFORE_ITS_FIRST_STEP};
 pub use run_access::{AGENT_USE_WITHDRAWN, COMPANY_SUSPENDED};
 pub use service::{DecisionResult, RunService, StartedTurn};
