@@ -2,12 +2,46 @@
 //! read back from the database, and how the end of a run that does not go
 //! on names it.
 
+use std::collections::HashMap;
+
 use mimorya_agent::runtime::{InterruptedCall, RunCheckpoint, unknown_effect};
+use mimorya_core::autonomy::ToolRisk;
 use mimorya_db::TenantTx;
 use mimorya_db::repositories::approvals::{cancel_pending_approvals, list_approvals_for_run};
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
+use mimorya_db::repositories::connectors::list_connector_instances;
 use mimorya_db::repositories::run_events::tool_calls_since;
 use mimorya_db::repositories::runs::RunRow;
+
+use crate::services::connectors::read_policies;
+
+/// The current side of the rule a call is judged by
+/// (`InterruptedCall::only_read`), for the ends decided here, which start no
+/// connector: the risk the administrator set on a tool of the company's
+/// enabled connectors, unless they disabled the tool (a run would not have
+/// it). What only a started connector tells (the tools it really serves, the
+/// risk it declares where no policy sets one) is not known here: such a
+/// call is judged by the risk recorded with it. Should two connectors name
+/// the same tool, the higher risk counts.
+pub(super) async fn risks_set_now(tx: &mut TenantTx) -> anyhow::Result<HashMap<String, ToolRisk>> {
+    let mut risks: HashMap<String, ToolRisk> = HashMap::new();
+    for instance in list_connector_instances(tx, true).await? {
+        // Unreadable policies keep the connector out of runs: its calls are
+        // judged by the risk recorded with them.
+        let Ok(policies) = read_policies(&instance) else {
+            continue;
+        };
+        let set = policies
+            .into_iter()
+            .filter(|(_, policy)| policy.enabled != Some(false))
+            .filter_map(|(tool, policy)| Some((tool, policy.risk?)));
+        for (tool, risk) in set {
+            let set = risks.entry(tool).or_insert(risk);
+            *set = (*set).max(risk);
+        }
+    }
+    Ok(risks)
+}
 
 /// The calls a stop may have left half done, and whether they were approved
 /// actions under way (`pending`): the calls started after the saved step,
@@ -61,11 +95,16 @@ pub(super) async fn cancel_lost_validations(tx: &mut TenantTx, run: &RunRow) -> 
 }
 
 /// The calls whose effect is not known: approved actions under way, or any
-/// call not recorded as only reading.
-pub(super) fn of_unknown_effect(calls: &[InterruptedCall], approved: bool) -> Vec<InterruptedCall> {
+/// call that did not only read, judged as the engine judges it, with the
+/// risks set now (`risks_set_now`).
+pub(super) fn of_unknown_effect(
+    calls: &[InterruptedCall],
+    approved: bool,
+    set_now: &HashMap<String, ToolRisk>,
+) -> Vec<InterruptedCall> {
     calls
         .iter()
-        .filter(|call| approved || !call.only_read())
+        .filter(|call| approved || !call.only_read(set_now.get(&call.tool_name).copied()))
         .cloned()
         .collect()
 }

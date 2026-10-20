@@ -28,9 +28,12 @@ pub struct InterruptedCall {
 }
 
 impl InterruptedCall {
-    /// Whether it only read, as recorded when it was called.
-    pub fn only_read(&self) -> bool {
-        self.risk == Some(ToolRisk::Read)
+    /// Whether it only read: as recorded when it was called and as its tool
+    /// now stands (`current`, when known), the higher risk of the two
+    /// deciding, so that a tool found since to write is not taken for a
+    /// read. A call known by neither did not only read.
+    pub fn only_read(&self, current: Option<ToolRisk>) -> bool {
+        self.risk.max(current) == Some(ToolRisk::Read)
     }
 }
 
@@ -108,7 +111,7 @@ impl AgentRuntime {
         }
         let unknown: Vec<InterruptedCall> = interrupted
             .iter()
-            .filter(|call| !self.only_read(call))
+            .filter(|call| !call.only_read(self.current_risk(&call.tool_name)))
             .cloned()
             .collect();
         (!unknown.is_empty()).then(|| {
@@ -120,12 +123,8 @@ impl AgentRuntime {
         })
     }
 
-    /// Whether a call only read: as recorded when it was called and as the
-    /// tool, if still present, now declares (the higher risk of the two, so
-    /// that a tool found since to write is not repeated). A call neither
-    /// recorded with its risk nor of a tool still present is unknown.
-    fn only_read(&self, call: &InterruptedCall) -> bool {
-        let current = self.tools.tool(&call.tool_name).map(|tool| tool.info.risk);
-        call.risk.max(current) == Some(ToolRisk::Read)
+    /// The risk of a tool still present, as the run would apply it now.
+    fn current_risk(&self, tool_name: &str) -> Option<ToolRisk> {
+        self.tools.tool(tool_name).map(|tool| tool.info.risk)
     }
 }

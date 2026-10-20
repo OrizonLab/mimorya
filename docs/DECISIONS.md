@@ -758,7 +758,8 @@ cité, renvoi) y sont faites sur place.
     (le scénario de référence : comptes rendus, proposition de planning, validation,
     synthèse) et écrit chaque e-mail dans un dossier (`E2E_MAIL_DIR`) au lieu de
     l'envoyer. C'est un exemple, pas un binaire : il n'entre dans aucune version
-    publiée ;
+    publiée. Comme l'API, une fois à l'écoute, il prend le verrou d'exécution des runs
+    et reprend ceux qu'un arrêt a laissés, dont un qu'il laisse lui-même (ADR-053) ;
   - la configuration (`playwright.config.ts`) recrée l'entreprise de démonstration
     (`mimorya-seed --reset`), démarre l'API puis l'application web construite pour la
     production (`next start`), et exécute les tests un par un (ils partagent
@@ -1765,7 +1766,8 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     port d'écoute obtenu. Sa connexion est nommée `mimorya-run-executor` (visible dans
     `pg_stat_activity`, ce que rappelle le message d'erreur) et sondée par le serveur
     (keepalive TCP après une minute d'inactivité) : si l'hôte de l'API disparaît sans la
-    fermer, le verrou est libéré en quelques minutes, non en deux heures ;
+    fermer, le verrou est libéré en quelques minutes, non en deux heures (sur une
+    connexion par socket Unix, sans effet ni besoin : le serveur est sur le même hôte) ;
   - le balayage des runs bloqués n'agit qu'une fois le processus en marche depuis aussi
     longtemps qu'un run met à devenir « bloqué » (15 minutes) : seuls ses propres runs
     peuvent alors l'être, et un run repris garde son ancienne heure d'enregistrement
@@ -1791,8 +1793,11 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     plus d'une heure (sa demande peut avoir perdu son objet), ou si son utilisateur ne
     peut plus agir, ou si le moteur ne peut pas être reconstruit (fournisseur retiré…).
     Chacune de ces fins nomme, par leur titre, les actions qui étaient en cours et dont
-    l'effet n'est pas connu (toute action non enregistrée comme une lecture, ou validée) :
-    l'utilisateur est invité à vérifier, jamais à relancer à l'aveugle. Ensuite, chaque
+    l'effet n'est pas connu (toute action validée, ou qui n'a pas fait que lire, jugée par
+    la même règle que le moteur, `InterruptedCall::only_read` : l'API, qui ne démarre
+    alors aucun connecteur, prend pour risque actuel celui que l'administrateur a fixé
+    dans les politiques d'outils) : l'utilisateur est invité à vérifier, jamais à relancer
+    à l'aveugle. Ensuite, chaque
     étape relit les droits comme avant (ADR-035) ;
   - les demandes de validation encore en attente sont annulées et l'annulation est
     auditée (`approval.cancelled`, acteur système) : elles appartenaient à l'étape
@@ -1804,9 +1809,17 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - un redéploiement ne coûte plus que l'étape en cours d'un run qui ne faisait que lire,
     plus le délai du redémarrage ; l'appel au modèle perdu est facturé (enregistré dans
     la consommation) mais absent du total du run ;
-  - le suivi en direct n'affiche pas encore la reprise : l'interface ignore
-    `run_resumed`, une étape interrompue reste sans résultat dans le fil, et la carte
-    d'une validation annulée y reste (une décision répond alors 409) (à faire) ;
+  - le suivi en direct affiche la reprise : à `run_resumed`, les étapes sans résultat
+    sont marquées « Interrompue par un arrêt du service » et une ligne dit où le run a
+    repris (une par reprise). Tout appel qui se termine reçoit son résultat dans le flux,
+    y compris un appel refusé par l'utilisateur ou abandonné (`tool_result` d'erreur, dont
+    le motif ne reprend pas le commentaire de l'utilisateur) : une étape sans résultat est
+    donc toujours une étape perdue. Une validation annulée par la reprise n'a jamais été
+    affichée dans le fil (il ne charge les cartes qu'une fois le run en attente, et un
+    run en attente n'est pas repris). Le serveur des tests de bout en bout prend le
+    verrou et reprend les runs comme l'API ; il en laisse un, interrompu pendant une
+    lecture après une validation refusée, que `apps/web/e2e/interrupted-run.spec.ts` suit
+    jusqu'à sa nouvelle validation ;
   - le verrou disparaît avec sa connexion (redémarrage de PostgreSQL) sans que l'API le
     reprenne : un second processus démarré ensuite pourrait l'obtenir. Une seule instance
     reste une règle d'exploitation (ADR-016) ;

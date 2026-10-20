@@ -2,8 +2,10 @@
 //! which company (ADR-053). Only the process that holds the run executor's
 //! lock does: a second one refuses to start. The sweep of stuck runs leaves
 //! them alone at startup, while expired reset links are purged at once. A run
-//! interrupted for more than an hour ends instead of going on. Each run is
-//! taken up in its own company, and only those still running.
+//! interrupted for more than an hour ends instead of going on. A read whose
+//! tool its administrator set since to write is not repeated, and every end
+//! names it. Each run is taken up in its own company, and only those still
+//! running.
 
 mod support;
 
@@ -13,7 +15,11 @@ use mimorya_api::services::runs::{
 };
 use mimorya_core::demo::{tenant, user};
 use mimorya_db::testing::{OTHER_TENANT_ID, OTHER_USER_ID};
-use support::recovery::{events, interrupted_ago, restart, saved, status_and_error, stopped_run};
+use serde_json::json;
+use support::recovery::{
+    events, interrupted_ago, restart, restore_demo_policies, saved, set_demo_policies,
+    status_and_error, stopped_run,
+};
 use support::resets::new_reset_token;
 use support::{TestApi, email, owner_url};
 
@@ -134,6 +140,35 @@ async fn a_run_interrupted_more_than_an_hour_ago_ends_naming_what_was_under_way(
         "{error}"
     );
     assert!(!error.contains("Recherche"), "{error}");
+    assert_eq!(api.model.as_ref().unwrap().requests().len(), calls_before);
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_read_whose_tool_was_set_since_to_write_is_named_not_repeated() {
+    let api = TestApi::start().await;
+    // Recorded as a read; its administrator has set the tool to write since.
+    let set = json!({ "interventions_search": { "risk": "write" } });
+    let before = set_demo_policies(&api, set).await;
+    let search = ["interventions_search"];
+    let recent = stopped_run(&api, tenant::ID, user::MARC, None, Some(saved()), &search).await;
+    let old = stopped_run(&api, tenant::ID, user::MARC, None, Some(saved()), &search).await;
+    interrupted_ago(old, 61).await;
+    let calls_before = api.model.as_ref().unwrap().requests().len();
+
+    restart(&api).await;
+    restore_demo_policies(&api, before).await;
+
+    // The engine ends one, the API the other: both name it.
+    for run in [recent, old] {
+        let (status, error) = status_and_error(&api, tenant::ID, run).await;
+        assert_eq!(status, "failed");
+        let error = error.unwrap();
+        assert!(
+            error.contains("l’action « Recherche d’interventions » : son effet n’est pas connu"),
+            "{error}"
+        );
+    }
     assert_eq!(api.model.as_ref().unwrap().requests().len(), calls_before);
 }
 

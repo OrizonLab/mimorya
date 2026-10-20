@@ -22,7 +22,9 @@ use super::events::record_run_event;
 use super::executor::ExecutionMode;
 use super::outcome::{CRASH_MESSAGE, persist_outcome};
 use super::service::RunService;
-use calls::{cancel_lost_validations, ending, of_unknown_effect, started_since_saved};
+use calls::{
+    cancel_lost_validations, ending, of_unknown_effect, risks_set_now, started_since_saved,
+};
 pub use lock::LOCK_HELD_ELSEWHERE;
 
 /// Why a run stopped before its first saved step ends: nothing ran yet.
@@ -71,6 +73,7 @@ impl RunService {
             .clone()
             .and_then(|state| serde_json::from_value(state).ok());
         let (started, approved) = started_since_saved(&mut tx, &run, checkpoint.as_ref()).await?;
+        let set_now = risks_set_now(&mut tx).await?;
         cancel_lost_validations(&mut tx, &run).await?;
         tx.commit().await?;
 
@@ -80,7 +83,7 @@ impl RunService {
             user_id: run.on_behalf_of_user_id,
             conversation_id: run.conversation_id,
         };
-        let unknown = of_unknown_effect(&started, approved);
+        let unknown = of_unknown_effect(&started, approved, &set_now);
         let Some(state) = run.state.clone() else {
             return self.end(scope, STOPPED_BEFORE_ITS_FIRST_STEP, None).await;
         };

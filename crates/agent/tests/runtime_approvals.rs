@@ -103,6 +103,12 @@ async fn reports_a_rejected_validation_to_the_model() {
     let outcome = h.runtime.resume(checkpoint, &decisions).await.unwrap();
     assert_eq!(outcome.status(), "completed");
     assert!(h.applied.lock().unwrap().is_empty());
+    // Ended in the live view, without what the user wrote.
+    let ended = h.events_of("tool_result");
+    assert_eq!(ended.len(), 1);
+    assert_eq!(ended[0]["toolName"], "planning_apply");
+    assert_eq!(ended[0]["summary"], "Action refusée par l’utilisateur");
+    assert_eq!(ended[0]["isError"], true);
 }
 
 #[tokio::test]

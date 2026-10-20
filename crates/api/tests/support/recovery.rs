@@ -4,6 +4,7 @@
 use mimorya_agent::llm::LlmMessage;
 use mimorya_agent::runtime::{DEFAULT_BUDGET, RunCheckpoint, RunEvent};
 use mimorya_core::autonomy::{AutonomyLevel, ToolRisk};
+use mimorya_core::demo::tenant;
 use mimorya_db::repositories::run_events::{append_run_event, list_run_events};
 use mimorya_db::repositories::runs::{NewRun, RunPatch, create_run, get_run, update_run};
 use serde_json::{Value, json};
@@ -88,6 +89,41 @@ pub async fn stopped_with(
         tx.commit().await.unwrap();
     }
     run.id
+}
+
+/// Merges `policies` into the demo connector's tool policies, as its
+/// administrator would set them; returns those it had.
+pub async fn set_demo_policies(api: &TestApi, policies: Value) -> Value {
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    let before: Value = sqlx::query_scalar(
+        "select tool_policies from connector_instances where type = 'demo_interventions'",
+    )
+    .fetch_one(&mut *tx)
+    .await
+    .unwrap();
+    sqlx::query(
+        "update connector_instances set tool_policies = tool_policies || $1 \
+         where type = 'demo_interventions'",
+    )
+    .bind(policies)
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+    before
+}
+
+/// Gives the demo connector its tool policies back.
+pub async fn restore_demo_policies(api: &TestApi, policies: Value) {
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    sqlx::query(
+        "update connector_instances set tool_policies = $1 where type = 'demo_interventions'",
+    )
+    .bind(policies)
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
 }
 
 /// The run as saved before its first model call.
