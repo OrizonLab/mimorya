@@ -3,12 +3,17 @@
 //! themselves, then released. Nothing is stored; the audit keeps the address
 //! and the outcome, never the token. The address is checked as when the
 //! server is added: one this platform may not reach is refused before any
-//! connection. Only an administrator of the whole company may try one.
+//! connection. Only an administrator of the whole company may try one. A
+//! trial its client leaves is audited all the same.
 
 mod support;
 
+use std::time::Duration;
+
 use axum::http::StatusCode;
-use mimorya_connectors::testing::serve_demo_docs_http;
+use mimorya_connectors::testing::{
+    Quirk, serve_demo_docs_http, serve_held_mcp_http, serve_mcp_http,
+};
 use mimorya_core::demo::user;
 use serde_json::{Value, json};
 use support::TestApi;
@@ -63,19 +68,43 @@ async fn a_server_is_tried_with_its_token_and_nothing_is_stored() {
 async fn a_failed_trial_says_why_without_the_token() {
     let api = TestApi::start_with(&PRIVATE_DEPLOYMENT).await;
     let paul = api.sign_in(user::PAUL).await;
-    let url = serve_demo_docs_http(Some(TOKEN)).await;
+    // A server whose refusal quotes the token it was sent.
+    let url = serve_mcp_http(Some(TOKEN), Quirk::EchoesTokenOnStart).await;
     let since = latest_entry(&api).await;
-    let wrong = "jeton-errone-0123456789";
 
-    let tried = paul.post(TRIAL, trial(&url, Some(wrong))).await.json();
+    let tried = paul.post(TRIAL, trial(&url, Some(TOKEN))).await.json();
     assert_eq!(tried["ok"], false, "{tried}");
     assert_eq!(tried["tools"], json!([]));
     let error = tried["error"].as_str().unwrap();
     assert!(!error.is_empty());
-    assert!(!error.contains(wrong), "{error}");
+    assert!(!error.contains(TOKEN), "{error}");
     let audited = entries_since(&api, since).await;
     assert!(audited.contains(r#""ok":false"#), "{audited}");
-    assert!(!audited.contains(wrong), "{audited}");
+    assert!(!audited.contains(TOKEN), "{audited}");
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_trial_its_client_leaves_is_audited_all_the_same() {
+    let api = TestApi::start_with(&PRIVATE_DEPLOYMENT).await;
+    let paul = api.sign_in(user::PAUL).await;
+    let (url, hold) = serve_held_mcp_http().await;
+    let since = latest_entry(&api).await;
+
+    // The client leaves once the platform has reached the server.
+    let left = tokio::time::timeout(Duration::from_secs(30), async {
+        tokio::select! {
+            _ = paul.post(TRIAL, trial(&url, None)) => panic!("answered while held"),
+            () = hold.reached() => {}
+        }
+    });
+    assert!(left.await.is_ok(), "the server was never reached");
+    hold.release();
+    api.idle().await;
+
+    let audited = entries_since(&api, since).await;
+    assert!(audited.contains("connector.tried"), "{audited}");
+    assert!(audited.contains(&url), "{audited}");
 }
 
 #[tokio::test]

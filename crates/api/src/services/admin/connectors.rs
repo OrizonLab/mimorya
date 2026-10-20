@@ -19,7 +19,7 @@ use mimorya_db::{Database, is_unique_violation};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
-use super::connector_rules::{ToolPolicyInput, checked_policies, prefix_problem};
+use super::connector_rules::{ToolPolicyInput, checked_policies, mcp_addition_problem};
 use super::{audit_entry, begin_change};
 use crate::secrets::SecretStore;
 use crate::services::AccessContext;
@@ -67,9 +67,8 @@ pub async fn create_mcp_connector(
     input: NewMcpConnector,
 ) -> anyhow::Result<Uuid> {
     access.require_tenant_wide(PERMISSION)?;
-    let problem = prefix_problem(&input.prefix)
-        .or_else(|| url_problem(&input.url, admin.connectors.network()))
-        .or_else(|| input.token.as_deref().and_then(token_problem));
+    let network = admin.connectors.network();
+    let problem = mcp_addition_problem(&input.prefix, &input.url, input.token.as_deref(), network);
     if let Some(problem) = problem {
         return Err(DomainError::validation(problem).into());
     }

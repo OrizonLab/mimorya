@@ -2,17 +2,24 @@
 //! start it, with the address and the token typed in the form, its tools
 //! listed as they declare themselves, then released. Nothing is stored but
 //! the audit entry, which keeps the address and the outcome, never the token.
+//! The trial runs apart from its request: a client that leaves does not stop
+//! it before its entry is written.
 
-use mimorya_connectors::mcp::{token_problem, url_problem};
+use std::sync::Arc;
+
+use anyhow::anyhow;
 use mimorya_core::DomainError;
+use mimorya_db::Database;
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use serde_json::json;
+use tokio::sync::oneshot;
+use uuid::Uuid;
 
-use super::connector_rules::prefix_problem;
-use super::connector_test::{ConnectorTestOutcome, tested};
-use super::connectors::ConnectorAdmin;
+use super::connector_rules::mcp_addition_problem;
+use super::connector_test::{ConnectorTestOutcome, start_and_list};
 use crate::services::AccessContext;
-use crate::services::connectors::failure;
+use crate::services::background::BackgroundTasks;
+use crate::services::connectors::{ConnectorService, Policies};
 
 const PERMISSION: &str = "connector:manage";
 
@@ -23,52 +30,67 @@ pub struct McpTrial {
     pub token: Option<String>,
 }
 
+/// What a trial needs, owned: it outlives the request that asked for it.
+pub struct TrialServices {
+    pub db: Database,
+    pub connectors: Arc<ConnectorService>,
+    pub background: Arc<BackgroundTasks>,
+}
+
 pub async fn try_mcp_connector(
-    admin: &ConnectorAdmin<'_>,
+    services: TrialServices,
     access: &AccessContext,
     trial: McpTrial,
 ) -> anyhow::Result<ConnectorTestOutcome> {
     access.require_tenant_wide(PERMISSION)?;
-    // Checked as when it is added: an address this server may not reach is
-    // refused before any connection.
-    let problem = prefix_problem(&trial.prefix)
-        .or_else(|| url_problem(&trial.url, admin.connectors.network()))
-        .or_else(|| trial.token.as_deref().and_then(token_problem));
+    let network = services.connectors.network();
+    let problem = mcp_addition_problem(&trial.prefix, &trial.url, trial.token.as_deref(), network);
     if let Some(problem) = problem {
         return Err(DomainError::validation(problem).into());
     }
-    let token = trial.token.as_deref();
-    let config = json!({ "transport": "http", "prefix": trial.prefix, "url": trial.url });
-    let outcome = match admin.connectors.start("mcp", &config, token).await {
-        Ok(runtime) => {
-            let tools = runtime
-                .tools
-                .iter()
-                .map(|tool| tested(tool.info(), None))
-                .collect();
-            if let Some(closer) = &runtime.closer {
-                closer.close().await;
-            }
-            ConnectorTestOutcome { tools, error: None }
+    let (tenant_id, user_id) = (access.subject.tenant_id, access.subject.user_id);
+    let (answer, answered) = oneshot::channel();
+    let background = services.background.clone();
+    background.spawn(async move {
+        let config = json!({ "transport": "http", "prefix": trial.prefix, "url": trial.url });
+        let token = trial.token.as_deref();
+        let outcome = start_and_list(&services.connectors, "mcp", &config, token, |_| {
+            Policies::new()
+        })
+        .await;
+        let recorded = record(&services.db, (tenant_id, user_id), &trial, &outcome).await;
+        if let Err(error) = &recorded {
+            tracing::error!(
+                error = format!("{error:#}"),
+                "Failed to audit a connector trial"
+            );
         }
-        Err(error) => ConnectorTestOutcome {
-            tools: Vec::new(),
-            error: Some(failure(&error, token)),
-        },
-    };
-    let tenant_id = access.subject.tenant_id;
+        // The client may have left: the trial is over all the same.
+        let _ = answer.send(recorded.map(|()| outcome));
+    });
+    answered
+        .await
+        .map_err(|_| anyhow!("the connector trial ended without an answer"))?
+}
+
+async fn record(
+    db: &Database,
+    (tenant_id, user_id): (Uuid, Uuid),
+    trial: &McpTrial,
+    outcome: &ConnectorTestOutcome,
+) -> anyhow::Result<()> {
     let entry = AuditEntry::new(tenant_id, "user", "connector.tried", "success")
-        .by_user(access.subject.user_id)
+        .by_user(user_id)
         .metadata(json!({
             "type": "mcp",
             "prefix": trial.prefix,
             "url": trial.url,
-            "tokenSent": token.is_some(),
+            "tokenSent": trial.token.is_some(),
             "ok": outcome.error.is_none(),
             "tools": outcome.tools.len(),
         }));
-    let mut tx = admin.db.begin(tenant_id).await?;
+    let mut tx = db.begin(tenant_id).await?;
     append_audit(&mut tx, entry).await?;
     tx.commit().await?;
-    Ok(outcome)
+    Ok(())
 }

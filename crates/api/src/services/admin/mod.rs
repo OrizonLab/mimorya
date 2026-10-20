@@ -26,7 +26,7 @@ mod users;
 pub use assignments::{grant_role, revoke_role};
 pub use connector_rules::ToolPolicyInput;
 pub use connector_test::{ConnectorTestOutcome, TestedTool, test_connector};
-pub use connector_trial::{McpTrial, try_mcp_connector};
+pub use connector_trial::{McpTrial, TrialServices, try_mcp_connector};
 pub use connectors::{
     ConnectorAdmin, ConnectorChanges, NewMcpConnector, TokenChange, create_mcp_connector,
     delete_connector, http_config, update_connector,

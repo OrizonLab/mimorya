@@ -71,8 +71,15 @@ test('an MCP server is tried before it is added, and nothing is saved', async ({
   const refused = page.getByText(/^Échec : Adresse refusée/);
   await expect(refused).toBeVisible();
   // The trial answered for that address: another one sets it aside.
-  await address.fill(`https://mcp.${FOREIGN_HOST}/mcp`);
+  await address.fill('https://10.0.0.7/mcp');
   await expect(refused).toHaveCount(0);
+  // An address of the private network, refused before any connection: the
+  // refusal too is set aside by another address.
+  await trial.click();
+  const privateAddress = page.getByText('Adresse d’un réseau privé : refusée sur ce serveur');
+  await expect(privateAddress).toBeVisible();
+  await address.fill(`https://mcp.${FOREIGN_HOST}/mcp`);
+  await expect(privateAddress).toHaveCount(0);
 
   // A server that answers (the API's answer stands in for it here).
   await page.route('**/api/admin/connectors/trial', (route) =>

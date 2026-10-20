@@ -1571,19 +1571,29 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     et l'absence de redirection s'appliquent comme à un run ;
   - rien n'est enregistré, ni connecteur ni secret ; l'audit garde une entrée
     `connector.tried` (adresse, préfixe, jeton envoyé ou non, issue, nombre d'outils),
-    jamais le jeton, que l'échec renvoyé masque aussi ;
+    jamais le jeton, que l'échec renvoyé masque aussi. L'essai s'exécute à part de sa
+    requête (tâche d'arrière-plan dont la requête attend la réponse) : un client qui
+    s'en va avant la fin ne l'interrompt pas avant que son entrée soit écrite ;
+  - les contrôles d'ajout (`mcp_addition_problem`) et le démarrage d'essai
+    (`start_and_list`, que le test d'un connecteur enregistré emploie aussi avec ses
+    politiques) sont partagés ;
   - le formulaire offre « Tester avant d'enregistrer » à l'ajout, et à la modification
     quand l'adresse change ou qu'un jeton est saisi : un essai n'envoie jamais le jeton
-    enregistré, que le test de la fiche du connecteur emploie. Le résultat n'est affiché
-    que tant que les valeurs essayées n'ont pas changé.
+    enregistré, que le test de la fiche du connecteur emploie. Le résultat (serveur joint ou
+    non, ou valeurs refusées) n'est affiché que tant que les valeurs essayées n'ont pas
+    changé.
 - **Conséquences** :
   - un essai fait joindre au serveur une adresse publique choisie par l'administrateur,
-    comme l'ajout puis le test le faisaient déjà ; son volume est borné par la limitation
-    de débit globale et par la permission requise ;
+    comme l'ajout puis le test le faisaient déjà. Seules la permission requise et la
+    limitation de débit globale (par adresse cliente) en bornent le volume : rien ne
+    limite encore le nombre d'essais ou de tests simultanés d'une entreprise, dont
+    chacun tient une connexion jusqu'au délai de démarrage (feuille de route) ;
   - les tests : `crates/api/tests/connector_trials.rs` (essai réussi avec jeton, rien
-    d'enregistré, audit sans jeton ; échec qui ne cite pas le jeton ; adresses privée ou
-    en http, préfixe et jeton invalides, champ inconnu refusés sans essai ; membre
-    refusé et refus tracé) ; `apps/web/e2e/integrations.spec.ts` (un nom du réseau privé
-    refusé à la connexion, le résultat écarté quand l'adresse change, une réponse
-    réussie affichée, rien d'ajouté). Afficher un résultat pour d'autres valeurs que
-    celles essayées fait échouer le test de bout en bout.
+    d'enregistré, audit sans jeton ; échec d'un serveur qui cite le jeton, masqué ;
+    adresses privée ou en http, préfixe et jeton invalides, champ inconnu refusés sans
+    essai ; membre refusé et refus tracé ; essai abandonné par son client, audité
+    quand même) ; `apps/web/e2e/integrations.spec.ts` (un nom du réseau privé refusé à la
+    connexion, une adresse privée refusée avant, chaque résultat écarté quand l'adresse
+    change, une réponse réussie affichée, rien d'ajouté). Exécuter l'essai dans sa
+    requête, ou afficher un résultat ou un refus pour d'autres valeurs que celles
+    essayées, fait échouer ces tests.

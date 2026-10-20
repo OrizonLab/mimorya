@@ -121,7 +121,8 @@ path: string, label: string, };
 export type ConnectorStatus = "untested" | "ok" | "error" | "disabled";
 
 /**
- * `POST /admin/connectors/{id}/test`.
+ * `POST /admin/connectors/{id}/test`, and `POST /admin/connectors/trial`
+ * for a server not saved yet (ADR-050).
  */
 export type ConnectorTest = { ok: boolean, tools: Array<TestedTool>,
 /**

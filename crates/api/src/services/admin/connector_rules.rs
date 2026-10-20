@@ -6,7 +6,9 @@
 use std::collections::{BTreeSet, HashMap};
 
 use mimorya_agent::tools::ToolOverride;
-use mimorya_connectors::mcp::{CONNECTOR_USE, MAX_TOOLS, tool_namespace};
+use mimorya_connectors::mcp::{
+    CONNECTOR_USE, MAX_TOOLS, NetworkPolicy, token_problem, tool_namespace, url_problem,
+};
 use mimorya_core::DomainError;
 use mimorya_core::authz::PermissionInfo;
 use mimorya_core::autonomy::ToolRisk;
@@ -27,6 +29,20 @@ pub struct ToolPolicyInput {
 
 /// A lowercase letter then letters or digits (2 to 16): the tools are named
 /// `mcp_<prefix>_<tool>`.
+/// Why an MCP server may not be added as typed, if it may not: its prefix,
+/// its address for this platform, the format of its token. An addition and a
+/// trial (ADR-050) are checked alike, before any connection.
+pub fn mcp_addition_problem(
+    prefix: &str,
+    url: &str,
+    token: Option<&str>,
+    network: NetworkPolicy,
+) -> Option<String> {
+    prefix_problem(prefix)
+        .or_else(|| url_problem(url, network))
+        .or_else(|| token.and_then(token_problem))
+}
+
 pub fn prefix_problem(prefix: &str) -> Option<String> {
     let mut chars = prefix.chars();
     let well_formed = chars.next().is_some_and(|c| c.is_ascii_lowercase())

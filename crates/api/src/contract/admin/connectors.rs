@@ -158,7 +158,8 @@ impl From<&Tested> for TestedTool {
     }
 }
 
-/// `POST /admin/connectors/{id}/test`.
+/// `POST /admin/connectors/{id}/test`, and `POST /admin/connectors/trial`
+/// for a server not saved yet (ADR-050).
 #[derive(Debug, Serialize, TS)]
 pub struct ConnectorTest {
     pub ok: bool,
