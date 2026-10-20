@@ -21,16 +21,32 @@ pub struct ConnectorInfo {
     pub permissions: &'static [PermissionInfo],
 }
 
-/// Releases what a live connector holds (processes, connections).
+/// Releases what a live connector holds (processes, connections), and tells
+/// whether its connection is gone for good (a local server that exited): an
+/// instance kept between runs is then started again rather than served.
 #[async_trait]
 pub trait ConnectorCloser: Send + Sync {
     async fn close(&self);
+
+    /// Whether the connection is closed and cannot recover by itself.
+    fn is_closed(&self) -> bool {
+        false
+    }
 }
 
 /// A live connector instance: its tools and how to release its resources.
 pub struct ConnectorRuntime {
     pub tools: Vec<ToolRef>,
     pub closer: Option<Box<dyn ConnectorCloser>>,
+}
+
+impl ConnectorRuntime {
+    /// Whether its connection is gone for good: no call can succeed again.
+    pub fn is_closed(&self) -> bool {
+        self.closer
+            .as_ref()
+            .is_some_and(|closer| closer.is_closed())
+    }
 }
 
 /// How long a connector may take to start (connect and list its tools).

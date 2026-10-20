@@ -15,6 +15,7 @@ use axum::middleware::{self, Next};
 use rmcp::ServerHandler;
 use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;
 use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, StreamableHttpService};
+use tokio::sync::oneshot;
 
 use crate::mcp::DemoDocsServer;
 pub use hold::Hold;
@@ -63,6 +64,27 @@ pub async fn serve_mcp_http_on(port: u16, token: Option<&str>, quirk: Quirk) -> 
         async move { quirks::guarded(expected, quirk, request, next).await }
     }));
     serve(router, port).await
+}
+
+/// The demo documentation server, at a given local port (0: any) until
+/// `stop` is sent or dropped: it stops accepting connections, and a server
+/// served again on the same port has none of its sessions (a restart).
+pub async fn serve_stoppable_demo_docs_http(port: u16) -> (String, oneshot::Sender<()>) {
+    let router = mcp_router(DemoDocsServer::default);
+    let listener = tokio::net::TcpListener::bind(("127.0.0.1", port))
+        .await
+        .expect("local port");
+    let address: SocketAddr = listener.local_addr().expect("local address");
+    let (stop, stopped) = oneshot::channel::<()>();
+    tokio::spawn(async move {
+        // Open streams are not awaited: the server is gone once stopped.
+        let _ = axum::serve(listener, router)
+            .with_graceful_shutdown(async move {
+                let _ = stopped.await;
+            })
+            .await;
+    });
+    (format!("http://{address}/mcp"), stop)
 }
 
 /// Serves the router at `http://127.0.0.1:<port>/mcp` until the process ends.
