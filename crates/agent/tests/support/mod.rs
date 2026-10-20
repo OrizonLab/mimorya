@@ -208,11 +208,17 @@ pub struct Harness {
 
 impl Harness {
     pub async fn start(&self) -> RunOutcome {
+        self.start_without(Vec::new()).await
+    }
+
+    /// Starts while these connectors of the company could not start.
+    pub async fn start_without(&self, unavailable_connectors: Vec<String>) -> RunOutcome {
         self.runtime
             .start(StartInput {
                 system: "SYSTEM".into(),
                 history: Vec::new(),
                 user_turn: "Fais la synthèse".into(),
+                unavailable_connectors,
             })
             .await
             .expect("run")

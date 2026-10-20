@@ -12,6 +12,7 @@ pub mod state;
 pub mod tool_calls;
 mod tool_refusals;
 pub mod types;
+mod unavailable;
 pub mod verification;
 
 pub use budget::{BudgetLimits, DEFAULT_BUDGET, check_budget};

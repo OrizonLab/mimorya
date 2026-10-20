@@ -9,8 +9,9 @@
 // refused, even when it fails.
 import type { Page } from '@playwright/test';
 import { READ_TIMEOUT_MS } from '../lib/api/client';
-import type { ApprovalList, ApprovalVerdict, Roles } from '../lib/api/contract';
+import type { Roles } from '../lib/api/contract';
 import { openAdmin } from './support/admin';
+import { refuseWaiting } from './support/approvals';
 import { demo, expect, noError, signIn, test } from './support/fixtures';
 import { holdList } from './support/hold';
 import { REFERENCE_REQUEST } from './support/scenario';
@@ -42,18 +43,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test.afterEach(async ({ page }) => {
-  // A run left waiting (a test failed before deciding) ends refused.
-  const approvals = await page.request.get('/api/approvals');
-  if (approvals.status() === 200) {
-    const { approvals: waiting } = (await approvals.json()) as ApprovalList;
-    for (const approval of waiting.filter((a) => a.status === 'pending')) {
-      const refused = await page.request.post(`/api/approvals/${approval.id}/decision`, {
-        headers: { 'X-Mimorya-Request': '1' },
-        data: { approved: false } satisfies ApprovalVerdict,
-      });
-      expect(refused.status()).toBe(200);
-    }
-  }
+  await refuseWaiting(page);
   const listed = await page.request.get('/api/admin/roles');
   if (listed.status() !== 200) return;
   const { roles } = (await listed.json()) as Roles;

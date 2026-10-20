@@ -85,6 +85,15 @@ moment, avec son motif (une entreprise suspendue aussi, dans les 30 s au plus) ;
 proposés ni pour les appels encore demandés. Ce que le run détient déjà (consignes,
 mémoires rappelées au démarrage, résultats obtenus) reste dans sa conversation.
 
+**Connecteurs indisponibles** (ADR-048) : un connecteur de l'entreprise qui ne démarre
+pas (serveur injoignable, politiques illisibles…) laisse le run sans ses outils. S'il
+est à la portée de l'utilisateur (un serveur MCP pour qui détient `connector:use`, un
+autre type pour qui détient l'une des permissions qu'il introduit), le run qui démarre
+le dit : au modèle, par une note `<connecteurs_indisponibles>` en tête du tour
+utilisateur (le prompt système reste stable), pour qu'il signale ce qui manque plutôt
+que de conclure que l'information n'existe pas ; à l'utilisateur, par l'événement
+`connectors_unavailable` du suivi en direct.
+
 **Résultats d'outils** : transmis au modèle comme **données**, encadrés par un
 marqueur `<donnees_outil source="…" fiabilite="non_fiable">` ; les consignes système
 rappellent qu'aucune instruction contenue dans des données ne doit être suivie.

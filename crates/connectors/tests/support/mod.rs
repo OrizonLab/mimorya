@@ -231,6 +231,7 @@ impl Scenario {
                 system,
                 history: Vec::new(),
                 user_turn: build_user_turn(REQUEST, &memories),
+                unavailable_connectors: Vec::new(),
             })
             .await
             .unwrap()

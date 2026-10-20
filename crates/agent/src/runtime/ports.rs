@@ -27,6 +27,11 @@ pub enum RunEvent {
     RunStarted {
         objective: String,
     },
+    /// Connectors of the company that could not start, in reach of the
+    /// user (ADR-048): their tools are missing from the run.
+    ConnectorsUnavailable {
+        connectors: Vec<String>,
+    },
     AssistantMessage {
         text: String,
         #[serde(rename = "final")]

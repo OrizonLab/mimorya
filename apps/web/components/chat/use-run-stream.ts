@@ -28,6 +28,8 @@ export interface RunActivity {
   approvals: PendingApprovalView[];
   verification: VerificationEvent | null;
   error: string | null;
+  /** Connectors in reach of the user that could not start (ADR-048). */
+  unavailable: string[];
   /** The browser gave the stream up (an error answered it): it follows nothing more. */
   lost: boolean;
 }
@@ -40,6 +42,7 @@ const INITIAL: RunActivity = {
   approvals: [],
   verification: null,
   error: null,
+  unavailable: [],
   lost: false,
 };
 
@@ -77,6 +80,9 @@ export function useRunStream(
         handler(JSON.parse((event as MessageEvent).data) as EventData<K>),
       );
 
+    on('connectors_unavailable', ({ connectors }) =>
+      setActivity((a) => ({ ...a, unavailable: connectors })),
+    );
     on('assistant_delta', ({ text }) => setActivity((a) => ({ ...a, draft: a.draft + text })));
     on('assistant_message', ({ text, final }) =>
       setActivity((a) =>

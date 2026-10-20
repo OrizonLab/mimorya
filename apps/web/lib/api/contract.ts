@@ -172,6 +172,16 @@ secretsAvailable: boolean,
 allowPrivateNetwork: boolean, };
 
 /**
+ * Connectors of the company in reach of the user that could not start:
+ * their tools are missing from the run (ADR-048).
+ */
+export type ConnectorsUnavailable = {
+/**
+ * Their names, as the administration shows them.
+ */
+connectors: Array<string>, };
+
+/**
  * Body of `PATCH /conversations/{id}`.
  */
 export type ConversationChanges = { title?: string, archived?: boolean, };
@@ -734,7 +744,7 @@ export type RunStatus = "queued" | "running" | "awaiting_approval" | "completed"
 /**
  * One event of the stream, by name.
  */
-export type RunStreamEvent = { "type": "run_started", "data": RunStarted } | { "type": "assistant_delta", "data": AssistantDelta } | { "type": "assistant_message", "data": AssistantMessage } | { "type": "tool_call", "data": ToolCallEvent } | { "type": "tool_result", "data": ToolResultEvent } | { "type": "approval_requested", "data": ApprovalRequestedEvent } | { "type": "approval_resolved", "data": ApprovalResolvedEvent } | { "type": "verification", "data": VerificationEvent } | { "type": "usage", "data": UsageEvent } | { "type": "run_finished", "data": RunFinished };
+export type RunStreamEvent = { "type": "run_started", "data": RunStarted } | { "type": "connectors_unavailable", "data": ConnectorsUnavailable } | { "type": "assistant_delta", "data": AssistantDelta } | { "type": "assistant_message", "data": AssistantMessage } | { "type": "tool_call", "data": ToolCallEvent } | { "type": "tool_result", "data": ToolResultEvent } | { "type": "approval_requested", "data": ApprovalRequestedEvent } | { "type": "approval_resolved", "data": ApprovalResolvedEvent } | { "type": "verification", "data": VerificationEvent } | { "type": "usage", "data": UsageEvent } | { "type": "run_finished", "data": RunFinished };
 
 /**
  * What a run has consumed so far (`agent_runs.usage`).

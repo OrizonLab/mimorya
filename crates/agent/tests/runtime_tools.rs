@@ -1,7 +1,9 @@
-//! Runtime: tool visibility, policy enforcement and untrusted tool output.
+//! Runtime: tool visibility (connectors that could not start included),
+//! policy enforcement and untrusted tool output.
 
 mod support;
 
+use mimorya_agent::llm::LlmMessage;
 use mimorya_agent::runtime::RunOutcome;
 use mimorya_agent::testing::{ScriptedReply, ScriptedStep, call, last_tool_results};
 use mimorya_core::demo::{self, user};
@@ -25,6 +27,44 @@ async fn only_shows_the_model_the_tools_the_user_may_use_never_non_delegable_one
     let mut names = julien.provider.requests()[0].tool_names();
     names.sort();
     assert_eq!(names, vec!["doc_read", "jobs_search", "planning_apply"]);
+}
+
+#[tokio::test]
+async fn tells_the_model_and_the_user_which_connectors_could_not_start() {
+    let h = setup(vec![ScriptedStep::text("Synthèse.")], Options::default());
+    h.start_without(vec!["Documentation".into()]).await;
+
+    let LlmMessage::User { content } = &h.provider.requests()[0].messages[0] else {
+        panic!("the user turn first");
+    };
+    assert!(
+        content.starts_with("<connecteurs_indisponibles>"),
+        "{content}"
+    );
+    assert!(content.contains("« Documentation »"), "{content}");
+    assert!(content.ends_with("Fais la synthèse"), "{content}");
+    // Announced once, right after the start.
+    let kinds: Vec<String> = h
+        .ports
+        .emitted()
+        .into_iter()
+        .map(|e| e.into_parts().0)
+        .take(2)
+        .collect();
+    assert_eq!(kinds, ["run_started", "connectors_unavailable"]);
+    assert_eq!(
+        h.events_of("connectors_unavailable"),
+        [json!({ "connectors": ["Documentation"] })]
+    );
+
+    // Every connector started: neither is told anything.
+    let h = setup(vec![ScriptedStep::text("Synthèse.")], Options::default());
+    h.start().await;
+    let LlmMessage::User { content } = &h.provider.requests()[0].messages[0] else {
+        panic!("the user turn first");
+    };
+    assert_eq!(content, "Fais la synthèse");
+    assert!(h.events_of("connectors_unavailable").is_empty());
 }
 
 #[tokio::test]

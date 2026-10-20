@@ -21,6 +21,7 @@ use super::ports::{CurrentAccess, RunEvent, StepAccess};
 use super::state::{PendingCalls, RunCheckpoint};
 use super::tool_calls::{ToolCallProcessor, order_by_request};
 use super::types::{ApprovalDecisions, RunConfig, RunOutcome, RuntimeDeps};
+use super::unavailable::with_unavailable_connectors;
 use super::verification::correction_message;
 use crate::llm::{LlmMessage, LlmResponse, LlmToolCall, LlmToolResult, StopReason, TaskClass};
 
@@ -32,6 +33,8 @@ pub struct StartInput {
     /// Previous turns of the conversation (text only).
     pub history: Vec<LlmMessage>,
     pub user_turn: String,
+    /// Connectors in reach of the user that could not start (ADR-048).
+    pub unavailable_connectors: Vec<String>,
 }
 
 pub struct AgentRuntime {
@@ -52,15 +55,18 @@ impl AgentRuntime {
 
     pub async fn start(&self, input: StartInput) -> anyhow::Result<RunOutcome> {
         let mut messages = input.history;
-        messages.push(LlmMessage::user(input.user_turn));
+        let connectors = input.unavailable_connectors;
+        let turn = with_unavailable_connectors(&connectors, input.user_turn);
+        messages.push(LlmMessage::user(turn));
         let state = RunCheckpoint::new(input.system, messages);
-        self.deps
-            .ports
-            .events
-            .emit(RunEvent::RunStarted {
-                objective: self.config.objective.clone(),
-            })
-            .await?;
+        let events = &self.deps.ports.events;
+        let objective = self.config.objective.clone();
+        events.emit(RunEvent::RunStarted { objective }).await?;
+        if !connectors.is_empty() {
+            events
+                .emit(RunEvent::ConnectorsUnavailable { connectors })
+                .await?;
+        }
         self.run_loop(state).await
     }
 

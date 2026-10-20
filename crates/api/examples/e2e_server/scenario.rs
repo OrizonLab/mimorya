@@ -12,8 +12,9 @@ use serde_json::json;
 /// The title of the scenario's last answer, which the tests wait for.
 const SUMMARY_TITLE: &str = "Synthèse des interventions";
 
-/// The scenario, its follow-up planned next Monday at `hour` (each run its
-/// own slot: a slot already taken would make the proposal fail).
+/// The scenario, its follow-up planned next Monday at `hour` (a slot taken
+/// by a validated run would make the proposal fail: a slot may be shared, or
+/// overlapped, only by runs that are refused).
 pub fn reference(hour: u32) -> Vec<ScriptedStep> {
     let monday = monday_of(Utc::now().date_naive());
     let week = json!({ "from": iso_date(monday), "to": iso_date(monday + Days::new(4)) });

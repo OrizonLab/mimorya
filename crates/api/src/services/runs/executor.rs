@@ -19,7 +19,7 @@ use mimorya_core::autonomy::{AutonomyLevel, AutonomyPolicy};
 use mimorya_db::Database;
 use mimorya_db::repositories::runs::{RunRow, RunStatus};
 
-use super::context::{build_run_system_prompt, build_tool_registry, recall_memories};
+use super::context::{build_run_system_prompt, build_run_tools, recall_memories};
 use super::db_ports::{RunScope, engine_ports};
 use super::outcome::record_crash;
 use super::run_access::RunAccess;
@@ -98,7 +98,8 @@ impl RunExecutor {
         mode: ExecutionMode,
     ) -> anyhow::Result<()> {
         let actor = Actor::agent(Some(run.id)).with_channel("web");
-        let runtime = self.runtime_for(access, run, ports, actor.clone()).await?;
+        let (runtime, unavailable_connectors) =
+            self.runtime_for(access, run, ports, actor.clone()).await?;
         match mode {
             ExecutionMode::Start { history, text } => {
                 let system = build_run_system_prompt(
@@ -115,6 +116,7 @@ impl RunExecutor {
                         system,
                         history,
                         user_turn: build_user_turn(&text, &memories),
+                        unavailable_connectors,
                     })
                     .await?;
             }
@@ -126,20 +128,22 @@ impl RunExecutor {
         Ok(())
     }
 
+    /// The run's runtime, and the connectors in reach of its user that
+    /// could not start (told to a run that starts, ADR-048).
     async fn runtime_for(
         &self,
         access: &AccessContext,
         run: &RunRow,
         ports: &EnginePorts,
         actor: Actor,
-    ) -> anyhow::Result<AgentRuntime> {
+    ) -> anyhow::Result<(AgentRuntime, Vec<String>)> {
         // A run awaiting approval may be resumed after a restart without a
         // provider, or after its company changed or removed its own.
         let Some(provider) = self.llm.provider_for(access.subject.tenant_id).await? else {
             anyhow::bail!("no model provider configured");
         };
         let router = ModelRouter::new(provider);
-        let registry = build_tool_registry(access, ports, &self.connectors).await?;
+        let tools = build_run_tools(access, &actor, ports, &self.connectors).await?;
         let budget: BudgetLimits = serde_json::from_value(run.budget.clone())?;
         let level = AutonomyLevel::parse(&run.autonomy_level)
             .ok_or_else(|| anyhow::anyhow!("unknown autonomy level {}", run.autonomy_level))?;
@@ -150,11 +154,11 @@ impl RunExecutor {
                 access.subject.tenant_id,
                 access.subject.user_id,
             )),
-            Arc::new(registry),
+            Arc::new(tools.registry),
             ports.clone(),
             self.prices.clone(),
         );
-        Ok(AgentRuntime::new(
+        let runtime = AgentRuntime::new(
             deps,
             RunConfig {
                 run_id: run.id,
@@ -169,6 +173,7 @@ impl RunExecutor {
                 },
                 effort: Some(Effort::High),
             },
-        ))
+        );
+        Ok((runtime, tools.unavailable_connectors))
     }
 }

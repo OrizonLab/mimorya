@@ -1,5 +1,6 @@
-//! What a run is given to work with: the tools in reach of the user, the
-//! system prompt, and the memories relevant to the request.
+//! What a run is given to work with: the tools in reach of the user (and
+//! the connectors in reach that could not start), the system prompt, and the
+//! memories relevant to the request.
 
 use chrono::{DateTime, Utc};
 use mimorya_agent::runtime::{
@@ -14,19 +15,33 @@ use mimorya_db::repositories::memory::{MemorySearchHit, mark_memory_used, search
 use mimorya_db::repositories::skills::list_active_skills;
 
 use crate::services::access::AccessContext;
-use crate::services::connectors::ConnectorService;
+use crate::services::connectors::{ConnectorService, unavailable_in_reach};
 
 const MEMORY_RECALL_LIMIT: i64 = 5;
 
-pub async fn build_tool_registry(
+/// The tools of a run, and the connectors in reach of its user that could
+/// not start (ADR-048).
+pub struct RunTools {
+    pub registry: ToolRegistry,
+    pub unavailable_connectors: Vec<String>,
+}
+
+pub async fn build_run_tools(
     access: &AccessContext,
+    actor: &Actor,
     ports: &EnginePorts,
     connectors: &ConnectorService,
-) -> anyhow::Result<ToolRegistry> {
+) -> anyhow::Result<RunTools> {
     let connector_tools = connectors.tools_for(access.subject.tenant_id).await?;
+    let holds = |permission: &str| access.engine.has(&access.subject, permission, actor);
+    let unavailable_connectors = unavailable_in_reach(&connector_tools.issues, holds);
     let mut tools = platform_tools(ports.memory.clone(), ports.skills.clone());
     tools.extend(connector_tools.tools);
-    ToolRegistry::new(tools, &connector_tools.overrides)
+    let registry = ToolRegistry::new(tools, &connector_tools.overrides)?;
+    Ok(RunTools {
+        registry,
+        unavailable_connectors,
+    })
 }
 
 /// The system prompt; the skills index only when the agent may read skills.
