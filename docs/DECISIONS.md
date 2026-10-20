@@ -1713,9 +1713,16 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     ouvrir une enveloppe ; les consignes système disent que c'est une procédure validée
     par l'entreprise, à suivre pour la tâche qu'elle couvre, qui ne peut ni étendre les
     droits de l'agent, ni lui éviter une validation, ni lever les règles de sécurité. Le
-    nom `skill_read` est réservé : les noms d'outils sont uniques dans un registre et
-    ceux d'un connecteur préfixés (`mcp_…`). Un refus de `skill_read` (compétence
-    introuvable) et tout autre résultat restent des données non fiables ;
+    nom `skill_read` est réservé : les noms d'outils sont uniques dans un registre (un
+    second `skill_read` est refusé, testé), ceux d'un serveur MCP préfixés (`mcp_…`),
+    ceux du connecteur de démonstration fixés dans le code. Un refus de `skill_read`
+    (compétence introuvable) et tout autre résultat restent des données non fiables ;
+  - aucun texte que la plateforme encadre, résultat d'outil, compétence ou mémoire
+    rappelée, ne peut ouvrir ni fermer l'une de ses enveloppes (`<donnees_outil>`,
+    `<procedure_entreprise>`, `<contexte_memoire>`, `<connecteurs_indisponibles>`),
+    quelles que soient la casse et les espaces (`neutralise_envelopes`) : une mémoire
+    qu'écrit un détenteur de `memory:write` ne peut pas se faire passer pour une
+    compétence ;
   - l'écran « Compétences » de l'administration liste les compétences, en écrit,
     montre les versions et leur contenu, écrit une version à partir de la dernière, en
     rend une active (« Revenir à » pour une plus ancienne), retire et supprime.
@@ -1723,10 +1730,15 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - une compétence ne porte aucune permission : chaque outil qu'elle mentionne reste
     soumis au PEP et aux validations ; la confiance qu'on lui accorde est celle qu'on
     accorde à l'administrateur qui l'a rendue active ;
+  - le détenteur de `skill:manage` (le rôle « Administrateur technique », sans accès aux
+    données métier) oriente désormais l'agent qui travaille pour les utilisateurs
+    métier : les lectures restent dans les droits de chaque utilisateur, les écritures et
+    sorties restent soumises à sa validation ;
   - l'index des compétences change avec elles : le prompt système d'un run ne change
     pas pendant ce run, mais deux runs successifs peuvent différer ;
   - non vérifié avec un modèle réel (comme le reste du moteur) : à valider avec le
     scénario de référence ;
   - restent à faire (phase 2) : propositions de version par l'agent, cas d'évaluation et
     non-régression avant activation, compétences propres à une unité (`org_unit_id`),
-    import d'un `SKILL.md` avec son en-tête.
+    import d'un `SKILL.md` avec son en-tête ; le détail d'une compétence renvoie le
+    contenu de toutes ses versions, à paginer si elles deviennent nombreuses.

@@ -11,6 +11,10 @@ use crate::plain_text::is_hidden;
 /// Active skills of one company: each is a line of every run's system prompt.
 pub const MAX_ACTIVE_SKILLS: i64 = 40;
 
+/// A skill name as a JSON schema writes it, for the model (2 to 64
+/// characters besides); `name_problem` is the rule.
+pub const NAME_PATTERN: &str = r"^[a-z0-9]+(-[a-z0-9]+)*$";
+
 /// Why a skill name is refused, in French; `None` when it is valid. The name
 /// is how the agent asks for the skill (`skill_read`), as agentskills.io
 /// writes it: lowercase letters, digits and single hyphens.

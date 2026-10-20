@@ -156,7 +156,10 @@ Avant chaque commit : `pnpm check && pnpm test:int` doivent passer.
      entrée stricte (`#[serde(deny_unknown_fields)]`, `JsonSchema`, `Validate`) ;
      `describe_action` s'il modifie quelque chose ; des `citations`. Il ne révèle
      jamais l'existence d'une ressource hors périmètre.
-   - Les résultats d'outils sont des données non fiables (`wrap_untrusted`).
+   - Les résultats d'outils sont des données non fiables (`wrap_tool_result`) ; seule
+     exception, la compétence active chargée par l'outil `skill_read` de la plateforme,
+     remise comme procédure de l'entreprise (ADR-052). Aucun texte encadré (résultat,
+     compétence, mémoire) ne peut ouvrir ni fermer une enveloppe (`neutralise_envelopes`).
    - Historique en ajout seul : ne jamais réécrire un message déjà envoyé au modèle
      (cache et blocs de raisonnement liés à la conversation).
    - Le prompt système reste stable (pas d'horodatage précis, pas de données

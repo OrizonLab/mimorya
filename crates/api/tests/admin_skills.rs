@@ -4,7 +4,7 @@
 //! back), the skill retired, then deleted. Each change is audited without
 //! the content. What is sent is checked first: a name the agent can ask for,
 //! a description on one visible line, a content without hidden characters.
-//! Only an administrator of the whole company reaches these screens.
+//! Who reaches these screens: `skill_access.rs`.
 
 mod support;
 
@@ -12,11 +12,9 @@ use axum::http::StatusCode;
 use mimorya_core::demo::user;
 use mimorya_core::skill_rules::MAX_ACTIVE_SKILLS;
 use mimorya_db::seed::DEMO_SKILL_ID;
-use mimorya_db::testing::OTHER_TENANT_ID;
 use serde_json::{Value, json};
-use support::refusals::{entries_since, latest_entry, not_found_since, refusals_since};
+use support::refusals::{entries_since, latest_entry};
 use support::{Client, TestApi};
-use uuid::Uuid;
 
 const SKILLS: &str = "/admin/skills";
 const DESCRIPTION: &str = "Relancer un client dont l’intervention attend une pièce.";
@@ -257,65 +255,4 @@ async fn no_more_skills_are_active_than_the_index_holds() {
         let deleted = paul.delete(&format!("{SKILLS}/{id}")).await;
         assert_eq!(deleted.status, StatusCode::OK, "{}", deleted.text());
     }
-}
-
-/// A skill of the other company.
-async fn foreign_skill(api: &TestApi) -> Uuid {
-    let mut tx = api.app.services.db.begin(OTHER_TENANT_ID).await.unwrap();
-    let id = sqlx::query_scalar(
-        "insert into skills (tenant_id, name, description) \
-         values ($1, 'procedure-ailleurs', 'Une procédure d’une autre entreprise') returning id",
-    )
-    .bind(OTHER_TENANT_ID)
-    .fetch_one(&mut *tx)
-    .await
-    .unwrap();
-    tx.commit().await.unwrap();
-    id
-}
-
-#[tokio::test]
-#[ignore = "requires PostgreSQL"]
-async fn only_an_administrator_of_the_company_reaches_its_skills() {
-    let api = TestApi::start().await;
-    let paul = api.sign_in(user::PAUL).await;
-    let marc = api.sign_in(user::MARC).await;
-    let foreign = foreign_skill(&api).await;
-    let since = latest_entry(&api).await;
-
-    // A member: refused, the change audited (ADR-038).
-    assert_eq!(marc.get(SKILLS).await.status, StatusCode::FORBIDDEN);
-    let tried = marc.post(SKILLS, skill("relance-client")).await;
-    assert_eq!(tried.status, StatusCode::FORBIDDEN);
-    assert_eq!(refusals_since(&api, since).await.len(), 1);
-
-    // Another company's skill answers as one that exists nowhere, and the
-    // attempt is audited as such (ADR-047).
-    for id in [foreign, Uuid::new_v4()] {
-        assert_eq!(
-            paul.get(&format!("{SKILLS}/{id}")).await.status,
-            StatusCode::NOT_FOUND
-        );
-        let activated = activate(&paul, &id.to_string(), 1).await;
-        assert_eq!(activated.status, StatusCode::NOT_FOUND);
-    }
-    let absent = not_found_since(&api, since).await;
-    assert_eq!(absent.len(), 2);
-    assert_eq!(
-        absent[0].1.resource,
-        Some(("skill".into(), foreign.to_string()))
-    );
-    let mut tx = api.app.services.db.begin(OTHER_TENANT_ID).await.unwrap();
-    let status: String = sqlx::query_scalar("select status from skills where id = $1")
-        .bind(foreign)
-        .fetch_one(&mut *tx)
-        .await
-        .unwrap();
-    assert_eq!(status, "draft");
-    sqlx::query("delete from skills where id = $1")
-        .bind(foreign)
-        .execute(&mut *tx)
-        .await
-        .unwrap();
-    tx.commit().await.unwrap();
 }

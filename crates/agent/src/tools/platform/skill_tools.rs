@@ -1,20 +1,17 @@
 //! Built-in skill tool: loads the full content of an active company skill.
 
-use std::sync::{Arc, LazyLock};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use mimorya_core::autonomy::ToolRisk;
+use mimorya_core::skill_rules::{NAME_PATTERN, name_problem};
 use mimorya_core::tools::{Citation, ToolContext, ToolInfo, ToolResult, TypedTool};
-use regex::Regex;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use validator::Validate;
+use validator::{Validate, ValidationError};
 
 use crate::runtime::ports::SkillStore;
-
-static SKILL_NAME_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^[a-z0-9]+(-[a-z0-9]+)*$").expect("valid regex"));
 
 /// The tool that loads a skill: its result reaches the model as a procedure
 /// (ADR-052).
@@ -27,9 +24,17 @@ pub struct SkillRead {
 #[derive(Debug, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct SkillReadInput {
-    #[schemars(regex(pattern = r"^[a-z0-9]+(-[a-z0-9]+)*$"))]
-    #[validate(regex(path = *SKILL_NAME_RE))]
+    #[schemars(regex(pattern = NAME_PATTERN), length(min = 2, max = 64))]
+    #[validate(custom(function = "skill_name"))]
     name: String,
+}
+
+/// A name as the administration writes it (`skill_rules`).
+fn skill_name(name: &str) -> Result<(), ValidationError> {
+    match name_problem(name) {
+        None => Ok(()),
+        Some(_) => Err(ValidationError::new("skill_name")),
+    }
 }
 
 #[async_trait]
