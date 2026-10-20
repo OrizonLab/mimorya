@@ -120,15 +120,12 @@ impl AgentRuntime {
         })
     }
 
-    /// Whether a call only read: as recorded when it was called, or, for a
-    /// call recorded without its risk, as the tool still present declares.
+    /// Whether a call only read: as recorded when it was called and as the
+    /// tool, if still present, now declares (the higher risk of the two, so
+    /// that a tool found since to write is not repeated). A call neither
+    /// recorded with its risk nor of a tool still present is unknown.
     fn only_read(&self, call: &InterruptedCall) -> bool {
-        match call.risk {
-            Some(risk) => risk == ToolRisk::Read,
-            None => self
-                .tools
-                .tool(&call.tool_name)
-                .is_some_and(|tool| tool.info.risk == ToolRisk::Read),
-        }
+        let current = self.tools.tool(&call.tool_name).map(|tool| tool.info.risk);
+        call.risk.max(current) == Some(ToolRisk::Read)
     }
 }

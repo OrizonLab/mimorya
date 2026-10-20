@@ -15,7 +15,7 @@ use mimorya_core::demo::{tenant, user};
 use mimorya_db::testing::{OTHER_TENANT_ID, OTHER_USER_ID};
 use support::recovery::{events, interrupted_ago, restart, saved, status_and_error, stopped_run};
 use support::resets::new_reset_token;
-use support::{TestApi, email};
+use support::{TestApi, email, owner_url};
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
@@ -28,6 +28,17 @@ async fn a_second_process_takes_nothing_up_while_the_first_holds_the_lock() {
     let second = TestApi::start().await;
     let refused = second.app.recover_interrupted_runs().await.unwrap_err();
     assert_eq!(refused.to_string(), LOCK_HELD_ELSEWHERE);
+    // The connection holding the lock, as an operator finds it.
+    let owner = sqlx::PgPool::connect(owner_url()).await.unwrap();
+    let holders: i64 = sqlx::query_scalar(
+        "select count(*) from pg_locks join pg_stat_activity using (pid) \
+         where locktype = 'advisory' and granted \
+         and application_name = 'mimorya-run-executor'",
+    )
+    .fetch_one(&owner)
+    .await
+    .unwrap();
+    assert_eq!(holders, 1);
     second.idle().await;
     assert_eq!(
         status_and_error(&first, tenant::ID, run_id).await.0,
@@ -58,6 +69,9 @@ async fn the_sweep_at_startup_leaves_interrupted_runs_alone() {
     // Interrupted twenty minutes ago: stale for the sweep.
     let run_id = stopped_run(&before, tenant::ID, user::MARC, None, Some(saved()), &[]).await;
     interrupted_ago(run_id, 20).await;
+    // Stopped: only the new process's maintenance can purge the link.
+    let TestApi { app, .. } = before;
+    app.shutdown().await;
 
     let api = TestApi::start().await;
     let mut purged = false;

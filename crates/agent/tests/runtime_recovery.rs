@@ -9,11 +9,12 @@ use mimorya_agent::llm::LlmMessage;
 use mimorya_agent::runtime::{
     InterruptedCall, MAX_RESUMPTIONS, PendingApproval, PendingCalls, RunCheckpoint, RunOutcome,
 };
-use mimorya_agent::testing::ScriptedStep;
+use mimorya_agent::testing::{self, ScriptedStep};
 use std::collections::HashMap;
 
 use mimorya_agent::tools::ToolOverride;
 use mimorya_core::autonomy::ToolRisk;
+use mimorya_core::demo::user;
 use serde_json::json;
 use support::{Harness, Options, setup};
 use uuid::Uuid;
@@ -189,7 +190,7 @@ async fn is_not_taken_up_forever() {
 }
 
 #[tokio::test]
-async fn judges_a_call_by_the_risk_recorded_when_it_was_called() {
+async fn judges_a_call_by_the_higher_of_its_recorded_and_current_risks() {
     let h = setup(
         vec![ScriptedStep::text("Synthèse : rien à signaler.")],
         Options::default(),
@@ -199,13 +200,92 @@ async fn judges_a_call_by_the_risk_recorded_when_it_was_called() {
     let outcome = h.runtime.recover(saved(), read).await.unwrap();
     assert_eq!(outcome.status(), "completed", "{outcome:?}");
 
-    // Recorded as a write (before its administrator made it a read): unknown.
+    for (name, recorded, title) in [
+        // Recorded as a write (before its administrator made it a read).
+        ("jobs_search", ToolRisk::Write, "« Recherche »"),
+        // Recorded as a read, found since to write.
+        (
+            "planning_apply",
+            ToolRisk::Read,
+            "« Application du planning »",
+        ),
+    ] {
+        let h = setup(
+            vec![ScriptedStep::text("Jamais appelé")],
+            Options::default(),
+        );
+        let interrupted = vec![call(name, Some(recorded))];
+        let outcome = h.runtime.recover(saved(), interrupted).await.unwrap();
+        let error = error_of(&outcome);
+        assert!(
+            error.contains(&format!("{title} : son effet n’est pas connu")),
+            "{error}"
+        );
+        assert!(h.provider.requests().is_empty());
+    }
+}
+
+/// Each call's name and risk, as the engine recorded them.
+fn recorded_risks(h: &Harness) -> Vec<(String, Option<String>)> {
+    h.events_of("tool_call")
+        .iter()
+        .map(|event| {
+            let risk = event.get("risk").map(|risk| risk.as_str().unwrap().into());
+            (event["toolName"].as_str().unwrap().into(), risk)
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn records_the_risk_of_each_call_as_in_force_when_called() {
+    let calls = vec![
+        testing::call("jobs_search", json!({ "query": "chaudière" })),
+        testing::call("planning_apply", json!({ "slots": 2 })),
+        testing::call("users_disable", json!({ "userId": user::LUCAS })),
+        testing::call("tool_unknown", json!({})),
+    ];
     let h = setup(
-        vec![ScriptedStep::text("Jamais appelé")],
+        vec![ScriptedStep::calls("", calls), ScriptedStep::text("Fait.")],
         Options::default(),
     );
-    let written = vec![call("jobs_search", Some(ToolRisk::Write))];
-    let outcome = h.runtime.recover(saved(), written).await.unwrap();
-    assert!(error_of(&outcome).contains("« Recherche » : son effet n’est pas connu"));
-    assert!(h.provider.requests().is_empty());
+    h.start().await;
+    let decisions: Vec<String> = h
+        .events_of("tool_call")
+        .iter()
+        .map(|event| event["decision"].as_str().unwrap().into())
+        .collect();
+    assert_eq!(decisions, ["allow", "require_approval", "deny", "deny"]);
+    let expected = [
+        ("jobs_search", Some("read")),
+        ("planning_apply", Some("write")),
+        ("users_disable", Some("write")),
+        ("tool_unknown", None),
+    ];
+    let expected: Vec<(String, Option<String>)> = expected
+        .iter()
+        .map(|(name, risk)| ((*name).into(), risk.map(Into::into)))
+        .collect();
+    assert_eq!(recorded_risks(&h), expected);
+
+    // The risk its administrator set is the one recorded.
+    let draft = ToolOverride {
+        risk: Some(ToolRisk::Draft),
+        ..ToolOverride::default()
+    };
+    let search = testing::call("jobs_search", json!({ "query": "chaudière" }));
+    let h = setup(
+        vec![
+            ScriptedStep::calls("", vec![search]),
+            ScriptedStep::text("Fait."),
+        ],
+        Options {
+            overrides: HashMap::from([("jobs_search".to_string(), draft)]),
+            ..Options::default()
+        },
+    );
+    h.start().await;
+    assert_eq!(
+        recorded_risks(&h),
+        [("jobs_search".to_string(), Some("draft".to_string()))]
+    );
 }

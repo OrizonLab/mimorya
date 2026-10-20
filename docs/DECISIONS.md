@@ -1762,7 +1762,10 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     (`pg_try_advisory_lock`, sur une connexion à elle) ; un second processus sur la même
     base ne l'obtient pas et refuse de démarrer, au lieu de reprendre ou de doubler les
     runs que le premier exécute. Le verrou n'est pris, et les runs repris, qu'une fois le
-    port d'écoute obtenu ;
+    port d'écoute obtenu. Sa connexion est nommée `mimorya-run-executor` (visible dans
+    `pg_stat_activity`, ce que rappelle le message d'erreur) et sondée par le serveur
+    (keepalive TCP après une minute d'inactivité) : si l'hôte de l'API disparaît sans la
+    fermer, le verrou est libéré en quelques minutes, non en deux heures ;
   - le balayage des runs bloqués n'agit qu'une fois le processus en marche depuis aussi
     longtemps qu'un run met à devenir « bloqué » (15 minutes) : seuls ses propres runs
     peuvent alors l'être, et un run repris garde son ancienne heure d'enregistrement
@@ -1774,9 +1777,11 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     appels d'outils lancés depuis sont perdus ;
   - le moteur ne le reprend que si rien d'autre qu'une lecture n'a été lancé depuis
     cette étape : les appels autorisés commencés depuis sont les événements `tool_call`
-    postérieurs au repère, et chacun doit avoir été de risque `read` au moment de l'appel
-    (risque désormais enregistré dans l'événement, surcharge de l'administrateur comprise ;
-    à défaut, pour un événement plus ancien, celui de l'outil encore présent). Une
+    postérieurs au repère, et chacun doit être une lecture : selon le risque enregistré
+    dans l'événement au moment de l'appel (surcharge de l'administrateur comprise) et selon
+    l'outil s'il est encore présent, le plus élevé des deux l'emportant (un outil reconnu
+    depuis comme écrivant n'est pas relancé). Un appel sans risque enregistré d'un outil
+    disparu est inconnu. Une
     action qui a pu changer quelque chose (écriture, brouillon, envoi…) n'est jamais
     relancée à l'aveugle : le run échoue en nommant l'action, dont l'effet est à
     vérifier. Il échoue aussi s'il était en train d'exécuter des actions validées (en

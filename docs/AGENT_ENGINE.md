@@ -92,9 +92,10 @@ n'avait été lancé depuis ; sinon le run échoue en nommant l'action dont l'ef
 vérifier (de même pendant des actions validées, après deux reprises, avant toute
 étape enregistrée ou après plus d'une heure d'interruption). Les validations en attente
 de l'étape perdue sont annulées et cette annulation est auditée. Le risque de chaque
-outil appelé est enregistré dans l'événement `tool_call` : c'est lui qui décide, et toute
-fin nomme les actions dont l'effet est à vérifier. L'API tient un verrou d'exécution des
-runs : un second processus sur la même base refuse de démarrer.
+outil appelé est enregistré dans l'événement `tool_call` ; un appel n'est jugé lecture
+que si ce risque et celui de l'outil, s'il est encore présent, sont tous deux `read`.
+Toute fin nomme les actions dont l'effet est à vérifier. L'API tient un verrou
+d'exécution des runs : un second processus sur la même base refuse de démarrer.
 
 **Connecteurs indisponibles** (ADR-048) : un connecteur de l'entreprise qui ne démarre
 pas (serveur injoignable, politiques illisibles…) laisse le run sans ses outils. S'il
