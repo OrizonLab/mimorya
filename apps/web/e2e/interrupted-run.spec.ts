@@ -1,8 +1,9 @@
 // A run a stop of the service interrupted, taken up at startup (ADR-053):
-// the end-to-end server leaves one, a search of interventions under way, and
-// takes it up as the API does. Its live follow-up marks the lost step and
-// says where the run went on; the run then asks for its validation again.
-// It is refused, even when the test fails, so that no validation waits.
+// the end-to-end server leaves one, a search of interventions under way
+// after a planning its user refused, and takes it up as the API does. Its
+// live follow-up marks the lost step, and only it, and says where the run
+// went on; the run then asks for its validation again. It is refused, even
+// when the test fails, so that no validation waits.
 import { refuseWaiting } from './support/approvals';
 import { demo, expect, noError, signIn, test } from './support/fixtures';
 
@@ -27,6 +28,13 @@ test('a run taken up after a stop of the service shows the step it lost', async 
   await expect(lost).toContainText('Recherche d’interventions');
   await expect(lost.getByLabel('Interrompue')).toBeVisible();
   await expect(page.getByText(RESUMED)).toBeVisible();
+  // The planning refused before the stop ended then: it is not lost.
+  const refused = page
+    .getByRole('listitem')
+    .filter({ hasText: 'Action refusée par l’utilisateur' });
+  await expect(refused).toHaveCount(1);
+  await expect(refused).toContainText('Application d’un planning');
+  await expect(refused).not.toContainText('Interrompue');
   await expect(page.getByText('Validation requise')).toBeVisible({ timeout: 30_000 });
 
   // Refused, the run ends without changing the planning; read again, the

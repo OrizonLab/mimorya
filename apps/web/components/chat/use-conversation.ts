@@ -95,10 +95,7 @@ export function useConversation(conversationId: string | null) {
     },
     [activeRunId, loadApprovals, loadDetail, loadConversations],
   );
-  // The validations a run taken up again was waiting for are cancelled: it
-  // asks again for those it still needs (ADR-053).
-  const onRunResumed = useCallback(() => setApprovals([]), []);
-  const { activity, reconnect } = useRunStream(activeRunId, onRunFinished, onRunResumed);
+  const { activity, reconnect } = useRunStream(activeRunId, onRunFinished);
 
   /** Sends a message, creating the conversation first if needed; true once accepted. */
   const send = useCallback(

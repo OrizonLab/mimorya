@@ -122,12 +122,8 @@ impl AgentRuntime {
                 .await?;
             let result = match (self.tools.tool(&approval.tool_name), decision.approved) {
                 (None, _) => {
-                    self.tools
-                        .reject(
-                            approval,
-                            "Outil désactivé depuis la demande de validation".into(),
-                        )
-                        .await?
+                    let removed = "Outil désactivé depuis la demande de validation";
+                    self.tools.reject(approval, removed.into(), removed).await?
                 }
                 (Some(_), false) => {
                     let comment = decision
@@ -135,11 +131,9 @@ impl AgentRuntime {
                         .as_ref()
                         .map(|c| format!(" : {c}"))
                         .unwrap_or_default();
+                    let refused = "Action refusée par l’utilisateur";
                     self.tools
-                        .reject(
-                            approval,
-                            format!("Action refusée par l’utilisateur{comment}"),
-                        )
+                        .reject(approval, format!("{refused}{comment}"), refused)
                         .await?
                 }
                 (Some(tool), true) => {

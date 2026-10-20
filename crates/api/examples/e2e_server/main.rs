@@ -32,7 +32,8 @@ use mimorya_api::{AppConfig, BuildOptions, build_app, log_filter};
 /// refuses, then `reference-scenario.spec.ts`, the three of
 /// `timeouts.spec.ts` and `unavailable-connectors.spec.ts`). Only the one of
 /// `reference-scenario.spec.ts` is validated: the others are refused, so
-/// their slots, which may overlap (8 h and 9 h), are never taken.
+/// their slots, which may overlap (8 h, 9 h, 10 h and 11 h, two hours
+/// each), are never taken.
 const SCENARIO_HOURS: [u32; 6] = [10, 13, 15, 9, 11, 8];
 
 /// Company providers' answers to their connection test.

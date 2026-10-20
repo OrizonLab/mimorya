@@ -15,10 +15,14 @@ use mimorya_db::repositories::runs::RunRow;
 
 use crate::services::connectors::read_policies;
 
-/// The risk each tool of the company's connectors is now set to by its
-/// administrator, as runs would apply it: the current side of the rule a
-/// call is judged by (`InterruptedCall::only_read`), as far as the ends
-/// decided here, which start no connector, can know it.
+/// The current side of the rule a call is judged by
+/// (`InterruptedCall::only_read`), for the ends decided here, which start no
+/// connector: the risk the administrator set on a tool of the company's
+/// enabled connectors, unless they disabled the tool (a run would not have
+/// it). What only a started connector tells (the tools it really serves, the
+/// risk it declares where no policy sets one) is not known here: such a
+/// call is judged by the risk recorded with it. Should two connectors name
+/// the same tool, the higher risk counts.
 pub(super) async fn risks_set_now(tx: &mut TenantTx) -> anyhow::Result<HashMap<String, ToolRisk>> {
     let mut risks: HashMap<String, ToolRisk> = HashMap::new();
     for instance in list_connector_instances(tx, true).await? {
@@ -27,7 +31,11 @@ pub(super) async fn risks_set_now(tx: &mut TenantTx) -> anyhow::Result<HashMap<S
         let Ok(policies) = read_policies(&instance) else {
             continue;
         };
-        for (tool, risk) in policies.into_iter().filter_map(|(t, p)| Some((t, p.risk?))) {
+        let set = policies
+            .into_iter()
+            .filter(|(_, policy)| policy.enabled != Some(false))
+            .filter_map(|(tool, policy)| Some((tool, policy.risk?)));
+        for (tool, risk) in set {
             let set = risks.entry(tool).or_insert(risk);
             *set = (*set).max(risk);
         }

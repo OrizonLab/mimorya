@@ -14,12 +14,26 @@ use crate::tools::executor::INVALID_INPUT;
 use crate::tools::{RegisteredTool, ToolCallEvaluation};
 
 impl ToolCallProcessor {
-    /// A call refused by a human (or whose tool disappeared) is reported to the model.
+    /// A call refused by a human (or whose tool disappeared) is reported to
+    /// the model, and ended in the live view with `shown`, the reason without
+    /// what the user wrote: it ran nothing, and is never taken for a call a
+    /// stop of the service left half done.
     pub async fn reject(
         &self,
         approval: &PendingApproval,
         reason: String,
+        shown: &str,
     ) -> anyhow::Result<LlmToolResult> {
+        self.ports
+            .events
+            .emit(RunEvent::ToolResult {
+                tool_call_id: approval.tool_call_id.clone(),
+                tool_name: approval.tool_name.clone(),
+                summary: shown.into(),
+                is_error: true,
+                duration_ms: 0,
+            })
+            .await?;
         self.ports
             .tool_log
             .record(ToolInvocationRecord {
@@ -165,7 +179,7 @@ impl ToolCallProcessor {
                 approved: decision.approved,
             })
             .await?;
-        self.reject(approval, reason.to_string()).await?;
+        self.reject(approval, reason.to_string(), reason).await?;
         Ok(())
     }
 }

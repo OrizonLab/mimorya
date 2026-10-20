@@ -42,7 +42,7 @@ export function ActivityPanel({ activity }: { activity: RunActivity }) {
           ))}
           {activity.steps.map((step, i) => (
             <Fragment key={step.toolCallId}>
-              {activity.resumptions.includes(i) && <ResumedNotice />}
+              <ResumedNotices resumptions={activity.resumptions} at={i} />
               <li className="flex items-start gap-2">
                 <StepIcon step={step} />
                 <span className="min-w-0">
@@ -63,7 +63,7 @@ export function ActivityPanel({ activity }: { activity: RunActivity }) {
               </li>
             </Fragment>
           ))}
-          {activity.resumptions.includes(activity.steps.length) && <ResumedNotice />}
+          <ResumedNotices resumptions={activity.resumptions} at={activity.steps.length} />
         </ol>
       )}
       {activity.verification && !activity.verification.passed && working && (
@@ -78,14 +78,17 @@ export function ActivityPanel({ activity }: { activity: RunActivity }) {
   );
 }
 
-/** Where the run went on after a stop of the service. */
-function ResumedNotice() {
-  return (
-    <li className="flex items-start gap-2 text-muted">
-      <RotateCcw className="mt-0.5 size-4 shrink-0" aria-hidden />
-      Le service a redémarré : la demande a repris à sa dernière étape enregistrée.
-    </li>
-  );
+/** Where the run went on after a stop of the service: once per resumption at `at`. */
+function ResumedNotices({ resumptions, at }: { resumptions: number[]; at: number }) {
+  return resumptions
+    .map((step, n) => ({ step, n }))
+    .filter(({ step }) => step === at)
+    .map(({ n }) => (
+      <li key={`r${n}`} className="flex items-start gap-2 text-muted">
+        <RotateCcw className="mt-0.5 size-4 shrink-0" aria-hidden />
+        Le service a redémarré : la demande a repris à sa dernière étape enregistrée.
+      </li>
+    ));
 }
 
 /** Which connectors the run goes without, and what it means for the answer. */
