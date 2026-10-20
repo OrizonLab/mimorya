@@ -7,8 +7,13 @@
 #   MIMORYA_DOMAIN            the name the stack is served on
 #   MIMORYA_TLS               an e-mail address for a public certificate (ACME),
 #                             or `internal` for Caddy's own local authority
-# then:
-#   docker compose --env-file .env.production -f compose.production.yml up -d --build
+#   MIMORYA_VERSION           optional: the published images to run (ADR-051), a
+#                             version (1.2.0) or a commit (sha-…); latest by default,
+#                             the last commit of main
+# then, with the published images:
+#   docker compose --env-file .env.production -f compose.production.yml pull
+#   docker compose --env-file .env.production -f compose.production.yml up -d
+# (or built from this checkout instead: `up -d --build`), and:
 #   docker compose --env-file .env.production -f compose.production.yml exec api \
 #     mimorya-admin create-company --name … --slug … --admin-email … --admin-name …
 #
@@ -41,7 +46,7 @@ services:
 
   # The migrations alone (owner role), then it stops.
   migrate:
-    image: mimorya-api:local
+    image: ghcr.io/orizonlab/mimorya-api:${MIMORYA_VERSION:-latest}
     build:
       context: .
       dockerfile: infra/docker/api.Dockerfile
@@ -53,7 +58,7 @@ services:
         condition: service_healthy
 
   api:
-    image: mimorya-api:local
+    image: ghcr.io/orizonlab/mimorya-api:${MIMORYA_VERSION:-latest}
     build:
       context: .
       dockerfile: infra/docker/api.Dockerfile
@@ -77,7 +82,7 @@ services:
         condition: service_completed_successfully
 
   web:
-    image: mimorya-web:production
+    image: ghcr.io/orizonlab/mimorya-web:${MIMORYA_VERSION:-latest}
     build:
       context: .
       dockerfile: infra/docker/web.Dockerfile

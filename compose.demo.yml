@@ -1,6 +1,10 @@
 # Containerised demonstration stack (ADR-032), with the FICTIONAL demo
-# company, behind Caddy on https://localhost:
-#   DEMO_PASSWORD=… docker compose -f compose.demo.yml up -d --build
+# company, behind Caddy on https://localhost, with the published images
+# (ADR-051; MIMORYA_VERSION picks a version or a commit, latest by default):
+#   export DEMO_PASSWORD=…
+#   docker compose -f compose.demo.yml pull
+#   docker compose -f compose.demo.yml up -d
+# or built from this checkout: `up -d --build`.
 #
 # Only Caddy publishes ports. The database is reachable from the stack's
 # own containers only, with its own volume (its fixed credentials never
@@ -26,7 +30,7 @@ services:
 
   # Migrations and the fictional demo company (owner role), then it stops.
   seed:
-    image: mimorya-api:local
+    image: ghcr.io/orizonlab/mimorya-api:${MIMORYA_VERSION:-latest}
     build:
       context: .
       dockerfile: infra/docker/api.Dockerfile
@@ -40,7 +44,7 @@ services:
         condition: service_healthy
 
   api:
-    image: mimorya-api:local
+    image: ghcr.io/orizonlab/mimorya-api:${MIMORYA_VERSION:-latest}
     build:
       context: .
       dockerfile: infra/docker/api.Dockerfile
@@ -63,7 +67,7 @@ services:
         condition: service_completed_successfully
 
   web:
-    image: mimorya-web:demo
+    image: ghcr.io/orizonlab/mimorya-web-demo:${MIMORYA_VERSION:-latest}
     build:
       context: .
       dockerfile: infra/docker/web.Dockerfile

@@ -57,9 +57,17 @@ Images Docker de l'API et de l'interface, derrière Caddy (HTTPS, HSTS), avec l'
 
 ```bash
 export DEMO_PASSWORD='…'                         # obligatoire (autre que demo-mimorya) : comptes de démo
-docker compose -f compose.demo.yml up -d --build # https://localhost (certificat local de Caddy)
+docker compose -f compose.demo.yml pull          # images publiées (ADR-051)
+docker compose -f compose.demo.yml up -d         # https://localhost (certificat local de Caddy)
 infra/docker/smoke-test.sh                       # vérification : HSTS, CSP, API, connexion
 ```
+
+Les images sont publiées sur le registre de GitHub (`ghcr.io/orizonlab/mimorya-api`,
+`mimorya-web`, `mimorya-web-demo`) à chaque commit de `main` dont la CI est verte, et à
+chaque version étiquetée `vX.Y.Z` (ADR-051). `MIMORYA_VERSION` choisit lesquelles : une
+version (`1.2.0`), un commit (`sha-` suivi de 12 caractères) ou `latest` (par défaut, le
+dernier commit de `main`). Pour construire les images depuis le dépôt plutôt que les
+télécharger : `up -d --build`.
 
 Seul Caddy publie des ports (80 et 443) ; la base n'est joignable que par les conteneurs
 de la pile. Variables facultatives (fichier `.env` ou environnement) : `ANTHROPIC_API_KEY`
@@ -118,13 +126,21 @@ POSTGRES_PASSWORD=$(openssl rand -hex 32)
 MIMORYA_APP_DB_PASSWORD=$(openssl rand -hex 32)
 MIMORYA_DOMAIN=mimorya.acme.example
 MIMORYA_TLS=exploitation@acme.example
+MIMORYA_VERSION=sha-…            # images publiées à installer (ADR-051) : version ou commit
 VARIABLES
 )
-docker compose --env-file .env.production -f compose.production.yml up -d --build
+docker compose --env-file .env.production -f compose.production.yml pull
+docker compose --env-file .env.production -f compose.production.yml up -d
 docker compose --env-file .env.production -f compose.production.yml exec api \
   mimorya-admin create-company --name 'Acme Industrie' --slug acme \
   --admin-email jeanne.martin@acme.example --admin-name 'Jeanne Martin'
 ```
+
+Fixer `MIMORYA_VERSION` (une version `1.2.0` dès qu'il y en aura, sinon un commit
+`sha-…` affiché par l'onglet « Packages » du dépôt) garde la même version d'un
+redémarrage à l'autre ; pour mettre à jour, changez-la puis relancez `pull` et `up -d`
+(les migrations s'appliquent au démarrage). Sans elle, `latest` suit le dernier commit de
+`main`. Pour construire depuis le dépôt plutôt que télécharger : `up -d --build`.
 
 Les deux mots de passe de base passent dans des URL de connexion : lettres et chiffres
 seulement, 16 au moins. La base refuse de démarrer sinon, sans rien créer, et le redit à
@@ -138,8 +154,7 @@ adresse e-mail pour un certificat public (ports 80 et 443 joignables depuis Inte
 démonstration (fournisseur de modèle, `MIMORYA_MASTER_KEY`, relais SMTP). La CI suit ce
 parcours jusqu'à la première connexion de l'administrateur
 (`infra/docker/production-test.sh`, réservé à une pile jetable : il y laisse une
-entreprise de vérification). Restent à faire : publication des images dans un registre, sauvegardes
-(voir la feuille de route).
+entreprise de vérification). Reste à faire : les sauvegardes (voir la feuille de route).
 
 ## Qualité
 

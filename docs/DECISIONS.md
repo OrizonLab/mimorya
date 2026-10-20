@@ -1597,3 +1597,48 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     change, une réponse réussie affichée, rien d'ajouté). Exécuter l'essai dans sa
     requête, ou afficher un résultat ou un refus pour d'autres valeurs que celles
     essayées, fait échouer ces tests.
+
+## ADR-051 — Images publiées sur le registre de GitHub (complète ADR-032 et ADR-034)
+
+- **Date** : 2026-10-20 · **Statut** : acceptée
+- **Contexte** : la CI construisait et vérifiait les images de l'API et de l'interface,
+  puis les jetait. Installer la pile de démonstration ou de production demandait donc de
+  les construire sur le serveur (Rust et Next.js : temps, mémoire, outillage), et rien
+  ne garantissait qu'une installation tournait le code vérifié par la CI.
+- **Décision** :
+  - le workflow `.github/workflows/images.yml` publie trois images sur le registre de
+    GitHub (`ghcr.io/orizonlab/`) : `mimorya-api` (API, migrations, commandes
+    d'exploitation, données de démonstration), `mimorya-web` (interface sans comptes de
+    démonstration) et `mimorya-web-demo` (interface qui les liste). Le relais `/api/*`
+    étant fixé à la construction, les deux interfaces visent `http://api:4000`, nom du
+    service des deux piles ;
+  - il publie après une CI **verte** sur un commit poussé sur `main` (`workflow_run`),
+    le commit même que la CI a vérifié (`head_sha`, pas la tête de `main` au moment de la
+    publication) : étiquettes `sha-<12 caractères>`, `main` et `latest`. Une étiquette de
+    version `vX.Y.Z` (éventuellement suivie d'un suffixe) publie `X.Y.Z` et
+    `sha-…`. Une branche `main` d'un dépôt dérivé, dont la CI tourne aussi, n'est jamais
+    publiée (dépôt d'origine vérifié) ;
+  - le jeton de la CI (`GITHUB_TOKEN`, permission `packages: write` sur ce seul travail)
+    suffit : ni compte ni secret supplémentaire. Les images portent la source du dépôt
+    (`org.opencontainers.image.source`), qui leur donne sa visibilité (publique), sa
+    révision et sa version ;
+  - une PR qui modifie le workflow ou `infra/docker/` construit les trois images sans
+    rien publier ; chaque image garde son cache de construction (`type=gha`, une portée
+    par image) ;
+  - les piles nomment ces images (`ghcr.io/orizonlab/…:${MIMORYA_VERSION:-latest}`) tout
+    en gardant leur construction : `pull` puis `up -d` installe les images publiées,
+    `up -d --build` les construit depuis le dépôt, comme le fait la CI qui vérifie les
+    piles.
+- **Conséquences** :
+  - une installation de production fixe `MIMORYA_VERSION` (une version, sinon un commit)
+    pour garder la même d'un redémarrage à l'autre ; `latest` suit `main` ;
+  - le code étant public, publier ses images ne révèle rien de plus ; un dépôt privé
+    rendrait les images privées (connexion au registre avant `pull`, quota payant
+    au-delà de l'offre gratuite) ;
+  - les organisations GitHub peuvent interdire les paquets publics : il faudrait alors
+    l'autoriser dans leurs réglages ou rendre le paquet visible après son premier envoi ;
+  - restent à faire : le cache du travail de CI qui vérifie les piles (il reconstruit les
+    images à chaque PR), la signature des images, et la vérification du premier envoi,
+    qui n'est possible qu'après la fusion (`workflow_run` ne part que du workflow de la
+    branche par défaut). Une PR qui touche les images en vérifie la construction, pas
+    l'envoi.

@@ -1,0 +1,114 @@
+name: Images
+
+# The images of the API and of the web application, published to the GitHub
+# Container Registry (ADR-051): each commit of main once CI has passed on it,
+# and each version tag (vX.Y.Z). A pull request that changes how they are
+# built builds them without publishing anything.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  push:
+    tags: ['v*']
+  pull_request:
+    paths:
+      - .github/workflows/images.yml
+      - infra/docker/**
+
+permissions:
+  contents: read
+
+concurrency:
+  group: images-${{ github.event.workflow_run.head_sha || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  image:
+    name: Image ${{ matrix.image }}
+    # A CI run that passed on a push to main of this very repository: a
+    # fork's branch named main runs CI too, and is never published.
+    if: >-
+      github.event_name != 'workflow_run' || (
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: mimorya-api
+            dockerfile: infra/docker/api.Dockerfile
+            build-args: ''
+          # The relay of /api/* is set at build time (web.Dockerfile).
+          - image: mimorya-web
+            dockerfile: infra/docker/web.Dockerfile
+            build-args: |
+              API_URL=http://api:4000
+              NEXT_PUBLIC_DEMO_MODE=false
+          - image: mimorya-web-demo
+            dockerfile: infra/docker/web.Dockerfile
+            build-args: |
+              API_URL=http://api:4000
+              NEXT_PUBLIC_DEMO_MODE=true
+    env:
+      IMAGE: ghcr.io/orizonlab/${{ matrix.image }}
+      PUBLISH: ${{ github.event_name != 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The commit CI passed on, not the head of main at this moment.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - name: Name the image
+        id: names
+        run: |
+          revision=$(git rev-parse HEAD)
+          tags="$IMAGE:sha-${revision:0:12}"
+          version=""
+          case "$GITHUB_EVENT_NAME" in
+            workflow_run)
+              tags="$tags,$IMAGE:main,$IMAGE:latest"
+              ;;
+            push)
+              version=${GITHUB_REF#refs/tags/v}
+              if ! [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+                echo "A version tag reads vX.Y.Z (optionally -suffix)" >&2
+                exit 1
+              fi
+              tags="$tags,$IMAGE:$version"
+              ;;
+          esac
+          {
+            echo "tags=$tags"
+            echo "labels<<LABELS"
+            echo "org.opencontainers.image.source=https://github.com/OrizonLab/mimorya"
+            echo "org.opencontainers.image.revision=$revision"
+            echo "org.opencontainers.image.version=${version:-sha-${revision:0:12}}"
+            echo "org.opencontainers.image.licenses=LicenseRef-Proprietary"
+            echo "LABELS"
+          } >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - name: Sign in to the registry
+        if: env.PUBLISH == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build${{ env.PUBLISH == 'true' && ' and publish' || '' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          build-args: ${{ matrix.build-args }}
+          push: ${{ env.PUBLISH == 'true' }}
+          tags: ${{ steps.names.outputs.tags }}
+          labels: ${{ steps.names.outputs.labels }}
+          # Layers kept between runs, one cache per image.
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
