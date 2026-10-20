@@ -1,7 +1,7 @@
 //! Connectors (`connector:manage`, company-wide, ADR-025): reading them with
-//! their state, adding an MCP server over HTTPS, changing it (address, token,
-//! per-tool policies, activation), deleting it and testing it. Tokens are
-//! write-only.
+//! their state, trying an MCP server before adding it (ADR-050), adding it
+//! over HTTPS, changing it (address, token, per-tool policies, activation),
+//! deleting it and testing it. Tokens are write-only.
 
 use axum::Json;
 use axum::extract::State;
@@ -11,16 +11,17 @@ use mimorya_db::repositories::connectors::list_connector_instances;
 
 use crate::app::AppState;
 use crate::contract::admin::{
-    ConnectorTest, ConnectorUpdate, ConnectorView, Connectors, DelegablePermission, McpEndpoint,
-    NewConnector, risks,
+    ConnectorTest, ConnectorTrial, ConnectorUpdate, ConnectorView, Connectors, DelegablePermission,
+    McpEndpoint, NewConnector, risks,
 };
 use crate::contract::{Created, Done};
 use crate::http::{ApiResult, Body, PathId};
 use crate::plugins::Auth;
 use crate::secrets::SecretStore;
 use crate::services::admin::{
-    ConnectorAdmin, ConnectorChanges, NewMcpConnector, TokenChange, create_mcp_connector,
-    delete_connector, http_config, test_connector, update_connector,
+    ConnectorAdmin, ConnectorChanges, McpTrial, NewMcpConnector, TokenChange, TrialServices,
+    create_mcp_connector, delete_connector, http_config, test_connector, try_mcp_connector,
+    update_connector,
 };
 use crate::services::connectors::token_secret_name;
 use crate::services::permission_catalog::permission_catalog;
@@ -154,5 +155,26 @@ pub async fn test(
     let access = state.access.context(identity).await?;
     let (store, catalog) = (secrets(&state), permission_catalog());
     let outcome = test_connector(&admin(&state, &store, &catalog), &access, id).await?;
+    Ok(Json((&outcome).into()))
+}
+
+/// An MCP server tried before it is added: nothing is stored (ADR-050).
+pub async fn trial(
+    State(state): State<AppState>,
+    Auth(identity): Auth,
+    Body(body): Body<ConnectorTrial>,
+) -> ApiResult<Json<ConnectorTest>> {
+    let access = state.access.context(identity).await?;
+    let services = TrialServices {
+        db: state.db.clone(),
+        connectors: state.connectors.clone(),
+        background: state.background.clone(),
+    };
+    let trial = McpTrial {
+        prefix: body.prefix,
+        url: body.url,
+        token: body.token.filter(|t| !t.is_empty()),
+    };
+    let outcome = try_mcp_connector(services, &access, trial).await?;
     Ok(Json((&outcome).into()))
 }

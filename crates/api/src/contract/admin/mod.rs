@@ -14,9 +14,9 @@ pub use activity::{
 };
 pub use assignments::{Assignment, AssignmentScope, RoleGrant};
 pub use connectors::{
-    ConnectorStatus, ConnectorTest, ConnectorType, ConnectorUpdate, ConnectorView, Connectors,
-    DelegablePermission, McpEndpoint, NewConnector, TestedTool, ToolPolicy, ToolPolicyChange,
-    risks,
+    ConnectorStatus, ConnectorTest, ConnectorTrial, ConnectorType, ConnectorUpdate, ConnectorView,
+    Connectors, DelegablePermission, McpEndpoint, NewConnector, TestedTool, ToolPolicy,
+    ToolPolicyChange, risks,
 };
 pub use llm::{LlmChoice, LlmSettingsView, LlmTestResult, LlmView, PlatformModel, ProviderKind};
 pub use policies::{

@@ -8,14 +8,14 @@ use mimorya_core::DomainError;
 use mimorya_core::autonomy::ToolRisk;
 use mimorya_db::repositories::audit::append_audit;
 use mimorya_db::repositories::connectors::{get_connector_instance, report_connector_status};
-use serde_json::json;
+use serde_json::{Value, json};
 use uuid::Uuid;
 
 use super::audit_entry;
 use super::connectors::ConnectorAdmin;
 use crate::services::AccessContext;
 use crate::services::connectors::{
-    failure, opened, read_policies, scoped_overrides, token_secret_name,
+    ConnectorService, Policies, failure, opened, read_policies, scoped_overrides, token_secret_name,
 };
 
 const PERMISSION: &str = "connector:manage";
@@ -65,34 +65,10 @@ pub async fn test_connector(
             error: Some(error.to_string()),
         },
         (Ok(policies), Ok(token)) => {
-            let started = admin
-                .connectors
-                .start(&instance.connector_type, &instance.config, token.as_deref())
-                .await;
-            match started {
-                Ok(runtime) => {
-                    let names: Vec<String> = runtime
-                        .tools
-                        .iter()
-                        .map(|t| t.info().name.clone())
-                        .collect();
-                    // As runs apply them.
-                    let effective = scoped_overrides(&instance, policies, &names);
-                    let tools = runtime
-                        .tools
-                        .iter()
-                        .map(|tool| tested(tool.info(), effective.get(&tool.info().name)))
-                        .collect();
-                    if let Some(closer) = &runtime.closer {
-                        closer.close().await;
-                    }
-                    ConnectorTestOutcome { tools, error: None }
-                }
-                Err(error) => ConnectorTestOutcome {
-                    tools: Vec::new(),
-                    error: Some(failure(&error, token.as_deref())),
-                },
-            }
+            let (kind, config) = (&instance.connector_type, &instance.config);
+            // As runs apply them.
+            let effective = |names: &[String]| scoped_overrides(&instance, policies, names);
+            start_and_list(admin.connectors, kind, config, token.as_deref(), effective).await
         }
     };
     if outcome.error.is_none() {
@@ -110,6 +86,41 @@ pub async fn test_connector(
     .await?;
     tx.commit().await?;
     Ok(outcome)
+}
+
+/// Starts a fresh instance as a run would, lists its tools with the policy
+/// `effective` gives them (from their names), then releases it. The token
+/// never appears in the failure.
+pub(super) async fn start_and_list(
+    connectors: &ConnectorService,
+    connector_type: &str,
+    config: &Value,
+    token: Option<&str>,
+    effective: impl FnOnce(&[String]) -> Policies,
+) -> ConnectorTestOutcome {
+    match connectors.start(connector_type, config, token).await {
+        Ok(runtime) => {
+            let names: Vec<String> = runtime
+                .tools
+                .iter()
+                .map(|t| t.info().name.clone())
+                .collect();
+            let policies = effective(&names);
+            let tools = runtime
+                .tools
+                .iter()
+                .map(|tool| tested(tool.info(), policies.get(&tool.info().name)))
+                .collect();
+            if let Some(closer) = &runtime.closer {
+                closer.close().await;
+            }
+            ConnectorTestOutcome { tools, error: None }
+        }
+        Err(error) => ConnectorTestOutcome {
+            tools: Vec::new(),
+            error: Some(failure(&error, token)),
+        },
+    }
 }
 
 /// The tool as runs see it: its declaration, then its effective policy.
