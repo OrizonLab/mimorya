@@ -42,8 +42,6 @@ pub async fn test_connector(
 ) -> anyhow::Result<ConnectorTestOutcome> {
     access.require_tenant_wide(PERMISSION)?;
     let tenant_id = access.subject.tenant_id;
-    // Held until the outcome is recorded.
-    let _start = admin.connectors.claim_admin_start(tenant_id)?;
     // The instance and its token from one snapshot.
     let mut tx = admin.db.begin_snapshot(tenant_id).await?;
     let Some(instance) = get_connector_instance(&mut tx, id).await? else {
@@ -56,6 +54,9 @@ pub async fn test_connector(
             .await?,
     );
     tx.commit().await?;
+    // Once the connector is known to exist (an absent one is answered as
+    // such, and traced: ADR-047), held until the outcome is recorded.
+    let _start = admin.connectors.claim_admin_start(tenant_id)?;
 
     let outcome = match (read_policies(&instance), secret) {
         (Err(error), _) => ConnectorTestOutcome {

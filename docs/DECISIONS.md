@@ -1891,10 +1891,11 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     la fois (`MAX_ADMIN_STARTS`, `services/connectors/admin_starts.rs`), tests et essais
     confondus ; un troisième est refusé (409, « Deux démarrages de connecteur sont déjà
     en cours dans votre entreprise : réessayez quand l'un d'eux aura fini. »), après la
-    vérification de la permission et des paramètres ;
+    vérification de la permission, des paramètres et, pour un test, de l'existence du
+    connecteur : un connecteur absent reste répondu introuvable, et tracé (ADR-047) ;
   - chaque démarrage tient un créneau tant qu'il dure : le test le rend une fois son
     résultat enregistré ; l'essai, qui se poursuit hors de sa requête (ADR-050), le rend
-    à sa fin, même si son client est parti ;
+    à sa fin, même si son client est parti, et avant de répondre ;
   - les démarrages des runs ne sont pas comptés : un même démarrage sert les runs qui en
     ont besoin, puis il est gardé (ADR-049) ;
   - le compte vit en mémoire du processus, qui est seul à exécuter (ADR-016).
@@ -1903,6 +1904,8 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - plusieurs instances (phase 2) demanderaient un compte partagé ;
   - test : `crates/api/tests/connector_admin_starts.rs` retient deux essais sur un
     serveur qui les fait attendre (le client du premier part), puis vérifie qu'un
-    troisième essai et un test sont refusés, et que les créneaux reviennent une fois
-    les essais finis ; un test unitaire vérifie qu'une autre entreprise n'est pas
-    retenue.
+    troisième essai et un test sont refusés, qu'un connecteur absent est toujours
+    répondu introuvable et tracé, un membre refusé et un essai invalide répondu comme
+    tel, et que les deux créneaux reviennent une fois les essais finis (deux essais
+    sont de nouveau retenus) ; un test unitaire vérifie qu'une autre entreprise n'est
+    pas retenue.

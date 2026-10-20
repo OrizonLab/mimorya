@@ -27,6 +27,7 @@ pub struct AdminStarts {
 }
 
 /// A slot held for one start; dropping it frees the slot.
+#[must_use = "dropping the slot frees it at once"]
 pub struct AdminStart {
     tenant_id: Uuid,
     running: Running,
