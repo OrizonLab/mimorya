@@ -1617,7 +1617,9 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     n'est jamais publiée), les images du commit que la CI a vérifié (`head_sha`) sont
     construites et publiées sous `sha-<12 caractères>`, **une seule fois** : une CI
     relancée ne remplace jamais ce qu'une installation fait peut-être déjà tourner sous
-    ce nom ;
+    ce nom. Seule une réponse « introuvable » du registre compte comme une absence
+    (`infra/docker/image-digest.sh`) : un registre qui ne répond pas, limite le débit ou
+    refuse l'accès arrête la publication au lieu de la relancer ;
   - **promotion** : une fois les trois publiées, `main` et `latest` les désignent
     ensemble (`imagetools create`), si le commit est encore la tête de `main` ; une
     promotion à la fois, une plus récente remplaçant celle qui attend. Ces noms ne
@@ -1626,7 +1628,10 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - **version** : une étiquette `vX.Y.Z` (éventuellement suivie d'un suffixe) sur un
     commit de `main` nomme `X.Y.Z` les images déjà publiées pour ce commit, sans rien
     reconstruire. Un commit hors de `main`, ou jamais publié (CI en échec), n'a pas de
-    version : le travail échoue ;
+    version : le travail échoue. Une version déjà donnée ne change jamais d'images : si
+    `X.Y.Z` en désigne d'autres, le travail échoue sans rien renommer ;
+  - la liste des images (nom, Dockerfile, arguments de construction, description) est
+    écrite une seule fois, dans `infra/docker/images.json`, que lisent tous les travaux ;
   - le jeton de la CI (`GITHUB_TOKEN`, permission `packages: write` sur les seuls travaux
     qui publient, pas sur la construction des PR) suffit : ni compte ni secret
     supplémentaire. Les images portent la source du dépôt

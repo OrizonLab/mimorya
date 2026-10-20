@@ -61,8 +61,9 @@ Repères à l'intérieur des crates :
   `web/lib/security/` (CSP à nonce par page, ADR-030), `web/e2e/` (tests de bout en
   bout, un fichier par parcours, `support/`) et `api/examples/e2e_server/` (l'API qu'ils
   pilotent, ADR-031).
-- `infra/` : `docker/` (images de l'API et de l'interface, test de fumée de la démonstration,
-  test d'installation de la production, vérifications partagées `checks.sh`), `caddy/`
+- `infra/` : `docker/` (images de l'API et de l'interface, liste des images publiées
+  `images.json`, test de fumée de la démonstration, test d'installation de la production,
+  vérifications partagées `checks.sh`), `caddy/`
   (reverse proxy : TLS, HSTS), `postgres/` (rôles et extensions ; production : `entrypoint-production.sh` vérifie les
   mots de passe, `init-production.sh` crée le rôle applicatif) ; `docker-compose.yml`
   (base de développement, sur 127.0.0.1), `compose.production.yml` (pile de production,

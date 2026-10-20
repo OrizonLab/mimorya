@@ -31,31 +31,42 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io/orizonlab
-  IMAGES: mimorya-api mimorya-web mimorya-web-demo
 
 jobs:
+  # The images, listed once (infra/docker/images.json), for a pull request or
+  # for a CI run that passed on a push to main of this very repository: a
+  # fork's branch named main runs CI too, and is never published.
+  images:
+    name: List the images
+    if: >-
+      github.event_name == 'pull_request' || (
+        github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      list: ${{ steps.list.outputs.list }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # On a CI run of main, the commit CI passed on.
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+      - id: list
+        run: echo "list=$(jq -c . infra/docker/images.json)" >> "$GITHUB_OUTPUT"
+
   build:
     name: Build ${{ matrix.image }}
+    needs: images
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - image: mimorya-api
-            dockerfile: infra/docker/api.Dockerfile
-            build-args: ''
-          - image: mimorya-web
-            dockerfile: infra/docker/web.Dockerfile
-            build-args: |
-              API_URL=http://api:4000
-              NEXT_PUBLIC_DEMO_MODE=false
-          - image: mimorya-web-demo
-            dockerfile: infra/docker/web.Dockerfile
-            build-args: |
-              API_URL=http://api:4000
-              NEXT_PUBLIC_DEMO_MODE=true
+        include: ${{ fromJSON(needs.images.outputs.list) }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -72,13 +83,8 @@ jobs:
 
   publish:
     name: Publish ${{ matrix.image }}
-    # A CI run that passed on a push to main of this very repository: a
-    # fork's branch named main runs CI too, and is never published.
-    if: >-
-      github.event_name == 'workflow_run' &&
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_repository.full_name == github.repository
+    needs: images
+    if: github.event_name == 'workflow_run'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -87,23 +93,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - image: mimorya-api
-            dockerfile: infra/docker/api.Dockerfile
-            build-args: ''
-            description: Mimorya API, migrations, operator commands and demo data
-          - image: mimorya-web
-            dockerfile: infra/docker/web.Dockerfile
-            build-args: |
-              API_URL=http://api:4000
-              NEXT_PUBLIC_DEMO_MODE=false
-            description: Mimorya web application
-          - image: mimorya-web-demo
-            dockerfile: infra/docker/web.Dockerfile
-            build-args: |
-              API_URL=http://api:4000
-              NEXT_PUBLIC_DEMO_MODE=true
-            description: Mimorya web application listing the demo accounts
+        include: ${{ fromJSON(needs.images.outputs.list) }}
     env:
       IMAGE: ghcr.io/orizonlab/${{ matrix.image }}
       DESCRIPTION: ${{ matrix.description }}
@@ -137,14 +127,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       # A commit is published once: a CI run started again never replaces
-      # what an installation may already run under that name.
+      # what an installation may already run under that name. A registry
+      # that does not answer stops the publication, never counts as absence.
       - name: Already published?
         id: published
         env:
           TAG: ${{ steps.names.outputs.tag }}
         run: |
-          if docker buildx imagetools inspect "$TAG" >/dev/null 2>&1; then
-            echo "$TAG is already published" >> "$GITHUB_STEP_SUMMARY"
+          digest=$(infra/docker/image-digest.sh "$TAG")
+          if [ -n "$digest" ]; then
+            echo "$TAG is already published ($digest)" >> "$GITHUB_STEP_SUMMARY"
             echo "done=true" >> "$GITHUB_OUTPUT"
           else
             echo "done=false" >> "$GITHUB_OUTPUT"
@@ -164,7 +156,7 @@ jobs:
 
   promote:
     name: Name main and latest
-    needs: publish
+    needs: [images, publish]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # One at a time; a newer commit's waiting promotion replaces an older one.
@@ -175,6 +167,7 @@ jobs:
       contents: read
       packages: write
     env:
+      IMAGES: ${{ join(fromJSON(needs.images.outputs.list).*.image, ' ') }}
       REVISION: ${{ github.event.workflow_run.head_sha }}
     steps:
       # Never move main and latest back to an older commit (a CI run of main
@@ -252,11 +245,22 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
           SHORT: ${{ steps.version.outputs.short }}
         run: |
-          # Each must exist: a commit never published (CI failed) has no release.
-          for image in $IMAGES; do
-            docker buildx imagetools inspect "$REGISTRY/$image:sha-$SHORT" >/dev/null
+          images=$(jq -r '.[].image' infra/docker/images.json)
+          # Each must be published (a commit CI failed on has no release), and
+          # a version already given must name these very images: it never moves.
+          for image in $images; do
+            published=$(infra/docker/image-digest.sh "$REGISTRY/$image:sha-$SHORT")
+            if [ -z "$published" ]; then
+              echo "$image:sha-$SHORT is not published" >&2
+              exit 1
+            fi
+            given=$(infra/docker/image-digest.sh "$REGISTRY/$image:$VERSION")
+            if [ -n "$given" ] && [ "$given" != "$published" ]; then
+              echo "$image:$VERSION already names other images ($given)" >&2
+              exit 1
+            fi
           done
-          for image in $IMAGES; do
+          for image in $images; do
             docker buildx imagetools create -t "$REGISTRY/$image:$VERSION" \
               "$REGISTRY/$image:sha-$SHORT"
           done

@@ -1,0 +1,20 @@
+[
+  {
+    "image": "mimorya-api",
+    "dockerfile": "infra/docker/api.Dockerfile",
+    "build-args": "",
+    "description": "Mimorya API, migrations, operator commands and demo data"
+  },
+  {
+    "image": "mimorya-web",
+    "dockerfile": "infra/docker/web.Dockerfile",
+    "build-args": "API_URL=http://api:4000\nNEXT_PUBLIC_DEMO_MODE=false",
+    "description": "Mimorya web application"
+  },
+  {
+    "image": "mimorya-web-demo",
+    "dockerfile": "infra/docker/web.Dockerfile",
+    "build-args": "API_URL=http://api:4000\nNEXT_PUBLIC_DEMO_MODE=true",
+    "description": "Mimorya web application listing the demo accounts"
+  }
+]
