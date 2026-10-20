@@ -32,9 +32,9 @@ pub use memory::{
     MemorySource, MemorySpace, MemoryStatus, ReviewDecision,
 };
 pub use run_stream::{
-    ApprovalRequestedEvent, ApprovalResolvedEvent, AssistantDelta, AssistantMessage, RunFinished,
-    RunStarted, RunStreamEvent, ToolCallEvent, ToolDecision, ToolResultEvent, ToolRisk, UsageEvent,
-    VerificationEvent,
+    ApprovalRequestedEvent, ApprovalResolvedEvent, AssistantDelta, AssistantMessage,
+    ConnectorsUnavailable, RunFinished, RunStarted, RunStreamEvent, ToolCallEvent, ToolDecision,
+    ToolResultEvent, ToolRisk, UsageEvent, VerificationEvent,
 };
 pub use runs::{
     RunBudget, RunDetail, RunEventRecord, RunList, RunListItem, RunRef, RunStatus, RunUsage,

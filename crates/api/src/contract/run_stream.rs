@@ -15,6 +15,7 @@ use super::runs::RunStatus;
 #[serde(tag = "type", content = "data", rename_all = "snake_case")]
 pub enum RunStreamEvent {
     RunStarted(RunStarted),
+    ConnectorsUnavailable(ConnectorsUnavailable),
     /// Text being written by the model, sent as it comes (not replayed).
     AssistantDelta(AssistantDelta),
     AssistantMessage(AssistantMessage),
@@ -31,6 +32,15 @@ pub enum RunStreamEvent {
 #[serde(deny_unknown_fields)]
 pub struct RunStarted {
     pub objective: String,
+}
+
+/// Connectors of the company in reach of the user that could not start:
+/// their tools are missing from the run (ADR-048).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+pub struct ConnectorsUnavailable {
+    /// Their names, as the administration shows them.
+    pub connectors: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]

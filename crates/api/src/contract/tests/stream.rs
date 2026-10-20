@@ -16,6 +16,9 @@ fn every_engine_event() -> Vec<RunEvent> {
         RunEvent::RunStarted {
             objective: "Planifier la semaine".into(),
         },
+        RunEvent::ConnectorsUnavailable {
+            connectors: vec!["Documentation".into()],
+        },
         RunEvent::AssistantMessage {
             text: "Je regarde le planning.".into(),
             is_final: false,
@@ -73,6 +76,7 @@ fn every_engine_event() -> Vec<RunEvent> {
 fn _covered(event: &RunEvent) {
     match event {
         RunEvent::RunStarted { .. }
+        | RunEvent::ConnectorsUnavailable { .. }
         | RunEvent::AssistantMessage { .. }
         | RunEvent::ToolCall { .. }
         | RunEvent::ToolResult { .. }

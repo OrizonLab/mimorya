@@ -12,6 +12,7 @@
 mod cache;
 mod failures;
 mod policies;
+mod reach;
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -33,6 +34,7 @@ use cache::{Origin, RuntimeCache, Unavailable};
 pub use failures::{failure, opened};
 pub use mimorya_connectors::mcp::CONNECTOR_USE;
 pub use policies::{Policies, read_policies, scoped_overrides};
+pub use reach::unavailable_in_reach;
 
 use crate::secrets::SecretStore;
 
@@ -50,7 +52,9 @@ pub struct ConnectorSettings {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConnectorIssue {
+    /// The instance's name.
     pub connector: String,
+    pub connector_type: String,
     pub message: String,
 }
 
@@ -135,6 +139,7 @@ impl ConnectorService {
                 Err(unavailable) => {
                     result.issues.push(ConnectorIssue {
                         connector: instance.name.clone(),
+                        connector_type: instance.connector_type.clone(),
                         message: "Connecteur indisponible".into(),
                     });
                     match unavailable.origin {

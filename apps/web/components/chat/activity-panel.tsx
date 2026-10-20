@@ -18,6 +18,9 @@ export function ActivityPanel({ activity }: { activity: RunActivity }) {
         )}
         {working ? 'Je travaille sur votre demande…' : 'En attente de votre validation'}
       </div>
+      {activity.unavailable.length > 0 && (
+        <p className="mt-2 text-xs text-warn">{unavailableNotice(activity.unavailable)}</p>
+      )}
       {(activity.notes.length > 0 || activity.steps.length > 0) && (
         <ol className="mt-3 flex flex-col gap-1.5 border-l border-line pl-3 text-sm">
           {activity.notes.map((note, i) => (
@@ -52,6 +55,14 @@ export function ActivityPanel({ activity }: { activity: RunActivity }) {
       )}
     </div>
   );
+}
+
+/** Which connectors the run goes without, and what it means for the answer. */
+function unavailableNotice(connectors: string[]): string {
+  const names = connectors.map((name) => `« ${name} »`).join(', ');
+  return connectors.length === 1
+    ? `Le connecteur ${names} est indisponible : la réponse peut être incomplète.`
+    : `Les connecteurs ${names} sont indisponibles : la réponse peut être incomplète.`;
 }
 
 function StepIcon({ step }: { step: RunActivity['steps'][number] }) {

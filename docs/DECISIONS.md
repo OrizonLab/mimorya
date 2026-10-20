@@ -1460,3 +1460,49 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     envoyé dans le corps ne sont tracés ; la réponse reste 404 quand la trace ne
     s'écrit pas. Retirer le marqueur ou la condition sur la ressource désignée fait
     échouer ces tests.
+
+## ADR-048 — Les connecteurs indisponibles sont signalés aux runs
+
+- **Date** : 2026-10-20 · **Statut** : acceptée
+- **Contexte** : un connecteur qui ne démarre pas laisse le run sans ses outils (ADR-025)
+  ; seuls ses administrateurs le savaient (statut et dernière erreur de l'instance). Le
+  modèle, ne voyant pas les outils, pouvait conclure qu'une information n'existait pas,
+  et l'utilisateur ignorait pourquoi la réponse était incomplète. `TenantTools.issues`
+  n'était lu que par les tests.
+- **Décision** :
+  - au démarrage d'un run (pas à sa reprise après validation, dont l'historique est
+    figé), les connecteurs indisponibles **à la portée de l'utilisateur** sont passés au
+    moteur (`StartInput.unavailable_connectors`) ;
+  - la portée se juge sur ce que chaque outil du type exige, faute de connaître les
+    outils d'un connecteur qui ne répond pas : `connector:use` pour un serveur MCP (tout
+    outil MCP l'exige), l'une des permissions métier qu'il introduit pour un autre type
+    (`services/connectors/reach.rs` ; un test vérifie, pour chaque type autre que MCP,
+    que chacun de ses outils exige l'une d'elles). La permission est évaluée avec le
+    plafond de l'agent ;
+  - le modèle l'apprend par une note `<connecteurs_indisponibles>` en tête du tour
+    utilisateur, qui nomme les connecteurs et lui demande de signaler ce qui manque
+    plutôt que de conclure que l'information n'existe pas. Le prompt système reste stable
+    ; les noms, choisis par un administrateur, tiennent sur une ligne et ne peuvent pas
+    fermer la note (chevrons remplacés) ;
+  - l'utilisateur l'apprend par l'événement `connectors_unavailable` du suivi en
+    direct, émis juste après `run_started` et rejoué comme les autres ; le panneau
+    d'activité affiche « Le connecteur « … » est indisponible : la réponse peut être
+    incomplète. ».
+- **Conséquences** :
+  - un membre qui détient `connector:use` voit le nom d'un serveur MCP indisponible même
+    si les politiques de ses outils les lui auraient tous retirés (la plateforme ne
+    connaît pas les outils d'un serveur qui ne répond pas) : le nom d'un connecteur est
+    une donnée de configuration de l'entreprise, pas une donnée métier ;
+  - un run repris après validation n'est pas averti d'un connecteur tombé entre-temps :
+    l'appel à l'un de ses outils échoue et le modèle en reçoit l'erreur ;
+  - le message montré à l'utilisateur disparaît avec le panneau d'activité à la fin du
+    run ; l'événement reste dans l'historique du run ;
+  - tests : `crates/agent/src/runtime/unavailable.rs` (note, noms neutralisés),
+    `crates/agent/tests/runtime_tools.rs` (note et événement, ou rien quand tout
+    démarre), `crates/api/src/services/connectors/reach.rs` (portée),
+    `crates/api/tests/connector_notices.rs` (un serveur MCP et le connecteur de
+    démonstration indisponibles : le responsable technique est averti des deux,
+    l'administrateur technique, sans permission métier, du seul serveur MCP),
+    `apps/web/e2e/unavailable-connectors.spec.ts` (le message dans le panneau, puis le
+    run continue avec les autres connecteurs). Laisser passer tous les connecteurs dans
+    le filtre de portée fait échouer les tests.
