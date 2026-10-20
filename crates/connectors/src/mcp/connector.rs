@@ -3,6 +3,9 @@
 //! the operator of a private deployment only) and exposes its tools through
 //! the bridge. Connecting and listing the tools are bounded in time; a
 //! failure is explained in French, without the token (`failure`, `redact`).
+//! A session whose transport closed (a local server that exited) says so,
+//! for the platform to start it again; an HTTP server that restarts is
+//! reached again by the client itself (`reinit_on_expired_session`).
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -45,14 +48,22 @@ pub enum McpConnectorConfig {
 /// Variables passed to a child process besides the configured ones.
 const INHERITED_ENV: [&str; 2] = ["PATH", "HOME"];
 
-struct Cancel(std::sync::Mutex<Option<RunningServiceCancellationToken>>);
+/// The session with the server: cancelled once, closed when its transport is.
+struct Session {
+    client: Arc<McpClient>,
+    cancel: std::sync::Mutex<Option<RunningServiceCancellationToken>>,
+}
 
 #[async_trait]
-impl ConnectorCloser for Cancel {
+impl ConnectorCloser for Session {
     async fn close(&self) {
-        if let Some(token) = self.0.lock().expect("closer").take() {
+        if let Some(token) = self.cancel.lock().expect("closer").take() {
             token.cancel();
         }
+    }
+
+    fn is_closed(&self) -> bool {
+        self.client.is_transport_closed()
     }
 }
 
@@ -154,11 +165,15 @@ async fn start(
         redactor: Redactor::new(context.secret),
         ..McpToolsetOptions::new(prefix)
     };
+    let client = Arc::new(client);
     // Its messages may quote what the server declared.
-    let tools = create_mcp_toolset(Arc::new(client), &options)
+    let tools = create_mcp_toolset(client.clone(), &options)
         .await
         .map_err(|error| anyhow::anyhow!(options.redactor.text(&format!("{error:#}"))));
-    let closer = Cancel(std::sync::Mutex::new(Some(token)));
+    let closer = Session {
+        client,
+        cancel: std::sync::Mutex::new(Some(token)),
+    };
     match tools {
         Ok(tools) => Ok(ConnectorRuntime {
             tools,

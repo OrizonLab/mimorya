@@ -1909,3 +1909,42 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     tel, et que les deux créneaux reviennent une fois les essais finis (deux essais
     sont de nouveau retenus) ; un test unitaire vérifie qu'une autre entreprise n'est
     pas retenue.
+
+## ADR-056 — Session MCP gardée entre les runs : reprise d'un serveur redémarré, redémarrage d'une session fermée (complète ADR-025 et ADR-049)
+
+- **Date** : 2026-10-20 · **Statut** : acceptée
+- **Contexte** : une instance de connecteur démarrée est gardée entre les runs
+  (ADR-049) et n'était reconstruite qu'au changement de sa configuration ou au
+  redémarrage de la plateforme. La feuille de route demandait de vérifier la vivacité
+  de cette session : un serveur qui redémarre, ou qui s'arrête, la laissait-il
+  inutilisable ?
+- **Constat** (vérifié par des tests) :
+  - un serveur HTTP qui redémarre ne connaît plus la session : il répond 404, et le
+    client MCP (`rmcp` 3.5, `reinit_on_expired_session`, actif par défaut) en ouvre une
+    nouvelle, puis rejoue l'appel. Pendant l'arrêt, les appels échouent (résultat
+    d'erreur pour le modèle) ; une fois le serveur revenu, la même session le joint ;
+  - un serveur local (stdio) qui s'arrête ferme son transport pour de bon : tous les
+    appels suivants échouaient jusqu'au redémarrage de la plateforme.
+- **Décision** :
+  - une instance dit si sa connexion est fermée pour de bon (`ConnectorCloser::is_closed`,
+    `ConnectorRuntime::is_closed`) : pour un serveur MCP, quand le transport de sa
+    session est fermé ;
+  - le cache ne sert pas une instance fermée : il la libère (journal
+    d'avertissement, sans secret) et le run qui en a besoin la démarre de nouveau, comme
+    au premier démarrage (démarrage partagé, échec retenu, ADR-049) ;
+  - rien n'est ajouté pour HTTP, où le client rejoint seul un serveur redémarré.
+- **Conséquences** :
+  - un run déjà en cours garde l'instance qu'il a reçue : ses appels échouent jusqu'à
+    sa fin ; le run suivant démarre une nouvelle session ;
+  - `is_closed` est lu sous le verrou du cache, avant chaque run servi : il lit un
+    état, sans jamais attendre le serveur ;
+  - limites restantes : un serveur stdio vivant mais muet ne se dit jamais fermé (ses
+    appels échouent au délai d'appel, jusqu'au redémarrage de la plateforme ou à un
+    changement de l'instance) ; un serveur HTTP qui ne répond pas 404 à une session
+    inconnue n'est pas rejoint ; un serveur stdio qui démarre puis s'arrête aussitôt est
+    démarré de nouveau par chaque run, sans le délai qui suit un démarrage échoué ;
+  - tests : `crates/connectors/tests/mcp_sessions.rs` (un serveur HTTP arrêté puis
+    relancé sur le même port est rejoint par la même session, qui ne se dit jamais
+    fermée ; un serveur stdio arrêté laisse une session qui se dit fermée) et
+    `services/connectors/cache/tests.rs` (une instance fermée est libérée et démarrée de
+    nouveau, une instance ouverte est gardée).

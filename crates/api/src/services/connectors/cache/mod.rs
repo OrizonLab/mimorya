@@ -4,7 +4,9 @@
 //! start rather than make its own (ADR-049): a server that does not answer
 //! delays the runs of one start, then one run per retry delay, not every
 //! run. A start invalidated while it ran (instance changed, disabled or
-//! deleted) is released, never kept.
+//! deleted) is released, never kept. A live instance whose session closed
+//! for good (a local server that exited) is released and started again by
+//! the next run that needs it.
 
 use std::collections::HashMap;
 use std::future::Future;
@@ -118,6 +120,11 @@ impl RuntimeCache {
         let (_finished, done) = loop {
             let mut waiting = {
                 let mut state = self.state.lock().await;
+                if matches!(state.slots.get(&id), Some(Slot::Live { version: v, runtime }) if *v == version && runtime.is_closed())
+                {
+                    tracing::warn!(connector = %id, "A kept connector's session closed: starting it again");
+                    release(state.slots.remove(&id));
+                }
                 let stale = state.stale(id, ticket);
                 match state.slots.get(&id) {
                     Some(Slot::Live {

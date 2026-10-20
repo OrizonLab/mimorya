@@ -219,3 +219,65 @@ async fn a_run_that_read_a_changed_instance_does_not_start_it() {
     assert!(Arc::ptr_eq(&live, &shared));
     assert_eq!(starts.load(Ordering::SeqCst), 0);
 }
+
+/// A session that can be told it closed, and records being released.
+#[derive(Default)]
+struct Session {
+    closed: std::sync::atomic::AtomicBool,
+    released: std::sync::atomic::AtomicBool,
+}
+
+/// The closer an instance holds, sharing the session with the test.
+struct Closer(Arc<Session>);
+
+#[async_trait::async_trait]
+impl mimorya_connectors::ConnectorCloser for Closer {
+    async fn close(&self) {
+        self.0.released.store(true, Ordering::SeqCst);
+    }
+
+    fn is_closed(&self) -> bool {
+        self.0.closed.load(Ordering::SeqCst)
+    }
+}
+
+#[tokio::test]
+async fn starts_again_an_instance_whose_session_closed_for_good() {
+    let cache = RuntimeCache::default();
+    let (id, version) = (Uuid::new_v4(), Utc::now());
+    let starts = AtomicUsize::new(0);
+    let first_session = Arc::new(Session::default());
+    let sessions = std::sync::Mutex::new(vec![Arc::new(Session::default()), first_session.clone()]);
+    let start = || async {
+        starts.fetch_add(1, Ordering::SeqCst);
+        let session = sessions.lock().unwrap().pop().unwrap();
+        Ok(ConnectorRuntime {
+            tools: Vec::new(),
+            closer: Some(Box::new(Closer(session))),
+        })
+    };
+    let Ok(live) = cache.get_or_start(id, version, 0, start).await else {
+        panic!("expected a live instance");
+    };
+    // Still open: kept.
+    let Ok(kept) = cache.get_or_start(id, version, 0, start).await else {
+        panic!("expected the live instance");
+    };
+    assert!(Arc::ptr_eq(&live, &kept));
+    assert_eq!(starts.load(Ordering::SeqCst), 1);
+
+    // Closed for good: released, and started again.
+    first_session.closed.store(true, Ordering::SeqCst);
+    let Ok(again) = cache.get_or_start(id, version, 0, start).await else {
+        panic!("expected a new instance");
+    };
+    assert!(!Arc::ptr_eq(&live, &again));
+    assert_eq!(starts.load(Ordering::SeqCst), 2);
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        while !first_session.released.load(Ordering::SeqCst) {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("the closed instance is released");
+}
