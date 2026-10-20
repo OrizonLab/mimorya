@@ -1359,11 +1359,15 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - `Checkbox` (`apps/web/components/ui/checkbox.tsx`) garde un vrai
     `<input type="checkbox">` (étiquette, clavier, formulaire), sans l'apparence du
     navigateur (`appearance: none`), et dessine la coche par-dessus ; son aspect
-    désactivé est une opacité, que la règle d'ADR-042 retarde ;
+    désactivé est une opacité, de la case comme de la coche, que la règle d'ADR-042
+    retarde (étendue à la coche) ; son contour (`--muted`) contraste avec le fond
+    (5,4:1 en clair, 6,4:1 en sombre, WCAG 1.4.11) ; pas d'état indéterminé ;
   - toutes les cases à cocher de l'interface l'utilisent (rôles, politiques, règles
-    des outils d'un serveur MCP).
+    des outils d'un serveur MCP) ; une règle ESLint refuse `type="checkbox"` ailleurs
+    que dans `Checkbox`.
 - **Conséquences** :
   - plus aucune exception au délai d'ADR-042 parmi les contrôles de l'interface ;
   - une case à cocher nouvelle passe par `Checkbox` ;
   - test : `apps/web/e2e/reloads.spec.ts` vérifie, pendant le verrou, qu'une case des
-    règles d'outils est désactivée, sans apparence native, et animée par le verrou.
+    règles d'outils est désactivée, sans apparence native, animée par le verrou, et
+    qu'elle et sa coche finissent atténuées.

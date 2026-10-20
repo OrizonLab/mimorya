@@ -144,7 +144,9 @@ body {
  * unlike a transition, also delays a control shown while the lock holds. The
  * missing `to` keyframe is the control's own (disabled) style.
  */
-fieldset:disabled :disabled:not([disabled]) {
+fieldset:disabled :disabled:not([disabled]),
+/* The mark a Checkbox draws over its input dims with it. */
+fieldset:disabled :disabled:not([disabled]) + svg {
   animation: locked-dim 0s 150ms both;
 }
 

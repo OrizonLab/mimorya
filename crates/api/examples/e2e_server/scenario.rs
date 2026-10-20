@@ -55,23 +55,28 @@ pub fn reference(hour: u32) -> Vec<ScriptedStep> {
                 vec![call("planning_apply", json!({ "proposalId": proposal }))],
             )
         }),
-        // The summary says what became of the validation: applied, or refused.
+        // The summary says what became of the validation: applied, refused by
+        // the user, or failed (any other error).
         ScriptedStep::dynamic(move |request| {
-            let refused = last_tool_results(request)
-                .first()
-                .is_some_and(|result| result.is_error);
-            ScriptedReply::text(if refused {
-                format!(
-                    "## {SUMMARY_TITLE}\n\n- **INT-2049** : intervention non terminée ; le suivi \
+            let result = last_tool_results(request).into_iter().next();
+            let error = result.filter(|r| r.is_error).map(|r| r.content);
+            ScriptedReply::text(match error {
+                Some(content) if content.contains("Action refusée par l’utilisateur") => {
+                    format!(
+                        "## {SUMMARY_TITLE}\n\n- **INT-2049** : intervention non terminée ; le suivi \
                      proposé lundi prochain à {hour} h avec Léa n'est pas appliqué.\n\n\
                      Le planning est inchangé : la validation a été refusée."
-                )
-            } else {
-                format!(
+                    )
+                }
+                Some(content) => format!(
+                    "## {SUMMARY_TITLE}\n\n- **INT-2049** : le suivi proposé lundi prochain à \
+                     {hour} h avec Léa n'a pas pu être appliqué : {content}"
+                ),
+                None => format!(
                     "## {SUMMARY_TITLE}\n\n- **INT-2049** : intervention non terminée, suivi \
                      programmé lundi prochain à {hour} h avec Léa.\n\nLe planning de suivi est \
                      appliqué."
-                )
+                ),
             })
         }),
     ]

@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   api,
   ApiError,
@@ -44,18 +44,15 @@ export function useConversation(conversationId: string | null) {
   }, []);
 
   // A failure is kept apart: the run waits on these, which can be loaded
-  // again. Only the latest load is shown (a conversation opened while its
-  // run waits loads them twice: from the detail and from the replayed event).
-  const approvalsLoad = useRef(0);
+  // again. Loaded once per wait: when the run's stream announces it (live,
+  // or replayed when a waiting conversation is opened).
   const loadApprovals = useCallback(async (runId: string) => {
-    const load = ++approvalsLoad.current;
     setApprovalsError(null);
     try {
       const r = await api.get<ApprovalList>('/approvals');
-      if (load === approvalsLoad.current)
-        setApprovals(r.approvals.filter((a) => a.runId === runId));
+      setApprovals(r.approvals.filter((a) => a.runId === runId));
     } catch (e) {
-      if (load === approvalsLoad.current) setApprovalsError(loadFailure(e));
+      setApprovalsError(loadFailure(e));
     }
   }, []);
 
@@ -66,14 +63,15 @@ export function useConversation(conversationId: string | null) {
       setDetail(d);
       const active = d.runs.find((r) => r.status === 'running' || r.status === 'awaiting_approval');
       setActiveRunId(active?.id ?? null);
-      if (active?.status === 'awaiting_approval') await loadApprovals(active.id);
-      else setApprovals([]);
+      // A run waiting for a validation announces it again on its stream, which
+      // replays its events: its approvals are loaded then, not twice.
+      setApprovals([]);
     } catch (e) {
       setError(
         e instanceof ApiError && e.status === 404 ? 'Conversation introuvable' : loadFailure(e),
       );
     }
-  }, [conversationId, loadApprovals]);
+  }, [conversationId]);
 
   useEffect(loadConversations, [loadConversations]);
   useEffect(() => {

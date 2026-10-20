@@ -125,6 +125,9 @@ test('the approval a run waits for says it could not be loaded', async ({ page }
   // ...and loads it again.
   await page.getByRole('button', { name: 'Réessayer' }).click();
   await expect(page.getByText('Validation requise')).toBeVisible();
+  // Opened again, the waiting conversation loads it from the run's replayed events.
+  await page.reload();
+  await expect(page.getByText('Validation requise')).toBeVisible();
   // Refused, the run ends without changing the planning, and says so.
   await page.getByRole('button', { name: 'Refuser' }).click();
   await expect(

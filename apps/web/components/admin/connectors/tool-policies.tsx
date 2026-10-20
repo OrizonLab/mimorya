@@ -95,7 +95,7 @@ export function ToolPolicies({
             <fieldset className="flex flex-wrap gap-x-4 gap-y-1">
               <legend className="sr-only">Permissions requises pour {tool.name}</legend>
               <label className="flex items-center gap-1 text-muted">
-                <Checkbox checked disabled readOnly /> Utiliser les connecteurs
+                <Checkbox checked disabled /> Utiliser les connecteurs
               </label>
               {choices.map((p) => (
                 <label key={p.permission} className="flex items-center gap-1">
