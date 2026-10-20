@@ -2,13 +2,11 @@
 // the assistant, follows the run live, validates the planning it proposes,
 // reads the result, then finds the run and the decision in the operations.
 import { demo, expect, signIn, test } from './support/fixtures';
-
-const REQUEST =
-  'Fais le point sur les interventions de la semaine et planifie le suivi de celles qui ne sont pas terminées.';
+import { REFERENCE_REQUEST } from './support/scenario';
 
 test('a manager asks, validates the planning and gets the result', async ({ page }) => {
   await signIn(page, demo.marc);
-  await page.getByLabel('Votre message').fill(REQUEST);
+  await page.getByLabel('Votre message').fill(REFERENCE_REQUEST);
   await page.getByRole('button', { name: 'Envoyer' }).click();
 
   // The run pauses on the action that changes the planning.

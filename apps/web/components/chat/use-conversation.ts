@@ -43,7 +43,9 @@ export function useConversation(conversationId: string | null) {
       .catch((e: unknown) => setListError(loadFailure(e)));
   }, []);
 
-  // A failure is kept apart: the run waits on these, which can be loaded again.
+  // A failure is kept apart: the run waits on these, which can be loaded
+  // again. Loaded once per wait: when the run's stream announces it (live,
+  // or replayed when a waiting conversation is opened).
   const loadApprovals = useCallback(async (runId: string) => {
     setApprovalsError(null);
     try {
@@ -61,14 +63,15 @@ export function useConversation(conversationId: string | null) {
       setDetail(d);
       const active = d.runs.find((r) => r.status === 'running' || r.status === 'awaiting_approval');
       setActiveRunId(active?.id ?? null);
-      if (active?.status === 'awaiting_approval') await loadApprovals(active.id);
-      else setApprovals([]);
+      // A run waiting for a validation announces it again on its stream, which
+      // replays its events: its approvals are loaded then, not twice.
+      setApprovals([]);
     } catch (e) {
       setError(
         e instanceof ApiError && e.status === 404 ? 'Conversation introuvable' : loadFailure(e),
       );
     }
-  }, [conversationId, loadApprovals]);
+  }, [conversationId]);
 
   useEffect(loadConversations, [loadConversations]);
   useEffect(() => {

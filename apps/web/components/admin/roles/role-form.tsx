@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
-import { Button, ErrorNote, Field, Input } from '@/components/ui';
+import { Button, Checkbox, ErrorNote, Field, Input } from '@/components/ui';
 import {
   api,
   useAction,
@@ -77,9 +77,8 @@ export function RoleForm({
             <legend className="mb-1 text-xs font-medium text-muted">{group}</legend>
             {permissions.map((p) => (
               <label key={p.permission} className="flex items-start gap-2">
-                <input
-                  type="checkbox"
-                  className="mt-1"
+                <Checkbox
+                  className="mt-0.5"
                   checked={granted.has(p.permission)}
                   onChange={() => toggle(p.permission)}
                 />

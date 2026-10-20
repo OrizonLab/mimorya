@@ -2,13 +2,15 @@
 // says so and offers to try again, rather than stay locked or claim there is
 // nothing (ADR-044). The page's clock is moved on instead of waited for; each
 // test holds or fails the read until it lets it through. The role a test
-// creates is deleted, even when it fails; the conversation's run is ended.
+// creates is deleted, and a validation left waiting is refused, even when it
+// fails.
 import type { Page } from '@playwright/test';
 import { READ_TIMEOUT_MS } from '../lib/api/client';
-import type { Roles } from '../lib/api/contract';
+import type { ApprovalList, ApprovalVerdict, Roles } from '../lib/api/contract';
 import { openAdmin } from './support/admin';
 import { demo, expect, noError, signIn, test } from './support/fixtures';
 import { holdList } from './support/hold';
+import { REFERENCE_REQUEST } from './support/scenario';
 
 const ROLE = 'Délai e2e';
 
@@ -17,8 +19,6 @@ async function signedIn(page: Page, email: string) {
   await signIn(page, email);
   await expect(page.getByText('Chargement…')).toHaveCount(0);
 }
-const REQUEST =
-  'Fais le point sur les interventions de la semaine et planifie le suivi de celles qui ne sont pas terminées.';
 const NO_ANSWER = 'Le serveur ne répond pas. Réessayez dans un instant.';
 
 test.beforeEach(async ({ page }) => {
@@ -26,6 +26,18 @@ test.beforeEach(async ({ page }) => {
 });
 
 test.afterEach(async ({ page }) => {
+  // A run left waiting (a test failed before deciding) ends refused.
+  const approvals = await page.request.get('/api/approvals');
+  if (approvals.status() === 200) {
+    const { approvals: waiting } = (await approvals.json()) as ApprovalList;
+    for (const approval of waiting.filter((a) => a.status === 'pending')) {
+      const refused = await page.request.post(`/api/approvals/${approval.id}/decision`, {
+        headers: { 'X-Mimorya-Request': '1' },
+        data: { approved: false } satisfies ApprovalVerdict,
+      });
+      expect(refused.status()).toBe(200);
+    }
+  }
   const listed = await page.request.get('/api/admin/roles');
   if (listed.status() !== 200) return;
   const { roles } = (await listed.json()) as Roles;
@@ -103,7 +115,7 @@ test('the approval a run waits for says it could not be loaded', async ({ page }
       : route.continue(),
   );
   await signedIn(page, demo.marc);
-  await page.getByLabel('Votre message').fill(REQUEST);
+  await page.getByLabel('Votre message').fill(REFERENCE_REQUEST);
   await page.getByRole('button', { name: 'Envoyer' }).click();
 
   // The run waits for a validation the page could not load: it says so...
@@ -113,10 +125,13 @@ test('the approval a run waits for says it could not be loaded', async ({ page }
   // ...and loads it again.
   await page.getByRole('button', { name: 'Réessayer' }).click();
   await expect(page.getByText('Validation requise')).toBeVisible();
-  // Refused, the run ends without changing the planning again.
+  // Opened again, the waiting conversation loads it from the run's replayed events.
+  await page.reload();
+  await expect(page.getByText('Validation requise')).toBeVisible();
+  // Refused, the run ends without changing the planning, and says so.
   await page.getByRole('button', { name: 'Refuser' }).click();
-  await expect(page.getByRole('heading', { name: 'Synthèse des interventions' })).toBeVisible({
-    timeout: 30_000,
-  });
+  await expect(
+    page.getByText('Le planning est inchangé : la validation a été refusée.'),
+  ).toBeVisible({ timeout: 30_000 });
   await noError(page);
 });
