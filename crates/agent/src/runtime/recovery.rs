@@ -20,7 +20,8 @@ pub const MAX_RESUMPTIONS: u32 = 2;
 impl AgentRuntime {
     /// Goes on from `checkpoint`, the run's last saved step, once the tools
     /// named in `interrupted` (calls started since that step, in order) are
-    /// known to only read.
+    /// known to only read. While approved actions were running (`pending`),
+    /// `interrupted` names those approved, and the run ends.
     pub async fn recover(
         &self,
         mut checkpoint: RunCheckpoint,
@@ -50,16 +51,21 @@ impl AgentRuntime {
                     .into(),
             );
         }
-        if let Some(pending) = &checkpoint.pending {
-            let actions: Vec<String> = pending
-                .approvals
-                .iter()
-                .map(|a| self.title_of(&a.tool_name))
-                .collect();
+        if checkpoint.pending.is_some() {
+            // `interrupted` names the actions approved among those awaited.
+            if interrupted.is_empty() {
+                return Some(
+                    "Exécution interrompue par un arrêt du service après votre décision : \
+                     aucune action n’avait été validée, rien n’a été exécuté. Relancez votre \
+                     demande si besoin."
+                        .into(),
+                );
+            }
+            let approved: Vec<String> = interrupted.iter().map(|n| self.title_of(n)).collect();
             return Some(format!(
-                "Exécution interrompue par un arrêt du service pendant les actions validées \
-                 ({}) : leur effet n’est pas connu. Vérifiez-le avant de relancer votre demande.",
-                actions.join(", ")
+                "Exécution interrompue par un arrêt du service pendant {}. Vérifiez-le avant de \
+                 relancer votre demande.",
+                unknown_effect(&approved, true)
             ));
         }
         let unsafe_actions: Vec<String> = interrupted
@@ -73,9 +79,9 @@ impl AgentRuntime {
             .collect();
         (!unsafe_actions.is_empty()).then(|| {
             format!(
-                "Exécution interrompue par un arrêt du service pendant l’action {} : son effet \
-                 n’est pas connu. Vérifiez-le avant de relancer votre demande.",
-                unsafe_actions.join(", ")
+                "Exécution interrompue par un arrêt du service pendant {}. Vérifiez-le avant de \
+                 relancer votre demande.",
+                unknown_effect(&unsafe_actions, false)
             )
         })
     }
@@ -87,5 +93,22 @@ impl AgentRuntime {
             .tool(name)
             .map_or_else(|| name.to_owned(), |tool| tool.info.title);
         format!("« {title} »")
+    }
+}
+
+/// « l’action « A » : son effet n’est pas connu », or the plural, of actions
+/// that were `validated` or not.
+fn unknown_effect(titles: &[String], validated: bool) -> String {
+    let (one_kind, many_kind) = if validated {
+        ("l’action validée", "les actions validées")
+    } else {
+        ("l’action", "les actions")
+    };
+    match titles {
+        [one] => format!("{one_kind} {one} : son effet n’est pas connu"),
+        many => format!(
+            "{many_kind} {} : leur effet n’est pas connu",
+            many.join(", ")
+        ),
     }
 }

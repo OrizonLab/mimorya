@@ -13,7 +13,7 @@ use mimorya_agent::runtime::{
     VerificationConfig,
 };
 use mimorya_agent::testing::{InMemoryPorts, ScriptedProvider, ScriptedStep, TestAccess};
-use mimorya_agent::tools::ToolRegistry;
+use mimorya_agent::tools::{ToolOverride, ToolRegistry};
 use mimorya_core::authz::{Actor, ResourceRef, Subject};
 use mimorya_core::autonomy::{AutonomyLevel, AutonomyPolicy, ToolRisk};
 use mimorya_core::demo::{self, unit, user};
@@ -196,6 +196,8 @@ pub struct Options {
     pub budget: Option<BudgetLimits>,
     pub criteria: Vec<String>,
     pub judge: Option<Vec<ScriptedStep>>,
+    /// What an administrator changed of the tools (risk…).
+    pub overrides: HashMap<String, ToolOverride>,
 }
 
 pub struct Harness {
@@ -266,7 +268,7 @@ pub fn setup(steps: Vec<ScriptedStep>, options: Options) -> Harness {
     let mut deps = RuntimeDeps::new(
         router,
         access,
-        Arc::new(ToolRegistry::new(tools, &HashMap::new()).unwrap()),
+        Arc::new(ToolRegistry::new(tools, &options.overrides).unwrap()),
         ports.ports(),
         Arc::new(PriceTable::default()),
     );

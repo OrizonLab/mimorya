@@ -89,8 +89,10 @@ mémoires rappelées au démarrage, résultats obtenus) reste dans sa conversati
 démarrage puis à chaque étape. Au démarrage, l'API reprend les runs qu'un arrêt a
 interrompus depuis leur dernière étape enregistrée, si rien d'autre qu'une lecture
 n'avait été lancé depuis ; sinon le run échoue en nommant l'action dont l'effet est à
-vérifier (de même pendant des actions validées, après deux reprises, ou avant toute
-étape enregistrée). Les validations en attente de l'étape perdue sont annulées.
+vérifier (de même pendant des actions validées, après deux reprises, avant toute
+étape enregistrée ou après plus d'une heure d'interruption). Les validations en attente
+de l'étape perdue sont annulées et cette annulation est auditée. Seul le processus qui
+tient le verrou d'exécution des runs reprend quoi que ce soit.
 
 **Connecteurs indisponibles** (ADR-048) : un connecteur de l'entreprise qui ne démarre
 pas (serveur injoignable, politiques illisibles…) laisse le run sans ses outils. S'il

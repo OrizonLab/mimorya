@@ -21,7 +21,7 @@ use mimorya_db::repositories::runs::{RunRow, RunStatus};
 
 use super::context::{build_run_system_prompt, build_run_tools, recall_memories};
 use super::db_ports::{RunScope, engine_ports};
-use super::outcome::record_crash;
+use super::outcome::{CRASH_MESSAGE, record_crash};
 use super::run_access::RunAccess;
 use crate::services::access::{AccessContext, AccessService};
 use crate::services::connectors::ConnectorService;
@@ -70,6 +70,11 @@ impl RunExecutor {
             conversation_id: run.conversation_id,
         };
         let ports = engine_ports(self.db.clone(), scope, self.bus.clone());
+        // A run taken up that crashes says which actions to check.
+        let message = match &mode {
+            ExecutionMode::Recover { interrupted, .. } => recovery_crash_message(interrupted),
+            _ => CRASH_MESSAGE.to_owned(),
+        };
         let attempt = AssertUnwindSafe(self.run(&access, &run, &ports, mode)).catch_unwind();
         let error = match attempt.await {
             Ok(Ok(())) => return,
@@ -77,7 +82,7 @@ impl RunExecutor {
             Err(_) => "panic".to_string(),
         };
         tracing::error!(run_id = %run.id, error, "Run crashed");
-        let status = match record_crash(&self.db, scope).await {
+        let status = match record_crash(&self.db, scope, &message).await {
             Ok(Some(status)) => status,
             // Its end is already announced (the stale-run sweep failed it).
             Ok(None) => return,
@@ -186,4 +191,21 @@ impl RunExecutor {
         );
         Ok((runtime, tools.unavailable_connectors))
     }
+}
+
+/// Shown when a run taken up after a stop of the service could not go on:
+/// the actions it had started may have had an effect (ADR-053).
+fn recovery_crash_message(interrupted: &[String]) -> String {
+    let start = "L’exécution, interrompue par un arrêt du service, n’a pas pu reprendre.";
+    if interrupted.is_empty() {
+        return format!("{start} Relancez votre demande.");
+    }
+    let names: Vec<String> = interrupted
+        .iter()
+        .map(|name| format!("« {name} »"))
+        .collect();
+    format!(
+        "{start} Vérifiez l’effet des actions qui étaient en cours ({}) avant de relancer votre demande.",
+        names.join(", ")
+    )
 }

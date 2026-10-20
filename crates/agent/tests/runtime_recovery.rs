@@ -10,6 +10,10 @@ use mimorya_agent::runtime::{
     MAX_RESUMPTIONS, PendingApproval, PendingCalls, RunCheckpoint, RunOutcome,
 };
 use mimorya_agent::testing::ScriptedStep;
+use std::collections::HashMap;
+
+use mimorya_agent::tools::ToolOverride;
+use mimorya_core::autonomy::ToolRisk;
 use serde_json::json;
 use support::{Harness, Options, setup};
 use uuid::Uuid;
@@ -101,14 +105,56 @@ async fn ends_a_run_stopped_while_approved_actions_were_running() {
             input: json!({ "slots": 2 }),
         }],
     });
-    let outcome = recover(&h, checkpoint, &[]).await;
+    // The API names the actions approved among those awaited.
+    let outcome = recover(&h, checkpoint.clone(), &["planning_apply"]).await;
     let error = error_of(&outcome);
     assert!(
-        error.contains("actions validées (« Application du planning »)"),
+        error.contains("l’action validée « Application du planning » : son effet n’est pas connu"),
         "{error}"
     );
+    // None approved: nothing ran.
+    let outcome = recover(&h, checkpoint, &[]).await;
+    assert!(error_of(&outcome).contains("rien n’a été exécuté"));
     assert!(h.provider.requests().is_empty());
     assert!(h.applied.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn names_every_action_whose_effect_is_unknown() {
+    let h = setup(
+        vec![ScriptedStep::text("Jamais appelé")],
+        Options::default(),
+    );
+    let outcome = recover(
+        &h,
+        saved(),
+        &["planning_apply", "jobs_search", "users_disable"],
+    )
+    .await;
+    let error = error_of(&outcome);
+    assert!(
+        error.contains(
+            "les actions « Application du planning », « Désactivation de compte » : leur effet"
+        ),
+        "{error}"
+    );
+}
+
+#[tokio::test]
+async fn judges_a_tool_by_the_risk_its_administrator_set() {
+    let read = ToolOverride {
+        risk: Some(ToolRisk::Read),
+        ..ToolOverride::default()
+    };
+    let h = setup(
+        vec![ScriptedStep::text("Synthèse : rien à signaler.")],
+        Options {
+            overrides: HashMap::from([("planning_apply".to_string(), read)]),
+            ..Options::default()
+        },
+    );
+    let outcome = recover(&h, saved(), &["planning_apply"]).await;
+    assert_eq!(outcome.status(), "completed", "{outcome:?}");
 }
 
 #[tokio::test]

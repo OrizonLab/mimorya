@@ -14,6 +14,7 @@ pub mod mail;
 pub mod mcp;
 pub mod planning;
 pub mod privileges;
+pub mod recovery;
 pub mod refusals;
 pub mod resets;
 pub mod runs;
