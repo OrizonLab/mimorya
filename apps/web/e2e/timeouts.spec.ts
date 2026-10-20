@@ -1,6 +1,7 @@
 // A read of the API that fails, or gets no answer within READ_TIMEOUT_MS,
 // says so and offers to try again, rather than stay locked or claim there is
-// nothing (ADR-044). The page's clock is moved on instead of waited for; each
+// nothing (ADR-044); so does a run's live follow-up the browser gave up, but
+// not one it reconnects by itself (ADR-046). The page's clock is moved on instead of waited for; each
 // test holds or fails the read until it lets it through. The role a test
 // creates is deleted, and a validation left waiting is refused, even when it
 // fails.
@@ -152,6 +153,29 @@ test('a run whose live follow-up was refused says so and follows again', async (
   // ...and opens it again: replayed from the start, it brings the validation.
   await page.getByRole('button', { name: 'Réessayer' }).click();
   await expect(page.getByText('Validation requise')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText('Le suivi en direct de la demande est interrompu.')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Refuser' }).click();
+  await expect(
+    page.getByText('Le planning est inchangé : la validation a été refusée.'),
+  ).toBeVisible({ timeout: 30_000 });
+  await noError(page);
+});
+
+test('a run whose follow-up the browser reconnects by itself says nothing', async ({ page }) => {
+  // The first stream ends at once: the browser reconnects after 100 ms, by
+  // itself, which the page must not report as an interrupted follow-up.
+  let first = true;
+  await page.route('**/api/runs/*/events', (route) => {
+    if (!first) return route.continue();
+    first = false;
+    return route.fulfill({ status: 200, contentType: 'text/event-stream', body: 'retry: 100\n\n' });
+  });
+  await signedIn(page, demo.marc);
+  await page.getByLabel('Votre message').fill(REFERENCE_REQUEST);
+  await page.getByRole('button', { name: 'Envoyer' }).click();
+
+  await expect(page.getByText('Validation requise')).toBeVisible({ timeout: 30_000 });
+  expect(first).toBe(false);
   await expect(page.getByText('Le suivi en direct de la demande est interrompu.')).toHaveCount(0);
   await page.getByRole('button', { name: 'Refuser' }).click();
   await expect(

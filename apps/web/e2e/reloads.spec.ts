@@ -207,8 +207,10 @@ test('tool policies start again from each connection test', async ({ page }) => 
   await expect(enabled).toHaveCSS('appearance', 'none');
   await expect(enabled).toHaveCSS('animation-name', 'locked-dim');
   await expect(enabled).toHaveCSS('opacity', '0.6');
-  // Its mark (drawn next to it) dims with it.
-  await expect(enabled.locator('xpath=following-sibling::*[1]')).toHaveCSS('opacity', '0.6');
+  // Its mark (drawn next to it) dims with it, past 150 ms too.
+  const mark = enabled.locator('xpath=following-sibling::*[1]');
+  await expect(mark).toHaveCSS('animation-name', 'locked-dim');
+  await expect(mark).toHaveCSS('opacity', '0.6');
   connectors.release();
   await expect(card.getByLabel('Risque de mcp_oute_search')).toHaveValue('read');
   // ...and gets it back once the list has arrived.

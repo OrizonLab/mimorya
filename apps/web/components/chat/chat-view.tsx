@@ -20,9 +20,17 @@ export function ChatView({ conversationId }: { conversationId: string | null }) 
   const [listOpen, setListOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
+  // What appears at the bottom is brought into view, failures included.
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  }, [detail?.messages.length, activity.steps.length, activity.draft, pendingApprovals.length]);
+  }, [
+    detail?.messages.length,
+    activity.steps.length,
+    activity.draft,
+    activity.lost,
+    pendingApprovals.length,
+    chat.approvalsError,
+  ]);
 
   async function send() {
     if (await chat.send(input)) setInput('');

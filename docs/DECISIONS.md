@@ -1390,10 +1390,13 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - un run qui a attendu plusieurs fois rejoue chaque attente : les chargements de
     ses validations peuvent se chevaucher, seul le dernier est affiché.
 - **Conséquences** :
-  - une interruption du suivi n'est plus silencieuse et se répare sans recharger la
-    page ;
+  - un flux abandonné par le navigateur n'est plus silencieux et se rouvre sans
+    recharger la page ; une coupure que le navigateur répare seul (il se reconnecte)
+    reste sans message ;
   - test : `apps/web/e2e/timeouts.spec.ts` répond par une erreur au flux d'un run,
     vérifie le message, puis « Réessayer » amène la validation (troisième scénario du
-    modèle scénarisé, suivi à 9 h) ; il échoue si l'abandon n'est pas signalé.
+    modèle scénarisé, suivi à 9 h) ; il échoue si l'abandon n'est pas signalé. Un
+    autre termine le premier flux pour que le navigateur se reconnecte seul, et
+    vérifie qu'aucun message n'apparaît (quatrième scénario, suivi à 11 h).
     Aucun scénario n'attend deux fois : le dernier point n'a pas de test de bout en
     bout.
