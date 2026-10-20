@@ -82,5 +82,5 @@ export async function noError(page: Page) {
     .getByRole('alert')
     .filter({ hasText: /\S/ })
     .and(page.locator(':not(#__next-route-announcer__)'));
-  await expect.poll(() => shown.allInnerTexts()).toEqual([]);
+  await expect(shown).toHaveText([], { useInnerText: true });
 }
