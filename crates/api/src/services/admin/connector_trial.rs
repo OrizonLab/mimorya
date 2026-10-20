@@ -49,6 +49,7 @@ pub async fn try_mcp_connector(
         return Err(DomainError::validation(problem).into());
     }
     let (tenant_id, user_id) = (access.subject.tenant_id, access.subject.user_id);
+    let start = services.connectors.claim_admin_start(tenant_id)?;
     let (answer, answered) = oneshot::channel();
     let background = services.background.clone();
     background.spawn(async move {
@@ -65,6 +66,9 @@ pub async fn try_mcp_connector(
                 "Failed to audit a connector trial"
             );
         }
+        // Held by the trial, not by its request, and freed before the answer:
+        // a client that leaves does not free it, one answered may start again.
+        drop(start);
         // The client may have left: the trial is over all the same.
         let _ = answer.send(recorded.map(|()| outcome));
     });

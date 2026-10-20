@@ -54,6 +54,9 @@ pub async fn test_connector(
             .await?,
     );
     tx.commit().await?;
+    // Once the connector is known to exist (an absent one is answered as
+    // such, and traced: ADR-047), held until the outcome is recorded.
+    let _start = admin.connectors.claim_admin_start(tenant_id)?;
 
     let outcome = match (read_policies(&instance), secret) {
         (Err(error), _) => ConnectorTestOutcome {
