@@ -84,7 +84,8 @@ jobs:
   publish:
     name: Publish ${{ matrix.image }}
     needs: images
-    if: github.event_name == 'workflow_run'
+    # Never without the guard of the images job, whatever is added here.
+    if: github.event_name == 'workflow_run' && needs.images.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:

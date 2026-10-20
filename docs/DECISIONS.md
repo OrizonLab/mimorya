@@ -1631,7 +1631,9 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     version : le travail échoue. Une version déjà donnée ne change jamais d'images : si
     `X.Y.Z` en désigne d'autres, le travail échoue sans rien renommer ;
   - la liste des images (nom, Dockerfile, arguments de construction, description) est
-    écrite une seule fois, dans `infra/docker/images.json`, que lisent tous les travaux ;
+    écrite une seule fois, dans `infra/docker/images.json`, que lisent tous les travaux
+    du workflow. `compose.demo.build.yml` et `compose.production.build.yml` en répètent
+    le Dockerfile et les arguments (aujourd'hui identiques) : les modifier ensemble ;
   - le jeton de la CI (`GITHUB_TOKEN`, permission `packages: write` sur les seuls travaux
     qui publient, pas sur la construction des PR) suffit : ni compte ni secret
     supplémentaire. Les images portent la source du dépôt
@@ -1659,6 +1661,10 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     son propriétaire (le compte OrizonLab) le rend public dans les réglages du paquet ;
   - restent à faire : le constat du premier envoi (trois paquets, visibles,
     téléchargeables sans compte), possible seulement après la fusion (`workflow_run` ne
-    part que du workflow de la branche par défaut) ; le cache du travail de CI qui
+    part que du workflow de la branche par défaut). Ce premier envoi dira aussi ce que
+    le registre répond pour un paquet qui n'existe pas encore : s'il refuse l'accès au
+    lieu de répondre « introuvable », la publication échoue (sans rien publier de faux)
+    jusqu'à ce que l'absence soit constatée autrement, par l'API des paquets de GitHub
+    (404 : paquet absent) ; le cache du travail de CI qui
     vérifie les piles ; la signature des images ; arm64 ; l'épinglage des actions par
     empreinte. Une PR qui touche les images en vérifie la construction, pas l'envoi.
