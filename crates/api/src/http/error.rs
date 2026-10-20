@@ -5,19 +5,22 @@
 use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use mimorya_core::{DomainError, ErrorCode};
+use mimorya_core::{DomainError, ErrorCode, UnknownReference};
 use serde_json::{Value, json};
 
 use crate::contract::{ErrorBody, ErrorDetail, ErrorKind};
 
-/// Carried by the response of a refusal (`Forbidden`) or of a resource
-/// answered as absent (`NotFound`), with its message, for the layers that
-/// record them, such as the administration's (ADR-038, ADR-047). Never sent:
-/// the message is already in the body.
+/// Carried by the response of a refusal (`Forbidden`), of a resource
+/// answered as absent (`NotFound`) or of an identifier sent in the body that
+/// designates nothing the company has (`UnknownReference`, answered as an
+/// invalid request), with its message, for the layers that record them, such
+/// as the administration's (ADR-038, ADR-047, ADR-054). Never sent: the
+/// message is already in the body, and the identifier is what was sent.
 #[derive(Debug, Clone)]
 pub enum Refusal {
     Forbidden(String),
     NotFound(String),
+    UnknownReference(String, UnknownReference),
 }
 
 #[derive(Debug)]
@@ -106,9 +109,11 @@ impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         match self {
             Self::Domain(error) => {
-                let refusal = match error.code {
-                    ErrorCode::Forbidden => Some(Refusal::Forbidden(error.message.clone())),
-                    ErrorCode::NotFound => Some(Refusal::NotFound(error.message.clone())),
+                let message = error.message.clone();
+                let refusal = match (error.code, error.reference) {
+                    (_, Some(reference)) => Some(Refusal::UnknownReference(message, *reference)),
+                    (ErrorCode::Forbidden, None) => Some(Refusal::Forbidden(message)),
+                    (ErrorCode::NotFound, None) => Some(Refusal::NotFound(message)),
                     _ => None,
                 };
                 let mut response = (

@@ -18,4 +18,4 @@ pub mod roles;
 pub mod skill_rules;
 pub mod tools;
 
-pub use error::{DomainError, ErrorCode};
+pub use error::{DomainError, ErrorCode, UnknownReference};

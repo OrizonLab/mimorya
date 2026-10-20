@@ -267,8 +267,14 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   même (`admin.not_found`, résultat `denied`, raison « Compte introuvable »…), dans
   l'entreprise de l'administrateur. L'entrée, comme la réponse, ne distingue pas une
   ressource absente d'une ressource d'une autre entreprise : la distinguer ferait de
-  l'audit un oracle d'existence pour ses lecteurs. Un identifiant inconnu envoyé dans
-  le corps d'une requête répond 400 et n'est pas tracé.
+  l'audit un oracle d'existence pour ses lecteurs.
+- Identifiants inconnus envoyés dans le corps d'une requête d'administration (ADR-054) :
+  le rôle, l'unité ou le responsable que désigne le corps et que l'entreprise n'a pas
+  répond comme une requête invalide (400), identique pour une ressource absente et pour
+  celle d'une autre entreprise, et est tracé (`admin.unknown_reference`, résultat
+  `denied`) avec la raison, la route, la ressource du chemin, le type et l'identifiant
+  envoyés (`metadata.reference`), dans l'entreprise de l'administrateur seulement. Les
+  autres requêtes invalides ne sont pas tracées.
 - Phase 3 : chaînage cryptographique des entrées et export vers un SIEM.
 
 ## 9. Protection des données (RGPD)

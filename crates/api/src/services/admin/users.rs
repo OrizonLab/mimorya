@@ -237,7 +237,9 @@ fn changed_names(previous: Option<&Value>, next: &Value) -> Vec<String> {
 
 fn check_unit(tree: &OrgTree, unit: Option<Uuid>) -> Result<(), DomainError> {
     match unit {
-        Some(id) if tree.get(id).is_none() => Err(DomainError::validation("Unité inconnue")),
+        Some(id) if tree.get(id).is_none() => {
+            Err(DomainError::unknown("Unité inconnue", "org_unit", id))
+        }
         _ => Ok(()),
     }
 }

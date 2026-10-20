@@ -4,8 +4,9 @@
 //! the entry is written in the administrator's company only. Only an
 //! administrator holding the permission reaches that answer: the others are
 //! refused first (ADR-038). Answers of absence that designate no resource
-//! leave none, nor do unknown identifiers sent in the body (answered as
-//! invalid), nor does anything the request sent but the path's identifier.
+//! leave none, nor does anything the request sent but the path's identifier;
+//! unknown identifiers sent in the body (answered as invalid) are traced
+//! apart (ADR-054, `admin_unknown_references.rs`).
 //! An absence stands when its trace cannot be written.
 
 mod support;

@@ -40,7 +40,8 @@ pub async fn create_unit(
     let tenant_id = access.subject.tenant_id;
     let mut tx = begin_change(db, access, PERMISSION).await?;
     if current_tree(&mut tx).await?.get(input.parent_id).is_none() {
-        return Err(DomainError::validation("Unité parente inconnue").into());
+        let parent = input.parent_id;
+        return Err(DomainError::unknown("Unité parente inconnue", "org_unit", parent).into());
     }
     let id = create_org_unit(
         &mut tx,
@@ -93,7 +94,7 @@ pub async fn update_unit(
     }
     if let Some(parent) = changes.parent_id {
         if tree.get(parent).is_none() {
-            return Err(DomainError::validation("Unité parente inconnue").into());
+            return Err(DomainError::unknown("Unité parente inconnue", "org_unit", parent).into());
         }
         if let Some(problem) = move_problem(&tree, id, parent) {
             return Err(DomainError::conflict(problem).into());
@@ -102,7 +103,7 @@ pub async fn update_unit(
     if let Some(Some(lead)) = changes.lead_user_id
         && get_user(&mut tx, lead).await?.is_none()
     {
-        return Err(DomainError::validation("Responsable inconnu").into());
+        return Err(DomainError::unknown("Responsable inconnu", "user", lead).into());
     }
     let metadata = json!({
         "parentId": changes.parent_id,

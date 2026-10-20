@@ -1831,3 +1831,46 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - restent à faire (phase 2, ADR-012) : plusieurs instances, avec un bail par run et un
     worker séparé ; la reprise d'une étape dont les actions ont un identifiant
     d'idempotence.
+
+## ADR-054 — Identifiants inconnus envoyés dans le corps d'une requête d'administration tracés (complète ADR-047)
+
+- **Date** : 2026-10-20 · **Statut** : acceptée
+- **Contexte** : ADR-047 trace une modification d'administration sur une ressource que
+  désigne le chemin et que la plateforme répond introuvable. Un identifiant envoyé dans
+  le corps (le rôle d'une habilitation, l'unité de son périmètre, l'unité parente ou le
+  responsable d'une unité, l'unité d'un compte) répond, lui, comme une requête invalide
+  (400 : « Rôle inconnu », « Unité inconnue »…) et ne laissait aucune trace : un
+  identifiant d'une autre entreprise, deviné ou divulgué, essayé là n'apparaissait nulle
+  part.
+- **Décision** :
+  - une erreur du domaine peut porter la référence inconnue (`DomainError::unknown` :
+    le type de ressource attendu et l'identifiant), jamais envoyée : la réponse reste
+    celle d'une requête invalide, identique pour une ressource d'une autre entreprise et
+    pour une ressource absente ;
+  - le marqueur des réponses (`Refusal::UnknownReference`) la remet à la couche d'audit
+    de l'administration (`plugins/refusal_audit.rs`), qui trace une entrée
+    `admin.unknown_reference` (`denied`) : l'utilisateur, la raison (le message de la
+    réponse), la méthode et la route, la ressource que désigne le chemin s'il en désigne
+    une, la référence (`metadata.reference` : type et identifiant), l'IP et
+    l'identifiant de requête, dans l'entreprise de l'administrateur seulement ;
+  - comme pour ADR-047, l'entrée ne distingue pas une ressource absente d'une ressource
+    d'une autre entreprise : la distinguer ferait de l'audit un oracle d'existence pour
+    ses lecteurs ;
+  - sont concernés les six contrôles qui cherchent dans l'entreprise un identifiant du
+    corps : rôle et unité du périmètre d'une habilitation, unité parente d'une unité
+    créée ou déplacée, responsable d'une unité, unité d'un compte créé ou modifié.
+    L'identifiant est contrôlé par un type (UUID) : rien d'autre de ce que la requête a
+    envoyé n'atteint l'audit.
+- **Conséquences** :
+  - ne sont pas tracées les autres requêtes invalides (type d'unité inconnu, date
+    d'échéance passée, permission inconnue : des valeurs, pas des identifiants de
+    ressource) ;
+  - seul un administrateur habilité atteint ces contrôles : les autres sont refusés
+    avant, et tracés comme refus (ADR-038) ;
+  - un nouveau contrôle d'identifiant envoyé dans le corps doit répondre par
+    `DomainError::unknown` pour être tracé ;
+  - test : `crates/api/tests/admin_unknown_references.rs` envoie chaque identifiant
+    d'une autre entreprise puis d'une ressource absente : mêmes réponses, mêmes entrées
+    hormis l'identifiant, rien dans l'audit de l'autre entreprise, rien de ce que la
+    requête envoie hormis les identifiants ; un administrateur limité et un membre sont
+    refusés avant, et une requête invalide d'une autre sorte n'est pas tracée.
