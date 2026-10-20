@@ -1,9 +1,11 @@
 // A read of the API that fails, or gets no answer within READ_TIMEOUT_MS,
 // says so and offers to try again, rather than stay locked or claim there is
-// nothing (ADR-044). The page's clock is moved on instead of waited for; each
-// test holds or fails the read until it lets it through. The role a test
-// creates is deleted, and a validation left waiting is refused, even when it
-// fails.
+// nothing (ADR-044); so does a run's live follow-up the browser gave up, but
+// not one it reconnects by itself (ADR-046). The read tests move the page's
+// clock on instead of waiting, and hold or fail the read until they let it
+// through. The chat tests keep the window low, so that a failure appearing
+// below must be scrolled into view. The role a test creates is deleted, and a
+// validation left waiting is refused, even when it fails.
 import type { Page } from '@playwright/test';
 import { READ_TIMEOUT_MS } from '../lib/api/client';
 import type { ApprovalList, ApprovalVerdict, Roles } from '../lib/api/contract';
@@ -13,6 +15,9 @@ import { holdList } from './support/hold';
 import { REFERENCE_REQUEST } from './support/scenario';
 
 const ROLE = 'Délai e2e';
+
+/** A window low enough that what appears below a run is out of view. */
+const LOW_WINDOW = { width: 1280, height: 360 };
 
 /** Signed in, once the screen reached has done its own reads. */
 async function signedIn(page: Page, email: string) {
@@ -114,12 +119,14 @@ test('the approval a run waits for says it could not be loaded', async ({ page }
       ? route.fulfill({ status: 503 })
       : route.continue(),
   );
+  await page.setViewportSize(LOW_WINDOW);
   await signedIn(page, demo.marc);
   await page.getByLabel('Votre message').fill(REFERENCE_REQUEST);
   await page.getByRole('button', { name: 'Envoyer' }).click();
 
-  // The run waits for a validation the page could not load: it says so...
+  // The run waits for a validation the page could not load: it says so, in view...
   await expect(page.getByText('Erreur 503')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('button', { name: 'Réessayer' })).toBeInViewport({ ratio: 1 });
   await expect(page.getByText('Chargement de la demande de validation…')).toHaveCount(0);
   failing = false;
   // ...and loads it again.
@@ -142,16 +149,46 @@ test('a run whose live follow-up was refused says so and follows again', async (
   await page.route('**/api/runs/*/events', (route) =>
     failing ? route.fulfill({ status: 503 }) : route.continue(),
   );
+  await page.setViewportSize(LOW_WINDOW);
   await signedIn(page, demo.marc);
-  await page.getByLabel('Votre message').fill(REFERENCE_REQUEST);
+  // A message taller than the window (the scripted model reads none of it):
+  // what appears below it is out of view unless scrolled to.
+  const points = Array.from({ length: 12 }, (_, i) => `Point ${i + 1} à vérifier.`);
+  await page.getByLabel('Votre message').fill([REFERENCE_REQUEST, ...points].join('\n'));
   await page.getByRole('button', { name: 'Envoyer' }).click();
 
-  // The browser gives such a stream up: the page says the follow-up stopped...
+  // The browser gives such a stream up: the page says, in view, that the
+  // follow-up stopped...
   await expect(page.getByText('Le suivi en direct de la demande est interrompu.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Réessayer' })).toBeInViewport({ ratio: 1 });
   failing = false;
   // ...and opens it again: replayed from the start, it brings the validation.
   await page.getByRole('button', { name: 'Réessayer' }).click();
   await expect(page.getByText('Validation requise')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText('Le suivi en direct de la demande est interrompu.')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Refuser' }).click();
+  await expect(
+    page.getByText('Le planning est inchangé : la validation a été refusée.'),
+  ).toBeVisible({ timeout: 30_000 });
+  await noError(page);
+});
+
+test('a run whose follow-up the browser reconnects by itself says nothing', async ({ page }) => {
+  // The first stream ends at once: the browser reconnects after 100 ms, by
+  // itself, which the page must not report as an interrupted follow-up.
+  let streams = 0;
+  await page.route('**/api/runs/*/events', (route) => {
+    streams += 1;
+    if (streams > 1) return route.continue();
+    return route.fulfill({ status: 200, contentType: 'text/event-stream', body: 'retry: 100\n\n' });
+  });
+  await signedIn(page, demo.marc);
+  await page.getByLabel('Votre message').fill(REFERENCE_REQUEST);
+  await page.getByRole('button', { name: 'Envoyer' }).click();
+
+  await expect(page.getByText('Validation requise')).toBeVisible({ timeout: 30_000 });
+  // One reconnection, kept open while the run waits (no reconnection loop).
+  expect(streams).toBe(2);
   await expect(page.getByText('Le suivi en direct de la demande est interrompu.')).toHaveCount(0);
   await page.getByRole('button', { name: 'Refuser' }).click();
   await expect(
