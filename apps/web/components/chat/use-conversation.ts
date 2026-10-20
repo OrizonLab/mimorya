@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   api,
   ApiError,
@@ -44,15 +44,19 @@ export function useConversation(conversationId: string | null) {
   }, []);
 
   // A failure is kept apart: the run waits on these, which can be loaded
-  // again. Loaded once per wait: when the run's stream announces it (live,
-  // or replayed when a waiting conversation is opened).
+  // again. Loaded when the run's stream announces a wait, live or replayed
+  // when a waiting conversation is opened: a run that waited more than once
+  // replays each wait, so loads may overlap; only the latest one is shown.
+  const approvalsLoad = useRef(0);
   const loadApprovals = useCallback(async (runId: string) => {
+    const load = ++approvalsLoad.current;
     setApprovalsError(null);
     try {
       const r = await api.get<ApprovalList>('/approvals');
+      if (load !== approvalsLoad.current) return;
       setApprovals(r.approvals.filter((a) => a.runId === runId));
     } catch (e) {
-      setApprovalsError(loadFailure(e));
+      if (load === approvalsLoad.current) setApprovalsError(loadFailure(e));
     }
   }, []);
 
@@ -91,7 +95,7 @@ export function useConversation(conversationId: string | null) {
     },
     [activeRunId, loadApprovals, loadDetail, loadConversations],
   );
-  const activity = useRunStream(activeRunId, onRunFinished);
+  const { activity, reconnect } = useRunStream(activeRunId, onRunFinished);
 
   /** Sends a message, creating the conversation first if needed; true once accepted. */
   const send = useCallback(
@@ -145,6 +149,7 @@ export function useConversation(conversationId: string | null) {
     sending,
     busy: activeRunId !== null,
     activity,
+    reconnectRun: reconnect,
     pendingApprovals: approvals.filter((a) => a.status === 'pending'),
     send,
     dismissApproval,

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
   ApprovalRequestedEvent,
   RunStatus,
@@ -28,6 +28,8 @@ export interface RunActivity {
   approvals: PendingApprovalView[];
   verification: VerificationEvent | null;
   error: string | null;
+  /** The browser gave the stream up (an error answered it): it follows nothing more. */
+  lost: boolean;
 }
 
 const INITIAL: RunActivity = {
@@ -38,6 +40,7 @@ const INITIAL: RunActivity = {
   approvals: [],
   verification: null,
   error: null,
+  lost: false,
 };
 
 /** Where a run ends (the server's `RunStatus::FINISHED`). */
@@ -48,8 +51,12 @@ const TERMINAL: ReadonlySet<RunStatus> = new Set<RunStatus>(['completed', 'faile
  * after network errors (resuming from the last event id); the stream is closed
  * client-side once the run reaches a terminal state.
  */
-export function useRunStream(runId: string | null, onFinished: (status: RunStatus) => void) {
+export function useRunStream(
+  runId: string | null,
+  onFinished: (status: RunStatus) => void,
+): { activity: RunActivity; reconnect: () => void } {
   const [activity, setActivity] = useState<RunActivity>(INITIAL);
+  const [attempt, setAttempt] = useState(0);
   const finishedRef = useRef(onFinished);
   finishedRef.current = onFinished;
 
@@ -57,6 +64,12 @@ export function useRunStream(runId: string | null, onFinished: (status: RunStatu
     if (!runId) return;
     setActivity(INITIAL);
     const source = new EventSource(`/api/runs/${runId}/events`);
+    // The browser retries a dropped connection by itself, but gives up on an
+    // answer that is not a stream (an HTTP error): say so, as nothing more
+    // would come (the approvals the run waits for included).
+    source.addEventListener('error', () => {
+      if (source.readyState === EventSource.CLOSED) setActivity((a) => ({ ...a, lost: true }));
+    });
     const on = <K extends RunStreamEvent['type']>(type: K, handler: (data: EventData<K>) => void) =>
       source.addEventListener(type, (event) =>
         handler(JSON.parse((event as MessageEvent).data) as EventData<K>),
@@ -107,7 +120,9 @@ export function useRunStream(runId: string | null, onFinished: (status: RunStatu
     });
 
     return () => source.close();
-  }, [runId]);
+  }, [runId, attempt]);
 
-  return activity;
+  // Opened again, the stream replays the run's events from the start.
+  const reconnect = useCallback(() => setAttempt((n) => n + 1), []);
+  return { activity, reconnect };
 }

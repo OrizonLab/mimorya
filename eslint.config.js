@@ -37,7 +37,7 @@ export default tseslint.config(
       'no-restricted-syntax': [
         'error',
         {
-          selector: "JSXAttribute[name.name='type'][value.value='checkbox']",
+          selector: "JSXAttribute[name.name='type'] Literal[value='checkbox']",
           message: 'Use Checkbox (components/ui, ADR-045) for a checkbox.',
         },
       ],
