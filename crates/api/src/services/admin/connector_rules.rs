@@ -27,8 +27,6 @@ pub struct ToolPolicyInput {
     pub permissions: Option<Vec<String>>,
 }
 
-/// A lowercase letter then letters or digits (2 to 16): the tools are named
-/// `mcp_<prefix>_<tool>`.
 /// Why an MCP server may not be added as typed, if it may not: its prefix,
 /// its address for this platform, the format of its token. An addition and a
 /// trial (ADR-050) are checked alike, before any connection.
@@ -43,6 +41,8 @@ pub fn mcp_addition_problem(
         .or_else(|| token.and_then(token_problem))
 }
 
+/// A lowercase letter then letters or digits (2 to 16): the tools are named
+/// `mcp_<prefix>_<tool>`.
 pub fn prefix_problem(prefix: &str) -> Option<String> {
     let mut chars = prefix.chars();
     let well_formed = chars.next().is_some_and(|c| c.is_ascii_lowercase())
