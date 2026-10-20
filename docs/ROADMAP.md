@@ -9,7 +9,7 @@ Légende des statuts — tenue à jour à chaque contribution :
 | 🟡     | Partiel : socle en place, fonctionnalité incomplète (détail indiqué)       |
 | 🔜     | Planifié, non implémenté                                                   |
 
-Dernière mise à jour : 2026-10-20 (suivi en direct : reconnexion du navigateur sans message, testée ; défilement vers les échecs).
+Dernière mise à jour : 2026-10-20 (audit des modifications d'administration sur une ressource introuvable, ADR-047).
 
 ## Phase 1 — Fondations et MVP fonctionnel
 

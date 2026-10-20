@@ -1432,7 +1432,10 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     autres sont refusés, et tracés comme refus (ADR-038) ;
   - une réponse d'absence qui ne désigne aucune ressource (rétablir le modèle de la
     plateforme quand l'entreprise l'utilise déjà) n'est pas une tentative sur une
-    ressource : elle n'est pas tracée.
+    ressource : elle n'est pas tracée ;
+  - sur une route à identifiant, une réponse d'absence est rapportée à la ressource du
+    chemin : par convention, un identifiant inconnu envoyé dans le corps répond comme
+    une requête invalide (400 : « Rôle inconnu », « Unité inconnue »…), jamais 404.
 - **Conséquences** :
   - ne sont pas tracés : un identifiant inconnu envoyé dans le corps d'une requête (un
     rôle, une unité, un responsable…), qui répond 400 comme une requête invalide
@@ -1441,13 +1444,19 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     l'administration ;
   - une suppression concurrente (deux administrateurs suppriment la même ressource)
     laisse aussi une entrée, pour le second ;
-  - une route d'administration nouvelle à identifiant est couverte d'office ; le volume
-    est borné par la limitation de débit globale et par la permission requise ;
+  - une route d'administration nouvelle à identifiant est couverte si sa collection est
+    nommée dans `resource_of` ; sinon, un refus y est tracé sans ressource et une
+    absence ne l'est pas. Un test unitaire relève les chemins à identifiant du routeur
+    de l'administration (`routes/admin/mod.rs`) et échoue sur une collection non
+    nommée ;
+  - le volume est borné par la limitation de débit globale et par la permission
+    requise ;
   - test : `crates/api/tests/admin_absent_resources.rs` modifie un compte et supprime
     un rôle d'une autre entreprise, puis d'autres qui n'existent nulle part : mêmes
     réponses, mêmes entrées hormis l'identifiant, rien d'écrit dans l'audit de l'autre
     entreprise, rien de ce que la requête envoie hormis l'identifiant ; chaque
     collection de l'administration est nommée ; un administrateur limité à une équipe
-    et un membre sont refusés avant, le rétablissement du modèle n'est pas tracé.
-    Retirer le marqueur ou la condition sur la ressource désignée fait échouer ces
-    tests.
+    et un membre sont refusés avant, ni le rétablissement du modèle ni un rôle inconnu
+    envoyé dans le corps ne sont tracés ; la réponse reste 404 quand la trace ne
+    s'écrit pas. Retirer le marqueur ou la condition sur la ressource désignée fait
+    échouer ces tests.

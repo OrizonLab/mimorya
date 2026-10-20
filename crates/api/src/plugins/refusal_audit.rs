@@ -113,7 +113,11 @@ async fn record(
 
 /// The resource a route's `{id}` designates, named as the audit of the
 /// changes made names it. Only an identifier is kept: anything else in the
-/// path is what the request sent.
+/// path is what the request sent. A collection left unnamed here leaves its
+/// refusals without resource and its absent resources untraced: a test
+/// reads the administration's router for that. An absence answered on such
+/// a route is taken as the path's resource: an unknown identifier sent in
+/// the body is answered as invalid, not as absent (ADR-047).
 fn resource_of(route: &str, id: &str) -> Option<(&'static str, Uuid)> {
     let id = id.parse().ok()?;
     let collection = route.strip_prefix("/admin/")?.split('/').next()?;
@@ -152,6 +156,20 @@ mod tests {
             ("/admin/connectors/{id}/test", "connector"),
         ] {
             assert_eq!(resource_of(route, ID), Some((resource_type, id)), "{route}");
+        }
+    }
+
+    #[test]
+    fn names_every_route_with_an_id_the_administration_declares() {
+        let router = include_str!("../routes/admin/mod.rs");
+        // The quoted paths of the router's source.
+        let routes: Vec<&str> = router
+            .split('"')
+            .filter(|s| s.starts_with("/admin/") && s.contains("{id}"))
+            .collect();
+        assert!(routes.len() >= 11, "{routes:?}");
+        for route in routes {
+            assert!(resource_of(route, ID).is_some(), "{route}");
         }
     }
 

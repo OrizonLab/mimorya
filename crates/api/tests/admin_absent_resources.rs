@@ -4,7 +4,9 @@
 //! the entry is written in the administrator's company only. Only an
 //! administrator holding the permission reaches that answer: the others are
 //! refused first (ADR-038). Answers of absence that designate no resource
-//! leave none, nor does anything the request sent but the path's identifier.
+//! leave none, nor do unknown identifiers sent in the body (answered as
+//! invalid), nor does anything the request sent but the path's identifier.
+//! An absence stands when its trace cannot be written.
 
 mod support;
 
@@ -14,6 +16,8 @@ use mimorya_db::testing::{OTHER_TENANT_ID, OTHER_USER_ID};
 use serde_json::{Value, json};
 use support::TestApi;
 use support::accounts::{activate, create_partial_admin};
+use support::mcp::capture_logs;
+use support::privileges::without_insert;
 use support::refusals::{
     entries_of_since, entries_since, latest_entry, latest_entry_of, not_found_since, refusals_since,
 };
@@ -117,7 +121,8 @@ async fn changes_on_resources_answered_as_absent_are_audited_alike() {
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
 async fn every_resource_the_administration_changes_is_traced_when_absent() {
-    let api = TestApi::start().await;
+    // With a mail relay, the reset link reaches the account's lookup.
+    let api = TestApi::start_with_mailer().await;
     let paul = api.sign_in(user::PAUL).await;
     let since = latest_entry(&api).await;
     let absent = Uuid::new_v4();
@@ -126,6 +131,11 @@ async fn every_resource_the_administration_changes_is_traced_when_absent() {
     let answers = [
         (
             paul.post(&format!("/admin/users/{absent}/password"), json!({}))
+                .await,
+            "user",
+        ),
+        (
+            paul.post(&format!("/admin/users/{absent}/password-link"), json!({}))
                 .await,
             "user",
         ),
@@ -185,7 +195,7 @@ async fn every_resource_the_administration_changes_is_traced_when_absent() {
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
-async fn only_an_authorised_administrator_reaches_an_absent_resource() {
+async fn only_an_authorised_administrator_and_the_path_resource_are_traced() {
     let api = TestApi::start().await;
     let paul = api.sign_in(user::PAUL).await;
     let marc = api.sign_in(user::MARC).await;
@@ -206,7 +216,39 @@ async fn only_an_authorised_administrator_reaches_an_absent_resource() {
         paul.delete("/admin/llm").await.status,
         StatusCode::NOT_FOUND
     );
+    // An unknown role sent in the body: answered as invalid.
+    let granted = paul
+        .post(
+            &format!("/admin/users/{}/assignments", user::LUCAS),
+            json!({ "roleId": Uuid::new_v4(), "scope": { "type": "tenant" } }),
+        )
+        .await;
+    assert_eq!(granted.status, StatusCode::BAD_REQUEST);
 
     assert_eq!(refusals_since(&api, since).await.len(), 2);
     assert!(not_found_since(&api, since).await.is_empty());
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn an_absence_stands_when_its_trace_cannot_be_written() {
+    let api = TestApi::start().await;
+    let paul = api.sign_in(user::PAUL).await;
+    let since = latest_entry(&api).await;
+    let logs = capture_logs();
+
+    let url = format!("/admin/users/{OTHER_USER_ID}");
+    let disabled = without_insert(
+        "audit_log",
+        paul.patch(&url, json!({ "status": "disabled" })),
+    )
+    .await;
+
+    assert_eq!(disabled.status, StatusCode::NOT_FOUND);
+    assert_eq!(disabled.error_message(), "Compte introuvable");
+    assert!(not_found_since(&api, since).await.is_empty());
+    assert!(
+        logs.text()
+            .contains("Failed to audit a refused administration change")
+    );
 }

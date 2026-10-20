@@ -14,7 +14,7 @@ use crate::contract::{ErrorBody, ErrorDetail, ErrorKind};
 /// answered as absent (`NotFound`), with its message, for the layers that
 /// record them, such as the administration's (ADR-038, ADR-047). Never sent:
 /// the message is already in the body.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub enum Refusal {
     Forbidden(String),
     NotFound(String),
