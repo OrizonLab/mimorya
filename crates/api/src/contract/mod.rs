@@ -119,6 +119,7 @@ macro_rules! request_bodies {
             admin::NewPolicy,
             admin::PolicyUpdate,
             admin::NewConnector,
+            admin::ConnectorTrial,
             admin::ConnectorUpdate,
             admin::LlmChoice
         )

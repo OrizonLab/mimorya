@@ -62,6 +62,7 @@ pub fn routes(state: &AppState) -> Router<AppState> {
             "/admin/connectors/{id}",
             patch(connectors::update).delete(connectors::remove),
         )
+        .route("/admin/connectors/trial", post(connectors::trial))
         .route("/admin/connectors/{id}/test", post(connectors::test))
         .route("/admin/skills", get(catalog::skills))
         .route("/admin/audit", get(activity::audit))

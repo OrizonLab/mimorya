@@ -204,6 +204,22 @@ pub struct NewConnector {
     pub enabled: Option<bool>,
 }
 
+/// Body of `POST /admin/connectors/trial`: an MCP server tried before it is
+/// saved, with the token typed in the form (ADR-050). Checked as when it is
+/// added; nothing is stored.
+#[derive(Deserialize, Validate, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ConnectorTrial {
+    #[serde(deserialize_with = "trimmed")]
+    pub prefix: String,
+    #[serde(deserialize_with = "trimmed")]
+    pub url: String,
+    /// Absent or blank: none.
+    #[serde(default, deserialize_with = "trimmed_opt")]
+    #[ts(optional)]
+    pub token: Option<String>,
+}
+
 /// One tool's policy as an administrator writes it: absent fields keep the
 /// tool's own declaration.
 #[derive(Deserialize, TS)]

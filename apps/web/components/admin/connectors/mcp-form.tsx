@@ -5,13 +5,18 @@ import { Button, ErrorNote, Field, Input } from '@/components/ui';
 import {
   api,
   useAction,
+  type ConnectorTest,
+  type ConnectorTrial,
   type ConnectorUpdate,
   type ConnectorView,
   type Connectors,
   type NewConnector,
 } from '@/lib/api';
 
-/** Adds an MCP server, or changes its name, address and token. */
+/**
+ * Adds an MCP server, or changes its name, address and token. The address
+ * and token typed can be tried before they are saved (ADR-050).
+ */
 export function McpForm({
   data,
   connector,
@@ -26,7 +31,27 @@ export function McpForm({
   const [url, setUrl] = useState(connector?.mcp?.url ?? '');
   const [token, setToken] = useState('');
   const action = useAction();
+  const trying = useAction();
   const moved = connector?.mcp && url.trim() !== connector.mcp.url;
+  // A saved server keeps its token, which a trial never sends: its own test,
+  // on its card, tries it with that token.
+  const triable = !connector || moved || token.trim() !== '';
+  // A trial answers for what was typed then: shown only while it still is.
+  const typed = JSON.stringify([prefix, url, token]);
+  const [tried, setTried] = useState<{ typed: string; result: ConnectorTest } | null>(null);
+  const trial = tried?.typed === typed ? tried.result : null;
+
+  async function tryServer() {
+    const sent = typed;
+    const result = await trying.run(() =>
+      api.post<ConnectorTest>('/admin/connectors/trial', {
+        prefix,
+        url,
+        token: token.trim() || undefined,
+      } satisfies ConnectorTrial),
+    );
+    if (result) setTried({ typed: sent, result });
+  }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -108,11 +133,25 @@ export function McpForm({
           ? 'Ce déploiement autorise les serveurs de son réseau privé.'
           : 'Seules les adresses publiques en https sont acceptées.'}
       </p>
+      {trying.error && <ErrorNote message={trying.error} />}
+      {trial && !trial.ok && <ErrorNote message={`Échec : ${trial.error ?? 'erreur inconnue'}`} />}
+      {trial?.ok && (
+        <p className="text-sm text-ok">
+          Connexion réussie : {trial.tools.length} outil(s) exposé(s)
+          {trial.tools.length > 0 && ` (${trial.tools.map((t) => t.name).join(', ')})`}. Rien n’est
+          enregistré tant que le serveur n’est pas ajouté.
+        </p>
+      )}
       {action.error && <ErrorNote message={action.error} />}
       <div className="flex gap-2">
         <Button type="submit" loading={action.pending}>
           {connector ? 'Enregistrer' : 'Ajouter le serveur'}
         </Button>
+        {triable && (
+          <Button type="button" variant="secondary" loading={trying.pending} onClick={tryServer}>
+            Tester avant d’enregistrer
+          </Button>
+        )}
         <Button
           type="button"
           variant="ghost"

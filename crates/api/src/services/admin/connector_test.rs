@@ -113,7 +113,10 @@ pub async fn test_connector(
 }
 
 /// The tool as runs see it: its declaration, then its effective policy.
-fn tested(info: &mimorya_core::tools::ToolInfo, policy: Option<&ToolOverride>) -> TestedTool {
+pub(super) fn tested(
+    info: &mimorya_core::tools::ToolInfo,
+    policy: Option<&ToolOverride>,
+) -> TestedTool {
     TestedTool {
         name: info.name.clone(),
         title: info.title.clone(),

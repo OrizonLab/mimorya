@@ -1,9 +1,10 @@
 // What the company connects its assistant to, from the administration: an
-// MCP server with its token (ADR-025) and its own model provider with its
-// API key (ADR-024). Both secrets are write-only: never shown once saved.
+// MCP server with its token (ADR-025), tried before it is added (ADR-050),
+// and its own model provider with its API key (ADR-024). Both secrets are
+// write-only: never shown once saved.
 // Whatever happens, the company keeps the platform's model and loses the test
 // server: the scenario that follows runs with them.
-import type { Connectors } from '../lib/api/contract';
+import type { ConnectorTest, Connectors } from '../lib/api/contract';
 import { cardWith, openAdmin } from './support/admin';
 import { expect, FOREIGN_HOST, noError, test } from './support/fixtures';
 
@@ -54,6 +55,54 @@ test('an MCP server is added with its token, disabled and deleted', async ({ pag
 
   await card('Supprimer').getByRole('button', { name: 'Supprimer', exact: true }).click();
   await expect(page.getByText(SERVER, { exact: true })).toHaveCount(0);
+  await noError(page);
+});
+
+test('an MCP server is tried before it is added, and nothing is saved', async ({ page }) => {
+  await openAdmin(page, 'Connecteurs');
+  await page.getByRole('button', { name: 'Ajouter un serveur MCP' }).click();
+  await page.getByLabel('Nom').fill(SERVER);
+  await page.getByLabel('Préfixe des outils (définitif)').fill('doce');
+  // A name of the private network: the platform refuses to connect to it.
+  const address = page.getByLabel(/^Adresse du serveur/);
+  await address.fill('https://localhost/mcp');
+  const trial = page.getByRole('button', { name: 'Tester avant d’enregistrer' });
+  await trial.click();
+  const refused = page.getByText(/^Échec : Adresse refusée/);
+  await expect(refused).toBeVisible();
+  // The trial answered for that address: another one sets it aside.
+  await address.fill(`https://mcp.${FOREIGN_HOST}/mcp`);
+  await expect(refused).toHaveCount(0);
+
+  // A server that answers (the API's answer stands in for it here).
+  await page.route('**/api/admin/connectors/trial', (route) =>
+    route.fulfill({
+      json: {
+        ok: true,
+        error: null,
+        tools: [
+          {
+            name: 'mcp_doce_search',
+            title: 'Rechercher',
+            description: 'Recherche dans les documents',
+            enabled: true,
+            risk: 'write',
+            permissions: ['connector:use'],
+          },
+        ],
+      } satisfies ConnectorTest,
+    }),
+  );
+  await trial.click();
+  await expect(
+    page.getByText(/Connexion réussie : 1 outil\(s\) exposé\(s\) \(mcp_doce_search\)/),
+  ).toBeVisible();
+
+  // Tried, never added.
+  await page.getByRole('button', { name: 'Annuler' }).click();
+  const listed = await page.request.get('/api/admin/connectors');
+  const { instances } = (await listed.json()) as Connectors;
+  expect(instances.filter((c) => c.name === SERVER)).toEqual([]);
   await noError(page);
 });
 

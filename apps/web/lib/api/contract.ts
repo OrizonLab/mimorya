@@ -130,6 +130,17 @@ export type ConnectorTest = { ok: boolean, tools: Array<TestedTool>,
 error: string | null, };
 
 /**
+ * Body of `POST /admin/connectors/trial`: an MCP server tried before it is
+ * saved, with the token typed in the form (ADR-050). Checked as when it is
+ * added; nothing is stored.
+ */
+export type ConnectorTrial = { prefix: string, url: string,
+/**
+ * Absent or blank: none.
+ */
+token?: string, };
+
+/**
  * A kind of connector the platform provides.
  */
 export type ConnectorType = { type: string, name: string, description: string,
