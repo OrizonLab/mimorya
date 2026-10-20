@@ -1,10 +1,12 @@
 //! Refused administration changes are audited with their reason, like the
 //! changes made (ADR-038): one aimed at the administrator's own account, one
 //! needing a permission they do not hold on the whole company, one on a
-//! platform role… Layered on the administration routes. Reads are not
-//! concerned, nor answers that a resource is absent or out of scope (they
-//! are indistinguishable on purpose). The reason is the refusal's message,
-//! written by the platform: it never carries what the request sent.
+//! platform role… So are the changes aimed at a resource the route designates
+//! and answered as absent (ADR-047): it may be absent, or another company's,
+//! which the entry does not tell apart any more than the answer does.
+//! Layered on the administration routes; reads are not concerned. The reason
+//! is the answer's message, written by the platform: it never carries what
+//! the request sent.
 
 use axum::RequestExt;
 use axum::extract::{MatchedPath, RawPathParams, Request, State};
@@ -21,6 +23,8 @@ use crate::plugins::RequestContext;
 use crate::services::AuthIdentity;
 
 pub const REFUSED_ACTION: &str = "admin.refused";
+/// A change aimed at a resource answered as absent (ADR-047).
+pub const NOT_FOUND_ACTION: &str = "admin.not_found";
 
 /// A change attempted by a signed-in user, as the refusal's entry names it.
 struct Attempt {
@@ -60,11 +64,22 @@ pub async fn audit_refusals(
         resource,
     };
     let response = next.run(request).await;
-    if let Some(Refusal(reason)) = response.extensions().get::<Refusal>() {
-        // The refusal stands whether or not its trace is written.
-        if let Err(error) = record(&state, attempt, reason).await {
+    let traced = match response.extensions().get::<Refusal>() {
+        Some(Refusal::Forbidden(reason)) => Some((REFUSED_ACTION, reason)),
+        // Only the resource the route designates: the other answers of
+        // absence (the company's own model, already the platform's) are no
+        // attempt on someone else's resource.
+        Some(Refusal::NotFound(reason)) if attempt.resource.is_some() => {
+            Some((NOT_FOUND_ACTION, reason))
+        }
+        _ => None,
+    };
+    if let Some((action, reason)) = traced {
+        // The answer stands whether or not its trace is written.
+        if let Err(error) = record(&state, attempt, action, reason).await {
             tracing::error!(
                 error = format!("{error:#}"),
+                action,
                 "Failed to audit a refused administration change"
             );
         }
@@ -72,9 +87,14 @@ pub async fn audit_refusals(
     response
 }
 
-async fn record(state: &AppState, attempt: Attempt, reason: &str) -> anyhow::Result<()> {
+async fn record(
+    state: &AppState,
+    attempt: Attempt,
+    action: &str,
+    reason: &str,
+) -> anyhow::Result<()> {
     let tenant_id = attempt.identity.tenant_id;
-    let mut entry = AuditEntry::new(tenant_id, "user", REFUSED_ACTION, "denied")
+    let mut entry = AuditEntry::new(tenant_id, "user", action, "denied")
         .by_user(attempt.identity.user_id)
         .reason(reason)
         .metadata(json!({ "method": attempt.method.as_str(), "route": attempt.route }));
@@ -93,7 +113,11 @@ async fn record(state: &AppState, attempt: Attempt, reason: &str) -> anyhow::Res
 
 /// The resource a route's `{id}` designates, named as the audit of the
 /// changes made names it. Only an identifier is kept: anything else in the
-/// path is what the request sent.
+/// path is what the request sent. A collection left unnamed here leaves its
+/// refusals without resource and its absent resources untraced: a test
+/// reads the administration's router for that. An absence answered on such
+/// a route is taken as the path's resource: an unknown identifier sent in
+/// the body is answered as invalid, not as absent (ADR-047).
 fn resource_of(route: &str, id: &str) -> Option<(&'static str, Uuid)> {
     let id = id.parse().ok()?;
     let collection = route.strip_prefix("/admin/")?.split('/').next()?;
@@ -132,6 +156,20 @@ mod tests {
             ("/admin/connectors/{id}/test", "connector"),
         ] {
             assert_eq!(resource_of(route, ID), Some((resource_type, id)), "{route}");
+        }
+    }
+
+    #[test]
+    fn names_every_route_with_an_id_the_administration_declares() {
+        let router = include_str!("../routes/admin/mod.rs");
+        // The quoted paths of the router's source.
+        let routes: Vec<&str> = router
+            .split('"')
+            .filter(|s| s.starts_with("/admin/") && s.contains("{id}"))
+            .collect();
+        assert!(routes.len() >= 11, "{routes:?}");
+        for route in routes {
+            assert!(resource_of(route, ID).is_some(), "{route}");
         }
     }
 

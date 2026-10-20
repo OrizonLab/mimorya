@@ -256,10 +256,17 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   temporaire à remplacer, compte inactif), il peut
   désigner une ressource absente ou d'une autre entreprise, sans que la réponse en
   dise rien. Ne sont pas tracés : les lectures refusées, les refus anti-CSRF (en-tête
-  ou origine, prononcés avant la résolution de la session), les ressources qu'un
-  administrateur habilité trouve absentes ou hors périmètre (404, indiscernables à
-  dessein), les requêtes invalides et les requêtes anonymes. Un échec d'écriture de
-  cette trace est journalisé et ne change pas la réponse.
+  ou origine, prononcés avant la résolution de la session), les requêtes invalides et
+  les requêtes anonymes. Un échec d'écriture de cette trace est journalisé et ne
+  change pas la réponse.
+- Modifications d'administration sur une ressource introuvable (ADR-047) : la
+  modification, par un administrateur habilité, d'une ressource que désigne
+  l'identifiant du chemin et que la plateforme répond introuvable (404) est tracée de
+  même (`admin.not_found`, résultat `denied`, raison « Compte introuvable »…), dans
+  l'entreprise de l'administrateur. L'entrée, comme la réponse, ne distingue pas une
+  ressource absente d'une ressource d'une autre entreprise : la distinguer ferait de
+  l'audit un oracle d'existence pour ses lecteurs. Un identifiant inconnu envoyé dans
+  le corps d'une requête répond 400 et n'est pas tracé.
 - Phase 3 : chaînage cryptographique des entrées et export vers un SIEM.
 
 ## 9. Protection des données (RGPD)

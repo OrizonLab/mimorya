@@ -3,9 +3,10 @@
 // nothing (ADR-044); so does a run's live follow-up the browser gave up, but
 // not one it reconnects by itself (ADR-046). The read tests move the page's
 // clock on instead of waiting, and hold or fail the read until they let it
-// through. The chat tests keep the window low, so that a failure appearing
-// below must be scrolled into view. The role a test creates is deleted, and a
-// validation left waiting is refused, even when it fails.
+// through. The chat tests that show a failure keep the window low and send a
+// message taller than it, so that the failure, below, must be scrolled into
+// view. The role a test creates is deleted, and a validation left waiting is
+// refused, even when it fails.
 import type { Page } from '@playwright/test';
 import { READ_TIMEOUT_MS } from '../lib/api/client';
 import type { ApprovalList, ApprovalVerdict, Roles } from '../lib/api/contract';
@@ -18,6 +19,16 @@ const ROLE = 'Délai e2e';
 
 /** A window low enough that what appears below a run is out of view. */
 const LOW_WINDOW = { width: 1280, height: 360 };
+
+/**
+ * The reference request, made taller than the low window (the scripted model
+ * reads none of the added lines): what appears below it is out of view unless
+ * scrolled to, whatever the height of the panels around.
+ */
+const TALL_REQUEST = [
+  REFERENCE_REQUEST,
+  ...Array.from({ length: 12 }, (_, i) => `Point ${i + 1} à vérifier.`),
+].join('\n');
 
 /** Signed in, once the screen reached has done its own reads. */
 async function signedIn(page: Page, email: string) {
@@ -121,7 +132,7 @@ test('the approval a run waits for says it could not be loaded', async ({ page }
   );
   await page.setViewportSize(LOW_WINDOW);
   await signedIn(page, demo.marc);
-  await page.getByLabel('Votre message').fill(REFERENCE_REQUEST);
+  await page.getByLabel('Votre message').fill(TALL_REQUEST);
   await page.getByRole('button', { name: 'Envoyer' }).click();
 
   // The run waits for a validation the page could not load: it says so, in view...
@@ -151,10 +162,7 @@ test('a run whose live follow-up was refused says so and follows again', async (
   );
   await page.setViewportSize(LOW_WINDOW);
   await signedIn(page, demo.marc);
-  // A message taller than the window (the scripted model reads none of it):
-  // what appears below it is out of view unless scrolled to.
-  const points = Array.from({ length: 12 }, (_, i) => `Point ${i + 1} à vérifier.`);
-  await page.getByLabel('Votre message').fill([REFERENCE_REQUEST, ...points].join('\n'));
+  await page.getByLabel('Votre message').fill(TALL_REQUEST);
   await page.getByRole('button', { name: 'Envoyer' }).click();
 
   // The browser gives such a stream up: the page says, in view, that the

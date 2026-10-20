@@ -10,11 +10,15 @@ use serde_json::{Value, json};
 
 use crate::contract::{ErrorBody, ErrorDetail, ErrorKind};
 
-/// Carried by a refusal's response (`Forbidden`) for the layers that record
-/// it, such as refused administration changes (ADR-038). Never sent: the
-/// message is already in the body.
+/// Carried by the response of a refusal (`Forbidden`) or of a resource
+/// answered as absent (`NotFound`), with its message, for the layers that
+/// record them, such as the administration's (ADR-038, ADR-047). Never sent:
+/// the message is already in the body.
 #[derive(Debug, Clone)]
-pub struct Refusal(pub String);
+pub enum Refusal {
+    Forbidden(String),
+    NotFound(String),
+}
 
 #[derive(Debug)]
 pub enum ApiError {
@@ -102,8 +106,11 @@ impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         match self {
             Self::Domain(error) => {
-                let refusal =
-                    (error.code == ErrorCode::Forbidden).then(|| Refusal(error.message.clone()));
+                let refusal = match error.code {
+                    ErrorCode::Forbidden => Some(Refusal::Forbidden(error.message.clone())),
+                    ErrorCode::NotFound => Some(Refusal::NotFound(error.message.clone())),
+                    _ => None,
+                };
                 let mut response = (
                     status_of(error.code),
                     body(error.code.into(), &error.message, error.details),

@@ -1,7 +1,8 @@
 //! Administration endpoints, each reserved to its permission. Reading the
 //! directory and the organisation is open to members; managing them, and the
 //! company-wide screens, require the permission on the whole company. A
-//! refused change is audited with its reason (ADR-038).
+//! refused change is audited with its reason (ADR-038), as is one aimed at a
+//! resource answered as absent (ADR-047).
 
 mod activity;
 mod assignments;
