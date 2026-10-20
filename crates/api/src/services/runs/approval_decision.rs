@@ -130,18 +130,16 @@ pub async fn record_approval_decision(
     })
 }
 
-/// Decisions handed to the agent on resume; expired requests count as refusals.
+/// Decisions handed to the agent on resume; expired requests are not run.
 pub fn resume_decisions(approvals: &[ApprovalRow]) -> ApprovalDecisions {
     approvals
         .iter()
         .filter_map(|a| {
             let decision = match a.status.as_str() {
-                "expired" => {
-                    ApprovalDecision::rejected(Some("demande de validation expirée".into()))
-                }
+                "expired" => ApprovalDecision::expired(),
                 "approved" => ApprovalDecision {
-                    approved: true,
                     comment: a.decision_comment.clone(),
+                    ..ApprovalDecision::approved()
                 },
                 "rejected" => ApprovalDecision::rejected(a.decision_comment.clone()),
                 _ => return None,

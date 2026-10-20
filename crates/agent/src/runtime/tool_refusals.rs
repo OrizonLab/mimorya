@@ -9,6 +9,32 @@ use super::ports::{ApprovalRequest, EngineAuditEntry, RunEvent, ToolInvocationRe
 use super::state::PendingApproval;
 use super::tool_calls::ToolCallProcessor;
 use super::types::ApprovalDecision;
+
+const TOOL_REMOVED: &str = "Outil désactivé depuis la demande de validation";
+const REQUEST_EXPIRED: &str = "Demande de validation expirée";
+const REFUSED: &str = "Action refusée par l’utilisateur";
+
+/// Why a decided call does not run (its tool removed since, its request
+/// expired before anyone decided, or refused): the reason the model gets,
+/// and what the live view shows, without what the user wrote.
+pub(super) fn why_not_run(
+    tool_present: bool,
+    decision: &ApprovalDecision,
+) -> (String, &'static str) {
+    if !tool_present {
+        (TOOL_REMOVED.into(), TOOL_REMOVED)
+    } else if decision.expired {
+        let reason = format!("{REQUEST_EXPIRED} : l’action n’a pas été exécutée");
+        (reason, REQUEST_EXPIRED)
+    } else {
+        let comment = decision
+            .comment
+            .as_ref()
+            .map(|c| format!(" : {c}"))
+            .unwrap_or_default();
+        (format!("{REFUSED}{comment}"), REFUSED)
+    }
+}
 use crate::llm::{LlmToolCall, LlmToolResult};
 use crate::tools::executor::INVALID_INPUT;
 use crate::tools::{RegisteredTool, ToolCallEvaluation};
@@ -25,16 +51,6 @@ impl ToolCallProcessor {
         shown: &str,
     ) -> anyhow::Result<LlmToolResult> {
         self.ports
-            .events
-            .emit(RunEvent::ToolResult {
-                tool_call_id: approval.tool_call_id.clone(),
-                tool_name: approval.tool_name.clone(),
-                summary: shown.into(),
-                is_error: true,
-                duration_ms: 0,
-            })
-            .await?;
-        self.ports
             .tool_log
             .record(ToolInvocationRecord {
                 tool_call_id: approval.tool_call_id.clone(),
@@ -47,6 +63,16 @@ impl ToolCallProcessor {
                 error: None,
                 duration_ms: None,
                 approval_id: Some(approval.approval_id),
+            })
+            .await?;
+        self.ports
+            .events
+            .emit(RunEvent::ToolResult {
+                tool_call_id: approval.tool_call_id.clone(),
+                tool_name: approval.tool_name.clone(),
+                summary: shown.into(),
+                is_error: true,
+                duration_ms: 0,
             })
             .await?;
         Ok(LlmToolResult {

@@ -73,6 +73,9 @@ pub struct RunConfig {
 pub struct ApprovalDecision {
     pub approved: bool,
     pub comment: Option<String>,
+    /// The request expired before anyone decided: not approved, nor refused
+    /// by the user.
+    pub expired: bool,
 }
 
 impl ApprovalDecision {
@@ -80,6 +83,7 @@ impl ApprovalDecision {
         Self {
             approved: true,
             comment: None,
+            expired: false,
         }
     }
 
@@ -87,6 +91,15 @@ impl ApprovalDecision {
         Self {
             approved: false,
             comment,
+            expired: false,
+        }
+    }
+
+    pub fn expired() -> Self {
+        Self {
+            approved: false,
+            comment: None,
+            expired: true,
         }
     }
 }

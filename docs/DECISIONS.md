@@ -1812,9 +1812,13 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - le suivi en direct affiche la reprise : à `run_resumed`, les étapes sans résultat
     sont marquées « Interrompue par un arrêt du service » et une ligne dit où le run a
     repris (une par reprise). Tout appel qui se termine reçoit son résultat dans le flux,
-    y compris un appel refusé par l'utilisateur ou abandonné (`tool_result` d'erreur, dont
-    le motif ne reprend pas le commentaire de l'utilisateur) : une étape sans résultat est
-    donc toujours une étape perdue. Une validation annulée par la reprise n'a jamais été
+    y compris un appel refusé par l'utilisateur, dont la demande a expiré, dont l'outil a
+    été retiré, ou abandonné (`tool_result` d'erreur, dont le texte nomme le cas sans
+    reprendre le commentaire de l'utilisateur) ; un appel refusé par la plateforme est,
+    lui, terminé dès son `tool_call`. Une étape sans résultat est donc toujours une étape
+    perdue, à une exception transitoire près : un run interrompu par le déploiement de ce
+    changement, dont le journal le précède, montrerait encore un appel refusé comme
+    interrompu (affichage seulement). Une validation annulée par la reprise n'a jamais été
     affichée dans le fil (il ne charge les cartes qu'une fois le run en attente, et un
     run en attente n'est pas repris). Le serveur des tests de bout en bout prend le
     verrou et reprend les runs comme l'API ; il en laisse un, interrompu pendant une
