@@ -72,7 +72,15 @@ export async function signIn(page: Page, email: string, password = DEMO_PASSWORD
   await page.waitForURL('**/chat');
 }
 
-/** No error message is shown (Next.js's route announcer is an empty alert). */
+/**
+ * No error message is shown, named if one is. Next.js's route announcer, an
+ * alert too, is left out: after a client-side navigation it may read the
+ * page's title, which goes blank for a moment while the page changes.
+ */
 export async function noError(page: Page) {
-  await expect(page.getByRole('alert').filter({ hasText: /\S/ })).toHaveCount(0);
+  const shown = page
+    .getByRole('alert')
+    .filter({ hasText: /\S/ })
+    .and(page.locator(':not(#__next-route-announcer__)'));
+  await expect.poll(() => shown.allInnerTexts()).toEqual([]);
 }

@@ -34,12 +34,14 @@ async fn a_second_process_takes_nothing_up_while_the_first_holds_the_lock() {
     let second = TestApi::start().await;
     let refused = second.app.recover_interrupted_runs().await.unwrap_err();
     assert_eq!(refused.to_string(), LOCK_HELD_ELSEWHERE);
-    // The connection holding the lock, as an operator finds it.
+    // The connection holding the lock, as an operator finds it (in this
+    // database: another API, such as the end-to-end one, holds its own).
     let owner = sqlx::PgPool::connect(owner_url()).await.unwrap();
     let holders: i64 = sqlx::query_scalar(
         "select count(*) from pg_locks join pg_stat_activity using (pid) \
          where locktype = 'advisory' and granted \
-         and application_name = 'mimorya-run-executor'",
+         and application_name = 'mimorya-run-executor' \
+         and datname = current_database()",
     )
     .fetch_one(&owner)
     .await
