@@ -1,10 +1,12 @@
 //! Refused administration changes are audited with their reason, like the
 //! changes made (ADR-038): one aimed at the administrator's own account, one
 //! needing a permission they do not hold on the whole company, one on a
-//! platform role… Layered on the administration routes. Reads are not
-//! concerned, nor answers that a resource is absent or out of scope (they
-//! are indistinguishable on purpose). The reason is the refusal's message,
-//! written by the platform: it never carries what the request sent.
+//! platform role… So are the changes aimed at a resource the route designates
+//! and answered as absent (ADR-047): it may be absent, or another company's,
+//! which the entry does not tell apart any more than the answer does.
+//! Layered on the administration routes; reads are not concerned. The reason
+//! is the answer's message, written by the platform: it never carries what
+//! the request sent.
 
 use axum::RequestExt;
 use axum::extract::{MatchedPath, RawPathParams, Request, State};
@@ -21,6 +23,8 @@ use crate::plugins::RequestContext;
 use crate::services::AuthIdentity;
 
 pub const REFUSED_ACTION: &str = "admin.refused";
+/// A change aimed at a resource answered as absent (ADR-047).
+pub const NOT_FOUND_ACTION: &str = "admin.not_found";
 
 /// A change attempted by a signed-in user, as the refusal's entry names it.
 struct Attempt {
@@ -60,11 +64,22 @@ pub async fn audit_refusals(
         resource,
     };
     let response = next.run(request).await;
-    if let Some(Refusal(reason)) = response.extensions().get::<Refusal>() {
-        // The refusal stands whether or not its trace is written.
-        if let Err(error) = record(&state, attempt, reason).await {
+    let traced = match response.extensions().get::<Refusal>() {
+        Some(Refusal::Forbidden(reason)) => Some((REFUSED_ACTION, reason)),
+        // Only the resource the route designates: the other answers of
+        // absence (the company's own model, already the platform's) are no
+        // attempt on someone else's resource.
+        Some(Refusal::NotFound(reason)) if attempt.resource.is_some() => {
+            Some((NOT_FOUND_ACTION, reason))
+        }
+        _ => None,
+    };
+    if let Some((action, reason)) = traced {
+        // The answer stands whether or not its trace is written.
+        if let Err(error) = record(&state, attempt, action, reason).await {
             tracing::error!(
                 error = format!("{error:#}"),
+                action,
                 "Failed to audit a refused administration change"
             );
         }
@@ -72,9 +87,14 @@ pub async fn audit_refusals(
     response
 }
 
-async fn record(state: &AppState, attempt: Attempt, reason: &str) -> anyhow::Result<()> {
+async fn record(
+    state: &AppState,
+    attempt: Attempt,
+    action: &str,
+    reason: &str,
+) -> anyhow::Result<()> {
     let tenant_id = attempt.identity.tenant_id;
-    let mut entry = AuditEntry::new(tenant_id, "user", REFUSED_ACTION, "denied")
+    let mut entry = AuditEntry::new(tenant_id, "user", action, "denied")
         .by_user(attempt.identity.user_id)
         .reason(reason)
         .metadata(json!({ "method": attempt.method.as_str(), "route": attempt.route }));

@@ -1,10 +1,11 @@
 //! Refused administration changes leave a trace with their reason, like the
 //! changes made (ADR-038): on oneself, without the permission on the whole
 //! company, on a platform role, without the permission at all, before the
-//! temporary password is replaced. Reads, resources an authorised
-//! administrator finds absent or out of scope, invalid requests and
-//! anonymous requests do not; nor does anything the request sent but the
-//! path's identifier. A refusal stands when its trace cannot be written.
+//! temporary password is replaced. Reads, invalid requests and anonymous
+//! requests do not, nor does anything the request sent but the path's
+//! identifier; resources an authorised administrator finds absent or out of
+//! scope are traced apart (ADR-047, `admin_absent_resources.rs`). A refusal
+//! stands when its trace cannot be written.
 
 mod support;
 
@@ -184,7 +185,8 @@ async fn only_refused_changes_are_audited_as_refusals() {
         partial.get("/admin/audit").await.status,
         StatusCode::FORBIDDEN
     );
-    // Out of scope: another company's account, answered as absent.
+    // Out of scope: another company's account, answered as absent (traced
+    // apart, ADR-047).
     let elsewhere = paul
         .post(
             &format!("/admin/users/{OTHER_USER_ID}/assignments"),

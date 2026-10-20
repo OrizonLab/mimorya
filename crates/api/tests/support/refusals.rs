@@ -1,7 +1,8 @@
-//! What the audit says of refused administration changes (ADR-038), read
-//! with the application role in the demo company.
+//! What the audit says of refused administration changes (ADR-038) and of
+//! those aimed at a resource answered as absent (ADR-047), read with the
+//! application role.
 
-use mimorya_api::plugins::refusal_audit::REFUSED_ACTION;
+use mimorya_api::plugins::refusal_audit::{NOT_FOUND_ACTION, REFUSED_ACTION};
 use mimorya_core::demo::tenant;
 use serde_json::Value;
 use uuid::Uuid;
@@ -31,7 +32,12 @@ struct RefusalRow {
 
 /// The id of the latest audit entry, before the requests a test checks.
 pub async fn latest_entry(api: &TestApi) -> i64 {
-    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    latest_entry_of(api, tenant::ID).await
+}
+
+/// The id of the latest audit entry of a company.
+pub async fn latest_entry_of(api: &TestApi, tenant_id: Uuid) -> i64 {
+    let mut tx = api.app.services.db.begin(tenant_id).await.unwrap();
     sqlx::query_scalar("select coalesce(max(id), 0) from audit_log")
         .fetch_one(&mut *tx)
         .await
@@ -40,12 +46,21 @@ pub async fn latest_entry(api: &TestApi) -> i64 {
 
 /// The refusals audited after `since`, in order, for every user.
 pub async fn refusals_since(api: &TestApi, since: i64) -> Vec<(Uuid, Refused)> {
+    denied_since(api, REFUSED_ACTION, since).await
+}
+
+/// The changes on resources answered as absent audited after `since`.
+pub async fn not_found_since(api: &TestApi, since: i64) -> Vec<(Uuid, Refused)> {
+    denied_since(api, NOT_FOUND_ACTION, since).await
+}
+
+async fn denied_since(api: &TestApi, action: &str, since: i64) -> Vec<(Uuid, Refused)> {
     let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
     let rows: Vec<RefusalRow> = sqlx::query_as(
         "select actor_user_id, outcome, resource_type, resource_id, reason, metadata, \
          host(ip) as ip, request_id from audit_log where action = $1 and id > $2 order by id",
     )
-    .bind(REFUSED_ACTION)
+    .bind(action)
     .bind(since)
     .fetch_all(&mut *tx)
     .await
@@ -67,7 +82,12 @@ pub async fn refusals_since(api: &TestApi, since: i64) -> Vec<(Uuid, Refused)> {
 
 /// Every entry written after `since`, as text.
 pub async fn entries_since(api: &TestApi, since: i64) -> String {
-    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    entries_of_since(api, tenant::ID, since).await
+}
+
+/// Every entry of a company written after `since`, as text.
+pub async fn entries_of_since(api: &TestApi, tenant_id: Uuid, since: i64) -> String {
+    let mut tx = api.app.services.db.begin(tenant_id).await.unwrap();
     let rows: Vec<Value> =
         sqlx::query_scalar("select to_jsonb(audit_log) from audit_log where id > $1 order by id")
             .bind(since)

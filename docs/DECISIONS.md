@@ -1400,3 +1400,54 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     vérifie qu'aucun message n'apparaît (quatrième scénario, suivi à 11 h).
     Aucun scénario n'attend deux fois : le dernier point n'a pas de test de bout en
     bout.
+
+## ADR-047 — Modifications d'administration sur une ressource introuvable tracées (complète ADR-038)
+
+- **Date** : 2026-10-20 · **Statut** : acceptée
+- **Contexte** : ADR-038 trace les modifications d'administration refusées (403), pas
+  celles d'un administrateur habilité sur une ressource que la plateforme répond
+  introuvable (404). Toute l'administration s'exerce sur l'entreprise entière : pour
+  un administrateur habilité, une ressource hors de son périmètre est celle d'une autre
+  entreprise, que la RLS rend absente. Un identifiant d'une autre entreprise, deviné
+  ou divulgué, essayé depuis l'administration ne laissait aucune trace.
+- **Décision** :
+  - le marqueur des réponses (`Refusal`, `http/error.rs`) porte aussi le message d'une
+    réponse d'absence (`Refusal::NotFound`, code `NotFound`), jamais envoyé non plus ;
+  - la couche d'audit de l'administration (`plugins/refusal_audit.rs`) trace, pour une
+    requête modifiante d'un utilisateur connecté sur une route qui désigne une
+    ressource par son identifiant (`{id}`, nommée par `resource_of`) et répondue
+    introuvable, une entrée `admin.not_found` (`denied`) de même contenu qu'un refus :
+    l'utilisateur, la raison (le message de la réponse : « Compte introuvable »…), la
+    méthode et la route, l'identifiant du chemin, l'IP et l'identifiant de requête.
+    Elle est écrite dans l'entreprise de l'administrateur seulement ;
+  - l'entrée ne distingue pas une ressource absente d'une ressource d'une autre
+    entreprise, pas plus que la réponse : les distinguer demanderait une lecture
+    inter-entreprises à la portée de l'application, et une entrée qui les distinguerait
+    donnerait aux lecteurs de l'audit de l'entreprise l'oracle d'existence que la
+    réponse 404 refuse (un administrateur qui lit l'audit pourrait sonder des
+    identifiants). L'exploitant, avec le rôle propriétaire, peut rapprocher ces
+    identifiants des ressources des autres entreprises ;
+  - seul un administrateur qui détient la permission sur toute l'entreprise atteint
+    cette réponse : chaque opération vérifie la permission avant toute lecture, les
+    autres sont refusés, et tracés comme refus (ADR-038) ;
+  - une réponse d'absence qui ne désigne aucune ressource (rétablir le modèle de la
+    plateforme quand l'entreprise l'utilise déjà) n'est pas une tentative sur une
+    ressource : elle n'est pas tracée.
+- **Conséquences** :
+  - ne sont pas tracés : un identifiant inconnu envoyé dans le corps d'une requête (un
+    rôle, une unité, un responsable…), qui répond 400 comme une requête invalide
+    (feuille de route) ; les lectures ; les ressources hors périmètre des autres routes
+    (conversation, run, mémoire d'un autre membre, qui répondent 404), hors de
+    l'administration ;
+  - une suppression concurrente (deux administrateurs suppriment la même ressource)
+    laisse aussi une entrée, pour le second ;
+  - une route d'administration nouvelle à identifiant est couverte d'office ; le volume
+    est borné par la limitation de débit globale et par la permission requise ;
+  - test : `crates/api/tests/admin_absent_resources.rs` modifie un compte et supprime
+    un rôle d'une autre entreprise, puis d'autres qui n'existent nulle part : mêmes
+    réponses, mêmes entrées hormis l'identifiant, rien d'écrit dans l'audit de l'autre
+    entreprise, rien de ce que la requête envoie hormis l'identifiant ; chaque
+    collection de l'administration est nommée ; un administrateur limité à une équipe
+    et un membre sont refusés avant, le rétablissement du modèle n'est pas tracé.
+    Retirer le marqueur ou la condition sur la ressource désignée fait échouer ces
+    tests.
