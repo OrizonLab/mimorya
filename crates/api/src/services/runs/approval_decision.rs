@@ -24,7 +24,8 @@ pub struct DecisionInput {
 }
 
 pub struct RecordedDecision {
-    /// The request had expired: it is recorded as such and counts as a refusal.
+    /// The request had expired: it is recorded as such, and its call is not
+    /// run (nobody refused it).
     pub expired: bool,
     pub decided: Option<ApprovalRow>,
     /// Set when every request of the run is settled and the run must resume.

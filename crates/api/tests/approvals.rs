@@ -108,7 +108,13 @@ async fn reports_an_expired_validation_as_not_run_and_resumes_the_run() {
     assert_eq!(decision.status, StatusCode::CONFLICT);
     api.idle().await;
 
-    assert!(seen.lock().unwrap().contains("expirée"));
+    // The model is told it expired, not that anyone refused it.
+    let told = seen.lock().unwrap().clone();
+    assert!(
+        told.contains("Demande de validation expirée : l’action n’a pas été exécutée"),
+        "{told}"
+    );
+    assert!(!told.contains("refusée"), "{told}");
     let (status, approvals) = statuses(&marc, &run.run_id).await;
     assert_eq!(status, "completed");
     assert_eq!(approvals, ["expired"]);
