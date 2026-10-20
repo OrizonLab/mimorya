@@ -312,7 +312,9 @@ no-store` (le flux d'événements garde `no-cache, no-transform`) ;
     `preload` seulement après inscription du domaine). L'application ne le pose pas :
     elle ne sait pas si elle est servie en HTTPS.
 - Limitation de débit globale et par route sensible (connexion, par adresse et par
-  compte), voir §4 pour la détermination de l'adresse cliente.
+  compte), voir §4 pour la détermination de l'adresse cliente. Les démarrages de
+  connecteurs demandés par l'administration (test, essai) sont de plus bornés à deux en
+  cours par entreprise (ADR-055).
 - Dépendances verrouillées (`Cargo.lock`, `pnpm-lock.yaml`), audit des vulnérabilités en CI
   (phase 2), revue des licences (MIT/Apache/BSD privilégiées, AGPL exclue).
 - Sauvegardes chiffrées, restauration testée périodiquement (phase 3).

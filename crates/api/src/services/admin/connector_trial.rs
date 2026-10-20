@@ -49,9 +49,12 @@ pub async fn try_mcp_connector(
         return Err(DomainError::validation(problem).into());
     }
     let (tenant_id, user_id) = (access.subject.tenant_id, access.subject.user_id);
+    let start = services.connectors.claim_admin_start(tenant_id)?;
     let (answer, answered) = oneshot::channel();
     let background = services.background.clone();
     background.spawn(async move {
+        // Held by the trial, not by its request: freed when the trial ends.
+        let _start = start;
         let config = json!({ "transport": "http", "prefix": trial.prefix, "url": trial.url });
         let token = trial.token.as_deref();
         let outcome = start_and_list(&services.connectors, "mcp", &config, token, |_| {

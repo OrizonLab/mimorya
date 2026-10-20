@@ -1877,3 +1877,32 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     hormis l'identifiant, rien dans l'audit de l'autre entreprise, rien de ce que la
     requête envoie hormis les identifiants ; un administrateur limité et un membre sont
     refusés avant, et une requête invalide d'une autre sorte n'est pas tracée.
+
+## ADR-055 — Démarrages de connecteurs demandés par l'administration bornés par entreprise
+
+- **Date** : 2026-10-20 · **Statut** : acceptée
+- **Contexte** : tester un connecteur enregistré ou essayer un serveur MCP avant de
+  l'enregistrer (ADR-050) démarre un connecteur, qui peut attendre un serveur lent
+  jusqu'au délai de démarrage. Ces démarrages n'étaient bornés que par la limitation de
+  débit globale : les administrateurs d'une entreprise pouvaient en garder un grand
+  nombre en cours (connexions sortantes, tâches), au détriment des autres entreprises.
+- **Décision** :
+  - une entreprise a au plus deux démarrages demandés par l'administration en cours à
+    la fois (`MAX_ADMIN_STARTS`, `services/connectors/admin_starts.rs`), tests et essais
+    confondus ; un troisième est refusé (409, « Deux démarrages de connecteur sont déjà
+    en cours dans votre entreprise : réessayez quand l'un d'eux aura fini. »), après la
+    vérification de la permission et des paramètres ;
+  - chaque démarrage tient un créneau tant qu'il dure : le test le rend une fois son
+    résultat enregistré ; l'essai, qui se poursuit hors de sa requête (ADR-050), le rend
+    à sa fin, même si son client est parti ;
+  - les démarrages des runs ne sont pas comptés : un même démarrage sert les runs qui en
+    ont besoin, puis il est gardé (ADR-049) ;
+  - le compte vit en mémoire du processus, qui est seul à exécuter (ADR-016).
+- **Conséquences** :
+  - un refus de ce type n'est pas tracé : ce n'est pas une modification refusée ;
+  - plusieurs instances (phase 2) demanderaient un compte partagé ;
+  - test : `crates/api/tests/connector_admin_starts.rs` retient deux essais sur un
+    serveur qui les fait attendre (le client du premier part), puis vérifie qu'un
+    troisième essai et un test sont refusés, et que les créneaux reviennent une fois
+    les essais finis ; un test unitaire vérifie qu'une autre entreprise n'est pas
+    retenue.

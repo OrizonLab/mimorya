@@ -9,7 +9,10 @@
 //! then one run per retry delay, by the start timeout at most. One connector failing (server, token,
 //! policies, a tool name taken) makes that connector alone unavailable. How
 //! each start went is recorded on the instance (`status`, `last_error`).
+//! The starts an administration asks for are bounded per company
+//! (`admin_starts`, ADR-055).
 
+mod admin_starts;
 mod cache;
 mod failures;
 mod policies;
@@ -23,6 +26,7 @@ use futures::future::join_all;
 use mimorya_agent::tools::ToolOverride;
 use mimorya_connectors::mcp::NetworkPolicy;
 use mimorya_connectors::{ConnectorRuntime, InstanceContext, connector_type};
+use mimorya_core::DomainError;
 use mimorya_core::tools::ToolRef;
 use mimorya_db::Database;
 use mimorya_db::repositories::connectors::{
@@ -30,6 +34,8 @@ use mimorya_db::repositories::connectors::{
 };
 use uuid::Uuid;
 
+use admin_starts::AdminStarts;
+pub use admin_starts::{AdminStart, MAX_ADMIN_STARTS, TOO_MANY_ADMIN_STARTS};
 pub use cache::RETRY_AFTER;
 use cache::{Origin, RuntimeCache, Unavailable};
 pub use failures::{failure, opened};
@@ -77,6 +83,7 @@ pub struct ConnectorService {
     secrets: SecretStore,
     settings: ConnectorSettings,
     cache: RuntimeCache,
+    admin_starts: AdminStarts,
 }
 
 impl ConnectorService {
@@ -86,11 +93,19 @@ impl ConnectorService {
             secrets,
             settings,
             cache: RuntimeCache::default(),
+            admin_starts: AdminStarts::default(),
         }
     }
 
     pub fn network(&self) -> NetworkPolicy {
         self.settings.network
+    }
+
+    /// A slot for a start an administration of `tenant_id` asks for, held
+    /// until it is dropped; refused while the company has
+    /// `MAX_ADMIN_STARTS` under way.
+    pub fn claim_admin_start(&self, tenant_id: Uuid) -> Result<AdminStart, DomainError> {
+        self.admin_starts.claim(tenant_id)
     }
 
     pub async fn tools_for(&self, tenant_id: Uuid) -> anyhow::Result<TenantTools> {
