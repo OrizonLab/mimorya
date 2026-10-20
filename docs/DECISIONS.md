@@ -1597,3 +1597,74 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     change, une réponse réussie affichée, rien d'ajouté). Exécuter l'essai dans sa
     requête, ou afficher un résultat ou un refus pour d'autres valeurs que celles
     essayées, fait échouer ces tests.
+
+## ADR-051 — Images publiées sur le registre de GitHub (complète ADR-032 et ADR-034)
+
+- **Date** : 2026-10-20 · **Statut** : acceptée
+- **Contexte** : la CI construisait et vérifiait les images de l'API et de l'interface,
+  puis les jetait. Installer la pile de démonstration ou de production demandait donc de
+  les construire sur le serveur (Rust et Next.js : temps, mémoire, outillage), et rien
+  ne garantissait qu'une installation tournait le code vérifié par la CI.
+- **Décision** :
+  - le workflow `.github/workflows/images.yml` publie trois images (amd64) sur le
+    registre de GitHub (`ghcr.io/orizonlab/`) : `mimorya-api` (API, migrations,
+    commandes d'exploitation, données de démonstration), `mimorya-web` (interface sans
+    comptes de démonstration) et `mimorya-web-demo` (interface qui les liste). Le relais
+    `/api/*` étant fixé à la construction, les deux interfaces visent `http://api:4000`,
+    nom du service des deux piles ;
+  - **publication** : après une CI **verte** sur un commit poussé sur `main` du dépôt
+    même (`workflow_run` ; la branche `main` d'un dépôt dérivé, dont la CI tourne aussi,
+    n'est jamais publiée), les images du commit que la CI a vérifié (`head_sha`) sont
+    construites et publiées sous `sha-<12 caractères>`, **une seule fois** : une CI
+    relancée ne remplace jamais ce qu'une installation fait peut-être déjà tourner sous
+    ce nom. Seule une réponse « introuvable » du registre compte comme une absence
+    (`infra/docker/image-digest.sh`) : un registre qui ne répond pas, limite le débit ou
+    refuse l'accès arrête la publication au lieu de la relancer ;
+  - **promotion** : une fois les trois publiées, `main` et `latest` les désignent
+    ensemble (`imagetools create`), si le commit est encore la tête de `main` ; une
+    promotion à la fois, une plus récente remplaçant celle qui attend. Ces noms ne
+    reviennent donc jamais à un commit plus ancien (une CI relancée, une promotion en
+    retard) ;
+  - **version** : une étiquette `vX.Y.Z` (éventuellement suivie d'un suffixe) sur un
+    commit de `main` nomme `X.Y.Z` les images déjà publiées pour ce commit, sans rien
+    reconstruire. Un commit hors de `main`, ou jamais publié (CI en échec), n'a pas de
+    version : le travail échoue. Une version déjà donnée ne change jamais d'images : si
+    `X.Y.Z` en désigne d'autres, le travail échoue sans rien renommer ;
+  - la liste des images (nom, Dockerfile, arguments de construction, description) est
+    écrite une seule fois, dans `infra/docker/images.json`, que lisent tous les travaux
+    du workflow. `compose.demo.build.yml` et `compose.production.build.yml` en répètent
+    le Dockerfile et les arguments (aujourd'hui identiques) : les modifier ensemble ;
+  - le jeton de la CI (`GITHUB_TOKEN`, permission `packages: write` sur les seuls travaux
+    qui publient, pas sur la construction des PR) suffit : ni compte ni secret
+    supplémentaire. Les images portent la source du dépôt
+    (`org.opencontainers.image.source`), sa révision, leur version, leur date et une
+    description ;
+  - une PR qui modifie le workflow ou `infra/docker/` construit les trois images sans
+    rien publier ; chaque image garde son cache de construction (`type=gha`, une portée
+    par image) ;
+  - les piles (`compose.demo.yml`, `compose.production.yml`) ne font que nommer les
+    images publiées (`ghcr.io/orizonlab/…:${MIMORYA_VERSION:-latest}`), sans les
+    construire : une image introuvable (version mal écrite, paquet privé, autre
+    architecture) arrête la pile au lieu d'être remplacée par une construction locale
+    sous le nom publié. `compose.demo.build.yml` et `compose.production.build.yml` les
+    construisent depuis le dépôt sous des noms locaux (`mimorya-api:local`…) ; la CI
+    vérifie les piles ainsi.
+- **Conséquences** :
+  - une installation fixe `MIMORYA_VERSION` (une version, sinon un commit) pour garder
+    la même d'un redémarrage à l'autre, et se fait depuis le dépôt extrait à la même
+    version : le fichier compose et les fichiers qu'il monte (Caddy, initialisation de la
+    base) vont avec les images ;
+  - la CI vérifie les piles construites depuis le dépôt, pas les images téléchargées :
+    rien ne démarre encore une image publiée avant qu'une installation le fasse ;
+  - le code étant public, publier ses images ne révèle rien de plus. Leur visibilité est
+    à constater au premier envoi : un paquet lié à un dépôt public devrait l'être, sinon
+    son propriétaire (le compte OrizonLab) le rend public dans les réglages du paquet ;
+  - restent à faire : le constat du premier envoi (trois paquets, visibles,
+    téléchargeables sans compte), possible seulement après la fusion (`workflow_run` ne
+    part que du workflow de la branche par défaut). Ce premier envoi dira aussi ce que
+    le registre répond pour un paquet qui n'existe pas encore : s'il refuse l'accès au
+    lieu de répondre « introuvable », la publication échoue (sans rien publier de faux)
+    jusqu'à ce que l'absence soit constatée autrement, par l'API des paquets de GitHub
+    (404 : paquet absent) ; le cache du travail de CI qui
+    vérifie les piles ; la signature des images ; arm64 ; l'épinglage des actions par
+    empreinte. Une PR qui touche les images en vérifie la construction, pas l'envoi.

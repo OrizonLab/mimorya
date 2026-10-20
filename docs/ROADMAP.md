@@ -9,7 +9,7 @@ Légende des statuts — tenue à jour à chaque contribution :
 | 🟡     | Partiel : socle en place, fonctionnalité incomplète (détail indiqué)       |
 | 🔜     | Planifié, non implémenté                                                   |
 
-Dernière mise à jour : 2026-10-20 (un serveur MCP s’essaie avant d’être enregistré, ADR-050).
+Dernière mise à jour : 2026-10-20 (images publiées sur le registre de GitHub, ADR-051).
 
 ## Phase 1 — Fondations et MVP fonctionnel
 
@@ -53,7 +53,7 @@ Dernière mise à jour : 2026-10-20 (un serveur MCP s’essaie avant d’être e
 ### Reste à faire pour clore la phase 1 (par priorité)
 
 1. **Validation avec un modèle réel** (clé Anthropic ou autre) sur le scénario de référence, et ajustement des consignes et descriptions d'outils.
-2. **Installation privée de production** : publication des images dans un registre et cache de leur construction en CI (faits : images Docker et pile de démonstration derrière Caddy, ADR-032 ; migrations seules et création d'une entreprise réelle par `mimorya-admin`, ADR-033 ; pile conteneurisée de production aux identifiants choisis à l'installation, vérifiée en CI jusqu'à la première connexion, ADR-034).
+2. **Installation privée de production** : publication des images sur `ghcr.io` (ADR-051 : workflow en place, construction vérifiée en PR, piles qui téléchargent les images par `MIMORYA_VERSION` sans jamais les construire à leur place ; reste à constater le premier envoi après la fusion, puis à le passer en fait) ; cache de la construction des images dans le travail de CI qui vérifie les piles (il les reconstruit à chaque PR) (faits : images Docker et pile de démonstration derrière Caddy, ADR-032 ; migrations seules et création d'une entreprise réelle par `mimorya-admin`, ADR-033 ; pile conteneurisée de production aux identifiants choisis à l'installation, vérifiée en CI jusqu'à la première connexion, ADR-034).
 3. ✅ **Types de l'API partagés** : toutes les réponses de l'API, l'enveloppe de ses erreurs et les événements du flux en direct sont des types du serveur, dont sont générés ceux de l'interface (ADR-036, ADR-037, `pnpm contract`, vérifié par `cargo test`) ; les colonnes que le contrat lit comme énumérations sont vérifiées contre les contraintes de la base. Les corps de toutes les requêtes, administration comprise, sont des types stricts du contrat, qui refusent un champ inconnu (ADR-039, ADR-040). Fait ; restent déclarés par leur route les seuls paramètres de requête (`?status=`, `?limit=`).
 
 ### Points relevés par les audits, à traiter (non bloquants)

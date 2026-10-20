@@ -1,0 +1,267 @@
+name: Images
+
+# The images of the API and of the web application on the GitHub Container
+# Registry (ADR-051), amd64 only:
+# - each commit of main, once CI has passed on it, is published once as
+#   sha-<12>, then named main and latest, for the three images together, if
+#   it is still the head of main;
+# - a version tag (vX.Y.Z) names the images already published for that
+#   commit of main, never built again;
+# - a pull request that changes how they are built builds them, publishing
+#   nothing.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  push:
+    tags: ['v*']
+  pull_request:
+    paths:
+      - .github/workflows/images.yml
+      - infra/docker/**
+
+permissions:
+  contents: read
+
+# A pull request's newer push replaces its build; publications never cancel.
+concurrency:
+  group: images-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io/orizonlab
+
+jobs:
+  # The images, listed once (infra/docker/images.json), for a pull request or
+  # for a CI run that passed on a push to main of this very repository: a
+  # fork's branch named main runs CI too, and is never published.
+  images:
+    name: List the images
+    if: >-
+      github.event_name == 'pull_request' || (
+        github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      list: ${{ steps.list.outputs.list }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # On a CI run of main, the commit CI passed on.
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+      - id: list
+        run: echo "list=$(jq -c . infra/docker/images.json)" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build ${{ matrix.image }}
+    needs: images
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.images.outputs.list) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          build-args: ${{ matrix.build-args }}
+          push: false
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+  publish:
+    name: Publish ${{ matrix.image }}
+    needs: images
+    # Never without the guard of the images job, whatever is added here.
+    if: github.event_name == 'workflow_run' && needs.images.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.images.outputs.list) }}
+    env:
+      IMAGE: ghcr.io/orizonlab/${{ matrix.image }}
+      DESCRIPTION: ${{ matrix.description }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The commit CI passed on, not the head of main at this moment.
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+      - name: Name the image
+        id: names
+        run: |
+          revision=$(git rev-parse HEAD)
+          tag="$IMAGE:sha-${revision:0:12}"
+          {
+            echo "tag=$tag"
+            echo "labels<<LABELS"
+            echo "org.opencontainers.image.source=https://github.com/OrizonLab/mimorya"
+            echo "org.opencontainers.image.revision=$revision"
+            echo "org.opencontainers.image.version=sha-${revision:0:12}"
+            echo "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "org.opencontainers.image.description=$DESCRIPTION"
+            echo "org.opencontainers.image.licenses=LicenseRef-Proprietary"
+            echo "LABELS"
+          } >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - name: Sign in to the registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # A commit is published once: a CI run started again never replaces
+      # what an installation may already run under that name. A registry
+      # that does not answer stops the publication, never counts as absence.
+      - name: Already published?
+        id: published
+        env:
+          TAG: ${{ steps.names.outputs.tag }}
+        run: |
+          digest=$(infra/docker/image-digest.sh "$TAG")
+          if [ -n "$digest" ]; then
+            echo "$TAG is already published ($digest)" >> "$GITHUB_STEP_SUMMARY"
+            echo "done=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "done=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Build and publish
+        if: steps.published.outputs.done != 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          build-args: ${{ matrix.build-args }}
+          push: true
+          tags: ${{ steps.names.outputs.tag }}
+          labels: ${{ steps.names.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+  promote:
+    name: Name main and latest
+    needs: [images, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # One at a time; a newer commit's waiting promotion replaces an older one.
+    concurrency:
+      group: images-promote
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGES: ${{ join(fromJSON(needs.images.outputs.list).*.image, ' ') }}
+      REVISION: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      # Never move main and latest back to an older commit (a CI run of main
+      # started again, a promotion that waited).
+      - name: Still the head of main?
+        id: head
+        run: |
+          head=$(git ls-remote "https://github.com/$GITHUB_REPOSITORY.git" refs/heads/main | cut -f1)
+          if [ "$head" = "$REVISION" ]; then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "main is now $head: only sha-${REVISION:0:12} is published" >> "$GITHUB_STEP_SUMMARY"
+            echo "current=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: docker/setup-buildx-action@v3
+        if: steps.head.outputs.current == 'true'
+      - name: Sign in to the registry
+        if: steps.head.outputs.current == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Name the three images of this commit main and latest
+        if: steps.head.outputs.current == 'true'
+        run: |
+          for image in $IMAGES; do
+            docker buildx imagetools create \
+              -t "$REGISTRY/$image:main" -t "$REGISTRY/$image:latest" \
+              "$REGISTRY/$image:sha-${REVISION:0:12}"
+          done
+
+  release:
+    name: Release ${{ github.ref_name }}
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # A version names a commit of main whose images were published after
+      # CI passed on it: they are named, never built again.
+      - name: Version and commit
+        id: version
+        run: |
+          version=${GITHUB_REF#refs/tags/v}
+          if ! [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "A version tag reads vX.Y.Z (optionally -suffix)" >&2
+            exit 1
+          fi
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "A version names a commit of main" >&2
+            exit 1
+          fi
+          revision=$(git rev-parse HEAD)
+          {
+            echo "version=$version"
+            echo "short=${revision:0:12}"
+          } >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - name: Sign in to the registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Name the three images of this commit with the version
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          SHORT: ${{ steps.version.outputs.short }}
+        run: |
+          images=$(jq -r '.[].image' infra/docker/images.json)
+          # Each must be published (a commit CI failed on has no release), and
+          # a version already given must name these very images: it never moves.
+          for image in $images; do
+            published=$(infra/docker/image-digest.sh "$REGISTRY/$image:sha-$SHORT")
+            if [ -z "$published" ]; then
+              echo "$image:sha-$SHORT is not published" >&2
+              exit 1
+            fi
+            given=$(infra/docker/image-digest.sh "$REGISTRY/$image:$VERSION")
+            if [ -n "$given" ] && [ "$given" != "$published" ]; then
+              echo "$image:$VERSION already names other images ($given)" >&2
+              exit 1
+            fi
+          done
+          for image in $images; do
+            docker buildx imagetools create -t "$REGISTRY/$image:$VERSION" \
+              "$REGISTRY/$image:sha-$SHORT"
+          done

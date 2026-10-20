@@ -1,0 +1,26 @@
+# The demonstration stack's images built from this checkout rather than
+# downloaded (ADR-051), under local names that can never be taken for the
+# published ones:
+#   DEMO_PASSWORD=… docker compose -f compose.demo.yml -f compose.demo.build.yml up -d --build
+# The CI checks the stack built this way.
+services:
+  seed:
+    image: mimorya-api:local
+    build:
+      context: .
+      dockerfile: infra/docker/api.Dockerfile
+
+  api:
+    image: mimorya-api:local
+    build:
+      context: .
+      dockerfile: infra/docker/api.Dockerfile
+
+  web:
+    image: mimorya-web:demo
+    build:
+      context: .
+      dockerfile: infra/docker/web.Dockerfile
+      args:
+        API_URL: http://api:4000
+        NEXT_PUBLIC_DEMO_MODE: 'true'
