@@ -13,6 +13,8 @@ export type ActivityStep = ToolCallEvent & {
   summary?: string;
   isError?: boolean;
   done: boolean;
+  /** Lost to a stop of the service: the run went on from its last saved step (ADR-053). */
+  interrupted?: boolean;
 };
 
 export type PendingApprovalView = ApprovalRequestedEvent & { resolved?: boolean };
@@ -30,6 +32,8 @@ export interface RunActivity {
   error: string | null;
   /** Connectors in reach of the user that could not start (ADR-048). */
   unavailable: string[];
+  /** Where, among the steps, the run went on after a stop of the service (ADR-053). */
+  resumptions: number[];
   /** The browser gave the stream up (an error answered it): it follows nothing more. */
   lost: boolean;
 }
@@ -43,6 +47,7 @@ const INITIAL: RunActivity = {
   verification: null,
   error: null,
   unavailable: [],
+  resumptions: [],
   lost: false,
 };
 
@@ -55,15 +60,20 @@ const TERMINAL: ReadonlySet<RunStatus> = new Set<RunStatus>(['completed', 'faile
  * id); the stream is closed client-side once the run reaches a terminal state.
  * A stream the browser gave up (an error answered it) marks the activity
  * `lost`; `reconnect` opens it again, replayed from the start (ADR-046).
+ * A run taken up after a stop of the service marks the steps it lost, and
+ * `onResumed` drops what belonged to them (ADR-053).
  */
 export function useRunStream(
   runId: string | null,
   onFinished: (status: RunStatus) => void,
+  onResumed: () => void,
 ): { activity: RunActivity; reconnect: () => void } {
   const [activity, setActivity] = useState<RunActivity>(INITIAL);
   const [attempt, setAttempt] = useState(0);
   const finishedRef = useRef(onFinished);
   finishedRef.current = onFinished;
+  const resumedRef = useRef(onResumed);
+  resumedRef.current = onResumed;
 
   useEffect(() => {
     if (!runId) return;
@@ -120,6 +130,18 @@ export function useRunStream(
       })),
     );
     on('verification', (verification) => setActivity((a) => ({ ...a, verification })));
+    // The steps under way when the service stopped are lost: the run goes on
+    // from its last saved step, and asks again what it still needs.
+    on('run_resumed', () => {
+      setActivity((a) => ({
+        ...a,
+        status: 'running',
+        draft: '',
+        steps: a.steps.map((s) => (s.done ? s : { ...s, done: true, interrupted: true })),
+        resumptions: [...a.resumptions, a.steps.length],
+      }));
+      resumedRef.current();
+    });
     on('run_finished', ({ status, error }) => {
       setActivity((a) => ({ ...a, status, error: error ?? null, draft: '' }));
       // Closing first prevents the browser from reconnecting to an ended stream.
