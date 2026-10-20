@@ -1514,3 +1514,38 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     `apps/web/e2e/unavailable-connectors.spec.ts` (le message dans le panneau, puis le
     run continue avec les autres connecteurs). Laisser passer tous les connecteurs dans
     le filtre de portée fait échouer les tests.
+
+## ADR-049 — Une tentative de démarrage d'un connecteur est partagée par les runs qui l'attendent
+
+- **Date** : 2026-10-20 · **Statut** : acceptée
+- **Contexte** : le cache des connecteurs (`services/connectors/cache/`) garde les
+  instances démarrées et se souvient une minute d'un échec. Mais les runs lancés pendant
+  qu'une instance démarrait (après un changement de configuration, au premier run après
+  un redémarrage, ou une minute après un échec) faisaient chacun leur propre tentative :
+  autant de connexions au serveur MCP, chacune attendue jusqu'au délai de démarrage, et
+  autant d'instances aussitôt refermées sauf la dernière.
+- **Décision** :
+  - une tentative en cours occupe l'emplacement de l'instance (`Slot::Starting`, avec sa
+    version) ; un run qui a besoin de la même version attend son issue (un canal
+    `watch` dont l'émetteur appartient au run qui démarre) au lieu d'en faire une
+    autre, puis relit l'emplacement : l'instance démarrée, ou l'échec, qu'il reçoit
+    comme déjà signalé (`Remembered` : journalisé et enregistré une seule fois) ;
+  - un run qui abandonne sa tentative (sa tâche annulée) lâche l'émetteur : les runs qui
+    attendaient se réveillent, trouvent la tentative orpheline et l'un d'eux la reprend ;
+  - un run qui a lu une instance modifiée depuis (son ticket précède l'invalidation)
+    n'en démarre plus aucune : il répond aussitôt « changé pendant son démarrage », ce
+    que la tentative aurait de toute façon donné ;
+  - la règle de version est inchangée : une tentative d'une autre version remplace
+    l'emplacement, l'instance d'une version plus récente l'emporte, une tentative
+    invalidée n'est jamais gardée.
+- **Conséquences** :
+  - un serveur qui ne répond pas retarde les runs d'une seule tentative (jusqu'au délai
+    de démarrage), puis, l'échec retenu, un run par minute ; les runs attendent toujours
+    la tentative en cours (la démarrer en arrière-plan sans les faire attendre reste à la
+    feuille de route) ;
+  - tests (`cache/tests.rs`) : deux runs simultanés obtiennent la même instance d'un seul
+    démarrage ; un échec en cours est reçu une fois comme nouveau, puis comme retenu ; une
+    tentative abandonnée est reprise par le run qui l'attendait (borné : un run qui
+    attendrait toujours fait échouer le test) ; un run au ticket périmé ne démarre rien.
+    Retirer l'attente, la reprise d'une tentative orpheline ou le refus d'un ticket
+    périmé fait échouer ces tests.

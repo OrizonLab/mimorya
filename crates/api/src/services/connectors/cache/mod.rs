@@ -1,8 +1,10 @@
 //! The live connector instances of every tenant, by instance id and version
-//! (`updated_at`), and the failed starts remembered for a while: a server
-//! that does not answer delays one run per retry delay, not every run. A
-//! start invalidated while it ran (instance changed, disabled or deleted) is
-//! released, never kept.
+//! (`updated_at`), the starts in progress, and the failed starts remembered
+//! for a while. A run that needs an instance while it starts waits for that
+//! start rather than make its own (ADR-049): a server that does not answer
+//! delays the runs of one start, then one run per retry delay, not every
+//! run. A start invalidated while it ran (instance changed, disabled or
+//! deleted) is released, never kept.
 
 use std::collections::HashMap;
 use std::future::Future;
@@ -11,7 +13,7 @@ use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Utc};
 use mimorya_connectors::ConnectorRuntime;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, watch};
 use uuid::Uuid;
 
 /// How long a failed start is remembered before the next run tries again.
@@ -43,6 +45,13 @@ impl Unavailable {
             origin: Origin::Fresh,
         }
     }
+
+    fn changed() -> Self {
+        Self {
+            message: "Le connecteur a changé pendant son démarrage".into(),
+            origin: Origin::Changed,
+        }
+    }
 }
 
 enum Slot {
@@ -55,6 +64,12 @@ enum Slot {
         until: Instant,
         message: String,
     },
+    /// A start in progress: `done` changes or closes when it ends, or when
+    /// the run that makes it gives it up.
+    Starting {
+        version: DateTime<Utc>,
+        done: watch::Receiver<()>,
+    },
 }
 
 #[derive(Default)]
@@ -64,6 +79,13 @@ struct State {
     generation: u64,
     /// The generation at which each instance was last invalidated.
     invalidated: HashMap<Uuid, u64>,
+}
+
+impl State {
+    /// Whether the instance was invalidated after the caller read it.
+    fn stale(&self, id: Uuid, ticket: u64) -> bool {
+        self.invalidated.get(&id).is_some_and(|at| *at > ticket)
+    }
 }
 
 #[derive(Default)]
@@ -78,9 +100,9 @@ impl RuntimeCache {
         self.state.lock().await.generation
     }
 
-    /// The live instance of this version, a remembered failure, or a new
-    /// start. Starts run without the lock: a slow server delays its own
-    /// instance only.
+    /// The live instance of this version, a remembered failure, the outcome
+    /// of the start in progress, or a new start. Starts run without the
+    /// lock: a slow server delays its own instance only.
     pub async fn get_or_start<F, Fut>(
         &self,
         id: Uuid,
@@ -92,32 +114,56 @@ impl RuntimeCache {
         F: FnOnce() -> Fut,
         Fut: Future<Output = Result<ConnectorRuntime, String>>,
     {
-        {
-            let mut state = self.state.lock().await;
-            match state.slots.get(&id) {
-                Some(Slot::Live {
-                    version: v,
-                    runtime,
-                }) if *v == version => {
-                    return Ok(runtime.clone());
+        // Dropped when this start ends, or is given up: it wakes the others.
+        let (_finished, done) = loop {
+            let mut waiting = {
+                let mut state = self.state.lock().await;
+                // What the caller read has changed: a start would be discarded.
+                if state.stale(id, ticket) {
+                    return Err(Unavailable::changed());
                 }
-                Some(Slot::Failed {
-                    version: v,
-                    until,
-                    message,
-                }) if *v == version && Instant::now() < *until => {
-                    return Err(Unavailable {
-                        message: message.clone(),
-                        origin: Origin::Remembered,
-                    });
+                match state.slots.get(&id) {
+                    Some(Slot::Live {
+                        version: v,
+                        runtime,
+                    }) if *v == version => return Ok(runtime.clone()),
+                    Some(Slot::Failed {
+                        version: v,
+                        until,
+                        message,
+                    }) if *v == version && Instant::now() < *until => {
+                        return Err(Unavailable {
+                            message: message.clone(),
+                            origin: Origin::Remembered,
+                        });
+                    }
+                    // Unless the run making it gave it up (its sender is gone).
+                    Some(Slot::Starting { version: v, done })
+                        if *v == version && done.has_changed().is_ok() =>
+                    {
+                        done.clone()
+                    }
+                    _ => {
+                        let (finished, done) = watch::channel(());
+                        let starting = Slot::Starting {
+                            version,
+                            done: done.clone(),
+                        };
+                        release(state.slots.insert(id, starting));
+                        break (finished, done);
+                    }
                 }
-                _ => {}
-            }
-            release(state.slots.remove(&id));
-        }
+            };
+            // Ended or given up: what it left is read again.
+            let _ = waiting.changed().await;
+        };
         let started = start().await;
         let mut state = self.state.lock().await;
-        let stale = state.invalidated.get(&id).is_some_and(|at| *at > ticket);
+        if matches!(state.slots.get(&id), Some(Slot::Starting { done: d, .. }) if d.same_channel(&done))
+        {
+            state.slots.remove(&id);
+        }
+        let stale = state.stale(id, ticket);
         let newer = match state.slots.get(&id) {
             Some(Slot::Live {
                 version: v,
@@ -131,10 +177,7 @@ impl RuntimeCache {
             }
             return match newer {
                 Some(runtime) if !stale => Ok(runtime),
-                _ => Err(Unavailable {
-                    message: "Le connecteur a changé pendant son démarrage".into(),
-                    origin: Origin::Changed,
-                }),
+                _ => Err(Unavailable::changed()),
             };
         }
         match started {
@@ -213,89 +256,4 @@ fn close_in_background(runtime: Arc<ConnectorRuntime>) {
 }
 
 #[cfg(test)]
-mod tests {
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
-    use super::*;
-
-    fn unavailable(result: Result<Arc<ConnectorRuntime>, Unavailable>) -> Unavailable {
-        match result {
-            Err(unavailable) => unavailable,
-            Ok(_) => panic!("expected the instance to be unavailable"),
-        }
-    }
-
-    fn runtime() -> ConnectorRuntime {
-        ConnectorRuntime {
-            tools: Vec::new(),
-            closer: None,
-        }
-    }
-
-    #[tokio::test]
-    async fn keeps_a_live_instance_and_remembers_a_failure_per_version() {
-        let cache = RuntimeCache::default();
-        let (id, v1, v2) = (
-            Uuid::new_v4(),
-            Utc::now(),
-            Utc::now() + chrono::Duration::seconds(1),
-        );
-        let starts = AtomicUsize::new(0);
-        let failing = || async {
-            starts.fetch_add(1, Ordering::SeqCst);
-            Err::<ConnectorRuntime, _>("injoignable".to_string())
-        };
-        let first = unavailable(cache.get_or_start(id, v1, 0, failing).await);
-        assert_eq!(first.origin, Origin::Fresh);
-        let again = unavailable(cache.get_or_start(id, v1, 0, failing).await);
-        assert_eq!(again.origin, Origin::Remembered);
-        assert_eq!(again.message, "injoignable");
-        assert_eq!(starts.load(Ordering::SeqCst), 1);
-        // A tested instance is tried again at once.
-        cache.retry_now(id).await;
-        let retried = unavailable(cache.get_or_start(id, v1, 0, failing).await);
-        assert_eq!(retried.origin, Origin::Fresh);
-        assert_eq!(starts.load(Ordering::SeqCst), 2);
-
-        // A new version starts again, then stays live.
-        let working = || async {
-            starts.fetch_add(1, Ordering::SeqCst);
-            Ok(runtime())
-        };
-        let Ok(live) = cache.get_or_start(id, v2, 0, working).await else {
-            panic!("expected a live instance");
-        };
-        let Ok(reused) = cache.get_or_start(id, v2, 0, working).await else {
-            panic!("expected the live instance");
-        };
-        assert!(Arc::ptr_eq(&live, &reused));
-        assert_eq!(starts.load(Ordering::SeqCst), 3);
-    }
-
-    #[tokio::test]
-    async fn never_keeps_a_start_invalidated_while_it_ran() {
-        let cache = RuntimeCache::default();
-        let (id, version) = (Uuid::new_v4(), Utc::now());
-        let ticket = cache.ticket().await;
-        let invalidated = unavailable(
-            cache
-                .get_or_start(id, version, ticket, || async {
-                    cache.invalidate(id).await;
-                    Ok(runtime())
-                })
-                .await,
-        );
-        assert_eq!(invalidated.origin, Origin::Changed);
-        // Nothing was kept: the next run (a later ticket) starts again.
-        let starts = AtomicUsize::new(0);
-        let ticket = cache.ticket().await;
-        let restarted = cache
-            .get_or_start(id, version, ticket, || async {
-                starts.fetch_add(1, Ordering::SeqCst);
-                Ok(runtime())
-            })
-            .await;
-        assert!(restarted.is_ok());
-        assert_eq!(starts.load(Ordering::SeqCst), 1);
-    }
-}
+mod tests;
