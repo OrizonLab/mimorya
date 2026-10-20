@@ -133,10 +133,15 @@ async fn a_failed_start_in_progress_is_shared_as_remembered() {
         tokio::time::sleep(Duration::from_millis(50)).await;
         Err::<ConnectorRuntime, _>("injoignable".to_string())
     };
-    let (first, second) = tokio::join!(cache.get_or_start(id, version, 0, start), async {
-        tokio::time::sleep(Duration::from_millis(10)).await;
-        cache.get_or_start(id, version, 0, start).await
-    });
+    let both = async {
+        tokio::join!(cache.get_or_start(id, version, 0, start), async {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            cache.get_or_start(id, version, 0, start).await
+        })
+    };
+    let Ok((first, second)) = tokio::time::timeout(Duration::from_secs(5), both).await else {
+        panic!("a run kept waiting");
+    };
     assert_eq!(unavailable(first).origin, Origin::Fresh);
     let second = unavailable(second);
     assert_eq!(second.origin, Origin::Remembered);
