@@ -1869,6 +1869,9 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     avant, et tracés comme refus (ADR-038) ;
   - un nouveau contrôle d'identifiant envoyé dans le corps doit répondre par
     `DomainError::unknown` pour être tracé ;
+  - l'unité du périmètre d'une habilitation est contrôlée par l'API avant la règle du
+    cœur (`assignment_problem`), qui garde le même contrôle en défense ; de même pour
+    l'unité parente d'un déplacement (`move_problem`) ;
   - test : `crates/api/tests/admin_unknown_references.rs` envoie chaque identifiant
     d'une autre entreprise puis d'une ressource absente : mêmes réponses, mêmes entrées
     hormis l'identifiant, rien dans l'audit de l'autre entreprise, rien de ce que la

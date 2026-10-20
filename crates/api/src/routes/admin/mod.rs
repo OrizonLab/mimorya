@@ -2,7 +2,8 @@
 //! directory and the organisation is open to members; managing them, and the
 //! company-wide screens, require the permission on the whole company. A
 //! refused change is audited with its reason (ADR-038), as is one aimed at a
-//! resource answered as absent (ADR-047).
+//! resource answered as absent (ADR-047) or sending in its body an
+//! identifier that designates nothing the company has (ADR-054).
 
 mod activity;
 mod assignments;

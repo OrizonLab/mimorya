@@ -5,7 +5,7 @@
 //! that exists nowhere, in the administrator's company only. Only an
 //! administrator holding the permission reaches that answer; an invalid
 //! request of another kind leaves none, nor does anything the request sent
-//! but the identifiers.
+//! but the identifiers. The answer stands when its trace cannot be written.
 
 mod support;
 
@@ -14,6 +14,8 @@ use mimorya_core::demo::{role, unit, user};
 use mimorya_db::testing::{OTHER_TENANT_ID, OTHER_USER_ID};
 use serde_json::{Value, json};
 use support::accounts::{activate, create_partial_admin};
+use support::mcp::capture_logs;
+use support::privileges::without_insert;
 use support::refusals::{
     entries_of_since, entries_since, latest_entry, latest_entry_of, not_found_since,
     refusals_since, unknown_references_since,
@@ -49,46 +51,113 @@ async fn foreign_role_and_unit(api: &TestApi) -> (Uuid, Uuid) {
     (role_id, unit_id)
 }
 
-/// One change sending `id` where a resource of `kind` is expected.
-struct Change {
+/// Where a change sends an identifier that should designate a resource.
+#[derive(Debug, Clone, Copy)]
+enum Sent {
+    GrantedRole,
+    GrantScopeUnit,
+    NewUnitParent,
+    UnitParent,
+    UnitLead,
+    NewAccountUnit,
+    AccountUnit,
+}
+
+/// What a change is, and how it is answered and traced.
+struct Shape {
     method: &'static str,
     route: &'static str,
     /// The resource the path designates, if any.
     resource: Option<(&'static str, Uuid)>,
+    /// What the identifier sent should designate.
     kind: &'static str,
     message: &'static str,
 }
 
-impl Change {
-    async fn send(&self, admin: &Client<'_>, id: Uuid) -> TestResponse {
+impl Sent {
+    const ALL: [Sent; 7] = [
+        Sent::GrantedRole,
+        Sent::GrantScopeUnit,
+        Sent::NewUnitParent,
+        Sent::UnitParent,
+        Sent::UnitLead,
+        Sent::NewAccountUnit,
+        Sent::AccountUnit,
+    ];
+
+    fn shape(self) -> Shape {
+        let lucas = Some(("user", user::LUCAS));
+        let north = Some(("org_unit", unit::TEAM_NORTH));
+        let grants = "/admin/users/{id}/assignments";
+        let (method, route, resource, kind, message) = match self {
+            Sent::GrantedRole => ("POST", grants, lucas, "role", "Rôle inconnu"),
+            Sent::GrantScopeUnit => ("POST", grants, lucas, "org_unit", "Unité inconnue"),
+            Sent::NewUnitParent => (
+                "POST",
+                "/admin/org-units",
+                None,
+                "org_unit",
+                "Unité parente inconnue",
+            ),
+            Sent::UnitParent => (
+                "PATCH",
+                "/admin/org-units/{id}",
+                north,
+                "org_unit",
+                "Unité parente inconnue",
+            ),
+            Sent::UnitLead => (
+                "PATCH",
+                "/admin/org-units/{id}",
+                north,
+                "user",
+                "Responsable inconnu",
+            ),
+            Sent::NewAccountUnit => ("POST", "/admin/users", None, "org_unit", "Unité inconnue"),
+            Sent::AccountUnit => (
+                "PATCH",
+                "/admin/users/{id}",
+                lucas,
+                "org_unit",
+                "Unité inconnue",
+            ),
+        };
+        Shape {
+            method,
+            route,
+            resource,
+            kind,
+            message,
+        }
+    }
+
+    async fn send(self, admin: &Client<'_>, id: Uuid) -> TestResponse {
         let lucas = format!("/admin/users/{}", user::LUCAS);
         let north = format!("/admin/org-units/{}", unit::TEAM_NORTH);
-        match (self.method, self.route, self.message) {
-            ("POST", "/admin/users/{id}/assignments", "Rôle inconnu") => {
+        match self {
+            Sent::GrantedRole => {
                 let grant = json!({ "roleId": id, "scope": { "type": "tenant" } });
                 admin.post(&format!("{lucas}/assignments"), grant).await
             }
-            ("POST", "/admin/users/{id}/assignments", _) => {
+            Sent::GrantScopeUnit => {
                 let scope =
                     json!({ "type": "org_unit", "orgUnitId": id, "includeDescendants": true });
                 let grant = json!({ "roleId": role::TECHNICIAN, "scope": scope });
                 admin.post(&format!("{lucas}/assignments"), grant).await
             }
-            ("POST", "/admin/org-units", _) => {
+            Sent::NewUnitParent => {
                 let unit = json!({ "parentId": id, "name": MARKER, "type": "team" });
                 admin.post("/admin/org-units", unit).await
             }
-            ("PATCH", "/admin/org-units/{id}", "Unité parente inconnue") => {
-                admin
-                    .patch(&north, json!({ "parentId": id, "name": MARKER }))
-                    .await
+            Sent::UnitParent => {
+                let moved = json!({ "parentId": id, "name": MARKER });
+                admin.patch(&north, moved).await
             }
-            ("PATCH", "/admin/org-units/{id}", _) => {
-                admin
-                    .patch(&north, json!({ "leadUserId": id, "name": MARKER }))
-                    .await
+            Sent::UnitLead => {
+                let led = json!({ "leadUserId": id, "name": MARKER });
+                admin.patch(&north, led).await
             }
-            ("POST", "/admin/users", _) => {
+            Sent::NewAccountUnit => {
                 let account = json!({
                     "email": "unite.inconnue@neo-maintenance.example",
                     "displayName": MARKER,
@@ -96,70 +165,12 @@ impl Change {
                 });
                 admin.post("/admin/users", account).await
             }
-            _ => {
-                admin
-                    .patch(&lucas, json!({ "orgUnitId": id, "displayName": MARKER }))
-                    .await
+            Sent::AccountUnit => {
+                let changed = json!({ "orgUnitId": id, "displayName": MARKER });
+                admin.patch(&lucas, changed).await
             }
         }
     }
-}
-
-fn changes() -> Vec<Change> {
-    let lucas = Some(("user", user::LUCAS));
-    let north = Some(("org_unit", unit::TEAM_NORTH));
-    let change = |method, route, resource, kind, message| Change {
-        method,
-        route,
-        resource,
-        kind,
-        message,
-    };
-    vec![
-        change(
-            "POST",
-            "/admin/users/{id}/assignments",
-            lucas,
-            "role",
-            "Rôle inconnu",
-        ),
-        change(
-            "POST",
-            "/admin/users/{id}/assignments",
-            lucas,
-            "org_unit",
-            "Unité inconnue",
-        ),
-        change(
-            "POST",
-            "/admin/org-units",
-            None,
-            "org_unit",
-            "Unité parente inconnue",
-        ),
-        change(
-            "PATCH",
-            "/admin/org-units/{id}",
-            north,
-            "org_unit",
-            "Unité parente inconnue",
-        ),
-        change(
-            "PATCH",
-            "/admin/org-units/{id}",
-            north,
-            "user",
-            "Responsable inconnu",
-        ),
-        change("POST", "/admin/users", None, "org_unit", "Unité inconnue"),
-        change(
-            "PATCH",
-            "/admin/users/{id}",
-            lucas,
-            "org_unit",
-            "Unité inconnue",
-        ),
-    ]
 }
 
 #[tokio::test]
@@ -174,8 +185,9 @@ async fn unknown_identifiers_sent_in_the_body_are_audited_alike() {
     // Each change twice: with another company's resource, then with one that
     // exists nowhere. Both are answered alike, as invalid.
     let mut sent = Vec::new();
-    for change in changes() {
-        let foreign = match change.kind {
+    for change in Sent::ALL {
+        let shape = change.shape();
+        let foreign = match shape.kind {
             "role" => foreign_role,
             "user" => OTHER_USER_ID,
             _ => foreign_unit,
@@ -183,33 +195,30 @@ async fn unknown_identifiers_sent_in_the_body_are_audited_alike() {
         let mut answers = Vec::new();
         for id in [foreign, Uuid::new_v4()] {
             let response = change.send(&paul, id).await;
-            assert_eq!(response.status, StatusCode::BAD_REQUEST, "{}", change.route);
-            assert_eq!(response.error_message(), change.message, "{}", change.route);
+            assert_eq!(response.status, StatusCode::BAD_REQUEST, "{change:?}");
+            assert_eq!(response.error_message(), shape.message, "{change:?}");
             answers.push(response.json());
-            sent.push((
-                id,
-                change.method,
-                change.route,
-                change.resource,
-                change.kind,
-            ));
+            sent.push((id, change.shape()));
         }
-        assert_eq!(answers[0], answers[1], "{}", change.route);
+        assert_eq!(answers[0], answers[1], "{change:?}");
     }
 
     let traced = unknown_references_since(&api, since).await;
     assert_eq!(traced.len(), sent.len(), "{traced:?}");
-    for ((actor, entry), (id, method, route, resource, kind)) in traced.iter().zip(&sent) {
+    for ((actor, entry), (id, shape)) in traced.iter().zip(&sent) {
         assert_eq!(*actor, user::PAUL);
-        let resource = resource.map(|(kind, id)| (kind.to_string(), id.to_string()));
-        assert_eq!(entry.resource, resource, "{route}");
+        let resource = shape
+            .resource
+            .map(|(kind, id)| (kind.to_string(), id.to_string()));
+        assert_eq!(entry.resource, resource, "{}", shape.route);
+        assert_eq!(entry.reason.as_deref(), Some(shape.message));
         let expected: Value = json!({
-            "method": method,
-            "route": route,
-            "reference": { "type": kind, "id": id },
+            "method": shape.method,
+            "route": shape.route,
+            "reference": { "type": shape.kind, "id": id },
         });
         assert_eq!(entry.metadata, expected);
-        assert!(entry.reason.is_some() && entry.request_id.is_some());
+        assert!(entry.request_id.is_some());
     }
     // Apart from the identifier, another company's resource and an absent
     // one leave the same entry.
@@ -261,4 +270,24 @@ async fn only_an_authorised_administrator_s_unknown_identifiers_are_traced() {
 
     assert_eq!(refusals_since(&api, since).await.len(), 2);
     assert!(unknown_references_since(&api, since).await.is_empty());
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn an_unknown_identifier_is_answered_alike_when_its_trace_cannot_be_written() {
+    let api = TestApi::start().await;
+    let paul = api.sign_in(user::PAUL).await;
+    let since = latest_entry(&api).await;
+    let logs = capture_logs();
+
+    let sent = Sent::GrantedRole.send(&paul, Uuid::new_v4());
+    let granted = without_insert("audit_log", sent).await;
+
+    assert_eq!(granted.status, StatusCode::BAD_REQUEST);
+    assert_eq!(granted.error_message(), "Rôle inconnu");
+    assert!(unknown_references_since(&api, since).await.is_empty());
+    assert!(
+        logs.text()
+            .contains("Failed to audit a refused administration change")
+    );
 }

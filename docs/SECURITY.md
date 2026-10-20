@@ -258,8 +258,9 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   temporaire à remplacer, compte inactif), il peut
   désigner une ressource absente ou d'une autre entreprise, sans que la réponse en
   dise rien. Ne sont pas tracés : les lectures refusées, les refus anti-CSRF (en-tête
-  ou origine, prononcés avant la résolution de la session), les requêtes invalides et
-  les requêtes anonymes. Un échec d'écriture de cette trace est journalisé et ne
+  ou origine, prononcés avant la résolution de la session), les requêtes invalides
+  (hormis l'identifiant inconnu envoyé dans le corps, ADR-054, ci-dessous) et les
+  requêtes anonymes. Un échec d'écriture de cette trace est journalisé et ne
   change pas la réponse.
 - Modifications d'administration sur une ressource introuvable (ADR-047) : la
   modification, par un administrateur habilité, d'une ressource que désigne
