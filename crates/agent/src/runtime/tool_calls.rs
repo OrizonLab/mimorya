@@ -16,7 +16,7 @@ use super::state::{PendingApproval, RunCheckpoint};
 use super::types::{RunConfig, RuntimeDeps};
 use crate::llm::{LlmMessage, LlmToolCall, LlmToolResult};
 use crate::tools::{
-    RegisteredTool, ToolCallEvaluation, ToolExecutor, ToolRegistry, wrap_untrusted,
+    RegisteredTool, ToolCallEvaluation, ToolExecutor, ToolRegistry, wrap_tool_result,
 };
 
 #[derive(Debug, Default)]
@@ -202,7 +202,7 @@ impl ToolCallProcessor {
             .await?;
         Ok(LlmToolResult {
             tool_call_id: tool_call_id.into(),
-            content: wrap_untrusted(name, &result.content),
+            content: wrap_tool_result(name, &result.content, result.is_error),
             is_error: result.is_error,
         })
     }

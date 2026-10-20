@@ -7,6 +7,7 @@ mod llm;
 mod organization;
 mod policies;
 mod roles;
+mod skills;
 mod users;
 
 pub use activity::{
@@ -27,9 +28,10 @@ pub use policies::{
 pub use organization::{
     NewOrgUnit, OrgPerson, OrgUnitType, OrgUnitUpdate, OrgUnitView, Organization,
 };
-pub use roles::{
-    Enforcement, NewRole, PermissionView, RoleUpdate, RoleView, Roles, SkillList, SkillStatus,
-    SkillView,
+pub use roles::{Enforcement, NewRole, PermissionView, RoleUpdate, RoleView, Roles};
+pub use skills::{
+    NewSkill, NewSkillVersion, SkillActivation, SkillDetail, SkillList, SkillStatus, SkillUpdate,
+    SkillVersionCreated, SkillVersionStatus, SkillVersionView, SkillView,
 };
 pub use users::{
     AccountStatus, AccountUpdate, Directory, DirectoryRights, DirectoryUser, InvitationIssued,

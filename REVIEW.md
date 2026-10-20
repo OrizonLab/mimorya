@@ -33,7 +33,10 @@ l'agent).
       tels quels.
 - [ ] Aucune voie ne permet à une compétence, une mémoire, un résultat d'outil ou une
       consigne de modifier une permission, une politique ou un niveau d'autonomie.
-- [ ] Les résultats d'outils restent encapsulés comme données non fiables.
+- [ ] Les résultats d'outils restent encapsulés comme données non fiables ; seule la
+      compétence active chargée avec succès par `skill_read` (outil de la plateforme) est
+      remise comme procédure de l'entreprise (ADR-052). Aucun texte encadré (résultat,
+      compétence, mémoire) ne peut ouvrir ni fermer une enveloppe (`neutralise_envelopes`).
 
 ## 3. Données, migrations et secrets
 

@@ -565,6 +565,16 @@ export type NewRole = { name: string,
 description?: string, permissions: Array<string>, };
 
 /**
+ * Body of `POST /admin/skills`: a skill and its first version, a draft.
+ */
+export type NewSkill = { name: string, description: string, content: string, changelog?: string, };
+
+/**
+ * Body of `POST /admin/skills/{id}/versions`: a new draft version.
+ */
+export type NewSkillVersion = { content: string, changelog?: string, };
+
+/**
  * An account as the organisation screen names it.
  */
 export type OrgPerson = { id: string, displayName: string, jobTitle: string | null, };
@@ -775,13 +785,45 @@ export type RunView = { id: string, conversationId: string | null, objective: st
 export type Sensitivity = "public" | "internal" | "confidential" | "restricted";
 
 /**
+ * Body of `PUT /admin/skills/{id}/activation`: the version made active.
+ */
+export type SkillActivation = { version: number, };
+
+/**
+ * `GET /admin/skills/{id}`: the skill and its versions, the latest first.
+ */
+export type SkillDetail = { skill: SkillView, versions: Array<SkillVersionView>, };
+
+/**
  * `GET /admin/skills`.
  */
 export type SkillList = { skills: Array<SkillView>, };
 
 export type SkillStatus = "draft" | "active" | "retired";
 
-export type SkillView = { id: string, name: string, description: string, status: SkillStatus, activeVersion: number | null, updatedAt: string, };
+/**
+ * Body of `PATCH /admin/skills/{id}`.
+ */
+export type SkillUpdate = { description: string, };
+
+/**
+ * `POST /admin/skills/{id}/versions`.
+ */
+export type SkillVersionCreated = { version: number, };
+
+export type SkillVersionStatus = "draft" | "candidate" | "active" | "rejected" | "retired";
+
+export type SkillVersionView = { version: number, status: SkillVersionStatus,
+/**
+ * The procedure handed to the agent, in Markdown.
+ */
+content: string, changelog: string, createdBy: string | null, createdAt: string,
+/**
+ * Who made it active last, and when.
+ */
+approvedBy: string | null, approvedAt: string | null, };
+
+export type SkillView = { id: string, name: string, description: string, status: SkillStatus, activeVersion: number | null, latestVersion: number | null, updatedAt: string, };
 
 /**
  * What an account's status may be set to (an invitation is issued, not set).

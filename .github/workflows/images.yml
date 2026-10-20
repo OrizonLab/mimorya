@@ -200,6 +200,17 @@ jobs:
               -t "$REGISTRY/$image:main" -t "$REGISTRY/$image:latest" \
               "$REGISTRY/$image:sha-${REVISION:0:12}"
           done
+      # What an installation pulls, it pulls without an account: a package
+      # left private fails here, on every publication.
+      - name: Pullable without an account
+        run: |
+          owner=${REGISTRY#ghcr.io/}
+          for image in $IMAGES; do
+            token=$(curl -fsS "https://ghcr.io/token?scope=repository:$owner/$image:pull&service=ghcr.io" | jq -er .token)
+            curl -fsS -o /dev/null -H "Authorization: Bearer $token" \
+              -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json" \
+              "https://ghcr.io/v2/$owner/$image/manifests/sha-${REVISION:0:12}"
+          done
 
   release:
     name: Release ${{ github.ref_name }}

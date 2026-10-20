@@ -8,7 +8,7 @@ use std::sync::Arc;
 use mimorya_core::tools::{ToolRef, typed_tool};
 
 pub use memory_tools::{MemoryRemember, MemorySearch};
-pub use skill_tools::SkillRead;
+pub use skill_tools::{SKILL_READ, SkillRead};
 
 use crate::runtime::ports::{MemoryStore, SkillStore};
 

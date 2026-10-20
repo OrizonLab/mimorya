@@ -76,6 +76,8 @@ pub fn typescript() -> String {
     declarations.add::<admin::ResetLinkSent>();
     declarations.add::<admin::Roles>();
     declarations.add::<admin::SkillList>();
+    declarations.add::<admin::SkillDetail>();
+    declarations.add::<admin::SkillVersionCreated>();
     declarations.add::<admin::Policies>();
     declarations.add::<admin::LlmView>();
     declarations.add::<admin::LlmTestResult>();
@@ -118,6 +120,10 @@ macro_rules! request_bodies {
             admin::RoleUpdate,
             admin::NewPolicy,
             admin::PolicyUpdate,
+            admin::NewSkill,
+            admin::SkillUpdate,
+            admin::NewSkillVersion,
+            admin::SkillActivation,
             admin::NewConnector,
             admin::ConnectorTrial,
             admin::ConnectorUpdate,

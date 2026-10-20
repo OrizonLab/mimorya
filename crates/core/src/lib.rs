@@ -15,6 +15,7 @@ pub mod plain_text;
 pub mod policy_rules;
 pub mod provisioning;
 pub mod roles;
+pub mod skill_rules;
 pub mod tools;
 
 pub use error::{DomainError, ErrorCode};

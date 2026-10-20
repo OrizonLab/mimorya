@@ -27,7 +27,8 @@ l'unique paquet Node (ADR-018).
 Repères à l'intérieur des crates :
 
 - `core/src/authz/` (types, moteur, conditions ABAC, organigramme), `core/src/tools/`
-  (contrat d'outil, outils typés), `core/src/demo/` (entreprise fictive par thème).
+  (contrat d'outil, outils typés), `core/src/skill_rules.rs` (ce qu'une compétence peut
+  contenir, ADR-052), `core/src/demo/` (entreprise fictive par thème).
 - `db/migrations/` (SQL numéroté, source de vérité du schéma),
   `db/src/repositories/` (un fichier par entité), `db/src/seed/` (organisation,
   connecteurs, mémoires, compétences de démonstration), `db/src/testing.rs`.
@@ -42,8 +43,8 @@ Repères à l'intérieur des crates :
   `api/src/routes/` (un module par ressource, `admin/`), `api/src/contract/` (réponses
   et corps de requêtes typés, un fichier par ressource, dont sont générés les types
   TypeScript, ADR-036, ADR-039),
-  `api/src/services/admin/` (comptes, organisation, habilitations, sous verrou par
-  entreprise), `api/src/services/account.rs` (son propre compte),
+  `api/src/services/admin/` (comptes, organisation, habilitations, compétences, sous
+  verrou par entreprise), `api/src/services/account.rs` (son propre compte),
   `api/src/services/runs/` (tour de conversation, décisions, contexte, exécution,
   ports PostgreSQL, résultat), `api/src/services/llm.rs` (fournisseur de modèle de
   chaque entreprise), `api/src/services/invitations/` (liens d'invitation, ADR-027),
@@ -155,7 +156,10 @@ Avant chaque commit : `pnpm check && pnpm test:int` doivent passer.
      entrée stricte (`#[serde(deny_unknown_fields)]`, `JsonSchema`, `Validate`) ;
      `describe_action` s'il modifie quelque chose ; des `citations`. Il ne révèle
      jamais l'existence d'une ressource hors périmètre.
-   - Les résultats d'outils sont des données non fiables (`wrap_untrusted`).
+   - Les résultats d'outils sont des données non fiables (`wrap_tool_result`) ; seule
+     exception, la compétence active chargée par l'outil `skill_read` de la plateforme,
+     remise comme procédure de l'entreprise (ADR-052). Aucun texte encadré (résultat,
+     compétence, mémoire) ne peut ouvrir ni fermer une enveloppe (`neutralise_envelopes`).
    - Historique en ajout seul : ne jamais réécrire un message déjà envoyé au modèle
      (cache et blocs de raisonnement liés à la conversation).
    - Le prompt système reste stable (pas d'horodatage précis, pas de données

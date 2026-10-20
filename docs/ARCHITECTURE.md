@@ -139,7 +139,7 @@ sequenceDiagram
     E->>Z: PEP : permissions requises + autonomie
     alt autorisé
       E->>T: exécute (périmètre de données lié au sujet)
-      T-->>E: résultat (balisé « donnée non fiable »)
+      T-->>E: résultat (balisé « donnée non fiable » ; compétence chargée : « procédure de l'entreprise », ADR-052)
     else validation requise
       E->>D: crée approval, run → awaiting_approval
     else refusé

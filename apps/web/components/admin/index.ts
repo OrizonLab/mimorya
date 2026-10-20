@@ -4,7 +4,7 @@ export { LlmTab } from './llm/llm-tab';
 export { OrganizationTab } from './organization/organization-tab';
 export { PoliciesTab } from './policies/policies-tab';
 export { RolesTab } from './roles/roles-tab';
-export { SkillsTab } from './skills-tab';
+export { SkillsTab } from './skills/skills-tab';
 export { TabBar } from './tab-bar';
 export { UsageTab } from './usage-tab';
 export { UsersTab } from './users/users-tab';
