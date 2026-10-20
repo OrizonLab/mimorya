@@ -3,9 +3,10 @@
 //! when its configuration changes (`updated_at`) and released when it is
 //! changed, disabled or deleted.
 //!
-//! Instances start side by side, and a failed start is remembered for a
-//! while (`cache`): a server that does not answer delays one run per retry
-//! delay, by the start timeout at most. One connector failing (server, token,
+//! Instances start side by side; a start in progress is shared by the runs
+//! that need it, and a failed start is remembered for a while (`cache`,
+//! ADR-049): a server that does not answer delays the runs of one start,
+//! then one run per retry delay, by the start timeout at most. One connector failing (server, token,
 //! policies, a tool name taken) makes that connector alone unavailable. How
 //! each start went is recorded on the instance (`status`, `last_error`).
 
