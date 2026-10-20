@@ -85,6 +85,18 @@ moment, avec son motif (une entreprise suspendue aussi, dans les 30 s au plus) ;
 proposés ni pour les appels encore demandés. Ce que le run détient déjà (consignes,
 mémoires rappelées au démarrage, résultats obtenus) reste dans sa conversation.
 
+**Reprise après un arrêt du service** (ADR-053) : l'état d'un run est enregistré dès son
+démarrage puis à chaque étape. Au démarrage, l'API reprend les runs qu'un arrêt a
+interrompus depuis leur dernière étape enregistrée, si rien d'autre qu'une lecture
+n'avait été lancé depuis ; sinon le run échoue en nommant l'action dont l'effet est à
+vérifier (de même pendant des actions validées, après deux reprises, avant toute
+étape enregistrée ou après plus d'une heure d'interruption). Les validations en attente
+de l'étape perdue sont annulées et cette annulation est auditée. Le risque de chaque
+outil appelé est enregistré dans l'événement `tool_call` ; un appel n'est jugé lecture
+que si ce risque et celui de l'outil, s'il est encore présent, sont tous deux `read`.
+Toute fin nomme les actions dont l'effet est à vérifier. L'API tient un verrou
+d'exécution des runs : un second processus sur la même base refuse de démarrer.
+
 **Connecteurs indisponibles** (ADR-048) : un connecteur de l'entreprise qui ne démarre
 pas (serveur injoignable, politiques illisibles…) laisse le run sans ses outils. S'il
 est à la portée de l'utilisateur (un serveur MCP pour qui détient `connector:use`, un

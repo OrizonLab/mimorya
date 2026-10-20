@@ -11,8 +11,8 @@ use futures::FutureExt;
 use mimorya_agent::llm::{Effort, LlmMessage, ModelRouter, PriceTable};
 
 use mimorya_agent::runtime::{
-    AgentRuntime, ApprovalDecisions, BudgetLimits, EnginePorts, RunCheckpoint, RunConfig, RunEvent,
-    RuntimeDeps, StartInput, VerificationConfig, build_user_turn,
+    AgentRuntime, ApprovalDecisions, BudgetLimits, EnginePorts, InterruptedCall, RunCheckpoint,
+    RunConfig, RunEvent, RuntimeDeps, StartInput, VerificationConfig, build_user_turn,
 };
 use mimorya_core::authz::Actor;
 use mimorya_core::autonomy::{AutonomyLevel, AutonomyPolicy};
@@ -21,7 +21,7 @@ use mimorya_db::repositories::runs::{RunRow, RunStatus};
 
 use super::context::{build_run_system_prompt, build_run_tools, recall_memories};
 use super::db_ports::{RunScope, engine_ports};
-use super::outcome::record_crash;
+use super::outcome::{CRASH_MESSAGE, record_crash};
 use super::run_access::RunAccess;
 use crate::services::access::{AccessContext, AccessService};
 use crate::services::connectors::ConnectorService;
@@ -53,6 +53,15 @@ pub enum ExecutionMode {
         state: serde_json::Value,
         decisions: ApprovalDecisions,
     },
+    /// Taken up again after a stop of the service (ADR-053).
+    Recover {
+        state: serde_json::Value,
+        /// Calls the run started since that checkpoint, or the approved
+        /// actions it was running.
+        interrupted: Vec<InterruptedCall>,
+        /// Shown should the engine not even start: the actions to check.
+        crash_message: String,
+    },
 }
 
 impl RunExecutor {
@@ -64,6 +73,11 @@ impl RunExecutor {
             conversation_id: run.conversation_id,
         };
         let ports = engine_ports(self.db.clone(), scope, self.bus.clone());
+        // A run taken up that crashes says which actions to check.
+        let message = match &mode {
+            ExecutionMode::Recover { crash_message, .. } => crash_message.clone(),
+            _ => CRASH_MESSAGE.to_owned(),
+        };
         let attempt = AssertUnwindSafe(self.run(&access, &run, &ports, mode)).catch_unwind();
         let error = match attempt.await {
             Ok(Ok(())) => return,
@@ -71,7 +85,7 @@ impl RunExecutor {
             Err(_) => "panic".to_string(),
         };
         tracing::error!(run_id = %run.id, error, "Run crashed");
-        let status = match record_crash(&self.db, scope).await {
+        let status = match record_crash(&self.db, scope, &message).await {
             Ok(Some(status)) => status,
             // Its end is already announced (the stale-run sweep failed it).
             Ok(None) => return,
@@ -123,6 +137,12 @@ impl RunExecutor {
             ExecutionMode::Resume { state, decisions } => {
                 let checkpoint: RunCheckpoint = serde_json::from_value(state)?;
                 runtime.resume(checkpoint, &decisions).await?;
+            }
+            ExecutionMode::Recover {
+                state, interrupted, ..
+            } => {
+                let checkpoint: RunCheckpoint = serde_json::from_value(state)?;
+                runtime.recover(checkpoint, interrupted).await?;
             }
         }
         Ok(())

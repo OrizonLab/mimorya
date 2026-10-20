@@ -28,10 +28,12 @@ pub struct DecisionResult {
 }
 
 pub struct RunService {
-    db: Database,
-    access: Arc<AccessService>,
-    executor: Arc<RunExecutor>,
-    tasks: Arc<BackgroundTasks>,
+    pub(super) db: Database,
+    pub(super) access: Arc<AccessService>,
+    pub(super) executor: Arc<RunExecutor>,
+    pub(super) tasks: Arc<BackgroundTasks>,
+    /// The run executor's lock, once this process holds it (ADR-053).
+    pub(super) executor_lock: tokio::sync::Mutex<Option<sqlx::PgConnection>>,
 }
 
 impl RunService {
@@ -41,6 +43,7 @@ impl RunService {
             access,
             executor: Arc::new(executor),
             tasks: Arc::new(BackgroundTasks::default()),
+            executor_lock: tokio::sync::Mutex::new(None),
         }
     }
 

@@ -76,15 +76,20 @@ impl ToolCallProcessor {
         let mut turn = TurnToolResults::default();
         for call in calls {
             let evaluation = executor.evaluate(call);
-            let (title, reason) = match &evaluation {
-                ToolCallEvaluation::Allow { tool, .. } => (tool.info.title.clone(), None),
-                ToolCallEvaluation::RequireApproval { tool, reason, .. } => {
-                    (tool.info.title.clone(), Some(reason.clone()))
+            let (title, reason, risk) = match &evaluation {
+                ToolCallEvaluation::Allow { tool, .. } => {
+                    (tool.info.title.clone(), None, Some(tool.info.risk))
                 }
+                ToolCallEvaluation::RequireApproval { tool, reason, .. } => (
+                    tool.info.title.clone(),
+                    Some(reason.clone()),
+                    Some(tool.info.risk),
+                ),
                 ToolCallEvaluation::Deny { tool, reason } => (
                     tool.as_ref()
                         .map_or_else(|| call.name.clone(), |t| t.info.title.clone()),
                     Some(reason.clone()),
+                    tool.as_ref().map(|t| t.info.risk),
                 ),
             };
             self.ports
@@ -95,6 +100,7 @@ impl ToolCallProcessor {
                     title,
                     decision: evaluation.kind().into(),
                     reason,
+                    risk,
                 })
                 .await?;
 

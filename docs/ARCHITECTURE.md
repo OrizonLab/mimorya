@@ -48,8 +48,9 @@ flowchart LR
   conversation, webhooks entrants.
 - **worker** (phase 2) : exécutions longues (missions), reprises après interruption,
   tâches planifiées, ingestion de documents. En MVP, l'API exécute les runs en arrière-plan
-  dans son propre processus et un balayage périodique marque en échec les runs restés
-  sans progression ; le worker sera le même code lancé avec un autre point d'entrée.
+  dans son propre processus, reprend au démarrage ceux qu'un arrêt a interrompus quand
+  c'est sûr (ADR-053), et un balayage périodique marque en échec les runs restés sans
+  progression ; le worker sera le même code lancé avec un autre point d'entrée.
 
 Pourquoi pas des microservices : une équipe réduite, un domaine encore mouvant et des
 transactions qui traversent plusieurs modules (autorisation + audit + exécution). Les
@@ -158,6 +159,9 @@ sequenceDiagram
 2. Un worker le réserve (`FOR UPDATE SKIP LOCKED`, bail `lease_expires_at`).
 3. Chaque étape est **persistée** (messages, événements, état) : en cas d'arrêt, un
    autre worker reprend au dernier point de contrôle une fois le bail expiré.
+   Aujourd'hui (une seule instance, ADR-016), c'est l'API qui reprend au démarrage les
+   runs qu'un arrêt a interrompus, quand rien d'autre qu'une lecture n'était en cours
+   (ADR-053).
 4. Une validation humaine met le run en `awaiting_approval` ; la décision le remet en
    file.
 5. Les tâches récurrentes (phase 2) créent des runs selon une expression cron.

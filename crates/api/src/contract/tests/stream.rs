@@ -52,8 +52,28 @@ fn every_engine_event() -> Vec<RunEvent> {
             title: "Appliquer le planning".into(),
             decision: decision.into(),
             reason: (decision != ToolCallEvaluation::ALLOW).then(|| "Motif".into()),
+            risk: Some(ToolRisk::Write),
         });
     }
+    for risk in ToolRisk::ALL {
+        events.push(RunEvent::ToolCall {
+            tool_call_id: "call-3".into(),
+            tool_name: "interventions_search".into(),
+            title: "Recherche d’interventions".into(),
+            decision: ToolCallEvaluation::ALLOW.into(),
+            reason: None,
+            risk: Some(risk),
+        });
+    }
+    // A call to an unknown tool, refused, has no risk.
+    events.push(RunEvent::ToolCall {
+        tool_call_id: "call-4".into(),
+        tool_name: "inconnu".into(),
+        title: "inconnu".into(),
+        decision: ToolCallEvaluation::DENY.into(),
+        reason: Some("Outil inconnu".into()),
+        risk: None,
+    });
     for risk in ToolRisk::ALL {
         events.push(RunEvent::ApprovalRequested {
             approval_id: Uuid::new_v4(),
@@ -62,6 +82,9 @@ fn every_engine_event() -> Vec<RunEvent> {
             risk,
         });
     }
+    events.push(RunEvent::RunResumed {
+        interrupted: vec!["interventions_search".into()],
+    });
     for status in DbRunStatus::ALL {
         events.push(RunEvent::RunFinished {
             status: status.as_str().into(),
@@ -84,6 +107,7 @@ fn _covered(event: &RunEvent) {
         | RunEvent::ApprovalResolved { .. }
         | RunEvent::Verification { .. }
         | RunEvent::Usage { .. }
+        | RunEvent::RunResumed { .. }
         | RunEvent::RunFinished { .. } => {}
     }
 }

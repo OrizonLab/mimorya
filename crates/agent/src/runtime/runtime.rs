@@ -38,9 +38,9 @@ pub struct StartInput {
 }
 
 pub struct AgentRuntime {
-    deps: RuntimeDeps,
+    pub(super) deps: RuntimeDeps,
     config: RunConfig,
-    tools: ToolCallProcessor,
+    pub(super) tools: ToolCallProcessor,
 }
 
 impl AgentRuntime {
@@ -67,6 +67,9 @@ impl AgentRuntime {
                 .emit(RunEvent::ConnectorsUnavailable { connectors })
                 .await?;
         }
+        // Saved before the first model call: a run the service stops from
+        // here on can be taken up again (ADR-053).
+        self.deps.ports.runs.checkpoint(&state).await?;
         self.run_loop(state).await
     }
 
@@ -162,7 +165,7 @@ impl AgentRuntime {
         self.run_loop(state).await
     }
 
-    async fn run_loop(&self, mut state: RunCheckpoint) -> anyhow::Result<RunOutcome> {
+    pub(super) async fn run_loop(&self, mut state: RunCheckpoint) -> anyhow::Result<RunOutcome> {
         let started = Instant::now();
         let elapsed_before = state.elapsed_ms;
         let elapsed = |started: &Instant| elapsed_before + started.elapsed().as_millis() as u64;
@@ -356,7 +359,7 @@ impl AgentRuntime {
     }
 
     /// Records the outcome, then announces it: listeners must find it saved.
-    async fn conclude(&self, outcome: RunOutcome) -> anyhow::Result<RunOutcome> {
+    pub(super) async fn conclude(&self, outcome: RunOutcome) -> anyhow::Result<RunOutcome> {
         let ports = &self.deps.ports;
         ports.runs.finish(&outcome).await?;
         let error = match &outcome {

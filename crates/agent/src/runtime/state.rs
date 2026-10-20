@@ -48,6 +48,9 @@ pub struct RunCheckpoint {
     /// Set while the run waits for human validation of some tool calls.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pending: Option<PendingCalls>,
+    /// Times the run was taken up again after the service stopped (ADR-053).
+    #[serde(default)]
+    pub resumptions: u32,
 }
 
 impl RunCheckpoint {
@@ -61,6 +64,7 @@ impl RunCheckpoint {
             evidence: Vec::new(),
             elapsed_ms: 0,
             pending: None,
+            resumptions: 0,
         }
     }
 }

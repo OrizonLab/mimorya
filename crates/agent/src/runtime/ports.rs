@@ -45,6 +45,10 @@ pub enum RunEvent {
         decision: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         reason: Option<String>,
+        /// The tool's risk when it was called (an unknown tool has none): what
+        /// a stop of the service may have left half done (ADR-053).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        risk: Option<ToolRisk>,
     },
     ToolResult {
         tool_call_id: String,
@@ -73,6 +77,13 @@ pub enum RunEvent {
         output_tokens: u64,
         /// `None` when the model is not priced.
         cost_micros: Option<i64>,
+    },
+    /// Taken up again from its last saved step after the service stopped
+    /// (ADR-053).
+    RunResumed {
+        /// Read-only actions under way when it stopped, whose results were
+        /// lost: the model may run them again.
+        interrupted: Vec<String>,
     },
     RunFinished {
         /// `completed`, `awaiting_approval`, `failed` or `cancelled`.

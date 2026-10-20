@@ -25,6 +25,7 @@ pub enum RunStreamEvent {
     ApprovalResolved(ApprovalResolvedEvent),
     Verification(VerificationEvent),
     Usage(UsageEvent),
+    RunResumed(RunResumed),
     RunFinished(RunFinished),
 }
 
@@ -77,6 +78,10 @@ pub struct ToolCallEvent {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub reason: Option<String>,
+    /// The tool's risk when it was called (an unknown tool has none).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub risk: Option<ToolRisk>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -157,6 +162,16 @@ pub struct UsageEvent {
     pub output_tokens: u64,
     /// `null` when the model is not priced.
     pub cost_micros: Option<i64>,
+}
+
+/// The run was taken up again from its last saved step after a stop of the
+/// service (ADR-053).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+pub struct RunResumed {
+    /// Read-only actions under way when the service stopped, whose results
+    /// were lost (tool names).
+    pub interrupted: Vec<String>,
 }
 
 /// The run stopped: ended, or paused for a validation (`awaiting_approval`).

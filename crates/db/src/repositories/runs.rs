@@ -77,6 +77,9 @@ pub struct RunRow {
     pub finished_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// The last event of the run's journal when its state was last saved
+    /// (ADR-053).
+    pub checkpoint_seq: Option<i32>,
 }
 
 impl RunRow {
@@ -88,7 +91,7 @@ impl RunRow {
 
 const RUN_COLUMNS: &str = "id, tenant_id, conversation_id, initiated_by_user_id, on_behalf_of_user_id, \
     status, objective, success_criteria, autonomy_level, budget, usage, state, result, verification, \
-    error, started_at, finished_at, created_at, updated_at";
+    error, started_at, finished_at, created_at, updated_at, checkpoint_seq";
 
 #[derive(Debug, Clone)]
 pub struct NewRun {
@@ -152,8 +155,13 @@ pub struct RunPatch {
     pub finished_at: Option<DateTime<Utc>>,
 }
 
+/// Saving a state also keeps the last event of the run's journal at that
+/// moment (`checkpoint_seq`, ADR-053).
 const UPDATE_RUN: &str = "update agent_runs set status = coalesce($2, status), \
-    state = coalesce($3, state), usage = coalesce($4, usage), result = coalesce($5, result), \
+    state = coalesce($3, state), \
+    checkpoint_seq = case when $3::jsonb is null then checkpoint_seq \
+      else (select coalesce(max(seq), 0) from run_events where run_id = $1) end, \
+    usage = coalesce($4, usage), result = coalesce($5, result), \
     verification = coalesce($6, verification), error = coalesce($7, error), \
     finished_at = coalesce($8, finished_at), updated_at = now() where id = $1";
 
@@ -233,12 +241,28 @@ pub struct StaleRun {
 }
 
 /// Marks runs left `running` without progress since `before` as failed
-/// (crashed or stuck process), across tenants, through a narrowly scoped
-/// database function, and returns them. Resuming a run interrupted mid-step
-/// is not supported yet.
+/// (stuck process), across tenants, through a narrowly scoped database
+/// function, and returns them. Runs a stop of the service left running are
+/// taken up again at startup instead (`interrupted_runs`, ADR-053).
 pub async fn fail_stale_runs(pool: &PgPool, before: DateTime<Utc>) -> sqlx::Result<Vec<StaleRun>> {
     sqlx::query_as("select tenant_id, run_id, error from system_fail_stale_runs($1)")
         .bind(before)
+        .fetch_all(pool)
+        .await
+}
+
+/// A run a stop of the service left running (ADR-053).
+#[derive(Debug, Clone, Copy, sqlx::FromRow)]
+pub struct InterruptedRun {
+    pub tenant_id: Uuid,
+    pub run_id: Uuid,
+}
+
+/// Every company's runs still `running`, the least recent first, through a
+/// narrowly scoped database function: at startup, a stop of the service
+/// interrupted each of them (a single instance, ADR-016).
+pub async fn interrupted_runs(pool: &PgPool) -> sqlx::Result<Vec<InterruptedRun>> {
+    sqlx::query_as("select tenant_id, run_id from system_interrupted_runs()")
         .fetch_all(pool)
         .await
 }

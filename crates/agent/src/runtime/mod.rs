@@ -6,6 +6,7 @@ pub mod budget;
 pub mod context;
 pub mod model_call;
 pub mod ports;
+mod recovery;
 #[allow(clippy::module_inception)]
 pub mod runtime;
 pub mod state;
@@ -23,6 +24,7 @@ pub use ports::{
     SkillStore, SkillSummary, StepAccess, ToolInvocationLog, ToolInvocationRecord, UsageRecord,
     UsageSink,
 };
+pub use recovery::{InterruptedCall, MAX_RESUMPTIONS, unknown_effect};
 pub use runtime::{ACCOUNT_INACTIVE, AgentRuntime, StartInput};
 pub use state::{PendingApproval, PendingCalls, RunCheckpoint, RunUsageTotals};
 pub use types::{

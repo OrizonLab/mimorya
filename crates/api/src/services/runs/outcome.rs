@@ -109,11 +109,16 @@ pub async fn persist_outcome(
     Ok(tx.commit().await?)
 }
 
-/// Marks a run that crashed as failed, without exposing the internal error.
-/// A run that already finished (outcome saved before the crash, or failed by
-/// the stale-run sweep) keeps its status. Returns the status to announce, or
-/// `None` when the run's end is already announced (by the sweep, typically).
-pub async fn record_crash(db: &Database, scope: RunScope) -> anyhow::Result<Option<RunStatus>> {
+/// Marks a run that crashed as failed, without exposing the internal error:
+/// the conversation shows `message`. A run that already finished (outcome
+/// saved before the crash, or failed by the stale-run sweep) keeps its
+/// status. Returns the status to announce, or `None` when the run's end is
+/// already announced (by the sweep, typically).
+pub async fn record_crash(
+    db: &Database,
+    scope: RunScope,
+    message: &str,
+) -> anyhow::Result<Option<RunStatus>> {
     let mut tx = db.begin(scope.tenant_id).await?;
     let failed = update_active_run(
         &mut tx,
@@ -140,7 +145,7 @@ pub async fn record_crash(db: &Database, scope: RunScope) -> anyhow::Result<Opti
                 tenant_id: scope.tenant_id,
                 conversation_id,
                 role: "assistant",
-                content: CRASH_MESSAGE.into(),
+                content: message.into(),
                 author_user_id: None,
                 run_id: Some(scope.run_id),
                 metadata: serde_json::to_value(MessageMetadata {

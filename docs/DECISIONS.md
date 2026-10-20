@@ -1743,3 +1743,73 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     non-régression avant activation, compétences propres à une unité (`org_unit_id`),
     import d'un `SKILL.md` avec son en-tête ; le détail d'une compétence renvoie le
     contenu de toutes ses versions, à paginer si elles deviennent nombreuses.
+
+## ADR-053 — Les runs interrompus par un arrêt du service sont repris au démarrage (complète ADR-016)
+
+- **Date** : 2026-10-20 · **Statut** : acceptée
+- **Contexte** : un run en cours quand le service s'arrête (redéploiement, arrêt brutal,
+  plantage) restait `running` jusqu'à ce que le balayage le passe en échec 15 minutes
+  plus tard (ADR-016) : la demande de l'utilisateur était perdue, même lorsque rien
+  n'empêchait de la poursuivre. L'état d'un run n'était enregistré qu'en fin de tour
+  d'outils, jamais avant le premier appel au modèle, et rien n'indiquait qu'une action
+  avait commencé avant d'en avoir le résultat.
+- **Décision** :
+  - au démarrage, une fois que l'API écoute, elle reprend chaque run encore `running`,
+    dans sa propre entreprise (`system_interrupted_runs`, fonction `SECURITY DEFINER`
+    qui ne donne que l'entreprise et l'identifiant). Une seule instance exécute les runs
+    (ADR-016) : à ce moment, chacun d'eux a été interrompu. Ce n'est plus seulement
+    écrit : l'API tient, pour toute sa vie, un verrou consultatif PostgreSQL de session
+    (`pg_try_advisory_lock`, sur une connexion à elle) ; un second processus sur la même
+    base ne l'obtient pas et refuse de démarrer, au lieu de reprendre ou de doubler les
+    runs que le premier exécute. Le verrou n'est pris, et les runs repris, qu'une fois le
+    port d'écoute obtenu. Sa connexion est nommée `mimorya-run-executor` (visible dans
+    `pg_stat_activity`, ce que rappelle le message d'erreur) et sondée par le serveur
+    (keepalive TCP après une minute d'inactivité) : si l'hôte de l'API disparaît sans la
+    fermer, le verrou est libéré en quelques minutes, non en deux heures ;
+  - le balayage des runs bloqués n'agit qu'une fois le processus en marche depuis aussi
+    longtemps qu'un run met à devenir « bloqué » (15 minutes) : seuls ses propres runs
+    peuvent alors l'être, et un run repris garde son ancienne heure d'enregistrement
+    jusqu'à sa prochaine étape. La purge des liens expirés reste immédiate ;
+  - un run est enregistré dès son démarrage, avant le premier appel au modèle, puis à
+    chaque étape comme avant ; avec son état est gardé le numéro du dernier événement de
+    son journal (`agent_runs.checkpoint_seq`, repère monotone qui ne dépend d'aucune
+    horloge). Il reprend à sa dernière étape enregistrée ; l'appel au modèle et les
+    appels d'outils lancés depuis sont perdus ;
+  - le moteur ne le reprend que si rien d'autre qu'une lecture n'a été lancé depuis
+    cette étape : les appels autorisés commencés depuis sont les événements `tool_call`
+    postérieurs au repère, et chacun doit être une lecture : selon le risque enregistré
+    dans l'événement au moment de l'appel (surcharge de l'administrateur comprise) et selon
+    l'outil s'il est encore présent, le plus élevé des deux l'emportant (un outil reconnu
+    depuis comme écrivant n'est pas relancé). Un appel sans risque enregistré d'un outil
+    disparu est inconnu. Une
+    action qui a pu changer quelque chose (écriture, brouillon, envoi…) n'est jamais
+    relancée à l'aveugle : le run échoue en nommant l'action, dont l'effet est à
+    vérifier. Il échoue aussi s'il était en train d'exécuter des actions validées (en
+    nommant celles qui avaient été validées, ou en disant que rien n'a été exécuté si
+    aucune ne l'avait été), s'il a déjà été repris deux fois (`resumptions`, compté dans
+    son état), s'il n'avait encore aucune étape enregistrée, s'il est interrompu depuis
+    plus d'une heure (sa demande peut avoir perdu son objet), ou si son utilisateur ne
+    peut plus agir, ou si le moteur ne peut pas être reconstruit (fournisseur retiré…).
+    Chacune de ces fins nomme, par leur titre, les actions qui étaient en cours et dont
+    l'effet n'est pas connu (toute action non enregistrée comme une lecture, ou validée) :
+    l'utilisateur est invité à vérifier, jamais à relancer à l'aveugle. Ensuite, chaque
+    étape relit les droits comme avant (ADR-035) ;
+  - les demandes de validation encore en attente sont annulées et l'annulation est
+    auditée (`approval.cancelled`, acteur système) : elles appartenaient à l'étape
+    perdue, et le run les redemande s'il en a besoin ;
+  - une reprise est annoncée (événement `run_resumed`, qui liste les lectures
+    interrompues) ; une fin est enregistrée et annoncée comme celle d'un run qui échoue
+    (statut, message dans la conversation, audit, `run_finished`).
+- **Conséquences** :
+  - un redéploiement ne coûte plus que l'étape en cours d'un run qui ne faisait que lire,
+    plus le délai du redémarrage ; l'appel au modèle perdu est facturé (enregistré dans
+    la consommation) mais absent du total du run ;
+  - le suivi en direct n'affiche pas encore la reprise : l'interface ignore
+    `run_resumed`, une étape interrompue reste sans résultat dans le fil, et la carte
+    d'une validation annulée y reste (une décision répond alors 409) (à faire) ;
+  - le verrou disparaît avec sa connexion (redémarrage de PostgreSQL) sans que l'API le
+    reprenne : un second processus démarré ensuite pourrait l'obtenir. Une seule instance
+    reste une règle d'exploitation (ADR-016) ;
+  - restent à faire (phase 2, ADR-012) : plusieurs instances, avec un bail par run et un
+    worker séparé ; la reprise d'une étape dont les actions ont un identifiant
+    d'idempotence.

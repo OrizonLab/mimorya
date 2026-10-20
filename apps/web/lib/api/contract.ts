@@ -759,6 +759,17 @@ export type RunListItem = { id: string, conversationId: string | null, objective
  */
 export type RunRef = { id: string, status: RunStatus, createdAt: string, };
 
+/**
+ * The run was taken up again from its last saved step after a stop of the
+ * service (ADR-053).
+ */
+export type RunResumed = {
+/**
+ * Read-only actions under way when the service stopped, whose results
+ * were lost (tool names).
+ */
+interrupted: Array<string>, };
+
 export type RunStarted = { objective: string, };
 
 export type RunStatus = "queued" | "running" | "awaiting_approval" | "completed" | "failed" | "cancelled";
@@ -766,7 +777,7 @@ export type RunStatus = "queued" | "running" | "awaiting_approval" | "completed"
 /**
  * One event of the stream, by name.
  */
-export type RunStreamEvent = { "type": "run_started", "data": RunStarted } | { "type": "connectors_unavailable", "data": ConnectorsUnavailable } | { "type": "assistant_delta", "data": AssistantDelta } | { "type": "assistant_message", "data": AssistantMessage } | { "type": "tool_call", "data": ToolCallEvent } | { "type": "tool_result", "data": ToolResultEvent } | { "type": "approval_requested", "data": ApprovalRequestedEvent } | { "type": "approval_resolved", "data": ApprovalResolvedEvent } | { "type": "verification", "data": VerificationEvent } | { "type": "usage", "data": UsageEvent } | { "type": "run_finished", "data": RunFinished };
+export type RunStreamEvent = { "type": "run_started", "data": RunStarted } | { "type": "connectors_unavailable", "data": ConnectorsUnavailable } | { "type": "assistant_delta", "data": AssistantDelta } | { "type": "assistant_message", "data": AssistantMessage } | { "type": "tool_call", "data": ToolCallEvent } | { "type": "tool_result", "data": ToolResultEvent } | { "type": "approval_requested", "data": ApprovalRequestedEvent } | { "type": "approval_resolved", "data": ApprovalResolvedEvent } | { "type": "verification", "data": VerificationEvent } | { "type": "usage", "data": UsageEvent } | { "type": "run_resumed", "data": RunResumed } | { "type": "run_finished", "data": RunFinished };
 
 /**
  * What a run has consumed so far (`agent_runs.usage`).
@@ -840,7 +851,11 @@ export type TemporaryPassword = { temporaryPassword: string, };
  */
 export type TestedTool = { name: string, title: string, description: string, enabled: boolean, risk: ToolRisk, permissions: Array<string>, };
 
-export type ToolCallEvent = { toolCallId: string, toolName: string, title: string, decision: ToolDecision, reason?: string, };
+export type ToolCallEvent = { toolCallId: string, toolName: string, title: string, decision: ToolDecision, reason?: string,
+/**
+ * The tool's risk when it was called (an unknown tool has none).
+ */
+risk?: ToolRisk, };
 
 /**
  * The policy's decision on a tool call.
