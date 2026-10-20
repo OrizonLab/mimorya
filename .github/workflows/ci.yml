@@ -148,10 +148,11 @@ jobs:
             echo "::add-mask::$value"
             echo "$name=$value" >> "$GITHUB_ENV"
           done
+      # Built from this checkout, under local names (ADR-051).
       - name: Build the images
         run: |
-          docker compose -f compose.demo.yml build
-          docker compose -f compose.production.yml build
+          docker compose -f compose.demo.yml -f compose.demo.build.yml build
+          docker compose -f compose.production.yml -f compose.production.build.yml build
       - name: Only the proxy publishes ports
         run: |
           for file in compose.demo.yml compose.production.yml; do
@@ -160,14 +161,14 @@ jobs:
             test "$published" = 0 || { echo "$file publishes ports besides the proxy" >&2; exit 1; }
           done
       - name: Start the demonstration stack
-        run: docker compose -f compose.demo.yml up -d
+        run: docker compose -f compose.demo.yml -f compose.demo.build.yml up -d
       - name: Smoke test of the demonstration stack
         run: infra/docker/smoke-test.sh https://localhost
       - name: Logs of the demonstration stack
         if: always()
-        run: docker compose -f compose.demo.yml logs --no-color | tail -n 200
+        run: docker compose -f compose.demo.yml -f compose.demo.build.yml logs --no-color | tail -n 200
       - name: Stop the demonstration stack
-        run: docker compose -f compose.demo.yml down -v
+        run: docker compose -f compose.demo.yml -f compose.demo.build.yml down -v
       - name: The Caddyfile also reads with a public certificate (ACME)
         run: |
           adapted=$(docker run --rm -e MIMORYA_DOMAIN=mimorya.example.com \
@@ -188,12 +189,13 @@ jobs:
             pgvector/pgvector:pg16 -A /data)
           test -z "$left" || { echo "data left behind: $left" >&2; exit 1; }
       - name: Start the production stack
-        run: docker compose -f compose.production.yml up -d
+        run: docker compose -f compose.production.yml -f compose.production.build.yml up -d
       - name: Installation test of the production stack
         env:
           # The test leaves a company and its administrator behind.
           DISPOSABLE_STACK: 'yes'
+          COMPOSE_FILE: compose.production.yml:compose.production.build.yml
         run: infra/docker/production-test.sh https://localhost
       - name: Logs of the production stack
         if: always()
-        run: docker compose -f compose.production.yml logs --no-color | tail -n 200
+        run: docker compose -f compose.production.yml -f compose.production.build.yml logs --no-color | tail -n 200

@@ -7,15 +7,17 @@
 #   MIMORYA_DOMAIN            the name the stack is served on
 #   MIMORYA_TLS               an e-mail address for a public certificate (ACME),
 #                             or `internal` for Caddy's own local authority
-#   MIMORYA_VERSION           optional: the published images to run (ADR-051), a
-#                             version (1.2.0) or a commit (sha-…); latest by default,
-#                             the last commit of main
-# then, with the published images:
+#   MIMORYA_VERSION           the published images to run (ADR-051): a version
+#                             (1.2.0) or a commit (sha-…); latest by default, the
+#                             last commit of main. Run this file from the same
+#                             version or commit: it mounts files of the checkout.
+# then:
 #   docker compose --env-file .env.production -f compose.production.yml pull
 #   docker compose --env-file .env.production -f compose.production.yml up -d
-# (or built from this checkout instead: `up -d --build`), and:
 #   docker compose --env-file .env.production -f compose.production.yml exec api \
 #     mimorya-admin create-company --name … --slug … --admin-email … --admin-name …
+# No image is built here: one that cannot be downloaded stops the stack. To
+# build them from this checkout instead, add compose.production.build.yml.
 #
 # Only Caddy publishes ports; the database is reachable from the stack's own
 # containers only, with its own project name and volume (apart from the
@@ -47,9 +49,6 @@ services:
   # The migrations alone (owner role), then it stops.
   migrate:
     image: ghcr.io/orizonlab/mimorya-api:${MIMORYA_VERSION:-latest}
-    build:
-      context: .
-      dockerfile: infra/docker/api.Dockerfile
     command: ['mimorya-admin', 'migrate']
     environment:
       DATABASE_URL: postgres://mimorya:${POSTGRES_PASSWORD}@db:5432/mimorya
@@ -59,9 +58,6 @@ services:
 
   api:
     image: ghcr.io/orizonlab/mimorya-api:${MIMORYA_VERSION:-latest}
-    build:
-      context: .
-      dockerfile: infra/docker/api.Dockerfile
     restart: unless-stopped
     environment:
       MIMORYA_ENV: production
@@ -83,12 +79,6 @@ services:
 
   web:
     image: ghcr.io/orizonlab/mimorya-web:${MIMORYA_VERSION:-latest}
-    build:
-      context: .
-      dockerfile: infra/docker/web.Dockerfile
-      args:
-        API_URL: http://api:4000
-        NEXT_PUBLIC_DEMO_MODE: 'false'
     restart: unless-stopped
     depends_on:
       - api

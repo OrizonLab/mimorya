@@ -1606,39 +1606,54 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   les construire sur le serveur (Rust et Next.js : temps, mémoire, outillage), et rien
   ne garantissait qu'une installation tournait le code vérifié par la CI.
 - **Décision** :
-  - le workflow `.github/workflows/images.yml` publie trois images sur le registre de
-    GitHub (`ghcr.io/orizonlab/`) : `mimorya-api` (API, migrations, commandes
-    d'exploitation, données de démonstration), `mimorya-web` (interface sans comptes de
-    démonstration) et `mimorya-web-demo` (interface qui les liste). Le relais `/api/*`
-    étant fixé à la construction, les deux interfaces visent `http://api:4000`, nom du
-    service des deux piles ;
-  - il publie après une CI **verte** sur un commit poussé sur `main` (`workflow_run`),
-    le commit même que la CI a vérifié (`head_sha`, pas la tête de `main` au moment de la
-    publication) : étiquettes `sha-<12 caractères>`, `main` et `latest`. Une étiquette de
-    version `vX.Y.Z` (éventuellement suivie d'un suffixe) publie `X.Y.Z` et
-    `sha-…`. Une branche `main` d'un dépôt dérivé, dont la CI tourne aussi, n'est jamais
-    publiée (dépôt d'origine vérifié) ;
-  - le jeton de la CI (`GITHUB_TOKEN`, permission `packages: write` sur ce seul travail)
-    suffit : ni compte ni secret supplémentaire. Les images portent la source du dépôt
-    (`org.opencontainers.image.source`), qui leur donne sa visibilité (publique), sa
-    révision et sa version ;
+  - le workflow `.github/workflows/images.yml` publie trois images (amd64) sur le
+    registre de GitHub (`ghcr.io/orizonlab/`) : `mimorya-api` (API, migrations,
+    commandes d'exploitation, données de démonstration), `mimorya-web` (interface sans
+    comptes de démonstration) et `mimorya-web-demo` (interface qui les liste). Le relais
+    `/api/*` étant fixé à la construction, les deux interfaces visent `http://api:4000`,
+    nom du service des deux piles ;
+  - **publication** : après une CI **verte** sur un commit poussé sur `main` du dépôt
+    même (`workflow_run` ; la branche `main` d'un dépôt dérivé, dont la CI tourne aussi,
+    n'est jamais publiée), les images du commit que la CI a vérifié (`head_sha`) sont
+    construites et publiées sous `sha-<12 caractères>`, **une seule fois** : une CI
+    relancée ne remplace jamais ce qu'une installation fait peut-être déjà tourner sous
+    ce nom ;
+  - **promotion** : une fois les trois publiées, `main` et `latest` les désignent
+    ensemble (`imagetools create`), si le commit est encore la tête de `main` ; une
+    promotion à la fois, une plus récente remplaçant celle qui attend. Ces noms ne
+    reviennent donc jamais à un commit plus ancien (une CI relancée, une promotion en
+    retard) ;
+  - **version** : une étiquette `vX.Y.Z` (éventuellement suivie d'un suffixe) sur un
+    commit de `main` nomme `X.Y.Z` les images déjà publiées pour ce commit, sans rien
+    reconstruire. Un commit hors de `main`, ou jamais publié (CI en échec), n'a pas de
+    version : le travail échoue ;
+  - le jeton de la CI (`GITHUB_TOKEN`, permission `packages: write` sur les seuls travaux
+    qui publient, pas sur la construction des PR) suffit : ni compte ni secret
+    supplémentaire. Les images portent la source du dépôt
+    (`org.opencontainers.image.source`), sa révision, leur version, leur date et une
+    description ;
   - une PR qui modifie le workflow ou `infra/docker/` construit les trois images sans
     rien publier ; chaque image garde son cache de construction (`type=gha`, une portée
     par image) ;
-  - les piles nomment ces images (`ghcr.io/orizonlab/…:${MIMORYA_VERSION:-latest}`) tout
-    en gardant leur construction : `pull` puis `up -d` installe les images publiées,
-    `up -d --build` les construit depuis le dépôt, comme le fait la CI qui vérifie les
-    piles.
+  - les piles (`compose.demo.yml`, `compose.production.yml`) ne font que nommer les
+    images publiées (`ghcr.io/orizonlab/…:${MIMORYA_VERSION:-latest}`), sans les
+    construire : une image introuvable (version mal écrite, paquet privé, autre
+    architecture) arrête la pile au lieu d'être remplacée par une construction locale
+    sous le nom publié. `compose.demo.build.yml` et `compose.production.build.yml` les
+    construisent depuis le dépôt sous des noms locaux (`mimorya-api:local`…) ; la CI
+    vérifie les piles ainsi.
 - **Conséquences** :
-  - une installation de production fixe `MIMORYA_VERSION` (une version, sinon un commit)
-    pour garder la même d'un redémarrage à l'autre ; `latest` suit `main` ;
-  - le code étant public, publier ses images ne révèle rien de plus ; un dépôt privé
-    rendrait les images privées (connexion au registre avant `pull`, quota payant
-    au-delà de l'offre gratuite) ;
-  - les organisations GitHub peuvent interdire les paquets publics : il faudrait alors
-    l'autoriser dans leurs réglages ou rendre le paquet visible après son premier envoi ;
-  - restent à faire : le cache du travail de CI qui vérifie les piles (il reconstruit les
-    images à chaque PR), la signature des images, et la vérification du premier envoi,
-    qui n'est possible qu'après la fusion (`workflow_run` ne part que du workflow de la
-    branche par défaut). Une PR qui touche les images en vérifie la construction, pas
-    l'envoi.
+  - une installation fixe `MIMORYA_VERSION` (une version, sinon un commit) pour garder
+    la même d'un redémarrage à l'autre, et se fait depuis le dépôt extrait à la même
+    version : le fichier compose et les fichiers qu'il monte (Caddy, initialisation de la
+    base) vont avec les images ;
+  - la CI vérifie les piles construites depuis le dépôt, pas les images téléchargées :
+    rien ne démarre encore une image publiée avant qu'une installation le fasse ;
+  - le code étant public, publier ses images ne révèle rien de plus. Leur visibilité est
+    à constater au premier envoi : un paquet lié à un dépôt public devrait l'être, sinon
+    son propriétaire (le compte OrizonLab) le rend public dans les réglages du paquet ;
+  - restent à faire : le constat du premier envoi (trois paquets, visibles,
+    téléchargeables sans compte), possible seulement après la fusion (`workflow_run` ne
+    part que du workflow de la branche par défaut) ; le cache du travail de CI qui
+    vérifie les piles ; la signature des images ; arm64 ; l'épinglage des actions par
+    empreinte. Une PR qui touche les images en vérifie la construction, pas l'envoi.

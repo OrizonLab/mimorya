@@ -67,7 +67,8 @@ Repères à l'intérieur des crates :
   mots de passe, `init-production.sh` crée le rôle applicatif) ; `docker-compose.yml`
   (base de développement, sur 127.0.0.1), `compose.production.yml` (pile de production,
   ADR-034) et `compose.demo.yml` (pile de démonstration,
-  ADR-032).
+  ADR-032), qui téléchargent les images publiées (`.github/workflows/images.yml`,
+  ADR-051) ; `compose.*.build.yml` les construisent depuis le dépôt (CI).
 
 ## Commandes
 
@@ -82,8 +83,8 @@ pnpm contract                      # régénère apps/web/lib/api/contract.ts de
 pnpm check                         # Rust : fmt + clippy -D warnings + tests ; web : typecheck + lint + format
 pnpm test:int                      # cargo test-int : tests PostgreSQL (en série, base *_test recréée)
 pnpm test:e2e                      # Playwright : parcours web contre l'API à modèle scénarisé (ADR-031)
-DEMO_PASSWORD=… docker compose -f compose.demo.yml up -d --build   # pile de démonstration (ADR-032), construite ; images publiées : pull puis up -d (ADR-051)
-docker compose --env-file .env.production -f compose.production.yml up -d --build   # production (ADR-034)
+DEMO_PASSWORD=… docker compose -f compose.demo.yml -f compose.demo.build.yml up -d --build   # pile de démonstration construite (ADR-032) ; images publiées : pull puis up -d sans le second fichier (ADR-051)
+docker compose --env-file .env.production -f compose.production.yml pull && docker compose --env-file .env.production -f compose.production.yml up -d   # production, images publiées (ADR-034, ADR-051)
 ```
 
 Avant chaque commit : `pnpm check && pnpm test:int` doivent passer.

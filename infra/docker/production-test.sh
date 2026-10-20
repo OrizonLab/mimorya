@@ -9,14 +9,17 @@
 #
 # It leaves that company and its active administrator behind: for a stack
 # thrown away afterwards only (the CI's), hence DISPOSABLE_STACK=yes. The
-# stack's variables come from the environment (or COMPOSE_ENV_FILES).
+# stack's variables come from the environment (or COMPOSE_ENV_FILES), its
+# compose files from COMPOSE_FILE (compose.production.yml by default; the CI
+# adds compose.production.build.yml, which builds the images).
 #   DISPOSABLE_STACK=yes infra/docker/production-test.sh [https://localhost]
 set -euo pipefail
 source "$(dirname "$0")/checks.sh"
 
 check_name="production test"
 base=${1:-https://localhost}
-compose=(docker compose -f compose.production.yml)
+export COMPOSE_FILE=${COMPOSE_FILE:-compose.production.yml}
+compose=(docker compose)
 [[ ${DISPOSABLE_STACK:-} == yes ]] ||
   fail "it leaves a company and an administrator behind: set DISPOSABLE_STACK=yes on a throwaway stack only"
 
