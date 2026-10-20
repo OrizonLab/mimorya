@@ -49,10 +49,9 @@ const TERMINAL: ReadonlySet<RunStatus> = new Set<RunStatus>(['completed', 'faile
 /**
  * Follows a run through server-sent events. The browser reconnects on its own
  * after network errors or a stream that ends (resuming from the last event
- * id); the stream is closed
- * client-side once the run reaches a terminal state. A stream the browser gave
- * up (an error answered it) marks the activity `lost`; `reconnect` opens it
- * again, replayed from the start (ADR-046).
+ * id); the stream is closed client-side once the run reaches a terminal state.
+ * A stream the browser gave up (an error answered it) marks the activity
+ * `lost`; `reconnect` opens it again, replayed from the start (ADR-046).
  */
 export function useRunStream(
   runId: string | null,
