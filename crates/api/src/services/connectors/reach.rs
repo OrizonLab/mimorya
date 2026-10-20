@@ -1,9 +1,11 @@
 //! Which unavailable connectors a run is told about (ADR-048): those whose
-//! tools its user could reach, so that a run names no connector its user
-//! would never use. While a connector is down its tools are unknown: reach
-//! is judged on what every tool of its type requires, `connector:use` for
-//! an MCP tool, one of the business permissions it introduces for another
-//! type's tools.
+//! tools its user could reach. While a connector is down its tools are
+//! unknown: reach is judged on what every tool of its type requires,
+//! `connector:use` for an MCP tool, one of the business permissions it
+//! introduces for another type's tools. It is an approximation, broader than
+//! the tools a run would be offered (a tool may require several permissions,
+//! and the instance's policies may withhold it): a user may be told of a
+//! connector none of whose tools they would be offered.
 
 use mimorya_connectors::connector_type;
 use mimorya_connectors::mcp::CONNECTOR_USE;
@@ -62,6 +64,9 @@ mod tests {
         assert_eq!(unavailable_in_reach(&issues, member), ["Documentation"]);
         let planner = |p: &str| p == "planning:read";
         assert_eq!(unavailable_in_reach(&issues, planner), ["Interventions"]);
+        // Broader than the tools offered: no tool requires this one alone.
+        let writer = |p: &str| p == "intervention:write";
+        assert_eq!(unavailable_in_reach(&issues, writer), ["Interventions"]);
         assert!(unavailable_in_reach(&issues, |_| false).is_empty());
         let both = |p: &str| p == CONNECTOR_USE || p == "intervention:read";
         assert_eq!(

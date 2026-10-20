@@ -1482,17 +1482,25 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - le modèle l'apprend par une note `<connecteurs_indisponibles>` en tête du tour
     utilisateur, qui nomme les connecteurs et lui demande de signaler ce qui manque
     plutôt que de conclure que l'information n'existe pas. Le prompt système reste stable
-    ; les noms, choisis par un administrateur, tiennent sur une ligne et ne peuvent pas
-    fermer la note (chevrons remplacés) ;
+    ; les noms, choisis par un administrateur, tiennent sur une ligne (contrôles et
+    séparateurs remplacés par une espace) et ne peuvent fermer ni la note (chevrons
+    remplacés) ni leurs guillemets (« » remplacés) ;
   - l'utilisateur l'apprend par l'événement `connectors_unavailable` du suivi en
     direct, émis juste après `run_started` et rejoué comme les autres ; le panneau
     d'activité affiche « Le connecteur « … » est indisponible : la réponse peut être
     incomplète. ».
 - **Conséquences** :
-  - un membre qui détient `connector:use` voit le nom d'un serveur MCP indisponible même
-    si les politiques de ses outils les lui auraient tous retirés (la plateforme ne
-    connaît pas les outils d'un serveur qui ne répond pas) : le nom d'un connecteur est
-    une donnée de configuration de l'entreprise, pas une donnée métier ;
+  - la portée est plus large que les outils qu'un run se verrait proposer : un membre
+    qui détient `connector:use` voit le nom d'un serveur MCP indisponible même si les
+    politiques de ses outils les lui auraient tous retirés (la plateforme ne connaît pas
+    les outils d'un serveur qui ne répond pas) ; pour un autre type, une seule des
+    permissions qu'il introduit suffit, alors qu'un outil peut en exiger plusieurs
+    (`planning_propose` : `planning:propose` et `intervention:read`) ou aucune ne
+    l'exiger seule (`intervention:write`). Le nom d'un connecteur est une donnée de
+    configuration de l'entreprise, pas une donnée métier ;
+  - un connecteur modifié, désactivé ou supprimé pendant son démarrage est signalé au
+    run qui l'attendait : ce run est bien privé de ses outils ; le suivant ne le signale
+    plus ;
   - un run repris après validation n'est pas averti d'un connecteur tombé entre-temps :
     l'appel à l'un de ses outils échoue et le modèle en reçoit l'erreur ;
   - le message montré à l'utilisateur disparaît avec le panneau d'activité à la fin du

@@ -2,8 +2,9 @@
 // request runs without it (ADR-048), and the run goes on with the others.
 // The server the test adds is deleted, and a validation left waiting is
 // refused, even when it fails.
-import type { BrowserContext, Page } from '@playwright/test';
-import type { ApprovalList, ApprovalVerdict, Connectors, NewConnector } from '../lib/api/contract';
+import type { BrowserContext } from '@playwright/test';
+import type { Connectors, NewConnector } from '../lib/api/contract';
+import { refuseWaiting } from './support/approvals';
 import { demo, expect, noError, signIn, test } from './support/fixtures';
 import { REFERENCE_REQUEST } from './support/scenario';
 
@@ -15,19 +16,6 @@ async function administrator(newContext: () => Promise<BrowserContext>) {
   const page = await (await newContext()).newPage();
   await signIn(page, demo.paul);
   return page;
-}
-
-async function refuseWaiting(page: Page) {
-  const approvals = await page.request.get('/api/approvals');
-  if (approvals.status() !== 200) return;
-  const { approvals: waiting } = (await approvals.json()) as ApprovalList;
-  for (const approval of waiting.filter((a) => a.status === 'pending')) {
-    const refused = await page.request.post(`/api/approvals/${approval.id}/decision`, {
-      headers: WRITE,
-      data: { approved: false } satisfies ApprovalVerdict,
-    });
-    expect(refused.status()).toBe(200);
-  }
 }
 
 test.afterEach(async ({ page, newContext }) => {
