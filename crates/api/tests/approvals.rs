@@ -1,6 +1,7 @@
-//! Decisions on approval requests: an expired request counts as a refusal, a
-//! decision is only recorded while the run is actually paused for it, and only
-//! by someone who may still use the agent it resumes.
+//! Decisions on approval requests: an expired request is not run (shown as
+//! expired, not as refused), a decision is only recorded while the run is
+//! actually paused for it, and only by someone who may still use the agent
+//! it resumes.
 
 mod support;
 
@@ -11,6 +12,7 @@ use mimorya_agent::testing::{ScriptedReply, ScriptedStep};
 use mimorya_core::demo::{tenant, user};
 use serde_json::json;
 use support::planning::{apply_proposal, first_result, propose};
+use support::recovery::events;
 use support::{Client, TestApi};
 use uuid::Uuid;
 
@@ -78,7 +80,7 @@ async fn statuses(marc: &Client<'_>, run_id: &str) -> (String, Vec<String>) {
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
-async fn reports_an_expired_validation_to_the_agent_as_a_refusal_and_resumes_the_run() {
+async fn reports_an_expired_validation_as_not_run_and_resumes_the_run() {
     let api = TestApi::start().await;
     let marc = api.sign_in(user::MARC).await;
     let seen = Arc::new(Mutex::new(String::new()));
@@ -106,10 +108,26 @@ async fn reports_an_expired_validation_to_the_agent_as_a_refusal_and_resumes_the
     assert_eq!(decision.status, StatusCode::CONFLICT);
     api.idle().await;
 
-    assert!(seen.lock().unwrap().contains("expirée"));
+    // The model is told it expired, not that anyone refused it.
+    let told = seen.lock().unwrap().clone();
+    assert!(
+        told.contains("Demande de validation expirée : l’action n’a pas été exécutée"),
+        "{told}"
+    );
+    assert!(!told.contains("refusée"), "{told}");
     let (status, approvals) = statuses(&marc, &run.run_id).await;
     assert_eq!(status, "completed");
     assert_eq!(approvals, ["expired"]);
+    // The live view says it expired: nobody refused it.
+    let run_id: Uuid = run.run_id.parse().unwrap();
+    let ended: Vec<_> = events(&api, tenant::ID, run_id)
+        .await
+        .into_iter()
+        .filter(|(kind, data)| kind == "tool_result" && data["toolName"] == "planning_apply")
+        .collect();
+    assert_eq!(ended.len(), 1);
+    assert_eq!(ended[0].1["summary"], "Demande de validation expirée");
+    assert_eq!(ended[0].1["isError"], true);
 }
 
 #[tokio::test]

@@ -24,7 +24,8 @@ pub struct DecisionInput {
 }
 
 pub struct RecordedDecision {
-    /// The request had expired: it is recorded as such and counts as a refusal.
+    /// The request had expired: it is recorded as such, and its call is not
+    /// run (nobody refused it).
     pub expired: bool,
     pub decided: Option<ApprovalRow>,
     /// Set when every request of the run is settled and the run must resume.
@@ -130,18 +131,16 @@ pub async fn record_approval_decision(
     })
 }
 
-/// Decisions handed to the agent on resume; expired requests count as refusals.
+/// Decisions handed to the agent on resume; expired requests are not run.
 pub fn resume_decisions(approvals: &[ApprovalRow]) -> ApprovalDecisions {
     approvals
         .iter()
         .filter_map(|a| {
             let decision = match a.status.as_str() {
-                "expired" => {
-                    ApprovalDecision::rejected(Some("demande de validation expirée".into()))
-                }
+                "expired" => ApprovalDecision::expired(),
                 "approved" => ApprovalDecision {
-                    approved: true,
                     comment: a.decision_comment.clone(),
+                    ..ApprovalDecision::approved()
                 },
                 "rejected" => ApprovalDecision::rejected(a.decision_comment.clone()),
                 _ => return None,

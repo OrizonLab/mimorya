@@ -20,6 +20,7 @@ use super::model_call::{ModelTurn, call_model, record_model_usage};
 use super::ports::{CurrentAccess, RunEvent, StepAccess};
 use super::state::{PendingCalls, RunCheckpoint};
 use super::tool_calls::{ToolCallProcessor, order_by_request};
+use super::tool_refusals::why_not_run;
 use super::types::{ApprovalDecisions, RunConfig, RunOutcome, RuntimeDeps};
 use super::unavailable::with_unavailable_connectors;
 use super::verification::correction_message;
@@ -120,23 +121,8 @@ impl AgentRuntime {
                     approved: decision.approved,
                 })
                 .await?;
-            let result = match (self.tools.tool(&approval.tool_name), decision.approved) {
-                (None, _) => {
-                    let removed = "Outil désactivé depuis la demande de validation";
-                    self.tools.reject(approval, removed.into(), removed).await?
-                }
-                (Some(_), false) => {
-                    let comment = decision
-                        .comment
-                        .as_ref()
-                        .map(|c| format!(" : {c}"))
-                        .unwrap_or_default();
-                    let refused = "Action refusée par l’utilisateur";
-                    self.tools
-                        .reject(approval, format!("{refused}{comment}"), refused)
-                        .await?
-                }
-                (Some(tool), true) => {
+            let result = match self.tools.tool(&approval.tool_name) {
+                Some(tool) if decision.approved => {
                     self.tools
                         .run(
                             &mut state,
@@ -147,6 +133,10 @@ impl AgentRuntime {
                             &access,
                         )
                         .await?
+                }
+                tool => {
+                    let (reason, shown) = why_not_run(tool.is_some(), decision);
+                    self.tools.reject(approval, reason, shown).await?
                 }
             };
             results.push(result);

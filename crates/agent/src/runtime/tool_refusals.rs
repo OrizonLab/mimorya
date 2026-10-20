@@ -1,5 +1,6 @@
 //! Tool calls that do not run: refused by the policy enforcement point,
-//! queued for human validation, refused by the user, or abandoned when the
+//! queued for human validation, refused by the user, whose request expired
+//! or whose tool was removed before anyone decided, or abandoned when the
 //! run may no longer act for its user (ADR-035). Each is logged, audited or
 //! streamed as it ends, and reported to the model when the run goes on.
 
@@ -13,27 +14,44 @@ use crate::llm::{LlmToolCall, LlmToolResult};
 use crate::tools::executor::INVALID_INPUT;
 use crate::tools::{RegisteredTool, ToolCallEvaluation};
 
+const TOOL_REMOVED: &str = "Outil désactivé depuis la demande de validation";
+const REQUEST_EXPIRED: &str = "Demande de validation expirée";
+const REFUSED: &str = "Action refusée par l’utilisateur";
+
+/// Why a decided call does not run (its tool removed since, its request
+/// expired before anyone decided, or refused): the reason the model gets,
+/// and what the live view shows, without what the user wrote.
+pub(super) fn why_not_run(
+    tool_present: bool,
+    decision: &ApprovalDecision,
+) -> (String, &'static str) {
+    if !tool_present {
+        (TOOL_REMOVED.into(), TOOL_REMOVED)
+    } else if decision.expired {
+        let reason = format!("{REQUEST_EXPIRED} : l’action n’a pas été exécutée");
+        (reason, REQUEST_EXPIRED)
+    } else {
+        let comment = decision
+            .comment
+            .as_ref()
+            .map(|c| format!(" : {c}"))
+            .unwrap_or_default();
+        (format!("{REFUSED}{comment}"), REFUSED)
+    }
+}
+
 impl ToolCallProcessor {
-    /// A call refused by a human (or whose tool disappeared) is reported to
-    /// the model, and ended in the live view with `shown`, the reason without
-    /// what the user wrote: it ran nothing, and is never taken for a call a
-    /// stop of the service left half done.
+    /// A decided call that does not run (refused by a human, its request
+    /// expired, its tool removed, or abandoned) is reported to the model, and
+    /// ended in the live view with `shown`, the reason without what the user
+    /// wrote: it ran nothing, and is never taken for a call a stop of the
+    /// service left half done.
     pub async fn reject(
         &self,
         approval: &PendingApproval,
         reason: String,
         shown: &str,
     ) -> anyhow::Result<LlmToolResult> {
-        self.ports
-            .events
-            .emit(RunEvent::ToolResult {
-                tool_call_id: approval.tool_call_id.clone(),
-                tool_name: approval.tool_name.clone(),
-                summary: shown.into(),
-                is_error: true,
-                duration_ms: 0,
-            })
-            .await?;
         self.ports
             .tool_log
             .record(ToolInvocationRecord {
@@ -47,6 +65,16 @@ impl ToolCallProcessor {
                 error: None,
                 duration_ms: None,
                 approval_id: Some(approval.approval_id),
+            })
+            .await?;
+        self.ports
+            .events
+            .emit(RunEvent::ToolResult {
+                tool_call_id: approval.tool_call_id.clone(),
+                tool_name: approval.tool_name.clone(),
+                summary: shown.into(),
+                is_error: true,
+                duration_ms: 0,
             })
             .await?;
         Ok(LlmToolResult {
@@ -191,5 +219,37 @@ fn audit_reason(reason: &str) -> String {
         INVALID_INPUT.to_string()
     } else {
         reason.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn says_why_a_decided_call_does_not_run_never_showing_what_the_user_wrote() {
+        let refused = ApprovalDecision::rejected(Some("pas cette semaine".into()));
+        assert_eq!(
+            why_not_run(true, &refused),
+            (format!("{REFUSED} : pas cette semaine"), REFUSED)
+        );
+        assert_eq!(
+            why_not_run(true, &ApprovalDecision::rejected(None)),
+            (REFUSED.into(), REFUSED)
+        );
+        let (reason, shown) = why_not_run(true, &ApprovalDecision::expired());
+        assert_eq!(shown, REQUEST_EXPIRED);
+        assert!(reason.starts_with(REQUEST_EXPIRED) && !reason.contains("refusée"));
+        // A tool removed since comes first, whatever was decided.
+        for decision in [
+            refused,
+            ApprovalDecision::expired(),
+            ApprovalDecision::approved(),
+        ] {
+            assert_eq!(
+                why_not_run(false, &decision),
+                (TOOL_REMOVED.into(), TOOL_REMOVED)
+            );
+        }
     }
 }
