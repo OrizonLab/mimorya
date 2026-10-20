@@ -1659,15 +1659,16 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - le code étant public, publier ses images ne révèle rien de plus. Leur visibilité est
     à constater au premier envoi : un paquet lié à un dépôt public devrait l'être, sinon
     son propriétaire (le compte OrizonLab) le rend public dans les réglages du paquet ;
-  - restent à faire : le constat du premier envoi (trois paquets, visibles,
-    téléchargeables sans compte), possible seulement après la fusion (`workflow_run` ne
-    part que du workflow de la branche par défaut). Ce premier envoi dira aussi ce que
-    le registre répond pour un paquet qui n'existe pas encore : s'il refuse l'accès au
-    lieu de répondre « introuvable », la publication échoue (sans rien publier de faux)
-    jusqu'à ce que l'absence soit constatée autrement, par l'API des paquets de GitHub
-    (404 : paquet absent) ; le cache du travail de CI qui
-    vérifie les piles ; la signature des images ; arm64 ; l'épinglage des actions par
-    empreinte. Une PR qui touche les images en vérifie la construction, pas l'envoi.
+  - premier envoi constaté le 2026-10-20 (commit `20409bf`) : les trois paquets sont
+    publics et téléchargeables sans compte, `latest`, `main` et `sha-20409bfe048a`
+    désignant les mêmes images ; pour un paquet qui n'existait pas encore, le registre a
+    répondu « introuvable », comme le suppose la publication. Depuis, chaque
+    publication vérifie que ses images se téléchargent sans compte : un paquet resté
+    privé fait échouer le travail ;
+  - restent à faire : la signature des images ; arm64 ; l'épinglage des actions par
+    empreinte. Le cache du travail de CI qui vérifie les piles n'est pas retenu : ce
+    travail dure moins que celui de Rust. Une PR qui touche les images en vérifie la
+    construction, pas l'envoi.
 
 ## ADR-052 — Les compétences s'écrivent et s'activent depuis l'administration
 
