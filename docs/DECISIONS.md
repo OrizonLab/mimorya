@@ -1371,3 +1371,29 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - test : `apps/web/e2e/reloads.spec.ts` vérifie, pendant le verrou, qu'une case des
     règles d'outils est désactivée, sans apparence native, animée par le verrou, et
     qu'elle et sa coche finissent atténuées.
+
+## ADR-046 — Le suivi en direct d'un run qui s'interrompt se signale et se rouvre
+
+- **Date** : 2026-10-20 · **Statut** : acceptée
+- **Contexte** : le chat suit un run par un flux (`EventSource`, `/api/runs/{id}/events`).
+  Le navigateur reprend seul une connexion coupée, mais abandonne un flux auquel le
+  serveur répond par une erreur (429 de la limite de débit, 500, 502 pendant un
+  redémarrage), sans rien en dire. Depuis que les validations qu'attend un run ne se
+  chargent plus qu'à l'annonce de son flux (PR #34), un flux abandonné laissait le chat
+  sur « Je travaille sur votre demande… », sans la validation attendue.
+- **Décision** :
+  - `useRunStream` écoute l'erreur du flux : quand le navigateur l'a abandonné
+    (`readyState` fermé), l'activité est marquée `lost` et le chat affiche « Le suivi
+    en direct de la demande est interrompu. » avec « Réessayer » ;
+  - « Réessayer » rouvre le flux, qui rejoue les événements du run depuis le début
+    (validations attendues comprises) ;
+  - un run qui a attendu plusieurs fois rejoue chaque attente : les chargements de
+    ses validations peuvent se chevaucher, seul le dernier est affiché.
+- **Conséquences** :
+  - une interruption du suivi n'est plus silencieuse et se répare sans recharger la
+    page ;
+  - test : `apps/web/e2e/timeouts.spec.ts` répond par une erreur au flux d'un run,
+    vérifie le message, puis « Réessayer » amène la validation (troisième scénario du
+    modèle scénarisé, suivi à 9 h) ; il échoue si l'abandon n'est pas signalé.
+    Aucun scénario n'attend deux fois : le dernier point n'a pas de test de bout en
+    bout.

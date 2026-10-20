@@ -146,7 +146,7 @@ body {
  */
 fieldset:disabled :disabled:not([disabled]),
 /* The mark a Checkbox draws over its input dims with it. */
-fieldset:disabled :disabled:not([disabled]) + svg {
+fieldset:disabled :disabled:not([disabled]) + [data-checkbox-mark] {
   animation: locked-dim 0s 150ms both;
 }
 

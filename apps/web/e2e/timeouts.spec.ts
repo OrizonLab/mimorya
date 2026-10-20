@@ -135,3 +135,27 @@ test('the approval a run waits for says it could not be loaded', async ({ page }
   ).toBeVisible({ timeout: 30_000 });
   await noError(page);
 });
+
+test('a run whose live follow-up was refused says so and follows again', async ({ page }) => {
+  // The run's stream is answered with an error until the test lets it through.
+  let failing = true;
+  await page.route('**/api/runs/*/events', (route) =>
+    failing ? route.fulfill({ status: 503 }) : route.continue(),
+  );
+  await signedIn(page, demo.marc);
+  await page.getByLabel('Votre message').fill(REFERENCE_REQUEST);
+  await page.getByRole('button', { name: 'Envoyer' }).click();
+
+  // The browser gives such a stream up: the page says the follow-up stopped...
+  await expect(page.getByText('Le suivi en direct de la demande est interrompu.')).toBeVisible();
+  failing = false;
+  // ...and opens it again: replayed from the start, it brings the validation.
+  await page.getByRole('button', { name: 'Réessayer' }).click();
+  await expect(page.getByText('Validation requise')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText('Le suivi en direct de la demande est interrompu.')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Refuser' }).click();
+  await expect(
+    page.getByText('Le planning est inchangé : la validation a été refusée.'),
+  ).toBeVisible({ timeout: 30_000 });
+  await noError(page);
+});

@@ -56,6 +56,12 @@ export function ChatView({ conversationId }: { conversationId: string | null }) 
               <MessageItem key={m.id} message={m} />
             ))}
             {busy && <ActivityPanel activity={activity} />}
+            {busy && activity.lost && (
+              <Failure
+                message="Le suivi en direct de la demande est interrompu."
+                onRetry={chat.reconnectRun}
+              />
+            )}
             {pendingApprovals.map((a) => (
               <ApprovalCard key={a.id} approval={a} onDecided={() => chat.dismissApproval(a.id)} />
             ))}

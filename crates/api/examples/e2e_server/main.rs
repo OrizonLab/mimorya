@@ -24,9 +24,9 @@ use mimorya_api::services::ProviderFactory;
 use mimorya_api::{AppConfig, BuildOptions, build_app, log_filter};
 
 /// Reference scenarios queued for the platform model, by the hour of their
-/// follow-up: one per test that converses (`reference-scenario.spec.ts`, then
-/// `timeouts.spec.ts`).
-const SCENARIO_HOURS: [u32; 2] = [13, 15];
+/// follow-up: one per test that converses, in the order they run
+/// (`reference-scenario.spec.ts`, then the two of `timeouts.spec.ts`).
+const SCENARIO_HOURS: [u32; 3] = [13, 15, 9];
 
 /// Company providers' answers to their connection test.
 const CONNECTION_TESTS: usize = 20;
