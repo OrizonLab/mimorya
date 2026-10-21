@@ -17,6 +17,7 @@ mod memory;
 mod password_reset;
 mod run_events;
 mod runs;
+mod sso;
 
 use axum::Router;
 use mimorya_core::DomainError;
@@ -28,6 +29,7 @@ pub fn router(state: &AppState) -> Router<AppState> {
     Router::new()
         .merge(health::routes())
         .merge(auth::routes())
+        .merge(sso::routes())
         .merge(invitations::routes())
         .merge(password_reset::routes())
         .merge(account::routes())

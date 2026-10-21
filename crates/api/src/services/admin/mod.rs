@@ -1,5 +1,6 @@
 //! Workspace administration: accounts, organisation, custom roles, role
-//! assignments, access policies, skills and the company's model provider.
+//! assignments, access policies, skills, the company's model provider and
+//! its identity providers.
 //! Every operation requires its permission on the whole company, refuses to
 //! act on the administrator's own account, runs in one transaction with its
 //! audit entry, and refreshes the cached authorization data of the tenant.
@@ -15,6 +16,7 @@ mod connector_rules;
 mod connector_test;
 mod connector_trial;
 mod connectors;
+mod identity_providers;
 mod invitations;
 mod link_sender;
 mod llm;
@@ -33,6 +35,10 @@ pub use connector_trial::{McpTrial, TrialServices, try_mcp_connector};
 pub use connectors::{
     ConnectorAdmin, ConnectorChanges, NewMcpConnector, TokenChange, create_mcp_connector,
     delete_connector, http_config, update_connector,
+};
+pub use identity_providers::{
+    ProviderChanges, ProviderDeclaration, change_identity_provider, declare_identity_provider,
+    remove_identity_provider,
 };
 pub use invitations::{IssuedInvitation, issue_invitation};
 pub use link_sender::LinkSender;

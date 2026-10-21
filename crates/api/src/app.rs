@@ -27,6 +27,7 @@ use crate::services::background::BackgroundTasks;
 use crate::services::connectors::ConnectorSettings;
 use crate::services::llm::{LlmServiceOptions, default_factory};
 use crate::services::runs::{ApprovalNotifier, RunExecutor};
+use crate::services::sso::SsoService;
 use crate::services::{
     AccessService, ConnectorService, LlmService, ProviderFactory, RunEventBus, RunService,
 };
@@ -49,6 +50,8 @@ pub struct Services {
     /// The model provider of each company's runs.
     pub llm: Arc<LlmService>,
     pub runs: RunService,
+    /// Signing in through the companies' identity providers (ADR-063).
+    pub sso: Arc<SsoService>,
     /// Sends the invitation and reset e-mails; `None` when no relay is
     /// configured.
     pub mailer: Option<Arc<dyn Mailer>>,
@@ -113,6 +116,12 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
             start_timeout: config.mcp_start_timeout,
         },
     ));
+    let sso = Arc::new(SsoService::new(
+        db.clone(),
+        config.secrets.clone(),
+        config.mcp_network,
+        &config.web_origin,
+    )?);
     let mailer = match options.mailer {
         Some(mailer) => mailer,
         None => match &config.mail {
@@ -147,6 +156,7 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
     };
     let services = Arc::new(Services {
         runs: RunService::new(db.clone(), access.clone(), executor),
+        sso,
         mailer,
         config,
         db: db.clone(),

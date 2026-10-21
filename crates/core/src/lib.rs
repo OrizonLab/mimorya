@@ -11,6 +11,7 @@ pub mod collaborator_attributes;
 pub mod custom_roles;
 pub mod demo;
 pub mod error;
+pub mod identity_providers;
 pub mod memory;
 pub mod plain_text;
 pub mod policy_rules;

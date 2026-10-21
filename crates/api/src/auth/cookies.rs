@@ -7,13 +7,18 @@ use axum::http::header::COOKIE;
 use super::credentials::{SESSION_ABSOLUTE, SESSION_COOKIE};
 
 pub fn session_token(headers: &HeaderMap) -> Option<String> {
+    cookie_value(headers, SESSION_COOKIE)
+}
+
+/// The value of a cookie the browser sent, if not empty.
+pub fn cookie_value(headers: &HeaderMap, cookie: &str) -> Option<String> {
     headers
         .get_all(COOKIE)
         .iter()
         .filter_map(|value| value.to_str().ok())
         .flat_map(|value| value.split(';'))
         .filter_map(|pair| pair.trim().split_once('='))
-        .find(|(name, _)| *name == SESSION_COOKIE)
+        .find(|(name, _)| *name == cookie)
         .map(|(_, value)| value.trim().to_string())
         .filter(|value| !value.is_empty())
 }

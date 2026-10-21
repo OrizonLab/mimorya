@@ -40,7 +40,8 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
 - Le contexte `app.tenant_id` est posé **par transaction** (`set_config(..., true)`),
   jamais au niveau de la connexion (pas de fuite par le pool).
 - Les seules opérations qui traversent les entreprises (connexion, résolution de
-  session, lecture d'une invitation ou d'un lien de réinitialisation avant connexion,
+  session, fournisseur d'identité proposé pour une adresse avant connexion (ADR-063),
+  lecture d'une invitation ou d'un lien de réinitialisation avant connexion,
   recherche du compte d'une adresse par la commande d'exploitation `invite` (ADR-033),
   marquage des runs bloqués, liste au démarrage des runs qu'un arrêt a laissés en cours,
   entreprise et identifiant seulement (ADR-053), liste des runs dont une demande de
@@ -97,8 +98,33 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   production, un reverse proxy de confiance (TLS) **ajoute** l'adresse du client à
   `X-Forwarded-For` ; avec `TRUST_PROXY=true`, l'API retient alors la dernière entrée
   de cet en-tête.
-- Phase 2 : **SSO OIDC** (Microsoft Entra ID, Google Workspace, Keycloak…),
-  provisionnement SCIM (phase 3), MFA déléguée à l'IdP ; MFA TOTP locale si besoin.
+- **Fournisseur d'identité de l'entreprise** (SSO OpenID Connect, ADR-063) :
+  Microsoft 365 (Entra ID, un annuaire), Google Workspace (domaines déclarés, `hd`) ou
+  tout fournisseur OpenID Connect, déclarés par l'administration (`settings:manage`) avec
+  leurs domaines d'e-mail ; secret client dans le coffre (ADR-024), jamais relu.
+  - Un fournisseur ne sert que les comptes de son entreprise : celui qui est proposé
+    pour une adresse est celui de l'entreprise du compte, actif, qui couvre son domaine
+    (même réponse pour une adresse sans compte ou d'un compte désactivé) ; déclarer le
+    domaine d'une autre entreprise ne détourne aucun de ses comptes.
+  - Flux par code avec PKCE, `state` et `nonce` ; la tentative voyage dans un cookie
+    `HttpOnly`, `SameSite=Lax`, de 10 minutes, scellé par la clé maîtresse avec
+    l'entreprise en données associées ; le retour d'une autre tentative est refusé (pas
+    de connexion forcée), avant même un refus du fournisseur ; le code s'échange une
+    fois. Le jeton d'identité est vérifié (signature par les clés publiées, émetteur,
+    audience, expiration, nonce). Le fournisseur est joint par le client HTTP durci des
+    connecteurs (ADR-025), borné en durée et en taille ; toute adresse qu'il nomme
+    (clés, point d'échange, adresse d'autorisation) est contrôlée comme son émetteur
+    avant la connexion : `https`, adresse IP en clair publique (pas de SSRF vers le
+    réseau de l'exploitant).
+  - Pas de création de compte : la première connexion relie un compte actif existant au
+    sujet immuable du fournisseur (`oid` pour Microsoft), seulement par une adresse que
+    le fournisseur garantit (Microsoft : le nom de connexion, ou `email` avec
+    `xms_edov`), dans un domaine déclaré ; ensuite, seul le sujet compte.
+    La session s'ouvre comme pour un mot de passe ; chaque refus est tracé avec sa
+    raison dans l'entreprise de la tentative, jamais un jeton ni un code.
+  - Suite : SSO obligatoire par domaine, acceptation d'une invitation par le
+    fournisseur, SAML, provisionnement SCIM (phase 3), MFA déléguée à l'IdP ; MFA TOTP
+    locale si besoin.
 
 ## 5. Autorisations
 
@@ -222,8 +248,8 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
 
 ## 7. Secrets
 
-- Secrets d'entreprise (clé d'API du modèle de l'entreprise aujourd'hui ; jetons des
-  connecteurs ensuite) chiffrés en **AES-256-GCM** (`ring`) avec une clé maître fournie
+- Secrets d'entreprise (clé d'API du modèle de l'entreprise, jetons des connecteurs,
+  secrets clients des fournisseurs d'identité, ADR-063) chiffrés en **AES-256-GCM** (`ring`) avec une clé maître fournie
   par l'environnement (`MIMORYA_MASTER_KEY`, 32 octets base64), un nonce aléatoire par
   écriture, et l'entreprise et le nom du secret comme données associées : une valeur
   déplacée vers une autre entreprise ou un autre nom ne s'ouvre pas (ADR-024). Sans

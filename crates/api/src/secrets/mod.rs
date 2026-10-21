@@ -5,7 +5,7 @@
 mod cipher;
 mod store;
 
-pub use cipher::{MASTER_KEY_LEN, SecretCipher};
+pub use cipher::{KEY_VERSION, MASTER_KEY_LEN, SecretCipher};
 pub use store::{LLM_API_KEY, SecretRead, SecretStore};
 
 /// Master keys published by this repository's tests (integration and end to
