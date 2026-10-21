@@ -1,6 +1,7 @@
 //! The e-mail telling a manager that requests await them, one per pause of
-//! a run (ADR-060), in French and plain text: for whom, how many and of
-//! which risks, where to decide and until when. Neither the actions nor
+//! a run (ADR-060), or reminding them the day before they expire (ADR-062),
+//! in French and plain text: for whom, how many and of which risks, where to
+//! decide and until when. Neither the actions nor
 //! their parameters: the message leaves the platform, and they are shown
 //! after signing in, where the right to decide is checked.
 
@@ -24,6 +25,8 @@ pub struct ApprovalMail<'a> {
     /// Their deadline: the earliest (those of one step are the same to the
     /// minute).
     pub expires_at: Option<DateTime<Utc>>,
+    /// A reminder of requests already notified, rather than their notice.
+    pub reminder: bool,
 }
 
 /// What an action of `risk` does, as the interface names it; a value no
@@ -50,6 +53,7 @@ pub fn approval_mail(notice: &ApprovalMail<'_>) -> Mail {
         risks,
         link,
         expires_at,
+        reminder,
     } = notice;
     let one = *count == 1;
     let labels: Vec<&str> = risks.iter().map(|r| risk_label(r)).collect();
@@ -82,13 +86,18 @@ pub fn approval_mail(notice: &ApprovalMail<'_>) -> Mail {
         Some(at) => format!(" {first} le {}.", expiry_label(*at)),
         None => String::new(),
     };
+    let (subject, asks) = if *reminder {
+        (format!("Rappel : {subject}"), "attend toujours")
+    } else {
+        (subject, "demande")
+    };
     Mail {
         to: email.to_string(),
         to_name: manager.to_string(),
         subject,
         text: format!(
             "Bonjour {manager},\n\n\
-             L’assistant {product} ({company}) demande votre validation pour {what} \
+             L’assistant {product} ({company}) {asks} votre validation pour {what} \
              ({risk_word} : {}).\n\n\
              Pour voir {see}, connectez-vous et ouvrez la page des validations :\n\
              {link}\n\n\
@@ -105,6 +114,10 @@ mod tests {
     use super::*;
 
     fn notice(count: usize, risks: &[&str]) -> Mail {
+        mail(count, risks, false)
+    }
+
+    fn mail(count: usize, risks: &[&str], reminder: bool) -> Mail {
         approval_mail(&ApprovalMail {
             product: "Mimorya",
             company: "Néo Maintenance",
@@ -115,6 +128,7 @@ mod tests {
             risks,
             link: "https://mimorya.example/approvals",
             expires_at: Some(Utc.with_ymd_and_hms(2026, 10, 28, 8, 0, 0).unwrap()),
+            reminder,
         })
     }
 
@@ -165,6 +179,25 @@ mod tests {
             notice(2, &["write"])
                 .text
                 .contains("(risque : modification)")
+        );
+    }
+
+    #[test]
+    fn a_reminder_says_the_requests_still_wait() {
+        let one = mail(1, &["write"], true);
+        assert_eq!(
+            one.subject,
+            "Rappel : Une action de Nadia Benali attend votre validation"
+        );
+        assert!(one.text.contains(
+            "L’assistant Mimorya (Néo Maintenance) attend toujours votre validation pour une \
+             action de Nadia Benali (risque : modification)."
+        ));
+        assert!(one.text.contains("Elle expire le mercredi 28 octobre 2026"));
+        let several = mail(2, &["write"], true);
+        assert_eq!(
+            several.subject,
+            "Rappel : 2 actions de Nadia Benali attendent votre validation"
         );
     }
 

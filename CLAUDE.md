@@ -40,14 +40,17 @@ Repères à l'intérieur des crates :
   par outil), `connectors/src/mcp/`, `connectors/src/bin/mcp_demo_docs.rs`.
 - `api/src/plugins/` (contexte de requête, limitation de débit, CSRF, session,
   en-têtes de sécurité, audit des modifications d'administration refusées, sur une ressource introuvable ou envoyant un identifiant inconnu,
-  maintenance périodique : runs bloqués, liens expirés),
+  maintenance périodique : runs bloqués, liens expirés, demandes de validation échues
+  et relances avant échéance, ADR-061, ADR-062),
   `api/src/routes/` (un module par ressource, `admin/`), `api/src/contract/` (réponses
   et corps de requêtes typés, un fichier par ressource, dont sont générés les types
   TypeScript, ADR-036, ADR-039),
   `api/src/services/admin/` (comptes, organisation, habilitations, compétences, sous
   verrou par entreprise), `api/src/services/account.rs` (son propre compte),
   `api/src/services/runs/` (tour de conversation, décisions, contexte, exécution,
-  ports PostgreSQL, résultat, reprise au démarrage, ADR-053), `api/src/services/llm.rs` (fournisseur de modèle de
+  ports PostgreSQL, résultat, reprise au démarrage, ADR-053, circuit des validations,
+  avis au responsable, expiration et relance des demandes, ADR-059 à ADR-062),
+  `api/src/services/llm.rs` (fournisseur de modèle de
   chaque entreprise), `api/src/services/invitations/` (liens d'invitation, ADR-027),
   `api/src/services/password_reset/` (mot de passe oublié, ADR-028),
   `api/src/services/provisioning/` et `api/src/bin/admin/` (commandes d'exploitation :

@@ -51,7 +51,7 @@ flowchart LR
   dans son propre processus, reprend au démarrage ceux qu'un arrêt a interrompus quand
   c'est sûr (ADR-053), et un balayage périodique marque en échec les runs restés sans
   progression et fait expirer les demandes de validation échues, leurs runs poursuivant
-  sans l'action (ADR-061) ; le worker sera le même code lancé avec un autre point
+  sans l'action (ADR-061), leurs responsables relancés la veille (ADR-062) ; le worker sera le même code lancé avec un autre point
   d'entrée.
 
 Pourquoi pas des microservices : une équipe réduite, un domaine encore mouvant et des

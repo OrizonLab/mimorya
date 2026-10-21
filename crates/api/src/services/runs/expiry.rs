@@ -3,7 +3,7 @@
 //! expired, audited as the platform's, and lets its run go on once nothing
 //! else waits: the agent learns the action was not run, as when an expired
 //! request is decided. Without it, a run would stay paused until someone
-//! tried to decide.
+//! tried to decide. The day before, their manager is reminded (ADR-062).
 
 use chrono::{DateTime, Utc};
 use mimorya_agent::runtime::{ACCOUNT_INACTIVE, RunCheckpoint};
@@ -39,6 +39,15 @@ impl RunService {
             }
         }
         Ok(expired)
+    }
+
+    /// Reminds managers of the requests that expire within a day (ADR-062);
+    /// how many. Only in the process that executes runs, as expiries.
+    pub async fn remind_due(&self) -> anyhow::Result<usize> {
+        if self.executor_lock.lock().await.is_none() {
+            return Ok(0);
+        }
+        self.executor.notifier.remind_due(Utc::now()).await
     }
 
     /// Expires the run's overdue requests, under its lock as a decision

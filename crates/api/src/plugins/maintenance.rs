@@ -1,6 +1,7 @@
 //! Periodic maintenance, at startup and then every minute: expired password
 //! reset links are deleted (ADR-028); requests nobody decided in time
-//! expire, and their runs go on (ADR-061); runs without progress for a while
+//! expire, and their runs go on (ADR-061), their managers reminded the day
+//! before (ADR-062); runs without progress for a while
 //! belong to a stuck process and are marked as failed, their `run_finished`
 //! event recorded and broadcast to the clients following them. That sweep
 //! waits until the process has run as long as a run takes to go stale: runs
@@ -38,6 +39,11 @@ pub fn spawn_maintenance(services: AppState) -> JoinHandle<()> {
                 Ok(0) => {}
                 Ok(expired) => tracing::info!(expired, "Overdue approval requests expired"),
                 Err(error) => tracing::warn!(error = %error, "Overdue request sweep failed"),
+            }
+            match services.runs.remind_due().await {
+                Ok(0) => {}
+                Ok(reminded) => tracing::info!(reminded, "Managers reminded of requests due"),
+                Err(error) => tracing::warn!(error = %error, "Approval reminder sweep failed"),
             }
             if sweeps_stale_runs(started.elapsed()) {
                 match sweep_stale_runs(db, bus, STALE_AFTER).await {
