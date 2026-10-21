@@ -1,6 +1,7 @@
-//! Accounts of a tenant: directory, creation by an administrator, profile and
-//! status changes, primary unit, passwords and session revocation. Accounts
-//! are never deleted by the application (audit references, ADR-018).
+//! Accounts of a tenant: directory, creation by an administrator or at a
+//! first sign-in through the company's provider, profile and status
+//! changes, primary unit, passwords and session revocation. Accounts are
+//! never deleted by the application (audit references, ADR-018).
 
 use chrono::{DateTime, Utc};
 use mimorya_core::authz::Sensitivity;
@@ -265,4 +266,25 @@ pub async fn activate_invited_without_password(
     .execute(conn)
     .await?;
     Ok(result.rows_affected() > 0)
+}
+
+/// An account created at its first sign-in through its company's identity
+/// provider (ADR-067): active, without a password, of the default
+/// clearance, in no unit. `None` when the address is taken, in this company
+/// or in another: addresses are unique across companies (ADR-011).
+pub async fn create_federated_user(
+    conn: &mut PgConnection,
+    tenant_id: Uuid,
+    email: &str,
+    display_name: &str,
+) -> sqlx::Result<Option<Uuid>> {
+    sqlx::query_scalar(
+        "insert into users (tenant_id, email, display_name, status, activated) \
+         values ($1, $2, $3, 'active', true) on conflict (email) do nothing returning id",
+    )
+    .bind(tenant_id)
+    .bind(email)
+    .bind(display_name)
+    .fetch_optional(conn)
+    .await
 }

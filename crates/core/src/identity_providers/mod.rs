@@ -1,10 +1,15 @@
 //! What a company may declare as an identity provider (ADR-063), and what a
-//! provider's identity token must prove before an account is tied to it:
-//! the same rules wherever they are checked, without I/O.
+//! provider's identity token must prove before an account is tied to it,
+//! or created with the name it gives (ADR-067): the same rules wherever they
+//! are checked, without I/O.
+
+mod display_name;
 
 use std::collections::BTreeSet;
 
 use uuid::Uuid;
+
+pub use display_name::federated_display_name;
 
 /// Google's issuer, the same for every Workspace.
 pub const GOOGLE_ISSUER: &str = "https://accounts.google.com";
@@ -92,10 +97,39 @@ pub fn declared_issuer(
                     "OpenID Connect : l’adresse de l’émetteur suffit, sans annuaire".into(),
                 );
             }
-            issuer
-                .map(String::from)
-                .ok_or_else(|| "OpenID Connect : indiquez l’adresse de l’émetteur".into())
+            let issuer = issuer.ok_or("OpenID Connect : indiquez l’adresse de l’émetteur")?;
+            if let Some(kind) = issuer_own_kind(issuer) {
+                return Err(format!(
+                    "OpenID Connect : cet émetteur est celui de {kind}, choisissez ce type"
+                ));
+            }
+            Ok(issuer.into())
         }
+    }
+}
+
+/// The kind whose rules an issuer must follow, if it has one: a generic
+/// provider proves an address by `email_verified` alone, which a consumer
+/// Google account or another Microsoft directory would satisfy; their own
+/// kinds check the Workspace domain, or the directory's sign-in name. A
+/// generic provider declared with such an issuer before this rule creates
+/// no account (ADR-067).
+pub fn issuer_own_kind(issuer: &str) -> Option<&'static str> {
+    let issuer = issuer.trim_end_matches('/').to_ascii_lowercase();
+    // Microsoft's public cloud, and its national ones.
+    let microsoft = [
+        "https://login.microsoftonline.com/",
+        "https://sts.windows.net/",
+        "https://login.microsoftonline.us/",
+        "https://login.partner.microsoftonline.cn/",
+        "https://login.chinacloudapi.cn/",
+    ];
+    if issuer == GOOGLE_ISSUER {
+        Some("Google Workspace")
+    } else if microsoft.iter().any(|host| issuer.starts_with(host)) {
+        Some("Microsoft 365")
+    } else {
+        None
     }
 }
 
@@ -200,6 +234,11 @@ pub struct TokenClaims<'a> {
     pub oid: Option<&'a str>,
     /// Google: the account's Workspace domain.
     pub hosted_domain: Option<&'a str>,
+    /// The person's full name, and its parts, as the provider gives them:
+    /// the name of an account created at the first sign-in.
+    pub name: Option<&'a str>,
+    pub given_name: Option<&'a str>,
+    pub family_name: Option<&'a str>,
 }
 
 /// Who the provider proves the person is: its immutable subject, and the

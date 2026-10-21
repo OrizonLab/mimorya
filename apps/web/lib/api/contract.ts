@@ -359,7 +359,7 @@ export type IdentityProviderUpdate = { name?: string,
 /**
  * A new secret replaces the stored one.
  */
-clientSecret?: string, domains?: Array<string>, enabled?: boolean, required?: boolean, };
+clientSecret?: string, domains?: Array<string>, enabled?: boolean, required?: boolean, createAccounts?: boolean, };
 
 export type IdentityProviderView = { id: string,
 /**
@@ -374,7 +374,16 @@ domains: Array<string>, enabled: boolean,
  * Its domains' accounts sign in through it alone, but for the
  * company's administrators of its sign-in (ADR-066).
  */
-required: boolean, secretStored: boolean, createdAt: string, updatedAt: string, };
+required: boolean,
+/**
+ * It creates the account of a person of its domains at their first
+ * sign-in through the company's link (ADR-067).
+ */
+createAccounts: boolean,
+/**
+ * The company's sign-in link that names it, to hand out (ADR-067).
+ */
+signInLink: string, secretStored: boolean, createdAt: string, updatedAt: string, };
 
 /**
  * `GET /admin/identity-providers`.
@@ -637,7 +646,11 @@ enabled?: boolean,
 /**
  * Absent: not required (ADR-066).
  */
-required?: boolean, };
+required?: boolean,
+/**
+ * Absent: no account created (ADR-067).
+ */
+createAccounts?: boolean, };
 
 /**
  * Body of `POST /conversations/{id}/messages`.
@@ -954,6 +967,21 @@ export type SsoDiscovery = {
 provider: SsoProvider | null, };
 
 /**
+ * `POST /auth/sso/link`: the company the link signs in to, and its provider.
+ */
+export type SsoLink = { company: string, provider: SsoProvider,
+/**
+ * A first sign-in creates the account of a person of its domains.
+ */
+createsAccounts: boolean, };
+
+/**
+ * Body of `POST /auth/sso/link` and `POST /auth/sso/link/start`: the
+ * provider the company's sign-in link names.
+ */
+export type SsoLinkLookup = { provider: string, };
+
+/**
  * Body of `POST /auth/sso/discover` and `POST /auth/sso/start`.
  */
 export type SsoLookup = { email: string, };
@@ -977,7 +1005,8 @@ name: string,
 required: boolean, };
 
 /**
- * `POST /auth/sso/start`: where the browser goes to sign in.
+ * `POST /auth/sso/start` and `POST /auth/sso/link/start`: where the
+ * browser goes to sign in.
  */
 export type SsoStart = { redirectUrl: string, };
 

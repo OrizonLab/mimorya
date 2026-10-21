@@ -10,8 +10,9 @@ import { IdentityProviderForm } from './identity-provider-form';
 /**
  * The company's identity providers (ADR-063): its collaborators sign in
  * with the account they already have, offered by the sign-in page from
- * their address. No account is created: each must exist here; an invited
- * one is activated by its first sign-in there (ADR-064).
+ * their address; an invited one is activated by its first sign-in there
+ * (ADR-064). The company's sign-in link may also create the account at the
+ * first sign-in, when the provider is told to (ADR-067).
  */
 export function IdentityProvidersTab() {
   const state = useApiData<IdentityProvidersView>('/admin/identity-providers');
@@ -24,9 +25,11 @@ export function IdentityProvidersTab() {
             <p className="font-medium">Connexion par le fournisseur d’identité de l’entreprise</p>
             <p className="text-sm text-muted">
               Vos collaborateurs se connectent avec le compte qu’ils ont déjà (Microsoft 365, Google
-              Workspace…) : la page de connexion le leur propose d’après leur adresse e-mail. Leur
-              compte doit exister ici ; un compte invité s’active ainsi, sans choisir de mot de
-              passe. La connexion par mot de passe reste possible.
+              Workspace…) : la page de connexion le leur propose d’après leur adresse e-mail, et le
+              lien de connexion de l’entreprise sans qu’ils la saisissent. Un compte invité s’active
+              ainsi, sans choisir de mot de passe ; un fournisseur peut aussi créer le compte d’un
+              collaborateur à sa première connexion par ce lien. La connexion par mot de passe reste
+              possible.
             </p>
             <p className="text-sm">
               Adresse de retour à enregistrer chez le fournisseur : <code>{data.redirectUri}</code>

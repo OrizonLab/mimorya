@@ -1,9 +1,11 @@
 //! Signing in through the company's identity provider (ADR-063): whether
-//! an address may, and where to go.
+//! an address may, or which provider the company's sign-in link names
+//! (ADR-067), and where to go.
 
 use mimorya_core::accounts::EMAIL_MAX_LEN;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
+use uuid::Uuid;
 use validator::Validate;
 
 use crate::http::trimmed;
@@ -36,7 +38,26 @@ pub struct SsoDiscovery {
     pub provider: Option<SsoProvider>,
 }
 
-/// `POST /auth/sso/start`: where the browser goes to sign in.
+/// Body of `POST /auth/sso/link` and `POST /auth/sso/link/start`: the
+/// provider the company's sign-in link names.
+#[derive(Deserialize, Validate, TS)]
+#[serde(deny_unknown_fields)]
+pub struct SsoLinkLookup {
+    pub provider: Uuid,
+}
+
+/// `POST /auth/sso/link`: the company the link signs in to, and its provider.
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct SsoLink {
+    pub company: String,
+    pub provider: SsoProvider,
+    /// A first sign-in creates the account of a person of its domains.
+    pub creates_accounts: bool,
+}
+
+/// `POST /auth/sso/start` and `POST /auth/sso/link/start`: where the
+/// browser goes to sign in.
 #[derive(Debug, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct SsoStart {

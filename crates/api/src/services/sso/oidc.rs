@@ -119,11 +119,11 @@ pub fn authorization(
     metadata: CoreProviderMetadata,
     client_id: &str,
     redirect_uri: &str,
-    login_hint: &str,
+    login_hint: Option<&str>,
 ) -> Result<Authorization, Failure> {
     let client = client(metadata, client_id, None, redirect_uri)?;
     let (challenge, verifier) = PkceCodeChallenge::new_random_sha256();
-    let (url, state, nonce) = client
+    let mut request = client
         .authorize_url(
             CoreAuthenticationFlow::AuthorizationCode,
             CsrfToken::new_random,
@@ -131,9 +131,11 @@ pub fn authorization(
         )
         .add_scope(Scope::new("email".into()))
         .add_scope(Scope::new("profile".into()))
-        .set_pkce_challenge(challenge)
-        .set_login_hint(LoginHint::new(login_hint.into()))
-        .url();
+        .set_pkce_challenge(challenge);
+    if let Some(hint) = login_hint {
+        request = request.set_login_hint(LoginHint::new(hint.into()));
+    }
+    let (url, state, nonce) = request.url();
     Ok(Authorization {
         url: url.into(),
         state: state.into_secret(),
@@ -248,6 +250,15 @@ pub fn token_claims(claims: &VerifiedClaims) -> TokenClaims<'_> {
         preferred_username: claims.preferred_username().map(|u| u.as_str()),
         oid: extra.oid.as_deref(),
         hosted_domain: extra.hd.as_deref(),
+        name: claims.name().and_then(|n| n.get(None)).map(|n| n.as_str()),
+        given_name: claims
+            .given_name()
+            .and_then(|n| n.get(None))
+            .map(|n| n.as_str()),
+        family_name: claims
+            .family_name()
+            .and_then(|n| n.get(None))
+            .map(|n| n.as_str()),
         email_domain_verified: extra.xms_edov.as_ref().map(|value| {
             matches!(value, serde_json::Value::Bool(true))
                 || value.as_str() == Some("true")

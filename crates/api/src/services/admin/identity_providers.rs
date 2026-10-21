@@ -7,7 +7,7 @@ use mimorya_connectors::mcp::url_problem;
 use mimorya_core::DomainError;
 use mimorya_core::identity_providers::{
     ProviderKind, client_id_problem, client_secret_problem, declared_issuer, declared_name,
-    normalise_domains,
+    issuer_own_kind, normalise_domains,
 };
 use mimorya_db::Database;
 use mimorya_db::repositories::audit::append_audit;
@@ -37,6 +37,7 @@ pub struct ProviderDeclaration {
     pub domains: Vec<String>,
     pub enabled: bool,
     pub required: bool,
+    pub create_accounts: bool,
 }
 
 #[derive(Default)]
@@ -46,6 +47,7 @@ pub struct ProviderChanges {
     pub domains: Option<Vec<String>>,
     pub enabled: Option<bool>,
     pub required: Option<bool>,
+    pub create_accounts: Option<bool>,
 }
 
 fn invalid(problem: impl Into<String>) -> DomainError {
@@ -91,6 +93,7 @@ pub async fn declare_identity_provider(
             client_id: &input.client_id,
             enabled: input.enabled,
             required: input.required,
+            create_accounts: input.create_accounts,
             created_by_user_id: access.subject.user_id,
         },
     )
@@ -119,6 +122,7 @@ pub async fn declare_identity_provider(
             "domains": domains,
             "enabled": input.enabled,
             "required": input.required,
+            "createAccounts": input.create_accounts,
         })),
     )
     .await?;
@@ -162,6 +166,18 @@ pub async fn change_identity_provider(
         .await?
         .ok_or_else(|| DomainError::not_found(ABSENT))?;
     let kind = ProviderKind::parse(&current.kind).ok_or_else(|| anyhow::anyhow!("stored kind"))?;
+    // A generic provider declared with Google's or Microsoft's issuer before
+    // the declaration refused it proves too little to create accounts.
+    if changes.create_accounts == Some(true)
+        && kind == ProviderKind::Oidc
+        && let Some(own) = issuer_own_kind(&current.issuer)
+    {
+        return Err(invalid(format!(
+            "Ce fournisseur OpenID Connect a l’émetteur de {own} : déclarez-le avec ce type \
+             pour créer les comptes"
+        ))
+        .into());
+    }
     let name = changes
         .name
         .as_deref()
@@ -175,6 +191,7 @@ pub async fn change_identity_provider(
             name: name.clone(),
             enabled: changes.enabled,
             required: changes.required,
+            create_accounts: changes.create_accounts,
         },
     )
     .await?;
@@ -195,10 +212,12 @@ pub async fn change_identity_provider(
             "domains": domains,
             "enabled": changes.enabled,
             "required": changes.required,
+            "createAccounts": changes.create_accounts,
             "secretReplaced": changes.client_secret.is_some(),
             "previousDomains": current.domains,
             "previousEnabled": current.enabled,
             "previousRequired": current.required,
+            "previousCreateAccounts": current.create_accounts,
         })),
     )
     .await?;

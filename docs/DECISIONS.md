@@ -2318,7 +2318,8 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     entreprise en clair, fournisseur, `state`, `nonce` et vérificateur PKCE scellés par
     la clé maîtresse (AES-256-GCM, l'entreprise en données associées). Rien n'est écrit
     en base ; le code n'est échangeable qu'une fois chez le fournisseur ;
-  - **pas de création de compte** : le compte doit exister et être actif (ou invité :
+  - **pas de création de compte** (remplacé par ADR-067 : par le lien de l'entreprise, un
+    fournisseur peut créer le compte) : le compte doit exister et être actif (ou invité :
     ADR-064). La première
     connexion le relie à l'identité (`user_identities` : fournisseur, sujet immuable —
     `oid` pour Microsoft, qui survit à un changement d'application, `sub` sinon) par
@@ -2358,8 +2359,8 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - la connexion par mot de passe reste ouverte ; la rendre impossible pour les
     domaines couverts (fait : ADR-066), accepter une invitation par le fournisseur (fait :
     ADR-064), la
-    création de compte à la première connexion, SAML et la vérification de propriété
-    d'un domaine viendront ensuite ;
+    création de compte à la première connexion (fait : ADR-067), SAML et la vérification
+    de propriété d'un domaine viendront ensuite ;
   - lots : (1) modèle, connexion, configuration par l'API, tests contre un fournisseur
     simulé ; (2) onglet « Connexion » de l'administration (`settings:manage` : déclarer,
     modifier, désactiver, supprimer ; adresse de retour à enregistrer chez le
@@ -2543,3 +2544,67 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     `apps/web/e2e/single-sign-on.spec.ts` (case cochée dans « Connexion », relue après
     rechargement ; page de connexion réduite au fournisseur, mot de passe refusé à
     Nadia, accepté à Paul ; invitation sans mot de passe).
+
+## ADR-067 — Créer le compte à la première connexion par le lien de l'entreprise
+
+- **Date** : 2026-10-21 · **Statut** : acceptée
+- **Contexte** : une entreprise qui se connecte par Microsoft 365 (ADR-063) ne veut pas
+  inviter un à un ses collaborateurs : l'annuaire les connaît déjà. Mais les domaines
+  qu'elle déclare ne sont pas vérifiés (rien ne prouve qu'elle possède
+  `entreprise.fr`), et deux entreprises peuvent déclarer le même : créer un compte
+  d'après la seule adresse saisie sur la page de connexion enverrait la personne au
+  fournisseur de qui a déclaré son domaine, peut-être pas son entreprise.
+- **Décision** :
+  - un fournisseur peut **créer les comptes** (`identity_providers.create_accounts`,
+    migration 0020), à sa déclaration ou ensuite, par l'administration
+    (`settings:manage`, onglet « Connexion », tracé avec la valeur précédente) ;
+  - la création ne part jamais d'une adresse : chaque fournisseur a un **lien de
+    connexion de l'entreprise** (`/login/entreprise#<id du fournisseur>`, affiché et
+    copiable dans « Connexion ») que l'entreprise diffuse elle-même. La page lit le
+    fournisseur (`POST /api/auth/sso/link`, fonction `auth_find_identity_provider_link` :
+    actif, entreprise active ; autant par minute que les connexions) et affiche le nom de
+    l'entreprise et du fournisseur ; le départ (`POST /api/auth/sso/link/start`, compté
+    avec les connexions par fournisseur) n'indique aucune adresse au fournisseur ;
+  - la tentative scellée (ADR-063) garde l'origine de la connexion : au retour, le compte
+    est celui relié au sujet, sinon celui de l'entreprise ayant l'adresse garantie
+    (ADR-063) ; à défaut, si le fournisseur crée les comptes **et que la connexion est
+    partie du lien**, un compte est créé dans son entreprise : **actif,
+    sans mot de passe, sans rôle ni unité**, habilitation par défaut (`internal`), relié
+    au sujet. Son nom est celui que donne le jeton (`name`, sinon prénom et nom, sinon la
+    partie locale de l'adresse), sur une ligne visible : forme canonique, caractères
+    cachés retirés, espaces repliés, 120 caractères au plus. La création est tracée
+    (`user.created`, méthode `sso`, fournisseur) ;
+  - mêmes garde-fous qu'une liaison : adresse garantie par le fournisseur et dans un de
+    ses domaines ; une adresse déjà prise, dans cette entreprise ou une autre (unique
+    partout, ADR-011), n'est jamais reprise : refus tracé « Adresse déjà utilisée par un
+    autre compte », sans rien créer ni relier. Une connexion partie d'une adresse (page
+    de connexion, invitation) ne crée jamais de compte, même si la personne se connecte
+    chez le fournisseur sous une autre identité que celle suggérée : refus « Aucun compte
+    de l'entreprise pour cette adresse » ;
+  - le type « OpenID Connect » refuse les émetteurs de Google et de Microsoft : il ne
+    prouve une adresse que par `email_verified`, qu'un compte Google grand public ou un
+    autre annuaire satisferait ; leurs types propres vérifient le domaine Workspace ou le
+    nom de connexion de l'annuaire. Un fournisseur ainsi déclaré auparavant reste en
+    place (à redéclarer avec son type) mais ne peut pas créer les comptes ; les clouds
+    nationaux de Microsoft (`login.microsoftonline.us`, Chine) sont traités de même ;
+- **Conséquences** :
+  - un compte créé ne peut rien tant qu'un administrateur ne lui a pas donné de rôle ;
+    l'annuaire le montre comme tout autre compte, et il suit leurs règles : désactivation,
+    rétention, export et suppression des données personnelles (SECURITY §9, DATA_MODEL
+    §5) ; son nom vient de l'annuaire de l'entreprise, qui en est la source ;
+  - une connexion qui crée un compte ne le crée qu'une fois : deux connexions simultanées
+    de la même personne, la seconde est refusée (adresse prise) et la suivante aboutit ;
+  - la découverte par l'adresse ne crée rien : elle ne propose un fournisseur qu'à un
+    compte existant. La vérification de propriété d'un domaine (enregistrement DNS)
+    permettra plus tard de proposer la création depuis l'adresse ;
+  - le lien nomme l'entreprise : qui le reçoit d'un tiers voit chez qui il se connecte
+    avant d'aller chez le fournisseur ;
+  - tests : `crates/api/tests/sso_accounts.rs` (compte créé actif, sans mot de passe ni
+    rôle, nommé par le jeton, tracé, retrouvé à la connexion suivante, par le lien ou
+    l'adresse ; rien pour une connexion partie d'une adresse ; rien sans le réglage, puis créé une fois réglé, nommé par prénom et nom ; jamais hors des domaines,
+    sans adresse garantie ni sur l'adresse d'une autre entreprise ; lien d'un fournisseur
+    inconnu, désactivé ou d'une entreprise suspendue : 404 ; limites) ; règle du nom :
+    `crates/core/src/identity_providers/display_name.rs` ;
+    `apps/web/e2e/single-sign-on.spec.ts` (case cochée dans « Connexion », relue après
+    rechargement ; lien affiché, ouvert par un nouveau venu, compte créé à son nom et
+    relu dans l'annuaire).

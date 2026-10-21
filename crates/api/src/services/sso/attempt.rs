@@ -1,7 +1,8 @@
 //! A sign-in under way at a provider, kept by the browser until it comes
 //! back (ADR-063): the company in clear, then the provider, `state`,
-//! `nonce` and PKCE verifier sealed by the master key with the company as
-//! associated data, so that it opens only for it and cannot be altered.
+//! `nonce`, PKCE verifier and where the sign-in started sealed by the
+//! master key with the company as associated data, so that it opens only
+//! for it and cannot be altered.
 //! Nothing is written to the database; the code it awaits is redeemable
 //! once at the provider.
 
@@ -28,6 +29,10 @@ pub struct Attempt {
     pub nonce: String,
     pub pkce_verifier: String,
     pub expires_at: DateTime<Utc>,
+    /// Started from the company's sign-in link, the only start that may
+    /// create the account (ADR-067); not from an address.
+    #[serde(default)]
+    pub from_link: bool,
 }
 
 /// The cookie's value: `company.iv.tag.ciphertext`.
@@ -91,6 +96,7 @@ mod tests {
             nonce: "nonce".into(),
             pkce_verifier: "verifier".into(),
             expires_at: now + ATTEMPT_LIFETIME,
+            from_link: true,
         }
     }
 

@@ -6,6 +6,7 @@ import { api, useAction, type IdentityProviderUpdate, type IdentityProviderView 
 import { formatDate } from '@/lib/format';
 import { IDENTITY_PROVIDER_KINDS } from '@/lib/labels';
 import { IdentityProviderForm } from './identity-provider-form';
+import { SignInLink } from './sign-in-link';
 
 /** One identity provider: what it is, and what may change here. */
 export function IdentityProviderCard({
@@ -41,6 +42,7 @@ export function IdentityProviderCard({
         <p className="flex-1 font-medium">{provider.name}</p>
         <Badge>{IDENTITY_PROVIDER_KINDS[provider.kind] ?? provider.kind}</Badge>
         {provider.required && <Badge tone="accent">Obligatoire</Badge>}
+        {provider.createAccounts && <Badge tone="accent">Crée les comptes</Badge>}
         <Badge tone={provider.enabled ? 'ok' : 'neutral'}>
           {provider.enabled ? 'Actif' : 'Désactivé'}
         </Badge>
@@ -50,6 +52,9 @@ export function IdentityProviderCard({
         {provider.secretStored ? 'secret enregistré' : 'sans secret'}
       </p>
       <p className="text-sm">Domaines : {provider.domains.join(', ')}</p>
+      {provider.enabled && (
+        <SignInLink link={provider.signInLink} createsAccounts={provider.createAccounts} />
+      )}
       <p className="text-xs text-muted">Modifié le {formatDate(provider.updatedAt)}</p>
       {action.error && <ErrorNote message={action.error} />}
       <div className="flex flex-wrap gap-2">

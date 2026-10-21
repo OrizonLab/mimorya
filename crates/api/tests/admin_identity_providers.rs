@@ -138,6 +138,10 @@ async fn a_declaration_is_checked_before_anything_is_written() {
             "GUID",
         ),
         (with(json!({ "kind": "google" })), "Google : ni annuaire"),
+        (
+            with(json!({ "issuer": "https://accounts.google.com" })),
+            "celui de Google Workspace, choisissez ce type",
+        ),
         (with(json!({ "name": null })), "Donnez un nom"),
         (with(json!({ "domains": [] })), "de 1 à 20 domaines"),
         (with(json!({ "domains": ["neo"] })), "n’est pas un domaine"),

@@ -1,24 +1,23 @@
 //! The provider's return (ADR-063): the attempt the browser kept must match
 //! it; the code is exchanged and the identity token verified; the account
-//! is the one tied to the person's subject at this provider, or, at the
-//! first sign-in, the account of the company with the address the provider
-//! vouches for, in a declared domain, which gets tied. Active, or invited
-//! and then accepted (ADR-064), its session opens as with a password.
-//! Every refusal says why, for the audit.
+//! is found, tied or created (`account`). Active, or invited and then
+//! accepted (ADR-064), its session opens as with a password. Every refusal
+//! says why, for the audit.
 
 use axum::http::HeaderMap;
 use chrono::Utc;
-use mimorya_core::identity_providers::{ProviderKind, email_domain, proven_identity};
+use mimorya_core::identity_providers::{
+    ProvenIdentity, ProviderKind, federated_display_name, proven_identity,
+};
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::identity_providers::{IdentityProviderRow, get_identity_provider};
 use mimorya_db::repositories::tenants::tenant_status;
-use mimorya_db::repositories::user_identities::{
-    NewIdentity, find_identity, find_user_by_email, has_identity_at, link_identity, touch_identity,
-};
+use mimorya_db::repositories::user_identities::{NewIdentity, link_identity};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
+use super::account::account_of;
 use super::admission::{Admission, admit};
 use super::attempt::{self, Attempt};
 use super::oidc::{self, Application, Unverified};
@@ -47,7 +46,7 @@ pub struct SignInFailure {
 }
 
 impl SignInFailure {
-    fn at(tenant_id: Uuid, provider_id: Uuid, reason: impl Into<String>) -> Self {
+    pub(super) fn at(tenant_id: Uuid, provider_id: Uuid, reason: impl Into<String>) -> Self {
         Self {
             tenant_id: Some(tenant_id),
             provider_id: Some(provider_id),
@@ -56,13 +55,17 @@ impl SignInFailure {
         }
     }
 
-    fn of(mut self, user_id: Uuid) -> Self {
+    pub(super) fn of(mut self, user_id: Uuid) -> Self {
         self.user_id = Some(user_id);
         self
     }
 
     /// The database failing: still a refusal for the browser.
-    fn internal(tenant_id: Uuid, provider_id: Uuid, error: impl std::fmt::Display) -> Self {
+    pub(super) fn internal(
+        tenant_id: Uuid,
+        provider_id: Uuid,
+        error: impl std::fmt::Display,
+    ) -> Self {
         tracing::error!(error = %error, "Single sign-on failed");
         Self::at(tenant_id, provider_id, "Erreur interne")
     }
@@ -95,6 +98,7 @@ impl SsoService {
             .and_then(|value| attempt::open(cipher, value, Utc::now()))
             .ok_or_else(unknown)?;
         let provider_id = attempt.provider_id;
+        let from_link = attempt.from_link;
         let at = |reason: &str| SignInFailure::at(tenant_id, provider_id, reason);
         // Another attempt's return, a sign-in forced from elsewhere: the
         // state comes back with a refusal too (RFC 6749, 4.1.2.1).
@@ -115,9 +119,17 @@ impl SsoService {
             .await
             .map_err(|failure| at(&failure))?;
         let kind = ProviderKind::parse(&provider.kind).ok_or_else(|| at("Type inconnu"))?;
-        let proven =
-            proven_identity(kind, &oidc::token_claims(&claims), &provider.domains).map_err(at)?;
-        self.open(&provider, proven, context, headers).await
+        let said = oidc::token_claims(&claims);
+        let proven = proven_identity(kind, &said, &provider.domains).map_err(at)?;
+        // The account's name, should this sign-in create it: started from
+        // the company's link, never from an address (ADR-067).
+        let name = proven
+            .email
+            .as_deref()
+            .filter(|_| from_link)
+            .map(|email| federated_display_name(&said, email));
+        self.open(&provider, proven, name.as_deref(), context, headers)
+            .await
     }
 
     /// The provider, enabled, and its client secret.
@@ -186,11 +198,13 @@ impl SsoService {
         }
     }
 
-    /// Finds or ties the account, checks it may sign in, opens its session.
+    /// Finds, ties or creates the account, checks it may sign in, opens its
+    /// session.
     async fn open(
         &self,
         provider: &IdentityProviderRow,
-        proven: mimorya_core::identity_providers::ProvenIdentity,
+        proven: ProvenIdentity,
+        name: Option<&str>,
         context: &RequestContext,
         headers: &HeaderMap,
     ) -> Outcome<String> {
@@ -208,46 +222,22 @@ impl SsoService {
             return Err(at("Entreprise suspendue"));
         }
         let mut audit = Vec::new();
-        let (user_id, linked) = match find_identity(&mut tx, provider_id, &proven.subject)
-            .await
-            .map_err(|e| internal(&e))?
-        {
-            Some(linked) => {
-                touch_identity(&mut tx, linked.id)
-                    .await
-                    .map_err(|e| internal(&e))?;
-                (linked.user_id, true)
-            }
-            None => {
-                let email = proven
-                    .email
-                    .as_deref()
-                    .ok_or_else(|| at("Adresse e-mail non garantie par le fournisseur"))?;
-                if !email_domain(email).is_some_and(|d| provider.domains.contains(&d)) {
-                    return Err(at("Adresse hors des domaines du fournisseur"));
-                }
-                let user_id = find_user_by_email(&mut tx, email)
-                    .await
-                    .map_err(|e| internal(&e))?
-                    .ok_or_else(|| at("Aucun compte de l’entreprise pour cette adresse"))?;
-                if has_identity_at(&mut tx, provider_id, user_id)
-                    .await
-                    .map_err(|e| internal(&e))?
-                {
-                    return Err(
-                        at("Compte déjà relié à une autre identité de ce fournisseur").of(user_id),
-                    );
-                }
-                (user_id, false)
-            }
-        };
+        let account = account_of(&mut tx, provider, &proven, name).await?;
+        let user_id = account.user_id;
+        if account.created {
+            audit.push(
+                AuditEntry::new(tenant_id, "user", "user.created", "success")
+                    .resource("user", user_id)
+                    .metadata(json!({ "method": "sso", "providerId": provider_id })),
+            );
+        }
         // The account's row first, as a password or an invitation's link
         // takes it: an acceptance, a resend or a disabling meanwhile waits.
         let admission = admit(&mut tx, user_id)
             .await
             .map_err(|e| internal(&e))?
             .ok_or_else(|| at("Compte inactif").of(user_id))?;
-        if !linked {
+        if !account.tied {
             link_identity(
                 &mut tx,
                 NewIdentity {

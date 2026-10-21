@@ -128,12 +128,20 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
     (clés, point d'échange, adresse d'autorisation) est contrôlée comme son émetteur
     avant la connexion : `https`, adresse IP en clair publique (pas de SSRF vers le
     réseau de l'exploitant).
-  - Pas de création de compte : la première connexion relie un compte existant au
+  - La première connexion relie un compte existant au
     sujet immuable du fournisseur (`oid` pour Microsoft), seulement par une adresse que
     le fournisseur garantit (Microsoft : le nom de connexion, ou `email` avec
     `xms_edov`), dans un domaine déclaré ; ensuite, seul le sujet compte. Un compte
     invité accepte ainsi son invitation : actif sans mot de passe, son lien supprimé ;
     désactivé puis réactivé, il reste actif (ADR-064).
+    Création de compte (ADR-067) : seulement si le fournisseur y est autorisé et
+    seulement pour une connexion partie du lien de connexion de l'entreprise, qui nomme le
+    fournisseur (origine scellée dans la tentative), jamais d'après une adresse (les
+    domaines déclarés ne sont pas vérifiés et peuvent l'être par deux entreprises) ; mêmes conditions d'adresse qu'une liaison ; le compte est actif,
+    sans mot de passe, sans rôle ni unité, son nom nettoyé des caractères cachés ; une
+    adresse déjà prise, dans une autre entreprise comprise, n'est jamais reprise. Le type
+    générique OpenID Connect refuse les émetteurs de Google et de Microsoft, dont les
+    types propres vérifient le domaine Workspace ou le nom de connexion de l'annuaire.
     La session s'ouvre comme pour un mot de passe ; chaque refus est tracé avec sa
     raison dans l'entreprise de la tentative, jamais un jeton ni un code.
   - Fournisseur **obligatoire** pour ses domaines (ADR-066) : leurs comptes ne se
