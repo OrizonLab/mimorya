@@ -148,7 +148,16 @@ pub fn location(response: &TestResponse) -> &str {
 
 /// The session the return opened; it also clears the attempt.
 pub fn session(response: &TestResponse) -> Option<String> {
-    let cleared = set_cookie(response, "mimorya_sso").expect("attempt cleared");
+    session_clearing(response, "mimorya_sso")
+}
+
+/// The session a SAML return opened; it also clears its attempt.
+pub fn saml_session(response: &TestResponse) -> Option<String> {
+    session_clearing(response, "mimorya_saml")
+}
+
+fn session_clearing(response: &TestResponse, attempt: &str) -> Option<String> {
+    let cleared = set_cookie(response, attempt).expect("attempt cleared");
     assert!(cleared.contains("Max-Age=0"), "{cleared}");
     set_cookie(response, "mimorya_session").map(|cookie| {
         cookie
@@ -163,6 +172,12 @@ pub fn session(response: &TestResponse) -> Option<String> {
 pub fn assert_refused(response: &TestResponse) {
     assert_eq!(location(response), REFUSED);
     assert_eq!(session(response), None);
+}
+
+/// A refused SAML return: back to the sign-in page, no session.
+pub fn assert_saml_refused(response: &TestResponse) {
+    assert_eq!(location(response), REFUSED);
+    assert_eq!(saml_session(response), None);
 }
 
 /// The single sign-on attempts audited in a company after `since`:
@@ -227,4 +242,52 @@ pub async fn audit_text_since(api: &TestApi, tenant_id: Uuid, since: i64) -> Str
             .await
             .unwrap();
     format!("{rows:?}")
+}
+
+/// A SAML provider of the demo company's domain (ADR-068).
+pub fn saml_declaration(metadata: &str) -> Value {
+    json!({
+        "kind": "saml",
+        "name": "Annuaire SAML",
+        "metadata": metadata,
+        "domains": [DOMAIN],
+    })
+}
+
+/// This application's SAML metadata, as a provider imports it.
+pub async fn saml_sp_metadata(api: &TestApi) -> String {
+    let read = api
+        .send(
+            Request::get("/auth/saml/metadata")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await;
+    assert_eq!(read.status, StatusCode::OK, "{}", read.text());
+    read.text()
+}
+
+/// The provider's response posted back, with this attempt's cookie.
+pub async fn post_saml(api: &TestApi, response: &str, cookie: Option<&str>) -> TestResponse {
+    let body = url::form_urlencoded::Serializer::new(String::new())
+        .append_pair("SAMLResponse", response)
+        .finish();
+    // From the provider's site: none of this application's headers.
+    let mut request = Request::post("/auth/saml/acs")
+        .header("content-type", "application/x-www-form-urlencoded")
+        .header("origin", "https://idp.saml.example");
+    if let Some(cookie) = cookie {
+        request = request.header("cookie", cookie);
+    }
+    api.send(request.body(Body::from(body)).unwrap()).await
+}
+
+/// The SAML attempt's cookie (`name=value`) set by a start.
+pub fn saml_attempt(started: &TestResponse) -> (String, String) {
+    assert_eq!(started.status, StatusCode::OK, "{}", started.text());
+    let cookie = set_cookie(started, "mimorya_saml").expect("SAML attempt cookie");
+    assert!(cookie.contains("Path=/api/auth/saml") && cookie.contains("SameSite=None; Secure"));
+    let pair = cookie.split(';').next().unwrap().to_string();
+    let url = started.json()["redirectUrl"].as_str().unwrap().to_string();
+    (url, pair)
 }

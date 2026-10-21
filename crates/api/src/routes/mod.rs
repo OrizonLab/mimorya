@@ -17,6 +17,7 @@ mod memory;
 mod password_reset;
 mod run_events;
 mod runs;
+mod saml;
 mod sso;
 
 use axum::Router;
@@ -25,11 +26,14 @@ use mimorya_core::DomainError;
 use crate::app::AppState;
 use crate::http::ApiError;
 
+pub use saml::ACS_ROUTE as SAML_ACS_ROUTE;
+
 pub fn router(state: &AppState) -> Router<AppState> {
     Router::new()
         .merge(health::routes())
         .merge(auth::routes())
         .merge(sso::routes())
+        .merge(saml::routes())
         .merge(invitations::routes())
         .merge(password_reset::routes())
         .merge(account::routes())

@@ -356,6 +356,7 @@ async fn a_generic_provider_with_google_s_issuer_creates_no_account() {
             enabled: true,
             required: false,
             create_accounts: false,
+            saml_metadata: None,
             created_by_user_id: user::PAUL,
         },
     )

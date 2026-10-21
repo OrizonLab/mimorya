@@ -225,6 +225,8 @@ const OTHER_ROUTES: &[(&str, &str)] = &[
     ("POST", "/auth/sso/link"),
     ("POST", "/auth/sso/link/start"),
     ("GET", "/auth/sso/callback"),
+    ("GET", "/auth/saml/metadata"),
+    ("POST", "/auth/saml/acs"),
     ("GET", "/auth/me"),
     ("POST", "/account/password"),
 ];

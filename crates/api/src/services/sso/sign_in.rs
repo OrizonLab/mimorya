@@ -71,7 +71,7 @@ impl SignInFailure {
     }
 }
 
-type Outcome<T> = Result<T, SignInFailure>;
+pub(super) type Outcome<T> = Result<T, SignInFailure>;
 
 /// Same length, compared whole: the state never leaks by timing.
 fn same_state(a: &str, b: &str) -> bool {
@@ -99,6 +99,10 @@ impl SsoService {
             .ok_or_else(unknown)?;
         let provider_id = attempt.provider_id;
         let from_link = attempt.from_link;
+        // A SAML attempt awaits its provider's posted response.
+        if attempt.saml.is_some() {
+            return Err(SignInFailure::at(tenant_id, provider_id, "Tentative SAML"));
+        }
         let at = |reason: &str| SignInFailure::at(tenant_id, provider_id, reason);
         // Another attempt's return, a sign-in forced from elsewhere: the
         // state comes back with a refusal too (RFC 6749, 4.1.2.1).
@@ -144,7 +148,7 @@ impl SsoService {
         let provider = get_identity_provider(&mut tx, provider_id)
             .await
             .map_err(|e| internal(&e))?
-            .filter(|p| p.enabled)
+            .filter(|p| p.enabled && p.saml_metadata.is_none())
             .ok_or_else(|| {
                 SignInFailure::at(tenant_id, provider_id, "Fournisseur retiré ou désactivé")
             })?;
@@ -200,7 +204,7 @@ impl SsoService {
 
     /// Finds, ties or creates the account, checks it may sign in, opens its
     /// session.
-    async fn open(
+    pub(super) async fn open(
         &self,
         provider: &IdentityProviderRow,
         proven: ProvenIdentity,

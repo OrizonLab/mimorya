@@ -22,6 +22,7 @@ mod link_sender;
 mod llm;
 mod org_units;
 mod policies;
+mod provider_designation;
 mod reset_links;
 mod roles;
 mod skills;

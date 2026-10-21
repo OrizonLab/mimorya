@@ -21,12 +21,12 @@ use crate::http::{ApiError, ApiResult, Body};
 use crate::plugins::RequestContext;
 use crate::services::sso::{
     ATTEMPT_COOKIE, Return, SignInFailure, Started, attempt_cookie, cleared_attempt_cookie,
-    link_unknown,
+    link_unknown, saml_attempt_cookie,
 };
 
 /// Where the browser lands, signed in or refused.
-const SIGNED_IN: &str = "/chat";
-const REFUSED: &str = "/login?sso=echec";
+pub(super) const SIGNED_IN: &str = "/chat";
+pub(super) const REFUSED: &str = "/login?sso=echec";
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -123,9 +123,14 @@ async fn start_link(
     Ok(sent_away(&state, started))
 }
 
-/// The provider's address, the attempt kept by the browser.
+/// The provider's address, the attempt kept by the browser: for a SAML
+/// provider, in the cookie its posted response carries back (ADR-068).
 fn sent_away(state: &AppState, started: Started) -> impl IntoResponse + use<> {
-    let cookie = attempt_cookie(&started.attempt, state.config.secure_cookies);
+    let cookie = if started.saml {
+        saml_attempt_cookie(&started.attempt)
+    } else {
+        attempt_cookie(&started.attempt, state.config.secure_cookies)
+    };
     (
         AppendHeaders([(SET_COOKIE, cookie)]),
         Json(SsoStart {
@@ -185,7 +190,11 @@ async fn callback(
 }
 
 /// In the company the attempt was for, when known; never a token nor a code.
-async fn record_refusal(state: &AppState, context: &RequestContext, failure: SignInFailure) {
+pub(super) async fn record_refusal(
+    state: &AppState,
+    context: &RequestContext,
+    failure: SignInFailure,
+) {
     let Some(tenant_id) = failure.tenant_id else {
         tracing::info!(reason = %failure.reason, "Single sign-on refused");
         return;

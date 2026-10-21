@@ -69,7 +69,8 @@ fn each_kind_designates_its_issuer() {
             "{kind:?} {directory:?} {issuer:?}"
         );
     }
-    assert_eq!(ProviderKind::parse("saml"), None);
+    assert_eq!(ProviderKind::parse("saml"), Some(ProviderKind::Saml));
+    assert_eq!(ProviderKind::parse("ldap"), None);
     for kind in ["microsoft", "google", "oidc"] {
         assert_eq!(ProviderKind::parse(kind).unwrap().as_str(), kind);
     }
@@ -259,4 +260,77 @@ fn a_generic_provider_vouches_only_for_verified_addresses() {
         ..claims
     };
     assert!(proven_identity(ProviderKind::Oidc, &nobody, &domains()).is_err());
+}
+
+#[test]
+fn a_saml_provider_is_designated_by_its_entity_id() {
+    let entity = "https://sts.windows.net/72f988bf-86f1-41af-91ab-2d7cd011db47/";
+    assert_eq!(
+        declared_issuer(ProviderKind::Saml, None, Some(entity)).unwrap(),
+        entity
+    );
+    // Not an address: any identifier, Microsoft's own included.
+    assert_eq!(
+        declared_issuer(ProviderKind::Saml, None, Some("urn:neo:idp")).unwrap(),
+        "urn:neo:idp"
+    );
+    for (directory, issuer) in [
+        (None, None),
+        (Some(DIRECTORY), Some("urn:neo:idp")),
+        (None, Some("")),
+        (None, Some("urn:neo idp")),
+        (None, Some(&*"u".repeat(1025))),
+    ] {
+        assert!(
+            declared_issuer(ProviderKind::Saml, directory, issuer).is_err(),
+            "{directory:?} {issuer:?}"
+        );
+    }
+    assert!(declared_name(ProviderKind::Saml, None).is_err());
+}
+
+#[test]
+fn a_saml_assertion_proves_its_subject_s_address() {
+    // Entra ID: the sign-in name as subject, the object ID beside it.
+    let claims = TokenClaims {
+        subject: "Nadia.Benali@neo-maintenance.example",
+        preferred_username: Some("Nadia.Benali@neo-maintenance.example"),
+        email: Some("autre@neo-maintenance.example"),
+        oid: Some("00000000-0000-0000-0000-0000000000aa"),
+        ..TokenClaims::default()
+    };
+    assert_eq!(
+        proven_identity(ProviderKind::Saml, &claims, &domains()).unwrap(),
+        ProvenIdentity {
+            subject: "00000000-0000-0000-0000-0000000000aa".into(),
+            email: Some("nadia.benali@neo-maintenance.example".into()),
+        }
+    );
+    // A persistent identifier as subject: its e-mail attribute.
+    let persistent = TokenClaims {
+        subject: "a1b2c3",
+        preferred_username: Some("a1b2c3"),
+        email: Some("Nadia@neo-maintenance.example"),
+        oid: None,
+        ..TokenClaims::default()
+    };
+    assert_eq!(
+        proven_identity(ProviderKind::Saml, &persistent, &domains()).unwrap(),
+        ProvenIdentity {
+            subject: "a1b2c3".into(),
+            email: Some("nadia@neo-maintenance.example".into()),
+        }
+    );
+    let nothing = TokenClaims {
+        email: None,
+        ..persistent
+    };
+    assert_eq!(
+        proven_identity(ProviderKind::Saml, &nothing, &domains())
+            .unwrap()
+            .email,
+        None
+    );
+    let empty = TokenClaims::default();
+    assert!(proven_identity(ProviderKind::Saml, &empty, &domains()).is_err());
 }

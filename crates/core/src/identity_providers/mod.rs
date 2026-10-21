@@ -1,7 +1,7 @@
-//! What a company may declare as an identity provider (ADR-063), and what a
-//! provider's identity token must prove before an account is tied to it,
-//! or created with the name it gives (ADR-067): the same rules wherever they
-//! are checked, without I/O.
+//! What a company may declare as an identity provider (ADR-063, SAML:
+//! ADR-068), and what a provider's identity token or assertion must prove
+//! before an account is tied to it, or created with the name it gives
+//! (ADR-067): the same rules wherever they are checked, without I/O.
 
 mod display_name;
 
@@ -20,6 +20,10 @@ pub const CLIENT_ID_MAX_CHARS: usize = 255;
 pub const CLIENT_SECRET_MAX_CHARS: usize = 1024;
 /// Most e-mail domains one provider covers.
 pub const MAX_DOMAINS: usize = 20;
+/// Longest SAML entity ID, in characters.
+pub const ENTITY_ID_MAX_CHARS: usize = 1024;
+/// Heaviest SAML metadata a company declares, in bytes.
+pub const SAML_METADATA_MAX_BYTES: usize = 256 * 1024;
 const DOMAIN_MAX_LEN: usize = 253;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,6 +34,8 @@ pub enum ProviderKind {
     Google,
     /// Any OpenID Connect provider (Okta, Keycloak…).
     Oidc,
+    /// Any SAML 2.0 provider (Entra ID, AD FS, Okta…), from its metadata.
+    Saml,
 }
 
 impl ProviderKind {
@@ -38,6 +44,7 @@ impl ProviderKind {
             "microsoft" => Some(Self::Microsoft),
             "google" => Some(Self::Google),
             "oidc" => Some(Self::Oidc),
+            "saml" => Some(Self::Saml),
             _ => None,
         }
     }
@@ -47,6 +54,7 @@ impl ProviderKind {
             Self::Microsoft => "microsoft",
             Self::Google => "google",
             Self::Oidc => "oidc",
+            Self::Saml => "saml",
         }
     }
 
@@ -55,7 +63,7 @@ impl ProviderKind {
         match self {
             Self::Microsoft => Some("Microsoft 365"),
             Self::Google => Some("Google Workspace"),
-            Self::Oidc => None,
+            Self::Oidc | Self::Saml => None,
         }
     }
 }
@@ -104,6 +112,28 @@ pub fn declared_issuer(
                 ));
             }
             Ok(issuer.into())
+        }
+        // The entity ID its metadata declares, which the server reads: an
+        // identifier, not an address to reach.
+        ProviderKind::Saml => {
+            if directory_id.is_some() {
+                return Err(
+                    "SAML : les métadonnées du fournisseur suffisent, sans annuaire".into(),
+                );
+            }
+            let entity_id = issuer.ok_or("SAML : métadonnées sans identifiant d’entité")?;
+            let chars = entity_id.chars().count();
+            if !(1..=ENTITY_ID_MAX_CHARS).contains(&chars)
+                || entity_id
+                    .chars()
+                    .any(|c| c.is_whitespace() || c.is_control())
+            {
+                return Err(format!(
+                    "SAML : l’identifiant d’entité compte de 1 à {ENTITY_ID_MAX_CHARS} \
+                     caractères, sans espace"
+                ));
+            }
+            Ok(entity_id.into())
         }
     }
 }
@@ -219,7 +249,9 @@ pub fn email_domain(email: &str) -> Option<String> {
         .filter(|domain| !domain.is_empty())
 }
 
-/// What a verified identity token says, for the rules below.
+/// What a verified identity token says, for the rules below; for SAML,
+/// what a verified assertion says: its subject's NameID as `subject` and
+/// `preferred_username`, its attributes in the other fields.
 #[derive(Debug, Default, Clone)]
 pub struct TokenClaims<'a> {
     pub subject: &'a str,
@@ -285,6 +317,17 @@ pub fn proven_identity(
             (claims.subject, claims.email.filter(|_| verified))
         }
         ProviderKind::Oidc => (claims.subject, claims.email.filter(|_| verified)),
+        // An assertion its provider signed (ADR-068): the address its
+        // subject is (Entra ID: the sign-in name), else its e-mail
+        // attribute. Entra ID's object ID, when given, outlives a change of
+        // the subject's format.
+        ProviderKind::Saml => (
+            claims.oid.unwrap_or(claims.subject),
+            claims
+                .preferred_username
+                .filter(|u| u.contains('@'))
+                .or(claims.email),
+        ),
     };
     if subject.is_empty() {
         return Err("Jeton sans identifiant de la personne");

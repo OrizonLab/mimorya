@@ -18,28 +18,34 @@ mod http;
 mod metadata;
 mod oidc;
 mod requirement;
+mod saml;
+mod saml_return;
 mod sign_in;
+mod start;
 
-pub use attempt::{ATTEMPT_COOKIE, attempt_cookie, cleared_attempt_cookie};
+pub use attempt::{
+    ATTEMPT_COOKIE, SAML_ATTEMPT_COOKIE, attempt_cookie, cleared_attempt_cookie,
+    cleared_saml_attempt_cookie, saml_attempt_cookie,
+};
 pub use requirement::{SIGN_IN_ADMINISTRATOR, required_provider};
+pub use saml::summary as saml_summary;
+pub use saml_return::SamlReturn;
 pub use sign_in::{Return, SignInFailure};
 
 use std::sync::Arc;
 use std::time::Instant;
 
-use chrono::Utc;
 use mimorya_connectors::mcp::NetworkPolicy;
 use mimorya_core::DomainError;
 use mimorya_db::Database;
 use mimorya_db::repositories::identity_providers::{
-    ProviderLink, ProviderLookup, find_identity_provider, find_provider_link, get_identity_provider,
+    ProviderLink, ProviderLookup, find_identity_provider, find_provider_link,
 };
 use openidconnect::core::CoreProviderMetadata;
 use uuid::Uuid;
 
 use crate::secrets::{SecretCipher, SecretStore};
 use address::address_problem;
-use attempt::{ATTEMPT_LIFETIME, Attempt};
 use http::ProviderHttp;
 use metadata::MetadataCache;
 
@@ -48,6 +54,10 @@ pub const CALLBACK_PATH: &str = "/api/auth/sso/callback";
 /// The page of a company's sign-in link, the provider's id in its fragment
 /// (ADR-067).
 pub const LINK_PAGE: &str = "/login/entreprise";
+/// This application's entity ID at SAML providers, where its metadata is
+/// read, and where they post their responses (ADR-068).
+pub const SAML_METADATA_PATH: &str = "/api/auth/saml/metadata";
+pub const SAML_ACS_PATH: &str = "/api/auth/saml/acs";
 
 /// The name of a provider's client secret in the company's secret store.
 pub fn client_secret_name(provider_id: Uuid) -> String {
@@ -60,10 +70,12 @@ pub fn link_unknown() -> DomainError {
 }
 
 /// A sign-in sent to its provider: where the browser goes, and the
-/// attempt's cookie value.
+/// attempt's cookie value, for a SAML provider's return or an OpenID
+/// Connect one's.
 pub struct Started {
     pub redirect_url: String,
     pub attempt: String,
+    pub saml: bool,
 }
 
 pub struct SsoService {
@@ -74,6 +86,8 @@ pub struct SsoService {
     network: NetworkPolicy,
     redirect_uri: String,
     link_page: String,
+    saml_entity_id: String,
+    saml_acs_url: String,
     /// The providers' declarations and keys, kept an hour (ADR-065).
     declarations: MetadataCache<CoreProviderMetadata>,
 }
@@ -111,6 +125,8 @@ impl SsoService {
             network,
             redirect_uri: format!("{web_origin}{CALLBACK_PATH}"),
             link_page: format!("{web_origin}{LINK_PAGE}"),
+            saml_entity_id: format!("{web_origin}{SAML_METADATA_PATH}"),
+            saml_acs_url: format!("{web_origin}{SAML_ACS_PATH}"),
             declarations: MetadataCache::default(),
         })
     }
@@ -127,6 +143,31 @@ impl SsoService {
 
     pub fn network(&self) -> NetworkPolicy {
         self.network
+    }
+
+    /// This application's entity ID at SAML providers, and where they post
+    /// their responses (ADR-068).
+    pub fn saml_entity_id(&self) -> &str {
+        &self.saml_entity_id
+    }
+
+    pub fn saml_acs_url(&self) -> &str {
+        &self.saml_acs_url
+    }
+
+    /// This application's SAML metadata, for providers to import.
+    pub fn saml_metadata(&self) -> anyhow::Result<String> {
+        let application = saml::ServiceProvider {
+            entity_id: &self.saml_entity_id,
+            acs_url: &self.saml_acs_url,
+        };
+        saml::sp_metadata(&application).map_err(anyhow::Error::msg)
+    }
+
+    /// Why the browser may not be sent to this address of a provider (in
+    /// French), if it may not.
+    pub fn browser_address_problem(&self, address: &str) -> Option<String> {
+        address_problem(address, self.network)
     }
 
     /// The provider the sign-in page offers for this address, if any.
@@ -162,67 +203,6 @@ impl SsoService {
         let found = self.link(provider_id).await?.ok_or_else(link_unknown)?;
         let started = self.start_at(found.tenant_id, provider_id, None).await?;
         Ok(started.ok_or_else(link_unknown)?)
-    }
-
-    /// `None` when the provider no longer serves. The address, when the
-    /// sign-in starts from one, is suggested to the provider; else it starts
-    /// from the company's link, and may create the account (ADR-067).
-    async fn start_at(
-        &self,
-        tenant_id: Uuid,
-        provider_id: Uuid,
-        login_hint: Option<&str>,
-    ) -> anyhow::Result<Option<Started>> {
-        let Some(cipher) = self.cipher.as_deref() else {
-            return Ok(None);
-        };
-        let mut tx = self.db.begin(tenant_id).await?;
-        let provider = get_identity_provider(&mut tx, provider_id)
-            .await?
-            .filter(|p| p.enabled);
-        tx.commit().await?;
-        let Some(provider) = provider else {
-            return Ok(None);
-        };
-        let unusable = |failure: String| {
-            tracing::warn!(
-                provider_id = %provider.id,
-                failure = %failure,
-                "Identity provider unusable"
-            );
-            DomainError::unavailable(
-                "Le fournisseur d’identité ne répond pas : réessayez, ou connectez-vous \
-                 par mot de passe",
-            )
-        };
-        let metadata = self
-            .declaration(provider.id, &provider.issuer)
-            .await
-            .map_err(unusable)?
-            .metadata;
-        let authorization = oidc::authorization(
-            metadata,
-            &provider.client_id,
-            &self.redirect_uri,
-            login_hint,
-        )
-        .map_err(unusable)?;
-        // Where the browser is sent, as the provider declares it.
-        if let Some(problem) = address_problem(&authorization.url, self.network) {
-            return Err(unusable(format!("adresse d’autorisation : {problem}")).into());
-        }
-        let attempt = Attempt {
-            provider_id: provider.id,
-            state: authorization.state,
-            nonce: authorization.nonce,
-            pkce_verifier: authorization.pkce_verifier,
-            expires_at: Utc::now() + ATTEMPT_LIFETIME,
-            from_link: login_hint.is_none(),
-        };
-        Ok(Some(Started {
-            redirect_url: authorization.url,
-            attempt: attempt::seal(cipher, provider.tenant_id, &attempt)?,
-        }))
     }
 
     /// Why the issuer cannot serve sign-ins, if it cannot (in French): its

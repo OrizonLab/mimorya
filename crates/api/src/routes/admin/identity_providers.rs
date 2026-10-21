@@ -46,6 +46,8 @@ pub async fn list(
     Ok(Json(IdentityProvidersView {
         secrets_available: store.available(),
         redirect_uri: state.sso.redirect_uri().into(),
+        saml_entity_id: state.sso.saml_entity_id().into(),
+        saml_acs_url: state.sso.saml_acs_url().into(),
         providers,
     }))
 }
@@ -63,6 +65,7 @@ pub async fn create(
         issuer: body.issuer,
         client_id: body.client_id,
         client_secret: body.client_secret,
+        metadata: body.metadata,
         domains: body.domains,
         enabled: body.enabled.unwrap_or(true),
         required: body.required.unwrap_or(false),
@@ -89,12 +92,21 @@ pub async fn update(
     let changes = ProviderChanges {
         name: body.name,
         client_secret: body.client_secret,
+        metadata: body.metadata,
         domains: body.domains,
         enabled: body.enabled,
         required: body.required,
         create_accounts: body.create_accounts,
     };
-    change_identity_provider(&state.db, &secrets(&state), &access, id, changes).await?;
+    change_identity_provider(
+        &state.db,
+        &state.sso,
+        &secrets(&state),
+        &access,
+        id,
+        changes,
+    )
+    .await?;
     Ok(Json(Done::OK))
 }
 

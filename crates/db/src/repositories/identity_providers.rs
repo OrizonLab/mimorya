@@ -22,6 +22,8 @@ pub struct IdentityProviderRow {
     /// It creates the account of a person of its domains at their first
     /// sign-in through the company's link (ADR-067).
     pub create_accounts: bool,
+    /// SAML (ADR-068): the provider's metadata, as declared.
+    pub saml_metadata: Option<String>,
     /// In byte order, whatever the database's collation.
     pub domains: Vec<String>,
     pub created_at: DateTime<Utc>,
@@ -29,7 +31,7 @@ pub struct IdentityProviderRow {
 }
 
 const SELECT: &str = "select p.id, p.tenant_id, p.kind, p.name, p.issuer, p.client_id, \
-    p.enabled, p.required, p.create_accounts, coalesce(array(select d.domain::text from identity_provider_domains d \
+    p.enabled, p.required, p.create_accounts, p.saml_metadata, coalesce(array(select d.domain::text from identity_provider_domains d \
     where d.provider_id = p.id order by d.domain::text collate \"C\"), '{}') as domains, \
     p.created_at, p.updated_at \
     from identity_providers p";
@@ -61,6 +63,7 @@ pub struct NewIdentityProvider<'a> {
     pub enabled: bool,
     pub required: bool,
     pub create_accounts: bool,
+    pub saml_metadata: Option<&'a str>,
     pub created_by_user_id: Uuid,
 }
 
@@ -72,7 +75,7 @@ pub async fn create_identity_provider(
     sqlx::query_scalar(
         "insert into identity_providers \
          (tenant_id, kind, name, issuer, client_id, enabled, required, create_accounts, \
-         created_by_user_id) values ($1, $2, $3, $4, $5, $6, $7, $8, $9) \
+         saml_metadata, created_by_user_id) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) \
          on conflict (tenant_id, issuer, client_id) do nothing returning id",
     )
     .bind(input.tenant_id)
@@ -83,6 +86,7 @@ pub async fn create_identity_provider(
     .bind(input.enabled)
     .bind(input.required)
     .bind(input.create_accounts)
+    .bind(input.saml_metadata)
     .bind(input.created_by_user_id)
     .fetch_optional(conn)
     .await
@@ -95,6 +99,8 @@ pub struct IdentityProviderPatch {
     pub enabled: Option<bool>,
     pub required: Option<bool>,
     pub create_accounts: Option<bool>,
+    /// SAML: the provider's metadata anew (its certificates rolled over).
+    pub saml_metadata: Option<String>,
 }
 
 pub async fn update_identity_provider(
@@ -105,13 +111,15 @@ pub async fn update_identity_provider(
     let updated = sqlx::query(
         "update identity_providers set name = coalesce($2, name), \
          enabled = coalesce($3, enabled), required = coalesce($4, required), \
-         create_accounts = coalesce($5, create_accounts), updated_at = now() where id = $1",
+         create_accounts = coalesce($5, create_accounts), \
+         saml_metadata = coalesce($6, saml_metadata), updated_at = now() where id = $1",
     )
     .bind(id)
     .bind(patch.name)
     .bind(patch.enabled)
     .bind(patch.required)
     .bind(patch.create_accounts)
+    .bind(patch.saml_metadata)
     .execute(conn)
     .await?;
     Ok(updated.rows_affected() == 1)
