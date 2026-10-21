@@ -182,3 +182,23 @@ pub async fn decide_approval(
     .fetch_optional(conn)
     .await
 }
+
+/// A run with requests nobody decided before their deadline (ADR-061).
+#[derive(Debug, Clone, Copy, sqlx::FromRow)]
+pub struct OverdueRun {
+    pub tenant_id: Uuid,
+    pub run_id: Uuid,
+}
+
+/// Every company's runs with a pending request past its deadline at `now`,
+/// through a narrowly scoped database function: each is then handled in its
+/// own company.
+pub async fn overdue_approval_runs(
+    pool: &sqlx::PgPool,
+    now: DateTime<Utc>,
+) -> sqlx::Result<Vec<OverdueRun>> {
+    sqlx::query_as("select tenant_id, run_id from system_overdue_approval_runs($1)")
+        .bind(now)
+        .fetch_all(pool)
+        .await
+}

@@ -2104,8 +2104,8 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     Julien et de Nadia à Marc, et celles de Marc ne trouvent personne (la directrice ne
     détient pas `approval:decide`) : elles sont refusées quand le réglage les vise ;
   - si un relais SMTP est configuré, le responsable est prévenu par e-mail (ADR-060) ;
-  - restent à faire : expiration active des demandes (aujourd'hui constatée à la décision) et
-    relance, délégation en cas d'absence, personnes rattachées à plusieurs unités
+  - une demande que personne ne décide avant son échéance expire d'elle-même (ADR-061) ;
+  - restent à faire : relance, délégation en cas d'absence, personnes rattachées à plusieurs unités
     (seule l'unité principale compte) ;
   - tests :
     - `crates/core/src/approval_routing.rs` : responsable le plus proche détenant la
@@ -2163,3 +2163,50 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
       responsables sont prévenus ;
     - `apps/web/e2e/manager-approvals.spec.ts` : Marc ouvre le lien de l'e-mail reçu
       pour décider de la demande de Nadia.
+
+## ADR-061 — Expiration active des demandes de validation
+
+- **Date** : 2026-10-21 · **Statut** : acceptée
+- **Contexte** : une demande de validation expire 7 jours après sa création
+  (`expires_at`). Jusqu'ici, l'échéance n'était constatée que lorsque quelqu'un tentait
+  de décider : une demande que personne ne décidait laissait le run en pause pour
+  toujours, la conversation bloquée, et la demande listée « en attente ».
+- **Décision** :
+  - chaque minute, la maintenance périodique cherche les demandes en attente dont
+    l'échéance est passée. Elle passe par une fonction `SECURITY DEFINER` minimale
+    (`system_overdue_approval_runs`) qui ne rend que l'entreprise et le run ; chaque run
+    est ensuite traité dans sa propre entreprise (RLS) ;
+  - seul le processus qui exécute les runs (celui qui détient le verrou de l'exécuteur,
+    ADR-053) le fait. Sous le verrou du run, comme une décision, chaque demande échue
+    devient `expired`, tracée `approval.expired` au nom de la plateforme pour la
+    personne (`failure`, raison « Délai de validation dépassé », outil, risque et
+    circuit) ;
+  - quand plus aucune demande du run n'attend, le run reprend comme après une décision :
+    avec les droits de la personne relus à cet instant, l'agent apprenant que l'action
+    n'a pas été exécutée. Si son compte n'est plus actif, le run se termine en échec
+    (« compte inactif »). Tant qu'une autre demande du run peut encore être décidée, il
+    reste en pause ;
+  - les droits de la personne sont lus avant d'enregistrer quoi que ce soit : un échec
+    ne change rien, et le balayage suivant réessaie. Une décision relit la demande sous
+    le verrou du run : celle qu'une expiration a réglée entre-temps répond « déjà
+    traitée ». La règle de reprise (`settle`, puis `resume`) est la même que pour une
+    décision. À l'arrêt du service, la maintenance est attendue avant les runs ;
+  - la page des validations affiche l'échéance de chaque demande en attente.
+- **Conséquences** :
+  - aucune conversation ne reste bloquée plus de 7 jours (et une minute) par une demande
+    sans décision ;
+  - quand le compte de la personne n'est plus actif, le run se termine sans enregistrer
+    l'issue de l'appel qui attendait (comme la reprise au démarrage, ADR-053) ; à
+    harmoniser ;
+  - la durée de 7 jours n'est pas encore réglable par entreprise, et rien ne relance le
+    décideur avant l'échéance ;
+  - tests :
+    - `crates/api/tests/approval_expiry.rs` : une demande échue expire et le run poursuit
+      sans l'action, une seule fois ; seul le processus qui exécute les runs expire ; un
+      run attend tant qu'une autre de ses demandes peut être décidée ; le run d'un compte
+      inactif se termine ; chaque entreprise voit ses demandes expirer chez elle et rien
+      de celles de l'autre ; une décision qui croise l'expiration trouve la demande
+      réglée (course rendue déterministe par les verrous) ;
+    - `crates/db/tests/definer_functions.rs` : la nouvelle fonction est dans la liste
+      connue, au chemin de recherche fixe, appelable par l'application seule ;
+    - `apps/web/e2e/manager-approvals.spec.ts` : l'échéance affichée.

@@ -173,8 +173,8 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
 
     Ok(App {
         router,
+        maintenance: spawn_maintenance(services.clone()),
         services,
-        maintenance: spawn_maintenance(db, bus),
     })
 }
 
@@ -195,7 +195,9 @@ impl App {
     /// releases connectors and connections.
     pub async fn shutdown(self) {
         self.begin_shutdown();
+        // Ended before the runs are awaited: its expiry sweep may start one.
         self.maintenance.abort();
+        let _ = self.maintenance.await;
         self.services.runs.idle().await;
         self.services.background.idle().await;
         self.services.connectors.close().await;

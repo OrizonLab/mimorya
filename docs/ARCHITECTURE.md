@@ -50,7 +50,9 @@ flowchart LR
   tâches planifiées, ingestion de documents. En MVP, l'API exécute les runs en arrière-plan
   dans son propre processus, reprend au démarrage ceux qu'un arrêt a interrompus quand
   c'est sûr (ADR-053), et un balayage périodique marque en échec les runs restés sans
-  progression ; le worker sera le même code lancé avec un autre point d'entrée.
+  progression et fait expirer les demandes de validation échues, leurs runs poursuivant
+  sans l'action (ADR-061) ; le worker sera le même code lancé avec un autre point
+  d'entrée.
 
 Pourquoi pas des microservices : une équipe réduite, un domaine encore mouvant et des
 transactions qui traversent plusieurs modules (autorisation + audit + exécution). Les

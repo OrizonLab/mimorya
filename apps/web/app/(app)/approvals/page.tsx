@@ -32,6 +32,8 @@ export default function ApprovalsPage() {
                     <ApprovalCard approval={a} onDecided={state.reload} />
                     <p className="mt-1 px-1 text-xs text-muted">
                       Demandée le {formatDate(a.createdAt)} · {a.reason}
+                      {/* Past it, the request expires and the agent goes on without the action. */}
+                      {a.expiresAt && <> · expire le {formatDate(a.expiresAt)}</>}
                       {/* The run is shown to whom the agent acts for only. */}
                       {a.requestedFor.id === me && (
                         <>

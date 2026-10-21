@@ -10,6 +10,7 @@ mod db_ports;
 mod deliverables;
 mod events;
 mod executor;
+mod expiry;
 mod knowledge_ports;
 mod outcome;
 mod recovery;
