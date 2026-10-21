@@ -5,7 +5,7 @@
 //! signed by a certificate of the declared metadata (RSA with SHA-2,
 //! exclusive canonicalisation), name this application as its audience and
 //! this address as its recipient, answer the request awaited, and be
-//! within its validity; the assertion it carries is reported for replay.
+//! within its validity; every assertion it carries is reported for replay.
 
 use std::time::SystemTime;
 
@@ -78,22 +78,22 @@ pub fn authn_request(
     })
 }
 
-/// The assertion it carried: its identifier and when it expires.
+/// An assertion it carried: its identifier and when it expires.
 #[derive(Debug, Clone)]
 pub struct Carried {
     pub assertion_id: String,
     pub expires_at: SystemTime,
 }
 
-/// Notes the assertion instead of judging it: the server records it in the
-/// company's tenant, where every server sees it.
+/// Notes the assertions instead of judging them: the server records them
+/// all in the company's tenant, where every server sees them.
 #[derive(Default)]
-struct Noted(Option<Carried>);
+struct Noted(Vec<Carried>);
 
 impl ReplayCache for Noted {
     fn check_and_store(&mut self, key: ReplayKey, expires_at: SystemTime) -> Result<(), SamlError> {
         if let ReplayKey::AssertionId(id) = &key {
-            self.0 = Some(Carried {
+            self.0.push(Carried {
                 assertion_id: id.as_str().to_string(),
                 expires_at,
             });
@@ -102,15 +102,16 @@ impl ReplayCache for Noted {
     }
 }
 
-/// The verified session and the assertion it came in, or why the response
-/// is refused (in French, for the audit: never the response itself).
+/// The verified session and every assertion it came with, or why the
+/// response is refused (in French, for the audit: never the response
+/// itself).
 pub fn verify_response(
     application: &ServiceProvider<'_>,
     metadata: &str,
     pending: &SamlPending,
     fields: Vec<(String, String)>,
     now: SystemTime,
-) -> Result<(SsoSession, Carried), String> {
+) -> Result<(SsoSession, Vec<Carried>), String> {
     let idp = idp_descriptor(metadata)?;
     let pending = pending.restore()?;
     let input = BrowserInput::<SsoResponse>::post(
@@ -124,8 +125,10 @@ pub fn verify_response(
     let session = sp(application)?
         .finish_sso(&idp, &pending, input, validation)
         .map_err(refusal)?;
-    let carried = noted.0.ok_or("SAML : réponse sans assertion")?;
-    Ok((session, carried))
+    if noted.0.is_empty() {
+        return Err("SAML : réponse sans assertion".into());
+    }
+    Ok((session, noted.0))
 }
 
 /// The library's verdict, bounded: its words name the check that failed,
@@ -133,4 +136,24 @@ pub fn verify_response(
 fn refusal(error: SamlError) -> String {
     let text: String = error.to_string().chars().take(200).collect();
     format!("SAML : réponse refusée ({text})")
+}
+
+#[cfg(test)]
+mod tests {
+    use saml_rs::{AssertionId, MessageId};
+
+    use super::*;
+
+    #[test]
+    fn every_assertion_of_a_response_is_noted() {
+        let mut noted = Noted::default();
+        let at = SystemTime::UNIX_EPOCH;
+        let assertion = |id: &str| ReplayKey::AssertionId(AssertionId::try_new(id).unwrap());
+        noted.check_and_store(assertion("_a1"), at).unwrap();
+        let response = ReplayKey::ResponseId(MessageId::try_new("_r1").unwrap());
+        noted.check_and_store(response, at).unwrap();
+        noted.check_and_store(assertion("_a2"), at).unwrap();
+        let ids: Vec<&str> = noted.0.iter().map(|c| c.assertion_id.as_str()).collect();
+        assert_eq!(ids, ["_a1", "_a2"]);
+    }
 }

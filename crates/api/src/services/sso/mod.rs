@@ -54,10 +54,10 @@ pub const CALLBACK_PATH: &str = "/api/auth/sso/callback";
 /// The page of a company's sign-in link, the provider's id in its fragment
 /// (ADR-067).
 pub const LINK_PAGE: &str = "/login/entreprise";
-/// This application's entity ID at SAML providers, where its metadata is
-/// read, and where they post their responses (ADR-068).
-pub const SAML_METADATA_PATH: &str = "/api/auth/saml/metadata";
-pub const SAML_ACS_PATH: &str = "/api/auth/saml/acs";
+/// Under this path, a company's own entity ID at SAML providers, where its
+/// metadata is read (`/{company}/metadata`), and where they post their
+/// responses (`/acs`, ADR-068).
+pub const SAML_PATH: &str = "/api/auth/saml";
 
 /// The name of a provider's client secret in the company's secret store.
 pub fn client_secret_name(provider_id: Uuid) -> String {
@@ -86,7 +86,7 @@ pub struct SsoService {
     network: NetworkPolicy,
     redirect_uri: String,
     link_page: String,
-    saml_entity_id: String,
+    saml_base: String,
     saml_acs_url: String,
     /// The providers' declarations and keys, kept an hour (ADR-065).
     declarations: MetadataCache<CoreProviderMetadata>,
@@ -125,8 +125,8 @@ impl SsoService {
             network,
             redirect_uri: format!("{web_origin}{CALLBACK_PATH}"),
             link_page: format!("{web_origin}{LINK_PAGE}"),
-            saml_entity_id: format!("{web_origin}{SAML_METADATA_PATH}"),
-            saml_acs_url: format!("{web_origin}{SAML_ACS_PATH}"),
+            saml_base: format!("{web_origin}{SAML_PATH}"),
+            saml_acs_url: format!("{web_origin}{SAML_PATH}/acs"),
             declarations: MetadataCache::default(),
         })
     }
@@ -145,20 +145,23 @@ impl SsoService {
         self.network
     }
 
-    /// This application's entity ID at SAML providers, and where they post
-    /// their responses (ADR-068).
-    pub fn saml_entity_id(&self) -> &str {
-        &self.saml_entity_id
+    /// The company's own entity ID at SAML providers (ADR-068): their trust
+    /// in this application is bound to one company, whose assertions name
+    /// it as their audience.
+    pub fn saml_entity_id(&self, tenant_id: Uuid) -> String {
+        format!("{}/{tenant_id}/metadata", self.saml_base)
     }
 
+    /// Where SAML providers post their responses, for every company.
     pub fn saml_acs_url(&self) -> &str {
         &self.saml_acs_url
     }
 
-    /// This application's SAML metadata, for providers to import.
-    pub fn saml_metadata(&self) -> anyhow::Result<String> {
+    /// The company's SAML metadata, for its providers to import.
+    pub fn saml_metadata(&self, tenant_id: Uuid) -> anyhow::Result<String> {
+        let entity_id = self.saml_entity_id(tenant_id);
         let application = saml::ServiceProvider {
-            entity_id: &self.saml_entity_id,
+            entity_id: &entity_id,
             acs_url: &self.saml_acs_url,
         };
         saml::sp_metadata(&application).map_err(anyhow::Error::msg)

@@ -79,9 +79,9 @@ pub async fn declare_identity_provider(
         client_secret: input.client_secret,
         metadata: input.metadata,
     };
-    let designated = designation(sso, kind, given).await?;
-    let (issuer, client_id) = (&designated.issuer, &designated.client_id);
     let tenant_id = access.subject.tenant_id;
+    let designated = designation(sso, tenant_id, kind, given).await?;
+    let (issuer, client_id) = (&designated.issuer, &designated.client_id);
     let mut tx = begin_change(db, access, PERMISSION).await?;
     let id = create_identity_provider(
         &mut tx,

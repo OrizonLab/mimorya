@@ -4,9 +4,10 @@
 //! in-process: it reads the request the address carries and signs in the
 //! person the test chose, answering with the response the browser posts
 //! back. Its keys are test keys, public; an impostor signs with others
-//! under the same entity ID.
+//! under the same entity ID, and a lax one signs with an inclusive
+//! canonicalisation, which the application's strict profile refuses.
 
-use saml_rs::constants::Binding;
+use saml_rs::constants::{Binding, transform_algorithm};
 use saml_rs::metadata::{Endpoint, IdpMetadataConfig};
 use saml_rs::raw::{
     EntitySetting, HttpRequest, IdentityProvider, LoginResponseOptions, ServiceProvider, User,
@@ -49,9 +50,13 @@ impl SamlPerson {
     }
 }
 
+/// Inclusive canonicalisation, which the strict profile refuses.
+const INCLUSIVE_C14N: &str = "http://www.w3.org/TR/2001/REC-xml-c14n-20010315";
+
 pub struct MockSamlProvider {
     key: &'static str,
     cert: &'static str,
+    canonicalisation: &'static str,
 }
 
 impl MockSamlProvider {
@@ -59,6 +64,7 @@ impl MockSamlProvider {
         Self {
             key: KEY,
             cert: CERT,
+            canonicalisation: transform_algorithm::EXC_C14N,
         }
     }
 
@@ -67,6 +73,15 @@ impl MockSamlProvider {
         Self {
             key: IMPOSTOR_KEY,
             cert: IMPOSTOR_CERT,
+            ..Self::new()
+        }
+    }
+
+    /// The same provider, its signatures canonicalised inclusively.
+    pub fn lax() -> Self {
+        Self {
+            canonicalisation: INCLUSIVE_C14N,
+            ..Self::new()
         }
     }
 
@@ -128,9 +143,15 @@ impl MockSamlProvider {
         person: &SamlPerson,
     ) -> String {
         let idp = self.idp(Some(person));
+        // The library signs with the transforms it keeps for the
+        // application it answers.
         let application = |metadata: &str| {
-            ServiceProvider::from_metadata(metadata, EntitySetting::default())
-                .expect("application metadata")
+            let mut setting = EntitySetting::default();
+            setting.transformation_algorithms = vec![
+                transform_algorithm::ENVELOPED_SIGNATURE.into(),
+                self.canonicalisation.into(),
+            ];
+            ServiceProvider::from_metadata(metadata, setting).expect("application metadata")
         };
         let sp = application(sp_metadata);
         let url = Url::parse(address).expect("sign-in address");

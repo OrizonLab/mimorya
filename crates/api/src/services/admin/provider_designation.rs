@@ -2,14 +2,14 @@
 //! checked before anything is written: an OpenID Connect provider by its
 //! issuer, reached at once, with the company's client and its secret
 //! (ADR-063); a SAML provider by its metadata, read here, whose entity ID
-//! is its issuer, and this application's own entity ID as its client
-//! (ADR-068).
+//! is its issuer, and the company's own entity ID as its client (ADR-068).
 
 use mimorya_connectors::mcp::url_problem;
 use mimorya_core::DomainError;
 use mimorya_core::identity_providers::{
     ProviderKind, client_id_problem, client_secret_problem, declared_issuer,
 };
+use uuid::Uuid;
 
 use crate::services::sso::{SsoService, saml_summary};
 
@@ -38,11 +38,12 @@ pub struct Designation {
 
 pub async fn designation(
     sso: &SsoService,
+    tenant_id: Uuid,
     kind: ProviderKind,
     given: Given,
 ) -> anyhow::Result<Designation> {
     if kind == ProviderKind::Saml {
-        return Ok(saml(sso, given)?);
+        return Ok(saml(sso, tenant_id, given)?);
     }
     if given.metadata.is_some() {
         return Err(invalid("Métadonnées : pour un fournisseur SAML seulement").into());
@@ -71,7 +72,7 @@ pub async fn designation(
     })
 }
 
-fn saml(sso: &SsoService, given: Given) -> Result<Designation, DomainError> {
+fn saml(sso: &SsoService, tenant_id: Uuid, given: Given) -> Result<Designation, DomainError> {
     if given.issuer.is_some() || given.client_id.is_some() || given.client_secret.is_some() {
         return Err(invalid(
             "SAML : les métadonnées du fournisseur suffisent, sans émetteur, client ni secret",
@@ -89,7 +90,7 @@ fn saml(sso: &SsoService, given: Given) -> Result<Designation, DomainError> {
     .map_err(invalid)?;
     Ok(Designation {
         issuer,
-        client_id: sso.saml_entity_id().into(),
+        client_id: sso.saml_entity_id(tenant_id),
         client_secret: None,
         saml_metadata: Some(metadata),
     })

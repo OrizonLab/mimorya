@@ -46,7 +46,7 @@ pub async fn list(
     Ok(Json(IdentityProvidersView {
         secrets_available: store.available(),
         redirect_uri: state.sso.redirect_uri().into(),
-        saml_entity_id: state.sso.saml_entity_id().into(),
+        saml_entity_id: state.sso.saml_entity_id(identity.tenant_id),
         saml_acs_url: state.sso.saml_acs_url().into(),
         providers,
     }))

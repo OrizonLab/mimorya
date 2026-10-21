@@ -12,14 +12,16 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use mimorya_core::demo::{tenant, user};
 use serde_json::json;
+use support::accounts::{INVITED_PASSWORD, accept};
+use support::companies::create;
 use support::refusals::latest_entry;
 use support::saml_provider::{
     DISPLAY_NAME, MockSamlProvider, OBJECT_ID, SAML_ENTITY_ID, SAML_SIGN_IN_URL, SamlPerson,
 };
 use support::sso::{
     PROVIDERS, SSO_DEPLOYMENT, assert_saml_refused, come_back, declare, identities, location,
-    post_saml, remove, saml_attempt, saml_declaration, saml_session, saml_sp_metadata, sso_logins,
-    try_start, try_start_link,
+    post_saml, remove, saml_attempt, saml_declaration, saml_session, saml_sp_metadata,
+    saml_sp_metadata_of, sso_logins, try_start, try_start_link,
 };
 use support::{TestApi, WEB_ORIGIN, email};
 
@@ -51,7 +53,7 @@ async fn a_saml_provider_signs_its_domain_s_accounts_in() {
     // Declared from its metadata: no client secret; the address to give
     // the provider listed.
     let listed = paul.get(PROVIDERS).await.json();
-    let entity = format!("{WEB_ORIGIN}/api/auth/saml/metadata");
+    let entity = format!("{WEB_ORIGIN}/api/auth/saml/{}/metadata", tenant::ID);
     assert_eq!(listed["samlEntityId"], entity);
     assert_eq!(
         listed["samlAcsUrl"],
@@ -68,6 +70,8 @@ async fn a_saml_provider_signs_its_domain_s_accounts_in() {
         "{sp}"
     );
     assert!(sp.contains(r#"WantAssertionsSigned="true""#), "{sp}");
+    let malformed = api.anonymous().get("/auth/saml/pas-un-id/metadata").await;
+    assert_eq!(malformed.status, StatusCode::BAD_REQUEST);
 
     // Offered from the address, sent with a request, back signed in.
     let nadia_email = email(user::NADIA);
@@ -180,10 +184,25 @@ async fn a_response_that_does_not_answer_this_attempt_is_refused() {
             .starts_with("SAML : réponse refusée")
     );
 
+    // Signed by the provider's own key, but outside the strict profile
+    // (an inclusive canonicalisation).
+    let (url, cookie) = start().await;
+    let lax = MockSamlProvider::lax().respond(&url, &sp, &nadia());
+    let since = latest_entry(&api).await;
+    assert_saml_refused(&post_saml(&api, &lax, Some(&cookie)).await);
+    assert!(
+        refusal(&api, since)
+            .await
+            .starts_with("SAML : réponse refusée")
+    );
+
     // For another application (its audience).
     let (url, cookie) = start().await;
     let elsewhere = sp.replace(
-        &format!(r#"entityID="{WEB_ORIGIN}/api/auth/saml/metadata""#),
+        &format!(
+            r#"entityID="{WEB_ORIGIN}/api/auth/saml/{}/metadata""#,
+            tenant::ID
+        ),
         r#"entityID="https://autre-application.example/saml""#,
     );
     assert_ne!(elsewhere, sp);
@@ -203,6 +222,34 @@ async fn a_response_that_does_not_answer_this_attempt_is_refused() {
     let crossed = come_back(&api, "/auth/sso/callback?state=&code=x", Some(&sealed)).await;
     assert_eq!(location(&crossed), "/login?sso=echec");
     assert_eq!(refusal(&api, since).await, "Tentative SAML");
+
+    // Wrapped: a forged assertion for Paul set before Nadia's signed one.
+    let (url, cookie) = start().await;
+    let signed = idp.respond(&url, &sp, &SamlPerson::named(&nadia_email));
+    let xml = String::from_utf8(STANDARD.decode(&signed).unwrap()).unwrap();
+    let (open, close) = ("<saml:Assertion", "</saml:Assertion>");
+    let begin = xml.find(open).expect("assertion");
+    let end = xml.find(close).expect("assertion end") + close.len();
+    let original = &xml[begin..end];
+    let signature = original.find("<ds:Signature").expect("signature");
+    let signature_end = original.find("</ds:Signature>").expect("signature end");
+    let unsigned = format!(
+        "{}{}",
+        &original[..signature],
+        &original[signature_end + "</ds:Signature>".len()..]
+    );
+    let forged = unsigned
+        .replacen(r#"ID=""#, r#"ID="_forged"#, 1)
+        .replace(&nadia_email, &email(user::PAUL));
+    let wrapped = format!("{}{forged}{}", &xml[..begin], &xml[begin..]);
+    let since = latest_entry(&api).await;
+    let posted = post_saml(&api, &STANDARD.encode(wrapped), Some(&cookie)).await;
+    assert_saml_refused(&posted);
+    assert!(
+        refusal(&api, since)
+            .await
+            .starts_with("SAML : réponse refusée")
+    );
 
     // Signed, but for an address outside the provider's domains.
     let (url, cookie) = start().await;
@@ -366,4 +413,41 @@ async fn the_company_link_creates_the_account_through_a_saml_provider() {
     assert_eq!(me["user"]["email"], newcomer);
     assert_eq!(me["user"]["displayName"], "Lina Saml");
     remove(&paul, &id).await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_provider_s_trust_is_bound_to_one_company() {
+    let api = TestApi::start_with(&SSO_DEPLOYMENT).await;
+    let idp = MockSamlProvider::new();
+    // Another company declares Néo's provider, for Néo's domain.
+    let admin = "admin@voisine-saml.example";
+    let other = create(&api, "voisine-saml", admin).await;
+    let accepted = accept(&api, &other.invitation.link, INVITED_PASSWORD).await;
+    assert_eq!(accepted.status, StatusCode::OK, "{}", accepted.text());
+    let theirs = api.sign_in_with(admin, INVITED_PASSWORD).await;
+    let mut body = saml_declaration(&idp.metadata());
+    body["createAccounts"] = json!(true);
+    let id = declare(&theirs, body).await;
+    // Their entity ID is theirs, not Néo's.
+    let neo = saml_sp_metadata(&api).await;
+    let their_sp = saml_sp_metadata_of(&api, other.tenant_id).await;
+    assert_ne!(neo, their_sp);
+
+    // Néo's provider trusts Néo alone: what it says for Néo is refused
+    // there, and opens nothing.
+    let (url, cookie) = saml_attempt(&try_start_link(&api, &id).await);
+    let response = idp.respond_to(&url, &their_sp, &neo, &nadia());
+    let since = latest_entry(&api).await;
+    assert_saml_refused(&post_saml(&api, &response, Some(&cookie)).await);
+    let logins = sso_logins(&api, other.tenant_id, since).await;
+    assert_eq!(logins.len(), 1, "{logins:?}");
+    assert!(
+        logins[0]
+            .2
+            .as_deref()
+            .unwrap_or_default()
+            .starts_with("SAML : réponse refusée")
+    );
+    remove(&theirs, &id).await;
 }

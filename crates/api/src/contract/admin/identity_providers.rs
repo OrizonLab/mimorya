@@ -63,7 +63,7 @@ pub struct IdentityProvidersView {
     pub secrets_available: bool,
     /// The address to register at the provider for the return of a sign-in.
     pub redirect_uri: String,
-    /// SAML: this application's entity ID (identifier) and the address its
+    /// SAML: the company's own entity ID (identifier) and the address
     /// responses are posted to, to register at the provider.
     pub saml_entity_id: String,
     pub saml_acs_url: String,

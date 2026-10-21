@@ -2,7 +2,8 @@
 //! the browser kept must await a SAML request of an enabled SAML provider
 //! of its company; the response must answer that request, its assertion be
 //! signed by the declared metadata's certificates, name this application
-//! and be valid now. It is accepted once (`sso_used_assertions`); then the
+//! and be valid now. Its assertions are accepted once
+//! (`sso_used_assertions`); then the
 //! account is found, tied or created, and its session opened, as for an
 //! OpenID Connect provider. Every refusal says why, for the audit.
 
@@ -107,36 +108,37 @@ impl SsoService {
         })
     }
 
-    /// The assertion recorded until it expires: a second return with it,
-    /// on any server, is refused.
+    /// The response's assertions recorded until they expire, together: a
+    /// second return with any of them, on any server, is refused, and then
+    /// none of this one's is recorded.
     async fn accept_once(
         &self,
         provider: &IdentityProviderRow,
-        carried: &saml::Carried,
+        carried: &[saml::Carried],
     ) -> Outcome<()> {
         let (tenant_id, provider_id) = (provider.tenant_id, provider.id);
         let internal =
             |e: &dyn std::fmt::Display| SignInFailure::internal(tenant_id, provider_id, e);
-        let expires_at = DateTime::<Utc>::from(carried.expires_at);
         let mut tx = self.db.begin(tenant_id).await.map_err(|e| internal(&e))?;
-        let new = record_assertion(
-            &mut tx,
-            tenant_id,
-            provider_id,
-            &carried.assertion_id,
-            expires_at,
-        )
-        .await
-        .map_err(|e| internal(&e))?;
-        tx.commit().await.map_err(|e| internal(&e))?;
-        if new {
-            Ok(())
-        } else {
-            Err(SignInFailure::at(
+        for assertion in carried {
+            let expires_at = DateTime::<Utc>::from(assertion.expires_at);
+            let new = record_assertion(
+                &mut tx,
                 tenant_id,
                 provider_id,
-                "Assertion SAML déjà utilisée",
-            ))
+                &assertion.assertion_id,
+                expires_at,
+            )
+            .await
+            .map_err(|e| internal(&e))?;
+            if !new {
+                return Err(SignInFailure::at(
+                    tenant_id,
+                    provider_id,
+                    "Assertion SAML déjà utilisée",
+                ));
+            }
         }
+        tx.commit().await.map_err(|e| internal(&e))
     }
 }

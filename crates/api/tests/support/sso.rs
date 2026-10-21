@@ -254,14 +254,16 @@ pub fn saml_declaration(metadata: &str) -> Value {
     })
 }
 
-/// This application's SAML metadata, as a provider imports it.
+/// The demo company's SAML metadata, as its provider imports it.
 pub async fn saml_sp_metadata(api: &TestApi) -> String {
+    saml_sp_metadata_of(api, tenant::ID).await
+}
+
+/// A company's SAML metadata.
+pub async fn saml_sp_metadata_of(api: &TestApi, tenant_id: Uuid) -> String {
+    let path = format!("/auth/saml/{tenant_id}/metadata");
     let read = api
-        .send(
-            Request::get("/auth/saml/metadata")
-                .body(Body::empty())
-                .unwrap(),
-        )
+        .send(Request::get(path.as_str()).body(Body::empty()).unwrap())
         .await;
     assert_eq!(read.status, StatusCode::OK, "{}", read.text());
     read.text()

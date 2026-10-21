@@ -1,5 +1,5 @@
-//! A SAML provider's side of the sign-in (ADR-068): this application's
-//! metadata, which the provider imports, and the address it posts its
+//! A SAML provider's side of the sign-in (ADR-068): a company's own
+//! metadata, which its provider imports, and the address it posts its
 //! response to, from its own site. That post carries no header of this
 //! application: the CSRF check lets it through, the sealed attempt in its
 //! own cookie and the signed response bind it instead. It answers by a
@@ -17,7 +17,7 @@ use axum::routing::{get, post};
 use super::sso::{REFUSED, SIGNED_IN, record_refusal};
 use crate::app::AppState;
 use crate::auth::cookies::{cookie_value, session_cookie};
-use crate::http::ApiResult;
+use crate::http::{ApiResult, PathId};
 use crate::plugins::RequestContext;
 use crate::services::sso::{
     SAML_ATTEMPT_COOKIE, SamlReturn, SignInFailure, cleared_saml_attempt_cookie,
@@ -29,12 +29,13 @@ pub const ACS_ROUTE: &str = "/auth/saml/acs";
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/auth/saml/metadata", get(metadata))
+        .route("/auth/saml/{id}/metadata", get(metadata))
         .route("/auth/saml/acs", post(acs))
 }
 
-async fn metadata(State(state): State<AppState>) -> ApiResult<Response> {
-    let xml = state.sso.saml_metadata()?;
+/// Derived from its address alone: the company's entity ID is public.
+async fn metadata(State(state): State<AppState>, PathId(tenant_id): PathId) -> ApiResult<Response> {
+    let xml = state.sso.saml_metadata(tenant_id)?;
     Ok(([(CONTENT_TYPE, "application/samlmetadata+xml")], xml).into_response())
 }
 

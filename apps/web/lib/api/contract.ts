@@ -402,7 +402,7 @@ secretsAvailable: boolean,
  */
 redirectUri: string,
 /**
- * SAML: this application's entity ID (identifier) and the address its
+ * SAML: the company's own entity ID (identifier) and the address
  * responses are posted to, to register at the provider.
  */
 samlEntityId: string, samlAcsUrl: string, providers: Array<IdentityProviderView>, };
