@@ -33,14 +33,24 @@ pub fn routes() -> Router<AppState> {
         .route("/auth/sso/callback", get(callback))
 }
 
+/// Whether this client may ask about one more address, by the discovery or
+/// the start: each tells whether it has an account tied to a provider.
+fn asks_about(state: &AppState, context: &RequestContext, email: &str) -> bool {
+    state
+        .limits
+        .sso_addresses
+        .allow(&context.client_key(), &email.trim().to_lowercase())
+}
+
 /// The answer depends only on the account's company, never on whether an
-/// account without a provider exists.
+/// account without a provider exists. It still says whether an address has
+/// an account tied to a provider: so many addresses a minute, as logins.
 async fn discover(
     State(state): State<AppState>,
     context: RequestContext,
     Body(body): Body<SsoLookup>,
 ) -> ApiResult<Json<SsoDiscovery>> {
-    if !state.limits.sso.allow(&context.client_key()) {
+    if !asks_about(&state, &context, &body.email) {
         return Err(ApiError::RateLimited);
     }
     let provider = state.sso.discover(&body.email).await?;
@@ -57,7 +67,10 @@ async fn start(
     context: RequestContext,
     Body(body): Body<SsoLookup>,
 ) -> ApiResult<impl IntoResponse> {
-    if !state.limits.sso.allow(&context.client_key()) {
+    // Its answer tells what the discovery's does: the same addresses count.
+    if !asks_about(&state, &context, &body.email)
+        || !state.limits.sso_sign_in.allow(&context.client_key())
+    {
         return Err(ApiError::RateLimited);
     }
     let started = state.sso.start(&body.email).await?;
@@ -71,7 +84,7 @@ async fn start(
 }
 
 /// A top-level navigation from the provider: answered by a redirection,
-/// the attempt's cookie cleared either way. Counted as the other steps: a
+/// the attempt's cookie cleared either way. Counted with the start: a
 /// sealed attempt stays valid for its ten minutes, and each return with it
 /// writes to the audit, or calls the provider.
 async fn callback(
@@ -82,7 +95,7 @@ async fn callback(
 ) -> Response {
     let secure = state.config.secure_cookies;
     let cleared = (SET_COOKIE, cleared_attempt_cookie(secure));
-    let outcome = if state.limits.sso.allow(&context.client_key()) {
+    let outcome = if state.limits.sso_sign_in.allow(&context.client_key()) {
         // An address that does not read as a return reads as an empty one.
         let back = back.map(|Query(back)| back).unwrap_or_default();
         let cookie = cookie_value(&headers, ATTEMPT_COOKIE);

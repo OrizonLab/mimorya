@@ -55,9 +55,13 @@ async fn anonymous_post(api: &TestApi, url: &str, payload: Value) -> TestRespons
     api.send(request).await
 }
 
+pub async fn try_discover(api: &TestApi, email: &str) -> TestResponse {
+    anonymous_post(api, "/auth/sso/discover", json!({ "email": email })).await
+}
+
 /// What the sign-in page is offered for an address.
 pub async fn discover(api: &TestApi, email: &str) -> Value {
-    let found = anonymous_post(api, "/auth/sso/discover", json!({ "email": email })).await;
+    let found = try_discover(api, email).await;
     assert_eq!(found.status, StatusCode::OK, "{}", found.text());
     found.json()["provider"].clone()
 }

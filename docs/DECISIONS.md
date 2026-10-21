@@ -2300,11 +2300,19 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     la même réponse (« mot de passe ») ; une entreprise ne peut donc pas détourner vers son
     fournisseur les comptes d'une autre en déclarant leur domaine. La réponse dit
     qu'une adresse a un compte dans une entreprise qui l'a reliée à son fournisseur.
-    Les trois étapes (découverte, départ, retour) ont leur propre limite par adresse,
-    trois fois celle de la connexion (une connexion SSO en compte trois) : la découverte
-    que la page de connexion fait pour toute adresse ne retire rien à la limite des mots
-    de passe, et un retour rejoué avec sa tentative scellée, valable dix minutes, est
-    refusé au-delà, sans trace ni appel au fournisseur ;
+    La découverte et le départ disent tous deux si une adresse a un compte relié à un
+    fournisseur (le départ répond 404 sinon) : les adresses ainsi essayées ont leur
+    propre limite par adresse cliente, celle de la connexion, quelle que soit l'étape,
+    et redemander une adresse déjà comptée ne coûte rien (la page la redemande, son
+    départ suit ; seule son empreinte est gardée, le temps de la fenêtre). Le départ et
+    le retour ensemble ont en plus la leur, deux fois celle de la connexion (une
+    connexion SSO compte les deux). Aucune ne retire rien à la limite des mots de passe
+    (la découverte que la page de connexion fait pour toute adresse non plus), et un
+    retour rejoué avec sa tentative scellée, valable dix minutes, est refusé au-delà,
+    sans trace ni appel au fournisseur. Au-delà, la page de connexion le dit, le mot de
+    passe restant possible. Une première version donnait aux trois étapes une seule
+    limite, trois fois celle de la connexion : on pouvait y essayer trois fois plus
+    d'adresses que de mots de passe ;
   - le départ (`POST /api/auth/sso/start`) renvoie l'adresse du fournisseur et pose un
     cookie de tentative (HttpOnly, SameSite=Lax, chemin `/api/auth/sso`, 10 minutes) :
     entreprise en clair, fournisseur, `state`, `nonce` et vérificateur PKCE scellés par
@@ -2369,8 +2377,10 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
       pour son entreprise, intacte et à temps ; `address.rs` et `http.rs` : adresses
       hors politique refusées, sans aucune connexion ;
     - `crates/api/tests/sso_sign_in.rs`, `sso_refusals.rs`, `sso_companies.rs`,
-      `sso_limits.rs`, `admin_identity_providers.rs` : connexion, liaison unique, limite
-      propre aux étapes, refus (dont un audit sans code ni jeton ; le compte invité,
+      `sso_limits.rs`, `admin_identity_providers.rs` : connexion, liaison unique, limites
+      propres aux étapes (adresses essayées par la découverte ou le départ ; départ et
+      retour ensemble ; `crates/api/src/plugins/distinct_limit.rs` : une adresse comptée
+      une fois par fenêtre), refus (dont un audit sans code ni jeton ; le compte invité,
       d'abord refusé, est couvert par `sso_invitations.rs`, ADR-064), isolation entre
       entreprises, fournisseur
       hors politique réseau jamais joint, configuration ;
@@ -2379,7 +2389,8 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     - `apps/web/e2e/single-sign-on.spec.ts` : déclaration dans l'administration (secret
       jamais affiché, relu après rechargement), modification sans ressaisir le secret
       (conservé), connexion de bout en bout par le bouton, fournisseur désactivé proposé à
-      personne, suppression, retour en échec signalé.
+      personne, suppression, retour en échec signalé, découverte refusée au-delà de sa
+      limite signalée puis redemandée une fois la minute passée.
 
 ## ADR-064 — Accepter une invitation par le fournisseur d'identité de l'entreprise
 
