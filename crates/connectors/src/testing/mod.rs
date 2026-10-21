@@ -19,7 +19,7 @@ use tokio::sync::oneshot;
 
 use crate::mcp::DemoDocsServer;
 pub use hold::Hold;
-pub use quirks::{DeclaredToolsServer, Quirk};
+pub use quirks::{DeclaredToolsServer, HIDDEN_TEXT, Quirk};
 
 /// Serves the demo documentation server at `http://127.0.0.1:<port>/mcp`
 /// until the process ends; returns that address.

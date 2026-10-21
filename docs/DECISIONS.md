@@ -1998,3 +1998,49 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     - `apps/web/e2e/integrations.spec.ts` : description écrite depuis les règles d'un
       outil, enregistrée sans les espaces aux extrémités, rendue au serveur une fois
       vidée.
+
+## ADR-058 — Caractères invisibles retirés des déclarations d'un serveur MCP (complète ADR-025 et ADR-057)
+
+- **Date** : 2026-10-21 · **Statut** : acceptée
+- **Contexte** : ADR-057 refuse tout caractère invisible dans une description écrite par
+  l'administrateur, mais laisse en dette celles que déclarent les serveurs, qui sont
+  pourtant le texte réellement non fiable. Des caractères d'étiquette (U+E0000–E007F),
+  des espaces sans largeur ou des forçages de sens peuvent y porter un texte que
+  l'administrateur ne voit pas dans les règles d'outils et que le modèle lit à chaque
+  run.
+- **Décision** :
+  - le titre d'un outil est ramené à une ligne visible ; sa description et la
+    documentation de son schéma d'entrée (textes `description` et `title`, à toute
+    profondeur) perdent leurs caractères invisibles, hormis le retour à la ligne et la
+    tabulation (`plain_text::without_hidden`, la règle de `is_hidden` dans `core`) ;
+  - ce retrait précède le masquage du jeton : un jeton coupé de caractères invisibles
+    échapperait sinon au masque, puis apparaîtrait une fois les caractères retirés ;
+  - ce que le serveur relit ne peut pas changer sans fausser ses appels : le nom d'un
+    outil, et dans son schéma un nom de propriété ou une valeur permise, constante, par
+    défaut ou d'exemple (y compris sous une clé `title` ou `description` à l'intérieur
+    de ces valeurs). Un nom qui cache des caractères (y compris un retour à la ligne)
+    fait refuser le serveur sans être cité, puisqu'il pourrait reformer un jeton coupé ;
+    un schéma qui en cache ailleurs que dans sa documentation fait refuser le serveur,
+    avec un message en français qui nomme l'outil (`mcp/visible.rs`) ;
+  - un titre qui ne montre plus rien une fois nettoyé laisse place au titre suivant
+    (annotations), puis au nom de l'outil.
+- **Conséquences** :
+  - le texte d'un serveur légitime peut perdre un trait d'union conditionnel ou la
+    jonction d'un émoji composé : rien d'utile au choix d'un outil ;
+  - des valeurs légitimes font refuser le serveur entier : une valeur permise contenant
+    un retour chariot (`\r`) ou un émoji avec sélecteur de variante (U+FE0F), par
+    exemple. Le message nomme l'outil, que l'éditeur du serveur peut corriger ;
+  - les résultats des outils ne sont pas filtrés : ce sont des données non fiables,
+    encadrées comme telles (`wrap_tool_result`), et les modifier altérerait ce que lit
+    l'utilisateur (feuille de route) ;
+  - tests :
+    - `mcp/declarations.rs` : retrait avant le masquage, un jeton coupé de caractères
+      invisibles restant masqué ; refus d'une valeur permise qui cache du texte, et d'un
+      nom d'outil, sans le citer ; titre vide remplacé par le nom ;
+    - `mcp/visible.rs` : documentation à toute profondeur, une propriété nommée
+      `description` ou `default` (ou une définition nommée `enum`) restant un schéma
+      dont la documentation est nettoyée ; refus d'un nom de propriété, d'une valeur
+      permise, par défaut, constante ou d'exemple qui cache des caractères, même sous
+      une clé de documentation ;
+    - `crates/connectors/tests/mcp_failures.rs` : un serveur HTTP qui cache du texte
+      dans ses déclarations n'en transmet rien.

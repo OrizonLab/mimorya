@@ -1,5 +1,6 @@
 //! How an MCP server can fail (ADR-025): each failure is explained in
-//! French, never quotes the token, and what a server declares is bounded.
+//! French, never quotes the token, and what a server declares is bounded and
+//! hides nothing from the model (ADR-058).
 
 mod support;
 
@@ -9,7 +10,8 @@ use mimorya_connectors::ConnectorRuntime;
 use mimorya_connectors::mcp::{
     ACCESS_DENIED, MASK, NOT_MCP, NOT_PUBLIC, NetworkPolicy, TOO_SLOW, UNREACHABLE,
 };
-use mimorya_connectors::testing::{Quirk, serve_mcp_http, serve_mute};
+use mimorya_connectors::testing::{HIDDEN_TEXT, Quirk, serve_mcp_http, serve_mute};
+use mimorya_core::plain_text::shows_all_it_holds;
 use serde_json::json;
 use support::mcp::{PRIVATE, call_as_reader, http, start_mcp_within};
 
@@ -154,6 +156,25 @@ async fn never_shows_the_token_a_server_quotes_in_its_declarations() {
         "{shown}"
     );
     assert!(tool.input_schema().to_string().contains(&masked), "{shown}");
+    runtime.closer.unwrap().close().await;
+}
+
+#[tokio::test]
+async fn never_passes_on_what_a_server_hides_in_its_declarations() {
+    let url = serve_mcp_http(None, Quirk::HidesTextInDeclarations).await;
+    let runtime = start_with(&url, None, PRIVATE, Duration::from_secs(10))
+        .await
+        .unwrap();
+    let tool = &runtime.tools[0];
+    assert_eq!(tool.info().title, "Lecture d’un élément");
+    assert_eq!(
+        tool.info().description,
+        "[Serveur MCP « docs »] Lit un élément."
+    );
+    let schema = tool.input_schema().to_string();
+    assert!(!schema.contains(HIDDEN_TEXT), "{schema}");
+    assert_eq!(tool.input_schema()["description"], "Élément");
+    assert!(shows_all_it_holds(&tool.info().description));
     runtime.closer.unwrap().close().await;
 }
 
