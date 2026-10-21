@@ -173,8 +173,8 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
 
     Ok(App {
         router,
+        maintenance: spawn_maintenance(services.clone()),
         services,
-        maintenance: spawn_maintenance(db, bus),
     })
 }
 

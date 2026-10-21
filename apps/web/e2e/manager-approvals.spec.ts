@@ -184,6 +184,8 @@ test('requests awaiting someone else, or nobody, may be withdrawn', async ({ pag
   await page.goto('/approvals');
 
   await expect(page.getByText('En attente de la validation de Claire Martin.')).toBeVisible();
+  // Each says until when it waits.
+  await expect(page.getByText(/expire le 28\/10\/2026/)).toHaveCount(3);
   await expect(
     page.getByText('Plus personne ne peut valider cette demande : retirez-la'),
   ).toBeVisible();

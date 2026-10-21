@@ -86,7 +86,7 @@ MVP : un compte appartient à **une** entreprise. Une identité multi-entreprise
 | `agent_runs`       | Une exécution de l'agent                                  | `on_behalf_of_user_id` (**dont les permissions s'appliquent**), `initiated_by_user_id`, `parent_run_id` (sous-agent), `agent_profile`, `status`, `objective`, `success_criteria`, `plan`, `autonomy_level`, `allowed_permissions` (plafond), `budget`, `usage`, `state` (point de reprise), `result`, `verification`, `lease_owner` / `lease_expires_at` |
 | `run_events`       | Journal d'exécution rejouable                             | `seq` (ordre, sert de `Last-Event-ID` SSE), `type`, `data`                                                                                                                                                                                                                                                                                               |
 | `tool_invocations` | Chaque appel d'outil                                      | `tool_name`, `input` (expurgé), `decision`, `decision_reason`, `status`, `output_summary`, `duration_ms`                                                                                                                                                                                                                                                 |
-| `approvals`        | Validations humaines                                      | `requested_for_user_id` (pour qui l'agent agit), `tool_name`, `action_summary`, `payload`, `risk`, `status` (`pending`, `approved`, `rejected`, `expired`, `cancelled`), `routing` (`requester` ou `manager`) et `approver_user_id` (le responsable désigné, ADR-059), `decided_by_user_id`, `expires_at`                                                |
+| `approvals`        | Validations humaines                                      | `requested_for_user_id` (pour qui l'agent agit), `tool_name`, `action_summary`, `payload`, `risk`, `status` (`pending`, `approved`, `rejected`, `expired`, `cancelled`), `routing` (`requester` ou `manager`) et `approver_user_id` (le responsable désigné, ADR-059), `decided_by_user_id`, `expires_at` (7 jours ; passée, la demande expire, ADR-061) |
 | `deliverables`     | Livrables produits (synthèse, planning proposé, document) | `type`, `title`, `content jsonb`, `status` (`draft`, `approved`, `applied`, `discarded`), `owner_user_id`, `org_unit_id`                                                                                                                                                                                                                                 |
 
 Statuts d'un run : `queued → running → (awaiting_approval ↔ running) → completed | failed | cancelled`.
@@ -141,8 +141,11 @@ Phase 2 : `skill_eval_runs`, `documents` / `document_chunks` (GED, ingestion),
   réinitialisation, ADR-028), `system_fail_stale_runs` (marquer en échec les runs
   restés sans progression, et les rendre pour annoncer leur fin), `system_interrupted_runs`
   (lister, au démarrage, les runs qu'un arrêt du service a laissés en cours : entreprise et
-  identifiant seulement, chacun repris ensuite dans sa propre entreprise, ADR-053) et
-  `system_purge_expired_password_resets` (supprimer les liens de réinitialisation expirés).
+  identifiant seulement, chacun repris ensuite dans sa propre entreprise, ADR-053),
+  `system_overdue_approval_runs` (lister les runs dont une demande de validation a passé
+  son échéance : entreprise et identifiant seulement, chacun traité ensuite dans sa propre
+  entreprise, ADR-061) et `system_purge_expired_password_resets` (supprimer les liens de
+  réinitialisation expirés).
 
 ## 5. Rétention (valeurs par défaut, configurables par entreprise)
 

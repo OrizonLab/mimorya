@@ -1,5 +1,6 @@
 //! Periodic maintenance, at startup and then every minute: expired password
-//! reset links are deleted (ADR-028); runs without progress for a while
+//! reset links are deleted (ADR-028); requests nobody decided in time
+//! expire, and their runs go on (ADR-061); runs without progress for a while
 //! belong to a stuck process and are marked as failed, their `run_finished`
 //! event recorded and broadcast to the clients following them. That sweep
 //! waits until the process has run as long as a run takes to go stale: runs
@@ -10,7 +11,6 @@
 //! taking may still append an event after that end, which clients ignore
 //! (they stop at the first `run_finished`).
 
-use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::Utc;
@@ -20,20 +20,27 @@ use mimorya_db::repositories::password_resets::purge_expired_password_resets;
 use mimorya_db::repositories::runs::fail_stale_runs;
 use tokio::task::JoinHandle;
 
+use crate::app::AppState;
 use crate::services::event_bus::RunEventBus;
 use crate::services::runs::record_run_event;
 
 const STALE_AFTER: chrono::Duration = chrono::Duration::minutes(15);
 const SWEEP_INTERVAL: Duration = Duration::from_secs(60);
 
-pub fn spawn_maintenance(db: Database, bus: Arc<RunEventBus>) -> JoinHandle<()> {
+pub fn spawn_maintenance(services: AppState) -> JoinHandle<()> {
     tokio::spawn(async move {
+        let (db, bus) = (&services.db, &services.bus);
         let mut interval = tokio::time::interval(SWEEP_INTERVAL);
         let started = tokio::time::Instant::now();
         loop {
             interval.tick().await;
+            match services.runs.expire_overdue().await {
+                Ok(0) => {}
+                Ok(expired) => tracing::info!(expired, "Overdue approval requests expired"),
+                Err(error) => tracing::warn!(error = %error, "Overdue request sweep failed"),
+            }
             if sweeps_stale_runs(started.elapsed()) {
-                match sweep_stale_runs(&db, &bus, STALE_AFTER).await {
+                match sweep_stale_runs(db, bus, STALE_AFTER).await {
                     Ok(0) => {}
                     Ok(failed) => tracing::warn!(failed, "Stale runs marked as failed"),
                     Err(error) => tracing::warn!(error = %error, "Stale run sweep failed"),

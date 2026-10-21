@@ -154,8 +154,9 @@ systématiquement une validation (`requiresApproval`).
   et le run reprend avec les droits de la personne, qui peut retirer sa demande tant
   qu'elle peut utiliser l'agent (l'action n'est pas exécutée). Si personne n'est éligible, l'action est
   refusée aussitôt. Si un relais SMTP est configuré, le responsable est prévenu par
-  e-mail, sans le détail de l'action (ADR-060). Restent à faire : délais d'expiration actifs, relances,
-  délégations.
+  e-mail, sans le détail de l'action (ADR-060). Une demande que personne ne décide
+  dans les 7 jours expire : l'agent poursuit sans l'action (ADR-061). Restent à faire :
+  relances, délégations.
 - `approval:decide` est **non délégable** : l'agent ne peut jamais valider lui-même.
 - Après décision, l'outil est exécuté **avec les paramètres validés** (aucune
   modification possible entre validation et exécution) et le run reprend.

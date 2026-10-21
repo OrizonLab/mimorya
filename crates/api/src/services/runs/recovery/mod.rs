@@ -123,7 +123,7 @@ impl RunService {
 
     /// Ends a run that does not go on, as the engine would: its outcome saved
     /// (status, message in the conversation, audit), then announced.
-    async fn end(
+    pub(super) async fn end(
         &self,
         scope: RunScope,
         error: &str,
