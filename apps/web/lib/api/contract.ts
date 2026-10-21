@@ -513,7 +513,12 @@ export type MeUser = { id: string, email: string, displayName: string, jobTitle:
 /**
  * Temporary password: nothing else is reachable until it is replaced.
  */
-mustChangePassword: boolean, };
+mustChangePassword: boolean,
+/**
+ * False when the account signs in through its company's identity
+ * provider only (ADR-064): it has no password to change.
+ */
+hasPassword: boolean, };
 
 export type MemoryItem = { id: string, scope: MemoryScope,
 /**

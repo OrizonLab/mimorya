@@ -5,7 +5,7 @@ import { Button, ErrorNote } from '@/components/ui';
 import { api, useAction, type SsoDiscovery, type SsoLookup, type SsoStart } from '@/lib/api';
 
 const FAILED =
-  'La connexion par votre fournisseur d’identité n’a pas abouti. Réessayez, ou connectez-vous avec votre mot de passe.';
+  'La connexion par votre fournisseur d’identité n’a pas abouti. Réessayez, ou connectez-vous avec votre mot de passe (compte invité : depuis le lien de votre invitation).';
 
 /** Looks like an address worth asking about. */
 const ADDRESS = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;

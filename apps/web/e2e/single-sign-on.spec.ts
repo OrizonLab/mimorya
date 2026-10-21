@@ -5,7 +5,7 @@
 // address, goes to the provider and comes back signed in. Disabled, it is
 // offered to nobody; deleted, it is gone. An invited collaborator activates
 // the account through it, from the invitation's page, without choosing a
-// password (ADR-064). A failed return lands on the sign-in page with a
+// password; « Mon compte » then says it has none (ADR-064). A failed return lands on the sign-in page with a
 // message. The provider is
 // the end-to-end server's own, an OpenID Connect provider on the private
 // network signing in whoever the sign-in names (`IDP_ADDRESS` of
@@ -154,6 +154,11 @@ test('an invited collaborator activates the account through the provider', async
   await newcomer.waitForURL('**/chat');
   const me = await newcomer.request.get('/api/auth/me');
   expect(((await me.json()) as { user: { email: string } }).user.email).toBe(email);
+  // No password to change: « Mon compte » says so.
+  await newcomer.goto('/account');
+  await expect(newcomer.getByText('Votre compte n’a pas de mot de passe')).toBeVisible();
+  await expect(newcomer.getByLabel('Mot de passe actuel')).toHaveCount(0);
+  await noError(newcomer);
 
   // Active as the API records it; the link spent.
   const listed = await page.request.get('/api/admin/users');

@@ -53,15 +53,16 @@ pub struct NewUser {
     pub job_title: Option<String>,
     pub clearance: Sensitivity,
     /// A temporary password the account must replace, or `None`: the
-    /// account is `invited` until it chooses its own (ADR-027).
+    /// account is `invited` until it accepts its invitation (ADR-027, ADR-064).
     pub password_hash: Option<String>,
 }
 
 pub async fn create_user(conn: &mut PgConnection, input: NewUser) -> sqlx::Result<Uuid> {
     sqlx::query_scalar(
         "insert into users (tenant_id, email, display_name, job_title, clearance, password_hash, \
-         must_change_password, status) values ($1, $2, $3, $4, $5, $6, $6 is not null, \
-         case when $6 is null then 'invited' else 'active' end) returning id",
+         must_change_password, status, activated) values ($1, $2, $3, $4, $5, $6, \
+         $6 is not null, case when $6 is null then 'invited' else 'active' end, $6 is not null) \
+         returning id",
     )
     .bind(input.tenant_id)
     .bind(input.email)
@@ -79,8 +80,8 @@ pub struct UserPatch {
     pub display_name: Option<String>,
     pub job_title: Option<Option<String>>,
     pub clearance: Option<Sensitivity>,
-    /// `active` or `disabled`; an account that never chose a password goes
-    /// back to `invited`, not `active`.
+    /// `active` or `disabled`; an account that was never active (its
+    /// invitation not accepted yet) goes back to `invited`, not `active`.
     pub status: Option<&'static str>,
     /// Replaces every attribute (checked by the caller).
     pub attributes: Option<Value>,
@@ -96,7 +97,7 @@ pub async fn update_user(
         "update users set display_name = coalesce($2, display_name), \
          job_title = case when $3 then $4 else job_title end, \
          clearance = coalesce($5, clearance), \
-         status = case when $6 = 'active' and password_hash is null then 'invited' \
+         status = case when $6 = 'active' and not activated then 'invited' \
            else coalesce($6, status) end, \
          attributes = coalesce($7, attributes), updated_at = now() where id = $1",
     )
@@ -240,7 +241,7 @@ pub async fn activate_invited_user(
 ) -> sqlx::Result<bool> {
     let result = sqlx::query(
         "update users set password_hash = $2, must_change_password = false, status = 'active', \
-         updated_at = now() where id = $1 and status = 'invited'",
+         activated = true, updated_at = now() where id = $1 and status = 'invited'",
     )
     .bind(id)
     .bind(password_hash)
@@ -256,8 +257,8 @@ pub async fn activate_invited_without_password(
     id: Uuid,
 ) -> sqlx::Result<bool> {
     let result = sqlx::query(
-        "update users set must_change_password = false, status = 'active', updated_at = now() \
-         where id = $1 and status = 'invited'",
+        "update users set must_change_password = false, status = 'active', activated = true, \
+         updated_at = now() where id = $1 and status = 'invited'",
     )
     .bind(id)
     .execute(conn)

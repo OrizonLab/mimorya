@@ -152,6 +152,20 @@ pub async fn sso_logins(
     .unwrap()
 }
 
+/// The invitations accepted in the demo company after `since`, by link or
+/// provider (ADR-064): account, metadata.
+pub async fn invitation_acceptances(api: &TestApi, since: i64) -> Vec<(Option<Uuid>, Value)> {
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    sqlx::query_as(
+        "select actor_user_id, metadata from audit_log \
+         where id > $1 and action = 'user.invitation_accepted' order by id",
+    )
+    .bind(since)
+    .fetch_all(&mut *tx)
+    .await
+    .unwrap()
+}
+
 /// The subjects tied to the demo company's accounts: account, subject.
 pub async fn identities(api: &TestApi) -> Vec<(Uuid, String)> {
     let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();

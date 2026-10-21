@@ -25,3 +25,12 @@ $$;
 REVOKE ALL ON FUNCTION auth_find_identity_provider(text) FROM PUBLIC;
 
 GRANT EXECUTE ON FUNCTION auth_find_identity_provider(text) TO mimorya_app;
+
+-- Whether the account was ever active: its invitation accepted, by its link
+-- or through the provider, or created with a temporary password. Re-enabled,
+-- an account that never was goes back to `invited` (ADR-027); one accepted
+-- through the provider has no password but stays active (ADR-064). Until
+-- now an account without a password had never been active.
+ALTER TABLE users ADD COLUMN activated boolean NOT NULL DEFAULT true;
+
+UPDATE users SET activated = false WHERE password_hash IS NULL;

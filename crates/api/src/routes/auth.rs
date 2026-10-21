@@ -23,6 +23,7 @@ use crate::contract::{
 };
 use crate::http::{ApiError, ApiResult, Body};
 use crate::plugins::{AuthPendingPasswordChange, MaybeAuth, RequestContext};
+use crate::services::account;
 use crate::services::permission_catalog::permission_catalog;
 
 const INVALID_CREDENTIALS: &str = "Identifiants invalides";
@@ -180,6 +181,7 @@ async fn me(
             job_title: access.profile.job_title.clone(),
             org_unit,
             must_change_password: identity.must_change_password,
+            has_password: account::has_password(&state.db, &access).await?,
         },
         tenant: MeTenant {
             id: access.tenant.id,

@@ -197,7 +197,7 @@ impl SsoService {
             return Err(at("Entreprise suspendue"));
         }
         let mut audit = Vec::new();
-        let user_id = match find_identity(&mut tx, provider_id, &proven.subject)
+        let (user_id, linked) = match find_identity(&mut tx, provider_id, &proven.subject)
             .await
             .map_err(|e| internal(&e))?
         {
@@ -205,7 +205,7 @@ impl SsoService {
                 touch_identity(&mut tx, linked.id)
                     .await
                     .map_err(|e| internal(&e))?;
-                linked.user_id
+                (linked.user_id, true)
             }
             None => {
                 let email = proven
@@ -227,29 +227,33 @@ impl SsoService {
                         at("Compte déjà relié à une autre identité de ce fournisseur").of(user_id),
                     );
                 }
-                link_identity(
-                    &mut tx,
-                    NewIdentity {
-                        tenant_id,
-                        provider_id,
-                        user_id,
-                        subject: &proven.subject,
-                    },
-                )
-                .await
-                .map_err(|e| internal(&e))?
-                .ok_or_else(|| at("Identité reliée entre-temps").of(user_id))?;
-                audit.push(
-                    AuditEntry::new(tenant_id, "user", "auth.identity_linked", "success")
-                        .resource("identity_provider", provider_id),
-                );
-                user_id
+                (user_id, false)
             }
         };
+        // The account's row first, as a password or an invitation's link
+        // takes it: an acceptance, a resend or a disabling meanwhile waits.
         let admission = admit(&mut tx, user_id)
             .await
             .map_err(|e| internal(&e))?
             .ok_or_else(|| at("Compte inactif").of(user_id))?;
+        if !linked {
+            link_identity(
+                &mut tx,
+                NewIdentity {
+                    tenant_id,
+                    provider_id,
+                    user_id,
+                    subject: &proven.subject,
+                },
+            )
+            .await
+            .map_err(|e| internal(&e))?
+            .ok_or_else(|| at("Identité reliée entre-temps").of(user_id))?;
+            audit.push(
+                AuditEntry::new(tenant_id, "user", "auth.identity_linked", "success")
+                    .resource("identity_provider", provider_id),
+            );
+        }
         if let Admission::Accepted = admission {
             audit.push(
                 AuditEntry::new(tenant_id, "user", "user.invitation_accepted", "success")
