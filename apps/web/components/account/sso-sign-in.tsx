@@ -17,6 +17,9 @@ const FAILED =
 const LIMITED =
   'Trop d’adresses essayées depuis votre réseau : la connexion par le fournisseur d’identité de votre entreprise sera de nouveau proposée dans une minute.';
 
+/** The API's window for the addresses asked about: asked again after it. */
+const RETRY_AFTER_MS = 60_000;
+
 /** Looks like an address worth asking about. */
 const ADDRESS = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
@@ -43,6 +46,7 @@ export function SsoSignIn({ email, invitation = false }: { email: string; invita
 
   useEffect(() => {
     let current = true;
+    let retry: number | undefined;
     function discover() {
       // Never another address's provider while this one is asked about.
       setProvider(null);
@@ -57,12 +61,15 @@ export function SsoSignIn({ email, invitation = false }: { email: string; invita
         .catch((error: unknown) => {
           if (!current) return;
           setProvider(null);
-          setLimited(error instanceof ApiError && error.status === 429);
+          const tooMany = error instanceof ApiError && error.status === 429;
+          setLimited(tooMany);
+          if (tooMany) retry = window.setTimeout(discover, RETRY_AFTER_MS);
         });
     }
     discover();
     return () => {
       current = false;
+      window.clearTimeout(retry);
     };
   }, [email]);
 

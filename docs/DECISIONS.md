@@ -2377,8 +2377,10 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
       pour son entreprise, intacte et à temps ; `address.rs` et `http.rs` : adresses
       hors politique refusées, sans aucune connexion ;
     - `crates/api/tests/sso_sign_in.rs`, `sso_refusals.rs`, `sso_companies.rs`,
-      `sso_limits.rs`, `admin_identity_providers.rs` : connexion, liaison unique, limite
-      propre aux étapes, refus (dont un audit sans code ni jeton ; le compte invité,
+      `sso_limits.rs`, `admin_identity_providers.rs` : connexion, liaison unique, limites
+      propres aux étapes (adresses essayées par la découverte ou le départ ; départ et
+      retour ensemble ; `crates/api/src/plugins/distinct_limit.rs` : une adresse comptée
+      une fois par fenêtre), refus (dont un audit sans code ni jeton ; le compte invité,
       d'abord refusé, est couvert par `sso_invitations.rs`, ADR-064), isolation entre
       entreprises, fournisseur
       hors politique réseau jamais joint, configuration ;
@@ -2387,7 +2389,8 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     - `apps/web/e2e/single-sign-on.spec.ts` : déclaration dans l'administration (secret
       jamais affiché, relu après rechargement), modification sans ressaisir le secret
       (conservé), connexion de bout en bout par le bouton, fournisseur désactivé proposé à
-      personne, suppression, retour en échec signalé.
+      personne, suppression, retour en échec signalé, découverte refusée au-delà de sa
+      limite signalée puis redemandée une fois la minute passée.
 
 ## ADR-064 — Accepter une invitation par le fournisseur d'identité de l'entreprise
 

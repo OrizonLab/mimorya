@@ -7,7 +7,8 @@
 // the account through it, from the invitation's page, without choosing a
 // password; « Mon compte » then says it has none (ADR-064). A failed return
 // lands on the sign-in page with a message, and so does a discovery refused
-// past the limit of addresses asked about. The provider is the end-to-end
+// past the limit of addresses asked about, asked again once its minute is
+// over. The provider is the end-to-end
 // server's own, an OpenID Connect provider on the private network signing
 // in whoever the sign-in names (`IDP_ADDRESS` of
 // `crates/api/examples/e2e_server`).
@@ -184,22 +185,34 @@ test('a failed return comes back to the sign-in page, which says so', async ({ p
   await expect(page.getByRole('button', { name: 'Se connecter', exact: true })).toBeVisible();
 });
 
-test('a discovery refused past its limit says so, the password staying', async ({ page }) => {
-  // As the API answers past the addresses a network may ask about (ADR-063):
-  // the end-to-end server's limit is too high to reach.
+test('a discovery refused past its limit says so, then asks again', async ({ page }) => {
+  // As the API answers past the addresses a network may ask about (ADR-063),
+  // then once its minute is over: the end-to-end server's limit is too high
+  // to reach.
+  let refusing = true;
   await page.route('**/api/auth/sso/discover', (route) =>
-    route.fulfill({
-      status: 429,
-      contentType: 'application/json',
-      body: JSON.stringify({ error: { code: 'rate_limited', message: 'Trop de requêtes' } }),
-    }),
+    route.fulfill(
+      refusing
+        ? {
+            status: 429,
+            contentType: 'application/json',
+            body: JSON.stringify({ error: { code: 'rate_limited', message: 'Trop de requêtes' } }),
+          }
+        : { status: 200, json: { provider: { kind: 'oidc', name: PROVIDER } } },
+    ),
   );
+  await page.clock.install();
   await page.goto('/login');
   await page.getByLabel('Adresse e-mail professionnelle').fill(demo.nadia);
   await page.getByLabel('Adresse e-mail professionnelle').blur();
-  await expect(
-    page.getByText('Trop d’adresses essayées depuis votre réseau', { exact: false }),
-  ).toBeVisible();
+  const limited = page.getByText('Trop d’adresses essayées depuis votre réseau', { exact: false });
+  await expect(limited).toBeVisible();
   await expect(page.getByRole('button', { name: /^Se connecter avec/ })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Se connecter', exact: true })).toBeVisible();
+
+  // The minute over, asked again by itself.
+  refusing = false;
+  await page.clock.fastForward(60_000);
+  await expect(page.getByRole('button', { name: `Se connecter avec ${PROVIDER}` })).toBeVisible();
+  await expect(limited).toHaveCount(0);
 });
