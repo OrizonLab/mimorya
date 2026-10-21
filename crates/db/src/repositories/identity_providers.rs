@@ -19,7 +19,7 @@ pub struct IdentityProviderRow {
     pub issuer: String,
     pub client_id: String,
     pub enabled: bool,
-    /// In alphabetical order.
+    /// In byte order, whatever the database's collation.
     pub domains: Vec<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -27,7 +27,8 @@ pub struct IdentityProviderRow {
 
 const SELECT: &str = "select p.id, p.tenant_id, p.kind, p.name, p.issuer, p.client_id, \
     p.enabled, coalesce(array(select d.domain::text from identity_provider_domains d \
-    where d.provider_id = p.id order by 1), '{}') as domains, p.created_at, p.updated_at \
+    where d.provider_id = p.id order by d.domain::text collate \"C\"), '{}') as domains, \
+    p.created_at, p.updated_at \
     from identity_providers p";
 
 pub async fn list_identity_providers(
