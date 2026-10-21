@@ -14,9 +14,10 @@ const ADDRESS = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
  * Signing in through the company's identity provider (ADR-063): offered
  * when the address's account belongs to a company that uses one; the
  * browser then goes to the provider, which sends it back signed in, or to
- * the sign-in page with `?sso=echec`.
+ * the sign-in page with `?sso=echec`. On an invitation's page, the same
+ * sign-in accepts it, without a password (ADR-064).
  */
-export function SsoSignIn({ email }: { email: string }) {
+export function SsoSignIn({ email, invitation = false }: { email: string; invitation?: boolean }) {
   const [provider, setProvider] = useState<SsoDiscovery['provider']>(null);
   const [failed, setFailed] = useState(false);
   const action = useAction();
@@ -62,9 +63,15 @@ export function SsoSignIn({ email }: { email: string }) {
       {failed && <ErrorNote message={FAILED} />}
       {provider && (
         <div className="flex flex-col gap-2 rounded-lg border border-line p-3">
-          <p className="text-sm text-muted">Votre entreprise vous connecte avec {provider.name}.</p>
+          <p className="text-sm text-muted">
+            {invitation
+              ? `Votre entreprise vous connecte avec ${provider.name} : activez votre compte avec lui, sans choisir de mot de passe.`
+              : `Votre entreprise vous connecte avec ${provider.name}.`}
+          </p>
           <Button type="button" loading={action.pending} onClick={start}>
-            Se connecter avec {provider.name}
+            {invitation
+              ? `Activer mon compte avec ${provider.name}`
+              : `Se connecter avec ${provider.name}`}
           </Button>
           {action.error && <ErrorNote message={action.error} />}
         </div>

@@ -9,7 +9,8 @@ pub enum ResetRefusal {
     /// It never chose a password: its invitation link serves.
     Invited,
     Disabled,
-    /// Active without a password (as a future single sign-on account).
+    /// Active without a password: it signs in through its company's
+    /// identity provider (ADR-064).
     NoPassword,
     CompanySuspended,
 }

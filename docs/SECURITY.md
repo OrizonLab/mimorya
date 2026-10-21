@@ -122,7 +122,9 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   - Pas de création de compte : la première connexion relie un compte actif existant au
     sujet immuable du fournisseur (`oid` pour Microsoft), seulement par une adresse que
     le fournisseur garantit (Microsoft : le nom de connexion, ou `email` avec
-    `xms_edov`), dans un domaine déclaré ; ensuite, seul le sujet compte.
+    `xms_edov`), dans un domaine déclaré ; ensuite, seul le sujet compte. Un compte
+    invité accepte ainsi son invitation : actif sans mot de passe, son lien supprimé
+    (ADR-064).
     La session s'ouvre comme pour un mot de passe ; chaque refus est tracé avec sa
     raison dans l'entreprise de la tentative, jamais un jeton ni un code.
   - Suite : SSO obligatoire par domaine, acceptation d'une invitation par le

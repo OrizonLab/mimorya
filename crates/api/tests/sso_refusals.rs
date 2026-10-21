@@ -6,12 +6,11 @@
 mod support;
 
 use mimorya_core::demo::{tenant, user};
-use support::accounts::invite_account;
 use support::identity_provider::{MockIdentityProvider, Person, Tamper};
 use support::refusals::latest_entry;
 use support::sso::{
     SSO_DEPLOYMENT, assert_refused, audit_text_since, come_back, declaration, declare, discover,
-    identities, location, remove, session, sign_in, sso_logins, start, state_of, try_start,
+    identities, location, remove, session, sign_in, sso_logins, start, state_of,
 };
 use support::{TestApi, email};
 
@@ -219,28 +218,5 @@ async fn a_disabled_account_never_signs_in_nor_gets_tied() {
         .patch(&account, serde_json::json!({ "status": "active" }))
         .await;
     assert_eq!(enabled.status, axum::http::StatusCode::OK);
-    remove(&paul, &id).await;
-}
-
-#[tokio::test]
-#[ignore = "requires PostgreSQL"]
-async fn an_invited_account_is_offered_no_provider() {
-    let api = TestApi::start_with(&SSO_DEPLOYMENT).await;
-    let idp = MockIdentityProvider::start().await;
-    let paul = api.sign_in(user::PAUL).await;
-    let id = declare(&paul, declaration(&idp)).await;
-    // Its invitation is accepted first, with a password (ADR-063).
-    let (invited, _) = invite_account(&paul, "invite.sso").await;
-    assert_eq!(
-        discover(&api, &invited.email).await,
-        serde_json::json!(null)
-    );
-    let refused = try_start(&api, &invited.email).await;
-    assert_eq!(
-        refused.status,
-        axum::http::StatusCode::NOT_FOUND,
-        "{}",
-        refused.text()
-    );
     remove(&paul, &id).await;
 }

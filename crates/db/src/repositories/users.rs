@@ -248,3 +248,19 @@ pub async fn activate_invited_user(
     .await?;
     Ok(result.rows_affected() > 0)
 }
+
+/// An invited account accepted through its company's identity provider
+/// (ADR-064): active, without a password; whether it was still invited.
+pub async fn activate_invited_without_password(
+    conn: &mut PgConnection,
+    id: Uuid,
+) -> sqlx::Result<bool> {
+    let result = sqlx::query(
+        "update users set must_change_password = false, status = 'active', updated_at = now() \
+         where id = $1 and status = 'invited'",
+    )
+    .bind(id)
+    .execute(conn)
+    .await?;
+    Ok(result.rows_affected() > 0)
+}

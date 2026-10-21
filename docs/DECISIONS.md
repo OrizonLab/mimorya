@@ -2342,8 +2342,9 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - qui administre les fournisseurs peut se connecter comme les comptes de ses domaines
     pas encore reliés ; c'est déjà le pouvoir de qui fixe un mot de passe provisoire
     (même niveau d'administration, tracé) ;
-  - un compte invité accepte d'abord son invitation ; un mot de passe provisoire reste à
-    remplacer, même après une connexion par le fournisseur ;
+  - un compte invité accepte d'abord son invitation (remplacé par ADR-064 : il peut
+    l'accepter par le fournisseur) ; un mot de passe provisoire reste à remplacer, même
+    après une connexion par le fournisseur ;
   - la connexion par mot de passe reste ouverte ; la rendre impossible pour les
     domaines couverts, accepter une invitation par le fournisseur, la création de
     compte à la première connexion, SAML et la vérification de propriété d'un domaine
@@ -2377,3 +2378,31 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
       jamais affiché, relu après rechargement), modification sans ressaisir le secret
       (conservé), connexion de bout en bout par le bouton, fournisseur désactivé proposé à
       personne, suppression, retour en échec signalé.
+
+## ADR-064 — Accepter une invitation par le fournisseur d'identité de l'entreprise
+
+- **Date** : 2026-10-21 · **Statut** : acceptée
+- **Contexte** : dans une entreprise qui se connecte par Microsoft 365 (ADR-063), un compte
+  créé par l'administration attend que la personne choisisse un mot de passe par le lien
+  de son invitation, mot de passe dont elle n'a pas besoin.
+- **Décision** :
+  - un compte **invité** se voit proposer le fournisseur de son entreprise comme un compte
+    actif (`auth_find_identity_provider`, migration 0018), sur la page de connexion et sur
+    celle de son invitation (« Activer mon compte avec … ») ;
+  - au retour, les règles d'ADR-063 s'appliquent (adresse garantie par le fournisseur, dans
+    un domaine déclaré ; liaison au sujet) ; le compte invité devient alors **actif sans
+    mot de passe**, son invitation est supprimée (son lien ne vaut plus rien), et
+    l'acceptation est tracée (`user.invitation_accepted`, méthode `sso`, fournisseur),
+    dans la même transaction que la session ouverte ;
+  - le fournisseur garantit l'adresse à laquelle l'invitation a été envoyée : c'est la même
+    preuve que l'ouverture du lien, sans l'échéance du lien, qui ne protégeait que contre
+    sa fuite ;
+  - un compte désactivé n'est proposé à aucun fournisseur.
+- **Conséquences** :
+  - un compte accepté ainsi n'a pas de mot de passe : il ne se connecte que par le
+    fournisseur, et « mot de passe oublié » ne lui envoie rien ; l'administration peut lui
+    fixer un mot de passe provisoire ;
+  - tests : `crates/api/tests/sso_invitations.rs` (acceptation, invitation supprimée, lien
+    refusé, pas de mot de passe, trace ; refusée sans adresse garantie ; rien pour un compte
+    désactivé) ; `apps/web/e2e/single-sign-on.spec.ts` (invitation reçue par e-mail,
+    compte activé par le fournisseur, lien refusé ensuite).
