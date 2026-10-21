@@ -1,5 +1,5 @@
 //! A run failed by another process's sweep while its model still answers,
-//! as a stuck run would be (ADR-053's sweep of stale runs).
+//! as a stuck run would be (the stale-run sweep, ADR-016, ADR-053).
 
 use mimorya_api::plugins::maintenance::sweep_stale_runs;
 use mimorya_api::services::RunEventBus;

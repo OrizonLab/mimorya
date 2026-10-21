@@ -21,8 +21,8 @@ pub struct ApprovalMail<'a> {
     pub risks: &'a [&'a str],
     /// The page listing the requests to decide.
     pub link: &'a str,
-    /// Their deadline: the earliest, should they differ (those of one step
-    /// do not).
+    /// Their deadline: the earliest (those of one step are the same to the
+    /// minute).
     pub expires_at: Option<DateTime<Utc>>,
 }
 

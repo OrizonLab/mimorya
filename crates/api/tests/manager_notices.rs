@@ -10,6 +10,7 @@ use axum::http::StatusCode;
 use mimorya_agent::testing::ScriptedStep;
 use mimorya_core::demo::{tenant, user};
 use mimorya_db::repositories::approval_notices::approval_notices;
+use mimorya_db::repositories::approvals::list_approvals_for_run;
 use mimorya_db::repositories::runs::{RunStatus, get_run};
 use serde_json::{Value, json};
 use support::manager_approvals::{ROUTING, applying, route_to_managers};
@@ -260,8 +261,15 @@ async fn the_requests_of_a_run_ended_before_its_pause_are_told_to_nobody() {
 
     let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
     let run = get_run(&mut tx, run_id).await.unwrap().unwrap();
+    let requests = list_approvals_for_run(&mut tx, run_id).await.unwrap();
     tx.commit().await.unwrap();
     assert_eq!(run.status(), RunStatus::Failed);
+    // Two requests wait for Marc, of which he is told nothing.
+    let for_marc: Vec<_> = requests
+        .iter()
+        .filter(|a| a.status == "pending" && a.decider() == Some(user::MARC))
+        .collect();
+    assert_eq!(for_marc.len(), 2, "{requests:?}");
     assert!(api.mail.sent().is_empty(), "{:?}", api.mail.sent());
     assert!(notices(&api, &run_id.to_string()).await.is_empty());
 }

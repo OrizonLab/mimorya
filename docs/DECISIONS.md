@@ -2141,7 +2141,7 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     actif, et qui n'ont pas déjà été signalées ; une demande que la personne décide
     elle-même n'est jamais envoyée ;
   - le message dit pour qui sont les actions, combien, leurs risques, le lien vers la
-    page des validations et leur échéance (la même pour les demandes d'une étape). Il ne contient **ni les actions ni
+    page des validations et leur échéance (la plus proche ; celles d'une étape sont les mêmes à la minute). Il ne contient **ni les actions ni
     leurs paramètres** : ils ne se lisent qu'après connexion, là où le droit de décider
     est vérifié ;
   - chaque demande signalée est tracée (`approval.notified`, réussi ou échoué, au nom
