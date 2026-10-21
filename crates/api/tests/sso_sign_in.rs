@@ -33,7 +33,7 @@ async fn an_account_signs_in_through_its_company_s_provider_tied_once() {
 
     // Offered to the company's accounts of the domain, whatever the case;
     // an address without an account reads as one without a provider.
-    let offered = json!({ "kind": "oidc", "name": "Annuaire Néo" });
+    let offered = json!({ "kind": "oidc", "name": "Annuaire Néo", "required": false });
     assert_eq!(discover(&api, &nadia).await, offered);
     assert_eq!(discover(&api, &nadia.to_uppercase()).await, offered);
     assert_eq!(
@@ -142,6 +142,7 @@ async fn a_microsoft_directory_s_account_is_known_by_its_object_id() {
             issuer: &idp.issuer,
             client_id: CLIENT_ID,
             enabled: true,
+            required: false,
             created_by_user_id: user::PAUL,
         },
     )
@@ -160,7 +161,7 @@ async fn a_microsoft_directory_s_account_is_known_by_its_object_id() {
     tx.commit().await.unwrap();
 
     let nadia = email(user::NADIA);
-    let offered = json!({ "kind": "microsoft", "name": "Microsoft 365" });
+    let offered = json!({ "kind": "microsoft", "name": "Microsoft 365", "required": false });
     assert_eq!(discover(&api, &nadia).await, offered);
     // No `email` claim: the sign-in name of the directory's account; the
     // object ID, not the pairwise subject, ties it.

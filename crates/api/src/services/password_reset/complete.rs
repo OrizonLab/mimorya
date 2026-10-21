@@ -17,6 +17,8 @@ use mimorya_db::repositories::users::{revoke_user_sessions, set_reset_password_h
 use crate::auth::credentials::{hash_password_async, hash_token};
 use crate::auth::sessions::open_session;
 use crate::plugins::RequestContext;
+use crate::services::AccessService;
+use crate::services::sso::required_provider;
 
 const UNUSABLE: &str = "Ce lien de réinitialisation n’est plus valable : demandez-en un nouveau \
      depuis la page de connexion";
@@ -48,8 +50,11 @@ pub async fn inspect_reset(db: &Database, token: &str) -> anyhow::Result<ResetVi
 }
 
 /// Sets the chosen password; returns the token of the session it opens.
+/// Under a provider required for its domain, a link sent before is of no
+/// use (ADR-066).
 pub async fn complete_reset(
     db: &Database,
+    access: &AccessService,
     token: &str,
     password: String,
     context: &RequestContext,
@@ -57,6 +62,12 @@ pub async fn complete_reset(
 ) -> anyhow::Result<String> {
     let token_hash = hash_token(token);
     let record = usable(db, &token_hash).await?;
+    if let Some(provider) = required_provider(db, access, record.tenant_id, record.user_id).await? {
+        return Err(DomainError::forbidden(format!(
+            "Votre entreprise impose la connexion par {provider} : ce lien ne sert plus."
+        ))
+        .into());
+    }
     let password_hash = hash_password_async(password).await?;
     let mut tx = db.begin(record.tenant_id).await?;
     // The account's row first, as a login, an administrator's reset or a

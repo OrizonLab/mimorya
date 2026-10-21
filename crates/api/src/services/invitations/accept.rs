@@ -16,6 +16,8 @@ use mimorya_db::repositories::users::activate_invited_user;
 use crate::auth::credentials::{hash_password_async, hash_token};
 use crate::auth::sessions::open_session;
 use crate::plugins::RequestContext;
+use crate::services::AccessService;
+use crate::services::sso::required_provider;
 
 const UNUSABLE: &str =
     "Ce lien d’invitation n’est plus valable : demandez-en un nouveau à votre administrateur";
@@ -51,9 +53,11 @@ pub async fn inspect_invitation(db: &Database, token: &str) -> anyhow::Result<In
 }
 
 /// Activates the account with its chosen password; returns the token of
-/// the session it opens.
+/// the session it opens. Under a provider required for its domain, the
+/// account accepts through it instead (ADR-064, ADR-066).
 pub async fn accept_invitation(
     db: &Database,
+    access: &AccessService,
     token: &str,
     password: String,
     context: &RequestContext,
@@ -61,6 +65,12 @@ pub async fn accept_invitation(
 ) -> anyhow::Result<String> {
     let token_hash = hash_token(token);
     let record = usable(db, &token_hash).await?;
+    if let Some(provider) = required_provider(db, access, record.tenant_id, record.user_id).await? {
+        return Err(DomainError::forbidden(format!(
+            "Votre entreprise impose la connexion par {provider} : activez votre compte avec lui."
+        ))
+        .into());
+    }
     let password_hash = hash_password_async(password).await?;
     let mut tx = db.begin(record.tenant_id).await?;
     // The account's row first, as a resend or a disabling: they wait for

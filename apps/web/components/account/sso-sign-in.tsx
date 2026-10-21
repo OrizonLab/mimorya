@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button, ErrorNote } from '@/components/ui';
 import {
   api,
@@ -28,14 +28,29 @@ const ADDRESS = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
  * when the address's account belongs to a company that uses one; the
  * browser then goes to the provider, which sends it back signed in, or to
  * the sign-in page with `?sso=echec`. On an invitation's page, the same
- * sign-in accepts it, without a password (ADR-064).
+ * sign-in accepts it, without a password (ADR-064). The page learns the
+ * provider found (`onProvider`): a required one leaves no password to type
+ * (ADR-066).
  */
-export function SsoSignIn({ email, invitation = false }: { email: string; invitation?: boolean }) {
+export function SsoSignIn({
+  email,
+  invitation = false,
+  onProvider,
+}: {
+  email: string;
+  invitation?: boolean;
+  onProvider?: (provider: SsoDiscovery['provider']) => void;
+}) {
   const [provider, setProvider] = useState<SsoDiscovery['provider']>(null);
   const [failed, setFailed] = useState(false);
   // Asked about too many addresses: said, rather than offering nothing.
   const [limited, setLimited] = useState(false);
   const action = useAction();
+  // The page's latest callback, without asking again whenever it renders.
+  const tell = useRef(onProvider);
+  useEffect(() => {
+    tell.current = onProvider;
+  });
 
   useEffect(() => {
     function read() {
@@ -47,20 +62,24 @@ export function SsoSignIn({ email, invitation = false }: { email: string; invita
   useEffect(() => {
     let current = true;
     let retry: number | undefined;
+    function show(found: SsoDiscovery['provider']) {
+      setProvider(found);
+      tell.current?.(found);
+    }
     function discover() {
       // Never another address's provider while this one is asked about.
-      setProvider(null);
+      show(null);
       setLimited(false);
       if (!ADDRESS.test(email)) return;
       api
         .post<SsoDiscovery>('/auth/sso/discover', { email } satisfies SsoLookup)
         .then((found) => {
-          if (current) setProvider(found.provider);
+          if (current) show(found.provider);
         })
         // The password stays: nothing to offer then.
         .catch((error: unknown) => {
           if (!current) return;
-          setProvider(null);
+          show(null);
           const tooMany = error instanceof ApiError && error.status === 429;
           setLimited(tooMany);
           if (tooMany) retry = window.setTimeout(discover, RETRY_AFTER_MS);
@@ -89,7 +108,9 @@ export function SsoSignIn({ email, invitation = false }: { email: string; invita
           <p className="text-sm text-muted">
             {invitation
               ? `Votre entreprise vous connecte avec ${provider.name} : activez votre compte avec lui, sans choisir de mot de passe.`
-              : `Votre entreprise vous connecte avec ${provider.name}.`}
+              : provider.required
+                ? `Votre entreprise impose la connexion avec ${provider.name}.`
+                : `Votre entreprise vous connecte avec ${provider.name}.`}
           </p>
           <Button type="button" loading={action.pending} onClick={start}>
             {invitation

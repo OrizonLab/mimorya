@@ -58,6 +58,7 @@ async fn discover(
         provider: provider.map(|p| SsoProvider {
             kind: p.kind,
             name: p.name,
+            required: p.required,
         }),
     }))
 }

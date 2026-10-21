@@ -22,7 +22,8 @@ use uuid::Uuid;
 
 use super::{audit_entry, begin_change, current_tree, refuse_self};
 use crate::auth::credentials::{generate_temporary_password, hash_password_async};
-use crate::services::AccessContext;
+use crate::services::sso::required_provider;
+use crate::services::{AccessContext, AccessService};
 
 /// Base role every account receives on its own data (agent, directory…).
 const BASE_ROLE_KEY: &str = "member";
@@ -191,14 +192,24 @@ pub async fn update_user(
 }
 
 /// Replaces the password with a temporary one (shown once) and ends the
-/// account's sessions.
+/// account's sessions; none for an account a required provider signs in
+/// (ADR-066).
 pub async fn reset_password(
     db: &Database,
+    accounts: &AccessService,
     access: &AccessContext,
     user_id: Uuid,
 ) -> anyhow::Result<String> {
     access.require_tenant_wide(PERMISSION)?;
     refuse_self(access, user_id)?;
+    if let Some(provider) =
+        required_provider(db, accounts, access.subject.tenant_id, user_id).await?
+    {
+        return Err(DomainError::conflict(format!(
+            "Ce compte se connecte par {provider}, obligatoire : pas de mot de passe provisoire"
+        ))
+        .into());
+    }
     let password = generate_temporary_password();
     let hash = hash_password_async(password.clone()).await?;
     let mut tx = begin_change(db, access, PERMISSION).await?;

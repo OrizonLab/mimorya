@@ -136,8 +136,18 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
     désactivé puis réactivé, il reste actif (ADR-064).
     La session s'ouvre comme pour un mot de passe ; chaque refus est tracé avec sa
     raison dans l'entreprise de la tentative, jamais un jeton ni un code.
-  - Suite : SSO obligatoire par domaine, SAML, provisionnement SCIM (phase 3), MFA
-    déléguée à l'IdP ; MFA TOTP locale si besoin.
+  - Fournisseur **obligatoire** pour ses domaines (ADR-066) : leurs comptes ne se
+    connectent plus par mot de passe (refus dit seulement à qui donne le bon mot de
+    passe, sans compter comme un échec), n'en choisissent pas en acceptant leur
+    invitation, ne reçoivent aucun lien de réinitialisation (demandé ou envoyé par
+    l'administration), ne peuvent plus utiliser un lien reçu avant et ne reçoivent pas
+    de mot de passe provisoire : aucun chemin ne leur rend un mot de passe. Les
+    administrateurs de la connexion de l'entreprise (`settings:manage` sur toute
+    l'entreprise) gardent le leur : un fournisseur en panne ne bloque jamais
+    l'entreprise. Le fournisseur d'une autre entreprise, même obligatoire pour le même
+    domaine, n'atteint aucun de ses comptes.
+  - Suite : SAML, provisionnement SCIM (phase 3), MFA déléguée à l'IdP ; MFA TOTP
+    locale si besoin.
 
 ## 5. Autorisations
 

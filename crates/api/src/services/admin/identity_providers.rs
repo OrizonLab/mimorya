@@ -21,9 +21,10 @@ use uuid::Uuid;
 use super::{audit_entry, begin_change};
 use crate::secrets::SecretStore;
 use crate::services::AccessContext;
-use crate::services::sso::{SsoService, client_secret_name};
+use crate::services::sso::{SIGN_IN_ADMINISTRATOR, SsoService, client_secret_name};
 
-const PERMISSION: &str = "settings:manage";
+// Who declares the providers is who keeps a password under them (ADR-066).
+const PERMISSION: &str = SIGN_IN_ADMINISTRATOR;
 const ABSENT: &str = "Fournisseur d’identité introuvable";
 
 pub struct ProviderDeclaration {
@@ -35,6 +36,7 @@ pub struct ProviderDeclaration {
     pub client_secret: String,
     pub domains: Vec<String>,
     pub enabled: bool,
+    pub required: bool,
 }
 
 #[derive(Default)]
@@ -43,6 +45,7 @@ pub struct ProviderChanges {
     pub client_secret: Option<String>,
     pub domains: Option<Vec<String>>,
     pub enabled: Option<bool>,
+    pub required: Option<bool>,
 }
 
 fn invalid(problem: impl Into<String>) -> DomainError {
@@ -87,6 +90,7 @@ pub async fn declare_identity_provider(
             issuer: &issuer,
             client_id: &input.client_id,
             enabled: input.enabled,
+            required: input.required,
             created_by_user_id: access.subject.user_id,
         },
     )
@@ -114,6 +118,7 @@ pub async fn declare_identity_provider(
             "clientId": input.client_id,
             "domains": domains,
             "enabled": input.enabled,
+            "required": input.required,
         })),
     )
     .await?;
@@ -169,6 +174,7 @@ pub async fn change_identity_provider(
         IdentityProviderPatch {
             name: name.clone(),
             enabled: changes.enabled,
+            required: changes.required,
         },
     )
     .await?;
@@ -188,9 +194,11 @@ pub async fn change_identity_provider(
             "name": name,
             "domains": domains,
             "enabled": changes.enabled,
+            "required": changes.required,
             "secretReplaced": changes.client_secret.is_some(),
             "previousDomains": current.domains,
             "previousEnabled": current.enabled,
+            "previousRequired": current.required,
         })),
     )
     .await?;

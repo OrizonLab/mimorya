@@ -69,7 +69,7 @@ export async function signIn(page: Page, email: string, password = DEMO_PASSWORD
   await page.goto('/login');
   await page.getByLabel('Adresse e-mail professionnelle').fill(email);
   await page.getByLabel('Mot de passe').fill(password);
-  await page.getByRole('button', { name: 'Se connecter' }).click();
+  await page.getByRole('button', { name: 'Se connecter', exact: true }).click();
   await page.waitForURL('**/chat');
 }
 

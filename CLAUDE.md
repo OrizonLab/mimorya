@@ -57,7 +57,8 @@ Repères à l'intérieur des crates :
   `api/src/services/password_reset/` (mot de passe oublié, ADR-028),
   `api/src/services/sso/` (connexion par le fournisseur d'identité de l'entreprise :
   tentative scellée, OpenID Connect, adresses contrôlées, liaison des comptes, acceptation
-  des invitations, ADR-063, ADR-064 ; configuration dans `services/admin/`),
+  des invitations, ADR-063, ADR-064 ; déclarations et clés gardées une heure, ADR-065 ;
+  configuration dans `services/admin/`),
   `api/src/services/provisioning/` et `api/src/bin/admin/` (commandes d'exploitation :
   migrations, création d'une entreprise réelle et de son administrateur, ADR-033),
   `api/src/mail/` (envoi SMTP), `api/src/secrets/` (chiffrement AES-256-GCM des secrets),
