@@ -40,7 +40,7 @@ async fn discover(
     context: RequestContext,
     Body(body): Body<SsoLookup>,
 ) -> ApiResult<Json<SsoDiscovery>> {
-    if !state.limits.login.allow(&context.client_key()) {
+    if !state.limits.sso.allow(&context.client_key()) {
         return Err(ApiError::RateLimited);
     }
     let provider = state.sso.discover(&body.email).await?;
@@ -57,7 +57,7 @@ async fn start(
     context: RequestContext,
     Body(body): Body<SsoLookup>,
 ) -> ApiResult<impl IntoResponse> {
-    if !state.limits.login.allow(&context.client_key()) {
+    if !state.limits.sso.allow(&context.client_key()) {
         return Err(ApiError::RateLimited);
     }
     let started = state.sso.start(&body.email).await?;
@@ -71,7 +71,9 @@ async fn start(
 }
 
 /// A top-level navigation from the provider: answered by a redirection,
-/// the attempt's cookie cleared either way.
+/// the attempt's cookie cleared either way. Counted as the other steps: a
+/// sealed attempt stays valid for its ten minutes, and each return with it
+/// writes to the audit, or calls the provider.
 async fn callback(
     State(state): State<AppState>,
     context: RequestContext,
@@ -80,7 +82,7 @@ async fn callback(
 ) -> Response {
     let secure = state.config.secure_cookies;
     let cleared = (SET_COOKIE, cleared_attempt_cookie(secure));
-    let outcome = if state.limits.login.allow(&context.client_key()) {
+    let outcome = if state.limits.sso.allow(&context.client_key()) {
         // An address that does not read as a return reads as an empty one.
         let back = back.map(|Query(back)| back).unwrap_or_default();
         let cookie = cookie_value(&headers, ATTEMPT_COOKIE);
@@ -89,6 +91,7 @@ async fn callback(
             .finish(back, cookie.as_deref(), &context, &headers)
             .await
     } else {
+        // Neither audited nor sent on: what floods is turned away first.
         Err(SignInFailure {
             tenant_id: None,
             provider_id: None,

@@ -104,6 +104,13 @@ export const PERMISSION_GROUPS: Record<string, string> = {
   planning: 'Planning',
 };
 
+/** Identity providers a company can declare (ADR-063). */
+export const IDENTITY_PROVIDER_KINDS: Record<string, string> = {
+  microsoft: 'Microsoft 365 (Entra ID)',
+  google: 'Google Workspace',
+  oidc: 'OpenID Connect (Okta, Keycloak…)',
+};
+
 /** Model providers a company can choose (ADR-024). */
 export const LLM_PROVIDERS: Record<string, string> = {
   anthropic: 'Anthropic (Claude)',

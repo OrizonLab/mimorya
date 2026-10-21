@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, type FormEvent } from 'react';
-import { AuthFrame } from '@/components/account';
+import { AuthFrame, SsoSignIn } from '@/components/account';
 import { Button, Card, ErrorNote } from '@/components/ui';
 import { api, ApiError, type AuthOptions, type Credentials } from '@/lib/api';
 
@@ -20,6 +20,9 @@ const DEMO_ACCOUNTS = [
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
+  // The address as typed when the field was left: the one whose company's
+  // identity provider is looked for (ADR-063).
+  const [left, setLeft] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -60,9 +63,11 @@ export default function LoginPage() {
               autoComplete="username"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              onBlur={() => setLeft(email.trim())}
               className="rounded-lg border border-line bg-surface px-3 py-2 outline-none focus:border-accent"
             />
           </label>
+          <SsoSignIn email={left} />
           <label className="flex flex-col gap-1.5 text-sm">
             <span className="font-medium">Mot de passe</span>
             <input
@@ -94,7 +99,10 @@ export default function LoginPage() {
               <li key={a.email}>
                 <button
                   type="button"
-                  onClick={() => setEmail(a.email)}
+                  onClick={() => {
+                    setEmail(a.email);
+                    setLeft(a.email);
+                  }}
                   className="w-full rounded-md px-2 py-1 text-left text-sm text-muted hover:bg-surface-2 hover:text-fg"
                 >
                   {a.label}

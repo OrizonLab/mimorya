@@ -2299,8 +2299,12 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     compte, d'un compte désactivé ou invité, ou d'une entreprise sans fournisseur reçoit
     la même réponse (« mot de passe ») ; une entreprise ne peut donc pas détourner vers son
     fournisseur les comptes d'une autre en déclarant leur domaine. La réponse dit
-    qu'une adresse a un compte dans une entreprise qui l'a reliée à son fournisseur :
-    elle est limitée en débit comme la connexion ;
+    qu'une adresse a un compte dans une entreprise qui l'a reliée à son fournisseur.
+    Les trois étapes (découverte, départ, retour) ont leur propre limite par adresse,
+    trois fois celle de la connexion (une connexion SSO en compte trois) : la découverte
+    que la page de connexion fait pour toute adresse ne retire rien à la limite des mots
+    de passe, et un retour rejoué avec sa tentative scellée, valable dix minutes, est
+    refusé au-delà, sans trace ni appel au fournisseur ;
   - le départ (`POST /api/auth/sso/start`) renvoie l'adresse du fournisseur et pose un
     cookie de tentative (HttpOnly, SameSite=Lax, chemin `/api/auth/sso`, 10 minutes) :
     entreprise en clair, fournisseur, `state`, `nonce` et vérificateur PKCE scellés par
@@ -2345,8 +2349,17 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     compte à la première connexion, SAML et la vérification de propriété d'un domaine
     viendront ensuite ;
   - lots : (1) modèle, connexion, configuration par l'API, tests contre un fournisseur
-    simulé (ce lot) ; (2) écran d'administration « Connexion » et bouton de la page de
-    connexion ; (3) options.
+    simulé ; (2) onglet « Connexion » de l'administration (`settings:manage` : déclarer,
+    modifier, désactiver, supprimer ; adresse de retour à enregistrer chez le
+    fournisseur) et, sur la page de connexion, le bouton « Se connecter avec … » proposé
+    d'après l'adresse quand on quitte le champ, et un message générique au retour d'un
+    échec (`?sso=echec`) ; (3) options. Les tests de bout en bout passent par le
+    fournisseur OpenID Connect du serveur e2e (127.0.0.1:4100, il connecte la personne
+    que la connexion désigne), seul joint sur le réseau privé (`BuildOptions::sso_network`,
+    réservé aux tests) : les connecteurs y restent sur le réseau public. Toutes ses
+    requêtes passant par le relais web, d'une seule adresse, la limite globale par
+    adresse y est relevée (`BuildOptions::global_rate_limit_per_minute`, réservé aux
+    tests).
   - Tests :
     - `crates/core/src/identity_providers/tests.rs` : issuer de chaque type, nom,
       client, domaines, preuves d'identité par type ;
@@ -2354,8 +2367,13 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
       pour son entreprise, intacte et à temps ; `address.rs` et `http.rs` : adresses
       hors politique refusées, sans aucune connexion ;
     - `crates/api/tests/sso_sign_in.rs`, `sso_refusals.rs`, `sso_companies.rs`,
-      `admin_identity_providers.rs` : connexion, liaison unique, refus (dont un compte
+      `sso_limits.rs`, `admin_identity_providers.rs` : connexion, liaison unique, limite
+      propre aux étapes, refus (dont un compte
       invité, et un audit sans code ni jeton), isolation entre entreprises, fournisseur
       hors politique réseau jamais joint, configuration ;
     - `crates/db/tests/definer_functions.rs` : la nouvelle fonction est dans la liste
-      connue.
+      connue ;
+    - `apps/web/e2e/single-sign-on.spec.ts` : déclaration dans l'administration (secret
+      jamais affiché, relu après rechargement), modification sans ressaisir le secret
+      (conservé), connexion de bout en bout par le bouton, fournisseur désactivé proposé à
+      personne, suppression, retour en échec signalé.

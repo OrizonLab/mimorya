@@ -8,6 +8,7 @@ use axum::Router;
 use axum::extract::DefaultBodyLimit;
 use axum::middleware::{from_fn, from_fn_with_state};
 use mimorya_agent::llm::{LlmProvider, PriceTable, create_provider};
+use mimorya_connectors::mcp::NetworkPolicy;
 use mimorya_db::{Database, PoolOptions};
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
@@ -75,6 +76,13 @@ pub struct BuildOptions {
     /// Replaces the mailer built from configuration (tests); `Some(None)`
     /// sends nothing.
     pub mailer: Option<Option<Arc<dyn Mailer>>>,
+    /// Replaces the network the identity providers are reached on, the
+    /// connectors' otherwise (end-to-end tests: a local provider, while
+    /// connectors keep to the public network).
+    pub sso_network: Option<NetworkPolicy>,
+    /// Replaces the limit of requests per minute and address (end-to-end
+    /// tests: every request comes through the one web relay).
+    pub global_rate_limit_per_minute: Option<u32>,
 }
 
 pub struct App {
@@ -119,7 +127,7 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
     let sso = Arc::new(SsoService::new(
         db.clone(),
         config.secrets.clone(),
-        config.mcp_network,
+        options.sso_network.unwrap_or(config.mcp_network),
         &config.web_origin,
     )?);
     let mailer = match options.mailer {
@@ -149,8 +157,13 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
         llm_judge: config.llm_judge,
     };
     let limits = RateLimits {
-        global: RateLimiter::per_minute(GLOBAL_RATE_LIMIT_PER_MINUTE),
+        global: RateLimiter::per_minute(
+            options
+                .global_rate_limit_per_minute
+                .unwrap_or(GLOBAL_RATE_LIMIT_PER_MINUTE),
+        ),
         login: RateLimiter::per_minute(config.login_rate_limit_per_minute),
+        sso: RateLimiter::per_minute(config.login_rate_limit_per_minute.saturating_mul(3)),
         failed_logins: RateLimiter::new(FAILED_LOGINS_PER_ACCOUNT, FAILED_LOGIN_WINDOW),
         reset_requests: RateLimiter::new(RESET_REQUESTS_PER_ADDRESS, RESET_REQUEST_WINDOW),
     };

@@ -167,6 +167,8 @@ impl TestApi {
             provider: Some(provider),
             provider_factory: Some(factory),
             mailer: record_mail.then(|| Some(mail.clone() as Arc<dyn Mailer>)),
+            sso_network: None,
+            global_rate_limit_per_minute: None,
         };
         let app = build_app(config, options).await.expect("app");
         Self {

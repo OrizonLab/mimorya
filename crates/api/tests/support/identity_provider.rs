@@ -1,15 +1,17 @@
 //! An OpenID Connect provider for the tests, on a local port (reachable when
 //! the operator allows the private network): discovery, keys and token
-//! endpoint over HTTP, as the server reaches them; the browser's visit to
-//! the authorization address is played in-process (`authorize`), signed in
-//! as the person the test chose. Its signing key is a test key, public.
+//! endpoint over HTTP, as the server reaches them. The browser's visit to
+//! the authorization address is played in-process by the API's tests
+//! (`authorize`), or served (`/authorize`) to the end-to-end tests' browser;
+//! either signs in the person the test chose, else the one the address
+//! hints at. Its signing key is a test key, public.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use axum::Router;
 use axum::body::Bytes;
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -100,9 +102,16 @@ pub struct MockIdentityProvider {
 
 impl MockIdentityProvider {
     pub async fn start() -> Self {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        Self::start_on("127.0.0.1:0").await
+    }
+
+    /// On a given address (the end-to-end tests declare it in advance).
+    pub async fn start_on(address: &str) -> Self {
+        let listener = tokio::net::TcpListener::bind(address)
             .await
-            .expect("local port");
+            .unwrap_or_else(|error| {
+                panic!("identity provider: cannot listen on {address}: {error}")
+            });
         let issuer = format!("http://{}", listener.local_addr().expect("address"));
         let shared: Shared = Arc::new(Mutex::new(Provider {
             issuer: issuer.clone(),
@@ -111,6 +120,7 @@ impl MockIdentityProvider {
         let router = Router::new()
             .route("/.well-known/openid-configuration", get(configuration))
             .route("/jwks", get(keys))
+            .route("/authorize", get(visit))
             .route("/token", post(token))
             .with_state(shared.clone());
         tokio::spawn(async move { axum::serve(listener, router).await });
@@ -138,36 +148,78 @@ impl MockIdentityProvider {
     /// return to the application (`code`, `state`), and its path.
     pub fn authorize(&self, address: &str) -> String {
         let url = Url::parse(address).expect("authorization address");
-        let params: HashMap<String, String> = url.query_pairs().into_owned().collect();
         assert!(
             address.starts_with(&format!("{}/authorize?", self.issuer)),
             "{address}"
         );
-        assert_eq!(params["response_type"], "code");
-        assert_eq!(params["client_id"], CLIENT_ID);
-        assert_eq!(params["code_challenge_method"], "S256");
+        let params: HashMap<String, String> = url.query_pairs().into_owned().collect();
         let scopes: Vec<&str> = params["scope"].split(' ').collect();
         assert!(
             scopes.contains(&"openid") && scopes.contains(&"email"),
             "{scopes:?}"
         );
-        let mut provider = self.shared.lock().expect("provider");
-        let person = provider.signed_in.clone().expect("someone signs in");
+        let (back, _) = self
+            .shared
+            .lock()
+            .expect("provider")
+            .grant(&params)
+            .expect("authorization granted");
+        format!("/auth/sso/callback?{back}")
+    }
+}
+
+impl Provider {
+    /// A code for this authorization request, signed in as the person
+    /// chosen, else as the one hinted at: the return's query and address.
+    fn grant(&mut self, params: &HashMap<String, String>) -> Result<(String, String), String> {
+        let param = |name: &str| {
+            params
+                .get(name)
+                .cloned()
+                .ok_or_else(|| format!("missing {name}"))
+        };
+        if param("response_type")? != "code"
+            || param("client_id")? != CLIENT_ID
+            || param("code_challenge_method")? != "S256"
+        {
+            return Err("unexpected request".into());
+        }
+        let person = match (&self.signed_in, params.get("login_hint")) {
+            (Some(person), _) => person.clone(),
+            (None, Some(email)) => Person::verified(&format!("sujet-{email}"), email),
+            (None, None) => return Err("nobody signs in".into()),
+        };
         let code = URL_SAFE_NO_PAD.encode(uuid::Uuid::new_v4().as_bytes());
-        provider.grants.insert(
+        let redirect_uri = param("redirect_uri")?;
+        self.grants.insert(
             code.clone(),
             Grant {
                 person,
                 nonce: params.get("nonce").cloned(),
-                challenge: params["code_challenge"].clone(),
-                redirect_uri: params["redirect_uri"].clone(),
+                challenge: param("code_challenge")?,
+                redirect_uri: redirect_uri.clone(),
             },
         );
-        let back: String = url::form_urlencoded::Serializer::new(String::new())
+        let back = url::form_urlencoded::Serializer::new(String::new())
             .append_pair("code", &code)
-            .append_pair("state", &params["state"])
+            .append_pair("state", &param("state")?)
             .finish();
-        format!("/auth/sso/callback?{back}")
+        Ok((back, redirect_uri))
+    }
+}
+
+/// The browser's visit, served: straight back to the application.
+async fn visit(
+    State(shared): State<Shared>,
+    Query(params): Query<HashMap<String, String>>,
+) -> Response {
+    match shared.lock().expect("provider").grant(&params) {
+        Ok((back, redirect_uri)) => (
+            StatusCode::FOUND,
+            [(header::LOCATION, format!("{redirect_uri}?{back}"))],
+        )
+            .into_response(),
+        Err(problem) => (StatusCode::BAD_REQUEST, problem).into_response(),
     }
 }
 
