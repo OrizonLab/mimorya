@@ -2,8 +2,8 @@
 //! request, even refused by the relay, in one message per manager and run,
 //! by the process that executes runs, only with a mail relay, only while the
 //! run is paused and the manager's account active; never a request its
-//! requester decides, nor one decided or past its deadline; each company's
-//! in its own company.
+//! requester decides, nor one decided or past its deadline, nor one of a
+//! suspended company; each company's in its own company.
 
 mod support;
 
@@ -19,7 +19,7 @@ use support::planning::{apply_proposal_times, apply_reply, propose};
 use support::recovery::{saved, stopped_run};
 use support::runs::start_run;
 use support::sweeps::sweep_from_elsewhere;
-use support::{TestApi, email};
+use support::{TestApi, email, owner_url};
 use uuid::Uuid;
 
 fn id_of(approval: &Value) -> Uuid {
@@ -210,6 +210,18 @@ async fn each_company_s_managers_are_reminded_in_their_own_company() {
 
     let runs = &api.app.services.runs;
     runs.claim_execution().await.unwrap();
+    // Not while its company is suspended: its people cannot sign in.
+    let owner = sqlx::PgPool::connect(owner_url()).await.unwrap();
+    let set_status = |status: &'static str| {
+        sqlx::query("update tenants set status = $2 where id = $1")
+            .bind(OTHER_TENANT_ID)
+            .bind(status)
+            .execute(&owner)
+    };
+    set_status("suspended").await.unwrap();
+    assert_eq!(runs.remind_due().await.unwrap(), 0);
+    assert!(api.mail.sent().is_empty());
+    set_status("active").await.unwrap();
     assert_eq!(runs.remind_due().await.unwrap(), 1);
     let sent = api.mail.sent();
     assert_eq!(sent.len(), 1, "{sent:?}");
@@ -290,8 +302,8 @@ async fn a_pause_s_requests_are_reminded_together_while_they_wait_once_even_refu
     let marc = api.sign_in(user::MARC).await;
     for id in &ids {
         let decision = format!("/approvals/{id}/decision");
-        let approved = marc.post(&decision, json!({ "approved": false })).await;
-        assert_eq!(approved.status, StatusCode::OK, "{}", approved.text());
+        let rejected = marc.post(&decision, json!({ "approved": false })).await;
+        assert_eq!(rejected.status, StatusCode::OK, "{}", rejected.text());
     }
     api.idle().await;
     route_to_managers(&paul, &["write"]).await;
@@ -356,4 +368,13 @@ async fn the_requests_of_a_run_ended_before_its_pause_are_never_reminded() {
     runs.claim_execution().await.unwrap();
     assert_eq!(runs.remind_due().await.unwrap(), 0);
     assert!(api.mail.sent().is_empty(), "{:?}", api.mail.sent());
+
+    // Left to nobody: cancelled, as nothing else in the run would.
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    sqlx::query("update approvals set status = 'cancelled' where id = any($1)")
+        .bind(&pending)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
 }

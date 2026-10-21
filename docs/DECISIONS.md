@@ -2139,7 +2139,8 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     alors décidables) : **un seul par responsable et par pause**, quel que soit le
     nombre de demandes de l'étape. Le run est en pause, que le message parte ou non.
     Seules comptent les demandes qui attendent encore ce responsable, dont le compte est
-    actif, et qui n'ont pas déjà été signalées ; une demande que la personne décide
+    actif, dans un run toujours en pause d'une entreprise active, et qui n'ont pas déjà
+    été signalées ; une demande que la personne décide
     elle-même n'est jamais envoyée ;
   - le message dit pour qui sont les actions, combien, leurs risques, le lien vers la
     page des validations et leur échéance (la plus proche ; celles d'une étape sont les mêmes à la minute). Il ne contient **ni les actions ni
@@ -2259,6 +2260,7 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
       relancées ensemble ; pas de relance à un responsable désactivé ; une relance
       refusée par le relais tracée en échec et jamais renvoyée ; ni demande de la
       personne, ni demande échue, ni demande d'un run terminé avant sa pause ; rien sans
-      relais ; chaque entreprise relancée chez elle et rien de l'autre visible ;
+      relais ; pas de relance dans une entreprise suspendue ; chaque entreprise relancée
+      chez elle et rien de l'autre visible ;
     - `crates/db/tests/definer_functions.rs` : la nouvelle fonction est dans la liste
       connue.
