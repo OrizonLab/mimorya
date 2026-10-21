@@ -8,6 +8,8 @@
 // password; « Mon compte » then says it has none (ADR-064). Made required,
 // it is offered alone, a password refused but to the administrator of the
 // company's sign-in, and an invitation accepted through it alone (ADR-066).
+// Told to create accounts, it makes one, through the company's sign-in
+// link, for a newcomer the company never invited (ADR-067).
 // A failed return lands on the sign-in page with a message, and so does a
 // discovery refused past the limit of addresses asked about, asked again
 // once its minute is over. The provider is the end-to-end server's own, an
@@ -249,6 +251,68 @@ test('a required provider leaves a password to its administrators alone', async 
     newcomer.getByRole('button', { name: 'Activer mon compte', exact: true }),
   ).toHaveCount(0);
   await noError(newcomer);
+});
+
+test('the company link creates the account of a newcomer at the first sign-in', async ({
+  page,
+  newContext,
+}) => {
+  // An address of this test's own; the account gets no role.
+  const email = 'lea.roux.sso@neo-maintenance.example';
+  await signIn(page, demo.paul);
+  const declared = await page.request.post('/api/admin/identity-providers', {
+    headers: WRITE,
+    data: {
+      kind: 'oidc',
+      name: PROVIDER,
+      issuer: ISSUER,
+      clientId: CLIENT_ID,
+      clientSecret: CLIENT_SECRET,
+      domains: ['neo-maintenance.example'],
+    } satisfies NewIdentityProvider,
+  });
+  expect(declared.status()).toBe(201);
+
+  // Told to create accounts in « Connexion », as the API records it.
+  await page.goto('/admin');
+  await page.getByRole('tab', { name: 'Connexion' }).click();
+  await cardWith(page, PROVIDER, 'Modifier')
+    .getByRole('button', { name: 'Modifier', exact: true })
+    .click();
+  await page.getByLabel(/^Créer le compte d’un collaborateur/).check();
+  await page.getByRole('button', { name: 'Enregistrer', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Enregistrer', exact: true })).toHaveCount(0);
+  await page.reload();
+  await page.getByRole('tab', { name: 'Connexion' }).click();
+  const card = cardWith(page, PROVIDER, 'Désactiver');
+  await expect(card.getByText('Crée les comptes')).toBeVisible();
+  const listed = await page.request.get('/api/admin/identity-providers');
+  const { providers } = (await listed.json()) as IdentityProvidersView;
+  const provider = providers.find((p) => p.name === PROVIDER);
+  expect(provider?.createAccounts).toBe(true);
+  const link = provider?.signInLink ?? '';
+  expect(link).toMatch(/\/login\/entreprise#/);
+  await expect(card.getByText(link)).toBeVisible();
+
+  // The newcomer opens it, signs in at the provider, and lands signed in.
+  const newcomer = await (await newContext()).newPage();
+  await newcomer.goto(link);
+  await expect(newcomer.getByText('Néo Maintenance (démo)')).toBeVisible();
+  await newcomer.getByRole('button', { name: `Se connecter avec ${PROVIDER}` }).click();
+  await newcomer.getByLabel('Adresse').fill(email);
+  await newcomer.getByLabel('Nom').fill('Léa Roux');
+  await newcomer.getByRole('button', { name: 'Se connecter au fournisseur' }).click();
+  await newcomer.waitForURL('**/chat');
+  const me = await newcomer.request.get('/api/auth/me');
+  const { user } = (await me.json()) as { user: { email: string; displayName: string } };
+  expect(user).toMatchObject({ email, displayName: 'Léa Roux' });
+
+  // Created as the API records it: active, without a role.
+  const directory = await page.request.get('/api/admin/users');
+  const { users } = (await directory.json()) as Directory;
+  const created = users.find((u) => u.email === email);
+  expect(created).toMatchObject({ status: 'active', displayName: 'Léa Roux', assignments: [] });
+  await noError(page);
 });
 
 test('a failed return comes back to the sign-in page, which says so', async ({ page }) => {

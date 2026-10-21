@@ -37,6 +37,7 @@ pub struct ProviderDeclaration {
     pub domains: Vec<String>,
     pub enabled: bool,
     pub required: bool,
+    pub create_accounts: bool,
 }
 
 #[derive(Default)]
@@ -46,6 +47,7 @@ pub struct ProviderChanges {
     pub domains: Option<Vec<String>>,
     pub enabled: Option<bool>,
     pub required: Option<bool>,
+    pub create_accounts: Option<bool>,
 }
 
 fn invalid(problem: impl Into<String>) -> DomainError {
@@ -91,6 +93,7 @@ pub async fn declare_identity_provider(
             client_id: &input.client_id,
             enabled: input.enabled,
             required: input.required,
+            create_accounts: input.create_accounts,
             created_by_user_id: access.subject.user_id,
         },
     )
@@ -119,6 +122,7 @@ pub async fn declare_identity_provider(
             "domains": domains,
             "enabled": input.enabled,
             "required": input.required,
+            "createAccounts": input.create_accounts,
         })),
     )
     .await?;
@@ -175,6 +179,7 @@ pub async fn change_identity_provider(
             name: name.clone(),
             enabled: changes.enabled,
             required: changes.required,
+            create_accounts: changes.create_accounts,
         },
     )
     .await?;
@@ -195,10 +200,12 @@ pub async fn change_identity_provider(
             "domains": domains,
             "enabled": changes.enabled,
             "required": changes.required,
+            "createAccounts": changes.create_accounts,
             "secretReplaced": changes.client_secret.is_some(),
             "previousDomains": current.domains,
             "previousEnabled": current.enabled,
             "previousRequired": current.required,
+            "previousCreateAccounts": current.create_accounts,
         })),
     )
     .await?;

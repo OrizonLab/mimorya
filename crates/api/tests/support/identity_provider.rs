@@ -4,8 +4,9 @@
 //! the authorization address is played in-process by the API's tests
 //! (`authorize`), or served (`/authorize`) to the end-to-end tests' browser;
 //! either signs in the person the test chose, else the one the address
-//! hints at. Its signing keys are test keys, public: it rolls them over
-//! on demand, and may be unavailable.
+//! hints at; the browser, hinted at nobody, is asked who (`sign_in_page`).
+//! Its signing keys are test keys, public: it rolls them over on demand,
+//! and may be unavailable.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -26,6 +27,8 @@ use url::Url;
 pub const CLIENT_ID: &str = "mimorya-tests";
 pub const CLIENT_SECRET: &str = "secret-client-de-test-0123456789";
 
+#[path = "identity_provider/sign_in_page.rs"]
+mod sign_in_page;
 #[path = "identity_provider/token.rs"]
 mod token;
 
@@ -223,7 +226,16 @@ impl Provider {
         }
         let person = match (&self.signed_in, params.get("login_hint")) {
             (Some(person), _) => person.clone(),
-            (None, Some(email)) => Person::verified(&format!("sujet-{email}"), email),
+            (None, Some(email)) => {
+                let mut person = Person::verified(&format!("sujet-{email}"), email);
+                // As the provider's own sign-in page names them.
+                if let Some(name) = params.get("name").filter(|n| !n.is_empty()) {
+                    person
+                        .extra
+                        .insert("name".into(), Value::String(name.clone()));
+                }
+                person
+            }
             (None, None) => return Err("nobody signs in".into()),
         };
         let code = URL_SAFE_NO_PAD.encode(uuid::Uuid::new_v4().as_bytes());
@@ -250,7 +262,11 @@ async fn visit(
     State(shared): State<Shared>,
     Query(params): Query<HashMap<String, String>>,
 ) -> Response {
-    match shared.lock().expect("provider").grant(&params) {
+    let mut provider = shared.lock().expect("provider");
+    if provider.signed_in.is_none() && !params.contains_key("login_hint") {
+        return sign_in_page::sign_in_page(&params);
+    }
+    match provider.grant(&params) {
         Ok((back, redirect_uri)) => (
             StatusCode::FOUND,
             [(header::LOCATION, format!("{redirect_uri}?{back}"))],

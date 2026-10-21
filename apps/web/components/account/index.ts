@@ -1,4 +1,5 @@
 export { AuthFrame } from './auth-frame';
+export { CompanySignIn } from './company-sign-in';
 export { PasswordForm } from './password-form';
 export { FirstPasswordScreen } from './first-password-screen';
 export { InvitationForm } from './invitation-form';

@@ -44,7 +44,7 @@ pub use runs::{
 pub use session::{
     AssistantStatus, AuthOptions, Credentials, Me, MeTenant, MeUser, OrgUnitRef, PasswordUpdate,
 };
-pub use sso::{SsoDiscovery, SsoLookup, SsoProvider, SsoStart};
+pub use sso::{SsoDiscovery, SsoLink, SsoLinkLookup, SsoLookup, SsoProvider, SsoStart};
 
 pub(crate) use stored::stored_text;
 use typescript::Declarations;
@@ -56,6 +56,7 @@ pub fn typescript() -> String {
     declarations.add::<Me>();
     declarations.add::<AuthOptions>();
     declarations.add::<SsoDiscovery>();
+    declarations.add::<SsoLink>();
     declarations.add::<SsoStart>();
     declarations.add::<Done>();
     declarations.add::<ConversationList>();
@@ -108,6 +109,7 @@ macro_rules! request_bodies {
         $apply!(
             Credentials,
             SsoLookup,
+            SsoLinkLookup,
             PasswordUpdate,
             ResetLinkRequest,
             LinkToken,

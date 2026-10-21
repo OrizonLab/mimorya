@@ -143,6 +143,7 @@ async fn a_microsoft_directory_s_account_is_known_by_its_object_id() {
             client_id: CLIENT_ID,
             enabled: true,
             required: false,
+            create_accounts: false,
             created_by_user_id: user::PAUL,
         },
     )

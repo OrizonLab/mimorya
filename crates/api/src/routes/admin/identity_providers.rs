@@ -39,7 +39,8 @@ pub async fn list(
     let mut providers = Vec::with_capacity(rows.len());
     for row in rows {
         let stored = store.exists(&mut tx, &client_secret_name(row.id)).await?;
-        providers.push(IdentityProviderView::new(row, stored));
+        let link = state.sso.sign_in_link(row.id);
+        providers.push(IdentityProviderView::new(row, link, stored));
     }
     tx.commit().await?;
     Ok(Json(IdentityProvidersView {
@@ -65,6 +66,7 @@ pub async fn create(
         domains: body.domains,
         enabled: body.enabled.unwrap_or(true),
         required: body.required.unwrap_or(false),
+        create_accounts: body.create_accounts.unwrap_or(false),
     };
     let id = declare_identity_provider(
         &state.db,
@@ -90,6 +92,7 @@ pub async fn update(
         domains: body.domains,
         enabled: body.enabled,
         required: body.required,
+        create_accounts: body.create_accounts,
     };
     change_identity_provider(&state.db, &secrets(&state), &access, id, changes).await?;
     Ok(Json(Done::OK))

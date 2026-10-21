@@ -1,7 +1,8 @@
 //! Signing in through the company's identity provider (ADR-063): whether
-//! an address may, the start towards the provider, and its return, which
-//! sends the browser to the application signed in, or back to the sign-in
-//! page with a generic message (the reason is audited).
+//! an address may, or which provider the company's sign-in link names
+//! (ADR-067); the start towards the provider; and its return, which sends
+//! the browser to the application signed in, or back to the sign-in page
+//! with a generic message (the reason is audited).
 
 use axum::extract::rejection::QueryRejection;
 use axum::extract::{Query, State};
@@ -15,11 +16,12 @@ use serde_json::json;
 
 use crate::app::AppState;
 use crate::auth::cookies::{cookie_value, session_cookie};
-use crate::contract::{SsoDiscovery, SsoLookup, SsoProvider, SsoStart};
+use crate::contract::{SsoDiscovery, SsoLink, SsoLinkLookup, SsoLookup, SsoProvider, SsoStart};
 use crate::http::{ApiError, ApiResult, Body};
 use crate::plugins::RequestContext;
 use crate::services::sso::{
-    ATTEMPT_COOKIE, Return, SignInFailure, attempt_cookie, cleared_attempt_cookie,
+    ATTEMPT_COOKIE, Return, SignInFailure, Started, attempt_cookie, cleared_attempt_cookie,
+    link_unknown,
 };
 
 /// Where the browser lands, signed in or refused.
@@ -30,6 +32,8 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/auth/sso/discover", post(discover))
         .route("/auth/sso/start", post(start))
+        .route("/auth/sso/link", post(link))
+        .route("/auth/sso/link/start", post(start_link))
         .route("/auth/sso/callback", get(callback))
 }
 
@@ -75,13 +79,59 @@ async fn start(
         return Err(ApiError::RateLimited);
     }
     let started = state.sso.start(&body.email).await?;
+    Ok(sent_away(&state, started))
+}
+
+/// The provider the company's sign-in link names, and the company, which
+/// the page shows. The provider's id says nothing of any address; it is
+/// read as an invitation's link is, so many a minute.
+async fn link(
+    State(state): State<AppState>,
+    context: RequestContext,
+    Body(body): Body<SsoLinkLookup>,
+) -> ApiResult<Json<SsoLink>> {
+    if !state.limits.login.allow(&context.client_key()) {
+        return Err(ApiError::RateLimited);
+    }
+    let found = state
+        .sso
+        .link(body.provider)
+        .await?
+        .ok_or_else(link_unknown)?;
+    Ok(Json(SsoLink {
+        company: found.company,
+        provider: SsoProvider {
+            kind: found.kind,
+            name: found.name,
+            required: found.required,
+        },
+        creates_accounts: found.create_accounts,
+    }))
+}
+
+/// The start from the company's sign-in link, which may create the account
+/// at the return (ADR-067).
+async fn start_link(
+    State(state): State<AppState>,
+    context: RequestContext,
+    Body(body): Body<SsoLinkLookup>,
+) -> ApiResult<impl IntoResponse> {
+    if !state.limits.sso_sign_in.allow(&context.client_key()) {
+        return Err(ApiError::RateLimited);
+    }
+    let started = state.sso.start_link(body.provider).await?;
+    Ok(sent_away(&state, started))
+}
+
+/// The provider's address, the attempt kept by the browser.
+fn sent_away(state: &AppState, started: Started) -> impl IntoResponse + use<> {
     let cookie = attempt_cookie(&started.attempt, state.config.secure_cookies);
-    Ok((
+    (
         AppendHeaders([(SET_COOKIE, cookie)]),
         Json(SsoStart {
             redirect_url: started.redirect_url,
         }),
-    ))
+    )
 }
 
 /// A top-level navigation from the provider: answered by a redirection,

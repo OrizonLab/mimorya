@@ -32,9 +32,10 @@ const GUIDANCE: Record<string, string> = {
 
 /**
  * Declares an identity provider, or changes one: its name, its client
- * secret (write-only), the e-mail domains it covers and whether it is
- * required for them (ADR-066). Kind, issuer and client stay as declared
- * (ADR-063).
+ * secret (write-only), the e-mail domains it covers, whether it is
+ * required for them (ADR-066) and whether it creates the accounts of their
+ * people at the first sign-in through the company's link (ADR-067). Kind,
+ * issuer and client stay as declared (ADR-063).
  */
 export function IdentityProviderForm({
   provider,
@@ -51,6 +52,7 @@ export function IdentityProviderForm({
   const [clientSecret, setClientSecret] = useState('');
   const [domains, setDomains] = useState(provider?.domains.join(', ') ?? '');
   const [required, setRequired] = useState(provider?.required ?? false);
+  const [createAccounts, setCreateAccounts] = useState(provider?.createAccounts ?? false);
   const action = useAction();
 
   async function submit(event: FormEvent) {
@@ -63,6 +65,7 @@ export function IdentityProviderForm({
             clientSecret: clientSecret.trim() || undefined,
             domains: domainList(domains),
             required,
+            createAccounts,
           } satisfies IdentityProviderUpdate)
         : api.post('/admin/identity-providers', {
             kind,
@@ -73,6 +76,7 @@ export function IdentityProviderForm({
             clientSecret: clientSecret.trim(),
             domains: domainList(domains),
             required,
+            createAccounts,
           } satisfies NewIdentityProvider),
     );
     if (saved) onDone(true);
@@ -177,6 +181,18 @@ export function IdentityProviderForm({
           Connexion obligatoire par ce fournisseur pour ses domaines : le mot de passe y est refusé,
           sauf aux administrateurs de la connexion de l’entreprise, qui gardent le leur en cas de
           panne du fournisseur.
+        </span>
+      </label>
+      <label className="flex items-start gap-2 text-sm">
+        <Checkbox
+          className="mt-0.5"
+          checked={createAccounts}
+          onChange={(e) => setCreateAccounts(e.target.checked)}
+        />
+        <span>
+          Créer le compte d’un collaborateur de ces domaines à sa première connexion par le lien de
+          connexion de l’entreprise : actif, sans rôle ni unité, à son nom tel que le fournisseur le
+          donne.
         </span>
       </label>
       <p className="text-xs text-muted">

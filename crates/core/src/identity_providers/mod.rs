@@ -1,10 +1,15 @@
 //! What a company may declare as an identity provider (ADR-063), and what a
-//! provider's identity token must prove before an account is tied to it:
-//! the same rules wherever they are checked, without I/O.
+//! provider's identity token must prove before an account is tied to it,
+//! or created with the name it gives (ADR-067): the same rules wherever they
+//! are checked, without I/O.
+
+mod display_name;
 
 use std::collections::BTreeSet;
 
 use uuid::Uuid;
+
+pub use display_name::federated_display_name;
 
 /// Google's issuer, the same for every Workspace.
 pub const GOOGLE_ISSUER: &str = "https://accounts.google.com";
@@ -200,6 +205,11 @@ pub struct TokenClaims<'a> {
     pub oid: Option<&'a str>,
     /// Google: the account's Workspace domain.
     pub hosted_domain: Option<&'a str>,
+    /// The person's full name, and its parts, as the provider gives them:
+    /// the name of an account created at the first sign-in.
+    pub name: Option<&'a str>,
+    pub given_name: Option<&'a str>,
+    pub family_name: Option<&'a str>,
 }
 
 /// Who the provider proves the person is: its immutable subject, and the

@@ -3,10 +3,14 @@
 //! The sign-in page learns from an address whether its account's company
 //! offers a provider; the start sends the browser there with a sealed
 //! attempt; the return proves the person, ties or finds the account, and
-//! opens its session as a password sign-in does. No account is created; an
-//! invited one accepts its invitation this way (ADR-064). A provider may be
-//! required for its domains, which then sign in through it alone (ADR-066).
+//! opens its session as a password sign-in does. An invited account accepts
+//! its invitation this way (ADR-064). A provider may be required for its
+//! domains, which then sign in through it alone (ADR-066). The company's own
+//! sign-in link names its provider, which may then create the account of a
+//! person of its domains at the first sign-in (ADR-067): never an address
+//! alone, as domains are declared, not proven.
 
+mod account;
 mod address;
 mod admission;
 mod attempt;
@@ -28,7 +32,7 @@ use mimorya_connectors::mcp::NetworkPolicy;
 use mimorya_core::DomainError;
 use mimorya_db::Database;
 use mimorya_db::repositories::identity_providers::{
-    ProviderLookup, find_identity_provider, get_identity_provider,
+    ProviderLink, ProviderLookup, find_identity_provider, find_provider_link, get_identity_provider,
 };
 use openidconnect::core::CoreProviderMetadata;
 use uuid::Uuid;
@@ -41,10 +45,18 @@ use metadata::MetadataCache;
 
 /// Where a provider sends the browser back, under the web origin.
 pub const CALLBACK_PATH: &str = "/api/auth/sso/callback";
+/// The page of a company's sign-in link, the provider's id in its fragment
+/// (ADR-067).
+pub const LINK_PAGE: &str = "/login/entreprise";
 
 /// The name of a provider's client secret in the company's secret store.
 pub fn client_secret_name(provider_id: Uuid) -> String {
     format!("sso.{provider_id}.client_secret")
+}
+
+/// A company's sign-in link that names no provider serving.
+pub fn link_unknown() -> DomainError {
+    DomainError::not_found("Lien de connexion inconnu ou désactivé")
 }
 
 /// A sign-in sent to its provider: where the browser goes, and the
@@ -61,6 +73,7 @@ pub struct SsoService {
     http: ProviderHttp,
     network: NetworkPolicy,
     redirect_uri: String,
+    link_page: String,
     /// The providers' declarations and keys, kept an hour (ADR-065).
     declarations: MetadataCache<CoreProviderMetadata>,
 }
@@ -97,6 +110,7 @@ impl SsoService {
             http: ProviderHttp::new(network)?,
             network,
             redirect_uri: format!("{web_origin}{CALLBACK_PATH}"),
+            link_page: format!("{web_origin}{LINK_PAGE}"),
             declarations: MetadataCache::default(),
         })
     }
@@ -104,6 +118,11 @@ impl SsoService {
     /// The address to register at the provider.
     pub fn redirect_uri(&self) -> &str {
         &self.redirect_uri
+    }
+
+    /// The company's sign-in link that names this provider (ADR-067).
+    pub fn sign_in_link(&self, provider_id: Uuid) -> String {
+        format!("{}#{provider_id}", self.link_page)
     }
 
     pub fn network(&self) -> NetworkPolicy {
@@ -119,19 +138,51 @@ impl SsoService {
         Ok(find_identity_provider(self.db.pool(), email).await?)
     }
 
+    /// The provider a company's sign-in link names, and the company, if it
+    /// serves (ADR-067).
+    pub async fn link(&self, provider_id: Uuid) -> anyhow::Result<Option<ProviderLink>> {
+        if self.cipher.is_none() {
+            return Ok(None);
+        }
+        Ok(find_provider_link(self.db.pool(), provider_id).await?)
+    }
+
     /// Sends the browser to the provider of the address's account.
     pub async fn start(&self, email: &str) -> anyhow::Result<Started> {
         let none = || DomainError::not_found("Aucune connexion d’entreprise pour cette adresse");
-        let cipher = self.cipher.as_deref().ok_or_else(none)?;
-        let found = find_identity_provider(self.db.pool(), email)
+        let found = self.discover(email).await?.ok_or_else(none)?;
+        let started = self
+            .start_at(found.tenant_id, found.provider_id, Some(email))
+            .await?;
+        Ok(started.ok_or_else(none)?)
+    }
+
+    /// Sends the browser to the provider a company's sign-in link names.
+    pub async fn start_link(&self, provider_id: Uuid) -> anyhow::Result<Started> {
+        let found = self.link(provider_id).await?.ok_or_else(link_unknown)?;
+        let started = self.start_at(found.tenant_id, provider_id, None).await?;
+        Ok(started.ok_or_else(link_unknown)?)
+    }
+
+    /// `None` when the provider no longer serves; the address, if known, is
+    /// suggested to the provider.
+    async fn start_at(
+        &self,
+        tenant_id: Uuid,
+        provider_id: Uuid,
+        login_hint: Option<&str>,
+    ) -> anyhow::Result<Option<Started>> {
+        let Some(cipher) = self.cipher.as_deref() else {
+            return Ok(None);
+        };
+        let mut tx = self.db.begin(tenant_id).await?;
+        let provider = get_identity_provider(&mut tx, provider_id)
             .await?
-            .ok_or_else(none)?;
-        let mut tx = self.db.begin(found.tenant_id).await?;
-        let provider = get_identity_provider(&mut tx, found.provider_id)
-            .await?
-            .filter(|p| p.enabled)
-            .ok_or_else(none)?;
+            .filter(|p| p.enabled);
         tx.commit().await?;
+        let Some(provider) = provider else {
+            return Ok(None);
+        };
         let unusable = |failure: String| {
             tracing::warn!(
                 provider_id = %provider.id,
@@ -148,9 +199,13 @@ impl SsoService {
             .await
             .map_err(unusable)?
             .metadata;
-        let authorization =
-            oidc::authorization(metadata, &provider.client_id, &self.redirect_uri, email)
-                .map_err(unusable)?;
+        let authorization = oidc::authorization(
+            metadata,
+            &provider.client_id,
+            &self.redirect_uri,
+            login_hint,
+        )
+        .map_err(unusable)?;
         // Where the browser is sent, as the provider declares it.
         if let Some(problem) = address_problem(&authorization.url, self.network) {
             return Err(unusable(format!("adresse d’autorisation : {problem}")).into());
@@ -162,10 +217,10 @@ impl SsoService {
             pkce_verifier: authorization.pkce_verifier,
             expires_at: Utc::now() + ATTEMPT_LIFETIME,
         };
-        Ok(Started {
+        Ok(Some(Started {
             redirect_url: authorization.url,
             attempt: attempt::seal(cipher, provider.tenant_id, &attempt)?,
-        })
+        }))
     }
 
     /// Why the issuer cannot serve sign-ins, if it cannot (in French): its

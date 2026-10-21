@@ -1,6 +1,7 @@
 //! Signing in through a company's identity provider (ADR-063) in the
-//! tests: the provider declared by Paul, the start, the browser's visit to
-//! the provider and its return, and what the audit and the identities say.
+//! tests: the provider declared by Paul, the start (from an address, or
+//! from the company's sign-in link, ADR-067), the browser's visit to the
+//! provider and its return, and what the audit and the identities say.
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
@@ -72,7 +73,33 @@ pub async fn try_start(api: &TestApi, email: &str) -> TestResponse {
 
 /// The provider's address and the attempt's cookie (`name=value`).
 pub async fn start(api: &TestApi, email: &str) -> (String, String) {
-    let started = try_start(api, email).await;
+    sent_away(try_start(api, email).await)
+}
+
+/// What the company's sign-in link page reads of its provider (ADR-067).
+pub async fn try_link(api: &TestApi, provider: &str) -> TestResponse {
+    anonymous_post(api, "/auth/sso/link", json!({ "provider": provider })).await
+}
+
+pub async fn try_start_link(api: &TestApi, provider: &str) -> TestResponse {
+    anonymous_post(api, "/auth/sso/link/start", json!({ "provider": provider })).await
+}
+
+/// From the company's sign-in link to the return, signed in at the
+/// provider as it was told.
+pub async fn sign_in_by_link(
+    api: &TestApi,
+    idp: &MockIdentityProvider,
+    provider: &str,
+) -> TestResponse {
+    let (url, cookie) = sent_away(try_start_link(api, provider).await);
+    // No address is known: none is suggested to the provider.
+    assert!(!url.contains("login_hint"), "{url}");
+    let back = idp.authorize(&url);
+    come_back(api, &back, Some(&cookie)).await
+}
+
+fn sent_away(started: TestResponse) -> (String, String) {
     assert_eq!(started.status, StatusCode::OK, "{}", started.text());
     let cookie = set_cookie(&started, "mimorya_sso").expect("attempt cookie");
     assert!(cookie.contains("HttpOnly") && cookie.contains("Path=/api/auth/sso"));

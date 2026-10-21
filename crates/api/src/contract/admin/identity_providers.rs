@@ -25,13 +25,18 @@ pub struct IdentityProviderView {
     /// Its domains' accounts sign in through it alone, but for the
     /// company's administrators of its sign-in (ADR-066).
     pub required: bool,
+    /// It creates the account of a person of its domains at their first
+    /// sign-in through the company's link (ADR-067).
+    pub create_accounts: bool,
+    /// The company's sign-in link that names it, to hand out (ADR-067).
+    pub sign_in_link: String,
     pub secret_stored: bool,
     pub created_at: String,
     pub updated_at: String,
 }
 
 impl IdentityProviderView {
-    pub fn new(row: IdentityProviderRow, secret_stored: bool) -> Self {
+    pub fn new(row: IdentityProviderRow, sign_in_link: String, secret_stored: bool) -> Self {
         Self {
             id: row.id,
             created_at: iso(&row.created_at),
@@ -43,6 +48,8 @@ impl IdentityProviderView {
             domains: row.domains,
             enabled: row.enabled,
             required: row.required,
+            create_accounts: row.create_accounts,
+            sign_in_link,
             secret_stored,
         }
     }
@@ -89,6 +96,10 @@ pub struct NewIdentityProvider {
     #[serde(default)]
     #[ts(optional)]
     pub required: Option<bool>,
+    /// Absent: no account created (ADR-067).
+    #[serde(default)]
+    #[ts(optional)]
+    pub create_accounts: Option<bool>,
 }
 
 /// Body of `PATCH /admin/identity-providers/{id}`: absent fields are
@@ -112,4 +123,7 @@ pub struct IdentityProviderUpdate {
     #[serde(default)]
     #[ts(optional)]
     pub required: Option<bool>,
+    #[serde(default)]
+    #[ts(optional)]
+    pub create_accounts: Option<bool>,
 }
