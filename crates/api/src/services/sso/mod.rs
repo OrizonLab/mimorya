@@ -62,6 +62,17 @@ pub struct SsoService {
     declarations: MetadataCache<CoreProviderMetadata>,
 }
 
+/// A declaration heavier than this, keys included, is not kept: read at
+/// each sign-in instead, as the memory holds many providers.
+const MAX_KEPT_BYTES: usize = 64 * 1024;
+
+/// What a declaration weighs, keys included (they are not serialised with
+/// it).
+fn weight(metadata: &CoreProviderMetadata) -> usize {
+    let size = |bytes: serde_json::Result<Vec<u8>>| bytes.map_or(usize::MAX, |b| b.len());
+    size(serde_json::to_vec(metadata)).saturating_add(size(serde_json::to_vec(metadata.jwks())))
+}
+
 /// An issuer's declaration, and whether it came from memory: its keys may
 /// then be older than the provider's.
 struct Declaration {
@@ -130,7 +141,7 @@ impl SsoService {
             )
         };
         let metadata = self
-            .declaration(&provider.issuer)
+            .declaration(provider.id, &provider.issuer)
             .await
             .map_err(unusable)?
             .metadata;
@@ -155,36 +166,47 @@ impl SsoService {
     }
 
     /// Why the issuer cannot serve sign-ins, if it cannot (in French): its
-    /// declaration is read anew, never answered from memory.
+    /// declaration is read anew, never answered from memory nor kept (the
+    /// provider is not declared yet).
     pub async fn issuer_problem(&self, issuer: &str) -> Option<String> {
-        self.read_declaration(issuer)
+        oidc::discover(&self.http, issuer)
             .await
             .err()
             .map(|failure| format!("Fournisseur injoignable ou invalide ({failure})"))
     }
 
-    /// The issuer's declaration and keys: the kept ones while they serve,
+    /// The provider's declaration and keys: the kept ones while they serve,
     /// else read (ADR-065).
-    async fn declaration(&self, issuer: &str) -> Result<Declaration, oidc::Failure> {
-        if let Some(metadata) = self.declarations.get(issuer, Instant::now()) {
+    async fn declaration(
+        &self,
+        provider_id: Uuid,
+        issuer: &str,
+    ) -> Result<Declaration, oidc::Failure> {
+        if let Some(metadata) = self.declarations.get(provider_id, Instant::now()) {
             return Ok(Declaration {
                 metadata,
                 kept: true,
             });
         }
-        let metadata = self.read_declaration(issuer).await?;
+        let metadata = self.read_declaration(provider_id, issuer).await?;
         Ok(Declaration {
             metadata,
             kept: false,
         })
     }
 
-    /// The issuer's declaration and keys, read anew and kept; a failure is
-    /// not.
-    async fn read_declaration(&self, issuer: &str) -> Result<CoreProviderMetadata, oidc::Failure> {
+    /// The provider's declaration and keys, read anew and kept unless too
+    /// heavy; a failure is not kept.
+    async fn read_declaration(
+        &self,
+        provider_id: Uuid,
+        issuer: &str,
+    ) -> Result<CoreProviderMetadata, oidc::Failure> {
         let metadata = oidc::discover(&self.http, issuer).await?;
-        self.declarations
-            .put(issuer, metadata.clone(), Instant::now());
+        if weight(&metadata) <= MAX_KEPT_BYTES {
+            self.declarations
+                .put(provider_id, metadata.clone(), Instant::now());
+        }
         Ok(metadata)
     }
 }

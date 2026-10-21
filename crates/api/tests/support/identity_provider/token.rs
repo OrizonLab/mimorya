@@ -110,7 +110,10 @@ pub(super) async fn token(
         CoreJwsSigningAlgorithm,
     >::new(
         claims,
-        &signing_key(provider.rolled_over != provider.tamper.unpublished_key),
+        &signing_key(
+            provider.rolled_over != provider.tamper.unpublished_key,
+            !provider.without_key_ids,
+        ),
         CoreJwsSigningAlgorithm::RsaSsaPkcs1V15Sha256,
         None,
         None,

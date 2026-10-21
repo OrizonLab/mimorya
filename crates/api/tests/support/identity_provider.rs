@@ -96,6 +96,10 @@ struct Provider {
     key_reads: usize,
     /// Signing with its next key, the only one published.
     rolled_over: bool,
+    /// Its keys published, and its tokens signed, without an identifier.
+    without_key_ids: bool,
+    /// Keys published beside its own, signing nothing.
+    extra_keys: usize,
     /// Its declaration answered by an error.
     unavailable: bool,
 }
@@ -164,6 +168,17 @@ impl MockIdentityProvider {
 
     pub fn set_unavailable(&self, unavailable: bool) {
         self.shared.lock().expect("provider").unavailable = unavailable;
+    }
+
+    /// Publishes its keys, and signs, without key identifiers (OpenID
+    /// Connect allows it for a single key).
+    pub fn without_key_ids(&self) {
+        self.shared.lock().expect("provider").without_key_ids = true;
+    }
+
+    /// Publishes this many keys more, as a heavy key set.
+    pub fn publish_extra_keys(&self, count: usize) {
+        self.shared.lock().expect("provider").extra_keys = count;
     }
 
     /// The browser's visit to the authorization address: the query of the
@@ -245,13 +260,14 @@ async fn visit(
     }
 }
 
-fn signing_key(next: bool) -> CoreRsaPrivateSigningKey {
+fn signing_key(next: bool, with_id: bool) -> CoreRsaPrivateSigningKey {
     let (pem, id) = if next {
         (NEXT_KEY, "test-2")
     } else {
         (TEST_KEY, "test")
     };
-    CoreRsaPrivateSigningKey::from_pem(pem, Some(JsonWebKeyId::new(id.into()))).expect("test key")
+    let id = with_id.then(|| JsonWebKeyId::new(id.into()));
+    CoreRsaPrivateSigningKey::from_pem(pem, id).expect("test key")
 }
 
 async fn configuration(State(shared): State<Shared>) -> Response {
@@ -282,13 +298,23 @@ async fn configuration(State(shared): State<Shared>) -> Response {
 }
 
 async fn keys(State(shared): State<Shared>) -> Response {
-    let next = {
+    let (next, with_id, extra) = {
         let mut provider = shared.lock().expect("provider");
         provider.requests += 1;
         provider.key_reads += 1;
-        provider.rolled_over
+        (
+            provider.rolled_over,
+            !provider.without_key_ids,
+            provider.extra_keys,
+        )
     };
-    let set = CoreJsonWebKeySet::new(vec![signing_key(next).as_verification_key()]);
+    let mut keys = vec![signing_key(next, with_id).as_verification_key()];
+    for n in 0..extra {
+        let id = Some(JsonWebKeyId::new(format!("extra-{n}")));
+        let key = CoreRsaPrivateSigningKey::from_pem(NEXT_KEY, id).expect("test key");
+        keys.push(key.as_verification_key());
+    }
+    let set = CoreJsonWebKeySet::new(keys);
     let body = serde_json::to_string(&set).expect("key set");
     ([(header::CONTENT_TYPE, "application/json")], body).into_response()
 }

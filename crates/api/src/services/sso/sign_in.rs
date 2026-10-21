@@ -153,7 +153,7 @@ impl SsoService {
     }
 
     /// The code exchanged, its identity token verified: with the kept keys,
-    /// read once more when the token's is not among them (ADR-065).
+    /// read once more when its signature fails with them (ADR-065).
     async fn verified_claims(
         &self,
         provider: &IdentityProviderRow,
@@ -161,7 +161,7 @@ impl SsoService {
         code: String,
         attempt: Attempt,
     ) -> Result<oidc::VerifiedClaims, String> {
-        let declaration = self.declaration(&provider.issuer).await?;
+        let declaration = self.declaration(provider.id, &provider.issuer).await?;
         let application = Application {
             client_id: &provider.client_id,
             client_secret: secret,
@@ -177,8 +177,8 @@ impl SsoService {
         .await?;
         match oidc::verify(declaration.metadata, &application, &token, &attempt.nonce) {
             // The provider rolled its keys over since they were kept.
-            Err(Unverified::UnknownKey) if declaration.kept => {
-                let metadata = self.read_declaration(&provider.issuer).await?;
+            Err(Unverified::Signature(_)) if declaration.kept => {
+                let metadata = self.read_declaration(provider.id, &provider.issuer).await?;
                 oidc::verify(metadata, &application, &token, &attempt.nonce)
                     .map_err(Unverified::failure)
             }

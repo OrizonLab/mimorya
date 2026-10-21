@@ -196,16 +196,19 @@ pub async fn exchange_code(
 
 /// Why an identity token was not verified.
 pub enum Unverified {
-    /// Signed by none of the declaration's keys: perhaps rolled over since
-    /// it was read.
-    UnknownKey,
+    /// Its signature verified by none of the declaration's keys: perhaps
+    /// rolled over since they were read, with or without a key identifier.
+    Signature(SignatureVerificationError),
     Other(Failure),
 }
 
 impl Unverified {
     pub fn failure(self) -> Failure {
         match self {
-            Self::UnknownKey => "jeton d’identité : clé de signature inconnue".into(),
+            Self::Signature(SignatureVerificationError::NoMatchingKey) => {
+                "jeton d’identité : clé de signature inconnue".into()
+            }
+            Self::Signature(error) => format!("jeton d’identité : signature refusée ({error})"),
             Self::Other(failure) => failure,
         }
     }
@@ -230,9 +233,7 @@ pub fn verify(
         .claims(&client.id_token_verifier(), &Nonce::new(nonce.into()))
         .cloned()
         .map_err(|error| match error {
-            ClaimsVerificationError::SignatureVerification(
-                SignatureVerificationError::NoMatchingKey,
-            ) => Unverified::UnknownKey,
+            ClaimsVerificationError::SignatureVerification(error) => Unverified::Signature(error),
             error => Unverified::Other(format!("jeton d’identité : {error}")),
         })
 }

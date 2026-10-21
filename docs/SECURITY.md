@@ -119,8 +119,10 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
     l'entreprise en données associées ; le retour d'une autre tentative est refusé (pas
     de connexion forcée), avant même un refus du fournisseur ; le code s'échange une
     fois. Le jeton d'identité est vérifié (signature par les clés publiées, émetteur,
-    audience, expiration, nonce) ; la déclaration et les clés sont gardées une heure, et
-    relues une fois si le jeton est signé par une clé inconnue (ADR-065). Le fournisseur
+    audience, expiration, nonce) ; la déclaration et les clés sont gardées une heure par
+    fournisseur déclaré (jamais partagées entre entreprises), et relues une fois si la
+    signature échoue avec elles ; une clé retirée par le fournisseur reste acceptée au
+    plus une heure (ADR-065). Le fournisseur
     est joint par le client HTTP durci des
     connecteurs (ADR-025), borné en durée et en taille ; toute adresse qu'il nomme
     (clés, point d'échange, adresse d'autorisation) est contrôlée comme son émetteur
