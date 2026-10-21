@@ -1,22 +1,23 @@
-//! The steps of a sign-in through an identity provider (discovery, start,
-//! return) have their own limit per address, three times the sign-in limit
-//! (ADR-063): past it, a return replayed with its sealed attempt is turned
-//! away before the audit or the provider; and the discovery the sign-in page
-//! makes for every address spends nothing of the password sign-in limit.
+//! The steps of a sign-in through an identity provider have their own
+//! limits per address (ADR-063): the discovery, which tells whether an
+//! address has an account tied to a provider, as many as logins; the start
+//! and the return together, twice that. Past it, a return replayed with its
+//! sealed attempt is turned away before the audit or the provider; and none
+//! of them spends the others' limit, nor the password sign-in's.
 
 mod support;
 
+use axum::http::StatusCode;
 use mimorya_core::demo::user;
-use serde_json::json;
 use support::identity_provider::{MockIdentityProvider, Person};
 use support::refusals::latest_entry;
 use support::sso::{
     SSO_DEPLOYMENT, assert_refused, come_back, declaration, declare, discover, remove, sso_logins,
-    start,
+    start, try_discover, try_start,
 };
 use support::{TestApi, email};
 
-/// One sign-in a minute per address: three steps of single sign-on.
+/// One sign-in a minute per address: one discovery, two other steps.
 fn one_a_minute() -> Vec<(&'static str, &'static str)> {
     let mut env = SSO_DEPLOYMENT.to_vec();
     env.push(("LOGIN_RATE_LIMIT_PER_MINUTE", "1"));
@@ -38,24 +39,35 @@ async fn a_replayed_return_is_turned_away_past_the_limit() {
     let forged = "/auth/sso/callback?code=invente&state=autre";
     let since = latest_entry(&api).await;
     assert_refused(&come_back(&api, forged, Some(&cookie)).await);
-    assert_refused(&come_back(&api, forged, Some(&cookie)).await);
-    // The fourth step: neither audited nor sent on, even the right return.
+    // The third step: neither audited nor sent on, even the right return.
     let requests = idp.requests();
     assert_refused(&come_back(&api, &idp.authorize(&url), Some(&cookie)).await);
     assert_eq!(idp.requests(), requests);
     assert_eq!(idp.exchanges(), 0);
     let audited = sso_logins(&api, mimorya_core::demo::tenant::ID, since).await;
-    assert_eq!(audited.len(), 2, "{audited:?}");
+    assert_eq!(audited.len(), 1, "{audited:?}");
+    let refused = try_start(&api, &nadia).await;
+    assert_eq!(refused.status, StatusCode::TOO_MANY_REQUESTS);
     remove(&paul, &id).await;
 }
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
-async fn discovering_spends_nothing_of_the_password_sign_in_limit() {
+async fn discovering_is_limited_as_logins_are_and_apart_from_the_other_steps() {
+    // Its own limits: the provider is declared through another server.
     let api = TestApi::start_with(&one_a_minute()).await;
-    for _ in 0..3 {
-        assert_eq!(discover(&api, &email(user::NADIA)).await, json!(null));
-    }
-    // The minute's one password sign-in is still there.
+    let admin = TestApi::start_with(&SSO_DEPLOYMENT).await;
+    let idp = MockIdentityProvider::start().await;
+    let paul = admin.sign_in(user::PAUL).await;
+    let id = declare(&paul, declaration(&idp)).await;
+    let nadia = email(user::NADIA);
+
+    // As many discoveries as logins: one a minute here, whatever the address.
+    assert_eq!(discover(&api, &nadia).await["name"], "Annuaire Néo");
+    let refused = try_discover(&api, "personne@ailleurs.example").await;
+    assert_eq!(refused.status, StatusCode::TOO_MANY_REQUESTS);
+    // Spent, they leave the start and the minute's password sign-in.
+    start(&api, &nadia).await;
     api.sign_in(user::PAUL).await;
+    remove(&paul, &id).await;
 }

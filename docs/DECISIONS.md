@@ -2300,11 +2300,15 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     la même réponse (« mot de passe ») ; une entreprise ne peut donc pas détourner vers son
     fournisseur les comptes d'une autre en déclarant leur domaine. La réponse dit
     qu'une adresse a un compte dans une entreprise qui l'a reliée à son fournisseur.
-    Les trois étapes (découverte, départ, retour) ont leur propre limite par adresse,
-    trois fois celle de la connexion (une connexion SSO en compte trois) : la découverte
-    que la page de connexion fait pour toute adresse ne retire rien à la limite des mots
-    de passe, et un retour rejoué avec sa tentative scellée, valable dix minutes, est
-    refusé au-delà, sans trace ni appel au fournisseur ;
+    La découverte a sa propre limite par adresse, celle de la connexion : elle dit si
+    une adresse a un compte relié à un fournisseur. Le départ et le retour ensemble ont
+    la leur, deux fois celle de la connexion (une connexion SSO compte les deux). Aucune
+    ne retire rien aux autres ni à la limite des mots de passe (la découverte que la page
+    de connexion fait pour toute adresse non plus), et un retour rejoué avec sa
+    tentative scellée, valable dix minutes, est refusé au-delà, sans trace ni appel au
+    fournisseur. Une première version donnait aux trois étapes une seule limite, trois
+    fois celle de la connexion, qui laissait à la découverte trois fois plus d'adresses
+    à essayer qu'à la connexion ;
   - le départ (`POST /api/auth/sso/start`) renvoie l'adresse du fournisseur et pose un
     cookie de tentative (HttpOnly, SameSite=Lax, chemin `/api/auth/sso`, 10 minutes) :
     entreprise en clair, fournisseur, `state`, `nonce` et vérificateur PKCE scellés par

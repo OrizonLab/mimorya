@@ -163,7 +163,8 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
                 .unwrap_or(GLOBAL_RATE_LIMIT_PER_MINUTE),
         ),
         login: RateLimiter::per_minute(config.login_rate_limit_per_minute),
-        sso: RateLimiter::per_minute(config.login_rate_limit_per_minute.saturating_mul(3)),
+        sso_discovery: RateLimiter::per_minute(config.login_rate_limit_per_minute),
+        sso_sign_in: RateLimiter::per_minute(config.login_rate_limit_per_minute.saturating_mul(2)),
         failed_logins: RateLimiter::new(FAILED_LOGINS_PER_ACCOUNT, FAILED_LOGIN_WINDOW),
         reset_requests: RateLimiter::new(RESET_REQUESTS_PER_ADDRESS, RESET_REQUEST_WINDOW),
     };

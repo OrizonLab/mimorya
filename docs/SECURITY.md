@@ -92,9 +92,11 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
     d'une limite globale de 600 requêtes par minute et par adresse. Sans reverse
     proxy (voir ci-dessous), ces limites s'appliquent à toute la plateforme, puisque
     tous les utilisateurs partagent alors une même adresse ;
-  - **étapes de la connexion par le fournisseur d'identité** (découverte, départ,
-    retour, ADR-063) : leur propre limite par adresse, trois fois la précédente ; un
-    retour rejoué au-delà est refusé sans trace ni appel au fournisseur.
+  - **connexion par le fournisseur d'identité** (ADR-063) : la découverte, qui dit si
+    une adresse a un compte relié à un fournisseur, a sa propre limite par adresse,
+    égale à la précédente ; le départ et le retour ensemble, deux fois la précédente.
+    Aucune ne retire rien aux autres ; un retour rejoué au-delà est refusé sans trace
+    ni appel au fournisseur.
 - Adresse cliente : par défaut, l'adresse TCP de l'appelant (`TRUST_PROXY=false`).
   Derrière le seul relais web, tous les utilisateurs partagent l'adresse du serveur
   Next.js, qui transmet tel quel un `X-Forwarded-For` fourni par le client. En

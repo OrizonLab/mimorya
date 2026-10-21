@@ -72,11 +72,14 @@ pub struct RateLimits {
     pub global: RateLimiter,
     /// Login attempts, per client address.
     pub login: RateLimiter,
-    /// The steps of a sign-in through an identity provider (discovery,
-    /// start, return), per client address: three times the login limit, a
-    /// sign-in taking three steps; a password sign-in's discovery spends
-    /// nothing of the login limit (ADR-063).
-    pub sso: RateLimiter,
+    /// Discoveries of an address's identity provider, per client address: as
+    /// many as logins, each telling whether an address has an account tied
+    /// to a provider; they spend nothing of the login limit (ADR-063).
+    pub sso_discovery: RateLimiter,
+    /// The start and the return of a sign-in through an identity provider,
+    /// per client address: twice the login limit, a sign-in taking both
+    /// (ADR-063).
+    pub sso_sign_in: RateLimiter,
     /// Login attempts per account (email), given back when the login succeeds:
     /// only failures count. Addresses can be shared or multiplied, accounts cannot.
     pub failed_logins: RateLimiter,
