@@ -7,8 +7,9 @@ mod support;
 
 use axum::http::StatusCode;
 use chrono::{DateTime, Duration, Utc};
-use mimorya_agent::runtime::ACCOUNT_INACTIVE;
+use mimorya_agent::runtime::{ACCOUNT_INACTIVE, PendingApproval, PendingCalls};
 use mimorya_agent::testing::ScriptedStep;
+use mimorya_api::services::runs::AGENT_USE_WITHDRAWN;
 use mimorya_core::demo::{tenant, user};
 use mimorya_db::repositories::approvals::{ApprovalRouting, NewApproval, create_approval};
 use mimorya_db::testing::{OTHER_TENANT_ID, OTHER_USER_ID};
@@ -40,18 +41,29 @@ fn request(tenant_id: Uuid, run_id: Uuid, user_id: Uuid, expires_at: DateTime<Ut
     }
 }
 
-/// A run of `user` paused on a request already past its deadline; returns
-/// both.
+/// A run of `user` paused, as the engine leaves it, on a request already
+/// past its deadline; returns both.
 async fn paused_on_overdue(api: &TestApi, tenant_id: Uuid, user_id: Uuid) -> (Uuid, Uuid) {
-    let run = stopped_run(api, tenant_id, user_id, None, Some(saved()), &[]).await;
+    let run = stopped_run(api, tenant_id, user_id, None, None, &[]).await;
     let mut tx = api.app.services.db.begin(tenant_id).await.unwrap();
-    sqlx::query("update agent_runs set status = 'awaiting_approval' where id = $1")
-        .bind(run)
-        .execute(&mut *tx)
-        .await
-        .unwrap();
     let past = Utc::now() - Duration::minutes(1);
     let approval = create_approval(&mut tx, request(tenant_id, run, user_id, past))
+        .await
+        .unwrap();
+    let mut checkpoint = saved();
+    checkpoint.pending = Some(PendingCalls {
+        completed_results: Vec::new(),
+        approvals: vec![PendingApproval {
+            approval_id: approval.id,
+            tool_call_id: approval.tool_call_id.clone(),
+            tool_name: approval.tool_name.clone(),
+            input: json!({}),
+        }],
+    });
+    sqlx::query("update agent_runs set status = 'awaiting_approval', state = $2 where id = $1")
+        .bind(run)
+        .bind(serde_json::to_value(checkpoint).unwrap())
+        .execute(&mut *tx)
         .await
         .unwrap();
     tx.commit().await.unwrap();
@@ -254,15 +266,21 @@ async fn each_company_s_requests_expire_in_their_own_company() {
     assert_eq!(runs.expire_overdue().await.unwrap(), 2);
     api.idle().await;
 
-    // Each expired, audited and no longer paused, in its own company...
-    for (tenant_id, (run, approval)) in [(OTHER_TENANT_ID, foreign), (tenant::ID, own)] {
+    // Each expired and audited in its own company...
+    for (tenant_id, (_, approval)) in [(OTHER_TENANT_ID, foreign), (tenant::ID, own)] {
         assert_eq!(
             seen_from(&api, tenant_id, approval).await,
             (Some("expired".to_string()), 1)
         );
-        let (status, _) = status_and_error(&api, tenant_id, run).await;
-        assert_ne!(status, "awaiting_approval");
     }
+    // ...each run gone on there, with the rights of whom it acts for: Marc's
+    // to its end, the other company's contact, who may not use the agent,
+    // stopped.
+    let (status, error) = status_and_error(&api, tenant::ID, own.0).await;
+    assert_eq!((status.as_str(), error), ("completed", None));
+    let (status, error) = status_and_error(&api, OTHER_TENANT_ID, foreign.0).await;
+    assert_eq!(status, "failed");
+    assert!(error.unwrap().contains(AGENT_USE_WITHDRAWN));
     // ...and nothing of the other company's shows in the demo company.
     assert_eq!(seen_from(&api, tenant::ID, foreign.1).await, (None, 0));
     assert!(events(&api, tenant::ID, foreign.0).await.is_empty());
