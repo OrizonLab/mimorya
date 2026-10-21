@@ -13,18 +13,17 @@ use std::time::Duration;
 use mimorya_agent::runtime::DEFAULT_BUDGET;
 use mimorya_agent::testing::{ScriptedReply, ScriptedStep};
 use mimorya_api::plugins::maintenance::sweep_stale_runs;
-use mimorya_api::services::RunEventBus;
 use mimorya_core::autonomy::AutonomyLevel;
 use mimorya_core::demo::{tenant, user};
 use mimorya_db::repositories::run_events::{list_run_events, run_end_recorded};
 use mimorya_db::repositories::runs::{NewRun, RunStatus, create_run, get_run};
-use mimorya_db::{Database, PoolOptions};
 use serde_json::json;
 use support::companies::create;
 use support::mcp::capture_logs;
 use support::privileges::without_insert;
 use support::runs::start_run;
-use support::{TestApi, app_url, owner_url};
+use support::sweeps::sweep_from_elsewhere;
+use support::{TestApi, owner_url};
 use uuid::Uuid;
 
 const INTERRUPTED: &str = "Exécution interrompue (service redémarré ou bloqué)";
@@ -121,42 +120,6 @@ async fn a_swept_run_announces_its_end_to_its_followers_in_its_own_company() {
     let alive_run = get_run(&mut tx, alive).await.unwrap().unwrap();
     assert_eq!(alive_run.status(), RunStatus::Running);
     assert!(!run_end_recorded(&mut tx, alive).await.unwrap());
-}
-
-/// Ages the user's running runs and sweeps them from another thread, with
-/// its own connection and bus: as another process would, while the model
-/// still answers.
-fn sweep_from_elsewhere(user_id: Uuid) {
-    std::thread::spawn(move || {
-        tokio::runtime::Runtime::new()
-            .expect("runtime")
-            .block_on(async {
-                let owner = sqlx::PgPool::connect(owner_url()).await.expect("owner");
-                sqlx::query(
-                    "update agent_runs set updated_at = now() - interval '20 minutes' \
-                     where status = 'running' and on_behalf_of_user_id = $1",
-                )
-                .bind(user_id)
-                .execute(&owner)
-                .await
-                .expect("aged");
-                let db = Database::connect(
-                    app_url(),
-                    PoolOptions {
-                        max_connections: 1,
-                        application_name: "other-process",
-                    },
-                )
-                .await
-                .expect("app connection");
-                let bus = RunEventBus::default();
-                sweep_stale_runs(&db, &bus, chrono::Duration::minutes(15))
-                    .await
-                    .expect("sweep");
-            });
-    })
-    .join()
-    .expect("sweep thread");
 }
 
 #[tokio::test]

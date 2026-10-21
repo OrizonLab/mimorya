@@ -19,6 +19,7 @@ pub mod recovery;
 pub mod refusals;
 pub mod resets;
 pub mod runs;
+pub mod sweeps;
 
 pub use client::{Client, TestResponse};
 use mail::RecordingMailer;

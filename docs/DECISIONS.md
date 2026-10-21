@@ -2133,32 +2133,39 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   pas, l'agent de la personne reste en pause. Un e-mail le prévient, mais il sort de la
   plateforme : il échappe à ses contrôles d'accès et à sa durée de conservation.
 - **Décision** :
-  - quand une demande est confiée à un responsable, un e-mail lui est envoyé en
-    arrière-plan, après l'enregistrement de la demande : le run se met en pause, que le
-    message parte ou non. Il n'est envoyé que si la demande attend encore ce
-    responsable et que son compte est actif ; une demande que la personne décide
+  - quand un run se met en pause sur des demandes confiées à un responsable, un e-mail
+    lui est envoyé en arrière-plan, une fois la pause enregistrée (les demandes sont
+    alors décidables) : **un seul par responsable et par pause**, quel que soit le
+    nombre de demandes de l'étape. Le run est en pause, que le message parte ou non.
+    Seules comptent les demandes qui attendent encore ce responsable, dont le compte est
+    actif, et qui n'ont pas déjà été signalées ; une demande que la personne décide
     elle-même n'est jamais envoyée ;
-  - le message dit pour qui est l'action, son risque, le lien vers la page des
-    validations et l'échéance de la demande. Il ne contient **ni l'action ni ses
-    paramètres** : ils ne se lisent qu'après connexion, là où le droit de décider est
-    vérifié ;
-  - chaque envoi est tracé (`approval.notified`, réussi ou échoué, au nom de la
-    plateforme pour la personne, avec l'identifiant du responsable), sans l'adresse ni
-    la réponse du relais, qui peut la citer ; un échec est journalisé sans elles ;
+  - le message dit pour qui sont les actions, combien, leurs risques, le lien vers la
+    page des validations et leur échéance (la plus proche ; celles d'une étape sont les mêmes à la minute). Il ne contient **ni les actions ni
+    leurs paramètres** : ils ne se lisent qu'après connexion, là où le droit de décider
+    est vérifié ;
+  - chaque demande signalée est tracée (`approval.notified`, réussi ou échoué, au nom
+    de la plateforme pour la personne, avec l'identifiant du responsable et le nombre
+    de demandes du message), sans l'adresse ni la réponse du relais, qui peut la citer ;
+    un échec est journalisé sans elles, et n'est pas réessayé ;
   - sans relais SMTP configuré, rien n'est envoyé. L'écran « Circuit de validation »
     le dit (`notifiesByEmail`), et le responsable trouve les demandes dans
     « Validations ».
 - **Conséquences** :
   - aucune donnée personnelle nouvelle n'est conservée : l'e-mail n'est pas stocké, et
     l'audit ne garde que des identifiants ;
-  - pas encore de relance ni de résumé périodique ; un responsable qui reçoit beaucoup
-    de demandes reçoit un e-mail par demande. Une étape du modèle pouvant demander
-    plusieurs validations, un modèle détourné pourrait en envoyer une rafale : un
-    e-mail par pause du run, ou une limite par run et par responsable, reste à faire ;
+  - un avis que l'arrêt du service interrompt entre l'enregistrement de la pause et
+    l'envoi est perdu ; le filtre par l'audit permettrait de le rattraper au démarrage
+    (demandes en attente, confiées à un responsable, jamais signalées) ;
+  - pas encore de relance ni de résumé périodique. Un e-mail par pause borne ce qu'un
+    modèle détourné peut envoyer : autant de messages que le run fait de pauses, que
+    son budget d'étapes limite ;
   - tests :
     - `crates/api/src/services/runs/approval_notice/message.rs` : contenu du message ;
     - `crates/api/tests/manager_notices.rs` : seul le responsable est prévenu, sans
-      l'action ni ses paramètres, envoi tracé ; un message refusé par le relais est
+      l'action ni ses paramètres, envoi tracé ; les demandes d'une même pause font un
+      seul message, et une demande signalée ne l'est plus ; rien n'est envoyé pour un
+      run terminé avant d'avoir enregistré sa pause ; un message refusé par le relais est
       tracé en échec et la demande attend toujours ; l'administration dit si les
       responsables sont prévenus ;
     - `apps/web/e2e/manager-approvals.spec.ts` : Marc ouvre le lien de l'e-mail reçu

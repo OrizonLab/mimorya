@@ -1,6 +1,6 @@
-//! What tells a manager that a request awaits them (ADR-060): the request,
-//! while it waits for them, and their address, while their account is
-//! active.
+//! What tells a manager that requests await them (ADR-060): the requests a
+//! run paused on that still wait for a manager, not yet notified, with the
+//! manager's address while their account is active.
 
 use chrono::{DateTime, Utc};
 use sqlx::PgConnection;
@@ -8,6 +8,7 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct ApprovalNotice {
+    pub approval_id: Uuid,
     pub run_id: Uuid,
     pub risk: String,
     pub expires_at: Option<DateTime<Utc>>,
@@ -19,25 +20,31 @@ pub struct ApprovalNotice {
     pub company: String,
 }
 
-/// The pending request `approval_id` a manager decides, and that manager,
-/// if their account is active; `None` otherwise (decided meanwhile, or
-/// decided by whom the agent acts for).
-pub async fn approval_notice(
+/// Of the requests `approval_ids` of `run_id`, those still pending that a
+/// manager decides, with that manager, if their account is active, and
+/// that no notice was attempted for yet (sent or refused by the relay: it is
+/// never retried, ADR-060); by manager, then in creation order.
+pub async fn approval_notices(
     conn: &mut PgConnection,
-    approval_id: Uuid,
-) -> sqlx::Result<Option<ApprovalNotice>> {
+    run_id: Uuid,
+    approval_ids: &[Uuid],
+) -> sqlx::Result<Vec<ApprovalNotice>> {
     sqlx::query_as(
-        "select a.run_id, a.risk, a.expires_at, a.requested_for_user_id, \
+        "select a.id as approval_id, a.run_id, a.risk, a.expires_at, a.requested_for_user_id, \
          r.display_name as requested_for_name, a.approver_user_id, \
          m.email::text as approver_email, m.display_name as approver_name, t.name as company \
          from approvals a \
          join users r on r.id = a.requested_for_user_id \
          join users m on m.id = a.approver_user_id \
          join tenants t on t.id = a.tenant_id \
-         where a.id = $1 and a.status = 'pending' and a.routing = 'manager' \
-         and m.status = 'active'",
+         where a.run_id = $1 and a.id = any($2) and a.status = 'pending' \
+         and a.routing = 'manager' and m.status = 'active' \
+         and not exists (select 1 from audit_log l where l.run_id = a.run_id \
+           and l.action = 'approval.notified' and l.resource_id = a.id::text) \
+         order by a.approver_user_id, a.created_at",
     )
-    .bind(approval_id)
-    .fetch_optional(conn)
+    .bind(run_id)
+    .bind(approval_ids)
+    .fetch_all(conn)
     .await
 }
