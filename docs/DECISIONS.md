@@ -2402,7 +2402,7 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - un compte désactivé n'est proposé à aucun fournisseur ;
   - un compte garde la trace d'avoir été actif (`users.activated`, migration 0018 : son
     invitation acceptée, par le lien ou par le fournisseur, ou un mot de passe provisoire
-    dès sa création). Désactivé puis réactivé, seul un compte qui ne l'a jamais été
+    reçu, à sa création ou de l'administration, même désactivé). Désactivé puis réactivé, seul un compte qui ne l'a jamais été
     redevient `invited` (ADR-027) : avant, l'absence de mot de passe en tenait lieu ;
   - le lien et le fournisseur verrouillent la même ligne du compte avant toute écriture
     (le fournisseur avant même de relier l'identité) : le premier l'accepte, l'autre
@@ -2427,6 +2427,8 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     l'administration peut lui fixer un mot de passe provisoire ; « Mon compte » sans
     mot de passe), `sso_invitation_races.rs` (lien contre fournisseur dans les deux
     ordres, renvoi contre fournisseur), `sso_companies.rs` (le compte invité d'une
-    autre entreprise reste hors d'atteinte) ; `apps/web/e2e/single-sign-on.spec.ts`
+    autre entreprise reste hors d'atteinte), `invitations.rs` (un mot de passe provisoire
+    donné pendant la désactivation rend le compte actif une fois réactivé) ;
+    `apps/web/e2e/single-sign-on.spec.ts`
     (invitation reçue par e-mail, compte activé par le fournisseur, « Mon compte » sans
     mot de passe, lien refusé ensuite).

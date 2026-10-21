@@ -148,15 +148,16 @@ pub async fn get_password_hash(conn: &mut PgConnection, id: Uuid) -> sqlx::Resul
     Ok(hash.flatten())
 }
 
-/// Gives the account a temporary password, which it must replace.
+/// Gives the account a temporary password, which it must replace: usable
+/// once enabled, as at its creation with one (ADR-064).
 pub async fn set_temporary_password_hash(
     conn: &mut PgConnection,
     id: Uuid,
     hash: &str,
 ) -> sqlx::Result<()> {
     sqlx::query(
-        "update users set password_hash = $2, must_change_password = true, updated_at = now() \
-         where id = $1",
+        "update users set password_hash = $2, must_change_password = true, activated = true, \
+         updated_at = now() where id = $1",
     )
     .bind(id)
     .bind(hash)

@@ -27,7 +27,8 @@ REVOKE ALL ON FUNCTION auth_find_identity_provider(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION auth_find_identity_provider(text) TO mimorya_app;
 
 -- Whether the account was ever active: its invitation accepted, by its link
--- or through the provider, or created with a temporary password. Re-enabled,
+-- or through the provider, or a temporary password given (at its creation or
+-- by the administration, even while disabled). Re-enabled,
 -- an account that never was goes back to `invited` (ADR-027); one accepted
 -- through the provider has no password but stays active (ADR-064). Until
 -- now an account without a password had never been active.

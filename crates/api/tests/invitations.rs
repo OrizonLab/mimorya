@@ -1,6 +1,7 @@
 //! Invitation links (ADR-027): a new account chooses its own password
 //! through a one-time link, valid seven days; a new link replaces the former
-//! one; a disabled account loses its link; only company-wide account
+//! one; a disabled account loses its link, and is invited again once
+//! enabled unless given a temporary password meanwhile; only company-wide account
 //! administrators issue them, and the token reaches neither the audit nor a
 //! second use.
 
@@ -160,6 +161,31 @@ async fn a_disabled_account_loses_its_link() {
         )
         .await;
     assert_eq!(resent.status, StatusCode::OK);
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_temporary_password_given_while_disabled_serves_once_enabled() {
+    let api = TestApi::start().await;
+    let paul = api.sign_in(user::PAUL).await;
+    let (account, _) = invite_account(&paul, "provisoire.desactive").await;
+    let url = format!("/admin/users/{}", account.id);
+    let disabled = paul.patch(&url, json!({ "status": "disabled" })).await;
+    assert_eq!(disabled.status, StatusCode::OK, "{}", disabled.text());
+    let reset = paul.post(&format!("{url}/password"), json!({})).await;
+    assert_eq!(reset.status, StatusCode::OK, "{}", reset.text());
+    let temporary = reset.json()["temporaryPassword"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Enabled again, it is active (ADR-064), its password to replace.
+    let enabled = paul.patch(&url, json!({ "status": "active" })).await;
+    assert_eq!(enabled.status, StatusCode::OK, "{}", enabled.text());
+    assert_eq!(directory_entry(&paul, account.id).await["status"], "active");
+    let session = api.sign_in_with(&account.email, &temporary).await;
+    let me = session.get("/auth/me").await.json();
+    assert_eq!(me["user"]["mustChangePassword"], true);
 }
 
 #[tokio::test]
