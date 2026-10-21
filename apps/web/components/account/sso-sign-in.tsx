@@ -31,10 +31,9 @@ export function SsoSignIn({ email }: { email: string }) {
   useEffect(() => {
     let current = true;
     function discover() {
-      if (!ADDRESS.test(email)) {
-        setProvider(null);
-        return;
-      }
+      // Never another address's provider while this one is asked about.
+      setProvider(null);
+      if (!ADDRESS.test(email)) return;
       api
         .post<SsoDiscovery>('/auth/sso/discover', { email } satisfies SsoLookup)
         .then((found) => {

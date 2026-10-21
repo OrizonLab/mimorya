@@ -109,7 +109,9 @@ impl MockIdentityProvider {
     pub async fn start_on(address: &str) -> Self {
         let listener = tokio::net::TcpListener::bind(address)
             .await
-            .expect("local port");
+            .unwrap_or_else(|error| {
+                panic!("identity provider: cannot listen on {address}: {error}")
+            });
         let issuer = format!("http://{}", listener.local_addr().expect("address"));
         let shared: Shared = Arc::new(Mutex::new(Provider {
             issuer: issuer.clone(),

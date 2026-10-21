@@ -8,9 +8,9 @@
 //! Reads the usual configuration (`DATABASE_APP_URL`, `WEB_ORIGIN`…) and
 //! `E2E_MAIL_DIR`, where each e-mail becomes a JSON file (the ones a former
 //! start left are deleted). An OpenID Connect provider listens on
-//! `E2E_IDP_ADDRESS` (127.0.0.1:4100 by default), signing in whoever the
-//! sign-in names; identity providers alone are reached on the private
-//! network, connectors keep to the public one. One pass of the tests per start: the model's
+//! 127.0.0.1:4100 (`IDP_ADDRESS`, which the tests declare), signing in
+//! whoever the sign-in names; identity providers alone are reached on the
+//! private network, connectors keep to the public one. One pass of the tests per start: the model's
 //! script and the demo company are used up. Like `mimorya-api`, it takes the
 //! run executor's lock once listening and takes up the runs a stop left,
 //! among them the one it leaves itself (`interrupted`, ADR-053).
@@ -44,6 +44,12 @@ use mimorya_connectors::mcp::NetworkPolicy;
 /// the working day, 8 h – 17 h), are never taken.
 const SCENARIO_HOURS: [u32; 8] = [10, 14, 12, 13, 15, 9, 11, 8];
 
+/// Where the identity provider listens: `single-sign-on.spec.ts` declares it.
+const IDP_ADDRESS: &str = "127.0.0.1:4100";
+
+/// Requests per minute from the web relay, which every test goes through.
+const GLOBAL_RATE_LIMIT_PER_MINUTE: u32 = 100_000;
+
 /// Company providers' answers to their connection test.
 const CONNECTION_TESTS: usize = 20;
 
@@ -73,9 +79,7 @@ async fn main() -> anyhow::Result<()> {
         Ok(provider)
     });
     let mailer: Arc<dyn Mailer> = Arc::new(mailbox::DirectoryMailer::new(mail_dir));
-    let idp_address =
-        std::env::var("E2E_IDP_ADDRESS").unwrap_or_else(|_| "127.0.0.1:4100".to_string());
-    let idp = identity_provider::MockIdentityProvider::start_on(&idp_address).await;
+    let idp = identity_provider::MockIdentityProvider::start_on(IDP_ADDRESS).await;
     tracing::info!(
         issuer = idp.issuer,
         "End-to-end identity provider listening"
@@ -91,6 +95,9 @@ async fn main() -> anyhow::Result<()> {
                 allow_private_network: true,
                 allow_stdio: false,
             }),
+            // The browser's requests all come through the web relay, from one
+            // address: the whole suite would share a minute's 600.
+            global_rate_limit_per_minute: Some(GLOBAL_RATE_LIMIT_PER_MINUTE),
         },
     )
     .await?;

@@ -90,13 +90,14 @@ export function IdentityProviderForm({
         )}
         <Field
           label={
-            kind === 'oidc'
+            // Once declared, a provider keeps a name: changed, never emptied.
+            kind === 'oidc' || provider
               ? 'Nom affiché sur la page de connexion'
               : 'Nom affiché sur la page de connexion (facultatif)'
           }
         >
           <Input
-            required={kind === 'oidc'}
+            required={kind === 'oidc' || Boolean(provider)}
             maxLength={80}
             placeholder={
               kind === 'google' ? 'Google Workspace' : kind === 'oidc' ? '' : 'Microsoft 365'

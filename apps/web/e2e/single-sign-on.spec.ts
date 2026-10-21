@@ -1,10 +1,13 @@
 // Signing in through the company's identity provider (ADR-063): the
 // administrator declares it in « Connexion », with its client secret
-// (write-only); a collaborator is offered it from their address, goes to the
-// provider and comes back signed in. Disabled, it is offered to nobody; a
-// failed return lands on the sign-in page with a message. The provider is
+// (write-only), then renames it and changes its domains without retyping
+// the secret, which is kept; a collaborator is offered it from their
+// address, goes to the provider and comes back signed in. Disabled, it is
+// offered to nobody; deleted, it is gone. A failed return lands on the
+// sign-in page with a message. The provider is
 // the end-to-end server's own, an OpenID Connect provider on the private
-// network signing in whoever the sign-in names (E2E_IDP_ADDRESS).
+// network signing in whoever the sign-in names (`IDP_ADDRESS` of
+// `crates/api/examples/e2e_server`).
 // Whatever happens, the provider is removed, and the accounts tied to it
 // with it.
 import type { IdentityProvidersView } from '../lib/api/contract';
@@ -12,6 +15,7 @@ import { cardWith, openAdmin } from './support/admin';
 import { demo, expect, noError, test } from './support/fixtures';
 
 const PROVIDER = 'Annuaire e2e';
+const RENAMED = `${PROVIDER} renommé`;
 const ISSUER = 'http://127.0.0.1:4100';
 const CLIENT_ID = 'mimorya-tests';
 const CLIENT_SECRET = 'secret-client-de-test-0123456789';
@@ -28,7 +32,7 @@ test.afterEach(async ({ page }) => {
   if (listed.status() === 401) return;
   expect(listed.status()).toBe(200);
   const { providers } = (await listed.json()) as IdentityProvidersView;
-  for (const provider of providers.filter((p) => p.name === PROVIDER)) {
+  for (const provider of providers.filter((p) => p.name.startsWith(PROVIDER))) {
     const deleted = await page.request.delete(`/api/admin/identity-providers/${provider.id}`, {
       headers: WRITE,
     });
@@ -36,7 +40,7 @@ test.afterEach(async ({ page }) => {
   }
 });
 
-test('a collaborator signs in through the provider the company declared', async ({
+test('the company declares, changes and removes the provider its people sign in with', async ({
   page,
   newContext,
 }) => {
@@ -50,6 +54,8 @@ test('a collaborator signs in through the provider the company declared', async 
   await page.getByLabel('Secret client').fill(CLIENT_SECRET);
   await page.getByLabel(/^Domaines d’e-mail/).fill('neo-maintenance.example');
   await page.getByRole('button', { name: 'Ajouter le fournisseur' }).click();
+  // Saved once the form closes (the provider is reached first).
+  await expect(page.getByRole('button', { name: 'Ajouter le fournisseur' })).toHaveCount(0);
 
   // As the API recorded it, read again; the secret is never shown.
   await page.reload();
@@ -60,19 +66,34 @@ test('a collaborator signs in through the provider the company declared', async 
   expect(await page.content()).not.toContain(CLIENT_SECRET);
   await noError(page);
 
-  // Nadia is offered it from her address, and comes back signed in.
+  // Renamed, another domain added, the secret left blank: kept.
+  await card('Modifier').getByRole('button', { name: 'Modifier', exact: true }).click();
+  await page.getByLabel('Nom affiché sur la page de connexion').fill(RENAMED);
+  await page.getByLabel(/^Domaines d’e-mail/).fill('neo-maintenance.example, neo-e2e.example');
+  await page.getByRole('button', { name: 'Enregistrer', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Enregistrer', exact: true })).toHaveCount(0);
+  await page.reload();
+  await page.getByRole('tab', { name: 'Connexion' }).click();
+  const renamed = (button: string) => cardWith(page, RENAMED, button);
+  await expect(
+    renamed('Désactiver').getByText('Domaines : neo-e2e.example, neo-maintenance.example'),
+  ).toBeVisible();
+  await expect(renamed('Désactiver').getByText('secret enregistré')).toBeVisible();
+
+  // Nadia is offered it from her address, and comes back signed in: the
+  // kept secret served the code's exchange.
   const nadia = await (await newContext()).newPage();
   await nadia.goto('/login');
   await nadia.getByLabel('Adresse e-mail professionnelle').fill(demo.nadia);
   await nadia.getByLabel('Adresse e-mail professionnelle').blur();
-  await nadia.getByRole('button', { name: `Se connecter avec ${PROVIDER}` }).click();
+  await nadia.getByRole('button', { name: `Se connecter avec ${RENAMED}` }).click();
   await nadia.waitForURL('**/chat');
   const me = await nadia.request.get('/api/auth/me');
   expect(((await me.json()) as { user: { email: string } }).user.email).toBe(demo.nadia);
 
   // Disabled, it is offered to nobody.
-  await card('Désactiver').getByRole('button', { name: 'Désactiver', exact: true }).click();
-  await expect(card('Activer').getByText('Désactivé', { exact: true })).toBeVisible();
+  await renamed('Désactiver').getByRole('button', { name: 'Désactiver', exact: true }).click();
+  await expect(renamed('Activer').getByText('Désactivé', { exact: true })).toBeVisible();
   const later = await (await newContext()).newPage();
   await later.goto('/login');
   await later.getByLabel('Adresse e-mail professionnelle').fill(demo.nadia);
@@ -80,6 +101,13 @@ test('a collaborator signs in through the provider the company declared', async 
   await later.getByLabel('Adresse e-mail professionnelle').blur();
   expect(await (await discovered).json()).toEqual({ provider: null });
   await expect(later.getByRole('button', { name: /^Se connecter avec/ })).toHaveCount(0);
+
+  // Deleted (after its confirmation), it is gone from the list as reloaded.
+  await renamed('Supprimer').getByRole('button', { name: 'Supprimer', exact: true }).click();
+  await expect(page.getByText(RENAMED, { exact: true })).toHaveCount(0);
+  await page.reload();
+  await page.getByRole('tab', { name: 'Connexion' }).click();
+  await expect(page.getByText('Aucun fournisseur d’identité')).toBeVisible();
   await noError(page);
 });
 

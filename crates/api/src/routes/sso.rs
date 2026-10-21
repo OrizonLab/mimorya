@@ -40,7 +40,7 @@ async fn discover(
     context: RequestContext,
     Body(body): Body<SsoLookup>,
 ) -> ApiResult<Json<SsoDiscovery>> {
-    if !state.limits.login.allow(&context.client_key()) {
+    if !state.limits.sso.allow(&context.client_key()) {
         return Err(ApiError::RateLimited);
     }
     let provider = state.sso.discover(&body.email).await?;
@@ -57,7 +57,7 @@ async fn start(
     context: RequestContext,
     Body(body): Body<SsoLookup>,
 ) -> ApiResult<impl IntoResponse> {
-    if !state.limits.login.allow(&context.client_key()) {
+    if !state.limits.sso.allow(&context.client_key()) {
         return Err(ApiError::RateLimited);
     }
     let started = state.sso.start(&body.email).await?;
@@ -71,9 +71,9 @@ async fn start(
 }
 
 /// A top-level navigation from the provider: answered by a redirection,
-/// the attempt's cookie cleared either way. Not counted against the sign-in
-/// limit: only the attempt its browser started, sealed, opens it, and its
-/// code is redeemed once; the discovery and the start were counted.
+/// the attempt's cookie cleared either way. Counted as the other steps: a
+/// sealed attempt stays valid for its ten minutes, and each return with it
+/// writes to the audit, or calls the provider.
 async fn callback(
     State(state): State<AppState>,
     context: RequestContext,
@@ -82,13 +82,23 @@ async fn callback(
 ) -> Response {
     let secure = state.config.secure_cookies;
     let cleared = (SET_COOKIE, cleared_attempt_cookie(secure));
-    // An address that does not read as a return reads as an empty one.
-    let back = back.map(|Query(back)| back).unwrap_or_default();
-    let cookie = cookie_value(&headers, ATTEMPT_COOKIE);
-    let outcome = state
-        .sso
-        .finish(back, cookie.as_deref(), &context, &headers)
-        .await;
+    let outcome = if state.limits.sso.allow(&context.client_key()) {
+        // An address that does not read as a return reads as an empty one.
+        let back = back.map(|Query(back)| back).unwrap_or_default();
+        let cookie = cookie_value(&headers, ATTEMPT_COOKIE);
+        state
+            .sso
+            .finish(back, cookie.as_deref(), &context, &headers)
+            .await
+    } else {
+        // Neither audited nor sent on: what floods is turned away first.
+        Err(SignInFailure {
+            tenant_id: None,
+            provider_id: None,
+            user_id: None,
+            reason: "Trop de tentatives".into(),
+        })
+    };
     match outcome {
         Ok(token) => (
             StatusCode::SEE_OTHER,
