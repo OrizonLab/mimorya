@@ -2103,7 +2103,7 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - dans l'entreprise de démonstration, les actions de Lucas vont à Julien, celles de
     Julien et de Nadia à Marc, et celles de Marc ne trouvent personne (la directrice ne
     détient pas `approval:decide`) : elles sont refusées quand le réglage les vise ;
-  - le responsable est prévenu par e-mail (ADR-060) ;
+  - si un relais SMTP est configuré, le responsable est prévenu par e-mail (ADR-060) ;
   - restent à faire : expiration active des demandes (aujourd'hui constatée à la décision) et
     relance, délégation en cas d'absence, personnes rattachées à plusieurs unités
     (seule l'unité principale compte) ;
@@ -2152,7 +2152,9 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - aucune donnée personnelle nouvelle n'est conservée : l'e-mail n'est pas stocké, et
     l'audit ne garde que des identifiants ;
   - pas encore de relance ni de résumé périodique ; un responsable qui reçoit beaucoup
-    de demandes reçoit un e-mail par demande ;
+    de demandes reçoit un e-mail par demande. Une étape du modèle pouvant demander
+    plusieurs validations, un modèle détourné pourrait en envoyer une rafale : un
+    e-mail par pause du run, ou une limite par run et par responsable, reste à faire ;
   - tests :
     - `crates/api/src/services/runs/approval_notice/message.rs` : contenu du message ;
     - `crates/api/tests/manager_notices.rs` : seul le responsable est prévenu, sans

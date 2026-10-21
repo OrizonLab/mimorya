@@ -82,6 +82,17 @@ test('an administrator chooses the actions managers validate', async ({ page }) 
   await noError(page);
 });
 
+// A server without a mail relay, which the e2e API is not: its answer
+// stands in for it.
+test('the administration says when no e-mail tells the manager', async ({ page }) => {
+  const answer: ApprovalRoutingView = { managerRisks: [], notifiesByEmail: false };
+  await page.route('**/api/admin/approval-routing', (route) => route.fulfill({ json: answer }));
+  await openAdmin(page, TAB);
+  await expect(page.getByText('Ce serveur n’envoie pas d’e-mail')).toBeVisible();
+  await expect(page.getByText('Le responsable est prévenu par e-mail')).toHaveCount(0);
+  await noError(page);
+});
+
 test('the manager decides, for whom the agent acts', async ({ page, newContext }) => {
   const before = await mailCount(demo.marc);
   await nadiaAsks(page, newContext);

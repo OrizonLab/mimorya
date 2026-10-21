@@ -7,22 +7,36 @@ mod support;
 
 use axum::http::StatusCode;
 use mimorya_core::demo::{tenant, user};
+use mimorya_db::repositories::approval_notices::approval_notice;
 use serde_json::{Value, json};
 use support::manager_approvals::{ROUTING, applying, route_to_managers};
 use support::{TestApi, WEB_ORIGIN, email};
+use uuid::Uuid;
 
-/// The notices audited for the run: outcome and metadata, in order.
+/// The notices audited for the run: outcome and metadata, in order. Each is
+/// the platform's, for whom the agent acts (Nadia, in these tests).
 async fn notices(api: &TestApi, run_id: &str) -> Vec<(String, Value)> {
     let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
     let rows: Vec<(String, Value)> = sqlx::query_as(
         "select outcome, metadata from audit_log \
-         where run_id = $1::uuid and action = 'approval.notified' order by id",
+         where run_id = $1::uuid and action = 'approval.notified' \
+         and actor_type = 'system' and actor_user_id is null \
+         and on_behalf_of_user_id = $2 order by id",
     )
     .bind(run_id)
+    .bind(user::NADIA)
     .fetch_all(&mut *tx)
     .await
     .unwrap();
     rows
+}
+
+/// Whom a notice of `approval` would go to now, if anyone.
+async fn recipient(api: &TestApi, approval: &Value) -> Option<String> {
+    let id: Uuid = approval["id"].as_str().unwrap().parse().unwrap();
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    let notice = approval_notice(&mut tx, id).await.unwrap();
+    notice.map(|n| n.approver_email)
 }
 
 #[tokio::test]
@@ -109,4 +123,44 @@ async fn a_message_the_relay_refuses_leaves_the_request_waiting() {
     let rejected = marc.post(&decision, json!({ "approved": false })).await;
     assert_eq!(rejected.status, StatusCode::OK, "{}", rejected.text());
     api.idle().await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn only_a_request_still_awaiting_an_active_manager_is_e_mailed() {
+    let api = TestApi::start().await;
+    let paul = api.sign_in(user::PAUL).await;
+    let nadia = api.sign_in(user::NADIA).await;
+
+    // Decided by whom the agent acts for: no manager to tell.
+    let (_, own) = applying(&api, &nadia, ("INT-2052", "09:00"), "Inchangé.").await;
+    let own = own.expect("a request she decides");
+    assert_eq!(recipient(&api, &own).await, None);
+    let decision = format!("/approvals/{}/decision", own["id"].as_str().unwrap());
+    let refused = nadia.post(&decision, json!({ "approved": false })).await;
+    assert_eq!(refused.status, StatusCode::OK);
+    api.idle().await;
+
+    route_to_managers(&paul, &["write"]).await;
+    let (_, routed) = applying(&api, &nadia, ("INT-2052", "13:00"), "Inchangé.").await;
+    route_to_managers(&paul, &[]).await;
+    let routed = routed.expect("a request awaiting her manager");
+    assert_eq!(recipient(&api, &routed).await, Some(email(user::MARC)));
+
+    // Not to a disabled account...
+    let account = format!("/admin/users/{}", user::MARC);
+    let disabled = paul.patch(&account, json!({ "status": "disabled" })).await;
+    assert_eq!(disabled.status, StatusCode::OK, "{}", disabled.text());
+    assert_eq!(recipient(&api, &routed).await, None);
+    let enabled = paul.patch(&account, json!({ "status": "active" })).await;
+    assert_eq!(enabled.status, StatusCode::OK, "{}", enabled.text());
+    assert_eq!(recipient(&api, &routed).await, Some(email(user::MARC)));
+
+    // ...nor once decided (Marc signs in again: disabling ended his sessions).
+    let marc = api.sign_in(user::MARC).await;
+    let decision = format!("/approvals/{}/decision", routed["id"].as_str().unwrap());
+    let rejected = marc.post(&decision, json!({ "approved": false })).await;
+    assert_eq!(rejected.status, StatusCode::OK, "{}", rejected.text());
+    api.idle().await;
+    assert_eq!(recipient(&api, &routed).await, None);
 }

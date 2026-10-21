@@ -5,6 +5,7 @@
 //! is checked (ADR-060).
 
 use chrono::{DateTime, Utc};
+use mimorya_core::autonomy::ToolRisk;
 
 use crate::mail::{Mail, expiry_label};
 
@@ -20,15 +21,16 @@ pub struct ApprovalMail<'a> {
     pub expires_at: Option<DateTime<Utc>>,
 }
 
-/// What an action of `risk` does, as the interface names it.
+/// What an action of `risk` does, as the interface names it; a value no
+/// risk bears any more, as stored.
 fn risk_label(risk: &str) -> &str {
-    match risk {
-        "read" => "lecture",
-        "draft" => "brouillon",
-        "write" => "modification",
-        "external" => "impact externe",
-        "irreversible" => "irréversible",
-        other => other,
+    match ToolRisk::parse(risk) {
+        Some(ToolRisk::Read) => "lecture",
+        Some(ToolRisk::Draft) => "brouillon",
+        Some(ToolRisk::Write) => "modification",
+        Some(ToolRisk::External) => "impact externe",
+        Some(ToolRisk::Irreversible) => "irréversible",
+        None => risk,
     }
 }
 
