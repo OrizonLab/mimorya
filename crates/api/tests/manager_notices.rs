@@ -10,9 +10,11 @@ use axum::http::StatusCode;
 use mimorya_agent::testing::ScriptedStep;
 use mimorya_core::demo::{tenant, user};
 use mimorya_db::repositories::approval_notices::approval_notices;
+use mimorya_db::repositories::runs::{RunStatus, get_run};
 use serde_json::{Value, json};
 use support::manager_approvals::{ROUTING, applying, route_to_managers};
-use support::planning::{apply_proposal_times, propose};
+use support::planning::{apply_proposal_times, apply_reply, propose};
+use support::sweeps::sweep_from_elsewhere;
 use support::{TestApi, WEB_ORIGIN, email};
 use uuid::Uuid;
 
@@ -234,4 +236,32 @@ async fn the_requests_of_one_pause_make_one_message() {
     api.idle().await;
     // Taken up, the run told nobody again.
     assert_eq!(api.mail.sent().len(), 1);
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn the_requests_of_a_run_ended_before_its_pause_are_told_to_nobody() {
+    let api = TestApi::start_with_mailer().await;
+    let paul = api.sign_in(user::PAUL).await;
+    let nadia = api.sign_in(user::NADIA).await;
+    route_to_managers(&paul, &["write"]).await;
+    // While the model answers, another process fails the run as stuck: the
+    // step still makes its requests, but its pause is never saved.
+    api.script(vec![
+        propose("INT-2052", "14:00"),
+        ScriptedStep::dynamic(|request| {
+            sweep_from_elsewhere(user::NADIA);
+            apply_reply(request, "", 2)
+        }),
+    ]);
+    let run_id = support::runs::start_run(&nadia).await;
+    api.idle().await;
+    route_to_managers(&paul, &[]).await;
+
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    let run = get_run(&mut tx, run_id).await.unwrap().unwrap();
+    tx.commit().await.unwrap();
+    assert_eq!(run.status(), RunStatus::Failed);
+    assert!(api.mail.sent().is_empty(), "{:?}", api.mail.sent());
+    assert!(notices(&api, &run_id.to_string()).await.is_empty());
 }

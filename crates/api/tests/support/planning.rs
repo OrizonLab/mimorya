@@ -52,13 +52,16 @@ pub fn apply_proposal(text: &str) -> ScriptedStep {
 /// as many validation requests.
 pub fn apply_proposal_times(text: &str, times: usize) -> ScriptedStep {
     let text = text.to_string();
-    ScriptedStep::dynamic(move |request| {
-        let content = first_result(request);
-        let proposal_id = PROPOSAL_ID
-            .captures(&content)
-            .map(|c| c[1].to_string())
-            .unwrap_or_else(|| panic!("no proposal in {content}"));
-        let apply = call("planning_apply", json!({ "proposalId": proposal_id }));
-        ScriptedReply::calls(text.clone(), vec![apply; times])
-    })
+    ScriptedStep::dynamic(move |request| apply_reply(request, &text, times))
+}
+
+/// The answer asking `times` to apply the proposal `request` shows.
+pub fn apply_reply(request: &RecordedRequest, text: &str, times: usize) -> ScriptedReply {
+    let content = first_result(request);
+    let proposal_id = PROPOSAL_ID
+        .captures(&content)
+        .map(|c| c[1].to_string())
+        .unwrap_or_else(|| panic!("no proposal in {content}"));
+    let apply = call("planning_apply", json!({ "proposalId": proposal_id }));
+    ScriptedReply::calls(text, vec![apply; times])
 }

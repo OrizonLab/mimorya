@@ -22,7 +22,8 @@ pub struct ApprovalNotice {
 
 /// Of the requests `approval_ids` of `run_id`, those still pending that a
 /// manager decides, with that manager, if their account is active, and
-/// that no notice was sent for yet; by manager, then in creation order.
+/// that no notice was attempted for yet (sent or refused by the relay: it is
+/// never retried, ADR-060); by manager, then in creation order.
 pub async fn approval_notices(
     conn: &mut PgConnection,
     run_id: Uuid,

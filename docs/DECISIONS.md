@@ -2141,7 +2141,7 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     actif, et qui n'ont pas déjà été signalées ; une demande que la personne décide
     elle-même n'est jamais envoyée ;
   - le message dit pour qui sont les actions, combien, leurs risques, le lien vers la
-    page des validations et la première échéance. Il ne contient **ni les actions ni
+    page des validations et leur échéance (la même pour les demandes d'une étape). Il ne contient **ni les actions ni
     leurs paramètres** : ils ne se lisent qu'après connexion, là où le droit de décider
     est vérifié ;
   - chaque demande signalée est tracée (`approval.notified`, réussi ou échoué, au nom
@@ -2154,6 +2154,9 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
 - **Conséquences** :
   - aucune donnée personnelle nouvelle n'est conservée : l'e-mail n'est pas stocké, et
     l'audit ne garde que des identifiants ;
+  - un avis que l'arrêt du service interrompt entre l'enregistrement de la pause et
+    l'envoi est perdu ; le filtre par l'audit permettrait de le rattraper au démarrage
+    (demandes en attente, confiées à un responsable, jamais signalées) ;
   - pas encore de relance ni de résumé périodique. Un e-mail par pause borne ce qu'un
     modèle détourné peut envoyer : autant de messages que le run fait de pauses, que
     son budget d'étapes limite ;
@@ -2161,7 +2164,8 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     - `crates/api/src/services/runs/approval_notice/message.rs` : contenu du message ;
     - `crates/api/tests/manager_notices.rs` : seul le responsable est prévenu, sans
       l'action ni ses paramètres, envoi tracé ; les demandes d'une même pause font un
-      seul message, et une demande signalée ne l'est plus ; un message refusé par le relais est
+      seul message, et une demande signalée ne l'est plus ; rien n'est envoyé pour un
+      run terminé avant d'avoir enregistré sa pause ; un message refusé par le relais est
       tracé en échec et la demande attend toujours ; l'administration dit si les
       responsables sont prévenus ;
     - `apps/web/e2e/manager-approvals.spec.ts` : Marc ouvre le lien de l'e-mail reçu

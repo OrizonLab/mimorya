@@ -21,7 +21,8 @@ pub struct ApprovalMail<'a> {
     pub risks: &'a [&'a str],
     /// The page listing the requests to decide.
     pub link: &'a str,
-    /// The earliest deadline among them.
+    /// Their deadline: the earliest, should they differ (those of one step
+    /// do not).
     pub expires_at: Option<DateTime<Utc>>,
 }
 
@@ -73,7 +74,7 @@ pub fn approval_mail(notice: &ApprovalMail<'_>) -> Mail {
             },
             "les actions et leurs paramètres exacts, puis les valider ou les refuser",
             "Tant que les demandes attendent",
-            "La première expire",
+            "Elles expirent",
             "les retirer",
         )
     };
@@ -156,7 +157,7 @@ mod tests {
         );
         assert!(
             mail.text
-                .contains("La première expire le mercredi 28 octobre 2026")
+                .contains("Elles expirent le mercredi 28 octobre 2026")
         );
         assert!(mail.text.contains("peut aussi les retirer."));
         // One risk among several requests.
