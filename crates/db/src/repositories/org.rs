@@ -11,6 +11,10 @@ use serde_json::{Map, Value};
 use sqlx::PgConnection;
 use uuid::Uuid;
 
+/// The order of a person's memberships, primary unit first: the unit their
+/// access and the approvals made for them are checked in (ADR-059).
+pub(super) const PRIMARY_UNIT_FIRST: &str = "is_primary desc, created_at";
+
 #[derive(Debug, Clone)]
 pub struct TenantRecord {
     pub id: Uuid,
@@ -234,9 +238,9 @@ pub async fn load_user_access(
     else {
         return Ok(None);
     };
-    let units: Vec<Uuid> = sqlx::query_scalar(
-        "select org_unit_id from org_memberships where user_id = $1 order by is_primary desc, created_at",
-    )
+    let units: Vec<Uuid> = sqlx::query_scalar(&format!(
+        "select org_unit_id from org_memberships where user_id = $1 order by {PRIMARY_UNIT_FIRST}"
+    ))
     .bind(user_id)
     .fetch_all(&mut *conn)
     .await?;

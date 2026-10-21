@@ -2056,9 +2056,10 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
 - **Décision** :
   - une entreprise choisit les risques dont les actions vont à un responsable
     (`approval_settings.manager_risks`, aucun par défaut : le comportement antérieur
-    est conservé). Le réglage se fait par l'API (`GET`/`PUT /admin/approval-routing`)
-    pour ceux qui gèrent les politiques d'accès (`policy:manage`, toute l'entreprise),
-    et il est tracé avec la valeur remplacée (`approval_routing.updated`) ;
+    est conservé). Le réglage se fait dans l'administration (onglet « Circuit de
+    validation ») ou par l'API (`GET`/`PUT /admin/approval-routing`), pour ceux qui
+    gèrent les politiques d'accès (`policy:manage`, toute l'entreprise), et il est
+    tracé avec la valeur remplacée (`approval_routing.updated`) ;
   - à la demande de validation, le responsable est le responsable (`lead_user_id`) de
     l'unité principale de la personne, sinon de l'unité la plus proche au-dessus, qui
     n'est pas cette personne, dont le compte est actif et qui détient
@@ -2088,8 +2089,10 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - `GET /approvals` liste les demandes faites pour la personne et celles qu'elle
     décide comme responsable. Chaque demande dit pour qui elle est faite
     (`requestedFor`), qui la décide (`approver`), qui l'a décidée (`decidedBy`), son
-    échéance et si le lecteur peut l'approuver (`canDecide`, vérifié sur la personne
-    comme à la décision). Un responsable qui a perdu le droit ne voit plus les demandes
+    échéance, si le lecteur peut la décider (`canDecide`, vérifié sur la personne
+    comme à la décision) et s'il peut la retirer (`canWithdraw` : faite pour lui,
+    confiée à un responsable, et il peut encore utiliser l'agent ; calculé par le
+    serveur comme à la décision). Un responsable qui a perdu le droit ne voit plus les demandes
     en attente qu'il ne peut plus décider. L'interface n'affiche les boutons que si le
     lecteur peut décider, dit sinon qui doit décider, et propose à la personne de
     retirer sa demande. Le compteur de la barre latérale ne compte que ce que le
@@ -2099,8 +2102,7 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - dans l'entreprise de démonstration, les actions de Lucas vont à Julien, celles de
     Julien et de Nadia à Marc, et celles de Marc ne trouvent personne (la directrice ne
     détient pas `approval:decide`) : elles sont refusées quand le réglage les vise ;
-  - restent à faire : écran d'administration du réglage, notification du responsable
-    par e-mail, expiration active des demandes (aujourd'hui constatée à la décision) et
+  - restent à faire : notification du responsable par e-mail, expiration active des demandes (aujourd'hui constatée à la décision) et
     relance, délégation en cas d'absence, personnes rattachées à plusieurs unités
     (seule l'unité principale compte) ;
   - tests :
@@ -2108,10 +2110,15 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
       permission, position seule ignorée ;
     - `crates/agent/tests/runtime_approvals.rs` : refus immédiat d'une action que
       personne ne peut valider ;
-    - `crates/api/tests/manager_approvals.rs` : seul le responsable décide, reprise pour
-      la personne, responsable privé de son droit refusé (et ne voyant plus la
-      demande), retrait par la personne, responsable désactivé ignoré, refus quand
-      personne n'est éligible, réglage réservé à `policy:manage` ;
-    - `apps/web/e2e/manager-approvals.spec.ts` : parcours réel (demande de Nadia
-      refusée par Marc, relue après rechargement) et retrait d'une demande que plus
-      personne ne peut décider.
+    - `crates/api/tests/manager_approvals.rs` : seul le responsable décide (un tiers ne
+      peut ni décider ni retirer : 404), reprise pour la personne, responsable privé de
+      son droit refusé (et ne voyant plus la demande), retrait par la personne d'une
+      demande que plus personne ne peut décider (impossible sans `agent:use`),
+      responsable désactivé ignoré, refus quand personne n'est éligible, réglage
+      réservé à `policy:manage` ;
+    - `apps/web/e2e/manager-approvals.spec.ts`, contre `e2e_server` : réglage choisi
+      dans l'administration et relu après rechargement ; demande de Nadia refusée par
+      Marc, relue après rechargement ; demande de Nadia retirée par elle alors que Marc
+      pouvait encore la décider, relue chez elle et chez Marc. Les états que la
+      démonstration n'atteint pas (plus aucun décideur, demande confiée à la
+      directrice) sont affichés à partir d'une réponse simulée de l'API, sans clic.

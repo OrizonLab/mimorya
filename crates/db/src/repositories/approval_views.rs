@@ -6,6 +6,7 @@ use sqlx::PgConnection;
 use uuid::Uuid;
 
 use super::approvals::{APPROVAL_COLUMNS, ApprovalRow};
+use super::org::PRIMARY_UNIT_FIRST;
 
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct ApprovalView {
@@ -22,8 +23,8 @@ pub struct ApprovalView {
 fn named(filter: &str) -> String {
     format!(
         "select a.*, r.display_name as requested_for_name, \
-         (select u.org_unit_id from org_memberships u where u.user_id = a.requested_for_user_id \
-          order by u.is_primary desc, u.created_at limit 1) as requested_for_unit_id, \
+         (select org_unit_id from org_memberships where user_id = a.requested_for_user_id \
+          order by {PRIMARY_UNIT_FIRST} limit 1) as requested_for_unit_id, \
          m.display_name as approver_name, d.display_name as decided_by_name \
          from (select {APPROVAL_COLUMNS} from approvals where {filter}) a \
          join users r on r.id = a.requested_for_user_id \

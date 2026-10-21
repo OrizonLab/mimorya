@@ -42,9 +42,14 @@ requestedFor: ApprovalPerson,
  */
 approver: ApprovalPerson | null, decidedBy: ApprovalPerson | null,
 /**
- * Whether the reader may decide it now.
+ * Whether the reader may decide it now: approve or refuse it.
  */
-canDecide: boolean, };
+canDecide: boolean,
+/**
+ * Whether the reader may withdraw it now: made for them, a manager
+ * decides it (ADR-059). Withdrawn, it is refused.
+ */
+canWithdraw: boolean, };
 
 /**
  * `POST /approvals/{id}/decision`.

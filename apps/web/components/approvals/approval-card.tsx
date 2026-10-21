@@ -16,12 +16,15 @@ export interface ApprovalLike {
   requestedFor: ApprovalPerson;
   approver: ApprovalPerson | null;
   canDecide: boolean;
+  canWithdraw: boolean;
 }
 
 /** Why the reader may not decide a pending request (ADR-059). */
 function waiting(approval: ApprovalLike, me: string): string {
   if (!approval.approver) {
-    return 'Plus personne ne peut valider cette demande : retirez-la pour que l’agent poursuive sans exécuter l’action.';
+    return approval.canWithdraw
+      ? 'Plus personne ne peut valider cette demande : retirez-la pour que l’agent poursuive sans exécuter l’action.'
+      : 'Plus personne ne peut valider cette demande.';
   }
   if (approval.approver.id !== me) {
     return `En attente de la validation de ${approval.approver.displayName}.`;
@@ -43,11 +46,10 @@ export function ApprovalCard({
   const [busy, setBusy] = useState<'approve' | 'reject' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const me = useMe().user.id;
-  // Decided by whom the agent acts for, or by their manager (ADR-059), and
-  // always withdrawn by whom the agent acts for: the action is then not run.
+  // Decided by whom the agent acts for, or by their manager (ADR-059), who
+  // leaves whom the agent acts for to withdraw it: the API tells which.
   const canDecide = approval.canDecide;
-  const withdrawable =
-    !canDecide && approval.requestedFor.id === me && approval.approver?.id !== me;
+  const withdrawable = approval.canWithdraw;
   const risk = RISK_LABELS[approval.risk] ?? { label: approval.risk, tone: 'neutral' as const };
 
   async function decide(approved: boolean) {

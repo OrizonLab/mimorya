@@ -13,7 +13,7 @@ use crate::app::AppState;
 use crate::contract::{Approval, RunDetail, RunList, RunListItem, RunView, ToolInvocation};
 use crate::http::{ApiResult, PathId};
 use crate::plugins::Auth;
-use crate::services::runs::can_decide;
+use crate::services::runs::{can_decide, can_withdraw};
 
 const RUN_PAGE: i64 = 50;
 
@@ -60,7 +60,7 @@ async fn detail(
             .iter()
             .map(|v| {
                 let decides = can_decide(&viewer, &v.approval, v.requested_for_unit_id);
-                Approval::from_view(v, decides)
+                Approval::from_view(v, decides, can_withdraw(&viewer, &v.approval))
             })
             .collect::<anyhow::Result<_>>()?,
         events: events.iter().map(Into::into).collect(),

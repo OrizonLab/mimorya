@@ -1,8 +1,9 @@
-// Validation by a manager, through the browser (ADR-059). The company has its
-// managers validate the actions that write: Nadia's go to Marc. She sees who
-// decides, with no button to approve, and may withdraw her request; Marc sees
-// for whom the action is, decides it, and is not led to her run. The routing
-// itself is tested on the API (`crates/api/tests/manager_approvals.rs`).
+// Validation by a manager, through the browser (ADR-059). An administrator
+// chooses which actions managers validate; here, those that write: Nadia's
+// go to Marc. She sees who decides, with no button to approve, and may
+// withdraw her request; Marc sees for whom the action is, decides it, and is
+// not led to her run. The routing itself is tested on the API
+// (`crates/api/tests/manager_approvals.rs`).
 import type { BrowserContext, Page } from '@playwright/test';
 import type { Approval, ApprovalList, ApprovalRoutingUpdate, ToolRisk } from '../lib/api/contract';
 import { refuseWaiting } from './support/approvals';
@@ -45,6 +46,25 @@ test.afterEach(async () => {
   if (people.paul) await routeToManagers(people.paul, []);
   people.paul = undefined;
   people.marc = undefined;
+});
+
+test('an administrator chooses the actions managers validate', async ({ page }) => {
+  people.paul = page;
+  await signIn(page, demo.paul);
+  await page.goto('/admin');
+  await page.getByRole('tab', { name: 'Circuit de validation' }).click();
+  const write = page.getByRole('checkbox', { name: 'Modification' });
+  await expect(write).not.toBeChecked();
+  await write.check();
+  await page.getByRole('button', { name: 'Enregistrer' }).click();
+  await expect(page.getByRole('button', { name: 'Enregistrer' })).toBeDisabled();
+
+  // Recorded: read again after a reload.
+  await page.reload();
+  await page.getByRole('tab', { name: 'Circuit de validation' }).click();
+  await expect(page.getByRole('checkbox', { name: 'Modification' })).toBeChecked();
+  await expect(page.getByRole('checkbox', { name: 'Irréversible' })).not.toBeChecked();
+  await noError(page);
 });
 
 test('the manager decides, for whom the agent acts', async ({ page, newContext }) => {
@@ -101,6 +121,7 @@ function request(id: string, summary: string, fields: Partial<Approval>): Approv
     approver: MARC,
     decidedBy: null,
     canDecide: true,
+    canWithdraw: false,
     ...fields,
   };
 }
@@ -113,11 +134,13 @@ test('requests awaiting someone else, or nobody, may be withdrawn', async ({ pag
       request('00000000-0000-4000-8000-000000000a01', 'Appliquer le planning de Marc', {
         approver: CLAIRE,
         canDecide: false,
+        canWithdraw: true,
       }),
       // Its manager's account is gone: nobody decides it any more.
       request('00000000-0000-4000-8000-000000000a02', 'Appliquer le planning de mardi', {
         approver: null,
         canDecide: false,
+        canWithdraw: true,
       }),
       request('00000000-0000-4000-8000-000000000a03', 'Appliquer le planning de Nadia', {
         requestedFor: NADIA,
