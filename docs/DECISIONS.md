@@ -2105,7 +2105,8 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     détient pas `approval:decide`) : elles sont refusées quand le réglage les vise ;
   - si un relais SMTP est configuré, le responsable est prévenu par e-mail (ADR-060) ;
   - une demande que personne ne décide avant son échéance expire d'elle-même (ADR-061) ;
-  - restent à faire : relance, délégation en cas d'absence, personnes rattachées à plusieurs unités
+  - le responsable est relancé la veille de l'échéance (ADR-062) ;
+  - restent à faire : délégation en cas d'absence, personnes rattachées à plusieurs unités
     (seule l'unité principale compte) ;
   - tests :
     - `crates/core/src/approval_routing.rs` : responsable le plus proche détenant la
@@ -2138,7 +2139,8 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     alors décidables) : **un seul par responsable et par pause**, quel que soit le
     nombre de demandes de l'étape. Le run est en pause, que le message parte ou non.
     Seules comptent les demandes qui attendent encore ce responsable, dont le compte est
-    actif, et qui n'ont pas déjà été signalées ; une demande que la personne décide
+    actif, dans un run toujours en pause d'une entreprise active, et qui n'ont pas déjà
+    été signalées ; une demande que la personne décide
     elle-même n'est jamais envoyée ;
   - le message dit pour qui sont les actions, combien, leurs risques, le lien vers la
     page des validations et leur échéance (la plus proche ; celles d'une étape sont les mêmes à la minute). Il ne contient **ni les actions ni
@@ -2157,9 +2159,10 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - un avis que l'arrêt du service interrompt entre l'enregistrement de la pause et
     l'envoi est perdu ; le filtre par l'audit permettrait de le rattraper au démarrage
     (demandes en attente, confiées à un responsable, jamais signalées) ;
-  - pas encore de relance ni de résumé périodique. Un e-mail par pause borne ce qu'un
-    modèle détourné peut envoyer : autant de messages que le run fait de pauses, que
-    son budget d'étapes limite ;
+  - le responsable est relancé la veille de l'échéance (ADR-062) ; pas de résumé
+    périodique. Ce qu'un modèle détourné peut faire envoyer reste borné : au plus deux
+    messages par pause et par responsable (l'avis, puis la relance), et autant de
+    pauses que son budget d'étapes en permet ;
   - tests :
     - `crates/api/src/services/runs/approval_notice/message.rs` : contenu du message ;
     - `crates/api/tests/manager_notices.rs` : seul le responsable est prévenu, sans
@@ -2205,8 +2208,8 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - quand le compte de la personne n'est plus actif, le run se termine sans enregistrer
     l'issue de l'appel qui attendait (comme la reprise au démarrage, ADR-053) ; à
     harmoniser ;
-  - la durée de 7 jours n'est pas encore réglable par entreprise, et rien ne relance le
-    décideur avant l'échéance ;
+  - la durée de 7 jours n'est pas encore réglable par entreprise ; le responsable est
+    relancé la veille (ADR-062), pas la personne qui décide ses propres demandes ;
   - tests :
     - `crates/api/tests/approval_expiry.rs` : une demande échue expire et le run poursuit
       sans l'action, une seule fois ; seul le processus qui exécute les runs expire ; un
@@ -2217,3 +2220,47 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     - `crates/db/tests/definer_functions.rs` : la nouvelle fonction est dans la liste
       connue, au chemin de recherche fixe, appelable par l'application seule ;
     - `apps/web/e2e/manager-approvals.spec.ts` : l'échéance affichée.
+
+## ADR-062 — Relance du responsable la veille de l'échéance (complète ADR-060 et ADR-061)
+
+- **Date** : 2026-10-21 · **Statut** : acceptée
+- **Contexte** : une demande confiée à un responsable expire 7 jours après sa création
+  (ADR-061). Le responsable n'est prévenu qu'une fois, quand le run se met en pause
+  (ADR-060) : un e-mail oublié laisse la demande expirer, et l'agent poursuivre sans
+  l'action, sans que personne ne l'ait regardée.
+- **Décision** :
+  - chaque minute, le processus qui exécute les runs (verrou de l'exécuteur, ADR-053)
+    cherche les demandes en attente, confiées à un responsable, qui expirent dans les
+    24 heures et dont il n'a pas encore été relancé, dans un run **en pause** d'une
+    entreprise **active** (un run terminé sans avoir enregistré sa pause laisse des
+    demandes que personne ne peut plus décider : elles ne sont jamais relancées). Il passe par une fonction
+    `SECURITY DEFINER` minimale (`system_approval_reminder_runs`), qui ne rend que
+    l'entreprise et le run ; chaque run est ensuite traité dans sa propre entreprise ;
+  - le responsable reçoit **une seule relance par demande**, groupée par run comme
+    l'avis : « Rappel : … attend votre validation », avec l'échéance, sans l'action ni
+    ses paramètres ; seulement si son compte est actif ;
+  - chaque demande relancée est tracée (`approval.reminded`,
+    réussi ou échoué, au nom de la plateforme pour la personne, avec l'identifiant du
+    responsable et le nombre de demandes du message) ; une relance refusée par le relais
+    n'est pas réessayée. Si l'écriture de cette trace échoue après l'envoi, la relance
+    repart la minute suivante : la garantie est « au moins une fois » dans ce cas ;
+  - l'échec d'un run n'empêche pas de relancer les autres ; les envois se font l'un
+    après l'autre dans la maintenance, qu'ils peuvent retarder de quelques secondes ;
+  - sans relais SMTP, rien n'est envoyé ni tracé. L'écran « Circuit de validation »
+    l'indique.
+- **Conséquences** :
+  - avec la validité actuelle de 7 jours, la relance part au sixième jour, 24 heures
+    avant l'échéance (à la minute près, selon le passage de la maintenance) ;
+  - la personne qui décide ses propres demandes n'est pas relancée : elle les voit dans
+    sa conversation ;
+  - tests :
+    - `crates/api/src/services/runs/approval_notice/message.rs` : texte de la relance ;
+    - `crates/api/tests/approval_reminders.rs` : relance unique la veille, par le seul
+      processus qui exécute les runs, pas une semaine avant ; les demandes d'une pause
+      relancées ensemble ; pas de relance à un responsable désactivé ; une relance
+      refusée par le relais tracée en échec et jamais renvoyée ; ni demande de la
+      personne, ni demande échue, ni demande d'un run terminé avant sa pause ; rien sans
+      relais ; pas de relance dans une entreprise suspendue ; chaque entreprise relancée
+      chez elle et rien de l'autre visible ;
+    - `crates/db/tests/definer_functions.rs` : la nouvelle fonction est dans la liste
+      connue.

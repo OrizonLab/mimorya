@@ -45,7 +45,8 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   marquage des runs bloqués, liste au démarrage des runs qu'un arrêt a laissés en cours,
   entreprise et identifiant seulement (ADR-053), liste des runs dont une demande de
   validation a passé son échéance, entreprise et identifiant seulement, chacun traité
-  ensuite dans sa propre entreprise (ADR-061), purge des liens de réinitialisation
+  ensuite dans sa propre entreprise (ADR-061), de même pour les runs dont une demande
+  est à relancer la veille de son échéance (ADR-062), purge des liens de réinitialisation
   expirés) passent par
   des fonctions `SECURITY DEFINER` au périmètre minimal et au `search_path` figé
   (`auth_*`, `system_*`).
