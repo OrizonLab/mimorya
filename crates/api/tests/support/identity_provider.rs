@@ -4,36 +4,34 @@
 //! the authorization address is played in-process by the API's tests
 //! (`authorize`), or served (`/authorize`) to the end-to-end tests' browser;
 //! either signs in the person the test chose, else the one the address
-//! hints at. Its signing key is a test key, public.
+//! hints at. Its signing keys are test keys, public: it rolls them over
+//! on demand, and may be unavailable.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use axum::Router;
-use axum::body::Bytes;
 use axum::extract::{Query, State};
-use axum::http::{HeaderMap, StatusCode, header};
+use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use base64::Engine;
-use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
-use chrono::{Duration, Utc};
-use openidconnect::core::{
-    CoreGenderClaim, CoreJsonWebKeySet, CoreJweContentEncryptionAlgorithm, CoreJwsSigningAlgorithm,
-    CoreRsaPrivateSigningKey,
-};
-use openidconnect::{
-    AdditionalClaims, Audience, EndUserEmail, EndUserUsername, IdToken, IdTokenClaims, IssuerUrl,
-    JsonWebKeyId, Nonce, PrivateSigningKey, StandardClaims, SubjectIdentifier,
-};
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use openidconnect::core::{CoreJsonWebKeySet, CoreRsaPrivateSigningKey};
+use openidconnect::{AdditionalClaims, JsonWebKeyId, PrivateSigningKey};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
-use sha2::{Digest, Sha256};
 use url::Url;
 
 pub const CLIENT_ID: &str = "mimorya-tests";
 pub const CLIENT_SECRET: &str = "secret-client-de-test-0123456789";
+
+#[path = "identity_provider/token.rs"]
+mod token;
+
 const TEST_KEY: &str = include_str!("identity_provider_key.pem");
+/// The key it signs with once rolled over.
+const NEXT_KEY: &str = include_str!("identity_provider_key_2.pem");
 
 /// Who signs in at the provider, as its token says.
 #[derive(Debug, Clone, Default)]
@@ -64,6 +62,8 @@ impl Person {
 pub struct Tamper {
     pub audience: Option<String>,
     pub nonce: Option<String>,
+    /// Signed by a key it does not publish.
+    pub unpublished_key: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -91,6 +91,17 @@ struct Provider {
     exchanges: usize,
     /// How many requests reached it (discovery, keys, tokens).
     requests: usize,
+    /// How many times its declaration, and its keys, were read.
+    discoveries: usize,
+    key_reads: usize,
+    /// Signing with its next key, the only one published.
+    rolled_over: bool,
+    /// Its keys published, and its tokens signed, without an identifier.
+    without_key_ids: bool,
+    /// Keys published beside its own, signing nothing.
+    extra_keys: usize,
+    /// Its declaration answered by an error.
+    unavailable: bool,
 }
 
 type Shared = Arc<Mutex<Provider>>;
@@ -121,7 +132,7 @@ impl MockIdentityProvider {
             .route("/.well-known/openid-configuration", get(configuration))
             .route("/jwks", get(keys))
             .route("/authorize", get(visit))
-            .route("/token", post(token))
+            .route("/token", post(token::token))
             .with_state(shared.clone());
         tokio::spawn(async move { axum::serve(listener, router).await });
         Self { issuer, shared }
@@ -142,6 +153,32 @@ impl MockIdentityProvider {
 
     pub fn requests(&self) -> usize {
         self.shared.lock().expect("provider").requests
+    }
+
+    /// How many times its declaration, then its keys, were read.
+    pub fn reads(&self) -> (usize, usize) {
+        let provider = self.shared.lock().expect("provider");
+        (provider.discoveries, provider.key_reads)
+    }
+
+    /// Signs with its next key from now on, and publishes it alone.
+    pub fn roll_keys_over(&self) {
+        self.shared.lock().expect("provider").rolled_over = true;
+    }
+
+    pub fn set_unavailable(&self, unavailable: bool) {
+        self.shared.lock().expect("provider").unavailable = unavailable;
+    }
+
+    /// Publishes its keys, and signs, without key identifiers (OpenID
+    /// Connect allows it for a single key).
+    pub fn without_key_ids(&self) {
+        self.shared.lock().expect("provider").without_key_ids = true;
+    }
+
+    /// Publishes this many keys more, as a heavy key set.
+    pub fn publish_extra_keys(&self, count: usize) {
+        self.shared.lock().expect("provider").extra_keys = count;
     }
 
     /// The browser's visit to the authorization address: the query of the
@@ -223,15 +260,24 @@ async fn visit(
     }
 }
 
-fn signing_key() -> CoreRsaPrivateSigningKey {
-    CoreRsaPrivateSigningKey::from_pem(TEST_KEY, Some(JsonWebKeyId::new("test".into())))
-        .expect("test key")
+fn signing_key(next: bool, with_id: bool) -> CoreRsaPrivateSigningKey {
+    let (pem, id) = if next {
+        (NEXT_KEY, "test-2")
+    } else {
+        (TEST_KEY, "test")
+    };
+    let id = with_id.then(|| JsonWebKeyId::new(id.into()));
+    CoreRsaPrivateSigningKey::from_pem(pem, id).expect("test key")
 }
 
 async fn configuration(State(shared): State<Shared>) -> Response {
     let issuer = {
         let mut provider = shared.lock().expect("provider");
         provider.requests += 1;
+        provider.discoveries += 1;
+        if provider.unavailable {
+            return StatusCode::SERVICE_UNAVAILABLE.into_response();
+        }
         provider.issuer.clone()
     };
     let body = json!({
@@ -252,110 +298,23 @@ async fn configuration(State(shared): State<Shared>) -> Response {
 }
 
 async fn keys(State(shared): State<Shared>) -> Response {
-    shared.lock().expect("provider").requests += 1;
-    let set = CoreJsonWebKeySet::new(vec![signing_key().as_verification_key()]);
+    let (next, with_id, extra) = {
+        let mut provider = shared.lock().expect("provider");
+        provider.requests += 1;
+        provider.key_reads += 1;
+        (
+            provider.rolled_over,
+            !provider.without_key_ids,
+            provider.extra_keys,
+        )
+    };
+    let mut keys = vec![signing_key(next, with_id).as_verification_key()];
+    for n in 0..extra {
+        let id = Some(JsonWebKeyId::new(format!("extra-{n}")));
+        let key = CoreRsaPrivateSigningKey::from_pem(NEXT_KEY, id).expect("test key");
+        keys.push(key.as_verification_key());
+    }
+    let set = CoreJsonWebKeySet::new(keys);
     let body = serde_json::to_string(&set).expect("key set");
     ([(header::CONTENT_TYPE, "application/json")], body).into_response()
-}
-
-fn refused(error: &str) -> Response {
-    (
-        StatusCode::BAD_REQUEST,
-        axum::Json(json!({ "error": error })),
-    )
-        .into_response()
-}
-
-/// The client authenticates in the body or with Basic.
-fn authenticated(headers: &HeaderMap, form: &HashMap<String, String>) -> bool {
-    let basic = headers
-        .get(header::AUTHORIZATION)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.strip_prefix("Basic "))
-        .and_then(|v| STANDARD.decode(v).ok())
-        .and_then(|v| String::from_utf8(v).ok());
-    let (id, secret) = match basic {
-        Some(pair) => match pair.split_once(':') {
-            Some((id, secret)) => (id.to_string(), secret.to_string()),
-            None => return false,
-        },
-        None => match (form.get("client_id"), form.get("client_secret")) {
-            (Some(id), Some(secret)) => (id.clone(), secret.clone()),
-            _ => return false,
-        },
-    };
-    id == CLIENT_ID && secret == CLIENT_SECRET
-}
-
-async fn token(State(shared): State<Shared>, headers: HeaderMap, body: Bytes) -> Response {
-    shared.lock().expect("provider").requests += 1;
-    let form: HashMap<String, String> = url::form_urlencoded::parse(&body).into_owned().collect();
-    if !authenticated(&headers, &form) {
-        return refused("invalid_client");
-    }
-    let mut provider = shared.lock().expect("provider");
-    // A code is redeemed once.
-    let Some(grant) = form.get("code").and_then(|c| provider.grants.remove(c)) else {
-        return refused("invalid_grant");
-    };
-    let verifier = form.get("code_verifier").cloned().unwrap_or_default();
-    if URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes())) != grant.challenge
-        || form.get("redirect_uri") != Some(&grant.redirect_uri)
-        || form.get("grant_type").map(String::as_str) != Some("authorization_code")
-    {
-        return refused("invalid_grant");
-    }
-    provider.exchanges += 1;
-    let now = Utc::now();
-    let person = grant.person;
-    let mut standard = StandardClaims::new(SubjectIdentifier::new(person.subject));
-    if let Some(email) = person.email {
-        standard = standard.set_email(Some(EndUserEmail::new(email)));
-    }
-    standard = standard
-        .set_email_verified(person.email_verified)
-        .set_preferred_username(person.preferred_username.map(EndUserUsername::new));
-    let audience = provider.tamper.audience.clone().unwrap_or(CLIENT_ID.into());
-    let claims = IdTokenClaims::<Extra, CoreGenderClaim>::new(
-        IssuerUrl::new(provider.issuer.clone()).expect("issuer"),
-        vec![Audience::new(audience)],
-        now + Duration::minutes(5),
-        now,
-        standard,
-        Extra {
-            claims: person.extra,
-        },
-    )
-    .set_nonce(
-        provider
-            .tamper
-            .nonce
-            .clone()
-            .or(grant.nonce)
-            .map(Nonce::new),
-    );
-    let id_token = IdToken::<
-        Extra,
-        CoreGenderClaim,
-        CoreJweContentEncryptionAlgorithm,
-        CoreJwsSigningAlgorithm,
-    >::new(
-        claims,
-        &signing_key(),
-        CoreJwsSigningAlgorithm::RsaSsaPkcs1V15Sha256,
-        None,
-        None,
-    )
-    .expect("signed token");
-    let body = json!({
-        "access_token": "jeton-d-acces-de-test",
-        "token_type": "Bearer",
-        "expires_in": 300,
-        "id_token": id_token.to_string(),
-    });
-    (
-        [(header::CONTENT_TYPE, "application/json")],
-        body.to_string(),
-    )
-        .into_response()
 }

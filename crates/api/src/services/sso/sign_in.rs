@@ -21,7 +21,7 @@ use uuid::Uuid;
 
 use super::admission::{Admission, admit};
 use super::attempt::{self, Attempt};
-use super::oidc::{self, Exchange};
+use super::oidc::{self, Application, Unverified};
 use super::{SsoService, client_secret_name};
 use crate::auth::sessions::open_session;
 use crate::plugins::RequestContext;
@@ -152,6 +152,8 @@ impl SsoService {
         }
     }
 
+    /// The code exchanged, its identity token verified: with the kept keys,
+    /// read once more when its signature fails with them (ADR-065).
     async fn verified_claims(
         &self,
         provider: &IdentityProviderRow,
@@ -159,20 +161,29 @@ impl SsoService {
         code: String,
         attempt: Attempt,
     ) -> Result<oidc::VerifiedClaims, String> {
-        let metadata = oidc::discover(&self.http, &provider.issuer).await?;
-        oidc::verified_claims(
+        let declaration = self.declaration(provider.id, &provider.issuer).await?;
+        let application = Application {
+            client_id: &provider.client_id,
+            client_secret: secret,
+            redirect_uri: &self.redirect_uri,
+        };
+        let token = oidc::exchange_code(
             &self.http,
-            metadata,
-            Exchange {
-                client_id: &provider.client_id,
-                client_secret: secret,
-                redirect_uri: &self.redirect_uri,
-                code,
-                pkce_verifier: attempt.pkce_verifier,
-                nonce: attempt.nonce,
-            },
+            declaration.metadata.clone(),
+            &application,
+            code,
+            attempt.pkce_verifier,
         )
-        .await
+        .await?;
+        match oidc::verify(declaration.metadata, &application, &token, &attempt.nonce) {
+            // The provider rolled its keys over since they were kept.
+            Err(Unverified::Signature(_)) if declaration.kept => {
+                let metadata = self.read_declaration(provider.id, &provider.issuer).await?;
+                oidc::verify(metadata, &application, &token, &attempt.nonce)
+                    .map_err(Unverified::failure)
+            }
+            verified => verified.map_err(Unverified::failure),
+        }
     }
 
     /// Finds or ties the account, checks it may sign in, opens its session.

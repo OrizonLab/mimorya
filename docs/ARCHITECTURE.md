@@ -179,7 +179,7 @@ sequenceDiagram
   N->>A: POST /api/auth/sso/discover (e-mail)
   A-->>N: fournisseur de l'entreprise du compte, ou aucun
   N->>A: POST /api/auth/sso/start
-  A->>F: découverte (émetteur, clés)
+  A->>F: découverte (émetteur, clés), gardée une heure (ADR-065)
   A-->>N: adresse d'autorisation + cookie de tentative scellé
   N->>F: connexion de la personne
   F-->>N: redirection vers /api/auth/sso/callback (code, state)

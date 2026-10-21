@@ -11,10 +11,11 @@ use openidconnect::core::{
     CoreTokenIntrospectionResponse, CoreTokenType,
 };
 use openidconnect::{
-    AdditionalClaims, AuthType, AuthorizationCode, ClientId, ClientSecret, CsrfToken,
-    EmptyExtraTokenFields, EndpointMaybeSet, EndpointNotSet, EndpointSet, IdTokenClaims, IssuerUrl,
-    LoginHint, Nonce, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RequestTokenError, Scope,
-    StandardErrorResponse, StandardTokenResponse, TokenResponse,
+    AdditionalClaims, AuthType, AuthorizationCode, ClaimsVerificationError, ClientId, ClientSecret,
+    CsrfToken, EmptyExtraTokenFields, EndpointMaybeSet, EndpointNotSet, EndpointSet, IdTokenClaims,
+    IssuerUrl, LoginHint, Nonce, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl,
+    RequestTokenError, Scope, SignatureVerificationError, StandardErrorResponse,
+    StandardTokenResponse, TokenResponse,
 };
 use serde::{Deserialize, Serialize};
 
@@ -141,31 +142,38 @@ pub fn authorization(
     })
 }
 
-/// The claims of the identity token the code is exchanged for, verified.
-pub struct Exchange<'a> {
+/// The company's application at the provider.
+pub struct Application<'a> {
     pub client_id: &'a str,
     pub client_secret: &'a str,
     pub redirect_uri: &'a str,
-    pub code: String,
-    pub pkce_verifier: String,
-    pub nonce: String,
 }
 
-pub async fn verified_claims(
+pub type IdToken = openidconnect::IdToken<
+    ExtraClaims,
+    CoreGenderClaim,
+    CoreJweContentEncryptionAlgorithm,
+    CoreJwsSigningAlgorithm,
+>;
+
+/// The identity token the code is exchanged for, not verified yet.
+pub async fn exchange_code(
     http: &ProviderHttp,
     metadata: CoreProviderMetadata,
-    exchange: Exchange<'_>,
-) -> Result<VerifiedClaims, Failure> {
+    application: &Application<'_>,
+    code: String,
+    pkce_verifier: String,
+) -> Result<IdToken, Failure> {
     let client = client(
         metadata,
-        exchange.client_id,
-        Some(exchange.client_secret),
-        exchange.redirect_uri,
+        application.client_id,
+        Some(application.client_secret),
+        application.redirect_uri,
     )?;
     let response = client
-        .exchange_code(AuthorizationCode::new(exchange.code))
+        .exchange_code(AuthorizationCode::new(code))
         .map_err(|error| format!("échange : {error}"))?
-        .set_pkce_verifier(PkceCodeVerifier::new(exchange.pkce_verifier))
+        .set_pkce_verifier(PkceCodeVerifier::new(pkce_verifier))
         .request_async(http)
         .await
         .map_err(|error| match error {
@@ -180,14 +188,54 @@ pub async fn verified_claims(
             // The library's own words (empty answer, content type).
             RequestTokenError::Other(text) => format!("échange : {text}"),
         })?;
-    let token = response
+    response
         .id_token()
-        .ok_or("échange : réponse sans jeton d’identité")?;
-    let nonce = Nonce::new(exchange.nonce);
-    token
-        .claims(&client.id_token_verifier(), &nonce)
         .cloned()
-        .map_err(|error| format!("jeton d’identité : {error}"))
+        .ok_or_else(|| "échange : réponse sans jeton d’identité".into())
+}
+
+/// Why an identity token was not verified.
+pub enum Unverified {
+    /// Its signature verified by none of the declaration's keys: perhaps
+    /// rolled over since they were read, with or without a key identifier.
+    Signature(SignatureVerificationError),
+    Other(Failure),
+}
+
+impl Unverified {
+    pub fn failure(self) -> Failure {
+        match self {
+            Self::Signature(SignatureVerificationError::NoMatchingKey) => {
+                "jeton d’identité : clé de signature inconnue".into()
+            }
+            Self::Signature(error) => format!("jeton d’identité : signature refusée ({error})"),
+            Self::Other(failure) => failure,
+        }
+    }
+}
+
+/// The token's claims, verified against the declaration's keys, issuer,
+/// the application's audience, its expiry and the attempt's nonce.
+pub fn verify(
+    metadata: CoreProviderMetadata,
+    application: &Application<'_>,
+    token: &IdToken,
+    nonce: &str,
+) -> Result<VerifiedClaims, Unverified> {
+    let client = client(
+        metadata,
+        application.client_id,
+        Some(application.client_secret),
+        application.redirect_uri,
+    )
+    .map_err(Unverified::Other)?;
+    token
+        .claims(&client.id_token_verifier(), &Nonce::new(nonce.into()))
+        .cloned()
+        .map_err(|error| match error {
+            ClaimsVerificationError::SignatureVerification(error) => Unverified::Signature(error),
+            error => Unverified::Other(format!("jeton d’identité : {error}")),
+        })
 }
 
 /// What the rules read of verified claims.
