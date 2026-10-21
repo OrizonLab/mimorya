@@ -11,9 +11,13 @@ mod network;
 mod redact;
 mod token;
 
-pub use bridge::{CONNECTOR_USE, McpClient, McpToolsetOptions, create_mcp_toolset};
+pub use bridge::{
+    CONNECTOR_USE, McpClient, McpToolsetOptions, create_mcp_toolset, mcp_tool_description,
+};
 pub use connector::{McpConnector, McpConnectorConfig};
-pub use declarations::{MAX_TOOLS, mcp_tool_name, tool_namespace};
+pub use declarations::{
+    MAX_DECLARATIONS_BYTES, MAX_DESCRIPTION_CHARS, MAX_TOOLS, mcp_tool_name, tool_namespace,
+};
 pub use demo_docs::DemoDocsServer;
 pub use failure::{ACCESS_DENIED, NOT_MCP, NOT_PUBLIC, TOO_SLOW, UNREACHABLE};
 pub use network::{MAX_URL_CHARS, NetworkPolicy, http_client, is_public_ip, url_problem};

@@ -1,6 +1,7 @@
 //! One visible line of text, as a company writes it in collaborator
 //! attributes and in policy values: in canonical form (NFC) and without hidden
-//! characters, so that two values that look the same compare equal.
+//! characters, so that two values that look the same compare equal. Texts an
+//! administrator writes for the model hide nothing either.
 
 use unicode_normalization::UnicodeNormalization;
 use unicode_properties::{GeneralCategory, UnicodeGeneralCategory};
@@ -23,6 +24,14 @@ pub fn is_hidden(c: char) -> bool {
             | GeneralCategory::LineSeparator
             | GeneralCategory::ParagraphSeparator
     ) || is_default_ignorable(c)
+}
+
+/// Whether a text an administrator writes for the model shows all it holds:
+/// no hidden character but line breaks and tabs. What the administrator reads
+/// is what the model reads (a skill's content, ADR-052; a tool's
+/// description, ADR-057).
+pub fn shows_all_it_holds(text: &str) -> bool {
+    !text.chars().any(|c| c != '\n' && c != '\t' && is_hidden(c))
 }
 
 /// Unicode's `Default_Ignorable_Code_Point` (DerivedCoreProperties).

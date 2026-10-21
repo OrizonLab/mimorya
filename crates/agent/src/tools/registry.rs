@@ -19,6 +19,9 @@ pub struct ToolOverride {
     pub permissions: Option<Vec<String>>,
     pub risk: Option<ToolRisk>,
     pub requires_approval: Option<bool>,
+    /// What the model reads of the tool instead of its own description
+    /// (ADR-057); its name, schema and policy stay as they are.
+    pub description: Option<String>,
 }
 
 /// A tool with the description in force for the tenant.
@@ -78,6 +81,9 @@ impl ToolRegistry {
             }
             if let Some(requires_approval) = o.requires_approval {
                 info.requires_approval = requires_approval;
+            }
+            if let Some(description) = &o.description {
+                info.description = description.clone();
             }
         }
         self.tools.push(RegisteredTool { info, tool });

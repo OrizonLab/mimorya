@@ -1,10 +1,11 @@
 // What the company connects its assistant to, from the administration: an
 // MCP server with its token (ADR-025), tried before it is added (ADR-050),
-// and its own model provider with its API key (ADR-024). Both secrets are
-// write-only: never shown once saved.
+// whose tools' descriptions it may replace (ADR-057), and its own model
+// provider with its API key (ADR-024). Both secrets are write-only: never
+// shown once saved.
 // Whatever happens, the company keeps the platform's model and loses the test
 // server: the scenario that follows runs with them.
-import type { ConnectorTest, Connectors } from '../lib/api/contract';
+import type { ConnectorTest, Connectors, TestedTool } from '../lib/api/contract';
 import { cardWith, openAdmin } from './support/admin';
 import { expect, FOREIGN_HOST, noError, test } from './support/fixtures';
 
@@ -92,6 +93,7 @@ test('an MCP server is tried before it is added, and nothing is saved', async ({
             name: 'mcp_doce_search',
             title: 'Rechercher',
             description: 'Recherche dans les documents',
+            replacedDescription: null,
             enabled: true,
             risk: 'write',
             permissions: ['connector:use'],
@@ -110,6 +112,66 @@ test('an MCP server is tried before it is added, and nothing is saved', async ({
   const listed = await page.request.get('/api/admin/connectors');
   const { instances } = (await listed.json()) as Connectors;
   expect(instances.filter((c) => c.name === SERVER)).toEqual([]);
+  await noError(page);
+});
+
+test('a tool’s description is replaced from its rules, then given back to the server', async ({
+  page,
+}) => {
+  const written = 'Cherche un document technique par mots-clés.';
+  const search = (replacedDescription: string | null): TestedTool => ({
+    name: 'mcp_doce_search',
+    title: 'Rechercher',
+    description: '[Serveur MCP « doce »] Recherche dans les documents',
+    replacedDescription,
+    enabled: true,
+    risk: 'read',
+    permissions: ['connector:use'],
+  });
+  // The server is never reached: each test gets the answer given here, the
+  // second one with the replacement the API would then report.
+  const answers: ConnectorTest[] = [
+    { ok: true, error: null, tools: [search(null)] },
+    { ok: true, error: null, tools: [search(written)] },
+  ];
+  await page.route('**/api/admin/connectors/*/test', (route) =>
+    route.fulfill({ json: answers.shift() }),
+  );
+  await openAdmin(page, 'Connecteurs');
+  await page.getByRole('button', { name: 'Ajouter un serveur MCP' }).click();
+  await page.getByLabel('Nom').fill(SERVER);
+  await page.getByLabel('Préfixe des outils (définitif)').fill('doce');
+  await page.getByLabel(/^Adresse du serveur/).fill(`https://mcp.${FOREIGN_HOST}/mcp`);
+  await page.getByRole('button', { name: 'Ajouter le serveur' }).click();
+
+  const card = cardWith(page, SERVER, 'Tester la connexion');
+  const description = card.getByLabel('Description de mcp_doce_search lue par le modèle');
+  const save = card.getByRole('button', { name: 'Enregistrer les règles des outils' });
+  const stored = async () => {
+    const listed = await page.request.get('/api/admin/connectors');
+    const { instances } = (await listed.json()) as Connectors;
+    const connector = instances.find((c) => c.name === SERVER);
+    return connector?.toolPolicies['mcp_doce_search']?.description ?? null;
+  };
+
+  await card.getByRole('button', { name: 'Tester la connexion' }).click();
+  // Not replaced: empty, the server's own shown in its place.
+  await expect(description).toHaveValue('');
+  await expect(description).toHaveAttribute('placeholder', /Recherche dans les documents/);
+  await description.fill(`  ${written}  `);
+  await save.click();
+  await expect(save).toHaveCount(0);
+  // As the API saved it: trimmed.
+  await expect.poll(stored).toBe(written);
+
+  // The next test brings it back into the rules; emptied, the server's own
+  // description applies again.
+  await card.getByRole('button', { name: 'Tester la connexion' }).click();
+  await expect(description).toHaveValue(written);
+  await description.fill('');
+  await save.click();
+  await expect(save).toHaveCount(0);
+  await expect.poll(stored).toBeNull();
   await noError(page);
 });
 

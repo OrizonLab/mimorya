@@ -849,7 +849,16 @@ export type TemporaryPassword = { temporaryPassword: string, };
 /**
  * A tool a server declared, with the policy in force.
  */
-export type TestedTool = { name: string, title: string, description: string, enabled: boolean, risk: ToolRisk, permissions: Array<string>, };
+export type TestedTool = { name: string, title: string,
+/**
+ * As the server declares it.
+ */
+description: string,
+/**
+ * An administrator's replacement, as written: the model reads it after
+ * the server's name (ADR-057).
+ */
+replacedDescription: string | null, enabled: boolean, risk: ToolRisk, permissions: Array<string>, };
 
 export type ToolCallEvent = { toolCallId: string, toolName: string, title: string, decision: ToolDecision, reason?: string,
 /**
@@ -871,13 +880,22 @@ export type ToolInvocation = { id: string, toolName: string, decision: ToolDecis
  * An administrator's policy for one tool, as stored. Every field is
  * optional: absent or `null`, the tool's own declaration applies.
  */
-export type ToolPolicy = { enabled?: boolean | null, permissions?: Array<string> | null, risk?: ToolRisk | null, requiresApproval?: boolean | null, };
+export type ToolPolicy = { enabled?: boolean | null, permissions?: Array<string> | null, risk?: ToolRisk | null, requiresApproval?: boolean | null,
+/**
+ * What the model reads of the tool, after the server's name, instead of
+ * the server's description (ADR-057).
+ */
+description?: string | null, };
 
 /**
  * One tool's policy as an administrator writes it: absent fields keep the
  * tool's own declaration.
  */
-export type ToolPolicyChange = { enabled?: boolean, risk?: ToolRisk, permissions?: Array<string>, };
+export type ToolPolicyChange = { enabled?: boolean, risk?: ToolRisk, permissions?: Array<string>,
+/**
+ * Absent or blank: the server's own description (ADR-057).
+ */
+description?: string, };
 
 export type ToolResultEvent = { toolCallId: string, toolName: string, summary: string, isError: boolean, durationMs: number, };
 

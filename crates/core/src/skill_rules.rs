@@ -6,7 +6,7 @@
 //! administrator reads is what the model reads. Pure functions; the API
 //! applies them.
 
-use crate::plain_text::is_hidden;
+use crate::plain_text::{is_hidden, shows_all_it_holds};
 
 /// Active skills of one company: each is a line of every run's system prompt.
 pub const MAX_ACTIVE_SKILLS: i64 = 40;
@@ -53,14 +53,10 @@ pub fn content_problem(content: &str) -> Option<String> {
     if content.trim().is_empty() {
         return Some("Le contenu de la compétence est vide".into());
     }
-    content
-        .chars()
-        .any(|c| c != '\n' && c != '\t' && is_hidden(c))
-        .then(|| {
-            "Le contenu ne contient que du texte visible, des retours à la ligne et des \
-             tabulations"
-                .into()
-        })
+    (!shows_all_it_holds(content)).then(|| {
+        "Le contenu ne contient que du texte visible, des retours à la ligne et des tabulations"
+            .into()
+    })
 }
 
 #[cfg(test)]
