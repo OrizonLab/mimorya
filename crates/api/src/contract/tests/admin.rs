@@ -62,6 +62,7 @@ fn stored_tool_policies_match_the_contract() {
                 permissions: Some(vec!["intervention:read".into()]),
                 risk: Some(ToolRisk::Write),
                 requires_approval: Some(true),
+                description: Some("Écrit une note d’intervention.".into()),
             },
         ),
     ]);

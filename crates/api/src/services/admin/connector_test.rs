@@ -3,6 +3,8 @@
 //! administrator maps them knowingly. How it went is recorded on the
 //! instance; the audit keeps the outcome, never the token.
 
+use std::collections::HashMap;
+
 use mimorya_agent::tools::ToolOverride;
 use mimorya_core::DomainError;
 use mimorya_core::autonomy::ToolRisk;
@@ -23,7 +25,10 @@ const PERMISSION: &str = "connector:manage";
 pub struct TestedTool {
     pub name: String,
     pub title: String,
+    /// What the model reads unless replaced: the server's own.
     pub description: String,
+    /// The administrator's replacement, as written (ADR-057).
+    pub replaced_description: Option<String>,
     pub enabled: bool,
     pub risk: ToolRisk,
     pub permissions: Vec<String>,
@@ -69,9 +74,19 @@ pub async fn test_connector(
         },
         (Ok(policies), Ok(token)) => {
             let (kind, config) = (&instance.connector_type, &instance.config);
+            // Written by an administrator, shown as written (ADR-057).
+            let written: HashMap<String, String> = policies
+                .iter()
+                .filter_map(|(name, p)| Some((name.clone(), p.description.clone()?)))
+                .collect();
             // As runs apply them.
             let effective = |names: &[String]| scoped_overrides(&instance, policies, names);
-            start_and_list(admin.connectors, kind, config, token.as_deref(), effective).await
+            let mut outcome =
+                start_and_list(admin.connectors, kind, config, token.as_deref(), effective).await;
+            for tool in &mut outcome.tools {
+                tool.replaced_description = written.get(&tool.name).cloned();
+            }
+            outcome
         }
     };
     if outcome.error.is_none() {
@@ -132,6 +147,7 @@ fn tested(info: &mimorya_core::tools::ToolInfo, policy: Option<&ToolOverride>) -
         name: info.name.clone(),
         title: info.title.clone(),
         description: info.description.clone(),
+        replaced_description: None,
         enabled: policy.and_then(|p| p.enabled).unwrap_or(true),
         risk: policy.and_then(|p| p.risk).unwrap_or(info.risk),
         permissions: policy

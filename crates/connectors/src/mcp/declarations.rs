@@ -23,7 +23,9 @@ const MAX_TOOL_NAME: usize = 64;
 /// The length the MCP specification recommends for a tool name.
 const MAX_REMOTE_NAME_CHARS: usize = 128;
 const MAX_TITLE_CHARS: usize = 120;
-const MAX_DESCRIPTION_CHARS: usize = 1000;
+/// A tool's description, as a server declares it or an administrator
+/// replaces it.
+pub const MAX_DESCRIPTION_CHARS: usize = 1000;
 const MAX_SCHEMA_BYTES: usize = 32 * 1024;
 /// What one server's declarations may add to every model call.
 const MAX_DECLARATIONS_BYTES: usize = 256 * 1024;

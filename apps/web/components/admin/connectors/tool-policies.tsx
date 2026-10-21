@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Button, Checkbox, ErrorNote, Select } from '@/components/ui';
+import { Button, Checkbox, ErrorNote, Select, Textarea } from '@/components/ui';
 import {
   api,
   useAction,
@@ -15,7 +15,13 @@ import { RISK_LABELS } from '@/lib/labels';
 
 const ALWAYS = 'connector:use';
 
-/** Maps each tool of a server to a risk and the permissions it requires. */
+/** The longest description a server may declare, or an administrator write. */
+const MAX_DESCRIPTION = 1000;
+
+/**
+ * Maps each tool of a server to a risk and the permissions it requires, and
+ * may replace what the model reads of it (ADR-057).
+ */
 export function ToolPolicies({
   connectorId,
   data,
@@ -54,6 +60,8 @@ export function ToolPolicies({
           enabled: p.enabled,
           risk: p.risk,
           permissions: p.permissions.filter((x) => x !== ALWAYS),
+          // Blank: the server's own.
+          description: p.replacedDescription?.trim() || undefined,
         } satisfies ToolPolicyChange,
       ]),
     );
@@ -108,12 +116,25 @@ export function ToolPolicies({
               ))}
             </fieldset>
           </div>
+          <label className="flex flex-col gap-1 text-xs text-muted">
+            Description lue par le modèle (vide : celle du serveur)
+            <Textarea
+              aria-label={`Description de ${tool.name} lue par le modèle`}
+              rows={2}
+              maxLength={MAX_DESCRIPTION}
+              placeholder={tool.description}
+              value={tool.replacedDescription ?? ''}
+              onChange={(e) => change(tool.name, { replacedDescription: e.target.value })}
+            />
+          </label>
         </div>
       ))}
       <p className="text-xs text-muted">
         Un outil non associé demande une validation humaine (risque « Modification ») et la seule
         permission d’utiliser les connecteurs. Les risques « Lecture » et « Brouillon » s’exécutent
-        sans validation selon le niveau d’autonomie de l’entreprise.
+        sans validation selon le niveau d’autonomie de l’entreprise. Une description remplacée est
+        ce que lit le modèle pour choisir l’outil, toujours précédée du nom du serveur : elle ne
+        change ni son risque ni ses permissions.
       </p>
       {action.error && <ErrorNote message={action.error} />}
       <Button className="w-fit" loading={action.pending} onClick={save}>

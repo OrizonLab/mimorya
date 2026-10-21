@@ -7,7 +7,8 @@ use std::collections::{BTreeSet, HashMap};
 
 use mimorya_agent::tools::ToolOverride;
 use mimorya_connectors::mcp::{
-    CONNECTOR_USE, MAX_TOOLS, NetworkPolicy, token_problem, tool_namespace, url_problem,
+    CONNECTOR_USE, MAX_DESCRIPTION_CHARS, MAX_TOOLS, NetworkPolicy, token_problem, tool_namespace,
+    url_problem,
 };
 use mimorya_core::DomainError;
 use mimorya_core::authz::PermissionInfo;
@@ -25,6 +26,8 @@ pub struct ToolPolicyInput {
     pub enabled: Option<bool>,
     pub risk: Option<ToolRisk>,
     pub permissions: Option<Vec<String>>,
+    /// Replaces what the model reads of the tool (ADR-057).
+    pub description: Option<String>,
 }
 
 /// Why an MCP server may not be added as typed, if it may not: its prefix,
@@ -55,7 +58,8 @@ pub fn prefix_problem(prefix: &str) -> Option<String> {
 
 /// The policies to store, or why they are refused (in French). Each names a
 /// tool of this instance (`mcp_<prefix>_…`); permissions are catalog
-/// permissions an agent may hold, and `connector:use` is always kept.
+/// permissions an agent may hold, and `connector:use` is always kept; a
+/// replacement description is bounded like a server's own.
 pub fn checked_policies(
     policies: &HashMap<String, ToolPolicyInput>,
     prefix: &str,
@@ -84,6 +88,10 @@ pub fn checked_policies(
             Some(requested) => Some(checked_permissions(requested, catalog)?),
             None => None,
         };
+        let description = match &policy.description {
+            Some(text) => checked_description(name, text)?,
+            None => None,
+        };
         stored.insert(
             name.clone(),
             ToolOverride {
@@ -91,10 +99,36 @@ pub fn checked_policies(
                 permissions,
                 risk: policy.risk,
                 requires_approval: None,
+                description,
             },
         );
     }
     serde_json::to_value(stored).map_err(|_| DomainError::validation("Politiques invalides"))
+}
+
+/// What the model will read of the tool instead of the server's description
+/// (none if blank): as long as a server's at most, with line breaks and tabs
+/// as its only control characters.
+fn checked_description(tool: &str, text: &str) -> Result<Option<String>, DomainError> {
+    let text = text.trim().replace("\r\n", "\n");
+    if text.is_empty() {
+        return Ok(None);
+    }
+    if text.chars().count() > MAX_DESCRIPTION_CHARS {
+        return Err(DomainError::validation(format!(
+            "Description de {tool} : {MAX_DESCRIPTION_CHARS} caractères au plus"
+        )));
+    }
+    if text
+        .chars()
+        .any(|c| c.is_control() && c != '\n' && c != '\t')
+    {
+        return Err(DomainError::validation(format!(
+            "Description de {tool} : seuls les retours à la ligne et les tabulations sont admis \
+             parmi les caractères de contrôle"
+        )));
+    }
+    Ok(Some(text))
 }
 
 fn checked_permissions(
@@ -195,6 +229,37 @@ mod tests {
                 "{refused}"
             );
         }
+    }
+
+    #[test]
+    fn keeps_a_replaced_description_within_a_server_s_bounds() {
+        let described = |text: &str| {
+            checked_policies(
+                &policies(json!({ "mcp_docs_search": { "description": text } })),
+                "docs",
+                CATALOG,
+            )
+        };
+        let stored = described("  Cherche une procédure.\r\nRéponse : une liste.  ").unwrap();
+        assert_eq!(
+            stored["mcp_docs_search"]["description"],
+            "Cherche une procédure.\nRéponse : une liste."
+        );
+        // Blank (after trimming), it is no replacement.
+        let stored = described(" ").unwrap();
+        assert_eq!(stored["mcp_docs_search"]["description"], Value::Null);
+        assert!(described(&"é".repeat(MAX_DESCRIPTION_CHARS)).is_ok());
+        assert!(described(&"é".repeat(MAX_DESCRIPTION_CHARS + 1)).is_err());
+        assert!(described("Colonnes\tséparées").is_ok());
+        for refused in ["Fin\u{0}", "Effacé\u{8}", "Saut\rseul", "Échappé\u{1b}[2J"] {
+            assert!(
+                checked_description("mcp_docs_search", refused).is_err(),
+                "{refused:?}"
+            );
+        }
+        // A null character does not even get past the request body.
+        let body = json!({ "description": "Fin\u{0}" });
+        assert!(serde_json::from_value::<ToolPolicyChange>(body).is_err());
     }
 
     #[test]

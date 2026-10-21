@@ -167,6 +167,7 @@ test('tool policies start again from each connection test', async ({ page }) => 
     name,
     title: name,
     description: 'Outil e2e',
+    replacedDescription: null,
     enabled: true,
     risk,
     permissions: ['connector:use'],

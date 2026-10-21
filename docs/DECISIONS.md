@@ -1948,3 +1948,44 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     fermée ; un serveur stdio arrêté laisse une session qui se dit fermée) et
     `services/connectors/cache/tests.rs` (une instance fermée est libérée et démarrée de
     nouveau, une instance ouverte est gardée).
+
+## ADR-057 — Description d'un outil MCP remplaçable par l'administrateur (complète ADR-025)
+
+- **Date** : 2026-10-21 · **Statut** : acceptée
+- **Contexte** : le modèle choisit un outil d'après sa description. Celle d'un outil MCP
+  est écrite par le serveur : bornée (1 000 caractères) et sans le jeton (ADR-026), elle
+  reste le texte d'un tiers, qui peut être vague, trompeur ou porter une injection.
+  ADR-025 laissait à faire la possibilité de la remplacer.
+- **Décision** :
+  - la politique d'un outil (`ToolOverride`) porte une `description` facultative,
+    écrite par l'administrateur (`connector:manage`) avec le risque et les permissions ;
+    le registre la donne au modèle à la place de celle du serveur. Le nom, le schéma
+    d'entrée, le risque et les permissions de l'outil n'en dépendent pas ;
+  - le modèle la lit toujours précédée du nom du serveur (`[Serveur MCP « préfixe »]`,
+    `mcp_tool_description`), comme une description déclarée : ce nom est ajouté là où les
+    runs appliquent les politiques (`scoped_overrides`). L'administration la garde et la
+    montre telle qu'écrite ;
+  - elle est bornée comme celle d'un serveur : 1 000 caractères, mesurés après retrait
+    des espaces aux extrémités et passage de `\r\n` à `\n`. Elle ne peut contenir aucun
+    caractère de contrôle autre que le retour à la ligne et la tabulation. Vide, c'est la
+    description du serveur qui s'applique ;
+  - le test de connexion montre les deux : celle du serveur et le remplacement
+    (`replacedDescription`), que l'éditeur des règles d'outils reprend. La modification
+    est tracée avec les politiques (`connector.updated`).
+- **Conséquences** :
+  - une description remplacée ne suit pas les changements du serveur : si celui-ci change
+    le comportement de l'outil, l'administrateur doit la mettre à jour (le test de
+    connexion montre les deux) ;
+  - aucune autorisation n'en dépend : une description ne peut ni accorder une permission
+    ni changer un risque ;
+  - seuls les serveurs MCP ajoutés par l'entreprise sont concernés : les connecteurs
+    réglés par l'exploitant n'acceptent pas de politiques depuis l'administration ;
+  - tests :
+    - `crates/api/tests/connector_descriptions.rs` : le modèle lit le remplacement
+      précédé du nom du serveur, puis de nouveau la description du serveur une fois le
+      remplacement retiré ; un remplacement hors bornes est refusé et rien n'est
+      enregistré ;
+    - `services/admin/connector_rules.rs` : bornes et caractères ;
+    - `apps/web/e2e/integrations.spec.ts` : description écrite depuis les règles d'un
+      outil, enregistrée sans les espaces aux extrémités, rendue au serveur une fois
+      vidée.

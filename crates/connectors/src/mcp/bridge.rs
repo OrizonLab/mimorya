@@ -124,6 +124,12 @@ impl Tool for McpTool {
     }
 }
 
+/// What the model reads of an MCP tool: the server it comes from, then its
+/// description (as declared, or as an administrator replaced it, ADR-057).
+pub fn mcp_tool_description(prefix: &str, description: &str) -> String {
+    format!("[Serveur MCP « {prefix} »] {description}")
+}
+
 /// The tools of a connected MCP server, with the conservative defaults.
 pub async fn create_mcp_toolset(
     client: Arc<McpClient>,
@@ -132,7 +138,7 @@ pub async fn create_mcp_toolset(
     let declared = declared_tools(&client, &options.prefix, &options.redactor).await?;
     let mut result: Vec<ToolRef> = Vec::with_capacity(declared.len());
     for tool in declared {
-        let description = format!("[Serveur MCP « {} »] {}", options.prefix, tool.description);
+        let description = mcp_tool_description(&options.prefix, &tool.description);
         let info = ToolInfo::try_new(&tool.name, &tool.title, &description, options.default_risk)
             .map_err(anyhow::Error::msg)?
             .requires(options.default_permissions.clone());

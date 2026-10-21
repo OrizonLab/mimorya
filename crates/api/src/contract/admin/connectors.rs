@@ -45,6 +45,11 @@ pub struct ToolPolicy {
     #[serde(default)]
     #[ts(optional = nullable)]
     pub requires_approval: Option<bool>,
+    /// What the model reads of the tool, after the server's name, instead of
+    /// the server's description (ADR-057).
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub description: Option<String>,
 }
 
 /// An MCP server reached over HTTPS (editable from the administration).
@@ -136,10 +141,15 @@ pub struct Connectors {
 
 /// A tool a server declared, with the policy in force.
 #[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
 pub struct TestedTool {
     pub name: String,
     pub title: String,
+    /// As the server declares it.
     pub description: String,
+    /// An administrator's replacement, as written: the model reads it after
+    /// the server's name (ADR-057).
+    pub replaced_description: Option<String>,
     pub enabled: bool,
     pub risk: ToolRisk,
     pub permissions: Vec<String>,
@@ -151,6 +161,7 @@ impl From<&Tested> for TestedTool {
             name: t.name.clone(),
             title: t.title.clone(),
             description: t.description.clone(),
+            replaced_description: t.replaced_description.clone(),
             enabled: t.enabled,
             risk: t.risk.into(),
             permissions: t.permissions.clone(),
@@ -235,6 +246,10 @@ pub struct ToolPolicyChange {
     #[serde(default)]
     #[ts(optional)]
     pub permissions: Option<Vec<String>>,
+    /// Absent or blank: the server's own description (ADR-057).
+    #[serde(default, deserialize_with = "trimmed_opt")]
+    #[ts(optional)]
+    pub description: Option<String>,
 }
 
 impl From<ToolPolicyChange> for ToolPolicyInput {
@@ -243,6 +258,7 @@ impl From<ToolPolicyChange> for ToolPolicyInput {
             enabled: change.enabled,
             risk: change.risk.map(Into::into),
             permissions: change.permissions,
+            description: change.description,
         }
     }
 }
