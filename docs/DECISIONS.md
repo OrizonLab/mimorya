@@ -2103,7 +2103,8 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - dans l'entreprise de démonstration, les actions de Lucas vont à Julien, celles de
     Julien et de Nadia à Marc, et celles de Marc ne trouvent personne (la directrice ne
     détient pas `approval:decide`) : elles sont refusées quand le réglage les vise ;
-  - restent à faire : notification du responsable par e-mail, expiration active des demandes (aujourd'hui constatée à la décision) et
+  - le responsable est prévenu par e-mail (ADR-060) ;
+  - restent à faire : expiration active des demandes (aujourd'hui constatée à la décision) et
     relance, délégation en cas d'absence, personnes rattachées à plusieurs unités
     (seule l'unité principale compte) ;
   - tests :
@@ -2123,3 +2124,40 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
       pouvait encore la décider, relue chez elle et chez Marc. Les états que la
       démonstration n'atteint pas (plus aucun décideur, demande confiée à la
       directrice) sont affichés à partir d'une réponse simulée de l'API, sans clic.
+
+## ADR-060 — Le responsable prévenu par e-mail d'une demande qui l'attend (complète ADR-059)
+
+- **Date** : 2026-10-21 · **Statut** : acceptée
+- **Contexte** : depuis ADR-059, une demande confiée à un responsable n'apparaît que dans
+  sa page « Validations » et le compteur de la barre latérale. Tant qu'il ne se connecte
+  pas, l'agent de la personne reste en pause. Un e-mail le prévient, mais il sort de la
+  plateforme : il échappe à ses contrôles d'accès et à sa durée de conservation.
+- **Décision** :
+  - quand une demande est confiée à un responsable, un e-mail lui est envoyé en
+    arrière-plan, après l'enregistrement de la demande : le run se met en pause, que le
+    message parte ou non. Il n'est envoyé que si la demande attend encore ce
+    responsable et que son compte est actif ; une demande que la personne décide
+    elle-même n'est jamais envoyée ;
+  - le message dit pour qui est l'action, son risque, le lien vers la page des
+    validations et l'échéance de la demande. Il ne contient **ni l'action ni ses
+    paramètres** : ils ne se lisent qu'après connexion, là où le droit de décider est
+    vérifié ;
+  - chaque envoi est tracé (`approval.notified`, réussi ou échoué, au nom de la
+    plateforme pour la personne, avec l'identifiant du responsable), sans l'adresse ni
+    la réponse du relais, qui peut la citer ; un échec est journalisé sans elles ;
+  - sans relais SMTP configuré, rien n'est envoyé. L'écran « Circuit de validation »
+    le dit (`notifiesByEmail`), et le responsable trouve les demandes dans
+    « Validations ».
+- **Conséquences** :
+  - aucune donnée personnelle nouvelle n'est conservée : l'e-mail n'est pas stocké, et
+    l'audit ne garde que des identifiants ;
+  - pas encore de relance ni de résumé périodique ; un responsable qui reçoit beaucoup
+    de demandes reçoit un e-mail par demande ;
+  - tests :
+    - `crates/api/src/services/runs/approval_notice/message.rs` : contenu du message ;
+    - `crates/api/tests/manager_notices.rs` : seul le responsable est prévenu, sans
+      l'action ni ses paramètres, envoi tracé ; un message refusé par le relais est
+      tracé en échec et la demande attend toujours ; l'administration dit si les
+      responsables sont prévenus ;
+    - `apps/web/e2e/manager-approvals.spec.ts` : Marc ouvre le lien de l'e-mail reçu
+      pour décider de la demande de Nadia.

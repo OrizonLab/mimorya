@@ -1,7 +1,9 @@
-//! Outgoing e-mail (invitations, ADR-027; password reset links, ADR-028):
-//! one plain-text message at a time, over SMTP when the operator configures
-//! it (`SMTP_URL`, `MAIL_FROM`). Without it, nothing is sent: the
-//! administrator transmits invitation links, and no reset link can be asked.
+//! Outgoing e-mail (invitations, ADR-027; password reset links, ADR-028;
+//! requests awaiting a manager, ADR-060): one plain-text message at a time,
+//! over SMTP when the operator configures it (`SMTP_URL`, `MAIL_FROM`).
+//! Without it, nothing is sent: the administrator transmits invitation
+//! links, no reset link can be asked, and managers find their requests in
+//! the application.
 
 mod expiry;
 mod settings;

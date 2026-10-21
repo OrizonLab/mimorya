@@ -3,6 +3,7 @@
 //! functions take the raw pool.
 
 pub mod access_policies;
+pub mod approval_notices;
 pub mod approval_settings;
 pub mod approval_views;
 pub mod approvals;

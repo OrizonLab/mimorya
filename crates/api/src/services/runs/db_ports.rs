@@ -16,6 +16,7 @@ use mimorya_db::repositories::{approvals, audit, runs, tool_invocations, usage};
 use mimorya_db::{Database, TenantTx};
 use uuid::Uuid;
 
+use super::approval_notice::ApprovalNotifier;
 use super::approval_routing::{NOBODY_VALIDATES, Route, route};
 use super::deliverables::DbDeliverables;
 use super::events::record_run_event;
@@ -44,6 +45,8 @@ pub struct DbPorts {
     bus: Arc<RunEventBus>,
     /// Who may validate a request for the run's user (ADR-059).
     access: Arc<AccessService>,
+    /// Tells the manager a request awaits them (ADR-060).
+    notifier: ApprovalNotifier,
 }
 
 pub fn engine_ports(
@@ -51,12 +54,14 @@ pub fn engine_ports(
     scope: RunScope,
     bus: Arc<RunEventBus>,
     access: Arc<AccessService>,
+    notifier: ApprovalNotifier,
 ) -> EnginePorts {
     let ports = Arc::new(DbPorts {
         db: db.clone(),
         scope,
         bus,
         access,
+        notifier,
     });
     EnginePorts {
         events: ports.clone(),
@@ -162,6 +167,7 @@ impl ApprovalStore for DbPorts {
             Route::Manager(manager) => ApprovalRouting::Manager(manager),
             Route::Nobody => return Ok(ApprovalPlacement::Unroutable(NOBODY_VALIDATES.into())),
         };
+        let to_manager = matches!(routing, ApprovalRouting::Manager(_));
         let mut tx = self.tx().await?;
         let row = approvals::create_approval(
             &mut tx,
@@ -181,6 +187,9 @@ impl ApprovalStore for DbPorts {
         )
         .await?;
         tx.commit().await?;
+        if to_manager {
+            self.notifier.notify(tenant_id, row.id);
+        }
         Ok(ApprovalPlacement::Pending(row.id))
     }
 }

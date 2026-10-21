@@ -11,6 +11,7 @@ pub mod companies;
 pub mod llm;
 pub mod locks;
 pub mod mail;
+pub mod manager_approvals;
 pub mod mcp;
 pub mod planning;
 pub mod privileges;

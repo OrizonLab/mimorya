@@ -1,8 +1,8 @@
 // Validation by a manager, through the browser (ADR-059). An administrator
 // chooses which actions managers validate; here, those that write: Nadia's
 // go to Marc. She sees who decides, with no button to approve, and may
-// withdraw her request; Marc sees for whom the action is, decides it, and is
-// not led to her run. The routing itself is tested on the API
+// withdraw her request; Marc, told by e-mail where to decide (ADR-060), sees
+// for whom the action is, decides it, and is not led to her run. The routing itself is tested on the API
 // (`crates/api/tests/manager_approvals.rs`).
 import type { BrowserContext, Page } from '@playwright/test';
 import type {
@@ -13,6 +13,7 @@ import type {
   ToolRisk,
 } from '../lib/api/contract';
 import { openAdmin } from './support/admin';
+import { lastLink, mailCount } from './support/mail';
 import { refuseWaiting } from './support/approvals';
 import { demo, expect, noError, signIn, test } from './support/fixtures';
 import { REFERENCE_REQUEST } from './support/scenario';
@@ -59,6 +60,7 @@ test.afterEach(async () => {
 test('an administrator chooses the actions managers validate', async ({ page }) => {
   people.paul = page;
   await openAdmin(page, TAB);
+  await expect(page.getByText('Le responsable est prévenu par e-mail')).toBeVisible();
   const write = page.getByRole('checkbox', { name: 'Modification' });
   await expect(write).not.toBeChecked();
   await write.check();
@@ -81,9 +83,14 @@ test('an administrator chooses the actions managers validate', async ({ page }) 
 });
 
 test('the manager decides, for whom the agent acts', async ({ page, newContext }) => {
+  const before = await mailCount(demo.marc);
   await nadiaAsks(page, newContext);
+  // Marc is told by e-mail where to decide, not what.
+  const { link, mail } = await lastLink(demo.marc, 'approvals', before);
+  expect(mail.subject).toBe('Une action de Nadia Benali attend votre validation');
+  expect(mail.text).not.toContain('INT-2049');
   const marc = people.marc!;
-  await marc.goto('/approvals');
+  await marc.goto(link);
   await expect(marc.getByText('Pour Nadia Benali')).toBeVisible();
   await expect(marc.getByRole('link', { name: 'voir l’exécution' })).toHaveCount(0);
   await marc.getByRole('button', { name: 'Refuser' }).click();

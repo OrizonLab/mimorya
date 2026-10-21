@@ -86,7 +86,12 @@ export type ApprovalRoutingView = {
 /**
  * Empty: whom the agent acts for validates every action, as before.
  */
-managerRisks: Array<ToolRisk>, };
+managerRisks: Array<ToolRisk>,
+/**
+ * Whether a manager is e-mailed when a request awaits them: only when
+ * the operator configured a mail relay (ADR-060).
+ */
+notifiesByEmail: boolean, };
 
 /**
  * Body of `POST /approvals/{id}/decision`.
