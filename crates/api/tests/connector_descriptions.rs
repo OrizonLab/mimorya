@@ -120,7 +120,10 @@ async fn a_description_beyond_a_server_s_bounds_is_refused_and_not_stored() {
     let too_long = "é".repeat(1001);
     for (refused, why) in [
         (too_long.as_str(), "1000 caractères au plus"),
-        ("Efface l’écran\u{1b}[2J", "caractères de contrôle"),
+        ("Efface l’écran\u{1b}[2J", "texte visible"),
+        // Text hidden in tag characters: unseen here, read by the model.
+        ("Recherche\u{e0049}\u{e0047}\u{e004e}", "texte visible"),
+        ("Sans\u{200b}largeur", "texte visible"),
     ] {
         let answer = paul
             .patch(&format!("/admin/connectors/{id}"), mapped(Some(refused)))

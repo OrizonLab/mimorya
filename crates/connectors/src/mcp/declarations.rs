@@ -27,8 +27,9 @@ const MAX_TITLE_CHARS: usize = 120;
 /// replaces it.
 pub const MAX_DESCRIPTION_CHARS: usize = 1000;
 const MAX_SCHEMA_BYTES: usize = 32 * 1024;
-/// What one server's declarations may add to every model call.
-const MAX_DECLARATIONS_BYTES: usize = 256 * 1024;
+/// What one server's declarations may add to every model call, and what an
+/// administrator's replacements of its descriptions may add (ADR-057).
+pub const MAX_DECLARATIONS_BYTES: usize = 256 * 1024;
 
 /// A tool as the platform shows it: namespaced, masked, bounded.
 pub struct Declared {

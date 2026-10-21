@@ -7,12 +7,13 @@ use std::collections::{BTreeSet, HashMap};
 
 use mimorya_agent::tools::ToolOverride;
 use mimorya_connectors::mcp::{
-    CONNECTOR_USE, MAX_DESCRIPTION_CHARS, MAX_TOOLS, NetworkPolicy, token_problem, tool_namespace,
-    url_problem,
+    CONNECTOR_USE, MAX_DECLARATIONS_BYTES, MAX_DESCRIPTION_CHARS, MAX_TOOLS, NetworkPolicy,
+    token_problem, tool_namespace, url_problem,
 };
 use mimorya_core::DomainError;
 use mimorya_core::authz::PermissionInfo;
 use mimorya_core::autonomy::ToolRisk;
+use mimorya_core::plain_text::shows_all_it_holds;
 use serde_json::Value;
 
 /// One policy per tool a server may declare.
@@ -59,7 +60,8 @@ pub fn prefix_problem(prefix: &str) -> Option<String> {
 /// The policies to store, or why they are refused (in French). Each names a
 /// tool of this instance (`mcp_<prefix>_…`); permissions are catalog
 /// permissions an agent may hold, and `connector:use` is always kept; a
-/// replacement description is bounded like a server's own.
+/// replacement description is bounded like a server's own, and so are all of
+/// them together.
 pub fn checked_policies(
     policies: &HashMap<String, ToolPolicyInput>,
     prefix: &str,
@@ -72,6 +74,7 @@ pub fn checked_policies(
     }
     let namespace = tool_namespace(prefix);
     let mut stored = HashMap::new();
+    let mut described_bytes = 0;
     for (name, policy) in policies {
         let well_formed = name.starts_with(&namespace)
             && name.len() > namespace.len()
@@ -92,6 +95,13 @@ pub fn checked_policies(
             Some(text) => checked_description(name, text)?,
             None => None,
         };
+        described_bytes += description.as_ref().map_or(0, String::len);
+        if described_bytes > MAX_DECLARATIONS_BYTES {
+            return Err(DomainError::validation(format!(
+                "Descriptions remplacées : {} Kio au plus pour l’ensemble des outils",
+                MAX_DECLARATIONS_BYTES / 1024
+            )));
+        }
         stored.insert(
             name.clone(),
             ToolOverride {
@@ -107,8 +117,8 @@ pub fn checked_policies(
 }
 
 /// What the model will read of the tool instead of the server's description
-/// (none if blank): as long as a server's at most, with line breaks and tabs
-/// as its only control characters.
+/// (none if blank): as long as a server's at most, and showing all it holds,
+/// line breaks and tabs aside, as a skill's content (ADR-052).
 fn checked_description(tool: &str, text: &str) -> Result<Option<String>, DomainError> {
     let text = text.trim().replace("\r\n", "\n");
     if text.is_empty() {
@@ -119,13 +129,10 @@ fn checked_description(tool: &str, text: &str) -> Result<Option<String>, DomainE
             "Description de {tool} : {MAX_DESCRIPTION_CHARS} caractères au plus"
         )));
     }
-    if text
-        .chars()
-        .any(|c| c.is_control() && c != '\n' && c != '\t')
-    {
+    if !shows_all_it_holds(&text) {
         return Err(DomainError::validation(format!(
-            "Description de {tool} : seuls les retours à la ligne et les tabulations sont admis \
-             parmi les caractères de contrôle"
+            "Description de {tool} : du texte visible, des retours à la ligne et des \
+             tabulations seulement"
         )));
     }
     Ok(Some(text))
@@ -251,7 +258,19 @@ mod tests {
         assert!(described(&"é".repeat(MAX_DESCRIPTION_CHARS)).is_ok());
         assert!(described(&"é".repeat(MAX_DESCRIPTION_CHARS + 1)).is_err());
         assert!(described("Colonnes\tséparées").is_ok());
-        for refused in ["Fin\u{0}", "Effacé\u{8}", "Saut\rseul", "Échappé\u{1b}[2J"] {
+        // Controls, and what hides in a line: zero-width space, direction
+        // override, tag characters (hidden text), line separator, BOM.
+        for refused in [
+            "Fin\u{0}",
+            "Effacé\u{8}",
+            "Saut\rseul",
+            "Échappé\u{1b}[2J",
+            "Sans\u{200b}largeur",
+            "Inversé\u{202e}",
+            "Caché\u{e0041}\u{e0042}",
+            "Ligne\u{2028}séparée",
+            "\u{feff}Marque",
+        ] {
             assert!(
                 checked_description("mcp_docs_search", refused).is_err(),
                 "{refused:?}"
@@ -260,6 +279,22 @@ mod tests {
         // A null character does not even get past the request body.
         let body = json!({ "description": "Fin\u{0}" });
         assert!(serde_json::from_value::<ToolPolicyChange>(body).is_err());
+    }
+
+    #[test]
+    fn bounds_all_the_replaced_descriptions_together() {
+        // 2 bytes a character: 100 full descriptions fit, 150 do not.
+        let described = |tools: usize| {
+            let all: serde_json::Map<String, Value> = (0..tools)
+                .map(|i| {
+                    let text = "é".repeat(MAX_DESCRIPTION_CHARS);
+                    (format!("mcp_docs_tool{i}"), json!({ "description": text }))
+                })
+                .collect();
+            checked_policies(&policies(Value::Object(all)), "docs", CATALOG)
+        };
+        assert!(described(100).is_ok());
+        assert!(described(150).is_err());
     }
 
     #[test]

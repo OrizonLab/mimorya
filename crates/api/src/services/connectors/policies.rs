@@ -2,7 +2,8 @@
 //! policy that cannot be read makes the connector unavailable, since
 //! ignoring it could drop a restriction an administrator set), scoped to the
 //! instance's own tools; an MCP tool always requires `connector:use`, and a
-//! description an administrator wrote keeps naming the server (ADR-057).
+//! description an administrator wrote keeps naming the server (ADR-057),
+//! the only tools whose description may be replaced.
 
 use std::collections::HashMap;
 
@@ -39,6 +40,9 @@ pub fn scoped_overrides(
                 policy.description = policy
                     .description
                     .map(|written| mcp_tool_description(prefix, &written));
+            } else {
+                // Only an MCP server's tools have theirs replaced (ADR-057).
+                policy.description = None;
             }
             (name, policy)
         })

@@ -1966,9 +1966,13 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     runs appliquent les politiques (`scoped_overrides`). L'administration la garde et la
     montre telle qu'écrite ;
   - elle est bornée comme celle d'un serveur : 1 000 caractères, mesurés après retrait
-    des espaces aux extrémités et passage de `\r\n` à `\n`. Elle ne peut contenir aucun
-    caractère de contrôle autre que le retour à la ligne et la tabulation. Vide, c'est la
-    description du serveur qui s'applique ;
+    des espaces aux extrémités et passage de `\r\n` à `\n`. L'ensemble des
+    remplacements d'un serveur est borné comme ses déclarations (256 Kio). Comme le
+    contenu d'une compétence (ADR-052), elle ne contient aucun caractère invisible hormis
+    le retour à la ligne et la tabulation (`plain_text::shows_all_it_holds`) : ce que lit
+    l'administrateur est ce que lit le modèle, sans texte caché (caractères d'étiquette,
+    espace sans largeur, forçage de sens…). Vide, c'est la description du serveur qui
+    s'applique ;
   - le test de connexion montre les deux : celle du serveur et le remplacement
     (`replacedDescription`), que l'éditeur des règles d'outils reprend. La modification
     est tracée avec les politiques (`connector.updated`).
@@ -1979,13 +1983,17 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - aucune autorisation n'en dépend : une description ne peut ni accorder une permission
     ni changer un risque ;
   - seuls les serveurs MCP ajoutés par l'entreprise sont concernés : les connecteurs
-    réglés par l'exploitant n'acceptent pas de politiques depuis l'administration ;
+    réglés par l'exploitant n'acceptent pas de politiques depuis l'administration, et
+    une description inscrite en base pour un autre type de connecteur est ignorée ;
+  - les descriptions déclarées par les serveurs ne sont pas encore filtrées des
+    caractères invisibles (dette, feuille de route) ;
   - tests :
     - `crates/api/tests/connector_descriptions.rs` : le modèle lit le remplacement
       précédé du nom du serveur, puis de nouveau la description du serveur une fois le
-      remplacement retiré ; un remplacement hors bornes est refusé et rien n'est
-      enregistré ;
-    - `services/admin/connector_rules.rs` : bornes et caractères ;
+      remplacement retiré ; un remplacement hors bornes, ou qui cache du texte, est
+      refusé et rien n'est enregistré ;
+    - `services/admin/connector_rules.rs` : bornes, ensemble compris, et caractères
+      invisibles ;
     - `apps/web/e2e/integrations.spec.ts` : description écrite depuis les règles d'un
       outil, enregistrée sans les espaces aux extrémités, rendue au serveur une fois
       vidée.
