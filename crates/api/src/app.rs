@@ -26,7 +26,7 @@ use crate::secrets::SecretStore;
 use crate::services::background::BackgroundTasks;
 use crate::services::connectors::ConnectorSettings;
 use crate::services::llm::{LlmServiceOptions, default_factory};
-use crate::services::runs::RunExecutor;
+use crate::services::runs::{ApprovalNotifier, RunExecutor};
 use crate::services::{
     AccessService, ConnectorService, LlmService, ProviderFactory, RunEventBus, RunService,
 };
@@ -113,6 +113,14 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
             start_timeout: config.mcp_start_timeout,
         },
     ));
+    let mailer = match options.mailer {
+        Some(mailer) => mailer,
+        None => match &config.mail {
+            Some(settings) => Some(Arc::new(SmtpMailer::new(settings)?) as Arc<dyn Mailer>),
+            None => None,
+        },
+    };
+    let background = Arc::new(BackgroundTasks::default());
     let bus = Arc::new(RunEventBus::default());
     let executor = RunExecutor {
         db: db.clone(),
@@ -121,6 +129,13 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
         prices: llm.prices().clone(),
         connectors: connectors.clone(),
         bus: bus.clone(),
+        notifier: ApprovalNotifier::new(
+            db.clone(),
+            mailer.clone(),
+            config.web_origin.clone(),
+            config.assistant_name.clone(),
+            background.clone(),
+        ),
         assistant_name: config.assistant_name.clone(),
         llm_judge: config.llm_judge,
     };
@@ -129,13 +144,6 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
         login: RateLimiter::per_minute(config.login_rate_limit_per_minute),
         failed_logins: RateLimiter::new(FAILED_LOGINS_PER_ACCOUNT, FAILED_LOGIN_WINDOW),
         reset_requests: RateLimiter::new(RESET_REQUESTS_PER_ADDRESS, RESET_REQUEST_WINDOW),
-    };
-    let mailer = match options.mailer {
-        Some(mailer) => mailer,
-        None => match &config.mail {
-            Some(settings) => Some(Arc::new(SmtpMailer::new(settings)?) as Arc<dyn Mailer>),
-            None => None,
-        },
     };
     let services = Arc::new(Services {
         runs: RunService::new(db.clone(), access.clone(), executor),
@@ -147,7 +155,7 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
         bus: bus.clone(),
         llm,
         limits,
-        background: Arc::new(BackgroundTasks::default()),
+        background,
         shutdown: watch::channel(false).0,
     });
 

@@ -131,7 +131,8 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   la position seule n'accorde rien. Le run reprend avec les droits de la personne pour
   qui l'agent agit, jamais avec ceux du décideur ; sans responsable éligible, l'action
   est refusée. La personne ne peut pas approuver la demande, seulement la retirer
-  (l'action n'est alors pas exécutée).
+  (l'action n'est alors pas exécutée). L'e-mail qui prévient le responsable (ADR-060)
+  ne contient ni l'action ni ses paramètres, lisibles seulement après connexion.
 - **Administration** (ADR-019) :
   - les permissions d'administration (`TENANT_WIDE_PERMISSIONS` : organisation,
     comptes, rôles, politiques, connecteurs, compétences, paramètres, mémoire, audit,

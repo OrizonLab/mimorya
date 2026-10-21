@@ -61,8 +61,10 @@ export function ApprovalRoutingForm({
       </fieldset>
       <p className="text-xs text-muted">
         Les risques « Lecture » et « Brouillon » ne demandent une validation que pour les outils qui
-        l’exigent toujours. Le responsable n’est pas encore prévenu par e-mail : il trouve les
-        demandes dans « Validations ». Aucune case cochée : chacun valide ses propres actions.
+        l’exigent toujours. Aucune case cochée : chacun valide ses propres actions.{' '}
+        {data.notifiesByEmail
+          ? 'Le responsable est prévenu par e-mail, sans le détail de l’action, et trouve les demandes dans « Validations ».'
+          : 'Ce serveur n’envoie pas d’e-mail (l’exploitant n’a pas configuré de relais) : le responsable trouve les demandes dans « Validations ».'}
       </p>
       {action.error && <ErrorNote message={action.error} />}
       <Button className="w-fit" loading={action.pending} disabled={!changed} onClick={save}>

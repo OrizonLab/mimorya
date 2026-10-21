@@ -2,92 +2,16 @@
 //! nearest lead above whom the agent acts for, on an active account, who
 //! holds `approval:decide` over them: they alone approve, while they still
 //! hold it, and the run goes on with the rights of whom it acts for, who may
-//! always withdraw the request. Nobody eligible, the action is refused at
+//! withdraw the request while they may use the agent. Nobody eligible, the action is refused at
 //! once. Only those who manage access policies set the risks.
 
 mod support;
 
 use axum::http::StatusCode;
-use mimorya_agent::testing::ScriptedStep;
 use mimorya_core::demo::{tenant, user};
 use serde_json::{Value, json};
-use support::planning::{apply_proposal, propose};
-use support::{Client, TestApi};
-use uuid::Uuid;
-
-const ROUTING: &str = "/admin/approval-routing";
-
-/// Has the company's managers validate the actions of `risks`.
-async fn route_to_managers(paul: &Client<'_>, risks: &[&str]) {
-    let set = paul.put(ROUTING, json!({ "managerRisks": risks })).await;
-    assert_eq!(set.status, StatusCode::OK, "{}", set.text());
-}
-
-/// Has `requester` propose then apply a slot for `intervention`, and returns
-/// the run and what the requester's approvals list says of its request.
-async fn applying(
-    api: &TestApi,
-    requester: &Client<'_>,
-    (intervention, start_time): (&str, &str),
-    final_text: &str,
-) -> (String, Option<Value>) {
-    api.script(vec![
-        propose(intervention, start_time),
-        apply_proposal(""),
-        ScriptedStep::text(final_text),
-    ]);
-    let conversation = requester.post("/conversations", json!({})).await.json();
-    let id = conversation["conversation"]["id"].as_str().unwrap();
-    let started = requester
-        .post(
-            &format!("/conversations/{id}/messages"),
-            json!({ "content": format!("Planifie {intervention}") }),
-        )
-        .await
-        .json();
-    let run_id = started["runId"].as_str().unwrap().to_string();
-    api.idle().await;
-    let approval = listed(requester, &run_id).await;
-    (run_id, approval)
-}
-
-/// The run's request in `client`'s approvals list.
-async fn listed(client: &Client<'_>, run_id: &str) -> Option<Value> {
-    client.get("/approvals?status=all").await.json()["approvals"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|a| a["runId"] == run_id)
-        .cloned()
-}
-
-/// Takes `permission` from `user_id`; returns the policy to delete.
-async fn without(paul: &Client<'_>, user_id: Uuid, permission: &str) -> String {
-    let only =
-        json!({ "op": "eq", "left": { "attr": "subject.userId" }, "right": { "value": user_id } });
-    let created = paul
-        .post(
-            "/admin/policies",
-            json!({ "description": "Droit retiré", "permissions": [permission], "condition": only }),
-        )
-        .await;
-    assert_eq!(created.status, StatusCode::CREATED, "{}", created.text());
-    format!("/admin/policies/{}", created.json()["id"].as_str().unwrap())
-}
-
-async fn audited(api: &TestApi, run_id: &str, action: &str) -> Vec<(Option<Uuid>, Option<Uuid>)> {
-    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
-    let rows: Vec<(Option<Uuid>, Option<Uuid>)> = sqlx::query_as(
-        "select actor_user_id, on_behalf_of_user_id from audit_log \
-         where run_id = $1::uuid and action = $2 order by id",
-    )
-    .bind(run_id)
-    .bind(action)
-    .fetch_all(&mut *tx)
-    .await
-    .unwrap();
-    rows
-}
+use support::TestApi;
+use support::manager_approvals::{ROUTING, applying, audited, listed, route_to_managers, without};
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
@@ -341,7 +265,10 @@ async fn only_those_who_manage_access_policies_set_the_risks() {
     let api = TestApi::start().await;
     let paul = api.sign_in(user::PAUL).await;
     let marc = api.sign_in(user::MARC).await;
-    assert_eq!(paul.get(ROUTING).await.json()["managerRisks"], json!([]));
+    let shown = paul.get(ROUTING).await.json();
+    assert_eq!(shown["managerRisks"], json!([]));
+    // No mail relay here: nobody is e-mailed (ADR-060).
+    assert_eq!(shown["notifiesByEmail"], false);
     let refused = marc
         .put(ROUTING, json!({ "managerRisks": ["write"] }))
         .await;

@@ -19,6 +19,7 @@ use mimorya_core::autonomy::{AutonomyLevel, AutonomyPolicy};
 use mimorya_db::Database;
 use mimorya_db::repositories::runs::{RunRow, RunStatus};
 
+use super::approval_notice::ApprovalNotifier;
 use super::context::{build_run_system_prompt, build_run_tools, recall_memories};
 use super::db_ports::{RunScope, engine_ports};
 use super::outcome::{CRASH_MESSAGE, record_crash};
@@ -38,6 +39,8 @@ pub struct RunExecutor {
     pub prices: Arc<PriceTable>,
     pub connectors: Arc<ConnectorService>,
     pub bus: Arc<RunEventBus>,
+    /// Tells a manager a request awaits them (ADR-060).
+    pub notifier: ApprovalNotifier,
     pub assistant_name: String,
     pub llm_judge: bool,
 }
@@ -77,6 +80,7 @@ impl RunExecutor {
             scope,
             self.bus.clone(),
             self.access.clone(),
+            self.notifier.clone(),
         );
         // A run taken up that crashes says which actions to check.
         let message = match &mode {

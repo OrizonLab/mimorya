@@ -23,13 +23,20 @@ async function mails(): Promise<Mail[]> {
 /**
  * The link to `page` in the last e-mail sent to `to` (the API writes them to
  * `E2E_MAIL_DIR`), skipping the first `after` ones and waiting for it: some
- * are sent in the background.
+ * are sent in the background. Invitation and reset links carry a token after
+ * `#`; the approvals link does not.
  */
-export async function lastLink(to: string, page: 'invitation' | 'reset-password', after = 0) {
+export async function lastLink(
+  to: string,
+  page: 'invitation' | 'reset-password' | 'approvals',
+  after = 0,
+) {
   for (let attempt = 0; attempt < 50; attempt++) {
     const received = (await mails()).filter((mail) => mail.to === to).slice(after);
     for (const mail of received.reverse()) {
-      const link = mail.text.split('\n').find((line) => line.includes(`/${page}#`));
+      const link = mail.text
+        .split('\n')
+        .find((line) => line.includes(`/${page}#`) || line.trim().endsWith(`/${page}`));
       if (link) return { link: link.trim(), mail };
     }
     await new Promise((resolve) => setTimeout(resolve, 200));

@@ -1,5 +1,6 @@
 //! The risks whose actions the company's managers validate (ADR-059):
-//! read and replaced by those who manage its access policies.
+//! read and replaced by those who manage its access policies, who also
+//! learn whether managers are e-mailed (ADR-060).
 
 use axum::Json;
 use axum::extract::State;
@@ -23,6 +24,7 @@ pub async fn show(
             .iter()
             .map(|risk| stored_text("manager risk", risk))
             .collect::<anyhow::Result<_>>()?,
+        notifies_by_email: state.mailer.is_some(),
     }))
 }
 
