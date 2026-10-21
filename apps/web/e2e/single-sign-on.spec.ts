@@ -3,16 +3,24 @@
 // (write-only), then renames it and changes its domains without retyping
 // the secret, which is kept; a collaborator is offered it from their
 // address, goes to the provider and comes back signed in. Disabled, it is
-// offered to nobody; deleted, it is gone. A failed return lands on the
-// sign-in page with a message. The provider is
+// offered to nobody; deleted, it is gone. An invited collaborator activates
+// the account through it, from the invitation's page, without choosing a
+// password; « Mon compte » then says it has none (ADR-064). A failed return lands on the sign-in page with a
+// message. The provider is
 // the end-to-end server's own, an OpenID Connect provider on the private
 // network signing in whoever the sign-in names (`IDP_ADDRESS` of
 // `crates/api/examples/e2e_server`).
 // Whatever happens, the provider is removed, and the accounts tied to it
 // with it.
-import type { IdentityProvidersView } from '../lib/api/contract';
+import type {
+  Directory,
+  IdentityProvidersView,
+  NewAccount,
+  NewIdentityProvider,
+} from '../lib/api/contract';
 import { cardWith, openAdmin } from './support/admin';
-import { demo, expect, noError, test } from './support/fixtures';
+import { demo, expect, noError, signIn, test } from './support/fixtures';
+import { lastLink } from './support/mail';
 
 const PROVIDER = 'Annuaire e2e';
 const RENAMED = `${PROVIDER} renommé`;
@@ -109,6 +117,56 @@ test('the company declares, changes and removes the provider its people sign in 
   await page.getByRole('tab', { name: 'Connexion' }).click();
   await expect(page.getByText('Aucun fournisseur d’identité')).toBeVisible();
   await noError(page);
+});
+
+test('an invited collaborator activates the account through the provider', async ({
+  page,
+  newContext,
+}) => {
+  // An address of this test's own; the account keeps no business role.
+  const email = 'ines.morel.sso@neo-maintenance.example';
+  await signIn(page, demo.paul);
+  // Declared through the API: its screens are the first test's.
+  const declared = await page.request.post('/api/admin/identity-providers', {
+    headers: WRITE,
+    data: {
+      kind: 'oidc',
+      name: PROVIDER,
+      issuer: ISSUER,
+      clientId: CLIENT_ID,
+      clientSecret: CLIENT_SECRET,
+      domains: ['neo-maintenance.example'],
+    } satisfies NewIdentityProvider,
+  });
+  expect(declared.status()).toBe(201);
+  const created = await page.request.post('/api/admin/users', {
+    headers: WRITE,
+    data: { email, displayName: 'Inès Morel' } satisfies NewAccount,
+  });
+  expect(created.status()).toBe(201);
+
+  // From the e-mailed invitation, activated through the provider.
+  const { link } = await lastLink(email, 'invitation');
+  const newcomer = await (await newContext()).newPage();
+  await newcomer.goto(link);
+  await expect(newcomer.getByText('Bienvenue, Inès Morel')).toBeVisible();
+  await newcomer.getByRole('button', { name: `Activer mon compte avec ${PROVIDER}` }).click();
+  await newcomer.waitForURL('**/chat');
+  const me = await newcomer.request.get('/api/auth/me');
+  expect(((await me.json()) as { user: { email: string } }).user.email).toBe(email);
+  // No password to change: « Mon compte » says so.
+  await newcomer.goto('/account');
+  await expect(newcomer.getByText('Votre compte n’a pas de mot de passe')).toBeVisible();
+  await expect(newcomer.getByLabel('Mot de passe actuel')).toHaveCount(0);
+  await noError(newcomer);
+
+  // Active as the API records it; the link spent.
+  const listed = await page.request.get('/api/admin/users');
+  const { users } = (await listed.json()) as Directory;
+  expect(users.find((u) => u.email === email)?.status).toBe('active');
+  const later = await (await newContext()).newPage();
+  await later.goto(link);
+  await expect(later.getByText('Ce lien d’invitation n’est plus valable')).toBeVisible();
 });
 
 test('a failed return comes back to the sign-in page, which says so', async ({ page }) => {

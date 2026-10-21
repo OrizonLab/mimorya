@@ -32,6 +32,9 @@ pub struct MeUser {
     pub org_unit: Option<OrgUnitRef>,
     /// Temporary password: nothing else is reachable until it is replaced.
     pub must_change_password: bool,
+    /// False when the account signs in through its company's identity
+    /// provider only (ADR-064): it has no password to change.
+    pub has_password: bool,
 }
 
 #[derive(Debug, Serialize, TS)]

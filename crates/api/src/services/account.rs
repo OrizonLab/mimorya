@@ -1,7 +1,8 @@
 //! The signed-in user's own account: changing their password (e.g. after an
 //! administrator gave them a temporary one). Other sessions end; the caller's
 //! stays. A reset or a revocation made meanwhile by an administrator wins:
-//! the change is refused rather than silently undoing it.
+//! the change is refused rather than silently undoing it. An account without
+//! a password (accepted through its provider, ADR-064) has none to change.
 
 use mimorya_core::DomainError;
 use mimorya_db::Database;
@@ -14,6 +15,18 @@ use uuid::Uuid;
 
 use crate::auth::credentials::{hash_password_async, verify_password_async};
 use crate::services::AccessContext;
+
+const NO_PASSWORD: &str = "Votre compte n’a pas de mot de passe : vous vous connectez par le \
+     fournisseur d’identité de votre entreprise.";
+
+/// Whether the signed-in account has a password: one accepted through its
+/// company's identity provider has none (ADR-064).
+pub async fn has_password(db: &Database, access: &AccessContext) -> anyhow::Result<bool> {
+    let mut tx = db.begin(access.subject.tenant_id).await?;
+    let hash = get_password_hash(&mut tx, access.subject.user_id).await?;
+    tx.commit().await?;
+    Ok(hash.is_some())
+}
 
 /// How a change ended, when no race or failure refused it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,6 +47,10 @@ pub async fn change_password(
     let mut tx = db.begin(tenant_id).await?;
     let current_hash = get_password_hash(&mut tx, user_id).await?;
     tx.commit().await?;
+    if current_hash.is_none() {
+        // Nothing to guess: the account signs in through its provider.
+        return Err(DomainError::conflict(NO_PASSWORD).into());
+    }
     let verified = verify_password_async(current_hash.clone(), current_password).await;
     let (true, Some(current_hash)) = (verified, current_hash) else {
         return Ok(PasswordChange::WrongCurrentPassword);

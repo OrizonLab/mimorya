@@ -106,7 +106,8 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   tout fournisseur OpenID Connect, déclarés par l'administration (`settings:manage`) avec
   leurs domaines d'e-mail ; secret client dans le coffre (ADR-024), jamais relu.
   - Un fournisseur ne sert que les comptes de son entreprise : celui qui est proposé
-    pour une adresse est celui de l'entreprise du compte, actif, qui couvre son domaine
+    pour une adresse est celui de l'entreprise du compte, actif ou invité, qui couvre son
+    domaine
     (même réponse pour une adresse sans compte ou d'un compte désactivé) ; déclarer le
     domaine d'une autre entreprise ne détourne aucun de ses comptes.
   - Flux par code avec PKCE, `state` et `nonce` ; la tentative voyage dans un cookie
@@ -119,15 +120,16 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
     (clés, point d'échange, adresse d'autorisation) est contrôlée comme son émetteur
     avant la connexion : `https`, adresse IP en clair publique (pas de SSRF vers le
     réseau de l'exploitant).
-  - Pas de création de compte : la première connexion relie un compte actif existant au
+  - Pas de création de compte : la première connexion relie un compte existant au
     sujet immuable du fournisseur (`oid` pour Microsoft), seulement par une adresse que
     le fournisseur garantit (Microsoft : le nom de connexion, ou `email` avec
-    `xms_edov`), dans un domaine déclaré ; ensuite, seul le sujet compte.
+    `xms_edov`), dans un domaine déclaré ; ensuite, seul le sujet compte. Un compte
+    invité accepte ainsi son invitation : actif sans mot de passe, son lien supprimé ;
+    désactivé puis réactivé, il reste actif (ADR-064).
     La session s'ouvre comme pour un mot de passe ; chaque refus est tracé avec sa
     raison dans l'entreprise de la tentative, jamais un jeton ni un code.
-  - Suite : SSO obligatoire par domaine, acceptation d'une invitation par le
-    fournisseur, SAML, provisionnement SCIM (phase 3), MFA déléguée à l'IdP ; MFA TOTP
-    locale si besoin.
+  - Suite : SSO obligatoire par domaine, SAML, provisionnement SCIM (phase 3), MFA
+    déléguée à l'IdP ; MFA TOTP locale si besoin.
 
 ## 5. Autorisations
 

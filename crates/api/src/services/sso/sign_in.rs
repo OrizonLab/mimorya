@@ -1,15 +1,15 @@
 //! The provider's return (ADR-063): the attempt the browser kept must match
 //! it; the code is exchanged and the identity token verified; the account
 //! is the one tied to the person's subject at this provider, or, at the
-//! first sign-in, the active account of the company with the address the
-//! provider vouches for, in a declared domain, which gets tied. The session
-//! then opens as with a password. Every refusal says why, for the audit.
+//! first sign-in, the account of the company with the address the provider
+//! vouches for, in a declared domain, which gets tied. Active, or invited
+//! and then accepted (ADR-064), its session opens as with a password.
+//! Every refusal says why, for the audit.
 
 use axum::http::HeaderMap;
 use chrono::Utc;
 use mimorya_core::identity_providers::{ProviderKind, email_domain, proven_identity};
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
-use mimorya_db::repositories::auth::lock_login_state;
 use mimorya_db::repositories::identity_providers::{IdentityProviderRow, get_identity_provider};
 use mimorya_db::repositories::tenants::tenant_status;
 use mimorya_db::repositories::user_identities::{
@@ -19,6 +19,7 @@ use serde_json::json;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
+use super::admission::{Admission, admit};
 use super::attempt::{self, Attempt};
 use super::oidc::{self, Exchange};
 use super::{SsoService, client_secret_name};
@@ -196,7 +197,7 @@ impl SsoService {
             return Err(at("Entreprise suspendue"));
         }
         let mut audit = Vec::new();
-        let user_id = match find_identity(&mut tx, provider_id, &proven.subject)
+        let (user_id, linked) = match find_identity(&mut tx, provider_id, &proven.subject)
             .await
             .map_err(|e| internal(&e))?
         {
@@ -204,7 +205,7 @@ impl SsoService {
                 touch_identity(&mut tx, linked.id)
                     .await
                     .map_err(|e| internal(&e))?;
-                linked.user_id
+                (linked.user_id, true)
             }
             None => {
                 let email = proven
@@ -226,33 +227,39 @@ impl SsoService {
                         at("Compte déjà relié à une autre identité de ce fournisseur").of(user_id),
                     );
                 }
-                link_identity(
-                    &mut tx,
-                    NewIdentity {
-                        tenant_id,
-                        provider_id,
-                        user_id,
-                        subject: &proven.subject,
-                    },
-                )
-                .await
-                .map_err(|e| internal(&e))?
-                .ok_or_else(|| at("Identité reliée entre-temps").of(user_id))?;
-                audit.push(
-                    AuditEntry::new(tenant_id, "user", "auth.identity_linked", "success")
-                        .resource("identity_provider", provider_id),
-                );
-                user_id
+                (user_id, false)
             }
         };
-        // The account's row locked, as a password sign-in does: a disabling
-        // committed meanwhile wins.
-        let active = lock_login_state(&mut tx, user_id)
+        // The account's row first, as a password or an invitation's link
+        // takes it: an acceptance, a resend or a disabling meanwhile waits.
+        let admission = admit(&mut tx, user_id)
             .await
             .map_err(|e| internal(&e))?
-            .is_some_and(|(_, status)| status == "active");
-        if !active {
-            return Err(at("Compte inactif").of(user_id));
+            .ok_or_else(|| at("Compte inactif").of(user_id))?;
+        if !linked {
+            link_identity(
+                &mut tx,
+                NewIdentity {
+                    tenant_id,
+                    provider_id,
+                    user_id,
+                    subject: &proven.subject,
+                },
+            )
+            .await
+            .map_err(|e| internal(&e))?
+            .ok_or_else(|| at("Identité reliée entre-temps").of(user_id))?;
+            audit.push(
+                AuditEntry::new(tenant_id, "user", "auth.identity_linked", "success")
+                    .resource("identity_provider", provider_id),
+            );
+        }
+        if let Admission::Accepted = admission {
+            audit.push(
+                AuditEntry::new(tenant_id, "user", "user.invitation_accepted", "success")
+                    .resource("user", user_id)
+                    .metadata(json!({ "method": "sso", "providerId": provider_id })),
+            );
         }
         let token = open_session(&mut tx, user_id, context, headers)
             .await

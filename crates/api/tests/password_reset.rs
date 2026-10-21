@@ -121,7 +121,8 @@ async fn asking_reveals_nothing_and_links_only_active_accounts() {
     let invitations = api.mail.sent().len();
 
     let owner = sqlx::PgPool::connect(owner_url()).await.unwrap();
-    // An active account without a password (as a future single sign-on one).
+    // An active account without a password, as one accepted through the
+    // identity provider (ADR-064).
     sqlx::query("update users set password_hash = null where id = $1")
         .bind(user::NADIA)
         .execute(&owner)

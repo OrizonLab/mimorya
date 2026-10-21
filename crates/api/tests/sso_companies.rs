@@ -1,5 +1,6 @@
 //! A company's identity provider serves only that company's accounts
-//! (ADR-063), even for an address of the same domain in another company;
+//! (ADR-063), even for an address of the same domain in another company,
+//! active or invited there (ADR-064);
 //! another company may declare the same domain for its own; an attempt
 //! opens only in its company; a suspended company, or a server without its
 //! master key, signs nobody in this way.
@@ -91,6 +92,32 @@ async fn a_provider_serves_only_its_own_company_s_accounts() {
     assert_eq!(discover(&api, INTRUS).await["name"], "Annuaire Néo");
 
     remove(&intrus, &theirs).await;
+    remove(&paul, &neo).await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn another_company_s_invited_account_is_never_accepted_here() {
+    let api = TestApi::start_with(&SSO_DEPLOYMENT).await;
+    let idp = MockIdentityProvider::start().await;
+    let paul = api.sign_in(user::PAUL).await;
+    let neo = declare(&paul, declaration(&idp)).await;
+    // Still invited, its address of Néo's domain (ADR-064).
+    let address = "invite.intrus@neo-maintenance.example";
+    let other = create(&api, "intrus-invite", address).await;
+
+    assert_eq!(discover(&api, address).await, json!(null));
+    let since_other = latest_entry_of(&api, other.tenant_id).await;
+    idp.sign_in_as(Person::verified("kc-invite-intrus", address));
+    assert_refused(&sign_in(&api, &idp, &email(user::NADIA)).await);
+    assert!(
+        sso_logins(&api, other.tenant_id, since_other)
+            .await
+            .is_empty()
+    );
+    // Untouched: still invited, its own link still serves.
+    let accepted = accept(&api, &other.invitation.link, INVITED_PASSWORD).await;
+    assert_eq!(accepted.status, StatusCode::OK, "{}", accepted.text());
     remove(&paul, &neo).await;
 }
 

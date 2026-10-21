@@ -28,7 +28,9 @@ Repères à l'intérieur des crates :
 
 - `core/src/authz/` (types, moteur, conditions ABAC, organigramme), `core/src/tools/`
   (contrat d'outil, outils typés), `core/src/skill_rules.rs` (ce qu'une compétence peut
-  contenir, ADR-052), `core/src/demo/` (entreprise fictive par thème).
+  contenir, ADR-052), `core/src/identity_providers/` (fournisseurs d'identité : émetteur de
+  chaque type, domaines, ce que prouve un jeton, ADR-063), `core/src/demo/` (entreprise
+  fictive par thème).
 - `db/migrations/` (SQL numéroté, source de vérité du schéma),
   `db/src/repositories/` (un fichier par entité), `db/src/seed/` (organisation,
   connecteurs, mémoires, compétences de démonstration), `db/src/testing.rs`.
@@ -53,6 +55,9 @@ Repères à l'intérieur des crates :
   `api/src/services/llm.rs` (fournisseur de modèle de
   chaque entreprise), `api/src/services/invitations/` (liens d'invitation, ADR-027),
   `api/src/services/password_reset/` (mot de passe oublié, ADR-028),
+  `api/src/services/sso/` (connexion par le fournisseur d'identité de l'entreprise :
+  tentative scellée, OpenID Connect, adresses contrôlées, liaison des comptes, acceptation
+  des invitations, ADR-063, ADR-064 ; configuration dans `services/admin/`),
   `api/src/services/provisioning/` et `api/src/bin/admin/` (commandes d'exploitation :
   migrations, création d'une entreprise réelle et de son administrateur, ADR-033),
   `api/src/mail/` (envoi SMTP), `api/src/secrets/` (chiffrement AES-256-GCM des secrets),
@@ -65,7 +70,7 @@ Repères à l'intérieur des crates :
   au contrôle réactivé, ADR-043), `web/lib/labels.ts`, `web/lib/format.ts`, `web/proxy.ts` et
   `web/lib/security/` (CSP à nonce par page, ADR-030), `web/e2e/` (tests de bout en
   bout, un fichier par parcours, `support/`) et `api/examples/e2e_server/` (l'API qu'ils
-  pilotent, ADR-031).
+  pilotent, avec un fournisseur OpenID Connect simulé, ADR-031, ADR-063).
 - `infra/` : `docker/` (images de l'API et de l'interface, liste des images publiées
   `images.json`, test de fumée de la démonstration, test d'installation de la production,
   vérifications partagées `checks.sh`), `caddy/`

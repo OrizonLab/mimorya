@@ -3,9 +3,11 @@
 //! The sign-in page learns from an address whether its account's company
 //! offers a provider; the start sends the browser there with a sealed
 //! attempt; the return proves the person, ties or finds the account, and
-//! opens its session as a password sign-in does. No account is created.
+//! opens its session as a password sign-in does. No account is created; an
+//! invited one accepts its invitation this way (ADR-064).
 
 mod address;
+mod admission;
 mod attempt;
 mod http;
 mod oidc;

@@ -149,8 +149,8 @@ pub struct ProviderLookup {
     pub name: String,
 }
 
-/// The enabled provider covering the domain of the active account with
-/// this address, in an active company.
+/// The enabled provider covering the domain of the account with this
+/// address, active or invited (ADR-064), in an active company.
 pub async fn find_identity_provider(
     pool: &PgPool,
     email: &str,
