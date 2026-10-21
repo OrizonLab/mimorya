@@ -61,14 +61,14 @@ async fn listed(client: &Client<'_>, run_id: &str) -> Option<Value> {
         .cloned()
 }
 
-/// Takes `approval:decide` from `user_id`; returns the policy to delete.
-async fn without_decide_right(paul: &Client<'_>, user_id: Uuid) -> String {
+/// Takes `permission` from `user_id`; returns the policy to delete.
+async fn without(paul: &Client<'_>, user_id: Uuid, permission: &str) -> String {
     let only =
         json!({ "op": "eq", "left": { "attr": "subject.userId" }, "right": { "value": user_id } });
     let created = paul
         .post(
             "/admin/policies",
-            json!({ "description": "Ne valide plus", "permissions": ["approval:decide"], "condition": only }),
+            json!({ "description": "Droit retiré", "permissions": [permission], "condition": only }),
         )
         .await;
     assert_eq!(created.status, StatusCode::CREATED, "{}", created.text());
@@ -111,6 +111,7 @@ async fn the_requester_s_manager_alone_decides_and_the_run_goes_on_for_the_reque
     assert_eq!(approval["approver"]["id"], json!(user::MARC));
     assert_eq!(approval["requestedFor"]["id"], json!(user::NADIA));
     assert_eq!(approval["canDecide"], false);
+    assert_eq!(approval["canWithdraw"], true);
     let decision = format!("/approvals/{}/decision", approval["id"].as_str().unwrap());
     let approve = json!({ "approved": true });
 
@@ -118,13 +119,18 @@ async fn the_requester_s_manager_alone_decides_and_the_run_goes_on_for_the_reque
     let mine = nadia.post(&decision, approve.clone()).await;
     assert_eq!(mine.status, StatusCode::FORBIDDEN, "{}", mine.text());
     assert!(mine.text().contains("votre responsable"), "{}", mine.text());
-    let other_lead = julien.post(&decision, approve.clone()).await;
-    assert_eq!(other_lead.status, StatusCode::NOT_FOUND);
+    for approved in [true, false] {
+        let other_lead = julien
+            .post(&decision, json!({ "approved": approved }))
+            .await;
+        assert_eq!(other_lead.status, StatusCode::NOT_FOUND, "{approved}");
+    }
     assert!(listed(&julien, &run_id).await.is_none());
 
     // Marc sees it to decide, for Nadia.
     let to_decide = listed(&marc, &run_id).await.expect("listed to her manager");
     assert_eq!(to_decide["canDecide"], true);
+    assert_eq!(to_decide["canWithdraw"], false);
     assert_eq!(to_decide["requestedFor"]["id"], json!(user::NADIA));
     let decided = marc.post(&decision, approve).await;
     assert_eq!(decided.status, StatusCode::OK, "{}", decided.text());
@@ -150,6 +156,26 @@ async fn the_requester_s_manager_alone_decides_and_the_run_goes_on_for_the_reque
     );
     let detail = nadia.get(&format!("/runs/{run_id}")).await.json();
     assert_eq!(detail["run"]["status"], "completed", "{detail}");
+    // Decided, nobody withdraws it.
+    let mine = listed(&nadia, &run_id).await.unwrap();
+    assert_eq!(mine["canWithdraw"], false);
+
+    // Her own to decide again: refused, not withdrawn.
+    let (run_id, approval) = applying(
+        &api,
+        &nadia,
+        ("INT-2052", "09:00"),
+        "Le planning de INT-2052 est inchangé.",
+    )
+    .await;
+    let approval = approval.expect("a request she decides");
+    assert_eq!(approval["canDecide"], true);
+    assert_eq!(approval["canWithdraw"], false);
+    let decision = format!("/approvals/{}/decision", approval["id"].as_str().unwrap());
+    let refused = nadia.post(&decision, json!({ "approved": false })).await;
+    assert_eq!(refused.status, StatusCode::OK, "{}", refused.text());
+    api.idle().await;
+    assert_eq!(listed(&nadia, &run_id).await.unwrap()["status"], "rejected");
 }
 
 #[tokio::test]
@@ -173,7 +199,7 @@ async fn a_manager_who_no_longer_holds_the_right_cannot_decide() {
 
     // Named when the request was made, Marc loses the right meanwhile: he
     // no longer sees it, nor decides it.
-    let policy = without_decide_right(&paul, user::MARC).await;
+    let policy = without(&paul, user::MARC, "approval:decide").await;
     assert!(listed(&marc, &run_id).await.is_none());
     let refused = marc.post(&decision, json!({ "approved": true })).await;
     assert_eq!(refused.status, StatusCode::FORBIDDEN, "{}", refused.text());
@@ -204,7 +230,14 @@ async fn whom_the_agent_acts_for_withdraws_a_request_nobody_can_decide_any_more(
     route_to_managers(&paul, &[]).await;
     let approval = approval.expect("a request awaiting her manager");
     let decision = format!("/approvals/{}/decision", approval["id"].as_str().unwrap());
-    let policy = without_decide_right(&paul, user::MARC).await;
+    let policy = without(&paul, user::MARC, "approval:decide").await;
+
+    // Withdrawing resumes the agent: not without it.
+    let no_agent = without(&paul, user::NADIA, "agent:use").await;
+    assert_eq!(listed(&nadia, &run_id).await.unwrap()["canWithdraw"], false);
+    let refused = nadia.post(&decision, json!({ "approved": false })).await;
+    assert_eq!(refused.status, StatusCode::FORBIDDEN, "{}", refused.text());
+    assert_eq!(paul.delete(&no_agent).await.status, StatusCode::OK);
 
     // Still not hers to approve, but hers to withdraw: the run goes on
     // without the action.

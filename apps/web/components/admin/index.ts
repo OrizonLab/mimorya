@@ -1,3 +1,4 @@
+export { ApprovalRoutingTab } from './approval-routing/approval-routing-tab';
 export { AuditTab } from './audit-tab';
 export { ConnectorsTab } from './connectors/connectors-tab';
 export { LlmTab } from './llm/llm-tab';

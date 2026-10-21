@@ -38,8 +38,11 @@ pub struct Approval {
     /// was made (ADR-059); `null` once that manager's account is gone.
     pub approver: Option<ApprovalPerson>,
     pub decided_by: Option<ApprovalPerson>,
-    /// Whether the reader may decide it now.
+    /// Whether the reader may decide it now: approve or refuse it.
     pub can_decide: bool,
+    /// Whether the reader may withdraw it now: made for them, a manager
+    /// decides it (ADR-059). Withdrawn, it is refused.
+    pub can_withdraw: bool,
 }
 
 /// Someone a request names.
@@ -51,7 +54,11 @@ pub struct ApprovalPerson {
 }
 
 impl Approval {
-    pub fn from_view(view: &ApprovalView, can_decide: bool) -> anyhow::Result<Self> {
+    pub fn from_view(
+        view: &ApprovalView,
+        can_decide: bool,
+        can_withdraw: bool,
+    ) -> anyhow::Result<Self> {
         let a = &view.approval;
         let person = |id: Option<Uuid>, name: &Option<String>| match (id, name) {
             (Some(id), Some(name)) => Some(ApprovalPerson {
@@ -89,6 +96,7 @@ impl Approval {
             approver,
             decided_by: person(a.decided_by_user_id, &view.decided_by_name),
             can_decide,
+            can_withdraw,
         })
     }
 }

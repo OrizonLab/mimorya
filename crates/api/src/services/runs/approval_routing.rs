@@ -94,6 +94,16 @@ pub fn can_decide(
     approval.status == "pending" && approval.decider() == Some(viewer.subject.user_id) && entitled
 }
 
+/// Whether `viewer` may withdraw `approval`: pending, made for them and
+/// decided by a manager, and they may still use the agent (withdrawing
+/// resumes it). One made for them that they decide, they refuse.
+pub fn can_withdraw(viewer: &AccessContext, approval: &ApprovalRow) -> bool {
+    approval.status == "pending"
+        && approval.routed_to_manager()
+        && approval.requested_for_user_id == viewer.subject.user_id
+        && viewer.has("agent:use")
+}
+
 /// Whether `viewer` is shown `approval`: made for them, decided, or one they
 /// may still decide. A manager who lost the right no longer sees what
 /// waits, its exact parameters included.

@@ -13,7 +13,7 @@ use crate::app::AppState;
 use crate::contract::{Approval, ApprovalDecided, ApprovalList, ApprovalVerdict};
 use crate::http::{ApiResult, Body, PathId, Query};
 use crate::plugins::Auth;
-use crate::services::runs::{DecisionInput, can_decide, shown_to};
+use crate::services::runs::{DecisionInput, can_decide, can_withdraw, shown_to};
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -54,7 +54,7 @@ async fn list(
             .filter(|v| shown_to(&viewer, &v.approval, v.requested_for_unit_id))
             .map(|v| {
                 let decides = can_decide(&viewer, &v.approval, v.requested_for_unit_id);
-                Approval::from_view(v, decides)
+                Approval::from_view(v, decides, can_withdraw(&viewer, &v.approval))
             })
             .collect::<anyhow::Result<_>>()?,
     }))
@@ -83,7 +83,7 @@ async fn decide(
         .ok_or_else(|| anyhow::anyhow!("approval decided then gone"))?;
     tx.commit().await?;
     Ok(Json(ApprovalDecided {
-        approval: Approval::from_view(&decided, false)?,
+        approval: Approval::from_view(&decided, false, false)?,
         resumed: result.resumed,
     }))
 }
