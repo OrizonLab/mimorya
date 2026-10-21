@@ -45,6 +45,12 @@ pub fn propose(intervention_id: &str, start_time: &str) -> ScriptedStep {
 
 /// Applies the proposal created by the previous step.
 pub fn apply_proposal(text: &str) -> ScriptedStep {
+    apply_proposal_times(text, 1)
+}
+
+/// Asks `times` in one step to apply the proposal the previous step created:
+/// as many validation requests.
+pub fn apply_proposal_times(text: &str, times: usize) -> ScriptedStep {
     let text = text.to_string();
     ScriptedStep::dynamic(move |request| {
         let content = first_result(request);
@@ -52,9 +58,7 @@ pub fn apply_proposal(text: &str) -> ScriptedStep {
             .captures(&content)
             .map(|c| c[1].to_string())
             .unwrap_or_else(|| panic!("no proposal in {content}"));
-        ScriptedReply::calls(
-            text.clone(),
-            vec![call("planning_apply", json!({ "proposalId": proposal_id }))],
-        )
+        let apply = call("planning_apply", json!({ "proposalId": proposal_id }));
+        ScriptedReply::calls(text.clone(), vec![apply; times])
     })
 }

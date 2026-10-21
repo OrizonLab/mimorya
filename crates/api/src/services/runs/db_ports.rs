@@ -167,7 +167,6 @@ impl ApprovalStore for DbPorts {
             Route::Manager(manager) => ApprovalRouting::Manager(manager),
             Route::Nobody => return Ok(ApprovalPlacement::Unroutable(NOBODY_VALIDATES.into())),
         };
-        let to_manager = matches!(routing, ApprovalRouting::Manager(_));
         let mut tx = self.tx().await?;
         let row = approvals::create_approval(
             &mut tx,
@@ -187,9 +186,6 @@ impl ApprovalStore for DbPorts {
         )
         .await?;
         tx.commit().await?;
-        if to_manager {
-            self.notifier.notify(tenant_id, row.id);
-        }
         Ok(ApprovalPlacement::Pending(row.id))
     }
 }
@@ -235,6 +231,16 @@ impl RunStore for DbPorts {
     }
 
     async fn finish(&self, outcome: &RunOutcome) -> anyhow::Result<()> {
-        persist_outcome(&self.db, self.scope, outcome).await
+        persist_outcome(&self.db, self.scope, outcome).await?;
+        // Paused, and so decidable: the managers of its requests are told,
+        // once per pause (ADR-060).
+        if let RunOutcome::AwaitingApproval { approvals, .. } = outcome {
+            let ids = approvals.iter().map(|a| a.approval_id).collect();
+            let RunScope {
+                tenant_id, run_id, ..
+            } = self.scope;
+            self.notifier.notify(tenant_id, run_id, ids);
+        }
+        Ok(())
     }
 }

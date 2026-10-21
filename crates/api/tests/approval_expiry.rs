@@ -256,10 +256,8 @@ async fn each_company_s_requests_expire_in_their_own_company() {
     let api = TestApi::start().await;
     let foreign = paused_on_overdue(&api, OTHER_TENANT_ID, OTHER_USER_ID).await;
     let own = paused_on_overdue(&api, tenant::ID, user::MARC).await;
-    api.script(vec![
-        ScriptedStep::text("Fait."),
-        ScriptedStep::text("Fait."),
-    ]);
+    // Only Marc's run calls the model: the other contact may not use it.
+    api.script(vec![ScriptedStep::text("Fait.")]);
 
     let runs = &api.app.services.runs;
     runs.claim_execution().await.unwrap();

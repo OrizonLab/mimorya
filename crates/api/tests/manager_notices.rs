@@ -1,15 +1,18 @@
-//! E-mailing the manager a request awaits (ADR-060): only a request routed to
-//! a manager, to that manager, naming whom it is for and where to decide,
-//! never the action nor its parameters; audited either way, and a message
-//! the relay refuses leaves the request waiting.
+//! E-mailing the manager requests await (ADR-060): only requests routed to a
+//! manager, to that manager, once per pause of the run, naming whom they are
+//! for and where to decide, never the actions nor their parameters; audited
+//! either way, each request notified once, and a message the relay refuses
+//! leaves the requests waiting.
 
 mod support;
 
 use axum::http::StatusCode;
+use mimorya_agent::testing::ScriptedStep;
 use mimorya_core::demo::{tenant, user};
-use mimorya_db::repositories::approval_notices::approval_notice;
+use mimorya_db::repositories::approval_notices::approval_notices;
 use serde_json::{Value, json};
 use support::manager_approvals::{ROUTING, applying, route_to_managers};
+use support::planning::{apply_proposal_times, propose};
 use support::{TestApi, WEB_ORIGIN, email};
 use uuid::Uuid;
 
@@ -34,9 +37,10 @@ async fn notices(api: &TestApi, run_id: &str) -> Vec<(String, Value)> {
 /// Whom a notice of `approval` would go to now, if anyone.
 async fn recipient(api: &TestApi, approval: &Value) -> Option<String> {
     let id: Uuid = approval["id"].as_str().unwrap().parse().unwrap();
+    let run: Uuid = approval["runId"].as_str().unwrap().parse().unwrap();
     let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
-    let notice = approval_notice(&mut tx, id).await.unwrap();
-    notice.map(|n| n.approver_email)
+    let notices = approval_notices(&mut tx, run, &[id]).await.unwrap();
+    notices.into_iter().next().map(|n| n.approver_email)
 }
 
 #[tokio::test]
@@ -87,7 +91,10 @@ async fn the_manager_is_told_where_to_decide_never_what() {
     }
     assert_eq!(
         notices(&api, &run_id).await,
-        [("success".to_string(), json!({ "approverId": user::MARC }))]
+        [(
+            "success".to_string(),
+            json!({ "approverId": user::MARC, "grouped": 1 })
+        )]
     );
 
     let decision = format!("/approvals/{}/decision", approval["id"].as_str().unwrap());
@@ -114,7 +121,10 @@ async fn a_message_the_relay_refuses_leaves_the_request_waiting() {
     assert_eq!(approval["approver"]["id"], json!(user::MARC));
     assert_eq!(
         notices(&api, &run_id).await,
-        [("failure".to_string(), json!({ "approverId": user::MARC }))]
+        [(
+            "failure".to_string(),
+            json!({ "approverId": user::MARC, "grouped": 1 })
+        )]
     );
     let detail = nadia.get(&format!("/runs/{run_id}")).await.json();
     assert_eq!(detail["run"]["status"], "awaiting_approval", "{detail}");
@@ -163,4 +173,65 @@ async fn only_a_request_still_awaiting_an_active_manager_is_e_mailed() {
     assert_eq!(rejected.status, StatusCode::OK, "{}", rejected.text());
     api.idle().await;
     assert_eq!(recipient(&api, &routed).await, None);
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn the_requests_of_one_pause_make_one_message() {
+    let api = TestApi::start_with_mailer().await;
+    let paul = api.sign_in(user::PAUL).await;
+    let nadia = api.sign_in(user::NADIA).await;
+    let marc = api.sign_in(user::MARC).await;
+    route_to_managers(&paul, &["write"]).await;
+    api.script(vec![
+        propose("INT-2049", "14:00"),
+        apply_proposal_times("", 2),
+        ScriptedStep::text("Inchangé."),
+    ]);
+    let conversation = nadia.post("/conversations", json!({})).await.json();
+    let id = conversation["conversation"]["id"].as_str().unwrap();
+    let started = nadia
+        .post(
+            &format!("/conversations/{id}/messages"),
+            json!({ "content": "Planifie INT-2049" }),
+        )
+        .await
+        .json();
+    let run_id = started["runId"].as_str().unwrap().to_string();
+    api.idle().await;
+    route_to_managers(&paul, &[]).await;
+
+    // Two requests for Marc, one message, each request audited with it.
+    let waiting: Vec<Value> = marc.get("/approvals").await.json()["approvals"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|a| a["runId"] == run_id.as_str())
+        .cloned()
+        .collect();
+    assert_eq!(waiting.len(), 2);
+    let sent = api.mail.sent();
+    assert_eq!(sent.len(), 1, "{sent:?}");
+    assert_eq!(
+        sent[0].subject,
+        "2 actions de Nadia Benali attendent votre validation"
+    );
+    let grouped = (
+        "success".to_string(),
+        json!({ "approverId": user::MARC, "grouped": 2 }),
+    );
+    assert_eq!(notices(&api, &run_id).await, [grouped.clone(), grouped]);
+    // Notified, a request is not sent again, should the run pause on it anew.
+    for approval in &waiting {
+        assert_eq!(recipient(&api, approval).await, None);
+    }
+
+    for approval in &waiting {
+        let decision = format!("/approvals/{}/decision", approval["id"].as_str().unwrap());
+        let rejected = marc.post(&decision, json!({ "approved": false })).await;
+        assert_eq!(rejected.status, StatusCode::OK, "{}", rejected.text());
+    }
+    api.idle().await;
+    // Taken up, the run told nobody again.
+    assert_eq!(api.mail.sent().len(), 1);
 }
