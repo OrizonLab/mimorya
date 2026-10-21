@@ -2,9 +2,10 @@
 //! sign-in link, a provider that creates accounts makes one for a person of
 //! its domains whom the company has not invited: active, without a
 //! password, a role or a unit, named as the provider names them, audited.
-//! Never unless the provider says so, never outside its domains nor for an
-//! address it does not vouch for, never over another company's account; a
-//! link names only an enabled provider of an active company.
+//! Never unless the provider says so, never from a sign-in started from an
+//! address, never outside its domains nor for an address it does not vouch
+//! for, never over another company's account; a link names only an enabled
+//! provider of an active company.
 
 mod support;
 
@@ -16,9 +17,9 @@ use support::identity_provider::{MockIdentityProvider, Person};
 use support::refusals::latest_entry;
 use support::sso::{
     PROVIDERS, SSO_DEPLOYMENT, assert_refused, declaration, declare, location, remove, session,
-    sign_in_by_link, sso_logins, try_link, try_start_link,
+    sign_in, sign_in_by_link, sso_logins, try_link, try_start_link,
 };
-use support::{Client, TestApi, WEB_ORIGIN, owner_url};
+use support::{Client, TestApi, WEB_ORIGIN, email, owner_url};
 use uuid::Uuid;
 
 const NEW: &str = "zoe.nouvelle@neo-maintenance.example";
@@ -118,9 +119,37 @@ async fn the_company_link_creates_the_account_of_a_person_of_its_domains() {
     let since = latest_entry(&api).await;
     let again = sign_in_by_link(&api, &idp, &id).await;
     assert_eq!(location(&again), "/chat");
+    assert_eq!(location(&sign_in(&api, &idp, NEW).await), "/chat");
     assert!(creations(&api, since).await.is_empty());
     let logins = sso_logins(&api, tenant::ID, since).await;
-    assert_eq!(logins, vec![("success".into(), Some(account), None)]);
+    let success = ("success".to_string(), Some(account), None);
+    assert_eq!(logins, vec![success.clone(), success]);
+    remove(&paul, &id).await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_sign_in_started_from_an_address_never_creates_an_account() {
+    let api = TestApi::start_with(&SSO_DEPLOYMENT).await;
+    let idp = MockIdentityProvider::start().await;
+    let paul = api.sign_in(user::PAUL).await;
+    let id = declare(&paul, creating(&idp)).await;
+    // Nadia's address starts it; at the provider, someone it does not know
+    // signs in: the address suggested is only a suggestion.
+    let stranger = "sam.inconnu@neo-maintenance.example";
+    idp.sign_in_as(person("kc-sam", stranger, json!({ "name": "Sam Inconnu" })));
+    let since = latest_entry(&api).await;
+    assert_refused(&sign_in(&api, &idp, &email(user::NADIA)).await);
+    let logins = sso_logins(&api, tenant::ID, since).await;
+    assert_eq!(
+        logins[0].2.as_deref(),
+        Some("Aucun compte de l’entreprise pour cette adresse")
+    );
+    assert!(creations(&api, since).await.is_empty());
+    assert_eq!(listed(&paul, stranger).await, None);
+    // From the company's link, the same person gets the account.
+    assert_eq!(location(&sign_in_by_link(&api, &idp, &id).await), "/chat");
+    assert!(listed(&paul, stranger).await.is_some());
     remove(&paul, &id).await;
 }
 

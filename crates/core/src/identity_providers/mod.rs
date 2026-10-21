@@ -97,10 +97,33 @@ pub fn declared_issuer(
                     "OpenID Connect : l’adresse de l’émetteur suffit, sans annuaire".into(),
                 );
             }
-            issuer
-                .map(String::from)
-                .ok_or_else(|| "OpenID Connect : indiquez l’adresse de l’émetteur".into())
+            let issuer = issuer.ok_or("OpenID Connect : indiquez l’adresse de l’émetteur")?;
+            if let Some(kind) = own_kind(issuer) {
+                return Err(format!(
+                    "OpenID Connect : cet émetteur est celui de {kind}, choisissez ce type"
+                ));
+            }
+            Ok(issuer.into())
         }
+    }
+}
+
+/// The kind whose rules an issuer must follow, if it has one: a generic
+/// provider proves an address by `email_verified` alone, which a consumer
+/// Google account or another Microsoft directory would satisfy; their own
+/// kinds check the Workspace domain, or the directory's sign-in name.
+fn own_kind(issuer: &str) -> Option<&'static str> {
+    let issuer = issuer.trim_end_matches('/').to_ascii_lowercase();
+    let microsoft = [
+        "https://login.microsoftonline.com/",
+        "https://sts.windows.net/",
+    ];
+    if issuer == GOOGLE_ISSUER {
+        Some("Google Workspace")
+    } else if microsoft.iter().any(|host| issuer.starts_with(host)) {
+        Some("Microsoft 365")
+    } else {
+        None
     }
 }
 

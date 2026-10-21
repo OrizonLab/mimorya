@@ -2565,9 +2565,10 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     actif, entreprise active ; autant par minute que les connexions) et affiche le nom de
     l'entreprise et du fournisseur ; le départ (`POST /api/auth/sso/link/start`, compté
     avec les connexions par fournisseur) n'indique aucune adresse au fournisseur ;
-  - au retour, quelle que soit l'origine de la connexion, le compte est celui relié au
-    sujet, sinon celui de l'entreprise ayant l'adresse garantie (ADR-063) ; à défaut, si
-    le fournisseur crée les comptes, un compte est créé dans son entreprise : **actif,
+  - la tentative scellée (ADR-063) garde l'origine de la connexion : au retour, le compte
+    est celui relié au sujet, sinon celui de l'entreprise ayant l'adresse garantie
+    (ADR-063) ; à défaut, si le fournisseur crée les comptes **et que la connexion est
+    partie du lien**, un compte est créé dans son entreprise : **actif,
     sans mot de passe, sans rôle ni unité**, habilitation par défaut (`internal`), relié
     au sujet. Son nom est celui que donne le jeton (`name`, sinon prénom et nom, sinon la
     partie locale de l'adresse), sur une ligne visible : forme canonique, caractères
@@ -2576,7 +2577,15 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - mêmes garde-fous qu'une liaison : adresse garantie par le fournisseur et dans un de
     ses domaines ; une adresse déjà prise, dans cette entreprise ou une autre (unique
     partout, ADR-011), n'est jamais reprise : refus tracé « Adresse déjà utilisée par un
-    autre compte », sans rien créer ni relier.
+    autre compte », sans rien créer ni relier. Une connexion partie d'une adresse (page
+    de connexion, invitation) ne crée jamais de compte, même si la personne se connecte
+    chez le fournisseur sous une autre identité que celle suggérée : refus « Aucun compte
+    de l'entreprise pour cette adresse » ;
+  - le type « OpenID Connect » refuse les émetteurs de Google et de Microsoft : il ne
+    prouve une adresse que par `email_verified`, qu'un compte Google grand public ou un
+    autre annuaire satisferait ; leurs types propres vérifient le domaine Workspace ou le
+    nom de connexion de l'annuaire. Un fournisseur ainsi déclaré auparavant reste en
+    place (à redéclarer avec son type) ;
 - **Conséquences** :
   - un compte créé ne peut rien tant qu'un administrateur ne lui a pas donné de rôle ;
     l'annuaire le montre comme tout autre compte, et il suit leurs règles : désactivation,
@@ -2590,8 +2599,8 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - le lien nomme l'entreprise : qui le reçoit d'un tiers voit chez qui il se connecte
     avant d'aller chez le fournisseur ;
   - tests : `crates/api/tests/sso_accounts.rs` (compte créé actif, sans mot de passe ni
-    rôle, nommé par le jeton, tracé, retrouvé à la connexion suivante ; rien sans le
-    réglage, puis créé une fois réglé, nommé par prénom et nom ; jamais hors des domaines,
+    rôle, nommé par le jeton, tracé, retrouvé à la connexion suivante, par le lien ou
+    l'adresse ; rien pour une connexion partie d'une adresse ; rien sans le réglage, puis créé une fois réglé, nommé par prénom et nom ; jamais hors des domaines,
     sans adresse garantie ni sur l'adresse d'une autre entreprise ; lien d'un fournisseur
     inconnu, désactivé ou d'une entreprise suspendue : 404 ; limites) ; règle du nom :
     `crates/core/src/identity_providers/display_name.rs` ;

@@ -41,6 +41,23 @@ fn each_kind_designates_its_issuer() {
             Some(DIRECTORY),
             Some("https://id.example.com"),
         ),
+        // Their own kinds check what a generic provider does not.
+        (ProviderKind::Oidc, None, Some(GOOGLE_ISSUER)),
+        (
+            ProviderKind::Oidc,
+            None,
+            Some("https://Accounts.Google.com/"),
+        ),
+        (
+            ProviderKind::Oidc,
+            None,
+            Some("https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47/v2.0"),
+        ),
+        (
+            ProviderKind::Oidc,
+            None,
+            Some("https://sts.windows.net/72f988bf-86f1-41af-91ab-2d7cd011db47/"),
+        ),
     ] {
         assert!(
             declared_issuer(kind, directory, issuer).is_err(),

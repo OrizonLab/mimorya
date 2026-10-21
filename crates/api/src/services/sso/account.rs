@@ -1,9 +1,10 @@
 //! The account a proven person signs in to (ADR-063): the one tied to their
 //! subject at this provider; at their first sign-in there, the company's
 //! account with the address the provider vouches for, in one of its
-//! domains; failing that, when the provider creates accounts (ADR-067), a
-//! new one: active, without a password, a role or a unit, named as the
-//! provider names the person.
+//! domains; failing that, when the provider creates accounts and the
+//! sign-in started from the company's link (ADR-067), a new one: active,
+//! without a password, a role or a unit, named as the provider names the
+//! person.
 
 use mimorya_core::identity_providers::{ProvenIdentity, email_domain};
 use mimorya_db::repositories::identity_providers::IdentityProviderRow;
@@ -24,7 +25,8 @@ pub struct Account {
     pub created: bool,
 }
 
-/// `name` is the account's name, should this sign-in create it.
+/// `name` is the account's name when this sign-in may create it: started
+/// from the company's link, never from an address.
 pub async fn account_of(
     conn: &mut PgConnection,
     provider: &IdentityProviderRow,
@@ -67,12 +69,12 @@ pub async fn account_of(
             created: false,
         });
     }
-    if !provider.create_accounts {
+    let Some(name) = name.filter(|_| provider.create_accounts) else {
         return Err(at("Aucun compte de l’entreprise pour cette adresse"));
-    }
+    };
     // Taken in another company (addresses are unique across companies,
     // ADR-011), or created meanwhile by another sign-in of the person.
-    let user_id = create_federated_user(conn, provider.tenant_id, email, name.unwrap_or(email))
+    let user_id = create_federated_user(conn, provider.tenant_id, email, name)
         .await
         .map_err(internal)?
         .ok_or_else(|| at("Adresse déjà utilisée par un autre compte"))?;

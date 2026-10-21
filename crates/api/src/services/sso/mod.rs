@@ -164,8 +164,9 @@ impl SsoService {
         Ok(started.ok_or_else(link_unknown)?)
     }
 
-    /// `None` when the provider no longer serves; the address, if known, is
-    /// suggested to the provider.
+    /// `None` when the provider no longer serves. The address, when the
+    /// sign-in starts from one, is suggested to the provider; else it starts
+    /// from the company's link, and may create the account (ADR-067).
     async fn start_at(
         &self,
         tenant_id: Uuid,
@@ -216,6 +217,7 @@ impl SsoService {
             nonce: authorization.nonce,
             pkce_verifier: authorization.pkce_verifier,
             expires_at: Utc::now() + ATTEMPT_LIFETIME,
+            from_link: login_hint.is_none(),
         };
         Ok(Some(Started {
             redirect_url: authorization.url,

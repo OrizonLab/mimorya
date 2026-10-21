@@ -98,6 +98,7 @@ impl SsoService {
             .and_then(|value| attempt::open(cipher, value, Utc::now()))
             .ok_or_else(unknown)?;
         let provider_id = attempt.provider_id;
+        let from_link = attempt.from_link;
         let at = |reason: &str| SignInFailure::at(tenant_id, provider_id, reason);
         // Another attempt's return, a sign-in forced from elsewhere: the
         // state comes back with a refusal too (RFC 6749, 4.1.2.1).
@@ -120,10 +121,12 @@ impl SsoService {
         let kind = ProviderKind::parse(&provider.kind).ok_or_else(|| at("Type inconnu"))?;
         let said = oidc::token_claims(&claims);
         let proven = proven_identity(kind, &said, &provider.domains).map_err(at)?;
-        // The account's name, should this sign-in create it (ADR-067).
+        // The account's name, should this sign-in create it: started from
+        // the company's link, never from an address (ADR-067).
         let name = proven
             .email
             .as_deref()
+            .filter(|_| from_link)
             .map(|email| federated_display_name(&said, email));
         self.open(&provider, proven, name.as_deref(), context, headers)
             .await
