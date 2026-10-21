@@ -2077,7 +2077,8 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     l'intervalle laisse passer cette décision, mais le run relit à chaque étape les
     droits de la personne, qui seuls permettent l'exécution ;
   - la personne pour qui l'agent agit ne peut pas approuver la demande (403 « attend
-    la validation de votre responsable »), mais peut toujours la **retirer** : c'est un
+    la validation de votre responsable »), mais peut la **retirer**, tant qu'elle peut
+    utiliser l'agent (le retrait le fait reprendre) : c'est un
     refus, sans risque puisque l'action n'est pas exécutée, tracé `approval.rejected`
     avec `withdrawn: true`. Ainsi, une demande dont le responsable ne peut plus
     décider (droit retiré, compte désactivé ou supprimé) ne bloque jamais la

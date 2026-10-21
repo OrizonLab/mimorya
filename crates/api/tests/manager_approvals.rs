@@ -156,6 +156,26 @@ async fn the_requester_s_manager_alone_decides_and_the_run_goes_on_for_the_reque
     );
     let detail = nadia.get(&format!("/runs/{run_id}")).await.json();
     assert_eq!(detail["run"]["status"], "completed", "{detail}");
+    // Decided, nobody withdraws it.
+    let mine = listed(&nadia, &run_id).await.unwrap();
+    assert_eq!(mine["canWithdraw"], false);
+
+    // Her own to decide again: refused, not withdrawn.
+    let (run_id, approval) = applying(
+        &api,
+        &nadia,
+        ("INT-2052", "09:00"),
+        "Le planning de INT-2052 est inchangé.",
+    )
+    .await;
+    let approval = approval.expect("a request she decides");
+    assert_eq!(approval["canDecide"], true);
+    assert_eq!(approval["canWithdraw"], false);
+    let decision = format!("/approvals/{}/decision", approval["id"].as_str().unwrap());
+    let refused = nadia.post(&decision, json!({ "approved": false })).await;
+    assert_eq!(refused.status, StatusCode::OK, "{}", refused.text());
+    api.idle().await;
+    assert_eq!(listed(&nadia, &run_id).await.unwrap()["status"], "rejected");
 }
 
 #[tokio::test]

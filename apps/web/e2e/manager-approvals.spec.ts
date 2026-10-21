@@ -5,12 +5,20 @@
 // not led to her run. The routing itself is tested on the API
 // (`crates/api/tests/manager_approvals.rs`).
 import type { BrowserContext, Page } from '@playwright/test';
-import type { Approval, ApprovalList, ApprovalRoutingUpdate, ToolRisk } from '../lib/api/contract';
+import type {
+  Approval,
+  ApprovalList,
+  ApprovalRoutingUpdate,
+  ApprovalRoutingView,
+  ToolRisk,
+} from '../lib/api/contract';
+import { openAdmin } from './support/admin';
 import { refuseWaiting } from './support/approvals';
 import { demo, expect, noError, signIn, test } from './support/fixtures';
 import { REFERENCE_REQUEST } from './support/scenario';
 
 const WRITE = { 'X-Mimorya-Request': '1' };
+const TAB = 'Circuit de validation';
 const REFUSED = 'Le planning est inchangé : la validation a été refusée.';
 
 /** The administrator and the manager of the test, for its cleanup. */
@@ -50,18 +58,23 @@ test.afterEach(async () => {
 
 test('an administrator chooses the actions managers validate', async ({ page }) => {
   people.paul = page;
-  await signIn(page, demo.paul);
-  await page.goto('/admin');
-  await page.getByRole('tab', { name: 'Circuit de validation' }).click();
+  await openAdmin(page, TAB);
   const write = page.getByRole('checkbox', { name: 'Modification' });
   await expect(write).not.toBeChecked();
   await write.check();
   await page.getByRole('button', { name: 'Enregistrer' }).click();
-  await expect(page.getByRole('button', { name: 'Enregistrer' })).toBeDisabled();
+  // What the API saved...
+  await expect
+    .poll(async () => {
+      const response = await page.request.get('/api/admin/approval-routing');
+      if (response.status() !== 200) return `HTTP ${response.status()}`;
+      return ((await response.json()) as ApprovalRoutingView).managerRisks;
+    })
+    .toEqual(['write']);
 
-  // Recorded: read again after a reload.
+  // ...as a page loaded afresh shows it.
   await page.reload();
-  await page.getByRole('tab', { name: 'Circuit de validation' }).click();
+  await page.getByRole('tab', { name: TAB }).click();
   await expect(page.getByRole('checkbox', { name: 'Modification' })).toBeChecked();
   await expect(page.getByRole('checkbox', { name: 'Irréversible' })).not.toBeChecked();
   await noError(page);

@@ -48,7 +48,7 @@ export function ApprovalRoutingForm({
         l’agent agit, plutôt que par elle : le responsable d’unité le plus proche au-dessus d’elle,
         dont le compte est actif et qui détient sur elle la permission « Valider les actions de son
         périmètre ». La position seule n’accorde rien : si personne n’est habilité, l’action est
-        refusée aussitôt. La personne peut toujours retirer sa demande.
+        refusée aussitôt. La personne peut retirer sa demande tant qu’elle peut utiliser l’agent.
       </p>
       <fieldset className="flex flex-col gap-2">
         <legend className="sr-only">Risques validés par un responsable</legend>
