@@ -1,9 +1,11 @@
 //! A provider required for its domains (ADR-066): their accounts' password
 //! is refused at sign-in (told only to whoever knows it, and counted as no
-//! failure), at the acceptance of an invitation and for a reset link; the
-//! company's administrators of its sign-in keep theirs. A disabled or no
-//! longer required provider leaves passwords be, and another company's
-//! provider, required for the same domain, never reaches these accounts.
+//! failure), at the acceptance of an invitation and for a reset link, asked
+//! for, sent by the administration or used after; no temporary password is
+//! given them. The company's administrators of its sign-in keep theirs. A
+//! disabled or no longer required provider leaves passwords be, and another
+//! company's provider, required for the same domain, never reaches these
+//! accounts.
 
 mod support;
 
@@ -14,7 +16,7 @@ use support::accounts::{INVITED_PASSWORD, accept, directory_entry, invite_accoun
 use support::companies::create;
 use support::identity_provider::{MockIdentityProvider, Person};
 use support::refusals::latest_entry;
-use support::resets::ask_reset;
+use support::resets::{ask_reset, complete_reset, new_reset_token};
 use support::sso::{
     PROVIDERS, SSO_DEPLOYMENT, declaration, declare, discover, location, remove, sign_in,
 };
@@ -33,6 +35,19 @@ fn required(idp: &MockIdentityProvider) -> serde_json::Value {
     let mut body = declaration(idp);
     body["required"] = json!(true);
     body
+}
+
+/// The changes of providers audited since `since`: their metadata.
+async fn provider_changes(api: &TestApi, since: i64) -> Vec<serde_json::Value> {
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    sqlx::query_scalar(
+        "select metadata from audit_log where id > $1 \
+         and action = 'identity_provider.updated' order by id",
+    )
+    .bind(since)
+    .fetch_all(&mut *tx)
+    .await
+    .unwrap()
 }
 
 /// The reasons of the logins refused to this account since `since`.
@@ -98,8 +113,13 @@ async fn a_required_provider_refuses_passwords_but_to_its_administrators() {
 
     // No longer required, or disabled: the password serves again.
     let path = format!("{PROVIDERS}/{id}");
+    let since = latest_entry(&api).await;
     let changed = paul.patch(&path, json!({ "required": false })).await;
     assert_eq!(changed.status, StatusCode::OK, "{}", changed.text());
+    let traced = provider_changes(&api, since).await;
+    assert_eq!(traced.len(), 1, "{traced:?}");
+    assert_eq!(traced[0]["required"], false);
+    assert_eq!(traced[0]["previousRequired"], true);
     api.sign_in(user::NADIA).await;
     paul.patch(&path, json!({ "required": true, "enabled": false }))
         .await;
@@ -154,4 +174,47 @@ async fn another_company_s_required_provider_never_reaches_these_accounts() {
     assert_eq!(discover(&api, &nadia).await, json!(null));
     api.sign_in(user::NADIA).await;
     remove(&theirs, &id).await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn no_way_back_to_a_password_under_a_required_provider() {
+    let api = TestApi::start_with_mailer_and(&deployment()).await;
+    let idp = MockIdentityProvider::start().await;
+    let paul = api.sign_in(user::PAUL).await;
+    let nadia = email(user::NADIA);
+    // A link asked for before the provider was required.
+    let token = new_reset_token(&api, &nadia).await;
+    let id = declare(&paul, required(&idp)).await;
+
+    // Of no use now: no password set, no session opened.
+    let used = complete_reset(&api, &token, "une-phrase-de-passe-neuve").await;
+    assert_eq!(used.status, StatusCode::FORBIDDEN, "{}", used.text());
+    assert!(used.text().contains("ce lien ne sert plus"));
+    assert!(used.headers.get("set-cookie").is_none());
+    // Nor does the administration send a link, or give a temporary password.
+    let account = format!("/admin/users/{}", user::NADIA);
+    let sent = api.mail.sent().len();
+    let link = paul
+        .post(&format!("{account}/password-link"), json!({}))
+        .await;
+    assert_eq!(link.status, StatusCode::CONFLICT, "{}", link.text());
+    assert!(link.text().contains("pas de lien de réinitialisation"));
+    assert_eq!(api.mail.sent().len(), sent);
+    let temporary = paul.post(&format!("{account}/password"), json!({})).await;
+    assert_eq!(
+        temporary.status,
+        StatusCode::CONFLICT,
+        "{}",
+        temporary.text()
+    );
+    assert!(temporary.text().contains("pas de mot de passe provisoire"));
+
+    // No longer required: the password is the one it had.
+    let path = format!("{PROVIDERS}/{id}");
+    paul.patch(&path, json!({ "required": false })).await;
+    api.sign_in(user::NADIA).await;
+    let refused = api.try_login(&nadia, "une-phrase-de-passe-neuve").await;
+    assert_eq!(refused.status, StatusCode::UNAUTHORIZED);
+    remove(&paul, &id).await;
 }

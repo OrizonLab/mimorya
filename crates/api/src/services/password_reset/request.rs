@@ -63,6 +63,14 @@ async fn issue(sender: &ResetSender, request: &ResetRequest) -> anyhow::Result<(
     let Some(login) = find_login(sender.db.pool(), &request.email).await? else {
         return Ok(());
     };
+    // Under a provider required for its domain, a password serves nothing
+    // (ADR-066); read before the account's row is locked.
+    if required_provider(&sender.db, &sender.access, login.tenant_id, login.user_id)
+        .await?
+        .is_some()
+    {
+        return Ok(());
+    }
     let (token, token_hash) = new_session_token();
     let expires_at = Utc::now() + RESET_VALIDITY;
     let mut tx = sender.db.begin(login.tenant_id).await?;
@@ -73,20 +81,6 @@ async fn issue(sender: &ResetSender, request: &ResetRequest) -> anyhow::Result<(
     };
     // Whatever the reason, the caller learns nothing.
     if reset_refusal(&recipient).is_some() {
-        return Ok(());
-    }
-    // Under a provider required for its domain, a password serves nothing
-    // (ADR-066).
-    if required_provider(
-        &sender.db,
-        &sender.access,
-        login.tenant_id,
-        login.user_id,
-        &request.email,
-    )
-    .await?
-    .is_some()
-    {
         return Ok(());
     }
     put_password_reset(

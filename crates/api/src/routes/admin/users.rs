@@ -157,6 +157,7 @@ pub async fn invite(
 fn link_sender(state: &AppState) -> LinkSender<'_> {
     LinkSender {
         db: &state.db,
+        accounts: &state.access,
         mailer: state.mailer.as_deref(),
         web_origin: &state.config.web_origin,
         product: &state.config.assistant_name,
@@ -198,7 +199,7 @@ pub async fn reset(
     PathId(id): PathId,
 ) -> ApiResult<Secret<TemporaryPassword>> {
     let access = state.access.context(identity).await?;
-    let password = reset_password(&state.db, &access, id).await?;
+    let password = reset_password(&state.db, &state.access, &access, id).await?;
     Ok(secret(TemporaryPassword {
         temporary_password: password,
     }))

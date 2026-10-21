@@ -90,7 +90,15 @@ async fn complete(
     if !state.limits.login.allow(&context.client_key()) {
         return Err(ApiError::RateLimited);
     }
-    let session = complete_reset(&state.db, &body.token, body.password, &context, &headers).await?;
+    let session = complete_reset(
+        &state.db,
+        &state.access,
+        &body.token,
+        body.password,
+        &context,
+        &headers,
+    )
+    .await?;
     let cookie = session_cookie(&session, state.config.secure_cookies);
     Ok((AppendHeaders([(SET_COOKIE, cookie)]), Json(Done::OK)))
 }

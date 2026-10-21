@@ -65,9 +65,7 @@ pub async fn accept_invitation(
 ) -> anyhow::Result<String> {
     let token_hash = hash_token(token);
     let record = usable(db, &token_hash).await?;
-    if let Some(provider) =
-        required_provider(db, access, record.tenant_id, record.user_id, &record.email).await?
-    {
+    if let Some(provider) = required_provider(db, access, record.tenant_id, record.user_id).await? {
         return Err(DomainError::forbidden(format!(
             "Votre entreprise impose la connexion par {provider} : activez votre compte avec lui."
         ))

@@ -20,6 +20,7 @@ use crate::services::AccessContext;
 use crate::services::password_reset::{
     ResetMail, ResetRefusal, SENT_RESET_VALIDITY, reset_link, reset_mail, reset_refusal,
 };
+use crate::services::sso::required_provider;
 
 const PERMISSION: &str = "user:manage";
 const NO_RELAY: &str =
@@ -36,6 +37,20 @@ pub async fn send_reset_link(
     let Some(mailer) = sender.mailer else {
         return Err(DomainError::unavailable(NO_RELAY).into());
     };
+    // Read before the administration lock (ADR-066).
+    if let Some(provider) = required_provider(
+        sender.db,
+        sender.accounts,
+        access.subject.tenant_id,
+        user_id,
+    )
+    .await?
+    {
+        return Err(DomainError::conflict(format!(
+            "Ce compte se connecte par {provider}, obligatoire : pas de lien de réinitialisation"
+        ))
+        .into());
+    }
     let (token, token_hash) = new_session_token();
     let expires_at = Utc::now() + SENT_RESET_VALIDITY;
     let mut tx = begin_change(sender.db, access, PERMISSION).await?;

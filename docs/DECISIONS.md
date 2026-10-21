@@ -2512,7 +2512,11 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
       habituelle ;
     - n'acceptent leur invitation que par le fournisseur (ADR-064), pas en choisissant un
       mot de passe ;
-    - ne reçoivent pas de lien « mot de passe oublié » ;
+    - ne reçoivent aucun lien de réinitialisation, ni demandé (« mot de passe oublié »,
+      réponse habituelle, rien n'est envoyé) ni envoyé par l'administration (409), ne
+      peuvent plus utiliser un lien reçu avant (403, aucun mot de passe fixé ni session
+      ouverte) et ne reçoivent pas de mot de passe provisoire (409) : aucun chemin ne
+      leur rend un mot de passe ;
   - les **administrateurs de la connexion** (`settings:manage` sur toute l'entreprise,
     ceux qui déclarent les fournisseurs) gardent leur mot de passe : un fournisseur en
     panne ou mal configuré ne bloque jamais l'entreprise (comme les super-administrateurs
@@ -2525,13 +2529,17 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
 - **Conséquences** :
   - les sessions ouvertes par mot de passe avant que le fournisseur devienne obligatoire
     restent valables jusqu'à leur échéance ;
-  - un mot de passe provisoire fixé par l'administration, ou un lien qu'elle envoie,
-    restent possibles, mais ne servent qu'aux administrateurs de la connexion ;
+  - le mot de passe d'un compte n'est pas effacé : si le fournisseur cesse d'être
+    obligatoire ou est désactivé, le compte retrouve celui qu'il avait ;
+  - la règle se lit à chaque demande, avant tout verrou, dans sa propre transaction
+    (`services/sso/requirement.rs`) ;
   - tests : `crates/api/tests/sso_required.rs` (mot de passe refusé sans compter d'échec,
     tracé ; mauvais mot de passe sans indice ; connexion par le fournisseur ; pas de lien
     de réinitialisation ; administrateur de la connexion exempté ; plus obligatoire ou
-    désactivé : mot de passe rendu ; invitation acceptée par le fournisseur seulement ;
-    fournisseur obligatoire d'une autre entreprise sans effet) ;
+    désactivé : mot de passe rendu ; changement tracé avec la valeur précédente ;
+    invitation acceptée par le fournisseur seulement ; lien demandé avant inutilisable,
+    ni lien ni mot de passe provisoire de l'administration ; fournisseur obligatoire
+    d'une autre entreprise sans effet) ;
     `apps/web/e2e/single-sign-on.spec.ts` (case cochée dans « Connexion », relue après
     rechargement ; page de connexion réduite au fournisseur, mot de passe refusé à
     Nadia, accepté à Paul ; invitation sans mot de passe).

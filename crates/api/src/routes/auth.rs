@@ -112,14 +112,8 @@ async fn login(
 
     // A provider required for the account's domain (ADR-066): told only to
     // whoever knows the password, which counts as no failure.
-    if let Some(provider) = required_provider(
-        &state.db,
-        &state.access,
-        login.tenant_id,
-        login.user_id,
-        &email,
-    )
-    .await?
+    if let Some(provider) =
+        required_provider(&state.db, &state.access, login.tenant_id, login.user_id).await?
     {
         let entry = login_audit(login.tenant_id, login.user_id, "denied", &context)
             .reason("Fournisseur d’identité obligatoire");

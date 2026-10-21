@@ -44,6 +44,9 @@ export default function LoginPage() {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    // Enter in the address field: no password to send, the provider's
+    // button signs in.
+    if (!withPassword) return;
     setLoading(true);
     setError(null);
     try {

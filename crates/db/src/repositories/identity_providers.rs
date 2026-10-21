@@ -173,18 +173,19 @@ pub async fn find_identity_provider(
     .await
 }
 
-/// The name of the enabled provider required for this address's domain in
-/// the transaction's company (ADR-066), if any.
-pub async fn required_provider_for(
+/// The name of the enabled provider required for the domain of this
+/// account's address, in the transaction's company (ADR-066), if any.
+pub async fn required_provider_of(
     conn: &mut PgConnection,
-    email: &str,
+    user_id: Uuid,
 ) -> sqlx::Result<Option<String>> {
     sqlx::query_scalar(
-        "select p.name from identity_provider_domains d \
+        "select p.name from users u \
+         join identity_provider_domains d on d.domain = split_part(u.email::text, '@', 2)::citext \
          join identity_providers p on p.id = d.provider_id \
-         where d.domain = split_part($1, '@', 2)::citext and p.enabled and p.required",
+         where u.id = $1 and p.enabled and p.required",
     )
-    .bind(email)
+    .bind(user_id)
     .fetch_optional(conn)
     .await
 }
