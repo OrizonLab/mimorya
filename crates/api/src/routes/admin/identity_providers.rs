@@ -64,6 +64,7 @@ pub async fn create(
         client_secret: body.client_secret,
         domains: body.domains,
         enabled: body.enabled.unwrap_or(true),
+        required: body.required.unwrap_or(false),
     };
     let id = declare_identity_provider(
         &state.db,
@@ -88,6 +89,7 @@ pub async fn update(
         client_secret: body.client_secret,
         domains: body.domains,
         enabled: body.enabled,
+        required: body.required,
     };
     change_identity_provider(&state.db, &secrets(&state), &access, id, changes).await?;
     Ok(Json(Done::OK))

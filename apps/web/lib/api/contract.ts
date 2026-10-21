@@ -359,7 +359,7 @@ export type IdentityProviderUpdate = { name?: string,
 /**
  * A new secret replaces the stored one.
  */
-clientSecret?: string, domains?: Array<string>, enabled?: boolean, };
+clientSecret?: string, domains?: Array<string>, enabled?: boolean, required?: boolean, };
 
 export type IdentityProviderView = { id: string,
 /**
@@ -369,7 +369,12 @@ kind: string, name: string, issuer: string, clientId: string,
 /**
  * E-mail domains whose accounts sign in through it.
  */
-domains: Array<string>, enabled: boolean, secretStored: boolean, createdAt: string, updatedAt: string, };
+domains: Array<string>, enabled: boolean,
+/**
+ * Its domains' accounts sign in through it alone, but for the
+ * company's administrators of its sign-in (ADR-066).
+ */
+required: boolean, secretStored: boolean, createdAt: string, updatedAt: string, };
 
 /**
  * `GET /admin/identity-providers`.
@@ -628,7 +633,11 @@ name?: string, directoryId?: string, issuer?: string, clientId: string, clientSe
 /**
  * Absent: enabled.
  */
-enabled?: boolean, };
+enabled?: boolean,
+/**
+ * Absent: not required (ADR-066).
+ */
+required?: boolean, };
 
 /**
  * Body of `POST /conversations/{id}/messages`.
@@ -960,7 +969,12 @@ kind: string,
 /**
  * As the button names it: "Microsoft 365".
  */
-name: string, };
+name: string,
+/**
+ * The account signs in through it alone, unless it administers the
+ * company's sign-in (ADR-066).
+ */
+required: boolean, };
 
 /**
  * `POST /auth/sso/start`: where the browser goes to sign in.

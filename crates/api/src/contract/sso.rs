@@ -24,6 +24,9 @@ pub struct SsoProvider {
     pub kind: String,
     /// As the button names it: "Microsoft 365".
     pub name: String,
+    /// The account signs in through it alone, unless it administers the
+    /// company's sign-in (ADR-066).
+    pub required: bool,
 }
 
 /// `POST /auth/sso/discover`.

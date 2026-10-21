@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
-import { Button, ErrorNote, Field, Input, Select } from '@/components/ui';
+import { Button, Checkbox, ErrorNote, Field, Input, Select } from '@/components/ui';
 import {
   api,
   useAction,
@@ -32,8 +32,9 @@ const GUIDANCE: Record<string, string> = {
 
 /**
  * Declares an identity provider, or changes one: its name, its client
- * secret (write-only) and the e-mail domains it covers. Kind, issuer and
- * client stay as declared (ADR-063).
+ * secret (write-only), the e-mail domains it covers and whether it is
+ * required for them (ADR-066). Kind, issuer and client stay as declared
+ * (ADR-063).
  */
 export function IdentityProviderForm({
   provider,
@@ -49,6 +50,7 @@ export function IdentityProviderForm({
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
   const [domains, setDomains] = useState(provider?.domains.join(', ') ?? '');
+  const [required, setRequired] = useState(provider?.required ?? false);
   const action = useAction();
 
   async function submit(event: FormEvent) {
@@ -60,6 +62,7 @@ export function IdentityProviderForm({
             // Left out when blank: the stored secret is kept.
             clientSecret: clientSecret.trim() || undefined,
             domains: domainList(domains),
+            required,
           } satisfies IdentityProviderUpdate)
         : api.post('/admin/identity-providers', {
             kind,
@@ -69,6 +72,7 @@ export function IdentityProviderForm({
             clientId: clientId.trim(),
             clientSecret: clientSecret.trim(),
             domains: domainList(domains),
+            required,
           } satisfies NewIdentityProvider),
     );
     if (saved) onDone(true);
@@ -163,6 +167,18 @@ export function IdentityProviderForm({
           />
         </Field>
       </div>
+      <label className="flex items-start gap-2 text-sm">
+        <Checkbox
+          className="mt-0.5"
+          checked={required}
+          onChange={(e) => setRequired(e.target.checked)}
+        />
+        <span>
+          Connexion obligatoire par ce fournisseur pour ses domaines : le mot de passe y est refusé,
+          sauf aux administrateurs de la connexion de l’entreprise, qui gardent le leur en cas de
+          panne du fournisseur.
+        </span>
+      </label>
       <p className="text-xs text-muted">
         {!provider && `${GUIDANCE[kind] ?? ''} `}Le secret est chiffré sur le serveur et jamais
         réaffiché. Le fournisseur est joint avant l’enregistrement.

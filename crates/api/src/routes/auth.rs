@@ -25,6 +25,7 @@ use crate::http::{ApiError, ApiResult, Body};
 use crate::plugins::{AuthPendingPasswordChange, MaybeAuth, RequestContext};
 use crate::services::account;
 use crate::services::permission_catalog::permission_catalog;
+use crate::services::sso::required_provider;
 
 const INVALID_CREDENTIALS: &str = "Identifiants invalides";
 
@@ -108,6 +109,27 @@ async fn login(
             return Err(DomainError::unauthenticated(INVALID_CREDENTIALS).into());
         }
     };
+
+    // A provider required for the account's domain (ADR-066): told only to
+    // whoever knows the password, which counts as no failure.
+    if let Some(provider) = required_provider(
+        &state.db,
+        &state.access,
+        login.tenant_id,
+        login.user_id,
+        &email,
+    )
+    .await?
+    {
+        let entry = login_audit(login.tenant_id, login.user_id, "denied", &context)
+            .reason("Fournisseur d’identité obligatoire");
+        record_in_background(state.clone(), entry);
+        return Err(DomainError::forbidden(format!(
+            "Votre entreprise impose la connexion par {provider} : utilisez le bouton « Se \
+             connecter avec {provider} »."
+        ))
+        .into());
+    }
 
     let mut tx = state.db.begin(login.tenant_id).await?;
     // A reset, a disabling or a password change committed during the

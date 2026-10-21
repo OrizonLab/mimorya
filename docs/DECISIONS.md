@@ -2356,7 +2356,8 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     l'accepter par le fournisseur) ; un mot de passe provisoire reste à remplacer, même
     après une connexion par le fournisseur ;
   - la connexion par mot de passe reste ouverte ; la rendre impossible pour les
-    domaines couverts, accepter une invitation par le fournisseur (fait : ADR-064), la
+    domaines couverts (fait : ADR-066), accepter une invitation par le fournisseur (fait :
+    ADR-064), la
     création de compte à la première connexion, SAML et la vérification de propriété
     d'un domaine viendront ensuite ;
   - lots : (1) modèle, connexion, configuration par l'API, tests contre un fournisseur
@@ -2492,3 +2493,45 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     échec non gardé, fournisseur gardé tant qu'il sert ; déclaration trop lourde relue ;
     deux entreprises au même émetteur gardées à part ; déclaration par l'administration
     toujours relue).
+
+## ADR-066 — Rendre la connexion par le fournisseur d'identité obligatoire pour ses domaines
+
+- **Date** : 2026-10-21 · **Statut** : acceptée
+- **Contexte** : une entreprise qui se connecte par Microsoft 365 (ADR-063) veut que ses
+  collaborateurs passent tous par lui (MFA, accès conditionnel, départ géré dans
+  l'annuaire) : un mot de passe gardé dans Mimorya contournerait ces règles.
+- **Décision** :
+  - un fournisseur peut être déclaré **obligatoire** pour ses domaines
+    (`identity_providers.required`, migration 0019), à sa déclaration ou ensuite, par
+    l'administration (`settings:manage`, onglet « Connexion », tracé avec la valeur
+    précédente) ;
+  - tant qu'il est actif et obligatoire, les comptes de ses domaines :
+    - ne se connectent plus par mot de passe : le refus (403, le fournisseur nommé) n'est
+      dit qu'à qui donne le bon mot de passe, ne compte pas comme un échec et est tracé
+      (« Fournisseur d'identité obligatoire ») ; un mauvais mot de passe reçoit la réponse
+      habituelle ;
+    - n'acceptent leur invitation que par le fournisseur (ADR-064), pas en choisissant un
+      mot de passe ;
+    - ne reçoivent pas de lien « mot de passe oublié » ;
+  - les **administrateurs de la connexion** (`settings:manage` sur toute l'entreprise,
+    ceux qui déclarent les fournisseurs) gardent leur mot de passe : un fournisseur en
+    panne ou mal configuré ne bloque jamais l'entreprise (comme les super-administrateurs
+    de Google Workspace). Un compte invité n'a pas encore de droits : il n'en est pas ;
+  - la découverte dit si le fournisseur est obligatoire (`required`) : la page de
+    connexion ne propose plus que lui, et un lien « Administrateur de la connexion : se
+    connecter par mot de passe » ; la page d'invitation ne propose plus de mot de passe ;
+  - la règle se lit dans l'entreprise du compte (RLS) : le fournisseur d'une autre
+    entreprise, même obligatoire pour le même domaine, ne touche à aucun de ses comptes.
+- **Conséquences** :
+  - les sessions ouvertes par mot de passe avant que le fournisseur devienne obligatoire
+    restent valables jusqu'à leur échéance ;
+  - un mot de passe provisoire fixé par l'administration, ou un lien qu'elle envoie,
+    restent possibles, mais ne servent qu'aux administrateurs de la connexion ;
+  - tests : `crates/api/tests/sso_required.rs` (mot de passe refusé sans compter d'échec,
+    tracé ; mauvais mot de passe sans indice ; connexion par le fournisseur ; pas de lien
+    de réinitialisation ; administrateur de la connexion exempté ; plus obligatoire ou
+    désactivé : mot de passe rendu ; invitation acceptée par le fournisseur seulement ;
+    fournisseur obligatoire d'une autre entreprise sans effet) ;
+    `apps/web/e2e/single-sign-on.spec.ts` (case cochée dans « Connexion », relue après
+    rechargement ; page de connexion réduite au fournisseur, mot de passe refusé à
+    Nadia, accepté à Paul ; invitation sans mot de passe).

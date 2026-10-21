@@ -1,8 +1,8 @@
 //! Issuing a reset link asked for from the login page, off the response
 //! path: the caller gets the same answer, after the same time, whether the
 //! address belongs to an account or not. Only an active account that has a
-//! password, in an active company, gets a link; the former one stops
-//! working. The link is never stored in clear, logged nor audited.
+//! password, in an active company, and no provider required for its domain
+//! (ADR-066), gets a link; the former one stops working. The link is never stored in clear, logged nor audited.
 
 use std::sync::Arc;
 
@@ -19,11 +19,15 @@ use uuid::Uuid;
 use super::{RESET_VALIDITY, ResetMail, reset_link, reset_mail, reset_refusal};
 use crate::auth::credentials::new_session_token;
 use crate::mail::Mailer;
+use crate::services::AccessService;
+use crate::services::sso::required_provider;
 
 /// What issues a link, owned: it outlives the request.
 #[derive(Clone)]
 pub struct ResetSender {
     pub db: Database,
+    /// Whether the account keeps its password under a required provider.
+    pub access: Arc<AccessService>,
     pub mailer: Arc<dyn Mailer>,
     /// The web application's address, where the link leads.
     pub web_origin: String,
@@ -69,6 +73,20 @@ async fn issue(sender: &ResetSender, request: &ResetRequest) -> anyhow::Result<(
     };
     // Whatever the reason, the caller learns nothing.
     if reset_refusal(&recipient).is_some() {
+        return Ok(());
+    }
+    // Under a provider required for its domain, a password serves nothing
+    // (ADR-066).
+    if required_provider(
+        &sender.db,
+        &sender.access,
+        login.tenant_id,
+        login.user_id,
+        &request.email,
+    )
+    .await?
+    .is_some()
+    {
         return Ok(());
     }
     put_password_reset(

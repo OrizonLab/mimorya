@@ -5,13 +5,14 @@
 // address, goes to the provider and comes back signed in. Disabled, it is
 // offered to nobody; deleted, it is gone. An invited collaborator activates
 // the account through it, from the invitation's page, without choosing a
-// password; « Mon compte » then says it has none (ADR-064). A failed return
-// lands on the sign-in page with a message, and so does a discovery refused
-// past the limit of addresses asked about, asked again once its minute is
-// over. The provider is the end-to-end
-// server's own, an OpenID Connect provider on the private network signing
-// in whoever the sign-in names (`IDP_ADDRESS` of
-// `crates/api/examples/e2e_server`).
+// password; « Mon compte » then says it has none (ADR-064). Made required,
+// it is offered alone, a password refused but to the administrator of the
+// company's sign-in, and an invitation accepted through it alone (ADR-066).
+// A failed return lands on the sign-in page with a message, and so does a
+// discovery refused past the limit of addresses asked about, asked again
+// once its minute is over. The provider is the end-to-end server's own, an
+// OpenID Connect provider on the private network signing in whoever the
+// sign-in names (`IDP_ADDRESS` of `crates/api/examples/e2e_server`).
 // Whatever happens, the provider is removed, and the accounts tied to it
 // with it.
 import type {
@@ -21,7 +22,7 @@ import type {
   NewIdentityProvider,
 } from '../lib/api/contract';
 import { cardWith, openAdmin } from './support/admin';
-import { demo, expect, noError, signIn, test } from './support/fixtures';
+import { DEMO_PASSWORD, demo, expect, noError, signIn, test } from './support/fixtures';
 import { lastLink } from './support/mail';
 
 const PROVIDER = 'Annuaire e2e';
@@ -169,6 +170,85 @@ test('an invited collaborator activates the account through the provider', async
   const later = await (await newContext()).newPage();
   await later.goto(link);
   await expect(later.getByText('Ce lien d’invitation n’est plus valable')).toBeVisible();
+});
+
+test('a required provider leaves a password to its administrators alone', async ({
+  page,
+  newContext,
+}) => {
+  // An address of this test's own, left invited, with no business role.
+  const email = 'noe.garnier.sso@neo-maintenance.example';
+  await signIn(page, demo.paul);
+  const declared = await page.request.post('/api/admin/identity-providers', {
+    headers: WRITE,
+    data: {
+      kind: 'oidc',
+      name: PROVIDER,
+      issuer: ISSUER,
+      clientId: CLIENT_ID,
+      clientSecret: CLIENT_SECRET,
+      domains: ['neo-maintenance.example'],
+    } satisfies NewIdentityProvider,
+  });
+  expect(declared.status()).toBe(201);
+
+  // Made required in « Connexion » (Paul is signed in), as the API records
+  // it.
+  await page.goto('/admin');
+  await page.getByRole('tab', { name: 'Connexion' }).click();
+  await cardWith(page, PROVIDER, 'Modifier')
+    .getByRole('button', { name: 'Modifier', exact: true })
+    .click();
+  await page.getByLabel(/^Connexion obligatoire par ce fournisseur/).check();
+  await page.getByRole('button', { name: 'Enregistrer', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Enregistrer', exact: true })).toHaveCount(0);
+  await page.reload();
+  await page.getByRole('tab', { name: 'Connexion' }).click();
+  await expect(cardWith(page, PROVIDER, 'Désactiver').getByText('Obligatoire')).toBeVisible();
+
+  // Nadia is offered the provider alone; asked for, her password is refused.
+  const nadia = await (await newContext()).newPage();
+  await nadia.goto('/login');
+  await nadia.getByLabel('Adresse e-mail professionnelle').fill(demo.nadia);
+  await nadia.getByLabel('Adresse e-mail professionnelle').blur();
+  await expect(
+    nadia.getByText(`Votre entreprise impose la connexion avec ${PROVIDER}.`),
+  ).toBeVisible();
+  await expect(nadia.getByLabel('Mot de passe')).toHaveCount(0);
+  await nadia.getByRole('button', { name: /^Administrateur de la connexion/ }).click();
+  await nadia.getByLabel('Mot de passe').fill(DEMO_PASSWORD);
+  await nadia.getByRole('button', { name: 'Se connecter', exact: true }).click();
+  // Refused, as the API answers: the one alert expected here.
+  await expect(
+    nadia.getByText(`impose la connexion par ${PROVIDER}`, { exact: false }),
+  ).toBeVisible();
+
+  // The administrator of the company's sign-in keeps the password.
+  const paul = await (await newContext()).newPage();
+  await paul.goto('/login');
+  await paul.getByLabel('Adresse e-mail professionnelle').fill(demo.paul);
+  await paul.getByLabel('Adresse e-mail professionnelle').blur();
+  await paul.getByRole('button', { name: /^Administrateur de la connexion/ }).click();
+  await paul.getByLabel('Mot de passe').fill(DEMO_PASSWORD);
+  await paul.getByRole('button', { name: 'Se connecter', exact: true }).click();
+  await paul.waitForURL('**/chat');
+
+  // An invitation is accepted through the provider alone.
+  const created = await page.request.post('/api/admin/users', {
+    headers: WRITE,
+    data: { email, displayName: 'Noé Garnier' } satisfies NewAccount,
+  });
+  expect(created.status()).toBe(201);
+  const { link } = await lastLink(email, 'invitation');
+  const newcomer = await (await newContext()).newPage();
+  await newcomer.goto(link);
+  await expect(
+    newcomer.getByRole('button', { name: `Activer mon compte avec ${PROVIDER}` }),
+  ).toBeVisible();
+  await expect(
+    newcomer.getByRole('button', { name: 'Activer mon compte', exact: true }),
+  ).toHaveCount(0);
+  await noError(newcomer);
 });
 
 test('a failed return comes back to the sign-in page, which says so', async ({ page }) => {

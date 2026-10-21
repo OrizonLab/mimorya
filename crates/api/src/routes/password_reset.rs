@@ -55,6 +55,7 @@ async fn request(
     }
     let sender = ResetSender {
         db: state.db.clone(),
+        access: state.access.clone(),
         mailer,
         web_origin: state.config.web_origin.clone(),
         product: state.config.assistant_name.clone(),

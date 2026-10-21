@@ -40,6 +40,7 @@ export function IdentityProviderCard({
       <div className="flex flex-wrap items-center gap-2">
         <p className="flex-1 font-medium">{provider.name}</p>
         <Badge>{IDENTITY_PROVIDER_KINDS[provider.kind] ?? provider.kind}</Badge>
+        {provider.required && <Badge tone="accent">Obligatoire</Badge>}
         <Badge tone={provider.enabled ? 'ok' : 'neutral'}>
           {provider.enabled ? 'Actif' : 'Désactivé'}
         </Badge>

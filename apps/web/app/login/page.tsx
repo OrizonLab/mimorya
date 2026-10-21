@@ -23,6 +23,11 @@ export default function LoginPage() {
   // The address as typed when the field was left: the one whose company's
   // identity provider is looked for (ADR-063).
   const [left, setLeft] = useState('');
+  // Its company requires the provider (ADR-066): no password to type, but
+  // for an administrator of the company's sign-in who asks for one.
+  const [required, setRequired] = useState(false);
+  const [byPassword, setByPassword] = useState(false);
+  const withPassword = !required || byPassword;
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -67,23 +72,42 @@ export default function LoginPage() {
               className="rounded-lg border border-line bg-surface px-3 py-2 outline-none focus:border-accent"
             />
           </label>
-          <SsoSignIn email={left} />
-          <label className="flex flex-col gap-1.5 text-sm">
-            <span className="font-medium">Mot de passe</span>
-            <input
-              type="password"
-              required
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="rounded-lg border border-line bg-surface px-3 py-2 outline-none focus:border-accent"
-            />
-          </label>
-          {error && <ErrorNote message={error} />}
-          <Button type="submit" loading={loading}>
-            Se connecter
-          </Button>
-          {passwordReset && (
+          <SsoSignIn
+            email={left}
+            onProvider={(provider) => {
+              setRequired(provider?.required ?? false);
+              setByPassword(false);
+            }}
+          />
+          {withPassword && (
+            <>
+              <label className="flex flex-col gap-1.5 text-sm">
+                <span className="font-medium">Mot de passe</span>
+                <input
+                  type="password"
+                  required
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="rounded-lg border border-line bg-surface px-3 py-2 outline-none focus:border-accent"
+                />
+              </label>
+              {error && <ErrorNote message={error} />}
+              <Button type="submit" loading={loading}>
+                Se connecter
+              </Button>
+            </>
+          )}
+          {!withPassword && (
+            <button
+              type="button"
+              onClick={() => setByPassword(true)}
+              className="text-center text-sm text-muted hover:text-fg"
+            >
+              Administrateur de la connexion : se connecter par mot de passe
+            </button>
+          )}
+          {passwordReset && withPassword && (
             <Link href="/forgot-password" className="text-center text-sm text-muted hover:text-fg">
               Mot de passe oublié ?
             </Link>

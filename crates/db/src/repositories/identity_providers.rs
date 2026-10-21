@@ -16,6 +16,8 @@ pub struct IdentityProviderRow {
     pub issuer: String,
     pub client_id: String,
     pub enabled: bool,
+    /// Its domains' accounts sign in through it alone (ADR-066).
+    pub required: bool,
     /// In byte order, whatever the database's collation.
     pub domains: Vec<String>,
     pub created_at: DateTime<Utc>,
@@ -23,7 +25,7 @@ pub struct IdentityProviderRow {
 }
 
 const SELECT: &str = "select p.id, p.tenant_id, p.kind, p.name, p.issuer, p.client_id, \
-    p.enabled, coalesce(array(select d.domain::text from identity_provider_domains d \
+    p.enabled, p.required, coalesce(array(select d.domain::text from identity_provider_domains d \
     where d.provider_id = p.id order by d.domain::text collate \"C\"), '{}') as domains, \
     p.created_at, p.updated_at \
     from identity_providers p";
@@ -53,6 +55,7 @@ pub struct NewIdentityProvider<'a> {
     pub issuer: &'a str,
     pub client_id: &'a str,
     pub enabled: bool,
+    pub required: bool,
     pub created_by_user_id: Uuid,
 }
 
@@ -63,8 +66,8 @@ pub async fn create_identity_provider(
 ) -> sqlx::Result<Option<Uuid>> {
     sqlx::query_scalar(
         "insert into identity_providers \
-         (tenant_id, kind, name, issuer, client_id, enabled, created_by_user_id) \
-         values ($1, $2, $3, $4, $5, $6, $7) \
+         (tenant_id, kind, name, issuer, client_id, enabled, required, created_by_user_id) \
+         values ($1, $2, $3, $4, $5, $6, $7, $8) \
          on conflict (tenant_id, issuer, client_id) do nothing returning id",
     )
     .bind(input.tenant_id)
@@ -73,6 +76,7 @@ pub async fn create_identity_provider(
     .bind(input.issuer)
     .bind(input.client_id)
     .bind(input.enabled)
+    .bind(input.required)
     .bind(input.created_by_user_id)
     .fetch_optional(conn)
     .await
@@ -83,6 +87,7 @@ pub async fn create_identity_provider(
 pub struct IdentityProviderPatch {
     pub name: Option<String>,
     pub enabled: Option<bool>,
+    pub required: Option<bool>,
 }
 
 pub async fn update_identity_provider(
@@ -92,11 +97,13 @@ pub async fn update_identity_provider(
 ) -> sqlx::Result<bool> {
     let updated = sqlx::query(
         "update identity_providers set name = coalesce($2, name), \
-         enabled = coalesce($3, enabled), updated_at = now() where id = $1",
+         enabled = coalesce($3, enabled), required = coalesce($4, required), \
+         updated_at = now() where id = $1",
     )
     .bind(id)
     .bind(patch.name)
     .bind(patch.enabled)
+    .bind(patch.required)
     .execute(conn)
     .await?;
     Ok(updated.rows_affected() == 1)
@@ -147,6 +154,8 @@ pub struct ProviderLookup {
     pub provider_id: Uuid,
     pub kind: String,
     pub name: String,
+    /// The account signs in through it alone (ADR-066).
+    pub required: bool,
 }
 
 /// The enabled provider covering the domain of the account with this
@@ -155,8 +164,27 @@ pub async fn find_identity_provider(
     pool: &PgPool,
     email: &str,
 ) -> sqlx::Result<Option<ProviderLookup>> {
-    sqlx::query_as("select tenant_id, provider_id, kind, name from auth_find_identity_provider($1)")
-        .bind(email)
-        .fetch_optional(pool)
-        .await
+    sqlx::query_as(
+        "select tenant_id, provider_id, kind, name, required \
+         from auth_find_identity_provider($1)",
+    )
+    .bind(email)
+    .fetch_optional(pool)
+    .await
+}
+
+/// The name of the enabled provider required for this address's domain in
+/// the transaction's company (ADR-066), if any.
+pub async fn required_provider_for(
+    conn: &mut PgConnection,
+    email: &str,
+) -> sqlx::Result<Option<String>> {
+    sqlx::query_scalar(
+        "select p.name from identity_provider_domains d \
+         join identity_providers p on p.id = d.provider_id \
+         where d.domain = split_part($1, '@', 2)::citext and p.enabled and p.required",
+    )
+    .bind(email)
+    .fetch_optional(conn)
+    .await
 }

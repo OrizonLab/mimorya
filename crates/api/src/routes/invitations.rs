@@ -44,8 +44,15 @@ async fn accept(
     if !state.limits.login.allow(&context.client_key()) {
         return Err(ApiError::RateLimited);
     }
-    let session =
-        accept_invitation(&state.db, &body.token, body.password, &context, &headers).await?;
+    let session = accept_invitation(
+        &state.db,
+        &state.access,
+        &body.token,
+        body.password,
+        &context,
+        &headers,
+    )
+    .await?;
     let cookie = session_cookie(&session, state.config.secure_cookies);
     Ok((AppendHeaders([(SET_COOKIE, cookie)]), Json(Done::OK)))
 }

@@ -22,6 +22,9 @@ pub struct IdentityProviderView {
     /// E-mail domains whose accounts sign in through it.
     pub domains: Vec<String>,
     pub enabled: bool,
+    /// Its domains' accounts sign in through it alone, but for the
+    /// company's administrators of its sign-in (ADR-066).
+    pub required: bool,
     pub secret_stored: bool,
     pub created_at: String,
     pub updated_at: String,
@@ -39,6 +42,7 @@ impl IdentityProviderView {
             client_id: row.client_id,
             domains: row.domains,
             enabled: row.enabled,
+            required: row.required,
             secret_stored,
         }
     }
@@ -81,6 +85,10 @@ pub struct NewIdentityProvider {
     #[serde(default)]
     #[ts(optional)]
     pub enabled: Option<bool>,
+    /// Absent: not required (ADR-066).
+    #[serde(default)]
+    #[ts(optional)]
+    pub required: Option<bool>,
 }
 
 /// Body of `PATCH /admin/identity-providers/{id}`: absent fields are
@@ -101,4 +109,7 @@ pub struct IdentityProviderUpdate {
     #[serde(default)]
     #[ts(optional)]
     pub enabled: Option<bool>,
+    #[serde(default)]
+    #[ts(optional)]
+    pub required: Option<bool>,
 }

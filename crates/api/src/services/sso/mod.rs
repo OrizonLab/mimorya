@@ -4,7 +4,8 @@
 //! offers a provider; the start sends the browser there with a sealed
 //! attempt; the return proves the person, ties or finds the account, and
 //! opens its session as a password sign-in does. No account is created; an
-//! invited one accepts its invitation this way (ADR-064).
+//! invited one accepts its invitation this way (ADR-064). A provider may be
+//! required for its domains, which then sign in through it alone (ADR-066).
 
 mod address;
 mod admission;
@@ -12,9 +13,11 @@ mod attempt;
 mod http;
 mod metadata;
 mod oidc;
+mod requirement;
 mod sign_in;
 
 pub use attempt::{ATTEMPT_COOKIE, attempt_cookie, cleared_attempt_cookie};
+pub use requirement::{SIGN_IN_ADMINISTRATOR, required_provider};
 pub use sign_in::{Return, SignInFailure};
 
 use std::sync::Arc;
