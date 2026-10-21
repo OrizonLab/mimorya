@@ -47,7 +47,13 @@ pub enum Quirk {
     /// Every request is refused with a JSON error quoting the token escaped
     /// (`\/` for `/`, `\u002B` for `+`), as some encoders write it.
     EchoesEscapedTokenOnStart,
+    /// A tool whose title, description and schema documentation hide text
+    /// (tag characters, zero-width spaces, a direction override).
+    HidesTextInDeclarations,
 }
+
+/// What `HidesTextInDeclarations` hides: « IGNORE » in tag characters.
+pub const HIDDEN_TEXT: &str = "\u{e0049}\u{e0047}\u{e004e}\u{e004f}\u{e0052}\u{e0045}";
 
 /// A server declaring the tools a quirk calls for; each answers "ok".
 #[derive(Clone)]
@@ -75,6 +81,15 @@ impl DeclaredToolsServer {
                 tool("echo_text".into(), 0),
                 tool("echo_structured".into(), 0),
             ],
+            Quirk::HidesTextInDeclarations => {
+                let mut schema = JsonObject::new();
+                schema.insert("type".into(), json!("object"));
+                schema.insert("description".into(), json!(format!("Élément{HIDDEN_TEXT}")));
+                let description = format!("Lit\u{200b} un élément.{HIDDEN_TEXT}");
+                let mut hiding = Tool::new("get_item", description, Arc::new(schema));
+                hiding.title = Some("Lecture\u{202e} d’un élément".into());
+                vec![hiding]
+            }
             _ => vec![tool("get_item".into(), 0)],
         };
         Self { quirk, tools }

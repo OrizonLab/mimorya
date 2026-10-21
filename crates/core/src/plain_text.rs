@@ -34,6 +34,15 @@ pub fn shows_all_it_holds(text: &str) -> bool {
     !text.chars().any(|c| c != '\n' && c != '\t' && is_hidden(c))
 }
 
+/// The text without its hidden characters, line breaks and tabs aside: what
+/// a third party writes for the model (an MCP server's declarations,
+/// ADR-058) then shows all it holds.
+pub fn without_hidden(text: &str) -> String {
+    text.chars()
+        .filter(|&c| c == '\n' || c == '\t' || !is_hidden(c))
+        .collect()
+}
+
 /// Unicode's `Default_Ignorable_Code_Point` (DerivedCoreProperties).
 fn is_default_ignorable(c: char) -> bool {
     matches!(
@@ -56,4 +65,18 @@ fn is_default_ignorable(c: char) -> bool {
             | 0x1D173..=0x1D17A
             | 0xE0000..=0xE0FFF
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn takes_hidden_characters_out_but_line_breaks_and_tabs() {
+        let hidden = "Cherche\u{200b} une\u{202e} procédure\u{e0041}\u{e0042}.\nRéponse :\tune liste\u{feff}";
+        let kept = without_hidden(hidden);
+        assert_eq!(kept, "Cherche une procédure.\nRéponse :\tune liste");
+        assert!(shows_all_it_holds(&kept));
+        assert!(!shows_all_it_holds(hidden));
+    }
 }

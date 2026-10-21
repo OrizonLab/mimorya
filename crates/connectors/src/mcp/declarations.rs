@@ -1,20 +1,24 @@
 //! What an MCP server declares about its tools, read with care. At most
-//! `MAX_TOOLS` tools and `MAX_PAGES` pages are read; the token is masked in every title,
-//! description and schema before anything is shortened, and a tool name may
+//! `MAX_TOOLS` tools and `MAX_PAGES` pages are read; hidden characters are
+//! taken out of every title, description and schema documentation (ADR-058),
+//! then the token is masked before anything is shortened, and a tool name may
 //! not quote it (an identifier cannot be masked). Names, schemas and the
-//! declarations as a whole are bounded, and two tools may not share an
-//! identifier once namespaced. A server breaking a rule is refused whole:
-//! its connector alone is then unavailable.
+//! declarations as a whole are bounded, two tools may not share an
+//! identifier once namespaced, and a schema may hide nothing elsewhere. A
+//! server breaking a rule is refused whole: its connector alone is then
+//! unavailable.
 
 use std::collections::HashMap;
 
 use anyhow::bail;
+use mimorya_core::plain_text::without_hidden;
 use rmcp::model::{PaginatedRequestParams, Tool};
 use serde_json::Value;
 
 use super::bridge::McpClient;
 use super::failure::call_failed;
 use super::redact::Redactor;
+use super::visible::{one_line, visible_schema};
 
 pub const MAX_TOOLS: usize = 200;
 /// Pages may be short, not endless.
@@ -128,7 +132,16 @@ pub fn checked(
                  identifiant ({name}) : renommez l’un d’eux sur le serveur"
             );
         }
-        let input_schema = redactor.value(Value::Object((*tool.input_schema).clone()));
+        // Taken out before the token is masked: hidden characters could
+        // otherwise split it past the mask, then join it once taken out.
+        let Some(input_schema) = visible_schema(Value::Object((*tool.input_schema).clone())) else {
+            bail!(
+                "Le schéma de l’outil « {} » cache des caractères invisibles ailleurs que dans \
+                 ses descriptions",
+                bounded(&one_line(&remote_name), MAX_TITLE_CHARS)
+            );
+        };
+        let input_schema = redactor.value(input_schema);
         let schema_bytes = input_schema.to_string().len();
         if schema_bytes > MAX_SCHEMA_BYTES {
             bail!(
@@ -141,9 +154,10 @@ pub fn checked(
             .clone()
             .or_else(|| tool.annotations.as_ref().and_then(|a| a.title.clone()))
             .unwrap_or_else(|| remote_name.clone());
-        let title = bounded(&redactor.text(&title), MAX_TITLE_CHARS);
+        let title = bounded(&redactor.text(&one_line(&title)), MAX_TITLE_CHARS);
         let description = tool.description.as_deref().unwrap_or(&remote_name);
-        let description = bounded(&redactor.text(description), MAX_DESCRIPTION_CHARS);
+        let description = without_hidden(description);
+        let description = bounded(&redactor.text(&description), MAX_DESCRIPTION_CHARS);
         total_bytes += schema_bytes + title.len() + description.len();
         if total_bytes > MAX_DECLARATIONS_BYTES {
             bail!(
@@ -219,6 +233,25 @@ mod tests {
         assert!(declared[0].description.ends_with("x***"), "{shown}");
         assert!(shown.contains("Bearer ***"), "{shown}");
         assert_eq!(declared[0].remote_name, "search");
+    }
+
+    #[test]
+    fn takes_hidden_characters_out_before_masking_the_token() {
+        // The token split by zero-width spaces, which the mask would miss,
+        // and text hidden in tag characters (unseen, read by a model).
+        let split: String = TOKEN.chars().flat_map(|c| [c, '\u{200b}']).collect();
+        let hidden = "\u{e0049}\u{e0047}\u{e004e}\u{e004f}\u{e0052}\u{e0045}";
+        let schema = json!({ "type": "object", "description": format!("Bearer {split}{hidden}") });
+        let mut hiding = tool("search", &format!("Recherche{hidden} {split}"), schema);
+        hiding.title = Some(format!("Recherche\n{split}"));
+        let declared = checked(vec![hiding], "docs", &Redactor::new(Some(TOKEN))).unwrap();
+        assert_eq!(declared[0].description, "Recherche ***");
+        assert_eq!(declared[0].title, "Recherche ***");
+        assert_eq!(declared[0].input_schema["description"], "Bearer ***");
+
+        let enumerated = json!({ "properties": { "kind": { "enum": [format!("a{hidden}")] } } });
+        let message = refusal(vec![tool("search", "Recherche", enumerated)]);
+        assert!(message.contains("caractères invisibles"), "{message}");
     }
 
     #[test]

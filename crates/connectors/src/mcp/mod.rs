@@ -10,6 +10,7 @@ mod failure;
 mod network;
 mod redact;
 mod token;
+mod visible;
 
 pub use bridge::{
     CONNECTOR_USE, McpClient, McpToolsetOptions, create_mcp_toolset, mcp_tool_description,
