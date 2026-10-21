@@ -7,7 +7,7 @@
 //! schema hiding characters there is refused.
 
 use mimorya_core::plain_text::{shows_all_it_holds, without_hidden};
-use serde_json::Value;
+use serde_json::{Map, Value};
 
 /// A title as shown: one line, without hidden characters.
 pub fn one_line(text: &str) -> String {
@@ -17,6 +17,16 @@ pub fn one_line(text: &str) -> String {
 /// Keys whose value is data the server reads back, whatever it holds: an
 /// object there is not documentation, even under a `title` key.
 const DATA: [&str; 4] = ["enum", "const", "default", "examples"];
+
+/// Keys whose value names schemas: a property named `default` or
+/// `description` is a schema, neither data nor documentation.
+const NAMED_SCHEMAS: [&str; 5] = [
+    "properties",
+    "patternProperties",
+    "$defs",
+    "definitions",
+    "dependentSchemas",
+];
 
 /// A tool's input schema as the model may read it: its documentation
 /// (`description` and `title` texts) without hidden characters. Anything
@@ -37,6 +47,9 @@ pub fn visible_schema(value: Value) -> Option<Value> {
                     return None;
                 }
                 let value = match (key.as_str(), value) {
+                    (named, Value::Object(schemas)) if NAMED_SCHEMAS.contains(&named) => {
+                        Value::Object(visible_schemas(schemas)?)
+                    }
                     (data, value) if DATA.contains(&data) => {
                         hides_nothing(&value).then_some(value)?
                     }
@@ -51,6 +64,17 @@ pub fn visible_schema(value: Value) -> Option<Value> {
             .map(Value::Object),
         other => Some(other),
     }
+}
+
+/// Schemas by name: each name hides nothing, each schema is made visible.
+fn visible_schemas(schemas: Map<String, Value>) -> Option<Map<String, Value>> {
+    schemas
+        .into_iter()
+        .map(|(name, schema)| {
+            shows_all_it_holds(&name).then_some(())?;
+            Some((name, visible_schema(schema)?))
+        })
+        .collect()
 }
 
 /// Whether no key or text of `value` hides anything.
@@ -93,7 +117,10 @@ mod tests {
                 },
                 // A property named like documentation keeps its schema.
                 "description": { "type": "string", "maxLength": 80 },
+                // Named like data, it is a schema too: its documentation is cleaned.
+                "default": { "type": "string", "description": "Valeur\u{ad} par défaut" },
             },
+            "$defs": { "enum": { "title": "Choix\u{200b}", "enum": ["a", "b"] } },
         });
         let visible = visible_schema(schema).unwrap();
         assert_eq!(visible["description"], "Recherche");
@@ -102,6 +129,10 @@ mod tests {
         assert_eq!(query["description"], "Mots-clés.\nExemple :\tcirculateur");
         assert_eq!(query["enum"], json!(["circulateur", "chaudière"]));
         assert_eq!(visible["properties"]["description"]["maxLength"], 80);
+        let default = &visible["properties"]["default"];
+        assert_eq!(default["description"], "Valeur par défaut");
+        assert_eq!(visible["$defs"]["enum"]["title"], "Choix");
+        assert_eq!(visible["$defs"]["enum"]["enum"], json!(["a", "b"]));
     }
 
     #[test]

@@ -2038,7 +2038,8 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
       invisibles restant masqué ; refus d'une valeur permise qui cache du texte, et d'un
       nom d'outil, sans le citer ; titre vide remplacé par le nom ;
     - `mcp/visible.rs` : documentation à toute profondeur, une propriété nommée
-      `description` gardant son schéma ; refus d'un nom de propriété, d'une valeur
+      `description` ou `default` (ou une définition nommée `enum`) restant un schéma
+      dont la documentation est nettoyée ; refus d'un nom de propriété, d'une valeur
       permise, par défaut, constante ou d'exemple qui cache des caractères, même sous
       une clé de documentation ;
     - `crates/connectors/tests/mcp_failures.rs` : un serveur HTTP qui cache du texte
