@@ -5,4 +5,5 @@ export { InvitationForm } from './invitation-form';
 export { LinkPage } from './link-page';
 export { ResetPasswordForm } from './reset-password-form';
 export { ResetRequestForm } from './reset-request-form';
+export { SsoSignIn } from './sso-sign-in';
 export { useLinkToken, type LinkState } from './use-link-token';

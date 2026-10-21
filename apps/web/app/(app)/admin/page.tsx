@@ -5,6 +5,7 @@ import {
   ApprovalRoutingTab,
   AuditTab,
   ConnectorsTab,
+  IdentityProvidersTab,
   LlmTab,
   OrganizationTab,
   PoliciesTab,
@@ -27,6 +28,7 @@ const SECTION_VIEWS: Record<AdminSectionKey, ComponentType> = {
   audit: AuditTab,
   usage: UsageTab,
   llm: LlmTab,
+  identityProviders: IdentityProvidersTab,
   connectors: ConnectorsTab,
   skills: SkillsTab,
 };

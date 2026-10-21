@@ -8,6 +8,7 @@ export const ADMIN_SECTIONS = [
   { key: 'audit', label: 'Journal d’audit', permission: 'audit:read' },
   { key: 'usage', label: 'Consommation', permission: 'usage:read' },
   { key: 'llm', label: 'Modèle d’IA', permission: 'settings:manage' },
+  { key: 'identityProviders', label: 'Connexion', permission: 'settings:manage' },
   { key: 'connectors', label: 'Connecteurs', permission: 'connector:manage' },
   { key: 'skills', label: 'Compétences', permission: 'skill:manage' },
 ] as const;

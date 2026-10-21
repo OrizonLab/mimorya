@@ -7,11 +7,17 @@
 //!
 //! Reads the usual configuration (`DATABASE_APP_URL`, `WEB_ORIGIN`…) and
 //! `E2E_MAIL_DIR`, where each e-mail becomes a JSON file (the ones a former
-//! start left are deleted). One pass of the tests per start: the model's
+//! start left are deleted). An OpenID Connect provider listens on
+//! `E2E_IDP_ADDRESS` (127.0.0.1:4100 by default), signing in whoever the
+//! sign-in names; identity providers alone are reached on the private
+//! network, connectors keep to the public one. One pass of the tests per start: the model's
 //! script and the demo company are used up. Like `mimorya-api`, it takes the
 //! run executor's lock once listening and takes up the runs a stop left,
 //! among them the one it leaves itself (`interrupted`, ADR-053).
 
+#[allow(dead_code)] // the API's tests use the rest
+#[path = "../../tests/support/identity_provider.rs"]
+mod identity_provider;
 mod interrupted;
 mod mailbox;
 mod scenario;
@@ -25,6 +31,7 @@ use mimorya_agent::testing::{ScriptedProvider, ScriptedStep};
 use mimorya_api::mail::Mailer;
 use mimorya_api::services::ProviderFactory;
 use mimorya_api::{AppConfig, BuildOptions, build_app, log_filter};
+use mimorya_connectors::mcp::NetworkPolicy;
 
 /// Reference scenarios queued for the platform model, by the hour of their
 /// follow-up: one per run that converses, in the order they run (the
@@ -66,6 +73,13 @@ async fn main() -> anyhow::Result<()> {
         Ok(provider)
     });
     let mailer: Arc<dyn Mailer> = Arc::new(mailbox::DirectoryMailer::new(mail_dir));
+    let idp_address =
+        std::env::var("E2E_IDP_ADDRESS").unwrap_or_else(|_| "127.0.0.1:4100".to_string());
+    let idp = identity_provider::MockIdentityProvider::start_on(&idp_address).await;
+    tracing::info!(
+        issuer = idp.issuer,
+        "End-to-end identity provider listening"
+    );
     let address = format!("{}:{}", config.host, config.port);
     let app = build_app(
         config,
@@ -73,6 +87,10 @@ async fn main() -> anyhow::Result<()> {
             provider: Some(Some(platform)),
             provider_factory: Some(factory),
             mailer: Some(Some(mailer)),
+            sso_network: Some(NetworkPolicy {
+                allow_private_network: true,
+                allow_stdio: false,
+            }),
         },
     )
     .await?;

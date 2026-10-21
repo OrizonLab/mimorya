@@ -2319,7 +2319,8 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     pas celle que l'adresse saisie désignait ;
   - le retour du fournisseur (`GET /api/auth/sso/callback`) vérifie d'abord le `state`
     contre le cookie (contre la connexion forcée ; un refus du fournisseur le porte
-    aussi), efface le cookie, échange le code, valide
+    aussi ; il ne compte pas dans la limite de connexion, que la découverte et le départ
+    ont déjà comptée), efface le cookie, échange le code, valide
     le jeton, ouvre la session comme une connexion par mot de passe (ligne du compte
     verrouillée, compte actif) et la trace (`auth.login`, méthode `sso`, fournisseur ;
     `auth.identity_linked` à la première liaison). Tout échec renvoie à
@@ -2345,8 +2346,14 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     compte à la première connexion, SAML et la vérification de propriété d'un domaine
     viendront ensuite ;
   - lots : (1) modèle, connexion, configuration par l'API, tests contre un fournisseur
-    simulé (ce lot) ; (2) écran d'administration « Connexion » et bouton de la page de
-    connexion ; (3) options.
+    simulé ; (2) onglet « Connexion » de l'administration (`settings:manage` : déclarer,
+    modifier, désactiver, supprimer ; adresse de retour à enregistrer chez le
+    fournisseur) et, sur la page de connexion, le bouton « Se connecter avec … » proposé
+    d'après l'adresse quand on quitte le champ, et un message générique au retour d'un
+    échec (`?sso=echec`) ; (3) options. Les tests de bout en bout passent par le
+    fournisseur OpenID Connect du serveur e2e (`E2E_IDP_ADDRESS`, il connecte la personne
+    que la connexion désigne), seul joint sur le réseau privé (`BuildOptions::sso_network`,
+    réservé aux tests) : les connecteurs y restent sur le réseau public.
   - Tests :
     - `crates/core/src/identity_providers/tests.rs` : issuer de chaque type, nom,
       client, domaines, preuves d'identité par type ;
@@ -2358,4 +2365,7 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
       invité, et un audit sans code ni jeton), isolation entre entreprises, fournisseur
       hors politique réseau jamais joint, configuration ;
     - `crates/db/tests/definer_functions.rs` : la nouvelle fonction est dans la liste
-      connue.
+      connue ;
+    - `apps/web/e2e/single-sign-on.spec.ts` : déclaration dans l'administration (secret
+      jamais affiché, relu après rechargement), connexion de bout en bout par le bouton,
+      fournisseur désactivé proposé à personne, retour en échec signalé.

@@ -1,6 +1,7 @@
 export { ApprovalRoutingTab } from './approval-routing/approval-routing-tab';
 export { AuditTab } from './audit-tab';
 export { ConnectorsTab } from './connectors/connectors-tab';
+export { IdentityProvidersTab } from './identity-providers/identity-providers-tab';
 export { LlmTab } from './llm/llm-tab';
 export { OrganizationTab } from './organization/organization-tab';
 export { PoliciesTab } from './policies/policies-tab';

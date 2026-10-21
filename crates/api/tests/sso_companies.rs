@@ -180,6 +180,7 @@ async fn a_provider_out_of_the_network_policy_is_never_reached() {
         "{}",
         refused.text()
     );
+    assert_eq!(idp.requests(), before);
     let (url, cookie) = start(&api, &nadia).await;
     idp.sign_in_as(Person::verified("kc-nadia", &nadia));
     let back = idp.authorize(&url);
