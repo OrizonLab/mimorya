@@ -208,14 +208,13 @@ async fn a_provider_out_of_the_network_policy_is_never_reached() {
         refused.text()
     );
     assert_eq!(idp.requests(), before);
+    // Started where it is allowed (its declaration kept there, ADR-065).
     let (url, cookie) = start(&api, &nadia).await;
     idp.sign_in_as(Person::verified("kc-nadia", &nadia));
     let back = idp.authorize(&url);
-    let reached = idp.requests();
-    assert!(reached > before);
     let since = latest_entry(&api).await;
     assert_refused(&come_back(&public, &back, Some(&cookie)).await);
-    assert_eq!(idp.requests(), reached);
+    assert_eq!(idp.requests(), before);
     let audited = sso_logins(&api, tenant::ID, since).await;
     assert_eq!(audited.len(), 1, "{audited:?}");
     let reason = audited[0].2.clone().unwrap_or_default();

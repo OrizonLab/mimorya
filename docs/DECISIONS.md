@@ -2346,8 +2346,9 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
 - **Conséquences** :
   - le serveur doit joindre le fournisseur (`login.microsoftonline.com`, …) ; pour un
     fournisseur du réseau privé, l'exploitant l'autorise comme pour les connecteurs
-    (`MIMORYA_MCP_ALLOW_PRIVATE_NETWORK`). La déclaration et les clés du fournisseur sont
-    relues au départ et au retour de chaque connexion (pas encore de cache) ;
+    (`MIMORYA_MCP_ALLOW_PRIVATE_NETWORK`). La déclaration et les clés du fournisseur,
+    d'abord relues au départ et au retour de chaque connexion, sont gardées une heure
+    (ADR-065) ;
   - qui administre les fournisseurs peut se connecter comme les comptes de ses domaines
     pas encore reliés ; c'est déjà le pouvoir de qui fixe un mot de passe provisoire
     (même niveau d'administration, tracé) ;
@@ -2443,3 +2444,39 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     `apps/web/e2e/single-sign-on.spec.ts`
     (invitation reçue par e-mail, compte activé par le fournisseur, « Mon compte » sans
     mot de passe, lien refusé ensuite).
+
+## ADR-065 — Garder en mémoire la déclaration et les clés des fournisseurs d'identité
+
+- **Date** : 2026-10-21 · **Statut** : acceptée
+- **Contexte** : chaque connexion par le fournisseur d'identité (ADR-063) relisait sa
+  déclaration (`/.well-known/openid-configuration`) et ses clés publiques au départ, puis
+  encore au retour : quatre requêtes vers Microsoft ou Google avant même l'échange du
+  code, une latence et une dépendance de plus à chaque connexion. Les fournisseurs
+  demandent de garder ces documents et de ne relire les clés qu'à leur renouvellement.
+- **Décision** :
+  - la déclaration de chaque émetteur, clés comprises, est gardée **une heure** en
+    mémoire (`crates/api/src/services/sso/metadata.rs`), par instance du serveur, comme
+    les limites de débit : le départ et le retour la lisent là ;
+  - un jeton signé par une clé que les clés gardées n'ont pas (le fournisseur les a
+    renouvelées) fait relire la déclaration **une fois**, puis le même jeton est vérifié
+    avec les nouvelles clés, sans nouvel échange du code ; signé par une clé que la
+    déclaration tout juste relue n'a pas non plus, il est refusé (« clé de signature
+    inconnue ») ;
+  - un échec n'est pas gardé : la connexion suivante relit le fournisseur ;
+  - la vérification d'un émetteur par l'administration (déclaration d'un fournisseur)
+    le relit toujours, jamais depuis la mémoire, et garde ce qu'elle a lu ;
+  - au plus 256 émetteurs gardés (un par fournisseur déclaré) : au-delà, les déclarations
+    périmées partent d'abord, puis la plus ancienne lue. Ces documents sont publics : les
+    garder par émetteur, même partagé entre entreprises (Google), ne révèle rien de l'une
+    à l'autre ; chaque adresse qu'ils nomment reste contrôlée avant chaque requête
+    (ADR-025).
+- **Conséquences** :
+  - une connexion ne joint plus le fournisseur que pour échanger son code ; un
+    changement de ses adresses (rare) est vu au plus tard une heure après, ses clés
+    renouvelées dès le premier jeton qu'elles signent ;
+  - un serveur redémarré relit chaque fournisseur à sa première connexion ;
+  - tests : `crates/api/src/services/sso/metadata.rs` (durée, bornes, périmés d'abord) ;
+    `crates/api/tests/sso_provider_cache.rs` (deux connexions sans relecture ; clés
+    renouvelées relues une fois, clé inconnue refusée après une seule relecture, et sans
+    double relecture d'une déclaration tout juste lue ; échec non gardé, fournisseur
+    gardé tant qu'il sert ; déclaration par l'administration toujours relue).

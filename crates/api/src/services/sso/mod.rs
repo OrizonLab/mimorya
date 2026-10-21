@@ -10,6 +10,7 @@ mod address;
 mod admission;
 mod attempt;
 mod http;
+mod metadata;
 mod oidc;
 mod sign_in;
 
@@ -17,6 +18,7 @@ pub use attempt::{ATTEMPT_COOKIE, attempt_cookie, cleared_attempt_cookie};
 pub use sign_in::{Return, SignInFailure};
 
 use std::sync::Arc;
+use std::time::Instant;
 
 use chrono::Utc;
 use mimorya_connectors::mcp::NetworkPolicy;
@@ -25,12 +27,14 @@ use mimorya_db::Database;
 use mimorya_db::repositories::identity_providers::{
     ProviderLookup, find_identity_provider, get_identity_provider,
 };
+use openidconnect::core::CoreProviderMetadata;
 use uuid::Uuid;
 
 use crate::secrets::{SecretCipher, SecretStore};
 use address::address_problem;
 use attempt::{ATTEMPT_LIFETIME, Attempt};
 use http::ProviderHttp;
+use metadata::MetadataCache;
 
 /// Where a provider sends the browser back, under the web origin.
 pub const CALLBACK_PATH: &str = "/api/auth/sso/callback";
@@ -54,6 +58,15 @@ pub struct SsoService {
     http: ProviderHttp,
     network: NetworkPolicy,
     redirect_uri: String,
+    /// The providers' declarations and keys, kept an hour (ADR-065).
+    declarations: MetadataCache<CoreProviderMetadata>,
+}
+
+/// An issuer's declaration, and whether it came from memory: its keys may
+/// then be older than the provider's.
+struct Declaration {
+    metadata: CoreProviderMetadata,
+    kept: bool,
 }
 
 impl SsoService {
@@ -70,6 +83,7 @@ impl SsoService {
             http: ProviderHttp::new(network)?,
             network,
             redirect_uri: format!("{web_origin}{CALLBACK_PATH}"),
+            declarations: MetadataCache::default(),
         })
     }
 
@@ -115,9 +129,11 @@ impl SsoService {
                  par mot de passe",
             )
         };
-        let metadata = oidc::discover(&self.http, &provider.issuer)
+        let metadata = self
+            .declaration(&provider.issuer)
             .await
-            .map_err(unusable)?;
+            .map_err(unusable)?
+            .metadata;
         let authorization =
             oidc::authorization(metadata, &provider.client_id, &self.redirect_uri, email)
                 .map_err(unusable)?;
@@ -139,11 +155,36 @@ impl SsoService {
     }
 
     /// Why the issuer cannot serve sign-ins, if it cannot (in French): its
-    /// declaration is fetched as a sign-in would.
+    /// declaration is read anew, never answered from memory.
     pub async fn issuer_problem(&self, issuer: &str) -> Option<String> {
-        oidc::discover(&self.http, issuer)
+        self.read_declaration(issuer)
             .await
             .err()
             .map(|failure| format!("Fournisseur injoignable ou invalide ({failure})"))
+    }
+
+    /// The issuer's declaration and keys: the kept ones while they serve,
+    /// else read (ADR-065).
+    async fn declaration(&self, issuer: &str) -> Result<Declaration, oidc::Failure> {
+        if let Some(metadata) = self.declarations.get(issuer, Instant::now()) {
+            return Ok(Declaration {
+                metadata,
+                kept: true,
+            });
+        }
+        let metadata = self.read_declaration(issuer).await?;
+        Ok(Declaration {
+            metadata,
+            kept: false,
+        })
+    }
+
+    /// The issuer's declaration and keys, read anew and kept; a failure is
+    /// not.
+    async fn read_declaration(&self, issuer: &str) -> Result<CoreProviderMetadata, oidc::Failure> {
+        let metadata = oidc::discover(&self.http, issuer).await?;
+        self.declarations
+            .put(issuer, metadata.clone(), Instant::now());
+        Ok(metadata)
     }
 }
