@@ -74,11 +74,11 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON identity_providers TO mimorya_app;
 GRANT SELECT, INSERT, DELETE ON identity_provider_domains TO mimorya_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON user_identities TO mimorya_app;
 
--- Before sign-in, the company is not known yet: the provider of the account
--- with this address, if its company is active and has an enabled provider
--- covering the address's domain. Only what the sign-in page shows, and
--- where to continue, crosses the companies' boundary; a disabled account
--- reads as none.
+-- Before sign-in, the company is not known yet: the provider of the active
+-- account with this address, if its company is active and has an enabled
+-- provider covering the address's domain. Only what the sign-in page
+-- shows, and where to continue, crosses the companies' boundary; a disabled
+-- or invited account reads as none (an invitation is accepted first).
 CREATE FUNCTION auth_find_identity_provider(p_email text)
 RETURNS TABLE (tenant_id uuid, provider_id uuid, kind text, name text)
 LANGUAGE sql
@@ -93,7 +93,7 @@ AS $$
       ON d.tenant_id = u.tenant_id AND d.domain = split_part(u.email::text, '@', 2)::citext
     JOIN identity_providers p ON p.id = d.provider_id AND p.tenant_id = d.tenant_id
    WHERE u.email = p_email::citext
-     AND u.status IN ('active', 'invited')
+     AND u.status = 'active'
      AND p.enabled
      AND t.status = 'active'
 $$;

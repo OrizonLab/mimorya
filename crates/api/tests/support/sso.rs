@@ -160,3 +160,26 @@ pub async fn identities(api: &TestApi) -> Vec<(Uuid, String)> {
         .await
         .unwrap()
 }
+
+/// The `state` an authorization address carries.
+pub fn state_of(address: &str) -> String {
+    url::Url::parse(address)
+        .unwrap()
+        .query_pairs()
+        .find(|(name, _)| name == "state")
+        .map(|(_, value)| value.into_owned())
+        .expect("state")
+}
+
+/// Everything audited in a company after `since` (reasons and metadata),
+/// to look for what must never be there.
+pub async fn audit_text_since(api: &TestApi, tenant_id: Uuid, since: i64) -> String {
+    let mut tx = api.app.services.db.begin(tenant_id).await.unwrap();
+    let rows: Vec<(Option<String>, Value)> =
+        sqlx::query_as("select reason, metadata from audit_log where id > $1 order by id")
+            .bind(since)
+            .fetch_all(&mut *tx)
+            .await
+            .unwrap();
+    format!("{rows:?}")
+}

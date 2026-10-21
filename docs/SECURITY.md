@@ -109,13 +109,17 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   - Flux par code avec PKCE, `state` et `nonce` ; la tentative voyage dans un cookie
     `HttpOnly`, `SameSite=Lax`, de 10 minutes, scellé par la clé maîtresse avec
     l'entreprise en données associées ; le retour d'une autre tentative est refusé (pas
-    de connexion forcée) ; le code s'échange une fois. Le jeton d'identité est vérifié
-    (signature par les clés publiées, émetteur, audience, expiration, nonce) ; le
-    fournisseur est joint par le client HTTP durci des connecteurs (ADR-025), borné en
-    durée et en taille.
+    de connexion forcée), avant même un refus du fournisseur ; le code s'échange une
+    fois. Le jeton d'identité est vérifié (signature par les clés publiées, émetteur,
+    audience, expiration, nonce). Le fournisseur est joint par le client HTTP durci des
+    connecteurs (ADR-025), borné en durée et en taille ; toute adresse qu'il nomme
+    (clés, point d'échange, adresse d'autorisation) est contrôlée comme son émetteur
+    avant la connexion : `https`, adresse IP en clair publique (pas de SSRF vers le
+    réseau de l'exploitant).
   - Pas de création de compte : la première connexion relie un compte actif existant au
     sujet immuable du fournisseur (`oid` pour Microsoft), seulement par une adresse que
-    le fournisseur garantit, dans un domaine déclaré ; ensuite, seul le sujet compte.
+    le fournisseur garantit (Microsoft : le nom de connexion, ou `email` avec
+    `xms_edov`), dans un domaine déclaré ; ensuite, seul le sujet compte.
     La session s'ouvre comme pour un mot de passe ; chaque refus est tracé avec sa
     raison dans l'entreprise de la tentative, jamais un jeton ni un code.
   - Suite : SSO obligatoire par domaine, acceptation d'une invitation par le

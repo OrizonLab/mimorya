@@ -128,28 +128,38 @@ fn microsoft_proves_its_directory_s_accounts_by_their_object_id() {
             email: Some("nadia.benali@neo-maintenance.example".into()),
         }
     );
-    // The `email` claim first; a sign-in name that is no address, none.
+    // The sign-in name, whose domain the directory verified, before `email`.
     let with_email = TokenClaims {
-        email: Some("nadia@neo-maintenance.example"),
+        email: Some("autre@neo-maintenance.example"),
+        email_domain_verified: Some(true),
         ..claims.clone()
     };
-    assert_eq!(
-        proven_identity(ProviderKind::Microsoft, &with_email, &domains())
+    let email = |claims: &TokenClaims<'_>| {
+        proven_identity(ProviderKind::Microsoft, claims, &domains())
             .unwrap()
             .email
-            .as_deref(),
-        Some("nadia@neo-maintenance.example")
-    );
-    let no_address = TokenClaims {
-        preferred_username: Some("NBENALI"),
-        ..claims.clone()
     };
     assert_eq!(
-        proven_identity(ProviderKind::Microsoft, &no_address, &domains())
-            .unwrap()
-            .email,
-        None
+        email(&with_email).as_deref(),
+        Some("nadia.benali@neo-maintenance.example")
     );
+    // Without a sign-in name that is an address, `email` only if Microsoft
+    // vouches for its domain.
+    let no_address = TokenClaims {
+        preferred_username: Some("NBENALI"),
+        ..with_email.clone()
+    };
+    assert_eq!(
+        email(&no_address).as_deref(),
+        Some("autre@neo-maintenance.example")
+    );
+    for email_domain_verified in [None, Some(false)] {
+        let unverified = TokenClaims {
+            email_domain_verified,
+            ..no_address.clone()
+        };
+        assert_eq!(email(&unverified), None);
+    }
     let no_oid = TokenClaims {
         oid: None,
         ..claims

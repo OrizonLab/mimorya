@@ -95,20 +95,17 @@ impl SsoService {
             .ok_or_else(unknown)?;
         let provider_id = attempt.provider_id;
         let at = |reason: &str| SignInFailure::at(tenant_id, provider_id, reason);
-        if let Some(error) = back.error {
-            let code: String = error
-                .chars()
-                .filter(|c| c.is_ascii_alphanumeric() || *c == '_')
-                .take(64)
-                .collect();
-            return Err(at(&format!("Refusée par le fournisseur ({code})")));
-        }
-        // Another attempt's return: a sign-in forced from elsewhere.
+        // Another attempt's return, a sign-in forced from elsewhere: the
+        // state comes back with a refusal too (RFC 6749, 4.1.2.1).
         if !back
             .state
             .is_some_and(|state| same_state(&state, &attempt.state))
         {
             return Err(at("Retour d’une autre tentative"));
+        }
+        if let Some(error) = back.error {
+            let code = oidc::error_code(&error);
+            return Err(at(&format!("Refusée par le fournisseur ({code})")));
         }
         let code = back.code.ok_or_else(|| at("Retour sans code"))?;
         let (provider, secret) = self.provider(tenant_id, provider_id).await?;

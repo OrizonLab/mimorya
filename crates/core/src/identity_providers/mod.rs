@@ -191,8 +191,11 @@ pub struct TokenClaims<'a> {
     pub subject: &'a str,
     pub email: Option<&'a str>,
     pub email_verified: Option<bool>,
-    /// Microsoft: the account's sign-in name in its directory.
+    /// Microsoft: the account's sign-in name in its directory (its UPN,
+    /// whose domain the directory verified).
     pub preferred_username: Option<&'a str>,
+    /// Microsoft: whether the domain of `email` is verified (`xms_edov`).
+    pub email_domain_verified: Option<bool>,
     /// Microsoft: the account's immutable object ID in its directory.
     pub oid: Option<&'a str>,
     /// Google: the account's Workspace domain.
@@ -217,15 +220,19 @@ pub fn proven_identity(
 ) -> Result<ProvenIdentity, &'static str> {
     let verified = claims.email_verified == Some(true);
     let (subject, email) = match kind {
-        // The directory is the company's: the addresses of its accounts
-        // are its own. The object ID stays when the application changes.
+        // The sign-in name first: its domain is one the directory
+        // verified, which `email` alone is not. The object ID stays when
+        // the application changes.
         ProviderKind::Microsoft => (
             claims
                 .oid
                 .ok_or("Jeton Microsoft sans identifiant d’objet (oid)")?,
             claims
-                .email
-                .or(claims.preferred_username.filter(|u| u.contains('@'))),
+                .preferred_username
+                .filter(|u| u.contains('@'))
+                .or(claims
+                    .email
+                    .filter(|_| claims.email_domain_verified == Some(true))),
         ),
         // A Workspace account of a declared domain, never a consumer one.
         ProviderKind::Google => {

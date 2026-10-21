@@ -12,6 +12,7 @@ use serde_json::json;
 use support::accounts::{INVITED_PASSWORD, accept};
 use support::companies::create;
 use support::identity_provider::{MockIdentityProvider, Person};
+use support::llm::MASTER_KEY;
 use support::refusals::{latest_entry, latest_entry_of};
 use support::sso::{
     PROVIDERS, SSO_DEPLOYMENT, assert_refused, come_back, declaration, declare, discover,
@@ -155,5 +156,41 @@ async fn without_its_master_key_a_server_signs_nobody_in_this_way() {
         "{}",
         declared.text()
     );
+    remove(&paul, &id).await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_provider_out_of_the_network_policy_is_never_reached() {
+    let api = TestApi::start_with(&SSO_DEPLOYMENT).await;
+    // Same companies, but this server keeps to the public network.
+    let public = TestApi::start_with(&[("MIMORYA_MASTER_KEY", MASTER_KEY)]).await;
+    let idp = MockIdentityProvider::start().await;
+    let paul = api.sign_in(user::PAUL).await;
+    let nadia = email(user::NADIA);
+    let id = declare(&paul, declaration(&idp)).await;
+
+    // Declared where the private network was allowed: here, its address is
+    // refused before any connection, at the start as at the return.
+    let before = idp.requests();
+    let refused = try_start(&public, &nadia).await;
+    assert_eq!(
+        refused.status,
+        StatusCode::SERVICE_UNAVAILABLE,
+        "{}",
+        refused.text()
+    );
+    let (url, cookie) = start(&api, &nadia).await;
+    idp.sign_in_as(Person::verified("kc-nadia", &nadia));
+    let back = idp.authorize(&url);
+    let reached = idp.requests();
+    assert!(reached > before);
+    let since = latest_entry(&api).await;
+    assert_refused(&come_back(&public, &back, Some(&cookie)).await);
+    assert_eq!(idp.requests(), reached);
+    let audited = sso_logins(&api, tenant::ID, since).await;
+    assert_eq!(audited.len(), 1, "{audited:?}");
+    let reason = audited[0].2.clone().unwrap_or_default();
+    assert!(reason.contains("https:// attendu"), "{reason}");
     remove(&paul, &id).await;
 }

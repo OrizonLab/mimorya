@@ -6,11 +6,12 @@
 mod support;
 
 use mimorya_core::demo::{tenant, user};
+use support::accounts::invite_account;
 use support::identity_provider::{MockIdentityProvider, Person, Tamper};
 use support::refusals::latest_entry;
 use support::sso::{
-    SSO_DEPLOYMENT, assert_refused, come_back, declaration, declare, identities, location, remove,
-    session, sign_in, sso_logins, start,
+    SSO_DEPLOYMENT, assert_refused, audit_text_since, come_back, declaration, declare, discover,
+    identities, location, remove, session, sign_in, sso_logins, start, state_of, try_start,
 };
 use support::{TestApi, email};
 
@@ -44,13 +45,19 @@ async fn a_return_opens_a_session_only_for_its_own_attempt() {
     assert_refused(&come_back(&api, &idp.authorize(&url), Some(altered)).await);
     assert!(reasons(&api, since).await.is_empty());
 
-    // Another attempt's return, as a sign-in forced from elsewhere would be.
+    // Another attempt's return, as a sign-in forced from elsewhere would be;
+    // a refusal without the attempt's state is one too.
     let (mine, cookie) = start(&api, &nadia).await;
     let (theirs, _) = start(&api, &nadia).await;
     assert_refused(&come_back(&api, &idp.authorize(&theirs), Some(&cookie)).await);
-    // The provider's own refusal.
-    let refusal = "/auth/sso/callback?error=access_denied&error_description=Annul%C3%A9";
-    assert_refused(&come_back(&api, refusal, Some(&cookie)).await);
+    let forged = "/auth/sso/callback?error=access_denied";
+    assert_refused(&come_back(&api, forged, Some(&cookie)).await);
+    // The provider's own refusal, with the attempt's state.
+    let refusal = format!(
+        "/auth/sso/callback?error=access_denied&error_description=Annul%C3%A9&state={}",
+        state_of(&mine)
+    );
+    assert_refused(&come_back(&api, &refusal, Some(&cookie)).await);
     assert_eq!(idp.exchanges(), 0);
 
     // The right return, once: replayed, its code is spent at the provider.
@@ -60,11 +67,27 @@ async fn a_return_opens_a_session_only_for_its_own_attempt() {
     assert!(session(&first).is_some());
     assert_refused(&come_back(&api, &back, Some(&cookie)).await);
 
-    let reasons = reasons(&api, since).await;
-    assert_eq!(reasons.len(), 3, "{reasons:?}");
-    assert_eq!(reasons[0], "Retour d’une autre tentative");
-    assert_eq!(reasons[1], "Refusée par le fournisseur (access_denied)");
-    assert!(reasons[2].starts_with("échange : "), "{}", reasons[2]);
+    assert_eq!(
+        reasons(&api, since).await,
+        [
+            "Retour d’une autre tentative",
+            "Retour d’une autre tentative",
+            "Refusée par le fournisseur (access_denied)",
+            "échange : refusé par le fournisseur (invalid_grant)",
+        ]
+    );
+    // Neither the code, nor a token, nor the provider's words.
+    let audited = audit_text_since(&api, tenant::ID, since).await;
+    let code = back
+        .split("code=")
+        .nth(1)
+        .unwrap()
+        .split('&')
+        .next()
+        .unwrap();
+    for hidden in [code, "jeton-d-acces-de-test", "eyJ", "Annul"] {
+        assert!(!audited.contains(hidden), "{hidden} in {audited}");
+    }
     remove(&paul, &id).await;
 }
 
@@ -177,10 +200,7 @@ async fn a_disabled_account_never_signs_in_nor_gets_tied() {
         .patch(&account, serde_json::json!({ "status": "disabled" }))
         .await;
     assert_eq!(disabled.status, axum::http::StatusCode::OK);
-    assert_eq!(
-        support::sso::discover(&api, &marc).await,
-        serde_json::json!(null)
-    );
+    assert_eq!(discover(&api, &marc).await, serde_json::json!(null));
     idp.sign_in_as(Person::verified("kc-marc", &marc));
     let since = latest_entry(&api).await;
     assert_refused(&come_back(&api, &idp.authorize(&url), Some(&cookie)).await);
@@ -199,5 +219,28 @@ async fn a_disabled_account_never_signs_in_nor_gets_tied() {
         .patch(&account, serde_json::json!({ "status": "active" }))
         .await;
     assert_eq!(enabled.status, axum::http::StatusCode::OK);
+    remove(&paul, &id).await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn an_invited_account_is_offered_no_provider() {
+    let api = TestApi::start_with(&SSO_DEPLOYMENT).await;
+    let idp = MockIdentityProvider::start().await;
+    let paul = api.sign_in(user::PAUL).await;
+    let id = declare(&paul, declaration(&idp)).await;
+    // Its invitation is accepted first, with a password (ADR-063).
+    let (invited, _) = invite_account(&paul, "invite.sso").await;
+    assert_eq!(
+        discover(&api, &invited.email).await,
+        serde_json::json!(null)
+    );
+    let refused = try_start(&api, &invited.email).await;
+    assert_eq!(
+        refused.status,
+        axum::http::StatusCode::NOT_FOUND,
+        "{}",
+        refused.text()
+    );
     remove(&paul, &id).await;
 }

@@ -29,6 +29,10 @@ pub struct ExtraClaims {
     /// Google: the account's Workspace domain.
     #[serde(default)]
     pub hd: Option<String>,
+    /// Microsoft: whether the domain of `email` is verified (a boolean,
+    /// read loosely: its form is not documented strictly).
+    #[serde(default)]
+    pub xms_edov: Option<serde_json::Value>,
 }
 
 impl AdditionalClaims for ExtraClaims {}
@@ -165,9 +169,16 @@ pub async fn verified_claims(
         .request_async(http)
         .await
         .map_err(|error| match error {
-            // The response is not echoed: it may carry tokens.
+            // Of the provider's answer, its error code alone: neither its
+            // description nor, on a malformed answer, its body.
+            RequestTokenError::ServerResponse(answer) => format!(
+                "échange : refusé par le fournisseur ({})",
+                error_code(answer.error().as_ref())
+            ),
             RequestTokenError::Request(cause) => format!("échange : {cause}"),
-            other => format!("échange : {other}"),
+            RequestTokenError::Parse(..) => "échange : réponse illisible".into(),
+            // The library's own words (empty answer, content type).
+            RequestTokenError::Other(text) => format!("échange : {text}"),
         })?;
     let token = response
         .id_token()
@@ -189,7 +200,22 @@ pub fn token_claims(claims: &VerifiedClaims) -> TokenClaims<'_> {
         preferred_username: claims.preferred_username().map(|u| u.as_str()),
         oid: extra.oid.as_deref(),
         hosted_domain: extra.hd.as_deref(),
+        email_domain_verified: extra.xms_edov.as_ref().map(|value| {
+            matches!(value, serde_json::Value::Bool(true))
+                || value.as_str() == Some("true")
+                || value.as_u64() == Some(1)
+                || value.as_str() == Some("1")
+        }),
     }
+}
+
+/// A provider's error code (`access_denied`…), as it may be audited: letters,
+/// digits and underscores, bounded.
+pub fn error_code(text: &str) -> String {
+    text.chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '_')
+        .take(64)
+        .collect()
 }
 
 /// An error and its causes, on one line, bounded: a discovery reads only

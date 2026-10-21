@@ -2277,9 +2277,13 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     `state` et `nonce`, côté serveur (client confidentiel). Bibliothèque `openidconnect`
     (découverte, clés de signature, validation du jeton d'identité : signature,
     émetteur, audience, expiration, nonce), branchée sur le client HTTP durci des
-    connecteurs (pas de redirection, pas de proxy, adresses publiques seulement sauf
-    réseau privé autorisé par l'exploitant, ADR-025), chaque échange borné en durée
-    (10 s) et en taille (256 Kio) ;
+    connecteurs (pas de redirection, pas de proxy, noms résolus en adresses publiques
+    seulement sauf réseau privé autorisé par l'exploitant, ADR-025), chaque échange
+    borné en durée (10 s) et en taille (256 Kio). **Toute adresse appelée** — l'émetteur
+    enregistré, mais aussi les clés et le point d'échange que nomme la déclaration du
+    fournisseur, et l'adresse d'autorisation où le navigateur est envoyé — est contrôlée
+    avant la connexion : `https` (sauf réseau privé autorisé), sans identifiants, et une
+    adresse IP écrite en clair doit être publique (le résolveur ne la voit pas) ;
   - chaque entreprise déclare ses **fournisseurs d'identité** (`identity_providers`,
     RLS) : type `microsoft` (identifiant de l'annuaire Entra, un GUID ; émetteur
     `https://login.microsoftonline.com/{annuaire}/v2.0`), `google` (émetteur Google ;
@@ -2292,8 +2296,8 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     demande l'e-mail ; le fournisseur proposé est celui qui couvre le domaine du
     compte portant cette adresse, actif, dans une entreprise active
     (`auth_find_identity_provider`, seule lecture inter-entreprises). Une adresse sans
-    compte, d'un compte désactivé ou d'une entreprise sans fournisseur reçoit la même
-    réponse (« mot de passe ») ; une entreprise ne peut donc pas détourner vers son
+    compte, d'un compte désactivé ou invité, ou d'une entreprise sans fournisseur reçoit
+    la même réponse (« mot de passe ») ; une entreprise ne peut donc pas détourner vers son
     fournisseur les comptes d'une autre en déclarant leur domaine. La réponse dit
     qu'une adresse a un compte dans une entreprise qui l'a reliée à son fournisseur :
     elle est limitée en débit comme la connexion ;
@@ -2305,19 +2309,23 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - **pas de création de compte** : le compte doit exister et être actif. La première
     connexion le relie à l'identité (`user_identities` : fournisseur, sujet immuable —
     `oid` pour Microsoft, qui survit à un changement d'application, `sub` sinon) par
-    l'e-mail du jeton, seulement si le fournisseur garantit cette adresse (l'annuaire
-    de l'entreprise pour Microsoft : `email`, sinon le nom de connexion ;
-    `email_verified` pour les autres) et qu'elle relève d'un domaine déclaré. Ensuite,
+    l'e-mail du jeton, seulement si le fournisseur garantit cette adresse et qu'elle
+    relève d'un domaine déclaré. Pour Microsoft, le nom de connexion (UPN, dont
+    l'annuaire a vérifié le domaine), sinon `email` seulement si Microsoft garantit son
+    domaine (`xms_edov`) : `email` seul peut ne pas être vérifié ; pour les autres,
+    `email` avec `email_verified`. Ensuite,
     seule l'identité reliée compte ; un compte déjà relié à une autre identité du même
     fournisseur est refusé. La personne connectée est celle que le fournisseur prouve,
     pas celle que l'adresse saisie désignait ;
-  - le retour du fournisseur (`GET /api/auth/sso/callback`) vérifie le `state` contre
-    le cookie (contre la connexion forcée), efface le cookie, échange le code, valide
+  - le retour du fournisseur (`GET /api/auth/sso/callback`) vérifie d'abord le `state`
+    contre le cookie (contre la connexion forcée ; un refus du fournisseur le porte
+    aussi), efface le cookie, échange le code, valide
     le jeton, ouvre la session comme une connexion par mot de passe (ligne du compte
     verrouillée, compte actif) et la trace (`auth.login`, méthode `sso`, fournisseur ;
     `auth.identity_linked` à la première liaison). Tout échec renvoie à
     `/login?sso=echec` ; la raison est tracée dans l'entreprise de la tentative quand
-    elle est connue, jamais un jeton, un code ni la réponse du fournisseur à l'échange ;
+    elle est connue, jamais un jeton, un code ni la réponse du fournisseur à l'échange
+    (de son refus, seul son code d'erreur, filtré) ;
   - la configuration (`/api/admin/identity-providers`) exige `settings:manage` sur
     toute l'entreprise (non délégable), sous le verrou d'administration, auditée (sans
     le secret) ; le fournisseur est joint avant l'enregistrement pour dire tout de suite
@@ -2343,9 +2351,11 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     - `crates/core/src/identity_providers/tests.rs` : issuer de chaque type, nom,
       client, domaines, preuves d'identité par type ;
     - `crates/api/src/services/sso/attempt.rs` : tentative scellée, ouverte seulement
-      pour son entreprise, intacte et à temps ;
+      pour son entreprise, intacte et à temps ; `address.rs` et `http.rs` : adresses
+      hors politique refusées, sans aucune connexion ;
     - `crates/api/tests/sso_sign_in.rs`, `sso_refusals.rs`, `sso_companies.rs`,
-      `admin_identity_providers.rs` : connexion, liaison unique, refus, isolation entre
-      entreprises, configuration ;
+      `admin_identity_providers.rs` : connexion, liaison unique, refus (dont un compte
+      invité, et un audit sans code ni jeton), isolation entre entreprises, fournisseur
+      hors politique réseau jamais joint, configuration ;
     - `crates/db/tests/definer_functions.rs` : la nouvelle fonction est dans la liste
       connue.

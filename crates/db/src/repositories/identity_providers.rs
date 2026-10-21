@@ -7,9 +7,6 @@ use chrono::{DateTime, Utc};
 use sqlx::{PgConnection, PgPool};
 use uuid::Uuid;
 
-/// What a provider is (`identity_providers_kind_check`).
-pub const IDENTITY_PROVIDER_KINDS: [&str; 3] = ["microsoft", "google", "oidc"];
-
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct IdentityProviderRow {
     pub id: Uuid,
@@ -152,8 +149,8 @@ pub struct ProviderLookup {
     pub name: String,
 }
 
-/// The enabled provider covering the domain of the account with this
-/// address, active or invited, in an active company.
+/// The enabled provider covering the domain of the active account with
+/// this address, in an active company.
 pub async fn find_identity_provider(
     pool: &PgPool,
     email: &str,

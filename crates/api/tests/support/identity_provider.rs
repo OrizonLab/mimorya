@@ -87,6 +87,8 @@ struct Provider {
     grants: HashMap<String, Grant>,
     /// How many codes were exchanged.
     exchanges: usize,
+    /// How many requests reached it (discovery, keys, tokens).
+    requests: usize,
 }
 
 type Shared = Arc<Mutex<Provider>>;
@@ -126,6 +128,10 @@ impl MockIdentityProvider {
 
     pub fn exchanges(&self) -> usize {
         self.shared.lock().expect("provider").exchanges
+    }
+
+    pub fn requests(&self) -> usize {
+        self.shared.lock().expect("provider").requests
     }
 
     /// The browser's visit to the authorization address: the query of the
@@ -171,7 +177,11 @@ fn signing_key() -> CoreRsaPrivateSigningKey {
 }
 
 async fn configuration(State(shared): State<Shared>) -> Response {
-    let issuer = shared.lock().expect("provider").issuer.clone();
+    let issuer = {
+        let mut provider = shared.lock().expect("provider");
+        provider.requests += 1;
+        provider.issuer.clone()
+    };
     let body = json!({
         "issuer": issuer,
         "authorization_endpoint": format!("{issuer}/authorize"),
@@ -189,7 +199,8 @@ async fn configuration(State(shared): State<Shared>) -> Response {
         .into_response()
 }
 
-async fn keys() -> Response {
+async fn keys(State(shared): State<Shared>) -> Response {
+    shared.lock().expect("provider").requests += 1;
     let set = CoreJsonWebKeySet::new(vec![signing_key().as_verification_key()]);
     let body = serde_json::to_string(&set).expect("key set");
     ([(header::CONTENT_TYPE, "application/json")], body).into_response()
@@ -225,6 +236,7 @@ fn authenticated(headers: &HeaderMap, form: &HashMap<String, String>) -> bool {
 }
 
 async fn token(State(shared): State<Shared>, headers: HeaderMap, body: Bytes) -> Response {
+    shared.lock().expect("provider").requests += 1;
     let form: HashMap<String, String> = url::form_urlencoded::parse(&body).into_owned().collect();
     if !authenticated(&headers, &form) {
         return refused("invalid_client");

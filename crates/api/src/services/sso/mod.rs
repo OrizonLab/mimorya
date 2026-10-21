@@ -5,6 +5,7 @@
 //! attempt; the return proves the person, ties or finds the account, and
 //! opens its session as a password sign-in does. No account is created.
 
+mod address;
 mod attempt;
 mod http;
 mod oidc;
@@ -25,6 +26,7 @@ use mimorya_db::repositories::identity_providers::{
 use uuid::Uuid;
 
 use crate::secrets::{SecretCipher, SecretStore};
+use address::address_problem;
 use attempt::{ATTEMPT_LIFETIME, Attempt};
 use http::ProviderHttp;
 
@@ -100,22 +102,27 @@ impl SsoService {
             .filter(|p| p.enabled)
             .ok_or_else(none)?;
         tx.commit().await?;
+        let unusable = |failure: String| {
+            tracing::warn!(
+                provider_id = %provider.id,
+                failure = %failure,
+                "Identity provider unusable"
+            );
+            DomainError::unavailable(
+                "Le fournisseur d’identité ne répond pas : réessayez, ou connectez-vous \
+                 par mot de passe",
+            )
+        };
         let metadata = oidc::discover(&self.http, &provider.issuer)
             .await
-            .map_err(|failure| {
-                tracing::warn!(
-                    provider_id = %provider.id,
-                    failure = %failure,
-                    "Identity provider unreachable"
-                );
-                DomainError::unavailable(
-                    "Le fournisseur d’identité ne répond pas : réessayez, ou connectez-vous \
-                     par mot de passe",
-                )
-            })?;
+            .map_err(unusable)?;
         let authorization =
             oidc::authorization(metadata, &provider.client_id, &self.redirect_uri, email)
-                .map_err(|failure| anyhow::anyhow!("authorization address: {failure}"))?;
+                .map_err(unusable)?;
+        // Where the browser is sent, as the provider declares it.
+        if let Some(problem) = address_problem(&authorization.url, self.network) {
+            return Err(unusable(format!("adresse d’autorisation : {problem}")).into());
+        }
         let attempt = Attempt {
             provider_id: provider.id,
             state: authorization.state,
