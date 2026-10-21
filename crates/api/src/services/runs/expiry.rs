@@ -5,20 +5,17 @@
 //! request is decided. Without it, a run would stay paused until someone
 //! tried to decide.
 
-use std::sync::Arc;
-
 use chrono::{DateTime, Utc};
 use mimorya_agent::runtime::{ACCOUNT_INACTIVE, RunCheckpoint};
 use mimorya_db::repositories::approvals::{
     ApprovalRow, OverdueRun, expire_approval, list_approvals_for_run, overdue_approval_runs,
 };
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
-use mimorya_db::repositories::runs::{RunPatch, RunStatus, lock_run, update_run};
+use mimorya_db::repositories::runs::lock_run;
 use serde_json::json;
 
-use super::approval_decision::resume_decisions;
+use super::approval_decision::settle;
 use super::db_ports::RunScope;
-use super::executor::ExecutionMode;
 use super::service::RunService;
 
 impl RunService {
@@ -45,7 +42,9 @@ impl RunService {
     }
 
     /// Expires the run's overdue requests, under its lock as a decision
-    /// would; resumes it if nothing else waits.
+    /// would; resumes it, or ends it, once nothing else waits. Whom the run
+    /// acts for is read before anything is saved: should that fail, nothing
+    /// changes, and the next sweep tries again.
     async fn expire_for(&self, overdue: OverdueRun, now: DateTime<Utc>) -> anyhow::Result<usize> {
         let OverdueRun { tenant_id, run_id } = overdue;
         let mut tx = self.db.begin(tenant_id).await?;
@@ -61,45 +60,34 @@ impl RunService {
             expire_approval(&mut tx, approval.id).await?;
             append_audit(&mut tx, expiry_audit(tenant_id, approval)).await?;
         }
-        let approvals = list_approvals_for_run(&mut tx, run_id).await?;
-        let resumes = run.status() == RunStatus::AwaitingApproval
-            && run.state.is_some()
-            && approvals.iter().all(|a| a.status != "pending");
-        if resumes {
-            let running = RunPatch {
-                status: Some(RunStatus::Running),
-                ..RunPatch::default()
-            };
-            update_run(&mut tx, run.id, running).await?;
-        }
-        tx.commit().await?;
-        if !resumes {
+        let Some((run, approvals)) = settle(&mut tx, run).await? else {
+            tx.commit().await?;
             return Ok(past.len());
-        }
-
+        };
         // As a decision would: with the rights of whom the agent acts for.
-        let scope = RunScope {
-            tenant_id,
-            run_id,
-            user_id: run.on_behalf_of_user_id,
-            conversation_id: run.conversation_id,
-        };
-        let Some(access) = self.access.active_context(tenant_id, scope.user_id).await? else {
-            let checkpoint: Option<RunCheckpoint> = run
-                .state
-                .clone()
-                .and_then(|state| serde_json::from_value(state).ok());
-            self.end(scope, ACCOUNT_INACTIVE, checkpoint).await?;
-            return Ok(past.len());
-        };
-        let mode = ExecutionMode::Resume {
-            state: run.state.clone().unwrap_or_default(),
-            decisions: resume_decisions(&approvals),
-        };
-        let executor = self.executor.clone();
-        let access = Arc::new(access);
-        self.tasks
-            .spawn(async move { executor.execute(access, run, mode).await });
+        let access = self
+            .access
+            .active_context(tenant_id, run.on_behalf_of_user_id)
+            .await?;
+        tx.commit().await?;
+        match access {
+            Some(access) => self.resume(access, run, &approvals),
+            None => {
+                let scope = RunScope {
+                    tenant_id,
+                    run_id,
+                    user_id: run.on_behalf_of_user_id,
+                    conversation_id: run.conversation_id,
+                };
+                let checkpoint: Option<RunCheckpoint> = run
+                    .state
+                    .clone()
+                    .and_then(|state| serde_json::from_value(state).ok());
+                // Should this fail, the run, set going, is failed by the
+                // stale run sweep.
+                self.end(scope, ACCOUNT_INACTIVE, checkpoint).await?;
+            }
+        }
         Ok(past.len())
     }
 }

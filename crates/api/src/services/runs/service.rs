@@ -8,6 +8,7 @@ use chrono::Utc;
 use mimorya_core::DomainError;
 use mimorya_db::Database;
 use mimorya_db::repositories::approvals::{ApprovalRow, get_approval};
+use mimorya_db::repositories::runs::RunRow;
 use uuid::Uuid;
 
 use super::approval_decision::{
@@ -16,7 +17,7 @@ use super::approval_decision::{
 use super::approval_routing::may_decide_for;
 use super::conversation_turn::{open_conversation_turn, tenant_autonomy_level};
 use super::executor::{ExecutionMode, RunExecutor};
-use crate::services::access::{AccessService, AuthIdentity};
+use crate::services::access::{AccessContext, AccessService, AuthIdentity};
 use crate::services::background::BackgroundTasks;
 use crate::services::llm::Unusable;
 
@@ -149,18 +150,24 @@ impl RunService {
 
         let resumed = recorded.resume.is_some();
         if let Some((run, approvals)) = recorded.resume {
-            let mode = ExecutionMode::Resume {
-                state: run.state.clone().unwrap_or_default(),
-                decisions: resume_decisions(&approvals),
-            };
-            let executor = self.executor.clone();
-            let access = Arc::new(requester);
-            self.tasks
-                .spawn(async move { executor.execute(access, run, mode).await });
+            self.resume(requester, run, &approvals);
         }
         match recorded.decided {
             Some(approval) if !recorded.expired => Ok(DecisionResult { approval, resumed }),
             _ => Err(DomainError::conflict("Cette demande de validation a expiré").into()),
         }
+    }
+
+    /// Resumes in the background a run its requests no longer hold, with the
+    /// rights of whom it acts for (`access`) and how each request ended.
+    pub(super) fn resume(&self, access: AccessContext, run: RunRow, approvals: &[ApprovalRow]) {
+        let mode = ExecutionMode::Resume {
+            state: run.state.clone().unwrap_or_default(),
+            decisions: resume_decisions(approvals),
+        };
+        let executor = self.executor.clone();
+        let access = Arc::new(access);
+        self.tasks
+            .spawn(async move { executor.execute(access, run, mode).await });
     }
 }

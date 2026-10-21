@@ -6,17 +6,74 @@
 mod support;
 
 use axum::http::StatusCode;
-use chrono::{Duration, Utc};
+use chrono::{DateTime, Duration, Utc};
 use mimorya_agent::runtime::ACCOUNT_INACTIVE;
+use mimorya_agent::testing::ScriptedStep;
 use mimorya_core::demo::{tenant, user};
 use mimorya_db::repositories::approvals::{ApprovalRouting, NewApproval, create_approval};
+use mimorya_db::testing::{OTHER_TENANT_ID, OTHER_USER_ID};
 use serde_json::{Value, json};
+use support::locks::{hold_rows, release_after, wait_for_waiters};
 use support::manager_approvals::{applying, listed};
+use support::recovery::{events, saved, status_and_error, stopped_run};
 use support::{Client, TestApi};
 use uuid::Uuid;
 
 fn id_of(approval: &Value) -> Uuid {
     approval["id"].as_str().unwrap().parse().unwrap()
+}
+
+/// A request of `run`, made for `user`, due at `expires_at`.
+fn request(tenant_id: Uuid, run_id: Uuid, user_id: Uuid, expires_at: DateTime<Utc>) -> NewApproval {
+    NewApproval {
+        tenant_id,
+        run_id,
+        requested_for_user_id: user_id,
+        tool_name: "planning_apply".into(),
+        tool_call_id: format!("call-{}", Uuid::new_v4()),
+        action_summary: "Appliquer un planning".into(),
+        payload: json!({}),
+        risk: "write".into(),
+        reason: "Action modifiant des données".into(),
+        expires_at: Some(expires_at),
+        routing: ApprovalRouting::Requester,
+    }
+}
+
+/// A run of `user` paused on a request already past its deadline; returns
+/// both.
+async fn paused_on_overdue(api: &TestApi, tenant_id: Uuid, user_id: Uuid) -> (Uuid, Uuid) {
+    let run = stopped_run(api, tenant_id, user_id, None, Some(saved()), &[]).await;
+    let mut tx = api.app.services.db.begin(tenant_id).await.unwrap();
+    sqlx::query("update agent_runs set status = 'awaiting_approval' where id = $1")
+        .bind(run)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    let past = Utc::now() - Duration::minutes(1);
+    let approval = create_approval(&mut tx, request(tenant_id, run, user_id, past))
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    (run, approval.id)
+}
+
+/// The request's status and its expiries audited, as `tenant_id` sees them.
+async fn seen_from(api: &TestApi, tenant_id: Uuid, approval: Uuid) -> (Option<String>, i64) {
+    let mut tx = api.app.services.db.begin(tenant_id).await.unwrap();
+    let status: Option<String> = sqlx::query_scalar("select status from approvals where id = $1")
+        .bind(approval)
+        .fetch_optional(&mut *tx)
+        .await
+        .unwrap();
+    let audited: i64 = sqlx::query_scalar(
+        "select count(*) from audit_log where action = 'approval.expired' and resource_id = $1",
+    )
+    .bind(approval.to_string())
+    .fetch_one(&mut *tx)
+    .await
+    .unwrap();
+    (status, audited)
 }
 
 /// Moves the request's deadline a minute into the past.
@@ -128,24 +185,11 @@ async fn a_run_waits_while_another_of_its_requests_may_still_be_decided() {
     let approval = approval.expect("a request she decides");
     // A second request of the run, due tomorrow.
     let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
-    let other = create_approval(
-        &mut tx,
-        NewApproval {
-            tenant_id: tenant::ID,
-            run_id: run_id.parse().unwrap(),
-            requested_for_user_id: user::NADIA,
-            tool_name: "planning_apply".into(),
-            tool_call_id: "call-other".into(),
-            action_summary: "Appliquer un autre planning".into(),
-            payload: json!({}),
-            risk: "write".into(),
-            reason: "Action modifiant des données".into(),
-            expires_at: Some(Utc::now() + Duration::days(1)),
-            routing: ApprovalRouting::Requester,
-        },
-    )
-    .await
-    .unwrap();
+    let tomorrow = Utc::now() + Duration::days(1);
+    let run: Uuid = run_id.parse().unwrap();
+    let other = create_approval(&mut tx, request(tenant::ID, run, user::NADIA, tomorrow))
+        .await
+        .unwrap();
     tx.commit().await.unwrap();
 
     let runs = &api.app.services.runs;
@@ -192,4 +236,70 @@ async fn the_run_of_an_account_no_longer_active_ends_when_its_request_expires() 
     assert_eq!(run["status"], "failed", "{run}");
     assert_eq!(run["error"], ACCOUNT_INACTIVE);
     assert_eq!(listed(&nadia, &run_id).await.unwrap()["status"], "expired");
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn each_company_s_requests_expire_in_their_own_company() {
+    let api = TestApi::start().await;
+    let foreign = paused_on_overdue(&api, OTHER_TENANT_ID, OTHER_USER_ID).await;
+    let own = paused_on_overdue(&api, tenant::ID, user::MARC).await;
+    api.script(vec![
+        ScriptedStep::text("Fait."),
+        ScriptedStep::text("Fait."),
+    ]);
+
+    let runs = &api.app.services.runs;
+    runs.claim_execution().await.unwrap();
+    assert_eq!(runs.expire_overdue().await.unwrap(), 2);
+    api.idle().await;
+
+    // Each expired, audited and no longer paused, in its own company...
+    for (tenant_id, (run, approval)) in [(OTHER_TENANT_ID, foreign), (tenant::ID, own)] {
+        assert_eq!(
+            seen_from(&api, tenant_id, approval).await,
+            (Some("expired".to_string()), 1)
+        );
+        let (status, _) = status_and_error(&api, tenant_id, run).await;
+        assert_ne!(status, "awaiting_approval");
+    }
+    // ...and nothing of the other company's shows in the demo company.
+    assert_eq!(seen_from(&api, tenant::ID, foreign.1).await, (None, 0));
+    assert!(events(&api, tenant::ID, foreign.0).await.is_empty());
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_decision_meeting_the_expiry_finds_the_request_settled() {
+    let api = TestApi::start().await;
+    let nadia = api.sign_in(user::NADIA).await;
+    let (run_id, approval) = applying(&api, &nadia, ("INT-2052", "11:00"), "Inchangé.").await;
+    let approval = id_of(&approval.expect("a request she decides"));
+    overdue(&api, approval).await;
+    let runs = &api.app.services.runs;
+    runs.claim_execution().await.unwrap();
+
+    // The sweep queues first on the run's lock, the decision after it.
+    let run: Uuid = run_id.parse().unwrap();
+    let hold = hold_rows(&api, "agent_runs", &[run]).await;
+    let decision = format!("/approvals/{approval}/decision");
+    let (expired, decided, ()) = tokio::join!(
+        runs.expire_overdue(),
+        async {
+            wait_for_waiters(&api, 1).await;
+            nadia.post(&decision, json!({ "approved": true })).await
+        },
+        release_after(&api, 2, hold),
+    );
+    assert_eq!(expired.unwrap(), 1);
+    assert_eq!(decided.status, StatusCode::CONFLICT, "{}", decided.text());
+    assert_eq!(decided.error_message(), "Cette demande a déjà été traitée");
+    api.idle().await;
+
+    // Expired once, by the platform.
+    assert_eq!(
+        seen_from(&api, tenant::ID, approval).await,
+        (Some("expired".to_string()), 1)
+    );
+    assert_eq!(expiries(&api, &run_id).await.len(), 1);
 }

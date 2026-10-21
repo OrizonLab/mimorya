@@ -2186,17 +2186,27 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     n'a pas été exécutée. Si son compte n'est plus actif, le run se termine en échec
     (« compte inactif »). Tant qu'une autre demande du run peut encore être décidée, il
     reste en pause ;
+  - les droits de la personne sont lus avant d'enregistrer quoi que ce soit : un échec
+    ne change rien, et le balayage suivant réessaie. Une décision relit la demande sous
+    le verrou du run : celle qu'une expiration a réglée entre-temps répond « déjà
+    traitée ». La règle de reprise (`settle`, puis `resume`) est la même que pour une
+    décision. À l'arrêt du service, la maintenance est attendue avant les runs ;
   - la page des validations affiche l'échéance de chaque demande en attente.
 - **Conséquences** :
   - aucune conversation ne reste bloquée plus de 7 jours (et une minute) par une demande
     sans décision ;
+  - quand le compte de la personne n'est plus actif, le run se termine sans enregistrer
+    l'issue de l'appel qui attendait (comme la reprise au démarrage, ADR-053) ; à
+    harmoniser ;
   - la durée de 7 jours n'est pas encore réglable par entreprise, et rien ne relance le
     décideur avant l'échéance ;
   - tests :
     - `crates/api/tests/approval_expiry.rs` : une demande échue expire et le run poursuit
       sans l'action, une seule fois ; seul le processus qui exécute les runs expire ; un
       run attend tant qu'une autre de ses demandes peut être décidée ; le run d'un compte
-      inactif se termine ;
+      inactif se termine ; chaque entreprise voit ses demandes expirer chez elle et rien
+      de celles de l'autre ; une décision qui croise l'expiration trouve la demande
+      réglée (course rendue déterministe par les verrous) ;
     - `crates/db/tests/definer_functions.rs` : la nouvelle fonction est dans la liste
       connue, au chemin de recherche fixe, appelable par l'application seule ;
     - `apps/web/e2e/manager-approvals.spec.ts` : l'échéance affichée.

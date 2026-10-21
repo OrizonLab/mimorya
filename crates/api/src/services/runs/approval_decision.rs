@@ -79,9 +79,16 @@ pub async fn record_approval_decision(
     }
     // Concurrent decisions on the same run are serialised: exactly one of them
     // observes the last pending approval and resumes the run.
+    let locked = lock_run(tx, approval.run_id).await?;
+    // Read again under the run's lock: a decision or an expiry (ADR-061)
+    // may have settled it meanwhile.
+    let approval = match get_approval(tx, approval.id).await? {
+        Some(current) if current.status == "pending" => approval,
+        _ => return Err(already_processed().into()),
+    };
     // A decision is only accepted once the run is paused: before that, nothing
     // would resume it; after it ended, the action can no longer be carried out.
-    let run = match lock_run(tx, approval.run_id).await? {
+    let run = match locked {
         Some(run) if run.status() == RunStatus::AwaitingApproval => run,
         other => {
             let finished = other.is_some_and(|r| r.status().is_finished());
@@ -141,29 +148,33 @@ pub async fn record_approval_decision(
     )
     .await?;
 
-    let approvals = list_approvals_for_run(tx, approval.run_id).await?;
-    let can_resume = run.state.is_some() && approvals.iter().all(|a| a.status != "pending");
-    if !can_resume {
-        return Ok(RecordedDecision {
-            expired,
-            decided,
-            resume: None,
-        });
-    }
-    update_run(
-        tx,
-        run.id,
-        RunPatch {
-            status: Some(RunStatus::Running),
-            ..RunPatch::default()
-        },
-    )
-    .await?;
     Ok(RecordedDecision {
         expired,
         decided,
-        resume: Some((run, approvals)),
+        resume: settle(tx, run).await?,
     })
+}
+
+/// Sets the paused run going again once none of its requests waits, after
+/// a decision or an expiry (ADR-061): returns it with its requests, to
+/// resume; `None` while one still waits.
+pub async fn settle(
+    tx: &mut TenantTx,
+    run: RunRow,
+) -> anyhow::Result<Option<(RunRow, Vec<ApprovalRow>)>> {
+    let approvals = list_approvals_for_run(tx, run.id).await?;
+    let settled = run.status() == RunStatus::AwaitingApproval
+        && run.state.is_some()
+        && approvals.iter().all(|a| a.status != "pending");
+    if !settled {
+        return Ok(None);
+    }
+    let running = RunPatch {
+        status: Some(RunStatus::Running),
+        ..RunPatch::default()
+    };
+    update_run(tx, run.id, running).await?;
+    Ok(Some((run, approvals)))
 }
 
 /// Decisions handed to the agent on resume; expired requests are not run.
