@@ -2585,7 +2585,8 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     prouve une adresse que par `email_verified`, qu'un compte Google grand public ou un
     autre annuaire satisferait ; leurs types propres vérifient le domaine Workspace ou le
     nom de connexion de l'annuaire. Un fournisseur ainsi déclaré auparavant reste en
-    place (à redéclarer avec son type) ;
+    place (à redéclarer avec son type) mais ne peut pas créer les comptes ; les clouds
+    nationaux de Microsoft (`login.microsoftonline.us`, Chine) sont traités de même ;
 - **Conséquences** :
   - un compte créé ne peut rien tant qu'un administrateur ne lui a pas donné de rôle ;
     l'annuaire le montre comme tout autre compte, et il suit leurs règles : désactivation,

@@ -4,13 +4,16 @@
 //! password, a role or a unit, named as the provider names them, audited.
 //! Never unless the provider says so, never from a sign-in started from an
 //! address, never outside its domains nor for an address it does not vouch
-//! for, never over another company's account; a link names only an enabled
-//! provider of an active company.
+//! for, never over another company's account, never by a generic provider
+//! with Google's issuer; a link names only an enabled provider of an active
+//! company.
 
 mod support;
 
 use axum::http::StatusCode;
 use mimorya_core::demo::{tenant, user};
+use mimorya_core::identity_providers::GOOGLE_ISSUER;
+use mimorya_db::repositories::identity_providers::{NewIdentityProvider, create_identity_provider};
 use serde_json::{Value, json};
 use support::companies::create;
 use support::identity_provider::{MockIdentityProvider, Person};
@@ -333,4 +336,51 @@ async fn the_link_is_read_and_started_so_many_times_a_minute() {
     let refused = try_start_link(&api, &id).await;
     assert_eq!(refused.status, StatusCode::TOO_MANY_REQUESTS);
     drop(idp);
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_generic_provider_with_google_s_issuer_creates_no_account() {
+    let api = TestApi::start_with(&SSO_DEPLOYMENT).await;
+    let paul = api.sign_in(user::PAUL).await;
+    // Declared before the declaration refused it.
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    let id = create_identity_provider(
+        &mut tx,
+        NewIdentityProvider {
+            tenant_id: tenant::ID,
+            kind: "oidc",
+            name: "Google en générique",
+            issuer: GOOGLE_ISSUER,
+            client_id: "client-google",
+            enabled: true,
+            required: false,
+            create_accounts: false,
+            created_by_user_id: user::PAUL,
+        },
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    tx.commit().await.unwrap();
+    let path = format!("{PROVIDERS}/{id}");
+
+    let refused = paul.patch(&path, json!({ "createAccounts": true })).await;
+    assert_eq!(
+        refused.status,
+        StatusCode::BAD_REQUEST,
+        "{}",
+        refused.text()
+    );
+    assert!(
+        refused
+            .error_message()
+            .contains("l’émetteur de Google Workspace")
+    );
+    let listed = paul.get(PROVIDERS).await.json();
+    assert_eq!(listed["providers"][0]["createAccounts"], false);
+    // Anything else still changes.
+    let renamed = paul.patch(&path, json!({ "name": "Google renommé" })).await;
+    assert_eq!(renamed.status, StatusCode::OK, "{}", renamed.text());
+    remove(&paul, &id.to_string()).await;
 }
