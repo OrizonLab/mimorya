@@ -1,7 +1,7 @@
 //! How a test MCP server misbehaves: what it declares (names colliding once
 //! namespaced, too many tools, endless pages, a huge schema, the token quoted
-//! back), or errors and results quoting the `Authorization` header back (some
-//! servers do).
+//! back, text hidden in invisible characters), or errors and results quoting
+//! the `Authorization` header back (some servers do).
 
 use axum::body::{Body, to_bytes};
 use axum::extract::Request;

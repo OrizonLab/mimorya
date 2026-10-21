@@ -11,7 +11,7 @@
 use std::collections::HashMap;
 
 use anyhow::bail;
-use mimorya_core::plain_text::without_hidden;
+use mimorya_core::plain_text::{is_hidden, without_hidden};
 use rmcp::model::{PaginatedRequestParams, Tool};
 use serde_json::Value;
 
@@ -116,6 +116,11 @@ pub fn checked(
     let mut total_bytes = 0;
     for tool in tools {
         let remote_name = tool.name.to_string();
+        // The server reads it back, unchanged: it may not hide anything, nor
+        // be quoted here (it could join a token split by hidden characters).
+        if remote_name.chars().any(is_hidden) {
+            bail!("Un nom d’outil du serveur cache des caractères invisibles");
+        }
         if redactor.reveals(&remote_name) {
             bail!("Un nom d’outil du serveur recopie le jeton d’accès");
         }
@@ -136,9 +141,8 @@ pub fn checked(
         // otherwise split it past the mask, then join it once taken out.
         let Some(input_schema) = visible_schema(Value::Object((*tool.input_schema).clone())) else {
             bail!(
-                "Le schéma de l’outil « {} » cache des caractères invisibles ailleurs que dans \
-                 ses descriptions",
-                bounded(&one_line(&remote_name), MAX_TITLE_CHARS)
+                "Le schéma de l’outil « {remote_name} » cache des caractères invisibles \
+                 ailleurs que dans ses descriptions"
             );
         };
         let input_schema = redactor.value(input_schema);
@@ -149,12 +153,15 @@ pub fn checked(
                 MAX_SCHEMA_BYTES / 1024
             );
         }
-        let title = tool
-            .title
-            .clone()
-            .or_else(|| tool.annotations.as_ref().and_then(|a| a.title.clone()))
+        // The first title that shows something, else the name.
+        let annotated = tool.annotations.as_ref().and_then(|a| a.title.as_deref());
+        let title = [tool.title.as_deref(), annotated]
+            .into_iter()
+            .flatten()
+            .map(one_line)
+            .find(|title| !title.trim().is_empty())
             .unwrap_or_else(|| remote_name.clone());
-        let title = bounded(&redactor.text(&one_line(&title)), MAX_TITLE_CHARS);
+        let title = bounded(&redactor.text(&title), MAX_TITLE_CHARS);
         let description = tool.description.as_deref().unwrap_or(&remote_name);
         let description = without_hidden(description);
         let description = bounded(&redactor.text(&description), MAX_DESCRIPTION_CHARS);
@@ -252,6 +259,30 @@ mod tests {
         let enumerated = json!({ "properties": { "kind": { "enum": [format!("a{hidden}")] } } });
         let message = refusal(vec![tool("search", "Recherche", enumerated)]);
         assert!(message.contains("caractères invisibles"), "{message}");
+    }
+
+    #[test]
+    fn refuses_a_tool_name_hiding_characters_without_quoting_it() {
+        let split: String = TOKEN.chars().flat_map(|c| [c, '\u{200b}']).collect();
+        for hiding in [format!("search{split}"), "search\u{e0049}\u{e0047}".into()] {
+            let message = refusal(vec![tool(
+                &hiding,
+                "Recherche",
+                json!({ "type": "object" }),
+            )]);
+            assert_eq!(
+                message,
+                "Un nom d’outil du serveur cache des caractères invisibles"
+            );
+        }
+    }
+
+    #[test]
+    fn a_title_hiding_everything_gives_way_to_the_next_one() {
+        let mut blank = tool("search", "Recherche", json!({ "type": "object" }));
+        blank.title = Some("\u{200b}\u{e0041}".into());
+        let declared = checked(vec![blank], "docs", &Redactor::new(None)).unwrap();
+        assert_eq!(declared[0].title, "search");
     }
 
     #[test]

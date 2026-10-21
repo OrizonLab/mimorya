@@ -2015,21 +2015,31 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     tabulation (`plain_text::without_hidden`, la règle de `is_hidden` dans `core`) ;
   - ce retrait précède le masquage du jeton : un jeton coupé de caractères invisibles
     échapperait sinon au masque, puis apparaîtrait une fois les caractères retirés ;
-  - ce que le serveur relit (un nom de propriété, une valeur permise, une valeur par
-    défaut…) ne peut pas changer sans fausser ses appels. Un schéma qui y cache des
-    caractères fait refuser le serveur, avec un message en français qui nomme l'outil
-    (`mcp/visible.rs`).
+  - ce que le serveur relit ne peut pas changer sans fausser ses appels : le nom d'un
+    outil, et dans son schéma un nom de propriété ou une valeur permise, constante, par
+    défaut ou d'exemple (y compris sous une clé `title` ou `description` à l'intérieur
+    de ces valeurs). Un nom qui cache des caractères (y compris un retour à la ligne)
+    fait refuser le serveur sans être cité, puisqu'il pourrait reformer un jeton coupé ;
+    un schéma qui en cache ailleurs que dans sa documentation fait refuser le serveur,
+    avec un message en français qui nomme l'outil (`mcp/visible.rs`) ;
+  - un titre qui ne montre plus rien une fois nettoyé laisse place au titre suivant
+    (annotations), puis au nom de l'outil.
 - **Conséquences** :
   - le texte d'un serveur légitime peut perdre un trait d'union conditionnel ou la
     jonction d'un émoji composé : rien d'utile au choix d'un outil ;
+  - des valeurs légitimes font refuser le serveur entier : une valeur permise contenant
+    un retour chariot (`\r`) ou un émoji avec sélecteur de variante (U+FE0F), par
+    exemple. Le message nomme l'outil, que l'éditeur du serveur peut corriger ;
   - les résultats des outils ne sont pas filtrés : ce sont des données non fiables,
     encadrées comme telles (`wrap_tool_result`), et les modifier altérerait ce que lit
     l'utilisateur (feuille de route) ;
   - tests :
     - `mcp/declarations.rs` : retrait avant le masquage, un jeton coupé de caractères
-      invisibles restant masqué ; refus d'une valeur permise qui cache du texte ;
+      invisibles restant masqué ; refus d'une valeur permise qui cache du texte, et d'un
+      nom d'outil, sans le citer ; titre vide remplacé par le nom ;
     - `mcp/visible.rs` : documentation à toute profondeur, une propriété nommée
       `description` gardant son schéma ; refus d'un nom de propriété, d'une valeur
-      permise ou d'une valeur par défaut qui cache des caractères ;
+      permise, par défaut, constante ou d'exemple qui cache des caractères, même sous
+      une clé de documentation ;
     - `crates/connectors/tests/mcp_failures.rs` : un serveur HTTP qui cache du texte
       dans ses déclarations n'en transmet rien.

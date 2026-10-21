@@ -1,7 +1,8 @@
 //! One visible line of text, as a company writes it in collaborator
 //! attributes and in policy values: in canonical form (NFC) and without hidden
-//! characters, so that two values that look the same compare equal. Texts an
-//! administrator writes for the model hide nothing either.
+//! characters, so that two values that look the same compare equal. Texts the
+//! model reads hide nothing either: refused when an administrator writes them,
+//! taken out of what a third party (an MCP server) declares.
 
 use unicode_normalization::UnicodeNormalization;
 use unicode_properties::{GeneralCategory, UnicodeGeneralCategory};
