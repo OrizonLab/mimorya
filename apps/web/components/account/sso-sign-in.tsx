@@ -2,10 +2,20 @@
 
 import { useEffect, useState } from 'react';
 import { Button, ErrorNote } from '@/components/ui';
-import { api, useAction, type SsoDiscovery, type SsoLookup, type SsoStart } from '@/lib/api';
+import {
+  api,
+  ApiError,
+  useAction,
+  type SsoDiscovery,
+  type SsoLookup,
+  type SsoStart,
+} from '@/lib/api';
 
 const FAILED =
   'La connexion par votre fournisseur d’identité n’a pas abouti. Réessayez, ou connectez-vous avec votre mot de passe (compte invité : depuis le lien de votre invitation).';
+
+const LIMITED =
+  'Trop d’adresses essayées depuis votre réseau : la connexion par le fournisseur d’identité de votre entreprise sera de nouveau proposée dans une minute.';
 
 /** Looks like an address worth asking about. */
 const ADDRESS = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -20,6 +30,8 @@ const ADDRESS = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 export function SsoSignIn({ email, invitation = false }: { email: string; invitation?: boolean }) {
   const [provider, setProvider] = useState<SsoDiscovery['provider']>(null);
   const [failed, setFailed] = useState(false);
+  // Asked about too many addresses: said, rather than offering nothing.
+  const [limited, setLimited] = useState(false);
   const action = useAction();
 
   useEffect(() => {
@@ -34,6 +46,7 @@ export function SsoSignIn({ email, invitation = false }: { email: string; invita
     function discover() {
       // Never another address's provider while this one is asked about.
       setProvider(null);
+      setLimited(false);
       if (!ADDRESS.test(email)) return;
       api
         .post<SsoDiscovery>('/auth/sso/discover', { email } satisfies SsoLookup)
@@ -41,8 +54,10 @@ export function SsoSignIn({ email, invitation = false }: { email: string; invita
           if (current) setProvider(found.provider);
         })
         // The password stays: nothing to offer then.
-        .catch(() => {
-          if (current) setProvider(null);
+        .catch((error: unknown) => {
+          if (!current) return;
+          setProvider(null);
+          setLimited(error instanceof ApiError && error.status === 429);
         });
     }
     discover();
@@ -61,6 +76,7 @@ export function SsoSignIn({ email, invitation = false }: { email: string; invita
   return (
     <>
       {failed && <ErrorNote message={FAILED} />}
+      {limited && <ErrorNote message={LIMITED} />}
       {provider && (
         <div className="flex flex-col gap-2 rounded-lg border border-line p-3">
           <p className="text-sm text-muted">

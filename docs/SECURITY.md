@@ -92,10 +92,12 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
     d'une limite globale de 600 requêtes par minute et par adresse. Sans reverse
     proxy (voir ci-dessous), ces limites s'appliquent à toute la plateforme, puisque
     tous les utilisateurs partagent alors une même adresse ;
-  - **connexion par le fournisseur d'identité** (ADR-063) : la découverte, qui dit si
-    une adresse a un compte relié à un fournisseur, a sa propre limite par adresse,
-    égale à la précédente ; le départ et le retour ensemble, deux fois la précédente.
-    Aucune ne retire rien aux autres ; un retour rejoué au-delà est refusé sans trace
+  - **connexion par le fournisseur d'identité** (ADR-063) : les adresses essayées par
+    la découverte ou le départ, qui disent tous deux si une adresse a un compte relié à
+    un fournisseur, ont leur propre limite par adresse cliente, égale à la précédente
+    (une adresse déjà comptée ne coûte rien ; seule son empreinte est gardée, une
+    minute) ; le départ et le retour ensemble, deux fois la précédente. Aucune ne retire
+    rien à la limite des mots de passe ; un retour rejoué au-delà est refusé sans trace
     ni appel au fournisseur.
 - Adresse cliente : par défaut, l'adresse TCP de l'appelant (`TRUST_PROXY=false`).
   Derrière le seul relais web, tous les utilisateurs partagent l'adresse du serveur

@@ -2300,15 +2300,19 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     la même réponse (« mot de passe ») ; une entreprise ne peut donc pas détourner vers son
     fournisseur les comptes d'une autre en déclarant leur domaine. La réponse dit
     qu'une adresse a un compte dans une entreprise qui l'a reliée à son fournisseur.
-    La découverte a sa propre limite par adresse, celle de la connexion : elle dit si
-    une adresse a un compte relié à un fournisseur. Le départ et le retour ensemble ont
-    la leur, deux fois celle de la connexion (une connexion SSO compte les deux). Aucune
-    ne retire rien aux autres ni à la limite des mots de passe (la découverte que la page
-    de connexion fait pour toute adresse non plus), et un retour rejoué avec sa
-    tentative scellée, valable dix minutes, est refusé au-delà, sans trace ni appel au
-    fournisseur. Une première version donnait aux trois étapes une seule limite, trois
-    fois celle de la connexion, qui laissait à la découverte trois fois plus d'adresses
-    à essayer qu'à la connexion ;
+    La découverte et le départ disent tous deux si une adresse a un compte relié à un
+    fournisseur (le départ répond 404 sinon) : les adresses ainsi essayées ont leur
+    propre limite par adresse cliente, celle de la connexion, quelle que soit l'étape,
+    et redemander une adresse déjà comptée ne coûte rien (la page la redemande, son
+    départ suit ; seule son empreinte est gardée, le temps de la fenêtre). Le départ et
+    le retour ensemble ont en plus la leur, deux fois celle de la connexion (une
+    connexion SSO compte les deux). Aucune ne retire rien à la limite des mots de passe
+    (la découverte que la page de connexion fait pour toute adresse non plus), et un
+    retour rejoué avec sa tentative scellée, valable dix minutes, est refusé au-delà,
+    sans trace ni appel au fournisseur. Au-delà, la page de connexion le dit, le mot de
+    passe restant possible. Une première version donnait aux trois étapes une seule
+    limite, trois fois celle de la connexion : on pouvait y essayer trois fois plus
+    d'adresses que de mots de passe ;
   - le départ (`POST /api/auth/sso/start`) renvoie l'adresse du fournisseur et pose un
     cookie de tentative (HttpOnly, SameSite=Lax, chemin `/api/auth/sso`, 10 minutes) :
     entreprise en clair, fournisseur, `state`, `nonce` et vérificateur PKCE scellés par

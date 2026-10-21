@@ -1,7 +1,8 @@
 //! Fixed-window rate limiting, in memory (single instance, like the event
 //! bus). A global limit per client address protects every route; logins are
 //! also limited per address and, for failures, per account; reset links per
-//! e-mail address.
+//! e-mail address; the addresses asked about for single sign-on, per client
+//! address (`distinct_limit`).
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -11,6 +12,7 @@ use axum::extract::{Request, State};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 
+use super::distinct_limit::DistinctLimiter;
 use super::request_context::RequestContext;
 use crate::app::AppState;
 use crate::http::ApiError;
@@ -72,10 +74,12 @@ pub struct RateLimits {
     pub global: RateLimiter,
     /// Login attempts, per client address.
     pub login: RateLimiter,
-    /// Discoveries of an address's identity provider, per client address: as
-    /// many as logins, each telling whether an address has an account tied
-    /// to a provider; they spend nothing of the login limit (ADR-063).
-    pub sso_discovery: RateLimiter,
+    /// The addresses asked about to sign in through an identity provider,
+    /// per client address, by its discovery or its start: each tells whether
+    /// an address has an account tied to a provider. As many as logins,
+    /// spending nothing of their limit; asking again about an address
+    /// already counted costs nothing (ADR-063).
+    pub sso_addresses: DistinctLimiter,
     /// The start and the return of a sign-in through an identity provider,
     /// per client address: twice the login limit, a sign-in taking both
     /// (ADR-063).
