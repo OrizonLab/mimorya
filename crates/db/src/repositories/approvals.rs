@@ -1,4 +1,5 @@
 //! Human validations: creation, listings, decisions (at most once) and expiry.
+//! As shown to people, with names: `approval_views`.
 
 use chrono::{DateTime, Utc};
 use serde_json::Value;
@@ -26,11 +27,42 @@ pub struct ApprovalRow {
     pub decision_comment: Option<String>,
     pub expires_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
+    /// `requester` (the person the agent acts for decides) or `manager`
+    /// (`approver_user_id` decides, ADR-059).
+    pub routing: String,
+    pub approver_user_id: Option<Uuid>,
 }
 
-const APPROVAL_COLUMNS: &str = "id, tenant_id, run_id, requested_for_user_id, tool_name, tool_call_id, \
-    action_summary, payload, risk, reason, status, decided_by_user_id, decided_at, decision_comment, \
-    expires_at, created_at";
+pub(super) const APPROVAL_COLUMNS: &str = "id, tenant_id, run_id, requested_for_user_id, tool_name, \
+    tool_call_id, action_summary, payload, risk, reason, status, decided_by_user_id, decided_at, \
+    decision_comment, expires_at, created_at, routing, approver_user_id";
+
+impl ApprovalRow {
+    /// Whether a manager decides it rather than the person the agent acts for.
+    pub fn routed_to_manager(&self) -> bool {
+        self.routing == "manager"
+    }
+
+    /// Who decides it: the person the agent acts for, or the manager named;
+    /// nobody once that manager's account is gone (the person the agent acts
+    /// for may still withdraw it, ADR-059).
+    pub fn decider(&self) -> Option<Uuid> {
+        if self.routed_to_manager() {
+            self.approver_user_id
+        } else {
+            Some(self.requested_for_user_id)
+        }
+    }
+}
+
+/// Who decides a request (ADR-059).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ApprovalRouting {
+    /// The person the agent acts for.
+    Requester,
+    /// The manager named when the request was made.
+    Manager(Uuid),
+}
 
 #[derive(Debug, Clone)]
 pub struct NewApproval {
@@ -44,6 +76,7 @@ pub struct NewApproval {
     pub risk: String,
     pub reason: String,
     pub expires_at: Option<DateTime<Utc>>,
+    pub routing: ApprovalRouting,
 }
 
 pub async fn create_approval(
@@ -52,8 +85,8 @@ pub async fn create_approval(
 ) -> sqlx::Result<ApprovalRow> {
     sqlx::query_as(&format!(
         "insert into approvals (tenant_id, run_id, requested_for_user_id, tool_name, tool_call_id, \
-         action_summary, payload, risk, reason, expires_at) \
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) returning {APPROVAL_COLUMNS}"
+         action_summary, payload, risk, reason, expires_at, routing, approver_user_id) \
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) returning {APPROVAL_COLUMNS}"
     ))
     .bind(input.tenant_id)
     .bind(input.run_id)
@@ -65,6 +98,14 @@ pub async fn create_approval(
     .bind(input.risk)
     .bind(input.reason)
     .bind(input.expires_at)
+    .bind(match input.routing {
+        ApprovalRouting::Requester => "requester",
+        ApprovalRouting::Manager(_) => "manager",
+    })
+    .bind(match input.routing {
+        ApprovalRouting::Requester => None,
+        ApprovalRouting::Manager(approver) => Some(approver),
+    })
     .fetch_one(conn)
     .await
 }
@@ -75,21 +116,6 @@ pub async fn get_approval(conn: &mut PgConnection, id: Uuid) -> sqlx::Result<Opt
     ))
     .bind(id)
     .fetch_optional(conn)
-    .await
-}
-
-pub async fn list_approvals_for_user(
-    conn: &mut PgConnection,
-    user_id: Uuid,
-    statuses: &[&str],
-) -> sqlx::Result<Vec<ApprovalRow>> {
-    sqlx::query_as(&format!(
-        "select {APPROVAL_COLUMNS} from approvals where requested_for_user_id = $1 \
-         and status = any($2) order by created_at desc limit 100"
-    ))
-    .bind(user_id)
-    .bind(statuses)
-    .fetch_all(conn)
     .await
 }
 

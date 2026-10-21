@@ -162,9 +162,19 @@ pub struct ApprovalRequest {
     pub reason: String,
 }
 
+/// Where a request for validation went (ADR-059).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ApprovalPlacement {
+    /// Waiting for a decision.
+    Pending(Uuid),
+    /// Nobody may validate it: the call does not run, for this reason (in
+    /// French, for the model and the people reading the trace).
+    Unroutable(String),
+}
+
 #[async_trait]
 pub trait ApprovalStore: Send + Sync {
-    async fn create(&self, request: ApprovalRequest) -> anyhow::Result<Uuid>;
+    async fn create(&self, request: ApprovalRequest) -> anyhow::Result<ApprovalPlacement>;
 }
 
 #[derive(Debug, Clone, PartialEq)]

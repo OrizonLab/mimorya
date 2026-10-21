@@ -81,7 +81,7 @@ pub async fn leave(app: &App) -> anyhow::Result<()> {
         RunEvent::ToolResult {
             tool_call_id: apply,
             tool_name: "planning_apply".into(),
-            summary: "Action refusée par l’utilisateur".into(),
+            summary: "Action refusée lors de la validation".into(),
             is_error: true,
             duration_ms: 0,
         },

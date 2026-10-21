@@ -1,7 +1,8 @@
-//! Approval requests, as listed to the user they are addressed to and as
-//! shown in a run's trace, and the decision taken on one.
+//! Approval requests, as listed to whom the agent acts for and to the
+//! manager who decides them (ADR-059), and as shown in a run's trace, and
+//! the decision taken on one.
 
-use mimorya_db::repositories::approvals::ApprovalRow;
+use mimorya_db::repositories::approval_views::ApprovalView;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use ts_rs::TS;
@@ -29,10 +30,48 @@ pub struct Approval {
     pub decision_comment: Option<String>,
     pub created_at: String,
     pub decided_at: Option<String>,
+    /// After it, nobody may decide it any more.
+    pub expires_at: Option<String>,
+    /// Whom the agent acts for.
+    pub requested_for: ApprovalPerson,
+    /// Who decides it: whom the agent acts for, or the manager named when it
+    /// was made (ADR-059); `null` once that manager's account is gone.
+    pub approver: Option<ApprovalPerson>,
+    pub decided_by: Option<ApprovalPerson>,
+    /// Whether the reader may decide it now.
+    pub can_decide: bool,
+}
+
+/// Someone a request names.
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ApprovalPerson {
+    pub id: Uuid,
+    pub display_name: String,
 }
 
 impl Approval {
-    pub fn from_row(a: &ApprovalRow) -> anyhow::Result<Self> {
+    pub fn from_view(view: &ApprovalView, can_decide: bool) -> anyhow::Result<Self> {
+        let a = &view.approval;
+        let person = |id: Option<Uuid>, name: &Option<String>| match (id, name) {
+            (Some(id), Some(name)) => Some(ApprovalPerson {
+                id,
+                display_name: name.clone(),
+            }),
+            _ => None,
+        };
+        let requested_for = ApprovalPerson {
+            id: a.requested_for_user_id,
+            display_name: view.requested_for_name.clone(),
+        };
+        let approver = if a.routed_to_manager() {
+            person(a.approver_user_id, &view.approver_name)
+        } else {
+            person(
+                Some(requested_for.id),
+                &Some(requested_for.display_name.clone()),
+            )
+        };
         Ok(Self {
             id: a.id,
             run_id: a.run_id,
@@ -45,6 +84,11 @@ impl Approval {
             decision_comment: a.decision_comment.clone(),
             created_at: iso(&a.created_at),
             decided_at: a.decided_at.as_ref().map(iso),
+            expires_at: a.expires_at.as_ref().map(iso),
+            requested_for,
+            approver,
+            decided_by: person(a.decided_by_user_id, &view.decided_by_name),
+            can_decide,
         })
     }
 }

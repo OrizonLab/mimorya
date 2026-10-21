@@ -1,5 +1,6 @@
-//! Recording a human decision on an approval request, and deciding whether the
-//! run it belongs to can resume.
+//! Recording a human decision on an approval request, taken by the one who
+//! decides it (ADR-059), and deciding whether the run it belongs to can
+//! resume.
 
 use chrono::{DateTime, Utc};
 use mimorya_agent::runtime::{ApprovalDecision, ApprovalDecisions};
@@ -36,17 +37,43 @@ fn already_processed() -> DomainError {
     DomainError::conflict("Cette demande a déjà été traitée")
 }
 
+/// The request, if `user_id` may decide it so (ADR-059): whom the agent acts
+/// for, or the manager named. Whom the agent acts for may always withdraw a
+/// request a manager decides (refusing runs nothing: the run goes on, even
+/// when the manager can no longer decide), never approve it; anyone else
+/// finds nothing.
+pub fn decidable(
+    approval: Option<ApprovalRow>,
+    user_id: Uuid,
+    approved: bool,
+) -> Result<ApprovalRow, DomainError> {
+    match approval {
+        Some(a) if a.decider() == Some(user_id) => Ok(a),
+        Some(a) if a.routed_to_manager() && a.requested_for_user_id == user_id => {
+            if approved {
+                Err(DomainError::forbidden(AWAITS_A_MANAGER))
+            } else {
+                Ok(a)
+            }
+        }
+        _ => Err(DomainError::not_found("Demande de validation introuvable")),
+    }
+}
+
+pub const AWAITS_A_MANAGER: &str =
+    "Cette demande attend la validation de votre responsable : vous pouvez seulement la retirer.";
+
 pub async fn record_approval_decision(
     tx: &mut TenantTx,
     identity: AuthIdentity,
     input: &DecisionInput,
     now: DateTime<Utc>,
 ) -> anyhow::Result<RecordedDecision> {
-    // MVP rule: a user validates the actions requested on their own behalf.
-    let approval = get_approval(tx, input.approval_id)
-        .await?
-        .filter(|a| a.requested_for_user_id == identity.user_id)
-        .ok_or_else(|| DomainError::not_found("Demande de validation introuvable"))?;
+    let approval = decidable(
+        get_approval(tx, input.approval_id).await?,
+        identity.user_id,
+        input.approved,
+    )?;
     if approval.status != "pending" {
         return Err(already_processed().into());
     }
@@ -100,9 +127,17 @@ pub async fn record_approval_decision(
             if expired { "failure" } else { "success" },
         )
         .by_user(identity.user_id)
+        .on_behalf_of(approval.requested_for_user_id)
         .run(approval.run_id)
         .resource("approval", approval.id)
-        .metadata(json!({ "toolName": approval.tool_name, "risk": approval.risk })),
+        .metadata(json!({
+            "toolName": approval.tool_name,
+            "risk": approval.risk,
+            "routing": approval.routing,
+            // Whom the agent acts for, refusing a request a manager decides.
+            "withdrawn": approval.routed_to_manager()
+                && identity.user_id == approval.requested_for_user_id,
+        })),
     )
     .await?;
 

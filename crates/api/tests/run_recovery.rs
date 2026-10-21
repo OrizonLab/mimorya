@@ -14,7 +14,9 @@ use mimorya_agent::runtime::{ACCOUNT_INACTIVE, PendingApproval, PendingCalls};
 use mimorya_agent::testing::ScriptedStep;
 use mimorya_api::services::runs::STOPPED_BEFORE_ITS_FIRST_STEP;
 use mimorya_core::demo::{tenant, user};
-use mimorya_db::repositories::approvals::{NewApproval, create_approval, get_approval};
+use mimorya_db::repositories::approvals::{
+    ApprovalRouting, NewApproval, create_approval, get_approval,
+};
 use mimorya_db::repositories::runs::{RunPatch, get_run, update_run};
 use serde_json::{Value, json};
 use support::TestApi;
@@ -55,6 +57,7 @@ async fn a_run_goes_on_from_its_last_step_when_only_reading_was_under_way() {
             risk: "write".into(),
             reason: "Validation requise".into(),
             expires_at: None,
+            routing: ApprovalRouting::Requester,
         },
     )
     .await
@@ -198,6 +201,7 @@ async fn validation(api: &TestApi, run_id: Uuid, summary: &str, status: &str) ->
             risk: "write".into(),
             reason: "Validation requise".into(),
             expires_at: None,
+            routing: ApprovalRouting::Requester,
         },
     )
     .await

@@ -7,18 +7,21 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use chrono::Utc;
 use mimorya_agent::runtime::{
-    ApprovalRequest, ApprovalStore, AuditSink, EngineAuditEntry, EnginePorts, RunCheckpoint,
-    RunEvent, RunEventSink, RunOutcome, RunStore, ToolInvocationLog, ToolInvocationRecord,
-    UsageRecord, UsageSink,
+    ApprovalPlacement, ApprovalRequest, ApprovalStore, AuditSink, EngineAuditEntry, EnginePorts,
+    RunCheckpoint, RunEvent, RunEventSink, RunOutcome, RunStore, ToolInvocationLog,
+    ToolInvocationRecord, UsageRecord, UsageSink,
 };
+use mimorya_db::repositories::approvals::ApprovalRouting;
 use mimorya_db::repositories::{approvals, audit, runs, tool_invocations, usage};
 use mimorya_db::{Database, TenantTx};
 use uuid::Uuid;
 
+use super::approval_routing::{NOBODY_VALIDATES, Route, route};
 use super::deliverables::DbDeliverables;
 use super::events::record_run_event;
 use super::outcome::persist_outcome;
 use crate::contract::AssistantDelta;
+use crate::services::access::AccessService;
 use crate::services::event_bus::{BusEvent, RunEventBus};
 
 /// Approval requests left unanswered expire after a week.
@@ -39,13 +42,21 @@ pub struct DbPorts {
     db: Database,
     pub(super) scope: RunScope,
     bus: Arc<RunEventBus>,
+    /// Who may validate a request for the run's user (ADR-059).
+    access: Arc<AccessService>,
 }
 
-pub fn engine_ports(db: Database, scope: RunScope, bus: Arc<RunEventBus>) -> EnginePorts {
+pub fn engine_ports(
+    db: Database,
+    scope: RunScope,
+    bus: Arc<RunEventBus>,
+    access: Arc<AccessService>,
+) -> EnginePorts {
     let ports = Arc::new(DbPorts {
         db: db.clone(),
         scope,
         bus,
+        access,
     });
     EnginePorts {
         events: ports.clone(),
@@ -142,7 +153,15 @@ impl ToolInvocationLog for DbPorts {
 
 #[async_trait]
 impl ApprovalStore for DbPorts {
-    async fn create(&self, request: ApprovalRequest) -> anyhow::Result<Uuid> {
+    async fn create(&self, request: ApprovalRequest) -> anyhow::Result<ApprovalPlacement> {
+        let RunScope {
+            tenant_id, user_id, ..
+        } = self.scope;
+        let routing = match route(&self.db, &self.access, tenant_id, user_id, request.risk).await? {
+            Route::Requester => ApprovalRouting::Requester,
+            Route::Manager(manager) => ApprovalRouting::Manager(manager),
+            Route::Nobody => return Ok(ApprovalPlacement::Unroutable(NOBODY_VALIDATES.into())),
+        };
         let mut tx = self.tx().await?;
         let row = approvals::create_approval(
             &mut tx,
@@ -157,11 +176,12 @@ impl ApprovalStore for DbPorts {
                 risk: request.risk.as_str().into(),
                 reason: request.reason,
                 expires_at: Some(Utc::now() + chrono::Duration::days(APPROVAL_VALIDITY_DAYS)),
+                routing,
             },
         )
         .await?;
         tx.commit().await?;
-        Ok(row.id)
+        Ok(ApprovalPlacement::Pending(row.id))
     }
 }
 

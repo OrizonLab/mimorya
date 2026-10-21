@@ -13,6 +13,7 @@ use uuid::Uuid;
 
 use super::ports::{CurrentAccess, EngineAuditEntry, EnginePorts, RunEvent, ToolInvocationRecord};
 use super::state::{PendingApproval, RunCheckpoint};
+use super::tool_refusals::Requested;
 use super::types::{RunConfig, RuntimeDeps};
 use crate::llm::{LlmMessage, LlmToolCall, LlmToolResult};
 use crate::tools::{
@@ -112,10 +113,10 @@ impl ToolCallProcessor {
                     tool,
                     input,
                     reason,
-                } => {
-                    turn.awaiting
-                        .push(self.request_approval(call, &tool, input, reason).await?);
-                }
+                } => match self.request_approval(call, &tool, input, reason).await? {
+                    Requested::Awaiting(pending) => turn.awaiting.push(pending),
+                    Requested::Refused(result) => turn.results.push(result),
+                },
                 ToolCallEvaluation::Allow { tool, input } => {
                     turn.results.push(
                         self.run(state, &tool, &call.id, input, None, access)

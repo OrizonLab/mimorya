@@ -72,7 +72,7 @@ const fn info(
     }
 }
 
-use Enforcement::{Holder, NotYet};
+use Enforcement::{Holder, NotYet, PerResource};
 
 /// Platform permission catalog. Connectors register their own domain
 /// permissions (e.g. `intervention:read`) through the connector registry.
@@ -104,12 +104,14 @@ pub const PLATFORM_PERMISSIONS: &[PermissionInfo] = &[
     info("memory:manage", "Administrer la mémoire", false, Holder),
     info("mission:create", "Confier des missions", true, NotYet),
     info("mission:read", "Suivre les missions", true, NotYet),
-    // Approvals are decided by the person who asked for the run.
+    // Validating the actions of the people in one's scope, when the company
+    // has its managers validate them (ADR-059); everyone validates the
+    // actions taken on their own behalf without it.
     info(
         "approval:decide",
-        "Valider les actions proposées",
+        "Valider les actions de son périmètre",
         false,
-        NotYet,
+        PerResource,
     ),
     info("skill:read", "Consulter les compétences", true, Holder),
     info(

@@ -72,7 +72,12 @@ impl RunExecutor {
             user_id: access.subject.user_id,
             conversation_id: run.conversation_id,
         };
-        let ports = engine_ports(self.db.clone(), scope, self.bus.clone());
+        let ports = engine_ports(
+            self.db.clone(),
+            scope,
+            self.bus.clone(),
+            self.access.clone(),
+        );
         // A run taken up that crashes says which actions to check.
         let message = match &mode {
             ExecutionMode::Recover { crash_message, .. } => crash_message.clone(),

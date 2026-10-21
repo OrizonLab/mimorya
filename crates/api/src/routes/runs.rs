@@ -4,7 +4,7 @@ use axum::extract::State;
 use axum::routing::get;
 use axum::{Json, Router};
 use mimorya_core::DomainError;
-use mimorya_db::repositories::approvals::list_approvals_for_run;
+use mimorya_db::repositories::approval_views::list_approval_views_for_run;
 use mimorya_db::repositories::run_events::list_run_events;
 use mimorya_db::repositories::runs::{get_run, list_runs};
 use mimorya_db::repositories::tool_invocations::list_tool_invocations;
@@ -13,6 +13,7 @@ use crate::app::AppState;
 use crate::contract::{Approval, RunDetail, RunList, RunListItem, RunView, ToolInvocation};
 use crate::http::{ApiResult, PathId};
 use crate::plugins::Auth;
+use crate::services::runs::can_decide;
 
 const RUN_PAGE: i64 = 50;
 
@@ -38,13 +39,14 @@ async fn detail(
     Auth(identity): Auth,
     PathId(id): PathId,
 ) -> ApiResult<Json<RunDetail>> {
+    let viewer = state.access.context(identity).await?;
     let mut tx = state.db.begin(identity.tenant_id).await?;
     let run = get_run(&mut tx, id)
         .await?
         .filter(|r| r.on_behalf_of_user_id == identity.user_id)
         .ok_or_else(|| DomainError::not_found("Exécution introuvable"))?;
     let tools = list_tool_invocations(&mut tx, id).await?;
-    let approvals = list_approvals_for_run(&mut tx, id).await?;
+    let approvals = list_approval_views_for_run(&mut tx, id).await?;
     let events = list_run_events(&mut tx, id, 0).await?;
     tx.commit().await?;
 
@@ -56,7 +58,10 @@ async fn detail(
             .collect::<anyhow::Result<_>>()?,
         approvals: approvals
             .iter()
-            .map(Approval::from_row)
+            .map(|v| {
+                let decides = can_decide(&viewer, &v.approval, v.requested_for_unit_id);
+                Approval::from_view(v, decides)
+            })
             .collect::<anyhow::Result<_>>()?,
         events: events.iter().map(Into::into).collect(),
     }))

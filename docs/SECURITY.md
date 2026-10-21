@@ -126,6 +126,12 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   comptes, rôles, politiques, connecteurs, compétences, paramètres, lecture de l'audit,
   décision de validation. C'est ce qui empêche une injection ou une auto-amélioration
   de s'accorder des privilèges.
+- **Validation par un responsable** (ADR-059) : désigné parmi les responsables d'unité,
+  il doit détenir `approval:decide` sur la personne, à la demande puis à la décision ;
+  la position seule n'accorde rien. Le run reprend avec les droits de la personne pour
+  qui l'agent agit, jamais avec ceux du décideur ; sans responsable éligible, l'action
+  est refusée. La personne ne peut pas approuver la demande, seulement la retirer
+  (l'action n'est alors pas exécutée).
 - **Administration** (ADR-019) :
   - les permissions d'administration (`TENANT_WIDE_PERMISSIONS` : organisation,
     comptes, rôles, politiques, connecteurs, compétences, paramètres, mémoire, audit,

@@ -2,6 +2,7 @@
 //! background, recording approvals and resuming, persisting the outcome.
 
 mod approval_decision;
+mod approval_routing;
 mod context;
 mod conversation_turn;
 mod db_ports;
@@ -15,6 +16,7 @@ mod run_access;
 mod service;
 
 pub use approval_decision::DecisionInput;
+pub use approval_routing::{can_decide, shown_to};
 pub use events::record_run_event;
 pub use executor::RunExecutor;
 pub use recovery::{INTERRUPTED_TOO_LONG, LOCK_HELD_ELSEWHERE, STOPPED_BEFORE_ITS_FIRST_STEP};

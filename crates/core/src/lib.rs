@@ -4,6 +4,7 @@
 
 pub mod accounts;
 pub mod administration;
+pub mod approval_routing;
 pub mod authz;
 pub mod autonomy;
 pub mod collaborator_attributes;

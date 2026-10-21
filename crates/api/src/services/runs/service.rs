@@ -7,15 +7,23 @@ use std::sync::Arc;
 use chrono::Utc;
 use mimorya_core::DomainError;
 use mimorya_db::Database;
-use mimorya_db::repositories::approvals::ApprovalRow;
+use mimorya_db::repositories::approvals::{ApprovalRow, get_approval};
 use uuid::Uuid;
 
-use super::approval_decision::{DecisionInput, record_approval_decision, resume_decisions};
+use super::approval_decision::{
+    DecisionInput, decidable, record_approval_decision, resume_decisions,
+};
+use super::approval_routing::may_decide_for;
 use super::conversation_turn::{open_conversation_turn, tenant_autonomy_level};
 use super::executor::{ExecutionMode, RunExecutor};
 use crate::services::access::{AccessService, AuthIdentity};
 use crate::services::background::BackgroundTasks;
 use crate::services::llm::Unusable;
+
+const REQUESTER_INACTIVE: &str = "Le compte de la personne pour qui l’agent agit n’est plus \
+    actif : la demande ne peut plus être traitée.";
+const NO_LONGER_ENTITLED: &str =
+    "Vous n’avez plus le droit de valider les actions de cette personne.";
 
 pub struct StartedTurn {
     pub run_id: Uuid,
@@ -105,10 +113,36 @@ impl RunService {
         identity: AuthIdentity,
         input: DecisionInput,
     ) -> anyhow::Result<DecisionResult> {
-        let access = self.access.context(identity).await?;
-        // Deciding resumes the agent: whoever may no longer use it leaves the
-        // request to expire.
-        access.require("agent:use")?;
+        let decider = self.access.context(identity).await?;
+        let mut tx = self.db.begin(identity.tenant_id).await?;
+        let approval = decidable(
+            get_approval(&mut tx, input.approval_id).await?,
+            identity.user_id,
+            input.approved,
+        )?;
+        tx.commit().await?;
+        // The run goes on for whom it acts for, with their rights as they
+        // stand now: never with the decider's (ADR-059).
+        let requester = self
+            .access
+            .active_context(identity.tenant_id, approval.requested_for_user_id)
+            .await?
+            .ok_or_else(|| DomainError::conflict(REQUESTER_INACTIVE))?;
+        let withdrawing = identity.user_id == approval.requested_for_user_id;
+        if approval.routed_to_manager() && !withdrawing {
+            // Named when the request was made, the manager still has to
+            // hold `approval:decide` over the requester. Checked before the
+            // decision is recorded: a right lost in between still binds the
+            // run, which reads the requester's rights at each step.
+            let unit = requester.profile.primary_unit_id;
+            if !may_decide_for(&decider, approval.requested_for_user_id, unit) {
+                return Err(DomainError::forbidden(NO_LONGER_ENTITLED).into());
+            }
+        } else {
+            // Deciding, or withdrawing, resumes the agent: whoever may no
+            // longer use it leaves the request as it is.
+            decider.require("agent:use")?;
+        }
         let mut tx = self.db.begin(identity.tenant_id).await?;
         let recorded = record_approval_decision(&mut tx, identity, &input, Utc::now()).await?;
         tx.commit().await?;
@@ -120,7 +154,7 @@ impl RunService {
                 decisions: resume_decisions(&approvals),
             };
             let executor = self.executor.clone();
-            let access = Arc::new(access);
+            let access = Arc::new(requester);
             self.tasks
                 .spawn(async move { executor.execute(access, run, mode).await });
         }

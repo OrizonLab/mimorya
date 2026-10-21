@@ -27,7 +27,24 @@ export type Approval = { id: string, runId: string, toolName: string, actionSumm
 /**
  * The validated input, executed as is once approved.
  */
-payload: unknown, risk: ToolRisk, reason: string, status: string, decisionComment: string | null, createdAt: string, decidedAt: string | null, };
+payload: unknown, risk: ToolRisk, reason: string, status: string, decisionComment: string | null, createdAt: string, decidedAt: string | null,
+/**
+ * After it, nobody may decide it any more.
+ */
+expiresAt: string | null,
+/**
+ * Whom the agent acts for.
+ */
+requestedFor: ApprovalPerson,
+/**
+ * Who decides it: whom the agent acts for, or the manager named when it
+ * was made (ADR-059); `null` once that manager's account is gone.
+ */
+approver: ApprovalPerson | null, decidedBy: ApprovalPerson | null,
+/**
+ * Whether the reader may decide it now.
+ */
+canDecide: boolean, };
 
 /**
  * `POST /approvals/{id}/decision`.
@@ -43,9 +60,28 @@ resumed: boolean, };
  */
 export type ApprovalList = { approvals: Array<Approval>, };
 
+/**
+ * Someone a request names.
+ */
+export type ApprovalPerson = { id: string, displayName: string, };
+
 export type ApprovalRequestedEvent = { approvalId: string, toolName: string, actionSummary: string, risk: ToolRisk, };
 
 export type ApprovalResolvedEvent = { approvalId: string, approved: boolean, };
+
+/**
+ * Body of `PUT /admin/approval-routing`: replaces the risks.
+ */
+export type ApprovalRoutingUpdate = { managerRisks: Array<ToolRisk>, };
+
+/**
+ * `GET /admin/approval-routing`.
+ */
+export type ApprovalRoutingView = {
+/**
+ * Empty: whom the agent acts for validates every action, as before.
+ */
+managerRisks: Array<ToolRisk>, };
 
 /**
  * Body of `POST /approvals/{id}/decision`.

@@ -1,6 +1,7 @@
 //! What the administration screens are answered with, and what they write.
 
 mod activity;
+mod approval_routing;
 mod assignments;
 mod connectors;
 mod llm;
@@ -13,6 +14,7 @@ mod users;
 pub use activity::{
     AuditActor, AuditEntry, AuditLog, AuditOutcome, UsageKind, UsageRow, UsageSummary,
 };
+pub use approval_routing::{ApprovalRoutingUpdate, ApprovalRoutingView};
 pub use assignments::{Assignment, AssignmentScope, RoleGrant};
 pub use connectors::{
     ConnectorStatus, ConnectorTest, ConnectorTrial, ConnectorType, ConnectorUpdate, ConnectorView,

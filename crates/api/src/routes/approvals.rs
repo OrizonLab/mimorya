@@ -1,9 +1,11 @@
-//! Approval requests addressed to the signed-in user, and their decisions.
+//! Approval requests made for the signed-in user or that they decide as a
+//! manager (ADR-059), and their decisions.
 
 use axum::extract::State;
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use mimorya_db::repositories::approvals::{APPROVAL_STATUSES, list_approvals_for_user};
+use mimorya_db::repositories::approval_views::{get_approval_view, list_approval_views_for_user};
+use mimorya_db::repositories::approvals::APPROVAL_STATUSES;
 use serde::Deserialize;
 use validator::Validate;
 
@@ -11,7 +13,7 @@ use crate::app::AppState;
 use crate::contract::{Approval, ApprovalDecided, ApprovalList, ApprovalVerdict};
 use crate::http::{ApiResult, Body, PathId, Query};
 use crate::plugins::Auth;
-use crate::services::runs::DecisionInput;
+use crate::services::runs::{DecisionInput, can_decide, shown_to};
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -42,13 +44,18 @@ async fn list(
         StatusFilter::Pending => &["pending"],
         StatusFilter::All => &APPROVAL_STATUSES,
     };
+    let viewer = state.access.context(identity).await?;
     let mut tx = state.db.begin(identity.tenant_id).await?;
-    let rows = list_approvals_for_user(&mut tx, identity.user_id, statuses).await?;
+    let views = list_approval_views_for_user(&mut tx, identity.user_id, statuses).await?;
     tx.commit().await?;
     Ok(Json(ApprovalList {
-        approvals: rows
+        approvals: views
             .iter()
-            .map(Approval::from_row)
+            .filter(|v| shown_to(&viewer, &v.approval, v.requested_for_unit_id))
+            .map(|v| {
+                let decides = can_decide(&viewer, &v.approval, v.requested_for_unit_id);
+                Approval::from_view(v, decides)
+            })
             .collect::<anyhow::Result<_>>()?,
     }))
 }
@@ -70,8 +77,13 @@ async fn decide(
             },
         )
         .await?;
+    let mut tx = state.db.begin(identity.tenant_id).await?;
+    let decided = get_approval_view(&mut tx, result.approval.id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("approval decided then gone"))?;
+    tx.commit().await?;
     Ok(Json(ApprovalDecided {
-        approval: Approval::from_row(&result.approval)?,
+        approval: Approval::from_view(&decided, false)?,
         resumed: result.resumed,
     }))
 }
