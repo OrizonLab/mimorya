@@ -14,7 +14,8 @@ use std::sync::Arc;
 use chrono::{DateTime, Duration, Utc};
 use mimorya_db::Database;
 use mimorya_db::repositories::approval_notices::{
-    ApprovalNotice, approval_notices, approval_reminder_runs, approvals_to_remind,
+    ApprovalNotice, NOTIFIED, REMINDED, ReminderRun, approval_notices, approval_reminder_runs,
+    approvals_to_remind,
 };
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use serde_json::json;
@@ -38,8 +39,16 @@ impl Message {
     /// The audited action, once per request.
     fn action(self) -> &'static str {
         match self {
-            Self::Notice => "approval.notified",
-            Self::Reminder => "approval.reminded",
+            Self::Notice => NOTIFIED,
+            Self::Reminder => REMINDED,
+        }
+    }
+
+    /// Named in the logs.
+    fn name(self) -> &'static str {
+        match self {
+            Self::Notice => "notice",
+            Self::Reminder => "reminder",
         }
     }
 }
@@ -111,14 +120,32 @@ impl ApprovalNotifier {
         let until = now + REMIND_BEFORE;
         let mut reminded = 0;
         for run in approval_reminder_runs(self.db.pool(), now, until).await? {
-            let mut tx = self.db.begin(run.tenant_id).await?;
-            let due = approvals_to_remind(&mut tx, run.run_id, now, until).await?;
-            tx.commit().await?;
-            self.send_each(mailer.as_ref(), run.tenant_id, &due, Message::Reminder)
-                .await?;
-            reminded += due.len();
+            // One run failing leaves the others to remind.
+            match self.remind_run(mailer.as_ref(), run, now, until).await {
+                Ok(count) => reminded += count,
+                Err(error) => tracing::warn!(
+                    run_id = %run.run_id,
+                    error = format!("{error:#}"),
+                    "Approval reminders not sent"
+                ),
+            }
         }
         Ok(reminded)
+    }
+
+    async fn remind_run(
+        &self,
+        mailer: &dyn Mailer,
+        run: ReminderRun,
+        now: DateTime<Utc>,
+        until: DateTime<Utc>,
+    ) -> anyhow::Result<usize> {
+        let mut tx = self.db.begin(run.tenant_id).await?;
+        let due = approvals_to_remind(&mut tx, run.run_id, now, until).await?;
+        tx.commit().await?;
+        self.send_each(mailer, run.tenant_id, &due, Message::Reminder)
+            .await?;
+        Ok(due.len())
     }
 
     /// One `message` per manager: `requests` are ordered by manager.
@@ -168,7 +195,11 @@ impl ApprovalNotifier {
         let outcome = match mailer.send(&mail).await {
             Ok(()) => "success",
             Err(_) => {
-                tracing::warn!(run_id = %first.run_id, "Approval notice refused by the relay");
+                tracing::warn!(
+                    run_id = %first.run_id,
+                    message = message.name(),
+                    "Approval e-mail refused by the relay"
+                );
                 "failure"
             }
         };

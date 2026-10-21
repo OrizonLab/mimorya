@@ -2159,9 +2159,9 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     l'envoi est perdu ; le filtre par l'audit permettrait de le rattraper au démarrage
     (demandes en attente, confiées à un responsable, jamais signalées) ;
   - le responsable est relancé la veille de l'échéance (ADR-062) ; pas de résumé
-    périodique. Un e-mail par pause borne ce qu'un
-    modèle détourné peut envoyer : autant de messages que le run fait de pauses, que
-    son budget d'étapes limite ;
+    périodique. Ce qu'un modèle détourné peut faire envoyer reste borné : au plus deux
+    messages par pause et par responsable (l'avis, puis la relance), et autant de
+    pauses que son budget d'étapes en permet ;
   - tests :
     - `crates/api/src/services/runs/approval_notice/message.rs` : contenu du message ;
     - `crates/api/tests/manager_notices.rs` : seul le responsable est prévenu, sans
@@ -2230,7 +2230,9 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
 - **Décision** :
   - chaque minute, le processus qui exécute les runs (verrou de l'exécuteur, ADR-053)
     cherche les demandes en attente, confiées à un responsable, qui expirent dans les
-    24 heures et dont il n'a pas encore été relancé. Il passe par une fonction
+    24 heures et dont il n'a pas encore été relancé, dans un run **en pause** d'une
+    entreprise **active** (un run terminé sans avoir enregistré sa pause laisse des
+    demandes que personne ne peut plus décider : elles ne sont jamais relancées). Il passe par une fonction
     `SECURITY DEFINER` minimale (`system_approval_reminder_runs`), qui ne rend que
     l'entreprise et le run ; chaque run est ensuite traité dans sa propre entreprise ;
   - le responsable reçoit **une seule relance par demande**, groupée par run comme
@@ -2239,7 +2241,10 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - chaque demande relancée est tracée (`approval.reminded`,
     réussi ou échoué, au nom de la plateforme pour la personne, avec l'identifiant du
     responsable et le nombre de demandes du message) ; une relance refusée par le relais
-    n'est pas réessayée ;
+    n'est pas réessayée. Si l'écriture de cette trace échoue après l'envoi, la relance
+    repart la minute suivante : la garantie est « au moins une fois » dans ce cas ;
+  - l'échec d'un run n'empêche pas de relancer les autres ; les envois se font l'un
+    après l'autre dans la maintenance, qu'ils peuvent retarder de quelques secondes ;
   - sans relais SMTP, rien n'est envoyé ni tracé. L'écran « Circuit de validation »
     l'indique.
 - **Conséquences** :
@@ -2250,8 +2255,10 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - tests :
     - `crates/api/src/services/runs/approval_notice/message.rs` : texte de la relance ;
     - `crates/api/tests/approval_reminders.rs` : relance unique la veille, par le seul
-      processus qui exécute les runs, pas une semaine avant ; ni demande de la personne,
-      ni demande échue ; rien sans relais ; chaque entreprise relancée chez elle et rien
-      de l'autre visible ;
+      processus qui exécute les runs, pas une semaine avant ; les demandes d'une pause
+      relancées ensemble ; pas de relance à un responsable désactivé ; une relance
+      refusée par le relais tracée en échec et jamais renvoyée ; ni demande de la
+      personne, ni demande échue, ni demande d'un run terminé avant sa pause ; rien sans
+      relais ; chaque entreprise relancée chez elle et rien de l'autre visible ;
     - `crates/db/tests/definer_functions.rs` : la nouvelle fonction est dans la liste
       connue.

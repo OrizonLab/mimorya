@@ -21,18 +21,25 @@ pub struct ApprovalNotice {
     pub company: String,
 }
 
-/// The run's pending requests a manager decides, with that manager, if
-/// their account is active, and none of the audited `$2` action yet; by
-/// manager, then in creation order. Completed by a filter on `a`.
+/// The audited action of a request's first notice (ADR-060).
+pub const NOTIFIED: &str = "approval.notified";
+/// The audited action of a request's reminder (ADR-062).
+pub const REMINDED: &str = "approval.reminded";
+
+/// The run's pending requests a manager decides, while the run is paused
+/// and its company active, with that manager, if their account is active,
+/// and none of the audited `$2` action yet; by manager, then in creation
+/// order. Completed by a filter on `a`.
 const PENDING_FOR_MANAGERS: &str = "select a.id as approval_id, a.run_id, a.risk, a.expires_at, \
      a.requested_for_user_id, r.display_name as requested_for_name, a.approver_user_id, \
      m.email::text as approver_email, m.display_name as approver_name, t.name as company \
      from approvals a \
+     join agent_runs ar on ar.id = a.run_id \
      join users r on r.id = a.requested_for_user_id \
      join users m on m.id = a.approver_user_id \
      join tenants t on t.id = a.tenant_id \
      where a.run_id = $1 and a.status = 'pending' and a.routing = 'manager' \
-     and m.status = 'active' \
+     and ar.status = 'awaiting_approval' and t.status = 'active' and m.status = 'active' \
      and not exists (select 1 from audit_log l where l.run_id = a.run_id \
        and l.action = $2 and l.resource_id = a.id::text)";
 
@@ -50,7 +57,7 @@ pub async fn approval_notices(
         "{PENDING_FOR_MANAGERS} and a.id = any($3){BY_MANAGER}"
     ))
     .bind(run_id)
-    .bind("approval.notified")
+    .bind(NOTIFIED)
     .bind(approval_ids)
     .fetch_all(conn)
     .await
@@ -68,7 +75,7 @@ pub async fn approvals_to_remind(
         "{PENDING_FOR_MANAGERS} and a.expires_at > $3 and a.expires_at <= $4{BY_MANAGER}"
     ))
     .bind(run_id)
-    .bind("approval.reminded")
+    .bind(REMINDED)
     .bind(now)
     .bind(until)
     .fetch_all(conn)
