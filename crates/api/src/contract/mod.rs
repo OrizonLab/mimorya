@@ -79,6 +79,7 @@ pub fn typescript() -> String {
     declarations.add::<admin::SkillDetail>();
     declarations.add::<admin::SkillVersionCreated>();
     declarations.add::<admin::Policies>();
+    declarations.add::<admin::ApprovalRoutingView>();
     declarations.add::<admin::LlmView>();
     declarations.add::<admin::LlmTestResult>();
     declarations.add::<admin::Connectors>();
@@ -127,7 +128,8 @@ macro_rules! request_bodies {
             admin::NewConnector,
             admin::ConnectorTrial,
             admin::ConnectorUpdate,
-            admin::LlmChoice
+            admin::LlmChoice,
+            admin::ApprovalRoutingUpdate
         )
     };
 }

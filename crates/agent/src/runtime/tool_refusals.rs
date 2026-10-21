@@ -1,12 +1,15 @@
 //! Tool calls that do not run: refused by the policy enforcement point,
-//! queued for human validation, refused by the user, whose request expired
-//! or whose tool was removed before anyone decided, or abandoned when the
-//! run may no longer act for its user (ADR-035). Each is logged, audited or
-//! streamed as it ends, and reported to the model when the run goes on.
+//! queued for human validation (or refused when nobody may validate them,
+//! ADR-059), refused by the user, whose request expired or whose tool was
+//! removed before anyone decided, or abandoned when the run may no longer act
+//! for its user (ADR-035). Each is logged, audited or streamed as it ends,
+//! and reported to the model when the run goes on.
 
 use serde_json::{Value, json};
 
-use super::ports::{ApprovalRequest, EngineAuditEntry, RunEvent, ToolInvocationRecord};
+use super::ports::{
+    ApprovalPlacement, ApprovalRequest, EngineAuditEntry, RunEvent, ToolInvocationRecord,
+};
 use super::state::PendingApproval;
 use super::tool_calls::ToolCallProcessor;
 use super::types::ApprovalDecision;
@@ -17,6 +20,14 @@ use crate::tools::{RegisteredTool, ToolCallEvaluation};
 const TOOL_REMOVED: &str = "Outil désactivé depuis la demande de validation";
 const REQUEST_EXPIRED: &str = "Demande de validation expirée";
 const REFUSED: &str = "Action refusée par l’utilisateur";
+const NOBODY_VALIDATES: &str = "Aucun responsable habilité à valider cette action";
+
+/// A call queued for validation, or refused at once when nobody may
+/// validate it (ADR-059).
+pub(super) enum Requested {
+    Awaiting(PendingApproval),
+    Refused(LlmToolResult),
+}
 
 /// Why a decided call does not run (its tool removed since, its request
 /// expired before anyone decided, or refused): the reason the model gets,
@@ -132,12 +143,12 @@ impl ToolCallProcessor {
         tool: &RegisteredTool,
         input: Value,
         reason: String,
-    ) -> anyhow::Result<PendingApproval> {
+    ) -> anyhow::Result<Requested> {
         let action_summary = tool
             .tool
             .describe_action(&input)
             .unwrap_or_else(|| format!("{} ({})", tool.info.title, call.name));
-        let approval_id = self
+        let placement = self
             .ports
             .approvals
             .create(ApprovalRequest {
@@ -149,6 +160,14 @@ impl ToolCallProcessor {
                 reason: reason.clone(),
             })
             .await?;
+        let approval_id = match placement {
+            ApprovalPlacement::Pending(id) => id,
+            ApprovalPlacement::Unroutable(why) => {
+                return Ok(Requested::Refused(
+                    self.unroutable(call, tool, input, why).await?,
+                ));
+            }
+        };
         self.ports
             .tool_log
             .record(ToolInvocationRecord {
@@ -184,11 +203,67 @@ impl ToolCallProcessor {
                 risk: tool.info.risk,
             })
             .await?;
-        Ok(PendingApproval {
+        Ok(Requested::Awaiting(PendingApproval {
             approval_id,
             tool_call_id: call.id.clone(),
             tool_name: tool.info.name.clone(),
             input,
+        }))
+    }
+
+    /// A call nobody may validate: it does not run, and ends in the live view
+    /// as refused, its reason given to the model.
+    async fn unroutable(
+        &self,
+        call: &LlmToolCall,
+        tool: &RegisteredTool,
+        input: Value,
+        reason: String,
+    ) -> anyhow::Result<LlmToolResult> {
+        self.ports
+            .tool_log
+            .record(ToolInvocationRecord {
+                tool_call_id: call.id.clone(),
+                tool_name: tool.info.name.clone(),
+                input,
+                decision: ToolCallEvaluation::REQUIRE_APPROVAL,
+                decision_reason: Some(reason.clone()),
+                status: "denied",
+                output_summary: None,
+                error: None,
+                duration_ms: None,
+                approval_id: None,
+            })
+            .await?;
+        self.ports
+            .audit
+            .record(EngineAuditEntry {
+                action: "agent.approval.unroutable".into(),
+                outcome: "denied",
+                resource_type: Some("tool".into()),
+                resource_id: Some(tool.info.name.clone()),
+                reason: Some(reason.clone()),
+                metadata: json!({ "risk": tool.info.risk }),
+            })
+            .await?;
+        self.ports
+            .events
+            .emit(RunEvent::ToolResult {
+                tool_call_id: call.id.clone(),
+                tool_name: tool.info.name.clone(),
+                summary: NOBODY_VALIDATES.into(),
+                is_error: true,
+                duration_ms: 0,
+            })
+            .await?;
+        Ok(LlmToolResult {
+            tool_call_id: call.id.clone(),
+            content: json!({
+                "erreur": format!("Refusé par la plateforme : {reason}"),
+                "consigne": "Ne tente pas de contourner ce refus ; adapte ta réponse ou explique la limite.",
+            })
+            .to_string(),
+            is_error: true,
         })
     }
 

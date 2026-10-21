@@ -19,10 +19,10 @@ pub mod verification;
 pub use budget::{BudgetLimits, DEFAULT_BUDGET, check_budget};
 pub use context::{UserProfileContext, build_system_prompt, build_user_turn, french_date};
 pub use ports::{
-    AccessSource, ApprovalRequest, ApprovalStore, AuditSink, CurrentAccess, EngineAuditEntry,
-    EnginePorts, MemoryHit, MemoryStore, NewMemory, RunEvent, RunEventSink, RunStore, SkillContent,
-    SkillStore, SkillSummary, StepAccess, ToolInvocationLog, ToolInvocationRecord, UsageRecord,
-    UsageSink,
+    AccessSource, ApprovalPlacement, ApprovalRequest, ApprovalStore, AuditSink, CurrentAccess,
+    EngineAuditEntry, EnginePorts, MemoryHit, MemoryStore, NewMemory, RunEvent, RunEventSink,
+    RunStore, SkillContent, SkillStore, SkillSummary, StepAccess, ToolInvocationLog,
+    ToolInvocationRecord, UsageRecord, UsageSink,
 };
 pub use recovery::{InterruptedCall, MAX_RESUMPTIONS, unknown_effect};
 pub use runtime::{ACCOUNT_INACTIVE, AgentRuntime, StartInput};

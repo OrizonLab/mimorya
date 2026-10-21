@@ -147,9 +147,13 @@ systématiquement une validation (`requiresApproval`).
 
 - Une demande contient : l'action lisible (« Appliquer le planning de suivi : 4
   interventions, semaine 43 »), les paramètres exacts, le risque, le run d'origine.
-- MVP : la personne pour qui l'agent agit valide (ou rejette) ses propres actions.
-  Phase 2 : circuits hiérarchiques (validation par un responsable disposant de
-  `approval:decide` sur le périmètre), délais d'expiration, délégations.
+- Par défaut, la personne pour qui l'agent agit valide (ou rejette) ses propres
+  actions. Une entreprise peut faire valider les actions de certains risques par un
+  responsable (ADR-059) : le responsable le plus proche dans l'organisation qui détient
+  `approval:decide` sur la personne. Seul lui décide, s'il détient encore ce droit, et
+  le run reprend avec les droits de la personne. Si personne n'est éligible, l'action
+  est refusée aussitôt. Restent à faire : délais d'expiration actifs, relances,
+  délégations.
 - `approval:decide` est **non délégable** : l'agent ne peut jamais valider lui-même.
 - Après décision, l'outil est exécuté **avec les paramètres validés** (aucune
   modification possible entre validation et exécution) et le run reprend.

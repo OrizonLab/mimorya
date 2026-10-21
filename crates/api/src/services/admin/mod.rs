@@ -9,6 +9,7 @@
 //! administrators acting at once cannot build a cycle in the tree or revoke
 //! each other's rights.
 
+mod approval_routing;
 mod assignments;
 mod connector_rules;
 mod connector_test;
@@ -24,6 +25,7 @@ mod roles;
 mod skills;
 mod users;
 
+pub use approval_routing::{manager_risks, set_manager_risks};
 pub use assignments::{grant_role, revoke_role};
 pub use connector_rules::ToolPolicyInput;
 pub use connector_test::{ConnectorTestOutcome, TestedTool, test_connector};

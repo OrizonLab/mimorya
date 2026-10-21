@@ -147,6 +147,8 @@ const AUTHENTICATED_ROUTES: &[(&str, &str)] = &[
     ("POST", "/admin/policies"),
     ("PATCH", "/admin/policies/{id}"),
     ("DELETE", "/admin/policies/{id}"),
+    ("GET", "/admin/approval-routing"),
+    ("PUT", "/admin/approval-routing"),
     ("GET", "/admin/llm"),
     ("PUT", "/admin/llm"),
     ("DELETE", "/admin/llm"),

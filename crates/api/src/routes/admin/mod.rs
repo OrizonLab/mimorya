@@ -6,6 +6,7 @@
 //! identifier that designates nothing the company has (ADR-054).
 
 mod activity;
+mod approval_routing;
 mod assignments;
 mod connectors;
 mod llm;
@@ -49,6 +50,10 @@ pub fn routes(state: &AppState) -> Router<AppState> {
         .route(
             "/admin/policies/{id}",
             patch(policies::update).delete(policies::remove),
+        )
+        .route(
+            "/admin/approval-routing",
+            get(approval_routing::show).put(approval_routing::update),
         )
         .route(
             "/admin/llm",

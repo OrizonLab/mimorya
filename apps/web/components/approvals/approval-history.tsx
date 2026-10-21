@@ -14,7 +14,14 @@ export function ApprovalHistory({ approvals }: { approvals: Approval[] }) {
             key={a.id}
             className="flex flex-col gap-1 px-4 py-3 text-sm sm:flex-row sm:items-center sm:gap-4"
           >
-            <span className="min-w-0 flex-1">{a.actionSummary}</span>
+            <span className="min-w-0 flex-1">
+              {a.actionSummary}
+              {a.decidedBy && a.decidedBy.id !== a.requestedFor.id && (
+                <span className="block text-xs text-muted">
+                  Pour {a.requestedFor.displayName}, décidée par {a.decidedBy.displayName}
+                </span>
+              )}
+            </span>
             <LabelBadge labels={RISK_LABELS} value={a.risk} />
             <LabelBadge labels={APPROVAL_STATUS} value={a.status} />
             <span className="text-xs text-muted">{formatDate(a.decidedAt ?? a.createdAt)}</span>

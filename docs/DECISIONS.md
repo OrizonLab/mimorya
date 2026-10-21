@@ -2044,3 +2044,62 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
       une clé de documentation ;
     - `crates/connectors/tests/mcp_failures.rs` : un serveur HTTP qui cache du texte
       dans ses déclarations n'en transmet rien.
+
+## ADR-059 — Validation par un responsable (circuit hiérarchique, premier lot)
+
+- **Date** : 2026-10-21 · **Statut** : acceptée
+- **Contexte** : jusqu'ici, seule la personne pour qui l'agent agit validait ses
+  actions (MVP, `AGENT_ENGINE.md` §5). La phase 2 prévoit qu'un responsable disposant
+  de `approval:decide` sur son périmètre les valide. La position hiérarchique
+  n'accorde rien seule (`SECURITY.md`) : désigner un responsable ne doit pas lui
+  donner de droit.
+- **Décision** :
+  - une entreprise choisit les risques dont les actions vont à un responsable
+    (`approval_settings.manager_risks`, aucun par défaut : le comportement antérieur
+    est conservé). Le réglage se fait par l'API (`GET`/`PUT /admin/approval-routing`)
+    pour ceux qui gèrent les politiques d'accès (`policy:manage`, toute l'entreprise),
+    et il est tracé avec la valeur remplacée (`approval_routing.updated`) ;
+  - à la demande de validation, le responsable est le responsable (`lead_user_id`) de
+    l'unité principale de la personne, sinon de l'unité la plus proche au-dessus, qui
+    n'est pas cette personne, dont le compte est actif et qui détient
+    `approval:decide` sur elle (ressource `approval` dont elle est propriétaire, dans
+    son unité principale ; `core::approval_routing`). `approval:decide` est désormais
+    vérifiée ressource par ressource : une politique de refus peut la viser ;
+  - si personne n'est éligible, l'action est refusée aussitôt
+    (`ApprovalPlacement::Unroutable`) : résultat d'erreur pour le modèle, appel
+    journalisé comme refusé, audit `agent.approval.unroutable`. Aucune demande ne reste
+    en attente d'un décideur inexistant ;
+  - la demande garde qui la décide (`approvals.routing`, `approver_user_id`). Seul le
+    responsable désigné décide, et seulement s'il détient encore `approval:decide` sur
+    la personne au moment de décider (403 sinon). La personne pour qui l'agent agit
+    reçoit 403 (« attend la validation de votre responsable »), toute autre personne 404. Si le compte du responsable disparaît, plus personne ne décide : la demande
+    expire, sans jamais revenir à la personne elle-même ;
+  - le run reprend **avec les droits de la personne pour qui l'agent agit**, relus au
+    moment de la décision, jamais avec ceux du décideur. Si son compte n'est plus actif,
+    la décision est refusée (409) sans rien enregistrer. L'audit de la décision nomme
+    le décideur et la personne (`on_behalf_of`) ;
+  - `GET /approvals` liste les demandes faites pour la personne et celles qu'elle
+    décide comme responsable. Chaque demande dit pour qui elle est faite
+    (`requestedFor`), qui la décide (`approver`), qui l'a décidée (`decidedBy`), son
+    échéance et si le lecteur peut la décider (`canDecide`). L'interface n'affiche les
+    boutons que dans ce cas et dit sinon qui doit décider. Le compteur de la barre
+    latérale ne compte que ce que le lecteur peut décider. Le responsable voit l'action
+    et ses paramètres exacts, pas l'exécution de la personne.
+- **Conséquences** :
+  - dans l'entreprise de démonstration, les actions de Lucas vont à Julien, celles de
+    Julien et de Nadia à Marc, et celles de Marc ne trouvent personne (la directrice ne
+    détient pas `approval:decide`) : elles sont refusées quand le réglage les vise ;
+  - restent à faire : écran d'administration du réglage, notification du responsable
+    par e-mail, expiration active des demandes (aujourd'hui constatée à la décision) et
+    relance, délégation en cas d'absence, personnes rattachées à plusieurs unités
+    (seule l'unité principale compte) ;
+  - tests :
+    - `crates/core/src/approval_routing.rs` : responsable le plus proche détenant la
+      permission, position seule ignorée ;
+    - `crates/agent/tests/runtime_approvals.rs` : refus immédiat d'une action que
+      personne ne peut valider ;
+    - `crates/api/tests/manager_approvals.rs` : seul le responsable décide, reprise pour
+      la personne, responsable privé de son droit refusé, refus quand personne n'est
+      éligible, réglage réservé à `policy:manage` ;
+    - `apps/web/e2e/manager-approvals.spec.ts` : affichage côté personne et côté
+      responsable.

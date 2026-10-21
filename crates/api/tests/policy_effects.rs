@@ -184,7 +184,7 @@ async fn accepts_only_what_the_platform_can_enforce() {
     // Not checked anywhere yet, or read by the administration screens.
     for permission in [
         "mission:read",
-        "approval:decide",
+        "mission:create",
         "intervention:write",
         "org:read",
         "user:read",
@@ -214,6 +214,7 @@ async fn accepts_only_what_the_platform_can_enforce() {
         listed,
         [
             ("agent:use", false),
+            ("approval:decide", true),
             ("connector:use", false),
             ("intervention:read", true),
             ("memory:read", false),

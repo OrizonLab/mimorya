@@ -3,9 +3,9 @@
 import { ShieldAlert } from 'lucide-react';
 import { useState } from 'react';
 import { Badge, Button, cx, DISABLED_LOOK, ErrorNote } from '@/components/ui';
-import { api, ApiError, type ApprovalVerdict, type ToolRisk } from '@/lib/api';
+import { api, ApiError, type ApprovalPerson, type ApprovalVerdict, type ToolRisk } from '@/lib/api';
 import { RISK_LABELS } from '@/lib/labels';
-import { useCan } from '@/lib/me-context';
+import { useMe } from '@/lib/me-context';
 
 export interface ApprovalLike {
   id: string;
@@ -13,6 +13,23 @@ export interface ApprovalLike {
   actionSummary: string;
   risk: ToolRisk;
   payload?: unknown;
+  requestedFor: ApprovalPerson;
+  approver: ApprovalPerson | null;
+  canDecide: boolean;
+}
+
+/** Why the reader may not decide a pending request (ADR-059). */
+function waiting(approval: ApprovalLike, me: string): string {
+  if (!approval.approver) {
+    return 'Plus personne ne peut valider cette demande : elle expirera d’elle-même.';
+  }
+  if (approval.approver.id !== me) {
+    return `En attente de la validation de ${approval.approver.displayName}.`;
+  }
+  // Theirs to decide, but no longer allowed to.
+  return approval.requestedFor.id === me
+    ? 'Vous n’avez plus accès à l’agent : cette demande ne peut pas être décidée et expirera d’elle-même.'
+    : 'Vous n’avez plus le droit de valider les actions de cette personne : la demande expirera d’elle-même.';
 }
 
 export function ApprovalCard({
@@ -25,8 +42,9 @@ export function ApprovalCard({
   const [comment, setComment] = useState('');
   const [busy, setBusy] = useState<'approve' | 'reject' | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // Deciding resumes the agent: without it, the request is left to expire.
-  const canDecide = useCan('agent:use');
+  const me = useMe().user.id;
+  // Decided by whom the agent acts for, or by their manager (ADR-059).
+  const canDecide = approval.canDecide;
   const risk = RISK_LABELS[approval.risk] ?? { label: approval.risk, tone: 'neutral' as const };
 
   async function decide(approved: boolean) {
@@ -54,6 +72,9 @@ export function ApprovalCard({
             <p className="text-sm font-semibold">Validation requise</p>
             <Badge tone={risk.tone}>{risk.label}</Badge>
           </div>
+          {approval.requestedFor.id !== me && (
+            <p className="mt-1 text-xs text-muted">Pour {approval.requestedFor.displayName}</p>
+          )}
           <p className="mt-1 text-sm">{approval.actionSummary}</p>
           {approval.payload !== undefined && (
             <details className="mt-2 text-xs text-muted">
@@ -63,12 +84,7 @@ export function ApprovalCard({
               </pre>
             </details>
           )}
-          {!canDecide && (
-            <p className="mt-3 text-sm text-muted">
-              Vous n’avez plus accès à l’agent : cette demande ne peut pas être décidée et expirera
-              d’elle-même.
-            </p>
-          )}
+          {!canDecide && <p className="mt-3 text-sm text-muted">{waiting(approval, me)}</p>}
           {canDecide && (
             <>
               <input

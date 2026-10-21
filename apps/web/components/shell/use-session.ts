@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
-import { api, ApiError, loadFailure, type Me } from '@/lib/api';
+import { api, ApiError, loadFailure, type ApprovalList, type Me } from '@/lib/api';
 
 const PENDING_REFRESH_MS = 20_000;
 
@@ -42,14 +42,17 @@ export function useCurrentUser(): {
   return { me, error, retry, logout };
 }
 
-/** Number of approvals awaiting the user, refreshed periodically and on navigation. */
+/**
+ * Number of approvals the user may decide (theirs, or as a manager, ADR-059),
+ * refreshed periodically and on navigation.
+ */
 export function usePendingApprovals(enabled: boolean, pathname: string): number {
   const [pending, setPending] = useState(0);
 
   const refresh = useCallback(() => {
     api
-      .get<{ approvals: unknown[] }>('/approvals')
-      .then((r) => setPending(r.approvals.length))
+      .get<ApprovalList>('/approvals')
+      .then((r) => setPending(r.approvals.filter((a) => a.canDecide).length))
       .catch(() => undefined);
   }, []);
 
