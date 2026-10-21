@@ -1,6 +1,7 @@
 //! Companies created by the platform's operator (ADR-033). The insert runs
 //! in the new company's own transaction (`Database::begin` with its id): the
-//! row-level security of `tenants` lets a transaction write its tenant only.
+//! row-level security of `tenants` lets a transaction write and read its
+//! tenant only.
 
 use sqlx::PgConnection;
 use uuid::Uuid;
@@ -22,4 +23,12 @@ pub async fn create_tenant(conn: &mut PgConnection, input: NewTenant<'_>) -> sql
         .execute(conn)
         .await?;
     Ok(())
+}
+
+/// `active` or `suspended`, as stored now.
+pub async fn tenant_status(conn: &mut PgConnection, id: Uuid) -> sqlx::Result<Option<String>> {
+    sqlx::query_scalar("select status from tenants where id = $1")
+        .bind(id)
+        .fetch_optional(conn)
+        .await
 }

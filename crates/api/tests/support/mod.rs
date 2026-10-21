@@ -8,6 +8,7 @@ pub mod access;
 pub mod accounts;
 mod client;
 pub mod companies;
+pub mod identity_provider;
 pub mod llm;
 pub mod locks;
 pub mod mail;
@@ -19,6 +20,7 @@ pub mod recovery;
 pub mod refusals;
 pub mod resets;
 pub mod runs;
+pub mod sso;
 pub mod sweeps;
 
 pub use client::{Client, TestResponse};

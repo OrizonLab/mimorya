@@ -9,6 +9,7 @@ mod activity;
 mod approval_routing;
 mod assignments;
 mod connectors;
+mod identity_providers;
 mod llm;
 mod organization;
 mod policies;
@@ -69,6 +70,14 @@ pub fn routes(state: &AppState) -> Router<AppState> {
             patch(connectors::update).delete(connectors::remove),
         )
         .route("/admin/connectors/trial", post(connectors::trial))
+        .route(
+            "/admin/identity-providers",
+            get(identity_providers::list).post(identity_providers::create),
+        )
+        .route(
+            "/admin/identity-providers/{id}",
+            patch(identity_providers::update).delete(identity_providers::remove),
+        )
         .route("/admin/connectors/{id}/test", post(connectors::test))
         .route("/admin/skills", get(skills::list).post(skills::create))
         .route(

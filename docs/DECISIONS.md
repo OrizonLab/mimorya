@@ -2264,3 +2264,88 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
       chez elle et rien de l'autre visible ;
     - `crates/db/tests/definer_functions.rs` : la nouvelle fonction est dans la liste
       connue.
+
+## ADR-063 — Connexion par le fournisseur d'identité de l'entreprise (SSO OpenID Connect, Microsoft 365 d'abord)
+
+- **Date** : 2026-10-21 · **Statut** : acceptée
+- **Contexte** : les entreprises clientes veulent que leurs collaborateurs se
+  connectent avec le compte qu'ils ont déjà : d'abord Microsoft 365 (Entra ID), aussi
+  Google Workspace ou un autre fournisseur d'identité (Okta, Keycloak…). Le mot de
+  passe Mimorya reste possible. Plusieurs méthodes doivent coexister, par entreprise.
+- **Décision** :
+  - protocole unique : **OpenID Connect**, flux par code d'autorisation avec PKCE,
+    `state` et `nonce`, côté serveur (client confidentiel). Bibliothèque `openidconnect`
+    (découverte, clés de signature, validation du jeton d'identité : signature,
+    émetteur, audience, expiration, nonce), branchée sur le client HTTP durci des
+    connecteurs (pas de redirection, pas de proxy, adresses publiques seulement sauf
+    réseau privé autorisé par l'exploitant, ADR-025), chaque échange borné en durée
+    (10 s) et en taille (256 Kio) ;
+  - chaque entreprise déclare ses **fournisseurs d'identité** (`identity_providers`,
+    RLS) : type `microsoft` (identifiant de l'annuaire Entra, un GUID ; émetteur
+    `https://login.microsoftonline.com/{annuaire}/v2.0`), `google` (émetteur Google ;
+    seuls les comptes Workspace d'un domaine déclaré, revendication `hd`) ou `oidc`
+    (adresse d'émetteur quelconque, nom obligatoire), avec identifiant client, secret
+    (coffre des secrets, ADR-024, jamais relu), **domaines d'e-mail** couverts (un
+    fournisseur par domaine dans l'entreprise) et état actif. Type, émetteur et
+    identifiant client ne changent pas : on déclare un autre fournisseur ;
+  - un fournisseur ne sert **que les comptes de son entreprise**. La page de connexion
+    demande l'e-mail ; le fournisseur proposé est celui qui couvre le domaine du
+    compte portant cette adresse, actif, dans une entreprise active
+    (`auth_find_identity_provider`, seule lecture inter-entreprises). Une adresse sans
+    compte, d'un compte désactivé ou d'une entreprise sans fournisseur reçoit la même
+    réponse (« mot de passe ») ; une entreprise ne peut donc pas détourner vers son
+    fournisseur les comptes d'une autre en déclarant leur domaine. La réponse dit
+    qu'une adresse a un compte dans une entreprise qui l'a reliée à son fournisseur :
+    elle est limitée en débit comme la connexion ;
+  - le départ (`POST /api/auth/sso/start`) renvoie l'adresse du fournisseur et pose un
+    cookie de tentative (HttpOnly, SameSite=Lax, chemin `/api/auth/sso`, 10 minutes) :
+    entreprise en clair, fournisseur, `state`, `nonce` et vérificateur PKCE scellés par
+    la clé maîtresse (AES-256-GCM, l'entreprise en données associées). Rien n'est écrit
+    en base ; le code n'est échangeable qu'une fois chez le fournisseur ;
+  - **pas de création de compte** : le compte doit exister et être actif. La première
+    connexion le relie à l'identité (`user_identities` : fournisseur, sujet immuable —
+    `oid` pour Microsoft, qui survit à un changement d'application, `sub` sinon) par
+    l'e-mail du jeton, seulement si le fournisseur garantit cette adresse (l'annuaire
+    de l'entreprise pour Microsoft : `email`, sinon le nom de connexion ;
+    `email_verified` pour les autres) et qu'elle relève d'un domaine déclaré. Ensuite,
+    seule l'identité reliée compte ; un compte déjà relié à une autre identité du même
+    fournisseur est refusé. La personne connectée est celle que le fournisseur prouve,
+    pas celle que l'adresse saisie désignait ;
+  - le retour du fournisseur (`GET /api/auth/sso/callback`) vérifie le `state` contre
+    le cookie (contre la connexion forcée), efface le cookie, échange le code, valide
+    le jeton, ouvre la session comme une connexion par mot de passe (ligne du compte
+    verrouillée, compte actif) et la trace (`auth.login`, méthode `sso`, fournisseur ;
+    `auth.identity_linked` à la première liaison). Tout échec renvoie à
+    `/login?sso=echec` ; la raison est tracée dans l'entreprise de la tentative quand
+    elle est connue, jamais un jeton, un code ni la réponse du fournisseur à l'échange ;
+  - la configuration (`/api/admin/identity-providers`) exige `settings:manage` sur
+    toute l'entreprise (non délégable), sous le verrou d'administration, auditée (sans
+    le secret) ; le fournisseur est joint avant l'enregistrement pour dire tout de suite
+    ce qui ne va pas ; sa suppression emporte domaines, secret et identités reliées.
+- **Conséquences** :
+  - le serveur doit joindre le fournisseur (`login.microsoftonline.com`, …) ; pour un
+    fournisseur du réseau privé, l'exploitant l'autorise comme pour les connecteurs
+    (`MIMORYA_MCP_ALLOW_PRIVATE_NETWORK`). La déclaration et les clés du fournisseur sont
+    relues au départ et au retour de chaque connexion (pas encore de cache) ;
+  - qui administre les fournisseurs peut se connecter comme les comptes de ses domaines
+    pas encore reliés ; c'est déjà le pouvoir de qui fixe un mot de passe provisoire
+    (même niveau d'administration, tracé) ;
+  - un compte invité accepte d'abord son invitation ; un mot de passe provisoire reste à
+    remplacer, même après une connexion par le fournisseur ;
+  - la connexion par mot de passe reste ouverte ; la rendre impossible pour les
+    domaines couverts, accepter une invitation par le fournisseur, la création de
+    compte à la première connexion, SAML et la vérification de propriété d'un domaine
+    viendront ensuite ;
+  - lots : (1) modèle, connexion, configuration par l'API, tests contre un fournisseur
+    simulé (ce lot) ; (2) écran d'administration « Connexion » et bouton de la page de
+    connexion ; (3) options.
+  - Tests :
+    - `crates/core/src/identity_providers/tests.rs` : issuer de chaque type, nom,
+      client, domaines, preuves d'identité par type ;
+    - `crates/api/src/services/sso/attempt.rs` : tentative scellée, ouverte seulement
+      pour son entreprise, intacte et à temps ;
+    - `crates/api/tests/sso_sign_in.rs`, `sso_refusals.rs`, `sso_companies.rs`,
+      `admin_identity_providers.rs` : connexion, liaison unique, refus, isolation entre
+      entreprises, configuration ;
+    - `crates/db/tests/definer_functions.rs` : la nouvelle fonction est dans la liste
+      connue.

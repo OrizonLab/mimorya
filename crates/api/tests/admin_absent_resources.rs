@@ -179,6 +179,19 @@ async fn every_resource_the_administration_changes_is_traced_when_absent() {
                 .await,
             "connector",
         ),
+        (
+            paul.patch(
+                &format!("/admin/identity-providers/{absent}"),
+                json!({ "name": MARKER }),
+            )
+            .await,
+            "identity_provider",
+        ),
+        (
+            paul.delete(&format!("/admin/identity-providers/{absent}"))
+                .await,
+            "identity_provider",
+        ),
     ];
     for (response, resource_type) in &answers {
         assert_eq!(response.status, StatusCode::NOT_FOUND, "{resource_type}");

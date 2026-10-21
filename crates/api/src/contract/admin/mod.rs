@@ -4,6 +4,7 @@ mod activity;
 mod approval_routing;
 mod assignments;
 mod connectors;
+mod identity_providers;
 mod llm;
 mod organization;
 mod policies;
@@ -20,6 +21,9 @@ pub use connectors::{
     ConnectorStatus, ConnectorTest, ConnectorTrial, ConnectorType, ConnectorUpdate, ConnectorView,
     Connectors, DelegablePermission, McpEndpoint, NewConnector, TestedTool, ToolPolicy,
     ToolPolicyChange, risks,
+};
+pub use identity_providers::{
+    IdentityProviderUpdate, IdentityProviderView, IdentityProvidersView, NewIdentityProvider,
 };
 pub use llm::{LlmChoice, LlmSettingsView, LlmTestResult, LlmView, PlatformModel, ProviderKind};
 pub use policies::{

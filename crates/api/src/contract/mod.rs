@@ -14,6 +14,7 @@ mod memory;
 mod run_stream;
 mod runs;
 mod session;
+mod sso;
 mod stored;
 mod typescript;
 
@@ -43,6 +44,7 @@ pub use runs::{
 pub use session::{
     AssistantStatus, AuthOptions, Credentials, Me, MeTenant, MeUser, OrgUnitRef, PasswordUpdate,
 };
+pub use sso::{SsoDiscovery, SsoLookup, SsoProvider, SsoStart};
 
 pub(crate) use stored::stored_text;
 use typescript::Declarations;
@@ -53,6 +55,8 @@ pub fn typescript() -> String {
     let mut declarations = Declarations::new();
     declarations.add::<Me>();
     declarations.add::<AuthOptions>();
+    declarations.add::<SsoDiscovery>();
+    declarations.add::<SsoStart>();
     declarations.add::<Done>();
     declarations.add::<ConversationList>();
     declarations.add::<ConversationCreated>();
@@ -82,6 +86,7 @@ pub fn typescript() -> String {
     declarations.add::<admin::ApprovalRoutingView>();
     declarations.add::<admin::LlmView>();
     declarations.add::<admin::LlmTestResult>();
+    declarations.add::<admin::IdentityProvidersView>();
     declarations.add::<admin::Connectors>();
     // Named by `ConnectorView.toolPolicies`, which holds the stored value.
     declarations.add::<admin::ToolPolicy>();
@@ -102,6 +107,7 @@ macro_rules! request_bodies {
     ($apply:ident) => {
         $apply!(
             Credentials,
+            SsoLookup,
             PasswordUpdate,
             ResetLinkRequest,
             LinkToken,
@@ -129,6 +135,8 @@ macro_rules! request_bodies {
             admin::ConnectorTrial,
             admin::ConnectorUpdate,
             admin::LlmChoice,
+            admin::NewIdentityProvider,
+            admin::IdentityProviderUpdate,
             admin::ApprovalRoutingUpdate
         )
     };

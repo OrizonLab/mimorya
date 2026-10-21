@@ -113,7 +113,8 @@ flowchart BT
 | Files d'attente | PostgreSQL (`FOR UPDATE SKIP LOCKED`, baux)                                                  | Pas de composant supplémentaire en MVP ; Redis/pg-boss évalués à la montée en charge (ADR-005, ADR-012).                                                                            |
 | LLM             | Adaptateurs maison sur HTTP (`reqwest`) : Anthropic Messages (flux SSE) et OpenAI-compatible | Contrôle fin des appels d'outils, du cache, du coût et du routage ; OpenAI-compatible couvre OpenRouter, Gemini, Mistral, Ollama, vLLM (ADR-007).                                   |
 | MCP             | `rmcp` (SDK Rust officiel, client)                                                           | SDK officiel ; transports stdio (privé) et Streamable HTTP (SaaS).                                                                                                                  |
-| Mots de passe   | Argon2id (crate `argon2`, paramètres OWASP)                                                  | Recommandation OWASP ; SSO/OIDC en phase 2 (ADR-009).                                                                                                                               |
+| Mots de passe   | Argon2id (crate `argon2`, paramètres OWASP)                                                  | Recommandation OWASP (ADR-009).                                                                                                                                                     |
+| SSO             | `openidconnect` (OpenID Connect : découverte, PKCE, vérification du jeton d'identité)        | Bibliothèque éprouvée plutôt qu'une vérification de jetons faite main ; branchée sur le client HTTP durci des connecteurs (ADR-063).                                                |
 | Tests           | `cargo test` (unitaires) + tests d'intégration sur PostgreSQL réel (`cargo test-int`)        | Un seul outil, exécution en série des suites qui partagent la base de test.                                                                                                         |
 | Observabilité   | Logs structurés (`tracing`), identifiant de requête ; OpenTelemetry en phase 3               | Exploitable tout de suite, standard ouvert ensuite.                                                                                                                                 |
 | Conteneurs      | Docker + docker-compose (dev, déploiement privé simple)                                      | Reproductible ; Kubernetes seulement si nécessaire.                                                                                                                                 |
@@ -167,6 +168,26 @@ sequenceDiagram
 4. Une validation humaine met le run en `awaiting_approval` ; la décision le remet en
    file.
 5. Les tâches récurrentes (phase 2) créent des runs selon une expression cron.
+
+### 4.3 Connexion par le fournisseur d'identité de l'entreprise (ADR-063)
+
+```mermaid
+sequenceDiagram
+  participant N as Navigateur
+  participant A as API
+  participant F as Fournisseur (Microsoft 365…)
+  N->>A: POST /api/auth/sso/discover (e-mail)
+  A-->>N: fournisseur de l'entreprise du compte, ou aucun
+  N->>A: POST /api/auth/sso/start
+  A->>F: découverte (émetteur, clés)
+  A-->>N: adresse d'autorisation + cookie de tentative scellé
+  N->>F: connexion de la personne
+  F-->>N: redirection vers /api/auth/sso/callback (code, state)
+  N->>A: retour + cookie de tentative
+  A->>F: échange du code (PKCE, secret client)
+  A->>A: jeton vérifié, compte relié ou retrouvé, session ouverte
+  A-->>N: 303 vers /chat (ou /login?sso=echec)
+```
 
 ## 5. Moteur agentique et mémoire
 

@@ -352,6 +352,39 @@ status: string,
 llm: boolean, };
 
 /**
+ * Body of `PATCH /admin/identity-providers/{id}`: absent fields are
+ * unchanged. Kind, issuer and client are not: another provider is declared.
+ */
+export type IdentityProviderUpdate = { name?: string,
+/**
+ * A new secret replaces the stored one.
+ */
+clientSecret?: string, domains?: Array<string>, enabled?: boolean, };
+
+export type IdentityProviderView = { id: string,
+/**
+ * `microsoft`, `google` or `oidc`.
+ */
+kind: string, name: string, issuer: string, clientId: string,
+/**
+ * E-mail domains whose accounts sign in through it.
+ */
+domains: Array<string>, enabled: boolean, secretStored: boolean, createdAt: string, updatedAt: string, };
+
+/**
+ * `GET /admin/identity-providers`.
+ */
+export type IdentityProvidersView = {
+/**
+ * The server can seal client secrets (`MIMORYA_MASTER_KEY`).
+ */
+secretsAvailable: boolean,
+/**
+ * The address to register at the provider for the return of a sign-in.
+ */
+redirectUri: string, providers: Array<IdentityProviderView>, };
+
+/**
  * `POST /auth/invitation`: who the invitation is for.
  */
 export type InvitationDetails = { email: string, displayName: string, company: string, expiresAt: string, };
@@ -576,6 +609,21 @@ enabled?: boolean, };
  * Body of `POST /conversations`.
  */
 export type NewConversation = { title?: string, };
+
+/**
+ * Body of `POST /admin/identity-providers`. What designates the provider
+ * depends on its kind: the directory (tenant ID) of a Microsoft Entra ID,
+ * nothing for Google, the issuer's address otherwise.
+ */
+export type NewIdentityProvider = { kind: string,
+/**
+ * Absent or blank: the kind's name ("Microsoft 365", "Google Workspace").
+ */
+name?: string, directoryId?: string, issuer?: string, clientId: string, clientSecret: string, domains: Array<string>,
+/**
+ * Absent: enabled.
+ */
+enabled?: boolean, };
 
 /**
  * Body of `POST /conversations/{id}/messages`.
@@ -881,6 +929,38 @@ content: string, changelog: string, createdBy: string | null, createdAt: string,
 approvedBy: string | null, approvedAt: string | null, };
 
 export type SkillView = { id: string, name: string, description: string, status: SkillStatus, activeVersion: number | null, latestVersion: number | null, updatedAt: string, };
+
+/**
+ * `POST /auth/sso/discover`.
+ */
+export type SsoDiscovery = {
+/**
+ * Absent: the password only.
+ */
+provider: SsoProvider | null, };
+
+/**
+ * Body of `POST /auth/sso/discover` and `POST /auth/sso/start`.
+ */
+export type SsoLookup = { email: string, };
+
+/**
+ * A provider the sign-in page offers.
+ */
+export type SsoProvider = {
+/**
+ * `microsoft`, `google` or `oidc`.
+ */
+kind: string,
+/**
+ * As the button names it: "Microsoft 365".
+ */
+name: string, };
+
+/**
+ * `POST /auth/sso/start`: where the browser goes to sign in.
+ */
+export type SsoStart = { redirectUrl: string, };
 
 /**
  * What an account's status may be set to (an invitation is issued, not set).

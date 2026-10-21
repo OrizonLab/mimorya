@@ -12,6 +12,7 @@ pub mod password_reset;
 pub mod permission_catalog;
 pub mod provisioning;
 pub mod runs;
+pub mod sso;
 pub mod tenant_cache;
 
 pub use access::{AccessContext, AccessService, AuthIdentity};

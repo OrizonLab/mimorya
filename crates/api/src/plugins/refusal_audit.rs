@@ -144,6 +144,7 @@ fn resource_of(route: &str, id: &str) -> Option<(&'static str, Uuid)> {
         "roles" => "role",
         "policies" => "policy",
         "connectors" => "connector",
+        "identity-providers" => "identity_provider",
         "skills" => "skill",
         _ => return None,
     };
@@ -171,6 +172,7 @@ mod tests {
             ("/admin/policies/{id}", "policy"),
             ("/admin/connectors/{id}", "connector"),
             ("/admin/connectors/{id}/test", "connector"),
+            ("/admin/identity-providers/{id}", "identity_provider"),
             ("/admin/skills/{id}", "skill"),
             ("/admin/skills/{id}/versions", "skill"),
             ("/admin/skills/{id}/activation", "skill"),
