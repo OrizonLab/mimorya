@@ -2,7 +2,8 @@
 //! declares, unless an administrator replaced it in the tool's policy, each
 //! after the server's name. The replacement reaches the model in the next
 //! run, the connection test shows both, and one beyond a server's bounds is
-//! refused without being stored.
+//! refused without being stored. Another type of connector's tools keep
+//! their own, whatever is stored.
 
 mod support;
 
@@ -12,6 +13,7 @@ use mimorya_connectors::testing::serve_demo_docs_http;
 use mimorya_core::demo::user;
 use serde_json::{Value, json};
 use support::mcp::{PRIVATE_DEPLOYMENT, TOKEN, TOOL, add, listed, mcp_body};
+use support::recovery::{restore_demo_policies, set_demo_policies};
 use support::{Client, TestApi};
 
 /// Every description the model reads of the server's tools names the server.
@@ -38,8 +40,8 @@ async fn tested(admin: &Client<'_>, id: &str) -> Value {
     tested["tools"][0].clone()
 }
 
-/// The description of the tool in the model's next request, from Marc's run.
-async fn read_by_the_model(api: &TestApi, marc: &Client<'_>) -> String {
+/// The description of `tool` in the model's next request, from Marc's run.
+async fn read_by_the_model(api: &TestApi, marc: &Client<'_>, tool: &str) -> String {
     api.script(vec![ScriptedStep::text("Voici.")]);
     let conversation = marc.post("/conversations", json!({})).await.json();
     let conversation_id = conversation["conversation"]["id"].as_str().unwrap();
@@ -55,9 +57,9 @@ async fn read_by_the_model(api: &TestApi, marc: &Client<'_>) -> String {
     let tools = &requests.last().unwrap().tools;
     tools
         .iter()
-        .find(|t| t.name == TOOL)
+        .find(|t| t.name == tool)
         .map(|t| t.description.clone())
-        .expect("the mapped tool is offered to Marc")
+        .expect("the tool is offered to Marc")
 }
 
 #[tokio::test]
@@ -84,7 +86,7 @@ async fn the_model_reads_the_description_an_administrator_wrote() {
     assert_eq!(tool["replacedDescription"], WRITTEN);
     // The model reads the replacement, still naming the server.
     assert_eq!(
-        read_by_the_model(&api, &marc).await,
+        read_by_the_model(&api, &marc, TOOL).await,
         format!("{FROM}{WRITTEN}")
     );
 
@@ -95,7 +97,7 @@ async fn the_model_reads_the_description_an_administrator_wrote() {
     assert_eq!(restored.status, StatusCode::OK, "{}", restored.text());
     assert_eq!(tested(&paul, &id).await["replacedDescription"], Value::Null);
     assert_eq!(
-        read_by_the_model(&api, &marc).await,
+        read_by_the_model(&api, &marc, TOOL).await,
         format!("{FROM}{DECLARED}")
     );
 
@@ -142,4 +144,44 @@ async fn a_description_beyond_a_server_s_bounds_is_refused_and_not_stored() {
         paul.delete(&format!("/admin/connectors/{id}")).await.status,
         StatusCode::OK
     );
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_description_stored_for_another_type_of_connector_is_ignored() {
+    const SEARCH: &str = "interventions_search";
+    let api = TestApi::start().await;
+    let paul = api.sign_in(user::PAUL).await;
+    let marc = api.sign_in(user::MARC).await;
+    let own = read_by_the_model(&api, &marc, SEARCH).await;
+    // No administration writes it there: as an operator might, in the base.
+    let stored = json!({ SEARCH: { "description": "Écrit en base." } });
+    let before = set_demo_policies(&api, stored).await;
+    let read = read_by_the_model(&api, &marc, SEARCH).await;
+    let connectors = paul.get("/admin/connectors").await.json();
+    let demo = connectors["instances"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|i| i["type"] == "demo_interventions")
+        .cloned()
+        .unwrap();
+    let tested = paul
+        .post(
+            &format!("/admin/connectors/{}/test", demo["id"].as_str().unwrap()),
+            json!({}),
+        )
+        .await
+        .json();
+    restore_demo_policies(&api, before).await;
+
+    assert_eq!(read, own);
+    let search = tested["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["name"] == SEARCH)
+        .cloned()
+        .unwrap();
+    assert_eq!(search["replacedDescription"], Value::Null, "{search}");
 }

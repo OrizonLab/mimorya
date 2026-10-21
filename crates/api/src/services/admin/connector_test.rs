@@ -74,9 +74,11 @@ pub async fn test_connector(
         },
         (Ok(policies), Ok(token)) => {
             let (kind, config) = (&instance.connector_type, &instance.config);
-            // Written by an administrator, shown as written (ADR-057).
+            // Written by an administrator, shown as written: an MCP server's
+            // only, as runs read no other (ADR-057).
             let written: HashMap<String, String> = policies
                 .iter()
+                .filter(|_| instance.connector_type == "mcp")
                 .filter_map(|(name, p)| Some((name.clone(), p.description.clone()?)))
                 .collect();
             // As runs apply them.

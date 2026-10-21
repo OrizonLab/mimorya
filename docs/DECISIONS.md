@@ -1991,7 +1991,8 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     - `crates/api/tests/connector_descriptions.rs` : le modèle lit le remplacement
       précédé du nom du serveur, puis de nouveau la description du serveur une fois le
       remplacement retiré ; un remplacement hors bornes, ou qui cache du texte, est
-      refusé et rien n'est enregistré ;
+      refusé et rien n'est enregistré ; une description inscrite pour le connecteur de
+      démonstration n'est ni lue par le modèle ni montrée par le test de connexion ;
     - `services/admin/connector_rules.rs` : bornes, ensemble compris, et caractères
       invisibles ;
     - `apps/web/e2e/integrations.spec.ts` : description écrite depuis les règles d'un
