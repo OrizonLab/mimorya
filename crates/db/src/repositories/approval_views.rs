@@ -1,5 +1,6 @@
-//! Approvals as shown to people: with the names of whom the agent acts for,
-//! of the manager who decides (ADR-059) and of who decided, in one query.
+//! Approvals as shown to people: with the names of whom the agent acts for
+//! (and their primary unit, as their access reads it), of the manager who
+//! decides (ADR-059) and of who decided, in one query.
 
 use sqlx::PgConnection;
 use uuid::Uuid;
@@ -11,6 +12,8 @@ pub struct ApprovalView {
     #[sqlx(flatten)]
     pub approval: ApprovalRow,
     pub requested_for_name: String,
+    /// Their primary unit, where `approval:decide` is checked over them.
+    pub requested_for_unit_id: Option<Uuid>,
     pub approver_name: Option<String>,
     pub decided_by_name: Option<String>,
 }
@@ -18,8 +21,10 @@ pub struct ApprovalView {
 /// The selected approvals (`filter`, on the `approvals` columns), named.
 fn named(filter: &str) -> String {
     format!(
-        "select a.*, r.display_name as requested_for_name, m.display_name as approver_name, \
-         d.display_name as decided_by_name \
+        "select a.*, r.display_name as requested_for_name, \
+         (select u.org_unit_id from org_memberships u where u.user_id = a.requested_for_user_id \
+          order by u.is_primary desc, u.created_at limit 1) as requested_for_unit_id, \
+         m.display_name as approver_name, d.display_name as decided_by_name \
          from (select {APPROVAL_COLUMNS} from approvals where {filter}) a \
          join users r on r.id = a.requested_for_user_id \
          left join users m on m.id = a.approver_user_id \

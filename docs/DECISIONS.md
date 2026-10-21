@@ -2070,10 +2070,17 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     journalisé comme refusé, audit `agent.approval.unroutable`. Aucune demande ne reste
     en attente d'un décideur inexistant ;
   - la demande garde qui la décide (`approvals.routing`, `approver_user_id`). Seul le
-    responsable désigné décide, et seulement s'il détient encore `approval:decide` sur
-    la personne au moment de décider (403 sinon). La personne pour qui l'agent agit
-    reçoit 403 (« attend la validation de votre responsable »), toute autre personne 404. Si le compte du responsable disparaît, plus personne ne décide : la demande
-    expire, sans jamais revenir à la personne elle-même ;
+    responsable désigné l'approuve, et seulement s'il détient encore `approval:decide`
+    sur la personne au moment de décider (403 sinon). Ce droit est vérifié juste avant
+    l'enregistrement de la décision, hors de sa transaction : un droit retiré dans
+    l'intervalle laisse passer cette décision, mais le run relit à chaque étape les
+    droits de la personne, qui seuls permettent l'exécution ;
+  - la personne pour qui l'agent agit ne peut pas approuver la demande (403 « attend
+    la validation de votre responsable »), mais peut toujours la **retirer** : c'est un
+    refus, sans risque puisque l'action n'est pas exécutée, tracé `approval.rejected`
+    avec `withdrawn: true`. Ainsi, une demande dont le responsable ne peut plus
+    décider (droit retiré, compte désactivé ou supprimé) ne bloque jamais la
+    conversation. Toute autre personne reçoit 404 ;
   - le run reprend **avec les droits de la personne pour qui l'agent agit**, relus au
     moment de la décision, jamais avec ceux du décideur. Si son compte n'est plus actif,
     la décision est refusée (409) sans rien enregistrer. L'audit de la décision nomme
@@ -2081,10 +2088,13 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - `GET /approvals` liste les demandes faites pour la personne et celles qu'elle
     décide comme responsable. Chaque demande dit pour qui elle est faite
     (`requestedFor`), qui la décide (`approver`), qui l'a décidée (`decidedBy`), son
-    échéance et si le lecteur peut la décider (`canDecide`). L'interface n'affiche les
-    boutons que dans ce cas et dit sinon qui doit décider. Le compteur de la barre
-    latérale ne compte que ce que le lecteur peut décider. Le responsable voit l'action
-    et ses paramètres exacts, pas l'exécution de la personne.
+    échéance et si le lecteur peut l'approuver (`canDecide`, vérifié sur la personne
+    comme à la décision). Un responsable qui a perdu le droit ne voit plus les demandes
+    en attente qu'il ne peut plus décider. L'interface n'affiche les boutons que si le
+    lecteur peut décider, dit sinon qui doit décider, et propose à la personne de
+    retirer sa demande. Le compteur de la barre latérale ne compte que ce que le
+    lecteur peut décider. Le responsable voit l'action et ses paramètres exacts, pas
+    l'exécution de la personne.
 - **Conséquences** :
   - dans l'entreprise de démonstration, les actions de Lucas vont à Julien, celles de
     Julien et de Nadia à Marc, et celles de Marc ne trouvent personne (la directrice ne
@@ -2099,7 +2109,9 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     - `crates/agent/tests/runtime_approvals.rs` : refus immédiat d'une action que
       personne ne peut valider ;
     - `crates/api/tests/manager_approvals.rs` : seul le responsable décide, reprise pour
-      la personne, responsable privé de son droit refusé, refus quand personne n'est
-      éligible, réglage réservé à `policy:manage` ;
-    - `apps/web/e2e/manager-approvals.spec.ts` : affichage côté personne et côté
-      responsable.
+      la personne, responsable privé de son droit refusé (et ne voyant plus la
+      demande), retrait par la personne, responsable désactivé ignoré, refus quand
+      personne n'est éligible, réglage réservé à `policy:manage` ;
+    - `apps/web/e2e/manager-approvals.spec.ts` : parcours réel (demande de Nadia
+      refusée par Marc, relue après rechargement) et retrait d'une demande que plus
+      personne ne peut décider.

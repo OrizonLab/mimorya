@@ -82,7 +82,7 @@ async fn reports_a_rejected_validation_to_the_model() {
                 assert!(
                     last_tool_results(req)[0]
                         .content
-                        .contains("refusée par l’utilisateur : pas cette semaine")
+                        .contains("refusée lors de la validation : pas cette semaine")
                 );
                 ScriptedReply::text("Entendu, je n’applique pas le planning.")
             }),
@@ -107,7 +107,7 @@ async fn reports_a_rejected_validation_to_the_model() {
     let ended = h.events_of("tool_result");
     assert_eq!(ended.len(), 1);
     assert_eq!(ended[0]["toolName"], "planning_apply");
-    assert_eq!(ended[0]["summary"], "Action refusée par l’utilisateur");
+    assert_eq!(ended[0]["summary"], "Action refusée lors de la validation");
     assert_eq!(ended[0]["isError"], true);
 }
 

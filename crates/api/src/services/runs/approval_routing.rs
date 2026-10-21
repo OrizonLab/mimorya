@@ -77,15 +77,32 @@ pub fn may_decide_for(
             .allowed
 }
 
-/// Whether `viewer` may decide `approval`, as a listing tells it: pending and
-/// theirs to decide, and they may still use the agent (a request made for
-/// them) or hold `approval:decide` (as its manager: the decision itself
-/// checks it over the requester).
-pub fn can_decide(viewer: &AccessContext, approval: &ApprovalRow) -> bool {
+/// Whether `viewer` may decide (approve) `approval`, made for a person whose
+/// primary unit is `requester_unit`: pending and theirs to decide, and they
+/// may still use the agent (a request made for them) or hold
+/// `approval:decide` over that person (as its manager).
+pub fn can_decide(
+    viewer: &AccessContext,
+    approval: &ApprovalRow,
+    requester_unit: Option<Uuid>,
+) -> bool {
     let entitled = if approval.routed_to_manager() {
-        viewer.has(DECIDE)
+        may_decide_for(viewer, approval.requested_for_user_id, requester_unit)
     } else {
         viewer.has("agent:use")
     };
     approval.status == "pending" && approval.decider() == Some(viewer.subject.user_id) && entitled
+}
+
+/// Whether `viewer` is shown `approval`: made for them, decided, or one they
+/// may still decide. A manager who lost the right no longer sees what
+/// waits, its exact parameters included.
+pub fn shown_to(
+    viewer: &AccessContext,
+    approval: &ApprovalRow,
+    requester_unit: Option<Uuid>,
+) -> bool {
+    approval.requested_for_user_id == viewer.subject.user_id
+        || approval.status != "pending"
+        || can_decide(viewer, approval, requester_unit)
 }

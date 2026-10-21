@@ -11,6 +11,7 @@ export const demo = {
   marc: 'marc.lefevre@neo-maintenance.example',
   lucas: 'lucas.petit@neo-maintenance.example',
   hugo: 'hugo.garnier@neo-maintenance.example',
+  nadia: 'nadia.benali@neo-maintenance.example',
 };
 
 /** Reports into `found` what breaks the policy or throws in `context`'s pages. */

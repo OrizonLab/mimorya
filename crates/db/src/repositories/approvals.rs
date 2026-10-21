@@ -44,7 +44,8 @@ impl ApprovalRow {
     }
 
     /// Who decides it: the person the agent acts for, or the manager named;
-    /// nobody once that manager's account is gone (it then expires).
+    /// nobody once that manager's account is gone (the person the agent acts
+    /// for may still withdraw it, ADR-059).
     pub fn decider(&self) -> Option<Uuid> {
         if self.routed_to_manager() {
             self.approver_user_id

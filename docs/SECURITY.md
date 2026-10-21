@@ -130,7 +130,8 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   il doit détenir `approval:decide` sur la personne, à la demande puis à la décision ;
   la position seule n'accorde rien. Le run reprend avec les droits de la personne pour
   qui l'agent agit, jamais avec ceux du décideur ; sans responsable éligible, l'action
-  est refusée.
+  est refusée. La personne ne peut pas approuver la demande, seulement la retirer
+  (l'action n'est alors pas exécutée).
 - **Administration** (ADR-019) :
   - les permissions d'administration (`TENANT_WIDE_PERMISSIONS` : organisation,
     comptes, rôles, politiques, connecteurs, compétences, paramètres, mémoire, audit,

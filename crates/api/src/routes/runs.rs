@@ -58,7 +58,10 @@ async fn detail(
             .collect::<anyhow::Result<_>>()?,
         approvals: approvals
             .iter()
-            .map(|v| Approval::from_view(v, can_decide(&viewer, &v.approval)))
+            .map(|v| {
+                let decides = can_decide(&viewer, &v.approval, v.requested_for_unit_id);
+                Approval::from_view(v, decides)
+            })
             .collect::<anyhow::Result<_>>()?,
         events: events.iter().map(Into::into).collect(),
     }))

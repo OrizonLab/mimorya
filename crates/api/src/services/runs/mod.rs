@@ -16,7 +16,7 @@ mod run_access;
 mod service;
 
 pub use approval_decision::DecisionInput;
-pub use approval_routing::can_decide;
+pub use approval_routing::{can_decide, shown_to};
 pub use events::record_run_event;
 pub use executor::RunExecutor;
 pub use recovery::{INTERRUPTED_TOO_LONG, LOCK_HELD_ELSEWHERE, STOPPED_BEFORE_ITS_FIRST_STEP};

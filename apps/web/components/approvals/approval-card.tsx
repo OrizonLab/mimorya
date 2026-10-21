@@ -21,15 +21,15 @@ export interface ApprovalLike {
 /** Why the reader may not decide a pending request (ADR-059). */
 function waiting(approval: ApprovalLike, me: string): string {
   if (!approval.approver) {
-    return 'Plus personne ne peut valider cette demande : elle expirera d’elle-même.';
+    return 'Plus personne ne peut valider cette demande : retirez-la pour que l’agent poursuive sans exécuter l’action.';
   }
   if (approval.approver.id !== me) {
     return `En attente de la validation de ${approval.approver.displayName}.`;
   }
   // Theirs to decide, but no longer allowed to.
   return approval.requestedFor.id === me
-    ? 'Vous n’avez plus accès à l’agent : cette demande ne peut pas être décidée et expirera d’elle-même.'
-    : 'Vous n’avez plus le droit de valider les actions de cette personne : la demande expirera d’elle-même.';
+    ? 'Vous n’avez plus accès à l’agent : cette demande ne peut pas être décidée.'
+    : 'Vous n’avez plus le droit de valider les actions de cette personne.';
 }
 
 export function ApprovalCard({
@@ -43,8 +43,11 @@ export function ApprovalCard({
   const [busy, setBusy] = useState<'approve' | 'reject' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const me = useMe().user.id;
-  // Decided by whom the agent acts for, or by their manager (ADR-059).
+  // Decided by whom the agent acts for, or by their manager (ADR-059), and
+  // always withdrawn by whom the agent acts for: the action is then not run.
   const canDecide = approval.canDecide;
+  const withdrawable =
+    !canDecide && approval.requestedFor.id === me && approval.approver?.id !== me;
   const risk = RISK_LABELS[approval.risk] ?? { label: approval.risk, tone: 'neutral' as const };
 
   async function decide(approved: boolean) {
@@ -85,6 +88,25 @@ export function ApprovalCard({
             </details>
           )}
           {!canDecide && <p className="mt-3 text-sm text-muted">{waiting(approval, me)}</p>}
+          {withdrawable && (
+            <>
+              {error && (
+                <div className="mt-2">
+                  <ErrorNote message={error} />
+                </div>
+              )}
+              <div className="mt-3">
+                <Button
+                  variant="danger"
+                  onClick={() => decide(false)}
+                  loading={busy === 'reject'}
+                  disabled={busy !== null}
+                >
+                  Retirer la demande
+                </Button>
+              </div>
+            </>
+          )}
           {canDecide && (
             <>
               <input

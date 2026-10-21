@@ -150,9 +150,10 @@ systématiquement une validation (`requiresApproval`).
 - Par défaut, la personne pour qui l'agent agit valide (ou rejette) ses propres
   actions. Une entreprise peut faire valider les actions de certains risques par un
   responsable (ADR-059) : le responsable le plus proche dans l'organisation qui détient
-  `approval:decide` sur la personne. Seul lui décide, s'il détient encore ce droit, et
-  le run reprend avec les droits de la personne. Si personne n'est éligible, l'action
-  est refusée aussitôt. Restent à faire : délais d'expiration actifs, relances,
+  `approval:decide` sur la personne. Seul lui l'approuve, s'il détient encore ce droit,
+  et le run reprend avec les droits de la personne, qui peut toujours retirer sa
+  demande (l'action n'est pas exécutée). Si personne n'est éligible, l'action est
+  refusée aussitôt. Restent à faire : délais d'expiration actifs, relances,
   délégations.
 - `approval:decide` est **non délégable** : l'agent ne peut jamais valider lui-même.
 - Après décision, l'outil est exécuté **avec les paramètres validés** (aucune

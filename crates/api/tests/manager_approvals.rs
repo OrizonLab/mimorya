@@ -1,8 +1,9 @@
 //! Validation by a manager (ADR-059). The risks a company names go to the
-//! nearest lead above whom the agent acts for who holds `approval:decide`
-//! over them: they alone decide, while they still hold it, and the run goes
-//! on with the rights of whom it acts for. Nobody eligible, the action is
-//! refused at once. Only those who manage access policies set the risks.
+//! nearest lead above whom the agent acts for, on an active account, who
+//! holds `approval:decide` over them: they alone approve, while they still
+//! hold it, and the run goes on with the rights of whom it acts for, who may
+//! always withdraw the request. Nobody eligible, the action is refused at
+//! once. Only those who manage access policies set the risks.
 
 mod support;
 
@@ -58,6 +59,20 @@ async fn listed(client: &Client<'_>, run_id: &str) -> Option<Value> {
         .iter()
         .find(|a| a["runId"] == run_id)
         .cloned()
+}
+
+/// Takes `approval:decide` from `user_id`; returns the policy to delete.
+async fn without_decide_right(paul: &Client<'_>, user_id: Uuid) -> String {
+    let only =
+        json!({ "op": "eq", "left": { "attr": "subject.userId" }, "right": { "value": user_id } });
+    let created = paul
+        .post(
+            "/admin/policies",
+            json!({ "description": "Ne valide plus", "permissions": ["approval:decide"], "condition": only }),
+        )
+        .await;
+    assert_eq!(created.status, StatusCode::CREATED, "{}", created.text());
+    format!("/admin/policies/{}", created.json()["id"].as_str().unwrap())
 }
 
 async fn audited(api: &TestApi, run_id: &str, action: &str) -> Vec<(Option<Uuid>, Option<Uuid>)> {
@@ -156,16 +171,10 @@ async fn a_manager_who_no_longer_holds_the_right_cannot_decide() {
     let approval = approval.expect("a request awaiting her manager");
     let decision = format!("/approvals/{}/decision", approval["id"].as_str().unwrap());
 
-    // Named when the request was made, Marc loses the right meanwhile.
-    let only_marc = json!({ "op": "eq", "left": { "attr": "subject.userId" }, "right": { "value": user::MARC } });
-    let created = paul
-        .post(
-            "/admin/policies",
-            json!({ "description": "Marc ne valide plus", "permissions": ["approval:decide"], "condition": only_marc }),
-        )
-        .await;
-    assert_eq!(created.status, StatusCode::CREATED, "{}", created.text());
-    let policy = format!("/admin/policies/{}", created.json()["id"].as_str().unwrap());
+    // Named when the request was made, Marc loses the right meanwhile: he
+    // no longer sees it, nor decides it.
+    let policy = without_decide_right(&paul, user::MARC).await;
+    assert!(listed(&marc, &run_id).await.is_none());
     let refused = marc.post(&decision, json!({ "approved": true })).await;
     assert_eq!(refused.status, StatusCode::FORBIDDEN, "{}", refused.text());
     assert_eq!(listed(&nadia, &run_id).await.unwrap()["status"], "pending");
@@ -176,6 +185,86 @@ async fn a_manager_who_no_longer_holds_the_right_cannot_decide() {
     assert_eq!(rejected.status, StatusCode::OK, "{}", rejected.text());
     api.idle().await;
     assert_eq!(listed(&nadia, &run_id).await.unwrap()["status"], "rejected");
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn whom_the_agent_acts_for_withdraws_a_request_nobody_can_decide_any_more() {
+    let api = TestApi::start().await;
+    let paul = api.sign_in(user::PAUL).await;
+    let nadia = api.sign_in(user::NADIA).await;
+    route_to_managers(&paul, &["write"]).await;
+    let (run_id, approval) = applying(
+        &api,
+        &nadia,
+        ("INT-2052", "10:00"),
+        "Le planning de INT-2052 est inchangé.",
+    )
+    .await;
+    route_to_managers(&paul, &[]).await;
+    let approval = approval.expect("a request awaiting her manager");
+    let decision = format!("/approvals/{}/decision", approval["id"].as_str().unwrap());
+    let policy = without_decide_right(&paul, user::MARC).await;
+
+    // Still not hers to approve, but hers to withdraw: the run goes on
+    // without the action.
+    let approved = nadia.post(&decision, json!({ "approved": true })).await;
+    assert_eq!(
+        approved.status,
+        StatusCode::FORBIDDEN,
+        "{}",
+        approved.text()
+    );
+    let withdrawn = nadia.post(&decision, json!({ "approved": false })).await;
+    assert_eq!(withdrawn.status, StatusCode::OK, "{}", withdrawn.text());
+    api.idle().await;
+    assert_eq!(paul.delete(&policy).await.status, StatusCode::OK);
+    let mine = listed(&nadia, &run_id).await.unwrap();
+    assert_eq!(mine["status"], "rejected");
+    assert_eq!(mine["decidedBy"]["id"], json!(user::NADIA));
+    let detail = nadia.get(&format!("/runs/{run_id}")).await.json();
+    assert_eq!(detail["run"]["status"], "completed", "{detail}");
+
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    let audit: Vec<Value> = sqlx::query_scalar(
+        "select metadata from audit_log where run_id = $1::uuid and action = 'approval.rejected'",
+    )
+    .bind(&run_id)
+    .fetch_all(&mut *tx)
+    .await
+    .unwrap();
+    assert_eq!(audit.len(), 1);
+    assert_eq!(audit[0]["withdrawn"], true, "{}", audit[0]);
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_disabled_lead_is_passed_over() {
+    let api = TestApi::start().await;
+    let paul = api.sign_in(user::PAUL).await;
+    let nadia = api.sign_in(user::NADIA).await;
+    route_to_managers(&paul, &["write"]).await;
+    let marc = format!("/admin/users/{}", user::MARC);
+    let disabled = paul.patch(&marc, json!({ "status": "disabled" })).await;
+    assert_eq!(disabled.status, StatusCode::OK, "{}", disabled.text());
+    // Marc passed over, only the director remains, who may not validate.
+    let (run_id, approval) = applying(
+        &api,
+        &nadia,
+        ("INT-2052", "15:00"),
+        "Personne ne peut valider ce planning.",
+    )
+    .await;
+    let enabled = paul.patch(&marc, json!({ "status": "active" })).await;
+    assert_eq!(enabled.status, StatusCode::OK, "{}", enabled.text());
+    route_to_managers(&paul, &[]).await;
+    assert!(approval.is_none());
+    assert_eq!(
+        audited(&api, &run_id, "agent.approval.unroutable")
+            .await
+            .len(),
+        1
+    );
 }
 
 #[tokio::test]

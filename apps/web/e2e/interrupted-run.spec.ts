@@ -31,7 +31,7 @@ test('a run taken up after a stop of the service shows the step it lost', async 
   // The planning refused before the stop ended then: it is not lost.
   const refused = page
     .getByRole('listitem')
-    .filter({ hasText: 'Action refusée par l’utilisateur' });
+    .filter({ hasText: 'Action refusée lors de la validation' });
   await expect(refused).toHaveCount(1);
   await expect(refused).toContainText('Application d’un planning');
   await expect(refused).not.toContainText('Interrompue');

@@ -25,7 +25,8 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON approval_settings TO mimorya_app;
 ALTER TABLE approvals
   ADD COLUMN routing text NOT NULL DEFAULT 'requester',
   ADD COLUMN approver_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
-  ADD CONSTRAINT approvals_routing_check CHECK (routing IN ('requester', 'manager'));
+  ADD CONSTRAINT approvals_routing_check CHECK (routing IN ('requester', 'manager')),
+  ADD CONSTRAINT approvals_approver_check CHECK (routing = 'manager' OR approver_user_id IS NULL);
 
 CREATE INDEX approvals_approver_idx ON approvals (tenant_id, status, approver_user_id)
   WHERE approver_user_id IS NOT NULL;

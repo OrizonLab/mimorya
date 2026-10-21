@@ -37,20 +37,31 @@ fn already_processed() -> DomainError {
     DomainError::conflict("Cette demande a déjà été traitée")
 }
 
-/// The request, if `user_id` is the one who decides it (ADR-059): whom the
-/// agent acts for, or the manager named. Whom the agent acts for learns a
-/// manager decides it; anyone else finds nothing.
-pub fn decidable(approval: Option<ApprovalRow>, user_id: Uuid) -> Result<ApprovalRow, DomainError> {
+/// The request, if `user_id` may decide it so (ADR-059): whom the agent acts
+/// for, or the manager named. Whom the agent acts for may always withdraw a
+/// request a manager decides (refusing runs nothing: the run goes on, even
+/// when the manager can no longer decide), never approve it; anyone else
+/// finds nothing.
+pub fn decidable(
+    approval: Option<ApprovalRow>,
+    user_id: Uuid,
+    approved: bool,
+) -> Result<ApprovalRow, DomainError> {
     match approval {
         Some(a) if a.decider() == Some(user_id) => Ok(a),
         Some(a) if a.routed_to_manager() && a.requested_for_user_id == user_id => {
-            Err(DomainError::forbidden(AWAITS_A_MANAGER))
+            if approved {
+                Err(DomainError::forbidden(AWAITS_A_MANAGER))
+            } else {
+                Ok(a)
+            }
         }
         _ => Err(DomainError::not_found("Demande de validation introuvable")),
     }
 }
 
-pub const AWAITS_A_MANAGER: &str = "Cette demande attend la validation de votre responsable.";
+pub const AWAITS_A_MANAGER: &str =
+    "Cette demande attend la validation de votre responsable : vous pouvez seulement la retirer.";
 
 pub async fn record_approval_decision(
     tx: &mut TenantTx,
@@ -58,7 +69,11 @@ pub async fn record_approval_decision(
     input: &DecisionInput,
     now: DateTime<Utc>,
 ) -> anyhow::Result<RecordedDecision> {
-    let approval = decidable(get_approval(tx, input.approval_id).await?, identity.user_id)?;
+    let approval = decidable(
+        get_approval(tx, input.approval_id).await?,
+        identity.user_id,
+        input.approved,
+    )?;
     if approval.status != "pending" {
         return Err(already_processed().into());
     }
@@ -119,6 +134,9 @@ pub async fn record_approval_decision(
             "toolName": approval.tool_name,
             "risk": approval.risk,
             "routing": approval.routing,
+            // Whom the agent acts for, refusing a request a manager decides.
+            "withdrawn": approval.routed_to_manager()
+                && identity.user_id == approval.requested_for_user_id,
         })),
     )
     .await?;

@@ -19,7 +19,7 @@ use crate::tools::{RegisteredTool, ToolCallEvaluation};
 
 const TOOL_REMOVED: &str = "Outil désactivé depuis la demande de validation";
 const REQUEST_EXPIRED: &str = "Demande de validation expirée";
-const REFUSED: &str = "Action refusée par l’utilisateur";
+const REFUSED: &str = "Action refusée lors de la validation";
 const NOBODY_VALIDATES: &str = "Aucun responsable habilité à valider cette action";
 
 /// A call queued for validation, or refused at once when nobody may

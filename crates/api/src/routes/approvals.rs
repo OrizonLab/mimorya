@@ -13,7 +13,7 @@ use crate::app::AppState;
 use crate::contract::{Approval, ApprovalDecided, ApprovalList, ApprovalVerdict};
 use crate::http::{ApiResult, Body, PathId, Query};
 use crate::plugins::Auth;
-use crate::services::runs::{DecisionInput, can_decide};
+use crate::services::runs::{DecisionInput, can_decide, shown_to};
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -51,7 +51,11 @@ async fn list(
     Ok(Json(ApprovalList {
         approvals: views
             .iter()
-            .map(|v| Approval::from_view(v, can_decide(&viewer, &v.approval)))
+            .filter(|v| shown_to(&viewer, &v.approval, v.requested_for_unit_id))
+            .map(|v| {
+                let decides = can_decide(&viewer, &v.approval, v.requested_for_unit_id);
+                Approval::from_view(v, decides)
+            })
             .collect::<anyhow::Result<_>>()?,
     }))
 }

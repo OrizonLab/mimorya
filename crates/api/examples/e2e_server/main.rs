@@ -29,12 +29,13 @@ use mimorya_api::{AppConfig, BuildOptions, build_app, log_filter};
 /// Reference scenarios queued for the platform model, by the hour of their
 /// follow-up: one per run that converses, in the order they run (the
 /// interrupted run taken up at startup, which `interrupted-run.spec.ts`
-/// refuses, then `reference-scenario.spec.ts`, the three of
-/// `timeouts.spec.ts` and `unavailable-connectors.spec.ts`). Only the one of
-/// `reference-scenario.spec.ts` is validated: the others are refused, so
-/// their slots, which may overlap (8 h, 9 h, 10 h and 11 h, two hours
-/// each), are never taken.
-const SCENARIO_HOURS: [u32; 6] = [10, 13, 15, 9, 11, 8];
+/// refuses, then the two of `manager-approvals.spec.ts`,
+/// `reference-scenario.spec.ts`, the three of `timeouts.spec.ts` and
+/// `unavailable-connectors.spec.ts`). Only the one of
+/// `reference-scenario.spec.ts` is validated: the others are refused (or
+/// withdrawn), so their slots, which may overlap (two hours each, within
+/// the working day, 8 h – 17 h), are never taken.
+const SCENARIO_HOURS: [u32; 8] = [10, 14, 12, 13, 15, 9, 11, 8];
 
 /// Company providers' answers to their connection test.
 const CONNECTION_TESTS: usize = 20;
