@@ -190,7 +190,10 @@ Avant chaque commit : `pnpm check && pnpm test:int` doivent passer.
 5. **API** : chaque route extrait `Auth`, construit le contexte avec
    `access.context()` et vérifie la permission (`require`) ou la propriété de la
    ressource côté serveur ; une ressource hors périmètre répond 404. Les requêtes
-   modifiantes exigent l'en-tête `X-Mimorya-Request: 1`.
+   modifiantes exigent l'en-tête `X-Mimorya-Request: 1`, sauf une : la réception des
+   réponses SAML (`POST /api/auth/saml/acs`, ADR-068), postée par le fournisseur depuis
+   son propre site, que lient au navigateur la tentative scellée et la signature de
+   l'assertion.
 
 ## Règles de sécurité (non négociables)
 
