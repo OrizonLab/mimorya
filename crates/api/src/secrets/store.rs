@@ -11,6 +11,8 @@ use super::SecretCipher;
 
 /// The API key of the company's model provider.
 pub const LLM_API_KEY: &str = "llm.api_key";
+/// The API key of the company's embedding model (ADR-074).
+pub const EMBEDDING_API_KEY: &str = "embedding.api_key";
 
 /// A secret as found: a failure to open it is an answer, not an error (only
 /// the database failing is).
@@ -21,6 +23,23 @@ pub enum SecretRead {
     NoMasterKey,
     /// Stored, but it does not open (other master key, altered row).
     Unreadable,
+}
+
+impl SecretRead {
+    /// The key, if one is stored, or why the stored one cannot be used (in
+    /// French, for the company's administrators).
+    pub fn into_key(self) -> Result<Option<String>, String> {
+        match self {
+            SecretRead::Absent => Ok(None),
+            SecretRead::Value(key) => Ok(Some(key)),
+            SecretRead::NoMasterKey => Err("Ce serveur n’a pas de clé maîtresse \
+                 (MIMORYA_MASTER_KEY) : la clé enregistrée ne peut pas être lue"
+                .into()),
+            SecretRead::Unreadable => Err("La clé enregistrée ne peut pas être déchiffrée \
+                 (clé maîtresse du serveur changée ?) : saisissez-la de nouveau"
+                .into()),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default)]

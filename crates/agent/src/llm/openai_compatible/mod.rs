@@ -1,7 +1,7 @@
 //! OpenAI-compatible Chat Completions adapter (OpenAI, OpenRouter, Gemini,
 //! Mistral, Ollama, vLLM…).
 
-mod errors;
+pub(crate) mod errors;
 mod messages;
 mod provider;
 

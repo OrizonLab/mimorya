@@ -324,6 +324,14 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   ne fait jamais appeler par le serveur une adresse de son choix (SSRF), et une
   adresse retirée de la liste n'est plus appelée (configuration revérifiée à l'usage). Si le modèle choisi par l'entreprise devient
   inutilisable, ses runs s'arrêtent, sans repli vers le fournisseur de la plateforme.
+- Modèle d'embeddings d'une entreprise (ADR-074) : mêmes règles (clé `embedding.api_key`
+  en écriture seule, liée à son fournisseur et à son adresse ; adresses locales prises
+  dans la même liste de l'exploitant ; configuration revérifiée à l'usage). Désactivé par
+  défaut : sans choix de l'entreprise, rien de sa mémoire ne part vers un tel modèle. Une
+  fois choisi, le texte des mémoires actives (jamais d'une proposition non approuvée) et
+  celui des demandes y partent ; un modèle inutilisable laisse la recherche aux mots,
+  sans repli vers un autre. Les vecteurs ne comparent que les mémoires que le sujet peut
+  lire (pré-filtrage SQL), et sont tous effacés au retour à la recherche par les mots.
 - Jamais renvoyés par l'API, jamais injectés dans le contexte du modèle, jamais
   journalisés : les journaux de requêtes ne contiennent ni en-têtes ni corps (seuls
   méthode, chemin, statut, durée et identifiant de requête), et les structures qui

@@ -13,9 +13,11 @@ use mimorya_core::memory::{MemoryKind, MemoryScope, memory_read_filter};
 use mimorya_db::Database;
 use mimorya_db::repositories::memory::{MemorySearchHit, mark_memory_used, search_memory};
 use mimorya_db::repositories::skills::list_active_skills;
+use uuid::Uuid;
 
 use crate::services::access::AccessContext;
 use crate::services::connectors::{ConnectorService, unavailable_in_reach};
+use crate::services::embeddings::{EmbeddingService, UsageBy};
 
 const MEMORY_RECALL_LIMIT: i64 = 5;
 
@@ -81,19 +83,30 @@ pub async fn build_run_system_prompt(
     Ok(build_system_prompt(&profile, &skills, now))
 }
 
-/// Memories the agent may read for this user, ranked against the request.
+/// Memories the agent may read for this user, ranked against the request:
+/// by its words, and by its meaning when the company chose an embedding
+/// model (ADR-074).
 pub async fn recall_memories(
     db: &Database,
+    embeddings: &EmbeddingService,
     access: &AccessContext,
     actor: &Actor,
     text: &str,
+    run_id: Uuid,
 ) -> anyhow::Result<Vec<MemoryHit>> {
     let filter = memory_read_filter(&access.engine, &access.subject, actor);
-    let mut tx = db.begin(access.subject.tenant_id).await?;
+    let tenant_id = access.subject.tenant_id;
+    let by = UsageBy {
+        user_id: Some(access.subject.user_id),
+        run_id: Some(run_id),
+    };
+    let meaning = embeddings.meaning_of(tenant_id, text, by).await;
+    let mut tx = db.begin(tenant_id).await?;
     let hits = search_memory(
         &mut tx,
         &filter,
         text,
+        meaning.as_ref().map(|m| m.as_meaning()),
         MEMORY_RECALL_LIMIT,
         access.subject.clearance(),
     )

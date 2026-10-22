@@ -1,7 +1,9 @@
 //! Provider-neutral LLM layer: types, adapters (Anthropic, OpenAI-compatible),
-//! routing per task class and price estimation.
+//! routing per task class, price estimation, and the embedding models that
+//! search memory by meaning.
 
 pub mod anthropic;
+pub mod embedding;
 pub mod factory;
 pub mod openai_compatible;
 pub mod pricing;
@@ -9,6 +11,9 @@ pub mod router;
 pub mod settings;
 pub mod types;
 
+pub use embedding::{
+    EMBEDDING_DIMENSIONS, Embedded, EmbeddingConfig, EmbeddingProvider, TenantEmbeddingChoice,
+};
 pub use factory::{PROVIDER_KINDS, ProviderConfig, create_provider};
 pub use pricing::{ModelPrice, PriceTable};
 pub use router::{ModelRouter, TaskClass};

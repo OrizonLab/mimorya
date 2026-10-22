@@ -17,6 +17,7 @@ mod connector_test;
 mod connector_trial;
 mod connectors;
 mod domain_proofs;
+mod embedding;
 mod identity_providers;
 mod invitations;
 mod link_sender;
@@ -39,6 +40,9 @@ pub use connectors::{
     delete_connector, http_config, update_connector,
 };
 pub use domain_proofs::prove_domain;
+pub use embedding::{
+    EmbeddingInput, EmbeddingTestOutcome, configure_embedding, reset_embedding, test_embedding,
+};
 pub use identity_providers::{
     ProviderChanges, ProviderDeclaration, change_identity_provider, declare_identity_provider,
     remove_identity_provider,

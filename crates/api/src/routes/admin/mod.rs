@@ -9,6 +9,7 @@ mod activity;
 mod approval_routing;
 mod assignments;
 mod connectors;
+mod embedding;
 mod identity_providers;
 mod llm;
 mod organization;
@@ -61,6 +62,13 @@ pub fn routes(state: &AppState) -> Router<AppState> {
             get(llm::show).put(llm::configure).delete(llm::reset),
         )
         .route("/admin/llm/test", post(llm::test))
+        .route(
+            "/admin/embedding",
+            get(embedding::show)
+                .put(embedding::configure)
+                .delete(embedding::reset),
+        )
+        .route("/admin/embedding/test", post(embedding::test))
         .route(
             "/admin/connectors",
             get(connectors::list).post(connectors::create),

@@ -10,6 +10,7 @@ mod client;
 pub mod companies;
 pub mod delegations;
 pub mod dns;
+pub mod embeddings;
 pub mod identity_provider;
 pub mod llm;
 pub mod locks;
@@ -35,11 +36,11 @@ use std::sync::{Arc, Mutex, OnceLock};
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
 use chrono::{Days, Utc};
-use mimorya_agent::llm::{LlmProvider, ProviderConfig};
-use mimorya_agent::testing::{ScriptedProvider, ScriptedStep};
+use mimorya_agent::llm::{EmbeddingConfig, EmbeddingProvider, LlmProvider, ProviderConfig};
+use mimorya_agent::testing::{ConceptEmbedder, ScriptedProvider, ScriptedStep};
 use mimorya_api::auth::credentials::hash_password;
 use mimorya_api::mail::Mailer;
-use mimorya_api::services::ProviderFactory;
+use mimorya_api::services::{EmbeddingFactory, ProviderFactory};
 use mimorya_api::{App, AppConfig, BuildOptions, build_app};
 use mimorya_connectors::demo_interventions::dates::{iso_date, monday_of};
 use mimorya_core::demo;
@@ -109,6 +110,10 @@ pub struct TestApi {
     pub mail: Arc<RecordingMailer>,
     /// The DNS a domain's proof is read from (ADR-069).
     pub dns: Arc<dns::FakeDns>,
+    /// Embeds the memory of a company that chose a model (ADR-074).
+    pub embedder: Arc<ConceptEmbedder>,
+    /// Every configuration an embedding model was built from (key included).
+    pub embedders_built: Arc<Mutex<Vec<EmbeddingConfig>>>,
 }
 
 impl TestApi {
@@ -121,7 +126,15 @@ impl TestApi {
     pub async fn start_with(env: &[(&str, &str)]) -> Self {
         let model = Arc::new(ScriptedProvider::new(Vec::new()));
         let provider: Arc<dyn LlmProvider> = model.clone();
-        Self::build(Some(provider), Some(model), env, false).await
+        Self::build(Some(provider), Some(model), env, false, true).await
+    }
+
+    /// Like `start_with`, memories indexed in the background as in
+    /// production, not on demand.
+    pub async fn start_indexing(env: &[(&str, &str)]) -> Self {
+        let model = Arc::new(ScriptedProvider::new(Vec::new()));
+        let provider: Arc<dyn LlmProvider> = model.clone();
+        Self::build(Some(provider), Some(model), env, false, false).await
     }
 
     /// Same, with e-mails recorded in `mail` instead of sent.
@@ -133,12 +146,12 @@ impl TestApi {
     pub async fn start_with_mailer_and(env: &[(&str, &str)]) -> Self {
         let model = Arc::new(ScriptedProvider::new(Vec::new()));
         let provider: Arc<dyn LlmProvider> = model.clone();
-        Self::build(Some(provider), Some(model), env, true).await
+        Self::build(Some(provider), Some(model), env, true, true).await
     }
 
     /// App without any model provider configured.
     pub async fn without_llm() -> Self {
-        Self::build(None, None, &[], false).await
+        Self::build(None, None, &[], false, true).await
     }
 
     async fn build(
@@ -146,6 +159,7 @@ impl TestApi {
         model: Option<Arc<ScriptedProvider>>,
         env: &[(&str, &str)],
         record_mail: bool,
+        manual_indexing: bool,
     ) -> Self {
         let mut vars: HashMap<&str, String> = HashMap::from([
             ("MIMORYA_ENV", "test".to_string()),
@@ -167,11 +181,23 @@ impl TestApi {
                 Ok(provider)
             })
         };
+        let embedder = Arc::new(ConceptEmbedder::new(embeddings::CONCEPTS));
+        let embedders_built = Arc::new(Mutex::new(Vec::new()));
+        let embedding_factory: EmbeddingFactory = {
+            let (embedder, built) = (embedder.clone(), embedders_built.clone());
+            Arc::new(move |config: &EmbeddingConfig| {
+                built.lock().expect("built").push(config.clone());
+                let provider: Arc<dyn EmbeddingProvider> = embedder.clone();
+                Ok(provider)
+            })
+        };
         let mail = Arc::new(RecordingMailer::default());
         let dns = Arc::new(dns::FakeDns::default());
         let options = BuildOptions {
             provider: Some(provider),
             provider_factory: Some(factory),
+            embedding_factory: Some(embedding_factory),
+            manual_indexing,
             mailer: record_mail.then(|| Some(mail.clone() as Arc<dyn Mailer>)),
             sso_network: None,
             global_rate_limit_per_minute: None,
@@ -185,6 +211,8 @@ impl TestApi {
             built,
             mail,
             dns,
+            embedder,
+            embedders_built,
         }
     }
 

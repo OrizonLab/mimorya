@@ -26,6 +26,7 @@ use super::outcome::{CRASH_MESSAGE, record_crash};
 use super::run_access::RunAccess;
 use crate::services::access::{AccessContext, AccessService};
 use crate::services::connectors::ConnectorService;
+use crate::services::embeddings::EmbeddingService;
 use crate::services::event_bus::RunEventBus;
 use crate::services::llm::LlmService;
 
@@ -37,6 +38,8 @@ pub struct RunExecutor {
     pub access: Arc<AccessService>,
     pub llm: Arc<LlmService>,
     pub prices: Arc<PriceTable>,
+    /// Searches each company's memory by meaning too (ADR-074).
+    pub embeddings: Arc<EmbeddingService>,
     pub connectors: Arc<ConnectorService>,
     pub bus: Arc<RunEventBus>,
     /// Tells a manager a request awaits them (ADR-060).
@@ -81,6 +84,7 @@ impl RunExecutor {
             self.bus.clone(),
             self.access.clone(),
             self.notifier.clone(),
+            self.embeddings.clone(),
         );
         // A run taken up that crashes says which actions to check.
         let message = match &mode {
@@ -133,7 +137,9 @@ impl RunExecutor {
                     Utc::now(),
                 )
                 .await?;
-                let memories = recall_memories(&self.db, access, &actor, &text).await?;
+                let memories =
+                    recall_memories(&self.db, &self.embeddings, access, &actor, &text, run.id)
+                        .await?;
                 runtime
                     .start(StartInput {
                         system,

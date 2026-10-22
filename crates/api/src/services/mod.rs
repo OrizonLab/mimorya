@@ -5,6 +5,7 @@ pub mod account;
 pub mod admin;
 pub mod background;
 pub mod connectors;
+pub mod embeddings;
 pub mod event_bus;
 pub mod invitations;
 pub mod llm;
@@ -17,6 +18,7 @@ pub mod tenant_cache;
 
 pub use access::{AccessContext, AccessService, AuthIdentity};
 pub use connectors::ConnectorService;
+pub use embeddings::{EmbeddingFactory, EmbeddingService};
 pub use event_bus::{BusEvent, RunEventBus};
 pub use llm::{LlmService, ProviderFactory};
 pub use runs::RunService;

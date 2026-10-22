@@ -2943,3 +2943,85 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
       l'absence de Marc, voit qu'il le remplace et refuse la demande de Nadia, relue
       décidée par lui ; Marc met fin à son absence. Le serveur de bout en bout lui
       réserve un scénario du modèle (`SCENARIO_HOURS`).
+
+## ADR-074 — Mémoire sémantique : modèle d'embeddings par entreprise, recherche hybride (premier lot : l'API)
+
+- **Date** : 2026-10-22 · **Statut** : acceptée
+- **Contexte** : la mémoire n'était cherchée que par ses mots (plein texte français,
+  ADR-004). Une demande qui dit « véhicule » ne retrouvait pas la mémoire qui parle des
+  « camionnettes ». La colonne `embedding vector(1024)` attendait un modèle. Calculer un
+  vecteur, c'est envoyer le texte de la mémoire à un fournisseur : l'entreprise doit le
+  choisir en connaissance de cause.
+- **Décision** :
+  - **désactivé par défaut** : sans choix de l'entreprise, rien de sa mémoire ne part
+    vers un modèle d'embeddings et la recherche reste plein texte, comme avant ;
+  - un administrateur des réglages de toute l'entreprise (`settings:manage`) choisit son
+    modèle (`GET`, `PUT`, `DELETE /admin/embedding`, `POST /admin/embedding/test`), sur
+    les règles du modèle de langage (ADR-024) : Mistral (`mistral-embed`) ou OpenAI
+    (`text-embedding-3-small`, demandé en 1024 dimensions) à leur adresse officielle avec
+    une clé, ou un serveur compatible OpenAI (Ollama, vLLM, TEI…) à une adresse que liste
+    l'exploitant (`MIMORYA_TENANT_LLM_ENDPOINTS`). La clé est scellée (`embedding.api_key`),
+    jamais rendue ni tracée, jamais emportée vers une autre adresse ; la configuration est
+    revérifiée à chaque chargement. Les vecteurs doivent avoir 1024 dimensions : un modèle
+    qui en rend d'autres est refusé, jamais tronqué ;
+  - une **similarité minimale** (cosinus, strictement entre 0 et 1) dit quand une mémoire
+    est proche : les modèles répartissent leurs similarités différemment, la valeur de
+    départ dépend du fournisseur (Mistral 0,75, OpenAI 0,35, autres 0,5) et se règle ;
+  - **indexation en arrière-plan** : les mémoires actives sans vecteur du modèle choisi
+    (écrites ou approuvées depuis, ou indexées par un autre modèle) reçoivent le leur par
+    lots de 32, huit lots par entreprise et par passage, un passage à la fois : au
+    démarrage, à chaque écriture ou approbation d'une mémoire et à chaque changement de
+    modèle, puis chaque minute. Une proposition n'est envoyée qu'une fois approuvée. Un
+    texte que le modèle refuse n'est plus demandé (`embedding_model` posé, sans vecteur) ;
+    toute autre panne est reprise au passage suivant et montrée aux administrateurs
+    jusque-là. Seules les entreprises actives qui ont choisi un modèle sont parcourues
+    (`system_tenants_awaiting_embeddings`, qui ne rend que l'entreprise) ; chaque lot est
+    lu et écrit dans la transaction de l'entreprise (RLS) ;
+  - **recherche hybride** : au début de chaque tour et par l'outil de recherche de
+    l'agent, la demande (ses 2 000 premiers caractères) reçoit son vecteur, attendu
+    5 secondes au plus. Les deux classements — par les mots et par le sens — ne portent
+    que sur les mémoires que le sujet peut lire (pré-filtrage SQL, ADR-004), puis sont
+    fusionnés par rang réciproque (RRF, constante 60). Les vecteurs sont comparés
+    exactement sur ces seules mémoires : un index approché filtrerait après coup et en
+    manquerait ; l'index HNSW reste pour des volumes qui le justifieront. Seuls comptent
+    les vecteurs du modèle choisi (`embedding_model`) et assez proches. Si le modèle
+    échoue ou tarde, les mots trouvent seuls : le tour ne s'arrête pas ;
+  - chaque appel est compté (`usage_records`, `kind = 'embedding'`), au nom de
+    l'utilisateur et du run pour une demande, sans pour l'indexation ; son coût n'est
+    estimé que si le modèle est tarifé (configuration), jamais deviné ;
+  - revenir à la recherche par les mots supprime le choix, la clé et **tous les
+    vecteurs** de l'entreprise. Audit : `embedding.configured` (fournisseur, modèle,
+    adresse, similarité, clé remplacée, état précédent), `embedding.reset` (vecteurs
+    effacés), `embedding.tested`, sans clé ni texte.
+- **Alternatives écartées** : un modèle d'embeddings offert par la plateforme à toutes
+  les entreprises (leur mémoire partirait sans qu'elles l'aient choisi) ; calculer le
+  vecteur à l'écriture, dans la requête (une panne du fournisseur bloquerait
+  l'enregistrement d'une mémoire) ; un plafond de sensibilité des mémoires envoyées
+  (les textes rappelés partent déjà vers le modèle de langage ; à reconsidérer avec les
+  contraintes « local uniquement » par sensibilité).
+- **Conséquences** :
+  - le texte des mémoires actives et celui des demandes partent vers le fournisseur
+    choisi ; le vecteur, dérivé de la mémoire, est supprimé avec elle et effacé au retour
+    à la recherche par les mots ;
+  - une mémoire dont le texte changerait devrait perdre son vecteur (aucune
+    modification n'existe aujourd'hui : une mémoire se crée, s'approuve ou se supprime) ;
+  - restent l'écran d'administration (lot 2) et la capitalisation automatique des leçons ;
+  - tests :
+    - `crates/agent/src/llm/embedding/` : réponse remise dans l'ordre, vecteur manquant ou
+      d'autres dimensions refusé, dimensions demandées à OpenAI seul, lot trop grand
+      refusé ; choix vérifié (fournisseur, modèle, adresse listée, similarité), clé
+      requise, configuration revérifiée, clé absente des traces ;
+    - `crates/db/tests/memory_search.rs` : trouvé par le sens hors de tout mot commun,
+      jamais hors de portée du sujet, ni d'un autre modèle, ni trop loin ; ce que trouvent
+      mots et sens en tête ; file des mémoires à indexer (refus, autre modèle) ; seule
+      une entreprise qui a choisi un modèle est parcourue ;
+    - `crates/api/tests/admin_embedding.rs` : clé scellée, jamais montrée ni tracée,
+      supprimée avec le choix et les vecteurs ; règles du choix, clé qui ne suit pas ;
+      administrateurs de toute l'entreprise seuls ; test compté et tracé ;
+    - `crates/api/tests/semantic_memory.rs` : rien n'est envoyé sans modèle ; un tour
+      rappelle par le sens ce que son utilisateur peut lire, jamais la mémoire personnelle
+      d'un autre ; les mots trouvent pendant une panne, reprise ensuite ; proposition
+      envoyée une fois approuvée ; texte refusé non redemandé ; autre modèle, nouvelle
+      indexation ; retour aux mots, vecteurs effacés ; indexation en arrière-plan ;
+    - `crates/db/tests/definer_functions.rs` : la nouvelle fonction est dans la liste
+      connue.
