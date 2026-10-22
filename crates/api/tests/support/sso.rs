@@ -6,10 +6,17 @@
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use mimorya_core::demo::{tenant, user};
+use mimorya_core::identity_providers::{proof_record_name, proof_record_value};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
 use super::identity_provider::{CLIENT_ID, CLIENT_SECRET, MockIdentityProvider};
+use mimorya_api::secrets::SecretStore;
+use mimorya_api::services::sso::client_secret_name;
+use mimorya_db::repositories::identity_providers::{
+    NewIdentityProvider, create_identity_provider, replace_provider_domains,
+};
+
 use super::llm::MASTER_KEY;
 use super::saml_provider::{DISPLAY_NAME, OBJECT_ID, SamlPerson};
 use super::{Client, TestApi, TestResponse, WEB_ORIGIN, email};
@@ -313,4 +320,58 @@ pub async fn sso_refusal(api: &TestApi, since: i64) -> String {
     assert_eq!(logins.len(), 1, "{logins:?}");
     assert_eq!(logins[0].0, "denied");
     logins[0].2.clone().unwrap_or_default()
+}
+
+/// The company proves `domain` (ADR-069): its record published in the
+/// DNS, then read by its administrator `admin`.
+pub async fn prove_domain(api: &TestApi, admin: &Client<'_>, tenant_id: Uuid, domain: &str) {
+    let value = proof_record_value(tenant_id, domain);
+    api.dns.publish(&proof_record_name(domain), &value);
+    let proved = admin.post(DOMAIN_PROOFS, json!({ "domain": domain })).await;
+    assert_eq!(proved.status, StatusCode::OK, "{}", proved.text());
+}
+
+/// Where a domain's proof is read.
+pub const DOMAIN_PROOFS: &str = "/admin/identity-providers/domain-proofs";
+
+/// A Microsoft Entra ID directory of the demo company, reached at the local
+/// provider `idp` under Microsoft's kind: written straight to the company's
+/// records, since declared through the API its directory would name
+/// Microsoft's address.
+pub async fn insert_microsoft_provider(
+    api: &TestApi,
+    idp: &MockIdentityProvider,
+    domain: &str,
+    create_accounts: bool,
+) -> Uuid {
+    let tenant_id = tenant::ID;
+    let services = &api.app.services;
+    let mut tx = services.db.begin(tenant_id).await.unwrap();
+    let id = create_identity_provider(
+        &mut tx,
+        NewIdentityProvider {
+            tenant_id,
+            kind: "microsoft",
+            name: "Microsoft 365",
+            issuer: &idp.issuer,
+            client_id: CLIENT_ID,
+            enabled: true,
+            required: false,
+            create_accounts,
+            saml_metadata: None,
+            created_by_user_id: user::PAUL,
+        },
+    )
+    .await
+    .unwrap()
+    .expect("a new provider");
+    replace_provider_domains(&mut tx, tenant_id, id, &[domain.to_string()])
+        .await
+        .unwrap();
+    SecretStore::new(services.config.secrets.clone())
+        .put(&mut tx, tenant_id, &client_secret_name(id), CLIENT_SECRET)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    id
 }

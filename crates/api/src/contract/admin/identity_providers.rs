@@ -8,6 +8,7 @@ use ts_rs::TS;
 use uuid::Uuid;
 use validator::Validate;
 
+use super::DomainProofView;
 use crate::http::{iso, trimmed, trimmed_opt};
 
 #[derive(Debug, Serialize, TS)]
@@ -68,6 +69,8 @@ pub struct IdentityProvidersView {
     pub saml_entity_id: String,
     pub saml_acs_url: String,
     pub providers: Vec<IdentityProviderView>,
+    /// Every domain the providers cover, and its proof (ADR-069).
+    pub domains: Vec<DomainProofView>,
 }
 
 /// Body of `POST /admin/identity-providers`. What designates the provider

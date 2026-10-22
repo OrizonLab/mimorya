@@ -19,6 +19,7 @@
 // with it.
 import type {
   Directory,
+  DomainProofRequest,
   IdentityProvidersView,
   NewAccount,
   NewIdentityProvider,
@@ -33,6 +34,8 @@ const ISSUER = 'http://127.0.0.1:4100';
 const CLIENT_ID = 'mimorya-tests';
 const CLIENT_SECRET = 'secret-client-de-test-0123456789';
 const WRITE = { 'X-Mimorya-Request': '1' };
+/** Where the tests publish DNS records (`DNS_ADDRESS` of the end-to-end server). */
+const DNS = 'http://127.0.0.1:4102';
 
 test.beforeEach(({ page }) => {
   // A deletion asks for a confirmation.
@@ -272,6 +275,22 @@ test('the company link creates the account of a newcomer at the first sign-in', 
     } satisfies NewIdentityProvider,
   });
   expect(declared.status()).toBe(201);
+  // A generic provider creates accounts in a proved domain only (ADR-069):
+  // the record the company is given, published, then read. The proof stays
+  // with the company, which no later test minds.
+  const view = (await (
+    await page.request.get('/api/admin/identity-providers')
+  ).json()) as IdentityProvidersView;
+  const record = view.domains.find((d) => d.domain === 'neo-maintenance.example');
+  const published = await page.request.put(`${DNS}/records/${record?.recordName}`, {
+    data: record?.recordValue,
+  });
+  expect(published.status()).toBe(204);
+  const proved = await page.request.post('/api/admin/identity-providers/domain-proofs', {
+    headers: WRITE,
+    data: { domain: 'neo-maintenance.example' } satisfies DomainProofRequest,
+  });
+  expect(proved.status()).toBe(200);
 
   // Told to create accounts in « Connexion », as the API records it.
   await page.goto('/admin');

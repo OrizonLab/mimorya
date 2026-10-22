@@ -1,23 +1,29 @@
 //! The company's identity providers (`settings:manage`, company-wide,
-//! ADR-063): reading them with the address to register at the provider,
-//! declaring one, changing it, removing it. Client secrets are write-only.
+//! ADR-063): reading them with the address to register at the provider and
+//! the proof of their domains (ADR-069), declaring one, changing it,
+//! removing it, proving a domain. Client secrets are write-only.
+
+use std::collections::BTreeMap;
 
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
+use mimorya_core::identity_providers::{proof_record_name, proof_record_value};
 use mimorya_db::repositories::identity_providers::list_identity_providers;
+use mimorya_db::repositories::verified_domains::list_verified_domains;
 
 use crate::app::AppState;
 use crate::contract::admin::{
-    IdentityProviderUpdate, IdentityProviderView, IdentityProvidersView, NewIdentityProvider,
+    DomainProofRequest, DomainProofView, IdentityProviderUpdate, IdentityProviderView,
+    IdentityProvidersView, NewIdentityProvider,
 };
 use crate::contract::{Created, Done};
-use crate::http::{ApiResult, Body, PathId};
+use crate::http::{ApiResult, Body, PathId, iso};
 use crate::plugins::Auth;
 use crate::secrets::SecretStore;
 use crate::services::admin::{
     ProviderChanges, ProviderDeclaration, change_identity_provider, declare_identity_provider,
-    remove_identity_provider,
+    prove_domain as prove, remove_identity_provider,
 };
 use crate::services::sso::client_secret_name;
 
@@ -36,6 +42,22 @@ pub async fn list(
     let store = secrets(&state);
     let mut tx = state.db.begin(identity.tenant_id).await?;
     let rows = list_identity_providers(&mut tx).await?;
+    let verified: BTreeMap<String, String> = list_verified_domains(&mut tx)
+        .await?
+        .into_iter()
+        .map(|proof| (proof.domain, iso(&proof.verified_at)))
+        .collect();
+    let mut domains: Vec<DomainProofView> = rows
+        .iter()
+        .flat_map(|row| row.domains.iter())
+        .map(|domain| DomainProofView {
+            domain: domain.clone(),
+            record_name: proof_record_name(domain),
+            record_value: proof_record_value(identity.tenant_id, domain),
+            verified_at: verified.get(domain).cloned(),
+        })
+        .collect();
+    domains.sort_by(|a, b| a.domain.cmp(&b.domain));
     let mut providers = Vec::with_capacity(rows.len());
     for row in rows {
         let stored = store.exists(&mut tx, &client_secret_name(row.id)).await?;
@@ -49,7 +71,19 @@ pub async fn list(
         saml_entity_id: state.sso.saml_entity_id(identity.tenant_id),
         saml_acs_url: state.sso.saml_acs_url().into(),
         providers,
+        domains,
     }))
+}
+
+/// Reads the record the company published for one of its domains.
+pub async fn prove_domain(
+    State(state): State<AppState>,
+    Auth(identity): Auth,
+    Body(body): Body<DomainProofRequest>,
+) -> ApiResult<Json<Done>> {
+    let access = state.access.context(identity).await?;
+    prove(&state.db, &state.sso, &access, &body.domain).await?;
+    Ok(Json(Done::OK))
 }
 
 pub async fn create(

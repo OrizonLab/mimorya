@@ -9,15 +9,12 @@ mod support;
 
 use axum::http::StatusCode;
 use mimorya_core::demo::{tenant, user};
-use mimorya_db::repositories::identity_providers::{
-    NewIdentityProvider, create_identity_provider, replace_provider_domains,
-};
 use serde_json::{Map, json};
-use support::identity_provider::{CLIENT_ID, CLIENT_SECRET, MockIdentityProvider, Person};
+use support::identity_provider::{MockIdentityProvider, Person};
 use support::refusals::latest_entry;
 use support::sso::{
-    DOMAIN, SSO_DEPLOYMENT, come_back, declaration, declare, discover, identities, location,
-    remove, session, sign_in, sso_logins, start,
+    DOMAIN, SSO_DEPLOYMENT, come_back, declaration, declare, discover, identities,
+    insert_microsoft_provider, location, remove, session, sign_in, sso_logins, start,
 };
 use support::{TestApi, email};
 
@@ -131,36 +128,7 @@ async fn a_microsoft_directory_s_account_is_known_by_its_object_id() {
     let api = TestApi::start_with(&SSO_DEPLOYMENT).await;
     let idp = MockIdentityProvider::start().await;
     let paul = api.sign_in(user::PAUL).await;
-    let services = &api.app.services;
-    let mut tx = services.db.begin(tenant::ID).await.unwrap();
-    let id = create_identity_provider(
-        &mut tx,
-        NewIdentityProvider {
-            tenant_id: tenant::ID,
-            kind: "microsoft",
-            name: "Microsoft 365",
-            issuer: &idp.issuer,
-            client_id: CLIENT_ID,
-            enabled: true,
-            required: false,
-            create_accounts: false,
-            saml_metadata: None,
-            created_by_user_id: user::PAUL,
-        },
-    )
-    .await
-    .unwrap()
-    .unwrap();
-    let domains = [DOMAIN.to_string()];
-    replace_provider_domains(&mut tx, tenant::ID, id, &domains)
-        .await
-        .unwrap();
-    let secret_name = mimorya_api::services::sso::client_secret_name(id);
-    mimorya_api::secrets::SecretStore::new(services.config.secrets.clone())
-        .put(&mut tx, tenant::ID, &secret_name, CLIENT_SECRET)
-        .await
-        .unwrap();
-    tx.commit().await.unwrap();
+    let id = insert_microsoft_provider(&api, &idp, DOMAIN, false).await;
 
     let nadia = email(user::NADIA);
     let offered = json!({ "kind": "microsoft", "name": "Microsoft 365", "required": false });

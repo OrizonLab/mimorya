@@ -6,7 +6,7 @@
 mod support;
 
 use axum::http::StatusCode;
-use mimorya_core::demo::user;
+use mimorya_core::demo::{tenant, user};
 use serde_json::json;
 use support::accounts::{INVITED_PASSWORD, accept};
 use support::companies::create;
@@ -15,8 +15,8 @@ use support::saml_provider::{
     DISPLAY_NAME, MockSamlProvider, OBJECT_ID, SAML_ENTITY_ID, SAML_SIGN_IN_URL, SamlPerson,
 };
 use support::sso::{
-    PROVIDERS, SSO_DEPLOYMENT, assert_saml_refused, declare, location, post_saml, remove,
-    saml_attempt, saml_declaration, saml_nadia, saml_session, saml_sp_metadata,
+    PROVIDERS, SSO_DEPLOYMENT, assert_saml_refused, declare, location, post_saml, prove_domain,
+    remove, saml_attempt, saml_declaration, saml_nadia, saml_session, saml_sp_metadata,
     saml_sp_metadata_of, sso_logins, sso_refusal, try_start, try_start_link,
 };
 use support::{TestApi, email};
@@ -131,6 +131,7 @@ async fn the_company_link_creates_the_account_through_a_saml_provider() {
     let mut body = saml_declaration(&idp.metadata());
     body["createAccounts"] = json!(true);
     let id = declare(&paul, body).await;
+    prove_domain(&api, &paul, tenant::ID, "neo-maintenance.example").await;
     let sp = saml_sp_metadata(&api).await;
     let newcomer = "lina.saml@neo-maintenance.example";
     let person = SamlPerson::named(newcomer)

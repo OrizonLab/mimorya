@@ -163,6 +163,7 @@ const AUTHENTICATED_ROUTES: &[(&str, &str)] = &[
     ("POST", "/admin/identity-providers"),
     ("PATCH", "/admin/identity-providers/{id}"),
     ("DELETE", "/admin/identity-providers/{id}"),
+    ("POST", "/admin/identity-providers/domain-proofs"),
     ("GET", "/admin/skills"),
     ("POST", "/admin/skills"),
     ("GET", "/admin/skills/{id}"),

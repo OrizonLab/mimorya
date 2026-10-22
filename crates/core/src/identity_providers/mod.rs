@@ -1,15 +1,18 @@
 //! What a company may declare as an identity provider (ADR-063, SAML:
 //! ADR-068), and what a provider's identity token or assertion must prove
 //! before an account is tied to it, or created with the name it gives
-//! (ADR-067): the same rules wherever they are checked, without I/O.
+//! (ADR-067), in a domain the company proved when the provider cannot
+//! (ADR-069): the same rules wherever they are checked, without I/O.
 
 mod display_name;
+mod domain_proof;
 
 use std::collections::BTreeSet;
 
 use uuid::Uuid;
 
 pub use display_name::federated_display_name;
+pub use domain_proof::{proof_record_name, proof_record_value, proves_domain};
 
 /// Google's issuer, the same for every Workspace.
 pub const GOOGLE_ISSUER: &str = "https://accounts.google.com";
@@ -56,6 +59,14 @@ impl ProviderKind {
             Self::Oidc => "oidc",
             Self::Saml => "saml",
         }
+    }
+
+    /// Whether the provider only vouches for addresses in domains its
+    /// owner proved to it: Microsoft and Google check their customers'
+    /// domains; a generic OpenID Connect or SAML provider says whatever its
+    /// owner wants, so its company proves the domain itself (ADR-069).
+    pub fn proves_its_domains(self) -> bool {
+        matches!(self, Self::Microsoft | Self::Google)
     }
 
     /// The name shown when the company gives none.

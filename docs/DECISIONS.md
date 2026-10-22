@@ -2692,3 +2692,80 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     l'en-tête et d'un autre site, la réception seule est atteinte ; les chemins qui lui
     ressemblent, les métadonnées, le retour OpenID Connect et la connexion par mot de
     passe sont refusés).
+
+## ADR-069 — Prouver la propriété d'un domaine par un enregistrement DNS
+
+- **Date** : 2026-10-22 · **Statut** : acceptée
+- **Contexte** : une entreprise déclare les domaines de ses fournisseurs d'identité
+  (ADR-063) sans prouver qu'elle les possède. Les adresses sont uniques sur toute la
+  plateforme (ADR-011) : un compte, où qu'il soit, réserve son adresse. Le lien de
+  connexion d'une entreprise peut créer des comptes (ADR-067), et son administration en
+  invite. Microsoft et Google ne garantissent que des adresses de domaines qu'ils ont
+  vérifiés chez leur client ; un fournisseur OpenID Connect générique ou SAML dit ce que
+  veut son propriétaire. Une entreprise peut ainsi créer chez elle des comptes aux
+  adresses du domaine d'une autre, par son lien ou par invitation : l'entreprise qui
+  possède le domaine ne peut plus inviter ces personnes, l'adresse étant prise.
+- **Décision** :
+  - une entreprise **prouve un domaine** en publiant dans son DNS un enregistrement TXT
+    `_mimorya.<domaine>` de valeur `mimorya-verification=<empreinte>`. L'empreinte (SHA-256
+    de l'entreprise et du domaine, 32 caractères hexadécimaux) est propre à l'entreprise :
+    l'enregistrement d'une autre ne prouve rien pour elle. Elle n'est pas secrète, car
+    seul qui gère le DNS du domaine peut la publier. Le calcul est du domaine pur
+    (`core/src/identity_providers/domain_proof.rs`) ;
+  - « Connexion » donne, pour chaque domaine couvert par un fournisseur de l'entreprise,
+    l'enregistrement à publier et la date de sa dernière preuve
+    (`GET /admin/identity-providers`, champ `domains`). L'administrateur de la connexion
+    (`settings:manage` sur toute l'entreprise) demande la lecture
+    (`POST /admin/identity-providers/domain-proofs`). Le serveur lit l'enregistrement par
+    le résolveur du système (`hickory-resolver`, Rust pur, `resolv.conf`, nom absolu, 5
+    secondes au plus), hors du verrou d'administration. S'il trouve la valeur attendue,
+    il enregistre la preuve sous le verrou et la trace (`identity_provider.domain_verified`).
+    Sinon, il refuse en disant ce qui manque : un domaine qu'aucun fournisseur de
+    l'entreprise ne couvre, un enregistrement absent ou d'une autre valeur, ou un DNS
+    illisible ;
+  - **un domaine prouvé réserve ses nouvelles adresses** à l'entreprise qui l'a prouvé :
+    aucune autre n'y crée de compte, ni par invitation (refus « Cette adresse relève d'un
+    domaine prouvé par une autre entreprise ») ni à la connexion par son lien, quel que
+    soit le fournisseur (refus tracé « Adresse d'un domaine prouvé par une autre
+    entreprise »), sauf si elle l'a prouvé aussi. La lecture traverse les entreprises par
+    la seule fonction `auth_domain_held_elsewhere` (SECURITY DEFINER), qui répond oui ou
+    non sans nommer l'autre entreprise ;
+  - un fournisseur **OpenID Connect générique ou SAML ne crée un compte** (ADR-067) **que
+    dans un domaine prouvé** par son entreprise : refus tracé « Domaine non prouvé par
+    l'entreprise : aucun compte n'y est créé ». Microsoft et Google n'ont pas besoin de
+    preuve. La liaison d'un compte que l'entreprise possède déjà, l'acceptation d'une
+    invitation et le fournisseur obligatoire ne créent pas de compte : ils ne demandent
+    pas de preuve ;
+  - la preuve est gardée par entreprise (`verified_domains`, migration 0022, RLS) et
+    survit au fournisseur qui couvrait le domaine. Une nouvelle lecture en met la date à
+    jour. Deux entreprises peuvent prouver le même domaine, si son propriétaire publie
+    leurs deux enregistrements.
+- **Conséquences** :
+  - une entreprise dont le fournisseur générique ou SAML créait déjà des comptes doit
+    prouver ses domaines pour continuer ;
+  - la réservation commence à la preuve : une adresse déjà prise, avant elle ou par un
+    compte existant d'une autre entreprise, le reste (ADR-011). L'exploitant de la
+    plateforme, qui crée le premier administrateur d'une entreprise (ADR-033), n'y est pas
+    soumis ;
+  - la preuve n'est pas relue ensuite, et elle survit à la fin de la déclaration du
+    domaine : un domaine de nouveau déclaré retrouve sa preuve ancienne. Un domaine perdu
+    puis racheté par un tiers reste donc prouvé pour l'entreprise ; comme toute preuve
+    par DNS sans DNSSEC, elle vaut ce que vaut la résolution du serveur ;
+  - lots : (1) API, règle et tests, avec le DNS simulé des tests
+    (`crates/api/tests/support/dns.rs`, servi aussi par `e2e_server` sur 127.0.0.1:4102) ;
+    (2) les domaines, leur enregistrement et le bouton « Vérifier » dans « Connexion »,
+    avec leur test de bout en bout ;
+  - tests : `crates/api/tests/sso_domain_proofs.rs` :
+    - l'enregistrement donné ; refus pour un enregistrement absent, celui d'une autre
+      entreprise, un DNS illisible ou un domaine non couvert ; refus tracé sans le droit ;
+      preuve datée et tracée ;
+    - pas de création par un fournisseur générique avant la preuve, alors qu'un compte
+      existant se connecte ; création après ;
+    - une autre entreprise qui déclare le domaine de Néo ne peut ni le prouver ni y créer
+      de compte par son lien, et, Néo l'ayant prouvé, ni par invitation ;
+    - Microsoft crée sans preuve, mais plus dans un domaine qu'une autre entreprise a
+      prouvé, ni par lien ni par invitation, jusqu'à ce que Néo le prouve aussi ;
+
+    et `core/src/identity_providers/domain_proof.rs` et `tests.rs` (valeur propre à
+    l'entreprise et au domaine, seuls Microsoft et Google prouvent leurs domaines),
+    `crates/db/tests/definer_functions.rs` (`auth_domain_held_elsewhere`).

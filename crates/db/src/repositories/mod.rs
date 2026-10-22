@@ -31,3 +31,4 @@ pub mod tool_invocations;
 pub mod usage;
 pub mod user_identities;
 pub mod users;
+pub mod verified_domains;
