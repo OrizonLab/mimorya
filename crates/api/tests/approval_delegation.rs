@@ -13,7 +13,9 @@ use chrono::{Duration, Utc};
 use mimorya_core::authz::AssignmentScope;
 use mimorya_core::demo::{role, tenant, user};
 use mimorya_db::repositories::approval_delegations::purge_ended_approval_delegations;
-use mimorya_db::repositories::role_assignments::{NewRoleAssignment, create_role_assignment};
+use mimorya_db::repositories::role_assignments::{
+    NewRoleAssignment, create_role_assignment, delete_role_assignment,
+};
 use mimorya_db::testing::OTHER_USER_ID;
 use serde_json::{Value, json};
 use support::{Client, TestApi, owner_url};
@@ -236,6 +238,7 @@ async fn whom_one_may_name_is_shown_to_those_who_validate_only() {
     // Active colleagues holding `approval:decide` over others, not oneself:
     // neither through an assignment ended, nor over oneself only.
     let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    let mut granted = Vec::new();
     for (user_id, scope, expires_at) in [
         (
             user::LUCAS,
@@ -252,7 +255,7 @@ async fn whom_one_may_name_is_shown_to_those_who_validate_only() {
             granted_by_user_id: None,
             expires_at,
         };
-        create_role_assignment(&mut tx, assignment).await.unwrap();
+        granted.push(create_role_assignment(&mut tx, assignment).await.unwrap());
     }
     tx.commit().await.unwrap();
     assert_eq!(candidates(&marc).await, ["Julien Moreau", "Nadia Benali"]);
@@ -265,4 +268,11 @@ async fn whom_one_may_name_is_shown_to_those_who_validate_only() {
     assert_eq!(candidates(&marc).await, ["Julien Moreau"]);
     let enabled = paul.patch(&account, json!({ "status": "active" })).await;
     assert_eq!(enabled.status, StatusCode::OK, "{}", enabled.text());
+
+    // The tests that follow share the database: the roles given go.
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    for id in granted {
+        assert!(delete_role_assignment(&mut tx, id).await.unwrap());
+    }
+    tx.commit().await.unwrap();
 }
