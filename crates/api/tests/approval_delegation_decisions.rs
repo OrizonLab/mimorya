@@ -97,6 +97,14 @@ async fn the_delegate_decides_what_they_hold_the_right_for() {
     assert!(found(&julien, &id).await.is_none());
     assert_eq!(decide(&julien, &id, true).await, StatusCode::NOT_FOUND);
     assert_eq!(decide(&julien, &id, false).await, StatusCode::NOT_FOUND);
+    // Not even whether Nadia's account is still active.
+    let account = format!("/admin/users/{}", user::NADIA);
+    let disabled = paul.patch(&account, json!({ "status": "disabled" })).await;
+    assert_eq!(disabled.status, StatusCode::OK, "{}", disabled.text());
+    assert_eq!(decide(&julien, &id, false).await, StatusCode::NOT_FOUND);
+    assert_eq!(decide(&marc, &id, false).await, StatusCode::CONFLICT);
+    let enabled = paul.patch(&account, json!({ "status": "active" })).await;
+    assert_eq!(enabled.status, StatusCode::OK, "{}", enabled.text());
 
     let assignment = julien_decides_for_the_south(&paul).await;
     let shown = found(&julien, &id).await.expect("shown to the delegate");

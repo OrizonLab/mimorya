@@ -8,7 +8,8 @@ use chrono::Utc;
 use mimorya_core::DomainError;
 use mimorya_db::Database;
 use mimorya_db::repositories::approval_delegations::standing_in_for;
-use mimorya_db::repositories::approvals::{ApprovalRow, get_approval};
+use mimorya_db::repositories::approval_views::get_approval_view;
+use mimorya_db::repositories::approvals::ApprovalRow;
 use mimorya_db::repositories::runs::RunRow;
 use uuid::Uuid;
 
@@ -118,13 +119,23 @@ impl RunService {
         let decider = self.access.context(identity).await?;
         let mut tx = self.db.begin(identity.tenant_id).await?;
         let standing_in_for = standing_in_for(&mut tx, identity.user_id, Utc::now()).await?;
+        let view = get_approval_view(&mut tx, input.approval_id).await?;
+        let requester_unit = view.as_ref().and_then(|v| v.requested_for_unit_id);
         let approval = decidable(
-            get_approval(&mut tx, input.approval_id).await?,
+            view.map(|v| v.approval),
             identity.user_id,
             &standing_in_for,
             input.approved,
         )?;
         tx.commit().await?;
+        let standing_in = approval.decider() != Some(identity.user_id)
+            && identity.user_id != approval.requested_for_user_id;
+        if standing_in && !may_decide_for(&decider, approval.requested_for_user_id, requester_unit)
+        {
+            // Whom an absent manager named finds nothing they may not
+            // decide (ADR-071), not even whether its requester is active.
+            return Err(DomainError::not_found(NOT_FOUND).into());
+        }
         // The run goes on for whom it acts for, with their rights as they
         // stand now: never with the decider's (ADR-059).
         let requester = self
@@ -140,12 +151,12 @@ impl RunService {
             // run, which reads the requester's rights at each step.
             let unit = requester.profile.primary_unit_id;
             if !may_decide_for(&decider, approval.requested_for_user_id, unit) {
-                // Whom an absent manager named finds nothing they may not
-                // decide (ADR-071): the manager learns they lost the right.
-                let refused = if approval.decider() == Some(identity.user_id) {
-                    DomainError::forbidden(NO_LONGER_ENTITLED)
-                } else {
+                // The manager learns they lost the right; whom an absent
+                // manager named, nothing (ADR-071).
+                let refused = if standing_in {
                     DomainError::not_found(NOT_FOUND)
+                } else {
+                    DomainError::forbidden(NO_LONGER_ENTITLED)
                 };
                 return Err(refused.into());
             }
