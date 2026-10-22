@@ -121,3 +121,11 @@ export const LLM_PROVIDERS: Record<string, string> = {
   ollama: 'Ollama (serveur de l’exploitant)',
   openai_compatible: 'Compatible OpenAI (serveur de l’exploitant)',
 };
+
+/** Embedding providers a company may choose (ADR-074). */
+export const EMBEDDING_PROVIDERS: Record<string, string> = {
+  mistral: 'Mistral AI',
+  openai: 'OpenAI',
+  ollama: 'Ollama (serveur de l’exploitant)',
+  openai_compatible: 'Compatible OpenAI (serveur de l’exploitant)',
+};

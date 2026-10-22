@@ -3039,3 +3039,31 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
       indexation en arrière-plan ;
     - `crates/db/tests/definer_functions.rs` : la nouvelle fonction est dans la liste
       connue.
+
+## ADR-075 — Choisir le modèle d'embeddings dans « Modèle d'IA » (complète ADR-074)
+
+- **Date** : 2026-10-22 · **Statut** : acceptée
+- **Contexte** : le modèle d'embeddings d'une entreprise ne se choisissait que par l'API
+  (ADR-074).
+- **Décision** :
+  - l'onglet « Modèle d'IA » de l'administration ajoute, sous le modèle des conversations,
+    une section « Recherche dans la mémoire » : « par les mots seulement », ou « par les
+    mots et par le sens » avec le fournisseur, le modèle, l'adresse, la similarité
+    minimale, la clé (enregistrée ou non), l'avancement de l'indexation (mémoires indexées
+    sur mémoires actives), le problème de la configuration ou la dernière panne
+    d'indexation s'il y en a ;
+  - on y choisit ou modifie le modèle (fournisseur, modèle, serveur de la liste de
+    l'exploitant pour un serveur local, similarité minimale — vide, la valeur de départ
+    du fournisseur, remise à vide quand le fournisseur change —, clé en écriture seule,
+    conservée pour le même fournisseur à la même adresse), on le teste, on actualise
+    l'avancement, et on revient aux mots après confirmation (vecteurs et clé effacés) ;
+  - la page dit ce qui part chez le fournisseur : le texte des mémoires actives et celui
+    des demandes ;
+  - le serveur de bout en bout donne à toute entreprise un modèle d'embeddings de test :
+    aucun fournisseur n'est appelé.
+- **Conséquences** :
+  - aucune donnée nouvelle ; reste la capitalisation automatique des leçons ;
+  - tests : `apps/web/e2e/semantic-memory.spec.ts` : Paul choisit Mistral avec une clé et
+    une similarité, la mémoire est indexée en arrière-plan (relu par l'API, puis affiché
+    après rechargement), la clé n'apparaît jamais, le test répond, puis le retour aux mots
+    efface le choix.

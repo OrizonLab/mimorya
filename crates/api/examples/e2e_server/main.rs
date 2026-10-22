@@ -13,7 +13,9 @@
 //! (`SAML_IDP_ADDRESS`), signing in whoever is typed at its page; identity
 //! providers alone are reached on the private network, connectors keep to
 //! the public one. The DNS a domain's proof is read from is the tests' own,
-//! where they publish records on 127.0.0.1:4102 (`DNS_ADDRESS`, ADR-069). One pass of the tests per start: the model's
+//! where they publish records on 127.0.0.1:4102 (`DNS_ADDRESS`, ADR-069).
+//! A company's embedding model is a test one, whatever it chooses: no
+//! provider is ever reached (ADR-074). One pass of the tests per start: the model's
 //! script and the demo company are used up. Like `mimorya-api`, it takes the
 //! run executor's lock once listening and takes up the runs a stop left,
 //! among them the one it leaves itself (`interrupted`, ADR-053).
@@ -37,10 +39,10 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use mimorya_agent::llm::LlmProvider;
-use mimorya_agent::testing::{ScriptedProvider, ScriptedStep};
+use mimorya_agent::llm::{EmbeddingProvider, LlmProvider};
+use mimorya_agent::testing::{ConceptEmbedder, ScriptedProvider, ScriptedStep};
 use mimorya_api::mail::Mailer;
-use mimorya_api::services::ProviderFactory;
+use mimorya_api::services::{EmbeddingFactory, ProviderFactory};
 use mimorya_api::{AppConfig, BuildOptions, build_app, log_filter};
 use mimorya_connectors::mcp::NetworkPolicy;
 
@@ -95,6 +97,8 @@ async fn main() -> anyhow::Result<()> {
         ));
         Ok(provider)
     });
+    let embedder: Arc<dyn EmbeddingProvider> = Arc::new(ConceptEmbedder::new(&[]));
+    let embedding_factory: EmbeddingFactory = Arc::new(move |_config| Ok(embedder.clone()));
     let mailer: Arc<dyn Mailer> = Arc::new(mailbox::DirectoryMailer::new(mail_dir));
     let idp = identity_provider::MockIdentityProvider::start_on(IDP_ADDRESS).await;
     tracing::info!(
@@ -111,7 +115,7 @@ async fn main() -> anyhow::Result<()> {
         BuildOptions {
             provider: Some(Some(platform)),
             provider_factory: Some(factory),
-            embedding_factory: None,
+            embedding_factory: Some(embedding_factory),
             manual_indexing: false,
             mailer: Some(Some(mailer)),
             sso_network: Some(NetworkPolicy {
