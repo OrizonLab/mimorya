@@ -2751,9 +2751,13 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     domaine : un domaine de nouveau déclaré retrouve sa preuve ancienne. Un domaine perdu
     puis racheté par un tiers reste donc prouvé pour l'entreprise ; comme toute preuve
     par DNS sans DNSSEC, elle vaut ce que vaut la résolution du serveur ;
+  - un refus d'invitation dit à l'administrateur d'une autre entreprise qu'un client de la
+    plateforme a prouvé ce domaine, sans le nommer ; l'enregistrement `_mimorya.<domaine>`
+    est de toute façon public dans le DNS ;
   - lots : (1) API, règle et tests, avec le DNS simulé des tests
     (`crates/api/tests/support/dns.rs`, servi aussi par `e2e_server` sur 127.0.0.1:4102) ;
-    (2) les domaines, leur enregistrement et le bouton « Vérifier » dans « Connexion »,
+    (2) « Domaines de l'entreprise » dans « Connexion » : chaque domaine, son
+    enregistrement, son état (« Non prouvé », « Prouvé le … ») et le bouton « Vérifier »,
     avec leur test de bout en bout ;
   - tests : `crates/api/tests/sso_domain_proofs.rs` :
     - l'enregistrement donné ; refus pour un enregistrement absent, celui d'une autre
@@ -2768,4 +2772,7 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
 
     et `core/src/identity_providers/domain_proof.rs` et `tests.rs` (valeur propre à
     l'entreprise et au domaine, seuls Microsoft et Google prouvent leurs domaines),
-    `crates/db/tests/definer_functions.rs` (`auth_domain_held_elsewhere`).
+    `crates/db/tests/definer_functions.rs` (`auth_domain_held_elsewhere`) ;
+    `apps/web/e2e/domain-proofs.spec.ts` (domaine listé avec son enregistrement, non prouvé ;
+    vérifié avant publication : refus disant ce qui manque ; publié puis vérifié : prouvé et
+    daté, relu après rechargement).

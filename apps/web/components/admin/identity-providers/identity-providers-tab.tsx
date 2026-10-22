@@ -4,6 +4,7 @@ import { Plus } from 'lucide-react';
 import { useState } from 'react';
 import { Button, Card, EmptyState, ErrorNote, Loaded } from '@/components/ui';
 import { useApiData, type IdentityProvidersView } from '@/lib/api';
+import { DomainProofs } from './domain-proofs';
 import { IdentityProviderCard } from './identity-provider-card';
 import { IdentityProviderForm } from './identity-provider-form';
 
@@ -14,6 +15,7 @@ import { IdentityProviderForm } from './identity-provider-form';
  * (ADR-064). The company's sign-in link may also create the account at the
  * first sign-in, when the provider is told to (ADR-067). A SAML provider is
  * given the company's own entity ID and the address it posts to (ADR-068).
+ * The company proves its domains by DNS (ADR-069).
  */
 export function IdentityProvidersTab() {
   const state = useApiData<IdentityProvidersView>('/admin/identity-providers');
@@ -62,6 +64,7 @@ export function IdentityProvidersTab() {
           {data.providers.map((provider) => (
             <IdentityProviderCard key={provider.id} provider={provider} onChanged={state.reload} />
           ))}
+          <DomainProofs domains={data.domains} onChanged={state.reload} />
         </div>
       )}
     </Loaded>
