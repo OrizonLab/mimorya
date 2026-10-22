@@ -28,7 +28,7 @@ use crate::services::background::BackgroundTasks;
 use crate::services::connectors::ConnectorSettings;
 use crate::services::llm::{LlmServiceOptions, default_factory};
 use crate::services::runs::{ApprovalNotifier, RunExecutor};
-use crate::services::sso::SsoService;
+use crate::services::sso::{SsoService, SystemDns, TxtLookup};
 use crate::services::{
     AccessService, ConnectorService, LlmService, ProviderFactory, RunEventBus, RunService,
 };
@@ -83,6 +83,8 @@ pub struct BuildOptions {
     /// Replaces the limit of requests per minute and address (end-to-end
     /// tests: every request comes through the one web relay).
     pub global_rate_limit_per_minute: Option<u32>,
+    /// Replaces the system's DNS, where a domain's proof is read (tests).
+    pub dns: Option<Arc<dyn TxtLookup>>,
 }
 
 pub struct App {
@@ -129,6 +131,7 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
         config.secrets.clone(),
         options.sso_network.unwrap_or(config.mcp_network),
         &config.web_origin,
+        options.dns.unwrap_or_else(SystemDns::shared),
     )?);
     let mailer = match options.mailer {
         Some(mailer) => mailer,

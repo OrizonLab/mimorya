@@ -16,6 +16,7 @@ mod connector_rules;
 mod connector_test;
 mod connector_trial;
 mod connectors;
+mod domain_proofs;
 mod identity_providers;
 mod invitations;
 mod link_sender;
@@ -37,6 +38,7 @@ pub use connectors::{
     ConnectorAdmin, ConnectorChanges, NewMcpConnector, TokenChange, create_mcp_connector,
     delete_connector, http_config, update_connector,
 };
+pub use domain_proofs::prove_domain;
 pub use identity_providers::{
     ProviderChanges, ProviderDeclaration, change_identity_provider, declare_identity_provider,
     remove_identity_provider,

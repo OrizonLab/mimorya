@@ -14,6 +14,7 @@ mod account;
 mod address;
 mod admission;
 mod attempt;
+mod dns;
 mod http;
 mod metadata;
 mod oidc;
@@ -27,6 +28,7 @@ pub use attempt::{
     ATTEMPT_COOKIE, SAML_ATTEMPT_COOKIE, attempt_cookie, cleared_attempt_cookie,
     cleared_saml_attempt_cookie, saml_attempt_cookie,
 };
+pub use dns::{SystemDns, TxtLookup};
 pub use requirement::{SIGN_IN_ADMINISTRATOR, required_provider};
 pub use saml::summary as saml_summary;
 pub use saml_return::SamlReturn;
@@ -90,6 +92,8 @@ pub struct SsoService {
     saml_acs_url: String,
     /// The providers' declarations and keys, kept an hour (ADR-065).
     declarations: MetadataCache<CoreProviderMetadata>,
+    /// Where a domain's proof is read (ADR-069).
+    dns: Arc<dyn TxtLookup>,
 }
 
 /// A declaration heavier than this, keys included, is not kept: read at
@@ -116,6 +120,7 @@ impl SsoService {
         cipher: Option<Arc<SecretCipher>>,
         network: NetworkPolicy,
         web_origin: &str,
+        dns: Arc<dyn TxtLookup>,
     ) -> anyhow::Result<Self> {
         Ok(Self {
             db,
@@ -128,7 +133,13 @@ impl SsoService {
             saml_base: format!("{web_origin}{SAML_PATH}"),
             saml_acs_url: format!("{web_origin}{SAML_PATH}/acs"),
             declarations: MetadataCache::default(),
+            dns,
         })
+    }
+
+    /// Where a domain's proof is read (ADR-069).
+    pub fn dns(&self) -> &dyn TxtLookup {
+        self.dns.as_ref()
     }
 
     /// The address to register at the provider.

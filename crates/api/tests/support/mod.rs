@@ -8,6 +8,7 @@ pub mod access;
 pub mod accounts;
 mod client;
 pub mod companies;
+pub mod dns;
 pub mod identity_provider;
 pub mod llm;
 pub mod locks;
@@ -105,6 +106,8 @@ pub struct TestApi {
     pub built: Arc<Mutex<Vec<ProviderConfig>>>,
     /// What the app e-mailed, when started with `start_with_mailer`.
     pub mail: Arc<RecordingMailer>,
+    /// The DNS a domain's proof is read from (ADR-069).
+    pub dns: Arc<dns::FakeDns>,
 }
 
 impl TestApi {
@@ -164,12 +167,14 @@ impl TestApi {
             })
         };
         let mail = Arc::new(RecordingMailer::default());
+        let dns = Arc::new(dns::FakeDns::default());
         let options = BuildOptions {
             provider: Some(provider),
             provider_factory: Some(factory),
             mailer: record_mail.then(|| Some(mail.clone() as Arc<dyn Mailer>)),
             sso_network: None,
             global_rate_limit_per_minute: None,
+            dns: Some(dns.clone()),
         };
         let app = build_app(config, options).await.expect("app");
         Self {
@@ -178,6 +183,7 @@ impl TestApi {
             company_model,
             built,
             mail,
+            dns,
         }
     }
 

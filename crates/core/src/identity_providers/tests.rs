@@ -334,3 +334,11 @@ fn a_saml_assertion_proves_its_subject_s_address() {
     let empty = TokenClaims::default();
     assert!(proven_identity(ProviderKind::Saml, &empty, &domains()).is_err());
 }
+
+#[test]
+fn only_microsoft_and_google_prove_their_customers_domains() {
+    assert!(ProviderKind::Microsoft.proves_its_domains());
+    assert!(ProviderKind::Google.proves_its_domains());
+    assert!(!ProviderKind::Oidc.proves_its_domains());
+    assert!(!ProviderKind::Saml.proves_its_domains());
+}

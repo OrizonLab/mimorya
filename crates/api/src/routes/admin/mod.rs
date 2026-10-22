@@ -78,6 +78,10 @@ pub fn routes(state: &AppState) -> Router<AppState> {
             "/admin/identity-providers/{id}",
             patch(identity_providers::update).delete(identity_providers::remove),
         )
+        .route(
+            "/admin/identity-providers/domain-proofs",
+            post(identity_providers::prove_domain),
+        )
         .route("/admin/connectors/{id}/test", post(connectors::test))
         .route("/admin/skills", get(skills::list).post(skills::create))
         .route(

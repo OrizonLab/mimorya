@@ -12,11 +12,16 @@
 //! whoever the sign-in names, and a SAML provider on 127.0.0.1:4101
 //! (`SAML_IDP_ADDRESS`), signing in whoever is typed at its page; identity
 //! providers alone are reached on the private network, connectors keep to
-//! the public one. One pass of the tests per start: the model's
+//! the public one. The DNS a domain's proof is read from is the tests' own,
+//! where they publish records on 127.0.0.1:4102 (`DNS_ADDRESS`, ADR-069). One pass of the tests per start: the model's
 //! script and the demo company are used up. Like `mimorya-api`, it takes the
 //! run executor's lock once listening and takes up the runs a stop left,
 //! among them the one it leaves itself (`interrupted`, ADR-053).
 
+mod dns_server;
+#[allow(dead_code)] // the API's tests use the rest
+#[path = "../../tests/support/dns.rs"]
+mod fake_dns;
 #[allow(dead_code)] // the API's tests use the rest
 #[path = "../../tests/support/identity_provider.rs"]
 mod identity_provider;
@@ -55,6 +60,9 @@ const IDP_ADDRESS: &str = "127.0.0.1:4100";
 
 /// Where the SAML provider listens: `saml-sign-on.spec.ts` declares it.
 const SAML_IDP_ADDRESS: &str = "127.0.0.1:4101";
+
+/// Where the tests publish DNS records (ADR-069).
+const DNS_ADDRESS: &str = "127.0.0.1:4102";
 
 /// Requests per minute from the web relay, which every test goes through.
 const GLOBAL_RATE_LIMIT_PER_MINUTE: u32 = 100_000;
@@ -95,6 +103,8 @@ async fn main() -> anyhow::Result<()> {
     );
     let saml_idp = saml_idp::start_on(SAML_IDP_ADDRESS).await?;
     tracing::info!(address = saml_idp, "End-to-end SAML provider listening");
+    let dns = Arc::new(fake_dns::FakeDns::default());
+    dns_server::start_on(DNS_ADDRESS, dns.clone()).await?;
     let address = format!("{}:{}", config.host, config.port);
     let app = build_app(
         config,
@@ -109,6 +119,7 @@ async fn main() -> anyhow::Result<()> {
             // The browser's requests all come through the web relay, from one
             // address: the whole suite would share a minute's 600.
             global_rate_limit_per_minute: Some(GLOBAL_RATE_LIMIT_PER_MINUTE),
+            dns: Some(dns),
         },
     )
     .await?;

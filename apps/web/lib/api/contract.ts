@@ -314,6 +314,25 @@ invitationExpiresAt?: string | null,
 grants?: Array<string>, assignments?: Array<Assignment>, };
 
 /**
+ * Body of `POST /admin/identity-providers/domain-proofs`: the domain whose
+ * record the company published, to read now.
+ */
+export type DomainProofRequest = { domain: string, };
+
+/**
+ * A domain the company's providers cover.
+ */
+export type DomainProofView = { domain: string,
+/**
+ * The TXT record to publish in the domain's DNS: where, and its value.
+ */
+recordName: string, recordValue: string,
+/**
+ * When the company last proved it; absent: never.
+ */
+verifiedAt: string | null, };
+
+/**
  * A change done, with nothing else to return.
  */
 export type Done = { ok: boolean, };
@@ -405,7 +424,11 @@ redirectUri: string,
  * SAML: the company's own entity ID (identifier) and the address
  * responses are posted to, to register at the provider.
  */
-samlEntityId: string, samlAcsUrl: string, providers: Array<IdentityProviderView>, };
+samlEntityId: string, samlAcsUrl: string, providers: Array<IdentityProviderView>,
+/**
+ * Every domain the providers cover, and its proof (ADR-069).
+ */
+domains: Array<DomainProofView>, };
 
 /**
  * `POST /auth/invitation`: who the invitation is for.

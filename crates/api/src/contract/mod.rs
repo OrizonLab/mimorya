@@ -139,6 +139,7 @@ macro_rules! request_bodies {
             admin::LlmChoice,
             admin::NewIdentityProvider,
             admin::IdentityProviderUpdate,
+            admin::DomainProofRequest,
             admin::ApprovalRoutingUpdate
         )
     };

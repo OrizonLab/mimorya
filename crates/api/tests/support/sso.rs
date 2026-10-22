@@ -6,6 +6,7 @@
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use mimorya_core::demo::{tenant, user};
+use mimorya_core::identity_providers::{proof_record_name, proof_record_value};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
@@ -314,3 +315,15 @@ pub async fn sso_refusal(api: &TestApi, since: i64) -> String {
     assert_eq!(logins[0].0, "denied");
     logins[0].2.clone().unwrap_or_default()
 }
+
+/// The company proves `domain` (ADR-069): its record published in the
+/// DNS, then read by its administrator `admin`.
+pub async fn prove_domain(api: &TestApi, admin: &Client<'_>, tenant_id: Uuid, domain: &str) {
+    let value = proof_record_value(tenant_id, domain);
+    api.dns.publish(&proof_record_name(domain), &value);
+    let proved = admin.post(DOMAIN_PROOFS, json!({ "domain": domain })).await;
+    assert_eq!(proved.status, StatusCode::OK, "{}", proved.text());
+}
+
+/// Where a domain's proof is read.
+pub const DOMAIN_PROOFS: &str = "/admin/identity-providers/domain-proofs";

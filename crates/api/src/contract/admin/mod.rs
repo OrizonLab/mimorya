@@ -4,6 +4,7 @@ mod activity;
 mod approval_routing;
 mod assignments;
 mod connectors;
+mod domain_proofs;
 mod identity_providers;
 mod llm;
 mod organization;
@@ -22,6 +23,7 @@ pub use connectors::{
     Connectors, DelegablePermission, McpEndpoint, NewConnector, TestedTool, ToolPolicy,
     ToolPolicyChange, risks,
 };
+pub use domain_proofs::{DomainProofRequest, DomainProofView};
 pub use identity_providers::{
     IdentityProviderUpdate, IdentityProviderView, IdentityProvidersView, NewIdentityProvider,
 };

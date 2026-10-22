@@ -19,8 +19,8 @@ use support::companies::create;
 use support::identity_provider::{MockIdentityProvider, Person};
 use support::refusals::latest_entry;
 use support::sso::{
-    PROVIDERS, SSO_DEPLOYMENT, assert_refused, declaration, declare, location, remove, session,
-    sign_in, sign_in_by_link, sso_logins, try_link, try_start_link,
+    DOMAIN, PROVIDERS, SSO_DEPLOYMENT, assert_refused, declaration, declare, location,
+    prove_domain, remove, session, sign_in, sign_in_by_link, sso_logins, try_link, try_start_link,
 };
 use support::{Client, TestApi, WEB_ORIGIN, email, owner_url};
 use uuid::Uuid;
@@ -72,6 +72,7 @@ async fn the_company_link_creates_the_account_of_a_person_of_its_domains() {
     let idp = MockIdentityProvider::start().await;
     let paul = api.sign_in(user::PAUL).await;
     let id = declare(&paul, creating(&idp)).await;
+    prove_domain(&api, &paul, tenant::ID, DOMAIN).await;
 
     // The page names the company and its provider.
     // Handed out by the administration.
@@ -137,6 +138,7 @@ async fn a_sign_in_started_from_an_address_never_creates_an_account() {
     let idp = MockIdentityProvider::start().await;
     let paul = api.sign_in(user::PAUL).await;
     let id = declare(&paul, creating(&idp)).await;
+    prove_domain(&api, &paul, tenant::ID, DOMAIN).await;
     // Nadia's address starts it; at the provider, someone it does not know
     // signs in: the address suggested is only a suggestion.
     let stranger = "sam.inconnu@neo-maintenance.example";
@@ -163,6 +165,7 @@ async fn no_account_is_created_unless_the_provider_says_so() {
     let idp = MockIdentityProvider::start().await;
     let paul = api.sign_in(user::PAUL).await;
     let id = declare(&paul, declaration(&idp)).await;
+    prove_domain(&api, &paul, tenant::ID, DOMAIN).await;
     assert_eq!(try_link(&api, &id).await.json()["createsAccounts"], false);
     let other = "yanis.autre@neo-maintenance.example";
     let named = json!({ "given_name": "Yanis", "family_name": "Autre" });
@@ -213,6 +216,7 @@ async fn the_link_never_creates_an_account_it_must_not() {
     let idp = MockIdentityProvider::start().await;
     let paul = api.sign_in(user::PAUL).await;
     let id = declare(&paul, creating(&idp)).await;
+    prove_domain(&api, &paul, tenant::ID, DOMAIN).await;
     // Another company's account with an address of Néo's domain.
     let theirs = "jeanne@neo-maintenance.example";
     let elsewhere = create(&api, "voisine", theirs).await;
@@ -268,6 +272,7 @@ async fn a_link_names_only_an_enabled_provider_of_an_active_company() {
     let idp = MockIdentityProvider::start().await;
     let paul = api.sign_in(user::PAUL).await;
     let id = declare(&paul, creating(&idp)).await;
+    prove_domain(&api, &paul, tenant::ID, DOMAIN).await;
     let unknown = |response: support::TestResponse| {
         assert_eq!(
             response.status,
