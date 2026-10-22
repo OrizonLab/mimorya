@@ -17,6 +17,7 @@ use crate::config::AppConfig;
 use crate::mail::{Mailer, SmtpMailer};
 use crate::plugins::csrf::csrf_protection;
 use crate::plugins::maintenance::spawn_maintenance;
+use crate::plugins::memory_indexing::spawn_memory_indexing;
 use crate::plugins::rate_limit::global_rate_limit;
 use crate::plugins::request_context::request_context;
 use crate::plugins::security_headers::security_headers;
@@ -26,11 +27,13 @@ use crate::routes;
 use crate::secrets::SecretStore;
 use crate::services::background::BackgroundTasks;
 use crate::services::connectors::ConnectorSettings;
+use crate::services::embeddings::{EmbeddingServiceOptions, default_embedding_factory};
 use crate::services::llm::{LlmServiceOptions, default_factory};
 use crate::services::runs::{ApprovalNotifier, RunExecutor};
 use crate::services::sso::{SsoService, SystemDns, TxtLookup};
 use crate::services::{
-    AccessService, ConnectorService, LlmService, ProviderFactory, RunEventBus, RunService,
+    AccessService, ConnectorService, EmbeddingFactory, EmbeddingService, LlmService,
+    ProviderFactory, RunEventBus, RunService,
 };
 
 const BODY_LIMIT_BYTES: usize = 1_000_000;
@@ -50,6 +53,8 @@ pub struct Services {
     pub bus: Arc<RunEventBus>,
     /// The model provider of each company's runs.
     pub llm: Arc<LlmService>,
+    /// The embedding model each company's memory is searched with (ADR-074).
+    pub embeddings: Arc<EmbeddingService>,
     pub runs: RunService,
     /// Signing in through the companies' identity providers (ADR-063).
     pub sso: Arc<SsoService>,
@@ -73,6 +78,11 @@ pub struct BuildOptions {
     pub provider: Option<Option<Arc<dyn LlmProvider>>>,
     /// Replaces how a company's own provider is built (tests).
     pub provider_factory: Option<ProviderFactory>,
+    /// Replaces how a company's embedding model is built (tests).
+    pub embedding_factory: Option<EmbeddingFactory>,
+    /// Leaves memories to be indexed on demand (`index_pending`), not in the
+    /// background (tests that count what a pass embeds).
+    pub manual_indexing: bool,
     /// Replaces the mailer built from configuration (tests); `Some(None)`
     /// sends nothing.
     pub mailer: Option<Option<Arc<dyn Mailer>>>,
@@ -91,6 +101,7 @@ pub struct App {
     pub router: Router,
     pub services: AppState,
     maintenance: JoinHandle<()>,
+    indexing: Option<JoinHandle<()>>,
 }
 
 pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Result<App> {
@@ -115,6 +126,17 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
             listed_endpoints: config.tenant_llm_endpoints.clone(),
             factory: options.provider_factory.unwrap_or_else(default_factory),
             prices: Arc::new(PriceTable::default()),
+        },
+    ));
+    let embeddings = Arc::new(EmbeddingService::new(
+        db.clone(),
+        EmbeddingServiceOptions {
+            secrets: SecretStore::new(config.secrets.clone()),
+            listed_endpoints: config.tenant_llm_endpoints.clone(),
+            factory: options
+                .embedding_factory
+                .unwrap_or_else(default_embedding_factory),
+            prices: llm.prices().clone(),
         },
     ));
     let access = Arc::new(AccessService::new(db.clone()));
@@ -147,6 +169,7 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
         access: access.clone(),
         llm: llm.clone(),
         prices: llm.prices().clone(),
+        embeddings: embeddings.clone(),
         connectors: connectors.clone(),
         bus: bus.clone(),
         notifier: ApprovalNotifier::new(
@@ -182,6 +205,7 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
         connectors,
         bus: bus.clone(),
         llm,
+        embeddings,
         limits,
         background,
         shutdown: watch::channel(false).0,
@@ -202,6 +226,7 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
     Ok(App {
         router,
         maintenance: spawn_maintenance(services.clone()),
+        indexing: (!options.manual_indexing).then(|| spawn_memory_indexing(services.clone())),
         services,
     })
 }
@@ -228,6 +253,10 @@ impl App {
         // Ended before the runs are awaited: its expiry sweep may start one.
         self.maintenance.abort();
         let _ = self.maintenance.await;
+        if let Some(indexing) = self.indexing {
+            indexing.abort();
+            let _ = indexing.await;
+        }
         self.services.runs.idle().await;
         self.services.background.idle().await;
         self.services.connectors.close().await;

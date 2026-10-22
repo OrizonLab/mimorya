@@ -30,12 +30,15 @@ Repères à l'intérieur des crates :
   (contrat d'outil, outils typés), `core/src/skill_rules.rs` (ce qu'une compétence peut
   contenir, ADR-052), `core/src/identity_providers/` (fournisseurs d'identité : émetteur de
   chaque type, domaines, ce que prouve un jeton ou une assertion SAML, nom d'un compte
-  créé, ADR-063, ADR-067, ADR-068), `core/src/demo/` (entreprise
+  créé, enregistrement DNS qui prouve un domaine (`domain_proof.rs`), ADR-063, ADR-067,
+  ADR-068, ADR-069), `core/src/demo/` (entreprise
   fictive par thème).
 - `db/migrations/` (SQL numéroté, source de vérité du schéma),
-  `db/src/repositories/` (un fichier par entité), `db/src/seed/` (organisation,
+  `db/src/repositories/` (un fichier par entité ; la mémoire : `memory.rs`, recherche
+  hybride `memory_search.rs`, vecteurs `memory_embeddings.rs`, ADR-074), `db/src/seed/` (organisation,
   connecteurs, mémoires, compétences de démonstration), `db/src/testing.rs`.
-- `agent/src/llm/<fournisseur>/`, `agent/src/runtime/` (boucle, appels modèle, appels
+- `agent/src/llm/<fournisseur>/`, `agent/src/llm/embedding/` (modèles d'embeddings de la
+  mémoire sémantique, ADR-074), `agent/src/runtime/` (boucle, appels modèle, appels
   d'outils, revue de réponse, reprise après un arrêt du service, ports),
   `agent/src/tools/` (registre, PEP,
   `platform/`), `agent/src/testing/` (fonctionnalité `testing`).
@@ -44,8 +47,9 @@ Repères à l'intérieur des crates :
 - `api/src/plugins/` (contexte de requête, limitation de débit, CSRF (sauf la réception
   des réponses SAML, ADR-068), session,
   en-têtes de sécurité, audit des modifications d'administration refusées, sur une ressource introuvable ou envoyant un identifiant inconnu,
-  maintenance périodique : runs bloqués, liens expirés, demandes de validation échues
-  et relances avant échéance, ADR-061, ADR-062),
+  maintenance périodique : runs bloqués, liens expirés, absences terminées, demandes de
+  validation échues et relances avant échéance, ADR-061, ADR-062 ; indexation de la
+  mémoire en arrière-plan, `memory_indexing.rs`, ADR-074),
   `api/src/routes/` (un module par ressource, `admin/`), `api/src/contract/` (réponses
   et corps de requêtes typés, un fichier par ressource, dont sont générés les types
   TypeScript, ADR-036, ADR-039),
@@ -53,9 +57,12 @@ Repères à l'intérieur des crates :
   verrou par entreprise), `api/src/services/account.rs` (son propre compte),
   `api/src/services/runs/` (tour de conversation, décisions, contexte, exécution,
   ports PostgreSQL, résultat, reprise au démarrage, ADR-053, circuit des validations,
-  avis au responsable, expiration et relance des demandes, ADR-059 à ADR-062),
+  avis au responsable (`approval_notice/`, rattrapé au démarrage, ADR-070), expiration et
+  relance des demandes, ADR-059 à ADR-062, absence et remplaçant
+  (`approval_delegation.rs`, ADR-071 à ADR-073)),
   `api/src/services/llm.rs` (fournisseur de modèle de
-  chaque entreprise), `api/src/services/invitations/` (liens d'invitation, ADR-027),
+  chaque entreprise), `api/src/services/embeddings/` (modèle d'embeddings de chaque
+  entreprise, vecteur d'une demande, indexation de la mémoire, ADR-074), `api/src/services/invitations/` (liens d'invitation, ADR-027),
   `api/src/services/password_reset/` (mot de passe oublié, ADR-028),
   `api/src/services/sso/` (connexion par le fournisseur d'identité de l'entreprise :
   départ (`start.rs`), tentative scellée, OpenID Connect, adresses contrôlées, liaison des
@@ -63,16 +70,17 @@ Repères à l'intérieur des crates :
   heure, ADR-065 ; fournisseur obligatoire pour ses domaines (`requirement.rs`, ADR-066) ;
   compte créé à la première connexion par le lien de l'entreprise (`account.rs`, ADR-067) ;
   SAML 2.0 : métadonnées, vérification stricte et ce que dit l'assertion dans `saml/`,
-  réception et assertions à usage unique dans `saml_return.rs`, ADR-068 ; configuration
-  dans `services/admin/`, dont `provider_designation.rs` : ce qui désigne un fournisseur
-  déclaré),
+  réception et assertions à usage unique dans `saml_return.rs`, ADR-068 ; lecture DNS de
+  la preuve d'un domaine dans `dns.rs`, ADR-069 ; configuration dans `services/admin/`,
+  dont `provider_designation.rs` : ce qui désigne un fournisseur déclaré, et
+  `domain_proofs.rs`),
   `api/src/services/provisioning/` et `api/src/bin/admin/` (commandes d'exploitation :
   migrations, création d'une entreprise réelle et de son administrateur, ADR-033),
   `api/src/mail/` (envoi SMTP), `api/src/secrets/` (chiffrement AES-256-GCM des secrets),
   `api/tests/` (intégration, harnais dans `support/`, dont les fournisseurs d'identité
   simulés, OpenID Connect et SAML).
-- `web/components/<fonctionnalité>/` (account, admin, approvals, chat, memory,
-  operations, shell), `web/components/ui/` (`Loaded` verrouille son contenu pendant un rechargement,
+- `web/components/<fonctionnalité>/` (account, admin, approvals — dont la section
+  « Absence », ADR-073 —, chat, memory, operations, shell), `web/components/ui/` (`Loaded` verrouille son contenu pendant un rechargement,
   ADR-042), `web/lib/api/` (client, `contract.ts`
   généré par `pnpm contract`, `useApiData`), `web/lib/use-synced-state.ts` (état d'un
   formulaire repris de la liste rechargée, ADR-041), `web/lib/focus-keeper.ts` (focus rendu
@@ -215,7 +223,8 @@ Avant chaque commit : `pnpm check && pnpm test:int` doivent passer.
   tests marqués `#[ignore = "requires PostgreSQL"]`, lancés par `cargo test-int`
   (en série ; base `mimorya_test` recréée une fois par binaire de test).
 - Le modèle est simulé avec `ScriptedProvider` (`mimorya_agent::testing`, fonctionnalité
-  `testing`) ; les ports avec `InMemoryPorts`. Aucun test n'appelle un fournisseur réel.
+  `testing`), le modèle d'embeddings avec `ConceptEmbedder` ; les ports avec
+  `InMemoryPorts`. Aucun test n'appelle un fournisseur réel.
 - Bout en bout : `apps/web/e2e/` (Playwright, `pnpm test:e2e`, en CI à chaque PR) contre
   l'exemple `e2e_server` (modèle scénarisé, e-mails écrits dans un dossier) ; chaque test
   échoue sur une violation de la CSP ou une erreur de page. Un parcours web nouveau ou

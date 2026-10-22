@@ -51,6 +51,22 @@ pub fn check_tenant_llm(
         None => default_model(provider)
             .ok_or_else(|| format!("Indiquez le modèle à utiliser chez « {provider} »"))?,
     };
+    check_model_name(model)?;
+    let base_url = chosen_endpoint(
+        provider,
+        uses_listed_endpoint(provider),
+        base_url,
+        listed_endpoints,
+    )?;
+    Ok(TenantLlmChoice {
+        provider: provider.to_string(),
+        model: model.to_string(),
+        base_url,
+    })
+}
+
+/// Refuses a model name a provider would not take (in French).
+pub(crate) fn check_model_name(model: &str) -> Result<(), String> {
     let well_formed = model.chars().count() <= MAX_MODEL_CHARS
         && model
             .chars()
@@ -61,30 +77,32 @@ pub fn check_tenant_llm(
              {MAX_MODEL_CHARS} caractères au plus"
         ));
     }
+    Ok(())
+}
+
+/// The endpoint a company chose: none for a kind served at its official
+/// address, else one the operator lists (`listed_kind`); why not, in French.
+pub(crate) fn chosen_endpoint(
+    provider: &str,
+    listed_kind: bool,
+    base_url: Option<&str>,
+    listed_endpoints: &[String],
+) -> Result<Option<String>, String> {
     let base_url = base_url.map(str::trim).filter(|u| !u.is_empty());
-    let base_url = match (uses_listed_endpoint(provider), base_url) {
-        (false, None) => None,
-        (false, Some(_)) => {
-            return Err(format!(
-                "« {provider} » s’utilise à son adresse officielle : pas d’adresse à indiquer"
-            ));
-        }
+    match (listed_kind, base_url) {
+        (false, None) => Ok(None),
+        (false, Some(_)) => Err(format!(
+            "« {provider} » s’utilise à son adresse officielle : pas d’adresse à indiquer"
+        )),
         (true, Some(url)) if listed_endpoints.iter().any(|listed| listed == url) => {
-            Some(url.to_string())
+            Ok(Some(url.to_string()))
         }
-        (true, _) => {
-            return Err(
-                "Choisissez l’adresse du serveur parmi celles qu’autorise l’exploitant de la \
-                 plateforme"
-                    .into(),
-            );
-        }
-    };
-    Ok(TenantLlmChoice {
-        provider: provider.to_string(),
-        model: model.to_string(),
-        base_url,
-    })
+        (true, _) => Err(
+            "Choisissez l’adresse du serveur parmi celles qu’autorise l’exploitant de la \
+             plateforme"
+                .into(),
+        ),
+    }
 }
 
 /// The public endpoint of a hosted kind, written out so that nothing comes

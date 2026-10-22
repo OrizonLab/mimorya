@@ -381,6 +381,87 @@ verifiedAt: string | null, };
 export type Done = { ok: boolean, };
 
 /**
+ * Body of `PUT /admin/embedding`: the company's embedding model.
+ */
+export type EmbeddingChoice = { provider: string,
+/**
+ * Absent or blank: the provider's default model.
+ */
+model?: string, baseUrl?: string,
+/**
+ * Absent: the provider's starting value.
+ */
+minSimilarity?: number,
+/**
+ * Absent: the stored key is kept (same endpoint only).
+ */
+apiKey?: string, };
+
+/**
+ * A kind of embedding provider a company may choose.
+ */
+export type EmbeddingKind = { kind: string, requiresKey: boolean,
+/**
+ * Served at an endpoint the operator lists.
+ */
+listedEndpoint: boolean, defaultModel: string | null,
+/**
+ * Where to start the closeness a memory needs, for this kind.
+ */
+defaultMinSimilarity: number, };
+
+/**
+ * The company's embedding model.
+ */
+export type EmbeddingSettingsView = { provider: string, model: string, baseUrl: string | null, minSimilarity: number, keyStored: boolean,
+/**
+ * The stored configuration can serve (key readable, endpoint still listed…).
+ */
+usable: boolean,
+/**
+ * Why it cannot, when it cannot (French).
+ */
+problem: string | null,
+/**
+ * Active memories with a vector of this model.
+ */
+embedded: number,
+/**
+ * Active memories.
+ */
+memories: number,
+/**
+ * Why the last indexing failed, until one succeeds (French).
+ */
+indexingError: string | null, updatedAt: string, };
+
+/**
+ * `POST /admin/embedding/test`.
+ */
+export type EmbeddingTestResult = { ok: boolean, provider: string, model: string,
+/**
+ * The provider's refusal, as shown to users (never the key).
+ */
+error: string | null, };
+
+/**
+ * `GET /admin/embedding`.
+ */
+export type EmbeddingView = {
+/**
+ * The server can seal keys (`MIMORYA_MASTER_KEY`).
+ */
+secretsAvailable: boolean,
+/**
+ * `None`: the company's memory is searched by its words only.
+ */
+settings: EmbeddingSettingsView | null, providers: Array<EmbeddingKind>,
+/**
+ * Endpoints the operator lists for self-hosted servers.
+ */
+endpoints: Array<string>, };
+
+/**
  * Where a permission is checked so far.
  */
 export type Enforcement = "not_yet" | "holder" | "per_resource";

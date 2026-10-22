@@ -11,7 +11,7 @@ static OVERFLOW_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)context length|too long|maximum context").expect("valid regex")
 });
 
-fn api_message(body: &str) -> String {
+pub(crate) fn api_message(body: &str) -> String {
     serde_json::from_str::<Value>(body)
         .ok()
         .and_then(|v| v["error"]["message"].as_str().map(str::to_string))

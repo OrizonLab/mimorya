@@ -1,11 +1,13 @@
-//! Memory persistence and retrieval. Visibility is applied in SQL from the
+//! Memory persistence and listing. Visibility is applied in SQL from the
 //! filter computed by the core memory rules (pre-filtering): rows outside the
-//! subject's reach are never loaded, let alone ranked.
+//! subject's reach are never loaded, let alone ranked. The search lives in
+//! `memory_search.rs`, the vectors in `memory_embeddings.rs`.
 
 use chrono::{DateTime, Utc};
 use mimorya_core::authz::Sensitivity;
 use mimorya_core::memory::{MemoryKind, MemoryReadFilter, MemoryScope, MemoryStatus, UnitFilter};
 
+pub use super::memory_search::{Meaning, MemorySearchHit, search_memory, to_or_tsquery};
 pub use mimorya_core::memory::MemorySource;
 use sqlx::PgConnection;
 use sqlx::types::Json;
@@ -39,13 +41,13 @@ const MEMORY_COLUMNS: &str = "id, tenant_id, scope, owner_user_id, org_unit_id, 
 
 /// Visibility predicate. Parameters: $1 owner, $2 shared, $3 all units,
 /// $4 unit ids, $5 clearance rank.
-const VISIBLE: &str = "((scope = 'user' and owner_user_id = $1) \
+pub(super) const VISIBLE: &str = "((scope = 'user' and owner_user_id = $1) \
     or ($2 and ((scope = 'org_unit' and ($3 or org_unit_id = any($4))) or scope in ('tenant', 'experience')) \
         and array_position(array['public', 'internal', 'confidential', 'restricted'], sensitivity) - 1 <= $5))";
 
-const ACTIVE: &str = "status = 'active' and (expires_at is null or expires_at > now())";
+pub(super) const ACTIVE: &str = "status = 'active' and (expires_at is null or expires_at > now())";
 
-fn bind_visibility<'q, O>(
+pub(super) fn bind_visibility<'q, O>(
     query: sqlx::query::QueryAs<'q, sqlx::Postgres, O, sqlx::postgres::PgArguments>,
     filter: &MemoryReadFilter,
     clearance: Sensitivity,
@@ -60,55 +62,6 @@ fn bind_visibility<'q, O>(
         .bind(all_units)
         .bind(unit_ids)
         .bind(i32::from(clearance.rank()))
-}
-
-/// OR-query over the significant words of a natural-language request.
-pub fn to_or_tsquery(query: &str) -> Option<String> {
-    let mut words: Vec<String> = Vec::new();
-    for word in query.to_lowercase().split(|c: char| !c.is_alphanumeric()) {
-        if word.chars().count() > 2 && !words.iter().any(|w| w == word) {
-            words.push(word.to_string());
-        }
-        if words.len() == 24 {
-            break;
-        }
-    }
-    (!words.is_empty()).then(|| words.join(" | "))
-}
-
-#[derive(Debug, Clone, sqlx::FromRow)]
-pub struct MemorySearchHit {
-    pub id: Uuid,
-    pub scope: String,
-    pub kind: String,
-    pub title: String,
-    pub content: String,
-    pub org_unit_id: Option<Uuid>,
-    pub updated_at: DateTime<Utc>,
-    pub score: f32,
-}
-
-pub async fn search_memory(
-    conn: &mut PgConnection,
-    filter: &MemoryReadFilter,
-    query: &str,
-    limit: i64,
-    clearance: Sensitivity,
-) -> sqlx::Result<Vec<MemorySearchHit>> {
-    let Some(ts_query) = to_or_tsquery(query) else {
-        return Ok(Vec::new());
-    };
-    let sql = format!(
-        "select id, scope, kind, title, content, org_unit_id, updated_at, \
-         ts_rank_cd(content_tsv, to_tsquery('french', $6)) as score \
-         from memory_items where {ACTIVE} and {VISIBLE} and content_tsv @@ to_tsquery('french', $6) \
-         order by score desc, updated_at desc limit $7"
-    );
-    bind_visibility(sqlx::query_as(&sql), filter, clearance)
-        .bind(ts_query)
-        .bind(limit)
-        .fetch_all(conn)
-        .await
 }
 
 /// Memories visible to the subject, newest first (memory management screen).

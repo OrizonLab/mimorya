@@ -244,9 +244,13 @@ Un responsable **ne voit pas** la mémoire personnelle de ses collaborateurs.
 
 1. **Pré-filtrage SQL** par l'entreprise (RLS) et par le filtre de visibilité calculé
    par `core` (`memoryReadFilter`) — jamais de filtrage après classement seulement.
-2. Classement **hybride** : plein texte PostgreSQL (`ts_rank`) et, si un modèle
-   d'embedding est configuré, similarité cosinus pgvector ; fusion par rang réciproque
-   (RRF).
+2. Classement **hybride** : plein texte PostgreSQL (`ts_rank_cd`) et, si l'entreprise a
+   choisi un modèle d'embeddings (ADR-074), similarité cosinus pgvector au-dessus de sa
+   similarité minimale, entre vecteurs du même modèle, calculée exactement sur les
+   mémoires pré-filtrées ; fusion par rang réciproque (RRF, constante 60). Le vecteur de
+   la demande est attendu 5 secondes au plus : un modèle en panne laisse les mots
+   trouver seuls. Les mémoires actives reçoivent leur vecteur en arrière-plan (une
+   proposition, une fois approuvée).
 3. Exclusion des éléments expirés, archivés ou d'une sensibilité supérieure à
    l'habilitation.
 4. Injection dans le contexte **avec la source** (identifiant, espace, date) ; mise à

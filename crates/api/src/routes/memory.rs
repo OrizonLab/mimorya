@@ -136,6 +136,7 @@ async fn create(
     )
     .await?;
     tx.commit().await?;
+    state.embeddings.wake();
     Ok((StatusCode::CREATED, Json(Created { id })))
 }
 
@@ -198,5 +199,8 @@ async fn review(
     )
     .await?;
     tx.commit().await?;
+    if approve {
+        state.embeddings.wake();
+    }
     Ok(Json(Done::OK))
 }

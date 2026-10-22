@@ -261,6 +261,10 @@ en mémoire du processus ; avec plusieurs instances, elle passera par
 - **Routage** par classe de tâche (`chat`, `planning`, `verification`, `summarize`,
   `embedding`) configurable par entreprise, avec contraintes de confidentialité
   (ex. « données confidentielles → modèle local uniquement », phase 2).
+- **Embeddings** : `EmbeddingProvider` (adaptateur compatible OpenAI `/embeddings` :
+  Mistral, OpenAI, serveurs listés par l'exploitant), choisi par l'entreprise et
+  désactivé par défaut (ADR-074) ; vecteurs de 1024 dimensions calculés en arrière-plan
+  pour les mémoires actives, et pour chaque demande au moment de chercher.
 - Suivi des coûts : chaque appel enregistre fournisseur, modèle, tokens et coût estimé
   dans `usage_records`.
 

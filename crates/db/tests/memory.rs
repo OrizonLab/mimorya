@@ -104,6 +104,7 @@ async fn ranks_full_text_matches_within_the_visible_set_only() {
         &mut tx,
         &filter,
         "Quand ont lieu les retours chantier ?",
+        None,
         5,
         Sensitivity::Internal,
     )

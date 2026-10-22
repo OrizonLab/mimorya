@@ -6,7 +6,7 @@ mod cipher;
 mod store;
 
 pub use cipher::{KEY_VERSION, MASTER_KEY_LEN, SecretCipher};
-pub use store::{LLM_API_KEY, SecretRead, SecretStore};
+pub use store::{EMBEDDING_API_KEY, LLM_API_KEY, SecretRead, SecretStore};
 
 /// Master keys published by this repository's tests (integration and end to
 /// end): anyone can read them, so production refuses them.

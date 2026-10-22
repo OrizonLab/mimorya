@@ -111,6 +111,8 @@ async fn main() -> anyhow::Result<()> {
         BuildOptions {
             provider: Some(Some(platform)),
             provider_factory: Some(factory),
+            embedding_factory: None,
+            manual_indexing: false,
             mailer: Some(Some(mailer)),
             sso_network: Some(NetworkPolicy {
                 allow_private_network: true,

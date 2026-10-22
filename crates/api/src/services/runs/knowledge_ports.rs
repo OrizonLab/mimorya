@@ -5,12 +5,13 @@ use mimorya_agent::runtime::{
     MemoryHit, MemoryStore, NewMemory, SkillContent, SkillStore, SkillSummary,
 };
 use mimorya_core::authz::Sensitivity;
-use mimorya_core::memory::MemoryReadFilter;
+use mimorya_core::memory::{MemoryReadFilter, MemoryStatus};
 use mimorya_db::repositories::{memory, skills};
 use uuid::Uuid;
 
 use super::context::memory_hit;
 use super::db_ports::DbPorts;
+use crate::services::embeddings::UsageBy;
 
 #[async_trait]
 impl MemoryStore for DbPorts {
@@ -21,9 +22,16 @@ impl MemoryStore for DbPorts {
         limit: u32,
         clearance: Sensitivity,
     ) -> anyhow::Result<Vec<MemoryHit>> {
+        let by = UsageBy {
+            user_id: Some(self.scope.user_id),
+            run_id: Some(self.scope.run_id),
+        };
+        let tenant_id = self.scope.tenant_id;
+        let meaning = self.embeddings.meaning_of(tenant_id, query, by).await;
+        let meaning = meaning.as_ref().map(|m| m.as_meaning());
         let mut tx = self.tx().await?;
-        let hits =
-            memory::search_memory(&mut tx, filter, query, i64::from(limit), clearance).await?;
+        let limit = i64::from(limit);
+        let hits = memory::search_memory(&mut tx, filter, query, meaning, limit, clearance).await?;
         tx.commit().await?;
         Ok(hits.into_iter().filter_map(memory_hit).collect())
     }
@@ -49,6 +57,10 @@ impl MemoryStore for DbPorts {
         )
         .await?;
         tx.commit().await?;
+        // A proposal waits for its approval.
+        if input.status == MemoryStatus::Active {
+            self.embeddings.wake();
+        }
         Ok(id)
     }
 

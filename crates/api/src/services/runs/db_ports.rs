@@ -23,6 +23,7 @@ use super::events::record_run_event;
 use super::outcome::persist_outcome;
 use crate::contract::AssistantDelta;
 use crate::services::access::AccessService;
+use crate::services::embeddings::EmbeddingService;
 use crate::services::event_bus::{BusEvent, RunEventBus};
 
 /// Approval requests left unanswered expire after a week.
@@ -47,6 +48,8 @@ pub struct DbPorts {
     access: Arc<AccessService>,
     /// Tells the manager a request awaits them (ADR-060).
     notifier: ApprovalNotifier,
+    /// Searches the company's memory by meaning too (ADR-074).
+    pub(super) embeddings: Arc<EmbeddingService>,
 }
 
 pub fn engine_ports(
@@ -55,6 +58,7 @@ pub fn engine_ports(
     bus: Arc<RunEventBus>,
     access: Arc<AccessService>,
     notifier: ApprovalNotifier,
+    embeddings: Arc<EmbeddingService>,
 ) -> EnginePorts {
     let ports = Arc::new(DbPorts {
         db: db.clone(),
@@ -62,6 +66,7 @@ pub fn engine_ports(
         bus,
         access,
         notifier,
+        embeddings,
     });
     EnginePorts {
         events: ports.clone(),
