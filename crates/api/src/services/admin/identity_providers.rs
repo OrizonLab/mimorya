@@ -1,13 +1,12 @@
-//! The company's identity providers (ADR-063), declared, changed or
-//! removed by an administrator of its settings, under the administration
-//! lock. The provider is reached before it is declared; the client secret
-//! is sealed in the secret store, never returned nor audited.
+//! The company's identity providers (ADR-063, SAML: ADR-068), declared,
+//! changed or removed by an administrator of its settings, under the
+//! administration lock. An OpenID Connect provider is reached before it is
+//! declared, a SAML provider's metadata read; the client secret is sealed
+//! in the secret store, never returned nor audited.
 
-use mimorya_connectors::mcp::url_problem;
 use mimorya_core::DomainError;
 use mimorya_core::identity_providers::{
-    ProviderKind, client_id_problem, client_secret_problem, declared_issuer, declared_name,
-    issuer_own_kind, normalise_domains,
+    ProviderKind, client_secret_problem, declared_name, issuer_own_kind, normalise_domains,
 };
 use mimorya_db::Database;
 use mimorya_db::repositories::audit::append_audit;
@@ -18,6 +17,7 @@ use mimorya_db::repositories::identity_providers::{
 use serde_json::json;
 use uuid::Uuid;
 
+use super::provider_designation::{Given, designation, saml_entity_of};
 use super::{audit_entry, begin_change};
 use crate::secrets::SecretStore;
 use crate::services::AccessContext;
@@ -32,8 +32,10 @@ pub struct ProviderDeclaration {
     pub name: Option<String>,
     pub directory_id: Option<String>,
     pub issuer: Option<String>,
-    pub client_id: String,
-    pub client_secret: String,
+    pub client_id: Option<String>,
+    pub client_secret: Option<String>,
+    /// SAML: the provider's metadata (XML).
+    pub metadata: Option<String>,
     pub domains: Vec<String>,
     pub enabled: bool,
     pub required: bool,
@@ -44,6 +46,8 @@ pub struct ProviderDeclaration {
 pub struct ProviderChanges {
     pub name: Option<String>,
     pub client_secret: Option<String>,
+    /// SAML: the provider's metadata anew.
+    pub metadata: Option<String>,
     pub domains: Option<Vec<String>>,
     pub enabled: Option<bool>,
     pub required: Option<bool>,
@@ -63,25 +67,21 @@ pub async fn declare_identity_provider(
 ) -> anyhow::Result<Uuid> {
     access.require_tenant_wide(PERMISSION)?;
     let kind = ProviderKind::parse(&input.kind)
-        .ok_or_else(|| invalid("Type de fournisseur : microsoft, google ou oidc"))?;
-    let issuer = declared_issuer(kind, input.directory_id.as_deref(), input.issuer.as_deref())
-        .map_err(invalid)?;
-    if let Some(problem) = url_problem(&issuer, sso.network()) {
-        return Err(invalid(format!("Adresse de l’émetteur : {problem}")).into());
-    }
+        .ok_or_else(|| invalid("Type de fournisseur : microsoft, google, oidc ou saml"))?;
     let name = declared_name(kind, input.name.as_deref()).map_err(invalid)?;
-    if let Some(problem) =
-        client_id_problem(&input.client_id).or_else(|| client_secret_problem(&input.client_secret))
-    {
-        return Err(invalid(problem).into());
-    }
     let domains = normalise_domains(&input.domains).map_err(invalid)?;
+    // Sign-ins are sealed by the master key, whatever the protocol.
     secrets.require()?;
-    // Reached before anything is written, outside the lock.
-    if let Some(problem) = sso.issuer_problem(&issuer).await {
-        return Err(invalid(problem).into());
-    }
+    let given = Given {
+        directory_id: input.directory_id,
+        issuer: input.issuer,
+        client_id: input.client_id,
+        client_secret: input.client_secret,
+        metadata: input.metadata,
+    };
     let tenant_id = access.subject.tenant_id;
+    let designated = designation(sso, tenant_id, kind, given).await?;
+    let (issuer, client_id) = (&designated.issuer, &designated.client_id);
     let mut tx = begin_change(db, access, PERMISSION).await?;
     let id = create_identity_provider(
         &mut tx,
@@ -89,11 +89,12 @@ pub async fn declare_identity_provider(
             tenant_id,
             kind: kind.as_str(),
             name: &name,
-            issuer: &issuer,
-            client_id: &input.client_id,
+            issuer,
+            client_id,
             enabled: input.enabled,
             required: input.required,
             create_accounts: input.create_accounts,
+            saml_metadata: designated.saml_metadata.as_deref(),
             created_by_user_id: access.subject.user_id,
         },
     )
@@ -104,21 +105,18 @@ pub async fn declare_identity_provider(
     if let Some(taken) = replace_provider_domains(&mut tx, tenant_id, id, &domains).await? {
         return Err(taken_domain(&taken).into());
     }
-    secrets
-        .put(
-            &mut tx,
-            tenant_id,
-            &client_secret_name(id),
-            &input.client_secret,
-        )
-        .await?;
+    if let Some(secret) = &designated.client_secret {
+        secrets
+            .put(&mut tx, tenant_id, &client_secret_name(id), secret)
+            .await?;
+    }
     append_audit(
         &mut tx,
         audit_entry(access, "identity_provider.created", "identity_provider", id).metadata(json!({
             "kind": kind.as_str(),
             "name": name,
             "issuer": issuer,
-            "clientId": input.client_id,
+            "clientId": client_id,
             "domains": domains,
             "enabled": input.enabled,
             "required": input.required,
@@ -138,6 +136,7 @@ fn taken_domain(domain: &str) -> DomainError {
 
 pub async fn change_identity_provider(
     db: &Database,
+    sso: &SsoService,
     secrets: &SecretStore,
     access: &AccessContext,
     id: Uuid,
@@ -178,6 +177,22 @@ pub async fn change_identity_provider(
         ))
         .into());
     }
+    let saml = kind == ProviderKind::Saml;
+    if saml && changes.client_secret.is_some() {
+        return Err(invalid("SAML : pas de secret client").into());
+    }
+    if let Some(metadata) = &changes.metadata {
+        if !saml {
+            return Err(invalid("Métadonnées : pour un fournisseur SAML seulement").into());
+        }
+        // Its certificates rolled over, never another provider.
+        if saml_entity_of(sso, metadata)? != current.issuer {
+            return Err(invalid(
+                "SAML : ces métadonnées sont celles d’un autre fournisseur : déclarez-le à part",
+            )
+            .into());
+        }
+    }
     let name = changes
         .name
         .as_deref()
@@ -192,6 +207,7 @@ pub async fn change_identity_provider(
             enabled: changes.enabled,
             required: changes.required,
             create_accounts: changes.create_accounts,
+            saml_metadata: changes.metadata.clone(),
         },
     )
     .await?;
@@ -214,6 +230,7 @@ pub async fn change_identity_provider(
             "required": changes.required,
             "createAccounts": changes.create_accounts,
             "secretReplaced": changes.client_secret.is_some(),
+            "metadataReplaced": changes.metadata.is_some(),
             "previousDomains": current.domains,
             "previousEnabled": current.enabled,
             "previousRequired": current.required,

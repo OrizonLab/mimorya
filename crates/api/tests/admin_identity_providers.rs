@@ -126,7 +126,7 @@ async fn a_declaration_is_checked_before_anything_is_written() {
         body
     };
     for (body, message) in [
-        (with(json!({ "kind": "saml" })), "Type de fournisseur"),
+        (with(json!({ "kind": "ldap" })), "Type de fournisseur"),
         (
             with(json!({ "kind": "microsoft", "issuer": null })),
             "indiquez l’identifiant de l’annuaire",

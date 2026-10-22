@@ -144,6 +144,7 @@ async fn a_microsoft_directory_s_account_is_known_by_its_object_id() {
             enabled: true,
             required: false,
             create_accounts: false,
+            saml_metadata: None,
             created_by_user_id: user::PAUL,
         },
     )

@@ -154,8 +154,18 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
     l'entreprise) gardent le leur : un fournisseur en panne ne bloque jamais
     l'entreprise. Le fournisseur d'une autre entreprise, même obligatoire pour le même
     domaine, n'atteint aucun de ses comptes.
-  - Suite : SAML, provisionnement SCIM (phase 3), MFA déléguée à l'IdP ; MFA TOTP
-    locale si besoin.
+  - **SAML 2.0** (ADR-068, `saml-rs` en Rust pur) : fournisseur déclaré par ses
+    métadonnées ; assertion obligatoirement signée (RSA avec SHA-2, canonicalisation
+    exclusive) par un certificat de ces métadonnées, audience et destinataire de
+    l'application, réponse à la demande attendue (tentative scellée dans un cookie
+    `SameSite=None; Secure` propre au retour SAML), fenêtre de validité, assertions à
+    usage unique en base (rejeu refusé sur tout serveur). L'identifiant d'entité de
+    l'application est propre à chaque entreprise : la confiance d'un fournisseur ne vaut
+    que pour elle. Seule exemption
+    de l'en-tête anti-CSRF : la réception de la réponse, liée par la tentative et la
+    signature. Ni connexion à l'initiative du fournisseur, ni assertion chiffrée.
+  - Suite : provisionnement SCIM (phase 3), MFA déléguée à l'IdP ; MFA TOTP locale si
+    besoin.
 
 ## 5. Autorisations
 

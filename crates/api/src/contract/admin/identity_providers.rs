@@ -1,6 +1,6 @@
-//! The company's identity providers (`settings:manage`, ADR-063): declared,
-//! changed, removed. The client secret is write-only: never returned, only
-//! whether one is stored.
+//! The company's identity providers (`settings:manage`, ADR-063; SAML:
+//! ADR-068): declared, changed, removed. The client secret is write-only:
+//! never returned, only whether one is stored.
 
 use mimorya_db::repositories::identity_providers::IdentityProviderRow;
 use serde::{Deserialize, Serialize};
@@ -63,12 +63,17 @@ pub struct IdentityProvidersView {
     pub secrets_available: bool,
     /// The address to register at the provider for the return of a sign-in.
     pub redirect_uri: String,
+    /// SAML: the company's own entity ID (identifier) and the address
+    /// responses are posted to, to register at the provider.
+    pub saml_entity_id: String,
+    pub saml_acs_url: String,
     pub providers: Vec<IdentityProviderView>,
 }
 
 /// Body of `POST /admin/identity-providers`. What designates the provider
 /// depends on its kind: the directory (tenant ID) of a Microsoft Entra ID,
-/// nothing for Google, the issuer's address otherwise.
+/// nothing for Google, the issuer's address for OpenID Connect, each with
+/// the company's client and its secret; a SAML provider's metadata alone.
 #[derive(Deserialize, Validate, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NewIdentityProvider {
@@ -84,9 +89,17 @@ pub struct NewIdentityProvider {
     #[serde(default, deserialize_with = "trimmed_opt")]
     #[ts(optional)]
     pub issuer: Option<String>,
-    #[serde(deserialize_with = "trimmed")]
-    pub client_id: String,
-    pub client_secret: String,
+    /// Absent for SAML.
+    #[serde(default, deserialize_with = "trimmed_opt")]
+    #[ts(optional)]
+    pub client_id: Option<String>,
+    #[serde(default)]
+    #[ts(optional)]
+    pub client_secret: Option<String>,
+    /// SAML: the provider's metadata (XML).
+    #[serde(default)]
+    #[ts(optional)]
+    pub metadata: Option<String>,
     pub domains: Vec<String>,
     /// Absent: enabled.
     #[serde(default)]
@@ -114,6 +127,10 @@ pub struct IdentityProviderUpdate {
     #[serde(default)]
     #[ts(optional)]
     pub client_secret: Option<String>,
+    /// SAML: the provider's metadata anew (its certificates rolled over).
+    #[serde(default)]
+    #[ts(optional)]
+    pub metadata: Option<String>,
     #[serde(default)]
     #[ts(optional)]
     pub domains: Option<Vec<String>>,

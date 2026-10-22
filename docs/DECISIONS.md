@@ -2359,8 +2359,8 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - la connexion par mot de passe reste ouverte ; la rendre impossible pour les
     domaines couverts (fait : ADR-066), accepter une invitation par le fournisseur (fait :
     ADR-064), la
-    création de compte à la première connexion (fait : ADR-067), SAML et la vérification
-    de propriété d'un domaine viendront ensuite ;
+    création de compte à la première connexion (fait : ADR-067), SAML (fait : ADR-068) et
+    la vérification de propriété d'un domaine viendront ensuite ;
   - lots : (1) modèle, connexion, configuration par l'API, tests contre un fournisseur
     simulé ; (2) onglet « Connexion » de l'administration (`settings:manage` : déclarer,
     modifier, désactiver, supprimer ; adresse de retour à enregistrer chez le
@@ -2608,3 +2608,76 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     `apps/web/e2e/single-sign-on.spec.ts` (case cochée dans « Connexion », relue après
     rechargement ; lien affiché, ouvert par un nouveau venu, compte créé à son nom et
     relu dans l'annuaire).
+
+## ADR-068 — Prendre en charge les fournisseurs d'identité SAML 2.0
+
+- **Date** : 2026-10-21 · **Statut** : acceptée
+- **Contexte** : beaucoup d'entreprises connectent leurs applications par SAML 2.0 (AD FS,
+  applications SAML d'Entra ID, Okta, Shibboleth…), pas par OpenID Connect (ADR-063). La
+  vérification d'une réponse SAML est délicate (signatures XML, attaques par
+  enveloppement) ; les bibliothèques Rust courantes (`samael`) s'appuient sur libxml2 et
+  xmlsec, en C.
+- **Décision** :
+  - bibliothèque **`saml-rs` 0.6.1**, en Rust pur (`unsafe` interdit), dont les signatures
+    XML passent par `bergshamra` sur RustCrypto (fonctionnalité `crypto-rustcrypto`
+    seule : ni PKCS#11, ni algorithmes post-quantiques ou anciens). Elle vérifie la
+    signature avec les seuls certificats des métadonnées déclarées, n'extrait que le
+    contenu couvert par une référence vérifiée et refuse les enveloppements connus. Elle
+    est en version 0.x, sans audit externe : version épinglée exactement (`=0.6.1`), usage
+    isolé dans `services/sso/saml/`, politique de validation stricte et refus testés un
+    à un, enveloppement compris ;
+  - un fournisseur de type **`saml`** se déclare par ses **métadonnées** (XML collé,
+    256 Kio au plus, `identity_providers.saml_metadata`, migration 0021) : son
+    identifiant d'entité devient l'émetteur ; elles doivent donner une adresse de
+    connexion HTTP-Redirect (contrôlée comme toute adresse d'un fournisseur, ADR-063) et
+    au moins un certificat de signature. Pas de secret client ; le client est
+    l'identifiant d'entité **propre à l'entreprise** (`{origine}/api/auth/saml/{id de
+l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
+    déclaration et affiché dans « Connexion » avec l'adresse de réception, commune
+    (`{origine}/api/auth/saml/acs`). La confiance qu'un fournisseur accorde est ainsi
+    liée à une entreprise : une autre qui déclarerait les mêmes métadonnées n'obtient de
+    lui aucune assertion qui la nomme comme audience, comme le client et son secret en
+    OpenID Connect. Les certificats se renouvellent en redonnant les métadonnées, du même
+    identifiant d'entité seulement ;
+  - le départ envoie le navigateur au fournisseur avec une demande (`AuthnRequest`,
+    HTTP-Redirect, non signée) ; la tentative scellée (ADR-063) garde la demande
+    attendue, dans un cookie propre (`mimorya_saml`, chemin `/api/auth/saml`, 10 minutes,
+    HttpOnly, `SameSite=None; Secure`) : le fournisseur poste sa réponse depuis son propre
+    site. Cette réception est la seule requête modifiante exemptée de l'en-tête
+    anti-CSRF : la tentative scellée, la demande attendue et la signature la lient au
+    navigateur qui a commencé ;
+  - la réponse n'est acceptée que si : l'assertion est **signée** (RSA avec SHA-256/384/512,
+    canonicalisation exclusive) par un certificat des métadonnées ; elle nomme
+    l'application comme audience et l'adresse de réception comme destinataire ; elle
+    répond à la demande attendue ; elle est dans sa fenêtre de validité ; et aucune des
+    assertions de la réponse n'a déjà servi (`sso_used_assertions`, par entreprise,
+    toutes enregistrées ensemble jusqu'à leur expiration, purgées ensuite) : un rejeu est
+    refusé quel que soit le serveur. Ni
+    connexion à l'initiative du fournisseur, ni assertion chiffrée, ni déconnexion
+    unique ;
+  - ce que dit l'assertion suit les règles d'OpenID Connect : le sujet est l'identifiant
+    d'objet d'Entra ID s'il est donné, sinon le NameID (un NameID transitoire, qui change
+    à chaque connexion, n'est accepté qu'avec cet identifiant) ; l'adresse est le NameID
+    s'il en est une, sinon l'attribut e-mail ; le nom vient des attributs usuels
+    (Microsoft, LDAP). Domaines, liaison, invitation (ADR-064), fournisseur obligatoire
+    (ADR-066) et création par le lien (ADR-067) s'appliquent tels quels.
+- **Conséquences** :
+  - le cookie `SameSite=None` exige HTTPS (ou `localhost`) : SAML ne fonctionne pas sur
+    une installation servie en HTTP sur le réseau ;
+  - les métadonnées sont données par l'administrateur, pas relues chez le fournisseur :
+    un certificat renouvelé doit être redonné ;
+  - lots : (1) API, vérification et tests contre le fournisseur SAML de `saml-rs` avec des
+    clés de test (`crates/api/tests/sso_saml.rs`) ; (2) onglet « Connexion » (type SAML,
+    métadonnées, adresses à enregistrer chez le fournisseur) et test de bout en bout ;
+  - tests : `crates/api/tests/sso_saml.rs` (déclaration par les métadonnées, adresses de
+    l'application, connexion et liaison par l'identifiant d'objet, rejeu refusé ;
+    réponse sans tentative, vide, pour une autre demande, signée par une autre clé,
+    altérée, enveloppée (assertion forgée avant celle signée), à l'assertion non
+    signée, hors du profil strict (canonicalisation inclusive), pour une autre
+    application, hors des domaines, fournisseur désactivé entre-temps, tentative SAML
+    portée au retour OpenID Connect : refusées et tracées ; métadonnées illisibles, sans
+    adresse de connexion, avec un secret, sur un fournisseur OpenID Connect, d'un autre
+    fournisseur, adresse privée : refusées ; certificat renouvelé ; compte créé par le
+    lien seulement ; fournisseur d'une entreprise déclaré par une autre : refusé) ;
+    `services/sso/saml/statement.rs`, `saml/flow.rs` (toutes les assertions notées),
+    `core/src/identity_providers/tests.rs`.

@@ -1,8 +1,10 @@
 //! A sign-in under way at a provider, kept by the browser until it comes
 //! back (ADR-063): the company in clear, then the provider, `state`,
-//! `nonce`, PKCE verifier and where the sign-in started sealed by the
-//! master key with the company as associated data, so that it opens only
-//! for it and cannot be altered.
+//! `nonce`, PKCE verifier (OpenID Connect) or the request awaited (SAML,
+//! ADR-068), and where the sign-in started, sealed by the master key with
+//! the company as associated data, so that it opens only for it and cannot
+//! be altered. A SAML provider posts its response from its own site: its
+//! attempt travels in a cookie of its own, sent with such a request.
 //! Nothing is written to the database; the code it awaits is redeemable
 //! once at the provider.
 
@@ -13,11 +15,15 @@ use mimorya_db::repositories::secrets::StoredSecret;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use super::saml::SamlPending;
 use crate::secrets::SecretCipher;
 
 pub const ATTEMPT_COOKIE: &str = "mimorya_sso";
 /// Sent back only to the return address.
 const COOKIE_PATH: &str = "/api/auth/sso";
+pub const SAML_ATTEMPT_COOKIE: &str = "mimorya_saml";
+/// Sent back only to the SAML return address.
+const SAML_COOKIE_PATH: &str = "/api/auth/saml";
 pub const ATTEMPT_LIFETIME: Duration = Duration::minutes(10);
 /// The associated data's name: never the name of a stored secret.
 const SEALED_AS: &str = "sso.attempt";
@@ -33,6 +39,10 @@ pub struct Attempt {
     /// create the account (ADR-067); not from an address.
     #[serde(default)]
     pub from_link: bool,
+    /// SAML: the request the provider's response must answer; `state`,
+    /// `nonce` and verifier are then empty.
+    #[serde(default)]
+    pub saml: Option<SamlPending>,
 }
 
 /// The cookie's value: `company.iv.tag.ciphertext`.
@@ -73,6 +83,24 @@ pub fn attempt_cookie(value: &str, secure: bool) -> String {
     )
 }
 
+/// The provider posts its response from its own site: the cookie goes with
+/// such a request (SameSite=None), which browsers allow only with Secure;
+/// `localhost` counts as secure. Its path and lifetime are the attempt's.
+pub fn saml_attempt_cookie(value: &str) -> String {
+    format!(
+        "{SAML_ATTEMPT_COOKIE}={value}; Max-Age={}; Path={SAML_COOKIE_PATH}; HttpOnly; \
+         SameSite=None; Secure",
+        ATTEMPT_LIFETIME.num_seconds()
+    )
+}
+
+pub fn cleared_saml_attempt_cookie() -> String {
+    format!(
+        "{SAML_ATTEMPT_COOKIE}=; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; \
+         Path={SAML_COOKIE_PATH}; HttpOnly; SameSite=None; Secure"
+    )
+}
+
 pub fn cleared_attempt_cookie(secure: bool) -> String {
     let secure = if secure { "; Secure" } else { "" };
     format!(
@@ -97,6 +125,7 @@ mod tests {
             pkce_verifier: "verifier".into(),
             expires_at: now + ATTEMPT_LIFETIME,
             from_link: true,
+            saml: None,
         }
     }
 
@@ -139,5 +168,11 @@ mod tests {
         let cleared = cleared_attempt_cookie(false);
         assert!(cleared.contains("Max-Age=0") && cleared.contains("Path=/api/auth/sso"));
         assert!(!cleared.contains("Secure"));
+        // SAML: sent with the provider's cross-site post, only securely.
+        let saml = saml_attempt_cookie("v");
+        assert!(saml.starts_with("mimorya_saml=v; Max-Age=600; Path=/api/auth/saml; HttpOnly"));
+        assert!(saml.ends_with("SameSite=None; Secure"));
+        let cleared = cleared_saml_attempt_cookie();
+        assert!(cleared.contains("Max-Age=0") && cleared.contains("Path=/api/auth/saml"));
     }
 }

@@ -359,7 +359,11 @@ export type IdentityProviderUpdate = { name?: string,
 /**
  * A new secret replaces the stored one.
  */
-clientSecret?: string, domains?: Array<string>, enabled?: boolean, required?: boolean, createAccounts?: boolean, };
+clientSecret?: string,
+/**
+ * SAML: the provider's metadata anew (its certificates rolled over).
+ */
+metadata?: string, domains?: Array<string>, enabled?: boolean, required?: boolean, createAccounts?: boolean, };
 
 export type IdentityProviderView = { id: string,
 /**
@@ -396,7 +400,12 @@ secretsAvailable: boolean,
 /**
  * The address to register at the provider for the return of a sign-in.
  */
-redirectUri: string, providers: Array<IdentityProviderView>, };
+redirectUri: string,
+/**
+ * SAML: the company's own entity ID (identifier) and the address
+ * responses are posted to, to register at the provider.
+ */
+samlEntityId: string, samlAcsUrl: string, providers: Array<IdentityProviderView>, };
 
 /**
  * `POST /auth/invitation`: who the invitation is for.
@@ -632,13 +641,22 @@ export type NewConversation = { title?: string, };
 /**
  * Body of `POST /admin/identity-providers`. What designates the provider
  * depends on its kind: the directory (tenant ID) of a Microsoft Entra ID,
- * nothing for Google, the issuer's address otherwise.
+ * nothing for Google, the issuer's address for OpenID Connect, each with
+ * the company's client and its secret; a SAML provider's metadata alone.
  */
 export type NewIdentityProvider = { kind: string,
 /**
  * Absent or blank: the kind's name ("Microsoft 365", "Google Workspace").
  */
-name?: string, directoryId?: string, issuer?: string, clientId: string, clientSecret: string, domains: Array<string>,
+name?: string, directoryId?: string, issuer?: string,
+/**
+ * Absent for SAML.
+ */
+clientId?: string, clientSecret?: string,
+/**
+ * SAML: the provider's metadata (XML).
+ */
+metadata?: string, domains: Array<string>,
 /**
  * Absent: enabled.
  */
