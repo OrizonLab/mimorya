@@ -29,7 +29,8 @@ Repères à l'intérieur des crates :
 - `core/src/authz/` (types, moteur, conditions ABAC, organigramme), `core/src/tools/`
   (contrat d'outil, outils typés), `core/src/skill_rules.rs` (ce qu'une compétence peut
   contenir, ADR-052), `core/src/identity_providers/` (fournisseurs d'identité : émetteur de
-  chaque type, domaines, ce que prouve un jeton, ADR-063), `core/src/demo/` (entreprise
+  chaque type, domaines, ce que prouve un jeton ou une assertion SAML, nom d'un compte
+  créé, ADR-063, ADR-067, ADR-068), `core/src/demo/` (entreprise
   fictive par thème).
 - `db/migrations/` (SQL numéroté, source de vérité du schéma),
   `db/src/repositories/` (un fichier par entité), `db/src/seed/` (organisation,
@@ -40,7 +41,8 @@ Repères à l'intérieur des crates :
   `platform/`), `agent/src/testing/` (fonctionnalité `testing`).
 - `connectors/src/demo_interventions/` (données, planning, accès, `tools/` un fichier
   par outil), `connectors/src/mcp/`, `connectors/src/bin/mcp_demo_docs.rs`.
-- `api/src/plugins/` (contexte de requête, limitation de débit, CSRF, session,
+- `api/src/plugins/` (contexte de requête, limitation de débit, CSRF (sauf la réception
+  des réponses SAML, ADR-068), session,
   en-têtes de sécurité, audit des modifications d'administration refusées, sur une ressource introuvable ou envoyant un identifiant inconnu,
   maintenance périodique : runs bloqués, liens expirés, demandes de validation échues
   et relances avant échéance, ADR-061, ADR-062),
@@ -56,13 +58,19 @@ Repères à l'intérieur des crates :
   chaque entreprise), `api/src/services/invitations/` (liens d'invitation, ADR-027),
   `api/src/services/password_reset/` (mot de passe oublié, ADR-028),
   `api/src/services/sso/` (connexion par le fournisseur d'identité de l'entreprise :
-  tentative scellée, OpenID Connect, adresses contrôlées, liaison des comptes, acceptation
-  des invitations, ADR-063, ADR-064 ; déclarations et clés gardées une heure, ADR-065 ;
-  configuration dans `services/admin/`),
+  départ (`start.rs`), tentative scellée, OpenID Connect, adresses contrôlées, liaison des
+  comptes, acceptation des invitations, ADR-063, ADR-064 ; déclarations et clés gardées une
+  heure, ADR-065 ; fournisseur obligatoire pour ses domaines (`requirement.rs`, ADR-066) ;
+  compte créé à la première connexion par le lien de l'entreprise (`account.rs`, ADR-067) ;
+  SAML 2.0 : métadonnées, vérification stricte et ce que dit l'assertion dans `saml/`,
+  réception et assertions à usage unique dans `saml_return.rs`, ADR-068 ; configuration
+  dans `services/admin/`, dont `provider_designation.rs` : ce qui désigne un fournisseur
+  déclaré),
   `api/src/services/provisioning/` et `api/src/bin/admin/` (commandes d'exploitation :
   migrations, création d'une entreprise réelle et de son administrateur, ADR-033),
   `api/src/mail/` (envoi SMTP), `api/src/secrets/` (chiffrement AES-256-GCM des secrets),
-  `api/tests/` (intégration, harnais dans `support/`).
+  `api/tests/` (intégration, harnais dans `support/`, dont les fournisseurs d'identité
+  simulés, OpenID Connect et SAML).
 - `web/components/<fonctionnalité>/` (account, admin, approvals, chat, memory,
   operations, shell), `web/components/ui/` (`Loaded` verrouille son contenu pendant un rechargement,
   ADR-042), `web/lib/api/` (client, `contract.ts`
@@ -71,7 +79,8 @@ Repères à l'intérieur des crates :
   au contrôle réactivé, ADR-043), `web/lib/labels.ts`, `web/lib/format.ts`, `web/proxy.ts` et
   `web/lib/security/` (CSP à nonce par page, ADR-030), `web/e2e/` (tests de bout en
   bout, un fichier par parcours, `support/`) et `api/examples/e2e_server/` (l'API qu'ils
-  pilotent, avec un fournisseur OpenID Connect simulé, ADR-031, ADR-063).
+  pilotent, avec un fournisseur OpenID Connect et un fournisseur SAML simulés, ADR-031,
+  ADR-063, ADR-068).
 - `infra/` : `docker/` (images de l'API et de l'interface, liste des images publiées
   `images.json`, test de fumée de la démonstration, test d'installation de la production,
   vérifications partagées `checks.sh`), `caddy/`
