@@ -162,8 +162,9 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
     usage unique en base (rejeu refusé sur tout serveur). L'identifiant d'entité de
     l'application est propre à chaque entreprise : la confiance d'un fournisseur ne vaut
     que pour elle. Seule exemption
-    de l'en-tête anti-CSRF : la réception de la réponse, liée par la tentative et la
-    signature. Ni connexion à l'initiative du fournisseur, ni assertion chiffrée.
+    de l'en-tête anti-CSRF et du contrôle d'origine : la réception de la réponse, liée
+    par la tentative, la demande attendue et la signature ; un test tente de la
+    contourner (`crates/api/tests/auth.rs`). Ni connexion à l'initiative du fournisseur, ni assertion chiffrée.
   - Suite : provisionnement SCIM (phase 3), MFA déléguée à l'IdP ; MFA TOTP locale si
     besoin.
 

@@ -5,13 +5,14 @@
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use mimorya_core::demo::tenant;
+use mimorya_core::demo::{tenant, user};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
 use super::identity_provider::{CLIENT_ID, CLIENT_SECRET, MockIdentityProvider};
 use super::llm::MASTER_KEY;
-use super::{Client, TestApi, TestResponse, WEB_ORIGIN};
+use super::saml_provider::{DISPLAY_NAME, OBJECT_ID, SamlPerson};
+use super::{Client, TestApi, TestResponse, WEB_ORIGIN, email};
 
 /// A server storing secrets and reaching the local provider.
 pub const SSO_DEPLOYMENT: [(&str, &str); 2] = [
@@ -292,4 +293,24 @@ pub fn saml_attempt(started: &TestResponse) -> (String, String) {
     let pair = cookie.split(';').next().unwrap().to_string();
     let url = started.json()["redirectUrl"].as_str().unwrap().to_string();
     (url, pair)
+}
+
+/// Nadia's object ID at the SAML provider of the tests.
+pub const NADIA_OID: &str = "00000000-0000-0000-0000-00000000000a";
+
+/// Nadia, as Entra ID sends her through SAML: her sign-in name, her object
+/// ID.
+pub fn saml_nadia() -> SamlPerson {
+    SamlPerson::named(&email(user::NADIA))
+        .with(OBJECT_ID, NADIA_OID)
+        .with(DISPLAY_NAME, "Nadia Benali")
+}
+
+/// The reason of the single sign-in refusal the demo company audited since
+/// `since`.
+pub async fn sso_refusal(api: &TestApi, since: i64) -> String {
+    let logins = sso_logins(api, tenant::ID, since).await;
+    assert_eq!(logins.len(), 1, "{logins:?}");
+    assert_eq!(logins[0].0, "denied");
+    logins[0].2.clone().unwrap_or_default()
 }

@@ -2672,7 +2672,7 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     réception à enregistrer chez le fournisseur) et test de bout en bout, contre un
     fournisseur SAML servi par `e2e_server` (127.0.0.1:4101), dont les pages, sans
     script, renvoient la réponse par un bouton ;
-  - tests : `crates/api/tests/sso_saml.rs` (déclaration par les métadonnées, adresses de
+  - tests : `crates/api/tests/sso_saml.rs` et `sso_saml_declaration.rs` (déclaration par les métadonnées, adresses de
     l'application, connexion et liaison par l'identifiant d'objet, rejeu refusé ;
     réponse sans tentative, vide, pour une autre demande, signée par une autre clé,
     altérée, enveloppée (assertion forgée avant celle signée), à l'assertion non
@@ -2687,4 +2687,8 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     (identifiant de l'entreprise et adresse de réception affichés, métadonnées de
     l'entreprise lues à cet identifiant ; fournisseur déclaré par ses métadonnées, sans
     client ni secret ; connexion par sa page ; métadonnées d'un autre fournisseur
-    refusées au renouvellement, les siennes gardées, connexion encore possible).
+    refusées au renouvellement, les siennes gardées, connexion encore possible) ;
+    `crates/api/tests/auth.rs` (`only_the_saml_reception_goes_without_the_header` : sans
+    l'en-tête et d'un autre site, la réception seule est atteinte ; les chemins qui lui
+    ressemblent, les métadonnées, le retour OpenID Connect et la connexion par mot de
+    passe sont refusés).
