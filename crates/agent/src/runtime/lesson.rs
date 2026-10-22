@@ -160,16 +160,20 @@ pub async fn propose_lesson(
     let known: Vec<String> = known
         .iter()
         .take(MAX_KNOWN_LESSONS)
-        .map(|title| format!("- {}", neutralise_envelopes(title)))
+        .map(|title| format!("- {title}"))
         .collect();
     let known = if known.is_empty() {
         "(aucune)".to_string()
     } else {
         known.join("\n")
     };
+    // Titles the model once wrote from a run: data too.
     let content = [
         wrap_untrusted("conversation_terminee", &Value::String(transcript.into())),
-        format!("Leçons déjà connues de ce collaborateur :\n{known}"),
+        format!(
+            "Leçons déjà connues de ce collaborateur (gardées, proposées ou refusées) :\n{}",
+            wrap_untrusted("lecons_connues", &Value::String(known))
+        ),
         "Propose au plus une leçon, ou aucune, et appelle submit_lesson.".to_string(),
     ]
     .join("\n\n");

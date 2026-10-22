@@ -92,7 +92,9 @@ async fn the_run_is_handed_over_as_data_with_the_lessons_already_known() {
     };
     // The run is data: its envelope cannot be closed from inside.
     assert!(content.contains("fiabilite=\"non_fiable\""));
-    assert_eq!(content.matches("</donnees_outil>").count(), 1, "{content}");
+    // So are the lessons already known, in an envelope of their own.
+    assert_eq!(content.matches("</donnees_outil>").count(), 2, "{content}");
+    assert!(content.contains("source=\"lecons_connues\""));
     assert!(content.contains("- Format des synthèses"));
     assert_eq!(request.tool_names(), ["submit_lesson"]);
 }

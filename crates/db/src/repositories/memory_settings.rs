@@ -32,8 +32,9 @@ pub async fn set_capture_lessons(
     Ok(())
 }
 
-/// The titles of the lessons `user_id` keeps or was proposed in their
-/// personal memory, newest first: none is proposed twice.
+/// The titles of the lessons `user_id` keeps, was proposed or refused in
+/// their personal memory, newest first: named to the model, so that none
+/// comes back.
 pub async fn personal_lesson_titles(
     conn: &mut PgConnection,
     user_id: Uuid,
@@ -41,11 +42,27 @@ pub async fn personal_lesson_titles(
 ) -> sqlx::Result<Vec<String>> {
     sqlx::query_scalar(
         "select title from memory_items where scope = 'user' and owner_user_id = $1 \
-         and kind = 'lesson' and status in ('active', 'proposed') \
-         order by created_at desc limit $2",
+         and kind = 'lesson' order by created_at desc limit $2",
     )
     .bind(user_id)
     .bind(limit)
     .fetch_all(conn)
+    .await
+}
+
+/// Whether `user_id` already has a lesson so titled (case aside), kept,
+/// proposed or refused: it is not proposed again.
+pub async fn personal_lesson_titled(
+    conn: &mut PgConnection,
+    user_id: Uuid,
+    title: &str,
+) -> sqlx::Result<bool> {
+    sqlx::query_scalar(
+        "select exists (select 1 from memory_items where scope = 'user' \
+         and owner_user_id = $1 and kind = 'lesson' and lower(title) = lower($2))",
+    )
+    .bind(user_id)
+    .bind(title)
+    .fetch_one(conn)
     .await
 }

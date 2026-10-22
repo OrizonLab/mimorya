@@ -3083,8 +3083,8 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     en arrière-plan par le modèle des conversations de l'entreprise (le sien, sinon celui de
     la plateforme ; un modèle inutilisable ne relit rien). Il reçoit le run depuis la demande
     qui l'a lancé (la demande, les appels d'outils et leurs résultats, abrégés, la réponse),
-    **comme donnée** (enveloppe non fiable dont on ne peut pas sortir), et les titres des
-    leçons que la personne a déjà ; il propose **au plus une leçon**, générale, sans donnée
+    **comme donnée** (enveloppe non fiable dont on ne peut pas sortir), et, comme donnée
+    aussi, les titres des leçons que la personne a gardées, reçues ou refusées ; il propose **au plus une leçon**, générale, sans donnée
     d'un tiers, secret, identifiant, montant ni détail d'un client, ou aucune ;
   - la leçon est **proposée dans la mémoire personnelle de la personne servie**
     (`scope = 'user'`, `kind = 'lesson'`, `status = 'proposed'`, source : le run) : elle seule
@@ -3092,9 +3092,9 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     ne lit ce qu'une conversation d'un autre a appris ; la personne pourra la partager si elle
     en a le droit. Titre de 3 à 120 caractères, contenu de 3 à 2 000, sur une ligne, sans
     caractère caché ni balise d'enveloppe ; une leçon dont le titre existe déjà (casse
-    ignorée) n'est pas reproposée ;
+    ignorée), gardée, proposée ou refusée, n'est pas reproposée ;
   - ce qu'a coûté la relecture est compté avec le run (`usage_records`, `llm`, au nom de la
-    personne) ; l'audit `memory.lesson_proposed` nomme la personne, le run et la mémoire, jamais
+    personne), dès la réponse et quoi qu'il advienne de la leçon ; l'audit `memory.lesson_proposed` nomme la personne, le run et la mémoire, jamais
     son texte. Une panne perd la leçon, jamais le run ; un arrêt du service pendant la
     relecture la perd aussi (au mieux, une leçon par run).
 - **Alternatives écartées** : proposer la leçon à l'équipe ou à toute l'entreprise (mémoire
@@ -3106,6 +3106,8 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     export et sa suppression ;
   - une tâche d'arrière-plan qui panique est désormais décomptée : ni l'arrêt du service ni les
     tests ne l'attendent indéfiniment (`services/background.rs`, testé) ;
+  - une leçon est de sensibilité « interne » : sans effet tant qu'elle reste personnelle, mais
+    son partage, s'il vient, devra hériter de la sensibilité la plus haute lue par le run ;
   - reste l'écran de ce réglage (lot 2) ;
   - tests :
     - `crates/agent/tests/lesson.rs` : la relecture commence à la demande du run et exige un
@@ -3114,5 +3116,8 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
       réponse lisible ; texte nettoyé ;
     - `crates/api/tests/lesson_capture.rs` : rien par défaut ; une fois choisi, une leçon
       proposée à Marc seul (pas à Lucas), tracée sans texte, comptée dans le run, validée ;
-      rien d'une conversation sans outil, quand le modèle n'en voit pas, ni deux fois ;
-      réglage réservé aux administrateurs des réglages de toute l'entreprise, tracé.
+      à Nadia seule quand Marc a validé l'action de son run ; rien d'une conversation sans
+      outil, quand le modèle n'en voit pas, ni deux fois, une leçon refusée comprise ; une
+      relecture en panne laisse le run terminé, sans leçon ;
+    - `crates/api/tests/admin_memory_settings.rs` : réglage réservé aux administrateurs des
+      réglages de toute l'entreprise, désactivé par défaut, tracé.

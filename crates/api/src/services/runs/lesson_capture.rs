@@ -9,22 +9,23 @@
 use std::sync::Arc;
 
 use mimorya_agent::llm::PriceTable;
-use mimorya_agent::runtime::{LessonAnswer, RunOutcome, lesson_transcript, propose_lesson};
+use mimorya_agent::runtime::{
+    LessonAnswer, MAX_KNOWN_LESSONS, RunOutcome, lesson_transcript, propose_lesson,
+};
 use mimorya_core::authz::Sensitivity;
 use mimorya_core::memory::{MemoryKind, MemoryScope, MemorySource, MemoryStatus};
 use mimorya_db::Database;
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::memory::{NewMemory, create_memory};
-use mimorya_db::repositories::memory_settings::{captures_lessons, personal_lesson_titles};
+use mimorya_db::repositories::memory_settings::{
+    captures_lessons, personal_lesson_titled, personal_lesson_titles,
+};
 use mimorya_db::repositories::usage::{NewUsage, append_usage};
 use uuid::Uuid;
 
 use super::db_ports::RunScope;
 use crate::services::background::BackgroundTasks;
 use crate::services::llm::LlmService;
-
-/// Lessons of the person's named to the model, so that none comes twice.
-const KNOWN_LESSONS: i64 = 30;
 
 #[derive(Clone)]
 pub struct LessonCapture {
@@ -66,7 +67,8 @@ impl LessonCapture {
         if !captures_lessons(&mut tx).await? {
             return Ok(None);
         }
-        let known = personal_lesson_titles(&mut tx, scope.user_id, KNOWN_LESSONS).await?;
+        let limit = i64::try_from(MAX_KNOWN_LESSONS)?;
+        let known = personal_lesson_titles(&mut tx, scope.user_id, limit).await?;
         tx.commit().await?;
         // The model of the company's runs: a company that cannot use its own
         // has none reread either.
@@ -74,17 +76,15 @@ impl LessonCapture {
             return Ok(None);
         };
         let answer = propose_lesson(provider.as_ref(), transcript, &known).await?;
-        let mut tx = self.db.begin(scope.tenant_id).await?;
-        self.record_usage(&mut tx, scope, &answer).await?;
-        let lesson = answer.lesson.filter(|lesson| {
-            !known
-                .iter()
-                .any(|title| title.to_lowercase() == lesson.title.to_lowercase())
-        });
-        let Some(lesson) = lesson else {
-            tx.commit().await?;
+        // Counted on its own: what the call cost stays, whatever follows.
+        self.record_usage(scope, &answer).await?;
+        let Some(lesson) = answer.lesson else {
             return Ok(None);
         };
+        let mut tx = self.db.begin(scope.tenant_id).await?;
+        if personal_lesson_titled(&mut tx, scope.user_id, &lesson.title).await? {
+            return Ok(None);
+        }
         let id = create_memory(
             &mut tx,
             NewMemory {
@@ -119,15 +119,11 @@ impl LessonCapture {
         Ok(Some(id))
     }
 
-    async fn record_usage(
-        &self,
-        tx: &mut mimorya_db::TenantTx,
-        scope: RunScope,
-        answer: &LessonAnswer,
-    ) -> anyhow::Result<()> {
+    async fn record_usage(&self, scope: RunScope, answer: &LessonAnswer) -> anyhow::Result<()> {
         let usage = &answer.usage;
+        let mut tx = self.db.begin(scope.tenant_id).await?;
         append_usage(
-            tx,
+            &mut tx,
             NewUsage {
                 tenant_id: scope.tenant_id,
                 user_id: Some(scope.user_id),
@@ -142,6 +138,7 @@ impl LessonCapture {
             },
         )
         .await?;
+        tx.commit().await?;
         Ok(())
     }
 }
