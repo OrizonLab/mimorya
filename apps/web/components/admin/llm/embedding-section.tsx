@@ -9,7 +9,7 @@ import {
   type EmbeddingTestResult,
   type EmbeddingView,
 } from '@/lib/api';
-import { formatDate } from '@/lib/format';
+import { formatDate, formatNumber } from '@/lib/format';
 import { EMBEDDING_PROVIDERS } from '@/lib/labels';
 import { EmbeddingForm } from './embedding-form';
 
@@ -50,7 +50,7 @@ export function EmbeddingSection() {
                   Par les mots et par le sens : {label(data.settings.provider)} ·{' '}
                   <code>{data.settings.model}</code>
                   {data.settings.baseUrl && <> · {data.settings.baseUrl}</>} · similarité minimale{' '}
-                  {data.settings.minSimilarity}
+                  {formatNumber(data.settings.minSimilarity)}
                 </p>
                 <div className="flex flex-wrap gap-2">
                   <Badge tone={data.settings.keyStored ? 'ok' : 'neutral'}>
@@ -68,12 +68,13 @@ export function EmbeddingSection() {
                 )}
                 {data.settings.indexingError && (
                   <ErrorNote
-                    message={`L’indexation reprendra à la minute : ${data.settings.indexingError}`}
+                    message={`L’indexation reprendra dans la minute : ${data.settings.indexingError}`}
                   />
                 )}
                 <p className="text-xs text-muted">
                   Modifié le {formatDate(data.settings.updatedAt)}. Une mémoire écrite ou approuvée
-                  est indexée en arrière-plan ; tant qu’elle ne l’est pas, ses mots la trouvent.
+                  est indexée en arrière-plan ; tant qu’elle ne l’est pas, ou si le modèle refuse
+                  son texte (trop long), ses mots la trouvent.
                 </p>
               </div>
             ) : (

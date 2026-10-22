@@ -1,9 +1,12 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
-import { Button, ErrorNote, Field, Input, Select } from '@/components/ui';
+import { Button, ErrorNote, Field, Input } from '@/components/ui';
 import { api, useAction, type LlmChoice, type LlmView } from '@/lib/api';
 import { LLM_PROVIDERS } from '@/lib/labels';
+import { EndpointSelect } from './endpoint-select';
+import { KeyField, keepsStoredKey } from './key-field';
+import { ProviderSelect } from './provider-select';
 
 /** Chooses the company's own provider; the key is write-only. */
 export function LlmForm({ data, onDone }: { data: LlmView; onDone: (changed: boolean) => void }) {
@@ -15,11 +18,7 @@ export function LlmForm({ data, onDone }: { data: LlmView; onDone: (changed: boo
   const action = useAction();
   const kind = data.providers.find((p) => p.kind === provider);
   const listed = kind?.listedEndpoint ?? false;
-  // A stored key only ever serves the same endpoint.
-  const keepsKey =
-    current?.keyStored === true &&
-    current.provider === provider &&
-    (current.baseUrl ?? '') === (listed ? baseUrl : '');
+  const keepsKey = keepsStoredKey(current, provider, listed ? baseUrl : '');
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -36,22 +35,15 @@ export function LlmForm({ data, onDone }: { data: LlmView; onDone: (changed: boo
   return (
     <form onSubmit={submit} className="flex flex-col gap-3">
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Fournisseur">
-          <Select value={provider} onChange={(e) => setProvider(e.target.value)}>
-            {data.providers.map((p) => (
-              <option
-                key={p.kind}
-                value={p.kind}
-                disabled={
-                  (p.listedEndpoint && data.endpoints.length === 0) ||
-                  (p.requiresKey && !data.secretsAvailable)
-                }
-              >
-                {LLM_PROVIDERS[p.kind] ?? p.kind}
-              </option>
-            ))}
-          </Select>
-        </Field>
+        <ProviderSelect
+          label="Fournisseur"
+          names={LLM_PROVIDERS}
+          providers={data.providers}
+          endpoints={data.endpoints}
+          secretsAvailable={data.secretsAvailable}
+          value={provider}
+          onChange={setProvider}
+        />
         <Field label="Modèle">
           <Input
             maxLength={100}
@@ -62,35 +54,20 @@ export function LlmForm({ data, onDone }: { data: LlmView; onDone: (changed: boo
           />
         </Field>
         {listed && (
-          <Field label="Serveur (liste de l’exploitant)">
-            <Select value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)}>
-              {data.endpoints.map((url) => (
-                <option key={url} value={url}>
-                  {url}
-                </option>
-              ))}
-            </Select>
-          </Field>
+          <EndpointSelect
+            label="Serveur (liste de l’exploitant)"
+            endpoints={data.endpoints}
+            value={baseUrl}
+            onChange={setBaseUrl}
+          />
         )}
         {(kind?.requiresKey || data.secretsAvailable) && (
-          <Field
-            label={
-              keepsKey
-                ? 'Clé d’API (laisser vide pour conserver la clé enregistrée)'
-                : kind?.requiresKey
-                  ? 'Clé d’API'
-                  : 'Clé d’API (facultative)'
-            }
-          >
-            <Input
-              type="password"
-              autoComplete="off"
-              required={kind?.requiresKey && !keepsKey}
-              maxLength={500}
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-            />
-          </Field>
+          <KeyField
+            required={kind?.requiresKey ?? false}
+            keeps={keepsKey}
+            value={apiKey}
+            onChange={setApiKey}
+          />
         )}
       </div>
       <p className="text-xs text-muted">

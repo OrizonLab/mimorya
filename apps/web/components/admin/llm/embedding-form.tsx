@@ -1,9 +1,12 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
-import { Button, ErrorNote, Field, Input, Select } from '@/components/ui';
+import { Button, ErrorNote, Field, Input } from '@/components/ui';
 import { api, useAction, type EmbeddingChoice, type EmbeddingView } from '@/lib/api';
 import { EMBEDDING_PROVIDERS } from '@/lib/labels';
+import { EndpointSelect } from './endpoint-select';
+import { KeyField, keepsStoredKey } from './key-field';
+import { ProviderSelect } from './provider-select';
 
 /** Chooses the company's embedding model (ADR-074); the key is write-only. */
 export function EmbeddingForm({
@@ -22,11 +25,7 @@ export function EmbeddingForm({
   const action = useAction();
   const kind = data.providers.find((p) => p.kind === provider);
   const listed = kind?.listedEndpoint ?? false;
-  // A stored key only ever serves the same endpoint.
-  const keepsKey =
-    current?.keyStored === true &&
-    current.provider === provider &&
-    (current.baseUrl ?? '') === (listed ? baseUrl : '');
+  const keepsKey = keepsStoredKey(current, provider, listed ? baseUrl : '');
 
   function choose(next: string) {
     setProvider(next);
@@ -50,22 +49,15 @@ export function EmbeddingForm({
   return (
     <form onSubmit={submit} className="flex flex-col gap-3">
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Fournisseur d’embeddings">
-          <Select value={provider} onChange={(e) => choose(e.target.value)}>
-            {data.providers.map((p) => (
-              <option
-                key={p.kind}
-                value={p.kind}
-                disabled={
-                  (p.listedEndpoint && data.endpoints.length === 0) ||
-                  (p.requiresKey && !data.secretsAvailable)
-                }
-              >
-                {EMBEDDING_PROVIDERS[p.kind] ?? p.kind}
-              </option>
-            ))}
-          </Select>
-        </Field>
+        <ProviderSelect
+          label="Fournisseur d’embeddings"
+          names={EMBEDDING_PROVIDERS}
+          providers={data.providers}
+          endpoints={data.endpoints}
+          secretsAvailable={data.secretsAvailable}
+          value={provider}
+          onChange={choose}
+        />
         <Field label="Modèle d’embeddings">
           <Input
             maxLength={100}
@@ -76,46 +68,33 @@ export function EmbeddingForm({
           />
         </Field>
         {listed && (
-          <Field label="Serveur d’embeddings (liste de l’exploitant)">
-            <Select value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)}>
-              {data.endpoints.map((url) => (
-                <option key={url} value={url}>
-                  {url}
-                </option>
-              ))}
-            </Select>
-          </Field>
+          <EndpointSelect
+            label="Serveur d’embeddings (liste de l’exploitant)"
+            endpoints={data.endpoints}
+            value={baseUrl}
+            onChange={setBaseUrl}
+          />
         )}
         <Field label="Similarité minimale">
           <Input
             type="number"
-            min={0.05}
-            max={0.95}
-            step={0.05}
+            // As the API takes it: strictly between 0 and 1.
+            min={0.01}
+            max={0.99}
+            step="any"
             placeholder={kind ? String(kind.defaultMinSimilarity) : undefined}
             value={similarity}
             onChange={(e) => setSimilarity(e.target.value)}
           />
         </Field>
         {(kind?.requiresKey || data.secretsAvailable) && (
-          <Field
-            label={
-              keepsKey
-                ? 'Clé d’API d’embeddings (laisser vide pour conserver la clé enregistrée)'
-                : kind?.requiresKey
-                  ? 'Clé d’API d’embeddings'
-                  : 'Clé d’API d’embeddings (facultative)'
-            }
-          >
-            <Input
-              type="password"
-              autoComplete="off"
-              required={kind?.requiresKey && !keepsKey}
-              maxLength={500}
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-            />
-          </Field>
+          <KeyField
+            of="d’embeddings"
+            required={kind?.requiresKey ?? false}
+            keeps={keepsKey}
+            value={apiKey}
+            onChange={setApiKey}
+          />
         )}
       </div>
       <p className="text-xs text-muted">
