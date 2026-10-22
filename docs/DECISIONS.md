@@ -2822,3 +2822,58 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
       et rien de l'autre n'est visible ;
     - `crates/db/tests/definer_functions.rs` : la nouvelle fonction est dans la liste
       connue.
+
+## ADR-071 — Délégation des validations pendant une absence (premier lot : l'API)
+
+- **Date** : 2026-10-22 · **Statut** : acceptée
+- **Contexte** : une demande confiée à un responsable (ADR-059) n'est décidée que par
+  lui. S'il est absent, elle attend sa relance (ADR-062), puis expire (ADR-061) :
+  l'agent de la personne poursuit sans l'action, que personne n'a regardée. Il faut
+  qu'un collègue puisse décider à sa place pendant l'absence, sans que cette
+  désignation n'accorde le moindre droit.
+- **Décision** :
+  - chacun peut déclarer **son** absence : un collègue qui le remplace, et une période
+    (début, maintenant par défaut ; fin à venir, au plus 90 jours après le début)
+    (`GET`, `PUT`, `DELETE /approval-delegation`). Une seule par personne : déclarée de
+    nouveau, elle remplace la précédente ; elle se retire à tout moment. Le remplaçant est
+    un compte actif de l'entreprise, jamais soi-même ; un identifiant inconnu, d'une autre
+    entreprise ou d'un compte inactif reçoit la même réponse. Chaque déclaration et chaque
+    retrait sont tracés (`approval.delegation_set` avec le remplaçant et la période,
+    `approval.delegation_ended`) ;
+  - **rien n'est réécrit** : une demande garde le responsable désigné à sa création.
+    Tant que la période court et que le compte de l'absent est actif, son remplaçant peut
+    décider les demandes en attente confiées à l'absent, **à condition de détenir
+    lui-même `approval:decide` sur la personne** pour qui chacune est faite, vérifié à la
+    liste comme à la décision, comme pour le responsable. Sans ce droit, il ne voit pas la
+    demande et reçoit 404 s'il tente de la décider. La délégation n'accorde aucun droit :
+    l'administrateur donne, s'il le faut, un rôle sur le périmètre voulu, avec une
+    échéance ;
+  - l'absent garde la main : il peut toujours décider, la première décision l'emporte
+    (verrou du run). La personne pour qui l'agent agit, même désignée remplaçante, ne
+    peut que retirer sa demande ;
+  - un seul relais : le remplaçant d'un remplaçant ne décide pas pour le premier absent ;
+  - la décision est enregistrée au nom du remplaçant (`decidedBy`) ; l'audit
+    (`approval.approved` ou `approval.rejected`) nomme en plus l'absent
+    (`standingInFor`). Le remplaçant voit les demandes en attente de l'absent qu'il peut
+    décider, et celles qu'il a décidées, jamais ce que l'absent a décidé ;
+  - une absence terminée ne remplace plus rien ; la maintenance périodique la supprime
+    (`system_purge_ended_approval_delegations`, au périmètre minimal). Il n'en reste que
+    les entrées d'audit.
+- **Conséquences** :
+  - donnée personnelle nouvelle : la période d'absence et le remplaçant, conservés
+    jusqu'à la fin de l'absence ; supprimés avec le compte de l'un ou de l'autre ;
+  - restent (second lot) : l'écran « Absence » de la page des validations, l'avis et la
+    relance envoyés au remplaçant plutôt qu'à l'absent, et le test de bout en bout ;
+    une absence déclarée par l'administrateur pour un collaborateur empêché ;
+  - tests :
+    - `crates/api/tests/approval_delegation.rs` : déclaration, lecture par l'absent et
+      par le remplaçant, remplacement, retrait, audit ; refus (soi-même, inconnu, autre
+      entreprise, compte désactivé, fin passée, fin avant le début, plus de 90 jours),
+      sans trace ; absence d'un compte désactivé ou terminée sans effet, puis purgée ;
+    - `crates/api/tests/approval_delegation_decisions.rs` : le remplaçant ne voit ni ne
+      décide sans `approval:decide` sur la personne, puis décide une fois le droit
+      donné, l'audit nommant l'absent ; rien avant le début, après le retrait, pour un
+      absent désactivé ni par un second relais ; l'absent décide toujours ; la personne
+      désignée ne peut qu'abandonner sa demande ; ce que l'absent a décidé reste caché ;
+    - `crates/db/tests/definer_functions.rs` : la nouvelle fonction est dans la liste
+      connue.

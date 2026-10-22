@@ -1,8 +1,9 @@
 //! Periodic maintenance, at startup and then every minute: expired password
-//! reset links are deleted (ADR-028); from the second minute, once the
-//! startup is done (lost notices listed, ADR-070), requests nobody decided
-//! in time expire, and their runs go on (ADR-061), their managers reminded
-//! the day before (ADR-062); runs without progress for a while
+//! reset links are deleted (ADR-028), and ended absences (ADR-071); from
+//! the second minute, once the startup is done (lost notices listed,
+//! ADR-070), requests nobody decided in time expire, and their runs go on
+//! (ADR-061), their managers reminded the day before (ADR-062); runs
+//! without progress for a while
 //! belong to a stuck process and are marked as failed, their `run_finished`
 //! event recorded and broadcast to the clients following them. That sweep
 //! waits until the process has run as long as a run takes to go stale: runs
@@ -18,6 +19,7 @@ use std::time::Duration;
 use chrono::Utc;
 use mimorya_agent::runtime::RunEvent;
 use mimorya_db::Database;
+use mimorya_db::repositories::approval_delegations::purge_ended_approval_delegations;
 use mimorya_db::repositories::password_resets::purge_expired_password_resets;
 use mimorya_db::repositories::runs::fail_stale_runs;
 use tokio::task::JoinHandle;
@@ -50,6 +52,9 @@ pub fn spawn_maintenance(services: AppState) -> JoinHandle<()> {
             }
             if let Err(error) = purge_expired_password_resets(db.pool()).await {
                 tracing::warn!(error = %error, "Expired reset link purge failed");
+            }
+            if let Err(error) = purge_ended_approval_delegations(db.pool()).await {
+                tracing::warn!(error = %error, "Ended absence purge failed");
             }
         }
     })

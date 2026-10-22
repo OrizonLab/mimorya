@@ -49,7 +49,7 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   ensuite dans sa propre entreprise (ADR-061), de même pour les runs dont une demande
   est à relancer la veille de son échéance (ADR-062) ou dont l'avis a été perdu par un
   arrêt du service (ADR-070), purge des liens de réinitialisation
-  expirés) passent par
+  expirés et des absences terminées (ADR-071)) passent par
   des fonctions `SECURITY DEFINER` au périmètre minimal et au `search_path` figé
   (`auth_*`, `system_*`).
 - Tests d'intégration obligatoires : lecture croisée impossible même par requête
@@ -213,6 +213,12 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   est refusée. La personne ne peut pas approuver la demande, seulement la retirer
   (l'action n'est alors pas exécutée). L'e-mail qui prévient le responsable (ADR-060)
   ne contient ni l'action ni ses paramètres, lisibles seulement après connexion.
+- **Remplaçant d'un responsable absent** (ADR-071) : désigné par le responsable pour une
+  période d'au plus 90 jours, il ne reçoit aucun droit. Il ne voit et ne décide les
+  demandes confiées à l'absent que s'il détient lui-même `approval:decide` sur la
+  personne (404 sinon), tant que la période court et que le compte de l'absent est
+  actif ; un seul relais ; il ne voit jamais ce que l'absent a décidé ; l'audit nomme
+  l'absent qu'il remplace.
 - **Administration** (ADR-019) :
   - les permissions d'administration (`TENANT_WIDE_PERMISSIONS` : organisation,
     comptes, rôles, politiques, connecteurs, compétences, paramètres, mémoire, audit,

@@ -1,6 +1,24 @@
 // Generated from the API's Rust types (crates/api/src/contract, ADR-036): do not edit.
 // Regenerate with `pnpm contract`.
 
+/**
+ * Body of `PUT /approval-delegation`: declares, or replaces, the reader's
+ * absence.
+ */
+export type Absence = {
+/**
+ * The colleague who stands in.
+ */
+delegateId: string,
+/**
+ * ISO 8601; absent, from now.
+ */
+startsAt?: string,
+/**
+ * ISO 8601, at most 90 days after the start.
+ */
+endsAt: string, };
+
 export type AccountStatus = "active" | "invited" | "disabled";
 
 /**
@@ -59,6 +77,19 @@ export type ApprovalDecided = { approval: Approval,
  * True when this decision was the run's last one awaited: the run resumes.
  */
 resumed: boolean, };
+
+/**
+ * `GET /approval-delegation`.
+ */
+export type ApprovalDelegations = {
+/**
+ * The reader's absence, declared and not ended: who stands in for them.
+ */
+own: Delegation | null,
+/**
+ * The absences the reader covers, under way or to come.
+ */
+standingInFor: Array<Delegation>, };
 
 /**
  * `GET /approvals`.
@@ -275,6 +306,12 @@ export type Credentials = { email: string, password: string, };
  * A permission a tool may require: one an agent can hold.
  */
 export type DelegablePermission = { permission: string, label: string, };
+
+/**
+ * An absence: from when until when the delegate stands in for the absent
+ * person, deciding what they hold `approval:decide` for.
+ */
+export type Delegation = { absent: ApprovalPerson, delegate: ApprovalPerson, startsAt: string, endsAt: string, };
 
 /**
  * `GET /admin/users`.

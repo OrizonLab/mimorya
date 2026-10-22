@@ -8,6 +8,7 @@
 
 mod account;
 mod admin;
+mod approval_delegation;
 mod approvals;
 mod auth;
 mod conversations;
@@ -41,6 +42,7 @@ pub fn router(state: &AppState) -> Router<AppState> {
         .merge(runs::routes())
         .merge(run_events::routes())
         .merge(approvals::routes())
+        .merge(approval_delegation::routes())
         .merge(memory::routes())
         .merge(admin::routes(state))
         .fallback(not_found)
