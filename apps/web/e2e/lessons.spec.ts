@@ -48,8 +48,9 @@ test.afterEach(async () => {
 });
 
 test('a finished conversation leaves a lesson its user validates', async ({ newContext }) => {
-  const paul = (left.paul = await (await newContext()).newPage());
+  const paul = await (await newContext()).newPage();
   await openAdmin(paul, 'Modèle d’IA');
+  left.paul = paul;
   const settings = paul.getByRole('form', { name: 'Leçons tirées des conversations' });
   await expect(settings.getByRole('checkbox', { name: CAPTURE })).not.toBeChecked();
   await settings.getByRole('checkbox', { name: CAPTURE }).check();
