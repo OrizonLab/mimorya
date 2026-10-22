@@ -33,6 +33,44 @@ async fn rejects_state_changing_requests_without_the_header_or_from_another_orig
     assert_eq!(other_origin.error_message(), "Origine non autorisée");
 }
 
+/// The SAML reception alone is posted without the header and from another
+/// site (ADR-068): no other request, even on a path that merely resembles
+/// it, goes without either.
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn only_the_saml_reception_goes_without_the_header() {
+    let api = TestApi::start().await;
+    let from_a_provider = |path: &str| {
+        Request::post(path)
+            .header("content-type", "application/x-www-form-urlencoded")
+            .header("origin", "https://idp.saml.example")
+            .body(Body::from("SAMLResponse="))
+            .unwrap()
+    };
+    // Reached: it judges the response itself (without an attempt, back to
+    // the sign-in page).
+    let reception = api.send(from_a_provider("/auth/saml/acs")).await;
+    assert_eq!(reception.status, StatusCode::SEE_OTHER);
+    for path in [
+        "/auth/saml/acs/",
+        "/auth/saml/ACS",
+        "/auth/saml/acs2",
+        "/auth/saml//acs",
+        "/auth/saml/%61cs",
+        "/auth/saml/00000000-0000-4000-8000-000000000001/metadata",
+        "/auth/sso/callback",
+        "/auth/login",
+    ] {
+        let refused = api.send(from_a_provider(path)).await;
+        assert_eq!(refused.status, StatusCode::FORBIDDEN, "{path}");
+        assert_eq!(
+            refused.error_message(),
+            "En-tête de requête manquant",
+            "{path}"
+        );
+    }
+}
+
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
 async fn answers_identically_for_unknown_accounts_and_wrong_passwords() {

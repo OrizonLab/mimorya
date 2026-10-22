@@ -190,10 +190,13 @@ Avant chaque commit : `pnpm check && pnpm test:int` doivent passer.
 5. **API** : chaque route extrait `Auth`, construit le contexte avec
    `access.context()` et vérifie la permission (`require`) ou la propriété de la
    ressource côté serveur ; une ressource hors périmètre répond 404. Les requêtes
-   modifiantes exigent l'en-tête `X-Mimorya-Request: 1`, sauf une : la réception des
-   réponses SAML (`POST /api/auth/saml/acs`, ADR-068), postée par le fournisseur depuis
-   son propre site, que lient au navigateur la tentative scellée et la signature de
-   l'assertion.
+   modifiantes exigent l'en-tête `X-Mimorya-Request: 1` et, si le navigateur la donne,
+   l'origine de l'application. Une seule en est dispensée, de l'un comme de l'autre : la
+   réception des réponses SAML (`POST /api/auth/saml/acs`, ADR-068), que le fournisseur
+   poste depuis son propre site. Seules la lient au navigateur la tentative scellée dans
+   son cookie, la demande qu'elle attend et la signature de l'assertion. Aucune autre
+   exception sans ADR ; le test `only_the_saml_reception_goes_without_the_header`
+   (`crates/api/tests/auth.rs`) tente de la contourner.
 
 ## Règles de sécurité (non négociables)
 
