@@ -5,7 +5,7 @@
 // deleted and a validation left waiting refused. The rules themselves are
 // tested on the API (`crates/api/tests/lesson_capture.rs`).
 import type { Page } from '@playwright/test';
-import type { MemoryList, MemorySettingsUpdate } from '../lib/api/contract';
+import type { MemoryList, MemorySettingsUpdate, MemorySettingsView } from '../lib/api/contract';
 import { openAdmin } from './support/admin';
 import { refuseWaiting } from './support/approvals';
 import { demo, expect, noError, signIn, test } from './support/fixtures';
@@ -49,20 +49,27 @@ test.afterEach(async () => {
 
 test('a finished conversation leaves a lesson its user validates', async ({ newContext }) => {
   const paul = (left.paul = await (await newContext()).newPage());
-  const marc = (left.marc = await (await newContext()).newPage());
   await openAdmin(paul, 'Modèle d’IA');
   const settings = paul.getByRole('form', { name: 'Leçons tirées des conversations' });
   await expect(settings.getByRole('checkbox', { name: CAPTURE })).not.toBeChecked();
   await settings.getByRole('checkbox', { name: CAPTURE }).check();
   await settings.getByRole('button', { name: 'Enregistrer' }).click();
-  await expect(settings.getByRole('button', { name: 'Enregistrer' })).toBeDisabled();
+  // Recorded before the page reloads.
+  await expect
+    .poll(async () => {
+      const shown = await paul.request.get('/api/admin/memory-settings');
+      return ((await shown.json()) as MemorySettingsView).captureLessons;
+    })
+    .toBe(true);
   await paul.reload();
   await paul.getByRole('tab', { name: 'Modèle d’IA' }).click();
   await expect(settings.getByRole('checkbox', { name: CAPTURE })).toBeChecked();
   await noError(paul);
 
   // Marc's request ends, refused: the conversation is reread.
+  const marc = await (await newContext()).newPage();
   await signIn(marc, demo.marc);
+  left.marc = marc;
   await marc.getByLabel('Votre message').fill(REFERENCE_REQUEST);
   await marc.getByRole('button', { name: 'Envoyer' }).click();
   await expect(marc.getByText('Validation requise')).toBeVisible({ timeout: 30_000 });

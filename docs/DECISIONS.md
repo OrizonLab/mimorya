@@ -3133,9 +3133,10 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     « Leçons tirées des conversations » : une case « Proposer à chacun les leçons de ses
     conversations » et « Enregistrer », actif seulement si le choix change. L'état repart
     du réglage rechargé (ADR-041). La page dit qui relit (le modèle des conversations),
-    quand (une conversation terminée qui a utilisé des outils), à qui va la leçon (la
-    personne servie, seule à la voir et à la valider), qu'une leçon refusée ne revient pas
-    et que chaque relecture est comptée. Le réglage est dans cet onglet parce que c'est ce
+    quand (après chaque réponse qui a utilisé des outils : une relecture, et au plus une
+    leçon, par demande), à qui va la leçon (la personne servie, seule à la voir et à la
+    valider), qu'une leçon refusée ne revient pas sous le même titre et que chaque relecture
+    est comptée. Le réglage est dans cet onglet parce que c'est ce
     modèle qui relit, à ses frais ;
   - chaque formulaire de l'onglet porte un nom (`aria-label`) : ses trois boutons
     « Enregistrer » se distinguent, pour les technologies d'assistance comme pour les

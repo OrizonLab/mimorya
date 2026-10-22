@@ -43,11 +43,12 @@ function LessonForm({ data, onSaved }: { data: MemorySettingsView; onSaved: () =
           Proposer à chacun les leçons de ses conversations
         </label>
         <p className="text-xs text-muted">
-          Quand une conversation se termine après que l’assistant a utilisé des outils, le modèle de
-          vos conversations la relit et propose au plus une leçon (une façon de faire qui a
+          Après chaque réponse de l’assistant qui a utilisé des outils, le modèle de vos
+          conversations relit la demande et propose au plus une leçon (une façon de faire qui a
           fonctionné, un piège évité, une préférence exprimée) dans la mémoire personnelle de la
           personne pour qui il a agi. Elle seule la voit et la valide dans « Mémoire » ; une leçon
-          refusée n’est jamais reproposée. Chaque relecture est comptée dans la consommation.
+          refusée n’est pas reproposée sous le même titre. Chaque relecture est comptée dans la
+          consommation.
         </p>
         {action.error && <ErrorNote message={action.error} />}
         <Button
