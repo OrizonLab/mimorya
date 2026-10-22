@@ -2158,6 +2158,8 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     l'audit ne garde que des identifiants ;
   - un avis que l'arrêt du service interrompt entre l'enregistrement de la pause et
     l'envoi est rattrapé au démarrage suivant (ADR-070) ;
+  - pendant une absence, l'avis va au remplaçant que le responsable a désigné
+    (ADR-072) ;
   - le responsable est relancé la veille de l'échéance (ADR-062) ; pas de résumé
     périodique. Ce qu'un modèle détourné peut faire envoyer reste borné : au plus deux
     messages par pause et par responsable (l'avis, puis la relance), et autant de
@@ -2862,9 +2864,9 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
 - **Conséquences** :
   - donnée personnelle nouvelle : la période d'absence et le remplaçant, conservés
     jusqu'à la fin de l'absence ; supprimés avec le compte de l'un ou de l'autre ;
-  - restent (second lot) : l'écran « Absence » de la page des validations, l'avis et la
-    relance envoyés au remplaçant plutôt qu'à l'absent, et le test de bout en bout ;
-    une absence déclarée par l'administrateur pour un collaborateur empêché ;
+  - l'avis et la relance vont au remplaçant plutôt qu'à l'absent (ADR-072) ; restent
+    l'écran « Absence » de la page des validations et le test de bout en bout, et une
+    absence déclarée par l'administrateur pour un collaborateur empêché ;
   - tests :
     - `crates/api/tests/approval_delegation.rs` : déclaration, lecture par l'absent et
       par le remplaçant, remplacement, retrait, audit ; refus (soi-même, inconnu, autre
@@ -2877,3 +2879,34 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
       désignée ne peut qu'abandonner sa demande ; ce que l'absent a décidé reste caché ;
     - `crates/db/tests/definer_functions.rs` : la nouvelle fonction est dans la liste
       connue.
+
+## ADR-072 — L'avis et la relance vont au remplaçant pendant une absence (complète ADR-071)
+
+- **Date** : 2026-10-22 · **Statut** : acceptée
+- **Contexte** : depuis ADR-071, le remplaçant désigné par un responsable absent peut
+  décider à sa place. Mais l'e-mail d'une pause (ADR-060), celui rattrapé au démarrage
+  (ADR-070) et la relance de la veille (ADR-062) partaient toujours vers l'absent, qui ne
+  les lit pas : le remplaçant ne l'apprenait qu'en ouvrant la page des validations.
+- **Décision** :
+  - au moment d'envoyer un avis ou une relance, si le responsable que les demandes
+    attendent a une absence en cours (commencée, pas terminée), que son compte et celui
+    de son remplaçant sont actifs, et que le remplaçant peut décider ces demandes
+    (`approval:decide` sur la personne pour qui elles sont faites, vérifié comme à la
+    décision), le message va **au remplaçant, et à lui seul**. Il dit en quelle absence :
+    sujet suivi de « (en l’absence de …) », texte ouvert par « En l’absence de …, ». Sinon,
+    il va au responsable, comme avant : un remplaçant qui ne pourrait pas décider ces
+    demandes n'en apprend jamais l'existence ;
+  - le message garde ce qu'il disait : ni l'action ni ses paramètres ;
+  - l'audit (`approval.notified`, `approval.reminded`) garde le responsable désigné
+    (`approverId`) et nomme le remplaçant prévenu (`delegateId`).
+- **Conséquences** :
+  - une demande reste signalée une fois et relancée une fois : une demande signalée au
+    responsable avant son absence ne l'est pas de nouveau au remplaçant, mais sa relance,
+    si elle tombe pendant l'absence, va au remplaçant ;
+  - pendant son absence, le responsable ne reçoit rien pour les demandes que son
+    remplaçant peut décider ; il les voit toujours dans « Validations » ;
+  - tests :
+    - `crates/api/src/services/runs/approval_notice/message.rs` : texte au remplaçant ;
+    - `crates/api/tests/delegate_notices.rs` : avis et relance au remplaçant, en
+      l'absence nommée et tracés ; le responsable prévenu quand le remplaçant ne pourrait
+      pas décider, ou que l'absence n'a pas commencé.

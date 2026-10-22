@@ -3,55 +3,18 @@
 //! but only where they hold `approval:decide` over whom each is for; the
 //! audit names whom they stood in for. Before the absence, after it is
 //! withdrawn, for a disabled account, through someone else's delegate (one
-//! hop), or without the right, the delegate finds nothing; the manager still decides, and the
-//! requester, though named, may only withdraw. What the manager decided
-//! stays theirs to see.
+//! hop), or without the right, the delegate finds nothing; the manager
+//! still decides, and the requester, though named, may only withdraw. What
+//! the manager decided stays theirs to see.
 
 mod support;
 
 use axum::http::StatusCode;
-use chrono::{Duration, Utc};
-use mimorya_core::demo::{role, unit, user};
+use mimorya_core::demo::user;
 use serde_json::{Value, json};
+use support::delegations::{away, back, julien_decides_for_the_south};
 use support::manager_approvals::{applying, audited, route_to_managers};
 use support::{Client, TestApi};
-
-const ABSENCE: &str = "/approval-delegation";
-
-/// Has `absent` name `delegate` from `starts_in` days from now, for a week.
-async fn away(absent: &Client<'_>, delegate: uuid::Uuid, starts_in: i64) {
-    let starts = Utc::now() + Duration::days(starts_in);
-    let body = json!({
-        "delegateId": delegate,
-        "startsAt": starts.to_rfc3339(),
-        "endsAt": (starts + Duration::days(7)).to_rfc3339(),
-    });
-    let declared = absent.put(ABSENCE, body).await;
-    assert_eq!(declared.status, StatusCode::OK, "{}", declared.text());
-}
-
-async fn back(absent: &Client<'_>) {
-    let withdrawn = absent.delete(ABSENCE).await;
-    assert_eq!(withdrawn.status, StatusCode::OK, "{}", withdrawn.text());
-}
-
-/// Gives Julien the team lead's role over the south team: he then holds
-/// `approval:decide` over Nadia. The assignment, to revoke.
-async fn julien_decides_for_the_south(paul: &Client<'_>) -> String {
-    let scope =
-        json!({ "type": "org_unit", "orgUnitId": unit::TEAM_SOUTH, "includeDescendants": true });
-    let granted = paul
-        .post(
-            &format!("/admin/users/{}/assignments", user::JULIEN),
-            json!({ "roleId": role::TEAM_LEAD, "scope": scope }),
-        )
-        .await;
-    assert_eq!(granted.status, StatusCode::CREATED, "{}", granted.text());
-    format!(
-        "/admin/assignments/{}",
-        granted.json()["id"].as_str().unwrap()
-    )
-}
 
 /// A request of Nadia's, awaiting Marc: its identifier.
 async fn nadia_s_request(api: &TestApi, paul: &Client<'_>, start_time: &str) -> String {

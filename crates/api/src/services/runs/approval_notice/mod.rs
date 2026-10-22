@@ -5,10 +5,13 @@
 //! service lost is sent at startup (ADR-070). The day before the requests
 //! expire, their manager is reminded once (ADR-062). Without a mail
 //! relay, nothing is sent and managers find the requests in « Validations ».
-//! Each request notified or reminded is audited, without the address nor the
+//! While the manager is away, whom they named to stand in for them is told
+//! instead, if that colleague may decide the requests (ADR-071). Each
+//! request notified or reminded is audited, without the address nor the
 //! relay's answer, which may name it.
 
 mod message;
+mod recipient;
 
 use std::sync::Arc;
 
@@ -23,8 +26,10 @@ use serde_json::json;
 use uuid::Uuid;
 
 use crate::mail::Mailer;
+use crate::services::access::AccessService;
 use crate::services::background::BackgroundTasks;
 use message::{ApprovalMail, approval_mail};
+use recipient::{Recipient, recipient};
 
 /// How long before their deadline requests are reminded of (ADR-062).
 pub const REMIND_BEFORE: Duration = Duration::hours(24);
@@ -57,6 +62,7 @@ impl Message {
 #[derive(Clone)]
 pub struct ApprovalNotifier {
     db: Database,
+    access: Arc<AccessService>,
     mailer: Option<Arc<dyn Mailer>>,
     /// The web application's address, where the link leads.
     web_origin: String,
@@ -67,6 +73,7 @@ pub struct ApprovalNotifier {
 impl ApprovalNotifier {
     pub fn new(
         db: Database,
+        access: Arc<AccessService>,
         mailer: Option<Arc<dyn Mailer>>,
         web_origin: String,
         product: String,
@@ -74,6 +81,7 @@ impl ApprovalNotifier {
     ) -> Self {
         Self {
             db,
+            access,
             mailer,
             web_origin,
             product,
@@ -202,7 +210,8 @@ impl ApprovalNotifier {
         Ok(())
     }
 
-    /// Tells one manager of `requests`, all theirs, and audits each.
+    /// Tells one manager of `requests`, all theirs, or whom they named to
+    /// stand in for them while away (ADR-071), and audits each.
     async fn send_one(
         &self,
         mailer: &dyn Mailer,
@@ -219,12 +228,14 @@ impl ApprovalNotifier {
                 risks.push(&request.risk);
             }
         }
+        let to = recipient(&self.db, &self.access, tenant_id, first).await?;
         let link = format!("{}/approvals", self.web_origin);
         let mail = approval_mail(&ApprovalMail {
             product: &self.product,
             company: &first.company,
-            manager: &first.approver_name,
-            email: &first.approver_email,
+            manager: &to.name,
+            email: &to.email,
+            absent: to.absent.as_deref(),
             requested_for: &first.requested_for_name,
             count: requests.len(),
             risks: &risks,
@@ -245,7 +256,8 @@ impl ApprovalNotifier {
         };
         let mut tx = self.db.begin(tenant_id).await?;
         for request in requests {
-            let entry = audit_entry(tenant_id, request, requests.len(), message, outcome);
+            let grouped = requests.len();
+            let entry = audit_entry(tenant_id, request, &to, grouped, message, outcome);
             append_audit(&mut tx, entry).await?;
         }
         tx.commit().await?;
@@ -253,18 +265,23 @@ impl ApprovalNotifier {
     }
 }
 
-/// The notice or reminder of `request`, sent in one message with `grouped`
-/// requests.
+/// The notice or reminder of `request`, sent to `to` in one message with
+/// `grouped` requests: the stand-in named when the manager was away.
 fn audit_entry(
     tenant_id: Uuid,
     request: &ApprovalNotice,
+    to: &Recipient,
     grouped: usize,
     message: Message,
     outcome: &'static str,
 ) -> AuditEntry {
+    let mut metadata = json!({ "approverId": request.approver_user_id, "grouped": grouped });
+    if to.user_id != request.approver_user_id {
+        metadata["delegateId"] = json!(to.user_id);
+    }
     AuditEntry::new(tenant_id, "system", message.action(), outcome)
         .resource("approval", request.approval_id)
         .run(request.run_id)
         .on_behalf_of(request.requested_for_user_id)
-        .metadata(json!({ "approverId": request.approver_user_id, "grouped": grouped }))
+        .metadata(metadata)
 }

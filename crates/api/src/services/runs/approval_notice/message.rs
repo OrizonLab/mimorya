@@ -1,7 +1,8 @@
 //! The e-mail telling a manager that requests await them, one per pause of
 //! a run (ADR-060), or reminding them the day before they expire (ADR-062),
 //! in French and plain text: for whom, how many and of which risks, where to
-//! decide and until when. Neither the actions nor
+//! decide and until when; to whom an absent manager named to stand in for
+//! them, in whose absence (ADR-071). Neither the actions nor
 //! their parameters: the message leaves the platform, and they are shown
 //! after signing in, where the right to decide is checked.
 
@@ -13,8 +14,11 @@ use crate::mail::{Mail, expiry_label};
 pub struct ApprovalMail<'a> {
     pub product: &'a str,
     pub company: &'a str,
+    /// Whom it is addressed to: the manager, or their stand-in.
     pub manager: &'a str,
     pub email: &'a str,
+    /// The absent manager's name, when whom they named is told instead.
+    pub absent: Option<&'a str>,
     pub requested_for: &'a str,
     /// How many requests await them.
     pub count: usize,
@@ -48,6 +52,7 @@ pub fn approval_mail(notice: &ApprovalMail<'_>) -> Mail {
         company,
         manager,
         email,
+        absent,
         requested_for,
         count,
         risks,
@@ -91,13 +96,20 @@ pub fn approval_mail(notice: &ApprovalMail<'_>) -> Mail {
     } else {
         (subject, "demande")
     };
+    let (subject, assistant) = match absent {
+        Some(absent) => (
+            format!("{subject} (en l’absence de {absent})"),
+            format!("En l’absence de {absent}, l’assistant"),
+        ),
+        None => (subject, "L’assistant".to_owned()),
+    };
     Mail {
         to: email.to_string(),
         to_name: manager.to_string(),
         subject,
         text: format!(
             "Bonjour {manager},\n\n\
-             L’assistant {product} ({company}) {asks} votre validation pour {what} \
+             {assistant} {product} ({company}) {asks} votre validation pour {what} \
              ({risk_word} : {}).\n\n\
              Pour voir {see}, connectez-vous et ouvrez la page des validations :\n\
              {link}\n\n\
@@ -123,6 +135,7 @@ mod tests {
             company: "Néo Maintenance",
             manager: "Marc Lefèvre",
             email: "marc.lefevre@neo-maintenance.example",
+            absent: None,
             requested_for: "Nadia Benali",
             count,
             risks,
@@ -199,6 +212,34 @@ mod tests {
             several.subject,
             "Rappel : 2 actions de Nadia Benali attendent votre validation"
         );
+    }
+
+    #[test]
+    fn a_stand_in_is_told_in_whose_absence() {
+        let mail = approval_mail(&ApprovalMail {
+            product: "Mimorya",
+            company: "Néo Maintenance",
+            manager: "Julien Moreau",
+            email: "julien.moreau@neo-maintenance.example",
+            absent: Some("Marc Lefèvre"),
+            requested_for: "Nadia Benali",
+            count: 1,
+            risks: &["write"],
+            link: "https://mimorya.example/approvals",
+            expires_at: None,
+            reminder: true,
+        });
+        assert_eq!(mail.to_name, "Julien Moreau");
+        assert_eq!(
+            mail.subject,
+            "Rappel : Une action de Nadia Benali attend votre validation \
+             (en l’absence de Marc Lefèvre)"
+        );
+        assert!(mail.text.starts_with("Bonjour Julien Moreau,"));
+        assert!(mail.text.contains(
+            "En l’absence de Marc Lefèvre, l’assistant Mimorya (Néo Maintenance) attend \
+             toujours votre validation pour une action de Nadia Benali"
+        ));
     }
 
     #[test]

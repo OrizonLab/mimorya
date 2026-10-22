@@ -151,6 +151,7 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
         bus: bus.clone(),
         notifier: ApprovalNotifier::new(
             db.clone(),
+            access.clone(),
             mailer.clone(),
             config.web_origin.clone(),
             config.assistant_name.clone(),
