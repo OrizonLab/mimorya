@@ -165,12 +165,14 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
     de l'en-tête anti-CSRF et du contrôle d'origine : la réception de la réponse, liée
     par la tentative, la demande attendue et la signature ; un test tente de la
     contourner (`crates/api/tests/auth.rs`). Ni connexion à l'initiative du fournisseur, ni assertion chiffrée.
-  - **Propriété des domaines** (ADR-069) : un fournisseur OpenID Connect générique ou SAML,
-    qui garantit les adresses que veut son propriétaire, ne crée de compte que dans un
-    domaine que l'entreprise a prouvé par un enregistrement DNS TXT de son propre
-    (`_mimorya.<domaine>`). Une entreprise ne peut ainsi pas prendre les adresses d'un
-    domaine qui ne lui appartient pas, uniques sur la plateforme. Microsoft et Google
-    vérifient eux-mêmes les domaines de leurs clients.
+  - **Propriété des domaines** (ADR-069) : une entreprise prouve un domaine par un
+    enregistrement DNS TXT de son propre (`_mimorya.<domaine>`). Un domaine prouvé réserve
+    ses nouvelles adresses, uniques sur la plateforme, à l'entreprise qui l'a prouvé :
+    aucune autre n'y crée de compte, par invitation ou à la connexion, sauf si elle l'a
+    prouvé aussi. Un fournisseur OpenID Connect générique ou SAML, qui garantit les
+    adresses que veut son propriétaire, ne crée de compte que dans un domaine prouvé par
+    son entreprise ; Microsoft et Google vérifient eux-mêmes les domaines de leurs
+    clients. Une adresse prise avant la preuve le reste (ADR-011).
   - Suite : provisionnement SCIM (phase 3), MFA déléguée à l'IdP ; MFA TOTP locale si
     besoin.
 

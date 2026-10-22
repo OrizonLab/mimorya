@@ -44,7 +44,13 @@ impl Default for SystemDns {
 impl TxtLookup for SystemDns {
     async fn txt(&self, name: &str) -> anyhow::Result<Vec<String>> {
         let resolver = self.0.as_ref().ok_or_else(|| anyhow!("no DNS resolver"))?;
-        let found = tokio::time::timeout(LOOKUP_TIMEOUT, resolver.txt_lookup(name))
+        // Absolute: never tried under the resolver's search domains first.
+        let absolute = if name.ends_with('.') {
+            name.to_string()
+        } else {
+            format!("{name}.")
+        };
+        let found = tokio::time::timeout(LOOKUP_TIMEOUT, resolver.txt_lookup(absolute))
             .await
             .context("DNS lookup timed out")?;
         let lookup = match found {

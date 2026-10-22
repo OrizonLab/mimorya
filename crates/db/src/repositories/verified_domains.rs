@@ -1,5 +1,6 @@
 //! The e-mail domains a company proved it holds (ADR-069), by a TXT record
-//! of its own in their DNS. Rows are the company's (RLS).
+//! of its own in their DNS. Rows are the company's (RLS); whether another
+//! company holds a domain is read through `auth_domain_held_elsewhere`.
 
 use chrono::{DateTime, Utc};
 use sqlx::PgConnection;
@@ -22,6 +23,20 @@ pub async fn list_verified_domains(conn: &mut PgConnection) -> sqlx::Result<Vec<
 
 pub async fn is_domain_verified(conn: &mut PgConnection, domain: &str) -> sqlx::Result<bool> {
     sqlx::query_scalar("select exists (select 1 from verified_domains where domain = $1)")
+        .bind(domain)
+        .fetch_one(conn)
+        .await
+}
+
+/// Whether another company proved the domain while this one did not: no new
+/// account of this company takes an address there.
+pub async fn domain_held_elsewhere(
+    conn: &mut PgConnection,
+    tenant_id: Uuid,
+    domain: &str,
+) -> sqlx::Result<bool> {
+    sqlx::query_scalar("select auth_domain_held_elsewhere($1, $2)")
+        .bind(tenant_id)
         .bind(domain)
         .fetch_one(conn)
         .await

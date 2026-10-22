@@ -7,6 +7,7 @@ use std::collections::BTreeSet;
 use mimorya_core::DomainError;
 use mimorya_core::authz::{AssignmentScope, OrgTree, Sensitivity};
 use mimorya_core::collaborator_attributes::normalize_attributes;
+use mimorya_core::identity_providers::email_domain;
 use mimorya_db::repositories::audit::append_audit;
 use mimorya_db::repositories::invitations::delete_invitation_of;
 use mimorya_db::repositories::role_assignments::{
@@ -16,6 +17,7 @@ use mimorya_db::repositories::users::{
     NewUser, UserPatch, create_user as insert_user, get_user, revoke_user_sessions,
     set_primary_unit, set_temporary_password_hash, update_user as patch_user,
 };
+use mimorya_db::repositories::verified_domains::domain_held_elsewhere;
 use mimorya_db::{Database, TenantTx, is_unique_violation};
 use serde_json::{Map, Value, json};
 use uuid::Uuid;
@@ -39,7 +41,9 @@ pub struct NewUserInput {
 }
 
 /// Creates an `invited` account, without password: it chooses one through
-/// its invitation link (`issue_invitation`, ADR-027).
+/// its invitation link (`issue_invitation`, ADR-027). Never at an address of
+/// a domain another company proved (ADR-069): addresses are unique across
+/// companies, and that one is the other's.
 pub async fn create_user(
     db: &Database,
     access: &AccessContext,
@@ -48,13 +52,22 @@ pub async fn create_user(
     access.require_tenant_wide(PERMISSION)?;
     let tenant_id = access.subject.tenant_id;
 
+    let email = input.email.to_lowercase();
     let mut tx = begin_change(db, access, PERMISSION).await?;
+    if let Some(domain) = email_domain(&email)
+        && domain_held_elsewhere(&mut tx, tenant_id, &domain).await?
+    {
+        return Err(DomainError::conflict(
+            "Cette adresse relève d’un domaine prouvé par une autre entreprise",
+        )
+        .into());
+    }
     check_unit(&current_tree(&mut tx).await?, input.org_unit_id)?;
     let id = match insert_user(
         &mut tx,
         NewUser {
             tenant_id,
-            email: input.email.to_lowercase(),
+            email,
             display_name: input.display_name,
             job_title: input.job_title,
             clearance: input.clearance,

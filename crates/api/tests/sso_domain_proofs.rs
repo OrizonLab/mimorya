@@ -3,21 +3,23 @@
 //! another company's, unreadable, or for a domain no provider covers, the
 //! proof is refused. A generic provider then creates accounts in a
 //! proved domain only: another company declaring Néo's domain on a provider
-//! of its own takes none of its addresses.
+//! of its own takes none of its addresses. Microsoft creates accounts
+//! without a proof; but in a domain another company proved, no account is
+//! created, at a sign-in or by invitation, unless the company proved it too.
 
 mod support;
 
 use axum::http::StatusCode;
 use mimorya_core::demo::{tenant, user};
 use mimorya_core::identity_providers::{proof_record_name, proof_record_value};
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 use support::accounts::{INVITED_PASSWORD, accept};
 use support::companies::create;
 use support::identity_provider::{MockIdentityProvider, Person};
 use support::refusals::{latest_entry, latest_entry_of, refusals_since};
 use support::sso::{
     DOMAIN, DOMAIN_PROOFS, PROVIDERS, SSO_DEPLOYMENT, assert_refused, declaration, declare,
-    location, prove_domain, remove, sign_in_by_link, sso_logins,
+    insert_microsoft_provider, location, prove_domain, remove, sign_in_by_link, sso_logins,
 };
 use support::{Client, TestApi, email};
 use uuid::Uuid;
@@ -26,7 +28,33 @@ const NEWCOMER: &str = "noe.arrivant@neo-maintenance.example";
 /// Domains no other test proves.
 const PROVED: &str = "neo-preuve.example";
 const ARRIVALS: &str = "neo-arrivants.example";
+const ENTRA: &str = "neo-entra.example";
 const NOT_PROVED: &str = "Domaine non prouvé par l’entreprise : aucun compte n’y est créé";
+const HELD: &str = "Adresse d’un domaine prouvé par une autre entreprise";
+
+/// Someone of a Microsoft directory: its sign-in name, its object ID.
+fn directory_person(login: &str) -> Person {
+    let mut extra = Map::new();
+    extra.insert("oid".into(), json!(format!("oid-{login}")));
+    Person {
+        subject: format!("sujet-{login}"),
+        preferred_username: Some(format!("{login}@{ENTRA}")),
+        extra,
+        ..Person::default()
+    }
+}
+
+/// A neighbour company whose administrator signs in.
+async fn neighbour<'a>(api: &'a TestApi, slug: &str) -> (Uuid, Client<'a>) {
+    let admin = format!("admin@{slug}.example");
+    let other = create(api, slug, &admin).await;
+    let accepted = accept(api, &other.invitation.link, INVITED_PASSWORD).await;
+    assert_eq!(accepted.status, StatusCode::OK, "{}", accepted.text());
+    (
+        other.tenant_id,
+        api.sign_in_with(&admin, INVITED_PASSWORD).await,
+    )
+}
 
 fn creating(idp: &MockIdentityProvider) -> Value {
     let mut body = declaration(idp);
@@ -169,11 +197,7 @@ async fn another_company_takes_no_address_of_a_domain_it_does_not_hold() {
     );
     // A neighbour declares Néo's domain on a provider of its own, told to
     // create accounts.
-    let admin = "admin@voisine-dns.example";
-    let other = create(&api, "voisine-dns", admin).await;
-    let accepted = accept(&api, &other.invitation.link, INVITED_PASSWORD).await;
-    assert_eq!(accepted.status, StatusCode::OK, "{}", accepted.text());
-    let theirs = api.sign_in_with(admin, INVITED_PASSWORD).await;
+    let (other, theirs) = neighbour(&api, "voisine-dns").await;
     let their_id = declare(&theirs, creating(&idp)).await;
     let claimed = theirs
         .post(DOMAIN_PROOFS, json!({ "domain": DOMAIN }))
@@ -187,9 +211,9 @@ async fn another_company_takes_no_address_of_a_domain_it_does_not_hold() {
 
     // Its provider vouches for a Néo address: nothing is created there.
     idp.sign_in_as(Person::verified("their-noe", NEWCOMER));
-    let since = latest_entry_of(&api, other.tenant_id).await;
+    let since = latest_entry_of(&api, other).await;
     assert_refused(&sign_in_by_link(&api, &idp, &their_id).await);
-    let logins = sso_logins(&api, other.tenant_id, since).await;
+    let logins = sso_logins(&api, other, since).await;
     assert_eq!(logins[0].2.as_deref(), Some(NOT_PROVED));
 
     // The address is still free for Néo, which proves its domain.
@@ -198,6 +222,61 @@ async fn another_company_takes_no_address_of_a_domain_it_does_not_hold() {
     prove_domain(&api, &paul, tenant::ID, DOMAIN).await;
     idp.sign_in_as(Person::verified("kc-noe", NEWCOMER));
     assert_eq!(location(&sign_in_by_link(&api, &idp, &id).await), "/chat");
+
+    // Proved by Néo, the domain's addresses are Néo's: the neighbour cannot
+    // take one by invitation either.
+    let invited = theirs
+        .post(
+            "/admin/users",
+            json!({ "email": "autre.arrivant@neo-maintenance.example", "displayName": "Autre" }),
+        )
+        .await;
+    assert_eq!(invited.status, StatusCode::CONFLICT, "{}", invited.text());
+    assert_eq!(
+        invited.error_message(),
+        "Cette adresse relève d’un domaine prouvé par une autre entreprise"
+    );
+    remove(&paul, &id).await;
+    remove(&theirs, &their_id).await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn microsoft_creates_accounts_unproved_but_never_in_a_domain_held_elsewhere() {
+    let api = TestApi::start_with(&SSO_DEPLOYMENT).await;
+    let idp = MockIdentityProvider::start().await;
+    let paul = api.sign_in(user::PAUL).await;
+    let id = insert_microsoft_provider(&api, &idp, ENTRA, true)
+        .await
+        .to_string();
+    // Microsoft checked its directory's domains: no proof is asked.
+    idp.sign_in_as(directory_person("amin"));
+    assert_eq!(location(&sign_in_by_link(&api, &idp, &id).await), "/chat");
+
+    // A neighbour proves the domain (its owner published their record).
+    let (other, theirs) = neighbour(&api, "voisine-entra").await;
+    let mut body = declaration(&idp);
+    body["domains"] = json!([ENTRA]);
+    let their_id = declare(&theirs, body).await;
+    api.dns
+        .publish(&proof_record_name(ENTRA), &proof_record_value(other, ENTRA));
+    let proved = theirs.post(DOMAIN_PROOFS, json!({ "domain": ENTRA })).await;
+    assert_eq!(proved.status, StatusCode::OK, "{}", proved.text());
+
+    // Néo then creates no account there, at a sign-in or by invitation.
+    idp.sign_in_as(directory_person("bea"));
+    let since = latest_entry(&api).await;
+    assert_refused(&sign_in_by_link(&api, &idp, &id).await);
+    let logins = sso_logins(&api, tenant::ID, since).await;
+    assert_eq!(logins[0].2.as_deref(), Some(HELD));
+    let invitation = json!({ "email": format!("cleo@{ENTRA}"), "displayName": "Cléo" });
+    let invited = paul.post("/admin/users", invitation.clone()).await;
+    assert_eq!(invited.status, StatusCode::CONFLICT, "{}", invited.text());
+    // Unless Néo proves it as well: the owner published both records.
+    prove_domain(&api, &paul, tenant::ID, ENTRA).await;
+    assert_eq!(location(&sign_in_by_link(&api, &idp, &id).await), "/chat");
+    let invited = paul.post("/admin/users", invitation).await;
+    assert_eq!(invited.status, StatusCode::CREATED, "{}", invited.text());
     remove(&paul, &id).await;
     remove(&theirs, &their_id).await;
 }

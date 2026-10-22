@@ -5,7 +5,8 @@
 //! sign-in started from the company's link (ADR-067), a new one: active,
 //! without a password, a role or a unit, named as the provider names the
 //! person. A provider that cannot prove its domains creates it only in a
-//! domain the company proved (ADR-069).
+//! domain the company proved, and none creates it in a domain another
+//! company proved (ADR-069).
 
 use mimorya_core::identity_providers::{ProvenIdentity, ProviderKind, email_domain};
 use mimorya_db::repositories::identity_providers::IdentityProviderRow;
@@ -13,7 +14,7 @@ use mimorya_db::repositories::user_identities::{
     find_identity, find_user_by_email, has_identity_at, touch_identity,
 };
 use mimorya_db::repositories::users::create_federated_user;
-use mimorya_db::repositories::verified_domains::is_domain_verified;
+use mimorya_db::repositories::verified_domains::{domain_held_elsewhere, is_domain_verified};
 use sqlx::PgConnection;
 use uuid::Uuid;
 
@@ -85,6 +86,12 @@ pub async fn account_of(
         return Err(at(
             "Domaine non prouvé par l’entreprise : aucun compte n’y est créé",
         ));
+    }
+    if domain_held_elsewhere(&mut *conn, provider.tenant_id, &domain)
+        .await
+        .map_err(internal)?
+    {
+        return Err(at("Adresse d’un domaine prouvé par une autre entreprise"));
     }
     // Taken in another company (addresses are unique across companies,
     // ADR-011), or created meanwhile by another sign-in of the person.

@@ -151,7 +151,9 @@ Phase 2 : `skill_eval_runs`, `documents` / `document_chunks` (GED, ingestion),
   l'empreinte de son jeton, avec l'obligation éventuelle de changer de mot de passe),
   `auth_find_invitation` (lire, avant connexion, l'invitation désignée par l'empreinte
   du jeton de son lien, ADR-027), `auth_find_password_reset` (de même pour un lien de
-  réinitialisation, ADR-028), `system_fail_stale_runs` (marquer en échec les runs
+  réinitialisation, ADR-028), `auth_domain_held_elsewhere` (si une autre entreprise a
+  prouvé un domaine que celle-ci n'a pas prouvé : oui ou non seulement, sans la nommer,
+  ADR-069), `system_fail_stale_runs` (marquer en échec les runs
   restés sans progression, et les rendre pour annoncer leur fin), `system_interrupted_runs`
   (lister, au démarrage, les runs qu'un arrêt du service a laissés en cours : entreprise et
   identifiant seulement, chacun repris ensuite dans sa propre entreprise, ADR-053),
