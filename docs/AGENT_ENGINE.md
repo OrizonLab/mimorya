@@ -258,10 +258,11 @@ Un responsable **ne voit pas** la mémoire personnelle de ses collaborateurs.
 
 ### 9.3 Leçons tirées des conversations
 
-Si l'entreprise l'a choisi (désactivé par défaut, ADR-076), une conversation qui a appelé un
-outil est relue, une fois la réponse donnée, par le modèle des conversations : il reçoit le
-run comme donnée et propose au plus une leçon générale, dans la mémoire personnelle de la
-personne servie, qui seule la valide.
+Si l'entreprise l'a choisi (désactivé par défaut, dans « Modèle d'IA », ADR-076, ADR-077),
+une conversation qui a appelé un outil est relue, une fois la réponse donnée, par le modèle
+des conversations : il reçoit le run comme donnée et propose au plus une leçon générale, dans
+la mémoire personnelle de la personne servie, qui seule la valide (« Propositions à valider »
+de la page « Mémoire »).
 
 ### 9.4 Cycle de vie
 

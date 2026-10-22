@@ -81,16 +81,17 @@ Repères à l'intérieur des crates :
   `api/src/mail/` (envoi SMTP), `api/src/secrets/` (chiffrement AES-256-GCM des secrets),
   `api/tests/` (intégration, harnais dans `support/`, dont les fournisseurs d'identité
   simulés, OpenID Connect et SAML).
-- `web/components/<fonctionnalité>/` (account, admin, approvals — dont la section
-  « Absence », ADR-073 —, chat, memory, operations, shell), `web/components/ui/` (`Loaded` verrouille son contenu pendant un rechargement,
-  ADR-042), `web/lib/api/` (client, `contract.ts`
+- `web/components/<fonctionnalité>/` (account, admin — dont `admin/llm/` : modèle des
+  conversations, recherche dans la mémoire et leçons, ADR-075, ADR-077 —, approvals — dont
+  la section « Absence », ADR-073 —, chat, memory, operations, shell), `web/components/ui/`
+  (`Loaded` verrouille son contenu pendant un rechargement, ADR-042), `web/lib/api/` (client, `contract.ts`
   généré par `pnpm contract`, `useApiData`), `web/lib/use-synced-state.ts` (état d'un
   formulaire repris de la liste rechargée, ADR-041), `web/lib/focus-keeper.ts` (focus rendu
   au contrôle réactivé, ADR-043), `web/lib/labels.ts`, `web/lib/format.ts`, `web/proxy.ts` et
   `web/lib/security/` (CSP à nonce par page, ADR-030), `web/e2e/` (tests de bout en
   bout, un fichier par parcours, `support/`) et `api/examples/e2e_server/` (l'API qu'ils
   pilotent, avec un fournisseur OpenID Connect et un fournisseur SAML simulés, ADR-031,
-  ADR-063, ADR-068).
+  ADR-063, ADR-068, et une relecture des leçons à part, `lessons.rs`, ADR-077).
 - `infra/` : `docker/` (images de l'API et de l'interface, liste des images publiées
   `images.json`, test de fumée de la démonstration, test d'installation de la production,
   vérifications partagées `checks.sh`), `caddy/`

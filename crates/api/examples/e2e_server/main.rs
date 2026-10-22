@@ -15,10 +15,12 @@
 //! the public one. The DNS a domain's proof is read from is the tests' own,
 //! where they publish records on 127.0.0.1:4102 (`DNS_ADDRESS`, ADR-069).
 //! A company's embedding model is a test one, whatever it chooses: no
-//! provider is ever reached (ADR-074). One pass of the tests per start: the model's
-//! script and the demo company are used up. Like `mimorya-api`, it takes the
-//! run executor's lock once listening and takes up the runs a stop left,
-//! among them the one it leaves itself (`interrupted`, ADR-053).
+//! provider is ever reached (ADR-074). A finished run reread for a lesson
+//! always yields the same one (`lessons`, ADR-076). One pass of the tests
+//! per start: the model's script and the demo company are used up. Like
+//! `mimorya-api`, it takes the run executor's lock once listening and takes
+//! up the runs a stop left, among them the one it leaves itself
+//! (`interrupted`, ADR-053).
 
 mod dns_server;
 #[allow(dead_code)] // the API's tests use the rest
@@ -28,6 +30,7 @@ mod fake_dns;
 #[path = "../../tests/support/identity_provider.rs"]
 mod identity_provider;
 mod interrupted;
+mod lessons;
 mod mailbox;
 mod saml_idp;
 #[allow(dead_code)] // the API's tests use the rest
@@ -49,13 +52,14 @@ use mimorya_connectors::mcp::NetworkPolicy;
 /// Reference scenarios queued for the platform model, by the hour of their
 /// follow-up: one per run that converses, in the order they run (the
 /// interrupted run taken up at startup, which `interrupted-run.spec.ts`
-/// refuses, then the one of `manager-absence.spec.ts`, the two of
-/// `manager-approvals.spec.ts`, `reference-scenario.spec.ts`, the three of
-/// `timeouts.spec.ts` and `unavailable-connectors.spec.ts`). Only the one of
+/// refuses, then the one of `lessons.spec.ts`, that of
+/// `manager-absence.spec.ts`, the two of `manager-approvals.spec.ts`,
+/// `reference-scenario.spec.ts`, the three of `timeouts.spec.ts` and
+/// `unavailable-connectors.spec.ts`). Only the one of
 /// `reference-scenario.spec.ts` is validated: the others are refused (or
 /// withdrawn), so their slots, which may overlap (two hours each, within
 /// the working day, 8 h – 17 h), are never taken.
-const SCENARIO_HOURS: [u32; 9] = [10, 12, 14, 12, 13, 15, 9, 11, 8];
+const SCENARIO_HOURS: [u32; 10] = [10, 10, 12, 14, 12, 13, 15, 9, 11, 8];
 
 /// Where the identity provider listens: `single-sign-on.spec.ts` declares it.
 const IDP_ADDRESS: &str = "127.0.0.1:4100";
@@ -87,7 +91,7 @@ async fn main() -> anyhow::Result<()> {
     for hour in SCENARIO_HOURS {
         model.push(scenario::reference(hour));
     }
-    let platform: Arc<dyn LlmProvider> = model;
+    let platform: Arc<dyn LlmProvider> = Arc::new(lessons::WithLessons::new(model));
     // A company's own provider answers « OK » (its connection test).
     let factory: ProviderFactory = Arc::new(|_config| {
         let provider: Arc<dyn LlmProvider> = Arc::new(ScriptedProvider::new(

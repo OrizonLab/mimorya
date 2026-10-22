@@ -3108,7 +3108,7 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     tests ne l'attendent indéfiniment (`services/background.rs`, testé) ;
   - une leçon est de sensibilité « interne » : sans effet tant qu'elle reste personnelle, mais
     son partage, s'il vient, devra hériter de la sensibilité la plus haute lue par le run ;
-  - reste l'écran de ce réglage (lot 2) ;
+  - l'écran de ce réglage : ADR-077 ;
   - tests :
     - `crates/agent/tests/lesson.rs` : la relecture commence à la demande du run et exige un
       appel d'outil, abrège les résultats, remet le run comme donnée (enveloppe non fermable)
@@ -3121,3 +3121,38 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
       relecture en panne laisse le run terminé, sans leçon ;
     - `crates/api/tests/admin_memory_settings.rs` : réglage réservé aux administrateurs des
       réglages de toute l'entreprise, désactivé par défaut, tracé.
+
+## ADR-077 — Choisir les leçons dans « Modèle d'IA » ; des propositions qui disent où elles vont (complète ADR-076)
+
+- **Date** : 2026-10-22 · **Statut** : acceptée
+- **Contexte** : les leçons tirées des conversations ne s'activaient que par l'API
+  (ADR-076). La carte « Propositions à valider » de la page « Mémoire » ne parlait que des
+  espaces partagés, alors qu'une leçon arrive dans la mémoire de la personne.
+- **Décision** :
+  - l'onglet « Modèle d'IA » ajoute, sous « Recherche dans la mémoire », une section
+    « Leçons tirées des conversations » : une case « Proposer à chacun les leçons de ses
+    conversations » et « Enregistrer », actif seulement si le choix change. L'état repart
+    du réglage rechargé (ADR-041). La page dit qui relit (le modèle des conversations),
+    quand (une conversation terminée qui a utilisé des outils), à qui va la leçon (la
+    personne servie, seule à la voir et à la valider), qu'une leçon refusée ne revient pas
+    et que chaque relecture est comptée. Le réglage est dans cet onglet parce que c'est ce
+    modèle qui relit, à ses frais ;
+  - chaque formulaire de l'onglet porte un nom (`aria-label`) : ses trois boutons
+    « Enregistrer » se distinguent, pour les technologies d'assistance comme pour les
+    tests ;
+  - chaque proposition de la page « Mémoire » dit sa nature (« Leçon »…) et où elle irait
+    (« Ma mémoire », l'unité, « Entreprise », « Expérience de l'agent ») ; ses boutons
+    portent son titre (« Valider « … » »), pour distinguer plusieurs propositions ;
+  - le serveur de bout en bout répond à part à la relecture, qu'il reconnaît à ses
+    consignes, toujours par la même leçon : les scénarios des conversations gardent leur
+    ordre (`e2e_server/lessons.rs`).
+- **Alternatives écartées** : un onglet « Mémoire » dans l'administration, pour un seul
+  réglage ; un enregistrement dès que la case change, contraire aux autres formulaires de
+  l'administration, pour un choix qui coûte.
+- **Conséquences** :
+  - aucune donnée nouvelle ;
+  - tests : `apps/web/e2e/lessons.spec.ts` : Paul coche la case (cochée après
+    rechargement) ; la demande de Marc se termine, refusée ; la leçon est proposée dans sa
+    mémoire (relue par l'API), marquée « Leçon » et « Ma mémoire ». Marc la valide (active
+    après rechargement), puis la supprime. Quoi qu'il arrive, le réglage est désactivé, la
+    leçon supprimée et une validation restée en attente refusée.
