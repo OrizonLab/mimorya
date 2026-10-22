@@ -2,8 +2,8 @@
 //! the notice of a pause and the reminder the day before go to the stand-in,
 //! naming in whose absence, provided the stand-in may decide the requests
 //! (`approval:decide` over whom they are for); the audit names them. A
-//! stand-in who could not decide, or an absence not begun, leaves the
-//! manager told, as before.
+//! stand-in who could not decide or is disabled, or an absence not begun,
+//! leaves the manager told, as before.
 
 mod support;
 
@@ -102,7 +102,7 @@ async fn the_stand_in_is_told_and_reminded_in_the_manager_s_absence() {
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
-async fn the_manager_is_told_when_the_stand_in_could_not_decide_or_is_not_yet_standing_in() {
+async fn the_manager_is_told_when_the_stand_in_could_not_decide_is_disabled_or_not_yet_away() {
     let api = TestApi::start_with_mailer().await;
     let paul = api.sign_in(user::PAUL).await;
     let marc = api.sign_in(user::MARC).await;
@@ -118,6 +118,16 @@ async fn the_manager_is_told_when_the_stand_in_could_not_decide_or_is_not_yet_st
     let second = nadia_s_request(&api, &paul, "13:00").await;
     told_marc(&api, second, 2).await;
     reject(&api, &marc, second).await;
+    // Standing in now, but disabled: Marc again.
+    away(&marc, user::JULIEN, 0).await;
+    let account = format!("/admin/users/{}", user::JULIEN);
+    let disabled = paul.patch(&account, json!({ "status": "disabled" })).await;
+    assert_eq!(disabled.status, StatusCode::OK, "{}", disabled.text());
+    let third = nadia_s_request(&api, &paul, "15:00").await;
+    told_marc(&api, third, 3).await;
+    reject(&api, &marc, third).await;
+    let enabled = paul.patch(&account, json!({ "status": "active" })).await;
+    assert_eq!(enabled.status, StatusCode::OK, "{}", enabled.text());
 
     back(&marc).await;
     let revoked = paul.delete(&assignment).await;
