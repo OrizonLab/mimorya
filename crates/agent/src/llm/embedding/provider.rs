@@ -92,12 +92,12 @@ impl EmbeddingProvider for OpenAiEmbedder {
     }
 }
 
-/// A refusal, as the provider says it: a text too large or invalid for the
-/// model is told apart (`InvalidRequest`, `ContextOverflow`) from a failure,
-/// including the 413 and 422 that embedding servers answer for it.
+/// A refusal, as the provider says it: a text too long for the model
+/// (`ContextOverflow`, which embedding servers answer with a 413 or a 422)
+/// or invalid (`InvalidRequest`) is told apart from a failure.
 pub fn status_error(provider: &str, status: u16, body: &str) -> LlmError {
     match status {
-        413 | 422 => LlmError::new(provider, LlmErrorKind::InvalidRequest, api_message(body)),
+        413 | 422 => LlmError::new(provider, LlmErrorKind::ContextOverflow, api_message(body)),
         _ => from_status(provider, status, body),
     }
 }
@@ -221,7 +221,7 @@ mod tests {
         let body = r#"{"error":{"message":"inputs must have less than 512 tokens"}}"#;
         for status in [413, 422] {
             let error = status_error("openai_compatible", status, body);
-            assert_eq!(error.kind, LlmErrorKind::InvalidRequest);
+            assert_eq!(error.kind, LlmErrorKind::ContextOverflow);
             assert_eq!(error.message, "inputs must have less than 512 tokens");
         }
         let overflow = r#"{"error":{"message":"maximum context length is 8192 tokens"}}"#;

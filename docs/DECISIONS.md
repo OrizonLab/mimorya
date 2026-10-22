@@ -2976,11 +2976,12 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     choix de l'entreprise est relu avant chaque lot et verrouillé pendant l'écriture de
     ses vecteurs : dès qu'il change ou que l'entreprise revient aux mots, plus rien ne part
     vers l'ancien modèle et ce que rapporte le lot en vol est jeté (seul ce lot, déjà
-    parti, a pu sortir). Un texte que le modèle refuse (invalide ou trop long : 400,
-    dépassement de contexte, 413, 422) alors que d'autres de son lot reçoivent leur vecteur
-    n'est plus demandé (`embedding_model` posé, sans vecteur) ; un lot refusé en entier
-    est une panne du modèle ou de son réglage. Toute panne est reprise au passage suivant
-    et montrée aux administrateurs jusque-là. Seules les entreprises actives qui ont choisi un modèle sont parcourues
+    parti, a pu sortir). Un texte que le modèle refuse comme trop long (dépassement de
+    contexte, 413, 422), ou comme invalide alors que d'autres de son lot reçoivent leur
+    vecteur, n'est plus demandé (`embedding_model` posé, sans vecteur) ; un lot dont tous
+    les textes sont refusés comme invalides est une panne du modèle ou de son réglage.
+    Toute panne est reprise au passage suivant et montrée aux administrateurs jusque-là.
+    Seules les entreprises actives qui ont choisi un modèle sont parcourues
     (`system_tenants_awaiting_embeddings`, qui ne rend que l'entreprise) ; chaque lot est
     lu et écrit dans la transaction de l'entreprise (RLS) ;
   - **recherche hybride** : au début de chaque tour et par l'outil de recherche de
@@ -3014,7 +3015,7 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
   - restent l'écran d'administration (lot 2) et la capitalisation automatique des leçons ;
   - tests :
     - `crates/agent/src/llm/embedding/` : réponse remise dans l'ordre, vecteur manquant, nul
-      ou d'autres dimensions refusé, texte trop grand distingué d'une panne (413, 422,
+      ou d'autres dimensions refusé, texte trop long distingué d'une panne (413, 422,
       dépassement de contexte), dimensions demandées à OpenAI seul, lot trop grand
       refusé ; choix vérifié (fournisseur, modèle, adresse listée, similarité), clé
       requise, configuration revérifiée, clé absente des traces ;
@@ -3030,8 +3031,9 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
       rappelle par le sens ce que son utilisateur peut lire, jamais la mémoire personnelle
       d'un autre ; les mots trouvent pendant une panne, reprise ensuite ; proposition
       envoyée une fois approuvée ;
-    - `crates/api/tests/memory_indexing.rs` : texte invalide ou trop long non redemandé ;
-      lot refusé en entier montré comme panne, rien de marqué ; autre modèle, nouvelle
+    - `crates/api/tests/memory_indexing.rs` : texte invalide ou trop long non redemandé,
+      même un lot entier de textes trop longs ; lot refusé en entier comme invalide montré
+      comme panne, rien de marqué ; autre modèle, nouvelle
       indexation ; retour aux mots, vecteurs effacés, y compris pendant un passage (lot en
       vol jeté, aucun autre envoyé) ; un passage n'envoie rien quand le choix a changé ;
       indexation en arrière-plan ;

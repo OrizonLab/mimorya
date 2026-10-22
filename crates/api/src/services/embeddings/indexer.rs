@@ -6,10 +6,11 @@
 //! and locked while its vectors are written: once it changes, or the company
 //! goes back to searching by words, nothing more is sent to the model, and
 //! what the batch in flight brings back is dropped. A text the model refuses
-//! (invalid, too long) while others of its batch get their vector is not
-//! asked again (found by its words only); a batch refused whole is the
-//! model's failure, or its settings': retried at the next pass, like any
-//! other failure, and shown to the company's administrators until then.
+//! as too long, or as invalid while others of its batch get their vector,
+//! is not asked again (found by its words only); a batch whose every text
+//! is refused as invalid is the model's failure, or its settings': retried
+//! at the next pass, like any other failure, and shown to the company's
+//! administrators until then.
 
 use mimorya_agent::llm::embedding::MAX_EMBEDDING_BATCH;
 use mimorya_agent::llm::{LlmError, LlmErrorKind};
@@ -29,6 +30,13 @@ const BATCHES_PER_PASS: usize = 8;
 /// What a memory's vector is computed from.
 fn embedded_text(memory: &MemoryToEmbed) -> String {
     format!("{}\n\n{}", memory.title, memory.content)
+}
+
+/// What became of a text asked alone.
+enum Alone {
+    Embedded(Vec<f32>),
+    /// Refused, and how: too long (`ContextOverflow`) or invalid.
+    Refused(LlmErrorKind),
 }
 
 /// The text sent is refused, not the request: invalid or too long for the
@@ -106,9 +114,9 @@ impl EmbeddingService {
         Ok(embedded)
     }
 
-    /// The vector of each memory, `None` for a text the model refuses while
-    /// it embeds others; why the batch could not be embedded otherwise
-    /// (French).
+    /// The vector of each memory, `None` for a text the model refuses (too
+    /// long, or invalid while it embeds others); why the batch could not be
+    /// embedded otherwise (French).
     async fn embed(
         &self,
         tenant_id: Uuid,
@@ -125,17 +133,27 @@ impl EmbeddingService {
             Err(error) => return Err(error.message),
         };
         // Some text is refused: each is asked alone.
-        let mut vectors = Vec::with_capacity(texts.len());
+        let mut outcomes = Vec::with_capacity(texts.len());
         if texts.len() > 1 {
             for text in &texts {
-                vectors.push(self.embed_alone(tenant_id, embedder, text).await?);
+                outcomes.push(self.embed_alone(tenant_id, embedder, text).await?);
             }
+        } else {
+            outcomes.push(Alone::Refused(refusal.kind));
         }
-        // None embedded: the model refuses the request, not a text.
-        if vectors.iter().all(Option::is_none) {
+        // Too long is the text's fault; invalid, every one of them, the
+        // model's or its settings'.
+        let invalid = |o: &Alone| matches!(o, Alone::Refused(LlmErrorKind::InvalidRequest));
+        if outcomes.iter().all(invalid) {
             return Err(refusal.message);
         }
-        Ok(vectors)
+        Ok(outcomes
+            .into_iter()
+            .map(|outcome| match outcome {
+                Alone::Embedded(vector) => Some(vector),
+                Alone::Refused(_) => None,
+            })
+            .collect())
     }
 
     async fn embed_alone(
@@ -143,13 +161,17 @@ impl EmbeddingService {
         tenant_id: Uuid,
         embedder: &CompanyEmbedder,
         text: &str,
-    ) -> Result<Option<Vec<f32>>, String> {
+    ) -> Result<Alone, String> {
         match embedder.provider.embed(&[text.to_string()]).await {
             Ok(embedded) => {
                 self.record(tenant_id, embedder, &embedded).await;
-                Ok(embedded.vectors.into_iter().next())
+                let vector = embedded.vectors.into_iter().next();
+                Ok(vector.map_or(
+                    Alone::Refused(LlmErrorKind::InvalidRequest),
+                    Alone::Embedded,
+                ))
             }
-            Err(error) if refuses_text(&error) => Ok(None),
+            Err(error) if refuses_text(&error) => Ok(Alone::Refused(error.kind)),
             Err(error) => Err(error.message),
         }
     }

@@ -1,6 +1,6 @@
 //! How indexing memories by meaning holds up (ADR-074): a text the model
-//! refuses (invalid, too long) is not asked again, a batch refused whole is
-//! the model's failure, another model indexes anew, going back to words
+//! refuses (invalid, too long) is not asked again, even a whole batch too
+//! long, a batch refused whole as invalid is the model's failure, another model indexes anew, going back to words
 //! wipes the vectors, even mid-pass, a pass sends nothing once the choice
 //! changed, and a memory written is indexed in the background.
 
@@ -136,6 +136,40 @@ async fn a_pass_sends_nothing_once_the_choice_changed() {
     assert_eq!(api.embedder.calls(), asked);
     assert_eq!(vector_of(&api, vans).await, (None, false));
     forget(&lucas, vans).await;
+    back_to_words(&paul).await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn texts_too_long_are_refused_even_a_whole_batch_of_them() {
+    let api = start().await;
+    let paul = api.sign_in(user::PAUL).await;
+    let lucas = api.sign_in(user::LUCAS).await;
+    choose(&paul, MODEL, 0.15).await;
+    index(&api).await;
+    api.embedder
+        .refuse(&[("interminable", LlmErrorKind::ContextOverflow)]);
+    let first = remember(&lucas, "Note interminable", "Premier texte.").await;
+    let second = remember(&lucas, "Autre note interminable", "Second texte.").await;
+
+    // Every text of the batch too long: each refused, no failure.
+    assert_eq!(index(&api).await, 0);
+    assert_eq!(vector_of(&api, first).await, (Some(MODEL.into()), false));
+    assert_eq!(vector_of(&api, second).await, (Some(MODEL.into()), false));
+    // Alone in its batch too, and not asked again.
+    let third = remember(&lucas, "Dernière note interminable", "Troisième.").await;
+    assert_eq!(index(&api).await, 0);
+    assert_eq!(vector_of(&api, third).await, (Some(MODEL.into()), false));
+    let asked = api.embedder.calls();
+    assert_eq!(index(&api).await, 0);
+    assert_eq!(api.embedder.calls(), asked);
+    let shown = paul.get("/admin/embedding").await.json();
+    assert_eq!(shown["settings"]["indexingError"], json!(null));
+
+    api.embedder.refuse(&[]);
+    for memory in [first, second, third] {
+        forget(&lucas, memory).await;
+    }
     back_to_words(&paul).await;
 }
 
