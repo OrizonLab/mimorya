@@ -83,7 +83,7 @@ pub async fn search_memory(
              and embedding is not null and embedding_model = $9), \
          meaning as ( \
            select id, row_number() over (order by similarity desc, updated_at desc, id) as rank \
-           from near where similarity >= $10 \
+           from near where similarity >= $10 and similarity <> 'NaN' \
            order by rank limit $7) \
          select m.id, m.scope, m.kind, m.title, m.content, m.org_unit_id, m.updated_at, \
            (coalesce(1.0 / ({RANK_CONSTANT} + words.rank), 0) \

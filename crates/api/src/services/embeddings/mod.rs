@@ -15,7 +15,7 @@ use std::time::Duration;
 
 use mimorya_agent::llm::embedding::{company_embedding_config, create_embedder};
 use mimorya_agent::llm::{EmbeddingConfig, EmbeddingProvider, PriceTable};
-use mimorya_db::repositories::embedding_settings::get_embedding_settings;
+use mimorya_db::repositories::embedding_settings::{EmbeddingSettingsRow, get_embedding_settings};
 use mimorya_db::{Database, TenantTx};
 use tokio::sync::Notify;
 use uuid::Uuid;
@@ -40,6 +40,19 @@ pub struct CompanyEmbedder {
     /// As the company chose it: the vectors it gives are stored under it.
     pub model: String,
     pub min_similarity: f32,
+    /// Where the texts go, as the company chose it.
+    kind: String,
+    base_url: Option<String>,
+}
+
+impl CompanyEmbedder {
+    /// Whether the company's choice, as stored now, is still this model at
+    /// this address: else nothing more is sent to it, nor stored from it.
+    pub fn serves(&self, settings: &EmbeddingSettingsRow) -> bool {
+        settings.provider == self.kind
+            && settings.model == self.model
+            && settings.base_url == self.base_url
+    }
 }
 
 /// How a company's memory is searched.
@@ -148,6 +161,8 @@ impl EmbeddingService {
                 provider,
                 model: settings.model,
                 min_similarity: settings.min_similarity,
+                kind: settings.provider,
+                base_url: settings.base_url,
             }),
             Err(_) => EmbeddingResolution::Refused(
                 "Le modèle d’embeddings ne peut pas être préparé avec cette configuration".into(),

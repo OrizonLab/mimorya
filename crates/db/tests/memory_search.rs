@@ -16,6 +16,7 @@ use mimorya_db::repositories::memory_embeddings::{
     IndexProgress, clear_embeddings, index_progress, memories_to_embed, store_embedding,
     tenants_awaiting_embeddings,
 };
+use mimorya_db::testing::OTHER_TENANT_ID;
 use mimorya_db::{Database, TenantTx};
 use uuid::Uuid;
 
@@ -54,6 +55,32 @@ fn add_team_south_procedure(urls: &mimorya_db::testing::TestDatabaseUrls) {
 
 async fn app() -> Database {
     support::connect(&support::urls(add_team_south_procedure).app).await
+}
+
+/// The company chooses `MODEL`.
+async fn choose_model(db: &Database, tenant_id: Uuid) {
+    let mut tx = db.begin(tenant_id).await.unwrap();
+    sqlx::query(
+        "insert into tenant_embedding_settings (tenant_id, provider, model, base_url, \
+         min_similarity) values ($1, 'ollama', $2, 'http://ollama.test:11434/v1', 0.5)",
+    )
+    .bind(tenant_id)
+    .bind(MODEL)
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+}
+
+/// Suspends or reactivates a company, as the operator does (owner role).
+async fn set_status(tenant_id: Uuid, status: &str) {
+    let owner = support::connect(&support::urls(add_team_south_procedure).owner).await;
+    sqlx::query("update tenants set status = $2 where id = $1")
+        .bind(tenant_id)
+        .bind(status)
+        .execute(owner.pool())
+        .await
+        .unwrap();
 }
 
 /// A unit vector along `axis`.
@@ -184,29 +211,29 @@ async fn memories_await_the_chosen_model_s_vector_until_given_or_refused() {
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
-async fn only_a_company_that_chose_a_model_awaits_vectors() {
+async fn only_an_active_company_that_chose_a_model_awaits_vectors() {
     let db = app().await;
-    assert!(
-        tenants_awaiting_embeddings(db.pool())
-            .await
-            .unwrap()
-            .is_empty()
-    );
-    let mut tx = db.begin(tenant::ID).await.unwrap();
-    sqlx::query(
-        "insert into tenant_embedding_settings (tenant_id, provider, model, base_url, \
-         min_similarity) values ($1, 'ollama', $2, 'http://ollama.test:11434/v1', 0.5)",
-    )
-    .bind(tenant::ID)
-    .bind(MODEL)
-    .execute(&mut *tx)
-    .await
-    .unwrap();
+    let awaiting = || async { tenants_awaiting_embeddings(db.pool()).await.unwrap() };
+    assert!(awaiting().await.is_empty());
+    choose_model(&db, tenant::ID).await;
+    assert_eq!(awaiting().await, [tenant::ID]);
+    // The other company, its own memory awaiting, once it chose a model too,
+    // and not while suspended.
+    choose_model(&db, OTHER_TENANT_ID).await;
+    let mut both = awaiting().await;
+    both.sort();
+    let mut expected = vec![tenant::ID, OTHER_TENANT_ID];
+    expected.sort();
+    assert_eq!(both, expected);
+    set_status(OTHER_TENANT_ID, "suspended").await;
+    assert_eq!(awaiting().await, [tenant::ID]);
+    set_status(OTHER_TENANT_ID, "active").await;
+    let mut tx = db.begin(OTHER_TENANT_ID).await.unwrap();
+    sqlx::query("delete from tenant_embedding_settings")
+        .execute(&mut *tx)
+        .await
+        .unwrap();
     tx.commit().await.unwrap();
-    assert_eq!(
-        tenants_awaiting_embeddings(db.pool()).await.unwrap(),
-        [tenant::ID]
-    );
 
     let mut tx = db.begin(tenant::ID).await.unwrap();
     for memory in memories_to_embed(&mut tx, MODEL, 100).await.unwrap() {

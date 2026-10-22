@@ -8,7 +8,7 @@ mod settings;
 
 use async_trait::async_trait;
 
-pub use provider::{OpenAiEmbedder, parse_embeddings};
+pub use provider::{OpenAiEmbedder, parse_embeddings, status_error};
 pub use settings::{
     EMBEDDING_KINDS, EmbeddingConfig, MISTRAL_BASE_URL, TenantEmbeddingChoice,
     check_tenant_embedding, company_embedding_config, create_embedder, default_embedding_model,

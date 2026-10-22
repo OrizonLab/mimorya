@@ -25,6 +25,20 @@ pub async fn get_embedding_settings(
     .await
 }
 
+/// The company's choice, locked until the transaction ends: a change, or
+/// the return to searching by words, waits for it, and what is written
+/// meanwhile follows the choice read.
+pub async fn lock_embedding_settings(
+    conn: &mut PgConnection,
+) -> sqlx::Result<Option<EmbeddingSettingsRow>> {
+    sqlx::query_as(
+        "select provider, model, base_url, min_similarity, updated_at \
+         from tenant_embedding_settings for share",
+    )
+    .fetch_optional(conn)
+    .await
+}
+
 pub struct NewEmbeddingSettings<'a> {
     pub tenant_id: Uuid,
     pub provider: &'a str,

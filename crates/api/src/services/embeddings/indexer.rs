@@ -2,12 +2,20 @@
 //! active memories not yet embedded by the model the company chose (written
 //! since, approved since, or embedded by another model before), a batch at
 //! a time and a few batches per pass, so that one company's backlog never
-//! holds the others'. A text the model refuses is not asked again (found by
-//! its words only); any other failure is retried at the next pass, and
-//! shown to the company's administrators until then.
+//! holds the others'. The company's choice is read again before each batch
+//! and locked while its vectors are written: once it changes, or the company
+//! goes back to searching by words, nothing more is sent to the model, and
+//! what the batch in flight brings back is dropped. A text the model refuses
+//! (invalid, too long) while others of its batch get their vector is not
+//! asked again (found by its words only); a batch refused whole is the
+//! model's failure, or its settings': retried at the next pass, like any
+//! other failure, and shown to the company's administrators until then.
 
-use mimorya_agent::llm::LlmErrorKind;
 use mimorya_agent::llm::embedding::MAX_EMBEDDING_BATCH;
+use mimorya_agent::llm::{LlmError, LlmErrorKind};
+use mimorya_db::repositories::embedding_settings::{
+    get_embedding_settings, lock_embedding_settings,
+};
 use mimorya_db::repositories::memory_embeddings::{
     MemoryToEmbed, memories_to_embed, store_embedding, tenants_awaiting_embeddings,
 };
@@ -21,6 +29,15 @@ const BATCHES_PER_PASS: usize = 8;
 /// What a memory's vector is computed from.
 fn embedded_text(memory: &MemoryToEmbed) -> String {
     format!("{}\n\n{}", memory.title, memory.content)
+}
+
+/// The text sent is refused, not the request: invalid or too long for the
+/// model.
+fn refuses_text(error: &LlmError) -> bool {
+    matches!(
+        error.kind,
+        LlmErrorKind::InvalidRequest | LlmErrorKind::ContextOverflow
+    )
 }
 
 impl EmbeddingService {
@@ -53,6 +70,11 @@ impl EmbeddingService {
         let mut embedded = 0;
         for _ in 0..BATCHES_PER_PASS {
             let mut tx = self.db.begin(tenant_id).await?;
+            let chosen = get_embedding_settings(&mut tx).await?;
+            if !chosen.is_some_and(|settings| embedder.serves(&settings)) {
+                // Changed meanwhile: the next pass follows the new choice.
+                return Ok(embedded);
+            }
             let batch_size = i64::try_from(MAX_EMBEDDING_BATCH)?;
             let batch = memories_to_embed(&mut tx, &embedder.model, batch_size).await?;
             tx.commit().await?;
@@ -67,6 +89,10 @@ impl EmbeddingService {
                 }
             };
             let mut tx = self.db.begin(tenant_id).await?;
+            let chosen = lock_embedding_settings(&mut tx).await?;
+            if !chosen.is_some_and(|settings| embedder.serves(&settings)) {
+                return Ok(embedded);
+            }
             for (memory, vector) in batch.iter().zip(&vectors) {
                 store_embedding(&mut tx, memory.id, vector.as_deref(), &embedder.model).await?;
             }
@@ -80,8 +106,9 @@ impl EmbeddingService {
         Ok(embedded)
     }
 
-    /// The vector of each memory, `None` for a text the model refuses; why
-    /// the batch could not be embedded otherwise (French).
+    /// The vector of each memory, `None` for a text the model refuses while
+    /// it embeds others; why the batch could not be embedded otherwise
+    /// (French).
     async fn embed(
         &self,
         tenant_id: Uuid,
@@ -89,22 +116,26 @@ impl EmbeddingService {
         batch: &[MemoryToEmbed],
     ) -> Result<Vec<Option<Vec<f32>>>, String> {
         let texts: Vec<String> = batch.iter().map(embedded_text).collect();
-        match embedder.provider.embed(&texts).await {
+        let refusal = match embedder.provider.embed(&texts).await {
             Ok(embedded) => {
                 self.record(tenant_id, embedder, &embedded).await;
-                Ok(embedded.vectors.into_iter().map(Some).collect())
+                return Ok(embedded.vectors.into_iter().map(Some).collect());
             }
-            // One of the texts is refused: each is asked alone.
-            Err(error) if error.kind == LlmErrorKind::InvalidRequest && texts.len() > 1 => {
-                let mut vectors = Vec::with_capacity(texts.len());
-                for text in &texts {
-                    vectors.push(self.embed_alone(tenant_id, embedder, text).await?);
-                }
-                Ok(vectors)
+            Err(error) if refuses_text(&error) => error,
+            Err(error) => return Err(error.message),
+        };
+        // Some text is refused: each is asked alone.
+        let mut vectors = Vec::with_capacity(texts.len());
+        if texts.len() > 1 {
+            for text in &texts {
+                vectors.push(self.embed_alone(tenant_id, embedder, text).await?);
             }
-            Err(error) if error.kind == LlmErrorKind::InvalidRequest => Ok(vec![None]),
-            Err(error) => Err(error.message),
         }
+        // None embedded: the model refuses the request, not a text.
+        if vectors.iter().all(Option::is_none) {
+            return Err(refusal.message);
+        }
+        Ok(vectors)
     }
 
     async fn embed_alone(
@@ -118,7 +149,7 @@ impl EmbeddingService {
                 self.record(tenant_id, embedder, &embedded).await;
                 Ok(embedded.vectors.into_iter().next())
             }
-            Err(error) if error.kind == LlmErrorKind::InvalidRequest => Ok(None),
+            Err(error) if refuses_text(&error) => Ok(None),
             Err(error) => Err(error.message),
         }
     }

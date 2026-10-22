@@ -19,6 +19,12 @@ pub const CONCEPTS: &[&[&str]] = &[
 /// An endpoint the operator lists (`MIMORYA_TENANT_LLM_ENDPOINTS`).
 pub const ENDPOINT: &str = "http://embeddings.test:8080/v1";
 pub const MODEL: &str = "concepts";
+/// A memory found by meaning only from `ASKED`: no word in common.
+pub const VANS: (&str, &str) = (
+    "Départ des tournées",
+    "Les camionnettes partent du dépôt de Lyon à 7 h.",
+);
+pub const ASKED: &str = "Quel véhicule prendre demain ?";
 
 const ENV: [(&str, &str); 2] = [
     ("MIMORYA_TENANT_LLM_ENDPOINTS", ENDPOINT),
@@ -47,6 +53,23 @@ pub async fn choose(admin: &Client<'_>, model: &str, min_similarity: f32) {
     });
     let chosen = admin.put("/admin/embedding", body).await;
     assert_eq!(chosen.status, StatusCode::OK, "{}", chosen.text());
+}
+
+/// A pass of the indexer, as the background would run it: how many
+/// memories got a vector.
+pub async fn index(api: &TestApi) -> usize {
+    api.app.services.embeddings.index_pending().await.unwrap()
+}
+
+pub async fn forget(client: &Client<'_>, memory: Uuid) {
+    let deleted = client.delete(&format!("/memory/{memory}")).await;
+    assert_eq!(deleted.status, StatusCode::OK, "{}", deleted.text());
+}
+
+/// Back to searching by words only: the vectors are wiped.
+pub async fn back_to_words(admin: &Client<'_>) {
+    let reset = admin.delete("/admin/embedding").await;
+    assert_eq!(reset.status, StatusCode::OK, "{}", reset.text());
 }
 
 /// Writes a personal memory of `client`; its identifier.

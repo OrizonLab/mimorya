@@ -2963,7 +2963,8 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     l'exploitant (`MIMORYA_TENANT_LLM_ENDPOINTS`). La clé est scellée (`embedding.api_key`),
     jamais rendue ni tracée, jamais emportée vers une autre adresse ; la configuration est
     revérifiée à chaque chargement. Les vecteurs doivent avoir 1024 dimensions : un modèle
-    qui en rend d'autres est refusé, jamais tronqué ;
+    qui en rend d'autres est refusé, jamais tronqué ; un vecteur nul (sans direction) est
+    refusé comme son texte ;
   - une **similarité minimale** (cosinus, strictement entre 0 et 1) dit quand une mémoire
     est proche : les modèles répartissent leurs similarités différemment, la valeur de
     départ dépend du fournisseur (Mistral 0,75, OpenAI 0,35, autres 0,5) et se règle ;
@@ -2971,10 +2972,15 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     (écrites ou approuvées depuis, ou indexées par un autre modèle) reçoivent le leur par
     lots de 32, huit lots par entreprise et par passage, un passage à la fois : au
     démarrage, à chaque écriture ou approbation d'une mémoire et à chaque changement de
-    modèle, puis chaque minute. Une proposition n'est envoyée qu'une fois approuvée. Un
-    texte que le modèle refuse n'est plus demandé (`embedding_model` posé, sans vecteur) ;
-    toute autre panne est reprise au passage suivant et montrée aux administrateurs
-    jusque-là. Seules les entreprises actives qui ont choisi un modèle sont parcourues
+    modèle, puis chaque minute. Une proposition n'est envoyée qu'une fois approuvée. Le
+    choix de l'entreprise est relu avant chaque lot et verrouillé pendant l'écriture de
+    ses vecteurs : dès qu'il change ou que l'entreprise revient aux mots, plus rien ne part
+    vers l'ancien modèle et ce que rapporte le lot en vol est jeté (seul ce lot, déjà
+    parti, a pu sortir). Un texte que le modèle refuse (invalide ou trop long : 400,
+    dépassement de contexte, 413, 422) alors que d'autres de son lot reçoivent leur vecteur
+    n'est plus demandé (`embedding_model` posé, sans vecteur) ; un lot refusé en entier
+    est une panne du modèle ou de son réglage. Toute panne est reprise au passage suivant
+    et montrée aux administrateurs jusque-là. Seules les entreprises actives qui ont choisi un modèle sont parcourues
     (`system_tenants_awaiting_embeddings`, qui ne rend que l'entreprise) ; chaque lot est
     lu et écrit dans la transaction de l'entreprise (RLS) ;
   - **recherche hybride** : au début de chaque tour et par l'outil de recherche de
@@ -3007,21 +3013,27 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     modification n'existe aujourd'hui : une mémoire se crée, s'approuve ou se supprime) ;
   - restent l'écran d'administration (lot 2) et la capitalisation automatique des leçons ;
   - tests :
-    - `crates/agent/src/llm/embedding/` : réponse remise dans l'ordre, vecteur manquant ou
-      d'autres dimensions refusé, dimensions demandées à OpenAI seul, lot trop grand
+    - `crates/agent/src/llm/embedding/` : réponse remise dans l'ordre, vecteur manquant, nul
+      ou d'autres dimensions refusé, texte trop grand distingué d'une panne (413, 422,
+      dépassement de contexte), dimensions demandées à OpenAI seul, lot trop grand
       refusé ; choix vérifié (fournisseur, modèle, adresse listée, similarité), clé
       requise, configuration revérifiée, clé absente des traces ;
     - `crates/db/tests/memory_search.rs` : trouvé par le sens hors de tout mot commun,
       jamais hors de portée du sujet, ni d'un autre modèle, ni trop loin ; ce que trouvent
       mots et sens en tête ; file des mémoires à indexer (refus, autre modèle) ; seule
-      une entreprise qui a choisi un modèle est parcourue ;
+      une entreprise active qui a choisi un modèle est parcourue, l'autre entreprise
+      comprise, jamais suspendue ;
     - `crates/api/tests/admin_embedding.rs` : clé scellée, jamais montrée ni tracée,
       supprimée avec le choix et les vecteurs ; règles du choix, clé qui ne suit pas ;
       administrateurs de toute l'entreprise seuls ; test compté et tracé ;
     - `crates/api/tests/semantic_memory.rs` : rien n'est envoyé sans modèle ; un tour
       rappelle par le sens ce que son utilisateur peut lire, jamais la mémoire personnelle
       d'un autre ; les mots trouvent pendant une panne, reprise ensuite ; proposition
-      envoyée une fois approuvée ; texte refusé non redemandé ; autre modèle, nouvelle
-      indexation ; retour aux mots, vecteurs effacés ; indexation en arrière-plan ;
+      envoyée une fois approuvée ;
+    - `crates/api/tests/memory_indexing.rs` : texte invalide ou trop long non redemandé ;
+      lot refusé en entier montré comme panne, rien de marqué ; autre modèle, nouvelle
+      indexation ; retour aux mots, vecteurs effacés, y compris pendant un passage (lot en
+      vol jeté, aucun autre envoyé) ; un passage n'envoie rien quand le choix a changé ;
+      indexation en arrière-plan ;
     - `crates/db/tests/definer_functions.rs` : la nouvelle fonction est dans la liste
       connue.

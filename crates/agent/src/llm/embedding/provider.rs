@@ -11,7 +11,7 @@ use serde_json::{Value, json};
 
 use super::settings::EmbeddingConfig;
 use super::{EMBEDDING_DIMENSIONS, Embedded, EmbeddingProvider, MAX_EMBEDDING_BATCH};
-use crate::llm::openai_compatible::errors::{from_status, malformed, network};
+use crate::llm::openai_compatible::errors::{api_message, from_status, malformed, network};
 use crate::llm::types::{LlmError, LlmErrorKind};
 
 /// No `Debug`: it would print the API key.
@@ -86,16 +86,26 @@ impl EmbeddingProvider for OpenAiEmbedder {
         let status = response.status();
         let body = response.text().await.map_err(|_| network(&self.id))?;
         if !status.is_success() {
-            return Err(from_status(&self.id, status.as_u16(), &body));
+            return Err(status_error(&self.id, status.as_u16(), &body));
         }
         parse_embeddings(&self.id, &body, texts.len())
     }
 }
 
+/// A refusal, as the provider says it: a text too large or invalid for the
+/// model is told apart (`InvalidRequest`, `ContextOverflow`) from a failure,
+/// including the 413 and 422 that embedding servers answer for it.
+pub fn status_error(provider: &str, status: u16, body: &str) -> LlmError {
+    match status {
+        413 | 422 => LlmError::new(provider, LlmErrorKind::InvalidRequest, api_message(body)),
+        _ => from_status(provider, status, body),
+    }
+}
+
 /// The vectors of an `/embeddings` answer for `count` texts, in the order
 /// sent; refused when one is missing, of other dimensions, or not finite
-/// (the database would refuse it). `InvalidRequest` is kept for what the
-/// provider refuses in the texts sent.
+/// (the database would refuse it). `InvalidRequest` is kept for what is
+/// wrong with a text sent: a vector of zeros (no direction to compare).
 pub fn parse_embeddings(provider: &str, body: &str, count: usize) -> Result<Embedded, LlmError> {
     let answer: Value = serde_json::from_str(body).map_err(|_| malformed(provider))?;
     let data = answer["data"]
@@ -126,7 +136,15 @@ pub fn parse_embeddings(provider: &str, body: &str, count: usize) -> Result<Embe
             .iter()
             .map(|v| v.as_f64().map(|v| v as f32).filter(|v| v.is_finite()))
             .collect();
-        *slot = Some(vector.ok_or_else(|| malformed(provider))?);
+        let vector = vector.ok_or_else(|| malformed(provider))?;
+        if vector.iter().all(|v| *v == 0.0) {
+            return Err(LlmError::new(
+                provider,
+                LlmErrorKind::InvalidRequest,
+                "Le modèle renvoie un vecteur nul pour un texte",
+            ));
+        }
+        *slot = Some(vector);
     }
     let vectors: Option<Vec<Vec<f32>>> = vectors.into_iter().collect();
     Ok(Embedded {
@@ -180,6 +198,9 @@ mod tests {
             error.message,
             "Le modèle renvoie des vecteurs de 768 dimensions : 1024 sont attendues"
         );
+        let zero = answer(&[(0, vector(0.0))]);
+        let error = parse_embeddings("ollama", &zero, 1).unwrap_err();
+        assert_eq!(error.kind, LlmErrorKind::InvalidRequest);
         let outside = answer(&[(3, vector(0.5))]);
         assert!(parse_embeddings("ollama", &outside, 1).is_err());
         assert!(parse_embeddings("ollama", "pas du JSON", 1).is_err());
@@ -193,6 +214,23 @@ mod tests {
         assert_eq!(openai["input"], json!(["un"]));
         let mistral = embedder("mistral").build_body(&texts);
         assert_eq!(mistral, json!({ "model": "m", "input": ["un"] }));
+    }
+
+    #[test]
+    fn a_text_too_large_for_the_server_is_told_apart_from_a_failure() {
+        let body = r#"{"error":{"message":"inputs must have less than 512 tokens"}}"#;
+        for status in [413, 422] {
+            let error = status_error("openai_compatible", status, body);
+            assert_eq!(error.kind, LlmErrorKind::InvalidRequest);
+            assert_eq!(error.message, "inputs must have less than 512 tokens");
+        }
+        let overflow = r#"{"error":{"message":"maximum context length is 8192 tokens"}}"#;
+        let error = status_error("openai", 400, overflow);
+        assert_eq!(error.kind, LlmErrorKind::ContextOverflow);
+        assert_eq!(
+            status_error("openai", 503, "").kind,
+            LlmErrorKind::Overloaded
+        );
     }
 
     #[tokio::test]

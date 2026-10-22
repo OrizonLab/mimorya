@@ -331,7 +331,10 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   fois choisi, le texte des mémoires actives (jamais d'une proposition non approuvée) et
   celui des demandes y partent ; un modèle inutilisable laisse la recherche aux mots,
   sans repli vers un autre. Les vecteurs ne comparent que les mémoires que le sujet peut
-  lire (pré-filtrage SQL), et sont tous effacés au retour à la recherche par les mots.
+  lire (pré-filtrage SQL), et sont tous effacés au retour à la recherche par les mots :
+  l'indexation relit le choix avant chaque lot et le verrouille pendant l'écriture, si
+  bien qu'après ce retour seul le lot déjà en vol a pu partir, et ses vecteurs sont
+  jetés.
 - Jamais renvoyés par l'API, jamais injectés dans le contexte du modèle, jamais
   journalisés : les journaux de requêtes ne contiennent ni en-têtes ni corps (seuls
   méthode, chemin, statut, durée et identifiant de requête), et les structures qui

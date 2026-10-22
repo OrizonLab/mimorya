@@ -1,12 +1,15 @@
 //! An embedding model for tests: words of one concept share a dimension,
 //! any other word gets one of its own (from a hash), so that a request finds
 //! by meaning a memory it shares no word with. It records what it embedded,
-//! fails on demand, and refuses the texts holding a given word, as a
-//! provider refuses a text it cannot take. For tests only.
+//! fails on demand, refuses the texts holding a given word as a provider
+//! refuses a text it cannot take, and holds its answer until released, to
+//! act while a call is in flight. For tests only.
 
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use async_trait::async_trait;
+use tokio::sync::Notify;
 
 use crate::llm::embedding::{EMBEDDING_DIMENSIONS, Embedded, EmbeddingProvider};
 use crate::llm::{LlmError, LlmErrorKind};
@@ -19,8 +22,13 @@ pub struct ConceptEmbedder {
     /// of them (plurals included).
     concepts: Vec<Vec<String>>,
     embedded: Mutex<Vec<String>>,
+    calls: AtomicUsize,
     failing: Mutex<bool>,
-    refused: Mutex<Option<String>>,
+    /// A request holding the word is refused so.
+    refused: Mutex<Vec<(String, LlmErrorKind)>>,
+    held: Mutex<bool>,
+    entered: Notify,
+    released: Notify,
 }
 
 impl ConceptEmbedder {
@@ -32,8 +40,12 @@ impl ConceptEmbedder {
                 .map(|words| words.iter().map(|w| w.to_lowercase()).collect())
                 .collect(),
             embedded: Mutex::new(Vec::new()),
+            calls: AtomicUsize::new(0),
             failing: Mutex::new(false),
-            refused: Mutex::new(None),
+            refused: Mutex::new(Vec::new()),
+            held: Mutex::new(false),
+            entered: Notify::new(),
+            released: Notify::new(),
         }
     }
 
@@ -42,14 +54,38 @@ impl ConceptEmbedder {
         self.embedded.lock().expect("embedded").clone()
     }
 
+    /// How many requests it received.
+    pub fn calls(&self) -> usize {
+        self.calls.load(Ordering::SeqCst)
+    }
+
     /// Makes every following request fail (or succeed again).
     pub fn fail(&self, failing: bool) {
         *self.failing.lock().expect("failing") = failing;
     }
 
-    /// Makes every following request holding `word` refused (or none).
-    pub fn refuse(&self, word: Option<&str>) {
-        *self.refused.lock().expect("refused") = word.map(str::to_string);
+    /// Refuses every following request holding one of the words, with its
+    /// kind of error (none: nothing is refused).
+    pub fn refuse(&self, words: &[(&str, LlmErrorKind)]) {
+        *self.refused.lock().expect("refused") = words
+            .iter()
+            .map(|(word, kind)| ((*word).to_string(), *kind))
+            .collect();
+    }
+
+    /// Holds the following requests until `release`.
+    pub fn hold(&self) {
+        *self.held.lock().expect("held") = true;
+    }
+
+    pub fn release(&self) {
+        *self.held.lock().expect("held") = false;
+        self.released.notify_waiters();
+    }
+
+    /// Returns once a held request came in.
+    pub async fn entered(&self) {
+        self.entered.notified().await;
     }
 
     pub fn vector(&self, text: &str) -> Vec<f32> {
@@ -75,6 +111,25 @@ impl ConceptEmbedder {
         }
         vector
     }
+
+    fn is_held(&self) -> bool {
+        *self.held.lock().expect("held")
+    }
+
+    async fn wait_while_held(&self) {
+        if !self.is_held() {
+            return;
+        }
+        self.entered.notify_one();
+        loop {
+            // Registered before the check: a release in between is not lost.
+            let released = self.released.notified();
+            if !self.is_held() {
+                return;
+            }
+            released.await;
+        }
+    }
 }
 
 #[async_trait]
@@ -88,6 +143,8 @@ impl EmbeddingProvider for ConceptEmbedder {
     }
 
     async fn embed(&self, texts: &[String]) -> Result<Embedded, LlmError> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        self.wait_while_held().await;
         if *self.failing.lock().expect("failing") {
             return Err(LlmError::new(
                 "test",
@@ -96,11 +153,22 @@ impl EmbeddingProvider for ConceptEmbedder {
             ));
         }
         let refused = self.refused.lock().expect("refused").clone();
-        if refused.is_some_and(|word| texts.iter().any(|t| t.contains(&word))) {
+        for (word, kind) in refused {
+            if texts.iter().any(|t| t.contains(&word)) {
+                return Err(LlmError::new(
+                    "test",
+                    kind,
+                    format!("Texte refusé : {word}"),
+                ));
+            }
+        }
+        let vectors: Vec<Vec<f32>> = texts.iter().map(|t| self.vector(t)).collect();
+        // As a provider's answer is checked: no vector without a word.
+        if vectors.iter().any(|v| v.iter().all(|x| *x == 0.0)) {
             return Err(LlmError::new(
                 "test",
                 LlmErrorKind::InvalidRequest,
-                "Texte refusé",
+                "Texte sans mot",
             ));
         }
         self.embedded
@@ -108,7 +176,7 @@ impl EmbeddingProvider for ConceptEmbedder {
             .expect("embedded")
             .extend(texts.iter().cloned());
         Ok(Embedded {
-            vectors: texts.iter().map(|t| self.vector(t)).collect(),
+            vectors,
             input_tokens: texts
                 .iter()
                 .map(|t| t.split_whitespace().count() as u64)
