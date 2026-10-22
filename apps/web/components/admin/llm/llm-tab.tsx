@@ -5,12 +5,25 @@ import { Badge, Button, Card, ErrorNote, Loaded } from '@/components/ui';
 import { api, useAction, useApiData, type LlmTestResult, type LlmView } from '@/lib/api';
 import { formatDate } from '@/lib/format';
 import { LLM_PROVIDERS } from '@/lib/labels';
+import { EmbeddingSection } from './embedding-section';
 import { LlmForm } from './llm-form';
 
 const label = (provider: string) => LLM_PROVIDERS[provider] ?? provider;
 
-/** The model the company's conversations use: the platform's or its own. */
+/** The models the company's assistant uses: for its conversations, the
+ * platform's or its own; for searching its memory by meaning, its own if
+ * any (ADR-074). */
 export function LlmTab() {
+  return (
+    <div className="flex flex-col gap-6">
+      <ConversationModel />
+      <EmbeddingSection />
+    </div>
+  );
+}
+
+/** The model the company's conversations use: the platform's or its own. */
+function ConversationModel() {
   const state = useApiData<LlmView>('/admin/llm');
   const [editing, setEditing] = useState(false);
   const [tested, setTested] = useState<LlmTestResult | null>(null);
