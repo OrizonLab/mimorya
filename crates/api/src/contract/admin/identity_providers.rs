@@ -14,7 +14,7 @@ use crate::http::{iso, trimmed, trimmed_opt};
 #[serde(rename_all = "camelCase")]
 pub struct IdentityProviderView {
     pub id: Uuid,
-    /// `microsoft`, `google` or `oidc`.
+    /// `microsoft`, `google`, `oidc` or `saml`.
     pub kind: String,
     pub name: String,
     pub issuer: String,

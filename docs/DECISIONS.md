@@ -2668,7 +2668,10 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     un certificat renouvelé doit être redonné ;
   - lots : (1) API, vérification et tests contre le fournisseur SAML de `saml-rs` avec des
     clés de test (`crates/api/tests/sso_saml.rs`) ; (2) onglet « Connexion » (type SAML,
-    métadonnées, adresses à enregistrer chez le fournisseur) et test de bout en bout ;
+    métadonnées collées puis redonnées, identifiant de l'entreprise et adresse de
+    réception à enregistrer chez le fournisseur) et test de bout en bout, contre un
+    fournisseur SAML servi par `e2e_server` (127.0.0.1:4101), dont les pages, sans
+    script, renvoient la réponse par un bouton ;
   - tests : `crates/api/tests/sso_saml.rs` (déclaration par les métadonnées, adresses de
     l'application, connexion et liaison par l'identifiant d'objet, rejeu refusé ;
     réponse sans tentative, vide, pour une autre demande, signée par une autre clé,
@@ -2680,4 +2683,8 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     fournisseur, adresse privée : refusées ; certificat renouvelé ; compte créé par le
     lien seulement ; fournisseur d'une entreprise déclaré par une autre : refusé) ;
     `services/sso/saml/statement.rs`, `saml/flow.rs` (toutes les assertions notées),
-    `core/src/identity_providers/tests.rs`.
+    `core/src/identity_providers/tests.rs` ; `apps/web/e2e/saml-sign-on.spec.ts`
+    (identifiant de l'entreprise et adresse de réception affichés, métadonnées de
+    l'entreprise lues à cet identifiant ; fournisseur déclaré par ses métadonnées, sans
+    client ni secret ; connexion par sa page ; métadonnées d'un autre fournisseur
+    refusées au renouvellement, les siennes gardées, connexion encore possible).

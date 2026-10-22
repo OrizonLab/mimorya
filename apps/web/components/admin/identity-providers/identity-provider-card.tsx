@@ -47,10 +47,17 @@ export function IdentityProviderCard({
           {provider.enabled ? 'Actif' : 'Désactivé'}
         </Badge>
       </div>
-      <p className="text-sm text-muted">
-        <code>{provider.issuer}</code> · client <code>{provider.clientId}</code> ·{' '}
-        {provider.secretStored ? 'secret enregistré' : 'sans secret'}
-      </p>
+      {provider.kind === 'saml' ? (
+        // Its client is the company's own entity ID, shown with the tab.
+        <p className="text-sm text-muted">
+          <code>{provider.issuer}</code> · métadonnées SAML
+        </p>
+      ) : (
+        <p className="text-sm text-muted">
+          <code>{provider.issuer}</code> · client <code>{provider.clientId}</code> ·{' '}
+          {provider.secretStored ? 'secret enregistré' : 'sans secret'}
+        </p>
+      )}
       <p className="text-sm">Domaines : {provider.domains.join(', ')}</p>
       {provider.enabled && (
         <SignInLink link={provider.signInLink} createsAccounts={provider.createAccounts} />
