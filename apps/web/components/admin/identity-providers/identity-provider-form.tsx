@@ -211,6 +211,8 @@ export function IdentityProviderForm({
           Créer le compte d’un collaborateur de ces domaines à sa première connexion par le lien de
           connexion de l’entreprise : actif, sans rôle ni unité, à son nom tel que le fournisseur le
           donne.
+          {(kind === 'oidc' || saml) &&
+            ' Pour ce type de fournisseur, seulement dans un domaine que l’entreprise a prouvé (voir « Domaines de l’entreprise »).'}
         </span>
       </label>
       <p className="text-xs text-muted">
