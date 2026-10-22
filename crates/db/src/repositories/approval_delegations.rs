@@ -114,6 +114,35 @@ pub async fn standing_in_for(
     .await
 }
 
+/// A colleague standing in for someone, as their messages name them.
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct StandIn {
+    pub user_id: Uuid,
+    pub email: String,
+    pub display_name: String,
+}
+
+/// Whom `user_id` named to stand in for them at `now`: their delegation
+/// runs, and both accounts are active.
+pub async fn stand_in_for(
+    conn: &mut PgConnection,
+    user_id: Uuid,
+    now: DateTime<Utc>,
+) -> sqlx::Result<Option<StandIn>> {
+    sqlx::query_as(
+        "select g.id as user_id, g.email::text as email, g.display_name \
+         from approval_delegations d \
+         join users u on u.id = d.user_id \
+         join users g on g.id = d.delegate_user_id \
+         where d.user_id = $1 and d.starts_at <= $2 and d.ends_at > $2 \
+         and u.status = 'active' and g.status = 'active'",
+    )
+    .bind(user_id)
+    .bind(now)
+    .fetch_optional(conn)
+    .await
+}
+
 /// Deletes every company's ended delegations; how many.
 pub async fn purge_ended_approval_delegations(pool: &PgPool) -> sqlx::Result<i32> {
     sqlx::query_scalar("select system_purge_ended_approval_delegations()")

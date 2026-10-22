@@ -218,7 +218,8 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   demandes confiées à l'absent que s'il détient lui-même `approval:decide` sur la
   personne (404 sinon), tant que la période court et que le compte de l'absent est
   actif ; un seul relais ; il ne voit jamais ce que l'absent a décidé ; l'audit nomme
-  l'absent qu'il remplace.
+  l'absent qu'il remplace. L'avis et la relance ne lui sont envoyés que s'il peut décider
+  les demandes (ADR-072).
 - **Administration** (ADR-019) :
   - les permissions d'administration (`TENANT_WIDE_PERMISSIONS` : organisation,
     comptes, rôles, politiques, connecteurs, compétences, paramètres, mémoire, audit,

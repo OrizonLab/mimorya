@@ -8,6 +8,7 @@ pub mod access;
 pub mod accounts;
 mod client;
 pub mod companies;
+pub mod delegations;
 pub mod dns;
 pub mod identity_provider;
 pub mod llm;

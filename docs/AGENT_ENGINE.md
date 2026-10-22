@@ -159,7 +159,7 @@ systématiquement une validation (`requiresApproval`).
   dans les 7 jours expire : l'agent poursuit sans l'action (ADR-061) ; le responsable
   est relancé la veille (ADR-062). Pendant une absence qu'il a déclarée, le collègue
   qu'il a désigné décide à sa place, s'il détient lui-même `approval:decide` sur la
-  personne (ADR-071).
+  personne (ADR-071), et c'est lui qui reçoit l'avis et la relance (ADR-072).
 - `approval:decide` est **non délégable** : l'agent ne peut jamais valider lui-même.
 - Après décision, l'outil est exécuté **avec les paramètres validés** (aucune
   modification possible entre validation et exécution) et le run reprend.
