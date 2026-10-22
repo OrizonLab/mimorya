@@ -1,6 +1,8 @@
 //! Background work started by requests: agent runs, and what a request does
-//! not wait for (password reset links, audits of denied logins). The server
-//! waits for it on shutdown, and tests wait for it before asserting.
+//! not wait for (password reset links, audits of denied logins, the lesson
+//! drawn from a run). The server waits for it on shutdown, and tests wait
+//! for it before asserting. A task that panics is counted out all the same:
+//! nothing waits for it forever.
 
 use std::future::Future;
 use std::sync::Arc;
@@ -20,12 +22,11 @@ impl BackgroundTasks {
         F: Future<Output = ()> + Send + 'static,
     {
         self.running.fetch_add(1, Ordering::SeqCst);
-        let tasks = self.clone();
+        let running = Running(self.clone());
         tokio::spawn(async move {
+            // Dropped once the task ends, or once its panic unwinds it.
+            let _running = running;
             task.await;
-            if tasks.running.fetch_sub(1, Ordering::SeqCst) == 1 {
-                tasks.idle.notify_waiters();
-            }
         });
     }
 
@@ -39,6 +40,17 @@ impl BackgroundTasks {
                 return;
             }
             notified.await;
+        }
+    }
+}
+
+/// A task running, counted out when dropped.
+struct Running(Arc<BackgroundTasks>);
+
+impl Drop for Running {
+    fn drop(&mut self) {
+        if self.0.running.fetch_sub(1, Ordering::SeqCst) == 1 {
+            self.0.idle.notify_waiters();
         }
     }
 }
@@ -62,5 +74,14 @@ mod tests {
         }
         tasks.idle().await;
         assert_eq!(done.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn a_task_that_panics_is_counted_out() {
+        let tasks = Arc::new(BackgroundTasks::default());
+        tasks.spawn(async { panic!("a failing task") });
+        tokio::time::timeout(Duration::from_secs(5), tasks.idle())
+            .await
+            .expect("idle despite the panic");
     }
 }

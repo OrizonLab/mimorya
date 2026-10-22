@@ -8,6 +8,7 @@ mod domain_proofs;
 mod embedding;
 mod identity_providers;
 mod llm;
+mod memory_settings;
 mod organization;
 mod policies;
 mod roles;
@@ -32,6 +33,7 @@ pub use identity_providers::{
     IdentityProviderUpdate, IdentityProviderView, IdentityProvidersView, NewIdentityProvider,
 };
 pub use llm::{LlmChoice, LlmSettingsView, LlmTestResult, LlmView, PlatformModel, ProviderKind};
+pub use memory_settings::{MemorySettingsUpdate, MemorySettingsView};
 pub use policies::{
     ConditionAttribute, NewPolicy, Policies, PolicyEffect, PolicyUpdate, PolicyView,
     RestrictablePermission,

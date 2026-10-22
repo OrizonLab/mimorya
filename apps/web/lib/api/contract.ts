@@ -722,6 +722,21 @@ export type MemoryReview = { decision: ReviewDecision, };
 export type MemoryScope = "user" | "org_unit" | "tenant" | "experience";
 
 /**
+ * Body of `PUT /admin/memory-settings`.
+ */
+export type MemorySettingsUpdate = { captureLessons: boolean, };
+
+/**
+ * `GET /admin/memory-settings`.
+ */
+export type MemorySettingsView = {
+/**
+ * A lesson is drawn from each run that used tools and proposed in the
+ * personal memory of whom it served.
+ */
+captureLessons: boolean, };
+
+/**
  * Where a memory comes from: written by hand, or by a run of the assistant.
  */
 export type MemorySource = { type: string, id?: string, label?: string, };

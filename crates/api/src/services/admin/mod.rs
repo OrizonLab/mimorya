@@ -22,6 +22,7 @@ mod identity_providers;
 mod invitations;
 mod link_sender;
 mod llm;
+mod memory_settings;
 mod org_units;
 mod policies;
 mod provider_designation;
@@ -50,6 +51,7 @@ pub use identity_providers::{
 pub use invitations::{IssuedInvitation, issue_invitation};
 pub use link_sender::LinkSender;
 pub use llm::{LlmInput, LlmTestOutcome, configure_llm, reset_llm, test_llm};
+pub use memory_settings::{lesson_capture, set_lesson_capture};
 pub use org_units::{NewUnitInput, UnitChanges, create_unit, delete_unit, update_unit};
 pub use policies::{PolicyChanges, PolicyInput, create_policy, delete_policy, update_policy};
 pub use reset_links::send_reset_link;

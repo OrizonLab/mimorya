@@ -22,6 +22,7 @@ use mimorya_db::repositories::runs::{RunRow, RunStatus};
 use super::approval_notice::ApprovalNotifier;
 use super::context::{build_run_system_prompt, build_run_tools, recall_memories};
 use super::db_ports::{RunScope, engine_ports};
+use super::lesson_capture::LessonCapture;
 use super::outcome::{CRASH_MESSAGE, record_crash};
 use super::run_access::RunAccess;
 use crate::services::access::{AccessContext, AccessService};
@@ -40,6 +41,8 @@ pub struct RunExecutor {
     pub prices: Arc<PriceTable>,
     /// Searches each company's memory by meaning too (ADR-074).
     pub embeddings: Arc<EmbeddingService>,
+    /// Draws a lesson from each completed run, where chosen (ADR-076).
+    pub lessons: LessonCapture,
     pub connectors: Arc<ConnectorService>,
     pub bus: Arc<RunEventBus>,
     /// Tells a manager a request awaits them (ADR-060).
@@ -85,6 +88,7 @@ impl RunExecutor {
             self.access.clone(),
             self.notifier.clone(),
             self.embeddings.clone(),
+            self.lessons.clone(),
         );
         // A run taken up that crashes says which actions to check.
         let message = match &mode {

@@ -387,7 +387,11 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
 ## 9. Protection des données (RGPD)
 
 - **Minimisation** : seules les données nécessaires sont envoyées au modèle ; la
-  mémoire personnelle n'est constituée qu'avec l'accord de l'utilisateur.
+  mémoire personnelle n'est constituée qu'avec l'accord de l'utilisateur. Une leçon tirée
+  d'une conversation (ADR-076, désactivé par défaut) n'est qu'une proposition dans la
+  mémoire personnelle de la personne servie, qu'elle seule voit et valide : aucun
+  collègue ne lit ce qu'une conversation d'un autre a appris ; le run relu est remis au
+  modèle comme donnée.
 - **Transparence** : chaque utilisateur consulte sa mémoire et l'historique des actions
   faites pour lui.
 - **Droits** : export (JSON) et suppression des données d'un utilisateur ; suppression

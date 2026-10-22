@@ -12,6 +12,7 @@ mod connectors;
 mod embedding;
 mod identity_providers;
 mod llm;
+mod memory_settings;
 mod organization;
 mod policies;
 mod roles;
@@ -69,6 +70,10 @@ pub fn routes(state: &AppState) -> Router<AppState> {
                 .delete(embedding::reset),
         )
         .route("/admin/embedding/test", post(embedding::test))
+        .route(
+            "/admin/memory-settings",
+            get(memory_settings::show).put(memory_settings::update),
+        )
         .route(
             "/admin/connectors",
             get(connectors::list).post(connectors::create),
