@@ -7,12 +7,13 @@ use std::sync::Arc;
 use chrono::Utc;
 use mimorya_core::DomainError;
 use mimorya_db::Database;
+use mimorya_db::repositories::approval_delegations::standing_in_for;
 use mimorya_db::repositories::approvals::{ApprovalRow, get_approval};
 use mimorya_db::repositories::runs::RunRow;
 use uuid::Uuid;
 
 use super::approval_decision::{
-    DecisionInput, decidable, record_approval_decision, resume_decisions,
+    DecisionInput, NOT_FOUND, decidable, record_approval_decision, resume_decisions,
 };
 use super::approval_routing::may_decide_for;
 use super::conversation_turn::{open_conversation_turn, tenant_autonomy_level};
@@ -116,9 +117,11 @@ impl RunService {
     ) -> anyhow::Result<DecisionResult> {
         let decider = self.access.context(identity).await?;
         let mut tx = self.db.begin(identity.tenant_id).await?;
+        let standing_in_for = standing_in_for(&mut tx, identity.user_id, Utc::now()).await?;
         let approval = decidable(
             get_approval(&mut tx, input.approval_id).await?,
             identity.user_id,
+            &standing_in_for,
             input.approved,
         )?;
         tx.commit().await?;
@@ -137,7 +140,14 @@ impl RunService {
             // run, which reads the requester's rights at each step.
             let unit = requester.profile.primary_unit_id;
             if !may_decide_for(&decider, approval.requested_for_user_id, unit) {
-                return Err(DomainError::forbidden(NO_LONGER_ENTITLED).into());
+                // Whom an absent manager named finds nothing they may not
+                // decide (ADR-071): the manager learns they lost the right.
+                let refused = if approval.decider() == Some(identity.user_id) {
+                    DomainError::forbidden(NO_LONGER_ENTITLED)
+                } else {
+                    DomainError::not_found(NOT_FOUND)
+                };
+                return Err(refused.into());
             }
         } else {
             // Deciding, or withdrawing, resumes the agent: whoever may no

@@ -157,7 +157,9 @@ systématiquement une validation (`requiresApproval`).
   e-mail, sans le détail de l'action (ADR-060), au démarrage suivant si un arrêt du
   service a perdu l'avis (ADR-070). Une demande que personne ne décide
   dans les 7 jours expire : l'agent poursuit sans l'action (ADR-061) ; le responsable
-  est relancé la veille (ADR-062). Reste à faire : la délégation.
+  est relancé la veille (ADR-062). Pendant une absence qu'il a déclarée, le collègue
+  qu'il a désigné décide à sa place, s'il détient lui-même `approval:decide` sur la
+  personne (ADR-071).
 - `approval:decide` est **non délégable** : l'agent ne peut jamais valider lui-même.
 - Après décision, l'outil est exécuté **avec les paramètres validés** (aucune
   modification possible entre validation et exécution) et le run reprend.

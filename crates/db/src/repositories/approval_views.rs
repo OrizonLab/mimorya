@@ -33,19 +33,24 @@ fn named(filter: &str) -> String {
     )
 }
 
-/// Those the user asked for or must decide, newest first.
+/// Those the user asked for, must decide or decided, and the pending ones
+/// of the managers they stand in for (ADR-071; never what these decided),
+/// newest first.
 pub async fn list_approval_views_for_user(
     conn: &mut PgConnection,
     user_id: Uuid,
+    standing_in_for: &[Uuid],
     statuses: &[&str],
 ) -> sqlx::Result<Vec<ApprovalView>> {
     let query = named(
-        "(requested_for_user_id = $1 or approver_user_id = $1) and status = any($2) \
+        "(requested_for_user_id = $1 or approver_user_id = $1 or decided_by_user_id = $1 \
+         or (approver_user_id = any($3) and status = 'pending')) and status = any($2) \
          order by created_at desc limit 100",
     );
     sqlx::query_as(&format!("{query} order by a.created_at desc"))
         .bind(user_id)
         .bind(statuses)
+        .bind(standing_in_for)
         .fetch_all(conn)
         .await
 }

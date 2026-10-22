@@ -3,7 +3,9 @@
 //! acts for who holds `approval:decide` over them, on an active account:
 //! a position grants nothing by itself. Nobody eligible, the action is
 //! refused at once rather than left waiting for nobody. Any other request
-//! is decided by the person the agent acts for, as before.
+//! is decided by the person the agent acts for, as before. While the
+//! manager is absent, whom they named stands in for them (ADR-071), under
+//! the same condition: holding `approval:decide` over the person.
 
 use mimorya_core::approval_routing::{DECIDE, approval_resource, candidate_managers};
 use mimorya_core::authz::Actor;
@@ -77,12 +79,24 @@ pub fn may_decide_for(
             .allowed
 }
 
-/// Whether `viewer` may decide (approve) `approval`, made for a person whose
-/// primary unit is `requester_unit`: pending and theirs to decide, and they
-/// may still use the agent (a request made for them) or hold
-/// `approval:decide` over that person (as its manager).
+/// Whether `approval` goes to a manager whom someone standing in for
+/// `standing_in_for` (those whose absence they cover now, ADR-071) may
+/// replace.
+pub fn stands_in(approval: &ApprovalRow, standing_in_for: &[Uuid]) -> bool {
+    approval.routed_to_manager()
+        && approval
+            .approver_user_id
+            .is_some_and(|manager| standing_in_for.contains(&manager))
+}
+
+/// Whether `viewer`, standing in for `standing_in_for`, may decide (approve)
+/// `approval`, made for a person whose primary unit is `requester_unit`:
+/// pending and theirs to decide, as named or standing in for the manager
+/// named, and they may still use the agent (a request made for them) or
+/// hold `approval:decide` over that person (as its manager or stand-in).
 pub fn can_decide(
     viewer: &AccessContext,
+    standing_in_for: &[Uuid],
     approval: &ApprovalRow,
     requester_unit: Option<Uuid>,
 ) -> bool {
@@ -91,7 +105,9 @@ pub fn can_decide(
     } else {
         viewer.has("agent:use")
     };
-    approval.status == "pending" && approval.decider() == Some(viewer.subject.user_id) && entitled
+    let theirs =
+        approval.decider() == Some(viewer.subject.user_id) || stands_in(approval, standing_in_for);
+    approval.status == "pending" && theirs && entitled
 }
 
 /// Whether `viewer` may withdraw `approval`: pending, made for them and
@@ -104,15 +120,17 @@ pub fn can_withdraw(viewer: &AccessContext, approval: &ApprovalRow) -> bool {
         && viewer.has("agent:use")
 }
 
-/// Whether `viewer` is shown `approval`: made for them, decided, or one they
-/// may still decide. A manager who lost the right no longer sees what
-/// waits, its exact parameters included.
+/// Whether `viewer`, standing in for `standing_in_for`, is shown
+/// `approval`, among those listed for them: made for them, decided, or one
+/// they may still decide. A manager who lost the right no longer sees what
+/// waits, its exact parameters included, nor a stand-in without it.
 pub fn shown_to(
     viewer: &AccessContext,
+    standing_in_for: &[Uuid],
     approval: &ApprovalRow,
     requester_unit: Option<Uuid>,
 ) -> bool {
     approval.requested_for_user_id == viewer.subject.user_id
         || approval.status != "pending"
-        || can_decide(viewer, approval, requester_unit)
+        || can_decide(viewer, standing_in_for, approval, requester_unit)
 }

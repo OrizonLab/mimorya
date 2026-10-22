@@ -59,7 +59,9 @@ async fn detail(
         approvals: approvals
             .iter()
             .map(|v| {
-                let decides = can_decide(&viewer, &v.approval, v.requested_for_unit_id);
+                // The run's own requests: never theirs to decide as a
+                // manager, nor as anyone's stand-in.
+                let decides = can_decide(&viewer, &[], &v.approval, v.requested_for_unit_id);
                 Approval::from_view(v, decides, can_withdraw(&viewer, &v.approval))
             })
             .collect::<anyhow::Result<_>>()?,

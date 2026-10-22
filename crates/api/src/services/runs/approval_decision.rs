@@ -1,11 +1,12 @@
 //! Recording a human decision on an approval request, taken by the one who
-//! decides it (ADR-059), and deciding whether the run it belongs to can
-//! resume.
+//! decides it (ADR-059) or whom they named to stand in for them (ADR-071),
+//! and deciding whether the run it belongs to can resume.
 
 use chrono::{DateTime, Utc};
 use mimorya_agent::runtime::{ApprovalDecision, ApprovalDecisions};
 use mimorya_core::DomainError;
 use mimorya_db::TenantTx;
+use mimorya_db::repositories::approval_delegations::standing_in_for;
 use mimorya_db::repositories::approvals::{
     ApprovalDecisionInput, ApprovalRow, decide_approval, expire_approval, get_approval,
     list_approvals_for_run,
@@ -15,6 +16,7 @@ use mimorya_db::repositories::runs::{RunPatch, RunRow, RunStatus, lock_run, upda
 use serde_json::json;
 use uuid::Uuid;
 
+use super::approval_routing::stands_in;
 use crate::services::access::AuthIdentity;
 
 #[derive(Debug, Clone)]
@@ -38,13 +40,15 @@ fn already_processed() -> DomainError {
 }
 
 /// The request, if `user_id` may decide it so (ADR-059): whom the agent acts
-/// for, or the manager named. Whom the agent acts for may always withdraw a
-/// request a manager decides (refusing runs nothing: the run goes on, even
-/// when the manager can no longer decide), never approve it; anyone else
-/// finds nothing.
+/// for, the manager named, or whom that manager named to stand in for them
+/// while absent (`standing_in_for`, ADR-071). Whom the agent acts for may
+/// always withdraw a request a manager decides (refusing runs nothing: the
+/// run goes on, even when the manager can no longer decide), never approve
+/// it; anyone else finds nothing.
 pub fn decidable(
     approval: Option<ApprovalRow>,
     user_id: Uuid,
+    standing_in_for: &[Uuid],
     approved: bool,
 ) -> Result<ApprovalRow, DomainError> {
     match approval {
@@ -56,9 +60,12 @@ pub fn decidable(
                 Ok(a)
             }
         }
-        _ => Err(DomainError::not_found("Demande de validation introuvable")),
+        Some(a) if stands_in(&a, standing_in_for) => Ok(a),
+        _ => Err(DomainError::not_found(NOT_FOUND)),
     }
 }
+
+pub const NOT_FOUND: &str = "Demande de validation introuvable";
 
 pub const AWAITS_A_MANAGER: &str =
     "Cette demande attend la validation de votre responsable : vous pouvez seulement la retirer.";
@@ -69,9 +76,13 @@ pub async fn record_approval_decision(
     input: &DecisionInput,
     now: DateTime<Utc>,
 ) -> anyhow::Result<RecordedDecision> {
+    // Read in the decision's transaction, at its time: an absence that
+    // ended meanwhile no longer lets its delegate decide.
+    let standing_in_for = standing_in_for(tx, identity.user_id, now).await?;
     let approval = decidable(
         get_approval(tx, input.approval_id).await?,
         identity.user_id,
+        &standing_in_for,
         input.approved,
     )?;
     if approval.status != "pending" {
@@ -125,6 +136,20 @@ pub async fn record_approval_decision(
         (false, true) => "approval.approved",
         (false, false) => "approval.rejected",
     };
+    let mut metadata = json!({
+        "toolName": approval.tool_name,
+        "risk": approval.risk,
+        "routing": approval.routing,
+        // Whom the agent acts for, refusing a request a manager decides.
+        "withdrawn": approval.routed_to_manager()
+            && identity.user_id == approval.requested_for_user_id,
+    });
+    // Decided by whom the absent manager named (ADR-071): that manager.
+    let named = approval.decider() == Some(identity.user_id)
+        || identity.user_id == approval.requested_for_user_id;
+    if let (false, Some(manager)) = (named, approval.approver_user_id) {
+        metadata["standingInFor"] = json!(manager);
+    }
     append_audit(
         tx,
         AuditEntry::new(
@@ -137,14 +162,7 @@ pub async fn record_approval_decision(
         .on_behalf_of(approval.requested_for_user_id)
         .run(approval.run_id)
         .resource("approval", approval.id)
-        .metadata(json!({
-            "toolName": approval.tool_name,
-            "risk": approval.risk,
-            "routing": approval.routing,
-            // Whom the agent acts for, refusing a request a manager decides.
-            "withdrawn": approval.routed_to_manager()
-                && identity.user_id == approval.requested_for_user_id,
-        })),
+        .metadata(metadata),
     )
     .await?;
 

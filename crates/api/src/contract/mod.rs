@@ -4,6 +4,7 @@
 //! A request body is strict: an unknown field is refused, not ignored.
 
 pub mod admin;
+mod approval_delegation;
 mod approvals;
 mod common;
 mod conversations;
@@ -18,7 +19,8 @@ mod sso;
 mod stored;
 mod typescript;
 
-pub use approvals::{Approval, ApprovalDecided, ApprovalList, ApprovalVerdict};
+pub use approval_delegation::{Absence, ApprovalDelegations, Delegation};
+pub use approvals::{Approval, ApprovalDecided, ApprovalList, ApprovalPerson, ApprovalVerdict};
 pub use common::{Created, Done};
 pub use conversations::{
     Citation, ConversationChanges, ConversationCreated, ConversationDetail, ConversationList,
@@ -67,6 +69,7 @@ pub fn typescript() -> String {
     declarations.add::<RunDetail>();
     declarations.add::<ApprovalList>();
     declarations.add::<ApprovalDecided>();
+    declarations.add::<ApprovalDelegations>();
     declarations.add::<RunStreamEvent>();
     declarations.add::<MemoryList>();
     declarations.add::<Created>();
@@ -118,6 +121,7 @@ macro_rules! request_bodies {
             ConversationChanges,
             NewMessage,
             ApprovalVerdict,
+            Absence,
             ManualMemory,
             MemoryReview,
             admin::NewAccount,

@@ -2,6 +2,7 @@
 //! background, recording approvals and resuming, persisting the outcome.
 
 mod approval_decision;
+mod approval_delegation;
 mod approval_notice;
 mod approval_routing;
 mod context;
@@ -18,6 +19,9 @@ mod run_access;
 mod service;
 
 pub use approval_decision::DecisionInput;
+pub use approval_delegation::{
+    AbsenceInput, Delegations, MAX_ABSENCE, declare_absence, delegations, end_absence,
+};
 pub use approval_notice::ApprovalNotifier;
 pub use approval_routing::{can_decide, can_withdraw, shown_to};
 pub use events::record_run_event;
