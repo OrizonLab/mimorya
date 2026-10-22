@@ -206,9 +206,11 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
 }
 
 impl App {
-    /// Takes up again the runs a stop of the service left running (ADR-053);
-    /// how many there were. Once, at startup, once listening; it fails while
-    /// another process holds the run executor's lock.
+    /// Takes up again the runs a stop of the service left running (ADR-053),
+    /// once managers are told of the requests whose notice it lost
+    /// (ADR-070); how many runs there were. Once, at startup, once listening,
+    /// before serving; it fails while another process holds the run
+    /// executor's lock.
     pub async fn recover_interrupted_runs(&self) -> anyhow::Result<usize> {
         self.services.runs.recover_interrupted().await
     }

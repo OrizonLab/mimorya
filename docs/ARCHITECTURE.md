@@ -49,7 +49,8 @@ flowchart LR
 - **worker** (phase 2) : exécutions longues (missions), reprises après interruption,
   tâches planifiées, ingestion de documents. En MVP, l'API exécute les runs en arrière-plan
   dans son propre processus, reprend au démarrage ceux qu'un arrêt a interrompus quand
-  c'est sûr (ADR-053), et un balayage périodique marque en échec les runs restés sans
+  c'est sûr (ADR-053), après avoir prévenu les responsables des demandes dont l'arrêt a
+  perdu l'avis (ADR-070), et un balayage périodique marque en échec les runs restés sans
   progression et fait expirer les demandes de validation échues, leurs runs poursuivant
   sans l'action (ADR-061), leurs responsables relancés la veille (ADR-062) ; le worker sera le même code lancé avec un autre point
   d'entrée.

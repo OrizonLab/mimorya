@@ -6,7 +6,8 @@
 //! The validation requests of the lost step are cancelled first, and audited
 //! (the run asks again if it needs to). A run stopped before its first saved
 //! step, for too long, or whose user may no longer act, ends there, naming
-//! the actions that were under way when the service stopped.
+//! the actions that were under way when the service stopped. Beforehand,
+//! managers are told of the requests whose notice the stop lost (ADR-070).
 
 mod calls;
 mod lock;
@@ -45,9 +46,18 @@ impl RunService {
     /// Takes up again the runs a stop of the service left running; how many
     /// there were. Called once, at startup, once the API listens: it takes
     /// the run executor's lock first, and fails while another process holds
-    /// it.
+    /// it. The notices the stop lost go first, before any run can pause
+    /// again; failing, they leave the runs to take up.
     pub async fn recover_interrupted(&self) -> anyhow::Result<usize> {
         self.claim_execution().await?;
+        match self.executor.notifier.catch_up(Utc::now()).await {
+            Ok(0) => {}
+            Ok(lost) => tracing::warn!(lost, "Managers told of requests a stop kept from them"),
+            Err(error) => tracing::error!(
+                error = format!("{error:#}"),
+                "Lost approval notices not caught up"
+            ),
+        }
         let runs = interrupted_runs(self.db.pool()).await?;
         for run in &runs {
             // One that cannot be taken up stays running: the periodic sweep

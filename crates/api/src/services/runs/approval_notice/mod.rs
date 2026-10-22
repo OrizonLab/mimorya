@@ -1,8 +1,9 @@
 //! Tells managers by e-mail that requests await their validation
 //! (ADR-060), once a run pauses on them: one message per manager and per
 //! pause, however many requests the step made. Sent off the run's path: the
-//! run is paused whether the message leaves or not. The day before the
-//! requests expire, their manager is reminded once (ADR-062). Without a mail
+//! run is paused whether the message leaves or not; one a stop of the
+//! service lost is sent at startup (ADR-070). The day before the requests
+//! expire, their manager is reminded once (ADR-062). Without a mail
 //! relay, nothing is sent and managers find the requests in « Validations ».
 //! Each request notified or reminded is audited, without the address nor the
 //! relay's answer, which may name it.
@@ -14,8 +15,8 @@ use std::sync::Arc;
 use chrono::{DateTime, Duration, Utc};
 use mimorya_db::Database;
 use mimorya_db::repositories::approval_notices::{
-    ApprovalNotice, NOTIFIED, REMINDED, ReminderRun, approval_notices, approval_reminder_runs,
-    approvals_to_remind,
+    ApprovalNotice, NOTIFIED, NoticeRun, REMINDED, approval_notices, approval_reminder_runs,
+    approvals_never_notified, approvals_to_remind, unnotified_approval_runs,
 };
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use serde_json::json;
@@ -110,6 +111,45 @@ impl ApprovalNotifier {
         Ok(())
     }
 
+    /// Tells managers, in the background, of the requests a stop of the
+    /// service kept from them (ADR-070): pending in a paused run, never
+    /// notified, and not due within `REMIND_BEFORE` of `now` (those are
+    /// reminded instead, a minute later at most); how many. Called at
+    /// startup, before runs are taken up or decisions served: the requests
+    /// are listed now, so that none a run makes later is told of twice.
+    pub async fn catch_up(&self, now: DateTime<Utc>) -> anyhow::Result<usize> {
+        if self.mailer.is_none() {
+            return Ok(0);
+        }
+        let due_after = now + REMIND_BEFORE;
+        let mut lost = 0;
+        for run in unnotified_approval_runs(self.db.pool(), due_after).await? {
+            // One run failing leaves the others to catch up.
+            match self.catch_up_run(run, due_after).await {
+                Ok(count) => lost += count,
+                Err(error) => tracing::warn!(
+                    run_id = %run.run_id,
+                    error = format!("{error:#}"),
+                    "Lost approval notices not caught up"
+                ),
+            }
+        }
+        Ok(lost)
+    }
+
+    async fn catch_up_run(
+        &self,
+        run: NoticeRun,
+        due_after: DateTime<Utc>,
+    ) -> anyhow::Result<usize> {
+        let mut tx = self.db.begin(run.tenant_id).await?;
+        let requests = approvals_never_notified(&mut tx, run.run_id, due_after).await?;
+        tx.commit().await?;
+        let ids = requests.iter().map(|request| request.approval_id).collect();
+        self.notify(run.tenant_id, run.run_id, ids);
+        Ok(requests.len())
+    }
+
     /// Reminds managers of the requests due within `REMIND_BEFORE` of `now`
     /// that they have not been reminded of; how many requests. Nothing
     /// without a mail relay.
@@ -136,7 +176,7 @@ impl ApprovalNotifier {
     async fn remind_run(
         &self,
         mailer: &dyn Mailer,
-        run: ReminderRun,
+        run: NoticeRun,
         now: DateTime<Utc>,
         until: DateTime<Utc>,
     ) -> anyhow::Result<usize> {
