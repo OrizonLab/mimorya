@@ -124,14 +124,30 @@ impl ApprovalNotifier {
         let due_after = now + REMIND_BEFORE;
         let mut lost = 0;
         for run in unnotified_approval_runs(self.db.pool(), due_after).await? {
-            let mut tx = self.db.begin(run.tenant_id).await?;
-            let requests = approvals_never_notified(&mut tx, run.run_id, due_after).await?;
-            tx.commit().await?;
-            lost += requests.len();
-            let ids = requests.iter().map(|request| request.approval_id).collect();
-            self.notify(run.tenant_id, run.run_id, ids);
+            // One run failing leaves the others to catch up.
+            match self.catch_up_run(run, due_after).await {
+                Ok(count) => lost += count,
+                Err(error) => tracing::warn!(
+                    run_id = %run.run_id,
+                    error = format!("{error:#}"),
+                    "Lost approval notices not caught up"
+                ),
+            }
         }
         Ok(lost)
+    }
+
+    async fn catch_up_run(
+        &self,
+        run: NoticeRun,
+        due_after: DateTime<Utc>,
+    ) -> anyhow::Result<usize> {
+        let mut tx = self.db.begin(run.tenant_id).await?;
+        let requests = approvals_never_notified(&mut tx, run.run_id, due_after).await?;
+        tx.commit().await?;
+        let ids = requests.iter().map(|request| request.approval_id).collect();
+        self.notify(run.tenant_id, run.run_id, ids);
+        Ok(requests.len())
     }
 
     /// Reminds managers of the requests due within `REMIND_BEFORE` of `now`

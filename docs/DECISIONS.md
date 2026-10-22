@@ -2811,7 +2811,7 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     si l'un l'est désormais : leur responsable les apprend au premier démarrage avec
     relais ;
   - le nombre de messages par pause et par responsable reste borné à deux (l'avis, puis
-    la relance) ;
+    la relance), hors un avis renvoyé faute de trace ;
   - l'expiration des demandes échues et la relance commencent une minute après le
     démarrage ;
   - tests :
