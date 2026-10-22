@@ -20,9 +20,6 @@ function domainList(typed: string): string[] {
     .filter(Boolean);
 }
 
-/** The most a provider's metadata may weigh (ADR-068). */
-const METADATA_MAX = 256 * 1024;
-
 /**
  * Declares an identity provider, or changes one: its name, its client
  * secret (write-only) or, for SAML, its metadata (its certificates rolled
@@ -183,7 +180,6 @@ export function IdentityProviderForm({
             <Textarea
               required={!provider}
               rows={6}
-              maxLength={METADATA_MAX}
               spellCheck={false}
               className="font-mono"
               placeholder="<EntityDescriptor …>"
