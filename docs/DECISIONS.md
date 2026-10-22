@@ -2798,8 +2798,9 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     elle n'est jamais signalée deux fois ;
   - une demande dont l'échéance tombe dans les 24 heures n'est pas rattrapée : la
     relance (ADR-062) la signale, avec son échéance. Pour que les deux ne se croisent
-    pas au démarrage, la maintenance périodique commence une minute après celui-ci, et
-    non plus aussitôt ;
+    pas au démarrage, la maintenance périodique n'expire les demandes et ne relance les
+    responsables qu'à partir de son deuxième passage, une minute après le démarrage (la
+    purge des liens de réinitialisation expirés reste immédiate) ;
   - un échec du rattrapage est journalisé et n'empêche pas de reprendre les runs ; il
     n'est pas réessayé avant le démarrage suivant.
 - **Conséquences** :
@@ -2811,8 +2812,8 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     relais ;
   - le nombre de messages par pause et par responsable reste borné à deux (l'avis, puis
     la relance) ;
-  - les balayages périodiques (expiration, relance, runs bloqués, liens expirés)
-    commencent une minute après le démarrage ;
+  - l'expiration des demandes échues et la relance commencent une minute après le
+    démarrage ;
   - tests :
     - `crates/api/tests/approval_notice_catch_up.rs` : une demande dont l'avis a été
       perdu est signalée au démarrage suivant, sans l'action, tracée, une seule fois ;

@@ -1,8 +1,8 @@
-//! Periodic maintenance, every minute from a minute after startup, once the
-//! startup is done (runs taken up, lost notices listed: ADR-053, ADR-070):
-//! expired password reset links are deleted (ADR-028); requests nobody
-//! decided in time expire, and their runs go on (ADR-061), their managers
-//! reminded the day before (ADR-062); runs without progress for a while
+//! Periodic maintenance, at startup and then every minute: expired password
+//! reset links are deleted (ADR-028); from the second minute, once the
+//! startup is done (lost notices listed, ADR-070), requests nobody decided
+//! in time expire, and their runs go on (ADR-061), their managers reminded
+//! the day before (ADR-062); runs without progress for a while
 //! belong to a stuck process and are marked as failed, their `run_finished`
 //! event recorded and broadcast to the clients following them. That sweep
 //! waits until the process has run as long as a run takes to go stale: runs
@@ -32,19 +32,14 @@ const SWEEP_INTERVAL: Duration = Duration::from_secs(60);
 pub fn spawn_maintenance(services: AppState) -> JoinHandle<()> {
     tokio::spawn(async move {
         let (db, bus) = (&services.db, &services.bus);
+        // Ticks at startup, then every `SWEEP_INTERVAL` from it: the uptimes
+        // the sweeps wait for fall on ticks.
         let started = tokio::time::Instant::now();
-        let mut interval = tokio::time::interval_at(started + SWEEP_INTERVAL, SWEEP_INTERVAL);
+        let mut interval = tokio::time::interval_at(started, SWEEP_INTERVAL);
         loop {
             interval.tick().await;
-            match services.runs.expire_overdue().await {
-                Ok(0) => {}
-                Ok(expired) => tracing::info!(expired, "Overdue approval requests expired"),
-                Err(error) => tracing::warn!(error = %error, "Overdue request sweep failed"),
-            }
-            match services.runs.remind_due().await {
-                Ok(0) => {}
-                Ok(reminded) => tracing::info!(reminded, "Managers reminded of requests due"),
-                Err(error) => tracing::warn!(error = %error, "Approval reminder sweep failed"),
+            if sweeps_requests(started.elapsed()) {
+                sweep_requests(&services).await;
             }
             if sweeps_stale_runs(started.elapsed()) {
                 match sweep_stale_runs(db, bus, STALE_AFTER).await {
@@ -58,6 +53,29 @@ pub fn spawn_maintenance(services: AppState) -> JoinHandle<()> {
             }
         }
     })
+}
+
+/// Whether a process up for `uptime` expires requests and reminds their
+/// managers: from the second sweep, so that its first never races the
+/// startup's, which tells managers of the requests a stop kept from them
+/// (ADR-070) and leaves those due within a day to the reminder.
+pub fn sweeps_requests(uptime: Duration) -> bool {
+    uptime >= SWEEP_INTERVAL
+}
+
+/// Expires the requests past their deadline (ADR-061) and reminds managers
+/// of those due within a day (ADR-062), in the process that executes runs.
+async fn sweep_requests(services: &AppState) {
+    match services.runs.expire_overdue().await {
+        Ok(0) => {}
+        Ok(expired) => tracing::info!(expired, "Overdue approval requests expired"),
+        Err(error) => tracing::warn!(error = %error, "Overdue request sweep failed"),
+    }
+    match services.runs.remind_due().await {
+        Ok(0) => {}
+        Ok(reminded) => tracing::info!(reminded, "Managers reminded of requests due"),
+        Err(error) => tracing::warn!(error = %error, "Approval reminder sweep failed"),
+    }
 }
 
 /// Whether a process up for `uptime` sweeps stale runs: once it has run as
@@ -92,6 +110,13 @@ pub async fn sweep_stale_runs(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sweeps_requests_from_the_second_sweep() {
+        assert!(!sweeps_requests(Duration::ZERO));
+        assert!(!sweeps_requests(Duration::from_secs(59)));
+        assert!(sweeps_requests(Duration::from_secs(60)));
+    }
 
     #[test]
     fn sweeps_stale_runs_only_once_up_as_long_as_a_run_takes_to_go_stale() {
