@@ -5,12 +5,14 @@
 //! person the test chose, answering with the response the browser posts
 //! back. Its keys are test keys, public; an impostor signs with others
 //! under the same entity ID, and a lax one signs with an inclusive
-//! canonicalisation, which the application's strict profile refuses.
+//! canonicalisation, which the application's strict profile refuses. The
+//! end-to-end server serves it at an address of its own (`at`).
 
 use saml_rs::constants::{Binding, transform_algorithm};
 use saml_rs::metadata::{Endpoint, IdpMetadataConfig};
 use saml_rs::raw::{
-    EntitySetting, HttpRequest, IdentityProvider, LoginResponseOptions, ServiceProvider, User,
+    BindingContext, EntitySetting, HttpRequest, IdentityProvider, LoginResponseOptions,
+    ServiceProvider, User,
 };
 use saml_rs::template::{LoginResponseAttribute, LoginResponseTemplate};
 use url::Url;
@@ -54,6 +56,8 @@ impl SamlPerson {
 const INCLUSIVE_C14N: &str = "http://www.w3.org/TR/2001/REC-xml-c14n-20010315";
 
 pub struct MockSamlProvider {
+    entity_id: String,
+    sign_in_url: String,
     key: &'static str,
     cert: &'static str,
     canonicalisation: &'static str,
@@ -62,9 +66,21 @@ pub struct MockSamlProvider {
 impl MockSamlProvider {
     pub fn new() -> Self {
         Self {
+            entity_id: SAML_ENTITY_ID.into(),
+            sign_in_url: SAML_SIGN_IN_URL.into(),
             key: KEY,
             cert: CERT,
             canonicalisation: transform_algorithm::EXC_C14N,
+        }
+    }
+
+    /// Served under `base`: its metadata at `/metadata`, its sign-in at
+    /// `/sso`.
+    pub fn at(base: &str) -> Self {
+        Self {
+            entity_id: format!("{base}/metadata"),
+            sign_in_url: format!("{base}/sso"),
+            ..Self::new()
         }
     }
 
@@ -111,9 +127,9 @@ impl MockSamlProvider {
         }
         IdentityProvider::from_config(
             &IdpMetadataConfig {
-                entity_id: SAML_ENTITY_ID.into(),
+                entity_id: self.entity_id.clone(),
                 signing_certs: vec![self.cert.into()],
-                single_sign_on_service: vec![Endpoint::new(Binding::Redirect, SAML_SIGN_IN_URL)],
+                single_sign_on_service: vec![Endpoint::new(Binding::Redirect, &self.sign_in_url)],
                 ..Default::default()
             },
             setting,
@@ -142,6 +158,17 @@ impl MockSamlProvider {
         audience: &str,
         person: &SamlPerson,
     ) -> String {
+        self.answer(address, sp_metadata, audience, person).context
+    }
+
+    /// The response, and where the browser posts it (its destination).
+    pub fn answer(
+        &self,
+        address: &str,
+        sp_metadata: &str,
+        audience: &str,
+        person: &SamlPerson,
+    ) -> BindingContext {
         let idp = self.idp(Some(person));
         // The library signs with the transforms it keeps for the
         // application it answers.
@@ -155,7 +182,7 @@ impl MockSamlProvider {
         };
         let sp = application(sp_metadata);
         let url = Url::parse(address).expect("sign-in address");
-        assert!(address.starts_with(SAML_SIGN_IN_URL), "{address}");
+        assert!(address.starts_with(&self.sign_in_url), "{address}");
         let query: Vec<(String, String)> = url.query_pairs().into_owned().collect();
         let request = idp
             .parse_login_request(&sp, Binding::Redirect, &HttpRequest::redirect(query))
@@ -185,6 +212,5 @@ impl MockSamlProvider {
             },
         )
         .expect("response")
-        .context
     }
 }

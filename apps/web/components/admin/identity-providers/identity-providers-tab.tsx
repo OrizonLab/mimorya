@@ -12,7 +12,8 @@ import { IdentityProviderForm } from './identity-provider-form';
  * with the account they already have, offered by the sign-in page from
  * their address; an invited one is activated by its first sign-in there
  * (ADR-064). The company's sign-in link may also create the account at the
- * first sign-in, when the provider is told to (ADR-067).
+ * first sign-in, when the provider is told to (ADR-067). A SAML provider is
+ * given the company's own entity ID and the address it posts to (ADR-068).
  */
 export function IdentityProvidersTab() {
   const state = useApiData<IdentityProvidersView>('/admin/identity-providers');
@@ -25,14 +26,19 @@ export function IdentityProvidersTab() {
             <p className="font-medium">Connexion par le fournisseur d’identité de l’entreprise</p>
             <p className="text-sm text-muted">
               Vos collaborateurs se connectent avec le compte qu’ils ont déjà (Microsoft 365, Google
-              Workspace…) : la page de connexion le leur propose d’après leur adresse e-mail, et le
-              lien de connexion de l’entreprise sans qu’ils la saisissent. Un compte invité s’active
-              ainsi, sans choisir de mot de passe ; un fournisseur peut aussi créer le compte d’un
-              collaborateur à sa première connexion par ce lien. La connexion par mot de passe reste
-              possible.
+              Workspace, fournisseur OpenID Connect ou SAML…) : la page de connexion le leur propose
+              d’après leur adresse e-mail, et le lien de connexion de l’entreprise sans qu’ils la
+              saisissent. Un compte invité s’active ainsi, sans choisir de mot de passe ; un
+              fournisseur peut aussi créer le compte d’un collaborateur à sa première connexion par
+              ce lien. La connexion par mot de passe reste possible.
             </p>
             <p className="text-sm">
               Adresse de retour à enregistrer chez le fournisseur : <code>{data.redirectUri}</code>
+            </p>
+            <p className="text-sm">
+              Pour un fournisseur SAML, identifiant de l’entreprise (adresse de ses métadonnées) :{' '}
+              <code>{data.samlEntityId}</code> ; adresse de réception des réponses :{' '}
+              <code>{data.samlAcsUrl}</code>
             </p>
           </Card>
           {!data.secretsAvailable ? (

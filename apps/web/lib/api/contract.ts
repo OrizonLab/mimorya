@@ -367,7 +367,7 @@ metadata?: string, domains?: Array<string>, enabled?: boolean, required?: boolea
 
 export type IdentityProviderView = { id: string,
 /**
- * `microsoft`, `google` or `oidc`.
+ * `microsoft`, `google`, `oidc` or `saml`.
  */
 kind: string, name: string, issuer: string, clientId: string,
 /**

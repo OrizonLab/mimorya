@@ -109,6 +109,7 @@ export const IDENTITY_PROVIDER_KINDS: Record<string, string> = {
   microsoft: 'Microsoft 365 (Entra ID)',
   google: 'Google Workspace',
   oidc: 'OpenID Connect (Okta, Keycloak…)',
+  saml: 'SAML 2.0 (AD FS, Okta, Shibboleth…)',
 };
 
 /** Model providers a company can choose (ADR-024). */
