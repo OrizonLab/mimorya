@@ -2921,7 +2921,7 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
   - la page « Validations » ouvre sur une section « Absence », montrée à qui détient
     `approval:decide` quelque part, ou remplace quelqu'un. On y choisit un remplaçant et
     deux jours, du premier (aujourd'hui : dès maintenant) au dernier inclus, dans le fuseau
-    du navigateur ; l'absence déclarée se relit (« … vous remplace du … au … ») et prend
+    du navigateur, au plus 90 jours (l'API tolère l'heure qu'ajoute un changement d'heure) ; l'absence déclarée se relit (« … vous remplace du … au … ») et prend
     fin d'un bouton. Le remplaçant y lit les absences qu'il couvre (« Vous remplacez … du
     … au … ») ; une demande qu'il décide pour un absent porte « En l’absence de … » ;
   - `GET /approval-delegation` donne aussi les remplaçants possibles (`candidates`) : les
@@ -2935,10 +2935,11 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     collaborateurs habilités à valider ;
   - reste une absence déclarée par l'administrateur pour un collaborateur empêché ;
   - tests :
-    - `crates/api/tests/approval_delegation.rs` : remplaçants possibles, sans le lecteur ni
-      un compte désactivé, donnés seulement à qui valide ;
+    - `crates/api/tests/approval_delegation.rs` : remplaçants possibles, sans le lecteur, ni
+      un compte désactivé, ni une habilitation échue ou sur soi seul, donnés seulement à qui
+      valide ; 90 jours et une heure acceptés, pas davantage ;
     - `apps/web/e2e/manager-absence.spec.ts` : Marc déclare son absence en désignant
-      Julien, relue après rechargement et par l'API ; Julien, prévenu par e-mail en
+      Julien, relue après rechargement et par l'API (remplaçant, fin du dernier jour) ; Julien, prévenu par e-mail en
       l'absence de Marc, voit qu'il le remplace et refuse la demande de Nadia, relue
       décidée par lui ; Marc met fin à son absence. Le serveur de bout en bout lui
       réserve un scénario du modèle (`SCENARIO_HOURS`).

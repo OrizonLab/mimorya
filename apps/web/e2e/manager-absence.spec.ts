@@ -112,7 +112,10 @@ test('an absent manager names who validates in their stead', async ({ page, newC
   await marc.getByLabel('Au (inclus)').fill(inDays(3));
   await marc.getByRole('button', { name: 'Déclarer mon absence' }).click();
   await expect(marc.getByRole('button', { name: 'Mettre fin à l’absence' })).toBeVisible();
-  expect((await own(marc))?.delegate.id).toBe(JULIEN);
+  const declared = await own(marc);
+  expect(declared?.delegate.id).toBe(JULIEN);
+  // Until the end of the last day, in the browser's time zone (Node's too).
+  expect(declared?.endsAt).toBe(new Date(`${inDays(3)}T23:59:59`).toISOString());
   await marc.reload();
   await expect(marc.getByText(/^Julien Moreau vous remplace du /)).toBeVisible();
 

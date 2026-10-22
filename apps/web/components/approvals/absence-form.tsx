@@ -4,16 +4,21 @@ import { useState, type FormEvent } from 'react';
 import { Button, ErrorNote, Field, Input, Select } from '@/components/ui';
 import { api, useAction, type Absence, type ApprovalPerson } from '@/lib/api';
 
-/** Today, as a date field writes it, in the reader's time zone. */
+/** The day `days` after `day` (today when absent), as a date field writes it, in the reader's time zone. */
+function dayAfter(days: number, day?: string): string {
+  const start = day ? new Date(`${day}T12:00:00`) : new Date();
+  const then = new Date(start.getTime() + days * 86_400_000);
+  return new Date(then.getTime() - then.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
+}
+
 function today(): string {
-  const now = new Date();
-  return new Date(now.getTime() - now.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
+  return dayAfter(0);
 }
 
 /**
  * Declares one's absence (ADR-071): the colleague who stands in, from which
  * day (today: from now), until the end of which day; at most 90 days, as
- * the API checks.
+ * the API checks, to the hour a clock change adds.
  */
 export function AbsenceForm({
   candidates,
@@ -59,10 +64,24 @@ export function AbsenceForm({
           </Select>
         </Field>
         <Field label="Du">
-          <Input type="date" required value={from} onChange={(e) => setFrom(e.target.value)} />
+          <Input
+            type="date"
+            required
+            min={today()}
+            value={from}
+            onChange={(e) => setFrom(e.target.value)}
+          />
         </Field>
+        {/* Ninety days at most, the first included. */}
         <Field label="Au (inclus)">
-          <Input type="date" required value={until} onChange={(e) => setUntil(e.target.value)} />
+          <Input
+            type="date"
+            required
+            min={from}
+            max={dayAfter(89, from)}
+            value={until}
+            onChange={(e) => setUntil(e.target.value)}
+          />
         </Field>
       </div>
       {action.error && <ErrorNote message={action.error} />}

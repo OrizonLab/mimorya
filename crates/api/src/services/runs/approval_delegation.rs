@@ -20,6 +20,9 @@ use crate::services::access::AuthIdentity;
 
 /// The longest absence one declaration covers.
 pub const MAX_ABSENCE: Duration = Duration::days(90);
+/// Ninety days from the start of one to the end of the last, in a time zone
+/// where the clocks go back meanwhile, last an hour more.
+const CLOCK_CHANGE: Duration = Duration::hours(1);
 
 const NOT_ONESELF: &str = "Désignez un collègue : vous ne pouvez pas vous remplacer vous-même.";
 const UNKNOWN_DELEGATE: &str = "Ce collègue n’existe pas ou son compte n’est pas actif.";
@@ -87,7 +90,7 @@ pub async fn declare_absence(
     if ends_at <= starts_at {
         return Err(DomainError::validation(ENDS_BEFORE_IT_STARTS).into());
     }
-    if ends_at - starts_at > MAX_ABSENCE {
+    if ends_at - starts_at > MAX_ABSENCE + CLOCK_CHANGE {
         return Err(DomainError::validation(TOO_LONG).into());
     }
     let mut tx = db.begin(identity.tenant_id).await?;
