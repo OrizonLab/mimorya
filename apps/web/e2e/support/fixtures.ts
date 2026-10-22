@@ -9,6 +9,7 @@ export const FOREIGN_HOST = 'exemple.invalid';
 export const demo = {
   paul: 'paul.renaud@neo-maintenance.example',
   marc: 'marc.lefevre@neo-maintenance.example',
+  julien: 'julien.moreau@neo-maintenance.example',
   lucas: 'lucas.petit@neo-maintenance.example',
   hugo: 'hugo.garnier@neo-maintenance.example',
   nadia: 'nadia.benali@neo-maintenance.example',

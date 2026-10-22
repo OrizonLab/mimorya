@@ -20,6 +20,10 @@ pub struct ApprovalDelegations {
     pub own: Option<Delegation>,
     /// The absences the reader covers, under way or to come.
     pub standing_in_for: Vec<Delegation>,
+    /// Whom the reader may name, by name: active colleagues holding
+    /// `approval:decide` on a unit or the company (ADR-073). Empty unless
+    /// the reader holds it too.
+    pub candidates: Vec<ApprovalPerson>,
 }
 
 /// An absence: from when until when the delegate stands in for the absent

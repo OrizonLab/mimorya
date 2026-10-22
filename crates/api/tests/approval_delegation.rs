@@ -3,7 +3,8 @@
 //! it is replaced; withdrawn, it is gone, and audited either way. The
 //! delegate is an active account of the company, never oneself. Ended or
 //! of a disabled account, an absence stands in for nothing; ended, it is
-//! purged.
+//! purged. Whom one may name is shown to those who validate only
+//! (ADR-073).
 
 mod support;
 
@@ -206,4 +207,35 @@ async fn an_ended_absence_or_one_of_a_disabled_account_covers_nothing_and_ended_
     assert_eq!(left, 0);
     let gone = julien.delete(ABSENCE).await;
     assert_eq!(gone.status, StatusCode::NOT_FOUND, "{}", gone.text());
+}
+
+/// The names `client` is offered to stand in for them (ADR-073).
+async fn candidates(client: &Client<'_>) -> Vec<String> {
+    let read = client.get(ABSENCE).await.json();
+    read["candidates"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["displayName"].as_str().unwrap().to_owned())
+        .collect()
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn whom_one_may_name_is_shown_to_those_who_validate_only() {
+    let api = TestApi::start().await;
+    let paul = api.sign_in(user::PAUL).await;
+    let marc = api.sign_in(user::MARC).await;
+    let lucas = api.sign_in(user::LUCAS).await;
+    // Active colleagues holding `approval:decide` over others, not oneself.
+    assert_eq!(candidates(&marc).await, ["Julien Moreau", "Nadia Benali"]);
+    // Whoever does not validate learns nothing of who does.
+    assert!(candidates(&lucas).await.is_empty());
+
+    let account = format!("/admin/users/{}", user::NADIA);
+    let disabled = paul.patch(&account, json!({ "status": "disabled" })).await;
+    assert_eq!(disabled.status, StatusCode::OK, "{}", disabled.text());
+    assert_eq!(candidates(&marc).await, ["Julien Moreau"]);
+    let enabled = paul.patch(&account, json!({ "status": "active" })).await;
+    assert_eq!(enabled.status, StatusCode::OK, "{}", enabled.text());
 }

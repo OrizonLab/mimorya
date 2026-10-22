@@ -80,6 +80,12 @@ export function ApprovalCard({
           {approval.requestedFor.id !== me && (
             <p className="mt-1 text-xs text-muted">Pour {approval.requestedFor.displayName}</p>
           )}
+          {/* Decided standing in for an absent manager (ADR-071). */}
+          {canDecide && approval.approver && approval.approver.id !== me && (
+            <p className="mt-1 text-xs text-muted">
+              En l’absence de {approval.approver.displayName}
+            </p>
+          )}
           <p className="mt-1 text-sm">{approval.actionSummary}</p>
           {approval.payload !== undefined && (
             <details className="mt-2 text-xs text-muted">

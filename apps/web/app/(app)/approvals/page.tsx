@@ -1,14 +1,15 @@
 'use client';
 
 import Link from 'next/link';
-import { ApprovalCard, ApprovalHistory } from '@/components/approvals';
+import { AbsenceSection, ApprovalCard, ApprovalHistory } from '@/components/approvals';
 import { EmptyState, Loaded, PageHeader } from '@/components/ui';
-import { useApiData, type ApprovalList } from '@/lib/api';
+import { useApiData, type ApprovalDelegations, type ApprovalList } from '@/lib/api';
 import { formatDate } from '@/lib/format';
 import { useMe } from '@/lib/me-context';
 
 export default function ApprovalsPage() {
   const state = useApiData<ApprovalList>('/approvals?status=all');
+  const absence = useApiData<ApprovalDelegations>('/approval-delegation');
   const me = useMe().user.id;
 
   return (
@@ -17,6 +18,9 @@ export default function ApprovalsPage() {
         title="Validations"
         description="Les actions que l’agent souhaite réaliser pour vous, ou pour les personnes dont vous validez les actions, et qui attendent un accord. Les paramètres validés sont exécutés tels quels."
       />
+      <Loaded state={absence}>
+        {(data) => <AbsenceSection data={data} onChanged={absence.reload} />}
+      </Loaded>
       <Loaded state={state}>
         {({ approvals }) => {
           const pending = approvals.filter((a) => a.status === 'pending');

@@ -102,7 +102,7 @@ test('the manager decides, for whom the agent acts', async ({ page, newContext }
   expect(mail.text).not.toContain('INT-2049');
   const marc = people.marc!;
   await marc.goto(link);
-  await expect(marc.getByText('Pour Nadia Benali')).toBeVisible();
+  await expect(marc.getByText('Pour Nadia Benali', { exact: true })).toBeVisible();
   await expect(marc.getByRole('link', { name: 'voir l’exécution' })).toHaveCount(0);
   await marc.getByRole('button', { name: 'Refuser' }).click();
 

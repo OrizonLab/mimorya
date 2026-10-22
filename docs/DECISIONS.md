@@ -2864,9 +2864,9 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
 - **Conséquences** :
   - donnée personnelle nouvelle : la période d'absence et le remplaçant, conservés
     jusqu'à la fin de l'absence ; supprimés avec le compte de l'un ou de l'autre ;
-  - l'avis et la relance vont au remplaçant plutôt qu'à l'absent (ADR-072) ; restent
-    l'écran « Absence » de la page des validations et le test de bout en bout, et une
-    absence déclarée par l'administrateur pour un collaborateur empêché ;
+  - l'avis et la relance vont au remplaçant plutôt qu'à l'absent (ADR-072) ; l'absence se
+    déclare dans « Validations » (ADR-073) ; reste une absence déclarée par
+    l'administrateur pour un collaborateur empêché ;
   - tests :
     - `crates/api/tests/approval_delegation.rs` : déclaration, lecture par l'absent et
       par le remplaçant, remplacement, retrait, audit ; refus (soi-même, inconnu, autre
@@ -2910,3 +2910,35 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     - `crates/api/tests/delegate_notices.rs` : avis et relance au remplaçant, en
       l'absence nommée et tracés ; le responsable prévenu quand le remplaçant ne pourrait
       pas décider, ou que l'absence n'a pas commencé.
+
+## ADR-073 — Déclarer son absence dans « Validations » (complète ADR-071)
+
+- **Date** : 2026-10-22 · **Statut** : acceptée
+- **Contexte** : l'absence ne se déclarait que par l'API (ADR-071). Pour désigner un
+  remplaçant, il faut aussi savoir qui peut l'être ; l'annuaire de l'entreprise n'est
+  lisible que par l'administration.
+- **Décision** :
+  - la page « Validations » ouvre sur une section « Absence », montrée à qui détient
+    `approval:decide` quelque part, ou remplace quelqu'un. On y choisit un remplaçant et
+    deux jours, du premier (aujourd'hui : dès maintenant) au dernier inclus, dans le fuseau
+    du navigateur ; l'absence déclarée se relit (« … vous remplace du … au … ») et prend
+    fin d'un bouton. Le remplaçant y lit les absences qu'il couvre (« Vous remplacez … du
+    … au … ») ; une demande qu'il décide pour un absent porte « En l’absence de … » ;
+  - `GET /approval-delegation` donne aussi les remplaçants possibles (`candidates`) : les
+    comptes actifs de l'entreprise, autres que le lecteur, qu'un rôle en cours charge
+    d'`approval:decide` sur une unité ou toute l'entreprise, nom seulement. Une politique
+    de refus n'y est pas lue : c'est une indication, et le droit est vérifié à chaque
+    décision (ADR-071). La liste n'est donnée qu'à qui détient lui-même `approval:decide` :
+    les autres n'apprennent pas qui valide dans l'entreprise.
+- **Conséquences** :
+  - aucune donnée nouvelle n'est conservée ; un responsable voit le nom des autres
+    collaborateurs habilités à valider ;
+  - reste une absence déclarée par l'administrateur pour un collaborateur empêché ;
+  - tests :
+    - `crates/api/tests/approval_delegation.rs` : remplaçants possibles, sans le lecteur ni
+      un compte désactivé, donnés seulement à qui valide ;
+    - `apps/web/e2e/manager-absence.spec.ts` : Marc déclare son absence en désignant
+      Julien, relue après rechargement et par l'API ; Julien, prévenu par e-mail en
+      l'absence de Marc, voit qu'il le remplace et refuse la demande de Nadia, relue
+      décidée par lui ; Marc met fin à son absence. Le serveur de bout en bout lui
+      réserve un scénario du modèle (`SCENARIO_HOURS`).
