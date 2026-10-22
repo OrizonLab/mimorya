@@ -143,6 +143,37 @@ pub async fn stand_in_for(
     .await
 }
 
+/// A colleague one may name to stand in for oneself.
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct Colleague {
+    pub user_id: Uuid,
+    pub display_name: String,
+}
+
+/// The colleagues of `user_id` who may stand in for them, as far as their
+/// roles say at `now`: active accounts holding `approval:decide` on a unit
+/// or the whole company. Whether they may decide a given request is
+/// checked then, over whom it is for.
+pub async fn possible_stand_ins(
+    conn: &mut PgConnection,
+    user_id: Uuid,
+    now: DateTime<Utc>,
+) -> sqlx::Result<Vec<Colleague>> {
+    sqlx::query_as(
+        "select distinct u.id as user_id, u.display_name from users u \
+         join role_assignments a on a.user_id = u.id \
+         join roles r on r.id = a.role_id \
+         where u.id <> $1 and u.status = 'active' and a.scope_type <> 'self' \
+         and 'approval:decide' = any(r.permissions) \
+         and (a.expires_at is null or a.expires_at > $2) \
+         order by u.display_name",
+    )
+    .bind(user_id)
+    .bind(now)
+    .fetch_all(conn)
+    .await
+}
+
 /// Deletes every company's ended delegations; how many.
 pub async fn purge_ended_approval_delegations(pool: &PgPool) -> sqlx::Result<i32> {
     sqlx::query_scalar("select system_purge_ended_approval_delegations()")

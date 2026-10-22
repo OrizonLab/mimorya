@@ -1,14 +1,16 @@
 //! The signed-in person's absence (ADR-071): whom they name to stand in for
-//! them on the requests they decide as a manager, until when, and the
-//! absences they cover. Their own resource: nobody declares another's.
+//! them on the requests they decide as a manager, until when, the absences
+//! they cover and, if they decide requests, whom they may name (ADR-073).
+//! Their own resource: nobody declares another's.
 
 use axum::extract::State;
 use axum::routing::get;
 use axum::{Json, Router};
 use chrono::Utc;
+use mimorya_core::approval_routing::DECIDE;
 
 use crate::app::AppState;
-use crate::contract::{Absence, ApprovalDelegations, Delegation, Done};
+use crate::contract::{Absence, ApprovalDelegations, ApprovalPerson, Delegation, Done};
 use crate::http::{ApiResult, Body};
 use crate::plugins::Auth;
 use crate::services::runs::{AbsenceInput, declare_absence, delegations, end_absence};
@@ -24,10 +26,20 @@ async fn read(
     State(state): State<AppState>,
     Auth(identity): Auth,
 ) -> ApiResult<Json<ApprovalDelegations>> {
-    let found = delegations(&state.db, identity, Utc::now()).await?;
+    let access = state.access.context(identity).await?;
+    let decide = access.holds(DECIDE);
+    let found = delegations(&state.db, identity, decide, Utc::now()).await?;
     Ok(Json(ApprovalDelegations {
         own: found.own.as_ref().map(Delegation::from),
         standing_in_for: found.standing_in_for.iter().map(Delegation::from).collect(),
+        candidates: found
+            .candidates
+            .into_iter()
+            .map(|c| ApprovalPerson {
+                id: c.user_id,
+                display_name: c.display_name,
+            })
+            .collect(),
     }))
 }
 

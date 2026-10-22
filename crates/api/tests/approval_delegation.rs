@@ -3,14 +3,19 @@
 //! it is replaced; withdrawn, it is gone, and audited either way. The
 //! delegate is an active account of the company, never oneself. Ended or
 //! of a disabled account, an absence stands in for nothing; ended, it is
-//! purged.
+//! purged. Whom one may name is shown to those who validate only
+//! (ADR-073).
 
 mod support;
 
 use axum::http::StatusCode;
 use chrono::{Duration, Utc};
-use mimorya_core::demo::{tenant, user};
+use mimorya_core::authz::AssignmentScope;
+use mimorya_core::demo::{role, tenant, user};
 use mimorya_db::repositories::approval_delegations::purge_ended_approval_delegations;
+use mimorya_db::repositories::role_assignments::{
+    NewRoleAssignment, create_role_assignment, delete_role_assignment,
+};
 use mimorya_db::testing::OTHER_USER_ID;
 use serde_json::{Value, json};
 use support::{Client, TestApi, owner_url};
@@ -63,9 +68,10 @@ async fn an_absence_is_declared_replaced_and_withdrawn() {
     let nadia = api.sign_in(user::NADIA).await;
     assert_eq!(read(&julien).await, (None, vec![]));
 
+    // Ninety days, and the hour a clock going back adds (ADR-073).
     let starts = Utc::now() + Duration::days(1);
-    let body =
-        json!({ "delegateId": user::MARC, "startsAt": starts.to_rfc3339(), "endsAt": in_days(8) });
+    let ends = starts + Duration::days(90) + Duration::minutes(59);
+    let body = json!({ "delegateId": user::MARC, "startsAt": starts.to_rfc3339(), "endsAt": ends.to_rfc3339() });
     let declared = julien.put(ABSENCE, body).await;
     assert_eq!(declared.status, StatusCode::OK, "{}", declared.text());
     let own = julien.get(ABSENCE).await.json()["own"].clone();
@@ -152,6 +158,9 @@ async fn an_absence_that_cannot_hold_is_refused() {
     .await;
     let too_long = "Une absence déclarée dure au plus 90 jours : déclarez la suite plus tard.";
     refused(user::MARC, None, in_days(91), too_long).await;
+    let starts = Utc::now() + Duration::days(1);
+    let beyond = (starts + Duration::days(90) + Duration::minutes(61)).to_rfc3339();
+    refused(user::MARC, Some(starts.to_rfc3339()), beyond, too_long).await;
     refused(user::MARC, Some(in_days(10)), in_days(101), too_long).await;
 
     // A disabled colleague stands in for nobody.
@@ -206,4 +215,64 @@ async fn an_ended_absence_or_one_of_a_disabled_account_covers_nothing_and_ended_
     assert_eq!(left, 0);
     let gone = julien.delete(ABSENCE).await;
     assert_eq!(gone.status, StatusCode::NOT_FOUND, "{}", gone.text());
+}
+
+/// The names `client` is offered to stand in for them (ADR-073).
+async fn candidates(client: &Client<'_>) -> Vec<String> {
+    let read = client.get(ABSENCE).await.json();
+    read["candidates"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["displayName"].as_str().unwrap().to_owned())
+        .collect()
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn whom_one_may_name_is_shown_to_those_who_validate_only() {
+    let api = TestApi::start().await;
+    let paul = api.sign_in(user::PAUL).await;
+    let marc = api.sign_in(user::MARC).await;
+    let lucas = api.sign_in(user::LUCAS).await;
+    // Active colleagues holding `approval:decide` over others, not oneself:
+    // neither through an assignment ended, nor over oneself only.
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    let mut granted = Vec::new();
+    for (user_id, scope, expires_at) in [
+        (
+            user::LUCAS,
+            AssignmentScope::Tenant,
+            Some(Utc::now() - Duration::days(1)),
+        ),
+        (user::HUGO, AssignmentScope::Own, None),
+    ] {
+        let assignment = NewRoleAssignment {
+            tenant_id: tenant::ID,
+            user_id,
+            role_id: role::TEAM_LEAD,
+            scope,
+            granted_by_user_id: None,
+            expires_at,
+        };
+        granted.push(create_role_assignment(&mut tx, assignment).await.unwrap());
+    }
+    tx.commit().await.unwrap();
+    assert_eq!(candidates(&marc).await, ["Julien Moreau", "Nadia Benali"]);
+    // Whoever does not validate learns nothing of who does.
+    assert!(candidates(&lucas).await.is_empty());
+
+    let account = format!("/admin/users/{}", user::NADIA);
+    let disabled = paul.patch(&account, json!({ "status": "disabled" })).await;
+    assert_eq!(disabled.status, StatusCode::OK, "{}", disabled.text());
+    assert_eq!(candidates(&marc).await, ["Julien Moreau"]);
+    let enabled = paul.patch(&account, json!({ "status": "active" })).await;
+    assert_eq!(enabled.status, StatusCode::OK, "{}", enabled.text());
+
+    // The tests that follow share the database: the roles given go.
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    for id in granted {
+        assert!(delete_role_assignment(&mut tx, id).await.unwrap());
+    }
+    tx.commit().await.unwrap();
 }

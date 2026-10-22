@@ -89,7 +89,13 @@ own: Delegation | null,
 /**
  * The absences the reader covers, under way or to come.
  */
-standingInFor: Array<Delegation>, };
+standingInFor: Array<Delegation>,
+/**
+ * Whom the reader may name, by name: active colleagues holding
+ * `approval:decide` on a unit or the company (ADR-073). Empty unless
+ * the reader holds it too.
+ */
+candidates: Array<ApprovalPerson>, };
 
 /**
  * `GET /approvals`.

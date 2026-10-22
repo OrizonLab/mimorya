@@ -9,7 +9,8 @@ use chrono::{DateTime, Duration, Utc};
 use mimorya_core::DomainError;
 use mimorya_db::Database;
 use mimorya_db::repositories::approval_delegations::{
-    ApprovalDelegation, delegations_to, delete_delegation, get_delegation, set_delegation,
+    ApprovalDelegation, Colleague, delegations_to, delete_delegation, get_delegation,
+    possible_stand_ins, set_delegation,
 };
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::users::get_user;
@@ -19,6 +20,9 @@ use crate::services::access::AuthIdentity;
 
 /// The longest absence one declaration covers.
 pub const MAX_ABSENCE: Duration = Duration::days(90);
+/// Ninety days from the start of one to the end of the last, in a time zone
+/// where the clocks go back meanwhile, last an hour more.
+const CLOCK_CHANGE: Duration = Duration::hours(1);
 
 const NOT_ONESELF: &str = "Désignez un collègue : vous ne pouvez pas vous remplacer vous-même.";
 const UNKNOWN_DELEGATE: &str = "Ce collègue n’existe pas ou son compte n’est pas actif.";
@@ -35,25 +39,36 @@ pub struct AbsenceInput {
     pub ends_at: DateTime<Utc>,
 }
 
-/// The signed-in person's delegation, if it has not ended, and those they
-/// stand in for, or will.
+/// The signed-in person's delegation, if it has not ended, those they
+/// stand in for, or will, and whom they may name.
 pub struct Delegations {
     pub own: Option<ApprovalDelegation>,
     pub standing_in_for: Vec<ApprovalDelegation>,
+    pub candidates: Vec<Colleague>,
 }
 
+/// The signed-in person's delegations; the colleagues they may name only
+/// if they `decide` requests themselves (hold `approval:decide`): nobody
+/// else learns who in the company may validate.
 pub async fn delegations(
     db: &Database,
     identity: AuthIdentity,
+    decide: bool,
     now: DateTime<Utc>,
 ) -> anyhow::Result<Delegations> {
     let mut tx = db.begin(identity.tenant_id).await?;
     let own = get_delegation(&mut tx, identity.user_id, now).await?;
     let standing_in_for = delegations_to(&mut tx, identity.user_id, now).await?;
+    let candidates = if decide {
+        possible_stand_ins(&mut tx, identity.user_id, now).await?
+    } else {
+        Vec::new()
+    };
     tx.commit().await?;
     Ok(Delegations {
         own,
         standing_in_for,
+        candidates,
     })
 }
 
@@ -75,7 +90,7 @@ pub async fn declare_absence(
     if ends_at <= starts_at {
         return Err(DomainError::validation(ENDS_BEFORE_IT_STARTS).into());
     }
-    if ends_at - starts_at > MAX_ABSENCE {
+    if ends_at - starts_at > MAX_ABSENCE + CLOCK_CHANGE {
         return Err(DomainError::validation(TOO_LONG).into());
     }
     let mut tx = db.begin(identity.tenant_id).await?;
