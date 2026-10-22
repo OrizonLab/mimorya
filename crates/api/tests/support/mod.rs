@@ -12,6 +12,7 @@ pub mod delegations;
 pub mod dns;
 pub mod embeddings;
 pub mod identity_provider;
+pub mod lessons;
 pub mod llm;
 pub mod locks;
 pub mod mail;

@@ -92,6 +92,7 @@ pub fn typescript() -> String {
     declarations.add::<admin::LlmTestResult>();
     declarations.add::<admin::EmbeddingView>();
     declarations.add::<admin::EmbeddingTestResult>();
+    declarations.add::<admin::MemorySettingsView>();
     declarations.add::<admin::IdentityProvidersView>();
     declarations.add::<admin::Connectors>();
     // Named by `ConnectorView.toolPolicies`, which holds the stored value.
@@ -144,6 +145,7 @@ macro_rules! request_bodies {
             admin::ConnectorUpdate,
             admin::LlmChoice,
             admin::EmbeddingChoice,
+            admin::MemorySettingsUpdate,
             admin::NewIdentityProvider,
             admin::IdentityProviderUpdate,
             admin::DomainProofRequest,

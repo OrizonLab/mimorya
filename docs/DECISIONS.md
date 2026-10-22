@@ -3067,3 +3067,57 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     une similarité, la mémoire est indexée en arrière-plan (relu par l'API, puis affiché
     après rechargement), la clé n'apparaît jamais, le test répond, puis le retour aux mots
     efface le choix.
+
+## ADR-076 — Leçons tirées des conversations, proposées dans la mémoire personnelle (premier lot : l'API)
+
+- **Date** : 2026-10-22 · **Statut** : acceptée
+- **Contexte** : la mémoire ne grandissait que de ce qu'on y écrit (à la main, ou par l'outil
+  `memory_remember` quand l'utilisateur le demande). Ce qu'une conversation a appris — une
+  façon de faire qui a marché, un piège évité, une préférence — se perdait.
+- **Décision** :
+  - **désactivé par défaut**, choisi par entreprise (`GET`, `PUT /admin/memory-settings`,
+    `settings:manage` sur toute l'entreprise, sous le verrou d'administration, audit
+    `memory.lessons_configured`) : relire une conversation l'envoie une fois de plus au
+    modèle ;
+  - une fois la réponse donnée, une conversation **qui a appelé au moins un outil** est relue
+    en arrière-plan par le modèle des conversations de l'entreprise (le sien, sinon celui de
+    la plateforme ; un modèle inutilisable ne relit rien). Il reçoit le run depuis la demande
+    qui l'a lancé (la demande, les appels d'outils et leurs résultats, abrégés, la réponse),
+    **comme donnée** (enveloppe non fiable dont on ne peut pas sortir), et, comme donnée
+    aussi, les titres des leçons que la personne a gardées, reçues ou refusées ; il propose **au plus une leçon**, générale, sans donnée
+    d'un tiers, secret, identifiant, montant ni détail d'un client, ou aucune ;
+  - la leçon est **proposée dans la mémoire personnelle de la personne servie**
+    (`scope = 'user'`, `kind = 'lesson'`, `status = 'proposed'`, source : le run) : elle seule
+    la voit et la valide ou la rejette (« Ma mémoire »). Aucun collègue, responsable compris,
+    ne lit ce qu'une conversation d'un autre a appris ; la personne pourra la partager si elle
+    en a le droit. Titre de 3 à 120 caractères, contenu de 3 à 2 000, sur une ligne, sans
+    caractère caché ni balise d'enveloppe ; une leçon dont le titre existe déjà (casse
+    ignorée), gardée, proposée ou refusée, n'est pas reproposée ;
+  - ce qu'a coûté la relecture est compté avec le run (`usage_records`, `llm`, au nom de la
+    personne), dès la réponse et quoi qu'il advienne de la leçon ; l'audit `memory.lesson_proposed` nomme la personne, le run et la mémoire, jamais
+    son texte. Une panne perd la leçon, jamais le run ; un arrêt du service pendant la
+    relecture la perd aussi (au mieux, une leçon par run).
+- **Alternatives écartées** : proposer la leçon à l'équipe ou à toute l'entreprise (mémoire
+  d'expérience) — un valideur lirait un détail d'une conversation qu'il n'aurait pas pu voir ;
+  relire chaque conversation (le coût sans le bénéfice) ; une relecture au fil du run (elle
+  retarderait la réponse).
+- **Conséquences** :
+  - donnée personnelle nouvelle : la leçon, dans la mémoire personnelle, avec sa rétention, son
+    export et sa suppression ;
+  - une tâche d'arrière-plan qui panique est désormais décomptée : ni l'arrêt du service ni les
+    tests ne l'attendent indéfiniment (`services/background.rs`, testé) ;
+  - une leçon est de sensibilité « interne » : sans effet tant qu'elle reste personnelle, mais
+    son partage, s'il vient, devra hériter de la sensibilité la plus haute lue par le run ;
+  - reste l'écran de ce réglage (lot 2) ;
+  - tests :
+    - `crates/agent/tests/lesson.rs` : la relecture commence à la demande du run et exige un
+      appel d'outil, abrège les résultats, remet le run comme donnée (enveloppe non fermable)
+      avec les leçons connues ; aucune leçon si le modèle n'en voit pas, hors bornes ou sans
+      réponse lisible ; texte nettoyé ;
+    - `crates/api/tests/lesson_capture.rs` : rien par défaut ; une fois choisi, une leçon
+      proposée à Marc seul (pas à Lucas), tracée sans texte, comptée dans le run, validée ;
+      à Nadia seule quand Marc a validé l'action de son run ; rien d'une conversation sans
+      outil, quand le modèle n'en voit pas, ni deux fois, une leçon refusée comprise ; une
+      relecture en panne laisse le run terminé, sans leçon ;
+    - `crates/api/tests/admin_memory_settings.rs` : réglage réservé aux administrateurs des
+      réglages de toute l'entreprise, désactivé par défaut, tracé.

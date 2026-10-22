@@ -20,6 +20,7 @@ pub mod llm_settings;
 pub mod memory;
 pub mod memory_embeddings;
 pub mod memory_search;
+pub mod memory_settings;
 pub mod org;
 pub mod org_units;
 pub mod password_resets;

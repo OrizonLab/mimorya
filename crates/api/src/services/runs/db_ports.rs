@@ -20,6 +20,7 @@ use super::approval_notice::ApprovalNotifier;
 use super::approval_routing::{NOBODY_VALIDATES, Route, route};
 use super::deliverables::DbDeliverables;
 use super::events::record_run_event;
+use super::lesson_capture::LessonCapture;
 use super::outcome::persist_outcome;
 use crate::contract::AssistantDelta;
 use crate::services::access::AccessService;
@@ -50,6 +51,8 @@ pub struct DbPorts {
     notifier: ApprovalNotifier,
     /// Searches the company's memory by meaning too (ADR-074).
     pub(super) embeddings: Arc<EmbeddingService>,
+    /// Draws a lesson from the run once completed (ADR-076).
+    lessons: LessonCapture,
 }
 
 pub fn engine_ports(
@@ -59,6 +62,7 @@ pub fn engine_ports(
     access: Arc<AccessService>,
     notifier: ApprovalNotifier,
     embeddings: Arc<EmbeddingService>,
+    lessons: LessonCapture,
 ) -> EnginePorts {
     let ports = Arc::new(DbPorts {
         db: db.clone(),
@@ -67,6 +71,7 @@ pub fn engine_ports(
         access,
         notifier,
         embeddings,
+        lessons,
     });
     EnginePorts {
         events: ports.clone(),
@@ -237,6 +242,7 @@ impl RunStore for DbPorts {
 
     async fn finish(&self, outcome: &RunOutcome) -> anyhow::Result<()> {
         persist_outcome(&self.db, self.scope, outcome).await?;
+        self.lessons.after_run(self.scope, outcome);
         // Paused, and so decidable: the managers of its requests are told,
         // once per pause (ADR-060).
         if let RunOutcome::AwaitingApproval { approvals, .. } = outcome {

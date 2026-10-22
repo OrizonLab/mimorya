@@ -256,7 +256,14 @@ Un responsable **ne voit pas** la mémoire personnelle de ses collaborateurs.
 4. Injection dans le contexte **avec la source** (identifiant, espace, date) ; mise à
    jour de `last_used_at` / `use_count`.
 
-### 9.3 Cycle de vie
+### 9.3 Leçons tirées des conversations
+
+Si l'entreprise l'a choisi (désactivé par défaut, ADR-076), une conversation qui a appelé un
+outil est relue, une fois la réponse donnée, par le modèle des conversations : il reçoit le
+run comme donnée et propose au plus une leçon générale, dans la mémoire personnelle de la
+personne servie, qui seule la valide.
+
+### 9.4 Cycle de vie
 
 Rétention par type (`expires_at`), consultation et suppression par l'utilisateur
 (espace « Ma mémoire »), export (RGPD), archivage des éléments inutilisés plutôt que

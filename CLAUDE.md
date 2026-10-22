@@ -39,7 +39,8 @@ Repères à l'intérieur des crates :
   connecteurs, mémoires, compétences de démonstration), `db/src/testing.rs`.
 - `agent/src/llm/<fournisseur>/`, `agent/src/llm/embedding/` (modèles d'embeddings de la
   mémoire sémantique, ADR-074), `agent/src/runtime/` (boucle, appels modèle, appels
-  d'outils, revue de réponse, reprise après un arrêt du service, ports),
+  d'outils, revue de réponse, reprise après un arrêt du service, leçon tirée d'un run
+  (`lesson.rs`, ADR-076), ports),
   `agent/src/tools/` (registre, PEP,
   `platform/`), `agent/src/testing/` (fonctionnalité `testing`).
 - `connectors/src/demo_interventions/` (données, planning, accès, `tools/` un fichier
@@ -59,7 +60,8 @@ Repères à l'intérieur des crates :
   ports PostgreSQL, résultat, reprise au démarrage, ADR-053, circuit des validations,
   avis au responsable (`approval_notice/`, rattrapé au démarrage, ADR-070), expiration et
   relance des demandes, ADR-059 à ADR-062, absence et remplaçant
-  (`approval_delegation.rs`, ADR-071 à ADR-073)),
+  (`approval_delegation.rs`, ADR-071 à ADR-073), leçon proposée en fin de run
+  (`lesson_capture.rs`, ADR-076)),
   `api/src/services/llm.rs` (fournisseur de modèle de
   chaque entreprise), `api/src/services/embeddings/` (modèle d'embeddings de chaque
   entreprise, vecteur d'une demande, indexation de la mémoire, ADR-074), `api/src/services/invitations/` (liens d'invitation, ADR-027),
