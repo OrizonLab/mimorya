@@ -14,7 +14,9 @@ use mimorya_core::demo::{tenant, user};
 use mimorya_db::repositories::approvals::{ApprovalRouting, NewApproval, create_approval};
 use mimorya_db::testing::{OTHER_TENANT_ID, OTHER_USER_ID};
 use serde_json::{Value, json};
-use support::manager_approvals::{applying, route_to_managers};
+use support::manager_approvals::{
+    applying, due_in, end_foreign_request, foreign_request, route_to_managers,
+};
 use support::planning::{apply_proposal_times, apply_reply, propose};
 use support::recovery::{saved, stopped_run};
 use support::runs::start_run;
@@ -24,18 +26,6 @@ use uuid::Uuid;
 
 fn id_of(approval: &Value) -> Uuid {
     approval["id"].as_str().unwrap().parse().unwrap()
-}
-
-/// Moves the request's deadline to `minutes` from now.
-async fn due_in(api: &TestApi, tenant_id: Uuid, approval: Uuid, minutes: i64) {
-    let mut tx = api.app.services.db.begin(tenant_id).await.unwrap();
-    sqlx::query("update approvals set expires_at = $2 where id = $1")
-        .bind(approval)
-        .bind(Utc::now() + Duration::minutes(minutes))
-        .execute(&mut *tx)
-        .await
-        .unwrap();
-    tx.commit().await.unwrap();
 }
 
 /// The reminders audited for the request, as `tenant_id` sees them: the
@@ -173,40 +163,7 @@ async fn each_company_s_managers_are_reminded_in_their_own_company() {
     let api = TestApi::start_with_mailer().await;
     // A paused run of the other company, its request due in two hours, that
     // its contact decides as manager.
-    let run = stopped_run(
-        &api,
-        OTHER_TENANT_ID,
-        OTHER_USER_ID,
-        None,
-        Some(saved()),
-        &[],
-    )
-    .await;
-    let mut tx = api.app.services.db.begin(OTHER_TENANT_ID).await.unwrap();
-    sqlx::query("update agent_runs set status = 'awaiting_approval' where id = $1")
-        .bind(run)
-        .execute(&mut *tx)
-        .await
-        .unwrap();
-    let foreign = create_approval(
-        &mut tx,
-        NewApproval {
-            tenant_id: OTHER_TENANT_ID,
-            run_id: run,
-            requested_for_user_id: OTHER_USER_ID,
-            tool_name: "planning_apply".into(),
-            tool_call_id: "call-foreign".into(),
-            action_summary: "Appliquer un planning".into(),
-            payload: json!({}),
-            risk: "write".into(),
-            reason: "Action modifiant des données".into(),
-            expires_at: Some(Utc::now() + Duration::hours(2)),
-            routing: ApprovalRouting::Manager(OTHER_USER_ID),
-        },
-    )
-    .await
-    .unwrap();
-    tx.commit().await.unwrap();
+    let (run, foreign) = foreign_request(&api, Duration::hours(2)).await;
 
     let runs = &api.app.services.runs;
     runs.claim_execution().await.unwrap();
@@ -228,21 +185,10 @@ async fn each_company_s_managers_are_reminded_in_their_own_company() {
     assert_eq!(sent[0].to, "contact@autre-entreprise.example");
     assert!(sent[0].text.contains("(Autre entreprise)"));
     // Audited in its company, nowhere in the demo one.
-    assert_eq!(reminders(&api, OTHER_TENANT_ID, foreign.id).await.len(), 1);
-    assert!(reminders(&api, tenant::ID, foreign.id).await.is_empty());
+    assert_eq!(reminders(&api, OTHER_TENANT_ID, foreign).await.len(), 1);
+    assert!(reminders(&api, tenant::ID, foreign).await.is_empty());
 
-    let mut tx = api.app.services.db.begin(OTHER_TENANT_ID).await.unwrap();
-    sqlx::query("update agent_runs set status = 'failed' where id = $1")
-        .bind(run)
-        .execute(&mut *tx)
-        .await
-        .unwrap();
-    sqlx::query("update approvals set status = 'cancelled' where id = $1")
-        .bind(foreign.id)
-        .execute(&mut *tx)
-        .await
-        .unwrap();
-    tx.commit().await.unwrap();
+    end_foreign_request(&api, run, foreign).await;
 }
 
 /// Two requests of one pause, both for Marc and due in two hours: their ids.

@@ -1,13 +1,18 @@
 //! Validation by a manager (ADR-059): the routing setting, a scripted run
-//! asking to apply a planning, and what the lists and the audit say of it.
+//! asking to apply a planning, a request of the other company, and what the
+//! lists and the audit say of them.
 
 use axum::http::StatusCode;
+use chrono::{Duration, Utc};
 use mimorya_agent::testing::ScriptedStep;
 use mimorya_core::demo::tenant;
+use mimorya_db::repositories::approvals::{ApprovalRouting, NewApproval, create_approval};
+use mimorya_db::testing::{OTHER_TENANT_ID, OTHER_USER_ID};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
 use super::planning::{apply_proposal, propose};
+use super::recovery::{saved, stopped_run};
 use super::{Client, TestApi};
 
 pub const ROUTING: &str = "/admin/approval-routing";
@@ -54,6 +59,74 @@ pub async fn listed(client: &Client<'_>, run_id: &str) -> Option<Value> {
         .iter()
         .find(|a| a["runId"] == run_id)
         .cloned()
+}
+
+/// Moves the request's deadline to `minutes` from now.
+pub async fn due_in(api: &TestApi, tenant_id: Uuid, approval: Uuid, minutes: i64) {
+    let mut tx = api.app.services.db.begin(tenant_id).await.unwrap();
+    sqlx::query("update approvals set expires_at = $2 where id = $1")
+        .bind(approval)
+        .bind(Utc::now() + Duration::minutes(minutes))
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+}
+
+/// A paused run of the other company, with a request due in `expires_in`
+/// that its contact decides as manager: the run and the request.
+pub async fn foreign_request(api: &TestApi, expires_in: Duration) -> (Uuid, Uuid) {
+    let run = stopped_run(
+        api,
+        OTHER_TENANT_ID,
+        OTHER_USER_ID,
+        None,
+        Some(saved()),
+        &[],
+    )
+    .await;
+    let mut tx = api.app.services.db.begin(OTHER_TENANT_ID).await.unwrap();
+    sqlx::query("update agent_runs set status = 'awaiting_approval' where id = $1")
+        .bind(run)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    let request = create_approval(
+        &mut tx,
+        NewApproval {
+            tenant_id: OTHER_TENANT_ID,
+            run_id: run,
+            requested_for_user_id: OTHER_USER_ID,
+            tool_name: "planning_apply".into(),
+            tool_call_id: "call-foreign".into(),
+            action_summary: "Appliquer un planning".into(),
+            payload: json!({}),
+            risk: "write".into(),
+            reason: "Action modifiant des données".into(),
+            expires_at: Some(Utc::now() + expires_in),
+            routing: ApprovalRouting::Manager(OTHER_USER_ID),
+        },
+    )
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+    (run, request.id)
+}
+
+/// Ends the run of `foreign_request`, its request cancelled.
+pub async fn end_foreign_request(api: &TestApi, run: Uuid, request: Uuid) {
+    let mut tx = api.app.services.db.begin(OTHER_TENANT_ID).await.unwrap();
+    sqlx::query("update agent_runs set status = 'failed' where id = $1")
+        .bind(run)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    sqlx::query("update approvals set status = 'cancelled' where id = $1")
+        .bind(request)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
 }
 
 /// Takes `permission` from `user_id`; returns the policy to delete.

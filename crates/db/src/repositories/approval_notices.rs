@@ -1,7 +1,8 @@
-//! What tells a manager that requests await them (ADR-060), or reminds them
-//! the day before they expire (ADR-062): the requests that still wait for a
-//! manager, with the manager's address while their account is active, not
-//! yet notified (or reminded).
+//! What tells a manager that requests await them (ADR-060), at startup if a
+//! stop of the service lost the notice (ADR-070), or reminds them the day
+//! before they expire (ADR-062): the requests that still wait for a manager,
+//! with the manager's address while their account is active, not yet
+//! notified (or reminded).
 
 use chrono::{DateTime, Utc};
 use sqlx::{PgConnection, PgPool};
@@ -63,6 +64,23 @@ pub async fn approval_notices(
     .await
 }
 
+/// The requests of `run_id` whose manager was never told of (ADR-070): no
+/// notice attempted for, due after `due_after`.
+pub async fn approvals_never_notified(
+    conn: &mut PgConnection,
+    run_id: Uuid,
+    due_after: DateTime<Utc>,
+) -> sqlx::Result<Vec<ApprovalNotice>> {
+    sqlx::query_as(&format!(
+        "{PENDING_FOR_MANAGERS} and a.expires_at > $3{BY_MANAGER}"
+    ))
+    .bind(run_id)
+    .bind(NOTIFIED)
+    .bind(due_after)
+    .fetch_all(conn)
+    .await
+}
+
 /// The requests of `run_id` to remind (ADR-062): due after `now` but by
 /// `until`, never reminded yet.
 pub async fn approvals_to_remind(
@@ -82,9 +100,9 @@ pub async fn approvals_to_remind(
     .await
 }
 
-/// A run with requests to remind their manager of (ADR-062).
+/// A run with requests to tell their manager of (ADR-062, ADR-070).
 #[derive(Debug, Clone, Copy, sqlx::FromRow)]
-pub struct ReminderRun {
+pub struct NoticeRun {
     pub tenant_id: Uuid,
     pub run_id: Uuid,
 }
@@ -96,10 +114,23 @@ pub async fn approval_reminder_runs(
     pool: &PgPool,
     now: DateTime<Utc>,
     until: DateTime<Utc>,
-) -> sqlx::Result<Vec<ReminderRun>> {
+) -> sqlx::Result<Vec<NoticeRun>> {
     sqlx::query_as("select tenant_id, run_id from system_approval_reminder_runs($1, $2)")
         .bind(now)
         .bind(until)
+        .fetch_all(pool)
+        .await
+}
+
+/// Every company's runs with requests due after `due_after` that their
+/// manager was never told of (ADR-070), through a narrowly scoped database
+/// function: each is then handled in its own company.
+pub async fn unnotified_approval_runs(
+    pool: &PgPool,
+    due_after: DateTime<Utc>,
+) -> sqlx::Result<Vec<NoticeRun>> {
+    sqlx::query_as("select tenant_id, run_id from system_unnotified_approval_runs($1)")
+        .bind(due_after)
         .fetch_all(pool)
         .await
 }

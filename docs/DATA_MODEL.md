@@ -160,8 +160,10 @@ Phase 2 : `skill_eval_runs`, `documents` / `document_chunks` (GED, ingestion),
   `system_overdue_approval_runs` (lister les runs dont une demande de validation a passé
   son échéance : entreprise et identifiant seulement, chacun traité ensuite dans sa propre
   entreprise, ADR-061), `system_approval_reminder_runs` (de même pour les demandes à
-  relancer la veille de leur échéance, ADR-062) et `system_purge_expired_password_resets`
-  (supprimer les liens de réinitialisation expirés).
+  relancer la veille de leur échéance, ADR-062), `system_unnotified_approval_runs` (de
+  même, au démarrage, pour les demandes dont un arrêt du service a perdu l'avis, ADR-070)
+  et `system_purge_expired_password_resets` (supprimer les liens de réinitialisation
+  expirés).
 
 ## 5. Rétention (valeurs par défaut, configurables par entreprise)
 

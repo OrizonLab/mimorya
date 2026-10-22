@@ -2157,8 +2157,7 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - aucune donnée personnelle nouvelle n'est conservée : l'e-mail n'est pas stocké, et
     l'audit ne garde que des identifiants ;
   - un avis que l'arrêt du service interrompt entre l'enregistrement de la pause et
-    l'envoi est perdu ; le filtre par l'audit permettrait de le rattraper au démarrage
-    (demandes en attente, confiées à un responsable, jamais signalées) ;
+    l'envoi est rattrapé au démarrage suivant (ADR-070) ;
   - le responsable est relancé la veille de l'échéance (ADR-062) ; pas de résumé
     périodique. Ce qu'un modèle détourné peut faire envoyer reste borné : au plus deux
     messages par pause et par responsable (l'avis, puis la relance), et autant de
@@ -2776,3 +2775,49 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     `apps/web/e2e/domain-proofs.spec.ts` (domaine listé avec son enregistrement, non prouvé ;
     vérifié avant publication : refus disant ce qui manque ; publié puis vérifié : prouvé et
     daté, relu après rechargement).
+
+## ADR-070 — Rattraper au démarrage l'avis qu'un arrêt du service a perdu (complète ADR-060)
+
+- **Date** : 2026-10-22 · **Statut** : acceptée
+- **Contexte** : l'e-mail qui prévient le responsable part en arrière-plan, une fois la
+  pause du run enregistrée (ADR-060). Un arrêt du service entre ces deux moments le
+  perd : la demande attend le responsable, qui n'en sait rien, jusqu'à la relance de
+  la veille (ADR-062), six jours plus tard, ou jusqu'à son expiration. Chaque avis tenté,
+  envoyé ou refusé par le relais, est tracé (`approval.notified`) : une demande sans
+  cette trace n'a jamais été signalée.
+- **Décision** :
+  - au démarrage, une fois le verrou de l'exécuteur pris (ADR-053), **avant** de
+    reprendre les runs interrompus et de servir la moindre requête, l'API cherche les
+    demandes en attente, confiées à un responsable, jamais signalées, dans un run en
+    pause d'une entreprise active. Elle passe par une fonction `SECURITY DEFINER`
+    minimale (`system_unnotified_approval_runs`), qui ne rend que l'entreprise et le
+    run ; chaque run est ensuite lu dans sa propre entreprise (RLS). Ces demandes sont
+    listées à cet instant, puis signalées en arrière-plan comme le fait une pause : un
+    message par responsable et par run, seulement s'il est actif, tracé de même. Une
+    demande qu'un run repris ou une décision crée ensuite n'est pas dans la liste :
+    elle n'est jamais signalée deux fois ;
+  - une demande dont l'échéance tombe dans les 24 heures n'est pas rattrapée : la
+    relance (ADR-062) la signale, avec son échéance. Pour que les deux ne se croisent
+    pas au démarrage, la maintenance périodique commence une minute après celui-ci, et
+    non plus aussitôt ;
+  - un échec du rattrapage est journalisé et n'empêche pas de reprendre les runs ; il
+    n'est pas réessayé avant le démarrage suivant.
+- **Conséquences** :
+  - un avis perdu part au démarrage suivant. Sont rattrapés de la même façon un avis
+    dont la lecture a échoué avant l'envoi, ou dont la trace n'a pas pu être écrite
+    après (le responsable peut alors le recevoir deux fois : « au moins une fois »,
+    comme la relance), et les demandes faites quand aucun relais SMTP n'était configuré,
+    si l'un l'est désormais : leur responsable les apprend au premier démarrage avec
+    relais ;
+  - le nombre de messages par pause et par responsable reste borné à deux (l'avis, puis
+    la relance) ;
+  - les balayages périodiques (expiration, relance, runs bloqués, liens expirés)
+    commencent une minute après le démarrage ;
+  - tests :
+    - `crates/api/tests/approval_notice_catch_up.rs` : une demande dont l'avis a été
+      perdu est signalée au démarrage suivant, sans l'action, tracée, une seule fois ;
+      d'une pause dont une demande expire dans les 24 heures, seule l'autre est
+      signalée, la première étant relancée ; chaque entreprise est rattrapée chez elle
+      et rien de l'autre n'est visible ;
+    - `crates/db/tests/definer_functions.rs` : la nouvelle fonction est dans la liste
+      connue.

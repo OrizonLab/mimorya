@@ -1,7 +1,8 @@
-//! Periodic maintenance, at startup and then every minute: expired password
-//! reset links are deleted (ADR-028); requests nobody decided in time
-//! expire, and their runs go on (ADR-061), their managers reminded the day
-//! before (ADR-062); runs without progress for a while
+//! Periodic maintenance, every minute from a minute after startup, once the
+//! startup is done (runs taken up, lost notices listed: ADR-053, ADR-070):
+//! expired password reset links are deleted (ADR-028); requests nobody
+//! decided in time expire, and their runs go on (ADR-061), their managers
+//! reminded the day before (ADR-062); runs without progress for a while
 //! belong to a stuck process and are marked as failed, their `run_finished`
 //! event recorded and broadcast to the clients following them. That sweep
 //! waits until the process has run as long as a run takes to go stale: runs
@@ -31,8 +32,8 @@ const SWEEP_INTERVAL: Duration = Duration::from_secs(60);
 pub fn spawn_maintenance(services: AppState) -> JoinHandle<()> {
     tokio::spawn(async move {
         let (db, bus) = (&services.db, &services.bus);
-        let mut interval = tokio::time::interval(SWEEP_INTERVAL);
         let started = tokio::time::Instant::now();
+        let mut interval = tokio::time::interval_at(started + SWEEP_INTERVAL, SWEEP_INTERVAL);
         loop {
             interval.tick().await;
             match services.runs.expire_overdue().await {
