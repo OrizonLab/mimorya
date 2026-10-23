@@ -1,7 +1,7 @@
 //! Execution leases held (ADR-083): a run executes under the lease of the
 //! executor that set it running (its turn, a decision, an expiry), renewed
-//! while it executes and given up once it pauses or ends. Taken up once
-//! expired: `run_lease_takeover.rs`.
+//! while it executes, even as the service stops, and given up once it
+//! pauses or ends. Taken up once expired: `run_lease_takeover.rs`.
 
 mod support;
 
@@ -103,4 +103,48 @@ async fn a_paused_run_belongs_to_nobody_until_set_going_again_here() {
         Some(Some(executor))
     );
     assert_eq!(status(&api, run.parse().unwrap()).await, "completed");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires PostgreSQL"]
+async fn a_run_executing_as_the_service_stops_keeps_its_lease_until_it_ends() {
+    let api = TestApi::start_with_leases(BRIEF).await;
+    let marc = api.sign_in(user::MARC).await;
+    let (started, started_seen) = std::sync::mpsc::channel::<()>();
+    let (stopping, stopping_seen) = std::sync::mpsc::channel::<()>();
+    let (started, stopping_seen) = (Mutex::new(started), Mutex::new(stopping_seen));
+    let seen: Arc<Mutex<Vec<Lease>>> = Arc::default();
+    let seen_by_model = seen.clone();
+    api.script(vec![ScriptedStep::dynamic(move |_| {
+        tokio::task::block_in_place(|| {
+            started.lock().unwrap().send(()).unwrap();
+            stopping_seen.lock().unwrap().recv().unwrap();
+            let first = running_lease_of(user::MARC);
+            std::thread::sleep(StdDuration::from_millis(700));
+            let later = running_lease_of(user::MARC);
+            seen_by_model.lock().unwrap().extend([first, later]);
+        });
+        ScriptedReply::text("Fini pendant l’arrêt.")
+    })]);
+    let run = start_run(&marc).await;
+    tokio::task::spawn_blocking(move || started_seen.recv().unwrap())
+        .await
+        .unwrap();
+
+    // The service stops while the run executes: it waits for its end.
+    let services = api.app.services.clone();
+    let TestApi { app, .. } = api;
+    let stopped = tokio::spawn(app.shutdown());
+    while !*services.shutdown.borrow() {
+        tokio::task::yield_now().await;
+    }
+    stopping.send(()).unwrap();
+    stopped.await.unwrap();
+
+    let seen = seen.lock().unwrap().clone();
+    assert!(
+        seen[1].1 > seen[0].1,
+        "not renewed while stopping: {seen:?}"
+    );
+    assert_eq!(lease_of(run).await, (None, None));
 }
