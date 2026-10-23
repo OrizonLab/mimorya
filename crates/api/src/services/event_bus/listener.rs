@@ -11,6 +11,7 @@ use std::time::Duration;
 use mimorya_db::notifications::{RUN_EVENTS_LISTENER, listen_run_events};
 use sqlx::postgres::PgListener;
 use tokio::sync::{mpsc, watch};
+use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
 use super::Relay;
@@ -43,9 +44,8 @@ impl Relay {
                 Ok(listener) => {
                     retry = RETRY;
                     let (sender, received) = mpsc::channel(RECEIVED);
-                    let receiving = tokio::spawn(receive(listener, sender));
+                    let _receiving = Receiving(tokio::spawn(receive(listener, sender)));
                     let stopped = self.relay_from(received, &mut stopping).await;
-                    receiving.abort();
                     self.bus.set_relaying(false);
                     if stopped {
                         return;
@@ -107,6 +107,16 @@ impl Relay {
                 }
             }
         }
+    }
+}
+
+/// The listener's task, stopped when dropped: with the relay, however it
+/// ends (stopped midway with the service, its connection with it).
+struct Receiving(JoinHandle<()>);
+
+impl Drop for Receiving {
+    fn drop(&mut self) {
+        self.0.abort();
     }
 }
 

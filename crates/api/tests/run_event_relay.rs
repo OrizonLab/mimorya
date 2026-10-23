@@ -4,7 +4,8 @@
 //! notice was lost while nobody listened is read once the listener connects
 //! again. A run's events are read in the company of whom follows it, never
 //! in another. Another process's text reaches the followers, unless an
-//! event they have since replaced it; a process alone sends none.
+//! event they have since replaced it; a process alone sends none. The
+//! listener's connection ends with the service.
 mod support;
 
 use std::sync::Mutex;
@@ -12,7 +13,7 @@ use std::time::Duration;
 
 use mimorya_agent::testing::{ScriptedReply, ScriptedStep};
 use mimorya_core::demo::{tenant, user};
-use mimorya_db::notifications::RUN_EVENTS_CHANNEL;
+use mimorya_db::notifications::{RUN_EVENTS_CHANNEL, run_event_listeners};
 use mimorya_db::testing::OTHER_TENANT_ID;
 use serde_json::json;
 use sqlx::postgres::PgListener;
@@ -231,4 +232,26 @@ async fn a_process_alone_sends_none_of_its_text() {
         .publish_delta(run, None, "Pour personne");
     let sent = tokio::time::timeout(Duration::from_millis(500), onlooker.recv()).await;
     assert!(sent.is_err(), "{sent:?}");
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn the_listener_s_connection_ends_with_the_service() {
+    let api = TestApi::start().await;
+    relaying(&api).await;
+    alone(&api).await;
+    let owner = sqlx::PgPool::connect(support::owner_url()).await.unwrap();
+
+    let TestApi { app, .. } = api;
+    app.shutdown().await;
+    let mut listening = 1;
+    for _ in 0..250 {
+        listening = run_event_listeners(&owner).await.unwrap();
+        if listening == 0 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    owner.close().await;
+    assert_eq!(listening, 0);
 }
