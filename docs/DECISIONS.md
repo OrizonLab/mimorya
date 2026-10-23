@@ -3185,7 +3185,7 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     compte inactif ne le sont pas ;
   - l'absence garde le nom de l'administrateur qui l'a déclarée (`declared_by_user_id`) :
     - le collaborateur le lit dans sa propre absence (`declaredBy`), comme le
-      remplaçant ; l'écran « Validations » l'affichera avec celui de l'administration ;
+      remplaçant ; « Validations » l'affiche (ADR-079) ;
     - redéclarée par le collaborateur, elle redevient la sienne ;
     - il garde la main : il y met fin, ou en déclare une autre ;
   - le collaborateur est prévenu par e-mail quand un relais est configuré :
@@ -3211,8 +3211,7 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     ou une fois le compte de l'administrateur supprimé ; supprimée avec l'absence ;
   - l'administrateur des comptes, qui lit déjà l'annuaire, apprend par les remplaçants
     possibles qui valide dans l'entreprise, même sans `role:manage` ;
-  - reste l'écran de l'administration, avec l'auteur affiché dans « Validations »
-    (lot 2) ;
+  - l'écran de l'administration, avec l'auteur affiché dans « Validations » : ADR-079 ;
   - tests :
     - `crates/api/src/services/admin/absence_mail.rs` : texte de la déclaration, de la
       levée et de l'annulation d'une absence à venir ;
@@ -3233,3 +3232,39 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
       - l'absent comme remplaçant, une période impossible, un compte désactivé ;
     - `crates/api/tests/first_login.rs` : les trois routes retiennent un mot de passe
       provisoire.
+
+## ADR-079 — Déclarer l'absence d'un collaborateur depuis « Utilisateurs » ; son auteur affiché dans « Validations » (complète ADR-078)
+
+- **Date** : 2026-10-23 · **Statut** : acceptée
+- **Contexte** : l'absence d'un collaborateur empêché ne se déclarait que par l'API
+  (ADR-078), et le collaborateur ne lisait le nom de son auteur que par l'API.
+- **Décision** :
+  - dans l'onglet « Utilisateurs », le panneau d'un compte actif ouvre, pour
+    l'administrateur des comptes, une section « Absence » :
+    - sans absence : ce qu'elle fait (le remplaçant valide là où il en a le droit, la
+      désignation n'en donne aucun, la personne voit qui l'a déclarée et peut y mettre
+      fin, prévenue par e-mail, ou à prévenir si le serveur n'en envoie pas) et le
+      formulaire de « Validations » (remplaçant parmi ceux proposés, premier et dernier
+      jour, au plus 90 jours), « Déclarer son absence » ;
+    - avec une absence : qui remplace qui, du quand au quand, l'administrateur qui l'a
+      déclarée s'il est nommé (sinon, la personne elle-même, ou un compte supprimé :
+      rien n'est affirmé), « Lever l'absence » après confirmation ;
+    - après chaque changement, la page dit si un e-mail en a informé la personne, ou
+      qu'il faut la prévenir ; un changement refusé (l'absence a pris fin entre-temps)
+      recharge l'absence telle qu'elle est ;
+  - le formulaire est celui de « Validations », rendu commun : ce qu'il envoie et à qui
+    lui sont donnés par la page qui l'utilise ;
+  - dans « Validations », une absence déclarée par un administrateur le dit : « Absence
+    déclarée pour vous par …, depuis l'administration. ».
+- **Alternatives écartées** : un onglet « Absences » dans l'administration, quand
+  l'absence se rattache au compte de la personne.
+- **Conséquences** :
+  - aucune donnée nouvelle ;
+  - tests : `apps/web/e2e/admin-absence.spec.ts` :
+    - Paul déclare l'absence de Marc depuis « Utilisateurs », Julien le remplaçant. Le
+      test la relit par l'API (remplaçant, auteur, fin du dernier jour), puis à l'écran
+      après rechargement ;
+    - Marc, prévenu par e-mail, lit dans « Validations » qui l'a déclarée et y met fin ;
+    - Paul la déclare de nouveau, puis la lève après confirmation : Marc en est
+      prévenu ;
+    - quoi qu'il arrive, Marc reste sans absence.

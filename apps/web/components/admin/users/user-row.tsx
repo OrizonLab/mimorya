@@ -5,6 +5,7 @@ import { Button, Cell, LabelBadge } from '@/components/ui';
 import { formatDate } from '@/lib/format';
 import { ACCOUNT_STATUS } from '@/lib/labels';
 import type { Directory, DirectoryUser, OrgUnitView } from '@/lib/api';
+import { AbsenceEditor } from './absence-editor';
 import { AssignmentsEditor } from './assignments-editor';
 import { AttributesEditor } from './attributes-editor';
 import { ProfileEditor } from './profile-editor';
@@ -87,6 +88,12 @@ export function UserRow({
                 <section>
                   <h3 className="mb-2 text-sm font-medium">Attributs</h3>
                   <AttributesEditor user={user} onChanged={onChanged} />
+                </section>
+              )}
+              {canManage.users && user.status === 'active' && (
+                <section>
+                  <h3 className="mb-2 text-sm font-medium">Absence</h3>
+                  <AbsenceEditor user={user} emailEnabled={emailEnabled} />
                 </section>
               )}
               {canManage.roles && (
