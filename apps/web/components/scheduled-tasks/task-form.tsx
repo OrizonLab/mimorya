@@ -95,7 +95,8 @@ export function TaskForm({
           {submitLabel}
         </Button>
         {onCancel && (
-          <Button type="button" variant="ghost" onClick={onCancel}>
+          // Not while saving: what is sent may be saved all the same.
+          <Button type="button" variant="ghost" disabled={action.pending} onClick={onCancel}>
             Annuler
           </Button>
         )}

@@ -3380,7 +3380,8 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     défaut), heure et fuseau (celui du navigateur par défaut). Sans le droit d'utiliser
     l'agent, ou à vingt tâches, la carte le dit à la place du formulaire ;
   - chaque tâche dit quand elle part, en mots (« Du lundi au vendredi à 8 h 00 », son
-    fuseau entre parenthèses), sa prochaine occurrence, sa demande, ce qu'est devenue la
+    fuseau entre parenthèses), sa prochaine occurrence (lue, comme la dernière, dans ce
+    fuseau), sa demande, ce qu'est devenue la
     dernière occurrence (un badge, et la raison donnée par la plateforme) et mène à la
     conversation du dernier lancement, qui attend peut-être une validation. « Modifier »,
     « Mettre en pause » ou « Reprendre » et « Supprimer » sont nommés par son intitulé ;
@@ -3403,8 +3404,9 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     missions longues ;
   - tests :
     - `apps/web/e2e/scheduled-tasks.spec.ts` : l'occurrence manquée lue, puis une tâche
-      créée, mise en pause, reprise, déplacée et supprimée, chaque changement relu par
-      l'API ;
+      créée, mise en pause, reprise, déplacée (le focus rendu à « Modifier ») et
+      supprimée, chaque changement relu par l'API ; à vingt tâches, la note à la place du
+      formulaire et le rythme « Du lundi au vendredi » ;
     - `apps/web/e2e/navigation.spec.ts` : la page se charge sans erreur ;
     - `crates/api/tests/scheduled_task_passes.rs` : une passe laisse à la suivante un lot
       de tâches en cours de modification.
