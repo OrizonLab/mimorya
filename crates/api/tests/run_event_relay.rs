@@ -19,7 +19,7 @@ use sqlx::postgres::PgListener;
 use support::TestApi;
 use support::recovery::stopped_run;
 use support::relay::{
-    announce_delta, announce_event, cut_listeners, next_event, record_unannounced, relaying,
+    alone, announce_delta, announce_event, cut_listeners, next_event, record_unannounced, relaying,
 };
 use support::runs::start_run;
 
@@ -219,6 +219,7 @@ async fn a_text_written_elsewhere_reaches_the_followers_here() {
 async fn a_process_alone_sends_none_of_its_text() {
     let api = TestApi::start().await;
     relaying(&api).await;
+    alone(&api).await;
     let run = stopped_run(&api, tenant::ID, user::MARC, None, None, &[]).await;
     // Listening as an onlooker, not as a process of the application.
     let mut onlooker = PgListener::connect(support::app_url()).await.unwrap();

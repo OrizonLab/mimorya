@@ -24,6 +24,7 @@ pub mod privileges;
 pub mod recovery;
 pub mod refusals;
 pub mod relay;
+pub mod relay_faults;
 pub mod resets;
 pub mod runs;
 pub mod saml_provider;

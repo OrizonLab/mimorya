@@ -3,97 +3,28 @@
 //! journal, in the company of whom follows the run here (row-level security
 //! applies: the notice names no company), from the last event they all
 //! have: one lost in between is read with the next. A text delta older than
-//! an event they have is dropped. Once the listener connects again, every
-//! followed run is read again: notices sent meanwhile were lost; so is it
-//! a moment after a read failed, the run's next notice perhaps never coming
-//! (its end). Only runs this process's subscribers follow are read.
+//! an event they have is dropped. Every followed run is read again once the
+//! listener connects again (`listener.rs`), and after a read failed: the
+//! run's next notice may never come (its end). Only runs this process's
+//! subscribers follow are read.
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use mimorya_db::Database;
-use mimorya_db::notifications::{RUN_EVENTS_LISTENER, listen_run_events};
 use mimorya_db::repositories::run_events::list_run_events;
-use tokio::sync::watch;
 use uuid::Uuid;
 
 use super::notice::{NoticeKind, delta_event};
 use super::{BusEvent, Followed, Notice, RunEventBus};
 
-/// How long before connecting again after a failure, doubled after each
-/// one up to `RETRY_AT_MOST`; how long before reading again after a read
-/// failed.
-const RETRY: Duration = Duration::from_secs(1);
-const RETRY_AT_MOST: Duration = Duration::from_secs(30);
-
 pub struct Relay {
-    bus: Arc<RunEventBus>,
+    pub(super) bus: Arc<RunEventBus>,
     db: Database,
-    /// A read failed since the last time every followed run was read.
-    behind: bool,
 }
 
 impl Relay {
     pub fn new(bus: Arc<RunEventBus>, db: Database) -> Self {
-        Self {
-            bus,
-            db,
-            behind: false,
-        }
-    }
-
-    /// Listens to the other processes on `url` until `stopping`, connecting
-    /// again whenever the connection is lost.
-    pub async fn listen(mut self, url: String, mut stopping: watch::Receiver<bool>) {
-        let mut retry = RETRY;
-        loop {
-            let connected = tokio::select! {
-                connected = listen_run_events(&url, RUN_EVENTS_LISTENER) => connected,
-                _ = stopping.wait_for(|stop| *stop) => return,
-            };
-            match connected {
-                Ok(mut listener) => {
-                    retry = RETRY;
-                    // Connected: what was sent before is read from the journals.
-                    self.resync().await;
-                    self.bus.set_relaying(true);
-                    loop {
-                        let next = tokio::select! {
-                            next = listener.try_recv() => Some(next),
-                            () = tokio::time::sleep(RETRY), if self.behind => None,
-                            _ = stopping.wait_for(|stop| *stop) => return,
-                        };
-                        match next {
-                            Some(Ok(Some(notification))) => {
-                                self.handle(notification.payload()).await;
-                            }
-                            // Connected again: what was sent meanwhile is
-                            // lost. Or a read failed: read again.
-                            Some(Ok(None)) | None => self.resync().await,
-                            Some(Err(error)) => {
-                                tracing::warn!(
-                                    error = format!("{error:#}"),
-                                    "Run events listener lost"
-                                );
-                                break;
-                            }
-                        }
-                    }
-                    self.bus.set_relaying(false);
-                }
-                Err(error) => {
-                    tracing::warn!(
-                        error = format!("{error:#}"),
-                        "Run events listener not connected"
-                    );
-                }
-            }
-            tokio::select! {
-                () = tokio::time::sleep(retry) => {}
-                _ = stopping.wait_for(|stop| *stop) => return,
-            }
-            retry = (retry * 2).min(RETRY_AT_MOST);
-        }
+        Self { bus, db }
     }
 
     /// Relays the notice `payload` carries, if another process sent it.
@@ -124,7 +55,7 @@ impl Relay {
     /// Reads again every run followed here, from the last event its
     /// subscribers all have.
     pub async fn resync(&mut self) {
-        self.behind = false;
+        self.bus.set_relay_behind(false);
         for followed in self.bus.followed() {
             self.relay_events(followed, followed.handed.unwrap_or(0))
                 .await;
@@ -138,7 +69,7 @@ impl Relay {
         let rows = match self.read(tenant_id, run_id, after).await {
             Ok(rows) => rows,
             Err(error) => {
-                self.behind = true;
+                self.bus.set_relay_behind(true);
                 tracing::warn!(run_id = %run_id, error = format!("{error:#}"), "Run events not relayed");
                 return;
             }

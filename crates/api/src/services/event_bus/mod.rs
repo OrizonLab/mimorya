@@ -11,9 +11,11 @@
 //! bound: its stream ends and the client reconnects with `Last-Event-ID`,
 //! replaying the persisted events it missed.
 
+mod listener;
 mod notice;
 mod outbox;
 mod relay;
+mod subscription;
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -26,6 +28,7 @@ use uuid::Uuid;
 pub use notice::Notice;
 pub use outbox::{Delta, Outbox};
 pub use relay::Relay;
+pub use subscription::Subscription;
 
 const SUBSCRIBER_BUFFER: usize = 1024;
 
@@ -63,6 +66,8 @@ pub struct RunEventBus {
     outgoing: mpsc::Sender<Delta>,
     /// Whether the relay listens to the other processes.
     relaying: AtomicBool,
+    /// Whether a read of the relay failed, to be tried again.
+    relay_behind: AtomicBool,
 }
 
 impl Default for RunEventBus {
@@ -82,6 +87,7 @@ impl RunEventBus {
             next_id: AtomicU64::new(0),
             outgoing,
             relaying: AtomicBool::new(false),
+            relay_behind: AtomicBool::new(false),
         };
         (bus, Outbox::new(deltas))
     }
@@ -180,17 +186,26 @@ impl RunEventBus {
         self.relaying.store(relaying, Ordering::Relaxed);
     }
 
+    /// Whether a read of the relay failed, to be tried again.
+    pub fn relay_behind(&self) -> bool {
+        self.relay_behind.load(Ordering::Relaxed)
+    }
+
+    pub(super) fn set_relay_behind(&self, behind: bool) {
+        self.relay_behind.store(behind, Ordering::Relaxed);
+    }
+
     /// A subscriber of `run_id` replayed its journal up to `seq`: the relay
     /// reads it from there at most (from earlier, should another subscriber
     /// have replayed less).
-    fn replayed(&self, run_id: Uuid, seq: i32) {
+    pub(super) fn replayed(&self, run_id: Uuid, seq: i32) {
         let mut listeners = self.listeners.lock().expect("event bus");
         if let Some(followers) = listeners.get_mut(&run_id) {
             followers.handed = Some(followers.handed.map_or(seq, |handed| handed.min(seq)));
         }
     }
 
-    fn unsubscribe(&self, run_id: Uuid, id: u64) {
+    pub(super) fn unsubscribe(&self, run_id: Uuid, id: u64) {
         let mut listeners = self.listeners.lock().expect("event bus");
         if let Some(followers) = listeners.get_mut(&run_id) {
             followers.subscribers.retain(|(other, _)| *other != id);
@@ -201,14 +216,6 @@ impl RunEventBus {
     }
 }
 
-/// Events of one run, in publication order. Unsubscribes when dropped.
-pub struct Subscription {
-    bus: Arc<RunEventBus>,
-    run_id: Uuid,
-    id: u64,
-    receiver: mpsc::Receiver<BusEvent>,
-}
-
 fn followed(run_id: Uuid, followers: &Followers) -> Followed {
     Followed {
         tenant_id: followers.tenant_id,
@@ -217,102 +224,5 @@ fn followed(run_id: Uuid, followers: &Followers) -> Followed {
     }
 }
 
-impl Subscription {
-    /// Its stream replayed the run's journal up to `seq` (ADR-084).
-    pub fn replayed_through(&self, seq: i32) {
-        self.bus.replayed(self.run_id, seq);
-    }
-
-    /// `None` once the bus dropped this subscriber.
-    pub async fn recv(&mut self) -> Option<BusEvent> {
-        self.receiver.recv().await
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.receiver.is_empty()
-    }
-}
-
-impl Drop for Subscription {
-    fn drop(&mut self) {
-        self.bus.unsubscribe(self.run_id, self.id);
-    }
-}
-
 #[cfg(test)]
-mod tests {
-    use serde_json::json;
-
-    use super::*;
-
-    fn event(seq: i32) -> BusEvent {
-        BusEvent {
-            seq: Some(seq),
-            event_type: "tool_call".into(),
-            data: json!({}),
-        }
-    }
-
-    #[tokio::test]
-    async fn delivers_events_of_the_subscribed_run_only() {
-        let bus = Arc::new(RunEventBus::default());
-        let (tenant, run) = (Uuid::new_v4(), Uuid::new_v4());
-        let mut subscription = bus.subscribe(tenant, run);
-        assert!(bus.follows(run));
-        bus.publish(Uuid::new_v4(), event(9));
-        bus.publish(run, event(1));
-        assert_eq!(subscription.recv().await.unwrap().seq, Some(1));
-        assert!(subscription.is_empty());
-        drop(subscription);
-        assert!(!bus.follows(run));
-        assert!(bus.listeners.lock().unwrap().is_empty());
-    }
-
-    #[test]
-    fn what_a_run_s_subscribers_have_goes_with_the_last() {
-        let bus = Arc::new(RunEventBus::default());
-        let (tenant, run) = (Uuid::new_v4(), Uuid::new_v4());
-        let first = bus.subscribe(tenant, run);
-        let handed = |bus: &RunEventBus| bus.followed_run(run).unwrap().handed;
-        assert_eq!(handed(&bus), None);
-        // Replayed: from there; less by another: from there.
-        first.replayed_through(5);
-        let second = bus.subscribe(tenant, run);
-        second.replayed_through(3);
-        assert_eq!(handed(&bus), Some(3));
-        // Published since: all have it.
-        bus.publish(run, event(7));
-        assert_eq!(
-            bus.followed(),
-            [Followed {
-                tenant_id: tenant,
-                run_id: run,
-                handed: Some(7)
-            }]
-        );
-        drop(first);
-        drop(second);
-        assert_eq!(bus.followed_run(run), None);
-        assert!(bus.followed().is_empty());
-    }
-
-    #[tokio::test]
-    async fn a_delta_goes_to_subscribers_here_and_to_the_other_processes() {
-        let (bus, mut outbox) = RunEventBus::new();
-        let bus = Arc::new(bus);
-        let (tenant, run) = (Uuid::new_v4(), Uuid::new_v4());
-        let mut subscription = bus.subscribe(tenant, run);
-        bus.publish_delta(run, Some(4), "Bonjour");
-        let here = subscription.recv().await.unwrap();
-        assert_eq!(
-            (here.seq, here.event_type.as_str()),
-            (None, "assistant_delta")
-        );
-        assert_eq!(here.data, json!({ "text": "Bonjour" }));
-        let sent = outbox.next_batch().await.unwrap();
-        assert_eq!(
-            (sent.run_id, sent.after, sent.text.as_str()),
-            (run, Some(4), "Bonjour")
-        );
-    }
-}
+mod tests;

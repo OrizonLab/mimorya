@@ -3568,10 +3568,12 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     partir du dernier événement que ses abonnés ont tous : celui que leur flux a rejoué,
     ou publié depuis. Un avis perdu entre-temps est lu avec le suivant. Ce point de
     départ est gardé avec les abonnés du run, et part avec le dernier ;
-  - une fois sa connexion d'écoute rétablie, il relit les journaux de tous les runs suivis
-    (les avis envoyés entre-temps sont perdus) ; de même une seconde après une relecture
-    échouée, l'avis suivant pouvant ne jamais venir (la fin du run). Une connexion qui
-    échoue est retentée après une attente qui double, jusqu'à 30 s ;
+  - les avis sont reçus par une tâche à part, jamais interrompue en cours de route. Une
+    fois sa connexion d'écoute rétablie, il relit les journaux de tous les runs suivis
+    (les avis envoyés entre-temps sont perdus). De même après une relecture échouée, à
+    une échéance fixe que les avis reçus entre-temps ne repoussent pas : l'avis suivant
+    du run pourrait ne jamais venir (sa fin). Échéance d'une seconde, doublée à chaque
+    nouvel échec jusqu'à 30 s ; de même pour une connexion d'écoute qui échoue ;
   - les fragments de texte du modèle (`assistant_delta`), qui ne sont pas enregistrés,
     voyagent dans l'avis lui-même, découpé sous la limite de PostgreSQL (8 000 octets).
     Ils partent dans l'ordre, hors transaction, regroupés par run, au mieux : une file
@@ -3605,4 +3607,5 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     validations se suivent donc une à une, toutes entreprises confondues. Si cette file
     se remplit (un écouteur figé qui garde sa connexion), les enregistrements échouent, et
     les runs avec eux : à surveiller (`pg_notification_queue_usage()`) avant le lot 3 ;
-  - tests : `crates/api/tests/run_event_relay.rs`.
+  - tests : `crates/api/tests/run_event_relay.rs` et, pour les pannes (lecture refusée,
+    connexion d'écoute coupée puis refusée), `run_event_relay_faults.rs`.

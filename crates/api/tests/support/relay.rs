@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use mimorya_api::services::BusEvent;
 use mimorya_api::services::event_bus::{Notice, Subscription};
-use mimorya_db::notifications::{RUN_EVENTS_LISTENER, notify_run_events};
+use mimorya_db::notifications::{RUN_EVENTS_LISTENER, notify_run_events, run_event_listeners};
 use mimorya_db::repositories::run_events::append_run_event;
 use serde_json::json;
 use uuid::Uuid;
@@ -54,6 +54,18 @@ pub async fn relaying(api: &TestApi) {
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
     panic!("the relay does not listen");
+}
+
+/// Waits until `api`'s relay listens alone: those of earlier tests gone.
+pub async fn alone(api: &TestApi) {
+    for _ in 0..500 {
+        let listeners = run_event_listeners(api.app.services.db.pool()).await;
+        if listeners.unwrap() == 1 {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    panic!("other relays still listen");
 }
 
 /// Cuts the relays' listener connections to this test database, as the
