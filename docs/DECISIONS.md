@@ -3242,14 +3242,16 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
   - dans l'onglet « Utilisateurs », le panneau d'un compte actif ouvre, pour
     l'administrateur des comptes, une section « Absence » :
     - sans absence : ce qu'elle fait (le remplaçant valide là où il en a le droit, la
-      désignation n'en donne aucun, la personne est prévenue et peut y mettre fin) et
-      le formulaire de « Validations » (remplaçant parmi ceux proposés, premier et
-      dernier jour, au plus 90 jours), « Déclarer son absence » ;
-    - avec une absence : qui remplace qui, du quand au quand, et qui l'a déclarée (un
-      administrateur, ou la personne elle-même), « Lever l'absence » après
-      confirmation ;
+      désignation n'en donne aucun, la personne voit qui l'a déclarée et peut y mettre
+      fin, prévenue par e-mail, ou à prévenir si le serveur n'en envoie pas) et le
+      formulaire de « Validations » (remplaçant parmi ceux proposés, premier et dernier
+      jour, au plus 90 jours), « Déclarer son absence » ;
+    - avec une absence : qui remplace qui, du quand au quand, l'administrateur qui l'a
+      déclarée s'il est nommé (sinon, la personne elle-même, ou un compte supprimé :
+      rien n'est affirmé), « Lever l'absence » après confirmation ;
     - après chaque changement, la page dit si un e-mail en a informé la personne, ou
-      qu'il faut la prévenir ;
+      qu'il faut la prévenir ; un changement refusé (l'absence a pris fin entre-temps)
+      recharge l'absence telle qu'elle est ;
   - le formulaire est celui de « Validations », rendu commun : ce qu'il envoie et à qui
     lui sont donnés par la page qui l'utilise ;
   - dans « Validations », une absence déclarée par un administrateur le dit : « Absence

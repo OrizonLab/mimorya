@@ -7,6 +7,7 @@
 import type { Page } from '@playwright/test';
 import type { CollaboratorAbsence } from '../lib/api/contract';
 import { openAdmin } from './support/admin';
+import { inDays } from './support/dates';
 import { demo, expect, noError, signIn, test } from './support/fixtures';
 import { lastLink, mailCount } from './support/mail';
 
@@ -26,12 +27,6 @@ test.afterEach(async () => {
   }
   left.paul = undefined;
 });
-
-/** The day `days` from today, as a date field takes it. */
-function inDays(days: number): string {
-  const day = new Date(Date.now() + days * 86_400_000);
-  return new Date(day.getTime() - day.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
-}
 
 /** Marc's absence, as the API records it. */
 async function absence(paul: Page) {

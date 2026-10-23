@@ -93,7 +93,7 @@ export function UserRow({
               {canManage.users && user.status === 'active' && (
                 <section>
                   <h3 className="mb-2 text-sm font-medium">Absence</h3>
-                  <AbsenceEditor user={user} />
+                  <AbsenceEditor user={user} emailEnabled={emailEnabled} />
                 </section>
               )}
               {canManage.roles && (

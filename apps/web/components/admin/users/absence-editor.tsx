@@ -7,6 +7,7 @@ import {
   api,
   useAction,
   useApiData,
+  type Absence,
   type AbsenceRecorded,
   type CollaboratorAbsence,
   type DirectoryUser,
@@ -18,9 +19,17 @@ import { formatDate } from '@/lib/format';
  * administrator when they cannot (ADR-078): whom it names to stand in, who
  * declared it, whether the collaborator was told by e-mail.
  */
-export function AbsenceEditor({ user }: { user: DirectoryUser }) {
+export function AbsenceEditor({
+  user,
+  emailEnabled,
+}: {
+  user: DirectoryUser;
+  /** Whether this server sends e-mail at all. */
+  emailEnabled: boolean;
+}) {
   const path = `/admin/users/${user.id}/absence`;
   const state = useApiData<CollaboratorAbsence>(path);
+  // What the last change told the collaborator; none until one is made.
   const [told, setTold] = useState<boolean | null>(null);
   const action = useAction();
 
@@ -29,10 +38,18 @@ export function AbsenceEditor({ user }: { user: DirectoryUser }) {
     state.reload();
   }
 
+  async function declare(body: Absence) {
+    setTold(null);
+    return api.put<AbsenceRecorded>(path, body);
+  }
+
   async function end() {
     if (!window.confirm(`Lever l’absence de ${user.displayName} ?`)) return;
+    setTold(null);
     const answer = await action.run(() => api.delete<AbsenceRecorded>(path));
+    // Refused, it may have ended meanwhile: shown as it now stands.
     if (answer) recorded(answer);
+    else state.reload();
   }
 
   return (
@@ -43,10 +60,9 @@ export function AbsenceEditor({ user }: { user: DirectoryUser }) {
             <>
               <p className="text-sm">
                 {absence.delegate.displayName} remplace {user.displayName} du{' '}
-                {formatDate(absence.startsAt)} au {formatDate(absence.endsAt)}.{' '}
-                {absence.declaredBy
-                  ? `Absence déclarée par ${absence.declaredBy.displayName}.`
-                  : 'Absence déclarée par la personne elle-même.'}
+                {formatDate(absence.startsAt)} au {formatDate(absence.endsAt)}.
+                {/* Unnamed, it is the collaborator's own, or its author's account is gone. */}
+                {absence.declaredBy && ` Absence déclarée par ${absence.declaredBy.displayName}.`}
               </p>
               {action.error && <ErrorNote message={action.error} />}
               <Button variant="danger" className="w-fit" loading={action.pending} onClick={end}>
@@ -58,14 +74,17 @@ export function AbsenceEditor({ user }: { user: DirectoryUser }) {
               <p className="text-xs text-muted">
                 Pour un collaborateur empêché de déclarer son absence lui-même : le remplaçant
                 désigné valide à sa place les demandes qui l’attendent, là où il en a le droit ; le
-                désigner ne lui en donne aucun. La personne est prévenue par e-mail, voit qui a
-                déclaré son absence et peut y mettre fin.
+                désigner ne lui en donne aucun. La personne voit qui a déclaré son absence et peut y
+                mettre fin.{' '}
+                {emailEnabled
+                  ? 'Elle en est prévenue par e-mail.'
+                  : 'Ce serveur n’envoie pas d’e-mail : prévenez-la.'}
               </p>
               <AbsenceForm
                 candidates={candidates}
                 submitLabel="Déclarer son absence"
-                emptyNote="Aucun collègue ne détient le droit de valider des actions : personne ne peut remplacer ce collaborateur."
-                declare={(body) => api.put<AbsenceRecorded>(path, body)}
+                emptyNote="Aucun collègue, vous mis à part, ne détient le droit de valider des actions : personne ne peut remplacer ce collaborateur."
+                declare={declare}
                 onDeclared={recorded}
               />
             </>

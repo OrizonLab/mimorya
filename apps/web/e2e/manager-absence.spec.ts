@@ -14,6 +14,7 @@ import type {
   RoleGrant,
   ToolRisk,
 } from '../lib/api/contract';
+import { inDays } from './support/dates';
 import { demo, expect, noError, signIn, test } from './support/fixtures';
 import { lastLink, mailCount } from './support/mail';
 import { REFERENCE_REQUEST } from './support/scenario';
@@ -34,12 +35,6 @@ async function routeToManagers(paul: Page, risks: ToolRisk[]) {
     data: { managerRisks: risks } satisfies ApprovalRoutingUpdate,
   });
   expect(set.status()).toBe(200);
-}
-
-/** The day `days` from today, as a date field takes it. */
-function inDays(days: number): string {
-  const day = new Date(Date.now() + days * 86_400_000);
-  return new Date(day.getTime() - day.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
 }
 
 /**
