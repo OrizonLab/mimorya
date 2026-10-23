@@ -5,6 +5,7 @@
 //! resource answered as absent (ADR-047) or sending in its body an
 //! identifier that designates nothing the company has (ADR-054).
 
+mod absences;
 mod activity;
 mod approval_routing;
 mod assignments;
@@ -40,6 +41,12 @@ pub fn routes(state: &AppState) -> Router<AppState> {
         .route("/admin/users/{id}/password-link", post(users::send_link))
         .route("/admin/users/{id}/invitation", post(users::invite))
         .route("/admin/users/{id}/assignments", post(assignments::grant))
+        .route(
+            "/admin/users/{id}/absence",
+            get(absences::show)
+                .put(absences::declare)
+                .delete(absences::end),
+        )
         .route("/admin/assignments/{id}", delete(assignments::revoke))
         .route("/admin/roles", get(roles::list).post(roles::create))
         .route(

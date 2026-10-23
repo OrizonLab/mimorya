@@ -263,6 +263,13 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
     d'administration reste attribué sur toute l'entreprise ; un rôle encore attribué
     ne se supprime pas ; un changement s'applique aussitôt à ses détenteurs, et la
     revérification des droits sous verrou relit les rôles et les politiques en base ;
+  - absence d'un collaborateur empêché (ADR-078) : seul un administrateur des comptes
+    (`user:manage` sur toute l'entreprise), jamais pour lui-même, la déclare pour lui. Elle
+    n'accorde aucun droit : le remplaçant ne décide que là où il détient lui-même
+    `approval:decide`. Elle détourne pourtant les avis du responsable vers le remplaçant
+    (ADR-072) : le collaborateur la voit dans « Validations », nommée à l'administrateur,
+    en est prévenu par e-mail quand un relais est configuré, et peut y mettre fin. Chaque
+    déclaration et chaque levée sont tracées au nom de l'administrateur ;
   - limites assumées :
     - la règle « pas d'administration de soi-même » évite les erreurs, ce n'est **pas
       une frontière contre un administrateur malveillant** : il peut créer un compte,

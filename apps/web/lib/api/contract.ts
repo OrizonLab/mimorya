@@ -19,6 +19,16 @@ startsAt?: string,
  */
 endsAt: string, };
 
+/**
+ * Answer of `PUT` (body `Absence`) and `DELETE /admin/users/{id}/absence`.
+ */
+export type AbsenceRecorded = {
+/**
+ * Whether the collaborator was told by e-mail: not without a relay, nor
+ * when sending failed.
+ */
+notified: boolean, };
+
 export type AccountStatus = "active" | "invited" | "disabled";
 
 /**
@@ -193,6 +203,20 @@ passwordReset: boolean, };
 export type Citation = { type: string, id: string, label?: string, };
 
 /**
+ * `GET /admin/users/{id}/absence`.
+ */
+export type CollaboratorAbsence = {
+/**
+ * Declared and not ended, by the collaborator or an administrator.
+ */
+absence: Delegation | null,
+/**
+ * Whom the administrator may name: the collaborator's active
+ * colleagues holding `approval:decide` on a unit or the company.
+ */
+candidates: Array<ApprovalPerson>, };
+
+/**
  * An attribute a condition can read.
  */
 export type ConditionAttribute = {
@@ -317,7 +341,12 @@ export type DelegablePermission = { permission: string, label: string, };
  * An absence: from when until when the delegate stands in for the absent
  * person, deciding what they hold `approval:decide` for.
  */
-export type Delegation = { absent: ApprovalPerson, delegate: ApprovalPerson, startsAt: string, endsAt: string, };
+export type Delegation = { absent: ApprovalPerson, delegate: ApprovalPerson, startsAt: string, endsAt: string,
+/**
+ * The administrator who declared it on the absent person's behalf
+ * (ADR-078); `null` when they declared it themselves.
+ */
+declaredBy: ApprovalPerson | null, };
 
 /**
  * `GET /admin/users`.

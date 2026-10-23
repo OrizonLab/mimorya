@@ -1,6 +1,6 @@
-//! Workspace administration: accounts, organisation, custom roles, role
-//! assignments, access policies, skills, the company's model provider and
-//! its identity providers.
+//! Workspace administration: accounts and the absence of a collaborator who
+//! cannot declare it, organisation, custom roles, role assignments, access
+//! policies, skills, the company's model provider and its identity providers.
 //! Every operation requires its permission on the whole company, refuses to
 //! act on the administrator's own account, runs in one transaction with its
 //! audit entry, and refreshes the cached authorization data of the tenant.
@@ -10,6 +10,8 @@
 //! administrators acting at once cannot build a cycle in the tree or revoke
 //! each other's rights.
 
+mod absence_mail;
+mod absences;
 mod approval_routing;
 mod assignments;
 mod connector_rules;
@@ -31,6 +33,7 @@ mod roles;
 mod skills;
 mod users;
 
+pub use absences::{AbsenceAdmin, absence_of, declare_absence_for, end_absence_for};
 pub use approval_routing::{manager_risks, set_manager_risks};
 pub use assignments::{grant_role, revoke_role};
 pub use connector_rules::ToolPolicyInput;

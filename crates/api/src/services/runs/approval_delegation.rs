@@ -3,18 +3,21 @@
 //! days. Meanwhile, the delegate may decide the pending requests routed to
 //! them, where the delegate holds `approval:decide` over whom each is for:
 //! a delegation grants no right. One per person, replaced when declared
-//! again, withdrawn at will; each change is audited.
+//! again, withdrawn at will; each change is audited. An account
+//! administrator may declare it for a collaborator who cannot (ADR-078,
+//! `services/admin/absences.rs`), with the same checks.
 
 use chrono::{DateTime, Duration, Utc};
 use mimorya_core::DomainError;
 use mimorya_db::Database;
 use mimorya_db::repositories::approval_delegations::{
-    ApprovalDelegation, Colleague, delegations_to, delete_delegation, get_delegation,
-    possible_stand_ins, set_delegation,
+    ApprovalDelegation, Colleague, NewDelegation, delegations_to, delete_delegation,
+    get_delegation, possible_stand_ins, set_delegation,
 };
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
-use mimorya_db::repositories::users::get_user;
+use mimorya_db::repositories::users::{DirectoryEntry, get_user};
 use serde_json::json;
+use sqlx::PgConnection;
 
 use crate::services::access::AuthIdentity;
 
@@ -72,6 +75,38 @@ pub async fn delegations(
     })
 }
 
+/// The period `input` declares, from its start (`now` when absent) to its
+/// end: ending in the future, after it starts, within 90 days.
+pub fn absence_period(
+    input: &AbsenceInput,
+    now: DateTime<Utc>,
+) -> Result<(DateTime<Utc>, DateTime<Utc>), DomainError> {
+    let starts_at = input.starts_at.unwrap_or(now);
+    let ends_at = input.ends_at;
+    if ends_at <= now {
+        return Err(DomainError::validation(ENDS_IN_THE_PAST));
+    }
+    if ends_at <= starts_at {
+        return Err(DomainError::validation(ENDS_BEFORE_IT_STARTS));
+    }
+    if ends_at - starts_at > MAX_ABSENCE + CLOCK_CHANGE {
+        return Err(DomainError::validation(TOO_LONG));
+    }
+    Ok((starts_at, ends_at))
+}
+
+/// The delegate named: an active account of the company, read in it (another
+/// company's account is unknown here, like an absent or inactive one).
+pub async fn named_delegate(
+    conn: &mut PgConnection,
+    delegate_id: uuid::Uuid,
+) -> anyhow::Result<DirectoryEntry> {
+    match get_user(conn, delegate_id).await? {
+        Some(delegate) if delegate.status == "active" => Ok(delegate),
+        _ => Err(DomainError::unknown(UNKNOWN_DELEGATE, "user", delegate_id).into()),
+    }
+}
+
 /// Declares, or replaces, the signed-in person's absence.
 pub async fn declare_absence(
     db: &Database,
@@ -79,36 +114,22 @@ pub async fn declare_absence(
     input: AbsenceInput,
     now: DateTime<Utc>,
 ) -> anyhow::Result<()> {
-    let starts_at = input.starts_at.unwrap_or(now);
-    let ends_at = input.ends_at;
     if input.delegate_user_id == identity.user_id {
         return Err(DomainError::validation(NOT_ONESELF).into());
     }
-    if ends_at <= now {
-        return Err(DomainError::validation(ENDS_IN_THE_PAST).into());
-    }
-    if ends_at <= starts_at {
-        return Err(DomainError::validation(ENDS_BEFORE_IT_STARTS).into());
-    }
-    if ends_at - starts_at > MAX_ABSENCE + CLOCK_CHANGE {
-        return Err(DomainError::validation(TOO_LONG).into());
-    }
+    let (starts_at, ends_at) = absence_period(&input, now)?;
     let mut tx = db.begin(identity.tenant_id).await?;
-    // Read in the company: another company's account is unknown here.
-    let delegate = get_user(&mut tx, input.delegate_user_id).await?;
-    if !delegate.is_some_and(|d| d.status == "active") {
-        let unknown = DomainError::unknown(UNKNOWN_DELEGATE, "user", input.delegate_user_id);
-        return Err(unknown.into());
-    }
-    set_delegation(
-        &mut tx,
-        identity.tenant_id,
-        identity.user_id,
-        input.delegate_user_id,
+    named_delegate(&mut tx, input.delegate_user_id).await?;
+    let delegation = NewDelegation {
+        tenant_id: identity.tenant_id,
+        user_id: identity.user_id,
+        delegate_user_id: input.delegate_user_id,
         starts_at,
         ends_at,
-    )
-    .await?;
+        // Declared by the person: no longer an administrator's.
+        declared_by: None,
+    };
+    set_delegation(&mut tx, delegation).await?;
     let entry = AuditEntry::new(
         identity.tenant_id,
         "user",
