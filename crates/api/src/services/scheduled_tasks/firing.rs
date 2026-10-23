@@ -42,10 +42,22 @@ const STILL_RUNNING: &str = "Le run d’une précédente occurrence n’était p
      ou en attente de validation) : celle-ci n’a pas été lancée.";
 const NOT_STARTED: &str = "Le démarrage a échoué : la tâche reprendra à sa prochaine heure.";
 
+/// What became of a task listed due.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Firing {
+    /// Its occurrence was claimed and started a run.
+    Started,
+    /// Its occurrence was claimed, and did not run: why is recorded.
+    HeldBack,
+    /// Not claimed: fired or changed since it was listed, or being changed
+    /// (its row locked); listed again while still due.
+    Unclaimed,
+}
+
 /// Fires the tasks due by `now`, batch after batch while some remain, until
-/// the service stops; how many started a run. Each task fired is
+/// the service stops; how many started a run. Each task claimed is
 /// rescheduled, out of the next batch; one that could not be is listed
-/// again: a batch where none could ends the pass, the next one retries.
+/// again: a batch where none could be ends the pass, the next one retries.
 pub async fn fire_due_tasks(services: &Services, now: DateTime<Utc>) -> anyhow::Result<usize> {
     let batch = i32::try_from(BATCH)?;
     let mut started = 0;
@@ -58,10 +70,12 @@ pub async fn fire_due_tasks(services: &Services, now: DateTime<Utc>) -> anyhow::
                 return Ok(started);
             }
             match fire_task(services, *tenant_id, *task_id, now).await {
-                Ok(fired) => {
+                Ok(Firing::Started) => {
                     claimed = true;
-                    started += usize::from(fired);
+                    started += 1;
                 }
+                Ok(Firing::HeldBack) => claimed = true,
+                Ok(Firing::Unclaimed) => {}
                 Err(error) => {
                     tracing::warn!(task = %task_id, error = format!("{error:#}"), "Scheduled task not fired");
                 }
@@ -74,16 +88,16 @@ pub async fn fire_due_tasks(services: &Services, now: DateTime<Utc>) -> anyhow::
 }
 
 /// Fires the task if it is still due: listed due, it may have fired or
-/// changed since (another pass, its author); whether a run started.
+/// changed since (another pass, its author).
 pub async fn fire_task(
     services: &Services,
     tenant_id: Uuid,
     task_id: Uuid,
     now: DateTime<Utc>,
-) -> anyhow::Result<bool> {
+) -> anyhow::Result<Firing> {
     let mut tx = services.db.begin(tenant_id).await?;
     let Some(due) = lock_due_task(&mut tx, task_id, now).await? else {
-        return Ok(false);
+        return Ok(Firing::Unclaimed);
     };
     let task = due.task.clone();
     // A disabled account's task pauses rather than be refused every day:
@@ -95,7 +109,7 @@ pub async fn fire_task(
     if let Some((outcome, problem)) = held_back(&due, now) {
         record(&mut tx, tenant_id, &task, now, outcome, Some(problem), None).await?;
         tx.commit().await?;
-        return Ok(false);
+        return Ok(Firing::HeldBack);
     }
     tx.commit().await?;
 
@@ -104,7 +118,7 @@ pub async fn fire_task(
     let fired = match &started {
         Ok(ids) => {
             record(&mut tx, tenant_id, &task, now, "started", None, Some(*ids)).await?;
-            true
+            Firing::Started
         }
         Err(error) => {
             let (outcome, problem) = match error.downcast_ref::<DomainError>() {
@@ -118,7 +132,7 @@ pub async fn fire_task(
                 }
             };
             record(&mut tx, tenant_id, &task, now, outcome, Some(problem), None).await?;
-            false
+            Firing::HeldBack
         }
     };
     tx.commit().await?;

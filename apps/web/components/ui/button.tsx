@@ -1,5 +1,5 @@
 import { Loader2 } from 'lucide-react';
-import type { ButtonHTMLAttributes } from 'react';
+import type { ComponentProps } from 'react';
 import { cx } from './cx';
 
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
@@ -17,7 +17,7 @@ export function Button({
   className,
   children,
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; loading?: boolean }) {
+}: ComponentProps<'button'> & { variant?: Variant; loading?: boolean }) {
   return (
     <button
       {...props}

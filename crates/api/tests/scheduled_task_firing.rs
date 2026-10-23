@@ -1,17 +1,16 @@
 //! Scheduled tasks fired when due (ADR-080): the instruction is sent as its
 //! author's, in a new conversation of theirs, once per occurrence even when
 //! two passes race, its run's start audited as the platform's on their
-//! behalf, and the task runs next at its next time. The server fires none
-//! before the runs a stop interrupted are taken up, goes on batch after
-//! batch, and fires no more once stopping; a change that leaves when a task
-//! runs keeps its occurrence due.
+//! behalf, and the task runs next at its next time. A change that leaves
+//! when a task runs keeps its occurrence due. The server's passes:
+//! `scheduled_task_passes.rs`.
 
 mod support;
 
 use axum::http::StatusCode;
 use chrono::{DateTime, Duration, Utc};
 use mimorya_agent::testing::ScriptedStep;
-use mimorya_api::services::scheduled_tasks::fire_task;
+use mimorya_api::services::scheduled_tasks::{Firing, fire_task};
 use mimorya_core::demo::{tenant, user};
 use serde_json::{Value, json};
 use support::TestApi;
@@ -56,7 +55,7 @@ async fn a_due_task_runs_once_as_its_author_in_a_new_conversation() {
     assert_eq!(fire(&api).await, 0);
     // Listed due by a pass that comes too late: it fired already.
     let late = fire_task(&api.app.services, tenant::ID, id, Utc::now()).await;
-    assert!(!late.unwrap());
+    assert_eq!(late.unwrap(), Firing::Unclaimed);
 
     let task = listed(&marc, id).await;
     assert_eq!(task["lastOccurrence"]["outcome"], "started");
@@ -93,57 +92,6 @@ async fn a_due_task_runs_once_as_its_author_in_a_new_conversation() {
         ("system", None, Some(user::MARC))
     );
     assert_eq!(metadata["scheduledTaskId"], json!(id));
-}
-
-#[tokio::test]
-#[ignore = "requires PostgreSQL"]
-async fn the_server_fires_tasks_once_interrupted_runs_are_taken_up() {
-    let api = TestApi::start_scheduling().await;
-    let marc = api.sign_in(user::MARC).await;
-    let id = schedule(&marc, every_day("Au démarrage")).await;
-    api.script(vec![ScriptedStep::text("Point fait.")]);
-    due(id, Duration::minutes(1)).await;
-
-    // Up, the runs a stop interrupted not yet taken up: a run started now
-    // would be taken for one of them. Nothing fires.
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-    assert_eq!(listed(&marc, id).await["lastOccurrence"], Value::Null);
-
-    // Taken up: its first pass, at once.
-    api.app.recover_interrupted_runs().await.unwrap();
-    let mut outcome = Value::Null;
-    for _ in 0..50 {
-        outcome = listed(&marc, id).await["lastOccurrence"]["outcome"].clone();
-        if !outcome.is_null() {
-            break;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-    }
-    assert_eq!(outcome, "started");
-    api.idle().await;
-
-    // Stopping, it ends between two passes: the server stops.
-    let TestApi { app, .. } = api;
-    let stopped = tokio::time::timeout(std::time::Duration::from_secs(10), app.shutdown()).await;
-    assert!(
-        stopped.is_ok(),
-        "the scheduler kept the server from stopping"
-    );
-}
-
-#[tokio::test]
-#[ignore = "requires PostgreSQL"]
-async fn a_stopping_server_leaves_due_tasks_to_its_next_start() {
-    let api = TestApi::start().await;
-    let marc = api.sign_in(user::MARC).await;
-    let id = schedule(&marc, every_day("À l’arrêt")).await;
-    due(id, Duration::minutes(1)).await;
-    api.app.begin_shutdown();
-    assert_eq!(fire(&api).await, 0);
-    let task = listed(&marc, id).await;
-    assert_eq!(task["lastOccurrence"], Value::Null);
-    let deleted = marc.delete(&format!("{TASKS}/{id}")).await;
-    assert_eq!(deleted.status, StatusCode::OK, "{}", deleted.text());
 }
 
 #[tokio::test]
@@ -189,41 +137,4 @@ async fn a_change_that_leaves_when_it_runs_keeps_its_occurrence() {
 
     let deleted = marc.delete(&url).await;
     assert_eq!(deleted.status, StatusCode::OK, "{}", deleted.text());
-}
-
-#[tokio::test]
-#[ignore = "requires PostgreSQL"]
-async fn a_pass_goes_on_while_tasks_remain_due() {
-    let api = TestApi::start().await;
-    // More than a batch, all due two hours ago: none runs, each is
-    // recorded missed in the one pass.
-    let owner = sqlx::PgPool::connect(support::owner_url()).await.unwrap();
-    sqlx::query(
-        "insert into scheduled_tasks \
-         (tenant_id, user_id, title, instruction, weekdays, time_of_day, time_zone, next_run_at) \
-         select $1, $2, 'Lot ' || n, 'Demande', '{1,2,3,4,5,6,7}', '08:00', 'Europe/Paris', \
-         now() - interval '2 hours' from generate_series(1, 120) n",
-    )
-    .bind(tenant::ID)
-    .bind(user::NADIA)
-    .execute(&owner)
-    .await
-    .unwrap();
-    assert_eq!(fire(&api).await, 0);
-    let (missed, due): (i64, i64) = sqlx::query_as(
-        "select count(*) filter (where last_outcome = 'missed'), \
-         count(*) filter (where next_run_at <= now()) \
-         from scheduled_tasks where user_id = $1",
-    )
-    .bind(user::NADIA)
-    .fetch_one(&owner)
-    .await
-    .unwrap();
-    sqlx::query("delete from scheduled_tasks where user_id = $1")
-        .bind(user::NADIA)
-        .execute(&owner)
-        .await
-        .unwrap();
-    owner.close().await;
-    assert_eq!((missed, due), (120, 0));
 }

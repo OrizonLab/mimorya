@@ -114,3 +114,29 @@ pub async fn occurrences_audited(
     .await
     .unwrap()
 }
+
+/// Gives `user_id` `count` tasks due two hours ago (too late to run: each is
+/// recorded missed, without the model), past the limit of twenty.
+pub async fn insert_late(owner: &sqlx::PgPool, user_id: Uuid, count: i32) {
+    sqlx::query(
+        "insert into scheduled_tasks \
+         (tenant_id, user_id, title, instruction, weekdays, time_of_day, time_zone, next_run_at) \
+         select $1, $2, 'Tâche ' || n, 'Demande', '{1,2,3,4,5,6,7}', '08:00', 'Europe/Paris', \
+         now() - interval '2 hours' from generate_series(1, $3) n",
+    )
+    .bind(tenant::ID)
+    .bind(user_id)
+    .bind(count)
+    .execute(owner)
+    .await
+    .unwrap();
+}
+
+/// Deletes every task of `user_id`.
+pub async fn delete_tasks_of(owner: &sqlx::PgPool, user_id: Uuid) {
+    sqlx::query("delete from scheduled_tasks where user_id = $1")
+        .bind(user_id)
+        .execute(owner)
+        .await
+        .unwrap();
+}

@@ -2,6 +2,7 @@
 import type { ToneLabel } from '@/components/ui';
 import type {
   AccountStatus,
+  OccurrenceOutcome,
   OrgUnitType,
   Sensitivity,
   SkillStatus,
@@ -128,4 +129,13 @@ export const EMBEDDING_PROVIDERS: Record<string, string> = {
   openai: 'OpenAI',
   ollama: 'Ollama (serveur de l’exploitant)',
   openai_compatible: 'Compatible OpenAI (serveur de l’exploitant)',
+};
+
+/** What became of a scheduled task's last occurrence (ADR-080). */
+export const OCCURRENCE_OUTCOME: Record<OccurrenceOutcome, ToneLabel> = {
+  started: { label: 'Lancée', tone: 'ok' },
+  still_running: { label: 'Précédente non terminée', tone: 'warn' },
+  missed: { label: 'Non rattrapée', tone: 'neutral' },
+  refused: { label: 'Refusée', tone: 'danger' },
+  failed: { label: 'Échec', tone: 'danger' },
 };

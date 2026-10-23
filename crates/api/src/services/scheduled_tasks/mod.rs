@@ -7,7 +7,7 @@ mod firing;
 mod tasks;
 
 pub use definition::{CheckedTask, MAX_INSTRUCTION_CHARS, MAX_TITLE_CHARS};
-pub use firing::{CATCH_UP, fire_due_tasks, fire_task};
+pub use firing::{CATCH_UP, Firing, fire_due_tasks, fire_task};
 pub use tasks::{
     MAX_TASKS, TaskChanges, TaskInput, change_task, create_task, delete_task, scheduled_tasks,
 };

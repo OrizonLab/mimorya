@@ -3368,3 +3368,45 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
       conversation ;
     - `crates/db/tests/definer_functions.rs` : la nouvelle fonction est connue ;
     - `crates/api/tests/first_login.rs` : les routes retiennent un mot de passe provisoire.
+
+## ADR-081 — Écran des tâches planifiées (deuxième lot)
+
+- **Date** : 2026-10-23 · **Statut** : acceptée
+- **Contexte** : les tâches planifiées (ADR-080) ne s'écrivaient que par l'API ; il fallait
+  un écran pour les créer, les suivre et les arrêter, et lire ce qu'est devenue chacune.
+- **Décision** :
+  - une page « Tâches planifiées » dans la navigation, pour chacun. Une carte « Nouvelle
+    tâche » : intitulé, demande à l'agent, jours cochés (du lundi au vendredi par
+    défaut), heure et fuseau (celui du navigateur par défaut). Sans le droit d'utiliser
+    l'agent, ou à vingt tâches, la carte le dit à la place du formulaire ;
+  - chaque tâche dit quand elle part, en mots (« Du lundi au vendredi à 8 h 00 », son
+    fuseau entre parenthèses), sa prochaine occurrence (lue, comme la dernière, dans ce
+    fuseau), sa demande, ce qu'est devenue la
+    dernière occurrence (un badge, et la raison donnée par la plateforme) et mène à la
+    conversation du dernier lancement, qui attend peut-être une validation. « Modifier »,
+    « Mettre en pause » ou « Reprendre » et « Supprimer » sont nommés par son intitulé ;
+    le formulaire de modification suit la liste rechargée (ADR-041) ; les refus de l'API
+    s'affichent tels quels ;
+  - une passe du serveur distingue une tâche réclamée d'une tâche qu'une modification en
+    cours verrouille : un lot où aucune n'a pu l'être termine la passe, au lieu de les
+    relire en boucle (suggestion de l'audit de l'ADR-080) ;
+  - le serveur des tests de bout en bout laisse au démarrage une tâche de Léa, due deux
+    heures plus tôt : sa première passe la dit « non rattrapée », sans appeler le modèle,
+    et la page le montre.
+- **Alternatives écartées** :
+  - les tâches parmi les conversations : elles s'y perdraient entre les échanges, quand
+    la page dit ce qui part, quand, et ce qu'il en est advenu ;
+  - une tâche du test lancée pour de vrai : elle prendrait au modèle scénarisé un tour que
+    les tests suivants attendent ; le lancement est éprouvé sur l'API (ADR-080).
+- **Conséquences** :
+  - restent l'e-mail à l'auteur quand une occurrence attend sa validation, puis le worker
+    séparé (qui bornera aussi les runs lancés ensemble), la reprise par bail et les
+    missions longues ;
+  - tests :
+    - `apps/web/e2e/scheduled-tasks.spec.ts` : l'occurrence manquée lue, puis une tâche
+      créée, mise en pause, reprise, déplacée (le focus rendu à « Modifier ») et
+      supprimée, chaque changement relu par l'API ; à vingt tâches, la note à la place du
+      formulaire et le rythme « Du lundi au vendredi » ;
+    - `apps/web/e2e/navigation.spec.ts` : la page se charge sans erreur ;
+    - `crates/api/tests/scheduled_task_passes.rs` : une passe laisse à la suivante un lot
+      de tâches en cours de modification.
