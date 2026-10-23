@@ -183,7 +183,10 @@ test('the company chooses its own model, then goes back to the platform’s', as
     .getByRole('combobox', { name: 'Fournisseur' })
     .selectOption({ label: 'Anthropic (Claude)' });
   await page.getByLabel(/^Clé d’API/).fill(key);
-  await page.getByRole('button', { name: 'Enregistrer' }).click();
+  await page
+    .getByRole('form', { name: 'Modèle de vos conversations' })
+    .getByRole('button', { name: 'Enregistrer' })
+    .click();
 
   await expect(page.getByText(/Fournisseur de votre entreprise : Anthropic/)).toBeVisible();
   await expect(page.getByText('Clé enregistrée')).toBeVisible();

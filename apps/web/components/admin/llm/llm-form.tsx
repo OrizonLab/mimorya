@@ -33,7 +33,11 @@ export function LlmForm({ data, onDone }: { data: LlmView; onDone: (changed: boo
   }
 
   return (
-    <form onSubmit={submit} className="flex flex-col gap-3">
+    <form
+      aria-label="Modèle de vos conversations"
+      onSubmit={submit}
+      className="flex flex-col gap-3"
+    >
       <div className="grid gap-3 sm:grid-cols-2">
         <ProviderSelect
           label="Fournisseur"

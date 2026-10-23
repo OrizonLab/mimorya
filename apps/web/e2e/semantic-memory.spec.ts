@@ -33,7 +33,10 @@ test('the company searches its memory by meaning, then by words again', async ({
     .selectOption({ label: 'Mistral AI' });
   await page.getByLabel('Similarité minimale').fill('0.7');
   await page.getByLabel(/^Clé d’API d’embeddings/).fill(key);
-  await page.getByRole('button', { name: 'Enregistrer' }).click();
+  await page
+    .getByRole('form', { name: 'Modèle d’embeddings' })
+    .getByRole('button', { name: 'Enregistrer' })
+    .click();
   await expect(page.getByRole('button', { name: 'Chercher aussi par le sens' })).toHaveCount(0);
 
   // Recorded, and the memory indexed in the background.

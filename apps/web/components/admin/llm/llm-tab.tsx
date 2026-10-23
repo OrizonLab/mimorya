@@ -6,18 +6,21 @@ import { api, useAction, useApiData, type LlmTestResult, type LlmView } from '@/
 import { formatDate } from '@/lib/format';
 import { LLM_PROVIDERS } from '@/lib/labels';
 import { EmbeddingSection } from './embedding-section';
+import { LessonSection } from './lesson-section';
 import { LlmForm } from './llm-form';
 
 const label = (provider: string) => LLM_PROVIDERS[provider] ?? provider;
 
 /** The models the company's assistant uses: for its conversations, the
  * platform's or its own; for searching its memory by meaning, its own if
- * any (ADR-074). */
+ * any (ADR-074); and whether the first rereads finished conversations for a
+ * lesson (ADR-076). */
 export function LlmTab() {
   return (
     <div className="flex flex-col gap-6">
       <ConversationModel />
       <EmbeddingSection />
+      <LessonSection />
     </div>
   );
 }
