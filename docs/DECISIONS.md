@@ -3172,13 +3172,20 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     jamais l'absent ; une fin à venir, au plus 90 jours après le début ; aucun droit
     accordé, le remplaçant ne décidant que là où il détient `approval:decide`. Le
     lecteur obtient aussi les remplaçants possibles (ADR-073), ceux de l'absent ;
-  - jamais pour soi-même : son absence se déclare dans « Validations ». Un compte inconnu
-    ou d'une autre entreprise reçoit la même réponse (404). Un compte inactif est refusé
-    (409) : l'absence y serait sans effet. Les changements sont faits sous le verrou
-    d'administration, et un refus est tracé (ADR-038, ADR-047, ADR-054) ;
+  - jamais pour soi-même : son absence se déclare dans « Validations ». Jamais non plus en
+    se désignant remplaçant (403) : l'administrateur prendrait les avis destinés à un autre
+    et déciderait ses demandes, là où il en a le droit ; il n'est pas proposé parmi les
+    remplaçants possibles. Un compte inconnu ou d'une autre entreprise reçoit la même
+    réponse (404). Un compte inactif est refusé (409) : l'absence y serait sans effet. Les
+    changements sont faits sous le verrou d'administration ;
+  - sont tracés, comme pour les autres changements d'administration (ADR-038, ADR-047,
+    ADR-054) : un refus de droit (sans `user:manage` sur toute l'entreprise, pour soi-même,
+    soi-même comme remplaçant), un compte absent ou étranger, un remplaçant qui ne désigne
+    rien de l'entreprise. Une requête invalide (période, l'absent comme remplaçant) et un
+    compte inactif ne le sont pas ;
   - l'absence garde le nom de l'administrateur qui l'a déclarée (`declared_by_user_id`) :
     - le collaborateur le lit dans sa propre absence (`declaredBy`), comme le
-      remplaçant ;
+      remplaçant ; l'écran « Validations » l'affichera avec celui de l'administration ;
     - redéclarée par le collaborateur, elle redevient la sienne ;
     - il garde la main : il y met fin, ou en déclare une autre ;
   - le collaborateur est prévenu par e-mail quand un relais est configuré :
@@ -3204,19 +3211,25 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     ou une fois le compte de l'administrateur supprimé ; supprimée avec l'absence ;
   - l'administrateur des comptes, qui lit déjà l'annuaire, apprend par les remplaçants
     possibles qui valide dans l'entreprise, même sans `role:manage` ;
-  - reste l'écran de l'administration (lot 2) ;
+  - reste l'écran de l'administration, avec l'auteur affiché dans « Validations »
+    (lot 2) ;
   - tests :
-    - `crates/api/src/services/admin/absence_mail.rs` : texte de la déclaration et de la
-      levée ;
+    - `crates/api/src/services/admin/absence_mail.rs` : texte de la déclaration, de la
+      levée et de l'annulation d'une absence à venir ;
     - `crates/api/tests/admin_absences.rs` :
       - Paul déclare l'absence de Marc. Elle est relue par Paul, par Marc (avec son
         auteur) et par Julien, qui le remplace ; Marc en est prévenu par e-mail ;
       - Marc y met fin, puis en déclare une à lui, qui ne nomme plus Paul ;
-      - Paul la lève et Marc en est prévenu ; le tout est tracé au nom de chacun ;
-      - refus, sans rien enregistrer ni prévenir, mais tracés : un responsable sans
-        `user:manage`, l'administrateur pour lui-même, un compte inconnu ou d'une autre
-        entreprise, l'absent comme remplaçant, un remplaçant inconnu ou étranger, une
-        période impossible, un compte désactivé ;
-      - sans relais ou quand l'envoi échoue, l'absence tient et la réponse le dit ;
+      - Paul la lève, puis annule une absence à venir, et Marc en est prévenu chaque fois ;
+        le tout est tracé au nom de chacun ;
+      - sans relais, ou quand l'envoi échoue, l'absence tient et la réponse le dit ; l'échec
+        est journalisé sans l'adresse ni la réponse du relais ;
+    - `crates/api/tests/admin_absence_refusals.rs` : refus, sans rien enregistrer ni
+      prévenir :
+      - un responsable sans `user:manage`, un administrateur de son équipe seulement,
+        l'administrateur pour lui-même, un compte inconnu ou d'une autre entreprise, tracés ;
+      - l'administrateur comme remplaçant (tracé, et absent des remplaçants proposés), un
+        remplaçant inconnu ou étranger (tracé) ;
+      - l'absent comme remplaçant, une période impossible, un compte désactivé ;
     - `crates/api/tests/first_login.rs` : les trois routes retiennent un mot de passe
       provisoire.

@@ -4,10 +4,19 @@
 //! the message lets them know, and object.
 
 use chrono::{DateTime, Utc};
-use chrono_tz::Europe::Paris;
-use mimorya_agent::runtime::french_date;
 
-use crate::mail::Mail;
+use crate::mail::{Mail, moment_label};
+
+/// What the administrator did.
+#[derive(Debug, Clone, Copy)]
+pub enum AbsenceChange {
+    Declared {
+        starts_at: DateTime<Utc>,
+        ends_at: DateTime<Utc>,
+    },
+    /// Ended before its end; `started` unless it had yet to begin.
+    Ended { started: bool },
+}
 
 pub struct AbsenceMail<'a> {
     pub product: &'a str,
@@ -17,19 +26,9 @@ pub struct AbsenceMail<'a> {
     pub email: &'a str,
     pub administrator: &'a str,
     pub delegate: &'a str,
-    /// From when until when, as declared; `None` once ended.
-    pub period: Option<(DateTime<Utc>, DateTime<Utc>)>,
+    pub change: AbsenceChange,
     /// The page where the collaborator ends it, or finds their requests.
     pub link: &'a str,
-}
-
-/// A moment as the collaborator reads it, in Paris time.
-fn moment(at: DateTime<Utc>) -> String {
-    format!(
-        "{} à {}",
-        french_date(at, Paris),
-        at.with_timezone(&Paris).format("%H:%M")
-    )
 }
 
 pub fn absence_mail(notice: &AbsenceMail<'_>) -> Mail {
@@ -40,11 +39,11 @@ pub fn absence_mail(notice: &AbsenceMail<'_>) -> Mail {
         email,
         administrator,
         delegate,
-        period,
+        change,
         link,
     } = notice;
-    let (subject, body) = match period {
-        Some((starts_at, ends_at)) => (
+    let (subject, body) = match change {
+        AbsenceChange::Declared { starts_at, ends_at } => (
             format!("{administrator} a déclaré votre absence"),
             format!(
                 "{administrator} a déclaré votre absence sur {product} pour {company}, du {} au \
@@ -53,16 +52,25 @@ pub fn absence_mail(notice: &AbsenceMail<'_>) -> Mail {
                  permet, et reçoit les e-mails qui les annoncent.\n\nVous gardez la main : vous \
                  pouvez toujours décider ces demandes, et mettre fin à cette absence dans \
                  « Validations » :\n{link}",
-                moment(*starts_at),
-                moment(*ends_at),
+                moment_label(*starts_at),
+                moment_label(*ends_at),
             ),
         ),
-        None => (
+        AbsenceChange::Ended { started: true } => (
             format!("{administrator} a mis fin à votre absence"),
             format!(
                 "{administrator} a mis fin à votre absence sur {product} pour {company} : \
                  {delegate} ne décide plus à votre place les demandes de validation qui vous \
                  sont confiées. Vous les retrouvez dans « Validations » :\n{link}"
+            ),
+        ),
+        AbsenceChange::Ended { started: false } => (
+            format!("{administrator} a annulé votre absence"),
+            format!(
+                "{administrator} a annulé l’absence prévue pour vous sur {product} pour \
+                 {company} : {delegate} ne décidera pas à votre place les demandes de \
+                 validation qui vous sont confiées. Vous les retrouvez dans « Validations » :\n\
+                 {link}"
             ),
         ),
     };
@@ -83,7 +91,7 @@ mod tests {
 
     use super::*;
 
-    fn notice(period: Option<(DateTime<Utc>, DateTime<Utc>)>) -> Mail {
+    fn notice(change: AbsenceChange) -> Mail {
         absence_mail(&AbsenceMail {
             product: "Mimorya",
             company: "Néo Maintenance",
@@ -91,16 +99,16 @@ mod tests {
             email: "marc@example.test",
             administrator: "Paul Martin",
             delegate: "Julien Moreau",
-            period,
+            change,
             link: "https://app.example.test/approvals",
         })
     }
 
     #[test]
     fn says_who_declared_it_who_stands_in_and_until_when() {
-        let starts = Utc.with_ymd_and_hms(2026, 11, 2, 7, 0, 0).unwrap();
-        let ends = Utc.with_ymd_and_hms(2026, 11, 9, 23, 0, 0).unwrap();
-        let mail = notice(Some((starts, ends)));
+        let starts_at = Utc.with_ymd_and_hms(2026, 11, 2, 7, 0, 0).unwrap();
+        let ends_at = Utc.with_ymd_and_hms(2026, 11, 9, 23, 0, 0).unwrap();
+        let mail = notice(AbsenceChange::Declared { starts_at, ends_at });
         assert_eq!(mail.to, "marc@example.test");
         assert_eq!(mail.subject, "Paul Martin a déclaré votre absence");
         assert!(mail.text.starts_with("Bonjour Marc Lefèvre,"));
@@ -117,13 +125,21 @@ mod tests {
     }
 
     #[test]
-    fn says_who_ended_it() {
-        let mail = notice(None);
+    fn says_who_ended_it_or_called_it_off() {
+        let mail = notice(AbsenceChange::Ended { started: true });
         assert_eq!(mail.subject, "Paul Martin a mis fin à votre absence");
         assert!(
             mail.text
                 .contains("Julien Moreau ne décide plus à votre place")
         );
         assert!(!mail.text.contains("heure de Paris"));
+
+        let mail = notice(AbsenceChange::Ended { started: false });
+        assert_eq!(mail.subject, "Paul Martin a annulé votre absence");
+        assert!(
+            mail.text
+                .contains("Julien Moreau ne décidera pas à votre place")
+        );
+        assert!(mail.text.contains("\nhttps://app.example.test/approvals\n"));
     }
 }

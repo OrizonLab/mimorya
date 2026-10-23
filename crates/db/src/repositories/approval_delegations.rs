@@ -77,29 +77,6 @@ pub async fn set_delegation(conn: &mut PgConnection, new: NewDelegation) -> sqlx
     Ok(())
 }
 
-/// Whom an administrator declares absent (ADR-078), as their message names
-/// them; `None` for an account of another company.
-#[derive(Debug, Clone, sqlx::FromRow)]
-pub struct AbsentPerson {
-    pub email: String,
-    pub display_name: String,
-    pub status: String,
-    pub company: String,
-}
-
-pub async fn absent_person(
-    conn: &mut PgConnection,
-    user_id: Uuid,
-) -> sqlx::Result<Option<AbsentPerson>> {
-    sqlx::query_as(
-        "select u.email::text as email, u.display_name, u.status, t.name as company \
-         from users u join tenants t on t.id = u.tenant_id where u.id = $1",
-    )
-    .bind(user_id)
-    .fetch_optional(conn)
-    .await
-}
-
 /// Withdraws the delegation of `user_id`; whether one had not ended yet.
 pub async fn delete_delegation(
     conn: &mut PgConnection,

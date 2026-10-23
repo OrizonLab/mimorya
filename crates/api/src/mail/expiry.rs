@@ -1,15 +1,21 @@
-//! When a link sent by e-mail stops working, as its recipient reads it.
+//! A moment as an e-mail's recipient reads it, in Paris time: when a link
+//! stops working, when an absence starts and ends.
 
 use chrono::{DateTime, Utc};
 use chrono_tz::Europe::Paris;
 use mimorya_agent::runtime::french_date;
 
-pub fn expiry_label(expires_at: DateTime<Utc>) -> String {
+/// « mardi 14 juillet 2026 à 23:05 », in Paris time, which the sentence says.
+pub fn moment_label(at: DateTime<Utc>) -> String {
     format!(
-        "{} à {} (heure de Paris)",
-        french_date(expires_at, Paris),
-        expires_at.with_timezone(&Paris).format("%H:%M")
+        "{} à {}",
+        french_date(at, Paris),
+        at.with_timezone(&Paris).format("%H:%M")
     )
+}
+
+pub fn expiry_label(expires_at: DateTime<Utc>) -> String {
+    format!("{} (heure de Paris)", moment_label(expires_at))
 }
 
 #[cfg(test)]

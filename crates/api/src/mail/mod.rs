@@ -11,7 +11,7 @@ mod smtp;
 
 use async_trait::async_trait;
 
-pub use expiry::expiry_label;
+pub use expiry::{expiry_label, moment_label};
 pub use settings::MailSettings;
 pub use smtp::SmtpMailer;
 

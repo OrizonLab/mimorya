@@ -52,7 +52,8 @@ pub struct Delegations {
 
 /// The signed-in person's delegations; the colleagues they may name only
 /// if they `decide` requests themselves (hold `approval:decide`): nobody
-/// else learns who in the company may validate.
+/// else learns here who in the company may validate (an account
+/// administrator does, declaring another's absence, ADR-078).
 pub async fn delegations(
     db: &Database,
     identity: AuthIdentity,

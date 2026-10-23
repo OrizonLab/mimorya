@@ -5,20 +5,21 @@
 //! right. The collaborator sees who declared it, is told by e-mail when a
 //! relay is configured, and keeps the hand: they end it, or declare their
 //! own. Company-wide `user:manage`, never on one's own account (one's own
-//! absence is declared in « Validations »), under the administration lock,
-//! audited.
+//! absence is declared in « Validations ») nor naming oneself to stand in,
+//! under the administration lock, audited.
 
 use chrono::{DateTime, Utc};
 use mimorya_core::DomainError;
 use mimorya_db::repositories::approval_delegations::{
-    AbsentPerson, ApprovalDelegation, Colleague, NewDelegation, absent_person, delete_delegation,
-    get_delegation, possible_stand_ins, set_delegation,
+    ApprovalDelegation, Colleague, NewDelegation, delete_delegation, get_delegation,
+    possible_stand_ins, set_delegation,
 };
 use mimorya_db::repositories::audit::append_audit;
+use mimorya_db::repositories::users::{DirectoryEntry, get_user};
 use serde_json::json;
 use uuid::Uuid;
 
-use super::absence_mail::{AbsenceMail, absence_mail};
+use super::absence_mail::{AbsenceChange, AbsenceMail, absence_mail};
 use super::{LinkSender, audit_entry, begin_change, refuse_self};
 use crate::services::AccessContext;
 use crate::services::runs::{AbsenceInput, absence_period, named_delegate};
@@ -27,6 +28,8 @@ const PERMISSION: &str = "user:manage";
 
 const UNKNOWN_ACCOUNT: &str = "Compte introuvable";
 const NOT_THE_ABSENT: &str = "Désignez comme remplaçant un autre collaborateur que l’absent.";
+const NOT_ONESELF: &str =
+    "Vous ne pouvez pas vous désigner vous-même comme remplaçant depuis l’administration";
 const INACTIVE: &str = "Ce compte n’est pas actif : une absence serait sans effet.";
 const NONE_DECLARED: &str = "Aucune absence déclarée pour ce collaborateur";
 
@@ -39,7 +42,7 @@ pub struct AbsenceAdmin {
 
 /// The absence of `user_id`, unless it ended, and the colleagues who may
 /// stand in for them: those holding `approval:decide` on a unit or the
-/// company (ADR-073).
+/// company (ADR-073), the administrator aside.
 pub async fn absence_of(
     sender: &LinkSender<'_>,
     access: &AccessContext,
@@ -49,11 +52,12 @@ pub async fn absence_of(
     access.require_tenant_wide(PERMISSION)?;
     refuse_self(access, user_id)?;
     let mut tx = sender.db.begin(access.subject.tenant_id).await?;
-    if absent_person(&mut tx, user_id).await?.is_none() {
+    if get_user(&mut tx, user_id).await?.is_none() {
         return Err(DomainError::not_found(UNKNOWN_ACCOUNT).into());
     }
     let absence = get_delegation(&mut tx, user_id, now).await?;
-    let candidates = possible_stand_ins(&mut tx, user_id, now).await?;
+    let mut candidates = possible_stand_ins(&mut tx, user_id, now).await?;
+    candidates.retain(|c| c.user_id != access.subject.user_id);
     tx.commit().await?;
     Ok(AbsenceAdmin {
         absence,
@@ -72,12 +76,16 @@ pub async fn declare_absence_for(
 ) -> anyhow::Result<bool> {
     access.require_tenant_wide(PERMISSION)?;
     refuse_self(access, user_id)?;
+    // Standing in, they would take over the notices meant for another.
+    if input.delegate_user_id == access.subject.user_id {
+        return Err(DomainError::forbidden(NOT_ONESELF).into());
+    }
     if input.delegate_user_id == user_id {
         return Err(DomainError::validation(NOT_THE_ABSENT).into());
     }
     let (starts_at, ends_at) = absence_period(&input, now)?;
     let mut tx = begin_change(sender.db, access, PERMISSION).await?;
-    let Some(absent) = absent_person(&mut tx, user_id).await? else {
+    let Some(absent) = get_user(&mut tx, user_id).await? else {
         return Err(DomainError::not_found(UNKNOWN_ACCOUNT).into());
     };
     if absent.status != "active" {
@@ -101,16 +109,8 @@ pub async fn declare_absence_for(
     let entry = audit_entry(access, "approval.delegation_set", "user", user_id);
     append_audit(&mut tx, entry.metadata(metadata)).await?;
     tx.commit().await?;
-    let period = Some((starts_at, ends_at));
-    Ok(tell(
-        sender,
-        access,
-        user_id,
-        &absent,
-        &delegate.display_name,
-        period,
-    )
-    .await)
+    let change = AbsenceChange::Declared { starts_at, ends_at };
+    Ok(tell(sender, access, &absent, &delegate.display_name, change).await)
 }
 
 /// Ends the absence of `user_id` before its end; whether they were told by
@@ -124,7 +124,7 @@ pub async fn end_absence_for(
     access.require_tenant_wide(PERMISSION)?;
     refuse_self(access, user_id)?;
     let mut tx = begin_change(sender.db, access, PERMISSION).await?;
-    let Some(absent) = absent_person(&mut tx, user_id).await? else {
+    let Some(absent) = get_user(&mut tx, user_id).await? else {
         return Err(DomainError::not_found(UNKNOWN_ACCOUNT).into());
     };
     let current = get_delegation(&mut tx, user_id, now).await?;
@@ -134,8 +134,14 @@ pub async fn end_absence_for(
     let entry = audit_entry(access, "approval.delegation_ended", "user", user_id);
     append_audit(&mut tx, entry).await?;
     tx.commit().await?;
-    let delegate = current.map(|d| d.delegate_name).unwrap_or_default();
-    Ok(tell(sender, access, user_id, &absent, &delegate, None).await)
+    // Not ended by now, as `delete_delegation` said: it was read above.
+    let Some(ended) = current else {
+        return Ok(false);
+    };
+    let change = AbsenceChange::Ended {
+        started: ended.starts_at <= now,
+    };
+    Ok(tell(sender, access, &absent, &ended.delegate_name, change).await)
 }
 
 /// Tells the collaborator what the administrator did, when a relay is
@@ -144,10 +150,9 @@ pub async fn end_absence_for(
 async fn tell(
     sender: &LinkSender<'_>,
     access: &AccessContext,
-    user_id: Uuid,
-    absent: &AbsentPerson,
+    absent: &DirectoryEntry,
     delegate: &str,
-    period: Option<(DateTime<Utc>, DateTime<Utc>)>,
+    change: AbsenceChange,
 ) -> bool {
     let Some(mailer) = sender.mailer else {
         return false;
@@ -158,18 +163,18 @@ async fn tell(
     let link = format!("{}/approvals", sender.web_origin);
     let mail = absence_mail(&AbsenceMail {
         product: sender.product,
-        company: &absent.company,
+        company: &access.tenant.name,
         name: &absent.display_name,
         email: &absent.email,
         administrator: &access.profile.display_name,
         delegate,
-        period,
+        change,
         link: &link,
     });
     match mailer.send(&mail).await {
         Ok(()) => true,
         Err(_) => {
-            tracing::warn!(user = %user_id, "Absence e-mail not sent");
+            tracing::warn!(user = %absent.id, "Absence e-mail not sent");
             false
         }
     }
