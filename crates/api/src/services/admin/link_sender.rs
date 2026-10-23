@@ -1,6 +1,6 @@
-//! What an administrator's one-time links need besides the database: the
-//! mailer, if any, and where links lead (invitations, ADR-027; reset links,
-//! ADR-029).
+//! What an administrator's e-mails need besides the database: the mailer,
+//! if any, and where links lead (invitations, ADR-027; reset links, ADR-029;
+//! a collaborator's absence, ADR-078).
 
 use mimorya_db::Database;
 

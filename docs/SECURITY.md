@@ -213,14 +213,16 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   est refusée. La personne ne peut pas approuver la demande, seulement la retirer
   (l'action n'est alors pas exécutée). L'e-mail qui prévient le responsable (ADR-060)
   ne contient ni l'action ni ses paramètres, lisibles seulement après connexion.
-- **Remplaçant d'un responsable absent** (ADR-071) : désigné par le responsable pour une
-  période d'au plus 90 jours, il ne reçoit aucun droit. Il ne voit et ne décide les
+- **Remplaçant d'un responsable absent** (ADR-071) : désigné par le responsable (ou pour
+  lui par l'administrateur des comptes, ADR-078) pour une période d'au plus 90 jours, il
+  ne reçoit aucun droit. Il ne voit et ne décide les
   demandes confiées à l'absent que s'il détient lui-même `approval:decide` sur la
   personne (404 sinon), tant que la période court et que le compte de l'absent est
   actif ; un seul relais ; il ne voit jamais ce que l'absent a décidé ; l'audit nomme
   l'absent qu'il remplace. L'avis et la relance ne lui sont envoyés que s'il peut décider
   les demandes (ADR-072). La liste des remplaçants possibles (noms des collaborateurs
-  habilités à valider) n'est donnée qu'à qui valide lui-même (ADR-073).
+  habilités à valider) n'est donnée qu'à qui valide lui-même (ADR-073), et à
+  l'administrateur des comptes qui déclare l'absence d'un collaborateur (ADR-078).
 - **Administration** (ADR-019) :
   - les permissions d'administration (`TENANT_WIDE_PERMISSIONS` : organisation,
     comptes, rôles, politiques, connecteurs, compétences, paramètres, mémoire, audit,
@@ -263,6 +265,15 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
     d'administration reste attribué sur toute l'entreprise ; un rôle encore attribué
     ne se supprime pas ; un changement s'applique aussitôt à ses détenteurs, et la
     revérification des droits sous verrou relit les rôles et les politiques en base ;
+  - absence d'un collaborateur empêché (ADR-078) : seul un administrateur des comptes
+    (`user:manage` sur toute l'entreprise) la déclare pour lui, jamais pour lui-même ni
+    en se désignant remplaçant. Elle n'accorde aucun droit : le remplaçant ne décide que
+    là où il détient lui-même `approval:decide`. Elle détourne pourtant les avis du
+    responsable vers le remplaçant (ADR-072) : le collaborateur la lit avec le nom de
+    l'administrateur qui l'a déclarée (`declaredBy` ; son affichage dans « Validations »
+    vient avec l'écran de l'administration), en est prévenu par e-mail quand un relais est
+    configuré, et peut y mettre fin. Chaque déclaration et chaque levée sont tracées au
+    nom de l'administrateur ;
   - limites assumées :
     - la règle « pas d'administration de soi-même » évite les erreurs, ce n'est **pas
       une frontière contre un administrateur malveillant** : il peut créer un compte,

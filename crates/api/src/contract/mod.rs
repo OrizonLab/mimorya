@@ -82,6 +82,8 @@ pub fn typescript() -> String {
     declarations.add::<admin::InvitationIssued>();
     declarations.add::<admin::TemporaryPassword>();
     declarations.add::<admin::ResetLinkSent>();
+    declarations.add::<admin::CollaboratorAbsence>();
+    declarations.add::<admin::AbsenceRecorded>();
     declarations.add::<admin::Roles>();
     declarations.add::<admin::SkillList>();
     declarations.add::<admin::SkillDetail>();

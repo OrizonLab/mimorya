@@ -154,7 +154,7 @@ pub async fn invite(
     }))
 }
 
-fn link_sender(state: &AppState) -> LinkSender<'_> {
+pub(super) fn link_sender(state: &AppState) -> LinkSender<'_> {
     LinkSender {
         db: &state.db,
         accounts: &state.access,

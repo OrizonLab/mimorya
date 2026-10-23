@@ -21,7 +21,8 @@ mod service;
 
 pub use approval_decision::DecisionInput;
 pub use approval_delegation::{
-    AbsenceInput, Delegations, MAX_ABSENCE, declare_absence, delegations, end_absence,
+    AbsenceInput, Delegations, MAX_ABSENCE, absence_period, declare_absence, delegations,
+    end_absence, named_delegate,
 };
 pub use approval_notice::ApprovalNotifier;
 pub use approval_routing::{can_decide, can_withdraw, shown_to};

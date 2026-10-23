@@ -1,7 +1,9 @@
 //! Who stands in for an absent person on the requests a manager decides
-//! (ADR-071): one delegation per person, to a colleague, for a period. It
-//! acts only while it runs and its author's account is active, and grants
-//! no right: the delegate decides only where they hold `approval:decide`.
+//! (ADR-071): one delegation per person, to a colleague, for a period,
+//! declared by the person or by an account administrator on their behalf
+//! (ADR-078). It acts only while it runs and the absent person's account is
+//! active, and grants no right: the delegate decides only where they hold
+//! `approval:decide`.
 
 use chrono::{DateTime, Utc};
 use sqlx::{PgConnection, PgPool};
@@ -16,13 +18,18 @@ pub struct ApprovalDelegation {
     pub delegate_name: String,
     pub starts_at: DateTime<Utc>,
     pub ends_at: DateTime<Utc>,
+    /// The administrator who declared it on the absent person's behalf.
+    pub declared_by_user_id: Option<Uuid>,
+    pub declared_by_name: Option<String>,
 }
 
 const NAMED: &str = "select d.user_id, u.display_name as user_name, d.delegate_user_id, \
-     g.display_name as delegate_name, d.starts_at, d.ends_at \
+     g.display_name as delegate_name, d.starts_at, d.ends_at, d.declared_by_user_id, \
+     b.display_name as declared_by_name \
      from approval_delegations d \
      join users u on u.id = d.user_id \
-     join users g on g.id = d.delegate_user_id";
+     join users g on g.id = d.delegate_user_id \
+     left join users b on b.id = d.declared_by_user_id";
 
 /// The delegation `user_id` declared, unless it ended by `now`.
 pub async fn get_delegation(
@@ -37,28 +44,34 @@ pub async fn get_delegation(
         .await
 }
 
+/// A delegation to declare: by the absent person when `declared_by` is
+/// `None`, else by that administrator on their behalf.
+pub struct NewDelegation {
+    pub tenant_id: Uuid,
+    pub user_id: Uuid,
+    pub delegate_user_id: Uuid,
+    pub starts_at: DateTime<Utc>,
+    pub ends_at: DateTime<Utc>,
+    pub declared_by: Option<Uuid>,
+}
+
 /// Declares (or replaces) the delegation of `user_id`.
-pub async fn set_delegation(
-    conn: &mut PgConnection,
-    tenant_id: Uuid,
-    user_id: Uuid,
-    delegate_user_id: Uuid,
-    starts_at: DateTime<Utc>,
-    ends_at: DateTime<Utc>,
-) -> sqlx::Result<()> {
+pub async fn set_delegation(conn: &mut PgConnection, new: NewDelegation) -> sqlx::Result<()> {
     sqlx::query(
         "insert into approval_delegations \
-         (tenant_id, user_id, delegate_user_id, starts_at, ends_at) \
-         values ($1, $2, $3, $4, $5) \
+         (tenant_id, user_id, delegate_user_id, starts_at, ends_at, declared_by_user_id) \
+         values ($1, $2, $3, $4, $5, $6) \
          on conflict (tenant_id, user_id) do update set \
          delegate_user_id = excluded.delegate_user_id, starts_at = excluded.starts_at, \
-         ends_at = excluded.ends_at, created_at = now()",
+         ends_at = excluded.ends_at, declared_by_user_id = excluded.declared_by_user_id, \
+         created_at = now()",
     )
-    .bind(tenant_id)
-    .bind(user_id)
-    .bind(delegate_user_id)
-    .bind(starts_at)
-    .bind(ends_at)
+    .bind(new.tenant_id)
+    .bind(new.user_id)
+    .bind(new.delegate_user_id)
+    .bind(new.starts_at)
+    .bind(new.ends_at)
+    .bind(new.declared_by)
     .execute(conn)
     .await?;
     Ok(())

@@ -2865,8 +2865,8 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
   - donnée personnelle nouvelle : la période d'absence et le remplaçant, conservés
     jusqu'à la fin de l'absence ; supprimés avec le compte de l'un ou de l'autre ;
   - l'avis et la relance vont au remplaçant plutôt qu'à l'absent (ADR-072) ; l'absence se
-    déclare dans « Validations » (ADR-073) ; reste une absence déclarée par
-    l'administrateur pour un collaborateur empêché ;
+    déclare dans « Validations » (ADR-073) ; l'administrateur des comptes la déclare
+    pour un collaborateur empêché (ADR-078) ;
   - tests :
     - `crates/api/tests/approval_delegation.rs` : déclaration, lecture par l'absent et
       par le remplaçant, remplacement, retrait, audit ; refus (soi-même, inconnu, autre
@@ -2933,7 +2933,7 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
 - **Conséquences** :
   - aucune donnée nouvelle n'est conservée ; un responsable voit le nom des autres
     collaborateurs habilités à valider ;
-  - reste une absence déclarée par l'administrateur pour un collaborateur empêché ;
+  - l'absence d'un collaborateur empêché, déclarée par l'administrateur : ADR-078 ;
   - tests :
     - `crates/api/tests/approval_delegation.rs` : remplaçants possibles, sans le lecteur, ni
       un compte désactivé, ni une habilitation échue ou sur soi seul, donnés seulement à qui
@@ -3157,3 +3157,79 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     mémoire (relue par l'API), marquée « Leçon » et « Ma mémoire ». Marc la valide (active
     après rechargement), puis la supprime. Quoi qu'il arrive, le réglage est désactivé, la
     leçon supprimée et une validation restée en attente refusée.
+
+## ADR-078 — L'administrateur des comptes déclare l'absence d'un collaborateur empêché (premier lot : l'API)
+
+- **Date** : 2026-10-23 · **Statut** : acceptée
+- **Contexte** : seul l'absent déclarait son absence (ADR-071). Un responsable empêché
+  (maladie, accident) ne le peut pas : les demandes qui lui sont confiées attendent sa
+  relance, puis expirent sans que personne ne les ait regardées.
+- **Décision** :
+  - un administrateur des comptes (`user:manage` sur toute l'entreprise) déclare,
+    remplace ou lève l'absence d'un collaborateur (`GET`, `PUT`, `DELETE
+/admin/users/{id}/absence`). C'est la même absence que celle que le collaborateur
+    déclare lui-même, avec les mêmes règles : un remplaçant actif de l'entreprise,
+    jamais l'absent ; une fin à venir, au plus 90 jours après le début ; aucun droit
+    accordé, le remplaçant ne décidant que là où il détient `approval:decide`. Le
+    lecteur obtient aussi les remplaçants possibles (ADR-073), ceux de l'absent ;
+  - jamais pour soi-même : son absence se déclare dans « Validations ». Jamais non plus en
+    se désignant remplaçant (403) : l'administrateur prendrait les avis destinés à un autre
+    et déciderait ses demandes, là où il en a le droit ; il n'est pas proposé parmi les
+    remplaçants possibles. Un compte inconnu ou d'une autre entreprise reçoit la même
+    réponse (404). Un compte inactif est refusé (409) : l'absence y serait sans effet. Les
+    changements sont faits sous le verrou d'administration ;
+  - sont tracés, comme pour les autres changements d'administration (ADR-038, ADR-047,
+    ADR-054) : un refus de droit (sans `user:manage` sur toute l'entreprise, pour soi-même,
+    soi-même comme remplaçant), un compte absent ou étranger, un remplaçant qui ne désigne
+    rien de l'entreprise. Une requête invalide (période, l'absent comme remplaçant) et un
+    compte inactif ne le sont pas ;
+  - l'absence garde le nom de l'administrateur qui l'a déclarée (`declared_by_user_id`) :
+    - le collaborateur le lit dans sa propre absence (`declaredBy`), comme le
+      remplaçant ; l'écran « Validations » l'affichera avec celui de l'administration ;
+    - redéclarée par le collaborateur, elle redevient la sienne ;
+    - il garde la main : il y met fin, ou en déclare une autre ;
+  - le collaborateur est prévenu par e-mail quand un relais est configuré :
+    - à la déclaration, l'e-mail dit qui l'a déclarée, qui le remplace, du quand au
+      quand, et où y mettre fin ;
+    - à la levée, il dit qui l'a levée ;
+    - il ne contient rien de ses demandes. Une déclaration détourne les avis qui lui
+      étaient destinés vers le remplaçant (ADR-072) : il doit l'apprendre, et pouvoir
+      réagir s'il ne l'attendait pas ;
+    - un envoi en échec n'annule rien : la réponse dit si le collaborateur a été prévenu
+      (`notified`), et l'échec est journalisé sans le destinataire ;
+  - l'audit (`approval.delegation_set`, `approval.delegation_ended`) nomme
+    l'administrateur comme auteur et le collaborateur comme ressource.
+- **Alternatives écartées** :
+  - une permission nouvelle, propre aux absences : le compte d'un collaborateur relève
+    déjà de l'administrateur des comptes ;
+  - laisser le responsable hiérarchique la déclarer : il n'a aucun droit sur le compte
+    de l'absent, et ce serait lui donner de quoi détourner les avis d'un autre ;
+  - réaffecter les demandes en attente à un autre responsable : la règle reste que rien
+    n'est réécrit (ADR-071).
+- **Conséquences** :
+  - donnée nouvelle : l'auteur de l'absence, nul pour une absence déclarée par l'absent
+    ou une fois le compte de l'administrateur supprimé ; supprimée avec l'absence ;
+  - l'administrateur des comptes, qui lit déjà l'annuaire, apprend par les remplaçants
+    possibles qui valide dans l'entreprise, même sans `role:manage` ;
+  - reste l'écran de l'administration, avec l'auteur affiché dans « Validations »
+    (lot 2) ;
+  - tests :
+    - `crates/api/src/services/admin/absence_mail.rs` : texte de la déclaration, de la
+      levée et de l'annulation d'une absence à venir ;
+    - `crates/api/tests/admin_absences.rs` :
+      - Paul déclare l'absence de Marc. Elle est relue par Paul, par Marc (avec son
+        auteur) et par Julien, qui le remplace ; Marc en est prévenu par e-mail ;
+      - Marc y met fin, puis en déclare une à lui, qui ne nomme plus Paul ;
+      - Paul la lève, puis annule une absence à venir, et Marc en est prévenu chaque fois ;
+        le tout est tracé au nom de chacun ;
+      - sans relais, ou quand l'envoi échoue, l'absence tient et la réponse le dit ; l'échec
+        est journalisé sans l'adresse ni la réponse du relais ;
+    - `crates/api/tests/admin_absence_refusals.rs` : refus, sans rien enregistrer ni
+      prévenir :
+      - un responsable sans `user:manage`, un administrateur de son équipe seulement,
+        l'administrateur pour lui-même, un compte inconnu ou d'une autre entreprise, tracés ;
+      - l'administrateur comme remplaçant (tracé, et absent des remplaçants proposés), un
+        remplaçant inconnu ou étranger (tracé) ;
+      - l'absent comme remplaçant, une période impossible, un compte désactivé ;
+    - `crates/api/tests/first_login.rs` : les trois routes retiennent un mot de passe
+      provisoire.

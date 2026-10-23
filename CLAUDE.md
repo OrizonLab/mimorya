@@ -54,8 +54,9 @@ Repères à l'intérieur des crates :
   `api/src/routes/` (un module par ressource, `admin/`), `api/src/contract/` (réponses
   et corps de requêtes typés, un fichier par ressource, dont sont générés les types
   TypeScript, ADR-036, ADR-039),
-  `api/src/services/admin/` (comptes, organisation, habilitations, compétences, sous
-  verrou par entreprise), `api/src/services/account.rs` (son propre compte),
+  `api/src/services/admin/` (comptes et absence d'un collaborateur empêché
+  (`absences.rs`, ADR-078), organisation, habilitations, compétences, sous verrou par
+  entreprise), `api/src/services/account.rs` (son propre compte),
   `api/src/services/runs/` (tour de conversation, décisions, contexte, exécution,
   ports PostgreSQL, résultat, reprise au démarrage, ADR-053, circuit des validations,
   avis au responsable (`approval_notice/`, rattrapé au démarrage, ADR-070), expiration et

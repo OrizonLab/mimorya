@@ -1,6 +1,6 @@
-//! Absences declared by whoever decides requests as a manager, with whom
-//! they name to stand in for them, and those the reader stands in for
-//! (ADR-071).
+//! Absences declared by whoever decides requests as a manager, or for them
+//! by an account administrator (ADR-078), with whom they name to stand in
+//! for them, and those the reader stands in for (ADR-071).
 
 use chrono::{DateTime, Utc};
 use mimorya_db::repositories::approval_delegations::ApprovalDelegation;
@@ -35,6 +35,9 @@ pub struct Delegation {
     pub delegate: ApprovalPerson,
     pub starts_at: String,
     pub ends_at: String,
+    /// The administrator who declared it on the absent person's behalf
+    /// (ADR-078); `null` when they declared it themselves.
+    pub declared_by: Option<ApprovalPerson>,
 }
 
 impl From<&ApprovalDelegation> for Delegation {
@@ -50,6 +53,10 @@ impl From<&ApprovalDelegation> for Delegation {
             },
             starts_at: iso(&d.starts_at),
             ends_at: iso(&d.ends_at),
+            declared_by: d
+                .declared_by_user_id
+                .zip(d.declared_by_name.clone())
+                .map(|(id, display_name)| ApprovalPerson { id, display_name }),
         }
     }
 }

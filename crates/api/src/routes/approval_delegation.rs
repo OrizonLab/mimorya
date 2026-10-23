@@ -1,7 +1,9 @@
 //! The signed-in person's absence (ADR-071): whom they name to stand in for
 //! them on the requests they decide as a manager, until when, the absences
 //! they cover and, if they decide requests, whom they may name (ADR-073).
-//! Their own resource: nobody declares another's.
+//! Their own resource: nobody declares another's here (an account
+//! administrator does, for a collaborator who cannot, `admin/absences.rs`,
+//! ADR-078).
 
 use axum::extract::State;
 use axum::routing::get;
