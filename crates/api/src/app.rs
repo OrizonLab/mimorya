@@ -85,7 +85,8 @@ pub struct BuildOptions {
     /// background (tests that count what a pass embeds).
     pub manual_indexing: bool,
     /// Leaves scheduled tasks to be fired on demand (`fire_due_tasks`), not
-    /// every minute (tests that set when one is due).
+    /// every minute once interrupted runs are taken up (tests that set when
+    /// one is due).
     pub manual_scheduling: bool,
     /// Replaces the mailer built from configuration (tests); `Some(None)`
     /// sends nothing.
@@ -260,9 +261,9 @@ impl App {
         // Ended before the runs are awaited: its expiry sweep may start one.
         self.maintenance.abort();
         let _ = self.maintenance.await;
-        // So is this one: it starts runs.
+        // So is this one, which starts runs: it stops between two tasks,
+        // never in the middle of firing one.
         if let Some(scheduling) = self.scheduling {
-            scheduling.abort();
             let _ = scheduling.await;
         }
         if let Some(indexing) = self.indexing {

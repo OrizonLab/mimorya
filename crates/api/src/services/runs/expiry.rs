@@ -23,7 +23,7 @@ impl RunService {
     /// how many expired. Only in the process that executes runs: another
     /// leaves them to it.
     pub async fn expire_overdue(&self) -> anyhow::Result<usize> {
-        if self.executor_lock.lock().await.is_none() {
+        if !self.executes().await {
             return Ok(0);
         }
         let now = Utc::now();
@@ -44,7 +44,7 @@ impl RunService {
     /// Reminds managers of the requests that expire within a day (ADR-062);
     /// how many. Only in the process that executes runs, as expiries.
     pub async fn remind_due(&self) -> anyhow::Result<usize> {
-        if self.executor_lock.lock().await.is_none() {
+        if !self.executes().await {
             return Ok(0);
         }
         self.executor.notifier.remind_due(Utc::now()).await

@@ -50,6 +50,23 @@ impl RunService {
     /// again; failing, they leave the runs to take up.
     pub async fn recover_interrupted(&self) -> anyhow::Result<usize> {
         self.claim_execution().await?;
+        let taken_up = self.take_up_interrupted().await;
+        // Over, whatever came of it: a run started from now on cannot be
+        // taken for one the stop interrupted.
+        self.taken_up.send_replace(true);
+        taken_up
+    }
+
+    /// Resolves once this process has taken up the runs a stop interrupted:
+    /// it alone may then start runs nobody asked for in a request (scheduled
+    /// tasks, ADR-080), none of which can be taken for one of them.
+    pub async fn interrupted_runs_taken_up(&self) {
+        let mut taken_up = self.taken_up.subscribe();
+        // The sender lives as long as `self`: this ends only once taken up.
+        let _ = taken_up.wait_for(|done| *done).await;
+    }
+
+    async fn take_up_interrupted(&self) -> anyhow::Result<usize> {
         match self.executor.notifier.catch_up(Utc::now()).await {
             Ok(0) => {}
             Ok(lost) => tracing::warn!(lost, "Managers told of requests a stop kept from them"),

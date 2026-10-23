@@ -20,7 +20,9 @@ pub struct ScheduledTaskRow {
     pub last_run_at: Option<DateTime<Utc>>,
     pub last_outcome: Option<String>,
     pub last_problem: Option<String>,
+    /// The conversation of the last run an occurrence started.
     pub last_conversation_id: Option<Uuid>,
+    /// The last run an occurrence started: until it ends, none starts.
     pub last_run_id: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -147,7 +149,7 @@ pub struct DueTask {
     pub task: ScheduledTaskRow,
     pub owner_status: String,
     pub must_change_password: bool,
-    /// The status of the run its last occurrence started, if any.
+    /// The status of the last run an occurrence started, if any.
     pub last_run_status: Option<String>,
 }
 
@@ -196,7 +198,9 @@ pub async fn reschedule_task(
 }
 
 /// Records what became of an occurrence of the task `id`, leaving when it
-/// runs next as it is (its author may have changed it meanwhile).
+/// runs next as it is (its author may have changed it meanwhile). One that
+/// started no run keeps the last run started, and its conversation: the
+/// next occurrence waits for that run still.
 pub async fn record_occurrence(
     conn: &mut PgConnection,
     id: Uuid,
@@ -204,7 +208,8 @@ pub async fn record_occurrence(
 ) -> sqlx::Result<()> {
     sqlx::query(
         "update scheduled_tasks set last_run_at = $2, last_outcome = $3, last_problem = $4, \
-         last_conversation_id = $5, last_run_id = $6 where id = $1",
+         last_conversation_id = coalesce($5, last_conversation_id), \
+         last_run_id = coalesce($6, last_run_id) where id = $1",
     )
     .bind(id)
     .bind(occurrence.at)

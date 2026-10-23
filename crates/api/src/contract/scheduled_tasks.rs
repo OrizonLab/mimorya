@@ -35,6 +35,9 @@ pub struct ScheduledTask {
     pub enabled: bool,
     pub next_run_at: Option<String>,
     pub last_occurrence: Option<LastOccurrence>,
+    /// Where the last run an occurrence started is, while that conversation
+    /// exists: an occurrence does not start while that run is under way.
+    pub last_conversation_id: Option<Uuid>,
 }
 
 /// What became of the last occurrence.
@@ -45,8 +48,6 @@ pub struct LastOccurrence {
     pub outcome: OccurrenceOutcome,
     /// Why it did not run, as the platform says it.
     pub problem: Option<String>,
-    /// Where it ran, while that conversation exists.
-    pub conversation_id: Option<Uuid>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -56,9 +57,11 @@ pub enum OccurrenceOutcome {
     Started,
     /// The last occurrence's run was not over.
     StillRunning,
-    /// The service was stopped at the time, and it was too late after.
+    /// Not started within the hour after its time (the service was
+    /// stopped).
     Missed,
-    /// The author's account could not act, or lacks the right.
+    /// The author's account could not act, or lacks the right, or their
+    /// company is suspended.
     Refused,
     /// The run could not start (no model…).
     Failed,
@@ -71,7 +74,6 @@ impl ScheduledTask {
                 at: iso(at),
                 outcome: stored_text("scheduled task outcome", outcome)?,
                 problem: row.last_problem.clone(),
-                conversation_id: row.last_conversation_id,
             }),
             _ => None,
         };
@@ -89,6 +91,7 @@ impl ScheduledTask {
             enabled: row.next_run_at.is_some(),
             next_run_at: row.next_run_at.as_ref().map(iso),
             last_occurrence,
+            last_conversation_id: row.last_conversation_id,
         })
     }
 }

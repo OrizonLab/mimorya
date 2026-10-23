@@ -613,11 +613,7 @@ export type LastOccurrence = { at: string, outcome: OccurrenceOutcome,
 /**
  * Why it did not run, as the platform says it.
  */
-problem: string | null,
-/**
- * Where it ran, while that conversation exists.
- */
-conversationId: string | null, };
+problem: string | null, };
 
 /**
  * Body of `POST /auth/invitation/accept` and `POST /auth/password-reset/complete`:
@@ -1160,7 +1156,12 @@ time: string, timeZone: string,
 /**
  * Paused when `false`.
  */
-enabled: boolean, nextRunAt: string | null, lastOccurrence: LastOccurrence | null, };
+enabled: boolean, nextRunAt: string | null, lastOccurrence: LastOccurrence | null,
+/**
+ * Where the last run an occurrence started is, while that conversation
+ * exists: an occurrence does not start while that run is under way.
+ */
+lastConversationId: string | null, };
 
 /**
  * `GET /scheduled-tasks`: the reader's own, oldest first.

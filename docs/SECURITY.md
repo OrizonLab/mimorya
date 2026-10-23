@@ -405,9 +405,10 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   modèle comme donnée.
 - **Transparence** : chaque utilisateur consulte sa mémoire et l'historique des actions
   faites pour lui. Une tâche planifiée (ADR-080) n'agit qu'en son nom, avec ses droits du
-  moment, dans une conversation à lui ; elle ne part pas pour un compte désactivé, à mot
-  de passe provisoire ou privé de l'agent, et ce qu'est devenue chaque occurrence lui est
-  dit.
+  moment, dans une conversation à lui ; elle ne part pas pour un compte désactivé (elle se
+  met en pause), à mot de passe provisoire ou privé de l'agent, ni pour une entreprise
+  suspendue. Ce qu'est devenue la dernière occurrence lui est dit, et chacune est tracée
+  dans le journal, comme le démarrage de son run : par la plateforme, à son nom.
 - **Droits** : export (JSON) et suppression des données d'un utilisateur ; suppression
   complète d'une entreprise ; journal conservant la trace sans le contenu.
 - **Rétention** paramétrable (voir [DATA_MODEL.md](DATA_MODEL.md) §5).

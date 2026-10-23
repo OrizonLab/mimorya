@@ -128,13 +128,22 @@ pub async fn change_task(
     )?;
     let weekdays = task.weekdays();
     let time = task.schedule.time();
+    // When it runs unchanged, its next occurrence stays, even one due that
+    // has not fired yet.
+    let unchanged = weekdays == current.weekdays
+        && time == current.time_of_day
+        && task.schedule.zone() == current.time_zone;
+    let next_run_at = match current.next_run_at {
+        Some(next) if enabled && unchanged => Some(next),
+        _ => enabled.then(|| task.schedule.next_after(now)),
+    };
     let definition = TaskDefinition {
         title: &task.title,
         instruction: &task.instruction,
         weekdays: &weekdays,
         time_of_day: &time,
         time_zone: task.schedule.zone(),
-        next_run_at: enabled.then(|| task.schedule.next_after(now)),
+        next_run_at,
     };
     update_scheduled_task(&mut tx, id, definition).await?;
     append_audit(

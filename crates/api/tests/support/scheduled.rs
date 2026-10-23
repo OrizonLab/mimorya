@@ -4,6 +4,7 @@
 use axum::http::StatusCode;
 use chrono::{Duration, Utc};
 use mimorya_api::services::scheduled_tasks::fire_due_tasks;
+use mimorya_core::demo::tenant;
 use serde_json::{Value, json};
 use uuid::Uuid;
 
@@ -59,4 +60,57 @@ pub async fn fire(api: &TestApi) -> usize {
     let started = fire_due_tasks(&api.app.services, Utc::now()).await.unwrap();
     api.idle().await;
     started
+}
+
+/// What the last occurrence of the task `id` became, and why.
+pub async fn last(client: &Client<'_>, id: Uuid) -> (Value, Value) {
+    let occurrence = listed(client, id).await["lastOccurrence"].clone();
+    (occurrence["outcome"].clone(), occurrence["problem"].clone())
+}
+
+/// How many conversations `user_id` has, archived ones included: what an
+/// occurrence opened, whatever became of it.
+pub async fn opened(user_id: Uuid) -> i64 {
+    let owner = sqlx::PgPool::connect(owner_url()).await.unwrap();
+    let count = sqlx::query_scalar("select count(*) from conversations where owner_user_id = $1")
+        .bind(user_id)
+        .fetch_one(&owner)
+        .await
+        .unwrap();
+    owner.close().await;
+    count
+}
+
+/// Sets the status of the last run the task `id` started, which it has.
+pub async fn set_last_run(id: Uuid, status: &str) {
+    let owner = sqlx::PgPool::connect(owner_url()).await.unwrap();
+    let changed = sqlx::query(
+        "update agent_runs set status = $2 \
+         where id = (select last_run_id from scheduled_tasks where id = $1)",
+    )
+    .bind(id)
+    .bind(status)
+    .execute(&owner)
+    .await
+    .unwrap();
+    owner.close().await;
+    assert_eq!(changed.rows_affected(), 1, "the task started no run");
+}
+
+/// What the occurrences of the task `id` were audited as: action, actor,
+/// on whose behalf, metadata.
+pub async fn occurrences_audited(
+    api: &TestApi,
+    id: Uuid,
+) -> Vec<(String, String, Option<Uuid>, Value)> {
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    sqlx::query_as(
+        "select action, actor_type, on_behalf_of_user_id, metadata from audit_log \
+         where resource_id = $1::text \
+         and action in ('scheduled_task.fired', 'scheduled_task.not_run') order by id",
+    )
+    .bind(id)
+    .fetch_all(&mut *tx)
+    .await
+    .unwrap()
 }

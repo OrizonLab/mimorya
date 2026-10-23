@@ -3,7 +3,8 @@
 -- instruction is sent as theirs, in a new conversation of theirs, with
 -- their rights as they stand then. `next_run_at` is when it runs next, null
 -- while it is paused. What became of the last occurrence is kept for them
--- to read: the conversation and run it started, or why it did not run.
+-- to read (why it did not run), with the conversation and run the last one
+-- that started opened: no occurrence starts while that run is under way.
 CREATE TABLE scheduled_tasks (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,

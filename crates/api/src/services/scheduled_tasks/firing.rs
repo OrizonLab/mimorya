@@ -2,10 +2,11 @@
 //! runs: each occurrence is claimed first (its task rescheduled, the row
 //! locked), so that it never fires twice; then its instruction is sent as
 //! its author's, in a new conversation of theirs, with their rights as they
-//! stand now. An occurrence does not run while the last one's run is still
-//! under way, when its author's account cannot act, or more than an hour
-//! late (the service was stopped: the request may have lost its object).
-//! What became of it is recorded for its author, and audited.
+//! stand now. An occurrence does not run while the last run one started is
+//! still under way, when its author's account cannot act (a disabled one's
+//! tasks pause), or more than an hour late (the service was stopped: the
+//! request may have lost its object). What became of it is recorded for its
+//! author, and audited.
 
 use chrono::{DateTime, Utc};
 use mimorya_core::DomainError;
@@ -24,33 +25,52 @@ use uuid::Uuid;
 
 use crate::app::Services;
 use crate::services::access::AuthIdentity;
+use crate::services::runs::TurnSender;
 
-/// Tasks fired per pass at most: the next pass, a minute later, goes on.
-const BATCH: i32 = 50;
+/// Tasks listed at once: a pass lists more while some remain due.
+const BATCH: usize = 50;
 /// How late an occurrence may still run, once the service is back.
 pub const CATCH_UP: chrono::Duration = chrono::Duration::hours(1);
 
-const MISSED: &str = "Le service était arrêté à l’heure prévue : cette occurrence n’a pas été \
-     rattrapée.";
-const CANNOT_ACT: &str = "Votre compte ne pouvait pas agir à l’heure prévue (désactivé, ou \
-     mot de passe provisoire à remplacer).";
-const STILL_RUNNING: &str = "La précédente occurrence n’était pas terminée (en cours ou en \
-     attente de validation) : celle-ci n’a pas été lancée.";
+const MISSED: &str = "Cette occurrence n’a pas pu être lancée dans l’heure suivant son heure \
+     prévue (service arrêté) : elle n’a pas été rattrapée.";
+const DISABLED: &str = "Votre compte était désactivé à l’heure prévue : la tâche a été mise en \
+     pause. Reprenez-la une fois votre compte rétabli.";
+const TEMPORARY_PASSWORD: &str = "Votre mot de passe provisoire restait à remplacer à l’heure \
+     prévue : cette occurrence n’a pas été lancée.";
+const STILL_RUNNING: &str = "Le run d’une précédente occurrence n’était pas terminé (en cours \
+     ou en attente de validation) : celle-ci n’a pas été lancée.";
 const NOT_STARTED: &str = "Le démarrage a échoué : la tâche reprendra à sa prochaine heure.";
 
-/// Fires the tasks due by `now`; how many started a run.
+/// Fires the tasks due by `now`, batch after batch while some remain, until
+/// the service stops; how many started a run. Each task fired is
+/// rescheduled, out of the next batch; one that could not be is listed
+/// again: a batch where none could ends the pass, the next one retries.
 pub async fn fire_due_tasks(services: &Services, now: DateTime<Utc>) -> anyhow::Result<usize> {
+    let batch = i32::try_from(BATCH)?;
     let mut started = 0;
-    for (tenant_id, task_id) in due_scheduled_tasks(services.db.pool(), now, BATCH).await? {
-        match fire_task(services, tenant_id, task_id, now).await {
-            Ok(true) => started += 1,
-            Ok(false) => {}
-            Err(error) => {
-                tracing::warn!(task = %task_id, error = format!("{error:#}"), "Scheduled task not fired");
+    loop {
+        let due = due_scheduled_tasks(services.db.pool(), now, batch).await?;
+        let mut claimed = false;
+        for (tenant_id, task_id) in &due {
+            // Stopping: the next start of the service goes on, within the hour.
+            if *services.shutdown.borrow() {
+                return Ok(started);
+            }
+            match fire_task(services, *tenant_id, *task_id, now).await {
+                Ok(fired) => {
+                    claimed = true;
+                    started += usize::from(fired);
+                }
+                Err(error) => {
+                    tracing::warn!(task = %task_id, error = format!("{error:#}"), "Scheduled task not fired");
+                }
             }
         }
+        if due.len() < BATCH || !claimed {
+            return Ok(started);
+        }
     }
-    Ok(started)
 }
 
 /// Fires the task if it is still due: listed due, it may have fired or
@@ -66,7 +86,11 @@ pub async fn fire_task(
         return Ok(false);
     };
     let task = due.task.clone();
-    let next = schedule_of(&task).map(|schedule| schedule.next_after(now));
+    // A disabled account's task pauses rather than be refused every day:
+    // its author resumes it once back.
+    let next = (due.owner_status == "active")
+        .then(|| schedule_of(&task).map(|schedule| schedule.next_after(now)))
+        .flatten();
     reschedule_task(&mut tx, task.id, next).await?;
     if let Some((outcome, problem)) = held_back(&due, now) {
         record(&mut tx, tenant_id, &task, now, outcome, Some(problem), None).await?;
@@ -114,12 +138,15 @@ fn schedule_of(task: &ScheduledTaskRow) -> Option<WeeklySchedule> {
 
 /// Why the occurrence does not run, if it does not.
 fn held_back(due: &DueTask, now: DateTime<Utc>) -> Option<(&'static str, &'static str)> {
+    if due.owner_status != "active" {
+        return Some(("refused", DISABLED));
+    }
     let scheduled_for = due.task.next_run_at.unwrap_or(now);
     if now - scheduled_for > CATCH_UP {
         return Some(("missed", MISSED));
     }
-    if due.owner_status != "active" || due.must_change_password {
-        return Some(("refused", CANNOT_ACT));
+    if due.must_change_password {
+        return Some(("refused", TEMPORARY_PASSWORD));
     }
     if matches!(
         due.last_run_status.as_deref(),
@@ -131,8 +158,8 @@ fn held_back(due: &DueTask, now: DateTime<Utc>) -> Option<(&'static str, &'stati
 }
 
 /// Sends the instruction as its author's, in a new conversation of theirs,
-/// once a model can answer and they may use the agent: nothing is opened
-/// otherwise. A conversation whose run then fails to start is archived (the
+/// once a model can answer, their company is active and they may use the
+/// agent: nothing is opened otherwise. A conversation whose run then fails to start is archived (the
 /// application deletes none).
 async fn start(
     services: &Services,
@@ -153,7 +180,12 @@ async fn start(
     tx.commit().await?;
     let turn = services
         .runs
-        .start_conversation_turn(identity, conversation.id, &task.instruction)
+        .start_conversation_turn(
+            identity,
+            conversation.id,
+            &task.instruction,
+            TurnSender::Schedule { task_id: task.id },
+        )
         .await;
     match turn {
         Ok(turn) => Ok((conversation.id, turn.run_id)),

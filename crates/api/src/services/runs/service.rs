@@ -17,7 +17,7 @@ use super::approval_decision::{
     DecisionInput, NOT_FOUND, decidable, record_approval_decision, resume_decisions,
 };
 use super::approval_routing::may_decide_for;
-use super::conversation_turn::{open_conversation_turn, tenant_autonomy_level};
+use super::conversation_turn::{TurnSender, open_conversation_turn, tenant_autonomy_level};
 use super::executor::{ExecutionMode, RunExecutor};
 use crate::services::access::{AccessContext, AccessService, AuthIdentity};
 use crate::services::background::BackgroundTasks;
@@ -27,6 +27,7 @@ const REQUESTER_INACTIVE: &str = "Le compte de la personne pour qui l’agent ag
     actif : la demande ne peut plus être traitée.";
 const NO_LONGER_ENTITLED: &str =
     "Vous n’avez plus le droit de valider les actions de cette personne.";
+const COMPANY_NOT_ACTIVE: &str = "Votre entreprise est suspendue : l’agent n’agit plus pour elle.";
 
 pub struct StartedTurn {
     pub run_id: Uuid,
@@ -45,6 +46,8 @@ pub struct RunService {
     pub(super) tasks: Arc<BackgroundTasks>,
     /// The run executor's lock, once this process holds it (ADR-053).
     pub(super) executor_lock: tokio::sync::Mutex<Option<sqlx::PgConnection>>,
+    /// `true` once the runs a stop interrupted are taken up, here.
+    pub(super) taken_up: tokio::sync::watch::Sender<bool>,
 }
 
 impl RunService {
@@ -55,6 +58,7 @@ impl RunService {
             executor: Arc::new(executor),
             tasks: Arc::new(BackgroundTasks::default()),
             executor_lock: tokio::sync::Mutex::new(None),
+            taken_up: tokio::sync::watch::channel(false).0,
         }
     }
 
@@ -68,13 +72,15 @@ impl RunService {
         identity: AuthIdentity,
         conversation_id: Uuid,
         text: &str,
+        sender: TurnSender,
     ) -> anyhow::Result<StartedTurn> {
         let access = self.ready_to_run(identity).await?;
         let autonomy = tenant_autonomy_level(&access);
 
         let mut tx = self.db.begin(identity.tenant_id).await?;
         let turn =
-            open_conversation_turn(&mut tx, identity, conversation_id, text, autonomy).await?;
+            open_conversation_turn(&mut tx, identity, conversation_id, text, autonomy, sender)
+                .await?;
         tx.commit().await?;
 
         let started = StartedTurn {
@@ -92,8 +98,10 @@ impl RunService {
         Ok(started)
     }
 
-    /// The rights of whom a run would serve, once a model can answer them
-    /// and they may use the agent: refused otherwise, saying why.
+    /// The rights of whom a run would serve, once a model can answer them,
+    /// their company is active and they may use the agent: refused
+    /// otherwise, saying why. A session of a suspended company is refused
+    /// beforehand; a scheduled task (ADR-080) has none.
     pub async fn ready_to_run(&self, identity: AuthIdentity) -> anyhow::Result<AccessContext> {
         match self.executor.llm.provider_for(identity.tenant_id).await {
             Ok(Some(_)) => {}
@@ -114,6 +122,9 @@ impl RunService {
             }
         }
         let access = self.access.context(identity).await?;
+        if access.tenant.status != "active" {
+            return Err(DomainError::forbidden(COMPANY_NOT_ACTIVE).into());
+        }
         access.require("agent:use")?;
         Ok(access)
     }
