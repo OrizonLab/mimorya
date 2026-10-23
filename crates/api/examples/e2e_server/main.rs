@@ -20,7 +20,9 @@
 //! per start: the model's script and the demo company are used up. Like
 //! `mimorya-api`, it takes the run executor's lock once listening and takes
 //! up the runs a stop left, among them the one it leaves itself
-//! (`interrupted`, ADR-053).
+//! (`interrupted`, ADR-053); then fires the scheduled tasks due every
+//! minute, among them one a stop made miss its occurrence (`scheduled`,
+//! ADR-080).
 
 mod dns_server;
 #[allow(dead_code)] // the API's tests use the rest
@@ -37,6 +39,7 @@ mod saml_idp;
 #[path = "../../tests/support/saml_provider.rs"]
 mod saml_provider;
 mod scenario;
+mod scheduled;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -135,6 +138,7 @@ async fn main() -> anyhow::Result<()> {
     )
     .await?;
     interrupted::leave(&app).await?;
+    scheduled::leave(&app).await?;
     let listener = tokio::net::TcpListener::bind(&address).await?;
     app.services.runs.claim_execution().await?;
     let taken = app.recover_interrupted_runs().await?;

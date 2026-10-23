@@ -89,7 +89,7 @@ Repères à l'intérieur des crates :
   conversations, recherche dans la mémoire et leçons, ADR-075, ADR-077, et `admin/users/` :
   comptes, dont l'absence d'un collaborateur empêché, ADR-079 —, approvals — dont la
   section « Absence » et son formulaire, commun, ADR-073 —, chat, memory, operations,
-  shell), `web/components/ui/`
+  scheduled-tasks — tâches planifiées, ADR-081 —, shell), `web/components/ui/`
   (`Loaded` verrouille son contenu pendant un rechargement, ADR-042), `web/lib/api/` (client, `contract.ts`
   généré par `pnpm contract`, `useApiData`), `web/lib/use-synced-state.ts` (état d'un
   formulaire repris de la liste rechargée, ADR-041), `web/lib/focus-keeper.ts` (focus rendu
@@ -97,7 +97,8 @@ Repères à l'intérieur des crates :
   `web/lib/security/` (CSP à nonce par page, ADR-030), `web/e2e/` (tests de bout en
   bout, un fichier par parcours, `support/`) et `api/examples/e2e_server/` (l'API qu'ils
   pilotent, avec un fournisseur OpenID Connect et un fournisseur SAML simulés, ADR-031,
-  ADR-063, ADR-068, et une relecture des leçons à part, `lessons.rs`, ADR-077).
+  ADR-063, ADR-068, une relecture des leçons à part, `lessons.rs`, ADR-077, et une tâche
+  planifiée dont l'occurrence est manquée au démarrage, `scheduled.rs`, ADR-081).
 - `infra/` : `docker/` (images de l'API et de l'interface, liste des images publiées
   `images.json`, test de fumée de la démonstration, test d'installation de la production,
   vérifications partagées `checks.sh`), `caddy/`
