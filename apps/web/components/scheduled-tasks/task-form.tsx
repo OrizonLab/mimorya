@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useMemo, type FormEvent } from 'react';
 import { Button, ErrorNote, Field, Input, Select, Textarea } from '@/components/ui';
 import { useAction } from '@/lib/api';
 import { useSyncedState } from '@/lib/use-synced-state';
@@ -36,7 +36,8 @@ export function TaskForm({
   onCancel?: () => void;
 }) {
   const [draft, setDraft] = useSyncedState(initial);
-  const [zones] = useState(() => timeZones(initial.timeZone));
+  // From the draft: the one the reloaded list brings is among them.
+  const zones = useMemo(() => timeZones(draft.timeZone), [draft.timeZone]);
   const action = useAction();
   const set = <K extends keyof TaskDraft>(key: K, value: TaskDraft[K]) =>
     setDraft((current) => ({ ...current, [key]: value }));

@@ -1,16 +1,19 @@
 // A person's scheduled tasks (ADR-080, ADR-081): Léa reads what became of
 // the occurrence a stop of the service made miss (the server leaves it at
 // startup), then schedules a request, pauses and resumes it, moves it and
-// deletes it, each change read back from the API. Her test task runs twelve
-// hours from now at the earliest: none fires while the suite lasts; it is
-// deleted whatever happens. The rules themselves are tested on the API
+// deletes it, each change read back from the API. At twenty tasks, the form
+// gives way to a note. Her test tasks run twelve hours from now at the
+// earliest: none fires while the suite lasts; they are deleted whatever
+// happens. The rules themselves are tested on the API
 // (`crates/api/tests/scheduled_task*.rs`).
 import type { Page } from '@playwright/test';
-import type { ScheduledTask, ScheduledTaskList } from '../lib/api/contract';
+import type { NewScheduledTask, ScheduledTask, ScheduledTaskList } from '../lib/api/contract';
 import { demo, expect, noError, signIn, test } from './support/fixtures';
 
 const WRITE = { 'X-Mimorya-Request': '1' };
-const TITLE = 'Point des retards (e2e)';
+/** What every task of the test is titled with, for its cleanup. */
+const MARK = ' (e2e)';
+const TITLE = `Point des retards${MARK}`;
 const INSTRUCTION = 'Signale les interventions en retard.';
 /** The task the server leaves, its occurrence missed. */
 const MISSED = 'Relevé du soir';
@@ -23,7 +26,7 @@ test.afterEach(async () => {
   left.page = undefined;
   if (!page) return;
   for (const task of await tasks(page)) {
-    if (task.title !== TITLE) continue;
+    if (!task.title.endsWith(MARK)) continue;
     const deleted = await page.request.delete(`/api/scheduled-tasks/${task.id}`, {
       headers: WRITE,
     });
@@ -106,6 +109,8 @@ test('a person schedules a request, pauses, moves and deletes it', async ({ page
   await card.getByLabel('Heure').fill(later);
   await card.getByLabel('samedi', { exact: true }).check();
   await card.getByRole('button', { name: 'Enregistrer' }).click();
+  // The form gone, the focus is back where it was opened.
+  await expect(card.getByRole('button', { name: `Modifier « ${TITLE} »` })).toBeFocused();
   await expect(
     card.getByText(`Chaque lundi, mercredi, vendredi et samedi à ${spoken(later)}`),
   ).toBeVisible();
@@ -114,5 +119,36 @@ test('a person schedules a request, pauses, moves and deletes it', async ({ page
   await card.getByRole('button', { name: `Supprimer « ${TITLE} »` }).click();
   await expect(page.getByRole('article', { name: TITLE })).toHaveCount(0);
   expect(await task(page, TITLE)).toBeUndefined();
+  await noError(page);
+});
+
+test('at twenty tasks, the form gives way to a note', async ({ page }) => {
+  await signIn(page, demo.lea);
+  left.page = page;
+  // Up to twenty, the one the server left included; from Monday to Friday.
+  const time = inHours(12);
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const first = (await tasks(page)).length;
+  for (let n = first; n < 20; n += 1) {
+    const created = await page.request.post('/api/scheduled-tasks', {
+      headers: WRITE,
+      data: {
+        title: `Tâche ${n}${MARK}`,
+        instruction: INSTRUCTION,
+        weekdays: [1, 2, 3, 4, 5],
+        time,
+        timeZone,
+      } satisfies NewScheduledTask,
+    });
+    expect(created.status()).toBe(201);
+  }
+  await page.goto('/scheduled-tasks');
+  const form = page.getByRole('region', { name: 'Nouvelle tâche' });
+  await expect(
+    form.getByText('Vous avez 20 tâches planifiées, le maximum : supprimez-en une d’abord.'),
+  ).toBeVisible();
+  await expect(form.getByLabel('Intitulé')).toHaveCount(0);
+  const card = page.getByRole('article', { name: `Tâche ${first}${MARK}` });
+  await expect(card.getByText(`Du lundi au vendredi à ${spoken(time)}`)).toBeVisible();
   await noError(page);
 });

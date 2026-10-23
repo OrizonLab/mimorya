@@ -8,9 +8,11 @@ mod support;
 use axum::http::StatusCode;
 use chrono::Duration;
 use mimorya_agent::testing::ScriptedStep;
-use mimorya_core::demo::{tenant, user};
+use mimorya_core::demo::user;
 use serde_json::Value;
-use support::scheduled::{TASKS, due, every_day, fire, listed, schedule};
+use support::scheduled::{
+    TASKS, delete_tasks_of, due, every_day, fire, insert_late, listed, schedule,
+};
 use support::{TestApi, owner_url};
 
 #[tokio::test]
@@ -71,17 +73,7 @@ async fn a_pass_goes_on_while_tasks_remain_due() {
     // More than a batch, all due two hours ago: none runs, each is
     // recorded missed in the one pass.
     let owner = sqlx::PgPool::connect(owner_url()).await.unwrap();
-    sqlx::query(
-        "insert into scheduled_tasks \
-         (tenant_id, user_id, title, instruction, weekdays, time_of_day, time_zone, next_run_at) \
-         select $1, $2, 'Lot ' || n, 'Demande', '{1,2,3,4,5,6,7}', '08:00', 'Europe/Paris', \
-         now() - interval '2 hours' from generate_series(1, 120) n",
-    )
-    .bind(tenant::ID)
-    .bind(user::NADIA)
-    .execute(&owner)
-    .await
-    .unwrap();
+    insert_late(&owner, user::NADIA, 120).await;
     assert_eq!(fire(&api).await, 0);
     let (missed, due): (i64, i64) = sqlx::query_as(
         "select count(*) filter (where last_outcome = 'missed'), \
@@ -92,11 +84,7 @@ async fn a_pass_goes_on_while_tasks_remain_due() {
     .fetch_one(&owner)
     .await
     .unwrap();
-    sqlx::query("delete from scheduled_tasks where user_id = $1")
-        .bind(user::NADIA)
-        .execute(&owner)
-        .await
-        .unwrap();
+    delete_tasks_of(&owner, user::NADIA).await;
     owner.close().await;
     assert_eq!((missed, due), (120, 0));
 }
@@ -108,17 +96,7 @@ async fn a_pass_leaves_tasks_being_changed_to_the_next_one() {
     // A full batch due, every row held by changes under way: the pass ends
     // at once, without reading them again and again.
     let owner = sqlx::PgPool::connect(owner_url()).await.unwrap();
-    sqlx::query(
-        "insert into scheduled_tasks \
-         (tenant_id, user_id, title, instruction, weekdays, time_of_day, time_zone, next_run_at) \
-         select $1, $2, 'Verrouillée ' || n, 'Demande', '{1,2,3,4,5,6,7}', '08:00', \
-         'Europe/Paris', now() - interval '2 hours' from generate_series(1, 50) n",
-    )
-    .bind(tenant::ID)
-    .bind(user::NADIA)
-    .execute(&owner)
-    .await
-    .unwrap();
+    insert_late(&owner, user::NADIA, 50).await;
     let mut changes = owner.begin().await.unwrap();
     sqlx::query("select id from scheduled_tasks where user_id = $1 for update")
         .bind(user::NADIA)
@@ -127,11 +105,7 @@ async fn a_pass_leaves_tasks_being_changed_to_the_next_one() {
         .unwrap();
     let pass = tokio::time::timeout(std::time::Duration::from_secs(5), fire(&api)).await;
     changes.rollback().await.unwrap();
-    sqlx::query("delete from scheduled_tasks where user_id = $1")
-        .bind(user::NADIA)
-        .execute(&owner)
-        .await
-        .unwrap();
+    delete_tasks_of(&owner, user::NADIA).await;
     owner.close().await;
     assert_eq!(pass.ok(), Some(0), "the pass kept reading the locked tasks");
 }

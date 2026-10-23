@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Badge, Button, Card, ErrorNote } from '@/components/ui';
 import { api, useAction, type ScheduledTask, type ScheduledTaskUpdate } from '@/lib/api';
 import { formatDate } from '@/lib/format';
@@ -12,12 +12,31 @@ import { TaskForm, type TaskDraft } from './task-form';
  * One of the reader's scheduled tasks: when it runs and runs next, what it
  * asks, what became of its last occurrence; changed, paused or resumed, and
  * deleted from here. Resuming one needs the right to use the agent; pausing
- * or deleting it does not (ADR-080).
+ * or deleting it does not (ADR-080). Its moments are read in its time zone,
+ * which its rhythm names.
  */
 export function TaskCard({ task, onChanged }: { task: ScheduledTask; onChanged: () => void }) {
   const [editing, setEditing] = useState(false);
   const action = useAction();
   const url = `/scheduled-tasks/${task.id}`;
+  const editButton = useRef<HTMLButtonElement>(null);
+  // How the form closed, until « Modifier » has the focus back.
+  const closed = useRef<'cancelled' | 'saved' | null>(null);
+
+  // The form gone, « Modifier » takes the focus back; then the list reloads
+  // if it saved, whose lock keeps the focus there (ADR-043).
+  useEffect(() => {
+    if (editing || closed.current === null) return;
+    const saved = closed.current === 'saved';
+    closed.current = null;
+    editButton.current?.focus();
+    if (saved) onChanged();
+  }, [editing, onChanged]);
+
+  function close(how: 'cancelled' | 'saved') {
+    closed.current = how;
+    setEditing(false);
+  }
 
   async function change(body: ScheduledTaskUpdate) {
     if ((await action.run(() => api.patch(url, body))) !== null) onChanged();
@@ -35,8 +54,7 @@ export function TaskCard({ task, onChanged }: { task: ScheduledTask; onChanged: 
       time: draft.time,
       timeZone: draft.timeZone,
     } satisfies ScheduledTaskUpdate);
-    setEditing(false);
-    onChanged();
+    close('saved');
   }
 
   return (
@@ -54,7 +72,9 @@ export function TaskCard({ task, onChanged }: { task: ScheduledTask; onChanged: 
           <span className="text-muted">({task.timeZone})</span>
         </p>
         {task.nextRunAt && (
-          <p className="text-xs text-muted">Prochaine occurrence : {formatDate(task.nextRunAt)}</p>
+          <p className="text-xs text-muted">
+            Prochaine occurrence : {formatDate(task.nextRunAt, task.timeZone)}
+          </p>
         )}
         <p className="text-sm whitespace-pre-line text-muted">{task.instruction}</p>
         <LastOccurrence task={task} />
@@ -69,13 +89,15 @@ export function TaskCard({ task, onChanged }: { task: ScheduledTask; onChanged: 
             }}
             submitLabel="Enregistrer"
             onSave={save}
-            onCancel={() => setEditing(false)}
+            onCancel={() => close('cancelled')}
           />
         ) : (
           <div className="flex flex-wrap gap-2">
             <Button
+              ref={editButton}
               variant="secondary"
               aria-label={`Modifier « ${task.title} »`}
+              disabled={action.pending}
               onClick={() => setEditing(true)}
             >
               Modifier
