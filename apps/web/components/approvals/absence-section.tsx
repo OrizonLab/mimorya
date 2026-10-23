@@ -10,7 +10,8 @@ import { AbsenceForm } from './absence-form';
  * One's absence and the absences one covers (ADR-071, ADR-073). Whoever
  * validates others' actions names a colleague who validates in their stead
  * meanwhile, where that colleague holds the right to: the naming grants
- * none. Shown to those who validate, or stand in for someone.
+ * none. One an account administrator declared says so (ADR-078). Shown to
+ * those who validate, or stand in for someone.
  */
 export function AbsenceSection({
   data,
@@ -45,6 +46,12 @@ export function AbsenceSection({
             leurs e-mails, quand ce collègue détient le droit de les valider ; vous pouvez toujours
             les décider vous-même.
           </p>
+          {data.own.declaredBy && (
+            <p className="text-sm">
+              Absence déclarée pour vous par {data.own.declaredBy.displayName}, depuis
+              l’administration.
+            </p>
+          )}
           {action.error && <ErrorNote message={action.error} />}
           <Button variant="danger" className="w-fit" loading={action.pending} onClick={end}>
             Mettre fin à l’absence
@@ -58,7 +65,13 @@ export function AbsenceSection({
               qui vous attendent, s’il détient le droit de valider les actions des personnes
               concernées : le désigner ne lui en donne aucun.
             </p>
-            <AbsenceForm candidates={data.candidates} onDeclared={onChanged} />
+            <AbsenceForm
+              candidates={data.candidates}
+              submitLabel="Déclarer mon absence"
+              emptyNote="Aucun collègue ne détient le droit de valider des actions : personne ne peut vous remplacer."
+              declare={(body) => api.put('/approval-delegation', body)}
+              onDeclared={onChanged}
+            />
           </>
         )
       )}

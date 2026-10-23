@@ -269,9 +269,9 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
     (`user:manage` sur toute l'entreprise) la déclare pour lui, jamais pour lui-même ni
     en se désignant remplaçant. Elle n'accorde aucun droit : le remplaçant ne décide que
     là où il détient lui-même `approval:decide`. Elle détourne pourtant les avis du
-    responsable vers le remplaçant (ADR-072) : le collaborateur la lit avec le nom de
-    l'administrateur qui l'a déclarée (`declaredBy` ; son affichage dans « Validations »
-    vient avec l'écran de l'administration), en est prévenu par e-mail quand un relais est
+    responsable vers le remplaçant (ADR-072) : le collaborateur la lit dans
+    « Validations » avec le nom de l'administrateur qui l'a déclarée (ADR-079), en est
+    prévenu par e-mail quand un relais est
     configuré, et peut y mettre fin. Chaque déclaration et chaque levée sont tracées au
     nom de l'administrateur ;
   - limites assumées :

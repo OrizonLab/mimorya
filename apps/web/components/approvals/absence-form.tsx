@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from 'react';
 import { Button, ErrorNote, Field, Input, Select } from '@/components/ui';
-import { api, useAction, type Absence, type ApprovalPerson } from '@/lib/api';
+import { useAction, type Absence, type ApprovalPerson } from '@/lib/api';
 
 /** The day `days` after `day` (today when absent), as a date field writes it, in the reader's time zone. */
 function dayAfter(days: number, day?: string): string {
@@ -16,16 +16,25 @@ function today(): string {
 }
 
 /**
- * Declares one's absence (ADR-071): the colleague who stands in, from which
+ * Declares an absence (ADR-071): the colleague who stands in, from which
  * day (today: from now), until the end of which day; at most 90 days, as
- * the API checks, to the hour a clock change adds.
+ * the API checks, to the hour a clock change adds. One's own, or a
+ * collaborator's by their account administrator (ADR-078): `declare` sends
+ * it, `onDeclared` receives the answer.
  */
-export function AbsenceForm({
+export function AbsenceForm<T>({
   candidates,
+  submitLabel,
+  emptyNote,
+  declare,
   onDeclared,
 }: {
   candidates: ApprovalPerson[];
-  onDeclared: () => void;
+  submitLabel: string;
+  /** Said when nobody may stand in. */
+  emptyNote: string;
+  declare: (body: Absence) => Promise<T>;
+  onDeclared: (answer: T) => void;
 }) {
   const [delegateId, setDelegateId] = useState(candidates[0]?.id ?? '');
   const [from, setFrom] = useState(today());
@@ -35,21 +44,17 @@ export function AbsenceForm({
   async function submit(event: FormEvent) {
     event.preventDefault();
     const declared = await action.run(() =>
-      api.put('/approval-delegation', {
+      declare({
         delegateId,
         startsAt: from > today() ? new Date(`${from}T00:00:00`).toISOString() : undefined,
         endsAt: new Date(`${until}T23:59:59`).toISOString(),
       } satisfies Absence),
     );
-    if (declared) onDeclared();
+    if (declared !== null) onDeclared(declared);
   }
 
   if (candidates.length === 0) {
-    return (
-      <p className="text-sm text-muted">
-        Aucun collègue ne détient le droit de valider des actions : personne ne peut vous remplacer.
-      </p>
-    );
+    return <p className="text-sm text-muted">{emptyNote}</p>;
   }
   return (
     <form onSubmit={submit} className="flex flex-col gap-3">
@@ -86,7 +91,7 @@ export function AbsenceForm({
       </div>
       {action.error && <ErrorNote message={action.error} />}
       <Button type="submit" className="w-fit" loading={action.pending}>
-        Déclarer mon absence
+        {submitLabel}
       </Button>
     </form>
   );

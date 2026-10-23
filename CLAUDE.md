@@ -83,8 +83,10 @@ Repères à l'intérieur des crates :
   `api/tests/` (intégration, harnais dans `support/`, dont les fournisseurs d'identité
   simulés, OpenID Connect et SAML).
 - `web/components/<fonctionnalité>/` (account, admin — dont `admin/llm/` : modèle des
-  conversations, recherche dans la mémoire et leçons, ADR-075, ADR-077 —, approvals — dont
-  la section « Absence », ADR-073 —, chat, memory, operations, shell), `web/components/ui/`
+  conversations, recherche dans la mémoire et leçons, ADR-075, ADR-077, et `admin/users/` :
+  comptes, dont l'absence d'un collaborateur empêché, ADR-079 —, approvals — dont la
+  section « Absence » et son formulaire, commun, ADR-073 —, chat, memory, operations,
+  shell), `web/components/ui/`
   (`Loaded` verrouille son contenu pendant un rechargement, ADR-042), `web/lib/api/` (client, `contract.ts`
   généré par `pnpm contract`, `useApiData`), `web/lib/use-synced-state.ts` (état d'un
   formulaire repris de la liste rechargée, ADR-041), `web/lib/focus-keeper.ts` (focus rendu
