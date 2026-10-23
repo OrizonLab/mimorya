@@ -72,6 +72,8 @@ async fn stream(
         .await?
         .is_some_and(|r| r.status().is_finished());
     tx.commit().await?;
+    // What another process records next is relayed from there (ADR-084).
+    subscription.replayed_through(persisted.last().map_or(last_event_id, |row| row.seq));
 
     let (sender, receiver) = mpsc::channel(64);
     // Nothing more will come for a run that already ended.

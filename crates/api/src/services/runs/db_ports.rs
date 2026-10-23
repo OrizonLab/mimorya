@@ -49,7 +49,7 @@ pub struct DbPorts {
     pub(super) scope: RunScope,
     bus: Arc<RunEventBus>,
     /// The last event this execution recorded (`NO_EVENT` before the first):
-    /// a text delta follows it (ADR-083).
+    /// a text delta follows it (ADR-084).
     last_event: Arc<AtomicI32>,
     /// Who may validate a request for the run's user (ADR-059).
     access: Arc<AccessService>,

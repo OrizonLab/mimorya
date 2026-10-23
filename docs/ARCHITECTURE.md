@@ -255,7 +255,8 @@ reprise via `Last-Event-ID` (événements numérotés en base). Le processus qui
 un événement le diffuse à ses abonnés en mémoire et l'annonce aux autres sur le canal
 PostgreSQL `mimorya_run_events`, dans la transaction qui l'enregistre ; chacun relit
 alors l'événement dans le journal du run, dans l'entreprise de l'abonné qui le suit. Les
-fragments de texte du modèle voyagent dans l'avis lui-même (ADR-084). Redis ne viendrait
+fragments de texte du modèle voyagent dans l'avis lui-même, quand un autre processus
+écoute. Le canal est commun aux entreprises (ADR-084, SECURITY.md §3). Redis ne viendrait
 qu'au-delà de ce que PostgreSQL tient.
 
 ## 9. Couche LLM

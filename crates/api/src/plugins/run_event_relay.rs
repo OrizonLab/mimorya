@@ -1,4 +1,4 @@
-//! Run events across processes in the background (ADR-083): the other
+//! Run events across processes in the background (ADR-084): the other
 //! processes' events relayed to this one's subscribers until the service
 //! stops; this one's text deltas sent to the others until its runs have
 //! ended.

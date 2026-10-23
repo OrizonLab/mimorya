@@ -86,7 +86,7 @@ Dernière mise à jour : 2026-10-23 (événements des runs relayés entre proces
 | Chantier               | Détail                                                                                                  |
 | ---------------------- | ------------------------------------------------------------------------------------------------------- |
 | SaaS multi-entreprises | Inscription, provisionnement, paramétrage initial guidé                                                 |
-| Montée en charge       | Diffusion d'événements via `LISTEN/NOTIFY` puis Redis, workers horizontaux, cache                       |
+| Montée en charge       | Redis si `LISTEN/NOTIFY` ne suffit plus (ADR-084), workers horizontaux, cache                           |
 | Facturation et quotas  | Quotas par entreprise (tokens, coût, stockage), alertes, intégration de paiement                        |
 | Exploitation           | OpenTelemetry (traces), métriques, tableaux de bord, alertes de coût                                    |
 | Déploiements privés    | Images signées, Helm, guide d'exploitation (pile docker-compose de production faite, ADR-034)           |

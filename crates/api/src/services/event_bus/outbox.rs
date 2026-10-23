@@ -1,9 +1,13 @@
-//! Text deltas on their way to the other processes (ADR-083), sent in the
+//! Text deltas on their way to the other processes (ADR-084), sent in the
 //! order the model wrote them, outside any transaction: they are not
-//! recorded. Consecutive deltas of a run are sent together.
+//! recorded. Consecutive deltas of a run are sent together; none while no
+//! other process listens (a single instance), which is checked again every
+//! few seconds.
+
+use std::time::{Duration, Instant};
 
 use mimorya_db::Database;
-use mimorya_db::notifications::notify_run_events;
+use mimorya_db::notifications::{notify_run_events, run_event_listeners};
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
@@ -13,6 +17,8 @@ use super::Notice;
 pub(super) const CAPACITY: usize = 1024;
 /// Bytes of text sent together at most.
 const BATCH_TEXT: usize = 4000;
+/// How long whether another process listens holds.
+const LISTENERS_HOLD: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Delta {
@@ -27,16 +33,25 @@ pub struct Outbox {
     deltas: mpsc::Receiver<Delta>,
     /// Taken out while gathering a batch, for the next one.
     next: Option<Delta>,
+    /// Whether another process listened, and when that was checked.
+    others: Option<(Instant, bool)>,
 }
 
 impl Outbox {
     pub(super) fn new(deltas: mpsc::Receiver<Delta>) -> Self {
-        Self { deltas, next: None }
+        Self {
+            deltas,
+            next: None,
+            others: None,
+        }
     }
 
     /// Sends the deltas, as `origin`'s, until the bus is gone.
     pub async fn send_all(mut self, db: Database, origin: Uuid) {
         while let Some(delta) = self.next_batch().await {
+            if !self.others_listen(&db).await {
+                continue;
+            }
             let payloads = Notice::deltas(origin, delta.run_id, delta.after, &delta.text);
             for payload in payloads {
                 if let Err(error) = notify_run_events(db.pool(), &payload).await {
@@ -45,6 +60,28 @@ impl Outbox {
                 }
             }
         }
+    }
+
+    /// Whether another process than this one listens to the run events.
+    async fn others_listen(&mut self, db: &Database) -> bool {
+        if let Some((checked, others)) = self.others
+            && checked.elapsed() < LISTENERS_HOLD
+        {
+            return others;
+        }
+        // This one's listener among them, when connected.
+        let others = match run_event_listeners(db.pool()).await {
+            Ok(listeners) => listeners > 1,
+            Err(error) => {
+                tracing::debug!(
+                    error = format!("{error:#}"),
+                    "Run event listeners not counted"
+                );
+                false
+            }
+        };
+        self.others = Some((Instant::now(), others));
+        others
     }
 
     /// The next delta, with those of the same run that follow it.

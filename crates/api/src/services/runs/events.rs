@@ -1,6 +1,6 @@
 //! Recording a run event: appended to the run's journal in its company's
 //! transaction (replayed by the event stream) and announced to the other
-//! processes in the same transaction (ADR-083), then broadcast to the
+//! processes in the same transaction (ADR-084), then broadcast to the
 //! clients following the run here. Shared by the run's own ports, its
 //! takeover and the stale-run sweep.
 

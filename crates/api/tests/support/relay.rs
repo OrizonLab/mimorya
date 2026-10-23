@@ -1,4 +1,4 @@
-//! Another process's side of the run events relay (ADR-083): an event it
+//! Another process's side of the run events relay (ADR-084): an event it
 //! recorded without its notice reaching this process (sent while nobody
 //! listened), the notices it sends, and the listener's connection cut.
 
@@ -6,15 +6,12 @@ use std::time::Duration;
 
 use mimorya_api::services::BusEvent;
 use mimorya_api::services::event_bus::{Notice, Subscription};
-use mimorya_db::notifications::notify_run_events;
+use mimorya_db::notifications::{RUN_EVENTS_LISTENER, notify_run_events};
 use mimorya_db::repositories::run_events::append_run_event;
 use serde_json::json;
 use uuid::Uuid;
 
-use super::{app_url, owner_url};
-
-/// The relay's listener connection, as an operator finds it.
-const LISTENER: &str = "mimorya-run-events";
+use super::{TestApi, app_url, owner_url};
 
 /// Records an event of `run_id` whose notice nobody receives; its number.
 pub async fn record_unannounced(tenant_id: Uuid, run_id: Uuid) -> i32 {
@@ -48,25 +45,15 @@ pub async fn announce_delta(run_id: Uuid, after: i32, text: &str) {
     }
 }
 
-/// Waits until a relay listens to this test database.
-pub async fn wait_for_listener() {
-    let owner = sqlx::PgPool::connect(owner_url()).await.unwrap();
+/// Waits until `api`'s relay listens, the journals read once connected.
+pub async fn relaying(api: &TestApi) {
     for _ in 0..500 {
-        let listening: i64 = sqlx::query_scalar(
-            "select count(*) from pg_stat_activity \
-             where application_name = $1 and datname = current_database()",
-        )
-        .bind(LISTENER)
-        .fetch_one(&owner)
-        .await
-        .unwrap();
-        if listening > 0 {
-            owner.close().await;
+        if api.app.services.bus.relaying() {
             return;
         }
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
-    panic!("no relay listens");
+    panic!("the relay does not listen");
 }
 
 /// Cuts the relays' listener connections to this test database, as the
@@ -77,7 +64,7 @@ pub async fn cut_listeners() {
         "select pg_terminate_backend(pid) from pg_stat_activity \
          where application_name = $1 and datname = current_database()",
     )
-    .bind(LISTENER)
+    .bind(RUN_EVENTS_LISTENER)
     .fetch_all(&app)
     .await
     .unwrap();

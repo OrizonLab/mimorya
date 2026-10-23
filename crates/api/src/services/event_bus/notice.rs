@@ -1,4 +1,4 @@
-//! What a process tells the others of its runs' events (ADR-083), as the
+//! What a process tells the others of its runs' events (ADR-084), as the
 //! payload of a PostgreSQL notice: the event's number, the others reading it
 //! from the run's journal; or a text delta, carried whole. A notice names
 //! the process that sent it, which ignores its own, and the run, never its

@@ -1,10 +1,10 @@
-//! Run events across processes (ADR-083): a run executing in one process is
+//! Run events across processes (ADR-084): a run executing in one process is
 //! followed live from another, through PostgreSQL alone, its text included;
 //! each process hands its subscribers its own events once. An event whose
 //! notice was lost while nobody listened is read once the listener connects
 //! again. A run's events are read in the company of whom follows it, never
 //! in another. Another process's text reaches the followers, unless an
-//! event relayed since replaced it.
+//! event they have since replaced it; a process alone sends none.
 mod support;
 
 use std::sync::Mutex;
@@ -12,13 +12,14 @@ use std::time::Duration;
 
 use mimorya_agent::testing::{ScriptedReply, ScriptedStep};
 use mimorya_core::demo::{tenant, user};
+use mimorya_db::notifications::RUN_EVENTS_CHANNEL;
 use mimorya_db::testing::OTHER_TENANT_ID;
 use serde_json::json;
+use sqlx::postgres::PgListener;
 use support::TestApi;
 use support::recovery::stopped_run;
 use support::relay::{
-    announce_delta, announce_event, cut_listeners, next_event, record_unannounced,
-    wait_for_listener,
+    announce_delta, announce_event, cut_listeners, next_event, record_unannounced, relaying,
 };
 use support::runs::start_run;
 
@@ -90,7 +91,10 @@ async fn a_run_executing_elsewhere_is_followed_live_from_here() {
 #[ignore = "requires PostgreSQL"]
 async fn this_process_s_own_events_reach_its_subscribers_once() {
     let api = TestApi::start().await;
-    wait_for_listener().await;
+    // Another process listens: this one sends its text too.
+    let other = TestApi::start().await;
+    relaying(&api).await;
+    relaying(&other).await;
     let marc = api.sign_in(user::MARC).await;
     let (started_seen, go) = held_step(&api);
     let run = start_run(&marc).await;
@@ -117,7 +121,7 @@ async fn this_process_s_own_events_reach_its_subscribers_once() {
 #[ignore = "requires PostgreSQL"]
 async fn an_event_announced_while_nobody_listened_is_read_once_connected_again() {
     let api = TestApi::start().await;
-    wait_for_listener().await;
+    relaying(&api).await;
     let run = stopped_run(&api, tenant::ID, user::MARC, None, None, &[]).await;
     let mut events = api.app.services.bus.subscribe(tenant::ID, run);
 
@@ -135,14 +139,23 @@ async fn an_event_announced_while_nobody_listened_is_read_once_connected_again()
 #[ignore = "requires PostgreSQL"]
 async fn a_run_s_events_are_read_in_its_follower_s_company_only() {
     let api = TestApi::start().await;
-    wait_for_listener().await;
+    relaying(&api).await;
     let run = stopped_run(&api, tenant::ID, user::MARC, None, None, &[]).await;
     let seq = record_unannounced(tenant::ID, run).await;
+    let witness = stopped_run(&api, tenant::ID, user::LUCAS, None, None, &[]).await;
+    let witnessed = record_unannounced(tenant::ID, witness).await;
+    let mut witnessing = api.app.services.bus.subscribe(tenant::ID, witness);
 
-    // Followed in another company: its notice reads nothing there.
-    let mut foreign = api.app.services.bus.subscribe(OTHER_TENANT_ID, run);
+    // Followed in another company: its notice reads nothing there, as the
+    // witness's, announced after it, shows.
+    let foreign = api.app.services.bus.subscribe(OTHER_TENANT_ID, run);
     announce_event(run, seq).await;
-    assert_eq!(next_event(&mut foreign, 0.5).await, None);
+    announce_event(witness, witnessed).await;
+    let seen = next_event(&mut witnessing, 5.0)
+        .await
+        .expect("witness relayed");
+    assert_eq!(seen.seq, Some(witnessed));
+    assert!(foreign.is_empty());
     drop(foreign);
 
     // In its own, it is read.
@@ -158,7 +171,7 @@ async fn a_run_s_events_are_read_in_its_follower_s_company_only() {
 #[ignore = "requires PostgreSQL"]
 async fn another_process_s_text_reaches_followers_unless_an_event_replaced_it() {
     let api = TestApi::start().await;
-    wait_for_listener().await;
+    relaying(&api).await;
     let run = stopped_run(&api, tenant::ID, user::MARC, None, None, &[]).await;
     let mut events = api.app.services.bus.subscribe(tenant::ID, run);
     let seq = record_unannounced(tenant::ID, run).await;
@@ -181,6 +194,9 @@ async fn another_process_s_text_reaches_followers_unless_an_event_replaced_it() 
 async fn a_text_written_elsewhere_reaches_the_followers_here() {
     let writing = TestApi::start().await;
     let following = TestApi::start().await;
+    // Both listening: the writing one knows another process does.
+    relaying(&writing).await;
+    relaying(&following).await;
     let run = stopped_run(&following, tenant::ID, user::MARC, None, None, &[]).await;
     let mut events = following.app.services.bus.subscribe(tenant::ID, run);
 
@@ -196,4 +212,22 @@ async fn a_text_written_elsewhere_reaches_the_followers_here() {
     let delta = relayed.expect("text relayed");
     assert_eq!(delta.event_type, "assistant_delta");
     assert_eq!(delta.data, json!({ "text": "Bonjour" }));
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_process_alone_sends_none_of_its_text() {
+    let api = TestApi::start().await;
+    relaying(&api).await;
+    let run = stopped_run(&api, tenant::ID, user::MARC, None, None, &[]).await;
+    // Listening as an onlooker, not as a process of the application.
+    let mut onlooker = PgListener::connect(support::app_url()).await.unwrap();
+    onlooker.listen(RUN_EVENTS_CHANNEL).await.unwrap();
+
+    api.app
+        .services
+        .bus
+        .publish_delta(run, None, "Pour personne");
+    let sent = tokio::time::timeout(Duration::from_millis(500), onlooker.recv()).await;
+    assert!(sent.is_err(), "{sent:?}");
 }
