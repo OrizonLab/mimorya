@@ -1,8 +1,8 @@
 //! What tells a scheduled task's author that its run awaits their
 //! validation (ADR-082): the requests they decide themselves in the run
 //! their task last started, while it is paused, their account and company
-//! active, not yet notified; at startup, the runs a stop of the service
-//! kept them from (ADR-070).
+//! active, not yet notified; at startup, those a stop of the service kept
+//! from them (ADR-070), not expired yet.
 
 use chrono::{DateTime, Utc};
 use sqlx::{PgConnection, PgPool};
@@ -57,23 +57,33 @@ pub async fn author_notices(
     .await
 }
 
-/// The requests of `run_id` its author was never told of (ADR-070).
+/// The requests of `run_id` its author was never told of (ADR-070), not
+/// expired by `now`.
 pub async fn author_notices_never_sent(
     conn: &mut PgConnection,
     run_id: Uuid,
+    now: DateTime<Utc>,
 ) -> sqlx::Result<Vec<AuthorNotice>> {
-    sqlx::query_as(&format!("{PENDING_FOR_AUTHOR} order by a.created_at"))
-        .bind(run_id)
-        .bind(NOTIFIED)
-        .fetch_all(conn)
-        .await
+    sqlx::query_as(&format!(
+        "{PENDING_FOR_AUTHOR} and (a.expires_at is null or a.expires_at > $3) \
+         order by a.created_at"
+    ))
+    .bind(run_id)
+    .bind(NOTIFIED)
+    .bind(now)
+    .fetch_all(conn)
+    .await
 }
 
 /// Every company's scheduled runs with requests their author was never told
-/// of, through a narrowly scoped database function: each is then handled in
-/// its own company.
-pub async fn unnotified_scheduled_runs(pool: &PgPool) -> sqlx::Result<Vec<NoticeRun>> {
-    sqlx::query_as("select tenant_id, run_id from system_unnotified_scheduled_runs()")
+/// of, not expired by `now`, through a narrowly scoped database function:
+/// each is then handled in its own company.
+pub async fn unnotified_scheduled_runs(
+    pool: &PgPool,
+    now: DateTime<Utc>,
+) -> sqlx::Result<Vec<NoticeRun>> {
+    sqlx::query_as("select tenant_id, run_id from system_unnotified_scheduled_runs($1)")
+        .bind(now)
         .fetch_all(pool)
         .await
 }

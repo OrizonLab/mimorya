@@ -10,6 +10,8 @@ mod support;
 use axum::http::StatusCode;
 use chrono::{DateTime, Duration, Utc};
 use mimorya_agent::testing::ScriptedStep;
+use mimorya_api::services::AuthIdentity;
+use mimorya_api::services::runs::TurnSender;
 use mimorya_api::services::scheduled_tasks::{Firing, fire_task};
 use mimorya_core::demo::{tenant, user};
 use serde_json::{Value, json};
@@ -137,4 +139,51 @@ async fn a_change_that_leaves_when_it_runs_keeps_its_occurrence() {
 
     let deleted = marc.delete(&url).await;
     assert_eq!(deleted.status, StatusCode::OK, "{}", deleted.text());
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn its_run_is_the_task_s_last_as_soon_as_it_is_opened() {
+    let api = TestApi::start().await;
+    let marc = api.sign_in(user::MARC).await;
+    let id = schedule(&marc, every_day("Avant le premier pas")).await;
+    let opened = marc.post("/conversations", json!({})).await.json();
+    let conversation: Uuid = opened["conversation"]["id"]
+        .as_str()
+        .unwrap()
+        .parse()
+        .unwrap();
+    api.script(vec![ScriptedStep::text("Fait.")]);
+    let identity = AuthIdentity {
+        tenant_id: tenant::ID,
+        user_id: user::MARC,
+        session_id: Uuid::nil(),
+        must_change_password: false,
+    };
+    let turn = api
+        .app
+        .services
+        .runs
+        .start_conversation_turn(
+            identity,
+            conversation,
+            INSTRUCTION,
+            TurnSender::Schedule { task_id: id },
+        )
+        .await
+        .unwrap();
+    // Before it can run, and so pause: its author is told of its requests
+    // (ADR-082), the next occurrence waits for it (ADR-080).
+    let task = listed(&marc, id).await;
+    assert_eq!(task["lastConversationId"], json!(conversation));
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    let last: Option<Uuid> =
+        sqlx::query_scalar("select last_run_id from scheduled_tasks where id = $1")
+            .bind(id)
+            .fetch_one(&mut *tx)
+            .await
+            .unwrap();
+    tx.commit().await.unwrap();
+    assert_eq!(last, Some(turn.run_id));
+    api.idle().await;
 }

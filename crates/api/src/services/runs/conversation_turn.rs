@@ -14,6 +14,7 @@ use mimorya_db::repositories::conversations::{
 use mimorya_db::repositories::runs::{
     NewRun, RunRow, RunStatus, create_run, list_runs_for_conversation,
 };
+use mimorya_db::repositories::scheduled_tasks::link_started_run;
 use serde_json::json;
 use uuid::Uuid;
 
@@ -106,6 +107,10 @@ pub async fn open_conversation_turn(
         },
     )
     .await?;
+    // Its task's last run before it can run (ADR-080, ADR-082).
+    if let TurnSender::Schedule { task_id } = sender {
+        link_started_run(tx, task_id, conversation_id, run.id).await?;
+    }
     let action = "agent.run.started";
     let started = match sender {
         TurnSender::User => {

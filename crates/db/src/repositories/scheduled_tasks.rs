@@ -197,6 +197,27 @@ pub async fn reschedule_task(
     Ok(())
 }
 
+/// Makes `run_id`, in `conversation_id`, the last run an occurrence of the
+/// task `id` started, in the transaction that opens it: before it can run,
+/// and so pause, the next occurrence waits for it and its author is told of
+/// its requests (ADR-082).
+pub async fn link_started_run(
+    conn: &mut PgConnection,
+    id: Uuid,
+    conversation_id: Uuid,
+    run_id: Uuid,
+) -> sqlx::Result<()> {
+    sqlx::query(
+        "update scheduled_tasks set last_conversation_id = $2, last_run_id = $3 where id = $1",
+    )
+    .bind(id)
+    .bind(conversation_id)
+    .bind(run_id)
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
 /// Records what became of an occurrence of the task `id`, leaving when it
 /// runs next as it is (its author may have changed it meanwhile). One that
 /// started no run keeps the last run started, and its conversation: the

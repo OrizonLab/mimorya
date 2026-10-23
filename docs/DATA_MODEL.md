@@ -179,8 +179,8 @@ Phase 2 : `skill_eval_runs`, `documents` / `document_chunks` (GED, ingestion),
   terminées, ADR-071), `system_due_scheduled_tasks` (lister les tâches planifiées dues,
   par lots : entreprise et identifiant seulement, chacune lancée ensuite dans sa propre
   entreprise, ADR-080) et `system_unnotified_scheduled_runs` (lister, au démarrage, les
-  runs de tâches planifiées dont un arrêt du service a perdu l'avis à leur auteur :
-  entreprise et identifiant seulement, ADR-082).
+  runs de tâches planifiées dont un arrêt du service a perdu l'avis à leur auteur, pour
+  des demandes pas encore expirées : entreprise et identifiant seulement, ADR-082).
 
 ## 5. Rétention (valeurs par défaut, configurables par entreprise)
 

@@ -6,7 +6,7 @@
 
 use chrono::{DateTime, Utc};
 
-use super::message::risk_label;
+use super::wording::{Phrases, phrases, risk_label};
 use crate::mail::{Mail, expiry_label};
 
 pub struct AuthorMail<'a> {
@@ -39,26 +39,16 @@ pub fn author_mail(notice: &AuthorMail<'_>) -> Mail {
         expires_at,
     } = notice;
     let labels: Vec<&str> = risks.iter().map(|r| risk_label(r)).collect();
-    let (what, risk_word, see, waiting, first) = if *count == 1 {
-        (
-            "une action".to_owned(),
-            "risque",
-            "l’action et ses paramètres exacts, puis la valider ou la refuser",
-            "Tant que la demande attend",
-            "Elle expire",
-        )
+    let Phrases {
+        risk_word,
+        see,
+        waiting,
+        expires: first,
+    } = phrases(*count, labels.len());
+    let what = if *count == 1 {
+        "une action".to_owned()
     } else {
-        (
-            format!("{count} actions"),
-            if labels.len() == 1 {
-                "risque"
-            } else {
-                "risques"
-            },
-            "les actions et leurs paramètres exacts, puis les valider ou les refuser",
-            "Tant que les demandes attendent",
-            "Elles expirent",
-        )
+        format!("{count} actions")
     };
     let until = match expires_at {
         Some(at) => format!(" {first} le {}.", expiry_label(*at)),

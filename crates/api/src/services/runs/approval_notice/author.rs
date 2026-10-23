@@ -6,6 +6,7 @@
 //! sent at startup (ADR-070). Each request notified is audited as a
 //! manager's notice is, without the address nor the relay's answer.
 
+use chrono::{DateTime, Utc};
 use mimorya_db::repositories::approval_notices::{NOTIFIED, NoticeRun};
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::scheduled_run_notices::{
@@ -16,6 +17,7 @@ use uuid::Uuid;
 
 use super::ApprovalNotifier;
 use super::author_mail::{AuthorMail, author_mail};
+use super::wording::{distinct_risks, sent};
 use crate::mail::Mailer;
 
 impl ApprovalNotifier {
@@ -35,13 +37,14 @@ impl ApprovalNotifier {
     }
 
     /// Tells authors, in the background, of the requests a stop of the
-    /// service kept from them; how many. Called at startup with the
+    /// service kept from them, not expired by `now`, whatever their deadline
+    /// (authors have no reminder); how many. Called at startup with the
     /// managers' catch-up, before runs are taken up or decisions served.
-    pub(super) async fn catch_up_authors(&self) -> anyhow::Result<usize> {
+    pub(super) async fn catch_up_authors(&self, now: DateTime<Utc>) -> anyhow::Result<usize> {
         let mut lost = 0;
-        for run in unnotified_scheduled_runs(self.db.pool()).await? {
+        for run in unnotified_scheduled_runs(self.db.pool(), now).await? {
             // One run failing leaves the others to catch up.
-            match self.catch_up_author(run).await {
+            match self.catch_up_author(run, now).await {
                 Ok(count) => lost += count,
                 Err(error) => tracing::warn!(
                     run_id = %run.run_id,
@@ -53,9 +56,9 @@ impl ApprovalNotifier {
         Ok(lost)
     }
 
-    async fn catch_up_author(&self, run: NoticeRun) -> anyhow::Result<usize> {
+    async fn catch_up_author(&self, run: NoticeRun, now: DateTime<Utc>) -> anyhow::Result<usize> {
         let mut tx = self.db.begin(run.tenant_id).await?;
-        let requests = author_notices_never_sent(&mut tx, run.run_id).await?;
+        let requests = author_notices_never_sent(&mut tx, run.run_id, now).await?;
         tx.commit().await?;
         let ids = requests.iter().map(|request| request.approval_id).collect();
         self.notify(run.tenant_id, run.run_id, ids);
@@ -72,12 +75,7 @@ impl ApprovalNotifier {
         let Some(first) = requests.first() else {
             return Ok(());
         };
-        let mut risks: Vec<&str> = Vec::new();
-        for request in requests {
-            if !risks.contains(&request.risk.as_str()) {
-                risks.push(&request.risk);
-            }
-        }
+        let risks = distinct_risks(requests.iter().map(|r| r.risk.as_str()));
         let link = match first.conversation_id {
             Some(conversation) => format!("{}/chat/{conversation}", self.web_origin),
             None => format!("{}/approvals", self.web_origin),
@@ -93,13 +91,7 @@ impl ApprovalNotifier {
             link: &link,
             expires_at: requests.iter().filter_map(|r| r.expires_at).min(),
         });
-        let outcome = match mailer.send(&mail).await {
-            Ok(()) => "success",
-            Err(_) => {
-                tracing::warn!(run_id = %first.run_id, "Scheduled task e-mail refused by the relay");
-                "failure"
-            }
-        };
+        let outcome = sent(mailer, &mail, first.run_id, "author notice").await;
         let mut tx = self.db.begin(tenant_id).await?;
         for request in requests {
             let metadata =

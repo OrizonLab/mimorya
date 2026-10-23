@@ -3420,9 +3420,11 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
   prévoyait de l'en prévenir.
 - **Décision** :
   - quand le run qu'une tâche a lancé en dernier se met en pause, l'auteur reçoit un e-mail
-    pour les demandes qu'il décide lui-même. Celles confiées à un responsable sont annoncées
-    à ce responsable seul (ADR-060). Un run que l'auteur suit dans une conversation à lui
-    ne l'est pas : il le voit ;
+    pour les demandes qu'il décide lui-même, si son compte et son entreprise sont actifs.
+    Celles confiées à un responsable sont annoncées à ce responsable seul (ADR-060). Un run
+    que l'auteur suit dans une conversation à lui ne l'est pas : il le voit. Le run est
+    lié à sa tâche dans la transaction qui l'ouvre : avant de pouvoir s'exécuter, donc se
+    mettre en pause ;
   - un e-mail par pause : le nom de la tâche, le nombre d'actions et leurs risques,
     l'échéance et le lien vers la conversation du run, où elles se décident. Ni les
     actions ni leurs paramètres : le message quitte la plateforme ;
@@ -3432,8 +3434,8 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     pas renvoyé ;
   - si un arrêt du service a perdu l'e-mail, il est envoyé au démarrage suivant, comme
     l'avis à un responsable (ADR-070), via `system_unnotified_scheduled_runs` (entreprise
-    et identifiant seulement). Il n'y a pas de relance la veille de l'échéance, et l'avis
-    perdu est donc envoyé quelle que soit son échéance ;
+    et identifiant seulement). Il n'y a pas de relance la veille de l'échéance : l'avis
+    perdu est envoyé pour toute demande pas encore expirée, même proche de son échéance ;
   - sans relais SMTP, rien n'est envoyé.
 - **Alternatives écartées** :
   - prévenir l'auteur de toute pause, même dans une conversation qu'il suit : il est
@@ -3443,6 +3445,10 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     le dit.
 - **Conséquences** :
   - aucune donnée nouvelle : la trace d'audit existante sert à n'annoncer qu'une fois ;
+  - une décision reprend le même run : une seconde pause après une décision prise dans la
+    conversation renvoie un e-mail à l'auteur, qui est pourtant devant. C'est conforme à
+    « un e-mail par pause », mais à réévaluer à l'usage (ne prévenir que de la première
+    pause, par exemple) ;
   - restent le worker séparé, la reprise par bail et les missions longues ;
   - tests :
     - `crates/api/src/services/runs/approval_notice/author_mail.rs` : texte du message ;
@@ -3452,5 +3458,12 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
         lui-même ;
       - une demande confiée à un responsable annoncée à lui seul ;
       - l'auteur ignore les demandes qu'il ne décide pas ;
+      - un message refusé par le relais tracé en échec, et pas renvoyé ;
+    - `crates/api/tests/scheduled_run_notice_catch_up.rs` :
       - l'avis perdu envoyé au démarrage, une fois ;
+      - ni pour un auteur désactivé, ni dans une entreprise suspendue, ni pour une demande
+        expirée ;
+      - celui d'une autre entreprise envoyé et tracé chez elle seule ;
+    - `crates/api/tests/scheduled_task_firing.rs` : le run est lié à sa tâche dès son
+      ouverture ;
     - `crates/db/tests/definer_functions.rs` : la nouvelle fonction est connue.

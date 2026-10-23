@@ -26,6 +26,7 @@ pub mod resets;
 pub mod runs;
 pub mod saml_provider;
 pub mod scheduled;
+pub mod scheduled_notices;
 pub mod sso;
 pub mod sweeps;
 
