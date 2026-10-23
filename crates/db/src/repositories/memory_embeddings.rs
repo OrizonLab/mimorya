@@ -88,6 +88,18 @@ pub async fn index_progress(conn: &mut PgConnection, model: &str) -> sqlx::Resul
     .await
 }
 
+/// Whether the company's active memory awaits vectors of `model`: written
+/// or approved since, or embedded by another model before.
+pub async fn awaits_embeddings(conn: &mut PgConnection, model: &str) -> sqlx::Result<bool> {
+    sqlx::query_scalar(
+        "select exists (select 1 from memory_items where status = 'active' \
+         and embedding_model is distinct from $1)",
+    )
+    .bind(model)
+    .fetch_one(conn)
+    .await
+}
+
 /// The active companies whose memory awaits vectors of the model they chose.
 pub async fn tenants_awaiting_embeddings(pool: &PgPool) -> sqlx::Result<Vec<Uuid>> {
     sqlx::query_scalar("select system_tenants_awaiting_embeddings()")

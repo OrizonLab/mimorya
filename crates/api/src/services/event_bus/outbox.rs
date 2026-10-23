@@ -46,10 +46,11 @@ impl Outbox {
         }
     }
 
-    /// Sends the deltas, as `origin`'s, until the bus is gone.
-    pub async fn send_all(mut self, db: Database, origin: Uuid) {
+    /// Sends the deltas, as `origin`'s, until the bus is gone; `listens`
+    /// says whether this process listens too (a worker does not, ADR-085).
+    pub async fn send_all(mut self, db: Database, origin: Uuid, listens: bool) {
         while let Some(delta) = self.next_batch().await {
-            if !self.others_listen(&db).await {
+            if !self.others_listen(&db, listens).await {
                 continue;
             }
             let payloads = Notice::deltas(origin, delta.run_id, delta.after, &delta.text);
@@ -63,15 +64,15 @@ impl Outbox {
     }
 
     /// Whether another process than this one listens to the run events.
-    async fn others_listen(&mut self, db: &Database) -> bool {
+    async fn others_listen(&mut self, db: &Database, listens: bool) -> bool {
         if let Some((checked, others)) = self.others
             && checked.elapsed() < LISTENERS_HOLD
         {
             return others;
         }
-        // This one's listener among them, when connected.
+        // This one's listener among them, when it listens and is connected.
         let others = match run_event_listeners(db.pool()).await {
-            Ok(listeners) => listeners > 1,
+            Ok(listeners) => listeners > i64::from(listens),
             Err(error) => {
                 tracing::debug!(
                     error = format!("{error:#}"),

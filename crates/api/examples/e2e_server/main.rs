@@ -22,7 +22,8 @@
 //! up the runs a stop left, among them the one it leaves itself
 //! (`interrupted`, ADR-053); then fires the scheduled tasks due every
 //! minute, among them one a stop made miss its occurrence (`scheduled`,
-//! ADR-080).
+//! ADR-080), and claims the queued runs, among them one it leaves itself
+//! and holds until the browser followed it (`queued`, ADR-085).
 
 mod dns_server;
 #[allow(dead_code)] // the API's tests use the rest
@@ -34,6 +35,7 @@ mod identity_provider;
 mod interrupted;
 mod lessons;
 mod mailbox;
+mod queued;
 mod saml_idp;
 #[allow(dead_code)] // the API's tests use the rest
 #[path = "../../tests/support/saml_provider.rs"]
@@ -94,7 +96,8 @@ async fn main() -> anyhow::Result<()> {
     for hour in SCENARIO_HOURS {
         model.push(scenario::reference(hour));
     }
-    let platform: Arc<dyn LlmProvider> = Arc::new(lessons::WithLessons::new(model));
+    let conversations = Arc::new(queued::WithQueued::new(model));
+    let platform: Arc<dyn LlmProvider> = Arc::new(lessons::WithLessons::new(conversations));
     // A company's own provider answers « OK » (its connection test).
     let factory: ProviderFactory = Arc::new(|_config| {
         let provider: Arc<dyn LlmProvider> = Arc::new(ScriptedProvider::new(
@@ -140,6 +143,7 @@ async fn main() -> anyhow::Result<()> {
     .await?;
     interrupted::leave(&app).await?;
     scheduled::leave(&app).await?;
+    queued::leave(&app).await?;
     let listener = tokio::net::TcpListener::bind(&address).await?;
     app.services.runs.claim_execution().await?;
     let taken = app.recover_interrupted_runs().await?;

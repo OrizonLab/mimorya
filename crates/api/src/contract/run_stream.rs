@@ -26,6 +26,7 @@ pub enum RunStreamEvent {
     Verification(VerificationEvent),
     Usage(UsageEvent),
     RunResumed(RunResumed),
+    RunQueued(RunQueued),
     RunFinished(RunFinished),
 }
 
@@ -173,6 +174,12 @@ pub struct RunResumed {
     /// were lost (tool names).
     pub interrupted: Vec<String>,
 }
+
+/// The run waits for a worker to execute it (ADR-085): what it does next
+/// follows once one claims it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+pub struct RunQueued {}
 
 /// The run stopped: ended, or paused for a validation (`awaiting_approval`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]

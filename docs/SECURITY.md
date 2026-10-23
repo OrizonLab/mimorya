@@ -57,7 +57,11 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   des identifiants de runs et des numéros d'événements, que chaque processus relit dans
   le journal du run, dans l'entreprise de l'abonné dont le flux a vérifié que le run lui
   appartient, et les fragments de texte du modèle, remis aux seuls abonnés de ce run.
-  Aucun autre rôle que l'applicatif et le propriétaire ne se connecte à la base.
+  Les canaux de la file des runs (`mimorya_run_queue`, sans contenu) et des invalidations
+  de caches (`mimorya_invalidations` : une sorte et un identifiant d'entreprise ou
+  d'instance de connecteur, ADR-085) ne portent rien d'autre : une annonce ne fait que
+  vider un cache, relu ensuite dans l'entreprise concernée. Aucun autre rôle que
+  l'applicatif et le propriétaire ne se connecte à la base.
 - Tests d'intégration obligatoires : lecture croisée impossible même par requête
   directe, insertion croisée refusée, absence de contexte = aucune ligne.
 
@@ -308,7 +312,10 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
       d'outils déjà obtenus, l'outil en cours d'exécution (délai borné), le registre
       d'outils jusqu'à la pause ou la fin et le niveau d'autonomie. Les règles de
       l'entreprise (rôles, politiques) viennent de son cache, invalidé par chaque
-      changement d'administration de cette instance de l'API.
+      changement d'administration dans tous les processus (`api`, `worker`) : le
+      processus qui l'a fait l'annonce aux autres (ADR-085), au mieux ; une annonce
+      perdue, l'écart reste borné par la durée de vie du cache (30 s), et un processus
+      reconnecté au canal vide ses caches.
 
 ## 6. Sécurité de l'agent
 

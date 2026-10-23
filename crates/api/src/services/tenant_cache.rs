@@ -55,6 +55,13 @@ impl<T> TenantCache<T> {
         state.entries.remove(&tenant_id);
         state.generation += 1;
     }
+
+    /// Every tenant's value, as if each were invalidated.
+    pub fn invalidate_all(&self) {
+        let mut state = self.state.lock().expect("tenant cache");
+        state.entries.clear();
+        state.generation += 1;
+    }
 }
 
 #[cfg(test)]
@@ -84,6 +91,21 @@ mod tests {
         let generation = cache.get(TENANT).unwrap_err();
         assert!(cache.store(TENANT, generation, Arc::new("fresh")));
         assert_eq!(*cache.get(TENANT).unwrap(), "fresh");
+    }
+
+    #[test]
+    fn forgets_every_tenant_at_once() {
+        let cache = TenantCache::new(Duration::from_secs(30));
+        let other = Uuid::from_u128(2);
+        let generation = cache.get(TENANT).unwrap_err();
+        assert!(cache.store(TENANT, generation, Arc::new("v1")));
+        assert!(cache.store(other, generation, Arc::new("v1")));
+        // A third one loading meanwhile.
+        let third = Uuid::from_u128(3);
+        let loading = cache.get(third).unwrap_err();
+        cache.invalidate_all();
+        assert!(cache.get(TENANT).is_err() && cache.get(other).is_err());
+        assert!(!cache.store(third, loading, Arc::new("stale")));
     }
 
     #[test]

@@ -3609,3 +3609,81 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     les runs avec eux : à surveiller (`pg_notification_queue_usage()`) avant le lot 3 ;
   - tests : `crates/api/tests/run_event_relay.rs` et, pour les pannes (lecture refusée,
     connexion d'écoute coupée puis refusée), `run_event_relay_faults.rs`.
+
+## ADR-085 — Worker séparé : rôles `api` et `worker`, file d'attente des runs (troisième lot, première partie)
+
+- **Date** : 2026-10-23 · **Statut** : acceptée · complète ADR-083 et ADR-084
+- **Contexte** : les runs s'exécutent sous bail (ADR-083) et leurs événements passent
+  d'un processus à l'autre par PostgreSQL (ADR-084). Reste à séparer l'API, qui sert le
+  HTTP, de l'exécution, pour redéployer l'une sans couper l'autre et multiplier les
+  instances de l'API. Le lot 3 de l'ADR-083 est découpé en trois : les rôles et la file
+  d'attente (ce lot), la fin du verrou d'instance unique (plusieurs workers), puis les
+  piles Docker.
+- **Décision** :
+  - un même programme, lancé dans l'un de trois rôles (`MIMORYA_ROLE`) :
+    - `all` (par défaut, comme avant) : sert l'API et exécute les runs, en instance
+      unique ;
+    - `api` : sert l'API, plusieurs instances possibles. Il n'exécute aucun run, ne prend
+      pas le verrou d'exécution, et n'a d'autre tâche de fond que le relais des
+      événements (ADR-084) ;
+    - `worker` : exécute les runs, dont ceux mis en file, et toutes les tâches de fond
+      (maintenance, demandes échues et relances, tâches planifiées, baux, indexation de
+      la mémoire) ; il ne sert pas de HTTP. Un seul processus `all` ou `worker` à la fois
+      (verrou d'exécution, ADR-053), jusqu'au lot suivant ;
+  - un run qu'un processus `api` lance (nouveau tour de conversation) ou relance (décision
+    sur une demande) passe en `queued` dans la transaction même qui le crée ou le relance,
+    au lieu de prendre un bail, et son journal le dit (événement `run_queued`, que le
+    suivi en direct affiche « En file » jusqu'à ce qu'un worker le démarre ou le
+    reprenne). Un avis sur le canal `mimorya_run_queue` réveille le worker à la
+    validation ; celui-ci relit aussi la file toutes les 5 s, par lots de 100 tant
+    qu'il en réserve, et s'arrête entre deux runs quand le service s'arrête ;
+  - le worker liste les runs en file par `system_queued_runs` (entreprise et identifiant
+    seulement), puis réserve chacun dans son entreprise (`FOR UPDATE SKIP LOCKED` : un run
+    en cours de réservation est sauté sans attendre), le passe en `running` sous son bail
+    dans la même transaction, puis l'exécute comme l'aurait fait l'API :
+    - un run jamais exécuté repart de sa conversation : ses messages précédents, puis
+      sa demande, retrouvée par l'identifiant que le run en garde
+      (`agent_runs.request_message_id`) ; une demande introuvable termine le run ;
+    - un run qui a enregistré une étape reprend de celle-ci, avec l'issue de ses
+      demandes ;
+    - les droits sont ceux de la personne pour qui il agit, tels qu'ils sont à cet
+      instant : un compte désactivé, une entreprise suspendue ou l'usage de l'agent
+      retiré entre-temps terminent le run avant qu'il ne démarre ;
+  - un run resté plus d'une heure en file n'est pas exécuté : il se termine, comme un run
+    qu'un arrêt a interrompu trop longtemps (ADR-053) ;
+  - un run en file bloque un nouveau tour dans sa conversation, comme un run en cours ;
+  - le worker, qui n'écoute pas les événements, envoie le texte du modèle dès qu'un autre
+    processus écoute (ADR-084) ;
+  - les caches que chaque processus garde (accès d'une entreprise, son modèle, son modèle
+    d'embeddings, instances de connecteurs) et le réveil de l'indexation sont partagés :
+    le processus qui modifie applique la modification chez lui, puis l'annonce aux autres
+    sur le canal `mimorya_invalidations` (`{origin, kind, id}`), une fois sa transaction
+    validée ; chacun applique celles des autres, sans les annoncer de nouveau
+    (`services/invalidations/`). Une politique écrite par un processus `api` vaut donc
+    aussitôt dans le worker (ADR-035). L'annonce est au mieux : une annonce perdue, la
+    courte durée de vie des caches (une minute au plus) borne l'écart ; un processus qui
+    perd sa connexion au canal vide ses caches une fois reconnecté. Les connecteurs gardent
+    leurs instances, dont chaque usage vérifie la version ;
+  - l'échec de la dernière passe d'indexation d'une entreprise est enregistré avec son
+    choix de modèle (`tenant_embedding_settings.indexing_failure`), non plus dans la
+    mémoire du processus qui indexe : le worker l'écrit, un processus `api` le montre. Il
+    s'efface quand une passe réussit ou que le choix change, et n'est pas montré quand
+    rien n'attend plus d'être indexé.
+- **Alternatives écartées** :
+  - une file externe : une infrastructure de plus, quand la table des runs et
+    `SKIP LOCKED` suffisent ;
+  - garder le mode d'exécution du run en base : il se déduit de son point de reprise (aucun
+    pour un nouveau tour) et de ses demandes ;
+  - la relecture périodique seule : jusqu'à 5 s d'attente avant chaque réponse ;
+  - des caches sans invalidation entre processus, à durée de vie raccourcie : un retrait
+    de droits n'y serait plus immédiat ;
+  - des caches en base ou dans un service externe : une lecture de plus à chaque requête,
+    ou une infrastructure de plus, pour des données qui changent rarement.
+- **Conséquences** :
+  - en instance unique (`all`), rien ne change pour l'utilisateur. Côté exploitation,
+    le processus ouvre deux connexions d'écoute de plus (file et invalidations), relit
+    `system_queued_runs` toutes les 5 s et envoie un `NOTIFY` par invalidation ;
+  - un processus `api` sans worker laisse les runs en file : leur suivi montre « En file » ;
+  - tests : `crates/api/tests/run_queue.rs`, `run_queue_access.rs`, `shared_caches.rs` ;
+    parcours web `apps/web/e2e/queued-run.spec.ts` (un run en file que le serveur de bout
+    en bout retient jusqu'à ce que le navigateur le suive).

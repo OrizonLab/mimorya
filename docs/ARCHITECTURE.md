@@ -55,7 +55,12 @@ flowchart LR
   sans l'action (ADR-061), leurs responsables relancés la veille (ADR-062). Chaque run
   s'exécute sous le bail de son exécuteur, renouvelé tant qu'il s'exécute ; celui dont le
   bail a expiré est repris sans attendre un redémarrage (ADR-083, premier lot du worker).
-  Le worker sera le même code lancé avec un autre rôle (ADR-083).
+  Le worker est le même programme lancé avec un autre rôle (`MIMORYA_ROLE`, ADR-085) :
+  `all` (par défaut, en instance unique), `api` (sert le HTTP ; les runs qu'il lance
+  attendent en file) ou `worker` (exécute les runs en file et les tâches de fond). Les
+  caches que chaque processus garde (accès, modèle, modèle d'embeddings, connecteurs) se
+  vident ensemble : une modification faite dans l'un est annoncée aux autres sur le canal
+  PostgreSQL `mimorya_invalidations`.
 
 Pourquoi pas des microservices : une équipe réduite, un domaine encore mouvant et des
 transactions qui traversent plusieurs modules (autorisation + audit + exécution). Les
@@ -161,7 +166,9 @@ sequenceDiagram
 
 ### 4.2 Mission longue et reprise
 
-1. La mission crée un `agent_run` en statut `queued`.
+1. Un processus `api` crée le run (ou le relance après une décision) en statut `queued`,
+   l'inscrit dans son journal (`run_queued`, affiché « En file ») et réveille le worker
+   (canal `mimorya_run_queue`) ; en rôle `all`, il l'exécute lui-même (ADR-085).
 2. Un worker le réserve (`FOR UPDATE SKIP LOCKED`, bail `lease_expires_at`).
 3. Chaque étape est **persistée** (messages, événements, état) : en cas d'arrêt, un
    autre worker reprend au dernier point de contrôle une fois le bail expiré.
@@ -287,11 +294,11 @@ qu'au-delà de ce que PostgreSQL tient.
 
 ## 11. Déploiement
 
-| Mode          | Description                                                                                             |
-| ------------- | ------------------------------------------------------------------------------------------------------- |
-| Développement | `docker compose up db` + `cargo run --bin mimorya-api` / `pnpm dev:web`                                 |
-| Privé (PME)   | `docker compose` : web, api (worker embarqué), PostgreSQL ; sauvegardes `pg_dump`/WAL                   |
-| SaaS          | Images web/api/worker séparées, PostgreSQL managé, montée en charge horizontale de l'API et des workers |
+| Mode          | Description                                                                                               |
+| ------------- | --------------------------------------------------------------------------------------------------------- |
+| Développement | `docker compose up db` + `cargo run --bin mimorya-api` / `pnpm dev:web`                                   |
+| Privé (PME)   | `docker compose` : web, api (rôle `all`, worker embarqué), PostgreSQL ; sauvegardes `pg_dump`/WAL         |
+| SaaS          | Même image en rôles `api` (plusieurs) et `worker` (ADR-085), PostgreSQL managé, montée en charge de l'API |
 
 Configuration exclusivement par variables d'environnement (voir `.env.example`).
 Les secrets d'infrastructure (clé maître de chiffrement, clés LLM) viennent de

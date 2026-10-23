@@ -42,6 +42,16 @@ pub async fn start_indexing() -> TestApi {
     TestApi::start_indexing(&ENV).await
 }
 
+/// `start`, in the role `role` (ADR-085).
+pub async fn start_as(role: &str) -> TestApi {
+    TestApi::start_with(&[ENV[0], ENV[1], ("MIMORYA_ROLE", role)]).await
+}
+
+/// `start_indexing`, in the role `role`.
+pub async fn start_indexing_as(role: &str) -> TestApi {
+    TestApi::start_indexing(&[ENV[0], ENV[1], ("MIMORYA_ROLE", role)]).await
+}
+
 /// Chooses the test model at `ENDPOINT`, the vectors close from
 /// `min_similarity`.
 pub async fn choose(admin: &Client<'_>, model: &str, min_similarity: f32) {

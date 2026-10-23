@@ -19,6 +19,13 @@ import {
 } from '@/lib/api';
 import { useRunStream } from './use-run-stream';
 
+/** A run the conversation still follows: waiting for a worker, under way, or paused. */
+const ACTIVE: ReadonlySet<RunStatus> = new Set<RunStatus>([
+  'queued',
+  'running',
+  'awaiting_approval',
+]);
+
 /**
  * State of the chat screen: the conversation list, the open conversation,
  * its active run (streamed) and the approvals that run is waiting for.
@@ -65,7 +72,7 @@ export function useConversation(conversationId: string | null) {
     try {
       const d = await api.get<ConversationDetail>(`/conversations/${conversationId}`);
       setDetail(d);
-      const active = d.runs.find((r) => r.status === 'running' || r.status === 'awaiting_approval');
+      const active = d.runs.find((r) => ACTIVE.has(r.status));
       setActiveRunId(active?.id ?? null);
       // A run waiting for a validation announces it again on its stream, which
       // replays its events: its approvals are loaded then, not twice.

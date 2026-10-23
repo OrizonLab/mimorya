@@ -58,7 +58,7 @@ pub async fn put_embedding_settings(
          values ($1, $2, $3, $4, $5, $6) \
          on conflict (tenant_id) do update set provider = excluded.provider, \
          model = excluded.model, base_url = excluded.base_url, \
-         min_similarity = excluded.min_similarity, \
+         min_similarity = excluded.min_similarity, indexing_failure = null, \
          updated_by_user_id = excluded.updated_by_user_id, updated_at = now()",
     )
     .bind(settings.tenant_id)
@@ -78,4 +78,30 @@ pub async fn delete_embedding_settings(conn: &mut PgConnection) -> sqlx::Result<
         .execute(conn)
         .await?;
     Ok(result.rows_affected() > 0)
+}
+
+/// Why the last pass of the company's indexing failed, if it did.
+pub async fn indexing_failure(conn: &mut PgConnection) -> sqlx::Result<Option<String>> {
+    let failure: Option<Option<String>> =
+        sqlx::query_scalar("select indexing_failure from tenant_embedding_settings")
+            .fetch_optional(conn)
+            .await?;
+    Ok(failure.flatten())
+}
+
+/// Records how the last pass of the company's indexing ended (`None`: it
+/// succeeded); the caller checked, under `lock_embedding_settings`, that
+/// the pass followed the choice as it stands.
+pub async fn set_indexing_failure(
+    conn: &mut PgConnection,
+    failure: Option<&str>,
+) -> sqlx::Result<()> {
+    sqlx::query(
+        "update tenant_embedding_settings set indexing_failure = $1 \
+         where indexing_failure is distinct from $1",
+    )
+    .bind(failure)
+    .execute(conn)
+    .await?;
+    Ok(())
 }

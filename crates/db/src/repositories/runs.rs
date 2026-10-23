@@ -80,6 +80,9 @@ pub struct RunRow {
     /// The last event of the run's journal when its state was last saved
     /// (ADR-053).
     pub checkpoint_seq: Option<i32>,
+    /// The turn's request (its user message), when started from a
+    /// conversation (ADR-085).
+    pub request_message_id: Option<Uuid>,
 }
 
 impl RunRow {
@@ -89,9 +92,9 @@ impl RunRow {
     }
 }
 
-const RUN_COLUMNS: &str = "id, tenant_id, conversation_id, initiated_by_user_id, on_behalf_of_user_id, \
+pub(super) const RUN_COLUMNS: &str = "id, tenant_id, conversation_id, initiated_by_user_id, on_behalf_of_user_id, \
     status, objective, success_criteria, autonomy_level, budget, usage, state, result, verification, \
-    error, started_at, finished_at, created_at, updated_at, checkpoint_seq";
+    error, started_at, finished_at, created_at, updated_at, checkpoint_seq, request_message_id";
 
 #[derive(Debug, Clone)]
 pub struct NewRun {
@@ -103,14 +106,17 @@ pub struct NewRun {
     pub success_criteria: Vec<String>,
     pub autonomy_level: AutonomyLevel,
     pub budget: Value,
+    /// The turn's request (its user message), if any.
+    pub request_message_id: Option<Uuid>,
 }
 
 /// Creates a run in the `running` state.
 pub async fn create_run(conn: &mut PgConnection, input: NewRun) -> sqlx::Result<RunRow> {
     sqlx::query_as(&format!(
         "insert into agent_runs (tenant_id, conversation_id, initiated_by_user_id, on_behalf_of_user_id, \
-         objective, success_criteria, autonomy_level, budget, status, started_at) \
-         values ($1, $2, $3, $4, $5, $6, $7, $8, 'running', now()) returning {RUN_COLUMNS}"
+         objective, success_criteria, autonomy_level, budget, request_message_id, status, \
+         started_at) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'running', now()) \
+         returning {RUN_COLUMNS}"
     ))
     .bind(input.tenant_id)
     .bind(input.conversation_id)
@@ -120,6 +126,7 @@ pub async fn create_run(conn: &mut PgConnection, input: NewRun) -> sqlx::Result<
     .bind(sqlx::types::Json(&input.success_criteria))
     .bind(input.autonomy_level.as_str())
     .bind(&input.budget)
+    .bind(input.request_message_id)
     .fetch_one(conn)
     .await
 }

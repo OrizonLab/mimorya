@@ -167,3 +167,20 @@ fn the_end_to_end_tests_use_a_refused_key() {
         "{line}"
     );
 }
+
+#[test]
+fn reads_what_the_process_does() {
+    assert_eq!(load(&[DB]).unwrap().role, ProcessRole::All);
+    for (value, role) in [
+        ("all", ProcessRole::All),
+        ("api", ProcessRole::Api),
+        ("worker", ProcessRole::Worker),
+    ] {
+        assert_eq!(load(&[DB, ("MIMORYA_ROLE", value)]).unwrap().role, role);
+    }
+    let refused = load(&[DB, ("MIMORYA_ROLE", "both")]).unwrap_err();
+    assert!(refused.to_string().contains("MIMORYA_ROLE"));
+    assert!(ProcessRole::All.serves_http() && ProcessRole::All.executes_runs());
+    assert!(ProcessRole::Api.serves_http() && !ProcessRole::Api.executes_runs());
+    assert!(!ProcessRole::Worker.serves_http() && ProcessRole::Worker.executes_runs());
+}

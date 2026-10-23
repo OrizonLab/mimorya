@@ -14,7 +14,7 @@ use async_trait::async_trait;
 use mimorya_agent::runtime::{ACCOUNT_INACTIVE, AccessSource, CurrentAccess, StepAccess};
 use uuid::Uuid;
 
-use crate::services::access::AccessService;
+use crate::services::access::{AccessContext, AccessService};
 
 /// Why a run stops once its user lost the right to use the agent.
 pub const AGENT_USE_WITHDRAWN: &str =
@@ -38,27 +38,31 @@ impl RunAccess {
     }
 }
 
+/// Why a run may not go on for whom it acts for, given their access as it
+/// stands (`None`: their account is no longer active); `None` when it may.
+/// Read before each step, and before a queued run starts (ADR-085).
+pub(super) fn stopped_by(context: Option<&AccessContext>) -> Option<&'static str> {
+    match context {
+        None => Some(ACCOUNT_INACTIVE),
+        Some(context) if context.tenant.status != "active" => Some(COMPANY_SUSPENDED),
+        Some(context) if !context.has("agent:use") => Some(AGENT_USE_WITHDRAWN),
+        Some(_) => None,
+    }
+}
+
 #[async_trait]
 impl AccessSource for RunAccess {
     async fn current(&self) -> anyhow::Result<StepAccess> {
-        Ok(
-            match self
-                .access
-                .active_context(self.tenant_id, self.user_id)
-                .await?
-            {
-                None => StepAccess::Ended(ACCOUNT_INACTIVE.into()),
-                Some(context) if context.tenant.status != "active" => {
-                    StepAccess::Ended(COMPANY_SUSPENDED.into())
-                }
-                Some(context) if !context.has("agent:use") => {
-                    StepAccess::Ended(AGENT_USE_WITHDRAWN.into())
-                }
-                Some(context) => StepAccess::Granted(CurrentAccess {
-                    engine: context.engine,
-                    subject: context.subject,
-                }),
-            },
-        )
+        let context = self
+            .access
+            .active_context(self.tenant_id, self.user_id)
+            .await?;
+        Ok(match (stopped_by(context.as_ref()), context) {
+            (None, Some(context)) => StepAccess::Granted(CurrentAccess {
+                engine: context.engine,
+                subject: context.subject,
+            }),
+            (why, _) => StepAccess::Ended(why.unwrap_or(ACCOUNT_INACTIVE).into()),
+        })
     }
 }

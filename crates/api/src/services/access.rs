@@ -16,6 +16,7 @@ use mimorya_db::repositories::org::{
 };
 use uuid::Uuid;
 
+use super::invalidations::{Invalidation, Invalidations};
 use super::tenant_cache::TenantCache;
 
 /// The signed-in user, as resolved from the session cookie.
@@ -97,18 +98,32 @@ struct TenantAccess {
 pub struct AccessService {
     db: Database,
     cache: TenantCache<TenantAccess>,
+    invalidations: Invalidations,
 }
 
 impl AccessService {
-    pub fn new(db: Database) -> Self {
+    pub fn new(db: Database, invalidations: Invalidations) -> Self {
         Self {
             db,
             cache: TenantCache::new(Duration::from_secs(30)),
+            invalidations,
         }
     }
 
+    /// After a change of the company's organization, roles or policies:
+    /// loaded again, here and in the other processes.
     pub fn invalidate(&self, tenant_id: Uuid) {
+        self.forget(tenant_id);
+        self.invalidations.announce(Invalidation::Access(tenant_id));
+    }
+
+    /// Loaded again here: another process changed the company.
+    pub(crate) fn forget(&self, tenant_id: Uuid) {
         self.cache.invalidate(tenant_id);
+    }
+
+    pub(crate) fn forget_all(&self) {
+        self.cache.invalidate_all();
     }
 
     pub async fn context(&self, identity: AuthIdentity) -> anyhow::Result<AccessContext> {

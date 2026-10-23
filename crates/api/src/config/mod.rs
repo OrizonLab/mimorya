@@ -22,9 +22,39 @@ pub enum Environment {
     Production,
 }
 
+/// What a process does (ADR-085): everything, or one side of it. Several
+/// `api` processes may serve the same database; one `worker` (or `all`)
+/// executes the runs they queue.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ProcessRole {
+    /// Serves the HTTP API and executes runs, as a single instance.
+    #[default]
+    All,
+    /// Serves the HTTP API; the runs it starts are queued for a worker.
+    Api,
+    /// Executes runs, queued ones included, and the background work; serves
+    /// no HTTP.
+    Worker,
+}
+
+impl ProcessRole {
+    /// Whether this process serves the HTTP API.
+    pub fn serves_http(self) -> bool {
+        self != Self::Worker
+    }
+
+    /// Whether this process executes runs, and the background work that
+    /// starts them.
+    pub fn executes_runs(self) -> bool {
+        self != Self::Api
+    }
+}
+
 #[derive(Clone)]
 pub struct AppConfig {
     pub env: Environment,
+    /// What this process does (`MIMORYA_ROLE`: `all`, `api` or `worker`).
+    pub role: ProcessRole,
     pub host: String,
     pub port: u16,
     /// `tracing` filter directive (`info`, `warn`, `mimorya_api=debug`…).
@@ -67,6 +97,7 @@ impl std::fmt::Debug for AppConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AppConfig")
             .field("env", &self.env)
+            .field("role", &self.role)
             .field("host", &self.host)
             .field("port", &self.port)
             .field("log_level", &self.log_level)
@@ -107,6 +138,12 @@ impl AppConfig {
             Some("test") => Environment::Test,
             Some("production") => Environment::Production,
             Some(_) => reader.invalid("MIMORYA_ENV", "development, test ou production attendu"),
+        };
+        let role = match reader.value("MIMORYA_ROLE").as_deref() {
+            None | Some("all") => ProcessRole::All,
+            Some("api") => ProcessRole::Api,
+            Some("worker") => ProcessRole::Worker,
+            Some(_) => reader.invalid("MIMORYA_ROLE", "all, api ou worker attendu"),
         };
         let host = reader
             .value("HOST")
@@ -158,6 +195,7 @@ impl AppConfig {
         }
         Ok(Self {
             env,
+            role,
             host,
             port,
             log_level,

@@ -28,6 +28,7 @@ pub mod role_assignments;
 pub mod roles;
 pub mod run_events;
 pub mod run_leases;
+pub mod run_queue;
 pub mod runs;
 pub mod scheduled_run_notices;
 pub mod scheduled_tasks;

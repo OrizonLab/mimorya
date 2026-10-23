@@ -15,5 +15,5 @@ pub mod secrets;
 pub mod services;
 
 pub use app::{App, AppState, BuildOptions, Services, build_app};
-pub use config::AppConfig;
+pub use config::{AppConfig, ProcessRole};
 pub use logging::log_filter;

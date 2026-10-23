@@ -21,6 +21,7 @@ fn new_run() -> NewRun {
         success_criteria: Vec::new(),
         autonomy_level: AutonomyLevel::ExecuteWithApproval,
         budget: json!({}),
+        request_message_id: None,
     }
 }
 
