@@ -51,7 +51,8 @@ Repères à l'intérieur des crates :
   maintenance périodique : runs bloqués, liens expirés, absences terminées, demandes de
   validation échues et relances avant échéance, ADR-061, ADR-062 ; indexation de la
   mémoire en arrière-plan, `memory_indexing.rs`, ADR-074 ; tâches planifiées lancées
-  chaque minute, `scheduled_tasks.rs`, ADR-080),
+  chaque minute, `scheduled_tasks.rs`, ADR-080 ; baux des runs renouvelés et runs au
+  bail expiré repris, `run_leases.rs`, ADR-083),
   `api/src/routes/` (un module par ressource, `admin/`), `api/src/contract/` (réponses
   et corps de requêtes typés, un fichier par ressource, dont sont générés les types
   TypeScript, ADR-036, ADR-039),
@@ -64,7 +65,8 @@ Repères à l'intérieur des crates :
   d'une tâche planifiée dont le run attend sa validation, `author.rs`, ADR-082), expiration et
   relance des demandes, ADR-059 à ADR-062, absence et remplaçant
   (`approval_delegation.rs`, ADR-071 à ADR-073), leçon proposée en fin de run
-  (`lesson_capture.rs`, ADR-076)),
+  (`lesson_capture.rs`, ADR-076), bail de l'exécuteur sur chaque run (`leases.rs`,
+  ADR-083)),
   `api/src/services/scheduled_tasks/` (tâches planifiées : ce qu'elles demandent, celles
   de chacun, leur lancement, ADR-080),
   `api/src/services/llm.rs` (fournisseur de modèle de

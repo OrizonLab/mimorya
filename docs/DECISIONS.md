@@ -3467,3 +3467,74 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     - `crates/api/tests/scheduled_task_firing.rs` : le run est lié à sa tâche dès son
       ouverture ;
     - `crates/db/tests/definer_functions.rs` : la nouvelle fonction est connue.
+
+## ADR-083 — Worker séparé : les runs pris par bail (premier lot : les baux)
+
+- **Date** : 2026-10-23 · **Statut** : acceptée
+- **Contexte** : l'API exécute les runs dans son propre processus (ADR-016). Un verrou
+  d'instance unique garantit qu'un seul processus les exécute et reprend au démarrage
+  ceux qu'un arrêt a interrompus (ADR-053). Séparer l'exécution de l'API permettrait de
+  redéployer l'API sans couper les runs et de répartir la charge sur plusieurs workers
+  (ARCHITECTURE §11). Il manque pour cela trois choses :
+  - savoir quel processus exécute quel run, et reprendre ceux d'un processus disparu
+    sans attendre qu'il redémarre (baux, prévus par ADR-012) ;
+  - que l'API suive les événements d'un run exécuté par un autre processus (§8) ;
+  - un point d'entrée « worker », et des runs mis en file par l'API puis réservés par
+    un worker.
+- **Décision (cible)** :
+  - un même programme, lancé dans l'un de trois rôles : `all` (par défaut, comme
+    aujourd'hui), `api` (sert le HTTP, n'exécute rien) ou `worker` (exécute les runs, les
+    tâches planifiées et les balayages) ;
+  - chaque run en cours d'exécution est tenu par un bail : l'instance qui l'exécute
+    (identifiant tiré au démarrage) et une échéance, renouvelée tant qu'il s'exécute. Un
+    run dont le bail a expiré est repris par un exécuteur, sous les règles de l'ADR-053 ;
+  - les événements des runs passent par PostgreSQL (`NOTIFY` dans la transaction qui les
+    enregistre), et chaque processus les relaie à ses flux SSE ;
+  - les runs créés par l'API sont mis en file (`queued`), puis réservés par un exécuteur
+    (`FOR UPDATE SKIP LOCKED`). Un exécuteur qui a perdu son bail cesse d'écrire ;
+  - le plan en lots :
+    1. les baux (ce lot) ;
+    2. les événements par PostgreSQL ;
+    3. les rôles `api` et `worker`, la file d'attente, la fin du verrou d'instance
+       unique et les piles Docker ;
+    4. ensuite, les missions longues.
+- **Décision (lot 1)** :
+  - les colonnes `agent_runs.lease_owner` et `lease_expires_at`, réservées dès le schéma
+    initial avec leur index, servent enfin : l'exécuteur y inscrit son identifiant (la
+    migration 0030 fait de `lease_owner` un uuid). Un déclencheur les efface dès que le run
+    quitte `running` (pause, fin, échec, balayage) : un run en pause ou terminé
+    n'appartient à personne ;
+  - chaque processus tire au démarrage un identifiant d'exécuteur. Il prend le bail d'un
+    run dans la transaction même qui le fait passer à `running` : un nouveau tour de
+    conversation, la décision ou l'expiration qui le relance, ou sa reprise après un arrêt,
+    sous le verrou du run. Qui lance un run l'exécute : il n'existe pas de run `running`
+    sans bail entre sa création et son exécution ;
+  - tant que le run s'exécute, son bail (60 s) est renouvelé toutes les 20 s, pour les
+    seuls runs que le processus exécute réellement. Il est rendu quand le run quitte
+    `running` ;
+  - toutes les minutes, l'exécuteur reprend, sous les règles de l'ADR-053, les runs dont
+    le bail a expiré et qu'il n'exécute pas lui-même. Il les trouve par
+    `system_expired_run_leases`, qui ne donne que l'entreprise et l'identifiant. Un run dont
+    l'exécution s'est perdue alors que le processus vit encore (son issue n'a pas pu être
+    enregistrée) n'attend donc plus le balayage des runs bloqués, un quart d'heure plus
+    tard. Un run sans bail (créé avant cette migration) n'est repris qu'au démarrage ;
+  - au démarrage, l'exécuteur, seul à tenir le verrou (ADR-053), reprend tous les runs
+    `running`, baux compris : leur exécuteur s'est arrêté. Le verrou d'instance unique
+    demeure jusqu'au lot 3 ;
+  - le balayage des runs bloqués (ADR-016) reste : il fait échouer un run sans progrès
+    depuis 15 minutes, que son bail soit vivant ou non (par exemple un appel au modèle qui
+    ne revient pas).
+- **Alternatives écartées** :
+  - une file externe, ou pg-boss qu'évoquait l'ADR-012 : ce serait une infrastructure de
+    plus, alors que des baux dans la table des runs suffisent ;
+  - un bail renouvelé seulement à chaque étape : une étape (appel au modèle, outil) peut
+    durer plus longtemps que le bail ;
+  - un bail long sans renouvellement : un run perdu attendrait d'autant sa reprise ;
+  - une réservation après coup, dans la tâche qui exécute le run : entre la transaction et
+    la réservation, le run n'appartiendrait à personne. Au lot 3, la file d'attente
+    réservera les runs mis en file par l'API (`FOR UPDATE SKIP LOCKED`).
+- **Conséquences** :
+  - rien ne change pour les utilisateurs : ce lot prépare le worker séparé ;
+  - garde d'écriture (un exécuteur qui a perdu son bail n'écrit plus) : prévue au lot 3,
+    sans objet tant qu'un seul processus exécute ;
+  - tests : voir `crates/api/tests/run_leases.rs`.

@@ -12,6 +12,7 @@ pub mod delegations;
 pub mod dns;
 pub mod embeddings;
 pub mod identity_provider;
+pub mod leases;
 pub mod lessons;
 pub mod llm;
 pub mod locks;
@@ -43,6 +44,7 @@ use mimorya_agent::llm::{EmbeddingConfig, EmbeddingProvider, LlmProvider, Provid
 use mimorya_agent::testing::{ConceptEmbedder, ScriptedProvider, ScriptedStep};
 use mimorya_api::auth::credentials::hash_password;
 use mimorya_api::mail::Mailer;
+use mimorya_api::services::runs::LeaseTiming;
 use mimorya_api::services::{EmbeddingFactory, ProviderFactory};
 use mimorya_api::{App, AppConfig, BuildOptions, build_app};
 use mimorya_connectors::demo_interventions::dates::{iso_date, monday_of};
@@ -101,6 +103,17 @@ pub fn next_monday() -> String {
     iso_date(monday_of(Utc::now().date_naive()) + Days::new(7))
 }
 
+/// How a test app differs from `start`'s.
+#[derive(Default)]
+struct Setup<'a> {
+    env: &'a [(&'a str, &'a str)],
+    /// E-mails recorded in `mail`, instead of no mailer.
+    record_mail: bool,
+    background_indexing: bool,
+    background_scheduling: bool,
+    run_leases: Option<LeaseTiming>,
+}
+
 pub struct TestApi {
     pub app: App,
     /// The scripted model, when the app has one.
@@ -127,25 +140,42 @@ impl TestApi {
 
     /// Same, with configuration variables overridden.
     pub async fn start_with(env: &[(&str, &str)]) -> Self {
-        let model = Arc::new(ScriptedProvider::new(Vec::new()));
-        let provider: Arc<dyn LlmProvider> = model.clone();
-        Self::build(Some(provider), Some(model), env, false, true, true).await
+        Self::scripted(Setup {
+            env,
+            ..Setup::default()
+        })
+        .await
     }
 
     /// Like `start`, scheduled tasks fired every minute as in production,
     /// once interrupted runs are taken up, not on demand.
     pub async fn start_scheduling() -> Self {
-        let model = Arc::new(ScriptedProvider::new(Vec::new()));
-        let provider: Arc<dyn LlmProvider> = model.clone();
-        Self::build(Some(provider), Some(model), &[], false, true, false).await
+        Self::scripted(Setup {
+            background_scheduling: true,
+            ..Setup::default()
+        })
+        .await
     }
 
     /// Like `start_with`, memories indexed in the background as in
     /// production, not on demand.
     pub async fn start_indexing(env: &[(&str, &str)]) -> Self {
-        let model = Arc::new(ScriptedProvider::new(Vec::new()));
-        let provider: Arc<dyn LlmProvider> = model.clone();
-        Self::build(Some(provider), Some(model), env, false, false, true).await
+        Self::scripted(Setup {
+            env,
+            background_indexing: true,
+            ..Setup::default()
+        })
+        .await
+    }
+
+    /// Like `start`, run leases lasting, renewed and taken up as `timing`
+    /// says (ADR-083).
+    pub async fn start_with_leases(timing: LeaseTiming) -> Self {
+        Self::scripted(Setup {
+            run_leases: Some(timing),
+            ..Setup::default()
+        })
+        .await
     }
 
     /// Same, with e-mails recorded in `mail` instead of sent.
@@ -155,24 +185,38 @@ impl TestApi {
 
     /// Same, with configuration variables overridden as well.
     pub async fn start_with_mailer_and(env: &[(&str, &str)]) -> Self {
-        let model = Arc::new(ScriptedProvider::new(Vec::new()));
-        let provider: Arc<dyn LlmProvider> = model.clone();
-        Self::build(Some(provider), Some(model), env, true, true, true).await
+        Self::scripted(Setup {
+            env,
+            record_mail: true,
+            ..Setup::default()
+        })
+        .await
     }
 
     /// App without any model provider configured.
     pub async fn without_llm() -> Self {
-        Self::build(None, None, &[], false, true, true).await
+        Self::build(None, None, Setup::default()).await
+    }
+
+    /// App backed by the scripted model, set up as `setup` says.
+    async fn scripted(setup: Setup<'_>) -> Self {
+        let model = Arc::new(ScriptedProvider::new(Vec::new()));
+        let provider: Arc<dyn LlmProvider> = model.clone();
+        Self::build(Some(provider), Some(model), setup).await
     }
 
     async fn build(
         provider: Option<Arc<dyn LlmProvider>>,
         model: Option<Arc<ScriptedProvider>>,
-        env: &[(&str, &str)],
-        record_mail: bool,
-        manual_indexing: bool,
-        manual_scheduling: bool,
+        setup: Setup<'_>,
     ) -> Self {
+        let Setup {
+            env,
+            record_mail,
+            background_indexing,
+            background_scheduling,
+            run_leases,
+        } = setup;
         let mut vars: HashMap<&str, String> = HashMap::from([
             ("MIMORYA_ENV", "test".to_string()),
             ("LOG_LEVEL", "off".to_string()),
@@ -209,10 +253,11 @@ impl TestApi {
             provider: Some(provider),
             provider_factory: Some(factory),
             embedding_factory: Some(embedding_factory),
-            manual_indexing,
+            manual_indexing: !background_indexing,
             // Fired by the tests (`fire_due_tasks`), when they make a task
             // due, unless started with `start_scheduling`.
-            manual_scheduling,
+            manual_scheduling: !background_scheduling,
+            run_leases,
             mailer: record_mail.then(|| Some(mail.clone() as Arc<dyn Mailer>)),
             sso_network: None,
             global_rate_limit_per_minute: None,

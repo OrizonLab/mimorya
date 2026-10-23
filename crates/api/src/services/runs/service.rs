@@ -19,6 +19,7 @@ use super::approval_decision::{
 use super::approval_routing::may_decide_for;
 use super::conversation_turn::{TurnSender, open_conversation_turn, tenant_autonomy_level};
 use super::executor::{ExecutionMode, RunExecutor};
+use super::leases::{LeaseTiming, Leases};
 use crate::services::access::{AccessContext, AccessService, AuthIdentity};
 use crate::services::background::BackgroundTasks;
 use crate::services::llm::Unusable;
@@ -48,10 +49,17 @@ pub struct RunService {
     pub(super) executor_lock: tokio::sync::Mutex<Option<sqlx::PgConnection>>,
     /// `true` once the runs a stop interrupted are taken up, here.
     pub(super) taken_up: tokio::sync::watch::Sender<bool>,
+    /// This process's executor and the runs it executes (ADR-083).
+    pub(super) leases: Arc<Leases>,
 }
 
 impl RunService {
-    pub fn new(db: Database, access: Arc<AccessService>, executor: RunExecutor) -> Self {
+    pub fn new(
+        db: Database,
+        access: Arc<AccessService>,
+        executor: RunExecutor,
+        leases: LeaseTiming,
+    ) -> Self {
         Self {
             db,
             access,
@@ -59,6 +67,7 @@ impl RunService {
             tasks: Arc::new(BackgroundTasks::default()),
             executor_lock: tokio::sync::Mutex::new(None),
             taken_up: tokio::sync::watch::channel(false).0,
+            leases: Arc::new(Leases::new(leases)),
         }
     }
 
@@ -81,20 +90,18 @@ impl RunService {
         let turn =
             open_conversation_turn(&mut tx, identity, conversation_id, text, autonomy, sender)
                 .await?;
+        self.hold(&mut tx, turn.run.id).await?;
         tx.commit().await?;
 
         let started = StartedTurn {
             run_id: turn.run.id,
             message_id: turn.user_message_id,
         };
-        let executor = self.executor.clone();
         let mode = ExecutionMode::Start {
             history: turn.history,
             text: text.to_string(),
         };
-        let access = Arc::new(access);
-        self.tasks
-            .spawn(async move { executor.execute(access, turn.run, mode).await });
+        self.launch(Arc::new(access), turn.run, mode);
         Ok(started)
     }
 
@@ -185,6 +192,9 @@ impl RunService {
         }
         let mut tx = self.db.begin(identity.tenant_id).await?;
         let recorded = record_approval_decision(&mut tx, identity, &input, Utc::now()).await?;
+        if let Some((run, _)) = &recorded.resume {
+            self.hold(&mut tx, run.id).await?;
+        }
         tx.commit().await?;
 
         let resumed = recorded.resume.is_some();
@@ -197,16 +207,14 @@ impl RunService {
         }
     }
 
-    /// Resumes in the background a run its requests no longer hold, with the
-    /// rights of whom it acts for (`access`) and how each request ended.
+    /// Resumes in the background a run its requests no longer hold, set
+    /// running under this executor's lease, with the rights of whom it acts
+    /// for (`access`) and how each request ended.
     pub(super) fn resume(&self, access: AccessContext, run: RunRow, approvals: &[ApprovalRow]) {
         let mode = ExecutionMode::Resume {
             state: run.state.clone().unwrap_or_default(),
             decisions: resume_decisions(approvals),
         };
-        let executor = self.executor.clone();
-        let access = Arc::new(access);
-        self.tasks
-            .spawn(async move { executor.execute(access, run, mode).await });
+        self.launch(Arc::new(access), run, mode);
     }
 }

@@ -80,6 +80,10 @@ pub struct RunRow {
     /// The last event of the run's journal when its state was last saved
     /// (ADR-053).
     pub checkpoint_seq: Option<i32>,
+    /// The executor holding the run while it executes, and until when
+    /// (ADR-083); none once it leaves `running`.
+    pub lease_owner: Option<Uuid>,
+    pub lease_expires_at: Option<DateTime<Utc>>,
 }
 
 impl RunRow {
@@ -91,7 +95,8 @@ impl RunRow {
 
 const RUN_COLUMNS: &str = "id, tenant_id, conversation_id, initiated_by_user_id, on_behalf_of_user_id, \
     status, objective, success_criteria, autonomy_level, budget, usage, state, result, verification, \
-    error, started_at, finished_at, created_at, updated_at, checkpoint_seq";
+    error, started_at, finished_at, created_at, updated_at, checkpoint_seq, lease_owner, \
+    lease_expires_at";
 
 #[derive(Debug, Clone)]
 pub struct NewRun {

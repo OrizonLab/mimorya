@@ -52,8 +52,10 @@ flowchart LR
   c'est sûr (ADR-053), après avoir prévenu les responsables des demandes dont l'arrêt a
   perdu l'avis (ADR-070), et un balayage périodique marque en échec les runs restés sans
   progression et fait expirer les demandes de validation échues, leurs runs poursuivant
-  sans l'action (ADR-061), leurs responsables relancés la veille (ADR-062) ; le worker sera le même code lancé avec un autre point
-  d'entrée.
+  sans l'action (ADR-061), leurs responsables relancés la veille (ADR-062). Chaque run
+  s'exécute sous le bail de son exécuteur, renouvelé tant qu'il s'exécute ; celui dont le
+  bail a expiré est repris sans attendre un redémarrage (ADR-083, premier lot du worker).
+  Le worker sera le même code lancé avec un autre rôle (ADR-083).
 
 Pourquoi pas des microservices : une équipe réduite, un domaine encore mouvant et des
 transactions qui traversent plusieurs modules (autorisation + audit + exécution). Les
@@ -165,7 +167,9 @@ sequenceDiagram
    autre worker reprend au dernier point de contrôle une fois le bail expiré.
    Aujourd'hui (une seule instance, ADR-016), c'est l'API qui reprend au démarrage les
    runs qu'un arrêt a interrompus, quand rien d'autre qu'une lecture n'était en cours
-   (ADR-053).
+   (ADR-053). Le bail est déjà là : pris dans la transaction qui fait passer le run à
+   `running`, renouvelé toutes les 20 s ; un run dont le bail a expiré est repris dans la
+   minute, sous les mêmes règles (ADR-083).
 4. Une validation humaine met le run en `awaiting_approval` ; la décision le remet en
    file.
 5. Les tâches récurrentes (phase 2) créent des runs selon une expression cron.

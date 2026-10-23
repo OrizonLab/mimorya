@@ -73,6 +73,7 @@ impl RunService {
             tx.commit().await?;
             return Ok(past.len());
         };
+        self.hold(&mut tx, run_id).await?;
         // As a decision would: with the rights of whom the agent acts for.
         let access = self
             .access
