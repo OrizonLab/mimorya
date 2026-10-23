@@ -3,6 +3,7 @@
 //! and skills live in `knowledge_ports.rs`, deliverables in `deliverables.rs`.
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicI32, Ordering};
 
 use async_trait::async_trait;
 use chrono::Utc;
@@ -22,10 +23,12 @@ use super::deliverables::DbDeliverables;
 use super::events::record_run_event;
 use super::lesson_capture::LessonCapture;
 use super::outcome::persist_outcome;
-use crate::contract::AssistantDelta;
 use crate::services::access::AccessService;
 use crate::services::embeddings::EmbeddingService;
-use crate::services::event_bus::{BusEvent, RunEventBus};
+use crate::services::event_bus::RunEventBus;
+
+/// No event recorded yet by this execution.
+const NO_EVENT: i32 = -1;
 
 /// Approval requests left unanswered expire after a week.
 const APPROVAL_VALIDITY_DAYS: i64 = 7;
@@ -45,6 +48,9 @@ pub struct DbPorts {
     db: Database,
     pub(super) scope: RunScope,
     bus: Arc<RunEventBus>,
+    /// The last event this execution recorded (`NO_EVENT` before the first):
+    /// a text delta follows it (ADR-084).
+    last_event: Arc<AtomicI32>,
     /// Who may validate a request for the run's user (ADR-059).
     access: Arc<AccessService>,
     /// Tells the manager a request awaits them (ADR-060).
@@ -68,6 +74,7 @@ pub fn engine_ports(
         db: db.clone(),
         scope,
         bus,
+        last_event: Arc::new(AtomicI32::new(NO_EVENT)),
         access,
         notifier,
         embeddings,
@@ -99,27 +106,16 @@ fn saturating_i32(value: u64) -> i32 {
 #[async_trait]
 impl RunEventSink for DbPorts {
     async fn emit(&self, event: RunEvent) -> anyhow::Result<()> {
-        record_run_event(
-            &self.db,
-            &self.bus,
-            self.scope.tenant_id,
-            self.scope.run_id,
-            event,
-        )
-        .await
+        let (tenant_id, run_id) = (self.scope.tenant_id, self.scope.run_id);
+        let seq = record_run_event(&self.db, &self.bus, tenant_id, run_id, event).await?;
+        self.last_event.fetch_max(seq, Ordering::Relaxed);
+        Ok(())
     }
 
     fn publish_delta(&self, text: &str) {
-        self.bus.publish(
-            self.scope.run_id,
-            BusEvent {
-                seq: None,
-                event_type: "assistant_delta".into(),
-                // A text always serialises.
-                data: serde_json::to_value(AssistantDelta { text: text.into() })
-                    .unwrap_or_default(),
-            },
-        );
+        let last = self.last_event.load(Ordering::Relaxed);
+        let after = (last != NO_EVENT).then_some(last);
+        self.bus.publish_delta(self.scope.run_id, after, text);
     }
 }
 

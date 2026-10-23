@@ -4,6 +4,7 @@
 pub mod client;
 mod errors;
 pub mod migrate;
+pub mod notifications;
 pub mod repositories;
 pub mod seed;
 #[cfg(feature = "testing")]

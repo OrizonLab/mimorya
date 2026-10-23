@@ -1,8 +1,8 @@
-//! Fixed-window rate limiting, in memory (single instance, like the event
-//! bus). A global limit per client address protects every route; logins are
-//! also limited per address and, for failures, per account; reset links per
-//! e-mail address; the addresses asked about for single sign-on, per client
-//! address (`distinct_limit`).
+//! Fixed-window rate limiting, in memory (per process: a single instance
+//! for now, ADR-016). A global limit per client address protects every
+//! route; logins are also limited per address and, for failures, per
+//! account; reset links per e-mail address; the addresses asked about for
+//! single sign-on, per client address (`distinct_limit`).
 
 use std::collections::HashMap;
 use std::sync::Mutex;

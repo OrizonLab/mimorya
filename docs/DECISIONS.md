@@ -3547,3 +3547,65 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
   - garde d'écriture (un exécuteur qui a perdu son bail n'écrit plus) : prévue au lot 3,
     sans objet tant qu'un seul processus exécute ;
   - tests : `crates/api/tests/run_leases.rs` (baux tenus) et `run_lease_takeover.rs` (reprise).
+
+## ADR-084 — Worker séparé : les événements des runs par PostgreSQL (deuxième lot)
+
+- **Date** : 2026-10-23 · **Statut** : acceptée · complète ADR-083 et ADR-016
+- **Contexte** : le suivi en direct d'un run (SSE, ARCHITECTURE §8) passe par un bus en
+  mémoire du processus qui l'exécute. Au lot 3 de l'ADR-083, l'API (rôle `api`) servira
+  les flux de runs qu'un worker exécute : il lui faut leurs événements, sans nouvelle
+  infrastructure.
+- **Décision** :
+  - chaque événement enregistré dans le journal d'un run est annoncé sur le canal
+    PostgreSQL `mimorya_run_events` (`pg_notify`), **dans la transaction même qui
+    l'enregistre** : l'avis part si, et seulement si, l'événement est enregistré, et dans
+    l'ordre des enregistrements. Il ne porte que le processus d'origine, le run et le
+    numéro de l'événement ;
+  - chaque processus écoute ce canal sur une connexion à lui (rôle applicatif, nommée
+    `mimorya-run-events`), hors du pool ; il ignore ses propres avis. Pour un run que l'un
+    de ses abonnés suit, il relit le journal **dans l'entreprise de l'abonné** (celle dont
+    le flux a vérifié que le run lui appartient ; l'avis ne nomme aucune entreprise) à
+    partir du dernier événement que ses abonnés ont tous : celui que leur flux a rejoué,
+    ou publié depuis. Un avis perdu entre-temps est lu avec le suivant. Ce point de
+    départ est gardé avec les abonnés du run, et part avec le dernier ;
+  - les avis sont reçus par une tâche à part, jamais interrompue en cours de route. Une
+    fois sa connexion d'écoute rétablie, il relit les journaux de tous les runs suivis
+    (les avis envoyés entre-temps sont perdus). De même après une relecture échouée, à
+    une échéance fixe que les avis reçus entre-temps ne repoussent pas : l'avis suivant
+    du run pourrait ne jamais venir (sa fin). Échéance d'une seconde, doublée à chaque
+    nouvel échec jusqu'à 30 s ; de même pour une connexion d'écoute qui échoue ;
+  - les fragments de texte du modèle (`assistant_delta`), qui ne sont pas enregistrés,
+    voyagent dans l'avis lui-même, découpé sous la limite de PostgreSQL (8 000 octets).
+    Ils partent dans l'ordre, hors transaction, regroupés par run, au mieux : une file
+    pleine (1 024) en perd, que le message qui suit remplace. Ils ne partent que si un
+    autre processus écoute (vérifié toutes les 5 s) : une instance unique n'en envoie
+    aucun. Chacun porte le dernier événement que son exécution a enregistré avant lui
+    (aucun avant le premier) ; un fragment plus ancien qu'un événement que les abonnés
+    ont déjà est écarté (sinon il rouvrirait un brouillon que ce message a remplacé) ;
+  - pour l'utilisateur d'une instance unique, rien ne change : elle reçoit tout
+    directement. Ce lot prépare les rôles `api` et `worker` du lot 3.
+- **Alternatives écartées** :
+  - porter l'événement entier dans l'avis : un événement peut dépasser la limite de
+    8 000 octets, et tout le journal (outils, résultats) passerait sur le canal commun,
+    quand seuls les fragments de texte y passent, et seulement entre processus ;
+  - annoncer l'événement après la transaction : un arrêt entre les deux le perdrait, et
+    l'ordre ne serait plus celui du journal ;
+  - Redis ou une file externe : une infrastructure de plus, que PostgreSQL rend inutile à
+    cette échelle (ARCHITECTURE §8) ;
+  - passer les fragments de texte par le journal : ils sont nombreux, et le message final
+    les remplace.
+- **Conséquences** :
+  - une connexion PostgreSQL de plus par processus, gardée ouverte ;
+  - **canal commun** : PostgreSQL ne contrôle aucun privilège sur un canal. Tout rôle
+    connecté à la base peut y écouter (les fragments de texte de toutes les entreprises)
+    ou y envoyer (un avis forgé, un texte). L'isolation des événements enregistrés tient
+    à leur relecture dans l'entreprise de l'abonné ; celle des fragments, au run que le
+    flux a vérifié. Condition d'exploitation : aucun autre rôle que l'applicatif (et le
+    propriétaire, pour les migrations) ne se connecte à la base (SECURITY.md §3) ;
+  - **coût** : chaque enregistrement d'événement fait un `pg_notify` de plus et prend, à
+    sa validation, le verrou de la file des notifications de PostgreSQL ; ces
+    validations se suivent donc une à une, toutes entreprises confondues. Si cette file
+    se remplit (un écouteur figé qui garde sa connexion), les enregistrements échouent, et
+    les runs avec eux : à surveiller (`pg_notification_queue_usage()`) avant le lot 3 ;
+  - tests : `crates/api/tests/run_event_relay.rs` et, pour les pannes (lecture refusée,
+    connexion d'écoute coupée puis refusée), `run_event_relay_faults.rs`.

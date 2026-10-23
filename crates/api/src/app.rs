@@ -20,6 +20,7 @@ use crate::plugins::maintenance::spawn_maintenance;
 use crate::plugins::memory_indexing::spawn_memory_indexing;
 use crate::plugins::rate_limit::global_rate_limit;
 use crate::plugins::request_context::request_context;
+use crate::plugins::run_event_relay::{spawn_delta_outbox, spawn_run_event_relay};
 use crate::plugins::run_leases::{spawn_lease_renewal, spawn_lease_takeover};
 use crate::plugins::scheduled_tasks::spawn_scheduled_tasks;
 use crate::plugins::security_headers::security_headers;
@@ -114,6 +115,8 @@ pub struct App {
     scheduling: Option<JoinHandle<()>>,
     lease_renewal: JoinHandle<()>,
     lease_takeover: JoinHandle<()>,
+    event_relay: JoinHandle<()>,
+    delta_outbox: JoinHandle<()>,
 }
 
 pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Result<App> {
@@ -175,7 +178,8 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
         },
     };
     let background = Arc::new(BackgroundTasks::default());
-    let bus = Arc::new(RunEventBus::default());
+    let (bus, outbox) = RunEventBus::new();
+    let bus = Arc::new(bus);
     let executor = RunExecutor {
         db: db.clone(),
         access: access.clone(),
@@ -248,6 +252,8 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
         scheduling: (!options.manual_scheduling).then(|| spawn_scheduled_tasks(services.clone())),
         lease_renewal: spawn_lease_renewal(services.clone()),
         lease_takeover: spawn_lease_takeover(services.clone()),
+        event_relay: spawn_run_event_relay(services.clone()),
+        delta_outbox: spawn_delta_outbox(&services, outbox),
         services,
     })
 }
@@ -271,6 +277,9 @@ impl App {
     /// releases connectors and connections.
     pub async fn shutdown(self) {
         self.begin_shutdown();
+        // The streams it fed end now.
+        self.event_relay.abort();
+        let _ = self.event_relay.await;
         // Ended before the runs are awaited: its expiry sweep may start one.
         self.maintenance.abort();
         let _ = self.maintenance.await;
@@ -286,9 +295,11 @@ impl App {
             let _ = indexing.await;
         }
         self.services.runs.idle().await;
-        // The runs ended: no lease left to renew.
+        // The runs ended: no lease left to renew, nor text to send.
         self.lease_renewal.abort();
         let _ = self.lease_renewal.await;
+        self.delta_outbox.abort();
+        let _ = self.delta_outbox.await;
         self.services.background.idle().await;
         self.services.connectors.close().await;
         self.services.db.close().await;

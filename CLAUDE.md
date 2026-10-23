@@ -35,7 +35,8 @@ Repères à l'intérieur des crates :
   `core/src/demo/` (entreprise fictive par thème).
 - `db/migrations/` (SQL numéroté, source de vérité du schéma),
   `db/src/repositories/` (un fichier par entité ; la mémoire : `memory.rs`, recherche
-  hybride `memory_search.rs`, vecteurs `memory_embeddings.rs`, ADR-074), `db/src/seed/` (organisation,
+  hybride `memory_search.rs`, vecteurs `memory_embeddings.rs`, ADR-074),
+  `db/src/notifications.rs` (canal PostgreSQL des événements des runs, ADR-084), `db/src/seed/` (organisation,
   connecteurs, mémoires, compétences de démonstration), `db/src/testing.rs`.
 - `agent/src/llm/<fournisseur>/`, `agent/src/llm/embedding/` (modèles d'embeddings de la
   mémoire sémantique, ADR-074), `agent/src/runtime/` (boucle, appels modèle, appels
@@ -52,7 +53,8 @@ Repères à l'intérieur des crates :
   validation échues et relances avant échéance, ADR-061, ADR-062 ; indexation de la
   mémoire en arrière-plan, `memory_indexing.rs`, ADR-074 ; tâches planifiées lancées
   chaque minute, `scheduled_tasks.rs`, ADR-080 ; baux des runs renouvelés et runs au
-  bail expiré repris, `run_leases.rs`, ADR-083),
+  bail expiré repris, `run_leases.rs`, ADR-083 ; événements des autres processus écoutés
+  et fragments de texte envoyés, `run_event_relay.rs`, ADR-084),
   `api/src/routes/` (un module par ressource, `admin/`), `api/src/contract/` (réponses
   et corps de requêtes typés, un fichier par ressource, dont sont générés les types
   TypeScript, ADR-036, ADR-039),
@@ -68,7 +70,9 @@ Repères à l'intérieur des crates :
   (`lesson_capture.rs`, ADR-076), bail de l'exécuteur sur chaque run (`leases.rs`,
   ADR-083)),
   `api/src/services/scheduled_tasks/` (tâches planifiées : ce qu'elles demandent, celles
-  de chacun, leur lancement, ADR-080),
+  de chacun, leur lancement, ADR-080), `api/src/services/event_bus/` (événements des runs
+  aux abonnés du processus et, par PostgreSQL, des autres : avis, relais, fragments de
+  texte, ADR-084),
   `api/src/services/llm.rs` (fournisseur de modèle de
   chaque entreprise), `api/src/services/embeddings/` (modèle d'embeddings de chaque
   entreprise, vecteur d'une demande, indexation de la mémoire, ADR-074), `api/src/services/invitations/` (liens d'invitation, ADR-027),

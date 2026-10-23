@@ -52,6 +52,12 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   expirés et des absences terminées (ADR-071)) passent par
   des fonctions `SECURITY DEFINER` au périmètre minimal et au `search_path` figé
   (`auth_*`, `system_*`).
+- Le canal PostgreSQL des événements des runs (`mimorya_run_events`, ADR-084) est commun
+  à toutes les entreprises, et PostgreSQL n'y contrôle aucun privilège. Il ne porte que
+  des identifiants de runs et des numéros d'événements, que chaque processus relit dans
+  le journal du run, dans l'entreprise de l'abonné dont le flux a vérifié que le run lui
+  appartient, et les fragments de texte du modèle, remis aux seuls abonnés de ce run.
+  Aucun autre rôle que l'applicatif et le propriétaire ne se connecte à la base.
 - Tests d'intégration obligatoires : lecture croisée impossible même par requête
   directe, insertion croisée refusée, absence de contexte = aucune ligne.
 

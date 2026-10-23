@@ -65,13 +65,18 @@ async fn stream(
     tx.commit().await?;
 
     // Subscribe before replaying so that nothing is lost in between.
-    let subscription = state.bus.subscribe(id);
+    let subscription = state.bus.subscribe(identity.tenant_id, id);
     let mut tx = state.db.begin(identity.tenant_id).await?;
     let persisted = list_run_events(&mut tx, id, last_event_id).await?;
     let finished = get_run(&mut tx, id)
         .await?
         .is_some_and(|r| r.status().is_finished());
     tx.commit().await?;
+    // What another process records next is relayed from there (ADR-084):
+    // what was replayed, not what the client says it has.
+    if let Some(last) = persisted.last() {
+        subscription.replayed_through(last.seq);
+    }
 
     let (sender, receiver) = mpsc::channel(64);
     // Nothing more will come for a run that already ended.

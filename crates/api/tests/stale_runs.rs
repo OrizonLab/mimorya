@@ -68,8 +68,8 @@ async fn a_swept_run_announces_its_end_to_its_followers_in_its_own_company() {
     let stuck = running_run(&api, tenant::ID, user::MARC).await;
     let stuck_elsewhere = running_run(&api, other.tenant_id, other.admin_id).await;
     let alive = running_run(&api, tenant::ID, user::MARC).await;
-    let mut followers = services.bus.subscribe(stuck);
-    let mut followers_elsewhere = services.bus.subscribe(stuck_elsewhere);
+    let mut followers = services.bus.subscribe(tenant::ID, stuck);
+    let mut followers_elsewhere = services.bus.subscribe(other.tenant_id, stuck_elsewhere);
     age(stuck).await;
     age(stuck_elsewhere).await;
 
