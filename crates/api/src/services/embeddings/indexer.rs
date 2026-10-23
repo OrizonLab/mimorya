@@ -15,7 +15,7 @@
 use mimorya_agent::llm::embedding::MAX_EMBEDDING_BATCH;
 use mimorya_agent::llm::{LlmError, LlmErrorKind};
 use mimorya_db::repositories::embedding_settings::{
-    get_embedding_settings, lock_embedding_settings,
+    get_embedding_settings, lock_embedding_settings, set_indexing_failure,
 };
 use mimorya_db::repositories::memory_embeddings::{
     MemoryToEmbed, memories_to_embed, store_embedding, tenants_awaiting_embeddings,
@@ -54,11 +54,6 @@ impl EmbeddingService {
     pub async fn index_pending(&self) -> anyhow::Result<usize> {
         let _pass = self.indexing.lock().await;
         let awaiting = tenants_awaiting_embeddings(self.db.pool()).await?;
-        // A company with nothing left to embed has no failure left to show.
-        self.failures
-            .lock()
-            .expect("indexing failures")
-            .retain(|tenant_id, _| awaiting.contains(tenant_id));
         let mut embedded = 0;
         for tenant_id in awaiting {
             match self.index_company(tenant_id).await {
@@ -92,7 +87,8 @@ impl EmbeddingService {
             let vectors = match self.embed(tenant_id, &embedder, &batch).await {
                 Ok(vectors) => vectors,
                 Err(reason) => {
-                    self.failed(tenant_id, Some(reason.clone()));
+                    self.record_outcome(tenant_id, &embedder, Some(&reason))
+                        .await?;
                     anyhow::bail!(reason);
                 }
             };
@@ -110,8 +106,26 @@ impl EmbeddingService {
                 break;
             }
         }
-        self.failed(tenant_id, None);
+        self.record_outcome(tenant_id, &embedder, None).await?;
         Ok(embedded)
+    }
+
+    /// Records why the company's pass failed (`None`: it succeeded), for its
+    /// administrators, whatever process shows them, unless the choice it
+    /// followed changed meanwhile.
+    async fn record_outcome(
+        &self,
+        tenant_id: Uuid,
+        embedder: &CompanyEmbedder,
+        failure: Option<&str>,
+    ) -> anyhow::Result<()> {
+        let mut tx = self.db.begin(tenant_id).await?;
+        let chosen = lock_embedding_settings(&mut tx).await?;
+        if chosen.is_some_and(|settings| embedder.serves(&settings)) {
+            set_indexing_failure(&mut tx, failure).await?;
+            tx.commit().await?;
+        }
+        Ok(())
     }
 
     /// The vector of each memory, `None` for a text the model refuses (too

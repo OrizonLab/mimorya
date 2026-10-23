@@ -20,3 +20,8 @@ $$;
 REVOKE ALL ON FUNCTION system_queued_runs(integer) FROM PUBLIC;
 
 GRANT EXECUTE ON FUNCTION system_queued_runs(integer) TO mimorya_app;
+
+-- The request of a turn (its user message): named on its run, a worker
+-- gives it to the model with the conversation's earlier messages.
+ALTER TABLE agent_runs
+  ADD COLUMN request_message_id uuid REFERENCES messages (id) ON DELETE SET NULL;

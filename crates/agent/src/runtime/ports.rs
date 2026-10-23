@@ -85,6 +85,9 @@ pub enum RunEvent {
         /// lost: the model may run them again.
         interrupted: Vec<String>,
     },
+    /// Waiting for a worker to execute it (ADR-085): written by an `api`
+    /// process as it queues the run, never by the engine.
+    RunQueued {},
     RunFinished {
         /// `completed`, `awaiting_approval`, `failed` or `cancelled`.
         status: String,

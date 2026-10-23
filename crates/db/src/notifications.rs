@@ -5,7 +5,8 @@
 //! and connects again by itself when it loses it. PostgreSQL checks no
 //! privilege on a channel: any role connected to the database may listen
 //! or send on it, which only the application's does. A second channel wakes
-//! the workers up when a run is queued (ADR-085).
+//! the workers up when a run is queued, a third tells every process what
+//! another changed in the caches they all keep (ADR-085).
 
 use std::str::FromStr;
 
@@ -20,6 +21,10 @@ pub const RUN_EVENTS_LISTENER: &str = "mimorya-run-events";
 pub const RUN_QUEUE_CHANNEL: &str = "mimorya_run_queue";
 /// A worker's connection listening on it.
 pub const RUN_QUEUE_LISTENER: &str = "mimorya-run-queue";
+/// The channel a process announces what it changed in the caches on.
+pub const INVALIDATIONS_CHANNEL: &str = "mimorya_invalidations";
+/// A process's connection listening on it.
+pub const INVALIDATIONS_LISTENER: &str = "mimorya-invalidations";
 
 /// Announces `payload` on the run events channel: within a transaction,
 /// once it commits.
@@ -44,6 +49,20 @@ pub async fn notify_run_queued<'e>(executor: impl PgExecutor<'e>) -> sqlx::Resul
     Ok(())
 }
 
+/// Announces `payload` on the invalidations channel: within a transaction,
+/// once it commits.
+pub async fn notify_invalidation<'e>(
+    executor: impl PgExecutor<'e>,
+    payload: &str,
+) -> sqlx::Result<()> {
+    sqlx::query("select pg_notify($1, $2)")
+        .bind(INVALIDATIONS_CHANNEL)
+        .bind(payload)
+        .execute(executor)
+        .await?;
+    Ok(())
+}
+
 /// Listens on the run events channel, on a connection of its own named
 /// `application_name`.
 pub async fn listen_run_events(url: &str, application_name: &str) -> sqlx::Result<PgListener> {
@@ -53,6 +72,11 @@ pub async fn listen_run_events(url: &str, application_name: &str) -> sqlx::Resul
 /// Listens on the run queue channel, on a connection of its own.
 pub async fn listen_run_queue(url: &str) -> sqlx::Result<PgListener> {
     listen(url, RUN_QUEUE_LISTENER, RUN_QUEUE_CHANNEL).await
+}
+
+/// Listens on the invalidations channel, on a connection of its own.
+pub async fn listen_invalidations(url: &str) -> sqlx::Result<PgListener> {
+    listen(url, INVALIDATIONS_LISTENER, INVALIDATIONS_CHANNEL).await
 }
 
 async fn listen(url: &str, application_name: &str, channel: &str) -> sqlx::Result<PgListener> {

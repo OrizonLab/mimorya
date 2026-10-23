@@ -41,6 +41,7 @@ async fn running_run(api: &TestApi, tenant_id: Uuid, user_id: Uuid) -> Uuid {
             success_criteria: Vec::new(),
             autonomy_level: AutonomyLevel::ExecuteWithApproval,
             budget: serde_json::to_value(DEFAULT_BUDGET).unwrap(),
+            request_message_id: None,
         },
     )
     .await

@@ -7,6 +7,7 @@ pub mod background;
 pub mod connectors;
 pub mod embeddings;
 pub mod event_bus;
+pub mod invalidations;
 pub mod invitations;
 pub mod llm;
 pub mod password_reset;

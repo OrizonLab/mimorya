@@ -15,6 +15,7 @@ use mimorya_db::repositories::llm_settings::get_llm_settings;
 use mimorya_db::{Database, TenantTx};
 use uuid::Uuid;
 
+use super::invalidations::{Invalidation, Invalidations};
 use super::tenant_cache::TenantCache;
 use crate::secrets::{LLM_API_KEY, SecretStore};
 
@@ -57,6 +58,7 @@ pub struct LlmService {
     factory: ProviderFactory,
     prices: Arc<PriceTable>,
     cache: TenantCache<Resolution>,
+    invalidations: Invalidations,
 }
 
 pub struct LlmServiceOptions {
@@ -67,6 +69,7 @@ pub struct LlmServiceOptions {
     pub listed_endpoints: Vec<String>,
     pub factory: ProviderFactory,
     pub prices: Arc<PriceTable>,
+    pub invalidations: Invalidations,
 }
 
 impl LlmService {
@@ -79,6 +82,7 @@ impl LlmService {
             factory: options.factory,
             prices: options.prices,
             cache: TenantCache::new(Duration::from_secs(60)),
+            invalidations: options.invalidations,
         }
     }
 
@@ -173,8 +177,19 @@ impl LlmService {
         }
     }
 
-    /// After a change of the company's settings.
+    /// After a change of the company's settings: loaded again, here and in
+    /// the other processes.
     pub fn invalidate(&self, tenant_id: Uuid) {
+        self.forget(tenant_id);
+        self.invalidations.announce(Invalidation::Llm(tenant_id));
+    }
+
+    /// Loaded again here: another process changed the settings.
+    pub(crate) fn forget(&self, tenant_id: Uuid) {
         self.cache.invalidate(tenant_id);
+    }
+
+    pub(crate) fn forget_all(&self) {
+        self.cache.invalidate_all();
     }
 }

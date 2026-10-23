@@ -19,7 +19,8 @@ async fn main() -> anyhow::Result<()> {
     let address = format!("{}:{}", config.host, config.port);
     let role = config.role;
     let app = build_app(config, BuildOptions::default()).await?;
-    if role.executes_runs() && app.services.llm.platform().is_none() {
+    // An api process checks a model can answer before queueing a run.
+    if app.services.llm.platform().is_none() {
         tracing::warn!(
             "No platform LLM provider (LLM_PROVIDER): only companies with their own provider can converse."
         );

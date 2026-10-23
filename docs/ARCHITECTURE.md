@@ -57,7 +57,10 @@ flowchart LR
   bail a expiré est repris sans attendre un redémarrage (ADR-083, premier lot du worker).
   Le worker est le même programme lancé avec un autre rôle (`MIMORYA_ROLE`, ADR-085) :
   `all` (par défaut, en instance unique), `api` (sert le HTTP ; les runs qu'il lance
-  attendent en file) ou `worker` (exécute les runs en file et les tâches de fond).
+  attendent en file) ou `worker` (exécute les runs en file et les tâches de fond). Les
+  caches que chaque processus garde (accès, modèle, modèle d'embeddings, connecteurs) se
+  vident ensemble : une modification faite dans l'un est annoncée aux autres sur le canal
+  PostgreSQL `mimorya_invalidations`.
 
 Pourquoi pas des microservices : une équipe réduite, un domaine encore mouvant et des
 transactions qui traversent plusieurs modules (autorisation + audit + exécution). Les
@@ -163,9 +166,9 @@ sequenceDiagram
 
 ### 4.2 Mission longue et reprise
 
-1. Un processus `api` crée le run (ou le relance après une décision) en statut `queued`
-   et réveille le worker (canal `mimorya_run_queue`) ; en rôle `all`, il l'exécute
-   lui-même (ADR-085).
+1. Un processus `api` crée le run (ou le relance après une décision) en statut `queued`,
+   l'inscrit dans son journal (`run_queued`, affiché « En file ») et réveille le worker
+   (canal `mimorya_run_queue`) ; en rôle `all`, il l'exécute lui-même (ADR-085).
 2. Un worker le réserve (`FOR UPDATE SKIP LOCKED`, bail `lease_expires_at`).
 3. Chaque étape est **persistée** (messages, événements, état) : en cas d'arrêt, un
    autre worker reprend au dernier point de contrôle une fois le bail expiré.

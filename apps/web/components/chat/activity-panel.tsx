@@ -4,6 +4,7 @@ import { Fragment } from 'react';
 import {
   Ban,
   Check,
+  Clock,
   Hourglass,
   Loader2,
   PowerOff,
@@ -20,14 +21,7 @@ export function ActivityPanel({ activity }: { activity: RunActivity }) {
       className="rounded-2xl rounded-bl-sm border border-line bg-surface px-4 py-3"
       aria-live="polite"
     >
-      <div className="flex items-center gap-2 text-sm font-medium">
-        {working ? (
-          <Loader2 className="size-4 animate-spin text-accent" aria-hidden />
-        ) : (
-          <Hourglass className="size-4 text-warn" aria-hidden />
-        )}
-        {working ? 'Je travaille sur votre demande…' : 'En attente de votre validation'}
-      </div>
+      <RunHeading status={activity.status} />
       {activity.unavailable.length > 0 && (
         <p className="mt-2 text-xs text-warn">{unavailableNotice(activity.unavailable)}</p>
       )}
@@ -110,4 +104,30 @@ function StepIcon({ step }: { step: RunActivity['steps'][number] }) {
     return <Loader2 className={`${cls} animate-spin text-accent`} aria-label="En cours" />;
   if (step.isError) return <XCircle className={`${cls} text-danger`} aria-label="Erreur" />;
   return <Check className={`${cls} text-ok`} aria-label="Terminé" />;
+}
+
+/** Where the run stands: under way, waiting for a worker (ADR-085), or for a validation. */
+function RunHeading({ status }: { status: RunActivity['status'] }) {
+  if (status === 'running') {
+    return (
+      <div className="flex items-center gap-2 text-sm font-medium">
+        <Loader2 className="size-4 animate-spin text-accent" aria-hidden />
+        Je travaille sur votre demande…
+      </div>
+    );
+  }
+  if (status === 'queued') {
+    return (
+      <div className="flex items-center gap-2 text-sm font-medium">
+        <Clock className="size-4 text-muted" aria-hidden />
+        En file : votre demande sera traitée dans un instant
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-center gap-2 text-sm font-medium">
+      <Hourglass className="size-4 text-warn" aria-hidden />
+      En attente de votre validation
+    </div>
+  );
 }

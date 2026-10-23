@@ -1,7 +1,8 @@
 //! The run queue in the background (ADR-085): once the runs a stop
 //! interrupted are taken up, the process that executes runs claims the
-//! queued ones, woken up as soon as one is queued, and every few seconds
-//! should a notice be lost; until the service stops, between two runs.
+//! queued ones, batch after batch, woken up as soon as one is queued, and
+//! every few seconds should a notice be lost; until the service stops,
+//! between two runs.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -30,7 +31,7 @@ pub fn spawn_run_queue(services: AppState) -> JoinHandle<()> {
             queued.clone(),
         )));
         loop {
-            match services.runs.take_queued().await {
+            match services.runs.take_queued(&services.shutdown).await {
                 Ok(0) => {}
                 Ok(taken) => tracing::info!(taken, "Queued runs taken"),
                 Err(error) => tracing::warn!(error = format!("{error:#}"), "Run queue not read"),

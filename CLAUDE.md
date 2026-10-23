@@ -55,8 +55,8 @@ Repères à l'intérieur des crates :
   chaque minute, `scheduled_tasks.rs`, ADR-080 ; baux des runs renouvelés et runs au
   bail expiré repris, `run_leases.rs`, ADR-083 ; événements des autres processus écoutés
   et fragments de texte envoyés, `run_event_relay.rs`, ADR-084 ; runs en file réservés
-  par le worker, `run_queue.rs`, ADR-085 ; tâches de fond selon le rôle du processus,
-  `MIMORYA_ROLE`, `config/`, ADR-085),
+  par le worker, `run_queue.rs`, ADR-085 ; tâches de fond lancées selon le rôle du
+  processus, `MIMORYA_ROLE`, dans `app.rs` (`Background`), ADR-085),
   `api/src/routes/` (un module par ressource, `admin/`), `api/src/contract/` (réponses
   et corps de requêtes typés, un fichier par ressource, dont sont générés les types
   TypeScript, ADR-036, ADR-039),
@@ -74,7 +74,8 @@ Repères à l'intérieur des crates :
   `api/src/services/scheduled_tasks/` (tâches planifiées : ce qu'elles demandent, celles
   de chacun, leur lancement, ADR-080), `api/src/services/event_bus/` (événements des runs
   aux abonnés du processus et, par PostgreSQL, des autres : avis, relais, fragments de
-  texte, ADR-084),
+  texte, ADR-084), `api/src/services/invalidations/` (caches de chaque processus vidés
+  ensemble : ce qu'un processus change annoncé aux autres par PostgreSQL, ADR-085),
   `api/src/services/llm.rs` (fournisseur de modèle de
   chaque entreprise), `api/src/services/embeddings/` (modèle d'embeddings de chaque
   entreprise, vecteur d'une demande, indexation de la mémoire, ADR-074), `api/src/services/invitations/` (liens d'invitation, ADR-027),

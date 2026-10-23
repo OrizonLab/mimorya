@@ -57,7 +57,11 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   des identifiants de runs et des numéros d'événements, que chaque processus relit dans
   le journal du run, dans l'entreprise de l'abonné dont le flux a vérifié que le run lui
   appartient, et les fragments de texte du modèle, remis aux seuls abonnés de ce run.
-  Aucun autre rôle que l'applicatif et le propriétaire ne se connecte à la base.
+  Les canaux de la file des runs (`mimorya_run_queue`, sans contenu) et des invalidations
+  de caches (`mimorya_invalidations` : une sorte et un identifiant d'entreprise ou
+  d'instance de connecteur, ADR-085) ne portent rien d'autre : une annonce ne fait que
+  vider un cache, relu ensuite dans l'entreprise concernée. Aucun autre rôle que
+  l'applicatif et le propriétaire ne se connecte à la base.
 - Tests d'intégration obligatoires : lecture croisée impossible même par requête
   directe, insertion croisée refusée, absence de contexte = aucune ligne.
 

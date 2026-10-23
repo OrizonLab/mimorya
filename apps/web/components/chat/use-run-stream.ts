@@ -58,6 +58,8 @@ const TERMINAL: ReadonlySet<RunStatus> = new Set<RunStatus>(['completed', 'faile
  * Follows a run through server-sent events. The browser reconnects on its own
  * after network errors or a stream that ends (resuming from the last event
  * id); the stream is closed client-side once the run reaches a terminal state.
+ * A run waiting for a worker says so (`run_queued`, ADR-085) until it starts,
+ * or goes on after a validation.
  * A stream the browser gave up (an error answered it) marks the activity
  * `lost`; `reconnect` opens it again, replayed from the start (ADR-046).
  * A run taken up after a stop of the service marks the steps it lost
@@ -87,6 +89,8 @@ export function useRunStream(
         handler(JSON.parse((event as MessageEvent).data) as EventData<K>),
       );
 
+    on('run_queued', () => setActivity((a) => ({ ...a, status: 'queued' })));
+    on('run_started', () => setActivity((a) => ({ ...a, status: 'running' })));
     on('connectors_unavailable', ({ connectors }) =>
       setActivity((a) => ({ ...a, unavailable: connectors })),
     );

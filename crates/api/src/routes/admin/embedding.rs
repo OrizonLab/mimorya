@@ -8,8 +8,8 @@ use mimorya_agent::llm::embedding::{
     EMBEDDING_KINDS, default_embedding_model, default_min_similarity, embedding_requires_key,
     embedding_uses_listed_endpoint,
 };
-use mimorya_db::repositories::embedding_settings::get_embedding_settings;
-use mimorya_db::repositories::memory_embeddings::index_progress;
+use mimorya_db::repositories::embedding_settings::{get_embedding_settings, indexing_failure};
+use mimorya_db::repositories::memory_embeddings::{awaits_embeddings, index_progress};
 
 use crate::app::AppState;
 use crate::contract::Done;
@@ -43,12 +43,16 @@ pub async fn show(
         Some(s) => Some(index_progress(&mut tx, &s.model).await?),
         None => None,
     };
+    // Recorded by whatever process indexes; none left once nothing awaits.
+    let failure = match &settings {
+        Some(s) if awaits_embeddings(&mut tx, &s.model).await? => indexing_failure(&mut tx).await?,
+        _ => None,
+    };
     tx.commit().await?;
     let problem = match embeddings.resolve(identity.tenant_id).await?.as_ref() {
         EmbeddingResolution::Refused(reason) => Some(reason.clone()),
         _ => None,
     };
-    let failure = embeddings.indexing_failure(identity.tenant_id);
     let settings = settings.zip(progress).map(|(s, progress)| {
         EmbeddingSettingsView::new(&s, key_stored, problem, progress, failure)
     });

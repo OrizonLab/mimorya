@@ -33,7 +33,7 @@ pub use events::record_run_event;
 pub use executor::RunExecutor;
 pub use leases::LeaseTiming;
 pub use lesson_capture::LessonCapture;
-pub use queue::QUEUED_TOO_LONG;
+pub use queue::{QUEUED_REQUEST_NOT_FOUND, QUEUED_TOO_LONG};
 pub use recovery::{
     INTERRUPTED_TOO_LONG, LOCK_HELD_ELSEWHERE, NOT_AN_EXECUTOR, STOPPED_BEFORE_ITS_FIRST_STEP,
 };

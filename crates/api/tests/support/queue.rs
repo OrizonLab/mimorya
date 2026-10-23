@@ -17,9 +17,21 @@ pub async fn worker() -> TestApi {
     worker
 }
 
+/// Waits until `process` hears what the others change in the caches.
+pub async fn listening(process: &TestApi) {
+    for _ in 0..500 {
+        if process.app.services.invalidations.listening() {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    panic!("the process does not hear the others' invalidations");
+}
+
 /// Takes the queued runs, then waits for their execution; how many.
 pub async fn take_queued(worker: &TestApi) -> usize {
-    let taken = worker.app.services.runs.take_queued().await.unwrap();
+    let services = &worker.app.services;
+    let taken = services.runs.take_queued(&services.shutdown).await.unwrap();
     worker.idle().await;
     taken
 }
@@ -68,5 +80,13 @@ pub async fn queued_ago(run: Uuid, minutes: i64) {
     .execute(&owner)
     .await
     .unwrap();
+    owner.close().await;
+}
+
+/// Runs `sql` as the owner, `$1` bound to `id`: what an operator, or an
+/// administrator through another process, changes meanwhile.
+pub async fn as_owner(sql: &str, id: Uuid) {
+    let owner = sqlx::PgPool::connect(owner_url()).await.unwrap();
+    sqlx::query(sql).bind(id).execute(&owner).await.unwrap();
     owner.close().await;
 }

@@ -32,6 +32,7 @@ use crate::secrets::SecretStore;
 use crate::services::background::BackgroundTasks;
 use crate::services::connectors::ConnectorSettings;
 use crate::services::embeddings::{EmbeddingServiceOptions, default_embedding_factory};
+use crate::services::invalidations::{Invalidations, share_invalidations};
 use crate::services::llm::{LlmServiceOptions, default_factory};
 use crate::services::runs::{ApprovalNotifier, LeaseTiming, LessonCapture, RunExecutor};
 use crate::services::sso::{SsoService, SystemDns, TxtLookup};
@@ -59,6 +60,8 @@ pub struct Services {
     pub llm: Arc<LlmService>,
     /// The embedding model each company's memory is searched with (ADR-074).
     pub embeddings: Arc<EmbeddingService>,
+    /// What this process changed in the caches, announced to the others.
+    pub invalidations: Invalidations,
     pub runs: RunService,
     /// Signing in through the companies' identity providers (ADR-063).
     pub sso: Arc<SsoService>,
@@ -127,6 +130,7 @@ struct Background {
     run_queue: Option<JoinHandle<()>>,
     event_relay: Option<JoinHandle<()>>,
     delta_outbox: Option<JoinHandle<()>>,
+    invalidations: Option<JoinHandle<()>>,
 }
 
 pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Result<App> {
@@ -142,6 +146,7 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
         Some(provider) => provider,
         None => config.llm.as_ref().map(create_provider).transpose()?,
     };
+    let (invalidations, outgoing) = Invalidations::new();
 
     let llm = Arc::new(LlmService::new(
         db.clone(),
@@ -151,6 +156,7 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
             listed_endpoints: config.tenant_llm_endpoints.clone(),
             factory: options.provider_factory.unwrap_or_else(default_factory),
             prices: Arc::new(PriceTable::default()),
+            invalidations: invalidations.clone(),
         },
     ));
     let embeddings = Arc::new(EmbeddingService::new(
@@ -162,9 +168,10 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
                 .embedding_factory
                 .unwrap_or_else(default_embedding_factory),
             prices: llm.prices().clone(),
+            invalidations: invalidations.clone(),
         },
     ));
-    let access = Arc::new(AccessService::new(db.clone()));
+    let access = Arc::new(AccessService::new(db.clone(), invalidations.clone()));
     let connectors = Arc::new(ConnectorService::new(
         db.clone(),
         SecretStore::new(config.secrets.clone()),
@@ -172,6 +179,7 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
             network: config.mcp_network,
             start_timeout: config.mcp_start_timeout,
         },
+        invalidations.clone(),
     ));
     let sso = Arc::new(SsoService::new(
         db.clone(),
@@ -239,6 +247,7 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
         bus: bus.clone(),
         llm,
         embeddings,
+        invalidations,
         limits,
         background,
         shutdown: watch::channel(false).0,
@@ -257,7 +266,13 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
         .with_state(services.clone());
 
     let role = services.config.role;
-    let mut background = Background::default();
+    let mut background = Background {
+        invalidations: Some(tokio::spawn(share_invalidations(
+            services.clone(),
+            outgoing,
+        ))),
+        ..Background::default()
+    };
     if role.serves_http() {
         background.event_relay = Some(spawn_run_event_relay(services.clone()));
     }
@@ -332,6 +347,8 @@ impl App {
         abort(background.lease_renewal).await;
         abort(background.delta_outbox).await;
         self.services.background.idle().await;
+        // Nothing left to change in the caches.
+        abort(background.invalidations).await;
         self.services.connectors.close().await;
         self.services.db.close().await;
     }

@@ -20,7 +20,6 @@ use super::approval_routing::may_decide_for;
 use super::conversation_turn::{TurnSender, open_conversation_turn, tenant_autonomy_level};
 use super::executor::{ExecutionMode, RunExecutor};
 use super::leases::{LeaseTiming, Leases};
-use super::queue::Dispatch;
 use crate::services::access::{AccessContext, AccessService, AuthIdentity};
 use crate::services::background::BackgroundTasks;
 use crate::services::llm::Unusable;
@@ -107,9 +106,9 @@ impl RunService {
             history: turn.history,
             text: text.to_string(),
         };
-        if dispatch == Dispatch::Here {
+        self.dispatched(turn.run.id, dispatch, || {
             self.launch(Arc::new(access), turn.run, mode);
-        }
+        });
         Ok(started)
     }
 
@@ -207,8 +206,8 @@ impl RunService {
         tx.commit().await?;
 
         let resumed = recorded.resume.is_some();
-        if let (Some((run, approvals)), Some(Dispatch::Here)) = (recorded.resume, dispatch) {
-            self.resume(requester, run, &approvals);
+        if let (Some((run, approvals)), Some(dispatch)) = (recorded.resume, dispatch) {
+            self.dispatched(run.id, dispatch, || self.resume(requester, run, &approvals));
         }
         match recorded.decided {
             Some(approval) if !recorded.expired => Ok(DecisionResult { approval, resumed }),

@@ -104,6 +104,7 @@ pub async fn open_conversation_turn(
             success_criteria: Vec::new(),
             autonomy_level: autonomy,
             budget: serde_json::to_value(DEFAULT_BUDGET)?,
+            request_message_id: Some(user_message.id),
         },
     )
     .await?;
@@ -149,22 +150,24 @@ pub fn tenant_autonomy_level(access: &AccessContext) -> AutonomyLevel {
 }
 
 /// What a queued turn's run is first given (ADR-085): its conversation's
-/// earlier messages, as the turn that queued it read them; its request is
-/// the last one until it runs. `None` when that is no longer so.
+/// earlier messages, as the turn that queued it read them, and its request,
+/// named on the run. `None` when the request is no longer there.
 pub async fn queued_turn_history(
     tx: &mut TenantTx,
     run: &RunRow,
-) -> anyhow::Result<Option<Vec<LlmMessage>>> {
-    let Some(conversation_id) = run.conversation_id else {
+) -> anyhow::Result<Option<(Vec<LlmMessage>, String)>> {
+    let (Some(conversation_id), Some(request_id)) = (run.conversation_id, run.request_message_id)
+    else {
         return Ok(None);
     };
+    // The turn read the conversation's last messages, then added its
+    // request: nothing else is added until its run runs.
     let mut messages = list_messages(tx, conversation_id, HISTORY_LIMIT + 1).await?;
-    match messages.pop() {
-        Some(request) if request.role == "user" && request.content == run.objective => {
-            Ok(Some(to_history(messages)))
-        }
-        _ => Ok(None),
-    }
+    let Some(at) = messages.iter().position(|m| m.id == request_id) else {
+        return Ok(None);
+    };
+    let request = messages.remove(at);
+    Ok(Some((to_history(messages), request.content)))
 }
 
 /// Stored messages replayed as plain text turns (tool exchanges stay in the run).

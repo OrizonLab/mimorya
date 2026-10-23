@@ -50,6 +50,7 @@ pub async fn leave(app: &App) -> anyhow::Result<()> {
             success_criteria: Vec::new(),
             autonomy_level: AutonomyLevel::ExecuteWithApproval,
             budget: serde_json::to_value(DEFAULT_BUDGET)?,
+            request_message_id: None,
         },
     )
     .await?;

@@ -43,6 +43,7 @@ pub use mimorya_connectors::mcp::CONNECTOR_USE;
 pub use policies::{Policies, read_policies, scoped_overrides};
 pub use reach::unavailable_in_reach;
 
+use super::invalidations::{Invalidation, Invalidations};
 use crate::secrets::SecretStore;
 
 /// The secret holding an instance's access token.
@@ -84,16 +85,23 @@ pub struct ConnectorService {
     settings: ConnectorSettings,
     cache: RuntimeCache,
     admin_starts: AdminStarts,
+    invalidations: Invalidations,
 }
 
 impl ConnectorService {
-    pub fn new(db: Database, secrets: SecretStore, settings: ConnectorSettings) -> Self {
+    pub fn new(
+        db: Database,
+        secrets: SecretStore,
+        settings: ConnectorSettings,
+        invalidations: Invalidations,
+    ) -> Self {
         Self {
             db,
             secrets,
             settings,
             cache: RuntimeCache::default(),
             admin_starts: AdminStarts::default(),
+            invalidations,
         }
     }
 
@@ -235,13 +243,28 @@ impl ConnectorService {
         definition.instantiate(config, context).await
     }
 
-    /// Releases the live instance after a change, a deactivation or a deletion.
+    /// Releases the live instance after a change, a deactivation or a
+    /// deletion, here and in the other processes.
     pub async fn invalidate(&self, instance_id: Uuid) {
+        self.forget(instance_id).await;
+        self.invalidations
+            .announce(Invalidation::Connector(instance_id));
+    }
+
+    /// Releases the live instance here: another process changed it.
+    pub(crate) async fn forget(&self, instance_id: Uuid) {
         self.cache.invalidate(instance_id).await;
     }
 
-    /// The instance answered a test: the next run tries it again at once.
+    /// The instance answered a test: the next run tries it again at once,
+    /// whatever process runs it.
     pub async fn retry_now(&self, instance_id: Uuid) {
+        self.retry_here(instance_id).await;
+        self.invalidations
+            .announce(Invalidation::ConnectorRetry(instance_id));
+    }
+
+    pub(crate) async fn retry_here(&self, instance_id: Uuid) {
         self.cache.retry_now(instance_id).await;
     }
 

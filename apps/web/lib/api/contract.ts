@@ -1105,6 +1105,12 @@ export type RunList = { runs: Array<RunListItem>, };
 export type RunListItem = { id: string, conversationId: string | null, objective: string, status: RunStatus, usage: RunUsage, error: string | null, createdAt: string, finishedAt: string | null, };
 
 /**
+ * The run waits for a worker to execute it (ADR-085): what it does next
+ * follows once one claims it.
+ */
+export type RunQueued = Record<symbol, never>;
+
+/**
  * A run of a conversation, listed with its messages.
  */
 export type RunRef = { id: string, status: RunStatus, createdAt: string, };
@@ -1127,7 +1133,7 @@ export type RunStatus = "queued" | "running" | "awaiting_approval" | "completed"
 /**
  * One event of the stream, by name.
  */
-export type RunStreamEvent = { "type": "run_started", "data": RunStarted } | { "type": "connectors_unavailable", "data": ConnectorsUnavailable } | { "type": "assistant_delta", "data": AssistantDelta } | { "type": "assistant_message", "data": AssistantMessage } | { "type": "tool_call", "data": ToolCallEvent } | { "type": "tool_result", "data": ToolResultEvent } | { "type": "approval_requested", "data": ApprovalRequestedEvent } | { "type": "approval_resolved", "data": ApprovalResolvedEvent } | { "type": "verification", "data": VerificationEvent } | { "type": "usage", "data": UsageEvent } | { "type": "run_resumed", "data": RunResumed } | { "type": "run_finished", "data": RunFinished };
+export type RunStreamEvent = { "type": "run_started", "data": RunStarted } | { "type": "connectors_unavailable", "data": ConnectorsUnavailable } | { "type": "assistant_delta", "data": AssistantDelta } | { "type": "assistant_message", "data": AssistantMessage } | { "type": "tool_call", "data": ToolCallEvent } | { "type": "tool_result", "data": ToolResultEvent } | { "type": "approval_requested", "data": ApprovalRequestedEvent } | { "type": "approval_resolved", "data": ApprovalResolvedEvent } | { "type": "verification", "data": VerificationEvent } | { "type": "usage", "data": UsageEvent } | { "type": "run_resumed", "data": RunResumed } | { "type": "run_queued", "data": RunQueued } | { "type": "run_finished", "data": RunFinished };
 
 /**
  * What a run has consumed so far (`agent_runs.usage`).

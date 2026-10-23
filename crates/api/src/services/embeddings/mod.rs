@@ -9,8 +9,7 @@
 mod indexer;
 mod meaning;
 
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 
 use mimorya_agent::llm::embedding::{company_embedding_config, create_embedder};
@@ -22,6 +21,7 @@ use uuid::Uuid;
 
 pub use meaning::{RequestMeaning, UsageBy};
 
+use super::invalidations::{Invalidation, Invalidations};
 use super::tenant_cache::TenantCache;
 use crate::secrets::{EMBEDDING_API_KEY, SecretStore};
 
@@ -76,8 +76,7 @@ pub struct EmbeddingService {
     wake: Notify,
     /// One pass at a time: a memory is embedded once.
     indexing: tokio::sync::Mutex<()>,
-    /// Why the last pass failed in each company (French), until one succeeds.
-    failures: Mutex<HashMap<Uuid, String>>,
+    invalidations: Invalidations,
 }
 
 pub struct EmbeddingServiceOptions {
@@ -87,6 +86,7 @@ pub struct EmbeddingServiceOptions {
     pub listed_endpoints: Vec<String>,
     pub factory: EmbeddingFactory,
     pub prices: Arc<PriceTable>,
+    pub invalidations: Invalidations,
 }
 
 impl EmbeddingService {
@@ -100,7 +100,7 @@ impl EmbeddingService {
             cache: TenantCache::new(Duration::from_secs(60)),
             wake: Notify::new(),
             indexing: tokio::sync::Mutex::new(()),
-            failures: Mutex::new(HashMap::new()),
+            invalidations: options.invalidations,
         }
     }
 
@@ -178,35 +178,39 @@ impl EmbeddingService {
         })
     }
 
-    /// After a change of the company's settings: loaded again, and its
-    /// memory indexed for the new model.
+    /// After a change of the company's settings: loaded again, here and in
+    /// the other processes, and its memory indexed for the new model.
     pub fn invalidate(&self, tenant_id: Uuid) {
-        self.cache.invalidate(tenant_id);
-        self.failed(tenant_id, None);
-        self.wake();
+        self.forget(tenant_id);
+        self.invalidations
+            .announce(Invalidation::Embeddings(tenant_id));
     }
 
-    /// A memory was written, or approved: a pass of the indexer is due.
+    /// Loaded again here, and a pass due: another process changed the
+    /// settings.
+    pub(crate) fn forget(&self, tenant_id: Uuid) {
+        self.cache.invalidate(tenant_id);
+        self.wake_here();
+    }
+
+    pub(crate) fn forget_all(&self) {
+        self.cache.invalidate_all();
+        self.wake_here();
+    }
+
+    /// A memory was written, or approved: a pass of the indexer is due,
+    /// whatever process indexes.
     pub fn wake(&self) {
+        self.wake_here();
+        self.invalidations.announce(Invalidation::Indexing);
+    }
+
+    pub(crate) fn wake_here(&self) {
         self.wake.notify_one();
     }
 
     /// Returns once a pass is due (at most one wake is kept meanwhile).
     pub async fn woken(&self) {
         self.wake.notified().await;
-    }
-
-    /// Why the last pass failed in the company, if it did.
-    pub fn indexing_failure(&self, tenant_id: Uuid) -> Option<String> {
-        let failures = self.failures.lock().expect("indexing failures");
-        failures.get(&tenant_id).cloned()
-    }
-
-    fn failed(&self, tenant_id: Uuid, reason: Option<String>) {
-        let mut failures = self.failures.lock().expect("indexing failures");
-        match reason {
-            Some(reason) => failures.insert(tenant_id, reason),
-            None => failures.remove(&tenant_id),
-        };
     }
 }

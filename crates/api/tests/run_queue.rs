@@ -28,6 +28,12 @@ use support::relay::{next_event, relaying};
 
 const REQUEST: &str = "Fais le point sur la semaine";
 
+/// The kinds of the run's events, in order.
+async fn kinds(api: &TestApi, run: uuid::Uuid) -> Vec<String> {
+    let journal = events(api, tenant::ID, run).await;
+    journal.into_iter().map(|(kind, _)| kind).collect()
+}
+
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
 async fn a_run_an_api_process_starts_waits_queued_until_a_worker_executes_it() {
@@ -37,10 +43,12 @@ async fn a_run_an_api_process_starts_waits_queued_until_a_worker_executes_it() {
     api.idle().await;
     assert_eq!(status(run).await, "queued");
     assert_eq!(lease_of(run).await, (None, None));
+    // Its stream says so.
+    assert_eq!(kinds(&api, run).await, ["run_queued"]);
     // An api process takes nothing up, nor any queued run.
     let refused = api.app.services.runs.claim_execution().await.unwrap_err();
     assert_eq!(refused.to_string(), NOT_AN_EXECUTOR);
-    assert_eq!(api.app.services.runs.take_queued().await.unwrap(), 0);
+    assert_eq!(take_queued(&api).await, 0);
     assert_eq!(status(run).await, "queued");
 
     let worker = worker().await;
@@ -49,6 +57,7 @@ async fn a_run_an_api_process_starts_waits_queued_until_a_worker_executes_it() {
     )]);
     assert_eq!(take_queued(&worker).await, 1);
     assert_eq!(status(run).await, "completed");
+    assert_eq!(kinds(&api, run).await[..2], ["run_queued", "run_started"]);
     let asked = &worker.model.as_ref().unwrap().requests()[0];
     let last = format!("{:?}", asked.messages.last().unwrap());
     assert!(last.contains(REQUEST), "{last}");
@@ -107,6 +116,8 @@ async fn a_decision_taken_through_an_api_process_queues_the_run_s_resumption() {
     assert_eq!(decided.status, StatusCode::OK, "{}", decided.text());
     assert_eq!(decided.json()["resumed"], true);
     assert_eq!(status(run).await, "queued");
+    let journal = kinds(&api, run).await;
+    assert_eq!(journal.last().map(String::as_str), Some("run_queued"));
 
     assert_eq!(take_queued(&worker).await, 1);
     assert_eq!(status(run).await, "completed");
