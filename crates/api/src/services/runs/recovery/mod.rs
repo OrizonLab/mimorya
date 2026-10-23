@@ -17,6 +17,7 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use mimorya_agent::runtime::{ACCOUNT_INACTIVE, RunCheckpoint, RunEvent, RunOutcome};
+use mimorya_db::repositories::run_leases::run_lease_expired;
 use mimorya_db::repositories::runs::{InterruptedRun, RunStatus, interrupted_runs, lock_run};
 
 use super::db_ports::RunScope;
@@ -42,6 +43,15 @@ const NOT_TAKEN_UP: &str =
 
 /// Beyond this, a run is not taken up: its user has moved on.
 const MAX_INTERRUPTION: chrono::Duration = chrono::Duration::hours(1);
+
+/// How a run is taken up: at startup, its executor stopped (this process
+/// alone executes, ADR-053), whatever its lease; or its lease expired, and
+/// still is once locked (ADR-083).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum TakeUp {
+    AtStartup,
+    Expired,
+}
 
 impl RunService {
     /// Takes up again the runs a stop of the service left running; how many
@@ -83,22 +93,35 @@ impl RunService {
         for run in &runs {
             // One that cannot be taken up stays running: the periodic sweep
             // fails it later.
-            if let Err(error) = self.recover(*run).await {
+            if let Err(error) = self.recover(*run, TakeUp::AtStartup).await {
                 tracing::error!(run_id = %run.run_id, error = format!("{error:#}"), "Interrupted run not taken up");
             }
         }
         Ok(runs.len())
     }
 
-    async fn recover(&self, interrupted: InterruptedRun) -> anyhow::Result<()> {
+    /// Takes the run up, under its lock and lease: resumed, or ended naming
+    /// the actions to check; whether it was taken (it may have ended, or its
+    /// lease been renewed, meanwhile).
+    pub(super) async fn recover(
+        &self,
+        interrupted: InterruptedRun,
+        how: TakeUp,
+    ) -> anyhow::Result<bool> {
         let InterruptedRun { tenant_id, run_id } = interrupted;
         let mut tx = self.db.begin(tenant_id).await?;
         let Some(run) = lock_run(&mut tx, run_id).await? else {
-            return Ok(());
+            return Ok(false);
         };
         if run.status() != RunStatus::Running {
-            return Ok(());
+            return Ok(false);
         }
+        if how == TakeUp::Expired
+            && (self.leases.executes(run_id) || !run_lease_expired(&mut tx, run_id).await?)
+        {
+            return Ok(false);
+        }
+        self.hold(&mut tx, run_id).await?;
         let checkpoint: Option<RunCheckpoint> = run
             .state
             .clone()
@@ -116,7 +139,8 @@ impl RunService {
         };
         let unknown = of_unknown_effect(&started, approved, &set_now);
         let Some(state) = run.state.clone() else {
-            return self.end(scope, STOPPED_BEFORE_ITS_FIRST_STEP, None).await;
+            self.end(scope, STOPPED_BEFORE_ITS_FIRST_STEP, None).await?;
+            return Ok(true);
         };
         if Utc::now() - run.updated_at > MAX_INTERRUPTION {
             let error = if unknown.is_empty() {
@@ -124,7 +148,8 @@ impl RunService {
             } else {
                 ending(TOO_LONG, &unknown, approved)
             };
-            return self.end(scope, &error, checkpoint).await;
+            self.end(scope, &error, checkpoint).await?;
+            return Ok(true);
         }
         let Some(access) = self.access.active_context(tenant_id, scope.user_id).await? else {
             let error = if unknown.is_empty() {
@@ -132,7 +157,8 @@ impl RunService {
             } else {
                 ending(&format!("{ACCOUNT_INACTIVE}."), &unknown, approved)
             };
-            return self.end(scope, &error, checkpoint).await;
+            self.end(scope, &error, checkpoint).await?;
+            return Ok(true);
         };
         // Should the engine not even start, the actions to check are named.
         let crash_message = if unknown.is_empty() {
@@ -145,11 +171,8 @@ impl RunService {
             interrupted: started,
             crash_message,
         };
-        let executor = self.executor.clone();
-        let access = Arc::new(access);
-        self.tasks
-            .spawn(async move { executor.execute(access, run, mode).await });
-        Ok(())
+        self.launch(Arc::new(access), run, mode);
+        Ok(true)
     }
 
     /// Ends a run that does not go on, as the engine would: its outcome saved

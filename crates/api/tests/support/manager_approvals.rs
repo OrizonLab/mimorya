@@ -28,13 +28,23 @@ pub async fn route_to_managers(paul: &Client<'_>, risks: &[&str]) {
 pub async fn applying(
     api: &TestApi,
     requester: &Client<'_>,
-    (intervention, start_time): (&str, &str),
+    slot: (&str, &str),
     final_text: &str,
+) -> (String, Option<Value>) {
+    applying_then(api, requester, slot, ScriptedStep::text(final_text)).await
+}
+
+/// As `applying`, the run going on with `last` once its request ends.
+pub async fn applying_then(
+    api: &TestApi,
+    requester: &Client<'_>,
+    (intervention, start_time): (&str, &str),
+    last: ScriptedStep,
 ) -> (String, Option<Value>) {
     api.script(vec![
         propose(intervention, start_time),
         apply_proposal(""),
-        ScriptedStep::text(final_text),
+        last,
     ]);
     let conversation = requester.post("/conversations", json!({})).await.json();
     let id = conversation["conversation"]["id"].as_str().unwrap();

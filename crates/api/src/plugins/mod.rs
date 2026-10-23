@@ -1,8 +1,8 @@
 //! Cross-cutting concerns applied around the routes: request context and
 //! logging, rate limiting, CSRF protection, session resolution, security
 //! headers, the audit of refused administration changes, the periodic
-//! maintenance (stale runs, expired reset links) and the indexing of
-//! memories by meaning.
+//! maintenance (stale runs, expired reset links), the indexing of memories
+//! by meaning, scheduled tasks and execution leases.
 
 pub mod csrf;
 pub mod distinct_limit;
@@ -11,6 +11,7 @@ pub mod memory_indexing;
 pub mod rate_limit;
 pub mod refusal_audit;
 pub mod request_context;
+pub mod run_leases;
 pub mod scheduled_tasks;
 pub mod security_headers;
 pub mod session;

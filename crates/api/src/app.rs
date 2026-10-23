@@ -20,6 +20,7 @@ use crate::plugins::maintenance::spawn_maintenance;
 use crate::plugins::memory_indexing::spawn_memory_indexing;
 use crate::plugins::rate_limit::global_rate_limit;
 use crate::plugins::request_context::request_context;
+use crate::plugins::run_leases::{spawn_lease_renewal, spawn_lease_takeover};
 use crate::plugins::scheduled_tasks::spawn_scheduled_tasks;
 use crate::plugins::security_headers::security_headers;
 use crate::plugins::session::resolve_identity;
@@ -30,7 +31,7 @@ use crate::services::background::BackgroundTasks;
 use crate::services::connectors::ConnectorSettings;
 use crate::services::embeddings::{EmbeddingServiceOptions, default_embedding_factory};
 use crate::services::llm::{LlmServiceOptions, default_factory};
-use crate::services::runs::{ApprovalNotifier, LessonCapture, RunExecutor};
+use crate::services::runs::{ApprovalNotifier, LeaseTiming, LessonCapture, RunExecutor};
 use crate::services::sso::{SsoService, SystemDns, TxtLookup};
 use crate::services::{
     AccessService, ConnectorService, EmbeddingFactory, EmbeddingService, LlmService,
@@ -84,6 +85,9 @@ pub struct BuildOptions {
     /// Leaves memories to be indexed on demand (`index_pending`), not in the
     /// background (tests that count what a pass embeds).
     pub manual_indexing: bool,
+    /// Replaces how long a run's lease lasts and how often leases are renewed
+    /// and taken up (tests).
+    pub run_leases: Option<LeaseTiming>,
     /// Leaves scheduled tasks to be fired on demand (`fire_due_tasks`), not
     /// every minute once interrupted runs are taken up (tests that set when
     /// one is due).
@@ -108,6 +112,8 @@ pub struct App {
     maintenance: JoinHandle<()>,
     indexing: Option<JoinHandle<()>>,
     scheduling: Option<JoinHandle<()>>,
+    lease_renewal: JoinHandle<()>,
+    lease_takeover: JoinHandle<()>,
 }
 
 pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Result<App> {
@@ -203,7 +209,12 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
         reset_requests: RateLimiter::new(RESET_REQUESTS_PER_ADDRESS, RESET_REQUEST_WINDOW),
     };
     let services = Arc::new(Services {
-        runs: RunService::new(db.clone(), access.clone(), executor),
+        runs: RunService::new(
+            db.clone(),
+            access.clone(),
+            executor,
+            options.run_leases.unwrap_or_default(),
+        ),
         sso,
         mailer,
         config,
@@ -235,6 +246,8 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
         maintenance: spawn_maintenance(services.clone()),
         indexing: (!options.manual_indexing).then(|| spawn_memory_indexing(services.clone())),
         scheduling: (!options.manual_scheduling).then(|| spawn_scheduled_tasks(services.clone())),
+        lease_renewal: spawn_lease_renewal(services.clone()),
+        lease_takeover: spawn_lease_takeover(services.clone()),
         services,
     })
 }
@@ -266,11 +279,16 @@ impl App {
         if let Some(scheduling) = self.scheduling {
             let _ = scheduling.await;
         }
+        // Nor does this one: it takes up no other run once the service stops.
+        let _ = self.lease_takeover.await;
         if let Some(indexing) = self.indexing {
             indexing.abort();
             let _ = indexing.await;
         }
         self.services.runs.idle().await;
+        // The runs ended: no lease left to renew.
+        self.lease_renewal.abort();
+        let _ = self.lease_renewal.await;
         self.services.background.idle().await;
         self.services.connectors.close().await;
         self.services.db.close().await;
