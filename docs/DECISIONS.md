@@ -3268,3 +3268,103 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     - Paul la déclare de nouveau, puis la lève après confirmation : Marc en est
       prévenu ;
     - quoi qu'il arrive, Marc reste sans absence.
+
+## ADR-080 — Tâches planifiées : une demande à l'agent, à heure fixe (premier lot : l'API)
+
+- **Date** : 2026-10-23 · **Statut** : acceptée
+- **Contexte** : l'agent ne travaillait que lorsqu'on lui écrivait. Une demande récurrente
+  (« chaque lundi à 8 h, fais le point sur les interventions de la semaine ») devait être
+  retapée à chaque fois. C'est le premier lot du chantier « worker séparé, missions
+  longues, reprise par bail, tâches planifiées » : il s'appuie sur l'exécuteur actuel
+  (une seule instance exécute les runs, ADR-016, ADR-053), sans infrastructure nouvelle ;
+  le worker séparé et la reprise par bail viendront après.
+- **Décision** :
+  - chacun écrit ses tâches (`GET`, `POST /scheduled-tasks`, `PATCH`, `DELETE
+/scheduled-tasks/{id}`) : un intitulé (une ligne, 120 caractères au plus), la demande
+    envoyée comme la sienne (4 000 au plus), des jours de la semaine, une heure `HH:MM` et
+    un fuseau IANA. Caractères cachés retirés. Vingt tâches au plus par personne. Une
+    tâche se met en pause et reprend ; ses changements sont tracés
+    (`scheduled_task.created`, `updated`, `deleted`) avec les jours, l'heure, le fuseau
+    et l'état, jamais le texte de la demande ;
+  - ce sont ses ressources : celles d'un autre répondent comme absentes (404). Créer ou
+    reprendre une tâche demande le droit d'utiliser l'agent (`agent:use`) ; la mettre en
+    pause ou la supprimer, non : qui l'a perdu arrête encore les siennes ;
+  - l'heure est celle de l'auteur, dans son fuseau (`core/src/schedule.rs`) : une heure que
+    le passage à l'heure d'été saute part dès qu'elle existe à nouveau ; une heure que le
+    retour à l'heure d'hiver répète part la première fois ;
+  - chaque minute, le processus qui exécute les runs (celui qui tient le verrou de
+    l'exécuteur ; un second processus, qui va refuser de démarrer, ne lance rien) lance les
+    tâches dues (`system_due_scheduled_tasks`, entreprise et identifiant seulement, lot de
+    50 après lot de 50 tant qu'il en reste). Il ne commence qu'une fois repris les runs
+    qu'un arrêt du service a interrompus (ADR-053) : un run lancé avant serait pris pour
+    l'un d'eux. À l'arrêt du service, la passe s'interrompt entre deux tâches, jamais au
+    milieu d'un lancement. Une occurrence est d'abord réclamée : la ligne verrouillée
+    (`for update skip locked`), revérifiée due, la tâche reprogrammée à sa prochaine
+    heure. Elle ne part jamais deux fois, même si deux passes se croisent ;
+  - elle part comme une demande de son auteur, dans une conversation nouvelle à lui
+    (intitulée comme la tâche), avec ses droits tels qu'ils sont alors : le run les relit à
+    chaque étape, ses validations suivent le circuit habituel. Son démarrage est tracé
+    comme celui de la plateforme, au nom de l'auteur (`agent.run.started`, acteur système,
+    avec la tâche) : il ne l'a pas lancé lui-même à cette heure. Rien n'est ouvert si
+    aucun modèle n'est disponible, si son entreprise est suspendue ou s'il n'a plus le
+    droit d'utiliser l'agent ; une conversation dont le run ne démarrerait pas tout de même
+    est archivée (l'application n'en supprime aucune) ;
+  - une occurrence ne part pas :
+    - si le dernier run qu'une occurrence a lancé est encore en cours ou attend une
+      validation, quel que soit le nombre d'occurrences retenues depuis ;
+    - plus d'une heure après son heure (le service était arrêté : la demande peut avoir
+      perdu son objet) ;
+    - si le compte de l'auteur est désactivé : la tâche se met alors en pause, plutôt que
+      d'être refusée chaque jour, et il la reprend une fois son compte rétabli ;
+    - s'il doit remplacer un mot de passe provisoire, ou s'il a perdu le droit d'utiliser
+      l'agent ;
+    - si son entreprise est suspendue ;
+    - sans modèle disponible ;
+  - un changement qui laisse ses jours, son heure et son fuseau garde sa prochaine
+    occurrence, même due et pas encore lancée ; un autre la recalcule ;
+  - ce qu'est devenue la dernière occurrence est gardé pour l'auteur (partie, ou pas
+    partie et pourquoi, en français), avec la conversation du dernier run lancé, celle qui
+    attend peut-être sa validation. L'occurrence est tracée (`scheduled_task.fired` avec
+    le run, ou `scheduled_task.not_run` avec la raison ; acteur système, au nom de
+    l'auteur).
+- **Alternatives écartées** :
+  - une expression cron libre : illisible pour un collaborateur, et capable de lancer
+    l'agent chaque minute ; une fois par jour au plus par tâche suffit aux usages visés ;
+  - une seule conversation par tâche : l'historique s'y allongerait sans fin (la compression
+    du contexte est un chantier à venir) et une occurrence dépendrait des précédentes ;
+  - rattraper toutes les occurrences manquées : une série de runs au redémarrage, pour
+    des demandes qui ont perdu leur objet.
+- **Conséquences** :
+  - donnée personnelle nouvelle : la tâche et le texte de sa demande, gardés tant que son
+    auteur la garde ; supprimés avec elle ou avec son compte ; lisibles en entier par lui
+    (`GET /scheduled-tasks`), à joindre à l'export de ses données ;
+  - une occurrence qui demande une validation de l'auteur l'attend dans « Validations »,
+    sans l'en prévenir par e-mail : à prévoir avec l'écran ;
+  - restent l'écran des tâches planifiées (lot 2), puis le worker séparé et la reprise par
+    bail ;
+  - tests :
+    - `crates/core/src/schedule.rs` : jours et heure lus, prochaine occurrence, passages à
+      l'heure d'été et d'hiver ;
+    - `crates/api/src/services/scheduled_tasks/definition.rs` : intitulé sur une ligne,
+      caractères cachés retirés, bornes ;
+    - `crates/api/tests/scheduled_tasks.rs` :
+      - créer, lire, mettre en pause, changer, reprendre et supprimer les siennes, tracé
+        sans le texte ;
+      - celles d'un autre répondent absentes ;
+      - refus d'une tâche qui ne tient pas et au-delà de vingt ;
+      - sans le droit d'utiliser l'agent, ni création ni reprise, mais pause et suppression ;
+    - `crates/api/tests/scheduled_task_firing.rs` :
+      - une tâche due part une fois, même pour deux passes simultanées ou une passe en
+        retard, dans une conversation nouvelle de son auteur, seul à la voir ; tracée, et
+        son run démarré par la plateforme au nom de l'auteur ;
+      - le serveur ne lance rien avant d'avoir repris les runs interrompus, puis lance à
+        l'instant ; il s'arrête sans attendre la passe suivante ; arrêté, il ne lance plus ;
+      - une passe va au-delà d'un lot ;
+      - changer le texte garde une occurrence due ; changer l'heure la recalcule ;
+    - `crates/api/tests/scheduled_task_holds.rs` : ne part pas tant que le dernier run
+      lancé attend une validation (deux jours de suite), ni plus d'une heure en retard, ni
+      pour un compte désactivé (mise en pause), à mot de passe provisoire ou privé de
+      l'agent, ni pour une entreprise suspendue, ni sans modèle, sans ouvrir de
+      conversation ;
+    - `crates/db/tests/definer_functions.rs` : la nouvelle fonction est connue ;
+    - `crates/api/tests/first_login.rs` : les routes retiennent un mot de passe provisoire.

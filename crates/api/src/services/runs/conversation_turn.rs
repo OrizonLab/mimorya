@@ -14,6 +14,7 @@ use mimorya_db::repositories::conversations::{
 use mimorya_db::repositories::runs::{
     NewRun, RunRow, RunStatus, create_run, list_runs_for_conversation,
 };
+use serde_json::json;
 use uuid::Uuid;
 
 use crate::contract::MessageMetadata;
@@ -21,6 +22,16 @@ use crate::services::access::{AccessContext, AuthIdentity};
 
 const HISTORY_LIMIT: i64 = 20;
 const TITLE_LENGTH: usize = 80;
+
+/// Who sends a turn: its user, or the platform for them (ADR-080).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TurnSender {
+    User,
+    /// Their scheduled task `task_id`, fired when due.
+    Schedule {
+        task_id: Uuid,
+    },
+}
 
 pub struct OpenedTurn {
     pub run: RunRow,
@@ -34,6 +45,7 @@ pub async fn open_conversation_turn(
     conversation_id: Uuid,
     text: &str,
     autonomy: AutonomyLevel,
+    sender: TurnSender,
 ) -> anyhow::Result<OpenedTurn> {
     // Locked: a concurrent turn waits here, then sees the run opened by this one.
     let conversation = lock_conversation(tx, conversation_id)
@@ -94,10 +106,21 @@ pub async fn open_conversation_turn(
         },
     )
     .await?;
+    let action = "agent.run.started";
+    let started = match sender {
+        TurnSender::User => {
+            AuditEntry::new(identity.tenant_id, "user", action, "success").by_user(identity.user_id)
+        }
+        // Started by the platform when due, as its author asked beforehand.
+        TurnSender::Schedule { task_id } => {
+            AuditEntry::new(identity.tenant_id, "system", action, "success")
+                .on_behalf_of(identity.user_id)
+                .metadata(json!({ "scheduledTaskId": task_id }))
+        }
+    };
     append_audit(
         tx,
-        AuditEntry::new(identity.tenant_id, "user", "agent.run.started", "success")
-            .by_user(identity.user_id)
+        started
             .run(run.id)
             .resource("conversation", conversation_id),
     )

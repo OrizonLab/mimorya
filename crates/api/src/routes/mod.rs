@@ -19,6 +19,7 @@ mod password_reset;
 mod run_events;
 mod runs;
 mod saml;
+mod scheduled_tasks;
 mod sso;
 
 use axum::Router;
@@ -44,6 +45,7 @@ pub fn router(state: &AppState) -> Router<AppState> {
         .merge(approvals::routes())
         .merge(approval_delegation::routes())
         .merge(memory::routes())
+        .merge(scheduled_tasks::routes())
         .merge(admin::routes(state))
         .fallback(not_found)
 }

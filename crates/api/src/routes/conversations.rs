@@ -20,6 +20,7 @@ use crate::contract::{
 use crate::http::{ApiResult, Body, PathId};
 use crate::plugins::Auth;
 use crate::services::AuthIdentity;
+use crate::services::runs::TurnSender;
 
 const MESSAGE_PAGE: i64 = 200;
 const RUN_PAGE: i64 = 20;
@@ -123,7 +124,7 @@ async fn post_message(
 ) -> ApiResult<(StatusCode, Json<MessageAccepted>)> {
     let started = state
         .runs
-        .start_conversation_turn(identity, id, &body.content)
+        .start_conversation_turn(identity, id, &body.content, TurnSender::User)
         .await?;
     Ok((
         StatusCode::ACCEPTED,

@@ -25,6 +25,7 @@ pub mod refusals;
 pub mod resets;
 pub mod runs;
 pub mod saml_provider;
+pub mod scheduled;
 pub mod sso;
 pub mod sweeps;
 
@@ -127,7 +128,15 @@ impl TestApi {
     pub async fn start_with(env: &[(&str, &str)]) -> Self {
         let model = Arc::new(ScriptedProvider::new(Vec::new()));
         let provider: Arc<dyn LlmProvider> = model.clone();
-        Self::build(Some(provider), Some(model), env, false, true).await
+        Self::build(Some(provider), Some(model), env, false, true, true).await
+    }
+
+    /// Like `start`, scheduled tasks fired every minute as in production,
+    /// once interrupted runs are taken up, not on demand.
+    pub async fn start_scheduling() -> Self {
+        let model = Arc::new(ScriptedProvider::new(Vec::new()));
+        let provider: Arc<dyn LlmProvider> = model.clone();
+        Self::build(Some(provider), Some(model), &[], false, true, false).await
     }
 
     /// Like `start_with`, memories indexed in the background as in
@@ -135,7 +144,7 @@ impl TestApi {
     pub async fn start_indexing(env: &[(&str, &str)]) -> Self {
         let model = Arc::new(ScriptedProvider::new(Vec::new()));
         let provider: Arc<dyn LlmProvider> = model.clone();
-        Self::build(Some(provider), Some(model), env, false, false).await
+        Self::build(Some(provider), Some(model), env, false, false, true).await
     }
 
     /// Same, with e-mails recorded in `mail` instead of sent.
@@ -147,12 +156,12 @@ impl TestApi {
     pub async fn start_with_mailer_and(env: &[(&str, &str)]) -> Self {
         let model = Arc::new(ScriptedProvider::new(Vec::new()));
         let provider: Arc<dyn LlmProvider> = model.clone();
-        Self::build(Some(provider), Some(model), env, true, true).await
+        Self::build(Some(provider), Some(model), env, true, true, true).await
     }
 
     /// App without any model provider configured.
     pub async fn without_llm() -> Self {
-        Self::build(None, None, &[], false, true).await
+        Self::build(None, None, &[], false, true, true).await
     }
 
     async fn build(
@@ -161,6 +170,7 @@ impl TestApi {
         env: &[(&str, &str)],
         record_mail: bool,
         manual_indexing: bool,
+        manual_scheduling: bool,
     ) -> Self {
         let mut vars: HashMap<&str, String> = HashMap::from([
             ("MIMORYA_ENV", "test".to_string()),
@@ -199,6 +209,9 @@ impl TestApi {
             provider_factory: Some(factory),
             embedding_factory: Some(embedding_factory),
             manual_indexing,
+            // Fired by the tests (`fire_due_tasks`), when they make a task
+            // due, unless started with `start_scheduling`.
+            manual_scheduling,
             mailer: record_mail.then(|| Some(mail.clone() as Arc<dyn Mailer>)),
             sso_network: None,
             global_rate_limit_per_minute: None,

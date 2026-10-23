@@ -31,8 +31,8 @@ Repères à l'intérieur des crates :
   contenir, ADR-052), `core/src/identity_providers/` (fournisseurs d'identité : émetteur de
   chaque type, domaines, ce que prouve un jeton ou une assertion SAML, nom d'un compte
   créé, enregistrement DNS qui prouve un domaine (`domain_proof.rs`), ADR-063, ADR-067,
-  ADR-068, ADR-069), `core/src/demo/` (entreprise
-  fictive par thème).
+  ADR-068, ADR-069), `core/src/schedule.rs` (heure d'une tâche planifiée, ADR-080),
+  `core/src/demo/` (entreprise fictive par thème).
 - `db/migrations/` (SQL numéroté, source de vérité du schéma),
   `db/src/repositories/` (un fichier par entité ; la mémoire : `memory.rs`, recherche
   hybride `memory_search.rs`, vecteurs `memory_embeddings.rs`, ADR-074), `db/src/seed/` (organisation,
@@ -50,7 +50,8 @@ Repères à l'intérieur des crates :
   en-têtes de sécurité, audit des modifications d'administration refusées, sur une ressource introuvable ou envoyant un identifiant inconnu,
   maintenance périodique : runs bloqués, liens expirés, absences terminées, demandes de
   validation échues et relances avant échéance, ADR-061, ADR-062 ; indexation de la
-  mémoire en arrière-plan, `memory_indexing.rs`, ADR-074),
+  mémoire en arrière-plan, `memory_indexing.rs`, ADR-074 ; tâches planifiées lancées
+  chaque minute, `scheduled_tasks.rs`, ADR-080),
   `api/src/routes/` (un module par ressource, `admin/`), `api/src/contract/` (réponses
   et corps de requêtes typés, un fichier par ressource, dont sont générés les types
   TypeScript, ADR-036, ADR-039),
@@ -63,6 +64,8 @@ Repères à l'intérieur des crates :
   relance des demandes, ADR-059 à ADR-062, absence et remplaçant
   (`approval_delegation.rs`, ADR-071 à ADR-073), leçon proposée en fin de run
   (`lesson_capture.rs`, ADR-076)),
+  `api/src/services/scheduled_tasks/` (tâches planifiées : ce qu'elles demandent, celles
+  de chacun, leur lancement, ADR-080),
   `api/src/services/llm.rs` (fournisseur de modèle de
   chaque entreprise), `api/src/services/embeddings/` (modèle d'embeddings de chaque
   entreprise, vecteur d'une demande, indexation de la mémoire, ADR-074), `api/src/services/invitations/` (liens d'invitation, ADR-027),

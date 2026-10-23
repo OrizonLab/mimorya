@@ -11,6 +11,7 @@ pub mod memory_indexing;
 pub mod rate_limit;
 pub mod refusal_audit;
 pub mod request_context;
+pub mod scheduled_tasks;
 pub mod security_headers;
 pub mod session;
 
