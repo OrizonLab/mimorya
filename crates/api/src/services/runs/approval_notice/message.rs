@@ -7,8 +7,8 @@
 //! after signing in, where the right to decide is checked.
 
 use chrono::{DateTime, Utc};
-use mimorya_core::autonomy::ToolRisk;
 
+use super::wording::{Phrases, phrases, risk_label};
 use crate::mail::{Mail, expiry_label};
 
 pub struct ApprovalMail<'a> {
@@ -33,19 +33,6 @@ pub struct ApprovalMail<'a> {
     pub reminder: bool,
 }
 
-/// What an action of `risk` does, as the interface names it; a value no
-/// risk bears any more, as stored.
-fn risk_label(risk: &str) -> &str {
-    match ToolRisk::parse(risk) {
-        Some(ToolRisk::Read) => "lecture",
-        Some(ToolRisk::Draft) => "brouillon",
-        Some(ToolRisk::Write) => "modification",
-        Some(ToolRisk::External) => "impact externe",
-        Some(ToolRisk::Irreversible) => "irréversible",
-        None => risk,
-    }
-}
-
 pub fn approval_mail(notice: &ApprovalMail<'_>) -> Mail {
     let ApprovalMail {
         product,
@@ -60,30 +47,23 @@ pub fn approval_mail(notice: &ApprovalMail<'_>) -> Mail {
         expires_at,
         reminder,
     } = notice;
-    let one = *count == 1;
     let labels: Vec<&str> = risks.iter().map(|r| risk_label(r)).collect();
-    let (subject, what, risk_word, see, waiting, first, withdraw) = if one {
+    let Phrases {
+        risk_word,
+        see,
+        waiting,
+        expires: first,
+    } = phrases(*count, labels.len());
+    let (subject, what, withdraw) = if *count == 1 {
         (
             format!("Une action de {requested_for} attend votre validation"),
             format!("une action de {requested_for}"),
-            "risque",
-            "l’action et ses paramètres exacts, puis la valider ou la refuser",
-            "Tant que la demande attend",
-            "Elle expire",
             "la retirer",
         )
     } else {
         (
             format!("{count} actions de {requested_for} attendent votre validation"),
             format!("{count} actions de {requested_for}"),
-            if labels.len() == 1 {
-                "risque"
-            } else {
-                "risques"
-            },
-            "les actions et leurs paramètres exacts, puis les valider ou les refuser",
-            "Tant que les demandes attendent",
-            "Elles expirent",
             "les retirer",
         )
     };

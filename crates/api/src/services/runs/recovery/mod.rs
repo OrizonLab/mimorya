@@ -7,7 +7,8 @@
 //! (the run asks again if it needs to). A run stopped before its first saved
 //! step, for too long, or whose user may no longer act, ends there, naming
 //! the actions that were under way when the service stopped. Beforehand,
-//! managers are told of the requests whose notice the stop lost (ADR-070).
+//! managers and scheduled tasks' authors are told of the requests whose
+//! notice the stop lost (ADR-070, ADR-082).
 
 mod calls;
 mod lock;
@@ -69,7 +70,10 @@ impl RunService {
     async fn take_up_interrupted(&self) -> anyhow::Result<usize> {
         match self.executor.notifier.catch_up(Utc::now()).await {
             Ok(0) => {}
-            Ok(lost) => tracing::warn!(lost, "Managers told of requests a stop kept from them"),
+            Ok(lost) => tracing::warn!(
+                lost,
+                "Managers and scheduled tasks' authors told of requests a stop kept from them"
+            ),
             Err(error) => tracing::error!(
                 error = format!("{error:#}"),
                 "Lost approval notices not caught up"

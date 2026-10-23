@@ -6,12 +6,16 @@
 //! expire, their manager is reminded once (ADR-062). Without a mail
 //! relay, nothing is sent and managers find the requests in « Validations ».
 //! While the manager is away, whom they named to stand in for them is told
-//! instead, if that colleague may decide the requests (ADR-071). Each
-//! request notified or reminded is audited, without the address nor the
-//! relay's answer, which may name it.
+//! instead, if that colleague may decide the requests (ADR-071). The
+//! author of a scheduled task is told of the requests they decide in its
+//! run (`author`, ADR-082). Each request notified or reminded is audited,
+//! without the address nor the relay's answer, which may name it.
 
+mod author;
+mod author_mail;
 mod message;
 mod recipient;
+mod wording;
 
 use std::sync::Arc;
 
@@ -30,6 +34,7 @@ use crate::services::access::AccessService;
 use crate::services::background::BackgroundTasks;
 use message::{ApprovalMail, approval_mail};
 use recipient::{Recipient, recipient};
+use wording::{distinct_risks, sent};
 
 /// How long before their deadline requests are reminded of (ADR-062).
 pub const REMIND_BEFORE: Duration = Duration::hours(24);
@@ -90,7 +95,9 @@ impl ApprovalNotifier {
     }
 
     /// E-mails, in the background, the managers whom the requests
-    /// `approval_ids` of the paused run `run_id` await, if they still do.
+    /// `approval_ids` of the paused run `run_id` await, if they still do,
+    /// and the author of the scheduled task that started it, of the ones
+    /// they decide.
     pub fn notify(&self, tenant_id: Uuid, run_id: Uuid, approval_ids: Vec<Uuid>) {
         let Some(mailer) = self.mailer.clone() else {
             return;
@@ -114,21 +121,33 @@ impl ApprovalNotifier {
         let mut tx = self.db.begin(tenant_id).await?;
         let notices = approval_notices(&mut tx, run_id, approval_ids).await?;
         tx.commit().await?;
-        self.send_each(mailer, tenant_id, &notices, Message::Notice)
-            .await?;
-        Ok(())
+        let managers = self
+            .send_each(mailer, tenant_id, &notices, Message::Notice)
+            .await;
+        let author = self
+            .tell_author(mailer, tenant_id, run_id, approval_ids)
+            .await;
+        managers.and(author)
     }
 
-    /// Tells managers, in the background, of the requests a stop of the
-    /// service kept from them (ADR-070): pending in a paused run, never
-    /// notified, and not due within `REMIND_BEFORE` of `now` (those are
-    /// reminded instead, a minute later at most); how many. Called at
-    /// startup, before runs are taken up or decisions served: the requests
-    /// are listed now, so that none a run makes later is told of twice.
+    /// Tells managers, and scheduled tasks' authors (ADR-082), in the
+    /// background, of the requests a stop of the service kept from them
+    /// (ADR-070); how many. Called at startup, before runs are taken up or
+    /// decisions served: the requests are listed now, so that none a run
+    /// makes later is told of twice. One list failing leaves the other.
     pub async fn catch_up(&self, now: DateTime<Utc>) -> anyhow::Result<usize> {
         if self.mailer.is_none() {
             return Ok(0);
         }
+        let managers = self.catch_up_managers(now).await;
+        let authors = self.catch_up_authors(now).await;
+        Ok(managers? + authors?)
+    }
+
+    /// The managers' requests pending in a paused run, never notified, and
+    /// not due within `REMIND_BEFORE` of `now` (those are reminded instead,
+    /// a minute later at most).
+    async fn catch_up_managers(&self, now: DateTime<Utc>) -> anyhow::Result<usize> {
         let due_after = now + REMIND_BEFORE;
         let mut lost = 0;
         for run in unnotified_approval_runs(self.db.pool(), due_after).await? {
@@ -222,12 +241,7 @@ impl ApprovalNotifier {
         let Some(first) = requests.first() else {
             return Ok(());
         };
-        let mut risks: Vec<&str> = Vec::new();
-        for request in requests {
-            if !risks.contains(&request.risk.as_str()) {
-                risks.push(&request.risk);
-            }
-        }
+        let risks = distinct_risks(requests.iter().map(|r| r.risk.as_str()));
         let to = recipient(&self.db, &self.access, tenant_id, first).await?;
         let link = format!("{}/approvals", self.web_origin);
         let mail = approval_mail(&ApprovalMail {
@@ -243,17 +257,7 @@ impl ApprovalNotifier {
             expires_at: requests.iter().filter_map(|r| r.expires_at).min(),
             reminder: matches!(message, Message::Reminder),
         });
-        let outcome = match mailer.send(&mail).await {
-            Ok(()) => "success",
-            Err(_) => {
-                tracing::warn!(
-                    run_id = %first.run_id,
-                    message = message.name(),
-                    "Approval e-mail refused by the relay"
-                );
-                "failure"
-            }
-        };
+        let outcome = sent(mailer, &mail, first.run_id, message.name()).await;
         let mut tx = self.db.begin(tenant_id).await?;
         for request in requests {
             let grouped = requests.len();
