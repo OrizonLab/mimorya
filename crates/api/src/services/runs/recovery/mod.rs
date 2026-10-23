@@ -15,9 +15,9 @@ mod lock;
 
 use std::sync::Arc;
 
-use chrono::DateTime;
 use chrono::Utc;
 use mimorya_agent::runtime::{ACCOUNT_INACTIVE, RunCheckpoint, RunEvent, RunOutcome};
+use mimorya_db::repositories::run_leases::run_lease_expired;
 use mimorya_db::repositories::runs::{InterruptedRun, RunStatus, interrupted_runs, lock_run};
 
 use super::db_ports::RunScope;
@@ -45,12 +45,12 @@ const NOT_TAKEN_UP: &str =
 const MAX_INTERRUPTION: chrono::Duration = chrono::Duration::hours(1);
 
 /// How a run is taken up: at startup, its executor stopped (this process
-/// alone executes, ADR-053), whatever its lease; or its lease expired by
-/// then, and still is once locked (ADR-083).
-#[derive(Debug, Clone, Copy)]
+/// alone executes, ADR-053), whatever its lease; or its lease expired, and
+/// still is once locked (ADR-083).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum TakeUp {
     AtStartup,
-    Expired(DateTime<Utc>),
+    Expired,
 }
 
 impl RunService {
@@ -116,11 +116,10 @@ impl RunService {
         if run.status() != RunStatus::Running {
             return Ok(false);
         }
-        if let TakeUp::Expired(now) = how {
-            let expired = run.lease_expires_at.is_some_and(|at| at < now);
-            if !expired || self.leases.executes(run_id) {
-                return Ok(false);
-            }
+        if how == TakeUp::Expired
+            && (self.leases.executes(run_id) || !run_lease_expired(&mut tx, run_id).await?)
+        {
+            return Ok(false);
         }
         self.hold(&mut tx, run_id).await?;
         let checkpoint: Option<RunCheckpoint> = run

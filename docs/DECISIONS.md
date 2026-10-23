@@ -3511,13 +3511,22 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     sans bail entre sa création et son exécution ;
   - tant que le run s'exécute, son bail (60 s) est renouvelé toutes les 20 s, pour les
     seuls runs que le processus exécute réellement. Il est rendu quand le run quitte
-    `running` ;
+    `running`. Échéances écrites et comparées sur la seule horloge de la base
+    (`clock_timestamp()`) : ni l'horloge d'un exécuteur ni l'attente d'un verrou ne les
+    faussent ;
   - toutes les minutes, l'exécuteur reprend, sous les règles de l'ADR-053, les runs dont
-    le bail a expiré et qu'il n'exécute pas lui-même. Il les trouve par
-    `system_expired_run_leases`, qui ne donne que l'entreprise et l'identifiant. Un run dont
-    l'exécution s'est perdue alors que le processus vit encore (son issue n'a pas pu être
-    enregistrée) n'attend donc plus le balayage des runs bloqués, un quart d'heure plus
-    tard. Un run sans bail (créé avant cette migration) n'est repris qu'au démarrage ;
+    le bail a expiré et qu'il n'exécute pas lui-même. Seul le processus qui tient le verrou
+    d'exécution le fait, une fois repris au démarrage les runs qu'un arrêt a interrompus,
+    comme pour les demandes échues (ADR-061). Il trouve ces runs par
+    `system_expired_run_leases`, qui ne donne que l'entreprise et l'identifiant, et
+    revérifie l'échéance sous le verrou du run. Un run s'exécute ici tant que l'une de ses
+    exécutions est en cours : celle qui finit d'enregistrer une pause ne retire pas celle
+    qu'une décision vient de relancer. Un run dont l'exécution s'est perdue alors que le
+    processus vit encore (son issue n'a pas pu être enregistrée, la base étant
+    injoignable) n'attend donc plus le balayage des runs bloqués, un quart d'heure plus
+    tard. Son message de fin reste celui d'un arrêt du service, que ce cas rejoint (et
+    qu'il sera, au lot 3, l'arrêt d'un worker). Un run sans bail (créé avant cette
+    migration) n'est repris qu'au démarrage ;
   - au démarrage, l'exécuteur, seul à tenir le verrou (ADR-053), reprend tous les runs
     `running`, baux compris : leur exécuteur s'est arrêté. Le verrou d'instance unique
     demeure jusqu'au lot 3 ;
@@ -3537,4 +3546,4 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
   - rien ne change pour les utilisateurs : ce lot prépare le worker séparé ;
   - garde d'écriture (un exécuteur qui a perdu son bail n'écrit plus) : prévue au lot 3,
     sans objet tant qu'un seul processus exécute ;
-  - tests : voir `crates/api/tests/run_leases.rs`.
+  - tests : `crates/api/tests/run_leases.rs` (baux tenus) et `run_lease_takeover.rs` (reprise).

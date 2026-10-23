@@ -4,7 +4,6 @@
 //! the runs whose lease expired are taken up every `take_up_every`, until
 //! the service stops.
 
-use chrono::Utc;
 use tokio::task::JoinHandle;
 
 use crate::app::AppState;
@@ -14,9 +13,7 @@ pub fn spawn_lease_renewal(services: AppState) -> JoinHandle<()> {
         let mut interval = tokio::time::interval(services.runs.lease_timing().renew_every);
         loop {
             interval.tick().await;
-            if let Err(error) = services.runs.renew_leases().await {
-                tracing::warn!(error = format!("{error:#}"), "Run leases not renewed");
-            }
+            services.runs.renew_leases().await;
         }
     })
 }
@@ -34,7 +31,7 @@ pub fn spawn_lease_takeover(services: AppState) -> JoinHandle<()> {
                 _ = interval.tick() => {}
                 _ = stopping.wait_for(|stop| *stop) => return,
             }
-            match services.runs.take_up_expired(Utc::now()).await {
+            match services.runs.take_up_expired(&services.shutdown).await {
                 Ok(0) => {}
                 Ok(taken) => tracing::warn!(taken, "Runs with an expired lease taken up"),
                 Err(error) => {

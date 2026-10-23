@@ -25,23 +25,24 @@ CREATE TRIGGER agent_runs_give_up_lease
   BEFORE INSERT OR UPDATE ON agent_runs
   FOR EACH ROW EXECUTE FUNCTION agent_runs_give_up_lease();
 
--- The runs of every company whose lease has expired by `p_now`, the
--- longest expired first: each is then taken up in its own company. Only
--- their company and identifier cross the companies' boundary.
-CREATE FUNCTION system_expired_run_leases(p_now timestamptz)
+-- The runs of every company whose lease has expired, the longest expired
+-- first: each is then taken up in its own company. Only their company and
+-- identifier cross the companies' boundary. Leases are set and read on the
+-- database's clock alone, whatever the executors' clocks say.
+CREATE FUNCTION system_expired_run_leases()
 RETURNS TABLE (tenant_id uuid, run_id uuid)
 LANGUAGE sql
-STABLE
+VOLATILE
 SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
   SELECT agent_runs.tenant_id, agent_runs.id
     FROM agent_runs
    WHERE agent_runs.status = 'running'
-     AND agent_runs.lease_expires_at < p_now
+     AND agent_runs.lease_expires_at < clock_timestamp()
    ORDER BY agent_runs.lease_expires_at
 $$;
 
-REVOKE ALL ON FUNCTION system_expired_run_leases(timestamptz) FROM PUBLIC;
+REVOKE ALL ON FUNCTION system_expired_run_leases() FROM PUBLIC;
 
-GRANT EXECUTE ON FUNCTION system_expired_run_leases(timestamptz) TO mimorya_app;
+GRANT EXECUTE ON FUNCTION system_expired_run_leases() TO mimorya_app;

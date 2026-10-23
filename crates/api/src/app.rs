@@ -279,7 +279,7 @@ impl App {
         if let Some(scheduling) = self.scheduling {
             let _ = scheduling.await;
         }
-        // Neither does this one, nor take up a run, once the service stops.
+        // Nor does this one: it takes up no other run once the service stops.
         let _ = self.lease_takeover.await;
         if let Some(indexing) = self.indexing {
             indexing.abort();

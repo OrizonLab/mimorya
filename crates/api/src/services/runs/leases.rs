@@ -8,11 +8,12 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use chrono::{DateTime, Utc};
 use mimorya_db::TenantTx;
 use mimorya_db::repositories::run_leases::{expired_run_leases, renew_run_leases, take_run_lease};
 use mimorya_db::repositories::runs::RunRow;
 use uuid::Uuid;
+
+use tokio::sync::watch;
 
 use super::executor::ExecutionMode;
 use super::recovery::TakeUp;
@@ -42,8 +43,9 @@ impl Default for LeaseTiming {
 pub(super) struct Leases {
     owner: Uuid,
     timing: LeaseTiming,
-    /// Run, and its company, while it executes here.
-    executing: Mutex<HashMap<Uuid, Uuid>>,
+    /// Run, with its company and how many executions of it are under way
+    /// here: one paused may still be ending while a decision resumes it.
+    executing: Mutex<HashMap<Uuid, (Uuid, usize)>>,
 }
 
 impl Leases {
@@ -75,7 +77,9 @@ impl Leases {
         self.executing
             .lock()
             .expect("executing runs")
-            .insert(run_id, tenant_id);
+            .entry(run_id)
+            .or_insert((tenant_id, 0))
+            .1 += 1;
         Executing {
             leases: self.clone(),
             run_id,
@@ -85,14 +89,15 @@ impl Leases {
     /// The runs executing here, by company.
     fn executing_by_tenant(&self) -> HashMap<Uuid, Vec<Uuid>> {
         let mut by_tenant: HashMap<Uuid, Vec<Uuid>> = HashMap::new();
-        for (run, tenant) in self.executing.lock().expect("executing runs").iter() {
+        for (run, (tenant, _)) in self.executing.lock().expect("executing runs").iter() {
             by_tenant.entry(*tenant).or_default().push(*run);
         }
         by_tenant
     }
 }
 
-/// A run executing here, until dropped: its execution ended, however.
+/// An execution of a run here, until dropped: it ended, however. The run
+/// executes here as long as one of its executions does.
 struct Executing {
     leases: Arc<Leases>,
     run_id: Uuid,
@@ -100,11 +105,13 @@ struct Executing {
 
 impl Drop for Executing {
     fn drop(&mut self) {
-        self.leases
-            .executing
-            .lock()
-            .expect("executing runs")
-            .remove(&self.run_id);
+        let mut executing = self.leases.executing.lock().expect("executing runs");
+        if let Some((_, count)) = executing.get_mut(&self.run_id) {
+            *count -= 1;
+            if *count == 0 {
+                executing.remove(&self.run_id);
+            }
+        }
     }
 }
 
@@ -139,28 +146,47 @@ impl RunService {
         });
     }
 
-    /// Renews the leases of the runs executing here; how many it still held.
-    pub async fn renew_leases(&self) -> anyhow::Result<u64> {
+    /// Renews the leases of the runs executing here, company after company,
+    /// one failing leaving the others to renew; how many it still held.
+    pub async fn renew_leases(&self) -> u64 {
         let mut renewed = 0;
         for (tenant_id, runs) in self.leases.executing_by_tenant() {
-            let mut tx = self.db.begin(tenant_id).await?;
-            let ttl = self.leases.ttl_seconds();
-            renewed += renew_run_leases(&mut tx, self.leases.owner(), &runs, ttl).await?;
-            tx.commit().await?;
+            match self.renew_in(tenant_id, &runs).await {
+                Ok(count) => renewed += count,
+                Err(error) => {
+                    tracing::warn!(tenant_id = %tenant_id, error = format!("{error:#}"), "Run leases not renewed");
+                }
+            }
         }
+        renewed
+    }
+
+    async fn renew_in(&self, tenant_id: Uuid, runs: &[Uuid]) -> anyhow::Result<u64> {
+        let mut tx = self.db.begin(tenant_id).await?;
+        let ttl = self.leases.ttl_seconds();
+        let renewed = renew_run_leases(&mut tx, self.leases.owner(), runs, ttl).await?;
+        tx.commit().await?;
         Ok(renewed)
     }
 
-    /// Takes up the runs whose lease expired by `now` and which do not
-    /// execute here, as after a stop of the service (ADR-053): resumed, or
-    /// ended naming the actions to check; how many.
-    pub async fn take_up_expired(&self, now: DateTime<Utc>) -> anyhow::Result<usize> {
+    /// Takes up the runs whose lease expired and which do not execute here,
+    /// as after a stop of the service (ADR-053): resumed, or ended naming
+    /// the actions to check; how many. Only in the process that executes
+    /// runs, as expiries (ADR-061): another leaves them to it. Stops between
+    /// two runs once the service stops (`stopping`).
+    pub async fn take_up_expired(&self, stopping: &watch::Sender<bool>) -> anyhow::Result<usize> {
+        if !self.executes().await {
+            return Ok(0);
+        }
         let mut taken = 0;
-        for run in expired_run_leases(self.db.pool(), now).await? {
+        for run in expired_run_leases(self.db.pool()).await? {
+            if *stopping.borrow() {
+                break;
+            }
             // Checked again under the run's lock, with whether it executes
             // here. One that cannot be taken up stays running: the sweep of
             // stuck runs fails it later.
-            match self.recover(run, TakeUp::Expired(now)).await {
+            match self.recover(run, TakeUp::Expired).await {
                 Ok(true) => taken += 1,
                 Ok(false) => {}
                 Err(error) => {
@@ -169,5 +195,25 @@ impl RunService {
             }
         }
         Ok(taken)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_run_executes_here_while_one_of_its_executions_does() {
+        let leases = Arc::new(Leases::new(LeaseTiming::default()));
+        let (tenant, run) = (Uuid::new_v4(), Uuid::new_v4());
+        // Paused, still ending, when a decision resumes it.
+        let ending = leases.register(tenant, run);
+        let resumed = leases.register(tenant, run);
+        drop(ending);
+        assert!(leases.executes(run));
+        assert_eq!(leases.executing_by_tenant()[&tenant], [run]);
+        drop(resumed);
+        assert!(!leases.executes(run));
+        assert!(leases.executing_by_tenant().is_empty());
     }
 }
