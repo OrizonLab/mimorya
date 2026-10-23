@@ -3462,7 +3462,7 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     - `crates/api/tests/scheduled_run_notice_catch_up.rs` :
       - l'avis perdu envoyé au démarrage, une fois ;
       - ni pour un auteur désactivé, ni dans une entreprise suspendue, ni pour une demande
-        expirée ;
+        expirée, chaque demande retenue par elle-même, quoi qui liste son run ;
       - celui d'une autre entreprise envoyé et tracé chez elle seule ;
     - `crates/api/tests/scheduled_task_firing.rs` : le run est lié à sa tâche dès son
       ouverture ;

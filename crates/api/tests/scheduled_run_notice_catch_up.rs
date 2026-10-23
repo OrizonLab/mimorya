@@ -2,14 +2,17 @@
 //! ADR-070): at startup, the author of a request still awaiting them in the
 //! paused run their task last started, never told of it, is told once, in
 //! their own company; not while their account is disabled or their company
-//! suspended, nor once the request has expired.
+//! suspended, nor once the request has expired. Each request is held back
+//! by itself, whatever lists its run.
 
 mod support;
 
 use axum::http::StatusCode;
 use chrono::Utc;
 use mimorya_core::demo::{tenant, user};
-use mimorya_db::repositories::scheduled_run_notices::unnotified_scheduled_runs;
+use mimorya_db::repositories::scheduled_run_notices::{
+    author_notices, author_notices_never_sent, unnotified_scheduled_runs,
+};
 use mimorya_db::testing::{OTHER_TENANT_ID, OTHER_USER_ID};
 use serde_json::{Value, json};
 use support::manager_approvals::due_in;
@@ -153,4 +156,42 @@ async fn another_company_s_author_is_told_in_their_own_company() {
     );
     assert!(notices(&started, tenant::ID, &request).await.is_empty());
     end_foreign_scheduled_request(&started, foreign).await;
+}
+
+/// How many of `approval`'s requests its author would be told of at a pause
+/// and at startup.
+async fn told(api: &TestApi, approval: &Value) -> (usize, usize) {
+    let id: Uuid = approval["id"].as_str().unwrap().parse().unwrap();
+    let run: Uuid = approval["runId"].as_str().unwrap().parse().unwrap();
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    let at_pause = author_notices(&mut tx, run, &[id]).await.unwrap().len();
+    let at_startup = author_notices_never_sent(&mut tx, run, Utc::now())
+        .await
+        .unwrap()
+        .len();
+    tx.commit().await.unwrap();
+    (at_pause, at_startup)
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_suspended_company_or_a_past_deadline_holds_each_request_back() {
+    let stopped = TestApi::start().await;
+    let nadia = stopped.sign_in(user::NADIA).await;
+    let (id, _, approval) = lost(&stopped, &nadia).await;
+    let approval_id: Uuid = approval["id"].as_str().unwrap().parse().unwrap();
+    assert_eq!(told(&stopped, &approval).await, (1, 1));
+
+    // Suspended while its rules, cached, still said active: neither.
+    company_status("suspended").await;
+    let suspended = told(&stopped, &approval).await;
+    company_status("active").await;
+    assert_eq!(suspended, (0, 0));
+
+    // Expired: at a pause it could not be; at startup, it is left alone.
+    due_in(&stopped, tenant::ID, approval_id, -1).await;
+    let expired = told(&stopped, &approval).await;
+    due_in(&stopped, tenant::ID, approval_id, 60).await;
+    assert_eq!(expired, (1, 0));
+    end(&stopped, &nadia, id, &approval).await;
 }
