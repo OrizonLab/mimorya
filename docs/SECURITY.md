@@ -211,8 +211,10 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   la position seule n'accorde rien. Le run reprend avec les droits de la personne pour
   qui l'agent agit, jamais avec ceux du décideur ; sans responsable éligible, l'action
   est refusée. La personne ne peut pas approuver la demande, seulement la retirer
-  (l'action n'est alors pas exécutée). L'e-mail qui prévient le responsable (ADR-060)
-  ne contient ni l'action ni ses paramètres, lisibles seulement après connexion.
+  (l'action n'est alors pas exécutée). L'e-mail qui prévient le responsable (ADR-060),
+  comme celui qui prévient l'auteur d'une tâche planifiée dont le run attend sa
+  validation (ADR-082), ne contient ni l'action ni ses paramètres, lisibles seulement
+  après connexion.
 - **Remplaçant d'un responsable absent** (ADR-071) : désigné par le responsable (ou pour
   lui par l'administrateur des comptes, ADR-078) pour une période d'au plus 90 jours, il
   ne reçoit aucun droit. Il ne voit et ne décide les

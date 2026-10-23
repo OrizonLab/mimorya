@@ -3410,3 +3410,47 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     - `apps/web/e2e/navigation.spec.ts` : la page se charge sans erreur ;
     - `crates/api/tests/scheduled_task_passes.rs` : une passe laisse à la suivante un lot
       de tâches en cours de modification.
+
+## ADR-082 — L'auteur d'une tâche planifiée prévenu quand son run attend sa validation
+
+- **Date** : 2026-10-23 · **Statut** : acceptée
+- **Contexte** : un run lancé par une tâche planifiée (ADR-080) part sans que personne le
+  suive. S'il demande la validation de son auteur, la demande attend dans
+  « Validations », sans que l'auteur le sache, jusqu'à son échéance (ADR-061). L'ADR-080
+  prévoyait de l'en prévenir.
+- **Décision** :
+  - quand le run qu'une tâche a lancé en dernier se met en pause, l'auteur reçoit un e-mail
+    pour les demandes qu'il décide lui-même. Celles confiées à un responsable sont annoncées
+    à ce responsable seul (ADR-060). Un run que l'auteur suit dans une conversation à lui
+    ne l'est pas : il le voit ;
+  - un e-mail par pause : le nom de la tâche, le nombre d'actions et leurs risques,
+    l'échéance et le lien vers la conversation du run, où elles se décident. Ni les
+    actions ni leurs paramètres : le message quitte la plateforme ;
+  - chaque demande annoncée est tracée comme celle d'un responsable
+    (`approval.notified`, acteur système, au nom de l'auteur, avec `approverId`). Une
+    demande n'est donc jamais annoncée deux fois. Un message refusé par le relais n'est
+    pas renvoyé ;
+  - si un arrêt du service a perdu l'e-mail, il est envoyé au démarrage suivant, comme
+    l'avis à un responsable (ADR-070), via `system_unnotified_scheduled_runs` (entreprise
+    et identifiant seulement). Il n'y a pas de relance la veille de l'échéance, et l'avis
+    perdu est donc envoyé quelle que soit son échéance ;
+  - sans relais SMTP, rien n'est envoyé.
+- **Alternatives écartées** :
+  - prévenir l'auteur de toute pause, même dans une conversation qu'il suit : il est
+    devant ; l'e-mail serait du bruit ;
+  - une relance la veille, comme pour un responsable : une tâche repart à son heure
+    suivante. La pause retient les occurrences suivantes (ADR-080), et la page des tâches
+    le dit.
+- **Conséquences** :
+  - aucune donnée nouvelle : la trace d'audit existante sert à n'annoncer qu'une fois ;
+  - restent le worker séparé, la reprise par bail et les missions longues ;
+  - tests :
+    - `crates/api/src/services/runs/approval_notice/author_mail.rs` : texte du message ;
+    - `crates/api/tests/scheduled_run_notices.rs` :
+      - l'auteur prévenu une fois, avec le lien, sans l'action ;
+      - ni au redémarrage, ni pour l'occurrence retenue, ni pour un run qu'il suit
+        lui-même ;
+      - une demande confiée à un responsable annoncée à lui seul ;
+      - l'auteur ignore les demandes qu'il ne décide pas ;
+      - l'avis perdu envoyé au démarrage, une fois ;
+    - `crates/db/tests/definer_functions.rs` : la nouvelle fonction est connue.

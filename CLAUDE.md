@@ -60,7 +60,8 @@ Repères à l'intérieur des crates :
   entreprise), `api/src/services/account.rs` (son propre compte),
   `api/src/services/runs/` (tour de conversation, décisions, contexte, exécution,
   ports PostgreSQL, résultat, reprise au démarrage, ADR-053, circuit des validations,
-  avis au responsable (`approval_notice/`, rattrapé au démarrage, ADR-070), expiration et
+  avis au responsable (`approval_notice/`, rattrapé au démarrage, ADR-070 ; à l'auteur
+  d'une tâche planifiée dont le run attend sa validation, `author.rs`, ADR-082), expiration et
   relance des demandes, ADR-059 à ADR-062, absence et remplaçant
   (`approval_delegation.rs`, ADR-071 à ADR-073), leçon proposée en fin de run
   (`lesson_capture.rs`, ADR-076)),

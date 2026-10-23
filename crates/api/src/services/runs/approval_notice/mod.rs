@@ -6,10 +6,13 @@
 //! expire, their manager is reminded once (ADR-062). Without a mail
 //! relay, nothing is sent and managers find the requests in « Validations ».
 //! While the manager is away, whom they named to stand in for them is told
-//! instead, if that colleague may decide the requests (ADR-071). Each
-//! request notified or reminded is audited, without the address nor the
-//! relay's answer, which may name it.
+//! instead, if that colleague may decide the requests (ADR-071). The
+//! author of a scheduled task is told of the requests they decide in its
+//! run (`author`, ADR-082). Each request notified or reminded is audited,
+//! without the address nor the relay's answer, which may name it.
 
+mod author;
+mod author_mail;
 mod message;
 mod recipient;
 
@@ -90,7 +93,9 @@ impl ApprovalNotifier {
     }
 
     /// E-mails, in the background, the managers whom the requests
-    /// `approval_ids` of the paused run `run_id` await, if they still do.
+    /// `approval_ids` of the paused run `run_id` await, if they still do,
+    /// and the author of the scheduled task that started it, of the ones
+    /// they decide.
     pub fn notify(&self, tenant_id: Uuid, run_id: Uuid, approval_ids: Vec<Uuid>) {
         let Some(mailer) = self.mailer.clone() else {
             return;
@@ -114,9 +119,13 @@ impl ApprovalNotifier {
         let mut tx = self.db.begin(tenant_id).await?;
         let notices = approval_notices(&mut tx, run_id, approval_ids).await?;
         tx.commit().await?;
-        self.send_each(mailer, tenant_id, &notices, Message::Notice)
-            .await?;
-        Ok(())
+        let managers = self
+            .send_each(mailer, tenant_id, &notices, Message::Notice)
+            .await;
+        let author = self
+            .tell_author(mailer, tenant_id, run_id, approval_ids)
+            .await;
+        managers.and(author)
     }
 
     /// Tells managers, in the background, of the requests a stop of the
@@ -142,7 +151,8 @@ impl ApprovalNotifier {
                 ),
             }
         }
-        Ok(lost)
+        // Authors' requests have no reminder: whatever their deadline.
+        Ok(lost + self.catch_up_authors().await?)
     }
 
     async fn catch_up_run(

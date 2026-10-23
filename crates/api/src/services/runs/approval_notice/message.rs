@@ -35,7 +35,7 @@ pub struct ApprovalMail<'a> {
 
 /// What an action of `risk` does, as the interface names it; a value no
 /// risk bears any more, as stored.
-fn risk_label(risk: &str) -> &str {
+pub(super) fn risk_label(risk: &str) -> &str {
     match ToolRisk::parse(risk) {
         Some(ToolRisk::Read) => "lecture",
         Some(ToolRisk::Draft) => "brouillon",
