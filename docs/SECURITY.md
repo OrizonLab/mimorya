@@ -312,7 +312,10 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
       d'outils déjà obtenus, l'outil en cours d'exécution (délai borné), le registre
       d'outils jusqu'à la pause ou la fin et le niveau d'autonomie. Les règles de
       l'entreprise (rôles, politiques) viennent de son cache, invalidé par chaque
-      changement d'administration de cette instance de l'API.
+      changement d'administration dans tous les processus (`api`, `worker`) : le
+      processus qui l'a fait l'annonce aux autres (ADR-085), au mieux ; une annonce
+      perdue, l'écart reste borné par la durée de vie du cache (30 s), et un processus
+      reconnecté au canal vide ses caches.
 
 ## 6. Sécurité de l'agent
 

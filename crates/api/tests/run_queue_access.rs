@@ -104,10 +104,11 @@ async fn rights_lost_while_queued_end_the_run_before_anything_starts() {
         ),
         (
             user::ISABELLE,
-            // Only the base role carries agent:use.
-            "delete from role_assignments where user_id = $1 \
-             and role_id in (select id from roles where key = 'member')",
-            "select $1",
+            // Only the base role carries agent:use: expired, then given back.
+            "update role_assignments set expires_at = now() - interval '1 minute' \
+             where user_id = $1 and role_id in (select id from roles where key = 'member')",
+            "update role_assignments set expires_at = null \
+             where user_id = $1 and role_id in (select id from roles where key = 'member')",
             AGENT_USE_WITHDRAWN,
         ),
     ];

@@ -3680,7 +3680,9 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
   - des caches en base ou dans un service externe : une lecture de plus à chaque requête,
     ou une infrastructure de plus, pour des données qui changent rarement.
 - **Conséquences** :
-  - en instance unique (`all`), rien ne change ;
+  - en instance unique (`all`), rien ne change pour l'utilisateur. Côté exploitation,
+    le processus ouvre deux connexions d'écoute de plus (file et invalidations), relit
+    `system_queued_runs` toutes les 5 s et envoie un `NOTIFY` par invalidation ;
   - un processus `api` sans worker laisse les runs en file : leur suivi montre « En file » ;
   - tests : `crates/api/tests/run_queue.rs`, `run_queue_access.rs`, `shared_caches.rs` ;
     parcours web `apps/web/e2e/queued-run.spec.ts` (un run en file que le serveur de bout
