@@ -22,6 +22,7 @@ use crate::plugins::rate_limit::global_rate_limit;
 use crate::plugins::request_context::request_context;
 use crate::plugins::run_event_relay::{spawn_delta_outbox, spawn_run_event_relay};
 use crate::plugins::run_leases::{spawn_lease_renewal, spawn_lease_takeover};
+use crate::plugins::run_queue::spawn_run_queue;
 use crate::plugins::scheduled_tasks::spawn_scheduled_tasks;
 use crate::plugins::security_headers::security_headers;
 use crate::plugins::session::resolve_identity;
@@ -110,13 +111,22 @@ pub struct BuildOptions {
 pub struct App {
     pub router: Router,
     pub services: AppState,
-    maintenance: JoinHandle<()>,
+    /// What runs in the background: none of it but the relay in an `api`
+    /// process, which executes no runs; no relay in a `worker`, which
+    /// serves no event stream (ADR-085).
+    background: Background,
+}
+
+#[derive(Default)]
+struct Background {
+    maintenance: Option<JoinHandle<()>>,
     indexing: Option<JoinHandle<()>>,
     scheduling: Option<JoinHandle<()>>,
-    lease_renewal: JoinHandle<()>,
-    lease_takeover: JoinHandle<()>,
-    event_relay: JoinHandle<()>,
-    delta_outbox: JoinHandle<()>,
+    lease_renewal: Option<JoinHandle<()>>,
+    lease_takeover: Option<JoinHandle<()>>,
+    run_queue: Option<JoinHandle<()>>,
+    event_relay: Option<JoinHandle<()>>,
+    delta_outbox: Option<JoinHandle<()>>,
 }
 
 pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Result<App> {
@@ -218,6 +228,7 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
             access.clone(),
             executor,
             options.run_leases.unwrap_or_default(),
+            !config.role.executes_runs(),
         ),
         sso,
         mailer,
@@ -245,17 +256,43 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
         .layer(from_fn(security_headers))
         .with_state(services.clone());
 
+    let role = services.config.role;
+    let mut background = Background::default();
+    if role.serves_http() {
+        background.event_relay = Some(spawn_run_event_relay(services.clone()));
+    }
+    if role.executes_runs() {
+        background.maintenance = Some(spawn_maintenance(services.clone()));
+        background.indexing =
+            (!options.manual_indexing).then(|| spawn_memory_indexing(services.clone()));
+        background.scheduling =
+            (!options.manual_scheduling).then(|| spawn_scheduled_tasks(services.clone()));
+        background.lease_renewal = Some(spawn_lease_renewal(services.clone()));
+        background.lease_takeover = Some(spawn_lease_takeover(services.clone()));
+        background.run_queue = Some(spawn_run_queue(services.clone()));
+        let listens = role.serves_http();
+        background.delta_outbox = Some(spawn_delta_outbox(&services, outbox, listens));
+    }
     Ok(App {
         router,
-        maintenance: spawn_maintenance(services.clone()),
-        indexing: (!options.manual_indexing).then(|| spawn_memory_indexing(services.clone())),
-        scheduling: (!options.manual_scheduling).then(|| spawn_scheduled_tasks(services.clone())),
-        lease_renewal: spawn_lease_renewal(services.clone()),
-        lease_takeover: spawn_lease_takeover(services.clone()),
-        event_relay: spawn_run_event_relay(services.clone()),
-        delta_outbox: spawn_delta_outbox(&services, outbox),
         services,
+        background,
     })
+}
+
+/// Stops `task`, if any, at once.
+async fn abort(task: Option<JoinHandle<()>>) {
+    if let Some(task) = task {
+        task.abort();
+        let _ = task.await;
+    }
+}
+
+/// Waits for `task`, if any, to stop by itself.
+async fn wait(task: Option<JoinHandle<()>>) {
+    if let Some(task) = task {
+        let _ = task.await;
+    }
 }
 
 impl App {
@@ -277,29 +314,23 @@ impl App {
     /// releases connectors and connections.
     pub async fn shutdown(self) {
         self.begin_shutdown();
+        let background = self.background;
         // The streams it fed end now.
-        self.event_relay.abort();
-        let _ = self.event_relay.await;
+        abort(background.event_relay).await;
         // Ended before the runs are awaited: its expiry sweep may start one.
-        self.maintenance.abort();
-        let _ = self.maintenance.await;
+        abort(background.maintenance).await;
         // So is this one, which starts runs: it stops between two tasks,
         // never in the middle of firing one.
-        if let Some(scheduling) = self.scheduling {
-            let _ = scheduling.await;
-        }
-        // Nor does this one: it takes up no other run once the service stops.
-        let _ = self.lease_takeover.await;
-        if let Some(indexing) = self.indexing {
-            indexing.abort();
-            let _ = indexing.await;
-        }
+        wait(background.scheduling).await;
+        // Nor do these: they take up or claim no other run once the
+        // service stops.
+        wait(background.lease_takeover).await;
+        wait(background.run_queue).await;
+        abort(background.indexing).await;
         self.services.runs.idle().await;
         // The runs ended: no lease left to renew, nor text to send.
-        self.lease_renewal.abort();
-        let _ = self.lease_renewal.await;
-        self.delta_outbox.abort();
-        let _ = self.delta_outbox.await;
+        abort(background.lease_renewal).await;
+        abort(background.delta_outbox).await;
         self.services.background.idle().await;
         self.services.connectors.close().await;
         self.services.db.close().await;

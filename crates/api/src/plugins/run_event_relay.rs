@@ -1,7 +1,8 @@
 //! Run events across processes in the background (ADR-084): the other
 //! processes' events relayed to this one's subscribers until the service
-//! stops; this one's text deltas sent to the others until its runs have
-//! ended.
+//! stops, in a process that serves the HTTP API; this one's text deltas sent
+//! to the others until its runs have ended, in one that executes runs
+//! (ADR-085).
 
 use tokio::task::JoinHandle;
 
@@ -14,6 +15,9 @@ pub fn spawn_run_event_relay(services: AppState) -> JoinHandle<()> {
     tokio::spawn(relay.listen(url, services.shutdown.subscribe()))
 }
 
-pub fn spawn_delta_outbox(services: &AppState, outbox: Outbox) -> JoinHandle<()> {
-    tokio::spawn(outbox.send_all(services.db.clone(), services.bus.origin()))
+/// Sends this process's text deltas; `listens` says whether it relays the
+/// others' events too.
+pub fn spawn_delta_outbox(services: &AppState, outbox: Outbox, listens: bool) -> JoinHandle<()> {
+    let (db, origin) = (services.db.clone(), services.bus.origin());
+    tokio::spawn(outbox.send_all(db, origin, listens))
 }

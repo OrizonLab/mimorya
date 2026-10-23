@@ -21,6 +21,7 @@ pub mod manager_approvals;
 pub mod mcp;
 pub mod planning;
 pub mod privileges;
+pub mod queue;
 pub mod recovery;
 pub mod refusals;
 pub mod relay;

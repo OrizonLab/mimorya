@@ -1,9 +1,10 @@
-//! API server entry point: configuration, logging, then serve until SIGINT or
+//! API server entry point: configuration, logging, then, as its role says
+//! (ADR-085), serve the HTTP API, execute runs, or both, until SIGINT or
 //! SIGTERM, letting background runs finish before exiting.
 
 use std::net::SocketAddr;
 
-use mimorya_api::{AppConfig, BuildOptions, build_app, log_filter};
+use mimorya_api::{App, AppConfig, BuildOptions, build_app, log_filter};
 use tokio::net::TcpListener;
 
 #[tokio::main]
@@ -16,26 +17,47 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let address = format!("{}:{}", config.host, config.port);
+    let role = config.role;
     let app = build_app(config, BuildOptions::default()).await?;
-    if app.services.llm.platform().is_none() {
+    if role.executes_runs() && app.services.llm.platform().is_none() {
         tracing::warn!(
             "No platform LLM provider (LLM_PROVIDER): only companies with their own provider can converse."
         );
     }
-    // Listening first: a process that cannot serve takes no run up. A single
-    // instance executes runs (ADR-016): a second one stops here.
-    let listener = TcpListener::bind(&address).await?;
-    app.services.runs.claim_execution().await?;
-    match app.recover_interrupted_runs().await {
-        Ok(0) => {}
-        Ok(runs) => tracing::warn!(runs, "Runs interrupted by a stop of the service taken up"),
-        Err(error) => tracing::error!(
-            error = format!("{error:#}"),
-            "Interrupted runs not taken up"
-        ),
+    // Listening first: a process that cannot serve takes no run up.
+    let listener = if role.serves_http() {
+        Some(TcpListener::bind(&address).await?)
+    } else {
+        None
+    };
+    if role.executes_runs() {
+        // A single instance executes runs (ADR-016): a second one stops here.
+        app.services.runs.claim_execution().await?;
+        match app.recover_interrupted_runs().await {
+            Ok(0) => {}
+            Ok(runs) => tracing::warn!(runs, "Runs interrupted by a stop of the service taken up"),
+            Err(error) => tracing::error!(
+                error = format!("{error:#}"),
+                "Interrupted runs not taken up"
+            ),
+        }
     }
-    tracing::info!(address, "Listening");
+    match listener {
+        Some(listener) => serve(&app, listener, &address).await?,
+        None => {
+            tracing::info!(role = ?role, "Executing runs");
+            shutdown_signal().await;
+            tracing::info!("Shutting down");
+        }
+    }
+    app.shutdown().await;
+    Ok(())
+}
 
+/// Serves the HTTP API until a shutdown signal; event streams end then, so
+/// that their connections can close.
+async fn serve(app: &App, listener: TcpListener, address: &str) -> anyhow::Result<()> {
+    tracing::info!(address, role = ?app.services.config.role, "Listening");
     let service = app
         .router
         .clone()
@@ -45,11 +67,9 @@ async fn main() -> anyhow::Result<()> {
         .with_graceful_shutdown(async move {
             shutdown_signal().await;
             tracing::info!("Shutting down");
-            // Event streams end so that their connections can close.
             services.shutdown.send_replace(true);
         })
         .await?;
-    app.shutdown().await;
     Ok(())
 }
 

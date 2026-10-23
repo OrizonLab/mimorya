@@ -57,7 +57,7 @@ pub async fn open_conversation_turn(
     if latest.first().is_some_and(|run| {
         matches!(
             run.status(),
-            RunStatus::Running | RunStatus::AwaitingApproval
+            RunStatus::Queued | RunStatus::Running | RunStatus::AwaitingApproval
         )
     }) {
         return Err(DomainError::conflict(
@@ -146,6 +146,25 @@ pub fn tenant_autonomy_level(access: &AccessContext) -> AutonomyLevel {
         .and_then(|v| v.as_str())
         .and_then(AutonomyLevel::parse)
         .unwrap_or(AutonomyLevel::ExecuteWithApproval)
+}
+
+/// What a queued turn's run is first given (ADR-085): its conversation's
+/// earlier messages, as the turn that queued it read them; its request is
+/// the last one until it runs. `None` when that is no longer so.
+pub async fn queued_turn_history(
+    tx: &mut TenantTx,
+    run: &RunRow,
+) -> anyhow::Result<Option<Vec<LlmMessage>>> {
+    let Some(conversation_id) = run.conversation_id else {
+        return Ok(None);
+    };
+    let mut messages = list_messages(tx, conversation_id, HISTORY_LIMIT + 1).await?;
+    match messages.pop() {
+        Some(request) if request.role == "user" && request.content == run.objective => {
+            Ok(Some(to_history(messages)))
+        }
+        _ => Ok(None),
+    }
 }
 
 /// Stored messages replayed as plain text turns (tool exchanges stay in the run).

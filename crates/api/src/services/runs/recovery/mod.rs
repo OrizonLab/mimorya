@@ -28,7 +28,7 @@ use super::service::RunService;
 use calls::{
     cancel_lost_validations, ending, of_unknown_effect, risks_set_now, started_since_saved,
 };
-pub use lock::LOCK_HELD_ELSEWHERE;
+pub use lock::{LOCK_HELD_ELSEWHERE, NOT_AN_EXECUTOR};
 
 /// Why a run stopped before its first saved step ends: nothing ran yet.
 pub const STOPPED_BEFORE_ITS_FIRST_STEP: &str = "Exécution interrompue par un arrêt du service avant sa première étape : relancez votre demande.";

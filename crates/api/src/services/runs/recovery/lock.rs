@@ -23,6 +23,10 @@ const LOCK_SESSION: &str = "set application_name = 'mimorya-run-executor'; \
 const LOCK_ATTEMPTS: u32 = 6;
 const LOCK_RETRY: Duration = Duration::from_millis(500);
 
+/// Why an `api` process takes no run up (ADR-085).
+pub const NOT_AN_EXECUTOR: &str =
+    "An api process (MIMORYA_ROLE=api) executes no runs: a worker executes those it queues";
+
 /// Why a second process does not start.
 pub const LOCK_HELD_ELSEWHERE: &str = "Another API process holds the run executor's lock on this database (connection 'mimorya-run-executor' in pg_stat_activity): a single instance executes runs (ADR-016)";
 
@@ -36,6 +40,9 @@ impl RunService {
     /// Takes the run executor's lock for the life of this process; fails
     /// while another process holds it.
     pub async fn claim_execution(&self) -> anyhow::Result<()> {
+        if self.queues {
+            anyhow::bail!(NOT_AN_EXECUTOR);
+        }
         let mut held = self.executor_lock.lock().await;
         if held.is_some() {
             return Ok(());

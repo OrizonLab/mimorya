@@ -1,6 +1,6 @@
 //! Entry point for agent runs started from conversations: opens a turn,
 //! records human decisions on approvals, and hands runs to the executor in
-//! the background.
+//! the background, or to a worker's through the queue (ADR-085).
 
 use std::sync::Arc;
 
@@ -20,6 +20,7 @@ use super::approval_routing::may_decide_for;
 use super::conversation_turn::{TurnSender, open_conversation_turn, tenant_autonomy_level};
 use super::executor::{ExecutionMode, RunExecutor};
 use super::leases::{LeaseTiming, Leases};
+use super::queue::Dispatch;
 use crate::services::access::{AccessContext, AccessService, AuthIdentity};
 use crate::services::background::BackgroundTasks;
 use crate::services::llm::Unusable;
@@ -51,6 +52,9 @@ pub struct RunService {
     pub(super) taken_up: tokio::sync::watch::Sender<bool>,
     /// This process's executor and the runs it executes (ADR-083).
     pub(super) leases: Arc<Leases>,
+    /// Whether the runs set going here are queued for a worker (an `api`
+    /// process, ADR-085), not executed here.
+    pub(super) queues: bool,
 }
 
 impl RunService {
@@ -59,6 +63,7 @@ impl RunService {
         access: Arc<AccessService>,
         executor: RunExecutor,
         leases: LeaseTiming,
+        queues: bool,
     ) -> Self {
         Self {
             db,
@@ -68,6 +73,7 @@ impl RunService {
             executor_lock: tokio::sync::Mutex::new(None),
             taken_up: tokio::sync::watch::channel(false).0,
             leases: Arc::new(Leases::new(leases)),
+            queues,
         }
     }
 
@@ -90,7 +96,7 @@ impl RunService {
         let turn =
             open_conversation_turn(&mut tx, identity, conversation_id, text, autonomy, sender)
                 .await?;
-        self.hold(&mut tx, turn.run.id).await?;
+        let dispatch = self.dispatch(&mut tx, turn.run.id).await?;
         tx.commit().await?;
 
         let started = StartedTurn {
@@ -101,7 +107,9 @@ impl RunService {
             history: turn.history,
             text: text.to_string(),
         };
-        self.launch(Arc::new(access), turn.run, mode);
+        if dispatch == Dispatch::Here {
+            self.launch(Arc::new(access), turn.run, mode);
+        }
         Ok(started)
     }
 
@@ -192,13 +200,14 @@ impl RunService {
         }
         let mut tx = self.db.begin(identity.tenant_id).await?;
         let recorded = record_approval_decision(&mut tx, identity, &input, Utc::now()).await?;
-        if let Some((run, _)) = &recorded.resume {
-            self.hold(&mut tx, run.id).await?;
-        }
+        let dispatch = match &recorded.resume {
+            Some((run, _)) => Some(self.dispatch(&mut tx, run.id).await?),
+            None => None,
+        };
         tx.commit().await?;
 
         let resumed = recorded.resume.is_some();
-        if let Some((run, approvals)) = recorded.resume {
+        if let (Some((run, approvals)), Some(Dispatch::Here)) = (recorded.resume, dispatch) {
             self.resume(requester, run, &approvals);
         }
         match recorded.decided {

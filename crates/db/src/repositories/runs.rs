@@ -89,7 +89,7 @@ impl RunRow {
     }
 }
 
-const RUN_COLUMNS: &str = "id, tenant_id, conversation_id, initiated_by_user_id, on_behalf_of_user_id, \
+pub(super) const RUN_COLUMNS: &str = "id, tenant_id, conversation_id, initiated_by_user_id, on_behalf_of_user_id, \
     status, objective, success_criteria, autonomy_level, budget, usage, state, result, verification, \
     error, started_at, finished_at, created_at, updated_at, checkpoint_seq";
 
