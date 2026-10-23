@@ -607,6 +607,19 @@ link: string | null,
 problem: string | null, };
 
 /**
+ * What became of the last occurrence.
+ */
+export type LastOccurrence = { at: string, outcome: OccurrenceOutcome,
+/**
+ * Why it did not run, as the platform says it.
+ */
+problem: string | null,
+/**
+ * Where it ran, while that conversation exists.
+ */
+conversationId: string | null, };
+
+/**
  * Body of `POST /auth/invitation/accept` and `POST /auth/password-reset/complete`:
  * the password chosen with a link.
  */
@@ -895,6 +908,15 @@ export type NewRole = { name: string,
 description?: string, permissions: Array<string>, };
 
 /**
+ * Body of `POST /scheduled-tasks`.
+ */
+export type NewScheduledTask = { title: string, instruction: string, weekdays: Array<number>, time: string, timeZone: string,
+/**
+ * Paused from the start when `false`; runs by default.
+ */
+enabled?: boolean, };
+
+/**
  * Body of `POST /admin/skills`: a skill and its first version, a draft.
  */
 export type NewSkill = { name: string, description: string, content: string, changelog?: string, };
@@ -903,6 +925,8 @@ export type NewSkill = { name: string, description: string, content: string, cha
  * Body of `POST /admin/skills/{id}/versions`: a new draft version.
  */
 export type NewSkillVersion = { content: string, changelog?: string, };
+
+export type OccurrenceOutcome = "started" | "still_running" | "missed" | "refused" | "failed";
 
 /**
  * An account as the organisation screen names it.
@@ -1119,6 +1143,38 @@ export type RunUsage = { steps: number, toolCalls: number, inputTokens: number, 
 costMicros: number, };
 
 export type RunView = { id: string, conversationId: string | null, objective: string, status: RunStatus, autonomyLevel: string, usage: RunUsage, budget: RunBudget, verification: Verification | null, error: string | null, createdAt: string, finishedAt: string | null, };
+
+export type ScheduledTask = { id: string, title: string,
+/**
+ * Sent as the author's, each time.
+ */
+instruction: string,
+/**
+ * ISO days of the week: 1 is Monday.
+ */
+weekdays: Array<number>,
+/**
+ * `HH:MM`, in `timeZone`.
+ */
+time: string, timeZone: string,
+/**
+ * Paused when `false`.
+ */
+enabled: boolean, nextRunAt: string | null, lastOccurrence: LastOccurrence | null, };
+
+/**
+ * `GET /scheduled-tasks`: the reader's own, oldest first.
+ */
+export type ScheduledTaskList = { tasks: Array<ScheduledTask>,
+/**
+ * How many one may keep.
+ */
+maxTasks: number, };
+
+/**
+ * Body of `PATCH /scheduled-tasks/{id}`: what changes; the rest stays.
+ */
+export type ScheduledTaskUpdate = { title?: string, instruction?: string, weekdays?: Array<number>, time?: string, timeZone?: string, enabled?: boolean, };
 
 /**
  * Highest sensitivity of the data an account may read.

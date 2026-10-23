@@ -33,6 +33,7 @@ erDiagram
   users ||--o| user_invitations : invite
   users ||--o| password_resets : réinitialise
   users ||--o| approval_delegations : "absent, se fait remplacer"
+  users ||--o{ scheduled_tasks : "demande à heure fixe"
   tenants ||--o{ identity_providers : "se connecte par"
   identity_providers ||--o{ identity_provider_domains : couvre
   identity_providers ||--o{ user_identities : relie
@@ -100,6 +101,7 @@ MVP : un compte appartient à **une** entreprise. Une identité multi-entreprise
 | `tool_invocations`     | Chaque appel d'outil                                      | `tool_name`, `input` (expurgé), `decision`, `decision_reason`, `status`, `output_summary`, `duration_ms`                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `approvals`            | Validations humaines                                      | `requested_for_user_id` (pour qui l'agent agit), `tool_name`, `action_summary`, `payload`, `risk`, `status` (`pending`, `approved`, `rejected`, `expired`, `cancelled`), `routing` (`requester` ou `manager`) et `approver_user_id` (le responsable désigné, ADR-059), `decided_by_user_id`, `expires_at` (7 jours ; passée, la demande expire, ADR-061)                                                                                                                                                                                       |
 | `approval_delegations` | Absences déclarées (ADR-071)                              | `user_id` (l'absent, une absence au plus), `delegate_user_id` (son remplaçant, jamais lui-même), `starts_at`, `ends_at` (au plus 90 jours après le début), `declared_by_user_id` (l'administrateur des comptes qui l'a déclarée pour l'absent, ADR-078 ; nul si l'absent l'a déclarée lui-même) ; aucun droit accordé : le remplaçant décide les demandes en attente de l'absent sur lesquelles il détient lui-même `approval:decide` ; supprimée avec le compte de l'un ou de l'autre, au retrait et, terminée, par la maintenance périodique |
+| `scheduled_tasks`      | Tâches planifiées (ADR-080)                               | `user_id` (l'auteur, au nom de qui elles agissent), `title`, `instruction` (envoyée comme la sienne), `weekdays` (1 = lundi), `time_of_day` (`HH:MM`), `time_zone`, `next_run_at` (nul : en pause), dernière occurrence (`last_run_at`, `last_outcome`, `last_problem`, `last_conversation_id`, `last_run_id`) ; vingt au plus par personne ; supprimées par leur auteur ou avec son compte                                                                                                                                                    |
 | `deliverables`         | Livrables produits (synthèse, planning proposé, document) | `type`, `title`, `content jsonb`, `status` (`draft`, `approved`, `applied`, `discarded`), `owner_user_id`, `org_unit_id`                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 Statuts d'un run : `queued → running → (awaiting_approval ↔ running) → completed | failed | cancelled`.
@@ -173,8 +175,10 @@ Phase 2 : `skill_eval_runs`, `documents` / `document_chunks` (GED, ingestion),
   relancer la veille de leur échéance, ADR-062), `system_unnotified_approval_runs` (de
   même, au démarrage, pour les demandes dont un arrêt du service a perdu l'avis, ADR-070),
   `system_purge_expired_password_resets` (supprimer les liens de réinitialisation
-  expirés) et `system_purge_ended_approval_delegations` (supprimer les absences
-  terminées, ADR-071).
+  expirés), `system_purge_ended_approval_delegations` (supprimer les absences
+  terminées, ADR-071) et `system_due_scheduled_tasks` (lister les tâches planifiées dues,
+  par lots : entreprise et identifiant seulement, chacune lancée ensuite dans sa propre
+  entreprise, ADR-080).
 
 ## 5. Rétention (valeurs par défaut, configurables par entreprise)
 

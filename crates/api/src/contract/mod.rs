@@ -14,6 +14,7 @@ mod links;
 mod memory;
 mod run_stream;
 mod runs;
+mod scheduled_tasks;
 mod session;
 mod sso;
 mod stored;
@@ -42,6 +43,10 @@ pub use run_stream::{
 pub use runs::{
     RunBudget, RunDetail, RunEventRecord, RunList, RunListItem, RunRef, RunStatus, RunUsage,
     RunView, ToolInvocation, Verification,
+};
+pub use scheduled_tasks::{
+    LastOccurrence, NewScheduledTask, OccurrenceOutcome, ScheduledTask, ScheduledTaskList,
+    ScheduledTaskUpdate,
 };
 pub use session::{
     AssistantStatus, AuthOptions, Credentials, Me, MeTenant, MeUser, OrgUnitRef, PasswordUpdate,
@@ -72,6 +77,7 @@ pub fn typescript() -> String {
     declarations.add::<ApprovalDelegations>();
     declarations.add::<RunStreamEvent>();
     declarations.add::<MemoryList>();
+    declarations.add::<ScheduledTaskList>();
     declarations.add::<Created>();
     declarations.add::<InvitationDetails>();
     declarations.add::<ResetDetails>();
@@ -127,6 +133,8 @@ macro_rules! request_bodies {
             NewMessage,
             ApprovalVerdict,
             Absence,
+            NewScheduledTask,
+            ScheduledTaskUpdate,
             ManualMemory,
             MemoryReview,
             admin::NewAccount,

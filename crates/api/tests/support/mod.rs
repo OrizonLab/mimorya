@@ -25,6 +25,7 @@ pub mod refusals;
 pub mod resets;
 pub mod runs;
 pub mod saml_provider;
+pub mod scheduled;
 pub mod sso;
 pub mod sweeps;
 
@@ -199,6 +200,8 @@ impl TestApi {
             provider_factory: Some(factory),
             embedding_factory: Some(embedding_factory),
             manual_indexing,
+            // Fired by the tests (`fire_due_tasks`), when they make a task due.
+            manual_scheduling: true,
             mailer: record_mail.then(|| Some(mail.clone() as Arc<dyn Mailer>)),
             sso_network: None,
             global_rate_limit_per_minute: None,

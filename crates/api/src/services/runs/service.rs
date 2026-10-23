@@ -69,26 +69,7 @@ impl RunService {
         conversation_id: Uuid,
         text: &str,
     ) -> anyhow::Result<StartedTurn> {
-        match self.executor.llm.provider_for(identity.tenant_id).await {
-            Ok(Some(_)) => {}
-            Ok(None) => {
-                return Err(DomainError::unavailable(
-                    "Aucun modèle n’est disponible : la plateforme n’en fournit pas et votre \
-                     entreprise n’en a pas configuré (Administration › Modèle d’IA).",
-                )
-                .into());
-            }
-            Err(error) if !error.is::<Unusable>() => return Err(error),
-            Err(_) => {
-                return Err(DomainError::unavailable(
-                    "Le modèle choisi par votre entreprise ne peut pas être utilisé : un \
-                     administrateur doit revoir sa configuration (Administration › Modèle d’IA).",
-                )
-                .into());
-            }
-        }
-        let access = self.access.context(identity).await?;
-        access.require("agent:use")?;
+        let access = self.ready_to_run(identity).await?;
         let autonomy = tenant_autonomy_level(&access);
 
         let mut tx = self.db.begin(identity.tenant_id).await?;
@@ -109,6 +90,32 @@ impl RunService {
         self.tasks
             .spawn(async move { executor.execute(access, turn.run, mode).await });
         Ok(started)
+    }
+
+    /// The rights of whom a run would serve, once a model can answer them
+    /// and they may use the agent: refused otherwise, saying why.
+    pub async fn ready_to_run(&self, identity: AuthIdentity) -> anyhow::Result<AccessContext> {
+        match self.executor.llm.provider_for(identity.tenant_id).await {
+            Ok(Some(_)) => {}
+            Ok(None) => {
+                return Err(DomainError::unavailable(
+                    "Aucun modèle n’est disponible : la plateforme n’en fournit pas et votre \
+                     entreprise n’en a pas configuré (Administration › Modèle d’IA).",
+                )
+                .into());
+            }
+            Err(error) if !error.is::<Unusable>() => return Err(error),
+            Err(_) => {
+                return Err(DomainError::unavailable(
+                    "Le modèle choisi par votre entreprise ne peut pas être utilisé : un \
+                     administrateur doit revoir sa configuration (Administration › Modèle d’IA).",
+                )
+                .into());
+            }
+        }
+        let access = self.access.context(identity).await?;
+        access.require("agent:use")?;
+        Ok(access)
     }
 
     pub async fn decide(

@@ -13,6 +13,7 @@ pub mod password_reset;
 pub mod permission_catalog;
 pub mod provisioning;
 pub mod runs;
+pub mod scheduled_tasks;
 pub mod sso;
 pub mod tenant_cache;
 
