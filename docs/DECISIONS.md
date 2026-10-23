@@ -3547,3 +3547,48 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
   - garde d'écriture (un exécuteur qui a perdu son bail n'écrit plus) : prévue au lot 3,
     sans objet tant qu'un seul processus exécute ;
   - tests : `crates/api/tests/run_leases.rs` (baux tenus) et `run_lease_takeover.rs` (reprise).
+
+## ADR-084 — Worker séparé : les événements des runs par PostgreSQL (deuxième lot)
+
+- **Date** : 2026-10-23 · **Statut** : acceptée · complète ADR-083 et ADR-016
+- **Contexte** : le suivi en direct d'un run (SSE, ARCHITECTURE §8) passe par un bus en
+  mémoire du processus qui l'exécute. Au lot 3 de l'ADR-083, l'API (rôle `api`) servira
+  les flux de runs qu'un worker exécute : il lui faut leurs événements, sans nouvelle
+  infrastructure.
+- **Décision** :
+  - chaque événement enregistré dans le journal d'un run est annoncé sur le canal
+    PostgreSQL `mimorya_run_events` (`pg_notify`), **dans la transaction même qui
+    l'enregistre** : l'avis part si, et seulement si, l'événement est enregistré, et dans
+    l'ordre des enregistrements. Il ne porte que le processus d'origine, le run et le
+    numéro de l'événement ;
+  - chaque processus écoute ce canal sur une connexion à lui (rôle applicatif, nommée
+    `mimorya-run-events`), hors du pool. Pour un run que l'un de ses abonnés suit, il
+    relit le journal à partir du dernier événement relayé (un avis perdu entre-temps est
+    lu avec le suivant), **dans l'entreprise de l'abonné** : celle dont le flux a vérifié
+    que le run lui appartient. L'avis ne nomme aucune entreprise : un avis forgé ne fait
+    rien lire d'une autre ;
+  - il ignore ses propres avis : ses abonnés ont déjà reçu l'événement, directement ;
+  - une fois sa connexion d'écoute rétablie, il relit les journaux de tous les runs suivis :
+    les avis envoyés entre-temps sont perdus ;
+  - les fragments de texte du modèle (`assistant_delta`), qui ne sont pas enregistrés,
+    voyagent dans l'avis lui-même, découpé sous la limite de PostgreSQL (8 000 octets).
+    Ils partent dans l'ordre, hors transaction, regroupés par run, au mieux : une file
+    pleine (1 024) en perd, que le message qui suit remplace. Chacun porte le dernier
+    événement enregistré avant lui ; un fragment plus ancien qu'un événement déjà relayé
+    est écarté (sinon il rouvrirait un brouillon que ce message a remplacé) ;
+  - rien ne change pour une instance unique, qui reçoit tout directement : ce lot prépare
+    les rôles `api` et `worker` du lot 3.
+- **Alternatives écartées** :
+  - porter l'événement entier dans l'avis : un événement peut dépasser la limite de
+    8 000 octets, et ce serait des données d'une entreprise sur un canal commun ;
+  - annoncer l'événement après la transaction : un arrêt entre les deux le perdrait, et
+    l'ordre ne serait plus celui du journal ;
+  - Redis ou une file externe : une infrastructure de plus, que PostgreSQL rend inutile à
+    cette échelle (ARCHITECTURE §8) ;
+  - passer les fragments de texte par le journal : ils sont nombreux, et le message final
+    les remplace.
+- **Conséquences** :
+  - une connexion PostgreSQL de plus par processus, gardée ouverte ;
+  - les fragments de texte transitent par PostgreSQL comme les messages qui y sont
+    enregistrés, sur le seul canal du rôle applicatif ;
+  - tests : `crates/api/tests/run_event_relay.rs`.

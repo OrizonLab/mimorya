@@ -23,6 +23,7 @@ pub mod planning;
 pub mod privileges;
 pub mod recovery;
 pub mod refusals;
+pub mod relay;
 pub mod resets;
 pub mod runs;
 pub mod saml_provider;

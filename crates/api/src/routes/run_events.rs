@@ -65,7 +65,7 @@ async fn stream(
     tx.commit().await?;
 
     // Subscribe before replaying so that nothing is lost in between.
-    let subscription = state.bus.subscribe(id);
+    let subscription = state.bus.subscribe(identity.tenant_id, id);
     let mut tx = state.db.begin(identity.tenant_id).await?;
     let persisted = list_run_events(&mut tx, id, last_event_id).await?;
     let finished = get_run(&mut tx, id)

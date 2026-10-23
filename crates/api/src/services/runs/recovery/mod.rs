@@ -195,6 +195,7 @@ impl RunService {
             error: Some(error.into()),
         };
         let bus = &self.executor.bus;
-        record_run_event(&self.db, bus, scope.tenant_id, scope.run_id, finished).await
+        record_run_event(&self.db, bus, scope.tenant_id, scope.run_id, finished).await?;
+        Ok(())
     }
 }
