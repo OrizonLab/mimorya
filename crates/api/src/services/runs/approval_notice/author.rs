@@ -1,7 +1,8 @@
 //! Tells a scheduled task's author by e-mail that its run awaits their
 //! validation (ADR-082): it started while nobody watched (ADR-080), and
 //! would otherwise wait for them unseen until its requests expire; and a
-//! mission's author, of a stage of it (ADR-091), for the same reason. Once per
+//! mission's author, of a stage of it (ADR-091), for the same reason; unless
+//! they chose not to receive these e-mails (ADR-094). Once per
 //! pause, of the requests they decide themselves (those routed to a manager
 //! are told to that manager, ADR-060); one a stop of the service lost is
 //! sent by the periodic catch-up (ADR-070, ADR-086). Each request notified is audited as a
@@ -21,6 +22,7 @@ use super::ApprovalNotifier;
 use super::author_mail::{AuthorMail, author_mail};
 use super::wording::{distinct_risks, sent};
 use crate::mail::Mailer;
+use crate::services::notification_settings::{Notice, deliver};
 
 impl ApprovalNotifier {
     /// Tells the author of the scheduled task that started `run_id`, or of
@@ -41,7 +43,8 @@ impl ApprovalNotifier {
 
     /// Tells authors of the requests a stop of the service kept from them,
     /// their run paused by `lost_before`, not expired by `now`, whatever
-    /// their deadline (authors have no reminder); how many. With the
+    /// their deadline (authors have no reminder); how many, those whose
+    /// author chose not to be told (ADR-094) included. With the
     /// managers' catch-up. The scheduled runs and the missions' stages are
     /// listed apart: one list failing leaves the other.
     pub(super) async fn catch_up_authors(
@@ -124,16 +127,18 @@ impl ApprovalNotifier {
             link: &link,
             expires_at: requests.iter().filter_map(|r| r.expires_at).min(),
         });
-        let outcome = sent(mailer, &mail, first.run_id, "author notice").await;
+        let author = first.author_user_id;
+        let send = sent(mailer, &mail, first.run_id, "author notice");
+        let delivery = deliver(&self.db, tenant_id, author, Notice::OwnRuns, send).await?;
         let mut tx = self.db.begin(tenant_id).await?;
         for request in requests {
             let metadata =
                 json!({ "approverId": request.author_user_id, "grouped": requests.len() });
-            let entry = AuditEntry::new(tenant_id, "system", NOTIFIED, outcome)
+            let entry = AuditEntry::new(tenant_id, "system", NOTIFIED, delivery.outcome)
                 .resource("approval", request.approval_id)
                 .run(request.run_id)
                 .on_behalf_of(request.author_user_id)
-                .metadata(metadata);
+                .metadata(delivery.mark(metadata));
             append_audit(&mut tx, entry).await?;
         }
         tx.commit().await?;

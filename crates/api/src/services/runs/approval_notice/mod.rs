@@ -7,7 +7,9 @@
 //! expire, their manager is reminded once (ADR-062). Without a mail
 //! relay, nothing is sent and managers find the requests in « Validations ».
 //! While the manager is away, whom they named to stand in for them is told
-//! instead, if that colleague may decide the requests (ADR-071). The
+//! instead, if that colleague may decide the requests (ADR-071). One who
+//! chose not to receive these e-mails is not told, the notice audited as
+//! refused (ADR-094). The
 //! author of a scheduled task is told of the requests they decide in its
 //! run, and a mission's author of those of its stages (`author`, ADR-082,
 //! ADR-091). Each request notified or reminded is audited,
@@ -34,6 +36,7 @@ use uuid::Uuid;
 use crate::mail::Mailer;
 use crate::services::access::AccessService;
 use crate::services::background::BackgroundTasks;
+use crate::services::notification_settings::{Delivery, Notice, deliver};
 use message::{ApprovalMail, approval_mail};
 use recipient::{Recipient, recipient};
 use wording::{distinct_risks, sent};
@@ -202,8 +205,9 @@ impl ApprovalNotifier {
     }
 
     /// Reminds managers of the requests due within `REMIND_BEFORE` of `now`
-    /// that they have not been reminded of; how many requests. Nothing
-    /// without a mail relay.
+    /// that they have not been reminded of; how many requests, those whose
+    /// manager chose not to be (ADR-094) included. Nothing without a mail
+    /// relay.
     pub async fn remind_due(&self, now: DateTime<Utc>) -> anyhow::Result<usize> {
         let Some(mailer) = self.mailer.clone() else {
             return Ok(0);
@@ -281,11 +285,12 @@ impl ApprovalNotifier {
             expires_at: requests.iter().filter_map(|r| r.expires_at).min(),
             reminder: matches!(message, Message::Reminder),
         });
-        let outcome = sent(mailer, &mail, first.run_id, message.name()).await;
+        let send = sent(mailer, &mail, first.run_id, message.name());
+        let delivery = deliver(&self.db, tenant_id, to.user_id, Notice::Approvals, send).await?;
         let mut tx = self.db.begin(tenant_id).await?;
         for request in requests {
             let grouped = requests.len();
-            let entry = audit_entry(tenant_id, request, &to, grouped, message, outcome);
+            let entry = audit_entry(tenant_id, request, &to, grouped, message, delivery);
             append_audit(&mut tx, entry).await?;
         }
         tx.commit().await?;
@@ -294,22 +299,23 @@ impl ApprovalNotifier {
 }
 
 /// The notice or reminder of `request`, sent to `to` in one message with
-/// `grouped` requests: the stand-in named when the manager was away.
+/// `grouped` requests: the stand-in named when the manager was away, and
+/// whether they chose not to receive it.
 fn audit_entry(
     tenant_id: Uuid,
     request: &ApprovalNotice,
     to: &Recipient,
     grouped: usize,
     message: Message,
-    outcome: &'static str,
+    delivery: Delivery,
 ) -> AuditEntry {
     let mut metadata = json!({ "approverId": request.approver_user_id, "grouped": grouped });
     if to.user_id != request.approver_user_id {
         metadata["delegateId"] = json!(to.user_id);
     }
-    AuditEntry::new(tenant_id, "system", message.action(), outcome)
+    AuditEntry::new(tenant_id, "system", message.action(), delivery.outcome)
         .resource("approval", request.approval_id)
         .run(request.run_id)
         .on_behalf_of(request.requested_for_user_id)
-        .metadata(metadata)
+        .metadata(delivery.mark(metadata))
 }

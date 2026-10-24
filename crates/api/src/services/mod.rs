@@ -11,6 +11,7 @@ pub mod invalidations;
 pub mod invitations;
 pub mod llm;
 pub mod missions;
+pub mod notification_settings;
 pub mod password_reset;
 pub mod permission_catalog;
 pub mod provisioning;

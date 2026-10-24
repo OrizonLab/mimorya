@@ -196,7 +196,7 @@ sequenceDiagram
    peut l'arrêter : l'étape en cours perd son statut et son bail, et son exécuteur
    s'arrête sans rien écrire de plus. Il est prévenu par e-mail d'une étape qui attend
    sa validation et, par la passe de chaque minute, de sa fin, sauf s'il l'a arrêtée
-   (ADR-091).
+   (ADR-091) ou a choisi de ne pas recevoir ces e-mails (ADR-094).
 
 ### 4.3 Connexion par le fournisseur d'identité de l'entreprise (ADR-063)
 

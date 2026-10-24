@@ -72,6 +72,8 @@ Repères à l'intérieur des crates :
   `api/src/services/admin/` (comptes et absence d'un collaborateur empêché
   (`absences.rs`, ADR-078), organisation, habilitations, compétences, sous verrou par
   entreprise), `api/src/services/account.rs` (son propre compte),
+  `api/src/services/notification_settings.rs` (e-mails que chacun choisit de recevoir,
+  lus au moment d'envoyer chaque avis, ADR-094),
   `api/src/services/runs/` (tour de conversation, décisions, contexte, exécution,
   ports PostgreSQL, résultat, reprise des runs dont l'exécuteur s'est arrêté et ce
   processus exécute-t-il des runs (`recovery/`), ADR-053, ADR-086, circuit des validations,
@@ -109,8 +111,8 @@ Repères à l'intérieur des crates :
   `api/src/mail/` (envoi SMTP), `api/src/secrets/` (chiffrement AES-256-GCM des secrets),
   `api/tests/` (intégration, harnais dans `support/`, dont les fournisseurs d'identité
   simulés, OpenID Connect et SAML).
-- `web/components/<fonctionnalité>/` (account, admin — dont `admin/llm/` : modèle des
-  conversations, recherche dans la mémoire, leçons et limites des missions, ADR-075,
+- `web/components/<fonctionnalité>/` (account — dont les e-mails reçus, ADR-094 —,
+  admin — dont `admin/llm/` : modèle des conversations, recherche dans la mémoire, leçons et limites des missions, ADR-075,
   ADR-077, ADR-093, et `admin/users/` :
   comptes, dont l'absence d'un collaborateur empêché, ADR-079 —, approvals — dont la
   section « Absence » et son formulaire, commun, ADR-073 —, chat, memory, missions —

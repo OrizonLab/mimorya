@@ -22,6 +22,7 @@ pub mod manager_approvals;
 pub mod mcp;
 pub mod mission_notices;
 pub mod missions;
+pub mod notification_choices;
 pub mod planning;
 pub mod privileges;
 pub mod queue;
