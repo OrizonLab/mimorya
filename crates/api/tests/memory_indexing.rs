@@ -3,7 +3,8 @@
 //! long, a batch refused whole as invalid is the model's failure, another model indexes anew, going back to words
 //! wipes the vectors, even mid-pass, a pass sends nothing once the choice
 //! changed, and a memory written is indexed in the background. Two workers
-//! indexing at once embed each memory once (ADR-086).
+//! indexing at once embed each memory once, a pass waiting for the one
+//! under way elsewhere (ADR-086).
 
 mod support;
 
@@ -276,6 +277,27 @@ async fn two_workers_indexing_at_once_embed_each_memory_once() {
     assert_eq!(first + second, memories);
     assert_eq!(sent() - before, memories);
     assert_eq!(vector_of(&one, vans).await, (Some(MODEL.into()), true));
+
+    // Under way elsewhere: a pass sends nothing meanwhile, then embeds.
+    let held = one.app.services.db.try_sweep_lock("memory-indexing").await;
+    let held = held.unwrap().expect("free");
+    let note = remember(
+        &lucas,
+        "Note du lundi",
+        "Les clés du dépôt sont à l'accueil.",
+    )
+    .await;
+    let at_release = async {
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        let sent_meanwhile = sent();
+        held.release().await;
+        sent_meanwhile
+    };
+    let (embedded, sent_meanwhile) = tokio::join!(index(&two), at_release);
+    assert_eq!(sent_meanwhile, before + memories);
+    assert_eq!(embedded, 1);
+    assert_eq!(vector_of(&two, note).await, (Some(MODEL.into()), true));
+    forget(&lucas, note).await;
     forget(&lucas, vans).await;
     back_to_words(&paul).await;
 }

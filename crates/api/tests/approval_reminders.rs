@@ -279,13 +279,13 @@ async fn a_pause_s_requests_are_reminded_together_while_they_wait_once_even_refu
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
-async fn the_requests_of_a_run_ended_before_its_pause_are_never_reminded() {
+async fn a_run_ended_elsewhere_before_its_pause_makes_no_request_to_remind() {
     let api = TestApi::start_with_mailer().await;
     let paul = api.sign_in(user::PAUL).await;
     let nadia = api.sign_in(user::NADIA).await;
     route_to_managers(&paul, &["write"]).await;
-    // Failed by another process while the model answers: the step still
-    // makes its requests, but the run never pauses.
+    // Failed by another process while the model answers: no longer running
+    // under its lease, the step makes no request (ADR-086).
     api.script(vec![
         propose("INT-2052", "14:00"),
         ScriptedStep::dynamic(|request| {
@@ -296,31 +296,14 @@ async fn the_requests_of_a_run_ended_before_its_pause_are_never_reminded() {
     let run = start_run(&nadia).await;
     api.idle().await;
     route_to_managers(&paul, &[]).await;
-    let pending: Vec<Uuid> = nadia.get("/approvals?status=all").await.json()["approvals"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter(|a| a["runId"] == json!(run) && a["status"] == "pending")
-        .map(id_of)
-        .collect();
-    assert_eq!(pending.len(), 2);
-    for id in &pending {
-        due_in(&api, tenant::ID, *id, 120).await;
-    }
+    let listed = nadia.get("/approvals?status=all").await.json();
+    let made = listed["approvals"].as_array().unwrap();
+    assert!(!made.iter().any(|a| a["runId"] == json!(run)), "{made:?}");
 
     let runs = &api.app.services.runs;
     runs.start_executing().unwrap();
     assert_eq!(runs.remind_due().await.unwrap(), 0);
     assert!(api.mail.sent().is_empty(), "{:?}", api.mail.sent());
-
-    // Left to nobody: cancelled, as nothing else in the run would.
-    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
-    sqlx::query("update approvals set status = 'cancelled' where id = any($1)")
-        .bind(&pending)
-        .execute(&mut *tx)
-        .await
-        .unwrap();
-    tx.commit().await.unwrap();
 }
 
 #[tokio::test]
@@ -332,6 +315,18 @@ async fn two_workers_reminding_at_once_remind_the_manager_once() {
     for worker in [&one, &two] {
         worker.app.services.runs.start_executing().unwrap();
     }
+
+    // Under way elsewhere: skipped, nobody reminded.
+    let held = one
+        .app
+        .services
+        .db
+        .try_sweep_lock("approval-reminders")
+        .await;
+    let held = held.unwrap().expect("free");
+    assert_eq!(two.app.services.runs.remind_due().await.unwrap(), 0);
+    assert!(two.mail.sent().is_empty());
+    held.release().await;
 
     let (first, second) = tokio::join!(
         one.app.services.runs.remind_due(),

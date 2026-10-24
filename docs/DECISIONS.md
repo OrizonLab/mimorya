@@ -3472,7 +3472,7 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
 
 ## ADR-083 — Worker séparé : les runs pris par bail (premier lot : les baux)
 
-- **Date** : 2026-10-23 · **Statut** : acceptée
+- **Date** : 2026-10-23 · **Statut** : acceptée · garde d'écriture mise en place par l'ADR-086
 - **Contexte** : l'API exécute les runs dans son propre processus (ADR-016). Un verrou
   d'instance unique garantit qu'un seul processus les exécute et reprend au démarrage
   ceux qu'un arrêt a interrompus (ADR-053). Séparer l'exécution de l'API permettrait de
@@ -3696,9 +3696,12 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
   reprise au démarrage de l'ADR-053 et le rattrapage au démarrage de l'ADR-070
 - **Contexte** : depuis l'ADR-085, l'API et l'exécution tournent dans des processus
   distincts, mais un seul processus `all` ou `worker` à la fois : il tient le verrou
-  d'exécution (ADR-053). Ce verrou garantissait trois choses :
+  d'exécution (ADR-053). Ce verrou garantissait quatre choses :
   - au démarrage, chaque run resté `running` avait été interrompu, et pouvait être repris
     sans regarder son bail ;
+  - un run ne s'exécutait qu'à un endroit : seul ce processus reprenait un bail expiré, et
+    jamais celui d'un run qu'il exécutait encore ; la garde d'écriture de l'ADR-083 était
+    donc sans objet ;
   - les balayages périodiques (demandes échues, relances, rattrapage des avis perdus) ne
     tournaient qu'une fois ;
   - l'indexation de la mémoire faisait une passe à la fois (un verrou en mémoire).
@@ -3709,10 +3712,22 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     bail a expiré, ou il n'en a jamais eu (un run laissé `running` sans exécuteur). Un run
     qu'un worker vivant tient n'est pas touché. Le premier qui verrouille un run le reprend ;
     les autres le trouvent repris ;
-  - un run repris compte comme un progrès : son `updated_at` passe à l'heure de la reprise.
-    Le balayage des runs bloqués ne l'échoue donc pas avant sa prochaine étape, et l'heure
-    au-delà de laquelle un run interrompu n'est pas repris se compte depuis sa dernière
-    étape ou sa dernière reprise ;
+  - un exécuteur qui a perdu le bail d'un run s'arrête sans rien écrire (garde d'écriture
+    prévue par l'ADR-083) :
+    - chaque transaction où il modifie le run (journal, point de reprise, demandes,
+      appels d'outils, livrables, mémoire, issue) verrouille d'abord la ligne du run tant
+      qu'elle porte son bail (`lock_held_lease`, `FOR NO KEY UPDATE`) : personne ne peut
+      le reprendre avant la fin de la transaction, et s'il a été repris, rien n'est écrit ;
+    - avant chaque étape, l'exécution vérifie que son bail n'a été ni trouvé perdu par un
+      renouvellement, ni laissé sans renouvellement plus longtemps qu'un autre exécuteur
+      n'attend pour le reprendre (durée du bail moins un intervalle de renouvellement) :
+      au-delà, elle n'appelle plus ni le modèle ni un outil ;
+    - dans les deux cas, elle s'arrête sans enregistrer d'échec : le run est à l'autre ;
+  - un run repris note l'heure de sa reprise (`taken_up_at`). Le balayage des runs bloqués
+    compte depuis la plus récente de sa dernière étape et de sa reprise : il ne l'échoue
+    donc pas avant sa prochaine étape. L'heure au-delà de laquelle un run interrompu n'est
+    plus repris se compte toujours depuis sa dernière étape : un worker qui disparaît
+    entre la reprise et la première étape ne relance pas l'horloge ;
   - les balayages qui ne doivent tourner qu'une fois prennent chacun un verrou consultatif
     PostgreSQL de session à leur nom (`try_sweep_lock`, `sweep_lock`), sur une connexion à
     eux, rendu avec elle même si le processus disparaît :
@@ -3720,15 +3735,20 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
       cours ailleurs est sauté, le suivant a lieu une minute plus tard ;
     - indexation de la mémoire (ADR-074) : attendue, une passe à la fois dans tous les
       processus ;
+    - la connexion du verrou est sondée par le serveur (`tcp_keepalives_*` : toutes les
+      30 s après une minute d'inactivité) : un hôte disparu libère le verrou en quelques
+      minutes, pas en heures ; l'indexation n'attend pas plus de cinq minutes la passe en
+      cours ailleurs, puis échoue et réessaie à la passe suivante ;
   - le rattrapage des avis perdus (ADR-070, ADR-082) devient périodique, à chaque balayage
     des demandes et sous son verrou, et non plus au démarrage : une demande jamais signalée
-    dix minutes après sa création est tenue pour perdue (un avis part en quelques secondes),
-    et son avis est envoyé dans le balayage même. Un worker qui disparaît voit ses avis
-    perdus rattrapés par un autre, sans attendre un redémarrage ;
+    dix minutes après la pause de son run est tenue pour perdue (un avis part en quelques
+    secondes après la pause, et un run en pause ne change plus avant d'en sortir), et son
+    avis est envoyé dans le balayage même. Un worker qui disparaît voit ses avis perdus
+    rattrapés par un autre, sans attendre un redémarrage ;
   - ce qui était déjà sûr à plusieurs ne change pas : la file (`FOR UPDATE SKIP LOCKED`), les
-    tâches planifiées (chaque occurrence réservée et replanifiée sous verrou), la reprise par
-    bail (sous le verrou du run), les runs bloqués (une seule requête qui ne rend que ce
-    qu'elle a changé) et les purges ;
+    tâches planifiées (chaque occurrence réservée et replanifiée sous verrou), la prise d'un
+    bail expiré (sous le verrou du run), les runs bloqués (une seule requête qui ne rend que
+    ce qu'elle a changé) et les purges ;
   - `system_expired_run_leases` liste aussi les runs sans bail ; `system_interrupted_runs`,
     qui listait tout run `running`, disparaît.
 - **Alternatives écartées** :
@@ -3748,7 +3768,16 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     au plus une minute de bail et une minute de balayage, au lieu d'aussitôt ;
   - un avis perdu part dix à onze minutes après sa demande, au lieu du redémarrage suivant ;
   - chaque balayage exclusif ouvre une connexion pour son verrou, refermée à la fin ;
+  - un exécuteur coupé de la base plus longtemps que son bail perd ses runs, même s'il
+    revient : la réponse du modèle ou d'un outil en cours est perdue, l'autre exécuteur
+    reprend depuis le dernier point de reprise, en nommant l'action dont l'effet n'est pas
+    connu (ADR-053) ;
+  - un arrêt du service entre l'envoi d'un avis rattrapé et son audit peut faire renvoyer
+    cet avis par un autre worker : au pire un courriel en double, jamais un avis perdu ;
+  - mise à jour : arrêter les processus `all` et `worker` de la version précédente avant de
+    démarrer ceux-ci. Ils ne prennent ni les verrous de balayage ni la garde d'écriture :
+    côte à côte avec les nouveaux, ils doubleraient relances et rattrapages ;
   - les limites de débit restent comptées par processus : plusieurs processus `api` en
     comptent chacun les leurs (SECURITY §4), jusqu'à ce qu'elles soient partagées ;
-  - tests : `crates/api/tests/several_workers.rs`, et ceux de la reprise, des demandes
-    échues, des relances et du rattrapage, adaptés.
+  - tests : `crates/api/tests/several_workers.rs`, `run_lease_fence.rs`, et ceux de la
+    reprise, des demandes échues, des relances et du rattrapage, adaptés.

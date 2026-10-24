@@ -2,7 +2,7 @@
 //! (ADR-060), once a run pauses on them: one message per manager and per
 //! pause, however many requests the step made. Sent off the run's path: the
 //! run is paused whether the message leaves or not; one a stop of the
-//! service lost is sent ten minutes after the request, by the periodic
+//! service lost is sent ten minutes after the pause, by the periodic
 //! catch-up (ADR-070, ADR-086). The day before the requests
 //! expire, their manager is reminded once (ADR-062). Without a mail
 //! relay, nothing is sent and managers find the requests in « Validations ».
@@ -39,8 +39,8 @@ use wording::{distinct_risks, sent};
 
 /// How long before their deadline requests are reminded of (ADR-062).
 pub const REMIND_BEFORE: Duration = Duration::hours(24);
-/// How long after a request its notice, never sent, is taken for lost: one
-/// under way leaves within seconds (ADR-086).
+/// How long after its run paused a request's notice, never sent, is taken
+/// for lost: one under way leaves within seconds of the pause (ADR-086).
 pub const LOST_AFTER: Duration = Duration::minutes(10);
 
 /// A message about requests: their first notice, or a reminder.
@@ -135,11 +135,12 @@ impl ApprovalNotifier {
     }
 
     /// Tells managers, and scheduled tasks' authors (ADR-082), of the
-    /// requests whose notice a stop of the service lost (ADR-070): made
-    /// more than `LOST_AFTER` before `now`, and still never told of; how
-    /// many. Sent before it returns: called by one process at a time, under
-    /// its sweep's lock (ADR-086), it never tells of a request twice. One
-    /// list failing leaves the other.
+    /// requests whose notice a stop of the service lost (ADR-070): their run
+    /// paused more than `LOST_AFTER` before `now`, and still never told of;
+    /// how many. Sent before it returns: called by one process at a time,
+    /// under its sweep's lock (ADR-086), it tells of a request once, unless
+    /// the service stops it between a message sent and its audit. One list
+    /// failing leaves the other.
     pub async fn catch_up(&self, now: DateTime<Utc>) -> anyhow::Result<usize> {
         let Some(mailer) = self.mailer.clone() else {
             return Ok(0);

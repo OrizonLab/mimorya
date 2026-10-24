@@ -22,3 +22,26 @@ $$;
 -- Every run still running, which a single instance took up at startup
 -- whatever its lease: replaced by the function above.
 DROP FUNCTION system_interrupted_runs();
+
+-- When a run was last taken up (ADR-086): the sweep of stuck runs counts it
+-- as progress, so that a run just taken up is not failed before its next
+-- step; how long a run may stay interrupted still counts from its last
+-- step (`updated_at`), however often it is taken up.
+ALTER TABLE agent_runs ADD COLUMN taken_up_at timestamptz;
+
+CREATE OR REPLACE FUNCTION system_fail_stale_runs(p_before timestamptz)
+RETURNS TABLE (tenant_id uuid, run_id uuid, error text)
+LANGUAGE sql
+VOLATILE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  UPDATE agent_runs
+     SET status = 'failed',
+         error = 'Exécution interrompue (service redémarré ou bloqué)',
+         finished_at = now(),
+         updated_at = now()
+   WHERE status = 'running'
+     AND greatest(updated_at, taken_up_at) < p_before
+  RETURNING agent_runs.tenant_id, agent_runs.id, agent_runs.error
+$$;

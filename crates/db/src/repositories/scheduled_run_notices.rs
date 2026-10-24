@@ -57,9 +57,9 @@ pub async fn author_notices(
     .await
 }
 
-/// The requests of `run_id` its author was never told of (ADR-070), made
-/// by `lost_before` (a notice under way is sent well before, ADR-086), not
-/// expired by `now`.
+/// The requests of `run_id` its author was never told of (ADR-070), the
+/// run paused by `lost_before` (a notice under way is sent well before,
+/// ADR-086), not expired by `now`.
 pub async fn author_notices_never_sent(
     conn: &mut PgConnection,
     run_id: Uuid,
@@ -68,7 +68,7 @@ pub async fn author_notices_never_sent(
 ) -> sqlx::Result<Vec<AuthorNotice>> {
     sqlx::query_as(&format!(
         "{PENDING_FOR_AUTHOR} and (a.expires_at is null or a.expires_at > $3) \
-         and a.created_at <= $4 order by a.created_at"
+         and ar.updated_at <= $4 order by a.created_at"
     ))
     .bind(run_id)
     .bind(NOTIFIED)

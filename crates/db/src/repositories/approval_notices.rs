@@ -65,8 +65,9 @@ pub async fn approval_notices(
 }
 
 /// The requests of `run_id` whose manager was never told of (ADR-070): no
-/// notice attempted for, made by `lost_before` (a notice under way is sent
-/// well before, ADR-086), due after `due_after`.
+/// notice attempted for, the run paused by `lost_before` (a notice under way
+/// is sent well before, ADR-086), due after `due_after`. A paused run is
+/// changed by nothing but what ends its pause.
 pub async fn approvals_never_notified(
     conn: &mut PgConnection,
     run_id: Uuid,
@@ -74,7 +75,7 @@ pub async fn approvals_never_notified(
     lost_before: DateTime<Utc>,
 ) -> sqlx::Result<Vec<ApprovalNotice>> {
     sqlx::query_as(&format!(
-        "{PENDING_FOR_MANAGERS} and a.expires_at > $3 and a.created_at <= $4{BY_MANAGER}"
+        "{PENDING_FOR_MANAGERS} and a.expires_at > $3 and ar.updated_at <= $4{BY_MANAGER}"
     ))
     .bind(run_id)
     .bind(NOTIFIED)

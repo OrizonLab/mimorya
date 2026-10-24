@@ -8,7 +8,8 @@
 //! (the run asks again if it needs to). A run stopped before its first saved
 //! step, for too long, or whose user may no longer act, ends there, naming
 //! the actions that were under way when it stopped. Its taking up counts as
-//! its latest progress.
+//! progress against the sweep of stuck runs; how long it may stay
+//! interrupted still counts from its last step.
 
 mod calls;
 mod executing;
@@ -153,7 +154,7 @@ impl RunService {
             error: error.into(),
             checkpoint,
         };
-        persist_outcome(&self.db, scope, &outcome).await?;
+        persist_outcome(self.db.begin(scope.tenant_id).await?, scope, &outcome).await?;
         let finished = RunEvent::RunFinished {
             status: outcome.status().into(),
             error: Some(error.into()),

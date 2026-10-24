@@ -6,7 +6,8 @@
 //! started (`services::runs::service`), and while its company is active. A
 //! company is suspended in the database only (no route nor command does it
 //! yet): the run learns it once the company's cached rules expire (30 s at
-//! most).
+//! most). Before all that, the execution must still hold its lease
+//! (ADR-086): one that lost it stops, calling no model and no tool.
 
 use std::sync::Arc;
 
@@ -14,6 +15,7 @@ use async_trait::async_trait;
 use mimorya_agent::runtime::{ACCOUNT_INACTIVE, AccessSource, CurrentAccess, StepAccess};
 use uuid::Uuid;
 
+use super::fence::LeaseFence;
 use crate::services::access::{AccessContext, AccessService};
 
 /// Why a run stops once its user lost the right to use the agent.
@@ -26,14 +28,21 @@ pub struct RunAccess {
     access: Arc<AccessService>,
     tenant_id: Uuid,
     user_id: Uuid,
+    fence: LeaseFence,
 }
 
 impl RunAccess {
-    pub fn new(access: Arc<AccessService>, tenant_id: Uuid, user_id: Uuid) -> Self {
+    pub fn new(
+        access: Arc<AccessService>,
+        tenant_id: Uuid,
+        user_id: Uuid,
+        fence: LeaseFence,
+    ) -> Self {
         Self {
             access,
             tenant_id,
             user_id,
+            fence,
         }
     }
 }
@@ -53,6 +62,7 @@ pub(super) fn stopped_by(context: Option<&AccessContext>) -> Option<&'static str
 #[async_trait]
 impl AccessSource for RunAccess {
     async fn current(&self) -> anyhow::Result<StepAccess> {
+        self.fence.check()?;
         let context = self
             .access
             .active_context(self.tenant_id, self.user_id)

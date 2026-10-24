@@ -78,8 +78,9 @@ impl RunService {
     }
 
     /// Claims and executes the queued runs, batch after batch while some
-    /// remain, in the process that executes runs only, until the service
-    /// stops (`stopping`), between two runs; how many it claimed.
+    /// remain, in a process that executes runs only, each run claimed by one
+    /// of the workers alone (ADR-086), until the service stops (`stopping`),
+    /// between two runs; how many it claimed.
     pub async fn take_queued(&self, stopping: &watch::Sender<bool>) -> anyhow::Result<usize> {
         if !self.executes() {
             return Ok(0);

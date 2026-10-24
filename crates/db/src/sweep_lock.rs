@@ -2,8 +2,12 @@
 //! of workers (ADR-086): it takes a PostgreSQL session advisory lock named
 //! after it, on a connection of its own, out of the pool. The lock goes
 //! with the connection: released at the end of the sweep, and should the
-//! process vanish, as soon as the server sees the connection gone. The
-//! connection is named after the sweep, to be found in `pg_stat_activity`.
+//! process vanish, as soon as the server sees the connection gone: it
+//! probes it, so that a vanished host frees the lock within minutes, not
+//! hours. The connection is named after the sweep, to be found in
+//! `pg_stat_activity`.
+
+use std::time::Duration;
 
 use sqlx::{Connection, PgConnection};
 
@@ -16,6 +20,13 @@ pub struct SweepLock {
 }
 
 const KEY: &str = "hashtextextended('mimorya.sweep:' || $1, 0)";
+
+/// The connection's name, and its probes: every 30 s after a minute idle,
+/// given up after four unanswered.
+const SESSION: &str = "select set_config('application_name', $1, false), \
+     set_config('tcp_keepalives_idle', '60', false), \
+     set_config('tcp_keepalives_interval', '30', false), \
+     set_config('tcp_keepalives_count', '4', false)";
 
 impl Database {
     /// The lock of the sweep `name`, if no other process holds it.
@@ -35,9 +46,14 @@ impl Database {
         }))
     }
 
-    /// The lock of the sweep `name`, once no other process holds it.
-    pub async fn sweep_lock(&self, name: &str) -> sqlx::Result<SweepLock> {
+    /// The lock of the sweep `name`, once no other process holds it; fails
+    /// should another hold it for longer than `wait`.
+    pub async fn sweep_lock(&self, name: &str, wait: Duration) -> sqlx::Result<SweepLock> {
         let mut connection = self.sweep_connection(name).await?;
+        sqlx::query("select set_config('lock_timeout', $1, false)")
+            .bind(format!("{}ms", wait.as_millis().max(1)))
+            .execute(&mut connection)
+            .await?;
         sqlx::query(&format!("select pg_advisory_lock({KEY})"))
             .bind(name)
             .execute(&mut connection)
@@ -50,7 +66,7 @@ impl Database {
 
     async fn sweep_connection(&self, name: &str) -> sqlx::Result<PgConnection> {
         let mut connection = self.pool().acquire().await?.detach();
-        sqlx::query("select set_config('application_name', $1, false)")
+        sqlx::query(SESSION)
             .bind(format!("mimorya-sweep-{name}"))
             .execute(&mut connection)
             .await?;

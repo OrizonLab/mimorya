@@ -43,8 +43,8 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   session, fournisseur d'identité proposé pour une adresse avant connexion (ADR-063),
   lecture d'une invitation ou d'un lien de réinitialisation avant connexion,
   recherche du compte d'une adresse par la commande d'exploitation `invite` (ADR-033),
-  marquage des runs bloqués, liste au démarrage des runs qu'un arrêt a laissés en cours,
-  entreprise et identifiant seulement (ADR-053), liste des runs dont une demande de
+  marquage des runs bloqués, liste des runs en cours dont le bail a expiré ou n'a
+  jamais été pris, entreprise et identifiant seulement (ADR-053, ADR-083, ADR-086), liste des runs dont une demande de
   validation a passé son échéance, entreprise et identifiant seulement, chacun traité
   ensuite dans sa propre entreprise (ADR-061), de même pour les runs dont une demande
   est à relancer la veille de son échéance (ADR-062) ou dont l'avis a été perdu par un

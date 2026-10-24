@@ -68,7 +68,7 @@ Repères à l'intérieur des crates :
   `api/src/services/runs/` (tour de conversation, décisions, contexte, exécution,
   ports PostgreSQL, résultat, reprise des runs dont l'exécuteur s'est arrêté et ce
   processus exécute-t-il des runs (`recovery/`), ADR-053, ADR-086, circuit des validations,
-  avis au responsable (`approval_notice/`, rattrapé au démarrage, ADR-070 ; à l'auteur
+  avis au responsable (`approval_notice/`, rattrapé chaque minute s'il est perdu, ADR-070, ADR-086 ; à l'auteur
   d'une tâche planifiée dont le run attend sa validation, `author.rs`, ADR-082), expiration et
   relance des demandes, ADR-059 à ADR-062, absence et remplaçant
   (`approval_delegation.rs`, ADR-071 à ADR-073), leçon proposée en fin de run

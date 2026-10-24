@@ -1,6 +1,7 @@
-//! Firing the scheduled tasks due (ADR-080), in the process that executes
+//! Firing the scheduled tasks due (ADR-080), in the processes that execute
 //! runs: each occurrence is claimed first (its task rescheduled, the row
-//! locked), so that it never fires twice; then its instruction is sent as
+//! locked), so that it never fires twice, whichever worker claims it
+//! (ADR-086); then its instruction is sent as
 //! its author's, in a new conversation of theirs, with their rights as they
 //! stand now. An occurrence does not run while the last run one started is
 //! still under way, when its author's account cannot act (a disabled one's

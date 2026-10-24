@@ -12,6 +12,7 @@ mod deliverables;
 mod events;
 mod executor;
 mod expiry;
+mod fence;
 mod knowledge_ports;
 mod leases;
 mod lesson_capture;

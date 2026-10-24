@@ -83,16 +83,19 @@ pub async fn due_in(api: &TestApi, tenant_id: Uuid, approval: Uuid, minutes: i64
     tx.commit().await.unwrap();
 }
 
-/// Moves back when the request was made by `minutes`: past ten, its
+/// Moves back when the request's run paused by `minutes`: past ten, its
 /// notice, never sent, is taken for lost (ADR-086).
-pub async fn made_ago(api: &TestApi, tenant_id: Uuid, approval: Uuid, minutes: i64) {
+pub async fn paused_ago(api: &TestApi, tenant_id: Uuid, approval: Uuid, minutes: i64) {
     let mut tx = api.app.services.db.begin(tenant_id).await.unwrap();
-    sqlx::query("update approvals set created_at = $2 where id = $1")
-        .bind(approval)
-        .bind(Utc::now() - Duration::minutes(minutes))
-        .execute(&mut *tx)
-        .await
-        .unwrap();
+    sqlx::query(
+        "update agent_runs set updated_at = $2 \
+         where id = (select run_id from approvals where id = $1)",
+    )
+    .bind(approval)
+    .bind(Utc::now() - Duration::minutes(minutes))
+    .execute(&mut *tx)
+    .await
+    .unwrap();
     tx.commit().await.unwrap();
 }
 

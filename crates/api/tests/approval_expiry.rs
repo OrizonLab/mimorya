@@ -332,6 +332,12 @@ async fn two_workers_sweeping_at_once_expire_a_request_once() {
         worker.app.services.runs.start_executing().unwrap();
     }
 
+    // Under way elsewhere: skipped, the request left awaiting.
+    let held = one.app.services.db.try_sweep_lock("approval-expiry").await;
+    let held = held.unwrap().expect("free");
+    assert_eq!(two.app.services.runs.expire_overdue().await.unwrap(), 0);
+    held.release().await;
+
     let (first, second) = tokio::join!(
         one.app.services.runs.expire_overdue(),
         two.app.services.runs.expire_overdue()

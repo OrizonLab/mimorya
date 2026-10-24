@@ -1,7 +1,8 @@
 //! Several workers side by side (ADR-086): a sweep that runs once at a time
 //! holds a lock no other process gets meanwhile, released at its end, or
-//! with its connection when its process vanishes; another sweep's lock
-//! stays free, and a process that waits for one gets it once released.
+//! dropped with a sweep cut short, or with its connection when its process
+//! vanishes; another sweep's lock stays free, and a process that waits for
+//! one gets it once released, unless it waited longer than it would.
 //! Queued runs are shared out between workers, each claimed once.
 
 mod support;
@@ -46,14 +47,45 @@ async fn a_sweep_s_lock_is_held_by_one_process_at_a_time() {
     let again = db_two.try_sweep_lock("sweep-test").await.unwrap();
     let again = again.expect("released");
 
-    // Waited for: got once released.
-    let waiting = tokio::spawn(async move { db_two.sweep_lock("sweep-test").await.unwrap() });
+    // Waited for: not past the wait given, got once released.
+    let short = db_two
+        .sweep_lock("sweep-test", Duration::from_millis(200))
+        .await;
+    assert!(short.is_err(), "held elsewhere");
+    let wait = Duration::from_secs(30);
+    let waiting = tokio::spawn(async move { db_two.sweep_lock("sweep-test", wait).await.unwrap() });
     tokio::time::sleep(Duration::from_millis(300)).await;
     assert!(!waiting.is_finished());
     again.release().await;
     let got = tokio::time::timeout(Duration::from_secs(5), waiting).await;
     got.expect("got it in time").unwrap().release().await;
     assert_eq!(holders("sweep-test").await, 0);
+}
+
+/// The sweep `name`'s lock, once free, tried every tenth of a second.
+async fn freed(api: &TestApi, name: &str) {
+    for _ in 0..50 {
+        if let Some(free) = api.app.services.db.try_sweep_lock(name).await.unwrap() {
+            free.release().await;
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    panic!("the sweep {name}'s lock is still held");
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_sweep_s_lock_goes_with_a_sweep_cut_short() {
+    let (one, two) = (TestApi::start().await, TestApi::start().await);
+    let held = one.app.services.db.try_sweep_lock("cut-short-test").await;
+    let held = held.unwrap().expect("free");
+    let db = &two.app.services.db;
+    assert!(db.try_sweep_lock("cut-short-test").await.unwrap().is_none());
+
+    // Dropped unreleased, as when the service stops a sweep under way.
+    drop(held);
+    freed(&two, "cut-short-test").await;
 }
 
 #[tokio::test]
@@ -76,15 +108,7 @@ async fn a_sweep_s_lock_goes_with_a_process_that_vanished() {
     .await
     .unwrap();
     app.close().await;
-    let mut free = None;
-    for _ in 0..50 {
-        free = db.try_sweep_lock("vanished-test").await.unwrap();
-        if free.is_some() {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
-    free.expect("released with its connection").release().await;
+    freed(&two, "vanished-test").await;
     drop(held);
 }
 

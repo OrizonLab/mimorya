@@ -241,13 +241,13 @@ async fn the_requests_of_one_pause_make_one_message() {
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
-async fn the_requests_of_a_run_ended_before_its_pause_are_told_to_nobody() {
+async fn a_run_ended_elsewhere_before_its_pause_makes_no_request_to_tell_of() {
     let api = TestApi::start_with_mailer().await;
     let paul = api.sign_in(user::PAUL).await;
     let nadia = api.sign_in(user::NADIA).await;
     route_to_managers(&paul, &["write"]).await;
-    // While the model answers, another process fails the run as stuck: the
-    // step still makes its requests, but its pause is never saved.
+    // While the model answers, another process fails the run as stuck: no
+    // longer running under its lease, the step makes no request (ADR-086).
     api.script(vec![
         propose("INT-2052", "14:00"),
         ScriptedStep::dynamic(|request| {
@@ -264,12 +264,7 @@ async fn the_requests_of_a_run_ended_before_its_pause_are_told_to_nobody() {
     let requests = list_approvals_for_run(&mut tx, run_id).await.unwrap();
     tx.commit().await.unwrap();
     assert_eq!(run.status(), RunStatus::Failed);
-    // Two requests wait for Marc, of which he is told nothing.
-    let for_marc: Vec<_> = requests
-        .iter()
-        .filter(|a| a.status == "pending" && a.decider() == Some(user::MARC))
-        .collect();
-    assert_eq!(for_marc.len(), 2, "{requests:?}");
+    assert!(requests.is_empty(), "{requests:?}");
     assert!(api.mail.sent().is_empty(), "{:?}", api.mail.sent());
     assert!(notices(&api, &run_id.to_string()).await.is_empty());
 }

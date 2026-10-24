@@ -37,8 +37,9 @@ impl ApprovalNotifier {
     }
 
     /// Tells authors of the requests a stop of the service kept from them,
-    /// made by `lost_before`, not expired by `now`, whatever their deadline
-    /// (authors have no reminder); how many. With the managers' catch-up.
+    /// their run paused by `lost_before`, not expired by `now`, whatever
+    /// their deadline (authors have no reminder); how many. With the
+    /// managers' catch-up.
     pub(super) async fn catch_up_authors(
         &self,
         mailer: &dyn Mailer,

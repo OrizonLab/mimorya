@@ -93,7 +93,8 @@ async fn sweep_requests(services: &AppState) {
 }
 
 /// Whether a process up for `uptime` sweeps stale runs: once it has run as
-/// long as a run takes to go stale, so that only its own runs can be.
+/// long as a run takes to go stale, so that the runs a stop left running
+/// are taken up by lease first, whichever worker starts (ADR-086).
 pub fn sweeps_stale_runs(uptime: Duration) -> bool {
     STALE_AFTER
         .to_std()

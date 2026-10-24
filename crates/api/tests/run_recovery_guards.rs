@@ -1,7 +1,8 @@
 //! Who takes up the runs a stop of the service left running, when, and in
 //! which company (ADR-053). The sweep of stuck runs leaves
 //! them alone at startup, while expired reset links are purged at once. A run
-//! interrupted for more than an hour ends instead of going on. A read whose
+//! interrupted for more than an hour ends instead of going on, even taken
+//! up meanwhile. A read whose
 //! tool its administrator set since to write is not repeated, and every end
 //! names it. Each run is taken up in its own company, and only those still
 //! running. A second worker starts beside the first (ADR-086), and each run
@@ -12,6 +13,7 @@ mod support;
 use mimorya_agent::testing::ScriptedStep;
 use mimorya_api::services::runs::{INTERRUPTED_TOO_LONG, STOPPED_BEFORE_ITS_FIRST_STEP};
 use mimorya_core::demo::{tenant, user};
+use mimorya_db::repositories::run_leases::mark_taken_up;
 use mimorya_db::testing::{OTHER_TENANT_ID, OTHER_USER_ID};
 use serde_json::json;
 use support::recovery::{
@@ -119,6 +121,11 @@ async fn a_run_interrupted_more_than_an_hour_ago_ends_naming_what_was_under_way(
     .await;
     interrupted_ago(idle, 61).await;
     interrupted_ago(writing, 61).await;
+    // Taken up a moment ago by a worker that vanished before its first
+    // step: the hour still counts from the last step (ADR-086).
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    mark_taken_up(&mut tx, idle).await.unwrap();
+    tx.commit().await.unwrap();
     let calls_before = api.model.as_ref().unwrap().requests().len();
 
     restart(&api).await;

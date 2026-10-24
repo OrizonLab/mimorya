@@ -1,5 +1,5 @@
 //! Notices to scheduled tasks' authors a stop of the service lost (ADR-082,
-//! ADR-070, ADR-086): ten minutes on, the author of a request still awaiting
+//! ADR-070, ADR-086): ten minutes after the pause, the author of a request still awaiting
 //! them in the paused run their task last started, never told of it, is
 //! told once, by the periodic catch-up, in
 //! their own company; not while their account is disabled or their company
@@ -16,7 +16,7 @@ use mimorya_db::repositories::scheduled_run_notices::{
 };
 use mimorya_db::testing::{OTHER_TENANT_ID, OTHER_USER_ID};
 use serde_json::{Value, json};
-use support::manager_approvals::{catch_up, due_in, made_ago};
+use support::manager_approvals::{catch_up, due_in, paused_ago};
 use support::recovery::restart;
 use support::scheduled::{every_day, schedule};
 use support::scheduled_notices::{
@@ -34,7 +34,7 @@ async fn lost(stopped: &TestApi, nadia: &Client<'_>) -> (Uuid, String, Value) {
     let approval_id = approval["id"].as_str().unwrap();
     assert!(notices(stopped, tenant::ID, approval_id).await.is_empty());
     // Long enough ago to be taken for lost.
-    made_ago(stopped, tenant::ID, approval_id.parse().unwrap(), 11).await;
+    paused_ago(stopped, tenant::ID, approval_id.parse().unwrap(), 11).await;
     (id, conversation, approval)
 }
 
@@ -74,12 +74,12 @@ async fn a_notice_a_stop_lost_is_sent_ten_minutes_on_once() {
     let (id, conversation, approval) = lost(&stopped, &nadia).await;
     let approval_id: Uuid = approval["id"].as_str().unwrap().parse().unwrap();
 
-    // Made less than ten minutes ago: maybe under way, left alone.
+    // Paused less than ten minutes ago: maybe under way, left alone.
     let started = TestApi::start_with_mailer().await;
     assert_eq!(restart(&started).await, 0, "no run was running");
-    made_ago(&started, tenant::ID, approval_id, 9).await;
+    paused_ago(&started, tenant::ID, approval_id, 9).await;
     assert_eq!(catch_up(&started).await, 0);
-    made_ago(&started, tenant::ID, approval_id, 11).await;
+    paused_ago(&started, tenant::ID, approval_id, 11).await;
     assert_eq!(catch_up(&started).await, 1);
     let sent = started.mail.sent();
     assert_eq!(sent.len(), 1, "{sent:?}");
@@ -147,7 +147,7 @@ async fn another_company_s_author_is_told_in_their_own_company() {
     let started = TestApi::start_with_mailer().await;
     let foreign = foreign_scheduled_request(&started).await;
     let request = foreign.2.to_string();
-    made_ago(&started, OTHER_TENANT_ID, foreign.2, 11).await;
+    paused_ago(&started, OTHER_TENANT_ID, foreign.2, 11).await;
 
     assert_eq!(catch_up(&started).await, 1);
     let sent = started.mail.sent();
