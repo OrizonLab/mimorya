@@ -1,6 +1,7 @@
 //! The e-mail telling a scheduled task's author that its run awaits their
-//! validation (ADR-082), once per pause, in French and plain text: which
-//! task, how many actions and of which risks, where to decide and until
+//! validation (ADR-082), or a mission's author that a stage of it does
+//! (ADR-091), once per pause, in French and plain text: which task or
+//! mission, how many actions and of which risks, where to decide and until
 //! when. Neither the actions nor their parameters: the message leaves the
 //! platform, and they are shown after signing in.
 
@@ -14,8 +15,11 @@ pub struct AuthorMail<'a> {
     pub company: &'a str,
     pub author: &'a str,
     pub email: &'a str,
-    /// The task's title, as its author wrote it (on one line).
-    pub task: &'a str,
+    /// The title of the task, or of the mission, as its author wrote it
+    /// (on one line).
+    pub title: &'a str,
+    /// Whether the run is a stage of a mission, not a scheduled task's.
+    pub of_mission: bool,
     /// How many requests await them.
     pub count: usize,
     /// Their risks, once each.
@@ -32,7 +36,8 @@ pub fn author_mail(notice: &AuthorMail<'_>) -> Mail {
         company,
         author,
         email,
-        task,
+        title,
+        of_mission,
         count,
         risks,
         link,
@@ -54,14 +59,30 @@ pub fn author_mail(notice: &AuthorMail<'_>) -> Mail {
         Some(at) => format!(" {first} le {}.", expiry_label(*at)),
         None => String::new(),
     };
+    let (subject, origin) = if *of_mission {
+        (
+            format!("Votre mission « {title} » attend votre validation"),
+            format!(
+                "Votre mission « {title} », que l’assistant {product} ({company}) mène en \
+                 arrière-plan, demande"
+            ),
+        )
+    } else {
+        (
+            format!("Votre tâche planifiée « {title} » attend votre validation"),
+            format!(
+                "Votre tâche planifiée « {title} » a lancé l’assistant {product} ({company}), \
+                 qui demande"
+            ),
+        )
+    };
     Mail {
         to: email.to_string(),
         to_name: author.to_string(),
-        subject: format!("Votre tâche planifiée « {task} » attend votre validation"),
+        subject,
         text: format!(
             "Bonjour {author},\n\n\
-             Votre tâche planifiée « {task} » a lancé l’assistant {product} ({company}), qui \
-             demande votre validation pour {what} ({risk_word} : {}).\n\n\
+             {origin} votre validation pour {what} ({risk_word} : {}).\n\n\
              Pour voir {see}, connectez-vous et ouvrez sa conversation :\n\
              {link}\n\n\
              {waiting}, l’agent est en pause.{until}\n",
@@ -77,12 +98,17 @@ mod tests {
     use super::*;
 
     fn mail(count: usize, risks: &[&str]) -> Mail {
+        mail_of(false, count, risks)
+    }
+
+    fn mail_of(of_mission: bool, count: usize, risks: &[&str]) -> Mail {
         author_mail(&AuthorMail {
             product: "Mimorya",
             company: "Néo Maintenance",
             author: "Nadia Benali",
             email: "nadia.benali@neo-maintenance.example",
-            task: "Point du lundi",
+            title: "Point du lundi",
+            of_mission,
             count,
             risks,
             link: "https://mimorya.example/chat/42",
@@ -123,5 +149,23 @@ mod tests {
         );
         assert!(several.text.contains("Tant que les demandes attendent"));
         assert!(several.text.contains("Elles expirent le "));
+    }
+
+    #[test]
+    fn names_the_mission_a_stage_of_which_waits() {
+        let stage = mail_of(true, 1, &["write"]);
+        assert_eq!(
+            stage.subject,
+            "Votre mission « Point du lundi » attend votre validation"
+        );
+        assert!(stage.text.contains(
+            "Votre mission « Point du lundi », que l’assistant Mimorya (Néo Maintenance) mène \
+             en arrière-plan, demande votre validation pour une action (risque : modification)."
+        ));
+        assert!(
+            stage
+                .text
+                .contains("ouvrez sa conversation :\nhttps://mimorya.example/chat/42")
+        );
     }
 }

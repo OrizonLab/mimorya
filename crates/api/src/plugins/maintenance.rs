@@ -5,7 +5,8 @@
 //! stop of the service lost are sent (ADR-070), requests nobody decided in
 //! time expire, and their runs go on (ADR-061), their managers reminded the
 //! day before (ADR-062), each of these three in one process at a time
-//! (ADR-086); runs without
+//! (ADR-086); the authors of the missions over are told of their end, in
+//! one process at a time too (ADR-091); runs without
 //! progress for a while belong to a stuck process and are marked as
 //! failed, their `run_finished` event recorded and broadcast to the clients
 //! following them. That sweep waits until the process has run as long as a
@@ -29,6 +30,7 @@ use tokio::task::JoinHandle;
 
 use crate::app::AppState;
 use crate::services::event_bus::RunEventBus;
+use crate::services::missions::tell_ended_missions;
 use crate::services::runs::record_run_event;
 
 const STALE_AFTER: chrono::Duration = chrono::Duration::minutes(15);
@@ -48,6 +50,11 @@ pub fn spawn_maintenance(services: AppState) -> JoinHandle<()> {
             interval.tick().await;
             if sweeps_requests(started.elapsed()) {
                 sweep_requests(&services).await;
+            }
+            match tell_ended_missions(&services).await {
+                Ok(0) => {}
+                Ok(told) => tracing::info!(told, "Missions' authors told of their end"),
+                Err(error) => tracing::warn!(error = %error, "Mission end notice sweep failed"),
             }
             if sweeps_stale_runs(started.elapsed()) {
                 match sweep_stale_runs(db, bus, STALE_AFTER).await {
@@ -85,7 +92,7 @@ async fn sweep_requests(services: &AppState) {
         Ok(0) => {}
         Ok(lost) => tracing::warn!(
             lost,
-            "Managers and scheduled tasks' authors told of requests a stop kept from them"
+            "Managers and runs' authors told of requests a stop kept from them"
         ),
         Err(error) => tracing::warn!(error = %error, "Lost approval notice sweep failed"),
     }

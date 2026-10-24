@@ -12,7 +12,7 @@ use axum::http::StatusCode;
 use chrono::Duration;
 use mimorya_core::demo::{tenant, user};
 use mimorya_db::repositories::approval_notices::approval_notices;
-use mimorya_db::repositories::scheduled_run_notices::author_notices;
+use mimorya_db::repositories::author_notices::author_notices;
 use serde_json::json;
 use support::manager_approvals::{applying, route_to_managers};
 use support::recovery::restart;

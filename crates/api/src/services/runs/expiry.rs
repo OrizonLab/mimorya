@@ -73,9 +73,9 @@ impl RunService {
         reminded
     }
 
-    /// Tells managers and scheduled tasks' authors of the requests whose
-    /// notice a stop of the service lost (ADR-070); how many. As expiries:
-    /// one process at a time, so that none is told twice.
+    /// Tells managers, and the authors of scheduled tasks and missions, of
+    /// the requests whose notice a stop of the service lost (ADR-070); how
+    /// many. As expiries: one process at a time, so that none is told twice.
     pub async fn catch_up_notices(&self) -> anyhow::Result<usize> {
         if !self.executes() {
             return Ok(0);

@@ -65,7 +65,9 @@ pub struct Mission {
 impl MissionStatus {
     /// How the mission stands, and why it stopped unfinished: as it ended,
     /// or, still in progress, as its last stage stands (one failed by a path
-    /// that does not end its mission, the stale-run sweep).
+    /// that does not end its mission, the stale-run sweep). The end notices
+    /// read the same rule in SQL (`mission_end_notices`, ADR-091): one
+    /// changing, the others follow.
     pub fn of(view: &MissionView) -> (Self, Option<String>) {
         let mission = &view.mission;
         match mission.status.as_str() {

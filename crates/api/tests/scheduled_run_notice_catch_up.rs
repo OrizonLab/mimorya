@@ -11,7 +11,7 @@ mod support;
 use axum::http::StatusCode;
 use chrono::Utc;
 use mimorya_core::demo::{tenant, user};
-use mimorya_db::repositories::scheduled_run_notices::{
+use mimorya_db::repositories::author_notices::{
     author_notices, author_notices_never_sent, unnotified_scheduled_runs,
 };
 use mimorya_db::testing::{OTHER_TENANT_ID, OTHER_USER_ID};
