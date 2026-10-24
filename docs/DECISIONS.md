@@ -3715,14 +3715,22 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
   - un exécuteur qui a perdu le bail d'un run s'arrête sans rien écrire (garde d'écriture
     prévue par l'ADR-083) :
     - chaque transaction où il modifie le run (journal, point de reprise, demandes,
-      appels d'outils, livrables, mémoire, issue) verrouille d'abord la ligne du run tant
-      qu'elle porte son bail (`lock_held_lease`, `FOR NO KEY UPDATE`) : personne ne peut
-      le reprendre avant la fin de la transaction, et s'il a été repris, rien n'est écrit ;
+      livrables, mémoire, issue) verrouille d'abord la ligne du run tant qu'elle porte son
+      bail (`lock_held_lease`, `FOR NO KEY UPDATE`) : personne ne peut le reprendre avant
+      la fin de la transaction, et s'il a été repris, rien n'est écrit. Un appel d'outil
+      n'est lancé qu'après son événement `tool_call`, écrit sous ce verrou ;
+    - ce qui dit ce qui s'est passé s'enregistre sans condition : l'audit, la consommation
+      et l'appel d'outil terminé (`tool_invocations`, écrit au retour de l'outil). Un
+      outil qui rend la main après la reprise du run par un autre exécuteur reste donc
+      tracé, même si son résultat ne va plus au run ;
     - avant chaque étape, l'exécution vérifie que son bail n'a été ni trouvé perdu par un
       renouvellement, ni laissé sans renouvellement plus longtemps qu'un autre exécuteur
       n'attend pour le reprendre (durée du bail moins un intervalle de renouvellement) :
-      au-delà, elle n'appelle plus ni le modèle ni un outil ;
-    - dans les deux cas, elle s'arrête sans enregistrer d'échec : le run est à l'autre ;
+      au-delà, elle n'appelle plus ni le modèle ni un outil, et ne diffuse plus les
+      fragments de sa réponse en cours ;
+    - dans les deux cas, elle s'arrête sans enregistrer d'échec : le run est à l'autre. Une
+      exécution qui plante n'écrit son échec que pour un run encore à elle ou déjà
+      terminé ; un run repris, mis en pause ou en file entre-temps reste tel quel ;
   - un run repris note l'heure de sa reprise (`taken_up_at`). Le balayage des runs bloqués
     compte depuis la plus récente de sa dernière étape et de sa reprise : il ne l'échoue
     donc pas avant sa prochaine étape. L'heure au-delà de laquelle un run interrompu n'est

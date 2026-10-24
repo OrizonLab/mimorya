@@ -1,7 +1,7 @@
 //! Persisting what a run produced: its status and usage, the assistant message
 //! shown in the conversation, and the audit entry; in the transaction its
 //! execution holds its lease in (ADR-086). A crash is recorded only for a
-//! run that does not run under another executor's lease.
+//! run still running under this executor's lease, or already finished.
 
 use chrono::Utc;
 use mimorya_agent::runtime::RunOutcome;
@@ -117,8 +117,9 @@ pub async fn persist_outcome(
 /// the conversation shows `message`. A run that already finished (outcome
 /// saved before the crash, or failed by the stale-run sweep) keeps its
 /// status. Returns the status to announce, or `None` when the run's end is
-/// already announced (by the sweep, typically), or the run is another
-/// executor's than `owner` (its lease taken up meanwhile, ADR-086).
+/// already announced (by the sweep, typically), or the run no longer runs
+/// under `owner`'s lease and has not finished: another executor's, or
+/// paused or queued since, it is left as it stands (ADR-086).
 pub async fn record_crash(
     db: &Database,
     scope: RunScope,
@@ -128,7 +129,7 @@ pub async fn record_crash(
     let mut tx = db.begin(scope.tenant_id).await?;
     if !lock_held_lease(&mut tx, scope.run_id, owner).await? {
         let run = get_run(&mut tx, scope.run_id).await?;
-        if run.is_some_and(|r| r.status() == RunStatus::Running) {
+        if run.is_some_and(|r| !r.status().is_finished()) {
             return Ok(None);
         }
     }

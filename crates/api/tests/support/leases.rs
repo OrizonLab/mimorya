@@ -101,6 +101,21 @@ pub fn hand_running_lease_to(user_id: Uuid, executor: Uuid) {
     })
 }
 
+/// Pauses the user's running run, as another executor would have once it
+/// took the run up: its lease goes with its running.
+pub fn pause_running_run_of(user_id: Uuid) {
+    blocking(move |owner| async move {
+        sqlx::query(
+            "update agent_runs set status = 'awaiting_approval' \
+             where on_behalf_of_user_id = $1 and status = 'running'",
+        )
+        .bind(user_id)
+        .execute(&owner)
+        .await
+        .unwrap();
+    })
+}
+
 fn blocking<T, F, Fut>(query: F) -> T
 where
     T: Send + 'static,

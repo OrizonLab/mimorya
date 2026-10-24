@@ -2,7 +2,9 @@
 //! operation runs in its own tenant-bound transaction (RLS applies); one
 //! that changes the run (journal, saved step, requests, outcome) holds the
 //! execution's lease first (`fence.rs`, ADR-086), until the run has ended.
-//! The audit and the usage are recorded whatever: they say what happened.
+//! The audit, the usage and the calls made (recorded once a tool returned)
+//! are recorded whatever: they say what happened, even should the lease
+//! have gone elsewhere while a tool worked.
 //! Memory and skills live in `knowledge_ports.rs`, deliverables in
 //! `deliverables.rs`.
 
@@ -136,6 +138,10 @@ impl RunEventSink for DbPorts {
     }
 
     fn publish_delta(&self, text: &str) {
+        // An execution that lost its lease no longer speaks for the run.
+        if !self.fence.holds() {
+            return;
+        }
         let last = self.last_event.load(Ordering::Relaxed);
         let after = (last != NO_EVENT).then_some(last);
         self.bus.publish_delta(self.scope.run_id, after, text);
@@ -162,7 +168,8 @@ impl AuditSink for DbPorts {
 #[async_trait]
 impl ToolInvocationLog for DbPorts {
     async fn record(&self, entry: ToolInvocationRecord) -> anyhow::Result<()> {
-        let mut tx = self.held_tx().await?;
+        // What the call did, whoever holds the run now.
+        let mut tx = self.tx().await?;
         tool_invocations::record_tool_invocation(
             &mut tx,
             tool_invocations::NewToolInvocation {

@@ -73,7 +73,7 @@ Repères à l'intérieur des crates :
   relance des demandes, ADR-059 à ADR-062, absence et remplaçant
   (`approval_delegation.rs`, ADR-071 à ADR-073), leçon proposée en fin de run
   (`lesson_capture.rs`, ADR-076), bail de l'exécuteur sur chaque run (`leases.rs`,
-  ADR-083), file d'attente des runs d'un processus `api` (`queue.rs`, ADR-085)),
+  ADR-083) et garde d'écriture d'une exécution qui l'a perdu (`fence.rs`, ADR-086), file d'attente des runs d'un processus `api` (`queue.rs`, ADR-085)),
   `api/src/services/scheduled_tasks/` (tâches planifiées : ce qu'elles demandent, celles
   de chacun, leur lancement, ADR-080), `api/src/services/event_bus/` (événements des runs
   aux abonnés du processus et, par PostgreSQL, des autres : avis, relais, fragments de

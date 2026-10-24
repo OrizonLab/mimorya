@@ -179,8 +179,10 @@ sequenceDiagram
    transaction qui fait passer le run à `running` et renouvelé toutes les 20 s ; un run
    dont le bail a expiré, ou qui n'en a jamais eu, est repris dans la minute, au
    démarrage d'un worker comme ensuite, par celui qui le verrouille le premier (ADR-083,
-   ADR-086). Chaque écriture de l'exécuteur verrouille le run tant qu'il porte son bail :
-   un exécuteur qui l'a perdu s'arrête sans rien écrire ni appeler de plus (ADR-086).
+   ADR-086). Chaque écriture de l'exécuteur sur le run (journal, état, demandes, issue)
+   verrouille le run tant qu'il porte son bail : un exécuteur qui l'a perdu s'arrête sans
+   rien écrire ni appeler de plus ; seuls l'audit, la consommation et l'appel d'outil
+   terminé, qui disent ce qui s'est passé, s'enregistrent sans condition (ADR-086).
 4. Une validation humaine met le run en `awaiting_approval` ; la décision le remet en
    file.
 5. Les tâches récurrentes (phase 2) créent des runs selon une expression cron.
