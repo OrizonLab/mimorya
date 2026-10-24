@@ -20,6 +20,8 @@ use crate::contract::{self, MessageMetadata, MissionPart};
 use crate::services::event_bus::RunEventBus;
 use crate::services::missions::after_stage;
 
+/// The sources shown with an answer: the latest, a mission's stage's own
+/// coming after those of the earlier stages (ADR-089).
 const MAX_EVIDENCE_IN_MESSAGE: usize = 50;
 
 /// Why a run that crashed failed, as recorded.
@@ -105,7 +107,12 @@ async fn record_outcome(
                 checkpoint
                     .evidence
                     .iter()
-                    .take(MAX_EVIDENCE_IN_MESSAGE)
+                    .skip(
+                        checkpoint
+                            .evidence
+                            .len()
+                            .saturating_sub(MAX_EVIDENCE_IN_MESSAGE),
+                    )
                     .map(Into::into)
                     .collect(),
             ),

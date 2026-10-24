@@ -29,8 +29,6 @@ const CREATE: &str = "mission:create";
 pub const READ: &str = "mission:read";
 
 pub const UNKNOWN_MISSION: &str = "Mission introuvable";
-const TOO_MANY: &str = "Vous avez déjà 3 missions en cours : attendez la fin de l’une d’elles, \
-     ou arrêtez-la.";
 
 /// A mission as its owner writes it.
 pub struct MissionInput {
@@ -52,7 +50,11 @@ pub async fn entrust_mission(
     let (tenant_id, user_id) = (identity.tenant_id, identity.user_id);
     let mut tx = services.db.begin(tenant_id).await?;
     if count_missions_under_way(&mut tx, user_id).await? >= MAX_UNDER_WAY {
-        return Err(DomainError::conflict(TOO_MANY).into());
+        let too_many = format!(
+            "Vous avez déjà {MAX_UNDER_WAY} missions en cours : attendez la fin de l’une \
+             d’elles, ou arrêtez-la."
+        );
+        return Err(DomainError::conflict(too_many).into());
     }
     let conversation =
         create_conversation(&mut tx, tenant_id, user_id, Some(&checked.title)).await?;
@@ -79,7 +81,8 @@ pub async fn entrust_mission(
     .await?;
     let text = brief(&mission, &MISSION_LIMITS);
     let bus = &services.bus;
-    let (run, queued) = open_stage(&mut tx, bus, &mission, 1, text, MissionPart::Brief).await?;
+    let brief_part = MissionPart::Brief;
+    let (run, queued) = open_stage(&mut tx, bus, &mission, 1, text, brief_part, 0).await?;
     tx.commit().await?;
     bus.publish(run.id, queued);
     Ok(mission.id)

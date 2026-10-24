@@ -3,7 +3,8 @@
 //! cancelled. An executor running the stage loses its lease with it, and
 //! stops at its next step without writing anything more (ADR-086). The
 //! stage is locked before the mission, as when it ends: a stage ending
-//! meanwhile is waited for, and the one it queued is the one cancelled.
+//! meanwhile is waited for, and the one it queued is the one cancelled. A
+//! mission over, or whose last stage failed, cannot be stopped.
 
 use chrono::Utc;
 use mimorya_agent::runtime::RunEvent;
@@ -12,14 +13,14 @@ use mimorya_db::repositories::approvals::cancel_pending_approvals;
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::conversations::{NewMessage, add_message};
 use mimorya_db::repositories::missions::{
-    MissionEnd, active_stage, end_mission, get_mission, lock_mission,
+    MissionEnd, MissionView, active_stage, end_mission, get_mission, lock_mission,
 };
 use mimorya_db::repositories::runs::{RunPatch, RunStatus, lock_run, update_active_run};
 use uuid::Uuid;
 
 use super::entrust::{READ, UNKNOWN_MISSION};
 use crate::app::Services;
-use crate::contract::{self, MessageMetadata};
+use crate::contract::{self, MessageMetadata, MissionStatus};
 use crate::services::AccessContext;
 use crate::services::runs::append_in;
 
@@ -27,6 +28,18 @@ pub const STOPPED: &str = "Mission arrêtée à la demande de son auteur.";
 const ALREADY_OVER: &str = "Cette mission est déjà terminée.";
 /// Stages that end, and queue the next, while the mission is being stopped.
 const ATTEMPTS: usize = 3;
+
+/// The mission, unless it is absent or over: done, failed (its last stage
+/// failed included) or cancelled.
+fn still_under_way(view: Option<MissionView>) -> anyhow::Result<MissionView> {
+    let Some(view) = view else {
+        return Err(DomainError::not_found(UNKNOWN_MISSION).into());
+    };
+    if MissionStatus::of(&view).0.is_over() {
+        return Err(DomainError::conflict(ALREADY_OVER).into());
+    }
+    Ok(view)
+}
 
 pub async fn stop_mission(
     services: &Services,
@@ -37,22 +50,14 @@ pub async fn stop_mission(
     let (tenant_id, user_id) = (access.subject.tenant_id, access.subject.user_id);
     for _ in 0..ATTEMPTS {
         let mut tx = services.db.begin(tenant_id).await?;
-        let Some(view) = get_mission(&mut tx, id, user_id).await? else {
-            return Err(DomainError::not_found(UNKNOWN_MISSION).into());
-        };
-        if view.mission.status != "in_progress" {
-            return Err(DomainError::conflict(ALREADY_OVER).into());
-        }
+        still_under_way(get_mission(&mut tx, id, user_id).await?)?;
         let seen = active_stage(&mut tx, id).await?;
         if let Some(stage) = &seen {
             lock_run(&mut tx, stage.id).await?;
         }
-        let in_progress = lock_mission(&mut tx, id)
-            .await?
-            .is_some_and(|m| m.status == "in_progress");
-        if !in_progress {
-            return Err(DomainError::conflict(ALREADY_OVER).into());
-        }
+        lock_mission(&mut tx, id).await?;
+        // As it stands now, its stage and itself locked.
+        let view = still_under_way(get_mission(&mut tx, id, user_id).await?)?;
         let stage = active_stage(&mut tx, id).await?;
         if stage.as_ref().map(|s| s.id) != seen.as_ref().map(|s| s.id) {
             // A stage ended meanwhile, and queued the next: again.

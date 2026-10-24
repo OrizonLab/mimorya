@@ -7,13 +7,13 @@
 
 mod support;
 
-use mimorya_agent::runtime::ACCOUNT_INACTIVE;
+use mimorya_agent::runtime::{ACCOUNT_INACTIVE, MISSION_STAGE_BUDGET};
 use mimorya_agent::testing::ScriptedStep;
 use mimorya_core::demo::{tenant, user};
 use support::TestApi;
 use support::missions::{
-    CRITERION, OBJECTIVE, approving_review, entrust, executing, limit, messages, read,
-    spending_stage, stages,
+    CRITERION, OBJECTIVE, approving_review, cost_budget, entrust, executing, limit, messages, read,
+    spending_stage, stages, stop,
 };
 use support::queue::take_queued;
 
@@ -105,6 +105,27 @@ async fn a_mission_past_its_limits_ends_unfinished() {
         assert_eq!(said.last().unwrap()["content"], NOTE);
     }
     assert_eq!(take_queued(&api).await, 0);
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_stage_spends_no_more_than_its_mission_has_left() {
+    let api = TestApi::start().await;
+    executing(&api);
+    let marc = api.sign_in(user::MARC).await;
+    let id = entrust(&marc, "Mission économe").await;
+    let first = stages(id).await[0].0;
+    assert_eq!(
+        cost_budget(first).await,
+        MISSION_STAGE_BUDGET.max_cost_micros
+    );
+    // Less left than a stage's budget: the next stage gets what is left.
+    limit(id, 6, 1_000_000).await;
+    api.script(spending_stage(NOTE));
+    assert_eq!(take_queued(&api).await, 1);
+    let next = stages(id).await[1].0;
+    assert_eq!(cost_budget(next).await, 1_000_000);
+    assert_eq!(stop(&marc, id).await, axum::http::StatusCode::OK);
 }
 
 #[tokio::test]

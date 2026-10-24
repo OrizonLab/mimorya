@@ -1,12 +1,13 @@
 //! A mission's stages (ADR-089). Each is a run of the mission's
 //! conversation, queued for a worker as its request is added: the mission
-//! itself for the first, a word to go on for the next. As a stage ends, in
+//! itself for the first, a word to go on for the next. A stage may spend a
+//! stage's budget, no more than what the mission has left. As a stage ends, in
 //! the transaction that records its outcome, the mission locked: one that
 //! spent its budget queues the next while the mission's limits allow, and
 //! ends it unfinished beyond; a final answer ends it, done; a failure ends
 //! it, failed. A mission stopped meanwhile is left as it is.
 
-use mimorya_agent::runtime::{MISSION_STAGE_BUDGET, RunEvent, RunOutcome};
+use mimorya_agent::runtime::{BudgetLimits, MISSION_STAGE_BUDGET, RunEvent, RunOutcome};
 use mimorya_core::autonomy::AutonomyLevel;
 use mimorya_core::tools::Citation;
 use mimorya_db::TenantTx;
@@ -62,8 +63,19 @@ fn resumption(stage: i32, limits: &MissionLimits) -> String {
     )
 }
 
+/// A stage's budget: a stage's own, its cost within what the mission may
+/// still spend once its stages spent `spent`.
+fn stage_budget(limits: &MissionLimits, spent: i64) -> BudgetLimits {
+    let left = limits.max_cost_micros.saturating_sub(spent).max(0);
+    BudgetLimits {
+        max_cost_micros: MISSION_STAGE_BUDGET.max_cost_micros.min(left),
+        ..MISSION_STAGE_BUDGET
+    }
+}
+
 /// Opens stage `stage` of the mission, queued for a worker, its request
-/// `text`; the run, and its `run_queued` event to broadcast once committed.
+/// `text`, its stages having spent `spent`; the run, and its `run_queued`
+/// event to broadcast once committed.
 pub async fn open_stage(
     tx: &mut TenantTx,
     bus: &RunEventBus,
@@ -71,7 +83,9 @@ pub async fn open_stage(
     stage: i32,
     text: String,
     part: MissionPart,
+    spent: i64,
 ) -> anyhow::Result<(RunRow, BusEvent)> {
+    let limits: MissionLimits = serde_json::from_value(mission.limits.clone())?;
     let tenant_id = mission.tenant_id;
     let owner = mission.owner_user_id;
     // The mission is its owner's words; a word to go on, the platform's.
@@ -105,7 +119,7 @@ pub async fn open_stage(
             objective: mission.description.clone(),
             success_criteria: mission.success_criteria.clone(),
             autonomy_level: autonomy,
-            budget: serde_json::to_value(MISSION_STAGE_BUDGET)?,
+            budget: serde_json::to_value(stage_budget(&limits, spent))?,
             request_message_id: Some(request.id),
             mission_id: Some(mission.id),
         },
@@ -177,8 +191,8 @@ pub async fn after_stage(
                 record_stage(tx, mission.id, &sources).await?;
                 let stage = mission.stages + 1;
                 let text = resumption(stage, &limits);
-                let (run, queued) =
-                    open_stage(tx, bus, &mission, stage, text, MissionPart::Resumption).await?;
+                let part = MissionPart::Resumption;
+                let (run, queued) = open_stage(tx, bus, &mission, stage, text, part, cost).await?;
                 return Ok(Some((run.id, queued)));
             }
             MissionEnd {
@@ -231,6 +245,20 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    #[test]
+    fn a_stage_spends_no_more_than_the_mission_has_left() {
+        let limits = MissionLimits {
+            max_stages: 6,
+            max_cost_micros: 12_000_000,
+        };
+        let stage = MISSION_STAGE_BUDGET.max_cost_micros;
+        assert_eq!(stage_budget(&limits, 0).max_cost_micros, stage);
+        assert_eq!(stage_budget(&limits, 11_000_000).max_cost_micros, 1_000_000);
+        assert_eq!(stage_budget(&limits, 13_000_000).max_cost_micros, 0);
+        let budget = stage_budget(&limits, 11_000_000);
+        assert_eq!(budget.max_steps, MISSION_STAGE_BUDGET.max_steps);
+    }
 
     #[test]
     fn carries_each_source_once_the_latest_kept() {

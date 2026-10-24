@@ -62,21 +62,35 @@ pub struct Mission {
     pub finished_at: Option<String>,
 }
 
+impl MissionStatus {
+    /// How the mission stands, and why it stopped unfinished: as it ended,
+    /// or, still in progress, as its last stage stands (one failed by a path
+    /// that does not end its mission, the stale-run sweep).
+    pub fn of(view: &MissionView) -> (Self, Option<String>) {
+        let mission = &view.mission;
+        match mission.status.as_str() {
+            "done" => (Self::Done, None),
+            "cancelled" => (Self::Cancelled, mission.error.clone()),
+            "failed" => (Self::Failed, mission.error.clone()),
+            _ => match view.stage_status.as_deref() {
+                Some("awaiting_approval") => (Self::AwaitingApproval, None),
+                Some("failed" | "cancelled") => (Self::Failed, view.stage_error.clone()),
+                _ => (Self::InProgress, None),
+            },
+        }
+    }
+
+    /// Whether it is over: done, failed or cancelled.
+    pub fn is_over(self) -> bool {
+        matches!(self, Self::Done | Self::Failed | Self::Cancelled)
+    }
+}
+
 impl Mission {
     pub fn from_view(view: &MissionView) -> anyhow::Result<Self> {
         let mission = &view.mission;
         let limits: MissionLimits = serde_json::from_value(mission.limits.clone())?;
-        let (status, error) = match mission.status.as_str() {
-            "done" => (MissionStatus::Done, None),
-            "cancelled" => (MissionStatus::Cancelled, mission.error.clone()),
-            "failed" => (MissionStatus::Failed, mission.error.clone()),
-            // Under way: as its last stage stands.
-            _ => match view.stage_status.as_deref() {
-                Some("awaiting_approval") => (MissionStatus::AwaitingApproval, None),
-                Some("failed" | "cancelled") => (MissionStatus::Failed, view.stage_error.clone()),
-                _ => (MissionStatus::InProgress, None),
-            },
-        };
+        let (status, error) = MissionStatus::of(view);
         let verification = match &mission.verification {
             Some(value) => {
                 let report: VerificationReport = serde_json::from_value(value.clone())?;

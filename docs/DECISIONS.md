@@ -3940,6 +3940,8 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     la mission verrouillée : tant que les limites de la mission le permettent (six
     étapes, 12 USD, gardées sur la mission telles qu'à sa création), l'étape suivante
     est créée et mise en file ; au-delà, la mission s'arrête inachevée (`failed`).
+    Chaque étape dispose du budget d'une étape, son coût borné par ce qui reste à la
+    mission ;
     Aucune étape ne se perd entre deux : un arrêt du service laisse la suivante en file,
     prise par le premier worker ;
   - l'étape suivante repart de la conversation de la mission (la mission et les points
@@ -3963,7 +3965,13 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     d'ADR-083) et s'arrête à sa prochaine écriture, sans rien écrire ni appeler de plus
     (ADR-086). L'étape est verrouillée avant la mission, dans l'ordre où se termine une
     étape : une étape qui se termine pendant l'arrêt est attendue, et c'est la
-    suivante, qu'elle a mise en file, qui est annulée ;
+    suivante, qu'elle a mise en file, qui est annulée. Une mission terminée, ou dont la
+    dernière étape a échoué, ne s'arrête plus (409) : son échec garde sa cause ;
+  - retirer `mission:create` empêche d'en confier de nouvelles, pas de poursuivre celles
+    en cours ; retirer `agent:use` (ou désactiver le compte) arrête l'étape en cours, et
+    donc la mission ;
+  - les sources montrées avec une réponse sont les 50 plus récentes : celles de l'étape
+    viennent après celles des étapes précédentes ;
   - routes : `GET` et `POST /api/missions`, `GET /api/missions/{id}`,
     `POST /api/missions/{id}/stop`. La mission d'un autre répond 404, même à un
     administrateur.
@@ -3984,13 +3992,17 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
 - **Conséquences** :
   - un travail long n'échoue plus au bout de 16 appels : il avance par étapes, chacune
     lisible par son point d'étape ;
-  - une mission coûte au plus ses limites, plus un appel par étape (son point) et la
-    revue de la réponse finale ;
+  - une mission coûte au plus ses limites, plus, par étape, l'appel qui franchit son
+    budget et son point d'étape, et la revue de la réponse finale ;
+  - jusqu'au lot 2, la conversation d'une mission montre le mot de la plateforme qui
+    lance une étape comme un message de son auteur ;
   - restent la page « Missions » et l'affichage des points d'étape (lot 2), l'avis à
     l'auteur quand une étape attend sa validation ou que la mission se termine (lot 3),
     et des limites réglables par l'entreprise ;
   - tests : `crates/agent/tests/runtime_handoff.rs` (point d'étape, outil ignoré,
     sources des étapes précédentes), `crates/api/tests/missions.rs` (étapes enchaînées
-    jusqu'à la réponse revue, limites, étape en échec), `mission_stop.rs` (arrêt d'une
-    étape en file, en attente d'une décision, en cours) et `mission_access.rs` (mission
+    jusqu'à la réponse revue, limites, budget d'une étape borné par ce qui reste, étape
+    en échec), `mission_stop.rs` (arrêt d'une étape en file, en attente d'une décision,
+    en cours, pendant qu'une étape se termine ; refus après un échec) et
+    `mission_access.rs` (mission
     d'un autre, droits refusés par une politique, critères, trois en cours au plus).

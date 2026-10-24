@@ -330,8 +330,10 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
     - une mission (ADR-089) n'est lue et arrêtée que par son auteur (404 pour tout
       autre, administrateur compris) : la confier demande `mission:create` en plus de
       `agent:use`, la suivre `mission:read`. Chacune de ses étapes est un run comme un
-      autre, qui relit les droits de son auteur à chaque étape ; ses limites (six
-      étapes, 12 USD, trois missions en cours par personne) bornent ce qu'elle coûte.
+      autre, qui relit les droits de son auteur à chaque étape : retirer `agent:use`
+      l'arrête ; retirer `mission:create` n'empêche que d'en confier de nouvelles. Ses
+      limites (six étapes, 12 USD, chaque étape bornée par ce qui reste, trois missions
+      en cours par personne) bornent ce qu'elle coûte, à un appel près par étape.
       L'arrêt retire son bail à l'étape en cours, dont l'exécuteur n'écrit ni n'appelle
       plus rien.
 

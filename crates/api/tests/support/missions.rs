@@ -35,6 +35,14 @@ pub async fn entrust(client: &Client<'_>, title: &str) -> Uuid {
     entrusted.json()["id"].as_str().unwrap().parse().unwrap()
 }
 
+/// Stops the mission, as `client`: the answer's status.
+pub async fn stop(client: &Client<'_>, id: Uuid) -> StatusCode {
+    client
+        .post(&format!("/missions/{id}/stop"), json!({}))
+        .await
+        .status
+}
+
 /// The mission, as its owner reads it.
 pub async fn read(client: &Client<'_>, id: Uuid) -> Value {
     let read = client.get(&format!("/missions/{id}")).await;
@@ -97,4 +105,18 @@ pub async fn stages(mission: Uuid) -> Vec<(Uuid, String)> {
     .unwrap();
     owner.close().await;
     stages
+}
+
+/// The stage's cost budget, as it was given.
+pub async fn cost_budget(run: Uuid) -> i64 {
+    let owner = sqlx::PgPool::connect(owner_url()).await.unwrap();
+    let budget: i64 = sqlx::query_scalar(
+        "select (budget->>'maxCostMicros')::bigint from agent_runs where id = $1",
+    )
+    .bind(run)
+    .fetch_one(&owner)
+    .await
+    .unwrap();
+    owner.close().await;
+    budget
 }

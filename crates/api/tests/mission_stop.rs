@@ -1,7 +1,9 @@
 //! Stopping a mission (ADR-089): its stage under way is cancelled, queued,
 //! awaiting a decision, or running, its requests with it; a stage running
-//! writes and calls nothing more once stopped. A mission over cannot be
-//! stopped again.
+//! writes and calls nothing more once stopped. A stage that ends while the
+//! mission is being stopped is waited for, and the next one it queued is
+//! the one cancelled. A mission over, or whose last stage failed, cannot be
+//! stopped.
 
 mod support;
 
@@ -9,23 +11,17 @@ use std::sync::{Mutex, mpsc};
 
 use axum::http::StatusCode;
 use mimorya_agent::testing::{ScriptedReply, ScriptedStep, call};
+use mimorya_api::plugins::maintenance::sweep_stale_runs;
 use mimorya_core::demo::{tenant, user};
 use serde_json::json;
-use support::missions::{entrust, executing, messages, read, stages};
+use support::missions::{entrust, executing, messages, read, stages, stop};
 use support::planning::{apply_proposal, propose};
 use support::queue::take_queued;
 use support::recovery::events;
-use support::{Client, TestApi, owner_url, week};
+use support::{TestApi, owner_url, week};
 use uuid::Uuid;
 
 const STOPPED: &str = "Mission arrêtée à la demande de son auteur.";
-
-async fn stop(client: &Client<'_>, id: Uuid) -> StatusCode {
-    client
-        .post(&format!("/missions/{id}/stop"), json!({}))
-        .await
-        .status
-}
 
 /// The kinds of the run's events, in order.
 async fn kinds(api: &TestApi, run: Uuid) -> Vec<String> {
@@ -141,4 +137,110 @@ async fn a_running_stage_stopped_writes_and_calls_nothing_more() {
     let said = messages(&marc, &mission).await;
     assert_eq!(said.len(), 2);
     assert_eq!(said[1]["content"], STOPPED);
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_mission_whose_stage_failed_elsewhere_is_not_stopped() {
+    let api = TestApi::start().await;
+    let marc = api.sign_in(user::MARC).await;
+    let id = entrust(&marc, "Mission balayée").await;
+    // Its stage stuck running, then failed by the stale-run sweep.
+    let run = stages(id).await[0].0;
+    let owner = sqlx::PgPool::connect(owner_url()).await.unwrap();
+    sqlx::query(
+        "update agent_runs set status = 'running', updated_at = now() - interval '20 minutes' \
+         where id = $1",
+    )
+    .bind(run)
+    .execute(&owner)
+    .await
+    .unwrap();
+    owner.close().await;
+    let services = &api.app.services;
+    let swept = sweep_stale_runs(&services.db, &services.bus, chrono::Duration::minutes(15))
+        .await
+        .unwrap();
+    assert_eq!(swept, 1);
+    let failed = read(&marc, id).await;
+    assert_eq!(failed["status"], "failed");
+
+    assert_eq!(stop(&marc, id).await, StatusCode::CONFLICT);
+    let still = read(&marc, id).await;
+    assert_eq!(still["status"], "failed");
+    assert_eq!(still["error"], failed["error"]);
+}
+
+/// Waits until a query waits for a lock.
+async fn someone_waits_for_a_lock(owner: &sqlx::PgPool) {
+    for _ in 0..250 {
+        let waiting: i64 = sqlx::query_scalar("select count(*) from pg_locks where not granted")
+            .fetch_one(owner)
+            .await
+            .unwrap();
+        if waiting > 0 {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    panic!("nobody waits for a lock");
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_stage_ending_while_its_mission_stops_has_its_next_one_cancelled() {
+    let api = TestApi::start().await;
+    let marc = api.sign_in(user::MARC).await;
+    let id = entrust(&marc, "Mission arrêtée entre deux étapes").await;
+    let first = stages(id).await[0].0;
+    let owner = sqlx::PgPool::connect(owner_url()).await.unwrap();
+    // The stage ends as an executor would: its run locked, then completed,
+    // the next stage queued, in one transaction.
+    let mut ending = owner.begin().await.unwrap();
+    sqlx::query("select id from agent_runs where id = $1 for update")
+        .bind(first)
+        .execute(&mut *ending)
+        .await
+        .unwrap();
+    let stopping = stop(&marc, id);
+    let handing_over = async {
+        someone_waits_for_a_lock(&owner).await;
+        sqlx::query(
+            "update agent_runs set status = 'completed', finished_at = now() where id = $1",
+        )
+        .bind(first)
+        .execute(&mut *ending)
+        .await
+        .unwrap();
+        let next: Uuid = sqlx::query_scalar(
+            "insert into agent_runs (tenant_id, conversation_id, on_behalf_of_user_id, \
+             objective, budget, status, mission_id) select tenant_id, conversation_id, \
+             on_behalf_of_user_id, objective, budget, 'queued', mission_id from agent_runs \
+             where id = $1 returning id",
+        )
+        .bind(first)
+        .fetch_one(&mut *ending)
+        .await
+        .unwrap();
+        sqlx::query("update missions set stages = 2 where id = $1")
+            .bind(id)
+            .execute(&mut *ending)
+            .await
+            .unwrap();
+        ending.commit().await.unwrap();
+        next
+    };
+    let (stopped, next) = tokio::join!(stopping, handing_over);
+    owner.close().await;
+
+    assert_eq!(stopped, StatusCode::OK);
+    let statuses: Vec<(Uuid, String)> = stages(id).await;
+    assert_eq!(
+        statuses,
+        [
+            (first, "completed".to_owned()),
+            (next, "cancelled".to_owned())
+        ]
+    );
+    assert_eq!(read(&marc, id).await["status"], "cancelled");
 }
