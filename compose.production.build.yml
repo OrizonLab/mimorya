@@ -17,6 +17,12 @@ services:
       context: .
       dockerfile: infra/docker/api.Dockerfile
 
+  worker:
+    image: mimorya-api:local
+    build:
+      context: .
+      dockerfile: infra/docker/api.Dockerfile
+
   web:
     image: mimorya-web:production
     build:

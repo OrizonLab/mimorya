@@ -114,12 +114,13 @@ Repères à l'intérieur des crates :
   planifiée dont l'occurrence est manquée au démarrage, `scheduled.rs`, ADR-081).
 - `infra/` : `docker/` (images de l'API et de l'interface, liste des images publiées
   `images.json`, test de fumée de la démonstration, test d'installation de la production,
-  vérifications partagées `checks.sh`), `caddy/`
+  vérifications partagées `checks.sh`, dont les rôles des processus lus dans la base), `caddy/`
   (reverse proxy : TLS, HSTS), `postgres/` (rôles et extensions ; production : `entrypoint-production.sh` vérifie les
   mots de passe, `init-production.sh` crée le rôle applicatif) ; `docker-compose.yml`
   (base de développement, sur 127.0.0.1), `compose.production.yml` (pile de production,
   ADR-034) et `compose.demo.yml` (pile de démonstration,
-  ADR-032), qui téléchargent les images publiées (`.github/workflows/images.yml`,
+  ADR-032), chacune avec un service `api` et un service `worker` de la même image
+  (ADR-087), qui téléchargent les images publiées (`.github/workflows/images.yml`,
   ADR-051) ; `compose.*.build.yml` les construisent depuis le dépôt (CI).
 
 ## Commandes

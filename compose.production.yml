@@ -7,6 +7,8 @@
 #   MIMORYA_DOMAIN            the name the stack is served on
 #   MIMORYA_TLS               an e-mail address for a public certificate (ACME),
 #                             or `internal` for Caddy's own local authority
+#   MIMORYA_WORKERS           how many workers execute the runs (ADR-087): 1 by
+#                             default, at least 1 (none would leave the runs queued)
 #   MIMORYA_VERSION           the published images to run (ADR-051): a version
 #                             (1.2.0) or a commit (sha-…); latest by default, the
 #                             last commit of main. Run this file from the same
@@ -22,7 +24,29 @@
 # Only Caddy publishes ports; the database is reachable from the stack's own
 # containers only, with its own project name and volume (apart from the
 # development database's).
+#
+# The API and the runs are two services of the same image (ADR-087): `api`
+# serves HTTP and queues the runs it starts, `worker` executes them and the
+# background work. Workers may be added side by side (ADR-086): their
+# number, MIMORYA_WORKERS (1 by default), belongs in the env file, so that
+# every `up -d` keeps it.
 name: mimorya-production
+
+# What the API and the workers read alike: the same database, the same
+# models, keys and mail relay (ADR-085).
+x-backend-environment: &backend-environment
+  MIMORYA_ENV: production
+  DATABASE_APP_URL: postgres://mimorya_app:${MIMORYA_APP_DB_PASSWORD}@db:5432/mimorya
+  WEB_ORIGIN: https://${MIMORYA_DOMAIN:?choose the domain the stack is served on (MIMORYA_DOMAIN)}
+  # Unset: Anthropic if ANTHROPIC_API_KEY is, otherwise no model.
+  LLM_PROVIDER: ${LLM_PROVIDER:-}
+  LLM_MODEL: ${LLM_MODEL:-}
+  LLM_API_KEY: ${LLM_API_KEY:-}
+  LLM_BASE_URL: ${LLM_BASE_URL:-}
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  MIMORYA_MASTER_KEY: ${MIMORYA_MASTER_KEY:-}
+  SMTP_URL: ${SMTP_URL:-}
+  MAIL_FROM: ${MAIL_FROM:-}
 
 services:
   db:
@@ -56,23 +80,31 @@ services:
       db:
         condition: service_healthy
 
+  # Serves the API; the runs it starts wait queued for a worker. One only:
+  # the rate limits are counted per process (SECURITY §4).
   api:
     image: ghcr.io/orizonlab/mimorya-api:${MIMORYA_VERSION:-latest}
     restart: unless-stopped
     environment:
-      MIMORYA_ENV: production
-      DATABASE_APP_URL: postgres://mimorya_app:${MIMORYA_APP_DB_PASSWORD}@db:5432/mimorya
-      WEB_ORIGIN: https://${MIMORYA_DOMAIN:?choose the domain the stack is served on (MIMORYA_DOMAIN)}
+      <<: *backend-environment
+      MIMORYA_ROLE: api
       TRUST_PROXY: 'true'
-      # Unset: Anthropic if ANTHROPIC_API_KEY is, otherwise no model.
-      LLM_PROVIDER: ${LLM_PROVIDER:-}
-      LLM_MODEL: ${LLM_MODEL:-}
-      LLM_API_KEY: ${LLM_API_KEY:-}
-      LLM_BASE_URL: ${LLM_BASE_URL:-}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      MIMORYA_MASTER_KEY: ${MIMORYA_MASTER_KEY:-}
-      SMTP_URL: ${SMTP_URL:-}
-      MAIL_FROM: ${MAIL_FROM:-}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  # Executes the runs, queued ones included, and the background work;
+  # serves nothing. A run still under way after the grace period is taken
+  # up by another worker once its lease expires (ADR-083).
+  worker:
+    image: ghcr.io/orizonlab/mimorya-api:${MIMORYA_VERSION:-latest}
+    restart: unless-stopped
+    # How many, kept from one `up` to the next (a `--scale` lasts one).
+    scale: ${MIMORYA_WORKERS:-1}
+    stop_grace_period: 2m
+    environment:
+      <<: *backend-environment
+      MIMORYA_ROLE: worker
     depends_on:
       migrate:
         condition: service_completed_successfully

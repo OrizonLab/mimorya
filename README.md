@@ -59,8 +59,15 @@ Images Docker de l'API et de l'interface, derrière Caddy (HTTPS, HSTS), avec l'
 export DEMO_PASSWORD='…'                         # obligatoire (autre que demo-mimorya) : comptes de démo
 docker compose -f compose.demo.yml pull          # images publiées (ADR-051)
 docker compose -f compose.demo.yml up -d         # https://localhost (certificat local de Caddy)
-infra/docker/smoke-test.sh                       # vérification : HSTS, CSP, API, connexion
+infra/docker/smoke-test.sh                       # vérification : HSTS, CSP, API, connexion, rôles
 ```
+
+La même image tourne en deux services (ADR-087) : `api` sert l'API et met en file les runs
+qu'il lance, `worker` les exécute avec toutes les tâches de fond, sans ouvrir de port.
+Ajouter des workers côte à côte (ADR-086) : `MIMORYA_WORKERS=2` (1 par défaut, au moins
+1, dans `.env` ou l'environnement exporté), puis `docker compose -f compose.demo.yml up -d`.
+L'API reste unique : ses limites de débit sont comptées par processus. Le test de fumée
+attend autant de workers que la pile en lance ; il lit la configuration avec `jq`.
 
 Les images sont publiées sur le registre de GitHub (`ghcr.io/orizonlab/mimorya-api`,
 `mimorya-web`, `mimorya-web-demo`, pour amd64), une fois la CI verte, pour chaque commit
@@ -119,8 +126,8 @@ conservée par un collecteur de journaux : le lien y resterait. En développemen
 ### Pile conteneurisée de production
 
 `compose.production.yml` (ADR-034) installe la même chose en conteneurs, sans données
-fictives : PostgreSQL (rôles créés avec vos mots de passe), migrations, API, interface et
-Caddy (HTTPS, HSTS), dans son propre projet (`mimorya-production`, à part de la base de
+fictives : PostgreSQL (rôles créés avec vos mots de passe), migrations, API, worker
+(ADR-087), interface et Caddy (HTTPS, HSTS), dans son propre projet (`mimorya-production`, à part de la base de
 développement). Seul Caddy publie des ports. Les identifiants se choisissent dans un
 fichier d'environnement gardé hors du dépôt, lisible par vous seul :
 
@@ -131,6 +138,7 @@ MIMORYA_APP_DB_PASSWORD=$(openssl rand -hex 32)
 MIMORYA_DOMAIN=mimorya.acme.example
 MIMORYA_TLS=exploitation@acme.example
 MIMORYA_VERSION=1.2.0            # images publiées à installer (ADR-051) : version ou sha-…
+MIMORYA_WORKERS=1                # workers qui exécutent les runs (ADR-087)
 VARIABLES
 )
 docker compose --env-file .env.production -f compose.production.yml pull
@@ -146,7 +154,11 @@ dernier commit de `main`. Lancez ces commandes depuis le dépôt extrait à la m
 (`git checkout v1.2.0`) : le fichier compose et les fichiers qu'il monte (Caddy,
 initialisation de la base) vont avec les images. Pour mettre à jour : extraire la
 nouvelle version, changer `MIMORYA_VERSION`, puis relancer `pull` et `up -d` (les
-migrations s'appliquent au démarrage). Une image introuvable arrête la pile, jamais
+migrations s'appliquent au démarrage ; un run interrompu par la mise à jour est repris par
+un worker). Depuis une version qui lançait un seul conteneur `api` en rôle `all` (avant
+l'ADR-086), arrêtez-le d'abord (`… stop api`). Pour plus de workers, augmentez
+`MIMORYA_WORKERS` dans `.env.production` puis relancez `up -d` : chaque `up -d` réapplique
+ce nombre. À l'arrêt, un worker a deux minutes pour finir ses runs. Une image introuvable arrête la pile, jamais
 remplacée par une construction locale. Pour construire depuis le dépôt plutôt que
 télécharger, sous des noms locaux : ajouter `-f compose.production.build.yml` et
 `up -d --build`.
@@ -161,8 +173,9 @@ puis `\password mimorya_app`, de même pour `mimorya`), puis la variable, puis r
 adresse e-mail pour un certificat public (ports 80 et 443 joignables depuis Internet) ou
 `internal` (certificat local de Caddy). Mêmes variables facultatives que la pile de
 démonstration (fournisseur de modèle, `MIMORYA_MASTER_KEY`, relais SMTP). La CI suit ce
-parcours jusqu'à la première connexion de l'administrateur avec les images construites
-depuis le dépôt (`compose.production.build.yml`), pas avec les images téléchargées
+parcours, rôles et second worker compris, jusqu'à la première connexion de
+l'administrateur avec les images construites depuis le dépôt
+(`compose.production.build.yml`), pas avec les images téléchargées
 (`infra/docker/production-test.sh`, réservé à une pile jetable : il y laisse une
 entreprise de vérification). Les sauvegardes restent à faire (voir la feuille de route).
 

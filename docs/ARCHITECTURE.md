@@ -46,9 +46,11 @@ flowchart LR
   `/api/*` est relayé vers l'API (cookies `SameSite=Lax`, pas de CORS en production).
 - **api** : authentification, API REST, flux temps réel SSE, exécution des tours de
   conversation, webhooks entrants.
-- **worker** (phase 2) : exécutions longues (missions), reprises après interruption,
-  tâches planifiées, ingestion de documents. En MVP, l'API exécute les runs en arrière-plan
-  dans son propre processus, reprend ceux qu'un arrêt a interrompus quand c'est sûr
+- **worker** : exécution des runs, reprises après interruption, tâches planifiées (les
+  missions longues et l'ingestion de documents restent à venir). Dans les piles Docker,
+  c'est un service distinct de l'API (ADR-087) ; en rôle `all`, par défaut et en
+  développement, l'API exécute elle-même les runs en arrière-plan. Le worker reprend les
+  runs qu'un arrêt a interrompus quand c'est sûr
   (ADR-053), prévient les responsables des demandes dont l'arrêt a perdu l'avis (ADR-070),
   et un balayage périodique marque en échec les runs restés sans
   progression et fait expirer les demandes de validation échues, leurs runs poursuivant
@@ -303,7 +305,7 @@ qu'au-delà de ce que PostgreSQL tient.
 | Mode          | Description                                                                                               |
 | ------------- | --------------------------------------------------------------------------------------------------------- |
 | Développement | `docker compose up db` + `cargo run --bin mimorya-api` / `pnpm dev:web`                                   |
-| Privé (PME)   | `docker compose` : web, api (rôle `all`, worker embarqué), PostgreSQL ; sauvegardes `pg_dump`/WAL         |
+| Privé (PME)   | `docker compose` : web, api (rôle `api`), worker(s) (ADR-087), PostgreSQL ; sauvegardes `pg_dump`/WAL     |
 | SaaS          | Même image en rôles `api` (plusieurs) et `worker` (ADR-085), PostgreSQL managé, montée en charge de l'API |
 
 Configuration exclusivement par variables d'environnement (voir `.env.example`).

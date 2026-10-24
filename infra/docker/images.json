@@ -3,7 +3,7 @@
     "image": "mimorya-api",
     "dockerfile": "infra/docker/api.Dockerfile",
     "build-args": "",
-    "description": "Mimorya API, migrations, operator commands and demo data"
+    "description": "Mimorya API and worker, migrations, operator commands and demo data"
   },
   {
     "image": "mimorya-web",
