@@ -2,6 +2,7 @@
 import type { ToneLabel } from '@/components/ui';
 import type {
   AccountStatus,
+  MissionStatus,
   OccurrenceOutcome,
   OrgUnitType,
   Sensitivity,
@@ -138,4 +139,13 @@ export const OCCURRENCE_OUTCOME: Record<OccurrenceOutcome, ToneLabel> = {
   missed: { label: 'Non rattrapée', tone: 'neutral' },
   refused: { label: 'Refusée', tone: 'danger' },
   failed: { label: 'Échec', tone: 'danger' },
+};
+
+/** How a mission stands (ADR-089). */
+export const MISSION_STATUS: Record<MissionStatus, ToneLabel> = {
+  in_progress: { label: 'En cours', tone: 'accent' },
+  awaiting_approval: { label: 'En attente de validation', tone: 'warn' },
+  done: { label: 'Terminée', tone: 'ok' },
+  failed: { label: 'Inachevée', tone: 'danger' },
+  cancelled: { label: 'Arrêtée', tone: 'neutral' },
 };
