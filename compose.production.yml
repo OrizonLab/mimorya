@@ -7,7 +7,8 @@
 #   MIMORYA_DOMAIN            the name the stack is served on
 #   MIMORYA_TLS               an e-mail address for a public certificate (ACME),
 #                             or `internal` for Caddy's own local authority
-#   MIMORYA_WORKERS           how many workers execute the runs (ADR-087), 1 by default
+#   MIMORYA_WORKERS           how many workers execute the runs (ADR-087): 1 by
+#                             default, at least 1 (none would leave the runs queued)
 #   MIMORYA_VERSION           the published images to run (ADR-051): a version
 #                             (1.2.0) or a commit (sha-…); latest by default, the
 #                             last commit of main. Run this file from the same

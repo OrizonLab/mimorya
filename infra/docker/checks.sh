@@ -1,8 +1,8 @@
 # Checks shared by the tests of the containerised stacks (ADR-032, ADR-034),
 # sourced by smoke-test.sh and production-test.sh. The caller names its
 # check in `check_name` (failure messages); every function takes the stack's
-# base URL first, but `check_roles`, which reads the stack's database through
-# `docker compose` (COMPOSE_FILE names the stack's files).
+# base URL first, but `stack_workers` and `check_roles`, which read the
+# stack through `docker compose` (COMPOSE_FILE names its files) and jq.
 
 fail() {
   echo "${check_name:-check} failed: $1" >&2
@@ -49,6 +49,12 @@ api_post() {
   curl -sk --max-time 10 -D - -X POST "$1/api$2" \
     -H 'content-type: application/json' -H 'x-mimorya-request: 1' -H "origin: $1" \
     --data "$3" || fail "no answer from $2"
+}
+
+# How many workers the stack runs (MIMORYA_WORKERS, 1 by default; ADR-087).
+stack_workers() {
+  docker compose config --format json | jq -er '.services.worker.scale // 1' ||
+    fail "cannot read the stack's worker count (docker compose config, jq)"
 }
 
 # Waits until the stack's processes listen as their roles say (ADR-085,

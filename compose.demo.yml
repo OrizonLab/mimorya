@@ -14,9 +14,10 @@
 #
 # The API and the runs are two services of the same image (ADR-087): `api`
 # serves HTTP and queues the runs it starts, `worker` executes them and the
-# background work. Workers may be added side by side (ADR-086), their
-# number kept in MIMORYA_WORKERS (1 by default):
-#   MIMORYA_WORKERS=2 docker compose -f compose.demo.yml up -d
+# background work. Workers may be added side by side (ADR-086): their
+# number, MIMORYA_WORKERS (1 by default, at least 1), belongs in .env or the
+# exported environment, so that every `up -d` keeps it:
+#   echo MIMORYA_WORKERS=2 >> .env && docker compose -f compose.demo.yml up -d
 name: mimorya-demo
 
 # What the API and the workers read alike: the same database, the same

@@ -3808,8 +3808,9 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     relais SMTP) sont écrites une fois, dans une extension du fichier compose
     (`x-backend-environment`) ; seuls le rôle et `TRUST_PROXY` (l'API, derrière Caddy)
     diffèrent ;
-  - le nombre de workers vient de `MIMORYA_WORKERS` (1 par défaut ; dans le fichier
-    d'environnement de la production), que chaque `up -d` réapplique : un `--scale` ne
+  - le nombre de workers vient de `MIMORYA_WORKERS` (1 par défaut, au moins 1 : sans
+    worker, les runs resteraient en file ; dans `.env` ou le fichier d'environnement de la
+    production), que chaque `up -d` réapplique : un `--scale` ne
     vaudrait que jusqu'au `up` suivant. L'API reste unique dans la pile : ses limites de
     débit sont comptées par processus (SECURITY §4) ;
   - le worker a deux minutes pour s'arrêter (`stop_grace_period`) : il ne prend plus de
@@ -3820,8 +3821,8 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     `api` une connexion `mimorya-run-events` (relais des événements) ; une API qui
     exécuterait aussi des runs, ou un worker qui servirait aussi, en compterait une de
     plus (`check_roles`, `infra/docker/checks.sh`, deux lectures concordantes de suite). Le
-    test de production ajoute un second worker, puis vérifie qu'aucun des conteneurs ne
-    tourne en root.
+    test de production ajoute un worker à ceux de la pile, puis vérifie qu'aucun des
+    conteneurs ne tourne en root.
 - **Alternatives écartées** :
   - garder un conteneur `all` en production et ne séparer qu'en SaaS : deux façons
     d'exploiter, et la séparation n'aurait été éprouvée nulle part ;
@@ -3836,5 +3837,7 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     recrée l'API et le worker, et un run interrompu par la mise à jour est repris par bail ;
   - passer d'une version antérieure à l'ADR-086 demande d'arrêter d'abord l'ancien
     conteneur `all` (ADR-086) : `docker compose … stop api`, puis `pull` et `up -d` ;
-  - tests : `infra/docker/smoke-test.sh` (une API, un worker),
-    `infra/docker/production-test.sh` (une API, puis deux workers), en CI.
+  - tests : `infra/docker/smoke-test.sh` (une API et les workers de la pile),
+    `infra/docker/production-test.sh` (une API et les workers de la pile, puis un worker
+    de plus), en CI. Le nombre attendu se lit dans la configuration de la pile
+    (`stack_workers`), pas dans une constante.
