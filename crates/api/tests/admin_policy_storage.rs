@@ -147,7 +147,7 @@ async fn stored_permissions_the_rules_refuse_are_never_enabled() {
 
     // Enabled already (a permission the platform does not check yet): it
     // cannot be changed as it stands, only switched off or corrected.
-    let url = insert_deny(&api, &["mission:read"], everyone, true).await;
+    let url = insert_deny(&api, &["intervention:write"], everyone, true).await;
     let renamed = paul.patch(&url, json!({ "description": "Renommée" })).await;
     assert_eq!(renamed.status, StatusCode::BAD_REQUEST);
     let off = paul.patch(&url, json!({ "enabled": false })).await;

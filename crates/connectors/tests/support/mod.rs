@@ -193,6 +193,7 @@ impl Scenario {
                 max_correction_attempts: 2,
             },
             effort: None,
+            handoff: false,
         };
         Self {
             runtime: AgentRuntime::new(deps, config),
@@ -234,6 +235,7 @@ impl Scenario {
                 history: Vec::new(),
                 user_turn: build_user_turn(REQUEST, &memories),
                 unavailable_connectors: Vec::new(),
+                evidence: Vec::new(),
             })
             .await
             .unwrap()

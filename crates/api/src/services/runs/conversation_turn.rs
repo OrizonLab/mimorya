@@ -105,6 +105,7 @@ pub async fn open_conversation_turn(
             autonomy_level: autonomy,
             budget: serde_json::to_value(DEFAULT_BUDGET)?,
             request_message_id: Some(user_message.id),
+            mission_id: None,
         },
     )
     .await?;

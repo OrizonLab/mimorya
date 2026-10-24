@@ -49,6 +49,8 @@ pub struct RunScope {
     pub user_id: Uuid,
     /// Conversation that receives the answer, if the run belongs to one.
     pub conversation_id: Option<Uuid>,
+    /// The mission the run is a stage of, if any (ADR-089).
+    pub mission_id: Option<Uuid>,
 }
 
 #[derive(Clone)]
@@ -268,7 +270,7 @@ impl RunStore for DbPorts {
 
     async fn finish(&self, outcome: &RunOutcome) -> anyhow::Result<()> {
         let tx = self.held_tx().await?;
-        persist_outcome(tx, self.scope, outcome).await?;
+        persist_outcome(tx, &self.bus, self.scope, outcome).await?;
         self.ended.store(true, Ordering::Relaxed);
         self.lessons.after_run(self.scope, outcome);
         // Paused, and so decidable: the managers of its requests are told,

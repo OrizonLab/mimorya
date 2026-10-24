@@ -51,6 +51,7 @@ pub async fn leave(app: &App) -> anyhow::Result<()> {
             autonomy_level: AutonomyLevel::ExecuteWithApproval,
             budget: serde_json::to_value(DEFAULT_BUDGET)?,
             request_message_id: None,
+            mission_id: None,
         },
     )
     .await?;

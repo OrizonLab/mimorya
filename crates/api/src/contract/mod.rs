@@ -12,6 +12,7 @@ mod errors;
 mod health;
 mod links;
 mod memory;
+mod missions;
 mod run_stream;
 mod runs;
 mod scheduled_tasks;
@@ -25,8 +26,8 @@ pub use approvals::{Approval, ApprovalDecided, ApprovalList, ApprovalPerson, App
 pub use common::{Created, Done};
 pub use conversations::{
     Citation, ConversationChanges, ConversationCreated, ConversationDetail, ConversationList,
-    ConversationSummary, Message, MessageAccepted, MessageMetadata, MessageRole, NewConversation,
-    NewMessage,
+    ConversationSummary, Message, MessageAccepted, MessageMetadata, MessageRole, MissionPart,
+    NewConversation, NewMessage,
 };
 pub use errors::{ErrorBody, ErrorDetail, ErrorKind};
 pub use health::Health;
@@ -35,6 +36,7 @@ pub use memory::{
     ManualMemory, ManualMemoryKind, MemoryItem, MemoryKind, MemoryList, MemoryReview, MemoryScope,
     MemorySource, MemorySpace, MemoryStatus, ReviewDecision,
 };
+pub use missions::{Mission, MissionList, MissionStatus, NewMission};
 pub use run_stream::{
     ApprovalRequestedEvent, ApprovalResolvedEvent, AssistantDelta, AssistantMessage,
     ConnectorsUnavailable, RunFinished, RunQueued, RunResumed, RunStarted, RunStreamEvent,
@@ -78,6 +80,8 @@ pub fn typescript() -> String {
     declarations.add::<RunStreamEvent>();
     declarations.add::<MemoryList>();
     declarations.add::<ScheduledTaskList>();
+    declarations.add::<MissionList>();
+    declarations.add::<Mission>();
     declarations.add::<Created>();
     declarations.add::<InvitationDetails>();
     declarations.add::<ResetDetails>();
@@ -135,6 +139,7 @@ macro_rules! request_bodies {
             Absence,
             NewScheduledTask,
             ScheduledTaskUpdate,
+            NewMission,
             ManualMemory,
             MemoryReview,
             admin::NewAccount,

@@ -3905,3 +3905,92 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
   - tests : `crates/api/tests/shared_rate_limits.rs` (deux processus, empreintes hors de
     portée du rôle applicatif, purge) et `crates/db/tests/rate_limits.rs` (fenêtres,
     passage rendu, valeurs distinctes, purge).
+
+## ADR-089 — Missions longues : des étapes enchaînées dans la conversation de la mission
+
+- **Date** : 2026-10-24 · **Statut** : acceptée · complète ADR-053, ADR-083, ADR-085 et
+  ADR-086
+- **Contexte** : un tour de conversation dispose d'un budget borné (16 appels au modèle,
+  10 minutes, 3 USD) : un travail plus long échoue sur « nombre maximal d'étapes
+  atteint ». La vision produit veut qu'on confie un résultat, pas une suite de commandes
+  (PRODUCT_VISION §4) ; la mission, « travail confié, suivi dans la durée, pouvant
+  comporter plusieurs exécutions », a sa table depuis le schéma initial, jamais écrite.
+  Un seul run au budget relevé garderait en contexte tous les échanges avec les outils,
+  de plus en plus coûteux, et une panne ferait perdre tout ce qui suit son dernier point
+  de reprise.
+- **Décision** :
+  - une mission est confiée par son auteur : un titre, un objectif, de un à huit
+    critères de réussite. Elle ouvre sa propre conversation, à son nom ; trois au plus
+    sont en cours par personne. Il faut, comme pour un tour, le droit `agent:use`, un
+    modèle disponible et une entreprise active, et le droit de confier des missions
+    (`mission:create`) ; les suivre et les arrêter demande `mission:read`. Ces deux
+    permissions, au catalogue depuis le début sans être vérifiées, le sont désormais :
+    une politique de refus peut les retirer ;
+  - elle avance par **étapes** : chacune est un run de la conversation de la mission
+    (`agent_runs.mission_id`), toujours mis en file pour un worker (ADR-085), au budget
+    d'une étape (`MISSION_STAGE_BUDGET` : 24 appels au modèle, 15 minutes, 3 USD). La
+    première a pour demande la mission elle-même, message de son auteur ; les suivantes,
+    un mot de la plateforme ;
+  - le budget d'une étape atteint, le moteur ne la fait plus échouer : il demande au
+    modèle un **point d'étape** (ce qui est fait, avec les identifiants et les sources
+    utiles, ce qui reste à faire, la prochaine action), sans outil : un outil appelé
+    quand même est ignoré, jamais exécuté. Ce point coûte un appel au-delà du budget,
+    pas plus. L'étape se termine (`completed`), son point affiché dans la conversation ;
+  - dans la transaction qui enregistre cette fin, sous le bail de l'étape (ADR-086) et
+    la mission verrouillée : tant que les limites de la mission le permettent (six
+    étapes, 12 USD, gardées sur la mission telles qu'à sa création), l'étape suivante
+    est créée et mise en file ; au-delà, la mission s'arrête inachevée (`failed`).
+    Aucune étape ne se perd entre deux : un arrêt du service laisse la suivante en file,
+    prise par le premier worker ;
+  - l'étape suivante repart de la conversation de la mission (la mission et les points
+    d'étape, pas les échanges avec les outils : un contexte borné, l'historique en ajout
+    seul) et des **sources** que les étapes précédentes ont trouvées, gardées sur la
+    mission (`missions.evidence`, les 200 dernières) : la réponse finale peut citer ce
+    qu'une étape antérieure a lu (ancrage, AGENT_ENGINE §6) ;
+  - une réponse finale, sans appel d'outil, clôt la mission (`done`). Elle est revue
+    par un modèle au regard des critères de réussite, quel que soit `MIMORYA_LLM_JUDGE`,
+    avec la correction bornée habituelle. Une étape qui échoue (erreur du modèle,
+    droits retirés…) clôt la mission (`failed`). Le statut écrit sur la mission est
+    celui de sa fin, plantage de l'exécuteur compris ; en cours, il se lit sur sa
+    dernière étape : en attente d'une décision, ou échouée par un chemin qui ne passe
+    pas par la fin d'une étape (balayage des runs bloqués) ;
+  - un message est horodaté à son écriture (`clock_timestamp()`), et non au début de
+    sa transaction : le point d'étape et la demande de l'étape suivante, écrits
+    ensemble, gardent leur ordre dans la conversation ;
+  - son auteur peut **arrêter** sa mission : l'étape en cours est annulée
+    (`cancelled`), ses demandes de validation aussi, et un message le dit dans la
+    conversation. L'exécuteur qui la tenait perd son bail avec le statut (déclencheur
+    d'ADR-083) et s'arrête à sa prochaine écriture, sans rien écrire ni appeler de plus
+    (ADR-086). L'étape est verrouillée avant la mission, dans l'ordre où se termine une
+    étape : une étape qui se termine pendant l'arrêt est attendue, et c'est la
+    suivante, qu'elle a mise en file, qui est annulée ;
+  - routes : `GET` et `POST /api/missions`, `GET /api/missions/{id}`,
+    `POST /api/missions/{id}/stop`. La mission d'un autre répond 404, même à un
+    administrateur.
+- **Alternatives écartées** :
+  - un seul run au budget relevé : un contexte qui grossit à chaque appel d'outil (coût,
+    limite de contexte), et une panne qui fait tout perdre au-delà du dernier point de
+    reprise ;
+  - un outil de note que le modèle appellerait de lui-même : rien ne garantit qu'il le
+    fasse avant la fin du budget, alors que le point demandé à la fin de l'étape est
+    systématique ;
+  - un résumé par un appel séparé, hors contexte, comme la leçon (ADR-076) : moins
+    fidèle que le modèle qui a les résultats des outils sous les yeux, et sans le cache ;
+  - créer l'étape suivante après la transaction : un arrêt du service entre les deux
+    laisserait la mission sans étape ;
+  - écrire l'échec de la mission sur chaque chemin qui fait échouer un run : ils sont
+    nombreux, dont une fonction SQL inter-entreprises ; lire le statut sur la dernière
+    étape suffit.
+- **Conséquences** :
+  - un travail long n'échoue plus au bout de 16 appels : il avance par étapes, chacune
+    lisible par son point d'étape ;
+  - une mission coûte au plus ses limites, plus un appel par étape (son point) et la
+    revue de la réponse finale ;
+  - restent la page « Missions » et l'affichage des points d'étape (lot 2), l'avis à
+    l'auteur quand une étape attend sa validation ou que la mission se termine (lot 3),
+    et des limites réglables par l'entreprise ;
+  - tests : `crates/agent/tests/runtime_handoff.rs` (point d'étape, outil ignoré,
+    sources des étapes précédentes), `crates/api/tests/missions.rs` (étapes enchaînées
+    jusqu'à la réponse revue, limites, étape en échec), `mission_stop.rs` (arrêt d'une
+    étape en file, en attente d'une décision, en cours) et `mission_access.rs` (mission
+    d'un autre, droits refusés par une politique, critères, trois en cours au plus).

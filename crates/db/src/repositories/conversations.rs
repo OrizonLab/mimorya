@@ -153,10 +153,14 @@ pub struct NewMessage {
     pub metadata: Value,
 }
 
+/// Adds a message, timed when it is written: two messages of one
+/// transaction (a mission's progress note and the next stage's request,
+/// ADR-089) keep their order.
 pub async fn add_message(conn: &mut PgConnection, input: NewMessage) -> sqlx::Result<MessageRow> {
     let row = sqlx::query_as(&format!(
-        "insert into messages (tenant_id, conversation_id, role, content, author_user_id, run_id, metadata) \
-         values ($1, $2, $3, $4, $5, $6, $7) returning {MESSAGE_COLUMNS}"
+        "insert into messages (tenant_id, conversation_id, role, content, author_user_id, run_id, \
+         metadata, created_at) values ($1, $2, $3, $4, $5, $6, $7, clock_timestamp()) \
+         returning {MESSAGE_COLUMNS}"
     ))
     .bind(input.tenant_id)
     .bind(input.conversation_id)

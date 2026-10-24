@@ -22,6 +22,7 @@ fn new_run() -> NewRun {
         autonomy_level: AutonomyLevel::ExecuteWithApproval,
         budget: json!({}),
         request_message_id: None,
+        mission_id: None,
     }
 }
 

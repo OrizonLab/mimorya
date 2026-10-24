@@ -198,6 +198,8 @@ pub struct Options {
     pub judge: Option<Vec<ScriptedStep>>,
     /// What an administrator changed of the tools (risk…).
     pub overrides: HashMap<String, ToolOverride>,
+    /// A mission's stage (ADR-089).
+    pub handoff: bool,
 }
 
 pub struct Harness {
@@ -221,6 +223,21 @@ impl Harness {
                 history: Vec::new(),
                 user_turn: "Fais la synthèse".into(),
                 unavailable_connectors,
+                evidence: Vec::new(),
+            })
+            .await
+            .expect("run")
+    }
+
+    /// Starts with the sources a mission's earlier stages collected.
+    pub async fn start_with_evidence(&self, evidence: Vec<Citation>) -> RunOutcome {
+        self.runtime
+            .start(StartInput {
+                system: "SYSTEM".into(),
+                history: Vec::new(),
+                user_turn: "Fais la synthèse".into(),
+                unavailable_connectors: Vec::new(),
+                evidence,
             })
             .await
             .expect("run")
@@ -285,6 +302,7 @@ pub fn setup(steps: Vec<ScriptedStep>, options: Options) -> Harness {
             max_correction_attempts: 2,
         },
         effort: None,
+        handoff: options.handoff,
     };
     Harness {
         runtime: AgentRuntime::new(deps, config),

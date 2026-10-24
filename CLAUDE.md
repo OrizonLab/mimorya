@@ -44,7 +44,8 @@ Repères à l'intérieur des crates :
 - `agent/src/llm/<fournisseur>/`, `agent/src/llm/embedding/` (modèles d'embeddings de la
   mémoire sémantique, ADR-074), `agent/src/runtime/` (boucle, appels modèle, appels
   d'outils, revue de réponse, reprise après un arrêt du service, leçon tirée d'un run
-  (`lesson.rs`, ADR-076), ports),
+  (`lesson.rs`, ADR-076), point d'étape d'une mission dont le budget est atteint
+  (`handoff.rs`, ADR-089), ports),
   `agent/src/tools/` (registre, PEP,
   `platform/`), `agent/src/testing/` (fonctionnalité `testing`).
 - `connectors/src/demo_interventions/` (données, planning, accès, `tools/` un fichier
@@ -77,7 +78,9 @@ Repères à l'intérieur des crates :
   (`lesson_capture.rs`, ADR-076), bail de l'exécuteur sur chaque run (`leases.rs`,
   ADR-083) et garde d'écriture d'une exécution qui l'a perdu (`fence.rs`, ADR-086), file d'attente des runs d'un processus `api` (`queue.rs`, ADR-085)),
   `api/src/services/scheduled_tasks/` (tâches planifiées : ce qu'elles demandent, celles
-  de chacun, leur lancement, ADR-080), `api/src/services/event_bus/` (événements des runs
+  de chacun, leur lancement, ADR-080), `api/src/services/missions/` (missions longues :
+  ce qu'on confie et ses limites, étapes enchaînées à la fin de chacune, dans la
+  transaction de son issue, arrêt par son auteur, ADR-089), `api/src/services/event_bus/` (événements des runs
   aux abonnés du processus et, par PostgreSQL, des autres : avis, relais, fragments de
   texte, ADR-084), `api/src/services/invalidations/` (caches de chaque processus vidés
   ensemble : ce qu'un processus change annoncé aux autres par PostgreSQL, ADR-085),

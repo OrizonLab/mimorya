@@ -1,7 +1,9 @@
 //! Executes one run in the background: assembles the agent runtime for the
 //! user, starts or resumes it. The runtime records the outcome through its
 //! ports; a failure or a panic is recorded as a failed run and never reaches
-//! the caller.
+//! the caller. A mission's stage (ADR-089) hands over to the next once its
+//! budget is spent, starts with the sources the earlier ones collected, and
+//! has its final answer reviewed by a model against the mission's criteria.
 
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
@@ -16,7 +18,9 @@ use mimorya_agent::runtime::{
 };
 use mimorya_core::authz::Actor;
 use mimorya_core::autonomy::{AutonomyLevel, AutonomyPolicy};
+use mimorya_core::tools::Citation;
 use mimorya_db::Database;
+use mimorya_db::repositories::missions::mission_evidence;
 use mimorya_db::repositories::runs::{RunRow, RunStatus};
 
 use super::approval_notice::ApprovalNotifier;
@@ -90,6 +94,7 @@ impl RunExecutor {
             run_id: run.id,
             user_id: access.subject.user_id,
             conversation_id: run.conversation_id,
+            mission_id: run.mission_id,
         };
         let ports = engine_ports(self, scope, fence.clone());
         // A run taken up that crashes says which actions to check.
@@ -108,7 +113,7 @@ impl RunExecutor {
             Err(_) => "panic".to_string(),
         };
         tracing::error!(run_id = %run.id, error, "Run crashed");
-        let status = match record_crash(&self.db, scope, &message, fence.owner()).await {
+        let status = match record_crash(&self.db, &self.bus, scope, &message, fence.owner()).await {
             Ok(Some(status)) => status,
             // Its end is already announced (the stale-run sweep failed it).
             Ok(None) => return,
@@ -151,15 +156,24 @@ impl RunExecutor {
                     Utc::now(),
                 )
                 .await?;
+                // A mission's later stage asks to go on: its objective says
+                // what to recall.
+                let wanted = if run.mission_id.is_some() {
+                    &run.objective
+                } else {
+                    &text
+                };
                 let memories =
-                    recall_memories(&self.db, &self.embeddings, access, &actor, &text, run.id)
+                    recall_memories(&self.db, &self.embeddings, access, &actor, wanted, run.id)
                         .await?;
+                let evidence = self.earlier_sources(access, run).await?;
                 runtime
                     .start(StartInput {
                         system,
                         history,
                         user_turn: build_user_turn(&text, &memories),
                         unavailable_connectors,
+                        evidence,
                     })
                     .await?;
             }
@@ -175,6 +189,25 @@ impl RunExecutor {
             }
         }
         Ok(())
+    }
+
+    /// The sources the earlier stages of the run's mission collected; none
+    /// for a run of no mission.
+    async fn earlier_sources(
+        &self,
+        access: &AccessContext,
+        run: &RunRow,
+    ) -> anyhow::Result<Vec<Citation>> {
+        let Some(mission_id) = run.mission_id else {
+            return Ok(Vec::new());
+        };
+        let mut tx = self.db.begin(access.subject.tenant_id).await?;
+        let sources = mission_evidence(&mut tx, mission_id).await?;
+        tx.commit().await?;
+        Ok(match sources {
+            Some(sources) => serde_json::from_value(sources)?,
+            None => Vec::new(),
+        })
     }
 
     /// The run's runtime, and the connectors in reach of its user that
@@ -219,10 +252,12 @@ impl RunExecutor {
                 budget,
                 success_criteria: run.success_criteria.clone(),
                 verification: VerificationConfig {
-                    llm_judge: self.llm_judge,
+                    // A mission's answer is reviewed against its criteria.
+                    llm_judge: self.llm_judge || run.mission_id.is_some(),
                     max_correction_attempts: MAX_CORRECTION_ATTEMPTS,
                 },
                 effort: Some(Effort::High),
+                handoff: run.mission_id.is_some(),
             },
         );
         Ok((runtime, tools.unavailable_connectors))

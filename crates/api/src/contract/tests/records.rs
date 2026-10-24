@@ -52,6 +52,7 @@ fn message_metadata_carries_the_engine_s_sources_and_checks() {
         status: Some(RunStatus::Completed),
         evidence: Some(evidence.iter().map(Into::into).collect()),
         verification: Some((&report).into()),
+        mission: None,
     };
     let written = serde_json::to_value(&metadata).unwrap();
     assert_eq!(
@@ -60,6 +61,14 @@ fn message_metadata_carries_the_engine_s_sources_and_checks() {
     );
     reads_back::<_, MessageMetadata>(&metadata);
     reads_back::<_, MessageMetadata>(&MessageMetadata::default());
+    // A mission's note (ADR-089).
+    let note = MessageMetadata {
+        mission: Some(MissionPart::Progress),
+        ..MessageMetadata::default()
+    };
+    let written = serde_json::to_value(&note).unwrap();
+    assert_eq!(written, json!({ "mission": "progress" }));
+    reads_back::<_, MessageMetadata>(&note);
 }
 
 #[test]

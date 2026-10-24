@@ -233,6 +233,7 @@ async fn waits_for_a_concurrent_turn_then_refuses_a_second_one() {
             autonomy_level: AutonomyLevel::ExecuteWithApproval,
             budget: serde_json::to_value(DEFAULT_BUDGET).unwrap(),
             request_message_id: None,
+            mission_id: None,
         },
     )
     .await
