@@ -855,6 +855,45 @@ maxUnderWay: number, };
  */
 export type MissionPart = "brief" | "resumption" | "progress";
 
+/**
+ * Body of `PUT /admin/mission-settings`: checked against the platform's
+ * bounds by the service, which says them in its refusal.
+ */
+export type MissionSettingsUpdate = { maxStages: number, maxCostMicros: number, };
+
+/**
+ * `GET /admin/mission-settings`.
+ */
+export type MissionSettingsView = {
+/**
+ * How many stages the missions entrusted from now on may take.
+ */
+maxStages: number,
+/**
+ * What they may cost, in micro-dollars.
+ */
+maxCostMicros: number,
+/**
+ * Whether these are the company's own limits, not the platform's.
+ */
+own: boolean,
+/**
+ * The platform's limits, which apply without the company's own.
+ */
+platformMaxStages: number, platformMaxCostMicros: number,
+/**
+ * What a company may set: stages up to this many…
+ */
+maxStagesCeiling: number,
+/**
+ * …and a cost from this much…
+ */
+minCostMicros: number,
+/**
+ * …to this much.
+ */
+maxCostCeilingMicros: number, };
+
 export type MissionStatus = "in_progress" | "awaiting_approval" | "done" | "failed" | "cancelled";
 
 /**

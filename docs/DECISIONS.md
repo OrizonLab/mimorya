@@ -4176,3 +4176,43 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     verdict écarté) et `crates/agent/tests/runtime_verification.rs` (une relecture
     de quinze manquements fait échouer la réponse, la correction reçoit les dix premiers
     et le compte des autres, la réponse les affiche).
+
+## ADR-093 — Limites des missions réglées par l'entreprise
+
+- **Date** : 2026-10-24 · **Statut** : acceptée · complète ADR-089
+- **Contexte** : les limites d'une mission (six étapes, 12 USD, ADR-089) étaient celles
+  de la plateforme, pour toutes les entreprises. Une entreprise peut vouloir des missions
+  plus courtes et moins chères, ou au contraire plus longues pour ses travaux de fond.
+- **Décision** :
+  - ceux qui gèrent les réglages de l'entreprise (`settings:manage`, sur toute
+    l'entreprise) fixent dans « Modèle d'IA », section « Limites des missions », le
+    nombre d'étapes et le coût d'une mission, entre 1 et 20 étapes et entre 1 et
+    100 USD. La base porte les mêmes bornes ; l'API refuse au-delà, en le disant ;
+  - sans réglage propre, les limites de la plateforme s'appliquent ; on y revient d'un
+    bouton (`DELETE /api/admin/mission-settings`) ;
+  - une mission garde les limites du jour où elle est confiée (ADR-089) : un
+    changement vaut pour les missions confiées ensuite, jamais pour celles en cours ;
+  - le budget d'une étape (24 appels, 15 minutes, 3 USD) reste celui de la plateforme,
+    son coût borné par ce qui reste à la mission ;
+  - chaque changement est tracé (`mission.limits_configured` avec les limites,
+    `mission.limits_reset`) ;
+  - routes : `GET`, `PUT` et `DELETE /api/admin/mission-settings` ; la lecture donne
+    aussi les limites de la plateforme et les bornes, que la page affiche.
+- **Alternatives écartées** :
+  - régler aussi le budget d'une étape : il borne ce que garde le contexte d'un seul
+    run et le temps d'un exécuteur ; le régler par entreprise relève d'un autre lot ;
+  - régler aussi le nombre de missions en cours par personne : la limite de trois
+    protège l'exécution des runs de tous, pas le budget d'une entreprise ;
+  - appliquer un changement aux missions en cours : leur auteur les a confiées avec
+    des limites qu'il voyait, et une mission pourrait se voir arrêtée en route.
+- **Conséquences** :
+  - une entreprise règle la durée et le coût de ses missions, dans les limites de la
+    plateforme ;
+  - tests : `crates/api/tests/mission_settings.rs` (une mission garde les limites du
+    jour, après un changement comme un retour à celles de la plateforme ; le budget de
+    sa première étape borné par elles ; bornes refusées, champ inconnu refusé ; seuls
+    les administrateurs des réglages sur toute l'entreprise, ni un collaborateur ni un
+    administrateur partiel ; les limites d'une autre entreprise restent les siennes),
+    `services/missions/limits.rs` (bornes) et `apps/web/e2e/mission-limits.spec.ts`
+    (réglées depuis « Modèle d'IA », relues après rechargement, reprises par une
+    mission confiée ensuite, retour à celles de la plateforme).

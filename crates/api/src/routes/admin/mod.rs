@@ -14,6 +14,7 @@ mod embedding;
 mod identity_providers;
 mod llm;
 mod memory_settings;
+mod mission_settings;
 mod organization;
 mod policies;
 mod roles;
@@ -80,6 +81,12 @@ pub fn routes(state: &AppState) -> Router<AppState> {
         .route(
             "/admin/memory-settings",
             get(memory_settings::show).put(memory_settings::update),
+        )
+        .route(
+            "/admin/mission-settings",
+            get(mission_settings::show)
+                .put(mission_settings::update)
+                .delete(mission_settings::reset),
         )
         .route(
             "/admin/connectors",

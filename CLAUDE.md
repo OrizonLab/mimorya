@@ -83,7 +83,8 @@ Repères à l'intérieur des crates :
   ADR-083) et garde d'écriture d'une exécution qui l'a perdu (`fence.rs`, ADR-086), file d'attente des runs d'un processus `api` (`queue.rs`, ADR-085)),
   `api/src/services/scheduled_tasks/` (tâches planifiées : ce qu'elles demandent, celles
   de chacun, leur lancement, ADR-080), `api/src/services/missions/` (missions longues :
-  ce qu'on confie et ses limites, étapes enchaînées à la fin de chacune, dans la
+  ce qu'on confie, ses limites (`limits.rs`, celles de la plateforme ou de
+  l'entreprise, ADR-093), étapes enchaînées à la fin de chacune, dans la
   transaction de son issue, arrêt par son auteur, ADR-089 ; son auteur prévenu de sa fin
   par la passe de chaque minute, `end_notice/`, ADR-091), `api/src/services/event_bus/` (événements des runs
   aux abonnés du processus et, par PostgreSQL, des autres : avis, relais, fragments de
@@ -109,7 +110,8 @@ Repères à l'intérieur des crates :
   `api/tests/` (intégration, harnais dans `support/`, dont les fournisseurs d'identité
   simulés, OpenID Connect et SAML).
 - `web/components/<fonctionnalité>/` (account, admin — dont `admin/llm/` : modèle des
-  conversations, recherche dans la mémoire et leçons, ADR-075, ADR-077, et `admin/users/` :
+  conversations, recherche dans la mémoire, leçons et limites des missions, ADR-075,
+  ADR-077, ADR-093, et `admin/users/` :
   comptes, dont l'absence d'un collaborateur empêché, ADR-079 —, approvals — dont la
   section « Absence » et son formulaire, commun, ADR-073 —, chat, memory, missions —
   missions longues, ADR-090 —, operations, scheduled-tasks — tâches planifiées, ADR-081 —,
