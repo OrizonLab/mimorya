@@ -1,4 +1,5 @@
-//! Runtime: verification of final answers, bounded correction and budgets.
+//! Runtime: verification of final answers, bounded correction and budgets;
+//! a review listing many issues fails the answer with the first ones (ADR-092).
 
 mod support;
 
@@ -104,6 +105,54 @@ async fn uses_the_model_review_against_explicit_success_criteria() {
         judge.requests()[0].messages[0],
         LlmMessage::User { .. }
     ));
+}
+
+#[tokio::test]
+async fn a_review_listing_many_issues_fails_the_answer_with_the_first_ones() {
+    let many: Vec<String> = (1..=15).map(|i| format!("Manquement {i}")).collect();
+    let failing = || {
+        ScriptedStep::calls(
+            "",
+            vec![call(
+                "submit_verdict",
+                json!({ "pass": false, "issues": many.clone() }),
+            )],
+        )
+    };
+    let h = setup(
+        vec![
+            ScriptedStep::text("Rien à signaler."),
+            ScriptedStep::dynamic(|req| {
+                let Some(LlmMessage::User { content }) = req.last_message() else {
+                    panic!("expected a correction")
+                };
+                assert!(content.contains("- Manquement 10\n"), "{content}");
+                assert!(!content.contains("Manquement 11"), "{content}");
+                assert!(content.contains("Et 5 autres manquements"), "{content}");
+                ScriptedReply::text("Toujours rien à signaler.")
+            }),
+            ScriptedStep::text("Rien, vraiment."),
+        ],
+        Options {
+            criteria: vec!["Indiquer pour chaque intervention si un suivi est nécessaire".into()],
+            judge: Some(vec![failing(), failing(), failing()]),
+            ..Default::default()
+        },
+    );
+    let RunOutcome::Completed {
+        answer,
+        verification,
+        ..
+    } = h.start().await
+    else {
+        panic!("expected completion")
+    };
+    // Heard, not set aside: the answer fails, and says why.
+    assert!(verification.judged);
+    assert!(!verification.passed);
+    assert_eq!(verification.issues.len(), 11);
+    assert!(answer.contains("Points non vérifiés"));
+    assert!(answer.contains("Et 5 autres manquements signalés"));
 }
 
 #[tokio::test]

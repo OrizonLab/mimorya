@@ -193,7 +193,9 @@ Deux niveaux, cumulables :
 2. **Évaluation par un modèle** (missions, toujours (ADR-089), ou critères explicites
    avec `MIMORYA_LLM_JUDGE`) : un appel séparé,
    éventuellement avec un autre modèle, juge la réponse au regard de l'objectif et des
-   critères et renvoie `{ pass, issues[] }` via un outil structuré.
+   critères et renvoie `{ pass, issues[] }` via un outil structuré. Le verdict garde
+   ses dix premiers manquements, chacun coupé à 500 caractères, les autres comptés
+   (ADR-092) ; un verdict illisible laisse la réponse non jugée.
 
 En cas d'échec : la critique est réinjectée comme message système et l'agent corrige,
 dans la limite de `maxCorrectionAttempts` (défaut 2). Les échecs résiduels sont
