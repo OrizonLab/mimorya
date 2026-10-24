@@ -5,10 +5,12 @@
 # the stack's DEMO_PASSWORD, and getting a secure session cookie; and, in
 # its database, one API process and one worker, each in its role (ADR-087).
 # The stack's compose files come from COMPOSE_FILE (compose.demo.yml by
-# default; the CI adds compose.demo.build.yml, which builds the images).
+# default; the CI adds compose.demo.build.yml, which builds the images),
+# relative to the repository's root, where it runs from wherever started.
 #   DEMO_PASSWORD=… infra/docker/smoke-test.sh [https://localhost]
 set -euo pipefail
-source "$(dirname "$0")/checks.sh"
+cd "$(dirname "$0")/../.."
+source infra/docker/checks.sh
 
 check_name="smoke test"
 base=${1:-https://localhost}

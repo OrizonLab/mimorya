@@ -54,16 +54,23 @@ api_post() {
 # Waits until the stack's processes listen as their roles say (ADR-085,
 # ADR-087): $1 workers listening for queued runs, on a connection each, and
 # one API process relaying run events. An API process that also executed
-# runs, or a worker that also served, would count once more.
+# runs, or a worker that also served, would count once more. Two readings in
+# a row must agree: a process still opening its connections could otherwise
+# pass for one in its role.
 check_roles() {
-  local workers=$1 listening
+  local workers=$1 listening agreed=0
   for _ in $(seq 1 60); do
     listening=$(docker compose exec -T db psql -U mimorya -d mimorya -tAc \
       "select count(*) filter (where application_name = 'mimorya-run-queue') || ' ' ||
               count(*) filter (where application_name = 'mimorya-run-events')
        from pg_stat_activity where datname = 'mimorya'") ||
       fail "cannot read the database's connections"
-    [[ $listening == "$workers 1" ]] && return 0
+    if [[ $listening == "$workers 1" ]]; then
+      agreed=$((agreed + 1))
+      ((agreed == 2)) && return 0
+    else
+      agreed=0
+    fi
     sleep 2
   done
   fail "expected $workers workers and one API process listening (queue, events): $listening"

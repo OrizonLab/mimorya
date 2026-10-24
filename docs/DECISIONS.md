@@ -3808,17 +3808,20 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     relais SMTP) sont écrites une fois, dans une extension du fichier compose
     (`x-backend-environment`) ; seuls le rôle et `TRUST_PROXY` (l'API, derrière Caddy)
     diffèrent ;
-  - on ajoute des workers par `docker compose … up -d --scale worker=N`. L'API reste unique
-    dans la pile : ses limites de débit sont comptées par processus (SECURITY §4) ;
-  - le worker a deux minutes pour s'arrêter (`stop_grace_period`) : les runs en cours
-    peuvent finir leur étape. Un run encore en cours au-delà est repris par un autre
-    worker quand son bail expire (ADR-083) ;
+  - le nombre de workers vient de `MIMORYA_WORKERS` (1 par défaut ; dans le fichier
+    d'environnement de la production), que chaque `up -d` réapplique : un `--scale` ne
+    vaudrait que jusqu'au `up` suivant. L'API reste unique dans la pile : ses limites de
+    débit sont comptées par processus (SECURITY §4) ;
+  - le worker a deux minutes pour s'arrêter (`stop_grace_period`) : il ne prend plus de
+    run, et ceux en cours continuent jusqu'à leur fin ou leur pause. Un run encore en cours
+    au-delà est repris par un autre worker quand son bail expire (ADR-083) ;
   - les tests des piles vérifient les rôles dans la base. Chaque worker garde une
     connexion nommée `mimorya-run-queue` (attente des runs en file), chaque processus
     `api` une connexion `mimorya-run-events` (relais des événements) ; une API qui
     exécuterait aussi des runs, ou un worker qui servirait aussi, en compterait une de
-    plus (`check_roles`, `infra/docker/checks.sh`). Le test de production ajoute un second
-    worker, puis vérifie qu'aucun des conteneurs ne tourne en root.
+    plus (`check_roles`, `infra/docker/checks.sh`, deux lectures concordantes de suite). Le
+    test de production ajoute un second worker, puis vérifie qu'aucun des conteneurs ne
+    tourne en root.
 - **Alternatives écartées** :
   - garder un conteneur `all` en production et ne séparer qu'en SaaS : deux façons
     d'exploiter, et la séparation n'aurait été éprouvée nulle part ;

@@ -13,10 +13,12 @@
 # thrown away afterwards only (the CI's), hence DISPOSABLE_STACK=yes. The
 # stack's variables come from the environment (or COMPOSE_ENV_FILES), its
 # compose files from COMPOSE_FILE (compose.production.yml by default; the CI
-# adds compose.production.build.yml, which builds the images).
+# adds compose.production.build.yml, which builds the images), relative to
+# the repository's root, where it runs from wherever started.
 #   DISPOSABLE_STACK=yes infra/docker/production-test.sh [https://localhost]
 set -euo pipefail
-source "$(dirname "$0")/checks.sh"
+cd "$(dirname "$0")/../.."
+source infra/docker/checks.sh
 
 check_name="production test"
 base=${1:-https://localhost}

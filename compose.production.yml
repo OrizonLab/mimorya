@@ -7,6 +7,7 @@
 #   MIMORYA_DOMAIN            the name the stack is served on
 #   MIMORYA_TLS               an e-mail address for a public certificate (ACME),
 #                             or `internal` for Caddy's own local authority
+#   MIMORYA_WORKERS           how many workers execute the runs (ADR-087), 1 by default
 #   MIMORYA_VERSION           the published images to run (ADR-051): a version
 #                             (1.2.0) or a commit (sha-…); latest by default, the
 #                             last commit of main. Run this file from the same
@@ -25,9 +26,9 @@
 #
 # The API and the runs are two services of the same image (ADR-087): `api`
 # serves HTTP and queues the runs it starts, `worker` executes them and the
-# background work. Workers may be added side by side (ADR-086):
-#   docker compose --env-file .env.production -f compose.production.yml \
-#     up -d --scale worker=2
+# background work. Workers may be added side by side (ADR-086): their
+# number, MIMORYA_WORKERS (1 by default), belongs in the env file, so that
+# every `up -d` keeps it.
 name: mimorya-production
 
 # What the API and the workers read alike: the same database, the same
@@ -97,6 +98,8 @@ services:
   worker:
     image: ghcr.io/orizonlab/mimorya-api:${MIMORYA_VERSION:-latest}
     restart: unless-stopped
+    # How many, kept from one `up` to the next (a `--scale` lasts one).
+    scale: ${MIMORYA_WORKERS:-1}
     stop_grace_period: 2m
     environment:
       <<: *backend-environment

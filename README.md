@@ -64,9 +64,9 @@ infra/docker/smoke-test.sh                       # vérification : HSTS, CSP, AP
 
 La même image tourne en deux services (ADR-087) : `api` sert l'API et met en file les runs
 qu'il lance, `worker` les exécute avec toutes les tâches de fond, sans ouvrir de port.
-Ajouter des workers côte à côte (ADR-086) :
-`docker compose -f compose.demo.yml up -d --scale worker=2`. L'API reste unique : ses
-limites de débit sont comptées par processus.
+Ajouter des workers côte à côte (ADR-086) : `MIMORYA_WORKERS=2` (1 par défaut, dans
+`.env` ou l'environnement), puis `docker compose -f compose.demo.yml up -d`. L'API reste
+unique : ses limites de débit sont comptées par processus.
 
 Les images sont publiées sur le registre de GitHub (`ghcr.io/orizonlab/mimorya-api`,
 `mimorya-web`, `mimorya-web-demo`, pour amd64), une fois la CI verte, pour chaque commit
@@ -137,6 +137,7 @@ MIMORYA_APP_DB_PASSWORD=$(openssl rand -hex 32)
 MIMORYA_DOMAIN=mimorya.acme.example
 MIMORYA_TLS=exploitation@acme.example
 MIMORYA_VERSION=1.2.0            # images publiées à installer (ADR-051) : version ou sha-…
+MIMORYA_WORKERS=1                # workers qui exécutent les runs (ADR-087)
 VARIABLES
 )
 docker compose --env-file .env.production -f compose.production.yml pull
@@ -154,8 +155,9 @@ initialisation de la base) vont avec les images. Pour mettre à jour : extraire 
 nouvelle version, changer `MIMORYA_VERSION`, puis relancer `pull` et `up -d` (les
 migrations s'appliquent au démarrage ; un run interrompu par la mise à jour est repris par
 un worker). Depuis une version qui lançait un seul conteneur `api` en rôle `all` (avant
-l'ADR-086), arrêtez-le d'abord (`… stop api`). Pour plus de workers :
-`… up -d --scale worker=2` ; le worker a deux minutes pour finir ses runs à l'arrêt. Une image introuvable arrête la pile, jamais
+l'ADR-086), arrêtez-le d'abord (`… stop api`). Pour plus de workers, augmentez
+`MIMORYA_WORKERS` dans `.env.production` puis relancez `up -d` : chaque `up -d` réapplique
+ce nombre. À l'arrêt, un worker a deux minutes pour finir ses runs. Une image introuvable arrête la pile, jamais
 remplacée par une construction locale. Pour construire depuis le dépôt plutôt que
 télécharger, sous des noms locaux : ajouter `-f compose.production.build.yml` et
 `up -d --build`.
