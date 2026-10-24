@@ -4264,7 +4264,8 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
 
 ## ADR-095 — Documents de l'entreprise : lecture isolée, rangement et droits
 
-- **Date** : 2026-10-24 · **Statut** : acceptée (lot 1a : lecture des fichiers)
+- **Date** : 2026-10-24 · **Statut** : acceptée (lot 1a : lecture des fichiers ; lot 1b : dépôt,
+  droits et rangement)
 - **Contexte** : l'entreprise veut déposer ses documents (procédures, notes, rapports) pour
   que son agent y trouve des passages et les cite. Lire un PDF ou un fichier Word revient
   à analyser une entrée hostile : un fichier piégé peut faire planter, boucler ou épuiser
@@ -4322,8 +4323,31 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     - chaque document a une sensibilité, au-dessus de laquelle on ne lit ni ne dépose ;
   - **transport** (lot 1b) : le fichier est le corps brut de la requête, son nom et son
     espace passent dans la chaîne de requête, typée et stricte ;
+  - **routes** (lot 1b) :
+    - `GET /api/documents` : les documents lus, les espaces où l'on dépose et, pour qui
+      dépose, l'usage du quota de l'entreprise ;
+    - `POST /api/documents?name=…&unitId=…&sensitivity=…` : le dépôt. L'espace est
+      vérifié avant que le fichier ne soit lu (403) ; un fichier annoncé ou trouvé au-delà
+      de 10 Mio n'est pas lu plus avant (413) ; un type refusé répond 415, un fichier
+      illisible tel quel 422, avec la raison ; le quota atteint 409 ; trop de lectures
+      en cours 503 ;
+    - `GET /api/documents/{id}`, `GET /api/documents/{id}/file` (le fichier tel que
+      déposé, en pièce jointe, de type fixé par son type reconnu) et
+      `DELETE /api/documents/{id}` ; ce qu'on ne lit pas, ou qu'on ne peut supprimer,
+      répond comme absent (404) ;
+  - **quota** (lot 1b) : 1 Gio par entreprise par défaut (`MIMORYA_DOCUMENT_QUOTA_MB`),
+    compté sous un verrou de l'entreprise dans la transaction du dépôt : deux dépôts
+    simultanés se comptent l'un l'autre ;
+  - **rôles** (lot 1b) : le rôle de base de la plateforme lit les documents, le
+    gestionnaire des connaissances les dépose aussi ; la migration l'accorde aux rôles
+    de la plateforme des entreprises déjà là. Dans la démonstration, les responsables
+    d'équipe lisent et déposent dans leur périmètre, la direction dans toute
+    l'entreprise ;
+  - **trace** (lot 1b) : dépôt, téléchargement et suppression, et fichier que le
+    processus n'a pu lire (`document.rejected`), sans nom ni texte ;
   - **suite** : recherche par les mots et par le sens et outil `document_search` avec
-    citations (lot 2) ; page « Documents » (lot 3).
+    citations (lot 2) ; page « Documents », et relais `/api` de l'interface vérifié pour
+    un fichier proche de 10 Mio (lot 3).
 - **Alternatives écartées** :
   - stockage objet (S3) : une infrastructure de plus pour des volumes que PostgreSQL
     tient ; il reste possible si les volumes le justifient un jour ;
@@ -4356,4 +4380,19 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
       lit normalement ; un processus qui ne finit pas est tué à son heure ; un qui meurt,
       inonde sa sortie, répond n'importe quoi ou au-delà des limites fait refuser le
       fichier ; l'environnement de l'API ne lui parvient pas ; au-delà de deux lectures
-      à la fois, refus.
+      à la fois, refus ;
+    - `crates/core/tests/document_spaces.rs` (lot 1b) : qui lit et dépose où, sur
+      l'entreprise de démonstration ; jamais l'agent ;
+    - `crates/api/tests/documents.rs` : chaque type déposé, découpé à ses titres, lu,
+      téléchargé tel quel et supprimé avec son fichier et ses passages ; chaque étape
+      tracée sans le nom ; un fichier refusé dit pourquoi et rien n'en reste ;
+    - `crates/api/tests/document_access.rs` : l'équipe voisine, un document au-dessus
+      de l'habilitation, une suppression hors de son espace, une politique de refus sur
+      `document:read`, le document ou l'unité d'une autre entreprise, un dépôt sans
+      l'en-tête ou hors de ses droits refusé avant la lecture du fichier, une unité qui
+      contient des documents : autant de tentatives de contournement refusées ;
+    - `crates/api/tests/document_uploads.rs` : taille annoncée ou réelle au-delà de la
+      borne, chaîne de requête stricte, deux dépôts près du quota, processus défaillant
+      tracé, trois lectures à la fois ;
+    - le test de fumée de la pile de démonstration dépose un document par le relais de
+      l'interface et le supprime.

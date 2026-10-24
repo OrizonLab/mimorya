@@ -52,6 +52,31 @@ fn bounds_the_mcp_start_timeout() {
 }
 
 #[test]
+fn finds_the_document_reader_and_bounds_the_quota() {
+    let config = load(&[DB]).unwrap();
+    assert_eq!(
+        config.document_extractor.file_name().unwrap(),
+        "mimorya-extract"
+    );
+    assert_eq!(config.document_quota_bytes, 1024 * 1024 * 1024);
+    let set = load(&[
+        DB,
+        ("MIMORYA_EXTRACTOR", "/opt/mimorya/mimorya-extract"),
+        ("MIMORYA_DOCUMENT_QUOTA_MB", "5"),
+    ])
+    .unwrap();
+    assert_eq!(
+        set.document_extractor,
+        PathBuf::from("/opt/mimorya/mimorya-extract")
+    );
+    assert_eq!(set.document_quota_bytes, 5 * 1024 * 1024);
+    for refused in ["0", "1048577", "x"] {
+        let quota = ("MIMORYA_DOCUMENT_QUOTA_MB", refused);
+        assert!(load(&[DB, quota]).is_err(), "{refused}");
+    }
+}
+
+#[test]
 fn reads_the_mail_relay_in_full_or_not_at_all() {
     let url = ("DATABASE_APP_URL", "postgres://app@localhost/mimorya");
     assert!(load(&[url]).unwrap().mail.is_none());

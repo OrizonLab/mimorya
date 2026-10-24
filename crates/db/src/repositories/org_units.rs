@@ -81,6 +81,7 @@ pub struct OrgUnitUsage {
     pub members: i64,
     pub assignments: i64,
     pub memories: i64,
+    pub documents: i64,
 }
 
 impl OrgUnitUsage {
@@ -94,7 +95,8 @@ pub async fn org_unit_usage(conn: &mut PgConnection, id: Uuid) -> sqlx::Result<O
         "select (select count(*) from org_units where parent_id = $1) as children, \
          (select count(*) from org_memberships where org_unit_id = $1) as members, \
          (select count(*) from role_assignments where scope_org_unit_id = $1) as assignments, \
-         (select count(*) from memory_items where org_unit_id = $1) as memories",
+         (select count(*) from memory_items where org_unit_id = $1) as memories, \
+         (select count(*) from documents where org_unit_id = $1) as documents",
     )
     .bind(id)
     .fetch_one(conn)
@@ -102,7 +104,8 @@ pub async fn org_unit_usage(conn: &mut PgConnection, id: Uuid) -> sqlx::Result<O
 }
 
 /// Locks the unit's row until the end of the transaction: rows that would
-/// reference it (memberships, assignments, memory) wait, then see it gone.
+/// reference it (memberships, assignments, memory, documents) wait, then
+/// see it gone.
 /// Returns whether the unit exists.
 pub async fn lock_org_unit(conn: &mut PgConnection, id: Uuid) -> sqlx::Result<bool> {
     let found: Option<Uuid> =

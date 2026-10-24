@@ -31,6 +31,7 @@ use crate::routes;
 use crate::secrets::SecretStore;
 use crate::services::background::BackgroundTasks;
 use crate::services::connectors::ConnectorSettings;
+use crate::services::documents::{DocumentService, Extractor};
 use crate::services::embeddings::{EmbeddingServiceOptions, default_embedding_factory};
 use crate::services::invalidations::{Invalidations, share_invalidations};
 use crate::services::llm::{LlmServiceOptions, default_factory};
@@ -60,6 +61,9 @@ pub struct Services {
     pub llm: Arc<LlmService>,
     /// The embedding model each company's memory is searched with (ADR-074).
     pub embeddings: Arc<EmbeddingService>,
+    /// The documents companies deposit, read by the extraction process
+    /// (ADR-095).
+    pub documents: Arc<DocumentService>,
     /// What this process changed in the caches, announced to the others.
     pub invalidations: Invalidations,
     pub runs: RunService,
@@ -248,7 +252,13 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
             RESET_REQUEST_WINDOW,
         ),
     };
+    let documents = Arc::new(DocumentService::new(
+        db.clone(),
+        Extractor::new(config.document_extractor.clone()),
+        config.document_quota_bytes,
+    ));
     let services = Arc::new(Services {
+        documents,
         runs: RunService::new(
             db.clone(),
             access.clone(),

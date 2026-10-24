@@ -128,8 +128,14 @@ l'entreprise sont effacés quand elle revient à la recherche par les mots (ADR-
 recherche compare les vecteurs exactement, sur les seules mémoires lisibles par le
 sujet : l'index HNSW ne sert pas encore.
 
-Phase 2 : `skill_eval_runs`, `documents` / `document_chunks` (GED, ingestion),
-`schedules`, `channel_identities` (Slack, Teams… ↔ utilisateur).
+| Table             | Rôle                           | Champs clés                                                                                                                                                                                                                                                                            |
+| ----------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `documents`       | Document déposé (ADR-095)      | `scope` (`tenant`, `org_unit`), `org_unit_id` (une unité qui en contient n'est pas supprimée), `title`, `file_name`, `kind` (`pdf`, `docx`, `markdown`, `text`), `sensitivity`, `byte_size` (10 Mio au plus), `page_count` (PDF), `uploaded_by_user_id` (vidé au départ de son auteur) |
+| `document_files`  | Fichier tel que déposé         | `document_id` (clé), `content` (`bytea`, stocké hors ligne sans nouvelle compression) ; supprimé avec le document                                                                                                                                                                      |
+| `document_chunks` | Passage du texte d'un document | `document_id`, `ordinal`, `page` (PDF), `heading` (titre de sa section), `content` (2 000 caractères au plus), `content_tsv` (recherche par les mots) ; supprimé avec le document                                                                                                      |
+
+Phase 2 : `skill_eval_runs`, `schedules`, `channel_identities` (Slack, Teams… ↔
+utilisateur).
 
 ### 3.5 Connecteurs, secrets, audit, consommation
 
@@ -223,5 +229,6 @@ Phase 2 : `skill_eval_runs`, `documents` / `document_chunks` (GED, ingestion),
 | Absences déclarées            | Jusqu'à leur fin ou leur retrait ; terminées : purgées                               |
 | Tâches planifiées             | Jusqu'à suppression par leur auteur ou avec son compte ; compte désactivé : en pause |
 | Missions                      | Comme leur conversation, supprimées avec elle ou avec le compte de leur auteur       |
+| Documents déposés             | Jusqu'à suppression par qui peut écrire leur espace, ou avec l'entreprise            |
 | Choix des e-mails reçus       | Jusqu'à modification par la personne ou suppression de son compte                    |
 | Consommation                  | 5 ans (facturation)                                                                  |

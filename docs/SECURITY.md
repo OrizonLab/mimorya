@@ -225,7 +225,9 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   unitaire ABAC (`check`) — jamais l'inverse.
 - **Permissions non délégables** (l'agent ne peut jamais les exercer) : gestion des
   comptes, rôles, politiques, connecteurs, compétences, paramètres, lecture de l'audit,
-  décision de validation. C'est ce qui empêche une injection ou une auto-amélioration
+  décision de validation, dépôt et suppression de documents (`document:write`,
+  ADR-095 : un document écrit par l'agent serait une source d'injection durable pour
+  les runs de tous ses collègues). C'est ce qui empêche une injection ou une auto-amélioration
   de s'accorder des privilèges.
 - **Validation par un responsable** (ADR-059) : désigné parmi les responsables d'unité,
   il doit détenir `approval:decide` sur la personne, à la demande puis à la décision ;
@@ -435,6 +437,13 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   `denied`) avec la raison, la route, la ressource du chemin, le type et l'identifiant
   envoyés (`metadata.reference`), dans l'entreprise de l'administrateur seulement. Les
   autres requêtes invalides ne sont pas tracées.
+- Documents (ADR-095) : dépôt (`document.uploaded` : espace, unité, type, taille,
+  pages, passages, sensibilité), téléchargement (`document.downloaded`), suppression
+  (`document.deleted`), et fichier que le processus de lecture n'a pu lire
+  (`document.rejected`, résultat `failure`, raison `timed_out` ou `reader_failed`,
+  type et taille) ; jamais le nom du fichier, son titre ni son texte. Les fichiers
+  refusés pour leur forme (taille, type, chiffrement, texte absent) ne sont pas tracés,
+  comme les autres requêtes invalides.
 - Phase 3 : chaînage cryptographique des entrées et export vers un SIEM.
 
 ## 9. Protection des données (RGPD)
@@ -452,7 +461,10 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   suspendue. Ce qu'est devenue la dernière occurrence lui est dit, et chacune est tracée
   dans le journal, comme le démarrage de son run : par la plateforme, à son nom.
 - **Droits** : export (JSON) et suppression des données d'un utilisateur ; suppression
-  complète d'une entreprise ; journal conservant la trace sans le contenu.
+  complète d'une entreprise ; journal conservant la trace sans le contenu. Un document
+  déposé (ADR-095) appartient à l'entreprise : il reste au départ de celui qui l'a
+  déposé, se télécharge tel quel par qui le lit, et sa suppression par qui peut écrire
+  son espace emporte son fichier et ses passages.
 - **Rétention** paramétrable (voir [DATA_MODEL.md](DATA_MODEL.md) §5).
 - **Sous-traitants** : choix du fournisseur LLM et de sa région par entreprise ;
   possibilité de modèles locaux ; registre des sous-traitants et DPA.

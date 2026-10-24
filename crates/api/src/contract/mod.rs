@@ -8,6 +8,7 @@ mod approval_delegation;
 mod approvals;
 mod common;
 mod conversations;
+mod documents;
 mod errors;
 mod health;
 mod links;
@@ -29,6 +30,10 @@ pub use conversations::{
     Citation, ConversationChanges, ConversationCreated, ConversationDetail, ConversationList,
     ConversationSummary, Message, MessageAccepted, MessageMetadata, MessageRole, MissionPart,
     NewConversation, NewMessage,
+};
+pub use documents::{
+    DocumentCreated, DocumentItem, DocumentKind, DocumentList, DocumentQuota, DocumentScope,
+    DocumentSpaceOption, DocumentUpload,
 };
 pub use errors::{ErrorBody, ErrorDetail, ErrorKind};
 pub use health::Health;
@@ -83,6 +88,9 @@ pub fn typescript() -> String {
     declarations.add::<MemoryList>();
     declarations.add::<ScheduledTaskList>();
     declarations.add::<MissionList>();
+    declarations.add::<DocumentList>();
+    declarations.add::<DocumentItem>();
+    declarations.add::<DocumentCreated>();
     declarations.add::<Mission>();
     declarations.add::<Created>();
     declarations.add::<InvitationDetails>();
@@ -146,6 +154,7 @@ macro_rules! request_bodies {
             NewMission,
             ManualMemory,
             MemoryReview,
+            DocumentUpload,
             admin::NewAccount,
             admin::AccountUpdate,
             admin::RoleGrant,

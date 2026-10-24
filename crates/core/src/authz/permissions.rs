@@ -102,6 +102,16 @@ pub const PLATFORM_PERMISSIONS: &[PermissionInfo] = &[
         Holder,
     ),
     info("memory:manage", "Administrer la mémoire", false, Holder),
+    // The company's documents (ADR-095): read in one's scope; deposited and
+    // deleted there by a person only, never by the agent, whose document
+    // every colleague's runs would read.
+    info("document:read", "Consulter les documents", true, Holder),
+    info(
+        "document:write",
+        "Déposer et supprimer des documents",
+        false,
+        Holder,
+    ),
     // Entrusting one's agent with a mission, and following one's own
     // (ADR-089).
     info("mission:create", "Confier des missions", true, Holder),

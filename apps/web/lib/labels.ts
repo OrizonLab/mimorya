@@ -95,6 +95,7 @@ export const PERMISSION_GROUPS: Record<string, string> = {
   role: 'Rôles',
   policy: 'Politiques d’accès',
   memory: 'Mémoire',
+  document: 'Documents',
   mission: 'Missions',
   approval: 'Validations',
   skill: 'Compétences',

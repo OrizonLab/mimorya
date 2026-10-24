@@ -182,6 +182,11 @@ fn agents_never_exercise_non_delegable_permissions() {
     assert!(!engine.has(&paul, "role:manage", &agent));
     assert!(!engine.has(&paul, "user:manage", &agent));
     assert!(!engine.has(&demo::subject(user::MARC), "approval:decide", &agent));
+    // A document the agent wrote every colleague's runs would read (ADR-095).
+    let julien = demo::subject(user::JULIEN);
+    assert!(engine.has(&julien, "document:write", &Actor::user()));
+    assert!(!engine.has(&julien, "document:write", &agent));
+    assert!(engine.has(&julien, "document:read", &agent));
 }
 
 #[test]

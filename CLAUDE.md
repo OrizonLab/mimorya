@@ -33,8 +33,8 @@ Repères à l'intérieur des crates :
   chaque type, domaines, ce que prouve un jeton ou une assertion SAML, nom d'un compte
   créé, enregistrement DNS qui prouve un domaine (`domain_proof.rs`), ADR-063, ADR-067,
   ADR-068, ADR-069), `core/src/schedule.rs` (heure d'une tâche planifiée, ADR-080),
-  `core/src/documents/` (documents déposés : types reconnus, limites, refus, découpage en
-  passages, ADR-095),
+  `core/src/documents/` (documents déposés : types reconnus, nom et titre, limites,
+  refus, découpage en passages, qui lit et dépose où (`spaces.rs`), ADR-095),
   `core/src/demo/` (entreprise fictive par thème).
 - `db/migrations/` (SQL numéroté, source de vérité du schéma),
   `db/src/repositories/` (un fichier par entité ; la mémoire : `memory.rs`, recherche
@@ -42,7 +42,8 @@ Repères à l'intérieur des crates :
   limites d'authentification partagées : `rate_limits.rs`, ADR-088 ; avis à l'auteur
   d'une tâche planifiée ou d'une mission dont le run attend sa validation :
   `author_notices.rs`, ADR-082, ADR-091 ; missions terminées à annoncer :
-  `mission_end_notices.rs`, ADR-091),
+  `mission_end_notices.rs`, ADR-091 ; documents déposés, leur fichier et leurs passages,
+  lus là où le filtre du lecteur atteint : `documents.rs`, ADR-095),
   `db/src/notifications.rs` (canaux PostgreSQL des événements des runs, de la file et des
   invalidations, ADR-084, ADR-085), `db/src/sweep_lock.rs` (verrou d'un balayage qui ne
   tourne que dans un processus à la fois, ADR-086), `db/src/seed/` (organisation,
@@ -79,7 +80,8 @@ Repères à l'intérieur des crates :
   lus au moment d'envoyer chaque avis, ADR-094),
   `api/src/services/documents/` (documents déposés : lecture par le processus
   `mimorya-extract`, `api/src/bin/extract.rs`, bornée en nombre, en temps et en taille,
-  `extractor.rs`, ADR-095),
+  `extractor.rs` ; dépôt sous le quota de l'entreprise, `deposit.rs` ; liste,
+  téléchargement et suppression, `library.rs`, ADR-095),
   `api/src/services/runs/` (tour de conversation, décisions, contexte, exécution,
   ports PostgreSQL, résultat, reprise des runs dont l'exécuteur s'est arrêté et ce
   processus exécute-t-il des runs (`recovery/`), ADR-053, ADR-086, circuit des validations,

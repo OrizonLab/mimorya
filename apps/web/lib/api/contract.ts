@@ -386,6 +386,62 @@ invitationExpiresAt?: string | null,
 grants?: Array<string>, assignments?: Array<Assignment>, };
 
 /**
+ * A document deposited: its identifier and the passages its text gave.
+ */
+export type DocumentCreated = { id: string, pageCount: number | null, passages: number, };
+
+export type DocumentItem = { id: string, title: string, fileName: string, kind: DocumentKind, scope: DocumentScope, orgUnitId: string | null,
+/**
+ * Name of the unit whose space it is in.
+ */
+orgUnit: string | null, sensitivity: Sensitivity, byteSize: number,
+/**
+ * Its pages, for a PDF.
+ */
+pageCount: number | null, createdAt: string,
+/**
+ * The reader may delete it.
+ */
+canDelete: boolean, };
+
+/**
+ * The kind of a deposited file.
+ */
+export type DocumentKind = "pdf" | "docx" | "markdown" | "text";
+
+/**
+ * `GET /documents`.
+ */
+export type DocumentList = { documents: Array<DocumentItem>,
+/**
+ * Where the reader may deposit.
+ */
+spaces: Array<DocumentSpaceOption>, quota: DocumentQuota | null, };
+
+/**
+ * The company's documents held, against its quota: shown to those who
+ * deposit.
+ */
+export type DocumentQuota = { usedBytes: number, quotaBytes: number, };
+
+/**
+ * Whose space a document is in.
+ */
+export type DocumentScope = "tenant" | "org_unit";
+
+/**
+ * A space the reader may deposit into: the company's (no unit) or a unit's.
+ */
+export type DocumentSpaceOption = { unitId: string | null, name: string, };
+
+/**
+ * `POST /documents?name=…&unitId=…&sensitivity=…`, the file as body: its
+ * name, the unit whose space receives it (the company's without one), its
+ * sensitivity (`internal` without one).
+ */
+export type DocumentUpload = { name: string, unitId?: string, sensitivity?: Sensitivity, };
+
+/**
  * Body of `POST /admin/identity-providers/domain-proofs`: the domain whose
  * record the company published, to read now.
  */

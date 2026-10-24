@@ -2,6 +2,7 @@
 //! values stop the server with the list of problems instead of falling back
 //! silently.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -10,6 +11,7 @@ use mimorya_connectors::mcp::NetworkPolicy;
 
 use crate::mail::MailSettings;
 use crate::secrets::SecretCipher;
+use crate::services::documents::extractor_beside;
 use reader::{Reader, is_http_url};
 
 mod reader;
@@ -89,7 +91,18 @@ pub struct AppConfig {
     pub llm_judge: bool,
     /// Login attempts allowed per client address and per minute.
     pub login_rate_limit_per_minute: u32,
+    /// The program that reads deposited documents (`MIMORYA_EXTRACTOR`;
+    /// `mimorya-extract` beside this one by default, ADR-095).
+    pub document_extractor: PathBuf,
+    /// The bytes of documents a company may keep
+    /// (`MIMORYA_DOCUMENT_QUOTA_MB`, 1024 by default).
+    pub document_quota_bytes: i64,
 }
+
+/// The documents a company keeps, by default, in megabytes.
+const DOCUMENT_QUOTA_MB: u32 = 1024;
+/// The most a quota may be set to, in megabytes (1 TiB).
+const MAX_DOCUMENT_QUOTA_MB: u32 = 1024 * 1024;
 
 /// The database URL carries the role's password: it never appears in debug
 /// output (the provider configuration redacts its own key).
@@ -117,6 +130,8 @@ impl std::fmt::Debug for AppConfig {
                 "login_rate_limit_per_minute",
                 &self.login_rate_limit_per_minute,
             )
+            .field("document_extractor", &self.document_extractor)
+            .field("document_quota_bytes", &self.document_quota_bytes)
             .finish()
     }
 }
@@ -189,6 +204,17 @@ impl AppConfig {
         if login_rate_limit_per_minute == 0 {
             reader.issue("LOGIN_RATE_LIMIT_PER_MINUTE", "entier positif attendu");
         }
+        let document_extractor = match reader.value("MIMORYA_EXTRACTOR") {
+            Some(path) => PathBuf::from(path),
+            None => std::env::current_exe()
+                .map(|running| extractor_beside(&running))
+                .unwrap_or_else(|_| PathBuf::from("mimorya-extract")),
+        };
+        let quota_mb = reader.parsed("MIMORYA_DOCUMENT_QUOTA_MB", DOCUMENT_QUOTA_MB);
+        if !(1..=MAX_DOCUMENT_QUOTA_MB).contains(&quota_mb) {
+            reader.issue("MIMORYA_DOCUMENT_QUOTA_MB", "entre 1 et 1048576 Mo");
+        }
+        let document_quota_bytes = i64::from(quota_mb) * 1024 * 1024;
 
         if !reader.issues.is_empty() {
             anyhow::bail!("Invalid configuration:\n{}", reader.issues.join("\n"));
@@ -212,6 +238,8 @@ impl AppConfig {
             mail,
             llm_judge,
             login_rate_limit_per_minute,
+            document_extractor,
+            document_quota_bytes,
         })
     }
 }
