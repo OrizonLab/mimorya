@@ -15,14 +15,15 @@ Lire d'abord : `docs/PRODUCT_VISION.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY.
 Le serveur est un espace de travail Cargo (Rust, édition 2024) ; l'interface est
 l'unique paquet Node (ADR-018).
 
-| Chemin              | Rôle                                                                                          | Règle                                                     |
-| ------------------- | --------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| `crates/core`       | Domaine pur : autorisation, organigramme, autonomie, contrat d'outil, règles de mémoire, démo | Aucune E/S (ni base, ni réseau, ni fichier).              |
-| `crates/db`         | Migrations SQL (sqlx), RLS, dépôts, seed                                                      | Tout accès tenant passe par `Database::begin(tenant_id)`. |
-| `crates/agent`      | Fournisseurs LLM, boucle, PEP, budgets, vérification, outils mémoire/compétences              | Dépend de ports (`runtime/ports.rs`), jamais de `db`.     |
-| `crates/connectors` | Connecteurs (démo, MCP)                                                                       | Chaque outil filtre ses données avec `ctx.authz`.         |
-| `crates/api`        | axum : sessions, routes, SSE, orchestration des runs, binaires `mimorya-api`/`-admin`/`-seed` | Compose les crates ; aucune règle métier dupliquée.       |
-| `apps/web`          | Next.js                                                                                       | Parle uniquement à `/api/*` (relayé vers l'API).          |
+| Chemin              | Rôle                                                                                                     | Règle                                                       |
+| ------------------- | -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `crates/core`       | Domaine pur : autorisation, organigramme, autonomie, contrat d'outil, règles de mémoire, démo            | Aucune E/S (ni base, ni réseau, ni fichier).                |
+| `crates/db`         | Migrations SQL (sqlx), RLS, dépôts, seed                                                                 | Tout accès tenant passe par `Database::begin(tenant_id)`.   |
+| `crates/agent`      | Fournisseurs LLM, boucle, PEP, budgets, vérification, outils mémoire/compétences                         | Dépend de ports (`runtime/ports.rs`), jamais de `db`.       |
+| `crates/connectors` | Connecteurs (démo, MCP)                                                                                  | Chaque outil filtre ses données avec `ctx.authz`.           |
+| `crates/extract`    | Lecture des documents déposés (PDF, Word, texte), dans le processus `mimorya-extract`                    | Lit l'entrée standard, écrit la sortie ; jamais dans l'API. |
+| `crates/api`        | axum : sessions, routes, SSE, orchestration des runs, binaires `mimorya-api`/`-admin`/`-seed`/`-extract` | Compose les crates ; aucune règle métier dupliquée.         |
+| `apps/web`          | Next.js                                                                                                  | Parle uniquement à `/api/*` (relayé vers l'API).            |
 
 Repères à l'intérieur des crates :
 
@@ -32,6 +33,8 @@ Repères à l'intérieur des crates :
   chaque type, domaines, ce que prouve un jeton ou une assertion SAML, nom d'un compte
   créé, enregistrement DNS qui prouve un domaine (`domain_proof.rs`), ADR-063, ADR-067,
   ADR-068, ADR-069), `core/src/schedule.rs` (heure d'une tâche planifiée, ADR-080),
+  `core/src/documents/` (documents déposés : types reconnus, limites, refus, découpage en
+  passages, ADR-095),
   `core/src/demo/` (entreprise fictive par thème).
 - `db/migrations/` (SQL numéroté, source de vérité du schéma),
   `db/src/repositories/` (un fichier par entité ; la mémoire : `memory.rs`, recherche
@@ -74,6 +77,9 @@ Repères à l'intérieur des crates :
   entreprise), `api/src/services/account.rs` (son propre compte),
   `api/src/services/notification_settings.rs` (e-mails que chacun choisit de recevoir,
   lus au moment d'envoyer chaque avis, ADR-094),
+  `api/src/services/documents/` (documents déposés : lecture par le processus
+  `mimorya-extract`, `api/src/bin/extract.rs`, bornée en nombre, en temps et en taille,
+  `extractor.rs`, ADR-095),
   `api/src/services/runs/` (tour de conversation, décisions, contexte, exécution,
   ports PostgreSQL, résultat, reprise des runs dont l'exécuteur s'est arrêté et ce
   processus exécute-t-il des runs (`recovery/`), ADR-053, ADR-086, circuit des validations,

@@ -15,6 +15,7 @@ mimorya-db = { path = "crates/db" }
 mimorya-agent = { path = "crates/agent" }
 mimorya-connectors = { path = "crates/connectors" }
 mimorya-api = { path = "crates/api" }
+mimorya-extract = { path = "crates/extract" }
 anyhow = "1"
 argon2 = "0.5"
 async-trait = "0.1"
@@ -34,6 +35,15 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 openidconnect = { version = "4.0.1", default-features = false }
 # A domain's proof read from its DNS (ADR-069): pure Rust, the system's resolver.
 hickory-resolver = "0.26"
+# Reading deposited documents (ADR-095), in the extraction process only:
+# PDF text by pdf-extract over lopdf (the version it uses), Word archives
+# inflated by zip, its XML read by quick-xml, the process's own limits set by
+# rlimit.
+lopdf = { version = "0.42", default-features = false }
+pdf-extract = "0.12.1"
+quick-xml = "0.42"
+rlimit = "0.11"
+zip = { version = "9.1", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 # SAML 2.0 sign-in (ADR-068): pure Rust, XML signatures by bergshamra over RustCrypto.
 saml-rs = { version = "=0.6.1", default-features = false, features = ["crypto-rustcrypto"] }
 reqwest-mcp = { package = "reqwest", version = "0.13.5", default-features = false, features = ["rustls-no-provider"] }
@@ -67,3 +77,8 @@ unsafe_code = "forbid"
 
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }
+
+# Deflate stays fast in debug builds: tests build and read documents whose
+# streams inflate beyond a gigabyte (ADR-095).
+[profile.dev.package.zlib-rs]
+opt-level = 3

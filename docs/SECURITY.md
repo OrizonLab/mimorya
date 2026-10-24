@@ -482,6 +482,11 @@ no-store` (le flux d'événements garde `no-cache, no-transform`) ;
   compte), voir §4 pour la détermination de l'adresse cliente. Les démarrages de
   connecteurs demandés par l'administration (test, essai) sont de plus bornés à deux en
   cours par entreprise (ADR-055).
+- Documents déposés (ADR-095) : lus dans un processus à part (`mimorya-extract`), jamais
+  dans celui de l'API, lancé avec un environnement vide et borné par lui-même avant de
+  rien lire (1 Gio de mémoire, 20 s de processeur, aucun fichier écrit), tué au bout de
+  30 s, deux à la fois au plus par processus ; type confirmé par les premiers octets,
+  limites de taille, de pages, de texte et de décompression, aucune entité XML développée.
 - Dépendances verrouillées (`Cargo.lock`, `pnpm-lock.yaml`), audit des vulnérabilités en CI
   (phase 2), revue des licences (MIT/Apache/BSD privilégiées, AGPL exclue).
 - Sauvegardes chiffrées, restauration testée périodiquement (phase 3).

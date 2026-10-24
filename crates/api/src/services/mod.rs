@@ -5,6 +5,7 @@ pub mod account;
 pub mod admin;
 pub mod background;
 pub mod connectors;
+pub mod documents;
 pub mod embeddings;
 pub mod event_bus;
 pub mod invalidations;
