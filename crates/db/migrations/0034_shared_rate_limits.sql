@@ -55,7 +55,8 @@ AS $$
       ELSE w.window_start END,
     hits = CASE
       WHEN w.window_start <= now() - make_interval(secs => p_seconds) THEN 1
-      ELSE least(w.hits + 1, p_limit + 1) END
+      WHEN w.hits > p_limit THEN w.hits
+      ELSE w.hits + 1 END
   RETURNING hits <= p_limit
 $$;
 

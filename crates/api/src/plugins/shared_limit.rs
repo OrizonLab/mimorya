@@ -17,8 +17,10 @@ fn digest(value: &str) -> [u8; 32] {
     Sha256::digest(value.as_bytes()).into()
 }
 
+/// A limit as the database counts it: one below its largest integer, kept
+/// for the count past the limit.
 fn as_count(limit: u32) -> i32 {
-    i32::try_from(limit).unwrap_or(i32::MAX)
+    i32::try_from(limit).map_or(i32::MAX - 1, |limit| limit.min(i32::MAX - 1))
 }
 
 /// So many hits per key and fixed window, shared by every process.
@@ -108,6 +110,10 @@ mod tests {
     #[test]
     fn a_limit_too_large_for_the_database_saturates() {
         assert_eq!(as_count(10), 10);
-        assert_eq!(as_count(u32::MAX), i32::MAX);
+        assert_eq!(as_count(u32::MAX), i32::MAX - 1);
+        let largest = u32::try_from(i32::MAX).unwrap();
+        assert_eq!(as_count(largest), i32::MAX - 1);
+        assert_eq!(as_count(largest - 1), i32::MAX - 1);
+        assert_eq!(as_count(largest - 2), i32::MAX - 2);
     }
 }

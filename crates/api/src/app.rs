@@ -45,10 +45,10 @@ const BODY_LIMIT_BYTES: usize = 1_000_000;
 const GLOBAL_RATE_LIMIT_PER_MINUTE: u32 = 600;
 /// Failed logins allowed per account before it is throttled for the window.
 const FAILED_LOGINS_PER_ACCOUNT: u32 = 10;
-const FAILED_LOGIN_WINDOW: Duration = Duration::from_secs(15 * 60);
+pub(crate) const FAILED_LOGIN_WINDOW: Duration = Duration::from_secs(15 * 60);
 /// Password reset links an address may ask for in the window.
 const RESET_REQUESTS_PER_ADDRESS: u32 = 3;
-const RESET_REQUEST_WINDOW: Duration = Duration::from_secs(60 * 60);
+pub(crate) const RESET_REQUEST_WINDOW: Duration = Duration::from_secs(60 * 60);
 
 pub struct Services {
     pub config: AppConfig,

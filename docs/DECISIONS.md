@@ -3896,7 +3896,8 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     d'authentification. Les piles Docker gardent une seule API : Caddy n'en répartit
     pas plusieurs ;
   - chaque tentative de connexion, demande de lien ou étape d'une connexion par le
-    fournisseur coûte une ou deux écritures de plus en base ;
+    fournisseur coûte une à trois écritures de plus en base (une connexion réussie par
+    mot de passe : la connexion par adresse, l'échec réservé puis rendu) ;
   - une panne de la base vide les fenêtres : un client y gagne une fenêtre neuve ;
   - tous les processus doivent avoir les mêmes réglages
     (`LOGIN_RATE_LIMIT_PER_MINUTE`), sans quoi chacun compare le compte partagé à sa

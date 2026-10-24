@@ -1,6 +1,7 @@
 //! The authentication limits shared through the database (ADR-088): a test
 //! starts with none still counting, as a fresh process did when they lived
-//! in its memory, and may read or age what the database keeps of them.
+//! in its memory, and may read or age what the database keeps of them, or
+//! leave it unable to count.
 
 use super::owner_url;
 
@@ -37,6 +38,18 @@ pub async fn windows_of(limiter: &str) -> Vec<(Vec<u8>, i32)> {
     .unwrap();
     owner.close().await;
     windows
+}
+
+/// Withdraws, or gives back, the application's right to count a hit: a
+/// count it cannot read, as when the database fails it.
+pub async fn allow_counting(allowed: bool) {
+    let function = "function system_rate_limit_hit(text, bytea, integer, double precision)";
+    let sql = if allowed {
+        format!("grant execute on {function} to mimorya_app")
+    } else {
+        format!("revoke execute on {function} from mimorya_app")
+    };
+    owner_query(&sql).await;
 }
 
 async fn owner_query(sql: &str) {

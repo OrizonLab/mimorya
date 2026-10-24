@@ -4,15 +4,19 @@
 //! answers, so that spreading attempts over processes gains nothing. The
 //! database keeps a digest of each key only, which the application role
 //! cannot read, and the maintenance purges the windows long over; the
-//! global limit per request stays each process's own.
+//! global limit per request stays each process's own. A count that cannot
+//! be read lets nobody in.
 
 mod support;
 
 use axum::http::StatusCode;
 use mimorya_core::demo::user;
-use support::limits::{age_windows, windows_of};
+use support::identity_provider::{MockIdentityProvider, Person};
+use support::limits::{age_windows, allow_counting, windows_of};
 use support::resets::ask_reset;
-use support::sso::{SSO_DEPLOYMENT, try_discover};
+use support::sso::{
+    SSO_DEPLOYMENT, assert_refused, come_back, declaration, declare, remove, start, try_discover,
+};
 use support::{PASSWORD, TestApi, app_url, email};
 
 /// Two processes of the same deployment: each limit set to `per_minute`.
@@ -138,4 +142,29 @@ async fn the_maintenance_purges_the_windows_long_over() {
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     }
     panic!("window long over not purged");
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_count_that_cannot_be_read_lets_nobody_in() {
+    let api = TestApi::start_with(&SSO_DEPLOYMENT).await;
+    let idp = MockIdentityProvider::start().await;
+    let paul = api.sign_in(user::PAUL).await;
+    let id = declare(&paul, declaration(&idp)).await;
+    let nadia = email(user::NADIA);
+    idp.sign_in_as(Person::verified("kc-nadia", &nadia));
+    let (url, cookie) = start(&api, &nadia).await;
+    let requests = idp.requests();
+
+    allow_counting(false).await;
+    let back = come_back(&api, &idp.authorize(&url), Some(&cookie)).await;
+    let login = api.try_login(&email(user::CLAIRE), PASSWORD).await;
+    allow_counting(true).await;
+
+    // The return is turned away before the provider; a login fails.
+    assert_refused(&back);
+    assert_eq!(idp.requests(), requests);
+    assert_eq!(idp.exchanges(), 0);
+    assert_eq!(login.status, StatusCode::INTERNAL_SERVER_ERROR);
+    remove(&paul, &id).await;
 }

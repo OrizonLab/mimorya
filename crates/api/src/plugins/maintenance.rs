@@ -143,6 +143,16 @@ mod tests {
     }
 
     #[test]
+    fn keeps_the_rate_limit_windows_past_the_longest() {
+        use crate::app::{FAILED_LOGIN_WINDOW, RESET_REQUEST_WINDOW};
+        let kept = RATE_LIMITS_KEPT.to_std().unwrap();
+        // Logins and sign-in steps count by the minute.
+        for window in [FAILED_LOGIN_WINDOW, RESET_REQUEST_WINDOW] {
+            assert!(kept > window, "{window:?}");
+        }
+    }
+
+    #[test]
     fn sweeps_stale_runs_only_once_up_as_long_as_a_run_takes_to_go_stale() {
         assert!(!sweeps_stale_runs(Duration::ZERO));
         assert!(!sweeps_stale_runs(Duration::from_secs(14 * 60 + 59)));
