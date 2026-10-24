@@ -3,7 +3,7 @@
 //! would otherwise wait for them unseen until its requests expire. Once per
 //! pause, of the requests they decide themselves (those routed to a manager
 //! are told to that manager, ADR-060); one a stop of the service lost is
-//! sent at startup (ADR-070). Each request notified is audited as a
+//! sent by the periodic catch-up (ADR-070, ADR-086). Each request notified is audited as a
 //! manager's notice is, without the address nor the relay's answer.
 
 use chrono::{DateTime, Utc};
@@ -36,15 +36,19 @@ impl ApprovalNotifier {
         self.send_to_author(mailer, tenant_id, &requests).await
     }
 
-    /// Tells authors, in the background, of the requests a stop of the
-    /// service kept from them, not expired by `now`, whatever their deadline
-    /// (authors have no reminder); how many. Called at startup with the
-    /// managers' catch-up, before runs are taken up or decisions served.
-    pub(super) async fn catch_up_authors(&self, now: DateTime<Utc>) -> anyhow::Result<usize> {
+    /// Tells authors of the requests a stop of the service kept from them,
+    /// made by `lost_before`, not expired by `now`, whatever their deadline
+    /// (authors have no reminder); how many. With the managers' catch-up.
+    pub(super) async fn catch_up_authors(
+        &self,
+        mailer: &dyn Mailer,
+        now: DateTime<Utc>,
+        lost_before: DateTime<Utc>,
+    ) -> anyhow::Result<usize> {
         let mut lost = 0;
         for run in unnotified_scheduled_runs(self.db.pool(), now).await? {
             // One run failing leaves the others to catch up.
-            match self.catch_up_author(run, now).await {
+            match self.catch_up_author(mailer, run, now, lost_before).await {
                 Ok(count) => lost += count,
                 Err(error) => tracing::warn!(
                     run_id = %run.run_id,
@@ -56,12 +60,18 @@ impl ApprovalNotifier {
         Ok(lost)
     }
 
-    async fn catch_up_author(&self, run: NoticeRun, now: DateTime<Utc>) -> anyhow::Result<usize> {
+    async fn catch_up_author(
+        &self,
+        mailer: &dyn Mailer,
+        run: NoticeRun,
+        now: DateTime<Utc>,
+        lost_before: DateTime<Utc>,
+    ) -> anyhow::Result<usize> {
         let mut tx = self.db.begin(run.tenant_id).await?;
-        let requests = author_notices_never_sent(&mut tx, run.run_id, now).await?;
+        let requests = author_notices_never_sent(&mut tx, run.run_id, now, lost_before).await?;
         tx.commit().await?;
-        let ids = requests.iter().map(|request| request.approval_id).collect();
-        self.notify(run.tenant_id, run.run_id, ids);
+        self.send_to_author(mailer, run.tenant_id, &requests)
+            .await?;
         Ok(requests.len())
     }
 

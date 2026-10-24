@@ -1,6 +1,6 @@
 //! Reminding managers the day before requests expire (ADR-062): once per
 //! request, even refused by the relay, in one message per manager and run,
-//! by the process that executes runs, only with a mail relay, only while the
+//! by one process that executes runs at a time (ADR-086), only with a mail relay, only while the
 //! run is paused and the manager's account active; never a request its
 //! requester decides, nor one decided or past its deadline, nor one of a
 //! suspended company; each company's in its own company.
@@ -60,7 +60,7 @@ async fn the_manager_is_reminded_once_the_day_before() {
     // Due in two hours: only the process that executes runs reminds...
     due_in(&api, tenant::ID, id, 120).await;
     assert_eq!(runs.remind_due().await.unwrap(), 0);
-    runs.claim_execution().await.unwrap();
+    runs.start_executing().unwrap();
     // ...not a week ahead, but the day before, once.
     due_in(&api, tenant::ID, id, 7 * 24 * 60).await;
     assert_eq!(runs.remind_due().await.unwrap(), 0);
@@ -100,7 +100,7 @@ async fn only_requests_still_awaiting_a_manager_before_their_deadline_are_remind
     let paul = api.sign_in(user::PAUL).await;
     let nadia = api.sign_in(user::NADIA).await;
     let runs = &api.app.services.runs;
-    runs.claim_execution().await.unwrap();
+    runs.start_executing().unwrap();
 
     // Past its deadline: it expires instead.
     route_to_managers(&paul, &["write"]).await;
@@ -145,7 +145,7 @@ async fn without_a_mail_relay_nobody_is_reminded() {
     due_in(&api, tenant::ID, id, 120).await;
 
     let runs = &api.app.services.runs;
-    runs.claim_execution().await.unwrap();
+    runs.start_executing().unwrap();
     assert_eq!(runs.remind_due().await.unwrap(), 0);
     assert!(reminders(&api, tenant::ID, id).await.is_empty());
 
@@ -164,7 +164,7 @@ async fn each_company_s_managers_are_reminded_in_their_own_company() {
     let (run, foreign) = foreign_request(&api, Duration::hours(2)).await;
 
     let runs = &api.app.services.runs;
-    runs.claim_execution().await.unwrap();
+    runs.start_executing().unwrap();
     // Not while its company is suspended: its people cannot sign in.
     let owner = sqlx::PgPool::connect(owner_url()).await.unwrap();
     let set_status = |status: &'static str| {
@@ -224,7 +224,7 @@ async fn a_pause_s_requests_are_reminded_together_while_they_wait_once_even_refu
     let nadia = api.sign_in(user::NADIA).await;
     let ids = two_requests_due(&api, &nadia).await;
     let runs = &api.app.services.runs;
-    runs.claim_execution().await.unwrap();
+    runs.start_executing().unwrap();
 
     // Both still waiting: one reminder for the two.
     assert_eq!(runs.remind_due().await.unwrap(), 2);
@@ -309,7 +309,7 @@ async fn the_requests_of_a_run_ended_before_its_pause_are_never_reminded() {
     }
 
     let runs = &api.app.services.runs;
-    runs.claim_execution().await.unwrap();
+    runs.start_executing().unwrap();
     assert_eq!(runs.remind_due().await.unwrap(), 0);
     assert!(api.mail.sent().is_empty(), "{:?}", api.mail.sent());
 
@@ -321,4 +321,24 @@ async fn the_requests_of_a_run_ended_before_its_pause_are_never_reminded() {
         .await
         .unwrap();
     tx.commit().await.unwrap();
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn two_workers_reminding_at_once_remind_the_manager_once() {
+    let one = TestApi::start_with_mailer().await;
+    let two = TestApi::start_with_mailer().await;
+    let (run, foreign) = foreign_request(&one, Duration::hours(2)).await;
+    for worker in [&one, &two] {
+        worker.app.services.runs.start_executing().unwrap();
+    }
+
+    let (first, second) = tokio::join!(
+        one.app.services.runs.remind_due(),
+        two.app.services.runs.remind_due()
+    );
+    assert_eq!(first.unwrap() + second.unwrap(), 1);
+    assert_eq!(one.mail.sent().len() + two.mail.sent().len(), 1);
+    assert_eq!(reminders(&one, OTHER_TENANT_ID, foreign).await.len(), 1);
+    end_foreign_request(&one, run, foreign).await;
 }

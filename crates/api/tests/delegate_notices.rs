@@ -86,7 +86,7 @@ async fn the_stand_in_is_told_and_reminded_in_the_manager_s_absence() {
     // Reminded the day before, still in Marc's absence.
     due_in(&api, tenant::ID, id, 120).await;
     let runs = &api.app.services.runs;
-    runs.claim_execution().await.unwrap();
+    runs.start_executing().unwrap();
     assert_eq!(runs.remind_due().await.unwrap(), 1);
     let sent = api.mail.sent();
     assert_eq!(sent.len(), 2, "{sent:?}");

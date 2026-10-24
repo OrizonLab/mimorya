@@ -1,9 +1,13 @@
-//! Requests nobody decided in time (ADR-061). Every minute, the process
-//! that executes runs marks each pending request past its deadline as
-//! expired, audited as the platform's, and lets its run go on once nothing
-//! else waits: the agent learns the action was not run, as when an expired
+//! Requests nobody decided in time (ADR-061). Every minute, a process that
+//! executes runs marks each pending request past its deadline as expired,
+//! audited as the platform's, and lets its run go on once nothing else
+//! waits: the agent learns the action was not run, as when an expired
 //! request is decided. Without it, a run would stay paused until someone
-//! tried to decide. The day before, their manager is reminded (ADR-062).
+//! tried to decide. The day before, their manager is reminded (ADR-062);
+//! a notice a stop of the service lost is sent then too (ADR-070). Each of
+//! these sweeps runs in one process at a time, under its lock (ADR-086):
+//! one already under way elsewhere is skipped, the next comes a minute
+//! later.
 
 use chrono::{DateTime, Utc};
 use mimorya_agent::runtime::{ACCOUNT_INACTIVE, RunCheckpoint};
@@ -18,14 +22,28 @@ use super::approval_decision::settle;
 use super::db_ports::RunScope;
 use super::service::RunService;
 
+/// The sweeps' locks (ADR-086).
+const EXPIRY_SWEEP: &str = "approval-expiry";
+const REMINDER_SWEEP: &str = "approval-reminders";
+const CATCH_UP_SWEEP: &str = "approval-notice-catch-up";
+
 impl RunService {
     /// Expires the requests past their deadline and lets their runs go on;
-    /// how many expired. Only in the process that executes runs: another
-    /// leaves them to it.
+    /// how many expired. Only in a process that executes runs, and one at
+    /// a time: none while another expires them.
     pub async fn expire_overdue(&self) -> anyhow::Result<usize> {
-        if !self.executes().await {
+        if !self.executes() {
             return Ok(0);
         }
+        let Some(sweep) = self.db.try_sweep_lock(EXPIRY_SWEEP).await? else {
+            return Ok(0);
+        };
+        let expired = self.expire_overdue_now().await;
+        sweep.release().await;
+        expired
+    }
+
+    async fn expire_overdue_now(&self) -> anyhow::Result<usize> {
         let now = Utc::now();
         let mut expired = 0;
         for run in overdue_approval_runs(self.db.pool(), now).await? {
@@ -42,12 +60,32 @@ impl RunService {
     }
 
     /// Reminds managers of the requests that expire within a day (ADR-062);
-    /// how many. Only in the process that executes runs, as expiries.
+    /// how many. As expiries: one process at a time.
     pub async fn remind_due(&self) -> anyhow::Result<usize> {
-        if !self.executes().await {
+        if !self.executes() {
             return Ok(0);
         }
-        self.executor.notifier.remind_due(Utc::now()).await
+        let Some(sweep) = self.db.try_sweep_lock(REMINDER_SWEEP).await? else {
+            return Ok(0);
+        };
+        let reminded = self.executor.notifier.remind_due(Utc::now()).await;
+        sweep.release().await;
+        reminded
+    }
+
+    /// Tells managers and scheduled tasks' authors of the requests whose
+    /// notice a stop of the service lost (ADR-070); how many. As expiries:
+    /// one process at a time, so that none is told twice.
+    pub async fn catch_up_notices(&self) -> anyhow::Result<usize> {
+        if !self.executes() {
+            return Ok(0);
+        }
+        let Some(sweep) = self.db.try_sweep_lock(CATCH_UP_SWEEP).await? else {
+            return Ok(0);
+        };
+        let lost = self.executor.notifier.catch_up(Utc::now()).await;
+        sweep.release().await;
+        lost
     }
 
     /// Expires the run's overdue requests, under its lock as a decision

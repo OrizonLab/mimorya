@@ -1,7 +1,9 @@
-//! Notices a stop of the service lost (ADR-070): at startup, the manager of
-//! a request still awaiting them in a paused run, never told of it, is told
-//! once, in their own company; a request due within a day is left to the
-//! reminder, a minute later at most, rather than e-mailed twice.
+//! Notices a stop of the service lost (ADR-070, ADR-086): ten minutes after
+//! a request still awaiting its manager in a paused run, never told of it,
+//! the manager is told once, in their own company, by whichever process
+//! catches up first; sooner, its notice may be under way. A request due
+//! within a day is left to the reminder, a minute later at most, rather
+//! than e-mailed twice.
 
 mod support;
 
@@ -11,7 +13,9 @@ use mimorya_agent::testing::ScriptedStep;
 use mimorya_core::demo::{tenant, user};
 use mimorya_db::testing::OTHER_TENANT_ID;
 use serde_json::{Value, json};
-use support::manager_approvals::{due_in, end_foreign_request, foreign_request, route_to_managers};
+use support::manager_approvals::{
+    catch_up, due_in, end_foreign_request, foreign_request, made_ago, route_to_managers,
+};
 use support::planning::{apply_proposal_times, propose};
 use support::recovery::restart;
 use support::runs::start_run;
@@ -77,13 +81,21 @@ async fn reject(stopped: &TestApi, approvals: &[Uuid]) {
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
-async fn a_notice_a_stop_lost_is_sent_at_startup_once() {
+async fn a_notice_a_stop_lost_is_sent_ten_minutes_on_once() {
     let stopped = TestApi::start().await;
     let lost = lost_notices(&stopped, "09:00", 1).await;
     let id = lost[0];
 
+    // Made just now: its notice may be on its way, from another process.
     let started = TestApi::start_with_mailer().await;
     assert_eq!(restart(&started).await, 0, "no run was running");
+    assert_eq!(catch_up(&started).await, 0);
+    made_ago(&started, tenant::ID, id, 9).await;
+    assert_eq!(catch_up(&started).await, 0);
+    assert!(started.mail.sent().is_empty());
+
+    made_ago(&started, tenant::ID, id, 11).await;
+    assert_eq!(catch_up(&started).await, 1);
     let sent = started.mail.sent();
     assert_eq!(sent.len(), 1, "{sent:?}");
     assert_eq!(sent[0].to, email(user::MARC));
@@ -101,9 +113,28 @@ async fn a_notice_a_stop_lost_is_sent_at_startup_once() {
         )]
     );
 
-    // Told of it, Marc is not told again at the next start.
+    // Told of it, Marc is not told again, nor at the next start.
+    assert_eq!(catch_up(&started).await, 0);
     restart(&started).await;
     assert_eq!(started.mail.sent().len(), 1);
+    reject(&stopped, &lost).await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn two_workers_catching_up_at_once_tell_the_manager_once() {
+    let stopped = TestApi::start().await;
+    let lost = lost_notices(&stopped, "10:00", 1).await;
+    made_ago(&stopped, tenant::ID, lost[0], 11).await;
+
+    let (one, two) = (
+        TestApi::start_with_mailer().await,
+        TestApi::start_with_mailer().await,
+    );
+    let (told, also) = tokio::join!(catch_up(&one), catch_up(&two));
+    assert_eq!(told + also, 1);
+    assert_eq!(one.mail.sent().len() + two.mail.sent().len(), 1);
+    assert_eq!(notices(&one, tenant::ID, lost[0]).await.len(), 1);
     reject(&stopped, &lost).await;
 }
 
@@ -114,10 +145,13 @@ async fn a_request_due_within_a_day_is_left_to_the_reminder() {
     let lost = lost_notices(&stopped, "11:00", 2).await;
     let (soon, later) = (lost[0], lost[1]);
     due_in(&stopped, tenant::ID, soon, 120).await;
+    for id in &lost {
+        made_ago(&stopped, tenant::ID, *id, 11).await;
+    }
 
     // Told of the later one only...
     let started = TestApi::start_with_mailer().await;
-    restart(&started).await;
+    assert_eq!(catch_up(&started).await, 1);
     let sent = started.mail.sent();
     assert_eq!(sent.len(), 1, "{sent:?}");
     assert_eq!(
@@ -146,8 +180,9 @@ async fn a_request_due_within_a_day_is_left_to_the_reminder() {
 async fn each_company_s_lost_notices_are_sent_in_their_own_company() {
     let api = TestApi::start_with_mailer().await;
     let (run, foreign) = foreign_request(&api, Duration::days(3)).await;
+    made_ago(&api, OTHER_TENANT_ID, foreign, 11).await;
 
-    restart(&api).await;
+    assert_eq!(catch_up(&api).await, 1);
     let sent = api.mail.sent();
     assert_eq!(sent.len(), 1, "{sent:?}");
     assert_eq!(sent[0].to, "contact@autre-entreprise.example");

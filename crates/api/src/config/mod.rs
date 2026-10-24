@@ -23,11 +23,11 @@ pub enum Environment {
 }
 
 /// What a process does (ADR-085): everything, or one side of it. Several
-/// `api` processes may serve the same database; one `worker` (or `all`)
-/// executes the runs they queue.
+/// `api` processes may serve the same database; workers (or `all`
+/// processes), side by side, execute the runs they queue (ADR-086).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum ProcessRole {
-    /// Serves the HTTP API and executes runs, as a single instance.
+    /// Serves the HTTP API and executes runs.
     #[default]
     All,
     /// Serves the HTTP API; the runs it starts are queued for a worker.

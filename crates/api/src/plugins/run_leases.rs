@@ -1,8 +1,8 @@
 //! Execution leases in the background (ADR-083): the runs executing here
 //! renew theirs every `renew_every`, until the service has stopped and its
-//! runs ended; once the runs a stop interrupted are taken up at startup,
-//! the runs whose lease expired are taken up every `take_up_every`, until
-//! the service stops.
+//! runs ended; once the runs whose executor stopped are taken up at
+//! startup, those whose lease expired since are taken up every
+//! `take_up_every`, until the service stops.
 
 use tokio::task::JoinHandle;
 

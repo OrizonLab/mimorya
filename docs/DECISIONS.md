@@ -1747,7 +1747,8 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
 
 ## ADR-053 — Les runs interrompus par un arrêt du service sont repris au démarrage (complète ADR-016)
 
-- **Date** : 2026-10-20 · **Statut** : acceptée
+- **Date** : 2026-10-20 · **Statut** : acceptée · reprise au démarrage et verrou
+  d'exécution remplacés par l'ADR-086 (reprise par bail, plusieurs workers)
 - **Contexte** : un run en cours quand le service s'arrête (redéploiement, arrêt brutal,
   plantage) restait `running` jusqu'à ce que le balayage le passe en échec 15 minutes
   plus tard (ADR-016) : la demande de l'utilisateur était perdue, même lorsque rien
@@ -2780,7 +2781,8 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
 
 ## ADR-070 — Rattraper au démarrage l'avis qu'un arrêt du service a perdu (complète ADR-060)
 
-- **Date** : 2026-10-22 · **Statut** : acceptée
+- **Date** : 2026-10-22 · **Statut** : acceptée · rattrapage devenu périodique, dix
+  minutes après la demande, par l'ADR-086
 - **Contexte** : l'e-mail qui prévient le responsable part en arrière-plan, une fois la
   pause du run enregistrée (ADR-060). Un arrêt du service entre ces deux moments le
   perd : la demande attend le responsable, qui n'en sait rien, jusqu'à la relance de
@@ -3687,3 +3689,66 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
   - tests : `crates/api/tests/run_queue.rs`, `run_queue_access.rs`, `shared_caches.rs` ;
     parcours web `apps/web/e2e/queued-run.spec.ts` (un run en file que le serveur de bout
     en bout retient jusqu'à ce que le navigateur le suive).
+
+## ADR-086 — Plusieurs workers : fin du verrou d'instance unique (troisième lot, deuxième partie)
+
+- **Date** : 2026-10-24 · **Statut** : acceptée · complète ADR-083 et ADR-085, remplace la
+  reprise au démarrage de l'ADR-053 et le rattrapage au démarrage de l'ADR-070
+- **Contexte** : depuis l'ADR-085, l'API et l'exécution tournent dans des processus
+  distincts, mais un seul processus `all` ou `worker` à la fois : il tient le verrou
+  d'exécution (ADR-053). Ce verrou garantissait trois choses :
+  - au démarrage, chaque run resté `running` avait été interrompu, et pouvait être repris
+    sans regarder son bail ;
+  - les balayages périodiques (demandes échues, relances, rattrapage des avis perdus) ne
+    tournaient qu'une fois ;
+  - l'indexation de la mémoire faisait une passe à la fois (un verrou en mémoire).
+- **Décision** :
+  - plus de verrou d'exécution : chaque processus `all` ou `worker` exécute des runs dès
+    qu'il a démarré (`start_executing`) ; un processus `api` n'en exécute toujours aucun ;
+  - un run n'est plus repris au démarrage que s'il l'aurait été par bail (ADR-083) : son
+    bail a expiré, ou il n'en a jamais eu (un run laissé `running` sans exécuteur). Un run
+    qu'un worker vivant tient n'est pas touché. Le premier qui verrouille un run le reprend ;
+    les autres le trouvent repris ;
+  - un run repris compte comme un progrès : son `updated_at` passe à l'heure de la reprise.
+    Le balayage des runs bloqués ne l'échoue donc pas avant sa prochaine étape, et l'heure
+    au-delà de laquelle un run interrompu n'est pas repris se compte depuis sa dernière
+    étape ou sa dernière reprise ;
+  - les balayages qui ne doivent tourner qu'une fois prennent chacun un verrou consultatif
+    PostgreSQL de session à leur nom (`try_sweep_lock`, `sweep_lock`), sur une connexion à
+    eux, rendu avec elle même si le processus disparaît :
+    - expiration des demandes échues (ADR-061) et relances (ADR-062) : un balayage déjà en
+      cours ailleurs est sauté, le suivant a lieu une minute plus tard ;
+    - indexation de la mémoire (ADR-074) : attendue, une passe à la fois dans tous les
+      processus ;
+  - le rattrapage des avis perdus (ADR-070, ADR-082) devient périodique, à chaque balayage
+    des demandes et sous son verrou, et non plus au démarrage : une demande jamais signalée
+    dix minutes après sa création est tenue pour perdue (un avis part en quelques secondes),
+    et son avis est envoyé dans le balayage même. Un worker qui disparaît voit ses avis
+    perdus rattrapés par un autre, sans attendre un redémarrage ;
+  - ce qui était déjà sûr à plusieurs ne change pas : la file (`FOR UPDATE SKIP LOCKED`), les
+    tâches planifiées (chaque occurrence réservée et replanifiée sous verrou), la reprise par
+    bail (sous le verrou du run), les runs bloqués (une seule requête qui ne rend que ce
+    qu'elle a changé) et les purges ;
+  - `system_expired_run_leases` liste aussi les runs sans bail ; `system_interrupted_runs`,
+    qui listait tout run `running`, disparaît.
+- **Alternatives écartées** :
+  - élire un worker pour tous les balayages : un bail de plus à tenir et à reprendre, quand
+    un verrou par balayage suffit et ne retient que ce balayage ;
+  - garder la reprise immédiate au démarrage en donnant à chaque worker une identité stable,
+    pour reconnaître ses propres runs : une configuration de plus pour gagner une minute au
+    redémarrage ;
+  - un verrou consultatif de transaction : une transaction ouverte pendant tout le balayage,
+    appels au modèle et envois de courriels compris ;
+  - rattraper les avis au démarrage seulement, avec un délai de grâce : les avis d'un worker
+    disparu attendraient le redémarrage d'un autre.
+- **Conséquences** :
+  - on peut lancer autant de workers que voulu ; chacun réserve des runs en file, reprend
+    ceux dont l'exécuteur a disparu et partage les balayages ;
+  - une instance unique qui redémarre reprend ses runs interrompus quand leur bail expire :
+    au plus une minute de bail et une minute de balayage, au lieu d'aussitôt ;
+  - un avis perdu part dix à onze minutes après sa demande, au lieu du redémarrage suivant ;
+  - chaque balayage exclusif ouvre une connexion pour son verrou, refermée à la fin ;
+  - les limites de débit restent comptées par processus : plusieurs processus `api` en
+    comptent chacun les leurs (SECURITY §4), jusqu'à ce qu'elles soient partagées ;
+  - tests : `crates/api/tests/several_workers.rs`, et ceux de la reprise, des demandes
+    échues, des relances et du rattrapage, adaptés.

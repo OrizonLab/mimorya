@@ -32,11 +32,10 @@ async fn main() -> anyhow::Result<()> {
         None
     };
     if role.executes_runs() {
-        // A single instance executes runs (ADR-016): a second one stops here.
-        app.services.runs.claim_execution().await?;
+        // Side by side with any other worker (ADR-086).
         match app.recover_interrupted_runs().await {
             Ok(0) => {}
-            Ok(runs) => tracing::warn!(runs, "Runs interrupted by a stop of the service taken up"),
+            Ok(runs) => tracing::warn!(runs, "Runs whose executor stopped taken up"),
             Err(error) => tracing::error!(
                 error = format!("{error:#}"),
                 "Interrupted runs not taken up"

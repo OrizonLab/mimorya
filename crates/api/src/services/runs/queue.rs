@@ -81,7 +81,7 @@ impl RunService {
     /// remain, in the process that executes runs only, until the service
     /// stops (`stopping`), between two runs; how many it claimed.
     pub async fn take_queued(&self, stopping: &watch::Sender<bool>) -> anyhow::Result<usize> {
-        if !self.executes().await {
+        if !self.executes() {
             return Ok(0);
         }
         let mut taken = 0;

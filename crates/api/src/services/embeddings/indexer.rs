@@ -10,7 +10,9 @@
 //! is not asked again (found by its words only); a batch whose every text
 //! is refused as invalid is the model's failure, or its settings': retried
 //! at the next pass, like any other failure, and shown to the company's
-//! administrators until then.
+//! administrators until then. One pass at a time, whatever the number of
+//! workers (ADR-086): a pass waits for the one under way elsewhere, then
+//! embeds what that one left.
 
 use mimorya_agent::llm::embedding::MAX_EMBEDDING_BATCH;
 use mimorya_agent::llm::{LlmError, LlmErrorKind};
@@ -26,6 +28,8 @@ use super::{CompanyEmbedder, EmbeddingService, UsageBy};
 
 /// Batches embedded per company and pass.
 const BATCHES_PER_PASS: usize = 8;
+/// The passes' lock, across processes (ADR-086).
+const INDEXING_SWEEP: &str = "memory-indexing";
 
 /// What a memory's vector is computed from.
 fn embedded_text(memory: &MemoryToEmbed) -> String {
@@ -50,9 +54,16 @@ fn refuses_text(error: &LlmError) -> bool {
 
 impl EmbeddingService {
     /// Embeds the memories awaiting a vector in every company that chose a
-    /// model; how many got one. One pass at a time.
+    /// model; how many got one. One pass at a time, in every process.
     pub async fn index_pending(&self) -> anyhow::Result<usize> {
         let _pass = self.indexing.lock().await;
+        let sweep = self.db.sweep_lock(INDEXING_SWEEP).await?;
+        let embedded = self.index_all().await;
+        sweep.release().await;
+        embedded
+    }
+
+    async fn index_all(&self) -> anyhow::Result<usize> {
         let awaiting = tenants_awaiting_embeddings(self.db.pool()).await?;
         let mut embedded = 0;
         for tenant_id in awaiting {

@@ -1,8 +1,9 @@
 //! Execution leases (ADR-083): this process's executor, the runs it
 //! executes and their leases. A run's lease is taken in the transaction that
 //! sets it running, renewed while it executes here, and a run whose lease
-//! expired is taken up by an executor that does not execute it, under the
-//! rules of ADR-053.
+//! expired, or which never had one, is taken up by an executor that does
+//! not execute it, under the rules of ADR-053, whichever of the workers
+//! locks it first (ADR-086).
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -16,7 +17,6 @@ use uuid::Uuid;
 use tokio::sync::watch;
 
 use super::executor::ExecutionMode;
-use super::recovery::TakeUp;
 use super::service::RunService;
 use crate::services::access::AccessContext;
 
@@ -169,13 +169,14 @@ impl RunService {
         Ok(renewed)
     }
 
-    /// Takes up the runs whose lease expired and which do not execute here,
-    /// as after a stop of the service (ADR-053): resumed, or ended naming
-    /// the actions to check; how many. Only in the process that executes
-    /// runs, as expiries (ADR-061): another leaves them to it. Stops between
-    /// two runs once the service stops (`stopping`).
+    /// Takes up the runs whose lease expired, or which never had one, and
+    /// which do not execute here (ADR-053, ADR-086): resumed, or ended
+    /// naming the actions to check; how many. Only in a process that
+    /// executes runs, side by side with the others: each run is taken up
+    /// by whichever locks it first. Stops between two runs once the service
+    /// stops (`stopping`).
     pub async fn take_up_expired(&self, stopping: &watch::Sender<bool>) -> anyhow::Result<usize> {
-        if !self.executes().await {
+        if !self.executes() {
             return Ok(0);
         }
         let mut taken = 0;
@@ -186,7 +187,7 @@ impl RunService {
             // Checked again under the run's lock, with whether it executes
             // here. One that cannot be taken up stays running: the sweep of
             // stuck runs fails it later.
-            match self.recover(run, TakeUp::Expired).await {
+            match self.recover(run).await {
                 Ok(true) => taken += 1,
                 Ok(false) => {}
                 Err(error) => {

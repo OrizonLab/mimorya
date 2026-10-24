@@ -1,7 +1,8 @@
 //! Execution leases (ADR-083): the process executing a run holds it, its
 //! executor named and its lease due, renewed while it executes; given up as
 //! soon as the run leaves `running` (a trigger sees to it). A run whose
-//! lease has expired is taken up by an executor. Leases are set and read on
+//! lease has expired, or which never had one, is taken up by an executor
+//! (ADR-086), and its taking up counts as progress. Leases are set and read on
 //! the database's clock alone (`clock_timestamp()`): neither the executors'
 //! clocks nor a wait for a lock shortens them.
 
@@ -32,6 +33,16 @@ pub async fn take_run_lease(
     Ok(())
 }
 
+/// Counts the taking up of `run_id` as its latest progress: the sweep of
+/// stuck runs leaves it until its next step is due (ADR-086).
+pub async fn mark_taken_up(conn: &mut PgConnection, run_id: Uuid) -> sqlx::Result<()> {
+    sqlx::query("update agent_runs set updated_at = now() where id = $1")
+        .bind(run_id)
+        .execute(conn)
+        .await?;
+    Ok(())
+}
+
 /// Renews, for `ttl_seconds` more, the leases `owner` holds on `run_ids`;
 /// how many it still held.
 pub async fn renew_run_leases(
@@ -52,11 +63,13 @@ pub async fn renew_run_leases(
     Ok(renewed.rows_affected())
 }
 
-/// Whether `run_id`'s lease has expired, as it stands now (read under the
-/// run's lock, after any renewal it waited for).
+/// Whether `run_id`'s lease has expired, or it never had one (ADR-086), as
+/// it stands now (read under the run's lock, after any renewal it waited
+/// for).
 pub async fn run_lease_expired(conn: &mut PgConnection, run_id: Uuid) -> sqlx::Result<bool> {
     let expired: Option<bool> = sqlx::query_scalar(
-        "select lease_expires_at < clock_timestamp() from agent_runs where id = $1",
+        "select coalesce(lease_expires_at < clock_timestamp(), true) \
+         from agent_runs where id = $1",
     )
     .bind(run_id)
     .fetch_optional(conn)
@@ -65,9 +78,9 @@ pub async fn run_lease_expired(conn: &mut PgConnection, run_id: Uuid) -> sqlx::R
     Ok(expired == Some(true))
 }
 
-/// Every company's runs whose lease has expired, the longest expired first,
-/// through a narrowly scoped database function: each is then taken up in
-/// its own company.
+/// Every company's runs whose lease has expired or which never had one,
+/// these first, then the longest expired, through a narrowly scoped
+/// database function: each is then taken up in its own company.
 pub async fn expired_run_leases(pool: &PgPool) -> sqlx::Result<Vec<InterruptedRun>> {
     sqlx::query_as("select tenant_id, run_id from system_expired_run_leases()")
         .fetch_all(pool)

@@ -10,10 +10,10 @@ use super::{Client, TestApi, owner_url};
 pub const API: &[(&str, &str)] = &[("MIMORYA_ROLE", "api")];
 pub const WORKER: &[(&str, &str)] = &[("MIMORYA_ROLE", "worker")];
 
-/// A worker holding the run executor's lock, ready to take queued runs.
+/// A worker executing runs, ready to take queued ones.
 pub async fn worker() -> TestApi {
     let worker = TestApi::start_with(WORKER).await;
-    worker.app.services.runs.claim_execution().await.unwrap();
+    worker.app.services.runs.start_executing().unwrap();
     worker
 }
 

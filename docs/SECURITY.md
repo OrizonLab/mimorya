@@ -110,6 +110,11 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
     minute) ; le départ et le retour ensemble, deux fois la précédente. Aucune ne retire
     rien à la limite des mots de passe ; un retour rejoué au-delà est refusé sans trace
     ni appel au fournisseur.
+  - Ces limites sont comptées en mémoire, par processus : avec plusieurs processus `api`
+    (ADR-085, ADR-086), chacun compte les siennes, et une tentative répartie sur N
+    instances dispose de N fois chaque limite. Tant qu'elles ne sont pas partagées, une
+    installation qui en lance plusieurs envoie chaque adresse cliente vers la même
+    instance (affinité du reverse proxy).
 - Adresse cliente : par défaut, l'adresse TCP de l'appelant (`TRUST_PROXY=false`).
   Derrière le seul relais web, tous les utilisateurs partagent l'adresse du serveur
   Next.js, qui transmet tel quel un `X-Forwarded-For` fourni par le client. En

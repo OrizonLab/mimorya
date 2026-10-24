@@ -249,8 +249,9 @@ pub struct StaleRun {
 
 /// Marks runs left `running` without progress since `before` as failed
 /// (stuck process), across tenants, through a narrowly scoped database
-/// function, and returns them. Runs a stop of the service left running are
-/// taken up again at startup instead (`interrupted_runs`, ADR-053).
+/// function, and returns them. Runs whose executor stopped are taken up by
+/// their lease instead (`expired_run_leases`, ADR-086), which counts as
+/// progress.
 pub async fn fail_stale_runs(pool: &PgPool, before: DateTime<Utc>) -> sqlx::Result<Vec<StaleRun>> {
     sqlx::query_as("select tenant_id, run_id, error from system_fail_stale_runs($1)")
         .bind(before)
@@ -258,18 +259,10 @@ pub async fn fail_stale_runs(pool: &PgPool, before: DateTime<Utc>) -> sqlx::Resu
         .await
 }
 
-/// A run a stop of the service left running (ADR-053).
+/// A run whose executor stopped (ADR-053, ADR-086): its lease expired, or
+/// it never had one.
 #[derive(Debug, Clone, Copy, sqlx::FromRow)]
 pub struct InterruptedRun {
     pub tenant_id: Uuid,
     pub run_id: Uuid,
-}
-
-/// Every company's runs still `running`, the least recent first, through a
-/// narrowly scoped database function: at startup, a stop of the service
-/// interrupted each of them (a single instance, ADR-016).
-pub async fn interrupted_runs(pool: &PgPool) -> sqlx::Result<Vec<InterruptedRun>> {
-    sqlx::query_as("select tenant_id, run_id from system_interrupted_runs()")
-        .fetch_all(pool)
-        .await
 }

@@ -1,7 +1,7 @@
 //! Text deltas on their way to the other processes (ADR-084), sent in the
 //! order the model wrote them, outside any transaction: they are not
 //! recorded. Consecutive deltas of a run are sent together; none while no
-//! other process listens (a single instance), which is checked again every
+//! other process listens (a single process), which is checked again every
 //! few seconds.
 
 use std::time::{Duration, Instant};

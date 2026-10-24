@@ -45,9 +45,9 @@ pub struct RunService {
     pub(super) access: Arc<AccessService>,
     pub(super) executor: Arc<RunExecutor>,
     pub(super) tasks: Arc<BackgroundTasks>,
-    /// The run executor's lock, once this process holds it (ADR-053).
-    pub(super) executor_lock: tokio::sync::Mutex<Option<sqlx::PgConnection>>,
-    /// `true` once the runs a stop interrupted are taken up, here.
+    /// Whether this process has started executing runs (ADR-086).
+    pub(super) executing: std::sync::atomic::AtomicBool,
+    /// `true` once the runs whose executor stopped are taken up, here.
     pub(super) taken_up: tokio::sync::watch::Sender<bool>,
     /// This process's executor and the runs it executes (ADR-083).
     pub(super) leases: Arc<Leases>,
@@ -69,7 +69,7 @@ impl RunService {
             access,
             executor: Arc::new(executor),
             tasks: Arc::new(BackgroundTasks::default()),
-            executor_lock: tokio::sync::Mutex::new(None),
+            executing: std::sync::atomic::AtomicBool::new(false),
             taken_up: tokio::sync::watch::channel(false).0,
             leases: Arc::new(Leases::new(leases)),
             queues,

@@ -1,24 +1,25 @@
-//! Runs a stop of the service left running (ADR-053). At startup, once the
-//! API listens and holds the run executor's lock, it takes each of them up
-//! again: a single instance executes runs (ADR-016), so each was
-//! interrupted. Each run goes on in its own company, from its last saved
+//! Runs whose executor stopped (ADR-053, ADR-086): their lease expired, or
+//! they never had one. A process that executes runs takes them up at
+//! startup, then whenever a lease expires (`leases.rs`), side by side with
+//! the other workers: whichever locks a run first takes it up, the others
+//! find it taken. Each run goes on in its own company, from its last saved
 //! step, through its executor; the engine decides whether going on is safe.
 //! The validation requests of the lost step are cancelled first, and audited
 //! (the run asks again if it needs to). A run stopped before its first saved
 //! step, for too long, or whose user may no longer act, ends there, naming
-//! the actions that were under way when the service stopped. Beforehand,
-//! managers and scheduled tasks' authors are told of the requests whose
-//! notice the stop lost (ADR-070, ADR-082).
+//! the actions that were under way when it stopped. Its taking up counts as
+//! its latest progress.
 
 mod calls;
-mod lock;
+mod executing;
 
 use std::sync::Arc;
 
 use chrono::Utc;
 use mimorya_agent::runtime::{ACCOUNT_INACTIVE, RunCheckpoint, RunEvent, RunOutcome};
-use mimorya_db::repositories::run_leases::run_lease_expired;
-use mimorya_db::repositories::runs::{InterruptedRun, RunStatus, interrupted_runs, lock_run};
+use mimorya_db::repositories::run_leases::{mark_taken_up, run_lease_expired};
+use mimorya_db::repositories::runs::{InterruptedRun, RunStatus, lock_run};
+use tokio::sync::watch;
 
 use super::db_ports::RunScope;
 use super::events::record_run_event;
@@ -28,7 +29,7 @@ use super::service::RunService;
 use calls::{
     cancel_lost_validations, ending, of_unknown_effect, risks_set_now, started_since_saved,
 };
-pub use lock::{LOCK_HELD_ELSEWHERE, NOT_AN_EXECUTOR};
+pub use executing::NOT_AN_EXECUTOR;
 
 /// Why a run stopped before its first saved step ends: nothing ran yet.
 pub const STOPPED_BEFORE_ITS_FIRST_STEP: &str = "Exécution interrompue par un arrêt du service avant sa première étape : relancez votre demande.";
@@ -44,84 +45,47 @@ const NOT_TAKEN_UP: &str =
 /// Beyond this, a run is not taken up: its user has moved on.
 const MAX_INTERRUPTION: chrono::Duration = chrono::Duration::hours(1);
 
-/// How a run is taken up: at startup, its executor stopped (this process
-/// alone executes, ADR-053), whatever its lease; or its lease expired, and
-/// still is once locked (ADR-083).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum TakeUp {
-    AtStartup,
-    Expired,
-}
-
 impl RunService {
-    /// Takes up again the runs a stop of the service left running; how many
-    /// there were. Called once, at startup, once the API listens: it takes
-    /// the run executor's lock first, and fails while another process holds
-    /// it. The notices the stop lost go first, before any run can pause
-    /// again; failing, they leave the runs to take up.
-    pub async fn recover_interrupted(&self) -> anyhow::Result<usize> {
-        self.claim_execution().await?;
-        let taken_up = self.take_up_interrupted().await;
-        // Over, whatever came of it: a run started from now on cannot be
-        // taken for one the stop interrupted.
+    /// Starts executing runs, then takes up those whose executor stopped,
+    /// until the service stops (`stopping`); how many it took up. Called
+    /// once, at startup, once the API listens; refused in an `api` process.
+    pub async fn recover_interrupted(
+        &self,
+        stopping: &watch::Sender<bool>,
+    ) -> anyhow::Result<usize> {
+        self.start_executing()?;
+        let taken_up = self.take_up_expired(stopping).await;
+        // Over, whatever came of it: what waited for it may go on.
         self.taken_up.send_replace(true);
         taken_up
     }
 
-    /// Resolves once this process has taken up the runs a stop interrupted:
-    /// it alone may then start runs nobody asked for in a request (scheduled
-    /// tasks, ADR-080), none of which can be taken for one of them.
+    /// Resolves once this process has taken up, at startup, the runs whose
+    /// executor stopped: its queue, its takeover of expired leases and its
+    /// scheduled tasks then go on.
     pub async fn interrupted_runs_taken_up(&self) {
         let mut taken_up = self.taken_up.subscribe();
         // The sender lives as long as `self`: this ends only once taken up.
         let _ = taken_up.wait_for(|done| *done).await;
     }
 
-    async fn take_up_interrupted(&self) -> anyhow::Result<usize> {
-        match self.executor.notifier.catch_up(Utc::now()).await {
-            Ok(0) => {}
-            Ok(lost) => tracing::warn!(
-                lost,
-                "Managers and scheduled tasks' authors told of requests a stop kept from them"
-            ),
-            Err(error) => tracing::error!(
-                error = format!("{error:#}"),
-                "Lost approval notices not caught up"
-            ),
-        }
-        let runs = interrupted_runs(self.db.pool()).await?;
-        for run in &runs {
-            // One that cannot be taken up stays running: the periodic sweep
-            // fails it later.
-            if let Err(error) = self.recover(*run, TakeUp::AtStartup).await {
-                tracing::error!(run_id = %run.run_id, error = format!("{error:#}"), "Interrupted run not taken up");
-            }
-        }
-        Ok(runs.len())
-    }
-
     /// Takes the run up, under its lock and lease: resumed, or ended naming
     /// the actions to check; whether it was taken (it may have ended, or its
     /// lease been renewed, meanwhile).
-    pub(super) async fn recover(
-        &self,
-        interrupted: InterruptedRun,
-        how: TakeUp,
-    ) -> anyhow::Result<bool> {
+    pub(super) async fn recover(&self, interrupted: InterruptedRun) -> anyhow::Result<bool> {
         let InterruptedRun { tenant_id, run_id } = interrupted;
         let mut tx = self.db.begin(tenant_id).await?;
         let Some(run) = lock_run(&mut tx, run_id).await? else {
             return Ok(false);
         };
-        if run.status() != RunStatus::Running {
-            return Ok(false);
-        }
-        if how == TakeUp::Expired
-            && (self.leases.executes(run_id) || !run_lease_expired(&mut tx, run_id).await?)
+        if run.status() != RunStatus::Running
+            || self.leases.executes(run_id)
+            || !run_lease_expired(&mut tx, run_id).await?
         {
             return Ok(false);
         }
         self.hold(&mut tx, run_id).await?;
+        mark_taken_up(&mut tx, run_id).await?;
         let checkpoint: Option<RunCheckpoint> = run
             .state
             .clone()

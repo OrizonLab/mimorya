@@ -1,7 +1,8 @@
-//! Requests nobody decided in time (ADR-061): the process that executes runs
+//! Requests nobody decided in time (ADR-061): a process that executes runs
 //! expires them, audited as the platform's, and lets their run go on once
 //! nothing else waits, with the rights of whom the agent acts for, or ends
-//! it if that account is no longer active.
+//! it if that account is no longer active. Two workers sweeping at once
+//! expire each request once (ADR-086).
 
 mod support;
 
@@ -147,7 +148,7 @@ async fn an_overdue_request_expires_and_its_run_goes_on_without_the_action() {
     let runs = &api.app.services.runs;
 
     // Not yet due: nothing expires.
-    runs.claim_execution().await.unwrap();
+    runs.start_executing().unwrap();
     assert_eq!(runs.expire_overdue().await.unwrap(), 0);
     overdue(&api, id_of(&approval)).await;
     assert_eq!(runs.expire_overdue().await.unwrap(), 1);
@@ -178,11 +179,11 @@ async fn only_the_process_that_executes_runs_expires_requests() {
     let approval = approval.expect("a request she decides");
     overdue(&api, id_of(&approval)).await;
 
-    // Without the run executor's lock, it leaves them to whoever holds it.
+    // Not executing runs yet, it leaves them to those which do.
     let runs = &api.app.services.runs;
     assert_eq!(runs.expire_overdue().await.unwrap(), 0);
     assert_eq!(listed(&nadia, &run_id).await.unwrap()["status"], "pending");
-    runs.claim_execution().await.unwrap();
+    runs.start_executing().unwrap();
     assert_eq!(runs.expire_overdue().await.unwrap(), 1);
     api.idle().await;
     assert_eq!(listed(&nadia, &run_id).await.unwrap()["status"], "expired");
@@ -205,7 +206,7 @@ async fn a_run_waits_while_another_of_its_requests_may_still_be_decided() {
     tx.commit().await.unwrap();
 
     let runs = &api.app.services.runs;
-    runs.claim_execution().await.unwrap();
+    runs.start_executing().unwrap();
     overdue(&api, id_of(&approval)).await;
     assert_eq!(runs.expire_overdue().await.unwrap(), 1);
     api.idle().await;
@@ -236,7 +237,7 @@ async fn the_run_of_an_account_no_longer_active_ends_when_its_request_expires() 
     assert_eq!(disabled.status, StatusCode::OK, "{}", disabled.text());
 
     let runs = &api.app.services.runs;
-    runs.claim_execution().await.unwrap();
+    runs.start_executing().unwrap();
     overdue(&api, id_of(&approval)).await;
     assert_eq!(runs.expire_overdue().await.unwrap(), 1);
     api.idle().await;
@@ -260,7 +261,7 @@ async fn each_company_s_requests_expire_in_their_own_company() {
     api.script(vec![ScriptedStep::text("Fait.")]);
 
     let runs = &api.app.services.runs;
-    runs.claim_execution().await.unwrap();
+    runs.start_executing().unwrap();
     assert_eq!(runs.expire_overdue().await.unwrap(), 2);
     api.idle().await;
 
@@ -293,7 +294,7 @@ async fn a_decision_meeting_the_expiry_finds_the_request_settled() {
     let approval = id_of(&approval.expect("a request she decides"));
     overdue(&api, approval).await;
     let runs = &api.app.services.runs;
-    runs.claim_execution().await.unwrap();
+    runs.start_executing().unwrap();
 
     // The sweep queues first on the run's lock, the decision after it.
     let run: Uuid = run_id.parse().unwrap();
@@ -318,4 +319,32 @@ async fn a_decision_meeting_the_expiry_finds_the_request_settled() {
         (Some("expired".to_string()), 1)
     );
     assert_eq!(expiries(&api, &run_id).await.len(), 1);
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn two_workers_sweeping_at_once_expire_a_request_once() {
+    let one = TestApi::start().await;
+    let two = TestApi::start().await;
+    let (run, approval) = paused_on_overdue(&one, tenant::ID, user::MARC).await;
+    for worker in [&one, &two] {
+        worker.script(vec![ScriptedStep::text("Fait.")]);
+        worker.app.services.runs.start_executing().unwrap();
+    }
+
+    let (first, second) = tokio::join!(
+        one.app.services.runs.expire_overdue(),
+        two.app.services.runs.expire_overdue()
+    );
+    assert_eq!(first.unwrap() + second.unwrap(), 1);
+    one.idle().await;
+    two.idle().await;
+    assert_eq!(
+        seen_from(&one, tenant::ID, approval).await,
+        (Some("expired".to_string()), 1)
+    );
+    // Its run went on once, in one worker.
+    let asked = |api: &TestApi| api.model.as_ref().unwrap().requests().len();
+    assert_eq!(asked(&one) + asked(&two), 1);
+    assert_eq!(status_and_error(&one, tenant::ID, run).await.0, "completed");
 }

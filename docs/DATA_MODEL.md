@@ -170,24 +170,23 @@ Phase 2 : `skill_eval_runs`, `documents` / `document_chunks` (GED, ingestion),
   réinitialisation, ADR-028), `auth_domain_held_elsewhere` (si une autre entreprise a
   prouvé un domaine que celle-ci n'a pas prouvé : oui ou non seulement, sans la nommer,
   ADR-069), `system_fail_stale_runs` (marquer en échec les runs
-  restés sans progression, et les rendre pour annoncer leur fin), `system_interrupted_runs`
-  (lister, au démarrage, les runs qu'un arrêt du service a laissés en cours : entreprise et
-  identifiant seulement, chacun repris ensuite dans sa propre entreprise, ADR-053),
+  restés sans progression, et les rendre pour annoncer leur fin),
   `system_overdue_approval_runs` (lister les runs dont une demande de validation a passé
   son échéance : entreprise et identifiant seulement, chacun traité ensuite dans sa propre
   entreprise, ADR-061), `system_approval_reminder_runs` (de même pour les demandes à
   relancer la veille de leur échéance, ADR-062), `system_unnotified_approval_runs` (de
-  même, au démarrage, pour les demandes dont un arrêt du service a perdu l'avis, ADR-070),
+  même, à chaque balayage, pour les demandes dont un arrêt du service a perdu l'avis,
+  ADR-070, ADR-086),
   `system_purge_expired_password_resets` (supprimer les liens de réinitialisation
   expirés), `system_purge_ended_approval_delegations` (supprimer les absences
   terminées, ADR-071), `system_due_scheduled_tasks` (lister les tâches planifiées dues,
   par lots : entreprise et identifiant seulement, chacune lancée ensuite dans sa propre
-  entreprise, ADR-080), `system_unnotified_scheduled_runs` (lister, au démarrage, les
+  entreprise, ADR-080), `system_unnotified_scheduled_runs` (lister, à chaque balayage, les
   runs de tâches planifiées dont un arrêt du service a perdu l'avis à leur auteur, pour
   des demandes pas encore expirées : entreprise et identifiant seulement, ADR-082),
-  `system_expired_run_leases` (lister les runs en cours dont le bail a expiré :
-  entreprise et identifiant seulement, chacun repris ensuite dans sa propre entreprise,
-  ADR-083) et `system_queued_runs` (lister les runs en file d'attente, les plus anciens
+  `system_expired_run_leases` (lister les runs en cours dont le bail a expiré, ou qui n'en
+  ont jamais eu : entreprise et identifiant seulement, chacun repris ensuite dans sa propre
+  entreprise, au démarrage comme ensuite, ADR-083, ADR-086) et `system_queued_runs` (lister les runs en file d'attente, les plus anciens
   d'abord : entreprise et identifiant seulement, chacun réservé ensuite dans sa propre
   entreprise par un worker, ADR-085).
 

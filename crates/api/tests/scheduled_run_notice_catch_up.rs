@@ -1,6 +1,7 @@
 //! Notices to scheduled tasks' authors a stop of the service lost (ADR-082,
-//! ADR-070): at startup, the author of a request still awaiting them in the
-//! paused run their task last started, never told of it, is told once, in
+//! ADR-070, ADR-086): ten minutes on, the author of a request still awaiting
+//! them in the paused run their task last started, never told of it, is
+//! told once, by the periodic catch-up, in
 //! their own company; not while their account is disabled or their company
 //! suspended, nor once the request has expired. Each request is held back
 //! by itself, whatever lists its run.
@@ -15,7 +16,7 @@ use mimorya_db::repositories::scheduled_run_notices::{
 };
 use mimorya_db::testing::{OTHER_TENANT_ID, OTHER_USER_ID};
 use serde_json::{Value, json};
-use support::manager_approvals::due_in;
+use support::manager_approvals::{catch_up, due_in, made_ago};
 use support::recovery::restart;
 use support::scheduled::{every_day, schedule};
 use support::scheduled_notices::{
@@ -32,10 +33,12 @@ async fn lost(stopped: &TestApi, nadia: &Client<'_>) -> (Uuid, String, Value) {
     let (conversation, approval) = paused(stopped, nadia, id).await;
     let approval_id = approval["id"].as_str().unwrap();
     assert!(notices(stopped, tenant::ID, approval_id).await.is_empty());
+    // Long enough ago to be taken for lost.
+    made_ago(stopped, tenant::ID, approval_id.parse().unwrap(), 11).await;
     (id, conversation, approval)
 }
 
-/// Whether the startup lists `approval`'s run as one to catch up.
+/// Whether the catch-up lists `approval`'s run as one to catch up.
 async fn listed_at_startup(api: &TestApi, approval: &Value) -> bool {
     let run: Uuid = approval["runId"].as_str().unwrap().parse().unwrap();
     let runs = unnotified_scheduled_runs(api.app.services.db.pool(), Utc::now())
@@ -65,18 +68,24 @@ async fn company_status(status: &str) {
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
-async fn a_notice_a_stop_lost_is_sent_at_startup_once() {
+async fn a_notice_a_stop_lost_is_sent_ten_minutes_on_once() {
     let stopped = TestApi::start().await;
     let nadia = stopped.sign_in(user::NADIA).await;
     let (id, conversation, approval) = lost(&stopped, &nadia).await;
+    let approval_id: Uuid = approval["id"].as_str().unwrap().parse().unwrap();
 
+    // Made less than ten minutes ago: maybe under way, left alone.
     let started = TestApi::start_with_mailer().await;
     assert_eq!(restart(&started).await, 0, "no run was running");
+    made_ago(&started, tenant::ID, approval_id, 9).await;
+    assert_eq!(catch_up(&started).await, 0);
+    made_ago(&started, tenant::ID, approval_id, 11).await;
+    assert_eq!(catch_up(&started).await, 1);
     let sent = started.mail.sent();
     assert_eq!(sent.len(), 1, "{sent:?}");
     assert_eq!(sent[0].to, email(user::NADIA));
     assert!(sent[0].text.contains(&format!("/chat/{conversation}")));
-    restart(&started).await;
+    assert_eq!(catch_up(&started).await, 0);
     assert_eq!(started.mail.sent().len(), 1);
     end(&stopped, &nadia, id, &approval).await;
 }
@@ -94,7 +103,7 @@ async fn nobody_is_told_for_a_disabled_author_or_a_suspended_company() {
     let account = format!("/admin/users/{}", user::NADIA);
     let disabled = paul.patch(&account, json!({ "status": "disabled" })).await;
     assert_eq!(disabled.status, StatusCode::OK, "{}", disabled.text());
-    restart(&started).await;
+    catch_up(&started).await;
     let enabled = paul.patch(&account, json!({ "status": "active" })).await;
     assert_eq!(enabled.status, StatusCode::OK, "{}", enabled.text());
     assert!(started.mail.sent().is_empty());
@@ -102,13 +111,13 @@ async fn nobody_is_told_for_a_disabled_author_or_a_suspended_company() {
     // Her company suspended: nobody either.
     company_status("suspended").await;
     let listed = listed_at_startup(&started, &approval).await;
-    restart(&started).await;
+    catch_up(&started).await;
     company_status("active").await;
     assert!(!listed);
     assert!(started.mail.sent().is_empty());
 
     // Both back: she is told.
-    restart(&started).await;
+    catch_up(&started).await;
     assert_eq!(started.mail.sent().len(), 1);
     let nadia = stopped.sign_in(user::NADIA).await;
     end(&stopped, &nadia, id, &approval).await;
@@ -125,7 +134,7 @@ async fn an_expired_request_is_not_caught_up() {
 
     let started = TestApi::start_with_mailer().await;
     assert!(!listed_at_startup(&started, &approval).await);
-    restart(&started).await;
+    catch_up(&started).await;
     assert!(started.mail.sent().is_empty());
     // Due again, to be refused.
     due_in(&stopped, tenant::ID, approval_id, 60).await;
@@ -138,8 +147,9 @@ async fn another_company_s_author_is_told_in_their_own_company() {
     let started = TestApi::start_with_mailer().await;
     let foreign = foreign_scheduled_request(&started).await;
     let request = foreign.2.to_string();
+    made_ago(&started, OTHER_TENANT_ID, foreign.2, 11).await;
 
-    restart(&started).await;
+    assert_eq!(catch_up(&started).await, 1);
     let sent = started.mail.sent();
     assert_eq!(sent.len(), 1, "{sent:?}");
     assert_eq!(sent[0].to, "contact@autre-entreprise.example");
@@ -159,18 +169,18 @@ async fn another_company_s_author_is_told_in_their_own_company() {
 }
 
 /// How many of `approval`'s requests its author would be told of at a pause
-/// and at startup.
+/// and by the catch-up.
 async fn told(api: &TestApi, approval: &Value) -> (usize, usize) {
     let id: Uuid = approval["id"].as_str().unwrap().parse().unwrap();
     let run: Uuid = approval["runId"].as_str().unwrap().parse().unwrap();
     let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
     let at_pause = author_notices(&mut tx, run, &[id]).await.unwrap().len();
-    let at_startup = author_notices_never_sent(&mut tx, run, Utc::now())
+    let caught_up = author_notices_never_sent(&mut tx, run, Utc::now(), Utc::now())
         .await
         .unwrap()
         .len();
     tx.commit().await.unwrap();
-    (at_pause, at_startup)
+    (at_pause, caught_up)
 }
 
 #[tokio::test]
@@ -188,7 +198,7 @@ async fn a_suspended_company_or_a_past_deadline_holds_each_request_back() {
     company_status("active").await;
     assert_eq!(suspended, (0, 0));
 
-    // Expired: at a pause it could not be; at startup, it is left alone.
+    // Expired: at a pause it could not be; caught up, it is left alone.
     due_in(&stopped, tenant::ID, approval_id, -1).await;
     let expired = told(&stopped, &approval).await;
     due_in(&stopped, tenant::ID, approval_id, 60).await;

@@ -48,16 +48,19 @@ flowchart LR
   conversation, webhooks entrants.
 - **worker** (phase 2) : exécutions longues (missions), reprises après interruption,
   tâches planifiées, ingestion de documents. En MVP, l'API exécute les runs en arrière-plan
-  dans son propre processus, reprend au démarrage ceux qu'un arrêt a interrompus quand
-  c'est sûr (ADR-053), après avoir prévenu les responsables des demandes dont l'arrêt a
-  perdu l'avis (ADR-070), et un balayage périodique marque en échec les runs restés sans
+  dans son propre processus, reprend ceux qu'un arrêt a interrompus quand c'est sûr
+  (ADR-053), prévient les responsables des demandes dont l'arrêt a perdu l'avis (ADR-070),
+  et un balayage périodique marque en échec les runs restés sans
   progression et fait expirer les demandes de validation échues, leurs runs poursuivant
   sans l'action (ADR-061), leurs responsables relancés la veille (ADR-062). Chaque run
   s'exécute sous le bail de son exécuteur, renouvelé tant qu'il s'exécute ; celui dont le
   bail a expiré est repris sans attendre un redémarrage (ADR-083, premier lot du worker).
   Le worker est le même programme lancé avec un autre rôle (`MIMORYA_ROLE`, ADR-085) :
-  `all` (par défaut, en instance unique), `api` (sert le HTTP ; les runs qu'il lance
-  attendent en file) ou `worker` (exécute les runs en file et les tâches de fond). Les
+  `all` (par défaut : sert le HTTP et exécute), `api` (sert le HTTP ; les runs qu'il
+  lance attendent en file) ou `worker` (exécute les runs en file et les tâches de fond).
+  Plusieurs `api` et plusieurs `worker` peuvent tourner ensemble : chaque balayage qui ne
+  doit tourner qu'une fois (demandes échues, relances, avis perdus, indexation) prend un
+  verrou consultatif PostgreSQL à son nom (ADR-086). Les
   caches que chaque processus garde (accès, modèle, modèle d'embeddings, connecteurs) se
   vident ensemble : une modification faite dans l'un est annoncée aux autres sur le canal
   PostgreSQL `mimorya_invalidations`.
@@ -171,12 +174,12 @@ sequenceDiagram
    (canal `mimorya_run_queue`) ; en rôle `all`, il l'exécute lui-même (ADR-085).
 2. Un worker le réserve (`FOR UPDATE SKIP LOCKED`, bail `lease_expires_at`).
 3. Chaque étape est **persistée** (messages, événements, état) : en cas d'arrêt, un
-   autre worker reprend au dernier point de contrôle une fois le bail expiré.
-   Aujourd'hui (une seule instance, ADR-016), c'est l'API qui reprend au démarrage les
-   runs qu'un arrêt a interrompus, quand rien d'autre qu'une lecture n'était en cours
-   (ADR-053). Le bail est déjà là : pris dans la transaction qui fait passer le run à
-   `running`, renouvelé toutes les 20 s ; un run dont le bail a expiré est repris dans la
-   minute, sous les mêmes règles (ADR-083).
+   autre worker reprend au dernier point de contrôle une fois le bail expiré, quand rien
+   d'autre qu'une lecture n'était en cours (ADR-053). Le bail est pris dans la
+   transaction qui fait passer le run à `running` et renouvelé toutes les 20 s ; un run
+   dont le bail a expiré, ou qui n'en a jamais eu, est repris dans la minute, au
+   démarrage d'un worker comme ensuite, par celui qui le verrouille le premier (ADR-083,
+   ADR-086).
 4. Une validation humaine met le run en `awaiting_approval` ; la décision le remet en
    file.
 5. Les tâches récurrentes (phase 2) créent des runs selon une expression cron.
