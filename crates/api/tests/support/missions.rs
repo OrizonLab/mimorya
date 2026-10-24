@@ -120,3 +120,20 @@ pub async fn cost_budget(run: Uuid) -> i64 {
     owner.close().await;
     budget
 }
+
+/// Adds to the mission a stage over that spent `cost_micros`, an hour ago.
+pub async fn spend(mission: Uuid, cost_micros: i64) {
+    let owner = sqlx::PgPool::connect(owner_url()).await.unwrap();
+    sqlx::query(
+        "insert into agent_runs (tenant_id, conversation_id, on_behalf_of_user_id, objective, \
+         budget, usage, status, mission_id, created_at) select tenant_id, conversation_id, \
+         owner_user_id, description, '{}'::jsonb, jsonb_build_object('costMicros', $2::bigint), \
+         'completed', id, now() - interval '1 hour' from missions where id = $1",
+    )
+    .bind(mission)
+    .bind(cost_micros)
+    .execute(&owner)
+    .await
+    .unwrap();
+    owner.close().await;
+}

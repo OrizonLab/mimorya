@@ -333,7 +333,8 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
       autre, qui relit les droits de son auteur à chaque étape : retirer `agent:use`
       l'arrête ; retirer `mission:create` n'empêche que d'en confier de nouvelles. Ses
       limites (six étapes, 12 USD, chaque étape bornée par ce qui reste, trois missions
-      en cours par personne) bornent ce qu'elle coûte, à un appel près par étape.
+      en cours par personne) bornent ce qu'elle coûte, plus, par étape, l'appel qui
+      franchit son budget et son point d'étape, et la revue de la réponse finale.
       L'arrêt retire son bail à l'étape en cours, dont l'exécuteur n'écrit ni n'appelle
       plus rien.
 

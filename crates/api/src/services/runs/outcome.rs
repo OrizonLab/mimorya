@@ -6,6 +6,7 @@
 
 use chrono::Utc;
 use mimorya_agent::runtime::{RunCheckpoint, RunOutcome};
+use mimorya_core::tools::Citation;
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::conversations::{NewMessage, add_message};
 use mimorya_db::repositories::run_events::run_end_recorded;
@@ -103,19 +104,7 @@ async fn record_outcome(
     if let Some(conversation_id) = scope.conversation_id {
         let metadata = MessageMetadata {
             status,
-            evidence: Some(
-                checkpoint
-                    .evidence
-                    .iter()
-                    .skip(
-                        checkpoint
-                            .evidence
-                            .len()
-                            .saturating_sub(MAX_EVIDENCE_IN_MESSAGE),
-                    )
-                    .map(Into::into)
-                    .collect(),
-            ),
+            evidence: Some(shown(&checkpoint.evidence).iter().map(Into::into).collect()),
             verification,
             mission,
         };
@@ -151,6 +140,11 @@ async fn record_outcome(
     )
     .await?;
     Ok(())
+}
+
+/// The sources shown with an answer: the latest `MAX_EVIDENCE_IN_MESSAGE`.
+fn shown(evidence: &[Citation]) -> &[Citation] {
+    &evidence[evidence.len().saturating_sub(MAX_EVIDENCE_IN_MESSAGE)..]
 }
 
 /// Marks a run that crashed as failed, without exposing the internal error:
@@ -218,4 +212,24 @@ pub async fn record_crash(
     after_stage(&mut tx, bus, scope, &crashed).await?;
     tx.commit().await?;
     Ok(Some(RunStatus::Failed))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shows_the_latest_sources_a_stage_s_own_after_the_earlier_ones() {
+        let sources: Vec<Citation> = (0..MAX_EVIDENCE_IN_MESSAGE + 10)
+            .map(|i| Citation::new("intervention", format!("INT-{i}")))
+            .collect();
+        let shown = shown(&sources);
+        assert_eq!(shown.len(), MAX_EVIDENCE_IN_MESSAGE);
+        assert_eq!(shown[0].id, "INT-10");
+        assert_eq!(
+            shown.last().unwrap().id,
+            format!("INT-{}", MAX_EVIDENCE_IN_MESSAGE + 9)
+        );
+        assert_eq!(super::shown(&sources[..3]).len(), 3);
+    }
 }

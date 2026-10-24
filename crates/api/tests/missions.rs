@@ -13,7 +13,7 @@ use mimorya_core::demo::{tenant, user};
 use support::TestApi;
 use support::missions::{
     CRITERION, OBJECTIVE, approving_review, cost_budget, entrust, executing, limit, messages, read,
-    spending_stage, stages, stop,
+    spend, spending_stage, stages, stop,
 };
 use support::queue::take_queued;
 
@@ -119,12 +119,14 @@ async fn a_stage_spends_no_more_than_its_mission_has_left() {
         cost_budget(first).await,
         MISSION_STAGE_BUDGET.max_cost_micros
     );
-    // Less left than a stage's budget: the next stage gets what is left.
+    // Less left than a stage's budget: the next stage gets what is left,
+    // once what its stages spent (an earlier one's 0.40 USD) is counted.
     limit(id, 6, 1_000_000).await;
+    spend(id, 400_000).await;
     api.script(spending_stage(NOTE));
     assert_eq!(take_queued(&api).await, 1);
-    let next = stages(id).await[1].0;
-    assert_eq!(cost_budget(next).await, 1_000_000);
+    let next = stages(id).await.last().unwrap().0;
+    assert_eq!(cost_budget(next).await, 600_000);
     assert_eq!(stop(&marc, id).await, axum::http::StatusCode::OK);
 }
 
