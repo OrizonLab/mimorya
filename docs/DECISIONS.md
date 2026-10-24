@@ -4150,6 +4150,11 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     et une ligne compte les autres (« Et N autres manquements signalés par le contrôle
     qualité. ») : ce que le relecteur écrit est montré avec la réponse et renvoyé au
     modèle, sa taille reste donc bornée ;
+  - chaque manquement est **nettoyé** avant d'être répété : sur une ligne, sans
+    caractères invisibles, incapable d'ouvrir ou de fermer une enveloppe
+    (`neutralise_envelopes`), comme une leçon (ADR-076). Le relecteur lit la réponse,
+    qui peut citer un résultat d'outil, et ce qu'il écrit revient à l'agent dans un
+    message de la plateforme ; un manquement vide une fois nettoyé est ignoré ;
   - n'est plus écarté qu'un verdict qui n'en est pas un (pas de `pass` booléen,
     manquements qui ne sont pas des textes) : la réponse reste alors non jugée, comme
     quand le relecteur échoue.
@@ -4162,8 +4167,12 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
 - **Conséquences** :
   - une réponse jugée très insuffisante échoue et dit pourquoi, au lieu de passer non
     jugée ;
+  - le panneau d'activité, qui compte les lignes du rapport, annonce alors onze points
+    pendant la correction : les dix premiers manquements et la ligne qui compte les
+    autres, comme les affiche la réponse ;
   - tests : `crates/agent/src/runtime/verification.rs` (dix premiers gardés, les autres
-    comptés au singulier comme au pluriel, manquement trop long coupé, ce qui n'est pas
-    un verdict écarté) et `crates/agent/tests/runtime_verification.rs` (une relecture
+    comptés au singulier comme au pluriel, manquement trop long coupé, enveloppe
+    forgée, saut de ligne et caractère invisible neutralisés, ce qui n'est pas un
+    verdict écarté) et `crates/agent/tests/runtime_verification.rs` (une relecture
     de quinze manquements fait échouer la réponse, la correction reçoit les dix premiers
     et le compte des autres, la réponse les affiche).

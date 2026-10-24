@@ -194,10 +194,12 @@ Deux niveaux, cumulables :
    avec `MIMORYA_LLM_JUDGE`) : un appel séparé,
    éventuellement avec un autre modèle, juge la réponse au regard de l'objectif et des
    critères et renvoie `{ pass, issues[] }` via un outil structuré. Le verdict garde
-   ses dix premiers manquements, chacun coupé à 500 caractères, les autres comptés
-   (ADR-092) ; un verdict illisible laisse la réponse non jugée.
+   ses dix premiers manquements, chacun sur une ligne, nettoyé des caractères invisibles
+   et des balises d'enveloppe, coupé à 500 caractères, les autres comptés (ADR-092) ;
+   un verdict illisible laisse la réponse non jugée.
 
-En cas d'échec : la critique est réinjectée comme message système et l'agent corrige,
+En cas d'échec : la critique est renvoyée à l'agent dans un message de la plateforme
+(« Contrôle qualité automatique ») et l'agent corrige,
 dans la limite de `maxCorrectionAttempts` (défaut 2). Les échecs résiduels sont
 **affichés** à l'utilisateur, jamais masqués. Chaque verdict est enregistré dans
 `agent_runs.verification` et alimente l'apprentissage (§8).
