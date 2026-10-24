@@ -14,7 +14,7 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::{AppendHeaders, IntoResponse, Response};
 use axum::routing::{get, post};
 
-use super::sso::{REFUSED, SIGNED_IN, record_refusal};
+use super::sso::{REFUSED, SIGNED_IN, record_refusal, signs_in};
 use crate::app::AppState;
 use crate::auth::cookies::{cookie_value, session_cookie};
 use crate::http::{ApiResult, PathId};
@@ -48,7 +48,7 @@ async fn acs(
     back: Result<Form<SamlReturn>, FormRejection>,
 ) -> Response {
     let cleared = (SET_COOKIE, cleared_saml_attempt_cookie());
-    let outcome = if state.limits.sso_sign_in.allow(&context.client_key()) {
+    let outcome = if signs_in(&state, &context).await {
         // A body that does not read as a response reads as an empty one.
         let back = back.map(|Form(back)| back).unwrap_or_default();
         let cookie = cookie_value(&headers, SAML_ATTEMPT_COOKIE);

@@ -66,7 +66,9 @@ La même image tourne en deux services (ADR-087) : `api` sert l'API et met en fi
 qu'il lance, `worker` les exécute avec toutes les tâches de fond, sans ouvrir de port.
 Ajouter des workers côte à côte (ADR-086) : `MIMORYA_WORKERS=2` (1 par défaut, au moins
 1, dans `.env` ou l'environnement exporté), puis `docker compose -f compose.demo.yml up -d`.
-L'API reste unique : ses limites de débit sont comptées par processus. Le test de fumée
+L'API reste unique dans la pile : Caddy n'en répartit pas plusieurs. Ses limites
+d'authentification sont partagées par la base (ADR-088) ; sa limite globale par requête
+reste comptée par processus. Le test de fumée
 attend autant de workers que la pile en lance ; il lit la configuration avec `jq`.
 
 Les images sont publiées sur le registre de GitHub (`ghcr.io/orizonlab/mimorya-api`,

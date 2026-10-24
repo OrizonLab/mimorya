@@ -24,6 +24,7 @@ pub mod memory_settings;
 pub mod org;
 pub mod org_units;
 pub mod password_resets;
+pub mod rate_limits;
 pub mod role_assignments;
 pub mod roles;
 pub mod run_events;

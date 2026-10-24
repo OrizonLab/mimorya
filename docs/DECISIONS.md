@@ -3841,3 +3841,66 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     `infra/docker/production-test.sh` (une API et les workers de la pile, puis un worker
     de plus), en CI. Le nombre attendu se lit dans la configuration de la pile
     (`stack_workers`), pas dans une constante.
+
+## ADR-088 — Limites d'authentification partagées par tous les processus `api`
+
+- **Date** : 2026-10-24 · **Statut** : acceptée · complète ADR-016, ADR-063 et ADR-085
+- **Contexte** : les limites de débit sont comptées en mémoire, par processus (ADR-016).
+  Avec plusieurs processus `api` (ADR-085), chacun compte les siennes, et une tentative
+  répartie sur N instances dispose de N fois chaque limite : N fois plus de mots de passe
+  essayés par compte, de liens envoyés par adresse, d'adresses sondées par la découverte
+  du fournisseur d'identité. Les piles Docker n'en lancent donc qu'un (ADR-087).
+- **Décision** :
+  - les limites d'authentification sont comptées dans PostgreSQL, partagées par tous les
+    processus : connexions par adresse cliente (`login`), échecs par compte
+    (`failed_logins`, rendus en cas de succès), liens de réinitialisation par adresse
+    e-mail (`reset_requests`), adresses essayées par la découverte ou le départ d'une
+    connexion par le fournisseur (`sso_addresses`, une adresse déjà comptée ne coûtant
+    rien) et étapes de ces connexions (`sso_sign_in`). Mêmes limites et mêmes fenêtres
+    fixes qu'avant ;
+  - deux tables non journalisées (`UNLOGGED`) les portent : `rate_limit_windows` (début
+    de la fenêtre et compte, par limiteur et par clé) et `rate_limit_values` (les valeurs
+    distinctes d'une clé). Elles ne gardent qu'une empreinte SHA-256 de chaque clé
+    (adresse cliente, adresse e-mail) et de chaque valeur, calculée dans le processus ;
+  - le rôle applicatif n'a aucun droit sur elles, et une politique y refuse toute ligne.
+    Quatre fonctions `SECURITY DEFINER` y touchent seules :
+    - `system_rate_limit_hit` compte un passage et rend s'il est permis. Le compte
+      s'arrête à un au-delà de la limite, et rouvre une fenêtre une fois la précédente
+      close ;
+    - `system_rate_limit_release` rend un passage permis ;
+    - `system_rate_limit_distinct` compte une valeur une fois par fenêtre ;
+    - `system_purge_rate_limits` oublie les fenêtres closes ;
+  - chaque appel est une transaction à lui, sur l'horloge de la base. Les passages d'une
+    même clé sont comptés l'un après l'autre (verrou de sa ligne) : des tentatives
+    simultanées sur plusieurs processus ne dépassent pas la limite ;
+  - la maintenance périodique (dans chaque processus qui exécute les runs) purge les
+    fenêtres ouvertes il y a plus de deux heures, au-delà de la plus longue (une heure) ;
+  - un décompte qui ne peut être lu est une erreur : la requête échoue, comme la connexion,
+    qui lit la même base. Le retour d'une connexion par le fournisseur est alors
+    éconduit, comme au-delà de la limite. Un passage qui ne peut être rendu reste compté ;
+  - la limite globale par requête et par adresse (600 par minute) reste comptée en
+    mémoire, dans chaque processus.
+- **Alternatives écartées** :
+  - un service de comptage (Redis…) : une infrastructure de plus (règle d'architecture
+    1), pour quelques écritures par connexion ;
+  - compter aussi la limite globale en base : une écriture par requête, sur toutes les
+    routes, pour une protection grossière contre l'inondation, qu'un reverse proxy peut
+    aussi porter. Multipliée par le nombre de processus, elle reste bornée ;
+  - réserver des tranches de quota par processus pour la limite globale : moins
+    d'écritures, mais des parts perdues et un code plus difficile à prouver ;
+  - garder les clés en clair : des adresses e-mail et IP en base, sans besoin ;
+  - l'affinité de session du reverse proxy : elle dépend de l'installation, et l'adresse
+    cliente qu'elle suit n'est pas la clé des limites par compte ou par adresse e-mail.
+- **Conséquences** :
+  - plusieurs processus `api` peuvent tourner sans multiplier les limites
+    d'authentification. Les piles Docker gardent une seule API : Caddy n'en répartit
+    pas plusieurs ;
+  - chaque tentative de connexion, demande de lien ou étape d'une connexion par le
+    fournisseur coûte une ou deux écritures de plus en base ;
+  - une panne de la base vide les fenêtres : un client y gagne une fenêtre neuve ;
+  - tous les processus doivent avoir les mêmes réglages
+    (`LOGIN_RATE_LIMIT_PER_MINUTE`), sans quoi chacun compare le compte partagé à sa
+    propre limite ;
+  - tests : `crates/api/tests/shared_rate_limits.rs` (deux processus, empreintes hors de
+    portée du rôle applicatif, purge) et `crates/db/tests/rate_limits.rs` (fenêtres,
+    passage rendu, valeurs distinctes, purge).

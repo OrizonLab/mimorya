@@ -17,7 +17,8 @@
 //! A company's embedding model is a test one, whatever it chooses: no
 //! provider is ever reached (ADR-074). A finished run reread for a lesson
 //! always yields the same one (`lessons`, ADR-076). One pass of the tests
-//! per start: the model's script and the demo company are used up. Like
+//! per start: the model's script and the demo company are used up, and the
+//! rate limit windows a former start left are forgotten (ADR-088). Like
 //! `mimorya-api`, once listening it takes up the runs whose executor
 //! stopped, among them the one it leaves itself without a lease
 //! (`interrupted`, ADR-053, ADR-086); then fires the scheduled tasks due every
@@ -47,12 +48,14 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use chrono::Utc;
 use mimorya_agent::llm::{EmbeddingProvider, LlmProvider};
 use mimorya_agent::testing::{ConceptEmbedder, ScriptedProvider, ScriptedStep};
 use mimorya_api::mail::Mailer;
 use mimorya_api::services::{EmbeddingFactory, ProviderFactory};
 use mimorya_api::{AppConfig, BuildOptions, build_app, log_filter};
 use mimorya_connectors::mcp::NetworkPolicy;
+use mimorya_db::repositories::rate_limits::purge_rate_limits;
 
 /// Reference scenarios queued for the platform model, by the hour of their
 /// follow-up: one per run that converses, in the order they run (the
@@ -144,6 +147,9 @@ async fn main() -> anyhow::Result<()> {
     interrupted::leave(&app).await?;
     scheduled::leave(&app).await?;
     queued::leave(&app).await?;
+    // A former start's windows, which a restart forgot when they were counted
+    // in memory: the suite runs again within the hour (ADR-088).
+    purge_rate_limits(app.services.db.pool(), Utc::now()).await?;
     let listener = tokio::net::TcpListener::bind(&address).await?;
     let taken = app.recover_interrupted_runs().await?;
     tracing::info!(address, taken, "End-to-end API listening");

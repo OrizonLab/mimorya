@@ -1,8 +1,11 @@
-//! Fixed-window rate limiting, in memory, per process: several `api`
-//! processes each count their own (ADR-016, ADR-086). A global limit per client address protects every
-//! route; logins are also limited per address and, for failures, per
-//! account; reset links per e-mail address; the addresses asked about for
-//! single sign-on, per client address (`distinct_limit`).
+//! Fixed-window rate limiting. The global limit per client address, which
+//! protects every route, is counted in memory, per process: several `api`
+//! processes each count their own (ADR-016, ADR-088), sparing every request
+//! a write to the database. The authentication limits are shared by every
+//! process (`shared_limit`, ADR-088): logins per client address and, for
+//! failures, per account; reset links per e-mail address; the addresses
+//! asked about and the sign-ins through an identity provider, per client
+//! address.
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -12,8 +15,8 @@ use axum::extract::{Request, State};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 
-use super::distinct_limit::DistinctLimiter;
 use super::request_context::RequestContext;
+use super::shared_limit::{SharedDistinctLimiter, SharedLimiter};
 use crate::app::AppState;
 use crate::http::ApiError;
 
@@ -70,25 +73,25 @@ impl RateLimiter {
 }
 
 pub struct RateLimits {
-    /// Every request, per client address.
+    /// Every request, per client address, in this process.
     pub global: RateLimiter,
     /// Login attempts, per client address.
-    pub login: RateLimiter,
+    pub login: SharedLimiter,
     /// The addresses asked about to sign in through an identity provider,
     /// per client address, by its discovery or its start: each tells whether
     /// an address has an account tied to a provider. As many as logins,
     /// spending nothing of their limit; asking again about an address
     /// already counted costs nothing (ADR-063).
-    pub sso_addresses: DistinctLimiter,
+    pub sso_addresses: SharedDistinctLimiter,
     /// The start and the return of a sign-in through an identity provider,
     /// per client address: twice the login limit, a sign-in taking both
     /// (ADR-063).
-    pub sso_sign_in: RateLimiter,
+    pub sso_sign_in: SharedLimiter,
     /// Login attempts per account (email), given back when the login succeeds:
     /// only failures count. Addresses can be shared or multiplied, accounts cannot.
-    pub failed_logins: RateLimiter,
+    pub failed_logins: SharedLimiter,
     /// Password reset links asked for, per e-mail address, known or not.
-    pub reset_requests: RateLimiter,
+    pub reset_requests: SharedLimiter,
 }
 
 pub async fn global_rate_limit(
