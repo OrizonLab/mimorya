@@ -4187,7 +4187,8 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
   - ceux qui gèrent les réglages de l'entreprise (`settings:manage`, sur toute
     l'entreprise) fixent dans « Modèle d'IA », section « Limites des missions », le
     nombre d'étapes et le coût d'une mission, entre 1 et 20 étapes et entre 1 et
-    100 USD. La base porte les mêmes bornes ; l'API refuse au-delà, en le disant ;
+    60 USD : ce que peuvent coûter vingt étapes de 3 USD, un plafond plus haut ne serait
+    jamais atteint. La base porte les mêmes bornes ; l'API refuse au-delà, en le disant ;
   - sans réglage propre, les limites de la plateforme s'appliquent ; on y revient d'un
     bouton (`DELETE /api/admin/mission-settings`) ;
   - une mission garde les limites du jour où elle est confiée (ADR-089) : un

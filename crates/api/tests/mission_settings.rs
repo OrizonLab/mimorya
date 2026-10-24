@@ -52,7 +52,7 @@ async fn a_mission_keeps_the_company_s_limits_of_the_day() {
             "maxStages": 6, "maxCostMicros": 12_000_000, "own": false,
             "platformMaxStages": 6, "platformMaxCostMicros": 12_000_000,
             "maxStagesCeiling": 20, "minCostMicros": 1_000_000,
-            "maxCostCeilingMicros": 100_000_000,
+            "maxCostCeilingMicros": 60_000_000,
         })
     );
 
@@ -110,14 +110,14 @@ async fn limits_beyond_the_platform_s_bounds_are_refused() {
         (0, 12_000_000),
         (21, 12_000_000),
         (6, 999_999),
-        (6, 100_000_001),
+        (6, 60_000_001),
         (6, -1),
     ] {
         let refused = paul.put(SETTINGS, limits(stages, cost)).await;
         assert_eq!(refused.status, StatusCode::BAD_REQUEST, "{stages} {cost}");
         assert_eq!(
             refused.error_message(),
-            "Une mission compte de 1 à 20 étapes au plus, et coûte de 1 à 100 USD au plus."
+            "Une mission compte de 1 à 20 étapes au plus, et coûte de 1 à 60 USD au plus."
         );
     }
     let unknown = paul
@@ -148,7 +148,7 @@ async fn only_company_wide_settings_administrators_set_them() {
     let partial = activate(&api, &mut partial).await;
     for client in [&marc, &partial] {
         assert_eq!(client.get(SETTINGS).await.status, StatusCode::FORBIDDEN);
-        let refused = client.put(SETTINGS, limits(20, 100_000_000)).await;
+        let refused = client.put(SETTINGS, limits(20, 60_000_000)).await;
         assert_eq!(refused.status, StatusCode::FORBIDDEN);
         assert_eq!(client.delete(SETTINGS).await.status, StatusCode::FORBIDDEN);
     }
@@ -163,7 +163,7 @@ async fn another_company_s_limits_are_its_own() {
     let owner = sqlx::PgPool::connect(owner_url()).await.unwrap();
     sqlx::query(
         "insert into tenant_mission_settings (tenant_id, max_stages, max_cost_micros) \
-         values ($1, 20, 100000000)",
+         values ($1, 20, 60000000)",
     )
     .bind(OTHER_TENANT_ID)
     .execute(&owner)

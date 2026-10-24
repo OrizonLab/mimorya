@@ -1,6 +1,7 @@
 -- A company's own mission limits (ADR-093): how many stages a mission may
 -- take and what it may cost, set by those who manage the company's
--- settings, within what the platform allows. Without a row, the platform's
+-- settings, within what the platform allows: one to twenty stages, 1 USD
+-- to what twenty stages may cost (60 USD). Without a row, the platform's
 -- (six stages, 12 USD). A mission keeps the limits it was entrusted with:
 -- a change applies to the missions entrusted after it.
 CREATE TABLE tenant_mission_settings (
@@ -11,7 +12,7 @@ CREATE TABLE tenant_mission_settings (
   updated_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT tenant_mission_settings_stages CHECK (max_stages BETWEEN 1 AND 20),
   CONSTRAINT tenant_mission_settings_cost
-    CHECK (max_cost_micros BETWEEN 1000000 AND 100000000)
+    CHECK (max_cost_micros BETWEEN 1000000 AND 60000000)
 );
 
 ALTER TABLE tenant_mission_settings ENABLE ROW LEVEL SECURITY;

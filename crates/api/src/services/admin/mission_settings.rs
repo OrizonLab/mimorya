@@ -7,13 +7,13 @@
 use mimorya_db::Database;
 use mimorya_db::repositories::audit::append_audit;
 use mimorya_db::repositories::mission_settings::{
-    MissionSettingsRow, mission_settings, remove_mission_settings, set_mission_settings,
+    MissionSettingsRow, remove_mission_settings, set_mission_settings,
 };
 use serde_json::json;
 
 use super::{audit_entry, begin_change};
 use crate::services::AccessContext;
-use crate::services::missions::{MISSION_LIMITS, MissionLimits};
+use crate::services::missions::{MISSION_LIMITS, MissionLimits, company_limits};
 
 const PERMISSION: &str = "settings:manage";
 
@@ -25,16 +25,12 @@ pub async fn company_mission_limits(
 ) -> anyhow::Result<(MissionLimits, bool)> {
     access.require_tenant_wide(PERMISSION)?;
     let mut tx = db.begin(access.subject.tenant_id).await?;
-    let own = mission_settings(&mut tx).await?;
+    let own = company_limits(&mut tx).await?;
     tx.commit().await?;
-    let Some(row) = own else {
-        return Ok((MISSION_LIMITS, false));
-    };
-    let limits = MissionLimits {
-        max_stages: u32::try_from(row.max_stages)?,
-        max_cost_micros: row.max_cost_micros,
-    };
-    Ok((limits, true))
+    Ok(match own {
+        Some(limits) => (limits, true),
+        None => (MISSION_LIMITS, false),
+    })
 }
 
 /// Sets the company's own limits, if within the platform's bounds.

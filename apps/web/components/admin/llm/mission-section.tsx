@@ -72,7 +72,7 @@ function MissionForm({ data, onSaved }: { data: MissionSettingsView; onSaved: ()
               required
               min={data.minCostMicros / MICROS}
               max={data.maxCostCeilingMicros / MICROS}
-              step={0.5}
+              step="any"
               value={draft.dollars}
               onChange={(e) => setDraft({ ...draft, dollars: e.target.value })}
             />

@@ -15,7 +15,7 @@ use mimorya_db::repositories::missions::{
 use uuid::Uuid;
 
 use super::definition::CheckedMission;
-use super::limits::company_limits;
+use super::limits::{MISSION_LIMITS, company_limits};
 use super::stages::{brief, open_stage};
 use crate::app::Services;
 use crate::contract::MissionPart;
@@ -58,7 +58,7 @@ pub async fn entrust_mission(
         return Err(DomainError::conflict(too_many).into());
     }
     // The company's limits as they stand, kept on the mission (ADR-093).
-    let limits = company_limits(&mut tx).await?;
+    let limits = company_limits(&mut tx).await?.unwrap_or(MISSION_LIMITS);
     let conversation =
         create_conversation(&mut tx, tenant_id, user_id, Some(&checked.title)).await?;
     let mission = create_mission(
