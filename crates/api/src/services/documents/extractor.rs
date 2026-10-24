@@ -11,6 +11,7 @@ use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Duration;
 
+use mimorya_core::documents::limits::MAX_PAGES;
 use mimorya_core::documents::{DocumentKind, Extracted, Reading, Refusal};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::{Child, Command};
@@ -112,11 +113,21 @@ impl Extractor {
             }
         };
         match serde_json::from_slice::<Reading>(&answer) {
-            Ok(Reading::Read(extracted)) => Ok(extracted),
+            Ok(Reading::Read(extracted)) => within_limits(extracted),
             Ok(Reading::Refused { reason }) => Err(ExtractionFailure::Refused(reason)),
             Err(_) => Err(ExtractionFailure::Failed("unexpected answer")),
         }
     }
+}
+
+/// `extracted`, if it keeps to the limits the reader keeps to: one that
+/// answers beyond them is failing.
+fn within_limits(extracted: Extracted) -> Result<Extracted, ExtractionFailure> {
+    let beyond = || ExtractionFailure::Failed("answer beyond the limits");
+    if extracted.pages.len() > MAX_PAGES {
+        return Err(beyond());
+    }
+    Extracted::checked(extracted.pages, extracted.paged).map_err(|_| beyond())
 }
 
 /// Gives the reader `bytes`, then reads its answer until it exits.
@@ -158,4 +169,15 @@ async fn answer(child: &mut Child, bytes: Vec<u8>) -> Result<Vec<u8>, Extraction
 /// Kills the reader and waits for its end, so that it leaves no zombie.
 async fn stop(child: &mut Child) {
     let _ = child.kill().await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_reader_is_found_beside_the_running_program() {
+        let beside = extractor_beside(Path::new("/usr/local/bin/mimorya-api"));
+        assert_eq!(beside, Path::new("/usr/local/bin/mimorya-extract"));
+    }
 }

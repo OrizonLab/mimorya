@@ -63,12 +63,20 @@ pub fn run() -> ExitCode {
 #[cfg(unix)]
 fn confine() -> io::Result<()> {
     use rlimit::Resource;
-    Resource::CORE.set(0, 0)?;
-    Resource::CPU.set(CPU_SECONDS, CPU_SECONDS)?;
-    Resource::FSIZE.set(0, 0)?;
-    Resource::NOFILE.set(OPEN_FILES, OPEN_FILES)?;
-    Resource::AS.set(MEMORY_BYTES, MEMORY_BYTES)?;
-    Ok(())
+    limit(Resource::CORE, 0)?;
+    limit(Resource::CPU, CPU_SECONDS)?;
+    limit(Resource::FSIZE, 0)?;
+    limit(Resource::NOFILE, OPEN_FILES)?;
+    limit(Resource::AS, MEMORY_BYTES)
+}
+
+/// Sets `resource`'s limits, soft and hard, to `value`, or to the hard
+/// limit already in force if lower: this process may only lower it.
+#[cfg(unix)]
+fn limit(resource: rlimit::Resource, value: u64) -> io::Result<()> {
+    let (_, hard) = resource.get()?;
+    let value = value.min(hard);
+    resource.set(value, value)
 }
 
 #[cfg(not(unix))]

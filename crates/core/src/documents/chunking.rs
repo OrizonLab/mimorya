@@ -29,7 +29,7 @@ pub fn passages(extracted: &Extracted) -> Vec<Passage> {
         cut.page = extracted
             .paged
             .then(|| u32::try_from(index + 1).unwrap_or(u32::MAX));
-        for block in text.split("\n\n").map(str::trim).filter(|b| !b.is_empty()) {
+        for block in text.split("\n\n").flat_map(at_titles) {
             if let Some(heading) = heading_of(block) {
                 cut.flush();
                 cut.heading = Some(heading);
@@ -77,6 +77,27 @@ impl Cutter {
 
 fn chars(text: &str) -> usize {
     text.chars().count()
+}
+
+/// `block` cut before each of its lines that is a title: Markdown needs
+/// no blank line before one.
+fn at_titles(block: &str) -> Vec<&str> {
+    let mut parts = Vec::new();
+    let mut start = 0;
+    let mut at = 0;
+    for line in block.split_inclusive('\n') {
+        if at > start && heading_of(line).is_some() {
+            parts.push(&block[start..at]);
+            start = at;
+        }
+        at += line.len();
+    }
+    parts.push(&block[start..]);
+    parts
+        .into_iter()
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .collect()
 }
 
 /// The title a block starts with, if it starts with a Markdown one.
@@ -217,6 +238,20 @@ mod tests {
                 ),
                 (Some(1), Some("Fioul"), "## Fioul\n\nPurge."),
                 (Some(2), Some("Fioul"), "Suite fioul."),
+            ]
+        );
+        // Titles without a blank line before them.
+        let tight = "# Procédure\nCouper.\n## Étape 1\nPurger.\n## Étape 2\nRelever.";
+        let named: Vec<_> = passages(&read(&[tight], false))
+            .into_iter()
+            .map(|p| (p.heading.unwrap_or_default(), p.content))
+            .collect();
+        assert_eq!(
+            named,
+            [
+                ("Procédure".to_string(), "# Procédure\nCouper.".to_string()),
+                ("Étape 1".to_string(), "## Étape 1\nPurger.".to_string()),
+                ("Étape 2".to_string(), "## Étape 2\nRelever.".to_string()),
             ]
         );
         // Not a title: no space after, or seven marks.

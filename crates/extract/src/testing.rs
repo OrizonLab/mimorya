@@ -129,6 +129,21 @@ pub fn body(paragraphs: &str) -> String {
     )
 }
 
+/// A Word archive whose body is marked encrypted, as a password protects
+/// it (the flag of its local and central headers).
+pub fn encrypted_docx() -> Vec<u8> {
+    let content = body("<w:p><w:r><w:t>Secret</w:t></w:r></w:p>");
+    let mut bytes = archive(&[("word/document.xml", content.as_bytes())]);
+    for (signature, flags_at) in [(&b"PK\x03\x04"[..], 6), (&b"PK\x01\x02"[..], 8)] {
+        let header = bytes
+            .windows(4)
+            .position(|window| window == signature)
+            .expect("a header");
+        bytes[header + flags_at] |= 1;
+    }
+    bytes
+}
+
 /// A ZIP archive of `entries`, deflated.
 pub fn archive(entries: &[(&str, &[u8])]) -> Vec<u8> {
     let mut writer = ZipWriter::new(Cursor::new(Vec::new()));

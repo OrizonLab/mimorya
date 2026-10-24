@@ -197,11 +197,12 @@ développement) et utilisent les ports 3000 et 4000 : arrêtez d'abord `pnpm dev
 
 ## Organisation du dépôt
 
-| Chemin              | Contenu                                                                        |
-| ------------------- | ------------------------------------------------------------------------------ |
-| `crates/core`       | Domaine pur : autorisation, organigramme, autonomie, contrat d'outil, démo     |
-| `crates/db`         | Migrations SQL, RLS, dépôts, seed                                              |
-| `crates/agent`      | Fournisseurs LLM, boucle agentique, PEP, vérification, budgets                 |
-| `crates/connectors` | Connecteur de démonstration, pont MCP                                          |
-| `crates/api`        | Serveur HTTP (axum), binaires `mimorya-api`, `mimorya-admin` et `mimorya-seed` |
-| `apps/web`          | Interface Next.js                                                              |
+| Chemin              | Contenu                                                                                           |
+| ------------------- | ------------------------------------------------------------------------------------------------- |
+| `crates/core`       | Domaine pur : autorisation, organigramme, autonomie, contrat d'outil, démo                        |
+| `crates/db`         | Migrations SQL, RLS, dépôts, seed                                                                 |
+| `crates/agent`      | Fournisseurs LLM, boucle agentique, PEP, vérification, budgets                                    |
+| `crates/connectors` | Connecteur de démonstration, pont MCP                                                             |
+| `crates/extract`    | Lecture des documents déposés, dans le processus `mimorya-extract`                                |
+| `crates/api`        | Serveur HTTP (axum), binaires `mimorya-api`, `mimorya-admin`, `mimorya-seed` et `mimorya-extract` |
+| `apps/web`          | Interface Next.js                                                                                 |

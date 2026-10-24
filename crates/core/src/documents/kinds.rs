@@ -61,6 +61,7 @@ impl DocumentKind {
             "docx" => Self::Docx,
             "md" | "markdown" => Self::Markdown,
             "txt" => Self::Text,
+            "doc" => return Err(Refusal::OldOrProtectedWord),
             _ => return Err(Refusal::NotAccepted),
         };
         let binary = [PDF_MAGIC, ZIP_MAGIC, OLE_MAGIC]
@@ -113,10 +114,14 @@ mod tests {
             DocumentKind::recognise("faux.docx", pdf),
             Err(Refusal::Mismatch)
         );
-        assert_eq!(
-            DocumentKind::recognise("ancien.docx", b"\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1"),
-            Err(Refusal::OldOrProtectedWord)
-        );
+        let ole = b"\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1";
+        for name in ["ancien.docx", "ancien.doc", "Rapport.DOC"] {
+            assert_eq!(
+                DocumentKind::recognise(name, ole),
+                Err(Refusal::OldOrProtectedWord),
+                "{name}"
+            );
+        }
         for name in ["photo.png", "page.html", "sans-extension", "archive.zip"] {
             assert_eq!(
                 DocumentKind::recognise(name, b"texte"),

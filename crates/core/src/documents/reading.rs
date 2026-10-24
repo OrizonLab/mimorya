@@ -29,10 +29,23 @@ pub enum Refusal {
     NotUtf8,
     #[error("Le document dépasse {MAX_PAGES} pages.")]
     TooManyPages,
-    #[error("Le texte du document dépasse {MAX_TEXT_CHARS} caractères.")]
+    #[error("Le texte du document dépasse {} caractères.", grouped(MAX_TEXT_CHARS))]
     TooLong,
     #[error("Le document ne contient aucun texte lisible : un document numérisé n’est pas lu.")]
     NoText,
+}
+
+/// `number` with its digits grouped by three, as French writes it: « 1 000 000 ».
+fn grouped(number: usize) -> String {
+    let digits = number.to_string();
+    let mut grouped = String::new();
+    for (index, digit) in digits.chars().enumerate() {
+        if index > 0 && (digits.len() - index).is_multiple_of(3) {
+            grouped.push('\u{a0}');
+        }
+        grouped.push(digit);
+    }
+    grouped
 }
 
 /// A file's text: one entry per page of a PDF, a single one otherwise.
@@ -118,5 +131,11 @@ mod tests {
             Refusal::TooManyPages.to_string(),
             "Le document dépasse 500 pages."
         );
+        assert_eq!(
+            Refusal::TooLong.to_string(),
+            "Le texte du document dépasse 1\u{a0}000\u{a0}000 caractères."
+        );
+        assert_eq!(grouped(999), "999");
+        assert_eq!(grouped(12_345), "12\u{a0}345");
     }
 }

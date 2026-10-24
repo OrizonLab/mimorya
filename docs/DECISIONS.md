@@ -4273,13 +4273,16 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
 - **Décision** :
   - **formats acceptés** : PDF, Word (.docx), Markdown et texte. Le type d'un fichier est
     donné par son extension et confirmé par ses premiers octets, jamais par ce que dit le
-    navigateur. Un document Word ancien (.doc) ou protégé par un mot de passe est refusé
-    avec la marche à suivre ;
+    navigateur. Un document Word ancien (.doc, ou un .docx qui en est un) ou protégé par
+    un mot de passe est refusé avec la marche à suivre ;
   - **lecture dans un processus à part** (`mimorya-extract`, caisse `crates/extract`) :
     - l'API le lance pour chaque fichier, avec un environnement vide ; le fichier passe
       sur son entrée standard et sa lecture revient en JSON sur sa sortie standard ;
     - avant de rien lire, le processus se borne lui-même : 1 Gio de mémoire, 20 s de
-      processeur, aucun fichier écrit, 16 descripteurs, pas de vidage mémoire ;
+      processeur, aucun fichier écrit, 16 descripteurs, pas de vidage mémoire (ou moins,
+      si les limites dont il hérite sont plus basses) ;
+    - côté API, sa réponse est revérifiée : une lecture qui dépasse les pages ou le texte
+      permis, ou sans texte, est tenue pour une défaillance ;
     - côté API : deux lectures à la fois au plus par processus, 30 s chacune (au-delà, le
       processus est tué), une réponse lue jusqu'à 8 Mio. Un processus qui meurt, déborde
       ou répond autre chose fait refuser le fichier ;
@@ -4296,12 +4299,13 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
       propriétaire ; un PDF qui en demande un est refusé ;
   - **texte nettoyé** : forme canonique (NFC), sans caractères cachés ni contrôles,
     tabulations en espaces, au plus une ligne vide de suite ; un PDF est lu page par page,
-    les titres d'un .docx deviennent des titres Markdown (`#`) ;
+    les titres d'un .docx deviennent des titres Markdown (`#`), et seul le texte des
+    passages de texte est lu (pas le texte supprimé en révision, pas les codes de champ) ;
   - **passages** (`core/src/documents/chunking.rs`) : le texte est découpé dès le dépôt en
     passages contigus, jamais à cheval sur deux pages, d'environ 1 200 caractères et
     2 000 au plus, coupés aux paragraphes, puis aux phrases, puis entre les mots ; un
-    titre ouvre un passage et nomme ceux qui le suivent. Une citation donne ainsi la page
-    et la section ;
+    titre, précédé ou non d'une ligne vide, ouvre un passage et nomme ceux qui le suivent.
+    Une citation donne ainsi la page et la section ;
   - **rangement** (lot 1b) :
     - le fichier d'origine est gardé dans PostgreSQL, dans une table à part (`bytea`,
       stockage externe, sous RLS), avec un quota par entreprise vérifié sous verrou dans
@@ -4343,11 +4347,13 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     - `crates/core/src/documents/` : reconnaissance des types, refus, découpage ;
     - `crates/extract/tests/` (`pdf.rs`, `docx.rs`, `text.rs`) : texte lu page par page ;
       PDF à mot de passe, de trop de pages, sans texte ou qui n'en est pas un ; archive
-      Word qui gonfle au-delà de son rapport, de trop d'entrées, sans corps ; entité
-      déclarée non développée ; texte non UTF-8 ou binaire ;
+      Word qui gonfle au-delà de son rapport ou de sa borne absolue, de trop d'entrées,
+      sans corps ou chiffrée ; entité déclarée non développée ; rien de lu hors des
+      passages de texte ; texte non UTF-8 ou binaire ;
     - `crates/api/tests/document_extraction.rs` : chaque type lu par le vrai processus ;
-      un PDF dont le contenu gonfle à 1,3 Gio arrête ce processus seul, et sans la
-      limite de mémoire il serait lu jusqu'au bout ; un processus qui ne finit pas est
-      tué à son heure ; un qui meurt, inonde sa sortie ou répond n'importe quoi fait
-      refuser le fichier ; l'environnement de l'API ne lui parvient pas ; au-delà de
-      deux lectures à la fois, refus.
+      ses limites, relues dans `/proc` pendant qu'il attend son entrée ; un PDF dont le
+      contenu gonfle à 1,3 Gio le fait échouer, faute de mémoire, et le processus suivant
+      lit normalement ; un processus qui ne finit pas est tué à son heure ; un qui meurt,
+      inonde sa sortie, répond n'importe quoi ou au-delà des limites fait refuser le
+      fichier ; l'environnement de l'API ne lui parvient pas ; au-delà de deux lectures
+      à la fois, refus.

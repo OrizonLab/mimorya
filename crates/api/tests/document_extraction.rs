@@ -1,16 +1,17 @@
 //! The extraction process (ADR-095), started as the API starts it: each
-//! kind of file read through it, a refused one with its reason. A file that
-//! exhausts its memory stops that process only. One that hangs is killed at
-//! its time, one that dies, floods its output or answers nonsense is
-//! refused, and none sees the API's environment. At most
-//! `CONCURRENT_EXTRACTIONS` read at once.
+//! kind of file read through it, a refused one with its reason. It confines
+//! itself before reading (its limits read back from `/proc`), and a file
+//! that exhausts its memory stops that process only. One that hangs is
+//! killed at its time, one that dies, floods its output, answers nonsense
+//! or beyond the limits is refused, and none sees the API's environment.
+//! At most `CONCURRENT_EXTRACTIONS` read at once.
 
-use std::os::unix::fs::PermissionsExt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 use mimorya_api::services::documents::{CONCURRENT_EXTRACTIONS, ExtractionFailure, Extractor};
-use mimorya_core::documents::limits::MAX_FILE_BYTES;
+use mimorya_core::documents::limits::{MAX_FILE_BYTES, MAX_PAGES};
 use mimorya_core::documents::{DocumentKind, Refusal};
 use mimorya_extract::testing::{docx, inflating_pdf, pdf, protected_pdf};
 use uuid::Uuid;
@@ -21,14 +22,47 @@ fn extractor() -> Extractor {
     Extractor::new(PROGRAM.into())
 }
 
-/// A program standing in for the reader: `script`, run by the shell.
-fn impostor(script: &str) -> PathBuf {
-    let directory = std::env::temp_dir().join(format!("mimorya-extract-{}", Uuid::new_v4()));
-    std::fs::create_dir_all(&directory).unwrap();
-    let program = directory.join("mimorya-extract");
-    std::fs::write(&program, format!("#!/bin/sh\n{script}\n")).unwrap();
-    std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
-    program
+/// A program standing in for the reader, removed with its directory once
+/// dropped.
+struct Impostor {
+    directory: PathBuf,
+}
+
+impl Impostor {
+    /// `script`, run by the shell. It is written by a shell of its own: had
+    /// this process opened it to write, a process another test starts
+    /// meanwhile could inherit that descriptor, and running the script
+    /// would then fail (« Text file busy »).
+    fn new(script: &str) -> Self {
+        let directory = std::env::temp_dir().join(format!("mimorya-extract-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let impostor = Self { directory };
+        let written = Command::new("/bin/sh")
+            .args([
+                "-c",
+                r#"printf '#!/bin/sh\n%s\n' "$1" > "$2" && chmod 700 "$2""#,
+            ])
+            .args(["sh", script])
+            .arg(impostor.program())
+            .status()
+            .unwrap();
+        assert!(written.success());
+        impostor
+    }
+
+    fn program(&self) -> PathBuf {
+        self.directory.join("mimorya-extract")
+    }
+
+    fn reader(&self) -> Extractor {
+        Extractor::new(self.program())
+    }
+}
+
+impl Drop for Impostor {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.directory);
+    }
 }
 
 #[tokio::test]
@@ -79,15 +113,55 @@ async fn a_file_the_reader_refuses_says_why() {
 }
 
 #[tokio::test]
+async fn the_reader_confines_itself_before_reading() {
+    // Its input left open, it waits to read, its limits set.
+    let mut reader = tokio::process::Command::new(PROGRAM)
+        .arg("text")
+        .env_clear()
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .kill_on_drop(true)
+        .spawn()
+        .unwrap();
+    let limits = Path::new("/proc")
+        .join(reader.id().unwrap().to_string())
+        .join("limits");
+    let expected = [
+        ("Max cpu time", "20"),
+        ("Max file size", "0"),
+        ("Max core file size", "0"),
+        ("Max open files", "16"),
+        ("Max address space", "1073741824"),
+    ];
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let read = std::fs::read_to_string(&limits).unwrap();
+        let set = expected.iter().all(|(name, value)| {
+            read.lines().any(|line| {
+                let Some(rest) = line.strip_prefix(name) else {
+                    return false;
+                };
+                let columns: Vec<&str> = rest.split_whitespace().take(2).collect();
+                columns == [*value, *value]
+            })
+        });
+        if set {
+            break;
+        }
+        assert!(Instant::now() < deadline, "limits not set:\n{read}");
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    reader.kill().await.unwrap();
+}
+
+#[tokio::test]
 async fn a_file_beyond_the_reader_s_memory_stops_that_process_only() {
     let reader = extractor();
     let bomb = inflating_pdf(1300 * 1024 * 1024);
     let stopped = reader.extract(DocumentKind::Pdf, bomb).await;
+    // Out of memory, the reader aborts: no answer, a failure.
     assert!(
-        matches!(
-            stopped,
-            Err(ExtractionFailure::Failed(_) | ExtractionFailure::Refused(Refusal::Unreadable))
-        ),
+        matches!(stopped, Err(ExtractionFailure::Failed(_))),
         "{stopped:?}"
     );
     // This process goes on reading.
@@ -100,8 +174,8 @@ async fn a_file_beyond_the_reader_s_memory_stops_that_process_only() {
 
 #[tokio::test]
 async fn a_reader_that_hangs_is_killed_at_its_time() {
-    let reader =
-        Extractor::with_timeout(impostor("exec /bin/sleep 30"), Duration::from_millis(300));
+    let impostor = Impostor::new("exec /bin/sleep 30");
+    let reader = Extractor::with_timeout(impostor.program(), Duration::from_millis(300));
     let started = Instant::now();
     let stopped = reader.extract(DocumentKind::Text, b"x".to_vec()).await;
     assert!(
@@ -113,14 +187,23 @@ async fn a_reader_that_hangs_is_killed_at_its_time() {
 
 #[tokio::test]
 async fn a_reader_that_dies_floods_or_answers_nonsense_is_refused() {
-    for script in [
+    let pages = vec!["\"p\""; MAX_PAGES + 1].join(",");
+    let beyond = format!("echo '{{\"outcome\":\"read\",\"pages\":[{pages}],\"paged\":true}}'");
+    let scripts = [
         "exit 3",
         "exec /usr/bin/yes",
         "echo nonsense",
         "echo '{\"outcome\":\"read\"}'",
-    ] {
-        let reader = Extractor::new(impostor(script));
-        let refused = reader.extract(DocumentKind::Text, b"x".to_vec()).await;
+        // A text no reader would answer: empty, or beyond the pages.
+        "echo '{\"outcome\":\"read\",\"pages\":[\" \"],\"paged\":false}'",
+        &beyond,
+    ];
+    for script in scripts {
+        let impostor = Impostor::new(script);
+        let refused = impostor
+            .reader()
+            .extract(DocumentKind::Text, b"x".to_vec())
+            .await;
         assert!(
             matches!(refused, Err(ExtractionFailure::Failed(_))),
             "{script}: {refused:?}"
@@ -138,9 +221,11 @@ async fn a_reader_that_dies_floods_or_answers_nonsense_is_refused() {
 async fn the_reader_sees_none_of_the_api_s_environment() {
     // Set by cargo for the tests, as a secret would be for the API.
     assert!(std::env::var("CARGO_PKG_NAME").is_ok());
-    let echo = "printf '{\"outcome\":\"read\",\"pages\":[\"%s\"],\"paged\":false}' \"${CARGO_PKG_NAME-vide}\"";
-    let reader = Extractor::new(impostor(echo));
-    let read = reader
+    let impostor = Impostor::new(
+        r#"printf '{"outcome":"read","pages":["%s"],"paged":false}' "${CARGO_PKG_NAME-vide}""#,
+    );
+    let read = impostor
+        .reader()
         .extract(DocumentKind::Text, b"x".to_vec())
         .await
         .unwrap();
@@ -149,7 +234,8 @@ async fn the_reader_sees_none_of_the_api_s_environment() {
 
 #[tokio::test]
 async fn no_more_files_than_allowed_are_read_at_once() {
-    let reader = Extractor::with_timeout(impostor("exec /bin/sleep 30"), Duration::from_secs(2));
+    let impostor = Impostor::new("exec /bin/sleep 30");
+    let reader = Extractor::with_timeout(impostor.program(), Duration::from_secs(2));
     let mut reading = Vec::new();
     for _ in 0..CONCURRENT_EXTRACTIONS {
         let reader = reader.clone();

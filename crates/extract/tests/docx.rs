@@ -1,11 +1,14 @@
 //! Reading a Word document (ADR-095): its paragraphs, titles marked for the
-//! passages; an archive too large once inflated, of too many entries or
-//! without a body refused; no entity expanded but XML's own.
+//! passages; an archive inflating beyond its ratio or its bound, of too
+//! many entries, without a body or encrypted, refused; no entity expanded
+//! but XML's own, nothing read outside a text run.
 
-use mimorya_core::documents::limits::{MAX_ARCHIVE_ENTRIES, MAX_COMPRESSION_RATIO};
+use mimorya_core::documents::limits::{
+    MAX_ARCHIVE_ENTRIES, MAX_ARCHIVE_PART_BYTES, MAX_COMPRESSION_RATIO,
+};
 use mimorya_core::documents::{DocumentKind, Refusal};
 use mimorya_extract::read;
-use mimorya_extract::testing::{archive, body, docx};
+use mimorya_extract::testing::{archive, body, docx, encrypted_docx};
 
 fn text(file: &[u8]) -> String {
     read(DocumentKind::Docx, file).unwrap().pages.concat()
@@ -77,4 +80,40 @@ fn an_archive_of_too_many_entries_or_without_a_body_is_refused() {
     );
     let empty = docx("<w:p><w:r><w:t>  </w:t></w:r></w:p>");
     assert_eq!(read(DocumentKind::Docx, &empty), Err(Refusal::NoText));
+}
+
+#[test]
+fn an_empty_text_run_captures_nothing_after_it() {
+    let file = docx(
+        "<w:p><w:r><w:t/><w:delText>texte supprimé</w:delText>\
+         <w:instrText> PAGE </w:instrText><w:t>gardé</w:t></w:r></w:p>",
+    );
+    assert_eq!(text(&file), "gardé");
+}
+
+#[test]
+fn an_encrypted_body_is_refused_as_such() {
+    assert_eq!(
+        read(DocumentKind::Docx, &encrypted_docx()),
+        Err(Refusal::Encrypted)
+    );
+}
+
+#[test]
+fn a_body_beyond_its_bound_is_refused_whatever_its_ratio() {
+    // Letters a pseudo-random sequence draws compress little: the ratio
+    // holds, the absolute bound stops it.
+    let mut state: u64 = 0x2545_F491_4F6C_DD1D;
+    let letters: String = (0..MAX_ARCHIVE_PART_BYTES + 1024)
+        .map(|_| {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            char::from(b'a' + (state % 26) as u8)
+        })
+        .collect();
+    let content = body(&format!("<w:p><w:r><w:t>{letters}</w:t></w:r></w:p>"));
+    let file = archive(&[("word/document.xml", content.as_bytes())]);
+    assert!((file.len() as u64) * MAX_COMPRESSION_RATIO > content.len() as u64);
+    assert_eq!(read(DocumentKind::Docx, &file), Err(Refusal::Unreadable));
 }

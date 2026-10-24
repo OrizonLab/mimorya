@@ -15,6 +15,7 @@ use mimorya_core::documents::{Extracted, Refusal};
 use quick_xml::Reader;
 use quick_xml::events::{BytesStart, Event};
 use zip::ZipArchive;
+use zip::result::ZipError;
 
 use crate::clean;
 
@@ -34,14 +35,14 @@ fn body(bytes: &[u8]) -> Result<Vec<u8>, Refusal> {
     }
     let entry = match archive.by_name(BODY) {
         Ok(entry) => entry,
-        Err(zip::result::ZipError::UnsupportedArchive(_)) => return Err(Refusal::Encrypted),
+        Err(ZipError::UnsupportedArchive(reason)) if reason == ZipError::PASSWORD_REQUIRED => {
+            return Err(Refusal::Encrypted);
+        }
         Err(_) => return Err(Refusal::Unreadable),
     };
-    if entry.encrypted() {
-        return Err(Refusal::Encrypted);
-    }
-    let bound = entry
-        .compressed_size()
+    // The compressed size the archive declares, never beyond the file's.
+    let compressed = entry.compressed_size().min(bytes.len() as u64);
+    let bound = compressed
         .max(1)
         .saturating_mul(MAX_COMPRESSION_RATIO)
         .min(MAX_ARCHIVE_PART_BYTES);
@@ -66,8 +67,9 @@ fn paragraphs(xml: &[u8]) -> Result<String, Refusal> {
     let mut in_text = false;
     loop {
         match reader.read_event().map_err(|_| Refusal::Unreadable)? {
+            // An empty text run (`<w:t/>`) holds nothing, and closes nothing.
+            Event::Start(element) if element.local_name().as_ref() == "t" => in_text = true,
             Event::Start(element) | Event::Empty(element) => match element.local_name().as_ref() {
-                "t" => in_text = true,
                 "tab" => paragraph.push(' '),
                 "br" | "cr" => paragraph.push('\n'),
                 "pStyle" => level = heading_level(&element),
