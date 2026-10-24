@@ -46,7 +46,9 @@ pub async fn unnotified_mission_ends(
 }
 
 /// The mission `id`, if it is over since `since` and still not told of,
-/// its company and its author's account active.
+/// its company and its author's account active. Over as `MissionStatus::of`
+/// (api contract) has it, and `system_unnotified_mission_ends` too: one
+/// changing, the others follow.
 pub async fn mission_end_notice(
     conn: &mut PgConnection,
     id: Uuid,

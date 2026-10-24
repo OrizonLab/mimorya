@@ -4127,6 +4127,9 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     dix minutes après la pause) et `mission_end_notices.rs` (mission menée à bien, une
     fois, réponse vérifiée ou non relue ; inachevée par ses limites ou par le balayage ;
     rien pour une mission arrêtée par son auteur, terminée depuis plus d'un jour ou dont
-    l'auteur est désactivé ; message refusé par le relais tracé et non renvoyé ;
-    missions de chaque entreprise lues dans la seule entreprise), les textes dans
-    `services/missions/end_notice/mail.rs` et `approval_notice/author_mail.rs`.
+    l'auteur est désactivé ; rien sans relais ni dans un processus qui n'exécute pas
+    les runs, ni pendant qu'un autre tient la passe, puis un seul avis pour deux
+    workers à la fois ; message refusé par le relais tracé et non renvoyé ; missions
+    de chaque entreprise lues dans la seule entreprise), le statut annoncé selon la
+    revue dans `services/missions/end_notice/mod.rs`, les textes dans
+    `end_notice/mail.rs` et `approval_notice/author_mail.rs`.

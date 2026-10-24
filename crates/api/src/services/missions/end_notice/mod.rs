@@ -134,3 +134,48 @@ fn end_of(notice: &MissionEndNotice) -> anyhow::Result<End> {
     };
     Ok(End::Done(review))
 }
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+    use uuid::Uuid;
+
+    use super::*;
+
+    fn ended(status: &str, verification: Option<serde_json::Value>) -> MissionEndNotice {
+        MissionEndNotice {
+            mission_id: Uuid::nil(),
+            title: "Suivi de la semaine".into(),
+            status: status.into(),
+            verification,
+            owner_user_id: Uuid::nil(),
+            owner_email: "marc.lefevre@neo-maintenance.example".into(),
+            owner_name: "Marc Lefèvre".into(),
+            company: "Néo Maintenance".into(),
+        }
+    }
+
+    fn review(passed: bool, judged: bool) -> Option<serde_json::Value> {
+        Some(json!({ "passed": passed, "issues": [], "judged": judged }))
+    }
+
+    #[test]
+    fn a_mission_done_is_told_verified_only_when_a_reviewer_judged_it() {
+        let told = |verification| end_of(&ended("done", verification)).unwrap();
+        assert_eq!(told(review(true, true)), End::Done(Review::Verified));
+        assert_eq!(told(review(false, true)), End::Done(Review::Unverified));
+        assert_eq!(told(review(false, false)), End::Done(Review::Unverified));
+        assert_eq!(told(review(true, false)), End::Done(Review::Unjudged));
+        assert_eq!(told(None), End::Done(Review::Unjudged));
+    }
+
+    #[test]
+    fn a_mission_failed_or_whose_last_stage_failed_is_told_unfinished() {
+        for status in ["failed", "in_progress"] {
+            let end = end_of(&ended(status, review(true, true))).unwrap();
+            assert_eq!(end, End::Unfinished);
+            assert_eq!(end.status(), "failed");
+        }
+        assert_eq!(End::Done(Review::Verified).status(), "done");
+    }
+}

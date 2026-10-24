@@ -1,10 +1,11 @@
 //! Telling a mission's author that it is over (ADR-091), by the periodic
 //! pass: done, saying how its answer was reviewed, or unfinished, whichever
 //! path ended it (past its limits, the stale-run sweep); once, audited,
-//! never its answer. Not when its author stopped it, nor while their
-//! account is disabled, nor a day after its end; a message the relay
-//! refuses is audited and not sent again. Each company's missions are read
-//! in it alone.
+//! never its answer, by one process that executes runs at a time, with a
+//! relay. Not when its author stopped it, nor while their account is
+//! disabled, nor a day after its end; a message the relay refuses is
+//! audited and not sent again. Each company's missions are read in it
+//! alone.
 
 mod support;
 
@@ -12,11 +13,12 @@ use axum::http::StatusCode;
 use chrono::{Duration, Utc};
 use mimorya_agent::testing::ScriptedStep;
 use mimorya_api::plugins::maintenance::sweep_stale_runs;
+use mimorya_api::services::missions::{TOLD_WITHIN, tell_ended_missions};
 use mimorya_core::demo::{tenant, user};
 use mimorya_db::repositories::mission_end_notices::{mission_end_notice, unnotified_mission_ends};
 use mimorya_db::testing::{OTHER_TENANT_ID, OTHER_USER_ID};
 use serde_json::{Value, json};
-use support::mission_notices::{end_notices, ended_ago, tell_ends, told};
+use support::mission_notices::{end_notices, end_notified, ended_ago, tell_ends, told};
 use support::missions::{
     approving_review, entrust, executing, limit, read, spending_stage, stages, stop,
 };
@@ -90,6 +92,53 @@ async fn an_answer_no_reviewer_judged_is_not_told_as_verified() {
         "Sa réponse finale n’a pas pu être relue au regard de ses critères de réussite."
     ));
     assert!(!sent[0].text.contains("a été vérifiée"));
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn one_process_that_executes_runs_with_a_relay_tells_of_it_once() {
+    let quiet = TestApi::start().await;
+    executing(&quiet);
+    let marc = quiet.sign_in(user::MARC).await;
+    let title = "Mission annoncée une seule fois";
+    let id = done(&quiet, &marc, title, approving_review()).await;
+    // Without a relay: nothing sent, nothing recorded, so that it is told
+    // of once one is configured.
+    assert_eq!(tell_ended_missions(&quiet.app.services).await.unwrap(), 0);
+    assert_eq!(end_notified(id).await, None);
+
+    let (one, two) = (
+        TestApi::start_with_mailer().await,
+        TestApi::start_with_mailer().await,
+    );
+    // A process that executes no runs tells of nothing.
+    assert_eq!(tell_ended_missions(&one.app.services).await.unwrap(), 0);
+    assert!(one.mail.sent().is_empty());
+    for worker in [&one, &two] {
+        worker.app.services.runs.start_executing().unwrap();
+    }
+    // Under way elsewhere: skipped, nobody told.
+    let held = one
+        .app
+        .services
+        .db
+        .try_sweep_lock("mission-end-notices")
+        .await;
+    let held = held.unwrap().expect("free");
+    assert_eq!(tell_ended_missions(&two.app.services).await.unwrap(), 0);
+    assert!(two.mail.sent().is_empty());
+    held.release().await;
+    assert_eq!(end_notified(id).await, None);
+
+    let (first, second) = tokio::join!(
+        tell_ended_missions(&one.app.services),
+        tell_ended_missions(&two.app.services)
+    );
+    first.unwrap();
+    second.unwrap();
+    assert_eq!(told(&one, title).len() + told(&two, title).len(), 1);
+    assert_eq!(end_notices(id).await, audited("done"));
+    assert!(end_notified(id).await.is_some());
 }
 
 #[tokio::test]
@@ -171,7 +220,7 @@ async fn nobody_is_told_of_a_mission_stopped_long_over_or_whose_author_is_disabl
         assert!(told(&api, title).is_empty(), "{title}");
     }
     // Read in her company, as it would be once listed: not to tell of.
-    let since = Utc::now() - Duration::hours(24);
+    let since = Utc::now() - TOLD_WITHIN;
     let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
     assert!(
         mission_end_notice(&mut tx, hers, since)
@@ -238,7 +287,7 @@ async fn each_company_s_missions_are_read_in_it_alone() {
     let api = TestApi::start().await;
     let foreign = foreign_mission_done().await;
     let db = &api.app.services.db;
-    let since = Utc::now() - Duration::hours(24);
+    let since = Utc::now() - TOLD_WITHIN;
 
     let ended = unnotified_mission_ends(db.pool(), since).await.unwrap();
     let listed = ended.iter().find(|e| e.mission_id == foreign).unwrap();

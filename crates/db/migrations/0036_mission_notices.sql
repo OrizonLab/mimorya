@@ -49,7 +49,9 @@ CREATE INDEX missions_end_unnotified_idx ON missions (status, finished_at)
 -- Every company's missions over since `p_since`, never told to their
 -- author, the company and the author's account active: each is then told
 -- of in its own company. A mission under way whose last stage failed or
--- was cancelled is over (ADR-089), since that stage ended.
+-- was cancelled is over (ADR-089), since that stage ended: the rule of
+-- `MissionStatus::of` (crates/api/src/contract/missions.rs), read again in
+-- the company by `mission_end_notice` (mission_end_notices.rs).
 CREATE FUNCTION system_unnotified_mission_ends(p_since timestamptz)
 RETURNS TABLE (tenant_id uuid, mission_id uuid)
 LANGUAGE sql

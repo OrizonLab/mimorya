@@ -42,28 +42,44 @@ impl ApprovalNotifier {
     /// Tells authors of the requests a stop of the service kept from them,
     /// their run paused by `lost_before`, not expired by `now`, whatever
     /// their deadline (authors have no reminder); how many. With the
-    /// managers' catch-up.
+    /// managers' catch-up. The scheduled runs and the missions' stages are
+    /// listed apart: one list failing leaves the other.
     pub(super) async fn catch_up_authors(
         &self,
         mailer: &dyn Mailer,
         now: DateTime<Utc>,
         lost_before: DateTime<Utc>,
     ) -> anyhow::Result<usize> {
+        let lists = [
+            unnotified_scheduled_runs(self.db.pool(), now).await,
+            unnotified_mission_runs(self.db.pool(), now).await,
+        ];
         let mut lost = 0;
-        let mut runs = unnotified_scheduled_runs(self.db.pool(), now).await?;
-        runs.extend(unnotified_mission_runs(self.db.pool(), now).await?);
-        for run in runs {
-            // One run failing leaves the others to catch up.
-            match self.catch_up_author(mailer, run, now, lost_before).await {
-                Ok(count) => lost += count,
-                Err(error) => tracing::warn!(
-                    run_id = %run.run_id,
-                    error = format!("{error:#}"),
-                    "Lost notice to a run's author not caught up"
-                ),
+        let mut unread = None;
+        for list in lists {
+            let runs = match list {
+                Ok(runs) => runs,
+                Err(error) => {
+                    unread = Some(error);
+                    continue;
+                }
+            };
+            for run in runs {
+                // One run failing leaves the others to catch up.
+                match self.catch_up_author(mailer, run, now, lost_before).await {
+                    Ok(count) => lost += count,
+                    Err(error) => tracing::warn!(
+                        run_id = %run.run_id,
+                        error = format!("{error:#}"),
+                        "Lost notice to a run's author not caught up"
+                    ),
+                }
             }
         }
-        Ok(lost)
+        match unread {
+            Some(error) => Err(error.into()),
+            None => Ok(lost),
+        }
     }
 
     async fn catch_up_author(

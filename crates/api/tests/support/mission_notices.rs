@@ -3,7 +3,7 @@
 
 use mimorya_agent::testing::{ScriptedStep, call};
 use mimorya_api::mail::Mail;
-use mimorya_api::services::missions::tell_ended_missions;
+use mimorya_api::services::missions::{MISSION_NOTIFIED, tell_ended_missions};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
@@ -61,16 +61,29 @@ pub async fn tell_ends(api: &TestApi) {
 pub async fn end_notices(mission: Uuid) -> Vec<(String, Value)> {
     let owner = sqlx::PgPool::connect(owner_url()).await.unwrap();
     let notices = sqlx::query_as(
-        "select outcome, metadata from audit_log where action = 'mission.notified' \
+        "select outcome, metadata from audit_log where action = $2 \
          and resource_type = 'mission' and resource_id = $1 and actor_type = 'system' \
          order by id",
     )
     .bind(mission.to_string())
+    .bind(MISSION_NOTIFIED)
     .fetch_all(&owner)
     .await
     .unwrap();
     owner.close().await;
     notices
+}
+
+/// When the mission's author was told of its end, if they were.
+pub async fn end_notified(mission: Uuid) -> Option<chrono::DateTime<chrono::Utc>> {
+    let owner = sqlx::PgPool::connect(owner_url()).await.unwrap();
+    let at = sqlx::query_scalar("select end_notified_at from missions where id = $1")
+        .bind(mission)
+        .fetch_one(&owner)
+        .await
+        .unwrap();
+    owner.close().await;
+    at
 }
 
 /// Moves the mission's end `hours` back.
