@@ -4133,3 +4133,46 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     de chaque entreprise lues dans la seule entreprise), le statut annoncé selon la
     revue dans `services/missions/end_notice/mod.rs`, les textes dans
     `end_notice/mail.rs` et `approval_notice/author_mail.rs`.
+
+## ADR-092 — Un verdict de relecture garde ses premiers manquements
+
+- **Date** : 2026-10-24 · **Statut** : acceptée · complète ADR-089 et ADR-090
+- **Contexte** : le verdict du modèle relecteur (`{ pass, issues[] }`, AGENT_ENGINE §6)
+  était écarté dès qu'il comptait plus de dix manquements. La réponse passait alors
+  comme non jugée, donc acceptée : une réponse très insuffisante passait plus
+  facilement qu'une réponse presque juste. Depuis ADR-090, une telle réponse est dite
+  « Critères non contrôlés », ce qui est honnête, mais reste un échec manqué
+  (constat noté par l'audit d'ADR-090).
+- **Décision** :
+  - un verdict qui compte beaucoup de manquements est **retenu** : la réponse échoue
+    et passe par la correction bornée habituelle ;
+  - le verdict garde ses **dix premiers manquements**, chacun coupé à 500 caractères,
+    et une ligne compte les autres (« Et N autres manquements signalés par le contrôle
+    qualité. ») : ce que le relecteur écrit est montré avec la réponse et renvoyé au
+    modèle, sa taille reste donc bornée ;
+  - chaque manquement est **nettoyé** avant d'être répété : sur une ligne, sans
+    caractères invisibles, incapable d'ouvrir ou de fermer une enveloppe
+    (`neutralise_envelopes`), comme une leçon (ADR-076). Le relecteur lit la réponse,
+    qui peut citer un résultat d'outil, et ce qu'il écrit revient à l'agent dans un
+    message de la plateforme ; un manquement vide une fois nettoyé est ignoré ;
+  - n'est plus écarté qu'un verdict qui n'en est pas un (pas de `pass` booléen,
+    manquements qui ne sont pas des textes) : la réponse reste alors non jugée, comme
+    quand le relecteur échoue.
+- **Alternatives écartées** :
+  - garder l'écart et seulement l'afficher : un relecteur qui trouve beaucoup à redire
+    serait toujours ignoré ;
+  - transmettre tous les manquements : un relecteur peut en écrire sans fin, et ils
+    voyagent avec la réponse et dans la conversation du modèle ;
+  - faire échouer la réponse sans détailler : l'agent ne saurait pas quoi corriger.
+- **Conséquences** :
+  - une réponse jugée très insuffisante échoue et dit pourquoi, au lieu de passer non
+    jugée ;
+  - le panneau d'activité, qui compte les lignes du rapport, annonce alors onze points
+    pendant la correction : les dix premiers manquements et la ligne qui compte les
+    autres, comme les affiche la réponse ;
+  - tests : `crates/agent/src/runtime/verification.rs` (dix premiers gardés, les autres
+    comptés au singulier comme au pluriel, manquement trop long coupé, enveloppe
+    forgée, saut de ligne et caractère invisible neutralisés, ce qui n'est pas un
+    verdict écarté) et `crates/agent/tests/runtime_verification.rs` (une relecture
+    de quinze manquements fait échouer la réponse, la correction reçoit les dix premiers
+    et le compte des autres, la réponse les affiche).
