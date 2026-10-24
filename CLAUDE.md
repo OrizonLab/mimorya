@@ -36,7 +36,9 @@ Repères à l'intérieur des crates :
 - `db/migrations/` (SQL numéroté, source de vérité du schéma),
   `db/src/repositories/` (un fichier par entité ; la mémoire : `memory.rs`, recherche
   hybride `memory_search.rs`, vecteurs `memory_embeddings.rs`, ADR-074),
-  `db/src/notifications.rs` (canal PostgreSQL des événements des runs, ADR-084), `db/src/seed/` (organisation,
+  `db/src/notifications.rs` (canaux PostgreSQL des événements des runs, de la file et des
+  invalidations, ADR-084, ADR-085), `db/src/sweep_lock.rs` (verrou d'un balayage qui ne
+  tourne que dans un processus à la fois, ADR-086), `db/src/seed/` (organisation,
   connecteurs, mémoires, compétences de démonstration), `db/src/testing.rs`.
 - `agent/src/llm/<fournisseur>/`, `agent/src/llm/embedding/` (modèles d'embeddings de la
   mémoire sémantique, ADR-074), `agent/src/runtime/` (boucle, appels modèle, appels
@@ -64,13 +66,14 @@ Repères à l'intérieur des crates :
   (`absences.rs`, ADR-078), organisation, habilitations, compétences, sous verrou par
   entreprise), `api/src/services/account.rs` (son propre compte),
   `api/src/services/runs/` (tour de conversation, décisions, contexte, exécution,
-  ports PostgreSQL, résultat, reprise au démarrage, ADR-053, circuit des validations,
-  avis au responsable (`approval_notice/`, rattrapé au démarrage, ADR-070 ; à l'auteur
+  ports PostgreSQL, résultat, reprise des runs dont l'exécuteur s'est arrêté et ce
+  processus exécute-t-il des runs (`recovery/`), ADR-053, ADR-086, circuit des validations,
+  avis au responsable (`approval_notice/`, rattrapé chaque minute s'il est perdu, ADR-070, ADR-086 ; à l'auteur
   d'une tâche planifiée dont le run attend sa validation, `author.rs`, ADR-082), expiration et
   relance des demandes, ADR-059 à ADR-062, absence et remplaçant
   (`approval_delegation.rs`, ADR-071 à ADR-073), leçon proposée en fin de run
   (`lesson_capture.rs`, ADR-076), bail de l'exécuteur sur chaque run (`leases.rs`,
-  ADR-083), file d'attente des runs d'un processus `api` (`queue.rs`, ADR-085)),
+  ADR-083) et garde d'écriture d'une exécution qui l'a perdu (`fence.rs`, ADR-086), file d'attente des runs d'un processus `api` (`queue.rs`, ADR-085)),
   `api/src/services/scheduled_tasks/` (tâches planifiées : ce qu'elles demandent, celles
   de chacun, leur lancement, ADR-080), `api/src/services/event_bus/` (événements des runs
   aux abonnés du processus et, par PostgreSQL, des autres : avis, relais, fragments de

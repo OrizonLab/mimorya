@@ -1,9 +1,9 @@
-//! Firing the scheduled tasks due (ADR-080), every minute, in the process
-//! that executes runs only, once it has taken up the runs a stop interrupted
-//! (ADR-053): a run started meanwhile would be taken for one of them. A
-//! process that does not hold the run executor's lock, about to refuse to
-//! start, fires nothing. On shutdown, the pass under way stops between two
-//! tasks: the one being fired is not cut short.
+//! Firing the scheduled tasks due (ADR-080), every minute, in each process
+//! that executes runs, once it has taken up the runs whose executor stopped
+//! (ADR-053, ADR-086); each occurrence fires once, whichever process claims
+//! it first. A process that has not started executing runs fires nothing.
+//! On shutdown, the pass under way stops between two tasks: the one being
+//! fired is not cut short.
 
 use std::time::Duration;
 

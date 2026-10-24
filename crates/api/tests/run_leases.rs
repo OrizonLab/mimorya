@@ -95,7 +95,7 @@ async fn a_paused_run_belongs_to_nobody_until_set_going_again_here() {
         .unwrap();
     due_in(&api, tenant::ID, approval, -1).await;
     // Expired by the process that executes runs (ADR-061).
-    api.app.services.runs.claim_execution().await.unwrap();
+    api.app.services.runs.start_executing().unwrap();
     assert_eq!(api.app.services.runs.expire_overdue().await.unwrap(), 1);
     api.idle().await;
     assert_eq!(

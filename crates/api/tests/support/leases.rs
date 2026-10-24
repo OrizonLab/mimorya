@@ -84,6 +84,38 @@ pub fn expire_running_lease_of(user_id: Uuid) {
     })
 }
 
+/// Hands the lease of the user's running run to `executor`, as another
+/// executor taking it up would, from a model step.
+pub fn hand_running_lease_to(user_id: Uuid, executor: Uuid) {
+    blocking(move |owner| async move {
+        sqlx::query(
+            "update agent_runs set lease_owner = $2, \
+             lease_expires_at = clock_timestamp() + interval '1 minute' \
+             where on_behalf_of_user_id = $1 and status = 'running'",
+        )
+        .bind(user_id)
+        .bind(executor)
+        .execute(&owner)
+        .await
+        .unwrap();
+    })
+}
+
+/// Pauses the user's running run, as another executor would have once it
+/// took the run up: its lease goes with its running.
+pub fn pause_running_run_of(user_id: Uuid) {
+    blocking(move |owner| async move {
+        sqlx::query(
+            "update agent_runs set status = 'awaiting_approval' \
+             where on_behalf_of_user_id = $1 and status = 'running'",
+        )
+        .bind(user_id)
+        .execute(&owner)
+        .await
+        .unwrap();
+    })
+}
+
 fn blocking<T, F, Fut>(query: F) -> T
 where
     T: Send + 'static,

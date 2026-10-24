@@ -12,6 +12,7 @@ mod deliverables;
 mod events;
 mod executor;
 mod expiry;
+mod fence;
 mod knowledge_ports;
 mod leases;
 mod lesson_capture;
@@ -34,8 +35,6 @@ pub use executor::RunExecutor;
 pub use leases::LeaseTiming;
 pub use lesson_capture::LessonCapture;
 pub use queue::{QUEUED_REQUEST_NOT_FOUND, QUEUED_TOO_LONG};
-pub use recovery::{
-    INTERRUPTED_TOO_LONG, LOCK_HELD_ELSEWHERE, NOT_AN_EXECUTOR, STOPPED_BEFORE_ITS_FIRST_STEP,
-};
+pub use recovery::{INTERRUPTED_TOO_LONG, NOT_AN_EXECUTOR, STOPPED_BEFORE_ITS_FIRST_STEP};
 pub use run_access::{AGENT_USE_WITHDRAWN, COMPANY_SUSPENDED};
 pub use service::{DecisionResult, RunService, StartedTurn};

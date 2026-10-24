@@ -2,7 +2,9 @@
 //! refuses (invalid, too long) is not asked again, even a whole batch too
 //! long, a batch refused whole as invalid is the model's failure, another model indexes anew, going back to words
 //! wipes the vectors, even mid-pass, a pass sends nothing once the choice
-//! changed, and a memory written is indexed in the background.
+//! changed, and a memory written is indexed in the background. Two workers
+//! indexing at once embed each memory once, a pass waiting for the one
+//! under way elsewhere (ADR-086).
 
 mod support;
 
@@ -252,6 +254,50 @@ async fn a_memory_written_is_indexed_in_the_background() {
         indexed = vector_of(&api, vans).await;
     }
     assert_eq!(indexed, (Some(MODEL.into()), true));
+    forget(&lucas, vans).await;
+    back_to_words(&paul).await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn two_workers_indexing_at_once_embed_each_memory_once() {
+    let one = start().await;
+    let two = start().await;
+    let paul = one.sign_in(user::PAUL).await;
+    let lucas = one.sign_in(user::LUCAS).await;
+    choose(&paul, MODEL, 0.15).await;
+    let vans = remember(&lucas, VANS.0, VANS.1).await;
+    let sent = || one.embedder.embedded().len() + two.embedder.embedded().len();
+    let before = sent();
+
+    // One pass waits for the other, then finds nothing left (ADR-086).
+    let (first, second) = tokio::join!(index(&one), index(&two));
+    let shown = paul.get("/admin/embedding").await.json();
+    let memories = shown["settings"]["memories"].as_u64().unwrap() as usize;
+    assert_eq!(first + second, memories);
+    assert_eq!(sent() - before, memories);
+    assert_eq!(vector_of(&one, vans).await, (Some(MODEL.into()), true));
+
+    // Under way elsewhere: a pass sends nothing meanwhile, then embeds.
+    let held = one.app.services.db.try_sweep_lock("memory-indexing").await;
+    let held = held.unwrap().expect("free");
+    let note = remember(
+        &lucas,
+        "Note du lundi",
+        "Les clés du dépôt sont à l'accueil.",
+    )
+    .await;
+    let at_release = async {
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        let sent_meanwhile = sent();
+        held.release().await;
+        sent_meanwhile
+    };
+    let (embedded, sent_meanwhile) = tokio::join!(index(&two), at_release);
+    assert_eq!(sent_meanwhile, before + memories);
+    assert_eq!(embedded, 1);
+    assert_eq!(vector_of(&two, note).await, (Some(MODEL.into()), true));
+    forget(&lucas, note).await;
     forget(&lucas, vans).await;
     back_to_words(&paul).await;
 }

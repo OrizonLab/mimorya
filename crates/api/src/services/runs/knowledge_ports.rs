@@ -37,7 +37,7 @@ impl MemoryStore for DbPorts {
     }
 
     async fn create(&self, input: NewMemory) -> anyhow::Result<Uuid> {
-        let mut tx = self.tx().await?;
+        let mut tx = self.held_tx().await?;
         let id = memory::create_memory(
             &mut tx,
             memory::NewMemory {

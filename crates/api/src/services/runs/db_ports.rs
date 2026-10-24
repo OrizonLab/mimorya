@@ -1,9 +1,15 @@
 //! PostgreSQL-backed implementation of the engine ports for one run. Every
-//! operation runs in its own tenant-bound transaction (RLS applies). Memory
-//! and skills live in `knowledge_ports.rs`, deliverables in `deliverables.rs`.
+//! operation runs in its own tenant-bound transaction (RLS applies); one
+//! that changes the run (journal, saved step, requests, outcome) holds the
+//! execution's lease first (`fence.rs`, ADR-086), until the run has ended.
+//! The audit, the usage and the calls made (recorded once a tool returned)
+//! are recorded whatever: they say what happened, even should the lease
+//! have gone elsewhere while a tool worked.
+//! Memory and skills live in `knowledge_ports.rs`, deliverables in
+//! `deliverables.rs`.
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 
 use async_trait::async_trait;
 use chrono::Utc;
@@ -20,7 +26,9 @@ use uuid::Uuid;
 use super::approval_notice::ApprovalNotifier;
 use super::approval_routing::{NOBODY_VALIDATES, Route, route};
 use super::deliverables::DbDeliverables;
-use super::events::record_run_event;
+use super::events::append_in;
+use super::executor::RunExecutor;
+use super::fence::LeaseFence;
 use super::lesson_capture::LessonCapture;
 use super::outcome::persist_outcome;
 use crate::services::access::AccessService;
@@ -59,26 +67,27 @@ pub struct DbPorts {
     pub(super) embeddings: Arc<EmbeddingService>,
     /// Draws a lesson from the run once completed (ADR-076).
     lessons: LessonCapture,
+    /// The execution's lease on the run, held by each change (ADR-086).
+    fence: LeaseFence,
+    /// Whether this execution ended the run: what follows (its last event)
+    /// no longer runs under a lease.
+    ended: Arc<AtomicBool>,
 }
 
-pub fn engine_ports(
-    db: Database,
-    scope: RunScope,
-    bus: Arc<RunEventBus>,
-    access: Arc<AccessService>,
-    notifier: ApprovalNotifier,
-    embeddings: Arc<EmbeddingService>,
-    lessons: LessonCapture,
-) -> EnginePorts {
+/// The ports of `scope`'s run, executed by `executor` under `fence`.
+pub fn engine_ports(executor: &RunExecutor, scope: RunScope, fence: LeaseFence) -> EnginePorts {
+    let db = executor.db.clone();
     let ports = Arc::new(DbPorts {
         db: db.clone(),
         scope,
-        bus,
+        bus: executor.bus.clone(),
         last_event: Arc::new(AtomicI32::new(NO_EVENT)),
-        access,
-        notifier,
-        embeddings,
-        lessons,
+        access: executor.access.clone(),
+        notifier: executor.notifier.clone(),
+        embeddings: executor.embeddings.clone(),
+        lessons: executor.lessons.clone(),
+        fence: fence.clone(),
+        ended: Arc::new(AtomicBool::new(false)),
     });
     EnginePorts {
         events: ports.clone(),
@@ -89,13 +98,24 @@ pub fn engine_ports(
         memory: ports.clone(),
         skills: ports.clone(),
         runs: ports,
-        deliverables: Arc::new(DbDeliverables::new(db, scope)),
+        deliverables: Arc::new(DbDeliverables::new(db, scope, fence)),
     }
 }
 
 impl DbPorts {
+    /// A transaction to read in, or to record what happened.
     pub(super) async fn tx(&self) -> anyhow::Result<TenantTx> {
         Ok(self.db.begin(self.scope.tenant_id).await?)
+    }
+
+    /// A transaction to change the run in, under the execution's lease
+    /// while the run has not ended.
+    pub(super) async fn held_tx(&self) -> anyhow::Result<TenantTx> {
+        let mut tx = self.tx().await?;
+        if !self.ended.load(Ordering::Relaxed) {
+            self.fence.hold_in(&mut tx, self.scope.run_id).await?;
+        }
+        Ok(tx)
     }
 }
 
@@ -106,13 +126,22 @@ fn saturating_i32(value: u64) -> i32 {
 #[async_trait]
 impl RunEventSink for DbPorts {
     async fn emit(&self, event: RunEvent) -> anyhow::Result<()> {
-        let (tenant_id, run_id) = (self.scope.tenant_id, self.scope.run_id);
-        let seq = record_run_event(&self.db, &self.bus, tenant_id, run_id, event).await?;
-        self.last_event.fetch_max(seq, Ordering::Relaxed);
+        let run_id = self.scope.run_id;
+        let mut tx = self.held_tx().await?;
+        let recorded = append_in(&mut tx, &self.bus, run_id, event).await?;
+        tx.commit().await?;
+        if let Some(seq) = recorded.seq {
+            self.last_event.fetch_max(seq, Ordering::Relaxed);
+        }
+        self.bus.publish(run_id, recorded);
         Ok(())
     }
 
     fn publish_delta(&self, text: &str) {
+        // An execution that lost its lease no longer speaks for the run.
+        if !self.fence.holds() {
+            return;
+        }
         let last = self.last_event.load(Ordering::Relaxed);
         let after = (last != NO_EVENT).then_some(last);
         self.bus.publish_delta(self.scope.run_id, after, text);
@@ -139,6 +168,7 @@ impl AuditSink for DbPorts {
 #[async_trait]
 impl ToolInvocationLog for DbPorts {
     async fn record(&self, entry: ToolInvocationRecord) -> anyhow::Result<()> {
+        // What the call did, whoever holds the run now.
         let mut tx = self.tx().await?;
         tool_invocations::record_tool_invocation(
             &mut tx,
@@ -173,7 +203,7 @@ impl ApprovalStore for DbPorts {
             Route::Manager(manager) => ApprovalRouting::Manager(manager),
             Route::Nobody => return Ok(ApprovalPlacement::Unroutable(NOBODY_VALIDATES.into())),
         };
-        let mut tx = self.tx().await?;
+        let mut tx = self.held_tx().await?;
         let row = approvals::create_approval(
             &mut tx,
             approvals::NewApproval {
@@ -222,7 +252,7 @@ impl UsageSink for DbPorts {
 #[async_trait]
 impl RunStore for DbPorts {
     async fn checkpoint(&self, state: &RunCheckpoint) -> anyhow::Result<()> {
-        let mut tx = self.tx().await?;
+        let mut tx = self.held_tx().await?;
         runs::update_run(
             &mut tx,
             self.scope.run_id,
@@ -237,7 +267,9 @@ impl RunStore for DbPorts {
     }
 
     async fn finish(&self, outcome: &RunOutcome) -> anyhow::Result<()> {
-        persist_outcome(&self.db, self.scope, outcome).await?;
+        let tx = self.held_tx().await?;
+        persist_outcome(tx, self.scope, outcome).await?;
+        self.ended.store(true, Ordering::Relaxed);
         self.lessons.after_run(self.scope, outcome);
         // Paused, and so decidable: the managers of its requests are told,
         // once per pause (ADR-060).

@@ -83,6 +83,32 @@ pub async fn due_in(api: &TestApi, tenant_id: Uuid, approval: Uuid, minutes: i64
     tx.commit().await.unwrap();
 }
 
+/// Moves back when the request's run paused by `minutes`: past ten, its
+/// notice, never sent, is taken for lost (ADR-086).
+pub async fn paused_ago(api: &TestApi, tenant_id: Uuid, approval: Uuid, minutes: i64) {
+    let mut tx = api.app.services.db.begin(tenant_id).await.unwrap();
+    sqlx::query(
+        "update agent_runs set updated_at = $2 \
+         where id = (select run_id from approvals where id = $1)",
+    )
+    .bind(approval)
+    .bind(Utc::now() - Duration::minutes(minutes))
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+}
+
+/// Sends the notices a stop lost, as a process that executes runs does
+/// every minute (ADR-070, ADR-086); how many requests it told of.
+pub async fn catch_up(api: &TestApi) -> usize {
+    let runs = &api.app.services.runs;
+    runs.start_executing().unwrap();
+    let lost = runs.catch_up_notices().await.unwrap();
+    api.idle().await;
+    lost
+}
+
 /// A paused run of the other company, with a request due in `expires_in`
 /// that its contact decides as manager: the run and the request.
 pub async fn foreign_request(api: &TestApi, expires_in: Duration) -> (Uuid, Uuid) {

@@ -1,15 +1,16 @@
-//! Periodic maintenance, at startup and then every minute: expired password
-//! reset links are deleted (ADR-028), and ended absences (ADR-071); from
-//! the second minute, once the startup is done (lost notices listed,
-//! ADR-070), requests nobody decided in time expire, and their runs go on
-//! (ADR-061), their managers reminded the day before (ADR-062); runs
-//! without progress for a while
-//! belong to a stuck process and are marked as failed, their `run_finished`
-//! event recorded and broadcast to the clients following them. That sweep
-//! waits until the process has run as long as a run takes to go stale: runs
-//! older than the process are the ones a stop of the service interrupted,
-//! taken up at startup instead (ADR-053), and a run taken up keeps its last
-//! saved time until it saves its next step. A stuck process that wakes up later finds its run finished: it
+//! Periodic maintenance, at startup and then every minute, in each process
+//! that executes runs: expired password reset links are deleted (ADR-028),
+//! and ended absences (ADR-071); from the second minute, the notices a
+//! stop of the service lost are sent (ADR-070), requests nobody decided in
+//! time expire, and their runs go on (ADR-061), their managers reminded the
+//! day before (ADR-062), each of these three in one process at a time
+//! (ADR-086); runs without
+//! progress for a while belong to a stuck process and are marked as
+//! failed, their `run_finished` event recorded and broadcast to the clients
+//! following them. That sweep waits until the process has run as long as a
+//! run takes to go stale: a run whose executor stopped is taken up by its
+//! lease instead (ADR-083), which counts as its progress. A stuck process
+//! that wakes up later finds its run finished: it
 //! announces nothing more (`outcome::record_crash`), though a step it was
 //! taking may still append an event after that end, which clients ignore
 //! (they stop at the first `run_finished`).
@@ -60,17 +61,25 @@ pub fn spawn_maintenance(services: AppState) -> JoinHandle<()> {
     })
 }
 
-/// Whether a process up for `uptime` expires requests and reminds their
-/// managers: from the second sweep, so that its first never races the
-/// startup's, which tells managers of the requests a stop kept from them
-/// (ADR-070) and leaves those due within a day to the reminder.
+/// Whether a process up for `uptime` sweeps the requests: from the second
+/// sweep, once it has taken up the runs whose executor stopped; the
+/// workers already up sweep them meanwhile (ADR-086).
 pub fn sweeps_requests(uptime: Duration) -> bool {
     uptime >= SWEEP_INTERVAL
 }
 
-/// Expires the requests past their deadline (ADR-061) and reminds managers
-/// of those due within a day (ADR-062), in the process that executes runs.
+/// Sends the notices a stop lost (ADR-070), expires the requests past their
+/// deadline (ADR-061) and reminds managers of those due within a day
+/// (ADR-062), in a process that executes runs.
 async fn sweep_requests(services: &AppState) {
+    match services.runs.catch_up_notices().await {
+        Ok(0) => {}
+        Ok(lost) => tracing::warn!(
+            lost,
+            "Managers and scheduled tasks' authors told of requests a stop kept from them"
+        ),
+        Err(error) => tracing::warn!(error = %error, "Lost approval notice sweep failed"),
+    }
     match services.runs.expire_overdue().await {
         Ok(0) => {}
         Ok(expired) => tracing::info!(expired, "Overdue approval requests expired"),
@@ -84,7 +93,8 @@ async fn sweep_requests(services: &AppState) {
 }
 
 /// Whether a process up for `uptime` sweeps stale runs: once it has run as
-/// long as a run takes to go stale, so that only its own runs can be.
+/// long as a run takes to go stale, so that the runs a stop left running
+/// are taken up by lease first, whichever worker starts (ADR-086).
 pub fn sweeps_stale_runs(uptime: Duration) -> bool {
     STALE_AFTER
         .to_std()

@@ -1,9 +1,11 @@
-//! Execution leases taken up (ADR-083): a run whose lease expired is taken
-//! up, in its own company, by the process that executes runs, under its
-//! executor's lease; never one that executes there, nor once renewed, nor
-//! once the service stops, and by no other process. A live lease, or none,
-//! is left alone, but not at startup, when this process alone executes
-//! (ADR-053). The service takes them up by itself every so often.
+//! Execution leases taken up (ADR-083): a run whose lease expired, or which
+//! never had one, is taken up, in its own company, by a process that
+//! executes runs, under its executor's lease; never one that executes
+//! there, nor once renewed, nor once the service stops, and by no process
+//! that does not execute runs. A live lease is left alone, at startup too
+//! (ADR-086). Taken up, a run counts as having progressed: the sweep of
+//! stuck runs leaves it to its next step. The service takes them up by
+//! itself every so often.
 
 mod support;
 
@@ -13,13 +15,16 @@ use std::time::Duration as StdDuration;
 use chrono::Duration;
 use mimorya_agent::testing::{ScriptedReply, ScriptedStep};
 use mimorya_api::services::runs::{LeaseTiming, STOPPED_BEFORE_ITS_FIRST_STEP};
+use mimorya_connectors::testing::serve_held_mcp_http;
 use mimorya_core::demo::{tenant, user};
 use mimorya_db::testing::{OTHER_TENANT_ID, OTHER_USER_ID};
 use support::TestApi;
 use support::leases::{expire_running_lease_of, lease_of, lease_seen, lease_to};
 use support::locks::{hold_rows, release_after};
-use support::recovery::{events, restart, saved, status_and_error, stopped_run};
+use support::mcp::{PRIVATE_DEPLOYMENT, add, mcp_body};
+use support::recovery::{events, interrupted_ago, restart, saved, status_and_error, stopped_run};
 use support::runs::start_run;
+use support::sweeps::sweep_stuck_from_elsewhere;
 use uuid::Uuid;
 
 async fn status(api: &TestApi, run: Uuid) -> String {
@@ -30,7 +35,7 @@ async fn status(api: &TestApi, run: Uuid) -> String {
 /// runs; how many.
 async fn take_up(api: &TestApi) -> usize {
     let runs = &api.app.services.runs;
-    runs.claim_execution().await.unwrap();
+    runs.start_executing().unwrap();
     runs.take_up_expired(&api.app.services.shutdown)
         .await
         .unwrap()
@@ -69,28 +74,30 @@ async fn a_run_whose_lease_expired_is_taken_up_in_its_company_under_this_executo
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
-async fn a_live_lease_or_none_is_left_alone_until_startup() {
+async fn a_live_lease_is_left_alone_even_at_startup_and_none_is_taken_up() {
     let api = TestApi::start().await;
     let other = Uuid::new_v4();
     let held = stopped_run(&api, tenant::ID, user::MARC, None, Some(saved()), &[]).await;
     lease_to(held, other, Duration::seconds(60)).await;
     let unleased = stopped_run(&api, tenant::ID, user::LUCAS, None, Some(saved()), &[]).await;
 
-    assert_eq!(take_up(&api).await, 0);
+    // Never held by anyone: taken up; held by a live worker: left to it.
+    api.script(vec![ScriptedStep::text("Repris.")]);
+    assert_eq!(take_up(&api).await, 1);
+    api.idle().await;
+    assert_eq!(status(&api, unleased).await, "completed");
     assert_eq!(lease_of(held).await.0, Some(other));
-    assert_eq!(lease_of(unleased).await, (None, None));
     assert_eq!(status(&api, held).await, "running");
+    // At startup too: another worker may hold it (ADR-086).
+    assert_eq!(restart(&api).await, 0);
+    assert_eq!(lease_of(held).await.0, Some(other));
 
-    // At startup, this process alone executes (ADR-053): both taken up.
-    api.script(vec![
-        ScriptedStep::text("Repris."),
-        ScriptedStep::text("Repris."),
-    ]);
-    assert_eq!(restart(&api).await, 2);
-    for run in [held, unleased] {
-        assert_eq!(status(&api, run).await, "completed");
-        assert_eq!(lease_of(run).await, (None, None));
-    }
+    // Its worker gone, its lease expires: taken up.
+    lease_to(held, other, Duration::seconds(-1)).await;
+    api.script(vec![ScriptedStep::text("Repris.")]);
+    assert_eq!(restart(&api).await, 1);
+    assert_eq!(status(&api, held).await, "completed");
+    assert_eq!(lease_of(held).await, (None, None));
 }
 
 #[tokio::test]
@@ -112,7 +119,7 @@ async fn a_lease_renewed_while_it_is_taken_up_stays_its_executor_s() {
     .await
     .unwrap();
     let runs = &api.app.services.runs;
-    runs.claim_execution().await.unwrap();
+    runs.start_executing().unwrap();
     let (taken, ()) = tokio::join!(
         runs.take_up_expired(&api.app.services.shutdown),
         release_after(&api, 1, renewing)
@@ -190,20 +197,17 @@ async fn the_service_takes_up_expired_leases_by_itself() {
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
-async fn only_the_process_that_executes_runs_takes_leases_up() {
+async fn only_a_process_that_executes_runs_takes_leases_up() {
     let first = TestApi::start().await;
     let run = stopped_run(&first, tenant::ID, user::MARC, None, Some(saved()), &[]).await;
     lease_to(run, Uuid::new_v4(), Duration::seconds(-1)).await;
-    first.app.services.runs.claim_execution().await.unwrap();
 
-    // Refused at startup, the run executor's lock held elsewhere: neither
-    // its passes nor a call take anything up.
+    // Not executing yet: neither its passes nor a call take anything up.
     let second = TestApi::start_with_leases(LeaseTiming {
         take_up_every: StdDuration::from_millis(100),
         ..LeaseTiming::default()
     })
     .await;
-    assert!(second.app.recover_interrupted_runs().await.is_err());
     let services = &second.app.services;
     let taken = services.runs.take_up_expired(&services.shutdown).await;
     assert_eq!(taken.unwrap(), 0);
@@ -212,6 +216,7 @@ async fn only_the_process_that_executes_runs_takes_leases_up() {
     assert_eq!(status(&first, run).await, "running");
 
     // Stopping: left to the next start.
+    first.app.services.runs.start_executing().unwrap();
     let stopping = &first.app.services.shutdown;
     stopping.send_replace(true);
     let taken = take_up(&first).await;
@@ -222,4 +227,28 @@ async fn only_the_process_that_executes_runs_takes_leases_up() {
     assert_eq!(take_up(&first).await, 1);
     first.idle().await;
     assert_eq!(status(&first, run).await, "completed");
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_run_taken_up_is_not_taken_for_a_stuck_one_before_its_next_step() {
+    let api = TestApi::start_with(&PRIVATE_DEPLOYMENT).await;
+    let paul = api.sign_in(user::PAUL).await;
+    let (url, hold) = serve_held_mcp_http().await;
+    let connector = add(&paul, mcp_body("Procédures", "docs", &url, None)).await;
+    let run = stopped_run(&api, tenant::ID, user::MARC, None, Some(saved()), &[]).await;
+    // Its last step twenty minutes ago, then its worker gone.
+    interrupted_ago(run, 20).await;
+    lease_to(run, Uuid::new_v4(), Duration::seconds(-1)).await;
+
+    // Taken up, its connectors starting, it is swept by another process.
+    api.script(vec![ScriptedStep::text("Repris.")]);
+    assert_eq!(take_up(&api).await, 1);
+    hold.reached().await;
+    sweep_stuck_from_elsewhere();
+    hold.release();
+    api.idle().await;
+    assert_eq!(status(&api, run).await, "completed");
+    let deleted = paul.delete(&format!("/admin/connectors/{connector}")).await;
+    assert!(deleted.status.is_success(), "{}", deleted.text());
 }

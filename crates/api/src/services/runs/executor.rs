@@ -22,6 +22,8 @@ use mimorya_db::repositories::runs::{RunRow, RunStatus};
 use super::approval_notice::ApprovalNotifier;
 use super::context::{build_run_system_prompt, build_run_tools, recall_memories};
 use super::db_ports::{RunScope, engine_ports};
+use super::events::record_run_event;
+use super::fence::{LeaseFence, lost};
 use super::lesson_capture::LessonCapture;
 use super::outcome::{CRASH_MESSAGE, record_crash};
 use super::run_access::RunAccess;
@@ -74,35 +76,39 @@ pub enum ExecutionMode {
 }
 
 impl RunExecutor {
-    pub async fn execute(&self, access: Arc<AccessContext>, run: RunRow, mode: ExecutionMode) {
+    /// Executes `run` under `fence`, its lease here: an execution whose
+    /// lease went to another executor stops, leaving the run to it (ADR-086).
+    pub async fn execute(
+        &self,
+        access: Arc<AccessContext>,
+        run: RunRow,
+        mode: ExecutionMode,
+        fence: LeaseFence,
+    ) {
         let scope = RunScope {
             tenant_id: access.subject.tenant_id,
             run_id: run.id,
             user_id: access.subject.user_id,
             conversation_id: run.conversation_id,
         };
-        let ports = engine_ports(
-            self.db.clone(),
-            scope,
-            self.bus.clone(),
-            self.access.clone(),
-            self.notifier.clone(),
-            self.embeddings.clone(),
-            self.lessons.clone(),
-        );
+        let ports = engine_ports(self, scope, fence.clone());
         // A run taken up that crashes says which actions to check.
         let message = match &mode {
             ExecutionMode::Recover { crash_message, .. } => crash_message.clone(),
             _ => CRASH_MESSAGE.to_owned(),
         };
-        let attempt = AssertUnwindSafe(self.run(&access, &run, &ports, mode)).catch_unwind();
-        let error = match attempt.await {
+        let attempt = AssertUnwindSafe(self.run(&access, &run, &ports, mode, &fence));
+        let error = match attempt.catch_unwind().await {
             Ok(Ok(())) => return,
+            Ok(Err(error)) if lost(&error) => {
+                tracing::warn!(run_id = %run.id, "Run's lease lost: left to the executor that took it up");
+                return;
+            }
             Ok(Err(error)) => format!("{error:#}"),
             Err(_) => "panic".to_string(),
         };
         tracing::error!(run_id = %run.id, error, "Run crashed");
-        let status = match record_crash(&self.db, scope, &message).await {
+        let status = match record_crash(&self.db, scope, &message, fence.owner()).await {
             Ok(Some(status)) => status,
             // Its end is already announced (the stale-run sweep failed it).
             Ok(None) => return,
@@ -116,7 +122,9 @@ impl RunExecutor {
             status: status.as_str().into(),
             error: (status == RunStatus::Failed).then(|| "Erreur interne".into()),
         };
-        if let Err(error) = ports.events.emit(finished).await {
+        let (tenant_id, run_id) = (scope.tenant_id, scope.run_id);
+        if let Err(error) = record_run_event(&self.db, &self.bus, tenant_id, run_id, finished).await
+        {
             tracing::warn!(run_id = %run.id, error = format!("{error:#}"), "Failed to announce run failure");
         }
     }
@@ -127,10 +135,12 @@ impl RunExecutor {
         run: &RunRow,
         ports: &EnginePorts,
         mode: ExecutionMode,
+        fence: &LeaseFence,
     ) -> anyhow::Result<()> {
         let actor = Actor::agent(Some(run.id)).with_channel("web");
-        let (runtime, unavailable_connectors) =
-            self.runtime_for(access, run, ports, actor.clone()).await?;
+        let (runtime, unavailable_connectors) = self
+            .runtime_for(access, run, ports, actor.clone(), fence)
+            .await?;
         match mode {
             ExecutionMode::Start { history, text } => {
                 let system = build_run_system_prompt(
@@ -175,6 +185,7 @@ impl RunExecutor {
         run: &RunRow,
         ports: &EnginePorts,
         actor: Actor,
+        fence: &LeaseFence,
     ) -> anyhow::Result<(AgentRuntime, Vec<String>)> {
         // A run awaiting approval may be resumed after a restart without a
         // provider, or after its company changed or removed its own.
@@ -192,6 +203,7 @@ impl RunExecutor {
                 self.access.clone(),
                 access.subject.tenant_id,
                 access.subject.user_id,
+                fence.clone(),
             )),
             Arc::new(tools.registry),
             ports.clone(),

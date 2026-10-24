@@ -1,6 +1,6 @@
 //! The run queue in the background (ADR-085): once the runs a stop
-//! interrupted are taken up, the process that executes runs claims the
-//! queued ones, batch after batch, woken up as soon as one is queued, and
+//! interrupted are taken up, each process that executes runs claims the
+//! queued ones, side by side with the other workers (ADR-086), batch after batch, woken up as soon as one is queued, and
 //! every few seconds should a notice be lost; until the service stops,
 //! between two runs.
 

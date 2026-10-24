@@ -1,5 +1,5 @@
-//! What tells a manager that requests await them (ADR-060), at startup if a
-//! stop of the service lost the notice (ADR-070), or reminds them the day
+//! What tells a manager that requests await them (ADR-060), later if a
+//! stop of the service lost the notice (ADR-070, ADR-086), or reminds them the day
 //! before they expire (ADR-062): the requests that still wait for a manager,
 //! with the manager's address while their account is active, not yet
 //! notified (or reminded).
@@ -65,18 +65,22 @@ pub async fn approval_notices(
 }
 
 /// The requests of `run_id` whose manager was never told of (ADR-070): no
-/// notice attempted for, due after `due_after`.
+/// notice attempted for, the run paused by `lost_before` (a notice under way
+/// is sent well before, ADR-086), due after `due_after`. A paused run is
+/// changed by nothing but what ends its pause.
 pub async fn approvals_never_notified(
     conn: &mut PgConnection,
     run_id: Uuid,
     due_after: DateTime<Utc>,
+    lost_before: DateTime<Utc>,
 ) -> sqlx::Result<Vec<ApprovalNotice>> {
     sqlx::query_as(&format!(
-        "{PENDING_FOR_MANAGERS} and a.expires_at > $3{BY_MANAGER}"
+        "{PENDING_FOR_MANAGERS} and a.expires_at > $3 and ar.updated_at <= $4{BY_MANAGER}"
     ))
     .bind(run_id)
     .bind(NOTIFIED)
     .bind(due_after)
+    .bind(lost_before)
     .fetch_all(conn)
     .await
 }

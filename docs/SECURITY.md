@@ -43,8 +43,8 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   session, fournisseur d'identité proposé pour une adresse avant connexion (ADR-063),
   lecture d'une invitation ou d'un lien de réinitialisation avant connexion,
   recherche du compte d'une adresse par la commande d'exploitation `invite` (ADR-033),
-  marquage des runs bloqués, liste au démarrage des runs qu'un arrêt a laissés en cours,
-  entreprise et identifiant seulement (ADR-053), liste des runs dont une demande de
+  marquage des runs bloqués, liste des runs en cours dont le bail a expiré ou n'a
+  jamais été pris, entreprise et identifiant seulement (ADR-053, ADR-083, ADR-086), liste des runs dont une demande de
   validation a passé son échéance, entreprise et identifiant seulement, chacun traité
   ensuite dans sa propre entreprise (ADR-061), de même pour les runs dont une demande
   est à relancer la veille de son échéance (ADR-062) ou dont l'avis a été perdu par un
@@ -110,6 +110,11 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
     minute) ; le départ et le retour ensemble, deux fois la précédente. Aucune ne retire
     rien à la limite des mots de passe ; un retour rejoué au-delà est refusé sans trace
     ni appel au fournisseur.
+  - Ces limites sont comptées en mémoire, par processus : avec plusieurs processus `api`
+    (ADR-085, ADR-086), chacun compte les siennes, et une tentative répartie sur N
+    instances dispose de N fois chaque limite. Tant qu'elles ne sont pas partagées, une
+    installation qui en lance plusieurs envoie chaque adresse cliente vers la même
+    instance (affinité du reverse proxy).
 - Adresse cliente : par défaut, l'adresse TCP de l'appelant (`TRUST_PROXY=false`).
   Derrière le seul relais web, tous les utilisateurs partagent l'adresse du serveur
   Next.js, qui transmet tel quel un `X-Forwarded-For` fourni par le client. En

@@ -1,8 +1,8 @@
 //! What tells a scheduled task's author that its run awaits their
 //! validation (ADR-082): the requests they decide themselves in the run
 //! their task last started, while it is paused, their account and company
-//! active, not yet notified; at startup, those a stop of the service kept
-//! from them (ADR-070), not expired yet.
+//! active, not yet notified; later, those a stop of the service kept from
+//! them (ADR-070, ADR-086), not expired yet.
 
 use chrono::{DateTime, Utc};
 use sqlx::{PgConnection, PgPool};
@@ -57,20 +57,23 @@ pub async fn author_notices(
     .await
 }
 
-/// The requests of `run_id` its author was never told of (ADR-070), not
-/// expired by `now`.
+/// The requests of `run_id` its author was never told of (ADR-070), the
+/// run paused by `lost_before` (a notice under way is sent well before,
+/// ADR-086), not expired by `now`.
 pub async fn author_notices_never_sent(
     conn: &mut PgConnection,
     run_id: Uuid,
     now: DateTime<Utc>,
+    lost_before: DateTime<Utc>,
 ) -> sqlx::Result<Vec<AuthorNotice>> {
     sqlx::query_as(&format!(
         "{PENDING_FOR_AUTHOR} and (a.expires_at is null or a.expires_at > $3) \
-         order by a.created_at"
+         and ar.updated_at <= $4 order by a.created_at"
     ))
     .bind(run_id)
     .bind(NOTIFIED)
     .bind(now)
+    .bind(lost_before)
     .fetch_all(conn)
     .await
 }

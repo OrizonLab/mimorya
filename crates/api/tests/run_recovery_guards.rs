@@ -1,19 +1,19 @@
 //! Who takes up the runs a stop of the service left running, when, and in
-//! which company (ADR-053). Only the process that holds the run executor's
-//! lock does: a second one refuses to start. The sweep of stuck runs leaves
+//! which company (ADR-053). The sweep of stuck runs leaves
 //! them alone at startup, while expired reset links are purged at once. A run
-//! interrupted for more than an hour ends instead of going on. A read whose
+//! interrupted for more than an hour ends instead of going on, even taken
+//! up meanwhile. A read whose
 //! tool its administrator set since to write is not repeated, and every end
 //! names it. Each run is taken up in its own company, and only those still
-//! running.
+//! running. A second worker starts beside the first (ADR-086), and each run
+//! is taken up by one of them alone.
 
 mod support;
 
 use mimorya_agent::testing::ScriptedStep;
-use mimorya_api::services::runs::{
-    INTERRUPTED_TOO_LONG, LOCK_HELD_ELSEWHERE, STOPPED_BEFORE_ITS_FIRST_STEP,
-};
+use mimorya_api::services::runs::{INTERRUPTED_TOO_LONG, STOPPED_BEFORE_ITS_FIRST_STEP};
 use mimorya_core::demo::{tenant, user};
+use mimorya_db::repositories::run_leases::mark_taken_up;
 use mimorya_db::testing::{OTHER_TENANT_ID, OTHER_USER_ID};
 use serde_json::json;
 use support::recovery::{
@@ -25,40 +25,33 @@ use support::{TestApi, email, owner_url};
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
-async fn a_second_process_takes_nothing_up_while_the_first_holds_the_lock() {
+async fn a_second_worker_starts_beside_the_first_and_takes_each_run_up_once() {
     let first = TestApi::start().await;
     restart(&first).await;
     let run_id = stopped_run(&first, tenant::ID, user::MARC, None, Some(saved()), &[]).await;
-
-    // The second process stops at startup.
-    let second = TestApi::start().await;
-    let refused = second.app.recover_interrupted_runs().await.unwrap_err();
-    assert_eq!(refused.to_string(), LOCK_HELD_ELSEWHERE);
-    // The connection holding the lock, as an operator finds it (in this
-    // database: another API, such as the end-to-end one, holds its own).
-    let owner = sqlx::PgPool::connect(owner_url()).await.unwrap();
-    let holders: i64 = sqlx::query_scalar(
-        "select count(*) from pg_locks join pg_stat_activity using (pid) \
-         where locktype = 'advisory' and granted \
-         and application_name = 'mimorya-run-executor' \
-         and datname = current_database()",
-    )
-    .fetch_one(&owner)
-    .await
-    .unwrap();
-    assert_eq!(holders, 1);
-    second.idle().await;
-    assert_eq!(
-        status_and_error(&first, tenant::ID, run_id).await.0,
-        "running"
-    );
-
     first.script(vec![ScriptedStep::text("Semaine calme.")]);
-    assert_eq!(restart(&first).await, 1);
+
+    // Both start at once (ADR-086): neither is refused, one takes it up.
+    let second = TestApi::start().await;
+    second.script(vec![ScriptedStep::text("Semaine calme.")]);
+    let (one, two) = tokio::join!(restart(&first), restart(&second));
+    assert_eq!(one + two, 1);
     assert_eq!(
         status_and_error(&first, tenant::ID, run_id).await.0,
         "completed"
     );
+    let asked = |api: &TestApi| api.model.as_ref().unwrap().requests().len();
+    assert_eq!(asked(&first) + asked(&second), 1);
+    // No connection holds the former run executor's lock (ADR-053).
+    let owner = sqlx::PgPool::connect(owner_url()).await.unwrap();
+    let holders: i64 = sqlx::query_scalar(
+        "select count(*) from pg_stat_activity \
+         where application_name = 'mimorya-run-executor' and datname = current_database()",
+    )
+    .fetch_one(&owner)
+    .await
+    .unwrap();
+    assert_eq!(holders, 0);
 }
 
 #[tokio::test]
@@ -128,6 +121,11 @@ async fn a_run_interrupted_more_than_an_hour_ago_ends_naming_what_was_under_way(
     .await;
     interrupted_ago(idle, 61).await;
     interrupted_ago(writing, 61).await;
+    // Taken up a moment ago by a worker that vanished before its first
+    // step: the hour still counts from the last step (ADR-086).
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    mark_taken_up(&mut tx, idle).await.unwrap();
+    tx.commit().await.unwrap();
     let calls_before = api.model.as_ref().unwrap().requests().len();
 
     restart(&api).await;

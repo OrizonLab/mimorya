@@ -2,7 +2,8 @@
 //! (ADR-060), once a run pauses on them: one message per manager and per
 //! pause, however many requests the step made. Sent off the run's path: the
 //! run is paused whether the message leaves or not; one a stop of the
-//! service lost is sent at startup (ADR-070). The day before the requests
+//! service lost is sent ten minutes after the pause, by the periodic
+//! catch-up (ADR-070, ADR-086). The day before the requests
 //! expire, their manager is reminded once (ADR-062). Without a mail
 //! relay, nothing is sent and managers find the requests in « Validations ».
 //! While the manager is away, whom they named to stand in for them is told
@@ -38,6 +39,9 @@ use wording::{distinct_risks, sent};
 
 /// How long before their deadline requests are reminded of (ADR-062).
 pub const REMIND_BEFORE: Duration = Duration::hours(24);
+/// How long after its run paused a request's notice, never sent, is taken
+/// for lost: one under way leaves within seconds of the pause (ADR-086).
+pub const LOST_AFTER: Duration = Duration::minutes(10);
 
 /// A message about requests: their first notice, or a reminder.
 #[derive(Debug, Clone, Copy)]
@@ -130,29 +134,41 @@ impl ApprovalNotifier {
         managers.and(author)
     }
 
-    /// Tells managers, and scheduled tasks' authors (ADR-082), in the
-    /// background, of the requests a stop of the service kept from them
-    /// (ADR-070); how many. Called at startup, before runs are taken up or
-    /// decisions served: the requests are listed now, so that none a run
-    /// makes later is told of twice. One list failing leaves the other.
+    /// Tells managers, and scheduled tasks' authors (ADR-082), of the
+    /// requests whose notice a stop of the service lost (ADR-070): their run
+    /// paused more than `LOST_AFTER` before `now`, and still never told of;
+    /// how many. Sent before it returns: called by one process at a time,
+    /// under its sweep's lock (ADR-086), it tells of a request once, unless
+    /// the service stops it between a message sent and its audit. One list
+    /// failing leaves the other.
     pub async fn catch_up(&self, now: DateTime<Utc>) -> anyhow::Result<usize> {
-        if self.mailer.is_none() {
+        let Some(mailer) = self.mailer.clone() else {
             return Ok(0);
-        }
-        let managers = self.catch_up_managers(now).await;
-        let authors = self.catch_up_authors(now).await;
+        };
+        let lost_before = now - LOST_AFTER;
+        let managers = self
+            .catch_up_managers(mailer.as_ref(), now, lost_before)
+            .await;
+        let authors = self
+            .catch_up_authors(mailer.as_ref(), now, lost_before)
+            .await;
         Ok(managers? + authors?)
     }
 
     /// The managers' requests pending in a paused run, never notified, and
     /// not due within `REMIND_BEFORE` of `now` (those are reminded instead,
     /// a minute later at most).
-    async fn catch_up_managers(&self, now: DateTime<Utc>) -> anyhow::Result<usize> {
+    async fn catch_up_managers(
+        &self,
+        mailer: &dyn Mailer,
+        now: DateTime<Utc>,
+        lost_before: DateTime<Utc>,
+    ) -> anyhow::Result<usize> {
         let due_after = now + REMIND_BEFORE;
         let mut lost = 0;
         for run in unnotified_approval_runs(self.db.pool(), due_after).await? {
             // One run failing leaves the others to catch up.
-            match self.catch_up_run(run, due_after).await {
+            match self.catch_up_run(mailer, run, due_after, lost_before).await {
                 Ok(count) => lost += count,
                 Err(error) => tracing::warn!(
                     run_id = %run.run_id,
@@ -166,14 +182,20 @@ impl ApprovalNotifier {
 
     async fn catch_up_run(
         &self,
+        mailer: &dyn Mailer,
         run: NoticeRun,
         due_after: DateTime<Utc>,
+        lost_before: DateTime<Utc>,
     ) -> anyhow::Result<usize> {
         let mut tx = self.db.begin(run.tenant_id).await?;
-        let requests = approvals_never_notified(&mut tx, run.run_id, due_after).await?;
+        let requests =
+            approvals_never_notified(&mut tx, run.run_id, due_after, lost_before).await?;
         tx.commit().await?;
-        let ids = requests.iter().map(|request| request.approval_id).collect();
-        self.notify(run.tenant_id, run.run_id, ids);
+        if requests.is_empty() {
+            return Ok(0);
+        }
+        let ids: Vec<Uuid> = requests.iter().map(|request| request.approval_id).collect();
+        self.send(mailer, run.tenant_id, run.run_id, &ids).await?;
         Ok(requests.len())
     }
 

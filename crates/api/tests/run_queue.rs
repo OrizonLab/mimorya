@@ -46,7 +46,7 @@ async fn a_run_an_api_process_starts_waits_queued_until_a_worker_executes_it() {
     // Its stream says so.
     assert_eq!(kinds(&api, run).await, ["run_queued"]);
     // An api process takes nothing up, nor any queued run.
-    let refused = api.app.services.runs.claim_execution().await.unwrap_err();
+    let refused = api.app.services.runs.start_executing().unwrap_err();
     assert_eq!(refused.to_string(), NOT_AN_EXECUTOR);
     assert_eq!(take_queued(&api).await, 0);
     assert_eq!(status(run).await, "queued");

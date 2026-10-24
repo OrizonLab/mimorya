@@ -1,5 +1,5 @@
-//! Fixed-window rate limiting, in memory (per process: a single instance
-//! for now, ADR-016). A global limit per client address protects every
+//! Fixed-window rate limiting, in memory, per process: several `api`
+//! processes each count their own (ADR-016, ADR-086). A global limit per client address protects every
 //! route; logins are also limited per address and, for failures, per
 //! account; reset links per e-mail address; the addresses asked about for
 //! single sign-on, per client address (`distinct_limit`).

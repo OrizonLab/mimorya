@@ -1,14 +1,18 @@
 //! Persisting what a run produced: its status and usage, the assistant message
-//! shown in the conversation, and the audit entry.
+//! shown in the conversation, and the audit entry; in the transaction its
+//! execution holds its lease in (ADR-086). A crash is recorded only for a
+//! run still running under this executor's lease, or already finished.
 
 use chrono::Utc;
 use mimorya_agent::runtime::RunOutcome;
-use mimorya_db::Database;
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::conversations::{NewMessage, add_message};
 use mimorya_db::repositories::run_events::run_end_recorded;
+use mimorya_db::repositories::run_leases::lock_held_lease;
 use mimorya_db::repositories::runs::{RunPatch, RunStatus, get_run, update_active_run};
+use mimorya_db::{Database, TenantTx};
 use serde_json::json;
+use uuid::Uuid;
 
 use super::db_ports::RunScope;
 use crate::contract::{self, MessageMetadata};
@@ -18,8 +22,9 @@ const MAX_EVIDENCE_IN_MESSAGE: usize = 50;
 /// Shown when a run crashed: the internal error is logged, never displayed.
 pub const CRASH_MESSAGE: &str = "Une erreur interne a interrompu le traitement. Réessayez ; si le problème persiste, contactez votre administrateur.";
 
+/// Saves `outcome` in `tx`, which commits it.
 pub async fn persist_outcome(
-    db: &Database,
+    mut tx: TenantTx,
     scope: RunScope,
     outcome: &RunOutcome,
 ) -> anyhow::Result<()> {
@@ -29,7 +34,6 @@ pub async fn persist_outcome(
         usage: Some(serde_json::to_value(checkpoint.usage)?),
         ..RunPatch::default()
     };
-    let mut tx = db.begin(scope.tenant_id).await?;
 
     let (content, verification) = match outcome {
         RunOutcome::AwaitingApproval { .. } => {
@@ -113,13 +117,22 @@ pub async fn persist_outcome(
 /// the conversation shows `message`. A run that already finished (outcome
 /// saved before the crash, or failed by the stale-run sweep) keeps its
 /// status. Returns the status to announce, or `None` when the run's end is
-/// already announced (by the sweep, typically).
+/// already announced (by the sweep, typically), or the run no longer runs
+/// under `owner`'s lease and has not finished: another executor's, or
+/// paused or queued since, it is left as it stands (ADR-086).
 pub async fn record_crash(
     db: &Database,
     scope: RunScope,
     message: &str,
+    owner: Uuid,
 ) -> anyhow::Result<Option<RunStatus>> {
     let mut tx = db.begin(scope.tenant_id).await?;
+    if !lock_held_lease(&mut tx, scope.run_id, owner).await? {
+        let run = get_run(&mut tx, scope.run_id).await?;
+        if run.is_some_and(|r| !r.status().is_finished()) {
+            return Ok(None);
+        }
+    }
     let failed = update_active_run(
         &mut tx,
         scope.run_id,

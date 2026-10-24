@@ -12,19 +12,31 @@ use super::{app_url, owner_url};
 /// its own connection and bus: as another process would, while the model
 /// still answers.
 pub fn sweep_from_elsewhere(user_id: Uuid) {
+    sweep_elsewhere(Some(user_id));
+}
+
+/// Sweeps stuck runs from another thread, as another process would, the
+/// runs as they stand.
+pub fn sweep_stuck_from_elsewhere() {
+    sweep_elsewhere(None);
+}
+
+fn sweep_elsewhere(aged: Option<Uuid>) {
     std::thread::spawn(move || {
         tokio::runtime::Runtime::new()
             .expect("runtime")
             .block_on(async {
-                let owner = sqlx::PgPool::connect(owner_url()).await.expect("owner");
-                sqlx::query(
-                    "update agent_runs set updated_at = now() - interval '20 minutes' \
-                     where status = 'running' and on_behalf_of_user_id = $1",
-                )
-                .bind(user_id)
-                .execute(&owner)
-                .await
-                .expect("aged");
+                if let Some(user_id) = aged {
+                    let owner = sqlx::PgPool::connect(owner_url()).await.expect("owner");
+                    sqlx::query(
+                        "update agent_runs set updated_at = now() - interval '20 minutes' \
+                         where status = 'running' and on_behalf_of_user_id = $1",
+                    )
+                    .bind(user_id)
+                    .execute(&owner)
+                    .await
+                    .expect("aged");
+                }
                 let db = Database::connect(
                     app_url(),
                     PoolOptions {
