@@ -35,7 +35,8 @@ Repères à l'intérieur des crates :
   `core/src/demo/` (entreprise fictive par thème).
 - `db/migrations/` (SQL numéroté, source de vérité du schéma),
   `db/src/repositories/` (un fichier par entité ; la mémoire : `memory.rs`, recherche
-  hybride `memory_search.rs`, vecteurs `memory_embeddings.rs`, ADR-074),
+  hybride `memory_search.rs`, vecteurs `memory_embeddings.rs`, ADR-074 ; fenêtres des
+  limites d'authentification partagées : `rate_limits.rs`, ADR-088),
   `db/src/notifications.rs` (canaux PostgreSQL des événements des runs, de la file et des
   invalidations, ADR-084, ADR-085), `db/src/sweep_lock.rs` (verrou d'un balayage qui ne
   tourne que dans un processus à la fois, ADR-086), `db/src/seed/` (organisation,
@@ -48,7 +49,8 @@ Repères à l'intérieur des crates :
   `platform/`), `agent/src/testing/` (fonctionnalité `testing`).
 - `connectors/src/demo_interventions/` (données, planning, accès, `tools/` un fichier
   par outil), `connectors/src/mcp/`, `connectors/src/bin/mcp_demo_docs.rs`.
-- `api/src/plugins/` (contexte de requête, limitation de débit, CSRF (sauf la réception
+- `api/src/plugins/` (contexte de requête, limitation de débit (globale par processus ;
+  d'authentification partagée par PostgreSQL, `shared_limit.rs`, ADR-088), CSRF (sauf la réception
   des réponses SAML, ADR-068), session,
   en-têtes de sécurité, audit des modifications d'administration refusées, sur une ressource introuvable ou envoyant un identifiant inconnu,
   maintenance périodique : runs bloqués, liens expirés, absences terminées, demandes de

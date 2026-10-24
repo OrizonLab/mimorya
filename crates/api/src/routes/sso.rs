@@ -39,11 +39,33 @@ pub fn routes() -> Router<AppState> {
 
 /// Whether this client may ask about one more address, by the discovery or
 /// the start: each tells whether it has an account tied to a provider.
-fn asks_about(state: &AppState, context: &RequestContext, email: &str) -> bool {
+async fn asks_about(
+    state: &AppState,
+    context: &RequestContext,
+    email: &str,
+) -> anyhow::Result<bool> {
+    let address = email.trim().to_lowercase();
     state
         .limits
         .sso_addresses
-        .allow(&context.client_key(), &email.trim().to_lowercase())
+        .allow(&context.client_key(), &address)
+        .await
+}
+
+/// Whether this client may take one more step of a sign-in through a
+/// provider: a return, or a posted response (ADR-068). One whose count
+/// cannot be read is turned away, as one past the limit.
+pub(super) async fn signs_in(state: &AppState, context: &RequestContext) -> bool {
+    match state.limits.sso_sign_in.allow(&context.client_key()).await {
+        Ok(allowed) => allowed,
+        Err(error) => {
+            tracing::warn!(
+                error = format!("{error:#}"),
+                "Sign-in limit unread: turned away"
+            );
+            false
+        }
+    }
 }
 
 /// The answer depends only on the account's company, never on whether an
@@ -54,7 +76,7 @@ async fn discover(
     context: RequestContext,
     Body(body): Body<SsoLookup>,
 ) -> ApiResult<Json<SsoDiscovery>> {
-    if !asks_about(&state, &context, &body.email) {
+    if !asks_about(&state, &context, &body.email).await? {
         return Err(ApiError::RateLimited);
     }
     let provider = state.sso.discover(&body.email).await?;
@@ -73,8 +95,12 @@ async fn start(
     Body(body): Body<SsoLookup>,
 ) -> ApiResult<impl IntoResponse> {
     // Its answer tells what the discovery's does: the same addresses count.
-    if !asks_about(&state, &context, &body.email)
-        || !state.limits.sso_sign_in.allow(&context.client_key())
+    if !asks_about(&state, &context, &body.email).await?
+        || !state
+            .limits
+            .sso_sign_in
+            .allow(&context.client_key())
+            .await?
     {
         return Err(ApiError::RateLimited);
     }
@@ -90,7 +116,7 @@ async fn link(
     context: RequestContext,
     Body(body): Body<SsoLinkLookup>,
 ) -> ApiResult<Json<SsoLink>> {
-    if !state.limits.login.allow(&context.client_key()) {
+    if !state.limits.login.allow(&context.client_key()).await? {
         return Err(ApiError::RateLimited);
     }
     let found = state
@@ -116,7 +142,12 @@ async fn start_link(
     context: RequestContext,
     Body(body): Body<SsoLinkLookup>,
 ) -> ApiResult<impl IntoResponse> {
-    if !state.limits.sso_sign_in.allow(&context.client_key()) {
+    if !state
+        .limits
+        .sso_sign_in
+        .allow(&context.client_key())
+        .await?
+    {
         return Err(ApiError::RateLimited);
     }
     let started = state.sso.start_link(body.provider).await?;
@@ -151,7 +182,7 @@ async fn callback(
 ) -> Response {
     let secure = state.config.secure_cookies;
     let cleared = (SET_COOKIE, cleared_attempt_cookie(secure));
-    let outcome = if state.limits.sso_sign_in.allow(&context.client_key()) {
+    let outcome = if signs_in(&state, &context).await {
         // An address that does not read as a return reads as an empty one.
         let back = back.map(|Query(back)| back).unwrap_or_default();
         let cookie = cookie_value(&headers, ATTEMPT_COOKIE);

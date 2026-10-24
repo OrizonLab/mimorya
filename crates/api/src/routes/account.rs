@@ -27,7 +27,7 @@ async fn change_password(
     let access = state.access.context(identity).await?;
     // Guessing the current password counts against the account like a login.
     let account_key = access.profile.email.to_lowercase();
-    if !state.limits.failed_logins.allow(&account_key) {
+    if !state.limits.failed_logins.allow(&account_key).await? {
         return Err(ApiError::RateLimited);
     }
     let outcome = account::change_password(
@@ -41,7 +41,7 @@ async fn change_password(
     // Only a wrong current password counts against the account; a change
     // refused because of a reset or a revocation made meanwhile does not.
     if !matches!(outcome, Ok(PasswordChange::WrongCurrentPassword)) {
-        state.limits.failed_logins.release(&account_key);
+        state.limits.failed_logins.release(&account_key).await;
     }
     match outcome? {
         PasswordChange::Changed => Ok(Json(Done::OK)),

@@ -44,13 +44,13 @@ async fn request(
     let Some(mailer) = state.mailer.clone() else {
         return Err(DomainError::unavailable(NO_RELAY).into());
     };
-    if !state.limits.login.allow(&context.client_key()) {
+    if !state.limits.login.allow(&context.client_key()).await? {
         return Err(ApiError::RateLimited);
     }
     // Per address as well, known or not: nothing tells them apart, and no
     // mailbox is flooded with links.
     let email = body.email.to_lowercase();
-    if !state.limits.reset_requests.allow(&email) {
+    if !state.limits.reset_requests.allow(&email).await? {
         return Err(ApiError::Throttled(TOO_MANY_LINKS));
     }
     let sender = ResetSender {
@@ -74,7 +74,7 @@ async fn inspect(
     context: RequestContext,
     Body(body): Body<LinkToken>,
 ) -> ApiResult<Json<ResetDetails>> {
-    if !state.limits.login.allow(&context.client_key()) {
+    if !state.limits.login.allow(&context.client_key()).await? {
         return Err(ApiError::RateLimited);
     }
     let reset = inspect_reset(&state.db, &body.token).await?;
@@ -87,7 +87,7 @@ async fn complete(
     headers: HeaderMap,
     Body(body): Body<LinkPassword>,
 ) -> ApiResult<impl IntoResponse> {
-    if !state.limits.login.allow(&context.client_key()) {
+    if !state.limits.login.allow(&context.client_key()).await? {
         return Err(ApiError::RateLimited);
     }
     let session = complete_reset(

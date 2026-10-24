@@ -154,7 +154,14 @@ Phase 2 : `skill_eval_runs`, `documents` / `document_chunks` (GED, ingestion),
     suppression effacerait ou réécrirait des entrées d'audit par les clés étrangères
     (`ON DELETE cascade` / `set null`) ; elle est réservée au rôle propriétaire, qui
     devra conserver la trace (procédures d'effacement et purges de rétention à venir) ;
-  - `_sqlx_migrations` (journal des migrations) : aucun droit.
+  - `_sqlx_migrations` (journal des migrations) : aucun droit ;
+  - `rate_limit_windows` et `rate_limit_values` (fenêtres des limites d'authentification
+    partagées par tous les processus, ADR-088) : aucun droit. Elles ne portent aucune
+    donnée d'entreprise : une empreinte (SHA-256) de chaque clé (adresse cliente, adresse
+    e-mail) et de chaque valeur, le début de la fenêtre et son compte ; non journalisées
+    (`UNLOGGED` : une panne de la base les vide), purgées deux heures après par la
+    maintenance. Une politique refuse toute ligne : seules les fonctions ci-dessous y
+    touchent.
 - Chaque table : `ENABLE ROW LEVEL SECURITY` + politique
   `tenant_id = current_setting('app.tenant_id', true)::uuid` (lecture **et** écriture).
 - Le contexte est posé par transaction : `SELECT set_config('app.tenant_id', $1, true)`.
@@ -186,9 +193,13 @@ Phase 2 : `skill_eval_runs`, `documents` / `document_chunks` (GED, ingestion),
   des demandes pas encore expirées : entreprise et identifiant seulement, ADR-082),
   `system_expired_run_leases` (lister les runs en cours dont le bail a expiré, ou qui n'en
   ont jamais eu : entreprise et identifiant seulement, chacun repris ensuite dans sa propre
-  entreprise, au démarrage comme ensuite, ADR-083, ADR-086) et `system_queued_runs` (lister les runs en file d'attente, les plus anciens
+  entreprise, au démarrage comme ensuite, ADR-083, ADR-086), `system_queued_runs` (lister les runs en file d'attente, les plus anciens
   d'abord : entreprise et identifiant seulement, chacun réservé ensuite dans sa propre
-  entreprise par un worker, ADR-085).
+  entreprise par un worker, ADR-085), `system_rate_limit_hit`,
+  `system_rate_limit_release` et `system_rate_limit_distinct` (compter, rendre, et
+  compter une fois par valeur, un passage dans la fenêtre d'une clé de limite : rien que
+  des empreintes, ADR-088) et `system_purge_rate_limits` (oublier les fenêtres closes
+  depuis longtemps).
 
 ## 5. Rétention (valeurs par défaut, configurables par entreprise)
 

@@ -106,15 +106,21 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   - **connexion par le fournisseur d'identité** (ADR-063) : les adresses essayées par
     la découverte ou le départ, qui disent tous deux si une adresse a un compte relié à
     un fournisseur, ont leur propre limite par adresse cliente, égale à la précédente
-    (une adresse déjà comptée ne coûte rien ; seule son empreinte est gardée, une
-    minute) ; le départ et le retour ensemble, deux fois la précédente. Aucune ne retire
+    (une adresse déjà comptée ne coûte rien ; seule son empreinte est gardée, jusqu'à
+    la fenêtre suivante, deux heures au plus) ; le départ et le retour ensemble, deux fois la précédente. Aucune ne retire
     rien à la limite des mots de passe ; un retour rejoué au-delà est refusé sans trace
     ni appel au fournisseur.
-  - Ces limites sont comptées en mémoire, par processus : avec plusieurs processus `api`
-    (ADR-085, ADR-086), chacun compte les siennes, et une tentative répartie sur N
-    instances dispose de N fois chaque limite. Tant qu'elles ne sont pas partagées, une
-    installation qui en lance plusieurs envoie chaque adresse cliente vers la même
-    instance (affinité du reverse proxy).
+  - Ces limites d'authentification (connexions par adresse cliente, échecs par compte,
+    liens par adresse e-mail, adresses essayées et connexions par le fournisseur
+    d'identité) sont partagées par tous les processus `api` (ADR-088) : comptées dans
+    PostgreSQL, une tentative répartie sur plusieurs instances ne gagne rien. La base
+    n'en garde qu'une empreinte (SHA-256) de chaque clé et de chaque valeur, dans des
+    tables que le rôle applicatif ne lit pas (seules des fonctions `SECURITY DEFINER`
+    les comptent), purgées deux heures après. Un décompte que la base ne rend pas fait
+    échouer la tentative : ces limites gardent la connexion, qui lit la même base.
+  - La limite globale par requête (600 par minute et par adresse) reste comptée en
+    mémoire, par processus, pour ne pas écrire en base à chaque requête : avec N
+    processus `api`, un client réparti sur toutes les instances en dispose N fois.
 - Adresse cliente : par défaut, l'adresse TCP de l'appelant (`TRUST_PROXY=false`).
   Derrière le seul relais web, tous les utilisateurs partagent l'adresse du serveur
   Next.js, qui transmet tel quel un `X-Forwarded-For` fourni par le client. En

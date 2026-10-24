@@ -28,7 +28,7 @@ async fn inspect(
     context: RequestContext,
     Body(body): Body<LinkToken>,
 ) -> ApiResult<Json<InvitationDetails>> {
-    if !state.limits.login.allow(&context.client_key()) {
+    if !state.limits.login.allow(&context.client_key()).await? {
         return Err(ApiError::RateLimited);
     }
     let invitation = inspect_invitation(&state.db, &body.token).await?;
@@ -41,7 +41,7 @@ async fn accept(
     headers: HeaderMap,
     Body(body): Body<LinkPassword>,
 ) -> ApiResult<impl IntoResponse> {
-    if !state.limits.login.allow(&context.client_key()) {
+    if !state.limits.login.allow(&context.client_key()).await? {
         return Err(ApiError::RateLimited);
     }
     let session = accept_invitation(

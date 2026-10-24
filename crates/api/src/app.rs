@@ -26,7 +26,7 @@ use crate::plugins::run_queue::spawn_run_queue;
 use crate::plugins::scheduled_tasks::spawn_scheduled_tasks;
 use crate::plugins::security_headers::security_headers;
 use crate::plugins::session::resolve_identity;
-use crate::plugins::{DistinctLimiter, RateLimiter, RateLimits};
+use crate::plugins::{RateLimiter, RateLimits, SharedDistinctLimiter, SharedLimiter};
 use crate::routes;
 use crate::secrets::SecretStore;
 use crate::services::background::BackgroundTasks;
@@ -45,10 +45,10 @@ const BODY_LIMIT_BYTES: usize = 1_000_000;
 const GLOBAL_RATE_LIMIT_PER_MINUTE: u32 = 600;
 /// Failed logins allowed per account before it is throttled for the window.
 const FAILED_LOGINS_PER_ACCOUNT: u32 = 10;
-const FAILED_LOGIN_WINDOW: Duration = Duration::from_secs(15 * 60);
+pub(crate) const FAILED_LOGIN_WINDOW: Duration = Duration::from_secs(15 * 60);
 /// Password reset links an address may ask for in the window.
 const RESET_REQUESTS_PER_ADDRESS: u32 = 3;
-const RESET_REQUEST_WINDOW: Duration = Duration::from_secs(60 * 60);
+pub(crate) const RESET_REQUEST_WINDOW: Duration = Duration::from_secs(60 * 60);
 
 pub struct Services {
     pub config: AppConfig,
@@ -224,11 +224,29 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
                 .global_rate_limit_per_minute
                 .unwrap_or(GLOBAL_RATE_LIMIT_PER_MINUTE),
         ),
-        login: RateLimiter::per_minute(config.login_rate_limit_per_minute),
-        sso_addresses: DistinctLimiter::per_minute(config.login_rate_limit_per_minute),
-        sso_sign_in: RateLimiter::per_minute(config.login_rate_limit_per_minute.saturating_mul(2)),
-        failed_logins: RateLimiter::new(FAILED_LOGINS_PER_ACCOUNT, FAILED_LOGIN_WINDOW),
-        reset_requests: RateLimiter::new(RESET_REQUESTS_PER_ADDRESS, RESET_REQUEST_WINDOW),
+        login: SharedLimiter::per_minute(db.clone(), "login", config.login_rate_limit_per_minute),
+        sso_addresses: SharedDistinctLimiter::per_minute(
+            db.clone(),
+            "sso_addresses",
+            config.login_rate_limit_per_minute,
+        ),
+        sso_sign_in: SharedLimiter::per_minute(
+            db.clone(),
+            "sso_sign_in",
+            config.login_rate_limit_per_minute.saturating_mul(2),
+        ),
+        failed_logins: SharedLimiter::new(
+            db.clone(),
+            "failed_logins",
+            FAILED_LOGINS_PER_ACCOUNT,
+            FAILED_LOGIN_WINDOW,
+        ),
+        reset_requests: SharedLimiter::new(
+            db.clone(),
+            "reset_requests",
+            RESET_REQUESTS_PER_ADDRESS,
+            RESET_REQUEST_WINDOW,
+        ),
     };
     let services = Arc::new(Services {
         runs: RunService::new(

@@ -11,6 +11,7 @@ mod support;
 use axum::http::StatusCode;
 use mimorya_core::demo::user;
 use support::identity_provider::{MockIdentityProvider, Person};
+use support::limits::forget_counts;
 use support::refusals::latest_entry;
 use support::sso::{
     SSO_DEPLOYMENT, assert_refused, come_back, declaration, declare, discover, remove, sso_logins,
@@ -84,6 +85,9 @@ async fn the_addresses_asked_about_are_as_many_as_logins_by_either_step() {
     let paul = admin.sign_in(user::PAUL).await;
     let id = declare(&paul, declaration(&idp)).await;
     let nadia = email(user::NADIA);
+    // Shared by both servers (ADR-088): Paul's sign-in there was another
+    // client's, from elsewhere; this client's minute starts now.
+    forget_counts().await;
 
     // One address a minute here: asked about again, it costs nothing.
     assert_eq!(discover(&api, &nadia).await["name"], "Annuaire Néo");

@@ -14,6 +14,7 @@ pub mod embeddings;
 pub mod identity_provider;
 pub mod leases;
 pub mod lessons;
+pub mod limits;
 pub mod llm;
 pub mod locks;
 pub mod mail;
@@ -220,6 +221,7 @@ impl TestApi {
             background_scheduling,
             run_leases,
         } = setup;
+        limits::forget_counts().await;
         let mut vars: HashMap<&str, String> = HashMap::from([
             ("MIMORYA_ENV", "test".to_string()),
             ("LOG_LEVEL", "off".to_string()),
