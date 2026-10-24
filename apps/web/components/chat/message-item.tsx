@@ -1,9 +1,7 @@
 'use client';
 
-import { AlertTriangle, ShieldCheck } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import { Badge, cx } from '@/components/ui';
+import { AlertTriangle, ShieldCheck, Target } from 'lucide-react';
+import { Badge, cx, Markdown } from '@/components/ui';
 import type { Message } from '@/lib/api';
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -13,20 +11,24 @@ const SOURCE_LABELS: Record<string, string> = {
   deliverable: 'Livrable',
 };
 
-export function Markdown({ children }: { children: string }) {
-  return (
-    <div className="prose-answer text-[0.95rem]">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml>
-        {children}
-      </ReactMarkdown>
-    </div>
-  );
-}
-
 export function MessageItem({ message }: { message: Message }) {
+  const { verification, evidence, status, mission } = message.metadata;
+  // The word that sets a mission's next stage going is the platform's.
+  if (mission === 'resumption') {
+    return (
+      <p
+        role="note"
+        className="flex items-center justify-center gap-2 text-center text-xs text-muted"
+      >
+        <Target className="size-3" aria-hidden />
+        {message.content}
+      </p>
+    );
+  }
   if (message.role === 'user') {
     return (
-      <div className="flex justify-end">
+      <div className="flex flex-col items-end gap-1">
+        {mission === 'brief' && <Badge tone="accent">Mission confiée</Badge>}
         <div className="max-w-[85%] rounded-2xl rounded-br-sm bg-accent px-4 py-2.5 text-[0.95rem] whitespace-pre-wrap text-accent-fg">
           {message.content}
         </div>
@@ -34,10 +36,14 @@ export function MessageItem({ message }: { message: Message }) {
     );
   }
 
-  const { verification, evidence, status } = message.metadata;
   const sources = dedupe(evidence ?? []).filter((c) => c.type !== 'skill');
   return (
     <div className="flex flex-col gap-2">
+      {mission === 'progress' && (
+        <div className="px-1">
+          <Badge tone="accent">Point d’étape</Badge>
+        </div>
+      )}
       <div
         className={cx(
           'rounded-2xl rounded-bl-sm border bg-surface px-4 py-3',

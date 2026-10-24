@@ -4006,3 +4006,65 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     en cours, pendant qu'une étape se termine ; refus après un échec) et
     `mission_access.rs` (mission
     d'un autre, droits refusés par une politique, critères, trois en cours au plus).
+
+## ADR-090 — Page « Missions » et étapes d'une mission dans sa conversation (deuxième lot)
+
+- **Date** : 2026-10-24 · **Statut** : acceptée · complète ADR-089
+- **Contexte** : les missions (ADR-089) ne se confiaient et ne se suivaient que par l'API,
+  et la conversation d'une mission montrait le mot de la plateforme qui lance une étape
+  comme un message de son auteur.
+- **Décision** :
+  - une page « Missions » dans la navigation, pour qui a le droit de les suivre
+    (`mission:read`). Une carte « Nouvelle mission » : intitulé, objectif, critères de
+    réussite, un par ligne (huit au plus, ce que dit son libellé). Sans le droit de
+    confier des missions ou d'utiliser l'agent, ou avec trois missions en cours, la carte
+    le dit à la place du formulaire ; l'API vérifie de toute façon, et ses refus
+    (missions en cours, critères, modèle indisponible) s'affichent tels quels ;
+  - chaque mission de son auteur, de la plus récente à la plus ancienne, dit son statut
+    (« En cours », « En attente de validation », « Terminée », « Inachevée »,
+    « Arrêtée »), où elle en est au regard de ses limites (étape, coût estimé), son
+    objectif et ses critères, sa réponse finale avec sa revue, ou la raison de son
+    échec. Elle mène à sa conversation, et « Arrêter », nommé par son intitulé, l'arrête
+    après confirmation ;
+  - la revue dit « Critères vérifiés » seulement si un relecteur a rendu un verdict
+    favorable ; « Points non vérifiés » si des manquements restent ; « Critères non
+    contrôlés (relecture indisponible) » si la réponse passe sans verdict exploitable
+    (relecteur en échec, réponse sans verdict ou verdict écarté) : jamais une réponse
+    non jugée n'est dite conforme à ses critères ;
+  - la page relit la liste toutes les 10 secondes tant qu'une mission est en cours ;
+  - dans la conversation, la partie de la mission que porte un message (ADR-089) se
+    voit : la mission confiée, message de son auteur, porte le badge « Mission
+    confiée » ; le point d'étape, réponse de l'agent, le badge « Point d'étape » ; le
+    mot qui lance l'étape suivante est une note centrée de la plateforme, et non une
+    bulle de l'auteur ;
+  - le serveur des tests de bout en bout joue les missions à part, reconnues à leur
+    consigne (`e2e_server/missions.rs`) : la première étape cherche les interventions de
+    la semaine jusqu'à son budget, puis écrit son point d'étape ; la seconde répond, et
+    la revue l'accepte. Le modèle d'une mission dont l'intitulé demande à être arrêtée
+    prend vingt secondes à chaque appel, le temps de l'arrêter ; une mission dont
+    l'objectif le demande répond aussitôt, et son relecteur ne rend pas de verdict.
+- **Alternatives écartées** :
+  - un flux d'événements par mission, ou par personne : les événements d'une étape
+    passent déjà par sa conversation (suivi en direct du run), et l'état d'une mission
+    ne change qu'à la fin d'une étape ; un flux de plus serait à relayer entre processus
+    (ADR-084) pour quelques changements par mission ;
+  - les étapes détaillées sur la page : sa conversation les montre déjà, avec leurs
+    points d'étape, et la page y mène ;
+  - les missions parmi les conversations seulement : rien n'y dirait leur statut, leurs
+    limites, ni ne permettrait de les arrêter.
+- **Conséquences** :
+  - l'état d'une mission sur la page a au plus dix secondes de retard ; sa conversation,
+    elle, suit l'étape en cours en direct ;
+  - restent l'avis à l'auteur quand une étape attend sa validation ou que la mission se
+    termine (lot 3), et des limites réglables par l'entreprise ; un verdict qui compte
+    plus de dix manquements est aujourd'hui écarté, la réponse passant non jugée, au lieu
+    d'échouer (antérieur à ce lot, noté dans la feuille de route) ;
+  - tests :
+    - `apps/web/e2e/missions.spec.ts` : une mission confiée depuis la page va d'étape en
+      étape jusqu'à sa réponse revue, que la page montre sans être rechargée, puis relue
+      après rechargement ; sa conversation montre la mission confiée, le point d'étape,
+      le mot qui lance la seconde étape et la réponse ; une réponse que le relecteur n'a
+      pas jugée n'est pas dite conforme ; à trois missions en cours, la page le dit à la
+      place du formulaire, et l'une d'elles est arrêtée depuis la page, l'arrêt relu après
+      rechargement ;
+    - `apps/web/e2e/navigation.spec.ts` : la page se charge sans erreur.

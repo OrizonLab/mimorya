@@ -16,7 +16,8 @@
 //! where they publish records on 127.0.0.1:4102 (`DNS_ADDRESS`, ADR-069).
 //! A company's embedding model is a test one, whatever it chooses: no
 //! provider is ever reached (ADR-074). A finished run reread for a lesson
-//! always yields the same one (`lessons`, ADR-076). One pass of the tests
+//! always yields the same one (`lessons`, ADR-076). A mission is played
+//! apart, stage after stage (`missions`, ADR-089). One pass of the tests
 //! per start: the model's script and the demo company are used up, and the
 //! rate limit windows a former start left are forgotten (ADR-088). Like
 //! `mimorya-api`, once listening it takes up the runs whose executor
@@ -36,6 +37,7 @@ mod identity_provider;
 mod interrupted;
 mod lessons;
 mod mailbox;
+mod missions;
 mod queued;
 mod saml_idp;
 #[allow(dead_code)] // the API's tests use the rest
@@ -100,7 +102,8 @@ async fn main() -> anyhow::Result<()> {
         model.push(scenario::reference(hour));
     }
     let conversations = Arc::new(queued::WithQueued::new(model));
-    let platform: Arc<dyn LlmProvider> = Arc::new(lessons::WithLessons::new(conversations));
+    let missions = Arc::new(missions::WithMissions::new(conversations));
+    let platform: Arc<dyn LlmProvider> = Arc::new(lessons::WithLessons::new(missions));
     // A company's own provider answers « OK » (its connection test).
     let factory: ProviderFactory = Arc::new(|_config| {
         let provider: Arc<dyn LlmProvider> = Arc::new(ScriptedProvider::new(
