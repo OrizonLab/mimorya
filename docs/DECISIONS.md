@@ -4255,7 +4255,9 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
   - tests : `crates/api/tests/notification_settings.rs` (chacun son choix, champ
     inconnu ou manquant refusé ; un responsable qui l'a choisi ni prévenu, ni rattrapé,
     ni relancé, puis prévenu de nouveau une fois son choix changé ; l'auteur d'une
-    mission ni prévenu de l'étape qui l'attend ni de sa fin, chaque avis tracé refusé et
-    non retenté), la liste des routes de `first_login.rs` et
-    `apps/web/e2e/notification-settings.spec.ts` (choisi dans « Mon compte », relu après
-    rechargement).
+    mission ni prévenu de l'étape qui l'attend, ni rattrapé, ni de sa fin, chaque avis
+    tracé refusé et non retenté), `notification_stand_ins.rs` (pendant l'absence d'un
+    responsable, le choix du remplaçant s'applique, celui du responsable absent ne fait
+    taire personne), la liste des routes de `first_login.rs` et
+    `apps/web/e2e/notification-settings.spec.ts` (choisi dans « Mon compte », enregistré,
+    relu après rechargement).

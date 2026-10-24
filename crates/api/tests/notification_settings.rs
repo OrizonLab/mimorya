@@ -1,9 +1,9 @@
 //! The e-mails each person chooses to receive (ADR-094): their own choice,
 //! all e-mails by default, audited. A manager who chose not to hear of the
-//! requests awaiting them is neither told nor reminded, the author of a
-//! mission's stage awaiting them is not told, nor of its end: each notice
-//! audited as refused, never tried again. Choosing them again, the next
-//! ones are sent.
+//! requests awaiting them is neither told, caught up with nor reminded, the
+//! author of a mission's stage awaiting them is not told, nor of its end:
+//! each notice audited as refused, never tried again. Choosing them again,
+//! the next ones are sent. A stand-in's choice: `notification_stand_ins.rs`.
 
 mod support;
 
@@ -13,34 +13,10 @@ use serde_json::{Value, json};
 use support::manager_approvals::{applying, catch_up, due_in, paused_ago, route_to_managers};
 use support::mission_notices::{awaiting, end_notices, end_notified, tell_ends, told};
 use support::missions::{approving_review, entrust, executing, read, stop};
+use support::notification_choices::{NOTIFICATIONS, audited, choose, chosen};
 use support::queue::take_queued;
 use support::{Client, TestApi, email};
 use uuid::Uuid;
-
-const NOTIFICATIONS: &str = "/account/notifications";
-
-fn chosen(approvals: bool, own_runs: bool, mission_ends: bool) -> Value {
-    json!({ "approvals": approvals, "ownRuns": own_runs, "missionEnds": mission_ends })
-}
-
-async fn choose(client: &Client<'_>, choice: Value) {
-    let set = client.put(NOTIFICATIONS, choice).await;
-    assert_eq!(set.status, StatusCode::OK, "{}", set.text());
-}
-
-/// The audited outcomes and metadata of `action` for `approval`.
-async fn audited(api: &TestApi, action: &str, approval: &Value) -> Vec<(String, Value)> {
-    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
-    sqlx::query_as(
-        "select outcome, metadata from audit_log where action = $1 and resource_id = $2 \
-         order by id",
-    )
-    .bind(action)
-    .bind(approval["id"].as_str().unwrap())
-    .fetch_all(&mut *tx)
-    .await
-    .unwrap()
-}
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
@@ -111,7 +87,11 @@ async fn a_manager_who_chose_not_to_hear_of_requests_is_neither_told_nor_reminde
     // Neither caught up as lost nor reminded the day before.
     let id: Uuid = approval["id"].as_str().unwrap().parse().unwrap();
     paused_ago(&api, tenant::ID, id, 11).await;
-    catch_up(&api).await;
+    assert_eq!(catch_up(&api).await, 0);
+    assert_eq!(
+        audited(&api, "approval.notified", &approval).await,
+        [("denied".to_string(), refused.clone())]
+    );
     due_in(&api, tenant::ID, id, 120).await;
     assert_eq!(api.app.services.runs.remind_due().await.unwrap(), 1);
     api.idle().await;
@@ -150,17 +130,20 @@ async fn the_author_of_a_mission_hears_of_it_only_as_they_chose() {
     let marc = api.sign_in(user::MARC).await;
     choose(&marc, chosen(true, false, false)).await;
 
-    // A stage awaiting him: not told, audited as refused.
+    // A stage awaiting him: not told, audited as refused, not caught up.
     let waiting = "Mission en attente, sans e-mail";
     let (id, _, approval) = awaiting(&api, &marc, waiting).await;
+    let refused = [(
+        "denied".to_string(),
+        json!({ "approverId": user::MARC, "grouped": 1, "optedOut": true }),
+    )];
     assert!(told(&api, waiting).is_empty());
-    assert_eq!(
-        audited(&api, "approval.notified", &approval).await,
-        [(
-            "denied".to_string(),
-            json!({ "approverId": user::MARC, "grouped": 1, "optedOut": true })
-        )]
-    );
+    assert_eq!(audited(&api, "approval.notified", &approval).await, refused);
+    let approval_id: Uuid = approval["id"].as_str().unwrap().parse().unwrap();
+    paused_ago(&api, tenant::ID, approval_id, 11).await;
+    assert_eq!(catch_up(&api).await, 0);
+    assert!(told(&api, waiting).is_empty());
+    assert_eq!(audited(&api, "approval.notified", &approval).await, refused);
     assert_eq!(stop(&marc, id).await, StatusCode::OK);
 
     // Its end: not told, recorded, never tried again.

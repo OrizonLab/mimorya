@@ -36,7 +36,7 @@ use uuid::Uuid;
 use crate::mail::Mailer;
 use crate::services::access::AccessService;
 use crate::services::background::BackgroundTasks;
-use crate::services::notification_settings::{Notice, OPTED_OUT, wants};
+use crate::services::notification_settings::{Delivery, Notice, deliver};
 use message::{ApprovalMail, approval_mail};
 use recipient::{Recipient, recipient};
 use wording::{distinct_risks, sent};
@@ -205,8 +205,9 @@ impl ApprovalNotifier {
     }
 
     /// Reminds managers of the requests due within `REMIND_BEFORE` of `now`
-    /// that they have not been reminded of; how many requests. Nothing
-    /// without a mail relay.
+    /// that they have not been reminded of; how many requests, those whose
+    /// manager chose not to be (ADR-094) included. Nothing without a mail
+    /// relay.
     pub async fn remind_due(&self, now: DateTime<Utc>) -> anyhow::Result<usize> {
         let Some(mailer) = self.mailer.clone() else {
             return Ok(0);
@@ -284,18 +285,12 @@ impl ApprovalNotifier {
             expires_at: requests.iter().filter_map(|r| r.expires_at).min(),
             reminder: matches!(message, Message::Reminder),
         });
-        let opted_out = !wants(&self.db, tenant_id, to.user_id, Notice::Approvals).await?;
-        let outcome = if opted_out {
-            OPTED_OUT
-        } else {
-            sent(mailer, &mail, first.run_id, message.name()).await
-        };
+        let send = sent(mailer, &mail, first.run_id, message.name());
+        let delivery = deliver(&self.db, tenant_id, to.user_id, Notice::Approvals, send).await?;
         let mut tx = self.db.begin(tenant_id).await?;
         for request in requests {
             let grouped = requests.len();
-            let entry = audit_entry(
-                tenant_id, request, &to, grouped, message, outcome, opted_out,
-            );
+            let entry = audit_entry(tenant_id, request, &to, grouped, message, delivery);
             append_audit(&mut tx, entry).await?;
         }
         tx.commit().await?;
@@ -312,19 +307,15 @@ fn audit_entry(
     to: &Recipient,
     grouped: usize,
     message: Message,
-    outcome: &'static str,
-    opted_out: bool,
+    delivery: Delivery,
 ) -> AuditEntry {
     let mut metadata = json!({ "approverId": request.approver_user_id, "grouped": grouped });
     if to.user_id != request.approver_user_id {
         metadata["delegateId"] = json!(to.user_id);
     }
-    if opted_out {
-        metadata["optedOut"] = json!(true);
-    }
-    AuditEntry::new(tenant_id, "system", message.action(), outcome)
+    AuditEntry::new(tenant_id, "system", message.action(), delivery.outcome)
         .resource("approval", request.approval_id)
         .run(request.run_id)
         .on_behalf_of(request.requested_for_user_id)
-        .metadata(metadata)
+        .metadata(delivery.mark(metadata))
 }

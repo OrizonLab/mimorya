@@ -1,6 +1,6 @@
 'use client';
 
-import type { FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { Button, Card, Checkbox, ErrorNote, Loaded } from '@/components/ui';
 import { api, useAction, useApiData, type NotificationSettings } from '@/lib/api';
 import { useSyncedState } from '@/lib/use-synced-state';
@@ -47,17 +47,22 @@ function NotificationChoices({
 }) {
   // Started again from each reloaded choice (ADR-041).
   const [choice, setChoice] = useSyncedState(data);
+  const [done, setDone] = useState(false);
   const action = useAction();
   const unchanged = KINDS.every(({ key }) => choice[key] === data[key]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    setDone(false);
     const body = {
       approvals: choice.approvals,
       ownRuns: choice.ownRuns,
       missionEnds: choice.missionEnds,
     } satisfies NotificationSettings;
-    if (await action.run(() => api.put(NOTIFICATIONS, body))) onSaved();
+    if (await action.run(() => api.put(NOTIFICATIONS, body))) {
+      setDone(true);
+      onSaved();
+    }
   }
 
   return (
@@ -69,7 +74,10 @@ function NotificationChoices({
             <label className="flex items-center gap-2 text-sm">
               <Checkbox
                 checked={choice[key]}
-                onChange={(e) => setChoice({ ...choice, [key]: e.target.checked })}
+                onChange={(e) => {
+                  setDone(false);
+                  setChoice({ ...choice, [key]: e.target.checked });
+                }}
               />
               {label}
             </label>
@@ -77,10 +85,15 @@ function NotificationChoices({
           </div>
         ))}
         <p className="text-xs text-muted">
-          Les e-mails d’invitation, de changement de mot de passe et d’absence déclarée pour vous
-          par un administrateur sont toujours envoyés.
+          Les e-mails d’invitation, de réinitialisation du mot de passe et d’absence déclarée pour
+          vous par un administrateur sont toujours envoyés.
         </p>
         {action.error && <ErrorNote message={action.error} />}
+        {done && (
+          <p role="status" className="text-sm text-ok">
+            Choix enregistré.
+          </p>
+        )}
         <Button type="submit" className="w-fit" loading={action.pending} disabled={unchanged}>
           Enregistrer
         </Button>

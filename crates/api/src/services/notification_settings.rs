@@ -5,15 +5,17 @@
 //! them until they choose otherwise; invitations, password resets and an
 //! absence an administrator declares for them are always sent. A notice
 //! its recipient chose not to receive is not sent, and audited as refused
-//! (`OPTED_OUT`, `optedOut` in its metadata): it counts as told, and is not
-//! tried again. Each change is audited.
+//! (`OPTED_OUT`, `optedOut` in its metadata, `deliver`): it counts as told,
+//! and is not tried again. Each change is audited.
+
+use std::future::Future;
 
 use mimorya_db::Database;
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::notification_settings::{
     NotificationSettingsRow, notification_settings, set_notification_settings,
 };
-use serde_json::json;
+use serde_json::{Value, json};
 use uuid::Uuid;
 
 use crate::services::AccessContext;
@@ -27,7 +29,48 @@ pub enum Notice {
 }
 
 /// The audit outcome of a notice its recipient chose not to receive.
-pub const OPTED_OUT: &str = "denied";
+const OPTED_OUT: &str = "denied";
+
+/// What became of a notice: its audit outcome, and whether its recipient
+/// chose not to receive it.
+#[derive(Debug, Clone, Copy)]
+pub struct Delivery {
+    pub outcome: &'static str,
+    opted_out: bool,
+}
+
+impl Delivery {
+    /// The notice's audit `metadata`, marked when it was not wanted.
+    pub fn mark(self, mut metadata: Value) -> Value {
+        if self.opted_out {
+            metadata["optedOut"] = json!(true);
+        }
+        metadata
+    }
+}
+
+/// Sends `user_id`, of `tenant_id`, a notice of `notice` by `send`, which
+/// gives its audit outcome, unless they chose not to receive these: then
+/// nothing is sent, and its outcome is `OPTED_OUT`. Their choice is read
+/// now, as the notice leaves.
+pub async fn deliver(
+    db: &Database,
+    tenant_id: Uuid,
+    user_id: Uuid,
+    notice: Notice,
+    send: impl Future<Output = &'static str>,
+) -> anyhow::Result<Delivery> {
+    if !wants(db, tenant_id, user_id, notice).await? {
+        return Ok(Delivery {
+            outcome: OPTED_OUT,
+            opted_out: true,
+        });
+    }
+    Ok(Delivery {
+        outcome: send.await,
+        opted_out: false,
+    })
+}
 
 /// What the signed-in person chose.
 pub async fn own_notification_settings(
@@ -68,7 +111,7 @@ pub async fn set_own_notification_settings(
 }
 
 /// Whether `user_id`, of `tenant_id`, receives the e-mails of `notice`.
-pub async fn wants(
+async fn wants(
     db: &Database,
     tenant_id: Uuid,
     user_id: Uuid,

@@ -36,7 +36,14 @@ test('one chooses the e-mails one receives', async ({ page }) => {
   }
   await expect(form.getByRole('button', { name: 'Enregistrer' })).toBeDisabled();
   await form.getByRole('checkbox', { name: ENDS }).uncheck();
+  const saved = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/api/account/notifications') &&
+      response.request().method() === 'PUT',
+  );
   await form.getByRole('button', { name: 'Enregistrer' }).click();
+  expect((await saved).status()).toBe(200);
+  await expect(form.getByRole('status')).toHaveText('Choix enregistré.');
   await expect(form.getByRole('button', { name: 'Enregistrer' })).toBeDisabled();
 
   // Read back from the API once the page is reloaded.

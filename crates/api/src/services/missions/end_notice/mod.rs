@@ -22,7 +22,7 @@ use serde_json::json;
 
 use crate::app::Services;
 use crate::mail::Mailer;
-use crate::services::notification_settings::{Notice, OPTED_OUT, wants};
+use crate::services::notification_settings::{Notice, deliver};
 use mail::{End, EndMail, Review, end_mail};
 
 /// The audited action, once per mission told of.
@@ -34,7 +34,8 @@ const END_NOTICE_SWEEP: &str = "mission-end-notices";
 pub const TOLD_WITHIN: Duration = Duration::hours(24);
 
 /// Tells their authors of the missions over since `TOLD_WITHIN`, never
-/// told of; how many. Only in a process that executes runs, and one at a
+/// told of; how many, those whose author chose not to be told (ADR-094)
+/// included. Only in a process that executes runs, and one at a
 /// time: none while another tells of them.
 pub async fn tell_ended_missions(services: &Services) -> anyhow::Result<usize> {
     let Some(mailer) = services.mailer.clone() else {
@@ -72,7 +73,8 @@ async fn tell_since(
     Ok(told)
 }
 
-/// Tells the author of `ended`, if it is still to be told of; whether it was.
+/// Tells the author of `ended`, if it is still to be told of, unless they
+/// chose not to be (ADR-094); whether it was still to be.
 async fn tell(
     services: &Services,
     mailer: &dyn Mailer,
@@ -101,11 +103,7 @@ async fn tell(
         end,
         link: &link,
     });
-    let owner = notice.owner_user_id;
-    let opted_out = !wants(&services.db, tenant_id, owner, Notice::MissionEnds).await?;
-    let outcome = if opted_out {
-        OPTED_OUT
-    } else {
+    let send = async {
         match mailer.send(&mail).await {
             Ok(()) => "success",
             Err(_) => {
@@ -114,19 +112,17 @@ async fn tell(
             }
         }
     };
+    let owner = notice.owner_user_id;
+    let delivery = deliver(&services.db, tenant_id, owner, Notice::MissionEnds, send).await?;
     let mut tx = services.db.begin(tenant_id).await?;
     record_end_notice(&mut tx, mission_id).await?;
-    let entry = AuditEntry::new(tenant_id, "system", MISSION_NOTIFIED, outcome)
-        .on_behalf_of(notice.owner_user_id)
+    let entry = AuditEntry::new(tenant_id, "system", MISSION_NOTIFIED, delivery.outcome)
+        .on_behalf_of(owner)
         .resource("mission", mission_id)
-        .metadata(if opted_out {
-            json!({ "status": end.status(), "optedOut": true })
-        } else {
-            json!({ "status": end.status() })
-        });
+        .metadata(delivery.mark(json!({ "status": end.status() })));
     append_audit(&mut tx, entry).await?;
     tx.commit().await?;
-    Ok(!opted_out)
+    Ok(true)
 }
 
 /// How the mission ended, as its author is told: done, with the review of

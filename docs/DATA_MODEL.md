@@ -223,4 +223,5 @@ Phase 2 : `skill_eval_runs`, `documents` / `document_chunks` (GED, ingestion),
 | Absences déclarées            | Jusqu'à leur fin ou leur retrait ; terminées : purgées                               |
 | Tâches planifiées             | Jusqu'à suppression par leur auteur ou avec son compte ; compte désactivé : en pause |
 | Missions                      | Comme leur conversation, supprimées avec elle ou avec le compte de leur auteur       |
+| Choix des e-mails reçus       | Jusqu'à modification par la personne ou suppression de son compte                    |
 | Consommation                  | 5 ans (facturation)                                                                  |
