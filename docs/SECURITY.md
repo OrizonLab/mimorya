@@ -236,7 +236,9 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   comme celui qui prévient l'auteur d'une tâche planifiée ou d'une mission dont le run
   attend sa validation (ADR-082, ADR-091), ne contient ni l'action ni ses paramètres,
   lisibles seulement après connexion ; celui qui annonce la fin d'une mission ne
-  contient ni sa réponse ni la raison de son arrêt (ADR-091).
+  contient ni sa réponse ni la raison de son arrêt (ADR-091). Chacun peut ne plus
+  recevoir ces avis (ADR-094) : un avis non voulu n'est pas envoyé, mais tracé, refusé ;
+  les e-mails d'invitation et de mot de passe sont toujours envoyés.
 - **Remplaçant d'un responsable absent** (ADR-071) : désigné par le responsable (ou pour
   lui par l'administrateur des comptes, ADR-078) pour une période d'au plus 90 jours, il
   ne reçoit aucun droit. Il ne voit et ne décide les

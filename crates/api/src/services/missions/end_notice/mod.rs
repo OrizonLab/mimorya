@@ -2,7 +2,8 @@
 //! the background, and they would otherwise learn its end only by opening
 //! « Missions ». Done, or stopped unfinished, whichever path ended it (its
 //! last stage failed, a stop of the executor, the stale-run sweep); not when
-//! they stopped it themselves. Every minute, a process that executes runs
+//! they stopped it themselves, nor if they chose not to receive these
+//! e-mails (ADR-094): recorded as refused. Every minute, a process that executes runs
 //! tells of the missions over since `TOLD_WITHIN`, one process at a time
 //! (ADR-086): each is told of once, unless the service stops between the
 //! message sent and its record. A message the relay refuses is recorded
@@ -21,6 +22,7 @@ use serde_json::json;
 
 use crate::app::Services;
 use crate::mail::Mailer;
+use crate::services::notification_settings::{Notice, OPTED_OUT, wants};
 use mail::{End, EndMail, Review, end_mail};
 
 /// The audited action, once per mission told of.
@@ -99,11 +101,17 @@ async fn tell(
         end,
         link: &link,
     });
-    let outcome = match mailer.send(&mail).await {
-        Ok(()) => "success",
-        Err(_) => {
-            tracing::warn!(mission_id = %mission_id, "Mission end e-mail refused by the relay");
-            "failure"
+    let owner = notice.owner_user_id;
+    let opted_out = !wants(&services.db, tenant_id, owner, Notice::MissionEnds).await?;
+    let outcome = if opted_out {
+        OPTED_OUT
+    } else {
+        match mailer.send(&mail).await {
+            Ok(()) => "success",
+            Err(_) => {
+                tracing::warn!(mission_id = %mission_id, "Mission end e-mail refused by the relay");
+                "failure"
+            }
         }
     };
     let mut tx = services.db.begin(tenant_id).await?;
@@ -111,10 +119,14 @@ async fn tell(
     let entry = AuditEntry::new(tenant_id, "system", MISSION_NOTIFIED, outcome)
         .on_behalf_of(notice.owner_user_id)
         .resource("mission", mission_id)
-        .metadata(json!({ "status": end.status() }));
+        .metadata(if opted_out {
+            json!({ "status": end.status(), "optedOut": true })
+        } else {
+            json!({ "status": end.status() })
+        });
     append_audit(&mut tx, entry).await?;
     tx.commit().await?;
-    Ok(true)
+    Ok(!opted_out)
 }
 
 /// How the mission ended, as its author is told: done, with the review of
