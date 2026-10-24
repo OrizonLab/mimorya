@@ -1,0 +1,30 @@
+[package]
+name = "mimorya-extract"
+description = "Reads a deposited document's text, in a process of its own, confined (ADR-095)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[features]
+# Files built for tests: PDF, Word archives, and the hostile ones.
+testing = ["dep:flate2"]
+
+[dependencies]
+flate2 = { version = "1", optional = true }
+lopdf.workspace = true
+mimorya-core.workspace = true
+pdf-extract.workspace = true
+quick-xml.workspace = true
+serde_json.workspace = true
+zip.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+rlimit.workspace = true
+
+[dev-dependencies]
+mimorya-extract = { workspace = true, features = ["testing"] }
+
+[lints]
+workspace = true

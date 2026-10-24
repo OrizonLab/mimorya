@@ -4261,3 +4261,99 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     taire personne), la liste des routes de `first_login.rs` et
     `apps/web/e2e/notification-settings.spec.ts` (choisi dans « Mon compte », enregistré,
     relu après rechargement).
+
+## ADR-095 — Documents de l'entreprise : lecture isolée, rangement et droits
+
+- **Date** : 2026-10-24 · **Statut** : acceptée (lot 1a : lecture des fichiers)
+- **Contexte** : l'entreprise veut déposer ses documents (procédures, notes, rapports) pour
+  que son agent y trouve des passages et les cite. Lire un PDF ou un fichier Word revient
+  à analyser une entrée hostile : un fichier piégé peut faire planter, boucler ou épuiser
+  la mémoire du programme qui le lit. Dans le processus de l'API, il ferait tomber le
+  service de toutes les entreprises.
+- **Décision** :
+  - **formats acceptés** : PDF, Word (.docx), Markdown et texte. Le type d'un fichier est
+    donné par son extension et confirmé par ses premiers octets, jamais par ce que dit le
+    navigateur. Un document Word ancien (.doc, ou un .docx qui en est un) ou protégé par
+    un mot de passe est refusé avec la marche à suivre ;
+  - **lecture dans un processus à part** (`mimorya-extract`, caisse `crates/extract`) :
+    - l'API le lance pour chaque fichier, avec un environnement vide ; le fichier passe
+      sur son entrée standard et sa lecture revient en JSON sur sa sortie standard ;
+    - avant de rien lire, le processus se borne lui-même : 1 Gio de mémoire, 20 s de
+      processeur, aucun fichier écrit, 16 descripteurs, pas de vidage mémoire (ou moins,
+      si les limites dont il hérite sont plus basses) ;
+    - côté API, sa réponse est revérifiée : une lecture qui dépasse les pages ou le texte
+      permis, ou sans texte, est tenue pour une défaillance ;
+    - côté API : deux lectures à la fois au plus par processus, 30 s chacune (au-delà, le
+      processus est tué), une réponse lue jusqu'à 8 Mio. Un processus qui meurt, déborde
+      ou répond autre chose fait refuser le fichier ;
+    - la lecture se fait au dépôt, de façon synchrone : celui qui dépose apprend tout de
+      suite pourquoi son fichier est refusé (chiffré, numérisé, trop de pages), et rien
+      d'illisible n'est gardé ;
+  - **limites** (`core/src/documents/limits.rs`) :
+    - 10 Mio par fichier, 500 pages par PDF, un million de caractères de texte ;
+    - pour un .docx : 2 000 entrées au plus ; seul le corps `word/document.xml` est lu,
+      à 50 Mio au plus et à 100 fois sa taille compressée au plus (une bombe de
+      décompression s'arrête là) ; aucune entité XML développée hors celles que XML
+      prédéfinit ;
+    - un PDF qui s'ouvre sans mot de passe est lu, avec ou sans restrictions de son
+      propriétaire ; un PDF qui en demande un est refusé ;
+  - **texte nettoyé** : forme canonique (NFC), sans caractères cachés ni contrôles,
+    tabulations en espaces, au plus une ligne vide de suite ; un PDF est lu page par page,
+    les titres d'un .docx deviennent des titres Markdown (`#`), et seul le texte des
+    passages de texte est lu (pas le texte supprimé en révision, pas les codes de champ) ;
+  - **passages** (`core/src/documents/chunking.rs`) : le texte est découpé dès le dépôt en
+    passages contigus, jamais à cheval sur deux pages, d'environ 1 200 caractères et
+    2 000 au plus, coupés aux paragraphes, puis aux phrases, puis entre les mots ; un
+    titre, précédé ou non d'une ligne vide, ouvre un passage et nomme ceux qui le suivent.
+    Une citation donne ainsi la page et la section ;
+  - **rangement** (lot 1b) :
+    - le fichier d'origine est gardé dans PostgreSQL, dans une table à part (`bytea`,
+      stockage externe, sous RLS), avec un quota par entreprise vérifié sous verrou dans
+      la transaction du dépôt : aucune nouvelle infrastructure, l'isolation et les
+      sauvegardes restent communes ;
+    - pas de déduplication : un « déjà déposé » révélerait un document hors de portée ;
+  - **droits** (lot 1b) :
+    - deux espaces, l'entreprise et une unité, comme pour la mémoire partagée ;
+    - `document:read` (délégable) lit les documents des unités de son périmètre, de ses
+      unités et de leurs parentes ;
+    - `document:write` (dépôt et suppression dans son périmètre) n'est **pas délégable** :
+      un document écrit par l'agent deviendrait une source d'injection durable pour les
+      runs de tous ses collègues ;
+    - chaque document a une sensibilité, au-dessus de laquelle on ne lit ni ne dépose ;
+  - **transport** (lot 1b) : le fichier est le corps brut de la requête, son nom et son
+    espace passent dans la chaîne de requête, typée et stricte ;
+  - **suite** : recherche par les mots et par le sens et outil `document_search` avec
+    citations (lot 2) ; page « Documents » (lot 3).
+- **Alternatives écartées** :
+  - stockage objet (S3) : une infrastructure de plus pour des volumes que PostgreSQL
+    tient ; il reste possible si les volumes le justifient un jour ;
+  - lire dans le processus de l'API, protégé par `catch_unwind` : un dépassement de pile ou
+    un épuisement de la mémoire arrête quand même tout le processus, et une boucle ne se
+    tue pas ;
+  - lire en arrière-plan dans le worker : le processus à part isole déjà, et un refus
+    différé laisserait un document déposé mais illisible ;
+  - envoi `multipart` : un analyseur de plus pour une entrée hostile, plusieurs fichiers
+    par requête à borner, sans gain pour un fichier à la fois ;
+  - `document:manage` : les permissions `*:manage` sont celles d'administration de toute
+    l'entreprise ; déposer dans son unité n'en est pas une.
+- **Conséquences** :
+  - l'image de l'API contient `mimorya-extract`, à côté de `mimorya-api`, qui le trouve
+    là ;
+  - un PDF numérisé, sans texte, est refusé : la reconnaissance de caractères n'est pas
+    prévue ;
+  - en mode debug, `zlib-rs` est compilé optimisé : les tests construisent et lisent des
+    flux qui gonflent au-delà d'un gigaoctet ;
+  - tests :
+    - `crates/core/src/documents/` : reconnaissance des types, refus, découpage ;
+    - `crates/extract/tests/` (`pdf.rs`, `docx.rs`, `text.rs`) : texte lu page par page ;
+      PDF à mot de passe, de trop de pages, sans texte ou qui n'en est pas un ; archive
+      Word qui gonfle au-delà de son rapport ou de sa borne absolue, de trop d'entrées,
+      sans corps ou chiffrée ; entité déclarée non développée ; rien de lu hors des
+      passages de texte ; texte non UTF-8 ou binaire ;
+    - `crates/api/tests/document_extraction.rs` : chaque type lu par le vrai processus ;
+      ses limites, relues dans `/proc` pendant qu'il attend son entrée ; un PDF dont le
+      contenu gonfle à 1,3 Gio le fait échouer, faute de mémoire, et le processus suivant
+      lit normalement ; un processus qui ne finit pas est tué à son heure ; un qui meurt,
+      inonde sa sortie, répond n'importe quoi ou au-delà des limites fait refuser le
+      fichier ; l'environnement de l'API ne lui parvient pas ; au-delà de deux lectures
+      à la fois, refus.

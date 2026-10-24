@@ -10,6 +10,7 @@ pub mod autonomy;
 pub mod collaborator_attributes;
 pub mod custom_roles;
 pub mod demo;
+pub mod documents;
 pub mod error;
 pub mod identity_providers;
 pub mod memory;

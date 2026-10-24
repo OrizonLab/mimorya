@@ -22,7 +22,6 @@ flowchart LR
   end
   subgraph Données
     PG[(PostgreSQL 16<br/>RLS · pgvector · FTS)]
-    OBJ[(Stockage objets<br/>documents<br/><i>phase 2</i>)]
   end
   subgraph Externes
     LLM[Fournisseurs LLM<br/>Anthropic · OpenAI-compatibles<br/>OpenRouter · local]
@@ -39,7 +38,7 @@ flowchart LR
   WRK --> MCP
   WRK --> APPS
   API --> APPS
-  API -.-> OBJ
+  API -->|un fichier déposé| EXT[mimorya-extract<br/>processus borné]
 ```
 
 - **web** : interface Next.js (App Router). Le navigateur ne parle qu'à l'origine web ;
@@ -47,7 +46,7 @@ flowchart LR
 - **api** : authentification, API REST, flux temps réel SSE, exécution des tours de
   conversation, webhooks entrants.
 - **worker** : exécution des runs, reprises après interruption, tâches planifiées,
-  étapes des missions longues (ADR-089 ; l'ingestion de documents reste à venir). Dans
+  étapes des missions longues (ADR-089). Dans
   les piles Docker,
   c'est un service distinct de l'API (ADR-087) ; en rôle `all`, par défaut et en
   développement, l'API exécute elle-même les runs en arrière-plan. Le worker reprend les
@@ -82,9 +81,11 @@ crates/                 Espace de travail Cargo (serveur)
   agent/        Moteur agentique : fournisseurs LLM, boucle, PEP outils, budgets,
                 vérification, outils mémoire et compétences
   connectors/   Contrat de connecteur, connecteur de démonstration, pont MCP (rmcp)
+  extract/      Lecture des documents déposés (PDF, Word, texte), dans le processus
+                `mimorya-extract`, jamais dans celui de l'API (ADR-095)
   api/          Serveur HTTP (axum) : sessions, routes, SSE, exécution des runs,
-                binaires `mimorya-api`, `mimorya-admin` (exploitation, ADR-033)
-                et `mimorya-seed` (démonstration)
+                binaires `mimorya-api`, `mimorya-admin` (exploitation, ADR-033),
+                `mimorya-seed` (démonstration) et `mimorya-extract` (ADR-095)
 apps/
   web/          Interface (Next.js, React, Tailwind) — seul paquet Node du dépôt
 ```
@@ -98,12 +99,16 @@ flowchart BT
   db --> core
   agent --> core
   connectors --> core
-  api --> db & agent & connectors & core
+  extract --> core
+  api --> db & agent & connectors & extract & core
   web -. HTTP /api/* uniquement .-> api
 ```
 
 - `core` n'effectue aucune E/S (dépendances : `serde`, `schemars`, `validator`,
   `regex`, `chrono`, `uuid`).
+- `extract` ne lit que son entrée standard et n'écrit que sa sortie standard ; l'API ne
+  l'appelle pas, elle lance le processus `mimorya-extract` qui le contient
+  (`services/documents/extractor.rs`, ADR-095).
 - `agent` ne connaît pas la base : il dépend de **ports** (`RunStore`, `MemoryStore`,
   `AuditSink`, `ApprovalStore`… dans `runtime/ports.rs`) implémentés par `api` sur les
   dépôts de `db`. Le moteur est ainsi testable en mémoire, sans base ni réseau
