@@ -303,7 +303,7 @@ qu'au-delà de ce que PostgreSQL tient.
 | Mode          | Description                                                                                               |
 | ------------- | --------------------------------------------------------------------------------------------------------- |
 | Développement | `docker compose up db` + `cargo run --bin mimorya-api` / `pnpm dev:web`                                   |
-| Privé (PME)   | `docker compose` : web, api (rôle `all`, worker embarqué), PostgreSQL ; sauvegardes `pg_dump`/WAL         |
+| Privé (PME)   | `docker compose` : web, api (rôle `api`), worker (rôle `worker`, ADR-087), PostgreSQL ; `pg_dump`/WAL     |
 | SaaS          | Même image en rôles `api` (plusieurs) et `worker` (ADR-085), PostgreSQL managé, montée en charge de l'API |
 
 Configuration exclusivement par variables d'environnement (voir `.env.example`).

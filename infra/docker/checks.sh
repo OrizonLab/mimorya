@@ -1,7 +1,8 @@
 # Checks shared by the tests of the containerised stacks (ADR-032, ADR-034),
 # sourced by smoke-test.sh and production-test.sh. The caller names its
 # check in `check_name` (failure messages); every function takes the stack's
-# base URL first.
+# base URL first, but `check_roles`, which reads the stack's database through
+# `docker compose` (COMPOSE_FILE names the stack's files).
 
 fail() {
   echo "${check_name:-check} failed: $1" >&2
@@ -48,4 +49,22 @@ api_post() {
   curl -sk --max-time 10 -D - -X POST "$1/api$2" \
     -H 'content-type: application/json' -H 'x-mimorya-request: 1' -H "origin: $1" \
     --data "$3" || fail "no answer from $2"
+}
+
+# Waits until the stack's processes listen as their roles say (ADR-085,
+# ADR-087): $1 workers listening for queued runs, on a connection each, and
+# one API process relaying run events. An API process that also executed
+# runs, or a worker that also served, would count once more.
+check_roles() {
+  local workers=$1 listening
+  for _ in $(seq 1 60); do
+    listening=$(docker compose exec -T db psql -U mimorya -d mimorya -tAc \
+      "select count(*) filter (where application_name = 'mimorya-run-queue') || ' ' ||
+              count(*) filter (where application_name = 'mimorya-run-events')
+       from pg_stat_activity where datname = 'mimorya'") ||
+      fail "cannot read the database's connections"
+    [[ $listening == "$workers 1" ]] && return 0
+    sleep 2
+  done
+  fail "expected $workers workers and one API process listening (queue, events): $listening"
 }

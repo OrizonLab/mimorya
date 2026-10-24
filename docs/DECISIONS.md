@@ -3789,3 +3789,49 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     comptent chacun les leurs (SECURITY §4), jusqu'à ce qu'elles soient partagées ;
   - tests : `crates/api/tests/several_workers.rs`, `run_lease_fence.rs`, et ceux de la
     reprise, des demandes échues, des relances et du rattrapage, adaptés.
+
+## ADR-087 — Piles Docker : un service `api` et un service `worker` (troisième lot, fin)
+
+- **Date** : 2026-10-24 · **Statut** : acceptée · termine le lot 3 de l'ADR-083, après
+  l'ADR-085 et l'ADR-086
+- **Contexte** : le programme sait tourner en rôle `api` ou `worker` (ADR-085) et plusieurs
+  workers peuvent tourner côte à côte (ADR-086). Les piles de démonstration (ADR-032) et
+  de production (ADR-034) lançaient pourtant encore un seul conteneur en rôle `all`.
+- **Décision** :
+  - dans les deux piles, la même image `mimorya-api` sert deux services :
+    - `api` (`MIMORYA_ROLE=api`) sert le HTTP derrière Caddy ; un run qu'il lance ou
+      relance attend en file ;
+    - `worker` (`MIMORYA_ROLE=worker`) exécute les runs et toutes les tâches de fond. Il
+      n'ouvre aucun port et attend la fin des migrations (production) ou du jeu de
+      démonstration ;
+  - leurs variables communes (base, origine du web, fournisseur de modèle, clé maître,
+    relais SMTP) sont écrites une fois, dans une extension du fichier compose
+    (`x-backend-environment`) ; seuls le rôle et `TRUST_PROXY` (l'API, derrière Caddy)
+    diffèrent ;
+  - on ajoute des workers par `docker compose … up -d --scale worker=N`. L'API reste unique
+    dans la pile : ses limites de débit sont comptées par processus (SECURITY §4) ;
+  - le worker a deux minutes pour s'arrêter (`stop_grace_period`) : les runs en cours
+    peuvent finir leur étape. Un run encore en cours au-delà est repris par un autre
+    worker quand son bail expire (ADR-083) ;
+  - les tests des piles vérifient les rôles dans la base. Chaque worker garde une
+    connexion nommée `mimorya-run-queue` (attente des runs en file), chaque processus
+    `api` une connexion `mimorya-run-events` (relais des événements) ; une API qui
+    exécuterait aussi des runs, ou un worker qui servirait aussi, en compterait une de
+    plus (`check_roles`, `infra/docker/checks.sh`). Le test de production ajoute un second
+    worker, puis vérifie qu'aucun des conteneurs ne tourne en root.
+- **Alternatives écartées** :
+  - garder un conteneur `all` en production et ne séparer qu'en SaaS : deux façons
+    d'exploiter, et la séparation n'aurait été éprouvée nulle part ;
+  - deux images (API et worker) : le même programme, compilé deux fois, pour un rôle qui
+    tient dans une variable ;
+  - plusieurs `api` derrière Caddy : sans limites de débit partagées, un client réparti
+    entre les instances verrait les siennes multipliées ;
+  - un contrôle de santé HTTP du worker : il ne sert rien. Sa connexion d'écoute dans la
+    base dit qu'il est vivant et dans son rôle.
+- **Conséquences** :
+  - une pile compte un conteneur de plus ; une mise à jour (`pull`, puis `up -d`)
+    recrée l'API et le worker, et un run interrompu par la mise à jour est repris par bail ;
+  - passer d'une version antérieure à l'ADR-086 demande d'arrêter d'abord l'ancien
+    conteneur `all` (ADR-086) : `docker compose … stop api`, puis `pull` et `up -d` ;
+  - tests : `infra/docker/smoke-test.sh` (une API, un worker),
+    `infra/docker/production-test.sh` (une API, puis deux workers), en CI.

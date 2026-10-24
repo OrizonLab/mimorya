@@ -163,6 +163,8 @@ jobs:
       - name: Start the demonstration stack
         run: docker compose -f compose.demo.yml -f compose.demo.build.yml up -d
       - name: Smoke test of the demonstration stack
+        env:
+          COMPOSE_FILE: compose.demo.yml:compose.demo.build.yml
         run: infra/docker/smoke-test.sh https://localhost
       - name: Logs of the demonstration stack
         if: always()
