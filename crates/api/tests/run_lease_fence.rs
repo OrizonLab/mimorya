@@ -4,8 +4,8 @@
 //! whether the run still runs or was paused since: the run is the other's.
 //! A call that returns once the lease went elsewhere is still recorded and
 //! audited: it happened. A renewal that no longer finds the lease stops the
-//! execution before its next step, even should the lease come back
-//! meanwhile.
+//! execution before its next step, its answer not even streamed, even
+//! should the lease come back meanwhile.
 
 mod support;
 
@@ -20,6 +20,7 @@ use serde_json::json;
 use support::leases::{hand_running_lease_to, lease_of, lease_to, pause_running_run_of};
 use support::mcp::{PRIVATE_DEPLOYMENT, add, mcp_body};
 use support::recovery::{events, status_and_error};
+use support::relay::next_event;
 use support::runs::start_run;
 use support::{TestApi, owner_url, week};
 use uuid::Uuid;
@@ -111,10 +112,13 @@ async fn a_renewal_that_no_longer_finds_the_lease_stops_the_execution() {
         .unwrap();
     assert_eq!(runs.renew_leases().await, 0);
     lease_to(run, runs.executor_id(), Duration::minutes(1)).await;
+    let mut followed = api.app.services.bus.subscribe(tenant::ID, run);
     back.send(()).unwrap();
     api.idle().await;
 
-    // Stopped before concluding: no answer, nothing ended.
+    // Stopped before concluding: no answer, not even streamed, nothing
+    // ended.
+    assert!(next_event(&mut followed, 0.5).await.is_none());
     assert_eq!(kinds(&api, run).await, ["run_started"]);
     assert_eq!(status_and_error(&api, tenant::ID, run).await.0, "running");
     end_elsewhere(run).await;
