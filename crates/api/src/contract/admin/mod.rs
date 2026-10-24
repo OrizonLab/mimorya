@@ -10,6 +10,7 @@ mod embedding;
 mod identity_providers;
 mod llm;
 mod memory_settings;
+mod mission_settings;
 mod organization;
 mod policies;
 mod roles;
@@ -36,6 +37,7 @@ pub use identity_providers::{
 };
 pub use llm::{LlmChoice, LlmSettingsView, LlmTestResult, LlmView, PlatformModel, ProviderKind};
 pub use memory_settings::{MemorySettingsUpdate, MemorySettingsView};
+pub use mission_settings::{MissionSettingsUpdate, MissionSettingsView};
 pub use policies::{
     ConditionAttribute, NewPolicy, Policies, PolicyEffect, PolicyUpdate, PolicyView,
     RestrictablePermission,

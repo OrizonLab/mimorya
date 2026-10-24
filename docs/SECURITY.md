@@ -333,9 +333,12 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
       `agent:use`, la suivre `mission:read`. Chacune de ses étapes est un run comme un
       autre, qui relit les droits de son auteur à chaque étape : retirer `agent:use`
       l'arrête ; retirer `mission:create` n'empêche que d'en confier de nouvelles. Ses
-      limites (six étapes, 12 USD, chaque étape bornée par ce qui reste, trois missions
-      en cours par personne) bornent ce qu'elle coûte, plus, par étape, l'appel qui
-      franchit son budget et son point d'étape, et la revue de la réponse finale.
+      limites bornent ce qu'elle coûte : celles de l'entreprise (ADR-093), six étapes et
+      12 USD par défaut, 20 étapes et 60 USD au plus, réglées par les administrateurs
+      des réglages de toute l'entreprise et gardées par la mission dès qu'elle est
+      confiée ; chaque étape bornée par ce qui reste (3 USD au plus) ; trois missions en
+      cours par personne. S'y ajoutent, par étape, l'appel qui franchit son budget et
+      son point d'étape, et la revue de la réponse finale.
       L'arrêt retire son bail à l'étape en cours, dont l'exécuteur n'écrit ni n'appelle
       plus rien.
 

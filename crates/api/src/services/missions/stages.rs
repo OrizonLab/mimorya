@@ -22,7 +22,7 @@ use mimorya_db::repositories::runs::{NewRun, RunRow, create_run};
 use serde_json::json;
 use uuid::Uuid;
 
-use super::definition::MissionLimits;
+use super::limits::MissionLimits;
 use crate::contract::{MessageMetadata, MissionPart};
 use crate::services::event_bus::{BusEvent, RunEventBus};
 use crate::services::runs::{RunScope, append_in};

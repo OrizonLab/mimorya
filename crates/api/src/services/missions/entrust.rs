@@ -14,7 +14,8 @@ use mimorya_db::repositories::missions::{
 };
 use uuid::Uuid;
 
-use super::definition::{CheckedMission, MISSION_LIMITS};
+use super::definition::CheckedMission;
+use super::limits::{MISSION_LIMITS, company_limits};
 use super::stages::{brief, open_stage};
 use crate::app::Services;
 use crate::contract::MissionPart;
@@ -56,6 +57,8 @@ pub async fn entrust_mission(
         );
         return Err(DomainError::conflict(too_many).into());
     }
+    // The company's limits as they stand, kept on the mission (ADR-093).
+    let limits = company_limits(&mut tx).await?.unwrap_or(MISSION_LIMITS);
     let conversation =
         create_conversation(&mut tx, tenant_id, user_id, Some(&checked.title)).await?;
     let mission = create_mission(
@@ -68,7 +71,7 @@ pub async fn entrust_mission(
             description: &checked.objective,
             success_criteria: &checked.criteria,
             autonomy_level: autonomy.as_str(),
-            limits: serde_json::to_value(MISSION_LIMITS)?,
+            limits: serde_json::to_value(limits)?,
         },
     )
     .await?;
@@ -79,7 +82,7 @@ pub async fn entrust_mission(
             .resource("mission", mission.id),
     )
     .await?;
-    let text = brief(&mission, &MISSION_LIMITS);
+    let text = brief(&mission, &limits);
     let bus = &services.bus;
     let brief_part = MissionPart::Brief;
     let (run, queued) = open_stage(&mut tx, bus, &mission, 1, text, brief_part, 0).await?;

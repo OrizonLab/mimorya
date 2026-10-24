@@ -1,12 +1,10 @@
 //! What a person entrusts as a mission (ADR-089): a title on one line, its
 //! objective, and the success criteria its final answer is reviewed
 //! against, hidden characters taken out: what they read is what the model
-//! reads. And a mission's own limits: so many stages, so much cost, beyond
-//! which it ends unfinished.
+//! reads. Its limits are in `limits`.
 
 use mimorya_core::DomainError;
 use mimorya_core::plain_text::{canonical, without_hidden};
-use serde::{Deserialize, Serialize};
 
 pub const MAX_TITLE_CHARS: usize = 120;
 pub const MAX_OBJECTIVE_CHARS: usize = 4000;
@@ -17,21 +15,6 @@ const BAD_TITLE: &str = "L’intitulé compte de 1 à 120 caractères.";
 const BAD_OBJECTIVE: &str = "L’objectif compte de 1 à 4 000 caractères.";
 const BAD_CRITERIA: &str = "Indiquez de 1 à 8 critères de réussite, de 300 caractères au plus \
      chacun : la réponse finale est vérifiée au regard de chacun.";
-
-/// A mission's own limits, kept as when it was entrusted.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MissionLimits {
-    pub max_stages: u32,
-    pub max_cost_micros: i64,
-}
-
-/// Six stages, 12 USD: four times a stage's cost, with stages to spare for
-/// those that cost less.
-pub const MISSION_LIMITS: MissionLimits = MissionLimits {
-    max_stages: 6,
-    max_cost_micros: 12_000_000,
-};
 
 /// A mission as checked: its title, objective and criteria.
 #[derive(Debug, Clone, PartialEq, Eq)]
