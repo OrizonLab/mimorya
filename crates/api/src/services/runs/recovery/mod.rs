@@ -101,6 +101,7 @@ impl RunService {
             run_id,
             user_id: run.on_behalf_of_user_id,
             conversation_id: run.conversation_id,
+            mission_id: run.mission_id,
         };
         let unknown = of_unknown_effect(&started, approved, &set_now);
         let Some(state) = run.state.clone() else {
@@ -154,12 +155,13 @@ impl RunService {
             error: error.into(),
             checkpoint,
         };
-        persist_outcome(self.db.begin(scope.tenant_id).await?, scope, &outcome).await?;
+        let bus = &self.executor.bus;
+        let tx = self.db.begin(scope.tenant_id).await?;
+        persist_outcome(tx, bus, scope, &outcome).await?;
         let finished = RunEvent::RunFinished {
             status: outcome.status().into(),
             error: Some(error.into()),
         };
-        let bus = &self.executor.bus;
         record_run_event(&self.db, bus, scope.tenant_id, scope.run_id, finished).await?;
         Ok(())
     }

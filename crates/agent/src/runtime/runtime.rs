@@ -9,9 +9,11 @@
 //!   tool_calls.rs     policy enforcement and execution of tool calls
 //!   model_call.rs     model calls, their retries and usage accounting
 //!   answer_review.rs  verification of the final answer
+//!   handoff.rs        the progress note ending a mission's stage
 
 use std::time::Instant;
 
+use mimorya_core::tools::Citation;
 use serde_json::json;
 
 use super::answer_review::{AnswerReview, present_answer, review_answer};
@@ -36,11 +38,14 @@ pub struct StartInput {
     pub user_turn: String,
     /// Connectors in reach of the user that could not start (ADR-048).
     pub unavailable_connectors: Vec<String>,
+    /// Sources a mission's earlier stages collected (ADR-089): an answer
+    /// may cite them.
+    pub evidence: Vec<Citation>,
 }
 
 pub struct AgentRuntime {
     pub(super) deps: RuntimeDeps,
-    config: RunConfig,
+    pub(super) config: RunConfig,
     pub(super) tools: ToolCallProcessor,
 }
 
@@ -59,7 +64,8 @@ impl AgentRuntime {
         let connectors = input.unavailable_connectors;
         let turn = with_unavailable_connectors(&connectors, input.user_turn);
         messages.push(LlmMessage::user(turn));
-        let state = RunCheckpoint::new(input.system, messages);
+        let mut state = RunCheckpoint::new(input.system, messages);
+        state.evidence = input.evidence;
         let events = &self.deps.ports.events;
         let objective = self.config.objective.clone();
         events.emit(RunEvent::RunStarted { objective }).await?;
@@ -157,6 +163,9 @@ impl AgentRuntime {
         loop {
             state.elapsed_ms = elapsed(&started);
             if let Err(reason) = check_budget(&self.config.budget, &state.usage, state.elapsed_ms) {
+                if self.config.handoff {
+                    return self.hand_over(state, &reason).await;
+                }
                 return self
                     .conclude(RunOutcome::Failed {
                         error: format!("Arrêt : {reason}"),
@@ -333,7 +342,7 @@ impl AgentRuntime {
     }
 
     /// Ends the run when its user may no longer act through it.
-    async fn end_without_access(
+    pub(super) async fn end_without_access(
         &self,
         checkpoint: RunCheckpoint,
         error: String,

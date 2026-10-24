@@ -23,6 +23,16 @@ pub const DEFAULT_BUDGET: BudgetLimits = BudgetLimits {
     max_duration_ms: 10 * 60_000,
 };
 
+/// Each stage of a mission (ADR-089): more steps and time than a turn, the
+/// same cost; spent, the stage hands over to the next.
+pub const MISSION_STAGE_BUDGET: BudgetLimits = BudgetLimits {
+    max_steps: 24,
+    max_input_tokens: 800_000,
+    max_output_tokens: 80_000,
+    max_cost_micros: 3_000_000, // 3 USD
+    max_duration_ms: 15 * 60_000,
+};
+
 /// `Err` carries the reason the run must stop.
 pub fn check_budget(
     limits: &BudgetLimits,

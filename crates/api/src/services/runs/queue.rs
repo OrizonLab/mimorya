@@ -127,6 +127,7 @@ impl RunService {
             run_id,
             user_id: run.on_behalf_of_user_id,
             conversation_id: run.conversation_id,
+            mission_id: run.mission_id,
         };
         let checkpoint: Option<RunCheckpoint> = run
             .state

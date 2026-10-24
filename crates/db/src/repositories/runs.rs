@@ -83,6 +83,8 @@ pub struct RunRow {
     /// The turn's request (its user message), when started from a
     /// conversation (ADR-085).
     pub request_message_id: Option<Uuid>,
+    /// The mission it is a stage of (ADR-089).
+    pub mission_id: Option<Uuid>,
 }
 
 impl RunRow {
@@ -94,7 +96,8 @@ impl RunRow {
 
 pub(super) const RUN_COLUMNS: &str = "id, tenant_id, conversation_id, initiated_by_user_id, on_behalf_of_user_id, \
     status, objective, success_criteria, autonomy_level, budget, usage, state, result, verification, \
-    error, started_at, finished_at, created_at, updated_at, checkpoint_seq, request_message_id";
+    error, started_at, finished_at, created_at, updated_at, checkpoint_seq, request_message_id, \
+    mission_id";
 
 #[derive(Debug, Clone)]
 pub struct NewRun {
@@ -108,14 +111,16 @@ pub struct NewRun {
     pub budget: Value,
     /// The turn's request (its user message), if any.
     pub request_message_id: Option<Uuid>,
+    /// The mission it is a stage of, if any (ADR-089).
+    pub mission_id: Option<Uuid>,
 }
 
 /// Creates a run in the `running` state.
 pub async fn create_run(conn: &mut PgConnection, input: NewRun) -> sqlx::Result<RunRow> {
     sqlx::query_as(&format!(
         "insert into agent_runs (tenant_id, conversation_id, initiated_by_user_id, on_behalf_of_user_id, \
-         objective, success_criteria, autonomy_level, budget, request_message_id, status, \
-         started_at) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'running', now()) \
+         objective, success_criteria, autonomy_level, budget, request_message_id, mission_id, \
+         status, started_at) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'running', now()) \
          returning {RUN_COLUMNS}"
     ))
     .bind(input.tenant_id)
@@ -127,6 +132,7 @@ pub async fn create_run(conn: &mut PgConnection, input: NewRun) -> sqlx::Result<
     .bind(input.autonomy_level.as_str())
     .bind(&input.budget)
     .bind(input.request_message_id)
+    .bind(input.mission_id)
     .fetch_one(conn)
     .await
 }

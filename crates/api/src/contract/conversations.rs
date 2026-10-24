@@ -88,6 +88,23 @@ pub struct MessageMetadata {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub verification: Option<Verification>,
+    /// What the message is to its mission, in a mission's conversation
+    /// (ADR-089).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub mission: Option<MissionPart>,
+}
+
+/// What a message is to its mission (ADR-089).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum MissionPart {
+    /// The mission, as its owner entrusted it: its first stage's request.
+    Brief,
+    /// What a later stage starts from, sent by the platform.
+    Resumption,
+    /// The note a stage that spent its budget ended with.
+    Progress,
 }
 
 #[derive(Debug, Serialize, TS)]

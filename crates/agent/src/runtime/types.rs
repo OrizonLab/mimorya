@@ -67,6 +67,9 @@ pub struct RunConfig {
     pub success_criteria: Vec<String>,
     pub verification: VerificationConfig,
     pub effort: Option<Effort>,
+    /// A stage of a mission (ADR-089): its budget spent, the run ends with a
+    /// progress note for the next stage instead of failing.
+    pub handoff: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -121,13 +124,20 @@ pub enum RunOutcome {
         error: String,
         checkpoint: RunCheckpoint,
     },
+    /// A mission's stage that spent its budget, ending with the progress
+    /// note the next stage starts from (ADR-089).
+    Handoff {
+        note: String,
+        checkpoint: RunCheckpoint,
+    },
 }
 
 impl RunOutcome {
-    /// `completed`, `awaiting_approval` or `failed`.
+    /// `completed` (a stage handed over included), `awaiting_approval` or
+    /// `failed`.
     pub fn status(&self) -> &'static str {
         match self {
-            Self::Completed { .. } => "completed",
+            Self::Completed { .. } | Self::Handoff { .. } => "completed",
             Self::AwaitingApproval { .. } => "awaiting_approval",
             Self::Failed { .. } => "failed",
         }
@@ -137,7 +147,8 @@ impl RunOutcome {
         match self {
             Self::Completed { checkpoint, .. }
             | Self::AwaitingApproval { checkpoint, .. }
-            | Self::Failed { checkpoint, .. } => checkpoint,
+            | Self::Failed { checkpoint, .. }
+            | Self::Handoff { checkpoint, .. } => checkpoint,
         }
     }
 }

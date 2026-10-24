@@ -326,7 +326,17 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
       changement d'administration dans tous les processus (`api`, `worker`) : le
       processus qui l'a fait l'annonce aux autres (ADR-085), au mieux ; une annonce
       perdue, l'écart reste borné par la durée de vie du cache (30 s), et un processus
-      reconnecté au canal vide ses caches.
+      reconnecté au canal vide ses caches ;
+    - une mission (ADR-089) n'est lue et arrêtée que par son auteur (404 pour tout
+      autre, administrateur compris) : la confier demande `mission:create` en plus de
+      `agent:use`, la suivre `mission:read`. Chacune de ses étapes est un run comme un
+      autre, qui relit les droits de son auteur à chaque étape : retirer `agent:use`
+      l'arrête ; retirer `mission:create` n'empêche que d'en confier de nouvelles. Ses
+      limites (six étapes, 12 USD, chaque étape bornée par ce qui reste, trois missions
+      en cours par personne) bornent ce qu'elle coûte, plus, par étape, l'appel qui
+      franchit son budget et son point d'étape, et la revue de la réponse finale.
+      L'arrêt retire son bail à l'étape en cours, dont l'exécuteur n'écrit ni n'appelle
+      plus rien.
 
 ## 6. Sécurité de l'agent
 

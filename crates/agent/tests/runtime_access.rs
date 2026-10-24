@@ -277,6 +277,7 @@ async fn rights_that_cannot_be_read_stop_the_run_before_the_model() {
             history: Vec::new(),
             user_turn: "Fais la synthèse".into(),
             unavailable_connectors: Vec::new(),
+            evidence: Vec::new(),
         })
         .await;
 

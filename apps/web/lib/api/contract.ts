@@ -806,9 +806,56 @@ status?: RunStatus,
 /**
  * The first sources collected by the run.
  */
-evidence?: Array<Citation>, verification?: Verification, };
+evidence?: Array<Citation>, verification?: Verification,
+/**
+ * What the message is to its mission, in a mission's conversation
+ * (ADR-089).
+ */
+mission?: MissionPart, };
 
 export type MessageRole = "user" | "assistant";
+
+export type Mission = { id: string, title: string, objective: string, successCriteria: Array<string>, status: MissionStatus,
+/**
+ * Where its stages run, and its answer is given.
+ */
+conversationId: string,
+/**
+ * Stages started, and how many it may start.
+ */
+stages: number, maxStages: number,
+/**
+ * What its stages cost so far, and how much they may.
+ */
+costMicros: number, maxCostMicros: number,
+/**
+ * Its final answer, once done.
+ */
+result: string | null,
+/**
+ * How its final answer was reviewed against its criteria.
+ */
+verification: Verification | null,
+/**
+ * Why it stopped unfinished.
+ */
+error: string | null, createdAt: string, finishedAt: string | null, };
+
+/**
+ * `GET /missions`: the reader's own, newest first.
+ */
+export type MissionList = { missions: Array<Mission>,
+/**
+ * How many may be under way at once, per person.
+ */
+maxUnderWay: number, };
+
+/**
+ * What a message is to its mission (ADR-089).
+ */
+export type MissionPart = "brief" | "resumption" | "progress";
+
+export type MissionStatus = "in_progress" | "awaiting_approval" | "done" | "failed" | "cancelled";
 
 /**
  * Body of `POST /admin/users`: the account is invited (ADR-027).
@@ -874,6 +921,11 @@ createAccounts?: boolean, };
  * Body of `POST /conversations/{id}/messages`.
  */
 export type NewMessage = { content: string, };
+
+/**
+ * Body of `POST /missions`.
+ */
+export type NewMission = { title: string, objective: string, successCriteria: Array<string>, };
 
 /**
  * Body of `POST /admin/org-units`. The type is checked by the route, which

@@ -15,6 +15,7 @@ mod conversations;
 mod health;
 mod invitations;
 mod memory;
+mod missions;
 mod password_reset;
 mod run_events;
 mod runs;
@@ -46,6 +47,7 @@ pub fn router(state: &AppState) -> Router<AppState> {
         .merge(approval_delegation::routes())
         .merge(memory::routes())
         .merge(scheduled_tasks::routes())
+        .merge(missions::routes())
         .merge(admin::routes(state))
         .fallback(not_found)
 }

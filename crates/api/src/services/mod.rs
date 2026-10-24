@@ -10,6 +10,7 @@ pub mod event_bus;
 pub mod invalidations;
 pub mod invitations;
 pub mod llm;
+pub mod missions;
 pub mod password_reset;
 pub mod permission_catalog;
 pub mod provisioning;

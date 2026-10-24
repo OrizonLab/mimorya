@@ -182,13 +182,7 @@ async fn accepts_only_what_the_platform_can_enforce() {
     );
 
     // Not checked anywhere yet, or read by the administration screens.
-    for permission in [
-        "mission:read",
-        "mission:create",
-        "intervention:write",
-        "org:read",
-        "user:read",
-    ] {
+    for permission in ["intervention:write", "org:read", "user:read"] {
         let refused = paul
             .post("/admin/policies", policy(&[permission], agents_only()))
             .await;
@@ -219,6 +213,9 @@ async fn accepts_only_what_the_platform_can_enforce() {
             ("intervention:read", true),
             ("memory:read", false),
             ("memory:write", false),
+            // Checked since missions exist (ADR-089).
+            ("mission:create", false),
+            ("mission:read", false),
             ("planning:apply", false),
             ("planning:propose", false),
             ("planning:read", false),

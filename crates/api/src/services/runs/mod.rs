@@ -29,8 +29,9 @@ pub use approval_delegation::{
 };
 pub use approval_notice::ApprovalNotifier;
 pub use approval_routing::{can_decide, can_withdraw, shown_to};
-pub use conversation_turn::TurnSender;
-pub use events::record_run_event;
+pub use conversation_turn::{TurnSender, tenant_autonomy_level};
+pub use db_ports::RunScope;
+pub use events::{append_in, record_run_event};
 pub use executor::RunExecutor;
 pub use leases::LeaseTiming;
 pub use lesson_capture::LessonCapture;

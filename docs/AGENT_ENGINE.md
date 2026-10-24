@@ -114,6 +114,17 @@ et rendue active (ADR-052), encadrée par `<procedure_entreprise>` et suivie pou
 qu'elle couvre, sans pouvoir étendre les droits, éviter une validation ni lever les
 règles de sécurité.
 
+**Étapes d'une mission** (ADR-089) : un run qui est l'étape d'une mission
+(`RunConfig.handoff`) a un budget d'étape (`MISSION_STAGE_BUDGET` : 24 appels au
+modèle, 15 minutes, 3 USD). Ce budget atteint, il n'échoue pas : le moteur demande au
+modèle un **point d'étape** (ce qui est fait, avec identifiants et sources, ce qui
+reste, la prochaine action), un appel de plus, outils toujours déclarés mais aucun
+exécuté, et termine l'étape avec ce point (`RunOutcome::Handoff`, statut `completed`).
+L'étape suivante repart de la conversation de la mission (la mission et les points
+d'étape) et des sources trouvées par les précédentes (`StartInput.evidence`), qui
+comptent pour l'ancrage. Sa réponse finale est revue par un modèle au regard des
+critères de la mission (§6).
+
 **Erreurs** : erreurs d'outil renvoyées au modèle (il peut corriger son appel) ;
 erreurs de fournisseur classées (`rate_limit`, `overloaded`, `auth`, `context_overflow`,
 `invalid_request`) → nouvelle tentative avec attente exponentielle, bascule vers un
@@ -179,7 +190,8 @@ Deux niveaux, cumulables :
    - _ancrage_ : tout identifiant d'enregistrement cité dans la réponse (ex. `INT-2043`)
      doit figurer dans les résultats d'outils de l'exécution ;
    - complétude des critères structurés (présence des sections demandées…).
-2. **Évaluation par un modèle** (missions, ou critères explicites) : un appel séparé,
+2. **Évaluation par un modèle** (missions, toujours (ADR-089), ou critères explicites
+   avec `MIMORYA_LLM_JUDGE`) : un appel séparé,
    éventuellement avec un autre modèle, juge la réponse au regard de l'objectif et des
    critères et renvoie `{ pass, issues[] }` via un outil structuré.
 

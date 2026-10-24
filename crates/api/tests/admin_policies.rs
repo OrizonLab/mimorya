@@ -207,7 +207,7 @@ async fn refuses_policies_outside_the_rules() {
         json!({ "permissions": ["*"] }),
         json!({ "permissions": [] }),
         json!({ "permissions": ["org:read"] }),
-        json!({ "permissions": ["mission:read"] }),
+        json!({ "permissions": ["intervention:write"] }),
         json!({ "permissions": ["planning:apply"] }),
         json!({ "condition": { "all": [] } }),
         json!({ "condition": { "op": "eq", "left": { "attr": "user.x" }, "right": { "value": "y" } } }),

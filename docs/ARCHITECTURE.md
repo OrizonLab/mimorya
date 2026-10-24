@@ -46,8 +46,9 @@ flowchart LR
   `/api/*` est relayé vers l'API (cookies `SameSite=Lax`, pas de CORS en production).
 - **api** : authentification, API REST, flux temps réel SSE, exécution des tours de
   conversation, webhooks entrants.
-- **worker** : exécution des runs, reprises après interruption, tâches planifiées (les
-  missions longues et l'ingestion de documents restent à venir). Dans les piles Docker,
+- **worker** : exécution des runs, reprises après interruption, tâches planifiées,
+  étapes des missions longues (ADR-089 ; l'ingestion de documents reste à venir). Dans
+  les piles Docker,
   c'est un service distinct de l'API (ADR-087) ; en rôle `all`, par défaut et en
   développement, l'API exécute elle-même les runs en arrière-plan. Le worker reprend les
   runs qu'un arrêt a interrompus quand c'est sûr
@@ -187,7 +188,13 @@ sequenceDiagram
    terminé, qui disent ce qui s'est passé, s'enregistrent sans condition (ADR-086).
 4. Une validation humaine met le run en `awaiting_approval` ; la décision le remet en
    file.
-5. Les tâches récurrentes (phase 2) créent des runs selon une expression cron.
+5. Les tâches planifiées créent des runs à heure fixe (ADR-080).
+6. Une **mission** (ADR-089) avance par étapes, chacune un run de sa conversation, en
+   file : son budget d'étape atteint, l'étape se termine sur un point d'étape et, dans
+   la même transaction, met la suivante en file tant que les limites de la mission le
+   permettent ; la réponse finale, revue au regard de ses critères, la clôt. Son auteur
+   peut l'arrêter : l'étape en cours perd son statut et son bail, et son exécuteur
+   s'arrête sans rien écrire de plus.
 
 ### 4.3 Connexion par le fournisseur d'identité de l'entreprise (ADR-063)
 
