@@ -13,6 +13,7 @@ mod health;
 mod links;
 mod memory;
 mod missions;
+mod notifications;
 mod run_stream;
 mod runs;
 mod scheduled_tasks;
@@ -37,6 +38,7 @@ pub use memory::{
     MemorySource, MemorySpace, MemoryStatus, ReviewDecision,
 };
 pub use missions::{Mission, MissionList, MissionStatus, NewMission};
+pub use notifications::NotificationSettings;
 pub use run_stream::{
     ApprovalRequestedEvent, ApprovalResolvedEvent, AssistantDelta, AssistantMessage,
     ConnectorsUnavailable, RunFinished, RunQueued, RunResumed, RunStarted, RunStreamEvent,
@@ -130,6 +132,7 @@ macro_rules! request_bodies {
             SsoLookup,
             SsoLinkLookup,
             PasswordUpdate,
+            NotificationSettings,
             ResetLinkRequest,
             LinkToken,
             LinkPassword,

@@ -4217,3 +4217,45 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     `services/missions/limits.rs` (bornes) et `apps/web/e2e/mission-limits.spec.ts`
     (réglées depuis « Modèle d'IA », relues après rechargement, reprises par une
     mission confiée ensuite, retour à celles de la plateforme).
+
+## ADR-094 — Chacun choisit les e-mails qu'il reçoit
+
+- **Date** : 2026-10-24 · **Statut** : acceptée · complète ADR-060, ADR-062, ADR-072,
+  ADR-082 et ADR-091
+- **Contexte** : la plateforme envoie plusieurs avis par e-mail : demandes qui attendent
+  un responsable et leur relance, avis au remplaçant d'un responsable absent, run d'une
+  tâche planifiée ou étape d'une mission qui attend son auteur, fin d'une mission.
+  Chacun les recevait tous, sans pouvoir s'en passer.
+- **Décision** :
+  - dans « Mon compte », section « E-mails reçus », chacun choisit pour lui-même trois
+    sortes d'avis : les demandes de validation qui l'attendent (comme responsable ou
+    comme remplaçant, avec la relance de la veille) ; ses tâches planifiées et ses
+    missions qui attendent sa validation ; la fin de ses missions. Tous sont reçus tant
+    qu'on n'a pas choisi autrement ;
+  - les e-mails d'invitation, de réinitialisation du mot de passe et d'absence déclarée
+    par l'administrateur sont toujours envoyés : ils touchent au compte lui-même ;
+  - l'avis qu'un destinataire a choisi de ne pas recevoir n'est pas envoyé, mais tracé
+    comme les autres, refusé (`denied`, `optedOut` dans ses métadonnées) : il compte
+    comme donné, ni rattrapé ni renvoyé ; une mission terminée garde l'heure de cet avis
+    non envoyé. Le choix se lit au moment d'envoyer : le destinataire réel (le
+    remplaçant d'un responsable absent, ADR-071) voit le sien appliqué ;
+  - routes : `GET` et `PUT /api/account/notifications`, pour son propre compte
+    seulement ; chaque changement est tracé (`account.notifications_configured`). Le
+    choix est supprimé avec le compte.
+- **Alternatives écartées** :
+  - réglage par l'administrateur pour toute l'entreprise : l'e-mail est une affaire
+    personnelle, et un responsable qui préfère « Validations » n'a pas à demander ;
+  - ne rien tracer d'un avis non envoyé : le rattrapage (ADR-070) le chercherait chaque
+    minute jusqu'à l'échéance de la demande ;
+  - un choix par sorte d'événement plus fin (relance à part, remplaçant à part) : trois
+    choix suffisent à ne recevoir que ce qui sert, et restent lisibles.
+- **Conséquences** :
+  - un responsable qui ne veut pas des e-mails trouve ses demandes dans « Validations » ;
+    elles expirent à leur échéance comme les autres (ADR-061) ;
+  - tests : `crates/api/tests/notification_settings.rs` (chacun son choix, champ
+    inconnu ou manquant refusé ; un responsable qui l'a choisi ni prévenu, ni rattrapé,
+    ni relancé, puis prévenu de nouveau une fois son choix changé ; l'auteur d'une
+    mission ni prévenu de l'étape qui l'attend ni de sa fin, chaque avis tracé refusé et
+    non retenté), la liste des routes de `first_login.rs` et
+    `apps/web/e2e/notification-settings.spec.ts` (choisi dans « Mon compte », relu après
+    rechargement).

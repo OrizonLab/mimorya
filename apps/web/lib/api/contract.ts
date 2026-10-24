@@ -1013,6 +1013,26 @@ export type NewSkill = { name: string, description: string, content: string, cha
  */
 export type NewSkillVersion = { content: string, changelog?: string, };
 
+/**
+ * `GET /account/notifications`, and the body of its `PUT`: each kind of
+ * e-mail, received or not. Invitations and password resets are always
+ * sent.
+ */
+export type NotificationSettings = {
+/**
+ * The requests awaiting their validation, as a manager or standing in
+ * for one, and the reminders before they expire.
+ */
+approvals: boolean,
+/**
+ * Their scheduled tasks' runs and missions' stages awaiting it.
+ */
+ownRuns: boolean,
+/**
+ * The end of their missions.
+ */
+missionEnds: boolean, };
+
 export type OccurrenceOutcome = "started" | "still_running" | "missed" | "refused" | "failed";
 
 /**

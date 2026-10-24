@@ -25,6 +25,7 @@ pub mod memory_settings;
 pub mod mission_end_notices;
 pub mod mission_settings;
 pub mod missions;
+pub mod notification_settings;
 pub mod org;
 pub mod org_units;
 pub mod password_resets;

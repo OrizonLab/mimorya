@@ -7,7 +7,9 @@
 //! expire, their manager is reminded once (ADR-062). Without a mail
 //! relay, nothing is sent and managers find the requests in « Validations ».
 //! While the manager is away, whom they named to stand in for them is told
-//! instead, if that colleague may decide the requests (ADR-071). The
+//! instead, if that colleague may decide the requests (ADR-071). One who
+//! chose not to receive these e-mails is not told, the notice audited as
+//! refused (ADR-094). The
 //! author of a scheduled task is told of the requests they decide in its
 //! run, and a mission's author of those of its stages (`author`, ADR-082,
 //! ADR-091). Each request notified or reminded is audited,
@@ -34,6 +36,7 @@ use uuid::Uuid;
 use crate::mail::Mailer;
 use crate::services::access::AccessService;
 use crate::services::background::BackgroundTasks;
+use crate::services::notification_settings::{Notice, OPTED_OUT, wants};
 use message::{ApprovalMail, approval_mail};
 use recipient::{Recipient, recipient};
 use wording::{distinct_risks, sent};
@@ -281,11 +284,18 @@ impl ApprovalNotifier {
             expires_at: requests.iter().filter_map(|r| r.expires_at).min(),
             reminder: matches!(message, Message::Reminder),
         });
-        let outcome = sent(mailer, &mail, first.run_id, message.name()).await;
+        let opted_out = !wants(&self.db, tenant_id, to.user_id, Notice::Approvals).await?;
+        let outcome = if opted_out {
+            OPTED_OUT
+        } else {
+            sent(mailer, &mail, first.run_id, message.name()).await
+        };
         let mut tx = self.db.begin(tenant_id).await?;
         for request in requests {
             let grouped = requests.len();
-            let entry = audit_entry(tenant_id, request, &to, grouped, message, outcome);
+            let entry = audit_entry(
+                tenant_id, request, &to, grouped, message, outcome, opted_out,
+            );
             append_audit(&mut tx, entry).await?;
         }
         tx.commit().await?;
@@ -294,7 +304,8 @@ impl ApprovalNotifier {
 }
 
 /// The notice or reminder of `request`, sent to `to` in one message with
-/// `grouped` requests: the stand-in named when the manager was away.
+/// `grouped` requests: the stand-in named when the manager was away, and
+/// whether they chose not to receive it.
 fn audit_entry(
     tenant_id: Uuid,
     request: &ApprovalNotice,
@@ -302,10 +313,14 @@ fn audit_entry(
     grouped: usize,
     message: Message,
     outcome: &'static str,
+    opted_out: bool,
 ) -> AuditEntry {
     let mut metadata = json!({ "approverId": request.approver_user_id, "grouped": grouped });
     if to.user_id != request.approver_user_id {
         metadata["delegateId"] = json!(to.user_id);
+    }
+    if opted_out {
+        metadata["optedOut"] = json!(true);
     }
     AuditEntry::new(tenant_id, "system", message.action(), outcome)
         .resource("approval", request.approval_id)

@@ -173,6 +173,8 @@ const AUTHENTICATED_ROUTES: &[(&str, &str)] = &[
     ("POST", "/admin/embedding/test"),
     ("GET", "/admin/memory-settings"),
     ("PUT", "/admin/memory-settings"),
+    ("GET", "/account/notifications"),
+    ("PUT", "/account/notifications"),
     ("GET", "/admin/mission-settings"),
     ("PUT", "/admin/mission-settings"),
     ("DELETE", "/admin/mission-settings"),

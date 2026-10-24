@@ -4,6 +4,7 @@ export { PasswordForm } from './password-form';
 export { FirstPasswordScreen } from './first-password-screen';
 export { InvitationForm } from './invitation-form';
 export { LinkPage } from './link-page';
+export { NotificationForm } from './notification-form';
 export { ResetPasswordForm } from './reset-password-form';
 export { ResetRequestForm } from './reset-request-form';
 export { SsoSignIn } from './sso-sign-in';
