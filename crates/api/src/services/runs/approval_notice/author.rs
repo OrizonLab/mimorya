@@ -1,6 +1,7 @@
 //! Tells a scheduled task's author by e-mail that its run awaits their
 //! validation (ADR-082): it started while nobody watched (ADR-080), and
-//! would otherwise wait for them unseen until its requests expire. Once per
+//! would otherwise wait for them unseen until its requests expire; and a
+//! mission's author, of a stage of it (ADR-091), for the same reason. Once per
 //! pause, of the requests they decide themselves (those routed to a manager
 //! are told to that manager, ADR-060); one a stop of the service lost is
 //! sent by the periodic catch-up (ADR-070, ADR-086). Each request notified is audited as a
@@ -9,8 +10,9 @@
 use chrono::{DateTime, Utc};
 use mimorya_db::repositories::approval_notices::{NOTIFIED, NoticeRun};
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
-use mimorya_db::repositories::scheduled_run_notices::{
-    AuthorNotice, author_notices, author_notices_never_sent, unnotified_scheduled_runs,
+use mimorya_db::repositories::author_notices::{
+    AuthorNotice, author_notices, author_notices_never_sent, unnotified_mission_runs,
+    unnotified_scheduled_runs,
 };
 use serde_json::json;
 use uuid::Uuid;
@@ -21,8 +23,9 @@ use super::wording::{distinct_risks, sent};
 use crate::mail::Mailer;
 
 impl ApprovalNotifier {
-    /// Tells the author of the scheduled task that started `run_id` of the
-    /// requests `approval_ids` they decide, if they still await them.
+    /// Tells the author of the scheduled task that started `run_id`, or of
+    /// the mission it is a stage of, of the requests `approval_ids` they
+    /// decide, if they still await them.
     pub(super) async fn tell_author(
         &self,
         mailer: &dyn Mailer,
@@ -47,14 +50,16 @@ impl ApprovalNotifier {
         lost_before: DateTime<Utc>,
     ) -> anyhow::Result<usize> {
         let mut lost = 0;
-        for run in unnotified_scheduled_runs(self.db.pool(), now).await? {
+        let mut runs = unnotified_scheduled_runs(self.db.pool(), now).await?;
+        runs.extend(unnotified_mission_runs(self.db.pool(), now).await?);
+        for run in runs {
             // One run failing leaves the others to catch up.
             match self.catch_up_author(mailer, run, now, lost_before).await {
                 Ok(count) => lost += count,
                 Err(error) => tracing::warn!(
                     run_id = %run.run_id,
                     error = format!("{error:#}"),
-                    "Lost notice to a scheduled task's author not caught up"
+                    "Lost notice to a run's author not caught up"
                 ),
             }
         }
@@ -96,7 +101,8 @@ impl ApprovalNotifier {
             company: &first.company,
             author: &first.author_name,
             email: &first.author_email,
-            task: &first.task_title,
+            title: &first.title,
+            of_mission: first.of_mission,
             count: requests.len(),
             risks: &risks,
             link: &link,

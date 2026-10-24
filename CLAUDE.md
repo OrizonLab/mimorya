@@ -36,7 +36,10 @@ Repères à l'intérieur des crates :
 - `db/migrations/` (SQL numéroté, source de vérité du schéma),
   `db/src/repositories/` (un fichier par entité ; la mémoire : `memory.rs`, recherche
   hybride `memory_search.rs`, vecteurs `memory_embeddings.rs`, ADR-074 ; fenêtres des
-  limites d'authentification partagées : `rate_limits.rs`, ADR-088),
+  limites d'authentification partagées : `rate_limits.rs`, ADR-088 ; avis à l'auteur
+  d'une tâche planifiée ou d'une mission dont le run attend sa validation :
+  `author_notices.rs`, ADR-082, ADR-091 ; missions terminées à annoncer :
+  `mission_end_notices.rs`, ADR-091),
   `db/src/notifications.rs` (canaux PostgreSQL des événements des runs, de la file et des
   invalidations, ADR-084, ADR-085), `db/src/sweep_lock.rs` (verrou d'un balayage qui ne
   tourne que dans un processus à la fois, ADR-086), `db/src/seed/` (organisation,
@@ -57,7 +60,8 @@ Repères à l'intérieur des crates :
   maintenance périodique : runs bloqués, liens expirés, absences terminées, demandes de
   validation échues et relances avant échéance, ADR-061, ADR-062 ; indexation de la
   mémoire en arrière-plan, `memory_indexing.rs`, ADR-074 ; tâches planifiées lancées
-  chaque minute, `scheduled_tasks.rs`, ADR-080 ; baux des runs renouvelés et runs au
+  chaque minute, `scheduled_tasks.rs`, ADR-080 ; fin des missions annoncée à leur
+  auteur, ADR-091 ; baux des runs renouvelés et runs au
   bail expiré repris, `run_leases.rs`, ADR-083 ; événements des autres processus écoutés
   et fragments de texte envoyés, `run_event_relay.rs`, ADR-084 ; runs en file réservés
   par le worker, `run_queue.rs`, ADR-085 ; tâches de fond lancées selon le rôle du
@@ -72,7 +76,7 @@ Repères à l'intérieur des crates :
   ports PostgreSQL, résultat, reprise des runs dont l'exécuteur s'est arrêté et ce
   processus exécute-t-il des runs (`recovery/`), ADR-053, ADR-086, circuit des validations,
   avis au responsable (`approval_notice/`, rattrapé chaque minute s'il est perdu, ADR-070, ADR-086 ; à l'auteur
-  d'une tâche planifiée dont le run attend sa validation, `author.rs`, ADR-082), expiration et
+  d'une tâche planifiée ou d'une mission dont le run attend sa validation, `author.rs`, ADR-082, ADR-091), expiration et
   relance des demandes, ADR-059 à ADR-062, absence et remplaçant
   (`approval_delegation.rs`, ADR-071 à ADR-073), leçon proposée en fin de run
   (`lesson_capture.rs`, ADR-076), bail de l'exécuteur sur chaque run (`leases.rs`,
@@ -80,7 +84,8 @@ Repères à l'intérieur des crates :
   `api/src/services/scheduled_tasks/` (tâches planifiées : ce qu'elles demandent, celles
   de chacun, leur lancement, ADR-080), `api/src/services/missions/` (missions longues :
   ce qu'on confie et ses limites, étapes enchaînées à la fin de chacune, dans la
-  transaction de son issue, arrêt par son auteur, ADR-089), `api/src/services/event_bus/` (événements des runs
+  transaction de son issue, arrêt par son auteur, ADR-089 ; son auteur prévenu de sa fin
+  par la passe de chaque minute, `end_notice/`, ADR-091), `api/src/services/event_bus/` (événements des runs
   aux abonnés du processus et, par PostgreSQL, des autres : avis, relais, fragments de
   texte, ADR-084), `api/src/services/invalidations/` (caches de chaque processus vidés
   ensemble : ce qu'un processus change annoncé aux autres par PostgreSQL, ADR-085),

@@ -20,6 +20,7 @@ pub mod locks;
 pub mod mail;
 pub mod manager_approvals;
 pub mod mcp;
+pub mod mission_notices;
 pub mod missions;
 pub mod planning;
 pub mod privileges;

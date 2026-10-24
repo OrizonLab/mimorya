@@ -194,7 +194,9 @@ sequenceDiagram
    la même transaction, met la suivante en file tant que les limites de la mission le
    permettent ; la réponse finale, revue au regard de ses critères, la clôt. Son auteur
    peut l'arrêter : l'étape en cours perd son statut et son bail, et son exécuteur
-   s'arrête sans rien écrire de plus.
+   s'arrête sans rien écrire de plus. Il est prévenu par e-mail d'une étape qui attend
+   sa validation et, par la passe de chaque minute, de sa fin, sauf s'il l'a arrêtée
+   (ADR-091).
 
 ### 4.3 Connexion par le fournisseur d'identité de l'entreprise (ADR-063)
 

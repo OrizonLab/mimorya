@@ -4068,3 +4068,65 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
       place du formulaire, et l'une d'elles est arrêtée depuis la page, l'arrêt relu après
       rechargement ;
     - `apps/web/e2e/navigation.spec.ts` : la page se charge sans erreur.
+
+## ADR-091 — L'auteur d'une mission prévenu par e-mail (troisième lot)
+
+- **Date** : 2026-10-24 · **Statut** : acceptée · complète ADR-082, ADR-089 et ADR-090
+- **Contexte** : une mission (ADR-089) avance en arrière-plan. Quand une de ses étapes
+  demande une validation à son auteur, elle attend sans que personne le voie, jusqu'à
+  l'expiration de la demande ; quand elle se termine, son auteur ne l'apprend qu'en
+  ouvrant « Missions ». C'est le cas du run d'une tâche planifiée, dont l'auteur est
+  prévenu depuis ADR-082.
+- **Décision** :
+  - **étape en attente** : l'avis à l'auteur d'une tâche planifiée vaut aussi pour
+    l'étape d'une mission en cours. Une fois par pause, son auteur est prévenu des
+    demandes qu'il décide lui-même (celles qu'un circuit confie à un responsable vont à
+    ce responsable, ADR-060). L'e-mail nomme la mission (« Votre mission « … » attend
+    votre validation »), le nombre d'actions et leurs risques, l'échéance, et mène à sa
+    conversation ; ni les actions ni leurs paramètres. Un avis qu'un arrêt du service a
+    perdu part dix minutes après la pause, par le rattrapage périodique (ADR-070,
+    ADR-086), à partir de `system_unnotified_mission_runs`. Les requêtes de l'avis à
+    l'auteur (`author_notices`) couvrent les deux origines ;
+  - **mission terminée** : son auteur est prévenu une fois, qu'elle soit menée à bien
+    ou arrêtée inachevée (limites atteintes, étape en échec, exécuteur arrêté, balayage
+    des runs bloqués), mais pas quand il l'a arrêtée lui-même. L'e-mail dit si sa
+    réponse finale a été vérifiée au regard de ses critères, si des points restent non
+    vérifiés, ou si elle n'a pas pu être relue (ADR-090), ou qu'elle s'est arrêtée
+    inachevée, et mène à « Missions » ; ni sa réponse ni la raison de l'arrêt, que la
+    page montre après connexion ;
+  - cet avis part de la passe périodique, chaque minute, dans un processus qui exécute
+    les runs et un seul à la fois (verrou de balayage, ADR-086), pour les missions
+    terminées depuis moins d'un jour (`system_unnotified_mission_ends`, entreprise et
+    identifiant seulement), chacune relue ensuite dans sa propre entreprise. Leur
+    entreprise et le compte de leur auteur doivent être actifs. La mission garde
+    l'heure de l'avis (`missions.end_notified_at`) ; un message que le relais refuse est
+    noté de même, et ne repart pas ; sans relais, rien ne part. Chaque avis est tracé
+    (`mission.notified`, son issue et le statut annoncé), sans l'adresse ni la réponse
+    du relais.
+- **Alternatives écartées** :
+  - envoyer l'avis de fin au moment où la mission se termine : les chemins qui la
+    terminent sont nombreux (fin d'une étape, plantage de l'exécuteur, reprise, balayage
+    des runs bloqués, dont une fonction SQL inter-entreprises), et il faudrait de toute
+    façon une passe qui rattrape les avis perdus. Une seule passe les couvre tous, avec
+    au plus une minute de retard, sans relier l'envoi d'e-mails au résultat d'une étape ;
+  - tenir la trace des avis de fin dans le journal d'audit, comme les demandes : à
+    chaque minute, chercher l'absence d'une entrée pour chaque mission parcourrait le
+    journal. La colonne, couverte par un index partiel, le dit directement ;
+  - prévenir aussi l'auteur qui a arrêté sa mission : il le sait ;
+  - prévenir d'une fin ancienne : une mission terminée quand aucun relais n'était
+    configuré n'est pas annoncée des jours plus tard, une fois qu'il l'est.
+- **Conséquences** :
+  - l'auteur d'une mission apprend par e-mail ce qui l'attend et quand elle se termine,
+    sans surveiller la page ;
+  - un arrêt du service entre l'envoi et son enregistrement peut faire partir un avis
+    deux fois, comme pour les demandes (ADR-070) ;
+  - restent des limites réglables par l'entreprise, et le choix, pour chacun, des avis
+    qu'il reçoit ;
+  - tests : `crates/api/tests/mission_stage_notices.rs` (étape en attente : une fois,
+    sa conversation, ni les actions ni leurs paramètres ; avis perdu rattrapé une fois,
+    dix minutes après la pause) et `mission_end_notices.rs` (mission menée à bien, une
+    fois, réponse vérifiée ou non relue ; inachevée par ses limites ou par le balayage ;
+    rien pour une mission arrêtée par son auteur, terminée depuis plus d'un jour ou dont
+    l'auteur est désactivé ; message refusé par le relais tracé et non renvoyé ;
+    missions de chaque entreprise lues dans la seule entreprise), les textes dans
+    `services/missions/end_notice/mail.rs` et `approval_notice/author_mail.rs`.
