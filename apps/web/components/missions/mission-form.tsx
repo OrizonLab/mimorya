@@ -63,7 +63,7 @@ export function MissionForm({ onEntrusted }: { onEntrusted: () => void }) {
           placeholder="Ex. Relis les comptes rendus de la semaine, repère les interventions non terminées et propose leur suivi."
         />
       </Field>
-      <Field label="Critères de réussite (un par ligne)">
+      <Field label="Critères de réussite (un par ligne, 8 au plus)">
         <Textarea
           required
           rows={3}

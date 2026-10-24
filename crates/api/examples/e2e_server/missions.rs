@@ -4,7 +4,9 @@
 //! mission's first stage searches this week's interventions until its
 //! budget is spent, then writes its progress note; the next stage gives the
 //! final answer, which the review passes. A mission whose title asks to be
-//! stopped waits a while at each call instead, for the browser to stop it.
+//! stopped waits a while at each call instead, for the browser to stop it;
+//! one whose objective says its review gives no verdict answers at once,
+//! and its reviewer answers without a verdict.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -27,6 +29,8 @@ const RESUMED: &str = "reprends à partir de ton dernier point";
 const TO_STOP: &str = "(à arrêter)";
 /// How long such a mission's model takes to answer.
 const STOPPED_WAIT: Duration = Duration::from_secs(20);
+/// The objective of a mission whose review gives no verdict (`missions.spec.ts`).
+const UNJUDGED: &str = "(relecture sans verdict)";
 
 /// The first stage's progress note, which the test reads.
 pub const NOTE: &str = "Point d’étape : les interventions de la semaine sont relues. Reste à \
@@ -94,6 +98,9 @@ impl LlmProvider for WithMissions {
     async fn complete(&self, request: &LlmRequest) -> Result<LlmResponse, LlmError> {
         // A mission's final answer, reviewed against its criteria.
         if request.tools.iter().any(|t| t.name == "submit_verdict") {
+            if request.messages.iter().any(|m| says(m, UNJUDGED)) {
+                return Ok(self.reply("Je ne peux pas me prononcer.", Vec::new()));
+            }
             let verdict = LlmToolCall {
                 id: "verdict".into(),
                 name: "submit_verdict".into(),
@@ -110,6 +117,9 @@ impl LlmProvider for WithMissions {
         if says(first, TO_STOP) {
             tokio::time::sleep(STOPPED_WAIT).await;
             return Ok(self.reply("", vec![search()]));
+        }
+        if says(first, UNJUDGED) {
+            return Ok(self.reply(ANSWER, Vec::new()));
         }
         let last = request.messages.last().unwrap_or(first);
         if says(last, NOTE_ASKED) {

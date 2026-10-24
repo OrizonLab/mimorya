@@ -1,9 +1,7 @@
 'use client';
 
 import { AlertTriangle, ShieldCheck, Target } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import { Badge, cx } from '@/components/ui';
+import { Badge, cx, Markdown } from '@/components/ui';
 import type { Message } from '@/lib/api';
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -12,16 +10,6 @@ const SOURCE_LABELS: Record<string, string> = {
   skill: 'Compétence',
   deliverable: 'Livrable',
 };
-
-export function Markdown({ children }: { children: string }) {
-  return (
-    <div className="prose-answer text-[0.95rem]">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml>
-        {children}
-      </ReactMarkdown>
-    </div>
-  );
-}
 
 export function MessageItem({ message }: { message: Message }) {
   const { verification, evidence, status, mission } = message.metadata;

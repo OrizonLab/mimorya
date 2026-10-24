@@ -15,6 +15,9 @@ export default function MissionsPage() {
   const mayUseAgent = useCan('agent:use');
   const mayEntrust = mayCreate && mayUseAgent;
   const going = state.data?.missions.some(underWay) ?? false;
+  // At its limit, the reader learns it before writing a mission (the API checks anyway).
+  const full =
+    state.data !== null && state.data.missions.filter(underWay).length >= state.data.maxUnderWay;
   const reload = state.reload;
 
   // Its stages go on in the background: the list follows them.
@@ -35,12 +38,17 @@ export default function MissionsPage() {
           <h2 id="new-mission" className="font-medium">
             Nouvelle mission
           </h2>
-          {mayEntrust ? (
-            <MissionForm onEntrusted={reload} />
-          ) : (
+          {!mayEntrust ? (
             <p className="text-sm text-muted">
               Vous n’avez pas le droit de confier des missions à l’agent.
             </p>
+          ) : full ? (
+            <p className="text-sm text-muted">
+              Vous avez déjà {state.data?.maxUnderWay} missions en cours : attendez la fin de l’une
+              d’elles, ou arrêtez-la.
+            </p>
+          ) : (
+            <MissionForm onEntrusted={reload} />
           )}
         </Card>
       </section>

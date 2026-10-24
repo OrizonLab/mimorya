@@ -2,9 +2,8 @@
 
 import { AlertTriangle, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
-import { Markdown } from '@/components/chat/message-item';
-import { Badge, Button, Card, ErrorNote, LabelBadge } from '@/components/ui';
-import { api, useAction, type Mission } from '@/lib/api';
+import { Badge, Button, Card, ErrorNote, LabelBadge, Markdown } from '@/components/ui';
+import { api, useAction, type Mission, type Verification } from '@/lib/api';
 import { formatCost, formatDate } from '@/lib/format';
 import { MISSION_STATUS } from '@/lib/labels';
 
@@ -39,33 +38,23 @@ export function MissionCard({ mission, onChanged }: { mission: Mission; onChange
         </div>
         <p className="text-xs text-muted">
           Confiée le {formatDate(mission.createdAt)} · étape {mission.stages} sur{' '}
-          {mission.maxStages} au plus · coût {formatCost(mission.costMicros)} sur{' '}
+          {mission.maxStages} au plus · coût estimé {formatCost(mission.costMicros)} sur{' '}
           {formatCost(mission.maxCostMicros)} au plus
         </p>
         <p className="text-sm whitespace-pre-line">{mission.objective}</p>
         <div className="text-sm">
           <p className="text-muted">Critères de réussite :</p>
           <ul className="ml-5 list-disc">
-            {mission.successCriteria.map((criterion) => (
-              <li key={criterion}>{criterion}</li>
+            {mission.successCriteria.map((criterion, index) => (
+              // Two criteria may read the same.
+              <li key={index}>{criterion}</li>
             ))}
           </ul>
         </div>
         {mission.result && (
           <section aria-label="Résultat" className="rounded-lg border border-line p-3">
             <Markdown>{mission.result}</Markdown>
-            {verification &&
-              (verification.passed ? (
-                <Badge tone="ok">
-                  <ShieldCheck className="size-3" aria-hidden />
-                  Critères vérifiés
-                </Badge>
-              ) : (
-                <Badge tone="warn">
-                  <AlertTriangle className="size-3" aria-hidden />
-                  Points non vérifiés
-                </Badge>
-              ))}
+            {verification && <Review verification={verification} />}
           </section>
         )}
         {mission.error && <p className="text-sm text-danger">{mission.error}</p>}
@@ -87,5 +76,35 @@ export function MissionCard({ mission, onChanged }: { mission: Mission; onChange
         {action.error && <ErrorNote message={action.error} />}
       </Card>
     </article>
+  );
+}
+
+/**
+ * What the review of the final answer found. Its criteria are said to be
+ * checked only when a reviewer judged them: an answer it could not judge
+ * (reviewer unavailable, no usable verdict) passes, unchecked.
+ */
+function Review({ verification }: { verification: Verification }) {
+  if (!verification.passed) {
+    return (
+      <Badge tone="warn">
+        <AlertTriangle className="size-3" aria-hidden />
+        Points non vérifiés
+      </Badge>
+    );
+  }
+  if (!verification.judged) {
+    return (
+      <Badge tone="warn">
+        <AlertTriangle className="size-3" aria-hidden />
+        Critères non contrôlés (relecture indisponible)
+      </Badge>
+    );
+  }
+  return (
+    <Badge tone="ok">
+      <ShieldCheck className="size-3" aria-hidden />
+      Critères vérifiés
+    </Badge>
   );
 }
