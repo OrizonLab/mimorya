@@ -108,6 +108,8 @@ pub fn typescript() -> String {
     declarations.add::<admin::SkillList>();
     declarations.add::<admin::SkillDetail>();
     declarations.add::<admin::SkillVersionCreated>();
+    declarations.add::<admin::SkillEvaluations>();
+    declarations.add::<admin::SkillEvaluationDetail>();
     declarations.add::<admin::Policies>();
     declarations.add::<admin::ApprovalRoutingView>();
     declarations.add::<admin::LlmView>();
@@ -170,6 +172,7 @@ macro_rules! request_bodies {
             admin::SkillActivation,
             admin::SkillRejection,
             admin::SkillEvalCaseInput,
+            admin::EvaluationRequest,
             admin::NewConnector,
             admin::ConnectorTrial,
             admin::ConnectorUpdate,

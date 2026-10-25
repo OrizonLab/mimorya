@@ -1,5 +1,5 @@
-//! Memory and skill ports of a run, backed by PostgreSQL (see `db_ports.rs`);
-//! the skills it proposes too (ADR-100).
+//! Memory and skill ports of a run, backed by PostgreSQL (see `db_ports.rs`;
+//! what it reads: `reads.rs`); the skills it proposes too (ADR-100).
 
 use async_trait::async_trait;
 use mimorya_agent::runtime::{
@@ -16,9 +16,7 @@ use mimorya_db::repositories::{memory, skill_proposals, skills};
 use serde_json::json;
 use uuid::Uuid;
 
-use super::context::memory_hit;
 use super::db_ports::{DbPorts, RunScope};
-use crate::services::embeddings::UsageBy;
 
 #[async_trait]
 impl MemoryStore for DbPorts {
@@ -29,18 +27,8 @@ impl MemoryStore for DbPorts {
         limit: u32,
         clearance: Sensitivity,
     ) -> anyhow::Result<Vec<MemoryHit>> {
-        let by = UsageBy {
-            user_id: Some(self.scope.user_id),
-            run_id: Some(self.scope.run_id),
-        };
-        let tenant_id = self.scope.tenant_id;
-        let meaning = self.embeddings.meaning_of(tenant_id, query, by).await;
-        let meaning = meaning.as_ref().map(|m| m.as_meaning());
-        let mut tx = self.tx().await?;
-        let limit = i64::from(limit);
-        let hits = memory::search_memory(&mut tx, filter, query, meaning, limit, clearance).await?;
-        tx.commit().await?;
-        Ok(hits.into_iter().filter_map(memory_hit).collect())
+        let reader = self.reader();
+        reader.search_memory(filter, query, limit, clearance).await
     }
 
     async fn create(&self, input: NewMemory) -> anyhow::Result<Uuid> {

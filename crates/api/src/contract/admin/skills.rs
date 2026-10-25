@@ -166,6 +166,11 @@ pub struct NewSkillVersion {
 pub struct SkillActivation {
     #[validate(range(min = 1))]
     pub version: i32,
+    /// Made active against the regressions its last evaluation found
+    /// (ADR-104). Absent: not confirmed.
+    #[serde(default)]
+    #[ts(optional)]
+    pub confirmed: Option<bool>,
 }
 
 /// Body of `POST /admin/skills/{id}/rejection`: the proposal turned down.

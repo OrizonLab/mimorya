@@ -75,6 +75,15 @@ impl Database {
 }
 
 impl SweepLock {
+    /// Whether the lock is still held: its connection answers, so the
+    /// session that took it, which it goes with, is still alive.
+    pub async fn held(&mut self) -> bool {
+        sqlx::query("select 1")
+            .execute(&mut self.connection)
+            .await
+            .is_ok()
+    }
+
     /// Releases the lock, and closes its connection: should either fail,
     /// the connection is dropped, and the lock with it.
     pub async fn release(mut self) {

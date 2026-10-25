@@ -1,11 +1,13 @@
 //! The company's skills (ADR-052): an administrator holding `skill:manage` on
 //! the whole company writes a skill and its versions, makes one of them
-//! active (an older one included: that is the way back), retires the skill,
+//! active (an older one included: that is the way back; against its last
+//! evaluation's regressions, once confirmed, ADR-104), retires the skill,
 //! and deletes one that is not active. A version's content never changes
 //! once written. Runs read the active versions when they start: there is no
 //! cache to refresh.
 
 use mimorya_core::DomainError;
+use mimorya_core::skill_evaluations::{LastEvaluation, activation_problem};
 use mimorya_core::skill_rules::{
     MAX_ACTIVE_SKILLS, content_problem, line_problem, name_problem, normalized_content,
 };
@@ -21,6 +23,7 @@ use uuid::Uuid;
 
 use super::{audit_entry, begin_change};
 use crate::services::AccessContext;
+use crate::services::skill_evaluations::last_evaluation;
 
 const PERMISSION: &str = "skill:manage";
 
@@ -121,17 +124,28 @@ pub async fn add_skill_version(
 }
 
 /// Makes `version` the one runs load, the version active before retired.
+/// Against the regressions its last evaluation found, only `confirmed`
+/// (ADR-104).
 pub async fn activate_skill(
     db: &Database,
     access: &AccessContext,
     id: Uuid,
     version: i32,
+    confirmed: bool,
 ) -> anyhow::Result<()> {
     access.require_tenant_wide(PERMISSION)?;
     let mut tx = begin_change(db, access, PERMISSION).await?;
     let skill = existing(&mut tx, id).await?;
     if skill.active_version == Some(version) {
         return Err(DomainError::validation("Cette version est déjà active").into());
+    }
+    let evaluated = last_evaluation(&mut tx, id, version).await?;
+    let last = evaluated.as_ref().map(|e| LastEvaluation {
+        reference_version: e.row.reference_version,
+        regressions: e.summary.regressions,
+    });
+    if let Some(problem) = activation_problem(version, last, skill.active_version, confirmed) {
+        return Err(DomainError::conflict(problem).into());
     }
     if skill.status != "active" && count_active_skills(&mut tx).await? >= MAX_ACTIVE_SKILLS {
         return Err(DomainError::validation(format!(
@@ -152,6 +166,15 @@ pub async fn activate_skill(
             "name": skill.name,
             "version": version,
             "previousVersion": skill.active_version,
+            // What its last evaluation said, when there is one (ADR-104).
+            "evaluation": evaluated.as_ref().map(|e| json!({
+                "id": e.row.id,
+                "referenceVersion": e.row.reference_version,
+                "cases": e.cases.len(),
+                "passed": e.summary.passed,
+                "regressions": e.summary.regressions,
+                "confirmed": confirmed,
+            })),
         })),
     )
     .await?;

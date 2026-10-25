@@ -49,8 +49,9 @@ impl RunAccess {
 
 /// Why a run may not go on for whom it acts for, given their access as it
 /// stands (`None`: their account is no longer active); `None` when it may.
-/// Read before each step, and before a queued run starts (ADR-085).
-pub(super) fn stopped_by(context: Option<&AccessContext>) -> Option<&'static str> {
+/// Read before each step, and before a queued run starts (ADR-085); before
+/// each step of an evaluation's too (ADR-104).
+pub(crate) fn stopped_by(context: Option<&AccessContext>) -> Option<&'static str> {
     match context {
         None => Some(ACCOUNT_INACTIVE),
         Some(context) if context.tenant.status != "active" => Some(COMPANY_SUSPENDED),
@@ -67,12 +68,17 @@ impl AccessSource for RunAccess {
             .access
             .active_context(self.tenant_id, self.user_id)
             .await?;
-        Ok(match (stopped_by(context.as_ref()), context) {
-            (None, Some(context)) => StepAccess::Granted(CurrentAccess {
-                engine: context.engine,
-                subject: context.subject,
-            }),
-            (why, _) => StepAccess::Ended(why.unwrap_or(ACCOUNT_INACTIVE).into()),
-        })
+        Ok(step_access(context))
+    }
+}
+
+/// What a step may do, given the access of whom it acts for as it stands.
+pub(crate) fn step_access(context: Option<AccessContext>) -> StepAccess {
+    match (stopped_by(context.as_ref()), context) {
+        (None, Some(context)) => StepAccess::Granted(CurrentAccess {
+            engine: context.engine,
+            subject: context.subject,
+        }),
+        (why, _) => StepAccess::Ended(why.unwrap_or(ACCOUNT_INACTIVE).into()),
     }
 }

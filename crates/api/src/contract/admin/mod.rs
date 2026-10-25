@@ -15,6 +15,7 @@ mod organization;
 mod policies;
 mod roles;
 mod skill_eval_cases;
+mod skill_evaluations;
 mod skills;
 mod users;
 
@@ -49,6 +50,10 @@ pub use organization::{
 };
 pub use roles::{Enforcement, NewRole, PermissionView, RoleUpdate, RoleView, Roles};
 pub use skill_eval_cases::{SkillEvalCaseInput, SkillEvalCaseView};
+pub use skill_evaluations::{
+    CaseOutcomeView, CaseResultView, EvaluatedCaseView, EvaluationRequest, EvaluationStatus,
+    SkillEvaluationDetail, SkillEvaluationView, SkillEvaluations, ToolCallView,
+};
 pub use skills::{
     NewSkill, NewSkillVersion, SkillActivation, SkillDetail, SkillList, SkillRejection,
     SkillStatus, SkillUpdate, SkillVersionCreated, SkillVersionStatus, SkillVersionView, SkillView,

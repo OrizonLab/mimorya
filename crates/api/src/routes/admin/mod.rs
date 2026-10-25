@@ -19,6 +19,7 @@ mod organization;
 mod policies;
 mod roles;
 mod skill_eval_cases;
+mod skill_evaluations;
 mod skills;
 mod users;
 
@@ -128,6 +129,14 @@ pub fn routes(state: &AppState) -> Router<AppState> {
         .route(
             "/admin/skill-cases/{id}",
             put(skill_eval_cases::update).delete(skill_eval_cases::remove),
+        )
+        .route(
+            "/admin/skills/{id}/evaluations",
+            get(skill_evaluations::list).post(skill_evaluations::launch),
+        )
+        .route(
+            "/admin/skill-evaluations/{id}",
+            get(skill_evaluations::show),
         )
         .route("/admin/audit", get(activity::audit))
         .route("/admin/usage", get(activity::usage))

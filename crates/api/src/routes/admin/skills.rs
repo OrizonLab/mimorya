@@ -128,7 +128,8 @@ pub async fn activate(
     Body(body): Body<SkillActivation>,
 ) -> ApiResult<Json<Done>> {
     let access = state.access.context(identity).await?;
-    activate_skill(&state.db, &access, id, body.version).await?;
+    let confirmed = body.confirmed.unwrap_or(false);
+    activate_skill(&state.db, &access, id, body.version, confirmed).await?;
     Ok(Json(Done::OK))
 }
 

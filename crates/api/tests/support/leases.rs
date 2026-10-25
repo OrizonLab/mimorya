@@ -116,7 +116,10 @@ pub fn pause_running_run_of(user_id: Uuid) {
     })
 }
 
-fn blocking<T, F, Fut>(query: F) -> T
+/// Runs `query` with the owner's pool from a model's step, which the
+/// runtime awaiting that step may not serve: on a thread and a runtime of
+/// its own.
+pub fn blocking<T, F, Fut>(query: F) -> T
 where
     T: Send + 'static,
     F: FnOnce(sqlx::PgPool) -> Fut + Send + 'static,

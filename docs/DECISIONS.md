@@ -4993,3 +4993,112 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
       membre, et sur la compétence d'une autre entreprise sans rien écrire ;
     - `crates/api/tests/first_login.rs` : les nouvelles routes retenues par un mot de
       passe provisoire.
+
+## ADR-104 — Une version de compétence jouée sur ses cas, à côté de la version active
+
+- **Date** : 2026-10-25 · **Statut** : acceptée (cycle de vie des compétences, lot 4b) ·
+  complète ADR-098, ADR-100 et ADR-103
+- **Contexte** : les cas d'évaluation d'une compétence sont écrits (ADR-103). Il reste à
+  les jouer pour une version, à comparer avec la version active et à éclairer la
+  décision d'activer, sans que rien ne soit modifié dans l'entreprise.
+- **Décision** :
+  - **demande** (`POST /admin/skills/{id}/evaluations`, la version) : par un
+    administrateur des compétences (`skill:manage` sur toute l'entreprise) qui peut
+    utiliser l'assistant, l'assistant lisant les compétences pour lui, l'entreprise ayant
+    un modèle, pour une version de la compétence ayant au moins un cas. Les cas sont
+    copiés tels qu'ils sont ; la version active est jouée à côté quand une autre est
+    évaluée. Une évaluation en file ou en cours par entreprise ;
+  - **exécution** : par un processus qui exécute les runs, à chaque minute et dès la
+    demande, une à la fois entre les processus, sous le verrou de sa passe (ADR-086) tant
+    qu'elle joue. Une évaluation trouvée en cours par la passe qui tient ce verrou est
+    celle qu'un arrêt a laissée : elle échoue, « interrompue », à demander de nouveau.
+    Aucun bail. Un résultat ne s'écrit que dans une évaluation encore en cours. Une
+    passe dont la session du verrou s'est perdue (PostgreSQL redémarré) s'arrête, sans
+    toucher à ce qu'une autre joue : elle vérifie avant chaque évaluation que cette
+    session vit encore, et cesse au cas suivant quand une autre passe a close la sienne ;
+  - **chaque cas** : l'assistant répond à la demande pour la personne qui a demandé
+    l'évaluation, avec ses droits relus avant chaque étape, et ce qu'on donne à un
+    sous-agent (ADR-098) : les outils qui ne font que lire et s'exécutent sans validation,
+    l'autonomie « lecture seule », un budget propre (8 étapes, 0,50 USD, 3 minutes).
+    Prévenu que les actions ne sont pas disponibles, il décrit celle qu'il proposerait.
+    `skill_read` sert la version jouée, que l'index liste même quand sa compétence n'est
+    pas encore active. Ni mémoires rappelées d'office (la mémoire reste cherchable par
+    son outil, sans être marquée utilisée), ni sous-agent, ni validation, ni livrable.
+    Avant chaque cas, la personne doit encore administrer les compétences de toute
+    l'entreprise et pouvoir utiliser l'assistant : sinon l'évaluation s'arrête, échouée,
+    avec les résultats acquis ;
+  - **jugement** : un modèle juge la réponse sur les critères du cas, comme le contrôle
+    qualité des réponses (`judge_answer`) : réussi, manqué (avec les manquements
+    relevés) ou en erreur (pas de réponse à juger, pas de verdict, ou le juge en échec).
+    Le résultat garde la réponse, les outils appelés et si la version a été chargée ; ce
+    qu'a coûté la réponse compte même quand le juge échoue ;
+  - **non-régression** : un cas réussi par la version active et pas par la version
+    évaluée est une régression. Activer une version contre les régressions de sa dernière
+    évaluation, comparée à la version active du moment, demande une confirmation
+    (`confirmed`) ; `skill.activated` garde le bilan de cette évaluation et la
+    confirmation ;
+  - **ce n'est pas un run** : rien n'est écrit dans les tables des runs, aucun événement
+    diffusé ; la consommation est comptée au nom de la personne (`usage_records` sans
+    run), les entrées d'audit du moteur portent l'identifiant de l'évaluation, et le coût
+    total s'additionne sur l'évaluation ;
+  - **lecture** : la liste et le bilan de chaque évaluation pour tous les administrateurs
+    des compétences ; les réponses, les manquements relevés et les outils appelés pour la
+    seule personne pour qui elle a tourné : ils ont été lus avec ses droits ;
+  - **conservation** : les cinq dernières évaluations d'une compétence, la plus ancienne
+    supprimée à la demande suivante, et 90 jours au plus après leur fin (une purge
+    chaque minute) : leurs réponses peuvent tenir ce que leur auteur seul peut lire.
+    Elles partent avec leur compétence ; leur auteur parti, plus personne ne lit leurs
+    réponses ;
+  - **audit** : `skill.evaluation_requested` (version, version de référence, nombre de
+    cas) et `skill.evaluated` (bilan, coût, raison d'un échec), jamais une réponse.
+- **Alternatives écartées** :
+  - jouer les cas comme des runs (file, bail, reprise) : un run porte une conversation
+    ou une mission, sa reprise, sa leçon, son suivi en direct ; un cas n'en a pas
+    besoin, et ses traces auraient rempli « Opérations » ;
+  - exécuter les actions de la version évaluée : une évaluation ne modifie rien ;
+  - montrer les réponses à tous les administrateurs : elles ont été lues avec les droits
+    d'une personne ;
+  - bloquer l'activation : la décision reste humaine (ADR-100), désormais éclairée et
+    confirmée ;
+  - plusieurs essais par cas : le coût double à chaque essai. Réserve assumée : un seul
+    essai, des réponses de modèle qui varient d'un essai à l'autre.
+- **Réserves assumées** :
+  - une version proposée par l'agent (ADR-100) est remise comme procédure de
+    l'entreprise pendant son évaluation, avant toute activation, avec les droits de
+    l'administrateur, et les outils des serveurs MCP que l'entreprise a classés en
+    lecture restent offerts : une proposition malveillante pourrait faire lire ce que
+    l'administrateur peut lire et le passer en paramètre à un serveur MCP de
+    l'entreprise. L'administrateur lit la proposition avant de l'évaluer ; l'écran le
+    rappellera (lot 4c) ;
+  - une seule passe pour la plateforme : une évaluation la tient jusqu'à une heure
+    environ, celles des autres entreprises attendent ;
+  - rien ne borne les évaluations demandées l'une après l'autre (10 USD environ chacune
+    au plus), sinon une à la fois par entreprise.
+- **Conséquences** :
+  - coût au plus : 10 cas, 2 versions, 0,50 USD chacun, et les jugements ;
+  - reste à faire : l'écran « Compétences » (lot 4c), qui saura confirmer une
+    activation contre des régressions (il n'envoie pas encore `confirmed`) ;
+  - tests :
+    - `crates/core/src/skill_evaluations.rs` : régression, bilan, confirmation à
+      l'activation ;
+    - `crates/api/tests/skill_evaluations.rs` : chaque cas joué pour la version évaluée
+      et la version active, ce que l'assistant reçoit (la demande, la lecture seule, les
+      outils, la version jouée), le jugement, la régression, aucun run, la consommation
+      au nom de la personne, l'audit sans réponse, l'activation confirmée ; les réponses
+      lues par la seule personne ; une compétence pas encore active listée dans l'index ;
+      une réponse sans verdict du juge ou que le juge n'a pu contrôler, en erreur,
+      gardée avec ce qu'elle a coûté ;
+    - `crates/api/tests/skill_evaluation_rules.rs` : ce qui est vérifié avant la file
+      (cas, version, droits, modèle, lecture des compétences, une à la fois, autre
+      entreprise) ; l'arrêt quand la personne ne peut plus (compte désactivé, rôle
+      restreint) ; une évaluation laissée en cours par un arrêt ; une passe dont une
+      autre a close l'évaluation n'écrit plus rien et s'arrête, de même qu'une passe dont
+      la session du verrou s'est perdue ; une passe à la fois, seulement dans un
+      processus qui exécute les runs ; les cinq dernières gardées, 90 jours au plus ;
+    - `crates/api/tests/several_workers.rs` : le verrou d'une passe que son détenteur
+      trouve perdu avec sa session ;
+    - `crates/api/tests/skill_access.rs` : les routes refusées à un membre, le détail
+      d'une évaluation compris, et la compétence d'une autre entreprise sans rien
+      écrire ;
+    - `crates/db/tests/definer_functions.rs` : les nouvelles fonctions entre
+      entreprises (évaluations à jouer, purge).

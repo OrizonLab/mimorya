@@ -42,6 +42,7 @@ pub mod runs;
 pub mod scheduled_tasks;
 pub mod secrets;
 pub mod skill_eval_cases;
+pub mod skill_evaluations;
 pub mod skill_proposal_notices;
 pub mod skill_proposals;
 pub mod skills;

@@ -1,7 +1,7 @@
 //! Several workers side by side (ADR-086): a sweep that runs once at a time
 //! holds a lock no other process gets meanwhile, released at its end, or
 //! dropped with a sweep cut short, or with its connection when its process
-//! vanishes; another sweep's lock stays free, and a process that waits for
+//! vanishes, which its holder then finds; another sweep's lock stays free, and a process that waits for
 //! one gets it once released, unless it waited longer than it would.
 //! Queued runs are shared out between workers, each claimed once.
 
@@ -93,9 +93,10 @@ async fn a_sweep_s_lock_goes_with_a_sweep_cut_short() {
 async fn a_sweep_s_lock_goes_with_a_process_that_vanished() {
     let (one, two) = (TestApi::start().await, TestApi::start().await);
     let held = one.app.services.db.try_sweep_lock("vanished-test").await;
-    let held = held.unwrap().expect("free");
+    let mut held = held.unwrap().expect("free");
     let db = &two.app.services.db;
     assert!(db.try_sweep_lock("vanished-test").await.unwrap().is_none());
+    assert!(held.held().await);
 
     // Its connection cut, as when its host vanishes.
     let app = sqlx::PgPool::connect(support::app_url()).await.unwrap();
@@ -109,6 +110,8 @@ async fn a_sweep_s_lock_goes_with_a_process_that_vanished() {
     .unwrap();
     app.close().await;
     freed(&two, "vanished-test").await;
+    // Its holder finds it lost.
+    assert!(!held.held().await);
     drop(held);
 }
 
