@@ -32,14 +32,20 @@ async fn a_second_worker_starts_beside_the_first_and_takes_each_run_up_once() {
     first.script(vec![ScriptedStep::text("Semaine calme.")]);
 
     // Both start at once (ADR-086): neither is refused, one takes it up.
+    // The first's periodic takeover, under way since its own start, may
+    // be the one: the starts then find it taken.
     let second = TestApi::start().await;
     second.script(vec![ScriptedStep::text("Semaine calme.")]);
     let (one, two) = tokio::join!(restart(&first), restart(&second));
-    assert_eq!(one + two, 1);
+    assert!(one + two <= 1, "taken up {one} + {two} times at start");
     assert_eq!(
         status_and_error(&first, tenant::ID, run_id).await.0,
         "completed"
     );
+    // Taken up once, whoever took it.
+    let resumed = events(&first, tenant::ID, run_id).await;
+    let resumed = resumed.iter().filter(|(kind, _)| kind == "run_resumed");
+    assert_eq!(resumed.count(), 1);
     let asked = |api: &TestApi| api.model.as_ref().unwrap().requests().len();
     assert_eq!(asked(&first) + asked(&second), 1);
     // No connection holds the former run executor's lock (ADR-053).
