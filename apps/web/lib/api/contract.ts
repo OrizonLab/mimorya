@@ -412,11 +412,23 @@ export type DocumentKind = "pdf" | "docx" | "markdown" | "text";
 /**
  * `GET /documents`.
  */
-export type DocumentList = { documents: Array<DocumentItem>,
+export type DocumentList = {
+/**
+ * The latest documents read, a bounded number of them.
+ */
+documents: Array<DocumentItem>,
+/**
+ * Older documents are read too, beyond those listed.
+ */
+truncated: boolean,
 /**
  * Where the reader may deposit.
  */
-spaces: Array<DocumentSpaceOption>, quota: DocumentQuota | null, };
+spaces: Array<DocumentSpaceOption>, quota: DocumentQuota | null,
+/**
+ * The largest file a deposit takes, in bytes (ADR-095).
+ */
+maxFileBytes: number, };
 
 /**
  * The company's documents held, against its quota: shown to those who

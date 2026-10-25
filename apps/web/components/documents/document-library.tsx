@@ -8,18 +8,21 @@ import { CLEARANCE_LABELS, DOCUMENT_KINDS } from '@/lib/labels';
 
 /** Where a document's file is downloaded, as deposited. */
 export function documentFileUrl(id: string): string {
-  return `/api/documents/${id}/file`;
+  return `/api/documents/${encodeURIComponent(id)}/file`;
 }
 
 /**
  * The documents the reader may read (ADR-095), the latest first: each
- * downloaded as deposited, deleted by whoever may write its space.
+ * downloaded as deposited, deleted by whoever may write its space. When
+ * older ones are left out, the list says so (ADR-097).
  */
 export function DocumentLibrary({
   documents,
+  truncated,
   onChanged,
 }: {
   documents: DocumentItem[];
+  truncated: boolean;
   onChanged: () => void;
 }) {
   const action = useAction();
@@ -43,7 +46,13 @@ export function DocumentLibrary({
           <ErrorNote message={action.error} />
         </div>
       )}
-      <DataTable columns={['Document', 'Espace', 'Taille', 'Déposé le', '']}>
+      {truncated && (
+        <p className="mb-3 text-xs text-muted">
+          Les {documents.length} documents les plus récents sont affichés ; l’agent consulte aussi
+          les plus anciens.
+        </p>
+      )}
+      <DataTable columns={['Document', 'Espace', 'Taille', 'Déposé le', 'Actions']}>
         {documents.map((document) => (
           <tr key={document.id}>
             <Cell>

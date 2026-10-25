@@ -15,7 +15,7 @@ pub use deposit::{Deposit, DepositFailure};
 pub use extractor::{
     CONCURRENT_EXTRACTIONS, EXTRACTION_TIMEOUT, ExtractionFailure, Extractor, extractor_beside,
 };
-pub use library::DocumentFile;
+pub use library::{DocumentFile, LISTED};
 
 use super::embeddings::EmbeddingService;
 

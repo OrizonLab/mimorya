@@ -130,8 +130,11 @@ test('the web relay carries a file of the largest size the API takes', async ({ 
   const list = await page.request.get('/api/documents');
   const [team] = ((await list.json()) as DocumentList).spaces;
   // 10 MiB: read by the API whole, too much text for a document, it says
-  // so. Beyond, the page sends nothing (above); the API's own refusal is
-  // tested on the API (`crates/api/tests/document_uploads.rs`).
+  // so. A relay that cut the body short, as Next's does by default at
+  // 10 MB, would give another answer: this guards its limit
+  // (`next.config.ts`) against being lowered. Beyond, the page sends
+  // nothing (above); the API's own refusal is tested on the API
+  // (`crates/api/tests/document_uploads.rs`).
   const largest = await page.request.post(
     `/api/documents?name=Limite.txt&unitId=${team?.unitId ?? ''}`,
     {

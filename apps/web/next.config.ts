@@ -12,6 +12,10 @@ const nextConfig: NextConfig = {
     // what is beyond: a margin above the 10 MiB a deposited document may
     // weigh (ADR-095, ADR-097), so that no file the API takes is cut.
     proxyClientMaxBodySize: '11mb',
+    // How long the relay waits on the API without a byte, 30 s by default:
+    // the time a deposited file's reading may take (`EXTRACTION_TIMEOUT`),
+    // so a margin above it, for the API's own answer to come back.
+    proxyTimeout: 60_000,
   },
   // The browser only talks to this origin; /api/* is relayed to the API so
   // that session cookies stay first-party and no CORS is needed.

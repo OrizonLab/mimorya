@@ -14,12 +14,17 @@ export default function DocumentsPage() {
         description="Les procédures, notes et chartes de l’entreprise que l’agent consulte pour vous répondre, dans vos droits : il cite ceux dont il se sert."
       />
       <Loaded state={state}>
-        {({ documents, spaces, quota }) => (
+        {({ documents, truncated, spaces, quota, maxFileBytes }) => (
           <>
             {spaces.length > 0 && (
-              <DocumentUpload spaces={spaces} quota={quota} onDeposited={state.reload} />
+              <DocumentUpload
+                spaces={spaces}
+                quota={quota}
+                maxFileBytes={maxFileBytes}
+                onDeposited={state.reload}
+              />
             )}
-            <DocumentLibrary documents={documents} onChanged={state.reload} />
+            <DocumentLibrary documents={documents} truncated={truncated} onChanged={state.reload} />
           </>
         )}
       </Loaded>

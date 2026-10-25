@@ -70,10 +70,15 @@ pub struct DocumentQuota {
 #[derive(Debug, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentList {
+    /// The latest documents read, a bounded number of them.
     pub documents: Vec<DocumentItem>,
+    /// Older documents are read too, beyond those listed.
+    pub truncated: bool,
     /// Where the reader may deposit.
     pub spaces: Vec<DocumentSpaceOption>,
     pub quota: Option<DocumentQuota>,
+    /// The largest file a deposit takes, in bytes (ADR-095).
+    pub max_file_bytes: i64,
 }
 
 /// `POST /documents?name=…&unitId=…&sensitivity=…`, the file as body: its

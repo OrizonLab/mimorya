@@ -5,6 +5,7 @@
 //! deletions are audited, never with the document's name.
 
 use mimorya_core::authz::{Actor, Sensitivity};
+use mimorya_core::documents::limits::MAX_FILE_BYTES;
 use mimorya_core::documents::{
     DocumentKind, DocumentSpace, can_write_document, document_read_filter, writable_spaces,
 };
@@ -23,7 +24,7 @@ use crate::contract::{
 use crate::services::AccessContext;
 
 /// The documents listed at once, the latest first.
-const LISTED: i64 = 500;
+pub const LISTED: usize = 500;
 
 /// A document's file, as deposited.
 pub struct DocumentFile {
@@ -39,7 +40,10 @@ impl DocumentService {
         let filter = document_read_filter(&access.engine, &access.subject, &Actor::user());
         let tenant_id = access.subject.tenant_id;
         let mut tx = self.db.begin(tenant_id).await?;
-        let rows = list_visible_documents(&mut tx, &filter, LISTED).await?;
+        // One more than listed: whether there are older ones.
+        let mut rows = list_visible_documents(&mut tx, &filter, LISTED as i64 + 1).await?;
+        let truncated = rows.len() > LISTED;
+        rows.truncate(LISTED);
         let spaces = writable_spaces(&access.engine, &access.subject, &Actor::user());
         let quota = if spaces.is_empty() {
             None
@@ -63,8 +67,10 @@ impl DocumentService {
             .collect();
         Ok(DocumentList {
             documents,
+            truncated,
             spaces,
             quota,
+            max_file_bytes: MAX_FILE_BYTES as i64,
         })
     }
 

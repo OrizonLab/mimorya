@@ -4506,6 +4506,8 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
   - **page « Documents »** dans le menu, pour qui tient `document:read` :
     - les documents lus, du plus récent au plus ancien, avec leur type, leur sensibilité,
       leur espace, leur taille et leur date ;
+    - les 500 plus récents au plus (`LISTED`) : au-delà, la liste le dit (`truncated`),
+      l'agent consultant aussi les plus anciens ;
     - chacun se télécharge tel que déposé, en pièce jointe ;
     - qui peut écrire son espace le supprime, après confirmation ;
   - **dépôt** depuis la même page, montré seulement à qui dépose quelque part :
@@ -4513,7 +4515,8 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     - l'usage du quota de l'entreprise est affiché ;
     - le fichier part tel quel (`api.upload`, `application/octet-stream`), décrit par la
       chaîne de requête stricte de l'API ;
-    - au-delà de 10 Mio, il n'est pas envoyé ;
+    - au-delà de la borne de l'API, qu'elle donne avec la liste (`maxFileBytes`, 10 Mio),
+      il n'est pas envoyé ;
     - un refus de l'API est montré avec sa raison ;
   - **relais `/api`** : Next.js garde le corps d'une requête jusqu'à
     `experimental.proxyClientMaxBodySize` et coupe au-delà sans le dire (10 Mo par
@@ -4521,7 +4524,10 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     aucun fichier que l'API accepte n'est coupé. Un fichier de 10 Mio exactement est
     vérifié de bout en bout. La page n'envoie jamais un fichier plus gros. Un client qui
     en enverrait un par le relais peut recevoir l'erreur du relais plutôt que le 413 de
-    l'API : celle-ci refuse sur la taille annoncée, sans lire le corps ;
+    l'API : celle-ci refuse sur la taille annoncée, sans lire le corps. Le relais attend
+    l'API 60 s sans réponse (`proxyTimeout`, 30 s par défaut, le temps que peut prendre la
+    lecture d'un fichier). Il ne sert qu'en développement et aux tests de bout en bout :
+    dans les piles Docker, Caddy envoie `/api` directement à l'API ;
   - **conversation** : une source de type document s'affiche « Document » suivi de son
     titre, et se télécharge en un clic ;
   - **« Modèle d'IA »** : le nombre de passages de documents indexés s'affiche à côté de
@@ -4551,5 +4557,7 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
       - le relais porte un fichier de 10 Mio exactement jusqu'à l'API ;
       - l'agent répond d'après la charte et la cite, son fichier téléchargé depuis la
         conversation ;
+    - `crates/api/tests/document_list.rs` : au-delà de 500 documents, la liste dit
+      qu'elle s'arrête ; la borne de taille donnée avec elle ;
     - `semantic-memory.spec.ts` : les passages indexés comptés et affichés ;
     - `navigation.spec.ts` : la page s'ouvre sans erreur.

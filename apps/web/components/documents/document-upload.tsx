@@ -15,9 +15,6 @@ import {
 import { formatBytes } from '@/lib/format';
 import { CLEARANCE_LABELS } from '@/lib/labels';
 
-/** The largest file the API takes (ADR-095): beyond, it is not even sent. */
-const MAX_FILE_BYTES = 10 * 1024 * 1024;
-const TOO_LARGE = 'Ce fichier dépasse 10 Mo : il n’est pas envoyé.';
 /** The files the API reads. */
 const ACCEPTED = '.pdf,.docx,.md,.markdown,.txt';
 const SENSITIVITIES: Sensitivity[] = ['public', 'internal', 'confidential', 'restricted'];
@@ -33,24 +30,33 @@ function query(upload: Upload): string {
 /**
  * Deposits a file into a space the reader may write (ADR-095): the
  * company's, or a unit's, up to a sensitivity. The file goes as it is; the
- * API reads it, and says why when it cannot.
+ * API reads it, and says why when it cannot. A file beyond the largest the
+ * API takes, which it gives, is not even sent.
  */
 export function DocumentUpload({
   spaces,
   quota,
+  maxFileBytes,
   onDeposited,
 }: {
   spaces: DocumentSpaceOption[];
   quota: DocumentQuota | null;
+  maxFileBytes: number;
   onDeposited: () => void;
 }) {
   const action = useAction();
   const [file, setFile] = useState<File | null>(null);
   // Cleared once deposited: a new input, empty.
   const [picker, setPicker] = useState(0);
-  const [space, setSpace] = useState(spaces[0]?.unitId ?? '');
+  const [chosen, setChosen] = useState(spaces[0]?.unitId ?? '');
   const [sensitivity, setSensitivity] = useState<Sensitivity>('internal');
   const [deposited, setDeposited] = useState<string | null>(null);
+  // The spaces come again with each reload: one no longer offered gives way
+  // to the first.
+  const space = spaces.some((option) => (option.unitId ?? '') === chosen)
+    ? chosen
+    : (spaces[0]?.unitId ?? '');
+  const largest = formatBytes(maxFileBytes);
 
   async function deposit() {
     if (!file) return;
@@ -61,7 +67,13 @@ export function DocumentUpload({
       sensitivity,
     } satisfies Upload;
     const created = await action.run(() => {
-      if (file.size > MAX_FILE_BYTES) throw new ApiError(413, 'too_large', TOO_LARGE);
+      if (file.size > maxFileBytes) {
+        throw new ApiError(
+          413,
+          'too_large',
+          `Ce fichier dépasse ${largest} : il n’est pas envoyé.`,
+        );
+      }
       return api.upload<DocumentCreated>(`/documents?${query(upload)}`, file);
     });
     if (created === null) return;
@@ -78,8 +90,8 @@ export function DocumentUpload({
           Déposer un document
         </h2>
         <p className="text-xs text-muted">
-          PDF avec du texte, Word (.docx), Markdown ou texte, 10 Mo au plus. Le document est lu par
-          ceux qui ont accès à son espace, jusqu’à sa sensibilité.
+          PDF avec du texte, Word (.docx), Markdown ou texte, {largest} au plus. Le document est lu
+          par ceux qui ont accès à son espace, jusqu’à sa sensibilité.
         </p>
         <div className="grid gap-3 sm:grid-cols-3">
           <Field label="Fichier" className="sm:col-span-3">
@@ -95,7 +107,7 @@ export function DocumentUpload({
             <Select
               value={space}
               disabled={action.pending}
-              onChange={(e) => setSpace(e.target.value)}
+              onChange={(e) => setChosen(e.target.value)}
             >
               {spaces.map((option) => (
                 <option key={option.unitId ?? ''} value={option.unitId ?? ''}>
