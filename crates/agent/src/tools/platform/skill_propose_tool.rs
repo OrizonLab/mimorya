@@ -84,7 +84,7 @@ impl TypedTool for SkillPropose {
         ToolInfo::new(
             SKILL_PROPOSE,
             "Proposition de compétence",
-            "Propose aux administrateurs des compétences une procédure tirée de la conversation : la nouvelle version complète d’une compétence active (sans description), ou une nouvelle compétence (avec sa description). L’utilisateur valide d’abord le texte exact ; aucune autre conversation n’en tient compte avant qu’un administrateur l’active. Le texte reste général : aucune donnée personnelle, d’un client ou d’un tiers, aucun secret, identifiant ni montant.",
+            "Propose aux administrateurs des compétences une procédure tirée de la conversation : la nouvelle version complète d’une compétence active (sans description), ou une nouvelle compétence (avec sa description). L’utilisateur, ou son responsable si l’entreprise le veut, valide d’abord le texte exact ; aucune autre conversation n’en tient compte avant qu’un administrateur l’active. Le texte reste général : aucune donnée personnelle, d’un client ou d’un tiers, aucun secret, identifiant ni montant.",
             ToolRisk::Draft,
         )
         // It reads what it improves: never a skill its run may not read.

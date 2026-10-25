@@ -1,145 +1,28 @@
-//! Skills the agent proposes (ADR-100): once the person, or their manager
-//! when the company says so, validated its text, a proposal is a candidate
-//! version among the skill's, or a new skill's first, which runs do not
-//! read before an administrator makes it active. An administrator turns one
-//! down, and may still make it active; only a proposal awaiting a decision
-//! is turned down. An inactive skill's name is answered as a name no skill
-//! bears. Too many proposals waiting, in the company or for one person,
-//! refuse one more. Each step is audited without the procedure's text. Who
-//! reaches the administration's routes: `skill_access.rs`.
+//! Skills the agent proposes (ADR-100): once the person validated its
+//! text, a proposal is a candidate version among the skill's, or a new
+//! skill's first, which runs do not read before an administrator makes it
+//! active. An administrator turns one down, and may still make it active;
+//! only a proposal awaiting a decision is turned down. An inactive skill's
+//! name is answered as a name no skill bears. Each step is audited without
+//! the procedure's text. Its bounds and its validation by a manager:
+//! `skill_proposal_bounds.rs`; who reaches the administration's routes:
+//! `skill_access.rs`.
 
 mod support;
 
 use axum::http::StatusCode;
-use mimorya_agent::testing::{ScriptedReply, ScriptedStep, call, last_tool_results};
+use mimorya_agent::testing::{ScriptedReply, ScriptedStep, last_tool_results};
 use mimorya_core::demo::{tenant, user};
-use mimorya_core::skill_proposals::{MAX_PENDING_PER_PERSON, MAX_PENDING_PROPOSALS};
-use mimorya_db::repositories::skills::{NewSkillVersion, get_active_skill, insert_skill_version};
+use mimorya_db::repositories::skills::get_active_skill;
 use mimorya_db::seed::DEMO_SKILL_ID;
 use serde_json::{Value, json};
-use support::manager_approvals::{listed, route_to_managers};
+use support::TestApi;
 use support::refusals::latest_entry;
-use support::{Client, TestApi};
+use support::skill_proposals::{
+    RATIONALE, SKILL, SKILLS, audited, detail, name_of, proposed, read_proposed, read_refused,
+    restore_the_report, validate, version_of_the_report,
+};
 use uuid::Uuid;
-
-const SKILL: &str = "synthese-hebdo-interventions";
-const SKILLS: &str = "/admin/skills";
-const RATIONALE: &str = "Ajoute la relecture des interventions en retard.";
-
-fn version_of_the_report() -> Value {
-    json!({
-        "name": SKILL,
-        "content": "# Synthèse\r\n1. Lister les interventions.\r\n2. Relire les retards.\r\n\r\n",
-        "rationale": RATIONALE,
-    })
-}
-
-/// A turn of `lucas`'s (or another's) in which the agent proposes `input`,
-/// then reads its result with `then`; the run, paused on a validation, and
-/// the request.
-async fn proposed(
-    api: &TestApi,
-    lucas: &Client<'_>,
-    input: Value,
-    then: ScriptedStep,
-) -> (Uuid, String) {
-    api.script(vec![
-        ScriptedStep::calls("", vec![call("skill_propose", input)]),
-        then,
-    ]);
-    let conversation = lucas.post("/conversations", json!({})).await.json();
-    let id = conversation["conversation"]["id"].as_str().unwrap();
-    let sent = lucas
-        .post(
-            &format!("/conversations/{id}/messages"),
-            json!({ "content": "Propose d’améliorer la procédure de synthèse." }),
-        )
-        .await;
-    assert_eq!(sent.status, StatusCode::ACCEPTED, "{}", sent.text());
-    api.idle().await;
-    let run = sent.json()["runId"].as_str().unwrap().to_string();
-    let request = listed(lucas, &run)
-        .await
-        .unwrap_or_else(|| panic!("the request of {run}"));
-    assert_eq!(request["toolName"], "skill_propose");
-    (run.parse().unwrap(), request["id"].as_str().unwrap().into())
-}
-
-/// Lucas validates `approval`; the run then ends.
-async fn validate(api: &TestApi, lucas: &Client<'_>, approval: &str) {
-    let decided = lucas
-        .post(
-            &format!("/approvals/{approval}/decision"),
-            json!({ "approved": true }),
-        )
-        .await;
-    assert_eq!(decided.status, StatusCode::OK, "{}", decided.text());
-    api.idle().await;
-    assert_eq!(api.model.as_ref().unwrap().remaining(), 0, "steps left");
-}
-
-/// The model reads a result that went through.
-fn read_proposed() -> ScriptedStep {
-    ScriptedStep::dynamic(|req| {
-        let results = last_tool_results(req);
-        assert!(!results[0].is_error, "{}", results[0].content);
-        ScriptedReply::text("Proposition envoyée aux administrateurs.")
-    })
-}
-
-/// The model reads a refusal saying `why`.
-fn read_refused(why: &'static str) -> ScriptedStep {
-    ScriptedStep::dynamic(move |req| {
-        let results = last_tool_results(req);
-        assert!(results[0].is_error, "{}", results[0].content);
-        assert!(results[0].content.contains(why), "{}", results[0].content);
-        ScriptedReply::text("La proposition est refusée.")
-    })
-}
-
-/// The weekly report as the seed left it, for the tests after: its first
-/// version alone, active.
-async fn restore_the_report(api: &TestApi) {
-    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
-    let first: Uuid =
-        sqlx::query_scalar("select id from skill_versions where skill_id = $1 and version = 1")
-            .bind(DEMO_SKILL_ID)
-            .fetch_one(&mut *tx)
-            .await
-            .unwrap();
-    for statement in [
-        "update skills set status = 'active', active_version_id = $2 where id = $1",
-        "update skill_versions set status = 'active' where skill_id = $1 and id = $2",
-        "delete from skill_versions where skill_id = $1 and id <> $2",
-    ] {
-        sqlx::query(statement)
-            .bind(DEMO_SKILL_ID)
-            .bind(first)
-            .execute(&mut *tx)
-            .await
-            .unwrap();
-    }
-    tx.commit().await.unwrap();
-}
-
-async fn detail(paul: &Client<'_>, id: &str) -> Value {
-    let shown = paul.get(&format!("{SKILLS}/{id}")).await;
-    assert_eq!(shown.status, StatusCode::OK, "{}", shown.text());
-    shown.json()
-}
-
-/// The skills' audit entries written after `since`: action and metadata.
-async fn audited(api: &TestApi, since: i64) -> Vec<(String, String, Option<Uuid>, Value)> {
-    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
-    sqlx::query_as(
-        "select action, actor_type, on_behalf_of_user_id, metadata from audit_log \
-         where id > $1 and action like 'skill.%' order by id",
-    )
-    .bind(since)
-    .fetch_all(&mut *tx)
-    .await
-    .unwrap()
-}
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
@@ -306,35 +189,6 @@ async fn a_new_skill_proposed_is_a_draft_whose_proposal_is_turned_down() {
     assert_eq!(deleted.status, StatusCode::OK, "{}", deleted.text());
 }
 
-/// `count` proposals waiting on the weekly report, written for `author`
-/// by `run`.
-async fn waiting(api: &TestApi, count: i64, author: Uuid, run: Uuid) {
-    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
-    for _ in 0..count {
-        let waiting = NewSkillVersion {
-            tenant_id: tenant::ID,
-            skill_id: DEMO_SKILL_ID,
-            content: "1. Une proposition.",
-            changelog: "En attente.",
-            created_by: author,
-            proposed_by_run: Some(run),
-            description: None,
-        };
-        insert_skill_version(&mut tx, waiting).await.unwrap();
-    }
-    tx.commit().await.unwrap();
-}
-
-/// The display name of `user_id`.
-async fn name_of(api: &TestApi, user_id: Uuid) -> String {
-    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
-    sqlx::query_scalar("select display_name from users where id = $1")
-        .bind(user_id)
-        .fetch_one(&mut *tx)
-        .await
-        .unwrap()
-}
-
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
 async fn an_inactive_skill_is_answered_as_a_name_no_skill_bears() {
@@ -415,70 +269,4 @@ async fn an_inactive_skill_is_answered_as_a_name_no_skill_bears() {
     );
     let deleted = paul.delete(&format!("{SKILLS}/{draft}")).await;
     assert_eq!(deleted.status, StatusCode::OK, "{}", deleted.text());
-}
-
-#[tokio::test]
-#[ignore = "requires PostgreSQL"]
-async fn too_many_proposals_waiting_refuse_one_more() {
-    let api = TestApi::start().await;
-    let lucas = api.sign_in(user::LUCAS).await;
-    let paul = api.sign_in(user::PAUL).await;
-    let (run, approval) = proposed(&api, &lucas, version_of_the_report(), read_proposed()).await;
-    validate(&api, &lucas, &approval).await;
-
-    // As many waiting for Lucas as one person may have: no more for him.
-    waiting(&api, MAX_PENDING_PER_PERSON - 1, user::LUCAS, run).await;
-    let (_, approval) = proposed(
-        &api,
-        &lucas,
-        version_of_the_report(),
-        read_refused("pour cette personne"),
-    )
-    .await;
-    validate(&api, &lucas, &approval).await;
-    restore_the_report(&api).await;
-
-    // As many waiting in the company as it takes, others': no more.
-    waiting(&api, MAX_PENDING_PROPOSALS, user::MARC, run).await;
-    let (_, approval) = proposed(
-        &api,
-        &lucas,
-        version_of_the_report(),
-        read_refused("attendent déjà les administrateurs"),
-    )
-    .await;
-    validate(&api, &lucas, &approval).await;
-    let shown = detail(&paul, &DEMO_SKILL_ID.to_string()).await;
-    assert_eq!(shown["skill"]["proposals"], MAX_PENDING_PROPOSALS);
-    restore_the_report(&api).await;
-}
-
-#[tokio::test]
-#[ignore = "requires PostgreSQL"]
-async fn the_manager_validates_a_proposal_when_the_company_says_so() {
-    let api = TestApi::start().await;
-    let paul = api.sign_in(user::PAUL).await;
-    let nadia = api.sign_in(user::NADIA).await;
-    let marc = api.sign_in(user::MARC).await;
-    route_to_managers(&paul, &["draft"]).await;
-
-    let (run, approval) = proposed(&api, &nadia, version_of_the_report(), read_proposed()).await;
-    // Nadia's manager reads the exact text, and alone decides.
-    let request = listed(&marc, &run.to_string())
-        .await
-        .expect("listed to Marc");
-    assert_eq!(request["canDecide"], true);
-    assert_eq!(request["requestedFor"]["id"], json!(user::NADIA));
-    assert_eq!(request["payload"]["rationale"], RATIONALE);
-    let decision = format!("/approvals/{approval}/decision");
-    let hers = nadia.post(&decision, json!({ "approved": true })).await;
-    assert_eq!(hers.status, StatusCode::FORBIDDEN, "{}", hers.text());
-    validate(&api, &marc, &approval).await;
-
-    let shown = detail(&paul, &DEMO_SKILL_ID.to_string()).await;
-    assert_eq!(shown["versions"][0]["status"], "candidate");
-    let nadia_name = name_of(&api, user::NADIA).await;
-    assert_eq!(shown["versions"][0]["createdBy"], nadia_name.as_str());
-    route_to_managers(&paul, &[]).await;
-    restore_the_report(&api).await;
 }

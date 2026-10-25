@@ -4818,6 +4818,7 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
       - nouvelle compétence en brouillon avec sa description proposée, proposition
         rejetée une seule fois puis encore activable ;
       - compétence inactive répondue comme un nom inconnu ;
+    - `crates/api/tests/skill_proposal_bounds.rs` :
       - plafonds de l'entreprise et de la personne ;
       - validation par le responsable quand l'entreprise le veut ;
     - `crates/api/tests/skill_access.rs` : rejet refusé à un membre, compétence d'une

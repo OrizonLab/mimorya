@@ -263,7 +263,8 @@ composables par les compétences.
 5. **Capitalisation** : le résumé du run (ce qui a marché, erreurs, corrections) est
    proposé comme mémoire `lesson` ; si un schéma récurrent apparaît, l'agent propose
    une compétence avec `skill_propose` : nouvelle version d'une compétence active ou
-   nouvelle compétence, dont la personne valide le texte exact avant qu'elle parte,
+   nouvelle compétence, dont la personne servie (ou son responsable si l'entreprise le
+   veut) valide le texte exact avant qu'elle parte,
    enregistrée comme version `candidate` pour les administrateurs (ADR-100).
 6. **Évaluation** de la version candidate sur les cas `skill_evals` (et cas de
    non-régression des versions précédentes) ; budget d'évaluation plafonné.

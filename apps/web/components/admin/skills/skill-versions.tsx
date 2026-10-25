@@ -40,8 +40,12 @@ export function SkillVersions({ skill, onChanged }: { skill: SkillView; onChange
             {writing ? (
               <VersionForm
                 skillId={skill.id}
-                // From the latest version: a new one is most often a change of it.
-                initial={detail.versions[0]?.content ?? ''}
+                // From the latest version an administrator wrote: a new one is
+                // most often a change of it, and a proposal of the agent's is
+                // read as such before anyone builds on it (ADR-100).
+                initial={
+                  (detail.versions.find((v) => !v.proposed) ?? detail.versions[0])?.content ?? ''
+                }
                 onDone={(saved) => {
                   setWriting(false);
                   if (saved) changed();
