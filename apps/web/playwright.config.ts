@@ -34,9 +34,10 @@ export default defineConfig({
   webServer: [
     {
       // The demo company is recreated, then the API starts (it deletes the
-      // e-mails of a former start).
+      // e-mails of a former start), its documents read by the extraction
+      // process (ADR-095).
       command:
-        'cargo run --bin mimorya-seed -- --reset && cargo run -p mimorya-api --example e2e_server',
+        'cargo build -p mimorya-api --bin mimorya-extract && cargo run --bin mimorya-seed -- --reset && cargo run -p mimorya-api --example e2e_server',
       cwd: root,
       url: 'http://localhost:4000/health',
       timeout: 900_000,
@@ -54,6 +55,8 @@ export default defineConfig({
         LOGIN_RATE_LIMIT_PER_MINUTE: '1000',
         LOG_LEVEL: 'warn',
         E2E_MAIL_DIR: MAIL_DIR,
+        // Beside the API's binaries, not the example's (`target/debug/examples`).
+        MIMORYA_EXTRACTOR: path.join(root, 'target/debug/mimorya-extract'),
       },
     },
     {

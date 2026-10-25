@@ -42,6 +42,10 @@ pub struct EmbeddingSettingsView {
     pub embedded: i64,
     /// Active memories.
     pub memories: i64,
+    /// Document passages with a vector of this model (ADR-096).
+    pub embedded_passages: i64,
+    /// Document passages.
+    pub passages: i64,
     /// Why the last indexing failed, until one succeeds (French).
     pub indexing_error: Option<String>,
     pub updated_at: String,
@@ -53,6 +57,7 @@ impl EmbeddingSettingsView {
         key_stored: bool,
         problem: Option<String>,
         progress: IndexProgress,
+        passages: IndexProgress,
         indexing_error: Option<String>,
     ) -> Self {
         Self {
@@ -65,6 +70,8 @@ impl EmbeddingSettingsView {
             problem,
             embedded: progress.embedded,
             memories: progress.total,
+            embedded_passages: passages.embedded,
+            passages: passages.total,
             indexing_error,
             updated_at: iso(&s.updated_at),
         }

@@ -17,7 +17,9 @@
 //! A company's embedding model is a test one, whatever it chooses: no
 //! provider is ever reached (ADR-074). A finished run reread for a lesson
 //! always yields the same one (`lessons`, ADR-076). A mission is played
-//! apart, stage after stage (`missions`, ADR-089). One pass of the tests
+//! apart, stage after stage (`missions`, ADR-089), and so is a question on
+//! the company's documents (`documents`, ADR-096), read by the extraction
+//! process the tests build (`MIMORYA_EXTRACTOR`, ADR-095). One pass of the tests
 //! per start: the model's script and the demo company are used up, and the
 //! rate limit windows a former start left are forgotten (ADR-088). Like
 //! `mimorya-api`, once listening it takes up the runs whose executor
@@ -28,6 +30,7 @@
 //! and holds until the browser followed it (`queued`, ADR-085).
 
 mod dns_server;
+mod documents;
 #[allow(dead_code)] // the API's tests use the rest
 #[path = "../../tests/support/dns.rs"]
 mod fake_dns;
@@ -102,7 +105,8 @@ async fn main() -> anyhow::Result<()> {
         model.push(scenario::reference(hour));
     }
     let conversations = Arc::new(queued::WithQueued::new(model));
-    let missions = Arc::new(missions::WithMissions::new(conversations));
+    let documents = Arc::new(documents::WithDocuments::new(conversations));
+    let missions = Arc::new(missions::WithMissions::new(documents));
     let platform: Arc<dyn LlmProvider> = Arc::new(lessons::WithLessons::new(missions));
     // A company's own provider answers « OK » (its connection test).
     let factory: ProviderFactory = Arc::new(|_config| {

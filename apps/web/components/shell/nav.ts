@@ -3,6 +3,7 @@ import {
   BookOpen,
   CalendarClock,
   CheckCircle2,
+  FileText,
   MessageSquare,
   Settings,
   Target,
@@ -29,6 +30,12 @@ export const NAV_ITEMS: NavItem[] = [
   },
   { href: '/operations', label: 'Opérations', icon: Activity },
   { href: '/memory', label: 'Mémoire', icon: BookOpen },
+  {
+    href: '/documents',
+    label: 'Documents',
+    icon: FileText,
+    visible: (me) => me.permissions.includes('document:read'),
+  },
   {
     href: '/admin',
     label: 'Administration',

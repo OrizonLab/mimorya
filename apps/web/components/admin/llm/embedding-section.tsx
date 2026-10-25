@@ -61,6 +61,10 @@ export function EmbeddingSection() {
                 <p>
                   Mémoires indexées : {data.settings.embedded} sur {data.settings.memories}
                 </p>
+                <p>
+                  Passages de documents indexés : {data.settings.embeddedPassages} sur{' '}
+                  {data.settings.passages}
+                </p>
                 {data.settings.problem && (
                   <ErrorNote
                     message={`La mémoire est cherchée par les mots seulement : ${data.settings.problem}.`}

@@ -1,7 +1,8 @@
 // Searching the company's memory by meaning, from the administration
-// (ADR-074): an embedding model chosen with its key, the memory indexed in
-// the background, the model tested, then back to searching by words, the
-// vectors wiped. The server's embedding model is a test one: nothing leaves.
+// (ADR-074): an embedding model chosen with its key, the memory and the
+// documents' passages (ADR-096) indexed in the background, the model tested,
+// then back to searching by words, the vectors wiped. The server's embedding
+// model is a test one: nothing leaves.
 import type { EmbeddingView } from '../lib/api/contract';
 import { openAdmin } from './support/admin';
 import { expect, noError, test } from './support/fixtures';
@@ -39,11 +40,18 @@ test('the company searches its memory by meaning, then by words again', async ({
     .click();
   await expect(page.getByRole('button', { name: 'Chercher aussi par le sens' })).toHaveCount(0);
 
-  // Recorded, and the memory indexed in the background.
+  // Recorded, and the memory and the documents' passages indexed in the
+  // background (ADR-096).
   await expect
     .poll(async () => {
       const settings = await stored();
-      return settings !== null && settings.memories > 0 && settings.embedded === settings.memories;
+      return (
+        settings !== null &&
+        settings.memories > 0 &&
+        settings.embedded === settings.memories &&
+        settings.passages > 0 &&
+        settings.embeddedPassages === settings.passages
+      );
     })
     .toBe(true);
   const settings = await stored();
@@ -56,10 +64,14 @@ test('the company searches its memory by meaning, then by words again', async ({
     indexingError: null,
   });
   const memories = settings?.memories ?? 0;
+  const passages = settings?.passages ?? 0;
   await page.reload();
   await page.getByRole('tab', { name: 'Modèle d’IA' }).click();
   await expect(page.getByText(/Par les mots et par le sens : Mistral AI/)).toBeVisible();
   await expect(page.getByText(`Mémoires indexées : ${memories} sur ${memories}`)).toBeVisible();
+  await expect(
+    page.getByText(`Passages de documents indexés : ${passages} sur ${passages}`),
+  ).toBeVisible();
   expect(await page.content()).not.toContain(key);
 
   await page.getByRole('button', { name: 'Tester le modèle d’embeddings' }).click();

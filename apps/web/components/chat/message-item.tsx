@@ -1,14 +1,16 @@
 'use client';
 
 import { AlertTriangle, ShieldCheck, Target } from 'lucide-react';
+import { documentFileUrl } from '@/components/documents';
 import { Badge, cx, Markdown } from '@/components/ui';
-import type { Message } from '@/lib/api';
+import type { Citation, Message } from '@/lib/api';
 
 const SOURCE_LABELS: Record<string, string> = {
   intervention: 'Intervention',
   memory: 'Mémoire',
   skill: 'Compétence',
   deliverable: 'Livrable',
+  document: 'Document',
 };
 
 export function MessageItem({ message }: { message: Message }) {
@@ -73,10 +75,7 @@ export function MessageItem({ message }: { message: Message }) {
             <ul className="mt-1 flex flex-wrap gap-1">
               {sources.map((c) => (
                 <li key={`${c.type}:${c.id}`}>
-                  <Badge>
-                    {SOURCE_LABELS[c.type] ?? c.type}{' '}
-                    {c.id.length > 12 ? (c.label ?? c.id.slice(0, 8)) : c.id}
-                  </Badge>
+                  <Source citation={c} />
                 </li>
               ))}
             </ul>
@@ -84,6 +83,27 @@ export function MessageItem({ message }: { message: Message }) {
         )}
       </div>
     </div>
+  );
+}
+
+/** A source of the answer; a document's downloads its file (ADR-096). */
+function Source({ citation }: { citation: Citation }) {
+  const name = citation.id.length > 12 ? (citation.label ?? citation.id.slice(0, 8)) : citation.id;
+  const badge = (
+    <Badge>
+      {SOURCE_LABELS[citation.type] ?? citation.type} {name}
+    </Badge>
+  );
+  if (citation.type !== 'document') return badge;
+  return (
+    <a
+      href={documentFileUrl(citation.id)}
+      download
+      aria-label={`Télécharger le document « ${name} »`}
+      className="hover:underline"
+    >
+      {badge}
+    </a>
   );
 }
 

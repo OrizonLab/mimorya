@@ -7,6 +7,12 @@ const nextConfig: NextConfig = {
   // The Docker image runs Next.js's self-contained server (infra/docker).
   output: process.env.NEXT_OUTPUT === 'standalone' ? 'standalone' : undefined,
   poweredByHeader: false,
+  experimental: {
+    // The relay keeps a request's body up to this size, and silently cuts
+    // what is beyond: above the 10 MiB a deposited document may weigh
+    // (ADR-095), a file too large reaches the API whole, which refuses it.
+    proxyClientMaxBodySize: '11mb',
+  },
   // The browser only talks to this origin; /api/* is relayed to the API so
   // that session cookies stay first-party and no CORS is needed.
   async rewrites() {

@@ -7,7 +7,7 @@
 use sqlx::PgConnection;
 use uuid::Uuid;
 
-use super::memory_embeddings::vector_literal;
+use super::memory_embeddings::{IndexProgress, vector_literal};
 
 /// What a passage's vector is computed from: its document's title, its
 /// section's, and its text.
@@ -67,6 +67,21 @@ pub async fn clear_passage_embeddings(conn: &mut PgConnection) -> sqlx::Result<u
     .execute(conn)
     .await?;
     Ok(result.rows_affected())
+}
+
+/// How far the company's passages are given to `model`: how many have its
+/// vector, and how many there are.
+pub async fn passage_index_progress(
+    conn: &mut PgConnection,
+    model: &str,
+) -> sqlx::Result<IndexProgress> {
+    sqlx::query_as(
+        "select count(*) filter (where embedding_model = $1 and embedding is not null) \
+         as embedded, count(*) as total from document_chunks",
+    )
+    .bind(model)
+    .fetch_one(conn)
+    .await
 }
 
 /// Whether the company's passages await vectors of `model`.

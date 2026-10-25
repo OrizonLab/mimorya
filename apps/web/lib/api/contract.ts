@@ -516,6 +516,14 @@ embedded: number,
  */
 memories: number,
 /**
+ * Document passages with a vector of this model (ADR-096).
+ */
+embeddedPassages: number,
+/**
+ * Document passages.
+ */
+passages: number,
+/**
  * Why the last indexing failed, until one succeeds (French).
  */
 indexingError: string | null, updatedAt: string, };
