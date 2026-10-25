@@ -55,6 +55,11 @@ export function SkillCard({
         {skill.latestVersion !== null && skill.latestVersion !== skill.activeVersion && (
           <Badge>dernière : v{skill.latestVersion}</Badge>
         )}
+        {skill.proposals > 0 && (
+          <Badge tone="accent">
+            {skill.proposals} proposition{skill.proposals > 1 ? 's' : ''} à relire
+          </Badge>
+        )}
         <span className="ml-auto flex gap-1">
           <Button variant="ghost" className="px-2 py-1" onClick={() => setDescribing(true)}>
             <Pencil className="size-3.5" aria-hidden />
