@@ -17,7 +17,7 @@ import { VersionItem } from './version-item';
 
 /**
  * The versions of a skill, the latest first: one is made active here, and
- * a proposal of the agent's turned down (ADR-100).
+ * a proposal of the agent's turned down (ADR-100, ADR-101).
  */
 export function SkillVersions({ skill, onChanged }: { skill: SkillView; onChanged: () => void }) {
   const state = useApiData<SkillDetail>(`/admin/skills/${skill.id}`);
@@ -47,12 +47,11 @@ export function SkillVersions({ skill, onChanged }: { skill: SkillView; onChange
             {writing ? (
               <VersionForm
                 skillId={skill.id}
-                // From the latest version an administrator wrote: a new one is
-                // most often a change of it, and a proposal of the agent's is
-                // read as such before anyone builds on it (ADR-100).
-                initial={
-                  (detail.versions.find((v) => !v.proposed) ?? detail.versions[0])?.content ?? ''
-                }
+                // From the latest version an administrator wrote, empty when
+                // none did: a new one is most often a change of it, and a
+                // proposal of the agent's is read as such before anyone
+                // builds on it (ADR-100, ADR-101).
+                initial={detail.versions.find((v) => !v.proposed)?.content ?? ''}
                 onDone={(saved) => {
                   setWriting(false);
                   if (saved) changed();

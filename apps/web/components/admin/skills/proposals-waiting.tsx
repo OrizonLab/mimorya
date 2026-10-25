@@ -1,6 +1,6 @@
 import type { SkillView } from '@/lib/api';
 
-/** Which skills have proposals of the agent's awaiting a decision (ADR-100). */
+/** Which skills have proposals of the agent's awaiting a decision (ADR-100, ADR-101). */
 export function ProposalsWaiting({ skills }: { skills: SkillView[] }) {
   const waiting = skills.filter((s) => s.proposals > 0);
   if (waiting.length === 0) return null;

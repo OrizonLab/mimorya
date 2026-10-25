@@ -1,12 +1,13 @@
-// Skills the agent proposes (ADR-100): Lucas asks the agent to propose a
+// Skills the agent proposes (ADR-100, ADR-101): Lucas asks the agent to propose a
 // procedure, reads its exact text and validates it; Paul finds the new
 // skill among the company's, a draft whose proposal awaits him, reads who
-// it was proposed for and why, turns it down, reads it back after a
-// reload, then deletes the skill. Whatever happens, the test's skill is
-// gone afterwards.
+// it was proposed for and why, reads its content unfolded, turns it down,
+// reads it back after a reload, finds a new version of his own starts
+// empty rather than from the proposal, then deletes the skill. Whatever
+// happens, the test's skill is gone afterwards.
 import type { Page } from '@playwright/test';
 import type { SkillList } from '../lib/api/contract';
-import { openAdmin } from './support/admin';
+import { cardWith, openAdmin } from './support/admin';
 import { demo, expect, noError, signIn, test } from './support/fixtures';
 
 /** The question, the skill and the answer the server's model plays (`e2e_server/skill_proposals.rs`). */
@@ -69,20 +70,16 @@ test('a skill the agent proposes is validated, then turned down by an administra
   await expect(page.getByRole('status')).toContainText(
     `Une proposition de l’agent attend votre décision : « ${NAME} »`,
   );
-  const card = page
-    .locator('div')
-    .filter({ hasText: DESCRIPTION })
-    .filter({
-      has: page.getByRole('button', { name: NAME, exact: true }),
-    });
-  await expect(card.last()).toContainText('Brouillon');
-  await expect(card.last()).toContainText('1 proposition à relire');
+  const card = cardWith(page, DESCRIPTION, NAME);
+  await expect(card).toContainText('Brouillon');
+  await expect(card).toContainText('1 proposition à relire');
   const version = await openTheSkill(page);
   await expect(version).toContainText('Proposée');
   await expect(version).toContainText(/proposée par l’agent pour Lucas/);
   await expect(version).toContainText(RATIONALE);
   await expect(version).toContainText(`Description proposée : ${DESCRIPTION}`);
-  await expect(version).toContainText('Retrouver la commande et sa date promise.');
+  // Awaiting a decision, its content is unfolded.
+  await expect(version.getByText('Retrouver la commande et sa date promise.')).toBeVisible();
   await version.getByRole('button', { name: 'Rejeter la version 1' }).click();
   await expect(version).toContainText('Rejetée');
 
@@ -92,6 +89,11 @@ test('a skill the agent proposes is validated, then turned down by an administra
   await expect(reread.getByRole('button', { name: 'Rejeter la version 1' })).toHaveCount(0);
   await expect(page.getByText('attend votre décision')).toHaveCount(0);
   await expect(page.getByText('proposition à relire')).toHaveCount(0);
+
+  // A version of his own starts from what an administrator wrote: nothing.
+  await page.getByRole('button', { name: 'Nouvelle version' }).click();
+  await expect(page.getByLabel('Contenu (procédure en Markdown)')).toHaveValue('');
+  await page.getByRole('button', { name: 'Annuler' }).click();
 
   await page.getByRole('button', { name: `Supprimer ${NAME}` }).click();
   await expect(page.getByRole('button', { name: NAME, exact: true })).toHaveCount(0);

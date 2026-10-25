@@ -5,8 +5,9 @@ import { SKILL_VERSION_STATUS } from '@/lib/labels';
 
 /**
  * One version of a skill: who wrote it (or for whom the agent proposed it,
- * ADR-100), its note and its content; made active here, or, a proposal
- * awaiting a decision, turned down.
+ * ADR-100), its note and its content, unfolded while it awaits a decision;
+ * made active here, or, a proposal awaiting a decision, turned down
+ * (ADR-101).
  */
 export function VersionItem({
   version,

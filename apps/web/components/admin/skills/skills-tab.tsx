@@ -10,7 +10,7 @@ import { SkillForm } from './skill-form';
 
 /**
  * The company's skills: written here, made active, retired (ADR-052); the
- * agent's proposals read and decided here too (ADR-100).
+ * agent's proposals read and decided here too (ADR-100, ADR-101).
  */
 export function SkillsTab() {
   const state = useApiData<SkillList>('/admin/skills');

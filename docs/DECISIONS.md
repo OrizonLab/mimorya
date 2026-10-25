@@ -4847,7 +4847,9 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     - en attente, s'ouvre avec son contenu déplié et porte, à côté de « Activer la
       version N », un bouton « Rejeter la version N » ;
   - une nouvelle version écrite à la main part de la dernière version qu'un
-    administrateur a écrite, jamais d'une proposition (ADR-100) ;
+    administrateur a écrite, jamais d'une proposition (ADR-100) : vide quand la
+    compétence n'a que des propositions, comme une nouvelle compétence que l'agent
+    propose ;
   - **serveur e2e** : il joue à part une question dont l'agent tire une nouvelle
     compétence à proposer (`skill_proposals.rs`).
 - **Alternatives écartées** : un onglet à part pour les propositions. Une proposition se
@@ -4859,4 +4861,6 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     - Lucas lit le texte exact et le valide ;
     - Paul trouve la nouvelle compétence en brouillon, sa proposition en attente, pour
       qui et pourquoi elle a été proposée, sa description ;
-    - Paul la rejette, la relit rejetée après rechargement, puis supprime la compétence.
+    - Paul lit son contenu déplié, la rejette, la relit rejetée après rechargement ;
+    - une nouvelle version qu'il écrit part vide, non de la proposition ;
+    - puis il supprime la compétence.
