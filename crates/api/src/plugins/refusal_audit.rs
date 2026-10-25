@@ -146,6 +146,7 @@ fn resource_of(route: &str, id: &str) -> Option<(&'static str, Uuid)> {
         "connectors" => "connector",
         "identity-providers" => "identity_provider",
         "skills" => "skill",
+        "skill-cases" => "skill_eval_case",
         _ => return None,
     };
     Some((resource_type, id))
@@ -177,6 +178,8 @@ mod tests {
             ("/admin/skills/{id}/versions", "skill"),
             ("/admin/skills/{id}/activation", "skill"),
             ("/admin/skills/{id}/rejection", "skill"),
+            ("/admin/skills/{id}/cases", "skill"),
+            ("/admin/skill-cases/{id}", "skill_eval_case"),
         ] {
             assert_eq!(resource_of(route, ID), Some((resource_type, id)), "{route}");
         }

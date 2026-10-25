@@ -1,18 +1,19 @@
 //! The company's skills (`skill:manage`, company-wide, ADR-052): the list, a
-//! skill with its versions, and their changes, the agent's proposals turned
-//! down among them (ADR-100). Every member reads the active
+//! skill with its versions and evaluation cases (ADR-103), and their
+//! changes, the agent's proposals turned down among them (ADR-100). Every member reads the active
 //! skills through the agent (`skill:read`); these screens are their managers'.
 
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
 use mimorya_core::DomainError;
+use mimorya_db::repositories::skill_eval_cases::list_eval_cases;
 use mimorya_db::repositories::skills::{get_skill, list_skill_versions, list_skills};
 
 use crate::app::AppState;
 use crate::contract::admin::{
-    NewSkill, NewSkillVersion, SkillActivation, SkillDetail, SkillList, SkillRejection,
-    SkillUpdate, SkillVersionCreated, SkillVersionView, SkillView,
+    NewSkill, NewSkillVersion, SkillActivation, SkillDetail, SkillEvalCaseView, SkillList,
+    SkillRejection, SkillUpdate, SkillVersionCreated, SkillVersionView, SkillView,
 };
 use crate::contract::{Created, Done};
 use crate::http::{ApiResult, Body, PathId};
@@ -53,6 +54,7 @@ pub async fn show(
         .await?
         .ok_or_else(|| DomainError::not_found("Compétence introuvable"))?;
     let versions = list_skill_versions(&mut tx, id).await?;
+    let cases = list_eval_cases(&mut tx, id).await?;
     tx.commit().await?;
     Ok(Json(SkillDetail {
         skill: SkillView::from_row(&skill)?,
@@ -60,6 +62,7 @@ pub async fn show(
             .iter()
             .map(SkillVersionView::from_row)
             .collect::<anyhow::Result<_>>()?,
+        cases: cases.iter().map(SkillEvalCaseView::from_row).collect(),
     }))
 }
 

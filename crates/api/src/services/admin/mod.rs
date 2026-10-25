@@ -1,6 +1,7 @@
 //! Workspace administration: accounts and the absence of a collaborator who
 //! cannot declare it, organisation, custom roles, role assignments, access
-//! policies, skills, the company's model provider and its identity providers.
+//! policies, skills and their evaluation cases, the company's model provider
+//! and its identity providers.
 //! Every operation requires its permission on the whole company, refuses to
 //! act on the administrator's own account, runs in one transaction with its
 //! audit entry, and refreshes the cached authorization data of the tenant.
@@ -31,6 +32,7 @@ mod policies;
 mod provider_designation;
 mod reset_links;
 mod roles;
+mod skill_eval_cases;
 mod skill_proposals;
 mod skills;
 mod users;
@@ -64,6 +66,7 @@ pub use org_units::{NewUnitInput, UnitChanges, create_unit, delete_unit, update_
 pub use policies::{PolicyChanges, PolicyInput, create_policy, delete_policy, update_policy};
 pub use reset_links::send_reset_link;
 pub use roles::{RoleChanges, RoleInput, create_role, delete_role, update_role};
+pub use skill_eval_cases::{EvalCaseInput, change_eval_case, create_eval_case, remove_eval_case};
 pub use skill_proposals::reject_skill_proposal;
 pub use skills::{
     SkillInput, activate_skill, add_skill_version, create_skill, delete_skill, retire_skill,

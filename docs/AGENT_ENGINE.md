@@ -266,8 +266,10 @@ composables par les compétences.
    nouvelle compétence, dont la personne servie (ou son responsable si l'entreprise le
    veut) valide le texte exact avant qu'elle parte,
    enregistrée comme version `candidate` pour les administrateurs (ADR-100).
-6. **Évaluation** de la version candidate sur les cas `skill_evals` (et cas de
-   non-régression des versions précédentes) ; budget d'évaluation plafonné.
+6. **Évaluation** de la version candidate sur les cas d'évaluation de la compétence
+   (`skill_eval_cases` : une demande et ses critères de réussite, écrits par ses
+   administrateurs, au plus 10, ADR-103), comparée à la version active sur les mêmes
+   cas (non-régression) ; budget d'évaluation plafonné.
 7. **Activation** par une personne habilitée (`skill:manage`), ou rejet de la
    proposition ; historique conservé ; retour à la version précédente en un geste si
    les indicateurs se dégradent.

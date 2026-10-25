@@ -2,8 +2,8 @@
 //! its skills (ADR-052). A member is refused on every route, each change
 //! audited (ADR-038). Another company's skill answers as one that exists
 //! nowhere, on every route, the attempt audited as such (ADR-047), and it is
-//! left as it was: no version is ever written for it, although the version
-//! table's foreign key would accept its identifier.
+//! left as it was: no version nor evaluation case (ADR-103) is ever written
+//! for it, although their tables' foreign keys would accept its identifier.
 
 mod support;
 
@@ -52,6 +52,15 @@ async fn every_change(client: &Client<'_>, id: Uuid) -> Vec<(&'static str, TestR
                 .post(&format!("{skill}/rejection"), json!({ "version": 1 }))
                 .await,
         ),
+        (
+            "POST cases",
+            client
+                .post(
+                    &format!("{skill}/cases"),
+                    json!({ "name": "Cas", "request": "Demande", "criteria": ["Critère."] }),
+                )
+                .await,
+        ),
         ("DELETE", client.delete(&skill).await),
     ]
 }
@@ -71,10 +80,10 @@ async fn foreign_skill(api: &TestApi) -> Uuid {
     id
 }
 
-/// The versions of skill `id` a company holds.
-async fn versions_of(api: &TestApi, tenant_id: Uuid, id: Uuid) -> i64 {
+/// The rows of `table` (versions or cases) of skill `id` a company holds.
+async fn rows_of(api: &TestApi, tenant_id: Uuid, table: &str, id: Uuid) -> i64 {
     let mut tx = api.app.services.db.begin(tenant_id).await.unwrap();
-    sqlx::query_scalar("select count(*) from skill_versions where skill_id = $1")
+    sqlx::query_scalar(&format!("select count(*) from {table} where skill_id = $1"))
         .bind(id)
         .fetch_one(&mut *tx)
         .await
@@ -105,7 +114,7 @@ async fn a_member_is_refused_on_every_route() {
     }
 
     // Each change refused is audited; reads are not.
-    assert_eq!(refusals_since(&api, since).await.len(), 7);
+    assert_eq!(refusals_since(&api, since).await.len(), 8);
     let after = paul.get(&format!("{SKILLS}/{DEMO_SKILL_ID}")).await.json();
     assert_eq!(after, before);
 }
@@ -129,15 +138,20 @@ async fn another_company_s_skill_answers_as_absent_and_stays_as_it_was() {
 
     // Each change audited as aimed at a skill answered as absent.
     let absent = not_found_since(&api, since).await;
-    assert_eq!(absent.len(), 12);
-    for (_, entry) in &absent[..6] {
+    assert_eq!(absent.len(), 14);
+    for (_, entry) in &absent[..7] {
         assert_eq!(entry.resource, Some(("skill".into(), foreign.to_string())));
     }
     assert!(refusals_since(&api, since).await.is_empty());
 
-    // Untouched, and no version written for it in either company.
-    assert_eq!(versions_of(&api, OTHER_TENANT_ID, foreign).await, 0);
-    assert_eq!(versions_of(&api, tenant::ID, foreign).await, 0);
+    // Untouched, and no version nor case written for it in either company.
+    for tenant_id in [OTHER_TENANT_ID, tenant::ID] {
+        assert_eq!(rows_of(&api, tenant_id, "skill_versions", foreign).await, 0);
+        assert_eq!(
+            rows_of(&api, tenant_id, "skill_eval_cases", foreign).await,
+            0
+        );
+    }
     let mut tx = api.app.services.db.begin(OTHER_TENANT_ID).await.unwrap();
     let (status, description): (String, String) =
         sqlx::query_as("select status, description from skills where id = $1")

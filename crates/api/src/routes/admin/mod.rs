@@ -18,6 +18,7 @@ mod mission_settings;
 mod organization;
 mod policies;
 mod roles;
+mod skill_eval_cases;
 mod skills;
 mod users;
 
@@ -123,6 +124,11 @@ pub fn routes(state: &AppState) -> Router<AppState> {
             put(skills::activate).delete(skills::retire),
         )
         .route("/admin/skills/{id}/rejection", post(skills::reject))
+        .route("/admin/skills/{id}/cases", post(skill_eval_cases::create))
+        .route(
+            "/admin/skill-cases/{id}",
+            put(skill_eval_cases::update).delete(skill_eval_cases::remove),
+        )
         .route("/admin/audit", get(activity::audit))
         .route("/admin/usage", get(activity::usage))
         // Last: a route layer only wraps the routes declared before it.
