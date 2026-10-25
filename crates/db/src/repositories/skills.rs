@@ -104,6 +104,8 @@ pub struct SkillVersionRow {
     pub changelog: String,
     /// Proposed by the agent for its author (ADR-100).
     pub proposed: bool,
+    /// The description a proposal of a new skill gave (ADR-100).
+    pub proposed_description: Option<String>,
     pub created_by: Option<String>,
     pub created_at: DateTime<Utc>,
     pub approved_by: Option<String>,
@@ -118,6 +120,7 @@ pub async fn list_skill_versions(
 ) -> sqlx::Result<Vec<SkillVersionRow>> {
     sqlx::query_as(
         "select v.version, v.status, v.content, v.changelog, v.proposed, \
+         case when v.proposed then v.frontmatter->>'description' end as proposed_description, \
          author.display_name as created_by, \
          v.created_at, approver.display_name as approved_by, v.approved_at \
          from skill_versions v \
@@ -160,6 +163,9 @@ pub struct NewSkillVersion<'a> {
     /// The run that proposed it for its author (ADR-100): a candidate then,
     /// a draft otherwise.
     pub proposed_by_run: Option<Uuid>,
+    /// The description a proposal of a new skill gave, kept in its
+    /// frontmatter as agentskills.io writes it.
+    pub description: Option<&'a str>,
 }
 
 /// A version numbered after the latest one; its number.
@@ -171,7 +177,8 @@ pub async fn insert_skill_version(
         "insert into skill_versions (tenant_id, skill_id, version, content, frontmatter, \
          changelog, created_by_user_id, created_by_run_id, proposed, status) \
          select $1, $2, coalesce(max(version), 0) + 1, $3, \
-         jsonb_build_object('name', (select name from skills where id = $2)), $4, $5, $6, \
+         jsonb_strip_nulls(jsonb_build_object('name', (select name from skills where id = $2), \
+         'description', $7::text)), $4, $5, $6, \
          $6::uuid is not null, case when $6::uuid is null then 'draft' else 'candidate' end \
          from skill_versions where skill_id = $2 returning version",
     )
@@ -181,6 +188,7 @@ pub async fn insert_skill_version(
     .bind(version.changelog)
     .bind(version.created_by)
     .bind(version.proposed_by_run)
+    .bind(version.description)
     .fetch_one(&mut *conn)
     .await?;
     touch(conn, version.skill_id).await?;

@@ -4,7 +4,7 @@
 
 use async_trait::async_trait;
 use mimorya_core::skill_proposals::{
-    NamedSkill, ProposalOutcome, ProposalTarget, SkillProposal, proposal_target,
+    NamedSkill, Pending, ProposalOutcome, ProposalTarget, SkillProposal, proposal_target,
 };
 
 use super::in_memory_ports::InMemoryPorts;
@@ -64,7 +64,12 @@ impl SkillStore for InMemoryPorts {
             (false, 0) => NamedSkill::Unknown,
             (false, _) => NamedSkill::Inactive,
         };
-        let pending = state.skill_proposals.len() as i64;
+        // All of them proposed for the one person the ports serve.
+        let waiting = state.skill_proposals.len() as i64;
+        let pending = Pending {
+            company: waiting,
+            person: waiting,
+        };
         Ok(match proposal_target(&proposal, named, pending) {
             Err(why) => ProposalOutcome::Refused(why),
             Ok(target) => {
@@ -72,6 +77,7 @@ impl SkillStore for InMemoryPorts {
                     // After the active version 1 and those proposed before.
                     ProposalTarget::NewVersion => 2 + proposed as i32,
                     ProposalTarget::NewSkill => 1,
+                    ProposalTarget::InactiveSkill => 1 + proposed as i32,
                 };
                 state.skill_proposals.push(proposal);
                 ProposalOutcome::Proposed { target, version }

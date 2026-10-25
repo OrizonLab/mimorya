@@ -8,7 +8,7 @@ use mimorya_agent::runtime::{
 use mimorya_core::authz::Sensitivity;
 use mimorya_core::memory::{MemoryReadFilter, MemoryStatus};
 use mimorya_core::skill_proposals::{
-    NamedSkill, ProposalOutcome, ProposalTarget, SkillProposal, proposal_target,
+    NamedSkill, Pending, ProposalOutcome, ProposalTarget, SkillProposal, proposal_target,
 };
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::skills::{NewSkill, NewSkillVersion};
@@ -114,20 +114,23 @@ impl SkillStore for DbPorts {
             Some("active") => NamedSkill::Active,
             Some(_) => NamedSkill::Inactive,
         };
-        let pending = skill_proposals::count_pending_proposals(&mut tx).await?;
-        let target = match proposal_target(&proposal, state, pending) {
-            Ok(target) => target,
-            Err(why) => return Ok(ProposalOutcome::Refused(why)),
-        };
         let RunScope {
             tenant_id,
             run_id,
             user_id,
             ..
         } = self.scope;
+        let (company, person) = skill_proposals::pending_proposals(&mut tx, user_id).await?;
+        let pending = Pending { company, person };
+        let target = match proposal_target(&proposal, state, pending) {
+            Ok(target) => target,
+            Err(why) => return Ok(ProposalOutcome::Refused(why)),
+        };
         let skill_id = match (target, named, &proposal.description) {
-            (ProposalTarget::NewVersion, Some(skill), _) => skill.id,
-            (_, _, Some(description)) => {
+            (ProposalTarget::NewVersion | ProposalTarget::InactiveSkill, Some(skill), _) => {
+                skill.id
+            }
+            (ProposalTarget::NewSkill, None, Some(description)) => {
                 let skill = NewSkill {
                     tenant_id,
                     name: &proposal.name,
@@ -145,6 +148,7 @@ impl SkillStore for DbPorts {
             changelog: &proposal.rationale,
             created_by: user_id,
             proposed_by_run: Some(run_id),
+            description: proposal.description.as_deref(),
         };
         let version = skills::insert_skill_version(&mut tx, version).await?;
         // Its text stays out of the audit: the version keeps it.

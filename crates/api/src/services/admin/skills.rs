@@ -223,6 +223,7 @@ async fn add_version(
         changelog,
         created_by: access.subject.user_id,
         proposed_by_run: None,
+        description: None,
     };
     Ok(insert_skill_version(tx, version).await?)
 }

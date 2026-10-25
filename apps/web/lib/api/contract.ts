@@ -1431,7 +1431,11 @@ content: string, changelog: string,
 /**
  * Proposed by the agent for its author, who validated it (ADR-100).
  */
-proposed: boolean, createdBy: string | null, createdAt: string,
+proposed: boolean,
+/**
+ * What a proposal of a new skill said the skill covers.
+ */
+proposedDescription: string | null, createdBy: string | null, createdAt: string,
 /**
  * Who made it active last, and when.
  */

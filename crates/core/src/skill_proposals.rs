@@ -2,11 +2,16 @@
 //! of an active skill, or a new skill, written with the person it serves,
 //! who validates its exact text before it reaches the skills'
 //! administrators. Nothing reaches a run before one of them makes it
-//! active. Pure rules; the ports apply them where the skills are kept.
+//! active. Whoever proposes reads the active skills only: a name borne by
+//! an inactive skill is answered as one no skill bears. Pure rules; the
+//! ports apply them where the skills are kept.
 
 /// Proposals awaiting the administrators in one company: beyond, the agent
 /// proposes nothing more until they decide on some.
 pub const MAX_PENDING_PROPOSALS: i64 = 20;
+/// Of those, the ones one person's runs proposed: no one fills the company's
+/// share alone.
+pub const MAX_PENDING_PER_PERSON: i64 = 5;
 
 /// A procedure the agent proposes, as the person validated it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -28,8 +33,17 @@ pub enum NamedSkill {
     Unknown,
     /// An active skill: runs read it.
     Active,
-    /// A draft or a retired skill.
+    /// A draft or a retired skill, which whoever proposes cannot read.
     Inactive,
+}
+
+/// The proposals awaiting the administrators, as they stand.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Pending {
+    /// In the whole company.
+    pub company: i64,
+    /// Proposed for the person served.
+    pub person: i64,
 }
 
 /// Where a proposal is recorded.
@@ -39,6 +53,9 @@ pub enum ProposalTarget {
     NewVersion,
     /// A new skill, a draft, whose first version it is.
     NewSkill,
+    /// A version of the inactive skill bearing the new skill's name: for
+    /// its administrators to decide, answered as a new skill.
+    InactiveSkill,
 }
 
 /// What became of a proposal.
@@ -54,31 +71,35 @@ pub enum ProposalOutcome {
 }
 
 /// Where `proposal` goes, the skill it names and the proposals pending as
-/// they stand; or why it is refused, in French. Skill names are no secret
-/// within the company: a refusal may say one is taken.
+/// they stand; or why it is refused, in French. Nothing said tells an
+/// inactive skill from a name no skill bears.
 pub fn proposal_target(
     proposal: &SkillProposal,
     named: NamedSkill,
-    pending: i64,
+    pending: Pending,
 ) -> Result<ProposalTarget, String> {
-    if pending >= MAX_PENDING_PROPOSALS {
+    let wait = "proposez de nouveau une fois qu’ils en auront décidé.";
+    if pending.company >= MAX_PENDING_PROPOSALS {
         return Err(format!(
             "{MAX_PENDING_PROPOSALS} propositions attendent déjà les administrateurs des \
-             compétences : proposez de nouveau une fois qu’ils en auront décidé."
+             compétences : {wait}"
+        ));
+    }
+    if pending.person >= MAX_PENDING_PER_PERSON {
+        return Err(format!(
+            "{MAX_PENDING_PER_PERSON} propositions faites pour cette personne attendent déjà les \
+             administrateurs des compétences : {wait}"
         ));
     }
     let name = &proposal.name;
     match (named, proposal.description.is_some()) {
         (NamedSkill::Active, false) => Ok(ProposalTarget::NewVersion),
         (NamedSkill::Unknown, true) => Ok(ProposalTarget::NewSkill),
+        (NamedSkill::Inactive, true) => Ok(ProposalTarget::InactiveSkill),
         (NamedSkill::Active, true) => Err(format!(
             "La compétence « {name} » existe : proposez-en une nouvelle version, sans description."
         )),
-        (NamedSkill::Inactive, _) => Err(format!(
-            "Une compétence de l’entreprise porte déjà le nom « {name} » sans être active : \
-             proposez un autre nom."
-        )),
-        (NamedSkill::Unknown, false) => Err(format!(
+        (NamedSkill::Unknown | NamedSkill::Inactive, false) => Err(format!(
             "Aucune compétence active ne s’appelle « {name} » : pour en proposer une nouvelle, \
              donnez aussi sa description."
         )),
@@ -88,6 +109,11 @@ pub fn proposal_target(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const NONE: Pending = Pending {
+        company: 0,
+        person: 0,
+    };
 
     fn proposal(description: Option<&str>) -> SkillProposal {
         SkillProposal {
@@ -99,36 +125,48 @@ mod tests {
     }
 
     #[test]
-    fn a_version_goes_to_an_active_skill_and_a_new_skill_to_a_free_name() {
+    fn a_version_goes_to_an_active_skill_and_a_new_skill_to_its_name() {
         let version = proposal(None);
         let new = proposal(Some("Synthèse hebdomadaire des interventions"));
+        let target = |p, named| proposal_target(p, named, NONE);
         assert_eq!(
-            proposal_target(&version, NamedSkill::Active, 0),
+            target(&version, NamedSkill::Active),
             Ok(ProposalTarget::NewVersion)
         );
         assert_eq!(
-            proposal_target(&new, NamedSkill::Unknown, 0),
+            target(&new, NamedSkill::Unknown),
             Ok(ProposalTarget::NewSkill)
+        );
+        assert_eq!(
+            target(&new, NamedSkill::Inactive),
+            Ok(ProposalTarget::InactiveSkill)
         );
     }
 
     #[test]
-    fn a_name_taken_otherwise_or_unknown_without_description_is_refused() {
+    fn an_inactive_skill_is_refused_as_a_name_no_skill_bears() {
         let version = proposal(None);
+        let refused = |named| proposal_target(&version, named, NONE).unwrap_err();
+        assert!(refused(NamedSkill::Unknown).contains("donnez aussi sa description"));
+        assert_eq!(refused(NamedSkill::Inactive), refused(NamedSkill::Unknown));
         let new = proposal(Some("Synthèse hebdomadaire des interventions"));
-        let refused = |p: &SkillProposal, named| proposal_target(p, named, 0).unwrap_err();
-        assert!(refused(&new, NamedSkill::Active).contains("proposez-en une nouvelle version"));
-        assert!(refused(&new, NamedSkill::Inactive).contains("sans être active"));
-        assert!(refused(&version, NamedSkill::Inactive).contains("sans être active"));
-        assert!(refused(&version, NamedSkill::Unknown).contains("donnez aussi sa description"));
+        let active = proposal_target(&new, NamedSkill::Active, NONE).unwrap_err();
+        assert!(active.contains("proposez-en une nouvelle version"));
     }
 
     #[test]
     fn nothing_more_is_proposed_while_too_many_wait() {
         let version = proposal(None);
-        let full = MAX_PENDING_PROPOSALS;
-        assert!(proposal_target(&version, NamedSkill::Active, full - 1).is_ok());
-        let refused = proposal_target(&version, NamedSkill::Active, full).unwrap_err();
-        assert!(refused.contains("attendent déjà"), "{refused}");
+        let target = |company, person| {
+            proposal_target(&version, NamedSkill::Active, Pending { company, person })
+        };
+        assert!(target(MAX_PENDING_PROPOSALS - 1, MAX_PENDING_PER_PERSON - 1).is_ok());
+        let company = target(MAX_PENDING_PROPOSALS, 0).unwrap_err();
+        assert!(
+            company.contains("attendent déjà les administrateurs"),
+            "{company}"
+        );
+        let person = target(0, MAX_PENDING_PER_PERSON).unwrap_err();
+        assert!(person.contains("pour cette personne"), "{person}");
     }
 }

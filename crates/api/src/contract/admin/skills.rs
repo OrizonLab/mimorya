@@ -80,6 +80,8 @@ pub struct SkillVersionView {
     pub changelog: String,
     /// Proposed by the agent for its author, who validated it (ADR-100).
     pub proposed: bool,
+    /// What a proposal of a new skill said the skill covers.
+    pub proposed_description: Option<String>,
     pub created_by: Option<String>,
     pub created_at: String,
     /// Who made it active last, and when.
@@ -95,6 +97,7 @@ impl SkillVersionView {
             content: v.content.clone(),
             changelog: v.changelog.clone(),
             proposed: v.proposed,
+            proposed_description: v.proposed_description.clone(),
             created_by: v.created_by.clone(),
             created_at: iso(&v.created_at),
             approved_by: v.approved_by.clone(),

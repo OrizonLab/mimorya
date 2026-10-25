@@ -1,8 +1,10 @@
 //! Skills the agent proposes (ADR-100): a new version of an active skill,
 //! or a new skill, sent to the skills' administrators once the person
-//! validated its exact text; refused, as the platform's rules say, when its
-//! name is taken otherwise; never proposed without the permission, nor by
-//! a sub-agent, nor when the text is no procedure.
+//! validated its exact text, trimmed as the administration trims it;
+//! refused, as the platform's rules say, when its name is no active
+//! skill's and no description comes with it; never proposed without the
+//! permission or the reading of the skills, nor by a sub-agent, nor when
+//! the text is no procedure.
 
 mod support;
 
@@ -109,7 +111,7 @@ async fn a_version_reaches_the_administrators_once_the_person_validated_it() {
         .expect("the proposal ran");
     assert_eq!(
         record.output_summary.as_deref(),
-        Some("Version 2 de « synthese-hebdo » proposée")
+        Some("Nouvelle version de « synthese-hebdo » proposée")
     );
 }
 
@@ -121,9 +123,9 @@ async fn a_new_skill_is_proposed_with_its_description() {
                 "",
                 vec![propose(json!({
                     "name": "relance-client",
-                    "description": "Relance d’un client dont la facture est échue",
+                    "description": "  Relance d’un client dont la facture est échue ",
                     "content": "1. Vérifier l’échéance.\n2. Rédiger la relance.",
-                    "rationale": "Procédure suivie avec succès aujourd’hui.",
+                    "rationale": " Procédure suivie avec succès aujourd’hui.  ",
                 }))],
             ),
             ScriptedStep::text("Compétence proposée."),
@@ -141,6 +143,10 @@ async fn a_new_skill_is_proposed_with_its_description() {
     assert_eq!(
         proposed[0].description.as_deref(),
         Some("Relance d’un client dont la facture est échue")
+    );
+    assert_eq!(
+        proposed[0].rationale,
+        "Procédure suivie avec succès aujourd’hui."
     );
     let record = h
         .ports
@@ -209,11 +215,24 @@ async fn what_is_no_procedure_is_refused_before_any_validation() {
                         "content": "1. Lister les interventions.",
                         "rationale": "Utile.",
                     })),
+                    // A description of blanks only, once trimmed.
+                    propose(json!({
+                        "name": "relance-client",
+                        "description": "            ",
+                        "content": "1. Appeler le client.",
+                        "rationale": "Utile.",
+                    })),
+                    // A note too short once trimmed.
+                    propose(json!({
+                        "name": SKILL,
+                        "content": "1. Lister les interventions.",
+                        "rationale": "  a  ",
+                    })),
                 ],
             ),
             ScriptedStep::dynamic(|req| {
                 let results = last_tool_results(req);
-                assert_eq!(results.len(), 3);
+                assert_eq!(results.len(), 5);
                 assert!(results.iter().all(|r| r.is_error), "{results:?}");
                 ScriptedReply::text("Rien n’est proposé.")
             }),
@@ -225,9 +244,10 @@ async fn what_is_no_procedure_is_refused_before_any_validation() {
     assert!(h.ports.skill_proposals().is_empty());
 }
 
-#[tokio::test]
-async fn without_the_permission_nothing_is_proposed() {
-    let h = setup(
+/// A run held to `permissions`, which calls the tool once and reads that
+/// `missing` is required.
+fn held_to(permissions: [&str; 2], missing: &'static str) -> Harness {
+    setup(
         vec![
             ScriptedStep::dynamic(|req| {
                 assert!(!req.tool_names().contains(&"skill_propose".to_string()));
@@ -240,25 +260,39 @@ async fn without_the_permission_nothing_is_proposed() {
                     }))],
                 )
             }),
-            ScriptedStep::dynamic(|req| {
+            ScriptedStep::dynamic(move |req| {
                 let results = last_tool_results(req);
                 assert!(results[0].is_error);
+                let required = format!("Permission {missing} requise");
                 assert!(
-                    results[0]
-                        .content
-                        .contains("Permission skill:propose requise")
+                    results[0].content.contains(&required),
+                    "{}",
+                    results[0].content
                 );
                 ScriptedReply::text("Je ne peux pas proposer.")
             }),
         ],
         Options {
-            allowed_permissions: Some(HashSet::from([
-                "agent:use".to_string(),
-                "skill:read".to_string(),
-            ])),
+            allowed_permissions: Some(HashSet::from(permissions.map(String::from))),
             ..options()
         },
-    );
+    )
+}
+
+#[tokio::test]
+async fn without_the_permission_nothing_is_proposed() {
+    let h = held_to(["agent:use", "skill:read"], "skill:propose");
+    assert_eq!(h.start().await.status(), "completed");
+    assert!(h.ports.approval_requests().is_empty());
+    assert!(h.ports.skill_proposals().is_empty());
+}
+
+/// Nor without reading the skills, as a policy may forbid the agent: it
+/// would learn which names are active ones, and rewrite what it may not
+/// read.
+#[tokio::test]
+async fn without_reading_the_skills_nothing_is_proposed() {
+    let h = held_to(["agent:use", "skill:propose"], "skill:read");
     assert_eq!(h.start().await.status(), "completed");
     assert!(h.ports.approval_requests().is_empty());
     assert!(h.ports.skill_proposals().is_empty());

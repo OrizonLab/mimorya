@@ -35,7 +35,7 @@ pub struct SkillProposeInput {
     name: String,
     /// For a new skill only: what it covers, in one line.
     #[schemars(length(min = 10, max = 300))]
-    #[validate(length(min = 10, max = 300), custom(function = "one_line"))]
+    #[validate(custom(function = "description_line"))]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     description: Option<String>,
     /// The whole procedure, in Markdown.
@@ -44,16 +44,28 @@ pub struct SkillProposeInput {
     content: String,
     /// Why, in one line: what the conversation taught.
     #[schemars(length(min = 3, max = 300))]
-    #[validate(length(min = 3, max = 300), custom(function = "one_line"))]
+    #[validate(custom(function = "note_line"))]
     rationale: String,
 }
 
-/// One visible line, as the administration writes a description or a note.
-fn one_line(text: &str) -> Result<(), ValidationError> {
-    match line_problem("Texte", text) {
-        None => Ok(()),
-        Some(_) => Err(ValidationError::new("one_line")),
+/// One visible line of `min` to 300 characters, its blanks around removed
+/// as the administration removes them.
+fn visible_line(text: &str, min: usize) -> Result<(), ValidationError> {
+    let text = text.trim();
+    let length = text.chars().count();
+    if (min..=300).contains(&length) && line_problem("Texte", text).is_none() {
+        Ok(())
+    } else {
+        Err(ValidationError::new("visible_line"))
     }
+}
+
+fn description_line(text: &str) -> Result<(), ValidationError> {
+    visible_line(text, 10)
+}
+
+fn note_line(text: &str) -> Result<(), ValidationError> {
+    visible_line(text, 3)
 }
 
 /// Visible text, lines and tabulations only, as a version's content.
@@ -75,7 +87,8 @@ impl TypedTool for SkillPropose {
             "Propose aux administrateurs des compétences une procédure tirée de la conversation : la nouvelle version complète d’une compétence active (sans description), ou une nouvelle compétence (avec sa description). L’utilisateur valide d’abord le texte exact ; aucune autre conversation n’en tient compte avant qu’un administrateur l’active. Le texte reste général : aucune donnée personnelle, d’un client ou d’un tiers, aucun secret, identifiant ni montant.",
             ToolRisk::Draft,
         )
-        .requires(["skill:propose"])
+        // It reads what it improves: never a skill its run may not read.
+        .requires(["skill:read", "skill:propose"])
         .always_requires_approval()
     }
 
@@ -100,21 +113,24 @@ impl TypedTool for SkillPropose {
         let name = input.name.clone();
         let proposal = SkillProposal {
             name: input.name,
-            description: input.description,
+            description: input.description.map(|d| d.trim().to_owned()),
             content: normalized_content(&input.content),
-            rationale: input.rationale,
+            rationale: input.rationale.trim().to_owned(),
         };
-        let (target, version) = match self.skills.propose(proposal).await? {
+        let target = match self.skills.propose(proposal).await? {
             ProposalOutcome::Refused(why) => return Ok(ToolResult::error(why)),
-            ProposalOutcome::Proposed { target, version } => (target, version),
+            ProposalOutcome::Proposed { target, .. } => target,
         };
+        // An inactive skill's proposal reads as a new skill's: no version
+        // number tells them apart.
         let summary = match target {
-            ProposalTarget::NewVersion => format!("Version {version} de « {name} » proposée"),
-            ProposalTarget::NewSkill => format!("Compétence « {name} » proposée"),
+            ProposalTarget::NewVersion => format!("Nouvelle version de « {name} » proposée"),
+            ProposalTarget::NewSkill | ProposalTarget::InactiveSkill => {
+                format!("Compétence « {name} » proposée")
+            }
         };
         Ok(ToolResult::ok(json!({
             "competence": name,
-            "version": version,
             "statut": "proposée aux administrateurs des compétences, qui l’activeront ou la rejetteront",
         }))
         .with_summary(summary))

@@ -230,5 +230,6 @@ utilisateur).
 | Tâches planifiées             | Jusqu'à suppression par leur auteur ou avec son compte ; compte désactivé : en pause |
 | Missions                      | Comme leur conversation, supprimées avec elle ou avec le compte de leur auteur       |
 | Documents déposés             | Jusqu'à suppression par qui peut écrire leur espace, ou avec l'entreprise            |
+| Compétences et propositions   | Avec leur compétence, rejetées comprises ; auteur et run oubliés avec eux (ADR-100)  |
 | Choix des e-mails reçus       | Jusqu'à modification par la personne ou suppression de son compte                    |
 | Consommation                  | 5 ans (facturation)                                                                  |

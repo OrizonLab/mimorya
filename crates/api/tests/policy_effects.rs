@@ -149,12 +149,19 @@ async fn a_deny_on_reading_skills_leaves_them_out_of_the_prompt() {
         assert_eq!(sent.status, StatusCode::ACCEPTED);
         api.idle().await;
         let requests = api.model.as_ref().unwrap().requests();
-        requests.last().unwrap().system.clone()
+        let last = requests.last().unwrap();
+        (last.system.clone(), last.tool_names())
     };
-    assert!(ask().await.contains(SKILL_INDEX));
+    let proposing = "skill_propose".to_string();
+    let (system, tools) = ask().await;
+    assert!(system.contains(SKILL_INDEX));
+    assert!(tools.contains(&proposing), "{tools:?}");
 
     let id = create(&paul, policy(&["skill:read"], agents_only())).await;
-    assert!(!ask().await.contains(SKILL_INDEX));
+    let (system, tools) = ask().await;
+    assert!(!system.contains(SKILL_INDEX));
+    // Nor does it propose what it may not read (ADR-100).
+    assert!(!tools.contains(&proposing), "{tools:?}");
     assert_eq!(
         paul.delete(&format!("/admin/policies/{id}")).await.status,
         StatusCode::OK

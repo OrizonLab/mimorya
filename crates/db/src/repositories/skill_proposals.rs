@@ -23,11 +23,14 @@ pub async fn skill_named(
         .await
 }
 
-/// The company's proposals awaiting its administrators.
-pub async fn count_pending_proposals(conn: &mut PgConnection) -> sqlx::Result<i64> {
-    sqlx::query_scalar(
-        "select count(*) from skill_versions where proposed and status = 'candidate'",
+/// The company's proposals awaiting its administrators: all of them, and
+/// those proposed for `person`.
+pub async fn pending_proposals(conn: &mut PgConnection, person: Uuid) -> sqlx::Result<(i64, i64)> {
+    sqlx::query_as(
+        "select count(*), count(*) filter (where created_by_user_id = $1) \
+         from skill_versions where proposed and status = 'candidate'",
     )
+    .bind(person)
     .fetch_one(conn)
     .await
 }
