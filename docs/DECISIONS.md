@@ -4517,9 +4517,11 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     - un refus de l'API est montré avec sa raison ;
   - **relais `/api`** : Next.js garde le corps d'une requête jusqu'à
     `experimental.proxyClientMaxBodySize` et coupe au-delà sans le dire (10 Mo par
-    défaut). La limite est portée à 11 Mo, au-dessus de la borne de l'API. Un fichier
-    trop gros arrive donc entier à l'API, qui le refuse en le disant. Un fichier proche
-    de 10 Mio est vérifié de bout en bout ;
+    défaut). La limite est portée à 11 Mo, une marge au-dessus de la borne de l'API :
+    aucun fichier que l'API accepte n'est coupé. Un fichier de 10 Mio exactement est
+    vérifié de bout en bout. La page n'envoie jamais un fichier plus gros. Un client qui
+    en enverrait un par le relais peut recevoir l'erreur du relais plutôt que le 413 de
+    l'API : celle-ci refuse sur la taille annoncée, sans lire le corps ;
   - **conversation** : une source de type document s'affiche « Document » suivi de son
     titre, et se télécharge en un clic ;
   - **« Modèle d'IA »** : le nombre de passages de documents indexés s'affiche à côté de
@@ -4534,8 +4536,8 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     rendre de contenu non fiable dans la page ;
   - une source qui mène à la page « Documents » plutôt qu'au fichier : la page ne
     surligne pas encore un document ;
-  - laisser la limite du relais par défaut : un fichier juste au-dessus de 10 Mo aurait
-    été tronqué sans avertissement.
+  - laisser la limite du relais par défaut, juste à la borne de l'API : sans marge, le
+    moindre écart entre les deux comptes couperait un fichier accepté.
 - **Conséquences** :
   - le dépôt par glisser-déposer et le remplacement d'un document par une nouvelle
     version restent à faire ;
@@ -4546,7 +4548,7 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
       - Julien la supprime ;
       - un fichier `.doc` est refusé avec sa raison ;
       - un fichier de plus de 10 Mo n'est pas envoyé ;
-      - le relais porte un fichier proche de 10 Mio jusqu'à l'API ;
+      - le relais porte un fichier de 10 Mio exactement jusqu'à l'API ;
       - l'agent répond d'après la charte et la cite, son fichier téléchargé depuis la
         conversation ;
     - `semantic-memory.spec.ts` : les passages indexés comptés et affichés ;

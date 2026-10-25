@@ -9,8 +9,8 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   experimental: {
     // The relay keeps a request's body up to this size, and silently cuts
-    // what is beyond: above the 10 MiB a deposited document may weigh
-    // (ADR-095), a file too large reaches the API whole, which refuses it.
+    // what is beyond: a margin above the 10 MiB a deposited document may
+    // weigh (ADR-095, ADR-097), so that no file the API takes is cut.
     proxyClientMaxBodySize: '11mb',
   },
   // The browser only talks to this origin; /api/* is relayed to the API so

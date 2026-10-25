@@ -1,8 +1,8 @@
 // The « Documents » page (ADR-095, ADR-097): Julien deposits a note in his
 // team's space; Lucas, of his team, reads and downloads it but neither
 // deposits nor deletes; Julien deletes it. A file the API refuses says
-// why, one beyond 10 MB is not sent, and the web relay carries a file near
-// that bound. Lucas asks the agent, which answers from the company's charter
+// why, one beyond 10 MB is not sent, and the web relay carries a file of
+// that bound whole. Lucas asks the agent, which answers from the company's charter
 // and cites it, its file downloaded from the conversation (ADR-096).
 // Whatever happens, the note is deleted.
 import { Buffer } from 'node:buffer';
@@ -125,24 +125,22 @@ test('a refused file says why, and one beyond 10 MB is not sent', async ({ page 
   expect((await listed(page)).some((d) => d.fileName === 'Gros.txt')).toBe(false);
 });
 
-test('the web relay carries a file near 10 MB to the API', async ({ page }) => {
+test('the web relay carries a file of the largest size the API takes', async ({ page }) => {
   await signIn(page, demo.julien);
   const list = await page.request.get('/api/documents');
   const [team] = ((await list.json()) as DocumentList).spaces;
-  const into = `unitId=${team?.unitId ?? ''}`;
-  // Read by the API whole: too much text for a document, it says so.
-  const near = await page.request.post(`/api/documents?name=Presque.txt&${into}`, {
-    headers: { ...WRITE, 'Content-Type': 'application/octet-stream' },
-    data: Buffer.alloc(10 * 1024 * 1024 - 1024, 'a'),
-  });
-  expect(near.status()).toBe(422);
-  expect((await near.json()).error.message).toContain('Le texte du document dépasse');
-  // Beyond the bound, the API refuses it.
-  const beyond = await page.request.post(`/api/documents?name=Trop.txt&${into}`, {
-    headers: { ...WRITE, 'Content-Type': 'application/octet-stream' },
-    data: Buffer.alloc(10 * 1024 * 1024 + 1, 'a'),
-  });
-  expect(beyond.status()).toBe(413);
+  // 10 MiB: read by the API whole, too much text for a document, it says
+  // so. Beyond, the page sends nothing (above); the API's own refusal is
+  // tested on the API (`crates/api/tests/document_uploads.rs`).
+  const largest = await page.request.post(
+    `/api/documents?name=Limite.txt&unitId=${team?.unitId ?? ''}`,
+    {
+      headers: { ...WRITE, 'Content-Type': 'application/octet-stream' },
+      data: Buffer.alloc(10 * 1024 * 1024, 'a'),
+    },
+  );
+  expect(largest.status()).toBe(422);
+  expect((await largest.json()).error.message).toContain('Le texte du document dépasse');
 });
 
 test('the agent answers from the charter and cites it', async ({ page }) => {
