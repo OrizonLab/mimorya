@@ -4665,6 +4665,6 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     - `crates/api/tests/sub_agents.rs` :
       - run enfant enregistré et visible du seul utilisateur, sources citées par la
         réponse, absent de la liste des runs ;
-      - jamais repris seul ; échoue à la reprise ou à la fin de son parent, ou avec sa
-        mission arrêtée, sa fin annoncée ;
+      - jamais repris seul ; échoue à la reprise, à la panne ou à la fin de son parent,
+        ou avec sa mission arrêtée, sa fin annoncée ;
       - aucune entreprise n'ouvre d'enfant sous le run d'une autre.

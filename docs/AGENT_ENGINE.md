@@ -233,7 +233,8 @@ enfants dans PostgreSQL : `crates/api/src/services/runs/sub_runs.rs` (ADR-098).
   5 minutes). Ce qu'il dépense compte dans le budget du parent.
 - L'enfant écrit sous le **bail de son parent** et n'est jamais repris seul. Si le parent
   est repris après un arrêt, échoue, est annulé ou se termine, l'enfant encore en cours
-  échoue, sa fin annoncée.
+  échoue. Sa fin est annoncée, sauf si le balayage des runs bloqués fait échouer le
+  parent sans lui : le déclencheur fait alors échouer l'enfant sans annonce.
 - L'utilisateur voit une seule conversation. L'API donne le détail de chaque sous-agent
   avec le run qui l'a lancé (`GET /runs/{id}`, `subRuns`), sans le lister à part. Son
   affichage dans la vue « Opérations » viendra au lot 2.

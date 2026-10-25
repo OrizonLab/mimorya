@@ -2,8 +2,8 @@
 //! it for the same user, read-only, given the tools that only read, whose
 //! sources the run's answer cites. A child is listed with its run, never on
 //! its own, and only its user sees it. It is never taken up on its own: its
-//! run taken up or stopped, it fails, saying so, as it does when its run
-//! ends; no company opens one under another's run.
+//! run taken up, crashed or stopped, it fails, saying so, as it does when
+//! its run ends; no company opens one under another's run.
 
 mod support;
 
@@ -182,6 +182,48 @@ async fn a_sub_agent_is_never_taken_up_alone_and_fails_when_its_run_is() {
     let (kind, data) = announced.last().expect("its end announced");
     assert_eq!(kind, "run_finished");
     assert_eq!(data["status"], "failed");
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_run_that_crashes_stops_its_sub_agents_saying_so() {
+    let api = TestApi::start().await;
+    let lucas = api.sign_in(user::LUCAS).await;
+    // Nothing scripted for the sub-agent: its first model call crashes the
+    // run's execution.
+    api.script(vec![ScriptedStep::calls(
+        "",
+        vec![call(
+            "delegate_task",
+            json!({ "profile": "research", "task": TASK }),
+        )],
+    )]);
+    let conversation = conversation_of(&lucas).await;
+    let sent = lucas
+        .post(
+            &format!("/conversations/{conversation}/messages"),
+            json!({ "content": "Sous quel délai une panne est-elle prise en charge ?" }),
+        )
+        .await;
+    assert_eq!(sent.status, StatusCode::ACCEPTED, "{}", sent.text());
+    let parent: Uuid = sent.json()["runId"].as_str().unwrap().parse().unwrap();
+    api.idle().await;
+
+    let detail = lucas.get(&format!("/runs/{parent}")).await.json();
+    assert_eq!(detail["run"]["status"], "failed", "{detail}");
+    let child: Uuid = detail["subRuns"][0]["id"]
+        .as_str()
+        .unwrap()
+        .parse()
+        .unwrap();
+    assert_eq!(
+        status_and_error(&api, tenant::ID, child).await,
+        ("failed".to_string(), Some(SUB_AGENT_STOPPED.to_string()))
+    );
+    let announced = events(&api, tenant::ID, child).await;
+    let (kind, data) = announced.last().expect("its end announced");
+    assert_eq!(kind, "run_finished");
+    assert_eq!(data["error"], SUB_AGENT_STOPPED);
 }
 
 #[tokio::test]

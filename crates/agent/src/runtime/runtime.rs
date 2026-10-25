@@ -136,8 +136,12 @@ impl AgentRuntime {
                 }
             }
         }
+        // The validated calls' time counts in the run's, its sub-agents'
+        // included (ADR-098); the wait for a decision does not.
+        let started = Instant::now();
         let ran = self.tools.run_validated(&mut state, validated, &access);
         results.extend(ran.await?);
+        state.elapsed_ms += started.elapsed().as_millis() as u64;
 
         state.pending = None;
         let results = order_by_request(&state, results);
