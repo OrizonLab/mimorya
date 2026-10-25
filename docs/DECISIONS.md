@@ -4679,9 +4679,10 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
 - **Décision** :
   - **détail d'une demande** (« Opérations ») : une section « Sous-agents » liste ceux qu'elle
     a lancés, dans l'ordre. Chacun montre son profil, sa tâche, son statut, ses outils et
-    son coût, et mène à son propre détail. La section précise que leur coût est compris
-    dans celui de la demande, qui l'ajoute déjà au sien (ADR-098) : qui additionnerait les
-    lignes compterait deux fois ;
+    son coût, et mène à son propre détail. La section précise qu'une fois sa tâche rendue,
+    le coût d'un sous-agent est compris dans celui de la demande, qui l'ajoute alors au sien
+    (ADR-098) : qui additionnerait les lignes compterait deux fois. Celui d'un sous-agent en
+    cours, ou arrêté avec sa mission, n'y est pas ajouté : il reste dans son propre détail ;
   - **détail d'un sous-agent** :
     - titre « Sous-agent « Recherche » » (son profil) ;
     - même résumé et mêmes outils que toute demande ;

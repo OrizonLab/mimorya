@@ -34,6 +34,7 @@ test('a question handed to a sub-agent is traced with its sub-agent', async ({ p
   await expect(page.getByRole('heading', { name: 'Détail de l’opération' })).toBeVisible();
   await expect(page.getByRole('cell', { name: 'delegate_task' })).toBeVisible();
   const subAgents = page.getByRole('region', { name: 'Sous-agents' });
+  await expect(subAgents).toContainText('leur coût est compris dans celui de la demande');
   const child = subAgents.getByRole('link', { name: new RegExp(TASK) });
   await expect(child).toContainText('Recherche');
   await expect(child).toContainText('Terminée');
