@@ -2,6 +2,7 @@
 import type { ToneLabel } from '@/components/ui';
 import type {
   AccountStatus,
+  AgentProfile,
   DocumentKind,
   MissionStatus,
   OccurrenceOutcome,
@@ -158,4 +159,13 @@ export const DOCUMENT_KINDS: Record<DocumentKind, string> = {
   docx: 'Word',
   markdown: 'Markdown',
   text: 'Texte',
+};
+
+/** Who works a run: the agent, or one of its sub-agents (ADR-098). */
+export const AGENT_PROFILES: Record<AgentProfile, string> = {
+  main: 'Agent principal',
+  research: 'Recherche',
+  analysis: 'Analyse',
+  planning: 'Planification',
+  quality: 'Contrôle qualité',
 };

@@ -7,10 +7,10 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use mimorya_agent::llm::{
-    LlmError, LlmMessage, LlmProvider, LlmRequest, LlmResponse, LlmToolCall, LlmUsage, StopReason,
-};
+use mimorya_agent::llm::{LlmError, LlmMessage, LlmProvider, LlmRequest, LlmResponse, LlmToolCall};
 use serde_json::json;
+
+use crate::played;
 
 /// The question `documents.spec.ts` asks.
 pub const ASKED: &str = "Sous quel délai une panne de chauffage est-elle prise en charge ?";
@@ -29,27 +29,6 @@ impl WithDocuments {
     pub fn new(others: Arc<dyn LlmProvider>) -> Self {
         Self { others }
     }
-
-    fn reply(&self, text: &str, tool_calls: Vec<LlmToolCall>) -> LlmResponse {
-        let stop_reason = if tool_calls.is_empty() {
-            StopReason::EndTurn
-        } else {
-            StopReason::ToolUse
-        };
-        LlmResponse {
-            text: text.into(),
-            tool_calls,
-            stop_reason,
-            usage: LlmUsage {
-                input_tokens: 100,
-                output_tokens: 20,
-                ..LlmUsage::default()
-            },
-            provider: self.others.id().into(),
-            model: self.others.model().into(),
-            native: None,
-        }
-    }
 }
 
 #[async_trait]
@@ -63,10 +42,10 @@ impl LlmProvider for WithDocuments {
     }
 
     async fn complete(&self, request: &LlmRequest) -> Result<LlmResponse, LlmError> {
-        let asked = matches!(
-            request.messages.first(),
-            Some(LlmMessage::User { content }) if content.contains(ASKED)
-        );
+        let asked = request
+            .messages
+            .first()
+            .is_some_and(|m| played::says(m, ASKED));
         if !asked {
             return self.others.complete(request).await;
         }
@@ -75,13 +54,13 @@ impl LlmProvider for WithDocuments {
             request.messages.last(),
             Some(LlmMessage::ToolResults { .. })
         ) {
-            return Ok(self.reply(ANSWER, Vec::new()));
+            return Ok(played::reply(self, ANSWER, Vec::new()));
         }
         let search = LlmToolCall {
             id: format!("documents-{}", uuid::Uuid::new_v4()),
             name: "document_search".into(),
             input: json!({ "query": "délai de prise en charge d’une panne de chauffage" }),
         };
-        Ok(self.reply("", vec![search]))
+        Ok(played::reply(self, "", vec![search]))
     }
 }

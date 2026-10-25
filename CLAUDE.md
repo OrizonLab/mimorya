@@ -136,7 +136,8 @@ Repères à l'intérieur des crates :
   comptes, dont l'absence d'un collaborateur empêché, ADR-079 —, approvals — dont la
   section « Absence » et son formulaire, commun, ADR-073 —, chat, documents — dépôt, liste
   et téléchargement, ADR-097 —, memory, missions —
-  missions longues, ADR-090 —, operations, scheduled-tasks — tâches planifiées, ADR-081 —,
+  missions longues, ADR-090 —, operations — dont les sous-agents d'une demande, ADR-099 —,
+  scheduled-tasks — tâches planifiées, ADR-081 —,
   shell), `web/components/ui/`
   (`Loaded` verrouille son contenu pendant un rechargement, ADR-042), `web/lib/api/` (client, `contract.ts`
   généré par `pnpm contract`, `useApiData`), `web/lib/use-synced-state.ts` (état d'un
@@ -147,8 +148,9 @@ Repères à l'intérieur des crates :
   pilotent, avec un fournisseur OpenID Connect et un fournisseur SAML simulés, ADR-031,
   ADR-063, ADR-068, une relecture des leçons à part, `lessons.rs`, ADR-077, une tâche
   planifiée dont l'occurrence est manquée au démarrage, `scheduled.rs`, ADR-081, et des
-  missions jouées à part, `missions.rs`, ADR-090, et une question sur les documents,
-  `documents.rs`, ADR-097, lus par `mimorya-extract` qu'ils construisent).
+  missions jouées à part, `missions.rs`, ADR-090, une question sur les documents,
+  `documents.rs`, ADR-097, lus par `mimorya-extract` qu'ils construisent, et une question
+  confiée à un sous-agent, `sub_agents.rs`, ADR-099).
 - `infra/` : `docker/` (images de l'API et de l'interface, liste des images publiées
   `images.json`, test de fumée de la démonstration, test d'installation de la production,
   vérifications partagées `checks.sh`, dont les rôles des processus lus dans la base), `caddy/`

@@ -235,9 +235,10 @@ enfants dans PostgreSQL : `crates/api/src/services/runs/sub_runs.rs` (ADR-098).
   est repris après un arrêt, échoue, est annulé ou se termine, l'enfant encore en cours
   échoue. Sa fin est annoncée, sauf si le balayage des runs bloqués fait échouer le
   parent sans lui : le déclencheur fait alors échouer l'enfant sans annonce.
-- L'utilisateur voit une seule conversation. L'API donne le détail de chaque sous-agent
-  avec le run qui l'a lancé (`GET /runs/{id}`, `subRuns`), sans le lister à part. Son
-  affichage dans la vue « Opérations » viendra au lot 2.
+- L'utilisateur voit une seule conversation : la délégation y apparaît dans l'activité de
+  la demande, et les sources lues par le sous-agent avec la réponse. La vue
+  « Opérations » montre chaque sous-agent avec la demande qui l'a lancé, sans le lister à
+  part (`GET /runs/{id}`, `subRuns`, ADR-099).
 
 ## 8. Apprentissage : quatre mécanismes distincts
 
