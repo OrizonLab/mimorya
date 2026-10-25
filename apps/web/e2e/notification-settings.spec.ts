@@ -9,7 +9,7 @@ import { demo, expect, noError, signIn, test } from './support/fixtures';
 
 const WRITE = { 'X-Mimorya-Request': '1' };
 const ENDS = 'La fin de mes missions';
-const APPROVALS = 'Les demandes de validation qui m’attendent';
+const APPROVALS = 'Les demandes qui attendent ma décision';
 const OWN_RUNS = 'Mes tâches planifiées et mes missions qui attendent ma validation';
 
 /** Who the test signed in, for its cleanup. */

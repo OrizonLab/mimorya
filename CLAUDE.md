@@ -48,7 +48,7 @@ Repères à l'intérieur des crates :
   par les mots et par le sens et lus dans l'ordre : `document_search.rs`, leurs vecteurs :
   `document_embeddings.rs`, ADR-096 ; runs des sous-agents, ouverts sous leur parent :
   `sub_runs.rs`, ADR-098 ; compétences proposées par l'agent : `skill_proposals.rs`,
-  ADR-100),
+  ADR-100, et leur annonce aux administrateurs : `skill_proposal_notices.rs`, ADR-102),
   `db/src/notifications.rs` (canaux PostgreSQL des événements des runs, de la file et des
   invalidations, ADR-084, ADR-085), `db/src/sweep_lock.rs` (verrou d'un balayage qui ne
   tourne que dans un processus à la fois, ADR-086), `db/src/seed/` (organisation,
@@ -77,7 +77,7 @@ Repères à l'intérieur des crates :
   mémoire et des passages des documents en arrière-plan, `memory_indexing.rs`, ADR-074,
   ADR-096 ; tâches planifiées lancées
   chaque minute, `scheduled_tasks.rs`, ADR-080 ; fin des missions annoncée à leur
-  auteur, ADR-091 ; baux des runs renouvelés et runs au
+  auteur, ADR-091, et propositions de compétences à leurs administrateurs, ADR-102 ; baux des runs renouvelés et runs au
   bail expiré repris, `run_leases.rs`, ADR-083 ; événements des autres processus écoutés
   et fragments de texte envoyés, `run_event_relay.rs`, ADR-084 ; runs en file réservés
   par le worker, `run_queue.rs`, ADR-085 ; tâches de fond lancées selon le rôle du
@@ -90,6 +90,8 @@ Repères à l'intérieur des crates :
   propositions de l'agent (`skill_proposals.rs`, ADR-100), sous verrou par entreprise), `api/src/services/account.rs` (son propre compte),
   `api/src/services/notification_settings.rs` (e-mails que chacun choisit de recevoir,
   lus au moment d'envoyer chaque avis, ADR-094),
+  `api/src/services/skill_proposal_notice/` (propositions de l'agent annoncées par e-mail
+  aux administrateurs des compétences, ADR-102),
   `api/src/services/documents/` (documents déposés : lecture par le processus
   `mimorya-extract`, `api/src/bin/extract.rs`, bornée en nombre, en temps et en taille,
   `extractor.rs` ; dépôt sous le quota de l'entreprise, `deposit.rs` ; liste,

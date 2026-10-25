@@ -116,7 +116,7 @@ quand la décision est prise dans un processus `api`) → `completed` | `failed`
 | ---------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `memory_items`   | Unité de mémoire                  | `scope` (`user`, `org_unit`, `tenant`, `experience`), `owner_user_id`, `org_unit_id`, `kind` (`preference`, `fact`, `procedure`, `decision`, `lesson`, `episode`), `title`, `content`, `sensitivity`, `status` (`active`, `proposed`, `archived`), `source` (traçabilité : conversation, run, document, saisie), `confidence`, `expires_at` (rétention), `last_used_at`, `use_count`, `content_tsv` (FTS), `embedding vector(1024)`, `embedding_model` |
 | `skills`         | Compétence réutilisable           | `name` (slug, unique par entreprise), `description`, `status`, `active_version_id`, `scope`, `org_unit_id`                                                                                                                                                                                                                                                                                                                                             |
-| `skill_versions` | Version immuable d'une compétence | `version`, `content` (corps `SKILL.md`), `frontmatter`, `changelog`, `status` (`draft`, `candidate` : proposée par l'agent, `active`, `rejected` : proposition rejetée, `retired`), `proposed` (vient de l'agent, ADR-100), `created_by_run_id`, `approved_by_user_id`, `eval_summary`                                                                                                                                                                 |
+| `skill_versions` | Version immuable d'une compétence | `version`, `content` (corps `SKILL.md`), `frontmatter`, `changelog`, `status` (`draft`, `candidate` : proposée par l'agent, `active`, `rejected` : proposition rejetée, `retired`), `proposed` (vient de l'agent, ADR-100), `announced_at` (proposition annoncée aux administrateurs, ADR-102), `created_by_run_id`, `approved_by_user_id`, `eval_summary`                                                                                             |
 | `skill_evals`    | Cas d'évaluation (non-régression) | `input`, `success_criteria`                                                                                                                                                                                                                                                                                                                                                                                                                            |
 
 Index : GIN sur `content_tsv`, HNSW (`vector_cosine_ops`) sur `embedding`,
@@ -178,7 +178,10 @@ utilisateur).
   par e-mail à la connexion, et pour un nouveau lien d'invitation donné par l'exploitant,
   ADR-033), `auth_find_identity_provider` (le fournisseur d'identité actif qui couvre le
   domaine du compte actif ou invité portant une adresse, dans une entreprise active : entreprise,
-  fournisseur, type et nom seulement, ADR-063, ADR-064), `auth_resolve_session` (résoudre une session par
+  fournisseur, type et nom seulement, ADR-063, ADR-064), `auth_find_identity_provider_link`
+  (le fournisseur actif d'une entreprise active désigné par le lien de connexion que
+  l'entreprise diffuse : entreprise, fournisseur, type, nom, obligation, création des
+  comptes et nom de l'entreprise seulement, ADR-067), `auth_resolve_session` (résoudre une session par
   l'empreinte de son jeton, avec l'obligation éventuelle de changer de mot de passe),
   `auth_find_invitation` (lire, avant connexion, l'invitation désignée par l'empreinte
   du jeton de son lien, ADR-027), `auth_find_password_reset` (de même pour un lien de
@@ -203,7 +206,13 @@ utilisateur).
   ADR-091), `system_unnotified_mission_ends` (lister les missions terminées depuis moins
   d'un jour dont l'auteur n'est pas encore prévenu, leur entreprise et son compte
   actifs : entreprise et identifiant seulement, chacune lue ensuite dans sa propre
-  entreprise, ADR-091),
+  entreprise, ADR-091), `system_tenants_awaiting_embeddings` (lister les entreprises
+  actives dont une mémoire active ou un passage de document n'a pas de vecteur du modèle
+  d'embeddings choisi : entreprise seulement, chacune indexée ensuite dans sa propre
+  entreprise, ADR-074, ADR-096), `system_unannounced_skill_proposals` (lister les
+  entreprises actives dont des propositions de compétences attendent une décision sans
+  avoir été annoncées à leurs administrateurs : entreprise seulement, chacune lue ensuite
+  dans sa propre entreprise, ADR-102),
   `system_expired_run_leases` (lister les runs en cours dont le bail a expiré, ou qui n'en
   ont jamais eu : entreprise et identifiant seulement, chacun repris ensuite dans sa propre
   entreprise, au démarrage comme ensuite, ADR-083, ADR-086), `system_queued_runs` (lister les runs en file d'attente, les plus anciens
