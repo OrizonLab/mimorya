@@ -4864,3 +4864,57 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     - Paul lit son contenu déplié, la rejette, la relit rejetée après rechargement ;
     - une nouvelle version qu'il écrit part vide, non de la proposition ;
     - puis il supprime la compétence.
+
+## ADR-102 — Les administrateurs des compétences sont prévenus des propositions par e-mail
+
+- **Date** : 2026-10-25 · **Statut** : acceptée (cycle de vie des compétences, lot 3) ·
+  complète ADR-094 et ADR-100
+- **Contexte** : une proposition de l'agent (ADR-100) n'atteint aucun run avant qu'un
+  administrateur des compétences l'active. Il ne l'apprenait qu'en ouvrant l'onglet
+  « Compétences » (ADR-101).
+- **Décision** :
+  - **chaque minute**, un processus qui exécute les runs, un seul à la fois (ADR-086),
+    rassemble les propositions de chaque entreprise en attente d'une décision et jamais
+    annoncées (`system_unannounced_skill_proposals`, puis lecture dans l'entreprise) ;
+  - **destinataires** : chaque compte qui peut en décider, actif et détenteur de
+    `skill:manage` sur toute l'entreprise selon ses règles du moment, politiques de refus
+    comprises, comme l'administration le vérifie (ADR-020). Un compte qui ne l'a que sur
+    une unité, ou dont le compte est désactivé, n'est pas prévenu ;
+  - **un e-mail par administrateur et par passe** : combien de propositions attendent,
+    pour quelles compétences (chacune nommée une fois), et le lien vers l'administration.
+    Il ne contient jamais la procédure ni la personne pour qui l'agent l'a proposée :
+    l'e-mail quitte la plateforme, ils se lisent une fois connecté ;
+  - **chaque proposition n'est annoncée qu'une fois** (`skill_versions.announced_at`),
+    même si le relais refuse le message, qui n'est pas renvoyé. Une proposition décidée
+    avant la passe n'est pas annoncée. Sans relais, rien n'est envoyé ni enregistré :
+    les propositions seront annoncées une fois un relais configuré, puisqu'elles
+    attendent encore. Sans administrateur, elles attendent qu'il y en ait un ;
+  - **choix de chacun** (ADR-094) : l'avis suit le choix « Les demandes qui attendent ma
+    décision », renommé depuis « Les demandes de validation qui m'attendent ». Il couvre
+    les validations et les propositions de compétences. Un administrateur qui ne le veut
+    pas n'est pas prévenu, et l'avis est tracé refusé (`optedOut`). Il compte comme
+    donné et n'est pas renvoyé ;
+  - **audit** : `skill.proposals_announced`, une entrée par administrateur, pour lui, avec
+    le nombre de propositions et les noms des compétences, jamais l'adresse ni la réponse
+    du relais.
+- **Alternatives écartées** :
+  - un e-mail par proposition, envoyé au moment où elle arrive : plusieurs propositions
+    d'une même minute feraient autant de messages, et un envoi perdu par un arrêt ne
+    serait pas rattrapé ;
+  - un quatrième choix d'e-mails : une proposition est une demande qui attend la décision
+    de qui l'administre, comme une validation attend celle du responsable, et trois
+    choix restent lisibles (ADR-094) ;
+  - prévenir les détenteurs de `skill:manage` sur une unité : seul qui l'a sur toute
+    l'entreprise peut activer ou rejeter une proposition.
+- **Conséquences** :
+  - reste à faire : les évaluations et la non-régression avant activation ;
+  - tests : `crates/api/tests/skill_proposal_notices.rs` :
+    - une proposition annoncée une fois à l'administrateur, sans la procédure ni son
+      auteur, tracée ;
+    - plusieurs en un seul e-mail, la proposition décidée avant la passe non annoncée ;
+    - une autre entreprise prévenue de la sienne seule ;
+    - seul qui peut décider sur toute l'entreprise est prévenu ;
+    - un administrateur qui ne veut pas de ces e-mails n'en reçoit pas, même plus tard ;
+    - rien sans relais ;
+  - `crates/db/tests/definer_functions.rs` : la nouvelle fonction de lecture entre
+    entreprises.

@@ -11,9 +11,9 @@ const NOTIFICATIONS = '/account/notifications';
 const KINDS: { key: keyof NotificationSettings; label: string; detail: string }[] = [
   {
     key: 'approvals',
-    label: 'Les demandes de validation qui m’attendent',
+    label: 'Les demandes qui attendent ma décision',
     detail:
-      'Comme responsable, ou à la place d’un responsable absent, avec la relance la veille de leur échéance. Sans cet e-mail, elles vous attendent dans « Validations » et expirent à leur échéance.',
+      'Les validations qui m’attendent comme responsable, ou à la place d’un responsable absent, avec la relance la veille de leur échéance ; les compétences que l’agent propose, si je les administre. Sans cet e-mail, elles vous attendent dans « Validations » ou dans l’onglet « Compétences » ; les validations expirent à leur échéance.',
   },
   {
     key: 'ownRuns',

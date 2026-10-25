@@ -1,6 +1,8 @@
 //! The e-mails each person chooses to receive from the platform (ADR-094):
-//! the requests awaiting their validation, as a manager or standing in for
-//! one, with the reminders before they expire; their scheduled tasks' runs
+//! the requests awaiting their decision: validations, as a manager or
+//! standing in for one, with the reminders before they expire, and the
+//! skills the agent proposes, to their administrators (ADR-102); their
+//! scheduled tasks' runs
 //! and missions' stages awaiting it; the end of their missions. All of
 //! them until they choose otherwise; invitations, password resets and an
 //! absence an administrator declares for them are always sent. A notice

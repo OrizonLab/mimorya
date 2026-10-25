@@ -5,8 +5,9 @@
 //! stop of the service lost are sent (ADR-070), requests nobody decided in
 //! time expire, and their runs go on (ADR-061), their managers reminded the
 //! day before (ADR-062), each of these three in one process at a time
-//! (ADR-086); the authors of the missions over are told of their end, in
-//! one process at a time too (ADR-091); runs without
+//! (ADR-086); the authors of the missions over are told of their end, and
+//! the skills' administrators of the agent's proposals, each in one process
+//! at a time too (ADR-091, ADR-102); runs without
 //! progress for a while belong to a stuck process and are marked as
 //! failed, their `run_finished` event recorded and broadcast to the clients
 //! following them. That sweep waits until the process has run as long as a
@@ -32,6 +33,7 @@ use crate::app::AppState;
 use crate::services::event_bus::RunEventBus;
 use crate::services::missions::tell_ended_missions;
 use crate::services::runs::record_run_event;
+use crate::services::skill_proposal_notice::announce_skill_proposals;
 
 const STALE_AFTER: chrono::Duration = chrono::Duration::minutes(15);
 const SWEEP_INTERVAL: Duration = Duration::from_secs(60);
@@ -55,6 +57,11 @@ pub fn spawn_maintenance(services: AppState) -> JoinHandle<()> {
                 Ok(0) => {}
                 Ok(told) => tracing::info!(told, "Missions' authors told of their end"),
                 Err(error) => tracing::warn!(error = %error, "Mission end notice sweep failed"),
+            }
+            match announce_skill_proposals(&services).await {
+                Ok(0) => {}
+                Ok(announced) => tracing::info!(announced, "Skill proposals announced"),
+                Err(error) => tracing::warn!(error = %error, "Skill proposal notice sweep failed"),
             }
             if sweeps_stale_runs(started.elapsed()) {
                 match sweep_stale_runs(db, bus, STALE_AFTER).await {
