@@ -114,10 +114,8 @@ async fn one_process_that_executes_runs_with_a_relay_tells_of_it_once() {
     // A process that executes no runs tells of nothing.
     assert_eq!(tell_ended_missions(&one.app.services).await.unwrap(), 0);
     assert!(one.mail.sent().is_empty());
-    for worker in [&one, &two] {
-        worker.app.services.runs.start_executing().unwrap();
-    }
-    // Under way elsewhere: skipped, nobody told.
+    // Under way elsewhere: skipped, nobody told. Held before either
+    // executes runs, so that no maintenance pass of theirs takes it first.
     let held = one
         .app
         .services
@@ -125,10 +123,13 @@ async fn one_process_that_executes_runs_with_a_relay_tells_of_it_once() {
         .try_sweep_lock("mission-end-notices")
         .await;
     let held = held.unwrap().expect("free");
+    for worker in [&one, &two] {
+        worker.app.services.runs.start_executing().unwrap();
+    }
     assert_eq!(tell_ended_missions(&two.app.services).await.unwrap(), 0);
     assert!(two.mail.sent().is_empty());
-    held.release().await;
     assert_eq!(end_notified(id).await, None);
+    held.release().await;
 
     let (first, second) = tokio::join!(
         tell_ended_missions(&one.app.services),
