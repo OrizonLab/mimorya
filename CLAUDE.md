@@ -154,7 +154,7 @@ pnpm install                       # dépendances de l'interface web
 docker compose up -d db            # PostgreSQL 16 + pgvector (ou instance locale, voir README)
 pnpm db:seed                       # cargo run --bin mimorya-seed (DATABASE_URL, DEMO_PASSWORD, --reset)
 pnpm db:migrate                    # mimorya-admin migrate : migrations seules (ADR-033)
-pnpm dev:api                       # cargo run --bin mimorya-api : API sur :4000 (lit .env)
+pnpm dev:api                       # cargo run --bin mimorya-api : API sur :4000 (lit .env ; construit d'abord mimorya-extract, ADR-095)
 pnpm dev:web                       # Web sur :3000
 pnpm contract                      # régénère apps/web/lib/api/contract.ts depuis crates/api/src/contract (ADR-036)
 pnpm check                         # Rust : fmt + clippy -D warnings + tests ; web : typecheck + lint + format

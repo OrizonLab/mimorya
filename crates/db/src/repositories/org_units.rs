@@ -74,7 +74,8 @@ pub async fn update_org_unit(
 }
 
 /// What still depends on a unit. Deleting it would cascade to memberships,
-/// role assignments and team memory: it is refused while any remains.
+/// role assignments and team memory, and its documents forbid it: it is
+/// refused while any remains.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, sqlx::FromRow)]
 pub struct OrgUnitUsage {
     pub children: i64,

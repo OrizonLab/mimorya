@@ -70,7 +70,7 @@ async fn deposit(
         name: &upload.name,
         space,
         sensitivity,
-        bytes: bytes.to_vec(),
+        bytes,
     };
     match state.documents.deposit(&access, deposit).await {
         Ok(created) => Ok((StatusCode::CREATED, Json(created))),

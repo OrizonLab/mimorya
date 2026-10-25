@@ -4316,18 +4316,22 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
   - **droits** (lot 1b) :
     - deux espaces, l'entreprise et une unité, comme pour la mémoire partagée ;
     - `document:read` (délégable) lit les documents des unités de son périmètre, de ses
-      unités et de leurs parentes ;
-    - `document:write` (dépôt et suppression dans son périmètre) n'est **pas délégable** :
+      unités et de leurs parentes, et ceux de l'espace de l'entreprise ;
+    - `document:write` (dépôt et suppression dans les unités de son périmètre ; dans
+      l'espace de l'entreprise, seulement s'il s'étend à toute l'entreprise) n'est **pas
+      délégable** :
       un document écrit par l'agent deviendrait une source d'injection durable pour les
       runs de tous ses collègues ;
     - chaque document a une sensibilité, au-dessus de laquelle on ne lit ni ne dépose ;
   - **transport** (lot 1b) : le fichier est le corps brut de la requête, son nom et son
     espace passent dans la chaîne de requête, typée et stricte ;
   - **routes** (lot 1b) :
-    - `GET /api/documents` : les documents lus, les espaces où l'on dépose et, pour qui
-      dépose, l'usage du quota de l'entreprise ;
+    - `GET /api/documents` : les documents lus (les 500 plus récents ; la pagination
+      viendra avec la page, lot 3), les espaces où l'on dépose et, pour qui dépose,
+      l'usage du quota de l'entreprise ;
     - `POST /api/documents?name=…&unitId=…&sensitivity=…` : le dépôt. L'espace est
-      vérifié avant que le fichier ne soit lu (403) ; un fichier annoncé ou trouvé au-delà
+      vérifié avant que le fichier ne soit lu : une unité que l'entreprise n'a pas répond
+      404, un espace ou une sensibilité hors de ses droits 403 ; un fichier annoncé ou trouvé au-delà
       de 10 Mio n'est pas lu plus avant (413) ; un type refusé répond 415, un fichier
       illisible tel quel 422, avec la raison ; le quota atteint 409 ; trop de lectures
       en cours 503 ;
@@ -4388,11 +4392,16 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
       tracée sans le nom ; un fichier refusé dit pourquoi et rien n'en reste ;
     - `crates/api/tests/document_access.rs` : l'équipe voisine, un document au-dessus
       de l'habilitation, une suppression hors de son espace, une politique de refus sur
-      `document:read`, le document ou l'unité d'une autre entreprise, un dépôt sans
+      `document:read` ou sur `document:write`, le document ou l'unité réelle d'une autre
+      entreprise (par qui dépose partout dans la sienne), un dépôt sans
       l'en-tête ou hors de ses droits refusé avant la lecture du fichier, une unité qui
       contient des documents : autant de tentatives de contournement refusées ;
     - `crates/api/tests/document_uploads.rs` : taille annoncée ou réelle au-delà de la
       borne, chaîne de requête stricte, deux dépôts près du quota, processus défaillant
       tracé, trois lectures à la fois ;
+    - `crates/db/tests/document_roles.rs` : la migration accorde les documents aux rôles
+      de la plateforme déjà là, une seule fois, sans toucher aux rôles de l'entreprise ;
+      `check_constraints.rs` et les tests du contrat : les valeurs des colonnes sont
+      celles des énumérations ;
     - le test de fumée de la pile de démonstration dépose un document par le relais de
       l'interface et le supprime.

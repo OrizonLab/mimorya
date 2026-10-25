@@ -2,7 +2,7 @@
 //! may send a path), in canonical form, without hidden characters, trimmed;
 //! its title, the name without its extension.
 
-use crate::plain_text::{canonical, without_hidden};
+use crate::plain_text::{canonical, is_hidden};
 
 /// The longest file name kept.
 pub const MAX_FILE_NAME_CHARS: usize = 255;
@@ -13,7 +13,8 @@ pub const MAX_TITLE_CHARS: usize = 200;
 /// much.
 pub fn file_name(raw: &str) -> Option<String> {
     let last = raw.rsplit(['/', '\\']).next().unwrap_or(raw);
-    let name = without_hidden(&canonical(last)).trim().to_string();
+    let visible: String = canonical(last).chars().filter(|c| !is_hidden(*c)).collect();
+    let name = visible.trim().to_string();
     let length = name.chars().count();
     (length > 0 && length <= MAX_FILE_NAME_CHARS && name != "." && name != "..").then_some(name)
 }
@@ -43,6 +44,8 @@ mod tests {
             file_name("note\u{202E}fdp.txt").as_deref(),
             Some("notefdp.txt")
         );
+        // One line: no break, no tab.
+        assert_eq!(file_name("a\nb\tc.txt").as_deref(), Some("abc.txt"));
         assert_eq!(
             file_name("Proce\u{301}dure.md").as_deref(),
             Some("Procédure.md")

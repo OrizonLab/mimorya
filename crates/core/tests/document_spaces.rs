@@ -29,13 +29,6 @@ fn a_technician_reads_his_team_the_units_above_and_the_company() {
         ]))
     );
     assert_eq!(filter.clearance, Sensitivity::Internal);
-    assert!(filter.reads(DocumentSpace::Unit(unit::TEAM_NORTH), Sensitivity::Internal));
-    assert!(!filter.reads(
-        DocumentSpace::Unit(unit::TEAM_NORTH),
-        Sensitivity::Confidential
-    ));
-    assert!(!filter.reads(DocumentSpace::Unit(unit::TEAM_SOUTH), Sensitivity::Public));
-    assert!(filter.reads(DocumentSpace::Company, Sensitivity::Public));
     assert_eq!(writable_spaces(&engine, &lucas, &Actor::user()), []);
 }
 

@@ -6,6 +6,7 @@
 //! nor its text. A file the process could not read (it timed out or
 //! failed) is refused as unreadable, and that failure audited.
 
+use axum::body::Bytes;
 use mimorya_core::DomainError;
 use mimorya_core::authz::{Actor, Sensitivity};
 use mimorya_core::documents::{
@@ -21,12 +22,13 @@ use super::{DocumentService, ExtractionFailure};
 use crate::contract::DocumentCreated;
 use crate::services::AccessContext;
 
-/// A file to deposit, as the request gave it.
+/// A file to deposit, as the request gave it: its bytes are shared, never
+/// copied, up to the store.
 pub struct Deposit<'a> {
     pub name: &'a str,
     pub space: DocumentSpace,
     pub sensitivity: Sensitivity,
-    pub bytes: Vec<u8>,
+    pub bytes: Bytes,
 }
 
 /// Why a deposit failed: the file, as the reader found it; a refusal of

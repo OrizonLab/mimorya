@@ -24,11 +24,14 @@ pub enum DocumentSpace {
 }
 
 impl DocumentSpace {
+    /// The stored scopes: the company's, a unit's.
+    pub const SCOPES: [&'static str; 2] = ["tenant", "org_unit"];
+
     /// The stored scope (`tenant`, `org_unit`).
     pub fn scope(self) -> &'static str {
         match self {
-            Self::Company => "tenant",
-            Self::Unit(_) => "org_unit",
+            Self::Company => Self::SCOPES[0],
+            Self::Unit(_) => Self::SCOPES[1],
         }
     }
 
@@ -49,7 +52,8 @@ impl DocumentSpace {
     }
 }
 
-/// The documents a subject may read.
+/// The documents a subject may read, as the store applies it
+/// (`repositories::documents`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DocumentReadFilter {
     pub units: UnitFilter,
@@ -57,20 +61,6 @@ pub struct DocumentReadFilter {
     pub company: bool,
     /// The highest sensitivity read.
     pub clearance: Sensitivity,
-}
-
-impl DocumentReadFilter {
-    /// Whether a document of `space` and `sensitivity` is read.
-    pub fn reads(&self, space: DocumentSpace, sensitivity: Sensitivity) -> bool {
-        let in_space = match space {
-            DocumentSpace::Company => self.company,
-            DocumentSpace::Unit(id) => match &self.units {
-                UnitFilter::All => true,
-                UnitFilter::Only(units) => units.contains(&id),
-            },
-        };
-        in_space && sensitivity <= self.clearance
-    }
 }
 
 pub fn document_read_filter(
@@ -105,15 +95,17 @@ pub fn writable_spaces(
     subject: &Subject,
     actor: &Actor,
 ) -> Vec<DocumentSpace> {
-    let units = engine
-        .org_tree()
-        .all()
-        .iter()
-        .map(|unit| DocumentSpace::Unit(unit.id));
-    std::iter::once(DocumentSpace::Company)
-        .chain(units)
-        .filter(|space| can_write_document(engine, subject, *space, Sensitivity::Public, actor))
-        .collect()
+    let units = engine.org_tree().all().iter().map(|unit| unit.id);
+    match engine.data_scope(subject, WRITE, actor) {
+        DataScope::None => Vec::new(),
+        DataScope::All => std::iter::once(DocumentSpace::Company)
+            .chain(units.map(DocumentSpace::Unit))
+            .collect(),
+        DataScope::Restricted { org_unit_ids, .. } => units
+            .filter(|id| org_unit_ids.contains(id))
+            .map(DocumentSpace::Unit)
+            .collect(),
+    }
 }
 
 /// Whether the subject may deposit into `space`, or delete from it, a

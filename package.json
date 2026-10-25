@@ -7,11 +7,11 @@
     "node": ">=22.12.0"
   },
   "scripts": {
-    "dev:api": "cargo run --bin mimorya-api",
+    "dev:api": "cargo build --bin mimorya-extract && cargo run --bin mimorya-api",
     "dev:web": "pnpm --filter @mimorya/web dev",
     "db:seed": "cargo run --bin mimorya-seed",
     "db:migrate": "cargo run --bin mimorya-admin -- migrate",
-    "build": "cargo build --release --bin mimorya-api --bin mimorya-admin --bin mimorya-seed && pnpm --filter @mimorya/web build",
+    "build": "cargo build --release --bin mimorya-api --bin mimorya-admin --bin mimorya-seed --bin mimorya-extract && pnpm --filter @mimorya/web build",
     "check": "pnpm check:rust && pnpm check:web",
     "check:rust": "cargo fmt --all --check && cargo clippy --workspace --all-targets --all-features -- -D warnings && cargo test --workspace",
     "check:web": "pnpm --filter @mimorya/web typecheck && pnpm lint && pnpm format:check",

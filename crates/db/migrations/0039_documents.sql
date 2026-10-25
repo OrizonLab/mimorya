@@ -79,3 +79,11 @@ UPDATE roles SET permissions = permissions || ARRAY['document:read']
 UPDATE roles SET permissions = permissions || ARRAY['document:write']
   WHERE is_system AND key = 'knowledge_manager'
     AND NOT 'document:write' = ANY (permissions);
+UPDATE roles SET description =
+    'Accès de base : converser avec l’agent, consulter l’organisation, la mémoire et les documents.'
+  WHERE is_system AND key = 'member'
+    AND description = 'Accès de base : converser avec l’agent, consulter l’organisation et la mémoire.';
+UPDATE roles SET description =
+    'Alimente et valide la mémoire partagée et les documents de son périmètre.'
+  WHERE is_system AND key = 'knowledge_manager'
+    AND description = 'Alimente et valide la mémoire partagée de son périmètre.';

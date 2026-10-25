@@ -7,6 +7,7 @@ use mimorya_agent::runtime::{BudgetLimits, DEFAULT_BUDGET, RunUsageTotals, Verif
 use mimorya_agent::tools::ToolCallEvaluation;
 use mimorya_core::ErrorCode;
 use mimorya_core::autonomy::ToolRisk as CoreRisk;
+use mimorya_core::documents::{DocumentKind as CoreDocumentKind, DocumentSpace};
 use mimorya_core::memory::{
     MemoryKind as CoreMemoryKind, MemoryScope as CoreMemoryScope, MemoryStatus as CoreMemoryStatus,
 };
@@ -105,6 +106,18 @@ fn memory_columns_read_back_as_their_contract_values() {
     }
     let error = stored_text::<MemoryScope>("memory scope", "secret").unwrap_err();
     assert!(!error.to_string().contains("secret"));
+}
+
+#[test]
+fn document_columns_read_back_as_their_contract_values() {
+    for kind in CoreDocumentKind::ALL {
+        let read: DocumentKind = stored_text("document kind", kind.as_str()).unwrap();
+        assert_eq!(serde_json::to_value(read).unwrap(), kind.as_str());
+    }
+    for scope in DocumentSpace::SCOPES {
+        let read: DocumentScope = stored_text("document scope", scope).unwrap();
+        assert_eq!(serde_json::to_value(read).unwrap(), scope);
+    }
 }
 
 /// The contract's error codes and risks are the core's, value for value.

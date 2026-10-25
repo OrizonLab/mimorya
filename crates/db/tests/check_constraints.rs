@@ -8,6 +8,7 @@ mod support;
 
 use mimorya_core::authz::Sensitivity;
 use mimorya_core::autonomy::ToolRisk;
+use mimorya_core::documents::{DocumentKind, DocumentSpace};
 use mimorya_core::memory::{MemoryKind, MemoryScope, MemoryStatus};
 use mimorya_db::repositories::access_policies::POLICY_EFFECTS;
 use mimorya_db::repositories::approvals::APPROVAL_STATUSES;
@@ -86,6 +87,15 @@ async fn constrained_columns_allow_exactly_the_platform_s_values() {
         ),
         ("messages_role_check", owned(MESSAGE_ROLES)),
         ("tool_invocations_decision_check", owned(TOOL_DECISIONS)),
+        ("documents_scope_check", owned(DocumentSpace::SCOPES)),
+        (
+            "documents_kind_check",
+            owned(DocumentKind::ALL.map(DocumentKind::as_str)),
+        ),
+        (
+            "documents_sensitivity_check",
+            owned(Sensitivity::ALL.map(Sensitivity::as_str)),
+        ),
     ];
     for (constraint, values) in expected {
         assert_eq!(allowed(&db, constraint).await, values, "{constraint}");

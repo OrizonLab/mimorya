@@ -11,6 +11,7 @@ use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Duration;
 
+use axum::body::Bytes;
 use mimorya_core::documents::limits::MAX_PAGES;
 use mimorya_core::documents::{DocumentKind, Extracted, Reading, Refusal};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -81,8 +82,9 @@ impl Extractor {
     pub async fn extract(
         &self,
         kind: DocumentKind,
-        bytes: Vec<u8>,
+        bytes: impl Into<Bytes>,
     ) -> Result<Extracted, ExtractionFailure> {
+        let bytes = bytes.into();
         let _permit = self
             .permits
             .clone()
@@ -131,7 +133,7 @@ fn within_limits(extracted: Extracted) -> Result<Extracted, ExtractionFailure> {
 }
 
 /// Gives the reader `bytes`, then reads its answer until it exits.
-async fn answer(child: &mut Child, bytes: Vec<u8>) -> Result<Vec<u8>, ExtractionFailure> {
+async fn answer(child: &mut Child, bytes: Bytes) -> Result<Vec<u8>, ExtractionFailure> {
     let mut input = child
         .stdin
         .take()

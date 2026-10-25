@@ -4,9 +4,10 @@
 //! `document:read`; none above one's clearance. One deposits only where
 //! `document:write` reaches, never above one's clearance, and deletes the
 //! same way; what one may not delete, or not read, answers as absent. A
-//! deny on `document:read` hides them all. Another company's document, or
-//! unit, is absent. A deposit is refused before its file is read. A unit
-//! holding documents is not deleted.
+//! deny on `document:read` hides them all, one on `document:write` leaves
+//! them read only. Another company's document, or unit, is absent. A
+//! deposit is refused before its file is read. A unit holding documents is
+//! not deleted.
 
 mod support;
 
@@ -16,7 +17,8 @@ use mimorya_core::demo::{unit, user};
 use mimorya_db::repositories::documents::{NewDocument, insert_document};
 use mimorya_db::testing::{OTHER_TENANT_ID, OTHER_USER_ID};
 use serde_json::json;
-use support::documents::{Target, deposit, deposited, listed, remove};
+use support::companies::create;
+use support::documents::{Target, deposit, deposited, kept, listed, remove};
 use support::{Client, TestApi};
 use uuid::Uuid;
 
@@ -172,9 +174,70 @@ async fn another_company_s_documents_and_units_are_absent() {
     tx.commit().await.unwrap();
     absent(&claire, foreign).await;
     assert!(!listed(&claire).await.contains(&foreign));
-    // Neither a unit of another company nor one that does not exist.
-    let refused = deposit(&claire, "Ailleurs.txt", Target::unit(Uuid::new_v4()), TEXT).await;
-    assert_eq!(refused.status, StatusCode::NOT_FOUND, "{}", refused.text());
+    // Neither a unit of another company, though Claire deposits anywhere in
+    // hers, nor one that does not exist.
+    let acme = create(
+        &api,
+        "documents-ailleurs",
+        "admin@documents-ailleurs.example",
+    )
+    .await;
+    let mut tx = api.app.services.db.begin(acme.tenant_id).await.unwrap();
+    let acme_unit: Uuid = sqlx::query_scalar("select id from org_units limit 1")
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    let before = kept(&api).await;
+    for unit in [acme_unit, Uuid::new_v4()] {
+        let refused = deposit(&claire, "Ailleurs.txt", Target::unit(unit), TEXT).await;
+        assert_eq!(refused.status, StatusCode::NOT_FOUND, "{}", refused.text());
+    }
+    assert_eq!(kept(&api).await, before);
+    let mut tx = api.app.services.db.begin(acme.tenant_id).await.unwrap();
+    let theirs: i64 = sqlx::query_scalar("select count(*) from documents")
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap();
+    assert_eq!(theirs, 0);
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_deny_on_writing_documents_leaves_them_read_only() {
+    let api = TestApi::start().await;
+    let paul = api.sign_in(user::PAUL).await;
+    let julien = api.sign_in(user::JULIEN).await;
+    let id = deposited(&julien, "Nord.txt", Target::unit(unit::TEAM_NORTH), TEXT).await;
+    let only_julien = json!({
+        "op": "eq",
+        "left": { "attr": "subject.userId" },
+        "right": { "value": user::JULIEN },
+    });
+    let created = paul
+        .post(
+            "/admin/policies",
+            json!({
+                "description": "Lecture seule",
+                "permissions": ["document:write"],
+                "condition": only_julien,
+            }),
+        )
+        .await;
+    assert_eq!(created.status, StatusCode::CREATED, "{}", created.text());
+    let policy = created.json()["id"].as_str().unwrap().to_string();
+    let refused = deposit(&julien, "Encore.txt", Target::unit(unit::TEAM_NORTH), TEXT).await;
+    assert_eq!(refused.status, StatusCode::FORBIDDEN, "{}", refused.text());
+    let read = julien.get(&format!("/documents/{id}")).await.json();
+    assert_eq!(read["canDelete"], false);
+    let list = julien.get("/documents").await.json();
+    assert_eq!(list["spaces"], json!([]));
+    assert_eq!(list["quota"], json!(null));
+    let kept_back = julien.delete(&format!("/documents/{id}")).await;
+    assert_eq!(kept_back.status, StatusCode::NOT_FOUND);
+    let removed = paul.delete(&format!("/admin/policies/{policy}")).await;
+    assert_eq!(removed.status, StatusCode::OK);
+    remove(&julien, id).await;
 }
 
 #[tokio::test]
