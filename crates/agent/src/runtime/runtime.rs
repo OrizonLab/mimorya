@@ -117,6 +117,7 @@ impl AgentRuntime {
         };
         let mut state = checkpoint;
         let mut results = pending.completed_results;
+        let mut validated = Vec::new();
         for approval in &pending.approvals {
             let decision = &decisions[&approval.approval_id];
             self.deps
@@ -127,26 +128,20 @@ impl AgentRuntime {
                     approved: decision.approved,
                 })
                 .await?;
-            let result = match self.tools.tool(&approval.tool_name) {
-                Some(tool) if decision.approved => {
-                    self.tools
-                        .run(
-                            &mut state,
-                            &tool,
-                            &approval.tool_call_id,
-                            approval.input.clone(),
-                            Some(approval.approval_id),
-                            &access,
-                        )
-                        .await?
-                }
+            match self.tools.tool(&approval.tool_name) {
+                Some(tool) if decision.approved => validated.push((tool, approval)),
                 tool => {
                     let (reason, shown) = why_not_run(tool.is_some(), decision);
-                    self.tools.reject(approval, reason, shown).await?
+                    results.push(self.tools.reject(approval, reason, shown).await?);
                 }
-            };
-            results.push(result);
+            }
         }
+        // The validated calls' time counts in the run's, its sub-agents'
+        // included (ADR-098); the wait for a decision does not.
+        let started = Instant::now();
+        let ran = self.tools.run_validated(&mut state, validated, &access);
+        results.extend(ran.await?);
+        state.elapsed_ms += started.elapsed().as_millis() as u64;
 
         state.pending = None;
         let results = order_by_request(&state, results);
@@ -207,6 +202,9 @@ impl AgentRuntime {
             }
 
             if !response.tool_calls.is_empty() {
+                // What its sub-agents may take of the time left counts the
+                // model's call (ADR-098).
+                state.elapsed_ms = elapsed(&started);
                 // The model may have taken a while: its calls are judged with
                 // the rights as they stand now.
                 let access = match self.deps.access.current().await? {

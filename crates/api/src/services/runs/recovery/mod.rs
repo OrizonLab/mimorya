@@ -9,7 +9,9 @@
 //! step, for too long, or whose user may no longer act, ends there, naming
 //! the actions that were under way when it stopped. Its taking up counts as
 //! progress against the sweep of stuck runs; how long it may stay
-//! interrupted still counts from its last step.
+//! interrupted still counts from its last step. Its sub-agents still
+//! running fail there (ADR-098): never taken up on their own, they stopped
+//! with its execution, and the run asks again if it needs them.
 
 mod calls;
 mod executing;
@@ -27,6 +29,7 @@ use super::events::record_run_event;
 use super::executor::ExecutionMode;
 use super::outcome::{CRASH_MESSAGE, persist_outcome};
 use super::service::RunService;
+use super::sub_runs::{announce, end_sub_runs};
 use calls::{
     cancel_lost_validations, ending, of_unknown_effect, risks_set_now, started_since_saved,
 };
@@ -45,6 +48,9 @@ const NOT_TAKEN_UP: &str =
 
 /// Beyond this, a run is not taken up: its user has moved on.
 const MAX_INTERRUPTION: chrono::Duration = chrono::Duration::hours(1);
+
+/// Why a sub-agent running when its run's execution stopped ends.
+pub const SUB_AGENT_INTERRUPTED: &str = "Sous-agent interrompu par un arrêt du service : la demande qui l’avait lancé a repris sans lui.";
 
 impl RunService {
     /// Starts executing runs, then takes up those whose executor stopped,
@@ -94,7 +100,10 @@ impl RunService {
         let (started, approved) = started_since_saved(&mut tx, &run, checkpoint.as_ref()).await?;
         let set_now = risks_set_now(&mut tx).await?;
         cancel_lost_validations(&mut tx, &run).await?;
+        let bus = &self.executor.bus;
+        let sub_runs = end_sub_runs(&mut tx, bus, run_id, SUB_AGENT_INTERRUPTED).await?;
         tx.commit().await?;
+        announce(bus, sub_runs);
 
         let scope = RunScope {
             tenant_id,

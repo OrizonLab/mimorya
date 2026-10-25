@@ -50,8 +50,8 @@ pub use run_stream::{
     ToolCallEvent, ToolDecision, ToolResultEvent, ToolRisk, UsageEvent, VerificationEvent,
 };
 pub use runs::{
-    RunBudget, RunDetail, RunEventRecord, RunList, RunListItem, RunRef, RunStatus, RunUsage,
-    RunView, ToolInvocation, Verification,
+    AgentProfile, RunBudget, RunDetail, RunEventRecord, RunList, RunListItem, RunRef, RunStatus,
+    RunUsage, RunView, ToolInvocation, Verification,
 };
 pub use scheduled_tasks::{
     LastOccurrence, NewScheduledTask, OccurrenceOutcome, ScheduledTask, ScheduledTaskList,

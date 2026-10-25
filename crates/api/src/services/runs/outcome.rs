@@ -2,7 +2,8 @@
 //! shown in the conversation, and the audit entry; in the transaction its
 //! execution holds its lease in (ADR-086), which carries its mission on as
 //! the stage ends (ADR-089). A crash is recorded only for a run still
-//! running under this executor's lease, or already finished.
+//! running under this executor's lease, or already finished; its
+//! sub-agents still running end with it (ADR-098).
 
 use chrono::Utc;
 use mimorya_agent::runtime::{RunCheckpoint, RunOutcome};
@@ -17,6 +18,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use super::db_ports::RunScope;
+use super::sub_runs::{SUB_AGENT_STOPPED, announce, end_sub_runs};
 use crate::contract::{self, MessageMetadata, MissionPart};
 use crate::services::event_bus::RunEventBus;
 use crate::services::missions::after_stage;
@@ -169,6 +171,8 @@ pub async fn record_crash(
             return Ok(None);
         }
     }
+    // Its sub-agents went with its execution (ADR-098).
+    let sub_runs = end_sub_runs(&mut tx, bus, scope.run_id, SUB_AGENT_STOPPED).await?;
     let failed = update_active_run(
         &mut tx,
         scope.run_id,
@@ -211,6 +215,7 @@ pub async fn record_crash(
     };
     after_stage(&mut tx, bus, scope, &crashed).await?;
     tx.commit().await?;
+    announce(bus, sub_runs);
     Ok(Some(RunStatus::Failed))
 }
 

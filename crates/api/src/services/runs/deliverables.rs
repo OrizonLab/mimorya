@@ -18,16 +18,24 @@ pub struct DbDeliverables {
     scope: RunScope,
     /// Held by each change (ADR-086).
     fence: LeaseFence,
+    /// The run whose lease it is: the run's own, or its parent's for a
+    /// sub-agent's (ADR-098).
+    leased: Uuid,
 }
 
 impl DbDeliverables {
-    pub fn new(db: Database, scope: RunScope, fence: LeaseFence) -> Self {
-        Self { db, scope, fence }
+    pub fn new(db: Database, scope: RunScope, fence: LeaseFence, leased: Uuid) -> Self {
+        Self {
+            db,
+            scope,
+            fence,
+            leased,
+        }
     }
 
     async fn held_tx(&self) -> anyhow::Result<TenantTx> {
         let mut tx = self.db.begin(self.scope.tenant_id).await?;
-        self.fence.hold_in(&mut tx, self.scope.run_id).await?;
+        self.fence.hold_in(&mut tx, self.leased).await?;
         Ok(tx)
     }
 }

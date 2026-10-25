@@ -1,4 +1,5 @@
-//! Runs executed on behalf of the signed-in user, with their trace.
+//! Runs executed on behalf of the signed-in user, with their trace and the
+//! sub-agents each handed tasks to (ADR-098).
 
 use axum::extract::State;
 use axum::routing::get;
@@ -7,6 +8,7 @@ use mimorya_core::DomainError;
 use mimorya_db::repositories::approval_views::list_approval_views_for_run;
 use mimorya_db::repositories::run_events::list_run_events;
 use mimorya_db::repositories::runs::{get_run, list_runs};
+use mimorya_db::repositories::sub_runs::list_sub_runs;
 use mimorya_db::repositories::tool_invocations::list_tool_invocations;
 
 use crate::app::AppState;
@@ -48,6 +50,7 @@ async fn detail(
     let tools = list_tool_invocations(&mut tx, id).await?;
     let approvals = list_approval_views_for_run(&mut tx, id).await?;
     let events = list_run_events(&mut tx, id, 0).await?;
+    let sub_runs = list_sub_runs(&mut tx, id).await?;
     tx.commit().await?;
 
     Ok(Json(RunDetail {
@@ -66,5 +69,9 @@ async fn detail(
             })
             .collect::<anyhow::Result<_>>()?,
         events: events.iter().map(Into::into).collect(),
+        sub_runs: sub_runs
+            .iter()
+            .map(RunListItem::from_row)
+            .collect::<anyhow::Result<_>>()?,
     }))
 }

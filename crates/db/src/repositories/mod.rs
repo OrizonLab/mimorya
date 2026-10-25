@@ -43,6 +43,7 @@ pub mod scheduled_tasks;
 pub mod secrets;
 pub mod skills;
 pub mod sso_assertions;
+pub mod sub_runs;
 pub mod tenants;
 pub mod tool_invocations;
 pub mod usage;

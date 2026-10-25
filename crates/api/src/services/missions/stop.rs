@@ -1,7 +1,8 @@
 //! Stopping a mission at its owner's request (ADR-089): its stage under way
 //! is cancelled, with its requests awaiting a decision, and the mission ends,
 //! cancelled. An executor running the stage loses its lease with it, and
-//! stops at its next step without writing anything more (ADR-086). The
+//! stops at its next step without writing anything more (ADR-086); its
+//! sub-agents still running end with it, their end announced (ADR-098). The
 //! stage is locked before the mission, as when it ends: a stage ending
 //! meanwhile is waited for, and the one it queued is the one cancelled. A
 //! mission over, or whose last stage failed, cannot be stopped.
@@ -22,7 +23,7 @@ use super::entrust::{READ, UNKNOWN_MISSION};
 use crate::app::Services;
 use crate::contract::{self, MessageMetadata, MissionStatus};
 use crate::services::AccessContext;
-use crate::services::runs::append_in;
+use crate::services::runs::{SUB_AGENT_STOPPED, announce, append_in, end_sub_runs};
 
 pub const STOPPED: &str = "Mission arrêtée à la demande de son auteur.";
 const ALREADY_OVER: &str = "Cette mission est déjà terminée.";
@@ -64,7 +65,10 @@ pub async fn stop_mission(
             continue;
         }
         let mut finished = None;
+        let mut sub_runs = Vec::new();
         if let Some(stage) = stage {
+            // Its sub-agents stop with it (ADR-098).
+            sub_runs = end_sub_runs(&mut tx, &services.bus, stage.id, SUB_AGENT_STOPPED).await?;
             let cancelled = RunPatch {
                 status: Some(RunStatus::Cancelled),
                 error: Some(STOPPED.into()),
@@ -116,6 +120,7 @@ pub async fn stop_mission(
         if let Some((run_id, event)) = finished {
             services.bus.publish(run_id, event);
         }
+        announce(&services.bus, sub_runs);
         return Ok(());
     }
     anyhow::bail!("mission {id} kept going on while being stopped")

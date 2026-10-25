@@ -9,6 +9,7 @@ use mimorya_core::tools::{Deliverable, DeliverableInput, DeliverableService, Del
 use uuid::Uuid;
 
 use super::in_memory_documents::DocumentFixture;
+use super::in_memory_sub_runs::OpenedSubRun;
 use crate::runtime::ports::{
     ApprovalPlacement, ApprovalRequest, ApprovalStore, AuditSink, EngineAuditEntry, EnginePorts,
     NewMemory, RunEvent, RunEventSink, RunStore, SkillContent, SkillStore, SkillSummary,
@@ -52,13 +53,17 @@ pub(super) struct State {
     deliverables: HashMap<Uuid, Deliverable>,
     /// Set, requests for validation are refused for this reason (ADR-059).
     unroutable: Option<String>,
+    /// The sub-agents' runs this run opened (ADR-098).
+    pub(super) sub_runs: Vec<OpenedSubRun>,
 }
 
 pub struct InMemoryPorts {
     user_id: Uuid,
-    run_id: Uuid,
+    pub(super) run_id: Uuid,
     skills: Vec<SkillFixture>,
     state: Mutex<State>,
+    /// A sub-agent's run, which opens none (ADR-098).
+    pub(super) is_sub_run: bool,
 }
 
 impl InMemoryPorts {
@@ -88,6 +93,26 @@ impl InMemoryPorts {
             run_id,
             skills,
             state: Mutex::new(state),
+            is_sub_run: false,
+        })
+    }
+
+    /// The ports of a sub-agent's run of this run: its own journal, the
+    /// same knowledge to read.
+    pub(super) fn sub_run(&self) -> Arc<Self> {
+        let state = self.state();
+        let knowledge = State {
+            memories: state.memories.clone(),
+            documents: state.documents.clone(),
+            unroutable: state.unroutable.clone(),
+            ..State::default()
+        };
+        Arc::new(Self {
+            user_id: self.user_id,
+            run_id: Uuid::new_v4(),
+            skills: self.skills.clone(),
+            state: Mutex::new(knowledge),
+            is_sub_run: true,
         })
     }
 
@@ -104,6 +129,7 @@ impl InMemoryPorts {
             skills: self.clone(),
             runs: self.clone(),
             deliverables: self.clone(),
+            sub_runs: self.clone(),
         }
     }
 
@@ -159,6 +185,11 @@ impl InMemoryPorts {
 
     pub fn deliverable(&self, id: Uuid) -> Option<Deliverable> {
         self.state().deliverables.get(&id).cloned()
+    }
+
+    /// The sub-agents' runs opened, in order.
+    pub fn sub_runs(&self) -> Vec<OpenedSubRun> {
+        self.state().sub_runs.clone()
     }
 }
 

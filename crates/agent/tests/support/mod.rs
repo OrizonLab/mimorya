@@ -2,17 +2,18 @@
 //! in-memory ports.
 #![allow(dead_code)] // not every test binary uses every fixture
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use mimorya_agent::llm::{ModelRouter, PriceTable};
+use mimorya_agent::llm::{LlmProvider, ModelRouter, PriceTable};
 use mimorya_agent::runtime::{
-    AgentRuntime, BudgetLimits, DEFAULT_BUDGET, RunConfig, RunOutcome, RuntimeDeps, StartInput,
-    VerificationConfig,
+    AgentRuntime, BudgetLimits, DEFAULT_BUDGET, NewMemory, RunConfig, RunOutcome, RuntimeDeps,
+    StartInput, VerificationConfig,
 };
 use mimorya_agent::testing::{InMemoryPorts, ScriptedProvider, ScriptedStep, TestAccess};
+use mimorya_agent::tools::platform::{DelegateTask, platform_tools};
 use mimorya_agent::tools::{ToolOverride, ToolRegistry};
 use mimorya_core::authz::{Actor, ResourceRef, Subject};
 use mimorya_core::autonomy::{AutonomyLevel, AutonomyPolicy, ToolRisk};
@@ -200,6 +201,15 @@ pub struct Options {
     pub overrides: HashMap<String, ToolOverride>,
     /// A mission's stage (ADR-089).
     pub handoff: bool,
+    /// The run may hand tasks to sub-agents (ADR-098).
+    pub sub_agents: bool,
+    /// The run's permission ceiling (`Actor::allowed_permissions`).
+    pub allowed_permissions: Option<HashSet<String>>,
+    /// The model, instead of the scripted steps.
+    pub model: Option<Arc<dyn LlmProvider>>,
+    /// The platform's tools too (memory, documents, skills, delegation),
+    /// with the memories the run may read.
+    pub platform: Option<Vec<NewMemory>>,
 }
 
 pub struct Harness {
@@ -261,13 +271,14 @@ pub fn setup(steps: Vec<ScriptedStep>, options: Options) -> Harness {
             .unwrap_or_else(|| demo::subject(user::JULIEN)),
     );
     let run_id = Uuid::new_v4();
-    let ports = InMemoryPorts::new(subject.user_id, run_id);
+    let memories = options.platform.clone().unwrap_or_default();
+    let ports = InMemoryPorts::with_fixtures(subject.user_id, run_id, memories, Vec::new());
     let provider = Arc::new(ScriptedProvider::new(steps));
     let judge = options
         .judge
         .map(|steps| Arc::new(ScriptedProvider::new(steps)));
     let applied = Arc::new(Mutex::new(Vec::new()));
-    let tools: Vec<ToolRef> = vec![
+    let mut tools: Vec<ToolRef> = vec![
         typed_tool(JobsSearch),
         typed_tool(PlanningApply {
             applied: applied.clone(),
@@ -275,7 +286,15 @@ pub fn setup(steps: Vec<ScriptedStep>, options: Options) -> Harness {
         typed_tool(UsersDisable),
         typed_tool(DocRead),
     ];
-    let mut router = ModelRouter::new(provider.clone());
+    if options.sub_agents {
+        tools.push(typed_tool(DelegateTask));
+    }
+    if options.platform.is_some() {
+        let ports = ports.ports();
+        tools.extend(platform_tools(ports.memory, ports.skills, ports.documents));
+    }
+    let model: Arc<dyn LlmProvider> = options.model.unwrap_or_else(|| provider.clone());
+    let mut router = ModelRouter::new(model);
     if let Some(judge) = &judge {
         router = router.with_verification(judge.clone());
     }
@@ -290,9 +309,11 @@ pub fn setup(steps: Vec<ScriptedStep>, options: Options) -> Harness {
         Arc::new(PriceTable::default()),
     );
     deps.retry_delay = Duration::from_millis(1);
+    let mut actor = Actor::agent(Some(run_id));
+    actor.allowed_permissions = options.allowed_permissions;
     let config = RunConfig {
         run_id,
-        actor: Actor::agent(Some(run_id)),
+        actor,
         objective: "Synthèse des interventions".into(),
         autonomy: AutonomyPolicy::new(AutonomyLevel::ExecuteWithApproval),
         budget: options.budget.unwrap_or(DEFAULT_BUDGET),
