@@ -204,12 +204,15 @@ pub struct NewResult<'a> {
     pub cost_micros: i64,
 }
 
-/// Writes one case's result and counts what it cost in its evaluation.
-pub async fn record_result(conn: &mut PgConnection, result: NewResult<'_>) -> sqlx::Result<()> {
-    sqlx::query(
+/// Writes one case's result and counts what it cost in its evaluation,
+/// while it is running; `false` when it is not any more (failed as
+/// interrupted meanwhile): nothing written.
+pub async fn record_result(conn: &mut PgConnection, result: NewResult<'_>) -> sqlx::Result<bool> {
+    let written = sqlx::query(
         "insert into skill_evaluation_results (tenant_id, evaluation_id, position, reference, \
          outcome, issues, answer, error, skill_loaded, tools, cost_micros) \
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
+         select $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11 \
+         where exists (select 1 from skill_evaluations where id = $2 and status = 'running')",
     )
     .bind(result.tenant_id)
     .bind(result.evaluation_id)
@@ -224,6 +227,9 @@ pub async fn record_result(conn: &mut PgConnection, result: NewResult<'_>) -> sq
     .bind(result.cost_micros)
     .execute(&mut *conn)
     .await?;
+    if written.rows_affected() == 0 {
+        return Ok(false);
+    }
     sqlx::query(
         "update skill_evaluations set input_tokens = input_tokens + $2, \
          output_tokens = output_tokens + $3, cost_micros = cost_micros + $4 where id = $1",
@@ -234,7 +240,16 @@ pub async fn record_result(conn: &mut PgConnection, result: NewResult<'_>) -> sq
     .bind(result.cost_micros)
     .execute(conn)
     .await?;
-    Ok(())
+    Ok(true)
+}
+
+/// Deletes the evaluations of every company finished before `before`,
+/// results with them; how many.
+pub async fn purge_finished_evaluations(pool: &PgPool, before: DateTime<Utc>) -> sqlx::Result<i32> {
+    sqlx::query_scalar("select system_purge_skill_evaluations($1)")
+        .bind(before)
+        .fetch_one(pool)
+        .await
 }
 
 /// Ends the running evaluation `id`, failed for `failure` when given;

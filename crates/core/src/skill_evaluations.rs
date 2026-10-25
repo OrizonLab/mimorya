@@ -8,6 +8,9 @@
 /// Evaluations of one skill kept, the oldest deleted as a new one is asked
 /// for: their answers are read once, not archived.
 pub const EVALUATIONS_KEPT_PER_SKILL: i64 = 5;
+/// Days an evaluation is kept after its end, at most: its answers may hold
+/// what its author alone may read.
+pub const EVALUATION_KEPT_DAYS: i64 = 90;
 /// Characters of an answer kept with its result.
 pub const MAX_ANSWER_CHARS: usize = 8000;
 /// Tools of one case's play kept with its result, and characters of each

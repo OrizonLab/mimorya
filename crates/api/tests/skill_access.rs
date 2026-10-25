@@ -14,6 +14,7 @@ use mimorya_db::seed::DEMO_SKILL_ID;
 use mimorya_db::testing::OTHER_TENANT_ID;
 use serde_json::json;
 use support::refusals::{latest_entry, not_found_since, refusals_since};
+use support::skill_evaluations::forget;
 use support::{Client, TestApi, TestResponse};
 use uuid::Uuid;
 
@@ -87,6 +88,22 @@ async fn foreign_skill(api: &TestApi) -> Uuid {
     id
 }
 
+/// An evaluation of the demo skill, as asked for and not played yet.
+async fn an_evaluation(api: &TestApi) -> Uuid {
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    let id = sqlx::query_scalar(
+        "insert into skill_evaluations (tenant_id, skill_id, version, cases) \
+         values ($1, $2, 1, '[]') returning id",
+    )
+    .bind(tenant::ID)
+    .bind(DEMO_SKILL_ID)
+    .fetch_one(&mut *tx)
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+    id
+}
+
 /// The rows of `table` (versions, cases, evaluations) of skill `id` a
 /// company holds.
 async fn rows_of(api: &TestApi, tenant_id: Uuid, table: &str, id: Uuid) -> i64 {
@@ -112,6 +129,12 @@ async fn a_member_is_refused_on_every_route() {
         let shown = marc.get(&format!("{SKILLS}/{DEMO_SKILL_ID}{read}")).await;
         assert_eq!(shown.status, StatusCode::FORBIDDEN, "{read}");
     }
+    // Nor an evaluation of the company's (ADR-104).
+    let evaluation = an_evaluation(&api).await;
+    let shown = marc
+        .get(&format!("/admin/skill-evaluations/{evaluation}"))
+        .await;
+    assert_eq!(shown.status, StatusCode::FORBIDDEN);
     let created = marc
         .post(
             SKILLS,
@@ -124,6 +147,7 @@ async fn a_member_is_refused_on_every_route() {
     }
 
     // Each change refused is audited; reads are not.
+    forget(&api, DEMO_SKILL_ID).await;
     assert_eq!(refusals_since(&api, since).await.len(), 9);
     let after = paul.get(&format!("{SKILLS}/{DEMO_SKILL_ID}")).await.json();
     assert_eq!(after, before);

@@ -5,10 +5,11 @@
 -- them, one evaluation at a time across the processes, under the lock of
 -- its sweep: an evaluation found running by the process holding that lock
 -- is one a stopped process left. One evaluation queued or running per
--- company. The last five of a skill are kept; they go with their skill.
--- An answer and the judge's issues are read by whoever asked for the
--- evaluation, with whose rights it ran; its author leaving, nobody reads
--- them any more.
+-- company. The last five of a skill are kept, ninety days at most after
+-- their end; they go with their skill. An answer and the judge's issues
+-- are read by whoever asked for the evaluation, with whose rights it ran;
+-- its author leaving, nobody reads them any more, and they go with the
+-- evaluation.
 CREATE TABLE skill_evaluations (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
@@ -89,3 +90,24 @@ $$;
 REVOKE ALL ON FUNCTION system_pending_skill_evaluations() FROM PUBLIC;
 
 GRANT EXECUTE ON FUNCTION system_pending_skill_evaluations() TO mimorya_app;
+
+-- Deletes the evaluations of every company that ended before `p_before`,
+-- results with them; how many.
+CREATE FUNCTION system_purge_skill_evaluations(p_before timestamptz)
+RETURNS integer
+LANGUAGE sql
+VOLATILE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  WITH purged AS (
+    DELETE FROM skill_evaluations
+     WHERE status IN ('completed', 'failed') AND finished_at < p_before
+    RETURNING 1
+  )
+  SELECT count(*)::integer FROM purged
+$$;
+
+REVOKE ALL ON FUNCTION system_purge_skill_evaluations(timestamptz) FROM PUBLIC;
+
+GRANT EXECUTE ON FUNCTION system_purge_skill_evaluations(timestamptz) TO mimorya_app;

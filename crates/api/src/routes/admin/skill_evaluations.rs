@@ -16,7 +16,7 @@ use crate::contract::admin::{
 use crate::http::{ApiResult, Body, PathId};
 use crate::plugins::Auth;
 use crate::services::admin::launch_evaluation;
-use crate::services::skill_evaluations::{evaluation, evaluations_of};
+use crate::services::skill_evaluations::{evaluation, evaluations_of, shown_to};
 
 const PERMISSION: &str = "skill:manage";
 
@@ -64,8 +64,6 @@ pub async fn show(
         .await?
         .ok_or_else(|| DomainError::not_found("Évaluation introuvable"))?;
     tx.commit().await?;
-    Ok(Json(SkillEvaluationDetail::new(
-        &read,
-        access.subject.user_id,
-    )?))
+    let shown = shown_to(&read, access.subject.user_id);
+    Ok(Json(SkillEvaluationDetail::new(&read, shown)?))
 }

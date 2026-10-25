@@ -5012,7 +5012,9 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     demande, une à la fois entre les processus, sous le verrou de sa passe (ADR-086) tant
     qu'elle joue. Une évaluation trouvée en cours par la passe qui tient ce verrou est
     celle qu'un arrêt a laissée : elle échoue, « interrompue », à demander de nouveau.
-    Aucun bail ;
+    Aucun bail. Un résultat ne s'écrit que dans une évaluation encore en cours : une
+    passe dont la session du verrou s'est perdue (PostgreSQL redémarré) cesse de jouer
+    la sienne au cas suivant, une autre l'ayant close ;
   - **chaque cas** : l'assistant répond à la demande pour la personne qui a demandé
     l'évaluation, avec ses droits relus avant chaque étape, et ce qu'on donne à un
     sous-agent (ADR-098) : les outils qui ne font que lire et s'exécutent sans validation,
@@ -5041,8 +5043,10 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     des compétences ; les réponses, les manquements relevés et les outils appelés pour la
     seule personne pour qui elle a tourné : ils ont été lus avec ses droits ;
   - **conservation** : les cinq dernières évaluations d'une compétence, la plus ancienne
-    supprimée à la demande suivante ; elles partent avec leur compétence ; leur auteur
-    parti, plus personne ne lit leurs réponses ;
+    supprimée à la demande suivante, et 90 jours au plus après leur fin (une purge
+    chaque minute) : leurs réponses peuvent tenir ce que leur auteur seul peut lire.
+    Elles partent avec leur compétence ; leur auteur parti, plus personne ne lit leurs
+    réponses ;
   - **audit** : `skill.evaluation_requested` (version, version de référence, nombre de
     cas) et `skill.evaluated` (bilan, coût, raison d'un échec), jamais une réponse.
 - **Alternatives écartées** :
@@ -5056,9 +5060,22 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     confirmée ;
   - plusieurs essais par cas : le coût double à chaque essai. Réserve assumée : un seul
     essai, des réponses de modèle qui varient d'un essai à l'autre.
+- **Réserves assumées** :
+  - une version proposée par l'agent (ADR-100) est remise comme procédure de
+    l'entreprise pendant son évaluation, avant toute activation, avec les droits de
+    l'administrateur, et les outils des serveurs MCP que l'entreprise a classés en
+    lecture restent offerts : une proposition malveillante pourrait faire lire ce que
+    l'administrateur peut lire et le passer en paramètre à un serveur MCP de
+    l'entreprise. L'administrateur lit la proposition avant de l'évaluer ; l'écran le
+    rappellera (lot 4c) ;
+  - une seule passe pour la plateforme : une évaluation la tient jusqu'à une heure
+    environ, celles des autres entreprises attendent ;
+  - rien ne borne les évaluations demandées l'une après l'autre (10 USD environ chacune
+    au plus), sinon une à la fois par entreprise.
 - **Conséquences** :
   - coût au plus : 10 cas, 2 versions, 0,50 USD chacun, et les jugements ;
-  - reste à faire : l'écran « Compétences » (lot 4c) ;
+  - reste à faire : l'écran « Compétences » (lot 4c), qui saura confirmer une
+    activation contre des régressions (il n'envoie pas encore `confirmed`) ;
   - tests :
     - `crates/core/src/skill_evaluations.rs` : régression, bilan, confirmation à
       l'activation ;
@@ -5067,12 +5084,15 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
       outils, la version jouée), le jugement, la régression, aucun run, la consommation
       au nom de la personne, l'audit sans réponse, l'activation confirmée ; les réponses
       lues par la seule personne ; une compétence pas encore active listée dans l'index ;
+      une réponse sans verdict du juge, en erreur, gardée ;
     - `crates/api/tests/skill_evaluation_rules.rs` : ce qui est vérifié avant la file
       (cas, version, droits, modèle, lecture des compétences, une à la fois, autre
-      entreprise) ; l'arrêt quand la personne ne peut plus ; une évaluation laissée en
-      cours par un arrêt ; une passe à la fois, seulement dans un processus qui exécute
-      les runs ; les cinq dernières gardées ;
-    - `crates/api/tests/skill_access.rs` : les routes refusées à un membre, et la
-      compétence d'une autre entreprise sans rien écrire ;
-    - `crates/db/tests/definer_functions.rs` : la nouvelle fonction de lecture entre
-      entreprises.
+      entreprise) ; l'arrêt quand la personne ne peut plus (compte désactivé, rôle
+      restreint) ; une évaluation laissée en cours par un arrêt ; aucun résultat écrit
+      dans une évaluation qui n'est plus en cours ; une passe à la fois, seulement dans un
+      processus qui exécute les runs ; les cinq dernières gardées, 90 jours au plus ;
+    - `crates/api/tests/skill_access.rs` : les routes refusées à un membre, le détail
+      d'une évaluation compris, et la compétence d'une autre entreprise sans rien
+      écrire ;
+    - `crates/db/tests/definer_functions.rs` : les nouvelles fonctions entre
+      entreprises (évaluations à jouer, purge).

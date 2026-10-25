@@ -1,6 +1,8 @@
 //! One evaluation played (ADR-104): claimed, then each case in turn, for
 //! the version evaluated and, beside it, for the active one, each result
-//! written as it comes. Before each case, whom it runs for must still
+//! written as it comes while the evaluation runs: one failed meanwhile as
+//! interrupted (the lock's session lost, another pass took over) is played
+//! no further. Before each case, whom it runs for must still
 //! administer the company's skills and use the agent: otherwise the
 //! evaluation ends there, failed, with the results it has. Its end is
 //! audited with what its cases add up to, never an answer.
@@ -109,7 +111,11 @@ async fn play_cases(
             )
             .await;
             let position = i32::try_from(position)?;
-            record(services, scope, position, *reference, &played).await?;
+            if !record(services, scope, position, *reference, &played).await? {
+                // Failed as interrupted meanwhile, by a pass that took over
+                // the lock (its session lost): it is played no further.
+                return Ok(Some(INTERRUPTED.into()));
+            }
         }
     }
     Ok(None)
@@ -142,16 +148,18 @@ async fn launcher_may(
     })
 }
 
+/// Writes the case's result; `false` when the evaluation is not running
+/// any more.
 async fn record(
     services: &Services,
     scope: CaseScope,
     position: i32,
     reference: bool,
     played: &Played,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<bool> {
     let tools = serde_json::to_value(&played.tools)?;
     let mut tx = services.db.begin(scope.tenant_id).await?;
-    record_result(
+    let written = record_result(
         &mut tx,
         NewResult {
             tenant_id: scope.tenant_id,
@@ -170,7 +178,8 @@ async fn record(
         },
     )
     .await?;
-    Ok(tx.commit().await?)
+    tx.commit().await?;
+    Ok(written)
 }
 
 /// Ends the evaluation, failed for `failure` when given, and audits what

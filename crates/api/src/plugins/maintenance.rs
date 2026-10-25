@@ -1,7 +1,8 @@
 //! Periodic maintenance, at startup and then every minute, in each process
 //! that executes runs: expired password reset links are deleted (ADR-028),
-//! ended absences (ADR-071), and the shared rate limit windows long over
-//! (ADR-088); from the second minute, the notices a
+//! ended absences (ADR-071), the shared rate limit windows long over
+//! (ADR-088), and the evaluations of skills ended ninety days ago
+//! (ADR-104); from the second minute, the notices a
 //! stop of the service lost are sent (ADR-070), requests nobody decided in
 //! time expire, and their runs go on (ADR-061), their managers reminded the
 //! day before (ADR-062), each of these three in one process at a time
@@ -23,11 +24,13 @@ use std::time::Duration;
 
 use chrono::Utc;
 use mimorya_agent::runtime::RunEvent;
+use mimorya_core::skill_evaluations::EVALUATION_KEPT_DAYS;
 use mimorya_db::Database;
 use mimorya_db::repositories::approval_delegations::purge_ended_approval_delegations;
 use mimorya_db::repositories::password_resets::purge_expired_password_resets;
 use mimorya_db::repositories::rate_limits::purge_rate_limits;
 use mimorya_db::repositories::runs::fail_stale_runs;
+use mimorya_db::repositories::skill_evaluations::purge_finished_evaluations;
 use tokio::task::JoinHandle;
 
 use crate::app::AppState;
@@ -83,6 +86,10 @@ pub fn spawn_maintenance(services: AppState) -> JoinHandle<()> {
             let over = Utc::now() - RATE_LIMITS_KEPT;
             if let Err(error) = purge_rate_limits(db.pool(), over).await {
                 tracing::warn!(error = %error, "Rate limit window purge failed");
+            }
+            let ended = Utc::now() - chrono::Duration::days(EVALUATION_KEPT_DAYS);
+            if let Err(error) = purge_finished_evaluations(db.pool(), ended).await {
+                tracing::warn!(error = %error, "Skill evaluation purge failed");
             }
         }
     })

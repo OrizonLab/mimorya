@@ -220,6 +220,8 @@ utilisateur).
   évaluations de compétences en file dans une entreprise active, les plus anciennes
   d'abord, et celles qu'un arrêt a laissées en cours : entreprise et identifiant
   seulement, chacune jouée ou close ensuite dans sa propre entreprise, ADR-104),
+  `system_purge_skill_evaluations` (supprimer les évaluations finies depuis plus de
+  90 jours, ADR-104),
   `system_expired_run_leases` (lister les runs en cours dont le bail a expiré, ou qui n'en
   ont jamais eu : entreprise et identifiant seulement, chacun repris ensuite dans sa propre
   entreprise, au démarrage comme ensuite, ADR-083, ADR-086), `system_queued_runs` (lister les runs en file d'attente, les plus anciens
@@ -232,22 +234,22 @@ utilisateur).
 
 ## 5. Rétention (valeurs par défaut, configurables par entreprise)
 
-| Donnée                                        | Durée par défaut                                                                                                          |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| Messages et événements de run                 | 24 mois                                                                                                                   |
-| Mémoire personnelle                           | Jusqu'à suppression par l'utilisateur ou départ (compte désactivé + 30 jours)                                             |
-| Mémoire `episode`                             | 12 mois                                                                                                                   |
-| Journal d'audit                               | 5 ans (conformité), sans contenu de message                                                                               |
-| Sessions expirées                             | 30 jours                                                                                                                  |
-| Invitations                                   | Jusqu'à acceptation, renvoi ou désactivation (expirées : jusqu'au renvoi)                                                 |
-| Identités chez un fournisseur                 | Jusqu'à la suppression du fournisseur ou du compte                                                                        |
-| Liens de réinitialisation                     | Jusqu'à usage, nouvelle demande, changement du compte ; expirés : purgés                                                  |
-| Absences déclarées                            | Jusqu'à leur fin ou leur retrait ; terminées : purgées                                                                    |
-| Tâches planifiées                             | Jusqu'à suppression par leur auteur ou avec son compte ; compte désactivé : en pause                                      |
-| Missions                                      | Comme leur conversation, supprimées avec elle ou avec le compte de leur auteur                                            |
-| Documents déposés                             | Jusqu'à suppression par qui peut écrire leur espace, ou avec l'entreprise                                                 |
-| Compétences et propositions                   | Avec leur compétence, rejetées comprises ; auteur et run oubliés avec eux (ADR-100)                                       |
-| Cas d'évaluation des compétences              | Avec leur compétence ; leur auteur parti, ils restent à l'entreprise (ADR-103)                                            |
-| Évaluations des compétences et leurs réponses | Les cinq dernières par compétence ; avec leur compétence ; leur auteur parti, plus personne ne lit les réponses (ADR-104) |
-| Choix des e-mails reçus                       | Jusqu'à modification par la personne ou suppression de son compte                                                         |
-| Consommation                                  | 5 ans (facturation)                                                                                                       |
+| Donnée                                        | Durée par défaut                                                                                                                                           |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Messages et événements de run                 | 24 mois                                                                                                                                                    |
+| Mémoire personnelle                           | Jusqu'à suppression par l'utilisateur ou départ (compte désactivé + 30 jours)                                                                              |
+| Mémoire `episode`                             | 12 mois                                                                                                                                                    |
+| Journal d'audit                               | 5 ans (conformité), sans contenu de message                                                                                                                |
+| Sessions expirées                             | 30 jours                                                                                                                                                   |
+| Invitations                                   | Jusqu'à acceptation, renvoi ou désactivation (expirées : jusqu'au renvoi)                                                                                  |
+| Identités chez un fournisseur                 | Jusqu'à la suppression du fournisseur ou du compte                                                                                                         |
+| Liens de réinitialisation                     | Jusqu'à usage, nouvelle demande, changement du compte ; expirés : purgés                                                                                   |
+| Absences déclarées                            | Jusqu'à leur fin ou leur retrait ; terminées : purgées                                                                                                     |
+| Tâches planifiées                             | Jusqu'à suppression par leur auteur ou avec son compte ; compte désactivé : en pause                                                                       |
+| Missions                                      | Comme leur conversation, supprimées avec elle ou avec le compte de leur auteur                                                                             |
+| Documents déposés                             | Jusqu'à suppression par qui peut écrire leur espace, ou avec l'entreprise                                                                                  |
+| Compétences et propositions                   | Avec leur compétence, rejetées comprises ; auteur et run oubliés avec eux (ADR-100)                                                                        |
+| Cas d'évaluation des compétences              | Avec leur compétence ; leur auteur parti, ils restent à l'entreprise (ADR-103)                                                                             |
+| Évaluations des compétences et leurs réponses | Les cinq dernières par compétence, 90 jours au plus après leur fin ; avec leur compétence ; leur auteur parti, plus personne ne lit les réponses (ADR-104) |
+| Choix des e-mails reçus                       | Jusqu'à modification par la personne ou suppression de son compte                                                                                          |
+| Consommation                                  | 5 ans (facturation)                                                                                                                                        |

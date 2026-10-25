@@ -68,12 +68,17 @@ impl AccessSource for RunAccess {
             .access
             .active_context(self.tenant_id, self.user_id)
             .await?;
-        Ok(match (stopped_by(context.as_ref()), context) {
-            (None, Some(context)) => StepAccess::Granted(CurrentAccess {
-                engine: context.engine,
-                subject: context.subject,
-            }),
-            (why, _) => StepAccess::Ended(why.unwrap_or(ACCOUNT_INACTIVE).into()),
-        })
+        Ok(step_access(context))
+    }
+}
+
+/// What a step may do, given the access of whom it acts for as it stands.
+pub(crate) fn step_access(context: Option<AccessContext>) -> StepAccess {
+    match (stopped_by(context.as_ref()), context) {
+        (None, Some(context)) => StepAccess::Granted(CurrentAccess {
+            engine: context.engine,
+            subject: context.subject,
+        }),
+        (why, _) => StepAccess::Ended(why.unwrap_or(ACCOUNT_INACTIVE).into()),
     }
 }

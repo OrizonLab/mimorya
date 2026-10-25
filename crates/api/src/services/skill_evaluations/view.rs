@@ -1,6 +1,7 @@
 //! What the administration reads of a skill's evaluations (ADR-104): each
-//! one, its results, and what its cases add up to (`summarize`). Who reads
-//! the answers is the contract's to say (`contract/admin`).
+//! one, its results, and what its cases add up to (`summarize`); the
+//! answers, the judge's issues and the tools called, by whom it ran for
+//! alone (`shown_to`).
 
 use mimorya_core::skill_evaluations::{CaseOutcome, CaseResults, Summary, summarize};
 use mimorya_db::TenantTx;
@@ -17,6 +18,12 @@ pub struct EvaluationRead {
     /// Case by case, in the order of the cases.
     pub cases: Vec<CaseResults>,
     pub summary: Summary,
+}
+
+/// Whether `viewer` reads the evaluation's answers, issues and tools: they
+/// were read with the rights of whom it ran for, they alone read them.
+pub fn shown_to(read: &EvaluationRead, viewer: Uuid) -> bool {
+    read.row.launched_by_user_id == Some(viewer)
 }
 
 /// Each of `cases` cases' outcomes, from its results.

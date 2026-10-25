@@ -1,7 +1,8 @@
 //! The evaluations of a skill's versions (ADR-104): one asked for, the
 //! skill's listed with what their cases add up to, and one read case by
 //! case. The answers, the judge's issues and the tools called are shown to
-//! whom the evaluation ran for only: they were read with their rights.
+//! whom the evaluation ran for only (`skill_evaluations::shown_to`): they
+//! were read with their rights.
 
 use mimorya_db::repositories::skill_evaluations::ResultRow;
 use serde::{Deserialize, Serialize};
@@ -148,8 +149,8 @@ pub struct SkillEvaluationDetail {
 }
 
 impl SkillEvaluationDetail {
-    pub fn new(e: &EvaluationRead, viewer: Uuid) -> anyhow::Result<Self> {
-        let shown = e.row.launched_by_user_id == Some(viewer);
+    /// The answers, issues and tools `shown` or not (`shown_to`).
+    pub fn new(e: &EvaluationRead, shown: bool) -> anyhow::Result<Self> {
         let stored: Vec<StoredCase> = serde_json::from_value(e.row.cases.clone())?;
         let result_of = |position: usize, reference: bool| {
             e.results

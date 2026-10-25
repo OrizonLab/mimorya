@@ -4,15 +4,22 @@
 //! model, for a version the skill has and its cases, one at a time in the
 //! company; another company's skill or evaluation answers as absent. It
 //! ends, failed, once whom it runs for may no longer administer the skills
-//! or use the agent, or when a stopped process left it running. Only a
-//! process that executes runs plays them, one at a time; the last five of a
-//! skill are kept. How one is played: `skill_evaluations.rs`.
+//! or use the agent (their account disabled, their role narrowed), or when
+//! a stopped process left it running, and is written no further. Only a
+//! process that executes runs plays them, one at a time; the last five of
+//! a skill are kept, ninety days at most. How one is played:
+//! `skill_evaluations.rs`.
 
 mod support;
 
 use axum::http::StatusCode;
+use chrono::Utc;
 use mimorya_api::services::skill_evaluations::{EVALUATION_SWEEP, play_pending_evaluations};
 use mimorya_core::demo::{tenant, user};
+use mimorya_core::skill_evaluations::EVALUATION_KEPT_DAYS;
+use mimorya_db::repositories::skill_evaluations::{
+    NewResult, purge_finished_evaluations, record_result,
+};
 use mimorya_db::seed::DEMO_SKILL_ID;
 use mimorya_db::testing::OTHER_TENANT_ID;
 use serde_json::json;
@@ -226,6 +233,40 @@ async fn an_evaluation_ends_once_whom_it_runs_for_may_no_longer() {
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
+async fn an_evaluation_ends_once_whom_it_runs_for_no_longer_administers_the_skills() {
+    let api = TestApi::start().await;
+    let paul = api.sign_in(user::PAUL).await;
+    let permissions = ["skill:manage", "agent:use", "skill:read"];
+    let other = holder_of(&api, &paul, "ex.administratrice", &permissions).await;
+    write_case(&paul, DEMO_SKILL_ID, "Retards", "Quels retards ?").await;
+    let id = launched(&other, DEMO_SKILL_ID, 1).await;
+    // Their role no longer lets them administer the skills; they may still
+    // use the agent.
+    let roles = paul.get("/admin/roles").await.json();
+    let role = roles["roles"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["name"] == "Rôle ex.administratrice")
+        .unwrap();
+    let narrowed = paul
+        .patch(
+            &format!("/admin/roles/{}", role["id"].as_str().unwrap()),
+            json!({ "permissions": ["agent:use", "skill:read"] }),
+        )
+        .await;
+    assert_eq!(narrowed.status, StatusCode::OK, "{}", narrowed.text());
+
+    play(&api).await;
+    let (status, failure, results) = status_of(&api, &id).await;
+    assert_eq!(status, "failed");
+    assert!(failure.unwrap().contains("n’administre plus"));
+    assert_eq!(results, 0);
+    forget(&api, DEMO_SKILL_ID).await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
 async fn one_left_running_by_a_stopped_process_fails_and_one_process_plays_at_a_time() {
     let api = TestApi::start().await;
     let left = stored_evaluation(&api, "running", 0).await.to_string();
@@ -249,6 +290,59 @@ async fn one_left_running_by_a_stopped_process_fails_and_one_process_plays_at_a_
             .unwrap()
             .contains("interrompue par un arrêt du service")
     );
+    forget(&api, DEMO_SKILL_ID).await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn no_result_is_written_once_an_evaluation_is_not_running() {
+    let api = TestApi::start().await;
+    let failed = stored_evaluation(&api, "failed", 0).await;
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    let result = NewResult {
+        tenant_id: tenant::ID,
+        evaluation_id: failed,
+        position: 0,
+        reference: false,
+        outcome: "passed",
+        issues: &[],
+        answer: Some("Une réponse."),
+        error: None,
+        skill_loaded: true,
+        tools: &json!([]),
+        input_tokens: 100,
+        output_tokens: 20,
+        cost_micros: 5,
+    };
+    assert!(!record_result(&mut tx, result).await.unwrap());
+    tx.commit().await.unwrap();
+    assert_eq!(status_of(&api, &failed.to_string()).await.2, 0);
+    forget(&api, DEMO_SKILL_ID).await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn evaluations_ended_ninety_days_ago_are_deleted() {
+    let api = TestApi::start().await;
+    let old = stored_evaluation(&api, "completed", 100).await;
+    let recent = stored_evaluation(&api, "failed", 10).await;
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    sqlx::query("update skill_evaluations set finished_at = created_at")
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    let pool = api.app.services.db.pool();
+    let before = Utc::now() - chrono::Duration::days(EVALUATION_KEPT_DAYS);
+    assert_eq!(purge_finished_evaluations(pool, before).await.unwrap(), 1);
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    let left: Vec<Uuid> = sqlx::query_scalar("select id from skill_evaluations")
+        .fetch_all(&mut *tx)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    assert_eq!(left, [recent]);
+    assert!(!left.contains(&old));
     forget(&api, DEMO_SKILL_ID).await;
 }
 

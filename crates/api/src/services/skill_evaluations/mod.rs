@@ -11,7 +11,6 @@ mod play;
 mod ports;
 mod view;
 
-pub use case::{CASE_BUDGET, StoredCase};
+pub use case::StoredCase;
 pub use pass::{EVALUATION_SWEEP, play_pending_evaluations, wake};
-pub use ports::ToolTrace;
-pub use view::{EvaluationRead, evaluation, evaluations_of, last_evaluation};
+pub use view::{EvaluationRead, evaluation, evaluations_of, last_evaluation, shown_to};

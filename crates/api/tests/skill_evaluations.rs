@@ -12,6 +12,7 @@ mod support;
 
 use axum::http::StatusCode;
 use mimorya_agent::llm::LlmMessage;
+use mimorya_agent::testing::ScriptedStep;
 use mimorya_core::demo::user;
 use mimorya_db::seed::DEMO_SKILL_ID;
 use serde_json::{Value, json};
@@ -219,4 +220,32 @@ async fn a_skill_not_active_yet_is_in_the_index_while_its_version_is_played() {
     assert!(requests[0].system.contains(description));
     forget(&api, skill).await;
     paul.delete(&format!("{SKILLS}/{skill}")).await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn an_answer_the_judge_gives_no_verdict_on_is_an_error_kept_with_its_answer() {
+    let api = TestApi::start().await;
+    let paul = api.sign_in(user::PAUL).await;
+    write_case(&paul, DEMO_SKILL_ID, "Retards", LATE).await;
+    api.script(vec![
+        ScriptedStep::text("Trois retards cette semaine."),
+        ScriptedStep::text("Je ne sais pas juger."),
+    ]);
+    let id = launched(&paul, DEMO_SKILL_ID, 1).await;
+    play(&api).await;
+
+    let read = detail(&paul, &id).await.json();
+    assert_eq!(read["evaluation"]["status"], "completed");
+    let result = &read["cases"][0]["result"];
+    assert_eq!(result["outcome"], "error");
+    assert_eq!(result["answer"], "Trois retards cette semaine.");
+    assert!(
+        result["error"]
+            .as_str()
+            .unwrap()
+            .contains("pas rendu de verdict")
+    );
+    assert_eq!(read["evaluation"]["passed"], 0);
+    forget(&api, DEMO_SKILL_ID).await;
 }

@@ -46,6 +46,7 @@ const READ_ONLY: &str = "[Message de la plateforme] Les actions qui modifient de
      que tu proposerais (outil et paramètres) au lieu de l’exécuter.";
 
 const NO_VERDICT: &str = "Le contrôle de la réponse n’a pas rendu de verdict.";
+const JUDGE_FAILED: &str = "Le contrôle de la réponse a échoué.";
 const NO_ANSWER: &str = "L’assistant n’a pas rendu de réponse.";
 const INTERNAL: &str = "Erreur interne pendant ce cas.";
 
@@ -195,9 +196,20 @@ async fn answer_and_judge(
         answer: &answer,
         evidence: &evidence,
     };
-    let (verdict, response) = judge_answer(provider.as_ref(), judging)
-        .await
-        .map_err(|error| anyhow::anyhow!("judge: {error}"))?;
+    let answer = Some(bounded(&answer, MAX_ANSWER_CHARS));
+    let (verdict, response) = match judge_answer(provider.as_ref(), judging).await {
+        Ok(judged) => judged,
+        Err(error) => {
+            tracing::warn!(error = %error, "Evaluation judge failed");
+            return Ok(Judged {
+                outcome: CaseOutcome::Error,
+                issues: Vec::new(),
+                answer,
+                error: Some(JUDGE_FAILED.into()),
+                usage,
+            });
+        }
+    };
     let cost = services
         .llm
         .prices()
@@ -215,7 +227,6 @@ async fn answer_and_judge(
             cost_micros: cost.unwrap_or(0),
         })
         .await?;
-    let answer = Some(bounded(&answer, MAX_ANSWER_CHARS));
     Ok(match verdict {
         Some(verdict) => Judged {
             outcome: if verdict.pass {

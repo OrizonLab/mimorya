@@ -45,7 +45,7 @@ pub(crate) use reads::Reader;
 pub use recovery::{
     INTERRUPTED_TOO_LONG, NOT_AN_EXECUTOR, STOPPED_BEFORE_ITS_FIRST_STEP, SUB_AGENT_INTERRUPTED,
 };
-pub(crate) use run_access::stopped_by;
 pub use run_access::{AGENT_USE_WITHDRAWN, COMPANY_SUSPENDED};
+pub(crate) use run_access::{step_access, stopped_by};
 pub use service::{DecisionResult, RunService, StartedTurn};
 pub use sub_runs::{SUB_AGENT_STOPPED, announce, end_sub_runs};
