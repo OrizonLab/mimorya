@@ -22,3 +22,11 @@ export function formatNumber(value: number): string {
 export function formatTime(value: string): string {
   return new Date(value).toLocaleTimeString('fr-FR');
 }
+
+/** A size in bytes, as people read it: « 820 o », « 12,4 Ko », « 3,1 Mo ». */
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} o`;
+  const kilo = bytes / 1024;
+  if (kilo < 1024) return `${formatNumber(Math.round(kilo * 10) / 10)} Ko`;
+  return `${formatNumber(Math.round((kilo / 1024) * 10) / 10)} Mo`;
+}

@@ -4351,7 +4351,7 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     processus n'a pu lire (`document.rejected`), sans nom ni texte ;
   - **suite** : recherche par les mots et par le sens et outils `document_search` et
     `document_read` avec citations (lot 2, ADR-096) ; page « Documents », et relais
-    `/api` de l'interface vérifié pour un fichier proche de 10 Mio (lot 3).
+    `/api` de l'interface vérifié pour un fichier proche de 10 Mio (lot 3, ADR-097).
 - **Alternatives écartées** :
   - stockage objet (S3) : une infrastructure de plus pour des volumes que PostgreSQL
     tient ; il reste possible si les volumes le justifient un jour ;
@@ -4470,8 +4470,9 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     partent vers le modèle de langage de l'entreprise ;
   - `platform_tools` reçoit le port des documents (`DocumentStore`), `EnginePorts.documents`
     aussi. `index_pending` compte séparément les mémoires et les passages ;
-  - restent la page « Documents », les sources de type document dans la conversation, et
-    la progression de l'indexation des passages dans « Modèle d'IA » (lot 3) ;
+  - la page « Documents », les sources de type document dans la conversation et la
+    progression de l'indexation des passages dans « Modèle d'IA » viennent avec le
+    lot 3 (ADR-097) ;
   - tests :
     - `crates/agent/tests/document_tools.rs` : ce que trouve et lit un run de chacun, un
       document cité une fois même quand plusieurs de ses passages répondent, l'absent et
@@ -4493,3 +4494,70 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
       les droits de chacun ; panne montrée quand seuls des passages attendent ; un dépôt
       réveille l'indexeur ; retour aux mots, vecteurs des passages effacés ; `admin_embedding.rs`, `memory_indexing.rs` : effacement tracé,
       passages indexés avec les mémoires.
+
+## ADR-097 — Page « Documents » et sources de type document dans la conversation
+
+- **Date** : 2026-10-25 · **Statut** : acceptée (lot 3 des documents)
+- **Contexte** : les documents se déposaient, se lisaient et se cherchaient par l'API
+  (ADR-095, ADR-096), mais aucun écran ne permettait de les déposer ni de les consulter. La
+  conversation montrait une source de type document sans libellé ni moyen de l'ouvrir. Et
+  l'administrateur ne voyait pas où en était l'indexation des passages.
+- **Décision** :
+  - **page « Documents »** dans le menu, pour qui tient `document:read` :
+    - les documents lus, du plus récent au plus ancien, avec leur type, leur sensibilité,
+      leur espace, leur taille et leur date ;
+    - les 500 plus récents au plus (`LISTED`) : au-delà, la liste le dit (`truncated`),
+      l'agent consultant aussi les plus anciens ;
+    - chacun se télécharge tel que déposé, en pièce jointe ;
+    - qui peut écrire son espace le supprime, après confirmation ;
+  - **dépôt** depuis la même page, montré seulement à qui dépose quelque part :
+    - un fichier, l'un de ses espaces et une sensibilité ;
+    - l'usage du quota de l'entreprise est affiché ;
+    - le fichier part tel quel (`api.upload`, `application/octet-stream`), décrit par la
+      chaîne de requête stricte de l'API ;
+    - au-delà de la borne de l'API, qu'elle donne avec la liste (`maxFileBytes`, 10 Mio),
+      il n'est pas envoyé ;
+    - un refus de l'API est montré avec sa raison ;
+  - **relais `/api`** : Next.js garde le corps d'une requête jusqu'à
+    `experimental.proxyClientMaxBodySize` et coupe au-delà sans le dire (10 Mo par
+    défaut). La limite est portée à 11 Mo, une marge au-dessus de la borne de l'API :
+    aucun fichier que l'API accepte n'est coupé. Un fichier de 10 Mio exactement est
+    vérifié de bout en bout. La page n'envoie jamais un fichier plus gros. Un client qui
+    en enverrait un par le relais peut recevoir l'erreur du relais plutôt que le 413 de
+    l'API : celle-ci refuse sur la taille annoncée, sans lire le corps. Le relais attend
+    l'API 60 s sans réponse (`proxyTimeout`, 30 s par défaut, le temps que peut prendre la
+    lecture d'un fichier). Il ne sert qu'en développement et aux tests de bout en bout :
+    dans les piles Docker, Caddy envoie `/api` directement à l'API ;
+  - **conversation** : une source de type document s'affiche « Document » suivi de son
+    titre, et se télécharge en un clic ;
+  - **« Modèle d'IA »** : le nombre de passages de documents indexés s'affiche à côté de
+    celui des mémoires (contrat : `embeddedPassages`, `passages`) ;
+  - **parcours de bout en bout** :
+    - le serveur e2e construit `mimorya-extract` (`MIMORYA_EXTRACTOR`) ;
+    - il joue à part une question sur les documents (`documents.rs`) : le modèle cherche
+      dans les documents, puis répond d'après la charte de démonstration.
+- **Alternatives écartées** :
+  - envoi `multipart` (déjà écarté par ADR-095) ;
+  - aperçu du texte dans le navigateur : le fichier téléchargé tel quel suffit, sans
+    rendre de contenu non fiable dans la page ;
+  - une source qui mène à la page « Documents » plutôt qu'au fichier : la page ne
+    surligne pas encore un document ;
+  - laisser la limite du relais par défaut, juste à la borne de l'API : sans marge, le
+    moindre écart entre les deux comptes couperait un fichier accepté.
+- **Conséquences** :
+  - le dépôt par glisser-déposer et le remplacement d'un document par une nouvelle
+    version restent à faire ;
+  - tests :
+    - `apps/web/e2e/documents.spec.ts` :
+      - Julien dépose une note dans son équipe ;
+      - Lucas la lit et la télécharge à l'identique, sans pouvoir déposer ni supprimer ;
+      - Julien la supprime ;
+      - un fichier `.doc` est refusé avec sa raison ;
+      - un fichier de plus de 10 Mo n'est pas envoyé ;
+      - le relais porte un fichier de 10 Mio exactement jusqu'à l'API ;
+      - l'agent répond d'après la charte et la cite, son fichier téléchargé depuis la
+        conversation ;
+    - `crates/api/tests/document_list.rs` : au-delà de 500 documents, la liste dit
+      qu'elle s'arrête ; la borne de taille donnée avec elle ;
+    - `semantic-memory.spec.ts` : les passages indexés comptés et affichés ;
+    - `navigation.spec.ts` : la page s'ouvre sans erreur.

@@ -2,6 +2,7 @@
 import type { ToneLabel } from '@/components/ui';
 import type {
   AccountStatus,
+  DocumentKind,
   MissionStatus,
   OccurrenceOutcome,
   OrgUnitType,
@@ -149,4 +150,12 @@ export const MISSION_STATUS: Record<MissionStatus, ToneLabel> = {
   done: { label: 'Terminée', tone: 'ok' },
   failed: { label: 'Inachevée', tone: 'danger' },
   cancelled: { label: 'Arrêtée', tone: 'neutral' },
+};
+
+/** What a deposited document is (ADR-095). */
+export const DOCUMENT_KINDS: Record<DocumentKind, string> = {
+  pdf: 'PDF',
+  docx: 'Word',
+  markdown: 'Markdown',
+  text: 'Texte',
 };

@@ -116,17 +116,24 @@ async fn the_indexing_failure_shows_while_passages_alone_await() {
     .await;
     assert_eq!(indexed(&api).await.total(), 0);
     let shown = paul.get("/admin/embedding").await.json();
-    assert_eq!(shown["settings"]["embedded"], shown["settings"]["memories"]);
+    let settings = &shown["settings"];
+    assert_eq!(settings["embedded"], settings["memories"]);
+    // The administrators see the passage awaiting (ADR-097).
     assert_eq!(
-        shown["settings"]["indexingError"],
-        "Fournisseur indisponible"
+        settings["embeddedPassages"].as_i64().unwrap() + 1,
+        settings["passages"].as_i64().unwrap()
     );
+    assert_eq!(settings["indexingError"], "Fournisseur indisponible");
 
     // Back up: indexed at the next pass, the failure forgotten.
     api.embedder.fail(false);
     assert_eq!(indexed(&api).await.passages, 1);
     let shown = paul.get("/admin/embedding").await.json();
     assert_eq!(shown["settings"]["indexingError"], serde_json::json!(null));
+    assert_eq!(
+        shown["settings"]["embeddedPassages"],
+        shown["settings"]["passages"]
+    );
     remove(&julien, vans).await;
     back_to_words(&paul).await;
 }

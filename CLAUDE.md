@@ -129,7 +129,8 @@ Repères à l'intérieur des crates :
   admin — dont `admin/llm/` : modèle des conversations, recherche dans la mémoire, leçons et limites des missions, ADR-075,
   ADR-077, ADR-093, et `admin/users/` :
   comptes, dont l'absence d'un collaborateur empêché, ADR-079 —, approvals — dont la
-  section « Absence » et son formulaire, commun, ADR-073 —, chat, memory, missions —
+  section « Absence » et son formulaire, commun, ADR-073 —, chat, documents — dépôt, liste
+  et téléchargement, ADR-097 —, memory, missions —
   missions longues, ADR-090 —, operations, scheduled-tasks — tâches planifiées, ADR-081 —,
   shell), `web/components/ui/`
   (`Loaded` verrouille son contenu pendant un rechargement, ADR-042), `web/lib/api/` (client, `contract.ts`
@@ -141,7 +142,8 @@ Repères à l'intérieur des crates :
   pilotent, avec un fournisseur OpenID Connect et un fournisseur SAML simulés, ADR-031,
   ADR-063, ADR-068, une relecture des leçons à part, `lessons.rs`, ADR-077, une tâche
   planifiée dont l'occurrence est manquée au démarrage, `scheduled.rs`, ADR-081, et des
-  missions jouées à part, `missions.rs`, ADR-090).
+  missions jouées à part, `missions.rs`, ADR-090, et une question sur les documents,
+  `documents.rs`, ADR-097, lus par `mimorya-extract` qu'ils construisent).
 - `infra/` : `docker/` (images de l'API et de l'interface, liste des images publiées
   `images.json`, test de fumée de la démonstration, test d'installation de la production,
   vérifications partagées `checks.sh`, dont les rôles des processus lus dans la base), `caddy/`

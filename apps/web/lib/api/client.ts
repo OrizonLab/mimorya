@@ -40,22 +40,30 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   }
 }
 
+/** A body as sent: a file as it is (ADR-095), anything else as JSON. */
+function encoded(body: unknown): { type: string; payload: BodyInit } | null {
+  if (body === undefined) return null;
+  if (body instanceof Blob) return { type: 'application/octet-stream', payload: body };
+  return { type: 'application/json', payload: JSON.stringify(body) };
+}
+
 async function send<T>(
   method: string,
   path: string,
   body: unknown,
   signal: AbortSignal,
 ): Promise<T> {
+  const sent = encoded(body);
   const res = await fetch(`/api${path}`, {
     method,
     credentials: 'same-origin',
     signal,
     headers: {
-      ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+      ...(sent ? { 'Content-Type': sent.type } : {}),
       // Required by the API's CSRF protection on state-changing requests.
       ...(method !== 'GET' ? { 'X-Mimorya-Request': '1' } : {}),
     },
-    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    ...(sent ? { body: sent.payload } : {}),
   });
   if (!res.ok) {
     // The API's error body, or anything else (a proxy's page, an empty body).
@@ -75,4 +83,6 @@ export const api = {
   patch: <T>(path: string, body: unknown) => request<T>('PATCH', path, body),
   put: <T>(path: string, body: unknown) => request<T>('PUT', path, body),
   delete: <T>(path: string) => request<T>('DELETE', path),
+  /** Sends `file` as the body; what describes it goes in `path`'s query. */
+  upload: <T>(path: string, file: Blob) => request<T>('POST', path, file),
 };

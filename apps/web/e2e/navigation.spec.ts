@@ -10,6 +10,7 @@ const PAGES = [
   ['/missions', 'Missions'],
   ['/operations', 'Opérations'],
   ['/memory', 'Mémoire'],
+  ['/documents', 'Documents'],
   ['/account', 'Mon compte'],
   ['/admin', 'Administration'],
 ] as const;
