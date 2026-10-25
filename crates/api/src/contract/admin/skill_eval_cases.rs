@@ -9,6 +9,10 @@ use validator::Validate;
 
 use crate::http::{iso, trimmed};
 
+/// Lines of criteria a case may send, blank ones included: a text area cut
+/// at its line breaks.
+const MAX_CRITERIA_LINES: u64 = 50;
+
 #[derive(Debug, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct SkillEvalCaseView {
@@ -45,7 +49,9 @@ pub struct SkillEvalCaseInput {
     pub name: String,
     #[validate(length(min = 1, max = 4000))]
     pub request: String,
-    /// Blank ones are left out; 1 to 8 remain, of 300 characters at most.
-    #[validate(length(min = 1, max = 8))]
+    /// One per line sent, at most `MAX_CRITERIA_LINES`; blank ones are left
+    /// out, and 1 to 8 must remain, of 300 characters at most
+    /// (`skill_eval_cases::case_problem`).
+    #[validate(length(max = MAX_CRITERIA_LINES))]
     pub criteria: Vec<String>,
 }

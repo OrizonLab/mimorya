@@ -2,7 +2,8 @@
 //! holding `skill:manage` on the whole company: at most
 //! `MAX_CASES_PER_SKILL` per skill, each named once in it. A case is
 //! changed or deleted through its own identifier; its skill is the one it
-//! was written for.
+//! was written for. The audit names the skill, and the case by its
+//! identifier, as a refusal on the case's route does (ADR-038).
 
 use mimorya_core::DomainError;
 use mimorya_core::skill_eval_cases::{
@@ -60,6 +61,7 @@ pub async fn create_eval_case(
         &mut tx,
         audit_entry(access, "skill.eval_case_created", "skill", skill_id).metadata(json!({
             "name": skill.name,
+            "caseId": id,
             "case": case.name,
             "criteria": case.criteria.len(),
         })),
@@ -87,6 +89,7 @@ pub async fn change_eval_case(
         &mut tx,
         audit_entry(access, "skill.eval_case_updated", "skill", current.skill_id).metadata(json!({
             "name": skill.name,
+            "caseId": id,
             "case": case.name,
             "previousCase": current.name,
             "criteria": case.criteria.len(),
@@ -110,7 +113,7 @@ pub async fn remove_eval_case(
     append_audit(
         &mut tx,
         audit_entry(access, "skill.eval_case_deleted", "skill", current.skill_id)
-            .metadata(json!({ "name": skill.name, "case": current.name })),
+            .metadata(json!({ "name": skill.name, "caseId": id, "case": current.name })),
     )
     .await?;
     tx.commit().await?;

@@ -1,7 +1,8 @@
 //! The evaluation cases of a skill (ADR-103): written, listed with the
 //! skill, rewritten and deleted by its administrators, each audited without
 //! its request; what is sent checked first; at most ten per skill, each
-//! named once in it; gone with their skill. A member is refused, another
+//! named once in it (another skill may use the name); gone with their
+//! skill. A member is refused, another
 //! company's case answers as absent and stays as it was. Who reaches the
 //! skill's routes: `skill_access.rs`.
 
@@ -129,6 +130,13 @@ async fn cases_are_written_listed_rewritten_and_deleted() {
 
     // Audited, the request never.
     let audit = entries_since(&api, since).await;
+    // The case named by its identifier, as a refusal on its route is.
+    for id in [&first, &second] {
+        assert!(
+            audit.contains(&format!("\"caseId\":\"{id}\"")),
+            "{id}: {audit}"
+        );
+    }
     for action in [
         "skill.eval_case_created",
         "skill.eval_case_updated",
@@ -187,7 +195,7 @@ async fn what_is_sent_is_checked_first() {
             refused.text()
         );
     }
-    // Nine criteria, or a name of one letter: refused before the rules.
+    // Nine criteria, or a name of one letter.
     let nine = vec!["Critère."; 9];
     for body in [
         json!({ "name": "Neuf", "request": "Demande", "criteria": nine }),
@@ -196,6 +204,21 @@ async fn what_is_sent_is_checked_first() {
         assert_eq!(paul.post(&url, body).await.status, StatusCode::BAD_REQUEST);
     }
     assert_eq!(stored(&api, tenant::ID, DEMO_SKILL_ID).await, 0);
+
+    // Eight criteria and the blank lines of a text area are eight.
+    let mut lines = vec!["Critère."; 8];
+    lines.extend(["", " "]);
+    let id = create(
+        &paul,
+        DEMO_SKILL_ID,
+        json!({ "name": "Huit", "request": "Demande", "criteria": lines }),
+    )
+    .await;
+    assert_eq!(
+        cases(&paul).await[0]["criteria"].as_array().unwrap().len(),
+        8
+    );
+    paul.delete(&format!("{CASES}/{id}")).await;
 }
 
 #[tokio::test]
@@ -224,8 +247,8 @@ async fn at_most_ten_cases_per_skill_which_take_them_along() {
         .await;
     assert_eq!(eleventh.status, StatusCode::BAD_REQUEST);
     assert!(eleventh.error_message().contains("Au plus 10 cas"));
-    // Another skill's count is its own.
-    let other = create(&paul, DEMO_SKILL_ID, case("Cas 11")).await;
+    // Another skill's count and names are its own.
+    let other = create(&paul, DEMO_SKILL_ID, case("Cas 1")).await;
     paul.delete(&format!("{CASES}/{other}")).await;
 
     let deleted = paul.delete(&format!("{SKILL}/{skill}")).await;

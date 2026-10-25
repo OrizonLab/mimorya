@@ -1406,7 +1406,9 @@ export type SkillDetail = { skill: SkillView, versions: Array<SkillVersionView>,
  */
 export type SkillEvalCaseInput = { name: string, request: string,
 /**
- * Blank ones are left out; 1 to 8 remain, of 300 characters at most.
+ * One per line sent, at most `MAX_CRITERIA_LINES`; blank ones are left
+ * out, and 1 to 8 must remain, of 300 characters at most
+ * (`skill_eval_cases::case_problem`).
  */
 criteria: Array<string>, };
 

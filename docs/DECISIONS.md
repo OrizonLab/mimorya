@@ -4953,7 +4953,9 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     dans sa compétence. La demande, d'au plus 4 000 caractères, ne contient que du texte
     visible, des retours à la ligne et des tabulations, comme le contenu d'une
     compétence (ADR-052) : elle parviendra au modèle comme le tour d'une personne, et
-    les critères au modèle qui juge la réponse ;
+    les critères au modèle qui juge la réponse. Les textes sont gardés en forme
+    canonique (NFC : deux noms identiques à l'œil sont le même), les critères vides
+    écartés (une zone de texte découpée à ses retours à la ligne en envoie au plus 50) ;
   - **au plus 10 cas par compétence** : chaque évaluation les rejouera tous, pour la
     version évaluée et pour la version active ;
   - **qui** : les administrateurs des compétences (`skill:manage` sur toute
@@ -4965,8 +4967,9 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
   - **données** : `skill_eval_cases` remplace `skill_evals`, supprimée. Les cas partent
     avec leur compétence ; leur auteur parti, ils restent à l'entreprise ;
   - **audit** : `skill.eval_case_created`, `skill.eval_case_updated` et
-    `skill.eval_case_deleted`, avec le nom de la compétence et du cas et le nombre de
-    critères, jamais la demande.
+    `skill.eval_case_deleted`, sur la compétence, avec son nom, l'identifiant et le nom
+    du cas (comme un refus sur la route du cas le nomme) et le nombre de critères,
+    jamais la demande.
 - **Alternatives écartées** :
   - garder `skill_evals` et son JSON libre : la plateforme ne pourrait vérifier ni la
     demande ni les critères avant de les donner à un modèle ;
@@ -4979,10 +4982,12 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     (non-régression), jugée sur les critères, dans un budget plafonné (lot 4b) ; l'écran
     « Compétences » (lot 4c) ;
   - tests :
-    - `crates/core/src/skill_eval_cases.rs` : ce qu'un cas contient ;
+    - `crates/core/src/skill_eval_cases.rs` : ce qu'un cas contient, en forme
+      canonique, compté après normalisation ;
     - `crates/api/tests/skill_eval_cases.rs` : cas écrits, listés, réécrits et
-      supprimés, tracés sans leur demande ; ce qui est envoyé vérifié d'abord ; au plus
-      10 par compétence, partis avec elle ; un membre refusé ; le cas d'une autre
+      supprimés, tracés avec leur identifiant et sans leur demande ; ce qui est envoyé
+      vérifié d'abord, les lignes vides d'une zone de texte écartées ; au plus 10 par
+      compétence, partis avec elle, leurs noms propres à chaque compétence ; un membre refusé ; le cas d'une autre
       entreprise répond comme absent et reste tel quel ;
     - `crates/api/tests/skill_access.rs` : la route d'écriture d'un cas refusée à un
       membre, et sur la compétence d'une autre entreprise sans rien écrire ;
