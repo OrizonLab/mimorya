@@ -222,6 +222,17 @@ async fn what_is_sent_is_checked_first() {
         refused.text()
     );
 
+    // A name pasted decomposed counts as stored: 41 characters, not 82.
+    let pasted = "e\u{301}".repeat(41);
+    let id = create(
+        &paul,
+        DEMO_SKILL_ID,
+        json!({ "name": pasted, "request": "Demande", "criteria": ["Critère."] }),
+    )
+    .await;
+    assert_eq!(cases(&paul).await[0]["name"], "é".repeat(41));
+    paul.delete(&format!("{CASES}/{id}")).await;
+
     // Eight criteria and the blank lines of a text area are eight.
     let mut lines = vec!["Critère."; 8];
     lines.extend(["", " "]);

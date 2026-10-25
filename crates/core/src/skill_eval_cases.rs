@@ -148,7 +148,8 @@ mod tests {
         let name = "é".repeat(81);
         assert!(case_problem(&case(&name, "Demande", &["Critère."])).is_some());
         // Counted once in canonical form: a character NFC writes in two.
-        let request = "\u{958}".repeat(2001);
+        let half = usize::try_from(MAX_REQUEST_CHARS / 2).unwrap();
+        let request = "\u{958}".repeat(half + 1);
         assert!(chars(&request) <= MAX_REQUEST_CHARS);
         let problem = case_problem(&case("Long", &request, &["Critère."])).unwrap();
         assert!(problem.contains("4000"), "{problem}");

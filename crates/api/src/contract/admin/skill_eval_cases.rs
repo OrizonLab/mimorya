@@ -14,8 +14,10 @@ use crate::http::{iso, trimmed};
 /// Lines of criteria a case may send, blank ones included: a text area cut
 /// at its line breaks.
 const MAX_CRITERIA_LINES: u64 = 50;
-/// Characters of a request as sent, its blanks around included; once
-/// trimmed, `MAX_REQUEST_CHARS` remain at most (`case_problem`).
+/// Characters of a name and of a request as sent, before the canonical
+/// form (a pasted name may come decomposed) and, for the request, its
+/// blanks around included: `case_problem` counts them as stored.
+const MAX_NAME_SENT: u64 = 2 * MAX_NAME_CHARS;
 const MAX_REQUEST_SENT: u64 = 2 * MAX_REQUEST_CHARS;
 
 #[derive(Debug, Serialize, TS)]
@@ -50,7 +52,7 @@ impl SkillEvalCaseView {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SkillEvalCaseInput {
     #[serde(deserialize_with = "trimmed")]
-    #[validate(length(min = MIN_NAME_CHARS, max = MAX_NAME_CHARS))]
+    #[validate(length(min = MIN_NAME_CHARS, max = MAX_NAME_SENT))]
     pub name: String,
     #[validate(length(max = MAX_REQUEST_SENT))]
     pub request: String,
