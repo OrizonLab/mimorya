@@ -4711,3 +4711,118 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     - sous-agent nommé dans son détail ;
     - outils du sous-agent visibles ;
     - retour à la demande d'origine.
+
+## ADR-100 — L'agent propose des compétences, validées par la personne puis par les administrateurs (premier lot : l'API)
+
+- **Date** : 2026-10-25 · **Statut** : acceptée (cycle de vie des compétences, lot 1)
+- **Contexte** : depuis l'ADR-052, une compétence ne s'écrit que dans l'administration.
+  Une conversation où l'agent et la personne trouvent une meilleure façon de faire, ou
+  une procédure que personne n'a écrite, n'en laissait rien aux autres : la leçon de
+  l'ADR-076 reste personnelle. Le schéma prévoyait déjà des versions `candidate` et le
+  run qui les écrit (`created_by_run_id`).
+- **Décision** :
+  - **permission `skill:propose`** (« Proposer des compétences », délégable) : donnée aux
+    rôles « Collaborateur » et « Gestionnaire des connaissances » de la plateforme, y
+    compris ceux des entreprises déjà là (migration 0042). La retirer d'un rôle suffit
+    à ce que l'agent ne propose plus rien pour ses titulaires ;
+  - **outil `skill_propose`** de la plateforme :
+    - il propose soit la nouvelle version complète d'une compétence active (sans
+      description), soit une nouvelle compétence (avec sa description). Une note d'une
+      ligne dit pourquoi et devient celle de la version ;
+    - il exige aussi `skill:read` : on ne réécrit pas ce qu'on ne peut pas lire. Une
+      politique qui retire la lecture des compétences à l'agent lui retire donc
+      l'outil, qui sinon lui apprendrait quels noms sont ceux de compétences actives ;
+    - risque `draft`, et **validation toujours exigée** : le texte quitte la
+      conversation pour des personnes qui ne pouvaient pas la lire (l'« Administrateur
+      technique » n'a pas accès aux données métier). La personne servie, ou le
+      responsable si l'entreprise le veut (ADR-059), lit la proposition exacte avant
+      qu'elle parte, et elle part telle quelle ;
+    - avant toute validation, ce qui est envoyé passe les règles de l'administration
+      (ADR-052) : un nom que l'agent peut demander, une description (10 à 300
+      caractères) et une note (3 à 300) d'une ligne visible, débarrassées de leurs
+      blancs autour comme l'administration le fait, un contenu en texte visible d'au
+      plus 20 000 caractères, normalisé comme une version écrite à la main ;
+    - un sous-agent ne la propose jamais : il n'a que les outils de lecture sans
+      validation (ADR-098) ;
+  - **à l'exécution**, sous le verrou d'administration (ADR-020) et le bail du run
+    (ADR-086), la règle pure `proposal_target` (`mimorya_core::skill_proposals`)
+    décide :
+    - une version d'une compétence active devient sa version suivante, `candidate` ;
+    - une nouvelle compétence est créée en brouillon, sa première version `candidate` ;
+    - **une compétence inactive** (brouillon ou retirée) n'est connue que de ses
+      administrateurs : rien de ce que lit l'agent ne la distingue d'un nom qu'aucune
+      compétence ne porte. Une version proposée sous son nom est refusée comme pour un
+      nom inconnu ; une nouvelle compétence de son nom en devient une version
+      `candidate`, que l'agent lit comme toute nouvelle compétence proposée (aucun
+      numéro de version ne lui est rendu). Ses administrateurs en décident ;
+    - une description donnée pour une compétence active, ou un nom inconnu sans
+      description, sont refusés, et l'agent lit pourquoi ;
+    - au plus 20 propositions attendent les administrateurs d'une entreprise, dont 5 au
+      plus pour une même personne : au-delà, l'agent n'en propose plus avant qu'ils en
+      aient décidé, et personne ne remplit seul la part de l'entreprise ;
+  - **ce qu'une proposition garde** :
+    - son auteur (la personne servie), son run, et qu'elle vient de l'agent (`proposed`,
+      gardé une fois la décision prise) ;
+    - pour une nouvelle compétence, la description proposée, dans l'en-tête de la
+      version (`frontmatter`, comme l'écrit agentskills.io), montrée aux administrateurs
+      (`proposedDescription`) : celle d'une compétence existante ne change pas sans eux ;
+    - l'audit `skill.proposed` (acteur : l'agent, pour la personne, avec le run) nomme la
+      compétence, la version et s'il s'agit d'une nouvelle compétence, jamais le texte ;
+  - **les administrateurs** (`skill:manage` sur toute l'entreprise) :
+    - voient le nombre de propositions en attente de chaque compétence (`proposals`) et,
+      pour chaque version, si elle vient de l'agent (`proposed`) ;
+    - rendent une proposition active comme toute version (ADR-052) ;
+    - ou la rejettent (`POST /admin/skills/{id}/rejection`, `{ version }`, audit
+      `skill.proposal_rejected`). Seule une proposition en attente se rejette. Rejetée,
+      elle reste parmi les versions, telle qu'écrite, et peut encore être rendue active ;
+  - rien n'atteint un run avant l'activation : les runs ne lisent que la version active.
+- **Alternatives écartées** :
+  - proposer sans validation de la personne, comme une mémoire partagée proposée
+    (ADR-076) : un détail de la conversation partirait vers des administrateurs qui
+    n'auraient pas pu le lire ;
+  - une table de propositions à part : les versions `candidate` et leur run existaient
+    déjà, et une proposition rendue active doit rester une version comme les autres ;
+  - un réglage par entreprise : la permission suffit, et chaque proposition demande déjà
+    deux décisions humaines ;
+  - dire qu'un nom est pris par une compétence inactive : un membre, qui ne lit que les
+    compétences actives, apprendrait l'existence de celles en préparation ou retirées ;
+  - toujours faire valider la proposition par la personne servie, même quand
+    l'entreprise fait valider les actions de son risque par le responsable (ADR-059) :
+    le responsable, qui voit déjà les actions faites pour son équipe, lit le texte
+    exact et décide comme pour toute action de ce risque.
+- **Conséquences** :
+  - le texte proposé est un contenu de l'entreprise, comme une version écrite par un
+    administrateur. Il dure avec la compétence et disparaît avec elle, rejeté compris ;
+    le lien à son auteur et à son run est oublié avec eux. L'outil demande un texte
+    général, sans donnée personnelle, d'un client ou d'un tiers, et la personne le relit
+    avant envoi ;
+  - restent à faire :
+    - lot 2 : l'écran « Compétences » (propositions à relire, activer ou rejeter) et son
+      test de bout en bout ;
+    - un avis aux administrateurs quand une proposition arrive ;
+    - les évaluations et la non-régression avant activation ;
+  - tests :
+    - `crates/core/src/skill_proposals.rs` : où va une proposition, refus ;
+    - `crates/agent/tests/skill_proposals.rs` :
+      - validation demandée avant tout envoi, texte normalisé et débarrassé de ses
+        blancs ;
+      - nouvelle compétence ;
+      - nom refusé une fois validé ;
+      - texte invalide ou vide une fois les blancs retirés, refusé sans validation ;
+      - rien sans la permission, sans la lecture des compétences, ni pour un
+        sous-agent ;
+    - `crates/api/tests/skill_proposals.rs` :
+      - version candidate après validation, lue par aucun run avant l'activation ;
+      - audit sans le texte ;
+      - activation ;
+      - nouvelle compétence en brouillon avec sa description proposée, proposition
+        rejetée une seule fois puis encore activable ;
+      - compétence inactive répondue comme un nom inconnu ;
+    - `crates/api/tests/skill_proposal_bounds.rs` :
+      - plafonds de l'entreprise et de la personne ;
+      - validation par le responsable quand l'entreprise le veut ;
+    - `crates/api/tests/skill_access.rs` : rejet refusé à un membre, compétence d'une
+      autre entreprise introuvable ;
+    - `crates/api/tests/policy_effects.rs` : la lecture des compétences refusée à
+      l'agent lui retire aussi l'outil ;
+    - `crates/db/tests/skill_proposal_roles.rs` : rôles des entreprises déjà là.

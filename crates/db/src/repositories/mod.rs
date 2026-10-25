@@ -41,6 +41,7 @@ pub mod run_queue;
 pub mod runs;
 pub mod scheduled_tasks;
 pub mod secrets;
+pub mod skill_proposals;
 pub mod skills;
 pub mod sso_assertions;
 pub mod sub_runs;

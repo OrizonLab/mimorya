@@ -126,6 +126,9 @@ pub const PLATFORM_PERMISSIONS: &[PermissionInfo] = &[
         PerResource,
     ),
     info("skill:read", "Consulter les compétences", true, Holder),
+    // Proposing to the skills' administrators a procedure written with the
+    // agent, once its exact text validated (ADR-100).
+    info("skill:propose", "Proposer des compétences", true, Holder),
     info(
         "skill:manage",
         "Gérer et activer les compétences",

@@ -19,6 +19,7 @@ pub mod policy_rules;
 pub mod provisioning;
 pub mod roles;
 pub mod schedule;
+pub mod skill_proposals;
 pub mod skill_rules;
 pub mod tools;
 

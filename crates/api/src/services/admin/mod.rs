@@ -31,6 +31,7 @@ mod policies;
 mod provider_designation;
 mod reset_links;
 mod roles;
+mod skill_proposals;
 mod skills;
 mod users;
 
@@ -63,6 +64,7 @@ pub use org_units::{NewUnitInput, UnitChanges, create_unit, delete_unit, update_
 pub use policies::{PolicyChanges, PolicyInput, create_policy, delete_policy, update_policy};
 pub use reset_links::send_reset_link;
 pub use roles::{RoleChanges, RoleInput, create_role, delete_role, update_role};
+pub use skill_proposals::reject_skill_proposal;
 pub use skills::{
     SkillInput, activate_skill, add_skill_version, create_skill, delete_skill, retire_skill,
     update_skill,

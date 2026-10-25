@@ -1,7 +1,8 @@
 //! Skills (versioned procedures the agent can load): what runs read, and
 //! what the administration lists and writes (ADR-052). A version's content
 //! never changes once written; activating one retires the version active
-//! before it.
+//! before it. The agent's proposals are written here too
+//! (`skill_proposals`, ADR-100).
 
 use chrono::{DateTime, Utc};
 use sqlx::PgConnection;
@@ -10,7 +11,8 @@ use uuid::Uuid;
 /// Every status of a skill (`skills_status_check`).
 pub const SKILL_STATUSES: [&str; 3] = ["draft", "active", "retired"];
 /// Every status of a version (`skill_versions_status_check`); `candidate`
-/// and `rejected` belong to evaluations, not written yet.
+/// and `rejected` are a proposal's, awaiting the administrators or turned
+/// down by them (ADR-100).
 pub const SKILL_VERSION_STATUSES: [&str; 5] =
     ["draft", "candidate", "active", "rejected", "retired"];
 
@@ -55,12 +57,16 @@ pub struct SkillRow {
     pub status: String,
     pub active_version: Option<i32>,
     pub latest_version: Option<i32>,
+    /// Its proposals awaiting the administrators (ADR-100).
+    pub proposals: i64,
     pub updated_at: DateTime<Utc>,
 }
 
 const SKILL_SELECT: &str = "select s.id, s.name, s.description, s.status, \
      v.version as active_version, \
      (select max(version) from skill_versions where skill_id = s.id) as latest_version, \
+     (select count(*) from skill_versions \
+      where skill_id = s.id and proposed and status = 'candidate') as proposals, \
      s.updated_at \
      from skills s left join skill_versions v on v.id = s.active_version_id";
 
@@ -96,6 +102,10 @@ pub struct SkillVersionRow {
     pub status: String,
     pub content: String,
     pub changelog: String,
+    /// Proposed by the agent for its author (ADR-100).
+    pub proposed: bool,
+    /// The description a proposal of a new skill gave (ADR-100).
+    pub proposed_description: Option<String>,
     pub created_by: Option<String>,
     pub created_at: DateTime<Utc>,
     pub approved_by: Option<String>,
@@ -109,7 +119,9 @@ pub async fn list_skill_versions(
     skill_id: Uuid,
 ) -> sqlx::Result<Vec<SkillVersionRow>> {
     sqlx::query_as(
-        "select v.version, v.status, v.content, v.changelog, author.display_name as created_by, \
+        "select v.version, v.status, v.content, v.changelog, v.proposed, \
+         case when v.proposed then v.frontmatter->>'description' end as proposed_description, \
+         author.display_name as created_by, \
          v.created_at, approver.display_name as approved_by, v.approved_at \
          from skill_versions v \
          left join users author on author.id = v.created_by_user_id \
@@ -148,18 +160,26 @@ pub struct NewSkillVersion<'a> {
     pub content: &'a str,
     pub changelog: &'a str,
     pub created_by: Uuid,
+    /// The run that proposed it for its author (ADR-100): a candidate then,
+    /// a draft otherwise.
+    pub proposed_by_run: Option<Uuid>,
+    /// The description a proposal of a new skill gave, kept in its
+    /// frontmatter as agentskills.io writes it.
+    pub description: Option<&'a str>,
 }
 
-/// A draft version, numbered after the latest one; its number.
+/// A version numbered after the latest one; its number.
 pub async fn insert_skill_version(
     conn: &mut PgConnection,
     version: NewSkillVersion<'_>,
 ) -> sqlx::Result<i32> {
     let number: i32 = sqlx::query_scalar(
         "insert into skill_versions (tenant_id, skill_id, version, content, frontmatter, \
-         changelog, created_by_user_id) \
+         changelog, created_by_user_id, created_by_run_id, proposed, status) \
          select $1, $2, coalesce(max(version), 0) + 1, $3, \
-         jsonb_build_object('name', (select name from skills where id = $2)), $4, $5 \
+         jsonb_strip_nulls(jsonb_build_object('name', (select name from skills where id = $2), \
+         'description', $7::text)), $4, $5, $6, \
+         $6::uuid is not null, case when $6::uuid is null then 'draft' else 'candidate' end \
          from skill_versions where skill_id = $2 returning version",
     )
     .bind(version.tenant_id)
@@ -167,6 +187,8 @@ pub async fn insert_skill_version(
     .bind(version.content)
     .bind(version.changelog)
     .bind(version.created_by)
+    .bind(version.proposed_by_run)
+    .bind(version.description)
     .fetch_one(&mut *conn)
     .await?;
     touch(conn, version.skill_id).await?;

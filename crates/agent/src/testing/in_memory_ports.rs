@@ -5,15 +5,17 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
+use mimorya_core::skill_proposals::SkillProposal;
 use mimorya_core::tools::{Deliverable, DeliverableInput, DeliverableService, DeliverableStatus};
 use uuid::Uuid;
 
 use super::in_memory_documents::DocumentFixture;
+use super::in_memory_skills::SkillFixture;
 use super::in_memory_sub_runs::OpenedSubRun;
 use crate::runtime::ports::{
     ApprovalPlacement, ApprovalRequest, ApprovalStore, AuditSink, EngineAuditEntry, EnginePorts,
-    NewMemory, RunEvent, RunEventSink, RunStore, SkillContent, SkillStore, SkillSummary,
-    ToolInvocationLog, ToolInvocationRecord, UsageRecord, UsageSink,
+    NewMemory, RunEvent, RunEventSink, RunStore, ToolInvocationLog, ToolInvocationRecord,
+    UsageRecord, UsageSink,
 };
 use crate::runtime::{RunCheckpoint, RunOutcome};
 
@@ -22,13 +24,6 @@ pub struct StoredMemory {
     pub id: Uuid,
     pub memory: NewMemory,
     pub use_count: u32,
-}
-
-#[derive(Debug, Clone)]
-pub struct SkillFixture {
-    pub name: String,
-    pub description: String,
-    pub content: String,
 }
 
 /// A recorded outcome, with the number of events emitted before it.
@@ -55,12 +50,14 @@ pub(super) struct State {
     unroutable: Option<String>,
     /// The sub-agents' runs this run opened (ADR-098).
     pub(super) sub_runs: Vec<OpenedSubRun>,
+    /// The skills proposed to the administrators (ADR-100).
+    pub(super) skill_proposals: Vec<SkillProposal>,
 }
 
 pub struct InMemoryPorts {
     user_id: Uuid,
     pub(super) run_id: Uuid,
-    skills: Vec<SkillFixture>,
+    pub(super) skills: Vec<SkillFixture>,
     state: Mutex<State>,
     /// A sub-agent's run, which opens none (ADR-098).
     pub(super) is_sub_run: bool,
@@ -239,32 +236,6 @@ impl UsageSink for InMemoryPorts {
     async fn record(&self, usage: UsageRecord) -> anyhow::Result<()> {
         self.state().usage.push(usage);
         Ok(())
-    }
-}
-
-#[async_trait]
-impl SkillStore for InMemoryPorts {
-    async fn list_active(&self) -> anyhow::Result<Vec<SkillSummary>> {
-        Ok(self
-            .skills
-            .iter()
-            .map(|s| SkillSummary {
-                name: s.name.clone(),
-                description: s.description.clone(),
-            })
-            .collect())
-    }
-
-    async fn get_active(&self, name: &str) -> anyhow::Result<Option<SkillContent>> {
-        Ok(self
-            .skills
-            .iter()
-            .find(|s| s.name == name)
-            .map(|s| SkillContent {
-                name: s.name.clone(),
-                version: 1,
-                content: s.content.clone(),
-            }))
     }
 }
 

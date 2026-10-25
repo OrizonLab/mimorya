@@ -1404,6 +1404,11 @@ export type SkillDetail = { skill: SkillView, versions: Array<SkillVersionView>,
  */
 export type SkillList = { skills: Array<SkillView>, };
 
+/**
+ * Body of `POST /admin/skills/{id}/rejection`: the proposal turned down.
+ */
+export type SkillRejection = { version: number, };
+
 export type SkillStatus = "draft" | "active" | "retired";
 
 /**
@@ -1422,13 +1427,25 @@ export type SkillVersionView = { version: number, status: SkillVersionStatus,
 /**
  * The procedure handed to the agent, in Markdown.
  */
-content: string, changelog: string, createdBy: string | null, createdAt: string,
+content: string, changelog: string,
+/**
+ * Proposed by the agent for its author, who validated it (ADR-100).
+ */
+proposed: boolean,
+/**
+ * What a proposal of a new skill said the skill covers.
+ */
+proposedDescription: string | null, createdBy: string | null, createdAt: string,
 /**
  * Who made it active last, and when.
  */
 approvedBy: string | null, approvedAt: string | null, };
 
-export type SkillView = { id: string, name: string, description: string, status: SkillStatus, activeVersion: number | null, latestVersion: number | null, updatedAt: string, };
+export type SkillView = { id: string, name: string, description: string, status: SkillStatus, activeVersion: number | null, latestVersion: number | null,
+/**
+ * The agent's proposals awaiting a decision (ADR-100).
+ */
+proposals: number, updatedAt: string, };
 
 /**
  * `POST /auth/sso/discover`.

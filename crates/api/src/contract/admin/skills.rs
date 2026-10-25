@@ -1,6 +1,7 @@
 //! The company's skills (`skill:manage`, ADR-052): the list, a skill with
 //! its versions, and what the administration writes: a skill, a new version,
-//! a description, the version made active.
+//! a description, the version made active, a proposal of the agent's turned
+//! down (ADR-100).
 
 use mimorya_db::repositories::skills::{SkillRow, SkillVersionRow};
 use serde::{Deserialize, Serialize};
@@ -29,6 +30,8 @@ pub struct SkillView {
     pub status: SkillStatus,
     pub active_version: Option<i32>,
     pub latest_version: Option<i32>,
+    /// The agent's proposals awaiting a decision (ADR-100).
+    pub proposals: i64,
     pub updated_at: String,
 }
 
@@ -41,6 +44,7 @@ impl SkillView {
             status: stored_text("skill status", &s.status)?,
             active_version: s.active_version,
             latest_version: s.latest_version,
+            proposals: s.proposals,
             updated_at: iso(&s.updated_at),
         })
     }
@@ -57,10 +61,10 @@ pub struct SkillList {
 pub enum SkillVersionStatus {
     /// Written, never active.
     Draft,
-    /// Reserved to evaluations (phase 2).
+    /// Proposed by the agent, awaiting the administrators (ADR-100).
     Candidate,
     Active,
-    /// Reserved to evaluations (phase 2).
+    /// A proposal the administrators turned down (ADR-100).
     Rejected,
     /// Active before another version, or before the skill was retired.
     Retired,
@@ -74,6 +78,10 @@ pub struct SkillVersionView {
     /// The procedure handed to the agent, in Markdown.
     pub content: String,
     pub changelog: String,
+    /// Proposed by the agent for its author, who validated it (ADR-100).
+    pub proposed: bool,
+    /// What a proposal of a new skill said the skill covers.
+    pub proposed_description: Option<String>,
     pub created_by: Option<String>,
     pub created_at: String,
     /// Who made it active last, and when.
@@ -88,6 +96,8 @@ impl SkillVersionView {
             status: stored_text("skill version status", &v.status)?,
             content: v.content.clone(),
             changelog: v.changelog.clone(),
+            proposed: v.proposed,
+            proposed_description: v.proposed_description.clone(),
             created_by: v.created_by.clone(),
             created_at: iso(&v.created_at),
             approved_by: v.approved_by.clone(),
@@ -151,6 +161,14 @@ pub struct NewSkillVersion {
 #[derive(Deserialize, Validate, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SkillActivation {
+    #[validate(range(min = 1))]
+    pub version: i32,
+}
+
+/// Body of `POST /admin/skills/{id}/rejection`: the proposal turned down.
+#[derive(Deserialize, Validate, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SkillRejection {
     #[validate(range(min = 1))]
     pub version: i32,
 }

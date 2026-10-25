@@ -30,7 +30,7 @@ pub struct SkillReadInput {
 }
 
 /// A name as the administration writes it (`skill_rules`).
-fn skill_name(name: &str) -> Result<(), ValidationError> {
+pub(super) fn skill_name(name: &str) -> Result<(), ValidationError> {
     match name_problem(name) {
         None => Ok(()),
         Some(_) => Err(ValidationError::new("skill_name")),

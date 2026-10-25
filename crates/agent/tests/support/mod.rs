@@ -12,7 +12,9 @@ use mimorya_agent::runtime::{
     AgentRuntime, BudgetLimits, DEFAULT_BUDGET, NewMemory, RunConfig, RunOutcome, RuntimeDeps,
     StartInput, VerificationConfig,
 };
-use mimorya_agent::testing::{InMemoryPorts, ScriptedProvider, ScriptedStep, TestAccess};
+use mimorya_agent::testing::{
+    InMemoryPorts, ScriptedProvider, ScriptedStep, SkillFixture, TestAccess,
+};
 use mimorya_agent::tools::platform::{DelegateTask, platform_tools};
 use mimorya_agent::tools::{ToolOverride, ToolRegistry};
 use mimorya_core::authz::{Actor, ResourceRef, Subject};
@@ -210,6 +212,8 @@ pub struct Options {
     /// The platform's tools too (memory, documents, skills, delegation),
     /// with the memories the run may read.
     pub platform: Option<Vec<NewMemory>>,
+    /// The company's active skills.
+    pub skills: Vec<SkillFixture>,
 }
 
 pub struct Harness {
@@ -272,7 +276,7 @@ pub fn setup(steps: Vec<ScriptedStep>, options: Options) -> Harness {
     );
     let run_id = Uuid::new_v4();
     let memories = options.platform.clone().unwrap_or_default();
-    let ports = InMemoryPorts::with_fixtures(subject.user_id, run_id, memories, Vec::new());
+    let ports = InMemoryPorts::with_fixtures(subject.user_id, run_id, memories, options.skills);
     let provider = Arc::new(ScriptedProvider::new(steps));
     let judge = options
         .judge

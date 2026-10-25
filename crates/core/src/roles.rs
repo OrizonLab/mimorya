@@ -24,6 +24,7 @@ pub const PLATFORM_ROLE_TEMPLATES: &[RoleTemplate] = &[
             "mission:create",
             "mission:read",
             "skill:read",
+            "skill:propose",
             "connector:use",
         ],
     },
@@ -56,6 +57,7 @@ pub const PLATFORM_ROLE_TEMPLATES: &[RoleTemplate] = &[
             "document:read",
             "document:write",
             "skill:read",
+            "skill:propose",
         ],
     },
 ];
