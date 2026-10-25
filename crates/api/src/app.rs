@@ -256,6 +256,7 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
         db.clone(),
         Extractor::new(config.document_extractor.clone()),
         config.document_quota_bytes,
+        embeddings.clone(),
     ));
     let services = Arc::new(Services {
         documents,

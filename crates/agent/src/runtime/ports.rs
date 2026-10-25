@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
+use super::document_store::DocumentStore;
 use super::state::RunCheckpoint;
 use super::types::RunOutcome;
 
@@ -298,6 +299,7 @@ pub struct EnginePorts {
     pub approvals: Arc<dyn ApprovalStore>,
     pub usage: Arc<dyn UsageSink>,
     pub memory: Arc<dyn MemoryStore>,
+    pub documents: Arc<dyn DocumentStore>,
     pub skills: Arc<dyn SkillStore>,
     pub runs: Arc<dyn RunStore>,
     pub deliverables: Arc<dyn DeliverableService>,

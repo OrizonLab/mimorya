@@ -170,6 +170,7 @@ impl Scenario {
         let mut tools = mimorya_agent::tools::platform::platform_tools(
             engine_ports.memory.clone(),
             engine_ports.skills.clone(),
+            engine_ports.documents.clone(),
         );
         tools.extend(demo_intervention_tools(store.clone()));
         let provider = Arc::new(ScriptedProvider::new(steps));

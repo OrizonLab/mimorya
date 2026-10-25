@@ -98,6 +98,7 @@ pub fn engine_ports(executor: &RunExecutor, scope: RunScope, fence: LeaseFence) 
         approvals: ports.clone(),
         usage: ports.clone(),
         memory: ports.clone(),
+        documents: ports.clone(),
         skills: ports.clone(),
         runs: ports,
         deliverables: Arc::new(DbDeliverables::new(db, scope, fence)),

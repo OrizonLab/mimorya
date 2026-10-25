@@ -10,6 +10,7 @@ mod client;
 pub mod companies;
 pub mod delegations;
 pub mod dns;
+pub mod document_search;
 pub mod documents;
 pub mod embeddings;
 pub mod identity_provider;

@@ -18,7 +18,8 @@ use mimorya_db::repositories::memory::{NewMemory, create_memory};
 use serde_json::json;
 use support::TestApi;
 use support::embeddings::{
-    MODEL, VANS, back_to_words, choose, forget, index, remember, start, start_indexing, vector_of,
+    MODEL, VANS, back_to_words, choose, forget, index, indexed, remember, start, start_indexing,
+    vector_of,
 };
 
 #[tokio::test]
@@ -271,11 +272,14 @@ async fn two_workers_indexing_at_once_embed_each_memory_once() {
     let before = sent();
 
     // One pass waits for the other, then finds nothing left (ADR-086).
-    let (first, second) = tokio::join!(index(&one), index(&two));
+    let (first, second) = tokio::join!(indexed(&one), indexed(&two));
     let shown = paul.get("/admin/embedding").await.json();
     let memories = shown["settings"]["memories"].as_u64().unwrap() as usize;
-    assert_eq!(first + second, memories);
-    assert_eq!(sent() - before, memories);
+    assert_eq!(first.memories + second.memories, memories);
+    // The demo documents' passages along with them.
+    let given = first.total() + second.total();
+    assert!(given > memories);
+    assert_eq!(sent() - before, given);
     assert_eq!(vector_of(&one, vans).await, (Some(MODEL.into()), true));
 
     // Under way elsewhere: a pass sends nothing meanwhile, then embeds.
@@ -294,7 +298,7 @@ async fn two_workers_indexing_at_once_embed_each_memory_once() {
         sent_meanwhile
     };
     let (embedded, sent_meanwhile) = tokio::join!(index(&two), at_release);
-    assert_eq!(sent_meanwhile, before + memories);
+    assert_eq!(sent_meanwhile, before + given);
     assert_eq!(embedded, 1);
     assert_eq!(vector_of(&two, note).await, (Some(MODEL.into()), true));
     forget(&lucas, note).await;

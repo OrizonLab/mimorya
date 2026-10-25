@@ -1,14 +1,16 @@
 //! The company's embedding model (ADR-074): chosen, changed or removed by
 //! an administrator of its settings, under the administration lock.
-//! Choosing one sends the company's memory to it; removing it wipes the
-//! vectors. The API key is sealed in the secret store, never returned nor
-//! audited, and never carried from one endpoint to another.
+//! Choosing one sends the company's memory and documents' passages to it
+//! (ADR-096); removing it wipes the vectors. The API key is sealed in the
+//! secret store, never returned nor audited, and never carried from one
+//! endpoint to another.
 
 use mimorya_agent::llm::api_key_problem;
 use mimorya_agent::llm::embedding::{check_tenant_embedding, embedding_requires_key};
 use mimorya_core::DomainError;
 use mimorya_db::Database;
 use mimorya_db::repositories::audit::append_audit;
+use mimorya_db::repositories::document_embeddings::clear_passage_embeddings;
 use mimorya_db::repositories::embedding_settings::{
     NewEmbeddingSettings, delete_embedding_settings, get_embedding_settings, put_embedding_settings,
 };
@@ -117,7 +119,7 @@ pub async fn configure_embedding(
 }
 
 /// Back to searching by words only: the settings, the key and every vector
-/// of the company's memory are deleted.
+/// of the company's memory and documents are deleted.
 pub async fn reset_embedding(
     db: &Database,
     embeddings: &EmbeddingService,
@@ -138,10 +140,13 @@ pub async fn reset_embedding(
         .into());
     }
     let cleared = clear_embeddings(&mut tx).await?;
+    let passages_cleared = clear_passage_embeddings(&mut tx).await?;
     append_audit(
         &mut tx,
-        audit_entry(access, "embedding.reset", "tenant", tenant_id)
-            .metadata(json!({ "vectorsCleared": cleared })),
+        audit_entry(access, "embedding.reset", "tenant", tenant_id).metadata(json!({
+            "vectorsCleared": cleared,
+            "passageVectorsCleared": passages_cleared,
+        })),
     )
     .await?;
     tx.commit().await?;

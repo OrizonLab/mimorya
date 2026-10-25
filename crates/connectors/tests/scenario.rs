@@ -28,6 +28,8 @@ async fn runs_the_full_mission_for_the_technical_manager_with_validation_and_cap
             assert_eq!(
                 tool_names(req),
                 [
+                    "document_read",
+                    "document_search",
                     "interventions_get",
                     "interventions_search",
                     "memory_remember",
@@ -251,7 +253,13 @@ async fn exposes_no_intervention_data_to_the_technical_administrator() {
             ScriptedStep::dynamic(|req| {
                 assert_eq!(
                     tool_names(req),
-                    ["memory_remember", "memory_search", "skill_read"]
+                    [
+                        "document_read",
+                        "document_search",
+                        "memory_remember",
+                        "memory_search",
+                        "skill_read"
+                    ]
                 );
                 ScriptedReply::calls("", vec![call("interventions_search", search_week())])
             }),

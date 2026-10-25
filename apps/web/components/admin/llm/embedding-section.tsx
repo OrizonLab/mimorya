@@ -126,8 +126,9 @@ export function EmbeddingSection() {
           )}
           <p className="text-xs text-muted">
             Choisir un modèle envoie au fournisseur le texte des mémoires actives de votre
-            entreprise et celui des demandes : vérifiez qu’il convient à vos données. Revenir aux
-            mots efface tous les vecteurs. Chaque appel est compté dans la consommation.
+            entreprise, celui des passages de ses documents, quelle que soit leur sensibilité, et
+            celui des demandes : vérifiez qu’il convient à vos données. Revenir aux mots efface tous
+            les vecteurs. Chaque appel est compté dans la consommation.
           </p>
         </div>
       )}

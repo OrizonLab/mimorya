@@ -1,6 +1,7 @@
-//! Indexing memories by meaning (ADR-074), in the background: a pass at
-//! startup, whenever a memory is written or approved or a company changes
-//! its model, and every minute (what failed is retried then).
+//! Indexing memories and document passages by meaning (ADR-074, ADR-096),
+//! in the background: a pass at startup, whenever a memory is written or
+//! approved, a document deposited or a company changes its model, and every
+//! minute (what failed is retried then).
 
 use std::time::Duration;
 
@@ -20,9 +21,13 @@ pub fn spawn_memory_indexing(services: AppState) -> JoinHandle<()> {
                 () = embeddings.woken() => {}
             }
             match embeddings.index_pending().await {
-                Ok(0) => {}
-                Ok(embedded) => tracing::info!(embedded, "Memories embedded"),
-                Err(error) => tracing::warn!(error = %error, "Memory indexing pass failed"),
+                Ok(indexed) if indexed.total() == 0 => {}
+                Ok(indexed) => tracing::info!(
+                    memories = indexed.memories,
+                    passages = indexed.passages,
+                    "Memories and document passages embedded"
+                ),
+                Err(error) => tracing::warn!(error = %error, "Indexing pass failed"),
             }
         }
     })

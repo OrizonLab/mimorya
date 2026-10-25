@@ -2,6 +2,7 @@
 //! Idempotent: an existing demo tenant is left untouched unless `reset` is set.
 
 mod connectors;
+mod documents;
 mod memories;
 mod organization;
 mod skills;
@@ -44,6 +45,7 @@ pub async fn seed_demo_tenant(db: &Database, options: &SeedOptions) -> anyhow::R
     organization::insert(&mut tx, options.password_hash.as_deref()).await?;
     connectors::insert(&mut tx).await?;
     memories::insert(&mut tx).await?;
+    documents::insert(&mut tx).await?;
     skills::insert(&mut tx).await?;
     tx.commit().await?;
     Ok(SeedOutcome::Created)

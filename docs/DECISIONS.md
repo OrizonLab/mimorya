@@ -4349,9 +4349,9 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     l'entreprise ;
   - **trace** (lot 1b) : dépôt, téléchargement et suppression, et fichier que le
     processus n'a pu lire (`document.rejected`), sans nom ni texte ;
-  - **suite** : recherche par les mots et par le sens et outil `document_search` avec
-    citations (lot 2) ; page « Documents », et relais `/api` de l'interface vérifié pour
-    un fichier proche de 10 Mio (lot 3).
+  - **suite** : recherche par les mots et par le sens et outils `document_search` et
+    `document_read` avec citations (lot 2, ADR-096) ; page « Documents », et relais
+    `/api` de l'interface vérifié pour un fichier proche de 10 Mio (lot 3).
 - **Alternatives écartées** :
   - stockage objet (S3) : une infrastructure de plus pour des volumes que PostgreSQL
     tient ; il reste possible si les volumes le justifient un jour ;
@@ -4405,3 +4405,91 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
       celles des énumérations ;
     - le test de fumée de la pile de démonstration dépose un document par le relais de
       l'interface et le supprime.
+
+## ADR-096 — Documents : recherche par les mots et par le sens, outils de l'agent, citations
+
+- **Date** : 2026-10-25 · **Statut** : acceptée (lot 2 des documents)
+- **Contexte** : les documents déposés (ADR-095) sont gardés en passages cherchables par
+  leurs mots, mais l'agent ne les lit pas encore. Il doit y trouver ce qui répond à une
+  demande, lire la suite d'un passage et citer ses sources, sans jamais atteindre un
+  document hors des droits de son utilisateur. La mémoire a déjà sa recherche hybride
+  (ADR-074) et son modèle d'embeddings par entreprise.
+- **Décision** :
+  - **deux outils de la plateforme**, offerts à tout run dont l'utilisateur tient
+    `document:read` (délégable), de risque « lecture » :
+    - `document_search` : une demande (2 à 300 caractères) et au plus 10 passages
+      (5 par défaut). Chaque passage revient avec son document (identifiant et titre), sa
+      position, sa page et sa section ;
+    - `document_read` : un document et la position du premier passage à lire (0 par
+      défaut, sans borne : un document a autant de passages que de sections). Cinq
+      passages reviennent à la fois, avec leur nombre total et la position où reprendre ;
+  - **droits** : les deux outils filtrent avec l'autorisation de l'appel
+    (`document_read_filter`, les droits en vigueur à cette étape) : espace de
+    l'entreprise, unités lues, habilitation. Les documents hors de portée sont écartés en
+    SQL avant toute comparaison. Un document hors de portée et un document inexistant
+    reçoivent la même réponse (« Document introuvable ou non accessible »). Sans
+    `document:read`, aucun des deux outils n'est montré au modèle, et un appel est refusé
+    par le PEP ;
+  - **données non fiables** : les passages sont remis au modèle dans l'enveloppe des
+    résultats d'outils, que leur texte ne peut ni ouvrir ni fermer ;
+  - **citations** : chaque document trouvé ou lu est cité une fois (`document`, son
+    identifiant, son titre). Il figure parmi les sources de la réponse et rejoint celles
+    d'une mission ;
+  - **recherche hybride**, comme celle de la mémoire :
+    - par les mots : plein texte français ;
+    - par le sens, quand l'entreprise a choisi un modèle d'embeddings : le même modèle,
+      la même similarité minimale et le vecteur de la demande, attendu 5 secondes au
+      plus et compté au nom de l'utilisateur et du run ;
+    - les deux classements sont fusionnés par rang réciproque (constante 60) ;
+    - les vecteurs sont comparés exactement, sur les seuls passages lisibles ;
+  - **indexation** : le même passage en arrière-plan donne leur vecteur aux mémoires, puis
+    aux passages (texte envoyé : titre du document, section, passage). Il travaille par
+    lots de 32, huit lots par entreprise, par source et par passage, avec les mêmes
+    règles de refus, de panne et de changement de modèle. Un dépôt réveille l'indexeur.
+    `system_tenants_awaiting_embeddings` rend aussi les entreprises dont des passages
+    attendent leur vecteur (index `(tenant_id, embedding_model)`). Le rôle applicatif ne
+    peut modifier, dans un passage, que son vecteur et son modèle ;
+  - **retour aux mots** : il efface aussi les vecteurs des passages (trace
+    `embedding.reset` : `passageVectorsCleared`). L'erreur d'indexation reste montrée
+    tant que des mémoires ou des passages attendent, et l'écran du modèle d'embeddings
+    dit que les passages des documents partent vers le fournisseur ;
+  - la démonstration dépose deux documents fictifs : une charte qualité dans l'espace de
+    l'entreprise et une procédure d'entretien dans celui du service technique.
+- **Alternatives écartées** :
+  - rappeler les passages proches à chaque tour, comme les mémoires : un document est
+    plus long qu'une mémoire, et l'agent sait chercher quand la demande le justifie ;
+  - un modèle d'embeddings propre aux documents : un second choix à faire et à payer pour
+    un même usage ;
+  - un index approché (HNSW) sur les passages : il filtrerait après coup et en
+    manquerait ; à reconsidérer si les volumes le justifient ;
+  - mettre le titre du document dans le plein texte des passages : il ne figure que dans
+    le texte envoyé au modèle d'embeddings, la colonne générée restant celle du lot 1b.
+- **Conséquences** :
+  - le texte de tous les passages, quelle que soit leur sensibilité, part vers le modèle
+    d'embeddings choisi par l'entreprise, comme celui des mémoires. Les passages trouvés
+    partent vers le modèle de langage de l'entreprise ;
+  - `platform_tools` reçoit le port des documents (`DocumentStore`), `EnginePorts.documents`
+    aussi. `index_pending` compte séparément les mémoires et les passages ;
+  - restent la page « Documents », les sources de type document dans la conversation, et
+    la progression de l'indexation des passages dans « Modèle d'IA » (lot 3) ;
+  - tests :
+    - `crates/agent/tests/document_tools.rs` : ce que trouve et lit un run de chacun, un
+      document cité une fois même quand plusieurs de ses passages répondent, l'absent et
+      l'inaccessible confondus, un document de plus de 2 000 passages lu jusqu'au bout,
+      entrées strictes et bornées ;
+    - `crates/db/tests/document_search.rs` : trouvé par le sens hors de tout mot commun,
+      jamais hors de portée (équipe voisine, habilitation), ni d'un autre modèle, ni trop
+      loin ; ce que trouvent mots et sens en tête ; lecture dans l'ordre ; file des
+      passages à indexer ; rien d'un passage modifiable par l'application que son
+      vecteur ; `memory_search.rs` : l'entreprise attend tant que ses passages n'ont pas
+      leur vecteur ;
+    - `crates/api/tests/document_search.rs` : un run trouve les passages de ses droits, pas
+      ceux de l'équipe voisine ni au-dessus de son habilitation ; un passage ne ferme
+      pas son enveloppe ; la réponse cite le document ; lecture dans l'ordre et reprise ;
+      document hors de portée, d'une autre entreprise ou inexistant confondus ; un
+      document de 2 050 sections lu jusqu'au bout ; sans `document:read`, ni offerts ni
+      exécutés ;
+    - `crates/api/tests/document_meaning.rs` : trouvé par le sens une fois indexé, dans
+      les droits de chacun ; panne montrée quand seuls des passages attendent ; un dépôt
+      réveille l'indexeur ; retour aux mots, vecteurs des passages effacés ; `admin_embedding.rs`, `memory_indexing.rs` : effacement tracé,
+      passages indexés avec les mémoires.

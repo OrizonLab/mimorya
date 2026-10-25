@@ -13,6 +13,7 @@ use uuid::Uuid;
 
 use crate::authz::{Actor, AuthorizationEngine, DataScope, Decision, ResourceRef, Subject};
 use crate::autonomy::ToolRisk;
+use crate::documents::{DocumentReadFilter, document_read_filter};
 use crate::memory::{MemoryReadFilter, MemoryTarget, can_write_memory, memory_read_filter};
 
 /// LLM providers accept `^[a-zA-Z0-9_-]{1,64}$`; we use `<namespace>_<action>`.
@@ -230,6 +231,11 @@ impl BoundAuthorization {
     /// The memories the subject may read through this actor.
     pub fn memory_read_filter(&self) -> MemoryReadFilter {
         memory_read_filter(&self.engine, &self.subject, &self.actor)
+    }
+
+    /// The documents the subject may read through this actor (ADR-095).
+    pub fn document_read_filter(&self) -> DocumentReadFilter {
+        document_read_filter(&self.engine, &self.subject, &self.actor)
     }
 
     /// Whether the subject may write `target` directly through this actor.

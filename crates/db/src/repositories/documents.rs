@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 /// What a reader may see: the company's space ($1), the units' ($2 all,
 /// $3 these), up to a clearance ($4).
-const VISIBLE: &str = "((scope = 'tenant' and $1) \
+pub(super) const VISIBLE: &str = "((scope = 'tenant' and $1) \
     or (scope = 'org_unit' and ($2 or org_unit_id = any($3)))) \
     and array_position(array['public', 'internal', 'confidential', 'restricted'], sensitivity) - 1 <= $4";
 
@@ -33,7 +33,7 @@ pub struct DocumentRow {
     pub created_at: DateTime<Utc>,
 }
 
-fn bind_visible<'q, O>(
+pub(super) fn bind_visible<'q, O>(
     query: sqlx::query::QueryAs<'q, sqlx::Postgres, O, sqlx::postgres::PgArguments>,
     filter: &DocumentReadFilter,
 ) -> sqlx::query::QueryAs<'q, sqlx::Postgres, O, sqlx::postgres::PgArguments> {

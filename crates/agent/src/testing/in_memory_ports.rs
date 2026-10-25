@@ -8,6 +8,7 @@ use async_trait::async_trait;
 use mimorya_core::tools::{Deliverable, DeliverableInput, DeliverableService, DeliverableStatus};
 use uuid::Uuid;
 
+use super::in_memory_documents::DocumentFixture;
 use crate::runtime::ports::{
     ApprovalPlacement, ApprovalRequest, ApprovalStore, AuditSink, EngineAuditEntry, EnginePorts,
     NewMemory, RunEvent, RunEventSink, RunStore, SkillContent, SkillStore, SkillSummary,
@@ -45,6 +46,7 @@ pub(super) struct State {
     approvals: Vec<(Uuid, ApprovalRequest)>,
     usage: Vec<UsageRecord>,
     pub(super) memories: Vec<StoredMemory>,
+    pub(super) documents: Vec<DocumentFixture>,
     checkpoints: Vec<RunCheckpoint>,
     finished: Vec<FinishedRecord>,
     deliverables: HashMap<Uuid, Deliverable>,
@@ -98,10 +100,16 @@ impl InMemoryPorts {
             approvals: self.clone(),
             usage: self.clone(),
             memory: self.clone(),
+            documents: self.clone(),
             skills: self.clone(),
             runs: self.clone(),
             deliverables: self.clone(),
         }
+    }
+
+    /// Deposits `document`, for the runs to read where their filter reaches.
+    pub fn deposit(&self, document: DocumentFixture) {
+        self.state().documents.push(document);
     }
 
     pub(super) fn state(&self) -> std::sync::MutexGuard<'_, State> {

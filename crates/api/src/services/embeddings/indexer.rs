@@ -1,19 +1,21 @@
-//! Giving a company's memory its vectors (ADR-074), in the background: the
-//! active memories not yet embedded by the model the company chose (written
-//! since, approved since, or embedded by another model before), a batch at
-//! a time and a few batches per pass, so that one company's backlog never
-//! holds the others'. The company's choice is read again before each batch
-//! and locked while its vectors are written: once it changes, or the company
-//! goes back to searching by words, nothing more is sent to the model, and
-//! what the batch in flight brings back is dropped. A text the model refuses
-//! as too long, or as invalid while others of its batch get their vector,
-//! is not asked again (found by its words only); a batch whose every text
-//! is refused as invalid is the model's failure, or its settings': retried
-//! at the next pass, like any other failure, and shown to the company's
-//! administrators until then. One pass at a time, whatever the number of
-//! workers (ADR-086): a pass waits for the one under way elsewhere, then
-//! embeds what that one left; held there for longer than `INDEXING_WAIT`,
-//! it fails, and the next pass, a minute later, tries again.
+//! Giving a company's memory and documents their vectors (ADR-074,
+//! ADR-096), in the background: the active memories, then the document
+//! passages, not yet embedded by the model the company chose (written or
+//! deposited since, approved since, or embedded by another model before), a
+//! batch at a time and a few batches of each per pass, so that one
+//! company's backlog never holds the others'. The company's choice is read
+//! again before each batch and locked while its vectors are written: once
+//! it changes, or the company goes back to searching by words, nothing more
+//! is sent to the model, and what the batch in flight brings back is
+//! dropped. A text the model refuses as too long, or as invalid while
+//! others of its batch get their vector, is not asked again (found by its
+//! words only); a batch whose every text is refused as invalid is the
+//! model's failure, or its settings': retried at the next pass, like any
+//! other failure, and shown to the company's administrators until then. One
+//! pass at a time, whatever the number of workers (ADR-086): a pass waits
+//! for the one under way elsewhere, then embeds what that one left; held
+//! there for longer than `INDEXING_WAIT`, it fails, and the next pass, a
+//! minute later, tries again.
 
 use std::time::Duration;
 
@@ -23,24 +25,18 @@ use mimorya_agent::llm::{LlmError, LlmErrorKind};
 use mimorya_db::repositories::embedding_settings::{
     get_embedding_settings, lock_embedding_settings, set_indexing_failure,
 };
-use mimorya_db::repositories::memory_embeddings::{
-    MemoryToEmbed, memories_to_embed, store_embedding, tenants_awaiting_embeddings,
-};
+use mimorya_db::repositories::memory_embeddings::tenants_awaiting_embeddings;
 use uuid::Uuid;
 
+use super::sources::{Indexed, Pending, SOURCES, Source};
 use super::{CompanyEmbedder, EmbeddingService, UsageBy};
 
-/// Batches embedded per company and pass.
+/// Batches embedded per company, source and pass.
 const BATCHES_PER_PASS: usize = 8;
 /// The passes' lock, across processes (ADR-086).
 const INDEXING_SWEEP: &str = "memory-indexing";
 /// How long a pass waits for the one under way elsewhere.
 const INDEXING_WAIT: Duration = Duration::from_secs(300);
-
-/// What a memory's vector is computed from.
-fn embedded_text(memory: &MemoryToEmbed) -> String {
-    format!("{}\n\n{}", memory.title, memory.content)
-}
 
 /// What became of a text asked alone.
 enum Alone {
@@ -59,9 +55,10 @@ fn refuses_text(error: &LlmError) -> bool {
 }
 
 impl EmbeddingService {
-    /// Embeds the memories awaiting a vector in every company that chose a
-    /// model; how many got one. One pass at a time, in every process.
-    pub async fn index_pending(&self) -> anyhow::Result<usize> {
+    /// Embeds the memories and passages awaiting a vector in every company
+    /// that chose a model; how many got one. One pass at a time, in every
+    /// process.
+    pub async fn index_pending(&self) -> anyhow::Result<Indexed> {
         let _pass = self.indexing.lock().await;
         let sweep = self
             .db
@@ -73,42 +70,62 @@ impl EmbeddingService {
         embedded
     }
 
-    async fn index_all(&self) -> anyhow::Result<usize> {
+    async fn index_all(&self) -> anyhow::Result<Indexed> {
         let awaiting = tenants_awaiting_embeddings(self.db.pool()).await?;
-        let mut embedded = 0;
+        let mut indexed = Indexed::default();
         for tenant_id in awaiting {
             match self.index_company(tenant_id).await {
-                Ok(count) => embedded += count,
+                Ok(company) => indexed.merge(company),
                 Err(error) => {
-                    tracing::warn!(%tenant_id, error = %error, "Memory indexing failed");
+                    tracing::warn!(%tenant_id, error = %error, "Indexing failed");
                 }
             }
         }
-        Ok(embedded)
+        Ok(indexed)
     }
 
-    async fn index_company(&self, tenant_id: Uuid) -> anyhow::Result<usize> {
+    async fn index_company(&self, tenant_id: Uuid) -> anyhow::Result<Indexed> {
+        let mut indexed = Indexed::default();
         let Some(embedder) = self.embedder(tenant_id).await? else {
-            return Ok(0);
+            return Ok(indexed);
         };
+        for source in SOURCES {
+            let (embedded, held) = self.index_source(tenant_id, &embedder, source).await?;
+            indexed.add(source, embedded);
+            if !held {
+                // Changed meanwhile: the next pass follows the new choice.
+                return Ok(indexed);
+            }
+        }
+        self.record_outcome(tenant_id, &embedder, None).await?;
+        Ok(indexed)
+    }
+
+    /// Embeds up to `BATCHES_PER_PASS` batches of `source`: how many texts
+    /// got a vector, and whether the company's choice held meanwhile.
+    async fn index_source(
+        &self,
+        tenant_id: Uuid,
+        embedder: &CompanyEmbedder,
+        source: Source,
+    ) -> anyhow::Result<(usize, bool)> {
         let mut embedded = 0;
         for _ in 0..BATCHES_PER_PASS {
             let mut tx = self.db.begin(tenant_id).await?;
             let chosen = get_embedding_settings(&mut tx).await?;
             if !chosen.is_some_and(|settings| embedder.serves(&settings)) {
-                // Changed meanwhile: the next pass follows the new choice.
-                return Ok(embedded);
+                return Ok((embedded, false));
             }
             let batch_size = i64::try_from(MAX_EMBEDDING_BATCH)?;
-            let batch = memories_to_embed(&mut tx, &embedder.model, batch_size).await?;
+            let batch = source.pending(&mut tx, &embedder.model, batch_size).await?;
             tx.commit().await?;
             if batch.is_empty() {
                 break;
             }
-            let vectors = match self.embed(tenant_id, &embedder, &batch).await {
+            let vectors = match self.embed(tenant_id, embedder, &batch).await {
                 Ok(vectors) => vectors,
                 Err(reason) => {
-                    self.record_outcome(tenant_id, &embedder, Some(&reason))
+                    self.record_outcome(tenant_id, embedder, Some(&reason))
                         .await?;
                     anyhow::bail!(reason);
                 }
@@ -116,10 +133,12 @@ impl EmbeddingService {
             let mut tx = self.db.begin(tenant_id).await?;
             let chosen = lock_embedding_settings(&mut tx).await?;
             if !chosen.is_some_and(|settings| embedder.serves(&settings)) {
-                return Ok(embedded);
+                return Ok((embedded, false));
             }
-            for (memory, vector) in batch.iter().zip(&vectors) {
-                store_embedding(&mut tx, memory.id, vector.as_deref(), &embedder.model).await?;
+            for (pending, vector) in batch.iter().zip(&vectors) {
+                source
+                    .store(&mut tx, pending.id, vector.as_deref(), &embedder.model)
+                    .await?;
             }
             tx.commit().await?;
             embedded += vectors.iter().filter(|v| v.is_some()).count();
@@ -127,8 +146,7 @@ impl EmbeddingService {
                 break;
             }
         }
-        self.record_outcome(tenant_id, &embedder, None).await?;
-        Ok(embedded)
+        Ok((embedded, true))
     }
 
     /// Records why the company's pass failed (`None`: it succeeded), for its
@@ -149,16 +167,16 @@ impl EmbeddingService {
         Ok(())
     }
 
-    /// The vector of each memory, `None` for a text the model refuses (too
-    /// long, or invalid while it embeds others); why the batch could not be
+    /// The vector of each text, `None` for one the model refuses (too long,
+    /// or invalid while it embeds others); why the batch could not be
     /// embedded otherwise (French).
     async fn embed(
         &self,
         tenant_id: Uuid,
         embedder: &CompanyEmbedder,
-        batch: &[MemoryToEmbed],
+        batch: &[Pending],
     ) -> Result<Vec<Option<Vec<f32>>>, String> {
-        let texts: Vec<String> = batch.iter().map(embedded_text).collect();
+        let texts: Vec<String> = batch.iter().map(|pending| pending.text.clone()).collect();
         let refusal = match embedder.provider.embed(&texts).await {
             Ok(embedded) => {
                 self.record(tenant_id, embedder, &embedded).await;
