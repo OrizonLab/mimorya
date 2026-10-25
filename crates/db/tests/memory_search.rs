@@ -1,6 +1,7 @@
 //! Searching memory by meaning (ADR-074): only within what the subject may
 //! read, only the chosen model's vectors, only those close enough; fused
-//! with the words' ranking. And the queue of memories awaiting a vector.
+//! with the words' ranking. And the queue of memories awaiting a vector, and
+//! the companies whose memories or documents' passages await theirs.
 //! A test that stores vectors only to search leaves its transaction
 //! uncommitted: it is rolled back.
 
@@ -9,6 +10,9 @@ mod support;
 use mimorya_core::authz::{Actor, Sensitivity};
 use mimorya_core::demo::{self, tenant, unit, user};
 use mimorya_core::memory::{MemoryKind, MemoryScope, MemoryStatus, memory_read_filter};
+use mimorya_db::repositories::document_embeddings::{
+    clear_passage_embeddings, passages_to_embed, store_passage_embedding,
+};
 use mimorya_db::repositories::memory::{
     Meaning, MemorySource, NewMemory, create_memory, search_memory,
 };
@@ -242,6 +246,15 @@ async fn only_an_active_company_that_chose_a_model_awaits_vectors() {
             .unwrap();
     }
     tx.commit().await.unwrap();
+    // Its documents' passages await theirs (ADR-096).
+    assert_eq!(awaiting().await, [tenant::ID]);
+    let mut tx = db.begin(tenant::ID).await.unwrap();
+    for passage in passages_to_embed(&mut tx, MODEL, 100).await.unwrap() {
+        store_passage_embedding(&mut tx, passage.id, Some(&axis(0)), MODEL)
+            .await
+            .unwrap();
+    }
+    tx.commit().await.unwrap();
     assert!(
         tenants_awaiting_embeddings(db.pool())
             .await
@@ -251,6 +264,7 @@ async fn only_an_active_company_that_chose_a_model_awaits_vectors() {
 
     let mut tx = db.begin(tenant::ID).await.unwrap();
     clear_embeddings(&mut tx).await.unwrap();
+    clear_passage_embeddings(&mut tx).await.unwrap();
     sqlx::query("delete from tenant_embedding_settings")
         .execute(&mut *tx)
         .await

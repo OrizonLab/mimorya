@@ -8,6 +8,7 @@ use mimorya_agent::llm::embedding::{
     EMBEDDING_KINDS, default_embedding_model, default_min_similarity, embedding_requires_key,
     embedding_uses_listed_endpoint,
 };
+use mimorya_db::repositories::document_embeddings::passages_await_embeddings;
 use mimorya_db::repositories::embedding_settings::{get_embedding_settings, indexing_failure};
 use mimorya_db::repositories::memory_embeddings::{awaits_embeddings, index_progress};
 
@@ -43,10 +44,19 @@ pub async fn show(
         Some(s) => Some(index_progress(&mut tx, &s.model).await?),
         None => None,
     };
-    // Recorded by whatever process indexes; none left once nothing awaits.
-    let failure = match &settings {
-        Some(s) if awaits_embeddings(&mut tx, &s.model).await? => indexing_failure(&mut tx).await?,
-        _ => None,
+    // Recorded by whatever process indexes; none left once nothing awaits,
+    // memories nor document passages (ADR-096).
+    let awaits = match &settings {
+        Some(s) => {
+            awaits_embeddings(&mut tx, &s.model).await?
+                || passages_await_embeddings(&mut tx, &s.model).await?
+        }
+        None => false,
+    };
+    let failure = if awaits {
+        indexing_failure(&mut tx).await?
+    } else {
+        None
     };
     tx.commit().await?;
     let problem = match embeddings.resolve(identity.tenant_id).await?.as_ref() {

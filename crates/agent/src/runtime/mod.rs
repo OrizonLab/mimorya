@@ -4,6 +4,7 @@
 pub mod answer_review;
 pub mod budget;
 pub mod context;
+mod document_store;
 mod handoff;
 pub mod lesson;
 pub mod model_call;
@@ -20,6 +21,7 @@ pub mod verification;
 
 pub use budget::{BudgetLimits, DEFAULT_BUDGET, MISSION_STAGE_BUDGET, check_budget};
 pub use context::{UserProfileContext, build_system_prompt, build_user_turn, french_date};
+pub use document_store::{DocumentExcerpt, DocumentHit, DocumentPassage, DocumentStore};
 pub use handoff::NO_NOTE;
 pub use lesson::{
     LessonAnswer, MAX_KNOWN_LESSONS, ProposedLesson, lesson_transcript, propose_lesson,

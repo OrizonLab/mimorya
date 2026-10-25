@@ -44,11 +44,8 @@ impl DocumentSpace {
 
     /// The space a stored scope and unit name, if consistent.
     pub fn stored(scope: &str, org_unit_id: Option<Uuid>) -> Option<Self> {
-        match (scope, org_unit_id) {
-            ("tenant", None) => Some(Self::Company),
-            ("org_unit", Some(id)) => Some(Self::Unit(id)),
-            _ => None,
-        }
+        let space = org_unit_id.map_or(Self::Company, Self::Unit);
+        (space.scope() == scope).then_some(space)
     }
 }
 

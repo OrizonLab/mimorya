@@ -74,6 +74,10 @@ async fn the_key_is_sealed_never_shown_and_dropped_with_the_choice() {
     assert_eq!(sealed_keys(&api).await, 0);
     let reset = audited(&api, "embedding.reset").await;
     assert!(reset["vectorsCleared"].as_u64().unwrap() > 0, "{reset}");
+    assert!(
+        reset["passageVectorsCleared"].as_u64().unwrap() > 0,
+        "{reset}"
+    );
     assert_eq!(
         paul.get("/admin/embedding").await.json()["settings"],
         Value::Null

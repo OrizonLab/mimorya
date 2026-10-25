@@ -37,7 +37,11 @@ pub async fn build_run_tools(
     let connector_tools = connectors.tools_for(access.subject.tenant_id).await?;
     let holds = |permission: &str| access.engine.has(&access.subject, permission, actor);
     let unavailable_connectors = unavailable_in_reach(&connector_tools.issues, holds);
-    let mut tools = platform_tools(ports.memory.clone(), ports.skills.clone());
+    let mut tools = platform_tools(
+        ports.memory.clone(),
+        ports.skills.clone(),
+        ports.documents.clone(),
+    );
     tools.extend(connector_tools.tools);
     let registry = ToolRegistry::new(tools, &connector_tools.overrides)?;
     Ok(RunTools {

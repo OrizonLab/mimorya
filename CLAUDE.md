@@ -43,18 +43,22 @@ Repères à l'intérieur des crates :
   d'une tâche planifiée ou d'une mission dont le run attend sa validation :
   `author_notices.rs`, ADR-082, ADR-091 ; missions terminées à annoncer :
   `mission_end_notices.rs`, ADR-091 ; documents déposés, leur fichier et leurs passages,
-  lus là où le filtre du lecteur atteint : `documents.rs`, ADR-095),
+  lus là où le filtre du lecteur atteint : `documents.rs`, ADR-095 ; passages cherchés
+  par les mots et par le sens et lus dans l'ordre : `document_search.rs`, leurs vecteurs :
+  `document_embeddings.rs`, ADR-096),
   `db/src/notifications.rs` (canaux PostgreSQL des événements des runs, de la file et des
   invalidations, ADR-084, ADR-085), `db/src/sweep_lock.rs` (verrou d'un balayage qui ne
   tourne que dans un processus à la fois, ADR-086), `db/src/seed/` (organisation,
-  connecteurs, mémoires, compétences de démonstration), `db/src/testing.rs`.
+  connecteurs, mémoires, documents, compétences de démonstration), `db/src/testing.rs`.
 - `agent/src/llm/<fournisseur>/`, `agent/src/llm/embedding/` (modèles d'embeddings de la
   mémoire sémantique, ADR-074), `agent/src/runtime/` (boucle, appels modèle, appels
   d'outils, revue de réponse, reprise après un arrêt du service, leçon tirée d'un run
   (`lesson.rs`, ADR-076), point d'étape d'une mission dont le budget est atteint
-  (`handoff.rs`, ADR-089), ports),
+  (`handoff.rs`, ADR-089), ports, dont les documents lus par un run
+  (`document_store.rs`, ADR-096)),
   `agent/src/tools/` (registre, PEP,
-  `platform/`), `agent/src/testing/` (fonctionnalité `testing`).
+  `platform/` : mémoire, documents (`document_tools.rs`, ADR-096), compétences),
+  `agent/src/testing/` (fonctionnalité `testing`).
 - `connectors/src/demo_interventions/` (données, planning, accès, `tools/` un fichier
   par outil), `connectors/src/mcp/`, `connectors/src/bin/mcp_demo_docs.rs`.
 - `api/src/plugins/` (contexte de requête, limitation de débit (globale par processus ;
@@ -83,7 +87,7 @@ Repères à l'intérieur des crates :
   `extractor.rs` ; dépôt sous le quota de l'entreprise, `deposit.rs` ; liste,
   téléchargement et suppression, `library.rs`, ADR-095),
   `api/src/services/runs/` (tour de conversation, décisions, contexte, exécution,
-  ports PostgreSQL, résultat, reprise des runs dont l'exécuteur s'est arrêté et ce
+  ports PostgreSQL (documents : `document_ports.rs`, ADR-096), résultat, reprise des runs dont l'exécuteur s'est arrêté et ce
   processus exécute-t-il des runs (`recovery/`), ADR-053, ADR-086, circuit des validations,
   avis au responsable (`approval_notice/`, rattrapé chaque minute s'il est perdu, ADR-070, ADR-086 ; à l'auteur
   d'une tâche planifiée ou d'une mission dont le run attend sa validation, `author.rs`, ADR-082, ADR-091), expiration et
@@ -102,7 +106,8 @@ Repères à l'intérieur des crates :
   ensemble : ce qu'un processus change annoncé aux autres par PostgreSQL, ADR-085),
   `api/src/services/llm.rs` (fournisseur de modèle de
   chaque entreprise), `api/src/services/embeddings/` (modèle d'embeddings de chaque
-  entreprise, vecteur d'une demande, indexation de la mémoire, ADR-074), `api/src/services/invitations/` (liens d'invitation, ADR-027),
+  entreprise, vecteur d'une demande, indexation de la mémoire et des passages des
+  documents, `sources.rs`, ADR-074, ADR-096), `api/src/services/invitations/` (liens d'invitation, ADR-027),
   `api/src/services/password_reset/` (mot de passe oublié, ADR-028),
   `api/src/services/sso/` (connexion par le fournisseur d'identité de l'entreprise :
   départ (`start.rs`), tentative scellée, OpenID Connect, adresses contrôlées, liaison des

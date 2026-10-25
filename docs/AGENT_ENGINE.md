@@ -275,6 +275,12 @@ Un responsable **ne voit pas** la mémoire personnelle de ses collaborateurs.
 4. Injection dans le contexte **avec la source** (identifiant, espace, date) ; mise à
    jour de `last_used_at` / `use_count`.
 
+Les documents déposés (ADR-095) se cherchent de même, mais à la demande de l'agent
+seulement (ADR-096) : `document_search` classe leurs passages par les mots et par le
+sens, pré-filtrés par `document_read_filter` (espace, unités lues, habilitation) ;
+`document_read` lit un document dans l'ordre, cinq passages à la fois. Chaque document
+trouvé ou lu est cité ; un document hors de portée répond comme inexistant.
+
 ### 9.3 Leçons tirées des conversations
 
 Si l'entreprise l'a choisi (désactivé par défaut, dans « Modèle d'IA », ADR-076, ADR-077),

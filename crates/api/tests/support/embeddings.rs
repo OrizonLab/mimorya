@@ -5,6 +5,7 @@
 use axum::http::StatusCode;
 use mimorya_agent::llm::LlmMessage;
 use mimorya_agent::testing::ScriptedStep;
+use mimorya_api::services::embeddings::Indexed;
 use mimorya_core::demo::tenant;
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -66,8 +67,13 @@ pub async fn choose(admin: &Client<'_>, model: &str, min_similarity: f32) {
 }
 
 /// A pass of the indexer, as the background would run it: how many
-/// memories got a vector.
+/// memories got a vector (the demo documents' passages get theirs too).
 pub async fn index(api: &TestApi) -> usize {
+    indexed(api).await.memories
+}
+
+/// A pass of the indexer: how many memories and passages got a vector.
+pub async fn indexed(api: &TestApi) -> Indexed {
     api.app.services.embeddings.index_pending().await.unwrap()
 }
 

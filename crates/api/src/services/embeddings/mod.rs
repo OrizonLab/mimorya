@@ -1,13 +1,15 @@
-//! Searching a company's memory by meaning (ADR-074): the embedding model
-//! it chose, if any, checked again at each load against the rules as they
-//! stand (an endpoint the operator removed from the list is refused); the
-//! vector of a request (`meaning.rs`); and the indexing of its memory in the
-//! background (`indexer.rs`). A company without a model, or whose model
-//! cannot serve, is searched by its words only: nothing else stops, and its
-//! administrators see why.
+//! Searching a company's memory and documents by meaning (ADR-074,
+//! ADR-096): the embedding model it chose, if any, checked again at each
+//! load against the rules as they stand (an endpoint the operator removed
+//! from the list is refused); the vector of a request (`meaning.rs`); and the
+//! indexing of its memories and passages in the background (`indexer.rs`,
+//! `sources.rs`). A company without a model, or whose model cannot serve, is
+//! searched by its words only: nothing else stops, and its administrators
+//! see why.
 
 mod indexer;
 mod meaning;
+mod sources;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -20,6 +22,7 @@ use tokio::sync::Notify;
 use uuid::Uuid;
 
 pub use meaning::{RequestMeaning, UsageBy};
+pub use sources::Indexed;
 
 use super::invalidations::{Invalidation, Invalidations};
 use super::tenant_cache::TenantCache;
@@ -72,7 +75,7 @@ pub struct EmbeddingService {
     factory: EmbeddingFactory,
     prices: Arc<PriceTable>,
     cache: TenantCache<EmbeddingResolution>,
-    /// Memories to embed: a pass of the indexer is due.
+    /// Memories or passages to embed: a pass of the indexer is due.
     wake: Notify,
     /// One pass at a time: a memory is embedded once.
     indexing: tokio::sync::Mutex<()>,
@@ -198,8 +201,8 @@ impl EmbeddingService {
         self.wake_here();
     }
 
-    /// A memory was written, or approved: a pass of the indexer is due,
-    /// whatever process indexes.
+    /// A memory was written or approved, a document deposited: a pass of
+    /// the indexer is due, whatever process indexes.
     pub fn wake(&self) {
         self.wake_here();
         self.invalidations.announce(Invalidation::Indexing);

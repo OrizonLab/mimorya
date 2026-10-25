@@ -37,7 +37,7 @@ fn fold(c: char) -> char {
     }
 }
 
-fn tokenize(text: &str) -> Vec<String> {
+pub(super) fn tokenize(text: &str) -> Vec<String> {
     text.to_lowercase()
         .chars()
         .map(fold)

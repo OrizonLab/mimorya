@@ -15,7 +15,7 @@ use super::memory::{ACTIVE, VISIBLE, bind_visibility};
 use super::memory_embeddings::vector_literal;
 
 /// RRF's constant: how much the first ranks weigh over the next.
-const RANK_CONSTANT: i32 = 60;
+pub(super) const RANK_CONSTANT: i32 = 60;
 
 /// OR-query over the significant words of a natural-language request.
 pub fn to_or_tsquery(query: &str) -> Option<String> {

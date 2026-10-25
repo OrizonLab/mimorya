@@ -89,6 +89,10 @@ async fn two_deposits_near_the_quota_count_each_other() {
     let api = TestApi::start_with(&[("MIMORYA_DOCUMENT_QUOTA_MB", "1")]).await;
     let julien = api.sign_in(user::JULIEN).await;
     let file = vec![b'a'; 600 * 1024];
+    // The demo documents count too.
+    let before = julien.get("/documents").await.json()["quota"]["usedBytes"]
+        .as_u64()
+        .unwrap();
     let (first, second) = tokio::join!(
         deposit(&julien, "Premier.txt", NORTH, &file),
         deposit(&julien, "Second.txt", NORTH, &file),
@@ -109,7 +113,7 @@ async fn two_deposits_near_the_quota_count_each_other() {
     let id: Uuid = taken.json()["id"].as_str().unwrap().parse().unwrap();
     let list = julien.get("/documents").await.json();
     assert_eq!(list["quota"]["quotaBytes"], 1024 * 1024);
-    assert_eq!(list["quota"]["usedBytes"], file.len());
+    assert_eq!(list["quota"]["usedBytes"], before + file.len() as u64);
     remove(&julien, id).await;
 }
 

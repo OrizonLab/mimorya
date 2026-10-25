@@ -158,6 +158,8 @@ impl DocumentService {
             }));
         append_audit(&mut tx, entry).await?;
         tx.commit().await?;
+        // Its passages await their vectors, if the company chose a model.
+        self.embeddings.wake();
         Ok(DocumentCreated {
             id,
             page_count,

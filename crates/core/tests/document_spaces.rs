@@ -83,3 +83,21 @@ fn the_direction_deposits_everywhere_the_agent_nowhere() {
     let filter = document_read_filter(&engine, &claire, &agent);
     assert_eq!(filter.units, UnitFilter::All);
 }
+
+#[test]
+fn a_stored_space_reads_back_only_when_consistent() {
+    let team = DocumentSpace::Unit(unit::TEAM_NORTH);
+    for space in [DocumentSpace::Company, team] {
+        assert_eq!(
+            DocumentSpace::stored(space.scope(), space.org_unit_id()),
+            Some(space)
+        );
+    }
+    assert_eq!(DocumentSpace::SCOPES, ["tenant", "org_unit"]);
+    assert_eq!(
+        DocumentSpace::stored("tenant", Some(unit::TEAM_NORTH)),
+        None
+    );
+    assert_eq!(DocumentSpace::stored("org_unit", None), None);
+    assert_eq!(DocumentSpace::stored("user", None), None);
+}

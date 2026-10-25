@@ -40,7 +40,7 @@ impl TypedTool for Borrowed {
 #[test]
 fn no_tool_can_be_registered_under_the_name_of_skill_read() {
     let ports = InMemoryPorts::new(Uuid::new_v4(), Uuid::new_v4());
-    let mut tools = platform_tools(ports.clone(), ports);
+    let mut tools = platform_tools(ports.clone(), ports.clone(), ports);
     assert!(ToolRegistry::new(tools.clone(), &HashMap::new()).is_ok());
     tools.push(typed_tool(Borrowed));
     let refused = ToolRegistry::new(tools, &HashMap::new());
@@ -51,8 +51,11 @@ fn no_tool_can_be_registered_under_the_name_of_skill_read() {
 #[test]
 fn skill_read_asks_for_a_name_as_the_administration_writes_it() {
     let ports = InMemoryPorts::new(Uuid::new_v4(), Uuid::new_v4());
-    let registry =
-        ToolRegistry::new(platform_tools(ports.clone(), ports), &HashMap::new()).unwrap();
+    let registry = ToolRegistry::new(
+        platform_tools(ports.clone(), ports.clone(), ports),
+        &HashMap::new(),
+    )
+    .unwrap();
     let spec = to_tool_spec(registry.get(SKILL_READ).unwrap());
     let name = &spec.input_schema["properties"]["name"];
     assert_eq!(name["pattern"], NAME_PATTERN, "{name}");
