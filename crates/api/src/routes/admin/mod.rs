@@ -122,6 +122,7 @@ pub fn routes(state: &AppState) -> Router<AppState> {
             "/admin/skills/{id}/activation",
             put(skills::activate).delete(skills::retire),
         )
+        .route("/admin/skills/{id}/rejection", post(skills::reject))
         .route("/admin/audit", get(activity::audit))
         .route("/admin/usage", get(activity::usage))
         // Last: a route layer only wraps the routes declared before it.

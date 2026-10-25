@@ -222,6 +222,8 @@ async fn accepts_only_what_the_platform_can_enforce() {
             ("planning:apply", false),
             ("planning:propose", false),
             ("planning:read", false),
+            // Checked since the agent proposes skills (ADR-100).
+            ("skill:propose", false),
             ("skill:read", false),
         ]
     );

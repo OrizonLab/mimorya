@@ -29,7 +29,8 @@ Repères à l'intérieur des crates :
 
 - `core/src/authz/` (types, moteur, conditions ABAC, organigramme), `core/src/tools/`
   (contrat d'outil, outils typés), `core/src/skill_rules.rs` (ce qu'une compétence peut
-  contenir, ADR-052), `core/src/identity_providers/` (fournisseurs d'identité : émetteur de
+  contenir, ADR-052), `core/src/skill_proposals.rs` (où va une compétence que l'agent
+  propose, ADR-100), `core/src/identity_providers/` (fournisseurs d'identité : émetteur de
   chaque type, domaines, ce que prouve un jeton ou une assertion SAML, nom d'un compte
   créé, enregistrement DNS qui prouve un domaine (`domain_proof.rs`), ADR-063, ADR-067,
   ADR-068, ADR-069), `core/src/schedule.rs` (heure d'une tâche planifiée, ADR-080),
@@ -46,7 +47,8 @@ Repères à l'intérieur des crates :
   lus là où le filtre du lecteur atteint : `documents.rs`, ADR-095 ; passages cherchés
   par les mots et par le sens et lus dans l'ordre : `document_search.rs`, leurs vecteurs :
   `document_embeddings.rs`, ADR-096 ; runs des sous-agents, ouverts sous leur parent :
-  `sub_runs.rs`, ADR-098),
+  `sub_runs.rs`, ADR-098 ; compétences proposées par l'agent : `skill_proposals.rs`,
+  ADR-100),
   `db/src/notifications.rs` (canaux PostgreSQL des événements des runs, de la file et des
   invalidations, ADR-084, ADR-085), `db/src/sweep_lock.rs` (verrou d'un balayage qui ne
   tourne que dans un processus à la fois, ADR-086), `db/src/seed/` (organisation,
@@ -60,8 +62,9 @@ Repères à l'intérieur des crates :
   sa part du budget (`delegation/`), délégations d'une étape en parallèle
   (`tool_calls/delegated.rs`), ADR-098),
   `agent/src/tools/` (registre, PEP,
-  `platform/` : mémoire, documents (`document_tools.rs`, ADR-096), compétences,
-  délégation (`delegate_tool.rs`, ADR-098)),
+  `platform/` : mémoire, documents (`document_tools.rs`, ADR-096), compétences et leurs
+  propositions (`skill_propose_tool.rs`, ADR-100), délégation (`delegate_tool.rs`,
+  ADR-098)),
   `agent/src/testing/` (fonctionnalité `testing`).
 - `connectors/src/demo_interventions/` (données, planning, accès, `tools/` un fichier
   par outil), `connectors/src/mcp/`, `connectors/src/bin/mcp_demo_docs.rs`.
@@ -83,8 +86,8 @@ Repères à l'intérieur des crates :
   et corps de requêtes typés, un fichier par ressource, dont sont générés les types
   TypeScript, ADR-036, ADR-039),
   `api/src/services/admin/` (comptes et absence d'un collaborateur empêché
-  (`absences.rs`, ADR-078), organisation, habilitations, compétences, sous verrou par
-  entreprise), `api/src/services/account.rs` (son propre compte),
+  (`absences.rs`, ADR-078), organisation, habilitations, compétences et rejet des
+  propositions de l'agent (`skill_proposals.rs`, ADR-100), sous verrou par entreprise), `api/src/services/account.rs` (son propre compte),
   `api/src/services/notification_settings.rs` (e-mails que chacun choisit de recevoir,
   lus au moment d'envoyer chaque avis, ADR-094),
   `api/src/services/documents/` (documents déposés : lecture par le processus

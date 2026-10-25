@@ -74,7 +74,7 @@ export const SKILL_STATUS: Record<SkillStatus, ToneLabel> = {
 
 export const SKILL_VERSION_STATUS: Record<SkillVersionStatus, ToneLabel> = {
   draft: { label: 'Brouillon', tone: 'neutral' },
-  candidate: { label: 'En évaluation', tone: 'neutral' },
+  candidate: { label: 'Proposée', tone: 'accent' },
   active: { label: 'Active', tone: 'ok' },
   rejected: { label: 'Rejetée', tone: 'warn' },
   retired: { label: 'Retirée', tone: 'neutral' },

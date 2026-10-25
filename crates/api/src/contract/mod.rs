@@ -168,6 +168,7 @@ macro_rules! request_bodies {
             admin::SkillUpdate,
             admin::NewSkillVersion,
             admin::SkillActivation,
+            admin::SkillRejection,
             admin::NewConnector,
             admin::ConnectorTrial,
             admin::ConnectorUpdate,

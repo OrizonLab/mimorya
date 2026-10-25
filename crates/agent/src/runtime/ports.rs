@@ -8,6 +8,7 @@ use chrono::{DateTime, Utc};
 use mimorya_core::authz::{AuthorizationEngine, Sensitivity, Subject};
 use mimorya_core::autonomy::ToolRisk;
 use mimorya_core::memory::{MemoryKind, MemoryReadFilter, MemoryScope, MemorySource, MemoryStatus};
+use mimorya_core::skill_proposals::{ProposalOutcome, SkillProposal};
 use mimorya_core::tools::DeliverableService;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -254,6 +255,9 @@ pub struct SkillContent {
 pub trait SkillStore: Send + Sync {
     async fn list_active(&self) -> anyhow::Result<Vec<SkillSummary>>;
     async fn get_active(&self, name: &str) -> anyhow::Result<Option<SkillContent>>;
+    /// Records `proposal`, validated by the person served, for the skills'
+    /// administrators (ADR-100); or says why it is refused.
+    async fn propose(&self, proposal: SkillProposal) -> anyhow::Result<ProposalOutcome>;
 }
 
 #[async_trait]

@@ -48,8 +48,8 @@ pub use organization::{
 };
 pub use roles::{Enforcement, NewRole, PermissionView, RoleUpdate, RoleView, Roles};
 pub use skills::{
-    NewSkill, NewSkillVersion, SkillActivation, SkillDetail, SkillList, SkillStatus, SkillUpdate,
-    SkillVersionCreated, SkillVersionStatus, SkillVersionView, SkillView,
+    NewSkill, NewSkillVersion, SkillActivation, SkillDetail, SkillList, SkillRejection,
+    SkillStatus, SkillUpdate, SkillVersionCreated, SkillVersionStatus, SkillVersionView, SkillView,
 };
 pub use users::{
     AccountStatus, AccountUpdate, Directory, DirectoryRights, DirectoryUser, InvitationIssued,

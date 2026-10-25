@@ -46,6 +46,12 @@ async fn every_change(client: &Client<'_>, id: Uuid) -> Vec<(&'static str, TestR
             client.put(&activation, json!({ "version": 1 })).await,
         ),
         ("DELETE activation", client.delete(&activation).await),
+        (
+            "POST rejection",
+            client
+                .post(&format!("{skill}/rejection"), json!({ "version": 1 }))
+                .await,
+        ),
         ("DELETE", client.delete(&skill).await),
     ]
 }
@@ -99,7 +105,7 @@ async fn a_member_is_refused_on_every_route() {
     }
 
     // Each change refused is audited; reads are not.
-    assert_eq!(refusals_since(&api, since).await.len(), 6);
+    assert_eq!(refusals_since(&api, since).await.len(), 7);
     let after = paul.get(&format!("{SKILLS}/{DEMO_SKILL_ID}")).await.json();
     assert_eq!(after, before);
 }
@@ -123,8 +129,8 @@ async fn another_company_s_skill_answers_as_absent_and_stays_as_it_was() {
 
     // Each change audited as aimed at a skill answered as absent.
     let absent = not_found_since(&api, since).await;
-    assert_eq!(absent.len(), 10);
-    for (_, entry) in &absent[..5] {
+    assert_eq!(absent.len(), 12);
+    for (_, entry) in &absent[..6] {
         assert_eq!(entry.resource, Some(("skill".into(), foreign.to_string())));
     }
     assert!(refusals_since(&api, since).await.is_empty());

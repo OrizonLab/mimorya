@@ -1,5 +1,6 @@
 //! The company's skills (`skill:manage`, company-wide, ADR-052): the list, a
-//! skill with its versions, and their changes. Every member reads the active
+//! skill with its versions, and their changes, the agent's proposals turned
+//! down among them (ADR-100). Every member reads the active
 //! skills through the agent (`skill:read`); these screens are their managers'.
 
 use axum::Json;
@@ -10,15 +11,15 @@ use mimorya_db::repositories::skills::{get_skill, list_skill_versions, list_skil
 
 use crate::app::AppState;
 use crate::contract::admin::{
-    NewSkill, NewSkillVersion, SkillActivation, SkillDetail, SkillList, SkillUpdate,
-    SkillVersionCreated, SkillVersionView, SkillView,
+    NewSkill, NewSkillVersion, SkillActivation, SkillDetail, SkillList, SkillRejection,
+    SkillUpdate, SkillVersionCreated, SkillVersionView, SkillView,
 };
 use crate::contract::{Created, Done};
 use crate::http::{ApiResult, Body, PathId};
 use crate::plugins::Auth;
 use crate::services::admin::{
-    SkillInput, activate_skill, add_skill_version, create_skill, delete_skill, retire_skill,
-    update_skill,
+    SkillInput, activate_skill, add_skill_version, create_skill, delete_skill,
+    reject_skill_proposal, retire_skill, update_skill,
 };
 
 const PERMISSION: &str = "skill:manage";
@@ -135,5 +136,17 @@ pub async fn retire(
 ) -> ApiResult<Json<Done>> {
     let access = state.access.context(identity).await?;
     retire_skill(&state.db, &access, id).await?;
+    Ok(Json(Done::OK))
+}
+
+/// Turns down a proposal of the agent's (ADR-100).
+pub async fn reject(
+    State(state): State<AppState>,
+    Auth(identity): Auth,
+    PathId(id): PathId,
+    Body(body): Body<SkillRejection>,
+) -> ApiResult<Json<Done>> {
+    let access = state.access.context(identity).await?;
+    reject_skill_proposal(&state.db, &access, id, body.version).await?;
     Ok(Json(Done::OK))
 }

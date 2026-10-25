@@ -37,6 +37,7 @@ async fn runs_the_full_mission_for_the_technical_manager_with_validation_and_cap
                     "memory_search",
                     "planning_apply",
                     "planning_propose",
+                    "skill_propose",
                     "skill_read",
                     "team_availability",
                 ]
@@ -260,6 +261,7 @@ async fn exposes_no_intervention_data_to_the_technical_administrator() {
                         "document_search",
                         "memory_remember",
                         "memory_search",
+                        "skill_propose",
                         "skill_read"
                     ]
                 );

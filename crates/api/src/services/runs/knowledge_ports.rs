@@ -1,4 +1,5 @@
-//! Memory and skill ports of a run, backed by PostgreSQL (see `db_ports.rs`).
+//! Memory and skill ports of a run, backed by PostgreSQL (see `db_ports.rs`);
+//! the skills it proposes too (ADR-100).
 
 use async_trait::async_trait;
 use mimorya_agent::runtime::{
@@ -6,11 +7,17 @@ use mimorya_agent::runtime::{
 };
 use mimorya_core::authz::Sensitivity;
 use mimorya_core::memory::{MemoryReadFilter, MemoryStatus};
-use mimorya_db::repositories::{memory, skills};
+use mimorya_core::skill_proposals::{
+    NamedSkill, ProposalOutcome, ProposalTarget, SkillProposal, proposal_target,
+};
+use mimorya_db::repositories::audit::{AuditEntry, append_audit};
+use mimorya_db::repositories::skills::{NewSkill, NewSkillVersion};
+use mimorya_db::repositories::{memory, skill_proposals, skills};
+use serde_json::json;
 use uuid::Uuid;
 
 use super::context::memory_hit;
-use super::db_ports::DbPorts;
+use super::db_ports::{DbPorts, RunScope};
 use crate::services::embeddings::UsageBy;
 
 #[async_trait]
@@ -95,5 +102,63 @@ impl SkillStore for DbPorts {
             version: s.version,
             content: s.content,
         }))
+    }
+
+    async fn propose(&self, proposal: SkillProposal) -> anyhow::Result<ProposalOutcome> {
+        let mut tx = self.held_tx().await?;
+        // Beside the administration's changes of the skills (ADR-020).
+        tx.lock_administration().await?;
+        let named = skill_proposals::skill_named(&mut tx, &proposal.name).await?;
+        let state = match named.as_ref().map(|s| s.status.as_str()) {
+            None => NamedSkill::Unknown,
+            Some("active") => NamedSkill::Active,
+            Some(_) => NamedSkill::Inactive,
+        };
+        let pending = skill_proposals::count_pending_proposals(&mut tx).await?;
+        let target = match proposal_target(&proposal, state, pending) {
+            Ok(target) => target,
+            Err(why) => return Ok(ProposalOutcome::Refused(why)),
+        };
+        let RunScope {
+            tenant_id,
+            run_id,
+            user_id,
+            ..
+        } = self.scope;
+        let skill_id = match (target, named, &proposal.description) {
+            (ProposalTarget::NewVersion, Some(skill), _) => skill.id,
+            (_, _, Some(description)) => {
+                let skill = NewSkill {
+                    tenant_id,
+                    name: &proposal.name,
+                    description,
+                    created_by: user_id,
+                };
+                skills::insert_skill(&mut tx, skill).await?
+            }
+            _ => anyhow::bail!("a proposal's target without its skill"),
+        };
+        let version = NewSkillVersion {
+            tenant_id,
+            skill_id,
+            content: &proposal.content,
+            changelog: &proposal.rationale,
+            created_by: user_id,
+            proposed_by_run: Some(run_id),
+        };
+        let version = skills::insert_skill_version(&mut tx, version).await?;
+        // Its text stays out of the audit: the version keeps it.
+        let proposed = AuditEntry::new(tenant_id, "agent", "skill.proposed", "success")
+            .on_behalf_of(user_id)
+            .run(run_id)
+            .resource("skill", skill_id)
+            .metadata(json!({
+                "name": proposal.name,
+                "version": version,
+                "newSkill": target == ProposalTarget::NewSkill,
+            }));
+        append_audit(&mut tx, proposed).await?;
+        tx.commit().await?;
+        Ok(ProposalOutcome::Proposed { target, version })
     }
 }

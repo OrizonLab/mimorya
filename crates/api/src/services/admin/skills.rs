@@ -203,7 +203,7 @@ pub async fn delete_skill(db: &Database, access: &AccessContext, id: Uuid) -> an
     Ok(())
 }
 
-async fn existing(tx: &mut TenantTx, id: Uuid) -> anyhow::Result<SkillRow> {
+pub(super) async fn existing(tx: &mut TenantTx, id: Uuid) -> anyhow::Result<SkillRow> {
     get_skill(tx, id)
         .await?
         .ok_or_else(|| DomainError::not_found("Compétence introuvable").into())
@@ -222,6 +222,7 @@ async fn add_version(
         content,
         changelog,
         created_by: access.subject.user_id,
+        proposed_by_run: None,
     };
     Ok(insert_skill_version(tx, version).await?)
 }

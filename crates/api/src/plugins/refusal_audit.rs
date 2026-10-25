@@ -176,6 +176,7 @@ mod tests {
             ("/admin/skills/{id}", "skill"),
             ("/admin/skills/{id}/versions", "skill"),
             ("/admin/skills/{id}/activation", "skill"),
+            ("/admin/skills/{id}/rejection", "skill"),
         ] {
             assert_eq!(resource_of(route, ID), Some((resource_type, id)), "{route}");
         }
