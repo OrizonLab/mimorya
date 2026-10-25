@@ -7,11 +7,16 @@ use ts_rs::TS;
 use uuid::Uuid;
 use validator::Validate;
 
+use mimorya_core::skill_eval_cases::{MAX_NAME_CHARS, MAX_REQUEST_CHARS, MIN_NAME_CHARS};
+
 use crate::http::{iso, trimmed};
 
 /// Lines of criteria a case may send, blank ones included: a text area cut
 /// at its line breaks.
 const MAX_CRITERIA_LINES: u64 = 50;
+/// Characters of a request as sent, its blanks around included; once
+/// trimmed, `MAX_REQUEST_CHARS` remain at most (`case_problem`).
+const MAX_REQUEST_SENT: u64 = 2 * MAX_REQUEST_CHARS;
 
 #[derive(Debug, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -45,9 +50,9 @@ impl SkillEvalCaseView {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SkillEvalCaseInput {
     #[serde(deserialize_with = "trimmed")]
-    #[validate(length(min = 2, max = 80))]
+    #[validate(length(min = MIN_NAME_CHARS, max = MAX_NAME_CHARS))]
     pub name: String,
-    #[validate(length(min = 1, max = 4000))]
+    #[validate(length(max = MAX_REQUEST_SENT))]
     pub request: String,
     /// One per line sent, at most `MAX_CRITERIA_LINES`; blank ones are left
     /// out, and 1 to 8 must remain, of 300 characters at most

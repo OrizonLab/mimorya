@@ -205,6 +205,23 @@ async fn what_is_sent_is_checked_first() {
     }
     assert_eq!(stored(&api, tenant::ID, DEMO_SKILL_ID).await, 0);
 
+    // A request at its length, sent with a text area's last line break.
+    let request = format!("{}\r\n", "é".repeat(4000));
+    let id = create(
+        &paul,
+        DEMO_SKILL_ID,
+        json!({ "name": "Longue", "request": request, "criteria": ["Critère."] }),
+    )
+    .await;
+    paul.delete(&format!("{CASES}/{id}")).await;
+    let longer = json!({ "name": "Trop", "request": "é".repeat(4001), "criteria": ["C."] });
+    let refused = paul.post(&url, longer).await;
+    assert!(
+        refused.error_message().contains("4000 caractères"),
+        "{}",
+        refused.text()
+    );
+
     // Eight criteria and the blank lines of a text area are eight.
     let mut lines = vec!["Critère."; 8];
     lines.extend(["", " "]);

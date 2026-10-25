@@ -16,9 +16,10 @@ pub const MAX_CRITERIA: usize = 8;
 /// Characters of one criterion.
 pub const MAX_CRITERION_CHARS: usize = 300;
 /// Characters of a case's name, at least and at most.
-pub const NAME_CHARS: (usize, usize) = (2, 80);
+pub const MIN_NAME_CHARS: u64 = 2;
+pub const MAX_NAME_CHARS: u64 = 80;
 /// Characters of a case's request.
-pub const MAX_REQUEST_CHARS: usize = 4000;
+pub const MAX_REQUEST_CHARS: u64 = 4000;
 
 /// A case as stored.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -49,14 +50,15 @@ pub fn case_problem(case: &EvalCase) -> Option<String> {
     if let Some(problem) = line_problem("Nom du cas", &case.name) {
         return Some(problem);
     }
-    let (shortest, longest) = NAME_CHARS;
-    if !(shortest..=longest).contains(&case.name.chars().count()) {
-        return Some(format!("Nom du cas : de {shortest} à {longest} caractères"));
+    if !(MIN_NAME_CHARS..=MAX_NAME_CHARS).contains(&chars(&case.name)) {
+        return Some(format!(
+            "Nom du cas : de {MIN_NAME_CHARS} à {MAX_NAME_CHARS} caractères"
+        ));
     }
     if case.request.is_empty() {
         return Some("La demande du cas est vide".into());
     }
-    if case.request.chars().count() > MAX_REQUEST_CHARS {
+    if chars(&case.request) > MAX_REQUEST_CHARS {
         return Some(format!(
             "La demande du cas compte {MAX_REQUEST_CHARS} caractères au plus"
         ));
@@ -79,6 +81,10 @@ pub fn case_problem(case: &EvalCase) -> Option<String> {
                 .then(|| format!("Critère : {MAX_CRITERION_CHARS} caractères au plus"))
         })
     })
+}
+
+fn chars(text: &str) -> u64 {
+    u64::try_from(text.chars().count()).unwrap_or(u64::MAX)
 }
 
 #[cfg(test)]
@@ -142,8 +148,8 @@ mod tests {
         let name = "é".repeat(81);
         assert!(case_problem(&case(&name, "Demande", &["Critère."])).is_some());
         // Counted once in canonical form: a character NFC writes in two.
-        let request = "\u{958}".repeat(MAX_REQUEST_CHARS / 2 + 1);
-        assert!(request.chars().count() <= MAX_REQUEST_CHARS);
+        let request = "\u{958}".repeat(2001);
+        assert!(chars(&request) <= MAX_REQUEST_CHARS);
         let problem = case_problem(&case("Long", &request, &["Critère."])).unwrap();
         assert!(problem.contains("4000"), "{problem}");
     }
