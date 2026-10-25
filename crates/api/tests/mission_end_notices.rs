@@ -28,6 +28,8 @@ use uuid::Uuid;
 
 const ANSWER: &str = "Synthèse : aucune intervention ne reste sans suivi cette semaine.";
 const NOTE: &str = "Fait : la semaine relue. Reste : proposer le suivi.";
+/// How long the test waits for a maintenance pass under way to be done.
+const WAIT: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// Entrusts `client`'s mission `title` and has it answer at once, its answer
 /// reviewed with `review`: the mission, done.
@@ -137,6 +139,9 @@ async fn one_process_that_executes_runs_with_a_relay_tells_of_it_once() {
     );
     first.unwrap();
     second.unwrap();
+    // A maintenance pass may have told of it meanwhile: once it is done.
+    let settled = one.app.services.db.sweep_lock("mission-end-notices", WAIT);
+    settled.await.unwrap().release().await;
     assert_eq!(told(&one, title).len() + told(&two, title).len(), 1);
     assert_eq!(end_notices(id).await, audited("done"));
     assert!(end_notified(id).await.is_some());
