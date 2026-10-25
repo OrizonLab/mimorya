@@ -4826,3 +4826,37 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     - `crates/api/tests/policy_effects.rs` : la lecture des compétences refusée à
       l'agent lui retire aussi l'outil ;
     - `crates/db/tests/skill_proposal_roles.rs` : rôles des entreprises déjà là.
+
+## ADR-101 — Les propositions de l'agent dans l'écran « Compétences »
+
+- **Date** : 2026-10-25 · **Statut** : acceptée (cycle de vie des compétences, lot 2)
+- **Contexte** : depuis l'ADR-100, l'API garde les compétences que l'agent propose et
+  laisse les administrateurs les activer ou les rejeter. L'écran « Compétences » les
+  montrait comme des versions parmi d'autres (libellé « Proposée »), sans dire qu'elles
+  attendaient une décision, d'où elles venaient, ni comment les rejeter.
+- **Décision** :
+  - **en tête de l'onglet**, une ligne dit combien de propositions attendent une
+    décision et pour quelles compétences ;
+  - **chaque compétence** qui en a porte un badge « N proposition(s) à relire » : une
+    nouvelle compétence proposée apparaît en brouillon avec le sien ;
+  - **une version proposée** :
+    - dit pour qui l'agent l'a proposée (« proposée par l'agent pour … ») au lieu de
+      « écrite par » ;
+    - montre sa note (pourquoi) et, pour une nouvelle compétence, la description
+      proposée ;
+    - en attente, s'ouvre avec son contenu déplié et porte, à côté de « Activer la
+      version N », un bouton « Rejeter la version N » ;
+  - une nouvelle version écrite à la main part de la dernière version qu'un
+    administrateur a écrite, jamais d'une proposition (ADR-100) ;
+  - **serveur e2e** : il joue à part une question dont l'agent tire une nouvelle
+    compétence à proposer (`skill_proposals.rs`).
+- **Alternatives écartées** : un onglet à part pour les propositions. Une proposition se
+  décide à côté des versions de sa compétence, qu'elle remplacerait.
+- **Conséquences** :
+  - restent à faire : un avis aux administrateurs quand une proposition arrive ; les
+    évaluations et la non-régression avant activation ;
+  - test : `apps/web/e2e/skill-proposals.spec.ts` :
+    - Lucas lit le texte exact et le valide ;
+    - Paul trouve la nouvelle compétence en brouillon, sa proposition en attente, pour
+      qui et pourquoi elle a été proposée, sa description ;
+    - Paul la rejette, la relit rejetée après rechargement, puis supprime la compétence.

@@ -135,8 +135,9 @@ Repères à l'intérieur des crates :
   simulés, OpenID Connect et SAML).
 - `web/components/<fonctionnalité>/` (account — dont les e-mails reçus, ADR-094 —,
   admin — dont `admin/llm/` : modèle des conversations, recherche dans la mémoire, leçons et limites des missions, ADR-075,
-  ADR-077, ADR-093, et `admin/users/` :
-  comptes, dont l'absence d'un collaborateur empêché, ADR-079 —, approvals — dont la
+  ADR-077, ADR-093, `admin/users/` :
+  comptes, dont l'absence d'un collaborateur empêché, ADR-079, et `admin/skills/` :
+  compétences et propositions de l'agent, ADR-101 —, approvals — dont la
   section « Absence » et son formulaire, commun, ADR-073 —, chat, documents — dépôt, liste
   et téléchargement, ADR-097 —, memory, missions —
   missions longues, ADR-090 —, operations — dont les sous-agents d'une demande, ADR-099 —,
@@ -152,8 +153,9 @@ Repères à l'intérieur des crates :
   ADR-063, ADR-068, une relecture des leçons à part, `lessons.rs`, ADR-077, une tâche
   planifiée dont l'occurrence est manquée au démarrage, `scheduled.rs`, ADR-081, et des
   missions jouées à part, `missions.rs`, ADR-090, une question sur les documents,
-  `documents.rs`, ADR-097, lus par `mimorya-extract` qu'ils construisent, et une question
-  confiée à un sous-agent, `sub_agents.rs`, ADR-099).
+  `documents.rs`, ADR-097, lus par `mimorya-extract` qu'ils construisent, une question
+  confiée à un sous-agent, `sub_agents.rs`, ADR-099, et une compétence que l'agent propose,
+  `skill_proposals.rs`, ADR-101).
 - `infra/` : `docker/` (images de l'API et de l'interface, liste des images publiées
   `images.json`, test de fumée de la démonstration, test d'installation de la production,
   vérifications partagées `checks.sh`, dont les rôles des processus lus dans la base), `caddy/`

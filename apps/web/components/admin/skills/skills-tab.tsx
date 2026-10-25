@@ -4,10 +4,14 @@ import { Plus } from 'lucide-react';
 import { useState } from 'react';
 import { Button, Card, EmptyState, Loaded } from '@/components/ui';
 import { useApiData, type SkillList } from '@/lib/api';
+import { ProposalsWaiting } from './proposals-waiting';
 import { SkillCard } from './skill-card';
 import { SkillForm } from './skill-form';
 
-/** The company's skills: written here, made active, retired (ADR-052). */
+/**
+ * The company's skills: written here, made active, retired (ADR-052); the
+ * agent's proposals read and decided here too (ADR-100).
+ */
 export function SkillsTab() {
   const state = useApiData<SkillList>('/admin/skills');
   const [creating, setCreating] = useState(false);
@@ -16,6 +20,7 @@ export function SkillsTab() {
     <Loaded state={state}>
       {(data) => (
         <div className="flex flex-col gap-4">
+          <ProposalsWaiting skills={data.skills} />
           {creating ? (
             <Card className="p-4">
               <p className="mb-3 font-medium">Nouvelle compétence</p>
@@ -50,7 +55,9 @@ export function SkillsTab() {
             Une compétence est une procédure que l’agent charge avant une tâche qu’elle couvre. Elle
             n’atteint aucun échange tant qu’aucune de ses versions n’est active ; une version écrite
             ne change plus, et une version plus ancienne peut redevenir active. Une compétence ne
-            peut ni étendre les droits de l’agent ni lui éviter une validation.
+            peut ni étendre les droits de l’agent ni lui éviter une validation. L’agent peut aussi
+            en proposer, une fois leur texte validé par la personne qu’il sert : une proposition
+            attend ici d’être activée ou rejetée.
           </p>
         </div>
       )}

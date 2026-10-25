@@ -2,21 +2,23 @@
 
 import { Plus } from 'lucide-react';
 import { useState } from 'react';
-import { Button, ErrorNote, LabelBadge, Loaded } from '@/components/ui';
+import { Button, ErrorNote, Loaded } from '@/components/ui';
 import {
   api,
   useAction,
   useApiData,
   type SkillActivation,
   type SkillDetail,
-  type SkillVersionView,
+  type SkillRejection,
   type SkillView,
 } from '@/lib/api';
-import { formatDate } from '@/lib/format';
-import { SKILL_VERSION_STATUS } from '@/lib/labels';
 import { VersionForm } from './version-form';
+import { VersionItem } from './version-item';
 
-/** The versions of a skill, the latest first: one is made active here. */
+/**
+ * The versions of a skill, the latest first: one is made active here, and
+ * a proposal of the agent's turned down (ADR-100).
+ */
 export function SkillVersions({ skill, onChanged }: { skill: SkillView; onChanged: () => void }) {
   const state = useApiData<SkillDetail>(`/admin/skills/${skill.id}`);
   const [writing, setWriting] = useState(false);
@@ -30,6 +32,11 @@ export function SkillVersions({ skill, onChanged }: { skill: SkillView; onChange
   async function activate(version: number) {
     const body = { version } satisfies SkillActivation;
     if (await action.run(() => api.put(`/admin/skills/${skill.id}/activation`, body))) changed();
+  }
+
+  async function reject(version: number) {
+    const body = { version } satisfies SkillRejection;
+    if (await action.run(() => api.post(`/admin/skills/${skill.id}/rejection`, body))) changed();
   }
 
   return (
@@ -67,6 +74,7 @@ export function SkillVersions({ skill, onChanged }: { skill: SkillView; onChange
                   activeVersion={detail.skill.activeVersion}
                   pending={action.pending}
                   onActivate={() => activate(version.version)}
+                  onReject={() => reject(version.version)}
                 />
               ))}
             </ol>
@@ -74,50 +82,5 @@ export function SkillVersions({ skill, onChanged }: { skill: SkillView; onChange
         )}
       </Loaded>
     </div>
-  );
-}
-
-function VersionItem({
-  version,
-  activeVersion,
-  pending,
-  onActivate,
-}: {
-  version: SkillVersionView;
-  activeVersion: number | null;
-  pending: boolean;
-  onActivate: () => void;
-}) {
-  // An older version made active again is the way back.
-  const back = activeVersion !== null && version.version < activeVersion;
-  return (
-    <li className="rounded-lg bg-surface-2 p-3 text-sm">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="font-medium">Version {version.version}</span>
-        <LabelBadge labels={SKILL_VERSION_STATUS} value={version.status} />
-        <span className="text-xs text-muted">
-          écrite par {version.createdBy ?? 'un compte supprimé'} le {formatDate(version.createdAt)}
-          {version.approvedAt &&
-            ` · activée par ${version.approvedBy ?? 'un compte supprimé'} le ${formatDate(version.approvedAt)}`}
-        </span>
-        {version.status !== 'active' && (
-          <Button
-            variant="secondary"
-            className="ml-auto px-2 py-1"
-            loading={pending}
-            onClick={onActivate}
-          >
-            {back ? 'Revenir à' : 'Activer'} la version {version.version}
-          </Button>
-        )}
-      </div>
-      {version.changelog && <p className="mt-1 text-xs text-muted">{version.changelog}</p>}
-      <details className="mt-2">
-        <summary className="cursor-pointer text-xs text-muted">Contenu</summary>
-        <pre className="mt-2 whitespace-pre-wrap break-words font-mono text-xs">
-          {version.content}
-        </pre>
-      </details>
-    </li>
   );
 }
