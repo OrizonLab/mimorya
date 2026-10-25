@@ -19,7 +19,8 @@
 //! always yields the same one (`lessons`, ADR-076). A mission is played
 //! apart, stage after stage (`missions`, ADR-089), and so is a question on
 //! the company's documents (`documents`, ADR-096), read by the extraction
-//! process the tests build (`MIMORYA_EXTRACTOR`, ADR-095). One pass of the tests
+//! process the tests build (`MIMORYA_EXTRACTOR`, ADR-095), and one handed
+//! to a sub-agent (`sub_agents`, ADR-099). One pass of the tests
 //! per start: the model's script and the demo company are used up, and the
 //! rate limit windows a former start left are forgotten (ADR-088). Like
 //! `mimorya-api`, once listening it takes up the runs whose executor
@@ -41,6 +42,7 @@ mod interrupted;
 mod lessons;
 mod mailbox;
 mod missions;
+mod played;
 mod queued;
 mod saml_idp;
 #[allow(dead_code)] // the API's tests use the rest

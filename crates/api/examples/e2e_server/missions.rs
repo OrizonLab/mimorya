@@ -13,11 +13,11 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use chrono::{Days, Utc};
-use mimorya_agent::llm::{
-    LlmError, LlmMessage, LlmProvider, LlmRequest, LlmResponse, LlmToolCall, LlmUsage, StopReason,
-};
+use mimorya_agent::llm::{LlmError, LlmProvider, LlmRequest, LlmResponse, LlmToolCall};
 use mimorya_connectors::demo_interventions::dates::{iso_date, monday_of};
 use serde_json::json;
+
+use crate::played::{self, says};
 
 /// What only a mission's brief says.
 const BRIEF: &str = "Tu mènes cette mission en arrière-plan";
@@ -48,31 +48,6 @@ impl WithMissions {
     pub fn new(others: Arc<dyn LlmProvider>) -> Self {
         Self { others }
     }
-
-    fn reply(&self, text: &str, tool_calls: Vec<LlmToolCall>) -> LlmResponse {
-        let stop_reason = if tool_calls.is_empty() {
-            StopReason::EndTurn
-        } else {
-            StopReason::ToolUse
-        };
-        LlmResponse {
-            text: text.into(),
-            tool_calls,
-            stop_reason,
-            usage: LlmUsage {
-                input_tokens: 100,
-                output_tokens: 20,
-                ..LlmUsage::default()
-            },
-            provider: self.others.id().into(),
-            model: self.others.model().into(),
-            native: None,
-        }
-    }
-}
-
-fn says(message: &LlmMessage, words: &str) -> bool {
-    matches!(message, LlmMessage::User { content } if content.contains(words))
 }
 
 fn search() -> LlmToolCall {
@@ -99,14 +74,18 @@ impl LlmProvider for WithMissions {
         // A mission's final answer, reviewed against its criteria.
         if request.tools.iter().any(|t| t.name == "submit_verdict") {
             if request.messages.iter().any(|m| says(m, UNJUDGED)) {
-                return Ok(self.reply("Je ne peux pas me prononcer.", Vec::new()));
+                return Ok(played::reply(
+                    self,
+                    "Je ne peux pas me prononcer.",
+                    Vec::new(),
+                ));
             }
             let verdict = LlmToolCall {
                 id: "verdict".into(),
                 name: "submit_verdict".into(),
                 input: json!({ "pass": true, "issues": [] }),
             };
-            return Ok(self.reply("", vec![verdict]));
+            return Ok(played::reply(self, "", vec![verdict]));
         }
         let Some(first) = request.messages.first() else {
             return self.others.complete(request).await;
@@ -116,18 +95,18 @@ impl LlmProvider for WithMissions {
         }
         if says(first, TO_STOP) {
             tokio::time::sleep(STOPPED_WAIT).await;
-            return Ok(self.reply("", vec![search()]));
+            return Ok(played::reply(self, "", vec![search()]));
         }
         if says(first, UNJUDGED) {
-            return Ok(self.reply(ANSWER, Vec::new()));
+            return Ok(played::reply(self, ANSWER, Vec::new()));
         }
         let last = request.messages.last().unwrap_or(first);
         if says(last, NOTE_ASKED) {
-            return Ok(self.reply(NOTE, Vec::new()));
+            return Ok(played::reply(self, NOTE, Vec::new()));
         }
         if request.messages.iter().any(|m| says(m, RESUMED)) {
-            return Ok(self.reply(ANSWER, Vec::new()));
+            return Ok(played::reply(self, ANSWER, Vec::new()));
         }
-        Ok(self.reply("", vec![search()]))
+        Ok(played::reply(self, "", vec![search()]))
     }
 }

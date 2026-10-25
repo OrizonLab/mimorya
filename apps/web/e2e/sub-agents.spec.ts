@@ -26,12 +26,10 @@ test('a question handed to a sub-agent is traced with its sub-agent', async ({ p
 
   // Listed alone: its sub-agent goes with it.
   await page.getByRole('link', { name: 'Opérations' }).click();
-  await expect(page.getByRole('heading', { name: 'Opérations' })).toBeVisible();
+  const request = page.getByRole('link', { name: new RegExp(ASKED) }).first();
+  await expect(request).toBeVisible();
   await expect(page.getByText(TASK)).toHaveCount(0);
-  await page
-    .getByRole('link', { name: new RegExp(ASKED) })
-    .first()
-    .click();
+  await request.click();
 
   await expect(page.getByRole('heading', { name: 'Détail de l’opération' })).toBeVisible();
   await expect(page.getByRole('cell', { name: 'delegate_task' })).toBeVisible();

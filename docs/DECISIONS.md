@@ -4679,7 +4679,9 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
 - **Décision** :
   - **détail d'une demande** (« Opérations ») : une section « Sous-agents » liste ceux qu'elle
     a lancés, dans l'ordre. Chacun montre son profil, sa tâche, son statut, ses outils et
-    son coût, et mène à son propre détail ;
+    son coût, et mène à son propre détail. La section précise que leur coût est compris
+    dans celui de la demande, qui l'ajoute déjà au sien (ADR-098) : qui additionnerait les
+    lignes compterait deux fois ;
   - **détail d'un sous-agent** :
     - titre « Sous-agent « Recherche » » (son profil) ;
     - même résumé et mêmes outils que toute demande ;
@@ -4700,7 +4702,8 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
   - suivre un sous-agent en direct depuis la conversation : son résumé suffit à la
     conversation, et son détail se consulte une fois la demande traitée.
 - **Conséquences** :
-  - libellés des profils dans `apps/web/lib/labels.ts` (`AGENT_PROFILES`) ;
+  - libellés des profils dans `apps/web/lib/labels.ts` (`AGENT_PROFILES`) ; une ligne de
+    run commune à la liste des opérations et à celle des sous-agents (`run-row.tsx`) ;
   - tests : `apps/web/e2e/sub-agents.spec.ts` :
     - réponse issue du résumé du sous-agent, charte qu'il a lue citée ;
     - demande listée seule ;

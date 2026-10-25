@@ -7,10 +7,10 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use mimorya_agent::llm::{
-    LlmError, LlmMessage, LlmProvider, LlmRequest, LlmResponse, LlmToolCall, LlmUsage, StopReason,
-};
+use mimorya_agent::llm::{LlmError, LlmMessage, LlmProvider, LlmRequest, LlmResponse, LlmToolCall};
 use serde_json::json;
+
+use crate::played;
 
 /// The question `sub-agents.spec.ts` asks.
 pub const ASKED: &str =
@@ -39,27 +39,6 @@ impl WithSubAgents {
         Self { others }
     }
 
-    fn reply(&self, text: &str, tool_calls: Vec<LlmToolCall>) -> LlmResponse {
-        let stop_reason = if tool_calls.is_empty() {
-            StopReason::EndTurn
-        } else {
-            StopReason::ToolUse
-        };
-        LlmResponse {
-            text: text.into(),
-            tool_calls,
-            stop_reason,
-            usage: LlmUsage {
-                input_tokens: 100,
-                output_tokens: 20,
-                ..LlmUsage::default()
-            },
-            provider: self.others.id().into(),
-            model: self.others.model().into(),
-            native: None,
-        }
-    }
-
     fn call(name: &str, input: serde_json::Value) -> LlmToolCall {
         LlmToolCall {
             id: format!("sub-agents-{}", uuid::Uuid::new_v4()),
@@ -71,10 +50,10 @@ impl WithSubAgents {
 
 /// Whether the request's first turn says `text`.
 fn asks(request: &LlmRequest, text: &str) -> bool {
-    matches!(
-        request.messages.first(),
-        Some(LlmMessage::User { content }) if content.contains(text)
-    )
+    request
+        .messages
+        .first()
+        .is_some_and(|m| played::says(m, text))
 }
 
 #[async_trait]
@@ -97,16 +76,16 @@ impl LlmProvider for WithSubAgents {
             Some(LlmMessage::ToolResults { .. })
         );
         Ok(match (sub_agent, answered) {
-            (true, true) => self.reply(SUMMARY, Vec::new()),
+            (true, true) => played::reply(self, SUMMARY, Vec::new()),
             (true, false) => {
                 let search =
                     json!({ "query": "délai de prise en charge d’une panne de chauffage" });
-                self.reply("", vec![Self::call("document_search", search)])
+                played::reply(self, "", vec![Self::call("document_search", search)])
             }
-            (false, true) => self.reply(ANSWER, Vec::new()),
+            (false, true) => played::reply(self, ANSWER, Vec::new()),
             (false, false) => {
                 let task = json!({ "profile": "research", "task": TASK });
-                self.reply("", vec![Self::call("delegate_task", task)])
+                played::reply(self, "", vec![Self::call("delegate_task", task)])
             }
         })
     }

@@ -3,30 +3,16 @@
 import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { RunApprovals, RunSummary, SubRuns, ToolInvocationsTable } from '@/components/operations';
+import {
+  RunApprovals,
+  RunOrigin,
+  RunSummary,
+  SubRuns,
+  ToolInvocationsTable,
+} from '@/components/operations';
 import { Loaded, PageHeader } from '@/components/ui';
-import { useApiData, type RunDetail, type RunView } from '@/lib/api';
+import { useApiData, type RunDetail } from '@/lib/api';
 import { AGENT_PROFILES } from '@/lib/labels';
-
-/** Where a run comes from: its conversation, or the run a sub-agent worked for (ADR-098). */
-function Origin({ run }: { run: RunView }) {
-  const link = 'text-sm text-accent underline';
-  if (run.parentRunId) {
-    return (
-      <Link href={`/operations/${run.parentRunId}`} className={link}>
-        Demande d’origine
-      </Link>
-    );
-  }
-  if (run.conversationId) {
-    return (
-      <Link href={`/chat/${run.conversationId}`} className={link}>
-        Ouvrir la conversation
-      </Link>
-    );
-  }
-  return null;
-}
 
 export default function OperationDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -49,7 +35,7 @@ export default function OperationDetailPage() {
                   ? `Sous-agent « ${AGENT_PROFILES[detail.run.agentProfile]} »`
                   : 'Détail de l’opération'
               }
-              actions={<Origin run={detail.run} />}
+              actions={<RunOrigin run={detail.run} />}
             />
             <RunSummary run={detail.run} />
             {detail.subRuns.length > 0 && <SubRuns runs={detail.subRuns} />}
