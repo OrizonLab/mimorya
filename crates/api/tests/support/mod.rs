@@ -10,8 +10,10 @@ mod client;
 pub mod companies;
 pub mod delegations;
 pub mod dns;
+pub mod documents;
 pub mod embeddings;
 pub mod identity_provider;
+pub mod impostor;
 pub mod leases;
 pub mod lessons;
 pub mod limits;
@@ -232,6 +234,11 @@ impl TestApi {
             ("WEB_ORIGIN", WEB_ORIGIN.to_string()),
             ("LLM_PROVIDER", "none".to_string()),
             ("LOGIN_RATE_LIMIT_PER_MINUTE", "1000".to_string()),
+            // The extraction process cargo builds beside the tests (ADR-095).
+            (
+                "MIMORYA_EXTRACTOR",
+                env!("CARGO_BIN_EXE_mimorya-extract").to_string(),
+            ),
         ]);
         vars.extend(env.iter().map(|(k, v)| (*k, (*v).to_string())));
         let config = AppConfig::from_vars(|key| vars.get(key).cloned()).expect("config");

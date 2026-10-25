@@ -14,12 +14,13 @@ pub const PLATFORM_ROLE_TEMPLATES: &[RoleTemplate] = &[
     RoleTemplate {
         key: "member",
         name: "Collaborateur",
-        description: "Accès de base : converser avec l’agent, consulter l’organisation et la mémoire.",
+        description: "Accès de base : converser avec l’agent, consulter l’organisation, la mémoire et les documents.",
         permissions: &[
             "agent:use",
             "org:read",
             "user:read",
             "memory:read",
+            "document:read",
             "mission:create",
             "mission:read",
             "skill:read",
@@ -48,8 +49,14 @@ pub const PLATFORM_ROLE_TEMPLATES: &[RoleTemplate] = &[
     RoleTemplate {
         key: "knowledge_manager",
         name: "Gestionnaire des connaissances",
-        description: "Alimente et valide la mémoire partagée de son périmètre.",
-        permissions: &["memory:read", "memory:write", "skill:read"],
+        description: "Alimente et valide la mémoire partagée et les documents de son périmètre.",
+        permissions: &[
+            "memory:read",
+            "memory:write",
+            "document:read",
+            "document:write",
+            "skill:read",
+        ],
     },
 ];
 

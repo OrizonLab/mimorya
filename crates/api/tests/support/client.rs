@@ -119,6 +119,17 @@ impl<'a> Client<'a> {
         self.api.send(request).await
     }
 
+    /// Sends `bytes` as the request's body, a file of `content_type`.
+    pub async fn post_file(&self, url: &str, bytes: Vec<u8>, content_type: &str) -> TestResponse {
+        let request = self
+            .request(Method::POST, url)
+            .header("content-type", content_type)
+            .header("content-length", bytes.len())
+            .body(Body::from(bytes))
+            .unwrap();
+        self.api.send(request).await
+    }
+
     pub async fn delete(&self, url: &str) -> TestResponse {
         let request = self
             .request(Method::DELETE, url)

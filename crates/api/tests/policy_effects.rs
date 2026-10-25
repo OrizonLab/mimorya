@@ -210,6 +210,9 @@ async fn accepts_only_what_the_platform_can_enforce() {
             ("agent:use", false),
             ("approval:decide", true),
             ("connector:use", false),
+            // Checked since documents exist (ADR-095).
+            ("document:read", false),
+            ("document:write", false),
             ("intervention:read", true),
             ("memory:read", false),
             ("memory:write", false),

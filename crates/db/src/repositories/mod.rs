@@ -14,6 +14,7 @@ pub mod author_notices;
 pub mod connectors;
 pub mod conversations;
 pub mod deliverables;
+pub mod documents;
 pub mod embedding_settings;
 pub mod identity_providers;
 pub mod invitations;

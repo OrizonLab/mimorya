@@ -79,7 +79,12 @@ async fn a_new_company_starts_with_its_invited_administrator_only() {
     }
     // The workspace's administration gives no business data, and the base
     // role (memories, missions) covers the administrator's own data only.
-    for withheld in ["intervention:read", "planning:read", "memory:write"] {
+    for withheld in [
+        "intervention:read",
+        "planning:read",
+        "memory:write",
+        "document:write",
+    ] {
         assert!(!permissions.contains(&withheld), "{withheld}");
     }
     let mut grants: Vec<&str> = me["grants"]

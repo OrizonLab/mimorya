@@ -4,65 +4,26 @@
 //! that exhausts its memory stops that process only. One that hangs is
 //! killed at its time, one that dies, floods its output, answers nonsense
 //! or beyond the limits is refused, and none sees the API's environment.
-//! At most `CONCURRENT_EXTRACTIONS` read at once.
+//! At most `CONCURRENT_EXTRACTIONS` read at once. Linux only: the
+//! impostors are shell scripts, the limits are read in `/proc`.
+#![cfg(target_os = "linux")]
+
+mod support;
 
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::time::{Duration, Instant};
 
 use mimorya_api::services::documents::{CONCURRENT_EXTRACTIONS, ExtractionFailure, Extractor};
 use mimorya_core::documents::limits::{MAX_FILE_BYTES, MAX_PAGES};
 use mimorya_core::documents::{DocumentKind, Refusal};
 use mimorya_extract::testing::{docx, inflating_pdf, pdf, protected_pdf};
-use uuid::Uuid;
+use support::impostor::Impostor;
 
 const PROGRAM: &str = env!("CARGO_BIN_EXE_mimorya-extract");
 
 fn extractor() -> Extractor {
     Extractor::new(PROGRAM.into())
-}
-
-/// A program standing in for the reader, removed with its directory once
-/// dropped.
-struct Impostor {
-    directory: PathBuf,
-}
-
-impl Impostor {
-    /// `script`, run by the shell. It is written by a shell of its own: had
-    /// this process opened it to write, a process another test starts
-    /// meanwhile could inherit that descriptor, and running the script
-    /// would then fail (« Text file busy »).
-    fn new(script: &str) -> Self {
-        let directory = std::env::temp_dir().join(format!("mimorya-extract-{}", Uuid::new_v4()));
-        std::fs::create_dir_all(&directory).unwrap();
-        let impostor = Self { directory };
-        let written = Command::new("/bin/sh")
-            .args([
-                "-c",
-                r#"printf '#!/bin/sh\n%s\n' "$1" > "$2" && chmod 700 "$2""#,
-            ])
-            .args(["sh", script])
-            .arg(impostor.program())
-            .status()
-            .unwrap();
-        assert!(written.success());
-        impostor
-    }
-
-    fn program(&self) -> PathBuf {
-        self.directory.join("mimorya-extract")
-    }
-
-    fn reader(&self) -> Extractor {
-        Extractor::new(self.program())
-    }
-}
-
-impl Drop for Impostor {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.directory);
-    }
 }
 
 #[tokio::test]

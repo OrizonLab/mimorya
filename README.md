@@ -34,7 +34,7 @@ cp .env.example .env               # renseigner ANTHROPIC_API_KEY (ou un autre f
 docker compose up -d db
 pnpm install                       # dépendances de l'interface web
 pnpm db:seed                       # = cargo run --bin mimorya-seed : migrations + entreprise fictive
-pnpm dev:api                       # = cargo run --bin mimorya-api : http://localhost:4000
+pnpm dev:api                       # = cargo run --bin mimorya-api : http://localhost:4000 (construit aussi mimorya-extract, qui lit les documents déposés)
 NEXT_PUBLIC_DEMO_MODE=true pnpm dev:web   # http://localhost:3000 (comptes de démo affichés)
 ```
 

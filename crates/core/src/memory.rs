@@ -113,19 +113,27 @@ pub fn memory_read_filter(
             org_units: UnitFilter::All,
             shared: true,
         },
-        DataScope::Restricted { org_unit_ids, .. } => {
-            let mut units = org_unit_ids;
-            for unit_id in &subject.org_unit_ids {
-                units.insert(*unit_id);
-                units.extend(engine.org_tree().ancestors(*unit_id).iter().map(|a| a.id));
-            }
-            MemoryReadFilter {
-                owner_user_id,
-                org_units: UnitFilter::Only(units),
-                shared: true,
-            }
-        }
+        DataScope::Restricted { org_unit_ids, .. } => MemoryReadFilter {
+            owner_user_id,
+            org_units: UnitFilter::Only(readable_units(engine, subject, org_unit_ids)),
+            shared: true,
+        },
     }
+}
+
+/// The units whose shared knowledge (memory, documents) a subject reads
+/// when their right covers `scoped` only: those, the units they belong to,
+/// and the units above them.
+pub fn readable_units(
+    engine: &AuthorizationEngine,
+    subject: &Subject,
+    mut scoped: HashSet<Uuid>,
+) -> HashSet<Uuid> {
+    for unit_id in &subject.org_unit_ids {
+        scoped.insert(*unit_id);
+        scoped.extend(engine.org_tree().ancestors(*unit_id).iter().map(|a| a.id));
+    }
+    scoped
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
