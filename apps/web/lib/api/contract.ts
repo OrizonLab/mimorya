@@ -1395,9 +1395,32 @@ export type Sensitivity = "public" | "internal" | "confidential" | "restricted";
 export type SkillActivation = { version: number, };
 
 /**
- * `GET /admin/skills/{id}`: the skill and its versions, the latest first.
+ * `GET /admin/skills/{id}`: the skill and its versions, the latest first,
+ * and its evaluation cases in the order they were written (ADR-103).
  */
-export type SkillDetail = { skill: SkillView, versions: Array<SkillVersionView>, };
+export type SkillDetail = { skill: SkillView, versions: Array<SkillVersionView>, cases: Array<SkillEvalCaseView>, };
+
+/**
+ * Body of `POST /admin/skills/{id}/cases` and of
+ * `PUT /admin/skill-cases/{id}`: the case as a whole.
+ */
+export type SkillEvalCaseInput = { name: string, request: string,
+/**
+ * One per line sent, at most `MAX_CRITERIA_LINES`; blank ones are left
+ * out, and 1 to 8 must remain, of 300 characters at most
+ * (`skill_eval_cases::case_problem`).
+ */
+criteria: Array<string>, };
+
+export type SkillEvalCaseView = { id: string, name: string,
+/**
+ * What the case asks, as a person would.
+ */
+request: string,
+/**
+ * What a good answer does, one criterion each.
+ */
+criteria: Array<string>, createdBy: string | null, updatedAt: string, };
 
 /**
  * `GET /admin/skills`.

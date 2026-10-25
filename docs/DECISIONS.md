@@ -4936,3 +4936,60 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     proposition et pour plusieurs ;
   - `crates/db/tests/definer_functions.rs` : la nouvelle fonction de lecture entre
     entreprises.
+
+## ADR-103 — Cas d'évaluation des compétences, écrits par leurs administrateurs
+
+- **Date** : 2026-10-25 · **Statut** : acceptée (cycle de vie des compétences, lot 4a) ·
+  complète ADR-052 et ADR-100
+- **Contexte** : une version d'une compétence, écrite par un administrateur ou proposée
+  par l'agent (ADR-100), est activée sur la seule lecture de son texte. Rien ne montre
+  ce qu'elle change dans les réponses de l'agent, ni ce qu'elle casse de ce que faisait
+  la version active. Le schéma initial réservait une table `skill_evals` (`input`,
+  `success_criteria` en JSON), jamais écrite.
+- **Décision** :
+  - **un cas d'évaluation** est une demande, telle qu'une personne la ferait à
+    l'assistant, et de 1 à 8 critères de réussite, une ligne visible chacun, d'au plus
+    300 caractères (« Cite chaque intervention en retard. »). Le cas a un nom, unique
+    dans sa compétence. La demande, d'au plus 4 000 caractères, ne contient que du texte
+    visible, des retours à la ligne et des tabulations, comme le contenu d'une
+    compétence (ADR-052) : elle parviendra au modèle comme le tour d'une personne, et
+    les critères au modèle qui juge la réponse. Les textes sont gardés en forme
+    canonique (NFC : deux noms identiques à l'œil sont le même), les critères vides
+    écartés (une zone de texte découpée à ses retours à la ligne en envoie au plus 50) ;
+  - **au plus 10 cas par compétence** : chaque évaluation les rejouera tous, pour la
+    version évaluée et pour la version active ;
+  - **qui** : les administrateurs des compétences (`skill:manage` sur toute
+    l'entreprise), comme le reste de l'écran (ADR-052), sous le verrou
+    d'administration de l'entreprise. Un cas est écrit pour une compétence
+    (`POST /admin/skills/{id}/cases`), puis réécrit en entier ou supprimé par son propre
+    identifiant (`PUT`/`DELETE /admin/skill-cases/{id}`). Le détail d'une compétence
+    liste ses cas dans l'ordre où ils ont été écrits ;
+  - **données** : `skill_eval_cases` remplace `skill_evals`, supprimée. Les cas partent
+    avec leur compétence ; leur auteur parti, ils restent à l'entreprise ;
+  - **audit** : `skill.eval_case_created`, `skill.eval_case_updated` et
+    `skill.eval_case_deleted`, sur la compétence, avec son nom, l'identifiant et le nom
+    du cas (comme un refus sur la route du cas le nomme) et le nombre de critères,
+    jamais la demande.
+- **Alternatives écartées** :
+  - garder `skill_evals` et son JSON libre : la plateforme ne pourrait vérifier ni la
+    demande ni les critères avant de les donner à un modèle ;
+  - des critères en un seul texte : le modèle qui juge les reçoit numérotés, et le
+    verdict de chacun sera montré à part ;
+  - des cas partagés entre compétences : chaque cas éprouve la procédure d'une
+    compétence, que ses administrateurs connaissent.
+- **Conséquences** :
+  - reste à faire : l'exécution des cas, pour la version évaluée et la version active
+    (non-régression), jugée sur les critères, dans un budget plafonné (lot 4b) ; l'écran
+    « Compétences » (lot 4c) ;
+  - tests :
+    - `crates/core/src/skill_eval_cases.rs` : ce qu'un cas contient, en forme
+      canonique, compté après normalisation ;
+    - `crates/api/tests/skill_eval_cases.rs` : cas écrits, listés, réécrits et
+      supprimés, tracés avec leur identifiant et sans leur demande ; ce qui est envoyé
+      vérifié d'abord, les lignes vides d'une zone de texte écartées ; au plus 10 par
+      compétence, partis avec elle, leurs noms propres à chaque compétence ; un membre refusé ; le cas d'une autre
+      entreprise répond comme absent et reste tel quel ;
+    - `crates/api/tests/skill_access.rs` : la route d'écriture d'un cas refusée à un
+      membre, et sur la compétence d'une autre entreprise sans rien écrire ;
+    - `crates/api/tests/first_login.rs` : les nouvelles routes retenues par un mot de
+      passe provisoire.

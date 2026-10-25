@@ -203,6 +203,9 @@ const AUTHENTICATED_ROUTES: &[(&str, &str)] = &[
     ("PUT", "/admin/skills/{id}/activation"),
     ("DELETE", "/admin/skills/{id}/activation"),
     ("POST", "/admin/skills/{id}/rejection"),
+    ("POST", "/admin/skills/{id}/cases"),
+    ("PUT", "/admin/skill-cases/{id}"),
+    ("DELETE", "/admin/skill-cases/{id}"),
     ("GET", "/admin/audit"),
     ("GET", "/admin/usage"),
 ];

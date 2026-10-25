@@ -30,7 +30,8 @@ Repères à l'intérieur des crates :
 - `core/src/authz/` (types, moteur, conditions ABAC, organigramme), `core/src/tools/`
   (contrat d'outil, outils typés), `core/src/skill_rules.rs` (ce qu'une compétence peut
   contenir, ADR-052), `core/src/skill_proposals.rs` (où va une compétence que l'agent
-  propose, ADR-100), `core/src/identity_providers/` (fournisseurs d'identité : émetteur de
+  propose, ADR-100), `core/src/skill_eval_cases.rs` (ce qu'un cas d'évaluation d'une
+  compétence contient, ADR-103), `core/src/identity_providers/` (fournisseurs d'identité : émetteur de
   chaque type, domaines, ce que prouve un jeton ou une assertion SAML, nom d'un compte
   créé, enregistrement DNS qui prouve un domaine (`domain_proof.rs`), ADR-063, ADR-067,
   ADR-068, ADR-069), `core/src/schedule.rs` (heure d'une tâche planifiée, ADR-080),
@@ -48,7 +49,8 @@ Repères à l'intérieur des crates :
   par les mots et par le sens et lus dans l'ordre : `document_search.rs`, leurs vecteurs :
   `document_embeddings.rs`, ADR-096 ; runs des sous-agents, ouverts sous leur parent :
   `sub_runs.rs`, ADR-098 ; compétences proposées par l'agent : `skill_proposals.rs`,
-  ADR-100, et leur annonce aux administrateurs : `skill_proposal_notices.rs`, ADR-102),
+  ADR-100, et leur annonce aux administrateurs : `skill_proposal_notices.rs`, ADR-102 ;
+  cas d'évaluation des compétences : `skill_eval_cases.rs`, ADR-103),
   `db/src/notifications.rs` (canaux PostgreSQL des événements des runs, de la file et des
   invalidations, ADR-084, ADR-085), `db/src/sweep_lock.rs` (verrou d'un balayage qui ne
   tourne que dans un processus à la fois, ADR-086), `db/src/seed/` (organisation,
@@ -86,8 +88,9 @@ Repères à l'intérieur des crates :
   et corps de requêtes typés, un fichier par ressource, dont sont générés les types
   TypeScript, ADR-036, ADR-039),
   `api/src/services/admin/` (comptes et absence d'un collaborateur empêché
-  (`absences.rs`, ADR-078), organisation, habilitations, compétences et rejet des
-  propositions de l'agent (`skill_proposals.rs`, ADR-100), sous verrou par entreprise), `api/src/services/account.rs` (son propre compte),
+  (`absences.rs`, ADR-078), organisation, habilitations, compétences, rejet des
+  propositions de l'agent (`skill_proposals.rs`, ADR-100) et cas d'évaluation
+  (`skill_eval_cases.rs`, ADR-103), sous verrou par entreprise), `api/src/services/account.rs` (son propre compte),
   `api/src/services/notification_settings.rs` (e-mails que chacun choisit de recevoir,
   lus au moment d'envoyer chaque avis, ADR-094),
   `api/src/services/skill_proposal_notice/` (propositions de l'agent annoncées par e-mail

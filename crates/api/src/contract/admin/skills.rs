@@ -1,7 +1,7 @@
 //! The company's skills (`skill:manage`, ADR-052): the list, a skill with
 //! its versions, and what the administration writes: a skill, a new version,
 //! a description, the version made active, a proposal of the agent's turned
-//! down (ADR-100).
+//! down (ADR-100). Its evaluation cases: `skill_eval_cases.rs` (ADR-103).
 
 use mimorya_db::repositories::skills::{SkillRow, SkillVersionRow};
 use serde::{Deserialize, Serialize};
@@ -9,6 +9,7 @@ use ts_rs::TS;
 use uuid::Uuid;
 use validator::Validate;
 
+use super::SkillEvalCaseView;
 use crate::contract::stored::stored_text;
 use crate::http::{iso, trimmed, trimmed_opt};
 
@@ -106,11 +107,13 @@ impl SkillVersionView {
     }
 }
 
-/// `GET /admin/skills/{id}`: the skill and its versions, the latest first.
+/// `GET /admin/skills/{id}`: the skill and its versions, the latest first,
+/// and its evaluation cases in the order they were written (ADR-103).
 #[derive(Debug, Serialize, TS)]
 pub struct SkillDetail {
     pub skill: SkillView,
     pub versions: Vec<SkillVersionView>,
+    pub cases: Vec<SkillEvalCaseView>,
 }
 
 /// `POST /admin/skills/{id}/versions`.

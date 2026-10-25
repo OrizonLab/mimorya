@@ -14,6 +14,7 @@ mod mission_settings;
 mod organization;
 mod policies;
 mod roles;
+mod skill_eval_cases;
 mod skills;
 mod users;
 
@@ -47,6 +48,7 @@ pub use organization::{
     NewOrgUnit, OrgPerson, OrgUnitType, OrgUnitUpdate, OrgUnitView, Organization,
 };
 pub use roles::{Enforcement, NewRole, PermissionView, RoleUpdate, RoleView, Roles};
+pub use skill_eval_cases::{SkillEvalCaseInput, SkillEvalCaseView};
 pub use skills::{
     NewSkill, NewSkillVersion, SkillActivation, SkillDetail, SkillList, SkillRejection,
     SkillStatus, SkillUpdate, SkillVersionCreated, SkillVersionStatus, SkillVersionView, SkillView,
