@@ -4878,17 +4878,26 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     annoncées (`system_unannounced_skill_proposals`, puis lecture dans l'entreprise) ;
   - **destinataires** : chaque compte qui peut en décider, actif et détenteur de
     `skill:manage` sur toute l'entreprise selon ses règles du moment, politiques de refus
-    comprises, comme l'administration le vérifie (ADR-020). Un compte qui ne l'a que sur
-    une unité, ou dont le compte est désactivé, n'est pas prévenu ;
-  - **un e-mail par administrateur et par passe** : combien de propositions attendent,
-    pour quelles compétences (chacune nommée une fois), et le lien vers l'administration.
-    Il ne contient jamais la procédure ni la personne pour qui l'agent l'a proposée :
-    l'e-mail quitte la plateforme, ils se lisent une fois connecté ;
+    comprises, par la vérification même qui précède chaque modification d'administration
+    (`holds_company_wide`, partagée avec `begin_change`, ADR-020). Un compte qui ne l'a
+    que sur une unité, dont l'habilitation a expiré ou dont le compte est désactivé n'est
+    pas prévenu ;
+  - **un e-mail par administrateur et par passe** : combien de nouvelles propositions
+    attendent, pour quelles compétences (chacune nommée une fois), que chaque texte a été
+    validé avant son envoi (ADR-100), qu'aucune n'est utilisée avant d'être activée, et le
+    lien vers l'administration. Il ne contient jamais la procédure, ni la personne pour qui
+    l'agent l'a proposée, ni qui l'a validée : l'e-mail quitte la plateforme, ils se lisent
+    une fois connecté ;
   - **chaque proposition n'est annoncée qu'une fois** (`skill_versions.announced_at`),
     même si le relais refuse le message, qui n'est pas renvoyé. Une proposition décidée
     avant la passe n'est pas annoncée. Sans relais, rien n'est envoyé ni enregistré :
     les propositions seront annoncées une fois un relais configuré, puisqu'elles
-    attendent encore. Sans administrateur, elles attendent qu'il y en ait un ;
+    attendent encore. Sans administrateur, elles attendent qu'il y en ait un. Réserve
+    assumée : les propositions sont enregistrées comme annoncées après les envois ; un
+    arrêt du service entre les deux les fait annoncer de nouveau à la passe suivante (un
+    e-mail en double plutôt qu'un avis perdu). L'échec d'un administrateur (son compte
+    illisible, l'audit refusé) n'empêche pas de prévenir les autres, et ne lui est pas
+    renvoyé ;
   - **choix de chacun** (ADR-094) : l'avis suit le choix « Les demandes qui attendent ma
     décision », renommé depuis « Les demandes de validation qui m'attendent ». Il couvre
     les validations et les propositions de compétences. Un administrateur qui ne le veut
@@ -4913,8 +4922,17 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
       auteur, tracée ;
     - plusieurs en un seul e-mail, la proposition décidée avant la passe non annoncée ;
     - une autre entreprise prévenue de la sienne seule ;
-    - seul qui peut décider sur toute l'entreprise est prévenu ;
     - un administrateur qui ne veut pas de ces e-mails n'en reçoit pas, même plus tard ;
     - rien sans relais ;
+    - un message refusé par le relais tracé en échec, non renvoyé ;
+    - rien dans un processus qui n'exécute pas les runs, ni pendant qu'un autre fait la
+      passe ;
+  - `crates/api/tests/skill_proposal_notice_recipients.rs` :
+    - seul qui peut décider sur toute l'entreprise est prévenu : ni un administrateur
+      d'une unité, ni un compte désactivé, ni une habilitation expirée ;
+    - sans personne qui puisse décider (une politique de refus), les propositions
+      attendent sans être enregistrées, puis sont annoncées une fois la politique levée ;
+  - `crates/api/src/services/skill_proposal_notice/mail.rs` : la formulation pour une
+    proposition et pour plusieurs ;
   - `crates/db/tests/definer_functions.rs` : la nouvelle fonction de lecture entre
     entreprises.

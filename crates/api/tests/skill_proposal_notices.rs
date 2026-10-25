@@ -1,84 +1,31 @@
 //! The skills' administrators told by e-mail of the agent's proposals
-//! (ADR-102), by the periodic pass: one e-mail to each account that may
-//! decide them on the whole company, naming their skills, never the
-//! procedure nor whom it was proposed for; each proposal announced once,
-//! audited, not when decided before the pass; nothing without a relay, and
-//! an administrator who chose not to receive these is not sent one,
+//! (ADR-102), by the periodic pass: one e-mail to each administrator,
+//! naming their skills, never the procedure nor whom it was proposed for;
+//! each proposal announced once, audited, not when decided before the
+//! pass; nothing without a relay nor in a process that executes no runs,
+//! one process at a time; a message the relay refuses audited and not sent
+//! again; an administrator who chose not to receive these not sent one,
 //! audited as refused. Each company's proposals are read and told in it
-//! alone.
+//! alone. Who is told: `skill_proposal_notice_recipients.rs`.
 
 mod support;
 
+use std::time::Duration;
+
 use axum::http::StatusCode;
-use mimorya_api::services::skill_proposal_notice::{PROPOSALS_ANNOUNCED, announce_skill_proposals};
+use mimorya_api::services::skill_proposal_notice::{
+    PROPOSAL_NOTICE_SWEEP, announce_skill_proposals,
+};
 use mimorya_core::demo::{tenant, user};
 use mimorya_db::seed::DEMO_SKILL_ID;
 use mimorya_db::testing::{OTHER_TENANT_ID, OTHER_USER_ID};
-use serde_json::{Value, json};
+use serde_json::json;
 use support::notification_choices::{choose, chosen};
-use support::skill_proposals::{
-    SKILL, SKILLS, proposed, read_proposed, restore_the_report, validate, version_of_the_report,
-    waiting,
+use support::skill_proposal_notices::{
+    ONE, announce, announced, forget_notices, notices, one_proposal, told,
 };
+use support::skill_proposals::{SKILL, SKILLS, restore_the_report, waiting};
 use support::{TestApi, WEB_ORIGIN, email, owner_url};
-use uuid::Uuid;
-
-const ONE: &str = "Une proposition de compétence attend votre décision";
-
-/// Announces the proposals, as a process that executes runs does every
-/// minute; how many.
-async fn announce(api: &TestApi) -> usize {
-    api.app.services.runs.start_executing().unwrap();
-    announce_skill_proposals(&api.app.services).await.unwrap()
-}
-
-/// A proposal of Lucas's for the weekly report, validated: the run.
-async fn one_proposal(api: &TestApi) -> Uuid {
-    let lucas = api.sign_in(user::LUCAS).await;
-    let (run, approval) = proposed(api, &lucas, version_of_the_report(), read_proposed()).await;
-    validate(api, &lucas, &approval).await;
-    run
-}
-
-/// The notices audited in `tenant_id`: recipient, outcome and metadata.
-async fn notices(tenant_id: Uuid) -> Vec<(Option<Uuid>, String, Value)> {
-    let owner = sqlx::PgPool::connect(owner_url()).await.unwrap();
-    let rows = sqlx::query_as(
-        "select on_behalf_of_user_id, outcome, metadata from audit_log \
-         where tenant_id = $1 and action = $2 and actor_type = 'system' order by id",
-    )
-    .bind(tenant_id)
-    .bind(PROPOSALS_ANNOUNCED)
-    .fetch_all(&owner)
-    .await
-    .unwrap();
-    owner.close().await;
-    rows
-}
-
-/// The versions of the weekly report announced, by number.
-async fn announced(api: &TestApi) -> Vec<(i32, bool)> {
-    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
-    sqlx::query_as(
-        "select version, announced_at is not null from skill_versions \
-         where skill_id = $1 and version > 1 order by version",
-    )
-    .bind(DEMO_SKILL_ID)
-    .fetch_all(&mut *tx)
-    .await
-    .unwrap()
-}
-
-/// Forgets the notices this file's tests audited, for the next ones.
-async fn forget_notices() {
-    let owner = sqlx::PgPool::connect(owner_url()).await.unwrap();
-    sqlx::query("delete from audit_log where action = $1")
-        .bind(PROPOSALS_ANNOUNCED)
-        .execute(&owner)
-        .await
-        .unwrap();
-    owner.close().await;
-}
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
@@ -170,7 +117,7 @@ async fn proposals_are_told_together_and_a_decided_one_is_not_announced() {
     assert_eq!(to_paul.len(), 1, "{to_paul:?}");
     assert_eq!(
         to_paul[0].subject,
-        "2 propositions de compétences attendent votre décision"
+        "2 nouvelles propositions de compétences attendent votre décision"
     );
     assert!(to_paul[0].text.contains(&format!(": « {SKILL} ».")));
     assert!(!to_paul[0].text.contains("procedure-ailleurs"));
@@ -200,80 +147,6 @@ async fn proposals_are_told_together_and_a_decided_one_is_not_announced() {
         sqlx::query(statement).execute(&other).await.unwrap();
     }
     other.close().await;
-    restore_the_report(&api).await;
-    forget_notices().await;
-}
-
-#[tokio::test]
-#[ignore = "requires PostgreSQL"]
-async fn only_who_may_decide_on_the_whole_company_is_told() {
-    let api = TestApi::start_with_mailer().await;
-    one_proposal(&api).await;
-    // Marc administers the skills of a unit only, Hugo's account is
-    // disabled: neither may decide on the whole company.
-    let owner = sqlx::PgPool::connect(owner_url()).await.unwrap();
-    let unit: Uuid =
-        sqlx::query_scalar("select org_unit_id from org_memberships where user_id = $1 limit 1")
-            .bind(user::MARC)
-            .fetch_one(&owner)
-            .await
-            .unwrap();
-    let admin_role: Uuid =
-        sqlx::query_scalar("select id from roles where tenant_id = $1 and key = 'tenant_admin'")
-            .bind(tenant::ID)
-            .fetch_one(&owner)
-            .await
-            .unwrap();
-    sqlx::query(
-        "insert into role_assignments (tenant_id, user_id, role_id, scope_type, \
-         scope_org_unit_id, include_descendants) values ($1, $2, $3, 'org_unit', $4, true)",
-    )
-    .bind(tenant::ID)
-    .bind(user::MARC)
-    .bind(admin_role)
-    .bind(unit)
-    .execute(&owner)
-    .await
-    .unwrap();
-    sqlx::query(
-        "insert into role_assignments (tenant_id, user_id, role_id, scope_type) \
-         values ($1, $2, $3, 'tenant')",
-    )
-    .bind(tenant::ID)
-    .bind(user::HUGO)
-    .bind(admin_role)
-    .execute(&owner)
-    .await
-    .unwrap();
-    sqlx::query("update users set status = 'disabled' where id = $1")
-        .bind(user::HUGO)
-        .execute(&owner)
-        .await
-        .unwrap();
-
-    assert_eq!(announce(&api).await, 1);
-    let told: Vec<String> = api
-        .mail
-        .sent()
-        .into_iter()
-        .filter(|m| m.subject == ONE)
-        .map(|m| m.to)
-        .collect();
-    assert_eq!(told, [email(user::PAUL)]);
-
-    sqlx::query("delete from role_assignments where role_id = $1 and user_id in ($2, $3)")
-        .bind(admin_role)
-        .bind(user::MARC)
-        .bind(user::HUGO)
-        .execute(&owner)
-        .await
-        .unwrap();
-    sqlx::query("update users set status = 'active' where id = $1")
-        .bind(user::HUGO)
-        .execute(&owner)
-        .await
-        .unwrap();
-    owner.close().await;
     restore_the_report(&api).await;
     forget_notices().await;
 }
@@ -313,4 +186,60 @@ async fn without_a_relay_nothing_is_sent_nor_recorded() {
     assert_eq!(announced(&api).await, [(2, false)]);
     assert!(notices(tenant::ID).await.is_empty());
     restore_the_report(&api).await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_message_the_relay_refuses_is_audited_and_not_sent_again() {
+    let api = TestApi::start_with_mailer().await;
+    one_proposal(&api).await;
+    api.mail.fail();
+
+    assert_eq!(announce(&api).await, 1);
+    let refused = vec![(
+        Some(user::PAUL),
+        "failure".to_string(),
+        json!({ "proposals": 1, "skills": [SKILL] }),
+    )];
+    assert_eq!(notices(tenant::ID).await, refused);
+    assert_eq!(announced(&api).await, [(2, true)]);
+    assert_eq!(announce(&api).await, 0);
+    assert_eq!(notices(tenant::ID).await, refused);
+    assert!(told(&api).is_empty());
+    restore_the_report(&api).await;
+    forget_notices().await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn one_process_that_executes_runs_announces_at_a_time() {
+    let api = TestApi::start_with_mailer().await;
+    one_proposal(&api).await;
+    // A process that executes no runs announces nothing.
+    assert_eq!(
+        announce_skill_proposals(&api.app.services).await.unwrap(),
+        0
+    );
+    // Under way elsewhere: skipped, nothing announced.
+    let held = api
+        .app
+        .services
+        .db
+        .try_sweep_lock(PROPOSAL_NOTICE_SWEEP)
+        .await;
+    let held = held.unwrap().expect("free");
+    assert_eq!(announce(&api).await, 0);
+    assert!(told(&api).is_empty());
+    assert_eq!(announced(&api).await, [(2, false)]);
+    held.release().await;
+
+    announce(&api).await;
+    // A maintenance pass may have announced it meanwhile: once it is done.
+    let wait = Duration::from_secs(5);
+    let settled = api.app.services.db.sweep_lock(PROPOSAL_NOTICE_SWEEP, wait);
+    settled.await.unwrap().release().await;
+    assert_eq!(told(&api), [email(user::PAUL)]);
+    assert_eq!(announced(&api).await, [(2, true)]);
+    restore_the_report(&api).await;
+    forget_notices().await;
 }

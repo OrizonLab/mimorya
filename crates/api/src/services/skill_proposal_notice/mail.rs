@@ -1,8 +1,9 @@
-//! The e-mail telling a skills' administrator that proposals of the
+//! The e-mail telling a skills' administrator that new proposals of the
 //! agent's await their decision (ADR-102), in French and plain text: how
-//! many, for which skills, and where to decide. Neither the procedure nor
-//! whom it was proposed for: the message leaves the platform, and they are
-//! shown after signing in.
+//! many, for which skills, that each text was validated before it left its
+//! conversation, and where to decide. Neither the procedure nor whom it
+//! was proposed for, nor who validated it: the message leaves the
+//! platform, and they are shown after signing in.
 
 use crate::mail::Mail;
 
@@ -13,7 +14,7 @@ pub struct ProposalsMail<'a> {
     pub email: &'a str,
     /// The skills proposals were made for, each once, in order.
     pub skills: &'a [String],
-    /// How many proposals, a skill having several.
+    /// How many proposals never announced, a skill having several.
     pub count: usize,
     /// The administration.
     pub link: &'a str,
@@ -30,22 +31,21 @@ pub fn proposals_mail(notice: &ProposalsMail<'_>) -> Mail {
         link,
     } = notice;
     let named: Vec<String> = skills.iter().map(|s| format!("« {s} »")).collect();
+    let named = named.join(", ");
     let (subject, what) = if *count == 1 {
         (
-            "Une proposition de compétence attend votre décision".to_string(),
+            "Une nouvelle proposition de compétence attend votre décision".to_string(),
             format!(
-                "L’assistant {product} ({company}) propose une compétence, validée par la \
-                 personne pour qui il travaillait : {}.",
-                named.join(", ")
+                "L’assistant {product} ({company}) propose une compétence, dont le texte a été \
+                 validé avant son envoi : {named}."
             ),
         )
     } else {
         (
-            format!("{count} propositions de compétences attendent votre décision"),
+            format!("{count} nouvelles propositions de compétences attendent votre décision"),
             format!(
                 "L’assistant {product} ({company}) propose {count} compétences ou nouvelles \
-                 versions, chacune validée par la personne pour qui il travaillait : {}.",
-                named.join(", ")
+                 versions, dont chaque texte a été validé avant son envoi : {named}."
             ),
         )
     };
@@ -87,12 +87,12 @@ mod tests {
         assert_eq!(one.to, "paul.renaud@neo-maintenance.example");
         assert_eq!(
             one.subject,
-            "Une proposition de compétence attend votre décision"
+            "Une nouvelle proposition de compétence attend votre décision"
         );
         assert!(one.text.starts_with("Bonjour Paul Renaud,\n\n"));
         assert!(one.text.contains(
-            "L’assistant Mimorya (Néo Maintenance) propose une compétence, validée par la \
-             personne pour qui il travaillait : « relance-fournisseur »."
+            "L’assistant Mimorya (Néo Maintenance) propose une compétence, dont le texte a été \
+             validé avant son envoi : « relance-fournisseur »."
         ));
         assert!(one.text.contains(
             "ouvrez l’onglet « Compétences » de l’administration :\n\
@@ -105,11 +105,11 @@ mod tests {
         let several = mail(&["relance-fournisseur", "synthese-hebdo"], 3);
         assert_eq!(
             several.subject,
-            "3 propositions de compétences attendent votre décision"
+            "3 nouvelles propositions de compétences attendent votre décision"
         );
         assert!(several.text.contains(
-            "propose 3 compétences ou nouvelles versions, chacune validée par la personne pour \
-             qui il travaillait : « relance-fournisseur », « synthese-hebdo »."
+            "propose 3 compétences ou nouvelles versions, dont chaque texte a été validé avant \
+             son envoi : « relance-fournisseur », « synthese-hebdo »."
         ));
     }
 }

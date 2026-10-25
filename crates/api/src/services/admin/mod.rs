@@ -74,7 +74,9 @@ pub use users::{NewUserInput, UserChanges, create_user, reset_password, update_u
 use mimorya_core::DomainError;
 use mimorya_core::authz::{Actor, AuthorizationEngine, DataScope, OrgTree};
 use mimorya_db::repositories::audit::AuditEntry;
-use mimorya_db::repositories::org::{load_authorization_data, load_org_units, load_user_access};
+use mimorya_db::repositories::org::{
+    AuthorizationData, load_authorization_data, load_org_units, load_user_access,
+};
 use mimorya_db::{Database, TenantTx};
 use uuid::Uuid;
 
@@ -92,22 +94,44 @@ async fn begin_change(
 ) -> anyhow::Result<TenantTx> {
     let mut tx = db.begin(access.subject.tenant_id).await?;
     tx.lock_administration().await?;
-    let data = load_authorization_data(&mut tx).await?;
-    let definitions = data.roles.into_iter().map(|r| r.definition).collect();
-    let engine = AuthorizationEngine::new(OrgTree::new(data.units)?, definitions, data.policies);
-    let current = load_user_access(&mut tx, access.subject.user_id).await?;
-    let allowed = current
-        .filter(|a| a.profile.status == "active")
-        .is_some_and(|a| {
-            engine.data_scope(&a.subject, permission, &Actor::user()) == DataScope::All
-        });
-    if !allowed {
+    let engine = engine_of(load_authorization_data(&mut tx).await?)?;
+    if !holds_company_wide(&mut tx, &engine, access.subject.user_id, permission).await? {
         return Err(DomainError::forbidden(format!(
             "Permission requise sur toute l’entreprise : {permission}"
         ))
         .into());
     }
     Ok(tx)
+}
+
+/// The engine of the company's rules as stored: its units, roles and
+/// policies.
+pub(crate) fn engine_of(data: AuthorizationData) -> anyhow::Result<AuthorizationEngine> {
+    let definitions = data.roles.into_iter().map(|r| r.definition).collect();
+    Ok(AuthorizationEngine::new(
+        OrgTree::new(data.units)?,
+        definitions,
+        data.policies,
+    ))
+}
+
+/// Whether `user_id` holds `permission` on the whole company as the stored
+/// data say now: an active account, its assignments, and `engine`'s rules,
+/// deny policies included. What an administration change requires
+/// (`begin_change`), and what tells the skills' administrators apart
+/// (ADR-102).
+pub(crate) async fn holds_company_wide(
+    tx: &mut TenantTx,
+    engine: &AuthorizationEngine,
+    user_id: Uuid,
+    permission: &str,
+) -> anyhow::Result<bool> {
+    let current = load_user_access(tx, user_id).await?;
+    Ok(current
+        .filter(|a| a.profile.status == "active")
+        .is_some_and(|a| {
+            engine.data_scope(&a.subject, permission, &Actor::user()) == DataScope::All
+        }))
 }
 
 /// The organisation tree as stored now (read under the administration lock).
