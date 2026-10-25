@@ -33,8 +33,9 @@ use super::executor::RunExecutor;
 use super::fence::LeaseFence;
 use super::lesson_capture::LessonCapture;
 use super::outcome::persist_outcome;
+use super::reads::Reader;
 use crate::services::access::AccessService;
-use crate::services::embeddings::EmbeddingService;
+use crate::services::embeddings::{EmbeddingService, UsageBy};
 use crate::services::event_bus::RunEventBus;
 
 /// No event recorded yet by this execution.
@@ -147,6 +148,20 @@ impl DbPorts {
     /// A transaction to read in, or to record what happened.
     pub(super) async fn tx(&self) -> anyhow::Result<TenantTx> {
         Ok(self.db.begin(self.scope.tenant_id).await?)
+    }
+
+    /// What the run reads of the memory and the documents, its requests'
+    /// vectors counted for it.
+    pub(super) fn reader(&self) -> Reader<'_> {
+        Reader {
+            db: &self.db,
+            embeddings: &self.embeddings,
+            tenant_id: self.scope.tenant_id,
+            by: UsageBy {
+                user_id: Some(self.scope.user_id),
+                run_id: Some(self.scope.run_id),
+            },
+        }
     }
 
     /// A transaction to change the run in, under the execution's lease

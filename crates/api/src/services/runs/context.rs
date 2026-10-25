@@ -73,7 +73,16 @@ pub async fn build_run_system_prompt(
             description: s.description,
         })
         .collect();
-    let profile = UserProfileContext {
+    Ok(build_system_prompt(
+        &user_profile(access, assistant_name),
+        &skills,
+        now,
+    ))
+}
+
+/// Who the agent works for, as the system prompt presents them.
+pub fn user_profile(access: &AccessContext, assistant_name: &str) -> UserProfileContext {
+    UserProfileContext {
         assistant_name: assistant_name.to_string(),
         tenant_name: access.tenant.name.clone(),
         display_name: access.profile.display_name.clone(),
@@ -83,8 +92,7 @@ pub async fn build_run_system_prompt(
             .primary_unit_id
             .map(|unit| access.org_tree().path_label(unit)),
         roles: access.grants.clone(),
-    };
-    Ok(build_system_prompt(&profile, &skills, now))
+    }
 }
 
 /// Memories the agent may read for this user, ranked against the request:

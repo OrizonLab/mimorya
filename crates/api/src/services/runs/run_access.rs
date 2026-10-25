@@ -49,8 +49,9 @@ impl RunAccess {
 
 /// Why a run may not go on for whom it acts for, given their access as it
 /// stands (`None`: their account is no longer active); `None` when it may.
-/// Read before each step, and before a queued run starts (ADR-085).
-pub(super) fn stopped_by(context: Option<&AccessContext>) -> Option<&'static str> {
+/// Read before each step, and before a queued run starts (ADR-085); before
+/// each step of an evaluation's too (ADR-104).
+pub(crate) fn stopped_by(context: Option<&AccessContext>) -> Option<&'static str> {
     match context {
         None => Some(ACCOUNT_INACTIVE),
         Some(context) if context.tenant.status != "active" => Some(COMPANY_SUSPENDED),

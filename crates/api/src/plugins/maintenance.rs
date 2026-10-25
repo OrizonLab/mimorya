@@ -7,7 +7,8 @@
 //! day before (ADR-062), each of these three in one process at a time
 //! (ADR-086); the authors of the missions over are told of their end, and
 //! the skills' administrators of the agent's proposals, each in one process
-//! at a time too (ADR-091, ADR-102); runs without
+//! at a time too (ADR-091, ADR-102); the evaluations of the skills asked for
+//! are played, in the background and one at a time (ADR-104); runs without
 //! progress for a while belong to a stuck process and are marked as
 //! failed, their `run_finished` event recorded and broadcast to the clients
 //! following them. That sweep waits until the process has run as long as a
@@ -33,6 +34,7 @@ use crate::app::AppState;
 use crate::services::event_bus::RunEventBus;
 use crate::services::missions::tell_ended_missions;
 use crate::services::runs::record_run_event;
+use crate::services::skill_evaluations::wake as play_skill_evaluations;
 use crate::services::skill_proposal_notice::announce_skill_proposals;
 
 const STALE_AFTER: chrono::Duration = chrono::Duration::minutes(15);
@@ -63,6 +65,8 @@ pub fn spawn_maintenance(services: AppState) -> JoinHandle<()> {
                 Ok(announced) => tracing::info!(announced, "Skill proposals announced"),
                 Err(error) => tracing::warn!(error = %error, "Skill proposal notice sweep failed"),
             }
+            // Played apart, for as long as they take (ADR-104).
+            play_skill_evaluations(&services);
             if sweeps_stale_runs(started.elapsed()) {
                 match sweep_stale_runs(db, bus, STALE_AFTER).await {
                     Ok(0) => {}

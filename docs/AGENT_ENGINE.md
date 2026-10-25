@@ -269,8 +269,11 @@ composables par les compétences.
 6. **Évaluation** de la version candidate sur les cas d'évaluation de la compétence
    (`skill_eval_cases` : une demande et ses critères de réussite, écrits par ses
    administrateurs, au plus 10, ADR-103), comparée à la version active sur les mêmes
-   cas (non-régression) ; budget d'évaluation plafonné.
-7. **Activation** par une personne habilitée (`skill:manage`), ou rejet de la
+   cas (non-régression) : chaque cas joué en lecture seule pour l'administrateur qui la
+   demande, la version jouée servie par `skill_read`, la réponse jugée par un modèle sur
+   les critères ; budget plafonné par cas ; aucun run, aucune action (ADR-104).
+7. **Activation** par une personne habilitée (`skill:manage`), confirmée contre les
+   régressions de la dernière évaluation de la version (ADR-104), ou rejet de la
    proposition ; historique conservé ; retour à la version précédente en un geste si
    les indicateurs se dégradent.
 

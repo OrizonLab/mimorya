@@ -19,6 +19,7 @@ mod leases;
 mod lesson_capture;
 mod outcome;
 mod queue;
+mod reads;
 mod recovery;
 mod run_access;
 mod service;
@@ -31,6 +32,8 @@ pub use approval_delegation::{
 };
 pub use approval_notice::ApprovalNotifier;
 pub use approval_routing::{can_decide, can_withdraw, shown_to};
+/// What an evaluation of a skill plays its cases with (ADR-104).
+pub(crate) use context::{build_run_tools, user_profile};
 pub use conversation_turn::{TurnSender, tenant_autonomy_level};
 pub use db_ports::RunScope;
 pub use events::{append_in, record_run_event};
@@ -38,9 +41,11 @@ pub use executor::RunExecutor;
 pub use leases::LeaseTiming;
 pub use lesson_capture::LessonCapture;
 pub use queue::{QUEUED_REQUEST_NOT_FOUND, QUEUED_TOO_LONG};
+pub(crate) use reads::Reader;
 pub use recovery::{
     INTERRUPTED_TOO_LONG, NOT_AN_EXECUTOR, STOPPED_BEFORE_ITS_FIRST_STEP, SUB_AGENT_INTERRUPTED,
 };
+pub(crate) use run_access::stopped_by;
 pub use run_access::{AGENT_USE_WITHDRAWN, COMPANY_SUSPENDED};
 pub use service::{DecisionResult, RunService, StartedTurn};
 pub use sub_runs::{SUB_AGENT_STOPPED, announce, end_sub_runs};

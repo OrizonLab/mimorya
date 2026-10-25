@@ -53,6 +53,8 @@ erDiagram
   org_units ||--o{ memory_items : "mémoire d'unité"
   skills ||--o{ skill_versions : versionne
   skills ||--o{ skill_eval_cases : évalue
+  skills ||--o{ skill_evaluations : éprouve
+  skill_evaluations ||--o{ skill_evaluation_results : juge
   tenants ||--o{ connector_instances : active
   connector_instances }o--o| secrets : utilise
   tenants ||--o{ audit_log : journalise
@@ -112,12 +114,14 @@ quand la décision est prise dans un processus `api`) → `completed` | `failed`
 
 ### 3.4 Mémoire et compétences
 
-| Table              | Rôle                                        | Champs clés                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| ------------------ | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `memory_items`     | Unité de mémoire                            | `scope` (`user`, `org_unit`, `tenant`, `experience`), `owner_user_id`, `org_unit_id`, `kind` (`preference`, `fact`, `procedure`, `decision`, `lesson`, `episode`), `title`, `content`, `sensitivity`, `status` (`active`, `proposed`, `archived`), `source` (traçabilité : conversation, run, document, saisie), `confidence`, `expires_at` (rétention), `last_used_at`, `use_count`, `content_tsv` (FTS), `embedding vector(1024)`, `embedding_model` |
-| `skills`           | Compétence réutilisable                     | `name` (slug, unique par entreprise), `description`, `status`, `active_version_id`, `scope`, `org_unit_id`                                                                                                                                                                                                                                                                                                                                             |
-| `skill_versions`   | Version immuable d'une compétence           | `version`, `content` (corps `SKILL.md`), `frontmatter`, `changelog`, `status` (`draft`, `candidate` : proposée par l'agent, `active`, `rejected` : proposition rejetée, `retired`), `proposed` (vient de l'agent, ADR-100), `announced_at` (proposition annoncée aux administrateurs, ADR-102), `created_by_run_id`, `approved_by_user_id`, `eval_summary`                                                                                             |
-| `skill_eval_cases` | Cas d'évaluation d'une compétence (ADR-103) | `name` (unique par compétence), `request` (la demande, comme une personne la ferait), `criteria` (de 1 à 8 critères de réussite, une ligne chacun), `created_by_user_id` ; au plus 10 par compétence, écrits par ses administrateurs ; remplacent `skill_evals`, réservée par le schéma initial et jamais écrite                                                                                                                                       |
+| Table                      | Rôle                                        | Champs clés                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| -------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `memory_items`             | Unité de mémoire                            | `scope` (`user`, `org_unit`, `tenant`, `experience`), `owner_user_id`, `org_unit_id`, `kind` (`preference`, `fact`, `procedure`, `decision`, `lesson`, `episode`), `title`, `content`, `sensitivity`, `status` (`active`, `proposed`, `archived`), `source` (traçabilité : conversation, run, document, saisie), `confidence`, `expires_at` (rétention), `last_used_at`, `use_count`, `content_tsv` (FTS), `embedding vector(1024)`, `embedding_model` |
+| `skills`                   | Compétence réutilisable                     | `name` (slug, unique par entreprise), `description`, `status`, `active_version_id`, `scope`, `org_unit_id`                                                                                                                                                                                                                                                                                                                                             |
+| `skill_versions`           | Version immuable d'une compétence           | `version`, `content` (corps `SKILL.md`), `frontmatter`, `changelog`, `status` (`draft`, `candidate` : proposée par l'agent, `active`, `rejected` : proposition rejetée, `retired`), `proposed` (vient de l'agent, ADR-100), `announced_at` (proposition annoncée aux administrateurs, ADR-102), `created_by_run_id`, `approved_by_user_id`, `eval_summary`                                                                                             |
+| `skill_eval_cases`         | Cas d'évaluation d'une compétence (ADR-103) | `name` (unique par compétence), `request` (la demande, comme une personne la ferait), `criteria` (de 1 à 8 critères de réussite, une ligne chacun), `created_by_user_id` ; au plus 10 par compétence, écrits par ses administrateurs ; remplacent `skill_evals`, réservée par le schéma initial et jamais écrite                                                                                                                                       |
+| `skill_evaluations`        | Évaluation d'une version (ADR-104)          | `version`, `reference_version` (la version active jouée à côté), `launched_by_user_id` (pour qui les cas sont joués, seul à lire leurs réponses), `status` (`queued`, `running`, `completed`, `failed`), `failure`, `cases` (les cas copiés à la demande), jetons et `cost_micros` ; une en file ou en cours par entreprise ; les cinq dernières d'une compétence gardées                                                                              |
+| `skill_evaluation_results` | Un cas joué pour une version (ADR-104)      | `position`, `reference`, `outcome` (`passed`, `failed`, `error`), `issues` (manquements relevés par le juge), `answer` (8 000 caractères au plus), `error`, `skill_loaded`, `tools` (outils appelés et leur résumé), `cost_micros` ; écrit une fois                                                                                                                                                                                                    |
 
 Index : GIN sur `content_tsv`, HNSW (`vector_cosine_ops`) sur `embedding`,
 index composites par `(tenant_id, scope, owner_user_id)` et `(tenant_id, org_unit_id)`.
@@ -134,7 +138,7 @@ sujet : l'index HNSW ne sert pas encore.
 | `document_files`  | Fichier tel que déposé         | `document_id` (clé), `content` (`bytea`, stocké hors ligne sans nouvelle compression) ; supprimé avec le document                                                                                                                                                                                                                                                      |
 | `document_chunks` | Passage du texte d'un document | `document_id`, `ordinal`, `page` (PDF), `heading` (titre de sa section), `content` (2 000 caractères au plus), `content_tsv` (recherche par les mots), `embedding vector(1024)` et `embedding_model` (recherche par le sens, ADR-096 : seules colonnes que le rôle applicatif peut modifier, vidées au retour à la recherche par les mots) ; supprimé avec le document |
 
-Phase 2 : `skill_eval_runs`, `schedules`, `channel_identities` (Slack, Teams… ↔
+Phase 2 : `schedules`, `channel_identities` (Slack, Teams… ↔
 utilisateur).
 
 ### 3.5 Connecteurs, secrets, audit, consommation
@@ -212,7 +216,10 @@ utilisateur).
   entreprise, ADR-074, ADR-096), `system_unannounced_skill_proposals` (lister les
   entreprises actives dont des propositions de compétences attendent une décision sans
   avoir été annoncées à leurs administrateurs : entreprise seulement, chacune lue ensuite
-  dans sa propre entreprise, ADR-102),
+  dans sa propre entreprise, ADR-102), `system_pending_skill_evaluations` (lister les
+  évaluations de compétences en file dans une entreprise active, les plus anciennes
+  d'abord, et celles qu'un arrêt a laissées en cours : entreprise et identifiant
+  seulement, chacune jouée ou close ensuite dans sa propre entreprise, ADR-104),
   `system_expired_run_leases` (lister les runs en cours dont le bail a expiré, ou qui n'en
   ont jamais eu : entreprise et identifiant seulement, chacun repris ensuite dans sa propre
   entreprise, au démarrage comme ensuite, ADR-083, ADR-086), `system_queued_runs` (lister les runs en file d'attente, les plus anciens
@@ -225,21 +232,22 @@ utilisateur).
 
 ## 5. Rétention (valeurs par défaut, configurables par entreprise)
 
-| Donnée                           | Durée par défaut                                                                     |
-| -------------------------------- | ------------------------------------------------------------------------------------ |
-| Messages et événements de run    | 24 mois                                                                              |
-| Mémoire personnelle              | Jusqu'à suppression par l'utilisateur ou départ (compte désactivé + 30 jours)        |
-| Mémoire `episode`                | 12 mois                                                                              |
-| Journal d'audit                  | 5 ans (conformité), sans contenu de message                                          |
-| Sessions expirées                | 30 jours                                                                             |
-| Invitations                      | Jusqu'à acceptation, renvoi ou désactivation (expirées : jusqu'au renvoi)            |
-| Identités chez un fournisseur    | Jusqu'à la suppression du fournisseur ou du compte                                   |
-| Liens de réinitialisation        | Jusqu'à usage, nouvelle demande, changement du compte ; expirés : purgés             |
-| Absences déclarées               | Jusqu'à leur fin ou leur retrait ; terminées : purgées                               |
-| Tâches planifiées                | Jusqu'à suppression par leur auteur ou avec son compte ; compte désactivé : en pause |
-| Missions                         | Comme leur conversation, supprimées avec elle ou avec le compte de leur auteur       |
-| Documents déposés                | Jusqu'à suppression par qui peut écrire leur espace, ou avec l'entreprise            |
-| Compétences et propositions      | Avec leur compétence, rejetées comprises ; auteur et run oubliés avec eux (ADR-100)  |
-| Cas d'évaluation des compétences | Avec leur compétence ; leur auteur parti, ils restent à l'entreprise (ADR-103)       |
-| Choix des e-mails reçus          | Jusqu'à modification par la personne ou suppression de son compte                    |
-| Consommation                     | 5 ans (facturation)                                                                  |
+| Donnée                                        | Durée par défaut                                                                                                          |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Messages et événements de run                 | 24 mois                                                                                                                   |
+| Mémoire personnelle                           | Jusqu'à suppression par l'utilisateur ou départ (compte désactivé + 30 jours)                                             |
+| Mémoire `episode`                             | 12 mois                                                                                                                   |
+| Journal d'audit                               | 5 ans (conformité), sans contenu de message                                                                               |
+| Sessions expirées                             | 30 jours                                                                                                                  |
+| Invitations                                   | Jusqu'à acceptation, renvoi ou désactivation (expirées : jusqu'au renvoi)                                                 |
+| Identités chez un fournisseur                 | Jusqu'à la suppression du fournisseur ou du compte                                                                        |
+| Liens de réinitialisation                     | Jusqu'à usage, nouvelle demande, changement du compte ; expirés : purgés                                                  |
+| Absences déclarées                            | Jusqu'à leur fin ou leur retrait ; terminées : purgées                                                                    |
+| Tâches planifiées                             | Jusqu'à suppression par leur auteur ou avec son compte ; compte désactivé : en pause                                      |
+| Missions                                      | Comme leur conversation, supprimées avec elle ou avec le compte de leur auteur                                            |
+| Documents déposés                             | Jusqu'à suppression par qui peut écrire leur espace, ou avec l'entreprise                                                 |
+| Compétences et propositions                   | Avec leur compétence, rejetées comprises ; auteur et run oubliés avec eux (ADR-100)                                       |
+| Cas d'évaluation des compétences              | Avec leur compétence ; leur auteur parti, ils restent à l'entreprise (ADR-103)                                            |
+| Évaluations des compétences et leurs réponses | Les cinq dernières par compétence ; avec leur compétence ; leur auteur parti, plus personne ne lit les réponses (ADR-104) |
+| Choix des e-mails reçus                       | Jusqu'à modification par la personne ou suppression de son compte                                                         |
+| Consommation                                  | 5 ans (facturation)                                                                                                       |

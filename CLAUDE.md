@@ -31,7 +31,8 @@ Repères à l'intérieur des crates :
   (contrat d'outil, outils typés), `core/src/skill_rules.rs` (ce qu'une compétence peut
   contenir, ADR-052), `core/src/skill_proposals.rs` (où va une compétence que l'agent
   propose, ADR-100), `core/src/skill_eval_cases.rs` (ce qu'un cas d'évaluation d'une
-  compétence contient, ADR-103), `core/src/identity_providers/` (fournisseurs d'identité : émetteur de
+  compétence contient, ADR-103), `core/src/skill_evaluations.rs` (régression, bilan et
+  confirmation à l'activation, ADR-104), `core/src/identity_providers/` (fournisseurs d'identité : émetteur de
   chaque type, domaines, ce que prouve un jeton ou une assertion SAML, nom d'un compte
   créé, enregistrement DNS qui prouve un domaine (`domain_proof.rs`), ADR-063, ADR-067,
   ADR-068, ADR-069), `core/src/schedule.rs` (heure d'une tâche planifiée, ADR-080),
@@ -50,7 +51,8 @@ Repères à l'intérieur des crates :
   `document_embeddings.rs`, ADR-096 ; runs des sous-agents, ouverts sous leur parent :
   `sub_runs.rs`, ADR-098 ; compétences proposées par l'agent : `skill_proposals.rs`,
   ADR-100, et leur annonce aux administrateurs : `skill_proposal_notices.rs`, ADR-102 ;
-  cas d'évaluation des compétences : `skill_eval_cases.rs`, ADR-103),
+  cas d'évaluation des compétences : `skill_eval_cases.rs`, ADR-103, et leurs
+  évaluations : `skill_evaluations.rs`, ADR-104),
   `db/src/notifications.rs` (canaux PostgreSQL des événements des runs, de la file et des
   invalidations, ADR-084, ADR-085), `db/src/sweep_lock.rs` (verrou d'un balayage qui ne
   tourne que dans un processus à la fois, ADR-086), `db/src/seed/` (organisation,
@@ -79,7 +81,8 @@ Repères à l'intérieur des crates :
   mémoire et des passages des documents en arrière-plan, `memory_indexing.rs`, ADR-074,
   ADR-096 ; tâches planifiées lancées
   chaque minute, `scheduled_tasks.rs`, ADR-080 ; fin des missions annoncée à leur
-  auteur, ADR-091, et propositions de compétences à leurs administrateurs, ADR-102 ; baux des runs renouvelés et runs au
+  auteur, ADR-091, et propositions de compétences à leurs administrateurs, ADR-102 ;
+  évaluations des compétences jouées, ADR-104 ; baux des runs renouvelés et runs au
   bail expiré repris, `run_leases.rs`, ADR-083 ; événements des autres processus écoutés
   et fragments de texte envoyés, `run_event_relay.rs`, ADR-084 ; runs en file réservés
   par le worker, `run_queue.rs`, ADR-085 ; tâches de fond lancées selon le rôle du
@@ -89,18 +92,23 @@ Repères à l'intérieur des crates :
   TypeScript, ADR-036, ADR-039),
   `api/src/services/admin/` (comptes et absence d'un collaborateur empêché
   (`absences.rs`, ADR-078), organisation, habilitations, compétences, rejet des
-  propositions de l'agent (`skill_proposals.rs`, ADR-100) et cas d'évaluation
-  (`skill_eval_cases.rs`, ADR-103), sous verrou par entreprise), `api/src/services/account.rs` (son propre compte),
+  propositions de l'agent (`skill_proposals.rs`, ADR-100), cas d'évaluation
+  (`skill_eval_cases.rs`, ADR-103) et évaluation demandée (`skill_evaluations.rs`,
+  ADR-104), sous verrou par entreprise), `api/src/services/account.rs` (son propre compte),
   `api/src/services/notification_settings.rs` (e-mails que chacun choisit de recevoir,
   lus au moment d'envoyer chaque avis, ADR-094),
   `api/src/services/skill_proposal_notice/` (propositions de l'agent annoncées par e-mail
   aux administrateurs des compétences, ADR-102),
+  `api/src/services/skill_evaluations/` (évaluations des compétences : passe une à la
+  fois (`pass.rs`), cas joués et jugés (`play.rs`, `case.rs`) avec leurs propres ports
+  (`ports/`), lecture (`view.rs`), ADR-104),
   `api/src/services/documents/` (documents déposés : lecture par le processus
   `mimorya-extract`, `api/src/bin/extract.rs`, bornée en nombre, en temps et en taille,
   `extractor.rs` ; dépôt sous le quota de l'entreprise, `deposit.rs` ; liste,
   téléchargement et suppression, `library.rs`, ADR-095),
   `api/src/services/runs/` (tour de conversation, décisions, contexte, exécution,
-  ports PostgreSQL (documents : `document_ports.rs`, ADR-096 ; runs des sous-agents,
+  ports PostgreSQL (lectures de la mémoire et des documents, partagées avec les
+  évaluations : `reads.rs` ; documents : `document_ports.rs`, ADR-096 ; runs des sous-agents,
   sous le bail de leur parent : `sub_runs.rs`, ADR-098), résultat, reprise des runs dont l'exécuteur s'est arrêté et ce
   processus exécute-t-il des runs (`recovery/`), ADR-053, ADR-086, circuit des validations,
   avis au responsable (`approval_notice/`, rattrapé chaque minute s'il est perdu, ADR-070, ADR-086 ; à l'auteur

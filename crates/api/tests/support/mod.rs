@@ -38,6 +38,7 @@ pub mod runs;
 pub mod saml_provider;
 pub mod scheduled;
 pub mod scheduled_notices;
+pub mod skill_evaluations;
 pub mod skill_proposal_notices;
 pub mod skill_proposals;
 pub mod sso;

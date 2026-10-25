@@ -2,8 +2,9 @@
 //! its skills (ADR-052). A member is refused on every route, each change
 //! audited (ADR-038). Another company's skill answers as one that exists
 //! nowhere, on every route, the attempt audited as such (ADR-047), and it is
-//! left as it was: no version nor evaluation case (ADR-103) is ever written
-//! for it, although their tables' foreign keys would accept its identifier.
+//! left as it was: no version, evaluation case (ADR-103) nor evaluation
+//! (ADR-104) is ever written for it, although their tables' foreign keys
+//! would accept its identifier.
 
 mod support;
 
@@ -53,6 +54,12 @@ async fn every_change(client: &Client<'_>, id: Uuid) -> Vec<(&'static str, TestR
                 .await,
         ),
         (
+            "POST evaluations",
+            client
+                .post(&format!("{skill}/evaluations"), json!({ "version": 1 }))
+                .await,
+        ),
+        (
             "POST cases",
             client
                 .post(
@@ -80,7 +87,8 @@ async fn foreign_skill(api: &TestApi) -> Uuid {
     id
 }
 
-/// The rows of `table` (versions or cases) of skill `id` a company holds.
+/// The rows of `table` (versions, cases, evaluations) of skill `id` a
+/// company holds.
 async fn rows_of(api: &TestApi, tenant_id: Uuid, table: &str, id: Uuid) -> i64 {
     let mut tx = api.app.services.db.begin(tenant_id).await.unwrap();
     sqlx::query_scalar(&format!("select count(*) from {table} where skill_id = $1"))
@@ -100,8 +108,10 @@ async fn a_member_is_refused_on_every_route() {
     let since = latest_entry(&api).await;
 
     assert_eq!(marc.get(SKILLS).await.status, StatusCode::FORBIDDEN);
-    let shown = marc.get(&format!("{SKILLS}/{DEMO_SKILL_ID}")).await;
-    assert_eq!(shown.status, StatusCode::FORBIDDEN);
+    for read in ["", "/evaluations"] {
+        let shown = marc.get(&format!("{SKILLS}/{DEMO_SKILL_ID}{read}")).await;
+        assert_eq!(shown.status, StatusCode::FORBIDDEN, "{read}");
+    }
     let created = marc
         .post(
             SKILLS,
@@ -114,7 +124,7 @@ async fn a_member_is_refused_on_every_route() {
     }
 
     // Each change refused is audited; reads are not.
-    assert_eq!(refusals_since(&api, since).await.len(), 8);
+    assert_eq!(refusals_since(&api, since).await.len(), 9);
     let after = paul.get(&format!("{SKILLS}/{DEMO_SKILL_ID}")).await.json();
     assert_eq!(after, before);
 }
@@ -128,8 +138,10 @@ async fn another_company_s_skill_answers_as_absent_and_stays_as_it_was() {
     let since = latest_entry(&api).await;
 
     for id in [foreign, Uuid::new_v4()] {
-        let shown = paul.get(&format!("{SKILLS}/{id}")).await;
-        assert_eq!(shown.status, StatusCode::NOT_FOUND);
+        for read in ["", "/evaluations"] {
+            let shown = paul.get(&format!("{SKILLS}/{id}{read}")).await;
+            assert_eq!(shown.status, StatusCode::NOT_FOUND, "{read}");
+        }
         for (route, answer) in every_change(&paul, id).await {
             assert_eq!(answer.status, StatusCode::NOT_FOUND, "{route}");
             assert!(answer.text().contains("Compétence introuvable"), "{route}");
@@ -138,8 +150,8 @@ async fn another_company_s_skill_answers_as_absent_and_stays_as_it_was() {
 
     // Each change audited as aimed at a skill answered as absent.
     let absent = not_found_since(&api, since).await;
-    assert_eq!(absent.len(), 14);
-    for (_, entry) in &absent[..7] {
+    assert_eq!(absent.len(), 16);
+    for (_, entry) in &absent[..8] {
         assert_eq!(entry.resource, Some(("skill".into(), foreign.to_string())));
     }
     assert!(refusals_since(&api, since).await.is_empty());
@@ -147,10 +159,9 @@ async fn another_company_s_skill_answers_as_absent_and_stays_as_it_was() {
     // Untouched, and no version nor case written for it in either company.
     for tenant_id in [OTHER_TENANT_ID, tenant::ID] {
         assert_eq!(rows_of(&api, tenant_id, "skill_versions", foreign).await, 0);
-        assert_eq!(
-            rows_of(&api, tenant_id, "skill_eval_cases", foreign).await,
-            0
-        );
+        for table in ["skill_eval_cases", "skill_evaluations"] {
+            assert_eq!(rows_of(&api, tenant_id, table, foreign).await, 0, "{table}");
+        }
     }
     let mut tx = api.app.services.db.begin(OTHER_TENANT_ID).await.unwrap();
     let (status, description): (String, String) =

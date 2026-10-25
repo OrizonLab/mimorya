@@ -204,6 +204,25 @@ export type AuthOptions = {
 passwordReset: boolean, };
 
 /**
+ * As `skill_evaluations::CaseOutcome` stores it.
+ */
+export type CaseOutcomeView = "passed" | "failed" | "error";
+
+export type CaseResultView = { outcome: CaseOutcomeView,
+/**
+ * Whether the agent loaded the version played.
+ */
+skillLoaded: boolean,
+/**
+ * Why no answer was judged, in the platform's words.
+ */
+error: string | null,
+/**
+ * Shown to whom the evaluation ran for only, as the next two.
+ */
+answer: string | null, issues: Array<string> | null, tools: Array<ToolCallView> | null, };
+
+/**
  * A source the agent's answer relies on: an identifier returned by a tool.
  */
 export type Citation = { type: string, id: string, label?: string, };
@@ -591,6 +610,23 @@ export type ErrorDetail = { code: ErrorKind, message: string,
 details?: unknown, };
 
 export type ErrorKind = "validation" | "unauthenticated" | "forbidden" | "not_found" | "conflict" | "budget_exceeded" | "unavailable" | "request" | "rate_limited" | "internal";
+
+export type EvaluatedCaseView = { name: string, request: string, criteria: Array<string>,
+/**
+ * For the version evaluated; `None` while not played.
+ */
+result: CaseResultView | null,
+/**
+ * For the active version played beside it.
+ */
+reference: CaseResultView | null, regression: boolean, };
+
+/**
+ * Body of `POST /admin/skills/{id}/evaluations`: the version tried.
+ */
+export type EvaluationRequest = { version: number, };
+
+export type EvaluationStatus = "queued" | "running" | "completed" | "failed";
 
 /**
  * `GET /health`: answered once the database answers.
@@ -1392,7 +1428,12 @@ export type Sensitivity = "public" | "internal" | "confidential" | "restricted";
 /**
  * Body of `PUT /admin/skills/{id}/activation`: the version made active.
  */
-export type SkillActivation = { version: number, };
+export type SkillActivation = { version: number,
+/**
+ * Made active against the regressions its last evaluation found
+ * (ADR-104). Absent: not confirmed.
+ */
+confirmed?: boolean, };
 
 /**
  * `GET /admin/skills/{id}`: the skill and its versions, the latest first,
@@ -1421,6 +1462,35 @@ request: string,
  * What a good answer does, one criterion each.
  */
 criteria: Array<string>, createdBy: string | null, updatedAt: string, };
+
+/**
+ * `GET /admin/skill-evaluations/{id}`.
+ */
+export type SkillEvaluationDetail = { evaluation: SkillEvaluationView, cases: Array<EvaluatedCaseView>,
+/**
+ * Whether the answers, issues and tools are shown: to whom the
+ * evaluation ran for.
+ */
+detailsShown: boolean, };
+
+export type SkillEvaluationView = { id: string, version: number,
+/**
+ * The active version played beside it, when another one was evaluated.
+ */
+referenceVersion: number | null, status: EvaluationStatus, failure: string | null, cases: number,
+/**
+ * Cases played so far for the version evaluated.
+ */
+played: number, passed: number, referencePassed: number | null,
+/**
+ * Cases the active version passed and the evaluated one did not.
+ */
+regressions: number, launchedBy: string | null, costMicros: number, createdAt: string, startedAt: string | null, finishedAt: string | null, };
+
+/**
+ * `GET /admin/skills/{id}/evaluations`: the latest first.
+ */
+export type SkillEvaluations = { evaluations: Array<SkillEvaluationView>, };
 
 /**
  * `GET /admin/skills`.
@@ -1552,6 +1622,11 @@ export type ToolCallEvent = { toolCallId: string, toolName: string, title: strin
  * The tool's risk when it was called (an unknown tool has none).
  */
 risk?: ToolRisk, };
+
+/**
+ * As the evaluation's `ToolTrace` stores it.
+ */
+export type ToolCallView = { name: string, summary: string, isError: boolean, };
 
 /**
  * The policy's decision on a tool call.
