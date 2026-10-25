@@ -22,27 +22,38 @@ use support::recovery::{
 };
 use support::resets::new_reset_token;
 use support::{TestApi, email, owner_url};
+use uuid::Uuid;
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
 async fn a_second_worker_starts_beside_the_first_and_takes_each_run_up_once() {
     let first = TestApi::start().await;
-    restart(&first).await;
     let run_id = stopped_run(&first, tenant::ID, user::MARC, None, Some(saved()), &[]).await;
+    // Still held by an executor gone since: neither the first's start nor
+    // its periodic takeover, which follows at once, takes it up.
+    lease_of_a_gone_executor(run_id, 3600.0).await;
+    assert_eq!(restart(&first).await, 0);
     first.script(vec![ScriptedStep::text("Semaine calme.")]);
 
-    // Both start at once (ADR-086): neither is refused, one takes it up.
-    // The first's periodic takeover, under way since its own start, may
-    // be the one: the starts then find it taken.
+    // Both start at once, its lease expired (ADR-086): neither is
+    // refused, one takes it up.
     let second = TestApi::start().await;
     second.script(vec![ScriptedStep::text("Semaine calme.")]);
+    lease_of_a_gone_executor(run_id, -1.0).await;
     let (one, two) = tokio::join!(restart(&first), restart(&second));
-    assert!(one + two <= 1, "taken up {one} + {two} times at start");
-    assert_eq!(
-        status_and_error(&first, tenant::ID, run_id).await.0,
-        "completed"
-    );
-    // Taken up once, whoever took it.
+    assert_eq!(one + two, 1);
+    // Taken up once: its execution over, one resumption, one model call.
+    let mut status = String::new();
+    for _ in 0..100 {
+        status = status_and_error(&first, tenant::ID, run_id).await.0;
+        if status != "running" {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    first.idle().await;
+    second.idle().await;
+    assert_eq!(status, "completed");
     let resumed = events(&first, tenant::ID, run_id).await;
     let resumed = resumed.iter().filter(|(kind, _)| kind == "run_resumed");
     assert_eq!(resumed.count(), 1);
@@ -212,4 +223,20 @@ async fn each_company_s_runs_are_taken_up_in_their_own_company_and_only_running_
         .await
         .unwrap();
     tx.commit().await.unwrap();
+}
+
+/// Gives `run_id` the lease of an executor gone since, due in `seconds`
+/// (past when negative), on the database's clock.
+async fn lease_of_a_gone_executor(run_id: Uuid, seconds: f64) {
+    let owner = sqlx::PgPool::connect(owner_url()).await.unwrap();
+    sqlx::query(
+        "update agent_runs set lease_owner = gen_random_uuid(), \
+         lease_expires_at = clock_timestamp() + make_interval(secs => $2) where id = $1",
+    )
+    .bind(run_id)
+    .bind(seconds)
+    .execute(&owner)
+    .await
+    .unwrap();
+    owner.close().await;
 }
