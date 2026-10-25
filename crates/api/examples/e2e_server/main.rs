@@ -48,6 +48,7 @@ mod saml_idp;
 mod saml_provider;
 mod scenario;
 mod scheduled;
+mod sub_agents;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -106,7 +107,8 @@ async fn main() -> anyhow::Result<()> {
     }
     let conversations = Arc::new(queued::WithQueued::new(model));
     let documents = Arc::new(documents::WithDocuments::new(conversations));
-    let missions = Arc::new(missions::WithMissions::new(documents));
+    let delegations = Arc::new(sub_agents::WithSubAgents::new(documents));
+    let missions = Arc::new(missions::WithMissions::new(delegations));
     let platform: Arc<dyn LlmProvider> = Arc::new(lessons::WithLessons::new(missions));
     // A company's own provider answers « OK » (its connection test).
     let factory: ProviderFactory = Arc::new(|_config| {

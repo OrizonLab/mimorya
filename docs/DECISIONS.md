@@ -4668,3 +4668,42 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
       - jamais repris seul ; échoue à la reprise, à la panne ou à la fin de son parent,
         ou avec sa mission arrêtée, sa fin annoncée ;
       - aucune entreprise n'ouvre d'enfant sous le run d'une autre.
+
+## ADR-099 — Sous-agents dans la vue « Opérations »
+
+- **Date** : 2026-10-25 · **Statut** : acceptée (lot 2 des sous-agents)
+- **Contexte** : depuis l'ADR-098, l'API donne les sous-agents d'une demande
+  (`subRuns`), leur profil et leur parent, mais l'interface ne les montrait pas. Qui
+  consultait une demande voyait un appel à `delegate_task` sans pouvoir suivre ce que le
+  sous-agent avait lu.
+- **Décision** :
+  - **détail d'une demande** (« Opérations ») : une section « Sous-agents » liste ceux qu'elle
+    a lancés, dans l'ordre. Chacun montre son profil, sa tâche, son statut, ses outils et
+    son coût, et mène à son propre détail ;
+  - **détail d'un sous-agent** :
+    - titre « Sous-agent « Recherche » » (son profil) ;
+    - même résumé et mêmes outils que toute demande ;
+    - un lien « Demande d'origine » vers son parent, à la place du lien vers la
+      conversation, qu'il n'a pas ;
+  - **liste des opérations** : inchangée. Les sous-agents n'y figurent pas, l'API ne
+    listant que les demandes principales ;
+  - **conversation** :
+    - la délégation apparaît dans l'activité de la demande, comme tout outil : son titre
+      et le résumé de son issue (« Sous-agent « Recherche » : résumé rendu ») ;
+    - les sources lues par le sous-agent figurent avec la réponse ;
+  - **serveur e2e** : il joue à part une question confiée à un sous-agent
+    (`sub_agents.rs`). Le modèle délègue une recherche, le sous-agent cherche dans les
+    documents et rend son résumé, puis le modèle répond d'après lui.
+- **Alternatives écartées** :
+  - lister les sous-agents parmi les opérations : l'utilisateur n'a demandé qu'une chose,
+    et chaque sous-agent reste joignable depuis sa demande ;
+  - suivre un sous-agent en direct depuis la conversation : son résumé suffit à la
+    conversation, et son détail se consulte une fois la demande traitée.
+- **Conséquences** :
+  - libellés des profils dans `apps/web/lib/labels.ts` (`AGENT_PROFILES`) ;
+  - tests : `apps/web/e2e/sub-agents.spec.ts` :
+    - réponse issue du résumé du sous-agent, charte qu'il a lue citée ;
+    - demande listée seule ;
+    - sous-agent nommé dans son détail ;
+    - outils du sous-agent visibles ;
+    - retour à la demande d'origine.
