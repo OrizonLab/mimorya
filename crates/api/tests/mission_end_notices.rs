@@ -28,6 +28,8 @@ use uuid::Uuid;
 
 const ANSWER: &str = "Synthèse : aucune intervention ne reste sans suivi cette semaine.";
 const NOTE: &str = "Fait : la semaine relue. Reste : proposer le suivi.";
+/// How long the test waits for a maintenance pass under way to be done.
+const WAIT: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// Entrusts `client`'s mission `title` and has it answer at once, its answer
 /// reviewed with `review`: the mission, done.
@@ -114,10 +116,8 @@ async fn one_process_that_executes_runs_with_a_relay_tells_of_it_once() {
     // A process that executes no runs tells of nothing.
     assert_eq!(tell_ended_missions(&one.app.services).await.unwrap(), 0);
     assert!(one.mail.sent().is_empty());
-    for worker in [&one, &two] {
-        worker.app.services.runs.start_executing().unwrap();
-    }
-    // Under way elsewhere: skipped, nobody told.
+    // Under way elsewhere: skipped, nobody told. Held before either
+    // executes runs, so that no maintenance pass of theirs takes it first.
     let held = one
         .app
         .services
@@ -125,10 +125,13 @@ async fn one_process_that_executes_runs_with_a_relay_tells_of_it_once() {
         .try_sweep_lock("mission-end-notices")
         .await;
     let held = held.unwrap().expect("free");
+    for worker in [&one, &two] {
+        worker.app.services.runs.start_executing().unwrap();
+    }
     assert_eq!(tell_ended_missions(&two.app.services).await.unwrap(), 0);
     assert!(two.mail.sent().is_empty());
-    held.release().await;
     assert_eq!(end_notified(id).await, None);
+    held.release().await;
 
     let (first, second) = tokio::join!(
         tell_ended_missions(&one.app.services),
@@ -136,6 +139,9 @@ async fn one_process_that_executes_runs_with_a_relay_tells_of_it_once() {
     );
     first.unwrap();
     second.unwrap();
+    // A maintenance pass may have told of it meanwhile: once it is done.
+    let settled = one.app.services.db.sweep_lock("mission-end-notices", WAIT);
+    settled.await.unwrap().release().await;
     assert_eq!(told(&one, title).len() + told(&two, title).len(), 1);
     assert_eq!(end_notices(id).await, audited("done"));
     assert!(end_notified(id).await.is_some());
