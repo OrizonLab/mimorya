@@ -1,10 +1,11 @@
 // Skills the agent proposes (ADR-100, ADR-101): Lucas asks the agent to propose a
 // procedure, reads its exact text and validates it; Paul finds the new
 // skill among the company's, a draft whose proposal awaits him, reads who
-// it was proposed for and why, reads its content unfolded, turns it down,
-// reads it back after a reload, finds a new version of his own starts
-// empty rather than from the proposal, then deletes the skill. Whatever
-// happens, the test's skill is gone afterwards.
+// it was proposed for and why, reads its content unfolded, is reminded to
+// read it before evaluating it on a case and declines, turns it down, reads
+// it back after a reload, finds a new version of his own starts empty
+// rather than from the proposal, then deletes the skill. Whatever happens,
+// the test's skill is gone afterwards.
 import type { Page } from '@playwright/test';
 import type { SkillList } from '../lib/api/contract';
 import { cardWith, openAdmin } from './support/admin';
@@ -20,9 +21,15 @@ const ANSWER =
   'La procédure de relance d’un fournisseur est proposée aux administrateurs des compétences.';
 const WRITE = { 'X-Mimorya-Request': '1' };
 
+const dialogs: string[] = [];
+
 test.beforeEach(({ page }) => {
-  // Deleting asks for a confirmation.
-  page.on('dialog', (dialog) => dialog.accept());
+  dialogs.length = 0;
+  // Deleting asks for a confirmation; evaluating a proposal too, declined here.
+  page.on('dialog', (dialog) => {
+    dialogs.push(dialog.message());
+    void (dialog.message().includes('proposition de l’agent') ? dialog.dismiss() : dialog.accept());
+  });
 });
 
 test.afterEach(async ({ page }) => {
@@ -80,6 +87,22 @@ test('a skill the agent proposes is validated, then turned down by an administra
   await expect(version).toContainText(`Description proposée : ${DESCRIPTION}`);
   // Awaiting a decision, its content is unfolded.
   await expect(version.getByText('Retrouver la commande et sa date promise.')).toBeVisible();
+  // Read before it is evaluated: declined, nothing is asked for.
+  const cases = page.getByRole('region', { name: 'Cas d’évaluation' });
+  await cases.getByRole('button', { name: 'Nouveau cas' }).click();
+  await cases.getByLabel('Nom du cas').fill('Pièce en retard');
+  await cases
+    .getByLabel('Demande (posée comme le ferait un collaborateur)')
+    .fill('La pièce du fournisseur n’est pas arrivée : que faire ?');
+  await cases
+    .getByLabel('Critères d’une bonne réponse (un par ligne, 8 au plus)')
+    .fill('Propose d’appeler le fournisseur.');
+  await cases.getByRole('button', { name: 'Ajouter le cas' }).click();
+  const evaluations = page.getByRole('region', { name: 'Évaluations' });
+  await expect(evaluations).toContainText('Proposition de l’agent : relisez son contenu');
+  await evaluations.getByRole('button', { name: 'Lancer l’évaluation' }).click();
+  await expect.poll(() => dialogs.join('\n')).toContain('Avez-vous relu son contenu ?');
+  await expect(evaluations).toContainText('Aucune évaluation.');
   await version.getByRole('button', { name: 'Rejeter la version 1' }).click();
   await expect(version).toContainText('Rejetée');
 

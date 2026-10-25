@@ -20,8 +20,9 @@
 //! apart, stage after stage (`missions`, ADR-089), and so is a question on
 //! the company's documents (`documents`, ADR-096), read by the extraction
 //! process the tests build (`MIMORYA_EXTRACTOR`, ADR-095), one handed to a
-//! sub-agent (`sub_agents`, ADR-099), and a skill the agent proposes
-//! (`skill_proposals`, ADR-101). One pass of the tests
+//! sub-agent (`sub_agents`, ADR-099), a skill the agent proposes
+//! (`skill_proposals`, ADR-101), and a skill's version tried on its case
+//! (`skill_evaluations`, ADR-105). One pass of the tests
 //! per start: the model's script and the demo company are used up, and the
 //! rate limit windows a former start left are forgotten (ADR-088). Like
 //! `mimorya-api`, once listening it takes up the runs whose executor
@@ -51,6 +52,7 @@ mod saml_idp;
 mod saml_provider;
 mod scenario;
 mod scheduled;
+mod skill_evaluations;
 mod skill_proposals;
 mod sub_agents;
 
@@ -114,7 +116,9 @@ async fn main() -> anyhow::Result<()> {
     let delegations = Arc::new(sub_agents::WithSubAgents::new(documents));
     let proposals = Arc::new(skill_proposals::WithSkillProposals::new(delegations));
     let missions = Arc::new(missions::WithMissions::new(proposals));
-    let platform: Arc<dyn LlmProvider> = Arc::new(lessons::WithLessons::new(missions));
+    // In front of the missions, which pass any answer they are asked to judge.
+    let evaluations = Arc::new(skill_evaluations::WithSkillEvaluations::new(missions));
+    let platform: Arc<dyn LlmProvider> = Arc::new(lessons::WithLessons::new(evaluations));
     // A company's own provider answers « OK » (its connection test).
     let factory: ProviderFactory = Arc::new(|_config| {
         let provider: Arc<dyn LlmProvider> = Arc::new(ScriptedProvider::new(

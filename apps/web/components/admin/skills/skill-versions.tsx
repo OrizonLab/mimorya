@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { Button, ErrorNote, Loaded } from '@/components/ui';
 import {
   api,
+  ApiError,
   useAction,
   useApiData,
   type SkillActivation,
@@ -12,12 +13,16 @@ import {
   type SkillRejection,
   type SkillView,
 } from '@/lib/api';
+import { EvalCases } from './eval-cases';
+import { EvaluationsSection } from './evaluations-section';
 import { VersionForm } from './version-form';
 import { VersionItem } from './version-item';
 
 /**
- * The versions of a skill, the latest first: one is made active here, and
- * a proposal of the agent's turned down (ADR-100, ADR-101).
+ * The versions of a skill, the latest first: one is made active here, once
+ * confirmed against the regressions its last evaluation found (ADR-104),
+ * and a proposal of the agent's turned down (ADR-100, ADR-101); then the
+ * cases they are tried on and their evaluations (ADR-103, ADR-104).
  */
 export function SkillVersions({ skill, onChanged }: { skill: SkillView; onChanged: () => void }) {
   const state = useApiData<SkillDetail>(`/admin/skills/${skill.id}`);
@@ -30,8 +35,20 @@ export function SkillVersions({ skill, onChanged }: { skill: SkillView; onChange
   }
 
   async function activate(version: number) {
-    const body = { version } satisfies SkillActivation;
-    if (await action.run(() => api.put(`/admin/skills/${skill.id}/activation`, body))) changed();
+    const path = `/admin/skills/${skill.id}/activation`;
+    const activated = await action.run(async () => {
+      try {
+        return await api.put(path, { version } satisfies SkillActivation);
+      } catch (e: unknown) {
+        // Its last evaluation found regressions: made active once confirmed.
+        if (!(e instanceof ApiError) || e.status !== 409) throw e;
+        if (!window.confirm(`${e.message}\n\nActiver quand même la version ${version} ?`)) {
+          return null;
+        }
+        return api.put(path, { version, confirmed: true } satisfies SkillActivation);
+      }
+    });
+    if (activated) changed();
   }
 
   async function reject(version: number) {
@@ -77,6 +94,13 @@ export function SkillVersions({ skill, onChanged }: { skill: SkillView; onChange
                 />
               ))}
             </ol>
+            <EvalCases skillId={skill.id} cases={detail.cases} onChanged={state.reload} />
+            <EvaluationsSection
+              skillId={skill.id}
+              versions={detail.versions}
+              activeVersion={detail.skill.activeVersion}
+              cases={detail.cases.length}
+            />
           </div>
         )}
       </Loaded>
