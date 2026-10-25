@@ -1,8 +1,9 @@
 //! Searching documents by meaning (ADR-096): once the company chose an
 //! embedding model, the passages of its documents get their vectors, with
 //! its memories, and `document_search` finds what is close to a request
-//! with no word in common, within what its user may read only. A deposit
-//! wakes the indexer; going back to words wipes every passage's vector.
+//! with no word in common, within what its user may read only. A failure
+//! shows while passages alone await their vectors. A deposit wakes the
+//! indexer; going back to words wipes every passage's vector.
 
 mod support;
 
@@ -93,6 +94,41 @@ async fn passages_are_found_by_meaning_within_reach_once_indexed() {
     assert_eq!(passages_given(&api).await, 0);
     remove(&julien, vans).await;
     remove(&nadia, south).await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn the_indexing_failure_shows_while_passages_alone_await() {
+    let api = start().await;
+    let paul = api.sign_in(user::PAUL).await;
+    let julien = api.sign_in(user::JULIEN).await;
+    choose(&paul, MODEL, 0.15).await;
+    indexed(&api).await;
+
+    // Every memory has its vector: only the new document's passage awaits.
+    api.embedder.fail(true);
+    let vans = deposited(
+        &julien,
+        "Tournées Nord.md",
+        Target::unit(unit::TEAM_NORTH),
+        "Les camionnettes partent du dépôt de Lyon à 7 h.".as_bytes(),
+    )
+    .await;
+    assert_eq!(indexed(&api).await.total(), 0);
+    let shown = paul.get("/admin/embedding").await.json();
+    assert_eq!(shown["settings"]["embedded"], shown["settings"]["memories"]);
+    assert_eq!(
+        shown["settings"]["indexingError"],
+        "Fournisseur indisponible"
+    );
+
+    // Back up: indexed at the next pass, the failure forgotten.
+    api.embedder.fail(false);
+    assert_eq!(indexed(&api).await.passages, 1);
+    let shown = paul.get("/admin/embedding").await.json();
+    assert_eq!(shown["settings"]["indexingError"], serde_json::json!(null));
+    remove(&julien, vans).await;
+    back_to_words(&paul).await;
 }
 
 #[tokio::test]

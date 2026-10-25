@@ -1,8 +1,9 @@
 //! The company's embedding model (ADR-074): chosen, changed or removed by
 //! an administrator of its settings, under the administration lock.
 //! Choosing one sends the company's memory and documents' passages to it
-//! (ADR-096); removing it wipes the vectors. The API key is sealed in the secret store, never returned nor
-//! audited, and never carried from one endpoint to another.
+//! (ADR-096); removing it wipes the vectors. The API key is sealed in the
+//! secret store, never returned nor audited, and never carried from one
+//! endpoint to another.
 
 use mimorya_agent::llm::api_key_problem;
 use mimorya_agent::llm::embedding::{check_tenant_embedding, embedding_requires_key};

@@ -3,13 +3,19 @@
 //! team's, nor one above their clearance), hands them to the model as data
 //! that cannot close its envelope, and the answer cites their documents;
 //! `document_read` reads one in order, and answers alike for a document out
-//! of reach and one that does not exist. Without `document:read`, neither
-//! is offered. By meaning: `document_meaning.rs`.
+//! of reach, another company's and one that does not exist, and reads a
+//! document of any length to its end. Without `document:read`, neither is
+//! offered. By meaning: `document_meaning.rs`.
 
 mod support;
 
 use axum::http::StatusCode;
 use mimorya_core::demo::{unit, user};
+use mimorya_core::documents::Passage;
+use mimorya_db::repositories::documents::{
+    NewDocument, delete_document, insert_document, insert_passages,
+};
+use mimorya_db::testing::{OTHER_TENANT_ID, OTHER_USER_ID};
 use serde_json::{Value, json};
 use support::TestApi;
 use support::document_search::{found, payload, sources, titled, tool_answer};
@@ -224,4 +230,78 @@ async fn without_the_right_to_read_documents_the_tools_are_neither_offered_nor_r
             .iter()
             .any(|(_, text)| text.contains("avant 12 h"))
     );
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn another_company_s_document_is_neither_found_nor_read() {
+    let api = TestApi::start().await;
+    let claire = api.sign_in(user::CLAIRE).await;
+    let text = "Le chauffe-eau de l’autre entreprise se purge chaque jeudi.";
+    let mut tx = api.app.services.db.begin(OTHER_TENANT_ID).await.unwrap();
+    let foreign = insert_document(
+        &mut tx,
+        NewDocument {
+            tenant_id: OTHER_TENANT_ID,
+            scope: "tenant",
+            org_unit_id: None,
+            title: "Consignes",
+            file_name: "Consignes.txt",
+            kind: "text",
+            sensitivity: "public",
+            page_count: None,
+            uploaded_by_user_id: OTHER_USER_ID,
+            content: text.as_bytes(),
+        },
+    )
+    .await
+    .unwrap();
+    let passage = Passage {
+        page: None,
+        heading: None,
+        content: text.into(),
+    };
+    insert_passages(&mut tx, OTHER_TENANT_ID, foreign, &[passage])
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+
+    // Claire reads every document of her company, none of the other's.
+    let seen = found(&api, &claire, "chauffe-eau purge jeudi").await;
+    assert!(!ids(&seen).contains(&foreign), "{seen:?}");
+    let input = json!({ "document": foreign });
+    let (answer, _) = tool_answer(&api, &claire, "document_read", input).await;
+    assert!(answer.contains("Document introuvable ou non accessible"));
+    assert!(!answer.contains("jeudi"));
+
+    let mut tx = api.app.services.db.begin(OTHER_TENANT_ID).await.unwrap();
+    assert!(delete_document(&mut tx, foreign).await.unwrap());
+    tx.commit().await.unwrap();
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_document_of_many_sections_is_read_to_its_end() {
+    let api = TestApi::start().await;
+    let julien = api.sign_in(user::JULIEN).await;
+    let lucas = api.sign_in(user::LUCAS).await;
+    // A passage per section: more than two thousand.
+    let sections: Vec<String> = (1..=2050)
+        .map(|n| format!("## Article {n}\n\nTexte de l’article {n}."))
+        .collect();
+    let rules = deposited(
+        &julien,
+        "Règlement.md",
+        Target::unit(unit::TEAM_NORTH),
+        sections.join("\n\n").as_bytes(),
+    )
+    .await;
+    let input = json!({ "document": rules, "from": 2049 });
+    let (answer, _) = tool_answer(&api, &lucas, "document_read", input).await;
+    let last = payload(&answer);
+    assert_eq!(last["total"], 2050);
+    assert_eq!(last["passages"][0]["passage"], 2049);
+    assert_eq!(last["passages"][0]["section"], "Article 2050");
+    assert_eq!(last["suite"], Value::Null);
+    remove(&julien, rules).await;
 }

@@ -105,7 +105,6 @@ pub struct DocumentReadInput {
     /// Identifiant du document (champ « document » d’un résultat de recherche)
     document: Uuid,
     /// Premier passage à lire (champ « passage » d’un résultat) ; 0 par défaut
-    #[validate(range(max = 1999))]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     from: Option<u32>,
 }

@@ -4421,8 +4421,8 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
       (5 par défaut). Chaque passage revient avec son document (identifiant et titre), sa
       position, sa page et sa section ;
     - `document_read` : un document et la position du premier passage à lire (0 par
-      défaut, au plus 1999). Cinq passages reviennent à la fois, avec leur nombre total et
-      la position où reprendre ;
+      défaut, sans borne : un document a autant de passages que de sections). Cinq
+      passages reviennent à la fois, avec leur nombre total et la position où reprendre ;
   - **droits** : les deux outils filtrent avec l'autorisation de l'appel
     (`document_read_filter`, les droits en vigueur à cette étape) : espace de
     l'entreprise, unités lues, habilitation. Les documents hors de portée sont écartés en
@@ -4447,11 +4447,12 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     lots de 32, huit lots par entreprise, par source et par passage, avec les mêmes
     règles de refus, de panne et de changement de modèle. Un dépôt réveille l'indexeur.
     `system_tenants_awaiting_embeddings` rend aussi les entreprises dont des passages
-    attendent leur vecteur. Le rôle applicatif ne peut modifier, dans un passage, que
-    son vecteur et son modèle ;
+    attendent leur vecteur (index `(tenant_id, embedding_model)`). Le rôle applicatif ne
+    peut modifier, dans un passage, que son vecteur et son modèle ;
   - **retour aux mots** : il efface aussi les vecteurs des passages (trace
     `embedding.reset` : `passageVectorsCleared`). L'erreur d'indexation reste montrée
-    tant que des mémoires ou des passages attendent ;
+    tant que des mémoires ou des passages attendent, et l'écran du modèle d'embeddings
+    dit que les passages des documents partent vers le fournisseur ;
   - la démonstration dépose deux documents fictifs : une charte qualité dans l'espace de
     l'entreprise et une procédure d'entretien dans celui du service technique.
 - **Alternatives écartées** :
@@ -4473,19 +4474,22 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     la progression de l'indexation des passages dans « Modèle d'IA » (lot 3) ;
   - tests :
     - `crates/agent/tests/document_tools.rs` : ce que trouve et lit un run de chacun, un
-      document cité une fois, l'absent et l'inaccessible confondus, entrées strictes et
-      bornées ;
+      document cité une fois même quand plusieurs de ses passages répondent, l'absent et
+      l'inaccessible confondus, un document de plus de 2 000 passages lu jusqu'au bout,
+      entrées strictes et bornées ;
     - `crates/db/tests/document_search.rs` : trouvé par le sens hors de tout mot commun,
       jamais hors de portée (équipe voisine, habilitation), ni d'un autre modèle, ni trop
       loin ; ce que trouvent mots et sens en tête ; lecture dans l'ordre ; file des
-      passages à indexer ; `memory_search.rs` : l'entreprise attend tant que ses passages
-      n'ont pas leur vecteur ;
+      passages à indexer ; rien d'un passage modifiable par l'application que son
+      vecteur ; `memory_search.rs` : l'entreprise attend tant que ses passages n'ont pas
+      leur vecteur ;
     - `crates/api/tests/document_search.rs` : un run trouve les passages de ses droits, pas
       ceux de l'équipe voisine ni au-dessus de son habilitation ; un passage ne ferme
       pas son enveloppe ; la réponse cite le document ; lecture dans l'ordre et reprise ;
-      document hors de portée et inexistant confondus ; sans `document:read`, ni offerts
-      ni exécutés ;
+      document hors de portée, d'une autre entreprise ou inexistant confondus ; un
+      document de 2 050 sections lu jusqu'au bout ; sans `document:read`, ni offerts ni
+      exécutés ;
     - `crates/api/tests/document_meaning.rs` : trouvé par le sens une fois indexé, dans
-      les droits de chacun ; un dépôt réveille l'indexeur ; retour aux mots, vecteurs des
-      passages effacés ; `admin_embedding.rs`, `memory_indexing.rs` : effacement tracé,
+      les droits de chacun ; panne montrée quand seuls des passages attendent ; un dépôt
+      réveille l'indexeur ; retour aux mots, vecteurs des passages effacés ; `admin_embedding.rs`, `memory_indexing.rs` : effacement tracé,
       passages indexés avec les mémoires.

@@ -12,6 +12,10 @@ ALTER TABLE document_chunks
 
 GRANT UPDATE (embedding, embedding_model) ON document_chunks TO mimorya_app;
 
+-- The passages of a company awaiting a model's vectors, found without
+-- reading every company's.
+CREATE INDEX document_chunks_embedding_model_idx ON document_chunks (tenant_id, embedding_model);
+
 -- The active companies whose active memories, or document passages, await
 -- a vector of the model they chose. Only the company crosses the
 -- companies' boundary.

@@ -67,7 +67,8 @@ Repères à l'intérieur des crates :
   en-têtes de sécurité, audit des modifications d'administration refusées, sur une ressource introuvable ou envoyant un identifiant inconnu,
   maintenance périodique : runs bloqués, liens expirés, absences terminées, demandes de
   validation échues et relances avant échéance, ADR-061, ADR-062 ; indexation de la
-  mémoire en arrière-plan, `memory_indexing.rs`, ADR-074 ; tâches planifiées lancées
+  mémoire et des passages des documents en arrière-plan, `memory_indexing.rs`, ADR-074,
+  ADR-096 ; tâches planifiées lancées
   chaque minute, `scheduled_tasks.rs`, ADR-080 ; fin des missions annoncée à leur
   auteur, ADR-091 ; baux des runs renouvelés et runs au
   bail expiré repris, `run_leases.rs`, ADR-083 ; événements des autres processus écoutés
