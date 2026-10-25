@@ -4,9 +4,11 @@
 //! execution's lease first (`fence.rs`, ADR-086), until the run has ended.
 //! The audit, the usage and the calls made (recorded once a tool returned)
 //! are recorded whatever: they say what happened, even should the lease
-//! have gone elsewhere while a tool worked.
+//! have gone elsewhere while a tool worked. A sub-agent's run (ADR-098)
+//! holds its parent's lease, asks for no validation, draws no lesson and
+//! opens no run of its own.
 //! Memory and skills live in `knowledge_ports.rs`, deliverables in
-//! `deliverables.rs`.
+//! `deliverables.rs`, sub-agents' runs in `sub_runs.rs`.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
@@ -41,6 +43,9 @@ const NO_EVENT: i32 = -1;
 /// Approval requests left unanswered expire after a week.
 const APPROVAL_VALIDITY_DAYS: i64 = 7;
 
+/// Why a sub-agent's call that needs a validation does not run (ADR-098).
+const SUB_AGENT_ASKS_NONE: &str = "Un sous-agent ne demande pas de validation : seul l’agent principal peut proposer cette action.";
+
 #[derive(Debug, Clone, Copy)]
 pub struct RunScope {
     pub tenant_id: Uuid,
@@ -74,13 +79,17 @@ pub struct DbPorts {
     /// Whether this execution ended the run: what follows (its last event)
     /// no longer runs under a lease.
     ended: Arc<AtomicBool>,
+    /// The run whose lease each change holds: this one, or its parent for
+    /// a sub-agent's run (ADR-098).
+    leased: Uuid,
+    /// A sub-agent's run (ADR-098).
+    pub(super) sub_run: bool,
 }
 
 /// The ports of `scope`'s run, executed by `executor` under `fence`.
 pub fn engine_ports(executor: &RunExecutor, scope: RunScope, fence: LeaseFence) -> EnginePorts {
-    let db = executor.db.clone();
-    let ports = Arc::new(DbPorts {
-        db: db.clone(),
+    DbPorts {
+        db: executor.db.clone(),
         scope,
         bus: executor.bus.clone(),
         last_event: Arc::new(AtomicI32::new(NO_EVENT)),
@@ -88,24 +97,53 @@ pub fn engine_ports(executor: &RunExecutor, scope: RunScope, fence: LeaseFence) 
         notifier: executor.notifier.clone(),
         embeddings: executor.embeddings.clone(),
         lessons: executor.lessons.clone(),
-        fence: fence.clone(),
+        fence,
         ended: Arc::new(AtomicBool::new(false)),
-    });
-    EnginePorts {
-        events: ports.clone(),
-        audit: ports.clone(),
-        tool_log: ports.clone(),
-        approvals: ports.clone(),
-        usage: ports.clone(),
-        memory: ports.clone(),
-        documents: ports.clone(),
-        skills: ports.clone(),
-        runs: ports,
-        deliverables: Arc::new(DbDeliverables::new(db, scope, fence)),
+        leased: scope.run_id,
+        sub_run: false,
     }
+    .into_engine_ports()
 }
 
 impl DbPorts {
+    /// The ports of the sub-agent's run `run_id` of this run (ADR-098):
+    /// its own journal, under this run's lease.
+    pub(super) fn of_sub_run(&self, run_id: Uuid) -> EnginePorts {
+        DbPorts {
+            scope: RunScope {
+                run_id,
+                conversation_id: None,
+                mission_id: None,
+                ..self.scope
+            },
+            last_event: Arc::new(AtomicI32::new(NO_EVENT)),
+            ended: Arc::new(AtomicBool::new(false)),
+            leased: self.leased,
+            sub_run: true,
+            ..self.clone()
+        }
+        .into_engine_ports()
+    }
+
+    fn into_engine_ports(self) -> EnginePorts {
+        let deliverables =
+            DbDeliverables::new(self.db.clone(), self.scope, self.fence.clone(), self.leased);
+        let ports = Arc::new(self);
+        EnginePorts {
+            events: ports.clone(),
+            audit: ports.clone(),
+            tool_log: ports.clone(),
+            approvals: ports.clone(),
+            usage: ports.clone(),
+            memory: ports.clone(),
+            documents: ports.clone(),
+            skills: ports.clone(),
+            sub_runs: ports.clone(),
+            runs: ports,
+            deliverables: Arc::new(deliverables),
+        }
+    }
+
     /// A transaction to read in, or to record what happened.
     pub(super) async fn tx(&self) -> anyhow::Result<TenantTx> {
         Ok(self.db.begin(self.scope.tenant_id).await?)
@@ -116,7 +154,7 @@ impl DbPorts {
     pub(super) async fn held_tx(&self) -> anyhow::Result<TenantTx> {
         let mut tx = self.tx().await?;
         if !self.ended.load(Ordering::Relaxed) {
-            self.fence.hold_in(&mut tx, self.scope.run_id).await?;
+            self.fence.hold_in(&mut tx, self.leased).await?;
         }
         Ok(tx)
     }
@@ -198,6 +236,9 @@ impl ToolInvocationLog for DbPorts {
 #[async_trait]
 impl ApprovalStore for DbPorts {
     async fn create(&self, request: ApprovalRequest) -> anyhow::Result<ApprovalPlacement> {
+        if self.sub_run {
+            return Ok(ApprovalPlacement::Unroutable(SUB_AGENT_ASKS_NONE.into()));
+        }
         let RunScope {
             tenant_id, user_id, ..
         } = self.scope;
@@ -273,6 +314,9 @@ impl RunStore for DbPorts {
         let tx = self.held_tx().await?;
         persist_outcome(tx, &self.bus, self.scope, outcome).await?;
         self.ended.store(true, Ordering::Relaxed);
+        if self.sub_run {
+            return Ok(());
+        }
         self.lessons.after_run(self.scope, outcome);
         // Paused, and so decidable: the managers of its requests are told,
         // once per pause (ADR-060).

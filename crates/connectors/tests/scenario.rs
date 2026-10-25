@@ -28,6 +28,7 @@ async fn runs_the_full_mission_for_the_technical_manager_with_validation_and_cap
             assert_eq!(
                 tool_names(req),
                 [
+                    "delegate_task",
                     "document_read",
                     "document_search",
                     "interventions_get",
@@ -254,6 +255,7 @@ async fn exposes_no_intervention_data_to_the_technical_administrator() {
                 assert_eq!(
                     tool_names(req),
                     [
+                        "delegate_task",
                         "document_read",
                         "document_search",
                         "memory_remember",

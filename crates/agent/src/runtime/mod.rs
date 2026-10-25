@@ -4,6 +4,7 @@
 pub mod answer_review;
 pub mod budget;
 pub mod context;
+pub mod delegation;
 mod document_store;
 mod handoff;
 pub mod lesson;
@@ -19,8 +20,11 @@ pub mod types;
 mod unavailable;
 pub mod verification;
 
-pub use budget::{BudgetLimits, DEFAULT_BUDGET, MISSION_STAGE_BUDGET, check_budget};
+pub use budget::{BudgetLimits, DEFAULT_BUDGET, MISSION_STAGE_BUDGET, check_budget, share_left};
 pub use context::{UserProfileContext, build_system_prompt, build_user_turn, french_date};
+pub use delegation::{
+    MAX_PER_TURN, SUB_AGENT_BUDGET, SubAgentProfile, SubRun, SubRunRequest, SubRunStore,
+};
 pub use document_store::{DocumentExcerpt, DocumentHit, DocumentPassage, DocumentStore};
 pub use handoff::NO_NOTE;
 pub use lesson::{

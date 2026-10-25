@@ -85,6 +85,10 @@ pub struct RunRow {
     pub request_message_id: Option<Uuid>,
     /// The mission it is a stage of (ADR-089).
     pub mission_id: Option<Uuid>,
+    /// The run that handed it its task, for a sub-agent's (ADR-098).
+    pub parent_run_id: Option<Uuid>,
+    /// `main`, or a sub-agent's profile (ADR-098).
+    pub agent_profile: String,
 }
 
 impl RunRow {
@@ -97,7 +101,7 @@ impl RunRow {
 pub(super) const RUN_COLUMNS: &str = "id, tenant_id, conversation_id, initiated_by_user_id, on_behalf_of_user_id, \
     status, objective, success_criteria, autonomy_level, budget, usage, state, result, verification, \
     error, started_at, finished_at, created_at, updated_at, checkpoint_seq, request_message_id, \
-    mission_id";
+    mission_id, parent_run_id, agent_profile";
 
 #[derive(Debug, Clone)]
 pub struct NewRun {
@@ -231,13 +235,16 @@ pub async fn list_runs_for_conversation(
     .await
 }
 
+/// The user's latest runs, those of sub-agents aside (ADR-098): each is
+/// listed with the run that handed it its task.
 pub async fn list_runs(
     conn: &mut PgConnection,
     on_behalf_of_user_id: Uuid,
     limit: i64,
 ) -> sqlx::Result<Vec<RunRow>> {
     sqlx::query_as(&format!(
-        "select {RUN_COLUMNS} from agent_runs where on_behalf_of_user_id = $1 order by created_at desc limit $2"
+        "select {RUN_COLUMNS} from agent_runs where on_behalf_of_user_id = $1 \
+         and parent_run_id is null order by created_at desc limit $2"
     ))
     .bind(on_behalf_of_user_id)
     .bind(limit)

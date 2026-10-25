@@ -9,7 +9,9 @@
 //! step, for too long, or whose user may no longer act, ends there, naming
 //! the actions that were under way when it stopped. Its taking up counts as
 //! progress against the sweep of stuck runs; how long it may stay
-//! interrupted still counts from its last step.
+//! interrupted still counts from its last step. Its sub-agents still
+//! running fail there (ADR-098): never taken up on their own, they stopped
+//! with its execution, and the run asks again if it needs them.
 
 mod calls;
 mod executing;
@@ -20,6 +22,7 @@ use chrono::Utc;
 use mimorya_agent::runtime::{ACCOUNT_INACTIVE, RunCheckpoint, RunEvent, RunOutcome};
 use mimorya_db::repositories::run_leases::{mark_taken_up, run_lease_expired};
 use mimorya_db::repositories::runs::{InterruptedRun, RunStatus, lock_run};
+use mimorya_db::repositories::sub_runs::fail_running_sub_runs;
 use tokio::sync::watch;
 
 use super::db_ports::RunScope;
@@ -45,6 +48,9 @@ const NOT_TAKEN_UP: &str =
 
 /// Beyond this, a run is not taken up: its user has moved on.
 const MAX_INTERRUPTION: chrono::Duration = chrono::Duration::hours(1);
+
+/// Why a sub-agent running when its run's execution stopped ends.
+pub const SUB_AGENT_INTERRUPTED: &str = "Sous-agent interrompu par un arrêt du service : la demande qui l’avait lancé a repris sans lui.";
 
 impl RunService {
     /// Starts executing runs, then takes up those whose executor stopped,
@@ -94,7 +100,15 @@ impl RunService {
         let (started, approved) = started_since_saved(&mut tx, &run, checkpoint.as_ref()).await?;
         let set_now = risks_set_now(&mut tx).await?;
         cancel_lost_validations(&mut tx, &run).await?;
+        let sub_runs = fail_running_sub_runs(&mut tx, run_id, SUB_AGENT_INTERRUPTED).await?;
         tx.commit().await?;
+        for sub_run in sub_runs {
+            let finished = RunEvent::RunFinished {
+                status: RunStatus::Failed.as_str().into(),
+                error: Some(SUB_AGENT_INTERRUPTED.into()),
+            };
+            record_run_event(&self.db, &self.executor.bus, tenant_id, sub_run, finished).await?;
+        }
 
         let scope = RunScope {
             tenant_id,

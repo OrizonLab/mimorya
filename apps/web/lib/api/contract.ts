@@ -49,6 +49,12 @@ orgUnitId?: string | null, clearance?: Sensitivity, status?: StatusChange,
 attributes?: Record<string, unknown>, };
 
 /**
+ * Who works a run: the agent the user talks to, or one of its sub-agents
+ * (ADR-098).
+ */
+export type AgentProfile = "main" | "research" | "analysis" | "planning" | "quality";
+
+/**
  * An action of the agent waiting for (or given) a human decision.
  */
 export type Approval = { id: string, runId: string, toolName: string, actionSummary: string,
@@ -1269,7 +1275,11 @@ export type RunBudget = { maxSteps: number, maxInputTokens: number, maxOutputTok
 /**
  * `GET /runs/{id}`.
  */
-export type RunDetail = { run: RunView, tools: Array<ToolInvocation>, approvals: Array<Approval>, events: Array<RunEventRecord>, };
+export type RunDetail = { run: RunView, tools: Array<ToolInvocation>, approvals: Array<Approval>, events: Array<RunEventRecord>,
+/**
+ * The sub-agents it handed tasks to, in order (ADR-098).
+ */
+subRuns: Array<RunListItem>, };
 
 /**
  * An event of a run's journal, as replayed by its event stream.
@@ -1287,9 +1297,9 @@ export type RunFinished = { status: RunStatus, error?: string, };
 export type RunList = { runs: Array<RunListItem>, };
 
 /**
- * A run in the list of the user's runs.
+ * A run in the list of the user's runs, or of a run's sub-agents.
  */
-export type RunListItem = { id: string, conversationId: string | null, objective: string, status: RunStatus, usage: RunUsage, error: string | null, createdAt: string, finishedAt: string | null, };
+export type RunListItem = { id: string, conversationId: string | null, objective: string, agentProfile: AgentProfile, status: RunStatus, usage: RunUsage, error: string | null, createdAt: string, finishedAt: string | null, };
 
 /**
  * The run waits for a worker to execute it (ADR-085): what it does next
@@ -1331,7 +1341,11 @@ export type RunUsage = { steps: number, toolCalls: number, inputTokens: number, 
  */
 costMicros: number, };
 
-export type RunView = { id: string, conversationId: string | null, objective: string, status: RunStatus, autonomyLevel: string, usage: RunUsage, budget: RunBudget, verification: Verification | null, error: string | null, createdAt: string, finishedAt: string | null, };
+export type RunView = { id: string, conversationId: string | null,
+/**
+ * The run that handed it its task, for a sub-agent's (ADR-098).
+ */
+parentRunId: string | null, agentProfile: AgentProfile, objective: string, status: RunStatus, autonomyLevel: string, usage: RunUsage, budget: RunBudget, verification: Verification | null, error: string | null, createdAt: string, finishedAt: string | null, };
 
 export type ScheduledTask = { id: string, title: string,
 /**

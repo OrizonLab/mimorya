@@ -209,14 +209,30 @@ dans la limite de `maxCorrectionAttempts` (défaut 2). Les échecs résiduels so
 
 ## 7. Sous-agents
 
-- Outil `delegate_task` : crée un run enfant avec un profil (`research`, `analysis`,
-  `planning`, `quality`…), un objectif, et un **plafond de permissions ⊆ parent**.
-- Les enfants ne peuvent pas : déléguer à nouveau (profondeur 1 par défaut), écrire
-  dans la mémoire partagée, demander des validations directement, communiquer vers
-  l'extérieur. Ils rendent un **résumé** au parent (pas leur transcription).
-- Parallélisme borné (défaut 3), budget prélevé sur celui du parent.
-- L'utilisateur voit une seule conversation ; le détail des sous-agents est
-  consultable dans la vue « opérations ».
+Code : `crates/agent/src/runtime/delegation/` et `tool_calls/delegated.rs` ; runs
+enfants dans PostgreSQL : `crates/api/src/services/runs/sub_runs.rs` (ADR-098).
+
+- Outil `delegate_task` : confie une tâche précise à un sous-agent avec un profil
+  (`research`, `analysis`, `planning`, `quality`), la tâche et un contexte facultatif. Le
+  PEP juge l'appel comme tout autre ; le moteur l'exécute en ouvrant un **run enfant**
+  (`parent_run_id`, `agent_profile`), pour le même utilisateur.
+- L'enfant hérite du **plafond de permissions** de son parent et ne reçoit que les outils
+  qui lisent sans validation, en autonomie « lecture seule ». Il ne peut ni déléguer à
+  nouveau (profondeur 1), ni écrire dans la mémoire, ni demander de validation, ni
+  communiquer vers l'extérieur. Ses consignes : celles du parent, puis son rôle.
+- Il rend un **résumé** au parent, avec les sources lues, que la réponse du parent peut
+  citer, et non sa transcription. S'il n'aboutit pas, le parent sait pourquoi.
+- **Parallélisme borné** : au plus 3 délégations par étape, exécutées en parallèle ; une
+  quatrième est refusée pour cette étape.
+- **Budget** : chaque enfant reçoit une part égale de ce qui reste au parent (tokens, coût ;
+  la durée restante est partagée), dans le plafond d'un sous-agent (8 étapes, 1 USD,
+  5 minutes). Ce qu'il dépense compte dans le budget du parent.
+- L'enfant écrit sous le **bail de son parent** et n'est jamais repris seul. Si le parent
+  est repris après un arrêt, échoue, est annulé ou se termine, l'enfant encore en cours
+  échoue.
+- L'utilisateur voit une seule conversation. L'API donne le détail de chaque sous-agent
+  avec le run qui l'a lancé (`GET /runs/{id}`, `subRuns`), sans le lister à part. Son
+  affichage dans la vue « Opérations » viendra au lot 2.
 
 ## 8. Apprentissage : quatre mécanismes distincts
 

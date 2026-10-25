@@ -45,7 +45,8 @@ Repères à l'intérieur des crates :
   `mission_end_notices.rs`, ADR-091 ; documents déposés, leur fichier et leurs passages,
   lus là où le filtre du lecteur atteint : `documents.rs`, ADR-095 ; passages cherchés
   par les mots et par le sens et lus dans l'ordre : `document_search.rs`, leurs vecteurs :
-  `document_embeddings.rs`, ADR-096),
+  `document_embeddings.rs`, ADR-096 ; runs des sous-agents, ouverts sous leur parent :
+  `sub_runs.rs`, ADR-098),
   `db/src/notifications.rs` (canaux PostgreSQL des événements des runs, de la file et des
   invalidations, ADR-084, ADR-085), `db/src/sweep_lock.rs` (verrou d'un balayage qui ne
   tourne que dans un processus à la fois, ADR-086), `db/src/seed/` (organisation,
@@ -55,9 +56,12 @@ Repères à l'intérieur des crates :
   d'outils, revue de réponse, reprise après un arrêt du service, leçon tirée d'un run
   (`lesson.rs`, ADR-076), point d'étape d'une mission dont le budget est atteint
   (`handoff.rs`, ADR-089), ports, dont les documents lus par un run
-  (`document_store.rs`, ADR-096)),
+  (`document_store.rs`, ADR-096), sous-agents : profils, consignes, run enfant et
+  sa part du budget (`delegation/`), délégations d'une étape en parallèle
+  (`tool_calls/delegated.rs`), ADR-098),
   `agent/src/tools/` (registre, PEP,
-  `platform/` : mémoire, documents (`document_tools.rs`, ADR-096), compétences),
+  `platform/` : mémoire, documents (`document_tools.rs`, ADR-096), compétences,
+  délégation (`delegate_tool.rs`, ADR-098)),
   `agent/src/testing/` (fonctionnalité `testing`).
 - `connectors/src/demo_interventions/` (données, planning, accès, `tools/` un fichier
   par outil), `connectors/src/mcp/`, `connectors/src/bin/mcp_demo_docs.rs`.
@@ -88,7 +92,8 @@ Repères à l'intérieur des crates :
   `extractor.rs` ; dépôt sous le quota de l'entreprise, `deposit.rs` ; liste,
   téléchargement et suppression, `library.rs`, ADR-095),
   `api/src/services/runs/` (tour de conversation, décisions, contexte, exécution,
-  ports PostgreSQL (documents : `document_ports.rs`, ADR-096), résultat, reprise des runs dont l'exécuteur s'est arrêté et ce
+  ports PostgreSQL (documents : `document_ports.rs`, ADR-096 ; runs des sous-agents,
+  sous le bail de leur parent : `sub_runs.rs`, ADR-098), résultat, reprise des runs dont l'exécuteur s'est arrêté et ce
   processus exécute-t-il des runs (`recovery/`), ADR-053, ADR-086, circuit des validations,
   avis au responsable (`approval_notice/`, rattrapé chaque minute s'il est perdu, ADR-070, ADR-086 ; à l'auteur
   d'une tâche planifiée ou d'une mission dont le run attend sa validation, `author.rs`, ADR-082, ADR-091), expiration et

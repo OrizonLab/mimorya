@@ -1,6 +1,7 @@
-//! Built-in platform tools available to every agent run (memory, documents
-//! and skills).
+//! Built-in platform tools available to every agent run (memory, documents,
+//! skills and delegation to sub-agents).
 
+mod delegate_tool;
 mod document_tools;
 mod memory_tools;
 mod skill_tools;
@@ -9,6 +10,7 @@ use std::sync::Arc;
 
 use mimorya_core::tools::{ToolRef, typed_tool};
 
+pub use delegate_tool::{DELEGATE_TASK, DelegateTask, DelegateTaskInput};
 pub use document_tools::{DocumentRead, DocumentSearch, READ_PASSAGES};
 pub use memory_tools::{MemoryRemember, MemorySearch};
 pub use skill_tools::{SKILL_READ, SkillRead};
@@ -33,5 +35,6 @@ pub fn platform_tools(
         }),
         typed_tool(DocumentRead { documents }),
         typed_tool(SkillRead { skills }),
+        typed_tool(DelegateTask),
     ]
 }

@@ -9,6 +9,7 @@ use mimorya_core::autonomy::{AutonomyPolicy, ToolRisk, ToolRiskProfile, decide_e
 use mimorya_core::tools::{ToolInfo, ToolRef};
 use serde::{Deserialize, Serialize};
 
+use super::platform::DELEGATE_TASK;
 use crate::llm::LlmToolSpec;
 
 /// Administrator overrides for a tool (from connector configuration).
@@ -96,6 +97,20 @@ impl ToolRegistry {
 
     pub fn all(&self) -> &[RegisteredTool] {
         &self.tools
+    }
+
+    /// The tools a sub-agent may be given (ADR-098): those that only read
+    /// and run without validation, as the company set them, delegation
+    /// aside.
+    pub fn for_sub_agents(&self) -> Self {
+        let tools = self
+            .tools
+            .iter()
+            .filter(|t| t.info.risk == ToolRisk::Read && !t.info.requires_approval)
+            .filter(|t| t.info.name != DELEGATE_TASK)
+            .cloned()
+            .collect();
+        Self { tools }
     }
 
     /// Tools the agent may offer to the model for this subject: required

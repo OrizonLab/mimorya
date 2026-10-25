@@ -1,24 +1,31 @@
 //! Handling of the tool calls of one assistant turn: each call goes through
 //! the policy enforcement point, with the rights of the current step, then is
-//! denied, queued for human validation or executed. Every outcome is logged,
-//! audited and streamed.
+//! denied, queued for human validation or executed; an allowed delegation
+//! runs a sub-agent (`delegated.rs`, ADR-098). Every outcome is logged,
+//! audited and streamed (`record.rs`).
+
+mod delegated;
+mod record;
 
 use std::sync::Arc;
 use std::time::Duration;
 
 use mimorya_core::authz::Actor;
 use mimorya_core::autonomy::AutonomyPolicy;
-use serde_json::{Value, json};
+use serde_json::Value;
 use uuid::Uuid;
 
-use super::ports::{CurrentAccess, EngineAuditEntry, EnginePorts, RunEvent, ToolInvocationRecord};
+use super::budget::BudgetLimits;
+use super::delegation::{MAX_PER_TURN, SubAgents, TOO_MANY_AT_ONCE};
+use super::ports::{CurrentAccess, EnginePorts, RunEvent};
 use super::state::{PendingApproval, RunCheckpoint};
 use super::tool_refusals::Requested;
 use super::types::{RunConfig, RuntimeDeps};
 use crate::llm::{LlmMessage, LlmToolCall, LlmToolResult};
-use crate::tools::{
-    RegisteredTool, ToolCallEvaluation, ToolExecutor, ToolRegistry, wrap_tool_result,
-};
+use crate::tools::platform::DELEGATE_TASK;
+use crate::tools::{RegisteredTool, ToolCallEvaluation, ToolExecutor, ToolRegistry};
+use delegated::Delegated;
+use record::Call;
 
 #[derive(Debug, Default)]
 pub struct TurnToolResults {
@@ -35,6 +42,10 @@ pub struct ToolCallProcessor {
     run_id: Uuid,
     timeout: Duration,
     pub(super) ports: EnginePorts,
+    /// What the run's sub-agents work with (ADR-098).
+    sub_agents: SubAgents,
+    /// The run's budget, of which each sub-agent gets a share.
+    budget: BudgetLimits,
 }
 
 impl ToolCallProcessor {
@@ -46,6 +57,8 @@ impl ToolCallProcessor {
             run_id: config.run_id,
             timeout: deps.tool_timeout,
             ports: deps.ports.clone(),
+            sub_agents: SubAgents::new(deps, config),
+            budget: config.budget,
         }
     }
 
@@ -75,8 +88,18 @@ impl ToolCallProcessor {
     ) -> anyhow::Result<TurnToolResults> {
         let executor = self.executor(access);
         let mut turn = TurnToolResults::default();
+        let mut delegations = Vec::new();
         for call in calls {
-            let evaluation = executor.evaluate(call);
+            let mut evaluation = executor.evaluate(call);
+            if let ToolCallEvaluation::Allow { tool, .. } = &evaluation
+                && is_delegation(tool)
+                && delegations.len() >= MAX_PER_TURN
+            {
+                evaluation = ToolCallEvaluation::Deny {
+                    tool: Some(tool.clone()),
+                    reason: TOO_MANY_AT_ONCE.into(),
+                };
+            }
             let (title, reason, risk) = match &evaluation {
                 ToolCallEvaluation::Allow { tool, .. } => {
                     (tool.info.title.clone(), None, Some(tool.info.risk))
@@ -117,6 +140,14 @@ impl ToolCallProcessor {
                     Requested::Awaiting(pending) => turn.awaiting.push(pending),
                     Requested::Refused(result) => turn.results.push(result),
                 },
+                ToolCallEvaluation::Allow { tool, input } if is_delegation(&tool) => {
+                    delegations.push(Delegated {
+                        tool_call_id: call.id.clone(),
+                        tool,
+                        input,
+                        approval_id: None,
+                    });
+                }
                 ToolCallEvaluation::Allow { tool, input } => {
                     turn.results.push(
                         self.run(state, &tool, &call.id, input, None, access)
@@ -124,6 +155,13 @@ impl ToolCallProcessor {
                     );
                 }
             }
+        }
+        if !delegations.is_empty() {
+            // Side by side, once every other call of the turn is decided.
+            turn.results
+                .extend(self.delegate(state, delegations).await?);
+            let position = |id: &str| calls.iter().position(|c| c.id == id);
+            turn.results.sort_by_key(|r| position(&r.tool_call_id));
         }
         Ok(turn)
     }
@@ -139,80 +177,31 @@ impl ToolCallProcessor {
         approval_id: Option<Uuid>,
         access: &CurrentAccess,
     ) -> anyhow::Result<LlmToolResult> {
-        let (result, duration_ms) = self.executor(access).execute(tool, input.clone()).await;
-        state.usage.tool_calls += 1;
-        if !result.is_error {
-            state.evidence.extend(result.citations.iter().cloned());
-        }
-        let summary = result.summary.clone().unwrap_or_else(|| {
-            if result.is_error {
-                "Échec".into()
-            } else {
-                "Terminé".into()
-            }
-        });
-        let name = &tool.info.name;
-
-        self.ports
-            .tool_log
-            .record(ToolInvocationRecord {
+        if is_delegation(tool) {
+            let delegated = Delegated {
                 tool_call_id: tool_call_id.into(),
-                tool_name: name.clone(),
+                tool: tool.clone(),
                 input,
-                decision: if approval_id.is_some() {
-                    ToolCallEvaluation::REQUIRE_APPROVAL
-                } else {
-                    ToolCallEvaluation::ALLOW
-                },
-                decision_reason: None,
-                status: if result.is_error {
-                    "failed"
-                } else {
-                    "succeeded"
-                },
-                output_summary: Some(summary.clone()),
-                error: result
-                    .is_error
-                    .then(|| error_text(&result.content, &summary)),
-                duration_ms: Some(duration_ms),
                 approval_id,
-            })
-            .await?;
-        let mut metadata = json!({ "risk": tool.info.risk, "durationMs": duration_ms });
-        if let Some(id) = approval_id {
-            metadata["approvalId"] = json!(id);
+            };
+            let mut results = self.delegate(state, vec![delegated]).await?;
+            return results
+                .pop()
+                .ok_or_else(|| anyhow::anyhow!("a delegation without its result"));
         }
-        self.ports
-            .audit
-            .record(EngineAuditEntry {
-                action: "agent.tool.execute".into(),
-                outcome: if result.is_error {
-                    "failure"
-                } else {
-                    "success"
-                },
-                resource_type: Some("tool".into()),
-                resource_id: Some(name.clone()),
-                reason: None,
-                metadata,
-            })
-            .await?;
-        self.ports
-            .events
-            .emit(RunEvent::ToolResult {
-                tool_call_id: tool_call_id.into(),
-                tool_name: name.clone(),
-                summary,
-                is_error: result.is_error,
-                duration_ms,
-            })
-            .await?;
-        Ok(LlmToolResult {
-            tool_call_id: tool_call_id.into(),
-            content: wrap_tool_result(name, &result.content, result.is_error),
-            is_error: result.is_error,
-        })
+        let (result, duration_ms) = self.executor(access).execute(tool, input.clone()).await;
+        let call = Call {
+            tool,
+            tool_call_id,
+            input,
+            approval_id,
+        };
+        self.record(state, call, result, duration_ms, None).await
     }
+}
+
+fn is_delegation(tool: &RegisteredTool) -> bool {
+    tool.info.name == DELEGATE_TASK
 }
 
 /// Tool results are returned in the order the model requested the calls.
@@ -229,10 +218,4 @@ pub fn order_by_request(
     let position = |id: &str| calls.iter().position(|c| c.id == id).unwrap_or(0);
     results.sort_by_key(|r| position(&r.tool_call_id));
     results
-}
-
-fn error_text(content: &Value, summary: &str) -> String {
-    content["erreur"]
-        .as_str()
-        .map_or_else(|| summary.to_string(), str::to_string)
 }

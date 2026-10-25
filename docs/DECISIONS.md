@@ -4561,3 +4561,95 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
       qu'elle s'arrête ; la borne de taille donnée avec elle ;
     - `semantic-memory.spec.ts` : les passages indexés comptés et affichés ;
     - `navigation.spec.ts` : la page s'ouvre sans erreur.
+
+## ADR-098 — Sous-agents : délégation de tâches à des runs enfants
+
+- **Date** : 2026-10-25 · **Statut** : acceptée (lot 1 des sous-agents : moteur et API)
+- **Contexte** : une demande large mêle plusieurs recherches ou analyses (un état des
+  interventions, puis la charte qui s'y applique, puis une relecture). Faites dans un seul
+  run, elles allongent son contexte et s'enchaînent une à une. Le schéma réservait
+  `parent_run_id` et `agent_profile`, et l'ADR-014 prévoyait qu'un sous-agent n'ait
+  jamais plus de droits que son parent.
+- **Décision** :
+  - **outil `delegate_task`** de la plateforme, en lecture :
+    - il confie une tâche (2 000 caractères au plus) et un contexte facultatif (8 000) à un
+      sous-agent d'un profil `research`, `analysis`, `planning` ou `quality` ;
+    - le PEP le juge comme tout autre (schéma strict, autonomie, validation imposée par
+      l'administrateur) ;
+    - le moteur exécute ensuite chaque appel autorisé : la méthode `run` de l'outil
+      répond par un refus si quoi que ce soit d'autre l'appelle ;
+  - **run enfant** :
+    - enregistré dans `agent_runs` (`parent_run_id`, `agent_profile`, `autonomy_level =
+read_only`), pour l'entreprise et l'utilisateur de son parent, repris de la ligne
+      du parent ;
+    - sans conversation ni mission ; son journal, ses appels d'outils et sa consommation
+      sont les siens ;
+    - ses consignes sont celles du parent, suivies de son rôle ; son tour porte la tâche
+      et le contexte, sans pouvoir ouvrir ni fermer d'enveloppe ;
+  - **ce que peut l'enfant** :
+    - il hérite du plafond de permissions du parent (`allowed_permissions`) et relit les
+      droits de l'utilisateur à chaque étape, comme lui ;
+    - il ne reçoit que les outils de risque « lecture » qui ne demandent pas de
+      validation, tels que l'entreprise les a réglés ; `delegate_task` en est exclu ;
+    - il ne peut donc ni écrire, ni mémoriser, ni communiquer vers l'extérieur, ni
+      déléguer à nouveau ;
+    - une demande de validation lui est refusée par ses ports ;
+    - il ne tire pas de leçon ;
+  - **résultat** :
+    - complet, le parent reçoit le résumé de l'enfant et ses sources, comme données non
+      fiables ; ses citations rejoignent celles du parent, dont la réponse peut les citer ;
+    - sinon, le parent reçoit la raison de l'échec ;
+    - l'appel est journalisé et audité avec le run enfant (`subRunId`) et son profil ;
+  - **bornes** :
+    - au plus 3 délégations par étape, exécutées en parallèle ; au-delà, l'appel est
+      refusé pour cette étape ;
+    - chaque enfant reçoit une part égale de ce qui reste au parent (tokens et coût
+      divisés, durée restante partagée), dans le plafond d'un sous-agent : 8 étapes,
+      200 000 tokens lus, 20 000 écrits, 1 USD, 5 minutes ;
+    - sans reste, l'enfant n'est pas ouvert ;
+    - ce que l'enfant dépense (tokens, coût) compte dans le budget du parent ; ses
+      étapes ne comptent pas ;
+  - **bail et reprise** :
+    - l'enfant s'exécute dans l'exécution de son parent et écrit sous le bail de
+      celui-ci ; parent annulé ou repris ailleurs, l'enfant s'arrête avec lui ;
+    - il n'est jamais repris seul : `system_expired_run_leases` l'écarte ;
+    - parent repris après un arrêt, ses enfants encore en cours échouent, et leur fin
+      est annoncée ;
+    - parent terminé par n'importe quel chemin (moteur, panne, balayage, mission
+      arrêtée), un déclencheur fait échouer ses enfants encore en cours ;
+    - l'appel interrompu étant une lecture, le parent reprend et peut redemander ;
+  - **API** :
+    - `GET /runs` ne liste que les runs principaux ;
+    - `GET /runs/{id}` donne le profil, le parent et les sous-agents (`subRuns`) ;
+    - seul l'utilisateur du run le voit.
+- **Alternatives écartées** :
+  - **enfants mis en file pour un worker, le parent en pause jusqu'à leur fin** : un état
+    de run de plus, des reprises croisées et un parent à réveiller, pour des tâches de
+    quelques minutes que le parent attend de toute façon ;
+  - **délégation comme outil ordinaire** : l'outil ne voit ni le budget restant du
+    parent, ni ses autres délégations de l'étape, et son délai de 30 s ne tient pas un
+    run ;
+  - **permissions choisies par le modèle** : le plafond est hérité, jamais décidé par le
+    modèle ;
+  - **enfant qui demande des validations** : la validation reste une affaire du run que
+    l'utilisateur suit.
+- **Conséquences** :
+  - migration `0041_sub_agents.sql` : profils permis, index des enfants, fonction des
+    baux expirés, déclencheur de fin ;
+  - la vue « Opérations » des sous-agents et l'affichage d'une délégation dans la
+    conversation restent à faire (lot 2) ;
+  - tests :
+    - `crates/agent/tests/runtime_delegation.rs` : résumé et sources rendus, cités par
+      le parent ; plafond hérité ; ni écriture, ni délégation, ni outil à validation
+      pour l'enfant ;
+    - `runtime_delegation_bounds.rs` :
+      - trois délégations par étape, exécutées en parallèle ;
+      - part du budget, dépense comptée chez le parent ;
+      - échec expliqué ;
+      - pas d'enfant sans reste de budget ;
+      - délégation exécutée une fois validée ;
+    - `crates/api/tests/sub_agents.rs` :
+      - run enfant enregistré et visible du seul utilisateur, sources citées par la
+        réponse, absent de la liste des runs ;
+      - jamais repris seul, échoue à la reprise ou à la fin de son parent ;
+      - aucune entreprise n'ouvre d'enfant sous le run d'une autre.

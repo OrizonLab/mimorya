@@ -82,13 +82,26 @@ impl From<&VerificationReport> for Verification {
     }
 }
 
-/// A run in the list of the user's runs.
+/// Who works a run: the agent the user talks to, or one of its sub-agents
+/// (ADR-098).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentProfile {
+    Main,
+    Research,
+    Analysis,
+    Planning,
+    Quality,
+}
+
+/// A run in the list of the user's runs, or of a run's sub-agents.
 #[derive(Debug, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct RunListItem {
     pub id: Uuid,
     pub conversation_id: Option<Uuid>,
     pub objective: String,
+    pub agent_profile: AgentProfile,
     pub status: RunStatus,
     pub usage: RunUsage,
     pub error: Option<String>,
@@ -102,6 +115,7 @@ impl RunListItem {
             id: run.id,
             conversation_id: run.conversation_id,
             objective: run.objective.clone(),
+            agent_profile: stored_text("agent profile", &run.agent_profile)?,
             status: run.status().into(),
             usage: stored("usage", &run.usage)?,
             error: run.error.clone(),
@@ -141,6 +155,9 @@ impl From<&RunRow> for RunRef {
 pub struct RunView {
     pub id: Uuid,
     pub conversation_id: Option<Uuid>,
+    /// The run that handed it its task, for a sub-agent's (ADR-098).
+    pub parent_run_id: Option<Uuid>,
+    pub agent_profile: AgentProfile,
     pub objective: String,
     pub status: RunStatus,
     pub autonomy_level: String,
@@ -157,6 +174,8 @@ impl RunView {
         Ok(Self {
             id: run.id,
             conversation_id: run.conversation_id,
+            parent_run_id: run.parent_run_id,
+            agent_profile: stored_text("agent profile", &run.agent_profile)?,
             objective: run.objective.clone(),
             status: run.status().into(),
             autonomy_level: run.autonomy_level.clone(),
@@ -228,9 +247,12 @@ impl From<&RunEventRow> for RunEventRecord {
 
 /// `GET /runs/{id}`.
 #[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
 pub struct RunDetail {
     pub run: RunView,
     pub tools: Vec<ToolInvocation>,
     pub approvals: Vec<Approval>,
     pub events: Vec<RunEventRecord>,
+    /// The sub-agents it handed tasks to, in order (ADR-098).
+    pub sub_runs: Vec<RunListItem>,
 }
