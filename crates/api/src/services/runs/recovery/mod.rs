@@ -22,7 +22,6 @@ use chrono::Utc;
 use mimorya_agent::runtime::{ACCOUNT_INACTIVE, RunCheckpoint, RunEvent, RunOutcome};
 use mimorya_db::repositories::run_leases::{mark_taken_up, run_lease_expired};
 use mimorya_db::repositories::runs::{InterruptedRun, RunStatus, lock_run};
-use mimorya_db::repositories::sub_runs::fail_running_sub_runs;
 use tokio::sync::watch;
 
 use super::db_ports::RunScope;
@@ -30,6 +29,7 @@ use super::events::record_run_event;
 use super::executor::ExecutionMode;
 use super::outcome::{CRASH_MESSAGE, persist_outcome};
 use super::service::RunService;
+use super::sub_runs::{announce, end_sub_runs};
 use calls::{
     cancel_lost_validations, ending, of_unknown_effect, risks_set_now, started_since_saved,
 };
@@ -100,15 +100,10 @@ impl RunService {
         let (started, approved) = started_since_saved(&mut tx, &run, checkpoint.as_ref()).await?;
         let set_now = risks_set_now(&mut tx).await?;
         cancel_lost_validations(&mut tx, &run).await?;
-        let sub_runs = fail_running_sub_runs(&mut tx, run_id, SUB_AGENT_INTERRUPTED).await?;
+        let bus = &self.executor.bus;
+        let sub_runs = end_sub_runs(&mut tx, bus, run_id, SUB_AGENT_INTERRUPTED).await?;
         tx.commit().await?;
-        for sub_run in sub_runs {
-            let finished = RunEvent::RunFinished {
-                status: RunStatus::Failed.as_str().into(),
-                error: Some(SUB_AGENT_INTERRUPTED.into()),
-            };
-            record_run_event(&self.db, &self.executor.bus, tenant_id, sub_run, finished).await?;
-        }
+        announce(bus, sub_runs);
 
         let scope = RunScope {
             tenant_id,

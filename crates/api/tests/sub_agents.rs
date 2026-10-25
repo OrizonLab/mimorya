@@ -2,14 +2,14 @@
 //! it for the same user, read-only, given the tools that only read, whose
 //! sources the run's answer cites. A child is listed with its run, never on
 //! its own, and only its user sees it. It is never taken up on its own: its
-//! run taken up, it fails, as it does when its run ends; no company opens
-//! one under another's run.
+//! run taken up or stopped, it fails, saying so, as it does when its run
+//! ends; no company opens one under another's run.
 
 mod support;
 
 use axum::http::StatusCode;
 use mimorya_agent::testing::{ScriptedReply, ScriptedStep, call, last_tool_results};
-use mimorya_api::services::runs::SUB_AGENT_INTERRUPTED;
+use mimorya_api::services::runs::{SUB_AGENT_INTERRUPTED, SUB_AGENT_STOPPED};
 use mimorya_core::demo::{tenant, user};
 use mimorya_db::repositories::run_leases::expired_run_leases;
 use mimorya_db::repositories::runs::{RunPatch, RunStatus, update_active_run};
@@ -18,6 +18,7 @@ use mimorya_db::testing::{OTHER_TENANT_ID, OTHER_USER_ID};
 use serde_json::{Value, json};
 use support::TestApi;
 use support::document_search::{sources, titled};
+use support::missions::{entrust, stages, stop};
 use support::recovery::{conversation_of, events, restart, saved, status_and_error, stopped_run};
 use uuid::Uuid;
 
@@ -185,6 +186,26 @@ async fn a_sub_agent_is_never_taken_up_alone_and_fails_when_its_run_is() {
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
+async fn a_mission_stopped_stops_its_stage_s_sub_agents_saying_so() {
+    let api = TestApi::start().await;
+    let marc = api.sign_in(user::MARC).await;
+    let mission = entrust(&marc, "Suivi délégué").await;
+    let (stage, _) = stages(mission).await[0].clone();
+    let child = sub_run_of(&api, tenant::ID, stage).await.expect("opened");
+
+    assert_eq!(stop(&marc, mission).await, StatusCode::OK);
+    assert_eq!(
+        status_and_error(&api, tenant::ID, child).await,
+        ("failed".to_string(), Some(SUB_AGENT_STOPPED.to_string()))
+    );
+    let announced = events(&api, tenant::ID, child).await;
+    let (kind, data) = announced.last().expect("its end announced");
+    assert_eq!(kind, "run_finished");
+    assert_eq!(data["error"], SUB_AGENT_STOPPED);
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
 async fn a_run_that_ends_ends_its_sub_agents_still_running() {
     let api = TestApi::start().await;
     let parent = stopped_run(&api, tenant::ID, user::MARC, None, None, &[]).await;
@@ -209,10 +230,7 @@ async fn a_run_that_ends_ends_its_sub_agents_still_running() {
     );
     let (status, error) = status_and_error(&api, tenant::ID, running).await;
     assert_eq!(status, "failed");
-    assert_eq!(
-        error.as_deref(),
-        Some("Sous-agent interrompu : la demande qui l’avait lancé s’est arrêtée.")
-    );
+    assert_eq!(error.as_deref(), Some(SUB_AGENT_STOPPED));
 }
 
 #[tokio::test]

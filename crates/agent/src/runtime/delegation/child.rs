@@ -22,13 +22,14 @@ use crate::runtime::runtime::{AgentRuntime, StartInput};
 use crate::runtime::state::RunUsageTotals;
 use crate::runtime::types::{RunConfig, RunOutcome, RuntimeDeps, VerificationConfig};
 use crate::tools::ToolRegistry;
-use crate::tools::platform::DelegateTaskInput;
+use crate::tools::platform::{DelegateTaskInput, platform_tools};
 
 /// The sources told back to the parent, at most.
 const MAX_SOURCES: usize = 30;
 
 /// What a sub-agent works with: its parent's model, rights and settings,
-/// and the tools a sub-agent may be given.
+/// and the tools a sub-agent may be given, the platform's run through its
+/// own ports.
 pub struct SubAgents {
     router: ModelRouter,
     access: Arc<dyn AccessSource>,
@@ -105,10 +106,16 @@ impl SubAgents {
                 allowed_permissions: allowed,
             })
             .await?;
+        let ports = &sub_run.ports;
+        let own = platform_tools(
+            ports.memory.clone(),
+            ports.skills.clone(),
+            ports.documents.clone(),
+        );
         let mut deps = RuntimeDeps::new(
             self.router.clone(),
             self.access.clone(),
-            self.registry.clone(),
+            Arc::new(self.registry.rebound(own)),
             sub_run.ports,
             self.prices.clone(),
         );

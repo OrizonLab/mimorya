@@ -91,6 +91,25 @@ impl ToolRegistry {
         Ok(())
     }
 
+    /// The same tools as the company set them, those named in `tools` run
+    /// by these instances: a sub-agent's platform tools report through its
+    /// own run (ADR-098).
+    pub fn rebound(&self, tools: Vec<ToolRef>) -> Self {
+        let mut own: HashMap<String, ToolRef> = tools
+            .into_iter()
+            .map(|tool| (tool.info().name.clone(), tool))
+            .collect();
+        let tools = self
+            .tools
+            .iter()
+            .map(|t| RegisteredTool {
+                info: t.info.clone(),
+                tool: own.remove(&t.info.name).unwrap_or_else(|| t.tool.clone()),
+            })
+            .collect();
+        Self { tools }
+    }
+
     pub fn get(&self, name: &str) -> Option<&RegisteredTool> {
         self.tools.iter().find(|t| t.info.name == name)
     }

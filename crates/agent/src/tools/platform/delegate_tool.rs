@@ -47,6 +47,7 @@ impl TypedTool for DelegateTask {
             ),
             ToolRisk::Read,
         )
+        .requires(["agent:use"])
     }
 
     async fn run(

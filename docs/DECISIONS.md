@@ -4571,7 +4571,8 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
   `parent_run_id` et `agent_profile`, et l'ADR-014 prévoyait qu'un sous-agent n'ait
   jamais plus de droits que son parent.
 - **Décision** :
-  - **outil `delegate_task`** de la plateforme, en lecture :
+  - **outil `delegate_task`** de la plateforme, en lecture, pour qui tient `agent:use`
+    (permission que le plafond d'un run peut retirer) :
     - il confie une tâche (2 000 caractères au plus) et un contexte facultatif (8 000) à un
       sous-agent d'un profil `research`, `analysis`, `planning` ou `quality` ;
     - le PEP le juge comme tout autre (schéma strict, autonomie, validation imposée par
@@ -4579,13 +4580,15 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     - le moteur exécute ensuite chaque appel autorisé : la méthode `run` de l'outil
       répond par un refus si quoi que ce soit d'autre l'appelle ;
   - **run enfant** :
-    - enregistré dans `agent_runs` (`parent_run_id`, `agent_profile`, `autonomy_level =
-read_only`), pour l'entreprise et l'utilisateur de son parent, repris de la ligne
-      du parent ;
+    - enregistré dans `agent_runs` (`parent_run_id`, `agent_profile`,
+      `autonomy_level = read_only`), pour l'entreprise et l'utilisateur de son parent,
+      repris de la ligne du parent ;
     - sans conversation ni mission ; son journal, ses appels d'outils et sa consommation
-      sont les siens ;
-    - ses consignes sont celles du parent, suivies de son rôle ; son tour porte la tâche
-      et le contexte, sans pouvoir ouvrir ni fermer d'enveloppe ;
+      sont les siens : ses outils de plateforme (mémoire, documents, compétences) passent
+      par ses propres ports ;
+    - ses consignes sont celles du parent, suivies de son rôle ; son tour porte la tâche,
+      qui ne peut ouvrir ni fermer d'enveloppe, puis le contexte transmis, comme donnée
+      non fiable (`<donnees_outil source="delegate_task">`) ;
   - **ce que peut l'enfant** :
     - il hérite du plafond de permissions du parent (`allowed_permissions`) et relit les
       droits de l'utilisateur à chaque étape, comme lui ;
@@ -4601,11 +4604,16 @@ read_only`), pour l'entreprise et l'utilisateur de son parent, repris de la lign
     - sinon, le parent reçoit la raison de l'échec ;
     - l'appel est journalisé et audité avec le run enfant (`subRunId`) et son profil ;
   - **bornes** :
-    - au plus 3 délégations par étape, exécutées en parallèle ; au-delà, l'appel est
-      refusé pour cette étape ;
+    - au plus 3 délégations par étape, autorisées ou soumises à validation ; au-delà,
+      l'appel est refusé pour cette étape ;
+    - celles d'une étape s'exécutent en parallèle ; celles validées par un humain
+      s'exécutent ensemble, en parallèle, à la reprise ;
+    - dans une étape qui délègue, une action à valider n'est demandée qu'une fois les
+      délégations exécutées : une demande se décide dès qu'elle est montrée ;
     - chaque enfant reçoit une part égale de ce qui reste au parent (tokens et coût
-      divisés, durée restante partagée), dans le plafond d'un sous-agent : 8 étapes,
-      200 000 tokens lus, 20 000 écrits, 1 USD, 5 minutes ;
+      divisés, durée restante partagée, l'appel au modèle de l'étape compté), dans le
+      plafond d'un sous-agent : 8 étapes, 200 000 tokens lus, 20 000 écrits, 1 USD,
+      5 minutes ;
     - sans reste, l'enfant n'est pas ouvert ;
     - ce que l'enfant dépense (tokens, coût) compte dans le budget du parent ; ses
       étapes ne comptent pas ;
@@ -4613,10 +4621,12 @@ read_only`), pour l'entreprise et l'utilisateur de son parent, repris de la lign
     - l'enfant s'exécute dans l'exécution de son parent et écrit sous le bail de
       celui-ci ; parent annulé ou repris ailleurs, l'enfant s'arrête avec lui ;
     - il n'est jamais repris seul : `system_expired_run_leases` l'écarte ;
-    - parent repris après un arrêt, ses enfants encore en cours échouent, et leur fin
-      est annoncée ;
-    - parent terminé par n'importe quel chemin (moteur, panne, balayage, mission
-      arrêtée), un déclencheur fait échouer ses enfants encore en cours ;
+    - parent repris après un arrêt, en panne ou arrêté avec sa mission : ses enfants
+      encore en cours échouent, et leur fin est enregistrée et annoncée dans la même
+      transaction ;
+    - un déclencheur fait échouer les enfants encore en cours d'un parent qui se termine
+      par un autre chemin. Le balayage des runs bloqués, par exemple, balaie l'enfant
+      bloqué avec son parent et annonce leur fin ;
     - l'appel interrompu étant une lecture, le parent reprend et peut redemander ;
   - **API** :
     - `GET /runs` ne liste que les runs principaux ;
@@ -4639,11 +4649,15 @@ read_only`), pour l'entreprise et l'utilisateur de son parent, repris de la lign
   - la vue « Opérations » des sous-agents et l'affichage d'une délégation dans la
     conversation restent à faire (lot 2) ;
   - tests :
-    - `crates/agent/tests/runtime_delegation.rs` : résumé et sources rendus, cités par
-      le parent ; plafond hérité ; ni écriture, ni délégation, ni outil à validation
-      pour l'enfant ;
+    - `crates/agent/tests/runtime_delegation.rs` :
+      - résumé et sources rendus, cités par le parent ;
+      - plafond hérité ; sans `agent:use`, pas de délégation ;
+      - ni écriture, ni délégation, ni outil à validation pour l'enfant ;
+      - mémoire lue par le run de l'enfant ;
     - `runtime_delegation_bounds.rs` :
-      - trois délégations par étape, exécutées en parallèle ;
+      - trois délégations par étape, exécutées en parallèle ; celles à valider comptent
+        et s'exécutent ensemble une fois validées ;
+      - une validation demandée une fois les délégations exécutées ;
       - part du budget, dépense comptée chez le parent ;
       - échec expliqué ;
       - pas d'enfant sans reste de budget ;
@@ -4651,5 +4665,6 @@ read_only`), pour l'entreprise et l'utilisateur de son parent, repris de la lign
     - `crates/api/tests/sub_agents.rs` :
       - run enfant enregistré et visible du seul utilisateur, sources citées par la
         réponse, absent de la liste des runs ;
-      - jamais repris seul, échoue à la reprise ou à la fin de son parent ;
+      - jamais repris seul ; échoue à la reprise ou à la fin de son parent, ou avec sa
+        mission arrêtée, sa fin annoncée ;
       - aucune entreprise n'ouvre d'enfant sous le run d'une autre.

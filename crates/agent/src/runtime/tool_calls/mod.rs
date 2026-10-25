@@ -88,15 +88,24 @@ impl ToolCallProcessor {
     ) -> anyhow::Result<TurnToolResults> {
         let executor = self.executor(access);
         let mut turn = TurnToolResults::default();
+        let delegating = calls.iter().any(|c| c.name == DELEGATE_TASK);
+        // Allowed, or awaiting a validation: either counts in the bound.
+        let mut delegated = 0;
         let mut delegations = Vec::new();
+        let mut to_validate = Vec::new();
         for call in calls {
             let mut evaluation = executor.evaluate(call);
-            if let ToolCallEvaluation::Allow { tool, .. } = &evaluation
-                && is_delegation(tool)
-                && delegations.len() >= MAX_PER_TURN
-            {
+            let crowded = match delegation(&evaluation) {
+                Some(tool) if delegated >= MAX_PER_TURN => Some(tool.clone()),
+                Some(_) => {
+                    delegated += 1;
+                    None
+                }
+                None => None,
+            };
+            if let Some(tool) = crowded {
                 evaluation = ToolCallEvaluation::Deny {
-                    tool: Some(tool.clone()),
+                    tool: Some(tool),
                     reason: TOO_MANY_AT_ONCE.into(),
                 };
             }
@@ -136,6 +145,11 @@ impl ToolCallProcessor {
                     tool,
                     input,
                     reason,
+                } if delegating => to_validate.push((call, tool, input, reason)),
+                ToolCallEvaluation::RequireApproval {
+                    tool,
+                    input,
+                    reason,
                 } => match self.request_approval(call, &tool, input, reason).await? {
                     Requested::Awaiting(pending) => turn.awaiting.push(pending),
                     Requested::Refused(result) => turn.results.push(result),
@@ -160,14 +174,59 @@ impl ToolCallProcessor {
             // Side by side, once every other call of the turn is decided.
             turn.results
                 .extend(self.delegate(state, delegations).await?);
+        }
+        // Asked once the delegations have run: a request can be decided as
+        // soon as it is shown.
+        for (call, tool, input, reason) in to_validate {
+            match self.request_approval(call, &tool, input, reason).await? {
+                Requested::Awaiting(pending) => turn.awaiting.push(pending),
+                Requested::Refused(result) => turn.results.push(result),
+            }
+        }
+        if delegating {
             let position = |id: &str| calls.iter().position(|c| c.id == id);
             turn.results.sort_by_key(|r| position(&r.tool_call_id));
         }
         Ok(turn)
     }
 
+    /// Runs the calls a human validated, with the exact parameters
+    /// validated: each in turn, then the delegations side by side.
+    pub async fn run_validated(
+        &self,
+        state: &mut RunCheckpoint,
+        validated: Vec<(RegisteredTool, &PendingApproval)>,
+        access: &CurrentAccess,
+    ) -> anyhow::Result<Vec<LlmToolResult>> {
+        let mut results = Vec::with_capacity(validated.len());
+        let mut delegations = Vec::new();
+        for (tool, approval) in validated {
+            let input = approval.input.clone();
+            let approval_id = Some(approval.approval_id);
+            if is_delegation(&tool) {
+                delegations.push(Delegated {
+                    tool_call_id: approval.tool_call_id.clone(),
+                    tool,
+                    input,
+                    approval_id,
+                });
+                continue;
+            }
+            let id = &approval.tool_call_id;
+            results.push(
+                self.run(state, &tool, id, input, approval_id, access)
+                    .await?,
+            );
+        }
+        if !delegations.is_empty() {
+            results.extend(self.delegate(state, delegations).await?);
+        }
+        Ok(results)
+    }
+
     /// Executes an allowed (or human-approved) call, with the rights of the
-    /// current step, and turns its result into model input.
+    /// current step, and turns its result into model input; a delegation
+    /// runs through `delegate` instead.
     pub async fn run(
         &self,
         state: &mut RunCheckpoint,
@@ -177,18 +236,6 @@ impl ToolCallProcessor {
         approval_id: Option<Uuid>,
         access: &CurrentAccess,
     ) -> anyhow::Result<LlmToolResult> {
-        if is_delegation(tool) {
-            let delegated = Delegated {
-                tool_call_id: tool_call_id.into(),
-                tool: tool.clone(),
-                input,
-                approval_id,
-            };
-            let mut results = self.delegate(state, vec![delegated]).await?;
-            return results
-                .pop()
-                .ok_or_else(|| anyhow::anyhow!("a delegation without its result"));
-        }
         let (result, duration_ms) = self.executor(access).execute(tool, input.clone()).await;
         let call = Call {
             tool,
@@ -202,6 +249,19 @@ impl ToolCallProcessor {
 
 fn is_delegation(tool: &RegisteredTool) -> bool {
     tool.info.name == DELEGATE_TASK
+}
+
+/// The delegation `evaluation` lets run, or asks a validation for.
+fn delegation(evaluation: &ToolCallEvaluation) -> Option<&RegisteredTool> {
+    match evaluation {
+        ToolCallEvaluation::Allow { tool, .. }
+        | ToolCallEvaluation::RequireApproval { tool, .. }
+            if is_delegation(tool) =>
+        {
+            Some(tool)
+        }
+        _ => None,
+    }
 }
 
 /// Tool results are returned in the order the model requested the calls.

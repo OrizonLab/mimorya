@@ -43,3 +43,4 @@ pub use recovery::{
 };
 pub use run_access::{AGENT_USE_WITHDRAWN, COMPANY_SUSPENDED};
 pub use service::{DecisionResult, RunService, StartedTurn};
+pub use sub_runs::{SUB_AGENT_STOPPED, announce, end_sub_runs};

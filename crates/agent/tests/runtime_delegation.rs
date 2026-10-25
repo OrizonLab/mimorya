@@ -1,7 +1,8 @@
 //! Runtime: tasks handed to sub-agents (ADR-098). A child run reads with
 //! the tools that only read and run without validation, within its
-//! parent's ceiling, and returns a summary whose sources its parent may
-//! cite; it delegates nothing further.
+//! parent's ceiling, through its own run, and returns a summary whose
+//! sources its parent may cite; it delegates nothing further. A run that
+//! may not use the agent delegates nothing.
 
 mod support;
 
@@ -11,8 +12,10 @@ use mimorya_agent::llm::LlmMessage;
 use mimorya_agent::runtime::{RunOutcome, SUB_AGENT_BUDGET, SubAgentProfile};
 use mimorya_agent::testing::{
     RecordedRequest, ScriptedCall, ScriptedReply, ScriptedStep, call, last_tool_results,
+    memory_fixture,
 };
 use mimorya_agent::tools::ToolOverride;
+use mimorya_core::memory::{MemoryKind, MemoryScope};
 use serde_json::json;
 use support::{Options, setup};
 
@@ -216,4 +219,64 @@ async fn a_tool_that_needs_a_validation_is_not_a_sub_agent_s() {
     let child = &h.ports.sub_runs()[0];
     assert!(child.ports.approval_requests().is_empty());
     assert_eq!(child.ports.finished()[0].status, "completed");
+}
+
+#[tokio::test]
+async fn a_run_without_the_agent_s_use_delegates_nothing() {
+    let h = setup(
+        vec![
+            ScriptedStep::dynamic(|req| {
+                assert!(!req.tool_names().contains(&"delegate_task".to_string()));
+                ScriptedReply::calls("", vec![delegate("research")])
+            }),
+            ScriptedStep::dynamic(|req| {
+                let results = last_tool_results(req);
+                assert!(results[0].is_error);
+                assert!(results[0].content.contains("Permission agent:use requise"));
+                ScriptedReply::text("Je ne peux rien confier.")
+            }),
+        ],
+        Options {
+            sub_agents: true,
+            allowed_permissions: Some(HashSet::from(["intervention:read".to_string()])),
+            ..Options::default()
+        },
+    );
+    assert!(matches!(h.start().await, RunOutcome::Completed { .. }));
+    assert!(h.ports.sub_runs().is_empty());
+}
+
+#[tokio::test]
+async fn a_sub_agent_reads_through_its_own_run() {
+    let boiler = memory_fixture(
+        MemoryScope::Tenant,
+        MemoryKind::Fact,
+        "Chaudière du dépôt Nord",
+        "La chaudière du dépôt Nord est révisée chaque octobre.",
+    );
+    let h = setup(
+        vec![
+            ScriptedStep::calls("", vec![delegate("research")]),
+            ScriptedStep::calls(
+                "",
+                vec![call("memory_search", json!({ "query": "chaudière" }))],
+            ),
+            ScriptedStep::dynamic(|req| {
+                let results = last_tool_results(req);
+                assert!(results[0].content.contains("révisée chaque octobre"));
+                ScriptedReply::text("La chaudière du dépôt Nord est révisée chaque octobre.")
+            }),
+            ScriptedStep::text("Synthèse : révision de la chaudière Nord chaque octobre."),
+        ],
+        Options {
+            platform: Some(vec![boiler]),
+            ..Options::default()
+        },
+    );
+    assert!(matches!(h.start().await, RunOutcome::Completed { .. }));
+    // The memory is marked used by the sub-agent's run, not its parent's.
+    assert_eq!(h.ports.memories()[0].use_count, 0);
+    let child = &h.ports.sub_runs()[0];
+    assert_eq!(child.ports.memories()[0].use_count, 1);
+    assert_eq!(child.ports.tool_records()[0].tool_name, "memory_search");
 }

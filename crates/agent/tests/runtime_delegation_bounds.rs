@@ -1,8 +1,10 @@
 //! Runtime: what bounds sub-agents (ADR-098). At most three run per step,
 //! side by side, each on an equal share of what is left of its parent's
 //! budget; what each spends counts in its parent's, and a sub-agent that
-//! does not finish says why. A delegation that needs a validation runs
-//! once validated.
+//! does not finish says why. A delegation that needs a validation counts
+//! in the bound and runs once validated, beside the others validated with
+//! it; a validation asked in a step that delegates is asked once the
+//! delegations have run.
 
 mod support;
 
@@ -242,4 +244,96 @@ async fn a_delegation_that_needs_a_validation_runs_once_validated() {
         .expect("the delegation ran");
     assert_eq!(record.tool_name, "delegate_task");
     assert_eq!(record.approval_id, Some(approvals[0].approval_id));
+}
+
+#[tokio::test]
+async fn delegations_awaiting_validation_count_in_the_bound_and_run_side_by_side() {
+    let model = Arc::new(Gathered {
+        model: ScriptedProvider::new(vec![
+            ScriptedStep::calls("", delegations(MAX_PER_TURN + 1)),
+            sub_agent_answers(),
+            sub_agent_answers(),
+            sub_agent_answers(),
+            ScriptedStep::text("Bilan : rien à signaler."),
+        ]),
+        gathering: Barrier::new(MAX_PER_TURN),
+    });
+    let overrides = HashMap::from([(
+        "delegate_task".to_string(),
+        ToolOverride {
+            requires_approval: Some(true),
+            ..ToolOverride::default()
+        },
+    )]);
+    let h = setup(
+        Vec::new(),
+        Options {
+            sub_agents: true,
+            overrides,
+            model: Some(model),
+            ..Options::default()
+        },
+    );
+    let RunOutcome::AwaitingApproval {
+        approvals,
+        checkpoint,
+    } = h.start().await
+    else {
+        panic!("expected a pause");
+    };
+    assert_eq!(approvals.len(), MAX_PER_TURN);
+    let refused = h.ports.tool_records();
+    let crowded = refused.iter().find(|r| r.tool_call_id == "d4").unwrap();
+    assert_eq!(crowded.status, "denied");
+    assert_eq!(
+        crowded.decision_reason.as_deref(),
+        Some("Au plus trois sous-agents par étape : confiez cette tâche à l’étape suivante.")
+    );
+
+    let decisions = approvals
+        .iter()
+        .map(|a| (a.approval_id, ApprovalDecision::approved()))
+        .collect();
+    let resumed = h.runtime.resume(checkpoint, &decisions);
+    let outcome = tokio::time::timeout(Duration::from_secs(10), resumed)
+        .await
+        .expect("the validated sub-agents ran side by side")
+        .unwrap();
+    assert!(matches!(outcome, RunOutcome::Completed { .. }));
+    assert_eq!(h.ports.sub_runs().len(), MAX_PER_TURN);
+}
+
+#[tokio::test]
+async fn a_validation_is_asked_once_the_step_s_delegations_have_run() {
+    let h = setup(
+        vec![
+            ScriptedStep::calls(
+                "",
+                vec![
+                    call("planning_apply", json!({ "slots": 1 })),
+                    delegations(1).remove(0),
+                ],
+            ),
+            sub_agent_answers(),
+        ],
+        Options {
+            sub_agents: true,
+            ..Options::default()
+        },
+    );
+    let RunOutcome::AwaitingApproval { checkpoint, .. } = h.start().await else {
+        panic!("expected a pause");
+    };
+    let kinds: Vec<(String, serde_json::Value)> = h
+        .ports
+        .emitted()
+        .into_iter()
+        .map(|e| e.into_parts())
+        .collect();
+    let at = |kind: &str| kinds.iter().position(|(k, _)| k == kind).unwrap();
+    assert!(at("tool_result") < at("approval_requested"), "{kinds:?}");
+    // The delegation's result waits beside the request.
+    let pending = checkpoint.pending.expect("pending");
+    assert_eq!(pending.completed_results.len(), 1);
+    assert_eq!(pending.completed_results[0].tool_call_id, "d1");
 }
