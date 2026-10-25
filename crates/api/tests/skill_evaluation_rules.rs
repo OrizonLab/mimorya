@@ -5,10 +5,10 @@
 //! company; another company's skill or evaluation answers as absent. It
 //! ends, failed, once whom it runs for may no longer administer the skills
 //! or use the agent (their account disabled, their role narrowed), or when
-//! a stopped process left it running, and is written no further. Only a
-//! process that executes runs plays them, one at a time; the last five of
-//! a skill are kept, ninety days at most. How one is played:
-//! `skill_evaluations.rs`.
+//! a stopped process left it running, and is written no further; a pass
+//! that finds its own ended by another stops. Only a process that executes
+//! runs plays them, one at a time; the last five of a skill are kept,
+//! ninety days at most. How one is played: `skill_evaluations.rs`.
 
 mod support;
 
@@ -17,55 +17,18 @@ use chrono::Utc;
 use mimorya_api::services::skill_evaluations::{EVALUATION_SWEEP, play_pending_evaluations};
 use mimorya_core::demo::{tenant, user};
 use mimorya_core::skill_evaluations::EVALUATION_KEPT_DAYS;
-use mimorya_db::repositories::skill_evaluations::{
-    NewResult, purge_finished_evaluations, record_result,
-};
+use mimorya_db::repositories::skill_evaluations::purge_finished_evaluations;
 use mimorya_db::seed::DEMO_SKILL_ID;
 use mimorya_db::testing::OTHER_TENANT_ID;
 use serde_json::json;
 use support::accounts::holder_of;
+use support::evaluation_passes::{TAKEN_OVER, forget_elsewhere, lock_lost, taken_over};
 use support::skill_evaluations::{
-    count, detail, evaluations, forget, launch, launched, new_version, play, write_case,
+    count, detail, evaluations, executing, forget, launch, launched, new_version, play, status_of,
+    stored_evaluation, verdict, write_case,
 };
 use support::{Client, TestApi};
 use uuid::Uuid;
-
-async fn status_of(api: &TestApi, id: &str) -> (String, Option<String>, i64) {
-    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
-    let id: Uuid = id.parse().unwrap();
-    let row: (String, Option<String>) =
-        sqlx::query_as("select status, failure from skill_evaluations where id = $1")
-            .bind(id)
-            .fetch_one(&mut *tx)
-            .await
-            .unwrap();
-    let results: i64 = sqlx::query_scalar(
-        "select count(*) from skill_evaluation_results where evaluation_id = $1",
-    )
-    .bind(id)
-    .fetch_one(&mut *tx)
-    .await
-    .unwrap();
-    (row.0, row.1, results)
-}
-
-/// An evaluation of the demo skill written as `status`, `days` old.
-async fn stored_evaluation(api: &TestApi, status: &str, days: i32) -> Uuid {
-    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
-    let id = sqlx::query_scalar(
-        "insert into skill_evaluations (tenant_id, skill_id, version, status, cases, created_at) \
-         values ($1, $2, 1, $3, '[]', now() - make_interval(days => $4)) returning id",
-    )
-    .bind(tenant::ID)
-    .bind(DEMO_SKILL_ID)
-    .bind(status)
-    .bind(days)
-    .fetch_one(&mut *tx)
-    .await
-    .unwrap();
-    tx.commit().await.unwrap();
-    id
-}
 
 async fn refused(client: &Client<'_>, skill: Uuid, version: i32, status: StatusCode, says: &str) {
     let answer = launch(client, skill, version).await;
@@ -295,28 +258,43 @@ async fn one_left_running_by_a_stopped_process_fails_and_one_process_plays_at_a_
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
-async fn no_result_is_written_once_an_evaluation_is_not_running() {
+async fn a_pass_whose_evaluation_another_ended_writes_nothing_more_and_stops() {
     let api = TestApi::start().await;
-    let failed = stored_evaluation(&api, "failed", 0).await;
-    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
-    let result = NewResult {
-        tenant_id: tenant::ID,
-        evaluation_id: failed,
-        position: 0,
-        reference: false,
-        outcome: "passed",
-        issues: &[],
-        answer: Some("Une réponse."),
-        error: None,
-        skill_loaded: true,
-        tools: &json!([]),
-        input_tokens: 100,
-        output_tokens: 20,
-        cost_micros: 5,
-    };
-    assert!(!record_result(&mut tx, result).await.unwrap());
-    tx.commit().await.unwrap();
-    assert_eq!(status_of(&api, &failed.to_string()).await.2, 0);
+    let paul = api.sign_in(user::PAUL).await;
+    let version = new_version(&paul).await;
+    write_case(&paul, DEMO_SKILL_ID, "Retards", "Quels retards ?").await;
+    api.script(vec![taken_over("Trois retards."), verdict(true)]);
+    let id = launched(&paul, DEMO_SKILL_ID, version).await;
+    executing(&api).await;
+    // It played one, and left the one asked for since to the other pass.
+    let services = &api.app.services;
+    assert_eq!(play_pending_evaluations(services).await.unwrap(), 1);
+
+    let (status, failure, results) = status_of(&api, &id).await;
+    assert_eq!(status, "failed");
+    assert_eq!(failure.as_deref(), Some(TAKEN_OVER));
+    assert_eq!(results, 0, "no result written");
+    let listed = evaluations(&paul, DEMO_SKILL_ID).await;
+    assert_eq!(listed[0]["status"], "queued", "{}", listed[0]);
+    assert_eq!(listed[1]["id"], id.as_str());
+    forget(&api, DEMO_SKILL_ID).await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_pass_whose_lock_s_session_is_lost_plays_no_further() {
+    let api = TestApi::start().await;
+    let paul = api.sign_in(user::PAUL).await;
+    write_case(&paul, DEMO_SKILL_ID, "Retards", "Quels retards ?").await;
+    api.script(vec![lock_lost("Trois retards."), verdict(true)]);
+    let id = launched(&paul, DEMO_SKILL_ID, 1).await;
+    executing(&api).await;
+    // Its own ended, it found the lock lost: the other company's waits.
+    let services = &api.app.services;
+    assert_eq!(play_pending_evaluations(services).await.unwrap(), 1);
+
+    assert_eq!(status_of(&api, &id).await.0, "completed");
+    assert_eq!(forget_elsewhere(), "queued");
     forget(&api, DEMO_SKILL_ID).await;
 }
 

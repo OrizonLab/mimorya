@@ -1,6 +1,6 @@
 //! Evaluations of a skill's versions (ADR-104): a version and cases to try,
-//! the model's script for one case, an evaluation asked for and played, and
-//! what is left of them once a test is done.
+//! the model's script for one case, an evaluation asked for, played and
+//! read back, and what is left of them once a test is done.
 
 use std::time::Duration;
 
@@ -56,16 +56,20 @@ pub fn played(loads: bool, answer: &str, passes: bool) -> Vec<ScriptedStep> {
             vec![call("skill_read", json!({ "name": SKILL }))],
         ));
     }
-    steps.push(ScriptedStep::text(answer));
+    steps.extend([ScriptedStep::text(answer), verdict(passes)]);
+    steps
+}
+
+/// The judge passes an answer or not.
+pub fn verdict(passes: bool) -> ScriptedStep {
     let issues: Vec<&str> = if passes { Vec::new() } else { vec![ISSUE] };
-    steps.push(ScriptedStep::calls(
+    ScriptedStep::calls(
         "",
         vec![call(
             "submit_verdict",
             json!({ "pass": passes, "issues": issues }),
         )],
-    ));
-    steps
+    )
 }
 
 pub async fn launch(client: &Client<'_>, skill: Uuid, version: i32) -> TestResponse {
@@ -84,10 +88,18 @@ pub async fn launched(client: &Client<'_>, skill: Uuid, version: i32) -> String 
     launched.json()["id"].as_str().unwrap().to_owned()
 }
 
+/// Makes the process execute runs, once the pass a launch woke found it
+/// did not: the test's own pass then plays alone.
+pub async fn executing(api: &TestApi) {
+    // Spawned by the launch, the woken pass runs first.
+    tokio::task::yield_now().await;
+    api.app.services.runs.start_executing().unwrap();
+}
+
 /// Plays the evaluations waiting, as a process that executes runs does.
 pub async fn play(api: &TestApi) {
+    executing(api).await;
     let services = &api.app.services;
-    services.runs.start_executing().unwrap();
     play_pending_evaluations(services).await.unwrap();
     // A maintenance pass may have played them meanwhile: once it is done.
     let wait = Duration::from_secs(60);
@@ -103,6 +115,45 @@ pub async fn evaluations(client: &Client<'_>, skill: Uuid) -> Vec<Value> {
 
 pub async fn detail(client: &Client<'_>, id: &str) -> TestResponse {
     client.get(&format!("/admin/skill-evaluations/{id}")).await
+}
+
+/// The status, failure and number of results of the company's evaluation
+/// `id`.
+pub async fn status_of(api: &TestApi, id: &str) -> (String, Option<String>, i64) {
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    let id: Uuid = id.parse().unwrap();
+    let row: (String, Option<String>) =
+        sqlx::query_as("select status, failure from skill_evaluations where id = $1")
+            .bind(id)
+            .fetch_one(&mut *tx)
+            .await
+            .unwrap();
+    let results: i64 = sqlx::query_scalar(
+        "select count(*) from skill_evaluation_results where evaluation_id = $1",
+    )
+    .bind(id)
+    .fetch_one(&mut *tx)
+    .await
+    .unwrap();
+    (row.0, row.1, results)
+}
+
+/// An evaluation of the demo skill written as `status`, `days` old.
+pub async fn stored_evaluation(api: &TestApi, status: &str, days: i32) -> Uuid {
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    let id = sqlx::query_scalar(
+        "insert into skill_evaluations (tenant_id, skill_id, version, status, cases, created_at) \
+         values ($1, $2, 1, $3, '[]', now() - make_interval(days => $4)) returning id",
+    )
+    .bind(tenant::ID)
+    .bind(DEMO_SKILL_ID)
+    .bind(status)
+    .bind(days)
+    .fetch_one(&mut *tx)
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+    id
 }
 
 /// Deletes the company's evaluations and the cases of `skill`.

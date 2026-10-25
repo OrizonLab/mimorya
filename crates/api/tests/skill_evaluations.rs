@@ -13,7 +13,7 @@ mod support;
 use axum::http::StatusCode;
 use mimorya_agent::llm::LlmMessage;
 use mimorya_agent::testing::ScriptedStep;
-use mimorya_core::demo::user;
+use mimorya_core::demo::{tenant, user};
 use mimorya_db::seed::DEMO_SKILL_ID;
 use serde_json::{Value, json};
 use support::accounts::holder_of;
@@ -228,24 +228,38 @@ async fn an_answer_the_judge_gives_no_verdict_on_is_an_error_kept_with_its_answe
     let api = TestApi::start().await;
     let paul = api.sign_in(user::PAUL).await;
     write_case(&paul, DEMO_SKILL_ID, "Retards", LATE).await;
+    write_case(&paul, DEMO_SKILL_ID, "Suivis", FOLLOW_UPS).await;
     api.script(vec![
         ScriptedStep::text("Trois retards cette semaine."),
         ScriptedStep::text("Je ne sais pas juger."),
+        ScriptedStep::text("Deux suivis à planifier."),
+        ScriptedStep::fails("Le modèle est surchargé."),
     ]);
+    let usage = count(&api, "usage_records").await;
     let id = launched(&paul, DEMO_SKILL_ID, 1).await;
     play(&api).await;
 
     let read = detail(&paul, &id).await.json();
     assert_eq!(read["evaluation"]["status"], "completed");
-    let result = &read["cases"][0]["result"];
-    assert_eq!(result["outcome"], "error");
-    assert_eq!(result["answer"], "Trois retards cette semaine.");
-    assert!(
-        result["error"]
-            .as_str()
-            .unwrap()
-            .contains("pas rendu de verdict")
-    );
+    let (unjudged, failed) = (&read["cases"][0]["result"], &read["cases"][1]["result"]);
+    assert_eq!(unjudged["outcome"], "error");
+    assert_eq!(unjudged["answer"], "Trois retards cette semaine.");
+    let error = |result: &Value| result["error"].as_str().unwrap().to_owned();
+    assert!(error(unjudged).contains("pas rendu de verdict"));
+    // The judge failing: its answer kept, what the agent spent counted.
+    assert_eq!(failed["outcome"], "error");
+    assert_eq!(failed["answer"], "Deux suivis à planifier.");
+    assert_eq!(error(failed), "Le contrôle de la réponse a échoué.");
     assert_eq!(read["evaluation"]["passed"], 0);
+    assert_eq!(count(&api, "usage_records").await, usage + 3);
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    let tokens: i64 =
+        sqlx::query_scalar("select input_tokens from skill_evaluations where id = $1")
+            .bind(id.parse::<Uuid>().unwrap())
+            .fetch_one(&mut *tx)
+            .await
+            .unwrap();
+    tx.commit().await.unwrap();
+    assert_eq!(tokens, 300, "the agent twice, the judge once");
     forget(&api, DEMO_SKILL_ID).await;
 }

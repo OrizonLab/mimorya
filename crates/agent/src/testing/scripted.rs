@@ -9,8 +9,8 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::llm::{
-    LlmError, LlmMessage, LlmProvider, LlmRequest, LlmResponse, LlmToolCall, LlmToolResult,
-    LlmToolSpec, LlmUsage, StopReason,
+    LlmError, LlmErrorKind, LlmMessage, LlmProvider, LlmRequest, LlmResponse, LlmToolCall,
+    LlmToolResult, LlmToolSpec, LlmUsage, StopReason,
 };
 
 /// What the model was given (the text callback left aside).
@@ -89,6 +89,8 @@ type Dynamic = Box<dyn Fn(&RecordedRequest) -> ScriptedReply + Send + Sync>;
 pub enum ScriptedStep {
     Fixed(ScriptedReply),
     Dynamic(Dynamic),
+    /// The call fails with this error.
+    Fails(LlmError),
 }
 
 impl ScriptedStep {
@@ -104,6 +106,15 @@ impl ScriptedStep {
         step: impl Fn(&RecordedRequest) -> ScriptedReply + Send + Sync + 'static,
     ) -> Self {
         Self::Dynamic(Box::new(step))
+    }
+
+    /// The call fails, the provider overloaded, saying `message`.
+    pub fn fails(message: impl Into<String>) -> Self {
+        Self::Fails(LlmError {
+            provider: "scripted".into(),
+            kind: LlmErrorKind::Overloaded,
+            message: message.into(),
+        })
     }
 }
 
@@ -162,6 +173,7 @@ impl LlmProvider for ScriptedProvider {
         let reply = match step {
             ScriptedStep::Fixed(reply) => reply,
             ScriptedStep::Dynamic(step) => step(&recorded),
+            ScriptedStep::Fails(error) => return Err(error),
         };
         let tool_calls: Vec<LlmToolCall> = reply
             .tool_calls

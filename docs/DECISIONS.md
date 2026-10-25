@@ -5012,9 +5012,10 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     demande, une à la fois entre les processus, sous le verrou de sa passe (ADR-086) tant
     qu'elle joue. Une évaluation trouvée en cours par la passe qui tient ce verrou est
     celle qu'un arrêt a laissée : elle échoue, « interrompue », à demander de nouveau.
-    Aucun bail. Un résultat ne s'écrit que dans une évaluation encore en cours : une
-    passe dont la session du verrou s'est perdue (PostgreSQL redémarré) cesse de jouer
-    la sienne au cas suivant, une autre l'ayant close ;
+    Aucun bail. Un résultat ne s'écrit que dans une évaluation encore en cours. Une
+    passe dont la session du verrou s'est perdue (PostgreSQL redémarré) s'arrête, sans
+    toucher à ce qu'une autre joue : elle vérifie avant chaque évaluation que cette
+    session vit encore, et cesse au cas suivant quand une autre passe a close la sienne ;
   - **chaque cas** : l'assistant répond à la demande pour la personne qui a demandé
     l'évaluation, avec ses droits relus avant chaque étape, et ce qu'on donne à un
     sous-agent (ADR-098) : les outils qui ne font que lire et s'exécutent sans validation,
@@ -5028,8 +5029,9 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     avec les résultats acquis ;
   - **jugement** : un modèle juge la réponse sur les critères du cas, comme le contrôle
     qualité des réponses (`judge_answer`) : réussi, manqué (avec les manquements
-    relevés) ou en erreur (pas de réponse à juger, ou pas de verdict). Le résultat garde
-    la réponse, les outils appelés et si la version a été chargée ;
+    relevés) ou en erreur (pas de réponse à juger, pas de verdict, ou le juge en échec).
+    Le résultat garde la réponse, les outils appelés et si la version a été chargée ; ce
+    qu'a coûté la réponse compte même quand le juge échoue ;
   - **non-régression** : un cas réussi par la version active et pas par la version
     évaluée est une régression. Activer une version contre les régressions de sa dernière
     évaluation, comparée à la version active du moment, demande une confirmation
@@ -5084,13 +5086,17 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
       outils, la version jouée), le jugement, la régression, aucun run, la consommation
       au nom de la personne, l'audit sans réponse, l'activation confirmée ; les réponses
       lues par la seule personne ; une compétence pas encore active listée dans l'index ;
-      une réponse sans verdict du juge, en erreur, gardée ;
+      une réponse sans verdict du juge ou que le juge n'a pu contrôler, en erreur,
+      gardée avec ce qu'elle a coûté ;
     - `crates/api/tests/skill_evaluation_rules.rs` : ce qui est vérifié avant la file
       (cas, version, droits, modèle, lecture des compétences, une à la fois, autre
       entreprise) ; l'arrêt quand la personne ne peut plus (compte désactivé, rôle
-      restreint) ; une évaluation laissée en cours par un arrêt ; aucun résultat écrit
-      dans une évaluation qui n'est plus en cours ; une passe à la fois, seulement dans un
+      restreint) ; une évaluation laissée en cours par un arrêt ; une passe dont une
+      autre a close l'évaluation n'écrit plus rien et s'arrête, de même qu'une passe dont
+      la session du verrou s'est perdue ; une passe à la fois, seulement dans un
       processus qui exécute les runs ; les cinq dernières gardées, 90 jours au plus ;
+    - `crates/api/tests/several_workers.rs` : le verrou d'une passe que son détenteur
+      trouve perdu avec sa session ;
     - `crates/api/tests/skill_access.rs` : les routes refusées à un membre, le détail
       d'une évaluation compris, et la compétence d'une autre entreprise sans rien
       écrire ;

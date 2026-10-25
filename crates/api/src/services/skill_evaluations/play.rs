@@ -2,10 +2,10 @@
 //! the version evaluated and, beside it, for the active one, each result
 //! written as it comes while the evaluation runs: one failed meanwhile as
 //! interrupted (the lock's session lost, another pass took over) is played
-//! no further. Before each case, whom it runs for must still
-//! administer the company's skills and use the agent: otherwise the
-//! evaluation ends there, failed, with the results it has. Its end is
-//! audited with what its cases add up to, never an answer.
+//! no further, and its pass stops there. Before each case, whom it runs
+//! for must still administer the company's skills and use the agent:
+//! otherwise the evaluation ends there, failed, with the results it has.
+//! Its end is audited with what its cases add up to, never an answer.
 
 use std::sync::Arc;
 
@@ -35,12 +35,13 @@ const NOT_ADMIN: &str = "Qui l’a demandée n’administre plus les compétence
 const VERSION_GONE: &str = "La version évaluée n’existe plus.";
 
 /// Plays the queued evaluation `id`; nothing when it is not queued any more.
-pub async fn play(services: &Services, tenant_id: Uuid, id: Uuid) -> anyhow::Result<()> {
+/// `false` when another pass ended it meanwhile: this one lost the lock.
+pub async fn play(services: &Services, tenant_id: Uuid, id: Uuid) -> anyhow::Result<bool> {
     let mut tx = services.db.begin(tenant_id).await?;
     let claimed = claim_evaluation(&mut tx, id).await?;
     tx.commit().await?;
     let Some(evaluation) = claimed else {
-        return Ok(());
+        return Ok(true);
     };
     let failure = match play_cases(services, tenant_id, &evaluation).await {
         Ok(failure) => failure,
@@ -58,7 +59,8 @@ pub async fn fail_interrupted(
     tenant_id: Uuid,
     id: Uuid,
 ) -> anyhow::Result<()> {
-    finish(services, tenant_id, id, Some(INTERRUPTED)).await
+    finish(services, tenant_id, id, Some(INTERRUPTED)).await?;
+    Ok(())
 }
 
 async fn play_cases(
@@ -183,19 +185,20 @@ async fn record(
 }
 
 /// Ends the evaluation, failed for `failure` when given, and audits what
-/// its cases add up to; nothing when it was not running any more.
+/// its cases add up to; `false`, and nothing, when it was not running any
+/// more.
 async fn finish(
     services: &Services,
     tenant_id: Uuid,
     id: Uuid,
     failure: Option<&str>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<bool> {
     let mut tx = services.db.begin(tenant_id).await?;
     if !finish_evaluation(&mut tx, id, failure).await? {
-        return Ok(());
+        return Ok(false);
     }
     let Some(evaluation) = get_evaluation(&mut tx, id).await? else {
-        return Ok(());
+        return Ok(false);
     };
     let results = results_of(&mut tx, &[id]).await?;
     let cases = evaluation.cases.as_array().map_or(0, Vec::len);
@@ -226,5 +229,6 @@ async fn finish(
     }
     entry.reason = failure.map(str::to_owned);
     append_audit(&mut tx, entry).await?;
-    Ok(tx.commit().await?)
+    tx.commit().await?;
+    Ok(true)
 }

@@ -13,6 +13,7 @@ pub mod dns;
 pub mod document_search;
 pub mod documents;
 pub mod embeddings;
+pub mod evaluation_passes;
 pub mod identity_provider;
 pub mod impostor;
 pub mod leases;
