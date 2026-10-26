@@ -163,9 +163,10 @@ pub struct NewSkillVersion<'a> {
     pub skill_id: Uuid,
     pub content: &'a str,
     pub changelog: &'a str,
-    /// What an answer that follows it must meet (ADR-106); none for a
-    /// proposal.
-    pub quality_criteria: &'a [String],
+    /// What an answer that follows it must meet (ADR-106); when not given
+    /// (a proposal of the agent's, a version written without them), those
+    /// of the version active, none without one.
+    pub quality_criteria: Option<&'a [String]>,
     pub created_by: Uuid,
     /// The run that proposed it for its author (ADR-100): a candidate then,
     /// a draft otherwise.
@@ -186,7 +187,9 @@ pub async fn insert_skill_version(
          select $1, $2, coalesce(max(version), 0) + 1, $3, \
          jsonb_strip_nulls(jsonb_build_object('name', (select name from skills where id = $2), \
          'description', $7::text)), $4, $5, $6, \
-         $6::uuid is not null, case when $6::uuid is null then 'draft' else 'candidate' end, $8 \
+         $6::uuid is not null, case when $6::uuid is null then 'draft' else 'candidate' end, \
+         coalesce($8, (select active.quality_criteria from skills s \
+         join skill_versions active on active.id = s.active_version_id where s.id = $2), '{}') \
          from skill_versions where skill_id = $2 returning version",
     )
     .bind(version.tenant_id)

@@ -142,7 +142,7 @@ pub async fn waiting(api: &TestApi, count: i64, author: Uuid, run: Uuid) {
             skill_id: DEMO_SKILL_ID,
             content: "1. Une proposition.",
             changelog: "En attente.",
-            quality_criteria: &[],
+            quality_criteria: None,
             created_by: author,
             proposed_by_run: Some(run),
             description: None,

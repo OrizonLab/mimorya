@@ -1,9 +1,10 @@
 //! Quality criteria of a skill's version (ADR-106): written with the
 //! version by an administrator of the skills, trimmed, blank ones left out,
-//! eight at most, each one visible line; a proposal of the agent's carries
-//! none. A run that loads the active version has its answer reviewed by a
-//! model on them, and corrected when it falls short; an evaluation's judge
-//! reads them beside the case's criteria.
+//! eight at most, each one visible line; a version written without them,
+//! the agent's proposals included, keeps those of the version active. A run
+//! that loads the active version has its answer reviewed by a model on
+//! them, and corrected when it falls short; an evaluation judges both
+//! versions it compares on the criteria of either, beside the case's.
 
 mod support;
 
@@ -11,10 +12,14 @@ use axum::http::StatusCode;
 use mimorya_agent::llm::LlmMessage;
 use mimorya_agent::testing::{ScriptedStep, call};
 use mimorya_core::demo::user;
+use mimorya_db::seed::DEMO_SKILL_ID;
 use serde_json::{Value, json};
 use support::refusals::{entries_since, latest_entry};
 use support::runs::start_run;
 use support::skill_evaluations::{forget, launched, play, played, write_case};
+use support::skill_proposals::{
+    proposed, read_proposed, restore_the_report, validate, version_of_the_report,
+};
 use support::{Client, TestApi};
 use uuid::Uuid;
 
@@ -37,6 +42,16 @@ async fn skill_with(paul: &Client<'_>, criteria: Value) -> Uuid {
         .await;
     assert_eq!(created.status, StatusCode::CREATED, "{}", created.text());
     created.json()["id"].as_str().unwrap().parse().unwrap()
+}
+
+async fn activate(paul: &Client<'_>, id: Uuid, version: i32) {
+    let activated = paul
+        .put(
+            &format!("{SKILLS}/{id}/activation"),
+            json!({ "version": version }),
+        )
+        .await;
+    assert_eq!(activated.status, StatusCode::OK, "{}", activated.text());
 }
 
 async fn versions(paul: &Client<'_>, id: Uuid) -> Vec<Value> {
@@ -97,14 +112,28 @@ async fn quality_criteria_are_written_with_a_version_and_checked() {
         assert!(refused.status.is_client_error(), "{}", refused.text());
         assert!(refused.error_message().contains(says), "{}", refused.text());
     }
-    // Without any: none.
+    // Without any, and no version active: none.
     let added = paul.post(&path, json!({ "content": "1. Autre." })).await;
     assert_eq!(added.status, StatusCode::CREATED, "{}", added.text());
     let listed = versions(&paul, id).await;
     assert_eq!(listed.len(), 2, "the refused ones were not written");
     assert_eq!(listed[0]["qualityCriteria"], json!([]));
+    // Without any: those of the version active; none only when asked for.
+    activate(&paul, id, 1).await;
+    paul.post(&path, json!({ "content": "1. Encore." })).await;
+    paul.post(
+        &path,
+        json!({ "content": "1. Sans.", "qualityCriteria": [] }),
+    )
+    .await;
+    let listed = versions(&paul, id).await;
+    assert_eq!(listed[1]["qualityCriteria"], first["qualityCriteria"]);
+    assert_eq!(listed[0]["qualityCriteria"], json!([]));
     let audit = entries_since(&api, since).await;
+    assert!(audit.contains("\"qualityCriteria\":\"kept\""), "{audit}");
     assert!(audit.contains("\"qualityCriteria\":0"), "{audit}");
+
+    paul.delete(&format!("{SKILLS}/{id}/activation")).await;
 
     paul.delete(&format!("{SKILLS}/{id}")).await;
 }
@@ -116,13 +145,7 @@ async fn an_answer_that_followed_the_skill_is_reviewed_on_its_criteria() {
     let paul = api.sign_in(user::PAUL).await;
     let marc = api.sign_in(user::MARC).await;
     let id = skill_with(&paul, json!([CRITERION])).await;
-    let activated = paul
-        .put(
-            &format!("{SKILLS}/{id}/activation"),
-            json!({ "version": 1 }),
-        )
-        .await;
-    assert_eq!(activated.status, StatusCode::OK, "{}", activated.text());
+    activate(&paul, id, 1).await;
 
     api.script(vec![
         ScriptedStep::calls("", vec![call("skill_read", json!({ "name": NAME }))]),
@@ -155,25 +178,72 @@ async fn an_answer_that_followed_the_skill_is_reviewed_on_its_criteria() {
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
-async fn an_evaluation_judges_the_answer_on_the_versions_criteria_too() {
+async fn an_evaluation_judges_both_versions_on_the_criteria_of_either() {
     let api = TestApi::start().await;
     let paul = api.sign_in(user::PAUL).await;
     let id = skill_with(&paul, json!([CRITERION])).await;
+    activate(&paul, id, 1).await;
+    // A version that drops the criterion is not judged without it.
+    let dropped = paul
+        .post(
+            &format!("{SKILLS}/{id}/versions"),
+            json!({ "content": "# Relance\n1. Relancer.", "qualityCriteria": [] }),
+        )
+        .await;
+    assert_eq!(dropped.status, StatusCode::CREATED, "{}", dropped.text());
     write_case(&paul, id, "Relances", "Qui relancer aujourd’hui ?").await;
-    // The agent loads the version evaluated, answers, and the judge reads.
-    let mut script = vec![ScriptedStep::calls(
-        "",
-        vec![call("skill_read", json!({ "name": NAME }))],
-    )];
-    script.extend(played(false, "Dupont et Martin.", true));
+    let mut script = Vec::new();
+    for answer in ["Dupont.", "Dupont et Martin."] {
+        script.push(ScriptedStep::calls(
+            "",
+            vec![call("skill_read", json!({ "name": NAME }))],
+        ));
+        script.extend(played(false, answer, true));
+    }
     api.script(script);
-    launched(&paul, id, 1).await;
+    launched(&paul, id, 2).await;
     play(&api).await;
 
     let requests = api.model.as_ref().unwrap().requests();
-    let judged = user_text(&requests.last().unwrap().messages[0]);
-    assert!(judged.contains("1. Cite chaque retard."), "{judged}");
-    assert!(judged.contains(&format!("2. {CRITERION}")), "{judged}");
+    let judged: Vec<String> = requests
+        .iter()
+        .filter(|r| r.tool_names() == ["submit_verdict"])
+        .map(|r| user_text(&r.messages[0]))
+        .collect();
+    assert_eq!(
+        judged.len(),
+        2,
+        "the version evaluated, then the active one"
+    );
+    for asked in &judged {
+        assert!(asked.contains("1. Cite chaque retard."), "{asked}");
+        assert!(asked.contains(&format!("2. {CRITERION}")), "{asked}");
+    }
     forget(&api, id).await;
+    paul.delete(&format!("{SKILLS}/{id}/activation")).await;
     paul.delete(&format!("{SKILLS}/{id}")).await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_proposal_of_the_agent_keeps_the_criteria_of_the_version_active() {
+    let api = TestApi::start().await;
+    let paul = api.sign_in(user::PAUL).await;
+    let lucas = api.sign_in(user::LUCAS).await;
+    let written = paul
+        .post(
+            &format!("{SKILLS}/{DEMO_SKILL_ID}/versions"),
+            json!({ "content": "# Synthèse\n1. Lister.", "qualityCriteria": [CRITERION] }),
+        )
+        .await;
+    assert_eq!(written.status, StatusCode::CREATED, "{}", written.text());
+    let version = written.json()["version"].as_i64().unwrap() as i32;
+    activate(&paul, DEMO_SKILL_ID, version).await;
+
+    let (_, approval) = proposed(&api, &lucas, version_of_the_report(), read_proposed()).await;
+    validate(&api, &lucas, &approval).await;
+    let proposal = &versions(&paul, DEMO_SKILL_ID).await[0];
+    assert_eq!(proposal["proposed"], true);
+    assert_eq!(proposal["qualityCriteria"], json!([CRITERION]));
+    restore_the_report(&api).await;
 }

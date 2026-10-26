@@ -3,8 +3,9 @@
 //! active (an older one included: that is the way back; against its last
 //! evaluation's regressions, once confirmed, ADR-104), retires the skill,
 //! and deletes one that is not active. A version's content and quality
-//! criteria (ADR-106) never change once written. Runs read the active versions when they start: there is no
-//! cache to refresh.
+//! criteria (ADR-106) never change once written; written without criteria,
+//! it keeps those of the version active. Runs read the active versions when
+//! they start: there is no cache to refresh.
 
 use mimorya_core::DomainError;
 use mimorya_core::skill_evaluations::{LastEvaluation, activation_problem};
@@ -34,15 +35,16 @@ pub struct SkillInput {
     pub content: String,
     pub changelog: String,
     /// One per line, blank ones left out (ADR-106).
-    pub quality_criteria: Vec<String>,
+    pub quality_criteria: Option<Vec<String>>,
 }
 
 /// A version as an administrator writes it.
 pub struct VersionInput {
     pub content: String,
     pub changelog: String,
-    /// One per line, blank ones left out (ADR-106).
-    pub quality_criteria: Vec<String>,
+    /// One per line, blank ones left out (ADR-106); when not given, those
+    /// of the version active.
+    pub quality_criteria: Option<Vec<String>>,
 }
 
 /// A skill and its first version, both drafts: nothing reaches the agent
@@ -56,7 +58,7 @@ pub async fn create_skill(
     refuse(name_problem(&input.name))?;
     refuse(line_problem("Description", &input.description))?;
     let content = checked_content(&input.content, &input.changelog)?;
-    let criteria = checked_criteria(&input.quality_criteria)?;
+    let criteria = checked_criteria(input.quality_criteria.as_deref())?;
     let mut tx = begin_change(db, access, PERMISSION).await?;
     if skill_name_taken(&mut tx, &input.name).await? {
         return Err(DomainError::conflict("Une compétence porte déjà ce nom").into());
@@ -74,7 +76,7 @@ pub async fn create_skill(
     let version = Version {
         content: &content,
         changelog: &input.changelog,
-        quality_criteria: &criteria,
+        quality_criteria: criteria.as_deref(),
     };
     let version = add_version(&mut tx, access, id, version).await?;
     append_audit(
@@ -83,7 +85,7 @@ pub async fn create_skill(
             "name": input.name,
             "description": input.description,
             "version": version,
-            "qualityCriteria": criteria.len(),
+            "qualityCriteria": criteria.as_ref().map_or(0, Vec::len),
         })),
     )
     .await?;
@@ -124,22 +126,27 @@ pub async fn add_skill_version(
 ) -> anyhow::Result<i32> {
     access.require_tenant_wide(PERMISSION)?;
     let content = checked_content(&input.content, &input.changelog)?;
-    let criteria = checked_criteria(&input.quality_criteria)?;
+    let criteria = checked_criteria(input.quality_criteria.as_deref())?;
     let mut tx = begin_change(db, access, PERMISSION).await?;
     let skill = existing(&mut tx, id).await?;
     let version = Version {
         content: &content,
         changelog: &input.changelog,
-        quality_criteria: &criteria,
+        quality_criteria: criteria.as_deref(),
     };
     let version = add_version(&mut tx, access, id, version).await?;
+    // How many were written, or that those of the version active were kept.
+    let criteria = match &criteria {
+        Some(written) => json!(written.len()),
+        None => json!("kept"),
+    };
     append_audit(
         &mut tx,
         audit_entry(access, "skill.version_created", "skill", id).metadata(json!({
             "name": skill.name,
             "version": version,
             "changelog": input.changelog,
-            "qualityCriteria": criteria.len(),
+            "qualityCriteria": criteria,
         })),
     )
     .await?;
@@ -260,7 +267,8 @@ pub(super) async fn existing(tx: &mut TenantTx, id: Uuid) -> anyhow::Result<Skil
 struct Version<'a> {
     content: &'a str,
     changelog: &'a str,
-    quality_criteria: &'a [String],
+    /// When not given, those of the version active.
+    quality_criteria: Option<&'a [String]>,
 }
 
 async fn add_version(
@@ -290,11 +298,15 @@ fn checked_content(content: &str, changelog: &str) -> Result<String, DomainError
     Ok(content)
 }
 
-/// The quality criteria as stored, once they passed the checks.
-fn checked_criteria(lines: &[String]) -> Result<Vec<String>, DomainError> {
+/// The quality criteria as stored, once they passed the checks; none
+/// given, none to store (the version keeps those of the version active).
+fn checked_criteria(lines: Option<&[String]>) -> Result<Option<Vec<String>>, DomainError> {
+    let Some(lines) = lines else {
+        return Ok(None);
+    };
     let criteria = normalized_criteria(lines);
     refuse(criteria_problem(&criteria))?;
-    Ok(criteria)
+    Ok(Some(criteria))
 }
 
 fn refuse(problem: Option<String>) -> Result<(), DomainError> {

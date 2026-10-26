@@ -209,14 +209,17 @@ dans la limite de `maxCorrectionAttempts` (défaut 2). Les échecs résiduels so
 `agent_runs.verification` et alimente l'apprentissage (§8).
 
 **Critères de qualité d'une compétence** (ADR-106) : une version porte jusqu'à 8
-critères, écrits par les administrateurs des compétences. Quand `skill_read` (l'outil
-de la plateforme, seul à pouvoir le faire) charge une version qui en a, ils s'ajoutent
+critères, écrits par les administrateurs des compétences (une proposition de l'agent
+reprend ceux de la version active). Quand `skill_read` (l'outil de la plateforme, seul
+à pouvoir le faire) charge une version qui en a, l'agent les lit à la fin de la
+procédure, et ils s'ajoutent
 à ceux du run (16 au plus, chacun une fois, gardés pendant une attente de validation),
 et la réponse est jugée sur eux par un modèle, même sans `MIMORYA_LLM_JUDGE`. Le
 résumé d'un sous-agent n'est pas jugé sur les critères des compétences qu'il a
 chargées, et ces critères ne passent pas à son parent : seule la réponse finale est
 jugée, sur ceux des compétences que le run principal a chargées lui-même. Une
-évaluation (ADR-104) les lit à côté des critères du cas.
+évaluation (ADR-104) juge les deux versions qu'elle compare sur les critères de l'une
+et de l'autre, à côté de ceux du cas.
 
 ## 7. Sous-agents
 

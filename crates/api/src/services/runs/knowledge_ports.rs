@@ -135,7 +135,8 @@ impl SkillStore for DbPorts {
             skill_id,
             content: &proposal.content,
             changelog: &proposal.rationale,
-            quality_criteria: &[],
+            // Those of the version active: the agent does not set the bar.
+            quality_criteria: None,
             created_by: user_id,
             proposed_by_run: Some(run_id),
             description: proposal.description.as_deref(),

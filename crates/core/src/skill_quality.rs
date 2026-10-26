@@ -6,8 +6,7 @@
 //! them.
 
 use crate::plain_text::canonical;
-use crate::skill_eval_cases::{MAX_CRITERIA, MAX_CRITERION_CHARS};
-use crate::skill_rules::line_problem;
+use crate::skill_eval_cases::{MAX_CRITERIA, criterion_problem};
 
 /// Criteria of one version, at most.
 pub const MAX_QUALITY_CRITERIA: usize = MAX_CRITERIA;
@@ -30,17 +29,15 @@ pub fn criteria_problem(criteria: &[String]) -> Option<String> {
             "{MAX_QUALITY_CRITERIA} critères de qualité au plus, un par ligne"
         ));
     }
-    criteria.iter().find_map(|criterion| {
-        line_problem("Critère de qualité", criterion).or_else(|| {
-            (criterion.chars().count() > MAX_CRITERION_CHARS)
-                .then(|| format!("Critère de qualité : {MAX_CRITERION_CHARS} caractères au plus"))
-        })
-    })
+    criteria
+        .iter()
+        .find_map(|criterion| criterion_problem("Critère de qualité", criterion))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::skill_eval_cases::MAX_CRITERION_CHARS;
 
     fn lines(texts: &[&str]) -> Vec<String> {
         texts.iter().map(|t| (*t).to_owned()).collect()

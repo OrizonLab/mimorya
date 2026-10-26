@@ -5182,10 +5182,14 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     - envoyés un par ligne (`qualityCriteria` de `POST /admin/skills` et de
       `POST /admin/skills/{id}/versions`), montrés avec la version ;
     - l'audit compte les critères sans les citer ;
-    - une proposition de l'agent n'en porte aucun : un administrateur les ajoute dans
-      une version qu'il écrit ;
+    - une version écrite sans critères (`qualityCriteria` absent) reprend ceux de la
+      version active, aucun sans version active ; `[]` les retire. Une proposition de
+      l'agent reprend aussi ceux de la version active : l'agent n'en écrit aucun et ne
+      change pas la barre. Activer une proposition ne retire donc rien en silence ;
   - **dans un run**, `skill_read` les rend avec le contenu de la version active
-    (`ToolResult::quality_criteria`) :
+    (`ToolResult::quality_criteria`), et l'agent les lit à la fin de la procédure
+    (« Critères de qualité de la réponse ») pour les satisfaire dès sa première
+    réponse :
     - seul ce champ de l'outil de la plateforme compte. Les noms d'outils sont uniques
       (ADR-052), aucun autre outil ne peut relever la barre ;
     - ils s'ajoutent à ceux du run, chacun une fois, 16 au plus, et sont gardés dans
@@ -5199,8 +5203,9 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     critères ne passent pas à son parent. Seule la réponse finale est jugée, sur ceux
     des compétences que le run principal a chargées lui-même ;
   - **une évaluation** (ADR-104) juge la réponse sur les critères du cas, puis sur ceux
-    des compétences que l'agent a chargées, la version évaluée comprise : elle mesure
-    ce que le contrôle d'un run vérifiera.
+    des deux versions comparées (la même barre pour les deux : un critère retiré ou
+    ajouté ne fait pas à lui seul une régression), puis sur ceux des autres
+    compétences que l'agent a chargées.
 - **Alternatives écartées** :
   - des critères propres à la compétence, modifiables sans nouvelle version : une
     version activée doit rester ce que ses administrateurs ont relu, critères compris ;
@@ -5211,18 +5216,22 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
 - **Conséquences** :
   - chaque réponse qui suit une compétence à critères coûte un appel au juge, deux ou
     trois s'il faut corriger. Ce coût compte dans le budget du run ;
-  - restent à faire : les critères dans l'écran « Compétences » ; un modèle de contrôle
-    distinct choisi par l'entreprise (lot 2) ;
+  - restent à faire : les critères dans l'écran « Compétences », qui jusque-là écrit
+    ses versions sans critères, donc avec ceux de la version active ; un modèle de
+    contrôle distinct choisi par l'entreprise (lot 2) ;
   - tests :
     - `crates/core/src/skill_quality.rs` : critères normalisés, 8 au plus, une ligne
       visible chacun ;
     - `crates/agent/tests/runtime_skill_criteria.rs` : réponse jugée et corrigée sur les
-      critères d'une compétence chargée ; aucun contrôle pour une compétence sans
-      critère, ni pour le résumé d'un sous-agent qui l'a chargée et la réponse de son
-      parent ; aucun critère ajouté par un autre outil que
+      critères d'une compétence chargée, que l'agent lit avec la procédure ; aucun
+      contrôle pour une compétence sans critère, ni pour un run qui ne les applique pas
+      (celui d'une évaluation), ni pour le résumé d'un sous-agent qui l'a chargée et la
+      réponse de son parent ; aucun critère ajouté par un autre outil que
       `skill_read` ; critères gardés pendant une attente de validation ;
     - `crates/agent/src/runtime/tool_calls/record.rs`, `answer_review.rs` : chaque
       critère une fois, 16 au plus, ceux du run d'abord ;
     - `crates/api/tests/skill_quality_criteria.rs` : critères écrits, vérifiés et
-      montrés avec leur version ; réponse d'une conversation jugée et corrigée sur eux ;
-      juge d'une évaluation lisant ceux de la version.
+      montrés avec leur version, repris de la version active quand une version n'en
+      donne pas, retirés par `[]` ; proposition de l'agent reprenant ceux de la version
+      active ; réponse d'une conversation jugée et corrigée sur eux ; évaluation jugeant
+      les deux versions sur les critères de l'une et de l'autre.

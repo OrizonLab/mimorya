@@ -2,9 +2,10 @@
 //! quality criteria of the version loaded (ADR-106), even when the platform
 //! reviews no other answer, and corrected when it falls short. Only the
 //! platform's `skill_read` adds criteria; a skill without any adds no
-//! review; a sub-agent's summary is not reviewed on the criteria of the
+//! review; a run that does not apply them (an evaluation's) keeps them
+//! unreviewed; a sub-agent's summary is not reviewed on the criteria of the
 //! skill it loaded, nor its parent's answer; they are kept while the run
-//! waits for a validation.
+//! waits for a validation; the agent is told them with the procedure.
 
 mod support;
 
@@ -94,7 +95,14 @@ async fn an_answer_that_followed_a_skill_is_reviewed_on_its_criteria_and_correct
     assert_eq!(judged.len(), 2);
     let asked = user_text(&judged[0].messages[0]);
     assert!(asked.contains(&format!("1. {CRITERION}")), "{asked}");
-    // The agent was told what fell short, and corrected its answer.
+    // Told the criteria with the procedure, then what fell short.
+    let loaded = format!("{:?}", h.provider.requests()[1].messages.last());
+    assert!(
+        loaded.contains(&format!(
+            "## Critères de qualité de la réponse\\n- {CRITERION}"
+        )),
+        "{loaded}"
+    );
     let corrected = format!("{:?}", h.provider.requests()[2].messages.last());
     assert!(corrected.contains("Les dates manquent."), "{corrected}");
 }
@@ -110,6 +118,29 @@ async fn a_skill_without_criteria_adds_no_review() {
     };
     assert!(!verification.judged);
     assert!(h.judge.as_ref().unwrap().requests().is_empty());
+}
+
+#[tokio::test]
+async fn a_run_that_does_not_apply_them_is_not_reviewed_on_them() {
+    // As an evaluation's case, judged afterwards on them (ADR-104).
+    let mut options = options(vec![skill(&[CRITERION])], Vec::new());
+    options.skill_criteria = Some(false);
+    let h = setup(
+        vec![load(), ScriptedStep::text("Deux interventions.")],
+        options,
+    );
+    let RunOutcome::Completed {
+        verification,
+        checkpoint,
+        ..
+    } = h.start().await
+    else {
+        panic!("expected completion")
+    };
+    assert!(!verification.judged);
+    assert!(h.judge.as_ref().unwrap().requests().is_empty());
+    // Kept for whoever judges the answer.
+    assert_eq!(checkpoint.skill_criteria, [CRITERION]);
 }
 
 #[tokio::test]

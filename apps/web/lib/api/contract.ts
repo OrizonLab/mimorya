@@ -1139,7 +1139,8 @@ export type NewSkillVersion = { content: string, changelog?: string,
 /**
  * What an answer that follows the version must meet, one per line
  * (ADR-106): blank ones are left out, and 8 at most may remain, of 300
- * characters at most (`skill_quality::criteria_problem`).
+ * characters at most (`skill_quality::criteria_problem`); `[]` for
+ * none. Absent: those of the version active.
  */
 qualityCriteria?: Array<string>, };
 

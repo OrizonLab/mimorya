@@ -75,11 +75,17 @@ pub fn case_problem(case: &EvalCase) -> Option<String> {
             "De 1 à {MAX_CRITERIA} critères de réussite, un par ligne"
         ));
     }
-    case.criteria.iter().find_map(|criterion| {
-        line_problem("Critère", criterion).or_else(|| {
-            (criterion.chars().count() > MAX_CRITERION_CHARS)
-                .then(|| format!("Critère : {MAX_CRITERION_CHARS} caractères au plus"))
-        })
+    case.criteria
+        .iter()
+        .find_map(|criterion| criterion_problem("Critère", criterion))
+}
+
+/// Why one criterion, a case's or a version's (ADR-106), is refused, in
+/// French, after its `label`: one visible line, not too long.
+pub fn criterion_problem(label: &str, criterion: &str) -> Option<String> {
+    line_problem(label, criterion).or_else(|| {
+        (criterion.chars().count() > MAX_CRITERION_CHARS)
+            .then(|| format!("{label} : {MAX_CRITERION_CHARS} caractères au plus"))
     })
 }
 

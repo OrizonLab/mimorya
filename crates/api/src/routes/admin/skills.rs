@@ -77,7 +77,7 @@ pub async fn create(
         description: body.description,
         content: body.content,
         changelog: body.changelog.unwrap_or_default(),
-        quality_criteria: body.quality_criteria.unwrap_or_default(),
+        quality_criteria: body.quality_criteria,
     };
     let id = create_skill(&state.db, &access, input).await?;
     Ok((StatusCode::CREATED, Json(Created { id })))
@@ -114,7 +114,7 @@ pub async fn add_version(
     let version = VersionInput {
         content: body.content,
         changelog: body.changelog.unwrap_or_default(),
-        quality_criteria: body.quality_criteria.unwrap_or_default(),
+        quality_criteria: body.quality_criteria,
     };
     let version = add_skill_version(&state.db, &access, id, version).await?;
     Ok((StatusCode::CREATED, Json(SkillVersionCreated { version })))

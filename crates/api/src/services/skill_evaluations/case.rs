@@ -4,10 +4,11 @@
 //! read and run without validation, the read-only autonomy, a budget of its
 //! own; told that actions are not available, it describes the one it would
 //! propose. `skill_read` serves the version played. A model then judges the
-//! answer on the case's criteria and on the quality criteria of the skills
-//! the agent loaded, as a run's answer is (ADR-106). The result keeps the
-//! answer, the issues the judge found, the tools called and whether the
-//! version was loaded.
+//! answer on the case's criteria, on the quality criteria of either version
+//! (the same bar for both), and on those of the other skills the agent
+//! loaded, as a run's answer is (ADR-106). The result keeps the answer, the
+//! issues the judge found, the tools called and whether the version was
+//! loaded.
 
 use std::sync::Arc;
 
@@ -63,6 +64,8 @@ pub struct StoredCase {
 
 pub struct CaseRequest<'a> {
     pub scope: CaseScope,
+    /// The quality criteria of the versions compared, either's.
+    pub bar: &'a [String],
     pub access: &'a AccessContext,
     pub provider: Arc<dyn LlmProvider>,
     pub version: EvaluatedVersion,
@@ -186,7 +189,8 @@ async fn answer_and_judge(
         })
         .await?;
     let mut usage = outcome.checkpoint().usage;
-    let criteria = review_criteria(&case.criteria, &outcome.checkpoint().skill_criteria, true);
+    let bar = review_criteria(&case.criteria, request.bar, true);
+    let criteria = review_criteria(&bar, &outcome.checkpoint().skill_criteria, true);
     let (answer, evidence) = match outcome {
         RunOutcome::Completed {
             answer, checkpoint, ..
