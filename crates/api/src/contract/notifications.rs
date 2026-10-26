@@ -13,7 +13,8 @@ pub struct NotificationSettings {
     /// The requests awaiting their validation, as a manager or standing in
     /// for one, and the reminders before they expire.
     pub approvals: bool,
-    /// Their scheduled tasks' runs and missions' stages awaiting it.
+    /// Their scheduled tasks' runs, missions' stages and hooks' runs
+    /// awaiting it.
     pub own_runs: bool,
     /// The end of their missions.
     pub mission_ends: bool,

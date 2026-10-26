@@ -17,7 +17,7 @@ const KINDS: { key: keyof NotificationSettings; label: string; detail: string }[
   },
   {
     key: 'ownRuns',
-    label: 'Mes tâches planifiées et mes missions qui attendent ma validation',
+    label: 'Mes tâches planifiées, missions et déclencheurs qui attendent ma validation',
     detail:
       'Leur exécution reste en pause jusqu’à votre décision, que vous trouvez dans leur conversation.',
   },

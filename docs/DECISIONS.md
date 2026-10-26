@@ -5525,3 +5525,48 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     - `crates/api/tests/inbound_hooks.rs` et `inbound_hook_deliveries.rs` : l'adresse
       complète et le déclencheur dans les métadonnées du message ;
       `contract/tests/records.rs` : ces métadonnées relues.
+
+## ADR-111 — L'auteur d'un déclencheur prévenu quand un run qu'il a lancé attend sa validation (connecteurs, troisième lot)
+
+- **Date** : 2026-10-26 · **Statut** : acceptée
+- **Contexte** : un run lancé par l'envoi à un déclencheur (ADR-109) part sans que
+  personne le suive, et son autonomie est plafonnée : ce qu'il écrirait attend la
+  validation de son auteur. Sans avis, la demande attendait sans qu'on la voie jusqu'à son
+  échéance. Les tâches planifiées (ADR-082) et les missions (ADR-091) prévenaient déjà
+  leur auteur.
+- **Décision** :
+  - **le même avis** : quand un tel run se met en pause sur des demandes que son auteur
+    décide lui-même, un e-mail le lui dit, une fois par pause. Il nomme le déclencheur
+    (« Votre déclencheur « … » attend votre validation »), le nombre d'actions et leurs
+    risques, l'échéance, et mène à la conversation du run. Il ne contient ni les actions,
+    ni leurs paramètres, ni rien des données reçues : le message quitte la plateforme ;
+  - **un run de déclencheur se reconnaît à son canal** (`agent_runs.channel = 'hook'`,
+    ADR-109), pas au dernier run du déclencheur : plusieurs envois peuvent avoir chacun un
+    run en attente. Le titre est celui de sa conversation, intitulée comme le déclencheur
+    à l'envoi. Une réponse que l'auteur écrit ensuite dans cette conversation part sur le
+    canal `web` : il la suit, personne n'est prévenu ;
+  - les demandes routées vers un responsable lui sont annoncées à lui (ADR-060), comme
+    pour tout run ;
+  - un avis qu'un arrêt du service a perdu est envoyé par le rattrapage périodique, dix
+    minutes après la pause (ADR-070, ADR-086). Il s'appuie sur la fonction minimale
+    `system_unnotified_hook_runs` (entreprise et run seulement), comme
+    `system_unnotified_mission_runs` ;
+  - l'avis suit le choix de chacun pour « Mes tâches planifiées, missions et
+    déclencheurs qui attendent ma validation » (ADR-094), dont le libellé s'élargit. Un
+    avis non voulu est tracé comme refusé, et non retenté ;
+  - chaque demande annoncée est tracée (`approval.notified`), sans l'adresse.
+- **Alternatives écartées** :
+  - retrouver le run par `inbound_hooks.last_run_id` : un envoi plus récent le
+    remplacerait, et le run précédent, toujours en attente, ne serait plus annoncé ;
+  - un réglage d'e-mail à part pour les déclencheurs : les trois cas sont le même
+    besoin, un run que personne ne suit attend sa décision.
+- **Conséquences** :
+  - restent les autres connecteurs : e-mail, agendas, REST générique ;
+  - tests :
+    - `crates/api/tests/inbound_hook_notices.rs` : l'auteur prévenu une fois, l'e-mail
+      sans l'action ni les données reçues, tracé, pas renvoyé au redémarrage ni au
+      rattrapage ; un avis perdu envoyé dix minutes après la pause, pas avant ni deux
+      fois ; un run que l'auteur suit dans sa conversation n'est jamais listé ;
+    - `approval_notice/author_mail.rs` (test unitaire) : le message d'un déclencheur ;
+    - `crates/db/tests/definer_functions.rs` : la nouvelle fonction listée ;
+    - `apps/web/e2e/notification-settings.spec.ts` : le libellé élargi.

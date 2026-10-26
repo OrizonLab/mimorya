@@ -11,8 +11,8 @@
 //! chose not to receive these e-mails is not told, the notice audited as
 //! refused (ADR-094). The
 //! author of a scheduled task is told of the requests they decide in its
-//! run, and a mission's author of those of its stages (`author`, ADR-082,
-//! ADR-091). Each request notified or reminded is audited,
+//! run, a mission's author of those of its stages, and a hook's author of
+//! those of a run a delivery started (`author`, ADR-082, ADR-091, ADR-111). Each request notified or reminded is audited,
 //! without the address nor the relay's answer, which may name it.
 
 mod author;
@@ -104,8 +104,8 @@ impl ApprovalNotifier {
 
     /// E-mails, in the background, the managers whom the requests
     /// `approval_ids` of the paused run `run_id` await, if they still do,
-    /// and the author of the scheduled task that started it, or of the
-    /// mission it is a stage of, of the ones they decide.
+    /// and the author of the scheduled task or hook that started it, or of
+    /// the mission it is a stage of, of the ones they decide.
     pub fn notify(&self, tenant_id: Uuid, run_id: Uuid, approval_ids: Vec<Uuid>) {
         let Some(mailer) = self.mailer.clone() else {
             return;
@@ -138,8 +138,8 @@ impl ApprovalNotifier {
         managers.and(author)
     }
 
-    /// Tells managers, and the authors of scheduled tasks and missions
-    /// (ADR-082, ADR-091), of the
+    /// Tells managers, and the authors of scheduled tasks, missions and
+    /// hooks (ADR-082, ADR-091, ADR-111), of the
     /// requests whose notice a stop of the service lost (ADR-070): their run
     /// paused more than `LOST_AFTER` before `now`, and still never told of;
     /// how many. Sent before it returns: called by one process at a time,

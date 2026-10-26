@@ -1,25 +1,45 @@
 //! The e-mail telling a scheduled task's author that its run awaits their
-//! validation (ADR-082), or a mission's author that a stage of it does
-//! (ADR-091), once per pause, in French and plain text: which task or
-//! mission, how many actions and of which risks, where to decide and until
-//! when. Neither the actions nor their parameters: the message leaves the
-//! platform, and they are shown after signing in.
+//! validation (ADR-082), a mission's author that a stage of it does
+//! (ADR-091), or a hook's author that a run a delivery started does
+//! (ADR-111), once per pause, in French and plain text: which task, mission
+//! or hook, how many actions and of which risks, where to decide and until
+//! when. Neither the actions nor their parameters, nor what the hook
+//! received: the message leaves the platform, and they are shown after
+//! signing in.
 
 use chrono::{DateTime, Utc};
 
 use super::wording::{Phrases, phrases, risk_label};
 use crate::mail::{Mail, expiry_label};
 
+/// What started the run nobody watches.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Origin {
+    ScheduledTask,
+    Mission,
+    Hook,
+}
+
+impl Origin {
+    /// As the database says it (`author_notices`); a hook's otherwise.
+    pub fn parse(origin: &str) -> Self {
+        match origin {
+            "scheduled_task" => Self::ScheduledTask,
+            "mission" => Self::Mission,
+            _ => Self::Hook,
+        }
+    }
+}
+
 pub struct AuthorMail<'a> {
     pub product: &'a str,
     pub company: &'a str,
     pub author: &'a str,
     pub email: &'a str,
-    /// The title of the task, or of the mission, as its author wrote it
-    /// (on one line).
+    /// The title of the task, mission or hook, as its author wrote it (on
+    /// one line).
     pub title: &'a str,
-    /// Whether the run is a stage of a mission, not a scheduled task's.
-    pub of_mission: bool,
+    pub origin: Origin,
     /// How many requests await them.
     pub count: usize,
     /// Their risks, once each.
@@ -37,7 +57,7 @@ pub fn author_mail(notice: &AuthorMail<'_>) -> Mail {
         author,
         email,
         title,
-        of_mission,
+        origin,
         count,
         risks,
         link,
@@ -59,22 +79,28 @@ pub fn author_mail(notice: &AuthorMail<'_>) -> Mail {
         Some(at) => format!(" {first} le {}.", expiry_label(*at)),
         None => String::new(),
     };
-    let (subject, origin) = if *of_mission {
-        (
+    let (subject, origin) = match origin {
+        Origin::Mission => (
             format!("Votre mission « {title} » attend votre validation"),
             format!(
                 "Votre mission « {title} », que l’assistant {product} ({company}) mène en \
                  arrière-plan, demande"
             ),
-        )
-    } else {
-        (
+        ),
+        Origin::ScheduledTask => (
             format!("Votre tâche planifiée « {title} » attend votre validation"),
             format!(
                 "Votre tâche planifiée « {title} » a lancé l’assistant {product} ({company}), \
                  qui demande"
             ),
-        )
+        ),
+        Origin::Hook => (
+            format!("Votre déclencheur « {title} » attend votre validation"),
+            format!(
+                "Un envoi reçu par votre déclencheur « {title} » a lancé l’assistant {product} \
+                 ({company}), qui demande"
+            ),
+        ),
     };
     Mail {
         to: email.to_string(),
@@ -98,17 +124,17 @@ mod tests {
     use super::*;
 
     fn mail(count: usize, risks: &[&str]) -> Mail {
-        mail_of(false, count, risks)
+        mail_of(Origin::ScheduledTask, count, risks)
     }
 
-    fn mail_of(of_mission: bool, count: usize, risks: &[&str]) -> Mail {
+    fn mail_of(origin: Origin, count: usize, risks: &[&str]) -> Mail {
         author_mail(&AuthorMail {
             product: "Mimorya",
             company: "Néo Maintenance",
             author: "Nadia Benali",
             email: "nadia.benali@neo-maintenance.example",
             title: "Point du lundi",
-            of_mission,
+            origin,
             count,
             risks,
             link: "https://mimorya.example/chat/42",
@@ -153,7 +179,7 @@ mod tests {
 
     #[test]
     fn names_the_mission_a_stage_of_which_waits() {
-        let stage = mail_of(true, 1, &["write"]);
+        let stage = mail_of(Origin::Mission, 1, &["write"]);
         assert_eq!(
             stage.subject,
             "Votre mission « Point du lundi » attend votre validation"
@@ -167,5 +193,22 @@ mod tests {
                 .text
                 .contains("ouvrez sa conversation :\nhttps://mimorya.example/chat/42")
         );
+    }
+
+    #[test]
+    fn names_the_hook_whose_delivery_started_the_run() {
+        let hook = mail_of(Origin::Hook, 1, &["write"]);
+        assert_eq!(
+            hook.subject,
+            "Votre déclencheur « Point du lundi » attend votre validation"
+        );
+        assert!(hook.text.contains(
+            "Un envoi reçu par votre déclencheur « Point du lundi » a lancé l’assistant Mimorya \
+             (Néo Maintenance), qui demande votre validation pour une action (risque : \
+             modification)."
+        ));
+        assert_eq!(Origin::parse("hook"), Origin::Hook);
+        assert_eq!(Origin::parse("mission"), Origin::Mission);
+        assert_eq!(Origin::parse("scheduled_task"), Origin::ScheduledTask);
     }
 }

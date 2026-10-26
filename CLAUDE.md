@@ -45,7 +45,7 @@ Repères à l'intérieur des crates :
   hybride `memory_search.rs`, vecteurs `memory_embeddings.rs`, ADR-074 ; fenêtres des
   limites d'authentification partagées : `rate_limits.rs`, ADR-088 ; avis à l'auteur
   d'une tâche planifiée ou d'une mission dont le run attend sa validation :
-  `author_notices.rs`, ADR-082, ADR-091 ; missions terminées à annoncer :
+  `author_notices.rs`, ADR-082, ADR-091, et d'un déclencheur, ADR-111 ; missions terminées à annoncer :
   `mission_end_notices.rs`, ADR-091 ; documents déposés, leur fichier et leurs passages,
   lus là où le filtre du lecteur atteint : `documents.rs`, ADR-095 ; passages cherchés
   par les mots et par le sens et lus dans l'ordre : `document_search.rs`, leurs vecteurs :
@@ -114,7 +114,7 @@ Repères à l'intérieur des crates :
   sous le bail de leur parent : `sub_runs.rs`, ADR-098), résultat, reprise des runs dont l'exécuteur s'est arrêté et ce
   processus exécute-t-il des runs (`recovery/`), ADR-053, ADR-086, circuit des validations,
   avis au responsable (`approval_notice/`, rattrapé chaque minute s'il est perdu, ADR-070, ADR-086 ; à l'auteur
-  d'une tâche planifiée ou d'une mission dont le run attend sa validation, `author.rs`, ADR-082, ADR-091), expiration et
+  d'une tâche planifiée, d'une mission ou d'un déclencheur dont le run attend sa validation, `author.rs`, ADR-082, ADR-091, ADR-111), expiration et
   relance des demandes, ADR-059 à ADR-062, absence et remplaçant
   (`approval_delegation.rs`, ADR-071 à ADR-073), leçon proposée en fin de run
   (`lesson_capture.rs`, ADR-076), bail de l'exécuteur sur chaque run (`leases.rs`,

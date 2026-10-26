@@ -1,8 +1,9 @@
 //! Tells a scheduled task's author by e-mail that its run awaits their
 //! validation (ADR-082): it started while nobody watched (ADR-080), and
-//! would otherwise wait for them unseen until its requests expire; and a
-//! mission's author, of a stage of it (ADR-091), for the same reason; unless
-//! they chose not to receive these e-mails (ADR-094). Once per
+//! would otherwise wait for them unseen until its requests expire; a
+//! mission's author, of a stage of it (ADR-091), and a hook's author, of a
+//! run a delivery started (ADR-111), for the same reason; unless they chose
+//! not to receive these e-mails (ADR-094). Once per
 //! pause, of the requests they decide themselves (those routed to a manager
 //! are told to that manager, ADR-060); one a stop of the service lost is
 //! sent by the periodic catch-up (ADR-070, ADR-086). Each request notified is audited as a
@@ -12,22 +13,22 @@ use chrono::{DateTime, Utc};
 use mimorya_db::repositories::approval_notices::{NOTIFIED, NoticeRun};
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::author_notices::{
-    AuthorNotice, author_notices, author_notices_never_sent, unnotified_mission_runs,
-    unnotified_scheduled_runs,
+    AuthorNotice, author_notices, author_notices_never_sent, unnotified_hook_runs,
+    unnotified_mission_runs, unnotified_scheduled_runs,
 };
 use serde_json::json;
 use uuid::Uuid;
 
 use super::ApprovalNotifier;
-use super::author_mail::{AuthorMail, author_mail};
+use super::author_mail::{AuthorMail, Origin, author_mail};
 use super::wording::{distinct_risks, sent};
 use crate::mail::Mailer;
 use crate::services::notification_settings::{Notice, deliver};
 
 impl ApprovalNotifier {
-    /// Tells the author of the scheduled task that started `run_id`, or of
-    /// the mission it is a stage of, of the requests `approval_ids` they
-    /// decide, if they still await them.
+    /// Tells the author of the scheduled task that started `run_id`, of the
+    /// mission it is a stage of, or of the hook whose delivery started it,
+    /// of the requests `approval_ids` they decide, if they still await them.
     pub(super) async fn tell_author(
         &self,
         mailer: &dyn Mailer,
@@ -45,8 +46,8 @@ impl ApprovalNotifier {
     /// their run paused by `lost_before`, not expired by `now`, whatever
     /// their deadline (authors have no reminder); how many, those whose
     /// author chose not to be told (ADR-094) included. With the
-    /// managers' catch-up. The scheduled runs and the missions' stages are
-    /// listed apart: one list failing leaves the other.
+    /// managers' catch-up. The scheduled runs, the missions' stages and the
+    /// hooks' runs are listed apart: one list failing leaves the others.
     pub(super) async fn catch_up_authors(
         &self,
         mailer: &dyn Mailer,
@@ -56,6 +57,7 @@ impl ApprovalNotifier {
         let lists = [
             unnotified_scheduled_runs(self.db.pool(), now).await,
             unnotified_mission_runs(self.db.pool(), now).await,
+            unnotified_hook_runs(self.db.pool(), now).await,
         ];
         let mut lost = 0;
         let mut unread = None;
@@ -121,7 +123,7 @@ impl ApprovalNotifier {
             author: &first.author_name,
             email: &first.author_email,
             title: &first.title,
-            of_mission: first.of_mission,
+            origin: Origin::parse(&first.origin),
             count: requests.len(),
             risks: &risks,
             link: &link,
