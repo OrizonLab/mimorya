@@ -4,10 +4,15 @@ use std::sync::Arc;
 
 use crate::demo_interventions::DemoInterventionsConnector;
 use crate::mcp::McpConnector;
+use crate::rest::RestConnector;
 use crate::types::Connector;
 
 pub fn connector_types() -> Vec<Arc<dyn Connector>> {
-    vec![Arc::new(DemoInterventionsConnector), Arc::new(McpConnector)]
+    vec![
+        Arc::new(DemoInterventionsConnector),
+        Arc::new(McpConnector),
+        Arc::new(RestConnector),
+    ]
 }
 
 pub fn connector_type(name: &str) -> Option<Arc<dyn Connector>> {

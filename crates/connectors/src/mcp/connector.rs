@@ -21,10 +21,8 @@ use serde_json::Value;
 use tokio::process::Command;
 
 use super::bridge::{McpClient, McpToolsetOptions, create_mcp_toolset};
-use super::failure::{TOO_SLOW, start_failed};
-use super::network::{http_client, url_problem};
-use super::redact::Redactor;
-use super::token::token_problem;
+use super::failure::start_failed;
+use crate::outbound::{Redactor, TOO_SLOW, http_client, token_problem, url_problem};
 use crate::types::{Connector, ConnectorCloser, ConnectorInfo, ConnectorRuntime, InstanceContext};
 
 /// No `Debug`: `env` may carry credentials of the MCP server.

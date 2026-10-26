@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use axum::http::StatusCode;
 use mimorya_agent::testing::{ScriptedStep, call};
 use mimorya_agent::tools::ToolRegistry;
-use mimorya_connectors::mcp::TOO_SLOW;
+use mimorya_connectors::outbound::TOO_SLOW;
 use mimorya_connectors::testing::{
     Quirk, serve_demo_docs_http, serve_held_mcp_http, serve_mcp_http, serve_mute,
 };

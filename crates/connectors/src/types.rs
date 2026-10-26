@@ -8,7 +8,7 @@ use mimorya_core::authz::PermissionInfo;
 use mimorya_core::tools::ToolRef;
 use serde_json::Value;
 
-use crate::mcp::NetworkPolicy;
+use crate::outbound::NetworkPolicy;
 
 #[derive(Debug, Clone)]
 pub struct ConnectorInfo {
@@ -53,6 +53,9 @@ impl ConnectorRuntime {
 
 /// How long a connector may take to start (connect and list its tools).
 pub const DEFAULT_START_TIMEOUT: Duration = Duration::from_secs(20);
+/// How long a call to a REST API may take, its answer read (ADR-112): less
+/// than a run lets a tool take, so that the API's slowness is told as such.
+pub const DEFAULT_CALL_TIMEOUT: Duration = Duration::from_secs(20);
 
 /// What an instance is given besides its configuration.
 #[derive(Clone, Copy)]
@@ -62,6 +65,8 @@ pub struct InstanceContext<'a> {
     /// What the operator lets connectors reach.
     pub network: NetworkPolicy,
     pub start_timeout: Duration,
+    /// How long one call may take, for the connectors that bound it.
+    pub call_timeout: Duration,
 }
 
 impl Default for InstanceContext<'_> {
@@ -70,6 +75,7 @@ impl Default for InstanceContext<'_> {
             secret: None,
             network: NetworkPolicy::default(),
             start_timeout: DEFAULT_START_TIMEOUT,
+            call_timeout: DEFAULT_CALL_TIMEOUT,
         }
     }
 }

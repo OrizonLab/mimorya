@@ -1,4 +1,5 @@
-//! How the server reaches an MCP server a company configured (ADR-025).
+//! How the server reaches an MCP server (ADR-025) or a REST API (ADR-112)
+//! a company configured.
 //! An address chosen by a company must never lead into the operator's own
 //! network: names are resolved to public addresses only (checked at
 //! connection time, so a name cannot be re-pointed after the check), literal

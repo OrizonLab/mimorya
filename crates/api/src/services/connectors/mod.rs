@@ -24,7 +24,7 @@ use std::time::Duration;
 
 use futures::future::join_all;
 use mimorya_agent::tools::ToolOverride;
-use mimorya_connectors::mcp::NetworkPolicy;
+use mimorya_connectors::outbound::NetworkPolicy;
 use mimorya_connectors::{ConnectorRuntime, InstanceContext, connector_type};
 use mimorya_core::DomainError;
 use mimorya_core::tools::ToolRef;
@@ -39,7 +39,7 @@ pub use admin_starts::{AdminStart, MAX_ADMIN_STARTS, TOO_MANY_ADMIN_STARTS};
 pub use cache::RETRY_AFTER;
 use cache::{Origin, RuntimeCache, Unavailable};
 pub use failures::{failure, opened};
-pub use mimorya_connectors::mcp::CONNECTOR_USE;
+pub use mimorya_connectors::outbound::CONNECTOR_USE;
 pub use policies::{Policies, read_policies, scoped_overrides};
 pub use reach::unavailable_in_reach;
 
@@ -239,6 +239,7 @@ impl ConnectorService {
             secret,
             network: self.settings.network,
             start_timeout: self.settings.start_timeout,
+            ..InstanceContext::default()
         };
         definition.instantiate(config, context).await
     }

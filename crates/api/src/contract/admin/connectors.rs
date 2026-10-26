@@ -1,7 +1,7 @@
 //! Connectors (`connector:manage`, ADR-025): the company's instances with
 //! their state, what may be added, the test of a server, and an MCP server
-//! as the administration writes it. Tokens are never returned, only whether
-//! one is stored.
+//! as the administration writes it (a REST API: `rest_connectors`, ADR-112).
+//! Tokens are never returned, only whether one is stored.
 
 use std::collections::HashMap;
 
@@ -14,6 +14,7 @@ use ts_rs::TS;
 use uuid::Uuid;
 use validator::Validate;
 
+use super::rest_connectors::{RestApi, RestOperation};
 use crate::contract::{ToolRisk, stored_text};
 use crate::http::{iso, trimmed, trimmed_nullable, trimmed_opt};
 use crate::services::admin::{ConnectorTestOutcome, TestedTool as Tested, ToolPolicyInput};
@@ -77,11 +78,16 @@ pub struct ConnectorView {
     #[ts(type = "Record<string, ToolPolicy>")]
     pub tool_policies: Value,
     pub mcp: Option<McpEndpoint>,
+    pub rest: Option<RestApi>,
     pub updated_at: String,
 }
 
 impl ConnectorView {
-    pub fn from_row(i: &ConnectorInstanceRow, mcp: Option<McpEndpoint>) -> anyhow::Result<Self> {
+    pub fn from_row(
+        i: &ConnectorInstanceRow,
+        mcp: Option<McpEndpoint>,
+        rest: Option<RestApi>,
+    ) -> anyhow::Result<Self> {
         Ok(Self {
             id: i.id,
             connector_type: i.connector_type.clone(),
@@ -91,6 +97,7 @@ impl ConnectorView {
             last_error: i.last_error.clone(),
             tool_policies: i.tool_policies.clone(),
             mcp,
+            rest,
             updated_at: iso(&i.updated_at),
         })
     }
@@ -285,4 +292,13 @@ pub struct ConnectorUpdate {
     #[serde(default)]
     #[ts(optional)]
     pub tool_policies: Option<HashMap<String, ToolPolicyChange>>,
+    /// A REST API's: a text names the header its token goes in, `null` or
+    /// blank sends it as `Authorization: Bearer` (ADR-112).
+    #[serde(default, deserialize_with = "trimmed_nullable")]
+    #[ts(optional)]
+    pub token_header: Option<Option<String>>,
+    /// A REST API's: replaces every operation (ADR-112).
+    #[serde(default)]
+    #[ts(optional)]
+    pub operations: Option<Vec<RestOperation>>,
 }

@@ -1,31 +1,32 @@
-//! MCP connectors configured by a company's connector administrators
-//! (ADR-025): created over HTTPS with an optional access token (sealed in
-//! the secret store, never shown nor audited), changed, switched on or off,
-//! and deleted, under the administration lock. A token never follows the
-//! connector to another address.
+//! Connectors configured by a company's connector administrators: MCP
+//! servers created over HTTPS (ADR-025; REST APIs: `rest_connectors`,
+//! ADR-112) with an optional access token (sealed in the secret store, never
+//! shown nor audited), changed, switched on or off, and deleted, under the
+//! administration lock. A token never follows the connector to another
+//! address.
 
 use std::collections::HashMap;
 
-use mimorya_connectors::mcp::{token_problem, tool_namespace, url_problem};
+use mimorya_connectors::outbound::{token_problem, url_problem};
 use mimorya_core::DomainError;
 use mimorya_core::authz::PermissionInfo;
 use mimorya_db::repositories::audit::append_audit;
 use mimorya_db::repositories::connectors::{
-    ConnectorInstanceRow, ConnectorPatch, NewConnectorInstance, create_connector_instance,
-    delete_connector_instance, get_connector_instance, list_connector_instances,
-    update_connector_instance,
+    ConnectorPatch, NewConnectorInstance, create_connector_instance, delete_connector_instance,
+    get_connector_instance, update_connector_instance,
 };
 use mimorya_db::{Database, is_unique_violation};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
+use super::connector_config::{Editable, RestChanges, added_here, operation_names, prefix_taken};
 use super::connector_rules::{ToolPolicyInput, checked_policies, mcp_addition_problem};
 use super::{audit_entry, begin_change};
 use crate::secrets::SecretStore;
 use crate::services::AccessContext;
 use crate::services::connectors::{ConnectorService, token_secret_name};
 
-const PERMISSION: &str = "connector:manage";
+pub(super) const PERMISSION: &str = "connector:manage";
 
 pub struct NewMcpConnector {
     pub name: String,
@@ -41,24 +42,6 @@ pub struct ConnectorAdmin<'a> {
     pub connectors: &'a ConnectorService,
     pub secrets: &'a SecretStore,
     pub catalog: &'a [PermissionInfo],
-}
-
-/// The prefix of any MCP instance, operator-written ones included.
-fn mcp_prefix(instance: &ConnectorInstanceRow) -> Option<&str> {
-    (instance.connector_type == "mcp")
-        .then(|| instance.config["prefix"].as_str())
-        .flatten()
-}
-
-/// The prefix and address of an MCP instance configured over HTTP.
-pub fn http_config(instance: &ConnectorInstanceRow) -> Option<(String, String)> {
-    let config = &instance.config;
-    (instance.connector_type == "mcp" && config["transport"] == "http").then(|| {
-        (
-            config["prefix"].as_str().unwrap_or_default().to_string(),
-            config["url"].as_str().unwrap_or_default().to_string(),
-        )
-    })
 }
 
 pub async fn create_mcp_connector(
@@ -77,15 +60,7 @@ pub async fn create_mcp_connector(
     }
     let tenant_id = access.subject.tenant_id;
     let mut tx = begin_change(admin.db, access, PERMISSION).await?;
-    // Tool namespaces never overlap, operator-written servers included.
-    let namespace = tool_namespace(&input.prefix);
-    let taken = list_connector_instances(&mut tx, false)
-        .await?
-        .iter()
-        .filter_map(mcp_prefix)
-        .map(tool_namespace)
-        .any(|other| other.starts_with(&namespace) || namespace.starts_with(&other));
-    if taken {
+    if prefix_taken(&mut tx, "mcp", &input.prefix).await? {
         return Err(
             DomainError::conflict("Ce préfixe est déjà utilisé par un autre connecteur").into(),
         );
@@ -144,6 +119,8 @@ pub struct ConnectorChanges {
     pub url: Option<String>,
     pub token: Option<TokenChange>,
     pub tool_policies: Option<HashMap<String, ToolPolicyInput>>,
+    /// A REST API's token header and operations (ADR-112).
+    pub rest: Option<RestChanges>,
 }
 
 pub async fn update_connector(
@@ -178,21 +155,57 @@ pub async fn update_connector(
         ..ConnectorPatch::default()
     };
     let mut token = "kept";
-    if changes.url.is_some() || changes.token.is_some() || changes.tool_policies.is_some() {
-        let Some((prefix, current_url)) = http_config(&instance) else {
-            return Err(DomainError::validation(
+    let header = changes
+        .rest
+        .as_ref()
+        .and_then(|rest| rest.token_header.clone());
+    let operations = changes
+        .rest
+        .as_ref()
+        .and_then(|rest| rest.operations.as_deref().map(operation_names))
+        .map(|names| json!(names));
+    let mut previous_url = None;
+    let mut dropped = Vec::new();
+    let configured = changes.url.is_some() || changes.rest.is_some();
+    if configured || changes.token.is_some() || changes.tool_policies.is_some() {
+        let Some(editable) = Editable::of(&instance) else {
+            let refusal = if instance.connector_type == "rest" {
+                "Déclaration de cette API illisible : supprimez-la puis ajoutez-la de nouveau"
+            } else {
                 "Ce connecteur est réglé par l’exploitant : seuls son nom et son activation \
-                 changent ici",
-            )
-            .into());
+                 changent ici"
+            };
+            return Err(DomainError::validation(refusal).into());
         };
         if let Some(policies) = &changes.tool_policies {
-            patch.tool_policies = Some(checked_policies(policies, &prefix, admin.catalog)?);
+            let scope = editable.policy_scope();
+            patch.tool_policies = Some(checked_policies(policies, &scope, admin.catalog)?);
+        } else if let Some(operations) = changes.rest.as_ref().and_then(|r| r.operations.as_deref())
+        {
+            // The policy of an operation removed, or changed in method or
+            // path, goes with it (ADR-112).
+            let mut kept = instance.tool_policies.clone();
+            if let Some(policies) = kept.as_object_mut() {
+                for tool in editable.redeclared(operations) {
+                    if policies.remove(&tool).is_some() {
+                        dropped.push(tool);
+                    }
+                }
+            }
+            if !dropped.is_empty() {
+                patch.tool_policies = Some(kept);
+            }
         }
+        let current_url = editable.url().to_string();
         let moved = changes.url.as_ref().is_some_and(|url| *url != current_url);
-        patch.reachability_changed = moved || changes.token.is_some();
-        if let Some(url) = &changes.url {
-            patch.config = Some(json!({ "transport": "http", "prefix": prefix, "url": url }));
+        let rehomed = header
+            .as_ref()
+            .is_some_and(|header| header.as_deref() != editable.token_header());
+        patch.reachability_changed = moved || rehomed || changes.token.is_some();
+        if configured {
+            let network = admin.connectors.network();
+            patch.config = Some(editable.changed(changes.url.clone(), changes.rest, network)?);
+            previous_url = changes.url.as_ref().map(|_| current_url);
         }
         let secret = token_secret_name(id);
         token = match &changes.token {
@@ -217,9 +230,12 @@ pub async fn update_connector(
         "previousName": changes.name.as_ref().map(|_| &instance.name),
         "enabled": changes.enabled,
         "url": changes.url,
-        "previousUrl": changes.url.as_ref().map(|_| &instance.config["url"]),
+        "previousUrl": previous_url,
         "token": token,
+        "tokenHeader": header,
+        "operations": operations,
         "toolPolicies": patch.tool_policies,
+        "droppedPolicies": (!dropped.is_empty()).then_some(&dropped),
     });
     match update_connector_instance(&mut tx, id, patch).await {
         Ok(_) => {}
@@ -248,9 +264,10 @@ pub async fn delete_connector(
     let Some(instance) = get_connector_instance(&mut tx, id).await? else {
         return Err(DomainError::not_found("Connecteur introuvable").into());
     };
-    if http_config(&instance).is_none() {
+    if !added_here(&instance) {
         return Err(DomainError::validation(
-            "Seuls les serveurs MCP ajoutés ici se suppriment ici ; désactivez plutôt ce connecteur",
+            "Seuls les serveurs MCP et les API REST ajoutés ici se suppriment ici ; désactivez \
+             plutôt ce connecteur",
         )
         .into());
     }

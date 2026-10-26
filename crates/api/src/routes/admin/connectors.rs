@@ -1,27 +1,30 @@
 //! Connectors (`connector:manage`, company-wide, ADR-025): reading them with
 //! their state, trying an MCP server before adding it (ADR-050), adding it
-//! over HTTPS, changing it (address, token, per-tool policies, activation),
+//! over HTTPS, adding a REST API (ADR-112), changing either (address, token,
+//! per-tool policies, activation; a REST API's token header and operations),
 //! deleting it and testing it. Tokens are write-only.
 
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
 use mimorya_connectors::connector_types;
+use mimorya_connectors::rest::RestConfig;
 use mimorya_db::repositories::connectors::list_connector_instances;
 
 use crate::app::AppState;
 use crate::contract::admin::{
     ConnectorTest, ConnectorTrial, ConnectorUpdate, ConnectorView, Connectors, DelegablePermission,
-    McpEndpoint, NewConnector, risks,
+    McpEndpoint, NewConnector, NewRestConnector, RestApi, risks,
 };
 use crate::contract::{Created, Done};
 use crate::http::{ApiResult, Body, PathId};
 use crate::plugins::Auth;
 use crate::secrets::SecretStore;
+use crate::services::admin::NewRestConnector as RestInput;
 use crate::services::admin::{
-    ConnectorAdmin, ConnectorChanges, McpTrial, NewMcpConnector, TokenChange, TrialServices,
-    create_mcp_connector, delete_connector, http_config, test_connector, try_mcp_connector,
-    update_connector,
+    ConnectorAdmin, ConnectorChanges, Editable, McpTrial, NewMcpConnector, RestChanges,
+    TokenChange, TrialServices, create_mcp_connector, create_rest_connector, delete_connector,
+    test_connector, try_mcp_connector, update_connector,
 };
 use crate::services::connectors::token_secret_name;
 use crate::services::permission_catalog::permission_catalog;
@@ -42,15 +45,29 @@ pub async fn list(
     let instances = list_connector_instances(&mut tx, false).await?;
     let mut views = Vec::with_capacity(instances.len());
     for i in &instances {
-        let mcp = match http_config(i) {
-            Some((prefix, url)) => Some(McpEndpoint {
-                prefix,
-                url,
-                token_stored: store.exists(&mut tx, &token_secret_name(i.id)).await?,
-            }),
-            None => None,
-        };
-        views.push(ConnectorView::from_row(i, mcp)?);
+        let (mut mcp, mut rest) = (None, None);
+        if let Some(editable) = Editable::of(i) {
+            let token_stored = store.exists(&mut tx, &token_secret_name(i.id)).await?;
+            match editable {
+                Editable::Mcp { prefix, url } => {
+                    mcp = Some(McpEndpoint {
+                        prefix,
+                        url,
+                        token_stored,
+                    });
+                }
+                Editable::Rest(config) => {
+                    rest = Some(RestApi {
+                        operations: config.operations.iter().map(Into::into).collect(),
+                        prefix: config.prefix,
+                        url: config.url,
+                        token_header: config.token_header,
+                        token_stored,
+                    });
+                }
+            }
+        }
+        views.push(ConnectorView::from_row(i, mcp, rest)?);
     }
     tx.commit().await?;
     let types = connector_types()
@@ -107,6 +124,29 @@ pub async fn create(
     Ok((StatusCode::CREATED, Json(Created { id })))
 }
 
+/// A REST API and its operations (ADR-112).
+pub async fn create_rest(
+    State(state): State<AppState>,
+    Auth(identity): Auth,
+    Body(body): Body<NewRestConnector>,
+) -> ApiResult<(StatusCode, Json<Created>)> {
+    let access = state.access.context(identity).await?;
+    let (store, catalog) = (secrets(&state), permission_catalog());
+    let input = RestInput {
+        name: body.name,
+        config: RestConfig {
+            prefix: body.prefix,
+            url: body.url,
+            token_header: body.token_header.filter(|h| !h.is_empty()),
+            operations: body.operations.into_iter().map(Into::into).collect(),
+        },
+        token: body.token.filter(|t| !t.is_empty()),
+        enabled: body.enabled.unwrap_or(true),
+    };
+    let id = create_rest_connector(&admin(&state, &store, &catalog), &access, input).await?;
+    Ok((StatusCode::CREATED, Json(Created { id })))
+}
+
 pub async fn update(
     State(state): State<AppState>,
     Auth(identity): Auth,
@@ -130,6 +170,12 @@ pub async fn update(
                 .into_iter()
                 .map(|(tool, policy)| (tool, policy.into()))
                 .collect()
+        }),
+        rest: (body.token_header.is_some() || body.operations.is_some()).then(|| RestChanges {
+            token_header: body.token_header,
+            operations: body
+                .operations
+                .map(|operations| operations.into_iter().map(Into::into).collect()),
         }),
     };
     update_connector(&admin(&state, &store, &catalog), &access, id, changes).await?;

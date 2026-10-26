@@ -80,7 +80,8 @@ crates/                 Espace de travail Cargo (serveur)
   db/           Migrations SQL (sqlx), RLS, transactions par entreprise, dépôts, seed
   agent/        Moteur agentique : fournisseurs LLM, boucle, PEP outils, budgets,
                 vérification, outils mémoire et compétences
-  connectors/   Contrat de connecteur, connecteur de démonstration, pont MCP (rmcp)
+  connectors/   Contrat de connecteur, connecteur de démonstration, pont MCP (rmcp),
+                API REST décrites par l'entreprise (ADR-112)
   extract/      Lecture des documents déposés (PDF, Word, texte), dans le processus
                 `mimorya-extract`, jamais dans celui de l'API (ADR-095)
   api/          Serveur HTTP (axum) : sessions, routes, SSE, exécution des runs,
@@ -257,9 +258,18 @@ Détaillés dans [AGENT_ENGINE.md](AGENT_ENGINE.md). En résumé :
   les runs qui l'attendent, ADR-049), du délai de démarrage au plus. L'état (« Non testé », « Opérationnel »,
   « En erreur ») et la dernière erreur, jeton masqué, sont affichés à
   l'administrateur.
+- **API REST** : une entreprise décrit une API opération par opération (méthode, chemin,
+  paramètres typés) ; chaque opération devient un outil `rest_<préfixe>_<opération>`,
+  soumis aux mêmes règles qu'un outil MCP (`connector:use`, `write` par défaut,
+  association par l'administrateur, résultats non fiables, adresses publiques). La
+  requête ne sort jamais du chemin écrit, la personne qui valide la lit entière, et la
+  réponse lue par le modèle est bornée, jeton masqué (ADR-112). Ce que partagent les
+  serveurs MCP et les API REST (réseau, préfixe, jeton, masquage) est dans
+  `connectors::outbound`.
 - Les secrets ne transitent jamais par le contexte du modèle ni par les journaux.
 
-Connecteurs prévus : démonstration (MVP), MCP générique (MVP), webhooks/REST générique,
+Connecteurs prévus : démonstration (MVP), MCP générique (MVP), déclencheurs (ADR-109),
+REST générique (ADR-112),
 e-mail (IMAP/SMTP, Microsoft Graph, Gmail), agendas, Slack/Teams/Telegram/Discord
 (passerelles conversationnelles), Google Workspace / Microsoft 365, bases SQL en lecture,
 GED, navigateur automatisé en bac à sable (phase 2+).

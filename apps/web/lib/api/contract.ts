@@ -293,14 +293,23 @@ token?: string | null,
 /**
  * Replaces every tool's policy.
  */
-toolPolicies?: { [key in string]: ToolPolicyChange }, };
+toolPolicies?: { [key in string]: ToolPolicyChange },
+/**
+ * A REST API's: a text names the header its token goes in, `null` or
+ * blank sends it as `Authorization: Bearer` (ADR-112).
+ */
+tokenHeader?: string | null,
+/**
+ * A REST API's: replaces every operation (ADR-112).
+ */
+operations?: Array<RestOperation>, };
 
 export type ConnectorView = { id: string, type: string, name: string, enabled: boolean, status: ConnectorStatus, lastError: string | null,
 /**
  * As stored: a policy runs cannot read makes the connector unavailable,
  * with `lastError` saying so, rather than hiding it here.
  */
-toolPolicies: Record<string, ToolPolicy>, mcp: McpEndpoint | null, updatedAt: string, };
+toolPolicies: Record<string, ToolPolicy>, mcp: McpEndpoint | null, rest: RestApi | null, updatedAt: string, };
 
 /**
  * `GET /admin/connectors`.
@@ -642,6 +651,8 @@ status: string,
  * A platform model provider is configured (companies may have their own).
  */
 llm: boolean, };
+
+export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 /**
  * Body of `PATCH /admin/identity-providers/{id}`: absent fields are
@@ -1190,6 +1201,24 @@ condition: Record<string, unknown>,
 enabled?: boolean, };
 
 /**
+ * Body of `POST /admin/connectors/rest`: a REST API and its operations,
+ * checked as a whole by the platform (ADR-112).
+ */
+export type NewRestConnector = { name: string, prefix: string, url: string,
+/**
+ * Absent or blank: `Authorization: Bearer`.
+ */
+tokenHeader?: string,
+/**
+ * Absent or blank: none.
+ */
+token?: string,
+/**
+ * Absent: enabled.
+ */
+enabled?: boolean, operations: Array<RestOperation>, };
+
+/**
  * Body of `POST /admin/roles`: a custom role and its permissions.
  */
 export type NewRole = { name: string,
@@ -1295,6 +1324,13 @@ export type Organization = { units: Array<OrgUnitView>, users: Array<OrgPerson>,
 canManage: boolean, };
 
 /**
+ * Where a parameter goes: the path (`{name}`), the query, the JSON body.
+ */
+export type ParameterLocation = "path" | "query" | "body";
+
+export type ParameterType = "string" | "integer" | "number" | "boolean";
+
+/**
  * Body of `POST /account/password`.
  */
 export type PasswordUpdate = { currentPassword: string, newPassword: string, };
@@ -1359,6 +1395,41 @@ export type ResetLinkRequest = { email: string, };
  * `POST /admin/users/{id}/password-link`: the administrator never sees the link.
  */
 export type ResetLinkSent = { expiresAt: string, };
+
+/**
+ * A REST API as stored, and whether a token is.
+ */
+export type RestApi = {
+/**
+ * Its tools are named `rest_<prefix>_<operation>`.
+ */
+prefix: string, url: string,
+/**
+ * `null`: the token goes as `Authorization: Bearer`.
+ */
+tokenHeader: string | null, tokenStored: boolean, operations: Array<RestOperation>, };
+
+/**
+ * One operation of the API, which becomes the tool `rest_<prefix>_<name>`.
+ */
+export type RestOperation = { name: string, title: string,
+/**
+ * What the model reads of the tool, after the API's prefix.
+ */
+description: string, method: HttpMethod,
+/**
+ * Follows the API's address; `{name}` stands for a path parameter.
+ */
+path: string, parameters: Array<RestParameter>, };
+
+/**
+ * What the model may give an operation.
+ */
+export type RestParameter = { name: string, in: ParameterLocation, type: ParameterType,
+/**
+ * A path parameter always is.
+ */
+required?: boolean, description?: string, };
 
 /**
  * A permission a policy may restrict: a business one the platform checks.

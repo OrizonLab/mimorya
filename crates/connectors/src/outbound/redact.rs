@@ -1,8 +1,9 @@
-//! The access token of an MCP server reaches neither the logs, nor the
-//! administrators, nor the model: whatever the server sends back (an error
-//! quoting the request, a tool result) is masked before leaving the connector,
-//! as is, escaped in JSON (`\/`, `\u002B`…) or encoded in a URL (`%2F`…), each
-//! character of `/ + = " \` written one way throughout (ADR-026). HTML
+//! The access token of an MCP server or a REST API reaches neither the logs,
+//! nor the administrators, nor the model: whatever the server sends back (an
+//! error quoting the request, a tool result) is masked before leaving the
+//! connector, as is, escaped in JSON (`\/`, `\u002B`…) or encoded in a URL
+//! (`%2F`…), each character of `/ + = " \` written one way throughout
+//! (ADR-026), and in a JSON number for a token of digits (ADR-112). HTML
 //! entities, double escaping and mixed spellings are not covered.
 
 use std::fmt;
@@ -52,6 +53,17 @@ impl Redactor {
         }))
     }
 
+    /// How long the longest spelling of the secret is, in bytes (none without
+    /// a secret): a text whose last this many bytes are dropped after it is
+    /// masked holds no part of the secret, even if it was cut where the
+    /// secret began.
+    pub fn longest(&self) -> usize {
+        self.0
+            .as_ref()
+            .and_then(|spellings| spellings.all.first())
+            .map_or(0, String::len)
+    }
+
     /// Whether the text quotes the secret.
     pub fn reveals(&self, text: &str) -> bool {
         self.0
@@ -75,7 +87,8 @@ impl Redactor {
         masked
     }
 
-    /// Every string of the value, keys included.
+    /// Every string of the value, keys included, and every number that
+    /// writes the secret (a token of digits): masked as a string.
     pub fn value(&self, value: Value) -> Value {
         if self.0.is_none() {
             return value;
@@ -89,6 +102,9 @@ impl Redactor {
                     .map(|(key, v)| (self.text(&key), self.value(v)))
                     .collect(),
             ),
+            Value::Number(number) if self.reveals(&number.to_string()) => {
+                Value::String(MASK.into())
+            }
             other => other,
         }
     }
@@ -156,7 +172,20 @@ mod tests {
         );
         assert_eq!(Redactor::new(Some("")).text("abc"), "abc");
         assert_eq!(Redactor::new(None).value(json!("abc")), json!("abc"));
+        // A token of digits, sent back as a number.
+        let digits = Redactor::new(Some("12345678"));
+        assert_eq!(
+            digits.value(json!({ "cle": 12345678, "autre": 1234, "n": 9123456789u64 })),
+            json!({ "cle": "***", "autre": 1234, "n": "***" })
+        );
         assert_eq!(format!("{redactor:?}"), "Redactor");
+    }
+
+    #[test]
+    fn knows_how_long_the_secret_may_be_written() {
+        assert_eq!(Redactor::new(Some("ab/cd")).longest(), "ab\\u002Fcd".len());
+        assert_eq!(Redactor::new(Some("abcd")).longest(), 4);
+        assert_eq!(Redactor::default().longest(), 0);
     }
 
     #[test]

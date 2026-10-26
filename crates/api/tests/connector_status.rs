@@ -8,7 +8,7 @@
 mod support;
 
 use axum::http::StatusCode;
-use mimorya_connectors::mcp::ACCESS_DENIED;
+use mimorya_connectors::outbound::ACCESS_DENIED;
 use mimorya_connectors::testing::{Quirk, serve_demo_docs_http, serve_mcp_http_on};
 use mimorya_core::demo::{tenant, user};
 use mimorya_db::repositories::connectors::{get_connector_instance, report_connector_status};

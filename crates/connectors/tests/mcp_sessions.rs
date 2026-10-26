@@ -9,7 +9,7 @@ mod support;
 use std::time::Duration;
 
 use mimorya_connectors::ConnectorRuntime;
-use mimorya_connectors::mcp::NetworkPolicy;
+use mimorya_connectors::outbound::NetworkPolicy;
 use mimorya_connectors::testing::serve_stoppable_demo_docs_http;
 use serde_json::json;
 use support::mcp::{PRIVATE, call_as_reader, http, port_of, start_mcp};

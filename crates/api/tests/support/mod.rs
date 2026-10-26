@@ -36,6 +36,7 @@ pub mod refusals;
 pub mod relay;
 pub mod relay_faults;
 pub mod resets;
+pub mod rest;
 pub mod runs;
 pub mod saml_provider;
 pub mod scheduled;

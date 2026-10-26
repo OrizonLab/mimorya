@@ -59,6 +59,7 @@ async fn paused_on_overdue(api: &TestApi, tenant_id: Uuid, user_id: Uuid) -> (Uu
             tool_call_id: approval.tool_call_id.clone(),
             tool_name: approval.tool_name.clone(),
             input: json!({}),
+            action_summary: None,
         }],
     });
     sqlx::query("update agent_runs set status = 'awaiting_approval', state = $2 where id = $1")

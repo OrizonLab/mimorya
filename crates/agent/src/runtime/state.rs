@@ -26,6 +26,13 @@ pub struct PendingApproval {
     pub tool_name: String,
     /// Validated input, executed as-is once approved (cannot change after validation).
     pub input: Value,
+    /// What the person deciding read of the action, its input's keys in one
+    /// order (stored as `jsonb`, a checkpoint comes back with them
+    /// reordered). Once approved, a tool that no longer describes the input
+    /// so (its declaration changed since, ADR-112) does not run it. Absent
+    /// from runs paused before it was kept.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub action_summary: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

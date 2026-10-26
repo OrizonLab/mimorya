@@ -195,3 +195,46 @@ async fn records_every_outcome_before_announcing_it() {
         assert!(record.events_before <= *index);
     }
 }
+
+#[tokio::test]
+async fn never_runs_an_action_its_tool_no_longer_describes_as_validated() {
+    let h = setup(
+        vec![
+            ScriptedStep::calls("", vec![call("planning_apply", json!({ "slots": 3 }))]),
+            ScriptedStep::dynamic(|req| {
+                assert!(
+                    last_tool_results(req)[0]
+                        .content
+                        .contains("Action modifiée depuis la demande de validation")
+                );
+                ScriptedReply::text("L’action n’a pas été appliquée.")
+            }),
+        ],
+        Options::default(),
+    );
+    let RunOutcome::AwaitingApproval {
+        approvals,
+        mut checkpoint,
+    } = h.start().await
+    else {
+        panic!("expected a pause")
+    };
+    let pending = checkpoint.pending.as_mut().unwrap();
+    assert_eq!(
+        pending.approvals[0].action_summary.as_deref(),
+        Some("Appliquer 3 créneau(x)")
+    );
+    // What the person read is no longer what the tool would do: its
+    // declaration changed while the request waited.
+    pending.approvals[0].action_summary = Some("Appliquer 2 créneau(x)".into());
+    let decisions = HashMap::from([(approvals[0].approval_id, ApprovalDecision::approved())]);
+    let outcome = h.runtime.resume(checkpoint, &decisions).await.unwrap();
+    assert_eq!(outcome.status(), "completed");
+    assert!(h.applied.lock().unwrap().is_empty());
+    let ended = h.events_of("tool_result");
+    assert_eq!(
+        ended[0]["summary"],
+        "Action modifiée depuis la demande de validation"
+    );
+    assert_eq!(ended[0]["isError"], true);
+}

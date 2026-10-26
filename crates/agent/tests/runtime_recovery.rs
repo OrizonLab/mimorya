@@ -122,6 +122,7 @@ async fn ends_a_run_stopped_while_approved_actions_were_running() {
             tool_call_id: "c1".into(),
             tool_name: "planning_apply".into(),
             input: json!({ "slots": 2 }),
+            action_summary: None,
         }],
     });
     // The API names the actions approved among those awaited.

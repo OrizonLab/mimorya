@@ -20,12 +20,9 @@ use serde_json::{Value, json};
 
 use super::declarations::declared_tools;
 use super::failure::call_failed;
-use super::redact::Redactor;
+use crate::outbound::{CONNECTOR_USE, Redactor};
 
 pub type McpClient = RunningService<RoleClient, ()>;
-
-/// Every MCP tool requires it, whatever its policy says (ADR-025).
-pub const CONNECTOR_USE: &str = "connector:use";
 
 #[derive(Debug, Clone)]
 pub struct McpToolsetOptions {

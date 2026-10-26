@@ -8,7 +8,7 @@ use axum::Router;
 use axum::extract::DefaultBodyLimit;
 use axum::middleware::{from_fn, from_fn_with_state};
 use mimorya_agent::llm::{LlmProvider, PriceTable, create_provider};
-use mimorya_connectors::mcp::NetworkPolicy;
+use mimorya_connectors::outbound::NetworkPolicy;
 use mimorya_db::{Database, PoolOptions};
 use tokio::sync::watch;
 use tokio::task::JoinHandle;

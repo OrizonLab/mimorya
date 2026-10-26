@@ -1,8 +1,9 @@
 //! Tool calls that do not run: refused by the policy enforcement point,
 //! queued for human validation (or refused when nobody may validate them,
-//! ADR-059), refused by the user, whose request expired or whose tool was
-//! removed before anyone decided, or abandoned when the run may no longer act
-//! for its user (ADR-035). Each is logged, audited or streamed as it ends,
+//! ADR-059), refused by the user, whose request expired, whose tool was
+//! removed before anyone decided or no longer describes the action validated
+//! (ADR-112), or abandoned when the run may no longer act for its user
+//! (ADR-035). Each is logged, audited or streamed as it ends,
 //! and reported to the model when the run goes on.
 
 use serde_json::{Value, json};
@@ -18,6 +19,7 @@ use crate::tools::executor::INVALID_INPUT;
 use crate::tools::{RegisteredTool, ToolCallEvaluation};
 
 const TOOL_REMOVED: &str = "Outil désactivé depuis la demande de validation";
+const ACTION_CHANGED: &str = "Action modifiée depuis la demande de validation";
 const REQUEST_EXPIRED: &str = "Demande de validation expirée";
 const REFUSED: &str = "Action refusée lors de la validation";
 const NOBODY_VALIDATES: &str = "Aucun responsable habilité à valider cette action";
@@ -29,18 +31,74 @@ pub(super) enum Requested {
     Refused(LlmToolResult),
 }
 
+/// What became of a decided call's tool since its request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Since {
+    Removed,
+    /// It no longer describes the input as the person deciding read it.
+    Changed,
+    Same,
+}
+
+/// What the person deciding reads of a call: the tool's own description of
+/// the action, or its title and name.
+pub(super) fn action_summary(tool: &RegisteredTool, input: &Value) -> String {
+    tool.tool
+        .describe_action(input)
+        .unwrap_or_else(|| format!("{} ({})", tool.info.title, tool.info.name))
+}
+
+/// What is kept of what the person deciding read: the action as its tool
+/// describes it, its input's keys in one order (a checkpoint stored as
+/// `jsonb` comes back with its keys reordered; the action has not changed).
+pub(super) fn validated_action(tool: &RegisteredTool, input: &Value) -> String {
+    action_summary(tool, &canonical(input))
+}
+
+/// Every object's keys sorted, at every depth.
+fn canonical(value: &Value) -> Value {
+    match value {
+        Value::Object(fields) => {
+            let mut keys: Vec<&String> = fields.keys().collect();
+            keys.sort();
+            Value::Object(
+                keys.into_iter()
+                    .map(|key| (key.clone(), canonical(&fields[key])))
+                    .collect(),
+            )
+        }
+        Value::Array(items) => Value::Array(items.iter().map(canonical).collect()),
+        other => other.clone(),
+    }
+}
+
+/// Whether the tool is still there, describing the action as it was read.
+pub(super) fn since(tool: Option<&RegisteredTool>, approval: &PendingApproval) -> Since {
+    match (tool, &approval.action_summary) {
+        (None, _) => Since::Removed,
+        (Some(tool), Some(read)) if validated_action(tool, &approval.input) != *read => {
+            Since::Changed
+        }
+        _ => Since::Same,
+    }
+}
+
 /// Why a decided call does not run (its tool removed since, its request
-/// expired before anyone decided, or refused): the reason the model gets,
-/// and what the live view shows, without what the user wrote.
-pub(super) fn why_not_run(
-    tool_present: bool,
-    decision: &ApprovalDecision,
-) -> (String, &'static str) {
-    if !tool_present {
+/// expired before anyone decided, the action approved no longer the one its
+/// tool would run, or refused): the reason the model gets, and what the
+/// live view shows, without what the user wrote.
+pub(super) fn why_not_run(since: Since, decision: &ApprovalDecision) -> (String, &'static str) {
+    if since == Since::Removed {
         (TOOL_REMOVED.into(), TOOL_REMOVED)
     } else if decision.expired {
         let reason = format!("{REQUEST_EXPIRED} : l’action n’a pas été exécutée");
         (reason, REQUEST_EXPIRED)
+    } else if decision.approved && since == Since::Changed {
+        let reason = format!(
+            "{ACTION_CHANGED} (outil modifié par un administrateur) : l’action validée n’a pas \
+             été exécutée"
+        );
+        (reason, ACTION_CHANGED)
     } else {
         let comment = decision
             .comment
@@ -144,10 +202,7 @@ impl ToolCallProcessor {
         input: Value,
         reason: String,
     ) -> anyhow::Result<Requested> {
-        let action_summary = tool
-            .tool
-            .describe_action(&input)
-            .unwrap_or_else(|| format!("{} ({})", tool.info.title, call.name));
+        let action_summary = action_summary(tool, &input);
         let placement = self
             .ports
             .approvals
@@ -207,6 +262,7 @@ impl ToolCallProcessor {
             approval_id,
             tool_call_id: call.id.clone(),
             tool_name: tool.info.name.clone(),
+            action_summary: Some(validated_action(tool, &input)),
             input,
         }))
     }
@@ -299,22 +355,50 @@ fn audit_reason(reason: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
+
     use super::*;
+
+    #[test]
+    fn reads_an_input_the_same_whatever_the_order_of_its_keys() {
+        let written =
+            json!({ "query": "x", "limit": 5, "filter": { "b": [ { "z": 1, "a": 2 } ], "a": 1 } });
+        let stored =
+            json!({ "limit": 5, "query": "x", "filter": { "a": 1, "b": [ { "a": 2, "z": 1 } ] } });
+        assert_ne!(written.to_string(), stored.to_string());
+        assert_eq!(
+            canonical(&written).to_string(),
+            canonical(&stored).to_string()
+        );
+        assert_eq!(
+            canonical(&written).to_string(),
+            r#"{"filter":{"a":1,"b":[{"a":2,"z":1}]},"limit":5,"query":"x"}"#
+        );
+    }
 
     #[test]
     fn says_why_a_decided_call_does_not_run_never_showing_what_the_user_wrote() {
         let refused = ApprovalDecision::rejected(Some("pas cette semaine".into()));
         assert_eq!(
-            why_not_run(true, &refused),
+            why_not_run(Since::Same, &refused),
             (format!("{REFUSED} : pas cette semaine"), REFUSED)
         );
         assert_eq!(
-            why_not_run(true, &ApprovalDecision::rejected(None)),
+            why_not_run(Since::Same, &ApprovalDecision::rejected(None)),
             (REFUSED.into(), REFUSED)
         );
-        let (reason, shown) = why_not_run(true, &ApprovalDecision::expired());
+        let (reason, shown) = why_not_run(Since::Same, &ApprovalDecision::expired());
         assert_eq!(shown, REQUEST_EXPIRED);
         assert!(reason.starts_with(REQUEST_EXPIRED) && !reason.contains("refusée"));
+        // Approved, then changed: not the action approved.
+        let (reason, shown) = why_not_run(Since::Changed, &ApprovalDecision::approved());
+        assert_eq!(shown, ACTION_CHANGED);
+        assert!(reason.ends_with("l’action validée n’a pas été exécutée"));
+        // Refused, it stays refused, changed or not.
+        assert_eq!(
+            why_not_run(Since::Changed, &ApprovalDecision::rejected(None)),
+            (REFUSED.into(), REFUSED)
+        );
         // A tool removed since comes first, whatever was decided.
         for decision in [
             refused,
@@ -322,7 +406,7 @@ mod tests {
             ApprovalDecision::approved(),
         ] {
             assert_eq!(
-                why_not_run(false, &decision),
+                why_not_run(Since::Removed, &decision),
                 (TOOL_REMOVED.into(), TOOL_REMOVED)
             );
         }

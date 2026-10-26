@@ -68,7 +68,7 @@ use mimorya_agent::testing::{ConceptEmbedder, ScriptedProvider, ScriptedStep};
 use mimorya_api::mail::Mailer;
 use mimorya_api::services::{EmbeddingFactory, ProviderFactory};
 use mimorya_api::{AppConfig, BuildOptions, build_app, log_filter};
-use mimorya_connectors::mcp::NetworkPolicy;
+use mimorya_connectors::outbound::NetworkPolicy;
 use mimorya_db::repositories::rate_limits::purge_rate_limits;
 
 /// Reference scenarios queued for the platform model, by the hour of their

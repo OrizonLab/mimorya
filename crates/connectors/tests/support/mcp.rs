@@ -7,7 +7,7 @@ use std::time::Duration;
 use mimorya_agent::llm::LlmToolCall;
 use mimorya_agent::testing::InMemoryPorts;
 use mimorya_agent::tools::{ToolCallEvaluation, ToolOverride, ToolRegistry};
-use mimorya_connectors::mcp::NetworkPolicy;
+use mimorya_connectors::outbound::NetworkPolicy;
 use mimorya_connectors::{ConnectorRuntime, InstanceContext, connector_type};
 use mimorya_core::autonomy::ToolRisk;
 use mimorya_core::demo::user;
@@ -56,6 +56,7 @@ pub async fn start_mcp_within(
         secret,
         network,
         start_timeout,
+        ..InstanceContext::default()
     };
     connector_type("mcp")
         .unwrap()

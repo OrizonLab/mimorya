@@ -22,7 +22,7 @@ use super::model_call::{ModelTurn, call_model, record_model_usage};
 use super::ports::{CurrentAccess, RunEvent, StepAccess};
 use super::state::{PendingCalls, RunCheckpoint};
 use super::tool_calls::{ToolCallProcessor, order_by_request};
-use super::tool_refusals::why_not_run;
+use super::tool_refusals::{Since, since, why_not_run};
 use super::types::{ApprovalDecisions, RunConfig, RunOutcome, RuntimeDeps};
 use super::unavailable::with_unavailable_connectors;
 use super::verification::correction_message;
@@ -128,10 +128,15 @@ impl AgentRuntime {
                     approved: decision.approved,
                 })
                 .await?;
-            match self.tools.tool(&approval.tool_name) {
-                Some(tool) if decision.approved => validated.push((tool, approval)),
-                tool => {
-                    let (reason, shown) = why_not_run(tool.is_some(), decision);
+            // Run as validated, or not at all (ADR-112).
+            let tool = self.tools.tool(&approval.tool_name);
+            let since = since(tool.as_ref(), approval);
+            match tool {
+                Some(tool) if decision.approved && since == Since::Same => {
+                    validated.push((tool, approval));
+                }
+                _ => {
+                    let (reason, shown) = why_not_run(since, decision);
                     results.push(self.tools.reject(approval, reason, shown).await?);
                 }
             }

@@ -5577,3 +5577,125 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     - `approval_notice/author_mail.rs` (test unitaire) : le message d'un déclencheur ;
     - `crates/db/tests/definer_functions.rs` : la nouvelle fonction listée ;
     - `apps/web/e2e/notification-settings.spec.ts` : le libellé élargi.
+
+## ADR-112 — API REST décrites par l'entreprise (connecteurs, quatrième lot)
+
+- **Date** : 2026-10-26 · **Statut** : acceptée
+- **Contexte** : beaucoup d'outils métier d'une entreprise n'ont ni serveur MCP ni
+  connecteur dédié, mais exposent une API REST. Jusqu'ici, l'agent ne pouvait les
+  atteindre qu'à travers un serveur MCP écrit pour l'occasion. Or une API choisie par
+  une entreprise est appelée par le serveur de la plateforme, avec un jeton : les mêmes
+  précautions que pour un serveur MCP (ADR-025, ADR-026) s'appliquent, et ce que l'agent
+  envoie doit rester dans ce que l'administrateur a décrit.
+- **Décision** :
+  - **un type de connecteur « API REST »** (`rest`) : depuis l'administration
+    (`connector:manage`, sur toute l'entreprise, sous le verrou d'administration), une
+    entreprise ajoute une API par son adresse (`https://…`), l'en-tête où va son jeton
+    (`Authorization: Bearer` par défaut, ou un en-tête nommé comme `X-API-Key`), et ses
+    opérations (`POST /admin/connectors/rest`). Elle la modifie, la teste, l'active, la
+    désactive et la supprime comme un serveur MCP (`PATCH`, `test`, `DELETE`) ;
+  - **une opération, un outil** : chaque opération (nom, intitulé, description, méthode
+    `GET`/`POST`/`PUT`/`PATCH`/`DELETE`, chemin, paramètres typés `string`, `integer`,
+    `number` ou `boolean`, placés dans le chemin, la requête ou le corps JSON) devient
+    l'outil `rest_<préfixe>_<opération>`. Le modèle lit « [API REST « préfixe »] » puis
+    la description écrite ; sa description se change dans la déclaration, pas par une
+    politique (contrairement à un outil MCP, ADR-057). Comme un outil MCP, il exige
+    `connector:use`, a le risque `write` (validation humaine) tant qu'un administrateur
+    ne l'a pas associé à des permissions et à un risque, et ses résultats sont des
+    données non fiables ;
+  - **ce qu'une déclaration peut contenir** (`connectors::rest::checks`, vérifié à
+    l'enregistrement et à chaque démarrage) : préfixe et adresse comme un serveur MCP ;
+    50 opérations, 30 paramètres par opération, intitulés d'une ligne, descriptions
+    visibles (ADR-057), 256 Kio en tout ; un en-tête de jeton qui n'appartient pas au
+    protocole ni au client (ni `Authorization`, `Host`, `Cookie`, `Accept`,
+    `Accept-Encoding`, `User-Agent`, `Content-*`, `Proxy-*`, `Sec-*`…) ;
+    un chemin qui commence par `/`, sans `%`, `?`, `#` ni segment `.` ou `..`, dont
+    chaque `{paramètre}` est un paramètre de chemin déclaré, toujours requis ; pas de
+    paramètre de corps pour `GET` ni `DELETE` ;
+  - **ce qu'un appel envoie** (`connectors::rest::request`) : l'entrée du modèle n'a que
+    les paramètres déclarés, chacun de son type (texte de 4 000 caractères au plus).
+    Un paramètre de chemin est encodé entier (`/`, `%`, `?`, `#` compris) et ne peut être
+    vide. Un serveur peut décoder `%2F` (ou `%5C`) en séparateur avant de résoudre le
+    chemin (nginx, Tomcat, IIS), voire décoder deux fois : une valeur dont un segment,
+    entre deux `/` ou `\`, vaut `.` ou `..` une fois décodée est refusée (`../admin`,
+    `..\x`, `%2e%2e`), et un chemin obtenu avec un tel segment, tel qu'envoyé, décodé
+    une fois, ou décodé deux fois en entier (deux valeurs voisines, une valeur collée
+    au chemin écrit, un échappement à cheval sur deux valeurs comme `.%2` puis `e`),
+    est refusé : la requête ne sort jamais de l'adresse de l'API ni du chemin écrit par
+    l'administrateur, ce qu'un dernier contrôle de l'adresse obtenue vérifie encore ;
+  - **exécutée telle que validée** : la personne qui valide lit la requête entière
+    (méthode, adresse, corps). Le moteur garde ce qu'elle a lu de l'action : une fois
+    validée, une action que son outil ne décrit plus de la même façon (un
+    administrateur a changé l'adresse, la méthode ou le chemin de l'opération pendant
+    l'attente) n'est pas exécutée, et le modèle l'apprend (« Action modifiée depuis la
+    demande de validation »). Ce qui a été lu est comparé sur l'entrée aux clés triées :
+    un point d'arrêt relu de `jsonb` revient les clés réordonnées, sans que l'action ait
+    changé. Cela vaut pour tout outil ; un run mis en pause avant
+    cette règle n'a pas gardé ce qui a été lu, et s'exécute comme avant. La politique
+    d'une opération retirée, ou dont la méthode ou le chemin change, part avec elle
+    (tracé : `droppedPolicies`) : une lecture associée sans validation ne devient pas
+    une suppression sans validation ;
+  - **le réseau** : le client HTTP des connecteurs (ADR-025) — adresses publiques
+    seulement, résolues à la connexion, aucune redirection suivie (une réponse `3xx`
+    est un échec dit tel quel), pas de mandataire de l'environnement — sauf déploiement
+    privé (`MIMORYA_MCP_ALLOW_PRIVATE_NETWORK`). Le code partagé par les serveurs MCP et
+    les API REST (politique réseau, préfixe, jeton, masquage, explication des échecs,
+    `connector:use`) passe de `connectors::mcp` à `connectors::outbound` ;
+  - **ce que le modèle lit** : `{ "statut", "corps" }`. Le corps est lu jusqu'à
+    256 Kio : en JSON quand il en annonce et le contient entier, en texte s'il est du
+    texte, sinon nommé sans être lu (« [contenu image/png de … octets, non lu] ») ; les
+    en-têtes ne sont pas transmis. Un statut hors `2xx` est un appel en échec dont le
+    modèle lit quand même le corps. L'appel est borné à 20 s, sous le délai d'un outil ;
+  - **le jeton** : scellé (`connector.<id>.token`, ADR-024), au format de la RFC 6750
+    (ADR-026), marqué sensible dans l'en-tête, jamais renvoyé ni audité. Il ne suit pas
+    l'API vers une autre adresse. Il est masqué dans tout ce que l'API renvoie et dans
+    les échecs, avant la troncature : le corps est lu un peu au-delà de la borne (la
+    plus longue graphie du jeton), masqué, puis coupé en retirant d'abord cette
+    longueur, afin qu'aucun morceau d'un jeton coupé par la lecture ne reste ; un jeton
+    de chiffres renvoyé comme un nombre JSON est masqué lui aussi ;
+  - un changement d'adresse, d'en-tête ou de jeton remet l'API « Non testé » ; un
+    changement d'opérations est vérifié comme une déclaration entière. Démarrer l'API
+    ne l'appelle pas : le test de l'administration vérifie la déclaration et liste les
+    outils avec leur politique effective, le premier appel dit si l'API répond ;
+  - les préfixes de deux API ne se recouvrent jamais (un serveur MCP peut porter le
+    même, ses outils s'appelant `mcp_…`) ; l'audit garde le type, l'adresse, l'en-tête,
+    le nom des opérations et si un jeton est enregistré.
+- **Alternatives écartées** :
+  - importer une description OpenAPI : utile, mais elle décrit souvent des centaines
+    d'opérations et des schémas imbriqués que le modèle n'a pas à voir ; la déclaration
+    opération par opération garde l'administrateur maître de ce qui est exposé.
+    L'import pourra la préremplir ;
+  - suivre les redirections vers la même origine : une redirection mène où l'API
+    décide, et l'adresse obtenue devrait être contrôlée de nouveau ; l'échec est dit ;
+  - des objets et des listes en paramètres : le corps plat couvre l'essentiel des
+    écritures simples sans laisser le modèle composer des structures que personne n'a
+    décrites.
+- **Conséquences** :
+  - l'écran de l'administration pour décrire une API vient au lot suivant ; d'ici là,
+    une API ajoutée par l'API d'administration s'affiche comme un connecteur sans
+    détail, et son test, qui ne l'appelle pas, se lit comme une connexion réussie :
+    l'écran dira qu'il vérifie la déclaration ;
+  - restent : l'écran des API REST, l'e-mail et les agendas ;
+  - tests :
+    - `crates/connectors/tests/rest_connector.rs` : ce qu'une opération envoie
+      (chemin encodé entier, requête, corps, jeton en `Bearer` ou dans son en-tête),
+      l'entrée refusée hors déclaration, la requête montrée à la validation, les
+      statuts, redirections et corps non lus, le jeton masqué même coupé par la borne,
+      le délai, l'API injoignable, l'adresse privée refusée ;
+    - `crates/connectors/tests/rest_declarations.rs` : ce qu'une déclaration peut
+      contenir, et une requête qui reste sous le chemin écrit, même lue par un serveur
+      qui décode `%2F` ;
+    - `crates/agent/tests/runtime_approvals.rs` : une action que son outil ne décrit
+      plus comme elle a été validée n'est pas exécutée ;
+    - `crates/api/tests/connector_runs.rs` : un appel MCP validé s'exécute, quel que
+      soit l'ordre dans lequel les clés de son entrée reviennent du point d'arrêt ;
+    - `crates/api/tests/rest_connectors.rs` : l'API ajoutée, listée sans sa clé,
+      testée, associée, auditée sans clé, supprimée avec son secret ; un run qui lit
+      directement, puis écrit une fois la requête validée, la clé masquée dans ce que le
+      modèle lit ; une écriture validée qui n'est pas envoyée, son opération changée
+      pendant l'attente ;
+    - `crates/api/tests/rest_connector_rules.rs` : les droits, la déclaration vérifiée,
+      les préfixes, la clé perdue au changement d'adresse, la description réservée à la
+      déclaration, la politique d'une opération retirée ou changée de méthode partie
+      avec elle, un serveur MCP sans opérations, les adresses d'une plateforme
+      publique, une déclaration devenue illisible supprimée plutôt que modifiée.

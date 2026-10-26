@@ -1,10 +1,11 @@
 //! Test support (feature `testing`): MCP servers over Streamable HTTP on a
 //! local port, optionally behind a bearer token, and misbehaving ones (what
 //! they declare, a token quoted back, a server that never answers, one held
-//! until the test releases it).
+//! until the test releases it); a REST API (`rest`).
 
 mod hold;
 mod quirks;
+mod rest;
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -20,6 +21,7 @@ use tokio::sync::oneshot;
 use crate::mcp::DemoDocsServer;
 pub use hold::Hold;
 pub use quirks::{DeclaredToolsServer, HIDDEN_TEXT, Quirk};
+pub use rest::{KEY_HEADER, serve_rest_http};
 
 /// Serves the demo documentation server at `http://127.0.0.1:<port>/mcp`
 /// until the process ends; returns that address.
