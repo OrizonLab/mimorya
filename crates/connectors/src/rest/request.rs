@@ -5,8 +5,9 @@
 //! separator before resolving the path, and some decode twice, a path is
 //! refused when it would hold a `.` or `..` segment as sent, decoded once,
 //! or decoded twice as a whole (an escape spanning two values): the request
-//! never leaves the API's address nor the path its administrators wrote. Query parameters are encoded as a form; body
-//! parameters make a JSON object.
+//! never leaves the API's address nor the path its administrators wrote.
+//! Query parameters are encoded as a form; body parameters make a JSON
+//! object.
 
 use serde_json::{Map, Value, json};
 use url::Url;

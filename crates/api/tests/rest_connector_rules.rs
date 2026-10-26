@@ -132,8 +132,19 @@ async fn a_change_is_checked_and_the_key_never_follows_the_api_elsewhere() {
     // The removed operation's policy went with it; the other one stays.
     let policies = instance["toolPolicies"].as_object().unwrap();
     assert!(policies.contains_key(READ) && !policies.contains_key(CREATE));
-    // A read whose method or path changes is no longer the read mapped.
-    let mut deleting = json!([operations()[0]]);
+    // A read whose parameters change is no longer the read mapped.
+    let mut filtered = json!([operations()[0]]);
+    filtered[0]["parameters"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({ "name": "status", "in": "query", "type": "string" }));
+    let saved = paul.patch(&path, json!({ "operations": filtered })).await;
+    assert_eq!(saved.status, StatusCode::OK, "{}", saved.text());
+    assert_eq!(listed(&paul, &id).await["toolPolicies"], json!({}));
+    let remapped = json!({ "toolPolicies": { READ: read } });
+    assert_eq!(paul.patch(&path, remapped).await.status, StatusCode::OK);
+    // Nor one whose method or path changes.
+    let mut deleting = filtered.clone();
     deleting[0]["method"] = json!("DELETE");
     let saved = paul.patch(&path, json!({ "operations": deleting })).await;
     assert_eq!(saved.status, StatusCode::OK, "{}", saved.text());

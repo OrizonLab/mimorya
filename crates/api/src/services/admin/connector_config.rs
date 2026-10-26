@@ -62,8 +62,8 @@ impl Editable {
     }
 
     /// The tools of a REST API whose operation these operations remove or
-    /// change in method or path: what a policy allowed of them no longer
-    /// holds (a read become a deletion).
+    /// change in method, path or parameters: what a policy allowed of them
+    /// no longer holds (a read become a deletion, a filter become a write).
     pub fn redeclared(&self, operations: &[rest::RestOperation]) -> Vec<String> {
         let Self::Rest(config) = self else {
             return Vec::new();
@@ -76,6 +76,7 @@ impl Editable {
                     after.name == before.name
                         && after.method == before.method
                         && after.path == before.path
+                        && after.parameters == before.parameters
                 })
             })
             .map(|before| rest::rest_tool_name(&config.prefix, &before.name))

@@ -5699,3 +5699,40 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
       déclaration, la politique d'une opération retirée ou changée de méthode partie
       avec elle, un serveur MCP sans opérations, les adresses d'une plateforme
       publique, une déclaration devenue illisible supprimée plutôt que modifiée.
+
+## ADR-113 — Écran des API REST (connecteurs, cinquième lot ; complète ADR-112)
+
+- **Date** : 2026-10-26 · **Statut** : acceptée
+- **Contexte** : l'ADR-112 permet de décrire une API REST par l'API d'administration
+  seulement : l'écran « Connecteurs » l'affichait comme un connecteur sans détail, et son
+  test, qui n'appelle pas l'API, se lisait comme une connexion réussie.
+- **Décision** :
+  - dans « Administration › Connecteurs », « Ajouter une API REST » ouvre un formulaire :
+    nom, préfixe (définitif), adresse, en-tête du jeton (vide : `Authorization: Bearer`),
+    jeton (jamais réaffiché ; laissé vide à la modification, il est conservé), puis les
+    opérations. Chaque opération (nom, intitulé, méthode, chemin, description lue par le
+    modèle) a ses paramètres (nom, emplacement : chemin, requête ou corps JSON, type,
+    requis, description) ; un paramètre de chemin est toujours requis. Le formulaire
+    rappelle le nom de l'outil (`rest_<préfixe>_<opération>`). La plateforme vérifie la
+    déclaration entière et dit ce qu'elle refuse, que le formulaire montre tel quel ;
+  - la carte d'une API montre son adresse, le préfixe de ses outils, le nombre
+    d'opérations et l'en-tête où va le jeton. Son bouton de test s'intitule « Vérifier
+    la déclaration » ; réussi, il dit « Déclaration vérifiée : n outil(s). L'API n'est
+    pas appelée ; le premier appel d'un run dira si elle répond », et l'état de la carte
+    se lit « Déclaration vérifiée » plutôt qu'« Opérationnel ». Elle se modifie et se
+    supprime comme un serveur MCP ajouté ici ;
+  - les règles des outils d'une API se règlent comme celles d'un serveur MCP (risque,
+    permissions, activation), sans description à remplacer : celle d'une opération se
+    change dans sa déclaration ;
+  - la politique d'une opération part aussi quand ses paramètres changent, et non
+    seulement sa méthode ou son chemin (ADR-112) : une lecture filtrée associée sans
+    validation ne devient pas, par un paramètre ajouté, une autre action sans
+    validation.
+- **Conséquences** :
+  - restent : l'import d'une description OpenAPI pour préremplir les opérations, l'e-mail
+    et les agendas ;
+  - tests : `apps/web/e2e/rest-connectors.spec.ts` (une API décrite avec sa clé et deux
+    opérations, un chemin qui remonterait refusé et dit, la déclaration vérifiée, une
+    lecture associée, l'API modifiée puis supprimée, chaque étape relue dans l'API, la clé
+    jamais listée) ; `crates/api/tests/rest_connector_rules.rs` (la politique d'une
+    opération dont les paramètres changent retirée).
