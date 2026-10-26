@@ -11,6 +11,7 @@ mod conversations;
 mod documents;
 mod errors;
 mod health;
+mod inbound_hooks;
 mod links;
 mod memory;
 mod missions;
@@ -37,6 +38,10 @@ pub use documents::{
 };
 pub use errors::{ErrorBody, ErrorDetail, ErrorKind};
 pub use health::Health;
+pub use inbound_hooks::{
+    DeliveryOutcome, InboundHook, InboundHookList, InboundHookToken, InboundHookUpdate,
+    LastDelivery, NewInboundHook, hook_path,
+};
 pub use links::{InvitationDetails, LinkPassword, LinkToken, ResetDetails, ResetLinkRequest};
 pub use memory::{
     ManualMemory, ManualMemoryKind, MemoryItem, MemoryKind, MemoryList, MemoryReview, MemoryScope,
@@ -87,6 +92,8 @@ pub fn typescript() -> String {
     declarations.add::<RunStreamEvent>();
     declarations.add::<MemoryList>();
     declarations.add::<ScheduledTaskList>();
+    declarations.add::<InboundHookList>();
+    declarations.add::<InboundHookToken>();
     declarations.add::<MissionList>();
     declarations.add::<DocumentList>();
     declarations.add::<DocumentItem>();
@@ -153,6 +160,8 @@ macro_rules! request_bodies {
             Absence,
             NewScheduledTask,
             ScheduledTaskUpdate,
+            NewInboundHook,
+            InboundHookUpdate,
             NewMission,
             ManualMemory,
             MemoryReview,

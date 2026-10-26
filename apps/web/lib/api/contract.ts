@@ -373,6 +373,8 @@ export type Delegation = { absent: ApprovalPerson, delegate: ApprovalPerson, sta
  */
 declaredBy: ApprovalPerson | null, };
 
+export type DeliveryOutcome = "started" | "limited" | "refused" | "failed";
+
 /**
  * `GET /admin/users`.
  */
@@ -701,6 +703,57 @@ samlEntityId: string, samlAcsUrl: string, providers: Array<IdentityProviderView>
  */
 domains: Array<DomainProofView>, };
 
+export type InboundHook = { id: string, title: string,
+/**
+ * Sent as the author's, followed by what was posted.
+ */
+instruction: string,
+/**
+ * Paused when `false`: a delivery answers as to an unknown hook.
+ */
+enabled: boolean,
+/**
+ * Where a system posts, under the API (`/api` from outside).
+ */
+path: string, lastDelivery: LastDelivery | null,
+/**
+ * Where the last run a delivery started is, while that conversation
+ * exists.
+ */
+lastConversationId: string | null, };
+
+/**
+ * `GET /inbound-hooks`: the reader's own, oldest first.
+ */
+export type InboundHookList = { hooks: Array<InboundHook>,
+/**
+ * How many one may keep.
+ */
+maxHooks: number,
+/**
+ * Deliveries a hook takes in an hour.
+ */
+maxPerHour: number,
+/**
+ * What a delivery may post, at most.
+ */
+maxBodyBytes: number, };
+
+/**
+ * `POST /inbound-hooks` and `POST /inbound-hooks/{id}/token`: the token,
+ * shown this once.
+ */
+export type InboundHookToken = { id: string, path: string,
+/**
+ * Sent by the system as `Authorization: Bearer <token>`.
+ */
+token: string, };
+
+/**
+ * Body of `PATCH /inbound-hooks/{id}`: what changes; the rest stays.
+ */
+export type InboundHookUpdate = { title?: string, instruction?: string, enabled?: boolean, };
+
 /**
  * `POST /auth/invitation`: who the invitation is for.
  */
@@ -721,6 +774,15 @@ export type IssuedInvitation = { expiresAt: string, emailed: boolean,
 link: string | null,
 /**
  * Why no e-mail went out.
+ */
+problem: string | null, };
+
+/**
+ * What became of the last delivery.
+ */
+export type LastDelivery = { at: string, outcome: DeliveryOutcome,
+/**
+ * Why it did not run, as the platform says it.
  */
 problem: string | null, };
 
@@ -1079,6 +1141,15 @@ required?: boolean,
  * Absent: no account created (ADR-067).
  */
 createAccounts?: boolean, };
+
+/**
+ * Body of `POST /inbound-hooks`.
+ */
+export type NewInboundHook = { title: string, instruction: string,
+/**
+ * Paused from the start when `false`; receives by default.
+ */
+enabled?: boolean, };
 
 /**
  * Body of `POST /conversations/{id}/messages`.

@@ -23,6 +23,7 @@ fn new_run() -> NewRun {
         budget: json!({}),
         request_message_id: None,
         mission_id: None,
+        channel: "web",
     }
 }
 

@@ -3310,7 +3310,9 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     avec la tâche) : il ne l'a pas lancé lui-même à cette heure. Rien n'est ouvert si
     aucun modèle n'est disponible, si son entreprise est suspendue ou s'il n'a plus le
     droit d'utiliser l'agent ; une conversation dont le run ne démarrerait pas tout de même
-    est archivée (l'application n'en supprime aucune) ;
+    est archivée (l'application n'en supprime aucune) (remplacé par ADR-109 : la
+    conversation s'ouvre dans la transaction du tour, un run qui ne démarre pas n'en
+    laisse aucune) ;
   - une occurrence ne part pas :
     - si le dernier run qu'une occurrence a lancé est encore en cours ou attend une
       validation, quel que soit le nombre d'occurrences retenues depuis ;
@@ -5344,3 +5346,119 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     modèle de contrôle échoue, la réponse reste non jugée si les deux échouent),
     `crates/api/tests/admin_llm.rs`, `crates/api/tests/company_model_runs.rs` (chaque
     entreprise n'est jugée que par le sien), `apps/web/e2e/review-model.spec.ts`.
+
+## ADR-109 — Déclencheurs : une demande à l'agent quand un autre système envoie des données (premier lot : l'API)
+
+- **Date** : 2026-10-26 · **Statut** : acceptée (connecteurs, lot 1)
+- **Contexte** : l'agent travaillait quand on lui écrivait, à heure fixe (ADR-080) ou
+  pour une mission (ADR-089), jamais sur un événement d'un autre système (une panne
+  signalée par la supervision, un formulaire reçu, un ticket créé). C'est le premier lot
+  du chantier « connecteurs » de la phase 2, le plus autonome : il réutilise le lancement
+  des tâches planifiées, sans infrastructure nouvelle.
+- **Décision** :
+  - **chacun écrit ses déclencheurs** (`GET`, `POST /inbound-hooks`, `PATCH`, `DELETE
+/inbound-hooks/{id}`) : un intitulé (une ligne, 120 caractères au plus) et la demande
+    envoyée comme la sienne (4 000 au plus), avec les règles de texte des tâches
+    planifiées (`checked_request`, caractères cachés retirés). Dix au plus par personne.
+    Un déclencheur se met en pause et reprend ; ses changements sont tracés
+    (`inbound_hook.created`, `updated`, `token_replaced`, `deleted`), jamais le texte de
+    la demande ni le jeton ;
+  - ce sont ses ressources : celles d'un autre répondent comme absentes (404). Créer,
+    reprendre un déclencheur ou en renouveler le jeton demande le droit d'utiliser
+    l'agent (`agent:use`) ; le mettre en pause ou le supprimer, non ;
+  - **un jeton secret par déclencheur** (`mhk_` suivi de 256 bits aléatoires), rendu une
+    seule fois, à la création ou au renouvellement (`POST /inbound-hooks/{id}/token`,
+    l'ancien cesse aussitôt de servir). Seule son empreinte SHA-256 est gardée
+    (`inbound_hooks.token_hash`), jamais dans les journaux ni l'audit ;
+  - **l'autre système envoie** `POST /api/hooks/{id}` avec `Authorization: Bearer
+<jeton>`, avant toute session :
+    - l'entreprise se trouve par la fonction minimale `auth_inbound_hook_tenant`
+      (déclencheur, empreinte du jeton → entreprise), puis la ligne est verrouillée dans
+      l'entreprise ;
+    - un déclencheur inconnu, un jeton faux ou absent et un déclencheur en pause
+      répondent de même (404, « Déclencheur introuvable ») : rien n'est gardé ni tracé
+      pour lui ;
+    - le corps est du texte UTF-8 de 16 Kio au plus (413, 415 sinon) ;
+    - trente envois par heure au plus et par déclencheur (fenêtre fixe d'une heure) ;
+      au-delà, 429 avec `Retry-After` jusqu'à la fin de l'heure. Le premier refus de
+      l'heure est gardé et tracé, les suivants n'écrivent rien : un expéditeur qui insiste
+      ne remplit pas l'audit ;
+    - accepté, il répond 202, sans rien nommer ;
+  - c'est la **seconde exception** à l'en-tête anti-CSRF et au contrôle d'origine (après
+    la réception SAML, ADR-068). Aucune session ni cookie n'autorise cette requête : le
+    jeton seul le fait, qu'un site tiers ne peut pas joindre. Le chemin est comparé en
+    entier, l'identifiant sous sa forme canonique (minuscules, avec tirets) : toute autre
+    écriture (`/hooks/{id}/`, majuscules, sans tirets, `/hooks/{id}/token`…) exige
+    l'en-tête comme le reste. Des tests tentent de la contourner ;
+  - **la demande part comme celle de son auteur**, dans une conversation nouvelle à lui
+    (intitulée comme le déclencheur), avec ses droits tels qu'ils sont alors, comme une
+    tâche planifiée : rien n'est ouvert si son compte est désactivé, s'il doit remplacer
+    un mot de passe provisoire, s'il a perdu `agent:use`, si son entreprise est
+    suspendue ou sans modèle. L'expéditeur reçoit 409 ou 503, d'un message qui n'en dit
+    pas plus : la raison, qui parle du compte de l'auteur ou de son entreprise, est
+    gardée pour l'auteur seul. La conversation s'ouvre dans la transaction du tour
+    (`RunService::start_for`, partagé avec les tâches planifiées) : un run qui ne démarre
+    pas n'en laisse aucune ;
+  - le tour envoyé fait au plus 4 000 caractères de demande et 16 Kio de données.
+    L'auteur peut répondre ensuite dans la conversation : ses tours sont les siens (canal
+    `web`, autonomie de l'entreprise), les données reçues y restant comme un résultat
+    d'outil, encadrées ;
+  - **les données reçues sont des données, jamais des consignes** : elles suivent la
+    demande, encadrées comme un résultat d'outil non fiable (`<donnees_outil
+source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système donne
+    déjà), sans pouvoir ouvrir ni fermer une enveloppe ;
+  - **un run lancé par un déclencheur n'agit jamais seul** : son autonomie est plafonnée
+    à « exécution avec validation », même si l'entreprise laisse ses runs agir seuls.
+    Ce qu'il écrirait sur la foi de données venues d'ailleurs attend la validation de
+    l'auteur ;
+  - **ni ne retient rien seul** : le run porte son canal (`agent_runs.channel = 'hook'`,
+    `web` sinon), relu quand il reprend après une validation ou un arrêt du service, et
+    transmis à ses sous-agents. Sur ce canal, `memory_remember` n'écrit pas directement,
+    même dans la mémoire personnelle (`can_write_memory` le refuse) : c'est une
+    proposition que l'auteur garde ou non, comme une leçon (ADR-076). Sans cela, un
+    brouillon, qui n'attend aucune validation, laisserait les données reçues s'installer
+    dans sa mémoire et guider ses runs suivants. Les politiques d'accès lisent ce canal
+    (`context.channel`) : une entreprise peut retirer à ces runs ce qu'elle veut ;
+  - ce qu'est devenu le dernier envoi est gardé pour l'auteur (lancé, limité, refusé ou
+    échoué, et pourquoi en français), avec la conversation du dernier run lancé. Il est
+    tracé (`inbound_hook.received` avec le run, `inbound_hook.not_run` avec l'issue ;
+    acteur système, au nom de l'auteur). Le démarrage du run l'est comme celui d'une
+    tâche planifiée (`agent.run.started`, avec `inboundHookId`).
+- **Alternatives écartées** :
+  - une signature HMAC du corps : plus exigeante pour les systèmes qui envoient (beaucoup
+    ne savent qu'ajouter un en-tête fixe) ; sous TLS, le jeton suffit à authentifier
+    l'envoi ;
+  - le jeton dans l'adresse : il finirait dans les journaux des intermédiaires ;
+  - des déclencheurs de l'entreprise, écrits par l'administration : un run agit au nom
+    d'une personne, avec ses droits ; c'est elle qui choisit ce qu'elle demande ;
+  - un seul run à la fois par déclencheur, comme une tâche planifiée : des événements
+    distincts se perdraient ; la limite horaire borne le coût ;
+  - garder les données reçues à part : elles sont dans la conversation, seul endroit où
+    l'auteur les lit ;
+  - déduire le canal de la demande du message qui a ouvert le run : il faudrait le relire
+    à chaque reprise ; la colonne le garde avec le run ;
+  - dire à l'expéditeur pourquoi rien n'est lancé : quiconque tient le jeton apprendrait
+    l'état du compte de l'auteur.
+- **Conséquences** :
+  - donnée personnelle nouvelle : le déclencheur et le texte de sa demande, gardés tant
+    que son auteur le garde, supprimés avec lui ou avec son compte, lisibles en entier
+    par lui (`GET /inbound-hooks`), à joindre à l'export de ses données ; les données
+    reçues sont des messages de ses conversations, avec leur rétention ;
+  - restent à faire : l'écran des déclencheurs (lot 2) ; l'avis par e-mail à l'auteur
+    quand le run d'un déclencheur attend sa validation (comme ADR-082) ; les autres
+    connecteurs du chantier (e-mail, agendas, REST générique) ;
+  - tests : `crates/api/tests/inbound_hooks.rs` (écrits, changés, mis en pause, jeton
+    montré une fois et gardé en empreinte, renouvelé, supprimés ; ceux d'un autre absents ;
+    dix au plus ; `agent:use` pour créer, reprendre, renouveler, pas pour arrêter ;
+    l'audit sans la demande ni le jeton), `crates/api/tests/inbound_hook_deliveries.rs`
+    (envoi lançant un run de l'auteur avec les données encadrées, autonomie plafonnée,
+    rien de reçu dans l'audit ; mémoire personnelle proposée, canal `hook` ; inconnu,
+    jeton faux ou absent, en pause ou jeton d'un autre déclencheur répondant de même ;
+    corps borné et en UTF-8 ; seul le chemin exact d'un envoi se passe de l'en-tête,
+    pas même encodé), `crates/api/tests/inbound_hook_refusals.rs` (trente par heure puis
+    429 et `Retry-After`, le refus gardé et tracé une fois ; auteur désactivé, à mot de
+    passe provisoire, sans `agent:use`, entreprise suspendue : 409 sans la raison,
+    gardée pour l'auteur, rien d'ouvert ; sans modèle ou run impossible à enregistrer :
+    503, aucune conversation), `crates/core/tests/memory.rs` (rien d'écrit directement
+    sur le canal `hook`), `crates/api/src/plugins/csrf.rs` et `services/inbound_hooks/`
+    (tests unitaires), `crates/api/tests/first_login.rs` (liste des routes).

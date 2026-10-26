@@ -89,6 +89,8 @@ pub struct RunRow {
     pub parent_run_id: Option<Uuid>,
     /// `main`, or a sub-agent's profile (ADR-098).
     pub agent_profile: String,
+    /// `web`, or `hook` when another system started it (ADR-109).
+    pub channel: String,
 }
 
 impl RunRow {
@@ -101,7 +103,7 @@ impl RunRow {
 pub(super) const RUN_COLUMNS: &str = "id, tenant_id, conversation_id, initiated_by_user_id, on_behalf_of_user_id, \
     status, objective, success_criteria, autonomy_level, budget, usage, state, result, verification, \
     error, started_at, finished_at, created_at, updated_at, checkpoint_seq, request_message_id, \
-    mission_id, parent_run_id, agent_profile";
+    mission_id, parent_run_id, agent_profile, channel";
 
 #[derive(Debug, Clone)]
 pub struct NewRun {
@@ -117,6 +119,9 @@ pub struct NewRun {
     pub request_message_id: Option<Uuid>,
     /// The mission it is a stage of, if any (ADR-089).
     pub mission_id: Option<Uuid>,
+    /// `WEB_CHANNEL`, or `HOOK_CHANNEL` when another system starts it
+    /// (ADR-109).
+    pub channel: &'static str,
 }
 
 /// Creates a run in the `running` state.
@@ -124,7 +129,8 @@ pub async fn create_run(conn: &mut PgConnection, input: NewRun) -> sqlx::Result<
     sqlx::query_as(&format!(
         "insert into agent_runs (tenant_id, conversation_id, initiated_by_user_id, on_behalf_of_user_id, \
          objective, success_criteria, autonomy_level, budget, request_message_id, mission_id, \
-         status, started_at) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'running', now()) \
+         channel, status, started_at) \
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'running', now()) \
          returning {RUN_COLUMNS}"
     ))
     .bind(input.tenant_id)
@@ -137,6 +143,7 @@ pub async fn create_run(conn: &mut PgConnection, input: NewRun) -> sqlx::Result<
     .bind(&input.budget)
     .bind(input.request_message_id)
     .bind(input.mission_id)
+    .bind(input.channel)
     .fetch_one(conn)
     .await
 }

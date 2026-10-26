@@ -95,6 +95,12 @@ impl ActorType {
     }
 }
 
+/// The channel of a run its author started from the application.
+pub const WEB_CHANNEL: &str = "web";
+/// The channel of a run another system started through its author's inbound
+/// hook (ADR-109): nobody watches it, and it was sent untrusted data.
+pub const HOOK_CHANNEL: &str = "hook";
+
 /// Who is performing the action: the user directly, or an agent on their behalf.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Actor {
@@ -128,6 +134,11 @@ impl Actor {
     pub fn with_channel(mut self, channel: impl Into<String>) -> Self {
         self.channel = Some(channel.into());
         self
+    }
+
+    /// Whether the actor is a run another system started (ADR-109).
+    pub fn started_by_hook(&self) -> bool {
+        self.channel.as_deref() == Some(HOOK_CHANNEL)
     }
 
     pub fn restricted_to<I: IntoIterator<Item = S>, S: Into<String>>(

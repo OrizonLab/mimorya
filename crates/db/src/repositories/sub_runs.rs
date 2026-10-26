@@ -28,10 +28,10 @@ pub async fn create_sub_run(
 ) -> sqlx::Result<Option<RunRow>> {
     sqlx::query_as(&format!(
         "insert into agent_runs (tenant_id, parent_run_id, agent_profile, initiated_by_user_id, \
-         on_behalf_of_user_id, objective, autonomy_level, allowed_permissions, budget, status, \
-         started_at) \
+         on_behalf_of_user_id, objective, autonomy_level, allowed_permissions, budget, channel, \
+         status, started_at) \
          select parent.tenant_id, parent.id, $2, parent.initiated_by_user_id, \
-         parent.on_behalf_of_user_id, $3, 'read_only', $4, $5, 'running', now() \
+         parent.on_behalf_of_user_id, $3, 'read_only', $4, $5, parent.channel, 'running', now() \
          from agent_runs parent where parent.id = $1 \
          returning {RUN_COLUMNS}"
     ))

@@ -62,6 +62,7 @@ pub async fn leave(app: &App) -> anyhow::Result<()> {
             budget: serde_json::to_value(DEFAULT_BUDGET)?,
             request_message_id: Some(request.id),
             mission_id: None,
+            channel: "web",
         },
     )
     .await?;

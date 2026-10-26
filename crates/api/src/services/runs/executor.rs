@@ -142,7 +142,8 @@ impl RunExecutor {
         mode: ExecutionMode,
         fence: &LeaseFence,
     ) -> anyhow::Result<()> {
-        let actor = Actor::agent(Some(run.id)).with_channel("web");
+        // A hook's run stays one when it resumes (ADR-109).
+        let actor = Actor::agent(Some(run.id)).with_channel(run.channel.clone());
         let (runtime, unavailable_connectors) = self
             .runtime_for(access, run, ports, actor.clone(), fence)
             .await?;

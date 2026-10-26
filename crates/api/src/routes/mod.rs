@@ -1,7 +1,8 @@
 //! HTTP routes, one module per resource. Every route resolves the caller with
 //! `Auth`, builds the authorization context server-side and checks the
 //! permission or the ownership of the resource before answering. Exceptions:
-//! login, invitation and password reset links and health need no identity;
+//! login, invitation and password reset links and health need no identity,
+//! nor a delivery to an inbound hook, proved by its token (ADR-109);
 //! logout takes `MaybeAuth`; `/auth/me`
 //! and `/account/password` take `AuthPendingPasswordChange`, so that an
 //! account holding a temporary password can replace it.
@@ -14,6 +15,8 @@ mod auth;
 mod conversations;
 mod documents;
 mod health;
+mod hooks;
+mod inbound_hooks;
 mod invitations;
 mod memory;
 mod missions;
@@ -30,6 +33,7 @@ use mimorya_core::DomainError;
 use crate::app::AppState;
 use crate::http::ApiError;
 
+pub use hooks::DELIVERY_PREFIX as HOOK_DELIVERY_PREFIX;
 pub use saml::ACS_ROUTE as SAML_ACS_ROUTE;
 
 pub fn router(state: &AppState) -> Router<AppState> {
@@ -49,6 +53,8 @@ pub fn router(state: &AppState) -> Router<AppState> {
         .merge(memory::routes())
         .merge(documents::routes())
         .merge(scheduled_tasks::routes())
+        .merge(inbound_hooks::routes())
+        .merge(hooks::routes())
         .merge(missions::routes())
         .merge(admin::routes(state))
         .fallback(not_found)

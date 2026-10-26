@@ -75,7 +75,7 @@ Repères à l'intérieur des crates :
   par outil), `connectors/src/mcp/`, `connectors/src/bin/mcp_demo_docs.rs`.
 - `api/src/plugins/` (contexte de requête, limitation de débit (globale par processus ;
   d'authentification partagée par PostgreSQL, `shared_limit.rs`, ADR-088), CSRF (sauf la réception
-  des réponses SAML, ADR-068), session,
+  des réponses SAML, ADR-068, et l'envoi à un déclencheur, ADR-109), session,
   en-têtes de sécurité, audit des modifications d'administration refusées, sur une ressource introuvable ou envoyant un identifiant inconnu,
   maintenance périodique : runs bloqués, liens expirés, absences terminées, demandes de
   validation échues et relances avant échéance, ADR-061, ADR-062 ; indexation de la
@@ -107,7 +107,8 @@ Repères à l'intérieur des crates :
   `mimorya-extract`, `api/src/bin/extract.rs`, bornée en nombre, en temps et en taille,
   `extractor.rs` ; dépôt sous le quota de l'entreprise, `deposit.rs` ; liste,
   téléchargement et suppression, `library.rs`, ADR-095),
-  `api/src/services/runs/` (tour de conversation, décisions, contexte, exécution,
+  `api/src/services/runs/` (tour de conversation, dont celui envoyé pour quelqu'un dans une
+  conversation nouvelle, ouverte avec lui (`turn_start.rs`, ADR-109), décisions, contexte, exécution,
   ports PostgreSQL (lectures de la mémoire et des documents, partagées avec les
   évaluations : `reads.rs` ; documents : `document_ports.rs`, ADR-096 ; runs des sous-agents,
   sous le bail de leur parent : `sub_runs.rs`, ADR-098), résultat, reprise des runs dont l'exécuteur s'est arrêté et ce
@@ -119,7 +120,9 @@ Repères à l'intérieur des crates :
   (`lesson_capture.rs`, ADR-076), bail de l'exécuteur sur chaque run (`leases.rs`,
   ADR-083) et garde d'écriture d'une exécution qui l'a perdu (`fence.rs`, ADR-086), file d'attente des runs d'un processus `api` (`queue.rs`, ADR-085)),
   `api/src/services/scheduled_tasks/` (tâches planifiées : ce qu'elles demandent, celles
-  de chacun, leur lancement, ADR-080), `api/src/services/missions/` (missions longues :
+  de chacun, leur lancement, ADR-080), `api/src/services/inbound_hooks/` (déclencheurs :
+  ceux de chacun et leur jeton (`hooks.rs`), l'envoi d'un autre système, borné, encadré
+  et lancé au nom de l'auteur (`delivery.rs`), reçu par `routes/hooks.rs`, ADR-109), `api/src/services/missions/` (missions longues :
   ce qu'on confie, ses limites (`limits.rs`, celles de la plateforme ou de
   l'entreprise, ADR-093), étapes enchaînées à la fin de chacune, dans la
   transaction de son issue, arrêt par son auteur, ADR-089 ; son auteur prévenu de sa fin
@@ -285,12 +288,15 @@ Avant chaque commit : `pnpm check && pnpm test:int` doivent passer.
    `access.context()` et vérifie la permission (`require`) ou la propriété de la
    ressource côté serveur ; une ressource hors périmètre répond 404. Les requêtes
    modifiantes exigent l'en-tête `X-Mimorya-Request: 1` et, si le navigateur la donne,
-   l'origine de l'application. Une seule en est dispensée, de l'un comme de l'autre : la
+   l'origine de l'application. Deux en sont dispensées, de l'un comme de l'autre : la
    réception des réponses SAML (`POST /api/auth/saml/acs`, ADR-068), que le fournisseur
-   poste depuis son propre site. Seules la lient au navigateur la tentative scellée dans
-   son cookie, la demande qu'elle attend et la signature de l'assertion. Aucune autre
-   exception sans ADR ; le test `only_the_saml_reception_goes_without_the_header`
-   (`crates/api/tests/auth.rs`) tente de la contourner.
+   poste depuis son propre site, seules la liant au navigateur la tentative scellée dans
+   son cookie, la demande qu'elle attend et la signature de l'assertion ; et l'envoi d'un
+   autre système à un déclencheur (`POST /api/hooks/{id}`, chemin exact, ADR-109),
+   qu'aucune session n'autorise : son jeton seul le fait. Aucune autre exception sans
+   ADR ; les tests `only_the_saml_reception_goes_without_the_header`
+   (`crates/api/tests/auth.rs`) et `only_a_delivery_goes_without_the_header`
+   (`crates/api/tests/inbound_hook_deliveries.rs`) tentent de les contourner.
 
 ## Règles de sécurité (non négociables)
 

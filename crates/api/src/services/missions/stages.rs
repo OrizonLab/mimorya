@@ -8,6 +8,7 @@
 //! it, failed. A mission stopped meanwhile is left as it is.
 
 use mimorya_agent::runtime::{BudgetLimits, MISSION_STAGE_BUDGET, RunEvent, RunOutcome};
+use mimorya_core::authz::WEB_CHANNEL;
 use mimorya_core::autonomy::AutonomyLevel;
 use mimorya_core::tools::Citation;
 use mimorya_db::TenantTx;
@@ -122,6 +123,7 @@ pub async fn open_stage(
             budget: serde_json::to_value(stage_budget(&limits, spent))?,
             request_message_id: Some(request.id),
             mission_id: Some(mission.id),
+            channel: WEB_CHANNEL,
         },
     )
     .await?;
