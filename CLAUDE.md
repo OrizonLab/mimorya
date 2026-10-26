@@ -152,7 +152,7 @@ Repères à l'intérieur des crates :
   ADR-077, ADR-093, `admin/users/` :
   comptes, dont l'absence d'un collaborateur empêché, ADR-079, et `admin/skills/` :
   compétences, propositions de l'agent, ADR-101, cas d'évaluation et évaluations,
-  ADR-105 —, approvals — dont la
+  ADR-105, critères de qualité, ADR-107 —, approvals — dont la
   section « Absence » et son formulaire, commun, ADR-073 —, chat, documents — dépôt, liste
   et téléchargement, ADR-097 —, memory, missions —
   missions longues, ADR-090 —, operations — dont les sous-agents d'une demande, ADR-099 —,

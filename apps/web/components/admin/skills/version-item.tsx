@@ -5,9 +5,9 @@ import { SKILL_VERSION_STATUS } from '@/lib/labels';
 
 /**
  * One version of a skill: who wrote it (or for whom the agent proposed it,
- * ADR-100), its note and its content, unfolded while it awaits a decision;
- * made active here, or, a proposal awaiting a decision, turned down
- * (ADR-101).
+ * ADR-100), its note, the quality criteria its answers are reviewed on
+ * (ADR-106) and its content, unfolded while it awaits a decision; made
+ * active here, or, a proposal awaiting a decision, turned down (ADR-101).
  */
 export function VersionItem({
   version,
@@ -57,6 +57,21 @@ export function VersionItem({
       {version.changelog && <p className="mt-1 text-xs text-muted">{version.changelog}</p>}
       {version.proposedDescription && (
         <p className="mt-1 text-xs">Description proposée : {version.proposedDescription}</p>
+      )}
+      {version.qualityCriteria.length > 0 && (
+        <div className="mt-2 text-xs">
+          <p className="text-muted">
+            {/* The agent writes none: a proposal keeps those of the version then active. */}
+            {version.proposed
+              ? 'Critères de qualité de la réponse, repris de la version alors active :'
+              : 'Critères de qualité de la réponse :'}
+          </p>
+          <ul className="mt-1 list-disc pl-5">
+            {version.qualityCriteria.map((criterion, index) => (
+              <li key={`${index} ${criterion}`}>{criterion}</li>
+            ))}
+          </ul>
+        </div>
       )}
       <details className="mt-2" open={version.status === 'candidate'}>
         <summary className="cursor-pointer text-xs text-muted">Contenu</summary>
