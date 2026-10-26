@@ -2,8 +2,9 @@
 //! with its own key, shown, tested and removed by an administrator of its
 //! settings, on the whole company only; it judges the answers of the
 //! company's runs and evaluations in place of their model. While it cannot
-//! be used, or when a call to it fails, their model reviews; the keys of the
-//! two never pass from one to the other.
+//! be used, or when a call to it fails in a run, their model reviews; an
+//! evaluation keeps it as its one judge. The keys of the two never pass from
+//! one to the other.
 
 mod support;
 
@@ -16,7 +17,7 @@ use support::accounts::{activate, create_partial_admin};
 use support::llm::{API_KEY, MASTER_KEY, OTHER_MASTER_KEY, REVIEW_MODEL};
 use support::refusals::{entries_since, latest_entry};
 use support::runs::start_run;
-use support::skill_evaluations::{evaluations, forget, launched, play, write_case};
+use support::skill_evaluations::{detail, forget, launched, play, write_case};
 use support::{Client, TestApi};
 use uuid::Uuid;
 
@@ -189,22 +190,28 @@ async fn an_evaluation_is_judged_by_the_review_model() {
             ScriptedStep::text(answer),
         ]);
     }
-    // Failing on version 2, the review model leaves it to the runs' model.
-    script.insert(2, verdict(true, &[]));
     api.script(script);
+    // Failing on version 2, the review model stays the one judge: that case is
+    // not judged rather than judged by another model than the reference's.
     api.review_model.push([
         ScriptedStep::fails("Modèle inconnu chez ce fournisseur."),
         verdict(true, &[]),
     ]);
     // Version 2, then the active one beside it.
-    launched(&paul, skill, 2).await;
+    let id = launched(&paul, skill, 2).await;
     play(&api).await;
 
-    assert_eq!(judged_by(api.model.as_ref().unwrap()), (1, 4));
+    assert_eq!(judged_by(api.model.as_ref().unwrap()), (0, 4));
     assert_eq!(judged_by(&api.review_model), (2, 0));
-    let evaluation = &evaluations(&paul, skill).await[0];
-    assert_eq!(evaluation["passed"], 1, "{evaluation}");
-    assert_eq!(evaluation["referencePassed"], 1, "{evaluation}");
+    let read = detail(&paul, &id).await.json();
+    let case = &read["cases"][0];
+    assert_eq!(case["result"]["outcome"], "error", "{read}");
+    assert_eq!(
+        case["result"]["error"],
+        "Le contrôle de la réponse a échoué."
+    );
+    assert_eq!(case["reference"]["outcome"], "passed", "{read}");
+    assert_eq!(read["evaluation"]["regressions"], 1, "{read}");
     assert!(first_text(&api.review_model).contains("Cite chaque retard."));
     forget(&api, skill).await;
     paul.delete(REVIEW).await;

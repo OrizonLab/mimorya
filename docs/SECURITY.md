@@ -386,7 +386,7 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   part (`verification.api_key`), qui ne sert jamais aux conversations, ni la leur à lui.
   Choisi par l'entreprise, il reçoit la demande, les critères, les identifiants et
   libellés des sources consultées et la réponse à juger. S'il devient inutilisable, ou si
-  un appel échoue, le modèle des conversations juge à sa place : il lit déjà tout cela,
+  un appel échoue dans un run, le modèle des conversations juge à sa place : il lit déjà tout cela,
   rien ne part ailleurs.
 - Modèle d'embeddings d'une entreprise (ADR-074) : mêmes règles (clé `embedding.api_key`
   en écriture seule, liée à son fournisseur et à son adresse ; adresses locales prises

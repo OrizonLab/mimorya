@@ -92,7 +92,6 @@ fn issue_of(written: &str) -> Option<String> {
     Some(format!("{kept}…"))
 }
 
-#[derive(Clone, Copy)]
 pub struct JudgeInput<'a> {
     pub objective: &'a str,
     pub criteria: &'a [String],
