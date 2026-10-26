@@ -91,10 +91,12 @@ pub async fn open_conversation_turn(
         },
     )
     .await?;
-    // Its user's first words title a new conversation. One the platform
-    // opened keeps the title it was given (a task's, a hook's): a hook's turn
+    // A person's words title their conversation while it bears the default
+    // title. The platform's turns never do: in a conversation it opened with
+    // a task's or a hook's title, which may be that default, a hook's turn
     // carries what was posted, which must not name it, nor leave the
-    // platform with that name (ADR-111).
+    // platform with that name (ADR-111). The author's own reply there
+    // still may.
     if conversation.title == DEFAULT_CONVERSATION_TITLE && matches!(sender, TurnSender::User) {
         let title: String = text.chars().take(TITLE_LENGTH).collect();
         update_conversation(
