@@ -211,7 +211,8 @@ utilisateur).
   runs de tâches planifiées dont un arrêt du service a perdu l'avis à leur auteur, pour
   des demandes pas encore expirées : entreprise et identifiant seulement, ADR-082),
   `system_unnotified_mission_runs` (de même pour les étapes des missions en cours,
-  ADR-091), `system_unnotified_mission_ends` (lister les missions terminées depuis moins
+  ADR-091), `system_unnotified_hook_runs` (de même pour les runs lancés par l'envoi à un
+  déclencheur, canal `hook`, ADR-111), `system_unnotified_mission_ends` (lister les missions terminées depuis moins
   d'un jour dont l'auteur n'est pas encore prévenu, leur entreprise et son compte
   actifs : entreprise et identifiant seulement, chacune lue ensuite dans sa propre
   entreprise, ADR-091), `system_tenants_awaiting_embeddings` (lister les entreprises

@@ -1242,7 +1242,8 @@ export type NotificationSettings = {
  */
 approvals: boolean,
 /**
- * Their scheduled tasks' runs and missions' stages awaiting it.
+ * Their scheduled tasks' runs, missions' stages and hooks' runs
+ * awaiting it.
  */
 ownRuns: boolean,
 /**

@@ -81,6 +81,13 @@ async fn runs_a_turn_pauses_for_validation_and_resumes_after_the_decision() {
     assert_eq!(started.status, StatusCode::ACCEPTED);
     let run_id = started.json()["runId"].as_str().unwrap().to_string();
     api.idle().await;
+    // Her first words title the conversation she opened.
+    assert_eq!(
+        marc.get(&format!("/conversations/{conversation_id}"))
+            .await
+            .json()["conversation"]["title"],
+        "Propose un suivi pour les interventions en cours"
+    );
 
     let pending = marc.get("/approvals").await.json();
     let approvals = pending["approvals"].as_array().unwrap();
