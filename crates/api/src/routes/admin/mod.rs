@@ -104,6 +104,7 @@ pub fn routes(state: &AppState) -> Router<AppState> {
             patch(connectors::update).delete(connectors::remove),
         )
         .route("/admin/connectors/trial", post(connectors::trial))
+        .route("/admin/connectors/rest", post(connectors::create_rest))
         .route(
             "/admin/identity-providers",
             get(identity_providers::list).post(identity_providers::create),

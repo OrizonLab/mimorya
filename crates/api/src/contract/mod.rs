@@ -183,6 +183,7 @@ macro_rules! request_bodies {
             admin::SkillEvalCaseInput,
             admin::EvaluationRequest,
             admin::NewConnector,
+            admin::NewRestConnector,
             admin::ConnectorTrial,
             admin::ConnectorUpdate,
             admin::LlmChoice,

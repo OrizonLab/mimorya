@@ -52,6 +52,17 @@ impl Redactor {
         }))
     }
 
+    /// How long the longest spelling of the secret is, in bytes (none without
+    /// a secret): a text whose last this many bytes are dropped after it is
+    /// masked holds no part of the secret, even if it was cut where the
+    /// secret began.
+    pub fn longest(&self) -> usize {
+        self.0
+            .as_ref()
+            .and_then(|spellings| spellings.all.first())
+            .map_or(0, String::len)
+    }
+
     /// Whether the text quotes the secret.
     pub fn reveals(&self, text: &str) -> bool {
         self.0
@@ -157,6 +168,13 @@ mod tests {
         assert_eq!(Redactor::new(Some("")).text("abc"), "abc");
         assert_eq!(Redactor::new(None).value(json!("abc")), json!("abc"));
         assert_eq!(format!("{redactor:?}"), "Redactor");
+    }
+
+    #[test]
+    fn knows_how_long_the_secret_may_be_written() {
+        assert_eq!(Redactor::new(Some("ab/cd")).longest(), "ab\\u002Fcd".len());
+        assert_eq!(Redactor::new(Some("abcd")).longest(), 4);
+        assert_eq!(Redactor::default().longest(), 0);
     }
 
     #[test]

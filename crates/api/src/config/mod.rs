@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use mimorya_agent::llm::ProviderConfig;
-use mimorya_connectors::mcp::NetworkPolicy;
+use mimorya_connectors::outbound::NetworkPolicy;
 
 use crate::mail::MailSettings;
 use crate::secrets::SecretCipher;

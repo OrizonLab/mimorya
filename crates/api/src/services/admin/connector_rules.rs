@@ -1,14 +1,15 @@
-//! What an administrator may write about an MCP connector (ADR-025): a short
-//! prefix naming its tools and per-tool policies that only narrow access with
-//! business permissions an agent can hold. The address and the token follow
-//! the rules of `connectors::mcp` (`url_problem`, `token_problem`).
+//! What an administrator may write about a connector a company adds, MCP
+//! server (ADR-025) or REST API (ADR-112): a short prefix naming its tools
+//! and per-tool policies that only narrow access with business permissions
+//! an agent can hold. The address and the token follow the rules of
+//! `connectors::outbound` (`url_problem`, `token_problem`).
 
 use std::collections::{BTreeSet, HashMap};
 
 use mimorya_agent::tools::ToolOverride;
-use mimorya_connectors::mcp::{
-    CONNECTOR_USE, MAX_DECLARATIONS_BYTES, MAX_DESCRIPTION_CHARS, MAX_TOOLS, NetworkPolicy,
-    token_problem, tool_namespace, url_problem,
+use mimorya_connectors::mcp::{MAX_DECLARATIONS_BYTES, MAX_DESCRIPTION_CHARS, MAX_TOOLS};
+use mimorya_connectors::outbound::{
+    CONNECTOR_USE, NetworkPolicy, prefix_problem, token_problem, url_problem,
 };
 use mimorya_core::DomainError;
 use mimorya_core::authz::PermissionInfo;
@@ -19,6 +20,14 @@ use serde_json::Value;
 /// One policy per tool a server may declare.
 pub const MAX_TOOL_POLICIES: usize = MAX_TOOLS;
 pub const MAX_TOOL_PERMISSIONS: usize = 10;
+
+/// Which tools a connector's policies may name (`<namespace><tool>`), and
+/// whether they may replace what the model reads of them (an MCP server's
+/// only, ADR-057: a REST operation's description is in its declaration).
+pub struct PolicyScope {
+    pub namespace: String,
+    pub replaceable_descriptions: bool,
+}
 
 /// One tool's policy as an administrator writes it (read from the API's
 /// `ToolPolicyChange`).
@@ -45,26 +54,14 @@ pub fn mcp_addition_problem(
         .or_else(|| token.and_then(token_problem))
 }
 
-/// A lowercase letter then letters or digits (2 to 16): the tools are named
-/// `mcp_<prefix>_<tool>`.
-pub fn prefix_problem(prefix: &str) -> Option<String> {
-    let mut chars = prefix.chars();
-    let well_formed = chars.next().is_some_and(|c| c.is_ascii_lowercase())
-        && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
-        && (2..=16).contains(&prefix.len());
-    (!well_formed).then(|| {
-        "Préfixe invalide : une minuscule puis des minuscules ou des chiffres (2 à 16)".into()
-    })
-}
-
 /// The policies to store, or why they are refused (in French). Each names a
-/// tool of this instance (`mcp_<prefix>_…`); permissions are catalog
+/// tool of this instance (in its `scope`); permissions are catalog
 /// permissions an agent may hold, and `connector:use` is always kept; a
 /// replacement description is bounded like a server's own, and so are all of
 /// them together.
 pub fn checked_policies(
     policies: &HashMap<String, ToolPolicyInput>,
-    prefix: &str,
+    scope: &PolicyScope,
     catalog: &[PermissionInfo],
 ) -> Result<Value, DomainError> {
     if policies.len() > MAX_TOOL_POLICIES {
@@ -72,11 +69,11 @@ pub fn checked_policies(
             "{MAX_TOOL_POLICIES} outils au plus"
         )));
     }
-    let namespace = tool_namespace(prefix);
+    let namespace = &scope.namespace;
     let mut stored = HashMap::new();
     let mut described_bytes = 0;
     for (name, policy) in policies {
-        let well_formed = name.starts_with(&namespace)
+        let well_formed = name.starts_with(namespace.as_str())
             && name.len() > namespace.len()
             && name.len() <= 64
             && name
@@ -92,6 +89,11 @@ pub fn checked_policies(
             None => None,
         };
         let description = match &policy.description {
+            Some(text) if !scope.replaceable_descriptions && !text.trim().is_empty() => {
+                return Err(DomainError::validation(format!(
+                    "Description de {name} : elle se change dans la déclaration de l’opération"
+                )));
+            }
             Some(text) => checked_description(name, text)?,
             None => None,
         };
@@ -195,6 +197,13 @@ mod tests {
         },
     ];
 
+    fn docs() -> PolicyScope {
+        PolicyScope {
+            namespace: "mcp_docs_".into(),
+            replaceable_descriptions: true,
+        }
+    }
+
     fn policies(value: Value) -> HashMap<String, ToolPolicyInput> {
         let read: HashMap<String, ToolPolicyChange> = serde_json::from_value(value).unwrap();
         read.into_iter()
@@ -206,7 +215,7 @@ mod tests {
     fn keeps_connector_use_and_scopes_names_to_the_instance() {
         let stored = checked_policies(
             &policies(json!({ "mcp_docs_search": { "risk": "read", "permissions": ["intervention:read"] } })),
-            "docs",
+            &docs(),
             CATALOG,
         )
         .unwrap();
@@ -215,24 +224,36 @@ mod tests {
             json!(["connector:use", "intervention:read"])
         );
         assert_eq!(stored["mcp_docs_search"]["risk"], "read");
-        for (refused, prefix) in [
-            (json!({ "mcp_other_search": {} }), "docs"),
-            (
-                json!({ "interventions_search": { "enabled": false } }),
-                "docs",
-            ),
-            (json!({ "mcp_docs_": {} }), "docs"),
-            (
-                json!({ "mcp_docs_search": { "permissions": ["user:manage"] } }),
-                "docs",
-            ),
-            (
-                json!({ "mcp_docs_search": { "permissions": ["facture:read"] } }),
-                "docs",
-            ),
+        for refused in [
+            json!({ "mcp_other_search": {} }),
+            json!({ "interventions_search": { "enabled": false } }),
+            json!({ "mcp_docs_": {} }),
+            json!({ "mcp_docs_search": { "permissions": ["user:manage"] } }),
+            json!({ "mcp_docs_search": { "permissions": ["facture:read"] } }),
         ] {
             assert!(
-                checked_policies(&policies(refused.clone()), prefix, CATALOG).is_err(),
+                checked_policies(&policies(refused.clone()), &docs(), CATALOG).is_err(),
+                "{refused}"
+            );
+        }
+    }
+
+    #[test]
+    fn leaves_a_rest_operation_s_description_to_its_declaration() {
+        let crm = PolicyScope {
+            namespace: "rest_crm_".into(),
+            replaceable_descriptions: false,
+        };
+        let mapped = json!({ "rest_crm_get_ticket": { "risk": "read", "description": " " } });
+        let stored = checked_policies(&policies(mapped), &crm, CATALOG).unwrap();
+        assert_eq!(stored["rest_crm_get_ticket"]["risk"], "read");
+        assert_eq!(stored["rest_crm_get_ticket"]["permissions"], Value::Null);
+        for refused in [
+            json!({ "rest_crm_get_ticket": { "description": "Autre texte" } }),
+            json!({ "mcp_crm_get_ticket": {} }),
+        ] {
+            assert!(
+                checked_policies(&policies(refused.clone()), &crm, CATALOG).is_err(),
                 "{refused}"
             );
         }
@@ -243,7 +264,7 @@ mod tests {
         let described = |text: &str| {
             checked_policies(
                 &policies(json!({ "mcp_docs_search": { "description": text } })),
-                "docs",
+                &docs(),
                 CATALOG,
             )
         };
@@ -291,17 +312,9 @@ mod tests {
                     (format!("mcp_docs_tool{i}"), json!({ "description": text }))
                 })
                 .collect();
-            checked_policies(&policies(Value::Object(all)), "docs", CATALOG)
+            checked_policies(&policies(Value::Object(all)), &docs(), CATALOG)
         };
         assert!(described(100).is_ok());
         assert!(described(150).is_err());
-    }
-
-    #[test]
-    fn checks_prefixes() {
-        assert_eq!(prefix_problem("docs2"), None);
-        for refused in ["d", "Docs", "2docs", "docs_x", "abcdefghijklmnopq"] {
-            assert!(prefix_problem(refused).is_some(), "{refused}");
-        }
     }
 }

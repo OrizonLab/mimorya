@@ -2,7 +2,7 @@
 //! opened from the secret store or why it cannot be, and the recorded
 //! message of a failed start (bounded, the token masked once more).
 
-use mimorya_connectors::mcp::Redactor;
+use mimorya_connectors::outbound::Redactor;
 
 use crate::secrets::SecretRead;
 

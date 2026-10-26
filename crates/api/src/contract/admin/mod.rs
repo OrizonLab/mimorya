@@ -13,6 +13,7 @@ mod memory_settings;
 mod mission_settings;
 mod organization;
 mod policies;
+mod rest_connectors;
 mod roles;
 mod skill_eval_cases;
 mod skill_evaluations;
@@ -43,6 +44,10 @@ pub use mission_settings::{MissionSettingsUpdate, MissionSettingsView};
 pub use policies::{
     ConditionAttribute, NewPolicy, Policies, PolicyEffect, PolicyUpdate, PolicyView,
     RestrictablePermission,
+};
+pub use rest_connectors::{
+    HttpMethod, NewRestConnector, ParameterLocation, ParameterType, RestApi, RestOperation,
+    RestParameter,
 };
 
 pub use organization::{

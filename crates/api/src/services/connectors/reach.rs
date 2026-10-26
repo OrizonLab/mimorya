@@ -1,14 +1,14 @@
 //! Which unavailable connectors a run is told about (ADR-048): those whose
 //! tools its user could reach. While a connector is down its tools are
 //! unknown: reach is judged on what every tool of its type requires,
-//! `connector:use` for an MCP tool, one of the business permissions it
+//! `connector:use` for an MCP or REST tool, one of the business permissions it
 //! introduces for another type's tools. It is an approximation, broader than
 //! the tools a run would be offered (a tool may require several permissions,
 //! and the instance's policies may withhold it): a user may be told of a
 //! connector none of whose tools they would be offered.
 
 use mimorya_connectors::connector_type;
-use mimorya_connectors::mcp::CONNECTOR_USE;
+use mimorya_connectors::outbound::CONNECTOR_USE;
 
 use super::ConnectorIssue;
 
@@ -26,7 +26,7 @@ pub fn unavailable_in_reach(
 }
 
 fn in_reach(type_name: &str, holds: &impl Fn(&str) -> bool) -> bool {
-    if type_name == "mcp" {
+    if matches!(type_name, "mcp" | "rest") {
         return holds(CONNECTOR_USE);
     }
     connector_type(type_name).is_some_and(|definition| {
@@ -58,10 +58,14 @@ mod tests {
         let issues = [
             issue("mcp", "Documentation"),
             issue("demo_interventions", "Interventions"),
+            issue("rest", "Facturation"),
             issue("inconnu", "Ancien type"),
         ];
         let member = |p: &str| p == CONNECTOR_USE;
-        assert_eq!(unavailable_in_reach(&issues, member), ["Documentation"]);
+        assert_eq!(
+            unavailable_in_reach(&issues, member),
+            ["Documentation", "Facturation"]
+        );
         let planner = |p: &str| p == "planning:read";
         assert_eq!(unavailable_in_reach(&issues, planner), ["Interventions"]);
         // Broader than the tools offered: no tool requires this one alone.
@@ -71,17 +75,18 @@ mod tests {
         let both = |p: &str| p == CONNECTOR_USE || p == "intervention:read";
         assert_eq!(
             unavailable_in_reach(&issues, both),
-            ["Documentation", "Interventions"]
+            ["Documentation", "Interventions", "Facturation"]
         );
     }
 
-    /// The rule reach relies on, for every type that is not MCP: each of its
-    /// tools requires one of the permissions it introduces.
+    /// The rule reach relies on, for every type but those a company adds
+    /// (MCP, REST): each of its tools requires one of the permissions it
+    /// introduces.
     #[tokio::test]
     async fn every_tool_of_a_type_requires_a_permission_it_introduces() {
         for definition in connector_types() {
             let info = definition.info();
-            if info.connector_type == "mcp" {
+            if matches!(info.connector_type, "mcp" | "rest") {
                 continue;
             }
             let runtime = definition

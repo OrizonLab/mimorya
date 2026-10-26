@@ -8,7 +8,7 @@ use std::fmt;
 use std::pin::Pin;
 use std::time::Duration;
 
-use mimorya_connectors::mcp::{NetworkPolicy, http_client};
+use mimorya_connectors::outbound::{NetworkPolicy, http_client};
 
 use super::address::address_problem;
 use openidconnect::{AsyncHttpClient, HttpRequest, HttpResponse, http};

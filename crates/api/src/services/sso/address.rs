@@ -7,7 +7,7 @@
 
 use std::net::IpAddr;
 
-use mimorya_connectors::mcp::{NetworkPolicy, is_public_ip};
+use mimorya_connectors::outbound::{NetworkPolicy, is_public_ip};
 use url::{Host, Url};
 
 /// Why the server may not call this address (in French), if it may not.

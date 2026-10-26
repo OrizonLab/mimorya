@@ -72,7 +72,11 @@ Repères à l'intérieur des crates :
   ADR-098)),
   `agent/src/testing/` (fonctionnalité `testing`).
 - `connectors/src/demo_interventions/` (données, planning, accès, `tools/` un fichier
-  par outil), `connectors/src/mcp/`, `connectors/src/bin/mcp_demo_docs.rs`.
+  par outil), `connectors/src/mcp/`, `connectors/src/bin/mcp_demo_docs.rs`,
+  `connectors/src/outbound/` (ce que partagent les serveurs MCP et les API REST d'une
+  entreprise : réseau, préfixe, jeton, masquage, échecs, ADR-025, ADR-112),
+  `connectors/src/rest/` (API REST décrites par l'entreprise : déclaration et ses
+  règles, requête, réponse bornée, outil d'une opération, ADR-112).
 - `api/src/plugins/` (contexte de requête, limitation de débit (globale par processus ;
   d'authentification partagée par PostgreSQL, `shared_limit.rs`, ADR-088), CSRF (sauf la réception
   des réponses SAML, ADR-068, et l'envoi à un déclencheur, ADR-109), session,
@@ -92,7 +96,9 @@ Repères à l'intérieur des crates :
   et corps de requêtes typés, un fichier par ressource, dont sont générés les types
   TypeScript, ADR-036, ADR-039),
   `api/src/services/admin/` (comptes et absence d'un collaborateur empêché
-  (`absences.rs`, ADR-078), organisation, habilitations, compétences, rejet des
+  (`absences.rs`, ADR-078), organisation, habilitations, connecteurs : ce que
+  l'administration change de chacun (`connector_config.rs`) et API REST ajoutées
+  (`rest_connectors.rs`, ADR-112), compétences, rejet des
   propositions de l'agent (`skill_proposals.rs`, ADR-100), cas d'évaluation
   (`skill_eval_cases.rs`, ADR-103) et évaluation demandée (`skill_evaluations.rs`,
   ADR-104), sous verrou par entreprise), `api/src/services/account.rs` (son propre compte),

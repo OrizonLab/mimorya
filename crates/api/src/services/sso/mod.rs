@@ -37,7 +37,7 @@ pub use sign_in::{Return, SignInFailure};
 use std::sync::Arc;
 use std::time::Instant;
 
-use mimorya_connectors::mcp::NetworkPolicy;
+use mimorya_connectors::outbound::NetworkPolicy;
 use mimorya_core::DomainError;
 use mimorya_db::Database;
 use mimorya_db::repositories::identity_providers::{

@@ -4,7 +4,7 @@
 //! (ADR-063); a SAML provider by its metadata, read here, whose entity ID
 //! is its issuer, and the company's own entity ID as its client (ADR-068).
 
-use mimorya_connectors::mcp::url_problem;
+use mimorya_connectors::outbound::url_problem;
 use mimorya_core::DomainError;
 use mimorya_core::identity_providers::{
     ProviderKind, client_id_problem, client_secret_problem, declared_issuer,

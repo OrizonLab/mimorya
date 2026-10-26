@@ -15,6 +15,7 @@ mod absence_mail;
 mod absences;
 mod approval_routing;
 mod assignments;
+mod connector_config;
 mod connector_rules;
 mod connector_test;
 mod connector_trial;
@@ -31,6 +32,7 @@ mod org_units;
 mod policies;
 mod provider_designation;
 mod reset_links;
+mod rest_connectors;
 mod roles;
 mod skill_eval_cases;
 mod skill_evaluations;
@@ -41,12 +43,13 @@ mod users;
 pub use absences::{AbsenceAdmin, absence_of, declare_absence_for, end_absence_for};
 pub use approval_routing::{manager_risks, set_manager_risks};
 pub use assignments::{grant_role, revoke_role};
+pub use connector_config::{Editable, RestChanges};
 pub use connector_rules::ToolPolicyInput;
 pub use connector_test::{ConnectorTestOutcome, TestedTool, test_connector};
 pub use connector_trial::{McpTrial, TrialServices, try_mcp_connector};
 pub use connectors::{
     ConnectorAdmin, ConnectorChanges, NewMcpConnector, TokenChange, create_mcp_connector,
-    delete_connector, http_config, update_connector,
+    delete_connector, update_connector,
 };
 pub use domain_proofs::prove_domain;
 pub use embedding::{
@@ -66,6 +69,7 @@ pub use mission_settings::{
 pub use org_units::{NewUnitInput, UnitChanges, create_unit, delete_unit, update_unit};
 pub use policies::{PolicyChanges, PolicyInput, create_policy, delete_policy, update_policy};
 pub use reset_links::send_reset_link;
+pub use rest_connectors::{NewRestConnector, create_rest_connector};
 pub use roles::{RoleChanges, RoleInput, create_role, delete_role, update_role};
 pub use skill_eval_cases::{EvalCaseInput, change_eval_case, create_eval_case, remove_eval_case};
 pub use skill_evaluations::launch_evaluation;

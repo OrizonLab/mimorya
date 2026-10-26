@@ -17,8 +17,8 @@ use serde_json::Value;
 
 use super::bridge::McpClient;
 use super::failure::call_failed;
-use super::redact::Redactor;
 use super::visible::{one_line, visible_schema};
+use crate::outbound::Redactor;
 
 pub const MAX_TOOLS: usize = 200;
 /// Pages may be short, not endless.

@@ -5,7 +5,7 @@
 mod support;
 
 use mimorya_connectors::ConnectorRuntime;
-use mimorya_connectors::mcp::{NetworkPolicy, http_client};
+use mimorya_connectors::outbound::{NetworkPolicy, http_client};
 use mimorya_connectors::testing::serve_demo_docs_http;
 use serde_json::json;
 use support::mcp::{PRIVATE, http, port_of, start_mcp as start};

@@ -7,8 +7,9 @@ mod support;
 use std::time::{Duration, Instant};
 
 use mimorya_connectors::ConnectorRuntime;
-use mimorya_connectors::mcp::{
-    ACCESS_DENIED, MASK, NOT_MCP, NOT_PUBLIC, NetworkPolicy, TOO_SLOW, UNREACHABLE,
+use mimorya_connectors::mcp::NOT_MCP;
+use mimorya_connectors::outbound::{
+    ACCESS_DENIED, MASK, NOT_PUBLIC, NetworkPolicy, TOO_SLOW, UNREACHABLE,
 };
 use mimorya_connectors::testing::{HIDDEN_TEXT, Quirk, serve_mcp_http, serve_mute};
 use mimorya_core::plain_text::shows_all_it_holds;

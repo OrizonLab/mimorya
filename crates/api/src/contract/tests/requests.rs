@@ -163,6 +163,38 @@ fn administration_bodies_read_what_the_web_client_sends() {
             "toolPolicies": { "search": { "enabled": true, "risk": "read", "permissions": [] } },
         }),
     );
+    let operation = json!({
+        "name": "get_ticket",
+        "title": "Lire un ticket",
+        "description": "Renvoie un ticket.",
+        "method": "GET",
+        "path": "/tickets/{id}",
+    });
+    strict::<NewRestConnector>(
+        json!({ "name": "CRM", "prefix": "crm", "url": "https://api.example/v1", "operations": [operation] }),
+        json!({
+            "name": "CRM",
+            "prefix": "crm",
+            "url": "https://api.example/v1",
+            "tokenHeader": "X-Api-Key",
+            "token": "cle",
+            "enabled": false,
+            "operations": [{
+                "name": "get_ticket",
+                "title": "Lire un ticket",
+                "description": "Renvoie un ticket.",
+                "method": "GET",
+                "path": "/tickets/{id}",
+                "parameters": [
+                    { "name": "id", "in": "path", "type": "string", "required": true, "description": "Son numéro." },
+                ],
+            }],
+        }),
+    );
+    strict::<ConnectorUpdate>(
+        json!({ "tokenHeader": null }),
+        json!({ "tokenHeader": "X-Api-Key", "operations": [operation] }),
+    );
     strict::<LlmChoice>(
         json!({ "provider": "anthropic" }),
         json!({ "provider": "openai_compatible", "model": "m", "baseUrl": "https://llm.example/v1", "apiKey": "cle" }),
@@ -174,6 +206,19 @@ fn administration_bodies_read_what_the_web_client_sends() {
 fn nested_administration_values_refuse_unknown_fields() {
     let policy = json!({ "enabled": true, "inconnu": 1 });
     assert!(serde_json::from_value::<ToolPolicyChange>(policy).is_err());
+    // A REST API's operation and its parameters as well (ADR-112).
+    let parameter = json!({ "name": "id", "in": "path", "type": "string" });
+    let operation = json!({
+        "name": "a", "title": "A", "description": "A", "method": "GET", "path": "/a",
+        "parameters": [parameter],
+    });
+    assert!(serde_json::from_value::<RestOperation>(operation.clone()).is_ok());
+    let mut unknown = operation.clone();
+    unknown["inconnu"] = json!(1);
+    assert!(serde_json::from_value::<RestOperation>(unknown).is_err());
+    let mut unknown = operation;
+    unknown["parameters"][0]["inconnu"] = json!(1);
+    assert!(serde_json::from_value::<RestOperation>(unknown).is_err());
     let unit = "8d5ba3d6-0c4c-4b2c-9c51-2f8e6a3c1b7e";
     // Every variant: a unit's fields on the whole company or on one's own
     // data would otherwise be ignored without a word.

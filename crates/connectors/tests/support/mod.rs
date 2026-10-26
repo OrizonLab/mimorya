@@ -3,6 +3,7 @@
 #![allow(dead_code)] // not every test binary uses every fixture
 
 pub mod mcp;
+pub mod rest;
 
 use std::collections::HashMap;
 use std::sync::Arc;
