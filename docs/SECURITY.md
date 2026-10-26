@@ -382,6 +382,12 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   ne fait jamais appeler par le serveur une adresse de son choix (SSRF), et une
   adresse retirée de la liste n'est plus appelée (configuration revérifiée à l'usage). Si le modèle choisi par l'entreprise devient
   inutilisable, ses runs s'arrêtent, sans repli vers le fournisseur de la plateforme.
+- Modèle de contrôle des réponses d'une entreprise (ADR-108) : mêmes règles, avec sa clé à
+  part (`verification.api_key`), qui ne sert jamais aux conversations, ni la leur à lui.
+  Choisi par l'entreprise, il reçoit la demande, les critères, les identifiants et
+  libellés des sources consultées et la réponse à juger. S'il devient inutilisable, ou si
+  un appel échoue dans un run, le modèle des conversations juge à sa place : il lit déjà tout cela,
+  rien ne part ailleurs.
 - Modèle d'embeddings d'une entreprise (ADR-074) : mêmes règles (clé `embedding.api_key`
   en écriture seule, liée à son fournisseur et à son adresse ; adresses locales prises
   dans la même liste de l'exploitant ; configuration revérifiée à l'usage). Désactivé par

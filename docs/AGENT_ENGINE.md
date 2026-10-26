@@ -195,9 +195,9 @@ Deux niveaux, cumulables :
    - complétude des critères structurés (présence des sections demandées…).
 2. **Évaluation par un modèle** (missions, toujours (ADR-089) ; critères explicites
    avec `MIMORYA_LLM_JUDGE` ; critères de qualité d'une compétence chargée, toujours
-   (ADR-106)) : un appel séparé,
-   éventuellement avec un autre modèle, juge la réponse au regard de l'objectif et des
-   critères et renvoie `{ pass, issues[] }` via un outil structuré. Le verdict garde
+   (ADR-106)) : un appel séparé, par le modèle de contrôle que l'entreprise a choisi à
+   part (ADR-108) ou, sans lui ou si son appel échoue, par celui de ses conversations, juge la réponse au
+   regard de l'objectif et des critères et renvoie `{ pass, issues[] }` via un outil structuré. Le verdict garde
    ses dix premiers manquements, chacun sur une ligne, nettoyé des caractères invisibles
    et des balises d'enveloppe, coupé à 500 caractères, les autres comptés (ADR-092) ;
    un verdict illisible laisse la réponse non jugée.

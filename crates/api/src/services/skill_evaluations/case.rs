@@ -68,6 +68,11 @@ pub struct CaseRequest<'a> {
     pub bar: &'a [String],
     pub access: &'a AccessContext,
     pub provider: Arc<dyn LlmProvider>,
+    /// The model that judges the answers of both versions: the one the
+    /// company chose apart to review them, else `provider` (ADR-108). It
+    /// stays the one judge, a failing call leaving the case unjudged: two
+    /// versions judged by two models would make no comparison.
+    pub judge: Arc<dyn LlmProvider>,
     pub version: EvaluatedVersion,
     pub case: &'a StoredCase,
 }
@@ -136,6 +141,7 @@ async fn answer_and_judge(
         scope,
         access,
         provider,
+        judge,
         case,
         ..
     } = request;
@@ -207,7 +213,7 @@ async fn answer_and_judge(
         evidence: &evidence,
     };
     let answer = Some(bounded(&answer, MAX_ANSWER_CHARS));
-    let (verdict, response) = match judge_answer(provider.as_ref(), judging).await {
+    let (verdict, response) = match judge_answer(judge.as_ref(), judging).await {
         Ok(judged) => judged,
         Err(error) => {
             tracing::warn!(error = %error, "Evaluation judge failed");

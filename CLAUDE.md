@@ -127,8 +127,9 @@ Repères à l'intérieur des crates :
   aux abonnés du processus et, par PostgreSQL, des autres : avis, relais, fragments de
   texte, ADR-084), `api/src/services/invalidations/` (caches de chaque processus vidés
   ensemble : ce qu'un processus change annoncé aux autres par PostgreSQL, ADR-085),
-  `api/src/services/llm.rs` (fournisseur de modèle de
-  chaque entreprise), `api/src/services/embeddings/` (modèle d'embeddings de chaque
+  `api/src/services/llm/` (fournisseurs de modèle de
+  chaque entreprise : celui de ses conversations et celui qui relit leurs réponses,
+  chargés ensemble, `load.rs`, ADR-108), `api/src/services/embeddings/` (modèle d'embeddings de chaque
   entreprise, vecteur d'une demande, indexation de la mémoire et des passages des
   documents, `sources.rs`, ADR-074, ADR-096), `api/src/services/invitations/` (liens d'invitation, ADR-027),
   `api/src/services/password_reset/` (mot de passe oublié, ADR-028),
@@ -148,7 +149,7 @@ Repères à l'intérieur des crates :
   `api/tests/` (intégration, harnais dans `support/`, dont les fournisseurs d'identité
   simulés, OpenID Connect et SAML).
 - `web/components/<fonctionnalité>/` (account — dont les e-mails reçus, ADR-094 —,
-  admin — dont `admin/llm/` : modèle des conversations, recherche dans la mémoire, leçons et limites des missions, ADR-075,
+  admin — dont `admin/llm/` : modèle des conversations et modèle de contrôle des réponses, ADR-108, recherche dans la mémoire, leçons et limites des missions, ADR-075,
   ADR-077, ADR-093, `admin/users/` :
   comptes, dont l'absence d'un collaborateur empêché, ADR-079, et `admin/skills/` :
   compétences, propositions de l'agent, ADR-101, cas d'évaluation et évaluations,

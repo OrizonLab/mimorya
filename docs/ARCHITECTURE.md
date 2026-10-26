@@ -297,7 +297,9 @@ qu'au-delà de ce que PostgreSQL tient.
   déterministes).
 - **Routage** par classe de tâche (`chat`, `planning`, `verification`, `summarize`,
   `embedding`) configurable par entreprise, avec contraintes de confidentialité
-  (ex. « données confidentielles → modèle local uniquement », phase 2).
+  (ex. « données confidentielles → modèle local uniquement », phase 2). Fait : la
+  vérification, par le modèle de contrôle que l'entreprise choisit (ADR-108), celui
+  des conversations jugeant à sa place si son appel échoue dans un run.
 - **Embeddings** : `EmbeddingProvider` (adaptateur compatible OpenAI `/embeddings` :
   Mistral, OpenAI, serveurs listés par l'exploitant), choisi par l'entreprise et
   désactivé par défaut (ADR-074) ; vecteurs de 1024 dimensions calculés en arrière-plan

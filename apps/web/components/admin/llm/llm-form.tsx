@@ -2,15 +2,32 @@
 
 import { useState, type FormEvent } from 'react';
 import { Button, ErrorNote, Field, Input } from '@/components/ui';
-import { api, useAction, type LlmChoice, type LlmView } from '@/lib/api';
+import { api, useAction, type LlmChoice, type LlmSettingsView, type LlmView } from '@/lib/api';
 import { LLM_PROVIDERS } from '@/lib/labels';
 import { EndpointSelect } from './endpoint-select';
 import { KeyField, keepsStoredKey } from './key-field';
 import { ProviderSelect } from './provider-select';
 
-/** Chooses the company's own provider; the key is write-only. */
-export function LlmForm({ data, onDone }: { data: LlmView; onDone: (changed: boolean) => void }) {
-  const current = data.settings;
+/**
+ * Chooses a provider of the company's own, `current` if it has one, sent to
+ * `path`: for its conversations or for reviewing their answers (ADR-108).
+ * The key is write-only, `keyOf` naming whose it is.
+ */
+export function LlmForm({
+  data,
+  current,
+  path,
+  label,
+  keyOf,
+  onDone,
+}: {
+  data: LlmView;
+  current: LlmSettingsView | null;
+  path: string;
+  label: string;
+  keyOf?: string;
+  onDone: (changed: boolean) => void;
+}) {
   const [provider, setProvider] = useState(current?.provider ?? 'anthropic');
   const [model, setModel] = useState(current?.model ?? '');
   const [baseUrl, setBaseUrl] = useState(current?.baseUrl ?? data.endpoints[0] ?? '');
@@ -29,15 +46,11 @@ export function LlmForm({ data, onDone }: { data: LlmView; onDone: (changed: boo
       baseUrl: listed ? baseUrl : undefined,
       apiKey: apiKey.trim() || undefined,
     } satisfies LlmChoice;
-    if (await action.run(() => api.put('/admin/llm', body))) onDone(true);
+    if (await action.run(() => api.put(path, body))) onDone(true);
   }
 
   return (
-    <form
-      aria-label="Modèle de vos conversations"
-      onSubmit={submit}
-      className="flex flex-col gap-3"
-    >
+    <form aria-label={label} onSubmit={submit} className="flex flex-col gap-3">
       <div className="grid gap-3 sm:grid-cols-2">
         <ProviderSelect
           label="Fournisseur"
@@ -67,6 +80,7 @@ export function LlmForm({ data, onDone }: { data: LlmView; onDone: (changed: boo
         )}
         {(kind?.requiresKey || data.secretsAvailable) && (
           <KeyField
+            of={keyOf}
             required={kind?.requiresKey ?? false}
             keeps={keepsKey}
             value={apiKey}

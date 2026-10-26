@@ -11,6 +11,7 @@ use mimorya_api::services::admin::{LlmInput, RoleChanges, configure_llm, update_
 use mimorya_api::services::permission_catalog::permission_catalog;
 use mimorya_core::demo::{tenant, user};
 use mimorya_core::{DomainError, ErrorCode};
+use mimorya_db::repositories::llm_settings::ModelPurpose;
 use serde_json::{Value, json};
 use support::TestApi;
 use support::access::context_of;
@@ -267,7 +268,14 @@ async fn a_narrowed_settings_role_no_longer_configures_the_model() {
         base_url: None,
         api_key: Some(API_KEY.into()),
     };
-    let crossed = configure_llm(&services.db, &services.llm, &from_holder, input).await;
+    let crossed = configure_llm(
+        &services.db,
+        &services.llm,
+        &from_holder,
+        ModelPurpose::Conversations,
+        input,
+    )
+    .await;
     let code = crossed
         .expect_err("refused")
         .downcast::<DomainError>()

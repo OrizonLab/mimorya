@@ -1,25 +1,22 @@
 'use client';
 
-import { useState } from 'react';
-import { Badge, Button, Card, ErrorNote, Loaded } from '@/components/ui';
-import { api, useAction, useApiData, type LlmTestResult, type LlmView } from '@/lib/api';
-import { formatDate } from '@/lib/format';
-import { LLM_PROVIDERS } from '@/lib/labels';
+import { Loaded } from '@/components/ui';
+import { useApiData, type LlmView } from '@/lib/api';
+import { ConversationModel } from './conversation-model';
 import { EmbeddingSection } from './embedding-section';
 import { LessonSection } from './lesson-section';
-import { LlmForm } from './llm-form';
 import { MissionSection } from './mission-section';
-
-const label = (provider: string) => LLM_PROVIDERS[provider] ?? provider;
+import { ReviewModel } from './review-model';
 
 /** The models the company's assistant uses: for its conversations, the
- * platform's or its own; for searching its memory by meaning, its own if
- * any (ADR-074); whether the first rereads finished conversations for a
- * lesson (ADR-076); and how far a mission may go (ADR-093). */
+ * platform's or its own, and for reviewing their answers, one apart if it
+ * chooses (ADR-108); for searching its memory by meaning, its own if any
+ * (ADR-074); whether the first rereads finished conversations for a lesson
+ * (ADR-076); and how far a mission may go (ADR-093). */
 export function LlmTab() {
   return (
     <div className="flex flex-col gap-6">
-      <ConversationModel />
+      <Models />
       <EmbeddingSection />
       <LessonSection />
       <MissionSection />
@@ -27,105 +24,15 @@ export function LlmTab() {
   );
 }
 
-/** The model the company's conversations use: the platform's or its own. */
-function ConversationModel() {
+/** The model of the conversations and the one reviewing their answers, read together. */
+function Models() {
   const state = useApiData<LlmView>('/admin/llm');
-  const [editing, setEditing] = useState(false);
-  const [tested, setTested] = useState<LlmTestResult | null>(null);
-  const action = useAction();
-
-  async function test() {
-    setTested(await action.run(() => api.post<LlmTestResult>('/admin/llm/test')));
-  }
-
-  async function reset() {
-    if (!window.confirm('Revenir au modèle de la plateforme ? La clé enregistrée sera effacée.')) {
-      return;
-    }
-    if (await action.run(() => api.delete('/admin/llm'))) {
-      setTested(null);
-      state.reload();
-    }
-  }
-
   return (
     <Loaded state={state}>
       {(data) => (
-        <div className="flex flex-col gap-4">
-          <Card className="flex flex-col gap-3 p-4">
-            <p className="font-medium">Modèle utilisé par vos conversations</p>
-            {data.settings ? (
-              <div className="flex flex-col gap-2 text-sm">
-                <p>
-                  Fournisseur de votre entreprise : {label(data.settings.provider)} ·{' '}
-                  <code>{data.settings.model}</code>
-                  {data.settings.baseUrl && <> · {data.settings.baseUrl}</>}
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <Badge tone={data.settings.keyStored ? 'ok' : 'neutral'}>
-                    {data.settings.keyStored ? 'Clé enregistrée' : 'Sans clé'}
-                  </Badge>
-                  {!data.settings.priced && (
-                    <Badge tone="warn">Coût non estimé : modèle absent de la grille</Badge>
-                  )}
-                  {!data.settings.usable && <Badge tone="danger">Inutilisable</Badge>}
-                </div>
-                {data.settings.problem && (
-                  <ErrorNote
-                    message={`Vos conversations sont arrêtées : ${data.settings.problem}.`}
-                  />
-                )}
-                <p className="text-xs text-muted">
-                  Modifié le {formatDate(data.settings.updatedAt)}. Vos conversations n’utilisent
-                  que ce fournisseur : s’il devient inutilisable, elles s’arrêtent plutôt que de
-                  passer par celui de la plateforme.
-                </p>
-              </div>
-            ) : (
-              <p className="text-sm">
-                {data.platform
-                  ? `Modèle de la plateforme : ${label(data.platform.provider)} · ${data.platform.model}`
-                  : 'La plateforme ne fournit pas de modèle : configurez celui de votre entreprise.'}
-              </p>
-            )}
-            {tested && (
-              <p className={tested.ok ? 'text-sm text-ok' : 'text-sm text-danger'}>
-                {tested.ok
-                  ? `Connexion réussie : ${tested.model} a répondu.`
-                  : `Échec de la connexion : ${tested.error ?? 'erreur inconnue'}`}
-              </p>
-            )}
-            {action.error && <ErrorNote message={action.error} />}
-            <div className="flex flex-wrap gap-2">
-              {!editing && (
-                <Button variant="secondary" onClick={() => setEditing(true)}>
-                  {data.settings ? 'Modifier' : 'Utiliser le fournisseur de votre entreprise'}
-                </Button>
-              )}
-              {(data.settings || data.platform) && (
-                <Button variant="secondary" loading={action.pending} onClick={test}>
-                  Tester la connexion
-                </Button>
-              )}
-              {data.settings && (
-                <Button variant="danger" onClick={reset}>
-                  Revenir au modèle de la plateforme
-                </Button>
-              )}
-            </div>
-          </Card>
-          {editing && (
-            <Card className="p-4">
-              <LlmForm
-                data={data}
-                onDone={(changed) => {
-                  setEditing(false);
-                  setTested(null);
-                  if (changed) state.reload();
-                }}
-              />
-            </Card>
-          )}
+        <div className="flex flex-col gap-6">
+          <ConversationModel data={data} onChanged={state.reload} />
+          <ReviewModel data={data} onChanged={state.reload} />
           {!data.secretsAvailable && (
             <p className="text-xs text-muted">
               Ce serveur ne conserve pas de clé (l’exploitant n’a pas configuré la clé maîtresse) :

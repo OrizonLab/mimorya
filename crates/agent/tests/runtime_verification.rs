@@ -1,5 +1,7 @@
 //! Runtime: verification of final answers, bounded correction and budgets;
-//! a review listing many issues fails the answer with the first ones (ADR-092).
+//! a review listing many issues fails the answer with the first ones (ADR-092);
+//! a review model that fails leaves the answer to the agent's, unjudged only
+//! when both fail (ADR-108).
 
 mod support;
 
@@ -176,4 +178,52 @@ async fn stops_when_the_step_budget_is_exhausted() {
         h.events_of("run_finished"),
         vec![json!({ "status": "failed", "error": error })]
     );
+}
+
+#[tokio::test]
+async fn a_failing_review_model_leaves_the_answer_to_the_agent_s_then_unjudged() {
+    let criteria = vec!["Indiquer pour chaque intervention si un suivi est nécessaire".into()];
+    // The agent's model judges in place of the review model that fails.
+    let h = setup(
+        vec![
+            ScriptedStep::text("Rien à signaler."),
+            ScriptedStep::calls("", vec![call("submit_verdict", json!({ "pass": true }))]),
+        ],
+        Options {
+            criteria: criteria.clone(),
+            judge: Some(vec![ScriptedStep::fails("Modèle inconnu.")]),
+            ..Default::default()
+        },
+    );
+    let RunOutcome::Completed { verification, .. } = h.start().await else {
+        panic!("expected completion")
+    };
+    assert!(verification.judged && verification.passed);
+    assert_eq!(h.judge.as_ref().unwrap().requests().len(), 1);
+    assert_eq!(h.provider.requests()[1].tool_names(), ["submit_verdict"]);
+
+    // Both failing: the answer stands, unjudged, after one call to each.
+    let h = setup(
+        vec![
+            ScriptedStep::text("Rien à signaler."),
+            ScriptedStep::fails("Surchargé."),
+        ],
+        Options {
+            criteria,
+            judge: Some(vec![ScriptedStep::fails("Modèle inconnu.")]),
+            ..Default::default()
+        },
+    );
+    let RunOutcome::Completed {
+        answer,
+        verification,
+        ..
+    } = h.start().await
+    else {
+        panic!("expected completion")
+    };
+    assert_eq!(answer, "Rien à signaler.");
+    assert!(!verification.judged && verification.passed);
+    assert_eq!(h.judge.as_ref().unwrap().requests().len(), 1);
+    assert_eq!(h.provider.requests().len(), 2);
 }

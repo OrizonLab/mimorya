@@ -1,23 +1,26 @@
-//! Which model provider serves a company's runs (ADR-024): its own when an
-//! administrator configured one, else the platform's. What the company stored
-//! is checked again at each load against the rules as they stand (an endpoint
-//! the operator removed from the list is refused). When the company's own
-//! cannot be used, its runs stop rather than fall back: the company decided
-//! where its data goes.
+//! Which model providers serve a company (ADR-024): for its runs, its own
+//! when an administrator configured one, else the platform's; for reviewing
+//! their answers, one it chose apart, else the same as its runs (ADR-108).
+//! When the company's own provider for its runs cannot be used, its runs
+//! stop rather than fall back: the company decided where its data goes. When
+//! the one it chose for reviews cannot be used, its runs' model reviews
+//! meanwhile: it already reads all that a review reads.
 
 use std::sync::Arc;
 use std::time::Duration;
 
-use mimorya_agent::llm::{
-    LlmProvider, PriceTable, ProviderConfig, company_provider_config, create_provider,
-};
-use mimorya_db::repositories::llm_settings::get_llm_settings;
-use mimorya_db::{Database, TenantTx};
+use mimorya_agent::llm::{LlmProvider, PriceTable, ProviderConfig, create_provider};
+use mimorya_db::Database;
+use mimorya_db::repositories::llm_settings::ModelPurpose;
 use uuid::Uuid;
 
 use super::invalidations::{Invalidation, Invalidations};
 use super::tenant_cache::TenantCache;
-use crate::secrets::{LLM_API_KEY, SecretStore};
+use crate::secrets::SecretStore;
+
+mod load;
+
+pub use load::api_key_secret;
 
 /// Builds a provider from a configuration (tests substitute a scripted one).
 pub type ProviderFactory =
@@ -35,6 +38,23 @@ pub enum Resolution {
     Company(Arc<dyn LlmProvider>),
     /// The company's own cannot be used; why, in French, for its administrators.
     Refused(String),
+}
+
+/// Where a company's answers are reviewed (ADR-108).
+#[derive(Clone)]
+pub enum Review {
+    /// By the model of its runs: it chose none apart.
+    Runs,
+    Company(Arc<dyn LlmProvider>),
+    /// The one it chose cannot be used; why, in French, for its
+    /// administrators. The model of its runs reviews meanwhile.
+    Refused(String),
+}
+
+/// A company's models, loaded together.
+pub struct Models {
+    pub runs: Resolution,
+    pub review: Review,
 }
 
 /// The company chose its own provider and it cannot be used (as opposed to
@@ -57,7 +77,7 @@ pub struct LlmService {
     listed_endpoints: Vec<String>,
     factory: ProviderFactory,
     prices: Arc<PriceTable>,
-    cache: TenantCache<Resolution>,
+    cache: TenantCache<Models>,
     invalidations: Invalidations,
 }
 
@@ -103,52 +123,40 @@ impl LlmService {
         &self.prices
     }
 
-    /// The company's resolution, a refusal included (cached like the rest);
-    /// an error only when the server itself fails.
-    pub async fn resolve(&self, tenant_id: Uuid) -> anyhow::Result<Arc<Resolution>> {
+    /// The company's models, a refusal included (cached like the rest); an
+    /// error only when the server itself fails.
+    pub async fn resolve(&self, tenant_id: Uuid) -> anyhow::Result<Arc<Models>> {
         let generation = match self.cache.get(tenant_id) {
-            Ok(resolution) => return Ok(resolution),
+            Ok(models) => return Ok(models),
             Err(generation) => generation,
         };
         let mut tx = self.db.begin(tenant_id).await?;
-        let resolution = Arc::new(self.load(&mut tx, tenant_id).await?);
+        let runs = match self
+            .company_choice(&mut tx, tenant_id, ModelPurpose::Conversations)
+            .await?
+        {
+            None => Resolution::Platform(self.platform.clone()),
+            Some(Ok(provider)) => Resolution::Company(provider),
+            Some(Err(reason)) => Resolution::Refused(reason),
+        };
+        let review = match self
+            .company_choice(&mut tx, tenant_id, ModelPurpose::Verification)
+            .await?
+        {
+            None => Review::Runs,
+            Some(Ok(provider)) => Review::Company(provider),
+            Some(Err(reason)) => Review::Refused(reason),
+        };
         tx.commit().await?;
-        if let Resolution::Refused(reason) = resolution.as_ref() {
+        let models = Arc::new(Models { runs, review });
+        if let Resolution::Refused(reason) = &models.runs {
             tracing::warn!(%tenant_id, reason = %reason, "Company model provider unusable");
         }
-        self.cache.store(tenant_id, generation, resolution.clone());
-        Ok(resolution)
-    }
-
-    async fn load(&self, tx: &mut TenantTx, tenant_id: Uuid) -> anyhow::Result<Resolution> {
-        let Some(settings) = get_llm_settings(tx).await? else {
-            return Ok(Resolution::Platform(self.platform.clone()));
-        };
-        let api_key = match self
-            .secrets
-            .read(tx, tenant_id, LLM_API_KEY)
-            .await?
-            .into_key()
-        {
-            Ok(key) => key,
-            Err(reason) => return Ok(Resolution::Refused(reason)),
-        };
-        let config = match company_provider_config(
-            &settings.provider,
-            &settings.model,
-            settings.base_url.as_deref(),
-            api_key,
-            &self.listed_endpoints,
-        ) {
-            Ok(config) => config,
-            Err(reason) => return Ok(Resolution::Refused(reason)),
-        };
-        Ok(match (self.factory)(&config) {
-            Ok(provider) => Resolution::Company(provider),
-            Err(_) => Resolution::Refused(
-                "Le fournisseur ne peut pas être préparé avec cette configuration".into(),
-            ),
-        })
+        if let Review::Refused(reason) = &models.review {
+            tracing::warn!(%tenant_id, reason = %reason, "Company review model unusable");
+        }
+        self.cache.store(tenant_id, generation, models.clone());
+        Ok(models)
     }
 
     /// The provider of the company's runs, if any; `Unusable` when the
@@ -157,11 +165,23 @@ impl LlmService {
         &self,
         tenant_id: Uuid,
     ) -> anyhow::Result<Option<Arc<dyn LlmProvider>>> {
-        match self.resolve(tenant_id).await?.as_ref() {
+        match &self.resolve(tenant_id).await?.runs {
             Resolution::Platform(provider) => Ok(provider.clone()),
             Resolution::Company(provider) => Ok(Some(provider.clone())),
             Resolution::Refused(reason) => Err(Unusable(reason.clone()).into()),
         }
+    }
+
+    /// The provider the company chose apart to review its answers, if it
+    /// can be used: without it, its runs' model reviews them (ADR-108).
+    pub async fn reviewer_for(
+        &self,
+        tenant_id: Uuid,
+    ) -> anyhow::Result<Option<Arc<dyn LlmProvider>>> {
+        Ok(match &self.resolve(tenant_id).await?.review {
+            Review::Company(provider) => Some(provider.clone()),
+            Review::Runs | Review::Refused(_) => None,
+        })
     }
 
     /// Whether the company's runs have a provider they can use.
@@ -177,8 +197,8 @@ impl LlmService {
         }
     }
 
-    /// After a change of the company's settings: loaded again, here and in
-    /// the other processes.
+    /// After a change of the company's settings, for its runs or for
+    /// reviews: loaded again, here and in the other processes.
     pub fn invalidate(&self, tenant_id: Uuid) {
         self.forget(tenant_id);
         self.invalidations.announce(Invalidation::Llm(tenant_id));
