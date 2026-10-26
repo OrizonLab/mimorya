@@ -8,7 +8,9 @@ import type { InboundHookToken } from '@/lib/api';
 /**
  * A hook's token, just made or renewed: shown this once (the API keeps only
  * its digest, ADR-109), with the address another system posts to and a
- * command that does it. It takes the focus when shown, to be read first.
+ * command that does it. It takes the focus when shown, to be read first;
+ * another token is shown by another notice (its `key`), so that nothing
+ * said of the former (« Jeton copié ») stays.
  */
 export function TokenNotice({
   title,
@@ -21,13 +23,14 @@ export function TokenNotice({
 }) {
   const heading = useId();
   const headingRef = useRef<HTMLHeadingElement>(null);
-  const [copied, setCopied] = useState(false);
+  // Whether the token went to the clipboard, once tried.
+  const [copied, setCopied] = useState<boolean | null>(null);
   const example = `curl -X POST ${issued.url} \\
   -H "Authorization: Bearer ${issued.token}" \\
   -H "Content-Type: application/json" \\
   --data '{"alerte": "Pompe P2 à l’arrêt", "site": "Lyon Nord"}'`;
 
-  useEffect(() => headingRef.current?.focus(), [issued.token]);
+  useEffect(() => headingRef.current?.focus(), []);
 
   async function copy() {
     try {
@@ -68,6 +71,11 @@ export function TokenNotice({
         <Button variant="secondary" className="w-fit" onClick={copy}>
           {copied ? 'Jeton copié' : 'Copier le jeton'}
         </Button>
+        {copied === false && (
+          <p role="status" className="text-xs text-warn">
+            Copie impossible depuis ce navigateur : sélectionnez le jeton et copiez-le vous-même.
+          </p>
+        )}
         <details className="text-xs text-muted">
           <summary className="cursor-pointer select-none hover:text-fg">Exemple d’envoi</summary>
           <pre className="mt-1 overflow-x-auto rounded bg-surface-2 p-2">{example}</pre>

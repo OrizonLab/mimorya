@@ -42,7 +42,13 @@ export default function InboundHooksPage() {
         description="Une adresse que vos autres outils (supervision, formulaire, gestion des tickets) appellent pour confier une demande à l’agent : chaque envoi part dans une nouvelle conversation, avec les données reçues et vos droits du moment. Ce que l’agent ferait passe toujours par votre validation, dans « Validations »."
       />
       {issued && (
-        <TokenNotice title={issued.title} issued={issued.issued} onClose={() => setIssued(null)} />
+        <TokenNotice
+          // Another token is another notice: nothing said of the former stays.
+          key={issued.issued.token}
+          title={issued.title}
+          issued={issued.issued}
+          onClose={() => setIssued(null)}
+        />
       )}
       <Loaded state={state}>
         {({ hooks, maxHooks, maxPerHour, maxBodyBytes }) => (

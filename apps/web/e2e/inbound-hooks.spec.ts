@@ -3,9 +3,9 @@
 // without a session, with the token alone. She reads what became of the
 // delivery and opens its conversation, where her request and the data
 // received are apart, then the agent's answer. She pauses it (a delivery
-// answers as to an unknown hook), resumes it, renews its token (the former
-// no longer serves), changes it and deletes it, each change read back from
-// the API. Her test hooks are deleted, and their conversations archived,
+// answers as to an unknown hook), resumes it, renews its token twice (the
+// former no longer serves; what the notice said of a copy goes with it),
+// changes it and deletes it, each change read back from the API. Her test hooks are deleted, and their conversations archived,
 // whatever happens. The rules themselves are tested on the API
 // (`crates/api/tests/inbound_hook*.rs`).
 import type { APIRequestContext, Page } from '@playwright/test';
@@ -72,6 +72,7 @@ test('a person makes a hook, another system posts to it, and she reads the run',
   request,
 }) => {
   page.on('dialog', (dialog) => dialog.accept());
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
   await signIn(page, demo.lea);
   left.page = page;
   await page.getByRole('link', { name: 'Déclencheurs' }).click();
@@ -87,6 +88,9 @@ test('a person makes a hook, another system posts to it, and she reads the run',
   await expect(notice.getByRole('heading')).toBeFocused();
   const token = await notice.getByLabel(/^Jeton, à envoyer/).inputValue();
   expect(token).toMatch(/^mhk_/);
+  await notice.getByRole('button', { name: 'Copier le jeton' }).click();
+  await expect(notice.getByRole('button', { name: 'Jeton copié' })).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(token);
   await expect(form.getByLabel('Intitulé')).toHaveValue('');
   const made = await hook(page, TITLE);
   expect(made).toMatchObject({ instruction: INSTRUCTION, enabled: true, lastDelivery: null });
@@ -130,10 +134,19 @@ test('a person makes a hook, another system posts to it, and she reads the run',
   // A new token: the former no longer serves.
   await card.getByRole('button', { name: `Nouveau jeton pour « ${TITLE} »` }).click();
   const renewed = page.getByRole('region', { name: `Jeton de « ${TITLE} »` });
-  const newToken = await renewed.getByLabel(/^Jeton, à envoyer/).inputValue();
+  const field = renewed.getByLabel(/^Jeton, à envoyer/);
+  const newToken = await field.inputValue();
   expect(newToken).toMatch(/^mhk_/);
   expect(newToken).not.toBe(token);
   expect((await deliver(request, url, token)).status()).toBe(404);
+  // Copied, then renewed again while shown: the notice says nothing of the
+  // former's copy.
+  await renewed.getByRole('button', { name: 'Copier le jeton' }).click();
+  await expect(renewed.getByRole('button', { name: 'Jeton copié' })).toBeVisible();
+  await card.getByRole('button', { name: `Nouveau jeton pour « ${TITLE} »` }).click();
+  await expect(field).not.toHaveValue(newToken);
+  await expect(renewed.getByRole('button', { name: 'Copier le jeton' })).toBeVisible();
+  expect((await deliver(request, url, newToken)).status()).toBe(404);
   await renewed.getByRole('button', { name: 'J’ai noté le jeton' }).click();
 
   // Changed, then deleted.
