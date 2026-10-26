@@ -209,8 +209,9 @@ dans la limite de `maxCorrectionAttempts` (défaut 2). Les échecs résiduels so
 `agent_runs.verification` et alimente l'apprentissage (§8).
 
 **Critères de qualité d'une compétence** (ADR-106) : une version porte jusqu'à 8
-critères, écrits par les administrateurs des compétences (une proposition de l'agent
-reprend ceux de la version active). Quand `skill_read` (l'outil de la plateforme, seul
+critères, écrits par les administrateurs des compétences avec elle, dans l'écran
+« Compétences » (ADR-107) ou par l'API (une proposition de l'agent reprend ceux de la
+version active). Quand `skill_read` (l'outil de la plateforme, seul
 à pouvoir le faire) charge une version qui en a, l'agent les lit à la fin de la
 procédure, et ils s'ajoutent
 à ceux du run (16 au plus, chacun une fois, gardés pendant une attente de validation),

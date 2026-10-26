@@ -5235,3 +5235,40 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
       donne pas, retirés par `[]` ; proposition de l'agent reprenant ceux de la version
       active ; réponse d'une conversation jugée et corrigée sur eux ; évaluation jugeant
       les deux versions sur les critères de l'une et de l'autre.
+
+## ADR-107 — Critères de qualité écrits depuis l'écran « Compétences »
+
+- **Date** : 2026-10-26 · **Statut** : acceptée (contrôle qualité avancé, lot 2a)
+- **Contexte** : depuis l'ADR-106, une version porte ses critères de qualité, mais
+  l'écran « Compétences » (ADR-052, ADR-101) écrivait ses versions sans eux : elles
+  reprenaient en silence ceux de la version active, et aucun écran ne les montrait.
+- **Décision** :
+  - **le formulaire d'une compétence et celui d'une version** ont un champ « Critères
+    de qualité de la réponse », un critère par ligne, 8 au plus, facultatif. Il est
+    toujours envoyé (`qualityCriteria`) : une version écrite depuis l'écran porte ce
+    que le formulaire montrait, et un champ vide n'en donne aucun (`[]`). La reprise
+    des critères de la version active, quand le champ est absent, reste pour les
+    clients de l'API et les propositions de l'agent (ADR-106) ;
+  - **une nouvelle version part de la dernière qu'un administrateur a écrite**, son
+    contenu (ADR-101) et ses critères ensemble, vide sans elle. « Enregistrer la
+    version » s'active dès que l'un ou l'autre change, les critères comparés tels
+    que le serveur les garde : changer les critères seuls fait une version,
+    puisqu'une version activée reste ce qui a été relu ;
+  - **chaque version montre ses critères**, tels que le serveur les a gardés (lignes
+    vides écartées, chacun rogné). Ceux d'une proposition de l'agent sont dits
+    « repris de la version alors active » : l'agent n'en écrit aucun.
+- **Alternatives écartées** :
+  - partir des critères de la version active plutôt que de ceux de la version dont
+    part le contenu : le formulaire est une modification de cette version, contenu et
+    critères ensemble ;
+  - ne pas envoyer un champ vide, pour reprendre les critères de la version active :
+    l'administrateur verrait un champ vide et la version en porterait.
+- **Conséquences** :
+  - reste à faire : un modèle de contrôle distinct choisi par l'entreprise (lot 2b) ;
+  - tests : `apps/web/e2e/skills.spec.ts` (critères écrits avec la compétence, gardés
+    rognés et sans ligne vide, repris par la version suivante ; une version dont seuls
+    les critères changent, vidés alors que la version active en a, enregistrée sans
+    aucun ; relus dans l'API après rechargement). Le libellé des critères d'une
+    proposition de l'agent n'a pas de test de bout en bout : aucun scénario ne propose
+    de version d'une compétence qui a des critères (le fait est testé par l'API,
+    `crates/api/tests/skill_quality_criteria.rs`).

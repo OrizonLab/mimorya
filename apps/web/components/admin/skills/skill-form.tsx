@@ -9,12 +9,19 @@ export function SkillForm({ onDone }: { onDone: (changed: boolean) => void }) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [content, setContent] = useState('');
+  const [criteria, setCriteria] = useState('');
   const [changelog, setChangelog] = useState('');
   const action = useAction();
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    const body = { name, description, content, changelog } satisfies NewSkill;
+    const body = {
+      name,
+      description,
+      content,
+      qualityCriteria: criteria.split('\n'),
+      changelog,
+    } satisfies NewSkill;
     if (await action.run(() => api.post('/admin/skills', body))) onDone(true);
   }
 
@@ -44,8 +51,10 @@ export function SkillForm({ onDone }: { onDone: (changed: boolean) => void }) {
       </div>
       <SkillContentFields
         content={content}
+        criteria={criteria}
         changelog={changelog}
         onContent={setContent}
+        onCriteria={setCriteria}
         onChangelog={setChangelog}
       />
       {action.error && <ErrorNote message={action.error} />}
@@ -66,16 +75,24 @@ export function SkillForm({ onDone }: { onDone: (changed: boolean) => void }) {
   );
 }
 
-/** A version's content and its note, shared by the two forms that write one. */
+/**
+ * A version's content, the quality criteria any answer that follows it is
+ * reviewed on (ADR-106), one per line, and its note: shared by the two forms
+ * that write one.
+ */
 export function SkillContentFields({
   content,
+  criteria,
   changelog,
   onContent,
+  onCriteria,
   onChangelog,
 }: {
   content: string;
+  criteria: string;
   changelog: string;
   onContent: (content: string) => void;
+  onCriteria: (criteria: string) => void;
   onChangelog: (changelog: string) => void;
 }) {
   return (
@@ -90,6 +107,14 @@ export function SkillContentFields({
           onChange={(e) => onContent(e.target.value)}
         />
       </Field>
+      <Field label="Critères de qualité de la réponse (facultatifs, un par ligne, 8 au plus)">
+        <Textarea rows={3} value={criteria} onChange={(e) => onCriteria(e.target.value)} />
+      </Field>
+      <p className="text-xs text-muted">
+        Chaque réponse de l’assistant qui a suivi cette version est relue par un modèle sur ces
+        critères, comme lors d’une évaluation : un manquement est corrigé, sinon signalé sous la
+        réponse.
+      </p>
       <Field label="Note de version (facultative)">
         <Input maxLength={300} value={changelog} onChange={(e) => onChangelog(e.target.value)} />
       </Field>

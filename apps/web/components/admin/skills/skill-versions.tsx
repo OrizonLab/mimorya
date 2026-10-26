@@ -68,7 +68,7 @@ export function SkillVersions({ skill, onChanged }: { skill: SkillView; onChange
                 // none did: a new one is most often a change of it, and a
                 // proposal of the agent's is read as such before anyone
                 // builds on it (ADR-100, ADR-101).
-                initial={detail.versions.find((v) => !v.proposed)?.content ?? ''}
+                from={detail.versions.find((v) => !v.proposed)}
                 onDone={(saved) => {
                   setWriting(false);
                   if (saved) changed();
