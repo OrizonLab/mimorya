@@ -91,7 +91,11 @@ pub async fn open_conversation_turn(
         },
     )
     .await?;
-    if conversation.title == DEFAULT_CONVERSATION_TITLE {
+    // Its user's first words title a new conversation. One the platform
+    // opened keeps the title it was given (a task's, a hook's): a hook's turn
+    // carries what was posted, which must not name it, nor leave the
+    // platform with that name (ADR-111).
+    if conversation.title == DEFAULT_CONVERSATION_TITLE && matches!(sender, TurnSender::User) {
         let title: String = text.chars().take(TITLE_LENGTH).collect();
         update_conversation(
             tx,

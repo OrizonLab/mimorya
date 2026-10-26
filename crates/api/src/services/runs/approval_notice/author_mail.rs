@@ -21,12 +21,14 @@ pub enum Origin {
 }
 
 impl Origin {
-    /// As the database says it (`author_notices`); a hook's otherwise.
-    pub fn parse(origin: &str) -> Self {
+    /// As the database says it (`author_notices`); `None` for anything else,
+    /// which is never worded as one of these.
+    pub fn parse(origin: &str) -> Option<Self> {
         match origin {
-            "scheduled_task" => Self::ScheduledTask,
-            "mission" => Self::Mission,
-            _ => Self::Hook,
+            "scheduled_task" => Some(Self::ScheduledTask),
+            "mission" => Some(Self::Mission),
+            "hook" => Some(Self::Hook),
+            _ => None,
         }
     }
 }
@@ -207,8 +209,9 @@ mod tests {
              (Néo Maintenance), qui demande votre validation pour une action (risque : \
              modification)."
         ));
-        assert_eq!(Origin::parse("hook"), Origin::Hook);
-        assert_eq!(Origin::parse("mission"), Origin::Mission);
-        assert_eq!(Origin::parse("scheduled_task"), Origin::ScheduledTask);
+        assert_eq!(Origin::parse("hook"), Some(Origin::Hook));
+        assert_eq!(Origin::parse("mission"), Some(Origin::Mission));
+        assert_eq!(Origin::parse("scheduled_task"), Some(Origin::ScheduledTask));
+        assert_eq!(Origin::parse("web"), None);
     }
 }

@@ -28,9 +28,14 @@ const POSTED: &str = "{\"alerte\": \"pompe P2 à l’arrêt\"}";
 /// a planning; the run's conversation and the request it awaits. What it
 /// says once the request ends is scripted then (`end`): the steps are
 /// played in order, whichever run asks.
-async fn paused(api: &TestApi, nadia: &Client<'_>, id: Uuid, token: &str) -> (String, Value) {
+async fn paused(
+    api: &TestApi,
+    nadia: &Client<'_>,
+    (id, token): (Uuid, &str),
+    posted: &str,
+) -> (String, Value) {
     api.script(vec![propose("INT-2049", "09:00"), apply_proposal("")]);
-    let accepted = deliver(api, id, token, POSTED).await;
+    let accepted = deliver(api, id, token, posted).await;
     assert_eq!(accepted.status, StatusCode::ACCEPTED, "{}", accepted.text());
     api.idle().await;
     let conversation = listed(nadia, id).await["lastConversationId"]
@@ -65,7 +70,7 @@ async fn the_author_is_told_once_where_their_hook_s_run_waits() {
     let api = TestApi::start_with_mailer().await;
     let nadia = api.sign_in(user::NADIA).await;
     let (id, token) = hook(&nadia, TITLE).await;
-    let (conversation, approval) = paused(&api, &nadia, id, &token).await;
+    let (conversation, approval) = paused(&api, &nadia, (id, &token), POSTED).await;
 
     let sent = api.mail.sent();
     assert_eq!(sent.len(), 1, "{sent:?}");
@@ -105,7 +110,7 @@ async fn a_notice_a_stop_lost_is_sent_ten_minutes_on_and_none_for_a_followed_run
     let stopped = TestApi::start().await;
     let nadia = stopped.sign_in(user::NADIA).await;
     let (id, token) = hook(&nadia, TITLE).await;
-    let (conversation, approval) = paused(&stopped, &nadia, id, &token).await;
+    let (conversation, approval) = paused(&stopped, &nadia, (id, &token), POSTED).await;
     let approval_id: Uuid = approval["id"].as_str().unwrap().parse().unwrap();
     assert!(
         notices(&stopped, tenant::ID, &approval_id.to_string())
@@ -140,5 +145,63 @@ async fn a_notice_a_stop_lost_is_sent_ten_minutes_on_and_none_for_a_followed_run
     // resume says them.
     refuse(&stopped, &nadia, &approval).await;
     end(&stopped, &nadia, &followed).await;
+    nadia.delete(&format!("{HOOKS}/{id}")).await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn what_was_posted_names_neither_the_conversation_nor_the_e_mail() {
+    let api = TestApi::start_with_mailer().await;
+    let nadia = api.sign_in(user::NADIA).await;
+    // Titled as a new conversation, with a short request: what follows it
+    // would have titled the conversation.
+    let made = nadia
+        .post(
+            HOOKS,
+            json!({ "title": "Nouvelle conversation", "instruction": "R" }),
+        )
+        .await;
+    assert_eq!(made.status, StatusCode::CREATED, "{}", made.text());
+    let made = made.json();
+    let id: Uuid = made["id"].as_str().unwrap().parse().unwrap();
+    let token = made["token"].as_str().unwrap();
+    let posted = "{\"code\": \"4711-AZ\"}";
+    let (conversation, approval) = paused(&api, &nadia, (id, token), posted).await;
+    let thread = nadia
+        .get(&format!("/conversations/{conversation}"))
+        .await
+        .json();
+    assert_eq!(thread["conversation"]["title"], "Nouvelle conversation");
+    let sent = api.mail.sent();
+    assert_eq!(sent.len(), 1, "{sent:?}");
+    assert_eq!(
+        sent[0].subject,
+        "Votre déclencheur « Nouvelle conversation » attend votre validation"
+    );
+    for withheld in ["4711", "donnees_outil"] {
+        assert!(!sent[0].subject.contains(withheld), "{}", sent[0].subject);
+        assert!(!sent[0].text.contains(withheld), "{}", sent[0].text);
+    }
+    end(&api, &nadia, &approval).await;
+
+    // Her reply in that conversation, paused as well: hers, told to nobody.
+    api.script(vec![propose("INT-2052", "10:00"), apply_proposal("")]);
+    let replied = nadia
+        .post(
+            &format!("/conversations/{conversation}/messages"),
+            json!({ "content": "Planifie plutôt INT-2052." }),
+        )
+        .await;
+    assert_eq!(replied.status, StatusCode::ACCEPTED, "{}", replied.text());
+    api.idle().await;
+    let approvals = nadia.get("/approvals?status=pending").await.json();
+    let reply = approvals["approvals"][0].clone();
+    assert_eq!(reply["runId"], replied.json()["runId"], "{approvals}");
+    let reply_id: Uuid = reply["id"].as_str().unwrap().parse().unwrap();
+    paused_ago(&api, tenant::ID, reply_id, 11).await;
+    assert!(!listed_for_catch_up(&api, &reply).await);
+    assert_eq!(catch_up(&api).await, 0);
+    assert_eq!(api.mail.sent().len(), 1);
+    end(&api, &nadia, &reply).await;
     nadia.delete(&format!("{HOOKS}/{id}")).await;
 }

@@ -5543,7 +5543,11 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
   - **un run de déclencheur se reconnaît à son canal** (`agent_runs.channel = 'hook'`,
     ADR-109), pas au dernier run du déclencheur : plusieurs envois peuvent avoir chacun un
     run en attente. Le titre est celui de sa conversation, intitulée comme le déclencheur
-    à l'envoi. Une réponse que l'auteur écrit ensuite dans cette conversation part sur le
+    à l'envoi. Une conversation que la plateforme ouvre avec son propre titre (celui
+    d'une tâche planifiée ou d'un déclencheur) n'est plus renommée d'après son premier
+    message, comme celle d'une personne : un déclencheur intitulé « Nouvelle
+    conversation » aurait vu sa conversation, puis l'e-mail, porter le début des données
+    reçues. Une réponse que l'auteur écrit ensuite dans cette conversation part sur le
     canal `web` : il la suit, personne n'est prévenu ;
   - les demandes routées vers un responsable lui sont annoncées à lui (ADR-060), comme
     pour tout run ;
@@ -5566,7 +5570,10 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     - `crates/api/tests/inbound_hook_notices.rs` : l'auteur prévenu une fois, l'e-mail
       sans l'action ni les données reçues, tracé, pas renvoyé au redémarrage ni au
       rattrapage ; un avis perdu envoyé dix minutes après la pause, pas avant ni deux
-      fois ; un run que l'auteur suit dans sa conversation n'est jamais listé ;
+      fois ; un run que l'auteur suit dans une autre conversation n'est jamais listé ;
+      un déclencheur intitulé « Nouvelle conversation » garde ce titre, l'e-mail ne
+      contient rien de ce qui a été posté, et la réponse de l'auteur dans cette
+      conversation, en pause à son tour, n'est annoncée à personne ;
     - `approval_notice/author_mail.rs` (test unitaire) : le message d'un déclencheur ;
     - `crates/db/tests/definer_functions.rs` : la nouvelle fonction listée ;
     - `apps/web/e2e/notification-settings.spec.ts` : le libellé élargi.

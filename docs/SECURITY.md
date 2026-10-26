@@ -251,9 +251,11 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   qui l'agent agit, jamais avec ceux du décideur ; sans responsable éligible, l'action
   est refusée. La personne ne peut pas approuver la demande, seulement la retirer
   (l'action n'est alors pas exécutée). L'e-mail qui prévient le responsable (ADR-060),
-  comme celui qui prévient l'auteur d'une tâche planifiée ou d'une mission dont le run
-  attend sa validation (ADR-082, ADR-091), ne contient ni l'action ni ses paramètres,
-  lisibles seulement après connexion ; celui qui annonce la fin d'une mission ne
+  comme celui qui prévient l'auteur d'une tâche planifiée, d'une mission ou d'un
+  déclencheur dont le run attend sa validation (ADR-082, ADR-091, ADR-111), ne contient
+  ni l'action ni ses paramètres, lisibles seulement après connexion ; celui d'un
+  déclencheur ne contient rien non plus des données reçues, pas même dans son titre (la
+  conversation qu'ouvre un envoi garde l'intitulé du déclencheur) ; celui qui annonce la fin d'une mission ne
   contient ni sa réponse ni la raison de son arrêt (ADR-091) ; celui qui annonce aux
   administrateurs des compétences les propositions de l'agent ne nomme que les
   compétences, jamais leur procédure ni la personne pour qui elles ont été proposées,

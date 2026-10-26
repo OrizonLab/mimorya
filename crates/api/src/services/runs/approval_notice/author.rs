@@ -112,6 +112,9 @@ impl ApprovalNotifier {
         let Some(first) = requests.first() else {
             return Ok(());
         };
+        let Some(origin) = Origin::parse(&first.origin) else {
+            anyhow::bail!("run {} has an unknown origin", first.run_id);
+        };
         let risks = distinct_risks(requests.iter().map(|r| r.risk.as_str()));
         let link = match first.conversation_id {
             Some(conversation) => format!("{}/chat/{conversation}", self.web_origin),
@@ -123,7 +126,7 @@ impl ApprovalNotifier {
             author: &first.author_name,
             email: &first.author_email,
             title: &first.title,
-            origin: Origin::parse(&first.origin),
+            origin,
             count: requests.len(),
             risks: &risks,
             link: &link,
