@@ -75,6 +75,10 @@ async fn a_delivery_starts_a_run_as_its_author_with_what_was_posted() {
         .await
         .json();
     assert_eq!(thread["conversation"]["title"], "Panne signalée");
+    // Shown as what the hook sent.
+    let sent = &thread["messages"][0];
+    assert_eq!(sent["role"], "user");
+    assert_eq!(sent["metadata"]["inboundHookId"], id.to_string(), "{sent}");
     let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
     let run: Uuid = sqlx::query_scalar("select last_run_id from inbound_hooks where id = $1")
         .bind(id)

@@ -4,6 +4,7 @@ import { AlertTriangle, ShieldCheck, Target } from 'lucide-react';
 import { documentFileUrl } from '@/components/documents';
 import { Badge, cx, Markdown } from '@/components/ui';
 import type { Citation, Message } from '@/lib/api';
+import { HookTurn } from './hook-turn';
 
 const SOURCE_LABELS: Record<string, string> = {
   intervention: 'Intervention',
@@ -14,7 +15,7 @@ const SOURCE_LABELS: Record<string, string> = {
 };
 
 export function MessageItem({ message }: { message: Message }) {
-  const { verification, evidence, status, mission } = message.metadata;
+  const { verification, evidence, status, mission, inboundHookId } = message.metadata;
   // The word that sets a mission's next stage going is the platform's.
   if (mission === 'resumption') {
     return (
@@ -26,6 +27,10 @@ export function MessageItem({ message }: { message: Message }) {
         {message.content}
       </p>
     );
+  }
+  // Sent by an inbound hook: its request, then the data it received (ADR-109).
+  if (message.role === 'user' && inboundHookId) {
+    return <HookTurn content={message.content} />;
   }
   if (message.role === 'user') {
     return (

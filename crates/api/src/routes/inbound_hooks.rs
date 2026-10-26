@@ -11,7 +11,7 @@ use axum::{Json, Router};
 use crate::app::AppState;
 use crate::contract::{
     Done, InboundHook, InboundHookList, InboundHookToken, InboundHookUpdate, NewInboundHook,
-    hook_path,
+    hook_path, hook_url,
 };
 use crate::http::{ApiResult, Body, PathId};
 use crate::plugins::Auth;
@@ -33,9 +33,10 @@ async fn list(
 ) -> ApiResult<Json<InboundHookList>> {
     let access = state.access.context(identity).await?;
     let rows = inbound_hooks(&state.db, &access).await?;
+    let origin = &state.config.web_origin;
     let hooks = rows
         .iter()
-        .map(InboundHook::from_row)
+        .map(|row| InboundHook::from_row(row, origin))
         .collect::<anyhow::Result<Vec<_>>>()?;
     Ok(Json(InboundHookList {
         hooks,
@@ -60,6 +61,7 @@ async fn create(
     let made = InboundHookToken {
         id,
         path: hook_path(id),
+        url: hook_url(&state.config.web_origin, id),
         token,
     };
     Ok((StatusCode::CREATED, Json(made)))
@@ -91,6 +93,7 @@ async fn new_token(
     Ok(Json(InboundHookToken {
         id,
         path: hook_path(id),
+        url: hook_url(&state.config.web_origin, id),
         token,
     }))
 }

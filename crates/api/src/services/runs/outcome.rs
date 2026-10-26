@@ -109,6 +109,7 @@ async fn record_outcome(
             evidence: Some(shown(&checkpoint.evidence).iter().map(Into::into).collect()),
             verification,
             mission,
+            inbound_hook_id: None,
         };
         add_message(
             tx,

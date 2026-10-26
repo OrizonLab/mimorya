@@ -715,7 +715,11 @@ enabled: boolean,
 /**
  * Where a system posts, under the API (`/api` from outside).
  */
-path: string, lastDelivery: LastDelivery | null,
+path: string,
+/**
+ * The same, in full, from the application's public origin.
+ */
+url: string, lastDelivery: LastDelivery | null,
 /**
  * Where the last run a delivery started is, while that conversation
  * exists.
@@ -743,7 +747,7 @@ maxBodyBytes: number, };
  * `POST /inbound-hooks` and `POST /inbound-hooks/{id}/token`: the token,
  * shown this once.
  */
-export type InboundHookToken = { id: string, path: string,
+export type InboundHookToken = { id: string, path: string, url: string,
 /**
  * Sent by the system as `Authorization: Bearer <token>`.
  */
@@ -997,7 +1001,12 @@ evidence?: Array<Citation>, verification?: Verification,
  * What the message is to its mission, in a mission's conversation
  * (ADR-089).
  */
-mission?: MissionPart, };
+mission?: MissionPart,
+/**
+ * The inbound hook whose delivery sent the message, as its author's
+ * (ADR-109): its instruction, then what was posted, enclosed.
+ */
+inboundHookId?: string, };
 
 export type MessageRole = "user" | "assistant";
 

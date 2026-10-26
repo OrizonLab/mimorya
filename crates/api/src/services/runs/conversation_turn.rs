@@ -81,7 +81,13 @@ pub async fn open_conversation_turn(
             content: text.to_string(),
             author_user_id: Some(identity.user_id),
             run_id: None,
-            metadata: serde_json::to_value(MessageMetadata::default())?,
+            metadata: serde_json::to_value(MessageMetadata {
+                inbound_hook_id: match sender {
+                    TurnSender::Hook { hook_id } => Some(hook_id),
+                    TurnSender::User | TurnSender::Schedule { .. } => None,
+                },
+                ..MessageMetadata::default()
+            })?,
         },
     )
     .await?;

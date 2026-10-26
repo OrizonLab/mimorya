@@ -5462,3 +5462,66 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     503, aucune conversation), `crates/core/tests/memory.rs` (rien d'écrit directement
     sur le canal `hook`), `crates/api/src/plugins/csrf.rs` et `services/inbound_hooks/`
     (tests unitaires), `crates/api/tests/first_login.rs` (liste des routes).
+
+## ADR-110 — Écran des déclencheurs (connecteurs, deuxième lot)
+
+- **Date** : 2026-10-26 · **Statut** : acceptée
+- **Contexte** : les déclencheurs (ADR-109) ne s'écrivaient que par l'API. Il fallait un
+  écran pour les créer, recevoir leur jeton, lire ce qu'est devenu le dernier envoi et
+  les arrêter. Il fallait aussi qu'une conversation ouverte par un envoi distingue la
+  demande de son auteur des données reçues.
+- **Décision** :
+  - une page « Déclencheurs » dans la navigation, pour chacun, après « Tâches
+    planifiées ». Une carte « Nouveau déclencheur » : intitulé et demande à l'agent,
+    avec le rappel que les données reçues ne sont jamais des consignes, et les limites
+    lues de l'API (trente envois par heure, 16 Kio). Sans le droit d'utiliser l'agent,
+    ou à dix déclencheurs, la carte le dit à la place du formulaire ;
+  - **le jeton est montré une fois**, à la création ou au renouvellement, dans un encadré
+    qui prend le focus. Il contient :
+    - l'adresse complète à appeler ;
+    - le jeton, avec un bouton qui le copie ;
+    - un exemple d'envoi (`curl`) ;
+    - l'avertissement qu'il ne sera plus affiché.
+
+    Il n'est gardé que dans l'état de la page : un rechargement le perd, et la liste
+    rendue par l'API ne le contient jamais ;
+
+  - **l'adresse est donnée par l'API** (`url`, en plus de `path`), à partir de
+    l'origine publique de l'application (`WEB_ORIGIN`, sous `/api`), comme les liens
+    des e-mails : celle du navigateur peut différer derrière un intermédiaire ;
+  - chaque déclencheur montre son état (« Actif » ou « En pause »), son adresse, sa
+    demande et ce qu'est devenu le dernier envoi (un badge, la raison gardée pour
+    l'auteur seul). Il mène aussi à la conversation du dernier envoi lancé, qui attend
+    peut-être une validation. « Modifier », « Mettre en pause » ou « Reprendre »,
+    « Nouveau jeton » et « Supprimer » sont nommés par son intitulé. Renouveler le jeton
+    et supprimer demandent une confirmation : l'un comme l'autre coupe le système qui
+    s'en sert ;
+  - **le message envoyé par un déclencheur se reconnaît** : ses métadonnées portent le
+    déclencheur (`inboundHookId`). La conversation l'affiche avec un badge « Envoyé par
+    un déclencheur », la demande dans la bulle et les données reçues à part, repliées
+    (« Données reçues »), telles que le modèle les a lues. Le texte du message reste
+    celui que le modèle a reçu : l'historique n'est jamais réécrit ;
+  - le serveur des tests de bout en bout répond à part à ce qu'envoie un déclencheur
+    (`e2e_server/hooks.rs`), reconnu par l'enveloppe des données reçues : les scénarios
+    de référence gardent leur ordre.
+- **Alternatives écartées** :
+  - garder les données reçues à part dans les métadonnées du message : elles y seraient
+    en double. Le texte se découpe à la dernière ouverture d'enveloppe, la seule que la
+    plateforme écrit (celles des données sont neutralisées) ;
+  - composer l'adresse dans le navigateur : elle serait fausse derrière un relais qui
+    change l'hôte ;
+  - réafficher le jeton plus tard : seule son empreinte est gardée (ADR-109).
+- **Conséquences** :
+  - reste l'avis par e-mail à l'auteur quand le run d'un déclencheur attend sa
+    validation, puis les autres connecteurs (e-mail, agendas, REST générique) ;
+  - tests :
+    - `apps/web/e2e/inbound-hooks.spec.ts` : un déclencheur créé, son jeton montré une
+      fois et absent de la liste ; un autre système qui envoie sans session, le dernier
+      envoi « Lancé », la conversation ouverte avec la demande, les données reçues et la
+      réponse ; puis la mise en pause (404 à l'envoi), la reprise, un nouveau jeton
+      (l'ancien refusé), une modification (le focus rendu à « Modifier ») et la
+      suppression, chaque changement relu par l'API ;
+    - `apps/web/e2e/navigation.spec.ts` : la page se charge sans erreur ;
+    - `crates/api/tests/inbound_hooks.rs` et `inbound_hook_deliveries.rs` : l'adresse
+      complète et le déclencheur dans les métadonnées du message ;
+      `contract/tests/records.rs` : ces métadonnées relues.

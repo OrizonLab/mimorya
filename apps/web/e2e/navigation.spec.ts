@@ -7,6 +7,7 @@ import { demo, expect, noError, signIn, test } from './support/fixtures';
 const PAGES = [
   ['/approvals', 'Validations'],
   ['/scheduled-tasks', 'Tâches planifiées'],
+  ['/inbound-hooks', 'Déclencheurs'],
   ['/missions', 'Missions'],
   ['/operations', 'Opérations'],
   ['/memory', 'Mémoire'],

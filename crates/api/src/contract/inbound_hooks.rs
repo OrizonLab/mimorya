@@ -35,6 +35,8 @@ pub struct InboundHook {
     pub enabled: bool,
     /// Where a system posts, under the API (`/api` from outside).
     pub path: String,
+    /// The same, in full, from the application's public origin.
+    pub url: String,
     pub last_delivery: Option<LastDelivery>,
     /// Where the last run a delivery started is, while that conversation
     /// exists.
@@ -66,7 +68,8 @@ pub enum DeliveryOutcome {
 }
 
 impl InboundHook {
-    pub fn from_row(row: &InboundHookRow) -> anyhow::Result<Self> {
+    /// `row`, its address read from `web_origin`.
+    pub fn from_row(row: &InboundHookRow, web_origin: &str) -> anyhow::Result<Self> {
         let last_delivery = match (&row.last_received_at, &row.last_outcome) {
             (Some(at), Some(outcome)) => Some(LastDelivery {
                 at: iso(at),
@@ -81,6 +84,7 @@ impl InboundHook {
             instruction: row.instruction.clone(),
             enabled: row.enabled,
             path: hook_path(row.id),
+            url: hook_url(web_origin, row.id),
             last_delivery,
             last_conversation_id: row.last_conversation_id,
         })
@@ -92,6 +96,12 @@ pub fn hook_path(id: Uuid) -> String {
     format!("/hooks/{id}")
 }
 
+/// The same, in full: the API is reached under `/api` of the application's
+/// public origin.
+pub fn hook_url(web_origin: &str, id: Uuid) -> String {
+    format!("{}/api{}", web_origin.trim_end_matches('/'), hook_path(id))
+}
+
 /// `POST /inbound-hooks` and `POST /inbound-hooks/{id}/token`: the token,
 /// shown this once.
 #[derive(Debug, Serialize, TS)]
@@ -99,6 +109,7 @@ pub fn hook_path(id: Uuid) -> String {
 pub struct InboundHookToken {
     pub id: Uuid,
     pub path: String,
+    pub url: String,
     /// Sent by the system as `Authorization: Bearer <token>`.
     pub token: String,
 }

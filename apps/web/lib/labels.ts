@@ -4,6 +4,7 @@ import type {
   AccountStatus,
   AgentProfile,
   CaseOutcomeView,
+  DeliveryOutcome,
   DocumentKind,
   EvaluationStatus,
   MissionStatus,
@@ -156,6 +157,14 @@ export const OCCURRENCE_OUTCOME: Record<OccurrenceOutcome, ToneLabel> = {
   still_running: { label: 'Précédente non terminée', tone: 'warn' },
   missed: { label: 'Non rattrapée', tone: 'neutral' },
   refused: { label: 'Refusée', tone: 'danger' },
+  failed: { label: 'Échec', tone: 'danger' },
+};
+
+/** What became of an inbound hook's last delivery (ADR-109). */
+export const DELIVERY_OUTCOME: Record<DeliveryOutcome, ToneLabel> = {
+  started: { label: 'Lancé', tone: 'ok' },
+  limited: { label: 'Limite horaire atteinte', tone: 'warn' },
+  refused: { label: 'Refusé', tone: 'danger' },
   failed: { label: 'Échec', tone: 'danger' },
 };
 
