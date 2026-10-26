@@ -1,5 +1,6 @@
 //! What becomes of a call that ran (or was meant to): logged, audited and
-//! streamed, counted in the run, its citations among the run's evidence,
+//! streamed, counted in the run, its citations among the run's evidence, the
+//! quality criteria of a skill `skill_read` loaded among the run's (ADR-106),
 //! and its result turned into model input.
 
 use mimorya_core::tools::ToolResult;
@@ -10,7 +11,12 @@ use super::ToolCallProcessor;
 use crate::llm::LlmToolResult;
 use crate::runtime::ports::{EngineAuditEntry, RunEvent, ToolInvocationRecord};
 use crate::runtime::state::RunCheckpoint;
+use crate::tools::platform::SKILL_READ;
 use crate::tools::{RegisteredTool, ToolCallEvaluation, wrap_tool_result};
+
+/// Quality criteria an answer is reviewed on, at most, whatever the skills
+/// loaded: two skills' worth.
+const MAX_SKILL_CRITERIA: usize = 16;
 
 /// A call whose outcome is recorded.
 pub(super) struct Call<'a> {
@@ -40,6 +46,10 @@ impl ToolCallProcessor {
         state.usage.tool_calls += 1;
         if !result.is_error {
             state.evidence.extend(result.citations.iter().cloned());
+            // Tool names are unique: no other tool can raise the bar.
+            if tool.info.name == SKILL_READ {
+                take_skill_criteria(state, &result.quality_criteria);
+            }
         }
         let summary = result.summary.clone().unwrap_or_else(|| {
             if result.is_error {
@@ -121,4 +131,38 @@ fn error_text(content: &Value, summary: &str) -> String {
     content["erreur"]
         .as_str()
         .map_or_else(|| summary.to_string(), str::to_string)
+}
+
+/// The criteria of a skill loaded, added to the run's, each once.
+fn take_skill_criteria(state: &mut RunCheckpoint, criteria: &[String]) {
+    for criterion in criteria {
+        if state.skill_criteria.len() >= MAX_SKILL_CRITERIA {
+            break;
+        }
+        if !state.skill_criteria.contains(criterion) {
+            state.skill_criteria.push(criterion.clone());
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{MAX_SKILL_CRITERIA, take_skill_criteria};
+    use crate::runtime::state::RunCheckpoint;
+
+    #[test]
+    fn a_skills_criteria_are_taken_each_once_and_sixteen_at_most() {
+        let mut state = RunCheckpoint::new("SYSTEM".into(), Vec::new());
+        let first: Vec<String> = (0..10).map(|i| format!("Critère {i}.")).collect();
+        take_skill_criteria(&mut state, &first);
+        take_skill_criteria(&mut state, &first);
+        assert_eq!(state.skill_criteria, first);
+        let second: Vec<String> = (5..15).map(|i| format!("Critère {i}.")).collect();
+        take_skill_criteria(&mut state, &second);
+        assert_eq!(state.skill_criteria.len(), 15);
+        let third: Vec<String> = (20..25).map(|i| format!("Critère {i}.")).collect();
+        take_skill_criteria(&mut state, &third);
+        assert_eq!(state.skill_criteria.len(), MAX_SKILL_CRITERIA);
+        assert_eq!(state.skill_criteria.last().unwrap(), "Critère 20.");
+    }
 }

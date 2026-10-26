@@ -19,7 +19,7 @@ use crate::contract::{Created, Done};
 use crate::http::{ApiResult, Body, PathId};
 use crate::plugins::Auth;
 use crate::services::admin::{
-    SkillInput, activate_skill, add_skill_version, create_skill, delete_skill,
+    SkillInput, VersionInput, activate_skill, add_skill_version, create_skill, delete_skill,
     reject_skill_proposal, retire_skill, update_skill,
 };
 
@@ -77,6 +77,7 @@ pub async fn create(
         description: body.description,
         content: body.content,
         changelog: body.changelog.unwrap_or_default(),
+        quality_criteria: body.quality_criteria.unwrap_or_default(),
     };
     let id = create_skill(&state.db, &access, input).await?;
     Ok((StatusCode::CREATED, Json(Created { id })))
@@ -110,14 +111,12 @@ pub async fn add_version(
     Body(body): Body<NewSkillVersion>,
 ) -> ApiResult<(StatusCode, Json<SkillVersionCreated>)> {
     let access = state.access.context(identity).await?;
-    let version = add_skill_version(
-        &state.db,
-        &access,
-        id,
-        body.content,
-        body.changelog.unwrap_or_default(),
-    )
-    .await?;
+    let version = VersionInput {
+        content: body.content,
+        changelog: body.changelog.unwrap_or_default(),
+        quality_criteria: body.quality_criteria.unwrap_or_default(),
+    };
+    let version = add_skill_version(&state.db, &access, id, version).await?;
     Ok((StatusCode::CREATED, Json(SkillVersionCreated { version })))
 }
 

@@ -129,6 +129,7 @@ fn played_as(text: VersionText, version: i32) -> EvaluatedVersion {
         description: text.description,
         version,
         content: text.content,
+        quality_criteria: text.quality_criteria,
     }
 }
 

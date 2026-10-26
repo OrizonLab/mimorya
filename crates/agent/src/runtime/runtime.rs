@@ -16,7 +16,7 @@ use std::time::Instant;
 use mimorya_core::tools::Citation;
 use serde_json::json;
 
-use super::answer_review::{AnswerReview, present_answer, review_answer};
+use super::answer_review::{AnswerReview, present_answer, review_answer, review_criteria};
 use super::budget::check_budget;
 use super::model_call::{ModelTurn, call_model, record_model_usage};
 use super::ports::{CurrentAccess, RunEvent, StepAccess};
@@ -228,18 +228,24 @@ impl AgentRuntime {
                 return self.end_without_access(state, reason).await;
             }
             let answer = response.text.trim().to_string();
-            let judge = self
-                .config
-                .verification
-                .llm_judge
-                .then(|| self.deps.router.provider_for(TaskClass::Verification));
+            // The criteria of a skill loaded are reviewed by a model, as
+            // explicit ones are when the platform asks for it (ADR-106).
+            let verification = self.config.verification;
+            let criteria = review_criteria(
+                &self.config.success_criteria,
+                &state.skill_criteria,
+                verification.skill_criteria,
+            );
+            let judged = verification.llm_judge
+                || (verification.skill_criteria && !state.skill_criteria.is_empty());
+            let judge = judged.then(|| self.deps.router.provider_for(TaskClass::Verification));
             let (report, judge_response) = review_answer(AnswerReview {
                 answer: &answer,
                 truncated: response.stop_reason == StopReason::MaxTokens,
                 evidence: &state.evidence,
                 registry: &self.deps.registry,
                 objective: &self.config.objective,
-                success_criteria: &self.config.success_criteria,
+                success_criteria: &criteria,
                 judge: judge.as_deref(),
             })
             .await;

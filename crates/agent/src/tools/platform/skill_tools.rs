@@ -60,6 +60,7 @@ impl TypedTool for SkillRead {
         };
         Ok(ToolResult::ok(Value::String(skill.content))
             .with_summary(format!("Compétence {} v{}", skill.name, skill.version))
+            .with_quality_criteria(skill.quality_criteria)
             .with_citations(vec![Citation::new(
                 "skill",
                 format!("{}@{}", skill.name, skill.version),

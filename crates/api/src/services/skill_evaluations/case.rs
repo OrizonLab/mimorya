@@ -4,13 +4,16 @@
 //! read and run without validation, the read-only autonomy, a budget of its
 //! own; told that actions are not available, it describes the one it would
 //! propose. `skill_read` serves the version played. A model then judges the
-//! answer on the case's criteria. The result keeps the answer, the issues
-//! the judge found, the tools called and whether the version was loaded.
+//! answer on the case's criteria and on the quality criteria of the skills
+//! the agent loaded, as a run's answer is (ADR-106). The result keeps the
+//! answer, the issues the judge found, the tools called and whether the
+//! version was loaded.
 
 use std::sync::Arc;
 
 use chrono::Utc;
 use mimorya_agent::llm::{Effort, LlmProvider, ModelRouter};
+use mimorya_agent::runtime::answer_review::review_criteria;
 use mimorya_agent::runtime::verification::{JudgeInput, judge_answer};
 use mimorya_agent::runtime::{
     AgentRuntime, BudgetLimits, RunConfig, RunOutcome, RunUsageTotals, RuntimeDeps, StartInput,
@@ -165,6 +168,8 @@ async fn answer_and_judge(
             success_criteria: Vec::new(),
             verification: VerificationConfig {
                 llm_judge: false,
+                // Judged below, the version's criteria among the case's.
+                skill_criteria: false,
                 max_correction_attempts: 1,
             },
             effort: Some(Effort::High),
@@ -181,6 +186,7 @@ async fn answer_and_judge(
         })
         .await?;
     let mut usage = outcome.checkpoint().usage;
+    let criteria = review_criteria(&case.criteria, &outcome.checkpoint().skill_criteria, true);
     let (answer, evidence) = match outcome {
         RunOutcome::Completed {
             answer, checkpoint, ..
@@ -192,7 +198,7 @@ async fn answer_and_judge(
     };
     let judging = JudgeInput {
         objective: &case.request,
-        criteria: &case.criteria,
+        criteria: &criteria,
         answer: &answer,
         evidence: &evidence,
     };

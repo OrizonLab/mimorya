@@ -162,6 +162,7 @@ impl Scenario {
                 name: "synthese-hebdo-interventions".into(),
                 description: "Synthèse hebdomadaire des interventions et planning de suivi".into(),
                 content: "# Synthèse hebdomadaire\n1. Rechercher… 6. Présenter…".into(),
+                quality_criteria: Vec::new(),
             }],
         );
         let engine = Arc::new(demo::authorization_engine());
@@ -191,6 +192,7 @@ impl Scenario {
             success_criteria: Vec::new(),
             verification: VerificationConfig {
                 llm_judge: false,
+                skill_criteria: true,
                 max_correction_attempts: 2,
             },
             effort: None,

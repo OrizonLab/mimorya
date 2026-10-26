@@ -51,6 +51,10 @@ pub struct RunCheckpoint {
     /// Times the run was taken up again after the service stopped (ADR-053).
     #[serde(default)]
     pub resumptions: u32,
+    /// The quality criteria of the skills loaded (ADR-106), in the order
+    /// they were loaded, each once.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub skill_criteria: Vec<String>,
 }
 
 impl RunCheckpoint {
@@ -65,6 +69,7 @@ impl RunCheckpoint {
             elapsed_ms: 0,
             pending: None,
             resumptions: 0,
+            skill_criteria: Vec::new(),
         }
     }
 }

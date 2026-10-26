@@ -152,6 +152,8 @@ impl SubAgents {
             success_criteria: Vec::new(),
             verification: VerificationConfig {
                 llm_judge: false,
+                // A summary for its parent, whose answer is reviewed.
+                skill_criteria: false,
                 max_correction_attempts: 1,
             },
             effort: self.effort,

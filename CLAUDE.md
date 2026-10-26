@@ -32,7 +32,8 @@ Repères à l'intérieur des crates :
   contenir, ADR-052), `core/src/skill_proposals.rs` (où va une compétence que l'agent
   propose, ADR-100), `core/src/skill_eval_cases.rs` (ce qu'un cas d'évaluation d'une
   compétence contient, ADR-103), `core/src/skill_evaluations.rs` (régression, bilan et
-  confirmation à l'activation, ADR-104), `core/src/identity_providers/` (fournisseurs d'identité : émetteur de
+  confirmation à l'activation, ADR-104), `core/src/skill_quality.rs` (critères de qualité
+  d'une version, ADR-106), `core/src/identity_providers/` (fournisseurs d'identité : émetteur de
   chaque type, domaines, ce que prouve un jeton ou une assertion SAML, nom d'un compte
   créé, enregistrement DNS qui prouve un domaine (`domain_proof.rs`), ADR-063, ADR-067,
   ADR-068, ADR-069), `core/src/schedule.rs` (heure d'une tâche planifiée, ADR-080),

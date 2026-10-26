@@ -54,6 +54,10 @@ impl RuntimeDeps {
 pub struct VerificationConfig {
     /// Model-based review of answers against explicit success criteria.
     pub llm_judge: bool,
+    /// Whether the quality criteria of the skills the agent loads review its
+    /// answer, by a model (ADR-106): a person's answer, not a sub-agent's
+    /// summary.
+    pub skill_criteria: bool,
     pub max_correction_attempts: u32,
 }
 

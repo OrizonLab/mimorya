@@ -5163,3 +5163,66 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
   - non couvert par un e2e : le message montré à un autre administrateur à la place des
     réponses. Le retrait des réponses par l'API est testé
     (`crates/api/tests/skill_evaluations.rs`).
+
+## ADR-106 — Critères de qualité d'une compétence, jugés sur chaque réponse qui la suit
+
+- **Date** : 2026-10-26 · **Statut** : acceptée (contrôle qualité avancé, lot 1)
+- **Contexte** : le contrôle d'une réponse par un modèle (§6 d'AGENT_ENGINE) ne jouait
+  que pour les missions (ADR-089) et, sur la plateforme qui l'active
+  (`MIMORYA_LLM_JUDGE`), pour les runs qui ont des critères explicites. Une conversation
+  n'en a pas : une procédure de l'entreprise suivie par l'agent n'était jamais
+  vérifiée. Les cas d'évaluation (ADR-103) ne valent qu'avant l'activation.
+- **Décision** :
+  - **une version porte ses critères de qualité** (`skill_versions.quality_criteria`,
+    migration 0046), écrits avec elle par un administrateur des compétences et
+    immuables comme son contenu :
+    - de 0 à 8, une ligne visible chacun, 300 caractères au plus, en NFC ;
+    - lignes vides écartées, comme les critères d'un cas
+      (`core/src/skill_quality.rs`) ;
+    - envoyés un par ligne (`qualityCriteria` de `POST /admin/skills` et de
+      `POST /admin/skills/{id}/versions`), montrés avec la version ;
+    - l'audit compte les critères sans les citer ;
+    - une proposition de l'agent n'en porte aucun : un administrateur les ajoute dans
+      une version qu'il écrit ;
+  - **dans un run**, `skill_read` les rend avec le contenu de la version active
+    (`ToolResult::quality_criteria`) :
+    - seul ce champ de l'outil de la plateforme compte. Les noms d'outils sont uniques
+      (ADR-052), aucun autre outil ne peut relever la barre ;
+    - ils s'ajoutent à ceux du run, chacun une fois, 16 au plus, et sont gardés dans
+      le point de reprise pendant une attente de validation ;
+    - la réponse finale est jugée sur eux par un modèle (le juge de vérification du
+      routeur), même sans `MIMORYA_LLM_JUDGE`. Si elle échoue, l'agent la corrige
+      comme pour tout contrôle (« Contrôle qualité automatique », deux essais au plus),
+      et les manquements restants sont montrés ;
+  - **le résumé d'un sous-agent** n'est pas jugé sur les critères des compétences qu'il
+    a chargées (`VerificationConfig::skill_criteria`, faux pour un enfant), et ces
+    critères ne passent pas à son parent. Seule la réponse finale est jugée, sur ceux
+    des compétences que le run principal a chargées lui-même ;
+  - **une évaluation** (ADR-104) juge la réponse sur les critères du cas, puis sur ceux
+    des compétences que l'agent a chargées, la version évaluée comprise : elle mesure
+    ce que le contrôle d'un run vérifiera.
+- **Alternatives écartées** :
+  - des critères propres à la compétence, modifiables sans nouvelle version : une
+    version activée doit rester ce que ses administrateurs ont relu, critères compris ;
+  - un réglage de l'entreprise pour activer ce contrôle : écrire des critères est ce
+    choix, compétence par compétence ;
+  - les critères rendus par n'importe quel outil : un serveur MCP pourrait faire
+    échouer toutes les réponses.
+- **Conséquences** :
+  - chaque réponse qui suit une compétence à critères coûte un appel au juge, deux ou
+    trois s'il faut corriger. Ce coût compte dans le budget du run ;
+  - restent à faire : les critères dans l'écran « Compétences » ; un modèle de contrôle
+    distinct choisi par l'entreprise (lot 2) ;
+  - tests :
+    - `crates/core/src/skill_quality.rs` : critères normalisés, 8 au plus, une ligne
+      visible chacun ;
+    - `crates/agent/tests/runtime_skill_criteria.rs` : réponse jugée et corrigée sur les
+      critères d'une compétence chargée ; aucun contrôle pour une compétence sans
+      critère, ni pour le résumé d'un sous-agent qui l'a chargée et la réponse de son
+      parent ; aucun critère ajouté par un autre outil que
+      `skill_read` ; critères gardés pendant une attente de validation ;
+    - `crates/agent/src/runtime/tool_calls/record.rs`, `answer_review.rs` : chaque
+      critère une fois, 16 au plus, ceux du run d'abord ;
+    - `crates/api/tests/skill_quality_criteria.rs` : critères écrits, vérifiés et
+      montrés avec leur version ; réponse d'une conversation jugée et corrigée sur eux ;
+      juge d'une évaluation lisant ceux de la version.

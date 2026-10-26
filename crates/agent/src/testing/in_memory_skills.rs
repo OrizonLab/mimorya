@@ -16,6 +16,8 @@ pub struct SkillFixture {
     pub name: String,
     pub description: String,
     pub content: String,
+    /// What an answer that follows it must meet (ADR-106).
+    pub quality_criteria: Vec<String>,
 }
 
 impl InMemoryPorts {
@@ -47,6 +49,7 @@ impl SkillStore for InMemoryPorts {
                 name: s.name.clone(),
                 version: 1,
                 content: s.content.clone(),
+                quality_criteria: s.quality_criteria.clone(),
             }))
     }
 
