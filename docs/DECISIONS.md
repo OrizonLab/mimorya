@@ -5618,16 +5618,19 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     vide. Un serveur peut décoder `%2F` (ou `%5C`) en séparateur avant de résoudre le
     chemin (nginx, Tomcat, IIS), voire décoder deux fois : une valeur dont un segment,
     entre deux `/` ou `\`, vaut `.` ou `..` une fois décodée est refusée (`../admin`,
-    `..\x`, `%2e%2e`), et un chemin obtenu avec un tel segment, tel qu'envoyé ou tel
-    que ce serveur le lit (deux valeurs voisines, une valeur collée au chemin écrit), est
-    refusé : la requête ne sort jamais de l'adresse de l'API ni du chemin écrit par
+    `..\x`, `%2e%2e`), et un chemin obtenu avec un tel segment, tel qu'envoyé, décodé
+    une fois, ou décodé deux fois en entier (deux valeurs voisines, une valeur collée
+    au chemin écrit, un échappement à cheval sur deux valeurs comme `.%2` puis `e`),
+    est refusé : la requête ne sort jamais de l'adresse de l'API ni du chemin écrit par
     l'administrateur, ce qu'un dernier contrôle de l'adresse obtenue vérifie encore ;
   - **exécutée telle que validée** : la personne qui valide lit la requête entière
     (méthode, adresse, corps). Le moteur garde ce qu'elle a lu de l'action : une fois
     validée, une action que son outil ne décrit plus de la même façon (un
     administrateur a changé l'adresse, la méthode ou le chemin de l'opération pendant
     l'attente) n'est pas exécutée, et le modèle l'apprend (« Action modifiée depuis la
-    demande de validation »). Cela vaut pour tout outil ; un run mis en pause avant
+    demande de validation »). Ce qui a été lu est comparé sur l'entrée aux clés triées :
+    un point d'arrêt relu de `jsonb` revient les clés réordonnées, sans que l'action ait
+    changé. Cela vaut pour tout outil ; un run mis en pause avant
     cette règle n'a pas gardé ce qui a été lu, et s'exécute comme avant. La politique
     d'une opération retirée, ou dont la méthode ou le chemin change, part avec elle
     (tracé : `droppedPolicies`) : une lecture associée sans validation ne devient pas
@@ -5684,6 +5687,8 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
       qui décode `%2F` ;
     - `crates/agent/tests/runtime_approvals.rs` : une action que son outil ne décrit
       plus comme elle a été validée n'est pas exécutée ;
+    - `crates/api/tests/connector_runs.rs` : un appel MCP validé s'exécute, quel que
+      soit l'ordre dans lequel les clés de son entrée reviennent du point d'arrêt ;
     - `crates/api/tests/rest_connectors.rs` : l'API ajoutée, listée sans sa clé,
       testée, associée, auditée sans clé, supprimée avec son secret ; un run qui lit
       directement, puis écrit une fois la requête validée, la clé masquée dans ce que le

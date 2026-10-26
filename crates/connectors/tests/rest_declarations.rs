@@ -267,6 +267,23 @@ fn keeps_every_request_under_the_path_written() {
             "{climbing}"
         );
     }
+    // An escape spanning two values, decoded twice by a server: `.%2` and
+    // `e` read `.%2e` once decoded, then `..`.
+    for spanning in [
+        json!({ "a": ".%2", "b": "e" }),
+        json!({ "a": "x%2", "b": "F.." }),
+    ] {
+        let input = parse_input(&operation, &spanning).unwrap();
+        assert_eq!(
+            build(BASE, &operation, &input).unwrap_err(),
+            "le chemin obtenu contient un segment . ou ..",
+            "{spanning}"
+        );
+    }
+    let escaped: RestOperation =
+        serde_json::from_value(operation_with_path("/files/{a}2e/x")).unwrap();
+    let input = parse_input(&escaped, &json!({ "a": ".%" })).unwrap();
+    assert!(build(BASE, &escaped, &input).is_err());
     // Next to what the administrators wrote as well.
     let dotted: RestOperation =
         serde_json::from_value(operation_with_path("/files/{a}..")).unwrap();

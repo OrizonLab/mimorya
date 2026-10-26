@@ -3,9 +3,9 @@
 //! made of it. A path parameter is percent-encoded whole (`/`, `%`, `?` and
 //! `#` included). Since a server may decode `%2F` (or `%5C`) back into a
 //! separator before resolving the path, and some decode twice, a path is
-//! refused when it would hold a `.` or `..` segment as sent or as such a
-//! server reads it: the request never leaves the API's address nor the path
-//! its administrators wrote. Query parameters are encoded as a form; body
+//! refused when it would hold a `.` or `..` segment as sent, decoded once,
+//! or decoded twice as a whole (an escape spanning two values): the request
+//! never leaves the API's address nor the path its administrators wrote. Query parameters are encoded as a form; body
 //! parameters make a JSON object.
 
 use serde_json::{Map, Value, json};
@@ -119,10 +119,10 @@ pub struct Built {
 /// The request an input (from `parse_input`) makes of the operation, at the
 /// API's address `base`; why none can be made, in French.
 pub fn build(base: &str, operation: &RestOperation, input: &Value) -> Result<Built, String> {
-    // As sent, and as a server decoding it reads it: once to find the
-    // separators, once more if it decodes twice.
+    // As sent, and as a server decoding it once reads it: the path written
+    // (which holds no `%`) and the values as they are.
     let mut path = String::new();
-    let mut decoded = String::new();
+    let mut read = String::new();
     let mut rest = operation.path.as_str();
     while let Some(start) = rest.find('{') {
         let end = rest[start..]
@@ -131,19 +131,19 @@ pub fn build(base: &str, operation: &RestOperation, input: &Value) -> Result<Bui
             .ok_or("chemin de l’opération illisible")?;
         let name = &rest[start + 1..end];
         let value = text(input.get(name).ok_or_else(|| format!("{name} : requis"))?);
-        for (built, piece) in [
-            (&mut path, encoded(&value)),
-            (&mut decoded, percent_decoded(&value)),
-        ] {
+        for (built, piece) in [(&mut path, encoded(&value)), (&mut read, value)] {
             built.push_str(&rest[..start]);
             built.push_str(&piece);
         }
         rest = &rest[end + 1..];
     }
-    for built in [&mut path, &mut decoded] {
+    for built in [&mut path, &mut read] {
         built.push_str(rest);
     }
-    if climbs(&path) || climbs(&decoded) {
+    // Decoded once more as a whole, as a server decoding twice reads it: an
+    // escape may span two values, or a value and the path written after it.
+    let twice = percent_decoded(&read);
+    if [&path, &read, &twice].iter().any(|built| climbs(built)) {
         return Err("le chemin obtenu contient un segment . ou ..".into());
     }
     let base_url = Url::parse(base).map_err(|_| "adresse de l’API illisible")?;
@@ -192,7 +192,7 @@ fn climbs(path: &str) -> bool {
 
 /// The text with its `%XX` escapes decoded once (lossy), as a server
 /// decoding a path a second time reads it. Decoding never takes a `.` or
-/// `..` segment away: what climbs as written climbs decoded too.
+/// `..` segment away: an escape holds neither `.`, `/` nor `\`.
 fn percent_decoded(text: &str) -> String {
     let bytes = text.as_bytes();
     let mut decoded = Vec::with_capacity(bytes.len());

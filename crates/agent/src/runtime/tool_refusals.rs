@@ -48,11 +48,35 @@ pub(super) fn action_summary(tool: &RegisteredTool, input: &Value) -> String {
         .unwrap_or_else(|| format!("{} ({})", tool.info.title, tool.info.name))
 }
 
+/// What is kept of what the person deciding read: the action as its tool
+/// describes it, its input's keys in one order (a checkpoint stored as
+/// `jsonb` comes back with its keys reordered; the action has not changed).
+pub(super) fn validated_action(tool: &RegisteredTool, input: &Value) -> String {
+    action_summary(tool, &canonical(input))
+}
+
+/// Every object's keys sorted, at every depth.
+fn canonical(value: &Value) -> Value {
+    match value {
+        Value::Object(fields) => {
+            let mut keys: Vec<&String> = fields.keys().collect();
+            keys.sort();
+            Value::Object(
+                keys.into_iter()
+                    .map(|key| (key.clone(), canonical(&fields[key])))
+                    .collect(),
+            )
+        }
+        Value::Array(items) => Value::Array(items.iter().map(canonical).collect()),
+        other => other.clone(),
+    }
+}
+
 /// Whether the tool is still there, describing the action as it was read.
 pub(super) fn since(tool: Option<&RegisteredTool>, approval: &PendingApproval) -> Since {
     match (tool, &approval.action_summary) {
         (None, _) => Since::Removed,
-        (Some(tool), Some(read)) if action_summary(tool, &approval.input) != *read => {
+        (Some(tool), Some(read)) if validated_action(tool, &approval.input) != *read => {
             Since::Changed
         }
         _ => Since::Same,
@@ -230,7 +254,7 @@ impl ToolCallProcessor {
             .emit(RunEvent::ApprovalRequested {
                 approval_id,
                 tool_name: tool.info.name.clone(),
-                action_summary: action_summary.clone(),
+                action_summary,
                 risk: tool.info.risk,
             })
             .await?;
@@ -238,8 +262,8 @@ impl ToolCallProcessor {
             approval_id,
             tool_call_id: call.id.clone(),
             tool_name: tool.info.name.clone(),
+            action_summary: Some(validated_action(tool, &input)),
             input,
-            action_summary: Some(action_summary),
         }))
     }
 
@@ -331,7 +355,26 @@ fn audit_reason(reason: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
+
     use super::*;
+
+    #[test]
+    fn reads_an_input_the_same_whatever_the_order_of_its_keys() {
+        let written =
+            json!({ "query": "x", "limit": 5, "filter": { "b": [ { "z": 1, "a": 2 } ], "a": 1 } });
+        let stored =
+            json!({ "limit": 5, "query": "x", "filter": { "a": 1, "b": [ { "a": 2, "z": 1 } ] } });
+        assert_ne!(written.to_string(), stored.to_string());
+        assert_eq!(
+            canonical(&written).to_string(),
+            canonical(&stored).to_string()
+        );
+        assert_eq!(
+            canonical(&written).to_string(),
+            r#"{"filter":{"a":1,"b":[{"a":2,"z":1}]},"limit":5,"query":"x"}"#
+        );
+    }
 
     #[test]
     fn says_why_a_decided_call_does_not_run_never_showing_what_the_user_wrote() {

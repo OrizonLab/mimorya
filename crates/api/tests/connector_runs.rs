@@ -1,7 +1,9 @@
 //! MCP connectors in runs (ADR-025): a mapped tool runs under its policy; a
 //! server that fails is reported on its connector without affecting the
 //! others; a connector's policies only reach its own tools, and two
-//! connectors naming the same tool do not break the company's runs.
+//! connectors naming the same tool do not break the company's runs. A
+//! validated call runs, whatever order its input's keys come back in from
+//! the stored checkpoint (ADR-112).
 
 mod support;
 
@@ -210,5 +212,52 @@ async fn another_companys_connector_does_not_exist_from_here() {
     assert_eq!(
         listed(&paul, &foreign.to_string()).await,
         serde_json::Value::Null
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_validated_mcp_call_runs_whatever_order_its_input_is_stored_in() {
+    let api = TestApi::start_with(&PRIVATE_DEPLOYMENT).await;
+    let paul = api.sign_in(user::PAUL).await;
+    let marc = api.sign_in(user::MARC).await;
+    let url = serve_demo_docs_http(Some(TOKEN)).await;
+    // Unmapped: a write, validated by whom the agent acts for.
+    let id = add(&paul, mcp_body("Procédures", "docs", &url, Some(TOKEN))).await;
+    // Written by the model in an order `jsonb` does not keep (shorter keys
+    // first): the checkpoint comes back with `aa` first.
+    let input = json!({ "query": "circulateur", "aa": 1 });
+    api.script(vec![ScriptedStep::calls("", vec![call(TOOL, input)])]);
+    let conversation = marc.post("/conversations", json!({})).await.json();
+    let conversation_id = conversation["conversation"]["id"].as_str().unwrap();
+    let started = marc
+        .post(
+            &format!("/conversations/{conversation_id}/messages"),
+            json!({ "content": "Cherche la procédure du circulateur." }),
+        )
+        .await;
+    let run_id = started.json()["runId"].as_str().unwrap().to_string();
+    api.idle().await;
+    let approvals = marc.get("/approvals?status=pending").await.json();
+    let pending = &approvals["approvals"][0];
+    assert_eq!(pending["toolName"], TOOL, "{approvals}");
+
+    api.script(vec![ScriptedStep::text(
+        "Voici la procédure du circulateur.",
+    )]);
+    let decision = format!("/approvals/{}/decision", pending["id"].as_str().unwrap());
+    let approved = marc.post(&decision, json!({ "approved": true })).await;
+    assert_eq!(approved.status, StatusCode::OK, "{}", approved.text());
+    api.idle().await;
+    let detail = marc.get(&format!("/runs/{run_id}")).await.json();
+    let ran = detail["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|t| t["toolName"] == TOOL && t["status"] == "succeeded");
+    assert!(ran, "{detail}");
+    assert_eq!(
+        paul.delete(&format!("/admin/connectors/{id}")).await.status,
+        StatusCode::OK
     );
 }
