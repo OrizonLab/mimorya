@@ -1,9 +1,9 @@
 // A skill's version tried on its cases (ADR-103, ADR-104, ADR-105): Paul
 // writes a case for a skill whose version 1 is active, renames it, asks for
 // version 2 to be evaluated, follows it to its end, reads the regression it
-// found case by case (the answers, the judge's issue), makes version 2 active
-// once he confirmed against it, deletes the case, and reads it all back as
-// the API recorded it. Whatever happens, the test's skill is gone afterwards,
+// found case by case (the answers, the judge's issue, the tools called),
+// declines to make version 2 active against it, then makes it active once he
+// confirmed, deletes the case, and reads it all back as the API recorded it. Whatever happens, the test's skill is gone afterwards,
 // its cases and evaluations with it.
 import type { Created, SkillDetail, SkillEvaluations, SkillList } from '../lib/api/contract';
 import { openAdmin } from './support/admin';
@@ -20,13 +20,18 @@ const NONE_CITED = 'Aucun retard à signaler.';
 const ISSUE = 'Les retards de la semaine ne sont pas cités.';
 
 const dialogs: string[] = [];
+/** Whether the next activation asked against a regression is declined. */
+let declineActivation = false;
 
 test.beforeEach(({ page }) => {
   dialogs.length = 0;
+  declineActivation = false;
   // Deleting a case and activating against a regression ask for a confirmation.
   page.on('dialog', (dialog) => {
     dialogs.push(dialog.message());
-    void dialog.accept();
+    const declined = declineActivation && dialog.message().includes('Activer quand même');
+    if (declined) declineActivation = false;
+    void (declined ? dialog.dismiss() : dialog.accept());
   });
 });
 
@@ -89,18 +94,29 @@ test('a version is evaluated on a case, its regression read, then made active on
   await expect(evaluation).toContainText('Terminée', { timeout: 30_000 });
   await expect(evaluation).toContainText('1 régression');
   await expect(evaluation).toContainText(
-    'Version 2 : 0 cas réussi sur 1 · version active 1 : 1 sur 1',
+    'Version 2 : 0 cas réussi sur 1 · version de référence 1 : 1 sur 1',
   );
   await evaluation.getByRole('button', { name: /Voir les cas/ }).click();
   await expect(evaluation.getByText('Régression', { exact: true })).toBeVisible();
   await expect(evaluation.getByText(NONE_CITED)).toBeVisible();
   await expect(evaluation.getByText(ISSUE)).toBeVisible();
   await expect(evaluation.getByText(CITED)).toBeVisible();
+  await expect(evaluation.getByText('Compétence retards-e2e v2')).toBeVisible();
+  await expect(evaluation.getByText('Compétence retards-e2e v1')).toBeVisible();
 
-  // Made active against its regression, once confirmed.
-  await page.getByRole('button', { name: 'Activer la version 2' }).click();
+  // Against its regression: declined, nothing changes.
+  declineActivation = true;
+  const activate = page.getByRole('button', { name: 'Activer la version 2' });
+  await activate.click();
+  await expect
+    .poll(() => dialogs.join('\n'))
+    .toContain('1 cas réussi par la version active ne l’est plus');
+  await expect(activate).toBeEnabled();
+  const kept = (await (await page.request.get(skillPath)).json()) as SkillDetail;
+  expect(kept.skill.activeVersion).toBe(1);
+  // Then made active, once confirmed.
+  await activate.click();
   await expect(page.getByText('v2 active')).toBeVisible();
-  expect(dialogs.join('\n')).toContain('1 cas réussi par la version active ne l’est plus');
 
   await cases.getByRole('button', { name: 'Supprimer le cas Retards de la semaine' }).click();
   await expect(cases.getByText('Aucun cas')).toBeVisible();

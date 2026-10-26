@@ -6,9 +6,10 @@ import { api, useAction, type EvaluationRequest, type SkillVersionView } from '@
 
 /**
  * Asks for a version to be tried on the skill's cases (ADR-104), the
- * latest one not active by default. A proposal of the agent's is read
- * before it is played: the assistant follows it with the rights of whom
- * asked for the evaluation, reading only.
+ * latest one not active by default. A version the agent wrote that no
+ * person made active, awaiting a decision or turned down, is read before
+ * it is played: the assistant follows it with the rights of whom asked for
+ * the evaluation, reading only.
  */
 export function EvaluationLaunch({
   skillId,
@@ -27,7 +28,7 @@ export function EvaluationLaunch({
   const [version, setVersion] = useState(fresh?.version ?? versions[0]?.version ?? 1);
   const action = useAction();
   const chosen = versions.find((v) => v.version === version);
-  const proposal = chosen?.proposed === true && chosen.status === 'candidate';
+  const proposal = chosen !== undefined && byTheAgent(chosen);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -54,7 +55,7 @@ export function EvaluationLaunch({
               <option key={v.version} value={v.version}>
                 Version {v.version}
                 {v.version === activeVersion ? ' (active)' : ''}
-                {v.proposed && v.status === 'candidate' ? ' (proposée par l’agent)' : ''}
+                {byTheAgent(v) ? ' (proposée par l’agent)' : ''}
               </option>
             ))}
           </Select>
@@ -71,4 +72,9 @@ export function EvaluationLaunch({
       {action.error && <ErrorNote message={action.error} />}
     </form>
   );
+}
+
+/** Written by the agent, and never made active by a person. */
+function byTheAgent(version: SkillVersionView): boolean {
+  return version.proposed && version.approvedAt === null;
 }

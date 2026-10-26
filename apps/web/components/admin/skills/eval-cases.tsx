@@ -85,14 +85,14 @@ export function EvalCases({
       {action.error && <ErrorNote message={action.error} />}
       {editing === 'new' ? (
         <CaseForm skillId={skillId} onDone={done} />
+      ) : cases.length < MAX_CASES ? (
+        <div>
+          <Button variant="secondary" onClick={() => setEditing('new')}>
+            <Plus className="size-4" aria-hidden /> Nouveau cas
+          </Button>
+        </div>
       ) : (
-        cases.length < MAX_CASES && (
-          <div>
-            <Button variant="secondary" onClick={() => setEditing('new')}>
-              <Plus className="size-4" aria-hidden /> Nouveau cas
-            </Button>
-          </div>
-        )
+        <p className="text-xs text-muted">{MAX_CASES} cas au plus par compétence.</p>
       )}
     </section>
   );

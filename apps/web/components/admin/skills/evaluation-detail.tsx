@@ -6,7 +6,8 @@ import { CaseResult } from './case-result';
 
 /**
  * An evaluation case by case (ADR-104): each case's outcome for the
- * version evaluated and for the active one beside it, regressions marked.
+ * version evaluated and for the reference (the version active when it was
+ * asked for), regressions marked.
  */
 export function EvaluationDetail({ id }: { id: string }) {
   const state = useApiData<SkillEvaluationDetail>(`/admin/skill-evaluations/${id}`);
@@ -34,7 +35,7 @@ export function EvaluationDetail({ id }: { id: string }) {
                     <CaseResult label={`Version ${evaluation.version}`} result={item.result} />
                     {evaluation.referenceVersion !== null && (
                       <CaseResult
-                        label={`Version active ${evaluation.referenceVersion}`}
+                        label={`Version de référence ${evaluation.referenceVersion}`}
                         result={item.reference}
                       />
                     )}

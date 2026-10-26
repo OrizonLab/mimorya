@@ -5113,23 +5113,26 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
   laissait qu'une erreur.
 - **Décision** : une compétence ouverte montre, sous ses versions, deux sections :
   - **« Cas d'évaluation »** : chaque cas (nom, demande, critères), écrit, modifié ou
-    supprimé sur place, dix au plus. Les critères s'écrivent un par ligne ; les lignes
-    vides sont écartées par l'API ;
+    supprimé sur place, dix au plus, ce que l'écran dit une fois la limite atteinte. Les
+    critères s'écrivent un par ligne ; les lignes vides sont écartées par l'API ;
   - **« Évaluations »**, les plus récentes d'abord :
     - **lancement** : la version à évaluer se choisit dans une liste ; par défaut, la
       dernière qui n'est ni active ni rejetée. Tant qu'il n'y a aucun cas, la section
       le dit à la place du formulaire ;
-    - **proposition de l'agent** : l'évaluer la fait suivre à l'assistant avec les
-      droits de l'administrateur, en lecture seule. L'écran le rappelle sous la liste,
-      puis demande une confirmation (« Avez-vous relu son contenu ? ») avant de la
-      lancer ;
-    - **suivi** : une évaluation en file ou en cours est relue toutes les 3 secondes
-      jusqu'à sa fin (`useRefreshWhile`) ;
-    - **bilan** : état, cas joués, cas réussis par chaque version, régressions en
-      rouge, raison d'un échec, qui l'a demandée, coût ;
+    - **proposition de l'agent** : est concernée toute version que l'agent a écrite et
+      qu'aucune personne n'a activée, en attente d'une décision ou rejetée. L'évaluer la
+      fait suivre à l'assistant avec les droits de l'administrateur, en lecture seule.
+      L'écran le rappelle sous la liste, puis demande une confirmation (« Avez-vous relu
+      son contenu ? ») avant de la lancer ;
+    - **suivi** : une évaluation en file ou en cours est relue 3 secondes après la fin
+      de chaque lecture, jusqu'à sa fin (`useRefreshWhile`). Une lecture lente ne
+      s'empile donc pas. La page « Missions » suit ses étapes de la même façon ;
+    - **bilan** : état, cas joués, cas réussis par la version évaluée et par la
+      « version de référence » (celle qui était active à la demande, ce qu'elle n'est
+      plus forcément), régressions en rouge, raison d'un échec, qui l'a demandée, coût ;
     - **« Voir les cas »** : chaque cas avec son issue pour la version évaluée et pour
-      la version active, et « Régression » quand la première a manqué ce que la seconde
-      réussissait. Les réponses, les manquements et les outils appelés ne sont montrés
+      la version de référence, et « Régression » quand la première a manqué ce que la
+      seconde réussissait. Les réponses, les manquements et les outils appelés ne sont montrés
       qu'à la personne qui a demandé l'évaluation ; aux autres administrateurs, l'écran
       dit pourquoi ils ne les voient pas ;
   - **activation** : refusée pour régression (409), elle montre le message de l'API
@@ -5150,7 +5153,13 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
   - tests :
     - `apps/web/e2e/skill-evaluations.spec.ts` : Paul écrit un cas puis le renomme ;
       il évalue la version 2 jusqu'à la fin de l'évaluation ; il lit cas par cas la
-      régression, les réponses et le manquement ; il active la version 2 après
-      confirmation, puis supprime le cas. Le test relit ensuite tout cela par l'API ;
+      régression, les réponses, le manquement et les outils appelés. Il refuse d'abord
+      d'activer la version 2 malgré sa régression (la version 1 reste active), puis
+      l'active après confirmation, et supprime le cas. Le test relit ensuite tout cela
+      par l'API ;
     - `apps/web/e2e/skill-proposals.spec.ts` : rappelé de relire une proposition avant
-      de l'évaluer, Paul décline ; aucune évaluation n'est demandée.
+      de l'évaluer, Paul décline. L'API, relue après rechargement, ne garde aucune
+      évaluation ;
+  - non couvert par un e2e : le message montré à un autre administrateur à la place des
+    réponses. Le retrait des réponses par l'API est testé
+    (`crates/api/tests/skill_evaluations.rs`).

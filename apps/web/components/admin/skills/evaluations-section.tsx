@@ -27,7 +27,7 @@ export function EvaluationsSection({
   const state = useApiData<SkillEvaluations>(`/admin/skills/${skillId}/evaluations`);
   const latest = state.data?.evaluations[0];
   const underWay = latest?.status === 'queued' || latest?.status === 'running';
-  useRefreshWhile(underWay, state.reload, REFRESH_MS);
+  useRefreshWhile(underWay && !state.loading, state.reload, REFRESH_MS);
 
   return (
     <section className="flex flex-col gap-2" aria-label="Évaluations">

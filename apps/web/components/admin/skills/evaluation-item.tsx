@@ -9,8 +9,8 @@ import { EvaluationDetail } from './evaluation-detail';
 
 /**
  * One evaluation of a skill (ADR-104): its state, what its cases add up to
- * for the version evaluated and for the active one beside it, the
- * regressions found; its cases read on demand.
+ * for the version evaluated and for the reference, the version active when
+ * it was asked for, the regressions found; its cases read on demand.
  */
 export function EvaluationItem({ evaluation }: { evaluation: SkillEvaluationView }) {
   const [open, setOpen] = useState(false);
@@ -42,7 +42,7 @@ export function EvaluationItem({ evaluation }: { evaluation: SkillEvaluationView
           : `${e.played} cas joué${e.played > 1 ? 's' : ''} sur ${e.cases}`}
         {e.referenceVersion !== null &&
           e.referencePassed !== null &&
-          ` · version active ${e.referenceVersion} : ${e.referencePassed} sur ${e.cases}`}
+          ` · version de référence ${e.referenceVersion} : ${e.referencePassed} sur ${e.cases}`}
       </p>
       {e.failure && <p className="mt-1 text-xs text-danger">{e.failure}</p>}
       <p className="mt-1 text-xs text-muted">

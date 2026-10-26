@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect } from 'react';
 import { MissionCard, MissionForm, underWay } from '@/components/missions';
 import { Card, EmptyState, Loaded, PageHeader } from '@/components/ui';
 import { useApiData, type MissionList } from '@/lib/api';
 import { useCan } from '@/lib/me-context';
+import { useRefreshWhile } from '@/lib/use-refresh-while';
 
 /** How often the list is read again while a mission is under way. */
 const REFRESH_MS = 10_000;
@@ -21,11 +21,7 @@ export default function MissionsPage() {
   const reload = state.reload;
 
   // Its stages go on in the background: the list follows them.
-  useEffect(() => {
-    if (!going) return;
-    const timer = window.setInterval(reload, REFRESH_MS);
-    return () => window.clearInterval(timer);
-  }, [going, reload]);
+  useRefreshWhile(going && !state.loading, reload, REFRESH_MS);
 
   return (
     <div className="mx-auto w-full max-w-4xl px-4 py-8">
