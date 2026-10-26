@@ -90,7 +90,17 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   envoyer un lien. La page de connexion ne propose le lien que si un relais est
   configuré ; l'audit d'une demande, anonyme, est inscrit au nom de la plateforme.
 - Protection CSRF : `SameSite=Lax` + exigence d'un en-tête personnalisé sur toutes les
-  requêtes modifiantes + vérification d'`Origin`.
+  requêtes modifiantes + vérification d'`Origin`. Deux exceptions, que des tests tentent
+  de contourner : la réception des réponses SAML (ADR-068, ci-dessous) et l'envoi d'un
+  autre système à un déclencheur (`POST /hooks/{id}`, chemin exact, identifiant en forme
+  canonique, ADR-109), qu'aucune session n'autorise : son jeton seul le fait.
+- Déclencheurs (ADR-109) : un autre système envoie avec le jeton secret du déclencheur
+  (`Authorization: Bearer`, 256 bits, gardé en empreinte SHA-256, montré une fois). Un
+  déclencheur inconnu, un jeton faux et un déclencheur en pause répondent de même (404).
+  Corps borné (16 Kio, UTF-8), trente envois par heure au plus. Les données reçues
+  suivent la demande de l'auteur, encadrées comme données non fiables, jamais dans
+  l'audit ni les journaux ; le run agit avec les droits de l'auteur et n'agit jamais
+  seul (autonomie plafonnée à « exécution avec validation »).
 - Limitation de débit sur la connexion :
   - **par compte** : 10 échecs par quart d'heure et par adresse e-mail, comptes
     inconnus compris (rien ne distingue un compte existant). Chaque tentative réserve
@@ -183,8 +193,9 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
     `SameSite=None; Secure` propre au retour SAML), fenêtre de validité, assertions à
     usage unique en base (rejeu refusé sur tout serveur). L'identifiant d'entité de
     l'application est propre à chaque entreprise : la confiance d'un fournisseur ne vaut
-    que pour elle. Seule exemption
-    de l'en-tête anti-CSRF et du contrôle d'origine : la réception de la réponse, liée
+    que pour elle. Exemptée
+    de l'en-tête anti-CSRF et du contrôle d'origine (avec l'envoi à un déclencheur,
+    ADR-109) : la réception de la réponse, liée
     par la tentative, la demande attendue et la signature ; un test tente de la
     contourner (`crates/api/tests/auth.rs`). Ni connexion à l'initiative du fournisseur, ni assertion chiffrée.
   - **Propriété des domaines** (ADR-069) : une entreprise prouve un domaine par un

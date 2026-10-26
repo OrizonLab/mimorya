@@ -139,6 +139,11 @@ const AUTHENTICATED_ROUTES: &[(&str, &str)] = &[
     ("POST", "/scheduled-tasks"),
     ("PATCH", "/scheduled-tasks/{id}"),
     ("DELETE", "/scheduled-tasks/{id}"),
+    ("GET", "/inbound-hooks"),
+    ("POST", "/inbound-hooks"),
+    ("PATCH", "/inbound-hooks/{id}"),
+    ("DELETE", "/inbound-hooks/{id}"),
+    ("POST", "/inbound-hooks/{id}/token"),
     ("GET", "/missions"),
     ("POST", "/missions"),
     ("GET", "/missions/{id}"),
@@ -253,6 +258,7 @@ async fn every_authenticated_route_holds_a_temporary_password_back() {
 /// let a temporary password be replaced.
 const OTHER_ROUTES: &[(&str, &str)] = &[
     ("GET", "/health"),
+    ("POST", "/hooks/{id}"),
     ("POST", "/auth/login"),
     ("POST", "/auth/invitation"),
     ("POST", "/auth/invitation/accept"),

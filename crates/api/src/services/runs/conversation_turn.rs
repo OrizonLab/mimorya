@@ -32,6 +32,10 @@ pub enum TurnSender {
     Schedule {
         task_id: Uuid,
     },
+    /// Their inbound hook `hook_id`, reached by another system (ADR-109).
+    Hook {
+        hook_id: Uuid,
+    },
 }
 
 pub struct OpenedTurn {
@@ -123,6 +127,12 @@ pub async fn open_conversation_turn(
             AuditEntry::new(identity.tenant_id, "system", action, "success")
                 .on_behalf_of(identity.user_id)
                 .metadata(json!({ "scheduledTaskId": task_id }))
+        }
+        // Started when another system posted to their hook.
+        TurnSender::Hook { hook_id } => {
+            AuditEntry::new(identity.tenant_id, "system", action, "success")
+                .on_behalf_of(identity.user_id)
+                .metadata(json!({ "inboundHookId": hook_id }))
         }
     };
     append_audit(

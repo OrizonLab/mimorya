@@ -29,14 +29,7 @@ impl CheckedTask {
         time: &str,
         time_zone: &str,
     ) -> Result<Self, DomainError> {
-        let title = one_line(title);
-        if !(1..=MAX_TITLE_CHARS).contains(&title.chars().count()) {
-            return Err(DomainError::validation(BAD_TITLE));
-        }
-        let instruction = canonical(without_hidden(instruction).trim());
-        if !(1..=MAX_INSTRUCTION_CHARS).contains(&instruction.chars().count()) {
-            return Err(DomainError::validation(BAD_INSTRUCTION));
-        }
+        let (title, instruction) = checked_request(title, instruction)?;
         Ok(Self {
             title,
             instruction,
@@ -48,6 +41,21 @@ impl CheckedTask {
     pub fn weekdays(&self) -> Vec<i16> {
         self.schedule.days().into_iter().map(i16::from).collect()
     }
+}
+
+/// A title and an instruction sent as their author's, as checked: the
+/// title on one line, both without hidden characters and bounded. Shared
+/// with the inbound hooks (ADR-109).
+pub fn checked_request(title: &str, instruction: &str) -> Result<(String, String), DomainError> {
+    let title = one_line(title);
+    if !(1..=MAX_TITLE_CHARS).contains(&title.chars().count()) {
+        return Err(DomainError::validation(BAD_TITLE));
+    }
+    let instruction = canonical(without_hidden(instruction).trim());
+    if !(1..=MAX_INSTRUCTION_CHARS).contains(&instruction.chars().count()) {
+        return Err(DomainError::validation(BAD_INSTRUCTION));
+    }
+    Ok((title, instruction))
 }
 
 /// The text on one line, its blanks as single spaces, without hidden

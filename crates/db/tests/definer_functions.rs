@@ -5,13 +5,14 @@
 
 mod support;
 
-const EXPECTED: [&str; 27] = [
+const EXPECTED: [&str; 28] = [
     "auth_domain_held_elsewhere",
     "auth_find_identity_provider",
     "auth_find_identity_provider_link",
     "auth_find_invitation",
     "auth_find_login",
     "auth_find_password_reset",
+    "auth_inbound_hook_tenant",
     "auth_resolve_session",
     "system_approval_reminder_runs",
     "system_due_scheduled_tasks",

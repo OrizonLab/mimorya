@@ -8,6 +8,7 @@ pub mod connectors;
 pub mod documents;
 pub mod embeddings;
 pub mod event_bus;
+pub mod inbound_hooks;
 pub mod invalidations;
 pub mod invitations;
 pub mod llm;

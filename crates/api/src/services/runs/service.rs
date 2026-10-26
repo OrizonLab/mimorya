@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use mimorya_core::DomainError;
+use mimorya_core::autonomy::AutonomyLevel;
 use mimorya_db::Database;
 use mimorya_db::repositories::approval_delegations::standing_in_for;
 use mimorya_db::repositories::approval_views::get_approval_view;
@@ -89,7 +90,14 @@ impl RunService {
         sender: TurnSender,
     ) -> anyhow::Result<StartedTurn> {
         let access = self.ready_to_run(identity).await?;
-        let autonomy = tenant_autonomy_level(&access);
+        let autonomy = match sender {
+            // Led by what another system posted: what it writes is validated (ADR-109).
+            TurnSender::Hook { .. } => match tenant_autonomy_level(&access) {
+                AutonomyLevel::AutonomousLimited => AutonomyLevel::ExecuteWithApproval,
+                level => level,
+            },
+            TurnSender::User | TurnSender::Schedule { .. } => tenant_autonomy_level(&access),
+        };
 
         let mut tx = self.db.begin(identity.tenant_id).await?;
         let turn =

@@ -1,8 +1,11 @@
 //! CSRF protection: state-changing requests must carry a custom header (not
 //! settable cross-site without CORS, which is disabled) and, when present, an
-//! `Origin` matching the web application. A SAML provider's response alone
-//! is posted from its own site, without it: the sealed attempt in its own
-//! cookie and the signed response bind it instead (ADR-068).
+//! `Origin` matching the web application. Two are posted from elsewhere,
+//! without it: a SAML provider's response, bound instead by the sealed
+//! attempt in its own cookie and the signed response (ADR-068); and a
+//! delivery to an inbound hook, from another system, which no session
+//! authorizes: its token alone does (ADR-109). The latter's path is matched
+//! whole, its identifier in canonical form.
 
 use axum::extract::{Request, State};
 use axum::http::Method;
@@ -13,7 +16,8 @@ use mimorya_core::DomainError;
 
 use crate::app::AppState;
 use crate::http::ApiError;
-use crate::routes::SAML_ACS_ROUTE;
+use crate::routes::{HOOK_DELIVERY_PREFIX, SAML_ACS_ROUTE};
+use uuid::Uuid;
 
 pub const REQUEST_HEADER: &str = "x-mimorya-request";
 
@@ -22,10 +26,12 @@ pub async fn csrf_protection(
     request: Request,
     next: Next,
 ) -> Response {
+    let path = request.uri().path();
     if matches!(
         *request.method(),
         Method::GET | Method::HEAD | Method::OPTIONS
-    ) || request.uri().path() == SAML_ACS_ROUTE
+    ) || path == SAML_ACS_ROUTE
+        || (*request.method() == Method::POST && is_hook_delivery(path))
     {
         return next.run(request).await;
     }
@@ -40,4 +46,37 @@ pub async fn csrf_protection(
         return ApiError::from(DomainError::forbidden("Origine non autorisée")).into_response();
     }
     next.run(request).await
+}
+
+/// Whether `path` is a delivery to an inbound hook: the prefix, then a
+/// hook's identifier as it is written, lowercase and hyphenated, and nothing
+/// else.
+fn is_hook_delivery(path: &str) -> bool {
+    path.strip_prefix(HOOK_DELIVERY_PREFIX)
+        .and_then(|id| Uuid::parse_str(id).ok().map(|uuid| (id, uuid)))
+        .is_some_and(|(id, uuid)| uuid.hyphenated().to_string() == id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_hook_delivery;
+
+    #[test]
+    fn only_a_hook_s_own_path_goes_without_the_header() {
+        let id = "0b9c4c1e-7a4f-4f7e-9d1c-2a3b4c5d6e7f";
+        assert!(is_hook_delivery(&format!("/hooks/{id}")));
+        for path in [
+            "/hooks/".to_owned(),
+            format!("/hooks/{id}/"),
+            format!("/hooks/{}", id.to_uppercase()),
+            format!("/hooks/{}", id.replace('-', "")),
+            format!("/hooks/{{{id}}}"),
+            format!("/hooks/{id}/token"),
+            format!("/hooks//{id}"),
+            format!("/inbound-hooks/{id}"),
+            format!("/hooks/urn:uuid:{id}"),
+        ] {
+            assert!(!is_hook_delivery(&path), "{path}");
+        }
+    }
 }
