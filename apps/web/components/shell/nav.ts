@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   FileText,
   MessageSquare,
+  PlugZap,
   Settings,
   Target,
 } from 'lucide-react';
@@ -22,6 +23,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/chat', label: 'Conversations', icon: MessageSquare },
   { href: '/approvals', label: 'Validations', icon: CheckCircle2 },
   { href: '/scheduled-tasks', label: 'Tâches planifiées', icon: CalendarClock },
+  { href: '/inbound-hooks', label: 'Déclencheurs', icon: PlugZap },
   {
     href: '/missions',
     label: 'Missions',

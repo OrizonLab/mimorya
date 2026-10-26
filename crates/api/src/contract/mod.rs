@@ -40,7 +40,7 @@ pub use errors::{ErrorBody, ErrorDetail, ErrorKind};
 pub use health::Health;
 pub use inbound_hooks::{
     DeliveryOutcome, InboundHook, InboundHookList, InboundHookToken, InboundHookUpdate,
-    LastDelivery, NewInboundHook, hook_path,
+    LastDelivery, NewInboundHook, hook_path, hook_url,
 };
 pub use links::{InvitationDetails, LinkPassword, LinkToken, ResetDetails, ResetLinkRequest};
 pub use memory::{

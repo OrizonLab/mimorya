@@ -21,8 +21,9 @@
 //! the company's documents (`documents`, ADR-096), read by the extraction
 //! process the tests build (`MIMORYA_EXTRACTOR`, ADR-095), one handed to a
 //! sub-agent (`sub_agents`, ADR-099), a skill the agent proposes
-//! (`skill_proposals`, ADR-101), and a skill's version tried on its case
-//! (`skill_evaluations`, ADR-105). One pass of the tests
+//! (`skill_proposals`, ADR-101), a skill's version tried on its case
+//! (`skill_evaluations`, ADR-105), and what an inbound hook sends (`hooks`,
+//! ADR-110). One pass of the tests
 //! per start: the model's script and the demo company are used up, and the
 //! rate limit windows a former start left are forgotten (ADR-088). Like
 //! `mimorya-api`, once listening it takes up the runs whose executor
@@ -37,6 +38,7 @@ mod documents;
 #[allow(dead_code)] // the API's tests use the rest
 #[path = "../../tests/support/dns.rs"]
 mod fake_dns;
+mod hooks;
 #[allow(dead_code)] // the API's tests use the rest
 #[path = "../../tests/support/identity_provider.rs"]
 mod identity_provider;
@@ -113,7 +115,8 @@ async fn main() -> anyhow::Result<()> {
     }
     let conversations = Arc::new(queued::WithQueued::new(model));
     let documents = Arc::new(documents::WithDocuments::new(conversations));
-    let delegations = Arc::new(sub_agents::WithSubAgents::new(documents));
+    let received = Arc::new(hooks::WithHooks::new(documents));
+    let delegations = Arc::new(sub_agents::WithSubAgents::new(received));
     let proposals = Arc::new(skill_proposals::WithSkillProposals::new(delegations));
     let missions = Arc::new(missions::WithMissions::new(proposals));
     // In front of the missions, which pass any answer they are asked to judge.

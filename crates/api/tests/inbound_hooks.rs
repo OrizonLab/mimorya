@@ -10,10 +10,10 @@ use axum::http::StatusCode;
 use mimorya_api::auth::credentials::hash_token;
 use mimorya_core::demo::{tenant, user};
 use serde_json::{Value, json};
-use support::TestApi;
 use support::hooks::{HOOKS, INSTRUCTION, deliver, hook, listed};
 use support::manager_approvals::without;
 use support::refusals::{entries_since, latest_entry};
+use support::{TestApi, WEB_ORIGIN};
 use uuid::Uuid;
 
 fn hook_url(id: Uuid) -> String {
@@ -50,6 +50,8 @@ async fn a_person_writes_their_hooks_and_sees_each_token_once() {
     let token = made["token"].as_str().unwrap().to_owned();
     assert!(token.starts_with("mhk_"), "{token}");
     assert_eq!(made["path"], format!("/hooks/{id}"));
+    let url = format!("{WEB_ORIGIN}/api/hooks/{id}");
+    assert_eq!(made["url"], url);
     assert_eq!(kept_digest(&api, id).await, hash_token(&token));
 
     let shown = listed(&marc, id).await;
@@ -57,6 +59,7 @@ async fn a_person_writes_their_hooks_and_sees_each_token_once() {
     assert_eq!(shown["instruction"], INSTRUCTION);
     assert_eq!(shown["enabled"], true);
     assert_eq!(shown["path"], format!("/hooks/{id}"));
+    assert_eq!(shown["url"], url);
     assert_eq!(shown["lastDelivery"], Value::Null);
     let list = marc.get(HOOKS).await;
     assert!(!list.text().contains(&token), "the token is shown once");

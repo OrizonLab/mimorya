@@ -93,6 +93,15 @@ pub struct MessageMetadata {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub mission: Option<MissionPart>,
+    /// The inbound hook whose delivery sent the message, as its author's
+    /// (ADR-109): its instruction, then what was posted, enclosed.
+    #[serde(
+        default,
+        rename = "inboundHookId",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[ts(optional)]
+    pub inbound_hook_id: Option<Uuid>,
 }
 
 /// What a message is to its mission (ADR-089).

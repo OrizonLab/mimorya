@@ -15,6 +15,7 @@ use mimorya_core::tools::Citation as ToolCitation;
 use mimorya_db::repositories::conversations::MESSAGE_ROLES;
 use mimorya_db::repositories::tool_invocations::TOOL_DECISIONS;
 use serde_json::json;
+use uuid::Uuid;
 
 use super::{every_value_reads_back, reads_back};
 use crate::contract::stored::{stored, stored_text};
@@ -54,6 +55,7 @@ fn message_metadata_carries_the_engine_s_sources_and_checks() {
         evidence: Some(evidence.iter().map(Into::into).collect()),
         verification: Some((&report).into()),
         mission: None,
+        inbound_hook_id: None,
     };
     let written = serde_json::to_value(&metadata).unwrap();
     assert_eq!(
@@ -70,6 +72,15 @@ fn message_metadata_carries_the_engine_s_sources_and_checks() {
     let written = serde_json::to_value(&note).unwrap();
     assert_eq!(written, json!({ "mission": "progress" }));
     reads_back::<_, MessageMetadata>(&note);
+    // A turn an inbound hook sent (ADR-109).
+    let hook = Uuid::nil();
+    let sent = MessageMetadata {
+        inbound_hook_id: Some(hook),
+        ..MessageMetadata::default()
+    };
+    let written = serde_json::to_value(&sent).unwrap();
+    assert_eq!(written, json!({ "inboundHookId": hook }));
+    reads_back::<_, MessageMetadata>(&sent);
 }
 
 #[test]
