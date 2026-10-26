@@ -5272,3 +5272,60 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     proposition de l'agent n'a pas de test de bout en bout : aucun scénario ne propose
     de version d'une compétence qui a des critères (le fait est testé par l'API,
     `crates/api/tests/skill_quality_criteria.rs`).
+
+## ADR-108 — Modèle de contrôle des réponses choisi par l'entreprise
+
+- **Date** : 2026-10-26 · **Statut** : acceptée (contrôle qualité avancé, lot 2b)
+- **Contexte** : une réponse qui a des critères à tenir (ceux d'une compétence suivie,
+  ADR-106, d'une mission, ADR-089, ou d'un cas d'évaluation, ADR-104) est jugée par un
+  modèle. Ce juge était toujours le modèle qui avait écrit la réponse : il juge son
+  propre travail, au prix du modèle le plus capable. Le routeur des modèles prévoyait
+  une classe de tâche « vérification » qu'aucun réglage ne remplissait.
+- **Décision** :
+  - **l'entreprise peut choisir un modèle de contrôle**, à part de celui de ses
+    conversations, dans « Modèle d'IA » (`settings:manage`, sous le verrou
+    d'administration) : fournisseur, modèle et adresse, comme pour ses conversations
+    (ADR-024), avec les mêmes règles (fournisseurs connus, adresses de la liste de
+    l'exploitant, vérifiées de nouveau à chaque chargement) :
+    - une ligne de `tenant_llm_settings` à côté de celle des conversations, distinguée
+      par `purpose` (`conversations`, `verification`, migration 0047) ;
+    - sa clé est un secret à part (`verification.api_key`), écrite seulement, jamais
+      rendue ni tracée. Une clé ne passe ni d'une adresse à l'autre, ni d'un usage à
+      l'autre : la clé des conversations ne sert pas au modèle de contrôle ;
+    - `PUT`, `DELETE` et `POST …/test` sur `/admin/llm/verification`, montré dans
+      `GET /admin/llm` (`verification`) ; audit `verification_model.configured`,
+      `.reset` et `.tested`, comme pour les conversations ;
+    - il est possible sans fournisseur propre pour les conversations : une entreprise
+      sur le modèle de la plateforme peut faire juger par le sien ;
+  - **ce modèle juge à la place de celui des conversations** :
+    - les réponses des runs (conversations, missions, tâches planifiées), par la
+      classe « vérification » du routeur ;
+    - les réponses des évaluations, les deux versions comparées par le même juge ;
+    - il ne répond ni ne corrige : l'agent corrige sa réponse avec le modèle des
+      conversations. Son coût compte dans le run, à son propre prix ;
+  - **s'il ne peut pas servir** (clé illisible, adresse retirée de la liste…), le modèle
+    des conversations juge en attendant, et l'écran le dit avec la raison. Les
+    conversations ne s'arrêtent pas : le modèle des conversations lit déjà tout ce
+    qu'un contrôle lit, aucune donnée ne part ailleurs.
+- **Alternatives écartées** :
+  - un autre modèle du même fournisseur que les conversations, sans clé à lui : une
+    entreprise sur le modèle de la plateforme n'aurait rien pu choisir, et un juge
+    d'un autre fournisseur n'aurait pas été possible ;
+  - arrêter les conversations quand le modèle de contrôle ne peut pas servir, comme
+    pour leur propre fournisseur : le choix de l'entreprise sur ses données reste
+    tenu sans cela, et une clé révoquée ne doit pas couper l'assistant ;
+  - laisser les réponses sans contrôle dans ce cas : les critères ne seraient plus
+    tenus, sans que personne ne le voie dans la conversation ;
+  - un modèle de contrôle de la plateforme : le choix appartient à l'entreprise, qui
+    paie et dont les données partent.
+- **Conséquences** :
+  - le modèle de contrôle reçoit la demande, les critères, les sources consultées
+    (leurs identifiants) et la réponse : l'écran demande de vérifier qu'il convient
+    aux données de l'entreprise ;
+  - tests : `crates/api/tests/verification_model.rs` (choisi, montré, testé, retiré ;
+    il juge les réponses d'un run et le modèle des conversations les corrige, puis le
+    modèle des conversations juge de nouveau ; il juge les deux versions d'une
+    évaluation ; inutilisable, le modèle des conversations juge et les conversations
+    continuent ; aucune clé ne passe de l'un à l'autre, chacun retiré seul ; réservé
+    aux administrateurs des réglages), `crates/api/tests/admin_llm.rs`,
+    `crates/api/tests/company_model_runs.rs`, `apps/web/e2e/review-model.spec.ts`.

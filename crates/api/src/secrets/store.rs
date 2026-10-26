@@ -13,6 +13,8 @@ use super::SecretCipher;
 pub const LLM_API_KEY: &str = "llm.api_key";
 /// The API key of the company's embedding model (ADR-074).
 pub const EMBEDDING_API_KEY: &str = "embedding.api_key";
+/// The API key of the model the company chose to review its answers (ADR-108).
+pub const VERIFICATION_API_KEY: &str = "verification.api_key";
 
 /// A secret as found: a failure to open it is an answer, not an error (only
 /// the database failing is).

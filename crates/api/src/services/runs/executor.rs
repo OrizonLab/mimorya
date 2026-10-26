@@ -225,7 +225,11 @@ impl RunExecutor {
         let Some(provider) = self.llm.provider_for(access.subject.tenant_id).await? else {
             anyhow::bail!("no model provider configured");
         };
-        let router = ModelRouter::new(provider);
+        // Answers reviewed by the model the company chose for it, if any (ADR-108).
+        let router = match self.llm.reviewer_for(access.subject.tenant_id).await? {
+            Some(reviewer) => ModelRouter::new(provider).with_verification(reviewer),
+            None => ModelRouter::new(provider),
+        };
         let tools = build_run_tools(access, &actor, ports, &self.connectors).await?;
         let budget: BudgetLimits = serde_json::from_value(run.budget.clone())?;
         let level = AutonomyLevel::parse(&run.autonomy_level)

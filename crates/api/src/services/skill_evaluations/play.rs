@@ -76,6 +76,11 @@ async fn play_cases(
     let Some(provider) = services.llm.provider_for(tenant_id).await? else {
         return Ok(Some(NO_MODEL.into()));
     };
+    let judge = services
+        .llm
+        .reviewer_for(tenant_id)
+        .await?
+        .unwrap_or_else(|| Arc::clone(&provider));
     let mut tx = services.db.begin(tenant_id).await?;
     let skill_id = evaluation.skill_id;
     let evaluated = version_text(&mut tx, skill_id, evaluation.version).await?;
@@ -114,6 +119,7 @@ async fn play_cases(
                     bar: &bar,
                     access: &access,
                     provider: Arc::<dyn LlmProvider>::clone(&provider),
+                    judge: Arc::<dyn LlmProvider>::clone(&judge),
                     version: version.clone(),
                     case,
                 },

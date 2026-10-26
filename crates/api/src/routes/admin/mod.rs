@@ -74,6 +74,11 @@ pub fn routes(state: &AppState) -> Router<AppState> {
         )
         .route("/admin/llm/test", post(llm::test))
         .route(
+            "/admin/llm/verification",
+            put(llm::configure_verification).delete(llm::reset_verification),
+        )
+        .route("/admin/llm/verification/test", post(llm::test_verification))
+        .route(
             "/admin/embedding",
             get(embedding::show)
                 .put(embedding::configure)

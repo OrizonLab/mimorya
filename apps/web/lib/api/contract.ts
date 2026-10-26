@@ -746,7 +746,8 @@ export type LinkPassword = { token: string, password: string, };
 export type LinkToken = { token: string, };
 
 /**
- * Body of `PUT /admin/llm`: the company's own provider.
+ * Body of `PUT /admin/llm` and `PUT /admin/llm/verification`: a provider of
+ * the company's own.
  */
 export type LlmChoice = { provider: string,
 /**
@@ -759,7 +760,7 @@ model?: string, baseUrl?: string,
 apiKey?: string, };
 
 /**
- * The company's own provider.
+ * A provider of the company's own, for its runs or for reviews.
  */
 export type LlmSettingsView = { provider: string, model: string, baseUrl: string | null, keyStored: boolean,
 /**
@@ -767,7 +768,7 @@ export type LlmSettingsView = { provider: string, model: string, baseUrl: string
  */
 priced: boolean,
 /**
- * The stored configuration can serve runs (key readable, endpoint still listed…).
+ * The stored configuration can serve (key readable, endpoint still listed…).
  */
 usable: boolean,
 /**
@@ -776,7 +777,7 @@ usable: boolean,
 problem: string | null, updatedAt: string, };
 
 /**
- * `POST /admin/llm/test`.
+ * `POST /admin/llm/test` and `POST /admin/llm/verification/test`.
  */
 export type LlmTestResult = { ok: boolean, provider: string, model: string,
 /**
@@ -791,7 +792,12 @@ export type LlmView = {
 /**
  * The server can seal keys (`MIMORYA_MASTER_KEY`).
  */
-secretsAvailable: boolean, platform: PlatformModel | null, settings: LlmSettingsView | null, providers: Array<ProviderKind>,
+secretsAvailable: boolean, platform: PlatformModel | null, settings: LlmSettingsView | null,
+/**
+ * The provider the company chose apart to review its answers (ADR-108);
+ * without it, or while it cannot be used, its runs' model reviews them.
+ */
+verification: LlmSettingsView | null, providers: Array<ProviderKind>,
 /**
  * Endpoints the operator lists for self-hosted providers.
  */

@@ -1,6 +1,7 @@
-//! The company's model provider (`settings:manage`, ADR-024): what its runs
-//! use, what it may choose, its choice, and the connection test. The API key
-//! is write-only: never returned, only whether one is stored.
+//! The company's model providers (`settings:manage`, ADR-024): what its runs
+//! use, what it may choose, its choice, the one it chose apart to review
+//! their answers (ADR-108), and the connection test. An API key is
+//! write-only: never returned, only whether one is stored.
 
 use mimorya_db::repositories::llm_settings::LlmSettingsRow;
 use serde::{Deserialize, Serialize};
@@ -21,7 +22,7 @@ pub struct ProviderKind {
     pub default_model: Option<String>,
 }
 
-/// The company's own provider.
+/// A provider of the company's own, for its runs or for reviews.
 #[derive(Debug, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct LlmSettingsView {
@@ -31,7 +32,7 @@ pub struct LlmSettingsView {
     pub key_stored: bool,
     /// Present in the price table: costs are estimated.
     pub priced: bool,
-    /// The stored configuration can serve runs (key readable, endpoint still listed…).
+    /// The stored configuration can serve (key readable, endpoint still listed…).
     pub usable: bool,
     /// Why it cannot, when it cannot (French).
     pub problem: Option<String>,
@@ -74,12 +75,15 @@ pub struct LlmView {
     pub secrets_available: bool,
     pub platform: Option<PlatformModel>,
     pub settings: Option<LlmSettingsView>,
+    /// The provider the company chose apart to review its answers (ADR-108);
+    /// without it, or while it cannot be used, its runs' model reviews them.
+    pub verification: Option<LlmSettingsView>,
     pub providers: Vec<ProviderKind>,
     /// Endpoints the operator lists for self-hosted providers.
     pub endpoints: Vec<String>,
 }
 
-/// `POST /admin/llm/test`.
+/// `POST /admin/llm/test` and `POST /admin/llm/verification/test`.
 #[derive(Debug, Serialize, TS)]
 pub struct LlmTestResult {
     pub ok: bool,
@@ -100,7 +104,8 @@ impl From<LlmTestOutcome> for LlmTestResult {
     }
 }
 
-/// Body of `PUT /admin/llm`: the company's own provider.
+/// Body of `PUT /admin/llm` and `PUT /admin/llm/verification`: a provider of
+/// the company's own.
 #[derive(Deserialize, Validate, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct LlmChoice {

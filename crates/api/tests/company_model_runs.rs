@@ -147,11 +147,11 @@ async fn a_company_provider_serves_its_company_only() {
     );
     // Resolved (and cached) for the company first, then for another one.
     assert!(matches!(
-        llm.resolve(tenant::ID).await.unwrap().as_ref(),
+        &llm.resolve(tenant::ID).await.unwrap().runs,
         Resolution::Company(_)
     ));
     assert!(matches!(
-        llm.resolve(OTHER_TENANT_ID).await.unwrap().as_ref(),
+        &llm.resolve(OTHER_TENANT_ID).await.unwrap().runs,
         Resolution::Platform(Some(_))
     ));
     assert_eq!(api.built.lock().unwrap().len(), 1);
