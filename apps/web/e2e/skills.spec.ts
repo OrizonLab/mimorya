@@ -1,9 +1,9 @@
 // The company's skills, written from the administration (ADR-052): a skill and
-// its first version with its quality criteria (ADR-106), a second version
-// written from it with criteria of its own and made active, the first made
-// active again (the way back), its description changed, read back after a
-// reload, then the skill retired and deleted. Whatever happens, the test's
-// skill is gone afterwards.
+// its first version with its quality criteria (ADR-106, ADR-107), a second
+// version written from it with criteria of its own and made active, the first
+// made active again (the way back), a third that only empties the criteria,
+// its description changed, read back after a reload, then the skill retired
+// and deleted. Whatever happens, the test's skill is gone afterwards.
 import type { SkillDetail, SkillList } from '../lib/api/contract';
 import { openAdmin } from './support/admin';
 import { expect, noError, test } from './support/fixtures';
@@ -79,6 +79,19 @@ test('a skill is written, made active, rolled back, described anew, retired and 
   await page.getByRole('button', { name: 'Revenir à la version 1' }).click();
   await expect(card.getByText('v1 active')).toBeVisible();
 
+  // Its criteria emptied, and nothing else: a version without any, though
+  // the version active has some.
+  await page.getByRole('button', { name: 'Nouvelle version' }).click();
+  await expect(content).toHaveValue('# Relance\n1. Version deux.');
+  // As the server would keep them, unchanged.
+  await page.getByLabel(CRITERIA).fill(' Nomme le client relancé. \n');
+  await expect(save).toBeDisabled();
+  await page.getByLabel(CRITERIA).fill('');
+  await save.click();
+  const third = page.getByRole('listitem').filter({ hasText: 'Version 3' });
+  await expect(third).toBeVisible();
+  await expect(third.getByRole('listitem')).toHaveCount(0);
+
   await page.getByRole('button', { name: `Modifier la description de ${NAME}` }).click();
   await page.getByLabel('Description (une ligne, lue par l’agent)').fill(CHANGED);
   await page.getByRole('button', { name: 'Enregistrer la description' }).click();
@@ -95,6 +108,7 @@ test('a skill is written, made active, rolled back, described anew, retired and 
   const detail = (await (await page.request.get(`/api/admin/skills/${id}`)).json()) as SkillDetail;
   expect(detail.skill.description).toBe(CHANGED);
   expect(detail.versions.map((v) => [v.version, v.status, v.content, v.qualityCriteria])).toEqual([
+    [3, 'draft', '# Relance\n1. Version deux.', []],
     [2, 'retired', '# Relance\n1. Version deux.', ['Nomme le client relancé.']],
     [1, 'active', '# Relance\n1. Version une.', ['Nomme le client relancé.', 'Date la relance.']],
   ]);

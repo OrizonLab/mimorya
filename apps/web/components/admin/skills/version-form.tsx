@@ -31,7 +31,7 @@ export function VersionForm({
   const [criteria, setCriteria] = useState(initialCriteria);
   const [changelog, setChangelog] = useState('');
   const action = useAction();
-  const unchanged = content === initialContent && criteria === initialCriteria;
+  const unchanged = content === initialContent && kept(criteria) === kept(initialCriteria);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -73,4 +73,13 @@ export function VersionForm({
       </div>
     </form>
   );
+}
+
+/** Criteria as the server keeps them: each trimmed, the blank ones left out. */
+function kept(criteria: string): string {
+  return criteria
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '')
+    .join('\n');
 }

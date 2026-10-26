@@ -5251,8 +5251,9 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     clients de l'API et les propositions de l'agent (ADR-106) ;
   - **une nouvelle version part de la dernière qu'un administrateur a écrite**, son
     contenu (ADR-101) et ses critères ensemble, vide sans elle. « Enregistrer la
-    version » s'active dès que l'un ou l'autre change : changer les critères seuls
-    fait une version, puisqu'une version activée reste ce qui a été relu ;
+    version » s'active dès que l'un ou l'autre change, les critères comparés tels
+    que le serveur les garde : changer les critères seuls fait une version,
+    puisqu'une version activée reste ce qui a été relu ;
   - **chaque version montre ses critères**, tels que le serveur les a gardés (lignes
     vides écartées, chacun rogné). Ceux d'une proposition de l'agent sont dits
     « repris de la version alors active » : l'agent n'en écrit aucun.
@@ -5265,5 +5266,9 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
 - **Conséquences** :
   - reste à faire : un modèle de contrôle distinct choisi par l'entreprise (lot 2b) ;
   - tests : `apps/web/e2e/skills.spec.ts` (critères écrits avec la compétence, gardés
-    rognés et sans ligne vide, repris par la version suivante, une version dont seuls
-    les critères changent, relus dans l'API après rechargement).
+    rognés et sans ligne vide, repris par la version suivante ; une version dont seuls
+    les critères changent, vidés alors que la version active en a, enregistrée sans
+    aucun ; relus dans l'API après rechargement). Le libellé des critères d'une
+    proposition de l'agent n'a pas de test de bout en bout : aucun scénario ne propose
+    de version d'une compétence qui a des critères (le fait est testé par l'API,
+    `crates/api/tests/skill_quality_criteria.rs`).
