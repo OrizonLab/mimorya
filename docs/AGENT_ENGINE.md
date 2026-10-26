@@ -99,8 +99,9 @@ d'exécution des runs : un second processus sur la même base refuse de démarre
 
 **Connecteurs indisponibles** (ADR-048) : un connecteur de l'entreprise qui ne démarre
 pas (serveur injoignable, politiques illisibles…) laisse le run sans ses outils. S'il
-est à la portée de l'utilisateur (un serveur MCP pour qui détient `connector:use`, un
-autre type pour qui détient l'une des permissions qu'il introduit), le run qui démarre
+est à la portée de l'utilisateur (un serveur MCP ou une API REST, ADR-112, pour qui
+détient `connector:use`, un autre type pour qui détient l'une des permissions qu'il
+introduit), le run qui démarre
 le dit : au modèle, par une note `<connecteurs_indisponibles>` en tête du tour
 utilisateur (le prompt système reste stable), pour qu'il signale ce qui manque plutôt
 que de conclure que l'information n'existe pas ; à l'utilisateur, par l'événement

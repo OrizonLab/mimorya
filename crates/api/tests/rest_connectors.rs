@@ -183,3 +183,65 @@ async fn a_run_reads_directly_and_writes_once_validated() {
         StatusCode::OK
     );
 }
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_validated_write_is_not_sent_once_its_operation_changed() {
+    let api = TestApi::start_with(&PRIVATE_DEPLOYMENT).await;
+    let paul = api.sign_in(user::PAUL).await;
+    let marc = api.sign_in(user::MARC).await;
+    let url = serve_rest_http().await;
+    let id = add_rest(&paul, rest_body("CRM", &url, Some(KEY))).await;
+    api.script(vec![ScriptedStep::calls(
+        "",
+        vec![call(CREATE, json!({ "title": "Pompe P2" }))],
+    )]);
+    let conversation = marc.post("/conversations", json!({})).await.json();
+    let conversation_id = conversation["conversation"]["id"].as_str().unwrap();
+    let started = marc
+        .post(
+            &format!("/conversations/{conversation_id}/messages"),
+            json!({ "content": "Crée la fiche de la pompe." }),
+        )
+        .await;
+    let run_id = started.json()["runId"].as_str().unwrap().to_string();
+    api.idle().await;
+    let approvals = marc.get("/approvals?status=pending").await.json();
+    let pending = approvals["approvals"][0].clone();
+    assert_eq!(pending["toolName"], CREATE, "{approvals}");
+
+    // While it waits, the operation is sent elsewhere.
+    let mut changed = support::rest::operations();
+    changed[1]["path"] = json!("/echo/archives");
+    let saved = paul
+        .patch(
+            &format!("/admin/connectors/{id}"),
+            json!({ "operations": changed }),
+        )
+        .await;
+    assert_eq!(saved.status, StatusCode::OK, "{}", saved.text());
+
+    api.script(vec![ScriptedStep::text("La fiche n’a pas été créée.")]);
+    let decision = format!("/approvals/{}/decision", pending["id"].as_str().unwrap());
+    let approved = marc.post(&decision, json!({ "approved": true })).await;
+    assert_eq!(approved.status, StatusCode::OK, "{}", approved.text());
+    api.idle().await;
+    let detail = marc.get(&format!("/runs/{run_id}")).await.json();
+    assert_eq!(detail["run"]["status"], "completed", "{detail}");
+    let sent = detail["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|t| t["toolName"] == CREATE && t["status"] == "succeeded");
+    assert!(!sent, "{detail}");
+    let requests = api.model.as_ref().unwrap().requests();
+    let answer = format!("{:?}", requests.last().unwrap().messages.last());
+    assert!(
+        answer.contains("Action modifiée depuis la demande de validation"),
+        "{answer}"
+    );
+    assert_eq!(
+        paul.delete(&format!("/admin/connectors/{id}")).await.status,
+        StatusCode::OK
+    );
+}

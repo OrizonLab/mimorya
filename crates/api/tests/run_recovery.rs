@@ -218,6 +218,7 @@ async fn validation(api: &TestApi, run_id: Uuid, summary: &str, status: &str) ->
         tool_call_id: summary.into(),
         tool_name: "planning_apply".into(),
         input: json!({}),
+        action_summary: None,
     }
 }
 

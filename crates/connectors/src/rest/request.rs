@@ -1,10 +1,12 @@
 //! What a call to an operation sends (ADR-112): the input the model may
 //! give (the operation's parameters, typed, nothing else), then the request
 //! made of it. A path parameter is percent-encoded whole (`/`, `%`, `?` and
-//! `#` included), and a path left with a `.` or `..` segment is refused: the
-//! request never leaves the API's address nor the path its administrators
-//! wrote. Query parameters are encoded as a form; body parameters make a
-//! JSON object.
+//! `#` included). Since a server may decode `%2F` (or `%5C`) back into a
+//! separator before resolving the path, and some decode twice, a path is
+//! refused when it would hold a `.` or `..` segment as sent or as such a
+//! server reads it: the request never leaves the API's address nor the path
+//! its administrators wrote. Query parameters are encoded as a form; body
+//! parameters make a JSON object.
 
 use serde_json::{Map, Value, json};
 use url::Url;
@@ -13,6 +15,8 @@ use super::declaration::{ParameterLocation, ParameterType, RestOperation, RestPa
 
 /// The longest text a parameter may bring.
 pub const MAX_TEXT_CHARS: usize = 4000;
+const CLIMBS: &str =
+    "texte sans segment . ou .. (entre deux / ou \\), qui ferait remonter le chemin";
 
 /// The JSON Schema the model reads: the operation's parameters, nothing else.
 pub fn input_schema(operation: &RestOperation) -> Value {
@@ -81,9 +85,13 @@ fn value_problem(parameter: &RestParameter, value: &Value) -> Option<String> {
             if text.chars().count() > MAX_TEXT_CHARS {
                 return Some(format!("{MAX_TEXT_CHARS} caractères au plus"));
             }
-            let in_path = parameter.location == ParameterLocation::Path;
-            if in_path && matches!(text, "" | "." | "..") {
-                return Some("texte non vide, autre que . ou .., attendu".into());
+            if parameter.location == ParameterLocation::Path {
+                if text.is_empty() {
+                    return Some("texte non vide attendu".into());
+                }
+                if climbs(&percent_decoded(text)) {
+                    return Some(CLIMBS.into());
+                }
             }
             true
         }
@@ -111,7 +119,10 @@ pub struct Built {
 /// The request an input (from `parse_input`) makes of the operation, at the
 /// API's address `base`; why none can be made, in French.
 pub fn build(base: &str, operation: &RestOperation, input: &Value) -> Result<Built, String> {
+    // As sent, and as a server decoding it reads it: once to find the
+    // separators, once more if it decodes twice.
     let mut path = String::new();
+    let mut decoded = String::new();
     let mut rest = operation.path.as_str();
     while let Some(start) = rest.find('{') {
         let end = rest[start..]
@@ -119,16 +130,20 @@ pub fn build(base: &str, operation: &RestOperation, input: &Value) -> Result<Bui
             .map(|offset| start + offset)
             .ok_or("chemin de l’opération illisible")?;
         let name = &rest[start + 1..end];
-        let value = input.get(name).ok_or_else(|| format!("{name} : requis"))?;
-        path.push_str(&rest[..start]);
-        path.push_str(&encoded(&text(value)));
+        let value = text(input.get(name).ok_or_else(|| format!("{name} : requis"))?);
+        for (built, piece) in [
+            (&mut path, encoded(&value)),
+            (&mut decoded, percent_decoded(&value)),
+        ] {
+            built.push_str(&rest[..start]);
+            built.push_str(&piece);
+        }
         rest = &rest[end + 1..];
     }
-    path.push_str(rest);
-    if path
-        .split('/')
-        .any(|segment| segment == "." || segment == "..")
-    {
+    for built in [&mut path, &mut decoded] {
+        built.push_str(rest);
+    }
+    if climbs(&path) || climbs(&decoded) {
         return Err("le chemin obtenu contient un segment . ou ..".into());
     }
     let base_url = Url::parse(base).map_err(|_| "adresse de l’API illisible")?;
@@ -166,6 +181,39 @@ pub fn build(base: &str, operation: &RestOperation, input: &Value) -> Result<Bui
         url,
         body: has_body.then_some(Value::Object(body)),
     })
+}
+
+/// Whether a path holds a `.` or `..` segment, `\` taken for `/` as some
+/// servers do.
+fn climbs(path: &str) -> bool {
+    path.split(['/', '\\'])
+        .any(|segment| segment == "." || segment == "..")
+}
+
+/// The text with its `%XX` escapes decoded once (lossy), as a server
+/// decoding a path a second time reads it. Decoding never takes a `.` or
+/// `..` segment away: what climbs as written climbs decoded too.
+fn percent_decoded(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        let escaped = (bytes[i] == b'%')
+            .then(|| text.get(i + 1..i + 3))
+            .flatten()
+            .and_then(|hex| u8::from_str_radix(hex, 16).ok());
+        match escaped {
+            Some(byte) => {
+                decoded.push(byte);
+                i += 3;
+            }
+            None => {
+                decoded.push(bytes[i]);
+                i += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&decoded).into_owned()
 }
 
 /// A parameter's value as text: a string as it is, anything else as JSON

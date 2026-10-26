@@ -165,6 +165,7 @@ pub async fn update_connector(
         .and_then(|rest| rest.operations.as_deref().map(operation_names))
         .map(|names| json!(names));
     let mut previous_url = None;
+    let mut dropped = Vec::new();
     let configured = changes.url.is_some() || changes.rest.is_some();
     if configured || changes.token.is_some() || changes.tool_policies.is_some() {
         let Some(editable) = Editable::of(&instance) else {
@@ -179,6 +180,21 @@ pub async fn update_connector(
         if let Some(policies) = &changes.tool_policies {
             let scope = editable.policy_scope();
             patch.tool_policies = Some(checked_policies(policies, &scope, admin.catalog)?);
+        } else if let Some(operations) = changes.rest.as_ref().and_then(|r| r.operations.as_deref())
+        {
+            // The policy of an operation removed, or changed in method or
+            // path, goes with it (ADR-112).
+            let mut kept = instance.tool_policies.clone();
+            if let Some(policies) = kept.as_object_mut() {
+                for tool in editable.redeclared(operations) {
+                    if policies.remove(&tool).is_some() {
+                        dropped.push(tool);
+                    }
+                }
+            }
+            if !dropped.is_empty() {
+                patch.tool_policies = Some(kept);
+            }
         }
         let current_url = editable.url().to_string();
         let moved = changes.url.as_ref().is_some_and(|url| *url != current_url);
@@ -219,6 +235,7 @@ pub async fn update_connector(
         "tokenHeader": header,
         "operations": operations,
         "toolPolicies": patch.tool_policies,
+        "droppedPolicies": (!dropped.is_empty()).then_some(&dropped),
     });
     match update_connector_instance(&mut tx, id, patch).await {
         Ok(_) => {}

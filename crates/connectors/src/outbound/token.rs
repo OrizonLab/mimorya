@@ -1,4 +1,5 @@
-//! What an MCP access token may be: sent as `Authorization: Bearer …`, it
+//! What the access token of an MCP server or a REST API may be: sent as
+//! `Authorization: Bearer …` (or in the header a REST API names), it
 //! follows the `b64token` of RFC 6750, which leaves out what JSON always
 //! escapes (`"`, `\`) and keeps the spellings to mask few (`redact`). Checked
 //! when an administrator saves a token, and again at each start for a token

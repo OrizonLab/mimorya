@@ -142,9 +142,30 @@ async fn refuses_an_input_the_operation_does_not_declare() {
         ]
     );
     assert_eq!(get.parse_input(&json!({})).unwrap_err(), ["id : requis"]);
-    for empty in ["", ".", ".."] {
-        let issues = get.parse_input(&json!({ "id": empty })).unwrap_err();
-        assert_eq!(issues, ["id : texte non vide, autre que . ou .., attendu"]);
+    let issues = get.parse_input(&json!({ "id": "" })).unwrap_err();
+    assert_eq!(issues, ["id : texte non vide attendu"]);
+    // Encoded whole, `/` included, yet a server decoding `%2F` or `%5C`
+    // before resolving the path would climb it.
+    for climbing in [
+        ".",
+        "..",
+        "../x",
+        "a/../../admin",
+        "..\\x",
+        "x/.",
+        "%2e%2e/x",
+        "a%2F%2E%2E",
+        "%2e",
+    ] {
+        let issues = get.parse_input(&json!({ "id": climbing })).unwrap_err();
+        assert_eq!(
+            issues,
+            ["id : texte sans segment . ou .. (entre deux / ou \\), qui ferait remonter le chemin"],
+            "{climbing}"
+        );
+    }
+    for kept in ["a/b", "v1.2", "...", "..x", "x..", "100%"] {
+        assert!(get.parse_input(&json!({ "id": kept })).is_ok(), "{kept}");
     }
     assert!(get.parse_input(&json!([])).is_err());
     let schema = get.input_schema();

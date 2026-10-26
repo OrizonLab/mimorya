@@ -5607,18 +5607,31 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     l'enregistrement et à chaque démarrage) : préfixe et adresse comme un serveur MCP ;
     50 opérations, 30 paramètres par opération, intitulés d'une ligne, descriptions
     visibles (ADR-057), 256 Kio en tout ; un en-tête de jeton qui n'appartient pas au
-    protocole (ni `Authorization`, `Host`, `Cookie`, `Content-*`, `Proxy-*`, `Sec-*`…) ;
+    protocole ni au client (ni `Authorization`, `Host`, `Cookie`, `Accept`,
+    `Accept-Encoding`, `User-Agent`, `Content-*`, `Proxy-*`, `Sec-*`…) ;
     un chemin qui commence par `/`, sans `%`, `?`, `#` ni segment `.` ou `..`, dont
     chaque `{paramètre}` est un paramètre de chemin déclaré, toujours requis ; pas de
     paramètre de corps pour `GET` ni `DELETE` ;
   - **ce qu'un appel envoie** (`connectors::rest::request`) : l'entrée du modèle n'a que
     les paramètres déclarés, chacun de son type (texte de 4 000 caractères au plus).
-    Un paramètre de chemin est encodé entier (`/`, `%`, `?`, `#` compris), ne peut être
-    vide, `.` ni `..`, et un chemin obtenu avec un segment `.` ou `..` est refusé : la
-    requête ne sort jamais de l'adresse de l'API ni du chemin écrit par
-    l'administrateur, ce qu'un dernier contrôle de l'adresse obtenue vérifie encore. La
-    personne qui valide lit la requête entière (méthode, adresse, corps), exécutée telle
-    quelle ;
+    Un paramètre de chemin est encodé entier (`/`, `%`, `?`, `#` compris) et ne peut être
+    vide. Un serveur peut décoder `%2F` (ou `%5C`) en séparateur avant de résoudre le
+    chemin (nginx, Tomcat, IIS), voire décoder deux fois : une valeur dont un segment,
+    entre deux `/` ou `\`, vaut `.` ou `..` une fois décodée est refusée (`../admin`,
+    `..\x`, `%2e%2e`), et un chemin obtenu avec un tel segment, tel qu'envoyé ou tel
+    que ce serveur le lit (deux valeurs voisines, une valeur collée au chemin écrit), est
+    refusé : la requête ne sort jamais de l'adresse de l'API ni du chemin écrit par
+    l'administrateur, ce qu'un dernier contrôle de l'adresse obtenue vérifie encore ;
+  - **exécutée telle que validée** : la personne qui valide lit la requête entière
+    (méthode, adresse, corps). Le moteur garde ce qu'elle a lu de l'action : une fois
+    validée, une action que son outil ne décrit plus de la même façon (un
+    administrateur a changé l'adresse, la méthode ou le chemin de l'opération pendant
+    l'attente) n'est pas exécutée, et le modèle l'apprend (« Action modifiée depuis la
+    demande de validation »). Cela vaut pour tout outil ; un run mis en pause avant
+    cette règle n'a pas gardé ce qui a été lu, et s'exécute comme avant. La politique
+    d'une opération retirée, ou dont la méthode ou le chemin change, part avec elle
+    (tracé : `droppedPolicies`) : une lecture associée sans validation ne devient pas
+    une suppression sans validation ;
   - **le réseau** : le client HTTP des connecteurs (ADR-025) — adresses publiques
     seulement, résolues à la connexion, aucune redirection suivie (une réponse `3xx`
     est un échec dit tel quel), pas de mandataire de l'environnement — sauf déploiement
@@ -5635,7 +5648,8 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     l'API vers une autre adresse. Il est masqué dans tout ce que l'API renvoie et dans
     les échecs, avant la troncature : le corps est lu un peu au-delà de la borne (la
     plus longue graphie du jeton), masqué, puis coupé en retirant d'abord cette
-    longueur, afin qu'aucun morceau d'un jeton coupé par la lecture ne reste ;
+    longueur, afin qu'aucun morceau d'un jeton coupé par la lecture ne reste ; un jeton
+    de chiffres renvoyé comme un nombre JSON est masqué lui aussi ;
   - un changement d'adresse, d'en-tête ou de jeton remet l'API « Non testé » ; un
     changement d'opérations est vérifié comme une déclaration entière. Démarrer l'API
     ne l'appelle pas : le test de l'administration vérifie la déclaration et liste les
@@ -5656,7 +5670,8 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
 - **Conséquences** :
   - l'écran de l'administration pour décrire une API vient au lot suivant ; d'ici là,
     une API ajoutée par l'API d'administration s'affiche comme un connecteur sans
-    détail ;
+    détail, et son test, qui ne l'appelle pas, se lit comme une connexion réussie :
+    l'écran dira qu'il vérifie la déclaration ;
   - restent : l'écran des API REST, l'e-mail et les agendas ;
   - tests :
     - `crates/connectors/tests/rest_connector.rs` : ce qu'une opération envoie
@@ -5665,12 +5680,17 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
       statuts, redirections et corps non lus, le jeton masqué même coupé par la borne,
       le délai, l'API injoignable, l'adresse privée refusée ;
     - `crates/connectors/tests/rest_declarations.rs` : ce qu'une déclaration peut
-      contenir, et une requête qui reste sous le chemin écrit ;
+      contenir, et une requête qui reste sous le chemin écrit, même lue par un serveur
+      qui décode `%2F` ;
+    - `crates/agent/tests/runtime_approvals.rs` : une action que son outil ne décrit
+      plus comme elle a été validée n'est pas exécutée ;
     - `crates/api/tests/rest_connectors.rs` : l'API ajoutée, listée sans sa clé,
       testée, associée, auditée sans clé, supprimée avec son secret ; un run qui lit
       directement, puis écrit une fois la requête validée, la clé masquée dans ce que le
-      modèle lit ;
+      modèle lit ; une écriture validée qui n'est pas envoyée, son opération changée
+      pendant l'attente ;
     - `crates/api/tests/rest_connector_rules.rs` : les droits, la déclaration vérifiée,
       les préfixes, la clé perdue au changement d'adresse, la description réservée à la
-      déclaration, un serveur MCP sans opérations, les adresses d'une plateforme
+      déclaration, la politique d'une opération retirée ou changée de méthode partie
+      avec elle, un serveur MCP sans opérations, les adresses d'une plateforme
       publique, une déclaration devenue illisible supprimée plutôt que modifiée.

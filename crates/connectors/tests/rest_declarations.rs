@@ -212,12 +212,23 @@ fn refuses_what_an_api_may_not_hold() {
         "cookie",
         "Proxy-Authorization",
         "Sec-Fetch",
+        "Content-Range",
+        "content-disposition",
+        "User-Agent",
+        "Accept-Encoding",
         "X Key",
         "1x",
         "Hôte",
     ] {
         assert!(header_problem(header).is_some(), "{header}");
     }
+}
+
+fn operation_with_path(path: &str) -> Value {
+    operation(json!({
+        "path": path,
+        "parameters": [{ "name": "a", "in": "path", "type": "string", "required": true }],
+    }))
 }
 
 #[test]
@@ -236,18 +247,31 @@ fn keeps_every_request_under_the_path_written() {
         let input = parse_input(&operation, &input).unwrap();
         build(BASE, &operation, &input)
     };
-    let request = built(json!({ "a": "1/../2", "b": "?q=x#f", "q": "a&b=c" })).unwrap();
+    let request = built(json!({ "a": "1/2", "b": "?q=x#f", "q": "a&b=c" })).unwrap();
     assert_eq!(
         request.url.as_str(),
-        "https://api.example.com/v1/sites/1%2F..%2F2%3Fq%3Dx%23f/x?q=a%26b%3Dc"
+        "https://api.example.com/v1/sites/1%2F2%3Fq%3Dx%23f/x?q=a%26b%3Dc"
     );
     assert_eq!(request.body, None);
     // Together they would climb a segment (and alone, `.` is refused as an input).
-    let dots = json!({ "a": ".", "b": "." });
-    assert_eq!(
-        build(BASE, &operation, &dots).unwrap_err(),
-        "le chemin obtenu contient un segment . ou .."
-    );
+    // Values each refused alone or not, the path they make is checked as
+    // sent, as a server decoding `%2F` reads it, and decoded once more.
+    for climbing in [
+        json!({ "a": ".", "b": "." }),
+        json!({ "a": "x/", "b": "." }),
+        json!({ "a": "x%2F", "b": "%2E" }),
+    ] {
+        assert_eq!(
+            build(BASE, &operation, &climbing).unwrap_err(),
+            "le chemin obtenu contient un segment . ou ..",
+            "{climbing}"
+        );
+    }
+    // Next to what the administrators wrote as well.
+    let dotted: RestOperation =
+        serde_json::from_value(operation_with_path("/files/{a}..")).unwrap();
+    assert!(build(BASE, &dotted, &json!({ "a": "x/" })).is_err());
+    assert!(build(BASE, &dotted, &json!({ "a": "x" })).is_ok());
     // A trailing slash on the address changes nothing.
     let input = parse_input(&operation, &json!({ "a": "s", "b": "1" })).unwrap();
     let request = build("https://api.example.com/v1/", &operation, &input).unwrap();

@@ -29,13 +29,11 @@ const MAX_HEADER_NAME: usize = 64;
 /// Characters a path may hold besides letters, digits and placeholders: the
 /// unreserved ones, sub-delimiters, `:`, `@` and `/` (RFC 3986).
 const PATH_PUNCTUATION: &str = "-._~!$&'()*+,;=:@/";
-/// Headers the protocol, the client or a proxy own.
-const RESERVED_HEADERS: [&str; 14] = [
+/// Headers the protocol, the client or a proxy own; with every `Content-*`,
+/// `Proxy-*` and `Sec-*` one.
+const RESERVED_HEADERS: [&str; 13] = [
     "authorization",
     "host",
-    "content-length",
-    "content-type",
-    "content-encoding",
     "transfer-encoding",
     "connection",
     "keep-alive",
@@ -45,7 +43,10 @@ const RESERVED_HEADERS: [&str; 14] = [
     "expect",
     "cookie",
     "accept",
+    "accept-encoding",
+    "user-agent",
 ];
+const RESERVED_PREFIXES: [&str; 3] = ["content-", "proxy-", "sec-"];
 
 /// Why this declaration cannot be used (in French), if it cannot.
 pub fn config_problem(config: &RestConfig, network: NetworkPolicy) -> Option<String> {
@@ -74,8 +75,9 @@ pub fn header_problem(header: &str) -> Option<String> {
     }
     let lower = header.to_ascii_lowercase();
     let reserved = RESERVED_HEADERS.contains(&lower.as_str())
-        || lower.starts_with("proxy-")
-        || lower.starts_with("sec-");
+        || RESERVED_PREFIXES
+            .iter()
+            .any(|prefix| lower.starts_with(prefix));
     reserved.then(|| {
         format!(
             "En-tête réservé : « {header} ». Choisissez celui où l’API attend sa clé (par \

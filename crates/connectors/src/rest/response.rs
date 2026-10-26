@@ -82,17 +82,33 @@ impl Answer {
             return redactor.value(value);
         }
         let text = match media {
-            None => std::str::from_utf8(&self.body).ok().map(str::to_string),
+            None => match std::str::from_utf8(&self.body) {
+                Ok(text) => Some(text.to_string()),
+                // Text cut by the bound in the middle of a character.
+                Err(error) if error.error_len().is_none() => {
+                    Some(String::from_utf8_lossy(&self.body[..error.valid_up_to()]).into_owned())
+                }
+                Err(_) => None,
+            },
             Some(media) if textual(media) => Some(String::from_utf8_lossy(&self.body).into_owned()),
             Some(_) => None,
         };
         match text {
             Some(text) => Value::String(self.cut(redactor.text(&text), redactor)),
             None => json!(format!(
-                "[contenu {} de {} octets, non lu]",
+                "[contenu {} de {}, non lu]",
                 media.unwrap_or("binaire"),
-                self.body.len()
+                self.size()
             )),
+        }
+    }
+
+    /// How long the body is, as far as it was read.
+    fn size(&self) -> String {
+        if self.truncated {
+            format!("plus de {} Kio", MAX_RESPONSE_BYTES / 1024)
+        } else {
+            format!("{} octets", self.body.len())
         }
     }
 
@@ -125,4 +141,44 @@ fn textual(media: &str) -> bool {
         ]
         .iter()
         .any(|kind| media.ends_with(kind))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn answer(content_type: Option<&str>, body: Vec<u8>, truncated: bool) -> Answer {
+        Answer {
+            status: 200,
+            content_type: content_type.map(str::to_string),
+            body,
+            truncated,
+        }
+    }
+
+    #[test]
+    fn says_what_it_did_not_read_and_how_much_there_was() {
+        let none = Redactor::default();
+        let image = answer(Some("image/png"), vec![0x89, b'P'], false);
+        assert_eq!(image.body(&none), "[contenu image/png de 2 octets, non lu]");
+        let large = answer(None, vec![0xff; MAX_RESPONSE_BYTES + 1], true);
+        assert_eq!(
+            large.body(&none),
+            "[contenu binaire de plus de 256 Kio, non lu]"
+        );
+    }
+
+    #[test]
+    fn reads_as_text_an_untyped_text_cut_in_a_character() {
+        let mut body = "é".repeat(10).into_bytes();
+        body.push(0xc3);
+        let cut = answer(None, body, true);
+        assert_eq!(cut.body(&Redactor::default()), "é".repeat(10));
+        let typed = answer(
+            Some("application/json; charset=utf-8"),
+            b"{\"a\": 1}".to_vec(),
+            false,
+        );
+        assert_eq!(typed.body(&Redactor::default()), json!({ "a": 1 }));
+    }
 }

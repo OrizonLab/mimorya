@@ -61,6 +61,27 @@ impl Editable {
         }
     }
 
+    /// The tools of a REST API whose operation these operations remove or
+    /// change in method or path: what a policy allowed of them no longer
+    /// holds (a read become a deletion).
+    pub fn redeclared(&self, operations: &[rest::RestOperation]) -> Vec<String> {
+        let Self::Rest(config) = self else {
+            return Vec::new();
+        };
+        config
+            .operations
+            .iter()
+            .filter(|before| {
+                !operations.iter().any(|after| {
+                    after.name == before.name
+                        && after.method == before.method
+                        && after.path == before.path
+                })
+            })
+            .map(|before| rest::rest_tool_name(&config.prefix, &before.name))
+            .collect()
+    }
+
     /// Which tools its policies may name, and how.
     pub fn policy_scope(&self) -> PolicyScope {
         match self {

@@ -10,11 +10,11 @@ mod support;
 
 use axum::http::StatusCode;
 use mimorya_connectors::testing::serve_rest_http;
-use mimorya_core::demo::user;
+use mimorya_core::demo::{tenant, user};
 use serde_json::{Value, json};
 use support::TestApi;
 use support::mcp::{PRIVATE_DEPLOYMENT, add, listed, mcp_body};
-use support::rest::{KEY, READ, add_rest, operations, rest_body};
+use support::rest::{CREATE, KEY, READ, add_rest, operations, rest_body};
 
 /// The message of a refusal, with its status.
 async fn refused(
@@ -115,6 +115,9 @@ async fn a_change_is_checked_and_the_key_never_follows_the_api_elsewhere() {
         message,
         "Opération get_item : {other} figure dans le chemin sans être un paramètre de chemin"
     );
+    let read = json!({ "risk": "read", "permissions": ["intervention:read"] });
+    let mapped = json!({ "toolPolicies": { READ: read, CREATE: read } });
+    assert_eq!(paul.patch(&path, mapped).await.status, StatusCode::OK);
     let one = json!([operations()[0]]);
     let saved = paul
         .patch(&path, json!({ "operations": one, "tokenHeader": null }))
@@ -126,6 +129,26 @@ async fn a_change_is_checked_and_the_key_never_follows_the_api_elsewhere() {
     // The key now goes elsewhere: what was known of the API no longer holds.
     assert_eq!(instance["status"], "untested");
     assert_eq!(instance["rest"]["tokenStored"], true);
+    // The removed operation's policy went with it; the other one stays.
+    let policies = instance["toolPolicies"].as_object().unwrap();
+    assert!(policies.contains_key(READ) && !policies.contains_key(CREATE));
+    // A read whose method or path changes is no longer the read mapped.
+    let mut deleting = json!([operations()[0]]);
+    deleting[0]["method"] = json!("DELETE");
+    let saved = paul.patch(&path, json!({ "operations": deleting })).await;
+    assert_eq!(saved.status, StatusCode::OK, "{}", saved.text());
+    assert_eq!(listed(&paul, &id).await["toolPolicies"], json!({}));
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    let audited: Value = sqlx::query_scalar(
+        "select metadata from audit_log where resource_id = $1 \
+         and action = 'connector.updated' order by id desc limit 1",
+    )
+    .bind(&id)
+    .fetch_one(&mut *tx)
+    .await
+    .unwrap();
+    drop(tx);
+    assert_eq!(audited["droppedPolicies"], json!([READ]));
 
     // A policy maps a tool; it does not rewrite what the model reads of it.
     let described = json!({ "toolPolicies": { READ: { "description": "Autre texte" } } });
@@ -225,13 +248,7 @@ async fn an_unreadable_declaration_is_deleted_rather_than_changed() {
     let api = TestApi::start_with(&PRIVATE_DEPLOYMENT).await;
     let paul = api.sign_in(user::PAUL).await;
     let id = add_rest(&paul, rest_body("CRM", "http://127.0.0.1:9/api", None)).await;
-    let mut tx = api
-        .app
-        .services
-        .db
-        .begin(mimorya_core::demo::tenant::ID)
-        .await
-        .unwrap();
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
     sqlx::query(
         "update connector_instances set config = config - 'operations' where id = $1::uuid",
     )
