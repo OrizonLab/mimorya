@@ -3,7 +3,9 @@ import type { ToneLabel } from '@/components/ui';
 import type {
   AccountStatus,
   AgentProfile,
+  CaseOutcomeView,
   DocumentKind,
+  EvaluationStatus,
   MissionStatus,
   OccurrenceOutcome,
   OrgUnitType,
@@ -78,6 +80,19 @@ export const SKILL_VERSION_STATUS: Record<SkillVersionStatus, ToneLabel> = {
   active: { label: 'Active', tone: 'ok' },
   rejected: { label: 'Rejetée', tone: 'warn' },
   retired: { label: 'Retirée', tone: 'neutral' },
+};
+
+export const EVALUATION_STATUS: Record<EvaluationStatus, ToneLabel> = {
+  queued: { label: 'En file', tone: 'neutral' },
+  running: { label: 'En cours', tone: 'accent' },
+  completed: { label: 'Terminée', tone: 'ok' },
+  failed: { label: 'Échouée', tone: 'danger' },
+};
+
+export const CASE_OUTCOME: Record<CaseOutcomeView, ToneLabel> = {
+  passed: { label: 'Réussi', tone: 'ok' },
+  failed: { label: 'Manqué', tone: 'danger' },
+  error: { label: 'En erreur', tone: 'warn' },
 };
 
 export const UNIT_TYPES: Record<OrgUnitType, string> = {

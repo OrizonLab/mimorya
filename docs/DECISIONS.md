@@ -5102,3 +5102,64 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
       écrire ;
     - `crates/db/tests/definer_functions.rs` : les nouvelles fonctions entre
       entreprises (évaluations à jouer, purge).
+
+## ADR-105 — Cas d'évaluation et évaluations dans l'écran « Compétences »
+
+- **Date** : 2026-10-25 · **Statut** : acceptée (cycle de vie des compétences, lot 4c)
+- **Contexte** : depuis les ADR-103 et ADR-104, l'API garde les cas d'évaluation d'une
+  compétence, joue une version sur ses cas à côté de la version active et demande une
+  confirmation pour activer une version qui fait régresser des cas. L'écran
+  « Compétences » n'en montrait rien : une activation refusée pour régression n'y
+  laissait qu'une erreur.
+- **Décision** : une compétence ouverte montre, sous ses versions, deux sections :
+  - **« Cas d'évaluation »** : chaque cas (nom, demande, critères), écrit, modifié ou
+    supprimé sur place, dix au plus, ce que l'écran dit une fois la limite atteinte. Les
+    critères s'écrivent un par ligne ; les lignes vides sont écartées par l'API ;
+  - **« Évaluations »**, les plus récentes d'abord :
+    - **lancement** : la version à évaluer se choisit dans une liste ; par défaut, la
+      dernière qui n'est ni active ni rejetée. Tant qu'il n'y a aucun cas, la section
+      le dit à la place du formulaire ;
+    - **proposition de l'agent** : est concernée toute version que l'agent a écrite et
+      qu'aucune personne n'a activée, en attente d'une décision ou rejetée. L'évaluer la
+      fait suivre à l'assistant avec les droits de l'administrateur, en lecture seule.
+      L'écran le rappelle sous la liste, puis demande une confirmation (« Avez-vous relu
+      son contenu ? ») avant de la lancer ;
+    - **suivi** : une évaluation en file ou en cours est relue 3 secondes après la fin
+      de chaque lecture, jusqu'à sa fin (`useRefreshWhile`). Une lecture lente ne
+      s'empile donc pas. La page « Missions » suit ses étapes de la même façon ;
+    - **bilan** : état, cas joués, cas réussis par la version évaluée et par la
+      « version de référence » (celle qui était active à la demande, ce qu'elle n'est
+      plus forcément), régressions en rouge, raison d'un échec, qui l'a demandée, coût ;
+    - **« Voir les cas »** : chaque cas avec son issue pour la version évaluée et pour
+      la version de référence, et « Régression » quand la première a manqué ce que la
+      seconde réussissait. Les réponses, les manquements et les outils appelés ne sont montrés
+      qu'à la personne qui a demandé l'évaluation ; aux autres administrateurs, l'écran
+      dit pourquoi ils ne les voient pas ;
+  - **activation** : refusée pour régression (409), elle montre le message de l'API
+    et demande « Activer quand même la version N ? ». Sur confirmation, elle est
+    renvoyée avec `confirmed: true`, que l'audit garde (ADR-104) ;
+  - **serveur e2e** : il joue à part la demande d'un cas (`skill_evaluations.rs`).
+    L'agent charge la compétence, puis répond selon la version jouée ; le juge manque la
+    réponse qui ne cite aucun retard.
+- **Alternatives écartées** :
+  - un bouton « Évaluer » sur chaque version : la liste des évaluations, leur suivi et
+    le rappel pour les propositions se retrouvent ensemble dans une seule section ;
+  - un flux d'événements (SSE) pour le suivi : une évaluation dure quelques minutes au
+    plus, et une relecture toutes les 3 secondes, limitée à la compétence ouverte et à
+    une évaluation en cours, suffit.
+- **Conséquences** :
+  - pendant chaque relecture, la section « Évaluations » est verrouillée comme toute
+    liste rechargée (ADR-042) ;
+  - tests :
+    - `apps/web/e2e/skill-evaluations.spec.ts` : Paul écrit un cas puis le renomme ;
+      il évalue la version 2 jusqu'à la fin de l'évaluation ; il lit cas par cas la
+      régression, les réponses, le manquement et les outils appelés. Il refuse d'abord
+      d'activer la version 2 malgré sa régression (la version 1 reste active), puis
+      l'active après confirmation, et supprime le cas. Le test relit ensuite tout cela
+      par l'API ;
+    - `apps/web/e2e/skill-proposals.spec.ts` : rappelé de relire une proposition avant
+      de l'évaluer, Paul décline. L'API, relue après rechargement, ne garde aucune
+      évaluation ;
+  - non couvert par un e2e : le message montré à un autre administrateur à la place des
+    réponses. Le retrait des réponses par l'API est testé
+    (`crates/api/tests/skill_evaluations.rs`).

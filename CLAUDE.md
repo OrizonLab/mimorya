@@ -150,7 +150,8 @@ Repères à l'intérieur des crates :
   admin — dont `admin/llm/` : modèle des conversations, recherche dans la mémoire, leçons et limites des missions, ADR-075,
   ADR-077, ADR-093, `admin/users/` :
   comptes, dont l'absence d'un collaborateur empêché, ADR-079, et `admin/skills/` :
-  compétences et propositions de l'agent, ADR-101 —, approvals — dont la
+  compétences, propositions de l'agent, ADR-101, cas d'évaluation et évaluations,
+  ADR-105 —, approvals — dont la
   section « Absence » et son formulaire, commun, ADR-073 —, chat, documents — dépôt, liste
   et téléchargement, ADR-097 —, memory, missions —
   missions longues, ADR-090 —, operations — dont les sous-agents d'une demande, ADR-099 —,
@@ -159,7 +160,8 @@ Repères à l'intérieur des crates :
   (`Loaded` verrouille son contenu pendant un rechargement, ADR-042), `web/lib/api/` (client, `contract.ts`
   généré par `pnpm contract`, `useApiData`), `web/lib/use-synced-state.ts` (état d'un
   formulaire repris de la liste rechargée, ADR-041), `web/lib/focus-keeper.ts` (focus rendu
-  au contrôle réactivé, ADR-043), `web/lib/labels.ts`, `web/lib/format.ts`, `web/proxy.ts` et
+  au contrôle réactivé, ADR-043), `web/lib/use-refresh-while.ts` (liste relue tant
+  qu'un travail du serveur est en cours, ADR-105), `web/lib/labels.ts`, `web/lib/format.ts`, `web/proxy.ts` et
   `web/lib/security/` (CSP à nonce par page, ADR-030), `web/e2e/` (tests de bout en
   bout, un fichier par parcours, `support/`) et `api/examples/e2e_server/` (l'API qu'ils
   pilotent, avec un fournisseur OpenID Connect et un fournisseur SAML simulés, ADR-031,
@@ -167,8 +169,9 @@ Repères à l'intérieur des crates :
   planifiée dont l'occurrence est manquée au démarrage, `scheduled.rs`, ADR-081, et des
   missions jouées à part, `missions.rs`, ADR-090, une question sur les documents,
   `documents.rs`, ADR-097, lus par `mimorya-extract` qu'ils construisent, une question
-  confiée à un sous-agent, `sub_agents.rs`, ADR-099, et une compétence que l'agent propose,
-  `skill_proposals.rs`, ADR-101).
+  confiée à un sous-agent, `sub_agents.rs`, ADR-099, une compétence que l'agent propose,
+  `skill_proposals.rs`, ADR-101, et une version de compétence jouée sur son cas,
+  `skill_evaluations.rs`, ADR-105).
 - `infra/` : `docker/` (images de l'API et de l'interface, liste des images publiées
   `images.json`, test de fumée de la démonstration, test d'installation de la production,
   vérifications partagées `checks.sh`, dont les rôles des processus lus dans la base), `caddy/`
