@@ -281,6 +281,8 @@ pub struct VersionText {
     pub name: String,
     pub description: String,
     pub content: String,
+    /// What an answer that follows it must meet (ADR-106).
+    pub quality_criteria: Vec<String>,
 }
 
 /// The skill's `version`, as the index and `skill_read` give it.
@@ -290,7 +292,7 @@ pub async fn version_text(
     version: i32,
 ) -> sqlx::Result<Option<VersionText>> {
     sqlx::query_as(
-        "select s.name, s.description, v.content from skills s \
+        "select s.name, s.description, v.content, v.quality_criteria from skills s \
          join skill_versions v on v.skill_id = s.id \
          where s.id = $1 and v.version = $2",
     )

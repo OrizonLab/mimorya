@@ -119,7 +119,8 @@ impl Tool for McpTool {
             } else {
                 format!("Réponse MCP ({})", self.remote_name)
             }),
-            citations: Vec::new(),
+            // Neither citations nor quality criteria: a server only answers.
+            ..ToolResult::default()
         })
     }
 }

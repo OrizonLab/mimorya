@@ -35,6 +35,8 @@ pub struct EvaluatedVersion {
     pub description: String,
     pub version: i32,
     pub content: String,
+    /// What an answer that follows it must meet (ADR-106).
+    pub quality_criteria: Vec<String>,
 }
 
 pub struct Knowledge {
@@ -156,6 +158,7 @@ impl SkillStore for Knowledge {
                 name: evaluated.name.clone(),
                 version: evaluated.version,
                 content: evaluated.content.clone(),
+                quality_criteria: evaluated.quality_criteria.clone(),
             }));
         }
         let mut tx = self.db.begin(self.scope.tenant_id).await?;
@@ -165,6 +168,7 @@ impl SkillStore for Knowledge {
             name: s.name,
             version: s.version,
             content: s.content,
+            quality_criteria: s.quality_criteria,
         }))
     }
 

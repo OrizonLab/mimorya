@@ -126,6 +126,11 @@ pub struct ToolResult {
     /// Identifiers of the records the result is built from (grounding, citations).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub citations: Vec<Citation>,
+    /// The quality criteria of the skill version loaded (ADR-106): the
+    /// answer is reviewed on them. Honoured from the platform's
+    /// `skill_read` alone.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub quality_criteria: Vec<String>,
 }
 
 impl ToolResult {
@@ -152,6 +157,11 @@ impl ToolResult {
 
     pub fn with_citations(mut self, citations: Vec<Citation>) -> Self {
         self.citations = citations;
+        self
+    }
+
+    pub fn with_quality_criteria(mut self, criteria: Vec<String>) -> Self {
+        self.quality_criteria = criteria;
         self
     }
 }

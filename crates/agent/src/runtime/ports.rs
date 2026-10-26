@@ -249,6 +249,8 @@ pub struct SkillContent {
     pub name: String,
     pub version: i32,
     pub content: String,
+    /// What an answer that follows it must meet (ADR-106).
+    pub quality_criteria: Vec<String>,
 }
 
 #[async_trait]

@@ -125,7 +125,7 @@ impl TypedTool for PlanningPropose {
                 content: json!({ "erreur": "Proposition non valide", "problemes": problems }),
                 is_error: true,
                 summary: Some(format!("{count} problème(s) à corriger")),
-                citations: Vec::new(),
+                ..ToolResult::default()
             });
         }
 

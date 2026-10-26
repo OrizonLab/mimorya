@@ -254,6 +254,8 @@ impl RunExecutor {
                 verification: VerificationConfig {
                     // A mission's answer is reviewed against its criteria.
                     llm_judge: self.llm_judge || run.mission_id.is_some(),
+                    // And on the quality criteria of the skills it loads (ADR-106).
+                    skill_criteria: true,
                     max_correction_attempts: MAX_CORRECTION_ATTEMPTS,
                 },
                 effort: Some(Effort::High),

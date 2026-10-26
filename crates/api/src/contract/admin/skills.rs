@@ -1,7 +1,8 @@
 //! The company's skills (`skill:manage`, ADR-052): the list, a skill with
-//! its versions, and what the administration writes: a skill, a new version,
-//! a description, the version made active, a proposal of the agent's turned
-//! down (ADR-100). Its evaluation cases: `skill_eval_cases.rs` (ADR-103).
+//! its versions and their quality criteria (ADR-106), and what the
+//! administration writes: a skill, a new version, a description, the version
+//! made active, a proposal of the agent's turned down (ADR-100). Its
+//! evaluation cases: `skill_eval_cases.rs` (ADR-103).
 
 use mimorya_db::repositories::skills::{SkillRow, SkillVersionRow};
 use serde::{Deserialize, Serialize};
@@ -12,6 +13,9 @@ use validator::Validate;
 use super::SkillEvalCaseView;
 use crate::contract::stored::stored_text;
 use crate::http::{iso, trimmed, trimmed_opt};
+
+/// Lines of quality criteria a body may send, blank ones included.
+const MAX_CRITERIA_LINES: u64 = 50;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "snake_case")]
@@ -79,6 +83,8 @@ pub struct SkillVersionView {
     /// The procedure handed to the agent, in Markdown.
     pub content: String,
     pub changelog: String,
+    /// What an answer that follows it must meet (ADR-106).
+    pub quality_criteria: Vec<String>,
     /// Proposed by the agent for its author, who validated it (ADR-100).
     pub proposed: bool,
     /// What a proposal of a new skill said the skill covers.
@@ -97,6 +103,7 @@ impl SkillVersionView {
             status: stored_text("skill version status", &v.status)?,
             content: v.content.clone(),
             changelog: v.changelog.clone(),
+            quality_criteria: v.quality_criteria.clone(),
             proposed: v.proposed,
             proposed_description: v.proposed_description.clone(),
             created_by: v.created_by.clone(),
@@ -137,6 +144,13 @@ pub struct NewSkill {
     #[validate(length(max = 300))]
     #[ts(optional)]
     pub changelog: Option<String>,
+    /// What an answer that follows the version must meet, one per line
+    /// (ADR-106): blank ones are left out, and 8 at most may remain, of 300
+    /// characters at most (`skill_quality::criteria_problem`).
+    #[serde(default)]
+    #[validate(length(max = MAX_CRITERIA_LINES))]
+    #[ts(optional)]
+    pub quality_criteria: Option<Vec<String>>,
 }
 
 /// Body of `PATCH /admin/skills/{id}`.
@@ -158,6 +172,14 @@ pub struct NewSkillVersion {
     #[validate(length(max = 300))]
     #[ts(optional)]
     pub changelog: Option<String>,
+    /// What an answer that follows the version must meet, one per line
+    /// (ADR-106): blank ones are left out, and 8 at most may remain, of 300
+    /// characters at most (`skill_quality::criteria_problem`); `[]` for
+    /// none. Absent: those of the version active.
+    #[serde(default)]
+    #[validate(length(max = MAX_CRITERIA_LINES))]
+    #[ts(optional)]
+    pub quality_criteria: Option<Vec<String>>,
 }
 
 /// Body of `PUT /admin/skills/{id}/activation`: the version made active.

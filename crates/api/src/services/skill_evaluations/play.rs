@@ -10,6 +10,7 @@
 use std::sync::Arc;
 
 use mimorya_agent::llm::LlmProvider;
+use mimorya_agent::runtime::answer_review::review_criteria;
 use mimorya_core::skill_evaluations::summarize;
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::skill_evaluations::{
@@ -90,6 +91,11 @@ async fn play_cases(
     };
     let mut versions = vec![(false, played_as(evaluated, evaluation.version))];
     versions.extend(reference.map(|version| (true, version)));
+    // Both versions judged on the same bar: the criteria of either, so that
+    // one dropped or added makes no regression of its own (ADR-106).
+    let bar = versions.iter().fold(Vec::new(), |bar, (_, version)| {
+        review_criteria(&bar, &version.quality_criteria, true)
+    });
     let scope = CaseScope {
         tenant_id,
         evaluation_id: evaluation.id,
@@ -105,6 +111,7 @@ async fn play_cases(
                 services,
                 CaseRequest {
                     scope,
+                    bar: &bar,
                     access: &access,
                     provider: Arc::<dyn LlmProvider>::clone(&provider),
                     version: version.clone(),
@@ -129,6 +136,7 @@ fn played_as(text: VersionText, version: i32) -> EvaluatedVersion {
         description: text.description,
         version,
         content: text.content,
+        quality_criteria: text.quality_criteria,
     }
 }
 

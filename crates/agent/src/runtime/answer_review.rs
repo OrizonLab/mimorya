@@ -1,7 +1,8 @@
 //! Reviews a final answer candidate: deterministic checks first (empty,
 //! truncated, ungrounded identifiers), then — when enabled and success
-//! criteria exist — a model-based review. A failing reviewer never blocks the
-//! answer.
+//! criteria exist — a model-based review, on the run's criteria and on the
+//! quality criteria of the skills it loaded (ADR-106). A failing reviewer
+//! never blocks the answer.
 
 use mimorya_core::tools::Citation;
 use regex::Regex;
@@ -19,6 +20,20 @@ pub struct AnswerReview<'a> {
     pub success_criteria: &'a [String],
     /// Reviewer model; when absent the model-based review is skipped.
     pub judge: Option<&'a dyn LlmProvider>,
+}
+
+/// What the answer is reviewed on: the run's criteria, then, when they
+/// apply, those of the skills it loaded that the run's do not already hold.
+pub fn review_criteria(explicit: &[String], loaded: &[String], skills_apply: bool) -> Vec<String> {
+    let mut criteria = explicit.to_vec();
+    if skills_apply {
+        for criterion in loaded {
+            if !criteria.contains(criterion) {
+                criteria.push(criterion.clone());
+            }
+        }
+    }
+    criteria
 }
 
 /// The report, and the reviewer's response to account for (if a review ran).
@@ -85,4 +100,25 @@ pub fn present_answer(answer: &str, report: &VerificationReport) -> String {
         "{answer}\n\n---\n⚠️ **Points non vérifiés par le contrôle qualité :**\n{}",
         issues.join("\n")
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::review_criteria;
+
+    fn lines(texts: &[&str]) -> Vec<String> {
+        texts.iter().map(|t| (*t).to_owned()).collect()
+    }
+
+    #[test]
+    fn the_skills_criteria_follow_the_runs_each_once_when_they_apply() {
+        let explicit = lines(&["Chaque suivi est daté."]);
+        let loaded = lines(&["Chaque suivi est daté.", "Cite le technicien."]);
+        assert_eq!(
+            review_criteria(&explicit, &loaded, true),
+            lines(&["Chaque suivi est daté.", "Cite le technicien."])
+        );
+        assert_eq!(review_criteria(&explicit, &loaded, false), explicit);
+        assert!(review_criteria(&[], &[], true).is_empty());
+    }
 }

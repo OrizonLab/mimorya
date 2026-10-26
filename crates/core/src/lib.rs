@@ -22,6 +22,7 @@ pub mod schedule;
 pub mod skill_eval_cases;
 pub mod skill_evaluations;
 pub mod skill_proposals;
+pub mod skill_quality;
 pub mod skill_rules;
 pub mod tools;
 

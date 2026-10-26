@@ -25,6 +25,7 @@ fn weekly_report() -> SkillFixture {
         name: SKILL.into(),
         description: "Synthèse hebdomadaire des interventions".into(),
         content: "1. Lister les interventions de la semaine.".into(),
+        quality_criteria: Vec::new(),
     }
 }
 

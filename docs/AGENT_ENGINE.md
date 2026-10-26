@@ -193,8 +193,9 @@ Deux niveaux, cumulables :
    - _ancrage_ : tout identifiant d'enregistrement cité dans la réponse (ex. `INT-2043`)
      doit figurer dans les résultats d'outils de l'exécution ;
    - complétude des critères structurés (présence des sections demandées…).
-2. **Évaluation par un modèle** (missions, toujours (ADR-089), ou critères explicites
-   avec `MIMORYA_LLM_JUDGE`) : un appel séparé,
+2. **Évaluation par un modèle** (missions, toujours (ADR-089) ; critères explicites
+   avec `MIMORYA_LLM_JUDGE` ; critères de qualité d'une compétence chargée, toujours
+   (ADR-106)) : un appel séparé,
    éventuellement avec un autre modèle, juge la réponse au regard de l'objectif et des
    critères et renvoie `{ pass, issues[] }` via un outil structuré. Le verdict garde
    ses dix premiers manquements, chacun sur une ligne, nettoyé des caractères invisibles
@@ -206,6 +207,19 @@ En cas d'échec : la critique est renvoyée à l'agent dans un message de la pla
 dans la limite de `maxCorrectionAttempts` (défaut 2). Les échecs résiduels sont
 **affichés** à l'utilisateur, jamais masqués. Chaque verdict est enregistré dans
 `agent_runs.verification` et alimente l'apprentissage (§8).
+
+**Critères de qualité d'une compétence** (ADR-106) : une version porte jusqu'à 8
+critères, écrits par les administrateurs des compétences (une proposition de l'agent
+reprend ceux de la version active). Quand `skill_read` (l'outil de la plateforme, seul
+à pouvoir le faire) charge une version qui en a, l'agent les lit à la fin de la
+procédure, et ils s'ajoutent
+à ceux du run (16 au plus, chacun une fois, gardés pendant une attente de validation),
+et la réponse est jugée sur eux par un modèle, même sans `MIMORYA_LLM_JUDGE`. Le
+résumé d'un sous-agent n'est pas jugé sur les critères des compétences qu'il a
+chargées, et ces critères ne passent pas à son parent : seule la réponse finale est
+jugée, sur ceux des compétences que le run principal a chargées lui-même. Une
+évaluation (ADR-104) juge les deux versions qu'elle compare sur les critères de l'une
+et de l'autre, à côté de ceux du cas.
 
 ## 7. Sous-agents
 

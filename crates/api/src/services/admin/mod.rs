@@ -71,8 +71,8 @@ pub use skill_eval_cases::{EvalCaseInput, change_eval_case, create_eval_case, re
 pub use skill_evaluations::launch_evaluation;
 pub use skill_proposals::reject_skill_proposal;
 pub use skills::{
-    SkillInput, activate_skill, add_skill_version, create_skill, delete_skill, retire_skill,
-    update_skill,
+    SkillInput, VersionInput, activate_skill, add_skill_version, create_skill, delete_skill,
+    retire_skill, update_skill,
 };
 pub use users::{NewUserInput, UserChanges, create_user, reset_password, update_user};
 

@@ -1,4 +1,6 @@
-//! Built-in skill tool: loads the full content of an active company skill.
+//! Built-in skill tool: loads the full content of an active company skill,
+//! and the quality criteria its answer is reviewed on (ADR-106), told to the
+//! agent with the procedure so that it meets them from its first answer.
 
 use std::sync::Arc;
 
@@ -58,11 +60,25 @@ impl TypedTool for SkillRead {
                 input.name
             )));
         };
-        Ok(ToolResult::ok(Value::String(skill.content))
+        let content = with_criteria(skill.content, &skill.quality_criteria);
+        Ok(ToolResult::ok(Value::String(content))
             .with_summary(format!("Compétence {} v{}", skill.name, skill.version))
+            .with_quality_criteria(skill.quality_criteria)
             .with_citations(vec![Citation::new(
                 "skill",
                 format!("{}@{}", skill.name, skill.version),
             )]))
     }
+}
+
+/// The procedure, then what its answer is reviewed on, when anything is.
+fn with_criteria(content: String, criteria: &[String]) -> String {
+    if criteria.is_empty() {
+        return content;
+    }
+    let list: Vec<String> = criteria.iter().map(|c| format!("- {c}")).collect();
+    format!(
+        "{content}\n\n## Critères de qualité de la réponse\n{}",
+        list.join("\n")
+    )
 }

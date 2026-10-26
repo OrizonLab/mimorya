@@ -1124,12 +1124,25 @@ enabled?: boolean, };
 /**
  * Body of `POST /admin/skills`: a skill and its first version, a draft.
  */
-export type NewSkill = { name: string, description: string, content: string, changelog?: string, };
+export type NewSkill = { name: string, description: string, content: string, changelog?: string,
+/**
+ * What an answer that follows the version must meet, one per line
+ * (ADR-106): blank ones are left out, and 8 at most may remain, of 300
+ * characters at most (`skill_quality::criteria_problem`).
+ */
+qualityCriteria?: Array<string>, };
 
 /**
  * Body of `POST /admin/skills/{id}/versions`: a new draft version.
  */
-export type NewSkillVersion = { content: string, changelog?: string, };
+export type NewSkillVersion = { content: string, changelog?: string,
+/**
+ * What an answer that follows the version must meet, one per line
+ * (ADR-106): blank ones are left out, and 8 at most may remain, of 300
+ * characters at most (`skill_quality::criteria_problem`); `[]` for
+ * none. Absent: those of the version active.
+ */
+qualityCriteria?: Array<string>, };
 
 /**
  * `GET /account/notifications`, and the body of its `PUT`: each kind of
@@ -1521,6 +1534,10 @@ export type SkillVersionView = { version: number, status: SkillVersionStatus,
  * The procedure handed to the agent, in Markdown.
  */
 content: string, changelog: string,
+/**
+ * What an answer that follows it must meet (ADR-106).
+ */
+qualityCriteria: Array<string>,
 /**
  * Proposed by the agent for its author, who validated it (ADR-100).
  */

@@ -2,12 +2,14 @@
 //! the whole company writes a skill and its versions, makes one of them
 //! active (an older one included: that is the way back; against its last
 //! evaluation's regressions, once confirmed, ADR-104), retires the skill,
-//! and deletes one that is not active. A version's content never changes
-//! once written. Runs read the active versions when they start: there is no
-//! cache to refresh.
+//! and deletes one that is not active. A version's content and quality
+//! criteria (ADR-106) never change once written; written without criteria,
+//! it keeps those of the version active. Runs read the active versions when
+//! they start: there is no cache to refresh.
 
 use mimorya_core::DomainError;
 use mimorya_core::skill_evaluations::{LastEvaluation, activation_problem};
+use mimorya_core::skill_quality::{criteria_problem, normalized_criteria};
 use mimorya_core::skill_rules::{
     MAX_ACTIVE_SKILLS, content_problem, line_problem, name_problem, normalized_content,
 };
@@ -32,6 +34,17 @@ pub struct SkillInput {
     pub description: String,
     pub content: String,
     pub changelog: String,
+    /// One per line, blank ones left out (ADR-106).
+    pub quality_criteria: Option<Vec<String>>,
+}
+
+/// A version as an administrator writes it.
+pub struct VersionInput {
+    pub content: String,
+    pub changelog: String,
+    /// One per line, blank ones left out (ADR-106); when not given, those
+    /// of the version active.
+    pub quality_criteria: Option<Vec<String>>,
 }
 
 /// A skill and its first version, both drafts: nothing reaches the agent
@@ -45,6 +58,7 @@ pub async fn create_skill(
     refuse(name_problem(&input.name))?;
     refuse(line_problem("Description", &input.description))?;
     let content = checked_content(&input.content, &input.changelog)?;
+    let criteria = checked_criteria(input.quality_criteria.as_deref())?;
     let mut tx = begin_change(db, access, PERMISSION).await?;
     if skill_name_taken(&mut tx, &input.name).await? {
         return Err(DomainError::conflict("Une compétence porte déjà ce nom").into());
@@ -59,13 +73,19 @@ pub async fn create_skill(
         },
     )
     .await?;
-    let version = add_version(&mut tx, access, id, &content, &input.changelog).await?;
+    let version = Version {
+        content: &content,
+        changelog: &input.changelog,
+        quality_criteria: criteria.as_deref(),
+    };
+    let version = add_version(&mut tx, access, id, version).await?;
     append_audit(
         &mut tx,
         audit_entry(access, "skill.created", "skill", id).metadata(json!({
             "name": input.name,
             "description": input.description,
             "version": version,
+            "qualityCriteria": criteria.as_ref().map_or(0, Vec::len),
         })),
     )
     .await?;
@@ -102,20 +122,31 @@ pub async fn add_skill_version(
     db: &Database,
     access: &AccessContext,
     id: Uuid,
-    content: String,
-    changelog: String,
+    input: VersionInput,
 ) -> anyhow::Result<i32> {
     access.require_tenant_wide(PERMISSION)?;
-    let content = checked_content(&content, &changelog)?;
+    let content = checked_content(&input.content, &input.changelog)?;
+    let criteria = checked_criteria(input.quality_criteria.as_deref())?;
     let mut tx = begin_change(db, access, PERMISSION).await?;
     let skill = existing(&mut tx, id).await?;
-    let version = add_version(&mut tx, access, id, &content, &changelog).await?;
+    let version = Version {
+        content: &content,
+        changelog: &input.changelog,
+        quality_criteria: criteria.as_deref(),
+    };
+    let version = add_version(&mut tx, access, id, version).await?;
+    // How many were written, or that those of the version active were kept.
+    let criteria = match &criteria {
+        Some(written) => json!(written.len()),
+        None => json!("kept"),
+    };
     append_audit(
         &mut tx,
         audit_entry(access, "skill.version_created", "skill", id).metadata(json!({
             "name": skill.name,
             "version": version,
-            "changelog": changelog,
+            "changelog": input.changelog,
+            "qualityCriteria": criteria,
         })),
     )
     .await?;
@@ -232,18 +263,26 @@ pub(super) async fn existing(tx: &mut TenantTx, id: Uuid) -> anyhow::Result<Skil
         .ok_or_else(|| DomainError::not_found("Compétence introuvable").into())
 }
 
+/// A version once checked.
+struct Version<'a> {
+    content: &'a str,
+    changelog: &'a str,
+    /// When not given, those of the version active.
+    quality_criteria: Option<&'a [String]>,
+}
+
 async fn add_version(
     tx: &mut TenantTx,
     access: &AccessContext,
     skill_id: Uuid,
-    content: &str,
-    changelog: &str,
+    version: Version<'_>,
 ) -> anyhow::Result<i32> {
     let version = NewSkillVersion {
         tenant_id: access.subject.tenant_id,
         skill_id,
-        content,
-        changelog,
+        content: version.content,
+        changelog: version.changelog,
+        quality_criteria: version.quality_criteria,
         created_by: access.subject.user_id,
         proposed_by_run: None,
         description: None,
@@ -257,6 +296,17 @@ fn checked_content(content: &str, changelog: &str) -> Result<String, DomainError
     let content = normalized_content(content);
     refuse(content_problem(&content))?;
     Ok(content)
+}
+
+/// The quality criteria as stored, once they passed the checks; none
+/// given, none to store (the version keeps those of the version active).
+fn checked_criteria(lines: Option<&[String]>) -> Result<Option<Vec<String>>, DomainError> {
+    let Some(lines) = lines else {
+        return Ok(None);
+    };
+    let criteria = normalized_criteria(lines);
+    refuse(criteria_problem(&criteria))?;
+    Ok(Some(criteria))
 }
 
 fn refuse(problem: Option<String>) -> Result<(), DomainError> {
