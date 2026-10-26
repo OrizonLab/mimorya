@@ -139,7 +139,7 @@ impl TypedTool for MemoryRemember {
         ToolInfo::new(
             "memory_remember",
             "Mémorisation",
-            "Enregistre une information utile pour les prochaines missions. Espace « personal » : préférences et informations de travail de l’utilisateur (enregistré immédiatement). Espaces « team » et « company » : connaissance partagée, enregistrée comme proposition à valider. N’enregistre jamais de secret, de mot de passe ni de donnée personnelle sensible.",
+            "Enregistre une information utile pour les prochaines missions. Espace « personal » : préférences et informations de travail de l’utilisateur (enregistré immédiatement, sauf dans une demande lancée par un déclencheur : proposition à valider). Espaces « team » et « company » : connaissance partagée, enregistrée comme proposition à valider. N’enregistre jamais de secret, de mot de passe ni de donnée personnelle sensible.",
             ToolRisk::Draft,
         )
         .requires(["agent:use"])
@@ -177,7 +177,8 @@ impl TypedTool for MemoryRemember {
             return Ok(ToolResult::error("Aucune équipe principale"));
         }
         // Proposals to shared spaces are allowed for every member; they only
-        // become visible once validated by someone holding memory:write.
+        // become visible once validated by someone holding memory:write. A
+        // hook's run writes nothing directly, even personal (ADR-109).
         let direct = ctx.authz.can_write_memory(target);
         let status = if matches!(input.space, MemorySpace::Personal) && direct {
             MemoryStatus::Active

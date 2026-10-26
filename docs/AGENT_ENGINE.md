@@ -303,7 +303,9 @@ composables par les compétences.
 | `tenant` (entreprise)                        | Tous les membres disposant de `memory:read`                                        | `memory:write` à l'échelle de l'entreprise  |
 | `experience` (leçons, procédures de l'agent) | Comme `tenant`                                                                     | Proposée par l'agent, validée par un humain |
 
-Un responsable **ne voit pas** la mémoire personnelle de ses collaborateurs.
+Un responsable **ne voit pas** la mémoire personnelle de ses collaborateurs. Un run
+qu'un déclencheur a lancé (canal `hook`, ADR-109) n'écrit directement dans aucun
+espace, pas même personnel : ce qu'il retiendrait est une proposition à la personne.
 
 ### 9.2 Recherche
 

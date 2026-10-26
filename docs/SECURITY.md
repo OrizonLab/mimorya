@@ -100,7 +100,12 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   Corps borné (16 Kio, UTF-8), trente envois par heure au plus. Les données reçues
   suivent la demande de l'auteur, encadrées comme données non fiables, jamais dans
   l'audit ni les journaux ; le run agit avec les droits de l'auteur et n'agit jamais
-  seul (autonomie plafonnée à « exécution avec validation »).
+  seul (autonomie plafonnée à « exécution avec validation »). Il porte son canal
+  (`hook`) jusqu'au bout, reprises et sous-agents compris : ce qu'il retiendrait est une
+  proposition à l'auteur, jamais une mémoire active, même personnelle, et les politiques
+  d'accès peuvent le lire (`context.channel`). Un envoi refusé ne dit à l'expéditeur que
+  son statut (409, 503) : la raison est gardée pour l'auteur seul ; au-delà de la
+  limite horaire, seul le premier refus de l'heure est gardé et tracé.
 - Limitation de débit sur la connexion :
   - **par compte** : 10 échecs par quart d'heure et par adresse e-mail, comptes
     inconnus compris (rien ne distingue un compte existant). Chaque tentative réserve

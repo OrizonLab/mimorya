@@ -142,13 +142,19 @@ pub struct MemoryTarget {
     pub org_unit_id: Option<Uuid>,
 }
 
-/// Whether the subject (or an agent acting for them) may write into a memory space.
+/// Whether the subject (or an agent acting for them) may write into a memory
+/// space directly. A run another system started writes into none: what it
+/// would keep is proposed to its author, or what it was sent could settle in
+/// their memory and lead their later runs (ADR-109).
 pub fn can_write_memory(
     engine: &AuthorizationEngine,
     subject: &Subject,
     target: MemoryTarget,
     actor: &Actor,
 ) -> bool {
+    if actor.started_by_hook() {
+        return false;
+    }
     if target.scope == MemoryScope::User {
         return engine.has(subject, "agent:use", actor);
     }

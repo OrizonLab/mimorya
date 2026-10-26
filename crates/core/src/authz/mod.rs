@@ -17,6 +17,6 @@ pub use permissions::{
 };
 pub use sensitivity::Sensitivity;
 pub use types::{
-    AbacPolicy, Actor, ActorType, AssignmentScope, DataScope, Decision, PolicyEffect, ResourceRef,
-    RoleAssignment, RoleDefinition, Subject,
+    AbacPolicy, Actor, ActorType, AssignmentScope, DataScope, Decision, HOOK_CHANNEL, PolicyEffect,
+    ResourceRef, RoleAssignment, RoleDefinition, Subject, WEB_CHANNEL,
 };

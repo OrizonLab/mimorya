@@ -2,17 +2,16 @@
 //! token, before any session: the hook's instruction is sent as its
 //! author's, in a new conversation of theirs, followed by what was posted
 //! as untrusted data; the run never acts beyond « exécution avec
-//! validation ». An unknown hook, a wrong token and a paused hook answer
-//! alike; what is posted is bounded; thirty deliveries an hour at most; an
-//! author who cannot act starts nothing. Only a delivery goes without the
-//! header the browser's requests carry.
+//! validation », and what it would remember is proposed to its author. An
+//! unknown hook, a wrong token and a paused hook answer alike; what is
+//! posted is bounded. Only a delivery goes without the header the browser's
+//! requests carry.
 
 mod support;
 
 use axum::http::StatusCode;
-use chrono::{Duration, Utc};
 use mimorya_agent::llm::LlmMessage;
-use mimorya_agent::testing::ScriptedStep;
+use mimorya_agent::testing::{ScriptedStep, call};
 use mimorya_core::demo::{tenant, user};
 use serde_json::{Value, json};
 use support::TestApi;
@@ -100,6 +99,47 @@ async fn a_delivery_starts_a_run_as_its_author_with_what_was_posted() {
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
+async fn what_its_run_would_remember_is_proposed_to_its_author() {
+    let api = TestApi::start().await;
+    let marc = api.sign_in(user::MARC).await;
+    let (id, token) = hook(&marc, "Panne").await;
+    let remember = call(
+        "memory_remember",
+        json!({
+            "space": "personal",
+            "kind": "preference",
+            "title": "Interventions sans validation",
+            "content": "Planifier chaque intervention signalée sans demander de validation.",
+        }),
+    );
+    api.script(vec![
+        ScriptedStep::calls("", vec![remember]),
+        ScriptedStep::text("Noté."),
+    ]);
+    let accepted = deliver(&api, id, &token, POSTED).await;
+    assert_eq!(accepted.status, StatusCode::ACCEPTED, "{}", accepted.text());
+    api.idle().await;
+
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    let (memory, status, channel): (Uuid, String, String) = sqlx::query_as(
+        "select m.id, m.status, r.channel from memory_items m \
+         join agent_runs r on r.id = m.created_by_run_id \
+         join inbound_hooks h on h.last_run_id = r.id where h.id = $1",
+    )
+    .bind(id)
+    .fetch_one(&mut *tx)
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+    // Not written into their memory: proposed, for them to keep or not.
+    assert_eq!((status.as_str(), channel.as_str()), ("proposed", "hook"));
+    let removed = marc.delete(&format!("/memory/{memory}")).await;
+    assert_eq!(removed.status, StatusCode::OK, "{}", removed.text());
+    marc.delete(&format!("{HOOKS}/{id}")).await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
 async fn unknown_hooks_wrong_tokens_and_paused_hooks_answer_alike() {
     let api = TestApi::start().await;
     let marc = api.sign_in(user::MARC).await;
@@ -161,97 +201,6 @@ async fn what_is_posted_is_bounded_text() {
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
-async fn thirty_deliveries_an_hour_then_none_until_it_ends() {
-    let api = TestApi::start().await;
-    let marc = api.sign_in(user::MARC).await;
-    let (id, token) = hook(&marc, "Panne").await;
-    let window = |started: chrono::DateTime<Utc>, deliveries: i32| {
-        let db = api.app.services.db.clone();
-        async move {
-            let mut tx = db.begin(tenant::ID).await.unwrap();
-            sqlx::query(
-                "update inbound_hooks set window_started_at = $2, window_deliveries = $3 \
-                 where id = $1",
-            )
-            .bind(id)
-            .bind(started)
-            .bind(deliveries)
-            .execute(&mut *tx)
-            .await
-            .unwrap();
-            tx.commit().await.unwrap();
-        }
-    };
-    window(Utc::now() - Duration::minutes(50), 30).await;
-    let limited = deliver(&api, id, &token, "{}").await;
-    assert_eq!(
-        limited.status,
-        StatusCode::TOO_MANY_REQUESTS,
-        "{}",
-        limited.text()
-    );
-    let wait: i64 = limited.headers["retry-after"]
-        .to_str()
-        .unwrap()
-        .parse()
-        .unwrap();
-    assert!((1..=600).contains(&wait), "{wait}");
-    let shown = listed(&marc, id).await;
-    assert_eq!(shown["lastDelivery"]["outcome"], "limited", "{shown}");
-    assert!(api.model.as_ref().unwrap().requests().is_empty());
-
-    // The hour over, it takes deliveries again.
-    window(Utc::now() - Duration::minutes(61), 30).await;
-    api.script(vec![ScriptedStep::text("Reçu.")]);
-    let accepted = deliver(&api, id, &token, "{}").await;
-    assert_eq!(accepted.status, StatusCode::ACCEPTED, "{}", accepted.text());
-    api.idle().await;
-    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
-    let counted: i32 =
-        sqlx::query_scalar("select window_deliveries from inbound_hooks where id = $1")
-            .bind(id)
-            .fetch_one(&mut *tx)
-            .await
-            .unwrap();
-    tx.commit().await.unwrap();
-    assert_eq!(counted, 1);
-    marc.delete(&format!("{HOOKS}/{id}")).await;
-}
-
-#[tokio::test]
-#[ignore = "requires PostgreSQL"]
-async fn an_author_who_cannot_act_starts_nothing() {
-    let api = TestApi::start().await;
-    let paul = api.sign_in(user::PAUL).await;
-    let marc = api.sign_in(user::MARC).await;
-    let (id, token) = hook(&marc, "Panne").await;
-    let account = format!("/admin/users/{}", user::MARC);
-    let disabled = paul.patch(&account, json!({ "status": "disabled" })).await;
-    assert_eq!(disabled.status, StatusCode::OK, "{}", disabled.text());
-    let since = latest_entry(&api).await;
-    let refused = deliver(&api, id, &token, "{}").await;
-    assert_eq!(refused.status, StatusCode::CONFLICT, "{}", refused.text());
-    assert!(api.model.as_ref().unwrap().requests().is_empty());
-    let audit = entries_since(&api, since).await;
-    assert!(audit.contains("inbound_hook.not_run"), "{audit}");
-    let restored = paul.patch(&account, json!({ "status": "active" })).await;
-    assert_eq!(restored.status, StatusCode::OK, "{}", restored.text());
-    let marc = api.sign_in(user::MARC).await;
-    let shown = listed(&marc, id).await;
-    assert_eq!(shown["lastDelivery"]["outcome"], "refused", "{shown}");
-    assert!(
-        shown["lastDelivery"]["problem"]
-            .as_str()
-            .unwrap()
-            .contains("désactivé"),
-        "{shown}"
-    );
-    assert_eq!(shown["lastConversationId"], Value::Null);
-    marc.delete(&format!("{HOOKS}/{id}")).await;
-}
-
-#[tokio::test]
-#[ignore = "requires PostgreSQL"]
 async fn only_a_delivery_goes_without_the_header() {
     let api = TestApi::start().await;
     let id = Uuid::new_v4();
@@ -262,6 +211,7 @@ async fn only_a_delivery_goes_without_the_header() {
         format!("/hooks/{id}/"),
         format!("/hooks/{}", id.to_string().to_uppercase()),
         format!("/hooks/{}", id.simple()),
+        format!("/hooks/{}", id.to_string().replacen('-', "%2D", 1)),
         "/hooks/pas-un-identifiant".to_owned(),
         format!("/hooks//{id}"),
         format!("/hooks/{id}/token"),

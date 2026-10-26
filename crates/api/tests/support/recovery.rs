@@ -61,6 +61,7 @@ pub async fn stopped_with(
             budget: serde_json::to_value(DEFAULT_BUDGET).unwrap(),
             request_message_id: None,
             mission_id: None,
+            channel: "web",
         },
     )
     .await

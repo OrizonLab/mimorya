@@ -4,6 +4,7 @@
 use mimorya_agent::llm::LlmMessage;
 use mimorya_agent::runtime::DEFAULT_BUDGET;
 use mimorya_core::DomainError;
+use mimorya_core::authz::{HOOK_CHANNEL, WEB_CHANNEL};
 use mimorya_core::autonomy::AutonomyLevel;
 use mimorya_db::TenantTx;
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
@@ -110,6 +111,11 @@ pub async fn open_conversation_turn(
             budget: serde_json::to_value(DEFAULT_BUDGET)?,
             request_message_id: Some(user_message.id),
             mission_id: None,
+            // Read again whenever the run resumes (ADR-109).
+            channel: match sender {
+                TurnSender::Hook { .. } => HOOK_CHANNEL,
+                TurnSender::User | TurnSender::Schedule { .. } => WEB_CHANNEL,
+            },
         },
     )
     .await?;

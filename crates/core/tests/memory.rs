@@ -3,7 +3,7 @@
 
 use std::collections::HashSet;
 
-use mimorya_core::authz::Actor;
+use mimorya_core::authz::{Actor, HOOK_CHANNEL, WEB_CHANNEL};
 use mimorya_core::demo::{self, unit, user};
 use mimorya_core::memory::{
     MemoryScope, MemoryTarget, UnitFilter, can_write_memory, memory_read_filter,
@@ -71,4 +71,24 @@ fn only_shared_spaces_within_the_write_scope_are_writable() {
         target(MemoryScope::Tenant, None),
         &me
     ));
+}
+
+#[test]
+fn a_run_another_system_started_writes_no_memory_directly() {
+    let engine = demo::authorization_engine();
+    let claire = demo::subject(user::CLAIRE);
+    let personal = MemoryTarget {
+        scope: MemoryScope::User,
+        org_unit_id: None,
+    };
+    let company = MemoryTarget {
+        scope: MemoryScope::Tenant,
+        org_unit_id: None,
+    };
+    let web = Actor::agent(None).with_channel(WEB_CHANNEL);
+    let hook = Actor::agent(None).with_channel(HOOK_CHANNEL);
+    for target in [personal, company] {
+        assert!(can_write_memory(&engine, &claire, target, &web));
+        assert!(!can_write_memory(&engine, &claire, target, &hook));
+    }
 }

@@ -3,7 +3,8 @@
 //! only proof, so the request header the browser's requests carry is not
 //! asked of it (`plugins/csrf.rs`). An unknown hook, a wrong or missing token
 //! and a paused hook answer alike (404). At most `MAX_BODY_BYTES` of text are
-//! taken (413), as UTF-8 (415). Accepted, it answers 202, naming nothing.
+//! taken (413), as UTF-8 (415). Accepted, it answers 202, naming nothing;
+//! refused, it says no more than its status: why is kept for the author.
 
 use axum::Router;
 use axum::body::Body;
@@ -13,6 +14,7 @@ use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 use chrono::Utc;
+use mimorya_core::DomainError;
 use uuid::Uuid;
 
 use crate::app::AppState;
@@ -26,6 +28,9 @@ pub const DELIVERY_PREFIX: &str = "/hooks/";
 const TOO_LARGE: &str = "Données reçues trop volumineuses : 16 Kio au plus.";
 const NOT_TEXT: &str = "Données reçues illisibles : du texte UTF-8 est attendu.";
 const LIMITED: &str = "Ce déclencheur a reçu trop d’envois dans l’heure : réessayez plus tard.";
+// Why exactly is kept for the hook's author, not told whoever holds its token.
+const REFUSED: &str = "Ce déclencheur ne peut rien lancer pour l’instant.";
+const FAILED: &str = "Le démarrage a échoué : renvoyez les données plus tard.";
 
 pub fn routes() -> Router<AppState> {
     Router::new().route("/hooks/{id}", post(receive))
@@ -67,10 +72,8 @@ async fn receive(
             }
             Ok(response)
         }
-        Err(Refusal::Refused(problem)) => Err(mimorya_core::DomainError::conflict(problem).into()),
-        Err(Refusal::Failed(problem)) => {
-            Err(mimorya_core::DomainError::unavailable(problem).into())
-        }
+        Err(Refusal::Refused) => Err(DomainError::conflict(REFUSED).into()),
+        Err(Refusal::Failed) => Err(DomainError::unavailable(FAILED).into()),
     }
 }
 

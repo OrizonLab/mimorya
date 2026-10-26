@@ -14,9 +14,6 @@ use mimorya_core::DomainError;
 use mimorya_core::error::ErrorCode;
 use mimorya_core::schedule::WeeklySchedule;
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
-use mimorya_db::repositories::conversations::{
-    ConversationPatch, create_conversation, update_conversation,
-};
 use mimorya_db::repositories::scheduled_tasks::{
     DueTask, Occurrence, ScheduledTaskRow, due_scheduled_tasks, lock_due_task, record_occurrence,
     reschedule_task,
@@ -25,7 +22,6 @@ use serde_json::json;
 use uuid::Uuid;
 
 use crate::app::Services;
-use crate::services::access::AuthIdentity;
 use crate::services::runs::TurnSender;
 
 /// Tasks listed at once: a pass lists more while some remain due.
@@ -114,7 +110,11 @@ pub async fn fire_task(
     }
     tx.commit().await?;
 
-    let started = start(services, tenant_id, &task).await;
+    let sender = TurnSender::Schedule { task_id: task.id };
+    let (title, instruction) = (&task.title, &task.instruction);
+    let started = (services.runs)
+        .start_for(tenant_id, task.user_id, title, instruction, sender)
+        .await;
     let mut tx = services.db.begin(tenant_id).await?;
     let fired = match &started {
         Ok(ids) => {
@@ -170,51 +170,6 @@ fn held_back(due: &DueTask, now: DateTime<Utc>) -> Option<(&'static str, &'stati
         return Some(("still_running", STILL_RUNNING));
     }
     None
-}
-
-/// Sends the instruction as its author's, in a new conversation of theirs,
-/// once a model can answer, their company is active and they may use the
-/// agent: nothing is opened otherwise. A conversation whose run then fails to start is archived (the
-/// application deletes none).
-async fn start(
-    services: &Services,
-    tenant_id: Uuid,
-    task: &ScheduledTaskRow,
-) -> anyhow::Result<(Uuid, Uuid)> {
-    // No session: the run reads the account's rights as they stand.
-    let identity = AuthIdentity {
-        tenant_id,
-        user_id: task.user_id,
-        session_id: Uuid::nil(),
-        must_change_password: false,
-    };
-    services.runs.ready_to_run(identity).await?;
-    let mut tx = services.db.begin(tenant_id).await?;
-    let conversation =
-        create_conversation(&mut tx, tenant_id, task.user_id, Some(&task.title)).await?;
-    tx.commit().await?;
-    let turn = services
-        .runs
-        .start_conversation_turn(
-            identity,
-            conversation.id,
-            &task.instruction,
-            TurnSender::Schedule { task_id: task.id },
-        )
-        .await;
-    match turn {
-        Ok(turn) => Ok((conversation.id, turn.run_id)),
-        Err(error) => {
-            let mut tx = services.db.begin(tenant_id).await?;
-            let archived = ConversationPatch {
-                title: None,
-                archived_at: Some(Some(Utc::now())),
-            };
-            update_conversation(&mut tx, conversation.id, archived).await?;
-            tx.commit().await?;
-            Err(error)
-        }
-    }
 }
 
 /// Records an occurrence for its author and audits it, never what it asks.

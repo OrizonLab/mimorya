@@ -63,3 +63,11 @@ $$;
 REVOKE ALL ON FUNCTION auth_inbound_hook_tenant(uuid, text) FROM PUBLIC;
 
 GRANT EXECUTE ON FUNCTION auth_inbound_hook_tenant(uuid, text) TO mimorya_app;
+
+-- How a run was started: `web` from the application, `hook` when another
+-- system posted to its author's hook. A run read again after a pause or a
+-- stop keeps it: what it was sent never writes into its author's memory
+-- directly, and policies can read it (`context.channel`). A sub-agent's run
+-- has its parent's; `evaluation` is never stored (an evaluation opens no run).
+ALTER TABLE agent_runs ADD COLUMN channel text NOT NULL DEFAULT 'web'
+  CHECK (channel IN ('web', 'hook'));

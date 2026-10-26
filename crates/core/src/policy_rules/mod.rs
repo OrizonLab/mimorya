@@ -43,7 +43,10 @@ pub const KNOWN_ATTRIBUTES: &[(&str, &str)] = &[
         "Sensibilité de la ressource (0 à 3)",
     ),
     ("context.actorType", "Acteur : « user » ou « agent »"),
-    ("context.channel", "Canal de la demande"),
+    (
+        "context.channel",
+        "Canal : « web », « hook » (déclencheur) ou « evaluation » (compétence évaluée)",
+    ),
 ];
 
 /// The catalog permissions a permission or a `domaine:*` pattern covers.

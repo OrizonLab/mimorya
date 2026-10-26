@@ -14,9 +14,6 @@ use mimorya_core::DomainError;
 use mimorya_core::error::ErrorCode;
 use mimorya_db::TenantTx;
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
-use mimorya_db::repositories::conversations::{
-    ConversationPatch, create_conversation, update_conversation,
-};
 use mimorya_db::repositories::inbound_hooks::{
     Delivery, InboundHookRow, count_delivery, inbound_hook_tenant, lock_reached_hook,
     record_delivery,
@@ -26,7 +23,6 @@ use uuid::Uuid;
 
 use crate::app::Services;
 use crate::auth::credentials::hash_token;
-use crate::services::access::AuthIdentity;
 use crate::services::runs::TurnSender;
 
 /// Deliveries a hook takes in an hour.
@@ -44,19 +40,20 @@ const DISABLED: &str = "Le compte de l’auteur du déclencheur était désactiv
      lancé.";
 const TEMPORARY_PASSWORD: &str = "Votre mot de passe provisoire restait à remplacer : rien n’a \
      été lancé.";
-const NOT_STARTED: &str = "Le démarrage a échoué : renvoyez les données plus tard.";
+const NOT_STARTED: &str = "Le démarrage a échoué : les données envoyées n’ont pas été traitées.";
 
-/// Why a delivery was not taken, for the system that posted.
-#[derive(Debug)]
+/// Why a delivery was not taken, for the system that posted: why exactly
+/// is kept for the hook's author alone.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Refusal {
     /// Unknown hook, wrong token or paused hook, alike.
     Unknown,
     /// Its window is full until `until`.
     Limited { until: DateTime<Utc> },
-    /// Its author cannot act now: why, kept for them.
-    Refused(String),
+    /// Its author, or their company, cannot act now.
+    Refused,
     /// The run could not start.
-    Failed(String),
+    Failed,
 }
 
 /// Takes what `token` posts to the hook `id`: the run it started, or why
@@ -83,17 +80,14 @@ pub async fn deliver(
         _ => (now, 0),
     };
     if counted >= MAX_PER_HOUR {
-        record(
-            &mut tx,
-            tenant_id,
-            &hook,
-            now,
-            "limited",
-            Some(LIMITED),
-            None,
-        )
-        .await?;
-        tx.commit().await?;
+        // Kept and audited once a window: what follows writes nothing.
+        let kept = hook.last_outcome.as_deref() == Some("limited")
+            && hook.last_received_at.is_some_and(|at| at >= started_at);
+        if !kept {
+            let limited = Some(LIMITED);
+            record(&mut tx, tenant_id, &hook, now, "limited", limited, None).await?;
+            tx.commit().await?;
+        }
         return Ok(Err(Refusal::Limited {
             until: started_at + WINDOW,
         }));
@@ -118,11 +112,16 @@ pub async fn deliver(
         )
         .await?;
         tx.commit().await?;
-        return Ok(Err(Refusal::Refused(problem.into())));
+        return Ok(Err(Refusal::Refused));
     }
     tx.commit().await?;
 
-    let started = start(services, tenant_id, &hook, body).await;
+    // Sent as its author's, with their rights as they stand (no session).
+    let text = turn_text(&hook.instruction, body);
+    let sender = TurnSender::Hook { hook_id: hook.id };
+    let started = (services.runs)
+        .start_for(tenant_id, hook.user_id, &hook.title, &text, sender)
+        .await;
     let mut tx = services.db.begin(tenant_id).await?;
     let outcome = match started {
         Ok(ids) => {
@@ -130,20 +129,19 @@ pub async fn deliver(
             Ok(ids.1)
         }
         Err(error) => {
-            let refusal = match error.downcast_ref::<DomainError>() {
-                Some(refusal) if matches!(refusal.code, ErrorCode::Forbidden) => {
-                    Refusal::Refused(refusal.message.clone())
+            let (refusal, problem) = match error.downcast_ref::<DomainError>() {
+                Some(why) if matches!(why.code, ErrorCode::Forbidden) => {
+                    (Refusal::Refused, why.message.as_str())
                 }
-                Some(refusal) => Refusal::Failed(refusal.message.clone()),
+                Some(why) => (Refusal::Failed, why.message.as_str()),
                 None => {
                     tracing::warn!(hook = %hook.id, error = format!("{error:#}"), "Inbound hook run not started");
-                    Refusal::Failed(NOT_STARTED.into())
+                    (Refusal::Failed, NOT_STARTED)
                 }
             };
-            let (outcome, problem) = match &refusal {
-                Refusal::Refused(problem) => ("refused", problem.as_str()),
-                Refusal::Failed(problem) => ("failed", problem.as_str()),
-                Refusal::Unknown | Refusal::Limited { .. } => ("failed", NOT_STARTED),
+            let outcome = match refusal {
+                Refusal::Refused => "refused",
+                _ => "failed",
             };
             record(&mut tx, tenant_id, &hook, now, outcome, Some(problem), None).await?;
             Err(refusal)
@@ -158,52 +156,6 @@ pub async fn deliver(
 pub fn turn_text(instruction: &str, body: &str) -> String {
     let posted = wrap_untrusted(SOURCE, &Value::String(body.to_owned()));
     format!("{instruction}\n\n{posted}")
-}
-
-/// Sends the turn as its author's, in a new conversation of theirs, once a
-/// model can answer, their company is active and they may use the agent:
-/// nothing is opened otherwise. A conversation whose run then fails to start
-/// is archived (the application deletes none).
-async fn start(
-    services: &Services,
-    tenant_id: Uuid,
-    hook: &InboundHookRow,
-    body: &str,
-) -> anyhow::Result<(Uuid, Uuid)> {
-    // No session: the run reads the account's rights as they stand.
-    let identity = AuthIdentity {
-        tenant_id,
-        user_id: hook.user_id,
-        session_id: Uuid::nil(),
-        must_change_password: false,
-    };
-    services.runs.ready_to_run(identity).await?;
-    let mut tx = services.db.begin(tenant_id).await?;
-    let conversation =
-        create_conversation(&mut tx, tenant_id, hook.user_id, Some(&hook.title)).await?;
-    tx.commit().await?;
-    let turn = services
-        .runs
-        .start_conversation_turn(
-            identity,
-            conversation.id,
-            &turn_text(&hook.instruction, body),
-            TurnSender::Hook { hook_id: hook.id },
-        )
-        .await;
-    match turn {
-        Ok(turn) => Ok((conversation.id, turn.run_id)),
-        Err(error) => {
-            let mut tx = services.db.begin(tenant_id).await?;
-            let archived = ConversationPatch {
-                title: None,
-                archived_at: Some(Some(Utc::now())),
-            };
-            update_conversation(&mut tx, conversation.id, archived).await?;
-            tx.commit().await?;
-            Err(error)
-        }
-    }
 }
 
 /// Records a delivery for its author and audits it, never what was posted.

@@ -107,7 +107,8 @@ Repères à l'intérieur des crates :
   `mimorya-extract`, `api/src/bin/extract.rs`, bornée en nombre, en temps et en taille,
   `extractor.rs` ; dépôt sous le quota de l'entreprise, `deposit.rs` ; liste,
   téléchargement et suppression, `library.rs`, ADR-095),
-  `api/src/services/runs/` (tour de conversation, décisions, contexte, exécution,
+  `api/src/services/runs/` (tour de conversation, dont celui envoyé pour quelqu'un dans une
+  conversation nouvelle, ouverte avec lui (`turn_start.rs`, ADR-109), décisions, contexte, exécution,
   ports PostgreSQL (lectures de la mémoire et des documents, partagées avec les
   évaluations : `reads.rs` ; documents : `document_ports.rs`, ADR-096 ; runs des sous-agents,
   sous le bail de leur parent : `sub_runs.rs`, ADR-098), résultat, reprise des runs dont l'exécuteur s'est arrêté et ce
