@@ -3,8 +3,9 @@
 // version 2 to be evaluated, follows it to its end, reads the regression it
 // found case by case (the answers, the judge's issue, the tools called),
 // declines to make version 2 active against it, then makes it active once he
-// confirmed, deletes the case, and reads it all back as the API recorded it. Whatever happens, the test's skill is gone afterwards,
-// its cases and evaluations with it.
+// confirmed, deletes the case, and reads it all back as the API recorded it.
+// Whatever happens, the test's skill is gone afterwards, its cases and
+// evaluations with it.
 import type { Created, SkillDetail, SkillEvaluations, SkillList } from '../lib/api/contract';
 import { openAdmin } from './support/admin';
 import { expect, noError, test } from './support/fixtures';

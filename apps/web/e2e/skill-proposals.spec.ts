@@ -114,9 +114,10 @@ test('a skill the agent proposes is validated, then turned down by an administra
   const proposed = skills.find((s) => s.name === NAME);
   const asked = await page.request.get(`/api/admin/skills/${proposed?.id}/evaluations`);
   expect(((await asked.json()) as SkillEvaluations).evaluations).toEqual([]);
-  await expect(page.getByRole('region', { name: 'Évaluations' })).toContainText(
-    'Aucune évaluation.',
-  );
+  const evaluationsReread = page.getByRole('region', { name: 'Évaluations' });
+  await expect(evaluationsReread).toContainText('Aucune évaluation.');
+  // Turned down, the agent's text is still to be read before it is evaluated.
+  await expect(evaluationsReread).toContainText('Proposition de l’agent : relisez son contenu');
   await expect(reread.getByRole('button', { name: 'Rejeter la version 1' })).toHaveCount(0);
   await expect(page.getByText('attend votre décision')).toHaveCount(0);
   await expect(page.getByText('proposition à relire')).toHaveCount(0);
