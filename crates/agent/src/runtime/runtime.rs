@@ -238,7 +238,10 @@ impl AgentRuntime {
             );
             let judged = verification.llm_judge
                 || (verification.skill_criteria && !state.skill_criteria.is_empty());
-            let judge = judged.then(|| self.deps.router.provider_for(TaskClass::Verification));
+            let judges = match judged {
+                true => self.deps.router.providers_for(TaskClass::Verification),
+                false => Vec::new(),
+            };
             let (report, judge_response) = review_answer(AnswerReview {
                 answer: &answer,
                 truncated: response.stop_reason == StopReason::MaxTokens,
@@ -246,7 +249,7 @@ impl AgentRuntime {
                 registry: &self.deps.registry,
                 objective: &self.config.objective,
                 success_criteria: &criteria,
-                judge: judge.as_deref(),
+                judges: &judges,
             })
             .await;
             if let Some(judge_response) = judge_response {

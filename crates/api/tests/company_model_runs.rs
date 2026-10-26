@@ -1,18 +1,19 @@
 //! Which provider answers (ADR-024): the company's own, with its key, once
 //! configured; the platform's otherwise; never the platform's when the
-//! company's own cannot be used.
+//! company's own cannot be used. Each company's models, its review model
+//! included (ADR-108), serve it alone.
 
 mod support;
 
 use axum::http::StatusCode;
 use mimorya_agent::llm::{LlmUsage, official_endpoint};
 use mimorya_agent::testing::{ScriptedReply, ScriptedStep};
-use mimorya_api::services::llm::Resolution;
+use mimorya_api::services::llm::{Resolution, Review};
 use mimorya_core::demo::{tenant, user};
 use mimorya_db::testing::OTHER_TENANT_ID;
 use serde_json::{Value, json};
 use support::TestApi;
-use support::llm::{API_KEY, ENDPOINT, MASTER_KEY, OTHER_MASTER_KEY, ask};
+use support::llm::{API_KEY, ENDPOINT, MASTER_KEY, OTHER_MASTER_KEY, REVIEW_MODEL, ask};
 
 fn company_choice() -> Value {
     json!({ "provider": "anthropic", "model": "claude-sonnet-5-5", "apiKey": API_KEY })
@@ -145,16 +146,19 @@ async fn a_company_provider_serves_its_company_only() {
         paul.put("/admin/llm", company_choice()).await.status,
         StatusCode::OK
     );
+    let review = json!({ "provider": "anthropic", "model": REVIEW_MODEL, "apiKey": API_KEY });
+    assert_eq!(
+        paul.put("/admin/llm/verification", review).await.status,
+        StatusCode::OK
+    );
     // Resolved (and cached) for the company first, then for another one.
-    assert!(matches!(
-        &llm.resolve(tenant::ID).await.unwrap().runs,
-        Resolution::Company(_)
-    ));
-    assert!(matches!(
-        &llm.resolve(OTHER_TENANT_ID).await.unwrap().runs,
-        Resolution::Platform(Some(_))
-    ));
-    assert_eq!(api.built.lock().unwrap().len(), 1);
+    let own = llm.resolve(tenant::ID).await.unwrap();
+    assert!(matches!(&own.runs, Resolution::Company(_)));
+    assert!(matches!(&own.review, Review::Company(_)));
+    let others = llm.resolve(OTHER_TENANT_ID).await.unwrap();
+    assert!(matches!(&others.runs, Resolution::Platform(Some(_))));
+    assert!(matches!(&others.review, Review::Runs));
+    assert_eq!(api.built.lock().unwrap().len(), 2);
     // Its settings and key are not even visible from the other company.
     let mut other = api.app.services.db.begin(OTHER_TENANT_ID).await.unwrap();
     for table in ["secrets", "tenant_llm_settings"] {
@@ -166,6 +170,10 @@ async fn a_company_provider_serves_its_company_only() {
     }
     drop(other);
     assert_eq!(paul.delete("/admin/llm").await.status, StatusCode::OK);
+    assert_eq!(
+        paul.delete("/admin/llm/verification").await.status,
+        StatusCode::OK
+    );
 }
 
 #[tokio::test]

@@ -5306,7 +5306,13 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
   - **s'il ne peut pas servir** (clé illisible, adresse retirée de la liste…), le modèle
     des conversations juge en attendant, et l'écran le dit avec la raison. Les
     conversations ne s'arrêtent pas : le modèle des conversations lit déjà tout ce
-    qu'un contrôle lit, aucune donnée ne part ailleurs.
+    qu'un contrôle lit, aucune donnée ne part ailleurs ;
+  - **si un appel au modèle de contrôle échoue** (nom de modèle inconnu du fournisseur,
+    clé révoquée chez lui, quota épuisé…), le modèle des conversations juge cette
+    réponse à sa place, dans le run comme dans l'évaluation (`ModelRouter::providers_for`),
+    et l'échec est journalisé sans contenu. Une réponse n'est laissée sans jugement que
+    si les deux échouent. Une faute de frappe dans le nom ne désactive donc pas le
+    contrôle en silence ; « Tester le modèle de contrôle » la révèle.
 - **Alternatives écartées** :
   - un autre modèle du même fournisseur que les conversations, sans clé à lui : une
     entreprise sur le modèle de la plateforme n'aurait rien pu choisir, et un juge
@@ -5326,6 +5332,9 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     il juge les réponses d'un run et le modèle des conversations les corrige, puis le
     modèle des conversations juge de nouveau ; il juge les deux versions d'une
     évaluation ; inutilisable, le modèle des conversations juge et les conversations
-    continuent ; aucune clé ne passe de l'un à l'autre, chacun retiré seul ; réservé
-    aux administrateurs des réglages), `crates/api/tests/admin_llm.rs`,
-    `crates/api/tests/company_model_runs.rs`, `apps/web/e2e/review-model.spec.ts`.
+    continuent ; un appel qui échoue laisse le modèle des conversations juger, dans un
+    run et dans une évaluation ; aucune clé ne passe de l'un à l'autre, chacun retiré
+    seul ; réservé aux administrateurs des réglages de toute l'entreprise, un
+    administrateur partiel refusé), `crates/agent/src/llm/router.rs` (ordre des juges),
+    `crates/api/tests/admin_llm.rs`, `crates/api/tests/company_model_runs.rs` (chaque
+    entreprise n'est jugée que par le sien), `apps/web/e2e/review-model.spec.ts`.

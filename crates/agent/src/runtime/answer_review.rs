@@ -2,7 +2,9 @@
 //! truncated, ungrounded identifiers), then — when enabled and success
 //! criteria exist — a model-based review, on the run's criteria and on the
 //! quality criteria of the skills it loaded (ADR-106). A failing reviewer
-//! never blocks the answer.
+//! leaves the answer to the next one (ADR-108), and the last never blocks it.
+
+use std::sync::Arc;
 
 use mimorya_core::tools::Citation;
 use regex::Regex;
@@ -18,8 +20,9 @@ pub struct AnswerReview<'a> {
     pub registry: &'a ToolRegistry,
     pub objective: &'a str,
     pub success_criteria: &'a [String],
-    /// Reviewer model; when absent the model-based review is skipped.
-    pub judge: Option<&'a dyn LlmProvider>,
+    /// Reviewer models, tried in order until one answers; without any, the
+    /// model-based review is skipped.
+    pub judges: &'a [Arc<dyn LlmProvider>],
 }
 
 /// What the answer is reviewed on: the run's criteria, then, when they
@@ -55,30 +58,37 @@ pub async fn review_answer(review: AnswerReview<'_>) -> (VerificationReport, Opt
 
     let mut judged = false;
     let mut judge_response = None;
-    if let (true, Some(judge)) = (
-        issues.is_empty() && !review.success_criteria.is_empty(),
-        review.judge,
-    ) {
+    let judges = match issues.is_empty() && !review.success_criteria.is_empty() {
+        true => review.judges,
+        false => &[],
+    };
+    for judge in judges {
         let input = JudgeInput {
             objective: review.objective,
             criteria: review.success_criteria,
             answer: review.answer,
             evidence: review.evidence,
         };
-        // A failing reviewer leaves the answer unjudged.
-        if let Ok((verdict, response)) = judge_answer(judge, input).await {
-            judge_response = Some(response);
-            if let Some(verdict) = verdict {
-                judged = true;
-                if !verdict.pass {
-                    if verdict.issues.is_empty() {
-                        issues.push("Critères non satisfaits.".to_string());
-                    } else {
-                        issues.extend(verdict.issues);
-                    }
+        let (verdict, response) = match judge_answer(judge.as_ref(), input).await {
+            Ok(judged) => judged,
+            Err(error) => {
+                // The next one reviews; after the last, the answer is unjudged.
+                tracing::warn!(model = judge.model(), error = %error.message, "Answer review failed");
+                continue;
+            }
+        };
+        judge_response = Some(response);
+        if let Some(verdict) = verdict {
+            judged = true;
+            if !verdict.pass {
+                if verdict.issues.is_empty() {
+                    issues.push("Critères non satisfaits.".to_string());
+                } else {
+                    issues.extend(verdict.issues);
                 }
             }
         }
+        break;
     }
     (
         VerificationReport {

@@ -1,8 +1,9 @@
 //! The model a company chooses apart to review its answers (ADR-108): chosen
 //! with its own key, shown, tested and removed by an administrator of its
-//! settings; it judges the answers of the company's runs and evaluations in
-//! place of their model. While it cannot be used, their model reviews; the
-//! keys of the two never pass from one to the other.
+//! settings, on the whole company only; it judges the answers of the
+//! company's runs and evaluations in place of their model. While it cannot
+//! be used, or when a call to it fails, their model reviews; the keys of the
+//! two never pass from one to the other.
 
 mod support;
 
@@ -11,10 +12,11 @@ use mimorya_agent::llm::LlmMessage;
 use mimorya_agent::testing::{ScriptedProvider, ScriptedStep, call};
 use mimorya_core::demo::user;
 use serde_json::{Value, json};
+use support::accounts::{activate, create_partial_admin};
 use support::llm::{API_KEY, MASTER_KEY, OTHER_MASTER_KEY, REVIEW_MODEL};
 use support::refusals::{entries_since, latest_entry};
 use support::runs::start_run;
-use support::skill_evaluations::{forget, launched, play, write_case};
+use support::skill_evaluations::{evaluations, forget, launched, play, write_case};
 use support::{Client, TestApi};
 use uuid::Uuid;
 
@@ -187,15 +189,22 @@ async fn an_evaluation_is_judged_by_the_review_model() {
             ScriptedStep::text(answer),
         ]);
     }
+    // Failing on version 2, the review model leaves it to the runs' model.
+    script.insert(2, verdict(true, &[]));
     api.script(script);
-    api.review_model
-        .push([verdict(true, &[]), verdict(true, &[])]);
+    api.review_model.push([
+        ScriptedStep::fails("Modèle inconnu chez ce fournisseur."),
+        verdict(true, &[]),
+    ]);
     // Version 2, then the active one beside it.
     launched(&paul, skill, 2).await;
     play(&api).await;
 
-    assert_eq!(judged_by(api.model.as_ref().unwrap()), (0, 4));
+    assert_eq!(judged_by(api.model.as_ref().unwrap()), (1, 4));
     assert_eq!(judged_by(&api.review_model), (2, 0));
+    let evaluation = &evaluations(&paul, skill).await[0];
+    assert_eq!(evaluation["passed"], 1, "{evaluation}");
+    assert_eq!(evaluation["referencePassed"], 1, "{evaluation}");
     assert!(first_text(&api.review_model).contains("Cite chaque retard."));
     forget(&api, skill).await;
     paul.delete(REVIEW).await;
@@ -251,16 +260,68 @@ async fn an_unusable_review_model_leaves_the_runs_model_reviewing() {
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
-async fn the_two_keys_never_pass_from_one_model_to_the_other() {
+async fn the_runs_model_judges_when_a_call_to_the_review_model_fails() {
     let api = TestApi::start_with(&[("MIMORYA_MASTER_KEY", MASTER_KEY)]).await;
     let paul = api.sign_in(user::PAUL).await;
     let marc = api.sign_in(user::MARC).await;
-    // Marc does not manage the company's settings.
     assert_eq!(
-        marc.put(REVIEW, review_choice()).await.status,
-        StatusCode::FORBIDDEN
+        paul.put(REVIEW, review_choice()).await.status,
+        StatusCode::OK
     );
-    assert_eq!(marc.delete(REVIEW).await.status, StatusCode::FORBIDDEN);
+    let skill = reviewed_skill(&paul).await;
+    // A model its provider does not know: usable as stored, failing when called.
+    api.script(vec![
+        ScriptedStep::calls("", vec![call("skill_read", json!({ "name": NAME }))]),
+        ScriptedStep::text("Dupont et Martin relancés."),
+        verdict(true, &[]),
+    ]);
+    api.review_model
+        .push([ScriptedStep::fails("Modèle inconnu chez ce fournisseur.")]);
+    let run = start_run(&marc).await;
+    api.idle().await;
+    let detail = marc.get(&format!("/runs/{run}")).await.json();
+    assert_eq!(detail["run"]["verification"]["judged"], true, "{detail}");
+    assert_eq!(judged_by(&api.review_model), (1, 0));
+    assert_eq!(judged_by(api.model.as_ref().unwrap()), (1, 2));
+    assert_eq!(paul.delete(REVIEW).await.status, StatusCode::OK);
+    remove_skill(&paul, skill).await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn only_company_wide_settings_administrators_choose_it() {
+    let api = TestApi::start_with(&[("MIMORYA_MASTER_KEY", MASTER_KEY)]).await;
+    let paul = api.sign_in(user::PAUL).await;
+    let marc = api.sign_in(user::MARC).await;
+    let mut partial = create_partial_admin(&api, &paul, "admin.equipe.controle").await;
+    let partial = activate(&api, &mut partial).await;
+    let test = format!("{REVIEW}/test");
+    for user in [&marc, &partial] {
+        let refused = [
+            user.put(REVIEW, review_choice()).await,
+            user.delete(REVIEW).await,
+            user.post(&test, json!({})).await,
+        ];
+        for response in refused {
+            assert_eq!(
+                response.status,
+                StatusCode::FORBIDDEN,
+                "{}",
+                response.text()
+            );
+        }
+    }
+    assert_eq!(
+        paul.get("/admin/llm").await.json()["verification"],
+        Value::Null
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn the_two_keys_never_pass_from_one_model_to_the_other() {
+    let api = TestApi::start_with(&[("MIMORYA_MASTER_KEY", MASTER_KEY)]).await;
+    let paul = api.sign_in(user::PAUL).await;
     let conversations = json!({ "provider": "anthropic", "apiKey": API_KEY });
     assert_eq!(
         paul.put("/admin/llm", conversations).await.status,

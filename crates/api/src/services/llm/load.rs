@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use mimorya_agent::llm::{LlmProvider, company_provider_config};
 use mimorya_db::TenantTx;
-use mimorya_db::repositories::llm_settings::{LlmSettingsRow, ModelPurpose};
+use mimorya_db::repositories::llm_settings::{ModelPurpose, get_llm_settings};
 use uuid::Uuid;
 
 use super::LlmService;
@@ -22,16 +22,18 @@ pub fn api_key_secret(purpose: ModelPurpose) -> &'static str {
 }
 
 impl LlmService {
-    /// The provider `settings` describe, or why it cannot be used (in
-    /// French, for the company's administrators); an error only when the
+    /// The company's own provider for `purpose`, if it chose one: usable, or
+    /// why not (in French, for its administrators); an error only when the
     /// server itself fails.
-    pub(super) async fn company_provider(
+    pub(super) async fn company_choice(
         &self,
         tx: &mut TenantTx,
         tenant_id: Uuid,
         purpose: ModelPurpose,
-        settings: &LlmSettingsRow,
-    ) -> anyhow::Result<Result<Arc<dyn LlmProvider>, String>> {
+    ) -> anyhow::Result<Option<Result<Arc<dyn LlmProvider>, String>>> {
+        let Some(settings) = get_llm_settings(tx, purpose).await? else {
+            return Ok(None);
+        };
         let api_key = match self
             .secrets
             .read(tx, tenant_id, api_key_secret(purpose))
@@ -39,7 +41,7 @@ impl LlmService {
             .into_key()
         {
             Ok(key) => key,
-            Err(reason) => return Ok(Err(reason)),
+            Err(reason) => return Ok(Some(Err(reason))),
         };
         let config = match company_provider_config(
             &settings.provider,
@@ -49,10 +51,10 @@ impl LlmService {
             &self.listed_endpoints,
         ) {
             Ok(config) => config,
-            Err(reason) => return Ok(Err(reason)),
+            Err(reason) => return Ok(Some(Err(reason))),
         };
-        Ok((self.factory)(&config).map_err(|_| {
+        Ok(Some((self.factory)(&config).map_err(|_| {
             "Le fournisseur ne peut pas être préparé avec cette configuration".to_string()
-        }))
+        })))
     }
 }

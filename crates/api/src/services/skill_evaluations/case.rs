@@ -68,9 +68,9 @@ pub struct CaseRequest<'a> {
     pub bar: &'a [String],
     pub access: &'a AccessContext,
     pub provider: Arc<dyn LlmProvider>,
-    /// The model that judges the answers: the one the company chose apart to
-    /// review them, else `provider` (ADR-108).
-    pub judge: Arc<dyn LlmProvider>,
+    /// The models that judge the answers, tried in order: the one the
+    /// company chose apart to review them, then `provider` (ADR-108).
+    pub judges: &'a [Arc<dyn LlmProvider>],
     pub version: EvaluatedVersion,
     pub case: &'a StoredCase,
 }
@@ -139,7 +139,7 @@ async fn answer_and_judge(
         scope,
         access,
         provider,
-        judge,
+        judges,
         case,
         ..
     } = request;
@@ -211,18 +211,25 @@ async fn answer_and_judge(
         evidence: &evidence,
     };
     let answer = Some(bounded(&answer, MAX_ANSWER_CHARS));
-    let (verdict, response) = match judge_answer(judge.as_ref(), judging).await {
-        Ok(judged) => judged,
-        Err(error) => {
-            tracing::warn!(error = %error, "Evaluation judge failed");
-            return Ok(Judged {
-                outcome: CaseOutcome::Error,
-                issues: Vec::new(),
-                answer,
-                error: Some(JUDGE_FAILED.into()),
-                usage,
-            });
+    let mut judged = None;
+    for judge in judges.iter() {
+        match judge_answer(judge.as_ref(), judging).await {
+            Ok(result) => {
+                judged = Some(result);
+                break;
+            }
+            // The next one judges; after the last, the case is not judged.
+            Err(error) => tracing::warn!(error = %error, "Evaluation judge failed"),
         }
+    }
+    let Some((verdict, response)) = judged else {
+        return Ok(Judged {
+            outcome: CaseOutcome::Error,
+            issues: Vec::new(),
+            answer,
+            error: Some(JUDGE_FAILED.into()),
+            usage,
+        });
     };
     let cost = services
         .llm

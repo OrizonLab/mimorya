@@ -10,8 +10,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use mimorya_agent::llm::{LlmProvider, PriceTable, ProviderConfig, create_provider};
-use mimorya_db::repositories::llm_settings::{ModelPurpose, get_llm_settings};
-use mimorya_db::{Database, TenantTx};
+use mimorya_db::Database;
+use mimorya_db::repositories::llm_settings::ModelPurpose;
 use uuid::Uuid;
 
 use super::invalidations::{Invalidation, Invalidations};
@@ -131,11 +131,24 @@ impl LlmService {
             Err(generation) => generation,
         };
         let mut tx = self.db.begin(tenant_id).await?;
-        let models = Arc::new(Models {
-            runs: self.load_runs(&mut tx, tenant_id).await?,
-            review: self.load_review(&mut tx, tenant_id).await?,
-        });
+        let runs = match self
+            .company_choice(&mut tx, tenant_id, ModelPurpose::Conversations)
+            .await?
+        {
+            None => Resolution::Platform(self.platform.clone()),
+            Some(Ok(provider)) => Resolution::Company(provider),
+            Some(Err(reason)) => Resolution::Refused(reason),
+        };
+        let review = match self
+            .company_choice(&mut tx, tenant_id, ModelPurpose::Verification)
+            .await?
+        {
+            None => Review::Runs,
+            Some(Ok(provider)) => Review::Company(provider),
+            Some(Err(reason)) => Review::Refused(reason),
+        };
         tx.commit().await?;
+        let models = Arc::new(Models { runs, review });
         if let Resolution::Refused(reason) = &models.runs {
             tracing::warn!(%tenant_id, reason = %reason, "Company model provider unusable");
         }
@@ -144,38 +157,6 @@ impl LlmService {
         }
         self.cache.store(tenant_id, generation, models.clone());
         Ok(models)
-    }
-
-    async fn load_runs(&self, tx: &mut TenantTx, tenant_id: Uuid) -> anyhow::Result<Resolution> {
-        let purpose = ModelPurpose::Conversations;
-        let Some(settings) = get_llm_settings(tx, purpose).await? else {
-            return Ok(Resolution::Platform(self.platform.clone()));
-        };
-        Ok(
-            match self
-                .company_provider(tx, tenant_id, purpose, &settings)
-                .await?
-            {
-                Ok(provider) => Resolution::Company(provider),
-                Err(reason) => Resolution::Refused(reason),
-            },
-        )
-    }
-
-    async fn load_review(&self, tx: &mut TenantTx, tenant_id: Uuid) -> anyhow::Result<Review> {
-        let purpose = ModelPurpose::Verification;
-        let Some(settings) = get_llm_settings(tx, purpose).await? else {
-            return Ok(Review::Runs);
-        };
-        Ok(
-            match self
-                .company_provider(tx, tenant_id, purpose, &settings)
-                .await?
-            {
-                Ok(provider) => Review::Company(provider),
-                Err(reason) => Review::Refused(reason),
-            },
-        )
     }
 
     /// The provider of the company's runs, if any; `Unusable` when the
