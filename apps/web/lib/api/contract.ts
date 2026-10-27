@@ -327,7 +327,12 @@ tokenHeader?: string | null,
 /**
  * A REST API's: replaces every operation (ADR-112).
  */
-operations?: Array<RestOperation>, };
+operations?: Array<RestOperation>,
+/**
+ * The Microsoft 365 application's: whether its tools may send e-mail
+ * and create events (ADR-119).
+ */
+writeTools?: boolean, };
 
 export type ConnectorView = { id: string, type: string, name: string, enabled: boolean, status: ConnectorStatus, lastError: string | null,
 /**
@@ -862,7 +867,12 @@ address: string,
 /**
  * The permissions the person granted, as the provider listed them.
  */
-scopes: Array<string>, linkedAt: string, };
+scopes: Array<string>,
+/**
+ * Those the application asks now that the person did not grant: the
+ * tools that need them say so until the person links again (ADR-119).
+ */
+toGrant: Array<string>, linkedAt: string, };
 
 /**
  * Body of `PUT /admin/llm` and `PUT /admin/llm/verification`: a provider of
@@ -1074,7 +1084,11 @@ redirectUri: string, secretStored: boolean,
 /**
  * How many people linked their account.
  */
-links: number, };
+links: number,
+/**
+ * Its tools may send e-mail and create events (ADR-119).
+ */
+writeTools: boolean, };
 
 export type Mission = { id: string, title: string, objective: string, successCriteria: Array<string>, status: MissionStatus,
 /**
@@ -1247,7 +1261,12 @@ clientId: string, clientSecret: string,
 /**
  * Absent: enabled.
  */
-enabled?: boolean, };
+enabled?: boolean,
+/**
+ * Whether its tools may send e-mail and create events in the person's
+ * name, each validated (ADR-119). Absent: they only read.
+ */
+writeTools?: boolean, };
 
 /**
  * Body of `POST /missions`.

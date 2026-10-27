@@ -5,6 +5,7 @@
 use std::sync::LazyLock;
 
 use async_trait::async_trait;
+use mimorya_core::account_links::MAIL_READ;
 use mimorya_core::autonomy::ToolRisk;
 use mimorya_core::tools::{ToolContext, ToolInfo, ToolResult, TypedTool};
 use regex::Regex;
@@ -72,7 +73,8 @@ impl TypedTool for MailRead {
             &["me", "messages", &input.id],
             &[("$select", SELECT.to_string())],
         );
-        let message = match read_as_person(&self.graph, ctx, url, Some(AS_TEXT)).await {
+        let message = match read_as_person(&self.graph, ctx, &[MAIL_READ], url, Some(AS_TEXT)).await
+        {
             Ok(message) => message,
             Err(why) => return Ok(ToolResult::error(why)),
         };

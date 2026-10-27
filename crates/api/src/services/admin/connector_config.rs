@@ -1,7 +1,8 @@
 //! What the administration may change of a connector's configuration: the
 //! address of an MCP server it added (ADR-025), the address, token header
 //! and operations of a REST API (ADR-112), the secret of the company's
-//! Microsoft 365 application (ADR-116), whose addresses are the platform's.
+//! Microsoft 365 application (ADR-116), whose addresses are the platform's,
+//! and whether its tools may write (ADR-119).
 //! The demo connector and the servers the operator wrote change only their
 //! name and activation here.
 //! Tool prefixes never overlap within a kind, operator-written servers
@@ -45,7 +46,8 @@ pub enum Editable {
         url: String,
     },
     Rest(rest::RestConfig),
-    /// The company's Microsoft 365 application: its secret alone changes.
+    /// The company's Microsoft 365 application: its secret and whether its
+    /// tools may write alone change.
     Microsoft365(Microsoft365Config),
 }
 
@@ -204,8 +206,14 @@ impl Editable {
         self,
         url: Option<String>,
         changes: Option<RestChanges>,
+        write_tools: Option<bool>,
         network: NetworkPolicy,
     ) -> Result<Value, DomainError> {
+        if write_tools.is_some() && !matches!(self, Self::Microsoft365(_)) {
+            return Err(DomainError::validation(
+                "Seule l’application Microsoft 365 a des outils d’écriture à permettre",
+            ));
+        }
         match self {
             Self::Mcp {
                 prefix,
@@ -236,7 +244,7 @@ impl Editable {
                 serde_json::to_value(&config)
                     .map_err(|_| DomainError::validation("Déclaration illisible"))
             }
-            Self::Microsoft365(config) => {
+            Self::Microsoft365(mut config) => {
                 if url.is_some() {
                     return Err(DomainError::validation(
                         "Les adresses de Microsoft 365 sont celles de la plateforme : elles ne \
@@ -247,6 +255,9 @@ impl Editable {
                     return Err(DomainError::validation(
                         "Seule une API REST a un en-tête de jeton et des opérations",
                     ));
+                }
+                if let Some(write_tools) = write_tools {
+                    config.write_tools = write_tools;
                 }
                 serde_json::to_value(&config)
                     .map_err(|_| DomainError::validation("Déclaration illisible"))

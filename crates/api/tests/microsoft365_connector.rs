@@ -108,6 +108,7 @@ async fn the_company_declares_its_application_once() {
             "redirectUri": format!("{WEB_ORIGIN}/api/account/links/callback"),
             "secretStored": true,
             "links": 0,
+            "writeTools": false,
         })
     );
     assert!(!view.to_string().contains(SECRET));
@@ -148,7 +149,7 @@ async fn its_secret_is_replaced_never_removed_and_its_addresses_stay() {
             "ne changent pas",
         ),
         (
-            json!({ "toolPolicies": { "m365_mail_send": { "enabled": false } } }),
+            json!({ "toolPolicies": { "m365_mail_delete": { "enabled": false } } }),
             "Outil inconnu de ce connecteur",
         ),
     ];

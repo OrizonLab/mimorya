@@ -141,4 +141,50 @@ fn a_link_is_renewed_with_what_the_person_granted() {
         ),
         ["offline_access", "Mail.Read"]
     );
+    // Writing, once granted, is renewed whatever the company lets now.
+    assert_eq!(
+        renewal_scopes("offline_access Mail.Read mail.send Calendars.ReadWrite"),
+        [
+            "offline_access",
+            "Mail.Read",
+            "Mail.Send",
+            "Calendars.ReadWrite"
+        ]
+    );
+}
+
+#[test]
+fn a_link_asks_writing_when_the_company_lets_its_tools_write() {
+    assert_eq!(link_scopes(false), MICROSOFT365_SCOPES);
+    let asked = link_scopes(true);
+    assert!(asked.starts_with(&MICROSOFT365_SCOPES));
+    assert!(asked.ends_with(&MICROSOFT365_WRITE_SCOPES));
+}
+
+#[test]
+fn the_tools_need_graph_permissions_only() {
+    assert_eq!(tool_scopes(false), [MAIL_READ, CALENDARS_READ]);
+    assert_eq!(
+        tool_scopes(true),
+        [MAIL_READ, CALENDARS_READ, MAIL_SEND, CALENDARS_WRITE]
+    );
+    // Each one asked when linking.
+    assert!(
+        tool_scopes(true)
+            .iter()
+            .all(|s| link_scopes(true).contains(s))
+    );
+}
+
+#[test]
+fn a_tool_is_told_which_permissions_were_not_granted() {
+    let granted = "openid offline_access Mail.Read https://graph.microsoft.com/Mail.Send";
+    assert!(missing_scopes(granted, &["Mail.Send", "mail.read"]).is_empty());
+    assert_eq!(
+        missing_scopes(granted, &["Calendars.ReadWrite", "Mail.Send"]),
+        ["Calendars.ReadWrite"]
+    );
+    // Not said: reading only.
+    assert!(missing_scopes("", &["Mail.Read", "Calendars.Read"]).is_empty());
+    assert_eq!(missing_scopes(" ", &["Mail.Send"]), ["Mail.Send"]);
 }

@@ -77,6 +77,7 @@ pub async fn list(
                         redirect_uri: state.account_links.redirect_uri().into(),
                         secret_stored: token_stored,
                         links: count_account_links(&mut tx, i.id).await?,
+                        write_tools: config.write_tools,
                     });
                 }
             }
@@ -175,6 +176,7 @@ pub async fn create_microsoft365(
         client_id: body.client_id,
         client_secret: body.client_secret,
         enabled: body.enabled.unwrap_or(true),
+        write_tools: body.write_tools.unwrap_or(false),
     };
     let id =
         create_microsoft365_connector(&admin(&state, &store, &catalog), &access, input).await?;
@@ -221,6 +223,7 @@ pub async fn update(
                 .operations
                 .map(|operations| operations.into_iter().map(Into::into).collect()),
         }),
+        write_tools: body.write_tools,
     };
     update_connector(&admin(&state, &store, &catalog), &access, id, changes).await?;
     Ok(Json(Done::OK))

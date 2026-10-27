@@ -3,7 +3,8 @@
 //! sealed in the secret store (never shown nor audited), one per company,
 //! under the administration lock. Its people then link their own accounts
 //! (`services::account_links`). Its name, activation and secret change as
-//! any connector's (`connectors`); a link goes with the connector deleted.
+//! any connector's (`connectors`), as does whether its tools may write
+//! (ADR-119); a link goes with the connector deleted.
 
 use mimorya_connectors::microsoft365::Microsoft365Config;
 use mimorya_connectors::outbound::token_problem;
@@ -28,6 +29,8 @@ pub struct NewMicrosoft365 {
     pub client_id: String,
     pub client_secret: String,
     pub enabled: bool,
+    /// Its tools may send e-mail and create events (ADR-119).
+    pub write_tools: bool,
 }
 
 const ALREADY: &str = "L’application Microsoft 365 de l’entreprise est déjà déclarée : \
@@ -61,6 +64,7 @@ pub async fn create_microsoft365_connector(
         client_id: application.client_id.to_string(),
         issuer: application.issuer,
         graph: MICROSOFT_GRAPH.into(),
+        write_tools: input.write_tools,
     })?;
     let created = create_connector_instance(
         &mut tx,
@@ -101,6 +105,7 @@ pub async fn create_microsoft365_connector(
             "directory": application.directory,
             "clientId": application.client_id,
             "enabled": input.enabled,
+            "writeTools": input.write_tools,
             "tokenStored": true,
         })),
     )

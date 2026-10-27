@@ -35,6 +35,9 @@ pub struct LinkedAccount {
     pub address: String,
     /// The permissions the person granted, as the provider listed them.
     pub scopes: Vec<String>,
+    /// Those the application asks now that the person did not grant: the
+    /// tools that need them say so until the person links again (ADR-119).
+    pub to_grant: Vec<String>,
     pub linked_at: String,
 }
 

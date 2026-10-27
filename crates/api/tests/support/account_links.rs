@@ -28,7 +28,7 @@ pub const DIRECTORY: &str = "72f988bf-86f1-41af-91ab-2d7cd011db47";
 /// a previous test declared goes first, with its links.
 pub async fn insert_microsoft365(api: &TestApi, idp: &MockIdentityProvider, enabled: bool) -> Uuid {
     let graph = format!("{}/graph/v1.0", idp.issuer);
-    insert_application(api, idp, &graph, enabled).await
+    insert_application(api, idp, &graph, enabled, false).await
 }
 
 /// The same, enabled, its tools reading this Graph (ADR-117).
@@ -37,7 +37,16 @@ pub async fn insert_microsoft365_reading(
     idp: &MockIdentityProvider,
     graph: &str,
 ) -> Uuid {
-    insert_application(api, idp, graph, true).await
+    insert_application(api, idp, graph, true, false).await
+}
+
+/// The same, its tools writing too (ADR-119).
+pub async fn insert_microsoft365_writing(
+    api: &TestApi,
+    idp: &MockIdentityProvider,
+    graph: &str,
+) -> Uuid {
+    insert_application(api, idp, graph, true, true).await
 }
 
 async fn insert_application(
@@ -45,6 +54,7 @@ async fn insert_application(
     idp: &MockIdentityProvider,
     graph: &str,
     enabled: bool,
+    write_tools: bool,
 ) -> Uuid {
     let services = &api.app.services;
     let mut tx = services.db.begin(tenant::ID).await.unwrap();
@@ -58,6 +68,7 @@ async fn insert_application(
         "clientId": CLIENT_ID,
         "issuer": idp.issuer,
         "graph": graph,
+        "writeTools": write_tools,
     });
     let id = create_connector_instance(
         &mut tx,

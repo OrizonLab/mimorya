@@ -27,7 +27,7 @@ use std::sync::Arc;
 use mimorya_connectors::microsoft365::Microsoft365Config;
 use mimorya_connectors::outbound::NetworkPolicy;
 use mimorya_core::DomainError;
-use mimorya_core::account_links::MICROSOFT365;
+use mimorya_core::account_links::{MICROSOFT365, missing_scopes, tool_scopes};
 use mimorya_db::Database;
 use mimorya_db::repositories::account_links::{
     AccountLinkRow, delete_account_link, list_account_links_of,
@@ -56,6 +56,9 @@ pub struct Linkable {
     /// remove, but no new one starts.
     pub available: bool,
     pub link: Option<AccountLinkRow>,
+    /// The Graph permissions its tools need now that the link does not
+    /// grant (ADR-119): granted by linking again.
+    pub to_grant: Vec<String>,
 }
 
 /// Sent to the provider: its address, and the attempt the browser keeps.
@@ -124,12 +127,21 @@ impl AccountLinkService {
                     .find(|link| link.connector_id == instance.id)
                     .cloned();
                 let available = may_use && instance.enabled;
+                let write_tools = Microsoft365Config::read(&instance.config)
+                    .is_ok_and(|config| config.write_tools);
+                let to_grant = link.as_ref().map_or_else(Vec::new, |link| {
+                    missing_scopes(&link.scopes, &tool_scopes(write_tools))
+                        .into_iter()
+                        .map(String::from)
+                        .collect()
+                });
                 (available || link.is_some()).then_some(Linkable {
                     connector_id: instance.id,
                     name: instance.name,
                     connector_type: instance.connector_type,
                     available,
                     link,
+                    to_grant,
                 })
             })
             .collect();

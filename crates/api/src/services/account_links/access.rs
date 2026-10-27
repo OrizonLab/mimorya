@@ -1,6 +1,7 @@
 //! The access token of the person a run serves, at their company's
 //! Microsoft 365 application (ADR-117). Each call reads the person's link
-//! and the application's secret; a token kept from this link serves until
+//! and the application's secret, and refuses a tool whose permissions the
+//! person did not grant (ADR-119); a token kept from this link serves until
 //! shortly before it expires; otherwise the link's sealed refresh token is
 //! renewed at the provider (`renewal.rs`).
 
@@ -9,7 +10,7 @@ use std::time::Instant;
 
 use async_trait::async_trait;
 use mimorya_connectors::microsoft365::Microsoft365Config;
-use mimorya_core::account_links::{MICROSOFT365, sealed_as};
+use mimorya_core::account_links::{MICROSOFT365, missing_scopes, sealed_as};
 use mimorya_core::tools::{AccountAccessError, LinkedAccounts};
 use mimorya_db::repositories::account_links::{AccountLinkRow, get_account_link};
 use mimorya_db::repositories::connectors::list_connector_instances;
@@ -44,12 +45,16 @@ impl PersonAccounts {
 
 #[async_trait]
 impl LinkedAccounts for PersonAccounts {
-    async fn access_token(&self, connector_type: &str) -> Result<String, AccountAccessError> {
+    async fn access_token(
+        &self,
+        connector_type: &str,
+        needs: &[&str],
+    ) -> Result<String, AccountAccessError> {
         if connector_type != MICROSOFT365 {
             return Err(AccountAccessError::NotLinked);
         }
         self.service
-            .access_token(self.tenant_id, self.user_id)
+            .access_token(self.tenant_id, self.user_id, needs)
             .await
     }
 
@@ -90,8 +95,15 @@ impl AccountLinkService {
         &self,
         tenant_id: Uuid,
         user_id: Uuid,
+        needs: &[&str],
     ) -> Result<String, AccountAccessError> {
         let read = self.read_link(tenant_id, user_id).await?;
+        let missing = missing_scopes(&read.link.scopes, needs);
+        if !missing.is_empty() {
+            return Err(AccountAccessError::NotGranted(
+                missing.into_iter().map(String::from).collect(),
+            ));
+        }
         let kept = self
             .tokens
             .get(tenant_id, user_id, read.version(), Instant::now());

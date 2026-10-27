@@ -7,7 +7,7 @@ mod support;
 use std::sync::Arc;
 
 use mimorya_agent::testing::InMemoryPorts;
-use mimorya_connectors::microsoft365::MICROSOFT365_TOOLS;
+use mimorya_connectors::microsoft365::{MICROSOFT365_TOOLS, MICROSOFT365_WRITE_TOOLS};
 use mimorya_connectors::testing::{FORBIDDEN_MESSAGE, FakeGraph, GRAPH_DETAIL, OVERSIZED_MESSAGE};
 use mimorya_core::account_links::MICROSOFT365;
 use mimorya_core::autonomy::ToolRisk;
@@ -36,7 +36,12 @@ async fn its_tools_read_with_the_connectors_permission() {
     let graph = FakeGraph::start().await;
     let tools = microsoft365_tools(&graph.url).await;
     let names: Vec<String> = tools.iter().map(|t| t.info().name.clone()).collect();
-    assert_eq!(names, MICROSOFT365_TOOLS);
+    // Those that write wait for the company to let them (ADR-119).
+    let reading: Vec<&str> = MICROSOFT365_TOOLS
+        .into_iter()
+        .filter(|name| !MICROSOFT365_WRITE_TOOLS.contains(name))
+        .collect();
+    assert_eq!(names, reading);
     for tool in &tools {
         let info = tool.info();
         assert_eq!(info.risk, ToolRisk::Read, "{}", info.name);
