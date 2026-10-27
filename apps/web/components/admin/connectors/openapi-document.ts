@@ -24,8 +24,9 @@ export async function descriptionDocument(file: File): Promise<string> {
   let json: string;
   try {
     // Aliases repeated beyond a hundred are refused, merge keys (`<<`)
-    // included: a short document cannot unfold into a huge one.
-    const read: unknown = parse(text, { maxAliasCount: 100, merge: true });
+    // included: a short document cannot unfold into a huge one. The reader
+    // counts the anchor itself among them, hence one more.
+    const read: unknown = parse(text, { maxAliasCount: 101, merge: true });
     if (typeof read !== 'object' || read === null || Array.isArray(read)) {
       throw unreadable('Description illisible : un document JSON ou YAML est attendu.');
     }

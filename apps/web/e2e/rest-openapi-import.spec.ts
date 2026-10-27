@@ -115,8 +115,11 @@ test('operations are read from an OpenAPI description and added', async ({ page 
   await expect(
     form.getByText(/^Description YAML illisible : une clé « << » qui ne fusionne pas une table/),
   ).toBeVisible();
-  const repeated = Array.from({ length: 101 }, () => '*a').join(', ');
-  await picker.setInputFiles(file('alias.yaml', `a: &a [1]\nb: [${repeated}]\n`));
+  const repeated = (times: number) => Array.from({ length: times }, () => '*a').join(', ');
+  // A hundred are read (the platform then finds no OpenAPI description).
+  await picker.setInputFiles(file('cent.yaml', `a: &a [1]\nb: [${repeated(100)}]\n`));
+  await expect(form.getByText(/^Description OpenAPI 3 attendue/)).toBeVisible();
+  await picker.setInputFiles(file('alias.yaml', `a: &a [1]\nb: [${repeated(101)}]\n`));
   await expect(
     form.getByText(/^Description YAML refusée : des alias répétés plus de 100 fois/),
   ).toBeVisible();

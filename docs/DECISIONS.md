@@ -5885,7 +5885,7 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     relue, l'opération déjà ajoutée ne se coche plus ; une seconde ajoutée ; l'API
     enregistrée et relue dans l'API avec ses deux opérations ; un alias qui se contient
     lui-même, un alias sans ancre, une clé `<<` qui ne fusionne pas une table et des
-    alias répétés plus de cent fois dits ; puis une API de 49 opérations modifiée : une description JSON en
+    alias répétés plus de cent fois dits, cent lus ; puis une API de 49 opérations modifiée : une description JSON en
     propose deux, une seule se coche, une opération saisie entre-temps ôte la place,
     retirée la rend ; l'API enregistrée en tient cinquante) ;
   - les bornes de 768 Kio et de cinquante opérations sont rappelées par l'écran ; la
