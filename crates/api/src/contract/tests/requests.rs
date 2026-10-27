@@ -191,6 +191,8 @@ fn administration_bodies_read_what_the_web_client_sends() {
             }],
         }),
     );
+    let description = json!({ "document": "{\"openapi\": \"3.1.0\"}" });
+    strict::<OpenApiDescription>(description.clone(), description);
     strict::<ConnectorUpdate>(
         json!({ "tokenHeader": null }),
         json!({ "tokenHeader": "X-Api-Key", "operations": [operation] }),

@@ -1,6 +1,7 @@
 //! Connectors (`connector:manage`, company-wide, ADR-025): reading them with
 //! their state, trying an MCP server before adding it (ADR-050), adding it
-//! over HTTPS, adding a REST API (ADR-112), changing either (address, token,
+//! over HTTPS, adding a REST API (ADR-112) whose operations an OpenAPI
+//! description may offer first (ADR-114), changing either (address, token,
 //! per-tool policies, activation; a REST API's token header and operations),
 //! deleting it and testing it. Tokens are write-only.
 
@@ -14,7 +15,7 @@ use mimorya_db::repositories::connectors::list_connector_instances;
 use crate::app::AppState;
 use crate::contract::admin::{
     ConnectorTest, ConnectorTrial, ConnectorUpdate, ConnectorView, Connectors, DelegablePermission,
-    McpEndpoint, NewConnector, NewRestConnector, RestApi, risks,
+    McpEndpoint, NewConnector, NewRestConnector, OpenApiDescription, RestApi, RestImport, risks,
 };
 use crate::contract::{Created, Done};
 use crate::http::{ApiResult, Body, PathId};
@@ -24,7 +25,7 @@ use crate::services::admin::NewRestConnector as RestInput;
 use crate::services::admin::{
     ConnectorAdmin, ConnectorChanges, Editable, McpTrial, NewMcpConnector, RestChanges,
     TokenChange, TrialServices, create_mcp_connector, create_rest_connector, delete_connector,
-    test_connector, try_mcp_connector, update_connector,
+    read_openapi, test_connector, try_mcp_connector, update_connector,
 };
 use crate::services::connectors::token_secret_name;
 use crate::services::permission_catalog::permission_catalog;
@@ -145,6 +146,16 @@ pub async fn create_rest(
     };
     let id = create_rest_connector(&admin(&state, &store, &catalog), &access, input).await?;
     Ok((StatusCode::CREATED, Json(Created { id })))
+}
+
+/// The operations an OpenAPI description offers (ADR-114); nothing stored.
+pub async fn import_rest(
+    State(state): State<AppState>,
+    Auth(identity): Auth,
+    Body(body): Body<OpenApiDescription>,
+) -> ApiResult<Json<RestImport>> {
+    let access = state.access.context(identity).await?;
+    Ok(Json(read_openapi(&access, &body.document)?.into()))
 }
 
 pub async fn update(

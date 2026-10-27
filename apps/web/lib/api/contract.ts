@@ -1283,6 +1283,12 @@ missionEnds: boolean, };
 export type OccurrenceOutcome = "started" | "still_running" | "missed" | "refused" | "failed";
 
 /**
+ * Body of `POST /admin/connectors/rest/import`: an OpenAPI 3 description
+ * in JSON, as written.
+ */
+export type OpenApiDescription = { document: string, };
+
+/**
  * An account as the organisation screen names it.
  */
 export type OrgPerson = { id: string, displayName: string, jobTitle: string | null, };
@@ -1408,6 +1414,20 @@ prefix: string, url: string,
  * `null`: the token goes as `Authorization: Bearer`.
  */
 tokenHeader: string | null, tokenStored: boolean, operations: Array<RestOperation>, };
+
+/**
+ * The operations the description offers, each one a declaration accepts,
+ * in the order written.
+ */
+export type RestImport = {
+/**
+ * `null`: the description gives no complete address.
+ */
+url: string | null, operations: Array<RestOperation>,
+/**
+ * What was left aside or changed, and why.
+ */
+notes: Array<string>, };
 
 /**
  * One operation of the API, which becomes the tool `rest_<prefix>_<name>`.

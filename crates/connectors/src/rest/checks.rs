@@ -23,7 +23,7 @@ pub const MAX_PATH_CHARS: usize = 500;
 /// What one API's declarations may add to every model call: as much as an
 /// MCP server's (ADR-025).
 pub const MAX_CONFIG_BYTES: usize = 256 * 1024;
-const MAX_OPERATION_NAME: usize = 40;
+pub(super) const MAX_OPERATION_NAME: usize = 40;
 const MAX_PARAMETER_NAME: usize = 64;
 const MAX_HEADER_NAME: usize = 64;
 /// Characters a path may hold besides letters, digits and placeholders: the
@@ -108,7 +108,9 @@ fn operations_problem(operations: &[RestOperation]) -> Option<String> {
     None
 }
 
-fn operation_problem(operation: &RestOperation) -> Option<String> {
+/// Why this operation cannot be declared, if it cannot (whether another
+/// operation of the API has its name aside).
+pub(super) fn operation_problem(operation: &RestOperation) -> Option<String> {
     let name = &operation.name;
     let mut chars = name.chars();
     let well_formed = chars.next().is_some_and(|c| c.is_ascii_lowercase())
@@ -253,7 +255,7 @@ pub fn path_placeholders(path: &str) -> Result<Vec<String>, String> {
 }
 
 /// A letter then letters, digits, `_`, `-` or `.`.
-fn parameter_name(name: &str) -> bool {
+pub(super) fn parameter_name(name: &str) -> bool {
     name.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
         && name.len() <= MAX_PARAMETER_NAME
         && name

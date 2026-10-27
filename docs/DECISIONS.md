@@ -5749,3 +5749,63 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
   - une politique écrite depuis un autre onglet resté ouvert sur une déclaration
     ancienne n'est pas détectée : comme les autres formulaires de l'administration,
     celui des règles ne porte pas la version qu'il modifie.
+
+## ADR-114 — Opérations d'une API REST lues d'une description OpenAPI (connecteurs, sixième lot ; complète ADR-112)
+
+- **Date** : 2026-10-27 · **Statut** : acceptée
+- **Contexte** : décrire une API REST opération par opération (ADR-112, ADR-113) est
+  long quand l'éditeur en publie déjà la description OpenAPI, et recopier ses textes à
+  la main expose aux erreurs. Mais une description vient d'un tiers : ses textes
+  seraient lus par le modèle, ses références peuvent pointer ailleurs ou s'imbriquer
+  sans fin, et elle peut décrire des centaines d'opérations, dont des formes que la
+  déclaration ne sait pas porter.
+- **Décision** :
+  - `POST /admin/connectors/rest/import` (`connector:manage`) lit une description
+    OpenAPI 3 (3.0 ou 3.1) **en JSON**, donnée telle quelle (`document`), et répond par
+    les opérations qu'elle propose, l'adresse de l'API si elle en donne une complète
+    (premier serveur, variables remplacées par leur valeur par défaut) et des remarques.
+    Rien n'est enregistré, appelé ni audité : les administrateurs relisent, gardent ce
+    qu'ils veulent, puis ajoutent ou modifient l'API comme avant (ADR-112), où la
+    déclaration est vérifiée de nouveau, entière ;
+  - la plateforme ne télécharge aucune adresse : seul le document donné est lu. Une
+    description YAML se convertit d'abord en JSON, une description Swagger 2.0 d'abord
+    en OpenAPI 3 ; aucune bibliothèque YAML n'entre côté serveur ;
+  - lecture bornée : 900 Kio au plus ; références internes seulement (`#/…`), dix sauts
+    au plus pour une même partie (une boucle s'arrête là) ; 200 000 parties lues pour
+    tout le document (références, paramètres, propriétés), au-delà les chemins suivants
+    sont comptés « non lus » ; 200 opérations proposées, les suivantes comptées ; 100
+    remarques, les suivantes comptées, celles qui concernent toute la description en
+    tête ;
+  - correspondance : chaque opération GET, PUT, POST, DELETE ou PATCH devient une
+    opération nommée d'après son `operationId` en `snake_case` (sinon d'après sa méthode
+    et son chemin), rendue unique par `_2`, `_3`… Intitulé : son résumé, sinon son
+    `operationId`, sinon « MÉTHODE chemin » ; description : sa description, sinon son
+    résumé, sinon « MÉTHODE chemin ». Les textes perdent leurs caractères cachés (et la
+    remarque le dit) et sont coupés à leur limite par « … ». Paramètres : ceux de chemin
+    et de requête (ceux du chemin, sauf si l'opération les redéfinit) et les propriétés
+    d'un corps JSON (parties `allOf` fusionnées, champs en lecture seule omis, requis
+    seulement si le corps l'est), de type texte, entier, nombre ou booléen ; les valeurs
+    d'une énumération rejoignent la description du paramètre ;
+  - ce que la déclaration ne porte pas (en-tête, cookie, tableau, objet, variantes
+    `oneOf`/`anyOf`, corps non JSON) est laissé de côté et dit quand c'est facultatif ;
+    requis, cela écarte l'opération, que son outil ne saurait pas appeler. Au-delà de
+    30 paramètres, les requis puis les premiers facultatifs sont gardés. Une opération
+    dépréciée est écartée, de même que HEAD, OPTIONS et TRACE ;
+  - chaque opération proposée passe les vérifications d'une déclaration : un chemin
+    qu'elles refuseraient (`%`, segment `..`…) écarte l'opération, raison donnée.
+- **Conséquences** :
+  - les textes d'un tiers ne deviennent ce que lit le modèle qu'une fois relus et
+    enregistrés par un administrateur ; ses outils restent `write` jusqu'à leur
+    association (ADR-112) ;
+  - l'écran de l'import (choisir parmi les opérations proposées, cinquante au plus par
+    API) est le lot suivant ; restent l'e-mail et les agendas ;
+  - tests : `crates/connectors/tests/rest_openapi.rs` (une description d'assistance
+    réaliste : noms, textes, paramètres redéfinis par l'opération, `allOf`, références,
+    corps facultatif, ce qui est laissé de côté et pourquoi ; documents refusés ;
+    adresse incomplète) ; `crates/connectors/tests/rest_openapi_bounds.rs` (bornes des
+    paramètres, des opérations et des remarques ; références en boucle, trop enchaînées
+    ou hors du document ; `allOf` trop imbriqués ; un petit document aux `allOf`
+    imbriqués lu vite, le reste compté) ;
+    `crates/api/tests/rest_openapi_import.rs` (réservé aux administrateurs des
+    connecteurs, rien enregistré ni audité, les opérations proposées acceptées telles
+    quelles à l'ajout ; descriptions refusées et dites).

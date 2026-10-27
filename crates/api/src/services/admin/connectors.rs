@@ -20,7 +20,7 @@ use serde_json::{Value, json};
 use uuid::Uuid;
 
 use super::connector_config::{Editable, RestChanges, added_here, operation_names, prefix_taken};
-use super::connector_rules::{ToolPolicyInput, checked_policies, mcp_addition_problem};
+use super::connector_rules::{ToolPolicyInput, mcp_addition_problem};
 use super::{audit_entry, begin_change};
 use crate::secrets::SecretStore;
 use crate::services::AccessContext;
@@ -178,36 +178,14 @@ pub async fn update_connector(
             return Err(DomainError::validation(refusal).into());
         };
         let replaced = changes.rest.as_ref().and_then(|r| r.operations.as_deref());
-        if let Some(policies) = &changes.tool_policies {
-            let declared = editable.declared_tools(replaced);
-            if let Some(unknown) = declared.and_then(|declared| {
-                policies
-                    .keys()
-                    .find(|tool| !declared.contains(tool))
-                    .cloned()
-            }) {
-                return Err(DomainError::validation(format!(
-                    "Opération inconnue de cette API : {unknown}"
-                ))
-                .into());
-            }
-            let scope = editable.policy_scope();
-            patch.tool_policies = Some(checked_policies(policies, &scope, admin.catalog)?);
-        } else if let Some(operations) = replaced {
-            // The policy of an operation removed, or changed in method, path
-            // or parameters, goes with it (ADR-112, ADR-113).
-            let mut kept = instance.tool_policies.clone();
-            if let Some(policies) = kept.as_object_mut() {
-                for tool in editable.redeclared(operations) {
-                    if policies.remove(&tool).is_some() {
-                        dropped.push(tool);
-                    }
-                }
-            }
-            if !dropped.is_empty() {
-                patch.tool_policies = Some(kept);
-            }
-        }
+        let policies = editable.policies_after(
+            &instance.tool_policies,
+            changes.tool_policies.as_ref(),
+            replaced,
+            admin.catalog,
+        )?;
+        patch.tool_policies = policies.stored;
+        dropped = policies.dropped;
         let current_url = editable.url().to_string();
         let moved = changes.url.as_ref().is_some_and(|url| *url != current_url);
         let rehomed = header

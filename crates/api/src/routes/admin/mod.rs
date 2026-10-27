@@ -106,6 +106,10 @@ pub fn routes(state: &AppState) -> Router<AppState> {
         .route("/admin/connectors/trial", post(connectors::trial))
         .route("/admin/connectors/rest", post(connectors::create_rest))
         .route(
+            "/admin/connectors/rest/import",
+            post(connectors::import_rest),
+        )
+        .route(
             "/admin/identity-providers",
             get(identity_providers::list).post(identity_providers::create),
         )

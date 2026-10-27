@@ -14,6 +14,7 @@ mod mission_settings;
 mod organization;
 mod policies;
 mod rest_connectors;
+mod rest_import;
 mod roles;
 mod skill_eval_cases;
 mod skill_evaluations;
@@ -49,6 +50,7 @@ pub use rest_connectors::{
     HttpMethod, NewRestConnector, ParameterLocation, ParameterType, RestApi, RestOperation,
     RestParameter,
 };
+pub use rest_import::{OpenApiDescription, RestImport};
 
 pub use organization::{
     NewOrgUnit, OrgPerson, OrgUnitType, OrgUnitUpdate, OrgUnitView, Organization,

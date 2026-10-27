@@ -263,9 +263,11 @@ Détaillés dans [AGENT_ENGINE.md](AGENT_ENGINE.md). En résumé :
   soumis aux mêmes règles qu'un outil MCP (`connector:use`, `write` par défaut,
   association par l'administrateur, résultats non fiables, adresses publiques). La
   requête ne sort jamais du chemin écrit, la personne qui valide la lit entière, et la
-  réponse lue par le modèle est bornée, jeton masqué (ADR-112). Ce que partagent les
-  serveurs MCP et les API REST (réseau, préfixe, jeton, masquage) est dans
-  `connectors::outbound`.
+  réponse lue par le modèle est bornée, jeton masqué (ADR-112). Ses opérations peuvent
+  être lues d'une description OpenAPI 3 en JSON, que les administrateurs relisent avant
+  d'en déclarer : rien n'est téléchargé, enregistré ni appelé à la lecture (ADR-114). Ce
+  que partagent les serveurs MCP et les API REST (réseau, préfixe, jeton, masquage) est
+  dans `connectors::outbound`.
 - Les secrets ne transitent jamais par le contexte du modèle ni par les journaux.
 
 Connecteurs prévus : démonstration (MVP), MCP générique (MVP), déclencheurs (ADR-109),
