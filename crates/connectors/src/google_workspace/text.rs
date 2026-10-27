@@ -28,12 +28,14 @@ static BREAKS: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)<\s*(br|hr|/p|/div|/li|/tr|/table|/ul|/ol|/h[1-6]|/blockquote)\b[^>]*>")
         .expect("valid regex")
 });
-/// Tags only, those of Word's namespaces (`<o:p>`) too: an address or a
-/// link written between angle brackets in a plain text, or a lone `<`,
-/// stays.
+/// Tags only, those of Word's namespaces (`<o:p>`, a name after its
+/// prefix) too: an address or a link written between angle brackets in a
+/// plain text (`<tel:0123456789>`, `<urn:isbn:…>`), or a lone `<`, stays.
 static TAGS: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?s)</?[A-Za-z][A-Za-z0-9:-]*(?:\s[^>]*)?/?>|<![^>]*>|<\?[^>]*>")
-        .expect("valid regex")
+    Regex::new(
+        r"(?s)</?[A-Za-z][A-Za-z0-9-]*(?::[A-Za-z][A-Za-z0-9-]*)?(?:\s[^>]*)?/?>|<![^>]*>|<\?[^>]*>",
+    )
+    .expect("valid regex")
 });
 static ENTITIES: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"&(#[0-9]{1,7}|#[xX][0-9a-fA-F]{1,6}|[a-zA-Z]{2,8});").expect("valid regex")
@@ -43,16 +45,19 @@ static ENTITIES: LazyLock<Regex> = LazyLock::new(|| {
 /// one at a time; the cells of a row apart (`a | b`). A plain text reads
 /// as itself.
 pub fn html_to_text(html: &str) -> String {
-    let shown = HIDDEN.replace_all(html, "");
+    // The marker is the platform's: one the e-mail holds is not a cell's.
+    let own = html.replace(CELL_END, "\u{FFFD}");
+    let shown = HIDDEN.replace_all(&own, "");
     let cells = CELLS.replace_all(&shown, CELL_END.to_string());
     let broken = BREAKS.replace_all(&cells, "\n");
     let bare = TAGS.replace_all(&broken, "");
     let decoded = decode_entities(&bare);
-    // A cell's end at either end of a line closes no gap.
+    // The last cell's end closes no gap; an empty cell before the first
+    // value keeps its place, the values under their column.
     let rows: Vec<String> = decoded
         .split('\n')
         .map(|line| {
-            line.trim_matches(|c: char| c == CELL_END || c.is_whitespace())
+            line.trim_end_matches(|c: char| c == CELL_END || c.is_whitespace())
                 .replace(CELL_END, CELL_GAP)
         })
         .collect();
@@ -125,7 +130,8 @@ fn numeric(name: &str) -> Option<char> {
         Some(hex) => u32::from_str_radix(hex, 16).ok()?,
         None => name.strip_prefix('#')?.parse().ok()?,
     };
-    char::from_u32(code).filter(|c| !c.is_control() || c.is_whitespace())
+    // Nor the character that marks a cell's end.
+    char::from_u32(code).filter(|c| (!c.is_control() || c.is_whitespace()) && *c != CELL_END)
 }
 
 /// Lines trimmed, spaces within a line collapsed, at most one blank line
@@ -167,11 +173,12 @@ mod tests {
     fn html_reads_as_its_text() {
         let html = "<!DOCTYPE html><html><head><title>T</title></head><body><style>p{}</style>\
                     <p class=MsoNormal>Bonjour&nbsp;Léa,<o:p></o:p></p>\
-                    <p>Voici   la <b>facture</b>.<br/>Merci</p>\
+                    <p>Voici   la <b>facture</b> de <st1:place w:st='on'>Lyon</st1:place>\
+                    <v:imagedata src='logo.png' o:title=''/>.<br/>Merci</p>\
                     <!-- caché --><script>alert(1)</script><div></div><hr><div>Fin</div></body></html>";
         assert_eq!(
             html_to_text(html),
-            "Bonjour Léa,\nVoici la facture.\nMerci\n\nFin"
+            "Bonjour Léa,\nVoici la facture de Lyon.\nMerci\n\nFin"
         );
     }
 
@@ -187,20 +194,29 @@ mod tests {
     }
 
     #[test]
-    fn a_cell_holding_a_block_keeps_its_value_apart() {
-        let cell = "<table><tr><td><p>Filtre</p></td><td>12</td></tr></table>";
-        assert_eq!(html_to_text(cell), "Filtre\n12");
+    fn an_empty_cell_keeps_its_place() {
+        // A corner left empty: each value stays under its column.
+        let week = "<table><tr><th></th><th>Lundi</th><th>Mardi</th></tr>\
+                    <tr><th>Léa</th><td>8h</td><td>9h</td></tr></table>";
+        assert_eq!(html_to_text(week), "| Lundi | Mardi\nLéa | 8h | 9h");
+        let block = "<table><tr><td><p>A</p></td><td></td><td>C</td></tr></table>";
+        assert_eq!(html_to_text(block), "A\n| | C");
+    }
+
+    #[test]
+    fn only_the_cells_set_their_separator() {
+        // The marker, written in the e-mail or as an entity, is not a cell's.
+        let marked =
+            "<p>a\u{E000}b &#xE000; &#57344;</p><table><tr><td>c</td><td>d</td></tr></table>";
+        assert_eq!(html_to_text(marked), "a\u{FFFD}b &#xE000; &#57344;\nc | d");
     }
 
     #[test]
     fn a_plain_text_keeps_what_is_between_angle_brackets() {
         let plain = "Rejoindre la réunion<https://teams.example/l/1> ou contacter Léa \
-                     <lea@exemple.fr> <mailto:lea@exemple.fr>\nsi a < 5 et b > 3\nOrdre du jour |";
-        assert_eq!(
-            html_to_text(plain),
-            "Rejoindre la réunion<https://teams.example/l/1> ou contacter Léa \
-             <lea@exemple.fr> <mailto:lea@exemple.fr>\nsi a < 5 et b > 3\nOrdre du jour |"
-        );
+                     <lea@exemple.fr> <mailto:lea@exemple.fr> <tel:0123456789>\n\
+                     <urn:isbn:9782070612758> <Nom: Léa>\nsi a < 5 et b > 3\nOrdre du jour |";
+        assert_eq!(html_to_text(plain), plain);
     }
 
     #[test]

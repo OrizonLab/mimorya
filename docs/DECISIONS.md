@@ -6442,11 +6442,14 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
         qu'elle déclare (`encoding_rs`, déjà dans les dépendances de `reqwest`) ; un
         jeu inconnu, ou que le WHATWG remplace en entier, est lu comme de l'UTF-8 ;
       - le HTML rendu en texte garde ses lignes et sépare les cellules d'un tableau
-        (`a | b`), pour qu'une quantité et un prix ne se collent pas ; seules les
-        cellules posent ce séparateur, un `|` du texte reste tel quel. Seules de vraies
-        balises sont retirées, dont celles de Word et d'Outlook (`<o:p>`) : une adresse
-        ou un lien entre chevrons, dans un texte brut, reste. Les entités usuelles d'un
-        e-mail en français sont décodées ;
+        (`a | b`), pour qu'une quantité et un prix ne se collent pas ; une cellule vide
+        garde sa place, chaque valeur sous sa colonne. Seules les cellules posent ce
+        séparateur : un `|` du texte reste tel quel. Seules de vraies balises sont
+        retirées, dont celles de Word et d'Outlook (`<o:p>`, `<st1:place>`) : une adresse
+        ou un lien entre chevrons, dans un texte brut, reste (`<tel:…>`, `<mailto:…>`).
+        Les entités usuelles d'un e-mail en français sont décodées. Un tableau dont le
+        HTML est indenté donne une valeur par ligne plutôt que `a | b` : les valeurs
+        restent séparées ;
       - texte de 20 000 caractères au plus ;
       - pièces jointes nommées (20 au plus, les autres comptées) mais jamais lues ;
       - parcours des parties borné en profondeur et en nombre ;
