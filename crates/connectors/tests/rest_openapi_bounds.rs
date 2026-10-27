@@ -233,3 +233,43 @@ fn keeps_a_field_of_a_required_body() {
         "{notes}"
     );
 }
+
+#[test]
+fn an_enumeration_says_only_what_it_leaves_out() {
+    let described = |values: Value| {
+        let imported = import(&json!({
+            "openapi": "3.1.0",
+            "paths": { "/tickets": { "get": {
+                "operationId": "listTickets",
+                "parameters": [{
+                    "name": "state", "in": "query",
+                    "schema": { "type": ["string", "null"], "enum": values },
+                }],
+            } } },
+        }));
+        imported.operations[0].parameters[0].description.clone()
+    };
+    // `null` shows nothing: nothing is left out.
+    assert_eq!(
+        described(json!(["ouvert", "clos", null])),
+        "Valeurs : ouvert, clos."
+    );
+    let many: Vec<String> = (0..60).map(|i| format!("v{i}")).collect();
+    let shown: Vec<String> = (0..50).map(|i| format!("v{i}")).collect();
+    assert_eq!(
+        described(json!(many)),
+        format!("Valeurs : {}, ….", shown.join(", "))
+    );
+    // Fifty shown, then only `null`: nothing is left out either.
+    let mut fifty: Vec<Value> = shown.iter().map(|v| json!(v)).collect();
+    fifty.push(Value::Null);
+    assert_eq!(
+        described(json!(fifty)),
+        format!("Valeurs : {}.", shown.join(", "))
+    );
+    // A value filling the room: what follows is said to be left out.
+    let long = "a".repeat(400);
+    let found = described(json!([long, "b"]));
+    assert!(found.ends_with("…, …."), "{found}");
+    assert!(found.chars().count() <= 300, "{found}");
+}

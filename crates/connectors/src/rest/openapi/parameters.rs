@@ -250,10 +250,22 @@ impl Gathered {
             None => String::new(),
         };
         if let Some(values) = schema.get("enum").and_then(Value::as_array) {
-            let mut room = max.saturating_sub(description.chars().count() + " Valeurs : ".len());
+            // Room for the values, and for saying they go on (`, ….`).
+            let mut room = max.saturating_sub(
+                description.chars().count() + " Valeurs : ".len() + ", ….".chars().count(),
+            );
+            let shows =
+                |value: &Value| value.is_string() || value.is_number() || value.is_boolean();
             let mut shown = Vec::new();
-            for value in values.iter().take(MAX_VALUES_SHOWN) {
-                if room == 0 {
+            let mut more = "";
+            for (at, value) in values.iter().enumerate() {
+                if at == MAX_VALUES_SHOWN || room == 0 {
+                    // Said to go on only if a value that would show is left
+                    // (`null` never does), looked for among the next ones.
+                    let rest = values[at..].iter().take(MAX_VALUES_SHOWN);
+                    if rest.clone().any(shows) {
+                        more = ", …";
+                    }
                     break;
                 }
                 let text = match value {
@@ -266,11 +278,6 @@ impl Gathered {
                 room = room.saturating_sub(text.chars().count() + ", ".len());
                 shown.push(text);
             }
-            let more = if values.len() > shown.len() {
-                ", …"
-            } else {
-                ""
-            };
             description = format!("{description} Valeurs : {}{more}.", shown.join(", "));
         }
         Ok(one_line(beginning(&description, max), max, &mut false))
