@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use mimorya_core::authz::{Actor, AuthorizationEngine, Subject};
 use mimorya_core::autonomy::{AutonomyPolicy, ExecutionDecision, decide_execution};
-use mimorya_core::tools::{BoundAuthorization, DeliverableService, ToolContext, ToolResult};
+use mimorya_core::tools::{BoundAuthorization, ToolContext, ToolResult, ToolServices};
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -58,7 +58,7 @@ pub struct ToolExecutor {
     actor: Actor,
     autonomy: AutonomyPolicy,
     run_id: Uuid,
-    deliverables: Arc<dyn DeliverableService>,
+    services: ToolServices,
     timeout: Duration,
 }
 
@@ -71,7 +71,7 @@ impl ToolExecutor {
         actor: Actor,
         autonomy: AutonomyPolicy,
         run_id: Uuid,
-        deliverables: Arc<dyn DeliverableService>,
+        services: ToolServices,
         timeout: Duration,
     ) -> Self {
         Self {
@@ -81,7 +81,7 @@ impl ToolExecutor {
             actor,
             autonomy,
             run_id,
-            deliverables,
+            services,
             timeout,
         }
     }
@@ -147,7 +147,8 @@ impl ToolExecutor {
                 self.subject.clone(),
                 self.actor.clone(),
             ),
-            deliverables: self.deliverables.clone(),
+            deliverables: self.services.deliverables.clone(),
+            accounts: self.services.accounts.clone(),
         };
         let started = Instant::now();
         let result = match tokio::time::timeout(self.timeout, tool.tool.execute(input, &ctx)).await

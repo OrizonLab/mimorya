@@ -27,6 +27,25 @@ pub const DIRECTORY: &str = "72f988bf-86f1-41af-91ab-2d7cd011db47";
 /// provider (the administration writes Microsoft's), enabled or not; one
 /// a previous test declared goes first, with its links.
 pub async fn insert_microsoft365(api: &TestApi, idp: &MockIdentityProvider, enabled: bool) -> Uuid {
+    let graph = format!("{}/graph/v1.0", idp.issuer);
+    insert_application(api, idp, &graph, enabled).await
+}
+
+/// The same, enabled, its tools reading this Graph (ADR-117).
+pub async fn insert_microsoft365_reading(
+    api: &TestApi,
+    idp: &MockIdentityProvider,
+    graph: &str,
+) -> Uuid {
+    insert_application(api, idp, graph, true).await
+}
+
+async fn insert_application(
+    api: &TestApi,
+    idp: &MockIdentityProvider,
+    graph: &str,
+    enabled: bool,
+) -> Uuid {
     let services = &api.app.services;
     let mut tx = services.db.begin(tenant::ID).await.unwrap();
     sqlx::query("delete from connector_instances where type = $1")
@@ -38,7 +57,7 @@ pub async fn insert_microsoft365(api: &TestApi, idp: &MockIdentityProvider, enab
         "directory": DIRECTORY,
         "clientId": CLIENT_ID,
         "issuer": idp.issuer,
-        "graph": format!("{}/graph/v1.0", idp.issuer),
+        "graph": graph,
     });
     let id = create_connector_instance(
         &mut tx,

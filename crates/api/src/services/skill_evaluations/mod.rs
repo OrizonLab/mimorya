@@ -13,4 +13,5 @@ mod view;
 
 pub use case::StoredCase;
 pub use pass::{EVALUATION_SWEEP, play_pending_evaluations, wake};
+pub use ports::NO_LINKED_ACCOUNT;
 pub use view::{EvaluationRead, evaluation, evaluations_of, last_evaluation, shown_to};

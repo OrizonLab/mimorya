@@ -13,7 +13,7 @@ use openidconnect::core::{
 use openidconnect::{
     AdditionalClaims, AuthType, AuthorizationCode, ClaimsVerificationError, ClientId, ClientSecret,
     CsrfToken, EmptyExtraTokenFields, EndpointMaybeSet, EndpointNotSet, EndpointSet, IdTokenClaims,
-    IssuerUrl, LoginHint, Nonce, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl,
+    IssuerUrl, LoginHint, Nonce, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RefreshToken,
     RequestTokenError, Scope, SignatureVerificationError, StandardErrorResponse,
     StandardTokenResponse, TokenResponse,
 };
@@ -198,6 +198,63 @@ pub async fn redeem(
             RequestTokenError::Parse(..) => "échange : réponse illisible".into(),
             // The library's own words (empty answer, content type).
             RequestTokenError::Other(text) => format!("échange : {text}"),
+        })
+}
+
+/// Why a refresh token brought no access token.
+pub enum Unrefreshed {
+    /// The provider no longer honours it (`invalid_grant`): revoked,
+    /// expired, or the person's consent withdrawn.
+    Revoked,
+    Failed(Failure),
+}
+
+/// A fresh access token for a refresh token (ADR-117), with the scopes
+/// asked at the link (the provider grants no more than consented).
+pub async fn refresh(
+    http: &ProviderHttp,
+    metadata: CoreProviderMetadata,
+    application: &Application<'_>,
+    refresh_token: &str,
+    scopes: &[&str],
+) -> Result<Tokens, Unrefreshed> {
+    let client = client(
+        metadata,
+        application.client_id,
+        Some(application.client_secret),
+        application.redirect_uri,
+    )
+    .map_err(Unrefreshed::Failed)?;
+    let token = RefreshToken::new(refresh_token.into());
+    let mut request = client
+        .exchange_refresh_token(&token)
+        .map_err(|error| Unrefreshed::Failed(format!("renouvellement : {error}")))?;
+    for scope in scopes {
+        request = request.add_scope(Scope::new((*scope).into()));
+    }
+    request
+        .request_async(http)
+        .await
+        .map_err(|error| match error {
+            RequestTokenError::ServerResponse(answer)
+                if *answer.error() == CoreErrorResponseType::InvalidGrant =>
+            {
+                Unrefreshed::Revoked
+            }
+            // Its error code alone, as for a code.
+            RequestTokenError::ServerResponse(answer) => Unrefreshed::Failed(format!(
+                "renouvellement : refusé par le fournisseur ({})",
+                error_code(answer.error().as_ref())
+            )),
+            RequestTokenError::Request(cause) => {
+                Unrefreshed::Failed(format!("renouvellement : {cause}"))
+            }
+            RequestTokenError::Parse(..) => {
+                Unrefreshed::Failed("renouvellement : réponse illisible".into())
+            }
+            RequestTokenError::Other(text) => {
+                Unrefreshed::Failed(format!("renouvellement : {text}"))
+            }
         })
 }
 

@@ -12,6 +12,8 @@ const SOURCE_LABELS: Record<string, string> = {
   skill: 'Compétence',
   deliverable: 'Livrable',
   document: 'Document',
+  email: 'E-mail',
+  event: 'Rendez-vous',
 };
 
 export function MessageItem({ message }: { message: Message }) {

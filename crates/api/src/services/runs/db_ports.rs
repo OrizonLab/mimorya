@@ -35,6 +35,7 @@ use super::lesson_capture::LessonCapture;
 use super::outcome::persist_outcome;
 use super::reads::Reader;
 use crate::services::access::AccessService;
+use crate::services::account_links::{AccountLinkService, PersonAccounts};
 use crate::services::embeddings::{EmbeddingService, UsageBy};
 use crate::services::event_bus::RunEventBus;
 
@@ -85,6 +86,8 @@ pub struct DbPorts {
     leased: Uuid,
     /// A sub-agent's run (ADR-098).
     pub(super) sub_run: bool,
+    /// The accounts the run's user linked, for its tools (ADR-117).
+    account_links: Arc<AccountLinkService>,
 }
 
 /// The ports of `scope`'s run, executed by `executor` under `fence`.
@@ -102,6 +105,7 @@ pub fn engine_ports(executor: &RunExecutor, scope: RunScope, fence: LeaseFence) 
         ended: Arc::new(AtomicBool::new(false)),
         leased: scope.run_id,
         sub_run: false,
+        account_links: executor.account_links.clone(),
     }
     .into_engine_ports()
 }
@@ -129,6 +133,11 @@ impl DbPorts {
     fn into_engine_ports(self) -> EnginePorts {
         let deliverables =
             DbDeliverables::new(self.db.clone(), self.scope, self.fence.clone(), self.leased);
+        let accounts = PersonAccounts::new(
+            self.account_links.clone(),
+            self.scope.tenant_id,
+            self.scope.user_id,
+        );
         let ports = Arc::new(self);
         EnginePorts {
             events: ports.clone(),
@@ -142,6 +151,7 @@ impl DbPorts {
             sub_runs: ports.clone(),
             runs: ports,
             deliverables: Arc::new(deliverables),
+            accounts: Arc::new(accounts),
         }
     }
 

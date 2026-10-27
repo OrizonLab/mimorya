@@ -5,15 +5,22 @@
 //! browser signs in at Microsoft and comes back (`finish`); the identity
 //! token must name the person's own account; the refresh token is sealed in
 //! the link, which the person may remove at any time. The provider's
-//! declaration is read at each step, never kept: a link is rare.
+//! declaration is read at each step of a link, never kept: a link is rare.
+//! A run's tools reach the account with an access token renewed from the
+//! link (`access`, ADR-117), the declaration then kept an hour.
 
+mod access;
 mod attempt;
 mod finish;
 mod grant;
+mod renewal;
 mod start;
+mod tokens;
 
+pub use access::PersonAccounts;
 pub use attempt::{LINK_COOKIE, cleared_link_cookie, link_cookie};
 pub use finish::{LinkFailure, LinkRefused};
+pub use renewal::ACCOUNT_LINK_REVOKED;
 
 use std::sync::Arc;
 
@@ -26,13 +33,15 @@ use mimorya_db::repositories::account_links::{
 };
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::connectors::{ConnectorInstanceRow, list_connector_instances};
+use openidconnect::core::CoreProviderMetadata;
 use serde_json::json;
 use uuid::Uuid;
 
+use self::tokens::AccessTokens;
 use crate::secrets::{SecretCipher, SecretStore};
 use crate::services::AccessContext;
 use crate::services::connectors::CONNECTOR_USE;
-use crate::services::sso::ProviderHttp;
+use crate::services::sso::{MetadataCache, ProviderHttp};
 
 /// Where the provider sends the browser back, under the web origin.
 pub const CALLBACK_PATH: &str = "/api/account/links/callback";
@@ -61,6 +70,10 @@ pub struct AccountLinkService {
     http: ProviderHttp,
     network: NetworkPolicy,
     redirect_uri: String,
+    /// The access tokens renewed, per person (ADR-117).
+    tokens: AccessTokens,
+    /// The applications' provider declarations, for renewals.
+    declarations: MetadataCache<CoreProviderMetadata>,
 }
 
 impl AccountLinkService {
@@ -77,6 +90,8 @@ impl AccountLinkService {
             http: ProviderHttp::new(network)?,
             network,
             redirect_uri: format!("{web_origin}{CALLBACK_PATH}"),
+            tokens: AccessTokens::default(),
+            declarations: MetadataCache::default(),
         })
     }
 

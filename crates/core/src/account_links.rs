@@ -133,6 +133,25 @@ pub fn granted_scopes(scope: Option<&str>) -> String {
     text
 }
 
+/// The permissions a link's refresh token is renewed with (ADR-117): the
+/// platform's, among those the person granted (the provider renews no
+/// more, and a permission the platform added since would be refused);
+/// all of them when the provider did not say what it granted.
+pub fn renewal_scopes(granted: &str) -> Vec<&'static str> {
+    let granted: Vec<&str> = granted.split_ascii_whitespace().collect();
+    if granted.is_empty() {
+        return MICROSOFT365_SCOPES.to_vec();
+    }
+    MICROSOFT365_SCOPES
+        .into_iter()
+        .filter(|scope| {
+            granted
+                .iter()
+                .any(|granted| granted.eq_ignore_ascii_case(scope))
+        })
+        .collect()
+}
+
 /// The name a link's refresh token is sealed under: it opens only for its
 /// company, connector and person.
 pub fn sealed_as(connector_id: Uuid, user_id: Uuid) -> String {

@@ -28,7 +28,8 @@ l'unique paquet Node (ADR-018).
 Repères à l'intérieur des crates :
 
 - `core/src/authz/` (types, moteur, conditions ABAC, organigramme), `core/src/tools/`
-  (contrat d'outil, outils typés), `core/src/skill_rules.rs` (ce qu'une compétence peut
+  (contrat d'outil, outils typés, comptes reliés de la personne servie : `accounts.rs`,
+  ADR-117), `core/src/skill_rules.rs` (ce qu'une compétence peut
   contenir, ADR-052), `core/src/account_links.rs` (comptes que chacun relie :
   application Microsoft 365 déclarée, permissions déléguées, identité qui prouve que le
   compte est le sien, ADR-116), `core/src/skill_proposals.rs` (où va une compétence que
@@ -81,7 +82,9 @@ Repères à l'intérieur des crates :
   `connectors/src/rest/` (API REST décrites par l'entreprise : déclaration et ses
   règles, requête, réponse bornée, outil d'une opération, ADR-112 ; opérations lues
   d'une description OpenAPI, `openapi/`, ADR-114), `connectors/src/microsoft365/`
-  (application Microsoft 365 d'une entreprise, ADR-116).
+  (application Microsoft 365 d'une entreprise, ADR-116 ; ses outils, e-mails et agenda de
+  la personne servie lus par un Graph borné, ADR-117), `connectors/src/testing/`
+  (serveurs simulés des tests : MCP, API REST, Microsoft Graph).
 - `api/src/plugins/` (contexte de requête, limitation de débit (globale par processus ;
   d'authentification partagée par PostgreSQL, `shared_limit.rs`, ADR-088), CSRF (sauf la réception
   des réponses SAML, ADR-068, et l'envoi à un déclencheur, ADR-109), session,
@@ -109,7 +112,9 @@ Repères à l'intérieur des crates :
   ADR-104), sous verrou par entreprise ; application Microsoft 365 déclarée,
   `microsoft365.rs`, ADR-116), `api/src/services/account.rs` (son propre compte),
   `api/src/services/account_links/` (comptes que chacun relie : départ vers Microsoft,
-  tentative scellée, retour vérifié, jeton scellé, liste et retrait, ADR-116),
+  tentative scellée, retour vérifié, jeton scellé, liste et retrait, ADR-116 ; jeton
+  d'accès de la personne servie renouvelé et gardé pour les outils, liaison révoquée
+  retirée : `access.rs`, `tokens.rs`, ADR-117),
   `api/src/services/notification_settings.rs` (e-mails que chacun choisit de recevoir,
   lus au moment d'envoyer chaque avis, ADR-094),
   `api/src/services/skill_proposal_notice/` (propositions de l'agent annoncées par e-mail

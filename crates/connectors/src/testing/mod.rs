@@ -1,8 +1,10 @@
 //! Test support (feature `testing`): MCP servers over Streamable HTTP on a
 //! local port, optionally behind a bearer token, and misbehaving ones (what
 //! they declare, a token quoted back, a server that never answers, one held
-//! until the test releases it); a REST API (`rest`).
+//! until the test releases it); a REST API (`rest`); Microsoft Graph
+//! (`graph`).
 
+mod graph;
 mod hold;
 mod quirks;
 mod rest;
@@ -19,6 +21,7 @@ use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, Stream
 use tokio::sync::oneshot;
 
 use crate::mcp::DemoDocsServer;
+pub use graph::{FORBIDDEN_MESSAGE, FakeGraph, GRAPH_DETAIL, GraphRequest, OVERSIZED_MESSAGE};
 pub use hold::Hold;
 pub use quirks::{DeclaredToolsServer, HIDDEN_TEXT, Quirk};
 pub use rest::{KEY_HEADER, serve_rest_http};

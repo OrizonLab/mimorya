@@ -1,19 +1,34 @@
 //! The "Microsoft 365" connector type (ADR-116): a company declares its
 //! application in its Microsoft Entra directory, and each of its people
 //! links their own mailbox and calendar there, granting delegated
-//! permissions only. Its tools reach Microsoft Graph with the token of the
-//! person a run serves, never with the application's own rights; they come
-//! with the next lot, so that a company may declare its application and its
-//! people link their accounts first.
+//! permissions only. Its tools (ADR-117) reach Microsoft Graph with the
+//! token of the person a run serves, never with the application's own
+//! rights: what they read, the person could read themselves.
+
+mod calendar_events;
+mod graph;
+mod mail_read;
+mod mail_search;
+mod reach;
+mod shape;
 
 use anyhow::bail;
 use async_trait::async_trait;
+use mimorya_core::tools::typed_tool;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::outbound::url_problem;
+use self::calendar_events::CalendarEvents;
+use self::graph::Graph;
+use self::mail_read::MailRead;
+use self::mail_search::MailSearch;
+use crate::outbound::{http_client, url_problem};
 use crate::types::{Connector, ConnectorInfo, ConnectorRuntime, InstanceContext};
+
+/// Its tools, named by the platform: a company's policies may name them.
+pub const MICROSOFT365_TOOLS: [&str; 3] =
+    ["m365_mail_search", "m365_mail_read", "m365_calendar_events"];
 
 /// A company's application, as stored: its directory and client IDs (the
 /// GUIDs the administration checked), the issuer its people sign in at (the
@@ -69,8 +84,21 @@ impl Connector for Microsoft365Connector {
         if context.secret.is_none() {
             bail!("Le secret de l’application n’est plus enregistré : saisissez-le de nouveau");
         }
+        let graph = Graph::new(
+            &config.graph,
+            http_client(context.network)?,
+            context.call_timeout,
+        )?;
         Ok(ConnectorRuntime {
-            tools: Vec::new(),
+            tools: vec![
+                typed_tool(MailSearch {
+                    graph: graph.clone(),
+                }),
+                typed_tool(MailRead {
+                    graph: graph.clone(),
+                }),
+                typed_tool(CalendarEvents { graph }),
+            ],
             closer: None,
         })
     }

@@ -32,6 +32,7 @@ use super::lesson_capture::LessonCapture;
 use super::outcome::{CRASH_MESSAGE, record_crash};
 use super::run_access::RunAccess;
 use crate::services::access::{AccessContext, AccessService};
+use crate::services::account_links::AccountLinkService;
 use crate::services::connectors::ConnectorService;
 use crate::services::embeddings::EmbeddingService;
 use crate::services::event_bus::RunEventBus;
@@ -50,6 +51,8 @@ pub struct RunExecutor {
     /// Draws a lesson from each completed run, where chosen (ADR-076).
     pub lessons: LessonCapture,
     pub connectors: Arc<ConnectorService>,
+    /// Where the tools reach the accounts each person linked (ADR-117).
+    pub account_links: Arc<AccountLinkService>,
     pub bus: Arc<RunEventBus>,
     /// Tells a manager a request awaits them (ADR-060).
     pub notifier: ApprovalNotifier,

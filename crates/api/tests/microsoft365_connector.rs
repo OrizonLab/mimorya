@@ -133,7 +133,7 @@ async fn its_secret_is_replaced_never_removed_and_its_addresses_stay() {
             "ne changent pas",
         ),
         (
-            json!({ "toolPolicies": { "m365_mail_search": { "enabled": false } } }),
+            json!({ "toolPolicies": { "m365_mail_send": { "enabled": false } } }),
             "Outil inconnu de ce connecteur",
         ),
     ];

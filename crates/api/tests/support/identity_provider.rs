@@ -6,7 +6,8 @@
 //! either signs in the person the test chose, else the one the address
 //! hints at; the browser, hinted at nobody, is asked who (`sign_in_page`).
 //! Its signing keys are test keys, public: it rolls them over on demand,
-//! and may be unavailable.
+//! and may be unavailable. It renews the refresh tokens it issued
+//! (`refresh`, ADR-117), rotating or revoking them on demand.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -27,6 +28,8 @@ use url::Url;
 pub const CLIENT_ID: &str = "mimorya-tests";
 pub const CLIENT_SECRET: &str = "secret-client-de-test-0123456789";
 
+#[path = "identity_provider/refresh.rs"]
+mod refresh;
 #[path = "identity_provider/sign_in_page.rs"]
 mod sign_in_page;
 #[path = "identity_provider/token.rs"]
@@ -109,6 +112,8 @@ struct Provider {
     extra_keys: usize,
     /// Its declaration answered by an error.
     unavailable: bool,
+    /// Its renewals (`refresh`).
+    renewals: refresh::Renewals,
 }
 
 type Shared = Arc<Mutex<Provider>>;
@@ -211,6 +216,21 @@ impl MockIdentityProvider {
         let redirect = Url::parse(&redirect_uri).expect("redirect address");
         let path = redirect.path();
         format!("{}?{back}", path.strip_prefix("/api").unwrap_or(path))
+    }
+
+    /// The permissions asked at each renewal, in order.
+    pub fn renewals(&self) -> Vec<String> {
+        self.shared.lock().expect("provider").renewals.asked.clone()
+    }
+
+    /// No refresh token it issued is honoured any more.
+    pub fn revoke_refresh_tokens(&self) {
+        self.shared.lock().expect("provider").renewals.revoked = true;
+    }
+
+    /// Each renewal brings a new refresh token.
+    pub fn rotate_refresh_tokens(&self) {
+        self.shared.lock().expect("provider").renewals.rotate = true;
     }
 
     /// The refresh token it issued for this person's subject.

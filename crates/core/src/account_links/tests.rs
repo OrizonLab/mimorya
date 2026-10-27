@@ -124,3 +124,14 @@ fn a_sealed_token_names_its_connector_and_person() {
         format!("account_link.{connector}.{user}")
     );
 }
+
+#[test]
+fn a_link_is_renewed_with_what_the_person_granted() {
+    assert_eq!(
+        renewal_scopes("openid profile email offline_access mail.read User.Read"),
+        ["email", "profile", "offline_access", "Mail.Read"]
+    );
+    // A permission the platform asks now, not granted then, is not asked.
+    assert!(!renewal_scopes("offline_access Mail.Read").contains(&"Calendars.Read"));
+    assert_eq!(renewal_scopes(" "), MICROSOFT365_SCOPES);
+}

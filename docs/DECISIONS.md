@@ -5966,3 +5966,94 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     d'une autre entreprise), `crates/api/tests/microsoft365_connector.rs`
     (déclaration vérifiée, une par entreprise, secret remplacé jamais retiré, adresses
     fixes, outil inconnu refusé).
+
+## ADR-117 — Outils de lecture Microsoft 365 avec le jeton de la personne servie (connecteurs, lot 8b)
+
+- **Date** : 2026-10-27 · **Statut** : acceptée
+- **Contexte** : chacun a relié sa boîte et son agenda Microsoft 365 avec des permissions
+  déléguées (ADR-116). L'agent doit maintenant y lire, pour la personne qu'un run sert,
+  ce qu'elle peut lire elle-même, et rien d'autre.
+- **Décision** :
+  - **trois outils, aux noms fixés par la plateforme** (`MICROSOFT365_TOOLS`) :
+    - `m365_mail_search` cherche des e-mails par mots (la recherche de Microsoft, par
+      pertinence) ou donne les derniers reçus, depuis un jour si indiqué. Les deux ne se
+      combinent pas, car Microsoft ne filtre ni ne trie ce qu'il trouve par mots. Il
+      renvoie au plus 25 e-mails, 10 par défaut, et dit quand il y en a d'autres ;
+    - `m365_mail_read` lit un e-mail : son texte (Graph le convertit du HTML), tronqué
+      au-delà de 20 000 caractères, ses destinataires (20 au plus par liste) et s'il a
+      des pièces jointes, qui ne sont pas lues ;
+    - `m365_calendar_events` lit les rendez-vous de 31 jours au plus, 50 au plus, le plus
+      tôt d'abord ;
+  - **ce que les outils demandent** :
+    - chacun est une lecture (`read`), sans validation, et exige `connector:use`, qu'une
+      politique de l'administration garde comme pour un serveur MCP ou une API REST ;
+    - leurs entrées sont strictes. L'identifiant d'un e-mail est limité aux caractères
+      de Microsoft et encodé entier dans le chemin, `/` compris : il ne peut viser
+      qu'un e-mail de la boîte de la personne ;
+    - les jours donnés sont ceux de l'heure de Paris, celle de la date donnée au
+      modèle ; Graph rend les rendez-vous dans cette heure ;
+    - les identifiants renvoyés sont cités (`email`, `event`) avec l'objet pour libellé.
+      Ils sont opaques, donc sans motif de vérification dans les réponses ;
+  - **le jeton est celui de la personne servie, jamais choisi par l'outil** :
+    - le contrat d'outil reçoit un port `LinkedAccounts` dans `ToolContext`, qui ne donne
+      que le jeton d'accès de la personne du run, pour un type de connecteur ;
+    - un sous-agent sert la même personne ;
+    - une évaluation de compétence ne sert personne : elle ne lit aucun compte relié ;
+  - **le jeton d'accès** (`services/account_links/access.rs`) :
+    - à chaque appel, la plateforme relit la liaison et le secret de l'application ;
+    - un jeton gardé de cette liaison (même connecteur, même version `refreshed_at`)
+      sert jusqu'à deux minutes avant son expiration ;
+    - sinon, le jeton de renouvellement est échangé chez Microsoft, avec les seules
+      permissions de la plateforme que la personne a accordées. Une permission ajoutée
+      depuis par la plateforme n'est pas demandée, car Microsoft refuserait tout ;
+    - aucune transaction n'est tenue pendant l'échange ;
+    - les jetons d'accès sont gardés en mémoire du processus seulement, par entreprise et
+      par personne, en nombre borné ; la déclaration de Microsoft est gardée une heure ;
+  - **la rotation** : un jeton de renouvellement que Microsoft remplace est scellé dans la
+    liaison, si elle n'a pas changé depuis sa lecture. Sinon, la liaison refaite garde
+    le sien ;
+  - **la révocation** : un jeton de renouvellement que Microsoft n'honore plus
+    (`invalid_grant`) retire la liaison, sauf si elle a été refaite entre-temps. Le
+    retrait est audité (`account.link.revoked`, au nom de la personne, sans jeton), et
+    l'outil dit à la personne de relier de nouveau son compte ;
+  - **un jeton d'accès que Graph refuse** (401, révoqué avant son expiration) est oublié :
+    l'appel suivant en renouvelle un ;
+  - **ce que Graph dit n'atteint jamais le modèle** :
+    - Graph est appelé par le client durci des connecteurs, sans redirection et aux
+      adresses publiques ;
+    - chaque appel est borné en temps (celui d'un appel de connecteur) et à 1 Mo de
+      réponse ;
+    - pour une erreur, seul le sens de son statut est dit (accès refusé, permission non
+      accordée, introuvable, trop de demandes), jamais son texte ;
+  - **ce qui n'est jamais montré ni gardé** : le jeton d'accès n'est ni dans le journal
+    des appels, ni dans les événements, ni dans l'audit.
+- **Conséquences** :
+  - ce que lisent les outils dépend des droits de la personne chez Microsoft, que la
+    plateforme ne peut pas élargir ;
+  - un jeton d'accès révoqué chez Microsoft peut encore servir dans un autre processus
+    jusqu'à son expiration (une heure au plus), ou jusqu'à ce que Graph le refuse ;
+  - deux renouvellements simultanés pour la même personne sont possibles (sous-agents en
+    parallèle). Les deux jetons sont valides et la liaison garde un seul jeton de
+    renouvellement ;
+  - ce que lisent les outils reste dans l'historique du run (son point de reprise), comme
+    tout résultat d'outil, avec la conservation des runs ; le journal des appels n'en
+    garde que le résumé ;
+  - un run lancé par une tâche planifiée, une mission ou un déclencheur sert son auteur :
+    les outils lisent son compte. Ce qui en sortirait de la plateforme passe par un
+    outil d'écriture, sous validation (et l'autonomie d'un déclencheur est plafonnée,
+    ADR-109) ;
+  - tant que l'écran « Mon compte » n'existe pas (lot suivant), une personne relie son
+    compte par l'API seulement ;
+  - restent : l'écran (« Mon compte » et la carte de l'application dans « Connecteurs »,
+    avec un parcours de bout en bout), l'envoi d'e-mails et la création de rendez-vous
+    sous validation, Google Workspace ;
+  - tests :
+    - `crates/connectors/tests/microsoft365_mail.rs` et `microsoft365_access.rs` :
+      requêtes envoyées à un Graph simulé, résultats, refus sans les mots de Graph,
+      période bornée, compte de la personne seule, sans liaison, jeton refusé signalé ;
+    - `crates/api/tests/microsoft365_tools.rs` : run de la personne avec un jeton
+      renouvelé puis gardé, absent du journal et de l'audit ; isolation entre personnes ;
+      sans liaison ; politique gardant `connector:use` ; évaluation sans compte relié ;
+    - `crates/api/tests/microsoft365_renewals.rs` : liaison révoquée retirée et auditée,
+      jeton tourné gardé, jeton refusé renouvelé ;
+    - `crates/api/src/services/account_links/tokens.rs` : jetons gardés.

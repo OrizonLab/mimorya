@@ -3,6 +3,7 @@
 #![allow(dead_code)] // not every test binary uses every fixture
 
 pub mod mcp;
+pub mod microsoft365;
 pub mod rest;
 
 use std::collections::HashMap;
@@ -26,7 +27,7 @@ use mimorya_core::authz::{Actor, AuthorizationEngine};
 use mimorya_core::autonomy::{AutonomyLevel, AutonomyPolicy};
 use mimorya_core::demo::{self, unit, user};
 use mimorya_core::memory::{MemoryKind, MemoryScope, memory_read_filter};
-use mimorya_core::tools::{ToolRef, ToolResult};
+use mimorya_core::tools::{ToolRef, ToolResult, ToolServices};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
@@ -65,7 +66,10 @@ pub fn executor_with_engine(
         Actor::agent(Some(run_id)),
         AutonomyPolicy::new(AutonomyLevel::ExecuteWithApproval),
         run_id,
-        ports.ports().deliverables,
+        ToolServices {
+            deliverables: ports.ports().deliverables,
+            accounts: ports.ports().accounts,
+        },
         Duration::from_secs(30),
     )
 }

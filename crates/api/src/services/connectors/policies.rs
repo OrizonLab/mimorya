@@ -1,8 +1,8 @@
 //! The tool policies of an instance, as runs apply them: read strictly (a
 //! policy that cannot be read makes the connector unavailable, since
 //! ignoring it could drop a restriction an administrator set), scoped to the
-//! instance's own tools; an MCP or REST tool always requires
-//! `connector:use` (ADR-025, ADR-112), and a description an administrator
+//! instance's own tools; an MCP, REST or Microsoft 365 tool always
+//! requires `connector:use` (ADR-025, ADR-112, ADR-117), and a description an administrator
 //! wrote keeps naming the server (ADR-057), an MCP server's tools being the
 //! only ones whose description may be replaced.
 
@@ -11,6 +11,7 @@ use std::collections::HashMap;
 use mimorya_agent::tools::ToolOverride;
 use mimorya_connectors::mcp::mcp_tool_description;
 use mimorya_connectors::outbound::CONNECTOR_USE;
+use mimorya_core::account_links::MICROSOFT365;
 use mimorya_db::repositories::connectors::ConnectorInstanceRow;
 
 pub type Policies = HashMap<String, ToolOverride>;
@@ -32,7 +33,10 @@ pub fn scoped_overrides(
         .into_iter()
         .filter(|(name, _)| tools.contains(name))
         .map(|(name, mut policy)| {
-            let added = matches!(instance.connector_type.as_str(), "mcp" | "rest");
+            let added = matches!(
+                instance.connector_type.as_str(),
+                "mcp" | "rest" | MICROSOFT365
+            );
             if added
                 && let Some(permissions) = policy.permissions.as_mut()
                 && !permissions.iter().any(|p| p == CONNECTOR_USE)

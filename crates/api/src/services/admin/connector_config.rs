@@ -9,7 +9,7 @@
 
 use std::collections::HashMap;
 
-use mimorya_connectors::microsoft365::Microsoft365Config;
+use mimorya_connectors::microsoft365::{MICROSOFT365_TOOLS, Microsoft365Config};
 use mimorya_connectors::outbound::NetworkPolicy;
 use mimorya_connectors::{mcp, rest};
 use mimorya_core::DomainError;
@@ -114,8 +114,10 @@ impl Editable {
     fn declared_tools(&self, operations: Option<&[rest::RestOperation]>) -> Option<Vec<String>> {
         let config = match self {
             Self::Rest(config) => config,
-            // Its tools come with the next lot (ADR-116).
-            Self::Microsoft365(_) => return Some(Vec::new()),
+            // Fixed by the platform (ADR-117).
+            Self::Microsoft365(_) => {
+                return Some(MICROSOFT365_TOOLS.map(String::from).to_vec());
+            }
             Self::Mcp { .. } => return None,
         };
         let operations = operations.unwrap_or(&config.operations);

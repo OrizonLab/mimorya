@@ -12,6 +12,7 @@ use std::time::Duration;
 
 use mimorya_core::authz::Actor;
 use mimorya_core::autonomy::AutonomyPolicy;
+use mimorya_core::tools::ToolServices;
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -75,7 +76,10 @@ impl ToolCallProcessor {
             self.actor.clone(),
             self.autonomy.clone(),
             self.run_id,
-            self.ports.deliverables.clone(),
+            ToolServices {
+                deliverables: self.ports.deliverables.clone(),
+                accounts: self.ports.accounts.clone(),
+            },
             self.timeout,
         )
     }

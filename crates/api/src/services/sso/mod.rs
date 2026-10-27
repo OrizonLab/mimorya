@@ -39,9 +39,10 @@ pub use sign_in::{Return, SignInFailure};
 pub(crate) use address::address_problem;
 pub(crate) use attempt::{open_value, seal_value};
 pub(crate) use http::ProviderHttp;
+pub(crate) use metadata::MetadataCache;
 pub(crate) use oidc::{
-    Application, Failure, IdToken, authorization, discover, error_code, redeem, token_claims,
-    verify,
+    Application, Failure, IdToken, Unrefreshed, authorization, discover, error_code, redeem,
+    refresh, token_claims, verify,
 };
 pub(crate) use sign_in::same_state;
 
@@ -58,7 +59,6 @@ use openidconnect::core::CoreProviderMetadata;
 use uuid::Uuid;
 
 use crate::secrets::{SecretCipher, SecretStore};
-use metadata::MetadataCache;
 
 /// Where a provider sends the browser back, under the web origin.
 pub const CALLBACK_PATH: &str = "/api/auth/sso/callback";
