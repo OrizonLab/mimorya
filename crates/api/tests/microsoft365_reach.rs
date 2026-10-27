@@ -2,7 +2,7 @@
 //! (ADR-117): a sub-agent reads its run's person's; a token kept serves only
 //! the link it was renewed from, never once the link is removed or its
 //! application disabled; a renewal or a revocation read before a link was
-//! made again leaves the new link alone.
+//! made again leaves the new link alone, and is not said to have removed it.
 
 mod support;
 
@@ -191,5 +191,46 @@ async fn a_late_renewal_or_revocation_leaves_a_link_made_again_alone() {
     assert_eq!(
         kept_refresh_token(&api, connector, user::CLAIRE).await,
         None
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_link_made_again_during_its_revocation_is_not_said_removed() {
+    let api = TestApi::start_with(&SSO_DEPLOYMENT).await;
+    let idp = MockIdentityProvider::start().await;
+    let graph = FakeGraph::start().await;
+    let connector = insert_microsoft365_reading(&api, &idp, &graph.url).await;
+    let claire = api.sign_in(user::CLAIRE).await;
+    idp.sign_in_as(microsoft_person("objet-claire", &email(user::CLAIRE)));
+    link(&claire, &idp, connector).await;
+    idp.revoke_refresh_tokens();
+    let gate = idp.hold_renewals();
+    let accounts = PersonAccounts::new(
+        api.app.services.account_links.clone(),
+        tenant::ID,
+        user::CLAIRE,
+    );
+    let asked = tokio::spawn(async move { accounts.access_token(MICROSOFT365).await });
+    gate.reached().await;
+    // Made again while Microsoft answered for the old one.
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    sqlx::query("update account_links set refreshed_at = now() where user_id = $1")
+        .bind(user::CLAIRE)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    gate.release();
+    match asked.await.unwrap() {
+        Err(AccountAccessError::Unavailable(why)) => {
+            assert!(why.contains("vient d’être refaite"), "{why}")
+        }
+        other => panic!("{other:?}"),
+    }
+    assert!(
+        kept_refresh_token(&api, connector, user::CLAIRE)
+            .await
+            .is_some()
     );
 }

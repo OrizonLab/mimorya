@@ -63,10 +63,16 @@ pub(super) async fn token(
     if !authenticated(&headers, &form) {
         return refused("invalid_client");
     }
-    let mut provider = shared.lock().expect("provider");
     if form.get("grant_type").map(String::as_str) == Some("refresh_token") {
+        // Held, if the test holds renewals, until it lets them through.
+        let gate = shared.lock().expect("provider").renewals.gate.clone();
+        if let Some(gate) = gate {
+            gate.pass().await;
+        }
+        let mut provider = shared.lock().expect("provider");
         return super::refresh::renew(&mut provider.renewals, &form);
     }
+    let mut provider = shared.lock().expect("provider");
     // A code is redeemed once.
     let Some(grant) = form.get("code").and_then(|c| provider.grants.remove(c)) else {
         return refused("invalid_grant");

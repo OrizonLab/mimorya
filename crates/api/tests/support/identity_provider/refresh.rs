@@ -1,13 +1,41 @@
 //! The provider's renewals (ADR-117): a refresh token it issued, unless
 //! revoked, brings an access token `acces-<subject>-<n>`, as the test
 //! Graph reads them, valid an hour; and a new refresh token, when it
-//! rotates them (the old one stays valid, as at Microsoft).
+//! rotates them (the old one stays valid, as at Microsoft). A test may hold
+//! renewals until it lets them through (`RenewalGate`).
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use serde_json::json;
+use tokio::sync::Notify;
+
+/// Holds each renewal until the test lets it through, and tells the test
+/// when one arrived.
+#[derive(Default)]
+pub struct RenewalGate {
+    arrived: Notify,
+    released: Notify,
+}
+
+impl RenewalGate {
+    /// Returns once a renewal is held.
+    pub async fn reached(&self) {
+        self.arrived.notified().await;
+    }
+
+    /// Lets the renewal held, or the next one, through.
+    pub fn release(&self) {
+        self.released.notify_one();
+    }
+
+    pub(super) async fn pass(&self) {
+        self.arrived.notify_one();
+        self.released.notified().await;
+    }
+}
 
 #[derive(Default)]
 pub(super) struct Renewals {
@@ -17,6 +45,7 @@ pub(super) struct Renewals {
     pub asked: Vec<String>,
     pub revoked: bool,
     pub rotate: bool,
+    pub gate: Option<Arc<RenewalGate>>,
     /// Access tokens minted.
     minted: usize,
 }

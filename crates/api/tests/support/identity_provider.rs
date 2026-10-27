@@ -228,6 +228,13 @@ impl MockIdentityProvider {
         self.shared.lock().expect("provider").renewals.revoked = true;
     }
 
+    /// Holds the renewals until the gate lets them through.
+    pub fn hold_renewals(&self) -> Arc<refresh::RenewalGate> {
+        let gate = Arc::new(refresh::RenewalGate::default());
+        self.shared.lock().expect("provider").renewals.gate = Some(gate.clone());
+        gate
+    }
+
     /// Each renewal brings a new refresh token.
     pub fn rotate_refresh_tokens(&self) {
         self.shared.lock().expect("provider").renewals.rotate = true;

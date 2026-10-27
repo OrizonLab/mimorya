@@ -15,7 +15,6 @@ path = "src/bin/mcp_demo_docs.rs"
 anyhow.workspace = true
 async-trait.workspace = true
 chrono.workspace = true
-chrono-tz.workspace = true
 mimorya-core.workspace = true
 regex.workspace = true
 reqwest-mcp.workspace = true

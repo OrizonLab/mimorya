@@ -6047,10 +6047,10 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     tout résultat d'outil, avec la conservation des runs ; le journal des appels n'en
     garde que le résumé ;
   - le contenu d'une boîte est écrit par n'importe quel expéditeur : c'est une donnée
-    non fiable, encadrée comme telle. Comme tout résultat d'outil, le modèle peut s'en
-    servir dans une mémoire d'équipe ou d'entreprise : directement si la personne servie
-    peut l'écrire, sinon comme une proposition qu'un validateur relit (jamais depuis un
-    run lancé par un déclencheur, ADR-109) ;
+    non fiable, encadrée comme telle. Comme tout résultat d'outil, le modèle peut le
+    reprendre dans une proposition de mémoire d'équipe ou d'entreprise, toujours relue
+    par un validateur avant d'être lue par d'autres ; seule la mémoire personnelle est
+    écrite directement, et jamais depuis un déclencheur (ADR-109) ;
   - un run lancé par une tâche planifiée, une mission ou un déclencheur sert son auteur :
     les outils lisent son compte. Ce qui en sortirait de la plateforme passe par un
     outil d'écriture, sous validation (et l'autonomie d'un déclencheur est plafonnée,
