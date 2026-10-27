@@ -42,8 +42,8 @@ pub enum GraphFailure {
 impl GraphFailure {
     pub fn message(&self) -> String {
         match self {
-            Self::Unauthorized => "Microsoft 365 refuse l’accès à votre compte : reliez-le de \
-                 nouveau dans « Mon compte »"
+            Self::Unauthorized => "Microsoft 365 a refusé l’accès au compte de la personne \
+                 servie : réessayez ; si le refus persiste, la personne relie de nouveau son compte"
                 .into(),
             Self::Forbidden => "Microsoft 365 refuse cette lecture : la permission \
                  correspondante n’a pas été accordée à l’application"

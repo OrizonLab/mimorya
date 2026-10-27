@@ -13,7 +13,7 @@ use validator::Validate;
 
 use super::graph::Graph;
 use super::reach::read_as_person;
-use super::shape::{IN_PLATFORM_ZONE, bounded, collection, day_end, day_start, graph_instant};
+use super::shape::{bounded, collection, day_end, day_start, graph_instant, in_platform_zone};
 use super::shape::{people, person, short};
 use crate::outbound::CONNECTOR_USE;
 
@@ -33,7 +33,7 @@ pub struct CalendarEvents {
 pub struct CalendarEventsInput {
     /// Premier jour inclus (AAAA-MM-JJ)
     from: NaiveDate,
-    /// Dernier jour inclus (AAAA-MM-JJ), 31 jours au plus après le premier
+    /// Dernier jour inclus (AAAA-MM-JJ) : 31 jours au plus, premier et dernier compris
     to: NaiveDate,
 }
 
@@ -83,7 +83,7 @@ impl TypedTool for CalendarEvents {
         ToolInfo::new(
             "m365_calendar_events",
             "Agenda Microsoft 365",
-            "Renvoie les rendez-vous de l’agenda Microsoft 365 de la personne servie sur une période (31 jours au plus), avec ses propres droits : objet, début et fin (heure de Paris), lieu, organisateur, participants.",
+            "Renvoie les rendez-vous de l’agenda Microsoft 365 de la personne servie sur une période (31 jours au plus, bornes comprises), avec ses propres droits : objet, début et fin (heure de Paris), lieu, organisateur, participants.",
             ToolRisk::Read,
         )
         .requires([CONNECTOR_USE])
@@ -107,9 +107,9 @@ impl TypedTool for CalendarEvents {
                 ("$top", MAX_EVENTS.to_string()),
             ],
         );
-        let answer = match read_as_person(&self.graph, ctx, url, Some(IN_PLATFORM_ZONE)).await {
+        let answer = match read_as_person(&self.graph, ctx, url, Some(&in_platform_zone())).await {
             Ok(answer) => answer,
-            Err(failed) => return Ok(failed),
+            Err(why) => return Ok(ToolResult::error(why)),
         };
         let (items, more) = collection(&answer);
         let mut content = json!({

@@ -25,6 +25,7 @@ pub mod skill_evaluations;
 pub mod skill_proposals;
 pub mod skill_quality;
 pub mod skill_rules;
+pub mod time_zone;
 pub mod tools;
 
 pub use error::{DomainError, ErrorCode, UnknownReference};

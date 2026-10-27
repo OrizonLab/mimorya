@@ -28,14 +28,3 @@ pub trait LinkedAccounts: Send + Sync {
     /// next call does not hand it again.
     async fn rejected(&self, _connector_type: &str) {}
 }
-
-/// Where no linked account is reached: a run that may not (an
-/// evaluation), or a test. Its reason, in French, is what a tool says.
-pub struct NoLinkedAccounts(pub &'static str);
-
-#[async_trait]
-impl LinkedAccounts for NoLinkedAccounts {
-    async fn access_token(&self, _connector_type: &str) -> Result<String, AccountAccessError> {
-        Err(AccountAccessError::Unavailable(self.0.into()))
-    }
-}

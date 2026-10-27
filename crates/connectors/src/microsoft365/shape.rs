@@ -4,13 +4,13 @@
 //! one the model is told today's date in).
 
 use chrono::{DateTime, Days, NaiveDate, TimeZone, Utc};
-use chrono_tz::Tz;
+use mimorya_core::time_zone::PLATFORM_TIME_ZONE;
 use serde_json::{Value, json};
 
-/// The zone of the run's date (`french_date`).
-pub const PLATFORM_ZONE: Tz = chrono_tz::Europe::Paris;
-/// Graph gives dates of events in this zone.
-pub const IN_PLATFORM_ZONE: &str = "outlook.timezone=\"Europe/Paris\"";
+/// Graph's header asking dates of events in the platform's zone.
+pub fn in_platform_zone() -> String {
+    format!("outlook.timezone=\"{}\"", PLATFORM_TIME_ZONE.name())
+}
 /// The most of a short text kept (subject, place, name).
 const MAX_SHORT_CHARS: usize = 300;
 
@@ -55,7 +55,7 @@ pub fn people(recipients: Option<&Value>, max: usize) -> (Vec<Value>, usize) {
 pub fn day_start(day: NaiveDate) -> DateTime<Utc> {
     let midnight = day.and_hms_opt(0, 0, 0).unwrap_or_default();
     // A day always has a first instant, even where midnight is skipped.
-    PLATFORM_ZONE
+    PLATFORM_TIME_ZONE
         .from_local_datetime(&midnight)
         .earliest()
         .map_or_else(

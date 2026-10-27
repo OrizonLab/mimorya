@@ -82,7 +82,10 @@ async fn without_a_linked_account_nothing_reaches_graph() {
     let ports = ports_of(user::LEA, None);
     let executor = mailbox_executor(tools.clone(), user::LEA, &ports, ports.clone());
     let error = error_of(&call(&executor, "m365_mail_search", json!({})).await);
-    assert!(error.contains("« Mon compte »"), "{error}");
+    assert!(
+        error.contains("relie son compte à la plateforme"),
+        "{error}"
+    );
     let revoked = Arc::new(Unreachable(AccountAccessError::Revoked));
     let executor = mailbox_executor(tools.clone(), user::LEA, &ports, revoked);
     let error = error_of(&call(&executor, "m365_mail_read", json!({ "id": "x" })).await);
@@ -108,7 +111,7 @@ async fn a_token_graph_refuses_is_reported_to_the_platform() {
         accounts,
     );
     let error = error_of(&call(&executor, "m365_mail_search", json!({})).await);
-    assert!(error.contains("reliez-le de nouveau"), "{error}");
+    assert!(error.contains("réessayez"), "{error}");
     assert_eq!(ports.rejected_accounts(), [MICROSOFT365]);
     // Another refusal says nothing of the token.
     let ok = ports_of(user::LEA, Some("acces-lea-2"));

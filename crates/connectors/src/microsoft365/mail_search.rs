@@ -129,7 +129,7 @@ impl TypedTool for MailSearch {
         let url = self.graph.address(&["me", "messages"], &query);
         let answer = match read_as_person(&self.graph, ctx, url, None).await {
             Ok(answer) => answer,
-            Err(failed) => return Ok(failed),
+            Err(why) => return Ok(ToolResult::error(why)),
         };
         let (messages, more) = collection(&answer);
         let mut content = json!({

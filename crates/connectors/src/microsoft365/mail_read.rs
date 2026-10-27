@@ -74,7 +74,7 @@ impl TypedTool for MailRead {
         );
         let message = match read_as_person(&self.graph, ctx, url, Some(AS_TEXT)).await {
             Ok(message) => message,
-            Err(failed) => return Ok(failed),
+            Err(why) => return Ok(ToolResult::error(why)),
         };
         let body = message
             .pointer("/body/content")
@@ -93,12 +93,9 @@ impl TypedTool for MailRead {
             "piecesJointes": message.get("hasAttachments"),
             "lien": short(&message, "/webLink"),
         });
-        let subject = content["objet"]
-            .as_str()
-            .unwrap_or("(sans objet)")
-            .to_string();
+        // The subject stays out of the journal: the citation carries it.
         Ok(ToolResult::ok(content)
-            .with_summary(subject)
+            .with_summary("E-mail lu")
             .with_citations(citation(&message).into_iter().collect()))
     }
 }

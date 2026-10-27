@@ -29,7 +29,8 @@ Repères à l'intérieur des crates :
 
 - `core/src/authz/` (types, moteur, conditions ABAC, organigramme), `core/src/tools/`
   (contrat d'outil, outils typés, comptes reliés de la personne servie : `accounts.rs`,
-  ADR-117), `core/src/skill_rules.rs` (ce qu'une compétence peut
+  ADR-117), `core/src/time_zone.rs` (fuseau de la plateforme : date donnée au modèle,
+  jours des outils), `core/src/skill_rules.rs` (ce qu'une compétence peut
   contenir, ADR-052), `core/src/account_links.rs` (comptes que chacun relie :
   application Microsoft 365 déclarée, permissions déléguées, identité qui prouve que le
   compte est le sien, ADR-116), `core/src/skill_proposals.rs` (où va une compétence que
@@ -113,8 +114,8 @@ Repères à l'intérieur des crates :
   `microsoft365.rs`, ADR-116), `api/src/services/account.rs` (son propre compte),
   `api/src/services/account_links/` (comptes que chacun relie : départ vers Microsoft,
   tentative scellée, retour vérifié, jeton scellé, liste et retrait, ADR-116 ; jeton
-  d'accès de la personne servie renouvelé et gardé pour les outils, liaison révoquée
-  retirée : `access.rs`, `tokens.rs`, ADR-117),
+  d'accès de la personne servie lu (`access.rs`), renouvelé avec rotation et liaison
+  révoquée retirée (`renewal.rs`), gardé (`tokens.rs`), ADR-117),
   `api/src/services/notification_settings.rs` (e-mails que chacun choisit de recevoir,
   lus au moment d'envoyer chaque avis, ADR-094),
   `api/src/services/skill_proposal_notice/` (propositions de l'agent annoncées par e-mail

@@ -72,7 +72,7 @@ async fn a_rotated_token_is_kept_and_a_refused_one_renewed() {
     // Revoked before it expired: Graph refuses it, the next call renews it.
     graph.refuse("acces-sujet-objet-claire-1");
     let refused = tool_result(&api, &claire, "m365_mail_search", json!({})).await;
-    assert!(told(&refused).contains("reliez-le de nouveau"), "{refused}");
+    assert!(told(&refused).contains("réessayez"), "{refused}");
     let renewed = tool_result(&api, &claire, "m365_mail_search", json!({})).await;
     assert_eq!(renewed["nombre"], 3, "{renewed}");
     assert_eq!(

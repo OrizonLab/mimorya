@@ -134,4 +134,11 @@ fn a_link_is_renewed_with_what_the_person_granted() {
     // A permission the platform asks now, not granted then, is not asked.
     assert!(!renewal_scopes("offline_access Mail.Read").contains(&"Calendars.Read"));
     assert_eq!(renewal_scopes(" "), MICROSOFT365_SCOPES);
+    // Graph's permissions by their address; offline access always.
+    assert_eq!(
+        renewal_scopes(
+            "https://graph.microsoft.com/Mail.Read https://graph.microsoft.com/User.Read"
+        ),
+        ["offline_access", "Mail.Read"]
+    );
 }

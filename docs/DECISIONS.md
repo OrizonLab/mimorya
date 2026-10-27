@@ -5982,30 +5982,36 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     - `m365_mail_read` lit un e-mail : son texte (Graph le convertit du HTML), tronqué
       au-delà de 20 000 caractères, ses destinataires (20 au plus par liste) et s'il a
       des pièces jointes, qui ne sont pas lues ;
-    - `m365_calendar_events` lit les rendez-vous de 31 jours au plus, 50 au plus, le plus
-      tôt d'abord ;
+    - `m365_calendar_events` lit les rendez-vous de 31 jours au plus (premier et dernier
+      compris), 50 au plus, le plus tôt d'abord ;
   - **ce que les outils demandent** :
     - chacun est une lecture (`read`), sans validation, et exige `connector:use`, qu'une
       politique de l'administration garde comme pour un serveur MCP ou une API REST ;
     - leurs entrées sont strictes. L'identifiant d'un e-mail est limité aux caractères
       de Microsoft et encodé entier dans le chemin, `/` compris : il ne peut viser
       qu'un e-mail de la boîte de la personne ;
-    - les jours donnés sont ceux de l'heure de Paris, celle de la date donnée au
-      modèle ; Graph rend les rendez-vous dans cette heure ;
+    - les jours donnés sont ceux du fuseau de la plateforme (`PLATFORM_TIME_ZONE`,
+      Paris), celui de la date donnée au modèle ; Graph rend les rendez-vous dans ce
+      fuseau ;
     - les identifiants renvoyés sont cités (`email`, `event`) avec l'objet pour libellé.
-      Ils sont opaques, donc sans motif de vérification dans les réponses ;
+      Ils sont opaques, donc sans motif de vérification dans les réponses. Le résumé d'un
+      appel, gardé au journal, ne contient pas d'objet d'e-mail ;
   - **le jeton est celui de la personne servie, jamais choisi par l'outil** :
     - le contrat d'outil reçoit un port `LinkedAccounts` dans `ToolContext`, qui ne donne
       que le jeton d'accès de la personne du run, pour un type de connecteur ;
     - un sous-agent sert la même personne ;
     - une évaluation de compétence ne sert personne : elle ne lit aucun compte relié ;
-  - **le jeton d'accès** (`services/account_links/access.rs`) :
+  - **le jeton d'accès** (`services/account_links/access.rs`, renouvellement dans
+    `renewal.rs`) :
     - à chaque appel, la plateforme relit la liaison et le secret de l'application ;
     - un jeton gardé de cette liaison (même connecteur, même version `refreshed_at`)
       sert jusqu'à deux minutes avant son expiration ;
     - sinon, le jeton de renouvellement est échangé chez Microsoft, avec les seules
       permissions de la plateforme que la personne a accordées. Une permission ajoutée
-      depuis par la plateforme n'est pas demandée, car Microsoft refuserait tout ;
+      depuis par la plateforme n'est pas demandée, car Microsoft refuserait tout. Une
+      permission est reconnue à son dernier segment (Microsoft peut nommer une
+      permission de Graph par son adresse), et l'accès hors connexion est toujours
+      demandé ;
     - aucune transaction n'est tenue pendant l'échange ;
     - les jetons d'accès sont gardés en mémoire du processus seulement, par entreprise et
       par personne, en nombre borné ; la déclaration de Microsoft est gardée une heure ;
@@ -6013,12 +6019,14 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     liaison, si elle n'a pas changé depuis sa lecture. Sinon, la liaison refaite garde
     le sien ;
   - **la révocation** : un jeton de renouvellement que Microsoft n'honore plus
-    (`invalid_grant`) retire la liaison, sauf si elle a été refaite entre-temps. Le
-    retrait est audité (`account.link.revoked`, au nom de la personne, sans jeton), et
-    l'outil dit à la personne de relier de nouveau son compte ;
+    (`invalid_grant`) retire la liaison, sauf si elle a été refaite entre-temps (l'outil
+    dit alors de réessayer). Le retrait est audité (`account.link.revoked`, au nom de la
+    personne, sans jeton), et l'outil dit à la personne de relier de nouveau son
+    compte ;
   - **un jeton d'accès que Graph refuse** (401, révoqué avant son expiration) est oublié :
-    l'appel suivant en renouvelle un ;
-  - **ce que Graph dit n'atteint jamais le modèle** :
+    l'appel suivant en renouvelle un, et l'outil dit de réessayer ;
+  - **les erreurs de Graph n'atteignent jamais le modèle** (le contenu lu l'atteint,
+    encadré comme toute donnée d'outil) :
     - Graph est appelé par le client durci des connecteurs, sans redirection et aux
       adresses publiques ;
     - chaque appel est borné en temps (celui d'un appel de connecteur) et à 1 Mo de
@@ -6038,6 +6046,11 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
   - ce que lisent les outils reste dans l'historique du run (son point de reprise), comme
     tout résultat d'outil, avec la conservation des runs ; le journal des appels n'en
     garde que le résumé ;
+  - le contenu d'une boîte est écrit par n'importe quel expéditeur : c'est une donnée
+    non fiable, encadrée comme telle. Comme tout résultat d'outil, le modèle peut s'en
+    servir dans une mémoire d'équipe ou d'entreprise : directement si la personne servie
+    peut l'écrire, sinon comme une proposition qu'un validateur relit (jamais depuis un
+    run lancé par un déclencheur, ADR-109) ;
   - un run lancé par une tâche planifiée, une mission ou un déclencheur sert son auteur :
     les outils lisent son compte. Ce qui en sortirait de la plateforme passe par un
     outil d'écriture, sous validation (et l'autonomie d'un déclencheur est plafonnée,
@@ -6056,4 +6069,8 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
       sans liaison ; politique gardant `connector:use` ; évaluation sans compte relié ;
     - `crates/api/tests/microsoft365_renewals.rs` : liaison révoquée retirée et auditée,
       jeton tourné gardé, jeton refusé renouvelé ;
+    - `crates/api/tests/microsoft365_reach.rs` : un sous-agent lit le compte de la
+      personne de son run ; un jeton gardé ne sert plus une liaison retirée, refaite ou
+      dont l'application est désactivée ; un renouvellement ou une révocation lus avant
+      une liaison refaite la laissent intacte ;
     - `crates/api/src/services/account_links/tokens.rs` : jetons gardés.

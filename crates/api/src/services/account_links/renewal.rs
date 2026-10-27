@@ -21,6 +21,7 @@ use super::tokens::LinkVersion;
 use crate::services::sso::{Application, Unrefreshed, discover, refresh};
 
 pub const ACCOUNT_LINK_REVOKED: &str = "account.link.revoked";
+const RELINKED: &str = "La liaison du compte Microsoft 365 vient d’être refaite : réessayez";
 const UNREACHABLE: &str = "Microsoft 365 ne renouvelle pas l’accès au compte pour l’instant : \
      réessayez plus tard";
 
@@ -50,8 +51,11 @@ impl AccountLinkService {
         let tokens = match renewed {
             Ok(tokens) => tokens,
             Err(Unrefreshed::Revoked) => {
-                self.revoked(tenant_id, user_id, &read).await?;
-                return Err(AccountAccessError::Revoked);
+                return Err(match self.revoked(tenant_id, user_id, &read).await? {
+                    true => AccountAccessError::Revoked,
+                    // Made again meanwhile: the new link is renewed next.
+                    false => unavailable(RELINKED),
+                });
             }
             Err(Unrefreshed::Failed(failure)) => {
                 tracing::warn!(failure = %failure, "Linked account renewal failed");
@@ -130,13 +134,14 @@ impl AccountLinkService {
         }))
     }
 
-    /// Removes the link the provider no longer honours, audited.
+    /// Removes the link the provider no longer honours, audited, unless it
+    /// was made again since it was read; returns whether it was removed.
     async fn revoked(
         &self,
         tenant_id: Uuid,
         user_id: Uuid,
         read: &LinkRead,
-    ) -> Result<(), AccountAccessError> {
+    ) -> Result<bool, AccountAccessError> {
         self.tokens.forget(tenant_id, user_id);
         let mut tx = self.db.begin(tenant_id).await.map_err(internal)?;
         let removed = delete_revoked_account_link(&mut tx, read.link.id, read.link.refreshed_at)
@@ -153,6 +158,6 @@ impl AccountLinkService {
             .map_err(internal)?;
         }
         tx.commit().await.map_err(internal)?;
-        Ok(())
+        Ok(removed)
     }
 }
