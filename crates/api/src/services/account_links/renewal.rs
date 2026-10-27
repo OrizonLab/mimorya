@@ -97,7 +97,7 @@ impl AccountLinkService {
         if let Some(metadata) = self.declarations.get(read.connector_id, Instant::now()) {
             return Ok(metadata);
         }
-        let metadata = discover(&self.http, &read.config.issuer)
+        let metadata = discover(&self.http, self.issuer_of(&read.config))
             .await
             .map_err(|failure| {
                 tracing::warn!(failure = %failure, "Linked account provider unreachable");

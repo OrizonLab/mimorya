@@ -59,7 +59,7 @@ export function LinkedAccounts() {
       {(data) =>
         data.connectors.length === 0 && !outcome ? null : (
           <Card className="flex max-w-2xl flex-col gap-3 p-4">
-            <p className="font-medium">Comptes reliés</p>
+            <h2 className="font-medium">Comptes reliés</h2>
             {outcome &&
               (OUTCOMES[outcome].failed ? (
                 <ErrorNote message={OUTCOMES[outcome].text} />
@@ -98,7 +98,7 @@ function LinkRow({ connector, onChanged }: { connector: AccountLinkView; onChang
 
   async function unlink() {
     const question =
-      'Retirer la liaison de votre compte Microsoft 365 ? L’agent ne pourra plus y lire. L’accord donné à l’application se retire aussi dans votre compte Microsoft.';
+      'Retirer la liaison de votre compte Microsoft 365 ? L’agent ne pourra plus y lire. L’accord donné à l’application reste chez Microsoft : retirez-le aussi dans votre compte Microsoft.';
     if (!window.confirm(question)) return;
     if (await action.run(() => api.delete(path))) onChanged();
   }

@@ -6106,13 +6106,15 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     - « Modifier » change le nom et remplace le secret (vide : le secret enregistré est
       gardé) ; « Supprimer » dit combien de liaisons partent avec l'application ;
   - **les outils nomment de nouveau « Mon compte »** dans leurs messages (ADR-117) ;
-  - **parcours de bout en bout** : le serveur des tests remplace l'émetteur avec lequel
-    une application est déclarée par celui de son fournisseur simulé
-    (`BuildOptions::microsoft365_issuer`, jamais réglé en production, où l'émetteur reste
-    celui de l'annuaire chez Microsoft). Le fournisseur simulé accepte un identifiant
-    d'application en GUID et nomme le compte de l'annuaire (`oid`, nom de connexion) quand
-    une liaison est demandée. Le connecteur n'y est jamais démarré : ses outils sont
-    testés par l'API (ADR-117) ;
+  - **parcours de bout en bout** : le serveur des tests envoie les personnes à son
+    fournisseur simulé au lieu de l'émetteur de l'annuaire chez Microsoft
+    (`BuildOptions::microsoft365_issuer`, jamais réglé en production). Le remplacement
+    s'applique quand le fournisseur est joint (départ, retour, renouvellement), jamais à
+    la déclaration enregistrée, qui garde l'émetteur de Microsoft : l'application se
+    vérifie comme en production. Le fournisseur simulé accepte un identifiant
+    d'application en GUID, nomme le compte de l'annuaire (`oid`, nom de connexion) quand
+    une liaison est demandée, et ne laisse échanger un code qu'au client à qui il l'a
+    donné. Les outils n'y sont jamais appelés : ils sont testés par l'API (ADR-117) ;
   - les options de construction du serveur pour les tests (`BuildOptions`) quittent
     `app.rs` pour `build_options.rs`.
 - **Conséquences** :
@@ -6121,6 +6123,10 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
   - restent : l'envoi d'e-mails et la création de rendez-vous sous validation, Google
     Workspace ;
   - tests : `apps/web/e2e/microsoft365.spec.ts` (déclaration, secret jamais listé, une par
-    entreprise, liaison par le fournisseur simulé et retour sur « Mon compte », compte
-    relié compté, renommage, retrait de la liaison, suppression de l'application, issue
-    d'un retour dite une fois).
+    entreprise, déclaration vérifiée sans joindre Microsoft et règle d'un outil, liaison
+    par le fournisseur simulé et retour sur « Mon compte », compte relié compté et
+    annoncé dans la suppression refusée, renommage, application désactivée : liaison
+    dite inutile et seulement retirée, confirmation du retrait, suppression de
+    l'application, issue d'un retour dite une fois) ;
+    `crates/api/tests/microsoft365_connector.rs` (émetteur et Graph de Microsoft
+    enregistrés).

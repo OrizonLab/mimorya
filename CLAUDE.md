@@ -200,8 +200,8 @@ Repères à l'intérieur des crates :
   `documents.rs`, ADR-097, lus par `mimorya-extract` qu'ils construisent, une question
   confiée à un sous-agent, `sub_agents.rs`, ADR-099, une compétence que l'agent propose,
   `skill_proposals.rs`, ADR-101, et une version de compétence jouée sur son cas,
-  `skill_evaluations.rs`, ADR-105, et ce qu'envoie un déclencheur, `hooks.rs`, ADR-110 ; l'application Microsoft 365 y est
-  déclarée auprès du fournisseur simulé, `BuildOptions::microsoft365_issuer`, ADR-118).
+  `skill_evaluations.rs`, ADR-105, et ce qu'envoie un déclencheur, `hooks.rs`, ADR-110 ; les personnes y sont envoyées
+  au fournisseur simulé au lieu de Microsoft, `BuildOptions::microsoft365_issuer`, ADR-118).
 - `infra/` : `docker/` (images de l'API et de l'interface, liste des images publiées
   `images.json`, test de fumée de la démonstration, test d'installation de la production,
   vérifications partagées `checks.sh`, dont les rôles des processus lus dans la base), `caddy/`

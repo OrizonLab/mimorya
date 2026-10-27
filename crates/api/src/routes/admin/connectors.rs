@@ -175,7 +175,6 @@ pub async fn create_microsoft365(
         client_id: body.client_id,
         client_secret: body.client_secret,
         enabled: body.enabled.unwrap_or(true),
-        issuer: state.account_links.declared_issuer().map(String::from),
     };
     let id =
         create_microsoft365_connector(&admin(&state, &store, &catalog), &access, input).await?;

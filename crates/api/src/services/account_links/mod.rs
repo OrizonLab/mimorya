@@ -24,6 +24,7 @@ pub use renewal::ACCOUNT_LINK_REVOKED;
 
 use std::sync::Arc;
 
+use mimorya_connectors::microsoft365::Microsoft365Config;
 use mimorya_connectors::outbound::NetworkPolicy;
 use mimorya_core::DomainError;
 use mimorya_core::account_links::MICROSOFT365;
@@ -74,9 +75,10 @@ pub struct AccountLinkService {
     tokens: AccessTokens,
     /// The applications' provider declarations, for renewals.
     declarations: MetadataCache<CoreProviderMetadata>,
-    /// Replaces the issuer an application is declared with (end-to-end
-    /// tests: the local provider, ADR-118).
-    declared_issuer: Option<String>,
+    /// Replaces the issuer an application's people are sent to, its
+    /// directory's at Microsoft (end-to-end tests: the local provider,
+    /// ADR-118).
+    issuer: Option<String>,
 }
 
 impl AccountLinkService {
@@ -85,7 +87,7 @@ impl AccountLinkService {
         cipher: Option<Arc<SecretCipher>>,
         network: NetworkPolicy,
         web_origin: &str,
-        declared_issuer: Option<String>,
+        issuer: Option<String>,
     ) -> anyhow::Result<Self> {
         Ok(Self {
             db,
@@ -96,14 +98,8 @@ impl AccountLinkService {
             redirect_uri: format!("{web_origin}{CALLBACK_PATH}"),
             tokens: AccessTokens::default(),
             declarations: MetadataCache::default(),
-            declared_issuer,
+            issuer,
         })
-    }
-
-    /// The issuer a company's application is declared with instead of its
-    /// directory's, if this server replaces it (end-to-end tests).
-    pub fn declared_issuer(&self) -> Option<&str> {
-        self.declared_issuer.as_deref()
     }
 
     /// The address to register in the company's application.
@@ -159,6 +155,14 @@ impl AccountLinkService {
         .await?;
         tx.commit().await?;
         Ok(())
+    }
+}
+
+impl AccountLinkService {
+    /// Where an application's people sign in: its directory's issuer, unless
+    /// this server replaces it (end-to-end tests).
+    fn issuer_of<'a>(&'a self, config: &'a Microsoft365Config) -> &'a str {
+        self.issuer.as_deref().unwrap_or(&config.issuer)
     }
 }
 

@@ -39,7 +39,7 @@ impl AccountLinkService {
                 "Microsoft 365 ne répond pas comme attendu : réessayez plus tard",
             )
         };
-        let metadata = discover(&self.http, &config.issuer)
+        let metadata = discover(&self.http, self.issuer_of(&config))
             .await
             .map_err(unreachable)?;
         let departure = authorization(

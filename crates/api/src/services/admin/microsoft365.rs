@@ -28,8 +28,6 @@ pub struct NewMicrosoft365 {
     pub client_id: String,
     pub client_secret: String,
     pub enabled: bool,
-    /// Replaces the directory's issuer at Microsoft (end-to-end tests).
-    pub issuer: Option<String>,
 }
 
 const ALREADY: &str = "L’application Microsoft 365 de l’entreprise est déjà déclarée : \
@@ -61,7 +59,7 @@ pub async fn create_microsoft365_connector(
     let config = serde_json::to_value(Microsoft365Config {
         directory: application.directory,
         client_id: application.client_id.to_string(),
-        issuer: input.issuer.unwrap_or(application.issuer),
+        issuer: application.issuer,
         graph: MICROSOFT_GRAPH.into(),
     })?;
     let created = create_connector_instance(

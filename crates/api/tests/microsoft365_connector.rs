@@ -7,6 +7,7 @@
 mod support;
 
 use axum::http::StatusCode;
+use mimorya_core::account_links::MICROSOFT_GRAPH;
 use mimorya_core::demo::{tenant, user};
 use serde_json::{Value, json};
 use support::account_links::DIRECTORY;
@@ -84,6 +85,20 @@ async fn the_company_declares_its_application_once() {
     let created = paul.post(DECLARE, declaration()).await;
     assert_eq!(created.status, StatusCode::CREATED, "{}", created.text());
     let id = created.json()["id"].as_str().unwrap().to_string();
+    // Stored with the directory's issuer at Microsoft and Microsoft Graph.
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    let config: Value =
+        sqlx::query_scalar("select config from connector_instances where id = $1::uuid")
+            .bind(&id)
+            .fetch_one(&mut *tx)
+            .await
+            .unwrap();
+    tx.commit().await.unwrap();
+    assert_eq!(
+        config["issuer"],
+        format!("https://login.microsoftonline.com/{DIRECTORY}/v2.0")
+    );
+    assert_eq!(config["graph"], MICROSOFT_GRAPH);
     let view = microsoft365_view(&paul).await;
     assert_eq!(
         view["microsoft365"],
