@@ -11,7 +11,7 @@ use mimorya_core::DomainError;
 use mimorya_core::account_links::{
     GOOGLE_CALENDAR, GOOGLE_GMAIL, LinkKind, google_workspace_application,
 };
-use serde_json::json;
+use serde_json::{Map, json};
 use uuid::Uuid;
 
 use super::connectors::{ConnectorAdmin, PERMISSION};
@@ -48,10 +48,10 @@ pub async fn create_google_workspace_connector(
         enabled: input.enabled,
         config,
         secret: input.client_secret,
-        audited: json!({
-            "clientId": application.client_id,
-            "writeTools": input.write_tools,
-        }),
+        audited: Map::from_iter([
+            ("clientId".into(), json!(application.client_id)),
+            ("writeTools".into(), json!(input.write_tools)),
+        ]),
     };
     declare_application(admin, access, declaration).await
 }

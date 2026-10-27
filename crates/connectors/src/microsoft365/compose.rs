@@ -10,7 +10,7 @@ use mimorya_core::plain_text::{is_hidden, shows_all_it_holds};
 use serde_json::{Value, json};
 use validator::{ValidateEmail, ValidationError};
 
-use super::shape::bounded;
+use crate::delegated::shape::bounded;
 
 /// The longest address accepted (RFC 5321's path, less its brackets).
 const MAX_ADDRESS_CHARS: usize = 254;

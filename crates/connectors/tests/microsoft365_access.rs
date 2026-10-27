@@ -12,7 +12,8 @@ use mimorya_core::account_links::MICROSOFT365;
 use mimorya_core::demo::user;
 use mimorya_core::tools::{AccountAccessError, LinkedAccounts};
 use serde_json::json;
-use support::microsoft365::{Unreachable, call, error_of, mailbox_executor, microsoft365_tools};
+use support::linked_accounts::{Unreachable, call, error_of, mailbox_executor};
+use support::microsoft365::microsoft365_tools;
 use uuid::Uuid;
 
 fn ports_of(user_id: Uuid, token: Option<&str>) -> Arc<InMemoryPorts> {

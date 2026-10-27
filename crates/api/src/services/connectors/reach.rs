@@ -40,8 +40,9 @@ fn in_reach(type_name: &str, holds: &impl Fn(&str) -> bool) -> bool {
     })
 }
 
-/// The types a company adds itself, whose tools require `connector:use`.
-fn added_by_companies(type_name: &str) -> bool {
+/// The types a company adds itself, whose tools always require
+/// `connector:use`, a policy's permissions included (`policies`).
+pub(super) fn added_by_companies(type_name: &str) -> bool {
     matches!(type_name, "mcp" | "rest") || LinkKind::of(type_name).is_some()
 }
 

@@ -12,7 +12,7 @@ use mimorya_db::repositories::audit::append_audit;
 use mimorya_db::repositories::connectors::{
     NewConnectorInstance, create_connector_instance, list_connector_instances,
 };
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 use uuid::Uuid;
 
 use super::connectors::{ConnectorAdmin, PERMISSION};
@@ -29,7 +29,7 @@ pub(super) struct Declaration {
     pub secret: String,
     /// What the audit keeps of it besides its name, type and activation:
     /// its identifiers, never its secret.
-    pub audited: Value,
+    pub audited: Map<String, Value>,
 }
 
 pub(super) async fn declare_application(
@@ -94,8 +94,8 @@ pub(super) async fn declare_application(
         "enabled": declaration.enabled,
         "tokenStored": true,
     });
-    if let (Some(kept), Value::Object(audited)) = (metadata.as_object_mut(), declaration.audited) {
-        kept.extend(audited);
+    if let Some(kept) = metadata.as_object_mut() {
+        kept.extend(declaration.audited);
     }
     append_audit(
         &mut tx,

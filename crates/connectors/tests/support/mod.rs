@@ -2,6 +2,8 @@
 //! and the reference scenario's scripted run.
 #![allow(dead_code)] // not every test binary uses every fixture
 
+pub mod google_workspace;
+pub mod linked_accounts;
 pub mod mcp;
 pub mod microsoft365;
 pub mod rest;

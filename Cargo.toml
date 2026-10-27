@@ -24,6 +24,8 @@ base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "std"] }
 chrono-tz = "0.10"
 dotenvy = "0.15"
+# Text of e-mails in the charset they declare (ADR-122).
+encoding_rs = "0.8"
 futures = "0.3"
 # Invitation e-mails over SMTP: TLS by rustls (ring, webpki roots).
 lettre = { version = "0.11.23", default-features = false, features = ["builder", "hostname", "pool", "smtp-transport", "tokio1-rustls-tls"] }

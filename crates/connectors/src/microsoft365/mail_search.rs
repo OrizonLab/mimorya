@@ -13,16 +13,17 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use validator::Validate;
 
-use super::graph::Graph;
-use super::reach::read_as_person;
-use super::shape::{collection, day_start, graph_instant, person, short};
+use super::shape::{collection, person};
+use crate::delegated::ProviderApi;
+use crate::delegated::read_as_person;
+use crate::delegated::shape::{bounded, day_start, short, utc_instant};
 use crate::outbound::CONNECTOR_USE;
 
 const SELECT: &str = "id,subject,from,receivedDateTime,bodyPreview,isRead,hasAttachments,webLink";
 const DEFAULT_LIMIT: u8 = 10;
 
 pub struct MailSearch {
-    pub graph: Graph,
+    pub graph: ProviderApi,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema, Validate)]
@@ -77,7 +78,7 @@ fn query(input: &MailSearchInput) -> Result<Vec<(&'static str, String)>, &'stati
         (None, since) => {
             query.push(("$orderby", "receivedDateTime desc".into()));
             if let Some(day) = since {
-                let start = graph_instant(day_start(day));
+                let start = utc_instant(day_start(day));
                 query.push(("$filter", format!("receivedDateTime ge {start}")));
             }
         }
@@ -105,7 +106,7 @@ pub fn citation(message: &Value) -> Option<Citation> {
         .and_then(Value::as_str)
         .filter(|s| !s.trim().is_empty())
         .unwrap_or("(sans objet)");
-    Some(Citation::new("email", id).labelled(super::shape::bounded(subject, 120).0))
+    Some(Citation::new("email", id).labelled(bounded(subject, 120).0))
 }
 
 #[async_trait]

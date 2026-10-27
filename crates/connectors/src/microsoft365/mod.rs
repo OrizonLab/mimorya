@@ -10,15 +10,14 @@
 mod calendar_create;
 mod calendar_events;
 mod compose;
-mod graph;
 mod mail_read;
 mod mail_search;
 mod mail_send;
-mod reach;
 mod shape;
 
 use anyhow::bail;
 use async_trait::async_trait;
+use mimorya_core::account_links::LinkKind;
 use mimorya_core::tools::typed_tool;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -26,10 +25,10 @@ use uuid::Uuid;
 
 use self::calendar_create::CalendarCreate;
 use self::calendar_events::CalendarEvents;
-use self::graph::Graph;
 use self::mail_read::MailRead;
 use self::mail_search::MailSearch;
 use self::mail_send::MailSend;
+use crate::delegated::ProviderApi;
 use crate::outbound::{http_client, url_problem};
 use crate::types::{Connector, ConnectorInfo, ConnectorRuntime, InstanceContext};
 
@@ -80,7 +79,7 @@ pub struct Microsoft365Connector;
 impl Connector for Microsoft365Connector {
     fn info(&self) -> ConnectorInfo {
         ConnectorInfo {
-            connector_type: mimorya_core::account_links::MICROSOFT365,
+            connector_type: LinkKind::Microsoft365.connector_type(),
             name: "Microsoft 365",
             description: "La boîte e-mail et l’agenda Microsoft 365 de chacun, que chaque personne relie elle-même à son compte : l’agent n’y lit que ce que la personne servie peut lire, et n’y écrit, si l’entreprise le permet, que ce qui est validé.",
             demo: false,
@@ -104,7 +103,8 @@ impl Connector for Microsoft365Connector {
         if context.secret.is_none() {
             bail!("Le secret de l’application n’est plus enregistré : saisissez-le de nouveau");
         }
-        let graph = Graph::new(
+        let graph = ProviderApi::new(
+            LinkKind::Microsoft365,
             &config.graph,
             http_client(context.network)?,
             context.call_timeout,
