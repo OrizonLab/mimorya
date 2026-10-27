@@ -279,6 +279,8 @@ Détaillés dans [AGENT_ENGINE.md](AGENT_ENGINE.md). En résumé :
   servie, que le port `LinkedAccounts` du contexte d'outil leur donne : renouvelé depuis
   sa liaison, gardé jusqu'à peu avant son expiration, la liaison retirée si Microsoft ne
   l'honore plus ; jamais celui d'un autre, et aucun pendant une évaluation (ADR-117).
+  Chacun relie son compte dans « Mon compte », l'application se déclare dans
+  « Connecteurs » (ADR-118).
 - Les secrets ne transitent jamais par le contexte du modèle ni par les journaux.
 
 Connecteurs prévus : démonstration (MVP), MCP générique (MVP), déclencheurs (ADR-109),

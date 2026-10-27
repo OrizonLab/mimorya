@@ -82,10 +82,7 @@ async fn without_a_linked_account_nothing_reaches_graph() {
     let ports = ports_of(user::LEA, None);
     let executor = mailbox_executor(tools.clone(), user::LEA, &ports, ports.clone());
     let error = error_of(&call(&executor, "m365_mail_search", json!({})).await);
-    assert!(
-        error.contains("relie son compte à la plateforme"),
-        "{error}"
-    );
+    assert!(error.contains("« Mon compte »"), "{error}");
     let revoked = Arc::new(Unreachable(AccountAccessError::Revoked));
     let executor = mailbox_executor(tools.clone(), user::LEA, &ports, revoked);
     let error = error_of(&call(&executor, "m365_mail_read", json!({ "id": "x" })).await);

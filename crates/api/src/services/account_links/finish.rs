@@ -88,7 +88,7 @@ impl AccountLinkService {
             return Err(at("Connecteurs non autorisés"));
         }
         let (config, secret) = self.application(access, connector_id).await?;
-        let metadata = discover(&self.http, &config.issuer)
+        let metadata = discover(&self.http, self.issuer_of(&config))
             .await
             .map_err(|failure| at(&failure))?;
         let application = Application {

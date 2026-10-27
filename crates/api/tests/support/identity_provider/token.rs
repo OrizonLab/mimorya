@@ -22,7 +22,9 @@ use openidconnect::{
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
-use super::{CLIENT_ID, CLIENT_SECRET, Extra, MockIdentityProvider, Shared, signing_key};
+use super::{
+    APPLICATION_ID, CLIENT_ID, CLIENT_SECRET, Extra, MockIdentityProvider, Shared, signing_key,
+};
 
 fn refused(error: &str) -> Response {
     (
@@ -32,8 +34,8 @@ fn refused(error: &str) -> Response {
         .into_response()
 }
 
-/// The client authenticates in the body or with Basic.
-fn authenticated(headers: &HeaderMap, form: &HashMap<String, String>) -> bool {
+/// The client authenticated in the body or with Basic, if one did.
+fn authenticated(headers: &HeaderMap, form: &HashMap<String, String>) -> Option<String> {
     let basic = headers
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
@@ -43,14 +45,14 @@ fn authenticated(headers: &HeaderMap, form: &HashMap<String, String>) -> bool {
     let (id, secret) = match basic {
         Some(pair) => match pair.split_once(':') {
             Some((id, secret)) => (id.to_string(), secret.to_string()),
-            None => return false,
+            None => return None,
         },
         None => match (form.get("client_id"), form.get("client_secret")) {
             (Some(id), Some(secret)) => (id.clone(), secret.clone()),
-            _ => return false,
+            _ => return None,
         },
     };
-    id == CLIENT_ID && secret == CLIENT_SECRET
+    ((id == CLIENT_ID || id == APPLICATION_ID) && secret == CLIENT_SECRET).then_some(id)
 }
 
 pub(super) async fn token(
@@ -60,9 +62,9 @@ pub(super) async fn token(
 ) -> Response {
     shared.lock().expect("provider").requests += 1;
     let form: HashMap<String, String> = url::form_urlencoded::parse(&body).into_owned().collect();
-    if !authenticated(&headers, &form) {
+    let Some(client) = authenticated(&headers, &form) else {
         return refused("invalid_client");
-    }
+    };
     if form.get("grant_type").map(String::as_str) == Some("refresh_token") {
         // Held, if the test holds renewals, until it lets them through.
         let gate = shared.lock().expect("provider").renewals.gate.clone();
@@ -77,6 +79,10 @@ pub(super) async fn token(
     let Some(grant) = form.get("code").and_then(|c| provider.grants.remove(c)) else {
         return refused("invalid_grant");
     };
+    // Redeemed by the client it was issued to alone (RFC 6749, 4.1.3).
+    if grant.client_id != client {
+        return refused("invalid_grant");
+    }
     let verifier = form.get("code_verifier").cloned().unwrap_or_default();
     if URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes())) != grant.challenge
         || form.get("redirect_uri") != Some(&grant.redirect_uri)
@@ -108,7 +114,11 @@ pub(super) async fn token(
     standard = standard
         .set_email_verified(person.email_verified)
         .set_preferred_username(person.preferred_username.map(EndUserUsername::new));
-    let audience = provider.tamper.audience.clone().unwrap_or(CLIENT_ID.into());
+    let audience = provider
+        .tamper
+        .audience
+        .clone()
+        .unwrap_or(grant.client_id.clone());
     let claims = IdTokenClaims::<Extra, CoreGenderClaim>::new(
         IssuerUrl::new(provider.issuer.clone()).expect("issuer"),
         vec![Audience::new(audience)],

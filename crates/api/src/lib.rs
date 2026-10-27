@@ -4,6 +4,7 @@
 
 pub mod app;
 pub mod auth;
+mod build_options;
 pub mod config;
 pub mod contract;
 pub mod http;

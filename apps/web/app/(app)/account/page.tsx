@@ -1,6 +1,6 @@
 'use client';
 
-import { NotificationForm, PasswordForm } from '@/components/account';
+import { LinkedAccounts, NotificationForm, PasswordForm } from '@/components/account';
 import { Card, PageHeader } from '@/components/ui';
 import { useMe } from '@/lib/me-context';
 
@@ -20,6 +20,7 @@ export default function AccountPage() {
             administrateur un mot de passe provisoire.
           </Card>
         )}
+        <LinkedAccounts />
         <NotificationForm />
       </div>
     </div>

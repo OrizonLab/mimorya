@@ -24,6 +24,7 @@ pub use renewal::ACCOUNT_LINK_REVOKED;
 
 use std::sync::Arc;
 
+use mimorya_connectors::microsoft365::Microsoft365Config;
 use mimorya_connectors::outbound::NetworkPolicy;
 use mimorya_core::DomainError;
 use mimorya_core::account_links::MICROSOFT365;
@@ -74,6 +75,10 @@ pub struct AccountLinkService {
     tokens: AccessTokens,
     /// The applications' provider declarations, for renewals.
     declarations: MetadataCache<CoreProviderMetadata>,
+    /// Replaces the issuer an application's people are sent to, its
+    /// directory's at Microsoft (end-to-end tests: the local provider,
+    /// ADR-118).
+    issuer: Option<String>,
 }
 
 impl AccountLinkService {
@@ -82,6 +87,7 @@ impl AccountLinkService {
         cipher: Option<Arc<SecretCipher>>,
         network: NetworkPolicy,
         web_origin: &str,
+        issuer: Option<String>,
     ) -> anyhow::Result<Self> {
         Ok(Self {
             db,
@@ -92,6 +98,7 @@ impl AccountLinkService {
             redirect_uri: format!("{web_origin}{CALLBACK_PATH}"),
             tokens: AccessTokens::default(),
             declarations: MetadataCache::default(),
+            issuer,
         })
     }
 
@@ -148,6 +155,14 @@ impl AccountLinkService {
         .await?;
         tx.commit().await?;
         Ok(())
+    }
+}
+
+impl AccountLinkService {
+    /// Where an application's people sign in: its directory's issuer, unless
+    /// this server replaces it (end-to-end tests).
+    fn issuer_of<'a>(&'a self, config: &'a Microsoft365Config) -> &'a str {
+        self.issuer.as_deref().unwrap_or(&config.issuer)
     }
 }
 

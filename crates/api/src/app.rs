@@ -7,12 +7,12 @@ use std::time::Duration;
 use axum::Router;
 use axum::extract::DefaultBodyLimit;
 use axum::middleware::{from_fn, from_fn_with_state};
-use mimorya_agent::llm::{LlmProvider, PriceTable, create_provider};
-use mimorya_connectors::outbound::NetworkPolicy;
+use mimorya_agent::llm::{PriceTable, create_provider};
 use mimorya_db::{Database, PoolOptions};
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
 
+pub use crate::build_options::BuildOptions;
 use crate::config::AppConfig;
 use crate::mail::{Mailer, SmtpMailer};
 use crate::plugins::csrf::csrf_protection;
@@ -36,11 +36,10 @@ use crate::services::documents::{DocumentService, Extractor};
 use crate::services::embeddings::{EmbeddingServiceOptions, default_embedding_factory};
 use crate::services::invalidations::{Invalidations, share_invalidations};
 use crate::services::llm::{LlmServiceOptions, default_factory};
-use crate::services::runs::{ApprovalNotifier, LeaseTiming, LessonCapture, RunExecutor};
-use crate::services::sso::{SsoService, SystemDns, TxtLookup};
+use crate::services::runs::{ApprovalNotifier, LessonCapture, RunExecutor};
+use crate::services::sso::{SsoService, SystemDns};
 use crate::services::{
-    AccessService, ConnectorService, EmbeddingFactory, EmbeddingService, LlmService,
-    ProviderFactory, RunEventBus, RunService,
+    AccessService, ConnectorService, EmbeddingService, LlmService, RunEventBus, RunService,
 };
 
 const BODY_LIMIT_BYTES: usize = 1_000_000;
@@ -84,39 +83,6 @@ pub struct Services {
 }
 
 pub type AppState = Arc<Services>;
-
-#[derive(Default)]
-pub struct BuildOptions {
-    /// Replaces the provider built from configuration (tests); `Some(None)`
-    /// runs the server without any provider.
-    pub provider: Option<Option<Arc<dyn LlmProvider>>>,
-    /// Replaces how a company's own provider is built (tests).
-    pub provider_factory: Option<ProviderFactory>,
-    /// Replaces how a company's embedding model is built (tests).
-    pub embedding_factory: Option<EmbeddingFactory>,
-    /// Leaves memories to be indexed on demand (`index_pending`), not in the
-    /// background (tests that count what a pass embeds).
-    pub manual_indexing: bool,
-    /// Replaces how long a run's lease lasts and how often leases are renewed
-    /// and taken up (tests).
-    pub run_leases: Option<LeaseTiming>,
-    /// Leaves scheduled tasks to be fired on demand (`fire_due_tasks`), not
-    /// every minute once interrupted runs are taken up (tests that set when
-    /// one is due).
-    pub manual_scheduling: bool,
-    /// Replaces the mailer built from configuration (tests); `Some(None)`
-    /// sends nothing.
-    pub mailer: Option<Option<Arc<dyn Mailer>>>,
-    /// Replaces the network the identity providers are reached on, the
-    /// connectors' otherwise (end-to-end tests: a local provider, while
-    /// connectors keep to the public network).
-    pub sso_network: Option<NetworkPolicy>,
-    /// Replaces the limit of requests per minute and address (end-to-end
-    /// tests: every request comes through the one web relay).
-    pub global_rate_limit_per_minute: Option<u32>,
-    /// Replaces the system's DNS, where a domain's proof is read (tests).
-    pub dns: Option<Arc<dyn TxtLookup>>,
-}
 
 pub struct App {
     pub router: Router,
@@ -200,6 +166,7 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
         config.secrets.clone(),
         options.sso_network.unwrap_or(config.mcp_network),
         &config.web_origin,
+        options.microsoft365_issuer,
     )?);
     let mailer = match options.mailer {
         Some(mailer) => mailer,

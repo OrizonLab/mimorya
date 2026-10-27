@@ -11,9 +11,9 @@ use url::Url;
 use super::graph::{Graph, GraphFailure};
 
 pub const NOT_LINKED: &str = "Aucun compte Microsoft 365 relié pour la personne servie : \
-     elle relie son compte à la plateforme, puis redemande";
+     elle le relie dans « Mon compte », puis redemande";
 pub const REVOKED: &str = "Microsoft 365 n’honore plus la liaison du compte de la personne \
-     servie : elle a été retirée ; la personne relie de nouveau son compte à la plateforme";
+     servie : elle a été retirée ; la personne relie de nouveau son compte dans « Mon compte »";
 
 /// Graph's answer to a `GET` as the run's person, or why there is none, in
 /// French, as the model reads it.

@@ -12,6 +12,8 @@ import {
 } from '@/lib/api';
 import { formatDate } from '@/lib/format';
 import { McpForm } from './mcp-form';
+import { Microsoft365Details } from './microsoft365-details';
+import { Microsoft365Form } from './microsoft365-form';
 import { RestForm } from './rest-form';
 import { ToolPolicies } from './tool-policies';
 
@@ -22,7 +24,10 @@ const STATUS = {
   disabled: { label: 'Désactivé', tone: 'neutral' },
 } as const;
 
-/** A REST API's test checks its declaration, without calling it. */
+/**
+ * A REST API's test checks its declaration, without calling it; so does a
+ * Microsoft 365 application's, without reaching Microsoft.
+ */
 const REST_STATUS: Partial<Record<keyof typeof STATUS, { label: string; tone: 'neutral' | 'ok' }>> =
   {
     untested: { label: 'Non vérifiée', tone: 'neutral' },
@@ -31,8 +36,9 @@ const REST_STATUS: Partial<Record<keyof typeof STATUS, { label: string; tone: 'n
 
 /**
  * One connector: its state, a test, and what may change here. A REST API's
- * test checks its declaration without calling it (ADR-112, ADR-113): it
- * says so, rather than a connection it did not make.
+ * test checks its declaration without calling it (ADR-112, ADR-113), as a
+ * Microsoft 365 application's does without reaching Microsoft (ADR-118):
+ * it says so, rather than a connection it did not make.
  */
 export function ConnectorCard({
   connector,
@@ -50,13 +56,17 @@ export function ConnectorCard({
   const action = useAction();
   const type = data.types.find((t) => t.type === connector.type);
   const rest = connector.rest;
+  const microsoft365 = connector.microsoft365;
   // Also when its declaration can no longer be read: it is deleted here.
   const isRest = connector.type === 'rest';
+  const isMicrosoft365 = connector.type === 'microsoft365';
+  // Checked without reaching the server.
+  const declared = isRest || isMicrosoft365;
   const status =
-    (isRest && REST_STATUS[connector.status]) || (STATUS[connector.status] ?? STATUS.error);
+    (declared && REST_STATUS[connector.status]) || (STATUS[connector.status] ?? STATUS.error);
   // Added from the administration: deleted here, and changed while readable.
-  const added = Boolean(connector.mcp) || isRest;
-  const editable = Boolean(connector.mcp ?? rest);
+  const added = Boolean(connector.mcp) || declared;
+  const editable = Boolean(connector.mcp ?? rest ?? microsoft365);
 
   async function test() {
     const result = await action.run(() =>
@@ -92,7 +102,10 @@ export function ConnectorCard({
   }
 
   async function remove() {
-    if (!window.confirm(`Supprimer le connecteur « ${connector.name} » et son jeton ?`)) return;
+    const question = microsoft365
+      ? `Supprimer l’application « ${connector.name} », son secret et les ${microsoft365.links} compte(s) que les collaborateurs y ont relié(s) ?`
+      : `Supprimer le connecteur « ${connector.name} » et son jeton ?`;
+    if (!window.confirm(question)) return;
     if (await action.run(() => api.delete(`/admin/connectors/${connector.id}`))) onChanged();
   }
 
@@ -119,6 +132,7 @@ export function ConnectorCard({
             : 'sans jeton'}
         </p>
       )}
+      {microsoft365 && <Microsoft365Details app={microsoft365} />}
       {connector.lastError && connector.status === 'error' && !tested && (
         <ErrorNote message={`Dernier démarrage : ${connector.lastError}`} />
       )}
@@ -126,7 +140,7 @@ export function ConnectorCard({
       {action.error && <ErrorNote message={action.error} />}
       <div className="flex flex-wrap gap-2">
         <Button variant="secondary" loading={action.pending} onClick={test}>
-          {isRest ? 'Vérifier la déclaration' : 'Tester la connexion'}
+          {declared ? 'Vérifier la déclaration' : 'Tester la connexion'}
         </Button>
         {editable && !editing && (
           <Button variant="secondary" onClick={edit}>
@@ -145,6 +159,8 @@ export function ConnectorCard({
       {editing &&
         (rest ? (
           <RestForm data={data} connector={connector} onDone={done} />
+        ) : microsoft365 ? (
+          <Microsoft365Form connector={connector} onDone={done} />
         ) : (
           <McpForm data={data} connector={connector} onDone={done} />
         ))}
@@ -156,7 +172,9 @@ export function ConnectorCard({
           <p className="text-sm text-ok">
             {isRest
               ? `Déclaration vérifiée : ${tested.tools.length} outil(s). L’API n’est pas appelée ; le premier appel d’un run dira si elle répond.`
-              : `Connexion réussie : ${tested.tools.length} outil(s) exposé(s).`}
+              : isMicrosoft365
+                ? `Déclaration vérifiée : ${tested.tools.length} outil(s). Microsoft n’est pas appelé : chaque collaborateur relie son compte dans « Mon compte ».`
+                : `Connexion réussie : ${tested.tools.length} outil(s) exposé(s).`}
           </p>
           {added && tested.tools.length > 0 && (
             <ToolPolicies

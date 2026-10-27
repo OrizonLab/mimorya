@@ -171,10 +171,11 @@ Repères à l'intérieur des crates :
   `api/src/mail/` (envoi SMTP), `api/src/secrets/` (chiffrement AES-256-GCM des secrets),
   `api/tests/` (intégration, harnais dans `support/`, dont les fournisseurs d'identité
   simulés, OpenID Connect et SAML).
-- `web/components/<fonctionnalité>/` (account — dont les e-mails reçus, ADR-094 —,
+- `web/components/<fonctionnalité>/` (account — dont les e-mails reçus, ADR-094, et les
+  comptes reliés, ADR-118 —,
   admin — dont `admin/connectors/` : serveurs MCP et API REST décrites opération par
   opération, ADR-113, et leurs opérations importées d'une description OpenAPI, JSON ou
-  YAML converti dans le navigateur, ADR-115, `admin/llm/` : modèle des conversations et modèle de contrôle des réponses, ADR-108, recherche dans la mémoire, leçons et limites des missions, ADR-075,
+  YAML converti dans le navigateur, ADR-115, et l'application Microsoft 365, ADR-118, `admin/llm/` : modèle des conversations et modèle de contrôle des réponses, ADR-108, recherche dans la mémoire, leçons et limites des missions, ADR-075,
   ADR-077, ADR-093, `admin/users/` :
   comptes, dont l'absence d'un collaborateur empêché, ADR-079, et `admin/skills/` :
   compétences, propositions de l'agent, ADR-101, cas d'évaluation et évaluations,
@@ -199,7 +200,8 @@ Repères à l'intérieur des crates :
   `documents.rs`, ADR-097, lus par `mimorya-extract` qu'ils construisent, une question
   confiée à un sous-agent, `sub_agents.rs`, ADR-099, une compétence que l'agent propose,
   `skill_proposals.rs`, ADR-101, et une version de compétence jouée sur son cas,
-  `skill_evaluations.rs`, ADR-105, et ce qu'envoie un déclencheur, `hooks.rs`, ADR-110).
+  `skill_evaluations.rs`, ADR-105, et ce qu'envoie un déclencheur, `hooks.rs`, ADR-110 ; les personnes y sont envoyées
+  au fournisseur simulé au lieu de Microsoft, `BuildOptions::microsoft365_issuer`, ADR-118).
 - `infra/` : `docker/` (images de l'API et de l'interface, liste des images publiées
   `images.json`, test de fumée de la démonstration, test d'installation de la production,
   vérifications partagées `checks.sh`, dont les rôles des processus lus dans la base), `caddy/`
