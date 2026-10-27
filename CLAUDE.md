@@ -29,8 +29,10 @@ Repères à l'intérieur des crates :
 
 - `core/src/authz/` (types, moteur, conditions ABAC, organigramme), `core/src/tools/`
   (contrat d'outil, outils typés), `core/src/skill_rules.rs` (ce qu'une compétence peut
-  contenir, ADR-052), `core/src/skill_proposals.rs` (où va une compétence que l'agent
-  propose, ADR-100), `core/src/skill_eval_cases.rs` (ce qu'un cas d'évaluation d'une
+  contenir, ADR-052), `core/src/account_links.rs` (comptes que chacun relie :
+  application Microsoft 365 déclarée, permissions déléguées, identité qui prouve que le
+  compte est le sien, ADR-116), `core/src/skill_proposals.rs` (où va une compétence que
+  l'agent propose, ADR-100), `core/src/skill_eval_cases.rs` (ce qu'un cas d'évaluation d'une
   compétence contient, ADR-103), `core/src/skill_evaluations.rs` (régression, bilan et
   confirmation à l'activation, ADR-104), `core/src/skill_quality.rs` (critères de qualité
   d'une version, ADR-106), `core/src/identity_providers/` (fournisseurs d'identité : émetteur de
@@ -53,7 +55,8 @@ Repères à l'intérieur des crates :
   `sub_runs.rs`, ADR-098 ; compétences proposées par l'agent : `skill_proposals.rs`,
   ADR-100, et leur annonce aux administrateurs : `skill_proposal_notices.rs`, ADR-102 ;
   cas d'évaluation des compétences : `skill_eval_cases.rs`, ADR-103, et leurs
-  évaluations : `skill_evaluations.rs`, ADR-104),
+  évaluations : `skill_evaluations.rs`, ADR-104 ; comptes reliés par chacun et leur
+  jeton de renouvellement scellé : `account_links.rs`, ADR-116),
   `db/src/notifications.rs` (canaux PostgreSQL des événements des runs, de la file et des
   invalidations, ADR-084, ADR-085), `db/src/sweep_lock.rs` (verrou d'un balayage qui ne
   tourne que dans un processus à la fois, ADR-086), `db/src/seed/` (organisation,
@@ -77,7 +80,8 @@ Repères à l'intérieur des crates :
   entreprise : réseau, préfixe, jeton, masquage, échecs, ADR-025, ADR-112),
   `connectors/src/rest/` (API REST décrites par l'entreprise : déclaration et ses
   règles, requête, réponse bornée, outil d'une opération, ADR-112 ; opérations lues
-  d'une description OpenAPI, `openapi/`, ADR-114).
+  d'une description OpenAPI, `openapi/`, ADR-114), `connectors/src/microsoft365/`
+  (application Microsoft 365 d'une entreprise, ADR-116).
 - `api/src/plugins/` (contexte de requête, limitation de débit (globale par processus ;
   d'authentification partagée par PostgreSQL, `shared_limit.rs`, ADR-088), CSRF (sauf la réception
   des réponses SAML, ADR-068, et l'envoi à un déclencheur, ADR-109), session,
@@ -102,7 +106,10 @@ Repères à l'intérieur des crates :
   (`rest_connectors.rs`, ADR-112, opérations lues d'une description OpenAPI, ADR-114),
   compétences, rejet des propositions de l'agent (`skill_proposals.rs`, ADR-100), cas d'évaluation
   (`skill_eval_cases.rs`, ADR-103) et évaluation demandée (`skill_evaluations.rs`,
-  ADR-104), sous verrou par entreprise), `api/src/services/account.rs` (son propre compte),
+  ADR-104), sous verrou par entreprise ; application Microsoft 365 déclarée,
+  `microsoft365.rs`, ADR-116), `api/src/services/account.rs` (son propre compte),
+  `api/src/services/account_links/` (comptes que chacun relie : départ vers Microsoft,
+  tentative scellée, retour vérifié, jeton scellé, liste et retrait, ADR-116),
   `api/src/services/notification_settings.rs` (e-mails que chacun choisit de recevoir,
   lus au moment d'envoyer chaque avis, ADR-094),
   `api/src/services/skill_proposal_notice/` (propositions de l'agent annoncées par e-mail

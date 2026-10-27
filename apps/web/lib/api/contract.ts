@@ -29,6 +29,31 @@ export type AbsenceRecorded = {
  */
 notified: boolean, };
 
+/**
+ * `POST /account/links/{connectorId}`: where the browser goes to sign in
+ * and grant access.
+ */
+export type AccountLinkStart = { redirectUrl: string, };
+
+/**
+ * A connector the person may link an account at, or has one at.
+ */
+export type AccountLinkView = { connectorId: string, name: string,
+/**
+ * `microsoft365`.
+ */
+type: string,
+/**
+ * A link may start: the connector is enabled and the person may use
+ * the company's connectors. Otherwise their link stays theirs to remove.
+ */
+available: boolean, linked: LinkedAccount | null, };
+
+/**
+ * `GET /account/links`.
+ */
+export type AccountLinks = { connectors: Array<AccountLinkView>, };
+
 export type AccountStatus = "active" | "invited" | "disabled";
 
 /**
@@ -309,7 +334,11 @@ export type ConnectorView = { id: string, type: string, name: string, enabled: b
  * As stored: a policy runs cannot read makes the connector unavailable,
  * with `lastError` saying so, rather than hiding it here.
  */
-toolPolicies: Record<string, ToolPolicy>, mcp: McpEndpoint | null, rest: RestApi | null, updatedAt: string, };
+toolPolicies: Record<string, ToolPolicy>, mcp: McpEndpoint | null, rest: RestApi | null,
+/**
+ * A company's Microsoft 365 application (ADR-116).
+ */
+microsoft365: Microsoft365App | null, updatedAt: string, };
 
 /**
  * `GET /admin/connectors`.
@@ -823,6 +852,19 @@ export type LinkPassword = { token: string, password: string, };
 export type LinkToken = { token: string, };
 
 /**
+ * The account linked: never its token.
+ */
+export type LinkedAccount = {
+/**
+ * As the provider's token said it.
+ */
+address: string,
+/**
+ * The permissions the person granted, as the provider listed them.
+ */
+scopes: Array<string>, linkedAt: string, };
+
+/**
  * Body of `PUT /admin/llm` and `PUT /admin/llm/verification`: a provider of
  * the company's own.
  */
@@ -1021,6 +1063,19 @@ inboundHookId?: string, };
 
 export type MessageRole = "user" | "assistant";
 
+/**
+ * A company's Microsoft 365 application, as `ConnectorView` shows it.
+ */
+export type Microsoft365App = { directory: string, clientId: string,
+/**
+ * The address to register as the application's redirect URI (web).
+ */
+redirectUri: string, secretStored: boolean,
+/**
+ * How many people linked their account.
+ */
+links: number, };
+
 export type Mission = { id: string, title: string, objective: string, successCriteria: Array<string>, status: MissionStatus,
 /**
  * Where its stages run, and its answer is given.
@@ -1175,6 +1230,24 @@ enabled?: boolean, };
  * Body of `POST /conversations/{id}/messages`.
  */
 export type NewMessage = { content: string, };
+
+/**
+ * Body of `POST /admin/connectors/microsoft365`: the application declared
+ * in the company's Microsoft Entra directory, with delegated permissions.
+ */
+export type NewMicrosoft365Connector = { name: string,
+/**
+ * The directory (tenant) ID, a GUID.
+ */
+directory: string,
+/**
+ * The application (client) ID, a GUID.
+ */
+clientId: string, clientSecret: string,
+/**
+ * Absent: enabled.
+ */
+enabled?: boolean, };
 
 /**
  * Body of `POST /missions`.

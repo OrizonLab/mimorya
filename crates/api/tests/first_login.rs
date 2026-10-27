@@ -187,6 +187,9 @@ const AUTHENTICATED_ROUTES: &[(&str, &str)] = &[
     ("GET", "/admin/memory-settings"),
     ("PUT", "/admin/memory-settings"),
     ("GET", "/account/notifications"),
+    ("GET", "/account/links"),
+    ("POST", "/account/links/{id}"),
+    ("DELETE", "/account/links/{id}"),
     ("PUT", "/account/notifications"),
     ("GET", "/admin/mission-settings"),
     ("PUT", "/admin/mission-settings"),
@@ -195,6 +198,7 @@ const AUTHENTICATED_ROUTES: &[(&str, &str)] = &[
     ("POST", "/admin/connectors"),
     ("POST", "/admin/connectors/trial"),
     ("POST", "/admin/connectors/rest"),
+    ("POST", "/admin/connectors/microsoft365"),
     ("POST", "/admin/connectors/rest/import"),
     ("PATCH", "/admin/connectors/{id}"),
     ("DELETE", "/admin/connectors/{id}"),
@@ -274,6 +278,9 @@ const OTHER_ROUTES: &[(&str, &str)] = &[
     ("POST", "/auth/sso/link"),
     ("POST", "/auth/sso/link/start"),
     ("GET", "/auth/sso/callback"),
+    // A navigation back from Microsoft: without a usable session, the sign-in
+    // page (ADR-116).
+    ("GET", "/account/links/callback"),
     ("GET", "/auth/saml/{id}/metadata"),
     ("POST", "/auth/saml/acs"),
     ("GET", "/auth/me"),

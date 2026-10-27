@@ -11,17 +11,17 @@
 //! alone, as domains are declared, not proven.
 
 mod account;
-mod address;
+pub(crate) mod address;
 mod admission;
-mod attempt;
+pub(crate) mod attempt;
 mod dns;
-mod http;
+pub(crate) mod http;
 mod metadata;
-mod oidc;
+pub(crate) mod oidc;
 mod requirement;
 mod saml;
 mod saml_return;
-mod sign_in;
+pub(crate) mod sign_in;
 mod start;
 
 pub use attempt::{

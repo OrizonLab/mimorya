@@ -14,6 +14,7 @@ use ts_rs::TS;
 use uuid::Uuid;
 use validator::Validate;
 
+use super::microsoft365::Microsoft365App;
 use super::rest_connectors::{RestApi, RestOperation};
 use crate::contract::{ToolRisk, stored_text};
 use crate::http::{iso, trimmed, trimmed_nullable, trimmed_opt};
@@ -79,6 +80,8 @@ pub struct ConnectorView {
     pub tool_policies: Value,
     pub mcp: Option<McpEndpoint>,
     pub rest: Option<RestApi>,
+    /// A company's Microsoft 365 application (ADR-116).
+    pub microsoft365: Option<Microsoft365App>,
     pub updated_at: String,
 }
 
@@ -87,6 +90,7 @@ impl ConnectorView {
         i: &ConnectorInstanceRow,
         mcp: Option<McpEndpoint>,
         rest: Option<RestApi>,
+        microsoft365: Option<Microsoft365App>,
     ) -> anyhow::Result<Self> {
         Ok(Self {
             id: i.id,
@@ -98,6 +102,7 @@ impl ConnectorView {
             tool_policies: i.tool_policies.clone(),
             mcp,
             rest,
+            microsoft365,
             updated_at: iso(&i.updated_at),
         })
     }

@@ -38,7 +38,7 @@ pub struct ExtraClaims {
 
 impl AdditionalClaims for ExtraClaims {}
 
-type IdTokenFields = openidconnect::IdTokenFields<
+pub(crate) type IdTokenFields = openidconnect::IdTokenFields<
     ExtraClaims,
     EmptyExtraTokenFields,
     CoreGenderClaim,
@@ -46,7 +46,7 @@ type IdTokenFields = openidconnect::IdTokenFields<
     CoreJwsSigningAlgorithm,
 >;
 
-type OidcClient = openidconnect::Client<
+pub(crate) type OidcClient = openidconnect::Client<
     ExtraClaims,
     CoreAuthDisplay,
     CoreGenderClaim,
@@ -83,7 +83,7 @@ pub async fn discover(http: &ProviderHttp, issuer: &str) -> Result<CoreProviderM
 /// The provider's client for this company's application, authenticating
 /// with its secret in the request body when the provider accepts it (some
 /// reject the encoded form of a secret in the Basic header).
-fn client(
+pub(crate) fn client(
     metadata: CoreProviderMetadata,
     client_id: &str,
     client_secret: Option<&str>,
@@ -158,21 +158,24 @@ pub type IdToken = openidconnect::IdToken<
     CoreJwsSigningAlgorithm,
 >;
 
-/// The identity token the code is exchanged for, not verified yet.
-pub async fn exchange_code(
+/// What the provider answers for a code: its tokens, not verified yet.
+pub(crate) type Tokens = StandardTokenResponse<IdTokenFields, CoreTokenType>;
+
+/// The code redeemed at the provider, with the attempt's PKCE verifier.
+pub(crate) async fn redeem(
     http: &ProviderHttp,
     metadata: CoreProviderMetadata,
     application: &Application<'_>,
     code: String,
     pkce_verifier: String,
-) -> Result<IdToken, Failure> {
+) -> Result<Tokens, Failure> {
     let client = client(
         metadata,
         application.client_id,
         Some(application.client_secret),
         application.redirect_uri,
     )?;
-    let response = client
+    client
         .exchange_code(AuthorizationCode::new(code))
         .map_err(|error| format!("échange : {error}"))?
         .set_pkce_verifier(PkceCodeVerifier::new(pkce_verifier))
@@ -189,8 +192,19 @@ pub async fn exchange_code(
             RequestTokenError::Parse(..) => "échange : réponse illisible".into(),
             // The library's own words (empty answer, content type).
             RequestTokenError::Other(text) => format!("échange : {text}"),
-        })?;
-    response
+        })
+}
+
+/// The identity token the code is exchanged for, not verified yet.
+pub async fn exchange_code(
+    http: &ProviderHttp,
+    metadata: CoreProviderMetadata,
+    application: &Application<'_>,
+    code: String,
+    pkce_verifier: String,
+) -> Result<IdToken, Failure> {
+    redeem(http, metadata, application, code, pkce_verifier)
+        .await?
         .id_token()
         .cloned()
         .ok_or_else(|| "échange : réponse sans jeton d’identité".into())

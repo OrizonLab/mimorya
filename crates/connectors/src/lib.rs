@@ -1,9 +1,12 @@
 //! Connectors: each one brings tools that filter their data with the caller's
 //! bound authorization. The demo connector serves FICTIONAL data; MCP
-//! servers and REST APIs are those a company connects itself (`outbound`).
+//! servers and REST APIs are those a company connects itself (`outbound`);
+//! Microsoft 365 reaches each person's own mailbox with the access they
+//! granted (`microsoft365`).
 
 pub mod demo_interventions;
 pub mod mcp;
+pub mod microsoft365;
 pub mod outbound;
 pub mod registry;
 pub mod rest;

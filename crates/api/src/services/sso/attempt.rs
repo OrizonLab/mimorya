@@ -12,6 +12,7 @@ use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use chrono::{DateTime, Duration, Utc};
 use mimorya_db::repositories::secrets::StoredSecret;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -47,7 +48,25 @@ pub struct Attempt {
 
 /// The cookie's value: `company.iv.tag.ciphertext`.
 pub fn seal(cipher: &SecretCipher, tenant_id: Uuid, attempt: &Attempt) -> anyhow::Result<String> {
-    let sealed = cipher.seal(tenant_id, SEALED_AS, &serde_json::to_string(attempt)?)?;
+    seal_value(cipher, tenant_id, SEALED_AS, attempt)
+}
+
+/// The company and its attempt, if the value was sealed for it by this key,
+/// is unaltered and not past its time.
+pub fn open(cipher: &SecretCipher, value: &str, now: DateTime<Utc>) -> Option<(Uuid, Attempt)> {
+    let (tenant_id, attempt): (Uuid, Attempt) = open_value(cipher, value, SEALED_AS)?;
+    (attempt.expires_at > now).then_some((tenant_id, attempt))
+}
+
+/// A value the browser keeps for the server, sealed under a name for its
+/// company, which it names in clear: `company.iv.tag.ciphertext`.
+pub(crate) fn seal_value<T: Serialize>(
+    cipher: &SecretCipher,
+    tenant_id: Uuid,
+    sealed_as: &str,
+    value: &T,
+) -> anyhow::Result<String> {
+    let sealed = cipher.seal(tenant_id, sealed_as, &serde_json::to_string(value)?)?;
     Ok([
         tenant_id.to_string(),
         URL_SAFE_NO_PAD.encode(&sealed.iv),
@@ -57,9 +76,13 @@ pub fn seal(cipher: &SecretCipher, tenant_id: Uuid, attempt: &Attempt) -> anyhow
     .join("."))
 }
 
-/// The company and its attempt, if the value was sealed for it by this key,
-/// is unaltered and not past its time.
-pub fn open(cipher: &SecretCipher, value: &str, now: DateTime<Utc>) -> Option<(Uuid, Attempt)> {
+/// The company and the value, if it was sealed under that name for it by
+/// this key and is unaltered.
+pub(crate) fn open_value<T: DeserializeOwned>(
+    cipher: &SecretCipher,
+    value: &str,
+    sealed_as: &str,
+) -> Option<(Uuid, T)> {
     let mut parts = value.split('.');
     let tenant_id = Uuid::parse_str(parts.next()?).ok()?;
     let mut decoded = || URL_SAFE_NO_PAD.decode(parts.next()?).ok();
@@ -70,9 +93,8 @@ pub fn open(cipher: &SecretCipher, value: &str, now: DateTime<Utc>) -> Option<(U
         auth_tag,
         key_version: crate::secrets::KEY_VERSION,
     };
-    let json = cipher.open(tenant_id, SEALED_AS, &sealed).ok()?;
-    let attempt: Attempt = serde_json::from_str(&json).ok()?;
-    (attempt.expires_at > now).then_some((tenant_id, attempt))
+    let json = cipher.open(tenant_id, sealed_as, &sealed).ok()?;
+    Some((tenant_id, serde_json::from_str(&json).ok()?))
 }
 
 pub fn attempt_cookie(value: &str, secure: bool) -> String {

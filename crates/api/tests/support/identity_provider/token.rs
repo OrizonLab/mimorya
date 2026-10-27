@@ -21,7 +21,7 @@ use openidconnect::{
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
-use super::{CLIENT_ID, CLIENT_SECRET, Extra, Shared, signing_key};
+use super::{CLIENT_ID, CLIENT_SECRET, Extra, MockIdentityProvider, Shared, signing_key};
 
 fn refused(error: &str) -> Response {
     (
@@ -76,6 +76,14 @@ pub(super) async fn token(
     }
     provider.exchanges += 1;
     let now = Utc::now();
+    let offline = grant
+        .scope
+        .split(' ')
+        .any(|scope| scope == "offline_access")
+        && !provider.tamper.withhold_refresh_token;
+    let refresh_token =
+        offline.then(|| MockIdentityProvider::refresh_token_of(&grant.person.subject));
+    let scope = grant.scope;
     let person = grant.person;
     let mut standard = StandardClaims::new(SubjectIdentifier::new(person.subject));
     if let Some(email) = person.email {
@@ -119,12 +127,16 @@ pub(super) async fn token(
         None,
     )
     .expect("signed token");
-    let body = json!({
+    let mut body = json!({
         "access_token": "jeton-d-acces-de-test",
         "token_type": "Bearer",
         "expires_in": 300,
         "id_token": id_token.to_string(),
+        "scope": scope,
     });
+    if let Some(refresh_token) = refresh_token {
+        body["refresh_token"] = json!(refresh_token);
+    }
     (
         [(header::CONTENT_TYPE, "application/json")],
         body.to_string(),
