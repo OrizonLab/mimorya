@@ -105,10 +105,20 @@ test('operations are read from an OpenAPI description and added', async ({ page 
   await expect(
     form.getByText('Description YAML refusée : un alias qui se contient lui-même.'),
   ).toBeVisible();
-  // An alias without its anchor: said for what it is.
+  // An alias without its anchor, a merge of what is no table, aliases
+  // repeated beyond a hundred: each said for what it is.
   await picker.setInputFiles(file('faute.yaml', 'a: *absente\n'));
   await expect(
     form.getByText('Description YAML illisible : un alias sans ancre définie avant lui.'),
+  ).toBeVisible();
+  await picker.setInputFiles(file('fusion.yaml', '<<: 1\n'));
+  await expect(
+    form.getByText(/^Description YAML illisible : une clé « << » qui ne fusionne pas une table/),
+  ).toBeVisible();
+  const repeated = Array.from({ length: 101 }, () => '*a').join(', ');
+  await picker.setInputFiles(file('alias.yaml', `a: &a [1]\nb: [${repeated}]\n`));
+  await expect(
+    form.getByText(/^Description YAML refusée : des alias répétés plus de 100 fois/),
   ).toBeVisible();
 
   await picker.setInputFiles(file('assistance.yaml', DESCRIPTION));

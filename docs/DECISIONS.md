@@ -5860,10 +5860,11 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     par la bibliothèque `yaml` chargée seulement quand un tel fichier est choisi, ses
     alias (clés de fusion `<<` comprises) répétés au plus cent fois ; le serveur ne lit
     toujours que du JSON (ADR-114). Un fichier illisible est dit pour ce qu'il a : la
-    ligne en cause pour du YAML, des alias trop nombreux, un alias sans son ancre, une
-    clé `<<` qui ne fusionne pas une table, un alias qui se contient lui-même (qu'aucun
-    JSON n'écrit). Le champ du fichier est vidé, non remplacé, et garde le focus
-    (ADR-043) ;
+    ligne en cause pour du YAML, des alias trop nombreux (ou une table qui se fusionne
+    elle-même, qui se déplie de même), un alias sans son ancre, une clé `<<` qui ne
+    fusionne pas une table (ou dont l'alias n'a pas d'ancre), un alias qui se contient
+    lui-même (qu'aucun JSON n'écrit). Le champ du fichier est vidé, non remplacé, et
+    garde le focus (ADR-043) ;
   - les opérations proposées s'affichent (méthode, chemin, intitulé, nom) avec une case
     chacune, et les remarques de la plateforme dans « Remarques (n) ». Une opération
     dont le nom est déjà dans le formulaire ne se coche pas ; on en coche au plus autant
@@ -5883,7 +5884,8 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     cochée ajoutée au formulaire à la place de l'opération vide, l'adresse remplie ;
     relue, l'opération déjà ajoutée ne se coche plus ; une seconde ajoutée ; l'API
     enregistrée et relue dans l'API avec ses deux opérations ; un alias qui se contient
-    lui-même et un alias sans ancre dits ; puis une API de 49 opérations modifiée : une description JSON en
+    lui-même, un alias sans ancre, une clé `<<` qui ne fusionne pas une table et des
+    alias répétés plus de cent fois dits ; puis une API de 49 opérations modifiée : une description JSON en
     propose deux, une seule se coche, une opération saisie entre-temps ôte la place,
     retirée la rend ; l'API enregistrée en tient cinquante) ;
   - les bornes de 768 Kio et de cinquante opérations sont rappelées par l'écran ; la
