@@ -6241,3 +6241,43 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
       (écriture peut-être faite),
       `reach.rs` (permissions dites en mots), `core/src/account_links/tests.rs`
       (permissions demandées, renouvelées et manquantes).
+
+## ADR-120 — Écrans de l'écriture Microsoft 365 : option de l'application, permissions à accorder (connecteurs, lot 10b)
+
+- **Date** : 2026-10-27 · **Statut** : acceptée
+- **Contexte** : l'écriture Microsoft 365 (ADR-119) se réglait par l'API seulement.
+  L'administrateur ne pouvait pas la permettre depuis « Connecteurs ». Une personne dont
+  la liaison n'accorde pas l'envoi n'en était avertie que par l'outil, après avoir
+  validé.
+- **Décision** :
+  - **formulaire de l'application** :
+    - une case « Permettre l'envoi d'e-mails et la création de rendez-vous, chacun
+      validé », à la déclaration comme à la modification ;
+    - à la modification, l'option n'est envoyée que si elle change : l'audit ne dit que
+      ce qui change ;
+    - le texte d'aide nomme les permissions demandées (lecture, et envoi et écriture
+      dans l'agenda si l'envoi est permis). Il rappelle qu'aucun envoi ne part sans
+      validation, et que ceux qui ont relié leur compte avant le relient de nouveau ;
+  - **carte de l'application** : « Envoi d'e-mails et création de rendez-vous permis,
+    chacun validé », ou « Lecture seule » ;
+  - **« Mon compte »** :
+    - ce que l'agent peut faire est dit en mots (lire vos e-mails, lire votre agenda,
+      envoyer des e-mails en votre nom, écrire dans votre agenda), au lieu des noms des
+      permissions ;
+    - avant la liaison, le texte dit si l'application permet l'envoi, chaque fois après
+      validation. La vue d'une liaison donne pour cela `writeTools` ;
+    - quand l'application demande des permissions que la liaison n'accorde pas
+      (`toGrant`), elles sont dites en mots, et « Relier de nouveau » est mis en avant ;
+  - **validation d'un envoi** : rien de neuf. La carte de validation montre la
+    description (destinataires d'abord) et les paramètres exacts (ADR-119).
+- **Conséquences** :
+  - l'écriture Microsoft 365 se règle et s'accorde sans l'API ;
+  - le serveur de bout en bout n'a pas de Graph simulé : l'envoi lui-même est testé par
+    l'API (`crates/api/tests/microsoft365_writes.rs`, ADR-119), pas par le navigateur ;
+  - reste : Google Workspace ;
+  - tests :
+    - `apps/web/e2e/microsoft365.spec.ts` : application en lecture seule, puis renommée
+      avec l'écriture permise et relue par l'API ; Léa voit ce que l'agent peut faire, est
+      invitée à accorder l'envoi et l'écriture dans son agenda, relie de nouveau son
+      compte, et l'invitation disparaît ;
+    - `crates/api/tests/microsoft365_writes.rs` : `writeTools` dans la vue de la liaison.

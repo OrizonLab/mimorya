@@ -24,6 +24,9 @@ pub struct AccountLinkView {
     /// A link may start: the connector is enabled and the person may use
     /// the company's connectors. Otherwise their link stays theirs to remove.
     pub available: bool,
+    /// Its tools may send e-mail and create events, each validated: a
+    /// link asks those permissions too (ADR-119, ADR-120).
+    pub write_tools: bool,
     pub linked: Option<LinkedAccount>,
 }
 

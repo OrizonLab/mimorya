@@ -284,7 +284,9 @@ Détaillés dans [AGENT_ENGINE.md](AGENT_ENGINE.md). En résumé :
   `m365_calendar_event_create` envoient un e-mail et créent un rendez-vous au nom de la
   personne, toujours validés, exactement tels que validés, une seule fois ; chaque outil
   dit les permissions dont il a besoin, et une liaison qui ne les accorde pas n'atteint
-  pas Microsoft (ADR-119).
+  pas Microsoft (ADR-119). L'écriture se permet dans le formulaire de l'application, et
+  « Mon compte » dit les permissions à accorder en reliant de nouveau son compte
+  (ADR-120).
 - Les secrets ne transitent jamais par le contexte du modèle ni par les journaux.
 
 Connecteurs prévus : démonstration (MVP), MCP générique (MVP), déclencheurs (ADR-109),

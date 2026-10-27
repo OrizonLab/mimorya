@@ -47,7 +47,12 @@ type: string,
  * A link may start: the connector is enabled and the person may use
  * the company's connectors. Otherwise their link stays theirs to remove.
  */
-available: boolean, linked: LinkedAccount | null, };
+available: boolean,
+/**
+ * Its tools may send e-mail and create events, each validated: a
+ * link asks those permissions too (ADR-119, ADR-120).
+ */
+writeTools: boolean, linked: LinkedAccount | null, };
 
 /**
  * `GET /account/links`.

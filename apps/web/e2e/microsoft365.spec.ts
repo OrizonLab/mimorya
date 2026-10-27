@@ -4,9 +4,10 @@
 // declaration (Microsoft is not reached) and sets a tool's rule; Léa, from
 // « Mon compte », links her account at the test provider, which plays
 // Microsoft and comes back to her page; Paul sees her link counted and told
-// in the deletion he refuses, renames and disables the application; Léa is
-// told her link no longer serves and removes it; Paul deletes the
-// application. Each step is read back from the API, each confirmation read.
+// in the deletion he refuses, renames the application and lets its tools
+// write (ADR-120); Léa is asked to grant sending and writing her calendar,
+// and links again; Paul disables the application; Léa is told her link no
+// longer serves and removes it; Paul deletes the application. Each step is read back from the API, each confirmation read.
 // The test server sends people to its provider instead of Microsoft; the
 // tools are never called. Whatever happens, the application is deleted,
 // with its links.
@@ -23,6 +24,7 @@ const APPLICATION = '0b1c2d3e-4f50-6172-8394-a5b6c7d8e9f0';
 const SECRET = 'secret-client-de-test-0123456789';
 const WRITE = { 'X-Mimorya-Request': '1' };
 const READ = 'm365_mail_read';
+const WRITING = 'Permettre l’envoi d’e-mails et la création de rendez-vous, chacun validé';
 
 test.afterEach(async ({ page }) => {
   const listed = await page.request.get('/api/admin/connectors');
@@ -77,6 +79,7 @@ test('an application is declared, an account linked and removed, the application
   await form.getByRole('button', { name: 'Déclarer l’application' }).click();
   const card = cardWith(page, NAME, 'Supprimer');
   await expect(card.getByText('0 compte(s) relié(s)')).toBeVisible();
+  await expect(card.getByText(/^Lecture seule/)).toBeVisible();
   await expect(card.getByText('/api/account/links/callback')).toBeVisible();
   // One per company: no second declaration is offered.
   await expect(
@@ -117,6 +120,9 @@ test('an application is declared, an account linked and removed, the application
   await back;
   await expect(lea.getByText('Votre compte Microsoft 365 est relié')).toBeVisible();
   await expect(section.getByText(`Relié à ${demo.lea}`)).toBeVisible();
+  await expect(
+    section.getByText(/L’agent peut : lire vos e-mails, lire votre agenda\./),
+  ).toBeVisible();
   await expect(section.getByRole('button', { name: 'Relier de nouveau' })).toBeVisible();
   await noError(lea);
   expect((await linkOf(lea))?.linked?.address).toBe(demo.lea);
@@ -137,18 +143,40 @@ test('an application is declared, an account linked and removed, the application
   expect((await linkOf(lea))?.linked?.address).toBe(demo.lea);
   refuse = false;
 
-  // Renamed, then disabled: Léa's link no longer serves, she may remove it.
+  // Renamed, its tools let write: Léa is asked to grant it, and links again.
   await card.getByRole('button', { name: 'Modifier', exact: true }).click();
   const edit = page.getByRole('form', { name: 'Application Microsoft 365' });
   await edit.getByLabel('Nom', { exact: true }).fill(RENAMED);
+  await edit.getByRole('checkbox', { name: WRITING }).check();
   await edit.getByRole('button', { name: 'Enregistrer' }).click();
   const renamedCard = cardWith(page, RENAMED, 'Supprimer');
-  await expect(renamedCard).toBeVisible();
+  await expect(
+    renamedCard.getByText(/^Envoi d’e-mails et création de rendez-vous permis/),
+  ).toBeVisible();
   expect((await stored(page)).app?.name).toBe(RENAMED);
+  expect((await stored(page)).app?.microsoft365?.writeTools).toBe(true);
+  await lea.reload();
+  const renamed = lea.getByRole('region', { name: RENAMED });
+  const asking = renamed.getByText(
+    /demande aussi votre accord pour : envoyer des e-mails en votre nom, écrire dans votre agenda\./,
+  );
+  await expect(asking).toBeVisible();
+  expect((await linkOf(lea))?.linked?.toGrant).toEqual(['Mail.Send', 'Calendars.ReadWrite']);
+  const again = lea.waitForResponse((r) => r.url().includes('/api/account/links/callback'));
+  await renamed.getByRole('button', { name: 'Relier de nouveau' }).click();
+  await again;
+  await expect(
+    renamed.getByText(
+      /L’agent peut : .*envoyer des e-mails en votre nom, écrire dans votre agenda\./,
+    ),
+  ).toBeVisible();
+  await expect(asking).toHaveCount(0);
+  expect((await linkOf(lea))?.linked?.toGrant).toEqual([]);
+
+  // Disabled: Léa's link no longer serves, she may remove it.
   await renamedCard.getByRole('button', { name: 'Désactiver' }).click();
   await expect.poll(async () => (await stored(page)).app?.enabled).toBe(false);
   await lea.reload();
-  const renamed = lea.getByRole('region', { name: RENAMED });
   await expect(renamed.getByText(/L’application est désactivée/)).toBeVisible();
   await expect(renamed.getByRole('button', { name: /^Relier/ })).toHaveCount(0);
   await renamed.getByRole('button', { name: 'Retirer la liaison' }).click();

@@ -140,13 +140,16 @@ async fn a_link_made_before_grants_writing_by_linking_again() {
     let (url, cookie) = start(&claire, connector).await;
     assert!(!url.contains(MAIL_SEND), "{url}");
     come_back(&claire, &idp.authorize(&url), Some(&cookie)).await;
-    assert_eq!(links(&claire).await[0]["linked"]["toGrant"], json!([]));
+    let before = links(&claire).await;
+    assert_eq!(before[0]["writeTools"], false);
+    assert_eq!(before[0]["linked"]["toGrant"], json!([]));
 
     let paul = api.sign_in(user::PAUL).await;
     let path = format!("/admin/connectors/{connector}");
     let allowed = paul.patch(&path, json!({ "writeTools": true })).await;
     assert_eq!(allowed.status, StatusCode::OK, "{}", allowed.text());
     let listed = links(&claire).await;
+    assert_eq!(listed[0]["writeTools"], true);
     assert_eq!(
         listed[0]["linked"]["toGrant"],
         json!([MAIL_SEND, CALENDARS_WRITE])

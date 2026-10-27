@@ -11,6 +11,7 @@ import {
   type AccountLinks,
 } from '@/lib/api';
 import { formatDate } from '@/lib/format';
+import { MICROSOFT365_PERMISSIONS } from '@/lib/labels';
 
 const LINKS = '/account/links';
 
@@ -34,6 +35,21 @@ type Outcome = keyof typeof OUTCOMES;
 
 function isOutcome(value: string | null): value is Outcome {
   return value !== null && Object.hasOwn(OUTCOMES, value);
+}
+
+/**
+ * What these permissions let the agent do, in words: those it knows, each
+ * once (Microsoft may name a permission by its address, ADR-120).
+ */
+function inWords(scopes: string[]): string[] {
+  const said = scopes.flatMap((scope) => {
+    const name = (scope.split('/').pop() ?? scope).toLowerCase();
+    const known = Object.entries(MICROSOFT365_PERMISSIONS).find(
+      ([permission]) => permission.toLowerCase() === name,
+    );
+    return known ? [known[1]] : [];
+  });
+  return [...new Set(said)];
 }
 
 /**
@@ -89,6 +105,8 @@ function LinkRow({ connector, onChanged }: { connector: AccountLinkView; onChang
   const action = useAction();
   const linked = connector.linked;
   const path = `${LINKS}/${connector.connectorId}`;
+  // Asked since the person linked: granted by linking again (ADR-120).
+  const toGrant = connector.available && linked ? linked.toGrant : [];
 
   async function link() {
     const started = await action.run(() => api.post<AccountLinkStart>(path));
@@ -111,13 +129,23 @@ function LinkRow({ connector, onChanged }: { connector: AccountLinkView; onChang
       </div>
       {linked ? (
         <p className="text-sm text-muted">
-          Relié à {linked.address} le {formatDate(linked.linkedAt)}. Permissions accordées :{' '}
-          {linked.scopes.join(', ') || '—'}.
+          Relié à {linked.address} le {formatDate(linked.linkedAt)}. L’agent peut :{' '}
+          {inWords(linked.scopes).join(', ') || '—'}.
         </p>
       ) : (
         <p className="text-sm text-muted">
-          Reliez votre compte pour que l’agent lise vos e-mails et votre agenda, avec vos propres
-          droits : Microsoft vous demande votre accord.
+          Reliez votre compte pour que l’agent lise vos e-mails et votre agenda
+          {connector.writeTools
+            ? ', et envoie des e-mails ou crée des rendez-vous en votre nom, chaque fois après validation'
+            : ''}
+          , avec vos propres droits : Microsoft vous demande votre accord.
+        </p>
+      )}
+      {toGrant.length > 0 && (
+        <p className="text-sm">
+          Depuis votre liaison, l’application demande aussi votre accord pour :{' '}
+          {inWords(toGrant).join(', ')}. Reliez de nouveau votre compte pour l’accorder ; rien n’est
+          envoyé ni créé sans validation.
         </p>
       )}
       {linked && !connector.available && (
@@ -130,7 +158,7 @@ function LinkRow({ connector, onChanged }: { connector: AccountLinkView; onChang
       <div className="flex flex-wrap gap-2">
         {connector.available && (
           <Button
-            variant={linked ? 'secondary' : 'primary'}
+            variant={linked && toGrant.length === 0 ? 'secondary' : 'primary'}
             loading={action.pending}
             onClick={link}
           >

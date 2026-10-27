@@ -56,6 +56,8 @@ pub struct Linkable {
     /// remove, but no new one starts.
     pub available: bool,
     pub link: Option<AccountLinkRow>,
+    /// Its tools may write (ADR-119).
+    pub write_tools: bool,
     /// The Graph permissions its tools need now that the link does not
     /// grant (ADR-119): granted by linking again.
     pub to_grant: Vec<String>,
@@ -141,6 +143,7 @@ impl AccountLinkService {
                     connector_type: instance.connector_type,
                     available,
                     link,
+                    write_tools,
                     to_grant,
                 })
             })
