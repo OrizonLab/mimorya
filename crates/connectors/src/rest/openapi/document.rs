@@ -26,6 +26,9 @@ const MAX_FIELDS: usize = 200;
 const MAX_TYPES: usize = 4;
 /// What a part costs beyond its first unit: one more per this many bytes.
 const BYTES_PER_UNIT: usize = 64;
+/// The same for a text, whose every character is looked at (hidden ones
+/// taken out, blanks joined): four times dearer than a name merely hashed.
+const TEXT_BYTES_PER_UNIT: usize = 16;
 /// Why a part cannot be read once the budget is spent.
 pub(super) const TOO_COMPLEX: &str = "un document trop complexe";
 
@@ -56,7 +59,10 @@ impl<'a> Document<'a> {
     /// Pays for reading `bytes` bytes of the document: one unit, and one
     /// more per 64 bytes. Once the budget is spent, nothing more is read.
     pub(super) fn spend(&mut self, bytes: usize) -> Result<(), &'static str> {
-        let cost = 1 + bytes / BYTES_PER_UNIT;
+        self.pay(1 + bytes / BYTES_PER_UNIT)
+    }
+
+    fn pay(&mut self, cost: usize) -> Result<(), &'static str> {
         match self.budget.checked_sub(cost) {
             Some(left) => {
                 self.budget = left;
@@ -70,10 +76,10 @@ impl<'a> Document<'a> {
     }
 
     /// The beginning of a text that a bound of `max` characters may need,
-    /// paid for.
+    /// paid for: one unit, and one more per 16 bytes.
     pub(super) fn read(&mut self, text: &'a str, max: usize) -> Result<Read<'a>, &'static str> {
         let read = beginning(text, max);
-        self.spend(read.bytes())?;
+        self.pay(1 + read.bytes() / TEXT_BYTES_PER_UNIT)?;
         Ok(read)
     }
 

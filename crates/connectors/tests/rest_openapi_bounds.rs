@@ -6,7 +6,9 @@
 
 use std::time::{Duration, Instant};
 
-use mimorya_connectors::rest::{MAX_IMPORTED_OPERATIONS, MAX_NOTES, import_openapi};
+use mimorya_connectors::rest::{
+    MAX_IMPORTED_OPERATIONS, MAX_NOTES, ParameterLocation, import_openapi,
+};
 use serde_json::{Value, json};
 
 fn import(document: &Value) -> mimorya_connectors::rest::Imported {
@@ -197,4 +199,37 @@ fn stops_references_and_parts_nested_too_deep() {
     ] {
         assert!(notes.contains(expected), "{expected}\n---\n{notes}");
     }
+}
+
+#[test]
+fn keeps_a_field_of_a_required_body() {
+    // Thirty optional query parameters before a required body of optional
+    // fields: one of its fields is kept, else its tool would send no body.
+    let query: Vec<Value> = (0..30)
+        .map(|i| json!({ "name": format!("q{i}"), "in": "query", "schema": { "type": "string" } }))
+        .collect();
+    let imported = import(&json!({
+        "openapi": "3.0.0",
+        "paths": { "/items": { "patch": {
+            "operationId": "patchItems",
+            "parameters": query,
+            "requestBody": { "required": true, "content": { "application/json": { "schema": {
+                "properties": { "a": { "type": "string" }, "b": { "type": "string" } },
+            } } } },
+        } } },
+    }));
+    let patch = &imported.operations[0];
+    assert_eq!(patch.parameters.len(), 30);
+    let body: Vec<&str> = patch
+        .parameters
+        .iter()
+        .filter(|p| p.location == ParameterLocation::Body)
+        .map(|p| p.name.as_str())
+        .collect();
+    assert_eq!(body, ["a"]);
+    let notes = imported.notes.join("\n");
+    assert!(
+        notes.contains("PATCH /items : 2 paramètres facultatifs laissés de côté"),
+        "{notes}"
+    );
 }

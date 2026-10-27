@@ -5777,7 +5777,8 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     - 768 Kio au plus, pour que le document tienne, échappé, dans le corps d'une
       requête (1 Mo) ;
     - chaque partie lue se paie sur un budget de 200 000 unités, une par partie et une
-      de plus par 64 octets lus, **chaque fois** qu'elle est lue : une partie que
+      de plus par 64 octets lus (16 pour un texte, dont chaque caractère est examiné),
+      **chaque fois** qu'elle est lue : une partie que
       d'autres partagent par `$ref` (un résumé, une énumération, une liste `required`,
       les noms des champs d'un corps) coûte autant de fois qu'elle est relue. Le budget
       épuisé, plus rien n'est lu et les chemins suivants sont comptés « non lus » ;
@@ -5786,8 +5787,8 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
       imbriqués sur quatre niveaux ; 200 paramètres listés et 200 champs lus par
       opération ; un texte n'est lu que jusqu'à ce que sa borne peut demander (quatre
       fois sa longueur, plus 64 caractères) ; une énumération montre ses 50 premières
-      valeurs ; les méthodes d'un chemin sont cherchées, jamais ses autres clés
-      parcourues ;
+      valeurs, chacune lue tant qu'il reste de la place pour la montrer ; les méthodes
+      d'un chemin sont cherchées, jamais ses autres clés parcourues ;
     - 1 000 opérations converties, proposées ou non, puis les chemins suivants sont
       comptés « non lus » ; 200 opérations proposées pesant ensemble 2 Mio au plus en
       JSON, les suivantes comptées ; 100 remarques, les suivantes comptées, celles qui
@@ -5796,7 +5797,9 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
       ne se lisent jamais pareil ;
   - correspondance : chaque opération GET, PUT, POST, DELETE ou PATCH devient une
     opération nommée d'après son `operationId` en `snake_case` (sinon d'après sa méthode
-    et son chemin), rendue unique par `_2`, `_3`… Intitulé : son résumé, sinon son
+    et son chemin), rendue unique par `_2`, `_3`… dans l'ordre où elles sont
+    proposées : les chemins dans l'ordre écrit, les méthodes de chacun dans l'ordre
+    GET, PUT, POST, DELETE, PATCH. Intitulé : son résumé, sinon son
     `operationId`, sinon « MÉTHODE chemin » ; description : sa description, sinon son
     résumé, sinon « MÉTHODE chemin » ; un texte ne compte qu'une fois ses caractères
     cachés retirés, et celui qui ne montre plus rien cède la place au suivant. Les
@@ -5812,8 +5815,9 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     même d'un corps requis dont aucun champ ne se déclare (objet libre, `{}`, champs
     en lecture seule) : l'outil n'enverrait aucun corps ; facultatif, il est laissé de
     côté et dit. Un champ facultatif dont la référence ne se lit pas est laissé de côté
-    et dit, sans écarter l'opération. Au-delà de 30 paramètres, les requis puis les
-    premiers facultatifs sont gardés. Une opération
+    et dit, sans écarter l'opération. Au-delà de 30 paramètres, les requis (et le
+    premier champ d'un corps requis dont aucun champ ne l'est, pour que l'outil envoie
+    toujours un corps) puis les premiers facultatifs sont gardés. Une opération
     dépréciée est écartée, de même que HEAD, OPTIONS et TRACE ;
   - chaque opération proposée passe les vérifications d'une déclaration : un chemin
     qu'elles refuseraient (`%`, segment `..`…) écarte l'opération, raison donnée.
@@ -5832,10 +5836,11 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     `crates/connectors/tests/rest_openapi_bounds.rs` (bornes des paramètres, des
     opérations et des remarques ; références en boucle, trop enchaînées ou hors du
     document ; `allOf` trop imbriqués ; un petit document aux `allOf` imbriqués lu
-    vite, le reste compté) ; `crates/connectors/tests/rest_openapi_cost.rs` (des
+    vite, le reste compté ; le premier champ d'un corps requis gardé au-delà de 30
+    paramètres) ; `crates/connectors/tests/rest_openapi_cost.rs` (des
     documents proches de 768 Kio, chacun lu en moins de 5 s même sans optimisation :
-    liste `required`, résumé, énumération, noms de champs ou de paramètres et types de
-    contenu relus par `$ref`, pointeur trop long, entrée de chemin aux nombreuses
+    liste `required`, résumé, énumération, valeurs longues d'une énumération, noms de
+    champs ou de paramètres et types de contenu relus par `$ref`, pointeur trop long, entrée de chemin aux nombreuses
     clés, plafond des conversions, poids des opérations proposées) ;
     `crates/api/tests/rest_openapi_import.rs` (réservé aux administrateurs des
     connecteurs, rien enregistré ni audité, les opérations proposées acceptées telles

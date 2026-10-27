@@ -48,7 +48,8 @@ const METHODS: [(&str, HttpMethod); 5] = [
 ];
 const OTHER_METHODS: [&str; 3] = ["head", "options", "trace"];
 
-/// The operations a description offers, in the order written.
+/// The operations a description offers: its paths in the order written,
+/// the methods of each in this order: GET, PUT, POST, DELETE, PATCH.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Imported {
     /// The API's address, when the document gives an absolute one.

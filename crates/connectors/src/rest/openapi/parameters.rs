@@ -29,6 +29,8 @@ pub(super) struct Gathered {
     /// Whether a hidden character was taken out of a description.
     pub stripped: bool,
     names: HashSet<String>,
+    /// Whether the operation requires its body: one of its fields is kept.
+    body_required: bool,
 }
 
 /// One parameter as the document gives it.
@@ -190,6 +192,7 @@ fn body_parameters<'a>(
         // Its tool would send no body.
         return aside(gathered, "aucun champ déclarable");
     }
+    gathered.body_required = required;
     Ok(())
 }
 
@@ -233,7 +236,8 @@ impl Gathered {
     }
 
     /// What the model reads of a parameter: its description, then the
-    /// values it takes, on one line within the bound.
+    /// values it takes, on one line within the bound. A value is read only
+    /// as far as there is room left to show it.
     fn description<'a>(
         &mut self,
         doc: &mut Document<'a>,
@@ -241,39 +245,54 @@ impl Gathered {
         schema: &'a Value,
     ) -> Result<String, String> {
         let max = MAX_PARAMETER_DESCRIPTION_CHARS;
-        let mut parts = Vec::new();
-        if let Some(text) = written {
-            parts.push(one_line(doc.read(text, max)?, max, &mut self.stripped));
-        }
+        let mut description = match written {
+            Some(text) => one_line(doc.read(text, max)?, max, &mut self.stripped),
+            None => String::new(),
+        };
         if let Some(values) = schema.get("enum").and_then(Value::as_array) {
+            let mut room = max.saturating_sub(description.chars().count() + " Valeurs : ".len());
             let mut shown = Vec::new();
             for value in values.iter().take(MAX_VALUES_SHOWN) {
-                match value {
-                    Value::String(text) => {
-                        shown.push(one_line(doc.read(text, max)?, max, &mut self.stripped));
-                    }
-                    Value::Number(_) | Value::Bool(_) => shown.push(value.to_string()),
-                    _ => {}
+                if room == 0 {
+                    break;
                 }
+                let text = match value {
+                    Value::String(text) => {
+                        one_line(doc.read(text, room)?, room, &mut self.stripped)
+                    }
+                    Value::Number(_) | Value::Bool(_) => value.to_string(),
+                    _ => continue,
+                };
+                room = room.saturating_sub(text.chars().count() + ", ".len());
+                shown.push(text);
             }
-            let more = if values.len() > MAX_VALUES_SHOWN {
+            let more = if values.len() > shown.len() {
                 ", …"
             } else {
                 ""
             };
-            parts.push(format!("Valeurs : {}{more}.", shown.join(", ")));
+            description = format!("{description} Valeurs : {}{more}.", shown.join(", "));
         }
-        let joined = parts.join(" ");
-        Ok(one_line(beginning(&joined, max), max, &mut false))
+        Ok(one_line(beginning(&description, max), max, &mut false))
     }
 
-    /// Within the parameters an operation may declare: the required ones,
-    /// then the optional ones in the order written.
+    /// Within the parameters an operation may declare: the required ones
+    /// (and the first field of a required body none of whose fields is, so
+    /// that its tool still sends a body), then the optional ones in the
+    /// order written.
     fn fit(&mut self) -> Result<(), String> {
         if self.parameters.len() <= MAX_PARAMETERS {
             return Ok(());
         }
-        let required = self.parameters.iter().filter(|p| p.required).count();
+        let in_body = |p: &RestParameter| p.location == ParameterLocation::Body;
+        let first_field = (self.body_required
+            && !self.parameters.iter().any(|p| in_body(p) && p.required))
+        .then(|| self.parameters.iter().position(in_body))
+        .flatten();
+        let kept: Vec<bool> = (0..self.parameters.len())
+            .map(|at| self.parameters[at].required || Some(at) == first_field)
+            .collect();
+        let required = kept.iter().filter(|kept| **kept).count();
         if required > MAX_PARAMETERS {
             return Err(format!(
                 "{required} paramètres requis, {MAX_PARAMETERS} au plus"
@@ -281,12 +300,15 @@ impl Gathered {
         }
         let before = self.parameters.len();
         let mut room = MAX_PARAMETERS - required;
-        self.parameters.retain(|p| {
-            let kept = p.required || room > 0;
-            if !p.required && kept {
+        let mut at = 0;
+        self.parameters.retain(|_| {
+            let must = kept[at];
+            at += 1;
+            let keep = must || room > 0;
+            if !must && keep {
                 room -= 1;
             }
-            kept
+            keep
         });
         self.notes.push(format!(
             "{} paramètres facultatifs laissés de côté ({MAX_PARAMETERS} au plus)",

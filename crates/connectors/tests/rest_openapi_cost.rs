@@ -118,7 +118,7 @@ fn a_long_pointer() {
 fn what_the_operations_offered_weigh_together() {
     // A shared parameter whose description fills its bound with characters
     // of four bytes, thirty of them in every operation.
-    let description = "𝒜".repeat(2_000);
+    let description = "𝒜".repeat(300);
     let parameters: Vec<String> = (0..30)
         .map(|i| format!(r##"{{"$ref":"#/c/Q{i}"}}"##))
         .collect();
@@ -231,4 +231,31 @@ fn long_parameter_names_read_again() {
         .and_then(|n| n.parse().ok())
         .unwrap_or_default();
     assert!(unread > 1_900, "{}", imported.notes[0]);
+}
+
+#[test]
+fn long_values_of_an_enumeration_read_again() {
+    // What costs most for its weight: texts every character of which is
+    // looked at. Fifty long values of short words, in an enumeration two
+    // hundred parameters of a shared path item point to.
+    let words = "a ".repeat(700);
+    let values = vec![format!("\"{words}\""); 50].join(",");
+    let parameters: Vec<String> = (0..200)
+        .map(|i| format!(r##"{{"name":"p{i}","in":"query","schema":{{"$ref":"#/c/S"}}}}"##))
+        .collect();
+    let op = r#"{"operationId":"list"}"#;
+    let document = format!(
+        r##"{{"openapi":"3.0.0","c":{{"S":{{"type":"string","enum":[{values}]}},"P":{{"parameters":[{}],"get":{op},"put":{op},"post":{op},"delete":{op},"patch":{op}}}}},"paths":{{{}}}}}"##,
+        parameters.join(","),
+        shared_paths(2_000)
+    );
+    let imported = timed(&document);
+    let unread: usize = imported.notes[0]
+        .split(' ')
+        .next()
+        .and_then(|n| n.parse().ok())
+        .unwrap_or_default();
+    // A text is paid for four times as dear as a name: the budget is spent
+    // within the first paths (each of five operations of 200 parameters).
+    assert!(unread >= 1_995, "{}", imported.notes[0]);
 }

@@ -17,8 +17,9 @@ pub struct OpenApiDescription {
     pub document: String,
 }
 
-/// The operations the description offers, each one a declaration accepts,
-/// in the order written.
+/// The operations the description offers, each one a declaration accepts:
+/// its paths in the order written, the methods of each in this order: GET,
+/// PUT, POST, DELETE, PATCH.
 #[derive(Debug, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct RestImport {
