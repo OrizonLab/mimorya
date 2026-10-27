@@ -5764,18 +5764,21 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     OpenAPI 3 (3.0 ou 3.1) **en JSON**, donnée telle quelle (`document`), et répond par
     les opérations qu'elle propose, l'adresse de l'API si elle en donne une complète
     (premier serveur, variables remplacées par leur valeur par défaut) et des remarques.
-    Rien n'est enregistré, appelé ni audité : les administrateurs relisent, gardent ce
+    Rien n'est enregistré ni appelé, et une lecture n'est pas auditée (une tentative
+    sans la permission l'est, comme toute modification d'administration refusée,
+    ADR-038) : les administrateurs relisent, gardent ce
     qu'ils veulent, puis ajoutent ou modifient l'API comme avant (ADR-112), où la
     déclaration est vérifiée de nouveau, entière ;
   - la plateforme ne télécharge aucune adresse : seul le document donné est lu. Une
     description YAML se convertit d'abord en JSON, une description Swagger 2.0 d'abord
     en OpenAPI 3 ; aucune bibliothèque YAML n'entre côté serveur ;
-  - lecture bornée : 900 Kio au plus ; références internes seulement (`#/…`), dix sauts
+  - lecture bornée : 768 Kio au plus, pour que le document tienne, échappé, dans le
+    corps d'une requête (1 Mo) ; références internes seulement (`#/…`), dix sauts
     au plus pour une même partie (une boucle s'arrête là) ; 200 000 parties lues pour
     tout le document (références, paramètres, propriétés), au-delà les chemins suivants
     sont comptés « non lus » ; 200 opérations proposées, les suivantes comptées ; 100
     remarques, les suivantes comptées, celles qui concernent toute la description en
-    tête ;
+    tête ; un caractère caché qu'une remarque citerait y devient « � » ;
   - correspondance : chaque opération GET, PUT, POST, DELETE ou PATCH devient une
     opération nommée d'après son `operationId` en `snake_case` (sinon d'après sa méthode
     et son chemin), rendue unique par `_2`, `_3`… Intitulé : son résumé, sinon son
@@ -5802,7 +5805,7 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
   - tests : `crates/connectors/tests/rest_openapi.rs` (une description d'assistance
     réaliste : noms, textes, paramètres redéfinis par l'opération, `allOf`, références,
     corps facultatif, ce qui est laissé de côté et pourquoi ; documents refusés ;
-    adresse incomplète) ; `crates/connectors/tests/rest_openapi_bounds.rs` (bornes des
+    adresse incomplète ; une remarque qui cite un caractère caché sans le garder) ; `crates/connectors/tests/rest_openapi_bounds.rs` (bornes des
     paramètres, des opérations et des remarques ; références en boucle, trop enchaînées
     ou hors du document ; `allOf` trop imbriqués ; un petit document aux `allOf`
     imbriqués lu vite, le reste compté) ;

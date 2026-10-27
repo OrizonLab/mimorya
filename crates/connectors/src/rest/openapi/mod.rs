@@ -23,8 +23,9 @@ use super::checks::operation_problem;
 use super::declaration::{HttpMethod, RestOperation};
 use crate::outbound::MAX_URL_CHARS;
 
-/// What a document may weigh: a large API's description fits.
-pub const MAX_DOCUMENT_BYTES: usize = 900 * 1024;
+/// What a document may weigh: a large API's description fits, and so it
+/// does escaped in the body of a request to the platform (1 MB).
+pub const MAX_DOCUMENT_BYTES: usize = 768 * 1024;
 /// Operations offered, among which the administrators keep those to declare.
 pub const MAX_IMPORTED_OPERATIONS: usize = 200;
 /// Notes kept, the others counted.
@@ -200,9 +201,14 @@ struct Notes {
 }
 
 impl Notes {
+    /// A note shows all it holds: what it quotes of the document (a
+    /// character a path may not hold…) has no hidden character left.
     fn push(&mut self, note: String) {
         if self.kept.len() < MAX_NOTES {
-            self.kept.push(note);
+            let shown = note
+                .chars()
+                .map(|c| if is_hidden(c) { '\u{FFFD}' } else { c });
+            self.kept.push(shown.collect());
         } else {
             self.more += 1;
         }

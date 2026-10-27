@@ -7,6 +7,7 @@
 use mimorya_connectors::rest::{
     HttpMethod, ParameterLocation, ParameterType, RestOperation, import_openapi,
 };
+use mimorya_core::plain_text::is_hidden;
 use serde_json::{Value, json};
 
 fn import(document: &Value) -> mimorya_connectors::rest::Imported {
@@ -284,12 +285,11 @@ fn says_what_it_cannot_read() {
     }
     let long = format!(
         "{{\"openapi\":\"3.0.0\",\"x\":\"{}\"}}",
-        "a".repeat(1024 * 1024)
+        "a".repeat(800 * 1024)
     );
-    assert!(
-        import_openapi(&long)
-            .unwrap_err()
-            .starts_with("Description trop longue")
+    assert_eq!(
+        import_openapi(&long).unwrap_err(),
+        "Description trop longue : 768 Kio au plus"
     );
 }
 
@@ -324,4 +324,21 @@ fn takes_no_address_it_cannot_complete() {
     }
     let (url, _) = with(json!([{ "url": "http://intranet.example.com/api/" }]));
     assert_eq!(url.as_deref(), Some("http://intranet.example.com/api"));
+}
+
+#[test]
+fn notes_show_all_they_hold() {
+    // A path holding a direction override: refused, and the note quoting it
+    // hides nothing.
+    let imported = import(&json!({
+        "openapi": "3.0.0",
+        "paths": { "/files/\u{202e}txt.exe": { "get": { "operationId": "file" } } },
+    }));
+    assert!(imported.operations.is_empty());
+    let hidden = |note: &String| note.chars().any(is_hidden);
+    assert!(!imported.notes.iter().any(hidden), "{:?}", imported.notes);
+    let notes = imported.notes.join("\n");
+    let expected = "GET /files/txt.exe : laissée de côté. Opération file : caractère « \u{fffd} » \
+                    refusé";
+    assert!(notes.contains(expected), "{notes}");
 }
