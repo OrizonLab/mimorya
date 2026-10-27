@@ -3,9 +3,10 @@
 //! they declare, a token quoted back, a server that never answers, one held
 //! until the test releases it); a REST API (`rest`); Microsoft Graph
 //! (`graph`, its writes in `graph_writes`); Gmail and Google Calendar
-//! (`google`).
+//! (`google`, its writes in `google_writes`).
 
 mod google;
+mod google_writes;
 mod graph;
 mod graph_writes;
 mod hold;
@@ -25,6 +26,7 @@ use tokio::sync::oneshot;
 
 use crate::mcp::DemoDocsServer;
 pub use google::{FakeGoogle, GOOGLE_DETAIL, GoogleRequest, LISTED_GONE, LISTED_REFUSED};
+pub use google_writes::SentMail;
 pub use graph::{FORBIDDEN_MESSAGE, FakeGraph, GRAPH_DETAIL, GraphRequest, OVERSIZED_MESSAGE};
 pub use hold::Hold;
 pub use quirks::{DeclaredToolsServer, HIDDEN_TEXT, Quirk};

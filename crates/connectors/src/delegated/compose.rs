@@ -1,16 +1,15 @@
-//! What a tool writes in a person's name (ADR-119): addresses as Microsoft
-//! reads them, in ASCII, a subject or a place on one visible line, a text
-//! that shows all it holds (line breaks and tabs aside). The person who
-//! validates sees all that is sent: a hidden character could change what
-//! they read, and a letter of another script could pass for one of theirs
-//! in an address, so both are refused before they are asked, never taken
-//! out after.
+//! What a tool writes in a person's name, whichever provider sends it
+//! (ADR-119, ADR-123): addresses in ASCII, a subject or a place on one
+//! visible line, a text that shows all it holds (line breaks and tabs
+//! aside). The person who validates sees all that is sent: a hidden
+//! character could change what they read, and a letter of another script
+//! could pass for one of theirs in an address, so both are refused before
+//! they are asked, never taken out after.
 
 use mimorya_core::plain_text::{is_hidden, shows_all_it_holds};
-use serde_json::{Value, json};
 use validator::{ValidateEmail, ValidationError};
 
-use crate::delegated::shape::bounded;
+use super::shape::bounded;
 
 /// The longest address accepted (RFC 5321's path, less its brackets).
 const MAX_ADDRESS_CHARS: usize = 254;
@@ -70,24 +69,6 @@ pub fn full_text(text: &str) -> Result<(), ValidationError> {
     Ok(())
 }
 
-/// Graph's recipients, of these addresses (`type` for the attendees of an
-/// event).
-pub fn recipients(list: &[String], kind: Option<&str>) -> Value {
-    json!(
-        list.iter()
-            .map(|address| match kind {
-                Some(kind) => json!({ "emailAddress": { "address": address }, "type": kind }),
-                None => json!({ "emailAddress": { "address": address } }),
-            })
-            .collect::<Vec<_>>()
-    )
-}
-
-/// Graph's text body.
-pub fn text_body(text: &str) -> Value {
-    json!({ "contentType": "Text", "content": text })
-}
-
 /// The start of a text, for the description of an action.
 pub fn excerpt(text: &str) -> String {
     match bounded(text.trim(), EXCERPT_CHARS) {
@@ -113,6 +94,9 @@ mod tests {
         // Another script's letter, or a full-width one, passes for ours.
         assert!(addresses(&list(&["paul@ex\u{435}mple.fr"])).is_err());
         assert!(addresses(&list(&["paul@\u{FF45}xemple.fr"])).is_err());
+        // What would end a header, or name another recipient, in a message.
+        assert!(addresses(&list(&["lea@exemple.fr\r\nBcc: tous@exemple.fr"])).is_err());
+        assert!(addresses(&list(&["\"lea, paul\"@exemple.fr"])).is_err());
         let long = format!("{}@exemple.fr", "a".repeat(250));
         assert!(addresses(&[long]).is_err());
     }

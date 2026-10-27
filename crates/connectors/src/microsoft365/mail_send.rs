@@ -8,41 +8,19 @@ use async_trait::async_trait;
 use mimorya_core::account_links::MAIL_SEND;
 use mimorya_core::autonomy::ToolRisk;
 use mimorya_core::tools::{ToolContext, ToolInfo, ToolResult, TypedTool};
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
 use serde_json::json;
-use validator::Validate;
 
-use super::compose::{addresses, excerpt, full_text, recipients, text_body, visible_line};
-use crate::delegated::ProviderApi;
-use crate::delegated::write_as_person;
+use super::shape::{recipients, text_body};
+use crate::delegated::{NewMail, ProviderApi, write_as_person};
 use crate::outbound::CONNECTOR_USE;
 
 pub struct MailSend {
     pub graph: ProviderApi,
 }
 
-#[derive(Debug, Serialize, Deserialize, JsonSchema, Validate)]
-#[serde(deny_unknown_fields)]
-pub struct MailSendInput {
-    /// Destinataires : adresses e-mail, 1 à 10
-    #[validate(length(min = 1, max = 10), custom(function = "addresses"))]
-    to: Vec<String>,
-    /// Destinataires en copie : adresses e-mail, 10 au plus
-    #[serde(default)]
-    #[validate(length(max = 10), custom(function = "addresses"))]
-    cc: Vec<String>,
-    /// Objet, sur une ligne
-    #[validate(length(min = 1, max = 255), custom(function = "visible_line"))]
-    subject: String,
-    /// Texte du message, en texte brut (retours à la ligne permis)
-    #[validate(length(min = 1, max = 20000), custom(function = "full_text"))]
-    body: String,
-}
-
 #[async_trait]
 impl TypedTool for MailSend {
-    type Input = MailSendInput;
+    type Input = NewMail;
 
     fn info(&self) -> ToolInfo {
         ToolInfo::new(
@@ -55,23 +33,11 @@ impl TypedTool for MailSend {
         .always_requires_approval()
     }
 
-    /// Whom first, what the model wrote last: a subject cannot pass itself
-    /// off as the recipients.
-    fn describe_action(&self, input: &MailSendInput) -> Option<String> {
-        let copy = match input.cc.is_empty() {
-            true => String::new(),
-            false => format!(" (copie : {})", input.cc.join(", ")),
-        };
-        Some(format!(
-            "Envoyer depuis la boîte Microsoft 365 reliée un e-mail à {}{copy} — objet : « {} » ; \
-             texte : « {} »",
-            input.to.join(", "),
-            input.subject,
-            excerpt(&input.body)
-        ))
+    fn describe_action(&self, input: &NewMail) -> Option<String> {
+        Some(input.described(self.graph.kind().product()))
     }
 
-    async fn run(&self, input: MailSendInput, ctx: &ToolContext) -> anyhow::Result<ToolResult> {
+    async fn run(&self, input: NewMail, ctx: &ToolContext) -> anyhow::Result<ToolResult> {
         let message = json!({
             "message": {
                 "subject": input.subject,
@@ -86,7 +52,7 @@ impl TypedTool for MailSend {
         {
             return Ok(ToolResult::error(why));
         }
-        let count = input.to.len() + input.cc.len();
+        let count = input.recipients();
         Ok(ToolResult::ok(json!({
             "envoye": true,
             "objet": input.subject,

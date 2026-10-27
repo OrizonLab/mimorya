@@ -9,7 +9,6 @@
 
 mod calendar_create;
 mod calendar_events;
-mod compose;
 mod mail_read;
 mod mail_search;
 mod mail_send;

@@ -6493,3 +6493,85 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
       - rien sans liaison ;
       - une politique garde `connector:use` ;
       - une évaluation ne lit aucun compte.
+
+## ADR-123 — Envoi d'e-mails Gmail et rendez-vous Google Agenda, sous validation (connecteurs, lot 11c)
+
+- **Date** : 2026-10-27 · **Statut** : acceptée
+- **Contexte** : les outils Google Workspace lisent la boîte Gmail et l'agenda de la
+  personne servie (ADR-122). L'entreprise peut déjà permettre l'écriture (`writeTools`,
+  ADR-121), et chaque liaison demande alors l'envoi (`gmail.send`) et l'écriture des
+  rendez-vous (`calendar.events`). Il manquait les outils qui écrivent, comme ceux de
+  Microsoft 365 (ADR-119).
+- **Décision** :
+  - **deux outils**, proposés une fois l'écriture permise (`GOOGLE_WORKSPACE_TOOLS`
+    nomme les cinq outils, `GOOGLE_WORKSPACE_WRITE_TOOLS` les deux qui écrivent) :
+    - `google_gmail_send` : les mêmes entrées que `m365_mail_send` (1 à 10
+      destinataires, 10 en copie, un objet sur une ligne, un texte brut). Gmail garde
+      le message dans les messages envoyés de la personne ; l'e-mail envoyé est cité
+      (`email`) ;
+    - `google_calendar_event_create` : les mêmes entrées que
+      `m365_calendar_event_create`, dans l'agenda principal de la personne. Google
+      envoie l'invitation aux participants (`sendUpdates=all`) ; le rendez-vous créé
+      est cité (`event`) ;
+    - chacun a le risque `external` et exige toujours une validation, quel que soit le
+      niveau d'autonomie et la politique d'outil ;
+  - **ce que les deux fournisseurs partagent** est écrit une fois, dans
+    `connectors/src/delegated/` :
+    - les règles de ce qui part (`compose.rs` : adresses valides, en ASCII, chacune
+      une fois ; objet et lieu sur une ligne visible ; texte sans caractère caché) ;
+    - l'e-mail (`new_mail.rs`) et le rendez-vous (`new_event.rs`) tels que le modèle
+      les demande et que la personne les valide : leurs entrées, leurs limites, leur
+      description (les destinataires, la date et la durée d'abord, ce que le modèle
+      écrit en dernier) et les instants d'un rendez-vous (heure de Paris, à une heure
+      qui existe ce jour-là, première occurrence d'une heure répétée) ;
+    - une règle changée l'est pour Microsoft 365 et Google Workspace ensemble ;
+  - **le message qu'envoie Gmail** est écrit par la plateforme (format RFC 5322,
+    `outgoing.rs`) :
+    - les destinataires et la copie, une adresse par ligne ; l'objet en mots encodés
+      (RFC 2047), coupés entre deux caractères, chaque ligne dans les 76 caractères
+      permis ; le texte en UTF-8, ses lignes finies
+      par CRLF, en base 64 ;
+    - rien de ce que le modèle écrit n'y est copié tel quel : ni un objet ni un texte ne
+      peuvent finir un en-tête ou en ajouter un (`Bcc:`), même si une règle de
+      validation venait à manquer ;
+    - Gmail ajoute l'expéditeur (la personne dont le jeton envoie), la date et
+      l'identifiant du message : la plateforme ne choisit pas d'expéditeur ;
+  - **le rendez-vous** est envoyé à Google Agenda en instants UTC, avec le fuseau de la
+    plateforme pour l'affichage : il dure ce qui a été validé, même la nuit d'un
+    changement d'heure. Le texte de l'invitation va dans sa description : Google peut
+    le montrer comme du HTML, mais ce qu'il contient est ce que la personne a validé,
+    entier ;
+  - **envoyé une fois**, comme pour Microsoft 365 : un `POST`, jamais répété ; sans
+    réponse ou sur une erreur de Google (5xx), l'outil dit que l'action a peut-être eu
+    lieu et demande de vérifier dans Google Workspace avant de la redemander ; une
+    erreur 4xx dit que rien n'a été fait ; les mots de Google n'atteignent jamais le
+    modèle.
+- **Conséquences** :
+  - l'agent n'écrit dans un compte Google Workspace qu'avec la validation de la personne
+    que le circuit des validations désigne (ADR-059) ;
+  - une liaison faite avant que l'écriture soit permise ne l'accorde pas : l'outil
+    refuse avant Google et dit à la personne de relier de nouveau son compte
+    (ADR-121) ;
+  - le texte d'un e-mail envoyé reste, comme pour Microsoft 365, dans le journal des
+    appels du run et dans sa demande de validation, avec leur conservation ; ni l'audit
+    ni les journaux techniques ne le gardent ;
+  - pas encore de réponse dans un fil, ni de pièce jointe, ni de rendez-vous sur une
+    journée entière ou avec une visioconférence Meet ;
+  - reste : les écrans (formulaire du client Google, « Mon compte »), lot 11d ;
+  - tests :
+    - `crates/connectors/tests/google_workspace_writes.rs` : outils proposés si
+      l'entreprise le permet, toujours validés ; e-mail envoyé une fois, tel que
+      validé (message relu : en-têtes, objet, texte) ; rendez-vous créé en instants,
+      participants invités ; entrées cachant quelque chose refusées avant la
+      validation ; écriture peut-être faite dite à vérifier ; jeton refusé signalé ;
+    - `crates/connectors/tests/google_workspace_permissions.rs` : chacun des cinq
+      outils exige sa permission, refusée sans appel à Google quand la liaison ne
+      l'accorde pas ;
+    - `crates/api/tests/google_workspace_writes.rs` : outils proposés tant que
+      l'entreprise le permet ; e-mail en attente de validation (risque, paramètres
+      exacts, description), puis envoyé tel que validé avec le jeton de la personne ;
+      rendez-vous validé créé dans son agenda ;
+    - tests unitaires : `outgoing.rs` (message, objet long coupé en mots relus
+      entiers, lignes bornées), `new_event.rs` (instants, changement d'heure, durée,
+      début borné, description), `compose.rs` (adresses : ce qui finirait un en-tête),
+      `calendar_create.rs` (rendez-vous envoyé à Google).

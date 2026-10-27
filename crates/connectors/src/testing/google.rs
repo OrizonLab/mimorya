@@ -6,7 +6,8 @@
 //! records what it received, refuses the tokens a test chose (401), and
 //! answers certain e-mails' identifiers with a refusal or an oversized
 //! body, and lists, for certain words, an e-mail deleted since or refused.
-//! Its errors carry a detail the tools must not pass on.
+//! Its errors carry a detail the tools must not pass on. What it writes,
+//! an e-mail sent and an event created, is in `google_writes` (ADR-123).
 
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -16,11 +17,12 @@ use axum::extract::{Path, RawQuery, State};
 use axum::http::header::AUTHORIZATION;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
+use axum::routing::{get, post};
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use serde_json::{Value, json};
 
+use super::google_writes::{create_event, send_message};
 use super::graph::{FORBIDDEN_MESSAGE, OVERSIZED_MESSAGE};
 
 /// What a Google error says beyond its status: never shown to the model.
@@ -38,6 +40,8 @@ pub struct GoogleRequest {
     pub path: String,
     /// In order, a name repeated as sent.
     pub query: Vec<(String, String)>,
+    /// What a write sent (JSON), as received.
+    pub body: Option<Value>,
 }
 
 impl GoogleRequest {
@@ -51,12 +55,14 @@ impl GoogleRequest {
 }
 
 #[derive(Default)]
-struct Received {
+pub(super) struct Received {
     requests: Vec<GoogleRequest>,
     refused: Vec<String>,
+    /// The status every write is answered with, from now on.
+    pub(super) refused_writes: Option<StatusCode>,
 }
 
-type Shared = Arc<Mutex<Received>>;
+pub(super) type Shared = Arc<Mutex<Received>>;
 
 pub struct FakeGoogle {
     /// Gmail's address, `http://127.0.0.1:<port>/gmail/v1`.
@@ -71,8 +77,12 @@ impl FakeGoogle {
         let shared = Shared::default();
         let router = Router::new()
             .route("/gmail/v1/users/me/messages", get(messages))
+            .route("/gmail/v1/users/me/messages/send", post(send_message))
             .route("/gmail/v1/users/me/messages/{id}", get(message))
-            .route("/calendar/v3/calendars/primary/events", get(events))
+            .route(
+                "/calendar/v3/calendars/primary/events",
+                get(events).post(create_event),
+            )
             .with_state(shared.clone());
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
@@ -99,6 +109,12 @@ impl FakeGoogle {
             .expect("google")
             .refused
             .push(token.into());
+    }
+
+    /// Answers every write with this status from now on.
+    pub fn refuse_writes(&self, status: u16) {
+        self.shared.lock().expect("google").refused_writes =
+            Some(StatusCode::from_u16(status).expect("status"));
     }
 }
 
@@ -172,17 +188,19 @@ fn metadata(message: &Value, asked: &[String]) -> Value {
     kept
 }
 
-fn failure(status: StatusCode) -> Response {
+pub(super) fn failure(status: StatusCode) -> Response {
     let body = json!({ "error": { "code": status.as_u16(), "message": GOOGLE_DETAIL } });
     (status, axum::Json(body)).into_response()
 }
 
-/// The owner of the token received, recorded; Google's status if refused.
-fn owner(
+/// The owner of the token received, recorded with what a write sent;
+/// Google's status if refused.
+pub(super) fn owner(
     shared: &Shared,
     headers: &HeaderMap,
     path: String,
     raw: Option<String>,
+    body: Option<Value>,
 ) -> Result<(String, Vec<(String, String)>), StatusCode> {
     let token = headers
         .get(AUTHORIZATION)
@@ -199,6 +217,7 @@ fn owner(
         token: token.clone(),
         path,
         query: query.clone(),
+        body,
     });
     let owner = token
         .strip_prefix("acces-")
@@ -215,7 +234,7 @@ async fn messages(
     headers: HeaderMap,
     RawQuery(raw): RawQuery,
 ) -> Response {
-    let (owner, query) = match owner(&shared, &headers, "/users/me/messages".into(), raw) {
+    let (owner, query) = match owner(&shared, &headers, "/users/me/messages".into(), raw, None) {
         Ok(found) => found,
         Err(refused) => return failure(refused),
     };
@@ -281,7 +300,7 @@ async fn message(
     RawQuery(raw): RawQuery,
 ) -> Response {
     let path = format!("/users/me/messages/{id}");
-    let (owner, query) = match owner(&shared, &headers, path, raw) {
+    let (owner, query) = match owner(&shared, &headers, path, raw, None) {
         Ok(found) => found,
         Err(refused) => return failure(refused),
     };
@@ -314,7 +333,7 @@ async fn events(
     RawQuery(raw): RawQuery,
 ) -> Response {
     let path = "/calendars/primary/events".to_string();
-    let owner = match owner(&shared, &headers, path, raw) {
+    let owner = match owner(&shared, &headers, path, raw, None) {
         Ok((owner, _)) => owner,
         Err(refused) => return failure(refused),
     };
