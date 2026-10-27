@@ -26,6 +26,9 @@ export interface OperationDraft {
 
 export const METHODS: HttpMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
 
+/** What one API may declare, as the platform checks it (ADR-112). */
+export const MAX_OPERATIONS = 50;
+
 export const LOCATIONS: Record<ParameterLocation, string> = {
   path: 'Chemin',
   query: 'Requête',
@@ -63,6 +66,18 @@ export function emptyOperation(): OperationDraft {
     path: '/',
     parameters: [],
   };
+}
+
+/** Whether an operation is still as the form first showed it, nothing typed. */
+export function untouched(draft: OperationDraft): boolean {
+  return (
+    draft.name === '' &&
+    draft.title === '' &&
+    draft.description === '' &&
+    draft.method === 'GET' &&
+    draft.path === '/' &&
+    draft.parameters.length === 0
+  );
 }
 
 /** The operations stored, as the form edits them. */

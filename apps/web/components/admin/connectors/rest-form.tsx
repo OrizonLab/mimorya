@@ -10,8 +10,17 @@ import {
   type ConnectorView,
   type Connectors,
   type NewRestConnector,
+  type RestOperation,
 } from '@/lib/api';
-import { emptyOperation, fromDrafts, toDrafts, type OperationDraft } from './rest-drafts';
+import { OpenApiImport } from './openapi-import';
+import {
+  MAX_OPERATIONS,
+  emptyOperation,
+  fromDrafts,
+  toDrafts,
+  untouched,
+  type OperationDraft,
+} from './rest-drafts';
 import { RestOperationFields } from './rest-operation-fields';
 
 /**
@@ -43,6 +52,18 @@ export function RestForm({
   function change(changed: OperationDraft) {
     setOperations((current) => current.map((o) => (o.key === changed.key ? changed : o)));
   }
+
+  /** Operations read from a description, after those of the form (in place
+   * of the empty one it opens with); its address if none is typed yet. */
+  function imported(chosen: RestOperation[], address: string | null) {
+    setOperations((current) => [
+      ...current.filter((operation) => !untouched(operation)),
+      ...toDrafts(chosen),
+    ]);
+    if (address && !url.trim()) setUrl(address);
+  }
+
+  const kept = operations.filter((operation) => !untouched(operation));
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -139,6 +160,11 @@ export function RestForm({
           ? 'Ce déploiement autorise les API de son réseau privé.'
           : 'Seules les adresses publiques en https sont acceptées.'}
       </p>
+      <OpenApiImport
+        room={Math.max(0, MAX_OPERATIONS - kept.length)}
+        taken={new Set(kept.map((operation) => operation.name.trim()))}
+        onAdd={imported}
+      />
       {operations.map((operation, index) => (
         <RestOperationFields
           key={operation.key}
