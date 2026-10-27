@@ -22,6 +22,7 @@ mod connector_trial;
 mod connectors;
 mod domain_proofs;
 mod embedding;
+mod google_workspace;
 mod identity_providers;
 mod invitations;
 mod link_sender;
@@ -56,6 +57,7 @@ pub use domain_proofs::prove_domain;
 pub use embedding::{
     EmbeddingInput, EmbeddingTestOutcome, configure_embedding, reset_embedding, test_embedding,
 };
+pub use google_workspace::{NewGoogleWorkspace, create_google_workspace_connector};
 pub use identity_providers::{
     ProviderChanges, ProviderDeclaration, change_identity_provider, declare_identity_provider,
     remove_identity_provider,

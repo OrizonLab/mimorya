@@ -14,6 +14,7 @@ use ts_rs::TS;
 use uuid::Uuid;
 use validator::Validate;
 
+use super::google_workspace::GoogleWorkspaceApp;
 use super::microsoft365::Microsoft365App;
 use super::rest_connectors::{RestApi, RestOperation};
 use crate::contract::{ToolRisk, stored_text};
@@ -82,16 +83,29 @@ pub struct ConnectorView {
     pub rest: Option<RestApi>,
     /// A company's Microsoft 365 application (ADR-116).
     pub microsoft365: Option<Microsoft365App>,
+    /// A company's Google Workspace client (ADR-121).
+    pub google_workspace: Option<GoogleWorkspaceApp>,
     pub updated_at: String,
 }
 
+/// What the administration may change of a connector, by its kind: one at
+/// most.
+#[derive(Default)]
+pub struct ConnectorDetails {
+    pub mcp: Option<McpEndpoint>,
+    pub rest: Option<RestApi>,
+    pub microsoft365: Option<Microsoft365App>,
+    pub google_workspace: Option<GoogleWorkspaceApp>,
+}
+
 impl ConnectorView {
-    pub fn from_row(
-        i: &ConnectorInstanceRow,
-        mcp: Option<McpEndpoint>,
-        rest: Option<RestApi>,
-        microsoft365: Option<Microsoft365App>,
-    ) -> anyhow::Result<Self> {
+    pub fn from_row(i: &ConnectorInstanceRow, details: ConnectorDetails) -> anyhow::Result<Self> {
+        let ConnectorDetails {
+            mcp,
+            rest,
+            microsoft365,
+            google_workspace,
+        } = details;
         Ok(Self {
             id: i.id,
             connector_type: i.connector_type.clone(),
@@ -103,6 +117,7 @@ impl ConnectorView {
             mcp,
             rest,
             microsoft365,
+            google_workspace,
             updated_at: iso(&i.updated_at),
         })
     }

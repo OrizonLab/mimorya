@@ -40,7 +40,7 @@ export type AccountLinkStart = { redirectUrl: string, };
  */
 export type AccountLinkView = { connectorId: string, name: string,
 /**
- * `microsoft365`.
+ * `microsoft365` or `google_workspace`.
  */
 type: string,
 /**
@@ -348,7 +348,11 @@ toolPolicies: Record<string, ToolPolicy>, mcp: McpEndpoint | null, rest: RestApi
 /**
  * A company's Microsoft 365 application (ADR-116).
  */
-microsoft365: Microsoft365App | null, updatedAt: string, };
+microsoft365: Microsoft365App | null,
+/**
+ * A company's Google Workspace client (ADR-121).
+ */
+googleWorkspace: GoogleWorkspaceApp | null, updatedAt: string, };
 
 /**
  * `GET /admin/connectors`.
@@ -679,6 +683,23 @@ export type EvaluationRequest = { version: number, };
 export type EvaluationStatus = "queued" | "running" | "completed" | "failed";
 
 /**
+ * A company's Google Workspace client, as `ConnectorView` shows it.
+ */
+export type GoogleWorkspaceApp = { clientId: string,
+/**
+ * The address to register as the client's authorised redirect URI.
+ */
+redirectUri: string, secretStored: boolean,
+/**
+ * How many people linked their account.
+ */
+links: number,
+/**
+ * Its tools may send e-mail and create events.
+ */
+writeTools: boolean, };
+
+/**
  * `GET /health`: answered once the database answers.
  */
 export type Health = {
@@ -875,12 +896,13 @@ address: string,
 scopes: Array<string>,
 /**
  * Those the application asks now that the person did not grant: the
- * tools that need them say so until the person links again (ADR-119).
+ * tools that need them say so until the person links again (ADR-119);
+ * none while the connector is unavailable.
  */
 toGrant: Array<string>,
 /**
- * What the tools may do with it now: the Graph permissions they need
- * that it grants, writing only when the application lets it; none
+ * What the tools may do with it now: the provider's permissions they
+ * need that it grants, writing only when the application lets it; none
  * while the link does not serve (ADR-120).
  */
 can: Array<string>, linkedAt: string, };
@@ -1209,6 +1231,26 @@ enabled?: boolean, };
  * Body of `POST /conversations`.
  */
 export type NewConversation = { title?: string, };
+
+/**
+ * Body of `POST /admin/connectors/google-workspace`: the OAuth client
+ * declared in the company's Google Cloud project, with delegated
+ * permissions.
+ */
+export type NewGoogleWorkspaceConnector = { name: string,
+/**
+ * The OAuth client ID, ending with `.apps.googleusercontent.com`.
+ */
+clientId: string, clientSecret: string,
+/**
+ * Absent: enabled.
+ */
+enabled?: boolean,
+/**
+ * Whether its tools may send e-mail and create events in the person's
+ * name, each validated. Absent: they only read.
+ */
+writeTools?: boolean, };
 
 /**
  * Body of `POST /admin/identity-providers`. What designates the provider

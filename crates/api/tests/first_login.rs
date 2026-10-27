@@ -199,6 +199,7 @@ const AUTHENTICATED_ROUTES: &[(&str, &str)] = &[
     ("POST", "/admin/connectors/trial"),
     ("POST", "/admin/connectors/rest"),
     ("POST", "/admin/connectors/microsoft365"),
+    ("POST", "/admin/connectors/google-workspace"),
     ("POST", "/admin/connectors/rest/import"),
     ("PATCH", "/admin/connectors/{id}"),
     ("DELETE", "/admin/connectors/{id}"),

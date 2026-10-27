@@ -7,6 +7,7 @@ mod assignments;
 mod connectors;
 mod domain_proofs;
 mod embedding;
+mod google_workspace;
 mod identity_providers;
 mod llm;
 mod memory_settings;
@@ -29,14 +30,15 @@ pub use activity::{
 pub use approval_routing::{ApprovalRoutingUpdate, ApprovalRoutingView};
 pub use assignments::{Assignment, AssignmentScope, RoleGrant};
 pub use connectors::{
-    ConnectorStatus, ConnectorTest, ConnectorTrial, ConnectorType, ConnectorUpdate, ConnectorView,
-    Connectors, DelegablePermission, McpEndpoint, NewConnector, TestedTool, ToolPolicy,
-    ToolPolicyChange, risks,
+    ConnectorDetails, ConnectorStatus, ConnectorTest, ConnectorTrial, ConnectorType,
+    ConnectorUpdate, ConnectorView, Connectors, DelegablePermission, McpEndpoint, NewConnector,
+    TestedTool, ToolPolicy, ToolPolicyChange, risks,
 };
 pub use domain_proofs::{DomainProofRequest, DomainProofView};
 pub use embedding::{
     EmbeddingChoice, EmbeddingKind, EmbeddingSettingsView, EmbeddingTestResult, EmbeddingView,
 };
+pub use google_workspace::{GoogleWorkspaceApp, NewGoogleWorkspaceConnector};
 pub use identity_providers::{
     IdentityProviderUpdate, IdentityProviderView, IdentityProvidersView, NewIdentityProvider,
 };

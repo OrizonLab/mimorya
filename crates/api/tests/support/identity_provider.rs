@@ -7,7 +7,9 @@
 //! hints at; the browser, hinted at nobody, is asked who (`sign_in_page`).
 //! Its signing keys are test keys, public: it rolls them over on demand,
 //! and may be unavailable. It renews the refresh tokens it issued
-//! (`refresh`, ADR-117), rotating or revoking them on demand.
+//! (`refresh`, ADR-117), rotating or revoking them on demand. It plays
+//! Google too (ADR-121): a Google OAuth client is accepted, asking offline
+//! access by `access_type`, and names a person's Workspace domain (`hd`).
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -17,8 +19,6 @@ use axum::extract::{Query, State};
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
-use base64::Engine;
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use openidconnect::core::{CoreJsonWebKeySet, CoreRsaPrivateSigningKey};
 use openidconnect::{AdditionalClaims, JsonWebKeyId, PrivateSigningKey};
 use serde::{Deserialize, Serialize};
@@ -30,13 +30,20 @@ pub const CLIENT_ID: &str = "mimorya-tests";
 /// checks it: accepted too, with the same secret (ADR-118).
 pub const APPLICATION_ID: &str = "0b1c2d3e-4f50-6172-8394-a5b6c7d8e9f0";
 pub const CLIENT_SECRET: &str = "secret-client-de-test-0123456789";
+/// A Google OAuth client ID, as the administration checks it: accepted
+/// too, with the same secret (ADR-121).
+pub const GOOGLE_CLIENT_ID: &str = "123456789012-mimorya.apps.googleusercontent.com";
 
+#[path = "identity_provider/grant.rs"]
+mod grant;
 #[path = "identity_provider/refresh.rs"]
 mod refresh;
 #[path = "identity_provider/sign_in_page.rs"]
 mod sign_in_page;
 #[path = "identity_provider/token.rs"]
 mod token;
+
+use grant::{Grant, known_client};
 
 const TEST_KEY: &str = include_str!("identity_provider_key.pem");
 /// The key it signs with once rolled over.
@@ -84,17 +91,6 @@ struct Extra {
 }
 
 impl AdditionalClaims for Extra {}
-
-struct Grant {
-    person: Person,
-    /// Its token's audience.
-    client_id: String,
-    nonce: Option<String>,
-    challenge: String,
-    redirect_uri: String,
-    /// The permissions asked: offline access brings a refresh token.
-    scope: String,
-}
 
 #[derive(Default)]
 struct Provider {
@@ -248,68 +244,6 @@ impl MockIdentityProvider {
     /// The refresh token it issued for this person's subject.
     pub fn refresh_token_of(subject: &str) -> String {
         format!("jeton-de-renouvellement-{subject}")
-    }
-}
-
-impl Provider {
-    /// A code for this authorization request, signed in as the person
-    /// chosen, else as the one hinted at: the return's query and address.
-    fn grant(&mut self, params: &HashMap<String, String>) -> Result<(String, String), String> {
-        let param = |name: &str| {
-            params
-                .get(name)
-                .cloned()
-                .ok_or_else(|| format!("missing {name}"))
-        };
-        let client_id = param("client_id")?;
-        if param("response_type")? != "code"
-            || (client_id != CLIENT_ID && client_id != APPLICATION_ID)
-            || param("code_challenge_method")? != "S256"
-        {
-            return Err("unexpected request".into());
-        }
-        let person = match (&self.signed_in, params.get("login_hint")) {
-            (Some(person), _) => person.clone(),
-            (None, Some(email)) => {
-                let mut person = Person::verified(&format!("sujet-{email}"), email);
-                // As the provider's own sign-in page names them.
-                if let Some(name) = params.get("name").filter(|n| !n.is_empty()) {
-                    person
-                        .extra
-                        .insert("name".into(), Value::String(name.clone()));
-                }
-                // A link (ADR-116): the directory's account, named as
-                // Microsoft names it.
-                if params
-                    .get("scope")
-                    .is_some_and(|scope| scope.split(' ').any(|s| s == "offline_access"))
-                {
-                    let oid = Value::String(format!("objet-{email}"));
-                    person.extra.insert("oid".into(), oid);
-                    person.preferred_username = Some(email.clone());
-                }
-                person
-            }
-            (None, None) => return Err("nobody signs in".into()),
-        };
-        let code = URL_SAFE_NO_PAD.encode(uuid::Uuid::new_v4().as_bytes());
-        let redirect_uri = param("redirect_uri")?;
-        self.grants.insert(
-            code.clone(),
-            Grant {
-                person,
-                client_id,
-                nonce: params.get("nonce").cloned(),
-                challenge: param("code_challenge")?,
-                redirect_uri: redirect_uri.clone(),
-                scope: param("scope")?,
-            },
-        );
-        let back = url::form_urlencoded::Serializer::new(String::new())
-            .append_pair("code", &code)
-            .append_pair("state", &param("state")?)
-            .finish();
-        Ok((back, redirect_uri))
     }
 }
 

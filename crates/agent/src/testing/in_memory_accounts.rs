@@ -3,7 +3,7 @@
 //! (ADR-119). For tests only.
 
 use async_trait::async_trait;
-use mimorya_core::account_links::missing_scopes;
+use mimorya_core::account_links::LinkKind;
 use mimorya_core::tools::{AccountAccessError, LinkedAccounts};
 
 use super::in_memory_ports::InMemoryPorts;
@@ -57,10 +57,10 @@ impl LinkedAccounts for InMemoryPorts {
             .get(connector_type)
             .cloned()
             .ok_or(AccountAccessError::NotLinked)?;
-        let missing = link
-            .granted
-            .as_deref()
-            .map_or_else(Vec::new, |granted| missing_scopes(granted, needs));
+        let missing = match (link.granted.as_deref(), LinkKind::of(connector_type)) {
+            (Some(granted), Some(kind)) => kind.missing_scopes(granted, needs),
+            _ => Vec::new(),
+        };
         if !missing.is_empty() {
             return Err(AccountAccessError::NotGranted(
                 missing.into_iter().map(String::from).collect(),

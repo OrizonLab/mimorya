@@ -118,13 +118,15 @@ pub struct Authorization {
 /// What a sign-in asks besides `openid`: the person's address and name.
 pub const SIGN_IN_SCOPES: [&str; 2] = ["email", "profile"];
 
-/// Where the browser goes, asking these scopes besides `openid`.
+/// Where the browser goes, asking these scopes besides `openid`, with the
+/// provider's own parameters, if any (ADR-121).
 pub fn authorization(
     metadata: CoreProviderMetadata,
     client_id: &str,
     redirect_uri: &str,
     login_hint: Option<&str>,
     scopes: &[&str],
+    extra: &[(&'static str, String)],
 ) -> Result<Authorization, Failure> {
     let client = client(metadata, client_id, None, redirect_uri)?;
     let (challenge, verifier) = PkceCodeChallenge::new_random_sha256();
@@ -140,6 +142,9 @@ pub fn authorization(
     }
     if let Some(hint) = login_hint {
         request = request.set_login_hint(LoginHint::new(hint.into()));
+    }
+    for (name, value) in extra {
+        request = request.add_extra_param(*name, value.clone());
     }
     let (url, state, nonce) = request.url();
     Ok(Authorization {

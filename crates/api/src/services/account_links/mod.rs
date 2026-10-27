@@ -1,15 +1,17 @@
 //! Accounts each person links at a provider their company declared
-//! (ADR-116): their Microsoft 365 mailbox and calendar, reached later by
-//! the connector's tools with the permissions they granted themselves. A
-//! person who may use the company's connectors starts a link here; the
-//! browser signs in at Microsoft and comes back (`finish`); the identity
-//! token must name the person's own account; the refresh token is sealed in
-//! the link, which the person may remove at any time. The provider's
-//! declaration is read at each step of a link, never kept: a link is rare.
-//! A run's tools reach the account with an access token renewed from the
-//! link (`access`, ADR-117), the declaration then kept an hour.
+//! (ADR-116, ADR-121): their Microsoft 365 or Google Workspace mailbox and
+//! calendar, reached later by the connector's tools with the permissions
+//! they granted themselves. A person who may use the company's connectors
+//! starts a link here; the browser signs in at the provider and comes back
+//! (`finish`); the identity token must name the person's own account
+//! (`LinkKind::linked_identity`); the refresh token is sealed in the link,
+//! which the person may remove at any time. The provider's declaration is
+//! read at each step of a link, never kept: a link is rare. A run's tools
+//! reach the account with an access token renewed from the link (`access`,
+//! ADR-117), the declaration then kept an hour.
 
 mod access;
+mod application;
 mod attempt;
 mod finish;
 mod grant;
@@ -24,10 +26,9 @@ pub use renewal::ACCOUNT_LINK_REVOKED;
 
 use std::sync::Arc;
 
-use mimorya_connectors::microsoft365::Microsoft365Config;
 use mimorya_connectors::outbound::NetworkPolicy;
 use mimorya_core::DomainError;
-use mimorya_core::account_links::{MICROSOFT365, missing_scopes, serving_scopes, tool_scopes};
+use mimorya_core::account_links::LinkKind;
 use mimorya_db::Database;
 use mimorya_db::repositories::account_links::{
     AccountLinkRow, delete_account_link, list_account_links_of,
@@ -38,6 +39,7 @@ use openidconnect::core::CoreProviderMetadata;
 use serde_json::json;
 use uuid::Uuid;
 
+use self::application::LinkApp;
 use self::tokens::AccessTokens;
 use crate::secrets::{SecretCipher, SecretStore};
 use crate::services::AccessContext;
@@ -58,8 +60,8 @@ pub struct Linkable {
     pub link: Option<AccountLinkRow>,
     /// Its tools may write (ADR-119).
     pub write_tools: bool,
-    /// The Graph permissions its tools need now that the link does not
-    /// grant (ADR-119): granted by linking again.
+    /// The permissions its tools need now that the link does not grant
+    /// (ADR-119): granted by linking again; none while it is unavailable.
     pub to_grant: Vec<String>,
     /// Those its tools may use now: none while the link does not serve
     /// (ADR-120).
@@ -84,8 +86,8 @@ pub struct AccountLinkService {
     /// The applications' provider declarations, for renewals.
     declarations: MetadataCache<CoreProviderMetadata>,
     /// Replaces the issuer an application's people are sent to, its
-    /// directory's at Microsoft (end-to-end tests: the local provider,
-    /// ADR-118).
+    /// directory's at Microsoft or Google's (end-to-end tests: the local
+    /// provider, ADR-118).
     issuer: Option<String>,
 }
 
@@ -125,22 +127,21 @@ impl AccountLinkService {
         tx.commit().await?;
         let mut linkables: Vec<Linkable> = instances
             .into_iter()
-            .filter(|instance| instance.connector_type == MICROSOFT365)
             .filter_map(|instance| {
+                let kind = LinkKind::of(&instance.connector_type)?;
                 let link = links
                     .iter()
                     .find(|link| link.connector_id == instance.id)
                     .cloned();
                 let available = may_use && instance.enabled;
-                let write_tools = Microsoft365Config::read(&instance.config)
-                    .is_ok_and(|config| config.write_tools);
+                let write_tools = LinkApp::read(&instance).is_ok_and(|app| app.write_tools);
                 let owned = |scopes: Vec<&str>| scopes.into_iter().map(String::from).collect();
-                let to_grant = link.as_ref().map_or_else(Vec::new, |link| {
-                    owned(missing_scopes(&link.scopes, &tool_scopes(write_tools)))
-                });
-                let can = match &link {
-                    Some(link) if available => owned(serving_scopes(&link.scopes, write_tools)),
-                    _ => Vec::new(),
+                let (to_grant, can) = match &link {
+                    Some(link) if available => (
+                        owned(kind.missing_scopes(&link.scopes, &kind.tool_scopes(write_tools))),
+                        owned(kind.serving_scopes(&link.scopes, write_tools)),
+                    ),
+                    _ => (Vec::new(), Vec::new()),
                 };
                 (available || link.is_some()).then_some(Linkable {
                     connector_id: instance.id,
@@ -180,16 +181,16 @@ impl AccountLinkService {
 }
 
 impl AccountLinkService {
-    /// Where an application's people sign in: its directory's issuer, unless
+    /// Where an application's people sign in: its provider's issuer, unless
     /// this server replaces it (end-to-end tests).
-    fn issuer_of<'a>(&'a self, config: &'a Microsoft365Config) -> &'a str {
-        self.issuer.as_deref().unwrap_or(&config.issuer)
+    fn issuer_of<'a>(&'a self, app: &'a LinkApp) -> &'a str {
+        self.issuer.as_deref().unwrap_or(&app.issuer)
     }
 }
 
-/// The company's Microsoft 365 connector of that id, enabled.
+/// The company's connector of that id people link accounts at, enabled.
 fn linkable(instance: Option<ConnectorInstanceRow>) -> Option<ConnectorInstanceRow> {
-    instance.filter(|i| i.connector_type == MICROSOFT365 && i.enabled)
+    instance.filter(|i| LinkKind::of(&i.connector_type).is_some() && i.enabled)
 }
 
 fn connector_unknown() -> DomainError {

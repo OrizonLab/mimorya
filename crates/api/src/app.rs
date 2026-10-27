@@ -166,7 +166,7 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
         config.secrets.clone(),
         options.sso_network.unwrap_or(config.mcp_network),
         &config.web_origin,
-        options.microsoft365_issuer,
+        options.account_link_issuer,
     )?);
     let mailer = match options.mailer {
         Some(mailer) => mailer,

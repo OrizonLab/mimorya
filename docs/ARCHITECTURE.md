@@ -287,6 +287,14 @@ Détaillés dans [AGENT_ENGINE.md](AGENT_ENGINE.md). En résumé :
   pas Microsoft (ADR-119). L'écriture se permet dans le formulaire de l'application, et
   « Mon compte » dit les permissions à accorder en reliant de nouveau son compte
   (ADR-120).
+- **Google Workspace** : l'entreprise déclare son client OAuth de Google Cloud (un par
+  entreprise) ; chaque personne y relie son compte Workspace de la même façon, avec des
+  permissions déléguées seulement (Gmail et agenda), jamais de délégation à l'échelle du
+  domaine. Le jeton d'identité doit porter une adresse vérifiée par Google dans le
+  domaine Workspace du compte, et égale à celle de la personne. Ce qui change d'un
+  fournisseur à l'autre (permissions, paramètres de connexion, preuve du compte) est
+  porté par `LinkKind` dans le cœur ; le reste est commun (ADR-121). Ses outils viennent
+  aux lots suivants.
 - Les secrets ne transitent jamais par le contexte du modèle ni par les journaux.
 
 Connecteurs prévus : démonstration (MVP), MCP générique (MVP), déclencheurs (ADR-109),

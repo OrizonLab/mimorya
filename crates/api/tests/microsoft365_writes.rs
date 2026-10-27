@@ -121,7 +121,7 @@ async fn the_company_lets_its_tools_write_and_takes_it_back() {
     assert!(
         refused
             .error_message()
-            .contains("Seule l’application Microsoft 365")
+            .contains("Seules les applications Microsoft 365 et Google Workspace")
     );
     for removed in [paul.delete(&rest_path).await, paul.delete(&path).await] {
         assert_eq!(removed.status, StatusCode::OK, "{}", removed.text());

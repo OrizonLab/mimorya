@@ -9,6 +9,7 @@ mod absences;
 mod activity;
 mod approval_routing;
 mod assignments;
+mod connector_applications;
 mod connectors;
 mod embedding;
 mod identity_providers;
@@ -107,7 +108,11 @@ pub fn routes(state: &AppState) -> Router<AppState> {
         .route("/admin/connectors/rest", post(connectors::create_rest))
         .route(
             "/admin/connectors/microsoft365",
-            post(connectors::create_microsoft365),
+            post(connector_applications::create_microsoft365),
+        )
+        .route(
+            "/admin/connectors/google-workspace",
+            post(connector_applications::create_google_workspace),
         )
         .route(
             "/admin/connectors/rest/import",

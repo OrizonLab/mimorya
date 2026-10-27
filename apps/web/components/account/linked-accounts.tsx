@@ -42,7 +42,10 @@ function isOutcome(value: string | null): value is Outcome {
  * words (ADR-120); another is shown by its name.
  */
 function inWords(scopes: string[]): string[] {
-  return scopes.map((scope) => MICROSOFT365_PERMISSIONS[scope] ?? scope);
+  return scopes.map(
+    (scope) =>
+      (Object.hasOwn(MICROSOFT365_PERMISSIONS, scope) && MICROSOFT365_PERMISSIONS[scope]) || scope,
+  );
 }
 
 /**

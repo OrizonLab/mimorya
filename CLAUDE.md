@@ -31,9 +31,10 @@ Repères à l'intérieur des crates :
   (contrat d'outil, outils typés, comptes reliés de la personne servie : `accounts.rs`,
   ADR-117), `core/src/time_zone.rs` (fuseau de la plateforme : date donnée au modèle,
   jours des outils), `core/src/skill_rules.rs` (ce qu'une compétence peut
-  contenir, ADR-052), `core/src/account_links.rs` (comptes que chacun relie :
-  application Microsoft 365 déclarée, permissions déléguées, identité qui prouve que le
-  compte est le sien, ADR-116), `core/src/skill_proposals.rs` (où va une compétence que
+  contenir, ADR-052), `core/src/account_links/` (comptes que chacun relie :
+  application Microsoft 365 ou client Google Workspace déclaré, permissions déléguées,
+  identité qui prouve que le compte est le sien, `microsoft365.rs`, `google.rs` ; ce qui
+  change d'un fournisseur à l'autre, `LinkKind`, `kind.rs`, ADR-116, ADR-121), `core/src/skill_proposals.rs` (où va une compétence que
   l'agent propose, ADR-100), `core/src/skill_eval_cases.rs` (ce qu'un cas d'évaluation d'une
   compétence contient, ADR-103), `core/src/skill_evaluations.rs` (régression, bilan et
   confirmation à l'activation, ADR-104), `core/src/skill_quality.rs` (critères de qualité
@@ -85,7 +86,9 @@ Repères à l'intérieur des crates :
   d'une description OpenAPI, `openapi/`, ADR-114), `connectors/src/microsoft365/`
   (application Microsoft 365 d'une entreprise, ADR-116 ; ses outils, e-mails et agenda de
   la personne servie lus par un Graph borné, ADR-117 ; e-mail envoyé et rendez-vous créé
-  tels que validés, ce qu'ils envoient ne cachant rien (`compose.rs`), ADR-119), `connectors/src/testing/`
+  tels que validés, ce qu'ils envoient ne cachant rien (`compose.rs`), ADR-119),
+  `connectors/src/google_workspace/` (client OAuth Google Workspace d'une entreprise,
+  ADR-121), `connectors/src/testing/`
   (serveurs simulés des tests : MCP, API REST, Microsoft Graph).
 - `api/src/plugins/` (contexte de requête, limitation de débit (globale par processus ;
   d'authentification partagée par PostgreSQL, `shared_limit.rs`, ADR-088), CSRF (sauf la réception
@@ -112,9 +115,11 @@ Repères à l'intérieur des crates :
   compétences, rejet des propositions de l'agent (`skill_proposals.rs`, ADR-100), cas d'évaluation
   (`skill_eval_cases.rs`, ADR-103) et évaluation demandée (`skill_evaluations.rs`,
   ADR-104), sous verrou par entreprise ; application Microsoft 365 déclarée,
-  `microsoft365.rs`, ADR-116), `api/src/services/account.rs` (son propre compte),
-  `api/src/services/account_links/` (comptes que chacun relie : départ vers Microsoft,
-  tentative scellée, retour vérifié, jeton scellé, liste et retrait, ADR-116 ; jeton
+  `microsoft365.rs`, ADR-116, et client Google Workspace, `google_workspace.rs`, ADR-121), `api/src/services/account.rs` (son propre compte),
+  `api/src/services/account_links/` (comptes que chacun relie : application du
+  connecteur, Microsoft 365 ou Google Workspace (`application.rs`, ADR-121), départ vers
+  le fournisseur, tentative scellée, retour vérifié, jeton scellé, liste et retrait,
+  ADR-116 ; jeton
   d'accès de la personne servie lu (`access.rs`), renouvelé avec rotation et liaison
   révoquée retirée (`renewal.rs`), gardé (`tokens.rs`), ADR-117),
   `api/src/services/notification_settings.rs` (e-mails que chacun choisit de recevoir,
@@ -171,7 +176,7 @@ Repères à l'intérieur des crates :
   migrations, création d'une entreprise réelle et de son administrateur, ADR-033),
   `api/src/mail/` (envoi SMTP), `api/src/secrets/` (chiffrement AES-256-GCM des secrets),
   `api/tests/` (intégration, harnais dans `support/`, dont les fournisseurs d'identité
-  simulés, OpenID Connect et SAML).
+  simulés, OpenID Connect (qui joue aussi Google, ADR-121) et SAML).
 - `web/components/<fonctionnalité>/` (account — dont les e-mails reçus, ADR-094, et les
   comptes reliés, ADR-118, et les permissions à accorder, ADR-120 —,
   admin — dont `admin/connectors/` : serveurs MCP et API REST décrites opération par
@@ -203,7 +208,8 @@ Repères à l'intérieur des crates :
   confiée à un sous-agent, `sub_agents.rs`, ADR-099, une compétence que l'agent propose,
   `skill_proposals.rs`, ADR-101, et une version de compétence jouée sur son cas,
   `skill_evaluations.rs`, ADR-105, et ce qu'envoie un déclencheur, `hooks.rs`, ADR-110 ; les personnes y sont envoyées
-  au fournisseur simulé au lieu de Microsoft, `BuildOptions::microsoft365_issuer`, ADR-118).
+  au fournisseur simulé au lieu de Microsoft ou Google, `BuildOptions::account_link_issuer`,
+  ADR-118, ADR-121).
 - `infra/` : `docker/` (images de l'API et de l'interface, liste des images publiées
   `images.json`, test de fumée de la démonstration, test d'installation de la production,
   vérifications partagées `checks.sh`, dont les rôles des processus lus dans la base), `caddy/`

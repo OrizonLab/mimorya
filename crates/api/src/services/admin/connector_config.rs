@@ -1,8 +1,9 @@
 //! What the administration may change of a connector's configuration: the
 //! address of an MCP server it added (ADR-025), the address, token header
 //! and operations of a REST API (ADR-112), the secret of the company's
-//! Microsoft 365 application (ADR-116), whose addresses are the platform's,
-//! and whether its tools may write (ADR-119).
+//! Microsoft 365 application (ADR-116) or Google Workspace client (ADR-121),
+//! whose addresses are the platform's, and whether its tools may write
+//! (ADR-119).
 //! The demo connector and the servers the operator wrote change only their
 //! name and activation here.
 //! Tool prefixes never overlap within a kind, operator-written servers
@@ -10,11 +11,12 @@
 
 use std::collections::HashMap;
 
+use mimorya_connectors::google_workspace::{GOOGLE_WORKSPACE_TOOLS, GoogleWorkspaceConfig};
 use mimorya_connectors::microsoft365::{MICROSOFT365_TOOLS, Microsoft365Config};
 use mimorya_connectors::outbound::NetworkPolicy;
 use mimorya_connectors::{mcp, rest};
 use mimorya_core::DomainError;
-use mimorya_core::account_links::MICROSOFT365;
+use mimorya_core::account_links::{GOOGLE_WORKSPACE, LinkKind, MICROSOFT365};
 use mimorya_core::authz::PermissionInfo;
 use mimorya_db::repositories::connectors::{ConnectorInstanceRow, list_connector_instances};
 use serde_json::{Value, json};
@@ -49,10 +51,14 @@ pub enum Editable {
     /// The company's Microsoft 365 application: its secret and whether its
     /// tools may write alone change.
     Microsoft365(Microsoft365Config),
+    /// The company's Google Workspace client: the same.
+    GoogleWorkspace(GoogleWorkspaceConfig),
 }
 
-/// Microsoft 365's tools are named `m365_<tool>` (ADR-116).
+/// Microsoft 365's tools are named `m365_<tool>` (ADR-116), Google
+/// Workspace's `google_<tool>` (ADR-121).
 const MICROSOFT365_NAMESPACE: &str = "m365_";
+const GOOGLE_WORKSPACE_NAMESPACE: &str = "google_";
 
 impl Editable {
     /// `None` for the demo connector, an operator's server (stdio) or a
@@ -68,6 +74,9 @@ impl Editable {
             MICROSOFT365 => Microsoft365Config::read(config)
                 .ok()
                 .map(Self::Microsoft365),
+            GOOGLE_WORKSPACE => GoogleWorkspaceConfig::read(config)
+                .ok()
+                .map(Self::GoogleWorkspace),
             _ => None,
         }
     }
@@ -77,13 +86,14 @@ impl Editable {
             Self::Mcp { url, .. } => url,
             Self::Rest(config) => &config.url,
             Self::Microsoft365(config) => &config.graph,
+            Self::GoogleWorkspace(config) => &config.gmail,
         }
     }
 
     pub fn token_header(&self) -> Option<&str> {
         match self {
-            Self::Mcp { .. } | Self::Microsoft365(_) => None,
             Self::Rest(config) => config.token_header.as_deref(),
+            _ => None,
         }
     }
 
@@ -120,6 +130,9 @@ impl Editable {
             Self::Microsoft365(_) => {
                 return Some(MICROSOFT365_TOOLS.map(String::from).to_vec());
             }
+            Self::GoogleWorkspace(_) => {
+                return Some(GOOGLE_WORKSPACE_TOOLS.map(String::from).to_vec());
+            }
             Self::Mcp { .. } => return None,
         };
         let operations = operations.unwrap_or(&config.operations);
@@ -147,6 +160,10 @@ impl Editable {
                 namespace: MICROSOFT365_NAMESPACE.into(),
                 replaceable_descriptions: false,
             },
+            Self::GoogleWorkspace(_) => PolicyScope {
+                namespace: GOOGLE_WORKSPACE_NAMESPACE.into(),
+                replaceable_descriptions: false,
+            },
         }
     }
 
@@ -171,9 +188,9 @@ impl Editable {
                     .cloned()
             });
             if let Some(unknown) = unknown {
-                let refusal = match self {
-                    Self::Microsoft365(_) => format!("Outil inconnu de ce connecteur : {unknown}"),
-                    _ => format!("Opération inconnue de cette API : {unknown}"),
+                let refusal = match self.link_kind() {
+                    Some(_) => format!("Outil inconnu de ce connecteur : {unknown}"),
+                    None => format!("Opération inconnue de cette API : {unknown}"),
                 };
                 return Err(DomainError::validation(refusal));
             }
@@ -209,9 +226,10 @@ impl Editable {
         write_tools: Option<bool>,
         network: NetworkPolicy,
     ) -> Result<Value, DomainError> {
-        if write_tools.is_some() && !matches!(self, Self::Microsoft365(_)) {
+        if write_tools.is_some() && self.link_kind().is_none() {
             return Err(DomainError::validation(
-                "Seule l’application Microsoft 365 a des outils d’écriture à permettre",
+                "Seules les applications Microsoft 365 et Google Workspace ont des outils \
+                 d’écriture à permettre",
             ));
         }
         match self {
@@ -245,36 +263,63 @@ impl Editable {
                     .map_err(|_| DomainError::validation("Déclaration illisible"))
             }
             Self::Microsoft365(mut config) => {
-                if url.is_some() {
-                    return Err(DomainError::validation(
-                        "Les adresses de Microsoft 365 sont celles de la plateforme : elles ne \
-                         changent pas",
-                    ));
-                }
-                if changes.is_some() {
-                    return Err(DomainError::validation(
-                        "Seule une API REST a un en-tête de jeton et des opérations",
-                    ));
-                }
-                if let Some(write_tools) = write_tools {
-                    config.write_tools = write_tools;
-                }
+                let kind = LinkKind::Microsoft365;
+                config.write_tools = application_changed(kind, url, changes, write_tools)?
+                    .unwrap_or(config.write_tools);
+                serde_json::to_value(&config)
+                    .map_err(|_| DomainError::validation("Déclaration illisible"))
+            }
+            Self::GoogleWorkspace(mut config) => {
+                let kind = LinkKind::GoogleWorkspace;
+                config.write_tools = application_changed(kind, url, changes, write_tools)?
+                    .unwrap_or(config.write_tools);
                 serde_json::to_value(&config)
                     .map_err(|_| DomainError::validation("Déclaration illisible"))
             }
         }
     }
 
+    /// The application people link their accounts at, if it is one.
+    fn link_kind(&self) -> Option<LinkKind> {
+        match self {
+            Self::Microsoft365(_) => Some(LinkKind::Microsoft365),
+            Self::GoogleWorkspace(_) => Some(LinkKind::GoogleWorkspace),
+            Self::Mcp { .. } | Self::Rest(_) => None,
+        }
+    }
+
     /// Whether its secret is required, never removed: the application's.
     pub fn requires_secret(&self) -> bool {
-        matches!(self, Self::Microsoft365(_))
+        self.link_kind().is_some()
     }
+}
+
+/// What an application's people link at changes of it: whether its tools
+/// may write, if said; its addresses are the platform's.
+fn application_changed(
+    kind: LinkKind,
+    url: Option<String>,
+    changes: Option<RestChanges>,
+    write_tools: Option<bool>,
+) -> Result<Option<bool>, DomainError> {
+    if url.is_some() {
+        return Err(DomainError::validation(format!(
+            "Les adresses de {} sont celles de la plateforme : elles ne changent pas",
+            kind.product()
+        )));
+    }
+    if changes.is_some() {
+        return Err(DomainError::validation(
+            "Seule une API REST a un en-tête de jeton et des opérations",
+        ));
+    }
+    Ok(write_tools)
 }
 
 /// Whether the administration added this connector, and may delete it.
 pub fn added_here(instance: &ConnectorInstanceRow) -> bool {
     instance.connector_type == "rest"
-        || instance.connector_type == MICROSOFT365
+        || LinkKind::of(&instance.connector_type).is_some()
         || (instance.connector_type == "mcp" && instance.config["transport"] == "http")
 }
 
