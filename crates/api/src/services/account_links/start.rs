@@ -12,12 +12,10 @@ use mimorya_db::repositories::connectors::get_connector_instance;
 use uuid::Uuid;
 
 use super::attempt::{self, LINK_LIFETIME, LinkAttempt};
-use super::grant::departure;
 use super::{AccountLinkService, LinkStart, connector_unknown, linkable};
 use crate::services::AccessContext;
 use crate::services::connectors::CONNECTOR_USE;
-use crate::services::sso::address::address_problem;
-use crate::services::sso::oidc;
+use crate::services::sso::{address_problem, authorization, discover};
 
 impl AccountLinkService {
     pub async fn start(
@@ -41,14 +39,14 @@ impl AccountLinkService {
                 "Microsoft 365 ne répond pas comme attendu : réessayez plus tard",
             )
         };
-        let metadata = oidc::discover(&self.http, &config.issuer)
+        let metadata = discover(&self.http, &config.issuer)
             .await
             .map_err(unreachable)?;
-        let departure = departure(
+        let departure = authorization(
             metadata,
             &config.client_id,
             &self.redirect_uri,
-            &access.profile.email,
+            Some(&access.profile.email),
             &MICROSOFT365_SCOPES,
         )
         .map_err(unreachable)?;

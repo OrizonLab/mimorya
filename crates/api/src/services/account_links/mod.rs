@@ -32,7 +32,7 @@ use uuid::Uuid;
 use crate::secrets::{SecretCipher, SecretStore};
 use crate::services::AccessContext;
 use crate::services::connectors::CONNECTOR_USE;
-use crate::services::sso::http::ProviderHttp;
+use crate::services::sso::ProviderHttp;
 
 /// Where the provider sends the browser back, under the web origin.
 pub const CALLBACK_PATH: &str = "/api/account/links/callback";

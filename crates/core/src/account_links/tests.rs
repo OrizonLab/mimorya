@@ -80,6 +80,20 @@ fn an_address_counts_only_when_the_directory_verified_its_domain() {
 }
 
 #[test]
+fn the_sign_in_name_wins_over_another_verified_address() {
+    // As a sign-in reads them: the sign-in name names the account.
+    let mut token = claims(
+        Some("paul.durand@neo.example"),
+        Some("claire.martin@neo.example"),
+    );
+    token.email_domain_verified = Some(true);
+    assert_eq!(
+        linked_identity(&token, "claire.martin@neo.example"),
+        Err(LinkRefusal::NotTheirs)
+    );
+}
+
+#[test]
 fn a_token_without_object_id_identifies_nobody() {
     let mut token = claims(Some("claire.martin@neo.example"), None);
     token.oid = None;

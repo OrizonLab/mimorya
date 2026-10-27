@@ -95,6 +95,7 @@ impl SsoService {
             &provider.client_id,
             &self.redirect_uri,
             login_hint,
+            &oidc::SIGN_IN_SCOPES,
         )?;
         Ok(Departure {
             url: authorization.url,

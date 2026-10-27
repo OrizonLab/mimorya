@@ -259,7 +259,7 @@ async fn only_who_may_use_connectors_links_at_an_enabled_application() {
     assert_eq!(listed[0]["linked"]["address"], json!(email(user::CLAIRE)));
     let refused = try_start(&claire, connector).await;
     assert_eq!(refused.status, StatusCode::NOT_FOUND, "{}", refused.text());
-    // Another company's connector, or none, reads the same.
+    // An unknown connector reads the same (another company's: `account_link_returns`).
     let unknown = try_start(&claire, uuid::Uuid::new_v4()).await;
     assert_eq!(unknown.status, StatusCode::NOT_FOUND, "{}", unknown.text());
     let removed = claire.delete(&format!("{LINKS}/{connector}")).await;

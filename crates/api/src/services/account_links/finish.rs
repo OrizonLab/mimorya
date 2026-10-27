@@ -9,20 +9,22 @@
 use chrono::Utc;
 use mimorya_connectors::microsoft365::Microsoft365Config;
 use mimorya_core::account_links::{LinkRefusal, linked_identity, sealed_as};
-use mimorya_db::repositories::account_links::{NewAccountLink, put_account_link};
+use mimorya_db::repositories::account_links::{
+    NewAccountLink, lock_active_account, put_account_link,
+};
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::connectors::get_connector_instance;
 use uuid::Uuid;
 
 use super::attempt::{self, LinkAttempt};
-use super::grant::{Granted, redeem};
+use super::grant::{Granted, redeem_grant};
 use super::{AccountLinkService, link_metadata, linkable};
 use crate::secrets::SecretRead;
 use crate::services::AccessContext;
 use crate::services::connectors::{CONNECTOR_USE, token_secret_name};
-use crate::services::sso::Return;
-use crate::services::sso::oidc::{self, Application};
-use crate::services::sso::sign_in::same_state;
+use crate::services::sso::{
+    Application, Return, discover, error_code, same_state, token_claims, verify,
+};
 
 /// What the browser is told of a refusal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -77,7 +79,7 @@ impl AccountLinkService {
             return Err(at("Retour d’une autre tentative"));
         }
         if let Some(error) = back.error {
-            let code = oidc::error_code(&error);
+            let code = error_code(&error);
             return Err(at(&format!("Refusée par Microsoft ({code})")));
         }
         let code = back.code.ok_or_else(|| at("Retour sans code"))?;
@@ -86,7 +88,7 @@ impl AccountLinkService {
             return Err(at("Connecteurs non autorisés"));
         }
         let (config, secret) = self.application(access, connector_id).await?;
-        let metadata = oidc::discover(&self.http, &config.issuer)
+        let metadata = discover(&self.http, &config.issuer)
             .await
             .map_err(|failure| at(&failure))?;
         let application = Application {
@@ -94,7 +96,7 @@ impl AccountLinkService {
             client_secret: &secret,
             redirect_uri: &self.redirect_uri,
         };
-        let granted = redeem(
+        let granted = redeem_grant(
             &self.http,
             metadata.clone(),
             &application,
@@ -103,15 +105,17 @@ impl AccountLinkService {
         )
         .await
         .map_err(|failure| at(&failure))?;
-        let claims = oidc::verify(metadata, &application, &granted.id_token, &attempt.nonce)
+        let claims = verify(metadata, &application, &granted.id_token, &attempt.nonce)
             .map_err(|unverified| at(&unverified.failure()))?;
-        let identity = linked_identity(&oidc::token_claims(&claims), &access.profile.email)
-            .map_err(|refusal| match refusal {
-                LinkRefusal::Unidentified => at("Jeton sans compte vérifié de l’annuaire"),
-                LinkRefusal::NotTheirs => LinkFailure {
-                    refused: LinkRefused::OtherAccount,
-                    ..at("Compte Microsoft d’une autre adresse")
-                },
+        let identity =
+            linked_identity(&token_claims(&claims), &access.profile.email).map_err(|refusal| {
+                match refusal {
+                    LinkRefusal::Unidentified => at("Jeton sans compte vérifié de l’annuaire"),
+                    LinkRefusal::NotTheirs => LinkFailure {
+                        refused: LinkRefused::OtherAccount,
+                        ..at("Compte Microsoft d’une autre adresse")
+                    },
+                }
             })?;
         self.keep(
             access,
@@ -207,6 +211,13 @@ impl AccountLinkService {
                 Some(connector_id),
                 "Connecteur supprimé ou désactivé",
             ));
+        }
+        // Disabled while at Microsoft: its links are gone, this one too.
+        if !lock_active_account(&mut tx, user_id)
+            .await
+            .map_err(|e| internal(e.into()))?
+        {
+            return Err(LinkFailure::new(Some(connector_id), "Compte désactivé"));
         }
         let replaced = put_account_link(
             &mut tx,

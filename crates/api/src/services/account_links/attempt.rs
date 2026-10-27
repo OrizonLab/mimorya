@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::secrets::SecretCipher;
-use crate::services::sso::attempt::{open_value, seal_value};
+use crate::services::sso::{open_value, seal_value};
 
 pub const LINK_COOKIE: &str = "mimorya_link";
 /// Sent back only to the links' addresses, the return among them.

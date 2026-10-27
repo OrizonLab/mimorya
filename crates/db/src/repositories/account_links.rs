@@ -75,6 +75,18 @@ pub async fn put_account_link(
     Ok(replaced)
 }
 
+/// Whether the person's account is active, its row held until the
+/// transaction ends: a deactivation, which removes their links, waits for
+/// a link being kept, or is seen by it.
+pub async fn lock_active_account(conn: &mut PgConnection, user_id: Uuid) -> sqlx::Result<bool> {
+    let status: Option<String> =
+        sqlx::query_scalar("select status from users where id = $1 for share")
+            .bind(user_id)
+            .fetch_optional(conn)
+            .await?;
+    Ok(status.as_deref() == Some("active"))
+}
+
 /// The person's links, oldest connector first.
 pub async fn list_account_links_of(
     conn: &mut PgConnection,

@@ -80,9 +80,10 @@ pub enum LinkRefusal {
 }
 
 /// The Microsoft account a verified token proves, if it is the person's
-/// own: the directory's object ID, and its sign-in name (its domain one
-/// the directory verified), else an address whose domain it verified,
-/// equal to the person's address but for case. Another account, even one
+/// own: the directory's object ID, and the address the directory vouches
+/// for, as a sign-in reads it (`proven_identity`): its sign-in name, whose
+/// domain it verified, else an address whose domain it verified. That
+/// address must be the person's, but for case. Another account, even one
 /// the person may open, is never linked to theirs.
 pub fn linked_identity(
     claims: &TokenClaims<'_>,
@@ -92,29 +93,21 @@ pub fn linked_identity(
         .oid
         .filter(|oid| (1..=MAX_SUBJECT_CHARS).contains(&oid.len()))
         .ok_or(LinkRefusal::Unidentified)?;
-    let vouched = [
-        claims.preferred_username,
-        claims
+    let address = claims
+        .preferred_username
+        .filter(|name| name.contains('@'))
+        .or(claims
             .email
-            .filter(|_| claims.email_domain_verified == Some(true)),
-    ];
-    let addresses: Vec<&str> = vouched
-        .into_iter()
-        .flatten()
-        .filter(|address| address.contains('@') && address.len() <= MAX_ADDRESS_CHARS)
-        .collect();
-    if addresses.is_empty() {
-        return Err(LinkRefusal::Unidentified);
+            .filter(|_| claims.email_domain_verified == Some(true)))
+        .filter(|address| address.len() <= MAX_ADDRESS_CHARS)
+        .ok_or(LinkRefusal::Unidentified)?;
+    if !address.eq_ignore_ascii_case(account_email.trim()) {
+        return Err(LinkRefusal::NotTheirs);
     }
-    let own = account_email.trim();
-    addresses
-        .into_iter()
-        .find(|address| address.eq_ignore_ascii_case(own))
-        .map(|address| LinkedIdentity {
-            subject: subject.into(),
-            address: address.to_ascii_lowercase(),
-        })
-        .ok_or(LinkRefusal::NotTheirs)
+    Ok(LinkedIdentity {
+        subject: subject.into(),
+        address: address.to_ascii_lowercase(),
+    })
 }
 
 /// The permissions a token response says were granted, as kept: once

@@ -38,7 +38,7 @@ pub struct ExtraClaims {
 
 impl AdditionalClaims for ExtraClaims {}
 
-pub(crate) type IdTokenFields = openidconnect::IdTokenFields<
+type IdTokenFields = openidconnect::IdTokenFields<
     ExtraClaims,
     EmptyExtraTokenFields,
     CoreGenderClaim,
@@ -46,7 +46,7 @@ pub(crate) type IdTokenFields = openidconnect::IdTokenFields<
     CoreJwsSigningAlgorithm,
 >;
 
-pub(crate) type OidcClient = openidconnect::Client<
+type OidcClient = openidconnect::Client<
     ExtraClaims,
     CoreAuthDisplay,
     CoreGenderClaim,
@@ -83,7 +83,7 @@ pub async fn discover(http: &ProviderHttp, issuer: &str) -> Result<CoreProviderM
 /// The provider's client for this company's application, authenticating
 /// with its secret in the request body when the provider accepts it (some
 /// reject the encoded form of a secret in the Basic header).
-pub(crate) fn client(
+fn client(
     metadata: CoreProviderMetadata,
     client_id: &str,
     client_secret: Option<&str>,
@@ -115,11 +115,16 @@ pub struct Authorization {
     pub pkce_verifier: String,
 }
 
+/// What a sign-in asks besides `openid`: the person's address and name.
+pub const SIGN_IN_SCOPES: [&str; 2] = ["email", "profile"];
+
+/// Where the browser goes, asking these scopes besides `openid`.
 pub fn authorization(
     metadata: CoreProviderMetadata,
     client_id: &str,
     redirect_uri: &str,
     login_hint: Option<&str>,
+    scopes: &[&str],
 ) -> Result<Authorization, Failure> {
     let client = client(metadata, client_id, None, redirect_uri)?;
     let (challenge, verifier) = PkceCodeChallenge::new_random_sha256();
@@ -129,9 +134,10 @@ pub fn authorization(
             CsrfToken::new_random,
             Nonce::new_random,
         )
-        .add_scope(Scope::new("email".into()))
-        .add_scope(Scope::new("profile".into()))
         .set_pkce_challenge(challenge);
+    for scope in scopes {
+        request = request.add_scope(Scope::new((*scope).into()));
+    }
     if let Some(hint) = login_hint {
         request = request.set_login_hint(LoginHint::new(hint.into()));
     }
@@ -159,10 +165,10 @@ pub type IdToken = openidconnect::IdToken<
 >;
 
 /// What the provider answers for a code: its tokens, not verified yet.
-pub(crate) type Tokens = StandardTokenResponse<IdTokenFields, CoreTokenType>;
+pub type Tokens = StandardTokenResponse<IdTokenFields, CoreTokenType>;
 
 /// The code redeemed at the provider, with the attempt's PKCE verifier.
-pub(crate) async fn redeem(
+pub async fn redeem(
     http: &ProviderHttp,
     metadata: CoreProviderMetadata,
     application: &Application<'_>,

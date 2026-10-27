@@ -5940,7 +5940,9 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
   - **la fin d'une liaison** : la personne la retire quand elle veut
     (`DELETE /account/links/{connecteur}`) et la voit encore si le connecteur est
     désactivé ou si son droit lui est retiré. La liaison disparaît aussi avec son
-    connecteur et avec un compte désactivé ;
+    connecteur et avec un compte désactivé, même pendant l'aller-retour chez
+    Microsoft : la ligne du compte est tenue au moment de garder la liaison, et un
+    connecteur désactivé ou supprimé entre-temps ne relie rien ;
   - **la déclaration de Microsoft** est lue à chaque étape, jamais gardée : une liaison
     est rare. Les retours sont comptés avec les connexions par un fournisseur ;
   - les outils (recherche et lecture des e-mails, agenda) viennent au lot suivant.
@@ -5951,12 +5953,16 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     elle (lot suivant) ;
   - un compte dont l'adresse diffère de son nom de connexion Microsoft ne peut pas être
     relié : l'administration corrige alors l'adresse du compte ;
+  - à l'écran, la carte de l'application déclarée par l'API n'a encore ni « Modifier »
+    ni « Supprimer » : ils viennent avec l'écran ;
   - restent : les outils de lecture, l'écran (« Mon compte » et « Connecteurs »),
     l'envoi d'e-mails et la création d'événements sous validation, puis Google Workspace ;
   - tests : `crates/core/src/account_links/tests.rs` (déclaration, identité, permissions
     gardées), `crates/api/tests/account_links.rs` (liaison faite et retirée, jeton scellé
     et absent de l'audit, compte d'un autre refusé, retour d'une autre personne ou
     tentative refusé, sans `connector:use` ni connecteur actif, liaison partie avec le
-    connecteur et le compte désactivé), `crates/api/tests/microsoft365_connector.rs`
+    connecteur et le compte désactivé), `crates/api/tests/account_link_returns.rs`
+    (retour après la désactivation ou la suppression de l'application, application
+    d'une autre entreprise), `crates/api/tests/microsoft365_connector.rs`
     (déclaration vérifiée, une par entreprise, secret remplacé jamais retiré, adresses
     fixes, outil inconnu refusé).
