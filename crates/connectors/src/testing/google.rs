@@ -5,7 +5,8 @@
 //! naming their owner, so that a test sees whose account was read. It
 //! records what it received, refuses the tokens a test chose (401), and
 //! answers certain e-mails' identifiers with a refusal or an oversized
-//! body. Its errors carry a detail the tools must not pass on.
+//! body, and lists, for certain words, an e-mail deleted since or refused.
+//! Its errors carry a detail the tools must not pass on.
 
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -24,6 +25,11 @@ use super::graph::{FORBIDDEN_MESSAGE, OVERSIZED_MESSAGE};
 
 /// What a Google error says beyond its status: never shown to the model.
 pub const GOOGLE_DETAIL: &str = "détail-interne-de-google";
+/// A search word for which Gmail lists an e-mail deleted since, then one
+/// that is there.
+pub const LISTED_GONE: &str = "orphelin";
+/// A search word for which Gmail lists ten e-mails, the first refused.
+pub const LISTED_REFUSED: &str = "refusé";
 
 /// A request Gmail or Calendar received.
 #[derive(Debug, Clone)]
@@ -226,14 +232,38 @@ async fn messages(
         .filter(|word| !word.contains(':'))
         .map(str::to_lowercase)
         .collect();
-    let found: Vec<Value> = mailbox(&owner)
-        .into_iter()
-        .filter(|m| {
-            let snippet = m["snippet"].as_str().unwrap_or_default().to_lowercase();
-            words.iter().all(|word| snippet.contains(word))
-        })
-        .map(|m| json!({ "id": m["id"], "threadId": m["id"] }))
-        .collect();
+    let listed = |ids: &[&str]| -> Vec<Value> {
+        ids.iter()
+            .map(|id| json!({ "id": id, "threadId": id }))
+            .collect()
+    };
+    let found: Vec<Value> = if words.iter().any(|w| w == LISTED_GONE) {
+        // Deleted between the list and its reading.
+        listed(&["absent", "m2"])
+    } else if words.iter().any(|w| w == LISTED_REFUSED) {
+        // Its first e-mail refused, nine others after it.
+        listed(&[
+            FORBIDDEN_MESSAGE,
+            "m3",
+            "m2",
+            "m1",
+            "m3",
+            "m2",
+            "m1",
+            "m3",
+            "m2",
+            "m1",
+        ])
+    } else {
+        mailbox(&owner)
+            .into_iter()
+            .filter(|m| {
+                let snippet = m["snippet"].as_str().unwrap_or_default().to_lowercase();
+                words.iter().all(|word| snippet.contains(word))
+            })
+            .map(|m| json!({ "id": m["id"], "threadId": m["id"] }))
+            .collect()
+    };
     let max = param("maxResults")
         .and_then(|m| m.parse().ok())
         .unwrap_or(100);

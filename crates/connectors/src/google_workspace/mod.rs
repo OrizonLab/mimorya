@@ -9,6 +9,7 @@
 mod calendar_events;
 mod gmail_read;
 mod gmail_search;
+mod message;
 mod mime;
 mod text;
 

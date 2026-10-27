@@ -6,20 +6,20 @@
 //! `google_gmail_read` gives its text.
 
 use async_trait::async_trait;
-use chrono::{DateTime, NaiveDate};
-use futures::{StreamExt, stream};
+use chrono::NaiveDate;
+use futures::{StreamExt, TryStreamExt, stream};
 use mimorya_core::account_links::GMAIL_READONLY;
 use mimorya_core::autonomy::ToolRisk;
-use mimorya_core::tools::{Citation, ToolContext, ToolInfo, ToolResult, TypedTool};
+use mimorya_core::tools::{ToolContext, ToolInfo, ToolResult, TypedTool};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use url::Url;
 use validator::Validate;
 
-use super::mime::header;
+use super::message::{citation, header_of, link, received};
 use super::text::decode_entities;
-use crate::delegated::shape::{MAX_SHORT_CHARS, bounded, day_start, utc_instant};
+use crate::delegated::shape::{MAX_SHORT_CHARS, bounded, day_start};
 use crate::delegated::{AsPerson, ProviderApi};
 use crate::outbound::CONNECTOR_USE;
 
@@ -68,29 +68,6 @@ fn search(input: &GmailSearchInput) -> Result<Option<String>, &'static str> {
     Ok((!terms.is_empty()).then(|| terms.join(" ")))
 }
 
-/// When Gmail received an e-mail (`internalDate`, milliseconds).
-pub fn received(message: &Value) -> Value {
-    message
-        .get("internalDate")
-        .and_then(Value::as_str)
-        .and_then(|millis| millis.parse::<i64>().ok())
-        .and_then(DateTime::from_timestamp_millis)
-        .map_or(Value::Null, |at| json!(utc_instant(at)))
-}
-
-/// A header of the e-mail, bounded.
-pub fn header_of(message: &Value, name: &str, max: usize) -> Value {
-    message
-        .get("payload")
-        .and_then(|payload| header(payload, name))
-        .map_or(Value::Null, |value| json!(bounded(value, max).0))
-}
-
-/// Where the person opens the e-mail in Gmail.
-pub fn link(id: &str) -> String {
-    format!("https://mail.google.com/mail/#all/{id}")
-}
-
 fn summary(message: &Value) -> Value {
     let id = message
         .get("id")
@@ -115,16 +92,6 @@ fn summary(message: &Value) -> Value {
         "lu": !unread,
         "lien": link(id),
     })
-}
-
-pub fn citation(message: &Value) -> Option<Citation> {
-    let id = message.get("id").and_then(Value::as_str)?;
-    let subject = message
-        .get("payload")
-        .and_then(|payload| header(payload, "Subject"))
-        .filter(|s| !s.trim().is_empty())
-        .unwrap_or("(sans objet)");
-    Some(Citation::new("email", id).labelled(bounded(subject, 120).0))
 }
 
 #[async_trait]
@@ -178,13 +145,15 @@ impl TypedTool for GmailSearch {
                 )
             })
             .collect();
-        let read: Vec<Result<Value, String>> = stream::iter(addresses)
-            .map(|url| person.get(url, None))
+        // The first refusal stops the reads; an e-mail deleted since it was
+        // listed is passed over.
+        let read: Result<Vec<Option<Value>>, String> = stream::iter(addresses)
+            .map(|url| person.find(url, None))
             .buffered(READ_AT_ONCE)
-            .collect()
+            .try_collect()
             .await;
-        let messages = match read.into_iter().collect::<Result<Vec<_>, _>>() {
-            Ok(messages) => messages,
+        let messages: Vec<Value> = match read {
+            Ok(read) => read.into_iter().flatten().collect(),
             Err(why) => return Ok(ToolResult::error(why)),
         };
         let mut content = json!({

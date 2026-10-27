@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use validator::Validate;
 
-use super::gmail_search::{citation, header_of, link, received};
+use super::message::{citation, header_of, link, received};
 use super::mime::read;
 use crate::delegated::shape::{MAX_SHORT_CHARS, bounded};
 use crate::delegated::{ProviderApi, read_as_person};

@@ -54,6 +54,15 @@ impl<'a> AsPerson<'a> {
         let answer = self.api.get(&self.token, url, prefer).await;
         answered(self.api.kind(), self.ctx, answer).await
     }
+
+    /// The same, `None` when the provider finds nothing there: something
+    /// listed and gone since.
+    pub async fn find(&self, url: Url, prefer: Option<&str>) -> Result<Option<Value>, String> {
+        match self.api.get(&self.token, url, prefer).await {
+            Err(ApiFailure::NotFound) => Ok(None),
+            answer => answered(self.api.kind(), self.ctx, answer).await.map(Some),
+        }
+    }
 }
 
 /// The provider's answer to a `POST` of `body` as the run's person, who

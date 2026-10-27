@@ -9,7 +9,7 @@ use mimorya_agent::testing::InMemoryPorts;
 use mimorya_agent::tools::ToolExecutor;
 use mimorya_connectors::google_workspace::GOOGLE_WORKSPACE_TOOLS;
 use mimorya_connectors::testing::{
-    FORBIDDEN_MESSAGE, FakeGoogle, GOOGLE_DETAIL, OVERSIZED_MESSAGE,
+    FORBIDDEN_MESSAGE, FakeGoogle, GOOGLE_DETAIL, LISTED_GONE, LISTED_REFUSED, OVERSIZED_MESSAGE,
 };
 use mimorya_core::account_links::{GMAIL_READONLY, GOOGLE_WORKSPACE};
 use mimorya_core::autonomy::ToolRisk;
@@ -212,4 +212,37 @@ async fn a_refused_token_is_reported_and_not_granted_reading_never_reaches_googl
     assert_eq!(google.requests().len(), before);
     // The scope as Google names it.
     assert!(GMAIL_READONLY.ends_with("gmail.readonly"));
+}
+
+#[tokio::test]
+async fn an_email_gone_since_it_was_listed_is_passed_over() {
+    let google = FakeGoogle::start().await;
+    let executor = lea(&google).await;
+    let result = call(
+        &executor,
+        "google_gmail_search",
+        json!({ "query": LISTED_GONE }),
+    )
+    .await;
+    assert!(!result.is_error, "{:?}", result.content);
+    assert_eq!(result.content["nombre"], 1);
+    assert_eq!(result.content["emails"][0]["id"], "m2");
+}
+
+#[tokio::test]
+async fn the_first_refusal_stops_the_reads() {
+    let google = FakeGoogle::start().await;
+    let executor = lea(&google).await;
+    let result = call(
+        &executor,
+        "google_gmail_search",
+        json!({ "query": LISTED_REFUSED, "limit": 25 }),
+    )
+    .await;
+    let told = error_of(&result);
+    assert!(told.starts_with("Google Workspace refuse"), "{told}");
+    assert!(!told.contains(GOOGLE_DETAIL));
+    // The list, then the reads already under way: not the ten.
+    let asked = google.requests().len();
+    assert!(asked <= 6, "{asked} requests");
 }

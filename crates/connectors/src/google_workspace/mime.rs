@@ -9,7 +9,7 @@ use std::sync::LazyLock;
 use base64::Engine;
 use base64::alphabet::URL_SAFE;
 use base64::engine::{DecodePaddingMode, GeneralPurpose, GeneralPurposeConfig};
-use encoding_rs::{Encoding, UTF_8};
+use encoding_rs::{Encoding, REPLACEMENT, UTF_8};
 use regex::Regex;
 use serde_json::Value;
 
@@ -115,13 +115,15 @@ impl<'a> Walk<'a> {
     }
 }
 
-/// A part's content, in the charset its type declares (UTF-8 otherwise).
+/// A part's content, in the charset its type declares (UTF-8 otherwise,
+/// and for those the WHATWG reads as a single replacement character).
 fn content(part: &Value) -> Option<String> {
     let data = part.pointer("/body/data").and_then(Value::as_str)?;
     let bytes = BASE64.decode(data).ok()?;
     let encoding = header(part, "Content-Type")
         .and_then(|value| CHARSET.captures(value))
         .and_then(|found| Encoding::for_label(found[1].as_bytes()))
+        .filter(|encoding| *encoding != REPLACEMENT)
         .unwrap_or(UTF_8);
     Some(encoding.decode(&bytes).0.into_owned())
 }
@@ -170,9 +172,11 @@ mod tests {
     fn an_html_only_mail_reads_as_its_text() {
         let html = part("text/html", "utf-8", "<p>Bonjour&nbsp;Léa</p>".as_bytes());
         assert_eq!(read(&html).text, "Bonjour Léa");
-        // Unknown charset: UTF-8.
-        let odd = part("text/plain", "x-inconnu", "été".as_bytes());
-        assert_eq!(read(&odd).text, "été");
+        // Unknown charset, or one the WHATWG replaces whole: UTF-8.
+        for charset in ["x-inconnu", "iso-2022-kr", "hz-gb-2312"] {
+            let odd = part("text/plain", charset, "été".as_bytes());
+            assert_eq!(read(&odd).text, "été", "{charset}");
+        }
     }
 
     #[test]

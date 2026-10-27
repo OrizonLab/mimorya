@@ -4,7 +4,7 @@
 //! Microsoft 365 and Google Workspace reach each person's own mailbox with
 //! the access they granted (`microsoft365`, `google_workspace`).
 
-pub mod delegated;
+pub(crate) mod delegated;
 pub mod demo_interventions;
 pub mod google_workspace;
 pub mod mcp;

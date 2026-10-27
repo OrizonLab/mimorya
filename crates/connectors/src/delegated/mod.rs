@@ -4,9 +4,9 @@
 //! from the platform and the provider's refusals said in French (`reach`);
 //! the few bounded fields kept of its answers (`shape`).
 
-pub mod api;
-pub mod reach;
-pub mod shape;
+mod api;
+mod reach;
+pub(crate) mod shape;
 
-pub use api::{ApiFailure, MAX_ANSWER_BYTES, ProviderApi};
-pub use reach::{AsPerson, read_as_person, write_as_person};
+pub(crate) use api::ProviderApi;
+pub(crate) use reach::{AsPerson, read_as_person, write_as_person};
