@@ -53,10 +53,12 @@ async fn list(
             name: linkable.name,
             connector_type: linkable.connector_type,
             available: linkable.available,
+            write_tools: linkable.write_tools,
             linked: linkable.link.map(|link| LinkedAccount {
                 address: link.address,
                 scopes: link.scopes.split_whitespace().map(Into::into).collect(),
                 to_grant: linkable.to_grant,
+                can: linkable.can,
                 linked_at: iso(&link.created_at),
             }),
         })

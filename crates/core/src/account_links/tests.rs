@@ -188,3 +188,22 @@ fn a_tool_is_told_which_permissions_were_not_granted() {
     assert!(missing_scopes("", &["Mail.Read", "Calendars.Read"]).is_empty());
     assert_eq!(missing_scopes(" ", &["Mail.Send"]), ["Mail.Send"]);
 }
+
+#[test]
+fn a_link_serves_what_the_company_lets_and_the_person_granted() {
+    let everything = "offline_access Mail.Read Calendars.Read Mail.Send Calendars.ReadWrite";
+    // Writing granted but no longer let: reading only.
+    assert_eq!(
+        serving_scopes(everything, false),
+        [MAIL_READ, CALENDARS_READ]
+    );
+    assert_eq!(serving_scopes(everything, true), tool_scopes(true));
+    // Let but not granted: reading until the person links again.
+    assert_eq!(
+        serving_scopes("Mail.Read Calendars.Read", true),
+        [MAIL_READ, CALENDARS_READ]
+    );
+    assert_eq!(serving_scopes("mail.read", false), [MAIL_READ]);
+    // Not said: reading, as the tools read.
+    assert_eq!(serving_scopes("", true), [MAIL_READ, CALENDARS_READ]);
+}

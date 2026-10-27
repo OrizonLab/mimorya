@@ -11,6 +11,7 @@ import {
   type AccountLinks,
 } from '@/lib/api';
 import { formatDate } from '@/lib/format';
+import { MICROSOFT365_PERMISSIONS } from '@/lib/labels';
 
 const LINKS = '/account/links';
 
@@ -18,7 +19,7 @@ const LINKS = '/account/links';
 const OUTCOMES = {
   ok: {
     failed: false,
-    text: 'Votre compte Microsoft 365 est relié : l’agent peut y lire vos e-mails et votre agenda, avec vos propres droits.',
+    text: 'Votre compte Microsoft 365 est relié : l’agent y agit avec vos propres droits, selon ce que vous avez accordé et ce que l’application permet, et n’y envoie rien sans validation.',
   },
   'autre-compte': {
     failed: true,
@@ -34,6 +35,14 @@ type Outcome = keyof typeof OUTCOMES;
 
 function isOutcome(value: string | null): value is Outcome {
   return value !== null && Object.hasOwn(OUTCOMES, value);
+}
+
+/**
+ * What these permissions, as the server names them, let the agent do, in
+ * words (ADR-120); another is shown by its name.
+ */
+function inWords(scopes: string[]): string[] {
+  return scopes.map((scope) => MICROSOFT365_PERMISSIONS[scope] ?? scope);
 }
 
 /**
@@ -89,6 +98,8 @@ function LinkRow({ connector, onChanged }: { connector: AccountLinkView; onChang
   const action = useAction();
   const linked = connector.linked;
   const path = `${LINKS}/${connector.connectorId}`;
+  // Asked since the person linked: granted by linking again (ADR-120).
+  const toGrant = connector.available && linked ? linked.toGrant : [];
 
   async function link() {
     const started = await action.run(() => api.post<AccountLinkStart>(path));
@@ -98,7 +109,7 @@ function LinkRow({ connector, onChanged }: { connector: AccountLinkView; onChang
 
   async function unlink() {
     const question =
-      'Retirer la liaison de votre compte Microsoft 365 ? L’agent ne pourra plus y lire. L’accord donné à l’application reste chez Microsoft : retirez-le aussi dans votre compte Microsoft.';
+      'Retirer la liaison de votre compte Microsoft 365 ? L’agent ne pourra plus y lire ni y écrire. L’accord donné à l’application reste chez Microsoft : retirez-le aussi dans votre compte Microsoft.';
     if (!window.confirm(question)) return;
     if (await action.run(() => api.delete(path))) onChanged();
   }
@@ -111,13 +122,24 @@ function LinkRow({ connector, onChanged }: { connector: AccountLinkView; onChang
       </div>
       {linked ? (
         <p className="text-sm text-muted">
-          Relié à {linked.address} le {formatDate(linked.linkedAt)}. Permissions accordées :{' '}
-          {linked.scopes.join(', ') || '—'}.
+          Relié à {linked.address} le {formatDate(linked.linkedAt)}.
+          {/* What the tools may do now, as the server says it (ADR-120). */}
+          {linked.can.length > 0 && ` L’agent peut : ${inWords(linked.can).join(', ')}.`}
         </p>
       ) : (
         <p className="text-sm text-muted">
-          Reliez votre compte pour que l’agent lise vos e-mails et votre agenda, avec vos propres
-          droits : Microsoft vous demande votre accord.
+          Reliez votre compte pour que l’agent lise vos e-mails et votre agenda
+          {connector.writeTools
+            ? ', et envoie des e-mails ou crée des rendez-vous en votre nom, chaque fois après validation'
+            : ''}
+          , avec vos propres droits : Microsoft vous demande votre accord.
+        </p>
+      )}
+      {toGrant.length > 0 && (
+        <p className="text-sm">
+          Depuis votre liaison, l’application demande aussi votre accord pour :{' '}
+          {inWords(toGrant).join(', ')}. Reliez de nouveau votre compte pour l’accorder ; rien n’est
+          envoyé ni créé sans validation.
         </p>
       )}
       {linked && !connector.available && (
@@ -130,7 +152,7 @@ function LinkRow({ connector, onChanged }: { connector: AccountLinkView; onChang
       <div className="flex flex-wrap gap-2">
         {connector.available && (
           <Button
-            variant={linked ? 'secondary' : 'primary'}
+            variant={linked && toGrant.length === 0 ? 'secondary' : 'primary'}
             loading={action.pending}
             onClick={link}
           >

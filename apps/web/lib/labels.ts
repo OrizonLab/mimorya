@@ -193,3 +193,14 @@ export const AGENT_PROFILES: Record<AgentProfile, string> = {
   planning: 'Planification',
   quality: 'Contrôle qualité',
 };
+
+/**
+ * What a Microsoft 365 permission lets the agent do, said to the person
+ * who grants it (ADR-120); another permission is shown by its name.
+ */
+export const MICROSOFT365_PERMISSIONS: Record<string, string> = {
+  'Mail.Read': 'lire vos e-mails',
+  'Calendars.Read': 'lire votre agenda',
+  'Mail.Send': 'envoyer des e-mails en votre nom',
+  'Calendars.ReadWrite': 'écrire dans votre agenda',
+};

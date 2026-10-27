@@ -24,6 +24,9 @@ pub struct AccountLinkView {
     /// A link may start: the connector is enabled and the person may use
     /// the company's connectors. Otherwise their link stays theirs to remove.
     pub available: bool,
+    /// Its tools may send e-mail and create events, each validated: a
+    /// link asks those permissions too (ADR-119, ADR-120).
+    pub write_tools: bool,
     pub linked: Option<LinkedAccount>,
 }
 
@@ -38,6 +41,10 @@ pub struct LinkedAccount {
     /// Those the application asks now that the person did not grant: the
     /// tools that need them say so until the person links again (ADR-119).
     pub to_grant: Vec<String>,
+    /// What the tools may do with it now: the Graph permissions they need
+    /// that it grants, writing only when the application lets it; none
+    /// while the link does not serve (ADR-120).
+    pub can: Vec<String>,
     pub linked_at: String,
 }
 
