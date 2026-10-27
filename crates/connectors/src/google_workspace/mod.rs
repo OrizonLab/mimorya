@@ -4,13 +4,18 @@
 //! Gmail and their calendar, never the domain's. Its tools (ADR-122) reach
 //! Gmail and Google Calendar with the token of the person a run serves, as
 //! Microsoft 365's reach Graph (`delegated`): what they read, the person
-//! could read themselves.
+//! could read themselves. Those that write (ADR-123), offered when the
+//! company lets them, send an e-mail or create an event in the person's
+//! name, as validated.
 
+mod calendar_create;
 mod calendar_events;
 mod gmail_read;
 mod gmail_search;
+mod gmail_send;
 mod message;
 mod mime;
+mod outgoing;
 mod text;
 
 use anyhow::bail;
@@ -20,19 +25,26 @@ use mimorya_core::tools::typed_tool;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use self::calendar_create::CalendarCreate;
 use self::calendar_events::CalendarEvents;
 use self::gmail_read::GmailRead;
 use self::gmail_search::GmailSearch;
+use self::gmail_send::GmailSend;
 use crate::delegated::ProviderApi;
 use crate::outbound::{http_client, url_problem};
 use crate::types::{Connector, ConnectorInfo, ConnectorRuntime, InstanceContext};
 
 /// Its tools, named by the platform: a company's policies may name them.
-pub const GOOGLE_WORKSPACE_TOOLS: [&str; 3] = [
+pub const GOOGLE_WORKSPACE_TOOLS: [&str; 5] = [
     "google_gmail_search",
     "google_gmail_read",
     "google_calendar_events",
+    "google_gmail_send",
+    "google_calendar_event_create",
 ];
+/// Those that write, offered when the company lets them (ADR-123).
+pub const GOOGLE_WORKSPACE_WRITE_TOOLS: [&str; 2] =
+    ["google_gmail_send", "google_calendar_event_create"];
 
 /// A company's OAuth client, as stored: its client ID (checked by the
 /// administration), the issuer its people sign in at (Google's), the Gmail
@@ -71,7 +83,7 @@ impl Connector for GoogleWorkspaceConnector {
         ConnectorInfo {
             connector_type: LinkKind::GoogleWorkspace.connector_type(),
             name: "Google Workspace",
-            description: "La boîte Gmail et l’agenda Google de chacun, que chaque personne relie elle-même à son compte Workspace : l’agent n’y lit que ce que la personne servie peut lire.",
+            description: "La boîte Gmail et l’agenda Google de chacun, que chaque personne relie elle-même à son compte Workspace : l’agent n’y lit que ce que la personne servie peut lire, et n’y écrit, si l’entreprise le permet, que ce qui est validé.",
             demo: false,
             permissions: &[],
         }
@@ -97,14 +109,23 @@ impl Connector for GoogleWorkspaceConnector {
         let client = http_client(context.network)?;
         let gmail = ProviderApi::new(kind, &config.gmail, client.clone(), context.call_timeout)?;
         let calendar = ProviderApi::new(kind, &config.calendar, client, context.call_timeout)?;
+        let mut tools = vec![
+            typed_tool(GmailSearch {
+                gmail: gmail.clone(),
+            }),
+            typed_tool(GmailRead {
+                gmail: gmail.clone(),
+            }),
+            typed_tool(CalendarEvents {
+                calendar: calendar.clone(),
+            }),
+        ];
+        if config.write_tools {
+            tools.push(typed_tool(GmailSend { gmail }));
+            tools.push(typed_tool(CalendarCreate { calendar }));
+        }
         Ok(ConnectorRuntime {
-            tools: vec![
-                typed_tool(GmailSearch {
-                    gmail: gmail.clone(),
-                }),
-                typed_tool(GmailRead { gmail }),
-                typed_tool(CalendarEvents { calendar }),
-            ],
+            tools,
             closer: None,
         })
     }
@@ -135,7 +156,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn it_starts_with_its_secret_and_its_reading_tools() {
+    async fn it_starts_with_its_secret_and_writes_only_when_let() {
         let config = declared("https://accounts.google.com");
         let runtime = started(&config, Some("GOCSPX-secret")).await.unwrap();
         let names: Vec<String> = runtime
@@ -143,9 +164,13 @@ mod tests {
             .iter()
             .map(|t| t.info().name.clone())
             .collect();
-        assert_eq!(names, GOOGLE_WORKSPACE_TOOLS);
         // Read only, unless the company lets its tools write.
         assert!(!GoogleWorkspaceConfig::read(&config).unwrap().write_tools);
+        assert_eq!(names, GOOGLE_WORKSPACE_TOOLS[..3]);
+        let mut writing = config;
+        writing["writeTools"] = json!(true);
+        let runtime = started(&writing, Some("GOCSPX-secret")).await.unwrap();
+        assert_eq!(runtime.tools.len(), GOOGLE_WORKSPACE_TOOLS.len());
     }
 
     #[tokio::test]

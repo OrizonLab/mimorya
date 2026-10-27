@@ -4,19 +4,16 @@
 //! as Gmail gives them, and the names of its attachments, which are not
 //! read.
 
-use std::sync::LazyLock;
-
 use async_trait::async_trait;
 use mimorya_core::account_links::GMAIL_READONLY;
 use mimorya_core::autonomy::ToolRisk;
 use mimorya_core::tools::{ToolContext, ToolInfo, ToolResult, TypedTool};
-use regex::Regex;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use validator::Validate;
 
-use super::message::{citation, header_of, link, received};
+use super::message::{MESSAGE_ID_RE, citation, header_of, link, received};
 use super::mime::read;
 use crate::delegated::shape::{MAX_SHORT_CHARS, bounded};
 use crate::delegated::{ProviderApi, read_as_person};
@@ -26,10 +23,6 @@ use crate::outbound::CONNECTOR_USE;
 pub const MAX_BODY_CHARS: usize = 20_000;
 /// The most of a list of recipients kept.
 const MAX_RECIPIENTS_CHARS: usize = 2_000;
-
-/// Gmail's identifiers: hexadecimal, URL-safe at most.
-static MESSAGE_ID_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^[A-Za-z0-9_-]{1,256}$").expect("valid regex"));
 
 pub struct GmailRead {
     pub gmail: ProviderApi,

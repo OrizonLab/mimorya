@@ -32,7 +32,7 @@ async fn its_tools_read_with_the_connectors_permission() {
     let google = FakeGoogle::start().await;
     let tools = google_tools(&google).await;
     let names: Vec<String> = tools.iter().map(|t| t.info().name.clone()).collect();
-    assert_eq!(names, GOOGLE_WORKSPACE_TOOLS);
+    assert_eq!(names, GOOGLE_WORKSPACE_TOOLS[..3]);
     for tool in &tools {
         let info = tool.info();
         assert_eq!(info.risk, ToolRisk::Read, "{}", info.name);

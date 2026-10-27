@@ -1,19 +1,32 @@
-//! What a tool writes in a person's name (ADR-119): addresses as Microsoft
-//! reads them, in ASCII, a subject or a place on one visible line, a text
-//! that shows all it holds (line breaks and tabs aside). The person who
-//! validates sees all that is sent: a hidden character could change what
-//! they read, and a letter of another script could pass for one of theirs
-//! in an address, so both are refused before they are asked, never taken
-//! out after.
+//! What a tool writes in a person's name, whichever provider sends it
+//! (ADR-119, ADR-123): plain addresses in ASCII, a subject or a place on
+//! one visible line, a text that shows all it holds (line breaks and tabs
+//! aside). The person who validates sees all that is sent: a hidden
+//! character could change what they read, a letter of another script could
+//! pass for one of theirs in an address, and what a header reads as a
+//! separator or a comment could change whom it is sent to, so all are
+//! refused before they are asked, never taken out after.
+
+use std::sync::LazyLock;
 
 use mimorya_core::plain_text::{is_hidden, shows_all_it_holds};
-use serde_json::{Value, json};
-use validator::{ValidateEmail, ValidationError};
+use regex::Regex;
+use validator::ValidationError;
 
-use crate::delegated::shape::bounded;
+use super::shape::bounded;
 
 /// The longest address accepted (RFC 5321's path, less its brackets).
 const MAX_ADDRESS_CHARS: usize = 254;
+/// A plain address: before its one `@`, the characters HTML5 allows (an
+/// RFC 5322 atom: no space, comma, bracket, quote or colon), 64 at most;
+/// after it, a host name of two labels or more. No IP literal, no quoted
+/// or commented part: nothing a header reads as anything but one address.
+static PLAIN_ADDRESS: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$",
+    )
+    .expect("valid regex")
+});
 /// The most of a text shown in the description of an action: the whole
 /// text is in its parameters, shown to whoever validates it.
 const EXCERPT_CHARS: usize = 300;
@@ -22,15 +35,15 @@ fn refused(code: &'static str, message: &'static str) -> ValidationError {
     ValidationError::new(code).with_message(message.into())
 }
 
-/// E-mail addresses, each once, in ASCII: `exеmple.fr` with a Cyrillic
-/// `е` reads as `exemple.fr`.
+/// Whether this is one plain address, in ASCII: `exеmple.fr` with a
+/// Cyrillic `е` reads as `exemple.fr`.
+pub fn is_plain_address(address: &str) -> bool {
+    address.len() <= MAX_ADDRESS_CHARS && PLAIN_ADDRESS.is_match(address)
+}
+
+/// E-mail addresses, each plain and given once.
 pub fn addresses(list: &[String]) -> Result<(), ValidationError> {
-    let invalid = list.iter().any(|address| {
-        address.len() > MAX_ADDRESS_CHARS
-            || !address.is_ascii()
-            || address.chars().any(is_hidden)
-            || !address.validate_email()
-    });
+    let invalid = list.iter().any(|address| !is_plain_address(address));
     if invalid {
         return Err(refused(
             "addresses",
@@ -70,24 +83,6 @@ pub fn full_text(text: &str) -> Result<(), ValidationError> {
     Ok(())
 }
 
-/// Graph's recipients, of these addresses (`type` for the attendees of an
-/// event).
-pub fn recipients(list: &[String], kind: Option<&str>) -> Value {
-    json!(
-        list.iter()
-            .map(|address| match kind {
-                Some(kind) => json!({ "emailAddress": { "address": address }, "type": kind }),
-                None => json!({ "emailAddress": { "address": address } }),
-            })
-            .collect::<Vec<_>>()
-    )
-}
-
-/// Graph's text body.
-pub fn text_body(text: &str) -> Value {
-    json!({ "contentType": "Text", "content": text })
-}
-
 /// The start of a text, for the description of an action.
 pub fn excerpt(text: &str) -> String {
     match bounded(text.trim(), EXCERPT_CHARS) {
@@ -113,6 +108,22 @@ mod tests {
         // Another script's letter, or a full-width one, passes for ours.
         assert!(addresses(&list(&["paul@ex\u{435}mple.fr"])).is_err());
         assert!(addresses(&list(&["paul@\u{FF45}xemple.fr"])).is_err());
+        // What would end a header, or name another recipient, in a message,
+        // with one `@` only (an IP literal ends the domain).
+        for header in [
+            "lea@exemple.fr\r\nBcc: tous@exemple.fr",
+            "\"lea, paul\"@exemple.fr",
+            "lea@exemple.fr, Direction (y[1.2.3.4]",
+            "lea@exemple.fr (x[1.2.3.4]",
+            "lea@exemple.fr\r\nBcc: x[1.2.3.4]",
+            "Direction:;lea@exemple.fr",
+            "lea@[1.2.3.4]",
+            "lea@localhost",
+            "lea@-exemple.fr",
+        ] {
+            assert!(addresses(&list(&[header])).is_err(), "{header}");
+        }
+        assert!(addresses(&list(&["l.martin+chantier@xn--exmple-cva.fr"])).is_ok());
         let long = format!("{}@exemple.fr", "a".repeat(250));
         assert!(addresses(&[long]).is_err());
     }

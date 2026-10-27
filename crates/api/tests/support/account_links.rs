@@ -95,6 +95,15 @@ pub async fn insert_google_workspace_reading(
     insert_google(api, idp, &google.gmail, &google.calendar, true, false).await
 }
 
+/// The same, its tools writing too (ADR-123).
+pub async fn insert_google_workspace_writing(
+    api: &TestApi,
+    idp: &MockIdentityProvider,
+    google: &FakeGoogle,
+) -> Uuid {
+    insert_google(api, idp, &google.gmail, &google.calendar, true, true).await
+}
+
 async fn insert_google(
     api: &TestApi,
     idp: &MockIdentityProvider,

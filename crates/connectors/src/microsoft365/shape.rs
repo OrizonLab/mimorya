@@ -1,7 +1,8 @@
 //! What the Microsoft 365 tools keep of Graph's answers (ADR-117), besides
 //! what every linked account's tools keep (`delegated::shape`): Graph's
 //! recipients and collections, and its header asking dates in the
-//! platform's zone.
+//! platform's zone; and how Graph reads the recipients and the text of
+//! what they write (ADR-119).
 
 use mimorya_core::time_zone::PLATFORM_TIME_ZONE;
 use serde_json::{Value, json};
@@ -32,6 +33,24 @@ pub fn people(recipients: Option<&Value>, max: usize) -> (Vec<Value>, usize) {
         .map_or(&[][..], Vec::as_slice);
     let kept = all.iter().take(max).map(person).collect();
     (kept, all.len().saturating_sub(max))
+}
+
+/// Graph's recipients, of these addresses (`type` for the attendees of an
+/// event).
+pub fn recipients(list: &[String], kind: Option<&str>) -> Value {
+    json!(
+        list.iter()
+            .map(|address| match kind {
+                Some(kind) => json!({ "emailAddress": { "address": address }, "type": kind }),
+                None => json!({ "emailAddress": { "address": address } }),
+            })
+            .collect::<Vec<_>>()
+    )
+}
+
+/// Graph's text body.
+pub fn text_body(text: &str) -> Value {
+    json!({ "contentType": "Text", "content": text })
 }
 
 /// The items of a Graph collection, and whether Graph has more.

@@ -10,7 +10,7 @@ mod support;
 use axum::http::StatusCode;
 use mimorya_agent::testing::{ScriptedStep, call, last_tool_results};
 use mimorya_api::services::skill_evaluations::NO_LINKED_ACCOUNT;
-use mimorya_connectors::google_workspace::GOOGLE_WORKSPACE_TOOLS;
+use mimorya_connectors::google_workspace::{GOOGLE_WORKSPACE_TOOLS, GOOGLE_WORKSPACE_WRITE_TOOLS};
 use mimorya_connectors::testing::FakeGoogle;
 use mimorya_core::demo::{tenant, user};
 use serde_json::json;
@@ -50,8 +50,14 @@ async fn a_run_reads_its_persons_gmail_and_calendar_with_a_renewed_token() {
         .tools_for(tenant::ID)
         .await
         .unwrap();
+    // Reading only: the company did not let them write.
     for name in GOOGLE_WORKSPACE_TOOLS {
-        assert!(tools.tools.iter().any(|t| t.info().name == name), "{name}");
+        let offered = tools.tools.iter().any(|t| t.info().name == name);
+        assert_eq!(
+            offered,
+            !GOOGLE_WORKSPACE_WRITE_TOOLS.contains(&name),
+            "{name}"
+        );
     }
     let claire = api.sign_in(user::CLAIRE).await;
     linked(&claire, &idp, connector, "g-claire", &email(user::CLAIRE)).await;

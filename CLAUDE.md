@@ -86,12 +86,15 @@ Repères à l'intérieur des crates :
   d'une description OpenAPI, `openapi/`, ADR-114), `connectors/src/microsoft365/`
   (application Microsoft 365 d'une entreprise, ADR-116 ; ses outils, e-mails et agenda de
   la personne servie lus par un Graph borné, ADR-117 ; e-mail envoyé et rendez-vous créé
-  tels que validés, ce qu'ils envoient ne cachant rien (`compose.rs`), ADR-119),
-  `connectors/src/google_workspace/` (client OAuth Google Workspace d'une entreprise,
-  ADR-121 ; ses outils, Gmail et agenda de la personne servie, texte d'un e-mail lu de
-  son MIME (`mime.rs`), ADR-122), `connectors/src/delegated/` (ce que partagent les
-  outils d'un compte relié : client borné du fournisseur, jeton de la personne et refus
-  dits en français, champs gardés, ADR-117, ADR-122), `connectors/src/testing/`
+  tels que validés, ADR-119), `connectors/src/google_workspace/` (client OAuth Google
+  Workspace d'une entreprise, ADR-121 ; ses outils, Gmail et agenda de la personne servie,
+  texte d'un e-mail lu de son MIME (`mime.rs`), ADR-122 ; e-mail envoyé, son message écrit
+  par la plateforme (`outgoing.rs`), et rendez-vous créé tels que validés, ADR-123),
+  `connectors/src/delegated/` (ce que partagent les outils d'un compte relié : client
+  borné du fournisseur, jeton de la personne et refus dits en français, champs gardés,
+  ADR-117, ADR-122 ; e-mail et rendez-vous écrits en son nom, ce qu'ils envoient ne
+  cachant rien (`compose.rs`, `new_mail.rs`, `new_event.rs`), ADR-119, ADR-123),
+  `connectors/src/testing/`
   (serveurs simulés des tests : MCP, API REST, Microsoft Graph, Gmail et agenda Google).
 - `api/src/plugins/` (contexte de requête, limitation de débit (globale par processus ;
   d'authentification partagée par PostgreSQL, `shared_limit.rs`, ADR-088), CSRF (sauf la réception

@@ -296,7 +296,12 @@ Détaillés dans [AGENT_ENGINE.md](AGENT_ENGINE.md). En résumé :
   porté par `LinkKind` dans le cœur ; le reste est commun (ADR-121). Ses outils
   (`google_gmail_search`, `google_gmail_read`, `google_calendar_events`) lisent avec le
   jeton d'accès de la personne servie, comme ceux de Microsoft 365, dont ils partagent
-  le client borné et les règles (`connectors::delegated`, ADR-122).
+  le client borné et les règles (`connectors::delegated`, ADR-122). Si l'entreprise le
+  permet, `google_gmail_send` et `google_calendar_event_create` envoient un e-mail et
+  créent un rendez-vous au nom de la personne, toujours validés et exécutés une fois
+  tels que validés ; l'e-mail et le rendez-vous, leurs règles et leur description sont
+  ceux de Microsoft 365 (`delegated`), le message envoyé à Gmail est écrit par la
+  plateforme (ADR-123).
 - Les secrets ne transitent jamais par le contexte du modèle ni par les journaux.
 
 Connecteurs prévus : démonstration (MVP), MCP générique (MVP), déclencheurs (ADR-109),
