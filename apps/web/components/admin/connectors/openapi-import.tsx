@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { Button, Checkbox, ErrorNote, Field, Input } from '@/components/ui';
 import {
   api,
@@ -29,11 +29,16 @@ export function OpenApiImport({
 }) {
   const [offered, setOffered] = useState<RestImport | null>(null);
   const [chosen, setChosen] = useState<Set<string>>(new Set());
-  // A new key empties the file input once its description is read.
-  const [picker, setPicker] = useState(0);
+  const heading = useId();
   const action = useAction();
+  // What a click adds: the checked operations the form does not hold yet,
+  // within its room (the form may have changed since they were checked).
+  const usable = (offered?.operations ?? [])
+    .filter((operation) => chosen.has(operation.name) && !taken.has(operation.name))
+    .slice(0, room);
 
-  async function read(file: File | undefined) {
+  async function read(input: HTMLInputElement) {
+    const file = input.files?.[0];
     if (!file) return;
     setOffered(null);
     setChosen(new Set());
@@ -43,7 +48,8 @@ export function OpenApiImport({
         document,
       } satisfies OpenApiDescription);
     });
-    setPicker((n) => n + 1);
+    // Emptied, not replaced: the input keeps the focus it had.
+    input.value = '';
     if (read) setOffered(read);
   }
 
@@ -57,20 +63,17 @@ export function OpenApiImport({
 
   function add() {
     if (!offered) return;
-    onAdd(
-      offered.operations.filter((operation) => chosen.has(operation.name)),
-      offered.url,
-    );
+    onAdd(usable, offered.url);
     setOffered(null);
     setChosen(new Set());
   }
 
   return (
     <section
-      aria-labelledby="openapi-import"
+      aria-labelledby={heading}
       className="flex flex-col gap-2 rounded-lg border border-line p-3"
     >
-      <h3 id="openapi-import" className="text-sm font-medium">
+      <h3 id={heading} className="text-sm font-medium">
         Importer une description OpenAPI
       </h3>
       <p className="text-xs text-muted">
@@ -80,11 +83,10 @@ export function OpenApiImport({
       </p>
       <Field label="Fichier de description">
         <Input
-          key={picker}
           type="file"
           accept=".json,.yaml,.yml,application/json,application/yaml"
           disabled={action.pending}
-          onChange={(e) => read(e.target.files?.[0])}
+          onChange={(e) => read(e.currentTarget)}
         />
       </Field>
       {action.error && <ErrorNote message={action.error} />}
@@ -97,8 +99,8 @@ export function OpenApiImport({
           <ul className="flex max-h-72 flex-col gap-1 overflow-y-auto">
             {offered.operations.map((operation) => {
               const already = taken.has(operation.name);
-              const checked = chosen.has(operation.name);
-              const full = !checked && chosen.size >= room;
+              const checked = !already && chosen.has(operation.name);
+              const full = !checked && usable.length >= room;
               return (
                 <li key={operation.name}>
                   <label className="flex items-start gap-2 text-sm">
@@ -134,8 +136,8 @@ export function OpenApiImport({
             </details>
           )}
           <div className="flex gap-2">
-            <Button type="button" disabled={chosen.size === 0} onClick={add}>
-              Ajouter les opérations cochées ({chosen.size})
+            <Button type="button" disabled={usable.length === 0} onClick={add}>
+              Ajouter les opérations cochées ({usable.length})
             </Button>
             <Button type="button" variant="ghost" onClick={() => setOffered(null)}>
               Fermer

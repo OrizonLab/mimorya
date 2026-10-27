@@ -21,23 +21,29 @@ export async function descriptionDocument(file: File): Promise<string> {
   const text = await file.text();
   if (text.trimStart().startsWith('{')) return text;
   const { parse, YAMLParseError } = await import('yaml');
-  let read: unknown;
+  let json: string;
   try {
-    // Aliases repeated beyond a hundred are refused: a short document
-    // cannot unfold into a huge one.
-    read = parse(text, { maxAliasCount: 100 });
+    // Aliases repeated beyond a hundred are refused, merge keys (`<<`)
+    // included: a short document cannot unfold into a huge one.
+    const read: unknown = parse(text, { maxAliasCount: 100, merge: true });
+    if (typeof read !== 'object' || read === null || Array.isArray(read)) {
+      throw unreadable('Description illisible : un document JSON ou YAML est attendu.');
+    }
+    json = JSON.stringify(read);
   } catch (error) {
+    if (error instanceof ApiError) throw error;
     const line = error instanceof YAMLParseError ? error.linePos?.[0]?.line : undefined;
-    throw unreadable(
-      line
-        ? `Description YAML illisible (ligne ${line}) : vérifiez le fichier.`
-        : 'Description illisible : un document JSON ou YAML est attendu.',
-    );
-  }
-  if (typeof read !== 'object' || read === null || Array.isArray(read)) {
+    if (line) throw unreadable(`Description YAML illisible (ligne ${line}) : vérifiez le fichier.`);
+    // The reader's own refusals: aliases repeated too often, or one that
+    // holds itself, which no JSON can write.
+    if (error instanceof ReferenceError) {
+      throw unreadable('Description YAML refusée : des alias répétés plus de 100 fois.');
+    }
+    if (error instanceof TypeError) {
+      throw unreadable('Description YAML refusée : un alias qui se contient lui-même.');
+    }
     throw unreadable('Description illisible : un document JSON ou YAML est attendu.');
   }
-  const json = JSON.stringify(read);
   if (new TextEncoder().encode(json).length > MAX_DESCRIPTION_BYTES) {
     throw unreadable('Une fois convertie en JSON, cette description dépasse 768 Kio.');
   }
