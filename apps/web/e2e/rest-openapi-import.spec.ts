@@ -105,6 +105,11 @@ test('operations are read from an OpenAPI description and added', async ({ page 
   await expect(
     form.getByText('Description YAML refusée : un alias qui se contient lui-même.'),
   ).toBeVisible();
+  // An alias without its anchor: said for what it is.
+  await picker.setInputFiles(file('faute.yaml', 'a: *absente\n'));
+  await expect(
+    form.getByText('Description YAML illisible : un alias sans ancre définie avant lui.'),
+  ).toBeVisible();
 
   await picker.setInputFiles(file('assistance.yaml', DESCRIPTION));
   await expect(form.getByText(/^2 opération\(s\) proposée\(s\) ; 50 de plus/)).toBeVisible();
@@ -198,6 +203,8 @@ test('an API one operation short of fifty takes only one more', async ({ page })
   await expect(
     form.getByRole('button', { name: 'Ajouter les opérations cochées (0)' }),
   ).toBeDisabled();
+  // What no longer fits is shown unchecked.
+  await expect(form.getByRole('checkbox', { name: /GET \/tickets / })).not.toBeChecked();
   await form.getByRole('button', { name: 'Retirer l’opération 50' }).click();
   await form.getByRole('button', { name: 'Ajouter les opérations cochées (1)' }).click();
   await expect(

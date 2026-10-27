@@ -99,7 +99,8 @@ export function OpenApiImport({
           <ul className="flex max-h-72 flex-col gap-1 overflow-y-auto">
             {offered.operations.map((operation) => {
               const already = taken.has(operation.name);
-              const checked = !already && chosen.has(operation.name);
+              // Checked as far as the form has room: beyond, shown as not.
+              const checked = usable.some((kept) => kept.name === operation.name);
               const full = !checked && usable.length >= room;
               return (
                 <li key={operation.name}>

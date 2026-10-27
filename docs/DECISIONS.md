@@ -5859,8 +5859,9 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     description YAML est convertie en JSON **dans le navigateur** de l'administrateur,
     par la bibliothèque `yaml` chargée seulement quand un tel fichier est choisi, ses
     alias (clés de fusion `<<` comprises) répétés au plus cent fois ; le serveur ne lit
-    toujours que du JSON (ADR-114). Un fichier illisible est dit : la ligne en cause
-    pour du YAML, des alias trop nombreux, un alias qui se contient lui-même (qu'aucun
+    toujours que du JSON (ADR-114). Un fichier illisible est dit pour ce qu'il a : la
+    ligne en cause pour du YAML, des alias trop nombreux, un alias sans son ancre, une
+    clé `<<` qui ne fusionne pas une table, un alias qui se contient lui-même (qu'aucun
     JSON n'écrit). Le champ du fichier est vidé, non remplacé, et garde le focus
     (ADR-043) ;
   - les opérations proposées s'affichent (méthode, chemin, intitulé, nom) avec une case
@@ -5868,7 +5869,7 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     dont le nom est déjà dans le formulaire ne se coche pas ; on en coche au plus autant
     qu'il reste de place dans les cinquante d'une API, et le clic le revérifie : ce que
     le formulaire a pris entre-temps (une opération saisie, un nom tapé) n'est pas
-    ajouté une seconde fois ;
+    ajouté une seconde fois, et une case cochée qui n'y tient plus se montre décochée ;
   - « Ajouter les opérations cochées » les place dans le formulaire, après les siennes
     (à la place de l'opération vide qu'il ouvre), où elles se relisent et se modifient
     comme les autres ; l'adresse de la description remplit le champ s'il est vide. Rien
@@ -5882,7 +5883,7 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     cochée ajoutée au formulaire à la place de l'opération vide, l'adresse remplie ;
     relue, l'opération déjà ajoutée ne se coche plus ; une seconde ajoutée ; l'API
     enregistrée et relue dans l'API avec ses deux opérations ; un alias qui se contient
-    lui-même dit ; puis une API de 49 opérations modifiée : une description JSON en
+    lui-même et un alias sans ancre dits ; puis une API de 49 opérations modifiée : une description JSON en
     propose deux, une seule se coche, une opération saisie entre-temps ôte la place,
     retirée la rend ; l'API enregistrée en tient cinquante) ;
   - les bornes de 768 Kio et de cinquante opérations sont rappelées par l'écran ; la

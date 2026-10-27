@@ -34,10 +34,20 @@ export async function descriptionDocument(file: File): Promise<string> {
     if (error instanceof ApiError) throw error;
     const line = error instanceof YAMLParseError ? error.linePos?.[0]?.line : undefined;
     if (line) throw unreadable(`Description YAML illisible (ligne ${line}) : vérifiez le fichier.`);
-    // The reader's own refusals: aliases repeated too often, or one that
-    // holds itself, which no JSON can write.
-    if (error instanceof ReferenceError) {
+    // The reader's own refusals, each said for what it is: aliases repeated
+    // too often, one without its anchor, a merge of what is no table, or
+    // an alias holding itself, which no JSON can write.
+    const said = error instanceof Error ? error.message : '';
+    if (error instanceof ReferenceError && said.startsWith('Excessive alias count')) {
       throw unreadable('Description YAML refusée : des alias répétés plus de 100 fois.');
+    }
+    if (error instanceof ReferenceError && said.startsWith('Unresolved alias')) {
+      throw unreadable('Description YAML illisible : un alias sans ancre définie avant lui.');
+    }
+    if (said.startsWith('Merge sources must be')) {
+      throw unreadable(
+        'Description YAML illisible : une clé « << » qui ne fusionne pas une table.',
+      );
     }
     if (error instanceof TypeError) {
       throw unreadable('Description YAML refusée : un alias qui se contient lui-même.');
