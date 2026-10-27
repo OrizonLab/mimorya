@@ -177,13 +177,25 @@ pub async fn update_connector(
             };
             return Err(DomainError::validation(refusal).into());
         };
+        let replaced = changes.rest.as_ref().and_then(|r| r.operations.as_deref());
         if let Some(policies) = &changes.tool_policies {
+            let declared = editable.declared_tools(replaced);
+            if let Some(unknown) = declared.and_then(|declared| {
+                policies
+                    .keys()
+                    .find(|tool| !declared.contains(tool))
+                    .cloned()
+            }) {
+                return Err(DomainError::validation(format!(
+                    "Opération inconnue de cette API : {unknown}"
+                ))
+                .into());
+            }
             let scope = editable.policy_scope();
             patch.tool_policies = Some(checked_policies(policies, &scope, admin.catalog)?);
-        } else if let Some(operations) = changes.rest.as_ref().and_then(|r| r.operations.as_deref())
-        {
-            // The policy of an operation removed, or changed in method or
-            // path, goes with it (ADR-112).
+        } else if let Some(operations) = replaced {
+            // The policy of an operation removed, or changed in method, path
+            // or parameters, goes with it (ADR-112, ADR-113).
             let mut kept = instance.tool_policies.clone();
             if let Some(policies) = kept.as_object_mut() {
                 for tool in editable.redeclared(operations) {

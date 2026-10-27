@@ -131,9 +131,10 @@ export function RestForm({
       </div>
       <p className="text-xs text-muted">
         Chaque opération devient un outil, qui demande une validation tant qu’il n’est pas associé à
-        des permissions et à un risque. Le jeton (lettres sans accent, chiffres et - . _ ~ + /, puis
-        éventuellement des =) est chiffré sur le serveur et jamais réaffiché ; il ne suit pas l’API
-        vers une autre adresse.{' '}
+        des permissions et à un risque. Retirer une opération, ou changer sa méthode, son chemin ou
+        ses paramètres, retire ses règles : vérifiez la déclaration pour l’associer de nouveau. Le
+        jeton (lettres sans accent, chiffres et - . _ ~ + /, puis éventuellement des =) est chiffré
+        sur le serveur et jamais réaffiché ; il ne suit pas l’API vers une autre adresse.{' '}
         {data.allowPrivateNetwork
           ? 'Ce déploiement autorise les API de son réseau privé.'
           : 'Seules les adresses publiques en https sont acceptées.'}

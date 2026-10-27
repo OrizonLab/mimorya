@@ -5719,11 +5719,18 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     d'opérations et l'en-tête où va le jeton. Son bouton de test s'intitule « Vérifier
     la déclaration » ; réussi, il dit « Déclaration vérifiée : n outil(s). L'API n'est
     pas appelée ; le premier appel d'un run dira si elle répond », et l'état de la carte
-    se lit « Déclaration vérifiée » plutôt qu'« Opérationnel ». Elle se modifie et se
-    supprime comme un serveur MCP ajouté ici ;
+    se lit « Déclaration vérifiée » plutôt qu'« Opérationnel » (« Non vérifiée » avant).
+    Elle se modifie et se supprime comme un serveur MCP ajouté ici ; une API dont la
+    déclaration est devenue illisible se supprime encore ;
   - les règles des outils d'une API se règlent comme celles d'un serveur MCP (risque,
     permissions, activation), sans description à remplacer : celle d'une opération se
-    change dans sa déclaration ;
+    change dans sa déclaration. Les règles montrées par une vérification sont celles de
+    la déclaration d'alors : ouvrir « Modifier » les retire de l'écran, et une
+    modification enregistrée ne les laisse pas revenir, faute de quoi une association
+    que la modification vient de retirer serait réécrite telle quelle. Le serveur refuse
+    aussi une politique qui ne nomme aucune opération déclarée (« Opération inconnue de
+    cette API »), celles de la requête si elle en remplace : aucune association n'attend
+    qu'une opération de ce nom revienne ;
   - la politique d'une opération part aussi quand ses paramètres changent, et non
     seulement sa méthode ou son chemin (ADR-112) : une lecture filtrée associée sans
     validation ne devient pas, par un paramètre ajouté, une autre action sans
@@ -5734,5 +5741,11 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
   - tests : `apps/web/e2e/rest-connectors.spec.ts` (une API décrite avec sa clé et deux
     opérations, un chemin qui remonterait refusé et dit, la déclaration vérifiée, une
     lecture associée, l'API modifiée puis supprimée, chaque étape relue dans l'API, la clé
-    jamais listée) ; `crates/api/tests/rest_connector_rules.rs` (la politique d'une
-    opération dont les paramètres changent retirée).
+    jamais listée ; puis la lecture devenue une suppression : les règles d'avant ne
+    restent pas à l'écran et son association est retirée) ;
+    `crates/api/tests/rest_connector_rules.rs` (la politique d'une opération dont les
+    paramètres changent retirée ; une politique pour une opération non déclarée
+    refusée, acceptée quand la même requête la déclare) ;
+  - une politique écrite depuis un autre onglet resté ouvert sur une déclaration
+    ancienne n'est pas détectée : comme les autres formulaires de l'administration,
+    celui des règles ne porte pas la version qu'il modifie.

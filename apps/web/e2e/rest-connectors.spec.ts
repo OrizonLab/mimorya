@@ -1,8 +1,9 @@
 // A REST API the company describes itself (ADR-112, ADR-113): Paul adds it
 // with its key and two operations, is told why a path that would climb is
 // refused, checks the declaration (the API is not called), maps a read,
-// changes the API (an operation retitled, another removed) and deletes it,
-// each step read back from the API. The key is never listed. The address is
+// changes the API (an operation retitled, another removed, then the read
+// made a deletion, whose mapping goes, the former rules never left to be
+// saved again) and deletes it, each step read back from the API. The key is never listed. The address is
 // never reached: a check only reads the declaration. Whatever happens, the
 // test's API is deleted.
 import type { Page } from '@playwright/test';
@@ -113,6 +114,7 @@ test('a REST API is described, checked, mapped, changed and deleted', async ({ p
   const card = cardWith(page, API, 'Vérifier la déclaration');
   await expect(card.getByText('rest_crme_…')).toBeVisible();
   await expect(card.getByText(/2 opération\(s\) · jeton envoyé en « X-Api-Key »/)).toBeVisible();
+  await expect(card.getByText('Non vérifiée', { exact: true })).toBeVisible();
   await card.getByRole('button', { name: 'Vérifier la déclaration' }).click();
   await expect(
     card.getByText(/^Déclaration vérifiée : 2 outil\(s\)\. L’API n’est pas appelée/),
@@ -144,6 +146,20 @@ test('a REST API is described, checked, mapped, changed and deleted', async ({ p
   // The key and the read's mapping stay: same address, same request.
   expect(changed?.rest?.tokenStored).toBe(true);
   expect(changed?.toolPolicies[READ]?.risk).toBe('read');
+
+  // Rules shown by a check, then the read changed into a deletion: the
+  // former rules are not left to be saved again, and its mapping is gone.
+  const rules = card.getByRole('button', { name: 'Enregistrer les règles des outils' });
+  await card.getByRole('button', { name: 'Vérifier la déclaration' }).click();
+  await expect(rules).toBeVisible();
+  await card.getByRole('button', { name: 'Modifier', exact: true }).click();
+  await expect(rules).toHaveCount(0);
+  await page.locator('form').getByLabel('Méthode').selectOption('DELETE');
+  await page.locator('form').getByRole('button', { name: 'Enregistrer', exact: true }).click();
+  await expect(page.locator('form')).toHaveCount(0);
+  await expect(rules).toHaveCount(0);
+  await expect.poll(async () => (await stored(page)).api?.toolPolicies).toEqual({});
+  expect((await stored(page)).api?.rest?.operations[0]?.method).toBe('DELETE');
 
   await card.getByRole('button', { name: 'Supprimer', exact: true }).click();
   await expect.poll(async () => (await stored(page)).api).toBeUndefined();

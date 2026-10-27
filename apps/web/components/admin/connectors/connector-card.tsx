@@ -22,6 +22,13 @@ const STATUS = {
   disabled: { label: 'Désactivé', tone: 'neutral' },
 } as const;
 
+/** A REST API's test checks its declaration, without calling it. */
+const REST_STATUS: Partial<Record<keyof typeof STATUS, { label: string; tone: 'neutral' | 'ok' }>> =
+  {
+    untested: { label: 'Non vérifiée', tone: 'neutral' },
+    ok: { label: 'Déclaration vérifiée', tone: 'ok' },
+  };
+
 /**
  * One connector: its state, a test, and what may change here. A REST API's
  * test checks its declaration without calling it (ADR-112, ADR-113): it
@@ -43,12 +50,13 @@ export function ConnectorCard({
   const action = useAction();
   const type = data.types.find((t) => t.type === connector.type);
   const rest = connector.rest;
+  // Also when its declaration can no longer be read: it is deleted here.
+  const isRest = connector.type === 'rest';
   const status =
-    rest && connector.status === 'ok'
-      ? { label: 'Déclaration vérifiée', tone: 'ok' as const }
-      : (STATUS[connector.status] ?? STATUS.error);
-  // Added from the administration: changed and deleted here.
-  const added = Boolean(connector.mcp ?? rest);
+    (isRest && REST_STATUS[connector.status]) || (STATUS[connector.status] ?? STATUS.error);
+  // Added from the administration: deleted here, and changed while readable.
+  const added = Boolean(connector.mcp) || isRest;
+  const editable = Boolean(connector.mcp ?? rest);
 
   async function test() {
     const result = await action.run(() =>
@@ -68,9 +76,19 @@ export function ConnectorCard({
     }
   }
 
+  // The rules of a former test are no rules for what was changed since: a
+  // policy dropped by the change would be written back (ADR-113).
+  function edit() {
+    setTested(null);
+    setEditing(true);
+  }
+
   function done(changed: boolean) {
     setEditing(false);
-    if (changed) onChanged();
+    if (changed) {
+      setTested(null);
+      onChanged();
+    }
   }
 
   async function remove() {
@@ -108,10 +126,10 @@ export function ConnectorCard({
       {action.error && <ErrorNote message={action.error} />}
       <div className="flex flex-wrap gap-2">
         <Button variant="secondary" loading={action.pending} onClick={test}>
-          {rest ? 'Vérifier la déclaration' : 'Tester la connexion'}
+          {isRest ? 'Vérifier la déclaration' : 'Tester la connexion'}
         </Button>
-        {added && !editing && (
-          <Button variant="secondary" onClick={() => setEditing(true)}>
+        {editable && !editing && (
+          <Button variant="secondary" onClick={edit}>
             Modifier
           </Button>
         )}
@@ -136,7 +154,7 @@ export function ConnectorCard({
       {tested?.ok && (
         <section className="flex flex-col gap-2">
           <p className="text-sm text-ok">
-            {rest
+            {isRest
               ? `Déclaration vérifiée : ${tested.tools.length} outil(s). L’API n’est pas appelée ; le premier appel d’un run dira si elle répond.`
               : `Connexion réussie : ${tested.tools.length} outil(s) exposé(s).`}
           </p>
