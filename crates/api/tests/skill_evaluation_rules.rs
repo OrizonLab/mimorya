@@ -23,6 +23,7 @@ use mimorya_db::testing::OTHER_TENANT_ID;
 use serde_json::json;
 use support::accounts::holder_of;
 use support::evaluation_passes::{TAKEN_OVER, forget_elsewhere, lock_lost, taken_over};
+use support::queue::API;
 use support::skill_evaluations::{
     count, detail, evaluations, executing, forget, launch, launched, new_version, play, status_of,
     stored_evaluation, verdict, write_case,
@@ -301,7 +302,9 @@ async fn a_pass_whose_lock_s_session_is_lost_plays_no_further() {
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
 async fn evaluations_ended_ninety_days_ago_are_deleted() {
-    let api = TestApi::start().await;
+    // A process that executes no runs: no maintenance pass of its own
+    // purges them before the test does.
+    let api = TestApi::start_with(API).await;
     let old = stored_evaluation(&api, "completed", 100).await;
     let recent = stored_evaluation(&api, "failed", 10).await;
     let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
