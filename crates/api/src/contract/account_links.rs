@@ -1,6 +1,6 @@
-//! The accounts each person links at their company's providers (ADR-116):
-//! where they may link one, what is linked, and where the browser goes to
-//! grant access.
+//! The accounts each person links at their company's providers (ADR-116,
+//! ADR-121): where they may link one, what is linked, and where the browser
+//! goes to grant access.
 
 use serde::Serialize;
 use ts_rs::TS;
@@ -18,7 +18,7 @@ pub struct AccountLinks {
 pub struct AccountLinkView {
     pub connector_id: Uuid,
     pub name: String,
-    /// `microsoft365`.
+    /// `microsoft365` or `google_workspace`.
     #[serde(rename = "type")]
     pub connector_type: String,
     /// A link may start: the connector is enabled and the person may use
@@ -39,10 +39,11 @@ pub struct LinkedAccount {
     /// The permissions the person granted, as the provider listed them.
     pub scopes: Vec<String>,
     /// Those the application asks now that the person did not grant: the
-    /// tools that need them say so until the person links again (ADR-119).
+    /// tools that need them say so until the person links again (ADR-119);
+    /// none while the connector is unavailable.
     pub to_grant: Vec<String>,
-    /// What the tools may do with it now: the Graph permissions they need
-    /// that it grants, writing only when the application lets it; none
+    /// What the tools may do with it now: the provider's permissions they
+    /// need that it grants, writing only when the application lets it; none
     /// while the link does not serve (ADR-120).
     pub can: Vec<String>,
     pub linked_at: String,

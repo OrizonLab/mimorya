@@ -1,8 +1,9 @@
 //! Connectors (`connector:manage`, company-wide, ADR-025): reading them with
 //! their state, trying an MCP server before adding it (ADR-050), adding it
 //! over HTTPS, adding a REST API (ADR-112) whose operations an OpenAPI
-//! description may offer first (ADR-114), declaring the company's Microsoft
-//! 365 application (ADR-116), changing any of them (address, token or
+//! description may offer first (ADR-114), changing any of them, the
+//! company's Microsoft 365 and Google Workspace applications too
+//! (`connector_applications`, ADR-116, ADR-121) (address, token or
 //! secret, per-tool policies, activation; a REST API's token header and
 //! operations), deleting it and testing it. Tokens are write-only.
 
@@ -16,9 +17,9 @@ use mimorya_db::repositories::connectors::list_connector_instances;
 
 use crate::app::AppState;
 use crate::contract::admin::{
-    ConnectorTest, ConnectorTrial, ConnectorUpdate, ConnectorView, Connectors, DelegablePermission,
-    McpEndpoint, Microsoft365App, NewConnector, NewMicrosoft365Connector, NewRestConnector,
-    OpenApiDescription, RestApi, RestImport, risks,
+    ConnectorDetails, ConnectorTest, ConnectorTrial, ConnectorUpdate, ConnectorView, Connectors,
+    DelegablePermission, GoogleWorkspaceApp, McpEndpoint, Microsoft365App, NewConnector,
+    NewRestConnector, OpenApiDescription, RestApi, RestImport, risks,
 };
 use crate::contract::{Created, Done};
 use crate::http::{ApiResult, Body, PathId};
@@ -26,16 +27,15 @@ use crate::plugins::Auth;
 use crate::secrets::SecretStore;
 use crate::services::admin::NewRestConnector as RestInput;
 use crate::services::admin::{
-    ConnectorAdmin, ConnectorChanges, Editable, McpTrial, NewMcpConnector, NewMicrosoft365,
-    RestChanges, TokenChange, TrialServices, create_mcp_connector, create_microsoft365_connector,
-    create_rest_connector, delete_connector, read_openapi, test_connector, try_mcp_connector,
-    update_connector,
+    ConnectorAdmin, ConnectorChanges, Editable, McpTrial, NewMcpConnector, RestChanges,
+    TokenChange, TrialServices, create_mcp_connector, create_rest_connector, delete_connector,
+    read_openapi, test_connector, try_mcp_connector, update_connector,
 };
 use crate::services::connectors::token_secret_name;
 use crate::services::permission_catalog::permission_catalog;
 
 const PERMISSION: &str = "connector:manage";
-fn secrets(state: &AppState) -> SecretStore {
+pub(super) fn secrets(state: &AppState) -> SecretStore {
     SecretStore::new(state.config.secrets.clone())
 }
 
@@ -50,19 +50,20 @@ pub async fn list(
     let instances = list_connector_instances(&mut tx, false).await?;
     let mut views = Vec::with_capacity(instances.len());
     for i in &instances {
-        let (mut mcp, mut rest, mut microsoft365) = (None, None, None);
+        let mut details = ConnectorDetails::default();
         if let Some(editable) = Editable::of(i) {
             let token_stored = store.exists(&mut tx, &token_secret_name(i.id)).await?;
+            let redirect_uri = state.account_links.redirect_uri().to_string();
             match editable {
                 Editable::Mcp { prefix, url } => {
-                    mcp = Some(McpEndpoint {
+                    details.mcp = Some(McpEndpoint {
                         prefix,
                         url,
                         token_stored,
                     });
                 }
                 Editable::Rest(config) => {
-                    rest = Some(RestApi {
+                    details.rest = Some(RestApi {
                         operations: config.operations.iter().map(Into::into).collect(),
                         prefix: config.prefix,
                         url: config.url,
@@ -71,10 +72,19 @@ pub async fn list(
                     });
                 }
                 Editable::Microsoft365(config) => {
-                    microsoft365 = Some(Microsoft365App {
+                    details.microsoft365 = Some(Microsoft365App {
                         directory: config.directory,
                         client_id: config.client_id,
-                        redirect_uri: state.account_links.redirect_uri().into(),
+                        redirect_uri,
+                        secret_stored: token_stored,
+                        links: count_account_links(&mut tx, i.id).await?,
+                        write_tools: config.write_tools,
+                    });
+                }
+                Editable::GoogleWorkspace(config) => {
+                    details.google_workspace = Some(GoogleWorkspaceApp {
+                        client_id: config.client_id,
+                        redirect_uri,
                         secret_stored: token_stored,
                         links: count_account_links(&mut tx, i.id).await?,
                         write_tools: config.write_tools,
@@ -82,7 +92,7 @@ pub async fn list(
                 }
             }
         }
-        views.push(ConnectorView::from_row(i, mcp, rest, microsoft365)?);
+        views.push(ConnectorView::from_row(i, details)?);
     }
     tx.commit().await?;
     let types = connector_types()
@@ -108,7 +118,7 @@ pub async fn list(
     }))
 }
 
-fn admin<'a>(
+pub(super) fn admin<'a>(
     state: &'a AppState,
     store: &'a SecretStore,
     catalog: &'a [mimorya_core::authz::PermissionInfo],
@@ -159,27 +169,6 @@ pub async fn create_rest(
         enabled: body.enabled.unwrap_or(true),
     };
     let id = create_rest_connector(&admin(&state, &store, &catalog), &access, input).await?;
-    Ok((StatusCode::CREATED, Json(Created { id })))
-}
-
-/// The company's Microsoft 365 application (ADR-116).
-pub async fn create_microsoft365(
-    State(state): State<AppState>,
-    Auth(identity): Auth,
-    Body(body): Body<NewMicrosoft365Connector>,
-) -> ApiResult<(StatusCode, Json<Created>)> {
-    let access = state.access.context(identity).await?;
-    let (store, catalog) = (secrets(&state), permission_catalog());
-    let input = NewMicrosoft365 {
-        name: body.name,
-        directory: body.directory,
-        client_id: body.client_id,
-        client_secret: body.client_secret,
-        enabled: body.enabled.unwrap_or(true),
-        write_tools: body.write_tools.unwrap_or(false),
-    };
-    let id =
-        create_microsoft365_connector(&admin(&state, &store, &catalog), &access, input).await?;
     Ok((StatusCode::CREATED, Json(Created { id })))
 }
 

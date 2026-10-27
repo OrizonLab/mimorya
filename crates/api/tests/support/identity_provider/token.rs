@@ -22,9 +22,7 @@ use openidconnect::{
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
-use super::{
-    APPLICATION_ID, CLIENT_ID, CLIENT_SECRET, Extra, MockIdentityProvider, Shared, signing_key,
-};
+use super::{CLIENT_SECRET, Extra, MockIdentityProvider, Shared, known_client, signing_key};
 
 fn refused(error: &str) -> Response {
     (
@@ -52,7 +50,7 @@ fn authenticated(headers: &HeaderMap, form: &HashMap<String, String>) -> Option<
             _ => return None,
         },
     };
-    ((id == CLIENT_ID || id == APPLICATION_ID) && secret == CLIENT_SECRET).then_some(id)
+    (known_client(&id) && secret == CLIENT_SECRET).then_some(id)
 }
 
 pub(super) async fn token(
@@ -92,11 +90,7 @@ pub(super) async fn token(
     }
     provider.exchanges += 1;
     let now = Utc::now();
-    let offline = grant
-        .scope
-        .split(' ')
-        .any(|scope| scope == "offline_access")
-        && !provider.tamper.withhold_refresh_token;
+    let offline = grant.offline && !provider.tamper.withhold_refresh_token;
     let refresh_token =
         offline.then(|| MockIdentityProvider::refresh_token_of(&grant.person.subject));
     if let Some(issued) = &refresh_token {

@@ -6296,3 +6296,115 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     - `crates/api/tests/microsoft365_writes.rs` : `writeTools` et `can` dans la vue de la
       liaison (lecture, écriture accordée, écriture retirée, application désactivée) ;
     - `crates/core/src/account_links/tests.rs` : ce qu'une liaison sert.
+
+## ADR-121 — Google Workspace relié par chacun : déclaration et liaison (connecteurs, lot 11a)
+
+- **Date** : 2026-10-27 · **Statut** : acceptée
+- **Contexte** : les entreprises sous Google Workspace veulent, comme celles sous
+  Microsoft 365 (ADR-116), que l'agent lise les e-mails et l'agenda de chacun. Google
+  offre aussi la délégation à l'échelle du domaine : un compte de service qui ouvre toutes
+  les boîtes du domaine. Elle est écartée pour la raison qui a écarté les permissions
+  d'application de Microsoft : la plateforme seule empêcherait alors l'agent de lire la
+  boîte d'un autre.
+- **Décision** :
+  - **un type de liaison dans le cœur** : `LinkKind` (`core/src/account_links/kind.rs`)
+    porte ce qui change d'un fournisseur à l'autre :
+    - les permissions demandées à la liaison (identité, lecture, écriture si
+      l'entreprise la permet) ;
+    - celles dont les outils ont besoin et celles renouvelées ;
+    - les paramètres propres à la connexion chez le fournisseur ;
+    - ce qu'un jeton doit prouver du compte (`microsoft365.rs`, `google.rs`) ;
+    - tout le reste est commun aux deux : tentative scellée, retour, jeton de
+      renouvellement scellé, liste, retrait, renouvellement, jetons gardés, audit ;
+    - une permission se compare sur son dernier segment, sans tenir compte de la casse :
+      Microsoft nomme parfois une permission de Graph par son adresse, Google toujours ;
+  - **la déclaration** : un administrateur des connecteurs (`connector:manage`, sur toute
+    l'entreprise) déclare le client OAuth de l'entreprise dans Google Cloud
+    (`POST /admin/connectors/google-workspace`) :
+    - son identifiant, tel que Google Cloud le montre (terminé par
+      `.apps.googleusercontent.com`, lettres, chiffres, tirets et points, 255 caractères
+      au plus) ;
+    - son secret, scellé, jamais renvoyé ni audité ;
+    - un seul par entreprise, à côté de l'application Microsoft 365 : index unique
+      `connector_instances_one_google_workspace`, migration `0051` ;
+    - l'émetteur (`https://accounts.google.com`) et les adresses de Gmail et de l'agenda
+      sont ceux de la plateforme ;
+    - la vue des connecteurs (`googleWorkspace`) montre l'adresse de retour à inscrire
+      (la même que pour Microsoft 365), combien de personnes ont relié leur compte, et si
+      ses outils peuvent écrire ;
+    - son nom, son activation, son secret (remplacé, jamais retiré) et l'écriture se
+      changent comme pour l'application Microsoft 365 (ADR-116, ADR-119) ;
+    - la déclaration est commune aux deux applications
+      (`services/admin/link_applications.rs`) ; chacune vérifie seulement ce qui lui est
+      propre ;
+    - ses outils seront nommés `google_<outil>`. Il n'y en a encore aucun : une politique
+      qui en nomme un est refusée ;
+  - **la liaison** : même route, même retour et mêmes règles que pour Microsoft 365 :
+    - les permissions demandées sont `openid`, `email`, `profile`, `gmail.readonly` et
+      `calendar.readonly`, plus `gmail.send` et `calendar.events` si l'écriture est
+      permise ;
+    - Google ne donne un jeton de renouvellement que si l'accès hors connexion est
+      demandé (`access_type=offline`), et ne le redonne qu'avec `prompt=consent` : les deux
+      sont demandés ;
+    - `hd` (le domaine de l'adresse de la personne) lui propose les comptes de son
+      domaine. C'est une indication, pas une preuve ;
+  - **la preuve du compte** : le jeton d'identité doit porter :
+    - le sujet Google ;
+    - une adresse que Google a vérifiée (`email_verified`) ;
+    - le domaine Workspace du compte (`hd`), égal au domaine de cette adresse. Ce sont
+      ainsi les administrateurs du domaine qui garantissent l'adresse, pas quiconque a
+      ouvert un compte Google avec elle ;
+    - cette adresse doit être celle du compte de la personne, à la casse près ;
+    - un compte Google personnel (sans `hd`) n'est jamais relié, même à son adresse ;
+  - **le renouvellement** : Google ne reçoit le nom d'aucune permission et renouvelle
+    celles que la personne a accordées. Microsoft, lui, reçoit celles de la plateforme que
+    la personne a accordées (ADR-117, ADR-119) ;
+  - **les jetons d'accès gardés** le sont par entreprise, personne et connecteur, car une
+    personne peut relier un compte chez chacun des deux. Un jeton refusé par un
+    fournisseur fait oublier tous ceux de la personne ;
+  - **les messages** donnés au modèle (application inactive, secret absent, accès
+    impossible, renouvellement en échec) nomment le produit concerné ;
+  - **les raisons d'audit des refus** :
+    - « Compte Google d’une autre adresse » ;
+    - « Jeton sans compte vérifié du domaine Workspace » ;
+    - le refus d'un fournisseur se dit désormais « Refusée par le fournisseur (code) »,
+      pour Microsoft comme pour Google ;
+  - **`toGrant`** est vide tant que le connecteur n'est pas disponible : l'écran faisait
+    déjà ainsi (ADR-120), le serveur le fait maintenant aussi ;
+  - **l'émetteur remplacé** du serveur des tests de bout en bout s'appelle désormais
+    `BuildOptions::account_link_issuer` (ADR-118). Il vaut pour les deux fournisseurs.
+- **Conséquences** :
+  - le connecteur démarre sans outil, comme Microsoft 365 au lot 8a ;
+  - pas encore d'écran Google. Jusqu'aux écrans (lot 11d), une application Google
+    déclarée par l'API apparaît :
+    - dans « Mon compte », avec les textes écrits pour Microsoft et ses permissions par
+      leur adresse ;
+    - dans « Connecteurs », comme un connecteur ordinaire, sans « Supprimer », alors que
+      l'API la supprime ;
+  - un compte dont l'adresse n'est pas dans le domaine Workspace de son compte Google ne
+    peut pas être relié : un alias d'un autre domaine, par exemple ;
+  - restent :
+    - les outils de lecture Gmail et Agenda (lot 11b) ;
+    - l'envoi et la création de rendez-vous sous validation (lot 11c) ;
+    - les écrans (lot 11d) ;
+  - tests :
+    - `crates/core/src/account_links/google_tests.rs` : déclaration, preuve du compte,
+      permissions, paramètres de connexion, type d'un connecteur ;
+    - `crates/core/src/account_links/tests.rs` : Microsoft, inchangé, par `LinkKind` ;
+    - `crates/api/tests/google_workspace_connector.rs` : déclaration vérifiée, une par
+      entreprise à côté de Microsoft 365, adresses fixes, secret remplacé jamais retiré,
+      outil inconnu refusé, écriture permise ;
+    - `crates/api/tests/google_workspace_links.rs` :
+      - permissions et paramètres demandés ;
+      - liaison faite et jeton de renouvellement scellé ;
+      - renouvellement sans permission nommée, permission non accordée refusée ;
+      - écriture permise demandée à la liaison suivante ;
+      - rien demandé tant que le connecteur est désactivé ;
+      - compte d'un collègue, personnel, d'un autre domaine ou non vérifié refusé ;
+      - un jeton gardé par liaison, Microsoft et Google, oubliés ensemble ;
+    - `crates/api/src/services/account_links/tokens.rs` : jetons gardés par liaison ;
+    - `crates/api/src/services/connectors/reach.rs` : `connector:use` pour Google
+      Workspace ;
+    - `crates/connectors/src/google_workspace/mod.rs` : connecteur démarré avec son
+      secret et sans outil, refusé sans secret, hors du réseau permis ou à la
+      déclaration illisible.

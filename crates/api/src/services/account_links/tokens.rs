@@ -1,9 +1,10 @@
-//! Access tokens kept between a run's calls (ADR-117), per company and
-//! person, in this process only: a token serves until shortly before it
-//! expires, and only while the link is the one it was renewed from (its
-//! connector and version, `refreshed_at`, read at each call). A token the
-//! provider refused is forgotten. Bounded in number: past the bound, the
-//! expired go, then all.
+//! Access tokens kept between a run's calls (ADR-117), per company, person
+//! and connector (ADR-121: a person may link an account at each of their
+//! company's providers), in this process only: a token serves until
+//! shortly before it expires, and only while the link is the one it was
+//! renewed from (its version, `refreshed_at`, read at each call). A token
+//! a provider refused is forgotten with the person's others. Bounded in
+//! number: past the bound, the expired go, then all.
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -19,7 +20,6 @@ const DEFAULT_LIFETIME: Duration = Duration::from_secs(300);
 const MAX_KEPT: usize = 10_000;
 
 struct Kept {
-    connector_id: Uuid,
     version: DateTime<Utc>,
     token: String,
     until: Instant,
@@ -34,7 +34,7 @@ pub struct LinkVersion {
 
 #[derive(Default)]
 pub struct AccessTokens {
-    kept: Mutex<HashMap<(Uuid, Uuid), Kept>>,
+    kept: Mutex<HashMap<(Uuid, Uuid, Uuid), Kept>>,
 }
 
 impl AccessTokens {
@@ -47,8 +47,7 @@ impl AccessTokens {
         now: Instant,
     ) -> Option<String> {
         let kept = self.kept.lock().expect("access tokens");
-        kept.get(&(tenant_id, user_id))
-            .filter(|kept| kept.connector_id == link.connector_id)
+        kept.get(&(tenant_id, user_id, link.connector_id))
             .filter(|kept| kept.version == link.refreshed_at && now < kept.until)
             .map(|kept| kept.token.clone())
     }
@@ -74,9 +73,8 @@ impl AccessTokens {
             }
         }
         kept.insert(
-            (tenant_id, user_id),
+            (tenant_id, user_id, link.connector_id),
             Kept {
-                connector_id: link.connector_id,
                 version: link.refreshed_at,
                 token,
                 until,
@@ -84,12 +82,13 @@ impl AccessTokens {
         );
     }
 
-    /// The provider refused the person's token: the next call renews it.
+    /// A provider refused one of the person's tokens: the next call at
+    /// each of their links renews its own.
     pub fn forget(&self, tenant_id: Uuid, user_id: Uuid) {
         self.kept
             .lock()
             .expect("access tokens")
-            .remove(&(tenant_id, user_id));
+            .retain(|(tenant, user, _), _| (*tenant, *user) != (tenant_id, user_id));
     }
 }
 
@@ -125,6 +124,33 @@ mod tests {
         assert_eq!(tokens.get(tenant, user, other, now), None);
         tokens.forget(tenant, user);
         assert_eq!(tokens.get(tenant, user, link, now), None);
+    }
+
+    #[test]
+    fn a_person_keeps_a_token_per_link_and_forgets_them_together() {
+        let tokens = AccessTokens::default();
+        let (tenant, user) = (Uuid::new_v4(), Uuid::new_v4());
+        let at = |connector_id| LinkVersion {
+            connector_id,
+            refreshed_at: Utc::now(),
+        };
+        let (microsoft, google) = (at(Uuid::new_v4()), at(Uuid::new_v4()));
+        let now = Instant::now();
+        let hour = Some(Duration::from_secs(3600));
+        tokens.put(tenant, user, microsoft, "m".into(), hour, now);
+        tokens.put(tenant, user, google, "g".into(), hour, now);
+        let other = Uuid::new_v4();
+        tokens.put(tenant, other, google, "o".into(), hour, now);
+        assert_eq!(
+            tokens.get(tenant, user, microsoft, now).as_deref(),
+            Some("m")
+        );
+        assert_eq!(tokens.get(tenant, user, google, now).as_deref(), Some("g"));
+        tokens.forget(tenant, user);
+        assert_eq!(tokens.get(tenant, user, microsoft, now), None);
+        assert_eq!(tokens.get(tenant, user, google, now), None);
+        // Another person's stays.
+        assert_eq!(tokens.get(tenant, other, google, now).as_deref(), Some("o"));
     }
 
     #[test]

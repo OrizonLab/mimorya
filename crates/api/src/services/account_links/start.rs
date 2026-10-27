@@ -1,16 +1,17 @@
-//! The start of a link (ADR-116): the person may use the company's
-//! connectors, the connector is its Microsoft 365 application, enabled;
-//! the browser is sent to the directory's sign-in with the connector's
-//! delegated permissions (writing too when its tools may write, ADR-119),
-//! the person's address as a hint, and an attempt sealed for it.
+//! The start of a link (ADR-116, ADR-121): the person may use the
+//! company's connectors, the connector is its Microsoft 365 or Google
+//! Workspace application, enabled; the browser is sent to the provider's
+//! sign-in with the connector's delegated permissions (writing too when its
+//! tools may write, ADR-119), the person's address as a hint, the
+//! provider's own parameters (`LinkKind::authorization_params`), and an
+//! attempt sealed for it.
 
 use chrono::Utc;
-use mimorya_connectors::microsoft365::Microsoft365Config;
 use mimorya_core::DomainError;
-use mimorya_core::account_links::link_scopes;
 use mimorya_db::repositories::connectors::get_connector_instance;
 use uuid::Uuid;
 
+use super::application::LinkApp;
 use super::attempt::{self, LINK_LIFETIME, LinkAttempt};
 use super::{AccountLinkService, LinkStart, connector_unknown, linkable};
 use crate::services::AccessContext;
@@ -31,23 +32,27 @@ impl AccountLinkService {
         let instance = linkable(get_connector_instance(&mut tx, connector_id).await?)
             .ok_or_else(connector_unknown)?;
         tx.commit().await?;
-        let config = Microsoft365Config::read(&instance.config)
+        let app = LinkApp::read(&instance)
             .map_err(|error| DomainError::unavailable(error.to_string()))?;
+        let kind = app.kind;
         let unreachable = |failure: String| {
             tracing::warn!(connector = %connector_id, failure = %failure, "Link start failed");
-            DomainError::unavailable(
-                "Microsoft 365 ne répond pas comme attendu : réessayez plus tard",
-            )
+            DomainError::unavailable(format!(
+                "{} ne répond pas comme attendu : réessayez plus tard",
+                kind.product()
+            ))
         };
-        let metadata = discover(&self.http, self.issuer_of(&config))
+        let metadata = discover(&self.http, self.issuer_of(&app))
             .await
             .map_err(unreachable)?;
+        let email = &access.profile.email;
         let departure = authorization(
             metadata,
-            &config.client_id,
+            &app.client_id,
             &self.redirect_uri,
-            Some(&access.profile.email),
-            &link_scopes(config.write_tools),
+            Some(email),
+            &kind.link_scopes(app.write_tools),
+            &kind.authorization_params(email),
         )
         .map_err(unreachable)?;
         // Where the browser is sent, as the provider declares it.

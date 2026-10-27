@@ -1,18 +1,21 @@
-//! Accounts linked at the company's Microsoft 365 application in the tests
-//! (ADR-116): the application declared at the local provider, a person's
-//! visit to it and return, and what the database and the audit keep.
+//! Accounts linked at the company's Microsoft 365 application (ADR-116) or
+//! Google Workspace client (ADR-121) in the tests: the application declared
+//! at the local provider, a person's visit to it and return, and what the
+//! database and the audit keep.
 
 use axum::http::StatusCode;
 use mimorya_api::secrets::SecretStore;
 use mimorya_api::services::connectors::token_secret_name;
-use mimorya_core::account_links::{MICROSOFT365, sealed_as};
+use mimorya_core::account_links::{GOOGLE_WORKSPACE, MICROSOFT365, sealed_as};
 use mimorya_core::demo::tenant;
 use mimorya_db::repositories::account_links::get_account_link;
 use mimorya_db::repositories::connectors::{NewConnectorInstance, create_connector_instance};
 use serde_json::{Map, Value, json};
 use uuid::Uuid;
 
-use super::identity_provider::{CLIENT_ID, CLIENT_SECRET, MockIdentityProvider, Person};
+use super::identity_provider::{
+    CLIENT_ID, CLIENT_SECRET, GOOGLE_CLIENT_ID, MockIdentityProvider, Person,
+};
 use super::sso::set_cookie;
 use super::{Client, TestApi, TestResponse};
 
@@ -56,13 +59,6 @@ async fn insert_application(
     enabled: bool,
     write_tools: bool,
 ) -> Uuid {
-    let services = &api.app.services;
-    let mut tx = services.db.begin(tenant::ID).await.unwrap();
-    sqlx::query("delete from connector_instances where type = $1")
-        .bind(MICROSOFT365)
-        .execute(&mut *tx)
-        .await
-        .unwrap();
     let config = json!({
         "directory": DIRECTORY,
         "clientId": CLIENT_ID,
@@ -70,14 +66,51 @@ async fn insert_application(
         "graph": graph,
         "writeTools": write_tools,
     });
+    insert_declared(api, MICROSOFT365, "Microsoft 365", enabled, &config).await
+}
+
+/// The company's Google Workspace client, its sign-in at the local
+/// provider (the administration writes Google's), enabled or not, its tools
+/// writing or not; one a previous test declared goes first, with its links
+/// (ADR-121).
+pub async fn insert_google_workspace(
+    api: &TestApi,
+    idp: &MockIdentityProvider,
+    enabled: bool,
+    write_tools: bool,
+) -> Uuid {
+    let config = json!({
+        "clientId": GOOGLE_CLIENT_ID,
+        "issuer": idp.issuer,
+        "gmail": format!("{}/gmail/v1", idp.issuer),
+        "calendar": format!("{}/calendar/v3", idp.issuer),
+        "writeTools": write_tools,
+    });
+    insert_declared(api, GOOGLE_WORKSPACE, "Google Workspace", enabled, &config).await
+}
+
+async fn insert_declared(
+    api: &TestApi,
+    connector_type: &str,
+    name: &str,
+    enabled: bool,
+    config: &Value,
+) -> Uuid {
+    let services = &api.app.services;
+    let mut tx = services.db.begin(tenant::ID).await.unwrap();
+    sqlx::query("delete from connector_instances where type = $1")
+        .bind(connector_type)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
     let id = create_connector_instance(
         &mut tx,
         NewConnectorInstance {
             tenant_id: tenant::ID,
-            connector_type: MICROSOFT365,
-            name: "Microsoft 365",
+            connector_type,
+            name,
             enabled,
-            config: &config,
+            config,
         },
     )
     .await
@@ -101,6 +134,19 @@ pub fn microsoft_person(object_id: &str, sign_in_name: &str) -> Person {
         extra,
         ..Person::default()
     }
+}
+
+/// A Google account, as Google's token says it: its subject and an
+/// address it verified, in this Workspace domain if any (a consumer
+/// account has none).
+pub fn google_person(subject: &str, address: &str, hosted_domain: Option<&str>) -> Person {
+    let mut person = Person::verified(subject, address);
+    if let Some(domain) = hosted_domain {
+        person
+            .extra
+            .insert("hd".into(), Value::String(domain.into()));
+    }
+    person
 }
 
 pub async fn try_start(person: &Client<'_>, connector: Uuid) -> TestResponse {

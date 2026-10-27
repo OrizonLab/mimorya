@@ -1,7 +1,8 @@
 //! Which unavailable connectors a run is told about (ADR-048): those whose
 //! tools its user could reach. While a connector is down its tools are
 //! unknown: reach is judged on what every tool of its type requires,
-//! `connector:use` for an MCP, REST or Microsoft 365 tool (ADR-116), one of
+//! `connector:use` for an MCP, REST, Microsoft 365 or Google Workspace tool
+//! (ADR-116, ADR-121), one of
 //! the business permissions it introduces for another type's tools. It is an approximation, broader than
 //! the tools a run would be offered (a tool may require several permissions,
 //! and the instance's policies may withhold it): a user may be told of a
@@ -9,7 +10,7 @@
 
 use mimorya_connectors::connector_type;
 use mimorya_connectors::outbound::CONNECTOR_USE;
-use mimorya_core::account_links::MICROSOFT365;
+use mimorya_core::account_links::LinkKind;
 
 use super::ConnectorIssue;
 
@@ -27,7 +28,7 @@ pub fn unavailable_in_reach(
 }
 
 fn in_reach(type_name: &str, holds: &impl Fn(&str) -> bool) -> bool {
-    if matches!(type_name, "mcp" | "rest" | MICROSOFT365) {
+    if added_by_companies(type_name) {
         return holds(CONNECTOR_USE);
     }
     connector_type(type_name).is_some_and(|definition| {
@@ -37,6 +38,11 @@ fn in_reach(type_name: &str, holds: &impl Fn(&str) -> bool) -> bool {
             .iter()
             .any(|p| holds(p.permission))
     })
+}
+
+/// The types a company adds itself, whose tools require `connector:use`.
+fn added_by_companies(type_name: &str) -> bool {
+    matches!(type_name, "mcp" | "rest") || LinkKind::of(type_name).is_some()
 }
 
 #[cfg(test)]
@@ -61,12 +67,13 @@ mod tests {
             issue("demo_interventions", "Interventions"),
             issue("rest", "Facturation"),
             issue("microsoft365", "Messagerie"),
+            issue("google_workspace", "Gmail"),
             issue("inconnu", "Ancien type"),
         ];
         let member = |p: &str| p == CONNECTOR_USE;
         assert_eq!(
             unavailable_in_reach(&issues, member),
-            ["Documentation", "Facturation", "Messagerie"]
+            ["Documentation", "Facturation", "Messagerie", "Gmail"]
         );
         let planner = |p: &str| p == "planning:read";
         assert_eq!(unavailable_in_reach(&issues, planner), ["Interventions"]);
@@ -81,19 +88,20 @@ mod tests {
                 "Documentation",
                 "Interventions",
                 "Facturation",
-                "Messagerie"
+                "Messagerie",
+                "Gmail"
             ]
         );
     }
 
     /// The rule reach relies on, for every type but those a company adds
-    /// (MCP, REST, Microsoft 365): each of its tools requires one of the
-    /// permissions it introduces.
+    /// (MCP, REST, Microsoft 365, Google Workspace): each of its tools
+    /// requires one of the permissions it introduces.
     #[tokio::test]
     async fn every_tool_of_a_type_requires_a_permission_it_introduces() {
         for definition in connector_types() {
             let info = definition.info();
-            if matches!(info.connector_type, "mcp" | "rest" | MICROSOFT365) {
+            if added_by_companies(info.connector_type) {
                 continue;
             }
             let runtime = definition

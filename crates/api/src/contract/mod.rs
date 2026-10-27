@@ -190,6 +190,7 @@ macro_rules! request_bodies {
             admin::NewConnector,
             admin::NewRestConnector,
             admin::NewMicrosoft365Connector,
+            admin::NewGoogleWorkspaceConnector,
             admin::OpenApiDescription,
             admin::ConnectorTrial,
             admin::ConnectorUpdate,

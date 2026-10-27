@@ -43,8 +43,8 @@ pub struct BuildOptions {
     pub global_rate_limit_per_minute: Option<u32>,
     /// Replaces the system's DNS, where a domain's proof is read (tests).
     pub dns: Option<Arc<dyn TxtLookup>>,
-    /// Replaces the issuer a company's Microsoft 365 application sends its
-    /// people to, its directory's at Microsoft, as stored (end-to-end
-    /// tests: the local provider, ADR-118).
-    pub microsoft365_issuer: Option<String>,
+    /// Replaces the issuer a company's Microsoft 365 or Google Workspace
+    /// application sends its people to, its directory's at Microsoft or
+    /// Google's, as stored (end-to-end tests: the local provider, ADR-118).
+    pub account_link_issuer: Option<String>,
 }

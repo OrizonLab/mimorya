@@ -1,14 +1,14 @@
-//! The provider's return (ADR-116): the attempt the browser kept must be
-//! the signed-in person's own and match the return; the code is redeemed,
-//! the identity token verified, and it must name the person's own account
-//! (`linked_identity`). The refresh token is then sealed for this company,
+//! The provider's return (ADR-116, ADR-121): the attempt the browser kept
+//! must be the signed-in person's own and match the return; the code is
+//! redeemed, the identity token verified, and it must name the person's own
+//! account at that provider (`LinkKind::linked_identity`). The refresh
+//! token is then sealed for this company,
 //! connector and person, and kept in their link. Every refusal says why,
 //! for the audit; the browser learns only whether another account was
 //! chosen.
 
 use chrono::Utc;
-use mimorya_connectors::microsoft365::Microsoft365Config;
-use mimorya_core::account_links::{LinkRefusal, linked_identity, sealed_as};
+use mimorya_core::account_links::{LinkKind, LinkRefusal, sealed_as};
 use mimorya_db::repositories::account_links::{
     NewAccountLink, lock_active_account, put_account_link,
 };
@@ -16,6 +16,7 @@ use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::connectors::get_connector_instance;
 use uuid::Uuid;
 
+use super::application::LinkApp;
 use super::attempt::{self, LinkAttempt};
 use super::grant::{Granted, redeem_grant};
 use super::{AccountLinkService, link_metadata, linkable};
@@ -30,7 +31,8 @@ use crate::services::sso::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LinkRefused {
     Failed,
-    /// The person signed in at Microsoft with another account than theirs.
+    /// The person signed in at the provider with another account than
+    /// theirs.
     OtherAccount,
 }
 
@@ -80,19 +82,19 @@ impl AccountLinkService {
         }
         if let Some(error) = back.error {
             let code = error_code(&error);
-            return Err(at(&format!("Refusée par Microsoft ({code})")));
+            return Err(at(&format!("Refusée par le fournisseur ({code})")));
         }
         let code = back.code.ok_or_else(|| at("Retour sans code"))?;
         // Its rights may have changed since the start.
         if !access.has(CONNECTOR_USE) {
             return Err(at("Connecteurs non autorisés"));
         }
-        let (config, secret) = self.application(access, connector_id).await?;
-        let metadata = discover(&self.http, self.issuer_of(&config))
+        let (app, secret) = self.application(access, connector_id).await?;
+        let metadata = discover(&self.http, self.issuer_of(&app))
             .await
             .map_err(|failure| at(&failure))?;
         let application = Application {
-            client_id: &config.client_id,
+            client_id: &app.client_id,
             client_secret: &secret,
             redirect_uri: &self.redirect_uri,
         };
@@ -107,15 +109,18 @@ impl AccountLinkService {
         .map_err(|failure| at(&failure))?;
         let claims = verify(metadata, &application, &granted.id_token, &attempt.nonce)
             .map_err(|unverified| at(&unverified.failure()))?;
-        let identity =
-            linked_identity(&token_claims(&claims), &access.profile.email).map_err(|refusal| {
-                match refusal {
-                    LinkRefusal::Unidentified => at("Jeton sans compte vérifié de l’annuaire"),
-                    LinkRefusal::NotTheirs => LinkFailure {
-                        refused: LinkRefused::OtherAccount,
-                        ..at("Compte Microsoft d’une autre adresse")
-                    },
-                }
+        let identity = app
+            .kind
+            .linked_identity(&token_claims(&claims), &access.profile.email)
+            .map_err(|refusal| match refusal {
+                LinkRefusal::Unidentified => at(unidentified(app.kind)),
+                LinkRefusal::NotTheirs => LinkFailure {
+                    refused: LinkRefused::OtherAccount,
+                    ..at(&format!(
+                        "Compte {} d’une autre adresse",
+                        app.kind.provider()
+                    ))
+                },
             })?;
         self.keep(
             access,
@@ -145,7 +150,7 @@ impl AccountLinkService {
         &self,
         access: &AccessContext,
         connector_id: Uuid,
-    ) -> Outcome<(Microsoft365Config, String)> {
+    ) -> Outcome<(LinkApp, String)> {
         let internal = |error: anyhow::Error| LinkFailure::internal(connector_id, error);
         let gone = || LinkFailure::new(Some(connector_id), "Connecteur supprimé ou désactivé");
         let tenant_id = access.subject.tenant_id;
@@ -170,9 +175,9 @@ impl AccountLinkService {
                 "Secret de l’application absent ou illisible",
             ));
         };
-        let config = Microsoft365Config::read(&instance.config)
+        let app = LinkApp::read(&instance)
             .map_err(|error| LinkFailure::new(Some(connector_id), error.to_string()))?;
-        Ok((config, secret))
+        Ok((app, secret))
     }
 
     /// The link kept, its refresh token sealed for it, and audited.
@@ -202,7 +207,7 @@ impl AccountLinkService {
             .begin(tenant_id)
             .await
             .map_err(|e| internal(e.into()))?;
-        // Deleted or disabled while the person was at Microsoft.
+        // Deleted or disabled while the person was at the provider.
         let instance = get_connector_instance(&mut tx, connector_id)
             .await
             .map_err(|e| internal(e.into()))?;
@@ -212,7 +217,7 @@ impl AccountLinkService {
                 "Connecteur supprimé ou désactivé",
             ));
         }
-        // Disabled while at Microsoft: its links are gone, this one too.
+        // Disabled while at the provider: its links are gone, this one too.
         if !lock_active_account(&mut tx, user_id)
             .await
             .map_err(|e| internal(e.into()))?
@@ -244,5 +249,13 @@ impl AccountLinkService {
         .map_err(|e| internal(e.into()))?;
         tx.commit().await.map_err(|e| internal(e.into()))?;
         Ok(())
+    }
+}
+
+/// Why a token names no account the provider vouches for, for the audit.
+fn unidentified(kind: LinkKind) -> &'static str {
+    match kind {
+        LinkKind::Microsoft365 => "Jeton sans compte vérifié de l’annuaire",
+        LinkKind::GoogleWorkspace => "Jeton sans compte vérifié du domaine Workspace",
     }
 }
