@@ -1,8 +1,10 @@
 //! What a tool writes in a person's name (ADR-119): addresses as Microsoft
-//! reads them, a subject or a place on one visible line, a text that shows
-//! all it holds (line breaks and tabs aside). The person who validates
-//! sees all that is sent: a hidden character could change what they read,
-//! so it is refused before they are asked, never taken out after.
+//! reads them, in ASCII, a subject or a place on one visible line, a text
+//! that shows all it holds (line breaks and tabs aside). The person who
+//! validates sees all that is sent: a hidden character could change what
+//! they read, and a letter of another script could pass for one of theirs
+//! in an address, so both are refused before they are asked, never taken
+//! out after.
 
 use mimorya_core::plain_text::{is_hidden, shows_all_it_holds};
 use serde_json::{Value, json};
@@ -20,15 +22,20 @@ fn refused(code: &'static str, message: &'static str) -> ValidationError {
     ValidationError::new(code).with_message(message.into())
 }
 
-/// E-mail addresses, each once.
+/// E-mail addresses, each once, in ASCII: `exеmple.fr` with a Cyrillic
+/// `е` reads as `exemple.fr`.
 pub fn addresses(list: &[String]) -> Result<(), ValidationError> {
     let invalid = list.iter().any(|address| {
-        address.chars().count() > MAX_ADDRESS_CHARS
+        address.len() > MAX_ADDRESS_CHARS
+            || !address.is_ascii()
             || address.chars().any(is_hidden)
             || !address.validate_email()
     });
     if invalid {
-        return Err(refused("addresses", "adresse électronique invalide"));
+        return Err(refused(
+            "addresses",
+            "adresse électronique invalide (caractères ASCII seulement)",
+        ));
     }
     let repeated = list.iter().enumerate().any(|(at, address)| {
         list[..at]
@@ -103,6 +110,9 @@ mod tests {
         assert!(addresses(&list(&["lea@exemple.fr", "LEA@exemple.fr"])).is_err());
         assert!(addresses(&list(&["pas une adresse"])).is_err());
         assert!(addresses(&list(&["lea\u{200B}@exemple.fr"])).is_err());
+        // Another script's letter, or a full-width one, passes for ours.
+        assert!(addresses(&list(&["paul@ex\u{435}mple.fr"])).is_err());
+        assert!(addresses(&list(&["paul@\u{FF45}xemple.fr"])).is_err());
         let long = format!("{}@exemple.fr", "a".repeat(250));
         assert!(addresses(&[long]).is_err());
     }

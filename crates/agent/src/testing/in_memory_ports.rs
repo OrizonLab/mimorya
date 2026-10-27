@@ -9,6 +9,7 @@ use mimorya_core::skill_proposals::SkillProposal;
 use mimorya_core::tools::{Deliverable, DeliverableInput, DeliverableService, DeliverableStatus};
 use uuid::Uuid;
 
+use super::in_memory_accounts::Link;
 use super::in_memory_documents::DocumentFixture;
 use super::in_memory_skills::SkillFixture;
 use super::in_memory_sub_runs::OpenedSubRun;
@@ -53,7 +54,7 @@ pub(super) struct State {
     /// The skills proposed to the administrators (ADR-100).
     pub(super) skill_proposals: Vec<SkillProposal>,
     /// The person's linked accounts, by kind of connector (ADR-117).
-    pub(super) linked_accounts: HashMap<String, String>,
+    pub(super) linked_accounts: HashMap<String, Link>,
     /// The kinds of connector whose token a tool reported refused.
     pub(super) rejected_accounts: Vec<String>,
 }

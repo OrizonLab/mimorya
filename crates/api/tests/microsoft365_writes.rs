@@ -20,6 +20,7 @@ use support::account_links::{
     links, microsoft_person, start,
 };
 use support::identity_provider::MockIdentityProvider;
+use support::mailbox::{told, validated_tool_result};
 use support::manager_approvals::listed;
 use support::refusals::latest_entry;
 use support::rest::{add_rest, rest_body};
@@ -164,6 +165,17 @@ async fn a_link_made_before_grants_writing_by_linking_again() {
             .access_token(MICROSOFT365, &[MAIL_READ])
             .await
             .is_ok()
+    );
+    // Her run asks, she validates: refused before Microsoft, nothing sent.
+    let email = json!({ "to": ["paul@exemple.fr"], "subject": "Point", "body": "Bonjour." });
+    let refused = validated_tool_result(&api, &claire, "m365_mail_send", email).await;
+    assert!(
+        told(&refused).contains("relie de nouveau son compte"),
+        "{refused}"
+    );
+    assert!(
+        graph.requests().iter().all(|r| r.body.is_none()),
+        "nothing written"
     );
 
     // Linked again, the new permissions asked and granted.

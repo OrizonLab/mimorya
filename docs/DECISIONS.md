@@ -6167,15 +6167,24 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
       (255 caractères), un texte brut (20 000). Le message est gardé dans les éléments
       envoyés de la personne ;
     - `m365_calendar_event_create` : objet, début (heure de Paris, celle des outils de
-      lecture), durée de 5 minutes à 24 heures, lieu, texte et 20 participants au plus,
-      que Microsoft invite. Le rendez-vous créé est cité (`event`) ;
+      lecture, entre l'an 2000 et l'an 2100, à une heure qui existe ce jour-là), durée de
+      5 minutes à 24 heures, lieu, texte et 20 participants au plus, que Microsoft invite.
+      Le début et la fin sont envoyés à Graph en UTC : le rendez-vous dure ce qui a été
+      validé, même la nuit d'un changement d'heure (une heure répétée est prise à sa
+      première occurrence). Le rendez-vous créé est cité (`event`) ;
     - chacun a le risque `external` et exige toujours une validation, quel que soit le
-      niveau d'autonomie. L'administration peut changer l'un ou l'autre par une politique
-      d'outil, comme pour tout outil ;
-    - la description de l'action donne les destinataires, l'objet et le début du texte.
-      Les paramètres exacts sont montrés entiers à qui valide, et exécutés tels quels ;
+      niveau d'autonomie. Aucune politique d'outil ne retire cette validation : une
+      politique peut désactiver l'outil, ou changer son risque et les permissions qu'il
+      exige (`connector:use` toujours gardé) ;
+    - la description de l'action donne d'abord les destinataires (et, pour un rendez-vous,
+      la date et la durée), puis l'objet, le lieu et le début du texte : ce que le modèle
+      écrit vient en dernier, et un objet ne peut pas se faire passer pour les
+      destinataires. Les paramètres exacts sont montrés entiers à qui valide, et exécutés
+      tels quels ;
   - **ce qui part ne cache rien** :
-    - les adresses doivent être valides, chacune une fois par liste ;
+    - les adresses doivent être valides, en ASCII (une lettre d'une autre écriture,
+      comme le « е » cyrillique, ou une lettre pleine chasse passerait pour la nôtre), et
+      chacune une fois par liste ;
     - l'objet et le lieu tiennent sur une ligne visible ;
     - le texte ne contient aucun caractère caché (retours à la ligne et tabulations
       permis) ;
@@ -6187,6 +6196,9 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
       (5xx), l'écriture a pu avoir lieu : l'outil le dit, et demande de vérifier dans
       Microsoft 365 avant de la redemander ;
     - une erreur 4xx dit que rien n'a été fait ;
+    - un appel d'outil qui n'est pas une lecture et dépasse le délai de l'exécuteur
+      (30 secondes, renouvellement du jeton compris) dit lui aussi que l'action a peut-être
+      eu lieu, pour tout connecteur ;
     - un run interrompu pendant l'envoi n'est jamais relancé à l'aveugle
       (ADR-053, ADR-086) ;
     - comme pour la lecture, le texte des erreurs de Graph n'atteint jamais le modèle.
@@ -6211,15 +6223,21 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
   - tests :
     - `crates/connectors/tests/microsoft365_writes.rs` : outils proposés si l'entreprise
       le permet, toujours validés ; e-mail et rendez-vous envoyés une fois, exactement
-      tels que validés ; entrées cachant quelque chose refusées avant la validation ;
-      écriture peut-être faite dite à vérifier ; jeton refusé signalé ; permission non
-      accordée sans appel à Graph ;
+      tels que validés ; entrées cachant quelque chose refusées avant la validation, champ
+      par champ (destinataires, copie, objet, texte, lieu, participants, début) ; écriture
+      peut-être faite dite à vérifier ; jeton refusé signalé ;
+    - `crates/connectors/tests/microsoft365_permissions.rs` : chacun des cinq outils
+      exige sa permission, refusée sans appel à Graph quand la liaison ne l'accorde pas ;
+    - `crates/agent/tests/tool_timeout.rs` : délai dépassé, dit peut-être exécuté pour
+      une écriture ;
     - `crates/api/tests/microsoft365_writes.rs` : écriture permise puis retirée,
       auditée ; option refusée à une API REST ; liaison d'avant à refaire, permissions
-      manquantes listées puis accordées, renouvellement avec l'écriture ; e-mail en
+      manquantes listées, envoi validé puis refusé sans rien écrire chez Microsoft, puis
+      permissions accordées, renouvellement avec l'écriture ; e-mail en
       attente de validation (risque, paramètres exacts, description), puis envoyé tel
       que validé avec le jeton de la personne ;
-    - tests unitaires : `compose.rs` (adresses, ligne visible, texte),
-      `calendar_create.rs` (fuseau, durée), `graph.rs` (écriture peut-être faite),
+    - tests unitaires : `compose.rs` (adresses, ASCII, ligne visible, texte),
+      `calendar_create.rs` (instants, changement d'heure, durée, début borné), `graph.rs`
+      (écriture peut-être faite),
       `reach.rs` (permissions dites en mots), `core/src/account_links/tests.rs`
       (permissions demandées, renouvelées et manquantes).

@@ -117,35 +117,71 @@ async fn an_email_is_sent_once_as_validated_from_the_persons_mailbox() {
 async fn what_would_hide_something_is_refused_before_validation() {
     let graph = FakeGraph::start().await;
     let (executor, _) = lea(&graph).await;
-    let mut hidden = email();
-    hidden["body"] = json!("Bonjour\u{202E}, voir pièce jointe");
-    let mut invalid = email();
-    invalid["to"] = json!(["paul"]);
-    let mut many = email();
-    many["to"] = json!(
-        (0..11)
-            .map(|n| format!("p{n}@exemple.fr"))
-            .collect::<Vec<_>>()
-    );
-    let mut two_lines = email();
-    two_lines["subject"] = json!("Objet\nBcc: tous@exemple.fr");
-    for input in [hidden, invalid, many, two_lines] {
-        let evaluation = evaluated(&executor, "m365_mail_send", input.clone());
+    let event =
+        json!({ "subject": "Point", "start": "2026-10-28T10:00:00", "durationMinutes": 30 });
+    let eleven: Vec<String> = (0..11).map(|n| format!("p{n}@exemple.fr")).collect();
+    let send = "m365_mail_send";
+    let create = "m365_calendar_event_create";
+    let refused = [
+        (
+            send,
+            email(),
+            "body",
+            json!("Bonjour\u{202E}, voir pièce jointe"),
+        ),
+        (
+            send,
+            email(),
+            "subject",
+            json!("Objet\nBcc: tous@exemple.fr"),
+        ),
+        (send, email(), "to", json!(["paul"])),
+        (send, email(), "to", json!(["paul@ex\u{435}mple.fr"])),
+        (send, email(), "to", json!(eleven)),
+        (send, email(), "cc", json!(["claire"])),
+        (send, email(), "cc", json!(["claire\u{200B}@exemple.fr"])),
+        (create, event.clone(), "subject", json!("Point\nsuite")),
+        (
+            create,
+            event.clone(),
+            "location",
+            json!("Salle \u{202E}Atlas"),
+        ),
+        (
+            create,
+            event.clone(),
+            "body",
+            json!("Ordre\u{200B} du jour"),
+        ),
+        (
+            create,
+            event.clone(),
+            "attendees",
+            json!(["paul@exemple.fr", "Paul@exemple.fr"]),
+        ),
+        (
+            create,
+            event.clone(),
+            "start",
+            json!("+262142-12-31T23:59:00"),
+        ),
+    ];
+    for (tool, mut input, field, value) in refused {
+        input[field] = value;
+        let evaluation = evaluated(&executor, tool, input.clone());
         assert!(
             matches!(evaluation, ToolCallEvaluation::Deny { .. }),
-            "{input}"
+            "{tool} {input}"
         );
     }
-    let event = json!({
-        "subject": "Point",
-        "start": "2026-10-28T10:00:00",
-        "durationMinutes": 30,
-        "attendees": ["paul@exemple.fr", "Paul@exemple.fr"],
-    });
-    assert!(matches!(
-        evaluated(&executor, "m365_calendar_event_create", event),
-        ToolCallEvaluation::Deny { .. }
-    ));
+    // As given, each asks its validation: the field alone was refused.
+    for (tool, input) in [(send, email()), (create, event)] {
+        let evaluation = evaluated(&executor, tool, input);
+        assert!(
+            matches!(evaluation, ToolCallEvaluation::RequireApproval { .. }),
+            "{tool}"
+        );
+    }
     assert!(graph.requests().is_empty());
 }
 
@@ -165,7 +201,9 @@ async fn an_event_is_created_in_the_platforms_zone_with_its_attendees() {
     assert!(!result.is_error, "{:?}", result.content);
     assert_eq!(result.content["cree"], true);
     assert_eq!(result.content["id"], "lea-nouveau");
-    assert_eq!(result.content["debut"], "2026-11-03T09:30:00");
+    // Given back in the platform's zone, as asked.
+    assert_eq!(result.content["debut"], "2026-11-03T09:30:00.0000000");
+    assert_eq!(result.content["fin"], "2026-11-03T11:00:00.0000000");
     assert_eq!(result.citations[0].kind, "event");
     assert_eq!(result.citations[0].id, "lea-nouveau");
     let created = &graph.requests()[0];
@@ -178,8 +216,8 @@ async fn an_event_is_created_in_the_platforms_zone_with_its_attendees() {
         created.body,
         Some(json!({
             "subject": "Visite du chantier",
-            "start": { "dateTime": "2026-11-03T09:30:00", "timeZone": "Europe/Paris" },
-            "end": { "dateTime": "2026-11-03T11:00:00", "timeZone": "Europe/Paris" },
+            "start": { "dateTime": "2026-11-03T08:30:00", "timeZone": "UTC" },
+            "end": { "dateTime": "2026-11-03T10:00:00", "timeZone": "UTC" },
             "location": { "displayName": "Chantier Atlas" },
             "body": { "contentType": "Text", "content": "Casques fournis." },
             "attendees": [

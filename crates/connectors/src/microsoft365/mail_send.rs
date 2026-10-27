@@ -1,8 +1,8 @@
 //! Tool `m365_mail_send` (ADR-119): sends, from the mailbox of the person
 //! the run serves and with their own rights, the e-mail they validated:
 //! its recipients, subject and text, exactly as shown to them, kept in
-//! their sent items. Sent once, never repeated; always validated, unless
-//! the company's policy says otherwise.
+//! their sent items. Sent once, never repeated; always validated, whatever
+//! the company's policies.
 
 use async_trait::async_trait;
 use mimorya_core::account_links::MAIL_SEND;
@@ -55,15 +55,18 @@ impl TypedTool for MailSend {
         .always_requires_approval()
     }
 
+    /// Whom first, what the model wrote last: a subject cannot pass itself
+    /// off as the recipients.
     fn describe_action(&self, input: &MailSendInput) -> Option<String> {
         let copy = match input.cc.is_empty() {
             true => String::new(),
             false => format!(" (copie : {})", input.cc.join(", ")),
         };
         Some(format!(
-            "Envoyer l’e-mail « {} » depuis la boîte Microsoft 365 reliée, à {}{copy} : « {} »",
-            input.subject,
+            "Envoyer depuis la boîte Microsoft 365 reliée un e-mail à {}{copy} — objet : « {} » ; \
+             texte : « {} »",
             input.to.join(", "),
+            input.subject,
             excerpt(&input.body)
         ))
     }

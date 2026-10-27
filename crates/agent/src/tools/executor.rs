@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use mimorya_core::authz::{Actor, AuthorizationEngine, Subject};
-use mimorya_core::autonomy::{AutonomyPolicy, ExecutionDecision, decide_execution};
+use mimorya_core::autonomy::{AutonomyPolicy, ExecutionDecision, ToolRisk, decide_execution};
 use mimorya_core::tools::{BoundAuthorization, ToolContext, ToolResult, ToolServices};
 use serde_json::Value;
 use uuid::Uuid;
@@ -155,7 +155,7 @@ impl ToolExecutor {
         {
             Ok(Ok(result)) => result,
             Ok(Err(error)) => failure(&error.to_string()),
-            Err(_) => failure("Délai d’exécution dépassé"),
+            Err(_) => failure(timed_out(tool)),
         };
         (result, started.elapsed().as_millis() as u64)
     }
@@ -166,6 +166,19 @@ impl ToolExecutor {
             .iter()
             .find(|p| !self.engine.has(&self.subject, p, &self.actor))
             .cloned()
+    }
+}
+
+/// Why a call that ran out of time ended: one that does not only read may
+/// have acted before it was stopped (ADR-119), and is not to be asked again
+/// blindly.
+fn timed_out(tool: &RegisteredTool) -> &'static str {
+    match tool.info.risk {
+        ToolRisk::Read => "Délai d’exécution dépassé",
+        _ => {
+            "Délai d’exécution dépassé : l’action a peut-être eu lieu ; vérifiez avant de la \
+             redemander"
+        }
     }
 }
 
