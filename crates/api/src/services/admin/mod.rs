@@ -25,6 +25,7 @@ mod embedding;
 mod google_workspace;
 mod identity_providers;
 mod invitations;
+mod link_applications;
 mod link_sender;
 mod llm;
 mod memory_settings;

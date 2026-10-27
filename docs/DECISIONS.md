@@ -6334,6 +6334,9 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
       ses outils peuvent écrire ;
     - son nom, son activation, son secret (remplacé, jamais retiré) et l'écriture se
       changent comme pour l'application Microsoft 365 (ADR-116, ADR-119) ;
+    - la déclaration est commune aux deux applications
+      (`services/admin/link_applications.rs`) ; chacune vérifie seulement ce qui lui est
+      propre ;
     - ses outils seront nommés `google_<outil>`. Il n'y en a encore aucun : une politique
       qui en nomme un est refusée ;
   - **la liaison** : même route, même retour et mêmes règles que pour Microsoft 365 :
@@ -6372,8 +6375,12 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     `BuildOptions::account_link_issuer` (ADR-118). Il vaut pour les deux fournisseurs.
 - **Conséquences** :
   - le connecteur démarre sans outil, comme Microsoft 365 au lot 8a ;
-  - pas encore d'écran Google : jusqu'aux écrans (lot 11d), « Mon compte » montre une
-    application Google déclarée par l'API avec les textes écrits pour Microsoft ;
+  - pas encore d'écran Google. Jusqu'aux écrans (lot 11d), une application Google
+    déclarée par l'API apparaît :
+    - dans « Mon compte », avec les textes écrits pour Microsoft et ses permissions par
+      leur adresse ;
+    - dans « Connecteurs », comme un connecteur ordinaire, sans « Supprimer », alors que
+      l'API la supprime ;
   - un compte dont l'adresse n'est pas dans le domaine Workspace de son compte Google ne
     peut pas être relié : un alias d'un autre domaine, par exemple ;
   - restent :
@@ -6397,4 +6404,7 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
       - un jeton gardé par liaison, Microsoft et Google, oubliés ensemble ;
     - `crates/api/src/services/account_links/tokens.rs` : jetons gardés par liaison ;
     - `crates/api/src/services/connectors/reach.rs` : `connector:use` pour Google
-      Workspace.
+      Workspace ;
+    - `crates/connectors/src/google_workspace/mod.rs` : connecteur démarré avec son
+      secret et sans outil, refusé sans secret, hors du réseau permis ou à la
+      déclaration illisible.

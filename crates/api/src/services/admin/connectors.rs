@@ -280,8 +280,8 @@ pub async fn delete_connector(
     };
     if !added_here(&instance) {
         return Err(DomainError::validation(
-            "Seuls les serveurs MCP, les API REST et l’application Microsoft 365 ajoutés ici se \
-             suppriment ici ; désactivez plutôt ce connecteur",
+            "Seuls les serveurs MCP, les API REST et les applications Microsoft 365 et Google \
+             Workspace ajoutés ici se suppriment ici ; désactivez plutôt ce connecteur",
         )
         .into());
     }

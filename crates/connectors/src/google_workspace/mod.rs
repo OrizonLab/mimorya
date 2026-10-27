@@ -83,3 +83,60 @@ impl Connector for GoogleWorkspaceConnector {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use mimorya_core::account_links::{GOOGLE_CALENDAR, GOOGLE_GMAIL};
+    use serde_json::json;
+
+    use super::*;
+
+    fn declared(issuer: &str) -> Value {
+        json!({
+            "clientId": "123456789012-abc.apps.googleusercontent.com",
+            "issuer": issuer,
+            "gmail": GOOGLE_GMAIL,
+            "calendar": GOOGLE_CALENDAR,
+        })
+    }
+
+    async fn started(config: &Value, secret: Option<&str>) -> anyhow::Result<ConnectorRuntime> {
+        let context = InstanceContext {
+            secret,
+            ..InstanceContext::default()
+        };
+        GoogleWorkspaceConnector.instantiate(config, context).await
+    }
+
+    #[tokio::test]
+    async fn it_starts_with_its_secret_and_no_tool_yet() {
+        let config = declared("https://accounts.google.com");
+        let runtime = started(&config, Some("GOCSPX-secret")).await.unwrap();
+        assert!(runtime.tools.is_empty());
+        // Read only, unless the company lets its tools write.
+        assert!(!GoogleWorkspaceConfig::read(&config).unwrap().write_tools);
+    }
+
+    #[tokio::test]
+    async fn it_does_not_start_without_its_secret_its_network_or_its_declaration() {
+        let without_secret = started(&declared("https://accounts.google.com"), None).await;
+        assert!(
+            without_secret
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("secret de l’application")
+        );
+        // An address the operator's network policy no longer allows.
+        let private = started(&declared("http://127.0.0.1:9"), Some("s")).await;
+        assert!(private.err().unwrap().to_string().contains("https://"));
+        let unreadable = started(&json!({ "clientId": 1 }), Some("s")).await;
+        assert!(
+            unreadable
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("Déclaration Google Workspace illisible")
+        );
+    }
+}

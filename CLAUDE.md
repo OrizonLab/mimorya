@@ -115,7 +115,7 @@ Repères à l'intérieur des crates :
   compétences, rejet des propositions de l'agent (`skill_proposals.rs`, ADR-100), cas d'évaluation
   (`skill_eval_cases.rs`, ADR-103) et évaluation demandée (`skill_evaluations.rs`,
   ADR-104), sous verrou par entreprise ; application Microsoft 365 déclarée,
-  `microsoft365.rs`, ADR-116, et client Google Workspace, `google_workspace.rs`, ADR-121), `api/src/services/account.rs` (son propre compte),
+  `microsoft365.rs`, ADR-116, et client Google Workspace, `google_workspace.rs`, ADR-121, déclarés par `link_applications.rs`), `api/src/services/account.rs` (son propre compte),
   `api/src/services/account_links/` (comptes que chacun relie : application du
   connecteur, Microsoft 365 ou Google Workspace (`application.rs`, ADR-121), départ vers
   le fournisseur, tentative scellée, retour vérifié, jeton scellé, liste et retrait,

@@ -17,19 +17,8 @@ pub const MAIL_READ: &str = "Mail.Read";
 pub const CALENDARS_READ: &str = "Calendars.Read";
 pub const MAIL_SEND: &str = "Mail.Send";
 pub const CALENDARS_WRITE: &str = "Calendars.ReadWrite";
-/// What a person grants, besides `openid`: their address, the right to be
-/// reached while away (a refresh token), reading their mail and calendar.
-pub const MICROSOFT365_SCOPES: [&str; 5] = [
-    "email",
-    "profile",
-    "offline_access",
-    MAIL_READ,
-    CALENDARS_READ,
-];
-/// What a person grants besides when their company lets its tools write
-/// (ADR-119): sending mail as them, writing their calendar.
-pub const MICROSOFT365_WRITE_SCOPES: [&str; 2] = [MAIL_SEND, CALENDARS_WRITE];
-/// The permission that brings a refresh token: always renewed.
+/// The permission that brings a refresh token, while the person is away:
+/// always renewed.
 pub(super) const OFFLINE_ACCESS: &str = "offline_access";
 
 /// A company's Microsoft 365 application, once checked: where its people

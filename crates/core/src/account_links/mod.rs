@@ -17,8 +17,7 @@ pub use google::{
 pub use kind::LinkKind;
 pub use microsoft365::{
     CALENDARS_READ, CALENDARS_WRITE, MAIL_READ, MAIL_SEND, MICROSOFT_GRAPH, MICROSOFT365,
-    MICROSOFT365_SCOPES, MICROSOFT365_WRITE_SCOPES, Microsoft365Application,
-    microsoft365_application,
+    Microsoft365Application, microsoft365_application,
 };
 use uuid::Uuid;
 

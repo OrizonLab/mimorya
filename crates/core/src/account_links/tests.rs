@@ -4,6 +4,15 @@ use super::*;
 use crate::identity_providers::TokenClaims;
 
 const M365: LinkKind = LinkKind::Microsoft365;
+/// What a person grants, besides `openid`, when their company's tools only
+/// read: their address, a refresh token, their mail and calendar read.
+const READING: [&str; 5] = [
+    "email",
+    "profile",
+    "offline_access",
+    MAIL_READ,
+    CALENDARS_READ,
+];
 const DIRECTORY: &str = "72f988bf-86f1-41af-91ab-2d7cd011db47";
 const CLIENT: &str = "0b1c2d3e-4f50-6172-8394-a5b6c7d8e9f0";
 
@@ -139,7 +148,7 @@ fn a_link_is_renewed_with_what_the_person_granted() {
             .renewal_scopes("offline_access Mail.Read")
             .contains(&"Calendars.Read")
     );
-    assert_eq!(M365.renewal_scopes(" "), MICROSOFT365_SCOPES);
+    assert_eq!(M365.renewal_scopes(" "), READING);
     // Graph's permissions by their address; offline access always.
     assert_eq!(
         M365.renewal_scopes(
@@ -161,10 +170,11 @@ fn a_link_is_renewed_with_what_the_person_granted() {
 
 #[test]
 fn a_link_asks_writing_when_the_company_lets_its_tools_write() {
-    assert_eq!(M365.link_scopes(false), MICROSOFT365_SCOPES);
-    let asked = M365.link_scopes(true);
-    assert!(asked.starts_with(&MICROSOFT365_SCOPES));
-    assert!(asked.ends_with(&MICROSOFT365_WRITE_SCOPES));
+    assert_eq!(M365.link_scopes(false), READING);
+    assert_eq!(
+        M365.link_scopes(true),
+        [&READING[..], &[MAIL_SEND, CALENDARS_WRITE]].concat()
+    );
 }
 
 #[test]
