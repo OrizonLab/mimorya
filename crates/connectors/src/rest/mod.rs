@@ -23,7 +23,8 @@ pub use declaration::{
     rest_tool_description, rest_tool_name, tool_namespace,
 };
 pub use openapi::{
-    Imported, MAX_DOCUMENT_BYTES, MAX_IMPORTED_OPERATIONS, MAX_NOTES, import_openapi,
+    Imported, MAX_DOCUMENT_BYTES, MAX_IMPORTED_OPERATIONS, MAX_NOTES, MAX_OFFERED_BYTES,
+    import_openapi,
 };
 pub use request::{Built, MAX_TEXT_CHARS, build, input_schema, parse_input};
 pub use response::MAX_RESPONSE_BYTES;

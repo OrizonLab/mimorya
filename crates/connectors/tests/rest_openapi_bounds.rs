@@ -77,7 +77,9 @@ fn reads_a_description_within_bounds() {
     let imported = import(&json!({ "openapi": "3.0.0", "paths": paths }));
     assert_eq!(imported.operations.len(), MAX_IMPORTED_OPERATIONS);
     assert_eq!(imported.operations[1].name, "list_2");
-    assert!(imported.notes[0].starts_with("150 opération(s) au-delà des 200 premières"));
+    assert!(imported.notes[0].starts_with(
+        "150 opération(s) au-delà de ce qu’une réponse porte (200 opérations, 2 Mio)"
+    ));
     assert_eq!(imported.notes.len(), MAX_NOTES + 2);
     assert!(imported.notes.last().unwrap().starts_with("… et "));
 
@@ -137,14 +139,13 @@ fn reads_a_description_within_bounds() {
         "{:?}",
         started.elapsed()
     );
-    assert!(heavy.operations.iter().all(|o| o.parameters.is_empty()));
-    // The first one's body left aside, the other paths counted.
-    assert_eq!(heavy.operations.len(), 1);
+    // The budget spent on the first one, nothing more is read: not even its
+    // texts. The other paths are counted.
+    assert!(heavy.operations.is_empty());
     assert!(heavy.notes[0].starts_with("49 chemin(s) non lu(s) : un document trop complexe"));
     let notes = heavy.notes.join("\n");
     assert!(
-        notes
-            .contains("POST /heavy0 : corps facultatif laissé de côté : un document trop complexe"),
+        notes.contains("POST /heavy0 : laissée de côté, un document trop complexe"),
         "{notes}"
     );
 }

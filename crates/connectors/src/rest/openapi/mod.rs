@@ -2,9 +2,11 @@
 //! for its administrators to review before they declare any: nothing here
 //! is stored nor called. Only the JSON document they give is read (no
 //! address is fetched, no `$ref` followed out of it), within bounds: its
-//! size, the parts read, the operations offered. Each operation offered
-//! passes the checks of a declaration (`checks`), under a name no other one
-//! has; what could not be offered, or was changed, is said.
+//! size, what is read of it (each part paid for by its size each time it
+//! is read, `document`), the operations converted, those offered and what
+//! they weigh. Each operation offered passes the checks of a declaration
+//! (`checks`), under a name no other one has; what could not be offered,
+//! or was changed, is said.
 
 mod document;
 mod operation;
@@ -28,10 +30,15 @@ use crate::outbound::MAX_URL_CHARS;
 pub const MAX_DOCUMENT_BYTES: usize = 768 * 1024;
 /// Operations offered, among which the administrators keep those to declare.
 pub const MAX_IMPORTED_OPERATIONS: usize = 200;
+/// What the operations offered may weigh together, as JSON.
+pub const MAX_OFFERED_BYTES: usize = 2 * 1024 * 1024;
 /// Notes kept, the others counted.
 pub const MAX_NOTES: usize = 100;
-/// Parts of the document read, references and properties included.
+/// What may be read of the document: a unit per part, and one more per 64
+/// bytes of it, each time it is read (`document`).
 const MAX_READS: usize = 200_000;
+/// Operations converted, offered or not: each reads its own texts.
+const MAX_CONVERSIONS: usize = 1000;
 const METHODS: [(&str, HttpMethod); 5] = [
     ("get", HttpMethod::Get),
     ("put", HttpMethod::Put),
@@ -85,9 +92,10 @@ pub fn import_openapi(document: &str) -> Result<Imported, String> {
     let mut doc = Document::new(&root, MAX_READS);
     let mut operations = Vec::new();
     let mut taken = HashSet::new();
-    let (mut beyond, mut unread) = (0, 0);
+    let (mut beyond, mut unread, mut read, mut offered) = (0, 0, 0, 0_usize);
+    let mut full = false;
     for (path, item) in paths {
-        if doc.exhausted() {
+        if doc.exhausted() || read >= MAX_CONVERSIONS {
             unread += 1;
             continue;
         }
@@ -98,21 +106,27 @@ pub fn import_openapi(document: &str) -> Result<Imported, String> {
                 continue;
             }
         };
-        for (key, operation) in item.as_object().into_iter().flatten() {
-            let Some(&(_, method)) = METHODS.iter().find(|(name, _)| name == key) else {
-                if OTHER_METHODS.contains(&key.as_str()) {
-                    let method = key.to_ascii_uppercase();
-                    notes.push(format!(
-                        "{method} {} : méthode non prise en charge",
-                        quoted(path)
-                    ));
-                }
+        // Looked up, never listed: a path item many paths share may hold
+        // any number of other keys.
+        for name in OTHER_METHODS
+            .iter()
+            .filter(|name| item.get(**name).is_some())
+        {
+            let method = name.to_ascii_uppercase();
+            notes.push(format!(
+                "{method} {} : méthode non prise en charge",
+                quoted(path)
+            ));
+        }
+        for (name, method) in METHODS {
+            let Some(operation) = item.get(name) else {
                 continue;
             };
-            if operations.len() >= MAX_IMPORTED_OPERATIONS {
+            if full || operations.len() >= MAX_IMPORTED_OPERATIONS {
                 beyond += 1;
                 continue;
             }
+            read += 1;
             let label = format!("{} {}", method.as_str(), quoted(path));
             let mut candidate = match convert(&mut doc, path, method, item, operation) {
                 Ok(candidate) => candidate,
@@ -126,6 +140,14 @@ pub fn import_openapi(document: &str) -> Result<Imported, String> {
                 notes.push(format!("{label} : laissée de côté. {problem}"));
                 continue;
             }
+            let size =
+                serde_json::to_vec(&candidate.operation).map_or(usize::MAX, |json| json.len());
+            if offered.saturating_add(size) > MAX_OFFERED_BYTES {
+                full = true;
+                beyond += 1;
+                continue;
+            }
+            offered += size;
             taken.insert(candidate.operation.name.clone());
             for note in candidate.notes {
                 notes.push(format!("{label} : {note}"));
@@ -137,13 +159,16 @@ pub fn import_openapi(document: &str) -> Result<Imported, String> {
     let mut said = Vec::new();
     if beyond > 0 {
         said.push(format!(
-            "{beyond} opération(s) au-delà des {MAX_IMPORTED_OPERATIONS} premières laissée(s) \
-             de côté : retirez du document celles qui ne servent pas"
+            "{beyond} opération(s) au-delà de ce qu’une réponse porte \
+             ({MAX_IMPORTED_OPERATIONS} opérations, {} Mio) laissée(s) de côté : retirez du \
+             document celles qui ne servent pas",
+            MAX_OFFERED_BYTES / (1024 * 1024)
         ));
     }
     if unread > 0 {
         said.push(format!(
-            "{unread} chemin(s) non lu(s) : {TOO_COMPLEX} (références trop nombreuses)"
+            "{unread} chemin(s) non lu(s) : {TOO_COMPLEX} (trop de parties ou d’opérations à \
+             lire)"
         ));
     }
     said.extend(notes.into_vec());

@@ -5766,33 +5766,54 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     (premier serveur, variables remplacées par leur valeur par défaut) et des remarques.
     Rien n'est enregistré ni appelé, et une lecture n'est pas auditée (une tentative
     sans la permission l'est, comme toute modification d'administration refusée,
-    ADR-038) : les administrateurs relisent, gardent ce
-    qu'ils veulent, puis ajoutent ou modifient l'API comme avant (ADR-112), où la
-    déclaration est vérifiée de nouveau, entière ;
+    ADR-038) : les administrateurs relisent, gardent ce qu'ils veulent, puis ajoutent
+    ou modifient l'API comme avant (ADR-112), où la déclaration est vérifiée de
+    nouveau, entière. La lecture se fait hors de l'exécuteur des requêtes, sur un fil
+    du réservoir des tâches bloquantes ;
   - la plateforme ne télécharge aucune adresse : seul le document donné est lu. Une
     description YAML se convertit d'abord en JSON, une description Swagger 2.0 d'abord
     en OpenAPI 3 ; aucune bibliothèque YAML n'entre côté serveur ;
-  - lecture bornée : 768 Kio au plus, pour que le document tienne, échappé, dans le
-    corps d'une requête (1 Mo) ; références internes seulement (`#/…`), dix sauts
-    au plus pour une même partie (une boucle s'arrête là) ; 200 000 parties lues pour
-    tout le document (références, paramètres, propriétés), au-delà les chemins suivants
-    sont comptés « non lus » ; 200 opérations proposées, les suivantes comptées ; 100
-    remarques, les suivantes comptées, celles qui concernent toute la description en
-    tête ; un caractère caché qu'une remarque citerait y devient « � » ;
+  - lecture bornée, quelle que soit la forme du document :
+    - 768 Kio au plus, pour que le document tienne, échappé, dans le corps d'une
+      requête (1 Mo) ;
+    - chaque partie lue se paie sur un budget de 200 000 unités, une par partie et une
+      de plus par 64 octets lus, **chaque fois** qu'elle est lue : une partie que
+      d'autres partagent par `$ref` (un résumé, une énumération, une liste `required`,
+      les noms des champs d'un corps) coûte autant de fois qu'elle est relue. Le budget
+      épuisé, plus rien n'est lu et les chemins suivants sont comptés « non lus » ;
+    - références internes seulement (`#/…`), de 512 octets au plus, dix sauts au plus
+      pour une même partie (une boucle ou une longue chaîne s'arrête là), `allOf`
+      imbriqués sur quatre niveaux ; 200 paramètres listés et 200 champs lus par
+      opération ; un texte n'est lu que jusqu'à ce que sa borne peut demander (quatre
+      fois sa longueur, plus 64 caractères) ; une énumération montre ses 50 premières
+      valeurs ; les méthodes d'un chemin sont cherchées, jamais ses autres clés
+      parcourues ;
+    - 1 000 opérations converties, proposées ou non, puis les chemins suivants sont
+      comptés « non lus » ; 200 opérations proposées pesant ensemble 2 Mio au plus en
+      JSON, les suivantes comptées ; 100 remarques, les suivantes comptées, celles qui
+      concernent toute la description en tête. Une remarque cite un chemin ou un nom
+      sur 80 caractères, un caractère caché y devenant « � » : deux noms qui diffèrent
+      ne se lisent jamais pareil ;
   - correspondance : chaque opération GET, PUT, POST, DELETE ou PATCH devient une
     opération nommée d'après son `operationId` en `snake_case` (sinon d'après sa méthode
     et son chemin), rendue unique par `_2`, `_3`… Intitulé : son résumé, sinon son
     `operationId`, sinon « MÉTHODE chemin » ; description : sa description, sinon son
-    résumé, sinon « MÉTHODE chemin ». Les textes perdent leurs caractères cachés (et la
-    remarque le dit) et sont coupés à leur limite par « … ». Paramètres : ceux de chemin
+    résumé, sinon « MÉTHODE chemin » ; un texte ne compte qu'une fois ses caractères
+    cachés retirés, et celui qui ne montre plus rien cède la place au suivant. Les
+    textes perdent leurs caractères cachés (et la remarque le dit) et sont coupés à
+    leur limite par « … ». Paramètres : ceux de chemin
     et de requête (ceux du chemin, sauf si l'opération les redéfinit) et les propriétés
     d'un corps JSON (parties `allOf` fusionnées, champs en lecture seule omis, requis
     seulement si le corps l'est), de type texte, entier, nombre ou booléen ; les valeurs
     d'une énumération rejoignent la description du paramètre ;
   - ce que la déclaration ne porte pas (en-tête, cookie, tableau, objet, variantes
     `oneOf`/`anyOf`, corps non JSON) est laissé de côté et dit quand c'est facultatif ;
-    requis, cela écarte l'opération, que son outil ne saurait pas appeler. Au-delà de
-    30 paramètres, les requis puis les premiers facultatifs sont gardés. Une opération
+    requis, cela écarte l'opération, que son outil ne saurait pas appeler. Il en va de
+    même d'un corps requis dont aucun champ ne se déclare (objet libre, `{}`, champs
+    en lecture seule) : l'outil n'enverrait aucun corps ; facultatif, il est laissé de
+    côté et dit. Un champ facultatif dont la référence ne se lit pas est laissé de côté
+    et dit, sans écarter l'opération. Au-delà de 30 paramètres, les requis puis les
+    premiers facultatifs sont gardés. Une opération
     dépréciée est écartée, de même que HEAD, OPTIONS et TRACE ;
   - chaque opération proposée passe les vérifications d'une déclaration : un chemin
     qu'elles refuseraient (`%`, segment `..`…) écarte l'opération, raison donnée.
@@ -5805,10 +5826,17 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
   - tests : `crates/connectors/tests/rest_openapi.rs` (une description d'assistance
     réaliste : noms, textes, paramètres redéfinis par l'opération, `allOf`, références,
     corps facultatif, ce qui est laissé de côté et pourquoi ; documents refusés ;
-    adresse incomplète ; une remarque qui cite un caractère caché sans le garder) ; `crates/connectors/tests/rest_openapi_bounds.rs` (bornes des
-    paramètres, des opérations et des remarques ; références en boucle, trop enchaînées
-    ou hors du document ; `allOf` trop imbriqués ; un petit document aux `allOf`
-    imbriqués lu vite, le reste compté) ;
+    adresse incomplète ; une remarque qui cite un caractère caché sans le garder ;
+    aucune opération que son outil ne saurait appeler, un champ facultatif illisible
+    laissé de côté, un résumé invisible remplacé) ;
+    `crates/connectors/tests/rest_openapi_bounds.rs` (bornes des paramètres, des
+    opérations et des remarques ; références en boucle, trop enchaînées ou hors du
+    document ; `allOf` trop imbriqués ; un petit document aux `allOf` imbriqués lu
+    vite, le reste compté) ; `crates/connectors/tests/rest_openapi_cost.rs` (des
+    documents proches de 768 Kio, chacun lu en moins de 5 s même sans optimisation :
+    liste `required`, résumé, énumération, noms de champs ou de paramètres et types de
+    contenu relus par `$ref`, pointeur trop long, entrée de chemin aux nombreuses
+    clés, plafond des conversions, poids des opérations proposées) ;
     `crates/api/tests/rest_openapi_import.rs` (réservé aux administrateurs des
     connecteurs, rien enregistré ni audité, les opérations proposées acceptées telles
     quelles à l'ajout ; descriptions refusées et dites).

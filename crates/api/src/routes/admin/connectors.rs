@@ -155,7 +155,7 @@ pub async fn import_rest(
     Body(body): Body<OpenApiDescription>,
 ) -> ApiResult<Json<RestImport>> {
     let access = state.access.context(identity).await?;
-    Ok(Json(read_openapi(&access, &body.document)?.into()))
+    Ok(Json(read_openapi(&access, body.document).await?.into()))
 }
 
 pub async fn update(

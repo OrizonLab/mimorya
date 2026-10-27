@@ -1,30 +1,41 @@
 //! What the parts of an OpenAPI document stand for: a local `$ref`
 //! (`#/components/…`) followed a bounded number of times, never a file nor
 //! an address; the type of a schema as a parameter may have one; the
-//! properties of an object schema, `allOf` parts merged. Every part read
-//! counts against the import's budget, so that references nested in each
-//! other cannot make a small document long to read.
+//! fields of an object schema, `allOf` parts merged; the beginning of a
+//! text. Every part read is paid for out of the import's budget, by its
+//! size, each time it is read: a part that many others share through
+//! `$ref` costs as often as it is read again, so that a small document
+//! cannot make its reading long.
 
 use std::collections::HashSet;
 
 use serde_json::Value;
 
+use super::text::{Read, beginning};
 use crate::rest::declaration::ParameterType;
 
 /// References followed for one part: a cycle, or a long chain, ends there.
 const MAX_HOPS: usize = 10;
 /// `allOf` parts within parts: the reading recurses as deep.
 const MAX_ALL_OF_DEPTH: usize = 4;
+/// A pointer within a description is short.
+const MAX_REFERENCE_BYTES: usize = 512;
+/// Fields read of one object schema, its `allOf` parts included.
+const MAX_FIELDS: usize = 200;
+/// Types an OpenAPI 3.1 schema may list (`["integer", "null"]`).
+const MAX_TYPES: usize = 4;
+/// What a part costs beyond its first unit: one more per this many bytes.
+const BYTES_PER_UNIT: usize = 64;
 /// Why a part cannot be read once the budget is spent.
 pub(super) const TOO_COMPLEX: &str = "un document trop complexe";
 
-/// The document and how many more parts may be read of it.
+/// The document and how much more may be read of it.
 pub(super) struct Document<'a> {
     root: &'a Value,
     budget: usize,
 }
 
-/// An object schema's properties, in the order written, and the names it
+/// An object schema's fields, in the order written, and the names it
 /// requires.
 #[derive(Default)]
 pub(super) struct Object<'a> {
@@ -42,24 +53,48 @@ impl<'a> Document<'a> {
         self.budget == 0
     }
 
-    fn spend(&mut self) -> Result<(), &'static str> {
-        self.budget = self.budget.checked_sub(1).ok_or(TOO_COMPLEX)?;
-        Ok(())
+    /// Pays for reading `bytes` bytes of the document: one unit, and one
+    /// more per 64 bytes. Once the budget is spent, nothing more is read.
+    pub(super) fn spend(&mut self, bytes: usize) -> Result<(), &'static str> {
+        let cost = 1 + bytes / BYTES_PER_UNIT;
+        match self.budget.checked_sub(cost) {
+            Some(left) => {
+                self.budget = left;
+                Ok(())
+            }
+            None => {
+                self.budget = 0;
+                Err(TOO_COMPLEX)
+            }
+        }
+    }
+
+    /// The beginning of a text that a bound of `max` characters may need,
+    /// paid for.
+    pub(super) fn read(&mut self, text: &'a str, max: usize) -> Result<Read<'a>, &'static str> {
+        let read = beginning(text, max);
+        self.spend(read.bytes())?;
+        Ok(read)
     }
 
     /// The part a value stands for: itself, or what its `$ref` points to in
     /// this document.
     pub(super) fn resolve(&mut self, mut value: &'a Value) -> Result<&'a Value, &'static str> {
+        const ELSEWHERE: &str = "une référence hors du document ou introuvable";
         for _ in 0..MAX_HOPS {
-            self.spend()?;
             let Some(reference) = value.get("$ref") else {
+                self.spend(0)?;
                 return Ok(value);
             };
+            let reference = reference.as_str().ok_or(ELSEWHERE)?;
+            if reference.len() > MAX_REFERENCE_BYTES {
+                return Err("une référence trop longue");
+            }
+            self.spend(reference.len())?;
             value = reference
-                .as_str()
-                .and_then(|reference| reference.strip_prefix('#'))
+                .strip_prefix('#')
                 .and_then(|pointer| self.root.pointer(pointer))
-                .ok_or("une référence hors du document ou introuvable")?;
+                .ok_or(ELSEWHERE)?;
         }
         Err("des références en boucle ou trop enchaînées")
     }
@@ -72,7 +107,7 @@ impl<'a> Document<'a> {
         let kind = match &schema["type"] {
             Value::String(kind) => Some(kind.as_str()),
             // OpenAPI 3.1: `["integer", "null"]`.
-            Value::Array(kinds) => {
+            Value::Array(kinds) if kinds.len() <= MAX_TYPES => {
                 let named: Vec<&str> = kinds
                     .iter()
                     .filter_map(Value::as_str)
@@ -84,6 +119,7 @@ impl<'a> Document<'a> {
                     _ => return Err("plusieurs types"),
                 }
             }
+            Value::Array(_) => return Err("plusieurs types"),
             _ => None,
         };
         match kind {
@@ -105,8 +141,8 @@ impl<'a> Document<'a> {
         }
     }
 
-    /// The properties of an object schema and those of its `allOf` parts,
-    /// or what the schema is instead.
+    /// The fields of an object schema and those of its `allOf` parts, or
+    /// what the schema is instead.
     pub(super) fn object(&mut self, schema: &'a Value) -> Result<Object<'a>, &'static str> {
         let mut object = Object::default();
         self.merge(schema, 0, &mut object)?;
@@ -140,15 +176,21 @@ impl<'a> Document<'a> {
             .into_iter()
             .flatten()
         {
-            self.spend()?;
-            // The first part to name a property describes it.
+            self.spend(name.len())?;
+            // The first part to name a field describes it.
             if into.names.insert(name) {
+                if into.properties.len() >= MAX_FIELDS {
+                    return Err("plus de 200 champs");
+                }
                 into.properties.push((name, property));
             }
         }
         let required = schema.get("required").and_then(Value::as_array);
-        into.required
-            .extend(required.into_iter().flatten().filter_map(Value::as_str));
+        for entry in required.into_iter().flatten() {
+            let name = entry.as_str();
+            self.spend(name.map_or(0, str::len))?;
+            into.required.extend(name);
+        }
         Ok(())
     }
 }

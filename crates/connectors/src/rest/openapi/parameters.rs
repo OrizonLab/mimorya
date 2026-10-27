@@ -1,20 +1,25 @@
 //! The parameters of an OpenAPI operation as a REST operation declares them
 //! (ADR-114): its path and query parameters (the path item's ones, unless
-//! the operation redefines them) and the properties of its JSON body, each
-//! of a simple type. One that cannot be declared (a header, a cookie, an
-//! array, an object…) is left aside with a note when it is optional;
-//! required, it leaves the whole operation aside: its tool could never make
-//! the request the API expects.
+//! the operation redefines them) and the fields of its JSON body, each of a
+//! simple type. One that cannot be declared (a header, a cookie, an array,
+//! an object…) is left aside with a note when it is optional; required, it
+//! leaves the whole operation aside: its tool could never make the request
+//! the API expects. So does a required body of which no field can be
+//! declared.
+
+use std::collections::{HashMap, HashSet};
 
 use serde_json::Value;
 
 use super::document::Document;
-use super::text::{one_line, quoted};
+use super::text::{beginning, one_line, quoted};
 use crate::rest::checks::{MAX_PARAMETER_DESCRIPTION_CHARS, MAX_PARAMETERS, parameter_name};
 use crate::rest::declaration::{HttpMethod, ParameterLocation, RestParameter};
 
-/// Parameters read for one operation before any is declared.
+/// Parameters listed for one operation before any is declared.
 const MAX_READ: usize = 200;
+/// Values of an enumeration its parameter's description shows.
+const MAX_VALUES_SHOWN: usize = 50;
 
 /// What an operation may declare, and what was left aside of it.
 #[derive(Default)]
@@ -23,6 +28,7 @@ pub(super) struct Gathered {
     pub notes: Vec<String>,
     /// Whether a hidden character was taken out of a description.
     pub stripped: bool,
+    names: HashSet<String>,
 }
 
 /// One parameter as the document gives it.
@@ -59,7 +65,8 @@ fn listed<'a>(
     item: &'a Value,
     operation: &'a Value,
 ) -> Result<Vec<Given<'a>>, String> {
-    let mut listed: Vec<(&str, Given)> = Vec::new();
+    let mut listed: Vec<Given> = Vec::new();
+    let mut at: HashMap<(&str, &str), usize> = HashMap::new();
     for raw in [item, operation]
         .into_iter()
         .filter_map(|part| part.get("parameters").and_then(Value::as_array))
@@ -72,40 +79,36 @@ fn listed<'a>(
         else {
             return Err("un paramètre sans nom ou sans emplacement".into());
         };
-        if listed.len() >= MAX_READ {
-            return Err(format!("plus de {MAX_READ} paramètres"));
-        }
-        let location = match place {
-            "path" => Ok(ParameterLocation::Path),
-            "query" => Ok(ParameterLocation::Query),
-            "header" => Err("un en-tête"),
-            "cookie" => Err("un cookie"),
-            _ => Err("un emplacement inconnu"),
-        };
-        let schema = match parameter.get("schema") {
-            Some(schema) => Ok(schema),
-            None => Err("un contenu encodé"),
+        doc.spend(name.len())?;
+        let (place, location) = match place {
+            "path" => ("path", Ok(ParameterLocation::Path)),
+            "query" => ("query", Ok(ParameterLocation::Query)),
+            "header" => ("header", Err("un en-tête")),
+            "cookie" => ("cookie", Err("un cookie")),
+            _ => ("other", Err("un emplacement inconnu")),
         };
         let given = Given {
             name,
             required: place == "path" || parameter["required"] == true,
             location,
-            schema,
+            schema: parameter.get("schema").ok_or("un contenu encodé"),
             description: parameter["description"].as_str(),
         };
-        // Redefined in its place.
-        match listed
-            .iter()
-            .position(|(at, listed)| *at == place && listed.name == name)
-        {
-            Some(at) => listed[at] = (place, given),
-            None => listed.push((place, given)),
+        match at.get(&(place, name)) {
+            Some(&index) => listed[index] = given,
+            None if listed.len() >= MAX_READ => {
+                return Err(format!("plus de {MAX_READ} paramètres"));
+            }
+            None => {
+                at.insert((place, name), listed.len());
+                listed.push(given);
+            }
         }
     }
-    Ok(listed.into_iter().map(|(_, given)| given).collect())
+    Ok(listed)
 }
 
-/// The properties of the operation's JSON body.
+/// The fields of the operation's JSON body.
 fn body_parameters<'a>(
     doc: &mut Document<'a>,
     body: &'a Value,
@@ -116,7 +119,7 @@ fn body_parameters<'a>(
         .resolve(body)
         .map_err(|why| format!("son corps : {why}"))?;
     let required = body["required"] == true;
-    let aside = |gathered: &mut Gathered, why: String| {
+    let aside = |gathered: &mut Gathered, why: &str| {
         if required {
             Err(format!("son corps requis : {why}, non pris en charge"))
         } else {
@@ -127,98 +130,141 @@ fn body_parameters<'a>(
         }
     };
     if !method.has_body() {
-        return aside(
-            gathered,
-            format!("une requête {} n’en a pas", method.as_str()),
-        );
+        let why = format!("une requête {} n’en a pas", method.as_str());
+        return aside(gathered, &why);
     }
-    let content = body.get("content").and_then(Value::as_object);
-    let json = content.into_iter().flatten().find(|(media, _)| {
+    let mut json = None;
+    for (media, content) in body
+        .get("content")
+        .and_then(Value::as_object)
+        .into_iter()
+        .flatten()
+    {
+        doc.spend(media.len())?;
         let media = media.split(';').next().unwrap_or_default().trim();
-        media.eq_ignore_ascii_case("application/json") || media.ends_with("+json")
-    });
-    let Some((_, media)) = json else {
-        return aside(gathered, "un contenu autre que JSON".into());
+        if media.eq_ignore_ascii_case("application/json") || media.ends_with("+json") {
+            json = Some(content);
+            break;
+        }
+    }
+    let Some(media) = json else {
+        return aside(gathered, "un contenu autre que JSON");
     };
     let Some(schema) = media.get("schema") else {
-        return aside(gathered, "un JSON sans schéma".into());
+        return aside(gathered, "un JSON sans schéma");
     };
     let object = match doc.object(schema) {
         Ok(object) => object,
-        Err(why) => return aside(gathered, why.into()),
+        Err(why) => return aside(gathered, why),
     };
+    let before = gathered.parameters.len();
     for (name, property) in object.properties {
-        let property = doc
-            .resolve(property)
-            .map_err(|why| format!("le champ « {} » : {why}", quoted(name)))?;
+        // Required only when the body is.
+        let field_required = required && object.required.contains(name);
+        let property = match doc.resolve(property) {
+            Ok(property) => property,
+            Err(why) if field_required => {
+                return Err(format!("le champ requis « {} » : {why}", quoted(name)));
+            }
+            Err(why) => {
+                let name = quoted(name);
+                gathered
+                    .notes
+                    .push(format!("champ « {name} » laissé de côté : {why}"));
+                continue;
+            }
+        };
         if property["readOnly"] == true {
             continue;
         }
-        gathered.add(
-            doc,
-            Given {
-                name,
-                location: Ok(ParameterLocation::Body),
-                // Required only when the body is.
-                required: required && object.required.contains(name),
-                schema: Ok(property),
-                description: property["description"].as_str(),
-            },
-        )?;
+        let given = Given {
+            name,
+            location: Ok(ParameterLocation::Body),
+            required: field_required,
+            schema: Ok(property),
+            description: property["description"].as_str(),
+        };
+        gathered.add(doc, given)?;
+    }
+    if gathered.parameters.len() == before {
+        // Its tool would send no body.
+        return aside(gathered, "aucun champ déclarable");
     }
     Ok(())
 }
 
 impl Gathered {
     fn add<'a>(&mut self, doc: &mut Document<'a>, given: Given<'a>) -> Result<(), String> {
-        let refused = given.location.and_then(|location| {
+        let declared = given.location.and_then(|location| {
             if !parameter_name(given.name) {
                 return Err("un nom refusé");
             }
-            if self.parameters.iter().any(|p| p.name == given.name) {
+            if self.names.contains(given.name) {
                 return Err("un nom déjà pris par un autre paramètre");
             }
-            let kind = doc.scalar(given.schema?)?;
-            Ok((location, kind))
+            let schema = doc.resolve(given.schema?)?;
+            Ok((location, doc.scalar(schema)?, schema))
         });
-        let name = quoted(given.name);
-        let (location, kind) = match refused {
+        let (location, kind, schema) = match declared {
             Ok(declared) => declared,
             Err(why) if given.required => {
+                let name = quoted(given.name);
                 return Err(format!(
                     "paramètre requis « {name} » : {why}, non pris en charge"
                 ));
             }
             Err(why) => {
+                let name = quoted(given.name);
                 self.notes
                     .push(format!("paramètre « {name} » laissé de côté : {why}"));
                 return Ok(());
             }
         };
-        let schema = given
-            .schema
-            .ok()
-            .and_then(|schema| doc.resolve(schema).ok());
-        let mut description = given.description.unwrap_or_default().to_string();
-        if let Some(values) = schema.and_then(|s| s.get("enum")).and_then(Value::as_array) {
-            let values: Vec<String> = values
-                .iter()
-                .map(|v| v.as_str().map_or_else(|| v.to_string(), str::to_string))
-                .collect();
-            description = format!("{description} Valeurs : {}.", values.join(", "));
-        }
+        let description = self.description(doc, given.description, schema)?;
+        self.names.insert(given.name.to_string());
         self.parameters.push(RestParameter {
             name: given.name.to_string(),
             location,
             kind,
             required: given.required,
-            description: one_line(
-                &description,
-                MAX_PARAMETER_DESCRIPTION_CHARS,
-                &mut self.stripped,
-            ),
+            description,
         });
         Ok(())
+    }
+
+    /// What the model reads of a parameter: its description, then the
+    /// values it takes, on one line within the bound.
+    fn description<'a>(
+        &mut self,
+        doc: &mut Document<'a>,
+        written: Option<&'a str>,
+        schema: &'a Value,
+    ) -> Result<String, String> {
+        let max = MAX_PARAMETER_DESCRIPTION_CHARS;
+        let mut parts = Vec::new();
+        if let Some(text) = written {
+            parts.push(one_line(doc.read(text, max)?, max, &mut self.stripped));
+        }
+        if let Some(values) = schema.get("enum").and_then(Value::as_array) {
+            let mut shown = Vec::new();
+            for value in values.iter().take(MAX_VALUES_SHOWN) {
+                match value {
+                    Value::String(text) => {
+                        shown.push(one_line(doc.read(text, max)?, max, &mut self.stripped));
+                    }
+                    Value::Number(_) | Value::Bool(_) => shown.push(value.to_string()),
+                    _ => {}
+                }
+            }
+            let more = if values.len() > MAX_VALUES_SHOWN {
+                ", …"
+            } else {
+                ""
+            };
+            parts.push(format!("Valeurs : {}{more}.", shown.join(", ")));
+        }
+        let joined = parts.join(" ");
+        Ok(one_line(beginning(&joined, max), max, &mut false))
     }
 
     /// Within the parameters an operation may declare: the required ones,

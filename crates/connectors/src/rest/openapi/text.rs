@@ -2,16 +2,47 @@
 //! operation's name (`snake_case`, from its `operationId` or its method and
 //! path, made unique), texts without hidden characters and within their
 //! bounds, a cut said by `…`, and what a note may quote of the document.
+//! Only the beginning of a text its bound may need is read.
 
 use std::collections::HashSet;
 
-use mimorya_core::plain_text::without_hidden;
+use mimorya_core::plain_text::{is_hidden, without_hidden};
 
 use crate::rest::checks::MAX_OPERATION_NAME;
 use crate::rest::declaration::HttpMethod;
 
 /// What a note quotes of a path or a name.
 const MAX_QUOTED_CHARS: usize = 80;
+
+/// The beginning of a text that a bound of `max` characters may need:
+/// hidden characters may be taken out of it, never more than that.
+#[derive(Clone, Copy)]
+pub(super) struct Read<'t> {
+    text: &'t str,
+    /// Whether the text goes on beyond what is read.
+    goes_on: bool,
+}
+
+impl<'t> Read<'t> {
+    pub(super) fn bytes(&self) -> usize {
+        self.text.len()
+    }
+}
+
+/// What a bound of `max` characters reads of a text.
+pub(super) fn beginning(text: &str, max: usize) -> Read<'_> {
+    let read = max.saturating_mul(4).saturating_add(64);
+    match text.char_indices().nth(read) {
+        Some((at, _)) => Read {
+            text: &text[..at],
+            goes_on: true,
+        },
+        None => Read {
+            text,
+            goes_on: false,
+        },
+    }
+}
 
 /// The operation's name: its `operationId` in `snake_case`, or its method
 /// and path when it has none that reads so.
@@ -26,7 +57,7 @@ pub(super) fn operation_name(id: Option<&str>, method: HttpMethod, path: &str) -
 fn snake(text: &str) -> String {
     let mut name = String::new();
     let mut previous: Option<char> = None;
-    for c in text.chars() {
+    for c in beginning(text, MAX_OPERATION_NAME).text.chars() {
         if c.is_ascii_alphanumeric() {
             let starts_word = c.is_ascii_uppercase()
                 && previous.is_some_and(|p| p.is_ascii_lowercase() || p.is_ascii_digit());
@@ -60,29 +91,44 @@ pub(super) fn unique(name: &str, taken: &HashSet<String>) -> String {
     candidate
 }
 
-/// The text without hidden characters (`stripped` says if any was taken
-/// out), line breaks and tabs kept, trimmed, cut at `max` characters.
-pub(super) fn bounded(text: &str, max: usize, stripped: &mut bool) -> String {
-    let text = text.replace("\r\n", "\n");
+/// The text read without hidden characters (`stripped` says if any was
+/// taken out), line breaks and tabs kept, trimmed, cut at `max` characters.
+pub(super) fn bounded(read: Read, max: usize, stripped: &mut bool) -> String {
+    let text = read.text.replace("\r\n", "\n");
     let visible = without_hidden(&text);
-    *stripped |= visible.chars().count() != text.chars().count();
-    cut(visible.trim(), max)
+    *stripped |= visible.len() != text.len();
+    cut(visible.trim(), max, read.goes_on)
 }
 
-/// The text on one line: as `bounded`, every run of blanks one space.
-pub(super) fn one_line(text: &str, max: usize, stripped: &mut bool) -> String {
-    let text = bounded(text, usize::MAX, stripped);
-    cut(&text.split_whitespace().collect::<Vec<_>>().join(" "), max)
+/// The text read on one line: as `bounded`, every run of blanks one space.
+pub(super) fn one_line(read: Read, max: usize, stripped: &mut bool) -> String {
+    let text = read.text.replace("\r\n", "\n");
+    let visible = without_hidden(&text);
+    *stripped |= visible.len() != text.len();
+    let joined = visible.split_whitespace().collect::<Vec<_>>().join(" ");
+    cut(&joined, max, read.goes_on)
 }
 
-/// What a note quotes of the document: on one line, visible, short.
+/// What a note quotes of the document: on one line, short, a hidden
+/// character shown as `�` rather than taken out, so that two names that
+/// differ never read alike.
 pub(super) fn quoted(text: &str) -> String {
-    one_line(text, MAX_QUOTED_CHARS, &mut false)
+    let shown: String = text
+        .chars()
+        .take(MAX_QUOTED_CHARS + 1)
+        .map(|c| match c {
+            c if c.is_whitespace() => ' ',
+            c if is_hidden(c) => '\u{FFFD}',
+            c => c,
+        })
+        .collect();
+    cut(shown.trim(), MAX_QUOTED_CHARS, false)
 }
 
-/// At most `max` characters, the last one `…` when the text is cut.
-fn cut(text: &str, max: usize) -> String {
-    if text.chars().count() <= max {
+/// At most `max` characters, the last one `…` when the text is cut or goes
+/// on beyond what was read.
+fn cut(text: &str, max: usize, goes_on: bool) -> String {
+    if !goes_on && text.chars().count() <= max {
         return text.to_string();
     }
     let mut kept: String = text.chars().take(max.saturating_sub(1)).collect();
@@ -121,18 +167,38 @@ mod tests {
     #[test]
     fn keeps_texts_visible_and_bounded() {
         let mut stripped = false;
+        let text = " Lire\r\nun\u{200b} ticket ";
         assert_eq!(
-            bounded(" Lire\r\nun\u{200b} ticket ", 100, &mut stripped),
+            bounded(beginning(text, 100), 100, &mut stripped),
             "Lire\nun ticket"
         );
         assert!(stripped);
         let mut stripped = false;
+        let text = "Lire\n\tun  ticket";
         assert_eq!(
-            one_line("Lire\n\tun  ticket", 100, &mut stripped),
+            one_line(beginning(text, 100), 100, &mut stripped),
             "Lire un ticket"
         );
         assert!(!stripped);
-        assert_eq!(one_line("Lire un ticket", 6, &mut stripped), "Lire…");
+        let text = "Lire un ticket";
+        assert_eq!(one_line(beginning(text, 6), 6, &mut stripped), "Lire…");
         assert_eq!(quoted(&"é".repeat(200)).chars().count(), MAX_QUOTED_CHARS);
+        assert_eq!(quoted("/a\u{202e}b\nc"), "/a\u{fffd}b c");
+    }
+
+    #[test]
+    fn reads_only_the_beginning_a_bound_needs() {
+        // Hidden characters up front, then words: what is read is cut there,
+        // and the cut is said.
+        let text = format!("{}{}", "\u{200b}".repeat(100), "mot ".repeat(1000));
+        let read = beginning(&text, 10);
+        assert!(read.bytes() < 500, "{}", read.bytes());
+        let mut stripped = false;
+        let kept = one_line(read, 10, &mut stripped);
+        assert!(stripped);
+        assert_eq!(kept, "mot…");
+        // Hidden characters only: nothing, said as cut.
+        let hidden = "\u{200b}".repeat(1000);
+        assert_eq!(one_line(beginning(&hidden, 10), 10, &mut false), "…");
     }
 }

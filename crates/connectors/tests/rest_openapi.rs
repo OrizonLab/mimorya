@@ -338,7 +338,60 @@ fn notes_show_all_they_hold() {
     let hidden = |note: &String| note.chars().any(is_hidden);
     assert!(!imported.notes.iter().any(hidden), "{:?}", imported.notes);
     let notes = imported.notes.join("\n");
-    let expected = "GET /files/txt.exe : laissée de côté. Opération file : caractère « \u{fffd} » \
-                    refusé";
+    // Quoted as `�`, never taken out: two paths that differ never read alike.
+    let expected = "GET /files/\u{fffd}txt.exe : laissée de côté. Opération file : caractère « \
+                    \u{fffd} » refusé";
     assert!(notes.contains(expected), "{notes}");
+}
+
+#[test]
+fn offers_no_operation_its_tool_could_not_call() {
+    let body = |required: bool, schema: Value| json!({ "required": required, "content": { "application/json": { "schema": schema } } });
+    let free = json!({ "type": "object", "additionalProperties": { "type": "string" } });
+    let read_only = json!({ "properties": { "id": { "type": "string", "readOnly": true } } });
+    let optional = json!({ "properties": {
+        "text": { "type": "string" },
+        "meta": { "$ref": "other.json#/Meta" },
+    } });
+    let imported = import(&json!({
+        "openapi": "3.0.0",
+        "paths": {
+            "/items": { "post": { "operationId": "createItem", "requestBody": body(true, free.clone()) } },
+            "/notes": { "post": { "operationId": "createNote", "requestBody": body(true, json!({})) } },
+            "/tags": { "put": { "operationId": "setTags", "requestBody": body(true, read_only) } },
+            "/drafts": { "post": { "operationId": "saveDraft", "requestBody": body(false, free) } },
+            "/memos": { "put": { "operationId": "putMemo", "requestBody": body(false, optional) } },
+            "/hidden": { "get": { "operationId": "readHidden", "summary": "\u{200b}", "description": "Lire" } },
+        },
+    }));
+    let names: Vec<&str> = imported
+        .operations
+        .iter()
+        .map(|o| o.name.as_str())
+        .collect();
+    assert_eq!(names, ["save_draft", "put_memo", "read_hidden"]);
+    // An optional body of which nothing can be declared: none is sent.
+    assert!(
+        find(&imported.operations, "save_draft")
+            .parameters
+            .is_empty()
+    );
+    // An optional field that cannot be read is left aside, not the operation.
+    let memo = find(&imported.operations, "put_memo");
+    assert_eq!(memo.parameters.len(), 1);
+    // A summary showing nothing gives way to the operation's identifier.
+    assert_eq!(
+        find(&imported.operations, "read_hidden").title,
+        "readHidden"
+    );
+    let notes = imported.notes.join("\n");
+    for expected in [
+        "POST /items : laissée de côté, son corps requis : aucun champ déclarable",
+        "POST /notes : laissée de côté, son corps requis : aucun champ déclarable",
+        "PUT /tags : laissée de côté, son corps requis : aucun champ déclarable",
+        "POST /drafts : corps facultatif laissé de côté : aucun champ déclarable",
+        "PUT /memos : champ « meta » laissé de côté : une référence hors du document",
+    ] {
+        assert!(notes.contains(expected), "{expected}\n---\n{notes}");
+    }
 }

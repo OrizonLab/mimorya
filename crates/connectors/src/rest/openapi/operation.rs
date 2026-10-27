@@ -1,13 +1,15 @@
 //! One OpenAPI operation as a REST operation (ADR-114): named from its
 //! `operationId` (or its method and path), titled by its summary, described
-//! by its description, its parameters gathered by `parameters`. A deprecated
-//! operation is left aside: an API keeps it only for those already using it.
+//! by its description, its parameters gathered by `parameters`. A text
+//! counts once its hidden characters are out: one that showed nothing gives
+//! way to the next. A deprecated operation is left aside: an API keeps it
+//! only for those already using it.
 
 use serde_json::Value;
 
 use super::document::Document;
 use super::parameters::gather;
-use super::text::{bounded, one_line, operation_name};
+use super::text::{beginning, bounded, one_line, operation_name};
 use crate::rest::checks::{MAX_DESCRIPTION_CHARS, MAX_TITLE_CHARS};
 use crate::rest::declaration::{HttpMethod, RestOperation};
 
@@ -32,29 +34,40 @@ pub(super) fn convert<'a>(
         return Err("une opération dépréciée".into());
     }
     let mut gathered = gather(doc, item, operation, method)?;
-    let stripped = &mut gathered.stripped;
+    let mut stripped = gathered.stripped;
     let id = operation["operationId"].as_str();
-    let written = |key: &str| {
-        operation[key]
-            .as_str()
-            .filter(|text| !text.trim().is_empty())
+    let mut written = |key: &str, max: usize, lines: bool| -> Result<Option<String>, String> {
+        let Some(text) = operation[key].as_str() else {
+            return Ok(None);
+        };
+        let read = doc.read(text, max)?;
+        let kept = if lines {
+            bounded(read, max, &mut stripped)
+        } else {
+            one_line(read, max, &mut stripped)
+        };
+        Ok((!kept.is_empty() && kept != "…").then_some(kept))
     };
+    let title = match written("summary", MAX_TITLE_CHARS, false)? {
+        Some(title) => Some(title),
+        None => written("operationId", MAX_TITLE_CHARS, false)?,
+    };
+    let description = match written("description", MAX_DESCRIPTION_CHARS, true)? {
+        Some(description) => Some(description),
+        None => written("summary", MAX_DESCRIPTION_CHARS, true)?,
+    };
+    // Written here, not read in the document: no hidden character.
     let request = format!("{} {path}", method.as_str());
-    let title = written("summary")
-        .or(id.filter(|id| !id.trim().is_empty()))
-        .unwrap_or(&request);
-    let description = written("description")
-        .or_else(|| written("summary"))
-        .unwrap_or(&request);
+    let named = |max| one_line(beginning(&request, max), max, &mut false);
     let operation = RestOperation {
         name: operation_name(id, method, path),
-        title: one_line(title, MAX_TITLE_CHARS, stripped),
-        description: bounded(description, MAX_DESCRIPTION_CHARS, stripped),
+        title: title.unwrap_or_else(|| named(MAX_TITLE_CHARS)),
+        description: description.unwrap_or_else(|| named(MAX_DESCRIPTION_CHARS)),
         method,
         path: path.to_string(),
         parameters: gathered.parameters,
     };
-    if gathered.stripped {
+    if stripped {
         gathered
             .notes
             .push("caractères invisibles retirés de ses textes".into());

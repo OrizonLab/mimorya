@@ -28,10 +28,12 @@ pub struct NewRestConnector {
 }
 
 /// The operations an OpenAPI description offers (ADR-114). Nothing is
-/// stored nor called, so nothing is audited.
-pub fn read_openapi(access: &AccessContext, document: &str) -> anyhow::Result<Imported> {
+/// stored nor called, so nothing is audited. The reading is bounded, yet
+/// takes a thread's time: one of the blocking pool's, never the executor's.
+pub async fn read_openapi(access: &AccessContext, document: String) -> anyhow::Result<Imported> {
     access.require_tenant_wide(PERMISSION)?;
-    Ok(import_openapi(document).map_err(DomainError::validation)?)
+    let imported = tokio::task::spawn_blocking(move || import_openapi(&document)).await?;
+    Ok(imported.map_err(DomainError::validation)?)
 }
 
 pub async fn create_rest_connector(
