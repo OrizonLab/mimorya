@@ -38,6 +38,7 @@ impl Harness {
             run_id,
             authz: BoundAuthorization::new(engine, subject, actor),
             deliverables: engine_ports.deliverables.clone(),
+            accounts: engine_ports.accounts.clone(),
         };
         let tools = platform_tools(ports.clone(), ports.clone(), ports);
         Self { tools, ctx }

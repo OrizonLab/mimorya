@@ -274,8 +274,11 @@ Détaillés dans [AGENT_ENGINE.md](AGENT_ENGINE.md). En résumé :
   (une par entreprise, secret scellé) ; chaque personne y relie elle-même sa boîte et
   son agenda avec des permissions déléguées seulement, jamais d'application. Le jeton
   d'identité doit nommer son propre compte, et le jeton de renouvellement est scellé
-  dans sa liaison (`account_links`). Les outils y liront, au lot suivant, ce que la
-  personne servie peut lire elle-même (ADR-116).
+  dans sa liaison (`account_links`) (ADR-116). Ses outils (`m365_mail_search`,
+  `m365_mail_read`, `m365_calendar_events`) lisent avec le jeton d'accès de la personne
+  servie, que le port `LinkedAccounts` du contexte d'outil leur donne : renouvelé depuis
+  sa liaison, gardé jusqu'à peu avant son expiration, la liaison retirée si Microsoft ne
+  l'honore plus ; jamais celui d'un autre, et aucun pendant une évaluation (ADR-117).
 - Les secrets ne transitent jamais par le contexte du modèle ni par les journaux.
 
 Connecteurs prévus : démonstration (MVP), MCP générique (MVP), déclencheurs (ADR-109),

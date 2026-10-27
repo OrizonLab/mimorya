@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
+use super::accounts::LinkedAccounts;
 use crate::authz::{Actor, AuthorizationEngine, DataScope, Decision, ResourceRef, Subject};
 use crate::autonomy::ToolRisk;
 use crate::documents::{DocumentReadFilter, document_read_filter};
@@ -273,6 +274,16 @@ pub struct ToolContext {
     pub run_id: Uuid,
     pub authz: BoundAuthorization,
     pub deliverables: Arc<dyn DeliverableService>,
+    /// The accounts the run's person linked at the company's providers
+    /// (ADR-117).
+    pub accounts: Arc<dyn LinkedAccounts>,
+}
+
+/// The platform's services a run's tools use.
+#[derive(Clone)]
+pub struct ToolServices {
+    pub deliverables: Arc<dyn DeliverableService>,
+    pub accounts: Arc<dyn LinkedAccounts>,
 }
 
 #[async_trait]

@@ -21,6 +21,8 @@ pub const MICROSOFT365_SCOPES: [&str; 5] = [
     "Mail.Read",
     "Calendars.Read",
 ];
+/// The permission that brings a refresh token.
+const OFFLINE_ACCESS: &str = "offline_access";
 /// The permissions granted, as kept: bounded like the column.
 pub const MAX_SCOPES_CHARS: usize = 1000;
 /// A provider's address, as kept: bounded like the column.
@@ -131,6 +133,31 @@ pub fn granted_scopes(scope: Option<&str>) -> String {
         text.push_str(scope);
     }
     text
+}
+
+/// The permissions a link's refresh token is renewed with (ADR-117): the
+/// platform's, among those the person granted (the provider renews no
+/// more, and a permission the platform added since would be refused),
+/// compared on their last segment (Microsoft may name a Graph permission
+/// by its full address); offline access always, which providers do not
+/// always list; all of them when the provider did not say what it granted.
+pub fn renewal_scopes(granted: &str) -> Vec<&'static str> {
+    let granted: Vec<&str> = granted
+        .split_ascii_whitespace()
+        .map(|scope| scope.rsplit('/').next().unwrap_or(scope))
+        .collect();
+    if granted.is_empty() {
+        return MICROSOFT365_SCOPES.to_vec();
+    }
+    MICROSOFT365_SCOPES
+        .into_iter()
+        .filter(|scope| {
+            *scope == OFFLINE_ACCESS
+                || granted
+                    .iter()
+                    .any(|granted| granted.eq_ignore_ascii_case(scope))
+        })
+        .collect()
 }
 
 /// The name a link's refresh token is sealed under: it opens only for its

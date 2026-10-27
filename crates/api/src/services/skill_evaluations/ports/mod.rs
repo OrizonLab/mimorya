@@ -14,6 +14,7 @@ use uuid::Uuid;
 
 pub use journal::{Journal, ToolTrace};
 pub use knowledge::{EvaluatedVersion, Knowledge};
+pub use withheld::NO_LINKED_ACCOUNT;
 
 use crate::app::Services;
 use withheld::Withheld;
@@ -54,6 +55,7 @@ pub fn case_ports(services: &Services, scope: CaseScope, evaluated: EvaluatedVer
         skills: knowledge.clone(),
         runs: journal.clone(),
         deliverables: withheld.clone(),
+        accounts: withheld.clone(),
         sub_runs: withheld,
     };
     CasePorts {

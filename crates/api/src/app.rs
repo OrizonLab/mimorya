@@ -219,6 +219,7 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
         embeddings: embeddings.clone(),
         lessons: LessonCapture::new(db.clone(), llm.clone(), background.clone()),
         connectors: connectors.clone(),
+        account_links: account_links.clone(),
         bus: bus.clone(),
         notifier: ApprovalNotifier::new(
             db.clone(),

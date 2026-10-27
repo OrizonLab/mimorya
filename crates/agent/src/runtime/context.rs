@@ -5,6 +5,7 @@
 use chrono::{DateTime, Datelike, Utc};
 use chrono_tz::Tz;
 use mimorya_core::memory::MemoryScope;
+use mimorya_core::time_zone::PLATFORM_TIME_ZONE;
 
 use super::ports::{MemoryHit, SkillSummary};
 use crate::tools::neutralise_envelopes;
@@ -107,7 +108,7 @@ pub fn build_system_prompt(
         ),
         format!(
             "## Contexte\n- Date du jour : {}.\n- Habilitations de l’utilisateur : {roles}.",
-            french_date(now, chrono_tz::Europe::Paris)
+            french_date(now, PLATFORM_TIME_ZONE)
         ),
     ];
     if !skills.is_empty() {

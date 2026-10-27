@@ -9,7 +9,7 @@ use mimorya_core::authz::{AuthorizationEngine, Sensitivity, Subject};
 use mimorya_core::autonomy::ToolRisk;
 use mimorya_core::memory::{MemoryKind, MemoryReadFilter, MemoryScope, MemorySource, MemoryStatus};
 use mimorya_core::skill_proposals::{ProposalOutcome, SkillProposal};
-use mimorya_core::tools::DeliverableService;
+use mimorya_core::tools::{DeliverableService, LinkedAccounts};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
@@ -310,6 +310,8 @@ pub struct EnginePorts {
     pub skills: Arc<dyn SkillStore>,
     pub runs: Arc<dyn RunStore>,
     pub deliverables: Arc<dyn DeliverableService>,
+    /// The accounts the run's person linked (ADR-117).
+    pub accounts: Arc<dyn LinkedAccounts>,
     /// Where the run opens its sub-agents' runs (ADR-098).
     pub sub_runs: Arc<dyn SubRunStore>,
 }

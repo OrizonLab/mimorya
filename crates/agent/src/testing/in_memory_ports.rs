@@ -52,6 +52,10 @@ pub(super) struct State {
     pub(super) sub_runs: Vec<OpenedSubRun>,
     /// The skills proposed to the administrators (ADR-100).
     pub(super) skill_proposals: Vec<SkillProposal>,
+    /// The person's linked accounts, by kind of connector (ADR-117).
+    pub(super) linked_accounts: HashMap<String, String>,
+    /// The kinds of connector whose token a tool reported refused.
+    pub(super) rejected_accounts: Vec<String>,
 }
 
 pub struct InMemoryPorts {
@@ -102,6 +106,7 @@ impl InMemoryPorts {
             memories: state.memories.clone(),
             documents: state.documents.clone(),
             unroutable: state.unroutable.clone(),
+            linked_accounts: state.linked_accounts.clone(),
             ..State::default()
         };
         Arc::new(Self {
@@ -126,6 +131,7 @@ impl InMemoryPorts {
             skills: self.clone(),
             runs: self.clone(),
             deliverables: self.clone(),
+            accounts: self.clone(),
             sub_runs: self.clone(),
         }
     }

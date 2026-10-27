@@ -1,6 +1,7 @@
 //! The provider's token endpoint: the client authenticated (in the body or
 //! with Basic), a code redeemed once against its PKCE challenge, and an
-//! identity token signed for the person it granted.
+//! identity token signed for the person it granted; or a refresh token
+//! renewed (`refresh`).
 
 use std::collections::HashMap;
 
@@ -62,6 +63,15 @@ pub(super) async fn token(
     if !authenticated(&headers, &form) {
         return refused("invalid_client");
     }
+    if form.get("grant_type").map(String::as_str) == Some("refresh_token") {
+        // Held, if the test holds renewals, until it lets them through.
+        let gate = shared.lock().expect("provider").renewals.gate.clone();
+        if let Some(gate) = gate {
+            gate.pass().await;
+        }
+        let mut provider = shared.lock().expect("provider");
+        return super::refresh::renew(&mut provider.renewals, &form);
+    }
     let mut provider = shared.lock().expect("provider");
     // A code is redeemed once.
     let Some(grant) = form.get("code").and_then(|c| provider.grants.remove(c)) else {
@@ -83,6 +93,12 @@ pub(super) async fn token(
         && !provider.tamper.withhold_refresh_token;
     let refresh_token =
         offline.then(|| MockIdentityProvider::refresh_token_of(&grant.person.subject));
+    if let Some(issued) = &refresh_token {
+        provider
+            .renewals
+            .issued
+            .insert(issued.clone(), grant.person.subject.clone());
+    }
     let scope = grant.scope;
     let person = grant.person;
     let mut standard = StandardClaims::new(SubjectIdentifier::new(person.subject));

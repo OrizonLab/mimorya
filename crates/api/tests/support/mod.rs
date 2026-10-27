@@ -24,6 +24,7 @@ pub mod limits;
 pub mod llm;
 pub mod locks;
 pub mod mail;
+pub mod mailbox;
 pub mod manager_approvals;
 pub mod mcp;
 pub mod mission_notices;

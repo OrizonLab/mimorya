@@ -166,3 +166,43 @@ pub async fn delete_account_links_of(conn: &mut PgConnection, user_id: Uuid) -> 
         .await?;
     Ok(result.rows_affected())
 }
+
+/// Keeps the refresh token the provider rotated (ADR-117), if the link is
+/// still the one read at `read_at` (neither made again nor removed since);
+/// returns the link's new version, if kept.
+pub async fn renew_account_link(
+    conn: &mut PgConnection,
+    link_id: Uuid,
+    read_at: DateTime<Utc>,
+    refresh_token: &StoredSecret,
+) -> sqlx::Result<Option<DateTime<Utc>>> {
+    sqlx::query_scalar(
+        "update account_links set refresh_ciphertext = $3, refresh_iv = $4, \
+         refresh_auth_tag = $5, refresh_key_version = $6, refreshed_at = clock_timestamp() \
+         where id = $1 and refreshed_at = $2 returning refreshed_at",
+    )
+    .bind(link_id)
+    .bind(read_at)
+    .bind(&refresh_token.ciphertext)
+    .bind(&refresh_token.iv)
+    .bind(&refresh_token.auth_tag)
+    .bind(refresh_token.key_version)
+    .fetch_optional(conn)
+    .await
+}
+
+/// Removes a link the provider no longer honours (ADR-117), if it is still
+/// the one read at `read_at`: one made again since stays. Returns whether
+/// it was removed.
+pub async fn delete_revoked_account_link(
+    conn: &mut PgConnection,
+    link_id: Uuid,
+    read_at: DateTime<Utc>,
+) -> sqlx::Result<bool> {
+    let result = sqlx::query("delete from account_links where id = $1 and refreshed_at = $2")
+        .bind(link_id)
+        .bind(read_at)
+        .execute(conn)
+        .await?;
+    Ok(result.rows_affected() > 0)
+}
