@@ -115,11 +115,16 @@ pub struct Authorization {
     pub pkce_verifier: String,
 }
 
+/// What a sign-in asks besides `openid`: the person's address and name.
+pub const SIGN_IN_SCOPES: [&str; 2] = ["email", "profile"];
+
+/// Where the browser goes, asking these scopes besides `openid`.
 pub fn authorization(
     metadata: CoreProviderMetadata,
     client_id: &str,
     redirect_uri: &str,
     login_hint: Option<&str>,
+    scopes: &[&str],
 ) -> Result<Authorization, Failure> {
     let client = client(metadata, client_id, None, redirect_uri)?;
     let (challenge, verifier) = PkceCodeChallenge::new_random_sha256();
@@ -129,9 +134,10 @@ pub fn authorization(
             CsrfToken::new_random,
             Nonce::new_random,
         )
-        .add_scope(Scope::new("email".into()))
-        .add_scope(Scope::new("profile".into()))
         .set_pkce_challenge(challenge);
+    for scope in scopes {
+        request = request.add_scope(Scope::new((*scope).into()));
+    }
     if let Some(hint) = login_hint {
         request = request.set_login_hint(LoginHint::new(hint.into()));
     }
@@ -158,21 +164,24 @@ pub type IdToken = openidconnect::IdToken<
     CoreJwsSigningAlgorithm,
 >;
 
-/// The identity token the code is exchanged for, not verified yet.
-pub async fn exchange_code(
+/// What the provider answers for a code: its tokens, not verified yet.
+pub type Tokens = StandardTokenResponse<IdTokenFields, CoreTokenType>;
+
+/// The code redeemed at the provider, with the attempt's PKCE verifier.
+pub async fn redeem(
     http: &ProviderHttp,
     metadata: CoreProviderMetadata,
     application: &Application<'_>,
     code: String,
     pkce_verifier: String,
-) -> Result<IdToken, Failure> {
+) -> Result<Tokens, Failure> {
     let client = client(
         metadata,
         application.client_id,
         Some(application.client_secret),
         application.redirect_uri,
     )?;
-    let response = client
+    client
         .exchange_code(AuthorizationCode::new(code))
         .map_err(|error| format!("échange : {error}"))?
         .set_pkce_verifier(PkceCodeVerifier::new(pkce_verifier))
@@ -189,8 +198,19 @@ pub async fn exchange_code(
             RequestTokenError::Parse(..) => "échange : réponse illisible".into(),
             // The library's own words (empty answer, content type).
             RequestTokenError::Other(text) => format!("échange : {text}"),
-        })?;
-    response
+        })
+}
+
+/// The identity token the code is exchanged for, not verified yet.
+pub async fn exchange_code(
+    http: &ProviderHttp,
+    metadata: CoreProviderMetadata,
+    application: &Application<'_>,
+    code: String,
+    pkce_verifier: String,
+) -> Result<IdToken, Failure> {
+    redeem(http, metadata, application, code, pkce_verifier)
+        .await?
         .id_token()
         .cloned()
         .ok_or_else(|| "échange : réponse sans jeton d’identité".into())

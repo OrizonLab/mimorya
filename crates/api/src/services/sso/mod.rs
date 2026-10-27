@@ -34,6 +34,17 @@ pub use saml::summary as saml_summary;
 pub use saml_return::SamlReturn;
 pub use sign_in::{Return, SignInFailure};
 
+// What a person's link at their company's provider shares with a sign-in
+// (ADR-116): the client, the sealed value the browser keeps, the return.
+pub(crate) use address::address_problem;
+pub(crate) use attempt::{open_value, seal_value};
+pub(crate) use http::ProviderHttp;
+pub(crate) use oidc::{
+    Application, Failure, IdToken, authorization, discover, error_code, redeem, token_claims,
+    verify,
+};
+pub(crate) use sign_in::same_state;
+
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -47,8 +58,6 @@ use openidconnect::core::CoreProviderMetadata;
 use uuid::Uuid;
 
 use crate::secrets::{SecretCipher, SecretStore};
-use address::address_problem;
-use http::ProviderHttp;
 use metadata::MetadataCache;
 
 /// Where a provider sends the browser back, under the web origin.

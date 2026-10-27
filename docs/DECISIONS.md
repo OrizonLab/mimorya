@@ -5890,3 +5890,79 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     retirée la rend ; l'API enregistrée en tient cinquante) ;
   - les bornes de 768 Kio et de cinquante opérations sont rappelées par l'écran ; la
     plateforme seule les fait respecter.
+
+## ADR-116 — Microsoft 365 relié par chacun : déclaration et liaison (connecteurs, huitième lot)
+
+- **Date** : 2026-10-27 · **Statut** : acceptée
+- **Contexte** : les collaborateurs veulent que l'agent lise leurs e-mails et leur agenda.
+  Microsoft offre deux voies. Les **permissions d'application** donnent à l'application
+  toutes les boîtes de l'annuaire : la plateforme seule empêcherait alors l'agent de lire
+  celle d'un autre. Les **permissions déléguées** donnent à l'application ce que la
+  personne peut lire elle-même, rien de plus, avec son accord.
+- **Décision** :
+  - **Permissions déléguées seulement.** La plateforme ne demande jamais de permission
+    d'application. Chaque personne relie elle-même son compte ; Microsoft lui fait
+    respecter ses propres droits, quoi que fasse le modèle ;
+  - **la déclaration** : un administrateur des connecteurs (`connector:manage`, sur toute
+    l'entreprise) déclare l'application de l'entreprise dans son annuaire Microsoft Entra
+    (`POST /admin/connectors/microsoft365`) :
+    - l'identifiant de l'annuaire et celui de l'application, des GUID ;
+    - son secret, scellé comme le jeton d'un connecteur, jamais renvoyé ni audité ;
+    - une seule par entreprise (index unique), car ses outils porteront des noms fixes ;
+    - l'émetteur (celui de l'annuaire) et l'adresse de Microsoft Graph sont ceux de la
+      plateforme : l'administration ne les écrit pas et ne les change pas ;
+    - la vue des connecteurs montre l'adresse de retour à inscrire dans l'application
+      (`/api/account/links/callback`) et combien de personnes ont relié leur compte ;
+    - son nom, son activation et son secret changent comme pour un autre connecteur ;
+      son secret se remplace mais ne se retire pas ;
+  - **la liaison** : une personne qui peut utiliser les connecteurs (`connector:use`)
+    relie son compte (`POST /account/links/{connecteur}`) :
+    - le navigateur part vers l'annuaire avec son adresse comme indication et les
+      permissions `openid`, `email`, `profile`, `offline_access`, `Mail.Read` et
+      `Calendars.Read` ; une tentative est scellée dans le cookie `mimorya_link`
+      (`state`, `nonce`, PKCE, la personne, dix minutes) ;
+    - le retour (`GET /api/account/links/callback`) exige la session de cette personne et
+      sa propre tentative, échange le code et vérifie le jeton d'identité ;
+    - ce jeton doit nommer **son propre compte** : l'identifiant d'objet de l'annuaire,
+      et son nom de connexion (ou une adresse dont l'annuaire a vérifié le domaine) égal
+      à l'adresse de son compte, à la casse près. Le compte d'un collègue, même
+      accessible à la personne, n'est jamais relié ;
+    - sans jeton de renouvellement (accès hors connexion refusé), rien n'est relié ;
+  - **ce qui est gardé** : la liaison (`account_links`) garde le sujet, l'adresse, les
+    permissions accordées, leurs dates, et le jeton de renouvellement :
+    - ce jeton est scellé par la clé maîtresse, lié à l'entreprise, au connecteur et à la
+      personne (`account_link.{connecteur}.{personne}`) ;
+    - il n'est jamais montré, ni journalisé, ni audité ;
+    - le jeton d'accès reçu avec le code n'est pas gardé ;
+  - **le retour au navigateur** : il revient sur `/account` en disant seulement
+    `liaison=ok`, `autre-compte` ou `echec`. Chaque refus est audité avec sa raison,
+    sans jeton ni code, et une nouvelle liaison remplace l'ancienne ;
+  - **la fin d'une liaison** : la personne la retire quand elle veut
+    (`DELETE /account/links/{connecteur}`) et la voit encore si le connecteur est
+    désactivé ou si son droit lui est retiré. La liaison disparaît aussi avec son
+    connecteur et avec un compte désactivé, même pendant l'aller-retour chez
+    Microsoft : la ligne du compte est tenue au moment de garder la liaison, et un
+    connecteur désactivé ou supprimé entre-temps ne relie rien ;
+  - **la déclaration de Microsoft** est lue à chaque étape, jamais gardée : une liaison
+    est rare. Les retours sont comptés avec les connexions par un fournisseur ;
+  - les outils (recherche et lecture des e-mails, agenda) viennent au lot suivant.
+    Jusque-là, le connecteur démarre sans outil.
+- **Conséquences** :
+  - une personne doit se reconnecter à Microsoft pour relier son compte et peut révoquer
+    son accord depuis Microsoft ; ce qui est relié ne sert ensuite qu'aux runs faits pour
+    elle (lot suivant) ;
+  - un compte dont l'adresse diffère de son nom de connexion Microsoft ne peut pas être
+    relié : l'administration corrige alors l'adresse du compte ;
+  - à l'écran, la carte de l'application déclarée par l'API n'a encore ni « Modifier »
+    ni « Supprimer » : ils viennent avec l'écran ;
+  - restent : les outils de lecture, l'écran (« Mon compte » et « Connecteurs »),
+    l'envoi d'e-mails et la création d'événements sous validation, puis Google Workspace ;
+  - tests : `crates/core/src/account_links/tests.rs` (déclaration, identité, permissions
+    gardées), `crates/api/tests/account_links.rs` (liaison faite et retirée, jeton scellé
+    et absent de l'audit, compte d'un autre refusé, retour d'une autre personne ou
+    tentative refusé, sans `connector:use` ni connecteur actif, liaison partie avec le
+    connecteur et le compte désactivé), `crates/api/tests/account_link_returns.rs`
+    (retour après la désactivation ou la suppression de l'application, application
+    d'une autre entreprise), `crates/api/tests/microsoft365_connector.rs`
+    (déclaration vérifiée, une par entreprise, secret remplacé jamais retiré, adresses
+    fixes, outil inconnu refusé).

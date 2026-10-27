@@ -106,6 +106,10 @@ pub fn routes(state: &AppState) -> Router<AppState> {
         .route("/admin/connectors/trial", post(connectors::trial))
         .route("/admin/connectors/rest", post(connectors::create_rest))
         .route(
+            "/admin/connectors/microsoft365",
+            post(connectors::create_microsoft365),
+        )
+        .route(
             "/admin/connectors/rest/import",
             post(connectors::import_rest),
         )

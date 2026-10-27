@@ -5,6 +5,7 @@
 #![allow(dead_code)] // not every test binary uses every helper
 
 pub mod access;
+pub mod account_links;
 pub mod accounts;
 mod client;
 pub mod companies;

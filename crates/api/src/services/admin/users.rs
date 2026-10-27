@@ -1,6 +1,7 @@
 //! Accounts: creation (invited, ADR-027), profile, attributes (read by access
 //! policies) and status changes, password reset to a temporary password. A
-//! disabled account loses its sessions and its pending invitation at once.
+//! disabled account loses its sessions, its pending invitation and the
+//! accounts it linked at its company's providers (ADR-116) at once.
 
 use std::collections::BTreeSet;
 
@@ -8,6 +9,7 @@ use mimorya_core::DomainError;
 use mimorya_core::authz::{AssignmentScope, OrgTree, Sensitivity};
 use mimorya_core::collaborator_attributes::normalize_attributes;
 use mimorya_core::identity_providers::email_domain;
+use mimorya_db::repositories::account_links::delete_account_links_of;
 use mimorya_db::repositories::audit::append_audit;
 use mimorya_db::repositories::invitations::delete_invitation_of;
 use mimorya_db::repositories::role_assignments::{
@@ -184,6 +186,8 @@ pub async fn update_user(
     if changes.active == Some(false) {
         revoke_user_sessions(&mut tx, user_id, None).await?;
         delete_invitation_of(&mut tx, user_id).await?;
+        // What they granted at a provider is no longer anyone's to use (ADR-116).
+        delete_account_links_of(&mut tx, user_id).await?;
     }
     let action = match changes.active {
         Some(true) => "user.enabled",

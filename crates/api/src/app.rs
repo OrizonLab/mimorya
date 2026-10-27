@@ -29,6 +29,7 @@ use crate::plugins::session::resolve_identity;
 use crate::plugins::{RateLimiter, RateLimits, SharedDistinctLimiter, SharedLimiter};
 use crate::routes;
 use crate::secrets::SecretStore;
+use crate::services::account_links::AccountLinkService;
 use crate::services::background::BackgroundTasks;
 use crate::services::connectors::ConnectorSettings;
 use crate::services::documents::{DocumentService, Extractor};
@@ -69,6 +70,8 @@ pub struct Services {
     pub runs: RunService,
     /// Signing in through the companies' identity providers (ADR-063).
     pub sso: Arc<SsoService>,
+    /// Accounts each person links at their company's providers (ADR-116).
+    pub account_links: Arc<AccountLinkService>,
     /// Sends the invitation and reset e-mails; `None` when no relay is
     /// configured.
     pub mailer: Option<Arc<dyn Mailer>>,
@@ -192,6 +195,12 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
         &config.web_origin,
         options.dns.unwrap_or_else(SystemDns::shared),
     )?);
+    let account_links = Arc::new(AccountLinkService::new(
+        db.clone(),
+        config.secrets.clone(),
+        options.sso_network.unwrap_or(config.mcp_network),
+        &config.web_origin,
+    )?);
     let mailer = match options.mailer {
         Some(mailer) => mailer,
         None => match &config.mail {
@@ -268,6 +277,7 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
             !config.role.executes_runs(),
         ),
         sso,
+        account_links,
         mailer,
         config,
         db: db.clone(),

@@ -3,6 +3,7 @@
 //! (`apps/web/lib/api/contract.ts`, ADR-036), so that both change together.
 //! A request body is strict: an unknown field is refused, not ignored.
 
+mod account_links;
 pub mod admin;
 mod approval_delegation;
 mod approvals;
@@ -24,6 +25,7 @@ mod sso;
 mod stored;
 mod typescript;
 
+pub use account_links::{AccountLinkStart, AccountLinkView, AccountLinks, LinkedAccount};
 pub use approval_delegation::{Absence, ApprovalDelegations, Delegation};
 pub use approvals::{Approval, ApprovalDecided, ApprovalList, ApprovalPerson, ApprovalVerdict};
 pub use common::{Created, Done};
@@ -80,6 +82,8 @@ pub fn typescript() -> String {
     declarations.add::<SsoLink>();
     declarations.add::<SsoStart>();
     declarations.add::<Done>();
+    declarations.add::<AccountLinks>();
+    declarations.add::<AccountLinkStart>();
     declarations.add::<ConversationList>();
     declarations.add::<ConversationCreated>();
     declarations.add::<ConversationDetail>();
@@ -185,6 +189,7 @@ macro_rules! request_bodies {
             admin::EvaluationRequest,
             admin::NewConnector,
             admin::NewRestConnector,
+            admin::NewMicrosoft365Connector,
             admin::OpenApiDescription,
             admin::ConnectorTrial,
             admin::ConnectorUpdate,

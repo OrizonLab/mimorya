@@ -9,6 +9,7 @@ use std::collections::HashMap;
 
 use mimorya_connectors::outbound::{token_problem, url_problem};
 use mimorya_core::DomainError;
+use mimorya_core::account_links::MICROSOFT365;
 use mimorya_core::authz::PermissionInfo;
 use mimorya_db::repositories::audit::append_audit;
 use mimorya_db::repositories::connectors::{
@@ -171,12 +172,22 @@ pub async fn update_connector(
         let Some(editable) = Editable::of(&instance) else {
             let refusal = if instance.connector_type == "rest" {
                 "Déclaration de cette API illisible : supprimez-la puis ajoutez-la de nouveau"
+            } else if instance.connector_type == MICROSOFT365 {
+                "Déclaration Microsoft 365 illisible : supprimez le connecteur puis ajoutez-le de \
+                 nouveau"
             } else {
                 "Ce connecteur est réglé par l’exploitant : seuls son nom et son activation \
                  changent ici"
             };
             return Err(DomainError::validation(refusal).into());
         };
+        if editable.requires_secret() && matches!(changes.token, Some(TokenChange::Remove)) {
+            return Err(DomainError::validation(
+                "Le secret de l’application ne se retire pas : remplacez-le, ou supprimez le \
+                 connecteur",
+            )
+            .into());
+        }
         let replaced = changes.rest.as_ref().and_then(|r| r.operations.as_deref());
         let policies = editable.policies_after(
             &instance.tool_policies,
@@ -256,8 +267,8 @@ pub async fn delete_connector(
     };
     if !added_here(&instance) {
         return Err(DomainError::validation(
-            "Seuls les serveurs MCP et les API REST ajoutés ici se suppriment ici ; désactivez \
-             plutôt ce connecteur",
+            "Seuls les serveurs MCP, les API REST et l’application Microsoft 365 ajoutés ici se \
+             suppriment ici ; désactivez plutôt ce connecteur",
         )
         .into());
     }

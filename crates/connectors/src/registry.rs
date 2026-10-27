@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use crate::demo_interventions::DemoInterventionsConnector;
 use crate::mcp::McpConnector;
+use crate::microsoft365::Microsoft365Connector;
 use crate::rest::RestConnector;
 use crate::types::Connector;
 
@@ -12,6 +13,7 @@ pub fn connector_types() -> Vec<Arc<dyn Connector>> {
         Arc::new(DemoInterventionsConnector),
         Arc::new(McpConnector),
         Arc::new(RestConnector),
+        Arc::new(Microsoft365Connector),
     ]
 }
 

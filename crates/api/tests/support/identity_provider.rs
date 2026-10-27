@@ -67,6 +67,8 @@ pub struct Tamper {
     pub nonce: Option<String>,
     /// Signed by a key it does not publish.
     pub unpublished_key: bool,
+    /// No refresh token, though offline access was asked (ADR-116).
+    pub withhold_refresh_token: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -82,6 +84,8 @@ struct Grant {
     nonce: Option<String>,
     challenge: String,
     redirect_uri: String,
+    /// The permissions asked: offline access brings a refresh token.
+    scope: String,
 }
 
 #[derive(Default)]
@@ -184,8 +188,8 @@ impl MockIdentityProvider {
         self.shared.lock().expect("provider").extra_keys = count;
     }
 
-    /// The browser's visit to the authorization address: the query of the
-    /// return to the application (`code`, `state`), and its path.
+    /// The browser's visit to the authorization address: the return to the
+    /// application, its path under `/api` and its query (`code`, `state`).
     pub fn authorize(&self, address: &str) -> String {
         let url = Url::parse(address).expect("authorization address");
         assert!(
@@ -198,13 +202,20 @@ impl MockIdentityProvider {
             scopes.contains(&"openid") && scopes.contains(&"email"),
             "{scopes:?}"
         );
-        let (back, _) = self
+        let (back, redirect_uri) = self
             .shared
             .lock()
             .expect("provider")
             .grant(&params)
             .expect("authorization granted");
-        format!("/auth/sso/callback?{back}")
+        let redirect = Url::parse(&redirect_uri).expect("redirect address");
+        let path = redirect.path();
+        format!("{}?{back}", path.strip_prefix("/api").unwrap_or(path))
+    }
+
+    /// The refresh token it issued for this person's subject.
+    pub fn refresh_token_of(subject: &str) -> String {
+        format!("jeton-de-renouvellement-{subject}")
     }
 }
 
@@ -247,6 +258,7 @@ impl Provider {
                 nonce: params.get("nonce").cloned(),
                 challenge: param("code_challenge")?,
                 redirect_uri: redirect_uri.clone(),
+                scope: param("scope")?,
             },
         );
         let back = url::form_urlencoded::Serializer::new(String::new())

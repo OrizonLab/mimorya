@@ -10,6 +10,7 @@ mod embedding;
 mod identity_providers;
 mod llm;
 mod memory_settings;
+mod microsoft365;
 mod mission_settings;
 mod organization;
 mod policies;
@@ -41,6 +42,7 @@ pub use identity_providers::{
 };
 pub use llm::{LlmChoice, LlmSettingsView, LlmTestResult, LlmView, PlatformModel, ProviderKind};
 pub use memory_settings::{MemorySettingsUpdate, MemorySettingsView};
+pub use microsoft365::{Microsoft365App, NewMicrosoft365Connector};
 pub use mission_settings::{MissionSettingsUpdate, MissionSettingsView};
 pub use policies::{
     ConditionAttribute, NewPolicy, Policies, PolicyEffect, PolicyUpdate, PolicyView,

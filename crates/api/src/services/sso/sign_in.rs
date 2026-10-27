@@ -74,7 +74,7 @@ impl SignInFailure {
 pub(super) type Outcome<T> = Result<T, SignInFailure>;
 
 /// Same length, compared whole: the state never leaks by timing.
-fn same_state(a: &str, b: &str) -> bool {
+pub(crate) fn same_state(a: &str, b: &str) -> bool {
     Sha256::digest(a.as_bytes()) == Sha256::digest(b.as_bytes())
 }
 
