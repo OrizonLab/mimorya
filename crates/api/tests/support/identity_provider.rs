@@ -26,6 +26,9 @@ use serde_json::{Map, Value, json};
 use url::Url;
 
 pub const CLIENT_ID: &str = "mimorya-tests";
+/// A Microsoft 365 application's client ID, a GUID as the administration
+/// checks it: accepted too, with the same secret (ADR-118).
+pub const APPLICATION_ID: &str = "0b1c2d3e-4f50-6172-8394-a5b6c7d8e9f0";
 pub const CLIENT_SECRET: &str = "secret-client-de-test-0123456789";
 
 #[path = "identity_provider/refresh.rs"]
@@ -84,6 +87,8 @@ impl AdditionalClaims for Extra {}
 
 struct Grant {
     person: Person,
+    /// Its token's audience.
+    client_id: String,
     nonce: Option<String>,
     challenge: String,
     redirect_uri: String,
@@ -256,8 +261,9 @@ impl Provider {
                 .cloned()
                 .ok_or_else(|| format!("missing {name}"))
         };
+        let client_id = param("client_id")?;
         if param("response_type")? != "code"
-            || param("client_id")? != CLIENT_ID
+            || (client_id != CLIENT_ID && client_id != APPLICATION_ID)
             || param("code_challenge_method")? != "S256"
         {
             return Err("unexpected request".into());
@@ -272,6 +278,16 @@ impl Provider {
                         .extra
                         .insert("name".into(), Value::String(name.clone()));
                 }
+                // A link (ADR-116): the directory's account, named as
+                // Microsoft names it.
+                if params
+                    .get("scope")
+                    .is_some_and(|scope| scope.split(' ').any(|s| s == "offline_access"))
+                {
+                    let oid = Value::String(format!("objet-{email}"));
+                    person.extra.insert("oid".into(), oid);
+                    person.preferred_username = Some(email.clone());
+                }
                 person
             }
             (None, None) => return Err("nobody signs in".into()),
@@ -282,6 +298,7 @@ impl Provider {
             code.clone(),
             Grant {
                 person,
+                client_id,
                 nonce: params.get("nonce").cloned(),
                 challenge: param("code_challenge")?,
                 redirect_uri: redirect_uri.clone(),

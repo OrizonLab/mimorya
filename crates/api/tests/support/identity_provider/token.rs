@@ -22,7 +22,9 @@ use openidconnect::{
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
-use super::{CLIENT_ID, CLIENT_SECRET, Extra, MockIdentityProvider, Shared, signing_key};
+use super::{
+    APPLICATION_ID, CLIENT_ID, CLIENT_SECRET, Extra, MockIdentityProvider, Shared, signing_key,
+};
 
 fn refused(error: &str) -> Response {
     (
@@ -50,7 +52,7 @@ fn authenticated(headers: &HeaderMap, form: &HashMap<String, String>) -> bool {
             _ => return false,
         },
     };
-    id == CLIENT_ID && secret == CLIENT_SECRET
+    (id == CLIENT_ID || id == APPLICATION_ID) && secret == CLIENT_SECRET
 }
 
 pub(super) async fn token(
@@ -108,7 +110,11 @@ pub(super) async fn token(
     standard = standard
         .set_email_verified(person.email_verified)
         .set_preferred_username(person.preferred_username.map(EndUserUsername::new));
-    let audience = provider.tamper.audience.clone().unwrap_or(CLIENT_ID.into());
+    let audience = provider
+        .tamper
+        .audience
+        .clone()
+        .unwrap_or(grant.client_id.clone());
     let claims = IdTokenClaims::<Extra, CoreGenderClaim>::new(
         IssuerUrl::new(provider.issuer.clone()).expect("issuer"),
         vec![Audience::new(audience)],

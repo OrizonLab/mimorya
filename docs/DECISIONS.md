@@ -6074,3 +6074,53 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
       dont l'application est désactivée ; un renouvellement ou une révocation lus avant
       une liaison refaite la laissent intacte ;
     - `crates/api/src/services/account_links/tokens.rs` : jetons gardés.
+
+## ADR-118 — Écrans Microsoft 365 : comptes reliés dans « Mon compte », application dans « Connecteurs » (connecteurs, lot 9)
+
+- **Date** : 2026-10-27 · **Statut** : acceptée
+- **Contexte** : l'application Microsoft 365 d'une entreprise (ADR-116) et les outils qui
+  lisent avec le jeton de chacun (ADR-117) existaient par l'API seulement. Une personne
+  ne pouvait pas relier son compte depuis l'interface, alors que les outils lui disent de
+  le faire dans « Mon compte ».
+- **Décision** :
+  - **« Mon compte » : section « Comptes reliés »**, montrée dès que l'entreprise a
+    déclaré son application, ou tant que la personne y garde une liaison :
+    - pour chaque application : relié ou non, l'adresse reliée, sa date et les
+      permissions accordées ;
+    - « Relier mon compte » (« Relier de nouveau » si déjà relié) quand la personne peut
+      relier : le navigateur part chez Microsoft, qui le renvoie sur « Mon compte » ;
+    - « Retirer la liaison », après confirmation, qui rappelle que l'accord donné à
+      l'application se retire aussi chez Microsoft ;
+    - une liaison qui ne sert pas (application désactivée, connecteurs retirés à la
+      personne) le dit, et se retire ;
+    - l'issue du retour (`?liaison=ok|autre-compte|echec`) est dite une fois, puis
+      retirée de l'adresse : une page rechargée ne la redit pas ;
+  - **« Connecteurs » : l'application de l'entreprise** :
+    - « Déclarer l'application Microsoft 365 » n'est proposé que tant qu'aucune n'est
+      déclarée (une par entreprise) : nom, ID de l'annuaire, ID de l'application et secret ;
+    - sa carte montre ses identifiants, ses outils (`m365_…`), si le secret est enregistré,
+      combien de personnes ont relié leur compte, et l'adresse de retour à inscrire dans
+      l'application ;
+    - « Vérifier la déclaration » ne joint pas Microsoft, et le dit ; les règles des trois
+      outils se règlent ensuite comme celles d'une API REST ;
+    - « Modifier » change le nom et remplace le secret (vide : le secret enregistré est
+      gardé) ; « Supprimer » dit combien de liaisons partent avec l'application ;
+  - **les outils nomment de nouveau « Mon compte »** dans leurs messages (ADR-117) ;
+  - **parcours de bout en bout** : le serveur des tests remplace l'émetteur avec lequel
+    une application est déclarée par celui de son fournisseur simulé
+    (`BuildOptions::microsoft365_issuer`, jamais réglé en production, où l'émetteur reste
+    celui de l'annuaire chez Microsoft). Le fournisseur simulé accepte un identifiant
+    d'application en GUID et nomme le compte de l'annuaire (`oid`, nom de connexion) quand
+    une liaison est demandée. Le connecteur n'y est jamais démarré : ses outils sont
+    testés par l'API (ADR-117) ;
+  - les options de construction du serveur pour les tests (`BuildOptions`) quittent
+    `app.rs` pour `build_options.rs`.
+- **Conséquences** :
+  - une personne relie, voit et retire son compte sans l'API ; un administrateur déclare,
+    modifie et supprime l'application sans l'API ;
+  - restent : l'envoi d'e-mails et la création de rendez-vous sous validation, Google
+    Workspace ;
+  - tests : `apps/web/e2e/microsoft365.spec.ts` (déclaration, secret jamais listé, une par
+    entreprise, liaison par le fournisseur simulé et retour sur « Mon compte », compte
+    relié compté, renommage, retrait de la liaison, suppression de l'application, issue
+    d'un retour dite une fois).

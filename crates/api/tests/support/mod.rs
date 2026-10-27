@@ -283,6 +283,7 @@ impl TestApi {
             sso_network: None,
             global_rate_limit_per_minute: None,
             dns: Some(dns.clone()),
+            microsoft365_issuer: None,
         };
         let app = build_app(config, options).await.expect("app");
         Self {

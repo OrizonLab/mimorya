@@ -162,6 +162,8 @@ async fn main() -> anyhow::Result<()> {
             // address: the whole suite would share a minute's 600.
             global_rate_limit_per_minute: Some(GLOBAL_RATE_LIMIT_PER_MINUTE),
             dns: Some(dns),
+            // Its people link their accounts at the local provider (ADR-118).
+            microsoft365_issuer: Some(idp.issuer.clone()),
         },
     )
     .await?;

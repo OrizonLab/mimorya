@@ -74,6 +74,9 @@ pub struct AccountLinkService {
     tokens: AccessTokens,
     /// The applications' provider declarations, for renewals.
     declarations: MetadataCache<CoreProviderMetadata>,
+    /// Replaces the issuer an application is declared with (end-to-end
+    /// tests: the local provider, ADR-118).
+    declared_issuer: Option<String>,
 }
 
 impl AccountLinkService {
@@ -82,6 +85,7 @@ impl AccountLinkService {
         cipher: Option<Arc<SecretCipher>>,
         network: NetworkPolicy,
         web_origin: &str,
+        declared_issuer: Option<String>,
     ) -> anyhow::Result<Self> {
         Ok(Self {
             db,
@@ -92,7 +96,14 @@ impl AccountLinkService {
             redirect_uri: format!("{web_origin}{CALLBACK_PATH}"),
             tokens: AccessTokens::default(),
             declarations: MetadataCache::default(),
+            declared_issuer,
         })
+    }
+
+    /// The issuer a company's application is declared with instead of its
+    /// directory's, if this server replaces it (end-to-end tests).
+    pub fn declared_issuer(&self) -> Option<&str> {
+        self.declared_issuer.as_deref()
     }
 
     /// The address to register in the company's application.

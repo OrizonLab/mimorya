@@ -6,13 +6,17 @@ import { Badge, Button, Card, EmptyState, Loaded } from '@/components/ui';
 import { useApiData, type Connectors } from '@/lib/api';
 import { ConnectorCard } from './connector-card';
 import { McpForm } from './mcp-form';
+import { Microsoft365Form } from './microsoft365-form';
 import { RestForm } from './rest-form';
 
-/** The company's connectors, and adding an MCP server or a REST API. */
+/**
+ * The company's connectors, and adding an MCP server, a REST API or its
+ * Microsoft 365 application, one per company (ADR-118).
+ */
 export function ConnectorsTab() {
   const state = useApiData<Connectors>('/admin/connectors');
   // What is being added, if anything.
-  const [adding, setAdding] = useState<'mcp' | 'rest' | null>(null);
+  const [adding, setAdding] = useState<'mcp' | 'rest' | 'microsoft365' | null>(null);
   const done = (changed: boolean) => {
     setAdding(null);
     if (changed) state.reload();
@@ -33,6 +37,12 @@ export function ConnectorsTab() {
               <RestForm data={data} onDone={done} />
             </Card>
           )}
+          {adding === 'microsoft365' && (
+            <Card className="p-4">
+              <p className="mb-3 font-medium">Application Microsoft 365 de l’entreprise</p>
+              <Microsoft365Form onDone={done} />
+            </Card>
+          )}
           {!adding && (
             <div className="flex flex-wrap gap-2">
               <Button variant="secondary" onClick={() => setAdding('mcp')}>
@@ -41,6 +51,11 @@ export function ConnectorsTab() {
               <Button variant="secondary" onClick={() => setAdding('rest')}>
                 <Plus className="size-4" aria-hidden /> Ajouter une API REST
               </Button>
+              {!data.instances.some((i) => i.type === 'microsoft365') && (
+                <Button variant="secondary" onClick={() => setAdding('microsoft365')}>
+                  <Plus className="size-4" aria-hidden /> Déclarer l’application Microsoft 365
+                </Button>
+              )}
             </div>
           )}
           {data.instances.length === 0 && <EmptyState title="Aucun connecteur" />}
