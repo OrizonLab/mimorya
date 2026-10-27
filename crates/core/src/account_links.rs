@@ -198,6 +198,18 @@ pub fn renewal_scopes(granted: &str) -> Vec<&'static str> {
         .collect()
 }
 
+/// What a link lets the tools do now (ADR-120): the Graph permissions
+/// they need, writing only when the company lets them write, among those
+/// the person granted (reading when the provider did not say).
+pub fn serving_scopes(granted: &str, write_tools: bool) -> Vec<&'static str> {
+    let needed = tool_scopes(write_tools);
+    let missing = missing_scopes(granted, &needed);
+    needed
+        .into_iter()
+        .filter(|scope| !missing.contains(scope))
+        .collect()
+}
+
 /// Which of the permissions a tool needs the person did not grant
 /// (ADR-119): they link their account again to grant them.
 pub fn missing_scopes<'a>(granted: &str, needs: &[&'a str]) -> Vec<&'a str> {

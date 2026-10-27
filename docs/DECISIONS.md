@@ -6261,13 +6261,21 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
   - **carte de l'application** : « Envoi d'e-mails et création de rendez-vous permis,
     chacun validé », ou « Lecture seule » ;
   - **« Mon compte »** :
-    - ce que l'agent peut faire est dit en mots (lire vos e-mails, lire votre agenda,
-      envoyer des e-mails en votre nom, écrire dans votre agenda), au lieu des noms des
-      permissions ;
+    - ce que l'agent peut faire est calculé par le serveur (`can`, `serving_scopes`
+      dans le cœur) : les permissions dont les outils ont besoin, l'écriture seulement si
+      l'application la permet, parmi celles que la personne a accordées (la lecture quand
+      Microsoft ne les a pas listées), et rien quand la liaison ne sert pas (application
+      désactivée, connecteurs retirés). L'interface le dit en mots (lire vos e-mails, lire
+      votre agenda, envoyer des e-mails en votre nom, écrire dans votre agenda), une
+      permission inconnue par son nom ; une permission accordée mais que les outils
+      n'utilisent pas n'est pas annoncée ;
     - avant la liaison, le texte dit si l'application permet l'envoi, chaque fois après
       validation. La vue d'une liaison donne pour cela `writeTools` ;
     - quand l'application demande des permissions que la liaison n'accorde pas
       (`toGrant`), elles sont dites en mots, et « Relier de nouveau » est mis en avant ;
+      rien n'est demandé tant que l'application n'est pas disponible ;
+    - le retour d'une liaison et la confirmation de son retrait parlent de lecture et
+      d'écriture ;
   - **validation d'un envoi** : rien de neuf. La carte de validation montre la
     description (destinataires d'abord) et les paramètres exacts (ADR-119).
 - **Conséquences** :
@@ -6276,8 +6284,15 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     l'API (`crates/api/tests/microsoft365_writes.rs`, ADR-119), pas par le navigateur ;
   - reste : Google Workspace ;
   - tests :
-    - `apps/web/e2e/microsoft365.spec.ts` : application en lecture seule, puis renommée
-      avec l'écriture permise et relue par l'API ; Léa voit ce que l'agent peut faire, est
-      invitée à accorder l'envoi et l'écriture dans son agenda, relie de nouveau son
-      compte, et l'invitation disparaît ;
-    - `crates/api/tests/microsoft365_writes.rs` : `writeTools` dans la vue de la liaison.
+    - `apps/web/e2e/microsoft365.spec.ts` : application en lecture seule ; Léa voit ce que
+      l'agent peut lire ; un renommage n'envoie pas l'option inchangée ; application
+      désactivée : plus rien d'annoncé ;
+    - `apps/web/e2e/microsoft365-writing.spec.ts` : application déclarée avec l'écriture ;
+      Léa, pas encore reliée, en est avertie ; écriture retirée (carte « Lecture seule »),
+      Léa relie son compte en lecture ; écriture permise de nouveau : invitation à
+      l'accorder, absente tant que l'application est désactivée ; nouvelle liaison qui
+      l'accorde ; écriture retirée une fois accordée : la page n'annonce plus l'envoi ;
+      chaque étape relue par l'API ;
+    - `crates/api/tests/microsoft365_writes.rs` : `writeTools` et `can` dans la vue de la
+      liaison (lecture, écriture accordée, écriture retirée, application désactivée) ;
+    - `crates/core/src/account_links/tests.rs` : ce qu'une liaison sert.

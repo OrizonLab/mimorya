@@ -58,6 +58,7 @@ async fn list(
                 address: link.address,
                 scopes: link.scopes.split_whitespace().map(Into::into).collect(),
                 to_grant: linkable.to_grant,
+                can: linkable.can,
                 linked_at: iso(&link.created_at),
             }),
         })

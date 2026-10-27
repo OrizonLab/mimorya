@@ -143,6 +143,8 @@ async fn a_link_made_before_grants_writing_by_linking_again() {
     let before = links(&claire).await;
     assert_eq!(before[0]["writeTools"], false);
     assert_eq!(before[0]["linked"]["toGrant"], json!([]));
+    let reading = json!([MAIL_READ, "Calendars.Read"]);
+    assert_eq!(before[0]["linked"]["can"], reading);
 
     let paul = api.sign_in(user::PAUL).await;
     let path = format!("/admin/connectors/{connector}");
@@ -150,6 +152,8 @@ async fn a_link_made_before_grants_writing_by_linking_again() {
     assert_eq!(allowed.status, StatusCode::OK, "{}", allowed.text());
     let listed = links(&claire).await;
     assert_eq!(listed[0]["writeTools"], true);
+    // Let, not granted: still reading only.
+    assert_eq!(listed[0]["linked"]["can"], reading);
     assert_eq!(
         listed[0]["linked"]["toGrant"],
         json!([MAIL_SEND, CALENDARS_WRITE])
@@ -198,6 +202,18 @@ async fn a_link_made_before_grants_writing_by_linking_again() {
     // Renewed with what she granted, writing included.
     let renewal = idp.renewals().last().cloned().unwrap();
     assert!(renewal.split(' ').any(|s| s == MAIL_SEND), "{renewal}");
+    let all = json!([MAIL_READ, "Calendars.Read", MAIL_SEND, CALENDARS_WRITE]);
+    assert_eq!(links(&claire).await[0]["linked"]["can"], all);
+
+    // Writing taken back, then the application disabled: granted, unused.
+    for (change, can) in [
+        (json!({ "writeTools": false }), reading),
+        (json!({ "enabled": false }), json!([])),
+    ] {
+        let changed = paul.patch(&path, change).await;
+        assert_eq!(changed.status, StatusCode::OK, "{}", changed.text());
+        assert_eq!(links(&claire).await[0]["linked"]["can"], can);
+    }
 }
 
 #[tokio::test]

@@ -19,7 +19,7 @@ const LINKS = '/account/links';
 const OUTCOMES = {
   ok: {
     failed: false,
-    text: 'Votre compte Microsoft 365 est relié : l’agent peut y lire vos e-mails et votre agenda, avec vos propres droits.',
+    text: 'Votre compte Microsoft 365 est relié : l’agent y agit avec vos propres droits, selon ce que vous avez accordé et ce que l’application permet, et n’y envoie rien sans validation.',
   },
   'autre-compte': {
     failed: true,
@@ -38,18 +38,11 @@ function isOutcome(value: string | null): value is Outcome {
 }
 
 /**
- * What these permissions let the agent do, in words: those it knows, each
- * once (Microsoft may name a permission by its address, ADR-120).
+ * What these permissions, as the server names them, let the agent do, in
+ * words (ADR-120); another is shown by its name.
  */
 function inWords(scopes: string[]): string[] {
-  const said = scopes.flatMap((scope) => {
-    const name = (scope.split('/').pop() ?? scope).toLowerCase();
-    const known = Object.entries(MICROSOFT365_PERMISSIONS).find(
-      ([permission]) => permission.toLowerCase() === name,
-    );
-    return known ? [known[1]] : [];
-  });
-  return [...new Set(said)];
+  return scopes.map((scope) => MICROSOFT365_PERMISSIONS[scope] ?? scope);
 }
 
 /**
@@ -116,7 +109,7 @@ function LinkRow({ connector, onChanged }: { connector: AccountLinkView; onChang
 
   async function unlink() {
     const question =
-      'Retirer la liaison de votre compte Microsoft 365 ? L’agent ne pourra plus y lire. L’accord donné à l’application reste chez Microsoft : retirez-le aussi dans votre compte Microsoft.';
+      'Retirer la liaison de votre compte Microsoft 365 ? L’agent ne pourra plus y lire ni y écrire. L’accord donné à l’application reste chez Microsoft : retirez-le aussi dans votre compte Microsoft.';
     if (!window.confirm(question)) return;
     if (await action.run(() => api.delete(path))) onChanged();
   }
@@ -129,8 +122,9 @@ function LinkRow({ connector, onChanged }: { connector: AccountLinkView; onChang
       </div>
       {linked ? (
         <p className="text-sm text-muted">
-          Relié à {linked.address} le {formatDate(linked.linkedAt)}. L’agent peut :{' '}
-          {inWords(linked.scopes).join(', ') || '—'}.
+          Relié à {linked.address} le {formatDate(linked.linkedAt)}.
+          {/* What the tools may do now, as the server says it (ADR-120). */}
+          {linked.can.length > 0 && ` L’agent peut : ${inWords(linked.can).join(', ')}.`}
         </p>
       ) : (
         <p className="text-sm text-muted">

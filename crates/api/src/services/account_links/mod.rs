@@ -27,7 +27,7 @@ use std::sync::Arc;
 use mimorya_connectors::microsoft365::Microsoft365Config;
 use mimorya_connectors::outbound::NetworkPolicy;
 use mimorya_core::DomainError;
-use mimorya_core::account_links::{MICROSOFT365, missing_scopes, tool_scopes};
+use mimorya_core::account_links::{MICROSOFT365, missing_scopes, serving_scopes, tool_scopes};
 use mimorya_db::Database;
 use mimorya_db::repositories::account_links::{
     AccountLinkRow, delete_account_link, list_account_links_of,
@@ -61,6 +61,9 @@ pub struct Linkable {
     /// The Graph permissions its tools need now that the link does not
     /// grant (ADR-119): granted by linking again.
     pub to_grant: Vec<String>,
+    /// Those its tools may use now: none while the link does not serve
+    /// (ADR-120).
+    pub can: Vec<String>,
 }
 
 /// Sent to the provider: its address, and the attempt the browser keeps.
@@ -131,12 +134,14 @@ impl AccountLinkService {
                 let available = may_use && instance.enabled;
                 let write_tools = Microsoft365Config::read(&instance.config)
                     .is_ok_and(|config| config.write_tools);
+                let owned = |scopes: Vec<&str>| scopes.into_iter().map(String::from).collect();
                 let to_grant = link.as_ref().map_or_else(Vec::new, |link| {
-                    missing_scopes(&link.scopes, &tool_scopes(write_tools))
-                        .into_iter()
-                        .map(String::from)
-                        .collect()
+                    owned(missing_scopes(&link.scopes, &tool_scopes(write_tools)))
                 });
+                let can = match &link {
+                    Some(link) if available => owned(serving_scopes(&link.scopes, write_tools)),
+                    _ => Vec::new(),
+                };
                 (available || link.is_some()).then_some(Linkable {
                     connector_id: instance.id,
                     name: instance.name,
@@ -145,6 +150,7 @@ impl AccountLinkService {
                     link,
                     write_tools,
                     to_grant,
+                    can,
                 })
             })
             .collect();

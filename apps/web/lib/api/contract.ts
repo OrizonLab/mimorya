@@ -877,7 +877,13 @@ scopes: Array<string>,
  * Those the application asks now that the person did not grant: the
  * tools that need them say so until the person links again (ADR-119).
  */
-toGrant: Array<string>, linkedAt: string, };
+toGrant: Array<string>,
+/**
+ * What the tools may do with it now: the Graph permissions they need
+ * that it grants, writing only when the application lets it; none
+ * while the link does not serve (ADR-120).
+ */
+can: Array<string>, linkedAt: string, };
 
 /**
  * Body of `PUT /admin/llm` and `PUT /admin/llm/verification`: a provider of
