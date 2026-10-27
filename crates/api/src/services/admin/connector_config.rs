@@ -62,8 +62,8 @@ impl Editable {
     }
 
     /// The tools of a REST API whose operation these operations remove or
-    /// change in method or path: what a policy allowed of them no longer
-    /// holds (a read become a deletion).
+    /// change in method, path or parameters: what a policy allowed of them
+    /// no longer holds (a read become a deletion, a filter become a write).
     pub fn redeclared(&self, operations: &[rest::RestOperation]) -> Vec<String> {
         let Self::Rest(config) = self else {
             return Vec::new();
@@ -76,10 +76,31 @@ impl Editable {
                     after.name == before.name
                         && after.method == before.method
                         && after.path == before.path
+                        && after.parameters == before.parameters
                 })
             })
             .map(|before| rest::rest_tool_name(&config.prefix, &before.name))
             .collect()
+    }
+
+    /// The tools of a REST API once these operations replace its own, if
+    /// they do: the only ones its policies may name, so that none waits for
+    /// an operation of that name to come back (ADR-113). `None` for an MCP
+    /// server, whose tools are known only once it answers.
+    pub fn declared_tools(
+        &self,
+        operations: Option<&[rest::RestOperation]>,
+    ) -> Option<Vec<String>> {
+        let Self::Rest(config) = self else {
+            return None;
+        };
+        let operations = operations.unwrap_or(&config.operations);
+        Some(
+            operations
+                .iter()
+                .map(|operation| rest::rest_tool_name(&config.prefix, &operation.name))
+                .collect(),
+        )
     }
 
     /// Which tools its policies may name, and how.

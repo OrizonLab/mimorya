@@ -158,7 +158,8 @@ Repères à l'intérieur des crates :
   `api/tests/` (intégration, harnais dans `support/`, dont les fournisseurs d'identité
   simulés, OpenID Connect et SAML).
 - `web/components/<fonctionnalité>/` (account — dont les e-mails reçus, ADR-094 —,
-  admin — dont `admin/llm/` : modèle des conversations et modèle de contrôle des réponses, ADR-108, recherche dans la mémoire, leçons et limites des missions, ADR-075,
+  admin — dont `admin/connectors/` : serveurs MCP et API REST décrites opération par
+  opération, ADR-113, `admin/llm/` : modèle des conversations et modèle de contrôle des réponses, ADR-108, recherche dans la mémoire, leçons et limites des missions, ADR-075,
   ADR-077, ADR-093, `admin/users/` :
   comptes, dont l'absence d'un collaborateur empêché, ADR-079, et `admin/skills/` :
   compétences, propositions de l'agent, ADR-101, cas d'évaluation et évaluations,

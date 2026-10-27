@@ -19,18 +19,21 @@ const ALWAYS = 'connector:use';
 const MAX_DESCRIPTION = 1000;
 
 /**
- * Maps each tool of a server to a risk and the permissions it requires, and
- * may replace what the model reads of it (ADR-057).
+ * Maps each tool of a server or REST API to a risk and the permissions it
+ * requires, and may replace what the model reads of an MCP server's tool
+ * (ADR-057; a REST operation's is written in its declaration, ADR-112).
  */
 export function ToolPolicies({
   connectorId,
   data,
   tools,
+  replaceableDescriptions,
   onSaved,
 }: {
   connectorId: string;
   data: Connectors;
   tools: TestedTool[];
+  replaceableDescriptions: boolean;
   onSaved: () => void;
 }) {
   const [policies, setPolicies] = useState(() =>
@@ -61,7 +64,9 @@ export function ToolPolicies({
           risk: p.risk,
           permissions: p.permissions.filter((x) => x !== ALWAYS),
           // Blank: the server's own.
-          description: p.replacedDescription?.trim() || undefined,
+          description: replaceableDescriptions
+            ? p.replacedDescription?.trim() || undefined
+            : undefined,
         } satisfies ToolPolicyChange,
       ]),
     );
@@ -116,25 +121,28 @@ export function ToolPolicies({
               ))}
             </fieldset>
           </div>
-          <label className="flex flex-col gap-1 text-xs text-muted">
-            Description lue par le modèle (vide : celle du serveur)
-            <Textarea
-              aria-label={`Description de ${tool.name} lue par le modèle`}
-              rows={2}
-              maxLength={MAX_DESCRIPTION}
-              placeholder={tool.description}
-              value={tool.replacedDescription ?? ''}
-              onChange={(e) => change(tool.name, { replacedDescription: e.target.value })}
-            />
-          </label>
+          {replaceableDescriptions && (
+            <label className="flex flex-col gap-1 text-xs text-muted">
+              Description lue par le modèle (vide : celle du serveur)
+              <Textarea
+                aria-label={`Description de ${tool.name} lue par le modèle`}
+                rows={2}
+                maxLength={MAX_DESCRIPTION}
+                placeholder={tool.description}
+                value={tool.replacedDescription ?? ''}
+                onChange={(e) => change(tool.name, { replacedDescription: e.target.value })}
+              />
+            </label>
+          )}
         </div>
       ))}
       <p className="text-xs text-muted">
         Un outil non associé demande une validation humaine (risque « Modification ») et la seule
         permission d’utiliser les connecteurs. Les risques « Lecture » et « Brouillon » s’exécutent
-        sans validation selon le niveau d’autonomie de l’entreprise. Une description remplacée est
-        ce que lit le modèle pour choisir l’outil, toujours précédée du nom du serveur : elle ne
-        change ni son risque ni ses permissions.
+        sans validation selon le niveau d’autonomie de l’entreprise.{' '}
+        {replaceableDescriptions
+          ? 'Une description remplacée est ce que lit le modèle pour choisir l’outil, toujours précédée du nom du serveur : elle ne change ni son risque ni ses permissions.'
+          : 'La description d’une opération se change dans sa déclaration (« Modifier »).'}
       </p>
       {action.error && <ErrorNote message={action.error} />}
       <Button className="w-fit" loading={action.pending} onClick={save}>

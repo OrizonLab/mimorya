@@ -132,8 +132,19 @@ async fn a_change_is_checked_and_the_key_never_follows_the_api_elsewhere() {
     // The removed operation's policy went with it; the other one stays.
     let policies = instance["toolPolicies"].as_object().unwrap();
     assert!(policies.contains_key(READ) && !policies.contains_key(CREATE));
-    // A read whose method or path changes is no longer the read mapped.
-    let mut deleting = json!([operations()[0]]);
+    // A read whose parameters change is no longer the read mapped.
+    let mut filtered = json!([operations()[0]]);
+    filtered[0]["parameters"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({ "name": "status", "in": "query", "type": "string" }));
+    let saved = paul.patch(&path, json!({ "operations": filtered })).await;
+    assert_eq!(saved.status, StatusCode::OK, "{}", saved.text());
+    assert_eq!(listed(&paul, &id).await["toolPolicies"], json!({}));
+    let remapped = json!({ "toolPolicies": { READ: read } });
+    assert_eq!(paul.patch(&path, remapped).await.status, StatusCode::OK);
+    // Nor one whose method or path changes.
+    let mut deleting = filtered.clone();
     deleting[0]["method"] = json!("DELETE");
     let saved = paul.patch(&path, json!({ "operations": deleting })).await;
     assert_eq!(saved.status, StatusCode::OK, "{}", saved.text());
@@ -149,6 +160,30 @@ async fn a_change_is_checked_and_the_key_never_follows_the_api_elsewhere() {
     .unwrap();
     drop(tx);
     assert_eq!(audited["droppedPolicies"], json!([READ]));
+
+    // A policy names a declared operation only, never one to come.
+    let unknown = json!({ "toolPolicies": { "rest_crm_export_all": { "risk": "read" } } });
+    let (status, message) = refused(&paul, &path, unknown, true).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(
+        message,
+        "Opération inconnue de cette API : rest_crm_export_all"
+    );
+    let mut exporting = json!([operations()[0]]);
+    exporting.as_array_mut().unwrap().push(json!({
+        "name": "export_all", "title": "Exporter", "description": "Exporte tout.",
+        "method": "GET", "path": "/export",
+    }));
+    let both = json!({
+        "operations": exporting,
+        "toolPolicies": { "rest_crm_export_all": { "risk": "read" } },
+    });
+    let saved = paul.patch(&path, both).await;
+    assert_eq!(saved.status, StatusCode::OK, "{}", saved.text());
+    assert_eq!(
+        listed(&paul, &id).await["toolPolicies"]["rest_crm_export_all"]["risk"],
+        "read"
+    );
 
     // A policy maps a tool; it does not rewrite what the model reads of it.
     let described = json!({ "toolPolicies": { READ: { "description": "Autre texte" } } });
