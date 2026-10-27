@@ -122,6 +122,8 @@ pub struct ConnectorChanges {
     pub tool_policies: Option<HashMap<String, ToolPolicyInput>>,
     /// A REST API's token header and operations (ADR-112).
     pub rest: Option<RestChanges>,
+    /// Whether the Microsoft 365 application's tools may write (ADR-119).
+    pub write_tools: Option<bool>,
 }
 
 pub async fn update_connector(
@@ -167,7 +169,8 @@ pub async fn update_connector(
         .map(|names| json!(names));
     let mut previous_url = None;
     let mut dropped = Vec::new();
-    let configured = changes.url.is_some() || changes.rest.is_some();
+    let configured =
+        changes.url.is_some() || changes.rest.is_some() || changes.write_tools.is_some();
     if configured || changes.token.is_some() || changes.tool_policies.is_some() {
         let Some(editable) = Editable::of(&instance) else {
             let refusal = if instance.connector_type == "rest" {
@@ -205,7 +208,13 @@ pub async fn update_connector(
         patch.reachability_changed = moved || rehomed || changes.token.is_some();
         if configured {
             let network = admin.connectors.network();
-            patch.config = Some(editable.changed(changes.url.clone(), changes.rest, network)?);
+            let config = editable.changed(
+                changes.url.clone(),
+                changes.rest,
+                changes.write_tools,
+                network,
+            )?;
+            patch.config = Some(config);
             previous_url = changes.url.as_ref().map(|_| current_url);
         }
         let secret = token_secret_name(id);
@@ -235,6 +244,7 @@ pub async fn update_connector(
         "token": token,
         "tokenHeader": header,
         "operations": operations,
+        "writeTools": changes.write_tools,
         "toolPolicies": patch.tool_policies,
         "droppedPolicies": (!dropped.is_empty()).then_some(&dropped),
     });

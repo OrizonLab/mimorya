@@ -4,7 +4,9 @@
 //! naming their owner, so that a test sees whose account was read. It
 //! records what it received, refuses the tokens a test chose (401), and
 //! answers certain e-mails' identifiers with a refusal or an oversized
-//! body. Its errors carry a detail the tools must not pass on.
+//! body. It sends e-mails and creates events (`graph_writes`, ADR-119),
+//! or refuses them with the status a test chose. Its errors carry a detail
+//! the tools must not pass on.
 
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
@@ -15,8 +17,10 @@ use axum::extract::{Path, Query, State};
 use axum::http::header::AUTHORIZATION;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
+use axum::routing::{get, post};
 use serde_json::{Value, json};
+
+use super::graph_writes::{create_event, send_mail};
 
 /// What a Graph error says beyond its status: never shown to the model.
 pub const GRAPH_DETAIL: &str = "détail-interne-de-graph";
@@ -31,15 +35,18 @@ pub struct GraphRequest {
     pub path: String,
     pub query: HashMap<String, String>,
     pub prefer: Option<String>,
+    /// What a write sent.
+    pub body: Option<Value>,
 }
 
 #[derive(Default)]
-struct Received {
+pub(super) struct Received {
     requests: Vec<GraphRequest>,
     refused: HashSet<String>,
+    pub(super) refused_writes: Option<StatusCode>,
 }
 
-type Shared = Arc<Mutex<Received>>;
+pub(super) type Shared = Arc<Mutex<Received>>;
 
 pub struct FakeGraph {
     /// Its address, `http://127.0.0.1:<port>/v1.0`, as a configuration names it.
@@ -54,6 +61,8 @@ impl FakeGraph {
             .route("/v1.0/me/messages", get(messages))
             .route("/v1.0/me/messages/{id}", get(message))
             .route("/v1.0/me/calendarView", get(events))
+            .route("/v1.0/me/sendMail", post(send_mail))
+            .route("/v1.0/me/events", post(create_event))
             .with_state(shared.clone());
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
@@ -79,6 +88,12 @@ impl FakeGraph {
             .expect("graph")
             .refused
             .insert(token.into());
+    }
+
+    /// Answers the writes with this status from now on.
+    pub fn refuse_writes(&self, status: u16) {
+        self.shared.lock().expect("graph").refused_writes =
+            Some(StatusCode::from_u16(status).expect("status"));
     }
 
     /// The e-mails of `owner`'s mailbox, newest first.
@@ -123,17 +138,19 @@ fn event(owner: &str, n: &str, subject: &str, start: &str, end: &str) -> Value {
     })
 }
 
-fn failure(status: StatusCode) -> Response {
+pub(super) fn failure(status: StatusCode) -> Response {
     let body = json!({ "error": { "code": "Refused", "message": GRAPH_DETAIL } });
     (status, axum::Json(body)).into_response()
 }
 
-/// The owner of the token received, recorded; Graph's status if refused.
-fn owner(
+/// The owner of the token received, recorded with what a write sent;
+/// Graph's status if refused.
+pub(super) fn owner(
     shared: &Shared,
     headers: &HeaderMap,
     path: String,
     query: &HashMap<String, String>,
+    body: Option<Value>,
 ) -> Result<String, StatusCode> {
     let token = headers
         .get(AUTHORIZATION)
@@ -150,6 +167,7 @@ fn owner(
             .get("prefer")
             .and_then(|value| value.to_str().ok())
             .map(String::from),
+        body,
     });
     let owner = token
         .strip_prefix("acces-")
@@ -166,7 +184,7 @@ async fn messages(
     headers: HeaderMap,
     Query(query): Query<HashMap<String, String>>,
 ) -> Response {
-    let owner = match owner(&shared, &headers, "/me/messages".into(), &query) {
+    let owner = match owner(&shared, &headers, "/me/messages".into(), &query, None) {
         Ok(owner) => owner,
         Err(refused) => return failure(refused),
     };
@@ -196,7 +214,13 @@ async fn message(
     Path(id): Path<String>,
     Query(query): Query<HashMap<String, String>>,
 ) -> Response {
-    let owner = match owner(&shared, &headers, format!("/me/messages/{id}"), &query) {
+    let owner = match owner(
+        &shared,
+        &headers,
+        format!("/me/messages/{id}"),
+        &query,
+        None,
+    ) {
         Ok(owner) => owner,
         Err(refused) => return failure(refused),
     };
@@ -223,7 +247,7 @@ async fn events(
     headers: HeaderMap,
     Query(query): Query<HashMap<String, String>>,
 ) -> Response {
-    let owner = match owner(&shared, &headers, "/me/calendarView".into(), &query) {
+    let owner = match owner(&shared, &headers, "/me/calendarView".into(), &query, None) {
         Ok(owner) => owner,
         Err(refused) => return failure(refused),
     };

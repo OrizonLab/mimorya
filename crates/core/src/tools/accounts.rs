@@ -13,6 +13,9 @@ pub enum AccountAccessError {
     /// The provider no longer honours the link (access revoked or expired):
     /// the link was removed, the person links their account again.
     Revoked,
+    /// The person did not grant these permissions the tool needs (ADR-119):
+    /// they link their account again to grant them.
+    NotGranted(Vec<String>),
     /// Not reachable now: why, in French.
     Unavailable(String),
 }
@@ -21,8 +24,13 @@ pub enum AccountAccessError {
 #[async_trait]
 pub trait LinkedAccounts: Send + Sync {
     /// A valid access token to the person's account at the company's
-    /// connector of this type.
-    async fn access_token(&self, connector_type: &str) -> Result<String, AccountAccessError>;
+    /// connector of this type, once they granted the permissions in
+    /// `needs`.
+    async fn access_token(
+        &self,
+        connector_type: &str,
+        needs: &[&str],
+    ) -> Result<String, AccountAccessError>;
 
     /// The provider refused that token (revoked before it expired): the
     /// next call does not hand it again.

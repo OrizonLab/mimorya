@@ -30,6 +30,11 @@ pub struct NewMicrosoft365Connector {
     #[serde(default)]
     #[ts(optional)]
     pub enabled: Option<bool>,
+    /// Whether its tools may send e-mail and create events in the person's
+    /// name, each validated (ADR-119). Absent: they only read.
+    #[serde(default)]
+    #[ts(optional)]
+    pub write_tools: Option<bool>,
 }
 
 /// A company's Microsoft 365 application, as `ConnectorView` shows it.
@@ -43,4 +48,6 @@ pub struct Microsoft365App {
     pub secret_stored: bool,
     /// How many people linked their account.
     pub links: i64,
+    /// Its tools may send e-mail and create events (ADR-119).
+    pub write_tools: bool,
 }

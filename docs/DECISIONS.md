@@ -6130,3 +6130,96 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     l'application, issue d'un retour dite une fois) ;
     `crates/api/tests/microsoft365_connector.rs` (émetteur et Graph de Microsoft
     enregistrés).
+
+## ADR-119 — Envoi d'e-mails et rendez-vous Microsoft 365, sous validation (connecteurs, lot 10a)
+
+- **Date** : 2026-10-27 · **Statut** : acceptée
+- **Contexte** : les outils Microsoft 365 lisent la boîte et l'agenda de la personne
+  servie (ADR-117). L'agent doit aussi pouvoir envoyer un e-mail et créer un rendez-vous
+  en son nom, ce qu'une personne valide. Ce sont des permissions de plus chez Microsoft :
+  l'entreprise décide si elle les demande à ses collaborateurs, et chacun les accorde.
+- **Décision** :
+  - **l'entreprise permet l'écriture**, ou la retire :
+    - c'est l'option `writeTools`, donnée à la déclaration de l'application ou changée
+      ensuite (`PATCH /admin/connectors/{id}`). Absente, les outils ne font que lire ;
+    - le changement est audité (`connector.created`, `connector.updated`). Seule
+      l'application Microsoft 365 a cette option ;
+    - les outils d'écriture ne sont proposés qu'une fois l'écriture permise. Leurs règles
+      peuvent être écrites à tout moment : `MICROSOFT365_TOOLS` nomme les cinq outils ;
+  - **les permissions demandées** :
+    - quand l'écriture est permise, une liaison demande en plus `Mail.Send` et
+      `Calendars.ReadWrite` ;
+    - une liaison faite avant ne les accorde pas. « Mon compte » reçoit celles qui
+      manquent (`toGrant`), et l'outil dit à la personne de relier de nouveau son
+      compte ;
+    - le renouvellement demande toutes les permissions de la plateforme que la personne
+      a accordées, écriture comprise, que l'écriture soit encore permise ou non :
+      la permettre de nouveau n'oblige pas à relier. L'accord reste de toute façon chez
+      Microsoft tant que la personne ne le retire pas, et sans les outils le jeton
+      n'écrit rien ;
+  - **chaque outil dit les permissions dont il a besoin** :
+    - c'est `LinkedAccounts::access_token(type, besoins)` ;
+    - la plateforme les compare à celles que la liaison a reçues et refuse
+      (`NotGranted`) avant d'atteindre Microsoft ;
+    - les outils de lecture demandent `Mail.Read` ou `Calendars.Read` ;
+  - **deux outils** :
+    - `m365_mail_send` : 1 à 10 destinataires, 10 en copie au plus, un objet sur une ligne
+      (255 caractères), un texte brut (20 000). Le message est gardé dans les éléments
+      envoyés de la personne ;
+    - `m365_calendar_event_create` : objet, début (heure de Paris, celle des outils de
+      lecture), durée de 5 minutes à 24 heures, lieu, texte et 20 participants au plus,
+      que Microsoft invite. Le rendez-vous créé est cité (`event`) ;
+    - chacun a le risque `external` et exige toujours une validation, quel que soit le
+      niveau d'autonomie. L'administration peut changer l'un ou l'autre par une politique
+      d'outil, comme pour tout outil ;
+    - la description de l'action donne les destinataires, l'objet et le début du texte.
+      Les paramètres exacts sont montrés entiers à qui valide, et exécutés tels quels ;
+  - **ce qui part ne cache rien** :
+    - les adresses doivent être valides, chacune une fois par liste ;
+    - l'objet et le lieu tiennent sur une ligne visible ;
+    - le texte ne contient aucun caractère caché (retours à la ligne et tabulations
+      permis) ;
+    - une entrée qui ne respecte pas ces règles est refusée avant la demande de
+      validation, jamais nettoyée après : ce que voit qui valide est ce qui part ;
+  - **envoyé une fois** :
+    - l'écriture est un `POST` à Graph, jamais répété ;
+    - quand Graph ne répond pas (délai, réseau) ou répond par une erreur de son côté
+      (5xx), l'écriture a pu avoir lieu : l'outil le dit, et demande de vérifier dans
+      Microsoft 365 avant de la redemander ;
+    - une erreur 4xx dit que rien n'a été fait ;
+    - un run interrompu pendant l'envoi n'est jamais relancé à l'aveugle
+      (ADR-053, ADR-086) ;
+    - comme pour la lecture, le texte des erreurs de Graph n'atteint jamais le modèle.
+- **Conséquences** :
+  - l'agent n'écrit dans un compte Microsoft 365 qu'avec la validation de la personne que
+    le circuit des validations désigne : la personne servie, ou son responsable si
+    l'entreprise l'a réglé ainsi (ADR-059) ;
+  - un e-mail lu peut chercher à faire envoyer quelque chose (injection) : la validation
+    en est la garde, et un texte caché ne peut pas la tromper ;
+  - le texte d'un e-mail envoyé reste, comme toute entrée d'outil, dans le journal des
+    appels du run et dans sa demande de validation, avec leur conservation ; ni l'audit
+    ni les journaux techniques ne le gardent, et les avis aux responsables ne reprennent
+    pas la description de l'action ;
+  - les permissions ne sont vérifiées qu'à l'exécution. Une personne dont la liaison ne
+    les accorde pas valide l'action, puis apprend qu'elle doit relier de nouveau son
+    compte ; rien n'est parti ;
+  - pas encore de réponse dans un fil (l'outil crée un e-mail nouveau, dont le modèle
+    reprend l'objet), ni de pièce jointe, ni de rendez-vous sur une journée entière ou
+    en ligne ;
+  - restent : les écrans (l'option dans le formulaire de l'application, les permissions à
+    accorder dans « Mon compte »), lot 10b ; Google Workspace ;
+  - tests :
+    - `crates/connectors/tests/microsoft365_writes.rs` : outils proposés si l'entreprise
+      le permet, toujours validés ; e-mail et rendez-vous envoyés une fois, exactement
+      tels que validés ; entrées cachant quelque chose refusées avant la validation ;
+      écriture peut-être faite dite à vérifier ; jeton refusé signalé ; permission non
+      accordée sans appel à Graph ;
+    - `crates/api/tests/microsoft365_writes.rs` : écriture permise puis retirée,
+      auditée ; option refusée à une API REST ; liaison d'avant à refaire, permissions
+      manquantes listées puis accordées, renouvellement avec l'écriture ; e-mail en
+      attente de validation (risque, paramètres exacts, description), puis envoyé tel
+      que validé avec le jeton de la personne ;
+    - tests unitaires : `compose.rs` (adresses, ligne visible, texte),
+      `calendar_create.rs` (fuseau, durée), `graph.rs` (écriture peut-être faite),
+      `reach.rs` (permissions dites en mots), `core/src/account_links/tests.rs`
+      (permissions demandées, renouvelées et manquantes).

@@ -84,7 +84,8 @@ Repères à l'intérieur des crates :
   règles, requête, réponse bornée, outil d'une opération, ADR-112 ; opérations lues
   d'une description OpenAPI, `openapi/`, ADR-114), `connectors/src/microsoft365/`
   (application Microsoft 365 d'une entreprise, ADR-116 ; ses outils, e-mails et agenda de
-  la personne servie lus par un Graph borné, ADR-117), `connectors/src/testing/`
+  la personne servie lus par un Graph borné, ADR-117 ; e-mail envoyé et rendez-vous créé
+  tels que validés, ce qu'ils envoient ne cachant rien (`compose.rs`), ADR-119), `connectors/src/testing/`
   (serveurs simulés des tests : MCP, API REST, Microsoft Graph).
 - `api/src/plugins/` (contexte de requête, limitation de débit (globale par processus ;
   d'authentification partagée par PostgreSQL, `shared_limit.rs`, ADR-088), CSRF (sauf la réception

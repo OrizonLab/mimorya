@@ -55,7 +55,11 @@ impl SubRunStore for Withheld {
 
 #[async_trait]
 impl LinkedAccounts for Withheld {
-    async fn access_token(&self, _connector_type: &str) -> Result<String, AccountAccessError> {
+    async fn access_token(
+        &self,
+        _connector_type: &str,
+        _needs: &[&str],
+    ) -> Result<String, AccountAccessError> {
         Err(AccountAccessError::Unavailable(NO_LINKED_ACCOUNT.into()))
     }
 }

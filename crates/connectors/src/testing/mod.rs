@@ -2,9 +2,10 @@
 //! local port, optionally behind a bearer token, and misbehaving ones (what
 //! they declare, a token quoted back, a server that never answers, one held
 //! until the test releases it); a REST API (`rest`); Microsoft Graph
-//! (`graph`).
+//! (`graph`, its writes in `graph_writes`).
 
 mod graph;
+mod graph_writes;
 mod hold;
 mod quirks;
 mod rest;

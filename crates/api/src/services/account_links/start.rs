@@ -1,13 +1,13 @@
 //! The start of a link (ADR-116): the person may use the company's
 //! connectors, the connector is its Microsoft 365 application, enabled;
 //! the browser is sent to the directory's sign-in with the connector's
-//! delegated permissions, the person's address as a hint, and an attempt
-//! sealed for it.
+//! delegated permissions (writing too when its tools may write, ADR-119),
+//! the person's address as a hint, and an attempt sealed for it.
 
 use chrono::Utc;
 use mimorya_connectors::microsoft365::Microsoft365Config;
 use mimorya_core::DomainError;
-use mimorya_core::account_links::MICROSOFT365_SCOPES;
+use mimorya_core::account_links::link_scopes;
 use mimorya_db::repositories::connectors::get_connector_instance;
 use uuid::Uuid;
 
@@ -47,7 +47,7 @@ impl AccountLinkService {
             &config.client_id,
             &self.redirect_uri,
             Some(&access.profile.email),
-            &MICROSOFT365_SCOPES,
+            &link_scopes(config.write_tools),
         )
         .map_err(unreachable)?;
         // Where the browser is sent, as the provider declares it.

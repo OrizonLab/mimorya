@@ -4,6 +4,7 @@
 
 use async_trait::async_trait;
 use chrono::NaiveDate;
+use mimorya_core::account_links::CALENDARS_READ;
 use mimorya_core::autonomy::ToolRisk;
 use mimorya_core::tools::{Citation, ToolContext, ToolInfo, ToolResult, TypedTool};
 use schemars::JsonSchema;
@@ -107,7 +108,15 @@ impl TypedTool for CalendarEvents {
                 ("$top", MAX_EVENTS.to_string()),
             ],
         );
-        let answer = match read_as_person(&self.graph, ctx, url, Some(&in_platform_zone())).await {
+        let answer = match read_as_person(
+            &self.graph,
+            ctx,
+            &[CALENDARS_READ],
+            url,
+            Some(&in_platform_zone()),
+        )
+        .await
+        {
             Ok(answer) => answer,
             Err(why) => return Ok(ToolResult::error(why)),
         };

@@ -90,15 +90,18 @@ async fn a_kept_token_serves_only_the_link_it_was_renewed_from() {
     let services = &api.app.services;
     let accounts = PersonAccounts::new(services.account_links.clone(), tenant::ID, user::CLAIRE);
     let first = format!("{TOKEN}-1");
-    assert_eq!(accounts.access_token(MICROSOFT365).await, Ok(first.clone()));
-    assert_eq!(accounts.access_token(MICROSOFT365).await, Ok(first));
+    assert_eq!(
+        accounts.access_token(MICROSOFT365, &[]).await,
+        Ok(first.clone())
+    );
+    assert_eq!(accounts.access_token(MICROSOFT365, &[]).await, Ok(first));
     assert_eq!(idp.renewals().len(), 1);
 
     // Removed by the person: the token kept no longer serves.
     let removed = claire.delete(&format!("{LINKS}/{connector}")).await;
     assert_eq!(removed.status, StatusCode::OK, "{}", removed.text());
     assert_eq!(
-        accounts.access_token(MICROSOFT365).await,
+        accounts.access_token(MICROSOFT365, &[]).await,
         Err(AccountAccessError::NotLinked)
     );
     let none = tool_result(&api, &claire, "m365_mail_search", json!({})).await;
@@ -111,7 +114,7 @@ async fn a_kept_token_serves_only_the_link_it_was_renewed_from() {
     // Made again: renewed anew.
     link(&claire, &idp, connector).await;
     assert_eq!(
-        accounts.access_token(MICROSOFT365).await,
+        accounts.access_token(MICROSOFT365, &[]).await,
         Ok(format!("{TOKEN}-2"))
     );
 
@@ -124,7 +127,7 @@ async fn a_kept_token_serves_only_the_link_it_was_renewed_from() {
         )
         .await;
     assert_eq!(disabled.status, StatusCode::OK, "{}", disabled.text());
-    match accounts.access_token(MICROSOFT365).await {
+    match accounts.access_token(MICROSOFT365, &[]).await {
         Err(AccountAccessError::Unavailable(why)) => assert!(why.contains("n’est pas active")),
         other => panic!("{other:?}"),
     }
@@ -211,7 +214,7 @@ async fn a_link_made_again_during_its_revocation_is_not_said_removed() {
         tenant::ID,
         user::CLAIRE,
     );
-    let asked = tokio::spawn(async move { accounts.access_token(MICROSOFT365).await });
+    let asked = tokio::spawn(async move { accounts.access_token(MICROSOFT365, &[]).await });
     gate.reached().await;
     // Made again while Microsoft answered for the old one.
     let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();

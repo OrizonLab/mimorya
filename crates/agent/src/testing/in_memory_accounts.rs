@@ -8,7 +8,7 @@ use super::in_memory_ports::InMemoryPorts;
 
 impl InMemoryPorts {
     /// The person linked an account at the company's connector of this
-    /// type; its tools reach it with this token.
+    /// type, granting every permission; its tools reach it with this token.
     pub fn link_account(&self, connector_type: &str, token: &str) {
         self.state()
             .linked_accounts
@@ -23,7 +23,11 @@ impl InMemoryPorts {
 
 #[async_trait]
 impl LinkedAccounts for InMemoryPorts {
-    async fn access_token(&self, connector_type: &str) -> Result<String, AccountAccessError> {
+    async fn access_token(
+        &self,
+        connector_type: &str,
+        _needs: &[&str],
+    ) -> Result<String, AccountAccessError> {
         self.state()
             .linked_accounts
             .get(connector_type)

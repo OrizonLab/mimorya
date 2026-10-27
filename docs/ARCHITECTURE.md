@@ -280,7 +280,11 @@ Détaillés dans [AGENT_ENGINE.md](AGENT_ENGINE.md). En résumé :
   sa liaison, gardé jusqu'à peu avant son expiration, la liaison retirée si Microsoft ne
   l'honore plus ; jamais celui d'un autre, et aucun pendant une évaluation (ADR-117).
   Chacun relie son compte dans « Mon compte », l'application se déclare dans
-  « Connecteurs » (ADR-118).
+  « Connecteurs » (ADR-118). Si l'entreprise le permet, `m365_mail_send` et
+  `m365_calendar_event_create` envoient un e-mail et créent un rendez-vous au nom de la
+  personne, toujours validés, exactement tels que validés, une seule fois ; chaque outil
+  dit les permissions dont il a besoin, et une liaison qui ne les accorde pas n'atteint
+  pas Microsoft (ADR-119).
 - Les secrets ne transitent jamais par le contexte du modèle ni par les journaux.
 
 Connecteurs prévus : démonstration (MVP), MCP générique (MVP), déclencheurs (ADR-109),

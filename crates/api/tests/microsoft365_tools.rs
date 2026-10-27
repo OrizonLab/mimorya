@@ -10,7 +10,7 @@ mod support;
 use axum::http::StatusCode;
 use mimorya_agent::testing::{ScriptedStep, call, last_tool_results};
 use mimorya_api::services::skill_evaluations::NO_LINKED_ACCOUNT;
-use mimorya_connectors::microsoft365::MICROSOFT365_TOOLS;
+use mimorya_connectors::microsoft365::{MICROSOFT365_TOOLS, MICROSOFT365_WRITE_TOOLS};
 use mimorya_connectors::testing::FakeGraph;
 use mimorya_core::demo::{tenant, user};
 use serde_json::json;
@@ -38,7 +38,10 @@ async fn a_run_reads_its_persons_mailbox_with_a_renewed_token() {
         .await
         .unwrap();
     for name in MICROSOFT365_TOOLS {
-        assert!(tools.tools.iter().any(|t| t.info().name == name), "{name}");
+        // Those that write wait for the company to let them (ADR-119).
+        let offered = !MICROSOFT365_WRITE_TOOLS.contains(&name);
+        let listed = tools.tools.iter().any(|t| t.info().name == name);
+        assert_eq!(listed, offered, "{name}");
     }
     let claire = api.sign_in(user::CLAIRE).await;
     idp.sign_in_as(microsoft_person("objet-claire", &email(user::CLAIRE)));

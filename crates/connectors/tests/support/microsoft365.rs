@@ -1,6 +1,7 @@
 //! The Microsoft 365 tools as a run calls them (ADR-117): the connector
-//! started on the test Graph, behind the policy enforcement point, with the
-//! accounts the run's person linked.
+//! started on the test Graph, its tools reading or writing too (ADR-119),
+//! behind the policy enforcement point, with the accounts the run's person
+//! linked.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -38,6 +39,17 @@ pub fn application(graph: &str) -> Value {
 
 /// The connector's tools, started as a run would.
 pub async fn microsoft365_tools(graph: &str) -> Vec<ToolRef> {
+    started(&application(graph)).await
+}
+
+/// Its tools when the company lets them write (ADR-119).
+pub async fn microsoft365_writing_tools(graph: &str) -> Vec<ToolRef> {
+    let mut config = application(graph);
+    config["writeTools"] = json!(true);
+    started(&config).await
+}
+
+async fn started(config: &Value) -> Vec<ToolRef> {
     let context = InstanceContext {
         secret: Some("secret-de-l-application"),
         network: LOCAL,
@@ -46,7 +58,7 @@ pub async fn microsoft365_tools(graph: &str) -> Vec<ToolRef> {
     };
     connector_type(MICROSOFT365)
         .unwrap()
-        .instantiate(&application(graph), context)
+        .instantiate(config, context)
         .await
         .unwrap()
         .tools
@@ -57,7 +69,11 @@ pub struct Unreachable(pub AccountAccessError);
 
 #[async_trait]
 impl LinkedAccounts for Unreachable {
-    async fn access_token(&self, _connector_type: &str) -> Result<String, AccountAccessError> {
+    async fn access_token(
+        &self,
+        _connector_type: &str,
+        _needs: &[&str],
+    ) -> Result<String, AccountAccessError> {
         Err(self.0.clone())
     }
 }
@@ -97,6 +113,22 @@ pub async fn call(executor: &ToolExecutor, name: &str, input: Value) -> ToolResu
         ToolCallEvaluation::Allow { tool, input } => executor.execute(&tool, input).await.0,
         ToolCallEvaluation::RequireApproval { reason, .. }
         | ToolCallEvaluation::Deny { reason, .. } => panic!("{name} not allowed: {reason}"),
+    }
+}
+
+/// The call evaluated, which needs a validation, then run as validated.
+pub async fn validated_call(executor: &ToolExecutor, name: &str, input: Value) -> ToolResult {
+    let evaluation = executor.evaluate(&LlmToolCall {
+        id: "c".into(),
+        name: name.into(),
+        input,
+    });
+    match evaluation {
+        ToolCallEvaluation::RequireApproval { tool, input, .. } => {
+            executor.execute(&tool, input).await.0
+        }
+        ToolCallEvaluation::Allow { .. } => panic!("{name} ran without validation"),
+        ToolCallEvaluation::Deny { reason, .. } => panic!("{name} denied: {reason}"),
     }
 }
 

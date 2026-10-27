@@ -5,6 +5,7 @@
 
 use async_trait::async_trait;
 use chrono::NaiveDate;
+use mimorya_core::account_links::MAIL_READ;
 use mimorya_core::autonomy::ToolRisk;
 use mimorya_core::tools::{Citation, ToolContext, ToolInfo, ToolResult, TypedTool};
 use schemars::JsonSchema;
@@ -127,7 +128,7 @@ impl TypedTool for MailSearch {
             Err(problem) => return Ok(ToolResult::error(problem)),
         };
         let url = self.graph.address(&["me", "messages"], &query);
-        let answer = match read_as_person(&self.graph, ctx, url, None).await {
+        let answer = match read_as_person(&self.graph, ctx, &[MAIL_READ], url, None).await {
             Ok(answer) => answer,
             Err(why) => return Ok(ToolResult::error(why)),
         };
