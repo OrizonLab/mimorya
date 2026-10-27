@@ -14,7 +14,7 @@ use mimorya_core::time_zone::PLATFORM_TIME_ZONE;
 use mimorya_core::tools::{Citation, ToolContext, ToolInfo, ToolResult, TypedTool};
 use serde_json::{Value, json};
 
-use crate::delegated::shape::{bounded, short};
+use crate::delegated::shape::{bounded, short, utc_instant};
 use crate::delegated::{NewEvent, ProviderApi, write_as_person};
 use crate::outbound::CONNECTOR_USE;
 
@@ -25,7 +25,7 @@ pub struct CalendarCreate {
 /// An instant as Google Calendar reads it.
 fn at(instant: DateTime<Utc>) -> Value {
     json!({
-        "dateTime": instant.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+        "dateTime": utc_instant(instant),
         "timeZone": PLATFORM_TIME_ZONE.name(),
     })
 }

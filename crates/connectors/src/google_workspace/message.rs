@@ -1,13 +1,20 @@
-//! What the Gmail tools read of an e-mail Gmail gives (ADR-122): when it
-//! was received, its headers, bounded, where the person opens it, and its
-//! citation, named by its subject.
+//! What the Gmail tools read of an e-mail Gmail gives (ADR-122): its
+//! identifier's form, when it was received, its headers, bounded, where the
+//! person opens it, and its citation, named by its subject.
+
+use std::sync::LazyLock;
 
 use chrono::DateTime;
 use mimorya_core::tools::Citation;
+use regex::Regex;
 use serde_json::{Value, json};
 
 use super::mime::header;
 use crate::delegated::shape::{bounded, utc_instant};
+
+/// Gmail's identifiers: hexadecimal, URL-safe at most.
+pub static MESSAGE_ID_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^[A-Za-z0-9_-]{1,256}$").expect("valid regex"));
 
 /// When Gmail received an e-mail (`internalDate`, milliseconds).
 pub fn received(message: &Value) -> Value {

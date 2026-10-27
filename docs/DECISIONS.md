@@ -6514,11 +6514,20 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
       envoie l'invitation aux participants (`sendUpdates=all`) ; le rendez-vous créé
       est cité (`event`) ;
     - chacun a le risque `external` et exige toujours une validation, quel que soit le
-      niveau d'autonomie et la politique d'outil ;
+      niveau d'autonomie. Aucune politique d'outil ne retire cette validation : une
+      politique peut désactiver l'outil, ou changer son risque et les permissions qu'il
+      exige (`connector:use` toujours gardé) ;
   - **ce que les deux fournisseurs partagent** est écrit une fois, dans
     `connectors/src/delegated/` :
-    - les règles de ce qui part (`compose.rs` : adresses valides, en ASCII, chacune
-      une fois ; objet et lieu sur une ligne visible ; texte sans caractère caché) ;
+    - les règles de ce qui part (`compose.rs`) : des adresses simples, chacune une
+      fois — avant l'unique `@`, les caractères que HTML5 permet (ni espace, ni
+      virgule, ni parenthèse, ni guillemet, ni deux-points), après lui un nom de
+      domaine d'au moins deux parties, en ASCII, sans adresse IP ; objet et lieu sur une
+      ligne visible ; texte sans caractère caché. La règle des adresses ne s'appuie plus
+      sur la vérification d'adresse de `validator`, qui acceptait après un seul `@` une
+      suite finie par une adresse IP (`lea@exemple.fr, Direction (y[1.2.3.4]`) : un
+      en-tête l'aurait lue comme une liste ou un commentaire. Les outils de
+      Microsoft 365 suivent la même règle ;
     - l'e-mail (`new_mail.rs`) et le rendez-vous (`new_event.rs`) tels que le modèle
       les demande et que la personne les valide : leurs entrées, leurs limites, leur
       description (les destinataires, la date et la durée d'abord, ce que le modèle
@@ -6527,13 +6536,15 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     - une règle changée l'est pour Microsoft 365 et Google Workspace ensemble ;
   - **le message qu'envoie Gmail** est écrit par la plateforme (format RFC 5322,
     `outgoing.rs`) :
-    - les destinataires et la copie, une adresse par ligne ; l'objet en mots encodés
+    - les destinataires et la copie, une adresse par ligne ; le message n'est pas
+      écrit si l'une d'elles n'est pas une adresse simple, quoi qu'ait laissé passer la
+      validation ; l'objet en mots encodés
       (RFC 2047), coupés entre deux caractères, chaque ligne dans les 76 caractères
       permis ; le texte en UTF-8, ses lignes finies
       par CRLF, en base 64 ;
-    - rien de ce que le modèle écrit n'y est copié tel quel : ni un objet ni un texte ne
-      peuvent finir un en-tête ou en ajouter un (`Bcc:`), même si une règle de
-      validation venait à manquer ;
+    - ni un objet ni un texte ne peuvent finir un en-tête ou en ajouter un (`Bcc:`),
+      même si une règle de validation venait à manquer : ils sont encodés, et seules des
+      adresses simples sont écrites telles quelles ;
     - Gmail ajoute l'expéditeur (la personne dont le jeton envoie), la date et
       l'identifiant du message : la plateforme ne choisit pas d'expéditeur ;
   - **le rendez-vous** est envoyé à Google Agenda en instants UTC, avec le fuseau de la
@@ -6572,6 +6583,8 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
       exacts, description), puis envoyé tel que validé avec le jeton de la personne ;
       rendez-vous validé créé dans son agenda ;
     - tests unitaires : `outgoing.rs` (message, objet long coupé en mots relus
-      entiers, lignes bornées), `new_event.rs` (instants, changement d'heure, durée,
-      début borné, description), `compose.rs` (adresses : ce qui finirait un en-tête),
-      `calendar_create.rs` (rendez-vous envoyé à Google).
+      entiers, lignes bornées, aucun en-tête ajouté par une entrée non validée, adresse
+      qui n'est pas simple refusée), `new_event.rs` (instants, changement d'heure,
+      durée, début borné, description), `compose.rs` (adresses simples : ce qui finirait
+      un en-tête ou ferait une liste, avec un seul `@`), `calendar_create.rs`
+      (rendez-vous envoyé à Google).

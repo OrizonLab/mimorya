@@ -10,9 +10,9 @@ use mimorya_core::autonomy::ToolRisk;
 use mimorya_core::tools::{Citation, ToolContext, ToolInfo, ToolResult, TypedTool};
 use serde_json::{Value, json};
 
-use super::message::link;
+use super::message::{MESSAGE_ID_RE, link};
 use super::outgoing::raw_message;
-use crate::delegated::shape::{bounded, short};
+use crate::delegated::shape::bounded;
 use crate::delegated::{NewMail, ProviderApi, write_as_person};
 use crate::outbound::CONNECTOR_USE;
 
@@ -40,7 +40,10 @@ impl TypedTool for GmailSend {
     }
 
     async fn run(&self, input: NewMail, ctx: &ToolContext) -> anyhow::Result<ToolResult> {
-        let message = json!({ "raw": raw_message(&input) });
+        let Some(raw) = raw_message(&input) else {
+            return Ok(ToolResult::error("Adresse électronique invalide"));
+        };
+        let message = json!({ "raw": raw });
         let url = self
             .gmail
             .address(&["users", "me", "messages", "send"], &[]);
@@ -49,10 +52,13 @@ impl TypedTool for GmailSend {
             Ok(sent) => sent.unwrap_or_default(),
             Err(why) => return Ok(ToolResult::error(why)),
         };
-        // Sent, whether Gmail names the message or not.
-        let id = short(&sent, "/id");
+        // Sent, whether Gmail names the message or not; linked and cited
+        // only by an identifier of Gmail's form.
+        let id = sent
+            .get("id")
+            .and_then(Value::as_str)
+            .filter(|id| MESSAGE_ID_RE.is_match(id));
         let citations = id
-            .as_str()
             .map(|id| Citation::new("email", id).labelled(bounded(&input.subject, 120).0))
             .into_iter()
             .collect();
@@ -62,7 +68,7 @@ impl TypedTool for GmailSend {
             "objet": input.subject,
             "a": input.to,
             "copie": input.cc,
-            "lien": id.as_str().map_or(Value::Null, |id| json!(link(id))),
+            "lien": id.map(link),
         });
         Ok(ToolResult::ok(content)
             .with_summary(format!(

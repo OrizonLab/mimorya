@@ -158,6 +158,13 @@ async fn what_would_hide_something_is_refused_before_validation() {
             json!("Bonjour\u{202E}, voir le lien"),
         ),
         (send, email(), "to", json!(["paul@ex\u{435}mple.fr"])),
+        // One `@`, and what a header reads as a separator or a comment.
+        (
+            send,
+            email(),
+            "to",
+            json!(["paul@exemple.fr, Direction (y[1.2.3.4]"]),
+        ),
         (
             send,
             email(),

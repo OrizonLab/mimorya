@@ -1,14 +1,15 @@
 //! The e-mail Gmail sends (ADR-123), written as RFC 5322 asks: its
-//! recipients, its subject in encoded words (RFC 2047) and its text in
-//! UTF-8, both in base 64, so that nothing the model wrote can end a header
-//! or add one; then the whole in URL-safe base 64, as Gmail reads it
-//! (`raw`). Gmail adds the sender (the person whose token sends it), the
-//! date and the message's identifier.
+//! recipients, plain addresses only, its subject in encoded words
+//! (RFC 2047) and its text in UTF-8, both in base 64, so that nothing the
+//! model wrote can end a header or add one, whatever the validation let
+//! through; then the whole in URL-safe base 64, as Gmail reads it (`raw`).
+//! Gmail adds the sender (the person whose token sends it), the date and
+//! the message's identifier.
 
 use base64::Engine;
 use base64::engine::general_purpose::{STANDARD, URL_SAFE};
 
-use crate::delegated::NewMail;
+use crate::delegated::{NewMail, is_plain_address};
 
 /// The bytes of one encoded word: 39 encode to 52 characters, a word of 64
 /// with its `=?UTF-8?B?` and `?=`; after `Subject: `, its line keeps
@@ -17,8 +18,13 @@ const WORD_BYTES: usize = 39;
 /// The characters of a line of the text in base 64 (RFC 2045).
 const LINE_CHARS: usize = 76;
 
-/// The message, as Gmail's `raw`.
-pub fn raw_message(mail: &NewMail) -> String {
+/// The message, as Gmail's `raw`; none when an address is not a plain one
+/// (the validation refuses it first).
+pub fn raw_message(mail: &NewMail) -> Option<String> {
+    let all = mail.to.iter().chain(&mail.cc);
+    if all.clone().any(|address| !is_plain_address(address)) {
+        return None;
+    }
     let mut message = format!("To: {}\r\n", folded(&mail.to));
     if !mail.cc.is_empty() {
         message.push_str(&format!("Cc: {}\r\n", folded(&mail.cc)));
@@ -32,7 +38,7 @@ pub fn raw_message(mail: &NewMail) -> String {
         message.push_str(&String::from_utf8_lossy(line));
         message.push_str("\r\n");
     }
-    URL_SAFE.encode(message)
+    Some(URL_SAFE.encode(message))
 }
 
 /// Addresses one per line, so that ten long ones keep each line short.
@@ -76,7 +82,12 @@ mod tests {
     }
 
     fn message(mail: &NewMail) -> String {
-        String::from_utf8(URL_SAFE.decode(raw_message(mail)).unwrap()).unwrap()
+        String::from_utf8(URL_SAFE.decode(raw_message(mail).unwrap()).unwrap()).unwrap()
+    }
+
+    /// Read as the model gave it, not validated.
+    fn unchecked(to: &str, subject: &str, body: &str) -> NewMail {
+        serde_json::from_value(json!({ "to": [to], "subject": subject, "body": body })).unwrap()
     }
 
     /// The text of encoded words, joined back.
@@ -112,6 +123,44 @@ mod tests {
         );
         // Without a copy, no `Cc` header.
         assert!(!self::message(&mail("Point", &[])).contains("Cc:"));
+    }
+
+    #[test]
+    fn what_the_model_wrote_adds_no_header_even_unvalidated() {
+        let injected = unchecked(
+            "paul@exemple.fr",
+            "Objet\r\nBcc: tous@exemple.fr",
+            "Bonjour\r\nBcc: tous@exemple.fr\r\n\r\nFin",
+        );
+        let message = message(&injected);
+        let (head, _) = message.split_once("\r\n\r\n").unwrap();
+        let names: Vec<&str> = head
+            .split("\r\n")
+            .filter(|line| !line.starts_with(' '))
+            .filter_map(|line| line.split_once(':').map(|(name, _)| name))
+            .collect();
+        assert_eq!(
+            names,
+            [
+                "To",
+                "Subject",
+                "MIME-Version",
+                "Content-Type",
+                "Content-Transfer-Encoding"
+            ]
+        );
+        assert!(!message.contains("Bcc"));
+        // An address that is not a plain one: no message at all.
+        for address in [
+            "paul@exemple.fr, x[1.2.3.4]",
+            "paul@exemple.fr\r\nBcc: x[1.2.3.4]",
+        ] {
+            assert_eq!(
+                raw_message(&unchecked(address, "Objet", "Texte")),
+                None,
+                "{address}"
+            );
+        }
     }
 
     #[test]

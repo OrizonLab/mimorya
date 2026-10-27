@@ -15,6 +15,7 @@ mod reach;
 pub(crate) mod shape;
 
 pub(crate) use api::ProviderApi;
+pub(crate) use compose::is_plain_address;
 pub(crate) use new_event::NewEvent;
 pub(crate) use new_mail::NewMail;
 pub(crate) use reach::{AsPerson, read_as_person, write_as_person};
