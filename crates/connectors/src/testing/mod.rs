@@ -2,8 +2,10 @@
 //! local port, optionally behind a bearer token, and misbehaving ones (what
 //! they declare, a token quoted back, a server that never answers, one held
 //! until the test releases it); a REST API (`rest`); Microsoft Graph
-//! (`graph`, its writes in `graph_writes`).
+//! (`graph`, its writes in `graph_writes`); Gmail and Google Calendar
+//! (`google`).
 
+mod google;
 mod graph;
 mod graph_writes;
 mod hold;
@@ -22,6 +24,7 @@ use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, Stream
 use tokio::sync::oneshot;
 
 use crate::mcp::DemoDocsServer;
+pub use google::{FakeGoogle, GOOGLE_DETAIL, GoogleRequest};
 pub use graph::{FORBIDDEN_MESSAGE, FakeGraph, GRAPH_DETAIL, GraphRequest, OVERSIZED_MESSAGE};
 pub use hold::Hold;
 pub use quirks::{DeclaredToolsServer, HIDDEN_TEXT, Quirk};

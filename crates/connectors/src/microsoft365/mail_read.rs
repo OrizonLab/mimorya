@@ -14,10 +14,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use validator::Validate;
 
-use super::graph::Graph;
 use super::mail_search::citation;
-use super::reach::read_as_person;
-use super::shape::{bounded, people, person, short};
+use super::shape::{people, person};
+use crate::delegated::ProviderApi;
+use crate::delegated::read_as_person;
+use crate::delegated::shape::{bounded, short};
 use crate::outbound::CONNECTOR_USE;
 
 const SELECT: &str = "id,subject,from,toRecipients,ccRecipients,receivedDateTime,body,\
@@ -33,7 +34,7 @@ static MESSAGE_ID_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[A-Za-z0-9_=+/-]{1,512}$").expect("valid regex"));
 
 pub struct MailRead {
-    pub graph: Graph,
+    pub graph: ProviderApi,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema, Validate)]

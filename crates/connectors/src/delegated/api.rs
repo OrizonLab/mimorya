@@ -1,12 +1,14 @@
-//! Microsoft Graph as the tools reach it (ADR-117): a `GET` under the
-//! company's Graph address, or a `POST` of what a person validated
+//! A provider's API as the tools of a linked account reach it: Microsoft
+//! Graph (ADR-117), Gmail and Google Calendar (ADR-122). A `GET` under the
+//! company's declared address, or a `POST` of what a person validated
 //! (ADR-119), with the access token of the person the run serves, bounded
 //! in time and in size, never following a redirection (the hardened
-//! client), never repeated. Graph's own words never reach the model when
-//! it refuses: only what its status means.
+//! client), never repeated. The provider's own words never reach the model
+//! when it refuses: only what its status means.
 
 use std::time::Duration;
 
+use mimorya_core::account_links::LinkKind;
 use reqwest_mcp::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, HeaderValue};
 use reqwest_mcp::{Client, RequestBuilder};
 use serde_json::Value;
@@ -16,20 +18,21 @@ use crate::outbound::{TOO_SLOW, UNREACHABLE};
 
 /// The most of an answer read: a page of messages or events, or one
 /// message's text, is far less.
-pub const MAX_GRAPH_BYTES: usize = 1024 * 1024;
-const UNREADABLE: &str = "Réponse de Microsoft 365 illisible";
+pub const MAX_ANSWER_BYTES: usize = 1024 * 1024;
 
-/// What a tool reads under the person's Graph address.
+/// What a tool reads under the person's address at a provider.
 #[derive(Clone)]
-pub struct Graph {
+pub struct ProviderApi {
+    kind: LinkKind,
     base: Url,
     client: Client,
     timeout: Duration,
 }
 
-/// What Graph's refusal means, in French, for the model and the person.
+/// What a provider's refusal means, in French, for the model and the
+/// person.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum GraphFailure {
+pub enum ApiFailure {
     /// 401: the token no longer opens the account.
     Unauthorized,
     /// 403: the permission was not granted.
@@ -46,10 +49,10 @@ pub enum GraphFailure {
     Other(String),
 }
 
-impl GraphFailure {
-    /// Whether the refusal says Graph did nothing: a request it answered
-    /// with a client error. Unanswered, or failing on its side, it may
-    /// have acted.
+impl ApiFailure {
+    /// Whether the refusal says the provider did nothing: a request it
+    /// answered with a client error. Unanswered, or failing on its side,
+    /// it may have acted.
     pub fn settled(&self) -> bool {
         match self {
             Self::Failed(status) => *status < 500,
@@ -58,21 +61,32 @@ impl GraphFailure {
         }
     }
 
-    pub fn message(&self) -> String {
+    /// What the refusal of this kind's provider means.
+    pub fn message(&self, kind: LinkKind) -> String {
+        let product = kind.product();
         match self {
-            Self::Unauthorized => "Microsoft 365 a refusé l’accès au compte de la personne \
-                 servie : réessayez ; si le refus persiste, la personne relie de nouveau son \
-                 compte dans « Mon compte »"
-                .into(),
-            Self::Forbidden => "Microsoft 365 refuse cette demande : la permission \
-                 correspondante n’a pas été accordée à l’application"
-                .into(),
-            Self::NotFound => "Introuvable dans votre compte Microsoft 365".into(),
+            Self::Unauthorized => format!(
+                "{product} a refusé l’accès au compte de la personne servie : réessayez ; si le \
+                 refus persiste, la personne relie de nouveau son compte dans « Mon compte »"
+            ),
+            // Google also refuses so past its limits of requests.
+            Self::Forbidden => match kind {
+                LinkKind::Microsoft365 => format!(
+                    "{product} refuse cette demande : la permission correspondante n’a pas été \
+                     accordée à l’application"
+                ),
+                LinkKind::GoogleWorkspace => format!(
+                    "{product} refuse cette demande : la permission correspondante n’a pas été \
+                     accordée à l’application, ou ses limites de demandes sont atteintes ; \
+                     réessayez plus tard"
+                ),
+            },
+            Self::NotFound => format!("Introuvable dans votre compte {product}"),
             Self::Throttled => {
-                "Microsoft 365 limite les demandes en ce moment : réessayez plus tard".into()
+                format!("{product} limite les demandes en ce moment : réessayez plus tard")
             }
             Self::Failed(status) => {
-                format!("Microsoft 365 ne répond pas comme attendu (HTTP {status})")
+                format!("{product} ne répond pas comme attendu (HTTP {status})")
             }
             Self::Unanswered(why) => (*why).into(),
             Self::Other(message) => message.clone(),
@@ -80,19 +94,31 @@ impl GraphFailure {
     }
 }
 
-impl Graph {
-    /// `base` is the stored Graph address, checked at the start.
-    pub fn new(base: &str, client: Client, timeout: Duration) -> anyhow::Result<Self> {
+impl ProviderApi {
+    /// `base` is the stored address of the provider's API, checked at the
+    /// start.
+    pub fn new(
+        kind: LinkKind,
+        base: &str,
+        client: Client,
+        timeout: Duration,
+    ) -> anyhow::Result<Self> {
         let mut base = Url::parse(base)?;
         // Segments are pushed after the version, never replacing it.
         if !base.path().ends_with('/') {
             base.set_path(&format!("{}/", base.path()));
         }
         Ok(Self {
+            kind,
             base,
             client,
             timeout,
         })
+    }
+
+    /// The provider whose API this is.
+    pub fn kind(&self) -> LinkKind {
+        self.kind
     }
 
     /// The address of these path segments (each encoded whole, a `/` in
@@ -112,32 +138,35 @@ impl Graph {
         url
     }
 
-    /// Graph's JSON answer to a `GET` of `url`, with the person's token and
+    /// The JSON answer to a `GET` of `url`, with the person's token and
     /// Graph's `Prefer` header, if any.
     pub async fn get(
         &self,
         token: &str,
         url: Url,
         prefer: Option<&str>,
-    ) -> Result<Value, GraphFailure> {
+    ) -> Result<Value, ApiFailure> {
         let body = self.send(token, self.client.get(url), prefer).await?;
         let body = body.ok_or_else(|| {
-            GraphFailure::Other("Réponse de Microsoft 365 trop longue : précisez la demande".into())
+            ApiFailure::Other(format!(
+                "Réponse de {} trop longue : précisez la demande",
+                self.kind.product()
+            ))
         })?;
-        serde_json::from_slice(&body).map_err(|_| GraphFailure::Other(UNREADABLE.into()))
+        serde_json::from_slice(&body).map_err(|_| self.unreadable())
     }
 
-    /// Graph's JSON answer to a `POST` of `body` to `url`, sent once: done
-    /// once Graph accepts it, its answer `None` when there is none to read
-    /// (a message accepted for sending).
+    /// The JSON answer to a `POST` of `body` to `url`, sent once: done
+    /// once the provider accepts it, its answer `None` when there is none
+    /// to read (a message accepted for sending).
     pub async fn post(
         &self,
         token: &str,
         url: Url,
         body: &Value,
         prefer: Option<&str>,
-    ) -> Result<Option<Value>, GraphFailure> {
-        let body = serde_json::to_vec(body).map_err(|_| GraphFailure::Other(UNREADABLE.into()))?;
+    ) -> Result<Option<Value>, ApiFailure> {
+        let body = serde_json::to_vec(body).map_err(|_| self.unreadable())?;
         let request = self
             .client
             .post(url)
@@ -147,16 +176,20 @@ impl Graph {
         Ok(body.and_then(|body| serde_json::from_slice(&body).ok()))
     }
 
+    fn unreadable(&self) -> ApiFailure {
+        ApiFailure::Other(format!("Réponse de {} illisible", self.kind.product()))
+    }
+
     /// The request sent with the person's token, its answer read within
-    /// the delay: its body once accepted, `None` past `MAX_GRAPH_BYTES`.
+    /// the delay: its body once accepted, `None` past `MAX_ANSWER_BYTES`.
     async fn send(
         &self,
         token: &str,
         request: RequestBuilder,
         prefer: Option<&str>,
-    ) -> Result<Option<Vec<u8>>, GraphFailure> {
+    ) -> Result<Option<Vec<u8>>, ApiFailure> {
         let mut bearer = HeaderValue::from_str(&format!("Bearer {token}"))
-            .map_err(|_| GraphFailure::Unauthorized)?;
+            .map_err(|_| ApiFailure::Unauthorized)?;
         bearer.set_sensitive(true);
         let mut request = request
             .header(AUTHORIZATION, bearer)
@@ -172,17 +205,17 @@ impl Graph {
         })
         .await;
         let (status, body) = match sent {
-            Err(_) => return Err(GraphFailure::Unanswered(TOO_SLOW)),
-            Ok(Err(_)) => return Err(GraphFailure::Unanswered(UNREACHABLE)),
+            Err(_) => return Err(ApiFailure::Unanswered(TOO_SLOW)),
+            Ok(Err(_)) => return Err(ApiFailure::Unanswered(UNREACHABLE)),
             Ok(Ok(answer)) => answer,
         };
         match status {
             200..=299 => {}
-            401 => return Err(GraphFailure::Unauthorized),
-            403 => return Err(GraphFailure::Forbidden),
-            404 => return Err(GraphFailure::NotFound),
-            429 => return Err(GraphFailure::Throttled),
-            status => return Err(GraphFailure::Failed(status)),
+            401 => return Err(ApiFailure::Unauthorized),
+            403 => return Err(ApiFailure::Forbidden),
+            404 => return Err(ApiFailure::NotFound),
+            429 => return Err(ApiFailure::Throttled),
+            status => return Err(ApiFailure::Failed(status)),
         }
         Ok(body)
     }
@@ -197,13 +230,13 @@ fn encoded(text: &str) -> String {
         .replace('+', "%20")
 }
 
-/// The body, or `None` past `MAX_GRAPH_BYTES`.
+/// The body, or `None` past `MAX_ANSWER_BYTES`.
 async fn read_bounded(
     mut response: reqwest_mcp::Response,
 ) -> Result<Option<Vec<u8>>, reqwest_mcp::Error> {
     let mut body = Vec::new();
     while let Some(chunk) = response.chunk().await? {
-        if body.len() + chunk.len() > MAX_GRAPH_BYTES {
+        if body.len() + chunk.len() > MAX_ANSWER_BYTES {
             return Ok(None);
         }
         body.extend_from_slice(&chunk);
@@ -216,21 +249,30 @@ mod tests {
     use super::*;
 
     #[test]
-    fn only_a_client_error_says_graph_did_nothing() {
+    fn only_a_client_error_says_the_provider_did_nothing() {
         for settled in [
-            GraphFailure::Unauthorized,
-            GraphFailure::Forbidden,
-            GraphFailure::Throttled,
-            GraphFailure::Failed(400),
+            ApiFailure::Unauthorized,
+            ApiFailure::Forbidden,
+            ApiFailure::Throttled,
+            ApiFailure::Failed(400),
         ] {
             assert!(settled.settled(), "{settled:?}");
         }
         for unsettled in [
-            GraphFailure::Failed(503),
-            GraphFailure::Unanswered(TOO_SLOW),
-            GraphFailure::Unanswered(UNREACHABLE),
+            ApiFailure::Failed(503),
+            ApiFailure::Unanswered(TOO_SLOW),
+            ApiFailure::Unanswered(UNREACHABLE),
         ] {
             assert!(!unsettled.settled(), "{unsettled:?}");
         }
+    }
+
+    #[test]
+    fn a_refusal_names_its_provider() {
+        let microsoft = ApiFailure::NotFound.message(LinkKind::Microsoft365);
+        assert_eq!(microsoft, "Introuvable dans votre compte Microsoft 365");
+        let google = ApiFailure::Forbidden.message(LinkKind::GoogleWorkspace);
+        assert!(google.starts_with("Google Workspace refuse"), "{google}");
+        assert!(google.contains("limites"), "{google}");
     }
 }

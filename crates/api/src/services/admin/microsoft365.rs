@@ -9,7 +9,7 @@
 use mimorya_connectors::microsoft365::Microsoft365Config;
 use mimorya_core::DomainError;
 use mimorya_core::account_links::{LinkKind, MICROSOFT_GRAPH, microsoft365_application};
-use serde_json::json;
+use serde_json::{Map, json};
 use uuid::Uuid;
 
 use super::connectors::{ConnectorAdmin, PERMISSION};
@@ -48,11 +48,11 @@ pub async fn create_microsoft365_connector(
         enabled: input.enabled,
         config,
         secret: input.client_secret,
-        audited: json!({
-            "directory": application.directory,
-            "clientId": application.client_id,
-            "writeTools": input.write_tools,
-        }),
+        audited: Map::from_iter([
+            ("directory".into(), json!(application.directory)),
+            ("clientId".into(), json!(application.client_id)),
+            ("writeTools".into(), json!(input.write_tools)),
+        ]),
     };
     declare_application(admin, access, declaration).await
 }

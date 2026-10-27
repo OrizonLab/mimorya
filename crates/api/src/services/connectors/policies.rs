@@ -12,8 +12,9 @@ use std::collections::HashMap;
 use mimorya_agent::tools::ToolOverride;
 use mimorya_connectors::mcp::mcp_tool_description;
 use mimorya_connectors::outbound::CONNECTOR_USE;
-use mimorya_core::account_links::LinkKind;
 use mimorya_db::repositories::connectors::ConnectorInstanceRow;
+
+use super::reach::added_by_companies;
 
 pub type Policies = HashMap<String, ToolOverride>;
 
@@ -34,9 +35,7 @@ pub fn scoped_overrides(
         .into_iter()
         .filter(|(name, _)| tools.contains(name))
         .map(|(name, mut policy)| {
-            let type_name = instance.connector_type.as_str();
-            let added = matches!(type_name, "mcp" | "rest") || LinkKind::of(type_name).is_some();
-            if added
+            if added_by_companies(&instance.connector_type)
                 && let Some(permissions) = policy.permissions.as_mut()
                 && !permissions.iter().any(|p| p == CONNECTOR_USE)
             {

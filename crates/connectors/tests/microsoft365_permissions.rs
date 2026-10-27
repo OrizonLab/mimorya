@@ -14,7 +14,8 @@ use mimorya_core::account_links::MICROSOFT365;
 use mimorya_core::demo::user;
 use mimorya_core::tools::{LinkedAccounts, ToolResult};
 use serde_json::{Value, json};
-use support::microsoft365::{call, mailbox_executor, microsoft365_writing_tools, validated_call};
+use support::linked_accounts::{call, mailbox_executor, validated_call};
+use support::microsoft365::microsoft365_writing_tools;
 use uuid::Uuid;
 
 async fn granting(graph: &FakeGraph, granted: &str) -> ToolExecutor {

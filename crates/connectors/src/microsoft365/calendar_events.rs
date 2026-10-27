@@ -12,10 +12,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use validator::Validate;
 
-use super::graph::Graph;
-use super::reach::read_as_person;
-use super::shape::{bounded, collection, day_end, day_start, graph_instant, in_platform_zone};
-use super::shape::{people, person, short};
+use super::shape::{collection, in_platform_zone, people, person};
+use crate::delegated::ProviderApi;
+use crate::delegated::read_as_person;
+use crate::delegated::shape::{bounded, day_end, day_start, short, utc_instant};
 use crate::outbound::CONNECTOR_USE;
 
 const SELECT: &str = "id,subject,start,end,isAllDay,isCancelled,location,organizer,attendees,\
@@ -26,7 +26,7 @@ const MAX_EVENTS: usize = 50;
 const MAX_ATTENDEES: usize = 10;
 
 pub struct CalendarEvents {
-    pub graph: Graph,
+    pub graph: ProviderApi,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema, Validate)]
@@ -101,8 +101,8 @@ impl TypedTool for CalendarEvents {
         let url = self.graph.address(
             &["me", "calendarView"],
             &[
-                ("startDateTime", graph_instant(day_start(input.from))),
-                ("endDateTime", graph_instant(day_end(input.to))),
+                ("startDateTime", utc_instant(day_start(input.from))),
+                ("endDateTime", utc_instant(day_end(input.to))),
                 ("$select", SELECT.to_string()),
                 ("$orderby", "start/dateTime".into()),
                 ("$top", MAX_EVENTS.to_string()),

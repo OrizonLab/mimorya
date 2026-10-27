@@ -14,7 +14,10 @@ path = "src/bin/mcp_demo_docs.rs"
 [dependencies]
 anyhow.workspace = true
 async-trait.workspace = true
+base64.workspace = true
 chrono.workspace = true
+encoding_rs.workspace = true
+futures.workspace = true
 mimorya-core.workspace = true
 regex.workspace = true
 reqwest-mcp.workspace = true

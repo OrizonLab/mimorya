@@ -88,8 +88,11 @@ Repères à l'intérieur des crates :
   la personne servie lus par un Graph borné, ADR-117 ; e-mail envoyé et rendez-vous créé
   tels que validés, ce qu'ils envoient ne cachant rien (`compose.rs`), ADR-119),
   `connectors/src/google_workspace/` (client OAuth Google Workspace d'une entreprise,
-  ADR-121), `connectors/src/testing/`
-  (serveurs simulés des tests : MCP, API REST, Microsoft Graph).
+  ADR-121 ; ses outils, Gmail et agenda de la personne servie, texte d'un e-mail lu de
+  son MIME (`mime.rs`), ADR-122), `connectors/src/delegated/` (ce que partagent les
+  outils d'un compte relié : client borné du fournisseur, jeton de la personne et refus
+  dits en français, champs gardés, ADR-117, ADR-122), `connectors/src/testing/`
+  (serveurs simulés des tests : MCP, API REST, Microsoft Graph, Gmail et agenda Google).
 - `api/src/plugins/` (contexte de requête, limitation de débit (globale par processus ;
   d'authentification partagée par PostgreSQL, `shared_limit.rs`, ADR-088), CSRF (sauf la réception
   des réponses SAML, ADR-068, et l'envoi à un déclencheur, ADR-109), session,

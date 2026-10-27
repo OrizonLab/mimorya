@@ -14,7 +14,8 @@ use mimorya_core::autonomy::ToolRisk;
 use mimorya_core::demo::user;
 use mimorya_core::tools::LinkedAccounts;
 use serde_json::json;
-use support::microsoft365::{call, error_of, mailbox_executor, microsoft365_tools};
+use support::linked_accounts::{call, error_of, mailbox_executor};
+use support::microsoft365::microsoft365_tools;
 use uuid::Uuid;
 
 const TOKEN: &str = "acces-lea-1";

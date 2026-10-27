@@ -18,16 +18,17 @@ use serde_json::{Value, json};
 use validator::{Validate, ValidationError};
 
 use super::compose::{addresses, excerpt, full_text, recipients, text_body, visible_line};
-use super::graph::Graph;
-use super::reach::write_as_person;
-use super::shape::{bounded, in_platform_zone, short};
+use super::shape::in_platform_zone;
+use crate::delegated::ProviderApi;
+use crate::delegated::shape::{bounded, short};
+use crate::delegated::write_as_person;
 use crate::outbound::CONNECTOR_USE;
 
 /// The years an event may start in.
 const YEARS: std::ops::RangeInclusive<i32> = 2000..=2100;
 
 pub struct CalendarCreate {
-    pub graph: Graph,
+    pub graph: ProviderApi,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema, Validate)]

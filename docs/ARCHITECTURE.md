@@ -293,8 +293,10 @@ Détaillés dans [AGENT_ENGINE.md](AGENT_ENGINE.md). En résumé :
   domaine. Le jeton d'identité doit porter une adresse vérifiée par Google dans le
   domaine Workspace du compte, et égale à celle de la personne. Ce qui change d'un
   fournisseur à l'autre (permissions, paramètres de connexion, preuve du compte) est
-  porté par `LinkKind` dans le cœur ; le reste est commun (ADR-121). Ses outils viennent
-  aux lots suivants.
+  porté par `LinkKind` dans le cœur ; le reste est commun (ADR-121). Ses outils
+  (`google_gmail_search`, `google_gmail_read`, `google_calendar_events`) lisent avec le
+  jeton d'accès de la personne servie, comme ceux de Microsoft 365, dont ils partagent
+  le client borné et les règles (`connectors::delegated`, ADR-122).
 - Les secrets ne transitent jamais par le contexte du modèle ni par les journaux.
 
 Connecteurs prévus : démonstration (MVP), MCP générique (MVP), déclencheurs (ADR-109),

@@ -14,12 +14,12 @@ use serde_json::json;
 use validator::Validate;
 
 use super::compose::{addresses, excerpt, full_text, recipients, text_body, visible_line};
-use super::graph::Graph;
-use super::reach::write_as_person;
+use crate::delegated::ProviderApi;
+use crate::delegated::write_as_person;
 use crate::outbound::CONNECTOR_USE;
 
 pub struct MailSend {
-    pub graph: Graph,
+    pub graph: ProviderApi,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema, Validate)]

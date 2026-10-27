@@ -6,6 +6,7 @@
 use axum::http::StatusCode;
 use mimorya_api::secrets::SecretStore;
 use mimorya_api::services::connectors::token_secret_name;
+use mimorya_connectors::testing::FakeGoogle;
 use mimorya_core::account_links::{GOOGLE_WORKSPACE, MICROSOFT365, sealed_as};
 use mimorya_core::demo::tenant;
 use mimorya_db::repositories::account_links::get_account_link;
@@ -79,11 +80,34 @@ pub async fn insert_google_workspace(
     enabled: bool,
     write_tools: bool,
 ) -> Uuid {
+    let gmail = format!("{}/gmail/v1", idp.issuer);
+    let calendar = format!("{}/calendar/v3", idp.issuer);
+    insert_google(api, idp, &gmail, &calendar, enabled, write_tools).await
+}
+
+/// The same, enabled, its tools reading the test Gmail and Calendar
+/// (ADR-122).
+pub async fn insert_google_workspace_reading(
+    api: &TestApi,
+    idp: &MockIdentityProvider,
+    google: &FakeGoogle,
+) -> Uuid {
+    insert_google(api, idp, &google.gmail, &google.calendar, true, false).await
+}
+
+async fn insert_google(
+    api: &TestApi,
+    idp: &MockIdentityProvider,
+    gmail: &str,
+    calendar: &str,
+    enabled: bool,
+    write_tools: bool,
+) -> Uuid {
     let config = json!({
         "clientId": GOOGLE_CLIENT_ID,
         "issuer": idp.issuer,
-        "gmail": format!("{}/gmail/v1", idp.issuer),
-        "calendar": format!("{}/calendar/v3", idp.issuer),
+        "gmail": gmail,
+        "calendar": calendar,
         "writeTools": write_tools,
     });
     insert_declared(api, GOOGLE_WORKSPACE, "Google Workspace", enabled, &config).await

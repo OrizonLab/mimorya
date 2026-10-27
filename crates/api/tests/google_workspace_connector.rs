@@ -179,7 +179,7 @@ async fn its_secret_is_replaced_never_removed_and_its_addresses_stay() {
             "Les adresses de Google Workspace sont celles de la plateforme",
         ),
         (
-            json!({ "toolPolicies": { "google_gmail_search": { "enabled": false } } }),
+            json!({ "toolPolicies": { "google_drive_delete": { "enabled": false } } }),
             "Outil inconnu de ce connecteur",
         ),
         (json!({ "tokenHeader": "X-Api-Key" }), "Seule une API REST"),
