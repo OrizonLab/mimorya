@@ -2,10 +2,11 @@
 //! declaration checked as a whole (`mimorya_connectors::rest`), the token
 //! sealed in the secret store, never shown nor audited, under the
 //! administration lock. Changing, testing and deleting one goes as for an
-//! MCP server (`connectors`, `connector_test`).
+//! MCP server (`connectors`, `connector_test`). Its operations may be read
+//! from an OpenAPI description first (ADR-114).
 
 use mimorya_connectors::outbound::token_problem;
-use mimorya_connectors::rest::{RestConfig, config_problem};
+use mimorya_connectors::rest::{Imported, RestConfig, config_problem, import_openapi};
 use mimorya_core::DomainError;
 use mimorya_db::is_unique_violation;
 use mimorya_db::repositories::audit::append_audit;
@@ -24,6 +25,15 @@ pub struct NewRestConnector {
     pub config: RestConfig,
     pub token: Option<String>,
     pub enabled: bool,
+}
+
+/// The operations an OpenAPI description offers (ADR-114). Nothing is
+/// stored nor called, so nothing is audited. The reading is bounded, yet
+/// takes a thread's time: one of the blocking pool's, never the executor's.
+pub async fn read_openapi(access: &AccessContext, document: String) -> anyhow::Result<Imported> {
+    access.require_tenant_wide(PERMISSION)?;
+    let imported = tokio::task::spawn_blocking(move || import_openapi(&document)).await?;
+    Ok(imported.map_err(DomainError::validation)?)
 }
 
 pub async fn create_rest_connector(

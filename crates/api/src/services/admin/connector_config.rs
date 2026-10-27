@@ -5,14 +5,17 @@
 //! Tool prefixes never overlap within a kind, operator-written servers
 //! included.
 
+use std::collections::HashMap;
+
 use mimorya_connectors::outbound::NetworkPolicy;
 use mimorya_connectors::{mcp, rest};
 use mimorya_core::DomainError;
+use mimorya_core::authz::PermissionInfo;
 use mimorya_db::repositories::connectors::{ConnectorInstanceRow, list_connector_instances};
 use serde_json::{Value, json};
 use sqlx::PgConnection;
 
-use super::connector_rules::PolicyScope;
+use super::connector_rules::{PolicyScope, ToolPolicyInput, checked_policies};
 
 /// A REST API's changes: `None` keeps what is stored.
 #[derive(Default)]
@@ -20,6 +23,14 @@ pub struct RestChanges {
     /// `Some(None)`: back to `Authorization: Bearer`.
     pub token_header: Option<Option<String>>,
     pub operations: Option<Vec<rest::RestOperation>>,
+}
+
+/// The policies a change stores, if it changes them, and the tools whose
+/// policy went with their operation.
+#[derive(Default)]
+pub struct PoliciesAfter {
+    pub stored: Option<Value>,
+    pub dropped: Vec<String>,
 }
 
 /// A configuration the administration may change.
@@ -64,7 +75,7 @@ impl Editable {
     /// The tools of a REST API whose operation these operations remove or
     /// change in method, path or parameters: what a policy allowed of them
     /// no longer holds (a read become a deletion, a filter become a write).
-    pub fn redeclared(&self, operations: &[rest::RestOperation]) -> Vec<String> {
+    fn redeclared(&self, operations: &[rest::RestOperation]) -> Vec<String> {
         let Self::Rest(config) = self else {
             return Vec::new();
         };
@@ -87,10 +98,7 @@ impl Editable {
     /// they do: the only ones its policies may name, so that none waits for
     /// an operation of that name to come back (ADR-113). `None` for an MCP
     /// server, whose tools are known only once it answers.
-    pub fn declared_tools(
-        &self,
-        operations: Option<&[rest::RestOperation]>,
-    ) -> Option<Vec<String>> {
+    fn declared_tools(&self, operations: Option<&[rest::RestOperation]>) -> Option<Vec<String>> {
         let Self::Rest(config) = self else {
             return None;
         };
@@ -104,7 +112,7 @@ impl Editable {
     }
 
     /// Which tools its policies may name, and how.
-    pub fn policy_scope(&self) -> PolicyScope {
+    fn policy_scope(&self) -> PolicyScope {
         match self {
             Self::Mcp { prefix, .. } => PolicyScope {
                 namespace: mcp::tool_namespace(prefix),
@@ -116,6 +124,54 @@ impl Editable {
                 replaceable_descriptions: false,
             },
         }
+    }
+
+    /// The policies to store once a change applies: those it gives, checked,
+    /// naming for a REST API only the operations it then declares; otherwise,
+    /// when a REST API's operations are replaced, the stored ones but those of
+    /// an operation removed or changed in method, path or parameters, whose
+    /// allowance no longer holds (ADR-112, ADR-113).
+    pub fn policies_after(
+        &self,
+        stored: &Value,
+        given: Option<&HashMap<String, ToolPolicyInput>>,
+        operations: Option<&[rest::RestOperation]>,
+        catalog: &[PermissionInfo],
+    ) -> Result<PoliciesAfter, DomainError> {
+        if let Some(policies) = given {
+            let declared = self.declared_tools(operations);
+            let unknown = declared.and_then(|declared| {
+                policies
+                    .keys()
+                    .find(|tool| !declared.contains(tool))
+                    .cloned()
+            });
+            if let Some(unknown) = unknown {
+                return Err(DomainError::validation(format!(
+                    "Opération inconnue de cette API : {unknown}"
+                )));
+            }
+            return Ok(PoliciesAfter {
+                stored: Some(checked_policies(policies, &self.policy_scope(), catalog)?),
+                dropped: Vec::new(),
+            });
+        }
+        let Some(operations) = operations else {
+            return Ok(PoliciesAfter::default());
+        };
+        let mut kept = stored.clone();
+        let mut dropped = Vec::new();
+        if let Some(policies) = kept.as_object_mut() {
+            for tool in self.redeclared(operations) {
+                if policies.remove(&tool).is_some() {
+                    dropped.push(tool);
+                }
+            }
+        }
+        Ok(PoliciesAfter {
+            stored: (!dropped.is_empty()).then_some(kept),
+            dropped,
+        })
     }
 
     /// The configuration to store with these changes, checked for a REST

@@ -130,6 +130,7 @@ pub fn typescript() -> String {
     // Named by `ConnectorView.toolPolicies`, which holds the stored value.
     declarations.add::<admin::ToolPolicy>();
     declarations.add::<admin::ConnectorTest>();
+    declarations.add::<admin::RestImport>();
     declarations.add::<admin::AuditLog>();
     declarations.add::<admin::UsageSummary>();
     declarations.add::<ErrorBody>();
@@ -184,6 +185,7 @@ macro_rules! request_bodies {
             admin::EvaluationRequest,
             admin::NewConnector,
             admin::NewRestConnector,
+            admin::OpenApiDescription,
             admin::ConnectorTrial,
             admin::ConnectorUpdate,
             admin::LlmChoice,
