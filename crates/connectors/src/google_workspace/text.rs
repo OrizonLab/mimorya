@@ -18,16 +18,21 @@ static HIDDEN: LazyLock<Regex> = LazyLock::new(|| {
 /// Where a cell of a table ends: its text kept apart from the next one's.
 static CELLS: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)<\s*/\s*t[dh]\s*>").expect("valid regex"));
-const CELL_END: &str = " | ";
+/// Marks a cell's end until the lines are cut: a character of private use,
+/// so that a `|` of the text itself is kept.
+const CELL_END: char = '\u{E000}';
+/// What a cell's end reads as, within a line.
+const CELL_GAP: &str = " | ";
 /// Where a line ends in what the HTML shows.
 static BREAKS: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)<\s*(br|hr|/p|/div|/li|/tr|/table|/ul|/ol|/h[1-6]|/blockquote)\b[^>]*>")
         .expect("valid regex")
 });
-/// Tags only: an address or a link written between angle brackets in a
-/// plain text, or a lone `<`, stays.
+/// Tags only, those of Word's namespaces (`<o:p>`) too: an address or a
+/// link written between angle brackets in a plain text, or a lone `<`,
+/// stays.
 static TAGS: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?s)</?[A-Za-z][A-Za-z0-9-]*(?:\s[^>]*)?/?>|<![^>]*>|<\?[^>]*>")
+    Regex::new(r"(?s)</?[A-Za-z][A-Za-z0-9:-]*(?:\s[^>]*)?/?>|<![^>]*>|<\?[^>]*>")
         .expect("valid regex")
 });
 static ENTITIES: LazyLock<Regex> = LazyLock::new(|| {
@@ -39,19 +44,16 @@ static ENTITIES: LazyLock<Regex> = LazyLock::new(|| {
 /// as itself.
 pub fn html_to_text(html: &str) -> String {
     let shown = HIDDEN.replace_all(html, "");
-    let cells = CELLS.replace_all(&shown, CELL_END);
+    let cells = CELLS.replace_all(&shown, CELL_END.to_string());
     let broken = BREAKS.replace_all(&cells, "\n");
     let bare = TAGS.replace_all(&broken, "");
     let decoded = decode_entities(&bare);
-    // A row's last cell closes no gap.
-    let rows: Vec<&str> = decoded
+    // A cell's end at either end of a line closes no gap.
+    let rows: Vec<String> = decoded
         .split('\n')
         .map(|line| {
-            let mut line = line.trim_end();
-            while let Some(rest) = line.strip_suffix('|') {
-                line = rest.trim_end();
-            }
-            line
+            line.trim_matches(|c: char| c == CELL_END || c.is_whitespace())
+                .replace(CELL_END, CELL_GAP)
         })
         .collect();
     tidy(&rows.join("\n"))
@@ -164,7 +166,8 @@ mod tests {
     #[test]
     fn html_reads_as_its_text() {
         let html = "<!DOCTYPE html><html><head><title>T</title></head><body><style>p{}</style>\
-                    <p>Bonjour&nbsp;Léa,</p><p>Voici   la <b>facture</b>.<br/>Merci</p>\
+                    <p class=MsoNormal>Bonjour&nbsp;Léa,<o:p></o:p></p>\
+                    <p>Voici   la <b>facture</b>.<br/>Merci</p>\
                     <!-- caché --><script>alert(1)</script><div></div><hr><div>Fin</div></body></html>";
         assert_eq!(
             html_to_text(html),
@@ -184,13 +187,19 @@ mod tests {
     }
 
     #[test]
+    fn a_cell_holding_a_block_keeps_its_value_apart() {
+        let cell = "<table><tr><td><p>Filtre</p></td><td>12</td></tr></table>";
+        assert_eq!(html_to_text(cell), "Filtre\n12");
+    }
+
+    #[test]
     fn a_plain_text_keeps_what_is_between_angle_brackets() {
         let plain = "Rejoindre la réunion<https://teams.example/l/1> ou contacter Léa \
-                     <lea@exemple.fr>\nsi a < 5 et b > 3";
+                     <lea@exemple.fr> <mailto:lea@exemple.fr>\nsi a < 5 et b > 3\nOrdre du jour |";
         assert_eq!(
             html_to_text(plain),
             "Rejoindre la réunion<https://teams.example/l/1> ou contacter Léa \
-             <lea@exemple.fr>\nsi a < 5 et b > 3"
+             <lea@exemple.fr> <mailto:lea@exemple.fr>\nsi a < 5 et b > 3\nOrdre du jour |"
         );
     }
 
