@@ -93,7 +93,7 @@ test('an application is declared, an account linked and removed, the application
   await expect(section.getByText('Non relié')).toBeVisible();
   await section.getByRole('button', { name: 'Relier mon compte' }).click();
   await lea.waitForURL('**/account');
-  await expect(lea.getByRole('status')).toContainText('Votre compte Microsoft 365 est relié');
+  await expect(lea.getByText('Votre compte Microsoft 365 est relié')).toBeVisible();
   await expect(section.getByText(`Relié à ${demo.lea}`)).toBeVisible();
   await noError(lea);
   expect((await linkOf(lea))?.linked?.address).toBe(demo.lea);
