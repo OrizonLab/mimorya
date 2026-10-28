@@ -370,6 +370,9 @@ impl App {
         wait(background.lease_takeover).await;
         wait(background.run_queue).await;
         abort(background.indexing).await;
+        // A Slack message being answered may start a run as it ends: awaited
+        // first, so that its run is awaited with the others.
+        self.services.background.idle().await;
         self.services.runs.idle().await;
         // The runs ended: what remains to answer in Slack is answered by
         // the next process that starts.

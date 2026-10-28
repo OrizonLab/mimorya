@@ -5,10 +5,12 @@
 //! sweep, a stop. Each end or pause is answered once, by the pass of a
 //! process that executes runs, one at a time (ADR-086), within
 //! `ANSWERED_WITHIN` of it, in a thread active within `THREAD_ACTIVE_WITHIN`;
-//! a thread's answers in order: one waiting to be tried again holds back
-//! those after it. A paused gateway, or a Slack user no longer the person's
-//! identity, is written nothing. What Slack refuses is recorded and not
-//! tried again; Slack unreachable, tried again a few times, then given up.
+//! a thread's answers in order: one waiting to be tried again, or not
+//! recorded, holds back those after it while it is still answered (one too
+//! old is no longer tried, its outcome left empty, and holds back none).
+//! A paused gateway, or a Slack user no longer the person's identity, is
+//! written nothing. What Slack refuses is recorded and not tried again;
+//! Slack unreachable, tried again a few times, then given up.
 //! An answer is written twice when Slack took it but answered too late, or
 //! the service stopped between the message sent and its record. Nothing
 //! written is logged nor recorded: it is in the conversation.
@@ -73,8 +75,9 @@ async fn reply_since(services: &Services, now: DateTime<Utc>) -> anyhow::Result<
     let (active, since) = (now - THREAD_ACTIVE_WITHIN, now - ANSWERED_WITHIN);
     let pool = services.db.pool();
     let pending = unreplied_gateway_events(pool, active, since, now, PER_PASS).await?;
-    // The threads an answer of this pass is to be tried again in: the
-    // later answers there wait for it.
+    // The threads an answer of this pass is still to be written in (to be
+    // tried again, or its outcome not recorded): the later answers there
+    // wait for it.
     let mut held = HashSet::new();
     let mut sent = 0;
     for event in pending {
@@ -113,6 +116,9 @@ async fn reply(
         tx.commit().await?;
         return Ok(false);
     }
+    // Held until its outcome is recorded: should anything fail on the way,
+    // the thread's later answers wait for the next pass.
+    held.insert(thread_id);
     let token = gateways
         .secret(&mut tx, tenant_id, &bot_token_name(target.gateway_id))
         .await?;
@@ -138,12 +144,12 @@ async fn reply(
             }
         }
     };
-    if matches!(record, ReplyRecord::Retry(_)) {
-        held.insert(thread_id);
-    }
     let mut tx = services.db.begin(tenant_id).await?;
     record_gateway_reply(&mut tx, tenant_id, event_id, thread_id, record).await?;
     tx.commit().await?;
+    if matches!(record, ReplyRecord::Done(_)) {
+        held.remove(&thread_id);
+    }
     Ok(record == ReplyRecord::Done("sent"))
 }
 

@@ -6848,7 +6848,8 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     d'accès peuvent lire (`context.channel`). Ses messages portent leur service
     (`metadata.gateway = "slack"`). Les refus du démarrage (pas de modèle, `agent:use`
     retiré, entreprise suspendue, demande déjà en cours, service qui s'arrête) sont dits
-    dans le fil ;
+    dans le fil. À l'arrêt, les messages en cours de traitement sont attendus avant les
+    runs, de sorte que le run qu'ils ont lancé l'est aussi ;
   - **la réponse dans le fil** : chaque fin ou pause d'un tel run, quel que soit le
     chemin qui l'a produite (son issue, une validation décidée, le balayage des runs
     bloqués, un arrêt), est l'événement `run_finished` de son journal. Un passage de
@@ -6901,9 +6902,10 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     `crates/api/tests/slack_gateway_conversations.rs` (conversation dans un fil, suite
     dans le fil, autre conversation, pause puis réponse, demande occupée, Slack muet,
     identité déliée, `agent:use` retiré, mot de passe provisoire, fil tenu pour un autre
-    compte, fil ouvert entretemps),
+    compte, fil ouvert entretemps, service qui s'arrête),
     `slack_gateway_replies.rs` (passerelle en pause, identité retirée, refus, Slack
-    injoignable puis rejoint, abandon, réponses d'un fil dans l'ordre),
+    injoignable puis rejoint, abandon, réponses d'un fil dans l'ordre, d'un passage à
+    l'autre et dans un même passage, réponse trop ancienne qui ne retient plus son fil),
     `slack_gateway_companies.rs` (deux entreprises, chacune répondue dans ses fils) ;
   - reste à venir : la conversation montrée « depuis Slack » dans l'application, avec
     son parcours de bout en bout (12d), puis Telegram et Teams.
