@@ -2,7 +2,9 @@
 //! gateway's service (ADR-127): in their direct conversation with the
 //! company's Slack application, a thread opened by their message outside
 //! any thread, named after it, followed by their replies in it. One
-//! conversation per thread, one thread per conversation.
+//! conversation per thread, one thread per conversation. A thread is active
+//! at its latest turn or answer: the answers pass reads the threads active
+//! lately.
 
 use chrono::{DateTime, Utc};
 use sqlx::PgConnection;
@@ -75,4 +77,16 @@ pub async fn insert_gateway_thread(
     .execute(conn)
     .await?;
     Ok(inserted.rows_affected() == 1)
+}
+
+/// The conversation's thread, if any, active now: a turn was sent there.
+pub async fn touch_gateway_thread(
+    conn: &mut PgConnection,
+    conversation_id: Uuid,
+) -> sqlx::Result<()> {
+    sqlx::query("update gateway_threads set active_at = now() where conversation_id = $1")
+        .bind(conversation_id)
+        .execute(conn)
+        .await?;
+    Ok(())
 }

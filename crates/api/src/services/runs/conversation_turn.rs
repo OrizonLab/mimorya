@@ -13,6 +13,7 @@ use mimorya_db::repositories::conversations::{
     ConversationPatch, DEFAULT_CONVERSATION_TITLE, MessageRow, NewMessage, add_message,
     list_messages, lock_conversation, update_conversation,
 };
+use mimorya_db::repositories::gateway_threads::touch_gateway_thread;
 use mimorya_db::repositories::runs::{
     NewRun, RunRow, RunStatus, create_run, list_runs_for_conversation,
 };
@@ -24,7 +25,8 @@ use crate::contract::MessageMetadata;
 use crate::services::access::{AccessContext, AuthIdentity};
 
 const HISTORY_LIMIT: i64 = 20;
-const TITLE_LENGTH: usize = 80;
+/// How much of a person's first words titles their conversation.
+pub const TITLE_LENGTH: usize = 80;
 
 /// Who sends a turn: its user, from the application or from their company's
 /// Slack application (ADR-127), or the platform for them (ADR-080).
@@ -144,6 +146,10 @@ pub async fn open_conversation_turn(
     // Its task's last run before it can run (ADR-080, ADR-082).
     if let TurnSender::Schedule { task_id } = sender {
         link_started_run(tx, task_id, conversation_id, run.id).await?;
+    }
+    // Its Slack thread is active: its answers are written there (ADR-127).
+    if let TurnSender::Gateway { .. } = sender {
+        touch_gateway_thread(tx, conversation_id).await?;
     }
     let action = "agent.run.started";
     let started = match sender {

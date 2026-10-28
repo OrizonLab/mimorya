@@ -4,12 +4,16 @@
 //! Whichever path ended it: its outcome, a validation decided, the stale-run
 //! sweep, a stop. Each end or pause is answered once, by the pass of a
 //! process that executes runs, one at a time (ADR-086), within
-//! `ANSWERED_WITHIN` of it. A paused gateway, or a Slack user no longer the
-//! person's identity, is written nothing. What Slack refuses is recorded
-//! and not tried again; Slack unreachable, tried again a few times, then
-//! given up. Each is written once, unless the service stops between the
-//! message sent and its record. Nothing written is logged nor recorded: it
-//! is in the conversation.
+//! `ANSWERED_WITHIN` of it, in a thread active within `THREAD_ACTIVE_WITHIN`;
+//! a thread's answers in order: one waiting to be tried again holds back
+//! those after it. A paused gateway, or a Slack user no longer the person's
+//! identity, is written nothing. What Slack refuses is recorded and not
+//! tried again; Slack unreachable, tried again a few times, then given up.
+//! An answer is written twice when Slack took it but answered too late, or
+//! the service stopped between the message sent and its record. Nothing
+//! written is logged nor recorded: it is in the conversation.
+
+use std::collections::HashSet;
 
 use chrono::{DateTime, Duration, Utc};
 use mimorya_connectors::slack::SlackFailure;
@@ -17,6 +21,7 @@ use mimorya_db::repositories::gateway_replies::{
     ReplyRecord, UnrepliedEvent, gateway_reply_target, record_gateway_reply,
     unreplied_gateway_events,
 };
+use uuid::Uuid;
 
 use super::bot_token_name;
 use super::reply_text::reply_text;
@@ -25,6 +30,12 @@ use crate::app::Services;
 /// How long after a run's end or pause it is still answered: one that
 /// Slack could not be reached for is not, days later.
 pub const ANSWERED_WITHIN: Duration = Duration::hours(24);
+/// The threads whose answers are looked for: a turn or an answer there
+/// within this delay. A run's next end comes within a validation's delay
+/// (seven days) of the latest; a margin above it.
+const THREAD_ACTIVE_WITHIN: Duration = Duration::days(30);
+/// The longest wait before an answer is tried again, whatever Slack says.
+const MAX_WAIT: Duration = Duration::hours(1);
 /// The attempts an answer is given while Slack cannot be reached.
 pub const MAX_ATTEMPTS: i32 = 4;
 /// The ends and pauses a pass answers, at most.
@@ -43,7 +54,8 @@ pub async fn reply_to_finished_runs(services: &Services) -> anyhow::Result<usize
     // taken only when there is something to answer.
     let now = Utc::now();
     let pool = services.db.pool();
-    if unreplied_gateway_events(pool, now - ANSWERED_WITHIN, now, 1)
+    let (active, since) = (now - THREAD_ACTIVE_WITHIN, now - ANSWERED_WITHIN);
+    if unreplied_gateway_events(pool, active, since, now, 1)
         .await?
         .is_empty()
     {
@@ -58,11 +70,15 @@ pub async fn reply_to_finished_runs(services: &Services) -> anyhow::Result<usize
 }
 
 async fn reply_since(services: &Services, now: DateTime<Utc>) -> anyhow::Result<usize> {
-    let since = now - ANSWERED_WITHIN;
-    let pending = unreplied_gateway_events(services.db.pool(), since, now, PER_PASS).await?;
+    let (active, since) = (now - THREAD_ACTIVE_WITHIN, now - ANSWERED_WITHIN);
+    let pool = services.db.pool();
+    let pending = unreplied_gateway_events(pool, active, since, now, PER_PASS).await?;
+    // The threads an answer of this pass is to be tried again in: the
+    // later answers there wait for it.
+    let mut held = HashSet::new();
     let mut sent = 0;
     for event in pending {
-        match reply(services, event, now).await {
+        match reply(services, event, now, &mut held).await {
             Ok(true) => sent += 1,
             Ok(false) => {}
             Err(error) => {
@@ -74,11 +90,13 @@ async fn reply_since(services: &Services, now: DateTime<Utc>) -> anyhow::Result<
     Ok(sent)
 }
 
-/// Answers `event` in its thread; whether it was sent.
+/// Answers `event` in its thread, unless an earlier answer there is
+/// `held`; whether it was sent.
 async fn reply(
     services: &Services,
     event: UnrepliedEvent,
     now: DateTime<Utc>,
+    held: &mut HashSet<Uuid>,
 ) -> anyhow::Result<bool> {
     let gateways = &services.gateways;
     let mut tx = services.db.begin(event.tenant_id).await?;
@@ -86,6 +104,9 @@ async fn reply(
         return Ok(false);
     };
     let (tenant_id, event_id, thread_id) = (event.tenant_id, target.event_id, target.thread_id);
+    if held.contains(&thread_id) {
+        return Ok(false);
+    }
     if !target.gateway_enabled || !target.still_linked {
         let skipped = ReplyRecord::Done("skipped");
         record_gateway_reply(&mut tx, tenant_id, event_id, thread_id, skipped).await?;
@@ -117,6 +138,9 @@ async fn reply(
             }
         }
     };
+    if matches!(record, ReplyRecord::Retry(_)) {
+        held.insert(thread_id);
+    }
     let mut tx = services.db.begin(tenant_id).await?;
     record_gateway_reply(&mut tx, tenant_id, event_id, thread_id, record).await?;
     tx.commit().await?;
@@ -134,14 +158,14 @@ fn after_failure(failure: &SlackFailure, attempt: i32, now: DateTime<Utc>) -> Re
     if attempt >= MAX_ATTEMPTS {
         return ReplyRecord::Done("failed");
     }
-    // 30 s, 2 min, 8 min; or when Slack says.
+    // 30 s, 2 min, 8 min; or when Slack says, within an hour.
     let wait = match failure {
         SlackFailure::Throttled {
             retry_after: Some(after),
-        } => Duration::from_std(*after).unwrap_or(Duration::minutes(1)),
+        } => Duration::from_std(*after).unwrap_or(MAX_WAIT),
         _ => Duration::seconds(30 * 4_i64.pow(attempt.saturating_sub(1) as u32)),
     };
-    ReplyRecord::Retry(now + wait)
+    ReplyRecord::Retry(now + wait.min(MAX_WAIT))
 }
 
 #[cfg(test)]
@@ -170,6 +194,14 @@ mod tests {
         assert_eq!(
             after_failure(&throttled, 1, now),
             ReplyRecord::Retry(now + Duration::seconds(12))
+        );
+        // Whatever Slack says, within an hour.
+        let far = SlackFailure::Throttled {
+            retry_after: Some(std::time::Duration::from_secs(100_000_000_000_000)),
+        };
+        assert_eq!(
+            after_failure(&far, 1, now),
+            ReplyRecord::Retry(now + Duration::hours(1))
         );
         let refused = SlackFailure::Refused("channel_not_found".into());
         assert_eq!(

@@ -2,7 +2,7 @@
 //! run started there is answered once; a paused gateway, or a Slack user no
 //! longer the person's identity, is written nothing; what Slack refuses is
 //! not tried again; Slack unreachable is tried again later, a few times,
-//! then given up.
+//! then given up; a thread's answers are written in order.
 
 mod support;
 
@@ -13,8 +13,11 @@ use mimorya_connectors::testing::FakeSlack;
 use mimorya_core::demo::user;
 use serde_json::json;
 use support::gateways::ACCOUNT;
+use support::manager_approvals::listed;
+use support::planning::{apply_proposal, propose};
 use support::slack_conversations::{
-    MARC_SLACK, answer, in_thread, linked, replies_of, retry_now, write, written,
+    MARC_SLACK, answer, in_thread, linked, replies_of, retry_now, settle, slack_runs, write,
+    written,
 };
 use support::sso::SSO_DEPLOYMENT;
 use support::{TestApi, email};
@@ -136,5 +139,56 @@ async fn slack_unreachable_is_tried_again_later_a_few_times() {
     assert_eq!(
         replies_of(&api, SECOND).await,
         [(Some("failed".into()), MAX_ATTEMPTS)]
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_thread_s_answers_are_written_in_order() {
+    let slack = FakeSlack::start().await;
+    let api = TestApi::start_with_slack(&SSO_DEPLOYMENT, &slack.url).await;
+    let (paul, marc) = (api.sign_in(user::PAUL).await, api.sign_in(user::MARC).await);
+    let address = email(user::MARC);
+    let gateway = linked(&api, &slack, &paul, &marc, (MARC_SLACK, &address)).await;
+    api.script(vec![
+        propose("INT-2052", "15:00"),
+        apply_proposal(""),
+        ScriptedStep::text("Planning de INT-2052 appliqué."),
+    ]);
+    write(
+        &api,
+        gateway,
+        &written(MARC_SLACK, "Planifie INT-2052", FIRST, None),
+    )
+    .await;
+    // Its pause is not written: Slack is down.
+    slack.unavailable(true);
+    assert_eq!(answer(&api).await, 0);
+    slack.unavailable(false);
+
+    // Validated meanwhile: its end waits for the pause, still to try again.
+    let run = slack_runs(&api).await.remove(0).0;
+    let request = listed(&marc, &run.to_string()).await.expect("his request");
+    let id = request["id"].as_str().unwrap();
+    let decided = marc
+        .post(
+            &format!("/approvals/{id}/decision"),
+            json!({ "approved": true }),
+        )
+        .await;
+    assert_eq!(decided.status, StatusCode::OK, "{}", decided.text());
+    settle(&api).await;
+    assert_eq!(answer(&api).await, 0);
+    assert!(in_thread(&slack, FIRST).is_empty());
+    // The pause's time come: the pause, then its end at the next pass.
+    retry_now(&api, FIRST).await;
+    assert_eq!(answer(&api).await, 1);
+    assert_eq!(in_thread(&slack, FIRST).len(), 1);
+    assert_eq!(answer(&api).await, 1);
+    let said = in_thread(&slack, FIRST);
+    assert!(said[0].contains("attend une validation"), "{said:?}");
+    assert!(
+        said[1].starts_with("Planning de INT-2052 appliqué."),
+        "{said:?}"
     );
 }

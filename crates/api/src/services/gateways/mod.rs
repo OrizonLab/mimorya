@@ -30,7 +30,7 @@ pub use conversations::converse;
 pub use events::{EventOutcome, PersonMessage, SlackHeaders};
 pub use identities::GatewayOfPerson;
 pub use link::{LINK_LIFETIME, LinkPreview};
-pub use replies::{ANSWERED_WITHIN, MAX_ATTEMPTS, reply_to_finished_runs};
+pub use replies::{MAX_ATTEMPTS, reply_to_finished_runs};
 
 /// Where Slack sends a gateway's events, under the API's address: the only
 /// route besides the SAML reception and the inbound hooks' that a request

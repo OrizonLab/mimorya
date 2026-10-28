@@ -27,6 +27,14 @@ pub async fn linked(
 ) -> Uuid {
     let gateway = declare_slack(paul).await;
     slack.add_person(person, address);
+    let code = link_code(api, slack, gateway, person).await;
+    confirm(client, &code).await;
+    gateway
+}
+
+/// The code of the link the application sends `person`, not yet linked,
+/// when they write to it.
+pub async fn link_code(api: &TestApi, slack: &FakeSlack, gateway: Uuid, person: &str) -> String {
     let sent = send(
         api,
         gateway,
@@ -35,10 +43,13 @@ pub async fn linked(
     .await;
     assert_eq!(sent.status, StatusCode::OK, "{}", sent.text());
     api.idle().await;
-    let code = offered_code(slack);
+    offered_code(slack)
+}
+
+/// Links, as `client`, the Slack user the link `code` names.
+pub async fn confirm(client: &Client<'_>, code: &str) {
     let confirmed = client.post(LINK, json!({ "code": code })).await;
     assert_eq!(confirmed.status, StatusCode::OK, "{}", confirmed.text());
-    gateway
 }
 
 /// An event never sent before.

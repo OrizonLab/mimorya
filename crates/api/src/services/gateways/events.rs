@@ -37,8 +37,6 @@ pub struct SlackHeaders<'a> {
 pub struct PersonMessage {
     pub tenant_id: Uuid,
     pub gateway: GatewayRow,
-    /// The account the Slack user who wrote is linked to.
-    pub user_id: Uuid,
     pub message: DirectMessage,
     /// The bot's token, to answer with.
     pub token: String,
@@ -49,7 +47,6 @@ impl std::fmt::Debug for PersonMessage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PersonMessage")
             .field("gateway", &self.gateway.id)
-            .field("user_id", &self.user_id)
             .finish_non_exhaustive()
     }
 }
@@ -137,7 +134,9 @@ impl GatewayService {
             tx.commit().await?;
             return Ok(EventOutcome::Taken);
         };
-        let identity = find_gateway_identity(&mut tx, gateway_id, &message.person).await?;
+        let linked = find_gateway_identity(&mut tx, gateway_id, &message.person)
+            .await?
+            .is_some();
         let token = self
             .secret(&mut tx, tenant_id, &bot_token_name(gateway_id))
             .await?;
@@ -146,18 +145,15 @@ impl GatewayService {
             tracing::warn!(gateway = %gateway_id, "Slack gateway's bot token unreadable");
             return Ok(EventOutcome::Taken);
         };
-        match identity {
-            Some(identity) => Ok(EventOutcome::Message(Box::new(PersonMessage {
+        if linked {
+            return Ok(EventOutcome::Message(Box::new(PersonMessage {
                 tenant_id,
                 gateway,
-                user_id: identity.user_id,
                 message,
                 token,
-            }))),
-            None => {
-                self.offer_link(tenant_id, gateway_id, token, message, now)?;
-                Ok(EventOutcome::Taken)
-            }
+            })));
         }
+        self.offer_link(tenant_id, gateway_id, token, message, now)?;
+        Ok(EventOutcome::Taken)
     }
 }

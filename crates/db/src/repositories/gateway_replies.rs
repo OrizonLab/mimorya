@@ -15,21 +15,26 @@ pub struct UnrepliedEvent {
     pub event_id: i64,
 }
 
-/// Every company's ends and pauses since `since`, still to answer at
-/// `now`, oldest first, at most `limit`, through a narrowly scoped
-/// database function: each is then answered in its own company.
+/// Every company's ends and pauses since `since`, in threads active since
+/// `active_since`, still to answer at `now` (a thread's in order), oldest
+/// first, at most `limit`, through a narrowly scoped database function:
+/// each is then answered in its own company.
 pub async fn unreplied_gateway_events(
     pool: &PgPool,
+    active_since: DateTime<Utc>,
     since: DateTime<Utc>,
     now: DateTime<Utc>,
     limit: i32,
 ) -> sqlx::Result<Vec<UnrepliedEvent>> {
-    sqlx::query_as("select tenant_id, event_id from system_unreplied_gateway_events($1, $2, $3)")
-        .bind(since)
-        .bind(now)
-        .bind(limit)
-        .fetch_all(pool)
-        .await
+    sqlx::query_as(
+        "select tenant_id, event_id from system_unreplied_gateway_events($1, $2, $3, $4)",
+    )
+    .bind(active_since)
+    .bind(since)
+    .bind(now)
+    .bind(limit)
+    .fetch_all(pool)
+    .await
 }
 
 /// What answering an end or pause needs.
@@ -90,7 +95,8 @@ pub enum ReplyRecord {
     Retry(DateTime<Utc>),
 }
 
-/// Records what became of the answer to `event_id`, one attempt more.
+/// Records what became of the answer to `event_id`, one attempt more; its
+/// thread is active now.
 pub async fn record_gateway_reply(
     conn: &mut PgConnection,
     tenant_id: Uuid,
@@ -113,7 +119,11 @@ pub async fn record_gateway_reply(
     .bind(thread_id)
     .bind(outcome)
     .bind(retry_after)
-    .execute(conn)
+    .execute(&mut *conn)
     .await?;
+    sqlx::query("update gateway_threads set active_at = now() where id = $1")
+        .bind(thread_id)
+        .execute(conn)
+        .await?;
     Ok(())
 }

@@ -6,20 +6,25 @@
 //! validation says where to give it, and the answer follows once given.
 //! Slack is asked at each message who the Slack user is: no longer the
 //! person, their identity is unlinked and a link offered. Nothing is
-//! started for someone who cannot act, and why is said in the thread.
+//! started for someone who cannot act, nor in a thread held for another
+//! account or opened meanwhile, and why is said in the thread.
 
 mod support;
 
 use axum::http::StatusCode;
 use mimorya_agent::testing::ScriptedStep;
-use mimorya_core::demo::user;
+use mimorya_api::services::AuthIdentity;
+use mimorya_api::services::runs::SlackThread;
+use mimorya_core::DomainError;
+use mimorya_core::demo::{tenant, user};
 use serde_json::{Value, json};
-use support::gateways::ACCOUNT;
+use support::gateways::{ACCOUNT, declare_slack};
 use support::manager_approvals::{listed, without};
 use support::planning::{apply_proposal, propose};
 use support::refusals::{entries_since, latest_entry};
 use support::slack_conversations::{
-    MARC_SLACK, answer, conversation_of, in_thread, linked, settle, slack_runs, write, written,
+    MARC_DM, MARC_SLACK, answer, confirm, conversation_of, in_thread, link_code, linked,
+    replies_of, settle, slack_runs, write, written,
 };
 use support::sso::SSO_DEPLOYMENT;
 use support::{TestApi, WEB_ORIGIN, email};
@@ -262,4 +267,91 @@ async fn flag(sql: &str, user_id: uuid::Uuid, value: bool) {
         .await
         .unwrap();
     owner.close().await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_thread_held_for_another_account_is_refused() {
+    let slack = FakeSlack::start().await;
+    let api = TestApi::start_with_slack(&SSO_DEPLOYMENT, &slack.url).await;
+    let (paul, marc) = (api.sign_in(user::PAUL).await, api.sign_in(user::MARC).await);
+    let lea = api.sign_in(user::LEA).await;
+    // Marc links a Slack user; a second link was sent for it meanwhile.
+    let shared = "U0PARTAGE";
+    let gateway = declare_slack(&paul).await;
+    slack.add_person(shared, &email(user::MARC));
+    let code = link_code(&api, &slack, gateway, shared).await;
+    let later = link_code(&api, &slack, gateway, shared).await;
+    confirm(&marc, &code).await;
+    api.script(vec![ScriptedStep::text("Réponse pour Marc.")]);
+    write(
+        &api,
+        gateway,
+        &written(shared, "Question de Marc", FIRST, None),
+    )
+    .await;
+    // Slack gives that user Léa's address since; her link takes it.
+    slack.add_person(shared, &email(user::LEA));
+    confirm(&lea, &later).await;
+
+    // Writing in Marc's thread starts nothing, says nothing of his
+    // conversation, and his run's end is not written there.
+    let reply = written(shared, "Et la suite ?", "1700000300.000100", Some(FIRST));
+    write(&api, gateway, &reply).await;
+    assert_eq!(slack_runs(&api).await.len(), 1);
+    let said = in_thread(&slack, FIRST);
+    assert_eq!(said.len(), 1, "{said:?}");
+    assert!(said[0].contains("autre compte"), "{said:?}");
+    assert_eq!(answer(&api).await, 0);
+    assert_eq!(in_thread(&slack, FIRST).len(), 1);
+    assert_eq!(replies_of(&api, FIRST).await, [(Some("skipped".into()), 1)]);
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_thread_opened_meanwhile_is_refused_as_busy() {
+    let slack = FakeSlack::start().await;
+    let api = TestApi::start_with_slack(&SSO_DEPLOYMENT, &slack.url).await;
+    let (paul, marc) = (api.sign_in(user::PAUL).await, api.sign_in(user::MARC).await);
+    let address = email(user::MARC);
+    let gateway = linked(&api, &slack, &paul, &marc, (MARC_SLACK, &address)).await;
+    // Two messages of one new thread, the second started as the first
+    // opened it: refused, nothing of it kept.
+    let identity = AuthIdentity {
+        tenant_id: tenant::ID,
+        user_id: user::MARC,
+        session_id: uuid::Uuid::nil(),
+        must_change_password: false,
+    };
+    let thread = SlackThread {
+        gateway_id: gateway,
+        external_id: MARC_SLACK,
+        channel_id: MARC_DM,
+        thread_ts: FIRST,
+    };
+    let runs = &api.app.services.runs;
+    api.script(vec![ScriptedStep::text("Réponse.")]);
+    let title = "Fil ouvert deux fois";
+    runs.start_in_thread(identity, thread, title, "Bonjour")
+        .await
+        .unwrap();
+    let refused = runs
+        .start_in_thread(identity, thread, title, "Bonjour encore")
+        .await
+        .unwrap_err();
+    let refusal = refused.downcast_ref::<DomainError>().expect("a refusal");
+    assert!(
+        refusal.message.contains("déjà en cours"),
+        "{}",
+        refusal.message
+    );
+    settle(&api).await;
+    let listed = marc.get("/conversations").await.json();
+    let titled = listed["conversations"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|c| c["title"] == title)
+        .count();
+    assert_eq!(titled, 1, "{listed}");
 }

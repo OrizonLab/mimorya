@@ -6,9 +6,11 @@
 //! with the reason, and a link to link it again is offered. A message
 //! outside any thread opens a new conversation, held in the thread it
 //! starts; a reply in that thread follows it. Why nothing was started (no
-//! model, the agent withdrawn, a request still in progress) is said in the
-//! thread. The answer comes when the run ends or pauses (`replies`). What a
-//! message says is never logged nor audited.
+//! model, the agent withdrawn, a request still in progress, the service
+//! stopping) is said in the thread. The answer comes when the run ends or
+//! pauses (`replies`). What a message says is never logged nor audited. A
+//! message taken (answered 200 to Slack, which does not send it again) is
+//! lost, unsaid, should the process vanish before its run is recorded.
 
 use chrono::Utc;
 use mimorya_core::DomainError;
@@ -24,19 +26,16 @@ use uuid::Uuid;
 use super::PersonMessage;
 use crate::app::Services;
 use crate::services::access::AuthIdentity;
-use crate::services::runs::{SlackThread, TurnSender};
-
-/// How much of the first message titles its conversation.
-const TITLE_CHARS: usize = 80;
+use crate::services::runs::{SlackThread, TITLE_LENGTH, TurnSender};
 
 const NOT_STARTED: &str = "La demande n’a pas pu être lancée : réessayez dans un instant.";
 const UNVERIFIED: &str = "Slack ne dit pas qui vous êtes pour l’instant : rien n’a été lancé. \
      Réessayez dans un instant.";
-const DISABLED: &str = "Votre compte est désactivé : rien n’a été lancé.";
 const TEMPORARY_PASSWORD: &str = "Votre mot de passe provisoire reste à remplacer dans \
      l’application : rien n’a été lancé.";
 const OTHER_PERSON_THREAD: &str = "Ce fil tient la conversation d’un autre compte : écrivez un \
      nouveau message, hors de ce fil.";
+const STOPPING: &str = "Le service redémarre : rien n’a été lancé. Réessayez dans un instant.";
 const UNLINKED: &str = "Slack ne dit plus que ce compte Slack est le vôtre (adresse changée, \
      compte désactivé ou d’un autre espace de travail) : il n’est plus relié à votre compte, et \
      rien n’a été lancé.";
@@ -60,10 +59,6 @@ async fn answer(services: &Services, incoming: &PersonMessage) -> anyhow::Result
     let Some(account) = account else {
         return offer_link(services, incoming);
     };
-    if account.status != "active" {
-        say(services, incoming, DISABLED).await;
-        return Ok(());
-    }
     if account.must_change_password {
         say(services, incoming, TEMPORARY_PASSWORD).await;
         return Ok(());
@@ -78,6 +73,11 @@ async fn answer(services: &Services, incoming: &PersonMessage) -> anyhow::Result
         session_id: Uuid::nil(),
         must_change_password: false,
     };
+    // Its runs are no longer awaited once the service stops.
+    if *services.shutdown.borrow() {
+        say(services, incoming, STOPPING).await;
+        return Ok(());
+    }
     let thread_ts = thread_of(incoming);
     let text = plain(&message.text);
     let mut tx = services.db.begin(tenant_id).await?;
@@ -96,7 +96,7 @@ async fn answer(services: &Services, incoming: &PersonMessage) -> anyhow::Result
         None => {
             // On one line, however it was written.
             let words = text.split_whitespace().collect::<Vec<_>>().join(" ");
-            let title: String = words.chars().take(TITLE_CHARS).collect();
+            let title: String = words.chars().take(TITLE_LENGTH).collect();
             let thread = SlackThread {
                 gateway_id,
                 external_id: &message.person,

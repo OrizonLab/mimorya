@@ -144,12 +144,12 @@ pub async fn delete_gateway_identities_of(
     Ok(deleted.rows_affected())
 }
 
-/// The account a Slack user is linked to on a gateway, as it stands.
+/// The account a Slack user is linked to on a gateway, as it stands (a
+/// deactivated account has no identity left).
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct LinkedAccount {
     pub user_id: Uuid,
     pub email: String,
-    pub status: String,
     pub must_change_password: bool,
 }
 
@@ -160,7 +160,7 @@ pub async fn linked_account(
     external_id: &str,
 ) -> sqlx::Result<Option<LinkedAccount>> {
     sqlx::query_as(
-        "select u.id as user_id, u.email::text as email, u.status, u.must_change_password \
+        "select u.id as user_id, u.email::text as email, u.must_change_password \
          from gateway_identities i join users u on u.id = i.user_id \
          where i.gateway_id = $1 and i.external_id = $2",
     )

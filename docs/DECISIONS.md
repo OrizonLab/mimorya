@@ -6831,8 +6831,10 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     d'un autre espace de travail : la même règle qu'à la liaison), l'identité est
     déliée, auditée (`gateway.identity_unlinked`, avec la raison, jamais l'adresse), la
     personne prévenue dans le fil et un nouveau lien lui est offert ; rien n'est lancé.
-    S'il ne répond pas, rien n'est lancé ; l'identité reste. Un compte désactivé ou au
-    mot de passe provisoire ne lance rien, et la raison est dite ;
+    S'il ne répond pas, rien n'est lancé ; l'identité reste. Un compte au mot de passe
+    provisoire ne lance rien, et la raison est dite ; un compte désactivé a perdu ses
+    identités : il reçoit un lien, qu'il ne peut ouvrir sans session. Un message qui
+    arrive pendant l'arrêt du service ne lance rien, et le dit ;
   - **un fil par conversation** (`gateway_threads`) : un message hors de tout fil ouvre
     une conversation nouvelle de la personne, titrée de ses premiers mots, tenue dans le
     fil qu'il commence ; la conversation et le fil s'ouvrent dans la transaction du
@@ -6852,9 +6854,13 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     trois secondes, dans les processus qui exécutent les runs, un à la fois (ADR-086),
     lit celles des dernières 24 heures encore sans réponse par une fonction
     `SECURITY DEFINER` minimale (`system_unreplied_gateway_events` : entreprise et
-    événement, le run et le fil de l'entreprise de l'événement), puis chacune dans son
-    entreprise, et l'écrit dans le fil avec le jeton de cette entreprise. Le verrou du
-    passage n'est pris que s'il y a quelque chose à répondre. Ce qui est écrit : la
+    événement, le run et l'événement de l'entreprise du fil), puis chacune dans son
+    entreprise, et l'écrit dans le fil avec le jeton de cette entreprise. La lecture part
+    des fils actifs (un tour ou une réponse depuis 30 jours, `gateway_threads.active_at`,
+    plus que les sept jours d'une validation) : son coût suit les conversations tenues
+    dans Slack, non tous les runs. Les réponses d'un fil sont écrites dans l'ordre : une
+    réponse à réessayer retient celles qui la suivent. Le verrou du passage n'est pris
+    que s'il y a quelque chose à répondre. Ce qui est écrit : la
     réponse telle que la conversation la montre (un échec compris), en balisage Slack
     (`from_markdown` : gras, titres, listes, liens web ; le code tel quel ; tout le reste
     échappé, sans mention ni commande possible), coupée au-delà de 3 000 caractères en
@@ -6863,11 +6869,13 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     Chacune porte le lien de sa conversation ;
   - **ce qui devient de chaque réponse** (`gateway_replies`, une par événement, jamais
     ce qui est écrit) : `sent` ; `refused` par Slack, jamais réessayée ; Slack injoignable
-    ou débordé, réessayée après 30 s, 2 min, 8 min (ou quand Slack le dit), puis `failed`
-    à la quatrième tentative ; `skipped` quand la passerelle est en pause ou que
-    l'utilisateur Slack qui a écrit n'est plus l'identité reliée de la personne. Une
-    réponse est écrite une fois, sauf si le service s'arrête entre son envoi et son
-    enregistrement ;
+    ou débordé, réessayée après 30 s, 2 min, 8 min (ou quand Slack le dit, dans l'heure),
+    puis `failed` à la quatrième tentative ; `skipped` quand la passerelle est en pause
+    ou que l'utilisateur Slack qui a écrit n'est plus l'identité reliée de la personne.
+    Une réponse est écrite deux fois quand Slack l'a prise mais a répondu trop tard (dix
+    secondes), ou que le service s'arrête entre son envoi et son enregistrement ; un
+    message pris (Slack, répondu, ne le renvoie pas) est perdu sans rien dire si le
+    processus disparaît avant que son run soit enregistré ;
   - **les validations** restent dans l'application : Slack ne permet pas d'en décider.
     Des boutons de validation dans Slack demanderaient l'interactivité de
     l'application (une autre adresse signée et une autre permission) : un lot à venir.
@@ -6889,9 +6897,10 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     simple, coupe), `services/gateways/reply_text.rs`, `replies.rs` (tentatives),
     `crates/api/tests/slack_gateway_conversations.rs` (conversation dans un fil, suite
     dans le fil, autre conversation, pause puis réponse, demande occupée, Slack muet,
-    identité déliée, `agent:use` retiré, mot de passe provisoire),
+    identité déliée, `agent:use` retiré, mot de passe provisoire, fil tenu pour un autre
+    compte, fil ouvert entretemps),
     `slack_gateway_replies.rs` (passerelle en pause, identité retirée, refus, Slack
-    injoignable puis rejoint, abandon), `slack_gateway_companies.rs` (deux entreprises,
-    chacune répondue dans ses fils) ;
+    injoignable puis rejoint, abandon, réponses d'un fil dans l'ordre),
+    `slack_gateway_companies.rs` (deux entreprises, chacune répondue dans ses fils) ;
   - reste à venir : la conversation montrée « depuis Slack » dans l'application, avec
     son parcours de bout en bout (12d), puis Telegram et Teams.

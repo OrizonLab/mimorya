@@ -35,7 +35,7 @@ pub use approval_notice::ApprovalNotifier;
 pub use approval_routing::{can_decide, can_withdraw, shown_to};
 /// What an evaluation of a skill plays its cases with (ADR-104).
 pub(crate) use context::{build_run_tools, user_profile};
-pub use conversation_turn::{TurnSender, tenant_autonomy_level};
+pub use conversation_turn::{TITLE_LENGTH, TurnSender, tenant_autonomy_level};
 pub use db_ports::RunScope;
 pub use events::{append_in, record_run_event};
 pub use executor::RunExecutor;
