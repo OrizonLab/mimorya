@@ -1671,7 +1671,8 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     publication vérifie que ses images se téléchargent sans compte : un paquet resté
     privé fait échouer le travail ;
   - restent à faire : la signature des images ; arm64 ; l'épinglage des actions par
-    empreinte. Le cache du travail de CI qui vérifie les piles n'est pas retenu : ce
+    empreinte ; que toute promotion, même celle d'un commit plus ancien, nomme `main` et
+    `latest` la tête de `main` si ses images sont publiées. Le cache du travail de CI qui vérifie les piles n'est pas retenu : ce
     travail dure moins que celui de Rust. Une PR qui touche les images en vérifie la
     construction, pas l'envoi.
 
@@ -6624,10 +6625,10 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
       demande l'accord, et où il reste après un retrait (« reste chez Google ») ;
     - les permissions des deux fournisseurs sont dites en mots (`ACCOUNT_PERMISSIONS`) ;
     - le retour d'une liaison (`?liaison=`) ne dit pas le fournisseur : son texte est le
-      même pour tous. Le refus d'un autre compte (celui d'un collègue, par exemple) est neutre ; un
-      échec, qui est aussi la réponse à un compte Google personnel, sans domaine
-      Workspace (ADR-121), rappelle que chez Google il faut le compte Workspace de
-      l'entreprise, non un compte personnel ;
+      même pour tous. Le refus d'un autre compte (celui d'un collègue, par exemple)
+      est neutre ; un échec, qui est aussi la réponse à un compte Google personnel,
+      sans domaine Workspace (ADR-121), rappelle que chez Google il faut le compte
+      Workspace de l'entreprise, non un compte personnel ;
   - **suites de l'audit de l'ADR-123** : le refus d'une adresse dit « adresse
     électronique simple attendue (nom@domaine.fr, en caractères ASCII) », ce qu'est la
     règle ; le commentaire de la règle dit qu'elle suit HTML5 : un point mal placé

@@ -4,7 +4,8 @@ name: Images
 # Registry (ADR-051), amd64 only:
 # - each commit of main, once CI has passed on it, is published once as
 #   sha-<12>, then named main and latest, for the three images together, if
-#   it is still the head of main;
+#   it is still the head of main (unless an older commit's promotion replaces
+#   its waiting one: see promote);
 # - a version tag (vX.Y.Z) names the images already published for that
 #   commit of main, never built again;
 # - a pull request that changes how they are built builds them, publishing
