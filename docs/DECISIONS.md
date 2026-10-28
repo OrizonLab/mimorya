@@ -6601,14 +6601,16 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
   - **« Connecteurs »** :
     - « Déclarer le client Google Workspace » tant que l'entreprise n'en a pas : nom, ID
       client OAuth (vérifié par le navigateur comme par le serveur, terminé par
-      `.apps.googleusercontent.com`), code secret, et la case qui permet l'écriture
-      (ADR-123) ;
+      `.apps.googleusercontent.com`, le format attendu dit par le champ), code secret, et
+      la case qui permet l'écriture (ADR-123) ;
     - à la modification : le nom, le secret (vide, il est gardé) et l'option d'écriture,
       envoyée seulement si elle change ; l'ID client reste, comme les liaisons faites ;
-    - le texte d'aide dit ce que l'entreprise crée dans Google Cloud (client « Application
-      Web », API Gmail et Google Calendar, champs d'application de lecture, et d'envoi si
-      l'écriture est permise) et rappelle qu'il n'y a jamais de délégation à l'échelle du
-      domaine ;
+    - le texte d'aide dit ce que l'entreprise crée dans Google Cloud : un client
+      « Application Web », les API Gmail et Google Calendar activées, un écran de
+      consentement OAuth de type « Interne » (les comptes Workspace de l'entreprise
+      seulement) qui déclare dans « Accès aux données » les champs d'application de
+      lecture, et d'envoi si l'écriture est permise. Il rappelle qu'il n'y a jamais de
+      délégation à l'échelle du domaine ;
     - la carte montre l'ID client, les outils `google_…`, le secret enregistré, le nombre
       de comptes reliés, l'écriture permise ou non, et l'URI de redirection à inscrire
       dans le client. La vérification dit que Google n'est pas appelé ; la suppression,
@@ -6618,12 +6620,15 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
       demande l'accord, et où il reste après un retrait (« reste chez Google ») ;
     - les permissions des deux fournisseurs sont dites en mots (`ACCOUNT_PERMISSIONS`) ;
     - le retour d'une liaison (`?liaison=`) ne dit pas le fournisseur : son texte est le
-      même pour tous, et le refus d'un autre compte rappelle que chez Google il faut le
-      compte Workspace de l'entreprise, non un compte personnel ;
+      même pour tous. Le refus d'un autre compte (celui d'un collègue) est neutre ; un
+      échec, qui est aussi la réponse à un compte Google personnel, sans domaine
+      Workspace (ADR-121), rappelle que chez Google il faut le compte Workspace de
+      l'entreprise, non un compte personnel ;
   - **suites de l'audit de l'ADR-123** : le refus d'une adresse dit « adresse
     électronique simple attendue (nom@domaine.fr, en caractères ASCII) », ce qu'est la
-    règle ; le commentaire de la règle dit qu'elle suit HTML5 (un point mal placé est
-    refusé par le fournisseur, avant tout envoi).
+    règle ; le commentaire de la règle dit qu'elle suit HTML5 : un point mal placé
+    (`.lea@…`) n'est pas refusé par la plateforme, puisqu'il ne change aucun en-tête, et
+    le fournisseur accepte ou refuse l'adresse.
 - **Conséquences** :
   - Google Workspace se déclare, se règle et se relie sans l'API, comme Microsoft 365 ;
   - le serveur de bout en bout envoie les personnes à son fournisseur simulé, qui joue
@@ -6638,4 +6643,7 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
       « lecture » seulement ; retrait de la liaison (« reste chez Google ») ; suppression
       du client ; chaque étape relue par l'API ;
     - `apps/web/e2e/microsoft365.spec.ts` : le retour d'une liaison, dit sans nommer le
-      fournisseur.
+      fournisseur ; l'échec rappelle le compte à utiliser chez Google ;
+    - ce que les tests de bout en bout des deux fournisseurs partagent (liaison au
+      fournisseur simulé, lecture par l'API, suppression après chaque test) est dans
+      `apps/web/e2e/support/account-links.ts`.
