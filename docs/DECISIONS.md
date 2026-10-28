@@ -7049,3 +7049,79 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     « Interactivity & Shortcuts ») ;
   - reste à venir : le responsable prévenu dans Slack d'une action à valider, la
     conversation directe vérifiée auprès de Slack, Telegram, Teams.
+
+## ADR-130 — Responsable prévenu dans Slack des demandes qui l'attendent (passerelles, lot 12f)
+
+- **Date** : 2026-10-28 · **Statut** : acceptée · complète ADR-060, ADR-071 et ADR-129
+- **Contexte** : une demande qu'un responsable décide (ADR-059) lui est annoncée par
+  e-mail (ADR-060), ou à son remplaçant pendant son absence (ADR-071), qui la décide
+  dans l'application. Le responsable relié à l'application Slack de l'entreprise y
+  parle déjà à l'agent ; les validations de ses propres actions s'y donnent (ADR-129).
+- **Décision** :
+  - **un message direct** : quand un run se met en pause sur des demandes qu'un
+    responsable décide, ce responsable, ou le remplaçant qui le serait aussi par e-mail
+    (`recipient`, il doit pouvoir décider ces demandes), reçoit de l'application Slack
+    un message direct, s'il y a relié son identité : pour qui l'agent agit, en l'absence
+    de qui, les actions qui se valident dans Slack (`validated_in_slack`, mêmes règles
+    qu'ADR-129 : lecture, brouillon, modification, paramètres exacts tenant entiers)
+    avec leurs paramètres exacts et leurs boutons, cinq au plus, le nombre des autres à
+    valider dans l'application et le lien de l'écran « Validations ». Un message par run
+    et par responsable. `chat:write` suffit : le message part vers l'identifiant de
+    l'utilisateur Slack, dans sa conversation directe avec l'application ;
+  - **un passage, une fois chacune** : le passage de quelques secondes qui écrit les
+    réponses (ADR-127) annonce aussi les demandes faites depuis moins de 24 heures dans
+    les entreprises dont l'application Slack est active, un processus à la fois (son
+    propre verrou, ADR-086). Ce qu'il advient de chaque annonce est gardé
+    (`gateway_approval_notices` : `sent`, `refused`, `failed`, `skipped`), jamais ce qui
+    est écrit ; Slack injoignable, elle est réessayée quelques fois, comme une réponse ;
+    refusée, elle ne l'est plus. Une seule fonction `SECURITY DEFINER` lit d'une
+    entreprise à l'autre, et ne rend que l'entreprise et le run
+    (`system_gateway_approvals_to_notify`) ;
+  - **Slack interrogé d'abord** : s'il ne dit plus que l'utilisateur Slack relié est la
+    personne (adresse changée, désactivé, autre espace de travail), l'identité est
+    déliée, auditée avec sa raison, et rien n'est écrit (`skipped`), comme pour un
+    message (ADR-127, contrôle partagé `slack_says_theirs`). Personne de relié, ou la
+    passerelle en pause : rien d'écrit ;
+  - **le bouton pressé** arrive comme ceux de l'auteur (ADR-129) et passe les mêmes
+    contrôles (`person`). Quoi que dise le bouton, seule une demande qui attend la
+    personne qui l'a pressé est décidée : la sienne, celle d'un responsable qu'elle est,
+    ou qu'elle remplace ; l'auteur d'une demande qu'un responsable décide ne la décide
+    pas, un autre ne la voit pas. La décision passe par le même service que l'écran,
+    auditée avec son service ; le message montre l'issue à la place des boutons (« La
+    demande reprend. ») ;
+  - **en plus de l'e-mail**, quel que soit le choix de chacun pour ses e-mails
+    (ADR-094) : relier son identité Slack est son choix, la retirer arrête ces messages.
+    Chaque demande annoncée est auditée (`gateway.approval_notified`, la passerelle, le
+    responsable et le remplaçant), jamais ce qui est écrit ;
+  - l'auteur d'une demande attendue par son responsable lit dans son fil qu'elle attend
+    la validation de son responsable, sans plus dire « dans l'application » ;
+  - Slack ne redit sans boutons qu'un message dont il refuse les blocs
+    (`blocks_refused` : `invalid_blocks`…), plus aucun autre refus (constat du dernier
+    audit d'ADR-129).
+- **Conséquences** :
+  - qui détient le secret de signature (ADR-129) peut aussi forger le bouton d'un
+    responsable relié : il ne valide ainsi que des actions sans effet hors de
+    l'entreprise et réversibles, jamais un envoi hors de l'entreprise ni une action
+    irréversible, qui exigent la session du responsable dans l'application ;
+  - les paramètres exacts d'une demande d'un collaborateur sont écrits dans la
+    conversation directe de son responsable, qui les voit déjà dans l'application ;
+  - la relance de la veille (ADR-062) reste par e-mail ; le message n'est pas réécrit
+    quand la demande est décidée ailleurs : pressé ensuite, le bouton dit qu'elle est
+    déjà traitée ;
+  - une passerelle supprimée emporte ce qu'il est advenu de ses annonces : une
+    passerelle déclarée de nouveau annonce les demandes encore en attente depuis moins
+    de 24 heures ;
+  - tests : `services/gateways/approver_text.rs` (message avec ses boutons, absence,
+    autres actions, sans bouton), `services/gateways/choices.rs` (qui voit et décide
+    une demande, issue dite au responsable), `crates/connectors/src/slack/mod.rs`
+    (refus des blocs seuls), `crates/api/tests/slack_gateway_approver_notices.rs`
+    (responsable prévenu une fois, audité, qui valide par son bouton ; remplaçant
+    prévenu « en l'absence de », qui refuse ; action à impact externe sans bouton, ni
+    bouton forgé ni autre personne ne la décident),
+    `slack_gateway_approver_notice_outcomes.rs` (Slack ne disant plus que c'est lui :
+    identité déliée, rien d'écrit ; personne de relié ; passerelle en pause ; Slack
+    injoignable puis réessayé ; boutons refusés, redit sans eux ; autre refus non
+    réessayé ; sans passerelle, rien d'enregistré), `slack_gateway_validations.rs`
+    (texte de l'auteur), `apps/web/e2e/slack-gateway.spec.ts` (le formulaire et « Mon
+    compte » le disent) ;
+  - reste à venir : la conversation directe vérifiée auprès de Slack, Telegram, Teams.

@@ -41,9 +41,8 @@ pub fn pause_reply(url: &str, pause: &Pause) -> (String, Option<Vec<Value>>) {
             )
         } else if pause.managed > 0 {
             format!(
-                "Une action de cette demande attend la validation de votre responsable, dans \
-                 l’application : {link}. La suite viendra dans ce fil, une fois la validation \
-                 donnée."
+                "Une action de cette demande attend la validation de votre responsable : \
+                 {link}. La suite viendra dans ce fil, une fois la validation donnée."
             )
         } else {
             reply_text("awaiting_approval", None, url)

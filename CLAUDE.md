@@ -66,7 +66,8 @@ Repères à l'intérieur des crates :
   jeton de renouvellement scellé : `account_links.rs`, ADR-116 ; passerelles et
   événements pris : `gateways.rs`, identités reliées : `gateway_identities.rs`,
   ADR-125 ; fils Slack des conversations : `gateway_threads.rs`, réponses écrites :
-  `gateway_replies.rs`, ADR-127),
+  `gateway_replies.rs`, ADR-127 ; demandes annoncées au responsable :
+  `gateway_approval_notices.rs`, ADR-130),
   `db/src/notifications.rs` (canaux PostgreSQL des événements des runs, de la file et des
   invalidations, ADR-084, ADR-085), `db/src/sweep_lock.rs` (verrou d'un balayage qui ne
   tourne que dans un processus à la fois, ADR-086), `db/src/seed/` (organisation,
@@ -121,7 +122,8 @@ Repères à l'intérieur des crates :
   et fragments de texte envoyés, `run_event_relay.rs`, ADR-084 ; runs en file réservés
   par le worker, `run_queue.rs`, ADR-085 ; tâches de fond lancées selon le rôle du
   processus, `MIMORYA_ROLE`, dans `app.rs` (`Background`), ADR-085 ; réponses écrites
-  dans Slack toutes les trois secondes, `gateway_replies.rs`, ADR-127),
+  dans Slack toutes les trois secondes, et demandes annoncées aux responsables,
+  `gateway_replies.rs`, ADR-127, ADR-130),
   `api/src/routes/` (un module par ressource, `admin/`), `api/src/contract/` (réponses
   et corps de requêtes typés, un fichier par ressource, dont sont générés les types
   TypeScript, ADR-036, ADR-039),
@@ -146,7 +148,8 @@ Repères à l'intérieur des crates :
   conversation tenue dans son fil (`conversations.rs`), fin ou pause des runs écrite
   dans le fil (`replies.rs`, `reply_text.rs`), ADR-127 ; action validée ou refusée par
   son bouton dans le fil (`choices.rs`), qui peut agir, pour un message comme pour un
-  bouton (`person.rs`), ADR-129 ; déclarées par
+  bouton (`person.rs`), ADR-129 ; demandes qui attendent un responsable annoncées par
+  message direct (`approver_notices.rs`, `approver_text.rs`), ADR-130 ; déclarées par
   `services/admin/gateways.rs`),
   `api/src/services/notification_settings.rs` (e-mails que chacun choisit de recevoir,
   lus au moment d'envoyer chaque avis, ADR-094),

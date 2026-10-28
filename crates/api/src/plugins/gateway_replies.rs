@@ -1,17 +1,18 @@
-//! Answering in Slack the runs people started there (ADR-127), every few
-//! seconds, in each process that executes runs: one at a time answers them
-//! (ADR-086), each end or pause once. A process that has not started
-//! executing runs answers nothing.
+//! Answering in Slack the runs people started there (ADR-127), and telling
+//! there the managers whom requests await (ADR-130), every few seconds, in
+//! each process that executes runs: one at a time answers them, one at a
+//! time tells them (ADR-086), each end or pause, each request, once. A
+//! process that has not started executing runs does neither.
 
 use std::time::Duration;
 
 use tokio::task::JoinHandle;
 
 use crate::app::AppState;
-use crate::services::gateways::reply_to_finished_runs;
+use crate::services::gateways::{notify_approvers_in_slack, reply_to_finished_runs};
 
-/// How often the runs' ends and pauses are answered: a conversation in
-/// Slack waits for its answer.
+/// How often the runs' ends and pauses are answered, and the managers told:
+/// a conversation in Slack waits for its answer.
 const PASS_INTERVAL: Duration = Duration::from_secs(3);
 
 pub fn spawn_gateway_replies(services: AppState) -> JoinHandle<()> {
@@ -28,6 +29,11 @@ pub fn spawn_gateway_replies(services: AppState) -> JoinHandle<()> {
                 Ok(0) => {}
                 Ok(sent) => tracing::debug!(sent, "Slack answers sent"),
                 Err(error) => tracing::warn!(error = %error, "Slack answer pass failed"),
+            }
+            match notify_approvers_in_slack(&services).await {
+                Ok(0) => {}
+                Ok(sent) => tracing::debug!(sent, "Slack approval notices sent"),
+                Err(error) => tracing::warn!(error = %error, "Slack approval notice pass failed"),
             }
         }
     })

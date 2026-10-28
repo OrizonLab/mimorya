@@ -3,9 +3,10 @@
 //! workspace `WORKSPACE`, whose bot user is `BOT_USER`; `OTHER_TOKEN` is an
 //! application's of another workspace; any other token is refused
 //! (`invalid_auth`), as one a test revoked; a test may also make it
-//! unavailable (503). It knows the people a test
-//! adds, by address, deleted or of another workspace, and keeps the messages
-//! the application posts, with their blocks, as it rewrites them
+//! unavailable (503), or refuse the messages with blocks. It knows the
+//! people a test adds, by address, deleted or of another workspace, and
+//! keeps the messages the application posts (to a person's id: in their
+//! direct conversation, `D…`), with their blocks, as it rewrites them
 //! (`chat.update`, ADR-129), also listed at `GET /test/posts` for the
 //! end-to-end tests. A test signs the events it sends as Slack would
 //! (`signed`).
@@ -273,6 +274,11 @@ async fn post_message(
     if shared.blocks_refused && body.get("blocks").is_some() {
         return Json(json!({ "ok": false, "error": "invalid_blocks" })).into_response();
     }
+    // A person's id names their direct conversation with the application.
+    let channel = match channel.strip_prefix(['U', 'W']) {
+        Some(rest) => format!("D{rest}"),
+        None => channel,
+    };
     let ts = format!("1700000000.{:06}", shared.posts.len() + 1);
     let post = SlackPost {
         channel: channel.clone(),

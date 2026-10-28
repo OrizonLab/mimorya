@@ -327,7 +327,10 @@ Détaillés dans [AGENT_ENGINE.md](AGENT_ENGINE.md). En résumé :
   qui attend la validation de la personne elle-même, sans effet hors de l'entreprise et
   réversible, s'y valide ou s'y refuse avec ses boutons, ses paramètres exacts montrés
   entiers, que Slack envoie à la même adresse ; toute autre se valide dans l'application
-  (ADR-129). Dans
+  (ADR-129). Le responsable, ou son remplaçant, relié à la passerelle reçoit un message
+  direct des demandes qui l'attendent, par un passage des mêmes processus, une fois
+  chacune (`gateway_approval_notices`), avec les mêmes boutons pour celles qui se
+  valident dans Slack (ADR-130). Dans
   l'application, la conversation se montre tenue dans Slack : marquée dans la liste,
   chaque message écrit dans Slack marqué, une note disant où chacun reçoit sa réponse
   (`ConversationSummary.gateway`, ADR-128).

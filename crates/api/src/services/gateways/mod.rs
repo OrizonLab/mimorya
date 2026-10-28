@@ -8,9 +8,13 @@
 //! message is answered in a conversation of theirs (`conversations`), and
 //! the run's end or pause written in its thread (`replies`); an action
 //! awaiting their own validation is validated or refused there with its
-//! buttons (`choices`, ADR-129). The bot's token and the signing secret are
-//! sealed in the secret store.
+//! buttons (`choices`, ADR-129). A manager, or whom they named to stand in
+//! for them, linked there is told in Slack of the requests awaiting them
+//! and decides them with the same buttons (`approver_notices`, ADR-130).
+//! The bot's token and the signing secret are sealed in the secret store.
 
+mod approver_notices;
+mod approver_text;
 mod choices;
 mod conversations;
 mod events;
@@ -30,6 +34,7 @@ use uuid::Uuid;
 use crate::secrets::{SecretCipher, SecretRead, SecretStore};
 use crate::services::background::BackgroundTasks;
 
+pub use approver_notices::{NOTIFIED_IN_SLACK, NOTIFIED_WITHIN, notify_approvers_in_slack};
 pub use choices::{PersonChoice, decide_in_slack};
 pub use conversations::converse;
 pub use events::{EventOutcome, PersonMessage, SlackHeaders};
@@ -109,6 +114,11 @@ impl GatewayService {
     /// The address of a conversation in the application.
     fn conversation_url(&self, conversation_id: Uuid) -> String {
         format!("{}/chat/{conversation_id}", self.web_origin)
+    }
+
+    /// The address of the « Validations » screen.
+    fn approvals_url(&self) -> String {
+        format!("{}/approvals", self.web_origin)
     }
 
     /// The address to give Slack for the gateway's events.
