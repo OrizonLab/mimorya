@@ -8,6 +8,7 @@ import { useMe } from '@/lib/me-context';
 import { ActivityPanel } from './activity-panel';
 import { Composer } from './composer';
 import { ConversationList } from './conversation-list';
+import { GatewayNote } from './gateway-note';
 import { MessageItem } from './message-item';
 import { useConversation } from './use-conversation';
 import { Welcome } from './welcome';
@@ -60,6 +61,7 @@ export function ChatView({ conversationId }: { conversationId: string | null }) 
           <div className="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-6">
             {!conversationId && <Welcome onPick={setInput} />}
             {conversationId && !detail && !chat.error && <Spinner />}
+            {detail?.conversation.gateway && <GatewayNote gateway={detail.conversation.gateway} />}
             {detail?.messages.map((m) => (
               <MessageItem key={m.id} message={m} />
             ))}

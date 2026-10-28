@@ -6909,3 +6909,44 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     `slack_gateway_companies.rs` (deux entreprises, chacune répondue dans ses fils) ;
   - reste à venir : la conversation montrée « depuis Slack » dans l'application, avec
     son parcours de bout en bout (12d), puis Telegram et Teams.
+
+## ADR-128 — Conversation tenue dans Slack montrée dans l'application (passerelles, lot 12d)
+
+- **Date** : 2026-10-28 · **Statut** : acceptée · complète ADR-127
+- **Contexte** : une conversation ouverte dans Slack (ADR-127) figurait dans la liste de
+  la personne comme toute autre. Rien n'y disait qu'elle se tient aussi dans un fil
+  Slack, ni lesquels de ses messages y ont été écrits, ni que ce qu'on y écrit dans
+  l'application n'est répondu que dans l'application. La réponse écrite dans le fil y
+  renvoie pourtant (« ouvrir la conversation »), en particulier pour donner une
+  validation.
+- **Décision** :
+  - **la conversation dit où elle se tient** : `ConversationSummary.gateway` (`slack`,
+    sinon `null`), dans la liste et dans le détail, lu des fils des passerelles
+    (`gateway_threads`, `conversations_held`) dans la transaction de la lecture, sous
+    RLS. Seul le service est donné : ni l'utilisateur Slack, ni le fil, ni l'espace de
+    travail ;
+  - **la liste** marque « Slack » chaque conversation tenue dans un fil ;
+  - **la conversation** : chaque message écrit dans Slack porte « Écrit dans Slack »
+    (`metadata.gateway`, ADR-127). Une note dit que les messages écrits dans Slack y
+    sont répondus, et que ce qui est écrit dans l'application reçoit sa réponse dans
+    l'application seulement. Un run lancé depuis Slack se suit en direct, et sa demande
+    de validation se donne, comme celui d'un tour de l'application ;
+  - **un message écrit dans l'application** dans une telle conversation la poursuit,
+    avec l'historique (canal `web`). Sa réponse n'est pas écrite dans le fil, qui n'en
+    montrerait pas la question. Les messages suivants de la personne dans le fil
+    poursuivent la même conversation, l'historique compris ;
+  - le modèle des tests de bout en bout joue à part la conversation écrite dans Slack,
+    question puis suite dans le fil (`e2e_server/slack.rs`). Le Slack simulé reçoit des
+    messages datés chacun d'un horodatage nouveau, hors fil ou dans un fil
+    (`slackTs`, `sendDirectMessage`, `inThread`).
+- **Conséquences** :
+  - aucune donnée nouvelle n'est gardée ; la lecture ajoute une requête par liste ou
+    détail, sur l'index unique des conversations des fils ;
+  - tests : `crates/api/tests/slack_gateway_app_view.rs` (liste et détail avec leur
+    service, conversation ouverte dans l'application sans service, message marqué,
+    message écrit dans l'application répondu là seulement, rien pour une autre
+    personne), `apps/web/e2e/slack-conversations.spec.ts` (Léa reliée pose sa question
+    dans Slack ; réponse dans le fil, en balisage Slack, avec l'adresse de la
+    conversation ; conversation listée « Slack », message « Écrit dans Slack », note ;
+    suite dans le fil répondue là et dans la conversation) ;
+  - reste à venir : validations depuis Slack, Telegram, Teams.

@@ -416,7 +416,12 @@ export type ConversationDetail = { conversation: ConversationSummary, messages: 
  */
 export type ConversationList = { conversations: Array<ConversationSummary>, };
 
-export type ConversationSummary = { id: string, title: string, updatedAt: string, };
+export type ConversationSummary = { id: string, title: string, updatedAt: string,
+/**
+ * The service it is held in a thread of, `slack`: its author's
+ * messages there follow it, and are answered there (ADR-127).
+ */
+gateway: string | null, };
 
 /**
  * A resource created (`201`): its identifier.

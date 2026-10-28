@@ -218,3 +218,8 @@ export const ACCOUNT_PROVIDERS: Record<string, { provider: string; product: stri
   microsoft365: { provider: 'Microsoft', product: 'Microsoft 365' },
   google_workspace: { provider: 'Google', product: 'Google Workspace' },
 };
+
+/** The services a conversation can be held in a thread of (ADR-127, ADR-128). */
+export const GATEWAY_LABELS: Record<string, string> = {
+  slack: 'Slack',
+};
