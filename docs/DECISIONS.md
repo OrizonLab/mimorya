@@ -6973,12 +6973,13 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     la personne) ou irréversible, ou aux paramètres trop longs, se valide dans
     l'application, qui les montre entiers ;
   - **la pause montre ces actions** de la personne elle-même : chacune, sa description
-    (échappée, bornée à 600 caractères), son risque, ses **paramètres exacts entiers**,
+    (échappée, bornée à 500 caractères), son risque, ses **paramètres exacts entiers**,
     en texte littéral (jamais lu comme balisage Slack), puis deux boutons, « Valider »
     et « Refuser » (`approval_blocks`, cinq au plus ; les autres dans l'application).
     Le fil dit aussi s'il en reste à valider dans l'application, ou qu'un responsable
     valide (ADR-059). Les actions sont lues au moment d'écrire la pause : une action
-    déjà décidée n'a plus de bouton ;
+    déjà décidée n'a plus de bouton. Si Slack refusait les boutons, la pause est dite
+    sans eux, avec le lien de la conversation ;
   - **le bouton pressé arrive à la même adresse** que les événements : Slack l'envoie
     encodé comme un formulaire (`payload=`), signé du même secret. Le type du corps
     distingue les deux ; aucune exception nouvelle à l'en-tête du navigateur ni à
@@ -6993,9 +6994,9 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
   - **la décision est celle de la personne**, prise en arrière-plan (Slack attend sa
     réponse en trois secondes), une fois qu'elle peut agir : les mêmes contrôles que
     pour un message (`person`, partagé avec ADR-127) — utilisateur Slack relié à son
-    compte (sinon c'est dit, et un lien est offert), mot de passe provisoire remplacé,
-    entreprise active, et Slack interrogé : s'il ne dit plus que c'est elle, l'identité
-    est déliée et auditée. Puis, quoi que dise le bouton, seule **sa propre action, qui
+    compte (sinon c'est dit, et un lien est offert), puis Slack interrogé avant que rien
+    ne soit dit du compte (s'il ne dit plus que c'est elle, l'identité est déliée et
+    auditée), mot de passe provisoire remplacé, entreprise active. Puis, quoi que dise le bouton, seule **sa propre action, qui
     attend sa propre validation et se valide dans Slack**, y est décidée : la demande
     d'un autre est introuvable, celle d'un responsable ou à valider dans l'application
     le reste. La décision passe enfin par le même service que l'écran « Validations »
@@ -7036,7 +7037,8 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     fois ; action refusée ; sans signature, d'un autre espace de travail, passerelle en
     pause, autre personne reliée, utilisateur Slack non relié, utilisateur qui n'est
     plus la personne, mot de passe provisoire, entreprise suspendue : rien de décidé ;
-    action d'un responsable sans bouton, son auteur ne pouvant que la retirer ; action à
+    action d'un responsable sans bouton, ni validée ni retirée depuis Slack (son auteur la
+    retire dans l'application) ; action à
     impact externe sans bouton, et aucun bouton forgé ne la décide ; demande inconnue
     introuvable), `apps/web/e2e/slack-gateway.spec.ts` (la carte dit l'adresse à donner
     à « Interactivity & Shortcuts ») ;

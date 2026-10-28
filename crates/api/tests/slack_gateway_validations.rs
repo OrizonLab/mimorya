@@ -273,19 +273,23 @@ async fn an_action_a_manager_decides_is_shown_without_buttons() {
         pause.text
     );
 
-    // Her pressing a button made for it: only withdrawing is hers.
+    // Her pressing a button made for it, either one, decides nothing: she
+    // withdraws it in the application.
     let request = listed(&nadia, &run).await.expect("her request");
     let approval = request["id"].as_str().unwrap().parse().unwrap();
     let shown = with_buttons(&pause, approval);
-    let body = pressed(WORKSPACE, NADIA_SLACK, &shown, approval, true);
-    press(&api, gateway, &body, false).await;
-    settle(&api).await;
-    let said = slack.posts().last().unwrap().text.clone();
-    assert!(
-        said.contains("attend la validation de votre responsable"),
-        "{said}"
-    );
-    assert_eq!(listed(&nadia, &run).await.unwrap()["status"], "pending");
+    for approved in [true, false] {
+        let body = pressed(WORKSPACE, NADIA_SLACK, &shown, approval, approved);
+        press(&api, gateway, &body, false).await;
+        settle(&api).await;
+        let said = slack.posts().last().unwrap().text.clone();
+        assert_eq!(
+            said,
+            "Cette action attend la validation de votre responsable, dans l’application : \
+             rien n’a été décidé."
+        );
+        assert_eq!(listed(&nadia, &run).await.unwrap()["status"], "pending");
+    }
 }
 
 #[tokio::test]

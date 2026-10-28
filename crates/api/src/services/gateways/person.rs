@@ -1,10 +1,10 @@
 //! Who writes or presses in Slack, before anything is done for them
-//! (ADR-127, ADR-129): a Slack user linked to an account of the company, its
-//! temporary password replaced, its company active, and Slack still saying
-//! it is them, asked each time (no longer so: the identity is unlinked,
-//! audited with the reason, and a link to link it again offered). Why not is
-//! said in the thread, with what was not done: a request not started, a
-//! validation not decided.
+//! (ADR-127, ADR-129): a Slack user linked to an account of the company,
+//! Slack still saying it is them, asked each time before anything is said of
+//! the account (no longer so: the identity is unlinked, audited with the
+//! reason, and a link to link it again offered), its temporary password
+//! replaced, its company active. Why not is said in the thread, with what
+//! was not done: a request not started, a validation not decided.
 
 use chrono::Utc;
 use mimorya_core::DomainError;
@@ -63,6 +63,11 @@ pub(super) async fn acting_person(
         offer_link(services, incoming)?;
         return Ok(None);
     };
+    // Nothing said of the account before Slack says the Slack user is its
+    // person.
+    if !still_theirs(services, incoming, &account, act).await? {
+        return Ok(None);
+    }
     if account.must_change_password {
         let temporary = format!(
             "Votre mot de passe provisoire reste à remplacer dans l’application : {}.",
@@ -90,9 +95,6 @@ pub(super) async fn acting_person(
             say(services, incoming, &refusal.message).await;
             return Ok(None);
         }
-    }
-    if !still_theirs(services, incoming, &account, act).await? {
-        return Ok(None);
     }
     Ok(Some(identity))
 }

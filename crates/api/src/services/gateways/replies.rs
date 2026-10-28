@@ -171,11 +171,20 @@ async fn reply(
                 )
             };
             let thread = Some(target.thread_ts.as_str());
-            match gateways
-                .slack()
-                .post_blocks(&token, &target.channel_id, thread, &text, blocks.as_deref())
+            let slack = gateways.slack();
+            let channel = &target.channel_id;
+            let posted = match slack
+                .post_blocks(&token, channel, thread, &text, blocks.as_deref())
                 .await
             {
+                // Buttons Slack would not show: the pause said without them.
+                Err(SlackFailure::Refused(_)) if blocks.is_some() => {
+                    let text = reply_text(&target.status, None, &url);
+                    slack.post(&token, channel, thread, &text).await
+                }
+                posted => posted,
+            };
+            match posted {
                 Ok(_) => ReplyRecord::Done("sent"),
                 Err(failure) => after_failure(&failure, target.attempts + 1, now),
             }

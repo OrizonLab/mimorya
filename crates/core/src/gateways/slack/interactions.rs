@@ -24,8 +24,9 @@ pub const APPROVE_ACTION: &str = "approval_approve";
 pub const REJECT_ACTION: &str = "approval_reject";
 /// How an action's buttons are named in their message, before its approval.
 const BLOCK_PREFIX: &str = "approval:";
-/// The most of an action's description shown in Slack.
-pub const MAX_ACTION_CHARS: usize = 600;
+/// The most of an action's description shown in Slack: escaped, it stays
+/// within the 3 000 characters of a section.
+pub const MAX_ACTION_CHARS: usize = 500;
 /// The most of an action's exact parameters a message shows: beyond, it is
 /// validated in the application, which shows them whole.
 pub const MAX_PARAMETERS_CHARS: usize = 2_500;

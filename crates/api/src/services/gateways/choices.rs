@@ -146,7 +146,12 @@ async fn decide(services: &Services, pressed: &PersonChoice) -> anyhow::Result<(
             return Ok(());
         }
     };
-    show_outcomes(services, pressed, identity, resumed).await
+    // Decided: a failure to show it is no reason to say otherwise.
+    if let Err(error) = show_outcomes(services, pressed, identity, resumed).await {
+        let gateway = from.gateway.id;
+        tracing::warn!(%gateway, error = format!("{error:#}"), "Slack outcome not shown");
+    }
+    Ok(())
 }
 
 /// Shows in the message what became of each of its actions, as they stand
@@ -221,4 +226,72 @@ fn outcome(approval: &ApprovalRow, just_decided: bool, resumed: bool) -> Option<
         }
     }
     Some(outcome)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+    use serde_json::json;
+
+    fn with_status(status: &str) -> ApprovalRow {
+        ApprovalRow {
+            id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            run_id: Uuid::new_v4(),
+            requested_for_user_id: Uuid::new_v4(),
+            tool_name: "planning_apply".into(),
+            tool_call_id: "call-1".into(),
+            action_summary: "Appliquer".into(),
+            payload: json!({}),
+            risk: "write".into(),
+            reason: String::new(),
+            status: status.into(),
+            decided_by_user_id: None,
+            decided_at: None,
+            decision_comment: None,
+            expires_at: None,
+            created_at: Utc::now(),
+            routing: "requester".into(),
+            approver_user_id: None,
+        }
+    }
+
+    #[test]
+    fn each_action_shows_what_became_of_it() {
+        let approved = with_status("approved");
+        assert_eq!(
+            outcome(&approved, true, true).as_deref(),
+            Some(
+                "*Validée* par vous dans Slack. La demande reprend : la suite viendra dans ce fil."
+            )
+        );
+        assert_eq!(
+            outcome(&approved, true, false).as_deref(),
+            Some("*Validée* par vous dans Slack.")
+        );
+        // Another action of the message, decided meanwhile.
+        assert_eq!(
+            outcome(&approved, false, true).as_deref(),
+            Some("*Validée*.")
+        );
+        let rejected = with_status("rejected");
+        assert_eq!(
+            outcome(&rejected, true, false).as_deref(),
+            Some("*Refusée* par vous dans Slack.")
+        );
+        assert_eq!(
+            outcome(&rejected, false, false).as_deref(),
+            Some("*Refusée*.")
+        );
+        assert_eq!(
+            outcome(&with_status("expired"), false, false).as_deref(),
+            Some("*Expirée* : elle n’a pas été validée à temps.")
+        );
+        assert_eq!(
+            outcome(&with_status("cancelled"), false, false).as_deref(),
+            Some("*Annulée*.")
+        );
+        assert_eq!(outcome(&with_status("pending"), false, false), None);
+    }
 }
