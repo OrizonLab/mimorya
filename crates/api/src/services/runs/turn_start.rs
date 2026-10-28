@@ -13,17 +13,13 @@ use mimorya_db::repositories::conversations::create_conversation;
 use mimorya_db::repositories::gateway_threads::{NewGatewayThread, insert_gateway_thread};
 use uuid::Uuid;
 
-use super::conversation_turn::{TurnSender, open_conversation_turn, tenant_autonomy_level};
+use super::conversation_turn::{BUSY, TurnSender, open_conversation_turn, tenant_autonomy_level};
 use super::executor::ExecutionMode;
 use super::service::RunService;
 use crate::services::access::{AccessContext, AuthIdentity};
 use crate::services::llm::Unusable;
 
 const COMPANY_NOT_ACTIVE: &str = "Votre entreprise est suspendue : l’agent n’agit plus pour elle.";
-/// A message of the same thread opened its conversation first.
-const THREAD_TAKEN: &str =
-    "Une demande est déjà en cours dans cette conversation : attendez sa fin ou sa validation.";
-
 pub struct StartedTurn {
     pub run_id: Uuid,
     pub message_id: Uuid,
@@ -149,8 +145,9 @@ impl RunService {
                         channel_id: thread.channel_id,
                         thread_ts: thread.thread_ts,
                     };
+                    // A message of the same thread opened its conversation first.
                     if !insert_gateway_thread(&mut tx, held).await? {
-                        return Err(DomainError::conflict(THREAD_TAKEN).into());
+                        return Err(DomainError::conflict(BUSY).into());
                     }
                 }
                 id

@@ -2,12 +2,10 @@
 -- (ADR-127): a linked person writes to it, and is answered in the thread.
 
 -- A run its author started by writing to the Slack application: `slack`.
--- Policies can read it (`context.channel`), as the others. The wider rule
--- is checked against the existing runs apart, without holding their writes.
+-- Policies can read it (`context.channel`), as the others.
 ALTER TABLE agent_runs DROP CONSTRAINT agent_runs_channel_check;
 ALTER TABLE agent_runs ADD CONSTRAINT agent_runs_channel_check
-  CHECK (channel IN ('web', 'hook', 'slack')) NOT VALID;
-ALTER TABLE agent_runs VALIDATE CONSTRAINT agent_runs_channel_check;
+  CHECK (channel IN ('web', 'hook', 'slack'));
 
 -- The thread of a person's direct conversation with the application that a
 -- conversation of theirs is held in: opened by their message outside any
@@ -43,7 +41,7 @@ CREATE POLICY tenant_isolation ON gateway_threads AS PERMISSIVE FOR ALL TO publi
   USING (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid)
   WITH CHECK (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid);
 
-GRANT SELECT, INSERT, UPDATE (active_at), DELETE ON gateway_threads TO mimorya_app;
+GRANT SELECT, INSERT, UPDATE (active_at) ON gateway_threads TO mimorya_app;
 
 -- What became of the answer to a run's end or pause (its `run_finished`
 -- event), in the thread its conversation is held in: `sent`; `refused` by
@@ -78,7 +76,8 @@ GRANT SELECT, INSERT, UPDATE ON gateway_replies TO mimorya_app;
 -- from a gateway in a conversation held in a thread active since
 -- `p_active_since`, still to answer there at `p_now`: never answered, not
 -- waiting to be tried again, and no earlier answer of the same thread
--- waiting (a thread's answers are written in order). Their company and
+-- waiting (a thread's answers are written in order) while it can still be
+-- tried, its end or pause since `p_since` too. Their company and
 -- their event, oldest first, at most `p_limit`; the run and the event of
 -- the thread's own company. Read from the threads, so that its cost
 -- follows the conversations held in Slack, not every run. Nothing else
@@ -107,7 +106,9 @@ AS $$
           AND (g.outcome IS NOT NULL OR g.retry_after > p_now))
      AND NOT EXISTS (
        SELECT 1 FROM gateway_replies w
-        WHERE w.thread_id = t.id AND w.outcome IS NULL AND w.event_id < e.id)
+         JOIN run_events we ON we.id = w.event_id
+        WHERE w.thread_id = t.id AND w.outcome IS NULL AND w.event_id < e.id
+          AND we.created_at > p_since)
    ORDER BY e.id
    LIMIT p_limit
 $$;

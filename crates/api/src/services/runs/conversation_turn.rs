@@ -27,6 +27,9 @@ use crate::services::access::{AccessContext, AuthIdentity};
 const HISTORY_LIMIT: i64 = 20;
 /// How much of a person's first words titles their conversation.
 pub const TITLE_LENGTH: usize = 80;
+/// A turn sent while the conversation's request is still in progress.
+pub(super) const BUSY: &str =
+    "Une demande est déjà en cours dans cette conversation : attendez sa fin ou sa validation.";
 
 /// Who sends a turn: its user, from the application or from their company's
 /// Slack application (ADR-127), or the platform for them (ADR-080).
@@ -74,10 +77,7 @@ pub async fn open_conversation_turn(
             RunStatus::Queued | RunStatus::Running | RunStatus::AwaitingApproval
         )
     }) {
-        return Err(DomainError::conflict(
-            "Une demande est déjà en cours dans cette conversation : attendez sa fin ou sa validation.",
-        )
-        .into());
+        return Err(DomainError::conflict(BUSY).into());
     }
 
     let previous = list_messages(tx, conversation_id, HISTORY_LIMIT).await?;

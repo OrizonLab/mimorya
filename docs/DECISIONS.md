@@ -6847,7 +6847,8 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     sur le canal `slack` (`agent_runs.channel`, contrainte élargie), que les politiques
     d'accès peuvent lire (`context.channel`). Ses messages portent leur service
     (`metadata.gateway = "slack"`). Les refus du démarrage (pas de modèle, `agent:use`
-    retiré, entreprise suspendue, demande déjà en cours) sont dits dans le fil ;
+    retiré, entreprise suspendue, demande déjà en cours, service qui s'arrête) sont dits
+    dans le fil ;
   - **la réponse dans le fil** : chaque fin ou pause d'un tel run, quel que soit le
     chemin qui l'a produite (son issue, une validation décidée, le balayage des runs
     bloqués, un arrêt), est l'événement `run_finished` de son journal. Un passage de
@@ -6859,7 +6860,9 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     des fils actifs (un tour ou une réponse depuis 30 jours, `gateway_threads.active_at`,
     plus que les sept jours d'une validation) : son coût suit les conversations tenues
     dans Slack, non tous les runs. Les réponses d'un fil sont écrites dans l'ordre : une
-    réponse à réessayer retient celles qui la suivent. Le verrou du passage n'est pris
+    réponse à réessayer retient celles qui la suivent, tant qu'elle peut l'être (son
+    événement des dernières 24 heures) ; plus ancienne, elle n'est plus essayée et ne
+    retient plus rien. Le verrou du passage n'est pris
     que s'il y a quelque chose à répondre. Ce qui est écrit : la
     réponse telle que la conversation la montre (un échec compris), en balisage Slack
     (`from_markdown` : gras, titres, listes, liens web ; le code tel quel ; tout le reste

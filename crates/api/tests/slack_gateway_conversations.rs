@@ -7,7 +7,8 @@
 //! Slack is asked at each message who the Slack user is: no longer the
 //! person, their identity is unlinked and a link offered. Nothing is
 //! started for someone who cannot act, nor in a thread held for another
-//! account or opened meanwhile, and why is said in the thread.
+//! account or opened meanwhile, nor while the service stops, and why is
+//! said in the thread.
 
 mod support;
 
@@ -255,6 +256,22 @@ async fn nothing_is_started_for_someone_who_cannot_act_and_why_is_said() {
     assert!(slack_runs(&api).await.is_empty());
     let said = in_thread(&slack, other);
     assert!(said[0].contains("mot de passe provisoire"), "{said:?}");
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn nothing_is_started_while_the_service_stops() {
+    let slack = FakeSlack::start().await;
+    let api = TestApi::start_with_slack(&SSO_DEPLOYMENT, &slack.url).await;
+    let (paul, marc) = (api.sign_in(user::PAUL).await, api.sign_in(user::MARC).await);
+    let address = email(user::MARC);
+    let gateway = linked(&api, &slack, &paul, &marc, (MARC_SLACK, &address)).await;
+    api.app.begin_shutdown();
+    write(&api, gateway, &written(MARC_SLACK, "Bonjour", FIRST, None)).await;
+    assert!(slack_runs(&api).await.is_empty());
+    assert_eq!(conversation_of(&api, FIRST).await, None);
+    let said = in_thread(&slack, FIRST);
+    assert!(said[0].starts_with("Le service redémarre"), "{said:?}");
 }
 
 /// Sets a flag of an account, as its owner would.

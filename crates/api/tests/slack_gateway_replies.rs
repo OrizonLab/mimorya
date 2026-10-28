@@ -2,7 +2,8 @@
 //! run started there is answered once; a paused gateway, or a Slack user no
 //! longer the person's identity, is written nothing; what Slack refuses is
 //! not tried again; Slack unreachable is tried again later, a few times,
-//! then given up; a thread's answers are written in order.
+//! then given up; a thread's answers are written in order, an answer too
+//! old to try again holding back none.
 
 mod support;
 
@@ -20,7 +21,7 @@ use support::slack_conversations::{
     written,
 };
 use support::sso::SSO_DEPLOYMENT;
-use support::{TestApi, email};
+use support::{TestApi, email, owner_url};
 
 const FIRST: &str = "1700000200.000100";
 const SECOND: &str = "1700000300.000100";
@@ -161,12 +162,7 @@ async fn a_thread_s_answers_are_written_in_order() {
         &written(MARC_SLACK, "Planifie INT-2052", FIRST, None),
     )
     .await;
-    // Its pause is not written: Slack is down.
-    slack.unavailable(true);
-    assert_eq!(answer(&api).await, 0);
-    slack.unavailable(false);
-
-    // Validated meanwhile: its end waits for the pause, still to try again.
+    // Validated before any pass: its pause and its end, both to answer.
     let run = slack_runs(&api).await.remove(0).0;
     let request = listed(&marc, &run.to_string()).await.expect("his request");
     let id = request["id"].as_str().unwrap();
@@ -178,6 +174,13 @@ async fn a_thread_s_answers_are_written_in_order() {
         .await;
     assert_eq!(decided.status, StatusCode::OK, "{}", decided.text());
     settle(&api).await;
+
+    // Slack down: the pause is tried, its end waits for it, in the same pass.
+    slack.unavailable(true);
+    assert_eq!(answer(&api).await, 0);
+    assert_eq!(replies_of(&api, FIRST).await, [(None, 1)]);
+    slack.unavailable(false);
+    // And at the next ones, while the pause is still to try again.
     assert_eq!(answer(&api).await, 0);
     assert!(in_thread(&slack, FIRST).is_empty());
     // The pause's time come: the pause, then its end at the next pass.
@@ -191,4 +194,63 @@ async fn a_thread_s_answers_are_written_in_order() {
         said[1].starts_with("Planning de INT-2052 appliqué."),
         "{said:?}"
     );
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn an_answer_too_old_to_try_again_holds_its_thread_back_no_more() {
+    let slack = FakeSlack::start().await;
+    let api = TestApi::start_with_slack(&SSO_DEPLOYMENT, &slack.url).await;
+    let (paul, marc) = (api.sign_in(user::PAUL).await, api.sign_in(user::MARC).await);
+    let address = email(user::MARC);
+    let gateway = linked(&api, &slack, &paul, &marc, (MARC_SLACK, &address)).await;
+    api.script(vec![
+        ScriptedStep::text("Réponse A."),
+        ScriptedStep::text("Réponse B."),
+    ]);
+    write(
+        &api,
+        gateway,
+        &written(MARC_SLACK, "Question A", FIRST, None),
+    )
+    .await;
+    slack.unavailable(true);
+    assert_eq!(answer(&api).await, 0);
+    slack.unavailable(false);
+
+    // A day later, its time come, it is no longer tried; the person's next
+    // question in the thread is answered.
+    age_ends(FIRST, 25).await;
+    retry_now(&api, FIRST).await;
+    write(
+        &api,
+        gateway,
+        &written(MARC_SLACK, "Question B", SECOND, Some(FIRST)),
+    )
+    .await;
+    assert_eq!(answer(&api).await, 1);
+    let said = in_thread(&slack, FIRST);
+    assert_eq!(said.len(), 1, "{said:?}");
+    assert!(said[0].starts_with("Réponse B."), "{said:?}");
+    assert_eq!(
+        replies_of(&api, FIRST).await,
+        [(None, 1), (Some("sent".into()), 1)]
+    );
+}
+
+/// Moves the ends and pauses answered in the thread `thread` `hours`
+/// earlier, as the database's owner.
+async fn age_ends(thread: &str, hours: i32) {
+    let owner = sqlx::PgPool::connect(owner_url()).await.unwrap();
+    sqlx::query(
+        "update run_events set created_at = created_at - make_interval(hours => $2) \
+         where id in (select r.event_id from gateway_replies r \
+         join gateway_threads t on t.id = r.thread_id where t.thread_ts = $1)",
+    )
+    .bind(thread)
+    .bind(hours)
+    .execute(&owner)
+    .await
+    .unwrap();
+    owner.close().await;
 }
