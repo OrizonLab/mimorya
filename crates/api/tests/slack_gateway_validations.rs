@@ -3,70 +3,33 @@
 //! parameters and its buttons; pressed, it is decided as its author,
 //! audited so, the message showing the outcome in place of the buttons, and
 //! the run goes on. Only whom the request awaits decides it: another linked
-//! person, a Slack user not linked, one no longer the person, a temporary
-//! password, a suspended company, another workspace, a paused gateway or an
-//! unsigned press decide nothing. An action a manager decides, one sent
-//! outside the company or whose parameters do not fit is shown without
-//! buttons, and no press decides it.
+//! person, a Slack user not linked, one no longer the person, another
+//! workspace, a paused gateway or an unsigned press decide nothing (a
+//! temporary password, a suspended company: `slack_gateway_validation_checks`).
+//! An action a manager decides, one sent outside the company or whose
+//! parameters do not fit is shown without buttons, and no press decides it.
 
 mod support;
 
 use axum::http::StatusCode;
-use mimorya_agent::testing::ScriptedStep;
 use mimorya_connectors::testing::{FakeSlack, OTHER_WORKSPACE, SlackPost, WORKSPACE};
-use mimorya_core::demo::{tenant, user};
+use mimorya_core::demo::user;
 use mimorya_core::gateways::slack::{ShownAction, approval_blocks};
 use serde_json::json;
 use support::manager_approvals::{listed, route_to_managers};
-use support::planning::{apply_proposal, propose};
 use support::queue::as_owner;
 use support::refusals::{entries_since, latest_entry};
 use support::slack_conversations::{
-    MARC_SLACK, answer, confirm, in_thread, link_code, linked, settle, slack_runs, write, written,
+    MARC_SLACK, answer, confirm, in_thread, link_code, linked, settle,
 };
-use support::slack_validations::{buttons_of, press, pressed, pressed_by};
+use support::slack_validations::{
+    ASKED_IN, asked, buttons_of, paused, posts_in, press, pressed, pressed_by,
+};
 use support::sso::SSO_DEPLOYMENT;
 use support::{TestApi, email};
 
-const FIRST: &str = "1700000200.000100";
 const LEA_SLACK: &str = "U0LEAFONT";
 const NADIA_SLACK: &str = "U0NADIABEN";
-
-/// The messages written in the thread `thread`, oldest first.
-fn posts_in(slack: &FakeSlack, thread: &str) -> Vec<SlackPost> {
-    (slack.posts().into_iter())
-        .filter(|p| p.thread_ts.as_deref() == Some(thread))
-        .collect()
-}
-
-/// The request `person` writes to plan INT-2052, paused for its
-/// validation: its run.
-async fn asked(api: &TestApi, (gateway, person): (uuid::Uuid, &str), end: &str) -> String {
-    api.script(vec![
-        propose("INT-2052", "15:00"),
-        apply_proposal(""),
-        ScriptedStep::text(end),
-    ]);
-    write(
-        api,
-        gateway,
-        &written(person, "Planifie INT-2052", FIRST, None),
-    )
-    .await;
-    slack_runs(api).await.remove(0).0.to_string()
-}
-
-/// The same, the pause written in its thread: its run, and that message.
-async fn paused(
-    api: &TestApi,
-    slack: &FakeSlack,
-    asker: (uuid::Uuid, &str),
-    end: &str,
-) -> (String, SlackPost) {
-    let run = asked(api, asker, end).await;
-    assert_eq!(answer(api).await, 1);
-    (run, posts_in(slack, FIRST).remove(0))
-}
 
 /// `post` with buttons for `approval` made up, as a press may claim.
 fn with_buttons(post: &SlackPost, approval: uuid::Uuid) -> SlackPost {
@@ -120,7 +83,7 @@ async fn an_action_awaiting_its_author_is_validated_with_its_button() {
     let audited = entries_since(&api, since).await;
     assert!(audited.contains("approval.approved"), "{audited}");
     assert!(audited.contains(r#""gateway":"slack""#), "{audited}");
-    let shown = posts_in(&slack, FIRST).remove(0);
+    let shown = posts_in(&slack, ASKED_IN).remove(0);
     assert_eq!(shown.updates, 1);
     let blocks = shown.blocks.unwrap().to_string();
     assert!(
@@ -130,7 +93,7 @@ async fn an_action_awaiting_its_author_is_validated_with_its_button() {
     assert!(!blocks.contains("approval_approve"), "{blocks}");
     // The run went on: its end follows in the thread.
     assert_eq!(answer(&api).await, 1);
-    let said = in_thread(&slack, FIRST);
+    let said = in_thread(&slack, ASKED_IN);
     assert!(
         said[1].starts_with("Planning de INT-2052 appliqué."),
         "{said:?}"
@@ -139,7 +102,7 @@ async fn an_action_awaiting_its_author_is_validated_with_its_button() {
     // Pressed again: nothing more, and said.
     press(&api, gateway, &pressed_by(MARC_SLACK, &pause, true), false).await;
     settle(&api).await;
-    let said = in_thread(&slack, FIRST);
+    let said = in_thread(&slack, ASKED_IN);
     assert_eq!(said.last().unwrap(), "Cette demande a déjà été traitée");
 }
 
@@ -156,7 +119,7 @@ async fn an_action_refused_with_its_button_is_not_carried_out() {
     assert_eq!(sent.status, StatusCode::OK, "{}", sent.text());
     settle(&api).await;
     assert_eq!(listed(&marc, &run).await.unwrap()["status"], "rejected");
-    let blocks = posts_in(&slack, FIRST)
+    let blocks = posts_in(&slack, ASKED_IN)
         .remove(0)
         .blocks
         .unwrap()
@@ -166,7 +129,7 @@ async fn an_action_refused_with_its_button_is_not_carried_out() {
         "{blocks}"
     );
     assert_eq!(answer(&api).await, 1);
-    assert!(in_thread(&slack, FIRST)[1].starts_with("Planning inchangé."));
+    assert!(in_thread(&slack, ASKED_IN)[1].starts_with("Planning inchangé."));
 }
 
 #[tokio::test]
@@ -248,7 +211,7 @@ async fn only_whom_the_request_awaits_decides_it_from_slack() {
     assert_eq!(pending().await, "pending");
     let own = marc.get("/account/gateways").await.json();
     assert_eq!(own["gateways"][0]["linked"], serde_json::Value::Null);
-    assert_eq!(posts_in(&slack, FIRST)[0].updates, 0, "its buttons left");
+    assert_eq!(posts_in(&slack, ASKED_IN)[0].updates, 0, "its buttons left");
 }
 
 #[tokio::test]
@@ -279,12 +242,14 @@ async fn an_action_a_manager_decides_is_shown_without_buttons() {
     let approval = request["id"].as_str().unwrap().parse().unwrap();
     let shown = with_buttons(&pause, approval);
     for approved in [true, false] {
+        let before = slack.posts().len();
         let body = pressed(WORKSPACE, NADIA_SLACK, &shown, approval, approved);
         press(&api, gateway, &body, false).await;
         settle(&api).await;
-        let said = slack.posts().last().unwrap().text.clone();
+        let said: Vec<_> = slack.posts().split_off(before);
+        assert_eq!(said.len(), 1, "{said:?}");
         assert_eq!(
-            said,
+            said[0].text,
             "Cette action attend la validation de votre responsable, dans l’application : \
              rien n’a été décidé."
         );
@@ -310,7 +275,7 @@ async fn an_action_sent_outside_the_company_is_validated_in_the_application() {
     )
     .await;
     assert_eq!(answer(&api).await, 1);
-    let pause = posts_in(&slack, FIRST).remove(0);
+    let pause = posts_in(&slack, ASKED_IN).remove(0);
     assert_eq!(pause.blocks, None);
     assert!(
         pause.text.contains("à donner dans l’application"),
@@ -342,50 +307,4 @@ async fn an_action_sent_outside_the_company_is_validated_in_the_application() {
     settle(&api).await;
     let said = slack.posts().last().unwrap().text.clone();
     assert_eq!(said, "Demande de validation introuvable");
-}
-
-#[tokio::test]
-#[ignore = "requires PostgreSQL"]
-async fn a_temporary_password_or_a_suspended_company_decides_nothing() {
-    let slack = FakeSlack::start().await;
-    let api = TestApi::start_with_slack(&SSO_DEPLOYMENT, &slack.url).await;
-    let (paul, marc) = (api.sign_in(user::PAUL).await, api.sign_in(user::MARC).await);
-    let address = email(user::MARC);
-    let gateway = linked(&api, &slack, &paul, &marc, (MARC_SLACK, &address)).await;
-    let (run, pause) = paused(&api, &slack, (gateway, MARC_SLACK), "Appliqué.").await;
-    let body = pressed_by(MARC_SLACK, &pause, true);
-    let said = |slack: &FakeSlack| slack.posts().last().unwrap().text.clone();
-
-    // A temporary password still to replace.
-    let flag = "update users set must_change_password = true where id = $1";
-    as_owner(flag, user::MARC).await;
-    press(&api, gateway, &body, false).await;
-    settle(&api).await;
-    as_owner(&flag.replace("true", "false"), user::MARC).await;
-    assert!(
-        said(&slack).contains("mot de passe provisoire"),
-        "{}",
-        said(&slack)
-    );
-    assert!(
-        said(&slack).ends_with("rien n’a été décidé."),
-        "{}",
-        said(&slack)
-    );
-    assert_eq!(listed(&marc, &run).await.unwrap()["status"], "pending");
-
-    // His company suspended.
-    let suspend = "update tenants set status = 'suspended' where id = $1";
-    as_owner(suspend, tenant::ID).await;
-    api.app.services.access.invalidate(tenant::ID);
-    press(&api, gateway, &body, false).await;
-    settle(&api).await;
-    as_owner(&suspend.replace("'suspended'", "'active'"), tenant::ID).await;
-    api.app.services.access.invalidate(tenant::ID);
-    assert_eq!(
-        said(&slack),
-        "Votre entreprise est suspendue : l’agent n’agit plus pour elle."
-    );
-    assert_eq!(listed(&marc, &run).await.unwrap()["status"], "pending");
-    assert_eq!(posts_in(&slack, FIRST)[0].updates, 0, "its buttons left");
 }

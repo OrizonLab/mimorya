@@ -1,14 +1,53 @@
-//! A validation given in Slack in the tests (ADR-129): the buttons of a
-//! pause's message, and a press of one of them as Slack sends it, signed,
+//! A validation given in Slack in the tests (ADR-129): a request written
+//! there paused for its author's validation, the buttons of the pause's
+//! message, and a press of one of them as Slack sends it, signed,
 //! form-encoded, to the gateway's address.
 
 use axum::body::Body;
 use axum::http::Request;
-use mimorya_connectors::testing::{SlackPost, WORKSPACE, signed};
+use mimorya_agent::testing::ScriptedStep;
+use mimorya_connectors::testing::{FakeSlack, SlackPost, WORKSPACE, signed};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
+use super::planning::{apply_proposal, propose};
+use super::slack_conversations::{answer, slack_runs, write, written};
 use super::{TestApi, TestResponse};
+
+/// The thread the request is written in.
+pub const ASKED_IN: &str = "1700000200.000100";
+
+/// The messages written in the thread `thread`, oldest first.
+pub fn posts_in(slack: &FakeSlack, thread: &str) -> Vec<SlackPost> {
+    (slack.posts().into_iter())
+        .filter(|p| p.thread_ts.as_deref() == Some(thread))
+        .collect()
+}
+
+/// The request `person` writes to plan INT-2052, outside any thread,
+/// paused for its validation: its run.
+pub async fn asked(api: &TestApi, (gateway, person): (Uuid, &str), end: &str) -> String {
+    api.script(vec![
+        propose("INT-2052", "15:00"),
+        apply_proposal(""),
+        ScriptedStep::text(end),
+    ]);
+    let message = written(person, "Planifie INT-2052", ASKED_IN, None);
+    write(api, gateway, &message).await;
+    slack_runs(api).await.remove(0).0.to_string()
+}
+
+/// The same, the pause written in its thread: its run, and that message.
+pub async fn paused(
+    api: &TestApi,
+    slack: &FakeSlack,
+    asker: (Uuid, &str),
+    end: &str,
+) -> (String, SlackPost) {
+    let run = asked(api, asker, end).await;
+    assert_eq!(answer(api).await, 1);
+    (run, posts_in(slack, ASKED_IN).remove(0))
+}
 
 /// The approval whose buttons come first in `post`.
 pub fn buttons_of(post: &SlackPost) -> Uuid {

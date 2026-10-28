@@ -7031,16 +7031,21 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     écarté, actions admises dans Slack, risque et paramètres exacts montrés entiers,
     issue de chaque action à la place de ses boutons), `services/gateways/reply_text.rs`
     (pause avec ses boutons, plusieurs, au-delà de cinq, à valider dans l'application,
-    attendue par un responsable ou déjà décidée),
+    attendue par un responsable ou déjà décidée), `services/gateways/choices.rs` (issue
+    montrée pour chaque statut),
     `crates/api/tests/slack_gateway_validations.rs` (action validée par son bouton,
     auditée avec son service, message réécrit, suite dans le fil, bouton pressé deux
     fois ; action refusée ; sans signature, d'un autre espace de travail, passerelle en
     pause, autre personne reliée, utilisateur Slack non relié, utilisateur qui n'est
-    plus la personne, mot de passe provisoire, entreprise suspendue : rien de décidé ;
-    action d'un responsable sans bouton, ni validée ni retirée depuis Slack (son auteur la
-    retire dans l'application) ; action à
-    impact externe sans bouton, et aucun bouton forgé ne la décide ; demande inconnue
-    introuvable), `apps/web/e2e/slack-gateway.spec.ts` (la carte dit l'adresse à donner
-    à « Interactivity & Shortcuts ») ;
+    plus la personne : rien de décidé ; action d'un responsable sans bouton, ni validée
+    ni retirée depuis Slack (son auteur la retire dans l'application) ; action à impact
+    externe sans bouton, et aucun bouton forgé ne la décide ; demande inconnue
+    introuvable), `slack_gateway_validation_checks.rs` (mot de passe provisoire,
+    entreprise suspendue : rien de décidé ; Slack interrogé avant que rien ne soit dit
+    du compte : l'utilisateur qui n'est plus la personne, au mot de passe provisoire et
+    à l'entreprise suspendue, n'apprend que sa liaison retirée),
+    `slack_gateway_replies.rs` (pause dont Slack refuse les boutons redite sans eux),
+    `apps/web/e2e/slack-gateway.spec.ts` (la carte dit l'adresse à donner à
+    « Interactivity & Shortcuts ») ;
   - reste à venir : le responsable prévenu dans Slack d'une action à valider, la
     conversation directe vérifiée auprès de Slack, Telegram, Teams.

@@ -178,7 +178,9 @@ async fn reply(
                 .await
             {
                 // Buttons Slack would not show: the pause said without them.
-                Err(SlackFailure::Refused(_)) if blocks.is_some() => {
+                Err(failure @ SlackFailure::Refused(_)) if blocks.is_some() => {
+                    let (gateway, reason) = (target.gateway_id, failure.message());
+                    tracing::warn!(%gateway, %reason, "Slack refused the pause's buttons");
                     let text = reply_text(&target.status, None, &url);
                     slack.post(&token, channel, thread, &text).await
                 }

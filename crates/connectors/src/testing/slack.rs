@@ -67,6 +67,8 @@ struct Shared {
     refusal: Option<String>,
     /// Every method answers 503, as Slack down.
     down: bool,
+    /// A message with blocks is refused (`invalid_blocks`).
+    blocks_refused: bool,
 }
 
 pub struct FakeSlack {
@@ -145,6 +147,12 @@ impl FakeSlack {
     /// Every method answers 503 from now on (`false`: answers again).
     pub fn unavailable(&self, down: bool) {
         self.shared.lock().expect("lock").down = down;
+    }
+
+    /// A message posted with blocks is refused from now on, as blocks Slack
+    /// would not show (`false`: taken again).
+    pub fn refuse_blocks(&self, refused: bool) {
+        self.shared.lock().expect("lock").blocks_refused = refused;
     }
 
     /// The messages the application posted, oldest first.
@@ -262,6 +270,9 @@ async fn post_message(
     let (Some(channel), Some(text)) = (field("channel"), field("text")) else {
         return Json(json!({ "ok": false, "error": "invalid_arguments" })).into_response();
     };
+    if shared.blocks_refused && body.get("blocks").is_some() {
+        return Json(json!({ "ok": false, "error": "invalid_blocks" })).into_response();
+    }
     let ts = format!("1700000000.{:06}", shared.posts.len() + 1);
     let post = SlackPost {
         channel: channel.clone(),
