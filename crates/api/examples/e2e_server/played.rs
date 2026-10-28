@@ -1,7 +1,7 @@
 //! What the models that play a scenario apart share (`documents`, `hooks`,
-//! `missions`, `skill_evaluations`, `skill_proposals`, `sub_agents`): a
-//! reply in the name of the model they stand in front of, and a turn
-//! recognised by what it says.
+//! `missions`, `skill_evaluations`, `skill_proposals`, `slack`,
+//! `sub_agents`): a reply in the name of the model they stand in front of,
+//! and a turn recognised by what it says.
 
 use mimorya_agent::llm::{LlmMessage, LlmProvider, LlmResponse, LlmToolCall, LlmUsage, StopReason};
 

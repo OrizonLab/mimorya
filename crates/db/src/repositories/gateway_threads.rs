@@ -6,6 +6,8 @@
 //! at its latest turn or answer: the answers pass reads the threads active
 //! lately.
 
+use std::collections::HashMap;
+
 use chrono::{DateTime, Utc};
 use sqlx::PgConnection;
 use uuid::Uuid;
@@ -89,4 +91,20 @@ pub async fn touch_gateway_thread(
         .execute(conn)
         .await?;
     Ok(())
+}
+
+/// The service each of `conversation_ids` held in a thread is held on: its
+/// gateway's kind (`slack`), by conversation.
+pub async fn conversations_held(
+    conn: &mut PgConnection,
+    conversation_ids: &[Uuid],
+) -> sqlx::Result<HashMap<Uuid, String>> {
+    let held: Vec<(Uuid, String)> = sqlx::query_as(
+        "select t.conversation_id, g.kind from gateway_threads t \
+         join gateways g on g.id = t.gateway_id where t.conversation_id = any($1)",
+    )
+    .bind(conversation_ids)
+    .fetch_all(conn)
+    .await?;
+    Ok(held.into_iter().collect())
 }

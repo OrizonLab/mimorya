@@ -1,9 +1,10 @@
 'use client';
 
-import { AlertTriangle, ShieldCheck, Target } from 'lucide-react';
+import { AlertTriangle, MessagesSquare, ShieldCheck, Target } from 'lucide-react';
 import { documentFileUrl } from '@/components/documents';
 import { Badge, cx, Markdown } from '@/components/ui';
 import type { Citation, Message } from '@/lib/api';
+import { gatewayLabel } from '@/lib/labels';
 import { HookTurn } from './hook-turn';
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -17,7 +18,7 @@ const SOURCE_LABELS: Record<string, string> = {
 };
 
 export function MessageItem({ message }: { message: Message }) {
-  const { verification, evidence, status, mission, inboundHookId } = message.metadata;
+  const { verification, evidence, status, mission, inboundHookId, gateway } = message.metadata;
   // The word that sets a mission's next stage going is the platform's.
   if (mission === 'resumption') {
     return (
@@ -38,6 +39,13 @@ export function MessageItem({ message }: { message: Message }) {
     return (
       <div className="flex flex-col items-end gap-1">
         {mission === 'brief' && <Badge tone="accent">Mission confiée</Badge>}
+        {/* Written in the company's Slack application (ADR-127, ADR-128). */}
+        {gateway && (
+          <Badge>
+            <MessagesSquare className="size-3" aria-hidden />
+            Écrit dans {gatewayLabel(gateway)}
+          </Badge>
+        )}
         <div className="max-w-[85%] rounded-2xl rounded-br-sm bg-accent px-4 py-2.5 text-[0.95rem] whitespace-pre-wrap text-accent-fg">
           {message.content}
         </div>

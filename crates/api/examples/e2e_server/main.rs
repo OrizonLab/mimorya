@@ -16,7 +16,8 @@
 //! where they publish records on 127.0.0.1:4102 (`DNS_ADDRESS`, ADR-069).
 //! The companies' Slack gateways reach a local Slack on 127.0.0.1:4103
 //! (`SLACK_ADDRESS`), which knows Léa's Slack user and lists what the
-//! gateways posted (ADR-126).
+//! gateways posted (ADR-126); what she writes there is answered apart
+//! (`slack`, ADR-128).
 //! A company's embedding model is a test one, whatever it chooses: no
 //! provider is ever reached (ADR-074). A finished run reread for a lesson
 //! always yields the same one (`lessons`, ADR-076). A mission is played
@@ -59,6 +60,7 @@ mod scenario;
 mod scheduled;
 mod skill_evaluations;
 mod skill_proposals;
+mod slack;
 mod sub_agents;
 
 use std::net::SocketAddr;
@@ -127,7 +129,8 @@ async fn main() -> anyhow::Result<()> {
     let conversations = Arc::new(queued::WithQueued::new(model));
     let documents = Arc::new(documents::WithDocuments::new(conversations));
     let received = Arc::new(hooks::WithHooks::new(documents));
-    let delegations = Arc::new(sub_agents::WithSubAgents::new(received));
+    let written = Arc::new(slack::WithSlack::new(received));
+    let delegations = Arc::new(sub_agents::WithSubAgents::new(written));
     let proposals = Arc::new(skill_proposals::WithSkillProposals::new(delegations));
     let missions = Arc::new(missions::WithMissions::new(proposals));
     // In front of the missions, which pass any answer they are asked to judge.

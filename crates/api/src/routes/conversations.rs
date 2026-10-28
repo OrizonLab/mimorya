@@ -10,12 +10,13 @@ use mimorya_db::repositories::conversations::{
     ConversationPatch, ConversationRow, create_conversation, get_conversation, list_conversations,
     list_messages, update_conversation,
 };
+use mimorya_db::repositories::gateway_threads::conversations_held;
 use mimorya_db::repositories::runs::list_runs_for_conversation;
 
 use crate::app::AppState;
 use crate::contract::{
-    ConversationChanges, ConversationCreated, ConversationDetail, ConversationList, Done, Message,
-    MessageAccepted, NewConversation, NewMessage,
+    ConversationChanges, ConversationCreated, ConversationDetail, ConversationList,
+    ConversationSummary, Done, Message, MessageAccepted, NewConversation, NewMessage,
 };
 use crate::http::{ApiResult, Body, PathId};
 use crate::plugins::Auth;
@@ -38,9 +39,14 @@ async fn list(
 ) -> ApiResult<Json<ConversationList>> {
     let mut tx = state.db.begin(identity.tenant_id).await?;
     let rows = list_conversations(&mut tx, identity.user_id).await?;
+    let ids: Vec<_> = rows.iter().map(|c| c.id).collect();
+    let mut held = conversations_held(&mut tx, &ids).await?;
     tx.commit().await?;
     Ok(Json(ConversationList {
-        conversations: rows.iter().map(Into::into).collect(),
+        conversations: rows
+            .iter()
+            .map(|c| ConversationSummary::held(c, held.remove(&c.id)))
+            .collect(),
     }))
 }
 
@@ -88,9 +94,10 @@ async fn detail(
     let conversation = owned(&mut tx, identity, id).await?;
     let messages = list_messages(&mut tx, id, MESSAGE_PAGE).await?;
     let runs = list_runs_for_conversation(&mut tx, id, RUN_PAGE).await?;
+    let gateway = conversations_held(&mut tx, &[id]).await?.remove(&id);
     tx.commit().await?;
     Ok(Json(ConversationDetail {
-        conversation: (&conversation).into(),
+        conversation: ConversationSummary::held(&conversation, gateway),
         messages: messages
             .iter()
             .map(Message::from_row)

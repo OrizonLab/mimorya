@@ -1,8 +1,9 @@
-// The company's Slack gateway in the end-to-end tests (ADR-125, ADR-126):
-// the test Slack the server reaches (`e2e_server`), which knows Léa's Slack
-// user and lists what the application posted; an event signed as Slack
-// signs them, with the application's secret; the gateway read back from the
-// API, and deleted after each test with the identities linked there.
+// The company's Slack gateway in the end-to-end tests (ADR-125, ADR-126,
+// ADR-128): the test Slack the server reaches (`e2e_server`), which knows
+// Léa's Slack user and lists what the application posted; an event signed
+// as Slack signs them, with the application's secret, outside any thread or
+// in one; the gateway read back from the API, and deleted after each test
+// with the identities linked there.
 import { createHmac } from 'node:crypto';
 import type { APIRequestContext, APIResponse, Page } from '@playwright/test';
 import type { GatewayView, Gateways } from '../../lib/api/contract';
@@ -53,31 +54,45 @@ export async function storedGateway(
   return { gateway: gateways.find((g) => g.type === 'slack'), listing };
 }
 
+/** The messages given a timestamp by `slackTs`. */
+let stamped = 0;
+
+/** A message's timestamp in Slack (`<seconds>.<sequence>`), never given before. */
+export function slackTs(): string {
+  stamped += 1;
+  return `${Math.floor(Date.now() / 1000)}.${String(stamped).padStart(6, '0')}`;
+}
+
 /**
- * What Slack sends `url` when `person` writes `text` to the application:
- * the event, signed now with the application's secret, as Slack signs it
- * (`v0=` and the HMAC-SHA256 of `v0:<timestamp>:<body>`). No session.
+ * What Slack sends `url` when `person` writes `text` to the application, at
+ * `ts` (now by default), in the thread `threadTs` if any: the event, signed
+ * now with the application's secret, as Slack signs it (`v0=` and the
+ * HMAC-SHA256 of `v0:<timestamp>:<body>`). No session.
  */
 export async function sendDirectMessage(
   outside: APIRequestContext,
   url: string,
   person: string,
   text: string,
+  place: { ts?: string; threadTs?: string } = {},
 ): Promise<APIResponse> {
   const now = Math.floor(Date.now() / 1000);
+  const ts = place.ts ?? `${now}.000100`;
+  const event: Record<string, string> = {
+    type: 'message',
+    channel: 'D0LEAE2E',
+    user: person,
+    text,
+    ts,
+    channel_type: 'im',
+    event_ts: ts,
+  };
+  if (place.threadTs) event.thread_ts = place.threadTs;
   const body = JSON.stringify({
     token: 'verification-token-unused',
     team_id: WORKSPACE,
     api_app_id: 'A0MIMORYA',
-    event: {
-      type: 'message',
-      channel: 'D0LEAE2E',
-      user: person,
-      text,
-      ts: `${now}.000100`,
-      channel_type: 'im',
-      event_ts: `${now}.000100`,
-    },
+    event,
     type: 'event_callback',
     // Never taken before: Slack's own sending again is ignored.
     event_id: `Ev${Date.now()}`,
@@ -95,6 +110,26 @@ export async function sendDirectMessage(
     },
     data: body,
   });
+}
+
+/** What the application wrote in the thread `threadTs`, once it wrote
+ * `count` messages there, oldest first. */
+export async function inThread(
+  outside: APIRequestContext,
+  threadTs: string,
+  count: number,
+): Promise<string[]> {
+  let said: string[] = [];
+  await expect
+    .poll(
+      async () => {
+        said = (await posts(outside)).filter((p) => p.threadTs === threadTs).map((p) => p.text);
+        return said.length;
+      },
+      { timeout: 30_000 },
+    )
+    .toBe(count);
+  return said;
 }
 
 /** The messages the application posted so far, oldest first. */

@@ -18,15 +18,27 @@ pub struct ConversationSummary {
     pub id: Uuid,
     pub title: String,
     pub updated_at: String,
+    /// The service it is held in a thread of, `slack`: its author's
+    /// messages there follow it, and are answered there (ADR-127).
+    pub gateway: Option<String>,
 }
 
-impl From<&ConversationRow> for ConversationSummary {
-    fn from(c: &ConversationRow) -> Self {
+impl ConversationSummary {
+    /// `c`, held in a thread of `gateway`, if any.
+    pub fn held(c: &ConversationRow, gateway: Option<String>) -> Self {
         Self {
             id: c.id,
             title: c.title.clone(),
             updated_at: iso(&c.updated_at),
+            gateway,
         }
+    }
+}
+
+/// A conversation opened in the application: held in no thread.
+impl From<&ConversationRow> for ConversationSummary {
+    fn from(c: &ConversationRow) -> Self {
+        Self::held(c, None)
     }
 }
 
