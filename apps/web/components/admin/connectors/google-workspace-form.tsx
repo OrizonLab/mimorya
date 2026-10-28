@@ -70,6 +70,7 @@ export function GoogleWorkspaceForm({
             <Input
               required
               pattern={CLIENT_ID}
+              title="L’ID client que montre Google Cloud, terminé par .apps.googleusercontent.com"
               maxLength={255}
               placeholder="123456789012-abc….apps.googleusercontent.com"
               value={clientId}
@@ -100,14 +101,16 @@ export function GoogleWorkspaceForm({
       </label>
       <p className="text-xs text-muted">
         Le client est celui que l’entreprise crée dans son projet Google Cloud (type « Application
-        Web »), les API Gmail et Google Calendar activées, avec les champs d’application{' '}
-        <code>gmail.readonly</code> et <code>calendar.readonly</code>, et, si l’envoi est permis,{' '}
-        <code>gmail.send</code> et <code>calendar.events</code> ; jamais de délégation à l’échelle
-        du domaine : l’agent ne lit et n’écrit que ce que la personne servie peut lire et écrire,
-        après son accord, avec son compte Workspace. Un e-mail ou un rendez-vous n’est jamais envoyé
-        sans validation, quel que soit le niveau d’autonomie ; ceux qui ont relié leur compte avant
-        que l’envoi soit permis le relient de nouveau pour l’accorder. Le secret est chiffré sur le
-        serveur et jamais réaffiché.
+        Web »), les API Gmail et Google Calendar activées. Son écran de consentement OAuth est de
+        type « Interne » (les comptes Workspace de l’entreprise seulement) et déclare, dans « Accès
+        aux données », les champs d’application <code>gmail.readonly</code> et{' '}
+        <code>calendar.readonly</code>, et, si l’envoi est permis, <code>gmail.send</code> et{' '}
+        <code>calendar.events</code> ; jamais de délégation à l’échelle du domaine : l’agent ne lit
+        et n’écrit que ce que la personne servie peut lire et écrire, après son accord, avec son
+        compte Workspace. Un e-mail ou un rendez-vous n’est jamais envoyé sans validation, quel que
+        soit le niveau d’autonomie ; ceux qui ont relié leur compte avant que l’envoi soit permis le
+        relient de nouveau pour l’accorder. Le secret est chiffré sur le serveur et jamais
+        réaffiché.
       </p>
       {action.error && <ErrorNote message={action.error} />}
       <div className="flex gap-2">

@@ -21,8 +21,8 @@ const MAX_ADDRESS_CHARS: usize = 254;
 /// of an RFC 5322 atom, dots anywhere: no space, comma, bracket, quote or
 /// colon), 64 at most; after it, a host name of two labels or more. No IP
 /// literal, no quoted or commented part: nothing a header reads as anything
-/// but one address. A dot misplaced (`.lea@…`) is the provider's to refuse,
-/// and it does so before sending anything.
+/// but one address. A dot misplaced (`.lea@…`) is not refused here: it
+/// changes no header, and the provider accepts or refuses the address.
 static PLAIN_ADDRESS: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r"^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$",

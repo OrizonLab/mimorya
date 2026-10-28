@@ -301,7 +301,8 @@ Détaillés dans [AGENT_ENGINE.md](AGENT_ENGINE.md). En résumé :
   créent un rendez-vous au nom de la personne, toujours validés et exécutés une fois
   tels que validés ; l'e-mail et le rendez-vous, leurs règles et leur description sont
   ceux de Microsoft 365 (`delegated`), le message envoyé à Gmail est écrit par la
-  plateforme (ADR-123).
+  plateforme (ADR-123). Chacun relie son compte dans « Mon compte », au nom de son
+  fournisseur ; le client se déclare et se règle dans « Connecteurs » (ADR-124).
 - Les secrets ne transitent jamais par le contexte du modèle ni par les journaux.
 
 Connecteurs prévus : démonstration (MVP), MCP générique (MVP), déclencheurs (ADR-109),

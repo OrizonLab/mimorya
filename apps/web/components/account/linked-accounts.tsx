@@ -27,11 +27,12 @@ const OUTCOMES = {
   },
   'autre-compte': {
     failed: true,
-    text: 'Le compte choisi n’est pas celui de votre adresse : rien n’a été relié. Recommencez en vous connectant avec l’adresse de votre compte (chez Google, votre compte Workspace de l’entreprise, non un compte personnel).',
+    text: 'Le compte choisi n’est pas celui de votre adresse : rien n’a été relié. Recommencez en vous connectant avec l’adresse de votre compte.',
   },
+  // Also a personal Google account, not a Workspace one (ADR-121).
   echec: {
     failed: true,
-    text: 'La liaison a échoué : rien n’a été relié. Réessayez ; si l’échec persiste, votre administrateur peut vérifier l’application déclarée.',
+    text: 'La liaison a échoué : rien n’a été relié. Réessayez avec le compte de votre adresse (chez Google, votre compte Workspace de l’entreprise, non un compte personnel) ; si l’échec persiste, votre administrateur peut vérifier l’application déclarée.',
   },
 } as const;
 

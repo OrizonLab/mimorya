@@ -148,6 +148,8 @@ test('a failed return is said on « Mon compte », once', async ({ page }) => {
   await signIn(page, demo.lea);
   await page.goto('/account?liaison=echec');
   await expect(page.getByText('La liaison a échoué')).toBeVisible();
+  // A personal Google account fails so: the person is told which to use.
+  await expect(page.getByText(/chez Google, votre compte Workspace de l’entreprise/)).toBeVisible();
   await expect(page).toHaveURL(/\/account$/);
   await page.reload();
   await expect(page.getByText('La liaison a échoué')).toHaveCount(0);

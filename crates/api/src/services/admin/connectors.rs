@@ -122,7 +122,8 @@ pub struct ConnectorChanges {
     pub tool_policies: Option<HashMap<String, ToolPolicyInput>>,
     /// A REST API's token header and operations (ADR-112).
     pub rest: Option<RestChanges>,
-    /// Whether the Microsoft 365 application's tools may write (ADR-119).
+    /// Whether the tools of a Microsoft 365 application or a Google Workspace
+    /// client may write (ADR-119, ADR-123).
     pub write_tools: Option<bool>,
 }
 

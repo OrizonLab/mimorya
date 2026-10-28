@@ -19,9 +19,9 @@ import {
   declare,
   deleteClients,
   linkOf,
+  linkThrough,
   stored,
 } from './support/google-workspace';
-import { linkThrough } from './support/microsoft365';
 
 const NAME = 'Google Workspace e2e';
 const SCOPES = 'https://www.googleapis.com/auth/';
