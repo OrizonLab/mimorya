@@ -49,6 +49,7 @@ pub mod skill_evaluations;
 pub mod skill_proposal_notices;
 pub mod skill_proposals;
 pub mod slack_conversations;
+pub mod slack_validations;
 pub mod sso;
 pub mod sweeps;
 

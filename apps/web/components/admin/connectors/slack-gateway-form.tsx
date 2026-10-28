@@ -95,11 +95,12 @@ export function SlackGatewayForm({
         de travail : permissions du bot <code>chat:write</code>, <code>im:history</code>,{' '}
         <code>users:read</code> et <code>users:read.email</code>, rien d’autre ; onglet « Messages »
         de « App Home » ouvert, pour que chacun lui écrive. Une fois la passerelle déclarée,
-        abonnez-la à l’événement <code>message.im</code> à l’adresse que montre sa carte. Le jeton
+        abonnez-la à l’événement <code>message.im</code> à l’adresse que montre sa carte, et donnez
+        la même adresse à « Interactivity &amp; Shortcuts » pour les boutons de validation. Le jeton
         est essayé auprès de Slack avant d’être gardé ; le jeton et le secret sont chiffrés sur le
         serveur et jamais réaffichés. Chacun relie ensuite son compte Slack depuis le lien que
-        l’application lui envoie, Slack prouvant que c’est le sien ; les conversations avec l’agent
-        dans Slack viendront ensuite.
+        l’application lui envoie, Slack prouvant que c’est le sien ; il parle alors à l’agent dans
+        Slack, et y valide ou refuse les actions qui attendent sa validation.
       </p>
       {action.error && <ErrorNote message={action.error} />}
       <div className="flex gap-2">

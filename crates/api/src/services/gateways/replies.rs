@@ -19,6 +19,7 @@ use std::collections::HashSet;
 
 use chrono::{DateTime, Duration, Utc};
 use mimorya_connectors::slack::SlackFailure;
+use mimorya_db::repositories::approvals::list_approvals_for_run;
 use mimorya_db::repositories::gateway_replies::{
     ReplyRecord, UnrepliedEvent, gateway_reply_target, record_gateway_reply,
     unreplied_gateway_events,
@@ -26,7 +27,7 @@ use mimorya_db::repositories::gateway_replies::{
 use uuid::Uuid;
 
 use super::bot_token_name;
-use super::reply_text::reply_text;
+use super::reply_text::{Pause, pause_reply, reply_text};
 use crate::app::Services;
 
 /// How long after a run's end or pause it is still answered: one that
@@ -122,6 +123,17 @@ async fn reply(
     let token = gateways
         .secret(&mut tx, tenant_id, &bot_token_name(target.gateway_id))
         .await?;
+    // A pause: the actions still awaiting a decision, at the time it is
+    // answered (ADR-129).
+    let awaiting = if target.status == "awaiting_approval" {
+        list_approvals_for_run(&mut tx, target.run_id)
+            .await?
+            .into_iter()
+            .filter(|a| a.status == "pending")
+            .collect()
+    } else {
+        Vec::new()
+    };
     tx.commit().await?;
     let record = match token {
         // No master key, or another one: told the operator.
@@ -132,11 +144,23 @@ async fn reply(
         }
         Some(token) => {
             let url = gateways.conversation_url(target.conversation_id);
-            let text = reply_text(&target.status, target.answer.as_deref(), &url);
+            let (text, blocks) = if target.status == "awaiting_approval" {
+                let own: Vec<_> = (awaiting.iter())
+                    .filter(|a| !a.routed_to_manager())
+                    .map(|a| (a.id, a.action_summary.as_str()))
+                    .collect();
+                let managed = awaiting.len() - own.len();
+                pause_reply(&url, &Pause { own: &own, managed })
+            } else {
+                (
+                    reply_text(&target.status, target.answer.as_deref(), &url),
+                    None,
+                )
+            };
             let thread = Some(target.thread_ts.as_str());
             match gateways
                 .slack()
-                .post(&token, &target.channel_id, thread, &text)
+                .post_blocks(&token, &target.channel_id, thread, &text, blocks.as_deref())
                 .await
             {
                 Ok(_) => ReplyRecord::Done("sent"),

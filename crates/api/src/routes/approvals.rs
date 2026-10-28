@@ -78,6 +78,7 @@ async fn decide(
                 approval_id: id,
                 approved: body.approved,
                 comment: body.comment.filter(|c| !c.is_empty()),
+                gateway: None,
             },
         )
         .await?;

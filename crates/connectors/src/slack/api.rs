@@ -108,22 +108,62 @@ impl SlackApi {
         thread_ts: Option<&str>,
         text: &str,
     ) -> Result<String, SlackFailure> {
+        self.post_blocks(token, channel, thread_ts, text, None)
+            .await
+    }
+
+    /// The same, shown as `blocks` if any (buttons among them, ADR-129),
+    /// `text` then being what notifications show.
+    pub async fn post_blocks(
+        &self,
+        token: &str,
+        channel: &str,
+        thread_ts: Option<&str>,
+        text: &str,
+        blocks: Option<&[Value]>,
+    ) -> Result<String, SlackFailure> {
         let mut body = json!({ "channel": channel, "text": text, "unfurl_links": false });
         if let Some(thread_ts) = thread_ts {
             body["thread_ts"] = json!(thread_ts);
         }
-        let body = serde_json::to_vec(&body).map_err(|_| SlackFailure::Unreadable)?;
-        let request = self
-            .client
-            .post(self.method("chat.postMessage"))
-            .header(CONTENT_TYPE, "application/json; charset=utf-8")
-            .body(body);
-        let answer = self.send(token, request).await?;
+        if let Some(blocks) = blocks {
+            body["blocks"] = json!(blocks);
+        }
+        let answer = self.send_json(token, "chat.postMessage", &body).await?;
         answer
             .get("ts")
             .and_then(Value::as_str)
             .map(str::to_owned)
             .ok_or(SlackFailure::Unreadable)
+    }
+
+    /// Rewrites the application's message `ts` of `channel` as `text` shown
+    /// as `blocks` (`chat.update`).
+    pub async fn update(
+        &self,
+        token: &str,
+        channel: &str,
+        ts: &str,
+        text: &str,
+        blocks: &[Value],
+    ) -> Result<(), SlackFailure> {
+        let body = json!({ "channel": channel, "ts": ts, "text": text, "blocks": blocks });
+        self.send_json(token, "chat.update", &body).await.map(drop)
+    }
+
+    async fn send_json(
+        &self,
+        token: &str,
+        method: &str,
+        body: &Value,
+    ) -> Result<Value, SlackFailure> {
+        let body = serde_json::to_vec(body).map_err(|_| SlackFailure::Unreadable)?;
+        let request = self
+            .client
+            .post(self.method(method))
+            .header(CONTENT_TYPE, "application/json; charset=utf-8")
+            .body(body);
+        self.send(token, request).await
     }
 
     fn method(&self, method: &str) -> Url {

@@ -5,7 +5,8 @@
 //! (`invalid_auth`), as one a test revoked; a test may also make it
 //! unavailable (503). It knows the people a test
 //! adds, by address, deleted or of another workspace, and keeps the messages
-//! the application posts, also listed at `GET /test/posts` for the
+//! the application posts, with their blocks, as it rewrites them
+//! (`chat.update`, ADR-129), also listed at `GET /test/posts` for the
 //! end-to-end tests. A test signs the events it sends as Slack would
 //! (`signed`).
 
@@ -36,12 +37,18 @@ pub const BOT_USER: &str = "U0MIMORYA";
 pub const OTHER_TOKEN: &str = "xoxb-fictif-bot-autre-entreprise-0001";
 pub const OTHER_WORKSPACE: &str = "T0AUTRE";
 
-/// A message the application posted.
+/// A message the application posted, as it last wrote it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SlackPost {
     pub channel: String,
     pub thread_ts: Option<String>,
+    /// Its own timestamp, which names it.
+    pub ts: String,
     pub text: String,
+    /// What it shows, if not its text alone.
+    pub blocks: Option<Value>,
+    /// How many times the application rewrote it.
+    pub updates: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -80,6 +87,7 @@ impl FakeSlack {
             .route("/api/auth.test", post(auth_test))
             .route("/api/users.info", get(users_info))
             .route("/api/chat.postMessage", post(post_message))
+            .route("/api/chat.update", post(update_message))
             .route("/test/posts", get(posts))
             .with_state(shared.clone());
         let listener = tokio::net::TcpListener::bind(address)
@@ -254,13 +262,39 @@ async fn post_message(
     let (Some(channel), Some(text)) = (field("channel"), field("text")) else {
         return Json(json!({ "ok": false, "error": "invalid_arguments" })).into_response();
     };
+    let ts = format!("1700000000.{:06}", shared.posts.len() + 1);
     let post = SlackPost {
         channel: channel.clone(),
         thread_ts: field("thread_ts"),
+        ts: ts.clone(),
         text,
+        blocks: body.get("blocks").cloned(),
+        updates: 0,
     };
     shared.posts.push(post);
-    let ts = format!("1700000000.{:06}", shared.posts.len());
+    Json(json!({ "ok": true, "channel": channel, "ts": ts })).into_response()
+}
+
+async fn update_message(
+    State(shared): State<Arc<Mutex<Shared>>>,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> Response {
+    let mut shared = shared.lock().expect("lock");
+    if let Some(refusal) = refused(&shared, &headers) {
+        return refusal;
+    }
+    let field = |name: &str| body.get(name).and_then(Value::as_str).map(str::to_owned);
+    let (Some(channel), Some(ts), Some(text)) = (field("channel"), field("ts"), field("text"))
+    else {
+        return Json(json!({ "ok": false, "error": "invalid_arguments" })).into_response();
+    };
+    let Some(post) = (shared.posts.iter_mut()).find(|p| p.channel == channel && p.ts == ts) else {
+        return Json(json!({ "ok": false, "error": "message_not_found" })).into_response();
+    };
+    post.text = text;
+    post.blocks = body.get("blocks").cloned();
+    post.updates += 1;
     Json(json!({ "ok": true, "channel": channel, "ts": ts })).into_response()
 }
 
@@ -272,7 +306,14 @@ async fn posts(State(shared): State<Arc<Mutex<Shared>>>) -> Json<Value> {
         .posts
         .iter()
         .map(|post| {
-            json!({ "channel": post.channel, "threadTs": post.thread_ts, "text": post.text })
+            json!({
+                "channel": post.channel,
+                "threadTs": post.thread_ts,
+                "ts": post.ts,
+                "text": post.text,
+                "blocks": post.blocks,
+                "updates": post.updates,
+            })
         })
         .collect();
     Json(json!(posts))

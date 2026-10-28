@@ -61,7 +61,8 @@ export function GatewayCard({
           {gateway.identities} compte(s) relié(s)
         </p>
         <p>
-          Adresse des événements à donner à Slack (« Event Subscriptions ») :{' '}
+          Adresse à donner à Slack, pour les événements (« Event Subscriptions ») comme pour les
+          boutons de validation (« Interactivity &amp; Shortcuts ») :{' '}
           <code>{gateway.eventsUrl}</code>
         </p>
         <p>

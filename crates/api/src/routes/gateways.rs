@@ -6,11 +6,13 @@
 //! `MAX_BODY_BYTES` are read (413). Slack's address check is answered with
 //! its challenge; anything else signed is answered 200, naming nothing,
 //! whatever became of it: a linked person's message is answered in the
-//! background (ADR-127), Slack expecting its answer within seconds.
+//! background (ADR-127), Slack expecting its answer within seconds, and so
+//! is a validation button pressed, which Slack sends form-encoded to the
+//! same address (ADR-129).
 
 use axum::body::Body;
 use axum::extract::{Path, State};
-use axum::http::header::CONTENT_LENGTH;
+use axum::http::header::{CONTENT_LENGTH, CONTENT_TYPE};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
@@ -22,7 +24,7 @@ use uuid::Uuid;
 
 use crate::app::AppState;
 use crate::http::{ApiError, ApiResult};
-use crate::services::gateways::{EventOutcome, SlackHeaders, converse};
+use crate::services::gateways::{EventOutcome, SlackHeaders, converse, decide_in_slack};
 
 pub use crate::services::gateways::SLACK_EVENTS_PREFIX;
 
@@ -59,6 +61,7 @@ async fn receive(
     let signed = SlackHeaders {
         timestamp: header("x-slack-request-timestamp"),
         signature: header("x-slack-signature"),
+        content_type: header(CONTENT_TYPE.as_str()),
     };
     match state
         .gateways
@@ -72,6 +75,11 @@ async fn receive(
         EventOutcome::Message(incoming) => {
             let services = state.clone();
             (state.background).spawn(async move { converse(&services, *incoming).await });
+            Ok(StatusCode::OK.into_response())
+        }
+        EventOutcome::Choice(pressed) => {
+            let services = state.clone();
+            (state.background).spawn(async move { decide_in_slack(&services, *pressed).await });
             Ok(StatusCode::OK.into_response())
         }
         EventOutcome::Unknown => Err(DomainError::not_found(UNKNOWN).into()),

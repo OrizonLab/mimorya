@@ -2,12 +2,14 @@
 //! declare of it (its bot's token, its signing secret), the permissions it
 //! asks for and the events it subscribes to, how a request Slack sends
 //! proves it comes from it (`signature`), which events reach the agent
-//! (`events`), when Slack proves a Slack user is a person (`identity`), and
-//! how the application's text is written in Slack's markup (`mrkdwn`,
-//! ADR-127).
+//! (`events`), when Slack proves a Slack user is a person (`identity`), how
+//! the application's text is written in Slack's markup (`mrkdwn`, ADR-127),
+//! and the buttons a validation is given with there (`interactions`,
+//! ADR-129).
 
 mod events;
 mod identity;
+mod interactions;
 mod mrkdwn;
 mod signature;
 
@@ -18,6 +20,10 @@ pub use events::{
     DirectMessage, Envelope, MAX_MESSAGE_CHARS, direct_message, is_event, is_person, is_workspace,
 };
 pub use identity::{IdentityRefusal, SlackProfile, identity_refusal};
+pub use interactions::{
+    APPROVE_ACTION, ApprovalChoice, MAX_ACTION_CHARS, REJECT_ACTION, approval_blocks,
+    approval_choice, decided_blocks,
+};
 pub use mrkdwn::{bounded, escaped, from_markdown, plain};
 pub use signature::{MAX_SKEW_SECONDS, SignatureProblem, signature, verify};
 

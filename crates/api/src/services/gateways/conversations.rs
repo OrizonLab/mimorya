@@ -122,7 +122,7 @@ async fn answer(services: &Services, incoming: &PersonMessage) -> anyhow::Result
 /// (ADR-125): asked at every message. Once it no longer does, their
 /// identity is unlinked and a new link offered; when Slack does not say,
 /// nothing is started.
-async fn still_theirs(
+pub(super) async fn still_theirs(
     services: &Services,
     incoming: &PersonMessage,
     account: &LinkedAccount,
@@ -162,7 +162,7 @@ async fn still_theirs(
     Ok(false)
 }
 
-fn offer_link(services: &Services, incoming: &PersonMessage) -> anyhow::Result<()> {
+pub(super) fn offer_link(services: &Services, incoming: &PersonMessage) -> anyhow::Result<()> {
     services.gateways.offer_link(
         incoming.tenant_id,
         incoming.gateway.id,
@@ -179,7 +179,7 @@ fn thread_of(incoming: &PersonMessage) -> &str {
 }
 
 /// Says `text` to the person, in the thread of their message.
-async fn say(services: &Services, incoming: &PersonMessage, text: &str) {
+pub(super) async fn say(services: &Services, incoming: &PersonMessage, text: &str) {
     let slack = services.gateways.slack();
     let channel = &incoming.message.channel;
     let thread = Some(thread_of(incoming));

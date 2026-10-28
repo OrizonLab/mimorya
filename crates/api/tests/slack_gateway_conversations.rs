@@ -149,7 +149,7 @@ async fn a_pause_for_validation_is_said_then_the_answer_follows() {
     assert_eq!(status, "awaiting_approval");
     assert_eq!(answer(&api).await, 1);
     let paused = in_thread(&slack, FIRST);
-    assert!(paused[0].contains("attend une validation"), "{paused:?}");
+    assert!(paused[0].contains("attend votre validation"), "{paused:?}");
 
     // Meanwhile, the conversation is busy: said in the thread.
     let busy = written(

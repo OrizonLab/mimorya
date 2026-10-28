@@ -123,8 +123,18 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   lancé. Les réponses ne vont que dans le fil de la conversation, tant que la passerelle
   est active et que l'utilisateur Slack qui a écrit reste l'identité de la personne ; ce
   qui y est écrit est échappé pour Slack (ni mention, ni commande, ni lien que ceux de la
-  réponse), et ni journalisé ni enregistré hors de la conversation. Les validations se
-  donnent dans l'application seulement.
+  réponse), et ni journalisé ni enregistré hors de la conversation.
+- Validations dans Slack (ADR-129) : une action qui attend la validation de la personne
+  elle-même s'y montre avec deux boutons ; Slack envoie le bouton pressé à la même
+  adresse, signé comme ses événements (même secret, cinq minutes), sans nouvelle
+  exception à l'en-tête du navigateur. Rien n'est décidé pour un autre espace de travail,
+  une passerelle en pause, un utilisateur Slack non relié ou qui n'est plus la personne
+  (Slack interrogé, identité déliée et auditée), un mot de passe provisoire ; la décision
+  passe par le même contrôle que l'écran (seul celui que la demande attend décide,
+  `agent:use` exigé, les droits de la personne servie relus) et est auditée avec son
+  service (`gateway: slack`). Une action qu'un responsable valide se donne dans
+  l'application seulement. La description de l'action est écrite dans Slack, échappée
+  et bornée, comme la réponse.
 - Déclencheurs (ADR-109) : un autre système envoie avec le jeton secret du déclencheur
   (`Authorization: Bearer`, 256 bits, gardé en empreinte SHA-256, montré une fois). Un
   déclencheur inconnu, un jeton faux et un déclencheur en pause répondent de même (404).

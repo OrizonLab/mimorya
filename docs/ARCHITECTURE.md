@@ -323,7 +323,9 @@ Détaillés dans [AGENT_ENGINE.md](AGENT_ENGINE.md). En résumé :
   (l'événement `run_finished` de son journal) est écrite dans le fil par un passage de
   quelques secondes des processus qui exécutent les runs, un à la fois, une seule fois
   chacune (`gateway_replies`) : la réponse en balisage Slack, coupée si trop longue, avec
-  le lien de la conversation, ou la validation à donner dans l'application. Dans
+  le lien de la conversation, ou la validation à donner dans l'application ; une action
+  qui attend la validation de la personne elle-même s'y valide ou s'y refuse avec ses
+  boutons, que Slack envoie à la même adresse (ADR-129). Dans
   l'application, la conversation se montre tenue dans Slack : marquée dans la liste,
   chaque message écrit dans Slack marqué, une note disant où chacun reçoit sa réponse
   (`ConversationSummary.gateway`, ADR-128).
