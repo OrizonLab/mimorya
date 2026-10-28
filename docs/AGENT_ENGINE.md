@@ -175,6 +175,9 @@ systématiquement une validation (`requiresApproval`).
   peut choisir de ne plus recevoir ces e-mails : seul compte le choix de leur
   destinataire, le remplaçant pendant l'absence ; l'avis non voulu n'est pas envoyé,
   mais il est tracé et n'est pas retenté (ADR-094).
+- Depuis Slack, la personne valide ses propres actions sans effet hors de l'entreprise
+  et réversibles, dont les paramètres exacts tiennent entiers dans le message, qui les
+  montre avec leurs boutons ; toute autre se valide dans l'application (ADR-129).
 - `approval:decide` est **non délégable** : l'agent ne peut jamais valider lui-même.
 - Après décision, l'outil est exécuté **avec les paramètres validés** (aucune
   modification possible entre validation et exécution) et le run reprend.

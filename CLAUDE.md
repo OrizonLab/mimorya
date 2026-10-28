@@ -47,7 +47,8 @@ Repères à l'intérieur des crates :
   `core/src/demo/` (entreprise fictive par thème), `core/src/gateways/` (passerelles de
   conversation : application Slack déclarée, signature de ses événements, messages
   pris, preuve qu'un utilisateur Slack est la personne d'un compte, ADR-125 ; texte
-  écrit dans Slack en son balisage et message lu en texte simple, `mrkdwn.rs`, ADR-127).
+  écrit dans Slack en son balisage et message lu en texte simple, `mrkdwn.rs`, ADR-127 ;
+  boutons de validation et bouton pressé, `interactions.rs`, ADR-129).
 - `db/migrations/` (SQL numéroté, source de vérité du schéma),
   `db/src/repositories/` (un fichier par entité ; la mémoire : `memory.rs`, recherche
   hybride `memory_search.rs`, vecteurs `memory_embeddings.rs`, ADR-074 ; fenêtres des
@@ -143,7 +144,9 @@ Repères à l'intérieur des crates :
   la session de la personne (`link.rs`), identités listées et retirées
   (`identities.rs`), ADR-125 ; message d'une personne reliée répondu dans une
   conversation tenue dans son fil (`conversations.rs`), fin ou pause des runs écrite
-  dans le fil (`replies.rs`, `reply_text.rs`), ADR-127 ; déclarées par
+  dans le fil (`replies.rs`, `reply_text.rs`), ADR-127 ; action validée ou refusée par
+  son bouton dans le fil (`choices.rs`), qui peut agir, pour un message comme pour un
+  bouton (`person.rs`), ADR-129 ; déclarées par
   `services/admin/gateways.rs`),
   `api/src/services/notification_settings.rs` (e-mails que chacun choisit de recevoir,
   lus au moment d'envoyer chaque avis, ADR-094),

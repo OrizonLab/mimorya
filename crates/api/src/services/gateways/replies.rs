@@ -19,6 +19,8 @@ use std::collections::HashSet;
 
 use chrono::{DateTime, Duration, Utc};
 use mimorya_connectors::slack::SlackFailure;
+use mimorya_core::gateways::slack::{ShownAction, validated_in_slack};
+use mimorya_db::repositories::approvals::list_approvals_for_run;
 use mimorya_db::repositories::gateway_replies::{
     ReplyRecord, UnrepliedEvent, gateway_reply_target, record_gateway_reply,
     unreplied_gateway_events,
@@ -26,7 +28,7 @@ use mimorya_db::repositories::gateway_replies::{
 use uuid::Uuid;
 
 use super::bot_token_name;
-use super::reply_text::reply_text;
+use super::reply_text::{Pause, pause_reply, reply_text};
 use crate::app::Services;
 
 /// How long after a run's end or pause it is still answered: one that
@@ -122,6 +124,17 @@ async fn reply(
     let token = gateways
         .secret(&mut tx, tenant_id, &bot_token_name(target.gateway_id))
         .await?;
+    // A pause: the actions still awaiting a decision, at the time it is
+    // answered (ADR-129).
+    let awaiting = if target.status == "awaiting_approval" {
+        list_approvals_for_run(&mut tx, target.run_id)
+            .await?
+            .into_iter()
+            .filter(|a| a.status == "pending")
+            .collect()
+    } else {
+        Vec::new()
+    };
     tx.commit().await?;
     let record = match token {
         // No master key, or another one: told the operator.
@@ -132,13 +145,48 @@ async fn reply(
         }
         Some(token) => {
             let url = gateways.conversation_url(target.conversation_id);
-            let text = reply_text(&target.status, target.answer.as_deref(), &url);
+            let (text, blocks) = if target.status == "awaiting_approval" {
+                let theirs: Vec<_> = (awaiting.iter())
+                    .filter(|a| !a.routed_to_manager())
+                    .collect();
+                let own: Vec<_> = (theirs.iter())
+                    .filter(|a| validated_in_slack(&a.risk, &a.payload))
+                    .map(|a| ShownAction {
+                        approval_id: a.id,
+                        summary: &a.action_summary,
+                        risk: &a.risk,
+                        parameters: &a.payload,
+                    })
+                    .collect();
+                let pause = Pause {
+                    own: &own,
+                    in_application: theirs.len() - own.len(),
+                    managed: awaiting.len() - theirs.len(),
+                };
+                pause_reply(&url, &pause)
+            } else {
+                (
+                    reply_text(&target.status, target.answer.as_deref(), &url),
+                    None,
+                )
+            };
             let thread = Some(target.thread_ts.as_str());
-            match gateways
-                .slack()
-                .post(&token, &target.channel_id, thread, &text)
+            let slack = gateways.slack();
+            let channel = &target.channel_id;
+            let posted = match slack
+                .post_blocks(&token, channel, thread, &text, blocks.as_deref())
                 .await
             {
+                // Buttons Slack would not show: the pause said without them.
+                Err(failure @ SlackFailure::Refused(_)) if blocks.is_some() => {
+                    let (gateway, reason) = (target.gateway_id, failure.message());
+                    tracing::warn!(%gateway, %reason, "Slack refused the pause's buttons");
+                    let text = reply_text(&target.status, None, &url);
+                    slack.post(&token, channel, thread, &text).await
+                }
+                posted => posted,
+            };
+            match posted {
                 Ok(_) => ReplyRecord::Done("sent"),
                 Err(failure) => after_failure(&failure, target.attempts + 1, now),
             }

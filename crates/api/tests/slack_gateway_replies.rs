@@ -1,9 +1,10 @@
 //! What becomes of the answers in Slack (ADR-127): each end or pause of a
 //! run started there is answered once; a paused gateway, or a Slack user no
 //! longer the person's identity, is written nothing; what Slack refuses is
-//! not tried again; Slack unreachable is tried again later, a few times,
-//! then given up; a thread's answers are written in order, an answer too
-//! old to try again holding back none.
+//! not tried again, a pause whose buttons it refuses said without them
+//! (ADR-129); Slack unreachable is tried again later, a few times, then
+//! given up; a thread's answers are written in order, an answer too old to
+//! try again holding back none.
 
 mod support;
 
@@ -20,6 +21,7 @@ use support::slack_conversations::{
     MARC_SLACK, answer, in_thread, linked, replies_of, retry_now, settle, slack_runs, write,
     written,
 };
+use support::slack_validations::{ASKED_IN, asked, posts_in};
 use support::sso::SSO_DEPLOYMENT;
 use support::{TestApi, email, owner_url};
 
@@ -89,6 +91,37 @@ async fn what_slack_refuses_is_not_tried_again() {
     assert_eq!(answer(&api).await, 0);
     assert!(in_thread(&slack, FIRST).is_empty());
     assert_eq!(replies_of(&api, FIRST).await, [(Some("refused".into()), 1)]);
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_pause_whose_buttons_slack_refuses_is_said_without_them() {
+    let slack = FakeSlack::start().await;
+    let api = TestApi::start_with_slack(&SSO_DEPLOYMENT, &slack.url).await;
+    let (paul, marc) = (api.sign_in(user::PAUL).await, api.sign_in(user::MARC).await);
+    let address = email(user::MARC);
+    let gateway = linked(&api, &slack, &paul, &marc, (MARC_SLACK, &address)).await;
+    asked(&api, (gateway, MARC_SLACK), "Appliqué.").await;
+
+    slack.refuse_blocks(true);
+    assert_eq!(answer(&api).await, 1);
+    slack.refuse_blocks(false);
+    let said = posts_in(&slack, ASKED_IN);
+    assert_eq!(said.len(), 1, "{said:?}");
+    assert_eq!(said[0].blocks, None);
+    assert!(
+        said[0]
+            .text
+            .starts_with("Une action de cette demande attend une validation avant de continuer"),
+        "{}",
+        said[0].text
+    );
+    assert!(
+        said[0].text.contains("|ouvrir la conversation>"),
+        "{}",
+        said[0].text
+    );
+    assert_eq!(replies_of(&api, ASKED_IN).await, [(Some("sent".into()), 1)]);
 }
 
 #[tokio::test]

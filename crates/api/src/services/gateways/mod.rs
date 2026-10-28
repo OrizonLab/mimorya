@@ -6,13 +6,17 @@
 //! for their address (`link`); they list and remove it (`identities`). A
 //! linked person then talks with the agent in Slack (ADR-127): their
 //! message is answered in a conversation of theirs (`conversations`), and
-//! the run's end or pause written in its thread (`replies`). The bot's
-//! token and the signing secret are sealed in the secret store.
+//! the run's end or pause written in its thread (`replies`); an action
+//! awaiting their own validation is validated or refused there with its
+//! buttons (`choices`, ADR-129). The bot's token and the signing secret are
+//! sealed in the secret store.
 
+mod choices;
 mod conversations;
 mod events;
 mod identities;
 mod link;
+mod person;
 mod replies;
 mod reply_text;
 
@@ -26,6 +30,7 @@ use uuid::Uuid;
 use crate::secrets::{SecretCipher, SecretRead, SecretStore};
 use crate::services::background::BackgroundTasks;
 
+pub use choices::{PersonChoice, decide_in_slack};
 pub use conversations::converse;
 pub use events::{EventOutcome, PersonMessage, SlackHeaders};
 pub use identities::GatewayOfPerson;

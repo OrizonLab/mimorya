@@ -26,7 +26,7 @@ mod service;
 mod sub_runs;
 mod turn_start;
 
-pub use approval_decision::DecisionInput;
+pub use approval_decision::{DecisionInput, NOT_FOUND as APPROVAL_NOT_FOUND};
 pub use approval_delegation::{
     AbsenceInput, Delegations, MAX_ABSENCE, absence_period, declare_absence, delegations,
     end_absence, named_delegate,
@@ -50,4 +50,4 @@ pub use run_access::{AGENT_USE_WITHDRAWN, COMPANY_SUSPENDED};
 pub(crate) use run_access::{step_access, stopped_by};
 pub use service::{DecisionResult, RunService};
 pub use sub_runs::{SUB_AGENT_STOPPED, announce, end_sub_runs};
-pub use turn_start::{SlackThread, StartedTurn};
+pub use turn_start::{COMPANY_NOT_ACTIVE, SlackThread, StartedTurn};

@@ -76,6 +76,8 @@ test('a gateway is declared, a Slack identity linked from its link and removed, 
   const eventsUrl = gateway?.eventsUrl ?? '';
   expect(eventsUrl).toBe(`http://localhost:3000/api/gateways/slack/${gateway?.id}`);
   await expect(card.getByText(eventsUrl, { exact: true })).toBeVisible();
+  // The same address for the validation buttons (ADR-129).
+  await expect(card.getByText(/« Interactivity & Shortcuts »/)).toBeVisible();
 
   // Léa is told how to link her Slack account.
   const lea = await (await newContext()).newPage();

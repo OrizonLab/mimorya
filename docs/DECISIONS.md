@@ -6954,3 +6954,98 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     conversation ; conversation listée « Slack », message « Écrit dans Slack », note ;
     suite dans le fil répondue là et dans la conversation) ;
   - reste à venir : validations depuis Slack, Telegram, Teams.
+
+## ADR-129 — Validations données dans Slack : les boutons de l'action dans le fil (passerelles, lot 12e)
+
+- **Date** : 2026-10-28 · **Statut** : acceptée · complète ADR-127 et ADR-128
+- **Contexte** : un run lancé depuis Slack qui attend une validation le disait dans son
+  fil, avec le lien de la conversation où la donner (ADR-127). La personne devait
+  quitter Slack pour une action qu'elle seule décide, le plus souvent la sienne. Slack
+  sait montrer des boutons dans un message et envoyer à l'application celui qu'une
+  personne presse (« Interactivity »), signé comme ses événements. Valider, c'est
+  approuver des paramètres exacts : ils doivent être sous les yeux de qui valide
+  (ADR-119, ADR-123).
+- **Décision** :
+  - **seules certaines actions se valident dans Slack** (`validated_in_slack`) : celles
+    qui ne sortent rien de l'entreprise et peuvent être défaites (risques lecture,
+    brouillon, modification) et dont les paramètres exacts tiennent entiers dans un
+    message (2 500 caractères). Une action à impact externe (un e-mail envoyé au nom de
+    la personne) ou irréversible, ou aux paramètres trop longs, se valide dans
+    l'application, qui les montre entiers ;
+  - **la pause montre ces actions** de la personne elle-même : chacune, sa description
+    (échappée, bornée à 500 caractères), son risque, ses **paramètres exacts entiers**,
+    en texte littéral (jamais lu comme balisage Slack), puis deux boutons, « Valider »
+    et « Refuser » (`approval_blocks`, cinq au plus ; les autres dans l'application).
+    Le fil dit aussi s'il en reste à valider dans l'application, ou qu'un responsable
+    valide (ADR-059). Les actions sont lues au moment d'écrire la pause : une action
+    déjà décidée n'a plus de bouton. Si Slack refusait les boutons, la pause est dite
+    sans eux, avec le lien de la conversation ;
+  - **le bouton pressé arrive à la même adresse** que les événements : Slack l'envoie
+    encodé comme un formulaire (`payload=`), signé du même secret. Le type du corps
+    distingue les deux ; aucune exception nouvelle à l'en-tête du navigateur ni à
+    l'origine, la signature restant la seule preuve. L'administrateur donne la même
+    adresse à « Interactivity & Shortcuts », ce que disent le formulaire et la carte de
+    la passerelle ;
+  - **seuls les boutons de l'application sont lus** (`approval_choice`) : un seul
+    bouton pressé, `approval_approve` ou `approval_reject`, sa valeur un identifiant de
+    demande, l'espace de travail, la personne, la conversation et le message nommés
+    comme Slack les nomme. Rien n'est décidé pour un autre espace de travail ni pour
+    une passerelle en pause ;
+  - **la décision est celle de la personne**, prise en arrière-plan (Slack attend sa
+    réponse en trois secondes), une fois qu'elle peut agir : les mêmes contrôles que
+    pour un message (`person`, partagé avec ADR-127) — utilisateur Slack relié à son
+    compte (sinon c'est dit, et un lien est offert), puis Slack interrogé avant que rien
+    ne soit dit du compte (s'il ne dit plus que c'est elle, l'identité est déliée et
+    auditée), mot de passe provisoire remplacé, entreprise active. Puis, quoi que dise le bouton, seule **sa propre action, qui
+    attend sa propre validation et se valide dans Slack**, y est décidée : la demande
+    d'un autre est introuvable, celle d'un responsable ou à valider dans l'application
+    le reste. La décision passe enfin par le même service que l'écran « Validations »
+    (`RunService::decide`) : `agent:use` est exigé, le run reprend avec les droits de la
+    personne servie tels qu'ils sont. Elle est auditée comme toute décision, avec son
+    service (`metadata.gateway = "slack"`). Pourquoi rien n'est décidé est dit dans le
+    fil, « rien n'a été décidé » ;
+  - **le message montre l'issue** de chacune de ses actions, telle qu'elle est en base,
+    à la place de leurs boutons (« Validée par vous dans Slack », « Refusée… »,
+    « Expirée… », et que la demande reprend), réécrit par `chat.update` à partir des
+    blocs que Slack renvoie avec le bouton, signés avec lui. La suite du run vient dans
+    le fil, comme toute fin (ADR-127) ;
+  - aucune permission Slack nouvelle : `chat:write` suffit pour réécrire le message.
+- **Conséquences** :
+  - **qui détient le secret de signature** (les collaborateurs de l'application chez
+    Slack, l'administrateur qui l'a saisi) peut forger des requêtes de Slack : il
+    pouvait déjà écrire à l'agent au nom d'une personne reliée (ADR-127), il peut
+    désormais aussi valider en son nom les actions qui se valident dans Slack. C'est
+    pourquoi une action à impact externe ou irréversible ne s'y valide jamais : elle
+    exige la session de la personne dans l'application. Le secret est scellé, jamais
+    réaffiché ; une passerelle déclarée de nouveau en change. Vérifier que la
+    conversation directe est bien celle de la personne (permission `im:read`) est un lot
+    à venir ;
+  - la description et les paramètres exacts d'une action à valider sont écrits dans
+    Slack, comme l'est la réponse : la personne a choisi d'y parler à l'agent. Aucune
+    donnée nouvelle n'est gardée ;
+  - un bouton pressé deux fois, ou dans un message ancien, ne décide rien de plus : la
+    demande est déjà traitée, et c'est dit ;
+  - le Slack simulé des tests garde les blocs de chaque message et leurs réécritures
+    (`chat.update`), aussi listés pour les tests de bout en bout ;
+  - tests : `crates/core/src/gateways/slack/interactions.rs` (bouton lu, tout le reste
+    écarté, actions admises dans Slack, risque et paramètres exacts montrés entiers,
+    issue de chaque action à la place de ses boutons), `services/gateways/reply_text.rs`
+    (pause avec ses boutons, plusieurs, au-delà de cinq, à valider dans l'application,
+    attendue par un responsable ou déjà décidée), `services/gateways/choices.rs` (issue
+    montrée pour chaque statut),
+    `crates/api/tests/slack_gateway_validations.rs` (action validée par son bouton,
+    auditée avec son service, message réécrit, suite dans le fil, bouton pressé deux
+    fois ; action refusée ; sans signature, d'un autre espace de travail, passerelle en
+    pause, autre personne reliée, utilisateur Slack non relié, utilisateur qui n'est
+    plus la personne : rien de décidé ; action d'un responsable sans bouton, ni validée
+    ni retirée depuis Slack (son auteur la retire dans l'application) ; action à impact
+    externe sans bouton, et aucun bouton forgé ne la décide ; demande inconnue
+    introuvable), `slack_gateway_validation_checks.rs` (mot de passe provisoire,
+    entreprise suspendue : rien de décidé ; Slack interrogé avant que rien ne soit dit
+    du compte : l'utilisateur qui n'est plus la personne, au mot de passe provisoire et
+    à l'entreprise suspendue, n'apprend que sa liaison retirée),
+    `slack_gateway_replies.rs` (pause dont Slack refuse les boutons redite sans eux),
+    `apps/web/e2e/slack-gateway.spec.ts` (la carte dit l'adresse à donner à
+    « Interactivity & Shortcuts ») ;
+  - reste à venir : le responsable prévenu dans Slack d'une action à valider, la
+    conversation directe vérifiée auprès de Slack, Telegram, Teams.

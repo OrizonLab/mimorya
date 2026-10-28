@@ -19,7 +19,8 @@ use super::service::RunService;
 use crate::services::access::{AccessContext, AuthIdentity};
 use crate::services::llm::Unusable;
 
-const COMPANY_NOT_ACTIVE: &str = "Votre entreprise est suspendue : l’agent n’agit plus pour elle.";
+pub const COMPANY_NOT_ACTIVE: &str =
+    "Votre entreprise est suspendue : l’agent n’agit plus pour elle.";
 pub struct StartedTurn {
     pub run_id: Uuid,
     pub message_id: Uuid,

@@ -9,7 +9,10 @@
 //! message to the application is answered: from someone who has not linked
 //! their Slack identity, with a link to do so (`link`); from a linked
 //! person, in a conversation of theirs (`conversations`, ADR-127). What a
-//! message says is never logged nor audited.
+//! message says is never logged nor audited. A press of one of the
+//! application's buttons, which Slack sends form-encoded to the same
+//! address, signed alike, is a validation given in Slack (`choices`,
+//! ADR-129).
 
 use chrono::{DateTime, Utc};
 use mimorya_core::gateways::GatewayKind;
@@ -20,16 +23,26 @@ use mimorya_db::repositories::gateways::{
 };
 use uuid::Uuid;
 
+use super::choices::PersonChoice;
 use super::{GatewayService, bot_token_name, signing_secret_name};
 
 /// The longest challenge sent back: Slack's are a few dozen characters.
 const MAX_CHALLENGE_CHARS: usize = 256;
 
-/// The headers Slack signs its requests with.
+/// The headers Slack signs its requests with, and how their body is
+/// written: JSON for events, form-encoded for a button pressed.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SlackHeaders<'a> {
     pub timestamp: Option<&'a str>,
     pub signature: Option<&'a str>,
+    pub content_type: Option<&'a str>,
+}
+
+impl SlackHeaders<'_> {
+    fn form_encoded(&self) -> bool {
+        self.content_type
+            .is_some_and(|t| t.starts_with("application/x-www-form-urlencoded"))
+    }
 }
 
 /// A linked person's own message to the application (ADR-127): to answer
@@ -65,6 +78,8 @@ pub enum EventOutcome {
     Taken,
     /// Taken: a linked person's message, to answer.
     Message(Box<PersonMessage>),
+    /// Taken: a validation button pressed, to decide (ADR-129).
+    Choice(Box<PersonChoice>),
 }
 
 impl GatewayService {
@@ -100,6 +115,10 @@ impl GatewayService {
         );
         if signed.is_err() {
             return Ok(EventOutcome::Unknown);
+        }
+        if headers.form_encoded() {
+            tx.commit().await?;
+            return self.take_choice(tenant_id, gateway, body).await;
         }
         let Ok(envelope) = serde_json::from_slice::<Envelope>(body) else {
             return Ok(EventOutcome::Unreadable);

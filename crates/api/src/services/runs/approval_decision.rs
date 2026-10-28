@@ -24,6 +24,9 @@ pub struct DecisionInput {
     pub approval_id: Uuid,
     pub approved: bool,
     pub comment: Option<String>,
+    /// The service it was given from (`slack`, ADR-129), the application's
+    /// own screens otherwise: audited with it.
+    pub gateway: Option<&'static str>,
 }
 
 pub struct RecordedDecision {
@@ -149,6 +152,9 @@ pub async fn record_approval_decision(
         || identity.user_id == approval.requested_for_user_id;
     if let (false, Some(manager)) = (named, approval.approver_user_id) {
         metadata["standingInFor"] = json!(manager);
+    }
+    if let Some(gateway) = input.gateway {
+        metadata["gateway"] = json!(gateway);
     }
     append_audit(
         tx,
