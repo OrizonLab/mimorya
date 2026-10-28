@@ -5,9 +5,12 @@ on:
     branches: [main]
   pull_request:
 
+# A pull request's new push cancels its former run. A run of main is never
+# cancelled: each merge's images are published from it, and a run
+# cancelled saves no cache for the next.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   rust:
