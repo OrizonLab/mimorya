@@ -6932,8 +6932,9 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     et que ce qui est écrit dans l'application reçoit sa réponse dans l'application
     seulement. La conversation reste montrée tenue dans Slack quand la passerelle est
     en pause ou l'identité retirée : son fil existe toujours, et redevient répondu
-    dès que la passerelle est réactivée ou l'identité reliée de nouveau. Un run lancé depuis Slack se suit en direct, et sa demande
-    de validation se donne, comme celui d'un tour de l'application ;
+    dès que la passerelle est réactivée ou l'identité reliée de nouveau. Un run lancé
+    depuis Slack se suit en direct, et sa demande de validation se donne, comme celui
+    d'un tour de l'application ;
   - **un message écrit dans l'application** dans une telle conversation la poursuit,
     avec l'historique (canal `web`). Sa réponse n'est pas écrite dans le fil, qui n'en
     montrerait pas la question. Les messages suivants de la personne dans le fil

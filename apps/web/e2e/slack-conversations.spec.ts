@@ -42,20 +42,27 @@ let signedIn: Page | null = null;
 test.afterEach(async ({ page }) => {
   const lea = signedIn;
   signedIn = null;
-  if (lea) {
-    const listed = await lea.request.get('/api/conversations');
-    expect(listed.status()).toBe(200);
-    for (const { id, title } of ((await listed.json()) as ConversationList).conversations) {
-      if (title !== ASKED) continue;
-      const archived = await lea.request.patch(`/api/conversations/${id}`, {
-        headers: WRITE,
-        data: { archived: true } satisfies ConversationChanges,
-      });
-      expect(archived.status()).toBe(200);
-    }
+  try {
+    if (lea) await archiveQuestions(lea);
+  } finally {
+    // Deleted even if archiving failed: the next test declares its own.
+    await deleteGateways(page);
   }
-  await deleteGateways(page);
 });
+
+/** Archives `lea`'s conversations of the question. */
+async function archiveQuestions(lea: Page) {
+  const listed = await lea.request.get('/api/conversations');
+  expect(listed.status()).toBe(200);
+  for (const { id, title } of ((await listed.json()) as ConversationList).conversations) {
+    if (title !== ASKED) continue;
+    const archived = await lea.request.patch(`/api/conversations/${id}`, {
+      headers: WRITE,
+      data: { archived: true } satisfies ConversationChanges,
+    });
+    expect(archived.status()).toBe(200);
+  }
+}
 
 test('a question asked in Slack is answered in its thread, its conversation shown as held there', async ({
   page,
