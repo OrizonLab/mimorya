@@ -195,12 +195,26 @@ export const AGENT_PROFILES: Record<AgentProfile, string> = {
 };
 
 /**
- * What a Microsoft 365 permission lets the agent do, said to the person
- * who grants it (ADR-120); another permission is shown by its name.
+ * What a permission of a linked account lets the agent do, said to the
+ * person who grants it: Microsoft 365's (ADR-120) and Google Workspace's,
+ * named in full (ADR-124); another permission is shown by its name.
  */
-export const MICROSOFT365_PERMISSIONS: Record<string, string> = {
+export const ACCOUNT_PERMISSIONS: Record<string, string> = {
   'Mail.Read': 'lire vos e-mails',
   'Calendars.Read': 'lire votre agenda',
   'Mail.Send': 'envoyer des e-mails en votre nom',
   'Calendars.ReadWrite': 'écrire dans votre agenda',
+  'https://www.googleapis.com/auth/gmail.readonly': 'lire vos e-mails',
+  'https://www.googleapis.com/auth/calendar.readonly': 'lire votre agenda',
+  'https://www.googleapis.com/auth/gmail.send': 'envoyer des e-mails en votre nom',
+  'https://www.googleapis.com/auth/calendar.events': 'écrire dans votre agenda',
+};
+
+/**
+ * Where a person links an account of each type (ADR-118, ADR-124): the
+ * provider who asks their consent, and its product.
+ */
+export const ACCOUNT_PROVIDERS: Record<string, { provider: string; product: string }> = {
+  microsoft365: { provider: 'Microsoft', product: 'Microsoft 365' },
+  google_workspace: { provider: 'Google', product: 'Google Workspace' },
 };

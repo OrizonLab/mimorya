@@ -6588,3 +6588,54 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
       durée, début borné, description), `compose.rs` (adresses simples : ce qui finirait
       un en-tête ou ferait une liste, avec un seul `@`), `calendar_create.rs`
       (rendez-vous envoyé à Google).
+
+## ADR-124 — Écrans Google Workspace : client de l'entreprise et « Mon compte » selon le fournisseur (connecteurs, lot 11d)
+
+- **Date** : 2026-10-27 · **Statut** : acceptée
+- **Contexte** : le client Google Workspace se déclarait par l'API seulement (ADR-121),
+  et « Mon compte » parlait de Microsoft pour tout compte relié : le retour d'une
+  liaison, l'accord demandé, la confirmation d'un retrait. Les permissions de Google,
+  nommées en entier par le serveur (`https://www.googleapis.com/auth/gmail.readonly`),
+  n'y étaient pas dites en mots.
+- **Décision** :
+  - **« Connecteurs »** :
+    - « Déclarer le client Google Workspace » tant que l'entreprise n'en a pas : nom, ID
+      client OAuth (vérifié par le navigateur comme par le serveur, terminé par
+      `.apps.googleusercontent.com`), code secret, et la case qui permet l'écriture
+      (ADR-123) ;
+    - à la modification : le nom, le secret (vide, il est gardé) et l'option d'écriture,
+      envoyée seulement si elle change ; l'ID client reste, comme les liaisons faites ;
+    - le texte d'aide dit ce que l'entreprise crée dans Google Cloud (client « Application
+      Web », API Gmail et Google Calendar, champs d'application de lecture, et d'envoi si
+      l'écriture est permise) et rappelle qu'il n'y a jamais de délégation à l'échelle du
+      domaine ;
+    - la carte montre l'ID client, les outils `google_…`, le secret enregistré, le nombre
+      de comptes reliés, l'écriture permise ou non, et l'URI de redirection à inscrire
+      dans le client. La vérification dit que Google n'est pas appelé ; la suppression,
+      que les comptes reliés s'en vont avec le client ;
+  - **« Mon compte »** :
+    - chaque liaison nomme son fournisseur d'après son type (`ACCOUNT_PROVIDERS`) : qui
+      demande l'accord, et où il reste après un retrait (« reste chez Google ») ;
+    - les permissions des deux fournisseurs sont dites en mots (`ACCOUNT_PERMISSIONS`) ;
+    - le retour d'une liaison (`?liaison=`) ne dit pas le fournisseur : son texte est le
+      même pour tous, et le refus d'un autre compte rappelle que chez Google il faut le
+      compte Workspace de l'entreprise, non un compte personnel ;
+  - **suites de l'audit de l'ADR-123** : le refus d'une adresse dit « adresse
+    électronique simple attendue (nom@domaine.fr, en caractères ASCII) », ce qu'est la
+    règle ; le commentaire de la règle dit qu'elle suit HTML5 (un point mal placé est
+    refusé par le fournisseur, avant tout envoi).
+- **Conséquences** :
+  - Google Workspace se déclare, se règle et se relie sans l'API, comme Microsoft 365 ;
+  - le serveur de bout en bout envoie les personnes à son fournisseur simulé, qui joue
+    Google (`BuildOptions::account_link_issuer`, ADR-121) ; Gmail et l'agenda ne sont pas
+    simulés : la lecture et l'écriture sont testées par l'API (ADR-122, ADR-123) ;
+  - tests :
+    - `apps/web/e2e/google-workspace.spec.ts` : client déclaré avec l'écriture (secret
+      jamais listé, un seul par entreprise, déclaration vérifiée sans Google, cinq
+      outils) ; Léa avertie que Google demande son accord et que l'agent pourra envoyer
+      après validation ; liaison au fournisseur simulé, ce que l'agent peut faire dit en
+      mots, envoi compris ; écriture retirée (seule l'option envoyée) : Léa lit
+      « lecture » seulement ; retrait de la liaison (« reste chez Google ») ; suppression
+      du client ; chaque étape relue par l'API ;
+    - `apps/web/e2e/microsoft365.spec.ts` : le retour d'une liaison, dit sans nommer le
+      fournisseur.

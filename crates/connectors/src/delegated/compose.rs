@@ -17,10 +17,12 @@ use super::shape::bounded;
 
 /// The longest address accepted (RFC 5321's path, less its brackets).
 const MAX_ADDRESS_CHARS: usize = 254;
-/// A plain address: before its one `@`, the characters HTML5 allows (an
-/// RFC 5322 atom: no space, comma, bracket, quote or colon), 64 at most;
-/// after it, a host name of two labels or more. No IP literal, no quoted
-/// or commented part: nothing a header reads as anything but one address.
+/// A plain address: before its one `@`, the characters HTML5 allows (those
+/// of an RFC 5322 atom, dots anywhere: no space, comma, bracket, quote or
+/// colon), 64 at most; after it, a host name of two labels or more. No IP
+/// literal, no quoted or commented part: nothing a header reads as anything
+/// but one address. A dot misplaced (`.lea@…`) is the provider's to refuse,
+/// and it does so before sending anything.
 static PLAIN_ADDRESS: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r"^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$",
@@ -47,7 +49,7 @@ pub fn addresses(list: &[String]) -> Result<(), ValidationError> {
     if invalid {
         return Err(refused(
             "addresses",
-            "adresse électronique invalide (caractères ASCII seulement)",
+            "adresse électronique simple attendue (nom@domaine.fr, en caractères ASCII)",
         ));
     }
     let repeated = list.iter().enumerate().any(|(at, address)| {
