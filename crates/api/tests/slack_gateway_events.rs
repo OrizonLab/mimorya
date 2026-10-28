@@ -5,8 +5,9 @@
 //! Slack identity is answered, in their direct conversation, with a link to
 //! do so; an event Slack sends again is taken once; an event of another
 //! workspace, of a paused gateway, the application's own message and
-//! anything but a direct message are taken and ignored. Only the exact path
-//! goes without the header the browser's requests carry.
+//! anything but a direct message are taken and ignored. A gateway whose
+//! secret this server cannot open answers as an unknown one. Only the exact
+//! path goes without the header the browser's requests carry.
 
 mod support;
 
@@ -18,6 +19,7 @@ use mimorya_connectors::testing::{
 use mimorya_core::demo::user;
 use serde_json::json;
 use support::gateways::{GATEWAYS, declare_slack, direct_message, envelope, post_signed, send};
+use support::llm::OTHER_MASTER_KEY;
 use support::sso::SSO_DEPLOYMENT;
 use support::{TestApi, WEB_ORIGIN};
 use uuid::Uuid;
@@ -203,4 +205,25 @@ async fn only_a_gateway_event_goes_without_the_header() {
             "{path}"
         );
     }
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_gateway_whose_secret_this_server_cannot_open_answers_as_unknown() {
+    let slack = FakeSlack::start().await;
+    let api = TestApi::start_with_slack(&SSO_DEPLOYMENT, &slack.url).await;
+    let paul = api.sign_in(user::PAUL).await;
+    let id = declare_slack(&paul).await;
+    let check = json!({ "type": "url_verification", "challenge": "defi" }).to_string();
+    assert_eq!(send(&api, id, &check).await.status, StatusCode::OK);
+
+    // Another server, another master key: the stored secret does not open.
+    let deployment = [
+        ("MIMORYA_MASTER_KEY", OTHER_MASTER_KEY),
+        ("MIMORYA_MCP_ALLOW_PRIVATE_NETWORK", "true"),
+    ];
+    let other = TestApi::start_with_slack(&deployment, &slack.url).await;
+    let refused = send(&other, id, &check).await;
+    assert_eq!(refused.status, StatusCode::NOT_FOUND, "{}", refused.text());
+    assert_eq!(refused.error_message(), "Passerelle introuvable");
 }

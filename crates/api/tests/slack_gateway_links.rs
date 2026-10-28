@@ -342,7 +342,19 @@ async fn linking_takes_the_agent_an_enabled_gateway_and_slack_s_answer() {
     let resumed = paul.patch(&path, json!({ "enabled": true })).await;
     assert_eq!(resumed.status, StatusCode::OK);
 
-    // Slack no longer answers the application: her administrator's to fix.
+    // Slack refuses the application, its permissions or its token: her
+    // administrator's to fix.
+    slack.refuse_with(Some("missing_scope"));
+    let refused = confirm(&lea, &code).await;
+    assert_eq!(refused.status, StatusCode::SERVICE_UNAVAILABLE);
+    assert!(
+        refused
+            .error_message()
+            .contains("prévenez votre administrateur"),
+        "{}",
+        refused.text()
+    );
+    slack.refuse_with(None);
     slack.revoke();
     let refused = confirm(&lea, &code).await;
     assert_eq!(refused.status, StatusCode::SERVICE_UNAVAILABLE);

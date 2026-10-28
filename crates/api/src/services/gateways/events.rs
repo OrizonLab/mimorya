@@ -2,10 +2,10 @@
 //! the request names its gateway, then proves itself by its signature,
 //! checked with the gateway's signing secret, within five minutes. An
 //! unknown gateway, a request not signed by its application, and a gateway
-//! whose secret this server cannot open answer alike. Once signed: the address check is answered with its challenge;
-//! an event of another workspace, of a paused gateway, or already taken
-//! (Slack sends it again when it was not answered in time) is taken and
-//! ignored. A person's own message to the application, from someone who
+//! whose secret this server cannot open answer alike. Once signed: the
+//! address check is answered with its challenge; an event of another
+//! workspace, of a paused gateway, or already taken (Slack sends it again
+//! when it was not answered in time) is taken and ignored. A person's own message to the application, from someone who
 //! has not linked their Slack identity, is answered with a link to do so
 //! (`link`). What a message says is never logged nor audited.
 
@@ -32,7 +32,7 @@ pub struct SlackHeaders<'a> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EventOutcome {
     /// Not the gateway's application's: unknown gateway, signature missing,
-    /// wrong or too old, alike.
+    /// wrong or too old, or a secret this server cannot open, alike.
     Unknown,
     /// Signed, but not what Slack sends.
     Unreadable,
@@ -113,7 +113,7 @@ impl GatewayService {
             .await?
             .is_some()
         {
-            // A linked person's conversation comes with the next lot (ADR-125).
+            // A linked person's conversations come with lot 12c (ADR-125).
             tx.commit().await?;
             return Ok(EventOutcome::Taken);
         }

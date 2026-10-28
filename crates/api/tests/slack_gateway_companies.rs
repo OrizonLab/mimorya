@@ -12,6 +12,7 @@ use mimorya_api::services::AuthIdentity;
 use mimorya_api::services::admin::{NewSlackGatewayInput, declare_slack_gateway};
 use mimorya_connectors::testing::{BOT_TOKEN, FakeSlack, SIGNING_SECRET, signed};
 use mimorya_core::demo::{tenant, user};
+use mimorya_core::gateways::slack::signature as sign;
 use mimorya_db::repositories::gateways::purge_gateway_events;
 use serde_json::json;
 use support::TestApi;
@@ -71,6 +72,16 @@ async fn an_event_one_company_signed_reaches_nothing_of_another_s() {
 
     let answered = post_signed(&api, &format!("/gateways/slack/{own}"), headers, &check).await;
     assert_eq!(answered.status, StatusCode::OK, "{}", answered.text());
+    // Acme's own signature reaches Acme's gateway, not Néo Maintenance's.
+    let theirs = sign(OTHER_SECRET, &timestamp, check.as_bytes());
+    let acme_headers = Some((timestamp.as_str(), theirs.as_str()));
+    let path = format!("/gateways/slack/{other}");
+    let answered = post_signed(&api, &path, acme_headers, &check).await;
+    assert_eq!(answered.status, StatusCode::OK, "{}", answered.text());
+    assert_eq!(answered.json()["challenge"], "defi");
+    let path = format!("/gateways/slack/{own}");
+    let refused = post_signed(&api, &path, acme_headers, &check).await;
+    assert_eq!(refused.status, StatusCode::NOT_FOUND, "{}", refused.text());
     // Signed with Néo Maintenance's secret, sent to Acme's gateway.
     let refused = post_signed(&api, &format!("/gateways/slack/{other}"), headers, &check).await;
     assert_eq!(refused.status, StatusCode::NOT_FOUND, "{}", refused.text());
