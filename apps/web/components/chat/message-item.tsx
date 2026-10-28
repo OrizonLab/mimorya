@@ -4,7 +4,7 @@ import { AlertTriangle, MessagesSquare, ShieldCheck, Target } from 'lucide-react
 import { documentFileUrl } from '@/components/documents';
 import { Badge, cx, Markdown } from '@/components/ui';
 import type { Citation, Message } from '@/lib/api';
-import { GATEWAY_LABELS } from '@/lib/labels';
+import { gatewayLabel } from '@/lib/labels';
 import { HookTurn } from './hook-turn';
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -43,7 +43,7 @@ export function MessageItem({ message }: { message: Message }) {
         {gateway && (
           <Badge>
             <MessagesSquare className="size-3" aria-hidden />
-            Écrit dans {GATEWAY_LABELS[gateway] ?? gateway}
+            Écrit dans {gatewayLabel(gateway)}
           </Badge>
         )}
         <div className="max-w-[85%] rounded-2xl rounded-br-sm bg-accent px-4 py-2.5 text-[0.95rem] whitespace-pre-wrap text-accent-fg">

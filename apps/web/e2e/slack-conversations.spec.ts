@@ -7,10 +7,15 @@
 // what is written in the application is answered there only. She follows
 // up in the thread: answered there again, and in the conversation. Each
 // step is read back from the API. Whatever happens, the gateway is deleted
-// with her identity, and the conversation archived. The rules themselves
-// are tested on the API (`crates/api/tests/slack_gateway_*.rs`).
+// with her identity, and her conversations of the question archived. The
+// rules themselves are tested on the API (`crates/api/tests/slack_gateway_*.rs`).
 import type { Page } from '@playwright/test';
-import type { ConversationChanges, ConversationDetail, NewSlackGateway } from '../lib/api/contract';
+import type {
+  ConversationChanges,
+  ConversationDetail,
+  ConversationList,
+  NewSlackGateway,
+} from '../lib/api/contract';
 import { demo, expect, noError, signIn, test } from './support/fixtures';
 import {
   BOT_TOKEN,
@@ -31,17 +36,23 @@ const ASKED = 'Quelles interventions sont prévues demain à Lyon ?';
 const FOLLOW_UP = 'Laquelle commence en premier ?';
 const FOLLOW_UP_ANSWER = 'La mise en service commence la première, à 8 h.';
 
-/** Léa's conversation the test opened, archived after it. */
-let opened: { page: Page; id: string } | null = null;
+/** Léa, once signed in: her conversations of the question are archived after the test. */
+let signedIn: Page | null = null;
 
 test.afterEach(async ({ page }) => {
-  if (opened) {
-    const archived = await opened.page.request.patch(`/api/conversations/${opened.id}`, {
-      headers: WRITE,
-      data: { archived: true } satisfies ConversationChanges,
-    });
-    expect(archived.status()).toBe(200);
-    opened = null;
+  const lea = signedIn;
+  signedIn = null;
+  if (lea) {
+    const listed = await lea.request.get('/api/conversations');
+    expect(listed.status()).toBe(200);
+    for (const { id, title } of ((await listed.json()) as ConversationList).conversations) {
+      if (title !== ASKED) continue;
+      const archived = await lea.request.patch(`/api/conversations/${id}`, {
+        headers: WRITE,
+        data: { archived: true } satisfies ConversationChanges,
+      });
+      expect(archived.status()).toBe(200);
+    }
   }
   await deleteGateways(page);
 });
@@ -67,6 +78,7 @@ test('a question asked in Slack is answered in its thread, its conversation show
   // Léa links her Slack account from the link the application sends her.
   const lea = await (await newContext()).newPage();
   await signIn(lea, demo.lea);
+  signedIn = lea;
   const before = (await posts(request)).length;
   expect((await sendDirectMessage(request, eventsUrl, LEA_SLACK, 'Bonjour')).status()).toBe(200);
   await lea.goto(await offeredLink(request, before));
@@ -83,7 +95,6 @@ test('a question asked in Slack is answered in its thread, its conversation show
   const address = /<(http[^|>]+)\|ouvrir la conversation>/.exec(answer)?.[1] ?? '';
   expect(address).toMatch(/^http:\/\/localhost:3000\/chat\/[0-9a-f-]{36}$/);
   const id = address.slice(address.lastIndexOf('/') + 1);
-  opened = { page: lea, id };
 
   // Opened there: listed as held in Slack, her message marked as written
   // there, and a note says what is answered where.

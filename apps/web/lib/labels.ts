@@ -223,3 +223,8 @@ export const ACCOUNT_PROVIDERS: Record<string, { provider: string; product: stri
 export const GATEWAY_LABELS: Record<string, string> = {
   slack: 'Slack',
 };
+
+/** The name of the service `gateway`, as stored if it has no label. */
+export function gatewayLabel(gateway: string): string {
+  return GATEWAY_LABELS[gateway] ?? gateway;
+}

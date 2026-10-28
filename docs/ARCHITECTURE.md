@@ -323,7 +323,10 @@ Détaillés dans [AGENT_ENGINE.md](AGENT_ENGINE.md). En résumé :
   (l'événement `run_finished` de son journal) est écrite dans le fil par un passage de
   quelques secondes des processus qui exécutent les runs, un à la fois, une seule fois
   chacune (`gateway_replies`) : la réponse en balisage Slack, coupée si trop longue, avec
-  le lien de la conversation, ou la validation à donner dans l'application.
+  le lien de la conversation, ou la validation à donner dans l'application. Dans
+  l'application, la conversation se montre tenue dans Slack : marquée dans la liste,
+  chaque message écrit dans Slack marqué, une note disant où chacun reçoit sa réponse
+  (`ConversationSummary.gateway`, ADR-128).
 - Les secrets ne transitent jamais par le contexte du modèle ni par les journaux.
 
 Connecteurs prévus : démonstration (MVP), MCP générique (MVP), déclencheurs (ADR-109),

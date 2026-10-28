@@ -2,7 +2,7 @@ import { MessageSquarePlus } from 'lucide-react';
 import Link from 'next/link';
 import { cx, Failure, Spinner } from '@/components/ui';
 import type { ConversationSummary } from '@/lib/api';
-import { GATEWAY_LABELS } from '@/lib/labels';
+import { gatewayLabel } from '@/lib/labels';
 
 /** Conversation list: a column on large screens, a drawer on small ones. */
 export function ConversationList({
@@ -64,7 +64,8 @@ export function ConversationList({
                 {/* Held in a thread of the company's Slack application (ADR-128). */}
                 {c.gateway && (
                   <span className="ml-auto shrink-0 rounded border border-line px-1.5 text-[0.7rem]">
-                    {GATEWAY_LABELS[c.gateway] ?? c.gateway}
+                    <span className="sr-only">tenue dans </span>
+                    {gatewayLabel(c.gateway)}
                   </span>
                 )}
               </Link>
