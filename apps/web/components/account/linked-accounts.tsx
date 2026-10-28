@@ -11,23 +11,28 @@ import {
   type AccountLinks,
 } from '@/lib/api';
 import { formatDate } from '@/lib/format';
-import { MICROSOFT365_PERMISSIONS } from '@/lib/labels';
+import { ACCOUNT_PERMISSIONS, ACCOUNT_PROVIDERS } from '@/lib/labels';
 
 const LINKS = '/account/links';
 
-/** What the return from Microsoft says (ADR-116), from the page's address. */
+/**
+ * What the return from the provider says (ADR-116), from the page's
+ * address: the same for each provider, which the address does not name
+ * (ADR-124).
+ */
 const OUTCOMES = {
   ok: {
     failed: false,
-    text: 'Votre compte Microsoft 365 est relié : l’agent y agit avec vos propres droits, selon ce que vous avez accordé et ce que l’application permet, et n’y envoie rien sans validation.',
+    text: 'Votre compte est relié : l’agent y agit avec vos propres droits, selon ce que vous avez accordé et ce que l’application permet, et n’y envoie rien sans validation.',
   },
   'autre-compte': {
     failed: true,
-    text: 'Le compte choisi chez Microsoft n’est pas celui de votre adresse : rien n’a été relié. Recommencez en vous connectant chez Microsoft avec l’adresse de votre compte.',
+    text: 'Le compte choisi n’est pas celui de votre adresse : rien n’a été relié. Recommencez en vous connectant avec l’adresse de votre compte.',
   },
+  // Also a personal Google account, not a Workspace one (ADR-121).
   echec: {
     failed: true,
-    text: 'La liaison a échoué : rien n’a été relié. Réessayez ; si l’échec persiste, votre administrateur peut vérifier l’application déclarée.',
+    text: 'La liaison a échoué : rien n’a été relié. Réessayez avec le compte de votre adresse (chez Google, votre compte Workspace de l’entreprise, non un compte personnel) ; si l’échec persiste, votre administrateur peut vérifier l’application déclarée.',
   },
 } as const;
 
@@ -43,16 +48,26 @@ function isOutcome(value: string | null): value is Outcome {
  */
 function inWords(scopes: string[]): string[] {
   return scopes.map(
-    (scope) =>
-      (Object.hasOwn(MICROSOFT365_PERMISSIONS, scope) && MICROSOFT365_PERMISSIONS[scope]) || scope,
+    (scope) => (Object.hasOwn(ACCOUNT_PERMISSIONS, scope) && ACCOUNT_PERMISSIONS[scope]) || scope,
+  );
+}
+
+/** Who asks the person's consent for a link of this type, and its product. */
+function providerOf(type: string) {
+  return (
+    (Object.hasOwn(ACCOUNT_PROVIDERS, type) && ACCOUNT_PROVIDERS[type]) || {
+      provider: 'le fournisseur',
+      product: type,
+    }
   );
 }
 
 /**
  * The accounts the signed-in person links at their company's providers
- * (ADR-116, ADR-118): their Microsoft 365 mailbox and calendar, which the
- * agent then reads with their own rights. Shown once the company declared
- * its application, or while they keep a link there.
+ * (ADR-116, ADR-118, ADR-124): their Microsoft 365 or Google Workspace
+ * mailbox and calendar, which the agent then reads with their own rights.
+ * Shown once the company declared its application, or while they keep a
+ * link there.
  */
 export function LinkedAccounts() {
   const state = useApiData<AccountLinks>(LINKS);
@@ -103,16 +118,16 @@ function LinkRow({ connector, onChanged }: { connector: AccountLinkView; onChang
   const path = `${LINKS}/${connector.connectorId}`;
   // Asked since the person linked: granted by linking again (ADR-120).
   const toGrant = connector.available && linked ? linked.toGrant : [];
+  const { provider, product } = providerOf(connector.type);
 
   async function link() {
     const started = await action.run(() => api.post<AccountLinkStart>(path));
-    // To Microsoft, which sends the browser back to « Mon compte ».
+    // To the provider, which sends the browser back to « Mon compte ».
     if (started) window.location.assign(started.redirectUrl);
   }
 
   async function unlink() {
-    const question =
-      'Retirer la liaison de votre compte Microsoft 365 ? L’agent ne pourra plus y lire ni y écrire. L’accord donné à l’application reste chez Microsoft : retirez-le aussi dans votre compte Microsoft.';
+    const question = `Retirer la liaison de votre compte ${product} ? L’agent ne pourra plus y lire ni y écrire. L’accord donné à l’application reste chez ${provider} : retirez-le aussi dans votre compte ${provider}.`;
     if (!window.confirm(question)) return;
     if (await action.run(() => api.delete(path))) onChanged();
   }
@@ -135,7 +150,7 @@ function LinkRow({ connector, onChanged }: { connector: AccountLinkView; onChang
           {connector.writeTools
             ? ', et envoie des e-mails ou crée des rendez-vous en votre nom, chaque fois après validation'
             : ''}
-          , avec vos propres droits : Microsoft vous demande votre accord.
+          , avec vos propres droits : {provider} vous demande votre accord.
         </p>
       )}
       {toGrant.length > 0 && (

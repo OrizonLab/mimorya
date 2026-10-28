@@ -11,6 +11,8 @@ import {
   type Connectors,
 } from '@/lib/api';
 import { formatDate } from '@/lib/format';
+import { GoogleWorkspaceDetails } from './google-workspace-details';
+import { GoogleWorkspaceForm } from './google-workspace-form';
 import { McpForm } from './mcp-form';
 import { Microsoft365Details } from './microsoft365-details';
 import { Microsoft365Form } from './microsoft365-form';
@@ -26,7 +28,8 @@ const STATUS = {
 
 /**
  * A REST API's test checks its declaration, without calling it; so does a
- * Microsoft 365 application's, without reaching Microsoft.
+ * Microsoft 365 application's or a Google Workspace client's, without
+ * reaching their provider.
  */
 const REST_STATUS: Partial<Record<keyof typeof STATUS, { label: string; tone: 'neutral' | 'ok' }>> =
   {
@@ -37,8 +40,9 @@ const REST_STATUS: Partial<Record<keyof typeof STATUS, { label: string; tone: 'n
 /**
  * One connector: its state, a test, and what may change here. A REST API's
  * test checks its declaration without calling it (ADR-112, ADR-113), as a
- * Microsoft 365 application's does without reaching Microsoft (ADR-118):
- * it says so, rather than a connection it did not make.
+ * Microsoft 365 application's does without reaching Microsoft (ADR-118),
+ * and a Google Workspace client's without reaching Google (ADR-124): it
+ * says so, rather than a connection it did not make.
  */
 export function ConnectorCard({
   connector,
@@ -57,16 +61,20 @@ export function ConnectorCard({
   const type = data.types.find((t) => t.type === connector.type);
   const rest = connector.rest;
   const microsoft365 = connector.microsoft365;
+  const google = connector.googleWorkspace;
+  // Where people link their accounts: its links go with it.
+  const linked = microsoft365 ?? google;
   // Also when its declaration can no longer be read: it is deleted here.
   const isRest = connector.type === 'rest';
   const isMicrosoft365 = connector.type === 'microsoft365';
+  const isGoogle = connector.type === 'google_workspace';
   // Checked without reaching the server.
-  const declared = isRest || isMicrosoft365;
+  const declared = isRest || isMicrosoft365 || isGoogle;
   const status =
     (declared && REST_STATUS[connector.status]) || (STATUS[connector.status] ?? STATUS.error);
   // Added from the administration: deleted here, and changed while readable.
   const added = Boolean(connector.mcp) || declared;
-  const editable = Boolean(connector.mcp ?? rest ?? microsoft365);
+  const editable = Boolean(connector.mcp ?? rest ?? linked);
 
   async function test() {
     const result = await action.run(() =>
@@ -102,8 +110,8 @@ export function ConnectorCard({
   }
 
   async function remove() {
-    const question = microsoft365
-      ? `Supprimer l’application « ${connector.name} », son secret et les ${microsoft365.links} compte(s) que les collaborateurs y ont relié(s) ?`
+    const question = linked
+      ? `Supprimer ${google ? 'le client' : 'l’application'} « ${connector.name} », son secret et les ${linked.links} compte(s) que les collaborateurs y ont relié(s) ?`
       : `Supprimer le connecteur « ${connector.name} » et son jeton ?`;
     if (!window.confirm(question)) return;
     if (await action.run(() => api.delete(`/admin/connectors/${connector.id}`))) onChanged();
@@ -133,6 +141,7 @@ export function ConnectorCard({
         </p>
       )}
       {microsoft365 && <Microsoft365Details app={microsoft365} />}
+      {google && <GoogleWorkspaceDetails app={google} />}
       {connector.lastError && connector.status === 'error' && !tested && (
         <ErrorNote message={`Dernier démarrage : ${connector.lastError}`} />
       )}
@@ -161,6 +170,8 @@ export function ConnectorCard({
           <RestForm data={data} connector={connector} onDone={done} />
         ) : microsoft365 ? (
           <Microsoft365Form connector={connector} onDone={done} />
+        ) : google ? (
+          <GoogleWorkspaceForm connector={connector} onDone={done} />
         ) : (
           <McpForm data={data} connector={connector} onDone={done} />
         ))}
@@ -172,8 +183,8 @@ export function ConnectorCard({
           <p className="text-sm text-ok">
             {isRest
               ? `Déclaration vérifiée : ${tested.tools.length} outil(s). L’API n’est pas appelée ; le premier appel d’un run dira si elle répond.`
-              : isMicrosoft365
-                ? `Déclaration vérifiée : ${tested.tools.length} outil(s). Microsoft n’est pas appelé : chaque collaborateur relie son compte dans « Mon compte ».`
+              : isMicrosoft365 || isGoogle
+                ? `Déclaration vérifiée : ${tested.tools.length} outil(s). ${isGoogle ? 'Google' : 'Microsoft'} n’est pas appelé : chaque collaborateur relie son compte dans « Mon compte ».`
                 : `Connexion réussie : ${tested.tools.length} outil(s) exposé(s).`}
           </p>
           {added && tested.tools.length > 0 && (

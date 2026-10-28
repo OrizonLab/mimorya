@@ -81,7 +81,7 @@ test('an application is declared, an account linked and removed, the application
   const section = lea.getByRole('region', { name: NAME });
   await expect(section.getByText('Non relié')).toBeVisible();
   await linkThrough(lea, section, 'Relier mon compte');
-  await expect(lea.getByText('Votre compte Microsoft 365 est relié')).toBeVisible();
+  await expect(lea.getByText('Votre compte est relié')).toBeVisible();
   await expect(section.getByText(`Relié à ${demo.lea}`)).toBeVisible();
   await expect(
     section.getByText(/L’agent peut : lire vos e-mails, lire votre agenda\./),
@@ -93,7 +93,7 @@ test('an application is declared, an account linked and removed, the application
   // Said once: the page reloaded no longer says it.
   await lea.reload();
   await expect(section.getByText(`Relié à ${demo.lea}`)).toBeVisible();
-  await expect(lea.getByText('Votre compte Microsoft 365 est relié')).toHaveCount(0);
+  await expect(lea.getByText('Votre compte est relié')).toHaveCount(0);
 
   // Paul sees it counted; a deletion says it goes with the application, and
   // refused, deletes nothing.
@@ -148,6 +148,8 @@ test('a failed return is said on « Mon compte », once', async ({ page }) => {
   await signIn(page, demo.lea);
   await page.goto('/account?liaison=echec');
   await expect(page.getByText('La liaison a échoué')).toBeVisible();
+  // A personal Google account fails so: the person is told which to use.
+  await expect(page.getByText(/chez Google, votre compte Workspace de l’entreprise/)).toBeVisible();
   await expect(page).toHaveURL(/\/account$/);
   await page.reload();
   await expect(page.getByText('La liaison a échoué')).toHaveCount(0);

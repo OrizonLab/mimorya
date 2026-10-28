@@ -321,8 +321,8 @@ pub struct ConnectorUpdate {
     #[serde(default)]
     #[ts(optional)]
     pub operations: Option<Vec<RestOperation>>,
-    /// The Microsoft 365 application's: whether its tools may send e-mail
-    /// and create events (ADR-119).
+    /// A Microsoft 365 application's or a Google Workspace client's: whether
+    /// its tools may send e-mail and create events (ADR-119, ADR-123).
     #[serde(default)]
     #[ts(optional)]
     pub write_tools: Option<bool>,

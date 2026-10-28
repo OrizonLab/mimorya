@@ -184,11 +184,12 @@ Repères à l'intérieur des crates :
   `api/tests/` (intégration, harnais dans `support/`, dont les fournisseurs d'identité
   simulés, OpenID Connect (qui joue aussi Google, ADR-121) et SAML).
 - `web/components/<fonctionnalité>/` (account — dont les e-mails reçus, ADR-094, et les
-  comptes reliés, ADR-118, et les permissions à accorder, ADR-120 —,
+  comptes reliés, ADR-118, au nom de leur fournisseur, ADR-124, et les permissions à
+  accorder, ADR-120 —,
   admin — dont `admin/connectors/` : serveurs MCP et API REST décrites opération par
   opération, ADR-113, et leurs opérations importées d'une description OpenAPI, JSON ou
   YAML converti dans le navigateur, ADR-115, et l'application Microsoft 365, ADR-118,
-  dont l'écriture permise, ADR-120, `admin/llm/` : modèle des conversations et modèle de contrôle des réponses, ADR-108, recherche dans la mémoire, leçons et limites des missions, ADR-075,
+  dont l'écriture permise, ADR-120, et le client Google Workspace, ADR-124, `admin/llm/` : modèle des conversations et modèle de contrôle des réponses, ADR-108, recherche dans la mémoire, leçons et limites des missions, ADR-075,
   ADR-077, ADR-093, `admin/users/` :
   comptes, dont l'absence d'un collaborateur empêché, ADR-079, et `admin/skills/` :
   compétences, propositions de l'agent, ADR-101, cas d'évaluation et évaluations,

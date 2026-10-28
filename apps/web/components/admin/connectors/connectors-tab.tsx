@@ -5,18 +5,22 @@ import { useState } from 'react';
 import { Badge, Button, Card, EmptyState, Loaded } from '@/components/ui';
 import { useApiData, type Connectors } from '@/lib/api';
 import { ConnectorCard } from './connector-card';
+import { GoogleWorkspaceForm } from './google-workspace-form';
 import { McpForm } from './mcp-form';
 import { Microsoft365Form } from './microsoft365-form';
 import { RestForm } from './rest-form';
 
 /**
- * The company's connectors, and adding an MCP server, a REST API or its
- * Microsoft 365 application, one per company (ADR-118).
+ * The company's connectors, and adding an MCP server, a REST API, its
+ * Microsoft 365 application or its Google Workspace client, one of each
+ * per company (ADR-118, ADR-124).
  */
 export function ConnectorsTab() {
   const state = useApiData<Connectors>('/admin/connectors');
   // What is being added, if anything.
-  const [adding, setAdding] = useState<'mcp' | 'rest' | 'microsoft365' | null>(null);
+  const [adding, setAdding] = useState<'mcp' | 'rest' | 'microsoft365' | 'google_workspace' | null>(
+    null,
+  );
   const done = (changed: boolean) => {
     setAdding(null);
     if (changed) state.reload();
@@ -43,6 +47,12 @@ export function ConnectorsTab() {
               <Microsoft365Form onDone={done} />
             </Card>
           )}
+          {adding === 'google_workspace' && (
+            <Card className="p-4">
+              <p className="mb-3 font-medium">Client Google Workspace de l’entreprise</p>
+              <GoogleWorkspaceForm onDone={done} />
+            </Card>
+          )}
           {!adding && (
             <div className="flex flex-wrap gap-2">
               <Button variant="secondary" onClick={() => setAdding('mcp')}>
@@ -54,6 +64,11 @@ export function ConnectorsTab() {
               {!data.instances.some((i) => i.type === 'microsoft365') && (
                 <Button variant="secondary" onClick={() => setAdding('microsoft365')}>
                   <Plus className="size-4" aria-hidden /> Déclarer l’application Microsoft 365
+                </Button>
+              )}
+              {!data.instances.some((i) => i.type === 'google_workspace') && (
+                <Button variant="secondary" onClick={() => setAdding('google_workspace')}>
+                  <Plus className="size-4" aria-hidden /> Déclarer le client Google Workspace
                 </Button>
               )}
             </div>
