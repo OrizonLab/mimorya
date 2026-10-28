@@ -1623,9 +1623,13 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     refuse l'accès arrête la publication au lieu de la relancer ;
   - **promotion** : une fois les trois publiées, `main` et `latest` les désignent
     ensemble (`imagetools create`), si le commit est encore la tête de `main` ; une
-    promotion à la fois, une plus récente remplaçant celle qui attend. Ces noms ne
+    promotion à la fois, celle qui arrive remplaçant celle qui attend. Ces noms ne
     reviennent donc jamais à un commit plus ancien (une CI relancée, une promotion en
-    retard) ;
+    retard). Les CI de `main` tournant chacune jusqu'au bout, en parallèle, elles
+    peuvent finir dans le désordre : si la promotion d'un commit plus ancien remplace
+    celle, en attente, de la tête, aucune ne nomme rien, et `main` et `latest` restent
+    sur un commit antérieur jusqu'à la fusion suivante, la tête restant publiée sous
+    `sha-<12>` ;
   - **version** : une étiquette `vX.Y.Z` (éventuellement suivie d'un suffixe) sur un
     commit de `main` nomme `X.Y.Z` les images déjà publiées pour ce commit, sans rien
     reconstruire. Un commit hors de `main`, ou jamais publié (CI en échec), n'a pas de
@@ -1664,12 +1668,13 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     publics et téléchargeables sans compte, `latest`, `main` et `sha-20409bfe048a`
     désignant les mêmes images ; pour un paquet qui n'existait pas encore, le registre a
     répondu « introuvable », comme le suppose la publication. Depuis, chaque
-    publication vérifie que ses images se téléchargent sans compte : un paquet resté
-    privé fait échouer le travail ;
+    promotion jouée vérifie que les images de son commit se téléchargent sans compte :
+    un paquet resté privé fait échouer le travail ;
   - restent à faire : la signature des images ; arm64 ; l'épinglage des actions par
-    empreinte. Le cache du travail de CI qui vérifie les piles n'est pas retenu : ce
-    travail dure moins que celui de Rust. Une PR qui touche les images en vérifie la
-    construction, pas l'envoi.
+    empreinte ; que toute promotion, même celle d'un commit plus ancien, nomme `main` et
+    `latest` la tête de `main` si ses images sont publiées. Le cache du travail de CI
+    qui vérifie les piles n'est pas retenu : ce travail dure moins que celui de Rust.
+    Une PR qui touche les images en vérifie la construction, pas l'envoi.
 
 ## ADR-052 — Les compétences s'écrivent et s'activent depuis l'administration
 
@@ -6620,10 +6625,10 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
       demande l'accord, et où il reste après un retrait (« reste chez Google ») ;
     - les permissions des deux fournisseurs sont dites en mots (`ACCOUNT_PERMISSIONS`) ;
     - le retour d'une liaison (`?liaison=`) ne dit pas le fournisseur : son texte est le
-      même pour tous. Le refus d'un autre compte (celui d'un collègue) est neutre ; un
-      échec, qui est aussi la réponse à un compte Google personnel, sans domaine
-      Workspace (ADR-121), rappelle que chez Google il faut le compte Workspace de
-      l'entreprise, non un compte personnel ;
+      même pour tous. Le refus d'un autre compte (celui d'un collègue, par exemple)
+      est neutre ; un échec, qui est aussi la réponse à un compte Google personnel,
+      sans domaine Workspace (ADR-121), rappelle que chez Google il faut le compte
+      Workspace de l'entreprise, non un compte personnel ;
   - **suites de l'audit de l'ADR-123** : le refus d'une adresse dit « adresse
     électronique simple attendue (nom@domaine.fr, en caractères ASCII) », ce qu'est la
     règle ; le commentaire de la règle dit qu'elle suit HTML5 : un point mal placé

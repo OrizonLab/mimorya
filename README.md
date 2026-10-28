@@ -75,11 +75,12 @@ Les images sont publiées sur le registre de GitHub (`ghcr.io/orizonlab/mimorya-
 `mimorya-web`, `mimorya-web-demo`, pour amd64), une fois la CI verte, pour chaque commit
 de `main` (ADR-051). `MIMORYA_VERSION` choisit lesquelles : une version (`1.2.0`, nommée
 par une étiquette `v1.2.0` sur un commit de `main`), un commit (`sha-` suivi de ses
-12 premiers caractères) ou `latest` (par défaut, le dernier commit de `main`). Une image
-introuvable arrête la pile : elle n'est jamais construite à sa place. Utilisez le fichier
-compose de la même version ou du même commit (`git checkout v1.2.0`) : il monte des
-fichiers du dépôt (Caddy, initialisation de la base). Pour construire les images depuis
-le dépôt plutôt que les télécharger, sous des noms locaux :
+12 premiers caractères) ou `latest` (par défaut : il suit `main`, et peut rester sur un
+commit antérieur jusqu'à la fusion suivante, ADR-051). Une image introuvable arrête la
+pile : elle n'est jamais construite à sa place. Utilisez le fichier compose de la même
+version ou du même commit (`git checkout v1.2.0`) : il monte des fichiers du dépôt
+(Caddy, initialisation de la base). Pour construire les images depuis le dépôt plutôt
+que les télécharger, sous des noms locaux :
 `docker compose -f compose.demo.yml -f compose.demo.build.yml up -d --build`.
 
 Seul Caddy publie des ports (80 et 443) ; la base n'est joignable que par les conteneurs
@@ -152,7 +153,8 @@ docker compose --env-file .env.production -f compose.production.yml exec api \
 
 Fixer `MIMORYA_VERSION` (une version, sinon un commit `sha-…` listé dans les paquets du
 dépôt) garde la même version d'un redémarrage à l'autre ; sans elle, `latest` suit le
-dernier commit de `main`. Lancez ces commandes depuis le dépôt extrait à la même version
+dernier commit de `main`, et peut rester sur un commit antérieur jusqu'à la fusion
+suivante (ADR-051). Lancez ces commandes depuis le dépôt extrait à la même version
 (`git checkout v1.2.0`) : le fichier compose et les fichiers qu'il monte (Caddy,
 initialisation de la base) vont avec les images. Pour mettre à jour : extraire la
 nouvelle version, changer `MIMORYA_VERSION`, puis relancer `pull` et `up -d` (les

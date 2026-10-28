@@ -4,7 +4,8 @@ name: Images
 # Registry (ADR-051), amd64 only:
 # - each commit of main, once CI has passed on it, is published once as
 #   sha-<12>, then named main and latest, for the three images together, if
-#   it is still the head of main;
+#   it is still the head of main (unless an older commit's promotion replaces
+#   its waiting one: see promote);
 # - a version tag (vX.Y.Z) names the images already published for that
 #   commit of main, never built again;
 # - a pull request that changes how they are built builds them, publishing
@@ -160,7 +161,9 @@ jobs:
     needs: [images, publish]
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # One at a time; a newer commit's waiting promotion replaces an older one.
+    # One at a time, the one arriving replacing the one waiting. CI runs of
+    # main finish in any order: an older commit's promotion can replace the
+    # head's, and then neither names anything until the next merge's.
     concurrency:
       group: images-promote
       cancel-in-progress: false
@@ -201,7 +204,7 @@ jobs:
               "$REGISTRY/$image:sha-${REVISION:0:12}"
           done
       # What an installation pulls, it pulls without an account: a package
-      # left private fails here, on every publication.
+      # left private fails here, on every promotion that runs.
       - name: Pullable without an account
         run: |
           owner=${REGISTRY#ghcr.io/}
