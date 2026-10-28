@@ -160,7 +160,9 @@ jobs:
     needs: [images, publish]
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # One at a time; a newer commit's waiting promotion replaces an older one.
+    # One at a time, the one arriving replacing the one waiting. CI runs of
+    # main finish in any order: an older commit's promotion can replace the
+    # head's, and then neither names anything until the next merge's.
     concurrency:
       group: images-promote
       cancel-in-progress: false
