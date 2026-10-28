@@ -1,7 +1,7 @@
 //! Workspace administration: accounts and the absence of a collaborator who
 //! cannot declare it, organisation, custom roles, role assignments, access
 //! policies, skills, their evaluation cases and evaluations, the company's
-//! model provider and its identity providers.
+//! model provider, its identity providers and its conversation gateways.
 //! Every operation requires its permission on the whole company, refuses to
 //! act on the administrator's own account, runs in one transaction with its
 //! audit entry, and refreshes the cached authorization data of the tenant.
@@ -22,6 +22,7 @@ mod connector_trial;
 mod connectors;
 mod domain_proofs;
 mod embedding;
+mod gateways;
 mod google_workspace;
 mod identity_providers;
 mod invitations;
@@ -57,6 +58,9 @@ pub use connectors::{
 pub use domain_proofs::prove_domain;
 pub use embedding::{
     EmbeddingInput, EmbeddingTestOutcome, configure_embedding, reset_embedding, test_embedding,
+};
+pub use gateways::{
+    GatewayChanges, NewSlackGatewayInput, change_gateway, declare_slack_gateway, remove_gateway,
 };
 pub use google_workspace::{NewGoogleWorkspace, create_google_workspace_connector};
 pub use identity_providers::{

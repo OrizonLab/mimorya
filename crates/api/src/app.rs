@@ -8,6 +8,7 @@ use axum::Router;
 use axum::extract::DefaultBodyLimit;
 use axum::middleware::{from_fn, from_fn_with_state};
 use mimorya_agent::llm::{PriceTable, create_provider};
+use mimorya_connectors::slack::SLACK_API;
 use mimorya_db::{Database, PoolOptions};
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
@@ -34,6 +35,7 @@ use crate::services::background::BackgroundTasks;
 use crate::services::connectors::ConnectorSettings;
 use crate::services::documents::{DocumentService, Extractor};
 use crate::services::embeddings::{EmbeddingServiceOptions, default_embedding_factory};
+use crate::services::gateways::{GatewayService, GatewaySettings};
 use crate::services::invalidations::{Invalidations, share_invalidations};
 use crate::services::llm::{LlmServiceOptions, default_factory};
 use crate::services::runs::{ApprovalNotifier, LessonCapture, RunExecutor};
@@ -71,6 +73,9 @@ pub struct Services {
     pub sso: Arc<SsoService>,
     /// Accounts each person links at their company's providers (ADR-116).
     pub account_links: Arc<AccountLinkService>,
+    /// The conversation gateways of each company: its Slack application
+    /// (ADR-125).
+    pub gateways: Arc<GatewayService>,
     /// Sends the invitation and reset e-mails; `None` when no relay is
     /// configured.
     pub mailer: Option<Arc<dyn Mailer>>,
@@ -176,6 +181,17 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
         },
     };
     let background = Arc::new(BackgroundTasks::default());
+    let gateways = Arc::new(GatewayService::new(
+        db.clone(),
+        config.secrets.clone(),
+        GatewaySettings {
+            network: options.sso_network.unwrap_or(config.mcp_network),
+            slack_api: options.slack_api.unwrap_or_else(|| SLACK_API.to_string()),
+            web_origin: config.web_origin.clone(),
+            assistant_name: config.assistant_name.clone(),
+        },
+        background.clone(),
+    )?);
     let (bus, outbox) = RunEventBus::new();
     let bus = Arc::new(bus);
     let executor = RunExecutor {
@@ -246,6 +262,7 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
         ),
         sso,
         account_links,
+        gateways,
         mailer,
         config,
         db: db.clone(),

@@ -164,6 +164,7 @@ async fn main() -> anyhow::Result<()> {
             dns: Some(dns),
             // Its people link their accounts at the local provider (ADR-118).
             account_link_issuer: Some(idp.issuer.clone()),
+            slack_api: None,
         },
     )
     .await?;

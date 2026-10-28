@@ -13,6 +13,7 @@ pub mod custom_roles;
 pub mod demo;
 pub mod documents;
 pub mod error;
+pub mod gateways;
 pub mod identity_providers;
 pub mod memory;
 pub mod plain_text;

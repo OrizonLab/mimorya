@@ -6652,3 +6652,89 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     - ce que les tests de bout en bout des deux fournisseurs partagent (liaison au
       fournisseur simulé, lecture par l'API, suppression après chaque test) est dans
       `apps/web/e2e/support/account-links.ts`.
+
+## ADR-125 — Passerelle Slack : application déclarée par l'entreprise, événements signés, identité Slack reliée par chacun (passerelles, lot 12a)
+
+- **Date** : 2026-10-28 · **Statut** : acceptée
+- **Contexte** : les personnes ne parlent à l'agent que dans l'application web. La
+  feuille de route prévoit des passerelles de conversation (Slack, Teams, Telegram) où
+  l'identité de canal est liée au compte, avec les mêmes droits que sur le web
+  (ARCHITECTURE, « Concepts repris »). Une passerelle n'apporte aucun outil à l'agent :
+  c'est un canal, non un connecteur. Slack vient en premier : ses événements sont
+  signés par l'application elle-même, son API dit l'adresse de chaque personne.
+- **Décision** :
+  - **une table à part**, `gateways`, plutôt qu'un type de connecteur : une passerelle
+    par service et par entreprise (`kind = 'slack'`), avec ce que Slack a dit de
+    l'application à sa déclaration, son espace de travail (`workspace_id`, chaque
+    événement doit en venir) et son utilisateur bot (dont les messages ne sont jamais
+    pris pour ceux d'une personne). Le jeton du bot (`xoxb-…`) et le secret de
+    signature sont scellés dans le magasin de secrets (`gateway.<id>.bot_token`,
+    `gateway.<id>.signing_secret`), jamais rendus ni audités ;
+  - **la déclaration** (`POST /admin/gateways/slack`, `connector:manage` sur toute
+    l'entreprise, sous le verrou d'administration, auditée) : le jeton et le secret
+    sont vérifiés tels que Slack les écrit, puis le jeton est essayé auprès de Slack
+    (`auth.test`) avant que rien ne soit gardé ; un jeton qui n'est pas celui d'un bot
+    est refusé. Les refus de Slack sont dits en français, ses mots réduits à son code
+    d'erreur. Un nouveau jeton doit être celui d'une application du même espace de
+    travail : les identités reliées sont celles de cet espace. La suppression emporte
+    les identités et les secrets. La liste donne l'adresse à donner à Slack
+    (« Event Subscriptions »), les permissions de l'application (`chat:write`,
+    `im:history`, `users:read`, `users:read.email`) et l'événement auquel elle
+    s'abonne (`message.im`), sans rien d'autre : elle ne lit ni canal, ni fichier ;
+  - **la réception** (`POST /api/gateways/slack/{id}`, avant toute session) : la
+    requête nomme sa passerelle, dont l'entreprise est lue par une fonction
+    `SECURITY DEFINER` minimale (`auth_gateway_tenant`), puis prouve qu'elle vient de
+    l'application par sa signature (HMAC-SHA256 de `v0:<horodatage>:<corps>` avec le
+    secret de signature, comparée en temps constant, à cinq minutes près). Une
+    passerelle inconnue et une signature absente, fausse ou trop ancienne répondent de
+    même (404). Le corps est borné (256 Kio). La vérification de l'adresse par Slack
+    reçoit son défi ; un événement d'un autre espace de travail, d'une passerelle en
+    pause, déjà pris (Slack le renvoie s'il n'a pas eu de réponse à temps : son
+    identifiant est gardé un jour, `gateway_events`), et tout ce qui n'est pas le
+    message d'une personne dans sa conversation directe avec l'application (une
+    modification, un fichier, le message d'un bot, celui de l'application) est pris
+    et ignoré. Ce que dit un message n'est jamais journalisé ni audité ;
+  - **troisième exception à l'en-tête des requêtes du navigateur**, après la réception
+    SAML (ADR-068) et l'envoi à un déclencheur (ADR-109) : ce chemin exact seulement,
+    l'identifiant sous sa forme canonique, sa signature seule l'autorisant ;
+  - **la liaison de l'identité Slack** :
+    - une personne qui écrit à l'application sans avoir relié son identité reçoit, dans
+      sa conversation (dans son fil s'il y en a un), un lien vers son compte
+      (`/account/gateway-link?code=…`), valable quinze minutes. Le lien porte la
+      passerelle et l'utilisateur Slack, scellés pour l'entreprise par la clé maîtresse
+      du serveur ; rien n'est enregistré. Le message ne reprend rien de ce qu'elle a
+      écrit, et le nom de l'assistant y est échappé pour Slack (`&`, `<`, `>`) ;
+    - ouvert dans sa propre session, le lien est montré (`GET
+/account/gateways/link`), puis confirmé (`POST`, compté avec les connexions par
+      un fournisseur) : Slack est alors interrogé de nouveau (`users.info`), et la
+      liaison n'est faite que si cet utilisateur Slack est de l'espace de travail de
+      l'entreprise, ni désactivé ni bot, et a l'adresse du compte. L'adresse est la
+      preuve, comme pour les comptes reliés (ADR-116) : l'entreprise gère l'une et
+      l'autre, et un lien ouvert par quelqu'un d'autre (Léa envoie son lien à Paul) ne
+      relie rien. Un refus est audité avec sa raison (`gateway.identity_refused`),
+      jamais une adresse ; la personne n'est jamais montrée l'adresse Slack d'un autre ;
+    - une liaison nouvelle remplace la précédente de la personne, et la liaison de cet
+      utilisateur Slack à quelqu'un d'autre (Slack lui a donné l'adresse d'une autre
+      personne depuis) ; l'audit le dit (`replacedOwn`, `replacedOtherPerson`) ;
+    - la liaison exige `agent:use` ; la personne la voit et la retire dans « Mon
+      compte » (`GET /account/gateways`, `DELETE /account/gateways/{id}`) ; un compte
+      désactivé perd ses identités, comme ses comptes reliés ; les administrateurs ne
+      voient que leur nombre ;
+  - **lot suivant (12b)** : une personne reliée parle à l'agent dans Slack (une
+    conversation par fil, les réponses écrites dans le fil, l'adresse vérifiée à chaque
+    message, les validations renvoyées vers l'application web) ; d'ici là, ses messages
+    sont pris et ignorés. Puis les écrans (12c), Telegram et Teams.
+- **Conséquences** :
+  - données personnelles : l'identifiant Slack et l'adresse que Slack a donnée sont
+    gardés tant que la personne ne retire pas la liaison, que son compte n'est pas
+    désactivé ni la passerelle supprimée ; les identifiants d'événements, un jour ;
+  - le client de l'API Web de Slack est borné en temps (dix secondes) et en taille,
+    ne suit aucune redirection et n'est jamais relancé (`connectors/src/slack/`) ;
+    `BuildOptions::slack_api` le fait parler, dans les tests, à un Slack simulé
+    (`connectors/src/testing/slack.rs`), qui signe les événements comme Slack ;
+  - tests : `crates/core/src/gateways/` (signature, dont l'exemple de la
+    documentation de Slack ; événements pris ; preuve de l'identité),
+    `crates/api/tests/slack_gateway_admin.rs`, `slack_gateway_events.rs` (dont
+    `only_a_gateway_event_goes_without_the_header`), `slack_gateway_links.rs` (lien
+    ouvert par un autre, d'un autre espace de travail, sans adresse, désactivé,
+    expiré, d'une autre entreprise ; remplacement ; compte désactivé).

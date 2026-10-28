@@ -11,6 +11,7 @@ use mimorya_core::collaborator_attributes::normalize_attributes;
 use mimorya_core::identity_providers::email_domain;
 use mimorya_db::repositories::account_links::delete_account_links_of;
 use mimorya_db::repositories::audit::append_audit;
+use mimorya_db::repositories::gateway_identities::delete_gateway_identities_of;
 use mimorya_db::repositories::invitations::delete_invitation_of;
 use mimorya_db::repositories::role_assignments::{
     NewRoleAssignment, create_role_assignment, find_role_id,
@@ -188,6 +189,8 @@ pub async fn update_user(
         delete_invitation_of(&mut tx, user_id).await?;
         // What they granted at a provider is no longer anyone's to use (ADR-116).
         delete_account_links_of(&mut tx, user_id).await?;
+        // Nor may their identity on a gateway speak for them (ADR-125).
+        delete_gateway_identities_of(&mut tx, user_id).await?;
     }
     let action = match changes.active {
         Some(true) => "user.enabled",

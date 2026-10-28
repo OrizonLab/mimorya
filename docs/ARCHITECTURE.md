@@ -303,6 +303,17 @@ Détaillés dans [AGENT_ENGINE.md](AGENT_ENGINE.md). En résumé :
   ceux de Microsoft 365 (`delegated`), le message envoyé à Gmail est écrit par la
   plateforme (ADR-123). Chacun relie son compte dans « Mon compte », au nom de son
   fournisseur ; le client se déclare et se règle dans « Connecteurs » (ADR-124).
+- **Passerelle Slack** : une passerelle de conversation n'est pas un connecteur, elle
+  n'apporte aucun outil (table `gateways`). L'entreprise déclare son application Slack
+  (une par entreprise) : son jeton de bot, essayé auprès de Slack avant d'être gardé, et
+  son secret de signature, scellés. Slack envoie les événements de son espace de travail
+  à `/api/gateways/slack/{id}` : la signature de l'application est leur seule preuve,
+  avant toute session (troisième exception à l'en-tête des requêtes du navigateur).
+  Une personne qui écrit à l'application reçoit dans Slack un lien vers son compte,
+  scellé, valable quinze minutes ; ouvert dans sa session, il relie son identité Slack
+  si Slack dit que cet utilisateur est de l'espace de travail de l'entreprise et a
+  l'adresse de son compte (`gateway_identities`, ADR-125). Ses conversations dans Slack
+  viennent au lot suivant.
 - Les secrets ne transitent jamais par le contexte du modèle ni par les journaux.
 
 Connecteurs prévus : démonstration (MVP), MCP générique (MVP), déclencheurs (ADR-109),

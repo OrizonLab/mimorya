@@ -19,6 +19,8 @@ pub mod document_embeddings;
 pub mod document_search;
 pub mod documents;
 pub mod embedding_settings;
+pub mod gateway_identities;
+pub mod gateways;
 pub mod identity_providers;
 pub mod inbound_hooks;
 pub mod invitations;

@@ -1,8 +1,9 @@
 //! Periodic maintenance, at startup and then every minute, in each process
 //! that executes runs: expired password reset links are deleted (ADR-028),
 //! ended absences (ADR-071), the shared rate limit windows long over
-//! (ADR-088), and the evaluations of skills ended ninety days ago
-//! (ADR-104); from the second minute, the notices a
+//! (ADR-088), the evaluations of skills ended ninety days ago (ADR-104),
+//! and the events a gateway took a day ago (ADR-125); from the second
+//! minute, the notices a
 //! stop of the service lost are sent (ADR-070), requests nobody decided in
 //! time expire, and their runs go on (ADR-061), their managers reminded the
 //! day before (ADR-062), each of these three in one process at a time
@@ -27,6 +28,7 @@ use mimorya_agent::runtime::RunEvent;
 use mimorya_core::skill_evaluations::EVALUATION_KEPT_DAYS;
 use mimorya_db::Database;
 use mimorya_db::repositories::approval_delegations::purge_ended_approval_delegations;
+use mimorya_db::repositories::gateways::purge_gateway_events;
 use mimorya_db::repositories::password_resets::purge_expired_password_resets;
 use mimorya_db::repositories::rate_limits::purge_rate_limits;
 use mimorya_db::repositories::runs::fail_stale_runs;
@@ -45,6 +47,9 @@ const SWEEP_INTERVAL: Duration = Duration::from_secs(60);
 /// Past the longest rate limit window (an hour, ADR-088), a window counts
 /// for nothing more.
 const RATE_LIMITS_KEPT: chrono::Duration = chrono::Duration::hours(2);
+/// Slack sends an event again for a few hours at most: a day past it, an
+/// event's identifier serves nothing more (ADR-125).
+const GATEWAY_EVENTS_KEPT: chrono::Duration = chrono::Duration::days(1);
 
 pub fn spawn_maintenance(services: AppState) -> JoinHandle<()> {
     tokio::spawn(async move {
@@ -90,6 +95,10 @@ pub fn spawn_maintenance(services: AppState) -> JoinHandle<()> {
             let ended = Utc::now() - chrono::Duration::days(EVALUATION_KEPT_DAYS);
             if let Err(error) = purge_finished_evaluations(db.pool(), ended).await {
                 tracing::warn!(error = %error, "Skill evaluation purge failed");
+            }
+            let taken = Utc::now() - GATEWAY_EVENTS_KEPT;
+            if let Err(error) = purge_gateway_events(db.pool(), taken).await {
+                tracing::warn!(error = %error, "Gateway event purge failed");
             }
         }
     })

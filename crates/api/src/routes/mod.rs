@@ -2,12 +2,14 @@
 //! `Auth`, builds the authorization context server-side and checks the
 //! permission or the ownership of the resource before answering. Exceptions:
 //! login, invitation and password reset links and health need no identity,
-//! nor a delivery to an inbound hook, proved by its token (ADR-109);
+//! nor a delivery to an inbound hook, proved by its token (ADR-109), nor an
+//! event Slack sends a gateway, proved by its signature (ADR-125);
 //! logout takes `MaybeAuth`; `/auth/me`
 //! and `/account/password` take `AuthPendingPasswordChange`, so that an
 //! account holding a temporary password can replace it.
 
 mod account;
+mod account_gateways;
 mod account_links;
 mod admin;
 mod approval_delegation;
@@ -15,6 +17,7 @@ mod approvals;
 mod auth;
 mod conversations;
 mod documents;
+mod gateways;
 mod health;
 mod hooks;
 mod inbound_hooks;
@@ -34,6 +37,7 @@ use mimorya_core::DomainError;
 use crate::app::AppState;
 use crate::http::ApiError;
 
+pub use gateways::SLACK_EVENTS_PREFIX;
 pub use hooks::DELIVERY_PREFIX as HOOK_DELIVERY_PREFIX;
 pub use saml::ACS_ROUTE as SAML_ACS_ROUTE;
 
@@ -47,6 +51,7 @@ pub fn router(state: &AppState) -> Router<AppState> {
         .merge(password_reset::routes())
         .merge(account::routes())
         .merge(account_links::routes())
+        .merge(account_gateways::routes())
         .merge(conversations::routes())
         .merge(runs::routes())
         .merge(run_events::routes())
@@ -57,6 +62,7 @@ pub fn router(state: &AppState) -> Router<AppState> {
         .merge(scheduled_tasks::routes())
         .merge(inbound_hooks::routes())
         .merge(hooks::routes())
+        .merge(gateways::routes())
         .merge(missions::routes())
         .merge(admin::routes(state))
         .fallback(not_found)

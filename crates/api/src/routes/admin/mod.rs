@@ -12,6 +12,7 @@ mod assignments;
 mod connector_applications;
 mod connectors;
 mod embedding;
+mod gateways;
 mod identity_providers;
 mod llm;
 mod memory_settings;
@@ -117,6 +118,12 @@ pub fn routes(state: &AppState) -> Router<AppState> {
         .route(
             "/admin/connectors/rest/import",
             post(connectors::import_rest),
+        )
+        .route("/admin/gateways", get(gateways::list))
+        .route("/admin/gateways/slack", post(gateways::create_slack))
+        .route(
+            "/admin/gateways/{id}",
+            patch(gateways::update).delete(gateways::remove),
         )
         .route(
             "/admin/identity-providers",
