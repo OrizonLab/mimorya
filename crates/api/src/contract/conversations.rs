@@ -102,6 +102,11 @@ pub struct MessageMetadata {
     )]
     #[ts(optional)]
     pub inbound_hook_id: Option<Uuid>,
+    /// The service its author wrote it from, `slack`: their company's
+    /// Slack application (ADR-127).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub gateway: Option<String>,
 }
 
 /// What a message is to its mission (ADR-089).

@@ -31,6 +31,10 @@ pub struct BuildOptions {
     /// every minute once interrupted runs are taken up (tests that set when
     /// one is due).
     pub manual_scheduling: bool,
+    /// Leaves the answers in Slack to be written on demand
+    /// (`reply_to_finished_runs`), not every few seconds (tests that count
+    /// them, ADR-127).
+    pub manual_gateway_replies: bool,
     /// Replaces the mailer built from configuration (tests); `Some(None)`
     /// sends nothing.
     pub mailer: Option<Option<Arc<dyn Mailer>>>,

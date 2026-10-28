@@ -110,6 +110,7 @@ async fn record_outcome(
             verification,
             mission,
             inbound_hook_id: None,
+            gateway: None,
         };
         add_message(
             tx,

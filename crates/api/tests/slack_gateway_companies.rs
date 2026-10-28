@@ -1,32 +1,44 @@
 //! Two companies' Slack gateways (ADR-125): an event one company's
 //! application signed reaches nothing of another's gateway; the events the
 //! gateways took are forgotten a day later, in every company, the recent ones
-//! kept.
+//! kept; each company's people are answered in their own threads, with their
+//! own company's application (ADR-127).
 
 mod support;
 
 use axum::http::StatusCode;
 use chrono::{DateTime, Duration, Utc};
+use mimorya_agent::testing::ScriptedStep;
 use mimorya_api::services::AccessContext;
 use mimorya_api::services::AuthIdentity;
 use mimorya_api::services::admin::{NewSlackGatewayInput, declare_slack_gateway};
-use mimorya_connectors::testing::{BOT_TOKEN, FakeSlack, SIGNING_SECRET, signed};
+use mimorya_connectors::testing::{BOT_TOKEN, FakeSlack, SIGNING_SECRET, WORKSPACE, signed};
 use mimorya_core::demo::{tenant, user};
 use mimorya_core::gateways::slack::signature as sign;
 use mimorya_db::repositories::gateways::purge_gateway_events;
 use serde_json::json;
 use support::TestApi;
 use support::companies;
-use support::gateways::{declare_slack, post_signed};
+use support::email;
+use support::gateways::{declare_slack, envelope, offered_code, post_signed};
 use support::queue::as_owner;
+use support::slack_conversations::{
+    MARC_SLACK, answer, event_id, in_thread, linked, settle, write, written,
+};
 use support::sso::SSO_DEPLOYMENT;
 use uuid::Uuid;
 
 /// Another company's own signing secret.
 const OTHER_SECRET: &str = "0ther5ecret0ther5ecret0ther5ecr";
 
-/// Another company, its administrator's rights, and its Slack gateway.
+/// Another company, and its Slack gateway.
 async fn other_company(api: &TestApi, slug: &str) -> (Uuid, Uuid) {
+    let (tenant_id, gateway, _) = other_company_with_admin(api, slug).await;
+    (tenant_id, gateway)
+}
+
+/// Another company, its Slack gateway, and its administrator's rights.
+async fn other_company_with_admin(api: &TestApi, slug: &str) -> (Uuid, Uuid, AccessContext) {
     let acme = companies::create(api, slug, &format!("jeanne.martin@{slug}.example")).await;
     // Her invitation accepted.
     as_owner(
@@ -55,7 +67,7 @@ async fn other_company(api: &TestApi, slug: &str) -> (Uuid, Uuid) {
     let gateway = declare_slack_gateway(&api.app.services.gateways, &jeanne, input)
         .await
         .unwrap();
-    (acme.tenant_id, gateway)
+    (acme.tenant_id, gateway, jeanne)
 }
 
 #[tokio::test]
@@ -142,4 +154,65 @@ async fn the_events_taken_are_forgotten_a_day_later_in_every_company() {
         .await
         .unwrap();
     assert_eq!(again, 0);
+}
+
+/// Jeanne's Slack user, and her direct conversation with Acme's application.
+const JEANNE_SLACK: &str = "U0JEANNE";
+const JEANNE_DM: &str = "D0JEANNE";
+
+/// What Jeanne writes at `ts` to Acme's gateway `gateway`, signed with its
+/// own secret, as Slack sends it.
+async fn jeanne_writes(api: &TestApi, gateway: Uuid, text: &str, ts: &str) {
+    let event = json!({
+        "type": "message", "channel": JEANNE_DM, "user": JEANNE_SLACK, "text": text,
+        "ts": ts, "channel_type": "im", "event_ts": ts
+    });
+    let body = envelope(WORKSPACE, &event_id(), event);
+    let timestamp = Utc::now().timestamp().to_string();
+    let signature = sign(OTHER_SECRET, &timestamp, body.as_bytes());
+    let headers = Some((timestamp.as_str(), signature.as_str()));
+    let path = format!("/gateways/slack/{gateway}");
+    let sent = post_signed(api, &path, headers, &body).await;
+    assert_eq!(sent.status, StatusCode::OK, "{}", sent.text());
+    settle(api).await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn each_company_is_answered_in_its_own_threads() {
+    let slack = FakeSlack::start().await;
+    let api = TestApi::start_with_slack(&SSO_DEPLOYMENT, &slack.url).await;
+    let (paul, marc) = (api.sign_in(user::PAUL).await, api.sign_in(user::MARC).await);
+    let address = email(user::MARC);
+    let neo = linked(&api, &slack, &paul, &marc, (MARC_SLACK, &address)).await;
+    let slug = "acme-slack-replies";
+    let (_, acme, jeanne) = other_company_with_admin(&api, slug).await;
+    // Jeanne links her Slack user to her account, at Acme.
+    slack.add_person(JEANNE_SLACK, &format!("jeanne.martin@{slug}.example"));
+    jeanne_writes(&api, acme, "Bonjour", "1700000100.000100").await;
+    let code = offered_code(&slack);
+    (api.app.services.gateways)
+        .confirm_link(&jeanne, &code, Utc::now())
+        .await
+        .unwrap();
+
+    // Each writes; one pass answers both, each in its own thread.
+    let thread = "1700000200.000100";
+    api.script(vec![ScriptedStep::text("Réponse Néo.")]);
+    write(&api, neo, &written(MARC_SLACK, "Question", thread, None)).await;
+    api.script(vec![ScriptedStep::text("Réponse Acme.")]);
+    jeanne_writes(&api, acme, "Question", thread).await;
+    assert_eq!(answer(&api).await, 2);
+    let marcs = in_thread(&slack, thread);
+    assert_eq!(marcs.len(), 1);
+    assert!(marcs[0].starts_with("Réponse Néo."), "{marcs:?}");
+    let jeannes: Vec<String> = slack
+        .posts()
+        .into_iter()
+        .filter(|p| p.channel == JEANNE_DM && p.thread_ts.as_deref() == Some(thread))
+        .map(|p| p.text)
+        .collect();
+    assert_eq!(jeannes.len(), 1);
+    assert!(jeannes[0].starts_with("Réponse Acme."), "{jeannes:?}");
+    assert!(!jeannes[0].contains("Néo"), "{jeannes:?}");
 }

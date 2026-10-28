@@ -166,6 +166,7 @@ async fn main() -> anyhow::Result<()> {
             embedding_factory: Some(embedding_factory),
             manual_indexing: false,
             manual_scheduling: false,
+            manual_gateway_replies: false,
             run_leases: None,
             mailer: Some(Some(mailer)),
             sso_network: Some(NetworkPolicy {

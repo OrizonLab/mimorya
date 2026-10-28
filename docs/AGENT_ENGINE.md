@@ -307,6 +307,8 @@ composables par les compétences.
 Un responsable **ne voit pas** la mémoire personnelle de ses collaborateurs. Un run
 qu'un déclencheur a lancé (canal `hook`, ADR-109) n'écrit directement dans aucun
 espace, pas même personnel : ce qu'il retiendrait est une proposition à la personne.
+Un run que la personne lance en écrivant à l'application Slack de l'entreprise (canal
+`slack`, ADR-127) est sa propre demande : il retient comme un tour de l'application.
 
 ### 9.2 Recherche
 

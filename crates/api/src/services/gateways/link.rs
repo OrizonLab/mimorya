@@ -14,7 +14,9 @@
 use chrono::{DateTime, Duration, Utc};
 use mimorya_connectors::slack::SlackFailure;
 use mimorya_core::DomainError;
-use mimorya_core::gateways::slack::{DirectMessage, SlackProfile, identity_refusal, is_person};
+use mimorya_core::gateways::slack::{
+    DirectMessage, SlackProfile, escaped, identity_refusal, is_person,
+};
 use mimorya_db::repositories::account_links::lock_active_account;
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::gateway_identities::{NewGatewayIdentity, put_gateway_identity};
@@ -251,13 +253,6 @@ fn link_text(assistant_name: &str, url: &str) -> String {
          connecté. L’adresse de votre profil Slack doit être celle de votre compte.",
         escaped(assistant_name)
     )
-}
-
-/// Text quoted in Slack's markup: `&`, `<` and `>` escaped, as Slack asks.
-pub(super) fn escaped(text: &str) -> String {
-    text.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
 }
 
 #[cfg(test)]

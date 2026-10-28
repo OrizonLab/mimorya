@@ -17,6 +17,7 @@ pub use crate::build_options::BuildOptions;
 use crate::config::AppConfig;
 use crate::mail::{Mailer, SmtpMailer};
 use crate::plugins::csrf::csrf_protection;
+use crate::plugins::gateway_replies::spawn_gateway_replies;
 use crate::plugins::maintenance::spawn_maintenance;
 use crate::plugins::memory_indexing::spawn_memory_indexing;
 use crate::plugins::rate_limit::global_rate_limit;
@@ -103,6 +104,7 @@ struct Background {
     maintenance: Option<JoinHandle<()>>,
     indexing: Option<JoinHandle<()>>,
     scheduling: Option<JoinHandle<()>>,
+    gateway_replies: Option<JoinHandle<()>>,
     lease_renewal: Option<JoinHandle<()>>,
     lease_takeover: Option<JoinHandle<()>>,
     run_queue: Option<JoinHandle<()>>,
@@ -306,6 +308,8 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
             (!options.manual_indexing).then(|| spawn_memory_indexing(services.clone()));
         background.scheduling =
             (!options.manual_scheduling).then(|| spawn_scheduled_tasks(services.clone()));
+        background.gateway_replies =
+            (!options.manual_gateway_replies).then(|| spawn_gateway_replies(services.clone()));
         background.lease_renewal = Some(spawn_lease_renewal(services.clone()));
         background.lease_takeover = Some(spawn_lease_takeover(services.clone()));
         background.run_queue = Some(spawn_run_queue(services.clone()));
@@ -366,7 +370,13 @@ impl App {
         wait(background.lease_takeover).await;
         wait(background.run_queue).await;
         abort(background.indexing).await;
+        // A Slack message being answered may start a run as it ends: awaited
+        // first, so that its run is awaited with the others.
+        self.services.background.idle().await;
         self.services.runs.idle().await;
+        // The runs ended: what remains to answer in Slack is answered by
+        // the next process that starts.
+        abort(background.gateway_replies).await;
         // The runs ended: no lease left to renew, nor text to send.
         abort(background.lease_renewal).await;
         abort(background.delta_outbox).await;

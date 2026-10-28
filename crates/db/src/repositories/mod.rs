@@ -20,6 +20,8 @@ pub mod document_search;
 pub mod documents;
 pub mod embedding_settings;
 pub mod gateway_identities;
+pub mod gateway_replies;
+pub mod gateway_threads;
 pub mod gateways;
 pub mod identity_providers;
 pub mod inbound_hooks;

@@ -13,6 +13,7 @@ mod support;
 
 use axum::http::StatusCode;
 use chrono::{Duration, Utc};
+use mimorya_agent::testing::ScriptedStep;
 use mimorya_api::services::AuthIdentity;
 use mimorya_connectors::testing::FakeSlack;
 use mimorya_core::demo::{tenant, user};
@@ -23,6 +24,7 @@ use support::gateways::{
 use support::manager_approvals::without;
 use support::queue::as_owner;
 use support::refusals::{entries_since, latest_entry};
+use support::slack_conversations::settle;
 use support::sso::SSO_DEPLOYMENT;
 use support::{Client, TestApi, companies, email};
 use uuid::Uuid;
@@ -91,8 +93,10 @@ async fn a_person_links_their_slack_identity_from_their_own_session() {
     assert!(audited.contains("gateway.identity_linked"), "{audited}");
     assert!(!audited.contains(&email(user::LEA)), "{audited}");
 
-    // Linked, she is offered no link any more.
+    // Linked, she is offered no link any more: her message is answered in a
+    // conversation of hers (ADR-127).
     let before = slack.posts().len();
+    api.script(vec![ScriptedStep::text("Bonjour Léa.")]);
     let sent = send(
         &api,
         gateway,
@@ -100,7 +104,7 @@ async fn a_person_links_their_slack_identity_from_their_own_session() {
     )
     .await;
     assert_eq!(sent.status, StatusCode::OK);
-    api.idle().await;
+    settle(&api).await;
     assert_eq!(slack.posts().len(), before);
 
     // She removes it.
@@ -252,15 +256,16 @@ async fn a_new_link_replaces_the_former_one_and_a_deactivated_account_loses_it()
     let gateway = declare_slack(&paul).await;
     let (lea, marc) = (api.sign_in(user::LEA).await, api.sign_in(user::MARC).await);
 
-    // Marc links a Slack user of his address.
+    // Marc links a Slack user of his address; a second link was sent for it
+    // meanwhile.
     slack.add_person("U0PARTAGE", &email(user::MARC));
     let code = link_for(&api, &slack, gateway, "U0PARTAGE").await;
+    let later = link_for(&api, &slack, gateway, "U0PARTAGE").await;
     assert_eq!(confirm(&marc, &code).await.status, StatusCode::OK);
     // Slack gives that user Léa's address since: her link takes it from him.
     slack.add_person("U0PARTAGE", &email(user::LEA));
     let since = latest_entry(&api).await;
-    let code = link_for(&api, &slack, gateway, "U0PARTAGE").await;
-    assert_eq!(confirm(&lea, &code).await.status, StatusCode::OK);
+    assert_eq!(confirm(&lea, &later).await.status, StatusCode::OK);
     assert_eq!(
         own_gateway(&lea, gateway).await["linked"]["externalId"],
         "U0PARTAGE"

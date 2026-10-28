@@ -6811,3 +6811,101 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     passerelle renommée sans changer ses secrets, réactivée, supprimée, l'adresse
     répondant alors comme une passerelle inconnue) ; `slack_gateway_links.rs` et
     `slack_gateway_events.rs` suivent le code dans le fragment et l'aperçu en `POST`.
+
+## ADR-127 — Conversations avec l'agent dans Slack : un fil par conversation, la réponse écrite dans le fil (passerelles, lot 12c)
+
+- **Date** : 2026-10-28 · **Statut** : acceptée · complète ADR-125 et ADR-126
+- **Contexte** : une personne relie son identité Slack (ADR-125, ADR-126), mais ses
+  messages à l'application Slack de l'entreprise étaient pris puis ignorés. Elle doit
+  pouvoir parler à l'agent dans Slack comme dans l'application, avec les mêmes droits,
+  et y lire ses réponses, sans que Slack devienne une voie pour agir au nom de
+  quelqu'un d'autre ni pour décider d'une validation.
+- **Décision** :
+  - **le message d'une personne reliée** est sa propre demande. Slack attendant une
+    réponse en quelques secondes, l'événement est répondu aussitôt (200) et le message
+    traité en arrière-plan ; ce qu'il dit n'est ni journalisé ni audité. Il est lu en
+    texte simple pour l'agent : liens, mentions et caractères échappés de Slack
+    rendus lisibles (`plain`) ;
+  - **qui écrit, demandé à chaque message** : Slack est interrogé (`users.info`). S'il
+    ne dit plus que l'utilisateur Slack est la personne (adresse changée, désactivé,
+    d'un autre espace de travail : la même règle qu'à la liaison), l'identité est
+    déliée, auditée (`gateway.identity_unlinked`, avec la raison, jamais l'adresse), la
+    personne prévenue dans le fil et un nouveau lien lui est offert ; rien n'est lancé.
+    S'il ne répond pas, rien n'est lancé ; l'identité reste. Un compte au mot de passe
+    provisoire ne lance rien, et la raison est dite ; un compte désactivé a perdu ses
+    identités : il reçoit un lien, qu'il ne peut ouvrir sans session. Un message qui
+    arrive pendant l'arrêt du service ne lance rien, et le dit ;
+  - **un fil par conversation** (`gateway_threads`) : un message hors de tout fil ouvre
+    une conversation nouvelle de la personne, titrée de ses premiers mots, tenue dans le
+    fil qu'il commence ; la conversation et le fil s'ouvrent dans la transaction du
+    tour (un run qui ne démarre pas n'en laisse pas). Une réponse dans ce fil poursuit
+    la conversation, avec son historique. Un fil qu'un autre message a ouvert entretemps
+    est refusé comme occupé ; un fil tenu pour un autre compte (identité reliée depuis
+    à quelqu'un d'autre) est refusé ;
+  - **le run** est lancé au nom de la personne, avec ses droits tels qu'ils sont et
+    l'autonomie de l'entreprise, comme un tour de l'application (`TurnSender::Gateway`),
+    sur le canal `slack` (`agent_runs.channel`, contrainte élargie), que les politiques
+    d'accès peuvent lire (`context.channel`). Ses messages portent leur service
+    (`metadata.gateway = "slack"`). Les refus du démarrage (pas de modèle, `agent:use`
+    retiré, entreprise suspendue, demande déjà en cours, service qui s'arrête) sont dits
+    dans le fil. À l'arrêt, les messages en cours de traitement sont attendus avant les
+    runs, de sorte que le run qu'ils ont lancé l'est aussi ;
+  - **la réponse dans le fil** : chaque fin ou pause d'un tel run, quel que soit le
+    chemin qui l'a produite (son issue, une validation décidée, le balayage des runs
+    bloqués, un arrêt), est l'événement `run_finished` de son journal. Un passage de
+    trois secondes, dans les processus qui exécutent les runs, un à la fois (ADR-086),
+    lit celles des dernières 24 heures encore sans réponse par une fonction
+    `SECURITY DEFINER` minimale (`system_unreplied_gateway_events` : entreprise et
+    événement, le run et l'événement de l'entreprise du fil), puis chacune dans son
+    entreprise, et l'écrit dans le fil avec le jeton de cette entreprise. La lecture part
+    des fils actifs (un tour ou une réponse depuis 30 jours, `gateway_threads.active_at`,
+    plus que les sept jours d'une validation) : son coût suit les conversations tenues
+    dans Slack, non tous les runs. Les réponses d'un fil sont écrites dans l'ordre : une
+    réponse à réessayer retient celles qui la suivent, tant qu'elle peut l'être (son
+    événement des dernières 24 heures) ; plus ancienne, elle n'est plus essayée et ne
+    retient plus rien. Le verrou du passage n'est pris
+    que s'il y a quelque chose à répondre. Ce qui est écrit : la
+    réponse telle que la conversation la montre (un échec compris), en balisage Slack
+    (`from_markdown` : gras, titres, listes, liens web ; le code tel quel ; tout le reste
+    échappé, sans mention ni commande possible), coupée au-delà de 3 000 caractères en
+    disant que la suite est dans l'application ; une pause dit qu'une validation est à
+    donner dans l'application, et que la suite viendra dans le fil ; un arrêt le dit.
+    Chacune porte le lien de sa conversation ;
+  - **ce qui devient de chaque réponse** (`gateway_replies`, une par événement, jamais
+    ce qui est écrit) : `sent` ; `refused` par Slack, jamais réessayée ; Slack injoignable
+    ou débordé, réessayée après 30 s, 2 min, 8 min (ou quand Slack le dit, dans l'heure),
+    puis `failed` à la quatrième tentative ; `skipped` quand la passerelle est en pause
+    ou que l'utilisateur Slack qui a écrit n'est plus l'identité reliée de la personne.
+    Une réponse est écrite deux fois quand Slack l'a prise mais a répondu trop tard (dix
+    secondes), ou que le service s'arrête entre son envoi et son enregistrement ; un
+    message pris (Slack, répondu, ne le renvoie pas) est perdu sans rien dire si le
+    processus disparaît avant que son run soit enregistré ;
+  - **les validations** restent dans l'application : Slack ne permet pas d'en décider.
+    Des boutons de validation dans Slack demanderaient l'interactivité de
+    l'application (une autre adresse signée et une autre permission) : un lot à venir.
+- **Conséquences** :
+  - données personnelles : un fil garde l'utilisateur Slack qui a écrit et sa
+    conversation directe avec l'application, tant que la conversation existe ; il part
+    avec la passerelle, la personne ou la conversation. Les réponses ne gardent que des
+    identifiants et leur sort ;
+  - la plateforme n'apporte pas de nouvelle permission : une conversation dans Slack
+    est un tour de la personne, et les règles de l'application s'y appliquent ;
+  - aucune limite propre aux messages de Slack, comme pour les tours de l'application :
+    la file des runs borne ce qui s'exécute à la fois (ADR-085), et la limite globale par
+    adresse (600 requêtes par minute et par processus) vaut pour les événements de Slack,
+    qu'il envoie de ses propres adresses pour toutes les entreprises ; une limite par
+    passerelle viendra si l'usage le demande ;
+  - le Slack simulé des tests peut être rendu indisponible (503) ; les tests écrivent
+    les réponses à la demande (`BuildOptions::manual_gateway_replies`) ;
+  - tests : `crates/core/src/gateways/slack/mrkdwn.rs` (échappement, balisage, texte
+    simple, coupe), `services/gateways/reply_text.rs`, `replies.rs` (tentatives),
+    `crates/api/tests/slack_gateway_conversations.rs` (conversation dans un fil, suite
+    dans le fil, autre conversation, pause puis réponse, demande occupée, Slack muet,
+    identité déliée, `agent:use` retiré, mot de passe provisoire, fil tenu pour un autre
+    compte, fil ouvert entretemps, service qui s'arrête),
+    `slack_gateway_replies.rs` (passerelle en pause, identité retirée, refus, Slack
+    injoignable puis rejoint, abandon, réponses d'un fil dans l'ordre, d'un passage à
+    l'autre et dans un même passage, réponse trop ancienne qui ne retient plus son fil),
+    `slack_gateway_companies.rs` (deux entreprises, chacune répondue dans ses fils) ;
+  - reste à venir : la conversation montrée « depuis Slack » dans l'application, avec
+    son parcours de bout en bout (12d), puis Telegram et Teams.

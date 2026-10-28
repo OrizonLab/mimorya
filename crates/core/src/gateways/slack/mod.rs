@@ -2,10 +2,13 @@
 //! declare of it (its bot's token, its signing secret), the permissions it
 //! asks for and the events it subscribes to, how a request Slack sends
 //! proves it comes from it (`signature`), which events reach the agent
-//! (`events`), and when Slack proves a Slack user is a person (`identity`).
+//! (`events`), when Slack proves a Slack user is a person (`identity`), and
+//! how the application's text is written in Slack's markup (`mrkdwn`,
+//! ADR-127).
 
 mod events;
 mod identity;
+mod mrkdwn;
 mod signature;
 
 use regex::Regex;
@@ -15,6 +18,7 @@ pub use events::{
     DirectMessage, Envelope, MAX_MESSAGE_CHARS, direct_message, is_event, is_person, is_workspace,
 };
 pub use identity::{IdentityRefusal, SlackProfile, identity_refusal};
+pub use mrkdwn::{bounded, escaped, from_markdown, plain};
 pub use signature::{MAX_SKEW_SECONDS, SignatureProblem, signature, verify};
 
 /// The permissions (bot token scopes) the application asks for: write its

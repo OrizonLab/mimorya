@@ -5,7 +5,8 @@
 //! request not signed by its application answer alike (404). At most
 //! `MAX_BODY_BYTES` are read (413). Slack's address check is answered with
 //! its challenge; anything else signed is answered 200, naming nothing,
-//! whatever became of it.
+//! whatever became of it: a linked person's message is answered in the
+//! background (ADR-127), Slack expecting its answer within seconds.
 
 use axum::body::Body;
 use axum::extract::{Path, State};
@@ -21,7 +22,7 @@ use uuid::Uuid;
 
 use crate::app::AppState;
 use crate::http::{ApiError, ApiResult};
-use crate::services::gateways::{EventOutcome, SlackHeaders};
+use crate::services::gateways::{EventOutcome, SlackHeaders, converse};
 
 pub use crate::services::gateways::SLACK_EVENTS_PREFIX;
 
@@ -68,6 +69,11 @@ async fn receive(
             Ok(Json(json!({ "challenge": challenge })).into_response())
         }
         EventOutcome::Taken => Ok(StatusCode::OK.into_response()),
+        EventOutcome::Message(incoming) => {
+            let services = state.clone();
+            (state.background).spawn(async move { converse(&services, *incoming).await });
+            Ok(StatusCode::OK.into_response())
+        }
         EventOutcome::Unknown => Err(DomainError::not_found(UNKNOWN).into()),
         EventOutcome::Unreadable => Err(ApiError::request(StatusCode::BAD_REQUEST, UNREADABLE)),
     }

@@ -4,14 +4,16 @@
 use mimorya_agent::llm::LlmMessage;
 use mimorya_agent::runtime::DEFAULT_BUDGET;
 use mimorya_core::DomainError;
-use mimorya_core::authz::{HOOK_CHANNEL, WEB_CHANNEL};
+use mimorya_core::authz::{HOOK_CHANNEL, SLACK_CHANNEL, WEB_CHANNEL};
 use mimorya_core::autonomy::AutonomyLevel;
+use mimorya_core::gateways::GatewayKind;
 use mimorya_db::TenantTx;
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::conversations::{
     ConversationPatch, DEFAULT_CONVERSATION_TITLE, MessageRow, NewMessage, add_message,
     list_messages, lock_conversation, update_conversation,
 };
+use mimorya_db::repositories::gateway_threads::touch_gateway_thread;
 use mimorya_db::repositories::runs::{
     NewRun, RunRow, RunStatus, create_run, list_runs_for_conversation,
 };
@@ -23,9 +25,14 @@ use crate::contract::MessageMetadata;
 use crate::services::access::{AccessContext, AuthIdentity};
 
 const HISTORY_LIMIT: i64 = 20;
-const TITLE_LENGTH: usize = 80;
+/// How much of a person's first words titles their conversation.
+pub const TITLE_LENGTH: usize = 80;
+/// A turn sent while the conversation's request is still in progress.
+pub(super) const BUSY: &str =
+    "Une demande est déjà en cours dans cette conversation : attendez sa fin ou sa validation.";
 
-/// Who sends a turn: its user, or the platform for them (ADR-080).
+/// Who sends a turn: its user, from the application or from their company's
+/// Slack application (ADR-127), or the platform for them (ADR-080).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TurnSender {
     User,
@@ -36,6 +43,11 @@ pub enum TurnSender {
     /// Their inbound hook `hook_id`, reached by another system (ADR-109).
     Hook {
         hook_id: Uuid,
+    },
+    /// Its user, writing to the gateway `gateway_id`: their company's Slack
+    /// application (ADR-127).
+    Gateway {
+        gateway_id: Uuid,
     },
 }
 
@@ -65,10 +77,7 @@ pub async fn open_conversation_turn(
             RunStatus::Queued | RunStatus::Running | RunStatus::AwaitingApproval
         )
     }) {
-        return Err(DomainError::conflict(
-            "Une demande est déjà en cours dans cette conversation : attendez sa fin ou sa validation.",
-        )
-        .into());
+        return Err(DomainError::conflict(BUSY).into());
     }
 
     let previous = list_messages(tx, conversation_id, HISTORY_LIMIT).await?;
@@ -84,8 +93,10 @@ pub async fn open_conversation_turn(
             metadata: serde_json::to_value(MessageMetadata {
                 inbound_hook_id: match sender {
                     TurnSender::Hook { hook_id } => Some(hook_id),
-                    TurnSender::User | TurnSender::Schedule { .. } => None,
+                    _ => None,
                 },
+                gateway: matches!(sender, TurnSender::Gateway { .. })
+                    .then(|| GatewayKind::Slack.as_str().to_owned()),
                 ..MessageMetadata::default()
             })?,
         },
@@ -126,6 +137,7 @@ pub async fn open_conversation_turn(
             // Read again whenever the run resumes (ADR-109).
             channel: match sender {
                 TurnSender::Hook { .. } => HOOK_CHANNEL,
+                TurnSender::Gateway { .. } => SLACK_CHANNEL,
                 TurnSender::User | TurnSender::Schedule { .. } => WEB_CHANNEL,
             },
         },
@@ -134,6 +146,10 @@ pub async fn open_conversation_turn(
     // Its task's last run before it can run (ADR-080, ADR-082).
     if let TurnSender::Schedule { task_id } = sender {
         link_started_run(tx, task_id, conversation_id, run.id).await?;
+    }
+    // Its Slack thread is active: its answers are written there (ADR-127).
+    if let TurnSender::Gateway { .. } = sender {
+        touch_gateway_thread(tx, conversation_id).await?;
     }
     let action = "agent.run.started";
     let started = match sender {
@@ -151,6 +167,12 @@ pub async fn open_conversation_turn(
             AuditEntry::new(identity.tenant_id, "system", action, "success")
                 .on_behalf_of(identity.user_id)
                 .metadata(json!({ "inboundHookId": hook_id }))
+        }
+        // Written by them, in Slack.
+        TurnSender::Gateway { gateway_id } => {
+            AuditEntry::new(identity.tenant_id, "user", action, "success")
+                .by_user(identity.user_id)
+                .metadata(json!({ "gatewayId": gateway_id }))
         }
     };
     append_audit(

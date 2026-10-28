@@ -4,9 +4,10 @@
 //! headers, the audit of refused administration changes, the periodic
 //! maintenance (stale runs, expired reset links), the indexing of memories
 //! by meaning, scheduled tasks, execution leases, run events relayed
-//! across processes and the run queue.
+//! across processes, the run queue and the answers written in Slack.
 
 pub mod csrf;
+pub mod gateway_replies;
 pub mod maintenance;
 pub mod memory_indexing;
 pub mod rate_limit;

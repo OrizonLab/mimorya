@@ -46,7 +46,8 @@ Repères à l'intérieur des crates :
   refus, découpage en passages, qui lit et dépose où (`spaces.rs`), ADR-095),
   `core/src/demo/` (entreprise fictive par thème), `core/src/gateways/` (passerelles de
   conversation : application Slack déclarée, signature de ses événements, messages
-  pris, preuve qu'un utilisateur Slack est la personne d'un compte, ADR-125).
+  pris, preuve qu'un utilisateur Slack est la personne d'un compte, ADR-125 ; texte
+  écrit dans Slack en son balisage et message lu en texte simple, `mrkdwn.rs`, ADR-127).
 - `db/migrations/` (SQL numéroté, source de vérité du schéma),
   `db/src/repositories/` (un fichier par entité ; la mémoire : `memory.rs`, recherche
   hybride `memory_search.rs`, vecteurs `memory_embeddings.rs`, ADR-074 ; fenêtres des
@@ -63,7 +64,8 @@ Repères à l'intérieur des crates :
   évaluations : `skill_evaluations.rs`, ADR-104 ; comptes reliés par chacun et leur
   jeton de renouvellement scellé : `account_links.rs`, ADR-116 ; passerelles et
   événements pris : `gateways.rs`, identités reliées : `gateway_identities.rs`,
-  ADR-125),
+  ADR-125 ; fils Slack des conversations : `gateway_threads.rs`, réponses écrites :
+  `gateway_replies.rs`, ADR-127),
   `db/src/notifications.rs` (canaux PostgreSQL des événements des runs, de la file et des
   invalidations, ADR-084, ADR-085), `db/src/sweep_lock.rs` (verrou d'un balayage qui ne
   tourne que dans un processus à la fois, ADR-086), `db/src/seed/` (organisation,
@@ -117,7 +119,8 @@ Repères à l'intérieur des crates :
   bail expiré repris, `run_leases.rs`, ADR-083 ; événements des autres processus écoutés
   et fragments de texte envoyés, `run_event_relay.rs`, ADR-084 ; runs en file réservés
   par le worker, `run_queue.rs`, ADR-085 ; tâches de fond lancées selon le rôle du
-  processus, `MIMORYA_ROLE`, dans `app.rs` (`Background`), ADR-085),
+  processus, `MIMORYA_ROLE`, dans `app.rs` (`Background`), ADR-085 ; réponses écrites
+  dans Slack toutes les trois secondes, `gateway_replies.rs`, ADR-127),
   `api/src/routes/` (un module par ressource, `admin/`), `api/src/contract/` (réponses
   et corps de requêtes typés, un fichier par ressource, dont sont générés les types
   TypeScript, ADR-036, ADR-039),
@@ -138,7 +141,10 @@ Repères à l'intérieur des crates :
   `api/src/services/gateways/` (passerelles de conversation : événements de Slack reçus
   sur leur signature (`events.rs`), lien de liaison offert dans Slack et confirmé dans
   la session de la personne (`link.rs`), identités listées et retirées
-  (`identities.rs`), ADR-125 ; déclarées par `services/admin/gateways.rs`),
+  (`identities.rs`), ADR-125 ; message d'une personne reliée répondu dans une
+  conversation tenue dans son fil (`conversations.rs`), fin ou pause des runs écrite
+  dans le fil (`replies.rs`, `reply_text.rs`), ADR-127 ; déclarées par
+  `services/admin/gateways.rs`),
   `api/src/services/notification_settings.rs` (e-mails que chacun choisit de recevoir,
   lus au moment d'envoyer chaque avis, ADR-094),
   `api/src/services/skill_proposal_notice/` (propositions de l'agent annoncées par e-mail
@@ -151,7 +157,8 @@ Repères à l'intérieur des crates :
   `extractor.rs` ; dépôt sous le quota de l'entreprise, `deposit.rs` ; liste,
   téléchargement et suppression, `library.rs`, ADR-095),
   `api/src/services/runs/` (tour de conversation, dont celui envoyé pour quelqu'un dans une
-  conversation nouvelle, ouverte avec lui (`turn_start.rs`, ADR-109), décisions, contexte, exécution,
+  conversation nouvelle, ouverte avec lui (`turn_start.rs`, ADR-109), ou tenue dans le fil
+  Slack qu'il ouvre, ADR-127, décisions, contexte, exécution,
   ports PostgreSQL (lectures de la mémoire et des documents, partagées avec les
   évaluations : `reads.rs` ; documents : `document_ports.rs`, ADR-096 ; runs des sous-agents,
   sous le bail de leur parent : `sub_runs.rs`, ADR-098), résultat, reprise des runs dont l'exécuteur s'est arrêté et ce

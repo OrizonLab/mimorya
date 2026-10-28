@@ -1203,7 +1203,12 @@ mission?: MissionPart,
  * The inbound hook whose delivery sent the message, as its author's
  * (ADR-109): its instruction, then what was posted, enclosed.
  */
-inboundHookId?: string, };
+inboundHookId?: string,
+/**
+ * The service its author wrote it from, `slack`: their company's
+ * Slack application (ADR-127).
+ */
+gateway?: string, };
 
 export type MessageRole = "user" | "assistant";
 

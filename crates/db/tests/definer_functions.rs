@@ -5,7 +5,7 @@
 
 mod support;
 
-const EXPECTED: [&str; 31] = [
+const EXPECTED: [&str; 32] = [
     "auth_domain_held_elsewhere",
     "auth_find_identity_provider",
     "auth_find_identity_provider_link",
@@ -37,6 +37,7 @@ const EXPECTED: [&str; 31] = [
     "system_unnotified_mission_ends",
     "system_unnotified_mission_runs",
     "system_unnotified_scheduled_runs",
+    "system_unreplied_gateway_events",
 ];
 
 #[derive(sqlx::FromRow)]

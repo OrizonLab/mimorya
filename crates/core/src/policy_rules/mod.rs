@@ -45,7 +45,8 @@ pub const KNOWN_ATTRIBUTES: &[(&str, &str)] = &[
     ("context.actorType", "Acteur : « user » ou « agent »"),
     (
         "context.channel",
-        "Canal : « web », « hook » (déclencheur) ou « evaluation » (compétence évaluée)",
+        "Canal : « web », « hook » (déclencheur), « slack » (message écrit à l’application Slack \
+         de l’entreprise) ou « evaluation » (compétence évaluée)",
     ),
 ];
 

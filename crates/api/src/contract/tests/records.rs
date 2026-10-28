@@ -56,6 +56,7 @@ fn message_metadata_carries_the_engine_s_sources_and_checks() {
         verification: Some((&report).into()),
         mission: None,
         inbound_hook_id: None,
+        gateway: None,
     };
     let written = serde_json::to_value(&metadata).unwrap();
     assert_eq!(
@@ -81,6 +82,14 @@ fn message_metadata_carries_the_engine_s_sources_and_checks() {
     let written = serde_json::to_value(&sent).unwrap();
     assert_eq!(written, json!({ "inboundHookId": hook }));
     reads_back::<_, MessageMetadata>(&sent);
+    // A turn written in Slack (ADR-127).
+    let slack = MessageMetadata {
+        gateway: Some("slack".into()),
+        ..MessageMetadata::default()
+    };
+    let written = serde_json::to_value(&slack).unwrap();
+    assert_eq!(written, json!({ "gateway": "slack" }));
+    reads_back::<_, MessageMetadata>(&slack);
 }
 
 #[test]
