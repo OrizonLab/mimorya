@@ -5,12 +5,14 @@ on:
     branches: [main]
   pull_request:
 
-# A pull request's new push cancels its former run. A run of main is never
-# cancelled: each merge's images are published from it, and a run
-# cancelled saves no cache for the next.
+# A pull request's newer push cancels its former run. Each merge's run of
+# main has its own group, so none waits on, replaces or cancels another:
+# each merge's images are published from its run (named main only if it is
+# still main's head, ADR-051), and a run cancelled saves no cache for the
+# next.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: true
 
 jobs:
   rust:
