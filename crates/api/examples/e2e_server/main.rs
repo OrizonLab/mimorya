@@ -14,6 +14,9 @@
 //! providers alone are reached on the private network, connectors keep to
 //! the public one. The DNS a domain's proof is read from is the tests' own,
 //! where they publish records on 127.0.0.1:4102 (`DNS_ADDRESS`, ADR-069).
+//! The companies' Slack gateways reach a local Slack on 127.0.0.1:4103
+//! (`SLACK_ADDRESS`), which knows Léa's Slack user and lists what the
+//! gateways posted (ADR-126).
 //! A company's embedding model is a test one, whatever it chooses: no
 //! provider is ever reached (ADR-074). A finished run reread for a lesson
 //! always yields the same one (`lessons`, ADR-076). A mission is played
@@ -69,6 +72,7 @@ use mimorya_api::mail::Mailer;
 use mimorya_api::services::{EmbeddingFactory, ProviderFactory};
 use mimorya_api::{AppConfig, BuildOptions, build_app, log_filter};
 use mimorya_connectors::outbound::NetworkPolicy;
+use mimorya_connectors::testing::FakeSlack;
 use mimorya_db::repositories::rate_limits::purge_rate_limits;
 
 /// Reference scenarios queued for the platform model, by the hour of their
@@ -91,6 +95,13 @@ const SAML_IDP_ADDRESS: &str = "127.0.0.1:4101";
 
 /// Where the tests publish DNS records (ADR-069).
 const DNS_ADDRESS: &str = "127.0.0.1:4102";
+
+/// Where Slack's Web API listens, and lists the messages the gateways posted:
+/// `slack-gateway.spec.ts` reads them there (ADR-126).
+const SLACK_ADDRESS: &str = "127.0.0.1:4103";
+/// Léa's Slack user, of the company's workspace, with her address.
+const LEA_SLACK: &str = "U0LEAE2E";
+const LEA_ADDRESS: &str = "lea.fontaine@neo-maintenance.example";
 
 /// Requests per minute from the web relay, which every test goes through.
 const GLOBAL_RATE_LIMIT_PER_MINUTE: u32 = 100_000;
@@ -143,6 +154,9 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!(address = saml_idp, "End-to-end SAML provider listening");
     let dns = Arc::new(fake_dns::FakeDns::default());
     dns_server::start_on(DNS_ADDRESS, dns.clone()).await?;
+    let slack = FakeSlack::start_on(SLACK_ADDRESS).await;
+    slack.add_person(LEA_SLACK, LEA_ADDRESS);
+    tracing::info!(url = slack.url, "End-to-end Slack listening");
     let address = format!("{}:{}", config.host, config.port);
     let app = build_app(
         config,
@@ -164,7 +178,8 @@ async fn main() -> anyhow::Result<()> {
             dns: Some(dns),
             // Its people link their accounts at the local provider (ADR-118).
             account_link_issuer: Some(idp.issuer.clone()),
-            slack_api: None,
+            // Its gateways reach the local Slack (ADR-126).
+            slack_api: Some(slack.url.clone()),
         },
     )
     .await?;

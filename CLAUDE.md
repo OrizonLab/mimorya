@@ -196,11 +196,13 @@ Repères à l'intérieur des crates :
   simulés, OpenID Connect (qui joue aussi Google, ADR-121) et SAML).
 - `web/components/<fonctionnalité>/` (account — dont les e-mails reçus, ADR-094, et les
   comptes reliés, ADR-118, au nom de leur fournisseur, ADR-124, et les permissions à
-  accorder, ADR-120 —,
+  accorder, ADR-120, les messageries reliées et la page du lien envoyé dans Slack,
+  `app/account/gateway-link` hors du cadre de l'application, ADR-126 —,
   admin — dont `admin/connectors/` : serveurs MCP et API REST décrites opération par
   opération, ADR-113, et leurs opérations importées d'une description OpenAPI, JSON ou
   YAML converti dans le navigateur, ADR-115, et l'application Microsoft 365, ADR-118,
-  dont l'écriture permise, ADR-120, et le client Google Workspace, ADR-124, `admin/llm/` : modèle des conversations et modèle de contrôle des réponses, ADR-108, recherche dans la mémoire, leçons et limites des missions, ADR-075,
+  dont l'écriture permise, ADR-120, et le client Google Workspace, ADR-124, et les
+  passerelles de conversation, l'application Slack, ADR-126, `admin/llm/` : modèle des conversations et modèle de contrôle des réponses, ADR-108, recherche dans la mémoire, leçons et limites des missions, ADR-075,
   ADR-077, ADR-093, `admin/users/` :
   comptes, dont l'absence d'un collaborateur empêché, ADR-079, et `admin/skills/` :
   compétences, propositions de l'agent, ADR-101, cas d'évaluation et évaluations,
@@ -227,7 +229,8 @@ Repères à l'intérieur des crates :
   `skill_proposals.rs`, ADR-101, et une version de compétence jouée sur son cas,
   `skill_evaluations.rs`, ADR-105, et ce qu'envoie un déclencheur, `hooks.rs`, ADR-110 ; les personnes y sont envoyées
   au fournisseur simulé au lieu de Microsoft ou Google, `BuildOptions::account_link_issuer`,
-  ADR-118, ADR-121).
+  ADR-118, ADR-121, et les passerelles parlent à un Slack simulé qui liste ce que
+  l'application écrit, `BuildOptions::slack_api`, ADR-126).
 - `infra/` : `docker/` (images de l'API et de l'interface, liste des images publiées
   `images.json`, test de fumée de la démonstration, test d'installation de la production,
   vérifications partagées `checks.sh`, dont les rôles des processus lus dans la base), `caddy/`

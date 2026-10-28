@@ -1,20 +1,18 @@
 //! The conversation gateways of the signed-in person's company, and who they
-//! are on each (ADR-125): listed for them; the link Slack gave them, shown
-//! then confirmed in their own session (counted with the sign-ins through a
-//! provider: each confirmation asks Slack); their identity removed.
+//! are on each (ADR-125, ADR-126): listed for them; the link Slack gave them, its
+//! code read from the page's fragment and sent in a body (never in an
+//! address the servers log), shown then confirmed in their own session
+//! (counted with the sign-ins through a provider: each confirmation asks
+//! Slack); their identity removed.
 
-use axum::extract::rejection::QueryRejection;
-use axum::extract::{Query, State};
-use axum::routing::{delete, get};
+use axum::extract::State;
+use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use chrono::Utc;
-use mimorya_core::DomainError;
-use serde::Deserialize;
 
 use crate::app::AppState;
 use crate::contract::{
-    AccountGatewayView, AccountGateways, Done, GatewayIdentity, GatewayLinkConfirmation,
-    GatewayLinkPreview,
+    AccountGatewayView, AccountGateways, Done, GatewayIdentity, GatewayLinkCode, GatewayLinkPreview,
 };
 use crate::http::{ApiError, ApiResult, Body, PathId, iso};
 use crate::plugins::{Auth, RequestContext};
@@ -22,7 +20,8 @@ use crate::plugins::{Auth, RequestContext};
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/account/gateways", get(list))
-        .route("/account/gateways/link", get(preview).post(confirm))
+        .route("/account/gateways/link/preview", post(preview))
+        .route("/account/gateways/link", post(confirm))
         .route("/account/gateways/{id}", delete(remove))
 }
 
@@ -52,23 +51,15 @@ async fn list(
     Ok(Json(AccountGateways { gateways }))
 }
 
-#[derive(Deserialize)]
-struct LinkQuery {
-    code: String,
-}
-
 async fn preview(
     State(state): State<AppState>,
     Auth(identity): Auth,
-    query: Result<Query<LinkQuery>, QueryRejection>,
+    Body(body): Body<GatewayLinkCode>,
 ) -> ApiResult<Json<GatewayLinkPreview>> {
-    let Ok(Query(query)) = query else {
-        return Err(DomainError::not_found("Lien de liaison invalide").into());
-    };
     let access = state.access.context(identity).await?;
     let preview = state
         .gateways
-        .preview_link(&access, &query.code, Utc::now())
+        .preview_link(&access, &body.code, Utc::now())
         .await?;
     Ok(Json(GatewayLinkPreview {
         gateway_id: preview.gateway.id,
@@ -84,7 +75,7 @@ async fn confirm(
     State(state): State<AppState>,
     context: RequestContext,
     Auth(identity): Auth,
-    Body(body): Body<GatewayLinkConfirmation>,
+    Body(body): Body<GatewayLinkCode>,
 ) -> ApiResult<Json<Done>> {
     if !state
         .limits

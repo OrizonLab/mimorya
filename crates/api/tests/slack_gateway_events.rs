@@ -104,7 +104,8 @@ async fn a_person_not_linked_is_sent_a_link_once_per_event() {
     assert_eq!(posts.len(), 1, "{posts:?}");
     let post = &posts[0];
     assert_eq!(post.channel, "D0LEA");
-    let link = format!("<{WEB_ORIGIN}/account/gateway-link?code=");
+    // The code in the fragment: never sent to a server with the page.
+    let link = format!("<{WEB_ORIGIN}/account/gateway-link#");
     assert!(post.text.contains(&link), "{}", post.text);
     assert!(post.text.contains("|relier mon compte>"), "{}", post.text);
     assert!(post.text.contains("15 minutes"), "{}", post.text);

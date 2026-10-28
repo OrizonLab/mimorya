@@ -191,7 +191,7 @@ const AUTHENTICATED_ROUTES: &[(&str, &str)] = &[
     ("POST", "/account/links/{id}"),
     ("DELETE", "/account/links/{id}"),
     ("GET", "/account/gateways"),
-    ("GET", "/account/gateways/link"),
+    ("POST", "/account/gateways/link/preview"),
     ("POST", "/account/gateways/link"),
     ("DELETE", "/account/gateways/{id}"),
     ("PUT", "/account/notifications"),

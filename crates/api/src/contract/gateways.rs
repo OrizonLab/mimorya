@@ -42,7 +42,7 @@ pub struct GatewayIdentity {
     pub linked_at: String,
 }
 
-/// `GET /account/gateways/link?code=…`: what the link would link.
+/// `POST /account/gateways/link/preview`: what the link would link.
 #[derive(Debug, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct GatewayLinkPreview {
@@ -56,10 +56,12 @@ pub struct GatewayLinkPreview {
     pub expires_at: String,
 }
 
-/// Body of `POST /account/gateways/link`: the link Slack gave.
+/// Body of `POST /account/gateways/link/preview` and `POST
+/// /account/gateways/link`: the code of the link Slack gave, from its
+/// fragment.
 #[derive(Deserialize, Validate, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct GatewayLinkConfirmation {
+pub struct GatewayLinkCode {
     #[serde(deserialize_with = "trimmed")]
     #[validate(length(min = 1, max = 4000))]
     pub code: String,

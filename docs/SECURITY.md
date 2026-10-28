@@ -107,7 +107,9 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   le message direct d'une personne, est ignoré. Ce que dit un message n'est ni
   journalisé ni audité. Une identité Slack n'est reliée que depuis la session de la
   personne, par le lien scellé (quinze minutes, rien d'enregistré) que l'application lui
-  envoie, et seulement si Slack, interrogé alors, dit que l'utilisateur est de l'espace
+  envoie, son code dans le fragment de l'adresse, jamais envoyé avec la page ni écrit
+  dans les journaux d'un proxy, remis par la page dans le corps d'une requête
+  (ADR-126), et seulement si Slack, interrogé alors, dit que l'utilisateur est de l'espace
   de travail de l'entreprise, ni désactivé ni bot, et a l'adresse du compte : un lien
   ouvert par quelqu'un d'autre ne relie rien. Refus audités avec leur raison, jamais une
   adresse ; identité retirée avec le compte désactivé ou la passerelle supprimée.

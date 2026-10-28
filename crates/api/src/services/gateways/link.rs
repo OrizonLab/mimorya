@@ -1,8 +1,9 @@
 //! A person links their Slack identity to their account (ADR-125). Writing
 //! to the application before they did, they are sent, in their direct
-//! conversation with it, a link to their account's page: it carries the
-//! gateway and their Slack user, sealed for their company by the server's
-//! master key, valid fifteen minutes; nothing is stored. Opened in their
+//! conversation with it, a link to their account's page: it carries, in its
+//! fragment (never sent to a server with the page), the gateway and their
+//! Slack user, sealed for their company by the server's master key, valid
+//! fifteen minutes; nothing is stored. Opened in their
 //! own session, the link is confirmed once Slack, asked again then, says
 //! that Slack user is of the company's workspace and has the account's own
 //! address (`identity_refusal`): a link opened by someone else links
@@ -77,7 +78,8 @@ impl GatewayService {
             expires_at: now + LINK_LIFETIME,
         };
         let sealed = seal_value(cipher, tenant_id, SEALED_AS, &code)?;
-        let url = format!("{}{LINK_PAGE}?code={sealed}", self.web_origin);
+        // In the fragment: never sent to a server with the page.
+        let url = format!("{}{LINK_PAGE}#{sealed}", self.web_origin);
         let text = link_text(&self.assistant_name, &url);
         let slack = self.slack.clone();
         self.background.spawn(async move {
@@ -266,12 +268,10 @@ mod tests {
     fn the_link_message_quotes_nothing_slack_would_read_as_markup() {
         let text = link_text(
             "Assistant <!channel> & co",
-            "https://app.example/account/gateway-link?code=a.b",
+            "https://app.example/account/gateway-link#a.b",
         );
         assert!(text.contains("Assistant &lt;!channel&gt; &amp; co"));
-        assert!(
-            text.contains("<https://app.example/account/gateway-link?code=a.b|relier mon compte>")
-        );
+        assert!(text.contains("<https://app.example/account/gateway-link#a.b|relier mon compte>"));
         assert!(!text.contains("<!channel>"));
     }
 }

@@ -41,8 +41,7 @@ pub use documents::{
 };
 pub use errors::{ErrorBody, ErrorDetail, ErrorKind};
 pub use gateways::{
-    AccountGatewayView, AccountGateways, GatewayIdentity, GatewayLinkConfirmation,
-    GatewayLinkPreview,
+    AccountGatewayView, AccountGateways, GatewayIdentity, GatewayLinkCode, GatewayLinkPreview,
 };
 pub use health::Health;
 pub use inbound_hooks::{
@@ -163,7 +162,7 @@ macro_rules! request_bodies {
             SsoLinkLookup,
             PasswordUpdate,
             NotificationSettings,
-            GatewayLinkConfirmation,
+            GatewayLinkCode,
             ResetLinkRequest,
             LinkToken,
             LinkPassword,

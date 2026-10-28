@@ -715,12 +715,14 @@ externalId: string,
 address: string, linkedAt: string, };
 
 /**
- * Body of `POST /account/gateways/link`: the link Slack gave.
+ * Body of `POST /account/gateways/link/preview` and `POST
+ * /account/gateways/link`: the code of the link Slack gave, from its
+ * fragment.
  */
-export type GatewayLinkConfirmation = { code: string, };
+export type GatewayLinkCode = { code: string, };
 
 /**
- * `GET /account/gateways/link?code=…`: what the link would link.
+ * `POST /account/gateways/link/preview`: what the link would link.
  */
 export type GatewayLinkPreview = { gatewayId: string, type: string, name: string, workspaceName: string,
 /**

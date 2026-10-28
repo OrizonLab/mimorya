@@ -6701,12 +6701,14 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
   - **la liaison de l'identité Slack** :
     - une personne qui écrit à l'application sans avoir relié son identité reçoit, dans
       sa conversation (dans son fil s'il y en a un), un lien vers son compte
-      (`/account/gateway-link?code=…`), valable quinze minutes. Le lien porte la
+      (`/account/gateway-link?code=…`, le code passé depuis dans le fragment,
+      ADR-126), valable quinze minutes. Le lien porte la
       passerelle et l'utilisateur Slack, scellés pour l'entreprise par la clé maîtresse
       du serveur ; rien n'est enregistré. Le message ne reprend rien de ce qu'elle a
       écrit, et le nom de l'assistant y est échappé pour Slack (`&`, `<`, `>`) ;
     - ouvert dans sa propre session, le lien est montré
-      (`GET /account/gateways/link`), puis confirmé (`POST`, compté avec les connexions
+      (`GET /account/gateways/link`, devenu `POST /account/gateways/link/preview`,
+      ADR-126), puis confirmé (`POST`, compté avec les connexions
       par un fournisseur) : Slack est alors interrogé de nouveau (`users.info`), et la
       liaison n'est faite que si cet utilisateur Slack est de l'espace de travail de
       l'entreprise, ni désactivé ni bot, et a l'adresse du compte. L'adresse est la
@@ -6750,3 +6752,61 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     remplacement ; compte désactivé), `slack_gateway_companies.rs` (événement signé
     pour une entreprise envoyé à la passerelle d'une autre ; purge des événements
     d'un jour dans chaque entreprise).
+
+## ADR-126 — Écrans de la passerelle Slack : application dans « Connecteurs », identité dans « Mon compte », page du lien (passerelles, lot 12b)
+
+- **Date** : 2026-10-28 · **Statut** : acceptée · complète ADR-125, dont elle remplace
+  le code du lien dans la requête (`?code=`) et la route `GET /account/gateways/link`
+- **Contexte** : la passerelle Slack ne se déclarait que par l'API, et le lien que
+  l'application envoie dans Slack menait à la page « introuvable » de l'application web
+  (ADR-125). Ce lien portait son code dans la requête : le code, qui suffit à relier une
+  identité pendant quinze minutes à qui ouvre le lien dans la session d'une personne
+  ayant l'adresse que Slack donne, partait avec la page vers le serveur et pouvait être
+  écrit dans les journaux d'un proxy ou d'un serveur web.
+- **Décision** :
+  - **le code dans le fragment** : le lien est `/account/gateway-link#<code>`. Le
+    navigateur n'envoie jamais le fragment avec la page ; la page le lit et le remet
+    dans le corps d'une requête : l'aperçu devient
+    `POST /account/gateways/link/preview` et la confirmation
+    `POST /account/gateways/link`, tous deux avec `{ code }` (`GatewayLinkCode`, borné,
+    strict). L'aperçu ne modifie rien et n'interroge pas Slack ; seule la confirmation
+    reste comptée avec les connexions par un fournisseur (ADR-125) ;
+  - **la page du lien** est hors du cadre de l'application (`app/account/gateway-link`,
+    hors du groupe `(app)`), dans le cadre des pages de connexion : une personne non
+    connectée n'est pas renvoyée vers la connexion, ce qui perdrait le fragment, mais
+    invitée à se connecter puis à rouvrir le lien (il vaut quinze minutes, et
+    l'application en envoie un nouveau au message suivant). Connectée, elle voit
+    l'utilisateur Slack, l'espace de travail et la passerelle que le lien relierait,
+    puis confirme ; un lien incomplet, expiré ou refusé est dit avec la raison que donne
+    le serveur. La page suit celles des autres liens à usage unique (invitation, mot de
+    passe oublié, lien de connexion de l'entreprise : `useLinkToken`, `LinkPage`), qui
+    gagnent l'état « connectez-vous d'abord » d'un lien ouvert hors de la session qu'il
+    demande (401) ;
+  - **« Connecteurs »**, section « Passerelles de conversation », avant les types de
+    connecteurs : « Déclarer l'application Slack » tant que l'entreprise n'en a pas
+    (nom, jeton du bot et secret de signature, vérifiés par le navigateur comme par le
+    serveur) ; un texte d'aide dit ce que l'entreprise crée sur api.slack.com (les
+    quatre permissions du bot, l'onglet « Messages » de « App Home », l'abonnement à
+    `message.im`). La carte montre l'espace de travail, l'utilisateur bot, le jeton et
+    le secret enregistrés (jamais réaffichés), le nombre de comptes reliés, l'adresse
+    des événements à donner à Slack, les permissions et l'événement ; elle se modifie
+    (jeton et secret laissés vides : gardés), se désactive, se réactive et se supprime,
+    la confirmation disant que les comptes reliés s'en vont avec elle ;
+  - **« Mon compte »**, carte « Messageries reliées », montrée seulement si l'entreprise
+    a une passerelle : reliée, l'identité Slack, l'adresse que Slack a donnée et la
+    date ; sinon, comment la relier (écrire à l'application dans l'espace de travail) ;
+    une passerelle en pause ou une personne sans `agent:use` est dite indisponible, et
+    l'identité reste à retirer ;
+  - **suite de l'audit de l'ADR-125** : l'en-tête de `services/gateways/events.rs`
+    est replié à la largeur des commentaires.
+- **Conséquences** :
+  - le Slack simulé des tests écoute, pour les tests de bout en bout, à une adresse
+    fixe (`FakeSlack::start_on`, 127.0.0.1:4103 dans `e2e_server`) et liste ce que
+    l'application a écrit (`GET /test/posts`) ; il connaît l'utilisateur Slack de Léa ;
+  - tests : `apps/web/e2e/slack-gateway.spec.ts` (déclaration, carte et adresse des
+    événements relues dans l'API, sans jeton ni secret ; message direct signé par le
+    test comme Slack le signe, lien lu chez le Slack simulé ; lien ouvert hors session
+    puis dans celle de Léa, liaison relue ; passerelle désactivée, liaison retirée,
+    passerelle renommée sans changer ses secrets, réactivée, supprimée, l'adresse
+    répondant alors comme une passerelle inconnue) ; `slack_gateway_links.rs` et
+    `slack_gateway_events.rs` suivent le code dans le fragment et l'aperçu en `POST`.

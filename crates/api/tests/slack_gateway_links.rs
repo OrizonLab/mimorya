@@ -18,7 +18,7 @@ use mimorya_connectors::testing::FakeSlack;
 use mimorya_core::demo::{tenant, user};
 use serde_json::{Value, json};
 use support::gateways::{
-    ACCOUNT, LINK, declare_slack, direct_message, gateway_view, offered_code, send,
+    ACCOUNT, LINK, PREVIEW, declare_slack, direct_message, gateway_view, offered_code, send,
 };
 use support::manager_approvals::without;
 use support::queue::as_owner;
@@ -70,7 +70,7 @@ async fn a_person_links_their_slack_identity_from_their_own_session() {
     assert_eq!(listed["linked"], Value::Null);
 
     let code = link_for(&api, &slack, gateway, LEA_SLACK).await;
-    let shown = lea.get(&format!("{LINK}?code={code}")).await;
+    let shown = lea.post(PREVIEW, json!({ "code": code })).await;
     assert_eq!(shown.status, StatusCode::OK, "{}", shown.text());
     let shown = shown.json();
     assert_eq!(shown["gatewayId"], gateway.to_string());
@@ -201,14 +201,8 @@ async fn a_link_is_valid_fifteen_minutes_in_its_own_company() {
             "{broken}: {}",
             refused.text()
         );
-        assert_eq!(
-            lea.get(&format!("{LINK}?code={broken}"))
-                .await
-                .status
-                .as_u16()
-                / 100,
-            4
-        );
+        let shown = lea.post(PREVIEW, json!({ "code": broken })).await;
+        assert_eq!(shown.status.as_u16() / 100, 4, "{broken}");
     }
 
     // Sixteen minutes later.
@@ -329,7 +323,7 @@ async fn linking_takes_the_agent_an_enabled_gateway_and_slack_s_answer() {
     let paused = paul.patch(&path, json!({ "enabled": false })).await;
     assert_eq!(paused.status, StatusCode::OK);
     assert_eq!(own_gateway(&lea, gateway).await["available"], false);
-    let shown = lea.get(&format!("{LINK}?code={code}")).await;
+    let shown = lea.post(PREVIEW, json!({ "code": code })).await;
     assert_eq!(shown.status, StatusCode::CONFLICT, "{}", shown.text());
     let refused = confirm(&lea, &code).await;
     assert_eq!(refused.status, StatusCode::CONFLICT, "{}", refused.text());
