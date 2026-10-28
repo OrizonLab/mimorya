@@ -15,6 +15,7 @@ pub mod document_search;
 pub mod documents;
 pub mod embeddings;
 pub mod evaluation_passes;
+pub mod gateways;
 pub mod hooks;
 pub mod identity_provider;
 pub mod impostor;
@@ -130,6 +131,8 @@ struct Setup<'a> {
     background_indexing: bool,
     background_scheduling: bool,
     run_leases: Option<LeaseTiming>,
+    /// Slack's Web API the gateways reach, a local one (ADR-125).
+    slack_api: Option<String>,
 }
 
 pub struct TestApi {
@@ -156,6 +159,17 @@ impl TestApi {
     /// App backed by the scripted model; queue its answers with `script`.
     pub async fn start() -> Self {
         Self::start_with(&[]).await
+    }
+
+    /// Same, its companies' gateways reaching the local Slack at `url`
+    /// (ADR-125), with configuration variables overridden.
+    pub async fn start_with_slack(env: &[(&str, &str)], url: &str) -> Self {
+        Self::scripted(Setup {
+            env,
+            slack_api: Some(url.to_owned()),
+            ..Setup::default()
+        })
+        .await
     }
 
     /// Same, with configuration variables overridden.
@@ -236,6 +250,7 @@ impl TestApi {
             background_indexing,
             background_scheduling,
             run_leases,
+            slack_api,
         } = setup;
         limits::forget_counts().await;
         let mut vars: HashMap<&str, String> = HashMap::from([
@@ -284,6 +299,7 @@ impl TestApi {
             global_rate_limit_per_minute: None,
             dns: Some(dns.clone()),
             account_link_issuer: None,
+            slack_api,
         };
         let app = build_app(config, options).await.expect("app");
         Self {

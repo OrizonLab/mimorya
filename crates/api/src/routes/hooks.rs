@@ -21,8 +21,9 @@ use crate::app::AppState;
 use crate::http::{ApiError, ApiResult};
 use crate::services::inbound_hooks::{MAX_BODY_BYTES, Refusal, deliver, unknown};
 
-/// Where a system posts: the only route a request without the browser's
-/// header reaches beside the SAML reception (`plugins/csrf.rs`).
+/// Where a system posts: one of the three routes a request without the
+/// browser's header reaches, with the SAML reception and the events Slack
+/// sends a gateway (`plugins/csrf.rs`, ADR-125).
 pub const DELIVERY_PREFIX: &str = "/hooks/";
 
 const TOO_LARGE: &str = "Données reçues trop volumineuses : 16 Kio au plus.";

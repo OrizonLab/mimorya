@@ -47,4 +47,7 @@ pub struct BuildOptions {
     /// application sends its people to, its directory's at Microsoft or
     /// Google's, as stored (end-to-end tests: the local provider, ADR-118).
     pub account_link_issuer: Option<String>,
+    /// Replaces Slack's Web API, which the companies' gateways reach (tests:
+    /// a local one, ADR-125).
+    pub slack_api: Option<String>,
 }

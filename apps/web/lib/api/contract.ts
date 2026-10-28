@@ -30,6 +30,25 @@ export type AbsenceRecorded = {
 notified: boolean, };
 
 /**
+ * A gateway of the company, and the person's identity there.
+ */
+export type AccountGatewayView = { gatewayId: string,
+/**
+ * `slack`.
+ */
+type: string, name: string, workspaceName: string,
+/**
+ * A link may be made: the gateway is enabled and the person may talk
+ * with the agent. Otherwise their identity stays theirs to remove.
+ */
+available: boolean, linked: GatewayIdentity | null, };
+
+/**
+ * `GET /account/gateways`.
+ */
+export type AccountGateways = { gateways: Array<AccountGatewayView>, };
+
+/**
  * `POST /account/links/{connectorId}`: where the browser goes to sign in
  * and grant access.
  */
@@ -681,6 +700,86 @@ reference: CaseResultView | null, regression: boolean, };
 export type EvaluationRequest = { version: number, };
 
 export type EvaluationStatus = "queued" | "running" | "completed" | "failed";
+
+/**
+ * Who the person is on the gateway's service.
+ */
+export type GatewayIdentity = {
+/**
+ * Their Slack user.
+ */
+externalId: string,
+/**
+ * The address Slack gave as theirs when they linked it.
+ */
+address: string, linkedAt: string, };
+
+/**
+ * Body of `POST /account/gateways/link`: the link Slack gave.
+ */
+export type GatewayLinkConfirmation = { code: string, };
+
+/**
+ * `GET /account/gateways/link?code=…`: what the link would link.
+ */
+export type GatewayLinkPreview = { gatewayId: string, type: string, name: string, workspaceName: string,
+/**
+ * The Slack user the link names.
+ */
+externalId: string, expiresAt: string, };
+
+/**
+ * Body of `PATCH /admin/gateways/{id}`: an absent field is left as it
+ * stands.
+ */
+export type GatewayUpdate = { name?: string, enabled?: boolean,
+/**
+ * A new token of the same application, or of one of the same
+ * workspace.
+ */
+botToken?: string, signingSecret?: string, };
+
+/**
+ * A gateway of the company.
+ */
+export type GatewayView = { id: string,
+/**
+ * `slack`.
+ */
+type: string, name: string, enabled: boolean,
+/**
+ * The workspace Slack said the application is installed in.
+ */
+workspaceId: string, workspaceName: string,
+/**
+ * The application's bot user.
+ */
+botUserId: string,
+/**
+ * Where Slack sends the application's events (« Event Subscriptions »).
+ */
+eventsUrl: string,
+/**
+ * Whether its bot's token and its signing secret are stored.
+ */
+secretsStored: boolean,
+/**
+ * How many people linked their identity.
+ */
+identities: number, createdAt: string, updatedAt: string, };
+
+/**
+ * `GET /admin/gateways`.
+ */
+export type Gateways = { gateways: Array<GatewayView>,
+/**
+ * The bot token scopes a Slack application is given.
+ */
+slackScopes: Array<string>,
+/**
+ * The bot events it subscribes to.
+ */
+slackEvents: Array<string>, };
 
 /**
  * A company's Google Workspace client, as `ConnectorView` shows it.
@@ -1403,6 +1502,24 @@ export type NewSkillVersion = { content: string, changelog?: string,
  * none. Absent: those of the version active.
  */
 qualityCriteria?: Array<string>, };
+
+/**
+ * Body of `POST /admin/gateways/slack`: the company's Slack application,
+ * installed in its workspace.
+ */
+export type NewSlackGateway = { name: string,
+/**
+ * Its « Bot User OAuth Token » (`xoxb-…`).
+ */
+botToken: string,
+/**
+ * Its « Signing Secret ».
+ */
+signingSecret: string,
+/**
+ * Absent: enabled.
+ */
+enabled?: boolean, };
 
 /**
  * `GET /account/notifications`, and the body of its `PUT`: each kind of

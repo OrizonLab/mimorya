@@ -90,10 +90,27 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   envoyer un lien. La page de connexion ne propose le lien que si un relais est
   configuré ; l'audit d'une demande, anonyme, est inscrit au nom de la plateforme.
 - Protection CSRF : `SameSite=Lax` + exigence d'un en-tête personnalisé sur toutes les
-  requêtes modifiantes + vérification d'`Origin`. Deux exceptions, que des tests tentent
-  de contourner : la réception des réponses SAML (ADR-068, ci-dessous) et l'envoi d'un
+  requêtes modifiantes + vérification d'`Origin`. Trois exceptions, que des tests tentent
+  de contourner : la réception des réponses SAML (ADR-068, ci-dessous), l'envoi d'un
   autre système à un déclencheur (`POST /hooks/{id}`, chemin exact, identifiant en forme
-  canonique, ADR-109), qu'aucune session n'autorise : son jeton seul le fait.
+  canonique, ADR-109), qu'aucune session n'autorise : son jeton seul le fait, et les
+  événements que Slack envoie à la passerelle d'une entreprise (`POST
+/gateways/slack/{id}`, chemin exact, identifiant en forme canonique, ADR-125), que
+  leur signature seule prouve.
+- Passerelle Slack (ADR-125) : une requête de Slack nomme sa passerelle, puis prouve
+  qu'elle vient de l'application de l'entreprise par sa signature (HMAC-SHA256 du corps
+  et de l'horodatage avec le secret de signature scellé, comparée en temps constant, à
+  cinq minutes près) ; une passerelle inconnue, une signature absente, fausse ou trop
+  ancienne, et une passerelle dont le serveur ne peut ouvrir le secret répondent de même
+  (404). Corps borné (256 Kio) ; un événement renvoyé par
+  Slack est pris une fois ; un événement d'un autre espace de travail, ou qui n'est pas
+  le message direct d'une personne, est ignoré. Ce que dit un message n'est ni
+  journalisé ni audité. Une identité Slack n'est reliée que depuis la session de la
+  personne, par le lien scellé (quinze minutes, rien d'enregistré) que l'application lui
+  envoie, et seulement si Slack, interrogé alors, dit que l'utilisateur est de l'espace
+  de travail de l'entreprise, ni désactivé ni bot, et a l'adresse du compte : un lien
+  ouvert par quelqu'un d'autre ne relie rien. Refus audités avec leur raison, jamais une
+  adresse ; identité retirée avec le compte désactivé ou la passerelle supprimée.
 - Déclencheurs (ADR-109) : un autre système envoie avec le jeton secret du déclencheur
   (`Authorization: Bearer`, 256 bits, gardé en empreinte SHA-256, montré une fois). Un
   déclencheur inconnu, un jeton faux et un déclencheur en pause répondent de même (404).
@@ -200,7 +217,7 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
     l'application est propre à chaque entreprise : la confiance d'un fournisseur ne vaut
     que pour elle. Exemptée
     de l'en-tête anti-CSRF et du contrôle d'origine (avec l'envoi à un déclencheur,
-    ADR-109) : la réception de la réponse, liée
+    ADR-109, et les événements de Slack, ADR-125) : la réception de la réponse, liée
     par la tentative, la demande attendue et la signature ; un test tente de la
     contourner (`crates/api/tests/auth.rs`). Ni connexion à l'initiative du fournisseur, ni assertion chiffrée.
   - **Propriété des domaines** (ADR-069) : une entreprise prouve un domaine par un
@@ -388,6 +405,7 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
 | Google Workspace relié par chacun        | Permissions déléguées seulement, jamais de délégation à l'échelle du domaine (compte de service) : la plateforme n'obtient que ce que la personne peut lire, avec son accord (ADR-121) ; client OAuth déclaré par un administrateur des connecteurs (identifiant de Google Cloud vérifié, secret scellé jamais renvoyé ni audité, un par entreprise, émetteur et adresses de Gmail et de l'agenda fixés par la plateforme, secret remplacé jamais retiré) ; liaison, tentative, retour, jeton de renouvellement scellé et retrait communs avec Microsoft 365 (ADR-116) ; accès hors connexion et consentement demandés à la façon de Google (`access_type=offline`, `prompt=consent`), `hd` donné comme simple indication ; jeton d'identité devant porter le sujet Google, une adresse vérifiée par Google et le domaine Workspace du compte (`hd`) égal au domaine de cette adresse, l'adresse égale à celle du compte : compte d'un collègue, compte personnel (sans `hd`), d'un autre domaine ou non vérifié refusé ; renouvellement sans permission nommée (celles accordées) ; jetons d'accès gardés par personne et connecteur, oubliés ensemble quand un fournisseur en refuse un                                                                    |
 | Outils de lecture Google Workspace       | Lecture seule (`read`), `connector:use` toujours exigé, même par une politique (ADR-122) ; jeton d'accès de la seule personne servie, donné par la plateforme, permission accordée vérifiée avant Google, aucun pendant une évaluation ; client partagé avec Microsoft 365 (`delegated`) : adresses publiques, sans redirection, appel borné en temps et à 1 Mo, jeton refusé oublié ; identifiant d'e-mail strict et encodé entier ; recherche sans caractère de contrôle ; texte d'un e-mail borné, parties MIME parcourues jusqu'à une profondeur et un nombre bornés, pièces jointes nommées jamais lues ; texte des erreurs de Google jamais montré au modèle ; jetons absents du journal, des événements et de l'audit                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | Écriture Google Workspace                | Outils proposés seulement si l'entreprise le permet (`writeTools`, audité, ADR-121) ; risque `external` et validation toujours exigée (ADR-123) ; permissions `gmail.send` et `calendar.events` demandées à la liaison seulement alors, vérifiées dans la liaison avant d'atteindre Google ; règles de ce qui part partagées avec Microsoft 365 (`delegated`) : adresses simples (caractères permis avant l'unique `@`, nom de domaine sans adresse IP), en ASCII et uniques, objet et lieu sur une ligne visible, texte sans caractère caché, début de rendez-vous borné, refusés avant la demande de validation ; message Gmail écrit par la plateforme, refusé si une adresse n'est pas simple, objet en mots encodés et texte en base 64 : aucun en-tête ajouté par ce qu'écrit le modèle, même hors validation, expéditeur posé par Gmail ; paramètres montrés entiers à qui valide et exécutés tels quels, envoyés une fois, jamais répétés ; une écriture sans réponse ou en erreur du serveur dite peut-être faite, à vérifier ; jeton de la seule personne servie ; texte des erreurs de Google jamais montré au modèle                                                                                                                             |
+| Passerelle Slack                         | Application déclarée par l'entreprise (`connector:manage`, une par entreprise), jeton du bot essayé auprès de Slack avant d'être gardé, jeton et secret de signature scellés, jamais rendus ni audités ; nouveau jeton du même espace de travail seulement ; événements prouvés par leur signature seule (HMAC, cinq minutes), chemin exact dispensé de l'en-tête du navigateur ; identité Slack reliée depuis la session de la personne, Slack prouvant l'espace de travail et l'adresse du compte ; refus audités sans adresse (ADR-125)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 
 ## 7. Secrets
 

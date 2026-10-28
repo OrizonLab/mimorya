@@ -3,7 +3,7 @@
 //! they declare, a token quoted back, a server that never answers, one held
 //! until the test releases it); a REST API (`rest`); Microsoft Graph
 //! (`graph`, its writes in `graph_writes`); Gmail and Google Calendar
-//! (`google`, its writes in `google_writes`).
+//! (`google`, its writes in `google_writes`); Slack's Web API (`slack`).
 
 mod google;
 mod google_writes;
@@ -12,6 +12,7 @@ mod graph_writes;
 mod hold;
 mod quirks;
 mod rest;
+mod slack;
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -31,6 +32,10 @@ pub use graph::{FORBIDDEN_MESSAGE, FakeGraph, GRAPH_DETAIL, GraphRequest, OVERSI
 pub use hold::Hold;
 pub use quirks::{DeclaredToolsServer, HIDDEN_TEXT, Quirk};
 pub use rest::{KEY_HEADER, serve_rest_http};
+pub use slack::{
+    BOT_TOKEN, BOT_USER, FakeSlack, OTHER_TOKEN, OTHER_WORKSPACE, SIGNING_SECRET, SlackPost,
+    WORKSPACE, WORKSPACE_NAME, signed, signed_at,
+};
 
 /// Serves the demo documentation server at `http://127.0.0.1:<port>/mcp`
 /// until the process ends; returns that address.

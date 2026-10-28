@@ -11,6 +11,7 @@ mod common;
 mod conversations;
 mod documents;
 mod errors;
+mod gateways;
 mod health;
 mod inbound_hooks;
 mod links;
@@ -39,6 +40,10 @@ pub use documents::{
     DocumentSpaceOption, DocumentUpload,
 };
 pub use errors::{ErrorBody, ErrorDetail, ErrorKind};
+pub use gateways::{
+    AccountGatewayView, AccountGateways, GatewayIdentity, GatewayLinkConfirmation,
+    GatewayLinkPreview,
+};
 pub use health::Health;
 pub use inbound_hooks::{
     DeliveryOutcome, InboundHook, InboundHookList, InboundHookToken, InboundHookUpdate,
@@ -84,6 +89,8 @@ pub fn typescript() -> String {
     declarations.add::<Done>();
     declarations.add::<AccountLinks>();
     declarations.add::<AccountLinkStart>();
+    declarations.add::<AccountGateways>();
+    declarations.add::<GatewayLinkPreview>();
     declarations.add::<ConversationList>();
     declarations.add::<ConversationCreated>();
     declarations.add::<ConversationDetail>();
@@ -131,6 +138,7 @@ pub fn typescript() -> String {
     declarations.add::<admin::MissionSettingsView>();
     declarations.add::<admin::IdentityProvidersView>();
     declarations.add::<admin::Connectors>();
+    declarations.add::<admin::Gateways>();
     // Named by `ConnectorView.toolPolicies`, which holds the stored value.
     declarations.add::<admin::ToolPolicy>();
     declarations.add::<admin::ConnectorTest>();
@@ -155,6 +163,7 @@ macro_rules! request_bodies {
             SsoLinkLookup,
             PasswordUpdate,
             NotificationSettings,
+            GatewayLinkConfirmation,
             ResetLinkRequest,
             LinkToken,
             LinkPassword,
@@ -191,6 +200,8 @@ macro_rules! request_bodies {
             admin::NewRestConnector,
             admin::NewMicrosoft365Connector,
             admin::NewGoogleWorkspaceConnector,
+            admin::NewSlackGateway,
+            admin::GatewayUpdate,
             admin::OpenApiDescription,
             admin::ConnectorTrial,
             admin::ConnectorUpdate,

@@ -44,7 +44,9 @@ Repères à l'intérieur des crates :
   ADR-068, ADR-069), `core/src/schedule.rs` (heure d'une tâche planifiée, ADR-080),
   `core/src/documents/` (documents déposés : types reconnus, nom et titre, limites,
   refus, découpage en passages, qui lit et dépose où (`spaces.rs`), ADR-095),
-  `core/src/demo/` (entreprise fictive par thème).
+  `core/src/demo/` (entreprise fictive par thème), `core/src/gateways/` (passerelles de
+  conversation : application Slack déclarée, signature de ses événements, messages
+  pris, preuve qu'un utilisateur Slack est la personne d'un compte, ADR-125).
 - `db/migrations/` (SQL numéroté, source de vérité du schéma),
   `db/src/repositories/` (un fichier par entité ; la mémoire : `memory.rs`, recherche
   hybride `memory_search.rs`, vecteurs `memory_embeddings.rs`, ADR-074 ; fenêtres des
@@ -59,7 +61,9 @@ Repères à l'intérieur des crates :
   ADR-100, et leur annonce aux administrateurs : `skill_proposal_notices.rs`, ADR-102 ;
   cas d'évaluation des compétences : `skill_eval_cases.rs`, ADR-103, et leurs
   évaluations : `skill_evaluations.rs`, ADR-104 ; comptes reliés par chacun et leur
-  jeton de renouvellement scellé : `account_links.rs`, ADR-116),
+  jeton de renouvellement scellé : `account_links.rs`, ADR-116 ; passerelles et
+  événements pris : `gateways.rs`, identités reliées : `gateway_identities.rs`,
+  ADR-125),
   `db/src/notifications.rs` (canaux PostgreSQL des événements des runs, de la file et des
   invalidations, ADR-084, ADR-085), `db/src/sweep_lock.rs` (verrou d'un balayage qui ne
   tourne que dans un processus à la fois, ADR-086), `db/src/seed/` (organisation,
@@ -94,11 +98,14 @@ Repères à l'intérieur des crates :
   borné du fournisseur, jeton de la personne et refus dits en français, champs gardés,
   ADR-117, ADR-122 ; e-mail et rendez-vous écrits en son nom, ce qu'ils envoient ne
   cachant rien (`compose.rs`, `new_mail.rs`, `new_event.rs`), ADR-119, ADR-123),
-  `connectors/src/testing/`
-  (serveurs simulés des tests : MCP, API REST, Microsoft Graph, Gmail et agenda Google).
+  `connectors/src/slack/` (API Web de Slack telle que la passerelle d'une entreprise
+  l'atteint, ADR-125), `connectors/src/testing/`
+  (serveurs simulés des tests : MCP, API REST, Microsoft Graph, Gmail et agenda Google,
+  Slack, qui signe les événements comme lui).
 - `api/src/plugins/` (contexte de requête, limitation de débit (globale par processus ;
   d'authentification partagée par PostgreSQL, `shared_limit.rs`, ADR-088), CSRF (sauf la réception
-  des réponses SAML, ADR-068, et l'envoi à un déclencheur, ADR-109), session,
+  des réponses SAML, ADR-068, l'envoi à un déclencheur, ADR-109, et les événements de
+  Slack, ADR-125), session,
   en-têtes de sécurité, audit des modifications d'administration refusées, sur une ressource introuvable ou envoyant un identifiant inconnu,
   maintenance périodique : runs bloqués, liens expirés, absences terminées, demandes de
   validation échues et relances avant échéance, ADR-061, ADR-062 ; indexation de la
@@ -128,6 +135,10 @@ Repères à l'intérieur des crates :
   ADR-116 ; jeton
   d'accès de la personne servie lu (`access.rs`), renouvelé avec rotation et liaison
   révoquée retirée (`renewal.rs`), gardé (`tokens.rs`), ADR-117),
+  `api/src/services/gateways/` (passerelles de conversation : événements de Slack reçus
+  sur leur signature (`events.rs`), lien de liaison offert dans Slack et confirmé dans
+  la session de la personne (`link.rs`), identités listées et retirées
+  (`identities.rs`), ADR-125 ; déclarées par `services/admin/gateways.rs`),
   `api/src/services/notification_settings.rs` (e-mails que chacun choisit de recevoir,
   lus au moment d'envoyer chaque avis, ADR-094),
   `api/src/services/skill_proposal_notice/` (propositions de l'agent annoncées par e-mail
@@ -328,15 +339,19 @@ Avant chaque commit : `pnpm check && pnpm test:int` doivent passer.
    `access.context()` et vérifie la permission (`require`) ou la propriété de la
    ressource côté serveur ; une ressource hors périmètre répond 404. Les requêtes
    modifiantes exigent l'en-tête `X-Mimorya-Request: 1` et, si le navigateur la donne,
-   l'origine de l'application. Deux en sont dispensées, de l'un comme de l'autre : la
+   l'origine de l'application. Trois en sont dispensées, de l'un comme de l'autre : la
    réception des réponses SAML (`POST /api/auth/saml/acs`, ADR-068), que le fournisseur
    poste depuis son propre site, seules la liant au navigateur la tentative scellée dans
-   son cookie, la demande qu'elle attend et la signature de l'assertion ; et l'envoi d'un
+   son cookie, la demande qu'elle attend et la signature de l'assertion ; l'envoi d'un
    autre système à un déclencheur (`POST /api/hooks/{id}`, chemin exact, ADR-109),
-   qu'aucune session n'autorise : son jeton seul le fait. Aucune autre exception sans
-   ADR ; les tests `only_the_saml_reception_goes_without_the_header`
-   (`crates/api/tests/auth.rs`) et `only_a_delivery_goes_without_the_header`
-   (`crates/api/tests/inbound_hook_deliveries.rs`) tentent de les contourner.
+   qu'aucune session n'autorise : son jeton seul le fait ; et les événements que Slack
+   envoie à la passerelle d'une entreprise (`POST /api/gateways/slack/{id}`, chemin
+   exact, ADR-125), que leur signature seule prouve. Aucune autre exception sans ADR ;
+   les tests `only_the_saml_reception_goes_without_the_header`
+   (`crates/api/tests/auth.rs`), `only_a_delivery_goes_without_the_header`
+   (`crates/api/tests/inbound_hook_deliveries.rs`) et
+   `only_a_gateway_event_goes_without_the_header`
+   (`crates/api/tests/slack_gateway_events.rs`) tentent de les contourner.
 
 ## Règles de sécurité (non négociables)
 
