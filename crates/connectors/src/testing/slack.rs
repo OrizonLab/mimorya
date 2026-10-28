@@ -2,7 +2,8 @@
 //! ADR-125). Its bot's token, `BOT_TOKEN`, is the application of the
 //! workspace `WORKSPACE`, whose bot user is `BOT_USER`; `OTHER_TOKEN` is an
 //! application's of another workspace; any other token is refused
-//! (`invalid_auth`), as one a test revoked. It knows the people a test
+//! (`invalid_auth`), as one a test revoked; a test may also make it
+//! unavailable (503). It knows the people a test
 //! adds, by address, deleted or of another workspace, and keeps the messages
 //! the application posts, also listed at `GET /test/posts` for the
 //! end-to-end tests. A test signs the events it sends as Slack would
@@ -15,8 +16,8 @@ use std::sync::{Arc, Mutex};
 use axum::Json;
 use axum::Router;
 use axum::extract::{Query, State};
-use axum::http::HeaderMap;
 use axum::http::header::AUTHORIZATION;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use mimorya_core::gateways::slack::signature;
@@ -57,6 +58,8 @@ struct Shared {
     revoked: bool,
     /// The error code every method answers with, if a test chose one.
     refusal: Option<String>,
+    /// Every method answers 503, as Slack down.
+    down: bool,
 }
 
 pub struct FakeSlack {
@@ -131,6 +134,11 @@ impl FakeSlack {
         self.shared.lock().expect("lock").refusal = code.map(str::to_owned);
     }
 
+    /// Every method answers 503 from now on (`false`: answers again).
+    pub fn unavailable(&self, down: bool) {
+        self.shared.lock().expect("lock").down = down;
+    }
+
     /// The messages the application posted, oldest first.
     pub fn posts(&self) -> Vec<SlackPost> {
         self.shared.lock().expect("lock").posts.clone()
@@ -150,9 +158,12 @@ pub fn signed_at(body: &str, at: i64) -> (String, String) {
     (timestamp, signature)
 }
 
-/// Whether the request carries the bot's token, unrevoked; the refusal
-/// Slack answers otherwise.
+/// Whether the request carries the bot's token, unrevoked, Slack up; the
+/// refusal Slack answers otherwise.
 fn refused(shared: &Shared, headers: &HeaderMap) -> Option<Response> {
+    if shared.down {
+        return Some(StatusCode::SERVICE_UNAVAILABLE.into_response());
+    }
     if let Some(code) = &shared.refusal {
         return Some(Json(json!({ "ok": false, "error": code })).into_response());
     }

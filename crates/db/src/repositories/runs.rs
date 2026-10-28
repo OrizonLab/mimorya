@@ -119,8 +119,9 @@ pub struct NewRun {
     pub request_message_id: Option<Uuid>,
     /// The mission it is a stage of, if any (ADR-089).
     pub mission_id: Option<Uuid>,
-    /// `WEB_CHANNEL`, or `HOOK_CHANNEL` when another system starts it
-    /// (ADR-109).
+    /// `WEB_CHANNEL`, `HOOK_CHANNEL` when another system starts it
+    /// (ADR-109), or `SLACK_CHANNEL` when its author writes to their
+    /// company's Slack application (ADR-127).
     pub channel: &'static str,
 }
 

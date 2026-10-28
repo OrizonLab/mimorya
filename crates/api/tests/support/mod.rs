@@ -47,6 +47,7 @@ pub mod scheduled_notices;
 pub mod skill_evaluations;
 pub mod skill_proposal_notices;
 pub mod skill_proposals;
+pub mod slack_conversations;
 pub mod sso;
 pub mod sweeps;
 
@@ -293,6 +294,8 @@ impl TestApi {
             // Fired by the tests (`fire_due_tasks`), when they make a task
             // due, unless started with `start_scheduling`.
             manual_scheduling: !background_scheduling,
+            // Answered in Slack by the tests (`reply_to_finished_runs`).
+            manual_gateway_replies: true,
             run_leases,
             mailer: record_mail.then(|| Some(mail.clone() as Arc<dyn Mailer>)),
             sso_network: None,

@@ -3,12 +3,18 @@
 //! Slack sends it the events of its workspace, each signed with its secret
 //! (`events`); a person writing to it is offered a link to their account,
 //! and links their Slack identity from their own session, Slack vouching
-//! for their address (`link`); they list and remove it (`identities`). The
-//! bot's token and the signing secret are sealed in the secret store.
+//! for their address (`link`); they list and remove it (`identities`). A
+//! linked person then talks with the agent in Slack (ADR-127): their
+//! message is answered in a conversation of theirs (`conversations`), and
+//! the run's end or pause written in its thread (`replies`). The bot's
+//! token and the signing secret are sealed in the secret store.
 
+mod conversations;
 mod events;
 mod identities;
 mod link;
+mod replies;
+mod reply_text;
 
 use std::sync::Arc;
 
@@ -20,9 +26,11 @@ use uuid::Uuid;
 use crate::secrets::{SecretCipher, SecretRead, SecretStore};
 use crate::services::background::BackgroundTasks;
 
-pub use events::{EventOutcome, SlackHeaders};
+pub use conversations::converse;
+pub use events::{EventOutcome, PersonMessage, SlackHeaders};
 pub use identities::GatewayOfPerson;
 pub use link::{LINK_LIFETIME, LinkPreview};
+pub use replies::{ANSWERED_WITHIN, MAX_ATTEMPTS, reply_to_finished_runs};
 
 /// Where Slack sends a gateway's events, under the API's address: the only
 /// route besides the SAML reception and the inbound hooks' that a request
@@ -91,6 +99,11 @@ impl GatewayService {
 
     pub fn db(&self) -> &Database {
         &self.db
+    }
+
+    /// The address of a conversation in the application.
+    fn conversation_url(&self, conversation_id: Uuid) -> String {
+        format!("{}/chat/{conversation_id}", self.web_origin)
     }
 
     /// The address to give Slack for the gateway's events.

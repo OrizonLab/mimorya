@@ -143,3 +143,49 @@ pub async fn delete_gateway_identities_of(
         .await?;
     Ok(deleted.rows_affected())
 }
+
+/// The account a Slack user is linked to on a gateway, as it stands.
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct LinkedAccount {
+    pub user_id: Uuid,
+    pub email: String,
+    pub status: String,
+    pub must_change_password: bool,
+}
+
+/// The account `external_id` is linked to on the gateway, if any.
+pub async fn linked_account(
+    conn: &mut PgConnection,
+    gateway_id: Uuid,
+    external_id: &str,
+) -> sqlx::Result<Option<LinkedAccount>> {
+    sqlx::query_as(
+        "select u.id as user_id, u.email::text as email, u.status, u.must_change_password \
+         from gateway_identities i join users u on u.id = i.user_id \
+         where i.gateway_id = $1 and i.external_id = $2",
+    )
+    .bind(gateway_id)
+    .bind(external_id)
+    .fetch_optional(conn)
+    .await
+}
+
+/// Removes the link of `external_id` on the gateway, if it is still to the
+/// person `user_id`; whether it was.
+pub async fn unlink_gateway_identity(
+    conn: &mut PgConnection,
+    gateway_id: Uuid,
+    external_id: &str,
+    user_id: Uuid,
+) -> sqlx::Result<bool> {
+    let deleted = sqlx::query(
+        "delete from gateway_identities where gateway_id = $1 and external_id = $2 \
+         and user_id = $3",
+    )
+    .bind(gateway_id)
+    .bind(external_id)
+    .bind(user_id)
+    .execute(conn)
+    .await?;
+    Ok(deleted.rows_affected() == 1)
+}

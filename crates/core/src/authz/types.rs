@@ -100,6 +100,9 @@ pub const WEB_CHANNEL: &str = "web";
 /// The channel of a run another system started through its author's inbound
 /// hook (ADR-109): nobody watches it, and it was sent untrusted data.
 pub const HOOK_CHANNEL: &str = "hook";
+/// The channel of a run its author started by writing to their company's
+/// Slack application (ADR-127): their own words, answered in Slack.
+pub const SLACK_CHANNEL: &str = "slack";
 
 /// Who is performing the action: the user directly, or an agent on their behalf.
 #[derive(Debug, Clone, PartialEq, Eq)]

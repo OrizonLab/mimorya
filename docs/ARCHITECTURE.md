@@ -316,7 +316,14 @@ Détaillés dans [AGENT_ENGINE.md](AGENT_ENGINE.md). En résumé :
   (`/account/gateway-link`, hors du cadre de l'application, le code dans le fragment de
   l'adresse) montre ce qu'il relie, puis le relie ; la passerelle se déclare dans
   « Connecteurs » et chacun voit et retire son identité dans « Mon compte » (ADR-126).
-  Les conversations dans Slack viennent au lot suivant.
+  Une personne reliée parle ensuite à l'agent dans Slack (ADR-127) : son message hors de
+  tout fil ouvre une conversation à elle, tenue dans le fil qu'il commence
+  (`gateway_threads`), ses réponses dans le fil la poursuivent ; le run, lancé en son nom
+  sur le canal `slack`, s'exécute comme un tour de l'application. Sa fin ou sa pause
+  (l'événement `run_finished` de son journal) est écrite dans le fil par un passage de
+  quelques secondes des processus qui exécutent les runs, un à la fois, une seule fois
+  chacune (`gateway_replies`) : la réponse en balisage Slack, coupée si trop longue, avec
+  le lien de la conversation, ou la validation à donner dans l'application.
 - Les secrets ne transitent jamais par le contexte du modèle ni par les journaux.
 
 Connecteurs prévus : démonstration (MVP), MCP générique (MVP), déclencheurs (ADR-109),

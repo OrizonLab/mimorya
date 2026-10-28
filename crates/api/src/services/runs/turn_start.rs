@@ -1,7 +1,8 @@
-//! Starting a turn: its user's, in one of their conversations, or one the
-//! platform sends for them in a new conversation of theirs: their scheduled
-//! task when due (ADR-080), their inbound hook when another system posts to
-//! it (ADR-109). Such a conversation opens in the transaction of its turn: a
+//! Starting a turn: its user's, in one of their conversations or in a new
+//! one held in the Slack thread they opened (ADR-127), or one the platform
+//! sends for them in a new conversation of theirs: their scheduled task
+//! when due (ADR-080), their inbound hook when another system posts to it
+//! (ADR-109). Such a conversation opens in the transaction of its turn: a
 //! run that does not start leaves none behind.
 
 use std::sync::Arc;
@@ -9,6 +10,7 @@ use std::sync::Arc;
 use mimorya_core::DomainError;
 use mimorya_core::autonomy::AutonomyLevel;
 use mimorya_db::repositories::conversations::create_conversation;
+use mimorya_db::repositories::gateway_threads::{NewGatewayThread, insert_gateway_thread};
 use uuid::Uuid;
 
 use super::conversation_turn::{TurnSender, open_conversation_turn, tenant_autonomy_level};
@@ -18,18 +20,36 @@ use crate::services::access::{AccessContext, AuthIdentity};
 use crate::services::llm::Unusable;
 
 const COMPANY_NOT_ACTIVE: &str = "Votre entreprise est suspendue : l’agent n’agit plus pour elle.";
+/// A message of the same thread opened its conversation first.
+const THREAD_TAKEN: &str =
+    "Une demande est déjà en cours dans cette conversation : attendez sa fin ou sa validation.";
 
 pub struct StartedTurn {
     pub run_id: Uuid,
     pub message_id: Uuid,
 }
 
+/// The Slack thread a new conversation is held in (ADR-127).
+#[derive(Debug, Clone, Copy)]
+pub struct SlackThread<'a> {
+    pub gateway_id: Uuid,
+    /// The Slack user who wrote.
+    pub external_id: &'a str,
+    /// Their direct conversation with the application.
+    pub channel_id: &'a str,
+    /// The thread: the timestamp of its first message.
+    pub thread_ts: &'a str,
+}
+
 /// Where a turn is sent.
 enum Destination<'a> {
     /// The conversation `0`, its sender's.
     Conversation(Uuid),
-    /// A new conversation of theirs, so titled.
-    New { title: &'a str },
+    /// A new conversation of theirs, so titled, held in `thread` if any.
+    New {
+        title: &'a str,
+        thread: Option<SlackThread<'a>>,
+    },
 }
 
 impl RunService {
@@ -62,7 +82,32 @@ impl RunService {
             session_id: Uuid::nil(),
             must_change_password: false,
         };
-        let into = Destination::New { title };
+        let into = Destination::New {
+            title,
+            thread: None,
+        };
+        let (conversation_id, started) = self.start_turn(identity, into, text, sender).await?;
+        Ok((conversation_id, started.run_id))
+    }
+
+    /// Sends `text`, written by `identity`'s person to the gateway of
+    /// `thread` (ADR-127), in a new conversation of theirs titled `title`,
+    /// held in `thread`: the conversation and its run. A thread a message
+    /// of its own opened a conversation for meanwhile is refused as busy.
+    pub async fn start_in_thread(
+        &self,
+        identity: AuthIdentity,
+        thread: SlackThread<'_>,
+        title: &str,
+        text: &str,
+    ) -> anyhow::Result<(Uuid, Uuid)> {
+        let into = Destination::New {
+            title,
+            thread: Some(thread),
+        };
+        let sender = TurnSender::Gateway {
+            gateway_id: thread.gateway_id,
+        };
         let (conversation_id, started) = self.start_turn(identity, into, text, sender).await?;
         Ok((conversation_id, started.run_id))
     }
@@ -81,17 +126,34 @@ impl RunService {
                 AutonomyLevel::AutonomousLimited => AutonomyLevel::ExecuteWithApproval,
                 level => level,
             },
-            TurnSender::User | TurnSender::Schedule { .. } => tenant_autonomy_level(&access),
+            TurnSender::User | TurnSender::Schedule { .. } | TurnSender::Gateway { .. } => {
+                tenant_autonomy_level(&access)
+            }
         };
 
         let mut tx = self.db.begin(identity.tenant_id).await?;
         let conversation_id = match into {
             Destination::Conversation(id) => id,
-            Destination::New { title } => {
+            Destination::New { title, thread } => {
                 let (tenant_id, user_id) = (identity.tenant_id, identity.user_id);
-                create_conversation(&mut tx, tenant_id, user_id, Some(title))
+                let id = create_conversation(&mut tx, tenant_id, user_id, Some(title))
                     .await?
-                    .id
+                    .id;
+                if let Some(thread) = thread {
+                    let held = NewGatewayThread {
+                        tenant_id,
+                        gateway_id: thread.gateway_id,
+                        user_id,
+                        conversation_id: id,
+                        external_id: thread.external_id,
+                        channel_id: thread.channel_id,
+                        thread_ts: thread.thread_ts,
+                    };
+                    if !insert_gateway_thread(&mut tx, held).await? {
+                        return Err(DomainError::conflict(THREAD_TAKEN).into());
+                    }
+                }
+                id
             }
         };
         let turn =

@@ -113,6 +113,18 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   de travail de l'entreprise, ni désactivé ni bot, et a l'adresse du compte : un lien
   ouvert par quelqu'un d'autre ne relie rien. Refus audités avec leur raison, jamais une
   adresse ; identité retirée avec le compte désactivé ou la passerelle supprimée.
+- Conversations dans Slack (ADR-127) : le message d'une personne reliée est sa propre
+  demande, exécutée avec ses droits tels qu'ils sont, comme dans l'application (canal
+  `slack`, que les politiques d'accès peuvent lire : `context.channel`), refusée pour un
+  compte désactivé, au mot de passe provisoire, sans `agent:use` ou d'une entreprise
+  suspendue. Slack est interrogé à chaque message : s'il ne dit plus que l'utilisateur
+  est la personne (adresse changée, désactivé, autre espace de travail), l'identité est
+  déliée, auditée avec sa raison, et rien n'est lancé ; s'il ne répond pas, rien n'est
+  lancé. Les réponses ne vont que dans le fil de la conversation, tant que la passerelle
+  est active et que l'utilisateur Slack qui a écrit reste l'identité de la personne ; ce
+  qui y est écrit est échappé pour Slack (ni mention, ni commande, ni lien que ceux de la
+  réponse), et ni journalisé ni enregistré hors de la conversation. Les validations se
+  donnent dans l'application seulement.
 - Déclencheurs (ADR-109) : un autre système envoie avec le jeton secret du déclencheur
   (`Authorization: Bearer`, 256 bits, gardé en empreinte SHA-256, montré une fois). Un
   déclencheur inconnu, un jeton faux et un déclencheur en pause répondent de même (404).

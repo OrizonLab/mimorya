@@ -6,15 +6,18 @@
 //! address check is answered with its challenge; an event of another
 //! workspace, of a paused gateway, or already taken (Slack sends it again
 //! when it was not answered in time) is taken and ignored. A person's own
-//! message to the application, from someone who has not linked their Slack
-//! identity, is answered with a link to do so (`link`). What a message says
-//! is never logged nor audited.
+//! message to the application is answered: from someone who has not linked
+//! their Slack identity, with a link to do so (`link`); from a linked
+//! person, in a conversation of theirs (`conversations`, ADR-127). What a
+//! message says is never logged nor audited.
 
 use chrono::{DateTime, Utc};
 use mimorya_core::gateways::GatewayKind;
-use mimorya_core::gateways::slack::{Envelope, direct_message, is_event, verify};
+use mimorya_core::gateways::slack::{DirectMessage, Envelope, direct_message, is_event, verify};
 use mimorya_db::repositories::gateway_identities::find_gateway_identity;
-use mimorya_db::repositories::gateways::{gateway_tenant, get_gateway, take_gateway_event};
+use mimorya_db::repositories::gateways::{
+    GatewayRow, gateway_tenant, get_gateway, take_gateway_event,
+};
 use uuid::Uuid;
 
 use super::{GatewayService, bot_token_name, signing_secret_name};
@@ -29,8 +32,30 @@ pub struct SlackHeaders<'a> {
     pub signature: Option<&'a str>,
 }
 
+/// A linked person's own message to the application (ADR-127): to answer
+/// in a conversation of theirs, once the event is answered.
+pub struct PersonMessage {
+    pub tenant_id: Uuid,
+    pub gateway: GatewayRow,
+    /// The account the Slack user who wrote is linked to.
+    pub user_id: Uuid,
+    pub message: DirectMessage,
+    /// The bot's token, to answer with.
+    pub token: String,
+}
+
+/// Never the token nor the message, whatever prints it.
+impl std::fmt::Debug for PersonMessage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PersonMessage")
+            .field("gateway", &self.gateway.id)
+            .field("user_id", &self.user_id)
+            .finish_non_exhaustive()
+    }
+}
+
 /// What became of a request Slack sent.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug)]
 pub enum EventOutcome {
     /// Not the gateway's application's: unknown gateway, signature missing,
     /// wrong or too old, or a secret this server cannot open, alike.
@@ -41,6 +66,8 @@ pub enum EventOutcome {
     Challenge(String),
     /// Taken: acted upon, or ignored.
     Taken,
+    /// Taken: a linked person's message, to answer.
+    Message(Box<PersonMessage>),
 }
 
 impl GatewayService {
@@ -110,22 +137,27 @@ impl GatewayService {
             tx.commit().await?;
             return Ok(EventOutcome::Taken);
         };
-        if find_gateway_identity(&mut tx, gateway_id, &message.person)
-            .await?
-            .is_some()
-        {
-            // A linked person's conversations come with lot 12c (ADR-125).
-            tx.commit().await?;
-            return Ok(EventOutcome::Taken);
-        }
+        let identity = find_gateway_identity(&mut tx, gateway_id, &message.person).await?;
         let token = self
             .secret(&mut tx, tenant_id, &bot_token_name(gateway_id))
             .await?;
         tx.commit().await?;
-        match token {
-            Some(token) => self.offer_link(tenant_id, gateway_id, token, message, now)?,
-            None => tracing::warn!(gateway = %gateway_id, "Slack gateway's bot token unreadable"),
+        let Some(token) = token else {
+            tracing::warn!(gateway = %gateway_id, "Slack gateway's bot token unreadable");
+            return Ok(EventOutcome::Taken);
+        };
+        match identity {
+            Some(identity) => Ok(EventOutcome::Message(Box::new(PersonMessage {
+                tenant_id,
+                gateway,
+                user_id: identity.user_id,
+                message,
+                token,
+            }))),
+            None => {
+                self.offer_link(tenant_id, gateway_id, token, message, now)?;
+                Ok(EventOutcome::Taken)
+            }
         }
-        Ok(EventOutcome::Taken)
     }
 }

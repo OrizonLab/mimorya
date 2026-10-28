@@ -4,8 +4,9 @@
 use mimorya_agent::llm::LlmMessage;
 use mimorya_agent::runtime::DEFAULT_BUDGET;
 use mimorya_core::DomainError;
-use mimorya_core::authz::{HOOK_CHANNEL, WEB_CHANNEL};
+use mimorya_core::authz::{HOOK_CHANNEL, SLACK_CHANNEL, WEB_CHANNEL};
 use mimorya_core::autonomy::AutonomyLevel;
+use mimorya_core::gateways::GatewayKind;
 use mimorya_db::TenantTx;
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::conversations::{
@@ -25,7 +26,8 @@ use crate::services::access::{AccessContext, AuthIdentity};
 const HISTORY_LIMIT: i64 = 20;
 const TITLE_LENGTH: usize = 80;
 
-/// Who sends a turn: its user, or the platform for them (ADR-080).
+/// Who sends a turn: its user, from the application or from their company's
+/// Slack application (ADR-127), or the platform for them (ADR-080).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TurnSender {
     User,
@@ -36,6 +38,11 @@ pub enum TurnSender {
     /// Their inbound hook `hook_id`, reached by another system (ADR-109).
     Hook {
         hook_id: Uuid,
+    },
+    /// Its user, writing to the gateway `gateway_id`: their company's Slack
+    /// application (ADR-127).
+    Gateway {
+        gateway_id: Uuid,
     },
 }
 
@@ -84,8 +91,10 @@ pub async fn open_conversation_turn(
             metadata: serde_json::to_value(MessageMetadata {
                 inbound_hook_id: match sender {
                     TurnSender::Hook { hook_id } => Some(hook_id),
-                    TurnSender::User | TurnSender::Schedule { .. } => None,
+                    _ => None,
                 },
+                gateway: matches!(sender, TurnSender::Gateway { .. })
+                    .then(|| GatewayKind::Slack.as_str().to_owned()),
                 ..MessageMetadata::default()
             })?,
         },
@@ -126,6 +135,7 @@ pub async fn open_conversation_turn(
             // Read again whenever the run resumes (ADR-109).
             channel: match sender {
                 TurnSender::Hook { .. } => HOOK_CHANNEL,
+                TurnSender::Gateway { .. } => SLACK_CHANNEL,
                 TurnSender::User | TurnSender::Schedule { .. } => WEB_CHANNEL,
             },
         },
@@ -151,6 +161,12 @@ pub async fn open_conversation_turn(
             AuditEntry::new(identity.tenant_id, "system", action, "success")
                 .on_behalf_of(identity.user_id)
                 .metadata(json!({ "inboundHookId": hook_id }))
+        }
+        // Written by them, in Slack.
+        TurnSender::Gateway { gateway_id } => {
+            AuditEntry::new(identity.tenant_id, "user", action, "success")
+                .by_user(identity.user_id)
+                .metadata(json!({ "gatewayId": gateway_id }))
         }
     };
     append_audit(
