@@ -6686,8 +6686,9 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     `SECURITY DEFINER` minimale (`auth_gateway_tenant`), puis prouve qu'elle vient de
     l'application par sa signature (HMAC-SHA256 de `v0:<horodatage>:<corps>` avec le
     secret de signature, comparée en temps constant, à cinq minutes près). Une
-    passerelle inconnue et une signature absente, fausse ou trop ancienne répondent de
-    même (404). Le corps est borné (256 Kio). La vérification de l'adresse par Slack
+    passerelle inconnue, une signature absente, fausse ou trop ancienne, et une
+    passerelle dont ce serveur ne peut ouvrir le secret (journalisé pour
+    l'exploitant) répondent de même (404). Le corps est borné (256 Kio). La vérification de l'adresse par Slack
     reçoit son défi ; un événement d'un autre espace de travail, d'une passerelle en
     pause, déjà pris (Slack le renvoie s'il n'a pas eu de réponse à temps : son
     identifiant est gardé un jour, `gateway_events`), et tout ce qui n'est pas le
@@ -6704,15 +6705,18 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
       passerelle et l'utilisateur Slack, scellés pour l'entreprise par la clé maîtresse
       du serveur ; rien n'est enregistré. Le message ne reprend rien de ce qu'elle a
       écrit, et le nom de l'assistant y est échappé pour Slack (`&`, `<`, `>`) ;
-    - ouvert dans sa propre session, le lien est montré (`GET
-/account/gateways/link`), puis confirmé (`POST`, compté avec les connexions par
-      un fournisseur) : Slack est alors interrogé de nouveau (`users.info`), et la
+    - ouvert dans sa propre session, le lien est montré
+      (`GET /account/gateways/link`), puis confirmé (`POST`, compté avec les connexions
+      par un fournisseur) : Slack est alors interrogé de nouveau (`users.info`), et la
       liaison n'est faite que si cet utilisateur Slack est de l'espace de travail de
       l'entreprise, ni désactivé ni bot, et a l'adresse du compte. L'adresse est la
       preuve, comme pour les comptes reliés (ADR-116) : l'entreprise gère l'une et
       l'autre, et un lien ouvert par quelqu'un d'autre (Léa envoie son lien à Paul) ne
       relie rien. Un refus est audité avec sa raison (`gateway.identity_refused`),
-      jamais une adresse ; la personne n'est jamais montrée l'adresse Slack d'un autre ;
+      jamais une adresse ; la personne n'est jamais montrée l'adresse Slack d'un autre.
+      Une passerelle en pause ne montre ni ne relie rien ; quand Slack refuse
+      l'application elle-même (jeton révoqué, permission manquante), la personne est
+      invitée à prévenir son administrateur ;
     - une liaison nouvelle remplace la précédente de la personne, et la liaison de cet
       utilisateur Slack à quelqu'un d'autre (Slack lui a donné l'adresse d'une autre
       personne depuis) ; l'audit le dit (`replacedOwn`, `replacedOtherPerson`) ;
@@ -6720,10 +6724,15 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
       compte » (`GET /account/gateways`, `DELETE /account/gateways/{id}`) ; un compte
       désactivé perd ses identités, comme ses comptes reliés ; les administrateurs ne
       voient que leur nombre ;
-  - **lot suivant (12b)** : une personne reliée parle à l'agent dans Slack (une
-    conversation par fil, les réponses écrites dans le fil, l'adresse vérifiée à chaque
-    message, les validations renvoyées vers l'application web) ; d'ici là, ses messages
-    sont pris et ignorés. Puis les écrans (12c), Telegram et Teams.
+  - **lots suivants** : les écrans (12b), dont la page du lien
+    (`/account/gateway-link`, aperçu puis confirmation), la passerelle dans
+    « Connecteurs » et l'identité dans « Mon compte ». D'ici là, le lien que Slack
+    transmet mène à la page « introuvable » de l'application : la liaison se fait par
+    l'API, et la passerelle ne se déclare que par l'API. Puis une personne reliée parle
+    à l'agent dans Slack (12c : une conversation par fil, les réponses écrites dans le
+    fil, l'adresse vérifiée à chaque message, les validations renvoyées vers
+    l'application web) ; d'ici là, ses messages sont pris et ignorés. Puis Telegram et
+    Teams.
 - **Conséquences** :
   - données personnelles : l'identifiant Slack et l'adresse que Slack a donnée sont
     gardés tant que la personne ne retire pas la liaison, que son compte n'est pas
@@ -6737,4 +6746,7 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     `crates/api/tests/slack_gateway_admin.rs`, `slack_gateway_events.rs` (dont
     `only_a_gateway_event_goes_without_the_header`), `slack_gateway_links.rs` (lien
     ouvert par un autre, d'un autre espace de travail, sans adresse, désactivé,
-    expiré, d'une autre entreprise ; remplacement ; compte désactivé).
+    expiré, d'une autre entreprise ; `agent:use`, passerelle en pause, jeton révoqué ;
+    remplacement ; compte désactivé), `slack_gateway_companies.rs` (événement signé
+    pour une entreprise envoyé à la passerelle d'une autre ; purge des événements
+    d'un jour dans chaque entreprise).

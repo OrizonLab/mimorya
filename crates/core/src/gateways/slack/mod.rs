@@ -33,10 +33,20 @@ static SIGNING_SECRET: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[A-Za-z0-9]{16,128}$").expect("valid regex"));
 
 /// What a company declares of its Slack application, checked.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct SlackApplication {
     pub bot_token: String,
     pub signing_secret: String,
+}
+
+/// Never its secrets, whatever prints it.
+impl std::fmt::Debug for SlackApplication {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SlackApplication")
+            .field("bot_token", &"<redacted>")
+            .field("signing_secret", &"<redacted>")
+            .finish()
+    }
 }
 
 /// The bot's token, if it reads as Slack issues them (`xoxb-…`), or why not
@@ -81,6 +91,15 @@ mod tests {
 
     const TOKEN: &str = "xoxb-fictif-jeton-du-bot-de-test-0001";
     const SECRET: &str = "8f742231b10e8888abcd99eeefff85a5";
+
+    #[test]
+    fn an_application_never_prints_its_secrets() {
+        let printed = format!("{:?}", slack_application(TOKEN, SECRET).unwrap());
+        assert!(
+            !printed.contains(TOKEN) && !printed.contains(SECRET),
+            "{printed}"
+        );
+    }
 
     #[test]
     fn a_declared_application_is_trimmed() {

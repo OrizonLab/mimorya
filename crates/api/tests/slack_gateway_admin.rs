@@ -69,6 +69,27 @@ async fn the_company_declares_its_slack_application_once_checked_with_slack() {
         refused.text()
     );
     assert_eq!(paul.get(GATEWAYS).await.json()["gateways"], json!([]));
+    // An application Slack gave too few permissions: said for the administrator.
+    slack.refuse_with(Some("missing_scope"));
+    let refused = paul
+        .post(
+            DECLARE,
+            json!({ "name": "Slack", "botToken": BOT_TOKEN, "signingSecret": SIGNING_SECRET }),
+        )
+        .await;
+    assert_eq!(
+        refused.status,
+        StatusCode::BAD_REQUEST,
+        "{}",
+        refused.text()
+    );
+    assert!(
+        refused.error_message().contains("users:read.email"),
+        "{}",
+        refused.text()
+    );
+    slack.refuse_with(None);
+    assert_eq!(paul.get(GATEWAYS).await.json()["gateways"], json!([]));
 
     let id = declare_slack(&paul).await;
     let view = gateway_view(&paul, id).await;

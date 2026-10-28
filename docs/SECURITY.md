@@ -100,8 +100,9 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
 - Passerelle Slack (ADR-125) : une requête de Slack nomme sa passerelle, puis prouve
   qu'elle vient de l'application de l'entreprise par sa signature (HMAC-SHA256 du corps
   et de l'horodatage avec le secret de signature scellé, comparée en temps constant, à
-  cinq minutes près) ; une passerelle inconnue et une signature absente, fausse ou trop
-  ancienne répondent de même (404). Corps borné (256 Kio) ; un événement renvoyé par
+  cinq minutes près) ; une passerelle inconnue, une signature absente, fausse ou trop
+  ancienne, et une passerelle dont le serveur ne peut ouvrir le secret répondent de même
+  (404). Corps borné (256 Kio) ; un événement renvoyé par
   Slack est pris une fois ; un événement d'un autre espace de travail, ou qui n'est pas
   le message direct d'une personne, est ignoré. Ce que dit un message n'est ni
   journalisé ni audité. Une identité Slack n'est reliée que depuis la session de la

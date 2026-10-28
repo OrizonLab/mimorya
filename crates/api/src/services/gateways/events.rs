@@ -1,8 +1,8 @@
 //! What Slack sends to a company's gateway (ADR-125), before any session:
 //! the request names its gateway, then proves itself by its signature,
 //! checked with the gateway's signing secret, within five minutes. An
-//! unknown gateway and a request not signed by its application answer
-//! alike. Once signed: the address check is answered with its challenge;
+//! unknown gateway, a request not signed by its application, and a gateway
+//! whose secret this server cannot open answer alike. Once signed: the address check is answered with its challenge;
 //! an event of another workspace, of a paused gateway, or already taken
 //! (Slack sends it again when it was not answered in time) is taken and
 //! ignored. A person's own message to the application, from someone who
@@ -40,9 +40,6 @@ pub enum EventOutcome {
     Challenge(String),
     /// Taken: acted upon, or ignored.
     Taken,
-    /// This server cannot open the gateway's secrets (no master key, or
-    /// another one): Slack sends it again later.
-    Unavailable,
 }
 
 impl GatewayService {
@@ -64,7 +61,10 @@ impl GatewayService {
         };
         let secret_name = signing_secret_name(gateway_id);
         let Some(secret) = self.secret(&mut tx, tenant_id, &secret_name).await? else {
-            return Ok(EventOutcome::Unavailable);
+            // No master key, or another one: told the operator, answered to
+            // the sender as an unknown gateway (Slack sends it again later).
+            tracing::warn!(gateway = %gateway_id, "Slack gateway's signing secret unreadable");
+            return Ok(EventOutcome::Unknown);
         };
         let signed = verify(
             &secret,

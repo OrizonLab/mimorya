@@ -11,6 +11,7 @@
 //! address.
 
 use chrono::{DateTime, Duration, Utc};
+use mimorya_connectors::slack::SlackFailure;
 use mimorya_core::DomainError;
 use mimorya_core::gateways::slack::{DirectMessage, SlackProfile, identity_refusal, is_person};
 use mimorya_db::repositories::account_links::lock_active_account;
@@ -135,7 +136,7 @@ impl GatewayService {
             .slack
             .person(&token, &code.person)
             .await
-            .map_err(|failure| DomainError::unavailable(failure.message()))?;
+            .map_err(|failure| DomainError::unavailable(refused_to_person(&failure)))?;
         let profile = SlackProfile {
             workspace: person.workspace_id.as_deref(),
             address: person.address.as_deref(),
@@ -201,6 +202,20 @@ impl GatewayService {
             return Err(DomainError::validation(EXPIRED).into());
         }
         Ok(code)
+    }
+}
+
+/// What the person is told when Slack does not say who they are: the
+/// application itself refused is their administrator's to fix.
+fn refused_to_person(failure: &SlackFailure) -> String {
+    match failure {
+        SlackFailure::Refused(code) if failure.token_refused() || code == "missing_scope" => {
+            "Slack refuse de dire à l’application de votre entreprise qui est ce compte : \
+             prévenez votre administrateur (jeton ou permissions de l’application Slack à \
+             revoir)"
+                .into()
+        }
+        other => other.message(),
     }
 }
 

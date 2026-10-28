@@ -4,9 +4,10 @@
 //! and has the account's own address. A link opened by someone else, of a
 //! Slack user of another workspace, without an address or deleted, expired
 //! or of another company links nothing; refusals are audited, never an
-//! address. A new link replaces the former one, and this identity's link to
-//! anyone else. The person lists and removes it; a deactivated account
-//! loses it.
+//! address. Linking takes using the agent, an enabled gateway, and Slack
+//! answering the application. A new link replaces the former one, and this
+//! identity's link to anyone else. The person lists and removes it; a
+//! deactivated account loses it.
 
 mod support;
 
@@ -19,6 +20,7 @@ use serde_json::{Value, json};
 use support::gateways::{
     ACCOUNT, LINK, declare_slack, direct_message, gateway_view, offered_code, send,
 };
+use support::manager_approvals::without;
 use support::queue::as_owner;
 use support::refusals::{entries_since, latest_entry};
 use support::sso::SSO_DEPLOYMENT;
@@ -299,5 +301,57 @@ async fn a_new_link_replaces_the_former_one_and_a_deactivated_account_loses_it()
     let enabled = paul.patch(&path, json!({ "status": "active" })).await;
     assert_eq!(enabled.status, StatusCode::OK, "{}", enabled.text());
     let lea = api.sign_in(user::LEA).await;
+    assert_eq!(own_gateway(&lea, gateway).await["linked"], Value::Null);
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn linking_takes_the_agent_an_enabled_gateway_and_slack_s_answer() {
+    let slack = FakeSlack::start().await;
+    let api = TestApi::start_with_slack(&SSO_DEPLOYMENT, &slack.url).await;
+    let paul = api.sign_in(user::PAUL).await;
+    let gateway = declare_slack(&paul).await;
+    slack.add_person(LEA_SLACK, &email(user::LEA));
+    let code = link_for(&api, &slack, gateway, LEA_SLACK).await;
+    let lea = api.sign_in(user::LEA).await;
+
+    // Without using the agent: shown unavailable, nothing linked.
+    let policy = without(&paul, user::LEA, "agent:use").await;
+    assert_eq!(own_gateway(&lea, gateway).await["available"], false);
+    let refused = confirm(&lea, &code).await;
+    assert_eq!(refused.status, StatusCode::FORBIDDEN, "{}", refused.text());
+    assert_eq!(own_gateway(&lea, gateway).await["linked"], Value::Null);
+    assert_eq!(paul.delete(&policy).await.status, StatusCode::OK);
+    assert_eq!(own_gateway(&lea, gateway).await["available"], true);
+
+    // A paused gateway shows and links nothing.
+    let path = format!("/admin/gateways/{gateway}");
+    let paused = paul.patch(&path, json!({ "enabled": false })).await;
+    assert_eq!(paused.status, StatusCode::OK);
+    assert_eq!(own_gateway(&lea, gateway).await["available"], false);
+    let shown = lea.get(&format!("{LINK}?code={code}")).await;
+    assert_eq!(shown.status, StatusCode::CONFLICT, "{}", shown.text());
+    let refused = confirm(&lea, &code).await;
+    assert_eq!(refused.status, StatusCode::CONFLICT, "{}", refused.text());
+    assert!(
+        refused.error_message().contains("désactivée"),
+        "{}",
+        refused.text()
+    );
+    assert_eq!(own_gateway(&lea, gateway).await["linked"], Value::Null);
+    let resumed = paul.patch(&path, json!({ "enabled": true })).await;
+    assert_eq!(resumed.status, StatusCode::OK);
+
+    // Slack no longer answers the application: her administrator's to fix.
+    slack.revoke();
+    let refused = confirm(&lea, &code).await;
+    assert_eq!(refused.status, StatusCode::SERVICE_UNAVAILABLE);
+    assert!(
+        refused
+            .error_message()
+            .contains("prévenez votre administrateur"),
+        "{}",
+        refused.text()
+    );
     assert_eq!(own_gateway(&lea, gateway).await["linked"], Value::Null);
 }

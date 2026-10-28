@@ -30,7 +30,6 @@ const MAX_BODY_BYTES: usize = 256 * 1024;
 const UNKNOWN: &str = "Passerelle introuvable";
 const TOO_LARGE: &str = "Événement trop volumineux";
 const UNREADABLE: &str = "Événement illisible";
-const UNAVAILABLE: &str = "Passerelle indisponible : réessayez plus tard";
 
 pub fn routes() -> Router<AppState> {
     Router::new().route("/gateways/slack/{id}", post(receive))
@@ -71,6 +70,5 @@ async fn receive(
         EventOutcome::Taken => Ok(StatusCode::OK.into_response()),
         EventOutcome::Unknown => Err(DomainError::not_found(UNKNOWN).into()),
         EventOutcome::Unreadable => Err(ApiError::request(StatusCode::BAD_REQUEST, UNREADABLE)),
-        EventOutcome::Unavailable => Err(DomainError::unavailable(UNAVAILABLE).into()),
     }
 }

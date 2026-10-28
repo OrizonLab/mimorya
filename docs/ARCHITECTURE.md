@@ -312,8 +312,9 @@ Détaillés dans [AGENT_ENGINE.md](AGENT_ENGINE.md). En résumé :
   Une personne qui écrit à l'application reçoit dans Slack un lien vers son compte,
   scellé, valable quinze minutes ; ouvert dans sa session, il relie son identité Slack
   si Slack dit que cet utilisateur est de l'espace de travail de l'entreprise et a
-  l'adresse de son compte (`gateway_identities`, ADR-125). Ses conversations dans Slack
-  viennent au lot suivant.
+  l'adresse de son compte (`gateway_identities`, ADR-125). La page de ce lien et les
+  écrans viennent au lot suivant (d'ici là, la liaison se fait par l'API), puis les
+  conversations dans Slack.
 - Les secrets ne transitent jamais par le contexte du modèle ni par les journaux.
 
 Connecteurs prévus : démonstration (MVP), MCP générique (MVP), déclencheurs (ADR-109),
