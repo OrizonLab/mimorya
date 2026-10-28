@@ -14,6 +14,7 @@ pub const GATEWAYS: &str = "/admin/gateways";
 pub const DECLARE: &str = "/admin/gateways/slack";
 pub const ACCOUNT: &str = "/account/gateways";
 pub const LINK: &str = "/account/gateways/link";
+pub const PREVIEW: &str = "/account/gateways/link/preview";
 
 /// The company's Slack gateway, declared by `admin` with the local Slack's
 /// application; one a previous test declared goes first, with its people's
@@ -122,7 +123,7 @@ pub fn envelope(workspace: &str, event_id: &str, event: Value) -> String {
 pub fn offered_code(slack: &FakeSlack) -> String {
     let posts = slack.posts();
     let text = &posts.last().expect("a message posted").text;
-    let start = text.find("?code=").expect("a link") + "?code=".len();
+    let start = text.find("gateway-link#").expect("a link") + "gateway-link#".len();
     let end = start + text[start..].find('|').expect("its label");
     text[start..end].to_owned()
 }

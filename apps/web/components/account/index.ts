@@ -2,6 +2,8 @@ export { AuthFrame } from './auth-frame';
 export { CompanySignIn } from './company-sign-in';
 export { PasswordForm } from './password-form';
 export { FirstPasswordScreen } from './first-password-screen';
+export { GatewayIdentities } from './gateway-identities';
+export { GatewayLinkConfirmation } from './gateway-link-confirmation';
 export { InvitationForm } from './invitation-form';
 export { LinkPage } from './link-page';
 export { LinkedAccounts } from './linked-accounts';

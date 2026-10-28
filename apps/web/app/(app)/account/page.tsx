@@ -1,6 +1,11 @@
 'use client';
 
-import { LinkedAccounts, NotificationForm, PasswordForm } from '@/components/account';
+import {
+  GatewayIdentities,
+  LinkedAccounts,
+  NotificationForm,
+  PasswordForm,
+} from '@/components/account';
 import { Card, PageHeader } from '@/components/ui';
 import { useMe } from '@/lib/me-context';
 
@@ -21,6 +26,7 @@ export default function AccountPage() {
           </Card>
         )}
         <LinkedAccounts />
+        <GatewayIdentities />
         <NotificationForm />
       </div>
     </div>

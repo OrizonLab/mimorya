@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { Badge, Button, Card, EmptyState, Loaded } from '@/components/ui';
 import { useApiData, type Connectors } from '@/lib/api';
 import { ConnectorCard } from './connector-card';
+import { GatewaysSection } from './gateways-section';
 import { GoogleWorkspaceForm } from './google-workspace-form';
 import { McpForm } from './mcp-form';
 import { Microsoft365Form } from './microsoft365-form';
@@ -13,7 +14,7 @@ import { RestForm } from './rest-form';
 /**
  * The company's connectors, and adding an MCP server, a REST API, its
  * Microsoft 365 application or its Google Workspace client, one of each
- * per company (ADR-118, ADR-124).
+ * per company (ADR-118, ADR-124); then its conversation gateways (ADR-126).
  */
 export function ConnectorsTab() {
   const state = useApiData<Connectors>('/admin/connectors');
@@ -82,6 +83,7 @@ export function ConnectorsTab() {
               onChanged={state.reload}
             />
           ))}
+          <GatewaysSection />
           <section>
             <h2 className="mb-2 text-sm font-semibold">Types de connecteurs</h2>
             <div className="grid gap-3 md:grid-cols-2">

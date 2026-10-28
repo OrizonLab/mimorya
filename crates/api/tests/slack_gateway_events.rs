@@ -104,7 +104,8 @@ async fn a_person_not_linked_is_sent_a_link_once_per_event() {
     assert_eq!(posts.len(), 1, "{posts:?}");
     let post = &posts[0];
     assert_eq!(post.channel, "D0LEA");
-    let link = format!("<{WEB_ORIGIN}/account/gateway-link?code=");
+    // The code in the fragment: never sent to a server with the page.
+    let link = format!("<{WEB_ORIGIN}/account/gateway-link#");
     assert!(post.text.contains(&link), "{}", post.text);
     assert!(post.text.contains("|relier mon compte>"), "{}", post.text);
     assert!(post.text.contains("15 minutes"), "{}", post.text);
@@ -196,6 +197,7 @@ async fn only_a_gateway_event_goes_without_the_header() {
         format!("/gateways/teams/{id}"),
         "/admin/gateways/slack".to_owned(),
         "/account/gateways/link".to_owned(),
+        "/account/gateways/link/preview".to_owned(),
     ] {
         let refused = post_signed(&api, &path, None, "{}").await;
         assert_eq!(refused.status, StatusCode::FORBIDDEN, "{path}");

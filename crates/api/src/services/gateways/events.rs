@@ -5,9 +5,10 @@
 //! whose secret this server cannot open answer alike. Once signed: the
 //! address check is answered with its challenge; an event of another
 //! workspace, of a paused gateway, or already taken (Slack sends it again
-//! when it was not answered in time) is taken and ignored. A person's own message to the application, from someone who
-//! has not linked their Slack identity, is answered with a link to do so
-//! (`link`). What a message says is never logged nor audited.
+//! when it was not answered in time) is taken and ignored. A person's own
+//! message to the application, from someone who has not linked their Slack
+//! identity, is answered with a link to do so (`link`). What a message says
+//! is never logged nor audited.
 
 use chrono::{DateTime, Utc};
 use mimorya_core::gateways::GatewayKind;

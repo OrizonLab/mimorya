@@ -109,6 +109,7 @@ mod tests {
             format!("/admin/gateways/{id}"),
             format!("/account/gateways/{id}"),
             "/account/gateways/link".to_owned(),
+            "/account/gateways/link/preview".to_owned(),
         ] {
             assert!(!is_gateway_event(&path), "{path}");
         }

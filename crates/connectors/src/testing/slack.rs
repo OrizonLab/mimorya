@@ -2,10 +2,11 @@
 //! ADR-125). Its bot's token, `BOT_TOKEN`, is the application of the
 //! workspace `WORKSPACE`, whose bot user is `BOT_USER`; `OTHER_TOKEN` is an
 //! application's of another workspace; any other token is refused
-//! (`invalid_auth`), as one a test revoked. It knows the people a
-//! test adds, by address, deleted or of another workspace, and keeps the
-//! messages the application posts. A test signs the events it sends as
-//! Slack would (`signed`).
+//! (`invalid_auth`), as one a test revoked. It knows the people a test
+//! adds, by address, deleted or of another workspace, and keeps the messages
+//! the application posts, also listed at `GET /test/posts` for the
+//! end-to-end tests. A test signs the events it sends as Slack would
+//! (`signed`).
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -66,13 +67,19 @@ pub struct FakeSlack {
 
 impl FakeSlack {
     pub async fn start() -> Self {
+        Self::start_on("127.0.0.1:0").await
+    }
+
+    /// The same, at `address` (the end-to-end tests read it there).
+    pub async fn start_on(address: &str) -> Self {
         let shared = Arc::new(Mutex::new(Shared::default()));
         let router = Router::new()
             .route("/api/auth.test", post(auth_test))
             .route("/api/users.info", get(users_info))
             .route("/api/chat.postMessage", post(post_message))
+            .route("/test/posts", get(posts))
             .with_state(shared.clone());
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        let listener = tokio::net::TcpListener::bind(address)
             .await
             .expect("local port");
         let address: SocketAddr = listener.local_addr().expect("local address");
@@ -244,4 +251,18 @@ async fn post_message(
     shared.posts.push(post);
     let ts = format!("1700000000.{:06}", shared.posts.len());
     Json(json!({ "ok": true, "channel": channel, "ts": ts })).into_response()
+}
+
+/// The messages the application posted, oldest first, for the end-to-end
+/// tests.
+async fn posts(State(shared): State<Arc<Mutex<Shared>>>) -> Json<Value> {
+    let shared = shared.lock().expect("lock");
+    let posts: Vec<Value> = shared
+        .posts
+        .iter()
+        .map(|post| {
+            json!({ "channel": post.channel, "threadTs": post.thread_ts, "text": post.text })
+        })
+        .collect();
+    Json(json!(posts))
 }

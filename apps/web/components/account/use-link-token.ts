@@ -3,10 +3,12 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError, type LinkToken } from '@/lib/api';
 
-/** A link opened before sign-in, once checked by the API. */
+/** A link opened before sign-in, or in the person's own session, once checked by the API. */
 export type LinkState<T> =
   | { kind: 'loading' }
   | { kind: 'invalid'; message: string }
+  // A link that only opens in the person's own session, opened signed out.
+  | { kind: 'signed-out' }
   | { kind: 'ready'; token: string; view: T };
 
 const INCOMPLETE = 'Ce lien est incomplet : ouvrez-le tel que vous l’avez reçu.';
@@ -19,7 +21,9 @@ const asToken = (token: string) => ({ token }) satisfies LinkToken;
  * with the body `ask` makes of it (a constant function: the link is asked
  * about again when it changes). The token travels in the fragment: never
  * sent to a server with the page. A link pasted while the page is open only
- * changes the fragment.
+ * changes the fragment. A link asked about in the person's own session
+ * (ADR-126) answers 401 when they are signed out: they are told to sign in
+ * and open it again, the sign-in page not keeping the fragment.
  */
 export function useLinkToken<T>(
   path: string,
@@ -39,9 +43,11 @@ export function useLinkToken<T>(
       api
         .post<T>(path, ask(token))
         .then((view) => setState({ kind: 'ready', token, view }))
-        .catch((e: unknown) =>
-          setState({ kind: 'invalid', message: e instanceof ApiError ? e.message : unchecked }),
-        );
+        .catch((e: unknown) => {
+          if (e instanceof ApiError && e.status === 401) setState({ kind: 'signed-out' });
+          else
+            setState({ kind: 'invalid', message: e instanceof ApiError ? e.message : unchecked });
+        });
     }
     load();
     window.addEventListener('hashchange', load);
