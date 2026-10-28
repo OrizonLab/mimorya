@@ -1668,13 +1668,13 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     publics et téléchargeables sans compte, `latest`, `main` et `sha-20409bfe048a`
     désignant les mêmes images ; pour un paquet qui n'existait pas encore, le registre a
     répondu « introuvable », comme le suppose la publication. Depuis, chaque
-    publication vérifie que ses images se téléchargent sans compte : un paquet resté
-    privé fait échouer le travail ;
+    promotion jouée vérifie que les images de son commit se téléchargent sans compte :
+    un paquet resté privé fait échouer le travail ;
   - restent à faire : la signature des images ; arm64 ; l'épinglage des actions par
     empreinte ; que toute promotion, même celle d'un commit plus ancien, nomme `main` et
-    `latest` la tête de `main` si ses images sont publiées. Le cache du travail de CI qui vérifie les piles n'est pas retenu : ce
-    travail dure moins que celui de Rust. Une PR qui touche les images en vérifie la
-    construction, pas l'envoi.
+    `latest` la tête de `main` si ses images sont publiées. Le cache du travail de CI
+    qui vérifie les piles n'est pas retenu : ce travail dure moins que celui de Rust.
+    Une PR qui touche les images en vérifie la construction, pas l'envoi.
 
 ## ADR-052 — Les compétences s'écrivent et s'activent depuis l'administration
 
