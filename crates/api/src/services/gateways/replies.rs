@@ -19,6 +19,7 @@ use std::collections::HashSet;
 
 use chrono::{DateTime, Duration, Utc};
 use mimorya_connectors::slack::SlackFailure;
+use mimorya_core::gateways::slack::{ShownAction, validated_in_slack};
 use mimorya_db::repositories::approvals::list_approvals_for_run;
 use mimorya_db::repositories::gateway_replies::{
     ReplyRecord, UnrepliedEvent, gateway_reply_target, record_gateway_reply,
@@ -145,12 +146,24 @@ async fn reply(
         Some(token) => {
             let url = gateways.conversation_url(target.conversation_id);
             let (text, blocks) = if target.status == "awaiting_approval" {
-                let own: Vec<_> = (awaiting.iter())
+                let theirs: Vec<_> = (awaiting.iter())
                     .filter(|a| !a.routed_to_manager())
-                    .map(|a| (a.id, a.action_summary.as_str()))
                     .collect();
-                let managed = awaiting.len() - own.len();
-                pause_reply(&url, &Pause { own: &own, managed })
+                let own: Vec<_> = (theirs.iter())
+                    .filter(|a| validated_in_slack(&a.risk, &a.payload))
+                    .map(|a| ShownAction {
+                        approval_id: a.id,
+                        summary: &a.action_summary,
+                        risk: &a.risk,
+                        parameters: &a.payload,
+                    })
+                    .collect();
+                let pause = Pause {
+                    own: &own,
+                    in_application: theirs.len() - own.len(),
+                    managed: awaiting.len() - theirs.len(),
+                };
+                pause_reply(&url, &pause)
             } else {
                 (
                     reply_text(&target.status, target.answer.as_deref(), &url),

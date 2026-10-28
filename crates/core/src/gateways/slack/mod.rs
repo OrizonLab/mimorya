@@ -21,8 +21,8 @@ pub use events::{
 };
 pub use identity::{IdentityRefusal, SlackProfile, identity_refusal};
 pub use interactions::{
-    APPROVE_ACTION, ApprovalChoice, MAX_ACTION_CHARS, REJECT_ACTION, approval_blocks,
-    approval_choice, decided_blocks,
+    APPROVE_ACTION, ApprovalChoice, MAX_ACTION_CHARS, MAX_PARAMETERS_CHARS, REJECT_ACTION,
+    ShownAction, approval_blocks, approval_choice, buttons_in, decided_blocks, validated_in_slack,
 };
 pub use mrkdwn::{bounded, escaped, from_markdown, plain};
 pub use signature::{MAX_SKEW_SECONDS, SignatureProblem, signature, verify};

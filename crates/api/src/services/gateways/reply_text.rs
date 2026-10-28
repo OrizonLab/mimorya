@@ -6,29 +6,40 @@
 //! says where its conversation is in the application, where its sources and
 //! its details are.
 
-use mimorya_core::gateways::slack::{approval_blocks, bounded, escaped, from_markdown};
+use mimorya_core::gateways::slack::{
+    ShownAction, approval_blocks, bounded, escaped, from_markdown,
+};
 use serde_json::Value;
-use uuid::Uuid;
 
 /// The most of an answer written in Slack, which shows a message's text
 /// best under 4 000 characters.
 pub const MAX_ANSWER_CHARS: usize = 3_000;
 /// The most actions shown with their buttons in a pause's message.
-pub const MAX_SHOWN_ACTIONS: usize = 10;
+pub const MAX_SHOWN_ACTIONS: usize = 5;
 
-/// The actions a pause awaits: the person's own validation (their
-/// approval and its description), and how many a manager's.
+/// The actions a pause awaits: the person's own validation, in Slack
+/// (`own`, shown with their exact parameters and buttons) or in the
+/// application (`in_application`: sending outside the company, not undone,
+/// or whose parameters do not fit), and a manager's (`managed`).
 pub struct Pause<'a> {
-    pub own: &'a [(Uuid, &'a str)],
+    pub own: &'a [ShownAction<'a>],
+    pub in_application: usize,
     pub managed: usize,
 }
 
 /// What a pause is answered with: its text, and the blocks showing it with
-/// a button for each action awaiting the person's own validation, if any.
+/// a button for each action awaiting the person's own validation in Slack,
+/// if any.
 pub fn pause_reply(url: &str, pause: &Pause) -> (String, Option<Vec<Value>>) {
     let link = format!("<{}|ouvrir la conversation>", escaped(url));
     if pause.own.is_empty() {
-        let text = if pause.managed > 0 {
+        let text = if pause.in_application > 0 {
+            format!(
+                "Une action de cette demande attend votre validation, à donner dans \
+                 l’application, qui en montre les paramètres exacts : {link}. La suite viendra \
+                 dans ce fil, une fois la validation donnée."
+            )
+        } else if pause.managed > 0 {
             format!(
                 "Une action de cette demande attend la validation de votre responsable, dans \
                  l’application : {link}. La suite viendra dans ce fil, une fois la validation \
@@ -43,16 +54,18 @@ pub fn pause_reply(url: &str, pause: &Pause) -> (String, Option<Vec<Value>>) {
     let mut intro = if pause.own.len() == 1 {
         format!(
             "Une action de cette demande attend votre validation : validez-la ou refusez-la \
-             ci-dessous, ou dans l’application ({link}). La suite viendra dans ce fil."
+             ci-dessous, après en avoir lu les paramètres exacts, ou dans l’application \
+             ({link}). La suite viendra dans ce fil."
         )
     } else {
         format!(
             "Des actions de cette demande attendent votre validation : validez-les ou \
-             refusez-les ci-dessous, ou dans l’application ({link}). La suite viendra dans ce fil."
+             refusez-les ci-dessous, après en avoir lu les paramètres exacts, ou dans \
+             l’application ({link}). La suite viendra dans ce fil."
         )
     };
-    if shown.len() < pause.own.len() {
-        intro.push_str(" Les autres sont à valider dans l’application.");
+    if shown.len() < pause.own.len() || pause.in_application > 0 {
+        intro.push_str(" D’autres sont à valider dans l’application.");
     }
     if pause.managed > 0 {
         intro.push_str(" D’autres attendent la validation de votre responsable.");
@@ -119,12 +132,22 @@ mod tests {
         );
     }
 
+    fn shown(parameters: &serde_json::Value) -> ShownAction<'_> {
+        ShownAction {
+            approval_id: uuid::Uuid::new_v4(),
+            summary: "Appliquer le planning",
+            risk: "write",
+            parameters,
+        }
+    }
+
     #[test]
     fn a_pause_shows_the_person_s_own_actions_with_their_buttons() {
-        let (one, two) = (Uuid::new_v4(), Uuid::new_v4());
-        let actions = [(one, "Envoyer l’e-mail"), (two, "Créer le rendez-vous")];
+        let parameters = serde_json::json!({ "proposalId": "p-1" });
+        let actions = [shown(&parameters), shown(&parameters)];
         let pause = Pause {
             own: &actions[..1],
+            in_application: 0,
             managed: 0,
         };
         let (text, blocks) = pause_reply(URL, &pause);
@@ -132,56 +155,81 @@ mod tests {
             text.starts_with("Une action de cette demande attend votre validation"),
             "{text}"
         );
+        assert!(text.contains("paramètres exacts"), "{text}");
         assert!(text.contains(LINK), "{text}");
         let blocks = blocks.expect("its buttons");
-        assert_eq!(blocks.len(), 3);
-        assert_eq!(blocks[2]["elements"][0]["value"], one.to_string());
-        // Several, some a manager decides.
+        assert_eq!(blocks.len(), 4);
+        assert_eq!(
+            blocks[3]["elements"][0]["value"],
+            actions[0].approval_id.to_string()
+        );
+        // Several, some in the application, some a manager decides.
         let pause = Pause {
             own: &actions,
+            in_application: 1,
             managed: 1,
         };
         let (text, blocks) = pause_reply(URL, &pause);
         assert!(text.starts_with("Des actions"), "{text}");
+        assert!(
+            text.contains("D’autres sont à valider dans l’application."),
+            "{text}"
+        );
         assert!(text.ends_with("validation de votre responsable."), "{text}");
-        assert_eq!(blocks.expect("their buttons").len(), 5);
+        assert_eq!(blocks.expect("their buttons").len(), 7);
         // Beyond those shown, the rest in the application.
         let many: Vec<_> = (0..MAX_SHOWN_ACTIONS + 2)
-            .map(|_| (Uuid::new_v4(), "Agir"))
+            .map(|_| shown(&parameters))
             .collect();
         let (text, blocks) = pause_reply(
             URL,
             &Pause {
                 own: &many,
+                in_application: 0,
                 managed: 0,
             },
         );
         assert!(
-            text.contains("Les autres sont à valider dans l’application"),
+            text.contains("D’autres sont à valider dans l’application"),
             "{text}"
         );
         assert_eq!(
             blocks.expect("their buttons").len(),
-            1 + 2 * MAX_SHOWN_ACTIONS
+            1 + 3 * MAX_SHOWN_ACTIONS
         );
     }
 
     #[test]
-    fn a_pause_for_a_manager_or_already_decided_has_no_button() {
+    fn a_pause_in_the_application_for_a_manager_or_already_decided_has_no_button() {
         let (text, blocks) = pause_reply(
             URL,
             &Pause {
                 own: &[],
-                managed: 1,
+                in_application: 1,
+                managed: 0,
             },
         );
-        assert!(text.contains("validation de votre responsable"), "{text}");
+        assert!(
+            text.contains("à donner dans l’application, qui en montre les paramètres"),
+            "{text}"
+        );
         assert!(text.contains(LINK), "{text}");
         assert_eq!(blocks, None);
         let (text, blocks) = pause_reply(
             URL,
             &Pause {
                 own: &[],
+                in_application: 0,
+                managed: 1,
+            },
+        );
+        assert!(text.contains("validation de votre responsable"), "{text}");
+        assert_eq!(blocks, None);
+        let (text, blocks) = pause_reply(
+            URL,
+            &Pause {
+                own: &[],
+                in_application: 0,
                 managed: 0,
             },
         );

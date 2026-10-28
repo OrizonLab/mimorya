@@ -145,7 +145,8 @@ Repères à l'intérieur des crates :
   (`identities.rs`), ADR-125 ; message d'une personne reliée répondu dans une
   conversation tenue dans son fil (`conversations.rs`), fin ou pause des runs écrite
   dans le fil (`replies.rs`, `reply_text.rs`), ADR-127 ; action validée ou refusée par
-  son bouton dans le fil (`choices.rs`), ADR-129 ; déclarées par
+  son bouton dans le fil (`choices.rs`), qui peut agir, pour un message comme pour un
+  bouton (`person.rs`), ADR-129 ; déclarées par
   `services/admin/gateways.rs`),
   `api/src/services/notification_settings.rs` (e-mails que chacun choisit de recevoir,
   lus au moment d'envoyer chaque avis, ADR-094),

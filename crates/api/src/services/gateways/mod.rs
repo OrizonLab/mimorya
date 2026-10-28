@@ -16,6 +16,7 @@ mod conversations;
 mod events;
 mod identities;
 mod link;
+mod person;
 mod replies;
 mod reply_text;
 

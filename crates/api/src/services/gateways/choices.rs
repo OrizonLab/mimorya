@@ -2,35 +2,37 @@
 //! button a linked person pressed under an action of theirs awaiting their
 //! validation, sent by Slack, signed, to the gateway's own address
 //! (form-encoded, where events are JSON). Answered to Slack at once, then
-//! decided in the background as that person, with their rights as they
-//! stand, as from the application's screen: Slack is asked first whether the
-//! Slack user is still theirs, and only who may decide the request decides
-//! it. The message then shows the outcome in place of the buttons; why
-//! nothing was decided is said in the thread. Audited as any decision,
-//! with the service it was given from.
+//! decided in the background as that person, once they may act (`person`),
+//! with their rights as they stand, as from the application's screen. Only
+//! their own action, awaiting their own validation, that Slack may validate
+//! (`validated_in_slack`: changing nothing outside the company, undone, its
+//! exact parameters shown whole) is decided there: whatever the press says,
+//! any other is left to the application. The message then shows what
+//! became of each of its actions in place of their buttons; why nothing was
+//! decided is said in the thread. Audited as any decision, with the service
+//! it was given from.
 
 use mimorya_core::DomainError;
 use mimorya_core::gateways::GatewayKind;
 use mimorya_core::gateways::slack::{
-    ApprovalChoice, DirectMessage, approval_choice, decided_blocks,
+    ApprovalChoice, DirectMessage, approval_choice, buttons_in, decided_blocks, validated_in_slack,
 };
-use mimorya_db::repositories::gateway_identities::linked_account;
+use mimorya_db::repositories::approvals::{ApprovalRow, get_approval};
 use mimorya_db::repositories::gateways::GatewayRow;
 use uuid::Uuid;
 
-use super::conversations::{offer_link, say, still_theirs};
+use super::person::{Act, acting_person, say};
 use super::{EventOutcome, GatewayService, PersonMessage, bot_token_name};
 use crate::app::Services;
 use crate::services::access::AuthIdentity;
-use crate::services::runs::DecisionInput;
+use crate::services::runs::{APPROVAL_NOT_FOUND, DecisionInput};
 
 const NOT_DECIDED: &str = "La validation n’a pas pu être enregistrée : réessayez dans un instant, \
      ou donnez-la dans l’application.";
-const NOT_LINKED: &str = "Ce compte Slack n’est pas relié à votre compte : rien n’a été décidé.";
-const TEMPORARY_PASSWORD: &str = "Votre mot de passe provisoire reste à remplacer dans \
+const IN_APPLICATION: &str = "Cette action se valide dans l’application, qui en montre les \
+     paramètres exacts : rien n’a été décidé.";
+const AWAITS_A_MANAGER: &str = "Cette action attend la validation de votre responsable, dans \
      l’application : rien n’a été décidé.";
-const APPROVED: &str = "*Validée* par vous dans Slack.";
-const REJECTED: &str = "*Refusée* par vous dans Slack.";
 const RESUMED: &str = " La demande reprend : la suite viendra dans ce fil.";
 
 /// A linked person's press of a validation button: to decide once Slack is
@@ -109,34 +111,33 @@ pub async fn decide_in_slack(services: &Services, pressed: PersonChoice) {
 
 async fn decide(services: &Services, pressed: &PersonChoice) -> anyhow::Result<()> {
     let (from, choice) = (&pressed.from, &pressed.choice);
-    let mut tx = services.db.begin(from.tenant_id).await?;
-    let account = linked_account(&mut tx, from.gateway.id, &choice.person).await?;
+    let Some(identity) = acting_person(services, from, Act::Decide).await? else {
+        return Ok(());
+    };
+    let mut tx = services.db.begin(identity.tenant_id).await?;
+    let approval = get_approval(&mut tx, choice.approval_id).await?;
     tx.commit().await?;
-    let Some(account) = account else {
-        say(services, from, NOT_LINKED).await;
-        return offer_link(services, from);
+    // Their own action only, nothing told of anyone else's.
+    let Some(approval) = approval.filter(|a| a.requested_for_user_id == identity.user_id) else {
+        say(services, from, APPROVAL_NOT_FOUND).await;
+        return Ok(());
     };
-    if account.must_change_password {
-        say(services, from, TEMPORARY_PASSWORD).await;
+    if approval.routed_to_manager() {
+        say(services, from, AWAITS_A_MANAGER).await;
         return Ok(());
     }
-    if !still_theirs(services, from, &account).await? {
+    if !validated_in_slack(&approval.risk, &approval.payload) {
+        say(services, from, IN_APPLICATION).await;
         return Ok(());
     }
-    let identity = AuthIdentity {
-        tenant_id: from.tenant_id,
-        user_id: account.user_id,
-        session_id: Uuid::nil(),
-        must_change_password: false,
-    };
     let input = DecisionInput {
         approval_id: choice.approval_id,
         approved: choice.approved,
         comment: None,
         gateway: Some(GatewayKind::Slack.as_str()),
     };
-    let decided = match services.runs.decide(identity, input).await {
-        Ok(decided) => decided,
+    let resumed = match services.runs.decide(identity, input).await {
+        Ok(decided) => decided.resumed,
         Err(error) => {
             let Some(refusal) = error.downcast_ref::<DomainError>() else {
                 return Err(error);
@@ -145,27 +146,49 @@ async fn decide(services: &Services, pressed: &PersonChoice) -> anyhow::Result<(
             return Ok(());
         }
     };
-    let mut outcome = (if choice.approved { APPROVED } else { REJECTED }).to_string();
-    if decided.resumed {
-        outcome.push_str(RESUMED);
-    }
-    show_outcome(services, pressed, &outcome).await;
-    Ok(())
+    show_outcomes(services, pressed, identity, resumed).await
 }
 
-/// Shows `outcome` in the message in place of the buttons pressed.
-async fn show_outcome(services: &Services, pressed: &PersonChoice, outcome: &str) {
+/// Shows in the message what became of each of its actions, as they stand
+/// now, in place of their buttons: the one just decided, and any other
+/// decided meanwhile.
+async fn show_outcomes(
+    services: &Services,
+    pressed: &PersonChoice,
+    identity: AuthIdentity,
+    resumed: bool,
+) -> anyhow::Result<()> {
     let (from, choice) = (&pressed.from, &pressed.choice);
-    let Some(blocks) = decided_blocks(&choice.blocks, choice.approval_id, outcome) else {
-        return;
-    };
+    let mut outcomes = Vec::new();
+    let mut tx = services.db.begin(identity.tenant_id).await?;
+    for id in buttons_in(&choice.blocks) {
+        let Some(approval) = get_approval(&mut tx, id).await? else {
+            continue;
+        };
+        if approval.requested_for_user_id != identity.user_id {
+            continue;
+        }
+        let just_decided = id == choice.approval_id;
+        if let Some(outcome) = outcome(&approval, just_decided, resumed) {
+            outcomes.push((id, outcome));
+        }
+    }
+    tx.commit().await?;
+    if outcomes.is_empty() {
+        return Ok(());
+    }
+    let blocks = decided_blocks(&choice.blocks, &outcomes);
+    let text = outcomes
+        .iter()
+        .find(|(id, _)| *id == choice.approval_id)
+        .map_or("Validation enregistrée.", |(_, text)| text.as_str());
     let slack = services.gateways.slack();
     if let Err(failure) = slack
         .update(
             &from.token,
             &choice.channel,
             &choice.message_ts,
-            outcome,
+            text,
             &blocks,
         )
         .await
@@ -173,4 +196,29 @@ async fn show_outcome(services: &Services, pressed: &PersonChoice, outcome: &str
         let failure = failure.message();
         tracing::warn!(gateway = %from.gateway.id, %failure, "Slack message not updated");
     }
+    Ok(())
+}
+
+/// What became of `approval`, in Slack's markup, once decided; `None`
+/// while it waits.
+fn outcome(approval: &ApprovalRow, just_decided: bool, resumed: bool) -> Option<String> {
+    let said = match approval.status.as_str() {
+        "approved" => "*Validée*",
+        "rejected" => "*Refusée*",
+        "expired" => "*Expirée* : elle n’a pas été validée à temps.",
+        "cancelled" => "*Annulée*.",
+        _ => return None,
+    };
+    let mut outcome = said.to_string();
+    if matches!(approval.status.as_str(), "approved" | "rejected") {
+        outcome.push_str(if just_decided {
+            " par vous dans Slack."
+        } else {
+            "."
+        });
+        if just_decided && resumed {
+            outcome.push_str(RESUMED);
+        }
+    }
+    Some(outcome)
 }
