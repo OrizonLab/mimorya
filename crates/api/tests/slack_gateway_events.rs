@@ -197,6 +197,7 @@ async fn only_a_gateway_event_goes_without_the_header() {
         format!("/gateways/teams/{id}"),
         "/admin/gateways/slack".to_owned(),
         "/account/gateways/link".to_owned(),
+        "/account/gateways/link/preview".to_owned(),
     ] {
         let refused = post_signed(&api, &path, None, "{}").await;
         assert_eq!(refused.status, StatusCode::FORBIDDEN, "{path}");

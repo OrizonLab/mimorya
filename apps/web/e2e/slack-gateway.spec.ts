@@ -5,8 +5,9 @@
 // writes to the application, as the test Slack sends it, signed, and the
 // application answers with a link. Opened signed out, the link asks to
 // sign in first; opened in her session, it shows what it links and links
-// it. Paul sees her identity counted and disables the gateway; Léa is told
-// so and removes her link; Paul renames the gateway (its token and secret
+// it. Paul sees her identity counted and disables the gateway; the link,
+// reopened, says why it links nothing; Léa is told so in « Mon compte » and
+// removes her link; Paul renames the gateway (its token and secret
 // kept), enables it and deletes it, after which the address answers as to
 // an unknown gateway. Each step is read back from the API, each
 // confirmation read. Whatever happens, the gateway is deleted with its
@@ -129,8 +130,15 @@ test('a gateway is declared, a Slack identity linked from its link and removed, 
   await expect(card.getByText('Désactivée', { exact: true })).toBeVisible();
   expect((await storedGateway(page)).gateway?.enabled).toBe(false);
 
-  // Léa is told so, and removes her link.
-  await lea.reload();
+  // The link, reopened, says why it links nothing.
+  await lea.goto(link);
+  await expect(
+    lea.getByText(/^La passerelle Slack de votre entreprise est désactivée/),
+  ).toBeVisible();
+  await expect(lea.getByRole('button', { name: 'Relier mon compte Slack' })).toHaveCount(0);
+
+  // Léa is told so in « Mon compte », and removes her link.
+  await lea.goto('/account');
   await expect(row.getByText(/^La passerelle est désactivée/)).toBeVisible();
   await row.getByRole('button', { name: 'Retirer la liaison' }).click();
   await expect(row.getByText('Non relié', { exact: true })).toBeVisible();

@@ -6806,7 +6806,8 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
   - tests : `apps/web/e2e/slack-gateway.spec.ts` (déclaration, carte et adresse des
     événements relues dans l'API, sans jeton ni secret ; message direct signé par le
     test comme Slack le signe, lien lu chez le Slack simulé ; lien ouvert hors session
-    puis dans celle de Léa, liaison relue ; passerelle désactivée, liaison retirée,
+    puis dans celle de Léa, liaison relue ; passerelle désactivée, le lien rouvert
+    disant pourquoi il ne relie rien, liaison retirée,
     passerelle renommée sans changer ses secrets, réactivée, supprimée, l'adresse
     répondant alors comme une passerelle inconnue) ; `slack_gateway_links.rs` et
     `slack_gateway_events.rs` suivent le code dans le fragment et l'aperçu en `POST`.
