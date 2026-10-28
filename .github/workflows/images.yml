@@ -204,7 +204,7 @@ jobs:
               "$REGISTRY/$image:sha-${REVISION:0:12}"
           done
       # What an installation pulls, it pulls without an account: a package
-      # left private fails here, on every publication.
+      # left private fails here, on every promotion that runs.
       - name: Pullable without an account
         run: |
           owner=${REGISTRY#ghcr.io/}
