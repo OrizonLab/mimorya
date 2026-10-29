@@ -10,7 +10,7 @@ use reqwest_mcp::{Client, RequestBuilder};
 use serde_json::{Value, json};
 use url::Url;
 
-use super::{SlackFailure, SlackPerson, SlackWorkspace};
+use super::{SlackConversation, SlackFailure, SlackPerson, SlackWorkspace};
 use crate::outbound::{TOO_SLOW, UNREACHABLE};
 use mimorya_core::gateways::slack::{is_person, is_workspace};
 
@@ -95,6 +95,31 @@ impl SlackApi {
             address,
             deleted: flag("deleted"),
             bot: flag("is_bot") || flag("is_app_user"),
+        })
+    }
+
+    /// The conversation `channel`, as Slack knows it (`conversations.info`,
+    /// with `im:read` for a direct one).
+    pub async fn conversation(
+        &self,
+        token: &str,
+        channel: &str,
+    ) -> Result<SlackConversation, SlackFailure> {
+        let mut url = self.method("conversations.info");
+        url.query_pairs_mut().append_pair("channel", channel);
+        let answer = self.send(token, self.client.get(url)).await?;
+        let found = answer.get("channel").ok_or(SlackFailure::Unreadable)?;
+        if found.get("id").and_then(Value::as_str) != Some(channel) {
+            return Err(SlackFailure::Unreadable);
+        }
+        let direct = found.get("is_im").and_then(Value::as_bool) == Some(true);
+        let person = (found.get("user").and_then(Value::as_str))
+            .filter(|person| is_person(person))
+            .map(str::to_owned);
+        Ok(SlackConversation {
+            id: channel.to_owned(),
+            direct,
+            person,
         })
     }
 

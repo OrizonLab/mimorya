@@ -111,7 +111,13 @@ async fn the_company_declares_its_slack_application_once_checked_with_slack() {
     let scopes = &listed.json()["slackScopes"];
     assert_eq!(
         scopes,
-        &json!(["chat:write", "im:history", "users:read", "users:read.email"])
+        &json!([
+            "chat:write",
+            "im:history",
+            "im:read",
+            "users:read",
+            "users:read.email"
+        ])
     );
     assert_eq!(listed.json()["slackEvents"], json!(["message.im"]));
 

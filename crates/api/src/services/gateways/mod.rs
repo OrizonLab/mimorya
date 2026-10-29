@@ -11,12 +11,15 @@
 //! buttons (`choices`, ADR-129). A manager, or whom they named to stand in
 //! for them, linked there is told in Slack of the requests awaiting them
 //! and decides them with the same buttons (`approver_notices`, ADR-130).
+//! Whatever comes from a person, Slack is first asked whether it comes from
+//! their own direct conversation with the application (`direct`, ADR-131).
 //! The bot's token and the signing secret are sealed in the secret store.
 
 mod approver_notices;
 mod approver_text;
 mod choices;
 mod conversations;
+mod direct;
 mod events;
 mod identities;
 mod link;

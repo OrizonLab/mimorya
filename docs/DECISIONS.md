@@ -7143,3 +7143,43 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     (texte de l'auteur), `apps/web/e2e/slack-gateway.spec.ts` (le formulaire et « Mon
     compte » le disent) ;
   - reste à venir : la conversation directe vérifiée auprès de Slack, Telegram, Teams.
+
+## ADR-131 — Conversation directe vérifiée auprès de Slack (passerelles, lot 12g)
+
+- **Date** : 2026-10-29 · **Statut** : acceptée · complète ADR-125, ADR-127 et ADR-129
+- **Contexte** : un événement ou un bouton pressé nomme l'utilisateur Slack qui l'envoie et
+  la conversation d'où il vient. Sa signature prouve que Slack l'a envoyé (ADR-125), pas
+  que cette conversation est la conversation directe de cet utilisateur avec
+  l'application. Qui détiendrait le secret de signature (ADR-129) pourrait nommer la
+  conversation directe d'une autre personne avec l'application, et y faire écrire ce qui
+  est destiné à la première : la réponse à sa demande, avec ses données, un lien de
+  liaison ou un refus.
+- **Décision** :
+  - **Slack interrogé** (`conversations.info`, nouvelle permission `im:read`) avant que
+    rien ne soit dit ni lancé, pour un message comme pour un bouton (`person`) et pour le
+    lien offert à qui écrit sans être relié (`link`) : la conversation doit être directe,
+    et celle de l'utilisateur Slack qui envoie (`direct.rs`) ;
+  - sinon, ou si Slack ne le dit pas (sans `im:read`, injoignable), **rien n'est dit ni
+    lancé** : aucun mot dans une conversation qui n'a pu être vérifiée. C'est journalisé,
+    sans contenu ; l'événement reste pris (Slack ne le renvoie pas) ;
+  - les réponses (ADR-127) vont dans le fil où la demande a été vérifiée ; les annonces
+    aux responsables (ADR-130), vers l'identifiant de l'utilisateur, dans sa propre
+    conversation directe : rien de plus à vérifier ;
+  - la permission `im:read` rejoint la liste demandée (`BOT_SCOPES`), que montrent la
+    carte et le formulaire de la passerelle, et le refus `missing_scope` la nomme.
+- **Conséquences** :
+  - une application déclarée sans `im:read` ne répond plus à personne, ce qui est
+    journalisé : l'administrateur lui ajoute la permission et la réinstalle. Vérifier les
+    permissions du jeton dès sa déclaration (en-tête `x-oauth-scopes`) est un lot à
+    venir ;
+  - un appel de plus à Slack par message ou bouton pressé ;
+  - le Slack simulé des tests nomme la conversation directe `D…` de la personne `U…` du
+    même nom, et peut ne pas dire à qui est une conversation ; les messages des tests
+    viennent de la conversation de leur auteur ;
+  - tests : `crates/api/tests/slack_gateway_direct_conversations.rs` (message d'une
+    personne reliée depuis la conversation d'une autre : rien de lancé ni de dit ;
+    personne non reliée : aucun lien offert là ; Slack ne disant pas à qui est la
+    conversation : rien, puis réponse quand il le dit), `slack_gateway_validations.rs`
+    (bouton pressé dans la conversation d'un autre : rien de dit ni de décidé),
+    `slack_gateway_admin.rs` (permissions demandées) ;
+  - reste à venir : Telegram, Teams.

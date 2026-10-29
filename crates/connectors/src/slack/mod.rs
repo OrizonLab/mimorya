@@ -32,6 +32,16 @@ pub struct SlackPerson {
     pub bot: bool,
 }
 
+/// A conversation as Slack knows it: a direct one, with whom.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SlackConversation {
+    pub id: String,
+    /// A direct conversation between one person and the application.
+    pub direct: bool,
+    /// Whom, if direct.
+    pub person: Option<String>,
+}
+
 /// Why Slack did not do what was asked.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SlackFailure {
@@ -83,7 +93,7 @@ impl SlackFailure {
                      de l’application installée (« OAuth & Permissions »)"
                     .into(),
                 "missing_scope" => "Permission manquante dans l’application Slack : donnez-lui \
-                     chat:write, im:history, users:read et users:read.email, puis \
+                     chat:write, im:history, im:read, users:read et users:read.email, puis \
                      réinstallez-la"
                     .into(),
                 "user_not_found" | "users_not_found" => {

@@ -1,5 +1,7 @@
 //! Who writes or presses in Slack, before anything is done for them
-//! (ADR-127, ADR-129): a Slack user linked to an account of the company,
+//! (ADR-127, ADR-129): in their own direct conversation with the
+//! application, as Slack says (otherwise nothing is said, ADR-131), a Slack
+//! user linked to an account of the company,
 //! Slack still saying it is them, asked each time before anything is said of
 //! the account (no longer so: the identity is unlinked, audited with the
 //! reason, and a link to link it again offered), its temporary password
@@ -19,6 +21,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use super::PersonMessage;
+use super::direct::their_direct_conversation;
 use crate::app::Services;
 use crate::services::access::AuthIdentity;
 use crate::services::runs::COMPANY_NOT_ACTIVE;
@@ -51,6 +54,13 @@ pub(super) async fn acting_person(
     act: Act,
 ) -> anyhow::Result<Option<AuthIdentity>> {
     let tenant_id = incoming.tenant_id;
+    // Nothing said, nor done, where it could be read by another.
+    let message = &incoming.message;
+    let gateway = (incoming.gateway.id, incoming.token.as_str());
+    let slack = services.gateways.slack();
+    if !their_direct_conversation(slack, gateway, &message.channel, &message.person).await {
+        return Ok(None);
+    }
     let mut tx = services.db.begin(tenant_id).await?;
     let account = linked_account(&mut tx, incoming.gateway.id, &incoming.message.person).await?;
     tx.commit().await?;

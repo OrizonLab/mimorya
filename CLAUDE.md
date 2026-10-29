@@ -149,7 +149,9 @@ Repères à l'intérieur des crates :
   dans le fil (`replies.rs`, `reply_text.rs`), ADR-127 ; action validée ou refusée par
   son bouton dans le fil (`choices.rs`), qui peut agir, pour un message comme pour un
   bouton (`person.rs`), ADR-129 ; demandes qui attendent un responsable annoncées par
-  message direct (`approver_notices.rs`, `approver_text.rs`), ADR-130 ; déclarées par
+  message direct (`approver_notices.rs`, `approver_text.rs`), ADR-130 ; conversation
+  directe vérifiée auprès de Slack avant que rien n'y soit dit (`direct.rs`), ADR-131 ;
+  déclarées par
   `services/admin/gateways.rs`),
   `api/src/services/notification_settings.rs` (e-mails que chacun choisit de recevoir,
   lus au moment d'envoyer chaque avis, ADR-094),

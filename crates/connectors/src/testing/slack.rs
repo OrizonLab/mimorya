@@ -4,10 +4,12 @@
 //! application's of another workspace; any other token is refused
 //! (`invalid_auth`), as one a test revoked; a test may also make it
 //! unavailable (503), refuse the messages posted, or those with blocks,
-//! counting the messages the application tries to post. It knows the
+//! counting the messages the application tries to post, or not say whose a
+//! conversation is. It knows the
 //! people a test adds, by address, deleted or of another workspace, and
 //! keeps the messages the application posts (to a person's id: in their
-//! direct conversation, `D…`), with their blocks, as it rewrites them
+//! direct conversation, `D…` after their `U…`, which is the person's whom
+//! `conversations.info` names), with their blocks, as it rewrites them
 //! (`chat.update`, ADR-129), also listed at `GET /test/posts` for the
 //! end-to-end tests. A test signs the events it sends as Slack would
 //! (`signed`).
@@ -76,6 +78,9 @@ struct Shared {
     post_refusal: Option<String>,
     /// How many messages the application tried to post.
     post_attempts: usize,
+    /// The error code `conversations.info` is answered with, if a test
+    /// chose one.
+    conversation_refusal: Option<String>,
 }
 
 pub struct FakeSlack {
@@ -95,6 +100,7 @@ impl FakeSlack {
         let router = Router::new()
             .route("/api/auth.test", post(auth_test))
             .route("/api/users.info", get(users_info))
+            .route("/api/conversations.info", get(conversation_info))
             .route("/api/chat.postMessage", post(post_message))
             .route("/api/chat.update", post(update_message))
             .route("/test/posts", get(posts))
@@ -166,6 +172,13 @@ impl FakeSlack {
     /// other methods as Slack would (`None`: taken again).
     pub fn refuse_posts_with(&self, code: Option<&str>) {
         self.shared.lock().expect("lock").post_refusal = code.map(str::to_owned);
+    }
+
+    /// Whose a conversation is goes unsaid from now on: `conversations.info`
+    /// is answered with this error code, as without `im:read` (`None`: said
+    /// again).
+    pub fn refuse_conversations_with(&self, code: Option<&str>) {
+        self.shared.lock().expect("lock").conversation_refusal = code.map(str::to_owned);
     }
 
     /// How many messages the application tried to post, refused included.
@@ -273,6 +286,29 @@ async fn users_info(
         }
     }))
     .into_response()
+}
+
+/// A direct conversation, `D…`, is the person's of the same name, `U…`;
+/// any other is no direct one.
+async fn conversation_info(
+    State(shared): State<Arc<Mutex<Shared>>>,
+    headers: HeaderMap,
+    Query(query): Query<HashMap<String, String>>,
+) -> Response {
+    let shared = shared.lock().expect("lock");
+    if let Some(refusal) = refused(&shared, &headers) {
+        return refusal;
+    }
+    if let Some(code) = &shared.conversation_refusal {
+        return Json(json!({ "ok": false, "error": code })).into_response();
+    }
+    let id = query.get("channel").cloned().unwrap_or_default();
+    let mut channel = json!({ "id": id, "is_im": false });
+    if let Some(rest) = id.strip_prefix('D') {
+        channel["is_im"] = json!(true);
+        channel["user"] = json!(format!("U{rest}"));
+    }
+    Json(json!({ "ok": true, "channel": channel })).into_response()
 }
 
 async fn post_message(

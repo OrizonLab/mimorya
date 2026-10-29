@@ -18,7 +18,9 @@ use mimorya_connectors::testing::{
 };
 use mimorya_core::demo::user;
 use serde_json::json;
-use support::gateways::{GATEWAYS, declare_slack, direct_message, envelope, post_signed, send};
+use support::gateways::{
+    GATEWAYS, declare_slack, direct_message, dm_of, envelope, post_signed, send,
+};
 use support::llm::OTHER_MASTER_KEY;
 use support::sso::SSO_DEPLOYMENT;
 use support::{TestApi, WEB_ORIGIN};
@@ -103,7 +105,7 @@ async fn a_person_not_linked_is_sent_a_link_once_per_event() {
     let posts = slack.posts();
     assert_eq!(posts.len(), 1, "{posts:?}");
     let post = &posts[0];
-    assert_eq!(post.channel, "D0LEA");
+    assert_eq!(post.channel, dm_of(LEA_SLACK));
     // The code in the fragment: never sent to a server with the page.
     let link = format!("<{WEB_ORIGIN}/account/gateway-link#");
     assert!(post.text.contains(&link), "{}", post.text);
