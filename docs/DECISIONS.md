@@ -7591,9 +7591,12 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     relié se l'entend dire, sans rien décider. Un bouton déjà décidé n'est plus sous le
     message ; pressé quand même depuis un ancien affichage, il est « plus valable ».
     Une action décidée entre-temps dans l'application, ou expirée, a ses boutons
-    retirés à la pression suivante, qui ne décide rien. Slack et Telegram décident une
-    pression par le même chemin (`concerned::decide_as`), seule la façon de le dire
-    changeant de l'un à l'autre.
+    retirés à la pression suivante, qui ne décide rien, mais seulement par qui la voit :
+    un compte Telegram relié depuis à quelqu'un d'autre n'apprend rien de l'action
+    d'avant, ni ne retire ses boutons. Slack et Telegram décident une pression par le
+    même chemin (`concerned::decide_as`). Seule la façon de le dire change de l'un à
+    l'autre, et, sur une action décidée entre-temps, Slack laisse ses boutons (comme
+    avant) quand Telegram les retire.
 - **Conséquences** :
   - le Telegram simulé des tests garde les boutons des messages, les réponses aux
     boutons pressés, et retire les boutons demandés ; il écrit un bouton pressé comme
@@ -7607,6 +7610,7 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
       l'application, ses boutons retirés ; bouton absent du message, message qui
       n'est pas du bot, conversation d'un autre, demande qui n'existe pas, demande d'un
       autre pressée par une autre personne reliée (dite introuvable comme la
-      précédente), bot en pause, compte délié ; action envoyée hors de l'entreprise ou
+      précédente), bot en pause, compte délié ; boutons d'une action décidée laissés
+      au compte Telegram relié depuis à quelqu'un d'autre ; action envoyée hors de l'entreprise ou
       attendue par un responsable, sans boutons ni décision ;
   - reste : les demandes annoncées au responsable dans Telegram.
