@@ -10,8 +10,9 @@
 // sends its updates nowhere and the address answers as to an unknown
 // gateway. Each step is read back from the API, each confirmation read.
 // Whatever happens, the bot is deleted with its links. A link someone else
-// accepted is refused, a link replaced from another page or lost asked
-// again, a link cancelled, none of them linking anything. The rules themselves are tested on the API
+// accepted is refused, a link lost with the page or replaced from another
+// page asked again, a link cancelled, none of them linking anything. The
+// rules themselves are tested on the API
 // (`crates/api/tests/telegram_gateway_*.rs`).
 import { demo, expect, noError, signIn, test } from './support/fixtures';
 import { cardWith, openAdmin } from './support/admin';
@@ -177,7 +178,7 @@ test('a bot is declared, a Telegram account linked with both sides’ consent an
   await noError(page);
 });
 
-test('a link someone else accepted is refused, a lost link asked again, a link cancelled', async ({
+test('a link someone else accepted is refused, a lost or replaced link asked again, a link cancelled', async ({
   page,
   request,
   newContext,
@@ -204,36 +205,42 @@ test('a link someone else accepted is refused, a lost link asked again, a link c
   const again = await botAnswer(request, webhook, MARC_TELEGRAM, `/start ${first}`);
   expect(again).toContain('n’est plus valable');
 
-  // A link replaced from another page, or lost with the page: a new one is
-  // asked, the former ones linking nothing.
+  // A link lost with the page, while it still carries the code under way:
+  // only this page knew it, a new one is asked.
+  const lost = row.getByText('Vous n’avez plus le lien ? Demandez-en un nouveau.');
+  const opened = row.getByRole('link', { name: `Ouvrir le bot @${BOT_USERNAME} dans Telegram` });
   await row.getByRole('button', { name: 'Relier mon compte Telegram' }).click();
   const second = codeOf(await shownLink(row));
+  await lea.reload();
+  await expect(lost).toBeVisible();
+  await expect(opened).toHaveCount(0);
+  await row.getByRole('button', { name: 'Demander un nouveau lien' }).click();
+  const third = codeOf(await shownLink(row));
+  expect(third).not.toBe(second);
+
   // Replaced from another page: the link shown, which no longer carries the
-  // code under way, is withdrawn once the row is read again.
+  // code under way, is withdrawn once the row is read again; a new one is
+  // asked.
   const { gateway } = await storedBot(page);
   const elsewhere = await lea.request.post(`/api/account/gateways/${gateway?.id}/telegram-code`, {
     headers: { 'X-Mimorya-Request': '1' },
   });
   expect(elsewhere.status()).toBe(200);
-  const lost = row.getByText('Vous n’avez plus le lien ? Demandez-en un nouveau.');
   await expect(lost).toBeVisible({ timeout: 10_000 });
-  await expect(
-    row.getByRole('link', { name: `Ouvrir le bot @${BOT_USERNAME} dans Telegram` }),
-  ).toHaveCount(0);
-  // Lost with the page, likewise.
-  await lea.reload();
-  await expect(row.getByText('Vous n’avez plus le lien ? Demandez-en un nouveau.')).toBeVisible();
+  await expect(opened).toHaveCount(0);
   await row.getByRole('button', { name: 'Demander un nouveau lien' }).click();
-  const third = codeOf(await shownLink(row));
-  expect(third).not.toBe(second);
-  const former = await botAnswer(request, webhook, LEA_TELEGRAM, `/start ${second}`);
-  expect(former).toContain('n’est plus valable');
+  const fourth = codeOf(await shownLink(row));
+  // The former codes link nothing.
+  for (const former of [second, third]) {
+    const answer = await botAnswer(request, webhook, LEA_TELEGRAM, `/start ${former}`);
+    expect(answer).toContain('n’est plus valable');
+  }
 
   // Cancelled: nothing under way, the code links nothing.
   await row.getByRole('button', { name: 'Annuler la liaison' }).click();
   await expect(row.getByText('Non relié', { exact: true })).toBeVisible();
   expect((await pendingOf(lea)).pending).toBeNull();
-  const cancelled = await botAnswer(request, webhook, LEA_TELEGRAM, `/start ${third}`);
+  const cancelled = await botAnswer(request, webhook, LEA_TELEGRAM, `/start ${fourth}`);
   expect(cancelled).toContain('n’est plus valable');
   await noError(lea);
 });

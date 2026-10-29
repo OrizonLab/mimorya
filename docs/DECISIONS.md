@@ -7419,7 +7419,9 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     que les bots ont écrit (`GET /test/messages`) et le webhook de chacun avec son
     secret (`GET /test/webhooks`), pour que le test envoie les mises à jour comme
     Telegram ;
-  - tests : `apps/web/e2e/telegram-gateway.spec.ts`. Le parcours :
+  - tests : `crates/api/tests/telegram_gateway_links.rs` (l'échéance d'un code listée
+    telle que donnée à la demande, que la page rapproche de son lien) et
+    `apps/web/e2e/telegram-gateway.spec.ts`. Le parcours :
     - le bot est déclaré, sa carte relue dans l'API sans jeton ni secret, le webhook
       donné à l'adresse de la passerelle ;
     - Léa demande le lien (jamais son code dans ce que l'API liste) et démarre le bot
@@ -7431,8 +7433,9 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
       jeton, réactivé, puis supprimé ; son webhook est alors retiré et l'adresse répond
       comme une passerelle inconnue ;
     - un second parcours : le lien de Léa accepté par Marc, qu'elle refuse (« Ce n'est
-      pas moi »), son code ne reliant plus rien ; un lien remplacé depuis une autre page,
-      retiré de celle-ci, puis perdu avec la page et redemandé, les anciens ne reliant
-      rien ; un lien annulé, ne reliant rien ;
+      pas moi »), son code ne reliant plus rien ; un lien perdu avec la page alors qu'il
+      porte encore le code en cours, redemandé ; un lien remplacé depuis une autre
+      page, retiré de celle-ci et redemandé ; les anciens codes ne reliant rien ; un
+      lien annulé, ne reliant rien ;
   - restent : conversations avec l'agent dans Telegram, validations par boutons, avis
     au responsable ; Teams.
