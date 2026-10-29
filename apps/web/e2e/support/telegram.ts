@@ -121,9 +121,14 @@ export async function declareBot(admin: Page, name: string): Promise<Webhook> {
   return webhook as Webhook;
 }
 
+/** The bot's link in `row`, shown or not. */
+export function botLink(row: Locator): Locator {
+  return row.getByRole('link', { name: `Ouvrir le bot @${BOT_USERNAME} dans Telegram` });
+}
+
 /** The bot's link `row` shows, once shown. */
 export async function shownLink(row: Locator): Promise<string> {
-  const opened = row.getByRole('link', { name: `Ouvrir le bot @${BOT_USERNAME} dans Telegram` });
+  const opened = botLink(row);
   await expect(opened).toBeVisible();
   return (await opened.getAttribute('href')) ?? '';
 }

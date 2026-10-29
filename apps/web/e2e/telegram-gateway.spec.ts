@@ -16,6 +16,7 @@
 // (`crates/api/tests/telegram_gateway_*.rs`).
 import { demo, expect, noError, signIn, test } from './support/fixtures';
 import { cardWith, openAdmin } from './support/admin';
+import type { TelegramLink } from '../lib/api/contract';
 import { deleteGateways } from './support/slack';
 import {
   BOT_ID,
@@ -24,6 +25,7 @@ import {
   MARC_TELEGRAM,
   TELEGRAM_TOKEN,
   botAnswer,
+  botLink,
   codeOf,
   declareBot,
   pendingOf,
@@ -208,7 +210,7 @@ test('a link someone else accepted is refused, a lost or replaced link asked aga
   // A link lost with the page, while it still carries the code under way:
   // only this page knew it, a new one is asked.
   const lost = row.getByText('Vous n’avez plus le lien ? Demandez-en un nouveau.');
-  const opened = row.getByRole('link', { name: `Ouvrir le bot @${BOT_USERNAME} dans Telegram` });
+  const opened = botLink(row);
   await row.getByRole('button', { name: 'Relier mon compte Telegram' }).click();
   const second = codeOf(await shownLink(row));
   await lea.reload();
@@ -226,12 +228,13 @@ test('a link someone else accepted is refused, a lost or replaced link asked aga
     headers: { 'X-Mimorya-Request': '1' },
   });
   expect(elsewhere.status()).toBe(200);
+  const replacing = codeOf(((await elsewhere.json()) as TelegramLink).link);
   await expect(lost).toBeVisible({ timeout: 10_000 });
   await expect(opened).toHaveCount(0);
   await row.getByRole('button', { name: 'Demander un nouveau lien' }).click();
   const fourth = codeOf(await shownLink(row));
   // The former codes link nothing.
-  for (const former of [second, third]) {
+  for (const former of [second, third, replacing]) {
     const answer = await botAnswer(request, webhook, LEA_TELEGRAM, `/start ${former}`);
     expect(answer).toContain('n’est plus valable');
   }
