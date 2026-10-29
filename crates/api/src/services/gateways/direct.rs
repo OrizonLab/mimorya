@@ -4,10 +4,11 @@
 //! holds the signing secret could name another's, and have what is meant
 //! for one person written where another reads it. So Slack is asked
 //! (`conversations.info`, `im:read`) before anything is written there or
-//! started: a direct conversation, and that Slack user's. Another's: nothing
-//! said there, audited for the company's administrators. Slack not saying:
-//! nothing written there either, the person told in their own direct
-//! conversation, which Slack finds from their identifier alone.
+//! started: a direct conversation, and that Slack user's. Another's, or one
+//! the application cannot see: nothing said there, audited for the
+//! company's administrators. Slack not saying: nothing written there
+//! either, the person told in their own direct conversation, which Slack
+//! finds from their identifier alone.
 
 use mimorya_connectors::slack::{SlackApi, SlackFailure};
 use uuid::Uuid;
@@ -34,6 +35,11 @@ pub(super) async fn whose_conversation(
         Ok(found) if found.is_direct_with(person) => Whose::Theirs,
         Ok(_) => {
             tracing::warn!(gateway = %gateway_id, "Slack event not from its person's direct conversation");
+            Whose::Another
+        }
+        // One the application cannot see is no direct conversation of its.
+        Err(SlackFailure::Refused(code)) if code == "channel_not_found" => {
+            tracing::warn!(gateway = %gateway_id, "Slack event from a conversation not the application's");
             Whose::Another
         }
         Err(failure) => {

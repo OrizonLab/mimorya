@@ -62,7 +62,12 @@ pub(super) async fn acting_person(
     match whose_conversation(slack, gateway, &message.channel, &message.person).await {
         Whose::Theirs => {}
         Whose::Another => {
-            refuse_conversation(services, incoming).await?;
+            // Audited if it can be; never anything said there, whatever fails.
+            if let Err(error) = refuse_conversation(services, incoming).await {
+                let gateway = incoming.gateway.id;
+                let error = format!("{error:#}");
+                tracing::warn!(%gateway, %error, "Refused Slack conversation not audited");
+            }
             return Ok(None);
         }
         Whose::Unsaid(failure) => {

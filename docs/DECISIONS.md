@@ -7159,7 +7159,8 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     rien ne soit dit ni lancé pour un message ou un bouton pressé (`person`, en tout
     premier) : la conversation doit être directe, et celle de l'utilisateur Slack qui
     envoie (`direct.rs`) ;
-  - **celle d'un autre** : rien n'y est dit ni lancé, et c'est audité pour les
+  - **celle d'un autre**, ou une que l'application ne voit pas (`channel_not_found`) :
+    rien n'y est dit ni lancé, même si l'audit échoue, et c'est audité pour les
     administrateurs de l'entreprise (`gateway.conversation_refused`, l'utilisateur Slack
     nommé, jamais ce qui est écrit) : qui l'a envoyé détient le secret de signature ;
   - **Slack ne le disant pas** (sans `im:read`, limite d'appels, injoignable) : rien
@@ -7176,9 +7177,10 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
   - la permission `im:read` rejoint la liste demandée (`BOT_SCOPES`), que montrent la
     carte et le formulaire de la passerelle, et le refus `missing_scope` la nomme.
 - **Conséquences** :
-  - une application déclarée sans `im:read` ne lance plus rien : chacun qui lui écrit
-    est prévenu dans sa propre conversation de faire ajouter la permission, et c'est
-    journalisé. Vérifier les permissions du jeton dès sa déclaration (en-tête
+  - une application déclarée sans `im:read` ne lance plus rien : chaque personne reliée
+    qui lui écrit, ou qui presse un bouton, est prévenue dans sa propre conversation de
+    faire ajouter la permission, et c'est journalisé (une personne non reliée reçoit
+    son lien comme avant). Vérifier les permissions du jeton dès sa déclaration (en-tête
     `x-oauth-scopes`) est un lot à venir ;
   - un appel de plus à Slack par message ou bouton pressé ; garder en cache à qui est
     une conversation directe, qui ne change pas, est une amélioration possible ;
@@ -7188,10 +7190,11 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
   - tests : `crates/connectors/src/slack/mod.rs` (réponse de Slack lue : autre
     conversation refusée, directe seulement si Slack le dit, avec une personne
     seulement), `crates/api/tests/slack_gateway_direct_conversations.rs` (message d'une
-    personne reliée depuis la conversation d'une autre : rien de lancé ni de dit,
-    audité ; personne non reliée : lien offert dans sa propre conversation seulement ;
+    personne reliée depuis la conversation d'une autre, ou d'une que l'application ne
+    voit pas : rien de lancé ni de dit, audité ; personne non reliée : lien offert dans sa propre conversation seulement ;
     Slack ne disant pas à qui est la conversation : rien de lancé, l'auteur prévenu
-    dans la sienne, puis réponse quand Slack le dit), `slack_gateway_events.rs` (lien
+    dans la sienne, bouton pressé alors : rien de décidé, puis réponse quand Slack le
+    dit), `slack_gateway_events.rs` (lien
     hors de tout fil), `slack_gateway_validations.rs` (bouton pressé dans la
     conversation d'un autre : rien de dit ni de décidé), `slack_gateway_admin.rs`
     (permissions demandées) ;
