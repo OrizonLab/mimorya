@@ -1,13 +1,14 @@
 //! What the bot writes in Telegram when a run a person started there ends
 //! or pauses (ADR-135), in the HTML Telegram reads: its answer as the
 //! conversation shows it (a failure's included), cut when too long; a
-//! pause for validation, said with where to give it; a stop. Each says
-//! where its conversation is in the application, where its sources and its
-//! details are. Should Telegram not read the HTML, the same is said in
-//! plain text.
+//! pause for validation, said with where to give it, the actions awaiting
+//! the person's own validation there shown with their exact parameters,
+//! their buttons under the message (ADR-136); a stop. Each says where its
+//! conversation is in the application, where its sources and its details
+//! are. Should Telegram not read the HTML, the same is said in plain text.
 
-use mimorya_core::gateways::bounded;
-use mimorya_core::gateways::telegram::{from_markdown, link};
+use mimorya_core::gateways::telegram::{from_markdown, link, shown_actions};
+use mimorya_core::gateways::{ShownAction, bounded};
 
 /// The most of an answer written in Telegram, which takes 4 096
 /// characters of text in a message.
@@ -47,12 +48,15 @@ impl Markup {
     }
 }
 
-/// The actions a pause awaits: the person's own validation (`own`), and a
-/// manager's (`managed`). Both are given in the application, which shows
-/// their exact parameters.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct Pause {
-    pub own: usize,
+/// The actions a pause awaits: the person's own validation, here
+/// (`shown`, with their exact parameters and buttons, ADR-136) or in the
+/// application (`in_application`: sending outside the company, not undone,
+/// whose parameters do not fit, or beyond those shown), and a manager's
+/// (`managed`), in the application, which shows their exact parameters.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Pause<'a> {
+    pub shown: &'a [ShownAction<'a>],
+    pub in_application: usize,
     pub managed: usize,
 }
 
@@ -69,8 +73,31 @@ pub fn reply_text(
     let link = markup.conversation(url);
     let answer = answer.map(str::trim).filter(|a| !a.is_empty());
     match (status, answer) {
+        ("awaiting_approval", _) if !pause.shown.is_empty() => {
+            let mut text = if pause.shown.len() == 1 {
+                format!(
+                    "Une action de cette demande attend votre validation : validez-la ou \
+                     refusez-la ci-dessous, après en avoir lu les paramètres exacts, ou dans \
+                     l’application ({link}). La suite viendra ici."
+                )
+            } else {
+                format!(
+                    "Des actions de cette demande attendent votre validation : validez-les ou \
+                     refusez-les ci-dessous, après en avoir lu les paramètres exacts, ou dans \
+                     l’application ({link}). La suite viendra ici."
+                )
+            };
+            if pause.in_application > 0 {
+                text.push_str(" D’autres sont à valider dans l’application.");
+            }
+            if pause.managed > 0 {
+                text.push_str(" D’autres attendent la validation de votre responsable.");
+            }
+            text.push_str(&shown_actions(pause.shown, markup == Markup::Html));
+            text
+        }
         ("awaiting_approval", _) => {
-            let awaited = if pause.own > 0 {
+            let awaited = if pause.in_application > 0 {
                 "Une action de cette demande attend votre validation, à donner dans \
                  l’application, qui en montre les paramètres exacts"
             } else if pause.managed > 0 {
@@ -146,13 +173,17 @@ mod tests {
 
     #[test]
     fn a_pause_says_whose_validation_it_awaits_and_where() {
-        let paused = |own, managed| {
+        let paused = |in_application, managed| {
             reply_text(
                 Markup::Html,
                 "awaiting_approval",
                 None,
                 URL,
-                Pause { own, managed },
+                Pause {
+                    shown: &[],
+                    in_application,
+                    managed,
+                },
             )
         };
         let own = paused(1, 1);
@@ -170,7 +201,11 @@ mod tests {
             "awaiting_approval",
             None,
             URL,
-            Pause { own: 1, managed: 0 },
+            Pause {
+                shown: &[],
+                in_application: 1,
+                managed: 0,
+            },
         );
         assert!(plain.contains(&format!(" : {URL}. ")), "{plain}");
     }
@@ -185,5 +220,67 @@ mod tests {
             ended("completed", Some("  ")),
             format!("La demande s’est terminée sans réponse : {LINK}.")
         );
+    }
+
+    #[test]
+    fn a_pause_shows_the_person_s_own_actions_with_their_exact_parameters() {
+        let parameters = serde_json::json!({ "proposalId": "<p-1>" });
+        let action = ShownAction {
+            approval_id: uuid::Uuid::new_v4(),
+            summary: "Appliquer",
+            risk: "write",
+            parameters: &parameters,
+        };
+        let one = [action];
+        let shown = |pause: Pause| reply_text(Markup::Html, "awaiting_approval", None, URL, pause);
+        let text = shown(Pause {
+            shown: &one,
+            in_application: 0,
+            managed: 0,
+        });
+        assert!(
+            text.starts_with(&format!(
+                "Une action de cette demande attend votre validation : validez-la ou refusez-la \
+                 ci-dessous, après en avoir lu les paramètres exacts, ou dans l’application \
+                 ({LINK}). La suite viendra ici."
+            )),
+            "{text}"
+        );
+        assert!(
+            text.contains("<b>Action à valider :</b> Appliquer"),
+            "{text}"
+        );
+        assert!(text.contains("&lt;p-1&gt;"), "{text}");
+        let two = [action, action];
+        let text = shown(Pause {
+            shown: &two,
+            in_application: 1,
+            managed: 1,
+        });
+        assert!(
+            text.starts_with("Des actions de cette demande attendent"),
+            "{text}"
+        );
+        assert!(
+            text.contains(
+                "La suite viendra ici. D’autres sont à valider dans l’application. D’autres \
+                 attendent la validation de votre responsable."
+            ),
+            "{text}"
+        );
+        // In plain text, as written.
+        let plain = reply_text(
+            Markup::Plain,
+            "awaiting_approval",
+            None,
+            URL,
+            Pause {
+                shown: &one,
+                in_application: 0,
+                managed: 0,
+            },
+        );
+        assert!(plain.contains(&format!("({URL})")), "{plain}");
+        assert!(plain.contains("<p-1>"), "{plain}");
     }
 }

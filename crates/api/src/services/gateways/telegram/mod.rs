@@ -6,15 +6,19 @@
 //! account it links (`answers`), confirmed in their session again (`link`).
 //! A linked person's words are then answered by the agent in a
 //! conversation of theirs (`conversations`, ADR-135), and the run's end or
-//! pause written in their chat (`reply_text`, by `replies`).
+//! pause written in their chat (`reply_text`, by `replies`); what awaits
+//! their own validation there is validated with the buttons under the
+//! pause (`choices`, ADR-136).
 
 mod answers;
+mod choices;
 mod conversations;
 mod link;
 mod reply_text;
 mod texts;
 mod updates;
 
+pub use choices::{TelegramChoice, decide_in_telegram};
 pub use conversations::converse_in_telegram;
 pub use link::{PendingLink, TelegramLinkCode};
 pub(super) use reply_text::{Markup, Pause, reply_text};

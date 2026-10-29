@@ -7,7 +7,7 @@
 //! Answered to Slack at once, then decided in the background as that
 //! person, once they may act (`person`), with their rights as they stand,
 //! as from the application's screen. Only an action awaiting their own
-//! decision, that Slack may validate (`validated_in_slack`: changing
+//! decision, that Slack may validate (`validated_in_gateway`: changing
 //! nothing outside the company, undone, its exact parameters shown whole)
 //! is decided there: whatever the press says, any other is left to the
 //! application. The message then shows what became of each of its actions
@@ -18,24 +18,20 @@ use chrono::Utc;
 use mimorya_core::DomainError;
 use mimorya_core::gateways::GatewayKind;
 use mimorya_core::gateways::slack::{
-    ApprovalChoice, DirectMessage, approval_choice, buttons_in, decided_blocks, validated_in_slack,
+    ApprovalChoice, DirectMessage, approval_choice, buttons_in, decided_blocks,
 };
+use mimorya_core::gateways::validated_in_gateway;
 use mimorya_db::repositories::approval_delegations::standing_in_for;
 use mimorya_db::repositories::approvals::{ApprovalRow, get_approval};
 use mimorya_db::repositories::gateways::GatewayRow;
 use uuid::Uuid;
 
+use super::concerned::{AWAITS_A_MANAGER, Concerned, IN_APPLICATION, NOT_DECIDED};
 use super::person::{Act, acting_person, say};
 use super::{EventOutcome, GatewayService, PersonMessage, bot_token_name};
 use crate::app::Services;
-use crate::services::runs::{APPROVAL_NOT_FOUND, DecisionInput, stands_in};
+use crate::services::runs::{APPROVAL_NOT_FOUND, DecisionInput};
 
-const NOT_DECIDED: &str = "La validation n’a pas pu être enregistrée : réessayez dans un instant, \
-     ou donnez-la dans l’application.";
-const IN_APPLICATION: &str = "Cette action se valide dans l’application, qui en montre les \
-     paramètres exacts : rien n’a été décidé.";
-const AWAITS_A_MANAGER: &str = "Cette action attend la validation de votre responsable : rien \
-     n’a été décidé.";
 /// Said to whom the agent acts for, in their request's thread.
 const RESUMED: &str = " La demande reprend : la suite viendra dans ce fil.";
 /// Said to a manager, or whom they named to stand in for them.
@@ -136,7 +132,7 @@ async fn decide(services: &Services, pressed: &PersonChoice) -> anyhow::Result<(
         say(services, from, AWAITS_A_MANAGER).await;
         return Ok(());
     }
-    if !validated_in_slack(&approval.risk, &approval.payload) {
+    if !validated_in_gateway(&approval.risk, &approval.payload) {
         say(services, from, IN_APPLICATION).await;
         return Ok(());
     }
@@ -213,26 +209,6 @@ async fn show_outcomes(
         tracing::warn!(gateway = %from.gateway.id, %failure, "Slack message not updated");
     }
     Ok(())
-}
-
-/// Who pressed a button: the requests they see, and those they decide.
-struct Concerned {
-    user_id: Uuid,
-    /// Those whose absence they cover now (ADR-071).
-    standing_in_for: Vec<Uuid>,
-}
-
-impl Concerned {
-    /// Whether `approval` is made for them, or awaits them.
-    fn sees(&self, approval: &ApprovalRow) -> bool {
-        approval.requested_for_user_id == self.user_id || self.decides(approval)
-    }
-
-    /// Whether `approval` awaits their decision: their own, or a manager's
-    /// they are, or stand in for.
-    fn decides(&self, approval: &ApprovalRow) -> bool {
-        approval.decider() == Some(self.user_id) || stands_in(approval, &self.standing_in_for)
-    }
 }
 
 /// What became of `approval`, in Slack's markup, once decided; `None`
@@ -330,28 +306,5 @@ mod tests {
             Some("*Annulée*.")
         );
         assert_eq!(outcome(&with_status("pending"), false, false, true), None);
-    }
-
-    #[test]
-    fn whom_a_request_awaits_decides_it() {
-        let (requester, manager, stand_in) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
-        let mut own = with_status("pending");
-        own.requested_for_user_id = requester;
-        let mut managed = own.clone();
-        managed.routing = "manager".into();
-        managed.approver_user_id = Some(manager);
-        let person = |user_id, standing_in_for| Concerned {
-            user_id,
-            standing_in_for,
-        };
-        let theirs = person(requester, vec![]);
-        assert!(theirs.sees(&own) && theirs.decides(&own));
-        // A manager's: seen by whom the agent acts for, not decided.
-        assert!(theirs.sees(&managed) && !theirs.decides(&managed));
-        let boss = person(manager, vec![]);
-        assert!(boss.decides(&managed) && !boss.sees(&own));
-        let standing = person(stand_in, vec![manager]);
-        assert!(standing.decides(&managed) && !standing.sees(&own));
-        assert!(!person(stand_in, vec![]).sees(&managed));
     }
 }

@@ -21,7 +21,7 @@
 
 use chrono::{DateTime, Duration, Utc};
 use mimorya_core::gateways::GatewayKind;
-use mimorya_core::gateways::slack::{ShownAction, validated_in_slack};
+use mimorya_core::gateways::{ShownAction, validated_in_gateway};
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::gateway_approval_notices::{
     RunToNotify, SlackApprovalNotice, gateway_approval_notices, gateway_approvals_to_notify,
@@ -185,7 +185,7 @@ async fn tell(
         Err(failure) => return Ok(after_failure(&failure, attempt, now)),
     }
     let shown: Vec<ShownAction> = (theirs.iter())
-        .filter(|r| validated_in_slack(&r.notice.risk, &r.payload))
+        .filter(|r| validated_in_gateway(&r.notice.risk, &r.payload))
         .take(MAX_SHOWN_ACTIONS)
         .map(|r| ShownAction {
             approval_id: r.notice.approval_id,

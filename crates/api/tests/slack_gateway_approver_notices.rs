@@ -175,7 +175,7 @@ async fn an_action_sent_outside_the_company_is_told_without_buttons() {
     let mut shown = notice.clone();
     shown.blocks = Some(json!(mimorya_core::gateways::slack::approval_blocks(
         "Pause",
-        &[mimorya_core::gateways::slack::ShownAction {
+        &[mimorya_core::gateways::ShownAction {
             approval_id: approval,
             summary: "Envoyer",
             risk: "write",

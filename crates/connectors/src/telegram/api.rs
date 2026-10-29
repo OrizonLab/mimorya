@@ -4,7 +4,8 @@
 //! token is part of each method's address (`/bot<token>/<method>`): no
 //! address nor client error is ever printed, only what failed, in French.
 //! Telegram answers `"ok": false`, with a status and a description, when
-//! it refuses.
+//! it refuses. Besides its messages, the bot shows buttons under them,
+//! answers their press and takes them off (ADR-136).
 
 use std::time::Duration;
 
@@ -111,6 +112,75 @@ impl TelegramApi {
             "link_preview_options": { "is_disabled": true },
         });
         self.send_message(token, &body).await
+    }
+
+    /// Writes `text` (in Telegram's HTML when `html`) in the private chat
+    /// of the person `chat`, with `keyboard`'s buttons under it (ADR-136);
+    /// the message's number.
+    pub async fn send_buttons(
+        &self,
+        token: &str,
+        chat: i64,
+        (text, html): (&str, bool),
+        keyboard: &Value,
+    ) -> Result<i64, TelegramFailure> {
+        let mut body = json!({
+            "chat_id": chat,
+            "text": text,
+            "link_preview_options": { "is_disabled": true },
+            "reply_markup": keyboard,
+        });
+        if html {
+            body["parse_mode"] = json!("HTML");
+        }
+        self.send_message(token, &body).await
+    }
+
+    /// Writes `text`, as plain text, in the private chat of the person
+    /// `chat`, as an answer to its message `to` (ADR-136).
+    pub async fn reply(
+        &self,
+        token: &str,
+        chat: i64,
+        to: i64,
+        text: &str,
+    ) -> Result<i64, TelegramFailure> {
+        let body = json!({
+            "chat_id": chat,
+            "text": text,
+            "link_preview_options": { "is_disabled": true },
+            "reply_parameters": { "message_id": to, "allow_sending_without_reply": true },
+        });
+        self.send_message(token, &body).await
+    }
+
+    /// Answers the press `callback_id` of one of the bot's buttons with
+    /// `text`, shown briefly to whoever pressed it (`answerCallbackQuery`).
+    pub async fn answer_press(
+        &self,
+        token: &str,
+        callback_id: &str,
+        text: &str,
+    ) -> Result<(), TelegramFailure> {
+        let body = json!({ "callback_query_id": callback_id, "text": text });
+        self.call(token, "answerCallbackQuery", &body)
+            .await
+            .map(drop)
+    }
+
+    /// Puts `keyboard`'s buttons under the message `message_id` of the
+    /// private chat `chat`, in place of its own (`editMessageReplyMarkup`).
+    pub async fn edit_buttons(
+        &self,
+        token: &str,
+        chat: i64,
+        message_id: i64,
+        keyboard: &Value,
+    ) -> Result<(), TelegramFailure> {
+        let body = json!({ "chat_id": chat, "message_id": message_id, "reply_markup": keyboard });
+        self.call(token, "editMessageReplyMarkup", &body)
+            .await
+            .map(drop)
     }
 
     async fn send_message(&self, token: &str, body: &Value) -> Result<i64, TelegramFailure> {

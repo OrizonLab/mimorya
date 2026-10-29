@@ -7547,3 +7547,60 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
       relance, puis `/nouvelle` ;
   - restent : les validations données dans Telegram avec des boutons, et les demandes
     annoncées au responsable dans Telegram.
+
+## ADR-136 — Validations données dans Telegram (passerelles, lot 13d)
+
+- **Date** : 2026-10-29 · **Statut** : acceptée · complète ADR-135, sur le modèle
+  d'ADR-129
+- **Contexte** : un run lancé depuis Telegram qui attend la validation de son auteur
+  disait seulement d'aller valider dans l'application (ADR-135). Dans Slack, l'auteur
+  valide ou refuse avec les boutons du message (ADR-129). Telegram offre les boutons
+  d'un message (`inline_keyboard`) et envoie à la passerelle celui qui est pressé
+  (`callback_query`), avec le message tel qu'il le garde.
+- **Décision** :
+  - **mêmes actions que dans Slack** : seule une action qui attend la validation de la
+    personne elle-même, sans effet hors de l'entreprise, réversible, et dont les
+    paramètres exacts tiennent entiers dans un message, se valide hors de
+    l'application. Cette règle est maintenant commune aux services
+    (`gateways::validated_in_gateway`, avec la façon de montrer l'action et son
+    risque). Toute autre action se valide dans l'application ;
+  - **la pause** :
+    - le message montre chacune de ces actions : sa description, son risque et ses
+      paramètres exacts, entiers, en texte littéral (`<pre>`) ;
+    - sous le message, deux boutons par action, « Valider » et « Refuser », numérotés
+      quand il y en a plusieurs ;
+    - chaque bouton porte son choix et son approbation (`v:` ou `r:` suivi de
+      l'identifiant, dans les 64 octets de Telegram) ;
+    - au plus cinq actions, et autant que le message en contient (3 400 caractères de
+      paramètres et de descriptions) ; les autres se valident dans l'application, ce
+      que le message dit, comme les actions qu'attend le responsable ;
+  - **le bouton pressé** :
+    - n'est pris que dans la conversation privée de qui le presse, sous un message du
+      bot lui-même (`message.from` est le bot), et seulement s'il porte un des boutons
+      de ce message, tel que Telegram le garde : ce qu'un client modifié prétend
+      presser ne décide rien ;
+    - puis il est décidé en arrière-plan, au nom de la personne reliée, comme depuis
+      l'écran : elle peut agir (`person::may_act`) et la demande l'attend elle (ou son
+      responsable, ou qui le remplace : `concerned.rs`, partagé avec Slack). La
+      décision est auditée avec le service, `telegram` ;
+    - le bot répond au bouton pressé par un mot (`answerCallbackQuery` : « Validée »,
+      « Refusée », « Rien n'a été décidé. »), retire les boutons des actions du message
+      décidées depuis (les autres restent) et dit l'issue en réponse au message.
+      Pourquoi rien n'a été décidé y est dit de même ;
+  - **le reste** : le bot en pause ne prend rien. Un compte Telegram qui n'est plus
+    relié se l'entend dire, sans rien décider. Un bouton déjà décidé n'est plus sous le
+    message ; pressé quand même depuis un ancien affichage, il est « plus valable ».
+- **Conséquences** :
+  - le Telegram simulé des tests garde les boutons des messages, les réponses aux
+    boutons pressés, et retire les boutons demandés ; il écrit un bouton pressé comme
+    Telegram (`FakeTelegram::press`). Le fil des messages de bout en bout donne leur
+    numéro et leurs boutons ;
+  - tests :
+    - `crates/core` : lecture d'un bouton pressé (conversation privée, bouton du
+      message) et boutons d'une pause ;
+    - `crates/api/tests/telegram_gateway_validations.rs` : action validée puis refusée
+      avec son bouton, auditée, run repris ; bouton absent du message, message qui
+      n'est pas du bot, conversation d'un autre, demande d'un autre, bot en pause,
+      compte délié ; action envoyée hors de l'entreprise ou attendue par un
+      responsable, sans boutons ni décision ;
+  - reste : les demandes annoncées au responsable dans Telegram.

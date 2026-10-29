@@ -5,7 +5,8 @@
 //! (ADR-129); how many others are to validate in the application, where
 //! every request awaiting them is listed.
 
-use mimorya_core::gateways::slack::{ShownAction, approval_blocks, escaped};
+use mimorya_core::gateways::ShownAction;
+use mimorya_core::gateways::slack::{approval_blocks, escaped};
 use serde_json::Value;
 
 /// The requests awaiting a manager, as they are told of.
