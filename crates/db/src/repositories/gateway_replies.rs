@@ -1,14 +1,14 @@
-//! The answers in Slack to the runs a person started there (ADR-127): each
-//! end or pause of such a run (its `run_finished` event) is answered once,
-//! in the thread its conversation is held in, by the periodic pass, within
-//! a while of it. What became of each is kept, never what was written:
+//! The answers in Slack, or in Telegram (ADR-135), to the runs a person
+//! started there (ADR-127): each end or pause of such a run (its
+//! `run_finished` event) is answered once, where its conversation is held,
+//! by the periodic pass, within a while of it. What became of each is kept, never what was written:
 //! that is in the conversation.
 
 use chrono::{DateTime, Utc};
 use sqlx::{PgConnection, PgPool};
 use uuid::Uuid;
 
-/// An end or pause of a run, in some company, to answer in Slack.
+/// An end or pause of a run, in some company, to answer where it started.
 #[derive(Debug, Clone, Copy, sqlx::FromRow)]
 pub struct UnrepliedEvent {
     pub tenant_id: Uuid,
@@ -47,10 +47,12 @@ pub struct ReplyTarget {
     pub conversation_id: Uuid,
     pub thread_id: Uuid,
     pub gateway_id: Uuid,
+    /// The gateway's service: `slack` or `telegram`.
+    pub kind: String,
     pub channel_id: String,
     pub thread_ts: String,
     pub gateway_enabled: bool,
-    /// Whether the Slack user who wrote is still the person's identity.
+    /// Whether who wrote is still the person's identity there.
     pub still_linked: bool,
     /// The run's latest message in the conversation, written by then.
     pub answer: Option<String>,
@@ -66,7 +68,7 @@ pub async fn gateway_reply_target(
 ) -> sqlx::Result<Option<ReplyTarget>> {
     sqlx::query_as(
         "select e.id as event_id, e.run_id, coalesce(e.data->>'status', '') as status, \
-         t.conversation_id, t.id as thread_id, t.gateway_id, t.channel_id, t.thread_ts, \
+         t.conversation_id, t.id as thread_id, t.gateway_id, t.kind, t.channel_id, t.thread_ts, \
          g.enabled as gateway_enabled, \
          exists (select 1 from gateway_identities i where i.gateway_id = t.gateway_id \
            and i.user_id = t.user_id and i.external_id = t.external_id) as still_linked, \
@@ -79,7 +81,7 @@ pub async fn gateway_reply_target(
          join gateway_threads t on t.conversation_id = r.conversation_id \
          join gateways g on g.id = t.gateway_id \
          left join gateway_replies rep on rep.event_id = e.id \
-         where e.id = $1 and e.type = 'run_finished' and r.channel = 'slack'",
+         where e.id = $1 and e.type = 'run_finished' and r.channel = t.kind",
     )
     .bind(event_id)
     .fetch_optional(conn)

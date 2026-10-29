@@ -7,8 +7,11 @@
 //! ADR-133): its bot, the secret its updates prove themselves by, and the
 //! code a person links their account with.
 
+mod markdown;
 pub mod slack;
 pub mod telegram;
+
+pub use markdown::bounded;
 
 /// A gateway's name, as kept: bounded like the column.
 pub const MIN_NAME_CHARS: usize = 2;

@@ -4,7 +4,7 @@
 use mimorya_agent::llm::LlmMessage;
 use mimorya_agent::runtime::DEFAULT_BUDGET;
 use mimorya_core::DomainError;
-use mimorya_core::authz::{HOOK_CHANNEL, SLACK_CHANNEL, WEB_CHANNEL};
+use mimorya_core::authz::{HOOK_CHANNEL, SLACK_CHANNEL, TELEGRAM_CHANNEL, WEB_CHANNEL};
 use mimorya_core::autonomy::AutonomyLevel;
 use mimorya_core::gateways::GatewayKind;
 use mimorya_db::TenantTx;
@@ -31,8 +31,8 @@ pub const TITLE_LENGTH: usize = 80;
 pub(super) const BUSY: &str =
     "Une demande est déjà en cours dans cette conversation : attendez sa fin ou sa validation.";
 
-/// Who sends a turn: its user, from the application or from their company's
-/// Slack application (ADR-127), or the platform for them (ADR-080).
+/// Who sends a turn: its user, from the application or from one of their
+/// company's gateways (ADR-127, ADR-135), or the platform for them (ADR-080).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TurnSender {
     User,
@@ -44,10 +44,11 @@ pub enum TurnSender {
     Hook {
         hook_id: Uuid,
     },
-    /// Its user, writing to the gateway `gateway_id`: their company's Slack
-    /// application (ADR-127).
+    /// Its user, writing to the gateway `gateway_id` of the service `kind`:
+    /// their company's Slack application (ADR-127) or Telegram bot (ADR-135).
     Gateway {
         gateway_id: Uuid,
+        kind: GatewayKind,
     },
 }
 
@@ -95,8 +96,10 @@ pub async fn open_conversation_turn(
                     TurnSender::Hook { hook_id } => Some(hook_id),
                     _ => None,
                 },
-                gateway: matches!(sender, TurnSender::Gateway { .. })
-                    .then(|| GatewayKind::Slack.as_str().to_owned()),
+                gateway: match sender {
+                    TurnSender::Gateway { kind, .. } => Some(kind.as_str().to_owned()),
+                    _ => None,
+                },
                 ..MessageMetadata::default()
             })?,
         },
@@ -137,7 +140,10 @@ pub async fn open_conversation_turn(
             // Read again whenever the run resumes (ADR-109).
             channel: match sender {
                 TurnSender::Hook { .. } => HOOK_CHANNEL,
-                TurnSender::Gateway { .. } => SLACK_CHANNEL,
+                TurnSender::Gateway { kind, .. } => match kind {
+                    GatewayKind::Slack => SLACK_CHANNEL,
+                    GatewayKind::Telegram => TELEGRAM_CHANNEL,
+                },
                 TurnSender::User | TurnSender::Schedule { .. } => WEB_CHANNEL,
             },
         },
@@ -147,7 +153,8 @@ pub async fn open_conversation_turn(
     if let TurnSender::Schedule { task_id } = sender {
         link_started_run(tx, task_id, conversation_id, run.id).await?;
     }
-    // Its Slack thread is active: its answers are written there (ADR-127).
+    // Where it is held is active: its answers are written there (ADR-127,
+    // ADR-135).
     if let TurnSender::Gateway { .. } = sender {
         touch_gateway_thread(tx, conversation_id).await?;
     }
@@ -168,8 +175,8 @@ pub async fn open_conversation_turn(
                 .on_behalf_of(identity.user_id)
                 .metadata(json!({ "inboundHookId": hook_id }))
         }
-        // Written by them, in Slack.
-        TurnSender::Gateway { gateway_id } => {
+        // Written by them, in Slack or Telegram.
+        TurnSender::Gateway { gateway_id, .. } => {
             AuditEntry::new(identity.tenant_id, "user", action, "success")
                 .by_user(identity.user_id)
                 .metadata(json!({ "gatewayId": gateway_id }))

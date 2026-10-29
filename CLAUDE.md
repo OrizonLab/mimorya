@@ -50,7 +50,9 @@ Repères à l'intérieur des crates :
   écrit dans Slack en son balisage et message lu en texte simple, `mrkdwn.rs`, ADR-127 ;
   boutons de validation et bouton pressé, `interactions.rs`, ADR-129 ; permissions du
   jeton lues, manquantes et en plus, `scopes.rs`, ADR-132 ; bot Telegram : jeton,
-  secret du webhook, mise à jour lue, code de liaison, `telegram/`, ADR-133).
+  secret du webhook, mise à jour lue, code de liaison, `telegram/`, ADR-133, commandes
+  du bot et réponse écrite dans le HTML de Telegram, ADR-135 ; motifs Markdown lus par
+  chaque service et texte trop long coupé, `markdown.rs`).
 - `db/migrations/` (SQL numéroté, source de vérité du schéma),
   `db/src/repositories/` (un fichier par entité ; la mémoire : `memory.rs`, recherche
   hybride `memory_search.rs`, vecteurs `memory_embeddings.rs`, ADR-074 ; fenêtres des
@@ -67,8 +69,9 @@ Repères à l'intérieur des crates :
   évaluations : `skill_evaluations.rs`, ADR-104 ; comptes reliés par chacun et leur
   jeton de renouvellement scellé : `account_links.rs`, ADR-116 ; passerelles et
   événements pris : `gateways.rs`, identités reliées : `gateway_identities.rs`,
-  ADR-125 ; fils Slack des conversations : `gateway_threads.rs`, réponses écrites :
-  `gateway_replies.rs`, ADR-127 ; demandes annoncées au responsable :
+  ADR-125 ; fils Slack des conversations, et conversation privée avec le bot Telegram,
+  une ouverte à la fois : `gateway_threads.rs`, réponses écrites :
+  `gateway_replies.rs`, ADR-127, ADR-135 ; demandes annoncées au responsable :
   `gateway_approval_notices.rs`, ADR-130 ; codes de liaison Telegram :
   `gateway_link_codes.rs`, ADR-133),
   `db/src/notifications.rs` (canaux PostgreSQL des événements des runs, de la file et des
@@ -126,8 +129,8 @@ Repères à l'intérieur des crates :
   et fragments de texte envoyés, `run_event_relay.rs`, ADR-084 ; runs en file réservés
   par le worker, `run_queue.rs`, ADR-085 ; tâches de fond lancées selon le rôle du
   processus, `MIMORYA_ROLE`, dans `app.rs` (`Background`), ADR-085 ; réponses écrites
-  dans Slack toutes les trois secondes, et demandes annoncées aux responsables,
-  `gateway_replies.rs`, ADR-127, ADR-130),
+  dans Slack et dans Telegram toutes les trois secondes, et demandes annoncées aux
+  responsables, `gateway_replies.rs`, ADR-127, ADR-130, ADR-135),
   `api/src/routes/` (un module par ressource, `admin/`), `api/src/contract/` (réponses
   et corps de requêtes typés, un fichier par ressource, dont sont générés les types
   TypeScript, ADR-036, ADR-039),
@@ -150,13 +153,16 @@ Repères à l'intérieur des crates :
   la session de la personne (`link.rs`), identités listées et retirées
   (`identities.rs`), ADR-125 ; message d'une personne reliée répondu dans une
   conversation tenue dans son fil (`conversations.rs`), fin ou pause des runs écrite
-  dans le fil (`replies.rs`, `reply_text.rs`), ADR-127 ; action validée ou refusée par
+  dans le fil (`replies/`, un module par service, `reply_text.rs`), ADR-127 ; action validée ou refusée par
   son bouton dans le fil (`choices.rs`), qui peut agir, pour un message comme pour un
   bouton (`person.rs`), ADR-129 ; demandes qui attendent un responsable annoncées par
   message direct (`approver_notices.rs`, `approver_text.rs`), ADR-130 ; conversation
   directe vérifiée auprès de Slack avant que rien n'y soit dit (`direct.rs`), ADR-131 ;
   bot Telegram : mises à jour reçues sur le secret du webhook et compte relié par un code
-  de la session (`telegram/`), ADR-133 ;
+  de la session (`telegram/`), ADR-133 ; mots d'une personne reliée répondus dans une
+  conversation tenue dans sa conversation privée avec le bot
+  (`telegram/conversations.rs`), réponse écrite là en HTML (`telegram/reply_text.rs`),
+  ADR-135 ;
   déclarées par
   `services/admin/gateways.rs`, ce que Slack dit du jeton et ses permissions vérifiées
   à la demande par `services/admin/gateway_check.rs`, ADR-132, le bot Telegram par
@@ -233,7 +239,7 @@ Repères à l'intérieur des crates :
   compétences, propositions de l'agent, ADR-101, cas d'évaluation et évaluations,
   ADR-105, critères de qualité, ADR-107 —, approvals — dont la
   section « Absence » et son formulaire, commun, ADR-073 —, chat — dont la conversation tenue
-  dans Slack, marquée et annoncée par une note, ADR-128 —, documents — dépôt, liste
+  dans Slack, marquée et annoncée par une note, ADR-128, ou dans Telegram, ADR-135 —, documents — dépôt, liste
   et téléchargement, ADR-097 —, memory, missions —
   missions longues, ADR-090 —, operations — dont les sous-agents d'une demande, ADR-099 —,
   scheduled-tasks — tâches planifiées, ADR-081 —, inbound-hooks — déclencheurs et leur
@@ -254,7 +260,7 @@ Repères à l'intérieur des crates :
   confiée à un sous-agent, `sub_agents.rs`, ADR-099, une compétence que l'agent propose,
   `skill_proposals.rs`, ADR-101, et une version de compétence jouée sur son cas,
   `skill_evaluations.rs`, ADR-105, et ce qu'envoie un déclencheur, `hooks.rs`, ADR-110, et ce qu'une personne écrit dans Slack,
-  `slack.rs`, ADR-128 ; les personnes y sont envoyées
+  `slack.rs`, ADR-128, ou au bot Telegram, `telegram.rs`, ADR-135 ; les personnes y sont envoyées
   au fournisseur simulé au lieu de Microsoft ou Google, `BuildOptions::account_link_issuer`,
   ADR-118, ADR-121, et les passerelles parlent à un Slack simulé qui liste ce que
   l'application écrit, `BuildOptions::slack_api`, ADR-126, et à un Telegram simulé qui

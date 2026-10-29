@@ -1,5 +1,6 @@
 //! Starting a turn: its user's, in one of their conversations or in a new
-//! one held in the Slack thread they opened (ADR-127), or one the platform
+//! one held where they wrote, the Slack thread they opened (ADR-127) or
+//! their private chat with the Telegram bot (ADR-135), or one the platform
 //! sends for them in a new conversation of theirs: their scheduled task
 //! when due (ADR-080), their inbound hook when another system posts to it
 //! (ADR-109). Such a conversation opens in the transaction of its turn: a
@@ -9,6 +10,7 @@ use std::sync::Arc;
 
 use mimorya_core::DomainError;
 use mimorya_core::autonomy::AutonomyLevel;
+use mimorya_core::gateways::GatewayKind;
 use mimorya_db::repositories::conversations::create_conversation;
 use mimorya_db::repositories::gateway_threads::{NewGatewayThread, insert_gateway_thread};
 use uuid::Uuid;
@@ -26,15 +28,19 @@ pub struct StartedTurn {
     pub message_id: Uuid,
 }
 
-/// The Slack thread a new conversation is held in (ADR-127).
+/// Where a new conversation is held on a gateway: a Slack thread (ADR-127),
+/// or a person's private chat with a Telegram bot (ADR-135).
 #[derive(Debug, Clone, Copy)]
-pub struct SlackThread<'a> {
+pub struct GatewayThread<'a> {
     pub gateway_id: Uuid,
-    /// The Slack user who wrote.
+    pub kind: GatewayKind,
+    /// Who wrote there.
     pub external_id: &'a str,
-    /// Their direct conversation with the application.
+    /// Their direct conversation with the application, or their private
+    /// chat with the bot.
     pub channel_id: &'a str,
-    /// The thread: the timestamp of its first message.
+    /// The thread: the timestamp of its first message in Slack, the number
+    /// of the message that opens it in Telegram.
     pub thread_ts: &'a str,
 }
 
@@ -45,7 +51,7 @@ enum Destination<'a> {
     /// A new conversation of theirs, so titled, held in `thread` if any.
     New {
         title: &'a str,
-        thread: Option<SlackThread<'a>>,
+        thread: Option<GatewayThread<'a>>,
     },
 }
 
@@ -88,13 +94,14 @@ impl RunService {
     }
 
     /// Sends `text`, written by `identity`'s person to the gateway of
-    /// `thread` (ADR-127), in a new conversation of theirs titled `title`,
-    /// held in `thread`: the conversation and its run. A thread a message
-    /// of its own opened a conversation for meanwhile is refused as busy.
+    /// `thread` (ADR-127, ADR-135), in a new conversation of theirs titled
+    /// `title`, held in `thread`: the conversation and its run. A thread (or
+    /// a Telegram chat) a message of its own opened a conversation for
+    /// meanwhile is refused as busy.
     pub async fn start_in_thread(
         &self,
         identity: AuthIdentity,
-        thread: SlackThread<'_>,
+        thread: GatewayThread<'_>,
         title: &str,
         text: &str,
     ) -> anyhow::Result<(Uuid, Uuid)> {
@@ -104,6 +111,7 @@ impl RunService {
         };
         let sender = TurnSender::Gateway {
             gateway_id: thread.gateway_id,
+            kind: thread.kind,
         };
         let (conversation_id, started) = self.start_turn(identity, into, text, sender).await?;
         Ok((conversation_id, started.run_id))
@@ -146,7 +154,8 @@ impl RunService {
                         channel_id: thread.channel_id,
                         thread_ts: thread.thread_ts,
                     };
-                    // A message of the same thread opened its conversation first.
+                    // A message of the same thread, or chat, opened its
+                    // conversation first.
                     if !insert_gateway_thread(&mut tx, held).await? {
                         return Err(DomainError::conflict(BUSY).into());
                     }

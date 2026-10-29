@@ -10,7 +10,8 @@
 //! is a validation button pressed, which Slack sends form-encoded to the
 //! same address (ADR-129). Where Telegram sends a company's bot its updates
 //! (ADR-133), proven by the webhook's secret Telegram sends back in a
-//! header alone: answered alike, 404 when not proven, 200 once taken.
+//! header alone: answered alike, 404 when not proven, 200 once taken, a
+//! linked person's words answered in the background (ADR-135).
 
 use axum::body::Body;
 use axum::extract::{Path, State};
@@ -28,7 +29,7 @@ use uuid::Uuid;
 use crate::app::AppState;
 use crate::http::{ApiError, ApiResult};
 use crate::services::gateways::{
-    EventOutcome, SlackHeaders, UpdateOutcome, converse, decide_in_slack,
+    EventOutcome, SlackHeaders, UpdateOutcome, converse, converse_in_telegram, decide_in_slack,
 };
 
 pub use crate::services::gateways::{SLACK_EVENTS_PREFIX, TELEGRAM_UPDATES_PREFIX};
@@ -102,6 +103,12 @@ async fn receive_telegram(
         .await?
     {
         UpdateOutcome::Taken => Ok(StatusCode::OK.into_response()),
+        UpdateOutcome::Message(incoming) => {
+            let services = state.clone();
+            (state.background)
+                .spawn(async move { converse_in_telegram(&services, *incoming).await });
+            Ok(StatusCode::OK.into_response())
+        }
         UpdateOutcome::Unknown => Err(DomainError::not_found(UNKNOWN).into()),
         UpdateOutcome::Unreadable => Err(ApiError::request(StatusCode::BAD_REQUEST, UNREADABLE)),
     }

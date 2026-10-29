@@ -1,5 +1,6 @@
-//! Answering in Slack the runs people started there (ADR-127), and telling
-//! there the managers whom requests await (ADR-130), every few seconds, in
+//! Answering in Slack, or in Telegram (ADR-135), the runs people started
+//! there (ADR-127), and telling in Slack the managers whom requests await
+//! (ADR-130), every few seconds, in
 //! each process that executes runs: one at a time answers them, one at a
 //! time tells them (ADR-086), each end or pause, each request, once. Each
 //! in its own loop: a slow Slack telling managers holds no conversation's

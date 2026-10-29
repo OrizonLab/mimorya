@@ -127,8 +127,8 @@ test('a bot is declared, a Telegram account linked with both sides’ consent an
     name: claimed,
     address: null,
   });
-  // Writing to the bot, she is told to whose account hers is linked.
-  const greeted = await botAnswer(request, webhook, LEA_TELEGRAM, 'Bonjour');
+  // Asking the bot for help, she is told to whose account hers is linked.
+  const greeted = await botAnswer(request, webhook, LEA_TELEGRAM, '/aide');
   expect(greeted).toContain('relié au compte de Léa Fontaine');
   await noError(lea);
 

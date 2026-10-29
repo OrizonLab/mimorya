@@ -92,7 +92,29 @@ impl TelegramApi {
             "text": text,
             "link_preview_options": { "is_disabled": true },
         });
-        let result = self.call(token, "sendMessage", &body).await?;
+        self.send_message(token, &body).await
+    }
+
+    /// Writes `html` in the private chat of the person `chat`, in the HTML
+    /// Telegram reads (ADR-135), no link previewed; the message's number.
+    /// Telegram refuses a text it cannot read (`RefusalCause::Markup`).
+    pub async fn send_html(
+        &self,
+        token: &str,
+        chat: i64,
+        html: &str,
+    ) -> Result<i64, TelegramFailure> {
+        let body = json!({
+            "chat_id": chat,
+            "text": html,
+            "parse_mode": "HTML",
+            "link_preview_options": { "is_disabled": true },
+        });
+        self.send_message(token, &body).await
+    }
+
+    async fn send_message(&self, token: &str, body: &Value) -> Result<i64, TelegramFailure> {
+        let result = self.call(token, "sendMessage", body).await?;
         (result.get("message_id").and_then(Value::as_i64)).ok_or(TelegramFailure::Unreadable)
     }
 

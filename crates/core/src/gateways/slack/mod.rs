@@ -26,7 +26,7 @@ pub use interactions::{
     APPROVE_ACTION, ApprovalChoice, MAX_ACTION_CHARS, MAX_PARAMETERS_CHARS, REJECT_ACTION,
     ShownAction, approval_blocks, approval_choice, buttons_in, decided_blocks, validated_in_slack,
 };
-pub use mrkdwn::{bounded, escaped, from_markdown, plain};
+pub use mrkdwn::{escaped, from_markdown, plain};
 pub use scopes::{
     MAX_SCOPES, extra_scopes, granted_scopes, missing_scopes, missing_scopes_refusal,
 };

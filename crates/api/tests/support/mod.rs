@@ -55,6 +55,7 @@ pub mod slack_validations;
 pub mod sso;
 pub mod sweeps;
 pub mod telegram;
+pub mod telegram_conversations;
 
 pub use client::{Client, TestResponse};
 use fixtures::urls;

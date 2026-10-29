@@ -345,7 +345,11 @@ Détaillés dans [AGENT_ENGINE.md](AGENT_ENGINE.md). En résumé :
   prouvant aucune adresse, une personne relie son compte depuis sa session : un code
   qu'elle demande, renvoyé par Telegram depuis la conversation privée de qui ouvre le
   lien, accepté là par qui le bot a dit à quel compte il le relierait, puis confirmé
-  dans sa session.
+  dans sa session. Une personne reliée parle ensuite à l'agent dans sa conversation
+  privée avec le bot (ADR-135) : une conversation à la fois, poursuivie jusqu'à
+  `/nouvelle`, ses runs lancés en son nom sur le canal `telegram`, chaque fin ou pause
+  écrite là par la même passe que pour Slack, dans le HTML que Telegram lit, avec le
+  lien de la conversation, marquée « Telegram » dans l'application.
 - Les secrets ne transitent jamais par le contexte du modèle ni par les journaux.
 
 Connecteurs prévus : démonstration (MVP), MCP générique (MVP), déclencheurs (ADR-109),

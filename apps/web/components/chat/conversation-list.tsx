@@ -61,7 +61,7 @@ export function ConversationList({
                 )}
               >
                 <span className="truncate">{c.title}</span>
-                {/* Held in a thread of the company's Slack application (ADR-128). */}
+                {/* Held on the company's Slack application or Telegram bot (ADR-128, ADR-135). */}
                 {c.gateway && (
                   <span className="ml-auto shrink-0 rounded border border-line px-1.5 text-[0.7rem]">
                     <span className="sr-only">tenue dans </span>

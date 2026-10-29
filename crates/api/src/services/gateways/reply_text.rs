@@ -6,9 +6,8 @@
 //! says where its conversation is in the application, where its sources and
 //! its details are.
 
-use mimorya_core::gateways::slack::{
-    ShownAction, approval_blocks, bounded, escaped, from_markdown,
-};
+use mimorya_core::gateways::bounded;
+use mimorya_core::gateways::slack::{ShownAction, approval_blocks, escaped, from_markdown};
 use serde_json::Value;
 
 /// The most of an answer written in Slack, which shows a message's text

@@ -2,10 +2,11 @@
 // the test Telegram the server reaches (`e2e_server`), which knows the
 // demo bot, keeps the webhook each bot was given with its secret and lists
 // what the bots wrote; an update sent as Telegram sends it, with that
-// secret; the bot declared, its link read in « Mon compte », the gateway
-// read back from the API.
+// secret, and what the bot answers it; the bot declared, its link read in
+// « Mon compte », the gateway read back from the API, a person's Telegram
+// account linked through the API (ADR-135).
 import type { APIRequestContext, APIResponse, Locator, Page } from '@playwright/test';
-import type { GatewayView, Gateways } from '../../lib/api/contract';
+import type { GatewayView, Gateways, TelegramLink } from '../../lib/api/contract';
 import { expect } from './fixtures';
 
 /** The demo bot's token, as the test Telegram knows it, and the bot it is. */
@@ -77,23 +78,28 @@ export function sendUpdate(
 
 /**
  * What the bot answers `person` writing `text`, once Telegram took the
- * update.
+ * update: within `timeout`, which an answer of the agent's, written by
+ * the pass of every few seconds (ADR-135), needs longer.
  */
 export async function botAnswer(
   outside: APIRequestContext,
   webhook: Webhook,
   person: { id: number; username: string },
   text: string,
+  timeout = 5_000,
 ): Promise<string> {
   const before = (await messages(outside)).length;
   const taken = await sendUpdate(outside, webhook, person, text);
   expect(taken.status()).toBe(200);
   let written: Message[] = [];
   await expect
-    .poll(async () => {
-      written = await messages(outside);
-      return written.length;
-    })
+    .poll(
+      async () => {
+        written = await messages(outside);
+        return written.length;
+      },
+      { timeout },
+    )
     .toBeGreaterThan(before);
   const answer = written[written.length - 1];
   expect(answer?.chat).toBe(person.id);
@@ -149,4 +155,30 @@ export async function pendingOf(person: Page): Promise<{ pending: unknown; listi
   const listing = await listed.text();
   const { gateways } = JSON.parse(listing) as { gateways: { type: string; pending: unknown }[] };
   return { pending: gateways.find((g) => g.type === 'telegram')?.pending, listing };
+}
+
+/**
+ * Links `person`'s Telegram account `telegram` to theirs on the bot `id`,
+ * through the API, as « Mon compte » does: the code asked for, opened and
+ * accepted in Telegram, confirmed.
+ */
+export async function linkThroughApi(
+  person: Page,
+  webhook: Webhook,
+  id: string,
+  telegram: { id: number; username: string },
+) {
+  const write = { 'X-Mimorya-Request': '1' };
+  const asked = await person.request.post(`/api/account/gateways/${id}/telegram-code`, {
+    headers: write,
+  });
+  expect(asked.status()).toBe(200);
+  const code = codeOf(((await asked.json()) as TelegramLink).link);
+  const offered = await botAnswer(person.request, webhook, telegram, `/start ${code}`);
+  expect(offered).toContain('envoyez /oui');
+  await botAnswer(person.request, webhook, telegram, '/oui');
+  const confirmed = await person.request.post(`/api/account/gateways/${id}/telegram-link`, {
+    headers: write,
+  });
+  expect(confirmed.status()).toBe(200);
 }

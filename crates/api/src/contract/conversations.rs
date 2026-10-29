@@ -18,13 +18,15 @@ pub struct ConversationSummary {
     pub id: Uuid,
     pub title: String,
     pub updated_at: String,
-    /// The service it is held in a thread of, `slack`: its author's
-    /// messages there follow it, and are answered there (ADR-127).
+    /// The service it is held in, `slack` (a thread, ADR-127) or
+    /// `telegram` (its author's private chat with the bot, until a new
+    /// conversation is opened there, ADR-135): its author's messages there
+    /// follow it, and are answered there.
     pub gateway: Option<String>,
 }
 
 impl ConversationSummary {
-    /// `c`, held in a thread of `gateway`, if any.
+    /// `c`, held on `gateway`, if any.
     pub fn held(c: &ConversationRow, gateway: Option<String>) -> Self {
         Self {
             id: c.id,
@@ -114,8 +116,8 @@ pub struct MessageMetadata {
     )]
     #[ts(optional)]
     pub inbound_hook_id: Option<Uuid>,
-    /// The service its author wrote it from, `slack`: their company's
-    /// Slack application (ADR-127).
+    /// The service its author wrote it from: their company's Slack
+    /// application (`slack`, ADR-127) or Telegram bot (`telegram`, ADR-135).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub gateway: Option<String>,

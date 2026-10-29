@@ -82,8 +82,9 @@ export function TelegramGatewayForm({
         jeton et le secret sont chiffrés sur le serveur et jamais réaffichés ; un nouveau jeton doit
         être celui du même bot. Chacun relie ensuite son compte Telegram depuis « Mon compte » : un
         lien ouvre le bot, qui lui dit à quel compte il le relie ; il l’accepte dans Telegram, puis
-        le confirme dans l’application. Le bot ne sert pour l’instant qu’à relier les comptes : la
-        conversation avec l’agent dans Telegram arrive avec un prochain lot.
+        le confirme dans l’application. Une fois relié, il écrit au bot : l’agent lui répond dans sa
+        conversation privée avec lui, avec ses droits, et les validations se donnent dans
+        l’application.
       </p>
       {action.error && <ErrorNote message={action.error} />}
       <div className="flex gap-2">

@@ -13,18 +13,18 @@
 //! lost, unsaid, should the process vanish before its run is recorded.
 
 use mimorya_core::DomainError;
+use mimorya_core::gateways::GatewayKind;
 use mimorya_core::gateways::slack::plain;
 use mimorya_db::repositories::gateway_threads::find_gateway_thread;
 
 use super::PersonMessage;
 use super::person::{Act, acting_person, say, thread_of};
+use super::started::{NOT_STARTED, STOPPING, title_of};
 use crate::app::Services;
-use crate::services::runs::{SlackThread, TITLE_LENGTH, TurnSender};
+use crate::services::runs::{GatewayThread, TurnSender};
 
-const NOT_STARTED: &str = "La demande n’a pas pu être lancée : réessayez dans un instant.";
 const OTHER_PERSON_THREAD: &str = "Ce fil tient la conversation d’un autre compte : écrivez un \
      nouveau message, hors de ce fil.";
-const STOPPING: &str = "Le service redémarre : rien n’a été lancé. Réessayez dans un instant.";
 
 /// Answers `incoming` in a conversation of its author's, or says why not.
 pub async fn converse(services: &Services, incoming: PersonMessage) {
@@ -53,7 +53,10 @@ async fn answer(services: &Services, incoming: &PersonMessage) -> anyhow::Result
     tx.commit().await?;
     let started = match held {
         Some(thread) if thread.user_id == identity.user_id => {
-            let sender = TurnSender::Gateway { gateway_id };
+            let sender = TurnSender::Gateway {
+                gateway_id,
+                kind: GatewayKind::Slack,
+            };
             (services.runs)
                 .start_conversation_turn(identity, thread.conversation_id, &text, sender)
                 .await
@@ -62,11 +65,10 @@ async fn answer(services: &Services, incoming: &PersonMessage) -> anyhow::Result
         // Their identity was linked to another account since.
         Some(_) => Err(DomainError::conflict(OTHER_PERSON_THREAD).into()),
         None => {
-            // On one line, however it was written.
-            let words = text.split_whitespace().collect::<Vec<_>>().join(" ");
-            let title: String = words.chars().take(TITLE_LENGTH).collect();
-            let thread = SlackThread {
+            let title = title_of(&text);
+            let thread = GatewayThread {
                 gateway_id,
+                kind: GatewayKind::Slack,
                 external_id: &message.person,
                 channel_id: &message.channel,
                 thread_ts,

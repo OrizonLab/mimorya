@@ -16,8 +16,9 @@ use std::sync::LazyLock;
 use uuid::Uuid;
 
 use super::events::{is_person, is_workspace};
-use super::mrkdwn::{bounded, escaped};
+use super::mrkdwn::escaped;
 use crate::autonomy::ToolRisk;
+use crate::gateways::bounded;
 
 /// The buttons, as the application names them.
 pub const APPROVE_ACTION: &str = "approval_approve";

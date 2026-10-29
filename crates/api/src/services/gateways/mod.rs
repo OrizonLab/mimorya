@@ -15,7 +15,10 @@
 //! their own direct conversation with the application (`direct`, ADR-131).
 //! A company's Telegram bot receives its updates, proven by its webhook's
 //! secret, and its people link their account with a code their session
-//! asks for and confirms (`telegram`, ADR-133).
+//! asks for and confirms (`telegram`, ADR-133); a linked person then talks
+//! with the agent there, answered in their private chat with the bot
+//! (ADR-135), the run's end or pause written there by the same pass
+//! (`replies`).
 //! The bot's token and the signing secret are sealed in the secret store.
 
 mod approver_notices;
@@ -29,6 +32,7 @@ mod link;
 mod person;
 mod replies;
 mod reply_text;
+mod started;
 mod telegram;
 
 use std::sync::Arc;
@@ -49,7 +53,9 @@ pub use events::{EventOutcome, PersonMessage, SlackHeaders};
 pub use identities::GatewayOfPerson;
 pub use link::{LINK_LIFETIME, LinkPreview};
 pub use replies::{MAX_ATTEMPTS, reply_to_finished_runs};
-pub use telegram::{PendingLink, TelegramLinkCode, UpdateOutcome};
+pub use telegram::{
+    ChatMessage, PendingLink, TelegramLinkCode, UpdateOutcome, converse_in_telegram,
+};
 
 /// Where Slack sends a gateway's events, under the API's address: with the
 /// SAML reception, the inbound hooks' and a Telegram bot's updates, the

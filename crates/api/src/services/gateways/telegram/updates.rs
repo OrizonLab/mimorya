@@ -6,8 +6,10 @@
 //! an update already taken (Telegram sends one again when it was not
 //! answered in time), of a paused gateway, or anything but a person's own
 //! text message in their private chat with the bot is taken and ignored.
-//! The message is then answered in the person's private chat (`answers`).
-//! What a message says is never logged nor audited.
+//! The message is then answered in the person's private chat (`answers`);
+//! a linked person's words, once the update is answered, by the agent
+//! (`conversations`, ADR-135). What a message says is never logged nor
+//! audited.
 
 use chrono::{DateTime, Utc};
 use mimorya_core::gateways::GatewayKind;
@@ -15,10 +17,35 @@ use mimorya_core::gateways::telegram::{Update, read_update, secret_matches};
 use mimorya_db::repositories::gateways::{gateway_tenant, get_gateway, take_gateway_event};
 use uuid::Uuid;
 
+use super::answers::Answer;
 use crate::services::gateways::{GatewayService, bot_token_name, webhook_secret_name};
 
+/// A linked person's words to the bot (ADR-135): to answer in a
+/// conversation of theirs, once the update is answered.
+pub struct ChatMessage {
+    pub tenant_id: Uuid,
+    pub gateway_id: Uuid,
+    /// Who wrote: their Telegram identifier, also their private chat's.
+    pub person: i64,
+    /// Their message's number in the chat.
+    pub message_id: i64,
+    /// Their words for the agent.
+    pub text: String,
+    /// The bot's token, to answer with.
+    pub token: String,
+}
+
+/// Never the token nor the words, whatever prints it.
+impl std::fmt::Debug for ChatMessage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ChatMessage")
+            .field("gateway_id", &self.gateway_id)
+            .finish_non_exhaustive()
+    }
+}
+
 /// What became of an update Telegram sent.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub enum UpdateOutcome {
     /// Not the bot's webhook's: unknown gateway, secret missing or wrong,
     /// or a secret this server cannot open, alike.
@@ -27,6 +54,8 @@ pub enum UpdateOutcome {
     Unreadable,
     /// Taken: acted upon, or ignored.
     Taken,
+    /// Taken: a linked person's words, for the agent to answer (ADR-135).
+    Message(Box<ChatMessage>),
 }
 
 impl GatewayService {
@@ -70,7 +99,7 @@ impl GatewayService {
             tx.commit().await?;
             return Ok(UpdateOutcome::Taken);
         };
-        let text = self
+        let answer = self
             .answer(&mut tx, (tenant_id, gateway_id), &message, now)
             .await?;
         let token = self
@@ -80,6 +109,19 @@ impl GatewayService {
         let Some(token) = token else {
             tracing::warn!(gateway = %gateway_id, "Telegram gateway's bot token unreadable");
             return Ok(UpdateOutcome::Taken);
+        };
+        let text = match answer {
+            Answer::Say(text) => text,
+            Answer::Converse(text) => {
+                return Ok(UpdateOutcome::Message(Box::new(ChatMessage {
+                    tenant_id,
+                    gateway_id,
+                    person: message.person.id,
+                    message_id: message.message_id,
+                    text,
+                    token,
+                })));
+            }
         };
         let (telegram, chat) = (self.telegram.clone(), message.person.id);
         self.background.spawn(async move {
