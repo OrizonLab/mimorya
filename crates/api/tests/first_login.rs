@@ -208,6 +208,7 @@ const AUTHENTICATED_ROUTES: &[(&str, &str)] = &[
     ("POST", "/admin/gateways/slack"),
     ("PATCH", "/admin/gateways/{id}"),
     ("DELETE", "/admin/gateways/{id}"),
+    ("POST", "/admin/gateways/{id}/check"),
     ("POST", "/admin/connectors/rest/import"),
     ("PATCH", "/admin/connectors/{id}"),
     ("DELETE", "/admin/connectors/{id}"),

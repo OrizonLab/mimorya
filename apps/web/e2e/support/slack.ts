@@ -2,8 +2,9 @@
 // ADR-128): the test Slack the server reaches (`e2e_server`), which knows
 // Léa's Slack user and lists what the application posted; an event signed
 // as Slack signs them, with the application's secret, outside any thread or
-// in one; the gateway read back from the API, and deleted after each test
-// with the identities linked there.
+// in one; the permissions it says the application's token has (ADR-132);
+// the gateway read back from the API, and deleted after each test with the
+// identities linked there.
 import { createHmac } from 'node:crypto';
 import type { APIRequestContext, APIResponse, Page } from '@playwright/test';
 import type { GatewayView, Gateways } from '../../lib/api/contract';
@@ -19,6 +20,8 @@ export const WORKSPACE_NAME = 'Néo Maintenance';
 export const LEA_SLACK = 'U0LEAE2E';
 /** What the test Slack lists of the messages the application posted. */
 const POSTS = 'http://127.0.0.1:4103/test/posts';
+/** Where the test Slack is told the permissions its token has (ADR-132). */
+const SCOPES = 'http://127.0.0.1:4103/test/scopes';
 
 const WRITE = { 'X-Mimorya-Request': '1' };
 
@@ -26,6 +29,15 @@ interface Post {
   channel: string;
   threadTs: string | null;
   text: string;
+}
+
+/**
+ * The permissions the test Slack says the application's token has from now
+ * on (`x-oauth-scopes`); `null`: it says none.
+ */
+export async function grantScopes(outside: APIRequestContext, scopes: string[] | null) {
+  const granted = await outside.post(SCOPES, { data: { scopes } });
+  expect(granted.status()).toBe(204);
 }
 
 /** Deletes the gateways a test declared, with their identities. */

@@ -44,6 +44,14 @@ pub struct GatewayView {
     pub secrets_stored: bool,
     /// How many people linked their identity.
     pub identities: i64,
+    /// The permissions the application asks for that Slack said its token
+    /// lacks (ADR-132); `None` when Slack has not said its permissions.
+    pub missing_scopes: Option<Vec<String>>,
+    /// Those Slack said it has beyond what it asks for: a token stronger
+    /// than the platform needs.
+    pub extra_scopes: Option<Vec<String>>,
+    /// When Slack was last asked what the token is.
+    pub scopes_checked_at: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }

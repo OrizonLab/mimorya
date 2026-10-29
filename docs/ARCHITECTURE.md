@@ -332,7 +332,9 @@ Détaillés dans [AGENT_ENGINE.md](AGENT_ENGINE.md). En résumé :
   chacune (`gateway_approval_notices`), avec les mêmes boutons pour celles qui se
   valident dans Slack (ADR-130). Avant que rien ne soit dit ni lancé, Slack confirme
   que la conversation directe d'un message ou d'un bouton est bien celle de qui
-  l'envoie (`conversations.info`, ADR-131). Dans
+  l'envoie (`conversations.info`, ADR-131). Les permissions du jeton de l'application
+  (`x-oauth-scopes`) sont lues à sa déclaration, un jeton sans l'une de celles demandées
+  refusé, gardées et vérifiées à la demande depuis la carte de la passerelle (ADR-132). Dans
   l'application, la conversation se montre tenue dans Slack : marquée dans la liste,
   chaque message écrit dans Slack marqué, une note disant où chacun reçoit sa réponse
   (`ConversationSummary.gateway`, ADR-128).

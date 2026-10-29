@@ -22,6 +22,7 @@ mod connector_trial;
 mod connectors;
 mod domain_proofs;
 mod embedding;
+mod gateway_check;
 mod gateways;
 mod google_workspace;
 mod identity_providers;
@@ -59,6 +60,7 @@ pub use domain_proofs::prove_domain;
 pub use embedding::{
     EmbeddingInput, EmbeddingTestOutcome, configure_embedding, reset_embedding, test_embedding,
 };
+pub use gateway_check::check_gateway;
 pub use gateways::{
     GatewayChanges, NewSlackGatewayInput, change_gateway, declare_slack_gateway, remove_gateway,
 };

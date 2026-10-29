@@ -1,11 +1,12 @@
 //! The company's conversation gateways (`connector:manage`, company-wide,
-//! ADR-125): listed with what Slack said of each and how many people linked
-//! their identity, declared, changed and deleted.
+//! ADR-125): listed with what Slack said of each, its token's permissions
+//! among it (ADR-132), and how many people linked their identity;
+//! declared, changed, checked again with Slack and deleted.
 
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
-use mimorya_core::gateways::slack::{BOT_EVENTS, BOT_SCOPES};
+use mimorya_core::gateways::slack::{BOT_EVENTS, BOT_SCOPES, extra_scopes, missing_scopes};
 use mimorya_db::repositories::gateway_identities::count_gateway_identities;
 use mimorya_db::repositories::gateways::list_gateways;
 
@@ -15,7 +16,8 @@ use crate::contract::{Created, Done};
 use crate::http::{ApiResult, Body, PathId, iso};
 use crate::plugins::Auth;
 use crate::services::admin::{
-    GatewayChanges, NewSlackGatewayInput, change_gateway, declare_slack_gateway, remove_gateway,
+    GatewayChanges, NewSlackGatewayInput, change_gateway, check_gateway, declare_slack_gateway,
+    remove_gateway,
 };
 use crate::services::gateways::{bot_token_name, signing_secret_name};
 
@@ -36,7 +38,12 @@ pub async fn list(
             && secrets
                 .exists(&mut tx, &signing_secret_name(gateway.id))
                 .await?;
+        let granted = gateway.granted_scopes.as_deref();
         gateways.push(GatewayView {
+            missing_scopes: granted
+                .map(|g| missing_scopes(g).into_iter().map(str::to_owned).collect()),
+            extra_scopes: granted.map(extra_scopes),
+            scopes_checked_at: gateway.scopes_checked_at.as_ref().map(iso),
             events_url: state.gateways.events_url(gateway.id),
             identities: count_gateway_identities(&mut tx, gateway.id).await?,
             secrets_stored,
@@ -90,6 +97,18 @@ pub async fn update(
         signing_secret: body.signing_secret,
     };
     change_gateway(&state.gateways, &access, id, changes).await?;
+    Ok(Json(Done::OK))
+}
+
+/// Slack asked again what the gateway's token is: its permissions among
+/// it (ADR-132).
+pub async fn check(
+    State(state): State<AppState>,
+    Auth(identity): Auth,
+    PathId(id): PathId,
+) -> ApiResult<Json<Done>> {
+    let access = state.access.context(identity).await?;
+    check_gateway(&state.gateways, &access, id).await?;
     Ok(Json(Done::OK))
 }
 

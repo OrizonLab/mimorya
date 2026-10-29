@@ -125,6 +125,7 @@ pub fn routes(state: &AppState) -> Router<AppState> {
             "/admin/gateways/{id}",
             patch(gateways::update).delete(gateways::remove),
         )
+        .route("/admin/gateways/{id}/check", post(gateways::check))
         .route(
             "/admin/identity-providers",
             get(identity_providers::list).post(identity_providers::create),

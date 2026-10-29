@@ -773,7 +773,21 @@ secretsStored: boolean,
 /**
  * How many people linked their identity.
  */
-identities: number, createdAt: string, updatedAt: string, };
+identities: number,
+/**
+ * The permissions the application asks for that Slack said its token
+ * lacks (ADR-132); `None` when Slack has not said its permissions.
+ */
+missingScopes: Array<string> | null,
+/**
+ * Those Slack said it has beyond what it asks for: a token stronger
+ * than the platform needs.
+ */
+extraScopes: Array<string> | null,
+/**
+ * When Slack was last asked what the token is.
+ */
+scopesCheckedAt: string | null, createdAt: string, updatedAt: string, };
 
 /**
  * `GET /admin/gateways`.
