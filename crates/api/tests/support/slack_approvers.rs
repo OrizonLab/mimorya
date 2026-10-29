@@ -3,9 +3,11 @@
 //! message a person is written, and what became of each notice.
 
 use axum::http::StatusCode;
-use mimorya_api::services::gateways::notify_approvers_in_slack;
+use chrono::Utc;
+use mimorya_api::services::gateways::{NOTIFIED_WITHIN, notify_approvers_in_slack};
 use mimorya_connectors::testing::{FakeSlack, SlackPost};
 use mimorya_core::demo::{tenant, user};
+use mimorya_db::repositories::gateway_approval_notices::gateway_approvals_to_notify;
 use serde_json::json;
 use uuid::Uuid;
 
@@ -29,6 +31,13 @@ pub async fn nadia_s_request(api: &TestApi, paul: &Client<'_>, start_time: &str)
 pub async fn notify(api: &TestApi) -> usize {
     api.app.services.runs.start_executing().unwrap();
     notify_approvers_in_slack(&api.app.services).await.unwrap()
+}
+
+/// How many runs, of every company, the pass would pick now.
+pub async fn to_notify(api: &TestApi) -> usize {
+    let (now, pool) = (Utc::now(), api.app.services.db.pool());
+    let runs = gateway_approvals_to_notify(pool, now - NOTIFIED_WITHIN, now, 20).await;
+    runs.unwrap().len()
 }
 
 /// What the application wrote in the direct conversation of the Slack user

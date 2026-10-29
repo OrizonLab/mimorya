@@ -5,7 +5,8 @@
 //! audited so, the message showing the outcome. While the manager is away,
 //! whom they named to stand in for them is told instead, and decides. An
 //! action sent outside the company is told without buttons, and no press
-//! decides it; nor does a press of another person's.
+//! decides it; nor does a press of another person's. A manager who lost
+//! the right to decide is written nothing.
 
 mod support;
 
@@ -15,7 +16,7 @@ use mimorya_connectors::testing::{FakeSlack, WORKSPACE};
 use mimorya_core::demo::{tenant, user};
 use serde_json::{Value, json};
 use support::delegations::{away, back, julien_decides_for_the_south};
-use support::manager_approvals::listed;
+use support::manager_approvals::{listed, without};
 use support::queue::as_owner;
 use support::refusals::{entries_since, latest_entry};
 use support::slack_approvers::{direct_to, nadia_s_request, notice_of, notify, refuse};
@@ -198,5 +199,29 @@ async fn an_action_sent_outside_the_company_is_told_without_buttons() {
     let said = slack.posts().last().unwrap().text.clone();
     assert_eq!(said, "Demande de validation introuvable");
     assert_eq!(listed(&marc, &run).await.unwrap()["status"], "pending");
+    refuse(&api, &marc, approval).await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_manager_who_lost_the_right_is_written_nothing() {
+    let slack = FakeSlack::start().await;
+    let api = TestApi::start_with_slack(&SSO_DEPLOYMENT, &slack.url).await;
+    let (paul, marc) = (api.sign_in(user::PAUL).await, api.sign_in(user::MARC).await);
+    let address = email(user::MARC);
+    linked(&api, &slack, &paul, &marc, (MARC_SLACK, &address)).await;
+    let (_, approval) = nadia_s_request(&api, &paul, "09:00").await;
+
+    // Named when the request was made, he loses the right before its
+    // notice: neither its parameters nor its buttons are written to him.
+    let policy = without(&paul, user::MARC, "approval:decide").await;
+    assert_eq!(notify(&api).await, 0);
+    assert!(direct_to(&slack, MARC_SLACK).is_empty());
+    assert_eq!(
+        notice_of(&api, approval).await,
+        Some((Some("skipped".into()), 1))
+    );
+    assert!(audited(&api, approval).await.is_empty());
+    assert_eq!(paul.delete(&policy).await.status, StatusCode::OK);
     refuse(&api, &marc, approval).await;
 }

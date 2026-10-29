@@ -7076,12 +7076,24 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     est écrit ; Slack injoignable, elle est réessayée quelques fois, comme une réponse ;
     refusée, elle ne l'est plus. Une seule fonction `SECURITY DEFINER` lit d'une
     entreprise à l'autre, et ne rend que l'entreprise et le run
-    (`system_gateway_approvals_to_notify`) ;
+    (`system_gateway_approvals_to_notify`), avec les conditions de la lecture qui
+    suit (entreprise active, compte du responsable actif) : un run choisi est annoncé
+    ou enregistré, jamais choisi de nouveau pour rien, et ne retient pas les autres
+    entreprises. Ce passage a sa propre boucle : un Slack lent ne retarde aucune
+    réponse ;
+  - **seul qui peut décider est prévenu** : au moment d'écrire, le destinataire,
+    responsable comme remplaçant, doit encore détenir `approval:decide` sur la
+    personne servie (`may_decide_for`), comme l'exige l'écran « Validations » pour lui
+    montrer la demande ; sinon rien n'est écrit (`skipped`), ni paramètres ni
+    boutons ;
   - **Slack interrogé d'abord** : s'il ne dit plus que l'utilisateur Slack relié est la
     personne (adresse changée, désactivé, autre espace de travail), l'identité est
     déliée, auditée avec sa raison, et rien n'est écrit (`skipped`), comme pour un
-    message (ADR-127, contrôle partagé `slack_says_theirs`). Personne de relié, ou la
-    passerelle en pause : rien d'écrit ;
+    message (ADR-127, contrôle partagé `slack_says_theirs`). Personne de relié : rien
+    d'écrit (`skipped`). La passerelle en pause : rien n'est essayé ni enregistré ;
+    remise en service, elle annonce les demandes encore en attente faites depuis moins
+    de 24 heures, à qui peut encore les décider (une demande en attente reste à
+    décider, à la différence d'une réponse, ADR-127) ;
   - **le bouton pressé** arrive comme ceux de l'auteur (ADR-129) et passe les mêmes
     contrôles (`person`). Quoi que dise le bouton, seule une demande qui attend la
     personne qui l'a pressé est décidée : la sienne, celle d'un responsable qu'elle est,
@@ -7104,24 +7116,29 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     l'entreprise et réversibles, jamais un envoi hors de l'entreprise ni une action
     irréversible, qui exigent la session du responsable dans l'application ;
   - les paramètres exacts d'une demande d'un collaborateur sont écrits dans la
-    conversation directe de son responsable, qui les voit déjà dans l'application ;
+    conversation directe de son responsable, qui les voit dans l'application tant
+    qu'il peut la décider, et ne les reçoit plus dès qu'il ne le peut plus ;
   - la relance de la veille (ADR-062) reste par e-mail ; le message n'est pas réécrit
     quand la demande est décidée ailleurs : pressé ensuite, le bouton dit qu'elle est
     déjà traitée ;
-  - une passerelle supprimée emporte ce qu'il est advenu de ses annonces : une
-    passerelle déclarée de nouveau annonce les demandes encore en attente depuis moins
-    de 24 heures ;
+  - une passerelle supprimée emporte ses identités et ce qu'il est advenu de ses
+    annonces : déclarée de nouveau, personne n'y est encore relié, et ses premiers
+    passages enregistrent `skipped` les demandes en attente ;
   - tests : `services/gateways/approver_text.rs` (message avec ses boutons, absence,
     autres actions, sans bouton), `services/gateways/choices.rs` (qui voit et décide
     une demande, issue dite au responsable), `crates/connectors/src/slack/mod.rs`
     (refus des blocs seuls), `crates/api/tests/slack_gateway_approver_notices.rs`
     (responsable prévenu une fois, audité, qui valide par son bouton ; remplaçant
     prévenu « en l'absence de », qui refuse ; action à impact externe sans bouton, ni
-    bouton forgé ni autre personne ne la décident),
+    bouton forgé ni autre personne ne la décident ; responsable qui a perdu le droit
+    de décider : rien d'écrit),
     `slack_gateway_approver_notice_outcomes.rs` (Slack ne disant plus que c'est lui :
-    identité déliée, rien d'écrit ; personne de relié ; passerelle en pause ; Slack
-    injoignable puis réessayé ; boutons refusés, redit sans eux ; autre refus non
-    réessayé ; sans passerelle, rien d'enregistré), `slack_gateway_validations.rs`
+    identité déliée, rien d'écrit ; personne de relié ; passerelle en pause, puis
+    remise en service : annoncé ; run d'une entreprise suspendue ou d'un responsable
+    désactivé non choisi ; Slack injoignable puis réessayé ; boutons refusés, redit
+    sans eux ; message refusé autrement, essayé une fois, ni réessayé ni redit sans
+    boutons ; sans passerelle, rien d'enregistré), `slack_gateway_replies.rs` (pause
+    refusée autrement que pour ses boutons, essayée une fois), `slack_gateway_validations.rs`
     (texte de l'auteur), `apps/web/e2e/slack-gateway.spec.ts` (le formulaire et « Mon
     compte » le disent) ;
   - reste à venir : la conversation directe vérifiée auprès de Slack, Telegram, Teams.

@@ -40,12 +40,14 @@ GRANT SELECT, INSERT, UPDATE ON gateway_approval_notices TO mimorya_app;
 CREATE INDEX approvals_pending_manager_idx ON approvals (created_at)
   WHERE status = 'pending' AND routing = 'manager';
 
--- The paused runs, of every company whose Slack application is enabled,
--- with requests made since `p_since` awaiting a manager whose notice in
--- Slack is still to try at `p_now`: never tried, or due again. Their
--- company and their run, the oldest request first, at most `p_limit`.
--- Nothing else crosses the companies' boundary: who is told, and what, is
--- read in each company.
+-- The paused runs, of every active company whose Slack application is
+-- enabled, with requests made since `p_since` awaiting a manager whose
+-- account is active and whose notice in Slack is still to try at `p_now`:
+-- never tried, or due again. The same requests as the read of each
+-- company (`gateway_approval_notices`), so that a run picked is told of or
+-- recorded, never picked again for nothing. Their company and their run,
+-- the oldest request first, at most `p_limit`. Nothing else crosses the
+-- companies' boundary: who is told, and what, is read in each company.
 CREATE FUNCTION system_gateway_approvals_to_notify(
   p_since timestamptz, p_now timestamptz, p_limit integer)
 RETURNS TABLE (tenant_id uuid, run_id uuid)
@@ -56,8 +58,10 @@ SET search_path = public, pg_temp
 AS $$
   SELECT a.tenant_id, a.run_id
     FROM approvals a
+    JOIN tenants t ON t.id = a.tenant_id AND t.status = 'active'
     JOIN gateways g ON g.tenant_id = a.tenant_id AND g.kind = 'slack' AND g.enabled
     JOIN agent_runs r ON r.id = a.run_id AND r.tenant_id = a.tenant_id
+    JOIN users m ON m.id = a.approver_user_id AND m.status = 'active'
    WHERE a.status = 'pending'
      AND a.routing = 'manager'
      AND a.created_at > p_since

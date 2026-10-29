@@ -1,10 +1,11 @@
 //! What becomes of the answers in Slack (ADR-127): each end or pause of a
 //! run started there is answered once; a paused gateway, or a Slack user no
 //! longer the person's identity, is written nothing; what Slack refuses is
-//! not tried again, a pause whose buttons it refuses said without them
-//! (ADR-129); Slack unreachable is tried again later, a few times, then
-//! given up; a thread's answers are written in order, an answer too old to
-//! try again holding back none.
+//! not tried again: a pause whose buttons it refuses is said without them,
+//! once, but not one it refuses otherwise (ADR-129, ADR-130); Slack
+//! unreachable is tried again later, a few times, then given up; a
+//! thread's answers are written in order, an answer too old to try again
+//! holding back none.
 
 mod support;
 
@@ -132,6 +133,29 @@ async fn a_pause_whose_buttons_slack_refuses_is_said_without_them() {
         said[0].text
     );
     assert_eq!(replies_of(&api, ASKED_IN).await, [(Some("sent".into()), 1)]);
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_pause_slack_refuses_otherwise_is_not_said_again_without_buttons() {
+    let slack = FakeSlack::start().await;
+    let api = TestApi::start_with_slack(&SSO_DEPLOYMENT, &slack.url).await;
+    let (paul, marc) = (api.sign_in(user::PAUL).await, api.sign_in(user::MARC).await);
+    let address = email(user::MARC);
+    let gateway = linked(&api, &slack, &paul, &marc, (MARC_SLACK, &address)).await;
+    asked(&api, (gateway, MARC_SLACK), "Appliqué.").await;
+
+    let tried = slack.post_attempts();
+    slack.refuse_posts_with(Some("channel_not_found"));
+    assert_eq!(answer(&api).await, 0);
+    slack.refuse_posts_with(None);
+    assert_eq!(answer(&api).await, 0);
+    assert_eq!(slack.post_attempts(), tried + 1, "tried once");
+    assert!(posts_in(&slack, ASKED_IN).is_empty());
+    assert_eq!(
+        replies_of(&api, ASKED_IN).await,
+        [(Some("refused".into()), 1)]
+    );
 }
 
 #[tokio::test]

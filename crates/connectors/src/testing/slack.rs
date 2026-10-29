@@ -3,7 +3,8 @@
 //! workspace `WORKSPACE`, whose bot user is `BOT_USER`; `OTHER_TOKEN` is an
 //! application's of another workspace; any other token is refused
 //! (`invalid_auth`), as one a test revoked; a test may also make it
-//! unavailable (503), or refuse the messages with blocks. It knows the
+//! unavailable (503), refuse the messages posted, or those with blocks,
+//! counting the messages the application tries to post. It knows the
 //! people a test adds, by address, deleted or of another workspace, and
 //! keeps the messages the application posts (to a person's id: in their
 //! direct conversation, `D…`), with their blocks, as it rewrites them
@@ -70,6 +71,11 @@ struct Shared {
     down: bool,
     /// A message with blocks is refused (`invalid_blocks`).
     blocks_refused: bool,
+    /// The error code a message posted is answered with, if a test chose
+    /// one.
+    post_refusal: Option<String>,
+    /// How many messages the application tried to post.
+    post_attempts: usize,
 }
 
 pub struct FakeSlack {
@@ -154,6 +160,17 @@ impl FakeSlack {
     /// would not show (`false`: taken again).
     pub fn refuse_blocks(&self, refused: bool) {
         self.shared.lock().expect("lock").blocks_refused = refused;
+    }
+
+    /// A message posted is answered with this error code from now on, the
+    /// other methods as Slack would (`None`: taken again).
+    pub fn refuse_posts_with(&self, code: Option<&str>) {
+        self.shared.lock().expect("lock").post_refusal = code.map(str::to_owned);
+    }
+
+    /// How many messages the application tried to post, refused included.
+    pub fn post_attempts(&self) -> usize {
+        self.shared.lock().expect("lock").post_attempts
     }
 
     /// The messages the application posted, oldest first.
@@ -264,8 +281,12 @@ async fn post_message(
     Json(body): Json<Value>,
 ) -> Response {
     let mut shared = shared.lock().expect("lock");
+    shared.post_attempts += 1;
     if let Some(refusal) = refused(&shared, &headers) {
         return refusal;
+    }
+    if let Some(code) = &shared.post_refusal {
+        return Json(json!({ "ok": false, "error": code })).into_response();
     }
     let field = |name: &str| body.get(name).and_then(Value::as_str).map(str::to_owned);
     let (Some(channel), Some(text)) = (field("channel"), field("text")) else {

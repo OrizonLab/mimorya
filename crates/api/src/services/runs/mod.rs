@@ -32,7 +32,7 @@ pub use approval_delegation::{
     end_absence, named_delegate,
 };
 pub use approval_notice::{ApprovalNotifier, Recipient, recipient};
-pub use approval_routing::{can_decide, can_withdraw, shown_to, stands_in};
+pub use approval_routing::{can_decide, can_withdraw, may_decide_for, shown_to, stands_in};
 /// What an evaluation of a skill plays its cases with (ADR-104).
 pub(crate) use context::{build_run_tools, user_profile};
 pub use conversation_turn::{TITLE_LENGTH, TurnSender, tenant_autonomy_level};

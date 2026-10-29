@@ -140,8 +140,9 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   détient le secret de signature peut forger ces requêtes : il ne peut valider ainsi
   que ces actions-là, jamais un envoi hors de l'entreprise ni une action irréversible.
 - Responsable prévenu dans Slack (ADR-130) : une demande qui attend un responsable est
-  annoncée par un message direct au responsable, ou au remplaçant qui peut la décider
-  (ADR-071), seulement si son identité Slack est reliée à la passerelle active de
+  annoncée par un message direct au responsable, ou au remplaçant (ADR-071), seulement
+  s'il peut encore la décider (`approval:decide` sur la personne servie, relu au
+  moment d'écrire) et si son identité Slack est reliée à la passerelle active de
   l'entreprise, Slack interrogé d'abord (s'il ne dit plus que l'utilisateur est la
   personne, l'identité est déliée, auditée, et rien n'est écrit). Seules les actions qui
   se valident dans Slack (mêmes règles qu'ADR-129) y montrent leurs paramètres exacts et

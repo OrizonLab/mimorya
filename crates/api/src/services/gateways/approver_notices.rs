@@ -7,11 +7,14 @@
 //! with their exact parameters and buttons (ADR-129), the others to
 //! validate in the application. One message per run and manager, by the
 //! pass of a process that executes runs, one at a time (ADR-086), within
-//! `NOTIFIED_WITHIN` of the requests. Slack is asked first whether the
-//! linked Slack user is still the person: once it no longer says so, the
-//! identity is unlinked and nothing is written. Nobody linked to tell:
-//! nothing written, recorded so. What Slack refuses is not tried again;
-//! Slack unreachable, tried again a few times. Told in addition to the
+//! `NOTIFIED_WITHIN` of the requests. Only whom may decide them now is
+//! told: a manager who lost `approval:decide` over the person is written
+//! nothing. Slack is asked first whether the linked Slack user is still the
+//! person: once it no longer says so, the identity is unlinked and nothing
+//! is written. Nobody linked to tell: nothing written, recorded so. While
+//! the gateway is paused, nothing is tried: enabled again, it tells of the
+//! requests still waiting. What Slack refuses is not tried again; Slack
+//! unreachable, tried again a few times. Told in addition to the
 //! e-mail (ADR-060), whatever the person chose of their e-mails (ADR-094):
 //! linking their Slack identity is their choice, unlinking it ends these
 //! messages. Each request told of is audited, never what was written.
@@ -36,7 +39,7 @@ use super::person::slack_says_theirs;
 use super::replies::after_failure;
 use super::reply_text::MAX_SHOWN_ACTIONS;
 use crate::app::Services;
-use crate::services::runs::{Recipient, recipient};
+use crate::services::runs::{Recipient, may_decide_for, recipient};
 
 /// How long after a request it is still told of in Slack: one that Slack
 /// could not be reached for is not, days later.
@@ -154,6 +157,12 @@ async fn tell(
         tracing::warn!(gateway = %gateway.id, "Slack gateway's bot token unreadable");
         return Ok(ReplyRecord::Done("failed"));
     };
+    // Their exact parameters only to whom may decide them now, as the
+    // « Validations » screen shows them to none other.
+    let requester = theirs[0].notice.requested_for_user_id;
+    if !may_decide(services, told.tenant_id, to.user_id, requester).await? {
+        return Ok(ReplyRecord::Done("skipped"));
+    }
     let mut tx = services.db.begin(told.tenant_id).await?;
     let identity = gateway_identity_of(&mut tx, gateway.id, to.user_id).await?;
     tx.commit().await?;
@@ -216,6 +225,26 @@ async fn tell(
         Ok(_) => ReplyRecord::Done("sent"),
         Err(failure) => after_failure(&failure, attempt, now),
     })
+}
+
+/// Whether `user_id` may decide, now, requests made for `requester`
+/// (`approval:decide` over them, ADR-059): a manager may have lost the
+/// right since the requests were made, or while their notice waited.
+async fn may_decide(
+    services: &Services,
+    tenant_id: Uuid,
+    user_id: Uuid,
+    requester: Uuid,
+) -> anyhow::Result<bool> {
+    let access = &services.access;
+    let (Some(decider), Some(requester_access)) = (
+        access.active_context(tenant_id, user_id).await?,
+        access.active_context(tenant_id, requester).await?,
+    ) else {
+        return Ok(false);
+    };
+    let unit = requester_access.profile.primary_unit_id;
+    Ok(may_decide_for(&decider, requester, unit))
 }
 
 /// Records what became of the notice of each request of `theirs`, and
