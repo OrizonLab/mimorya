@@ -7,7 +7,9 @@
 //! the account (no longer so: the identity is unlinked, audited with the
 //! reason, and a link to link it again offered), its temporary password
 //! replaced, its company active. Why not is said in the thread, with what
-//! was not done: a request not started, a validation not decided.
+//! was not done: a request not started, a validation not decided. The
+//! account's own conditions are those of a Telegram bot's too (`may_act`,
+//! ADR-135).
 
 use chrono::Utc;
 use mimorya_connectors::slack::SlackFailure;
@@ -38,7 +40,7 @@ pub(super) enum Act {
 
 impl Act {
     /// What was not done, said when the person may not act.
-    fn not_done(self) -> &'static str {
+    pub(super) fn not_done(self) -> &'static str {
         match self {
             Self::Start => "rien n’a été lancé",
             Self::Decide => "rien n’a été décidé",
@@ -94,13 +96,29 @@ pub(super) async fn acting_person(
     if !still_theirs(services, incoming, &account, act).await? {
         return Ok(None);
     }
+    match may_act(services, tenant_id, &account, act).await? {
+        Ok(identity) => Ok(Some(identity)),
+        Err(refusal) => {
+            say(services, incoming, &refusal).await;
+            Ok(None)
+        }
+    }
+}
+
+/// The person of `account` in `tenant_id`, if they may act now: their
+/// temporary password replaced, their rights read, their company active;
+/// otherwise what to tell them, with what was not done.
+pub(super) async fn may_act(
+    services: &Services,
+    tenant_id: Uuid,
+    account: &LinkedAccount,
+    act: Act,
+) -> anyhow::Result<Result<AuthIdentity, String>> {
     if account.must_change_password {
-        let temporary = format!(
+        return Ok(Err(format!(
             "Votre mot de passe provisoire reste à remplacer dans l’application : {}.",
             act.not_done()
-        );
-        say(services, incoming, &temporary).await;
-        return Ok(None);
+        )));
     }
     let identity = AuthIdentity {
         tenant_id,
@@ -109,20 +127,13 @@ pub(super) async fn acting_person(
         must_change_password: false,
     };
     match services.access.context(identity).await {
-        Ok(access) if access.tenant.status == "active" => {}
-        Ok(_) => {
-            say(services, incoming, COMPANY_NOT_ACTIVE).await;
-            return Ok(None);
-        }
-        Err(error) => {
-            let Some(refusal) = error.downcast_ref::<DomainError>() else {
-                return Err(error);
-            };
-            say(services, incoming, &refusal.message).await;
-            return Ok(None);
-        }
+        Ok(access) if access.tenant.status == "active" => Ok(Ok(identity)),
+        Ok(_) => Ok(Err(COMPANY_NOT_ACTIVE.to_owned())),
+        Err(error) => match error.downcast_ref::<DomainError>() {
+            Some(refusal) => Ok(Err(refusal.message.clone())),
+            None => Err(error),
+        },
     }
-    Ok(Some(identity))
 }
 
 /// Whether Slack still says the Slack user is the person of `account`

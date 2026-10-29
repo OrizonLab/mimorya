@@ -5,8 +5,12 @@
 //! person links their Telegram account with: Telegram proves no address, so
 //! the code is asked for in the person's own session, opened in Telegram,
 //! accepted there by whoever is told whose account it links, and the link
-//! confirmed in that session again (`link`).
+//! confirmed in that session again (`link`). A linked person then talks
+//! with the agent there (ADR-135): what their message asks (`command`),
+//! and the bot's answers in the HTML Telegram reads (`html`).
 
+mod command;
+mod html;
 mod link;
 mod update;
 
@@ -14,6 +18,8 @@ use regex::Regex;
 use ring::digest;
 use std::sync::LazyLock;
 
+pub use command::{HELP, NEW_CONVERSATION, command, new_conversation};
+pub use html::{escaped, from_markdown, link};
 pub use link::{
     CONSENT, LINK_CODE_CHARS, deep_link, is_bot_username, is_consent, is_link_code, link_code_hash,
     start_code,

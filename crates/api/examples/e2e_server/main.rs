@@ -20,7 +20,8 @@
 //! (`POST /test/scopes`, ADR-132); what she writes there is answered apart
 //! (`slack`, ADR-128). Their Telegram bots reach a local Telegram on
 //! 127.0.0.1:4104 (`TELEGRAM_ADDRESS`), which lists what the bots wrote and
-//! the webhook each was given (ADR-134).
+//! the webhook each was given (ADR-134); what she writes to the bot is
+//! answered apart (`telegram`, ADR-135).
 //! A company's embedding model is a test one, whatever it chooses: no
 //! provider is ever reached (ADR-074). A finished run reread for a lesson
 //! always yields the same one (`lessons`, ADR-076). A mission is played
@@ -65,6 +66,7 @@ mod skill_evaluations;
 mod skill_proposals;
 mod slack;
 mod sub_agents;
+mod telegram;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -137,7 +139,8 @@ async fn main() -> anyhow::Result<()> {
     let documents = Arc::new(documents::WithDocuments::new(conversations));
     let received = Arc::new(hooks::WithHooks::new(documents));
     let written = Arc::new(slack::WithSlack::new(received));
-    let delegations = Arc::new(sub_agents::WithSubAgents::new(written));
+    let chatted = Arc::new(telegram::WithTelegram::new(written));
+    let delegations = Arc::new(sub_agents::WithSubAgents::new(chatted));
     let proposals = Arc::new(skill_proposals::WithSkillProposals::new(delegations));
     let missions = Arc::new(missions::WithMissions::new(proposals));
     // In front of the missions, which pass any answer they are asked to judge.

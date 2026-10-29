@@ -73,8 +73,9 @@ export function TelegramIdentityRow({
       {linked ? (
         <p className="text-sm text-muted">
           Votre compte Telegram {linked.name} (identifiant <code>{linked.externalId}</code>) est
-          relié au bot @{gateway.workspaceName} depuis le {formatDate(linked.linkedAt)}. La
-          conversation avec l’agent dans Telegram arrive avec un prochain lot.
+          relié au bot @{gateway.workspaceName} depuis le {formatDate(linked.linkedAt)}. Écrivez-lui
+          dans Telegram : l’agent vous y répond, avec vos droits, et <code>/nouvelle</code> ouvre
+          une nouvelle conversation.
         </p>
       ) : !gateway.available ? (
         <p className="text-sm text-muted">La passerelle est indisponible pour l’instant.</p>

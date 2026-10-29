@@ -219,9 +219,10 @@ export const ACCOUNT_PROVIDERS: Record<string, { provider: string; product: stri
   google_workspace: { provider: 'Google', product: 'Google Workspace' },
 };
 
-/** The services a conversation can be held in a thread of (ADR-127, ADR-128). */
+/** The services a conversation can be held in (ADR-127, ADR-128, ADR-135). */
 export const GATEWAY_LABELS: Record<string, string> = {
   slack: 'Slack',
+  telegram: 'Telegram',
 };
 
 /** The name of the service `gateway`, as stored if it has no label. */

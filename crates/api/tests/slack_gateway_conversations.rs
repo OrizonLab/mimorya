@@ -15,9 +15,10 @@ mod support;
 use axum::http::StatusCode;
 use mimorya_agent::testing::ScriptedStep;
 use mimorya_api::services::AuthIdentity;
-use mimorya_api::services::runs::SlackThread;
+use mimorya_api::services::runs::GatewayThread;
 use mimorya_core::DomainError;
 use mimorya_core::demo::{tenant, user};
+use mimorya_core::gateways::GatewayKind;
 use serde_json::{Value, json};
 use support::gateways::{ACCOUNT, declare_slack};
 use support::manager_approvals::{listed, without};
@@ -340,8 +341,9 @@ async fn a_thread_opened_meanwhile_is_refused_as_busy() {
         session_id: uuid::Uuid::nil(),
         must_change_password: false,
     };
-    let thread = SlackThread {
+    let thread = GatewayThread {
         gateway_id: gateway,
+        kind: GatewayKind::Slack,
         external_id: MARC_SLACK,
         channel_id: MARC_DM,
         thread_ts: FIRST,

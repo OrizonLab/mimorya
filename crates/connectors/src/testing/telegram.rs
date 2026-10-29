@@ -2,9 +2,11 @@
 //! ADR-133). Its bot's token, `TELEGRAM_TOKEN`, is the bot `TELEGRAM_BOT`
 //! (`@NeoMaintenanceBot`); `OTHER_BOT_TOKEN` is another bot's; any other
 //! token is refused (401), as one a test revoked. It keeps the webhook each
-//! bot was given, with its secret, and the messages the bots write; a test
-//! may make it unavailable (503), refuse webhooks (as one not in HTTPS), or
-//! have a person block the bot. For the end-to-end tests (ADR-134), the
+//! bot was given, with its secret, and the messages the bots write; a
+//! message in HTML (ADR-135) is refused, as Telegram does, when a tag is
+//! not one it reads or not closed where it opens, or an `&` starts no
+//! entity. A test may make it unavailable (503), refuse webhooks (as one
+//! not in HTTPS), refuse any HTML, or have a person block the bot. For the end-to-end tests (ADR-134), the
 //! messages are also listed at `GET /test/messages`, and each bot's webhook
 //! with its secret at `GET /test/webhooks`: whoever reaches the test
 //! Telegram can send updates as Telegram does, which only a test server
@@ -37,6 +39,8 @@ pub struct TelegramMessage {
     /// The private chat it was written in: the person's identifier.
     pub chat: i64,
     pub text: String,
+    /// Whether it was written in HTML (`parse_mode`).
+    pub html: bool,
 }
 
 #[derive(Default)]
@@ -44,6 +48,7 @@ struct Shared {
     revoked: bool,
     down: bool,
     webhooks_refused: bool,
+    html_refused: bool,
     blocked: HashSet<i64>,
     /// Each bot's webhook: its address and secret.
     webhooks: HashMap<i64, (String, String)>,
@@ -96,6 +101,12 @@ impl FakeTelegram {
     /// Webhooks are refused while `refused`, as an address not in HTTPS.
     pub fn refuse_webhooks(&self, refused: bool) {
         self.shared.lock().expect("lock").webhooks_refused = refused;
+    }
+
+    /// Every message in HTML is refused while `refused`, as one Telegram
+    /// cannot read.
+    pub fn refuse_html(&self, refused: bool) {
+        self.shared.lock().expect("lock").html_refused = refused;
     }
 
     /// The person `chat` blocked the bots.
@@ -194,10 +205,18 @@ async fn call(
                     "Forbidden: bot was blocked by the user",
                 );
             }
+            let html = body.get("parse_mode").and_then(Value::as_str) == Some("HTML");
+            if html && (shared.html_refused || !readable_html(text)) {
+                return refusal(
+                    StatusCode::BAD_REQUEST,
+                    "Bad Request: can't parse entities: Unsupported start tag",
+                );
+            }
             shared.messages.push(TelegramMessage {
                 bot: id,
                 chat,
                 text: text.to_owned(),
+                html,
             });
             answered(json!({ "message_id": shared.messages.len(), "chat": { "id": chat } }))
         }
@@ -205,11 +224,58 @@ async fn call(
     }
 }
 
+/// Whether Telegram reads `text` as HTML: only the tags it knows (`<a>`
+/// with its `href` alone), each closed where it opens, and `&` starting
+/// one of its entities.
+fn readable_html(text: &str) -> bool {
+    const TAGS: [&str; 5] = ["b", "i", "code", "pre", "a"];
+    const ENTITIES: [&str; 4] = ["&amp;", "&lt;", "&gt;", "&quot;"];
+    let mut open: Vec<&str> = Vec::new();
+    let mut rest = text;
+    while let Some(at) = rest.find(['<', '&', '>']) {
+        let tail = &rest[at..];
+        if tail.starts_with('>') {
+            return false;
+        }
+        if tail.starts_with('&') {
+            let Some(entity) = ENTITIES.iter().find(|e| tail.starts_with(**e)) else {
+                return false;
+            };
+            rest = &tail[entity.len()..];
+            continue;
+        }
+        let Some(end) = tail.find('>') else {
+            return false;
+        };
+        let tag = &tail[1..end];
+        if let Some(name) = tag.strip_prefix('/') {
+            if open.pop() != Some(name) {
+                return false;
+            }
+        } else {
+            let (name, attributes) = tag.split_once(' ').unwrap_or((tag, ""));
+            let href = attributes
+                .strip_prefix("href=\"")
+                .and_then(|a| a.strip_suffix('"'));
+            let attributes_read = match name {
+                "a" => href.is_some_and(|h| !h.contains('"')),
+                _ => attributes.is_empty(),
+            };
+            if !TAGS.contains(&name) || !attributes_read {
+                return false;
+            }
+            open.push(name);
+        }
+        rest = &tail[end + 1..];
+    }
+    open.is_empty()
+}
+
 /// The messages the bots wrote, oldest first, for the end-to-end tests.
 async fn messages(State(shared): State<Arc<Mutex<Shared>>>) -> Json<Value> {
     let shared = shared.lock().expect("lock");
     let messages: Vec<Value> = (shared.messages.iter())
-        .map(|m| json!({ "bot": m.bot, "chat": m.chat, "text": m.text }))
+        .map(|m| json!({ "bot": m.bot, "chat": m.chat, "text": m.text, "html": m.html }))
         .collect();
     Json(json!(messages))
 }
@@ -222,4 +288,30 @@ async fn webhooks(State(shared): State<Arc<Mutex<Shared>>>) -> Json<Value> {
         .map(|(bot, (url, secret))| json!({ "bot": bot, "url": url, "secret": secret }))
         .collect();
     Json(json!(webhooks))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::readable_html;
+
+    #[test]
+    fn only_html_telegram_reads_is_taken() {
+        assert!(readable_html(
+            "<b>a</b> <i>b <b>c</b></i> <code>&lt;d&gt;</code> <pre>e &amp; f</pre> \
+             <a href=\"https://x.example/?a=1&amp;b=&quot;2&quot;\">g</a>"
+        ));
+        for text in [
+            "<b>ouvert",
+            "<b>a</i>",
+            "</b>",
+            "<u>souligné</u>",
+            "<b class=\"x\">a</b>",
+            "<a>lien</a>",
+            "a & b",
+            "a > b",
+            "<b",
+        ] {
+            assert!(!readable_html(text), "{text}");
+        }
+    }
 }

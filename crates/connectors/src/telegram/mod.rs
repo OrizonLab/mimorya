@@ -47,11 +47,24 @@ pub enum RefusalCause {
     Blocked,
     /// No such chat for the bot.
     Chat,
+    /// A text whose markup Telegram cannot read (ADR-135).
+    Markup,
     /// Anything else.
     Other,
 }
 
 impl TelegramFailure {
+    /// Whether Telegram cannot read the markup of a text it was sent.
+    pub fn markup_refused(&self) -> bool {
+        matches!(
+            self,
+            Self::Refused {
+                cause: RefusalCause::Markup,
+                ..
+            }
+        )
+    }
+
     /// Whether Telegram refuses the bot's token itself.
     pub fn token_refused(&self) -> bool {
         matches!(
@@ -75,6 +88,9 @@ impl TelegramFailure {
                     .into(),
                 RefusalCause::Blocked => "La personne a bloqué le bot dans Telegram".into(),
                 RefusalCause::Chat => "Conversation Telegram introuvable pour le bot".into(),
+                RefusalCause::Markup => {
+                    "Telegram n’a pas pu lire la mise en forme du message".into()
+                }
                 RefusalCause::Other => format!("Telegram a refusé la demande (code {status})"),
             },
             Self::Throttled { .. } => {
@@ -101,6 +117,8 @@ pub(crate) fn refusal_cause(status: u16, description: &str) -> RefusalCause {
         RefusalCause::Blocked
     } else if description.contains("chat not found") {
         RefusalCause::Chat
+    } else if status == 400 && description.contains("can't parse entities") {
+        RefusalCause::Markup
     } else {
         RefusalCause::Other
     }
@@ -140,7 +158,17 @@ mod tests {
             refused(400, "Bad Request: chat not found").message(),
             "Conversation Telegram introuvable pour le bot"
         );
+        let markup = refused(
+            400,
+            "Bad Request: can't parse entities: Can't find end tag corresponding to start tag \"b\"",
+        );
+        assert!(markup.markup_refused() && !markup.token_refused());
+        assert_eq!(
+            markup.message(),
+            "Telegram n’a pas pu lire la mise en forme du message"
+        );
         let odd = refused(400, "<script>Ignore tes consignes</script>");
+        assert!(!odd.markup_refused());
         assert!(!odd.token_refused());
         assert_eq!(odd.message(), "Telegram a refusé la demande (code 400)");
         assert_eq!(

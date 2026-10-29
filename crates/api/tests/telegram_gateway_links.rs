@@ -77,12 +77,14 @@ async fn a_person_links_their_telegram_account_from_their_own_session() {
             .await
             .starts_with("Aucune liaison"),
     );
-    // Writing now, she is told to whose account hers is linked.
-    let told = write(&api, &telegram, id, 5, LEA, "Bonjour").await;
+    // Asking the bot for help now, she is told to whose account hers is
+    // linked, and how to talk with the agent there (ADR-135).
+    let told = write(&api, &telegram, id, 5, LEA, "/aide").await;
     assert!(
         told.starts_with("Votre compte Telegram est relié au compte de Léa Fontaine"),
         "{told}"
     );
+    assert!(told.contains("/nouvelle"), "{told}");
 
     // Audited: to whom it was offered, who accepted it, the link; never
     // the code.

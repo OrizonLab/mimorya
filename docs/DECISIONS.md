@@ -7439,3 +7439,105 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
       lien annulé, ne reliant rien ;
   - restent : conversations avec l'agent dans Telegram, validations par boutons, avis
     au responsable ; Teams.
+
+## ADR-135 — Conversations avec l'agent dans Telegram (passerelles, lot 13c)
+
+- **Date** : 2026-10-29 · **Statut** : acceptée · complète ADR-133 et ADR-134, sur le
+  modèle d'ADR-127 et d'ADR-128
+- **Contexte** : une personne pouvait relier son compte Telegram au bot de l'entreprise
+  (ADR-133, ADR-134), mais le bot ne faisait que lui dire à quel compte il était relié.
+  La conversation privée avec un bot Telegram n'a pas de fils : la règle de Slack (un
+  fil par conversation, ADR-127) ne s'y transpose pas.
+- **Décision** :
+  - **ce qui va à l'agent** : les mots d'une personne reliée, dans sa conversation privée
+    avec le bot. Les commandes du bot n'y vont pas :
+    - `/start` avec un code et `/oui` lient le compte, comme avant (ADR-133) ;
+    - `/nouvelle` ferme la conversation en cours ; les mots qui la suivent, s'il y en a,
+      ouvrent la suivante ;
+    - `/start`, `/aide` ou toute autre commande disent à quel compte le sien est relié
+      et comment parler à l'agent.
+
+    Une commande s'écrit comme Telegram l'écrit : une barre oblique et son nom, suivis
+    au besoin de `@` et du nom du bot (`/aide@NeoMaintenanceBot`). Tout le reste va à
+    l'agent, y compris un chemin comme `/home/x` ;
+
+  - **une conversation à la fois** : la conversation privée tient la conversation qu'un
+    message de la personne a ouverte. Ses messages suivants la poursuivent jusqu'à ce
+    qu'elle en demande une nouvelle (`/nouvelle`) ou qu'elle l'archive dans
+    l'application (elle est alors fermée et le message suivant en ouvre une autre).
+
+    Côté base, `gateway_threads` porte désormais le service de sa passerelle (`kind`,
+    clé étrangère composite sur `gateways (id, kind)`) et des règles propres à chacun :
+    - Telegram : l'identifiant de la personne, celui de la conversation privée qui est
+      le même, et le numéro du message qui l'a ouverte ;
+    - pour Telegram seulement, `closed_at`, et un index unique : une conversation
+      ouverte par personne, conversation privée et bot.
+
+    Deux messages qui ouvrent une conversation au même moment : le second est refusé
+    comme occupé. Un compte Telegram relié depuis à quelqu'un d'autre suit cette
+    personne : ses messages ouvrent une conversation à elle, jamais celle de la personne
+    d'avant ;
+
+  - **comme dans l'application** : le run est lancé au nom de la personne, avec ses droits
+    tels qu'ils sont et l'autonomie de l'entreprise, sur le canal `telegram` que les
+    politiques lisent (`context.channel`). Son message porte `gateway: "telegram"`, et
+    l'audit le dit sien, avec la passerelle, jamais avec ses mots.
+
+    Avant de lancer quoi que ce soit, la plateforme vérifie que la personne peut agir :
+    - elle est toujours reliée ;
+    - son mot de passe provisoire est remplacé ;
+    - son entreprise est active ;
+    - le modèle est disponible et elle peut utiliser l'agent (`agent:use`) ;
+    - le service ne redémarre pas ;
+    - la conversation n'a pas déjà une demande en cours.
+
+    Ce sont les règles de Slack (`person::may_act`, partagé). Telegram atteste qui
+    écrit : la mise à jour est venue avec le secret du webhook, depuis la conversation
+    privée de la personne. On ne demande donc rien à personne d'autre. Pourquoi rien n'a
+    été lancé est dit dans la conversation, en texte simple ;
+
+  - **la réponse** : la même passe que pour Slack (ADR-127) répond à chaque fin ou pause
+    d'un run lancé depuis Telegram (`replies/`, un module par service) :
+    - un run n'y reçoit sa réponse que s'il a été lancé depuis le service où sa
+      conversation se tient, son canal étant ce service ;
+    - le texte est dans le HTML que Telegram lit (`parse_mode: HTML`) : `<b>`, `<i>`,
+      `<code>`, `<pre>` et `<a href>`, chaque balise refermée là où elle s'ouvre, le reste
+      échappé (`telegram::from_markdown`) ;
+    - la réponse de l'agent est en Markdown ; elle garde son emphase, ses titres, ses
+      listes et ses liens web, son code tel qu'écrit, et elle est coupée au-delà de
+      3 000 caractères ;
+    - un lien vers la conversation dans l'application suit la réponse ;
+    - si Telegram ne lit pas ce HTML, la même chose est dite en texte simple, l'adresse
+      en clair ;
+    - une pause dit quelle validation la demande attend, la sienne ou celle de son
+      responsable, à donner dans l'application, qui en montre les paramètres exacts. Les
+      boutons de validation viennent avec un prochain lot ;
+    - un bot en pause, ou un compte Telegram qui n'est plus celui de la personne, ne
+      reçoit rien (`skipped`) ;
+    - un refus de Telegram n'est pas retenté (la personne a bloqué le bot) ;
+    - Telegram injoignable ou en erreur (5xx) est retenté : 30 s, 2 min, 8 min, ou quand
+      Telegram le dit, au plus quatre fois. Le délai de nouvelle tentative est commun aux
+      deux services ;
+  - **l'interface** : une conversation tenue dans Telegram est marquée « Telegram » dans la
+    liste, et chaque message écrit au bot y est marqué « Écrit dans Telegram ». La note de
+    la conversation dit qu'elle se tient aussi dans la conversation privée avec le bot,
+    tant qu'une nouvelle n'y est pas ouverte. Les textes du formulaire du bot et de
+    « Mon compte » disent que l'agent répond dans Telegram ;
+  - **le code partagé** : les motifs Markdown que Slack et Telegram lisent, et la coupe
+    d'un texte trop long (`bounded`), sont dans `crates/core/src/gateways/markdown.rs`.
+- **Conséquences** :
+  - le Telegram simulé des tests refuse, comme Telegram, un HTML qu'il ne lirait pas
+    (balise inconnue ou non refermée, `&` sans entité) ; un test peut lui faire refuser
+    tout HTML (`refuse_html`) ;
+  - tests :
+    - `crates/api/tests/telegram_gateway_conversations.rs` : conversation ouverte, suivie,
+      fermée par `/nouvelle`, avec ou sans mots, laissée une fois archivée ; commandes ;
+      pause puis réponse ; refus dits ; compte relié à quelqu'un d'autre ; conversation
+      ouverte deux fois ;
+    - `telegram_gateway_replies.rs` : HTML refusé dit en texte simple ; bot en pause ou
+      liaison retirée ; Telegram injoignable retenté puis abandonné ; bot bloqué ;
+    - `apps/web/e2e/telegram-conversations.spec.ts` : question posée au bot, réponse dans
+      la conversation privée, conversation montrée « Telegram » dans l'application,
+      relance, puis `/nouvelle` ;
+  - restent : les validations données dans Telegram avec des boutons, et les demandes
+    annoncées au responsable dans Telegram.

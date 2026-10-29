@@ -1,7 +1,10 @@
-//! What the bot writes to a person in Telegram (ADR-133), in plain text:
-//! never what they wrote. Of an account, only whose it is: the one a link
-//! would link their Telegram account to, or the one it is linked to, so that
-//! no one's is linked to another's unknowingly.
+//! What the bot writes to a person in Telegram (ADR-133, ADR-135), in plain
+//! text: never what they wrote. Of an account, only whose it is: the one a
+//! link would link their Telegram account to, or the one it is linked to,
+//! so that no one's is linked to another's unknowingly. The agent's answers
+//! are written apart (`reply_text`).
+
+use mimorya_core::gateways::telegram::{HELP, NEW_CONVERSATION};
 
 /// Where in the application a person links their Telegram account.
 const LINKS_PAGE: &str = "page « Mon compte », section « Messageries reliées »";
@@ -44,12 +47,18 @@ pub(super) const LINKED_ELSEWHERE: &str = "Ce compte Telegram est déjà relié 
      compte de l’application : seule la personne de ce compte peut le retirer, depuis sa page \
      « Mon compte ».";
 
-/// To a linked person, until they talk with the assistant here: to whose
-/// account theirs is linked.
-pub(super) fn linked(assistant: &str, person: &str) -> String {
+/// To a linked person who starts the bot again or asks for help: to whose
+/// account theirs is linked, and how to talk with the assistant here.
+pub(super) fn help(assistant: &str, person: &str) -> String {
     format!(
-        "Votre compte Telegram est relié au compte de {person} dans l’application. La \
-         conversation avec {assistant} ici arrive bientôt : d’ici là, écrivez-lui dans \
-         l’application."
+        "Votre compte Telegram est relié au compte de {person} dans l’application. Écrivez \
+         votre question : {assistant} vous répond ici, avec les droits de ce compte, dans votre \
+         conversation en cours, que vous retrouvez aussi dans l’application. Envoyez \
+         {NEW_CONVERSATION} pour en ouvrir une nouvelle, {HELP} pour relire ce message."
     )
 }
+
+/// To a linked person who asked for a new conversation, without a word
+/// for it yet.
+pub(super) const NEW_CONVERSATION_NEXT: &str =
+    "C’est noté : votre prochain message ouvrira une nouvelle conversation.";
