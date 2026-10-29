@@ -4,9 +4,10 @@
 -- awaiting them, with the buttons of those that may be validated there.
 
 -- What became of the notice of a request in Slack: `sent` to `user_id`;
--- `refused` by Slack; `failed` after its attempts; `skipped` (gateway
--- paused, nobody linked to tell, Slack no longer saying the Slack user is
--- the person). Without an outcome, it is tried again after `retry_after`.
+-- `refused` by Slack; `failed` after its attempts; `skipped` (the recipient
+-- may no longer decide it, nobody linked to tell, Slack no longer saying
+-- the Slack user is the person). Nothing while the gateway is paused.
+-- Without an outcome, it is tried again after `retry_after`.
 -- Only identifiers, never what was written: that is the request itself.
 -- A notice goes with its request, its gateway and whom it was meant for.
 CREATE TABLE gateway_approval_notices (

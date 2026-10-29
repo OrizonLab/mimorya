@@ -7131,7 +7131,8 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     (responsable prévenu une fois, audité, qui valide par son bouton ; remplaçant
     prévenu « en l'absence de », qui refuse ; action à impact externe sans bouton, ni
     bouton forgé ni autre personne ne la décident ; responsable qui a perdu le droit
-    de décider : rien d'écrit),
+    de décider : rien d'écrit ; remplaçant qui ne peut décider : le responsable
+    prévenu),
     `slack_gateway_approver_notice_outcomes.rs` (Slack ne disant plus que c'est lui :
     identité déliée, rien d'écrit ; personne de relié ; passerelle en pause, puis
     remise en service : annoncé ; run d'une entreprise suspendue ou d'un responsable

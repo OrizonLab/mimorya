@@ -6,7 +6,8 @@
 //! whom they named to stand in for them is told instead, and decides. An
 //! action sent outside the company is told without buttons, and no press
 //! decides it; nor does a press of another person's. A manager who lost
-//! the right to decide is written nothing.
+//! the right to decide is written nothing; a stand-in who could not decide
+//! leaves the manager told.
 
 mod support;
 
@@ -223,5 +224,29 @@ async fn a_manager_who_lost_the_right_is_written_nothing() {
     );
     assert!(audited(&api, approval).await.is_empty());
     assert_eq!(paul.delete(&policy).await.status, StatusCode::OK);
+    refuse(&api, &marc, approval).await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_stand_in_who_could_not_decide_leaves_the_manager_told() {
+    let slack = FakeSlack::start().await;
+    let api = TestApi::start_with_slack(&SSO_DEPLOYMENT, &slack.url).await;
+    let (paul, marc) = (api.sign_in(user::PAUL).await, api.sign_in(user::MARC).await);
+    // Julien stands in for Marc, without approval:decide over Nadia.
+    away(&marc, user::JULIEN, 0).await;
+    let address = email(user::MARC);
+    linked(&api, &slack, &paul, &marc, (MARC_SLACK, &address)).await;
+    let (_, approval) = nadia_s_request(&api, &paul, "09:00").await;
+
+    assert_eq!(notify(&api).await, 1);
+    let told = direct_to(&slack, MARC_SLACK);
+    assert_eq!(told.len(), 1, "{told:?}");
+    assert!(
+        !told[0].text.contains("en l’absence de"),
+        "{}",
+        told[0].text
+    );
+    back(&marc).await;
     refuse(&api, &marc, approval).await;
 }
