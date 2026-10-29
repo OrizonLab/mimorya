@@ -46,7 +46,8 @@ async fn two_links_opened_at_once_leave_the_last_one_offered() {
             offered
         }
     });
-    tokio::time::sleep(Duration::from_millis(300)).await;
+    // Marc's offer queued behind Léa's before hers is committed.
+    wait_for_a_waiter(&db).await;
     first.commit().await.unwrap();
     // Marc's waited its turn, and is the one offered now.
     assert_eq!(second.await.unwrap().unwrap(), Some(user::MARC));
@@ -58,6 +59,24 @@ async fn two_links_opened_at_once_leave_the_last_one_offered() {
             .await
             .unwrap();
     assert_eq!(offered, [user::MARC]);
+}
+
+/// Waits until a connection to this test database waits for a lock.
+async fn wait_for_a_waiter(db: &Database) {
+    for _ in 0..600 {
+        let waiting: i64 = sqlx::query_scalar(
+            "select count(*) from pg_locks l join pg_stat_activity a on a.pid = l.pid \
+             where not l.granted and a.datname = current_database()",
+        )
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
+        if waiting > 0 {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    panic!("the second offer never waited for the first");
 }
 
 /// The demo company's Telegram bot.
