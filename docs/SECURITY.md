@@ -213,6 +213,19 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   l'entreprise ni une action irréversible. Chaque avis est audité
   (`gateway.approval_notified`), jamais ce qui est écrit ; ce qu'il en est devenu est
   gardé avec la demande (`gateway_approval_notices`), supprimé avec elle.
+- Responsable prévenu dans Telegram (ADR-137) : de même, une demande qui attend un
+  responsable est annoncée dans sa conversation privée avec le bot actif de
+  l'entreprise, ou dans celle du remplaçant, seulement s'il peut encore la décider
+  (relu au moment d'écrire) et s'il a relié son compte Telegram au bot (le compte qu'il
+  a accepté de relier en sachant à quel compte, ADR-133 ; Telegram ne prouvant aucune
+  adresse, rien ne lui est demandé avant d'écrire). Mêmes actions montrées avec leurs
+  paramètres exacts et leurs boutons qu'à l'auteur (ADR-136) ; pressé, le bouton passe
+  les mêmes contrôles (`concerned::decide_as`) : seul celui que la demande attend, ou
+  son remplaçant, la décide, quoi que prétende la pression. Qui détient le secret du
+  webhook peut donc aussi valider, au nom d'un responsable relié, ces actions-là d'un
+  de ses collaborateurs : jamais un envoi hors de l'entreprise ni une action
+  irréversible. Chaque passerelle annonce une demande une fois, ce qu'il en advient
+  gardé pour chacune ; chaque avis audité avec son service, jamais ce qui est écrit.
 - Déclencheurs (ADR-109) : un autre système envoie avec le jeton secret du déclencheur
   (`Authorization: Bearer`, 256 bits, gardé en empreinte SHA-256, montré une fois). Un
   déclencheur inconnu, un jeton faux et un déclencheur en pause répondent de même (404).

@@ -52,7 +52,8 @@ Repères à l'intérieur des crates :
   jeton lues, manquantes et en plus, `scopes.rs`, ADR-132 ; bot Telegram : jeton,
   secret du webhook, mise à jour lue, code de liaison, `telegram/`, ADR-133, commandes
   du bot et réponse écrite dans le HTML de Telegram, ADR-135, boutons de validation et
-  bouton pressé (`buttons.rs`, `press.rs`), ADR-136 ; motifs Markdown lus par chaque
+  bouton pressé (`buttons.rs`, `press.rs`), ADR-136, actions montrées sous un message,
+  autant qu'il en tient (`shown.rs`), ADR-136, ADR-137 ; motifs Markdown lus par chaque
   service et texte trop long coupé, `markdown.rs` ; actions validées hors de
   l'application, `validation.rs`, ADR-129, ADR-136).
 - `db/migrations/` (SQL numéroté, source de vérité du schéma),
@@ -73,8 +74,9 @@ Repères à l'intérieur des crates :
   événements pris : `gateways.rs`, identités reliées : `gateway_identities.rs`,
   ADR-125 ; fils Slack des conversations, et conversation privée avec le bot Telegram,
   une ouverte à la fois : `gateway_threads.rs`, réponses écrites :
-  `gateway_replies.rs`, ADR-127, ADR-135 ; demandes annoncées au responsable :
-  `gateway_approval_notices.rs`, ADR-130 ; codes de liaison Telegram :
+  `gateway_replies.rs`, ADR-127, ADR-135 ; demandes annoncées au responsable, une fois
+  par passerelle : `gateway_approval_notices.rs`, ADR-130, ADR-137 ; codes de liaison
+  Telegram :
   `gateway_link_codes.rs`, ADR-133),
   `db/src/notifications.rs` (canaux PostgreSQL des événements des runs, de la file et des
   invalidations, ADR-084, ADR-085), `db/src/sweep_lock.rs` (verrou d'un balayage qui ne
@@ -132,7 +134,7 @@ Repères à l'intérieur des crates :
   par le worker, `run_queue.rs`, ADR-085 ; tâches de fond lancées selon le rôle du
   processus, `MIMORYA_ROLE`, dans `app.rs` (`Background`), ADR-085 ; réponses écrites
   dans Slack et dans Telegram toutes les trois secondes, et demandes annoncées aux
-  responsables, `gateway_replies.rs`, ADR-127, ADR-130, ADR-135),
+  responsables, `gateway_replies.rs`, ADR-127, ADR-130, ADR-135, ADR-137),
   `api/src/routes/` (un module par ressource, `admin/`), `api/src/contract/` (réponses
   et corps de requêtes typés, un fichier par ressource, dont sont générés les types
   TypeScript, ADR-036, ADR-039),
@@ -158,7 +160,8 @@ Repères à l'intérieur des crates :
   dans le fil (`replies/`, un module par service, `reply_text.rs`), ADR-127 ; action validée ou refusée par
   son bouton dans le fil (`choices.rs`), qui peut agir, pour un message comme pour un
   bouton (`person.rs`), ADR-129 ; demandes qui attendent un responsable annoncées par
-  message direct (`approver_notices.rs`, `approver_text.rs`), ADR-130 ; conversation
+  message direct (`approver_notices/`, un module par service, `approver_text.rs`),
+  ADR-130 ; conversation
   directe vérifiée auprès de Slack avant que rien n'y soit dit (`direct.rs`), ADR-131 ;
   bot Telegram : mises à jour reçues sur le secret du webhook et compte relié par un code
   de la session (`telegram/`), ADR-133 ; mots d'une personne reliée répondus dans une
@@ -166,7 +169,9 @@ Repères à l'intérieur des crates :
   (`telegram/conversations.rs`), réponse écrite là en HTML (`telegram/reply_text.rs`),
   ADR-135 ; action validée ou refusée par son bouton sous la pause
   (`telegram/choices.rs`), qui voit et décide quoi, commun aux services
-  (`concerned.rs`), ADR-136 ;
+  (`concerned.rs`), ADR-136 ; demandes annoncées au responsable dans sa conversation
+  privée avec le bot (`telegram/approver_text.rs`), message écrit là en HTML ou en
+  texte simple, avec ses boutons (`telegram/chat.rs`), ADR-137 ;
   déclarées par
   `services/admin/gateways.rs`, ce que Slack dit du jeton et ses permissions vérifiées
   à la demande par `services/admin/gateway_check.rs`, ADR-132, le bot Telegram par

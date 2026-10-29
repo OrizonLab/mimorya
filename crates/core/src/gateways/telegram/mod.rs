@@ -8,14 +8,17 @@
 //! confirmed in that session again (`link`). A linked person then talks
 //! with the agent there (ADR-135): what their message asks (`command`),
 //! and the bot's answers in the HTML Telegram reads (`html`); and validates
-//! there what awaits them, with the buttons the bot shows (`buttons`) and
-//! the press Telegram sends (`press`, ADR-136).
+//! there what awaits them, with the buttons the bot shows (`buttons`) under
+//! the actions a message holds (`shown`) and the press Telegram sends
+//! (`press`, ADR-136); a manager, or whom they named to stand in for them,
+//! is told there of the requests awaiting them alike (ADR-137).
 
 mod buttons;
 mod command;
 mod html;
 mod link;
 mod press;
+mod shown;
 mod update;
 
 use regex::Regex;
@@ -23,7 +26,7 @@ use ring::digest;
 use std::sync::LazyLock;
 
 pub use buttons::{
-    ApprovalChoice, approval_choice, approval_keyboard, buttons_in, shown_actions, without_decided,
+    ApprovalChoice, approval_choice, approval_keyboard, buttons_in, without_decided,
 };
 pub use command::{HELP, NEW_CONVERSATION, command, new_conversation};
 pub use html::{escaped, from_markdown, link};
@@ -32,6 +35,7 @@ pub use link::{
     start_code,
 };
 pub use press::{ButtonPress, KeyboardButton};
+pub use shown::{MAX_SHOWN_ACTIONS, shown_actions, shown_in_message};
 pub use update::{
     MAX_MESSAGE_CHARS, PrivateMessage, ReceivedUpdate, TelegramUser, Update, is_user_id,
     read_update,

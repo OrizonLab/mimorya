@@ -17,7 +17,7 @@ use axum::http::StatusCode;
 use mimorya_agent::testing::ScriptedStep;
 use mimorya_connectors::testing::{FakeTelegram, TELEGRAM_BOT};
 use mimorya_core::demo::{tenant, user};
-use serde_json::{Value, json};
+use serde_json::json;
 use support::TestApi;
 use support::manager_approvals::{listed, route_to_managers};
 use support::planning::{apply_proposal, propose};
@@ -29,7 +29,8 @@ use support::telegram::{
     LEA_TELEGRAM, LEA_USERNAME, MARC_TELEGRAM, MARC_USERNAME, ask_code, confirm, open_and_accept,
 };
 use support::telegram_conversations::{
-    claimed_press, deliver, last_said, linked_bot, talk, telegram_runs,
+    claimed_press, deliver, keyboard_of, last_brief, last_said, latest_number, linked_bot, talk,
+    telegram_runs,
 };
 use uuid::Uuid;
 
@@ -67,22 +68,6 @@ async fn approval_of(api: &TestApi, run: Uuid) -> Uuid {
         .unwrap();
     tx.commit().await.unwrap();
     approval
-}
-
-/// The keyboard under the message numbered `number`, as it stands.
-fn keyboard_of(telegram: &FakeTelegram, number: i64) -> Value {
-    let message = &telegram.messages()[usize::try_from(number - 1).unwrap()];
-    message.keyboard.clone().unwrap_or(Value::Null)
-}
-
-/// The number of the latest message the bot wrote.
-fn latest_number(telegram: &FakeTelegram) -> i64 {
-    i64::try_from(telegram.messages().len()).unwrap()
-}
-
-/// What the bot last answered a press.
-fn last_brief(telegram: &FakeTelegram) -> String {
-    telegram.answers().pop().expect("an answer").1
 }
 
 #[tokio::test]

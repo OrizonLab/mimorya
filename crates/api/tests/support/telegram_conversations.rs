@@ -7,6 +7,7 @@
 use axum::http::StatusCode;
 use mimorya_connectors::testing::{FakeTelegram, TelegramMessage, update};
 use mimorya_core::demo::tenant;
+use serde_json::Value;
 use uuid::Uuid;
 
 use super::slack_conversations::settle;
@@ -22,11 +23,23 @@ pub async fn linked_bot(
     from: (i64, &str),
 ) -> Uuid {
     let id = declare_telegram(paul).await;
+    link_to(api, telegram, (id, 1), client, from).await;
+    id
+}
+
+/// Links the Telegram user `from` (`@username`) to `client`'s account on
+/// the bot `id`, with Telegram's updates `update_id` and the next.
+pub async fn link_to(
+    api: &TestApi,
+    telegram: &FakeTelegram,
+    (id, update_id): (Uuid, i64),
+    client: &Client<'_>,
+    from: (i64, &str),
+) {
     let code = ask_code(client, id).await;
-    open_and_accept(api, telegram, id, 1, from, &code).await;
+    open_and_accept(api, telegram, id, update_id, from, &code).await;
     let confirmed = confirm(client, id).await;
     assert_eq!(confirmed.status, StatusCode::OK, "{}", confirmed.text());
-    id
 }
 
 /// Sends what `from` writes to the bot `id` as Telegram's update
@@ -55,6 +68,22 @@ pub fn chat_of(telegram: &FakeTelegram, person: i64) -> Vec<TelegramMessage> {
 /// What the bots last wrote to `person`.
 pub fn last_said(telegram: &FakeTelegram, person: i64) -> TelegramMessage {
     chat_of(telegram, person).pop().expect("a message")
+}
+
+/// The keyboard under the message numbered `number`, as it stands.
+pub fn keyboard_of(telegram: &FakeTelegram, number: i64) -> Value {
+    let message = &telegram.messages()[usize::try_from(number - 1).unwrap()];
+    message.keyboard.clone().unwrap_or(Value::Null)
+}
+
+/// The number of the latest message the bot wrote.
+pub fn latest_number(telegram: &FakeTelegram) -> i64 {
+    i64::try_from(telegram.messages().len()).unwrap()
+}
+
+/// What the bot last answered a press.
+pub fn last_brief(telegram: &FakeTelegram) -> String {
+    telegram.answers().pop().expect("an answer").1
 }
 
 /// The conversation of the account `user_id` open in the private chat of

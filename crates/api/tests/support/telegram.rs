@@ -29,6 +29,12 @@ pub const MARC_USERNAME: &str = "marc_lefevre";
 /// Telegram's bot; the gateways a previous test declared go first.
 pub async fn declare_telegram(admin: &Client<'_>) -> Uuid {
     remove_gateways(admin).await;
+    declare_telegram_beside(admin).await
+}
+
+/// The company's Telegram bot, declared by `admin` with the local
+/// Telegram's bot beside the company's other gateways.
+pub async fn declare_telegram_beside(admin: &Client<'_>) -> Uuid {
     let declared = admin
         .post(
             DECLARE_TELEGRAM,

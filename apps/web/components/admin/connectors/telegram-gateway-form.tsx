@@ -85,7 +85,8 @@ export function TelegramGatewayForm({
         le confirme dans l’application. Une fois relié, il écrit au bot : l’agent lui répond dans sa
         conversation privée avec lui, avec ses droits. Il y valide ou refuse, avec des boutons, ses
         propres actions sans effet hors de l’entreprise et réversibles ; les autres se valident dans
-        l’application.
+        l’application. Un responsable relié, ou qui le remplace, y est aussi prévenu des demandes
+        qui attendent sa validation, et les valide de même.
       </p>
       {action.error && <ErrorNote message={action.error} />}
       <div className="flex gap-2">

@@ -12,15 +12,15 @@
 mod support;
 
 use axum::http::StatusCode;
-use mimorya_api::services::gateways::NOTIFIED_IN_SLACK;
+use mimorya_api::services::gateways::APPROVAL_NOTIFIED;
 use mimorya_connectors::testing::{FakeSlack, WORKSPACE};
 use mimorya_core::demo::{tenant, user};
 use serde_json::{Value, json};
+use support::approver_notices::{direct_to, nadia_s_request, notice_of, notify, refuse};
 use support::delegations::{away, back, julien_decides_for_the_south};
 use support::manager_approvals::{listed, without};
 use support::queue::as_owner;
 use support::refusals::{entries_since, latest_entry};
-use support::slack_approvers::{direct_to, nadia_s_request, notice_of, notify, refuse};
 use support::slack_conversations::{MARC_SLACK, confirm, link_code, linked, settle};
 use support::slack_validations::{buttons_of, moved_to, press, pressed, pressed_by};
 use support::sso::SSO_DEPLOYMENT;
@@ -36,7 +36,7 @@ async fn audited(api: &TestApi, approval: Uuid) -> Vec<Value> {
     let rows = sqlx::query_scalar(
         "select metadata from audit_log where action = $1 and resource_id = $2 order by id",
     )
-    .bind(NOTIFIED_IN_SLACK)
+    .bind(APPROVAL_NOTIFIED)
     .bind(approval.to_string())
     .fetch_all(&mut *tx)
     .await
@@ -75,7 +75,12 @@ async fn the_manager_is_told_in_slack_and_validates_with_a_button() {
         notice_of(&api, approval).await,
         Some((Some("sent".into()), 1))
     );
-    let manager = json!({ "gatewayId": gateway, "approverId": user::MARC, "grouped": 1 });
+    let manager = json!({
+        "gatewayId": gateway,
+        "gateway": "slack",
+        "approverId": user::MARC,
+        "grouped": 1,
+    });
     assert_eq!(audited(&api, approval).await, [manager]);
 
     // Validated in Slack: decided as him, audited so, shown in the message.
@@ -121,6 +126,7 @@ async fn the_stand_in_is_told_and_decides_in_the_manager_s_absence() {
     );
     let audit = json!({
         "gatewayId": gateway,
+        "gateway": "slack",
         "approverId": user::MARC,
         "grouped": 1,
         "delegateId": user::JULIEN,

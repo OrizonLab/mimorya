@@ -7614,3 +7614,82 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
       au compte Telegram relié depuis à quelqu'un d'autre ; action envoyée hors de l'entreprise ou
       attendue par un responsable, sans boutons ni décision ;
   - reste : les demandes annoncées au responsable dans Telegram.
+
+## ADR-137 — Responsable prévenu dans Telegram des demandes qui l'attendent (passerelles, lot 13e)
+
+- **Date** : 2026-10-29 · **Statut** : acceptée · complète ADR-136, sur le modèle
+  d'ADR-130
+- **Contexte** : une demande qu'un responsable décide (ADR-059) lui est annoncée par
+  e-mail (ADR-060), ou à son remplaçant (ADR-071), et, s'il y a relié son identité,
+  dans Slack (ADR-130). Le responsable qui a relié son compte Telegram au bot de
+  l'entreprise y parle déjà à l'agent (ADR-135) et y valide ses propres actions avec
+  des boutons (ADR-136). Une entreprise peut avoir à la fois une application Slack et
+  un bot Telegram (une passerelle de chaque sorte, ADR-133).
+- **Décision** :
+  - **un message dans sa conversation privée avec le bot** : quand un run se met en
+    pause sur des demandes qu'un responsable décide, ce responsable, ou le remplaçant
+    qui le serait aussi par e-mail (`recipient`), reçoit du bot un message, s'il y a
+    relié son compte Telegram : pour qui l'agent agit, en l'absence de qui, et les
+    actions qui se valident hors de l'application (`validated_in_gateway`, ADR-136)
+    avec leurs paramètres exacts et leurs boutons. Au plus cinq actions, et autant que
+    le message en contient (`shown_in_message`, commun à la pause de l'auteur). Le
+    message dit aussi combien d'autres sont à valider dans l'application, et donne le
+    lien de l'écran « Validations ». Il est écrit dans le HTML que Telegram lit, et en
+    texte simple, avec ses boutons, si Telegram refuse ce HTML ;
+  - **une annonce par passerelle** : chaque passerelle de l'entreprise annonce une
+    demande une fois. Ce qu'il en advient est gardé pour chacune
+    (`gateway_approval_notices`, clé `approval_id` et `gateway_id`), de sorte qu'une
+    passerelle injoignable n'empêche ni ne répète l'annonce par l'autre. Le passage
+    qui annonce les demandes (ADR-130) rend désormais aussi la passerelle
+    (`system_gateway_approvals_to_notify`, mêmes conditions, passerelles Slack et
+    Telegram actives) et s'appelle `notify_approvers` ; ce que chaque service écrit
+    est dans son module (`approver_notices/slack.rs`, `approver_notices/telegram.rs`) ;
+  - **seul qui peut décider est prévenu**, comme dans Slack : au moment d'écrire, le
+    destinataire doit encore détenir `approval:decide` sur la personne servie
+    (`may_decide_for`), sinon rien n'est écrit (`skipped`). Personne de relié : rien
+    d'écrit (`skipped`), jamais réessayé. Telegram ne prouve aucune adresse : le compte
+    Telegram que la personne a accepté de relier, en sachant à quel compte (ADR-133),
+    est le sien jusqu'à ce qu'elle le retire ou qu'il soit relié à quelqu'un d'autre ;
+    rien n'est demandé à Telegram avant d'écrire. Le bot en pause : rien n'est essayé
+    ni enregistré ; remis en service, il annonce les demandes encore en attente faites
+    depuis moins de 24 heures. Telegram refuse (bot bloqué par la personne, jeton
+    révoqué…) : `refused`, plus réessayé ; injoignable ou en erreur : réessayé
+    quelques fois, comme une réponse (ADR-135) ;
+  - **le bouton pressé** arrive comme celui de l'auteur (ADR-136) et passe les mêmes
+    contrôles (`concerned::decide_as`) : seule une demande qui attend la personne qui
+    l'a pressé est décidée, la sienne, celle d'un responsable qu'elle est, ou qu'elle
+    remplace. Une autre personne reliée qui presse le même bouton (sous un message
+    qu'elle prétend du bot) ne la voit pas. La décision est auditée avec son service,
+    `telegram`. Le bot répond au bouton, retire ses boutons et dit l'issue en réponse
+    au message (« La demande reprend. ») ;
+  - **en plus de l'e-mail et de Slack**, quel que soit le choix de chacun pour ses
+    e-mails (ADR-094) : relier son compte Telegram est son choix, le retirer arrête ces
+    messages. Chaque demande annoncée est auditée (`gateway.approval_notified`, la
+    passerelle et désormais son service, `gateway` : `slack` ou `telegram`, le
+    responsable et le remplaçant), jamais ce qui est écrit.
+- **Conséquences** :
+  - un responsable relié à Slack et à Telegram reçoit les deux messages. Une demande
+    décidée par l'un garde ses boutons dans l'autre ; pressés, ils ne décident plus
+    rien. Dans Telegram, le message de l'autre service perd ses boutons à la pression
+    suivante (ADR-136) ;
+  - l'écriture dans la conversation privée (HTML puis texte simple, boutons) et ce que
+    devient un message que Telegram ne prend pas sont communs à la réponse d'un run et
+    à l'annonce (`services/gateways/telegram/chat.rs`) ;
+  - le texte d'aide du formulaire du bot dit qu'un responsable relié y est prévenu ;
+  - tests :
+    - `crates/core` : actions montrées dans un message, seules celles qui se valident
+      hors de l'application, autant qu'il en tient ;
+    - unitaires : texte de l'annonce, en HTML et en texte simple ;
+    - `crates/api/tests/telegram_gateway_approver_notices.rs` : responsable prévenu
+      une fois, avec les paramètres exacts et les boutons, qui valide avec le sien
+      (décidé à son nom, audité `telegram`, boutons retirés, issue dite) ; remplaçant
+      prévenu en l'absence du responsable, qui refuse ; action envoyée hors de
+      l'entreprise annoncée sans boutons, et ni sa pression prétendue ni celle d'une
+      autre personne reliée ne décide ; responsable qui a perdu le droit : rien
+      d'écrit ;
+    - `telegram_gateway_approver_notice_outcomes.rs` : personne de relié, bot en
+      pause puis remis en service, Telegram injoignable puis réessayé, HTML refusé
+      (texte simple avec ses boutons), bot bloqué (refusé, plus réessayé) ;
+      responsable relié à Slack et à Telegram prévenu dans chacun une fois, la
+      passerelle injoignable réessayée seule ;
+  - reste : Teams.

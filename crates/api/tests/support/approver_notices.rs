@@ -1,10 +1,11 @@
-//! Requests awaiting a manager told in Slack in the tests (ADR-130): a
-//! request of Nadia's awaiting Marc, the pass telling of it, the direct
-//! message a person is written, and what became of each notice.
+//! Requests awaiting a manager told in Slack (ADR-130) or in Telegram
+//! (ADR-137) in the tests: a request of Nadia's awaiting Marc, the pass
+//! telling of it, the direct message a person is written in Slack, and
+//! what became of each notice.
 
 use axum::http::StatusCode;
 use chrono::Utc;
-use mimorya_api::services::gateways::{NOTIFIED_WITHIN, notify_approvers_in_slack};
+use mimorya_api::services::gateways::{NOTIFIED_WITHIN, notify_approvers};
 use mimorya_connectors::testing::{FakeSlack, SlackPost};
 use mimorya_core::demo::{tenant, user};
 use mimorya_db::repositories::gateway_approval_notices::gateway_approvals_to_notify;
@@ -27,11 +28,11 @@ pub async fn nadia_s_request(api: &TestApi, paul: &Client<'_>, start_time: &str)
     (run, approval["id"].as_str().unwrap().parse().unwrap())
 }
 
-/// Tells in Slack the managers whom requests await, as a process that
-/// executes runs; how many messages were sent.
+/// Tells through each gateway the managers whom requests await, as a
+/// process that executes runs; how many messages were sent.
 pub async fn notify(api: &TestApi) -> usize {
     api.app.services.runs.start_executing().unwrap();
-    notify_approvers_in_slack(&api.app.services).await.unwrap()
+    notify_approvers(&api.app.services).await.unwrap()
 }
 
 /// How many runs, of every company, the pass would pick now.
@@ -50,14 +51,36 @@ pub fn direct_to(slack: &FakeSlack, person: &str) -> Vec<SlackPost> {
         .collect()
 }
 
-/// What became of the notice of `approval` in Slack: its outcome (none
-/// while to try again) and attempts, if it was tried.
+/// What became of the notice of `approval` through the company's only
+/// gateway: its outcome (none while to try again) and attempts, if it was
+/// tried.
 pub async fn notice_of(api: &TestApi, approval: Uuid) -> Option<(Option<String>, i32)> {
     let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
     let row = sqlx::query_as(
         "select outcome, attempts from gateway_approval_notices where approval_id = $1",
     )
     .bind(approval)
+    .fetch_optional(&mut *tx)
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+    row
+}
+
+/// What became of the notice of `approval` through the gateway `gateway`,
+/// as `notice_of` says.
+pub async fn notice_through(
+    api: &TestApi,
+    gateway: Uuid,
+    approval: Uuid,
+) -> Option<(Option<String>, i32)> {
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    let row = sqlx::query_as(
+        "select outcome, attempts from gateway_approval_notices \
+         where approval_id = $1 and gateway_id = $2",
+    )
+    .bind(approval)
+    .bind(gateway)
     .fetch_optional(&mut *tx)
     .await
     .unwrap();

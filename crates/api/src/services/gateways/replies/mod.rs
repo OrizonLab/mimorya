@@ -169,7 +169,11 @@ async fn reply(
 /// When an answer its service did not take, at its `attempt`-th try, is
 /// tried again: 30 s, 2 min, 8 min, or when the service says (`told`),
 /// within an hour; never past `MAX_ATTEMPTS`.
-fn later(attempt: i32, told: Option<std::time::Duration>, now: DateTime<Utc>) -> ReplyRecord {
+pub(super) fn later(
+    attempt: i32,
+    told: Option<std::time::Duration>,
+    now: DateTime<Utc>,
+) -> ReplyRecord {
     if attempt >= MAX_ATTEMPTS {
         return ReplyRecord::Done("failed");
     }
