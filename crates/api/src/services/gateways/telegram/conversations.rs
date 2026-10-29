@@ -20,8 +20,8 @@ use mimorya_db::repositories::gateway_threads::open_gateway_chat;
 use super::ChatMessage;
 use super::texts;
 use crate::app::Services;
-use crate::services::gateways::conversations::{NOT_STARTED, STOPPING, title_of};
 use crate::services::gateways::person::{Act, may_act};
+use crate::services::gateways::started::{NOT_STARTED, STOPPING, title_of};
 use crate::services::runs::{GatewayThread, TurnSender};
 
 /// Answers `incoming` in a conversation of its author's, or says why not.

@@ -313,6 +313,11 @@ async fn a_telegram_account_linked_since_to_someone_else_follows_them() {
     open_and_accept(&api, &telegram, id, 11, MARC, &code).await;
     assert_eq!(confirm(&lea, id).await.status, StatusCode::OK);
 
+    // `/nouvelle` from that account closes nothing of his.
+    talk(&api, &telegram, id, 13, MARC, "/nouvelle").await;
+    let still = open_conversation(&api, id, MARC_TELEGRAM, user::MARC).await;
+    assert_eq!(still, Some(his));
+
     // His run's end is not written there.
     let before = telegram.messages().len();
     assert_eq!(answer(&api).await, 0);
@@ -323,7 +328,7 @@ async fn a_telegram_account_linked_since_to_someone_else_follows_them() {
     );
     // Its words follow Léa now, in a conversation of hers.
     api.script(vec![ScriptedStep::text("Réponse pour Léa.")]);
-    talk(&api, &telegram, id, 13, MARC, "Question de Léa").await;
+    talk(&api, &telegram, id, 14, MARC, "Question de Léa").await;
     let hers = open_conversation(&api, id, MARC_TELEGRAM, user::LEA)
         .await
         .expect("her conversation");

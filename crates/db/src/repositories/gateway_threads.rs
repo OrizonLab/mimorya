@@ -155,14 +155,17 @@ pub async fn touch_gateway_thread(
 }
 
 /// The service each of `conversation_ids` held in a thread is held on: its
-/// gateway's kind (`slack`, `telegram`), by conversation.
+/// gateway's kind (`slack`, `telegram`), by conversation. A Telegram
+/// conversation closed since (ADR-135) is held there no more: its person's
+/// messages to the bot go to another.
 pub async fn conversations_held(
     conn: &mut PgConnection,
     conversation_ids: &[Uuid],
 ) -> sqlx::Result<HashMap<Uuid, String>> {
     let held: Vec<(Uuid, String)> = sqlx::query_as(
         "select t.conversation_id, g.kind from gateway_threads t \
-         join gateways g on g.id = t.gateway_id where t.conversation_id = any($1)",
+         join gateways g on g.id = t.gateway_id \
+         where t.conversation_id = any($1) and t.closed_at is null",
     )
     .bind(conversation_ids)
     .fetch_all(conn)

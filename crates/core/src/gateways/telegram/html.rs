@@ -97,8 +97,7 @@ fn prose(text: &str) -> String {
 }
 
 fn emphasis(text: &str) -> String {
-    // Bold first, marked apart, so that its stars are not taken for italic:
-    // an italic span holds a bold one whole, or none of it.
+    // Bold first, marked apart, so that its stars are not taken for italic.
     let marked = BOLD.replace_all(text, |caps: &regex::Captures<'_>| {
         let inner = caps
             .get(1)
@@ -106,8 +105,38 @@ fn emphasis(text: &str) -> String {
             .map_or("", |m| m.as_str());
         format!("{BOLD_OPEN}{inner}{BOLD_CLOSE}")
     });
-    let italic = ITALIC.replace_all(&marked, "<i>${1}</i>");
+    // An italic span holding a bold one whole, or none of it: a star that
+    // would open one crossing it is left as written, and the next looked at.
+    let mut italic = String::new();
+    let mut at = 0;
+    while let Some(found) = ITALIC.captures_at(&marked, at) {
+        let whole = found.get(0).expect("the match");
+        if holds_whole_bold(&found[1]) {
+            italic.push_str(&marked[at..whole.start()]);
+            italic.push_str(&format!("<i>{}</i>", &found[1]));
+            at = whole.end();
+        } else {
+            // Past its star, one byte.
+            italic.push_str(&marked[at..=whole.start()]);
+            at = whole.start() + 1;
+        }
+    }
+    italic.push_str(&marked[at..]);
     italic.replace(BOLD_OPEN, "<b>").replace(BOLD_CLOSE, "</b>")
+}
+
+/// Whether each bold span `text` holds opens and closes in it.
+fn holds_whole_bold(text: &str) -> bool {
+    let mut open = false;
+    for c in text.chars() {
+        match c {
+            BOLD_OPEN if !open => open = true,
+            BOLD_CLOSE if open => open = false,
+            BOLD_OPEN | BOLD_CLOSE => return false,
+            _ => {}
+        }
+    }
+    !open
 }
 
 #[cfg(test)]
@@ -171,14 +200,36 @@ mod tests {
     }
 
     #[test]
-    fn every_tag_opened_is_closed() {
-        let markdown = "**a *b** c* `d **e` [f](https://x.example) *g __h__* ```\n**i";
-        let html = from_markdown(markdown);
-        for tag in ["b", "i", "code", "pre", "a"] {
-            let opened = html.matches(&format!("<{tag}>")).count()
-                + html.matches(&format!("<{tag} ")).count();
-            let closed = html.matches(&format!("</{tag}>")).count();
-            assert_eq!(opened, closed, "{tag}: {html}");
+    fn emphasis_never_crosses_another() {
+        assert_eq!(from_markdown("__a *b__ c*"), "<b>a *b</b> c*");
+        assert_eq!(from_markdown("*a __b* c__"), "*a <b>b* c</b>");
+        assert_eq!(
+            from_markdown("Voir __le fichier *.log__ et *ici*"),
+            "Voir <b>le fichier *.log</b> et <i>ici</i>"
+        );
+    }
+
+    #[test]
+    fn every_tag_opened_is_closed_where_it_opens() {
+        let tag = regex::Regex::new(r"<(/?)([a-z]+)[^>]*>").unwrap();
+        for markdown in [
+            "**a *b** c* `d **e` [f](https://x.example) *g __h__* ```\n**i",
+            "__a *b__ c*",
+            "*a __b* c__",
+            "*a **b** c* **d *e* f** __g *h__ i*",
+            "## *Titre **gras*** et `code`\n- *x __y* z__",
+        ] {
+            let html = from_markdown(markdown);
+            let mut open = Vec::new();
+            for found in tag.captures_iter(&html) {
+                let name = found[2].to_owned();
+                if found[1].is_empty() {
+                    open.push(name);
+                } else {
+                    assert_eq!(open.pop(), Some(name), "{markdown} → {html}");
+                }
+            }
+            assert!(open.is_empty(), "{markdown} → {html}");
         }
     }
 }

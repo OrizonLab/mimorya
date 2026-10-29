@@ -32,6 +32,7 @@ mod link;
 mod person;
 mod replies;
 mod reply_text;
+mod started;
 mod telegram;
 
 use std::sync::Arc;

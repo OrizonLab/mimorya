@@ -19,15 +19,12 @@ use mimorya_db::repositories::gateway_threads::find_gateway_thread;
 
 use super::PersonMessage;
 use super::person::{Act, acting_person, say, thread_of};
+use super::started::{NOT_STARTED, STOPPING, title_of};
 use crate::app::Services;
-use crate::services::runs::{GatewayThread, TITLE_LENGTH, TurnSender};
+use crate::services::runs::{GatewayThread, TurnSender};
 
-pub(super) const NOT_STARTED: &str =
-    "La demande n’a pas pu être lancée : réessayez dans un instant.";
 const OTHER_PERSON_THREAD: &str = "Ce fil tient la conversation d’un autre compte : écrivez un \
      nouveau message, hors de ce fil.";
-pub(super) const STOPPING: &str =
-    "Le service redémarre : rien n’a été lancé. Réessayez dans un instant.";
 
 /// Answers `incoming` in a conversation of its author's, or says why not.
 pub async fn converse(services: &Services, incoming: PersonMessage) {
@@ -89,11 +86,4 @@ async fn answer(services: &Services, incoming: &PersonMessage) -> anyhow::Result
         say(services, incoming, &refusal.message).await;
     }
     Ok(())
-}
-
-/// The title of the conversation `text` opens: its first words, on one
-/// line however it was written.
-pub(super) fn title_of(text: &str) -> String {
-    let words = text.split_whitespace().collect::<Vec<_>>().join(" ");
-    words.chars().take(TITLE_LENGTH).collect()
 }

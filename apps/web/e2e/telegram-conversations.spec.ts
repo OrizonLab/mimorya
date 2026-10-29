@@ -5,8 +5,8 @@
 // conversation. Opened there, the conversation is listed as held in
 // Telegram, her message marked as written there, and a note says what is
 // answered where. She follows up: answered there again, and in the
-// conversation. `/nouvelle` then leaves it: her next question opens
-// another conversation. Each step is read back from the API. Whatever
+// conversation. `/nouvelle` then leaves it, held there no more: her next
+// question opens another conversation. Each step is read back from the API. Whatever
 // happens, the bot is deleted with her link, and her conversations of the
 // questions archived. The rules themselves are tested on the API
 // (`crates/api/tests/telegram_gateway_*.rs`).
@@ -129,5 +129,9 @@ test('a question asked in Telegram is answered in her chat, its conversation sho
   expect(other).not.toBe(address);
   const opened = await stored(other.slice(other.lastIndexOf('/') + 1));
   expect(opened.conversation).toMatchObject({ title: NEXT, gateway: 'telegram' });
-  expect((await stored(conversation)).messages).toHaveLength(4);
+  // The first is held there no more, her messages still marked.
+  const former = await stored(conversation);
+  expect(former.conversation.gateway).toBeNull();
+  expect(former.messages).toHaveLength(4);
+  expect(former.messages[0]).toMatchObject({ metadata: { gateway: 'telegram' } });
 });

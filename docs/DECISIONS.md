@@ -7502,7 +7502,8 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
       conversation se tient, son canal étant ce service ;
     - le texte est dans le HTML que Telegram lit (`parse_mode: HTML`) : `<b>`, `<i>`,
       `<code>`, `<pre>` et `<a href>`, chaque balise refermée là où elle s'ouvre, le reste
-      échappé (`telegram::from_markdown`) ;
+      échappé (`telegram::from_markdown`) ; un italique qui croiserait un gras reste
+      écrit tel quel ;
     - la réponse de l'agent est en Markdown ; elle garde son emphase, ses titres, ses
       listes et ses liens web, son code tel qu'écrit, et elle est coupée au-delà de
       3 000 caractères ;
@@ -7521,8 +7522,10 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
   - **l'interface** : une conversation tenue dans Telegram est marquée « Telegram » dans la
     liste, et chaque message écrit au bot y est marqué « Écrit dans Telegram ». La note de
     la conversation dit qu'elle se tient aussi dans la conversation privée avec le bot,
-    tant qu'une nouvelle n'y est pas ouverte. Les textes du formulaire du bot et de
-    « Mon compte » disent que l'agent répond dans Telegram ;
+    tant qu'une nouvelle n'y est pas ouverte. Une fois fermée (`/nouvelle`, archivage), elle
+    ne s'y tient plus : ni marque dans la liste ni note, ses messages restant marqués. Les
+    textes du formulaire du bot et de « Mon compte » disent que l'agent répond dans
+    Telegram ;
   - **le code partagé** : les motifs Markdown que Slack et Telegram lisent, et la coupe
     d'un texte trop long (`bounded`), sont dans `crates/core/src/gateways/markdown.rs`.
 - **Conséquences** :
@@ -7532,8 +7535,11 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
   - tests :
     - `crates/api/tests/telegram_gateway_conversations.rs` : conversation ouverte, suivie,
       fermée par `/nouvelle`, avec ou sans mots, laissée une fois archivée ; commandes ;
-      pause puis réponse ; refus dits ; compte relié à quelqu'un d'autre ; conversation
-      ouverte deux fois ;
+      pause puis réponse ; refus dits ; compte relié à quelqu'un d'autre, dont
+      `/nouvelle` ne ferme rien de la personne d'avant ; conversation ouverte deux fois ;
+    - `telegram_gateway_app_view.rs` : conversation montrée avec son service, message
+      écrit dans l'application répondu là seulement, plus tenue dans Telegram une fois
+      fermée ;
     - `telegram_gateway_replies.rs` : HTML refusé dit en texte simple ; bot en pause ou
       liaison retirée ; Telegram injoignable retenté puis abandonné ; bot bloqué ;
     - `apps/web/e2e/telegram-conversations.spec.ts` : question posée au bot, réponse dans
