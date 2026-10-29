@@ -4,9 +4,11 @@
 //! token is refused (401), as one a test revoked. It keeps the webhook each
 //! bot was given, with its secret, and the messages the bots write; a test
 //! may make it unavailable (503), refuse webhooks (as one not in HTTPS), or
-//! have a person block the bot. The messages are also listed at
-//! `GET /test/messages` for the end-to-end tests. `update` writes an update
-//! as Telegram sends it.
+//! have a person block the bot. For the end-to-end tests (ADR-134), the
+//! messages are also listed at `GET /test/messages`, and each bot's webhook
+//! with its secret at `GET /test/webhooks`: whoever reaches the test
+//! Telegram can send updates as Telegram does, which only a test server
+//! offers. `update` writes an update as Telegram sends it.
 
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
@@ -59,13 +61,14 @@ impl FakeTelegram {
         Self::start_on("127.0.0.1:0").await
     }
 
-    /// The same, at `address`: where the end-to-end tests of the bot's
-    /// screens (ADR-133, their own lot) will read it.
+    /// The same, at `address`: where the end-to-end tests read what the
+    /// bots wrote and the webhook each was given (ADR-134).
     pub async fn start_on(address: &str) -> Self {
         let shared = Arc::new(Mutex::new(Shared::default()));
         let router = Router::new()
             .route("/{bot}/{method}", post(call))
             .route("/test/messages", get(messages))
+            .route("/test/webhooks", get(webhooks))
             .with_state(shared.clone());
         let listener = tokio::net::TcpListener::bind(address)
             .await
@@ -202,12 +205,21 @@ async fn call(
     }
 }
 
-/// The messages the bots wrote, oldest first, for the end-to-end tests of
-/// the bot's screens (their own lot).
+/// The messages the bots wrote, oldest first, for the end-to-end tests.
 async fn messages(State(shared): State<Arc<Mutex<Shared>>>) -> Json<Value> {
     let shared = shared.lock().expect("lock");
     let messages: Vec<Value> = (shared.messages.iter())
         .map(|m| json!({ "bot": m.bot, "chat": m.chat, "text": m.text }))
         .collect();
     Json(json!(messages))
+}
+
+/// The webhook each bot was given, with its secret, for the end-to-end
+/// tests to send updates as Telegram does.
+async fn webhooks(State(shared): State<Arc<Mutex<Shared>>>) -> Json<Value> {
+    let shared = shared.lock().expect("lock");
+    let webhooks: Vec<Value> = (shared.webhooks.iter())
+        .map(|(bot, (url, secret))| json!({ "bot": bot, "url": url, "secret": secret }))
+        .collect();
+    Json(json!(webhooks))
 }

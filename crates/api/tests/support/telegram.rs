@@ -120,17 +120,28 @@ pub async fn of_person(person: &Client<'_>, id: Uuid) -> Value {
         .unwrap_or(Value::Null)
 }
 
-/// A new code for `person` on the bot `id`: the code its link carries.
-pub async fn ask_code(person: &Client<'_>, id: Uuid) -> String {
+/// What asking `person` a new code on the bot `id` answers: the bot's link
+/// carrying it, and until when.
+pub async fn ask_link(person: &Client<'_>, id: Uuid) -> Value {
     let asked = person
         .post(&format!("/account/gateways/{id}/telegram-code"), json!({}))
         .await;
     assert_eq!(asked.status, StatusCode::OK, "{}", asked.text());
-    let link = asked.json()["link"].as_str().unwrap().to_owned();
+    asked.json()
+}
+
+/// The code the bot's link in `asked` carries.
+pub fn code_of(asked: &Value) -> String {
+    let link = asked["link"].as_str().unwrap();
     let code = link
         .strip_prefix("https://t.me/NeoMaintenanceBot?start=")
         .unwrap_or_else(|| panic!("{link}"));
     code.to_owned()
+}
+
+/// A new code for `person` on the bot `id`: the code its link carries.
+pub async fn ask_code(person: &Client<'_>, id: Uuid) -> String {
+    code_of(&ask_link(person, id).await)
 }
 
 /// What confirming the link `person` asked for on the bot `id` gets.

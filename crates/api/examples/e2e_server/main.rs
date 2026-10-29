@@ -18,7 +18,9 @@
 //! (`SLACK_ADDRESS`), which knows Léa's Slack user, lists what the
 //! gateways posted (ADR-126) and is told the permissions its token has
 //! (`POST /test/scopes`, ADR-132); what she writes there is answered apart
-//! (`slack`, ADR-128).
+//! (`slack`, ADR-128). Their Telegram bots reach a local Telegram on
+//! 127.0.0.1:4104 (`TELEGRAM_ADDRESS`), which lists what the bots wrote and
+//! the webhook each was given (ADR-134).
 //! A company's embedding model is a test one, whatever it chooses: no
 //! provider is ever reached (ADR-074). A finished run reread for a lesson
 //! always yields the same one (`lessons`, ADR-076). A mission is played
@@ -75,7 +77,7 @@ use mimorya_api::mail::Mailer;
 use mimorya_api::services::{EmbeddingFactory, ProviderFactory};
 use mimorya_api::{AppConfig, BuildOptions, build_app, log_filter};
 use mimorya_connectors::outbound::NetworkPolicy;
-use mimorya_connectors::testing::FakeSlack;
+use mimorya_connectors::testing::{FakeSlack, FakeTelegram};
 use mimorya_db::repositories::rate_limits::purge_rate_limits;
 
 /// Reference scenarios queued for the platform model, by the hour of their
@@ -102,6 +104,10 @@ const DNS_ADDRESS: &str = "127.0.0.1:4102";
 /// Where Slack's Web API listens, and lists the messages the gateways posted:
 /// `slack-gateway.spec.ts` reads them there (ADR-126).
 const SLACK_ADDRESS: &str = "127.0.0.1:4103";
+/// Where Telegram's Bot API listens, and lists what the bots wrote and the
+/// webhook each was given: `telegram-gateway.spec.ts` reads them there
+/// (ADR-134).
+const TELEGRAM_ADDRESS: &str = "127.0.0.1:4104";
 /// Léa's Slack user, of the company's workspace, with her address.
 const LEA_SLACK: &str = "U0LEAE2E";
 const LEA_ADDRESS: &str = "lea.fontaine@neo-maintenance.example";
@@ -161,6 +167,8 @@ async fn main() -> anyhow::Result<()> {
     let slack = FakeSlack::start_on(SLACK_ADDRESS).await;
     slack.add_person(LEA_SLACK, LEA_ADDRESS);
     tracing::info!(url = slack.url, "End-to-end Slack listening");
+    let telegram = FakeTelegram::start_on(TELEGRAM_ADDRESS).await;
+    tracing::info!(url = telegram.url, "End-to-end Telegram listening");
     let address = format!("{}:{}", config.host, config.port);
     let app = build_app(
         config,
@@ -185,7 +193,8 @@ async fn main() -> anyhow::Result<()> {
             account_link_issuer: Some(idp.issuer.clone()),
             // Its gateways reach the local Slack (ADR-126).
             slack_api: Some(slack.url.clone()),
-            telegram_api: None,
+            // Its bot reaches the local Telegram (ADR-134).
+            telegram_api: Some(telegram.url.clone()),
         },
     )
     .await?;

@@ -21,8 +21,8 @@ use support::manager_approvals::without;
 use support::refusals::{entries_since, latest_entry};
 use support::sso::SSO_DEPLOYMENT;
 use support::telegram::{
-    LEA_TELEGRAM, LEA_USERNAME, MARC_TELEGRAM, MARC_USERNAME, ask_code, confirm, declare_telegram,
-    of_person, open_and_accept, other_company_bot, write,
+    LEA_TELEGRAM, LEA_USERNAME, MARC_TELEGRAM, MARC_USERNAME, ask_code, ask_link, code_of, confirm,
+    declare_telegram, of_person, open_and_accept, other_company_bot, write,
 };
 
 const LEA: (i64, &str) = (LEA_TELEGRAM, LEA_USERNAME);
@@ -37,10 +37,13 @@ async fn a_person_links_their_telegram_account_from_their_own_session() {
     let id = declare_telegram(&paul).await;
     let since = latest_entry(&api).await;
 
-    // Asked for in her session: the bot's link, pending.
-    let code = ask_code(&lea, id).await;
+    // Asked for in her session: the bot's link, pending until the time it
+    // was given, which the page matches its link with.
+    let asked = ask_link(&lea, id).await;
+    let code = code_of(&asked);
     let pending = &of_person(&lea, id).await["pending"];
     assert!(pending["expiresAt"].is_string(), "{pending}");
+    assert_eq!(pending["expiresAt"], asked["expiresAt"]);
     assert_eq!(pending["claimedBy"], Value::Null);
     // Opened in Telegram: the bot names whose account it links.
     let offered = write(&api, &telegram, id, 1, LEA, &format!("/start {code}")).await;

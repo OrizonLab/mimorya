@@ -2,10 +2,11 @@
 
 import { useState } from 'react';
 import { Badge, Button, Card, ErrorNote } from '@/components/ui';
-import { api, useAction, type GatewayUpdate, type GatewayView } from '@/lib/api';
+import type { GatewayView } from '@/lib/api';
 import { formatDate } from '@/lib/format';
 import { GatewayScopes } from './gateway-scopes';
 import { SlackGatewayForm } from './slack-gateway-form';
+import { useGatewayActions } from './use-gateway-actions';
 
 /**
  * One conversation gateway (ADR-125, ADR-126): what Slack said of its
@@ -27,27 +28,7 @@ export function GatewayCard({
   onChanged: () => void;
 }) {
   const [editing, setEditing] = useState(false);
-  const [pressed, setPressed] = useState<'check' | 'toggle' | 'remove' | null>(null);
-  const action = useAction();
-  const path = `/admin/gateways/${gateway.id}`;
-
-  async function toggle() {
-    const update = { enabled: !gateway.enabled } satisfies GatewayUpdate;
-    setPressed('toggle');
-    if (await action.run(() => api.patch(path, update))) onChanged();
-  }
-
-  async function check() {
-    setPressed('check');
-    if (await action.run(() => api.post(`${path}/check`))) onChanged();
-  }
-
-  async function remove() {
-    const question = `Supprimer la passerelle « ${gateway.name} », son jeton, son secret et les ${gateway.identities} compte(s) Slack que les collaborateurs y ont relié(s) ?`;
-    if (!window.confirm(question)) return;
-    setPressed('remove');
-    if (await action.run(() => api.delete(path))) onChanged();
-  }
+  const { action, loading, held, toggle, check, remove } = useGatewayActions(gateway, onChanged);
 
   function done(changed: boolean) {
     setEditing(false);
@@ -90,25 +71,29 @@ export function GatewayCard({
         )}
         <Button
           variant="secondary"
-          disabled={action.pending && pressed !== 'check'}
-          loading={action.pending && pressed === 'check'}
+          disabled={held('check')}
+          loading={loading('check')}
           onClick={check}
         >
           Vérifier auprès de Slack
         </Button>
         <Button
           variant="secondary"
-          disabled={action.pending && pressed !== 'toggle'}
-          loading={action.pending && pressed === 'toggle'}
+          disabled={held('toggle')}
+          loading={loading('toggle')}
           onClick={toggle}
         >
           {gateway.enabled ? 'Désactiver' : 'Activer'}
         </Button>
         <Button
           variant="danger"
-          disabled={action.pending && pressed !== 'remove'}
-          loading={action.pending && pressed === 'remove'}
-          onClick={remove}
+          disabled={held('remove')}
+          loading={loading('remove')}
+          onClick={() =>
+            remove(
+              `Supprimer la passerelle « ${gateway.name} », son jeton, son secret et les ${gateway.identities} compte(s) Slack que les collaborateurs y ont relié(s) ?`,
+            )
+          }
         >
           Supprimer
         </Button>
