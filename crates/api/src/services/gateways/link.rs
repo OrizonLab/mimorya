@@ -172,7 +172,8 @@ impl GatewayService {
                 gateway_id: gateway.id,
                 user_id: access.subject.user_id,
                 external_id: &code.person,
-                address: address.trim(),
+                address: Some(address.trim()),
+                display_name: None,
             },
         )
         .await?;

@@ -6,20 +6,23 @@
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
+use mimorya_core::gateways::GatewayKind;
 use mimorya_core::gateways::slack::{BOT_EVENTS, BOT_SCOPES, extra_scopes, missing_scopes};
 use mimorya_db::repositories::gateway_identities::count_gateway_identities;
 use mimorya_db::repositories::gateways::list_gateways;
 
 use crate::app::AppState;
-use crate::contract::admin::{GatewayUpdate, GatewayView, Gateways, NewSlackGateway};
+use crate::contract::admin::{
+    GatewayUpdate, GatewayView, Gateways, NewSlackGateway, NewTelegramGateway,
+};
 use crate::contract::{Created, Done};
 use crate::http::{ApiResult, Body, PathId, iso};
 use crate::plugins::Auth;
 use crate::services::admin::{
-    GatewayChanges, NewSlackGatewayInput, change_gateway, check_gateway, declare_slack_gateway,
-    remove_gateway,
+    GatewayChanges, NewSlackGatewayInput, NewTelegramGatewayInput, change_gateway, check_gateway,
+    declare_slack_gateway, declare_telegram_gateway, remove_gateway,
 };
-use crate::services::gateways::{bot_token_name, signing_secret_name};
+use crate::services::gateways::{bot_token_name, signing_secret_name, webhook_secret_name};
 
 const PERMISSION: &str = "connector:manage";
 
@@ -34,17 +37,28 @@ pub async fn list(
     let rows = list_gateways(&mut tx).await?;
     let mut gateways = Vec::with_capacity(rows.len());
     for gateway in rows {
+        // A Slack application's events prove themselves by its signing
+        // secret, a Telegram bot's updates by its webhook's (ADR-133).
+        let telegram = gateway.kind == GatewayKind::Telegram.as_str();
+        let (proof, events_url) = match telegram {
+            true => (
+                webhook_secret_name(gateway.id),
+                state.gateways.telegram_updates_url(gateway.id),
+            ),
+            false => (
+                signing_secret_name(gateway.id),
+                state.gateways.events_url(gateway.id),
+            ),
+        };
         let secrets_stored = secrets.exists(&mut tx, &bot_token_name(gateway.id)).await?
-            && secrets
-                .exists(&mut tx, &signing_secret_name(gateway.id))
-                .await?;
+            && secrets.exists(&mut tx, &proof).await?;
         let granted = gateway.granted_scopes.as_deref();
         gateways.push(GatewayView {
             missing_scopes: granted
                 .map(|g| missing_scopes(g).into_iter().map(str::to_owned).collect()),
             extra_scopes: granted.map(extra_scopes),
             scopes_checked_at: gateway.scopes_checked_at.as_ref().map(iso),
-            events_url: state.gateways.events_url(gateway.id),
+            events_url,
             identities: count_gateway_identities(&mut tx, gateway.id).await?,
             secrets_stored,
             id: gateway.id,
@@ -80,6 +94,23 @@ pub async fn create_slack(
         enabled: body.enabled.unwrap_or(true),
     };
     let id = declare_slack_gateway(&state.gateways, &access, input).await?;
+    Ok((StatusCode::CREATED, Json(Created { id })))
+}
+
+/// The company's Telegram bot, checked with Telegram, its webhook given it
+/// (ADR-133).
+pub async fn create_telegram(
+    State(state): State<AppState>,
+    Auth(identity): Auth,
+    Body(body): Body<NewTelegramGateway>,
+) -> ApiResult<(StatusCode, Json<Created>)> {
+    let access = state.access.context(identity).await?;
+    let input = NewTelegramGatewayInput {
+        name: body.name,
+        bot_token: body.bot_token,
+        enabled: body.enabled.unwrap_or(true),
+    };
+    let id = declare_telegram_gateway(&state.gateways, &access, input).await?;
     Ok((StatusCode::CREATED, Json(Created { id })))
 }
 

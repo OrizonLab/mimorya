@@ -121,6 +121,7 @@ pub fn routes(state: &AppState) -> Router<AppState> {
         )
         .route("/admin/gateways", get(gateways::list))
         .route("/admin/gateways/slack", post(gateways::create_slack))
+        .route("/admin/gateways/telegram", post(gateways::create_telegram))
         .route(
             "/admin/gateways/{id}",
             patch(gateways::update).delete(gateways::remove),

@@ -34,14 +34,22 @@ notified: boolean, };
  */
 export type AccountGatewayView = { gatewayId: string,
 /**
- * `slack`.
+ * `slack` or `telegram`.
  */
-type: string, name: string, workspaceName: string,
+type: string, name: string,
+/**
+ * Slack's workspace, or the Telegram bot's username.
+ */
+workspaceName: string,
 /**
  * A link may be made: the gateway is enabled and the person may talk
  * with the agent. Otherwise their identity stays theirs to remove.
  */
-available: boolean, linked: GatewayIdentity | null, };
+available: boolean, linked: GatewayIdentity | null,
+/**
+ * A Telegram link under way: a code asked for, unexpired.
+ */
+pending: GatewayLinkPending | null, };
 
 /**
  * `GET /account/gateways`.
@@ -711,13 +719,17 @@ export type EvaluationStatus = "queued" | "running" | "completed" | "failed";
  */
 export type GatewayIdentity = {
 /**
- * Their Slack user.
+ * Their Slack user, or their Telegram identifier.
  */
 externalId: string,
 /**
  * The address Slack gave as theirs when they linked it.
  */
-address: string, linkedAt: string, };
+address: string | null,
+/**
+ * The name Telegram showed when they linked it (ADR-133).
+ */
+name: string | null, linkedAt: string, };
 
 /**
  * Body of `POST /account/gateways/link/preview` and `POST
@@ -725,6 +737,16 @@ address: string, linkedAt: string, };
  * fragment.
  */
 export type GatewayLinkCode = { code: string, };
+
+/**
+ * A Telegram link under way (ADR-133).
+ */
+export type GatewayLinkPending = { expiresAt: string,
+/**
+ * How Telegram showed whoever sent the code back, to confirm; `None`
+ * until then.
+ */
+claimedBy: string | null, };
 
 /**
  * `POST /account/gateways/link/preview`: what the link would link.
@@ -742,7 +764,7 @@ externalId: string, expiresAt: string, };
 export type GatewayUpdate = { name?: string, enabled?: boolean,
 /**
  * A new token of the same application, or of one of the same
- * workspace.
+ * workspace; of the same Telegram bot.
  */
 botToken?: string, signingSecret?: string, };
 
@@ -751,23 +773,30 @@ botToken?: string, signingSecret?: string, };
  */
 export type GatewayView = { id: string,
 /**
- * `slack`.
+ * `slack` or `telegram`.
  */
 type: string, name: string, enabled: boolean,
 /**
- * The workspace Slack said the application is installed in.
+ * The workspace Slack said the application is installed in; the
+ * Telegram bot's identifier.
  */
-workspaceId: string, workspaceName: string,
+workspaceId: string,
 /**
- * The application's bot user.
+ * Its name; the Telegram bot's username.
+ */
+workspaceName: string,
+/**
+ * The application's bot user; the Telegram bot's identifier.
  */
 botUserId: string,
 /**
- * Where Slack sends the application's events (« Event Subscriptions »).
+ * Where Slack sends the application's events (« Event Subscriptions »);
+ * where Telegram sends the bot's updates, which the platform told it.
  */
 eventsUrl: string,
 /**
- * Whether its bot's token and its signing secret are stored.
+ * Whether its bot's token and its signing secret (Slack) or its
+ * webhook's secret (Telegram) are stored.
  */
 secretsStored: boolean,
 /**
@@ -1542,6 +1571,20 @@ botToken: string,
  * Its « Signing Secret ».
  */
 signingSecret: string,
+/**
+ * Absent: enabled.
+ */
+enabled?: boolean, };
+
+/**
+ * Body of `POST /admin/gateways/telegram`: the company's Telegram bot
+ * (ADR-133).
+ */
+export type NewTelegramGateway = { name: string,
+/**
+ * The token BotFather gave the bot (`123456789:…`).
+ */
+botToken: string,
 /**
  * Absent: enabled.
  */

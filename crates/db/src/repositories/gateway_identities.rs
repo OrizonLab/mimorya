@@ -1,7 +1,9 @@
 //! Who each person is on a gateway's service (ADR-125): their Slack user,
 //! linked by them from their own session, with the address the service gave
-//! as theirs then. One per person and gateway; a Slack user is one person's,
-//! so a new link of theirs replaces the former one, whoever's it was.
+//! as theirs then; or their Telegram user, with the name Telegram showed
+//! (ADR-133: it proves no address). One per person and gateway; a user of
+//! the service is one person's, so a new link of theirs replaces the former
+//! one, whoever's it was.
 
 use chrono::{DateTime, Utc};
 use sqlx::PgConnection;
@@ -13,19 +15,25 @@ pub struct GatewayIdentityRow {
     pub gateway_id: Uuid,
     pub user_id: Uuid,
     pub external_id: String,
-    pub address: String,
+    /// The address Slack gave as theirs.
+    pub address: Option<String>,
+    /// The name Telegram showed.
+    pub display_name: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
-const SELECT: &str =
-    "select id, gateway_id, user_id, external_id, address, created_at from gateway_identities";
+const SELECT: &str = "select id, gateway_id, user_id, external_id, address, display_name, \
+     created_at from gateway_identities";
 
 pub struct NewGatewayIdentity<'a> {
     pub tenant_id: Uuid,
     pub gateway_id: Uuid,
     pub user_id: Uuid,
     pub external_id: &'a str,
-    pub address: &'a str,
+    /// The address the service gave as theirs, if it proves one.
+    pub address: Option<&'a str>,
+    /// The name it showed, if it proves no address.
+    pub display_name: Option<&'a str>,
 }
 
 /// What a new link replaced.
@@ -60,16 +68,18 @@ pub async fn put_gateway_identity(
     .fetch_optional(&mut *conn)
     .await?;
     sqlx::query(
-        "insert into gateway_identities (tenant_id, gateway_id, user_id, external_id, address) \
-         values ($1, $2, $3, $4, $5) \
+        "insert into gateway_identities \
+         (tenant_id, gateway_id, user_id, external_id, address, display_name) \
+         values ($1, $2, $3, $4, $5, $6) \
          on conflict (gateway_id, user_id) do update set external_id = excluded.external_id, \
-         address = excluded.address, created_at = now()",
+         address = excluded.address, display_name = excluded.display_name, created_at = now()",
     )
     .bind(identity.tenant_id)
     .bind(identity.gateway_id)
     .bind(identity.user_id)
     .bind(identity.external_id)
     .bind(identity.address)
+    .bind(identity.display_name)
     .execute(conn)
     .await?;
     Ok(Replaced {

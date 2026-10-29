@@ -1,12 +1,14 @@
 //! CSRF protection: state-changing requests must carry a custom header (not
 //! settable cross-site without CORS, which is disabled) and, when present, an
-//! `Origin` matching the web application. Three are posted from elsewhere,
+//! `Origin` matching the web application. Some are posted from elsewhere,
 //! without it: a SAML provider's response, bound instead by the sealed
 //! attempt in its own cookie and the signed response (ADR-068); a delivery
 //! to an inbound hook, from another system, which no session authorizes:
-//! its token alone does (ADR-109); and an event Slack sends a company's
-//! gateway, which its signature alone proves (ADR-125). The latter two's
-//! paths are matched whole, their identifier in canonical form.
+//! its token alone does (ADR-109); an event Slack sends a company's
+//! gateway, which its signature alone proves (ADR-125); and an update
+//! Telegram sends a company's bot, which the webhook's secret alone proves
+//! (ADR-133). The latter three's paths are matched whole, their identifier
+//! in canonical form.
 
 use axum::extract::{Request, State};
 use axum::http::Method;
@@ -17,7 +19,9 @@ use mimorya_core::DomainError;
 
 use crate::app::AppState;
 use crate::http::ApiError;
-use crate::routes::{HOOK_DELIVERY_PREFIX, SAML_ACS_ROUTE, SLACK_EVENTS_PREFIX};
+use crate::routes::{
+    HOOK_DELIVERY_PREFIX, SAML_ACS_ROUTE, SLACK_EVENTS_PREFIX, TELEGRAM_UPDATES_PREFIX,
+};
 use uuid::Uuid;
 
 pub const REQUEST_HEADER: &str = "x-mimorya-request";
@@ -56,10 +60,11 @@ fn is_hook_delivery(path: &str) -> bool {
     names_one(path, HOOK_DELIVERY_PREFIX)
 }
 
-/// Whether `path` is where Slack sends a gateway's events: the prefix, then
-/// a gateway's identifier as it is written, and nothing else.
+/// Whether `path` is where Slack sends a gateway's events, or Telegram a
+/// bot's updates: the prefix, then a gateway's identifier as it is
+/// written, and nothing else.
 fn is_gateway_event(path: &str) -> bool {
-    names_one(path, SLACK_EVENTS_PREFIX)
+    names_one(path, SLACK_EVENTS_PREFIX) || names_one(path, TELEGRAM_UPDATES_PREFIX)
 }
 
 /// Whether `path` is `prefix` followed by an identifier in canonical form
@@ -97,7 +102,15 @@ mod tests {
     fn only_a_gateway_s_own_path_goes_without_the_header() {
         let id = "0b9c4c1e-7a4f-4f7e-9d1c-2a3b4c5d6e7f";
         assert!(is_gateway_event(&format!("/gateways/slack/{id}")));
+        assert!(is_gateway_event(&format!("/gateways/telegram/{id}")));
         for path in [
+            "/gateways/telegram/".to_owned(),
+            format!("/gateways/telegram/{id}/"),
+            format!("/gateways/telegram/{}", id.to_uppercase()),
+            format!("/gateways/telegram/{id}/link"),
+            format!("/account/gateways/{id}/telegram-code"),
+            format!("/account/gateways/{id}/telegram-link"),
+            "/admin/gateways/telegram".to_owned(),
             "/gateways/slack/".to_owned(),
             format!("/gateways/slack/{id}/"),
             format!("/gateways/slack/{}", id.to_uppercase()),

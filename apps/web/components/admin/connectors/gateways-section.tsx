@@ -38,15 +38,18 @@ export function GatewaysSection() {
                 </Button>
               </div>
             )}
-            {data.gateways.map((gateway) => (
-              <GatewayCard
-                key={gateway.id}
-                gateway={gateway}
-                scopes={data.slackScopes}
-                events={data.slackEvents}
-                onChanged={state.reload}
-              />
-            ))}
+            {/* A Telegram bot's own card comes with its next lot (ADR-133). */}
+            {data.gateways
+              .filter((gateway) => gateway.type === 'slack')
+              .map((gateway) => (
+                <GatewayCard
+                  key={gateway.id}
+                  gateway={gateway}
+                  scopes={data.slackScopes}
+                  events={data.slackEvents}
+                  onChanged={state.reload}
+                />
+              ))}
           </div>
         )}
       </Loaded>

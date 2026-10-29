@@ -13,6 +13,9 @@
 //! and decides them with the same buttons (`approver_notices`, ADR-130).
 //! Whatever comes from a person, Slack is first asked whether it comes from
 //! their own direct conversation with the application (`direct`, ADR-131).
+//! A company's Telegram bot receives its updates, proven by its webhook's
+//! secret, and its people link their account with a code their session
+//! asks for and confirms (`telegram`, ADR-133).
 //! The bot's token and the signing secret are sealed in the secret store.
 
 mod approver_notices;
@@ -26,11 +29,13 @@ mod link;
 mod person;
 mod replies;
 mod reply_text;
+mod telegram;
 
 use std::sync::Arc;
 
 use mimorya_connectors::outbound::{NetworkPolicy, http_client};
 use mimorya_connectors::slack::SlackApi;
+use mimorya_connectors::telegram::TelegramApi;
 use mimorya_db::{Database, TenantTx};
 use uuid::Uuid;
 
@@ -44,11 +49,15 @@ pub use events::{EventOutcome, PersonMessage, SlackHeaders};
 pub use identities::GatewayOfPerson;
 pub use link::{LINK_LIFETIME, LinkPreview};
 pub use replies::{MAX_ATTEMPTS, reply_to_finished_runs};
+pub use telegram::{PendingLink, TelegramLinkCode, UpdateOutcome};
 
 /// Where Slack sends a gateway's events, under the API's address: the only
 /// route besides the SAML reception and the inbound hooks' that a request
 /// without the browser's header reaches (`plugins/csrf.rs`).
 pub const SLACK_EVENTS_PREFIX: &str = "/gateways/slack/";
+/// Where Telegram sends a bot's updates, under the API's address: the
+/// other route a request without the browser's header reaches (ADR-133).
+pub const TELEGRAM_UPDATES_PREFIX: &str = "/gateways/telegram/";
 /// The page where a person confirms the link Slack gave them.
 pub const LINK_PAGE: &str = "/account/gateway-link";
 
@@ -62,11 +71,17 @@ pub fn signing_secret_name(gateway_id: Uuid) -> String {
     format!("gateway.{gateway_id}.signing_secret")
 }
 
+/// The secret store's name of a Telegram bot's webhook secret (ADR-133).
+pub fn webhook_secret_name(gateway_id: Uuid) -> String {
+    format!("gateway.{gateway_id}.webhook_secret")
+}
+
 pub struct GatewayService {
     db: Database,
     secrets: SecretStore,
     cipher: Option<Arc<SecretCipher>>,
     slack: SlackApi,
+    telegram: TelegramApi,
     web_origin: String,
     assistant_name: String,
     background: Arc<BackgroundTasks>,
@@ -78,6 +93,8 @@ pub struct GatewaySettings {
     pub network: NetworkPolicy,
     /// Slack's Web API (`SLACK_API`, a local one in tests).
     pub slack_api: String,
+    /// Telegram's Bot API (`TELEGRAM_API`, a local one in tests).
+    pub telegram_api: String,
     pub web_origin: String,
     pub assistant_name: String,
 }
@@ -90,11 +107,13 @@ impl GatewayService {
         background: Arc<BackgroundTasks>,
     ) -> anyhow::Result<Self> {
         let slack = SlackApi::new(&settings.slack_api, http_client(settings.network)?)?;
+        let telegram = TelegramApi::new(&settings.telegram_api, http_client(settings.network)?)?;
         Ok(Self {
             db,
             secrets: SecretStore::new(cipher.clone()),
             cipher,
             slack,
+            telegram,
             web_origin: settings.web_origin,
             assistant_name: settings.assistant_name,
             background,
@@ -104,6 +123,11 @@ impl GatewayService {
     /// Slack's Web API.
     pub fn slack(&self) -> &SlackApi {
         &self.slack
+    }
+
+    /// Telegram's Bot API.
+    pub fn telegram(&self) -> &TelegramApi {
+        &self.telegram
     }
 
     pub fn secrets(&self) -> &SecretStore {
@@ -127,6 +151,14 @@ impl GatewayService {
     /// The address to give Slack for the gateway's events.
     pub fn events_url(&self, gateway_id: Uuid) -> String {
         format!("{}/api{SLACK_EVENTS_PREFIX}{gateway_id}", self.web_origin)
+    }
+
+    /// The address Telegram sends the bot's updates to (ADR-133).
+    pub fn telegram_updates_url(&self, gateway_id: Uuid) -> String {
+        format!(
+            "{}/api{TELEGRAM_UPDATES_PREFIX}{gateway_id}",
+            self.web_origin
+        )
     }
 
     /// The gateway's secret `name`, if it is stored and opens.

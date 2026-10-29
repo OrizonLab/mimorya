@@ -2,7 +2,8 @@
 //! that executes runs: expired password reset links are deleted (ADR-028),
 //! ended absences (ADR-071), the shared rate limit windows long over
 //! (ADR-088), the evaluations of skills ended ninety days ago (ADR-104),
-//! and the events a gateway took a day ago (ADR-125); from the second
+//! the events a gateway took a day ago (ADR-125) and the Telegram link codes
+//! expired (ADR-133); from the second
 //! minute, the notices a
 //! stop of the service lost are sent (ADR-070), requests nobody decided in
 //! time expire, and their runs go on (ADR-061), their managers reminded the
@@ -28,6 +29,7 @@ use mimorya_agent::runtime::RunEvent;
 use mimorya_core::skill_evaluations::EVALUATION_KEPT_DAYS;
 use mimorya_db::Database;
 use mimorya_db::repositories::approval_delegations::purge_ended_approval_delegations;
+use mimorya_db::repositories::gateway_link_codes::purge_link_codes;
 use mimorya_db::repositories::gateways::purge_gateway_events;
 use mimorya_db::repositories::password_resets::purge_expired_password_resets;
 use mimorya_db::repositories::rate_limits::purge_rate_limits;
@@ -99,6 +101,11 @@ pub fn spawn_maintenance(services: AppState) -> JoinHandle<()> {
             let taken = Utc::now() - GATEWAY_EVENTS_KEPT;
             if let Err(error) = purge_gateway_events(db.pool(), taken).await {
                 tracing::warn!(error = %error, "Gateway event purge failed");
+            }
+            // Expired, a Telegram link code and whom it was sent back from
+            // are forgotten (ADR-133).
+            if let Err(error) = purge_link_codes(db.pool(), Utc::now()).await {
+                tracing::warn!(error = %error, "Gateway link code purge failed");
             }
         }
     })

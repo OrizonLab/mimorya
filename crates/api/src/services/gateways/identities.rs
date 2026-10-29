@@ -2,6 +2,7 @@
 //! on each (ADR-125): listed for them alone, removed by them; their
 //! company's administrators see how many people linked theirs, never who.
 
+use chrono::{DateTime, Utc};
 use mimorya_core::DomainError;
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::gateway_identities::{
@@ -12,6 +13,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use super::GatewayService;
+use super::telegram::PendingLink;
 use crate::services::AccessContext;
 
 /// What linking requires: talking with the agent.
@@ -25,6 +27,8 @@ pub struct GatewayOfPerson {
     /// with the agent. Otherwise their identity stays theirs to remove.
     pub available: bool,
     pub identity: Option<GatewayIdentityRow>,
+    /// A Telegram link under way (ADR-133).
+    pub pending: Option<PendingLink>,
 }
 
 impl GatewayService {
@@ -32,26 +36,29 @@ impl GatewayService {
     pub async fn gateways_of(
         &self,
         access: &AccessContext,
+        now: DateTime<Utc>,
     ) -> anyhow::Result<Vec<GatewayOfPerson>> {
         let may_use = access.has(AGENT_USE);
+        let user_id = access.subject.user_id;
         let mut tx = self.db.begin(access.subject.tenant_id).await?;
         let gateways = list_gateways(&mut tx).await?;
-        let mut identities = list_gateway_identities_of(&mut tx, access.subject.user_id).await?;
+        let mut identities = list_gateway_identities_of(&mut tx, user_id).await?;
+        let mut listed = Vec::with_capacity(gateways.len());
+        for gateway in gateways {
+            let identity = identities
+                .iter()
+                .position(|identity| identity.gateway_id == gateway.id)
+                .map(|at| identities.swap_remove(at));
+            let pending = self.pending_link(&mut tx, &gateway, user_id, now).await?;
+            listed.push(GatewayOfPerson {
+                available: gateway.enabled && may_use,
+                gateway,
+                identity,
+                pending,
+            });
+        }
         tx.commit().await?;
-        Ok(gateways
-            .into_iter()
-            .map(|gateway| {
-                let identity = identities
-                    .iter()
-                    .position(|identity| identity.gateway_id == gateway.id)
-                    .map(|at| identities.swap_remove(at));
-                GatewayOfPerson {
-                    available: gateway.enabled && may_use,
-                    gateway,
-                    identity,
-                }
-            })
-            .collect())
+        Ok(listed)
     }
 
     /// Removes the person's identity on the gateway `gateway_id`.

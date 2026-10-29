@@ -102,6 +102,34 @@ pub async fn create_gateway(
     .await
 }
 
+/// Declares a gateway named `id` before it is kept (its service is told
+/// its address first, ADR-133); fails on a unique violation when the
+/// company has one of this service already.
+pub async fn create_gateway_with_id(
+    conn: &mut PgConnection,
+    id: Uuid,
+    gateway: NewGateway<'_>,
+) -> sqlx::Result<()> {
+    sqlx::query(
+        "insert into gateways (id, tenant_id, kind, name, enabled, workspace_id, workspace_name, \
+         bot_user_id, granted_scopes, scopes_checked_at) \
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, \
+         case when $9::text[] is null then null else now() end)",
+    )
+    .bind(id)
+    .bind(gateway.tenant_id)
+    .bind(gateway.kind)
+    .bind(gateway.name)
+    .bind(gateway.enabled)
+    .bind(gateway.workspace_id)
+    .bind(gateway.workspace_name)
+    .bind(gateway.bot_user_id)
+    .bind(gateway.granted_scopes)
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
 /// Applies `patch` to the gateway `id`.
 pub async fn update_gateway(
     conn: &mut PgConnection,
