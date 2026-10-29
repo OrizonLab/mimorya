@@ -7396,11 +7396,14 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
       bot qu'il porte (« Ouvrir le bot @… dans Telegram »), avec ce qu'il faut y faire :
       démarrer le bot, qui dit à quel compte il relie, répondre `/oui`, revenir ici ;
       le lien n'est connu que de cette page (perdu, on en demande un nouveau) ;
-    - **en attendant l'accord**, la ligne est relue toutes les trois secondes
-      (`useRefreshWhile`, ADR-105), jusqu'à ce que Telegram dise qui l'a accepté ;
+    - **en attendant l'accord**, la liste est relue trois secondes après la fin de
+      chaque lecture (`useRefreshWhile`, ADR-105, sans empiler les lectures), tant
+      qu'un bot disponible attend l'accord de la personne ; le lien, gardé au-dessus
+      du chargement de la liste, survit à une lecture manquée ;
     - **accepté**, elle montre le nom que Telegram a donné et l'identifiant, que personne
-      ne choisit ; elle propose « Confirmer la liaison » et « Ce n'est pas moi », qui
-      oublie le code ;
+      ne choisit, et l'heure avant laquelle confirmer ; elle propose « Confirmer la
+      liaison » et « Ce n'est pas moi », qui oublie le code ; quoi qu'une action
+      réponde, la ligne est relue ;
     - **reliée**, elle montre le compte Telegram, son identifiant et la date, et la
       liaison se retire ;
     - une passerelle en pause, ou une personne sans `agent:use`, est dite indisponible ;
@@ -7423,5 +7426,9 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     - le bot est désactivé et la liaison retirée ; il est renommé sans changer son
       jeton, réactivé, puis supprimé ; son webhook est alors retiré et l'adresse répond
       comme une passerelle inconnue ;
+    - un second parcours : le lien de Léa accepté par Marc, qu'elle refuse (« Ce n'est
+      pas moi »), son code ne reliant plus rien ; un lien perdu avec la page, redemandé,
+      l'ancien ne reliant rien ; un lien annulé, ne reliant rien ; jamais le code dans
+      ce que l'API liste ;
   - restent : conversations avec l'agent dans Telegram, validations par boutons, avis
     au responsable ; Teams.

@@ -2,8 +2,9 @@
 // the test Telegram the server reaches (`e2e_server`), which knows the
 // demo bot, keeps the webhook each bot was given with its secret and lists
 // what the bots wrote; an update sent as Telegram sends it, with that
-// secret; the gateway read back from the API.
-import type { APIRequestContext, APIResponse, Page } from '@playwright/test';
+// secret; the bot declared, its link read in « Mon compte », the gateway
+// read back from the API.
+import type { APIRequestContext, APIResponse, Locator, Page } from '@playwright/test';
 import type { GatewayView, Gateways } from '../../lib/api/contract';
 import { expect } from './fixtures';
 
@@ -11,8 +12,9 @@ import { expect } from './fixtures';
 export const TELEGRAM_TOKEN = '123456789:AAH-fictif_jeton_du_bot_neo_maint_0001';
 export const BOT_ID = 123456789;
 export const BOT_USERNAME = 'NeoMaintenanceBot';
-/** Léa's Telegram account. */
+/** Léa's Telegram account, and Marc's. */
 export const LEA_TELEGRAM = { id: 4242, username: 'lea_e2e' };
+export const MARC_TELEGRAM = { id: 5151, username: 'marc_e2e' };
 
 const TELEGRAM = 'http://127.0.0.1:4104';
 
@@ -105,4 +107,41 @@ export async function storedBot(page: Page): Promise<{ gateway?: GatewayView; li
   const listing = await listed.text();
   const { gateways } = JSON.parse(listing) as Gateways;
   return { gateway: gateways.find((g) => g.type === 'telegram'), listing };
+}
+
+/** The bot `name`, declared by `admin`, signed in, through the API. */
+export async function declareBot(admin: Page, name: string): Promise<Webhook> {
+  const declared = await admin.request.post('/api/admin/gateways/telegram', {
+    headers: { 'X-Mimorya-Request': '1' },
+    data: { name, botToken: TELEGRAM_TOKEN },
+  });
+  expect(declared.status()).toBe(201);
+  const webhook = await webhookOf(admin.request);
+  expect(webhook).toBeTruthy();
+  return webhook as Webhook;
+}
+
+/** The bot's link `row` shows, once shown. */
+export async function shownLink(row: Locator): Promise<string> {
+  const opened = row.getByRole('link', { name: `Ouvrir le bot @${BOT_USERNAME} dans Telegram` });
+  await expect(opened).toBeVisible();
+  return (await opened.getAttribute('href')) ?? '';
+}
+
+/** The code the bot's `link` carries. */
+export function codeOf(link: string): string {
+  const code = new RegExp(`^https://t\\.me/${BOT_USERNAME}\\?start=([A-Za-z0-9_-]{43})$`).exec(
+    link,
+  )?.[1];
+  expect(code, link).toBeTruthy();
+  return code ?? '';
+}
+
+/** What `person` has under way on the bot, as the API lists it, and the listing. */
+export async function pendingOf(person: Page): Promise<{ pending: unknown; listing: string }> {
+  const listed = await person.request.get('/api/account/gateways');
+  expect(listed.status()).toBe(200);
+  const listing = await listed.text();
+  const { gateways } = JSON.parse(listing) as { gateways: { type: string; pending: unknown }[] };
+  return { pending: gateways.find((g) => g.type === 'telegram')?.pending, listing };
 }

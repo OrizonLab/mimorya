@@ -51,7 +51,7 @@ export function TelegramGatewayCard({
           plateforme lui a donnée avec son secret : rien n’est à régler dans Telegram.
         </p>
       </div>
-      <p className="text-xs text-muted">Modifié le {formatDate(gateway.updatedAt)}</p>
+      <p className="text-xs text-muted">Modifiée le {formatDate(gateway.updatedAt)}</p>
       {action.error && <ErrorNote message={action.error} />}
       <div className="flex flex-wrap gap-2">
         {!editing && (

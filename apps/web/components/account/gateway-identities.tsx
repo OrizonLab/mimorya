@@ -1,19 +1,31 @@
 'use client';
 
+import { useState } from 'react';
 import { Card, Loaded } from '@/components/ui';
-import { useApiData, type AccountGateways } from '@/lib/api';
+import { useApiData, type AccountGateways, type TelegramLink } from '@/lib/api';
+import { useRefreshWhile } from '@/lib/use-refresh-while';
 import { SlackIdentityRow } from './slack-identity-row';
 import { TelegramIdentityRow } from './telegram-identity-row';
+
+/** How long after a read the list is read again while a bot waits for consent. */
+const WAITING_REFRESH_MS = 3000;
 
 /**
  * Who the signed-in person is on their company's conversation gateways
  * (ADR-125, ADR-126, ADR-134): their Slack user, linked from the link the
  * application sent them in Slack; their Telegram account, linked from here
  * with the bot's consent asked in Telegram. Shown once the company declared
- * a gateway.
+ * a gateway. While a bot waits for their consent, the list is read again
+ * three seconds after each read ends (ADR-105); the bot's link, shown
+ * once, is kept here, so that a failed read does not lose it.
  */
 export function GatewayIdentities() {
   const state = useApiData<AccountGateways>('/account/gateways');
+  const [links, setLinks] = useState<Record<string, TelegramLink | null>>({});
+  const waiting = (state.data?.gateways ?? []).some(
+    (g) => g.available && g.pending !== null && g.pending.claimedBy === null,
+  );
+  useRefreshWhile(waiting && !state.loading, state.reload, WAITING_REFRESH_MS);
   return (
     <Loaded state={state}>
       {(data) =>
@@ -25,6 +37,8 @@ export function GatewayIdentities() {
                 <TelegramIdentityRow
                   key={gateway.gatewayId}
                   gateway={gateway}
+                  link={links[gateway.gatewayId] ?? null}
+                  onLink={(link) => setLinks((kept) => ({ ...kept, [gateway.gatewayId]: link }))}
                   onChanged={state.reload}
                 />
               ) : (

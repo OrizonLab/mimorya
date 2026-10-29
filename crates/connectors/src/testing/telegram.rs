@@ -4,9 +4,11 @@
 //! token is refused (401), as one a test revoked. It keeps the webhook each
 //! bot was given, with its secret, and the messages the bots write; a test
 //! may make it unavailable (503), refuse webhooks (as one not in HTTPS), or
-//! have a person block the bot. The messages are also listed at
-//! `GET /test/messages` for the end-to-end tests. `update` writes an update
-//! as Telegram sends it.
+//! have a person block the bot. For the end-to-end tests (ADR-134), the
+//! messages are also listed at `GET /test/messages`, and each bot's webhook
+//! with its secret at `GET /test/webhooks`: whoever reaches the test
+//! Telegram can send updates as Telegram does, which only a test server
+//! offers. `update` writes an update as Telegram sends it.
 
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;

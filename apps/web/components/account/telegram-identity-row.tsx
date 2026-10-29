@@ -5,10 +5,9 @@ import { useState } from 'react';
 import { Badge, Button, ErrorNote } from '@/components/ui';
 import { api, useAction, type AccountGatewayView, type TelegramLink } from '@/lib/api';
 import { formatDate, formatTime } from '@/lib/format';
-import { useRefreshWhile } from '@/lib/use-refresh-while';
 
-/** How often the row is read again while the bot waits for their consent. */
-const WAITING_REFRESH_MS = 3000;
+/** The row's buttons, to show the wait on the one pressed. */
+type Pressed = 'ask' | 'confirm' | 'refuse' | 'cancel' | 'unlink';
 
 /**
  * The signed-in person's Telegram account on the company's bot (ADR-133,
@@ -16,42 +15,47 @@ const WAITING_REFRESH_MS = 3000;
  * Telegram, where the bot tells them whose account it links and they
  * accept it (`/oui`); back here, they see which Telegram account accepted
  * it, by its name and its identifier, and confirm, or refuse it. The link
- * itself is shown once, as the server gives it: lost, a new one is asked.
+ * is shown once, as the server gives it (`link`, kept by the list): lost,
+ * a new one is asked. Whatever an action answers, the row is read again.
  */
 export function TelegramIdentityRow({
   gateway,
+  link,
+  onLink,
   onChanged,
 }: {
   gateway: AccountGatewayView;
+  link: TelegramLink | null;
+  onLink: (link: TelegramLink | null) => void;
   onChanged: () => void;
 }) {
   const action = useAction();
-  const [link, setLink] = useState<TelegramLink | null>(null);
+  const [pressed, setPressed] = useState<Pressed | null>(null);
+  const loading = (button: Pressed) => action.pending && pressed === button;
+  const held = (button: Pressed) => action.pending && pressed !== button;
   const path = `/account/gateways/${gateway.gatewayId}`;
   const { linked, pending } = gateway;
   const claimedBy = pending?.claimedBy ?? null;
-  // Read again until Telegram says whom it came from.
-  useRefreshWhile(pending !== null && claimedBy === null, onChanged, WAITING_REFRESH_MS);
 
-  async function ask() {
-    const asked = await action.run(() => api.post<TelegramLink>(`${path}/telegram-code`));
-    if (asked) {
-      setLink(asked);
-      onChanged();
-    }
+  async function run(button: Pressed, call: () => Promise<unknown>) {
+    setPressed(button);
+    const done = await action.run(call);
+    // The link only lasts until the code is taken or forgotten.
+    if (done && button !== 'ask') onLink(null);
+    onChanged();
   }
 
-  async function settle(call: () => Promise<unknown>) {
-    if (await action.run(call)) {
-      setLink(null);
-      onChanged();
-    }
+  async function ask() {
+    setPressed('ask');
+    const asked = await action.run(() => api.post<TelegramLink>(`${path}/telegram-code`));
+    if (asked) onLink(asked);
+    onChanged();
   }
 
   async function unlink() {
     const question = `Retirer la liaison de votre compte Telegram au bot @${gateway.workspaceName} ? Vous pourrez le relier de nouveau d’ici.`;
     if (!window.confirm(question)) return;
-    await settle(() => api.delete(path));
+    await run('unlink', () => api.delete(path));
   }
 
   return (
@@ -74,7 +78,7 @@ export function TelegramIdentityRow({
         <p className="text-sm text-muted">
           Le compte Telegram <strong>{claimedBy}</strong> (identifiant{' '}
           <code>{pending.claimedId}</code>) a accepté la liaison. Confirmez seulement si c’est le
-          vôtre : il sera alors relié à votre compte.
+          vôtre, avant {formatTime(pending.expiresAt)} : il sera alors relié à votre compte.
         </p>
       ) : pending ? (
         <div className="flex flex-col gap-2 text-sm text-muted">
@@ -114,22 +118,24 @@ export function TelegramIdentityRow({
       {action.error && <ErrorNote message={action.error} />}
       <div className="flex flex-wrap gap-2">
         {linked && (
-          <Button variant="danger" loading={action.pending} onClick={unlink}>
+          <Button variant="danger" loading={loading('unlink')} onClick={unlink}>
             Retirer la liaison
           </Button>
         )}
         {!linked && gateway.available && pending && claimedBy !== null && (
           <>
             <Button
-              loading={action.pending}
-              onClick={() => settle(() => api.post(`${path}/telegram-link`))}
+              disabled={held('confirm')}
+              loading={loading('confirm')}
+              onClick={() => run('confirm', () => api.post(`${path}/telegram-link`))}
             >
               Confirmer la liaison
             </Button>
             <Button
               variant="secondary"
-              disabled={action.pending}
-              onClick={() => settle(() => api.delete(`${path}/telegram-code`))}
+              disabled={held('refuse')}
+              loading={loading('refuse')}
+              onClick={() => run('refuse', () => api.delete(`${path}/telegram-code`))}
             >
               Ce n’est pas moi
             </Button>
@@ -138,21 +144,22 @@ export function TelegramIdentityRow({
         {!linked && gateway.available && pending && claimedBy === null && (
           <>
             {!link && (
-              <Button loading={action.pending} onClick={ask}>
+              <Button disabled={held('ask')} loading={loading('ask')} onClick={ask}>
                 Demander un nouveau lien
               </Button>
             )}
             <Button
               variant="secondary"
-              disabled={action.pending}
-              onClick={() => settle(() => api.delete(`${path}/telegram-code`))}
+              disabled={held('cancel')}
+              loading={loading('cancel')}
+              onClick={() => run('cancel', () => api.delete(`${path}/telegram-code`))}
             >
               Annuler la liaison
             </Button>
           </>
         )}
         {!linked && gateway.available && !pending && (
-          <Button loading={action.pending} onClick={ask}>
+          <Button loading={loading('ask')} onClick={ask}>
             Relier mon compte Telegram
           </Button>
         )}

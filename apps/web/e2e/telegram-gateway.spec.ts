@@ -9,8 +9,10 @@
 // bot (its token kept), enables it and deletes it, after which Telegram
 // sends its updates nowhere and the address answers as to an unknown
 // gateway. Each step is read back from the API, each confirmation read.
-// Whatever happens, the bot is deleted with its links. The rules
-// themselves are tested on the API (`crates/api/tests/telegram_gateway_*.rs`).
+// Whatever happens, the bot is deleted with its links. A link someone else
+// accepted is refused, a lost link asked again, a link cancelled, none of
+// them linking anything. The rules themselves are tested on the API
+// (`crates/api/tests/telegram_gateway_*.rs`).
 import { demo, expect, noError, signIn, test } from './support/fixtures';
 import { cardWith, openAdmin } from './support/admin';
 import { deleteGateways } from './support/slack';
@@ -18,9 +20,14 @@ import {
   BOT_ID,
   BOT_USERNAME,
   LEA_TELEGRAM,
+  MARC_TELEGRAM,
   TELEGRAM_TOKEN,
   botAnswer,
+  codeOf,
+  declareBot,
+  pendingOf,
   sendUpdate,
+  shownLink,
   storedBot,
   webhookOf,
 } from './support/telegram';
@@ -86,12 +93,11 @@ test('a bot is declared, a Telegram account linked with both sides’ consent an
   await expect(row.getByText('Non relié', { exact: true })).toBeVisible();
   await row.getByRole('button', { name: 'Relier mon compte Telegram' }).click();
   await expect(row.getByText('Liaison en cours', { exact: true })).toBeVisible();
-  const opened = row.getByRole('link', { name: `Ouvrir le bot @${BOT_USERNAME} dans Telegram` });
-  const link = (await opened.getAttribute('href')) ?? '';
-  const code = new RegExp(`^https://t\\.me/${BOT_USERNAME}\\?start=([A-Za-z0-9_-]{43})$`).exec(
-    link,
-  )?.[1];
-  expect(code, link).toBeTruthy();
+  const code = codeOf(await shownLink(row));
+  // The page alone knows the link: the API never lists the code.
+  const { pending, listing: listedForLea } = await pendingOf(lea);
+  expect(pending).toMatchObject({ claimedBy: null, claimedId: null });
+  expect(listedForLea).not.toContain(code);
   await noError(lea);
 
   // She starts the bot with it: told whose account it links, she accepts.
@@ -103,7 +109,7 @@ test('a bot is declared, a Telegram account linked with both sides’ consent an
 
   // Back in « Mon compte », read again meanwhile: whom it came from, confirmed.
   const claimed = `@${LEA_TELEGRAM.username}`;
-  await expect(row.getByText(claimed, { exact: true })).toBeVisible();
+  await expect(row.getByText(claimed, { exact: true })).toBeVisible({ timeout: 10_000 });
   await expect(row.getByText(String(LEA_TELEGRAM.id), { exact: true })).toBeVisible();
   await row.getByRole('button', { name: 'Confirmer la liaison' }).click();
   await expect(row.getByText('Relié', { exact: true })).toBeVisible();
@@ -169,4 +175,52 @@ test('a bot is declared, a Telegram account linked with both sides’ consent an
   const gone = await sendUpdate(request, webhook, LEA_TELEGRAM, 'Bonjour');
   expect(gone.status()).toBe(404);
   await noError(page);
+});
+
+test('a link someone else accepted is refused, a lost link asked again, a link cancelled', async ({
+  page,
+  request,
+  newContext,
+}) => {
+  await signIn(page, demo.paul);
+  const webhook = await declareBot(page, NAME);
+  const lea = await (await newContext()).newPage();
+  await signIn(lea, demo.lea);
+  await lea.goto('/account');
+  const row = lea.getByRole('region', { name: NAME });
+
+  // Marc accepts her link, told it links Léa's account: she sees whom, and
+  // refuses. The code is forgotten: it links nothing any more.
+  await row.getByRole('button', { name: 'Relier mon compte Telegram' }).click();
+  const first = codeOf(await shownLink(row));
+  const offered = await botAnswer(request, webhook, MARC_TELEGRAM, `/start ${first}`);
+  expect(offered).toContain('au compte de Léa Fontaine');
+  await botAnswer(request, webhook, MARC_TELEGRAM, '/oui');
+  const marc = `@${MARC_TELEGRAM.username}`;
+  await expect(row.getByText(marc, { exact: true })).toBeVisible({ timeout: 10_000 });
+  await row.getByRole('button', { name: 'Ce n’est pas moi' }).click();
+  await expect(row.getByText('Non relié', { exact: true })).toBeVisible();
+  expect((await pendingOf(lea)).pending).toBeNull();
+  const again = await botAnswer(request, webhook, MARC_TELEGRAM, `/start ${first}`);
+  expect(again).toContain('n’est plus valable');
+
+  // A link lost with the page: a new one is asked, the former one linking
+  // nothing.
+  await row.getByRole('button', { name: 'Relier mon compte Telegram' }).click();
+  const second = codeOf(await shownLink(row));
+  await lea.reload();
+  await expect(row.getByText('Vous n’avez plus le lien ? Demandez-en un nouveau.')).toBeVisible();
+  await row.getByRole('button', { name: 'Demander un nouveau lien' }).click();
+  const third = codeOf(await shownLink(row));
+  expect(third).not.toBe(second);
+  const former = await botAnswer(request, webhook, LEA_TELEGRAM, `/start ${second}`);
+  expect(former).toContain('n’est plus valable');
+
+  // Cancelled: nothing under way, the code links nothing.
+  await row.getByRole('button', { name: 'Annuler la liaison' }).click();
+  await expect(row.getByText('Non relié', { exact: true })).toBeVisible();
+  expect((await pendingOf(lea)).pending).toBeNull();
+  const cancelled = await botAnswer(request, webhook, LEA_TELEGRAM, `/start ${third}`);
+  expect(cancelled).toContain('n’est plus valable');
+  await noError(lea);
 });
