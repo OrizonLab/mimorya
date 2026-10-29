@@ -2131,6 +2131,12 @@ export type SsoStart = { redirectUrl: string, };
 export type StatusChange = "active" | "disabled";
 
 /**
+ * `POST /account/gateways/{id}/telegram-code`: the bot's link carrying a
+ * new code, to open in Telegram, and until when (ADR-133).
+ */
+export type TelegramLink = { link: string, expiresAt: string, };
+
+/**
  * `POST /admin/users/{id}/password`: shown once, replaced at next sign-in.
  */
 export type TemporaryPassword = { temporaryPassword: string, };

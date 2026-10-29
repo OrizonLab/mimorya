@@ -91,6 +91,7 @@ pub fn typescript() -> String {
     declarations.add::<AccountLinkStart>();
     declarations.add::<AccountGateways>();
     declarations.add::<GatewayLinkPreview>();
+    declarations.add::<TelegramLink>();
     declarations.add::<ConversationList>();
     declarations.add::<ConversationCreated>();
     declarations.add::<ConversationDetail>();

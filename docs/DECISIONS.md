@@ -7365,3 +7365,63 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     ensemble, le dernier seul offert), `crates/db/tests/definer_functions.rs` ;
   - restent : écrans de Telegram, conversations, validations par boutons, avis au
     responsable ; Teams.
+
+## ADR-134 — Écrans du bot Telegram : bot dans « Connecteurs », compte relié depuis « Mon compte » (passerelles, lot 13b)
+
+- **Date** : 2026-10-29 · **Statut** : acceptée · complète ADR-133
+- **Contexte** : le bot Telegram de l'entreprise ne se déclarait que par l'API, et
+  personne ne pouvait relier son compte Telegram sans écrire ses requêtes à la main
+  (ADR-133). Les textes du bot renvoyaient déjà à la section « Messageries reliées » de
+  « Mon compte », qui ne montrait que Slack.
+- **Décision** :
+  - **« Connecteurs »**, section « Passerelles de conversation » :
+    - « Déclarer le bot Telegram » tant que l'entreprise n'en a pas, à côté de
+      « Déclarer l'application Slack » ;
+    - le formulaire demande le nom et le jeton du bot, vérifiés par le navigateur comme
+      par le serveur ; son texte d'aide dit que le bot se crée avec `@BotFather` et que
+      la plateforme donne elle-même son webhook à Telegram ; il dit aussi que le bot ne
+      sert pour l'instant qu'à relier les comptes ;
+    - la carte montre le bot (`@nom` et identifiant), le jeton et le secret du webhook
+      enregistrés (jamais réaffichés), le nombre de comptes reliés et l'adresse donnée à
+      Telegram, à ne pas régler soi-même ;
+    - la carte se modifie (jeton laissé vide : gardé ; un autre doit être du même bot),
+      se désactive, se réactive et se supprime, la confirmation disant que le webhook et
+      les comptes reliés s'en vont avec elle ;
+    - ses boutons partagent avec la carte Slack la façon d'agir sur une passerelle
+      (`use-gateway-actions.ts`) ;
+  - **« Mon compte »**, carte « Messageries reliées » : une ligne par passerelle, celle
+    de Slack inchangée (`slack-identity-row.tsx`) et celle du bot Telegram
+    (`telegram-identity-row.tsx`) :
+    - **« Relier mon compte Telegram »** demande le code et montre une fois le lien du
+      bot qu'il porte (« Ouvrir le bot @… dans Telegram »), avec ce qu'il faut y faire :
+      démarrer le bot, qui dit à quel compte il relie, répondre `/oui`, revenir ici ;
+      le lien n'est connu que de cette page (perdu, on en demande un nouveau) ;
+    - **en attendant l'accord**, la ligne est relue toutes les trois secondes
+      (`useRefreshWhile`, ADR-105), jusqu'à ce que Telegram dise qui l'a accepté ;
+    - **accepté**, elle montre le nom que Telegram a donné et l'identifiant, que personne
+      ne choisit ; elle propose « Confirmer la liaison » et « Ce n'est pas moi », qui
+      oublie le code ;
+    - **reliée**, elle montre le compte Telegram, son identifiant et la date, et la
+      liaison se retire ;
+    - une passerelle en pause, ou une personne sans `agent:use`, est dite indisponible ;
+      la liaison reste à retirer ;
+  - **contrat** : `TelegramLink`, la réponse qui porte le lien, est déclaré parmi les
+    types générés pour l'interface.
+- **Conséquences** :
+  - le Telegram simulé des tests écoute, pour les tests de bout en bout, à une adresse
+    fixe (127.0.0.1:4104 dans `e2e_server`, `BuildOptions::telegram_api`) ; il liste ce
+    que les bots ont écrit (`GET /test/messages`) et le webhook de chacun avec son
+    secret (`GET /test/webhooks`), pour que le test envoie les mises à jour comme
+    Telegram ;
+  - tests : `apps/web/e2e/telegram-gateway.spec.ts`. Le parcours :
+    - le bot est déclaré, sa carte relue dans l'API sans jeton ni secret, le webhook
+      donné à l'adresse de la passerelle ;
+    - Léa demande le lien et démarre le bot avec, comme Telegram l'envoie ; le bot nomme
+      son compte, elle répond `/oui`, voit dans « Mon compte » le compte Telegram qui a
+      accepté et confirme ; la liaison est relue dans l'API, et le bot lui dit ensuite à
+      quel compte le sien est relié ;
+    - le bot est désactivé et la liaison retirée ; il est renommé sans changer son
+      jeton, réactivé, puis supprimé ; son webhook est alors retiré et l'adresse répond
+      comme une passerelle inconnue ;
+  - restent : conversations avec l'agent dans Telegram, validations par boutons, avis
+    au responsable ; Teams.
