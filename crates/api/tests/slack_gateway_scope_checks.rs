@@ -185,6 +185,7 @@ async fn only_permissions_written_as_slack_names_them_are_kept() {
     for refused in [
         "{NULL}",
         "{\"chat:write,users:read\"}",
+        "{{chat:write},{users:read}}",
         "{chat:write,NULL}",
         "{chat:write,\"\"}",
         "{\"\"}",

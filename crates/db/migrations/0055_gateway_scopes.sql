@@ -7,15 +7,17 @@
 ALTER TABLE gateways
   ADD COLUMN granted_scopes text[],
   ADD COLUMN scopes_checked_at timestamptz,
-  -- None, or each name as Slack writes a permission's, none empty nor
-  -- null (written `!`), none holding the comma that separates them.
+  -- None, or a list (one dimension) of names each as Slack writes a
+  -- permission's, none empty nor null (written `!`), none holding the comma
+  -- that separates them.
   ADD CONSTRAINT gateways_granted_scopes CHECK (
     granted_scopes IS NULL OR (
       cardinality(granted_scopes) <= 200
       AND (
         cardinality(granted_scopes) = 0
         OR (
-          array_to_string(granted_scopes, ',', '!')
+          array_ndims(granted_scopes) = 1
+          AND array_to_string(granted_scopes, ',', '!')
             ~ '^[a-z][a-z0-9:._-]{0,79}(,[a-z][a-z0-9:._-]{0,79})*$'
           AND length(array_to_string(granted_scopes, ',', '!'))
             - length(replace(array_to_string(granted_scopes, ',', '!'), ',', ''))
