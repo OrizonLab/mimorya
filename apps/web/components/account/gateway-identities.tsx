@@ -22,16 +22,18 @@ export function GatewayIdentities() {
   const state = useApiData<AccountGateways>(GATEWAYS);
   return (
     <Loaded state={state}>
-      {(data) =>
-        data.gateways.length === 0 ? null : (
+      {(data) => {
+        // A Telegram bot's own screens come with its next lot (ADR-133).
+        const slack = data.gateways.filter((gateway) => gateway.type === 'slack');
+        return slack.length === 0 ? null : (
           <Card className="flex max-w-2xl flex-col gap-3 p-4">
             <h2 className="font-medium">Messageries reliées</h2>
-            {data.gateways.map((gateway) => (
+            {slack.map((gateway) => (
               <GatewayRow key={gateway.gatewayId} gateway={gateway} onChanged={state.reload} />
             ))}
           </Card>
-        )
-      }
+        );
+      }}
     </Loaded>
   );
 }

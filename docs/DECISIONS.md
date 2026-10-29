@@ -7261,3 +7261,107 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     navigateur), `apps/web/e2e/slack-gateway-scopes.spec.ts` (déclaration refusée,
     puis carte : toutes accordées, manquante et en plus nommées, rendues) ;
   - reste à venir : Telegram, Teams.
+
+## ADR-133 — Bot Telegram de l'entreprise, mises à jour prouvées par un secret, compte relié depuis la session (passerelles, lot 13a)
+
+- **Date** : 2026-10-29 · **Statut** : acceptée · complète ADR-125
+- **Contexte** : après Slack, une entreprise veut que ses collaborateurs parlent à l'agent
+  dans Telegram. Telegram diffère de Slack sur deux points :
+  - ses mises à jour ne sont pas signées : le webhook reçoit seulement, dans l'en-tête
+    `X-Telegram-Bot-Api-Secret-Token`, le secret donné à Telegram avec son adresse ;
+  - il ne prouve aucune adresse : rien ne dit qu'un compte Telegram est celui d'un
+    collaborateur.
+- **Décision** :
+  - **bot déclaré** par les administrateurs des connecteurs (`connector:manage`), un par
+    entreprise (`POST /admin/gateways/telegram`) :
+    - son jeton (forme de BotFather) est essayé auprès de Telegram (`getMe`) ;
+    - le bot qu'il est est gardé (identifiant, nom d'utilisateur) ;
+    - sous le verrou de l'administration, la passerelle insérée, Telegram reçoit l'ordre
+      d'envoyer les mises à jour à son adresse (`setWebhook`) avec un secret de 64
+      caractères que fait la plateforme : un refus (adresse non publique ou non HTTPS)
+      ne garde rien, et deux déclarations d'une même entreprise ne peuvent pas détourner
+      le webhook l'une de l'autre ; une autre entreprise qui déclarerait le même jeton
+      le redirigerait vers elle : qui a le jeton contrôle le bot, qu'il faut garder
+      comme tel ;
+    - jeton et secret sont scellés, jamais rendus ni audités ;
+  - **jeton changé** seulement pour le même bot (même identifiant), le webhook redonné
+    avec le même secret ; un bot n'a pas de secret de signature ni de permissions à
+    vérifier (ADR-132), refusés ; supprimé, Telegram reçoit sous le verrou l'ordre de
+    n'envoyer ses mises à jour nulle part (`deleteWebhook`, au mieux : un échec ou un
+    jeton illisible est journalisé) ;
+  - **mises à jour reçues** (`POST /api/gateways/telegram/{id}`, chemin exact, dispensé
+    de l'en-tête des requêtes du navigateur comme les événements de Slack) :
+    - prouvées par le seul secret du webhook, comparé par empreinte : passerelle inconnue,
+      secret absent ou faux, secret illisible et adresse de Slack répondent de même
+      (404) ;
+    - bornées (256 Kio) ; chacune prise une fois (son numéro, ADR-125) ; une passerelle
+      en pause, et tout ce qui n'est pas le message texte d'une personne dans sa
+      conversation privée avec le bot, sont pris et ignorés ;
+    - la réponse va dans la conversation privée de qui a écrit, que son identifiant
+      nomme : jamais ce qu'il a écrit ;
+  - **compte relié depuis la session** de la personne, puisque Telegram ne prouve rien :
+    - elle demande un code (`POST /account/gateways/{id}/telegram-code`, `agent:use`,
+      bot actif) : 256 bits aléatoires, gardés par leur empreinte, quinze minutes, son
+      précédent remplacé ; on lui rend le lien du bot qui le porte
+      (`https://t.me/<bot>?start=<code>`) ;
+    - ouvert dans Telegram, le bot reçoit `/start <code>` : il nomme à qui l'a ouvert
+      le compte de l'application que le lien relierait (« au compte de Marc Lefèvre »)
+      et le lui propose (`gateway.link_code_offered`) ; jamais si son compte Telegram est
+      déjà relié à une autre personne ; une seule offre l'attend par bot, la dernière
+      nommée, les précédentes retirées (index unique) ; les offres d'un bot se font
+      une à une (verrou de transaction), deux liens ouverts ensemble attendant leur tour ;
+    - qui l'a ouvert l'accepte en envoyant `/oui` : cette offre seule, dont le bot nomme
+      encore le compte ; son compte Telegram est gardé avec le code, une fois (le
+      premier), et c'est audité (`gateway.link_code_claimed`) ;
+    - sa session montre le nom que Telegram a donné de ce compte et son identifiant (un
+      nom libre ne commence jamais par `@`, que seul un nom d'utilisateur porte, et ne
+      cache aucun caractère), et elle confirme
+      (`POST /account/gateways/{id}/telegram-link`) : le compte est relié, son ancien
+      remplacé (`gateway.identity_linked`) ; ou elle oublie le code
+      (`DELETE …/telegram-code`) ;
+    - ainsi, chaque côté consent en sachant à qui : un code vu par un autre ne relie rien
+      sans la session qui l'a demandé, qui voit à quel compte Telegram ; un lien qu'un
+      collègue fait ouvrir ne relie le compte Telegram de personne au sien sans que son
+      titulaire l'accepte en sachant à quel compte ;
+    - une liaison n'est jamais reprise par le code d'un autre : seul son titulaire la
+      retire (la confirmation qui la reprendrait est refusée, 409, même concurrente) ; le
+      bot dit ensuite à qui écrit de quel compte le sien est relié ;
+    - reste ce qu'aucun code n'empêche : une personne qui accepte en connaissance de
+      cause de relier son compte Telegram au compte d'un autre ; le bot le lui a dit ;
+  - **données** (migration `0056`) :
+    - `gateways` admet `telegram`, ses contraintes selon le service (identifiant du bot
+      dans `workspace_id` et `bot_user_id`, son nom dans `workspace_name`, aucune
+      permission) ;
+    - `gateway_identities` porte le service de sa passerelle (clé étrangère composée
+      vers `gateways (id, kind)`) et ses contraintes en dépendent : identifiant et
+      adresse de Slack, ou identifiant et nom (`display_name`) de Telegram, sans
+      adresse ;
+    - `gateway_link_codes` (RLS, d'un bot Telegram seulement) garde les codes, à qui
+      chacun a été proposé et qui l'a accepté, oubliés à expiration par le balayage
+      (`system_purge_gateway_link_codes`) ;
+  - **lot 13a sans écrans** : l'interface ne montre encore que les passerelles Slack ;
+    les textes du bot désignent la section « Messageries reliées » de « Mon compte » où
+    les écrans du lot suivant la montreront (d'ici là, la liaison se fait par l'API).
+    À une personne reliée qui écrit au bot, il répond que la conversation y est à venir.
+- **Conséquences** :
+  - une troisième route reçoit des requêtes sans l'en-tête du navigateur ; seul son
+    chemin exact y échappe, testé comme les deux autres ;
+  - le jeton du bot fait partie de l'adresse de chaque méthode de Telegram : aucune
+    adresse ni erreur du client n'est jamais écrite, seulement ce qui a échoué, en
+    français, jamais la description de Telegram ;
+  - le Telegram simulé des tests connaît le bot de la démonstration et un autre, garde
+    le webhook de chacun et les messages écrits (`GET /test/messages`) ;
+  - tests : `crates/core/src/gateways/telegram/` (jeton, secret, mise à jour lue, code,
+    lien), `crates/connectors/src/telegram/` (refus dits en français),
+    `crates/api/tests/telegram_gateway_admin.rs` (déclaration essayée, webhook donné et
+    retiré, un par entreprise, jeton du même bot seulement, réservée aux
+    administrateurs), `telegram_gateway_updates.rs` (secret seul, une fois, rien d'autre
+    que le message privé d'une personne, chemin exact sans l'en-tête),
+    `telegram_gateway_links.rs` (code de la session, ouvert, accepté puis confirmé, volé,
+    oublié ou expiré sans rien relier, autre entreprise, bot en pause, sans `agent:use`),
+    `telegram_gateway_consent.rs` (lien d'un collègue ouvert sans rien relier, accord
+    donné à la seule dernière offre nommée, liaison jamais reprise, code et secret de leur entreprise seulement, codes expirés oubliés
+    dans chaque entreprise), `crates/db/tests/gateway_link_codes.rs` (deux liens ouverts
+    ensemble, le dernier seul offert), `crates/db/tests/definer_functions.rs` ;
+  - restent : écrans de Telegram, conversations, validations par boutons, avis au
+    responsable ; Teams.

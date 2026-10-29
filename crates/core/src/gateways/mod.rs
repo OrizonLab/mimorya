@@ -3,9 +3,12 @@
 //! there, each as themselves once they linked their identity on that
 //! service to their account. Slack first (`slack`): what a company declares
 //! of its application, how an event Slack sends proves it comes from it,
-//! and which of its messages reach the agent.
+//! and which of its messages reach the agent; then Telegram (`telegram`,
+//! ADR-133): its bot, the secret its updates prove themselves by, and the
+//! code a person links their account with.
 
 pub mod slack;
+pub mod telegram;
 
 /// A gateway's name, as kept: bounded like the column.
 pub const MIN_NAME_CHARS: usize = 2;
@@ -15,6 +18,7 @@ pub const MAX_NAME_CHARS: usize = 80;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GatewayKind {
     Slack,
+    Telegram,
 }
 
 impl GatewayKind {
@@ -22,6 +26,7 @@ impl GatewayKind {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Slack => "slack",
+            Self::Telegram => "telegram",
         }
     }
 
@@ -29,6 +34,7 @@ impl GatewayKind {
     pub fn of(kind: &str) -> Option<Self> {
         match kind {
             "slack" => Some(Self::Slack),
+            "telegram" => Some(Self::Telegram),
             _ => None,
         }
     }
@@ -37,6 +43,7 @@ impl GatewayKind {
     pub fn product(self) -> &'static str {
         match self {
             Self::Slack => "Slack",
+            Self::Telegram => "Telegram",
         }
     }
 }
@@ -79,5 +86,9 @@ mod tests {
         );
         assert_eq!(GatewayKind::of("Slack"), None);
         assert_eq!(GatewayKind::of("teams"), None);
+        assert_eq!(
+            GatewayKind::of(GatewayKind::Telegram.as_str()),
+            Some(GatewayKind::Telegram)
+        );
     }
 }

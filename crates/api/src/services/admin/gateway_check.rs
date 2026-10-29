@@ -9,6 +9,7 @@
 
 use mimorya_connectors::slack::SlackWorkspace;
 use mimorya_core::DomainError;
+use mimorya_core::gateways::GatewayKind;
 use mimorya_core::gateways::slack::{extra_scopes, missing_scopes, missing_scopes_refusal};
 use mimorya_db::TenantTx;
 use mimorya_db::repositories::audit::append_audit;
@@ -80,8 +81,14 @@ pub async fn check_gateway(
     let tenant_id = access.subject.tenant_id;
     let token = {
         let mut tx = gateways.db().begin(tenant_id).await?;
-        if get_gateway(&mut tx, id).await?.is_none() {
+        let Some(gateway) = get_gateway(&mut tx, id).await? else {
             return Err(DomainError::not_found(NOT_FOUND).into());
+        };
+        if gateway.kind != GatewayKind::Slack.as_str() {
+            return Err(DomainError::validation(
+                "Seule une application Slack dit ses permissions : un bot Telegram n’en a pas",
+            )
+            .into());
         }
         let token = stored_token(gateways, &mut tx, tenant_id, id).await?;
         tx.commit().await?;

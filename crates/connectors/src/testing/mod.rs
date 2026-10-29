@@ -3,7 +3,8 @@
 //! they declare, a token quoted back, a server that never answers, one held
 //! until the test releases it); a REST API (`rest`); Microsoft Graph
 //! (`graph`, its writes in `graph_writes`); Gmail and Google Calendar
-//! (`google`, its writes in `google_writes`); Slack's Web API (`slack`).
+//! (`google`, its writes in `google_writes`); Slack's Web API (`slack`);
+//! Telegram's Bot API (`telegram`).
 
 mod google;
 mod google_writes;
@@ -13,6 +14,7 @@ mod hold;
 mod quirks;
 mod rest;
 mod slack;
+mod telegram;
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -35,6 +37,10 @@ pub use rest::{KEY_HEADER, serve_rest_http};
 pub use slack::{
     BOT_TOKEN, BOT_USER, FakeSlack, OTHER_TOKEN, OTHER_WORKSPACE, SIGNING_SECRET, SlackPost,
     WORKSPACE, WORKSPACE_NAME, signed, signed_at,
+};
+pub use telegram::{
+    FakeTelegram, OTHER_BOT, OTHER_BOT_TOKEN, TELEGRAM_BOT, TELEGRAM_BOT_USERNAME, TELEGRAM_TOKEN,
+    TelegramMessage, update,
 };
 
 /// Serves the demo documentation server at `http://127.0.0.1:<port>/mcp`

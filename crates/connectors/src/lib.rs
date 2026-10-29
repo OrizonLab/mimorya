@@ -2,8 +2,9 @@
 //! bound authorization. The demo connector serves FICTIONAL data; MCP
 //! servers and REST APIs are those a company connects itself (`outbound`);
 //! Microsoft 365 and Google Workspace reach each person's own mailbox with
-//! the access they granted (`microsoft365`, `google_workspace`). Slack is
-//! reached by a company's gateway, not by tools (`slack`, ADR-125).
+//! the access they granted (`microsoft365`, `google_workspace`). Slack and
+//! Telegram are reached by a company's gateway, not by tools (`slack`,
+//! ADR-125, `telegram`, ADR-133).
 
 pub(crate) mod delegated;
 pub mod demo_interventions;
@@ -14,6 +15,7 @@ pub mod outbound;
 pub mod registry;
 pub mod rest;
 pub mod slack;
+pub mod telegram;
 #[cfg(feature = "testing")]
 pub mod testing;
 pub mod types;

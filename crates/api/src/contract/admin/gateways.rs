@@ -28,19 +28,23 @@ pub struct Gateways {
 #[serde(rename_all = "camelCase")]
 pub struct GatewayView {
     pub id: Uuid,
-    /// `slack`.
+    /// `slack` or `telegram`.
     #[serde(rename = "type")]
     pub kind: String,
     pub name: String,
     pub enabled: bool,
-    /// The workspace Slack said the application is installed in.
+    /// The workspace Slack said the application is installed in; the
+    /// Telegram bot's identifier.
     pub workspace_id: String,
+    /// Its name; the Telegram bot's username.
     pub workspace_name: String,
-    /// The application's bot user.
+    /// The application's bot user; the Telegram bot's identifier.
     pub bot_user_id: String,
-    /// Where Slack sends the application's events (« Event Subscriptions »).
+    /// Where Slack sends the application's events (« Event Subscriptions »);
+    /// where Telegram sends the bot's updates, which the platform told it.
     pub events_url: String,
-    /// Whether its bot's token and its signing secret are stored.
+    /// Whether its bot's token and its signing secret (Slack) or its
+    /// webhook's secret (Telegram) are stored.
     pub secrets_stored: bool,
     /// How many people linked their identity.
     pub identities: i64,
@@ -76,6 +80,23 @@ pub struct NewSlackGateway {
     pub enabled: Option<bool>,
 }
 
+/// Body of `POST /admin/gateways/telegram`: the company's Telegram bot
+/// (ADR-133).
+#[derive(Deserialize, Validate, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NewTelegramGateway {
+    #[serde(deserialize_with = "trimmed")]
+    #[validate(length(min = 2, max = 80))]
+    pub name: String,
+    /// The token BotFather gave the bot (`123456789:…`).
+    #[serde(deserialize_with = "trimmed")]
+    pub bot_token: String,
+    /// Absent: enabled.
+    #[serde(default)]
+    #[ts(optional)]
+    pub enabled: Option<bool>,
+}
+
 /// Body of `PATCH /admin/gateways/{id}`: an absent field is left as it
 /// stands.
 #[derive(Deserialize, Validate, TS)]
@@ -89,7 +110,7 @@ pub struct GatewayUpdate {
     #[ts(optional)]
     pub enabled: Option<bool>,
     /// A new token of the same application, or of one of the same
-    /// workspace.
+    /// workspace; of the same Telegram bot.
     #[serde(default, deserialize_with = "trimmed_opt")]
     #[ts(optional)]
     pub bot_token: Option<String>,

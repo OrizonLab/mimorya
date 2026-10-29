@@ -338,6 +338,14 @@ Détaillés dans [AGENT_ENGINE.md](AGENT_ENGINE.md). En résumé :
   l'application, la conversation se montre tenue dans Slack : marquée dans la liste,
   chaque message écrit dans Slack marqué, une note disant où chacun reçoit sa réponse
   (`ConversationSummary.gateway`, ADR-128).
+- **Bot Telegram** (ADR-133) : l'entreprise déclare aussi son bot Telegram (un par
+  entreprise), son jeton essayé auprès de Telegram ; la plateforme dit à Telegram
+  d'envoyer ses mises à jour à l'adresse de la passerelle avec un secret qu'elle fait,
+  seule preuve de chaque mise à jour (`/api/gateways/telegram/{id}`). Telegram ne
+  prouvant aucune adresse, une personne relie son compte depuis sa session : un code
+  qu'elle demande, renvoyé par Telegram depuis la conversation privée de qui ouvre le
+  lien, accepté là par qui le bot a dit à quel compte il le relierait, puis confirmé
+  dans sa session.
 - Les secrets ne transitent jamais par le contexte du modèle ni par les journaux.
 
 Connecteurs prévus : démonstration (MVP), MCP générique (MVP), déclencheurs (ADR-109),

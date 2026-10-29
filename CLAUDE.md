@@ -49,7 +49,8 @@ Repères à l'intérieur des crates :
   pris, preuve qu'un utilisateur Slack est la personne d'un compte, ADR-125 ; texte
   écrit dans Slack en son balisage et message lu en texte simple, `mrkdwn.rs`, ADR-127 ;
   boutons de validation et bouton pressé, `interactions.rs`, ADR-129 ; permissions du
-  jeton lues, manquantes et en plus, `scopes.rs`, ADR-132).
+  jeton lues, manquantes et en plus, `scopes.rs`, ADR-132 ; bot Telegram : jeton,
+  secret du webhook, mise à jour lue, code de liaison, `telegram/`, ADR-133).
 - `db/migrations/` (SQL numéroté, source de vérité du schéma),
   `db/src/repositories/` (un fichier par entité ; la mémoire : `memory.rs`, recherche
   hybride `memory_search.rs`, vecteurs `memory_embeddings.rs`, ADR-074 ; fenêtres des
@@ -68,7 +69,8 @@ Repères à l'intérieur des crates :
   événements pris : `gateways.rs`, identités reliées : `gateway_identities.rs`,
   ADR-125 ; fils Slack des conversations : `gateway_threads.rs`, réponses écrites :
   `gateway_replies.rs`, ADR-127 ; demandes annoncées au responsable :
-  `gateway_approval_notices.rs`, ADR-130),
+  `gateway_approval_notices.rs`, ADR-130 ; codes de liaison Telegram :
+  `gateway_link_codes.rs`, ADR-133),
   `db/src/notifications.rs` (canaux PostgreSQL des événements des runs, de la file et des
   invalidations, ADR-084, ADR-085), `db/src/sweep_lock.rs` (verrou d'un balayage qui ne
   tourne que dans un processus à la fois, ADR-086), `db/src/seed/` (organisation,
@@ -104,13 +106,14 @@ Repères à l'intérieur des crates :
   ADR-117, ADR-122 ; e-mail et rendez-vous écrits en son nom, ce qu'ils envoient ne
   cachant rien (`compose.rs`, `new_mail.rs`, `new_event.rs`), ADR-119, ADR-123),
   `connectors/src/slack/` (API Web de Slack telle que la passerelle d'une entreprise
-  l'atteint, ADR-125), `connectors/src/testing/`
+  l'atteint, ADR-125), `connectors/src/telegram/` (API des bots de Telegram, son jeton
+  jamais écrit, ADR-133), `connectors/src/testing/`
   (serveurs simulés des tests : MCP, API REST, Microsoft Graph, Gmail et agenda Google,
-  Slack, qui signe les événements comme lui).
+  Slack, qui signe les événements comme lui, Telegram).
 - `api/src/plugins/` (contexte de requête, limitation de débit (globale par processus ;
   d'authentification partagée par PostgreSQL, `shared_limit.rs`, ADR-088), CSRF (sauf la réception
-  des réponses SAML, ADR-068, l'envoi à un déclencheur, ADR-109, et les événements de
-  Slack, ADR-125), session,
+  des réponses SAML, ADR-068, l'envoi à un déclencheur, ADR-109, les événements de
+  Slack, ADR-125, et les mises à jour de Telegram, ADR-133), session,
   en-têtes de sécurité, audit des modifications d'administration refusées, sur une ressource introuvable ou envoyant un identifiant inconnu,
   maintenance périodique : runs bloqués, liens expirés, absences terminées, demandes de
   validation échues et relances avant échéance, ADR-061, ADR-062 ; indexation de la
@@ -152,9 +155,12 @@ Repères à l'intérieur des crates :
   bouton (`person.rs`), ADR-129 ; demandes qui attendent un responsable annoncées par
   message direct (`approver_notices.rs`, `approver_text.rs`), ADR-130 ; conversation
   directe vérifiée auprès de Slack avant que rien n'y soit dit (`direct.rs`), ADR-131 ;
+  bot Telegram : mises à jour reçues sur le secret du webhook et compte relié par un code
+  de la session (`telegram/`), ADR-133 ;
   déclarées par
   `services/admin/gateways.rs`, ce que Slack dit du jeton et ses permissions vérifiées
-  à la demande par `services/admin/gateway_check.rs`, ADR-132),
+  à la demande par `services/admin/gateway_check.rs`, ADR-132, le bot Telegram par
+  `services/admin/telegram_gateway.rs`, ADR-133),
   `api/src/services/notification_settings.rs` (e-mails que chacun choisit de recevoir,
   lus au moment d'envoyer chaque avis, ADR-094),
   `api/src/services/skill_proposal_notice/` (propositions de l'agent annoncées par e-mail
@@ -362,19 +368,23 @@ Avant chaque commit : `pnpm check && pnpm test:int` doivent passer.
    `access.context()` et vérifie la permission (`require`) ou la propriété de la
    ressource côté serveur ; une ressource hors périmètre répond 404. Les requêtes
    modifiantes exigent l'en-tête `X-Mimorya-Request: 1` et, si le navigateur la donne,
-   l'origine de l'application. Trois en sont dispensées, de l'un comme de l'autre : la
+   l'origine de l'application. Quatre en sont dispensées, de l'un comme de l'autre : la
    réception des réponses SAML (`POST /api/auth/saml/acs`, ADR-068), que le fournisseur
    poste depuis son propre site, seules la liant au navigateur la tentative scellée dans
    son cookie, la demande qu'elle attend et la signature de l'assertion ; l'envoi d'un
    autre système à un déclencheur (`POST /api/hooks/{id}`, chemin exact, ADR-109),
    qu'aucune session n'autorise : son jeton seul le fait ; et les événements que Slack
    envoie à la passerelle d'une entreprise (`POST /api/gateways/slack/{id}`, chemin
-   exact, ADR-125), que leur signature seule prouve. Aucune autre exception sans ADR ;
+   exact, ADR-125), que leur signature seule prouve ; et les mises à jour que Telegram
+   envoie au bot d'une entreprise (`POST /api/gateways/telegram/{id}`, chemin exact,
+   ADR-133), que le secret de son webhook seul prouve. Aucune autre exception sans ADR ;
    les tests `only_the_saml_reception_goes_without_the_header`
    (`crates/api/tests/auth.rs`), `only_a_delivery_goes_without_the_header`
-   (`crates/api/tests/inbound_hook_deliveries.rs`) et
+   (`crates/api/tests/inbound_hook_deliveries.rs`),
    `only_a_gateway_event_goes_without_the_header`
-   (`crates/api/tests/slack_gateway_events.rs`) tentent de les contourner.
+   (`crates/api/tests/slack_gateway_events.rs`) et
+   `only_a_bot_s_updates_go_without_the_header`
+   (`crates/api/tests/telegram_gateway_updates.rs`) tentent de les contourner.
 
 ## Règles de sécurité (non négociables)
 

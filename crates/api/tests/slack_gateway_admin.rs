@@ -187,8 +187,9 @@ async fn a_gateway_changes_within_its_workspace_and_goes_with_its_identities() {
     // Deleted, with what its people linked.
     let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
     sqlx::query(
-        "insert into gateway_identities (tenant_id, gateway_id, user_id, external_id, address) \
-         values ($1, $2, $3, 'U0LEA', 'lea@neo-maintenance.example')",
+        "insert into gateway_identities \
+         (tenant_id, gateway_id, kind, user_id, external_id, address) \
+         values ($1, $2, 'slack', $3, 'U0LEA', 'lea@neo-maintenance.example')",
     )
     .bind(tenant::ID)
     .bind(id)

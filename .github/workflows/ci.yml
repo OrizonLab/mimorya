@@ -38,6 +38,11 @@ jobs:
           --health-retries 10
     env:
       CARGO_TERM_COLOR: always
+      # Line tables only: two hundred test binaries with full debug
+      # information fill the runner's disk (the linker then dies of a bus
+      # error); a failing test still names its file and line.
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
+      CARGO_PROFILE_TEST_DEBUG: line-tables-only
       TEST_DATABASE_URL: postgres://mimorya:mimorya@localhost:5432/mimorya_test
       TEST_DATABASE_APP_URL: postgres://mimorya_app:mimorya_app@localhost:5432/mimorya_test
     steps:

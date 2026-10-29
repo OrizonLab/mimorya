@@ -185,6 +185,7 @@ async fn main() -> anyhow::Result<()> {
             account_link_issuer: Some(idp.issuer.clone()),
             // Its gateways reach the local Slack (ADR-126).
             slack_api: Some(slack.url.clone()),
+            telegram_api: None,
         },
     )
     .await?;

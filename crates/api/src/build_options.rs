@@ -54,4 +54,7 @@ pub struct BuildOptions {
     /// Replaces Slack's Web API, which the companies' gateways reach (tests:
     /// a local one, ADR-125).
     pub slack_api: Option<String>,
+    /// Replaces Telegram's Bot API, which the companies' bots reach (tests:
+    /// a local one, ADR-133).
+    pub telegram_api: Option<String>,
 }

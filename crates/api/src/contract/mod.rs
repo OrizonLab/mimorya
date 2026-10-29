@@ -41,7 +41,8 @@ pub use documents::{
 };
 pub use errors::{ErrorBody, ErrorDetail, ErrorKind};
 pub use gateways::{
-    AccountGatewayView, AccountGateways, GatewayIdentity, GatewayLinkCode, GatewayLinkPreview,
+    AccountGatewayView, AccountGateways, GatewayIdentity, GatewayLinkCode, GatewayLinkPending,
+    GatewayLinkPreview, TelegramLink,
 };
 pub use health::Health;
 pub use inbound_hooks::{
@@ -200,6 +201,7 @@ macro_rules! request_bodies {
             admin::NewMicrosoft365Connector,
             admin::NewGoogleWorkspaceConnector,
             admin::NewSlackGateway,
+            admin::NewTelegramGateway,
             admin::GatewayUpdate,
             admin::OpenApiDescription,
             admin::ConnectorTrial,

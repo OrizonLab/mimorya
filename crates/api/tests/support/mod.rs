@@ -54,6 +54,7 @@ pub mod slack_conversations;
 pub mod slack_validations;
 pub mod sso;
 pub mod sweeps;
+pub mod telegram;
 
 pub use client::{Client, TestResponse};
 use fixtures::urls;
@@ -86,6 +87,8 @@ struct Setup<'a> {
     run_leases: Option<LeaseTiming>,
     /// Slack's Web API the gateways reach, a local one (ADR-125).
     slack_api: Option<String>,
+    /// Telegram's Bot API the bots reach, a local one (ADR-133).
+    telegram_api: Option<String>,
 }
 
 pub struct TestApi {
@@ -120,6 +123,28 @@ impl TestApi {
         Self::scripted(Setup {
             env,
             slack_api: Some(url.to_owned()),
+            ..Setup::default()
+        })
+        .await
+    }
+
+    /// Same, its companies' bots reaching the local Telegram at `url`
+    /// (ADR-133), with configuration variables overridden.
+    pub async fn start_with_telegram(env: &[(&str, &str)], url: &str) -> Self {
+        Self::scripted(Setup {
+            env,
+            telegram_api: Some(url.to_owned()),
+            ..Setup::default()
+        })
+        .await
+    }
+
+    /// Same, its companies' gateways reaching the local Slack and Telegram.
+    pub async fn start_with_gateways(env: &[(&str, &str)], slack: &str, telegram: &str) -> Self {
+        Self::scripted(Setup {
+            env,
+            slack_api: Some(slack.to_owned()),
+            telegram_api: Some(telegram.to_owned()),
             ..Setup::default()
         })
         .await
@@ -204,6 +229,7 @@ impl TestApi {
             background_scheduling,
             run_leases,
             slack_api,
+            telegram_api,
         } = setup;
         limits::forget_counts().await;
         let mut vars: HashMap<&str, String> = HashMap::from([
@@ -255,6 +281,7 @@ impl TestApi {
             dns: Some(dns.clone()),
             account_link_issuer: None,
             slack_api,
+            telegram_api,
         };
         let app = build_app(config, options).await.expect("app");
         Self {

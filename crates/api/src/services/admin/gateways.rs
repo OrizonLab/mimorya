@@ -15,7 +15,8 @@ use mimorya_core::gateways::slack::{bot_token, signing_secret, slack_application
 use mimorya_core::gateways::{GatewayKind, gateway_name};
 use mimorya_db::repositories::audit::append_audit;
 use mimorya_db::repositories::gateways::{
-    GatewayPatch, NewGateway, create_gateway, delete_gateway, lock_gateway, update_gateway,
+    GatewayPatch, NewGateway, create_gateway, delete_gateway, get_gateway, lock_gateway,
+    update_gateway,
 };
 use mimorya_db::{TenantTx, is_unique_violation};
 use serde_json::{Map, Value, json};
@@ -23,9 +24,13 @@ use uuid::Uuid;
 
 use super::connectors::PERMISSION;
 use super::gateway_check::{application_of, other_workspace, scopes_metadata};
+use super::telegram_gateway::change_telegram_gateway;
 use super::{audit_entry, begin_change};
+use crate::secrets::SecretRead;
 use crate::services::AccessContext;
-use crate::services::gateways::{GatewayService, bot_token_name, signing_secret_name};
+use crate::services::gateways::{
+    GatewayService, bot_token_name, signing_secret_name, webhook_secret_name,
+};
 
 const NOT_FOUND: &str = "Passerelle introuvable";
 
@@ -123,6 +128,10 @@ pub async fn change_gateway(
     changes: GatewayChanges,
 ) -> anyhow::Result<()> {
     access.require_tenant_wide(PERMISSION)?;
+    // A gateway's service never changes: read before the lock.
+    if kind_of(gateways, access, id).await? == Some(GatewayKind::Telegram) {
+        return change_telegram_gateway(gateways, access, id, changes).await;
+    }
     let name = changes
         .name
         .as_deref()
@@ -196,14 +205,35 @@ pub async fn remove_gateway(
     id: Uuid,
 ) -> anyhow::Result<()> {
     access.require_tenant_wide(PERMISSION)?;
+    let tenant_id = access.subject.tenant_id;
     let mut tx = begin_change(gateways.db(), access, PERMISSION).await?;
     let Some(gateway) = lock_gateway(&mut tx, id).await? else {
         return Err(DomainError::not_found(NOT_FOUND).into());
     };
-    delete_gateway(&mut tx, id).await?;
     let secrets = gateways.secrets();
+    if GatewayKind::of(&gateway.kind) == Some(GatewayKind::Telegram) {
+        // Told, under the lock, to send its updates nowhere: a bot declared
+        // again meanwhile keeps its own webhook. At best: its updates then
+        // reach an unknown gateway, answered as such.
+        match secrets
+            .read(&mut tx, tenant_id, &bot_token_name(id))
+            .await?
+        {
+            SecretRead::Value(token) => {
+                if let Err(failure) = gateways.telegram().delete_webhook(&token).await {
+                    let reason = failure.message();
+                    tracing::warn!(gateway = %id, %reason, "Telegram webhook not removed");
+                }
+            }
+            _ => {
+                tracing::warn!(gateway = %id, "Telegram bot token unreadable: webhook not removed")
+            }
+        }
+    }
+    delete_gateway(&mut tx, id).await?;
     secrets.delete(&mut tx, &bot_token_name(id)).await?;
     secrets.delete(&mut tx, &signing_secret_name(id)).await?;
+    secrets.delete(&mut tx, &webhook_secret_name(id)).await?;
     let entry = audit_entry(access, "gateway.deleted", "gateway", id).metadata(json!({
         "name": gateway.name,
         "type": gateway.kind,
@@ -212,6 +242,18 @@ pub async fn remove_gateway(
     append_audit(&mut tx, entry).await?;
     tx.commit().await?;
     Ok(())
+}
+
+/// The service of the company's gateway `id`, if it has one.
+async fn kind_of(
+    gateways: &GatewayService,
+    access: &AccessContext,
+    id: Uuid,
+) -> anyhow::Result<Option<GatewayKind>> {
+    let mut tx = gateways.db().begin(access.subject.tenant_id).await?;
+    let gateway = get_gateway(&mut tx, id).await?;
+    tx.commit().await?;
+    Ok(gateway.and_then(|gateway| GatewayKind::of(&gateway.kind)))
 }
 
 /// What a change writes of the gateway itself.
