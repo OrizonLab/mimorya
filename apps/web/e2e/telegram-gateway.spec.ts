@@ -10,8 +10,8 @@
 // sends its updates nowhere and the address answers as to an unknown
 // gateway. Each step is read back from the API, each confirmation read.
 // Whatever happens, the bot is deleted with its links. A link someone else
-// accepted is refused, a lost link asked again, a link cancelled, none of
-// them linking anything. The rules themselves are tested on the API
+// accepted is refused, a link replaced from another page or lost asked
+// again, a link cancelled, none of them linking anything. The rules themselves are tested on the API
 // (`crates/api/tests/telegram_gateway_*.rs`).
 import { demo, expect, noError, signIn, test } from './support/fixtures';
 import { cardWith, openAdmin } from './support/admin';
@@ -204,10 +204,23 @@ test('a link someone else accepted is refused, a lost link asked again, a link c
   const again = await botAnswer(request, webhook, MARC_TELEGRAM, `/start ${first}`);
   expect(again).toContain('n’est plus valable');
 
-  // A link lost with the page: a new one is asked, the former one linking
-  // nothing.
+  // A link replaced from another page, or lost with the page: a new one is
+  // asked, the former ones linking nothing.
   await row.getByRole('button', { name: 'Relier mon compte Telegram' }).click();
   const second = codeOf(await shownLink(row));
+  // Replaced from another page: the link shown, which no longer carries the
+  // code under way, is withdrawn once the row is read again.
+  const { gateway } = await storedBot(page);
+  const elsewhere = await lea.request.post(`/api/account/gateways/${gateway?.id}/telegram-code`, {
+    headers: { 'X-Mimorya-Request': '1' },
+  });
+  expect(elsewhere.status()).toBe(200);
+  const lost = row.getByText('Vous n’avez plus le lien ? Demandez-en un nouveau.');
+  await expect(lost).toBeVisible({ timeout: 10_000 });
+  await expect(
+    row.getByRole('link', { name: `Ouvrir le bot @${BOT_USERNAME} dans Telegram` }),
+  ).toHaveCount(0);
+  // Lost with the page, likewise.
   await lea.reload();
   await expect(row.getByText('Vous n’avez plus le lien ? Demandez-en un nouveau.')).toBeVisible();
   await row.getByRole('button', { name: 'Demander un nouveau lien' }).click();

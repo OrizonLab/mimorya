@@ -7357,7 +7357,8 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     retiré, un par entreprise, jeton du même bot seulement, réservée aux
     administrateurs), `telegram_gateway_updates.rs` (secret seul, une fois, rien d'autre
     que le message privé d'une personne, chemin exact sans l'en-tête),
-    `telegram_gateway_links.rs` (code de la session, ouvert, accepté puis confirmé, volé,
+    `telegram_gateway_links.rs` (code de la session, ouvert, accepté puis confirmé, son
+    échéance listée telle que donnée à la demande, volé,
     oublié ou expiré sans rien relier, autre entreprise, bot en pause, sans `agent:use`),
     `telegram_gateway_consent.rs` (lien d'un collègue ouvert sans rien relier, accord
     donné à la seule dernière offre nommée, liaison jamais reprise, code et secret de leur entreprise seulement, codes expirés oubliés
@@ -7430,7 +7431,8 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
       jeton, réactivé, puis supprimé ; son webhook est alors retiré et l'adresse répond
       comme une passerelle inconnue ;
     - un second parcours : le lien de Léa accepté par Marc, qu'elle refuse (« Ce n'est
-      pas moi »), son code ne reliant plus rien ; un lien perdu avec la page, redemandé,
-      l'ancien ne reliant rien ; un lien annulé, ne reliant rien ;
+      pas moi »), son code ne reliant plus rien ; un lien remplacé depuis une autre page,
+      retiré de celle-ci, puis perdu avec la page et redemandé, les anciens ne reliant
+      rien ; un lien annulé, ne reliant rien ;
   - restent : conversations avec l'agent dans Telegram, validations par boutons, avis
     au responsable ; Teams.
