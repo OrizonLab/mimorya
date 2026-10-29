@@ -93,8 +93,10 @@ CREATE TABLE gateway_link_codes (
 );
 
 CREATE INDEX gateway_link_codes_expiry_idx ON gateway_link_codes (expires_at);
-CREATE INDEX gateway_link_codes_offer_idx ON gateway_link_codes (gateway_id, offered_external_id)
-  WHERE claimed_at IS NULL;
+-- One offer awaiting a Telegram user's consent on a bot: the last link they
+-- opened, the one the bot named last.
+CREATE UNIQUE INDEX gateway_link_codes_one_offer ON gateway_link_codes
+  (gateway_id, offered_external_id) WHERE claimed_at IS NULL;
 
 ALTER TABLE gateway_link_codes ENABLE ROW LEVEL SECURITY;
 

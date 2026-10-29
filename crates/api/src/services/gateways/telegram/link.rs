@@ -17,6 +17,7 @@ use chrono::{DateTime, Duration, Utc};
 use mimorya_core::DomainError;
 use mimorya_core::gateways::GatewayKind;
 use mimorya_core::gateways::telegram::{deep_link, link_code_hash};
+use mimorya_db::is_unique_violation;
 use mimorya_db::repositories::account_links::lock_active_account;
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::gateway_identities::{NewGatewayIdentity, put_gateway_identity};
@@ -138,7 +139,7 @@ impl GatewayService {
         else {
             return Err(DomainError::validation(NOTHING_TO_CONFIRM).into());
         };
-        let replaced = put_gateway_identity(
+        let replaced = match put_gateway_identity(
             &mut tx,
             NewGatewayIdentity {
                 tenant_id,
@@ -149,7 +150,15 @@ impl GatewayService {
                 display_name: Some(&claim.name),
             },
         )
-        .await?;
+        .await
+        {
+            Ok(replaced) => replaced,
+            // Linked to someone else by a confirmation under way.
+            Err(error) if is_unique_violation(&error) => {
+                return Err(DomainError::conflict(LINKED_ELSEWHERE).into());
+            }
+            Err(error) => return Err(error.into()),
+        };
         if replaced.other_person.is_some() {
             // Linked to someone else meanwhile: only they remove it.
             return Err(DomainError::conflict(LINKED_ELSEWHERE).into());

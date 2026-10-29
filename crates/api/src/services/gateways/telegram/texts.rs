@@ -22,10 +22,13 @@ pub(super) fn offer(owner: &str) -> String {
     )
 }
 
-/// To someone who accepted the link they were offered.
-pub(super) const CLAIMED: &str = "C’est noté. Confirmez maintenant la liaison dans \
-     l’application, page « Mon compte », section « Messageries reliées » : votre compte \
-     Telegram n’est relié qu’une fois la liaison confirmée.";
+/// To someone who accepted the link of the person `owner`'s code.
+pub(super) fn claimed(owner: &str) -> String {
+    format!(
+        "C’est noté : votre compte Telegram sera relié au compte de {owner} une fois la \
+         liaison confirmée dans l’application, {LINKS_PAGE}."
+    )
+}
 
 /// To someone who accepts a link no one offered them.
 pub(super) const NOTHING_OFFERED: &str = "Aucune liaison n’attend votre accord : ouvrez \

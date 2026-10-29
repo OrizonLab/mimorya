@@ -74,7 +74,9 @@ pub async fn link_code_owner(
 
 /// Offers the code `code_hash` to the Telegram user `external_id`, who sent
 /// it back, if it is the gateway's, unexpired at `now` and not accepted by
-/// anyone yet: whose code it is. An earlier offer of it is replaced.
+/// anyone yet: whose code it is. An earlier offer of it is replaced, and so
+/// is any other offer awaiting them: they accept only the last link the bot
+/// named to them.
 pub async fn offer_link_code(
     conn: &mut PgConnection,
     gateway_id: Uuid,
@@ -82,6 +84,14 @@ pub async fn offer_link_code(
     now: DateTime<Utc>,
     external_id: &str,
 ) -> sqlx::Result<Option<Uuid>> {
+    sqlx::query(
+        "update gateway_link_codes set offered_external_id = null, offered_at = null \
+         where gateway_id = $1 and offered_external_id = $2 and claimed_at is null",
+    )
+    .bind(gateway_id)
+    .bind(external_id)
+    .execute(&mut *conn)
+    .await?;
     sqlx::query_scalar(
         "update gateway_link_codes set offered_external_id = $4, offered_at = $3 \
          where gateway_id = $1 and code_hash = $2 and expires_at > $3 \
@@ -95,10 +105,11 @@ pub async fn offer_link_code(
     .await
 }
 
-/// The code last offered to the Telegram user `claim.external_id` on the
-/// gateway, unexpired at `now` and not accepted yet: accepted by them, kept
-/// with how Telegram showed them; whose code it was. Never one that would
-/// link them to someone while they are linked to someone else.
+/// The code offered to the Telegram user `claim.external_id` on the gateway
+/// (the last link the bot named to them), unexpired at `now` and not
+/// accepted yet: accepted by them, kept with how Telegram showed them; whose
+/// code it was. Never one that would link them to someone while they are
+/// linked to someone else.
 pub async fn accept_offered_code(
     conn: &mut PgConnection,
     gateway_id: Uuid,
@@ -112,7 +123,7 @@ pub async fn accept_offered_code(
          and c.offered_external_id = $2 and c.expires_at > $3 and c.claimed_at is null \
          and not exists (select 1 from gateway_identities i where i.gateway_id = c.gateway_id \
          and i.external_id = c.offered_external_id and i.user_id <> c.user_id) \
-         order by c.offered_at desc limit 1 for update) \
+         for update) \
          and claimed_at is null returning user_id",
     )
     .bind(gateway_id)

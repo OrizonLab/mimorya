@@ -1,9 +1,10 @@
 //! What the company's bot answers a person's own message in their private
 //! chat (ADR-133). A `/start` carrying a link code is that code sent back:
 //! the bot names whose account it links and offers it to them, never when
-//! their Telegram account is linked to someone else. `/oui` accepts the
-//! code last offered to them: they are kept with it, for the session that
-//! asked for it to confirm (`link`). So no one's Telegram account is linked
+//! their Telegram account is linked to someone else; their earlier offers
+//! are withdrawn. `/oui` accepts the one offer awaiting them, the last link
+//! the bot named, whose account it names again: they are kept with it, for
+//! the session that asked for it to confirm (`link`). So no one's Telegram account is linked
 //! to another's account unless they accepted it knowing whose, nor to their
 //! own unless their session saw whom it came from. Anyone else is told how
 //! to link their account, or, once linked, to whose account it is linked
@@ -83,8 +84,8 @@ async fn offer(
     Ok(texts::offer(&name_of(tx, owner).await?))
 }
 
-/// Accepts the code last offered to whoever `claim` names: kept with it
-/// for the session that asked for it to confirm.
+/// Accepts the one offer awaiting whoever `claim` names: kept with it for
+/// the session that asked for it to confirm.
 async fn accept(
     tx: &mut TenantTx,
     (tenant_id, gateway_id): (Uuid, Uuid),
@@ -99,7 +100,7 @@ async fn accept(
         .resource("gateway", gateway_id)
         .metadata(json!({ "externalId": claim.external_id }));
     append_audit(tx, entry).await?;
-    Ok(texts::CLAIMED.to_owned())
+    Ok(texts::claimed(&name_of(tx, owner).await?))
 }
 
 /// The name the company gave the person `user_id`.

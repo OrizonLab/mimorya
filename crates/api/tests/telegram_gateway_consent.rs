@@ -1,6 +1,7 @@
 //! No one's Telegram account is linked to another's account unknowingly
 //! (ADR-133): whoever opens a link is told whose account it links, and
-//! only accepting it in Telegram proposes the link; an account linked to
+//! only accepting it in Telegram proposes the link, the last one the bot
+//! named and no earlier one; an account linked to
 //! someone is never taken from them by another's code, which only they
 //! remove. A code is its own company's bot's only, and every company's
 //! expired codes are forgotten.
@@ -63,6 +64,55 @@ async fn no_one_s_telegram_account_is_linked_to_another_s_account_unknowingly() 
         LEA_TELEGRAM.to_string()
     );
     assert_eq!(of_person(&marc, id).await["linked"], Value::Null);
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_consent_accepts_the_last_link_named_only() {
+    let telegram = FakeTelegram::start().await;
+    let api = TestApi::start_with_telegram(&SSO_DEPLOYMENT, &telegram.url).await;
+    let (paul, lea) = (api.sign_in(user::PAUL).await, api.sign_in(user::LEA).await);
+    let marc = api.sign_in(user::MARC).await;
+    let id = declare_telegram(&paul).await;
+    let start = |code: &str| format!("/start {code}");
+
+    // Marc's link, ignored; then her own, accepted, whose account named.
+    write(
+        &api,
+        &telegram,
+        id,
+        1,
+        LEA,
+        &start(&ask_code(&marc, id).await),
+    )
+    .await;
+    let hers = ask_code(&lea, id).await;
+    let told = open_and_accept(&api, &telegram, id, 2, LEA, &hers).await;
+    assert!(told.contains("au compte de Léa Fontaine"), "{told}");
+    // Accepting again accepts nothing: not Marc's link she ignored.
+    let again = write(&api, &telegram, id, 4, LEA, "/oui").await;
+    assert!(again.starts_with("Aucune liaison"), "{again}");
+    assert_eq!(confirm(&marc, id).await.status, StatusCode::BAD_REQUEST);
+
+    // Marc's link, then hers, which someone else opens after her: her
+    // consent accepts nothing, Marc's least of all.
+    write(
+        &api,
+        &telegram,
+        id,
+        5,
+        LEA,
+        &start(&ask_code(&marc, id).await),
+    )
+    .await;
+    let hers = ask_code(&lea, id).await;
+    write(&api, &telegram, id, 6, LEA, &start(&hers)).await;
+    let marc_telegram = (MARC_TELEGRAM, MARC_USERNAME);
+    write(&api, &telegram, id, 7, marc_telegram, &start(&hers)).await;
+    let told = write(&api, &telegram, id, 8, LEA, "/oui").await;
+    assert!(told.starts_with("Aucune liaison"), "{told}");
+    assert_eq!(confirm(&marc, id).await.status, StatusCode::BAD_REQUEST);
+    assert_eq!(confirm(&lea, id).await.status, StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]

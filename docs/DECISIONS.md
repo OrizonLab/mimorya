@@ -7307,9 +7307,11 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     - ouvert dans Telegram, le bot reçoit `/start <code>` : il nomme à qui l'a ouvert
       le compte de l'application que le lien relierait (« au compte de Marc Lefèvre »)
       et le lui propose (`gateway.link_code_offered`) ; jamais si son compte Telegram est
-      déjà relié à une autre personne ;
-    - qui l'a ouvert l'accepte en envoyant `/oui` : son compte Telegram est gardé avec le
-      code, une fois (le premier), et c'est audité (`gateway.link_code_claimed`) ;
+      déjà relié à une autre personne ; une seule offre l'attend par bot, la dernière
+      nommée, les précédentes retirées (index unique) ;
+    - qui l'a ouvert l'accepte en envoyant `/oui` : cette offre seule, dont le bot nomme
+      encore le compte ; son compte Telegram est gardé avec le code, une fois (le
+      premier), et c'est audité (`gateway.link_code_claimed`) ;
     - sa session montre le nom que Telegram a donné de ce compte et son identifiant (un
       nom libre ne commence jamais par `@`, que seul un nom d'utilisateur porte, et ne
       cache aucun caractère), et elle confirme
@@ -7321,8 +7323,8 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
       collègue fait ouvrir ne relie le compte Telegram de personne au sien sans que son
       titulaire l'accepte en sachant à quel compte ;
     - une liaison n'est jamais reprise par le code d'un autre : seul son titulaire la
-      retire (la base refuse aussi la confirmation qui la reprendrait, 409) ; le bot dit
-      ensuite à qui écrit de quel compte le sien est relié ;
+      retire (la confirmation qui la reprendrait est refusée, 409, même concurrente) ; le
+      bot dit ensuite à qui écrit de quel compte le sien est relié ;
     - reste ce qu'aucun code n'empêche : une personne qui accepte en connaissance de
       cause de relier son compte Telegram au compte d'un autre ; le bot le lui a dit ;
   - **données** (migration `0056`) :
@@ -7336,7 +7338,9 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     - `gateway_link_codes` (RLS, d'un bot Telegram seulement) garde les codes, à qui
       chacun a été proposé et qui l'a accepté, oubliés à expiration par le balayage
       (`system_purge_gateway_link_codes`) ;
-  - **lot 13a sans écrans** : l'interface ne montre encore que les passerelles Slack.
+  - **lot 13a sans écrans** : l'interface ne montre encore que les passerelles Slack ;
+    les textes du bot désignent la section « Messageries reliées » de « Mon compte » où
+    les écrans du lot suivant la montreront (d'ici là, la liaison se fait par l'API).
     À une personne reliée qui écrit au bot, il répond que la conversation y est à venir.
 - **Conséquences** :
   - une troisième route reçoit des requêtes sans l'en-tête du navigateur ; seul son
@@ -7354,8 +7358,8 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     que le message privé d'une personne, chemin exact sans l'en-tête),
     `telegram_gateway_links.rs` (code de la session, ouvert, accepté puis confirmé, volé,
     oublié ou expiré sans rien relier, autre entreprise, bot en pause, sans `agent:use`),
-    `telegram_gateway_consent.rs` (lien d'un collègue ouvert sans rien relier, liaison
-    jamais reprise, code et secret de leur entreprise seulement, codes expirés oubliés
+    `telegram_gateway_consent.rs` (lien d'un collègue ouvert sans rien relier, accord
+    donné à la seule dernière offre nommée, liaison jamais reprise, code et secret de leur entreprise seulement, codes expirés oubliés
     dans chaque entreprise), `crates/db/tests/definer_functions.rs` ;
   - restent : écrans de Telegram, conversations, validations par boutons, avis au
     responsable ; Teams.
