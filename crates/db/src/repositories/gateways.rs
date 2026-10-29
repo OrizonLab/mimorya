@@ -1,8 +1,9 @@
 //! Conversation gateways a company declares (ADR-125): one per service and
 //! company, with what the service said of the application when it was
-//! declared; a request from the service finds its company by the gateway it
-//! names; the events taken are kept by identifier a day, so that a retry
-//! is taken once.
+//! declared or last checked, its token's permissions among it (ADR-132); a
+//! request from the service finds its company by the gateway it names; the
+//! events taken are kept by identifier a day, so that a retry is taken
+//! once.
 
 use chrono::{DateTime, Utc};
 use sqlx::{PgConnection, PgPool};
@@ -17,12 +18,17 @@ pub struct GatewayRow {
     pub workspace_id: String,
     pub workspace_name: String,
     pub bot_user_id: String,
+    /// The permissions the service said the application's token has, if
+    /// it said them.
+    pub granted_scopes: Option<Vec<String>>,
+    /// When the service was last asked.
+    pub scopes_checked_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
 
 const SELECT: &str = "select id, kind, name, enabled, workspace_id, workspace_name, bot_user_id, \
-    created_at, updated_at from gateways";
+    granted_scopes, scopes_checked_at, created_at, updated_at from gateways";
 
 pub struct NewGateway<'a> {
     pub tenant_id: Uuid,
@@ -32,6 +38,8 @@ pub struct NewGateway<'a> {
     pub workspace_id: &'a str,
     pub workspace_name: &'a str,
     pub bot_user_id: &'a str,
+    /// The permissions the service said its token has, if it said them.
+    pub granted_scopes: Option<&'a [String]>,
 }
 
 /// What a change sets: `None` leaves a field as it stands.
@@ -43,6 +51,9 @@ pub struct GatewayPatch<'a> {
     /// token: its workspace's name and its bot user.
     pub workspace_name: Option<&'a str>,
     pub bot_user_id: Option<&'a str>,
+    /// The service asked again: the permissions it said the token has, if
+    /// it said them.
+    pub granted_scopes: Option<Option<&'a [String]>>,
 }
 
 /// The company's gateways, by service.
@@ -76,7 +87,8 @@ pub async fn create_gateway(
 ) -> sqlx::Result<Uuid> {
     sqlx::query_scalar(
         "insert into gateways (tenant_id, kind, name, enabled, workspace_id, workspace_name, \
-         bot_user_id) values ($1, $2, $3, $4, $5, $6, $7) returning id",
+         bot_user_id, granted_scopes, scopes_checked_at) \
+         values ($1, $2, $3, $4, $5, $6, $7, $8, now()) returning id",
     )
     .bind(gateway.tenant_id)
     .bind(gateway.kind)
@@ -85,6 +97,7 @@ pub async fn create_gateway(
     .bind(gateway.workspace_id)
     .bind(gateway.workspace_name)
     .bind(gateway.bot_user_id)
+    .bind(gateway.granted_scopes)
     .fetch_one(conn)
     .await
 }
@@ -98,13 +111,40 @@ pub async fn update_gateway(
     sqlx::query(
         "update gateways set name = coalesce($2, name), enabled = coalesce($3, enabled), \
          workspace_name = coalesce($4, workspace_name), \
-         bot_user_id = coalesce($5, bot_user_id), updated_at = now() where id = $1",
+         bot_user_id = coalesce($5, bot_user_id), \
+         granted_scopes = case when $6 then $7 else granted_scopes end, \
+         scopes_checked_at = case when $6 then now() else scopes_checked_at end, \
+         updated_at = now() where id = $1",
     )
     .bind(id)
     .bind(patch.name)
     .bind(patch.enabled)
     .bind(patch.workspace_name)
     .bind(patch.bot_user_id)
+    .bind(patch.granted_scopes.is_some())
+    .bind(patch.granted_scopes.flatten())
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
+/// Keeps what the service said of the gateway `id`'s application when it
+/// was asked again (ADR-132): its workspace's name, its bot user and its
+/// token's permissions. Not a change of the gateway: `updated_at` stays.
+pub async fn record_gateway_check(
+    conn: &mut PgConnection,
+    id: Uuid,
+    (workspace_name, bot_user_id): (&str, &str),
+    granted_scopes: Option<&[String]>,
+) -> sqlx::Result<()> {
+    sqlx::query(
+        "update gateways set workspace_name = $2, bot_user_id = $3, granted_scopes = $4, \
+         scopes_checked_at = now() where id = $1",
+    )
+    .bind(id)
+    .bind(workspace_name)
+    .bind(bot_user_id)
+    .bind(granted_scopes)
     .execute(conn)
     .await?;
     Ok(())

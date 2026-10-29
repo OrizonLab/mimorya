@@ -4,13 +4,15 @@
 //! proves it comes from it (`signature`), which events reach the agent
 //! (`events`), when Slack proves a Slack user is a person (`identity`), how
 //! the application's text is written in Slack's markup (`mrkdwn`, ADR-127),
-//! and the buttons a validation is given with there (`interactions`,
-//! ADR-129).
+//! the buttons a validation is given with there (`interactions`, ADR-129),
+//! and whether its token has the permissions it asks for (`scopes`,
+//! ADR-132).
 
 mod events;
 mod identity;
 mod interactions;
 mod mrkdwn;
+mod scopes;
 mod signature;
 
 use regex::Regex;
@@ -25,6 +27,9 @@ pub use interactions::{
     ShownAction, approval_blocks, approval_choice, buttons_in, decided_blocks, validated_in_slack,
 };
 pub use mrkdwn::{bounded, escaped, from_markdown, plain};
+pub use scopes::{
+    MAX_SCOPES, extra_scopes, granted_scopes, missing_scopes, missing_scopes_refusal,
+};
 pub use signature::{MAX_SKEW_SECONDS, SignatureProblem, signature, verify};
 
 /// The permissions (bot token scopes) the application asks for: write its

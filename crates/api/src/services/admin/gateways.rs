@@ -1,11 +1,13 @@
 //! The conversation gateways of a company, declared by its connector
 //! administrators (ADR-125): its Slack application, one per company. Its
-//! bot's token is checked with Slack before anything is kept (`auth.test`):
-//! the workspace and bot user Slack names are kept, the token and the
-//! signing secret sealed in the secret store, never shown nor audited. A new
-//! token must be the application's in the same workspace: the identities
-//! people linked are that workspace's. Under the administration lock,
-//! audited; deleting a gateway deletes its people's identities.
+//! bot's token is checked with Slack before anything is kept (`auth.test`,
+//! `gateway_check`): the workspace, bot user and permissions Slack names
+//! are kept, a token lacking one the application asks for refused
+//! (ADR-132), the token and the signing secret sealed in the secret store,
+//! never shown nor audited. A new token must be the application's in the
+//! same workspace: the identities people linked are that workspace's.
+//! Under the administration lock, audited; deleting a gateway deletes its
+//! people's identities.
 
 use mimorya_connectors::slack::SlackWorkspace;
 use mimorya_core::DomainError;
@@ -20,6 +22,7 @@ use serde_json::{Map, Value, json};
 use uuid::Uuid;
 
 use super::connectors::PERMISSION;
+use super::gateway_check::{application_of, other_workspace, scopes_metadata};
 use super::{audit_entry, begin_change};
 use crate::services::AccessContext;
 use crate::services::gateways::{GatewayService, bot_token_name, signing_secret_name};
@@ -53,7 +56,7 @@ pub async fn declare_slack_gateway(
         .map_err(DomainError::validation)?;
     gateways.secrets().require()?;
     // Asked of Slack before the lock: a slow answer holds no change.
-    let workspace = workspace_of(gateways, &application.bot_token).await?;
+    let workspace = application_of(gateways, &application.bot_token).await?;
     let tenant_id = access.subject.tenant_id;
     let mut tx = begin_change(gateways.db(), access, PERMISSION).await?;
     let created = create_gateway(
@@ -66,6 +69,7 @@ pub async fn declare_slack_gateway(
             workspace_id: &workspace.workspace_id,
             workspace_name: &workspace.workspace_name,
             bot_user_id: &workspace.bot_user_id,
+            granted_scopes: workspace.scopes.as_deref(),
         },
     )
     .await;
@@ -104,6 +108,7 @@ pub async fn declare_slack_gateway(
         "workspaceId": workspace.workspace_id,
         "workspaceName": workspace.workspace_name,
         "botUserId": workspace.bot_user_id,
+        "scopes": scopes_metadata(&workspace.scopes),
         "secretsStored": true,
     }));
     append_audit(&mut tx, entry).await?;
@@ -140,7 +145,7 @@ pub async fn change_gateway(
         gateways.secrets().require()?;
     }
     let workspace = match &token {
-        Some(token) => Some(workspace_of(gateways, token).await?),
+        Some(token) => Some(application_of(gateways, token).await?),
         None => None,
     };
     let tenant_id = access.subject.tenant_id;
@@ -151,13 +156,7 @@ pub async fn change_gateway(
     if let Some(workspace) = &workspace
         && workspace.workspace_id != gateway.workspace_id
     {
-        return Err(DomainError::validation(format!(
-            "Ce jeton est celui d’une application d’un autre espace de travail Slack ({}) : les \
-             comptes reliés sont ceux de l’espace « {} ». Supprimez la passerelle pour en déclarer \
-             une autre",
-            workspace.workspace_name, gateway.workspace_name
-        ))
-        .into());
+        return Err(other_workspace(workspace, &gateway).into());
     }
     apply(&mut tx, id, &name, changes.enabled, &workspace).await?;
     let secrets = gateways.secrets();
@@ -180,6 +179,7 @@ pub async fn change_gateway(
     }
     if let Some(workspace) = &workspace {
         metadata.insert("botUserId".into(), json!(workspace.bot_user_id));
+        metadata.insert("scopes".into(), scopes_metadata(&workspace.scopes));
     }
     metadata.insert("botTokenChanged".into(), json!(token.is_some()));
     metadata.insert("signingSecretChanged".into(), json!(secret.is_some()));
@@ -227,17 +227,8 @@ async fn apply(
         enabled,
         workspace_name: workspace.as_ref().map(|w| w.workspace_name.as_str()),
         bot_user_id: workspace.as_ref().map(|w| w.bot_user_id.as_str()),
+        granted_scopes: workspace.as_ref().map(|w| w.scopes.as_deref()),
     };
     update_gateway(tx, id, patch).await?;
     Ok(())
-}
-
-/// The workspace and bot user Slack says the token is the application's
-/// in; Slack's refusal said in French.
-async fn workspace_of(gateways: &GatewayService, token: &str) -> anyhow::Result<SlackWorkspace> {
-    gateways
-        .slack()
-        .workspace(token)
-        .await
-        .map_err(|failure| DomainError::validation(failure.message()).into())
 }

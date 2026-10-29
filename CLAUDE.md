@@ -48,7 +48,8 @@ Repères à l'intérieur des crates :
   conversation : application Slack déclarée, signature de ses événements, messages
   pris, preuve qu'un utilisateur Slack est la personne d'un compte, ADR-125 ; texte
   écrit dans Slack en son balisage et message lu en texte simple, `mrkdwn.rs`, ADR-127 ;
-  boutons de validation et bouton pressé, `interactions.rs`, ADR-129).
+  boutons de validation et bouton pressé, `interactions.rs`, ADR-129 ; permissions du
+  jeton lues, manquantes et en plus, `scopes.rs`, ADR-132).
 - `db/migrations/` (SQL numéroté, source de vérité du schéma),
   `db/src/repositories/` (un fichier par entité ; la mémoire : `memory.rs`, recherche
   hybride `memory_search.rs`, vecteurs `memory_embeddings.rs`, ADR-074 ; fenêtres des
@@ -152,7 +153,8 @@ Repères à l'intérieur des crates :
   message direct (`approver_notices.rs`, `approver_text.rs`), ADR-130 ; conversation
   directe vérifiée auprès de Slack avant que rien n'y soit dit (`direct.rs`), ADR-131 ;
   déclarées par
-  `services/admin/gateways.rs`),
+  `services/admin/gateways.rs`, ce que Slack dit du jeton et ses permissions vérifiées
+  à la demande par `services/admin/gateway_check.rs`, ADR-132),
   `api/src/services/notification_settings.rs` (e-mails que chacun choisit de recevoir,
   lus au moment d'envoyer chaque avis, ADR-094),
   `api/src/services/skill_proposal_notice/` (propositions de l'agent annoncées par e-mail
@@ -217,7 +219,8 @@ Repères à l'intérieur des crates :
   opération, ADR-113, et leurs opérations importées d'une description OpenAPI, JSON ou
   YAML converti dans le navigateur, ADR-115, et l'application Microsoft 365, ADR-118,
   dont l'écriture permise, ADR-120, et le client Google Workspace, ADR-124, et les
-  passerelles de conversation, l'application Slack, ADR-126, `admin/llm/` : modèle des conversations et modèle de contrôle des réponses, ADR-108, recherche dans la mémoire, leçons et limites des missions, ADR-075,
+  passerelles de conversation, l'application Slack, ADR-126, et ses permissions
+  vérifiées, ADR-132, `admin/llm/` : modèle des conversations et modèle de contrôle des réponses, ADR-108, recherche dans la mémoire, leçons et limites des missions, ADR-075,
   ADR-077, ADR-093, `admin/users/` :
   comptes, dont l'absence d'un collaborateur empêché, ADR-079, et `admin/skills/` :
   compétences, propositions de l'agent, ADR-101, cas d'évaluation et évaluations,

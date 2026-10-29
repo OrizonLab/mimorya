@@ -9,66 +9,20 @@ mod support;
 use axum::http::StatusCode;
 use chrono::{DateTime, Duration, Utc};
 use mimorya_agent::testing::ScriptedStep;
-use mimorya_api::services::AccessContext;
-use mimorya_api::services::AuthIdentity;
-use mimorya_api::services::admin::{NewSlackGatewayInput, declare_slack_gateway};
-use mimorya_connectors::testing::{BOT_TOKEN, FakeSlack, SIGNING_SECRET, WORKSPACE, signed};
+use mimorya_connectors::testing::{FakeSlack, SIGNING_SECRET, WORKSPACE, signed};
 use mimorya_core::demo::{tenant, user};
 use mimorya_core::gateways::slack::signature as sign;
 use mimorya_db::repositories::gateways::purge_gateway_events;
 use serde_json::json;
 use support::TestApi;
-use support::companies;
 use support::email;
 use support::gateways::{declare_slack, envelope, offered_code, post_signed};
-use support::queue::as_owner;
+use support::slack_companies::{OTHER_SECRET, other_company, other_company_with_admin};
 use support::slack_conversations::{
     MARC_DM, MARC_SLACK, answer, event_id, linked, settle, write, written,
 };
 use support::sso::SSO_DEPLOYMENT;
 use uuid::Uuid;
-
-/// Another company's own signing secret.
-const OTHER_SECRET: &str = "0ther5ecret0ther5ecret0ther5ecr";
-
-/// Another company, and its Slack gateway.
-async fn other_company(api: &TestApi, slug: &str) -> (Uuid, Uuid) {
-    let (tenant_id, gateway, _) = other_company_with_admin(api, slug).await;
-    (tenant_id, gateway)
-}
-
-/// Another company, its Slack gateway, and its administrator's rights.
-async fn other_company_with_admin(api: &TestApi, slug: &str) -> (Uuid, Uuid, AccessContext) {
-    let acme = companies::create(api, slug, &format!("jeanne.martin@{slug}.example")).await;
-    // Her invitation accepted.
-    as_owner(
-        "update users set status = 'active' where id = $1",
-        acme.admin_id,
-    )
-    .await;
-    let jeanne: AccessContext = api
-        .app
-        .services
-        .access
-        .context(AuthIdentity {
-            tenant_id: acme.tenant_id,
-            user_id: acme.admin_id,
-            session_id: Uuid::nil(),
-            must_change_password: false,
-        })
-        .await
-        .unwrap();
-    let input = NewSlackGatewayInput {
-        name: "Slack Acme".into(),
-        bot_token: BOT_TOKEN.into(),
-        signing_secret: OTHER_SECRET.into(),
-        enabled: true,
-    };
-    let gateway = declare_slack_gateway(&api.app.services.gateways, &jeanne, input)
-        .await
-        .unwrap();
-    (acme.tenant_id, gateway, jeanne)
-}
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]

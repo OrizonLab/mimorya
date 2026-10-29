@@ -200,6 +200,7 @@ async fn only_a_gateway_event_goes_without_the_header() {
         format!("/gateways/slack//{id}"),
         format!("/gateways/teams/{id}"),
         "/admin/gateways/slack".to_owned(),
+        format!("/admin/gateways/{id}/check"),
         "/account/gateways/link".to_owned(),
         "/account/gateways/link/preview".to_owned(),
     ] {

@@ -15,8 +15,9 @@
 //! the public one. The DNS a domain's proof is read from is the tests' own,
 //! where they publish records on 127.0.0.1:4102 (`DNS_ADDRESS`, ADR-069).
 //! The companies' Slack gateways reach a local Slack on 127.0.0.1:4103
-//! (`SLACK_ADDRESS`), which knows Léa's Slack user and lists what the
-//! gateways posted (ADR-126); what she writes there is answered apart
+//! (`SLACK_ADDRESS`), which knows Léa's Slack user, lists what the
+//! gateways posted (ADR-126) and is told the permissions its token has
+//! (`POST /test/scopes`, ADR-132); what she writes there is answered apart
 //! (`slack`, ADR-128).
 //! A company's embedding model is a test one, whatever it chooses: no
 //! provider is ever reached (ADR-074). A finished run reread for a lesson

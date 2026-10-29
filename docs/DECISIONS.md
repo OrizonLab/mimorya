@@ -6742,7 +6742,7 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
   - le client de l'API Web de Slack est borné en temps (dix secondes) et en taille,
     ne suit aucune redirection et n'est jamais relancé (`connectors/src/slack/`) ;
     `BuildOptions::slack_api` le fait parler, dans les tests, à un Slack simulé
-    (`connectors/src/testing/slack.rs`), qui signe les événements comme Slack ;
+    (`connectors/src/testing/slack/`), qui signe les événements comme Slack ;
   - tests : `crates/core/src/gateways/` (signature, dont l'exemple de la
     documentation de Slack ; événements pris ; preuve de l'identité),
     `crates/api/tests/slack_gateway_admin.rs`, `slack_gateway_events.rs` (dont
@@ -7180,8 +7180,8 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
   - une application déclarée sans `im:read` ne lance plus rien : chaque personne reliée
     qui lui écrit, ou qui presse un bouton, est prévenue dans sa propre conversation de
     faire ajouter la permission, et c'est journalisé (une personne non reliée qui écrit
-    reçoit son lien comme avant). Vérifier les permissions du jeton dès sa déclaration (en-tête
-    `x-oauth-scopes`) est un lot à venir ;
+    reçoit son lien comme avant). Les permissions du jeton sont vérifiées dès sa
+    déclaration depuis ADR-132 ;
   - un appel de plus à Slack par message ou bouton pressé ; garder en cache à qui est
     une conversation directe, qui ne change pas, est une amélioration possible ;
   - le Slack simulé des tests nomme la conversation directe `D…` de la personne `U…` du
@@ -7198,5 +7198,66 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     hors de tout fil), `slack_gateway_validations.rs` (bouton pressé dans la
     conversation d'un autre : rien de dit ni de décidé), `slack_gateway_admin.rs`
     (permissions demandées) ;
-  - reste à venir : les permissions de l'application vérifiées dès sa déclaration,
-    Telegram, Teams.
+  - reste à venir : Telegram, Teams.
+
+## ADR-132 — Permissions de l'application Slack vérifiées à sa déclaration et à la demande (passerelles, lot 12h)
+
+- **Date** : 2026-10-29 · **Statut** : acceptée · complète ADR-125, ADR-126 et ADR-131
+- **Contexte** : une application Slack installée sans l'une des permissions demandées
+  (`BOT_SCOPES`) ne peut pas faire ce que la passerelle attend d'elle. Sans `im:read`
+  en particulier, elle ne répond plus à personne (ADR-131). Jusqu'ici, l'administrateur
+  ne l'apprenait qu'en voyant les personnes prévenues une à une. Une application qui a
+  plus de permissions que demandé donne de son côté à la plateforme un jeton plus fort
+  qu'il ne lui faut. Slack dit les permissions d'un jeton avec chacune de ses réponses
+  (en-tête `x-oauth-scopes`).
+- **Décision** :
+  - **lues avec `auth.test`** : le client Slack lit l'en-tête `x-oauth-scopes` (au plus
+    200 noms, chacun écrit comme Slack nomme une permission, sinon « non dites ») ;
+  - **refusé à la déclaration** comme au changement de jeton, un jeton auquel manque une
+    permission demandée : le refus nomme les permissions manquantes et ce qu'il faut
+    faire (les ajouter dans « OAuth & Permissions », réinstaller l'application, redonner
+    son jeton). Rien n'est gardé ;
+  - **Slack ne les disant pas** : le jeton est pris et ses permissions sont « non
+    vérifiées » ; ADR-131 continue de protéger chaque échange ;
+  - **gardées avec la passerelle** (`granted_scopes`, `scopes_checked_at`, migration
+    `0055`), relues à chaque nouveau jeton ;
+  - **vérifiées à la demande** (`POST /admin/gateways/{id}/check`, `connector:manage`,
+    sous le verrou de l'administration) avec le jeton enregistré. Ce que Slack dit est
+    gardé (nom de l'espace de travail, bot, permissions) et audité
+    (`gateway.checked` : permissions dites ou non, manquantes, en plus ; jamais le
+    jeton). La vérification ne refuse pas ce qui manque : elle le montre ; un refus de
+    Slack (jeton révoqué), un jeton illisible ou d'un autre espace de travail sont dits
+    sans rien changer ; un jeton remplacé pendant la vérification, relu sous le verrou,
+    n'est pas celui dont Slack a parlé : rien n'est gardé (conflit). Une vérification
+    n'est pas une modification de la passerelle (`updated_at` inchangé). La passerelle
+    d'une autre entreprise, dont l'identifiant figure dans l'adresse de ses
+    événements, répond comme une absente : rien n'en est lu ;
+  - **montrées sur la carte** de la passerelle, avec le bouton « Vérifier auprès de
+    Slack » : permissions manquantes et ce qu'il faut faire, ou toutes accordées avec la
+    date de la vérification ; permissions en plus de celles demandées, à retirer si rien
+    d'autre ne s'en sert ; ou « non vérifiées » (passerelle déclarée avant ce lot, ou
+    Slack ne les disant pas).
+- **Conséquences** :
+  - une application mal installée est refusée dès sa déclaration, avec ce qui lui
+    manque, au lieu de ne répondre à personne ;
+  - une passerelle déclarée avant ce lot (sans `im:read`) se vérifie d'un clic ;
+  - les audits `gateway.created` et `gateway.updated` (nouveau jeton) disent aussi ce que
+    Slack a dit des permissions ;
+  - le Slack simulé dit les permissions de son jeton (celles demandées par défaut) ; un
+    test les change (`grant_scopes`, ou `POST /test/scopes` pour les tests de bout en
+    bout) ;
+  - tests : `crates/core/src/gateways/slack/scopes.rs` (en-tête lu, noms refusés,
+    manquantes et en plus, refus nommé), `crates/api/tests/slack_gateway_scopes.rs`
+    (déclaration et changement de jeton refusés sans une permission, nommée ; pris
+    quand Slack ne dit rien ; permissions en plus montrées ; vérification à la demande,
+    gardée et auditée, sans le jeton, sans modifier la passerelle ; jeton refusé par
+    Slack : rien de changé ; passerelle inconnue : introuvable ; réservée aux
+    administrateurs des connecteurs), `slack_gateway_scope_checks.rs` (passerelle d'une
+    autre entreprise : comme une absente, rien d'elle lu ni changé, tracé chez qui l'a
+    demandée ; jeton illisible ou d'un autre espace de travail : dit, rien de gardé ni
+    audité ; jeton remplacé pendant que Slack est interrogé : conflit, rien de gardé ni
+    audité ; forme des permissions gardées imposée par la base),
+    `slack_gateway_events.rs` (la vérification exige l'en-tête des requêtes du
+    navigateur), `apps/web/e2e/slack-gateway-scopes.spec.ts` (déclaration refusée,
+    puis carte : toutes accordées, manquante et en plus nommées, rendues) ;
+  - reste à venir : Telegram, Teams.

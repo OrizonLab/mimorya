@@ -17,6 +17,9 @@ pub struct SlackWorkspace {
     pub workspace_id: String,
     pub workspace_name: String,
     pub bot_user_id: String,
+    /// The permissions Slack says the token has (`x-oauth-scopes`,
+    /// ADR-132); `None` when it does not say them as it writes them.
+    pub scopes: Option<Vec<String>>,
 }
 
 /// A person as Slack knows them.

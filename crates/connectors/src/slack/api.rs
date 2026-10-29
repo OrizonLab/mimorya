@@ -12,7 +12,7 @@ use url::Url;
 
 use super::{SlackConversation, SlackFailure, SlackPerson, SlackWorkspace};
 use crate::outbound::{TOO_SLOW, UNREACHABLE};
-use mimorya_core::gateways::slack::{is_person, is_workspace};
+use mimorya_core::gateways::slack::{granted_scopes, is_person, is_workspace};
 
 /// Slack's Web API.
 pub const SLACK_API: &str = "https://slack.com/api";
@@ -22,6 +22,8 @@ const MAX_ANSWER_BYTES: usize = 256 * 1024;
 const TIMEOUT: Duration = Duration::from_secs(10);
 /// What is kept of a workspace's name.
 const MAX_WORKSPACE_NAME_CHARS: usize = 200;
+/// The header Slack says a token's permissions in.
+const OAUTH_SCOPES: &str = "x-oauth-scopes";
 
 /// Slack's Web API at `base`, with the hardened client.
 #[derive(Clone)]
@@ -39,11 +41,11 @@ impl SlackApi {
         Ok(Self { base, client })
     }
 
-    /// The workspace and bot user the token is the application's in
-    /// (`auth.test`).
+    /// The workspace and bot user the token is the application's in, and
+    /// the permissions Slack says it has (`auth.test`).
     pub async fn workspace(&self, token: &str) -> Result<SlackWorkspace, SlackFailure> {
-        let answer = self
-            .send(token, self.client.post(self.method("auth.test")))
+        let (answer, scopes) = self
+            .exchange(token, self.client.post(self.method("auth.test")))
             .await?;
         let field = |name: &str| answer.get(name).and_then(Value::as_str);
         let (Some(workspace_id), Some(bot_user_id)) = (field("team_id"), field("user_id")) else {
@@ -70,6 +72,7 @@ impl SlackApi {
                 name.trim().to_owned()
             },
             bot_user_id: bot_user_id.to_owned(),
+            scopes: scopes.as_deref().and_then(granted_scopes),
         })
     }
 
@@ -190,6 +193,18 @@ impl SlackApi {
     /// The request sent with the bot's token, its answer read within the
     /// delay: Slack's answer once `ok`, or why it refused.
     async fn send(&self, token: &str, request: RequestBuilder) -> Result<Value, SlackFailure> {
+        self.exchange(token, request)
+            .await
+            .map(|(answer, _)| answer)
+    }
+
+    /// The same, with the permissions Slack says the token has
+    /// (`x-oauth-scopes`), if it says them.
+    async fn exchange(
+        &self,
+        token: &str,
+        request: RequestBuilder,
+    ) -> Result<(Value, Option<String>), SlackFailure> {
         let mut bearer = HeaderValue::from_str(&format!("Bearer {token}"))
             .map_err(|_| SlackFailure::Refused("invalid_auth".into()))?;
         bearer.set_sensitive(true);
@@ -204,11 +219,14 @@ impl SlackApi {
                 .get(RETRY_AFTER)
                 .and_then(|value| value.to_str().ok())
                 .and_then(|value| value.parse::<u64>().ok());
+            let scopes = (response.headers().get(OAUTH_SCOPES))
+                .and_then(|value| value.to_str().ok())
+                .map(str::to_owned);
             let body = read_bounded(response).await?;
-            Ok::<_, reqwest_mcp::Error>((status, retry_after, body))
+            Ok::<_, reqwest_mcp::Error>((status, retry_after, scopes, body))
         })
         .await;
-        let (status, retry_after, body) = match sent {
+        let (status, retry_after, scopes, body) = match sent {
             Err(_) => return Err(SlackFailure::Unanswered(TOO_SLOW)),
             Ok(Err(_)) => return Err(SlackFailure::Unanswered(UNREACHABLE)),
             Ok(Ok(answer)) => answer,
@@ -225,7 +243,7 @@ impl SlackApi {
             .and_then(|body| serde_json::from_slice(&body).ok())
             .ok_or(SlackFailure::Unreadable)?;
         if answer.get("ok").and_then(Value::as_bool) == Some(true) {
-            return Ok(answer);
+            return Ok((answer, scopes));
         }
         let code = answer
             .get("error")
