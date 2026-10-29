@@ -60,6 +60,18 @@ impl SlackFailure {
         )
     }
 
+    /// Whether Slack refuses a message's blocks, not the message itself: it
+    /// may be said without them.
+    pub fn blocks_refused(&self) -> bool {
+        matches!(
+            self,
+            Self::Refused(code) if matches!(
+                code.as_str(),
+                "invalid_blocks" | "invalid_blocks_format" | "msg_blocks_too_long"
+            )
+        )
+    }
+
     /// What the refusal means, in French, for the company's administrators.
     pub fn message(&self) -> String {
         match self {
@@ -141,5 +153,27 @@ mod tests {
             SlackFailure::Failed(502).message(),
             "Slack ne répond pas comme attendu (HTTP 502)"
         );
+    }
+
+    #[test]
+    fn only_a_refusal_of_blocks_lets_a_message_go_without_them() {
+        for code in [
+            "invalid_blocks",
+            "invalid_blocks_format",
+            "msg_blocks_too_long",
+        ] {
+            assert!(
+                SlackFailure::Refused(code.into()).blocks_refused(),
+                "{code}"
+            );
+        }
+        for failure in [
+            SlackFailure::Refused("channel_not_found".into()),
+            SlackFailure::Refused("token_revoked".into()),
+            SlackFailure::Unanswered("trop lent"),
+            SlackFailure::Unreadable,
+        ] {
+            assert!(!failure.blocks_refused(), "{failure:?}");
+        }
     }
 }

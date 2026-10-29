@@ -19,6 +19,7 @@ pub mod document_embeddings;
 pub mod document_search;
 pub mod documents;
 pub mod embedding_settings;
+pub mod gateway_approval_notices;
 pub mod gateway_identities;
 pub mod gateway_replies;
 pub mod gateway_threads;

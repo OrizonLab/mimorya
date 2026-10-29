@@ -1,22 +1,26 @@
 //! A validation given in Slack (ADR-129): the « Valider » or « Refuser »
-//! button a linked person pressed under an action of theirs awaiting their
+//! button a linked person pressed under an action awaiting their
 //! validation, sent by Slack, signed, to the gateway's own address
-//! (form-encoded, where events are JSON). Answered to Slack at once, then
-//! decided in the background as that person, once they may act (`person`),
-//! with their rights as they stand, as from the application's screen. Only
-//! their own action, awaiting their own validation, that Slack may validate
-//! (`validated_in_slack`: changing nothing outside the company, undone, its
-//! exact parameters shown whole) is decided there: whatever the press says,
-//! any other is left to the application. The message then shows what
-//! became of each of its actions in place of their buttons; why nothing was
-//! decided is said in the thread. Audited as any decision, with the service
-//! it was given from.
+//! (form-encoded, where events are JSON): an action of theirs, in its
+//! thread, or one a manager decides, in the direct message telling that
+//! manager, or whom they named to stand in for them, of it (ADR-130).
+//! Answered to Slack at once, then decided in the background as that
+//! person, once they may act (`person`), with their rights as they stand,
+//! as from the application's screen. Only an action awaiting their own
+//! decision, that Slack may validate (`validated_in_slack`: changing
+//! nothing outside the company, undone, its exact parameters shown whole)
+//! is decided there: whatever the press says, any other is left to the
+//! application. The message then shows what became of each of its actions
+//! in place of their buttons; why nothing was decided is said in its
+//! thread. Audited as any decision, with the service it was given from.
 
+use chrono::Utc;
 use mimorya_core::DomainError;
 use mimorya_core::gateways::GatewayKind;
 use mimorya_core::gateways::slack::{
     ApprovalChoice, DirectMessage, approval_choice, buttons_in, decided_blocks, validated_in_slack,
 };
+use mimorya_db::repositories::approval_delegations::standing_in_for;
 use mimorya_db::repositories::approvals::{ApprovalRow, get_approval};
 use mimorya_db::repositories::gateways::GatewayRow;
 use uuid::Uuid;
@@ -24,16 +28,18 @@ use uuid::Uuid;
 use super::person::{Act, acting_person, say};
 use super::{EventOutcome, GatewayService, PersonMessage, bot_token_name};
 use crate::app::Services;
-use crate::services::access::AuthIdentity;
-use crate::services::runs::{APPROVAL_NOT_FOUND, DecisionInput};
+use crate::services::runs::{APPROVAL_NOT_FOUND, DecisionInput, stands_in};
 
 const NOT_DECIDED: &str = "La validation n’a pas pu être enregistrée : réessayez dans un instant, \
      ou donnez-la dans l’application.";
 const IN_APPLICATION: &str = "Cette action se valide dans l’application, qui en montre les \
      paramètres exacts : rien n’a été décidé.";
-const AWAITS_A_MANAGER: &str = "Cette action attend la validation de votre responsable, dans \
-     l’application : rien n’a été décidé.";
+const AWAITS_A_MANAGER: &str = "Cette action attend la validation de votre responsable : rien \
+     n’a été décidé.";
+/// Said to whom the agent acts for, in their request's thread.
 const RESUMED: &str = " La demande reprend : la suite viendra dans ce fil.";
+/// Said to a manager, or whom they named to stand in for them.
+const RESUMED_FOR_THEM: &str = " La demande reprend.";
 
 /// A linked person's press of a validation button: to decide once Slack is
 /// answered. Never the token, whatever prints it.
@@ -116,13 +122,17 @@ async fn decide(services: &Services, pressed: &PersonChoice) -> anyhow::Result<(
     };
     let mut tx = services.db.begin(identity.tenant_id).await?;
     let approval = get_approval(&mut tx, choice.approval_id).await?;
+    let concerned = Concerned {
+        user_id: identity.user_id,
+        standing_in_for: standing_in_for(&mut tx, identity.user_id, Utc::now()).await?,
+    };
     tx.commit().await?;
-    // Their own action only, nothing told of anyone else's.
-    let Some(approval) = approval.filter(|a| a.requested_for_user_id == identity.user_id) else {
+    // Their own action, or one awaiting them: nothing told of any other.
+    let Some(approval) = approval.filter(|a| concerned.sees(a)) else {
         say(services, from, APPROVAL_NOT_FOUND).await;
         return Ok(());
     };
-    if approval.routed_to_manager() {
+    if !concerned.decides(&approval) {
         say(services, from, AWAITS_A_MANAGER).await;
         return Ok(());
     }
@@ -147,7 +157,7 @@ async fn decide(services: &Services, pressed: &PersonChoice) -> anyhow::Result<(
         }
     };
     // Decided: a failure to show it is no reason to say otherwise.
-    if let Err(error) = show_outcomes(services, pressed, identity, resumed).await {
+    if let Err(error) = show_outcomes(services, pressed, &concerned, resumed).await {
         let gateway = from.gateway.id;
         tracing::warn!(%gateway, error = format!("{error:#}"), "Slack outcome not shown");
     }
@@ -160,21 +170,22 @@ async fn decide(services: &Services, pressed: &PersonChoice) -> anyhow::Result<(
 async fn show_outcomes(
     services: &Services,
     pressed: &PersonChoice,
-    identity: AuthIdentity,
+    concerned: &Concerned,
     resumed: bool,
 ) -> anyhow::Result<()> {
     let (from, choice) = (&pressed.from, &pressed.choice);
     let mut outcomes = Vec::new();
-    let mut tx = services.db.begin(identity.tenant_id).await?;
+    let mut tx = services.db.begin(from.tenant_id).await?;
     for id in buttons_in(&choice.blocks) {
         let Some(approval) = get_approval(&mut tx, id).await? else {
             continue;
         };
-        if approval.requested_for_user_id != identity.user_id {
+        if !concerned.sees(&approval) {
             continue;
         }
         let just_decided = id == choice.approval_id;
-        if let Some(outcome) = outcome(&approval, just_decided, resumed) {
+        let own = approval.requested_for_user_id == concerned.user_id;
+        if let Some(outcome) = outcome(&approval, just_decided, resumed, own) {
             outcomes.push((id, outcome));
         }
     }
@@ -204,9 +215,30 @@ async fn show_outcomes(
     Ok(())
 }
 
+/// Who pressed a button: the requests they see, and those they decide.
+struct Concerned {
+    user_id: Uuid,
+    /// Those whose absence they cover now (ADR-071).
+    standing_in_for: Vec<Uuid>,
+}
+
+impl Concerned {
+    /// Whether `approval` is made for them, or awaits them.
+    fn sees(&self, approval: &ApprovalRow) -> bool {
+        approval.requested_for_user_id == self.user_id || self.decides(approval)
+    }
+
+    /// Whether `approval` awaits their decision: their own, or a manager's
+    /// they are, or stand in for.
+    fn decides(&self, approval: &ApprovalRow) -> bool {
+        approval.decider() == Some(self.user_id) || stands_in(approval, &self.standing_in_for)
+    }
+}
+
 /// What became of `approval`, in Slack's markup, once decided; `None`
-/// while it waits.
-fn outcome(approval: &ApprovalRow, just_decided: bool, resumed: bool) -> Option<String> {
+/// while it waits. Whom the agent acts for (`own`) reads that their
+/// request goes on in this thread.
+fn outcome(approval: &ApprovalRow, just_decided: bool, resumed: bool, own: bool) -> Option<String> {
     let said = match approval.status.as_str() {
         "approved" => "*Validée*",
         "rejected" => "*Refusée*",
@@ -222,7 +254,7 @@ fn outcome(approval: &ApprovalRow, just_decided: bool, resumed: bool) -> Option<
             "."
         });
         if just_decided && resumed {
-            outcome.push_str(RESUMED);
+            outcome.push_str(if own { RESUMED } else { RESUMED_FOR_THEM });
         }
     }
     Some(outcome)
@@ -261,37 +293,65 @@ mod tests {
     fn each_action_shows_what_became_of_it() {
         let approved = with_status("approved");
         assert_eq!(
-            outcome(&approved, true, true).as_deref(),
+            outcome(&approved, true, true, true).as_deref(),
             Some(
                 "*Validée* par vous dans Slack. La demande reprend : la suite viendra dans ce fil."
             )
         );
+        // Told to a manager, the request going on elsewhere.
         assert_eq!(
-            outcome(&approved, true, false).as_deref(),
+            outcome(&approved, true, true, false).as_deref(),
+            Some("*Validée* par vous dans Slack. La demande reprend.")
+        );
+        assert_eq!(
+            outcome(&approved, true, false, true).as_deref(),
             Some("*Validée* par vous dans Slack.")
         );
         // Another action of the message, decided meanwhile.
         assert_eq!(
-            outcome(&approved, false, true).as_deref(),
+            outcome(&approved, false, true, true).as_deref(),
             Some("*Validée*.")
         );
         let rejected = with_status("rejected");
         assert_eq!(
-            outcome(&rejected, true, false).as_deref(),
+            outcome(&rejected, true, false, false).as_deref(),
             Some("*Refusée* par vous dans Slack.")
         );
         assert_eq!(
-            outcome(&rejected, false, false).as_deref(),
+            outcome(&rejected, false, false, true).as_deref(),
             Some("*Refusée*.")
         );
         assert_eq!(
-            outcome(&with_status("expired"), false, false).as_deref(),
+            outcome(&with_status("expired"), false, false, true).as_deref(),
             Some("*Expirée* : elle n’a pas été validée à temps.")
         );
         assert_eq!(
-            outcome(&with_status("cancelled"), false, false).as_deref(),
+            outcome(&with_status("cancelled"), false, false, true).as_deref(),
             Some("*Annulée*.")
         );
-        assert_eq!(outcome(&with_status("pending"), false, false), None);
+        assert_eq!(outcome(&with_status("pending"), false, false, true), None);
+    }
+
+    #[test]
+    fn whom_a_request_awaits_decides_it() {
+        let (requester, manager, stand_in) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
+        let mut own = with_status("pending");
+        own.requested_for_user_id = requester;
+        let mut managed = own.clone();
+        managed.routing = "manager".into();
+        managed.approver_user_id = Some(manager);
+        let person = |user_id, standing_in_for| Concerned {
+            user_id,
+            standing_in_for,
+        };
+        let theirs = person(requester, vec![]);
+        assert!(theirs.sees(&own) && theirs.decides(&own));
+        // A manager's: seen by whom the agent acts for, not decided.
+        assert!(theirs.sees(&managed) && !theirs.decides(&managed));
+        let boss = person(manager, vec![]);
+        assert!(boss.decides(&managed) && !boss.sees(&own));
+        let standing = person(stand_in, vec![manager]);
+        assert!(standing.decides(&managed) && !standing.sees(&own));
+        assert!(!person(stand_in, vec![]).sees(&managed));
     }
 }

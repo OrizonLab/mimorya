@@ -1,10 +1,11 @@
 //! What becomes of the answers in Slack (ADR-127): each end or pause of a
 //! run started there is answered once; a paused gateway, or a Slack user no
 //! longer the person's identity, is written nothing; what Slack refuses is
-//! not tried again, a pause whose buttons it refuses said without them
-//! (ADR-129); Slack unreachable is tried again later, a few times, then
-//! given up; a thread's answers are written in order, an answer too old to
-//! try again holding back none.
+//! not tried again: a pause whose buttons it refuses is said without them,
+//! once, but not one it refuses otherwise (ADR-129, ADR-130); Slack
+//! unreachable is tried again later, a few times, then given up; a
+//! thread's answers are written in order, an answer too old to try again
+//! holding back none.
 
 mod support;
 
@@ -25,7 +26,6 @@ use support::slack_validations::{ASKED_IN, asked, posts_in};
 use support::sso::SSO_DEPLOYMENT;
 use support::{TestApi, email, owner_url};
 
-const FIRST: &str = "1700000200.000100";
 const SECOND: &str = "1700000300.000100";
 
 #[tokio::test]
@@ -42,15 +42,18 @@ async fn a_paused_gateway_or_a_removed_identity_is_written_nothing() {
     write(
         &api,
         gateway,
-        &written(MARC_SLACK, "Question A", FIRST, None),
+        &written(MARC_SLACK, "Question A", ASKED_IN, None),
     )
     .await;
     let path = format!("/admin/gateways/{gateway}");
     let paused = paul.patch(&path, json!({ "enabled": false })).await;
     assert_eq!(paused.status, StatusCode::OK, "{}", paused.text());
     assert_eq!(answer(&api).await, 0);
-    assert!(in_thread(&slack, FIRST).is_empty());
-    assert_eq!(replies_of(&api, FIRST).await, [(Some("skipped".into()), 1)]);
+    assert!(in_thread(&slack, ASKED_IN).is_empty());
+    assert_eq!(
+        replies_of(&api, ASKED_IN).await,
+        [(Some("skipped".into()), 1)]
+    );
     // Enabled again: not written later.
     let resumed = paul.patch(&path, json!({ "enabled": true })).await;
     assert_eq!(resumed.status, StatusCode::OK, "{}", resumed.text());
@@ -83,14 +86,22 @@ async fn what_slack_refuses_is_not_tried_again() {
     let address = email(user::MARC);
     let gateway = linked(&api, &slack, &paul, &marc, (MARC_SLACK, &address)).await;
     api.script(vec![ScriptedStep::text("Réponse.")]);
-    write(&api, gateway, &written(MARC_SLACK, "Question", FIRST, None)).await;
+    write(
+        &api,
+        gateway,
+        &written(MARC_SLACK, "Question", ASKED_IN, None),
+    )
+    .await;
 
     slack.refuse_with(Some("channel_not_found"));
     assert_eq!(answer(&api).await, 0);
     slack.refuse_with(None);
     assert_eq!(answer(&api).await, 0);
-    assert!(in_thread(&slack, FIRST).is_empty());
-    assert_eq!(replies_of(&api, FIRST).await, [(Some("refused".into()), 1)]);
+    assert!(in_thread(&slack, ASKED_IN).is_empty());
+    assert_eq!(
+        replies_of(&api, ASKED_IN).await,
+        [(Some("refused".into()), 1)]
+    );
 }
 
 #[tokio::test]
@@ -126,6 +137,29 @@ async fn a_pause_whose_buttons_slack_refuses_is_said_without_them() {
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
+async fn a_pause_slack_refuses_otherwise_is_not_said_again_without_buttons() {
+    let slack = FakeSlack::start().await;
+    let api = TestApi::start_with_slack(&SSO_DEPLOYMENT, &slack.url).await;
+    let (paul, marc) = (api.sign_in(user::PAUL).await, api.sign_in(user::MARC).await);
+    let address = email(user::MARC);
+    let gateway = linked(&api, &slack, &paul, &marc, (MARC_SLACK, &address)).await;
+    asked(&api, (gateway, MARC_SLACK), "Appliqué.").await;
+
+    let tried = slack.post_attempts();
+    slack.refuse_posts_with(Some("channel_not_found"));
+    assert_eq!(answer(&api).await, 0);
+    slack.refuse_posts_with(None);
+    assert_eq!(answer(&api).await, 0);
+    assert_eq!(slack.post_attempts(), tried + 1, "tried once");
+    assert!(posts_in(&slack, ASKED_IN).is_empty());
+    assert_eq!(
+        replies_of(&api, ASKED_IN).await,
+        [(Some("refused".into()), 1)]
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
 async fn slack_unreachable_is_tried_again_later_a_few_times() {
     let slack = FakeSlack::start().await;
     let api = TestApi::start_with_slack(&SSO_DEPLOYMENT, &slack.url).await;
@@ -139,21 +173,21 @@ async fn slack_unreachable_is_tried_again_later_a_few_times() {
     write(
         &api,
         gateway,
-        &written(MARC_SLACK, "Question A", FIRST, None),
+        &written(MARC_SLACK, "Question A", ASKED_IN, None),
     )
     .await;
 
     // Down: kept to try again, not before its time.
     slack.unavailable(true);
     assert_eq!(answer(&api).await, 0);
-    assert_eq!(replies_of(&api, FIRST).await, [(None, 1)]);
+    assert_eq!(replies_of(&api, ASKED_IN).await, [(None, 1)]);
     slack.unavailable(false);
     assert_eq!(answer(&api).await, 0);
     // Its time come, Slack up again: written.
-    retry_now(&api, FIRST).await;
+    retry_now(&api, ASKED_IN).await;
     assert_eq!(answer(&api).await, 1);
-    assert_eq!(in_thread(&slack, FIRST).len(), 1);
-    assert_eq!(replies_of(&api, FIRST).await, [(Some("sent".into()), 2)]);
+    assert_eq!(in_thread(&slack, ASKED_IN).len(), 1);
+    assert_eq!(replies_of(&api, ASKED_IN).await, [(Some("sent".into()), 2)]);
 
     // Down at every attempt: given up.
     write(
@@ -192,7 +226,7 @@ async fn a_thread_s_answers_are_written_in_order() {
     write(
         &api,
         gateway,
-        &written(MARC_SLACK, "Planifie INT-2052", FIRST, None),
+        &written(MARC_SLACK, "Planifie INT-2052", ASKED_IN, None),
     )
     .await;
     // Validated before any pass: its pause and its end, both to answer.
@@ -211,17 +245,17 @@ async fn a_thread_s_answers_are_written_in_order() {
     // Slack down: the pause is tried, its end waits for it, in the same pass.
     slack.unavailable(true);
     assert_eq!(answer(&api).await, 0);
-    assert_eq!(replies_of(&api, FIRST).await, [(None, 1)]);
+    assert_eq!(replies_of(&api, ASKED_IN).await, [(None, 1)]);
     slack.unavailable(false);
     // And at the next ones, while the pause is still to try again.
     assert_eq!(answer(&api).await, 0);
-    assert!(in_thread(&slack, FIRST).is_empty());
+    assert!(in_thread(&slack, ASKED_IN).is_empty());
     // The pause's time come: the pause, then its end at the next pass.
-    retry_now(&api, FIRST).await;
+    retry_now(&api, ASKED_IN).await;
     assert_eq!(answer(&api).await, 1);
-    assert_eq!(in_thread(&slack, FIRST).len(), 1);
+    assert_eq!(in_thread(&slack, ASKED_IN).len(), 1);
     assert_eq!(answer(&api).await, 1);
-    let said = in_thread(&slack, FIRST);
+    let said = in_thread(&slack, ASKED_IN);
     assert!(said[0].contains("attend une validation"), "{said:?}");
     assert!(
         said[1].starts_with("Planning de INT-2052 appliqué."),
@@ -244,7 +278,7 @@ async fn an_answer_too_old_to_try_again_holds_its_thread_back_no_more() {
     write(
         &api,
         gateway,
-        &written(MARC_SLACK, "Question A", FIRST, None),
+        &written(MARC_SLACK, "Question A", ASKED_IN, None),
     )
     .await;
     slack.unavailable(true);
@@ -253,20 +287,20 @@ async fn an_answer_too_old_to_try_again_holds_its_thread_back_no_more() {
 
     // A day later, its time come, it is no longer tried; the person's next
     // question in the thread is answered.
-    age_ends(FIRST, 25).await;
-    retry_now(&api, FIRST).await;
+    age_ends(ASKED_IN, 25).await;
+    retry_now(&api, ASKED_IN).await;
     write(
         &api,
         gateway,
-        &written(MARC_SLACK, "Question B", SECOND, Some(FIRST)),
+        &written(MARC_SLACK, "Question B", SECOND, Some(ASKED_IN)),
     )
     .await;
     assert_eq!(answer(&api).await, 1);
-    let said = in_thread(&slack, FIRST);
+    let said = in_thread(&slack, ASKED_IN);
     assert_eq!(said.len(), 1, "{said:?}");
     assert!(said[0].starts_with("Réponse B."), "{said:?}");
     assert_eq!(
-        replies_of(&api, FIRST).await,
+        replies_of(&api, ASKED_IN).await,
         [(None, 1), (Some("sent".into()), 1)]
     );
 }

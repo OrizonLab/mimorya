@@ -123,6 +123,10 @@ test('a gateway is declared, a Slack identity linked from its link and removed, 
   await lea.getByRole('link', { name: 'Mon compte' }).click();
   await expect(row.getByText('Relié', { exact: true })).toBeVisible();
   await expect(row.getByText(`(${demo.lea}) de l’espace`, { exact: false })).toBeVisible();
+  // There, the requests awaiting her validation are announced (ADR-130).
+  await expect(
+    row.getByText(/vous y annonce les demandes attendant votre validation\.$/),
+  ).toBeVisible();
 
   // Paul sees her identity counted, and disables the gateway.
   await page.reload();
@@ -159,6 +163,10 @@ test('a gateway is declared, a Slack identity linked from its link and removed, 
   await page.getByRole('tab', { name: 'Connecteurs' }).click();
   await card.getByRole('button', { name: 'Modifier', exact: true }).click();
   const edit = card.getByRole('form', { name: 'Application Slack' });
+  // Managers are told there of the requests awaiting them (ADR-130).
+  await expect(
+    edit.getByText(/Un responsable relié, ou qui le remplace, y est aussi/),
+  ).toBeVisible();
   await edit.getByLabel('Nom', { exact: true }).fill(RENAMED);
   await edit.getByRole('button', { name: 'Enregistrer' }).click();
   const renamed = cardWith(page, RENAMED, 'Supprimer');

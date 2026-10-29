@@ -93,6 +93,19 @@ pub async fn find_gateway_identity(
     .await
 }
 
+/// The person `user_id`'s identity on the gateway, if they linked one.
+pub async fn gateway_identity_of(
+    conn: &mut PgConnection,
+    gateway_id: Uuid,
+    user_id: Uuid,
+) -> sqlx::Result<Option<GatewayIdentityRow>> {
+    sqlx::query_as(&format!("{SELECT} where gateway_id = $1 and user_id = $2"))
+        .bind(gateway_id)
+        .bind(user_id)
+        .fetch_optional(conn)
+        .await
+}
+
 /// The person's identities, on every gateway of their company.
 pub async fn list_gateway_identities_of(
     conn: &mut PgConnection,

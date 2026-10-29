@@ -7,12 +7,14 @@
 //! was not done: a request not started, a validation not decided.
 
 use chrono::Utc;
+use mimorya_connectors::slack::SlackFailure;
 use mimorya_core::DomainError;
 use mimorya_core::gateways::slack::{SlackProfile, escaped, identity_refusal};
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::gateway_identities::{
     LinkedAccount, linked_account, unlink_gateway_identity,
 };
+use mimorya_db::repositories::gateways::GatewayRow;
 use serde_json::json;
 use uuid::Uuid;
 
@@ -108,20 +110,57 @@ async fn still_theirs(
     account: &LinkedAccount,
     act: Act,
 ) -> anyhow::Result<bool> {
-    let (tenant_id, gateway) = (incoming.tenant_id, &incoming.gateway);
-    let message = &incoming.message;
-    let slack = services.gateways.slack();
-    let person = match slack.person(&incoming.token, &message.person).await {
-        Ok(person) => person,
-        Err(failure) => {
-            let failure = failure.message();
-            tracing::warn!(gateway = %gateway.id, %failure, "Slack user not verified");
+    let linked = (incoming.message.person.as_str(), account.user_id);
+    let verdict = slack_says_theirs(
+        services,
+        incoming.tenant_id,
+        (&incoming.gateway, &incoming.token),
+        linked,
+        &account.email,
+    )
+    .await?;
+    let not_done = act.not_done();
+    match verdict {
+        Ok(true) => Ok(true),
+        Ok(false) => {
+            let unlinked = format!(
+                "Slack ne dit plus que ce compte Slack est le vôtre (adresse changée, compte \
+                 désactivé ou d’un autre espace de travail) : il n’est plus relié à votre \
+                 compte, et {not_done}."
+            );
+            say(services, incoming, &unlinked).await;
+            offer_link(services, incoming)?;
+            Ok(false)
+        }
+        Err(_) => {
             let unverified = format!(
-                "Slack ne dit pas qui vous êtes pour l’instant : {}. Réessayez dans un instant.",
-                act.not_done()
+                "Slack ne dit pas qui vous êtes pour l’instant : {not_done}. Réessayez dans un \
+                 instant."
             );
             say(services, incoming, &unverified).await;
-            return Ok(false);
+            Ok(false)
+        }
+    }
+}
+
+/// Whether Slack, asked with the gateway's `token`, still says the Slack
+/// user `external_id` is the person `user_id`, of address `email`, of its
+/// workspace (ADR-125). Once it no longer does, their identity is unlinked,
+/// audited with the reason: `Ok(false)`. `Err` when Slack does not say.
+pub(super) async fn slack_says_theirs(
+    services: &Services,
+    tenant_id: Uuid,
+    (gateway, token): (&GatewayRow, &str),
+    (external_id, user_id): (&str, Uuid),
+    email: &str,
+) -> anyhow::Result<Result<bool, SlackFailure>> {
+    let slack = services.gateways.slack();
+    let person = match slack.person(token, external_id).await {
+        Ok(person) => person,
+        Err(failure) => {
+            let reason = failure.message();
+            tracing::warn!(gateway = %gateway.id, %reason, "Slack user not verified");
+            return Ok(Err(failure));
         }
     };
     let profile = SlackProfile {
@@ -130,26 +169,19 @@ async fn still_theirs(
         deleted: person.deleted,
         bot: person.bot,
     };
-    let Some(refusal) = identity_refusal(&profile, &gateway.workspace_id, &account.email) else {
-        return Ok(true);
+    let Some(refusal) = identity_refusal(&profile, &gateway.workspace_id, email) else {
+        return Ok(Ok(true));
     };
     let mut tx = services.db.begin(tenant_id).await?;
-    if unlink_gateway_identity(&mut tx, gateway.id, &message.person, account.user_id).await? {
+    if unlink_gateway_identity(&mut tx, gateway.id, external_id, user_id).await? {
         let entry = AuditEntry::new(tenant_id, "system", "gateway.identity_unlinked", "success")
-            .on_behalf_of(account.user_id)
+            .on_behalf_of(user_id)
             .resource("gateway", gateway.id)
-            .metadata(json!({ "externalId": message.person, "reason": refusal.code() }));
+            .metadata(json!({ "externalId": external_id, "reason": refusal.code() }));
         append_audit(&mut tx, entry).await?;
     }
     tx.commit().await?;
-    let unlinked = format!(
-        "Slack ne dit plus que ce compte Slack est le vôtre (adresse changée, compte désactivé \
-         ou d’un autre espace de travail) : il n’est plus relié à votre compte, et {}.",
-        act.not_done()
-    );
-    say(services, incoming, &unlinked).await;
-    offer_link(services, incoming)?;
-    Ok(false)
+    Ok(Ok(false))
 }
 
 fn offer_link(services: &Services, incoming: &PersonMessage) -> anyhow::Result<()> {

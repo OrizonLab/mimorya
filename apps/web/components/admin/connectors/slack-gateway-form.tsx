@@ -101,8 +101,9 @@ export function SlackGatewayForm({
         serveur et jamais réaffichés. Chacun relie ensuite son compte Slack depuis le lien que
         l’application lui envoie, Slack prouvant que c’est le sien ; il parle alors à l’agent dans
         Slack, et y valide ou refuse ses actions sans effet hors de l’entreprise et réversibles,
-        leurs paramètres exacts sous les yeux. Un e-mail envoyé en son nom ou une action
-        irréversible se valide toujours dans l’application.
+        leurs paramètres exacts sous les yeux. Un responsable relié, ou qui le remplace, y est aussi
+        prévenu des demandes qui attendent sa validation, et les valide de même. Un e-mail envoyé au
+        nom de quelqu’un ou une action irréversible se valide toujours dans l’application.
       </p>
       {action.error && <ErrorNote message={action.error} />}
       <div className="flex gap-2">

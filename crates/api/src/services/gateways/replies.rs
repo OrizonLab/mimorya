@@ -178,7 +178,7 @@ async fn reply(
                 .await
             {
                 // Buttons Slack would not show: the pause said without them.
-                Err(failure @ SlackFailure::Refused(_)) if blocks.is_some() => {
+                Err(failure) if blocks.is_some() && failure.blocks_refused() => {
                     let (gateway, reason) = (target.gateway_id, failure.message());
                     tracing::warn!(%gateway, %reason, "Slack refused the pause's buttons");
                     let text = reply_text(&target.status, None, &url);
@@ -203,7 +203,11 @@ async fn reply(
 
 /// What becomes of an answer Slack did not take, at its `attempt`-th try:
 /// refused, never tried again; unreached, tried again later, a few times.
-fn after_failure(failure: &SlackFailure, attempt: i32, now: DateTime<Utc>) -> ReplyRecord {
+pub(super) fn after_failure(
+    failure: &SlackFailure,
+    attempt: i32,
+    now: DateTime<Utc>,
+) -> ReplyRecord {
     let reason = failure.message();
     tracing::warn!(attempt, %reason, "Slack answer not taken");
     if matches!(failure, SlackFailure::Refused(_)) {

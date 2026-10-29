@@ -250,8 +250,7 @@ async fn an_action_a_manager_decides_is_shown_without_buttons() {
         assert_eq!(said.len(), 1, "{said:?}");
         assert_eq!(
             said[0].text,
-            "Cette action attend la validation de votre responsable, dans l’application : \
-             rien n’a été décidé."
+            "Cette action attend la validation de votre responsable : rien n’a été décidé."
         );
         assert_eq!(listed(&nadia, &run).await.unwrap()["status"], "pending");
     }

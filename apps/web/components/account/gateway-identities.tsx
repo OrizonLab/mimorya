@@ -61,7 +61,8 @@ function GatewayRow({
       {linked ? (
         <p className="text-sm text-muted">
           Votre compte Slack <code>{linked.externalId}</code> ({linked.address}) de l’espace{' '}
-          {`« ${gateway.workspaceName} »`} est relié depuis le {formatDate(linked.linkedAt)}.
+          {`« ${gateway.workspaceName} »`} est relié depuis le {formatDate(linked.linkedAt)}. Vous y
+          parlez à l’agent, qui vous y annonce les demandes attendant votre validation.
         </p>
       ) : gateway.available ? (
         <p className="text-sm text-muted">

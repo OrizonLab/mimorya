@@ -38,7 +38,7 @@ use crate::services::access::AccessService;
 use crate::services::background::BackgroundTasks;
 use crate::services::notification_settings::{Delivery, Notice, deliver};
 use message::{ApprovalMail, approval_mail};
-use recipient::{Recipient, recipient};
+pub use recipient::{Recipient, recipient};
 use wording::{distinct_risks, sent};
 
 /// How long before their deadline requests are reminded of (ADR-062).
