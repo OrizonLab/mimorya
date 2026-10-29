@@ -24,8 +24,8 @@ pub struct DecisionInput {
     pub approval_id: Uuid,
     pub approved: bool,
     pub comment: Option<String>,
-    /// The service it was given from (`slack`, ADR-129), the application's
-    /// own screens otherwise: audited with it.
+    /// The service it was given from (`slack`, ADR-129, or `telegram`,
+    /// ADR-136), the application's own screens otherwise: audited with it.
     pub gateway: Option<&'static str>,
 }
 

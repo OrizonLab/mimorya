@@ -190,7 +190,7 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   est en HTML que la plateforme produit, le texte de l'agent échappé, seules des balises
   de mise en forme et des liens web refermés ; jamais ses mots dans les journaux ni
   l'audit. Les validations se donnent dans l'application, qui en montre les paramètres
-  exacts.
+  exacts, ou avec les boutons de la pause pour celles qu'autorise ADR-136.
 - Validations dans Telegram (ADR-136) : seules les actions qui attendent la personne
   elle-même, sans effet hors de l'entreprise, réversibles, aux paramètres exacts
   montrés entiers, se valident avec les boutons de la pause ; un bouton pressé n'est

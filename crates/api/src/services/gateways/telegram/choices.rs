@@ -9,17 +9,15 @@
 //! an action awaiting their own decision, that may be validated outside the
 //! application (`validated_in_gateway`), is decided there: any other is
 //! left to the application. The press is answered with what became of it;
-//! once decided, the buttons of the message's decided actions are taken
-//! off, and the outcome said in answer to it. Audited as any decision, with
-//! the service it was given from.
+//! the buttons of the message's actions decided by then (now, or meanwhile
+//! in the application) are taken off, and the outcome said in answer to it.
+//! Audited as any decision, with the service it was given from, as in
+//! Slack (`concerned::decide_as`).
 
-use chrono::Utc;
-use mimorya_core::DomainError;
+use mimorya_core::gateways::GatewayKind;
 use mimorya_core::gateways::telegram::{
     ApprovalChoice, ButtonPress, approval_choice, buttons_in, without_decided,
 };
-use mimorya_core::gateways::{GatewayKind, validated_in_gateway};
-use mimorya_db::repositories::approval_delegations::standing_in_for;
 use mimorya_db::repositories::approvals::get_approval;
 use mimorya_db::repositories::gateway_identities::linked_account;
 use mimorya_db::repositories::gateways::GatewayRow;
@@ -29,11 +27,8 @@ use super::texts;
 use super::updates::UpdateOutcome;
 use crate::app::Services;
 use crate::services::gateways::GatewayService;
-use crate::services::gateways::concerned::{
-    AWAITS_A_MANAGER, Concerned, IN_APPLICATION, NOT_DECIDED,
-};
+use crate::services::gateways::concerned::{Concerned, NOT_DECIDED, decide_as};
 use crate::services::gateways::person::{Act, may_act};
-use crate::services::runs::{APPROVAL_NOT_FOUND, DecisionInput};
 
 /// What the press of a button the bot did not show there is answered.
 const STALE: &str = "Ce bouton n’est plus valable.";
@@ -164,51 +159,24 @@ async fn decide(services: &Services, pressed: &TelegramChoice) -> anyhow::Result
         Ok(identity) => identity,
         Err(refusal) => return Ok(Told::nothing(refusal)),
     };
-    let choice = pressed.choice;
-    let mut tx = services.db.begin(tenant_id).await?;
-    let approval = get_approval(&mut tx, choice.approval_id).await?;
-    let concerned = Concerned {
-        user_id: identity.user_id,
-        standing_in_for: standing_in_for(&mut tx, identity.user_id, Utc::now()).await?,
-    };
-    tx.commit().await?;
-    // Their own action, or one awaiting them: nothing told of any other.
-    let Some(approval) = approval.filter(|a| concerned.sees(a)) else {
-        return Ok(Told::nothing(APPROVAL_NOT_FOUND));
-    };
-    if !concerned.decides(&approval) {
-        return Ok(Told::nothing(AWAITS_A_MANAGER));
-    }
-    if !validated_in_gateway(&approval.risk, &approval.payload) {
-        return Ok(Told::nothing(IN_APPLICATION));
-    }
-    let input = DecisionInput {
-        approval_id: choice.approval_id,
-        approved: choice.approved,
-        comment: None,
-        gateway: Some(GatewayKind::Telegram.as_str()),
-    };
-    let resumed = match services.runs.decide(identity, input).await {
-        Ok(decided) => decided.resumed,
-        Err(error) => {
-            let Some(refusal) = error.downcast_ref::<DomainError>() else {
-                return Err(error);
-            };
-            return Ok(Told::nothing(refusal.message.clone()));
-        }
-    };
-    // Decided: a failure to take its buttons off is no reason to say
+    let choice = (pressed.choice.approval_id, pressed.choice.approved);
+    let (concerned, decided) = decide_as(services, identity, choice, GatewayKind::Telegram).await?;
+    // Decided now, or meanwhile (in the application, or expired): its
+    // buttons are taken off, a failure to do so being no reason to say
     // otherwise.
     if let Err(error) = take_off_decided(services, pressed, &concerned).await {
         let error = format!("{error:#}");
         tracing::warn!(%gateway_id, %error, "Telegram buttons not taken off");
     }
-    let own = approval.requested_for_user_id == identity.user_id;
-    Ok(decided(choice.approved, resumed, own))
+    Ok(match decided {
+        Ok(decided) => outcome(pressed.choice.approved, decided.resumed, decided.own),
+        Err(refusal) => Told::nothing(refusal),
+    })
 }
 
 /// Takes off the message the buttons of its actions decided by now: the
-/// one just decided, and any other decided meanwhile; the others stay.
+/// one just decided, and any other decided meanwhile; the others stay. A
+/// message none of whose actions is decided is left as it is.
 async fn take_off_decided(
     services: &Services,
     pressed: &TelegramChoice,
@@ -224,6 +192,9 @@ async fn take_off_decided(
         }
     }
     tx.commit().await?;
+    if decided.is_empty() {
+        return Ok(());
+    }
     let keyboard = without_decided(&press.keyboard, &decided);
     let telegram = services.gateways.telegram();
     let (chat, message) = (press.person.id, press.message_id);
@@ -239,7 +210,7 @@ async fn take_off_decided(
 
 /// What a decision is answered: whom the agent acts for (`own`) reads that
 /// their request goes on here.
-fn decided(approved: bool, resumed: bool, own: bool) -> Told {
+fn outcome(approved: bool, resumed: bool, own: bool) -> Told {
     let (brief, mut said) = if approved {
         ("Validée", "Validée par vous dans Telegram.".to_owned())
     } else {
@@ -261,18 +232,18 @@ mod tests {
 
     #[test]
     fn a_decision_is_answered_with_what_became_of_it() {
-        let told = decided(true, true, true);
+        let told = outcome(true, true, true);
         assert_eq!(told.brief, "Validée");
         assert_eq!(
             told.said,
             "Validée par vous dans Telegram. La demande reprend : la suite viendra ici."
         );
         assert_eq!(
-            decided(false, true, false).said,
+            outcome(false, true, false).said,
             "Refusée par vous dans Telegram. La demande reprend."
         );
         assert_eq!(
-            decided(true, false, true).said,
+            outcome(true, false, true).said,
             "Validée par vous dans Telegram."
         );
         assert_eq!(Told::nothing("Non").brief, "Rien n’a été décidé.");

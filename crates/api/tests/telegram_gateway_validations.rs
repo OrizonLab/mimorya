@@ -5,8 +5,9 @@
 //! said in answer to the message, and the run goes on. Only a button the
 //! bot showed under its own message decides, and only for whom the request
 //! awaits: a button no message carries, a message not the bot's, a press in
-//! another's chat, a Telegram account no longer linked, a paused bot decide
-//! nothing. An action sent outside the company, or one a manager decides,
+//! another's chat, another linked person's press of it, a Telegram account
+//! no longer linked, a paused bot decide nothing. An action decided
+//! meanwhile in the application has its buttons taken off. An action sent outside the company, or one a manager decides,
 //! is shown without buttons, and no press decides it.
 
 mod support;
@@ -23,7 +24,9 @@ use support::queue::as_owner;
 use support::refusals::{entries_since, latest_entry};
 use support::slack_conversations::answer;
 use support::sso::SSO_DEPLOYMENT;
-use support::telegram::{LEA_TELEGRAM, LEA_USERNAME, MARC_TELEGRAM, MARC_USERNAME};
+use support::telegram::{
+    LEA_TELEGRAM, LEA_USERNAME, MARC_TELEGRAM, MARC_USERNAME, ask_code, confirm, open_and_accept,
+};
 use support::telegram_conversations::{
     claimed_press, deliver, last_said, linked_bot, talk, telegram_runs,
 };
@@ -178,6 +181,38 @@ async fn an_action_refused_with_its_button_is_not_carried_out() {
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
+async fn an_action_decided_meanwhile_has_its_buttons_taken_off() {
+    let telegram = FakeTelegram::start().await;
+    let api = TestApi::start_with_telegram(&SSO_DEPLOYMENT, &telegram.url).await;
+    let (paul, marc) = (api.sign_in(user::PAUL).await, api.sign_in(user::MARC).await);
+    let id = linked_bot(&api, &telegram, (&paul, &marc), MARC).await;
+    let (run, approval) = asked(&api, &telegram, (id, MARC), "Appliqué.").await;
+    assert_eq!(answer(&api).await, 1);
+    let number = latest_number(&telegram);
+    // Validated in the application first.
+    let decided = marc
+        .post(
+            &format!("/approvals/{approval}/decision"),
+            json!({ "approved": true }),
+        )
+        .await;
+    assert_eq!(decided.status, StatusCode::OK, "{}", decided.text());
+    // Its button pressed in Telegram then: nothing more decided, and its
+    // buttons taken off.
+    let press = telegram.press(11, MARC, number, &format!("r:{approval}"));
+    deliver(&api, &telegram, id, &press).await;
+    assert_eq!(last_brief(&telegram), "Rien n’a été décidé.");
+    let said = last_said(&telegram, MARC_TELEGRAM).text;
+    assert_eq!(said, "Cette demande a déjà été traitée");
+    assert_eq!(
+        keyboard_of(&telegram, number),
+        json!({ "inline_keyboard": [] })
+    );
+    assert_eq!(listed(&marc, &run).await.unwrap()["status"], "approved");
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
 async fn only_a_button_the_bot_showed_decides_and_only_for_whom_it_awaits() {
     let telegram = FakeTelegram::start().await;
     let api = TestApi::start_with_telegram(&SSO_DEPLOYMENT, &telegram.url).await;
@@ -204,7 +239,7 @@ async fn only_a_button_the_bot_showed_decides_and_only_for_whom_it_awaits() {
     assert_eq!(telegram.answers().len(), answers);
     assert_eq!(pending().await, "pending");
 
-    // A request that is not his, shown as if the bot had: nothing told of it.
+    // A request that does not exist, shown as if the bot had: nothing told.
     let unknown = claimed_press(14, MARC, (number, TELEGRAM_BOT), other, true);
     deliver(&api, &telegram, id, &unknown).await;
     assert_eq!(last_brief(&telegram), "Rien n’a été décidé.");
@@ -212,6 +247,20 @@ async fn only_a_button_the_bot_showed_decides_and_only_for_whom_it_awaits() {
         last_said(&telegram, MARC_TELEGRAM).text,
         "Demande de validation introuvable"
     );
+    // Marc's, pressed by Léa, linked too, as if the bot had shown it to her:
+    // told of it no more than of one that does not exist.
+    let lea = api.sign_in(user::LEA).await;
+    let code = ask_code(&lea, id).await;
+    open_and_accept(&api, &telegram, id, 20, LEA, &code).await;
+    assert_eq!(confirm(&lea, id).await.status, StatusCode::OK);
+    let hers = claimed_press(22, LEA, (number, TELEGRAM_BOT), approval, true);
+    deliver(&api, &telegram, id, &hers).await;
+    assert_eq!(last_brief(&telegram), "Rien n’a été décidé.");
+    assert_eq!(
+        last_said(&telegram, LEA_TELEGRAM).text,
+        "Demande de validation introuvable"
+    );
+    assert_eq!(pending().await, "pending");
 
     // The bot paused: nothing taken.
     let path = format!("/admin/gateways/{id}");
@@ -221,7 +270,7 @@ async fn only_a_button_the_bot_showed_decides_and_only_for_whom_it_awaits() {
     );
     let paused = telegram.press(15, MARC, number, &format!("v:{approval}"));
     deliver(&api, &telegram, id, &paused).await;
-    assert_eq!(telegram.answers().len(), answers + 1);
+    assert_eq!(telegram.answers().len(), answers + 2);
     assert_eq!(
         paul.patch(&path, json!({ "enabled": true })).await.status,
         StatusCode::OK

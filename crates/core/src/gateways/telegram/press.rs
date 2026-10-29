@@ -127,3 +127,109 @@ pub(super) fn button_press(raw: RawCallback) -> Option<ButtonPress> {
         keyboard,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::update::{Update, read_update};
+    use super::*;
+    use serde_json::{Value, json};
+
+    fn pressed(change: impl FnOnce(&mut Value)) -> Update {
+        let mut update = json!({
+            "update_id": 813,
+            "callback_query": {
+                "id": "4382bfdwdsb323b2d9",
+                "from": { "id": 4242, "is_bot": false, "first_name": "Léa", "username": "lea_font" },
+                "message": {
+                    "message_id": 9,
+                    "from": { "id": 123_456_789, "is_bot": true, "first_name": "Bot" },
+                    "chat": { "id": 4242, "type": "private" },
+                    "date": 1_700_000_000,
+                    "text": "Une action attend",
+                    "reply_markup": { "inline_keyboard": [[
+                        { "text": "Valider", "callback_data": "v:1" },
+                        { "text": "Refuser", "callback_data": "r:1" }
+                    ]] }
+                },
+                "chat_instance": "-1",
+                "data": "v:1"
+            }
+        });
+        change(&mut update);
+        read_update(update.to_string().as_bytes()).unwrap().content
+    }
+
+    #[test]
+    fn a_press_of_a_button_in_a_person_s_private_chat_is_read() {
+        let Update::Press(press) = pressed(|_| {}) else {
+            panic!("a press");
+        };
+        assert_eq!(press.callback_id, "4382bfdwdsb323b2d9");
+        assert_eq!(press.person.id, 4242);
+        assert_eq!(press.message_id, 9);
+        assert_eq!(press.sent_by, Some(123_456_789));
+        assert_eq!(press.data, "v:1");
+        assert_eq!(press.keyboard[0][1].data, "r:1");
+        assert!(press.shown());
+        // A button its message does not carry was not shown there.
+        let Update::Press(forged) = pressed(|u| u["callback_query"]["data"] = json!("v:2")) else {
+            panic!("a press");
+        };
+        assert!(!forged.shown());
+    }
+
+    #[test]
+    fn no_other_press_is() {
+        for change in [
+            |u: &mut Value| u["callback_query"]["message"]["chat"]["id"] = json!(5151),
+            |u: &mut Value| u["callback_query"]["message"]["chat"]["type"] = json!("group"),
+            |u: &mut Value| u["callback_query"]["from"]["is_bot"] = json!(true),
+            |u: &mut Value| u["callback_query"]["data"] = json!("v".repeat(65)),
+            |u: &mut Value| u["callback_query"]["data"] = json!(""),
+            |u: &mut Value| u["callback_query"]["id"] = json!(""),
+            |u: &mut Value| {
+                u["callback_query"]
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("message");
+            },
+            |u: &mut Value| {
+                u["callback_query"].as_object_mut().unwrap().remove("data");
+            },
+        ] {
+            assert_eq!(pressed(change), Update::Other);
+        }
+    }
+
+    #[test]
+    fn a_keyboard_beyond_telegram_s_bounds_is_not_read() {
+        let button = json!({ "text": "Valider", "callback_data": "v:1" });
+        let too_many_rows = json!(vec![json!([button.clone()]); MAX_ROWS + 1]);
+        let too_wide_row = json!([vec![button.clone(); MAX_ROW_BUTTONS + 1]]);
+        for keyboard in [too_many_rows, too_wide_row] {
+            let update = pressed(|u| {
+                u["callback_query"]["message"]["reply_markup"]["inline_keyboard"] = keyboard;
+            });
+            assert_eq!(update, Update::Other);
+        }
+        // At the bounds, read.
+        let full = json!(vec![json!(vec![button; MAX_ROW_BUTTONS]); MAX_ROWS]);
+        let update = pressed(|u| {
+            u["callback_query"]["message"]["reply_markup"]["inline_keyboard"] = full;
+        });
+        assert!(matches!(update, Update::Press(_)));
+    }
+
+    #[test]
+    fn a_message_without_its_sender_is_no_one_s() {
+        let Update::Press(press) = pressed(|u| {
+            u["callback_query"]["message"]
+                .as_object_mut()
+                .unwrap()
+                .remove("from");
+        }) else {
+            panic!("a press");
+        };
+        assert_eq!(press.sent_by, None);
+    }
+}

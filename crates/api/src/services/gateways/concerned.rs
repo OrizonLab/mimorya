@@ -1,22 +1,30 @@
 //! Who pressed a validation's button in a messaging service (ADR-129,
 //! ADR-130, ADR-136): the requests they see (made for them, or awaiting
 //! them) and those they decide (their own, a manager's they are, or stand
-//! in for). Nothing is told of any other. What a press that decided
-//! nothing is told, alike in each service.
+//! in for). Nothing is told of any other. A press is decided alike in each
+//! service (`decide_as`): only a request awaiting its presser, that may be
+//! validated outside the application, as from the application's screen,
+//! audited with the service; otherwise what to tell them.
 
-use mimorya_db::repositories::approvals::ApprovalRow;
+use chrono::Utc;
+use mimorya_core::DomainError;
+use mimorya_core::gateways::{GatewayKind, validated_in_gateway};
+use mimorya_db::repositories::approval_delegations::standing_in_for;
+use mimorya_db::repositories::approvals::{ApprovalRow, get_approval};
 use uuid::Uuid;
 
-use crate::services::runs::stands_in;
+use crate::app::Services;
+use crate::services::access::AuthIdentity;
+use crate::services::runs::{APPROVAL_NOT_FOUND, DecisionInput, stands_in};
 
 /// What a press that decided nothing is told: the decision failed.
 pub(super) const NOT_DECIDED: &str = "La validation n’a pas pu être enregistrée : réessayez \
      dans un instant, ou donnez-la dans l’application.";
 /// The action is validated in the application only.
-pub(super) const IN_APPLICATION: &str = "Cette action se valide dans l’application, qui en \
+const IN_APPLICATION: &str = "Cette action se valide dans l’application, qui en \
      montre les paramètres exacts : rien n’a été décidé.";
 /// The action awaits a manager's decision.
-pub(super) const AWAITS_A_MANAGER: &str = "Cette action attend la validation de votre \
+const AWAITS_A_MANAGER: &str = "Cette action attend la validation de votre \
      responsable : rien n’a été décidé.";
 
 /// Who pressed a button: the requests they see, and those they decide.
@@ -37,6 +45,59 @@ impl Concerned {
     pub(super) fn decides(&self, approval: &ApprovalRow) -> bool {
         approval.decider() == Some(self.user_id) || stands_in(approval, &self.standing_in_for)
     }
+}
+
+/// A request decided from a messaging service.
+pub(super) struct Decided {
+    /// Whether its run resumed.
+    pub(super) resumed: bool,
+    /// Whether it was made for whom decided it.
+    pub(super) own: bool,
+}
+
+/// Decides, as `identity`, the request `approval_id` (`approved` or not)
+/// pressed in the service `kind`: who pressed it, and what became of it,
+/// or what to tell them when nothing was decided.
+pub(super) async fn decide_as(
+    services: &Services,
+    identity: AuthIdentity,
+    (approval_id, approved): (Uuid, bool),
+    kind: GatewayKind,
+) -> anyhow::Result<(Concerned, Result<Decided, String>)> {
+    let mut tx = services.db.begin(identity.tenant_id).await?;
+    let approval = get_approval(&mut tx, approval_id).await?;
+    let concerned = Concerned {
+        user_id: identity.user_id,
+        standing_in_for: standing_in_for(&mut tx, identity.user_id, Utc::now()).await?,
+    };
+    tx.commit().await?;
+    // Their own action, or one awaiting them: nothing told of any other.
+    let Some(approval) = approval.filter(|a| concerned.sees(a)) else {
+        return Ok((concerned, Err(APPROVAL_NOT_FOUND.to_owned())));
+    };
+    if !concerned.decides(&approval) {
+        return Ok((concerned, Err(AWAITS_A_MANAGER.to_owned())));
+    }
+    if !validated_in_gateway(&approval.risk, &approval.payload) {
+        return Ok((concerned, Err(IN_APPLICATION.to_owned())));
+    }
+    let input = DecisionInput {
+        approval_id,
+        approved,
+        comment: None,
+        gateway: Some(kind.as_str()),
+    };
+    let decided = match services.runs.decide(identity, input).await {
+        Ok(decided) => Ok(Decided {
+            resumed: decided.resumed,
+            own: approval.requested_for_user_id == identity.user_id,
+        }),
+        Err(error) => match error.downcast_ref::<DomainError>() {
+            Some(refusal) => Err(refusal.message.clone()),
+            None => return Err(error),
+        },
+    };
+    Ok((concerned, decided))
 }
 
 #[cfg(test)]

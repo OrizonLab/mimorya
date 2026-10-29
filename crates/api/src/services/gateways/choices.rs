@@ -14,23 +14,18 @@
 //! in place of their buttons; why nothing was decided is said in its
 //! thread. Audited as any decision, with the service it was given from.
 
-use chrono::Utc;
-use mimorya_core::DomainError;
 use mimorya_core::gateways::GatewayKind;
 use mimorya_core::gateways::slack::{
     ApprovalChoice, DirectMessage, approval_choice, buttons_in, decided_blocks,
 };
-use mimorya_core::gateways::validated_in_gateway;
-use mimorya_db::repositories::approval_delegations::standing_in_for;
 use mimorya_db::repositories::approvals::{ApprovalRow, get_approval};
 use mimorya_db::repositories::gateways::GatewayRow;
 use uuid::Uuid;
 
-use super::concerned::{AWAITS_A_MANAGER, Concerned, IN_APPLICATION, NOT_DECIDED};
+use super::concerned::{Concerned, NOT_DECIDED, decide_as};
 use super::person::{Act, acting_person, say};
 use super::{EventOutcome, GatewayService, PersonMessage, bot_token_name};
 use crate::app::Services;
-use crate::services::runs::{APPROVAL_NOT_FOUND, DecisionInput};
 
 /// Said to whom the agent acts for, in their request's thread.
 const RESUMED: &str = " La demande reprend : la suite viendra dans ce fil.";
@@ -116,44 +111,18 @@ async fn decide(services: &Services, pressed: &PersonChoice) -> anyhow::Result<(
     let Some(identity) = acting_person(services, from, Act::Decide).await? else {
         return Ok(());
     };
-    let mut tx = services.db.begin(identity.tenant_id).await?;
-    let approval = get_approval(&mut tx, choice.approval_id).await?;
-    let concerned = Concerned {
-        user_id: identity.user_id,
-        standing_in_for: standing_in_for(&mut tx, identity.user_id, Utc::now()).await?,
-    };
-    tx.commit().await?;
-    // Their own action, or one awaiting them: nothing told of any other.
-    let Some(approval) = approval.filter(|a| concerned.sees(a)) else {
-        say(services, from, APPROVAL_NOT_FOUND).await;
-        return Ok(());
-    };
-    if !concerned.decides(&approval) {
-        say(services, from, AWAITS_A_MANAGER).await;
-        return Ok(());
-    }
-    if !validated_in_gateway(&approval.risk, &approval.payload) {
-        say(services, from, IN_APPLICATION).await;
-        return Ok(());
-    }
-    let input = DecisionInput {
-        approval_id: choice.approval_id,
-        approved: choice.approved,
-        comment: None,
-        gateway: Some(GatewayKind::Slack.as_str()),
-    };
-    let resumed = match services.runs.decide(identity, input).await {
-        Ok(decided) => decided.resumed,
-        Err(error) => {
-            let Some(refusal) = error.downcast_ref::<DomainError>() else {
-                return Err(error);
-            };
-            say(services, from, &refusal.message).await;
+    let pressed_choice = (choice.approval_id, choice.approved);
+    let (concerned, decided) =
+        decide_as(services, identity, pressed_choice, GatewayKind::Slack).await?;
+    let decided = match decided {
+        Ok(decided) => decided,
+        Err(refusal) => {
+            say(services, from, &refusal).await;
             return Ok(());
         }
     };
     // Decided: a failure to show it is no reason to say otherwise.
-    if let Err(error) = show_outcomes(services, pressed, &concerned, resumed).await {
+    if let Err(error) = show_outcomes(services, pressed, &concerned, decided.resumed).await {
         let gateway = from.gateway.id;
         tracing::warn!(%gateway, error = format!("{error:#}"), "Slack outcome not shown");
     }
