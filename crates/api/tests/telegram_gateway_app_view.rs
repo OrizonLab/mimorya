@@ -1,8 +1,9 @@
 //! A conversation held in Telegram, as the application shows it (ADR-135):
 //! listed and opened with its service, each message written to the bot
 //! marked; what is written in the application follows it, answered in the
-//! application only. Once its person asked the bot for a new one, it is
-//! held there no more, its messages still marked as written there.
+//! application only. Once its person asked the bot for a new one, or
+//! archived it, it is held there no more, its messages still marked as
+//! written there.
 
 mod support;
 
@@ -21,7 +22,7 @@ const MARC: (i64, &str) = (MARC_TELEGRAM, MARC_USERNAME);
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
-async fn a_conversation_held_in_telegram_shows_it_until_a_new_one_is_opened() {
+async fn a_conversation_held_in_telegram_shows_it_until_left_or_archived() {
     let telegram = FakeTelegram::start().await;
     let api = TestApi::start_with_telegram(&SSO_DEPLOYMENT, &telegram.url).await;
     let (paul, marc) = (api.sign_in(user::PAUL).await, api.sign_in(user::MARC).await);
@@ -29,6 +30,7 @@ async fn a_conversation_held_in_telegram_shows_it_until_a_new_one_is_opened() {
     api.script(vec![
         ScriptedStep::text("Réponse A."),
         ScriptedStep::text("Réponse B."),
+        ScriptedStep::text("Réponse C."),
     ]);
     talk(&api, &telegram, id, 10, MARC, "Question A").await;
     assert_eq!(answer(&api).await, 1);
@@ -79,4 +81,19 @@ async fn a_conversation_held_in_telegram_shows_it_until_a_new_one_is_opened() {
             .all(|c| c["id"] != conversation.to_string() || c["gateway"].is_null()),
         "{listed}"
     );
+
+    // Archived in the application: held there no more, until restored
+    // before any message to the bot closes it.
+    talk(&api, &telegram, id, 12, MARC, "Question C").await;
+    let next = open_conversation(&api, id, MARC_TELEGRAM, user::MARC)
+        .await
+        .expect("the next conversation");
+    let next_path = format!("/conversations/{next}");
+    let gateway = |detail: Value| detail["conversation"]["gateway"].clone();
+    let archived = marc.patch(&next_path, json!({ "archived": true })).await;
+    assert_eq!(archived.status, StatusCode::OK, "{}", archived.text());
+    assert_eq!(gateway(marc.get(&next_path).await.json()), Value::Null);
+    let restored = marc.patch(&next_path, json!({ "archived": false })).await;
+    assert_eq!(restored.status, StatusCode::OK, "{}", restored.text());
+    assert_eq!(gateway(marc.get(&next_path).await.json()), "telegram");
 }

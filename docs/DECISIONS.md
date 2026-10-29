@@ -7539,7 +7539,7 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
       `/nouvelle` ne ferme rien de la personne d'avant ; conversation ouverte deux fois ;
     - `telegram_gateway_app_view.rs` : conversation montrée avec son service, message
       écrit dans l'application répondu là seulement, plus tenue dans Telegram une fois
-      fermée ;
+      fermée ou archivée ;
     - `telegram_gateway_replies.rs` : HTML refusé dit en texte simple ; bot en pause ou
       liaison retirée ; Telegram injoignable retenté puis abandonné ; bot bloqué ;
     - `apps/web/e2e/telegram-conversations.spec.ts` : question posée au bot, réponse dans

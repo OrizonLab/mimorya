@@ -207,6 +207,11 @@ mod tests {
             from_markdown("Voir __le fichier *.log__ et *ici*"),
             "Voir <b>le fichier *.log</b> et <i>ici</i>"
         );
+        // Past a star left as written, whatever comes before it.
+        assert_eq!(
+            from_markdown("é __à *ç__ è* *ù*"),
+            "é <b>à *ç</b> è* <i>ù</i>"
+        );
     }
 
     #[test]
@@ -218,6 +223,7 @@ mod tests {
             "*a __b* c__",
             "*a **b** c* **d *e* f** __g *h__ i*",
             "## *Titre **gras*** et `code`\n- *x __y* z__",
+            "é __à *ç__ è* *ù*",
         ] {
             let html = from_markdown(markdown);
             let mut open = Vec::new();
