@@ -210,19 +210,26 @@ pub async fn remove_gateway(
     let Some(gateway) = lock_gateway(&mut tx, id).await? else {
         return Err(DomainError::not_found(NOT_FOUND).into());
     };
-    let telegram = GatewayKind::of(&gateway.kind) == Some(GatewayKind::Telegram);
     let secrets = gateways.secrets();
-    // A Telegram bot is told to send its updates nowhere, with its token.
-    let token = match telegram {
-        true => match secrets
+    if GatewayKind::of(&gateway.kind) == Some(GatewayKind::Telegram) {
+        // Told, under the lock, to send its updates nowhere: a bot declared
+        // again meanwhile keeps its own webhook. At best: its updates then
+        // reach an unknown gateway, answered as such.
+        match secrets
             .read(&mut tx, tenant_id, &bot_token_name(id))
             .await?
         {
-            SecretRead::Value(token) => Some(token),
-            _ => None,
-        },
-        false => None,
-    };
+            SecretRead::Value(token) => {
+                if let Err(failure) = gateways.telegram().delete_webhook(&token).await {
+                    let reason = failure.message();
+                    tracing::warn!(gateway = %id, %reason, "Telegram webhook not removed");
+                }
+            }
+            _ => {
+                tracing::warn!(gateway = %id, "Telegram bot token unreadable: webhook not removed")
+            }
+        }
+    }
     delete_gateway(&mut tx, id).await?;
     secrets.delete(&mut tx, &bot_token_name(id)).await?;
     secrets.delete(&mut tx, &signing_secret_name(id)).await?;
@@ -234,13 +241,6 @@ pub async fn remove_gateway(
     }));
     append_audit(&mut tx, entry).await?;
     tx.commit().await?;
-    if let Some(token) = token
-        && let Err(failure) = gateways.telegram().delete_webhook(&token).await
-    {
-        // Its updates then reach an unknown gateway, answered as such.
-        let reason = failure.message();
-        tracing::warn!(gateway = %id, %reason, "Telegram webhook not removed");
-    }
     Ok(())
 }
 

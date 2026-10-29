@@ -55,6 +55,7 @@ async fn list(
             pending: of.pending.map(|pending| GatewayLinkPending {
                 expires_at: iso(&pending.expires_at),
                 claimed_by: pending.claimed_by,
+                claimed_id: pending.claimed_id,
             }),
             linked: of.identity.map(|identity| GatewayIdentity {
                 external_id: identity.external_id,

@@ -1,8 +1,9 @@
 //! The code a person links their Telegram account with (ADR-133): made in
 //! their own session, kept as its digest only, carried to Telegram in the
 //! bot's link (`https://t.me/<bot>?start=<code>`, which Telegram sends back
-//! as `/start <code>` once the person starts the bot), whoever opens it
-//! then only proposing a link the session confirms.
+//! as `/start <code>` once the person starts the bot). Whoever opens it is
+//! told whose account it links, and only proposes a link by accepting it
+//! (`/oui`); the session that asked for it then confirms.
 
 use regex::Regex;
 use ring::digest;
@@ -40,6 +41,14 @@ pub fn deep_link(username: &str, code: &str) -> String {
     format!("https://t.me/{username}?start={code}")
 }
 
+/// What a person sends in Telegram to accept the link they were offered.
+pub const CONSENT: &str = "/oui";
+
+/// Whether a message accepts the link its writer was offered.
+pub fn is_consent(text: &str) -> bool {
+    text.trim().eq_ignore_ascii_case(CONSENT)
+}
+
 /// The code a message carries, if it is the `/start` Telegram sends when
 /// a person starts the bot from its link: `Some(None)` for `/start` alone
 /// (or with anything but a code), `None` for any other message.
@@ -72,6 +81,16 @@ mod tests {
         assert_eq!(start_code("/started"), None);
         assert_eq!(start_code("Bonjour"), None);
         assert_eq!(start_code(&format!("Bonjour /start {code}")), None);
+    }
+
+    #[test]
+    fn a_link_is_accepted_by_its_own_command_only() {
+        for accepted in ["/oui", " /OUI ", "/Oui"] {
+            assert!(is_consent(accepted), "{accepted}");
+        }
+        for other in ["oui", "/ouix", "/oui merci", "/start", ""] {
+            assert!(!is_consent(other), "{other}");
+        }
     }
 
     #[test]

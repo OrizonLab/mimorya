@@ -112,8 +112,8 @@ Repères à l'intérieur des crates :
   Slack, qui signe les événements comme lui, Telegram).
 - `api/src/plugins/` (contexte de requête, limitation de débit (globale par processus ;
   d'authentification partagée par PostgreSQL, `shared_limit.rs`, ADR-088), CSRF (sauf la réception
-  des réponses SAML, ADR-068, l'envoi à un déclencheur, ADR-109, et les événements de
-  Slack, ADR-125), session,
+  des réponses SAML, ADR-068, l'envoi à un déclencheur, ADR-109, les événements de
+  Slack, ADR-125, et les mises à jour de Telegram, ADR-133), session,
   en-têtes de sécurité, audit des modifications d'administration refusées, sur une ressource introuvable ou envoyant un identifiant inconnu,
   maintenance périodique : runs bloqués, liens expirés, absences terminées, demandes de
   validation échues et relances avant échéance, ADR-061, ADR-062 ; indexation de la

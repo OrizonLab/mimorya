@@ -343,8 +343,9 @@ Détaillés dans [AGENT_ENGINE.md](AGENT_ENGINE.md). En résumé :
   d'envoyer ses mises à jour à l'adresse de la passerelle avec un secret qu'elle fait,
   seule preuve de chaque mise à jour (`/api/gateways/telegram/{id}`). Telegram ne
   prouvant aucune adresse, une personne relie son compte depuis sa session : un code
-  qu'elle demande, renvoyé par Telegram depuis sa conversation privée avec le bot, puis
-  confirmé dans sa session.
+  qu'elle demande, renvoyé par Telegram depuis la conversation privée de qui ouvre le
+  lien, accepté là par qui le bot a dit à quel compte il le relierait, puis confirmé
+  dans sa session.
 - Les secrets ne transitent jamais par le contexte du modèle ni par les journaux.
 
 Connecteurs prévus : démonstration (MVP), MCP générique (MVP), déclencheurs (ADR-109),

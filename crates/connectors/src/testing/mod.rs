@@ -39,7 +39,7 @@ pub use slack::{
     WORKSPACE, WORKSPACE_NAME, signed, signed_at,
 };
 pub use telegram::{
-    FakeTelegram, OTHER_BOT_TOKEN, TELEGRAM_BOT, TELEGRAM_BOT_USERNAME, TELEGRAM_TOKEN,
+    FakeTelegram, OTHER_BOT, OTHER_BOT_TOKEN, TELEGRAM_BOT, TELEGRAM_BOT_USERNAME, TELEGRAM_TOKEN,
     TelegramMessage, update,
 };
 

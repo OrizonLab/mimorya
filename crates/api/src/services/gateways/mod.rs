@@ -51,9 +51,10 @@ pub use link::{LINK_LIFETIME, LinkPreview};
 pub use replies::{MAX_ATTEMPTS, reply_to_finished_runs};
 pub use telegram::{PendingLink, TelegramLinkCode, UpdateOutcome};
 
-/// Where Slack sends a gateway's events, under the API's address: the only
-/// route besides the SAML reception and the inbound hooks' that a request
-/// without the browser's header reaches (`plugins/csrf.rs`).
+/// Where Slack sends a gateway's events, under the API's address: with the
+/// SAML reception, the inbound hooks' and a Telegram bot's updates, the
+/// only routes a request without the browser's header reaches
+/// (`plugins/csrf.rs`).
 pub const SLACK_EVENTS_PREFIX: &str = "/gateways/slack/";
 /// Where Telegram sends a bot's updates, under the API's address: the
 /// other route a request without the browser's header reaches (ADR-133).

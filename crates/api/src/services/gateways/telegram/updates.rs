@@ -6,26 +6,15 @@
 //! an update already taken (Telegram sends one again when it was not
 //! answered in time), of a paused gateway, or anything but a person's own
 //! text message in their private chat with the bot is taken and ignored.
-//! A `/start` carrying a link code is that code sent back: the person who
-//! wrote it is kept with the code, for the session that asked for it to
-//! confirm (`link`). Anyone else is answered in their private chat: how to
-//! link their account, or, once linked, that the conversation here is to
-//! come. What a message says is never logged nor audited.
+//! The message is then answered in the person's private chat (`answers`).
+//! What a message says is never logged nor audited.
 
 use chrono::{DateTime, Utc};
 use mimorya_core::gateways::GatewayKind;
-use mimorya_core::gateways::telegram::{
-    PrivateMessage, Update, link_code_hash, read_update, secret_matches, start_code,
-};
-use mimorya_db::TenantTx;
-use mimorya_db::repositories::audit::{AuditEntry, append_audit};
-use mimorya_db::repositories::gateway_identities::find_gateway_identity;
-use mimorya_db::repositories::gateway_link_codes::{Claim, claim_link_code};
+use mimorya_core::gateways::telegram::{Update, read_update, secret_matches};
 use mimorya_db::repositories::gateways::{gateway_tenant, get_gateway, take_gateway_event};
-use serde_json::json;
 use uuid::Uuid;
 
-use super::texts;
 use crate::services::gateways::{GatewayService, bot_token_name, webhook_secret_name};
 
 /// What became of an update Telegram sent.
@@ -101,42 +90,5 @@ impl GatewayService {
             }
         });
         Ok(UpdateOutcome::Taken)
-    }
-
-    /// What to answer `message`: a link code sent back is kept with whom it
-    /// came from, and audited.
-    async fn answer(
-        &self,
-        tx: &mut TenantTx,
-        (tenant_id, gateway_id): (Uuid, Uuid),
-        message: &PrivateMessage,
-        now: DateTime<Utc>,
-    ) -> anyhow::Result<String> {
-        let person = message.person.id.to_string();
-        match start_code(&message.text) {
-            Some(Some(code)) => {
-                let claim = Claim {
-                    external_id: person.clone(),
-                    name: message.person.name.clone(),
-                };
-                let hash = link_code_hash(code);
-                let Some(owner) = claim_link_code(tx, gateway_id, &hash, now, &claim).await? else {
-                    return Ok(texts::CODE_INVALID.to_owned());
-                };
-                let entry =
-                    AuditEntry::new(tenant_id, "system", "gateway.link_code_claimed", "success")
-                        .on_behalf_of(owner)
-                        .resource("gateway", gateway_id)
-                        .metadata(json!({ "externalId": person }));
-                append_audit(tx, entry).await?;
-                Ok(texts::CLAIMED.to_owned())
-            }
-            _ => Ok(
-                match find_gateway_identity(tx, gateway_id, &person).await? {
-                    Some(_) => texts::linked(&self.assistant_name),
-                    None => texts::unlinked(&self.assistant_name),
-                },
-            ),
-        }
     }
 }

@@ -79,8 +79,9 @@ pub async fn lock_gateway(conn: &mut PgConnection, id: Uuid) -> sqlx::Result<Opt
         .await
 }
 
-/// Declares a gateway; fails on a unique violation when the company has one
-/// of this service already.
+/// Declares a gateway, its permissions read now (a Telegram bot has none);
+/// fails on a unique violation when the company has one of this service
+/// already.
 pub async fn create_gateway(
     conn: &mut PgConnection,
     gateway: NewGateway<'_>,
@@ -88,7 +89,8 @@ pub async fn create_gateway(
     sqlx::query_scalar(
         "insert into gateways (tenant_id, kind, name, enabled, workspace_id, workspace_name, \
          bot_user_id, granted_scopes, scopes_checked_at) \
-         values ($1, $2, $3, $4, $5, $6, $7, $8, now()) returning id",
+         values ($1, $2, $3, $4, $5, $6, $7, $8, \
+         case when $2 = 'telegram' then null else now() end) returning id",
     )
     .bind(gateway.tenant_id)
     .bind(gateway.kind)
@@ -100,34 +102,6 @@ pub async fn create_gateway(
     .bind(gateway.granted_scopes)
     .fetch_one(conn)
     .await
-}
-
-/// Declares a gateway named `id` before it is kept (its service is told
-/// its address first, ADR-133); fails on a unique violation when the
-/// company has one of this service already.
-pub async fn create_gateway_with_id(
-    conn: &mut PgConnection,
-    id: Uuid,
-    gateway: NewGateway<'_>,
-) -> sqlx::Result<()> {
-    sqlx::query(
-        "insert into gateways (id, tenant_id, kind, name, enabled, workspace_id, workspace_name, \
-         bot_user_id, granted_scopes, scopes_checked_at) \
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, \
-         case when $9::text[] is null then null else now() end)",
-    )
-    .bind(id)
-    .bind(gateway.tenant_id)
-    .bind(gateway.kind)
-    .bind(gateway.name)
-    .bind(gateway.enabled)
-    .bind(gateway.workspace_id)
-    .bind(gateway.workspace_name)
-    .bind(gateway.bot_user_id)
-    .bind(gateway.granted_scopes)
-    .execute(conn)
-    .await?;
-    Ok(())
 }
 
 /// Applies `patch` to the gateway `id`.

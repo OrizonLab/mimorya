@@ -743,10 +743,15 @@ export type GatewayLinkCode = { code: string, };
  */
 export type GatewayLinkPending = { expiresAt: string,
 /**
- * How Telegram showed whoever sent the code back, to confirm; `None`
- * until then.
+ * How Telegram showed whoever accepted the link, to confirm; `None`
+ * until then. A name anyone chooses never starts with `@`, which only
+ * a Telegram username does.
  */
-claimedBy: string | null, };
+claimedBy: string | null,
+/**
+ * Their Telegram identifier, which no one chooses.
+ */
+claimedId: string | null, };
 
 /**
  * `POST /account/gateways/link/preview`: what the link would link.

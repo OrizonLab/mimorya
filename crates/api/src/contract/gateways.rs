@@ -40,9 +40,12 @@ pub struct AccountGatewayView {
 #[serde(rename_all = "camelCase")]
 pub struct GatewayLinkPending {
     pub expires_at: String,
-    /// How Telegram showed whoever sent the code back, to confirm; `None`
-    /// until then.
+    /// How Telegram showed whoever accepted the link, to confirm; `None`
+    /// until then. A name anyone chooses never starts with `@`, which only
+    /// a Telegram username does.
     pub claimed_by: Option<String>,
+    /// Their Telegram identifier, which no one chooses.
+    pub claimed_id: Option<String>,
 }
 
 /// `POST /account/gateways/{id}/telegram-code`: the bot's link carrying a

@@ -17,7 +17,7 @@ use mimorya_core::gateways::telegram::bot_token;
 use mimorya_core::gateways::{GatewayKind, gateway_name};
 use mimorya_db::repositories::audit::append_audit;
 use mimorya_db::repositories::gateways::{
-    GatewayPatch, GatewayRow, NewGateway, create_gateway_with_id, lock_gateway, update_gateway,
+    GatewayPatch, GatewayRow, NewGateway, create_gateway, lock_gateway, update_gateway,
 };
 use mimorya_db::{TenantTx, is_unique_violation};
 use serde_json::{Map, Value, json};
@@ -49,13 +49,12 @@ pub async fn declare_telegram_gateway(
     gateways.secrets().require()?;
     // Asked of Telegram before the lock: a slow answer holds no change.
     let bot = bot_of(gateways, &token).await?;
-    let (id, secret) = (Uuid::new_v4(), webhook_secret());
+    let secret = webhook_secret();
     let tenant_id = access.subject.tenant_id;
     let mut tx = begin_change(gateways.db(), access, PERMISSION).await?;
     let bot_id = bot.id.to_string();
-    let created = create_gateway_with_id(
+    let created = create_gateway(
         &mut tx,
-        id,
         NewGateway {
             tenant_id,
             kind: GatewayKind::Telegram.as_str(),
@@ -68,8 +67,8 @@ pub async fn declare_telegram_gateway(
         },
     )
     .await;
-    match created {
-        Ok(()) => {}
+    let id = match created {
+        Ok(id) => id,
         Err(error) if is_unique_violation(&error) => {
             return Err(DomainError::conflict(
                 "Le bot Telegram de l’entreprise est déjà déclaré : modifiez-le, ou supprimez-le \
@@ -78,7 +77,7 @@ pub async fn declare_telegram_gateway(
             .into());
         }
         Err(error) => return Err(error.into()),
-    }
+    };
     let secrets = gateways.secrets();
     secrets
         .put(&mut tx, tenant_id, &bot_token_name(id), &token)

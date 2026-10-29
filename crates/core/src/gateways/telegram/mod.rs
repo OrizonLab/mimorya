@@ -4,7 +4,8 @@
 //! header), which updates reach the platform (`update`), and the code a
 //! person links their Telegram account with: Telegram proves no address, so
 //! the code is asked for in the person's own session, opened in Telegram,
-//! and the link confirmed in that session again (`link`).
+//! accepted there by whoever is told whose account it links, and the link
+//! confirmed in that session again (`link`).
 
 mod link;
 mod update;
@@ -14,7 +15,8 @@ use ring::digest;
 use std::sync::LazyLock;
 
 pub use link::{
-    LINK_CODE_CHARS, deep_link, is_bot_username, is_link_code, link_code_hash, start_code,
+    CONSENT, LINK_CODE_CHARS, deep_link, is_bot_username, is_consent, is_link_code, link_code_hash,
+    start_code,
 };
 pub use update::{
     MAX_MESSAGE_CHARS, PrivateMessage, ReceivedUpdate, TelegramUser, Update, is_user_id,

@@ -7,6 +7,8 @@
 
 use serde::Deserialize;
 
+use crate::plain_text::is_hidden;
+
 /// The most text taken of a message (Telegram allows 4 096 characters; a
 /// person's turn in the application is bounded alike).
 pub const MAX_MESSAGE_CHARS: usize = 16_000;
@@ -131,7 +133,9 @@ fn private_message(message: RawMessage) -> Option<PrivateMessage> {
 }
 
 /// `@username` if Telegram gives one as it writes them, else their names,
-/// without control characters, bounded; their identifier at worst.
+/// without hidden characters and never starting with `@` (a name anyone
+/// chooses must not pass for someone's username), bounded; their identifier
+/// at worst.
 fn shown_name(user: &RawUser) -> String {
     let username = user.username.as_deref().filter(|name| {
         (5..=32).contains(&name.len())
@@ -147,10 +151,13 @@ fn shown_name(user: &RawUser) -> String {
         .collect::<Vec<_>>()
         .join(" ")
         .chars()
-        .filter(|c| !c.is_control())
+        .filter(|&c| !is_hidden(c))
+        .collect();
+    let name: String = (full.trim_start_matches(|c: char| c == '@' || c.is_whitespace()))
+        .chars()
         .take(MAX_NAME_CHARS)
         .collect();
-    match full.trim() {
+    match name.trim() {
         "" => format!("Telegram {}", user.id),
         name => name.to_owned(),
     }
@@ -235,6 +242,27 @@ mod tests {
                     .unwrap()
                     .remove("username");
                 u["message"]["from"]["first_name"] = json!("");
+            }),
+            "Telegram 4242"
+        );
+        // A name never passes for a username, nor hides anything.
+        assert_eq!(
+            named(|u| {
+                u["message"]["from"]
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("username");
+                u["message"]["from"]["first_name"] = json!(" @\u{200B}@lea_font\u{202E}");
+            }),
+            "lea_font"
+        );
+        assert_eq!(
+            named(|u| {
+                u["message"]["from"]
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("username");
+                u["message"]["from"]["first_name"] = json!("@");
             }),
             "Telegram 4242"
         );

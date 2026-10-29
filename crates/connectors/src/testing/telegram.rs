@@ -23,8 +23,9 @@ use serde_json::{Value, json};
 pub const TELEGRAM_TOKEN: &str = "123456789:AAH-fictif_jeton_du_bot_neo_maint_0001";
 pub const TELEGRAM_BOT: i64 = 123_456_789;
 pub const TELEGRAM_BOT_USERNAME: &str = "NeoMaintenanceBot";
-/// Another bot's token.
+/// Another bot's token, and the bot it is.
 pub const OTHER_BOT_TOKEN: &str = "987654321:AAH-fictif_jeton_dun_autre_bot_000001";
+pub const OTHER_BOT: i64 = 987_654_321;
 
 /// A message a bot wrote.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -58,7 +59,8 @@ impl FakeTelegram {
         Self::start_on("127.0.0.1:0").await
     }
 
-    /// The same, at `address` (the end-to-end tests read it there).
+    /// The same, at `address`: where the end-to-end tests of the bot's
+    /// screens (ADR-133, their own lot) will read it.
     pub async fn start_on(address: &str) -> Self {
         let shared = Arc::new(Mutex::new(Shared::default()));
         let router = Router::new()
@@ -150,7 +152,7 @@ async fn call(
     }
     let (id, username) = match bot.strip_prefix("bot") {
         Some(TELEGRAM_TOKEN) if !shared.revoked => (TELEGRAM_BOT, TELEGRAM_BOT_USERNAME),
-        Some(OTHER_BOT_TOKEN) if !shared.revoked => (987_654_321, "AutreEntrepriseBot"),
+        Some(OTHER_BOT_TOKEN) if !shared.revoked => (OTHER_BOT, "AutreEntrepriseBot"),
         _ => return refusal(StatusCode::UNAUTHORIZED, "Unauthorized"),
     };
     match method.as_str() {
@@ -200,7 +202,8 @@ async fn call(
     }
 }
 
-/// The messages the bots wrote, oldest first, for the end-to-end tests.
+/// The messages the bots wrote, oldest first, for the end-to-end tests of
+/// the bot's screens (their own lot).
 async fn messages(State(shared): State<Arc<Mutex<Shared>>>) -> Json<Value> {
     let shared = shared.lock().expect("lock");
     let messages: Vec<Value> = (shared.messages.iter())

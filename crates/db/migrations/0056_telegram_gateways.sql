@@ -21,48 +21,71 @@ ALTER TABLE gateways
     kind <> 'telegram' OR (granted_scopes IS NULL AND scopes_checked_at IS NULL)
   );
 
+-- A gateway's identities and codes are of its service, which the database
+-- holds them to: each names its gateway with its service.
+ALTER TABLE gateways ADD CONSTRAINT gateways_id_kind UNIQUE (id, kind);
+
 -- A Telegram user is named by their identifier and shown by their name:
--- Telegram proves no address, so none is kept for them.
+-- Telegram proves no address, so none is kept for them. A Slack user keeps
+-- their address and Slack's identifier, as before.
 ALTER TABLE gateway_identities
+  ADD COLUMN kind text,
+  ADD COLUMN display_name text;
+
+UPDATE gateway_identities i SET kind = g.kind FROM gateways g WHERE g.id = i.gateway_id;
+
+ALTER TABLE gateway_identities
+  ALTER COLUMN kind SET NOT NULL,
   ALTER COLUMN address DROP NOT NULL,
-  ADD COLUMN display_name text,
   DROP CONSTRAINT gateway_identities_external_id,
-  ADD CONSTRAINT gateway_identities_external_id CHECK (
-    external_id ~ '^([UW][A-Z0-9]{2,30}|[1-9][0-9]{0,19})$'
-  ),
+  ADD CONSTRAINT gateway_identities_gateway_kind FOREIGN KEY (gateway_id, kind)
+    REFERENCES gateways (id, kind) ON DELETE CASCADE,
   ADD CONSTRAINT gateway_identities_display_name CHECK (
     display_name IS NULL OR char_length(display_name) BETWEEN 1 AND 80
   ),
-  ADD CONSTRAINT gateway_identities_shown CHECK (
-    address IS NOT NULL OR display_name IS NOT NULL
+  ADD CONSTRAINT gateway_identities_of_kind CHECK (
+    (kind = 'slack' AND external_id ~ '^[UW][A-Z0-9]{2,30}$'
+      AND address IS NOT NULL AND display_name IS NULL)
+    OR (kind = 'telegram' AND external_id ~ '^[1-9][0-9]{0,19}$'
+      AND address IS NULL AND display_name IS NOT NULL)
   );
 
 -- The codes people link their Telegram account with (ADR-133): asked for
 -- in their own session, kept as their digest only, valid fifteen minutes.
 -- Once Telegram sent one back from a person's private chat with the bot,
--- that Telegram user is kept with it, until the session that asked for it
--- confirms the link, which takes it. One per person and gateway; forgotten
--- once expired.
+-- the bot names whose account it links and that Telegram user is kept as
+-- the one it was offered to; once they accept, they are kept as the one it
+-- was sent back from, until the session that asked for it confirms the
+-- link, which takes it. One per person and gateway, of a Telegram bot;
+-- forgotten once expired.
 CREATE TABLE gateway_link_codes (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  gateway_id uuid NOT NULL REFERENCES gateways(id) ON DELETE CASCADE,
+  gateway_id uuid NOT NULL,
+  kind text NOT NULL DEFAULT 'telegram',
   user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   code_hash text NOT NULL,
   expires_at timestamptz NOT NULL,
+  offered_external_id text,
+  offered_at timestamptz,
   claimed_external_id text,
   claimed_name text,
   claimed_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT gateway_link_codes_gateway FOREIGN KEY (gateway_id, kind)
+    REFERENCES gateways (id, kind) ON DELETE CASCADE,
+  CONSTRAINT gateway_link_codes_kind CHECK (kind = 'telegram'),
   CONSTRAINT gateway_link_codes_one_per_person UNIQUE (gateway_id, user_id),
   CONSTRAINT gateway_link_codes_one_code UNIQUE (gateway_id, code_hash),
   CONSTRAINT gateway_link_codes_hash CHECK (code_hash ~ '^[0-9a-f]{64}$'),
+  CONSTRAINT gateway_link_codes_offer CHECK (
+    (offered_external_id IS NULL) = (offered_at IS NULL)
+    AND (offered_external_id IS NULL OR offered_external_id ~ '^[1-9][0-9]{0,19}$')
+  ),
   CONSTRAINT gateway_link_codes_claim CHECK (
     (claimed_external_id IS NULL) = (claimed_at IS NULL)
     AND (claimed_external_id IS NULL) = (claimed_name IS NULL)
-  ),
-  CONSTRAINT gateway_link_codes_external_id CHECK (
-    claimed_external_id IS NULL OR claimed_external_id ~ '^[1-9][0-9]{0,19}$'
+    AND (claimed_external_id IS NULL OR claimed_external_id = offered_external_id)
   ),
   CONSTRAINT gateway_link_codes_name CHECK (
     claimed_name IS NULL OR char_length(claimed_name) BETWEEN 1 AND 80
@@ -70,6 +93,8 @@ CREATE TABLE gateway_link_codes (
 );
 
 CREATE INDEX gateway_link_codes_expiry_idx ON gateway_link_codes (expires_at);
+CREATE INDEX gateway_link_codes_offer_idx ON gateway_link_codes (gateway_id, offered_external_id)
+  WHERE claimed_at IS NULL;
 
 ALTER TABLE gateway_link_codes ENABLE ROW LEVEL SECURITY;
 

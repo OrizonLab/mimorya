@@ -69,8 +69,8 @@ pub async fn put_gateway_identity(
     .await?;
     sqlx::query(
         "insert into gateway_identities \
-         (tenant_id, gateway_id, user_id, external_id, address, display_name) \
-         values ($1, $2, $3, $4, $5, $6) \
+         (tenant_id, gateway_id, kind, user_id, external_id, address, display_name) \
+         values ($1, $2, (select kind from gateways where id = $2), $3, $4, $5, $6) \
          on conflict (gateway_id, user_id) do update set external_id = excluded.external_id, \
          address = excluded.address, display_name = excluded.display_name, created_at = now()",
     )

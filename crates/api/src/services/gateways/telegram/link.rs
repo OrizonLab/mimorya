@@ -3,18 +3,20 @@
 //! they ask for a code (kept as its digest only, fifteen minutes, their
 //! former one replaced) and open the bot's link carrying it in Telegram,
 //! which sends it back from their private chat with the bot (`updates`);
-//! their session then shows whom from, and they confirm. A code someone
-//! else saw links nothing without the session that asked for it, and no
-//! one links their Telegram account to another's: the code is the
-//! session's own. Talking with the agent (`agent:use`) is required; a
-//! paused bot links nothing. A link confirmed replaces the person's former
-//! one there, and this Telegram account's link to anyone else; audited,
-//! never what Telegram showed of them.
+//! the bot tells whoever opened it whose account it links, and they accept
+//! it there (`answers`); their session then shows whom from, and they
+//! confirm. A code someone else saw links nothing without the session that
+//! asked for it, and no one's Telegram account is linked to another's
+//! account unless they accepted it knowing whose. Talking with the agent
+//! (`agent:use`) is required; a paused bot links nothing. A link confirmed
+//! replaces the person's former one there, never this Telegram account's
+//! link to anyone else, which only that person removes; audited, never what
+//! Telegram showed of them.
 
 use chrono::{DateTime, Duration, Utc};
 use mimorya_core::DomainError;
 use mimorya_core::gateways::GatewayKind;
-use mimorya_core::gateways::telegram::deep_link;
+use mimorya_core::gateways::telegram::{deep_link, link_code_hash};
 use mimorya_db::repositories::account_links::lock_active_account;
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::gateway_identities::{NewGatewayIdentity, put_gateway_identity};
@@ -38,7 +40,9 @@ const NOT_FOUND: &str = "Passerelle introuvable";
 const UNAVAILABLE: &str = "Le bot Telegram de votre entreprise est désactivé : rien ne peut être \
      relié pour l’instant";
 const NOTHING_TO_CONFIRM: &str = "Aucune liaison à confirmer : ouvrez d’abord le lien dans \
-     Telegram et démarrez le bot, puis revenez ici";
+     Telegram, démarrez le bot et acceptez la liaison, puis revenez ici";
+const LINKED_ELSEWHERE: &str = "Ce compte Telegram est déjà relié à une autre personne : elle \
+     seule peut le retirer, depuis sa page « Mon compte »";
 
 /// The link a person opens in Telegram to send their code back, and until
 /// when it is valid.
@@ -60,8 +64,10 @@ impl std::fmt::Debug for TelegramLinkCode {
 #[derive(Debug, Clone)]
 pub struct PendingLink {
     pub expires_at: DateTime<Utc>,
-    /// How Telegram showed them, once it sent the code back.
+    /// How Telegram showed them, once they accepted the link.
     pub claimed_by: Option<String>,
+    /// Their Telegram identifier, which no one chooses.
+    pub claimed_id: Option<String>,
 }
 
 impl From<LinkCodeRow> for PendingLink {
@@ -69,6 +75,7 @@ impl From<LinkCodeRow> for PendingLink {
         Self {
             expires_at: row.expires_at,
             claimed_by: row.claimed_name,
+            claimed_id: row.claimed_external_id,
         }
     }
 }
@@ -86,7 +93,7 @@ impl GatewayService {
         let tenant_id = access.subject.tenant_id;
         let mut tx = self.db.begin(tenant_id).await?;
         let gateway = usable(get_gateway(&mut tx, gateway_id).await?)?;
-        let (code, hash) = new_session_token();
+        let (code, hash) = new_link_code();
         let expires_at = now + LINK_CODE_LIFETIME;
         let who = (tenant_id, gateway.id, access.subject.user_id);
         put_link_code(&mut tx, who, &hash, expires_at).await?;
@@ -143,13 +150,16 @@ impl GatewayService {
             },
         )
         .await?;
+        if replaced.other_person.is_some() {
+            // Linked to someone else meanwhile: only they remove it.
+            return Err(DomainError::conflict(LINKED_ELSEWHERE).into());
+        }
         let entry = AuditEntry::new(tenant_id, "user", "gateway.identity_linked", "success")
             .by_user(access.subject.user_id)
             .resource("gateway", gateway.id)
             .metadata(json!({
                 "externalId": claim.external_id,
                 "replacedOwn": replaced.own.is_some(),
-                "replacedOtherPerson": replaced.other_person.is_some(),
             }));
         append_audit(&mut tx, entry).await?;
         tx.commit().await?;
@@ -173,6 +183,14 @@ impl GatewayService {
     }
 }
 
+/// A new code, as the platform writes them (`is_link_code`), and what is
+/// kept of it.
+fn new_link_code() -> (String, String) {
+    let (code, _) = new_session_token();
+    let hash = link_code_hash(&code);
+    (code, hash)
+}
+
 /// The gateway, if it is a Telegram bot that may link someone.
 fn usable(gateway: Option<GatewayRow>) -> Result<GatewayRow, DomainError> {
     match gateway {
@@ -184,5 +202,19 @@ fn usable(gateway: Option<GatewayRow>) -> Result<GatewayRow, DomainError> {
             }
         }
         _ => Err(DomainError::not_found(NOT_FOUND)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mimorya_core::gateways::telegram::is_link_code;
+
+    #[test]
+    fn a_code_is_as_the_platform_writes_them_and_kept_as_its_digest() {
+        let (code, hash) = new_link_code();
+        assert!(is_link_code(&code), "{code}");
+        assert_eq!(hash, link_code_hash(&code));
+        assert_ne!(new_link_code().0, code);
     }
 }

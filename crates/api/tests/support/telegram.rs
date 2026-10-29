@@ -1,12 +1,15 @@
 //! The company's Telegram bot in the tests (ADR-133): declared by an
 //! administrator with the local Telegram's bot, updates sent as Telegram
 //! sends them, with the secret the platform gave it, and a person's link
-//! code asked for in their session.
+//! code asked for in their session, opened and accepted in Telegram.
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
+use mimorya_api::services::AccessContext;
 use mimorya_api::services::admin::{NewTelegramGatewayInput, declare_telegram_gateway};
-use mimorya_connectors::testing::{FakeTelegram, OTHER_BOT_TOKEN, TELEGRAM_BOT, TELEGRAM_TOKEN};
+use mimorya_connectors::testing::{
+    FakeTelegram, OTHER_BOT_TOKEN, TELEGRAM_BOT, TELEGRAM_TOKEN, update,
+};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
@@ -72,6 +75,41 @@ pub async fn send_update(
     sent
 }
 
+/// What the bot `id` answers the Telegram user `from` (`@username`)
+/// writing `text`, sent by Telegram as its update `update_id`.
+pub async fn write(
+    api: &TestApi,
+    telegram: &FakeTelegram,
+    id: Uuid,
+    update_id: i64,
+    (from, username): (i64, &str),
+    text: &str,
+) -> String {
+    let body = update(update_id, from, username, text);
+    let sent = send_update(api, telegram, id, &body).await;
+    assert_eq!(sent.status, StatusCode::OK, "{}", sent.text());
+    let answer = telegram.messages().pop().expect("an answer");
+    assert_eq!(answer.chat, from, "{}", answer.text);
+    answer.text
+}
+
+/// The Telegram user `from` opens the link of `code` and accepts it, as
+/// Telegram's updates `update_id` and the next one: what the bot answered
+/// last.
+pub async fn open_and_accept(
+    api: &TestApi,
+    telegram: &FakeTelegram,
+    id: Uuid,
+    update_id: i64,
+    from: (i64, &str),
+    code: &str,
+) -> String {
+    let start = format!("/start {code}");
+    let offered = write(api, telegram, id, update_id, from, &start).await;
+    assert!(offered.contains("envoyez /oui"), "{offered}");
+    write(api, telegram, id, update_id + 1, from, "/oui").await
+}
+
 /// The gateway `id` as `person` lists it in their account.
 pub async fn of_person(person: &Client<'_>, id: Uuid) -> Value {
     let listed = person.get("/account/gateways").await;
@@ -111,9 +149,9 @@ pub async fn listed_gateway(admin: &Client<'_>, id: Uuid) -> Value {
         .unwrap_or(Value::Null)
 }
 
-/// Another company, and its own Telegram bot, declared by its
-/// administrator with the local Telegram's other bot.
-pub async fn other_company_bot(api: &TestApi, slug: &str) -> (Uuid, Uuid) {
+/// Another company, its own Telegram bot, declared by its administrator
+/// with the local Telegram's other bot, and that administrator.
+pub async fn other_company_bot(api: &TestApi, slug: &str) -> (Uuid, Uuid, AccessContext) {
     let (tenant_id, jeanne) = other_administrator(api, slug).await;
     let input = NewTelegramGatewayInput {
         name: "Telegram Acme".into(),
@@ -123,5 +161,5 @@ pub async fn other_company_bot(api: &TestApi, slug: &str) -> (Uuid, Uuid) {
     let gateway = declare_telegram_gateway(&api.app.services.gateways, &jeanne, input)
         .await
         .unwrap();
-    (tenant_id, gateway)
+    (tenant_id, gateway, jeanne)
 }
