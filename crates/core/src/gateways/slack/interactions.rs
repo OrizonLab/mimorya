@@ -5,7 +5,7 @@
 //! pressed (`block_actions`), signed as its events. Only an action that
 //! changes nothing outside the company and can be undone, whose exact
 //! parameters fit whole in a message, is validated there
-//! (`validated_in_slack`); any other, in the application. Only the
+//! (`validated_in_gateway`); any other, in the application. Only the
 //! application's buttons are read: their approval, the person who pressed,
 //! where the message is. The message, once an action is decided, shows what
 //! became of each of its actions in place of their buttons.
@@ -17,20 +17,14 @@ use uuid::Uuid;
 
 use super::events::{is_person, is_workspace};
 use super::mrkdwn::escaped;
-use crate::autonomy::ToolRisk;
 use crate::gateways::bounded;
+use crate::gateways::validation::{MAX_ACTION_CHARS, ShownAction, exact_parameters, risk_label};
 
 /// The buttons, as the application names them.
 pub const APPROVE_ACTION: &str = "approval_approve";
 pub const REJECT_ACTION: &str = "approval_reject";
 /// How an action's buttons are named in their message, before its approval.
 const BLOCK_PREFIX: &str = "approval:";
-/// The most of an action's description shown in Slack: escaped, it stays
-/// within the 3 000 characters of a section.
-pub const MAX_ACTION_CHARS: usize = 500;
-/// The most of an action's exact parameters a message shows: beyond, it is
-/// validated in the application, which shows them whole.
-pub const MAX_PARAMETERS_CHARS: usize = 2_500;
 /// The most blocks a message holds (Slack refuses more than 50).
 const MAX_BLOCKS: usize = 50;
 
@@ -59,18 +53,6 @@ pub struct ApprovalChoice {
     pub approved: bool,
     /// The message's blocks, as Slack holds them: rewritten once decided.
     pub blocks: Vec<Value>,
-}
-
-/// An action awaiting its author's validation, shown in Slack.
-#[derive(Debug, Clone, Copy)]
-pub struct ShownAction<'a> {
-    pub approval_id: Uuid,
-    /// What the agent says it does.
-    pub summary: &'a str,
-    /// Its risk, as stored (`write`…).
-    pub risk: &'a str,
-    /// Its exact parameters, as they will be carried out.
-    pub parameters: &'a Value,
 }
 
 /// The choice `payload` (the JSON Slack posts, form-encoded, as `payload`)
@@ -119,33 +101,6 @@ pub fn approval_choice(payload: &str) -> Option<ApprovalChoice> {
         approved,
         blocks,
     })
-}
-
-/// Whether an action of `risk` with these exact `parameters` may be
-/// validated in Slack: never one that sends something outside the company
-/// or cannot be undone (validated in the application, ADR-119, ADR-123),
-/// nor one whose exact parameters do not fit whole in a message.
-pub fn validated_in_slack(risk: &str, parameters: &Value) -> bool {
-    let undone = matches!(
-        ToolRisk::parse(risk),
-        Some(ToolRisk::Read | ToolRisk::Draft | ToolRisk::Write)
-    );
-    undone && exact_parameters(parameters).chars().count() <= MAX_PARAMETERS_CHARS
-}
-
-/// The exact parameters, as Slack shows them: indented JSON.
-fn exact_parameters(parameters: &Value) -> String {
-    serde_json::to_string_pretty(parameters).unwrap_or_else(|_| parameters.to_string())
-}
-
-fn risk_label(risk: &str) -> &'static str {
-    match ToolRisk::parse(risk) {
-        Some(ToolRisk::Read) => "Lecture",
-        Some(ToolRisk::Draft) => "Brouillon",
-        Some(ToolRisk::Write) => "Modification",
-        Some(ToolRisk::External) => "Impact externe",
-        Some(ToolRisk::Irreversible) | None => "Irréversible",
-    }
 }
 
 /// The blocks of a pause's message: `intro`, in Slack's markup, then each
@@ -294,19 +249,6 @@ mod tests {
         let mut channel = pressed(APPROVE_ACTION, APPROVAL);
         channel["container"]["channel_id"] = json!("<!here>");
         assert_eq!(approval_choice(&channel.to_string()), None);
-    }
-
-    #[test]
-    fn only_an_action_that_can_be_undone_with_parameters_that_fit_is_validated_in_slack() {
-        let small = json!({ "proposalId": "p-1" });
-        assert!(validated_in_slack("read", &small));
-        assert!(validated_in_slack("draft", &small));
-        assert!(validated_in_slack("write", &small));
-        assert!(!validated_in_slack("external", &small));
-        assert!(!validated_in_slack("irreversible", &small));
-        assert!(!validated_in_slack("inconnu", &small));
-        let large = json!({ "body": "x".repeat(MAX_PARAMETERS_CHARS) });
-        assert!(!validated_in_slack("write", &large));
     }
 
     #[test]

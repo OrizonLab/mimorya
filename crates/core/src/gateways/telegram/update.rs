@@ -3,10 +3,12 @@
 //! it was not answered in time, and a retry is taken once). Of the updates,
 //! only a person's own text message to the bot, in their private chat with
 //! it, reaches the platform: never a bot's, never one in a group, a channel
-//! or anywhere else, never an edit (Telegram sends those apart).
+//! or anywhere else, never an edit (Telegram sends those apart); and their
+//! press of one of the bot's buttons there (`press`, ADR-136).
 
 use serde::Deserialize;
 
+use super::press::{ButtonPress, RawCallback, button_press};
 use crate::plain_text::is_hidden;
 
 /// The most text taken of a message (Telegram allows 4 096 characters; a
@@ -22,6 +24,8 @@ struct RawUpdate {
     update_id: i64,
     #[serde(default)]
     message: Option<RawMessage>,
+    #[serde(default)]
+    callback_query: Option<RawCallback>,
 }
 
 #[derive(Deserialize)]
@@ -35,10 +39,10 @@ struct RawMessage {
 }
 
 #[derive(Deserialize)]
-struct RawUser {
-    id: i64,
+pub(super) struct RawUser {
+    pub(super) id: i64,
     #[serde(default)]
-    is_bot: bool,
+    pub(super) is_bot: bool,
     #[serde(default)]
     first_name: String,
     #[serde(default)]
@@ -48,10 +52,10 @@ struct RawUser {
 }
 
 #[derive(Deserialize)]
-struct RawChat {
-    id: i64,
+pub(super) struct RawChat {
+    pub(super) id: i64,
     #[serde(rename = "type")]
-    kind: String,
+    pub(super) kind: String,
 }
 
 /// An update, as far as the platform reads it.
@@ -67,6 +71,8 @@ pub struct ReceivedUpdate {
 pub enum Update {
     /// A person's own text message to the bot, in their private chat.
     Message(PrivateMessage),
+    /// A person's press of one of the bot's buttons there (ADR-136).
+    Press(ButtonPress),
     /// Anything else: taken, ignored.
     Other,
 }
@@ -101,10 +107,11 @@ pub fn read_update(body: &[u8]) -> Option<ReceivedUpdate> {
     if raw.update_id < 0 {
         return None;
     }
-    let content = raw
-        .message
-        .and_then(private_message)
-        .map_or(Update::Other, Update::Message);
+    let content = match (raw.message, raw.callback_query) {
+        (Some(message), _) => private_message(message).map_or(Update::Other, Update::Message),
+        (None, Some(press)) => button_press(press).map_or(Update::Other, Update::Press),
+        (None, None) => Update::Other,
+    };
     Some(ReceivedUpdate {
         update_id: raw.update_id,
         content,
@@ -136,7 +143,7 @@ fn private_message(message: RawMessage) -> Option<PrivateMessage> {
 /// without hidden characters and never starting with `@` (a name anyone
 /// chooses must not pass for someone's username), bounded; their identifier
 /// at worst.
-fn shown_name(user: &RawUser) -> String {
+pub(super) fn shown_name(user: &RawUser) -> String {
     let username = user.username.as_deref().filter(|name| {
         (5..=32).contains(&name.len())
             && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
@@ -226,7 +233,7 @@ mod tests {
     fn a_name_is_shown_as_telegram_gives_it_bounded() {
         let named = |change: fn(&mut Value)| match update(change).unwrap().content {
             Update::Message(message) => message.person.name,
-            Update::Other => panic!("a message"),
+            Update::Press(_) | Update::Other => panic!("a message"),
         };
         assert_eq!(
             named(|u| {

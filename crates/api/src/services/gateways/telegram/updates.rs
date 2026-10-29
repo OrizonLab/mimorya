@@ -8,8 +8,9 @@
 //! text message in their private chat with the bot is taken and ignored.
 //! The message is then answered in the person's private chat (`answers`);
 //! a linked person's words, once the update is answered, by the agent
-//! (`conversations`, ADR-135). What a message says is never logged nor
-//! audited.
+//! (`conversations`, ADR-135). A press of one of the bot's validation
+//! buttons there is decided once the update is answered (`choices`,
+//! ADR-136). What a message says is never logged nor audited.
 
 use chrono::{DateTime, Utc};
 use mimorya_core::gateways::GatewayKind;
@@ -18,6 +19,7 @@ use mimorya_db::repositories::gateways::{gateway_tenant, get_gateway, take_gatew
 use uuid::Uuid;
 
 use super::answers::Answer;
+use super::choices::TelegramChoice;
 use crate::services::gateways::{GatewayService, bot_token_name, webhook_secret_name};
 
 /// A linked person's words to the bot (ADR-135): to answer in a
@@ -56,6 +58,8 @@ pub enum UpdateOutcome {
     Taken,
     /// Taken: a linked person's words, for the agent to answer (ADR-135).
     Message(Box<ChatMessage>),
+    /// Taken: a validation button pressed, to decide (ADR-136).
+    Choice(Box<TelegramChoice>),
 }
 
 impl GatewayService {
@@ -95,9 +99,20 @@ impl GatewayService {
         {
             return Ok(UpdateOutcome::Taken);
         }
-        let Update::Message(message) = update.content else {
-            tx.commit().await?;
-            return Ok(UpdateOutcome::Taken);
+        let message = match update.content {
+            Update::Message(message) => message,
+            // A validation button pressed (ADR-136).
+            Update::Press(press) => {
+                let token = self
+                    .secret(&mut tx, tenant_id, &bot_token_name(gateway_id))
+                    .await?;
+                tx.commit().await?;
+                return Ok(self.take_press(tenant_id, &gateway, press, token));
+            }
+            Update::Other => {
+                tx.commit().await?;
+                return Ok(UpdateOutcome::Taken);
+            }
         };
         let answer = self
             .answer(&mut tx, (tenant_id, gateway_id), &message, now)

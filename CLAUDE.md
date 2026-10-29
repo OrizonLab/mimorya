@@ -51,8 +51,10 @@ Repères à l'intérieur des crates :
   boutons de validation et bouton pressé, `interactions.rs`, ADR-129 ; permissions du
   jeton lues, manquantes et en plus, `scopes.rs`, ADR-132 ; bot Telegram : jeton,
   secret du webhook, mise à jour lue, code de liaison, `telegram/`, ADR-133, commandes
-  du bot et réponse écrite dans le HTML de Telegram, ADR-135 ; motifs Markdown lus par
-  chaque service et texte trop long coupé, `markdown.rs`).
+  du bot et réponse écrite dans le HTML de Telegram, ADR-135, boutons de validation et
+  bouton pressé (`buttons.rs`, `press.rs`), ADR-136 ; motifs Markdown lus par chaque
+  service et texte trop long coupé, `markdown.rs` ; actions validées hors de
+  l'application, `validation.rs`, ADR-129, ADR-136).
 - `db/migrations/` (SQL numéroté, source de vérité du schéma),
   `db/src/repositories/` (un fichier par entité ; la mémoire : `memory.rs`, recherche
   hybride `memory_search.rs`, vecteurs `memory_embeddings.rs`, ADR-074 ; fenêtres des
@@ -162,7 +164,9 @@ Repères à l'intérieur des crates :
   de la session (`telegram/`), ADR-133 ; mots d'une personne reliée répondus dans une
   conversation tenue dans sa conversation privée avec le bot
   (`telegram/conversations.rs`), réponse écrite là en HTML (`telegram/reply_text.rs`),
-  ADR-135 ;
+  ADR-135 ; action validée ou refusée par son bouton sous la pause
+  (`telegram/choices.rs`), qui voit et décide quoi, commun aux services
+  (`concerned.rs`), ADR-136 ;
   déclarées par
   `services/admin/gateways.rs`, ce que Slack dit du jeton et ses permissions vérifiées
   à la demande par `services/admin/gateway_check.rs`, ADR-132, le bot Telegram par

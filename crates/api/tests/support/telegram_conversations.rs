@@ -1,7 +1,8 @@
 //! A person talking with the agent in Telegram in the tests (ADR-135):
 //! their Telegram account linked to their account, what they write to the
 //! bot as Telegram sends it, the conversations their private chat holds,
-//! and the answers the pass writes back there.
+//! and the answers the pass writes back there; a press of a validation
+//! button, as Telegram sends it, or as a client might claim it (ADR-136).
 
 use axum::http::StatusCode;
 use mimorya_connectors::testing::{FakeTelegram, TelegramMessage, update};
@@ -127,4 +128,50 @@ pub async fn retry_chat_now(api: &TestApi, person: i64) {
     .await
     .unwrap();
     tx.commit().await.unwrap();
+}
+
+/// What Telegram would send for the person `from` pressing, under the
+/// message numbered `message_id` of their private chat, sent by `sent_by`
+/// with a « Valider » and a « Refuser » button for `approval`, the one that
+/// says `approved`: a press claiming buttons no message of the bot showed.
+pub fn claimed_press(
+    update_id: i64,
+    (from, username): (i64, &str),
+    (message_id, sent_by): (i64, i64),
+    approval: Uuid,
+    approved: bool,
+) -> String {
+    let data = if approved {
+        format!("v:{approval}")
+    } else {
+        format!("r:{approval}")
+    };
+    serde_json::json!({
+        "update_id": update_id,
+        "callback_query": {
+            "id": format!("rappel-{update_id}"),
+            "from": { "id": from, "is_bot": false, "first_name": "Test", "username": username },
+            "message": {
+                "message_id": message_id,
+                "from": { "id": sent_by, "is_bot": true, "first_name": "Assistant" },
+                "chat": { "id": from, "type": "private" },
+                "date": 1_700_000_000,
+                "text": "Une action attend",
+                "reply_markup": { "inline_keyboard": [[
+                    { "text": "Valider", "callback_data": format!("v:{approval}") },
+                    { "text": "Refuser", "callback_data": format!("r:{approval}") }
+                ]] }
+            },
+            "chat_instance": "-1",
+            "data": data
+        }
+    })
+    .to_string()
+}
+
+/// Sends what Telegram sends, then waits for what it started.
+pub async fn deliver(api: &TestApi, telegram: &FakeTelegram, id: Uuid, body: &str) {
+    let sent = send_update(api, telegram, id, body).await;
+    assert_eq!(sent.status, StatusCode::OK, "{}", sent.text());
+    settle(api).await;
 }

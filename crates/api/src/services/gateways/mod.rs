@@ -18,12 +18,14 @@
 //! asks for and confirms (`telegram`, ADR-133); a linked person then talks
 //! with the agent there, answered in their private chat with the bot
 //! (ADR-135), the run's end or pause written there by the same pass
-//! (`replies`).
+//! (`replies`), and validates there what awaits them with its buttons
+//! (ADR-136).
 //! The bot's token and the signing secret are sealed in the secret store.
 
 mod approver_notices;
 mod approver_text;
 mod choices;
+mod concerned;
 mod conversations;
 mod direct;
 mod events;
@@ -54,7 +56,8 @@ pub use identities::GatewayOfPerson;
 pub use link::{LINK_LIFETIME, LinkPreview};
 pub use replies::{MAX_ATTEMPTS, reply_to_finished_runs};
 pub use telegram::{
-    ChatMessage, PendingLink, TelegramLinkCode, UpdateOutcome, converse_in_telegram,
+    ChatMessage, PendingLink, TelegramChoice, TelegramLinkCode, UpdateOutcome,
+    converse_in_telegram, decide_in_telegram,
 };
 
 /// Where Slack sends a gateway's events, under the API's address: with the

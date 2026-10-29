@@ -10,8 +10,13 @@
 mod markdown;
 pub mod slack;
 pub mod telegram;
+mod validation;
 
 pub use markdown::bounded;
+pub use validation::{
+    MAX_ACTION_CHARS, MAX_PARAMETERS_CHARS, ShownAction, exact_parameters, risk_label,
+    validated_in_gateway,
+};
 
 /// A gateway's name, as kept: bounded like the column.
 pub const MIN_NAME_CHARS: usize = 2;

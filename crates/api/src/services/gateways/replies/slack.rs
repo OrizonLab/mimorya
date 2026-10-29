@@ -5,7 +5,7 @@
 
 use chrono::{DateTime, Utc};
 use mimorya_connectors::slack::SlackFailure;
-use mimorya_core::gateways::slack::{ShownAction, validated_in_slack};
+use mimorya_core::gateways::{ShownAction, validated_in_gateway};
 use mimorya_db::repositories::approvals::ApprovalRow;
 use mimorya_db::repositories::gateway_replies::{ReplyRecord, ReplyTarget};
 
@@ -29,7 +29,7 @@ pub(super) async fn answer(
             .filter(|a| !a.routed_to_manager())
             .collect();
         let own: Vec<_> = (theirs.iter())
-            .filter(|a| validated_in_slack(&a.risk, &a.payload))
+            .filter(|a| validated_in_gateway(&a.risk, &a.payload))
             .map(|a| ShownAction {
                 approval_id: a.id,
                 summary: &a.action_summary,

@@ -83,7 +83,8 @@ export function TelegramGatewayForm({
         être celui du même bot. Chacun relie ensuite son compte Telegram depuis « Mon compte » : un
         lien ouvre le bot, qui lui dit à quel compte il le relie ; il l’accepte dans Telegram, puis
         le confirme dans l’application. Une fois relié, il écrit au bot : l’agent lui répond dans sa
-        conversation privée avec lui, avec ses droits, et les validations se donnent dans
+        conversation privée avec lui, avec ses droits. Il y valide ou refuse, avec des boutons, ses
+        propres actions sans effet hors de l’entreprise et réversibles ; les autres se valident dans
         l’application.
       </p>
       {action.error && <ErrorNote message={action.error} />}

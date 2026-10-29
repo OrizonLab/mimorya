@@ -201,7 +201,8 @@ async fn a_pause_for_validation_is_said_then_the_answer_follows() {
     let paused = last_said(&telegram, MARC_TELEGRAM).text;
     assert!(
         paused.starts_with(
-            "Une action de cette demande attend votre validation, à donner dans l’application"
+            "Une action de cette demande attend votre validation : validez-la ou refusez-la \
+             ci-dessous"
         ),
         "{paused}"
     );
