@@ -128,6 +128,28 @@ pub async fn update_gateway(
     Ok(())
 }
 
+/// Keeps what the service said of the gateway `id`'s application when it
+/// was asked again (ADR-132): its workspace's name, its bot user and its
+/// token's permissions. Not a change of the gateway: `updated_at` stays.
+pub async fn record_gateway_check(
+    conn: &mut PgConnection,
+    id: Uuid,
+    (workspace_name, bot_user_id): (&str, &str),
+    granted_scopes: Option<&[String]>,
+) -> sqlx::Result<()> {
+    sqlx::query(
+        "update gateways set workspace_name = $2, bot_user_id = $3, granted_scopes = $4, \
+         scopes_checked_at = now() where id = $1",
+    )
+    .bind(id)
+    .bind(workspace_name)
+    .bind(bot_user_id)
+    .bind(granted_scopes)
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
 /// Deletes the gateway `id`, with its people's identities and its events;
 /// whether there was one.
 pub async fn delete_gateway(conn: &mut PgConnection, id: Uuid) -> sqlx::Result<bool> {

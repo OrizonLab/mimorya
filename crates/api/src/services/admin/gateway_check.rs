@@ -5,14 +5,16 @@
 //! it must (ADR-131). A gateway already declared is checked again on
 //! demand with its stored token, whatever Slack then says kept with it and
 //! audited, never refused: its administrators see what is missing, or more
-//! than asked for, and what to do.
+//! than asked for, and what to do. A check is no change of the gateway.
 
 use mimorya_connectors::slack::SlackWorkspace;
 use mimorya_core::DomainError;
 use mimorya_core::gateways::slack::{extra_scopes, missing_scopes, missing_scopes_refusal};
+use mimorya_db::TenantTx;
 use mimorya_db::repositories::audit::append_audit;
-use mimorya_db::repositories::gateways::update_gateway;
-use mimorya_db::repositories::gateways::{GatewayPatch, GatewayRow, get_gateway, lock_gateway};
+use mimorya_db::repositories::gateways::{
+    GatewayRow, get_gateway, lock_gateway, record_gateway_check,
+};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
@@ -67,6 +69,7 @@ pub(super) fn scopes_metadata(scopes: &Option<Vec<String>>) -> Value {
 
 /// Asks Slack again what the gateway `id`'s stored token is: what it says
 /// is kept, its workspace's name, bot user and permissions, and audited.
+/// A token changed meanwhile is not the one Slack spoke of: nothing kept.
 pub async fn check_gateway(
     gateways: &GatewayService,
     access: &AccessContext,
@@ -80,20 +83,9 @@ pub async fn check_gateway(
         if get_gateway(&mut tx, id).await?.is_none() {
             return Err(DomainError::not_found(NOT_FOUND).into());
         }
-        let read = (gateways.secrets())
-            .read(&mut tx, tenant_id, &bot_token_name(id))
-            .await?;
+        let token = stored_token(gateways, &mut tx, tenant_id, id).await?;
         tx.commit().await?;
-        match read {
-            SecretRead::Value(token) => token,
-            _ => {
-                return Err(DomainError::validation(
-                    "Le jeton du bot de cette passerelle ne peut pas être lu : donnez-le à \
-                     nouveau (« Modifier »)",
-                )
-                .into());
-            }
-        }
+        token
     };
     // Asked of Slack before the lock: a slow answer holds no change.
     let workspace = asked_of_slack(gateways, &token).await?;
@@ -101,16 +93,20 @@ pub async fn check_gateway(
     let Some(gateway) = lock_gateway(&mut tx, id).await? else {
         return Err(DomainError::not_found(NOT_FOUND).into());
     };
+    if stored_token(gateways, &mut tx, tenant_id, id).await? != token {
+        return Err(DomainError::conflict(
+            "Le jeton de la passerelle a changé pendant la vérification : vérifiez de nouveau",
+        )
+        .into());
+    }
     if workspace.workspace_id != gateway.workspace_id {
         return Err(other_workspace(&workspace, &gateway).into());
     }
-    let patch = GatewayPatch {
-        workspace_name: Some(&workspace.workspace_name),
-        bot_user_id: Some(&workspace.bot_user_id),
-        granted_scopes: Some(workspace.scopes.as_deref()),
-        ..GatewayPatch::default()
-    };
-    update_gateway(&mut tx, id, patch).await?;
+    let said = (
+        workspace.workspace_name.as_str(),
+        workspace.bot_user_id.as_str(),
+    );
+    record_gateway_check(&mut tx, id, said, workspace.scopes.as_deref()).await?;
     let entry = audit_entry(access, "gateway.checked", "gateway", id).metadata(json!({
         "workspaceName": workspace.workspace_name,
         "botUserId": workspace.bot_user_id,
@@ -119,6 +115,26 @@ pub async fn check_gateway(
     append_audit(&mut tx, entry).await?;
     tx.commit().await?;
     Ok(())
+}
+
+/// The gateway `id`'s stored token, or why it cannot be read.
+async fn stored_token(
+    gateways: &GatewayService,
+    tx: &mut TenantTx,
+    tenant_id: Uuid,
+    id: Uuid,
+) -> anyhow::Result<String> {
+    match (gateways.secrets())
+        .read(tx, tenant_id, &bot_token_name(id))
+        .await?
+    {
+        SecretRead::Value(token) => Ok(token),
+        _ => Err(DomainError::validation(
+            "Le jeton du bot de cette passerelle ne peut pas être lu : donnez-le à nouveau \
+             (« Modifier »)",
+        )
+        .into()),
+    }
 }
 
 /// What Slack says of `token`; its refusal said in French.

@@ -27,15 +27,18 @@ export function GatewayCard({
   onChanged: () => void;
 }) {
   const [editing, setEditing] = useState(false);
+  const [pressed, setPressed] = useState<'check' | 'toggle' | null>(null);
   const action = useAction();
   const path = `/admin/gateways/${gateway.id}`;
 
   async function toggle() {
     const update = { enabled: !gateway.enabled } satisfies GatewayUpdate;
+    setPressed('toggle');
     if (await action.run(() => api.patch(path, update))) onChanged();
   }
 
   async function check() {
+    setPressed('check');
     if (await action.run(() => api.post(`${path}/check`))) onChanged();
   }
 
@@ -84,10 +87,20 @@ export function GatewayCard({
             Modifier
           </Button>
         )}
-        <Button variant="secondary" disabled={action.pending} onClick={check}>
+        <Button
+          variant="secondary"
+          disabled={action.pending && pressed !== 'check'}
+          loading={action.pending && pressed === 'check'}
+          onClick={check}
+        >
           Vérifier auprès de Slack
         </Button>
-        <Button variant="secondary" loading={action.pending} onClick={toggle}>
+        <Button
+          variant="secondary"
+          disabled={action.pending && pressed !== 'toggle'}
+          loading={action.pending && pressed === 'toggle'}
+          onClick={toggle}
+        >
           {gateway.enabled ? 'Désactiver' : 'Activer'}
         </Button>
         <Button variant="danger" disabled={action.pending} onClick={remove}>

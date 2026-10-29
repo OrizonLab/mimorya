@@ -133,6 +133,7 @@ async fn a_gateway_is_checked_again_with_its_stored_token() {
     let view = gateway_view(&paul, id).await;
     assert_eq!(view["missingScopes"], Value::Null);
     assert_eq!(view["scopesCheckedAt"], Value::Null);
+    let changed_at = view["updatedAt"].clone();
     let since = latest_entry(&api).await;
 
     // Its application reinstalled without im:read: told, and kept.
@@ -143,6 +144,8 @@ async fn a_gateway_is_checked_again_with_its_stored_token() {
     assert_eq!(view["missingScopes"], json!(["im:read"]));
     assert_eq!(view["extraScopes"], json!([]));
     assert!(view["scopesCheckedAt"].is_string(), "{view}");
+    // A check is no change of the gateway.
+    assert_eq!(view["updatedAt"], changed_at);
     let entries = audited(&api, since, "gateway.checked").await;
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0]["resource_id"], id.to_string());
@@ -176,7 +179,7 @@ async fn a_gateway_is_checked_again_with_its_stored_token() {
     let all = entries_since(&api, since).await;
     assert!(!all.contains(BOT_TOKEN), "{all}");
 
-    // Another's, or none: as absent.
+    // None: as absent (another company's: `slack_gateway_scope_checks.rs`).
     let unknown = check(&paul, Uuid::new_v4()).await;
     assert_eq!(unknown.status, StatusCode::NOT_FOUND, "{}", unknown.text());
     assert_eq!(unknown.error_message(), "Passerelle introuvable");
