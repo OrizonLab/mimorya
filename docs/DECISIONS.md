@@ -7255,6 +7255,7 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     administrateurs des connecteurs), `slack_gateway_scope_checks.rs` (passerelle d'une
     autre entreprise : comme une absente, rien d'elle lu ni changé, tracé chez qui l'a
     demandée ; jeton illisible ou d'un autre espace de travail : dit, rien de gardé ni
+    audité ; jeton remplacé pendant que Slack est interrogé : conflit, rien de gardé ni
     audité ; forme des permissions gardées imposée par la base),
     `slack_gateway_events.rs` (la vérification exige l'en-tête des requêtes du
     navigateur), `apps/web/e2e/slack-gateway-scopes.spec.ts` (déclaration refusée,

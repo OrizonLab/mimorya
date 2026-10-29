@@ -2,16 +2,19 @@
 //! (ADR-132): another company's gateway, whose stored token the route would
 //! read and send, answers as an absent one, nothing of it read nor changed;
 //! a token that cannot be read, or one Slack says is another workspace's,
-//! is said, and nothing is kept nor audited as checked. Only permissions
-//! written as Slack names them are kept.
+//! is said, and nothing is kept nor audited as checked; nor when the token
+//! is replaced while Slack is asked. Only permissions written as Slack
+//! names them are kept.
 
 mod support;
 
 use axum::http::StatusCode;
+use mimorya_api::services::gateways::bot_token_name;
 use mimorya_connectors::testing::{BOT_TOKEN, FakeSlack};
 use mimorya_core::demo::{tenant, user};
 use serde_json::{Value, json};
 use support::gateways::{GATEWAYS, declare_slack, gateway_view};
+use support::locks::{hold_rows, wait_for_waiters};
 use support::refusals::not_found_since;
 use support::refusals::{entries_of_since, entries_since, latest_entry, latest_entry_of};
 use support::slack_companies::other_company;
@@ -135,6 +138,41 @@ async fn what_cannot_be_checked_is_said_and_nothing_kept() {
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
+async fn a_token_replaced_while_slack_is_asked_keeps_nothing() {
+    let slack = FakeSlack::start().await;
+    let api = TestApi::start_with_slack(&SSO_DEPLOYMENT, &slack.url).await;
+    let paul = api.sign_in(user::PAUL).await;
+    let id = declare_slack(&paul).await;
+    let before = stamps(&api, tenant::ID, id).await;
+    let since = latest_entry(&api).await;
+
+    // The check asks Slack, then waits on the gateway, whose token another
+    // change replaces meanwhile.
+    let hold = hold_rows(&api, "gateways", &[id]).await;
+    let replace = async {
+        wait_for_waiters(&api, 1).await;
+        let mut hold = hold;
+        let secrets = api.app.services.gateways.secrets();
+        let name = bot_token_name(id);
+        secrets
+            .put(&mut hold, tenant::ID, &name, "xoxb-fictif-autre-jeton-0002")
+            .await
+            .unwrap();
+        hold.commit().await.unwrap();
+    };
+    let (checked, ()) = tokio::join!(check(&paul, id), replace);
+    assert_eq!(checked.status, StatusCode::CONFLICT, "{}", checked.text());
+    assert_eq!(
+        checked.error_message(),
+        "Le jeton de la passerelle a changé pendant la vérification : vérifiez de nouveau"
+    );
+    assert_eq!(stamps(&api, tenant::ID, id).await, before);
+    let audited = entries_since(&api, since).await;
+    assert!(!audited.contains("gateway.checked"), "{audited}");
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
 async fn only_permissions_written_as_slack_names_them_are_kept() {
     let slack = FakeSlack::start().await;
     let api = TestApi::start_with_slack(&SSO_DEPLOYMENT, &slack.url).await;
@@ -146,6 +184,7 @@ async fn only_permissions_written_as_slack_names_them_are_kept() {
     let long = format!("{{a{}}}", "b".repeat(80));
     for refused in [
         "{NULL}",
+        "{\"chat:write,users:read\"}",
         "{chat:write,NULL}",
         "{chat:write,\"\"}",
         "{\"\"}",

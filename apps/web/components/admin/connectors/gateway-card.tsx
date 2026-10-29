@@ -27,7 +27,7 @@ export function GatewayCard({
   onChanged: () => void;
 }) {
   const [editing, setEditing] = useState(false);
-  const [pressed, setPressed] = useState<'check' | 'toggle' | null>(null);
+  const [pressed, setPressed] = useState<'check' | 'toggle' | 'remove' | null>(null);
   const action = useAction();
   const path = `/admin/gateways/${gateway.id}`;
 
@@ -45,6 +45,7 @@ export function GatewayCard({
   async function remove() {
     const question = `Supprimer la passerelle « ${gateway.name} », son jeton, son secret et les ${gateway.identities} compte(s) Slack que les collaborateurs y ont relié(s) ?`;
     if (!window.confirm(question)) return;
+    setPressed('remove');
     if (await action.run(() => api.delete(path))) onChanged();
   }
 
@@ -103,7 +104,12 @@ export function GatewayCard({
         >
           {gateway.enabled ? 'Désactiver' : 'Activer'}
         </Button>
-        <Button variant="danger" disabled={action.pending} onClick={remove}>
+        <Button
+          variant="danger"
+          disabled={action.pending && pressed !== 'remove'}
+          loading={action.pending && pressed === 'remove'}
+          onClick={remove}
+        >
           Supprimer
         </Button>
       </div>
