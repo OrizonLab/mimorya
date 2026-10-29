@@ -28,10 +28,17 @@ pub use mrkdwn::{bounded, escaped, from_markdown, plain};
 pub use signature::{MAX_SKEW_SECONDS, SignatureProblem, signature, verify};
 
 /// The permissions (bot token scopes) the application asks for: write its
-/// replies, read its direct conversations, and read who writes there with
-/// their address, which proves the person (ADR-125). Nothing else: it reads
-/// no channel, no file, no other conversation.
-pub const BOT_SCOPES: [&str; 4] = ["chat:write", "im:history", "users:read", "users:read.email"];
+/// replies, read its direct conversations and whose each is (ADR-131), and
+/// read who writes there with their address, which proves the person
+/// (ADR-125). Nothing else: it reads no channel, no file, no other
+/// conversation.
+pub const BOT_SCOPES: [&str; 5] = [
+    "chat:write",
+    "im:history",
+    "im:read",
+    "users:read",
+    "users:read.email",
+];
 /// The one event it subscribes to: a message in a direct conversation with it.
 pub const BOT_EVENTS: [&str; 1] = ["message.im"];
 

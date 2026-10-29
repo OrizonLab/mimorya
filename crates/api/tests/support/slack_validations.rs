@@ -94,6 +94,14 @@ pub fn pressed(
     format!("payload={encoded}")
 }
 
+/// `post` as if it were in the direct conversation of `person`, as a press
+/// may claim.
+pub fn moved_to(post: &SlackPost, person: &str) -> SlackPost {
+    let mut moved = post.clone();
+    moved.channel = super::gateways::dm_of(person);
+    moved
+}
+
 /// What `person` of the company's workspace pressing it gets.
 pub fn pressed_by(person: &str, post: &SlackPost, approved: bool) -> String {
     pressed(WORKSPACE, person, post, buttons_of(post), approved)

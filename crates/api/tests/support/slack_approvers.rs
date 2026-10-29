@@ -11,6 +11,7 @@ use mimorya_db::repositories::gateway_approval_notices::gateway_approvals_to_not
 use serde_json::json;
 use uuid::Uuid;
 
+use super::gateways::dm_of;
 use super::manager_approvals::{applying, route_to_managers};
 use super::{Client, TestApi};
 
@@ -41,11 +42,11 @@ pub async fn to_notify(api: &TestApi) -> usize {
 }
 
 /// What the application wrote in the direct conversation of the Slack user
-/// `person`, oldest first.
+/// `person`, oldest first, the link offered when they first wrote aside.
 pub fn direct_to(slack: &FakeSlack, person: &str) -> Vec<SlackPost> {
-    let channel = format!("D{}", &person[1..]);
+    let channel = dm_of(person);
     (slack.posts().into_iter())
-        .filter(|p| p.channel == channel)
+        .filter(|p| p.channel == channel && !p.text.contains("gateway-link#"))
         .collect()
 }
 

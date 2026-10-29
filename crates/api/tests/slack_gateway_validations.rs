@@ -23,7 +23,7 @@ use support::slack_conversations::{
     MARC_SLACK, answer, confirm, in_thread, link_code, linked, settle,
 };
 use support::slack_validations::{
-    ASKED_IN, asked, buttons_of, paused, posts_in, press, pressed, pressed_by,
+    ASKED_IN, asked, buttons_of, moved_to, paused, posts_in, press, pressed, pressed_by,
 };
 use support::sso::SSO_DEPLOYMENT;
 use support::{TestApi, email};
@@ -186,17 +186,30 @@ async fn only_whom_the_request_awaits_decides_it_from_slack() {
     assert_eq!(pending().await, "pending");
     assert_eq!(slack.posts().len(), before, "nothing said");
 
-    // Another linked person: nothing they may decide.
+    // Another linked person, in his conversation: nothing said there (ADR-131).
     let lea = api.sign_in(user::LEA).await;
     slack.add_person(LEA_SLACK, &email(user::LEA));
     let code = link_code(&api, &slack, gateway, LEA_SLACK).await;
     confirm(&lea, &code).await;
+    let before = slack.posts().len();
     press(&api, gateway, &pressed_by(LEA_SLACK, &pause, true), false).await;
+    settle(&api).await;
+    assert_eq!(slack.posts().len(), before, "nothing said");
+    // In hers: nothing she may decide.
+    let hers = moved_to(&pause, LEA_SLACK);
+    press(&api, gateway, &pressed_by(LEA_SLACK, &hers, true), false).await;
     settle(&api).await;
     assert_eq!(said(&slack), "Demande de validation introuvable");
     // A Slack user not linked: told so, and offered a link.
     slack.add_person("U0INCONNU", "inconnu@neo-maintenance.example");
-    press(&api, gateway, &pressed_by("U0INCONNU", &pause, true), false).await;
+    let theirs = moved_to(&pause, "U0INCONNU");
+    press(
+        &api,
+        gateway,
+        &pressed_by("U0INCONNU", &theirs, true),
+        false,
+    )
+    .await;
     settle(&api).await;
     let posts = slack.posts();
     assert!(

@@ -9,12 +9,12 @@ use mimorya_core::demo::tenant;
 use serde_json::json;
 use uuid::Uuid;
 
-use super::gateways::{LINK, declare_slack, direct_message, envelope, offered_code, send};
+use super::gateways::{LINK, declare_slack, direct_message, dm_of, envelope, offered_code, send};
 use super::{Client, TestApi};
 
 /// Marc's Slack user, and his direct conversation with the application.
 pub const MARC_SLACK: &str = "U0MARCLEF";
-pub const MARC_DM: &str = "D0MARC";
+pub const MARC_DM: &str = "D0MARCLEF";
 
 /// The gateway, declared by `paul`, `person`'s Slack user (of `address`)
 /// linked to `client`'s account.
@@ -62,7 +62,7 @@ pub fn event_id() -> String {
 pub fn written(person: &str, text: &str, ts: &str, thread: Option<&str>) -> String {
     let mut event = json!({
         "type": "message",
-        "channel": MARC_DM,
+        "channel": dm_of(person),
         "user": person,
         "text": text,
         "ts": ts,
@@ -98,10 +98,17 @@ pub async fn answer(api: &TestApi) -> usize {
 /// What the application wrote in the thread `thread` of Marc's direct
 /// conversation, oldest first.
 pub fn in_thread(slack: &FakeSlack, thread: &str) -> Vec<String> {
+    in_thread_of(slack, MARC_SLACK, thread)
+}
+
+/// What the application wrote in the thread `thread` of the direct
+/// conversation of the Slack user `person`, oldest first.
+pub fn in_thread_of(slack: &FakeSlack, person: &str, thread: &str) -> Vec<String> {
+    let channel = dm_of(person);
     slack
         .posts()
         .into_iter()
-        .filter(|p| p.channel == MARC_DM && p.thread_ts.as_deref() == Some(thread))
+        .filter(|p| p.channel == channel && p.thread_ts.as_deref() == Some(thread))
         .map(|p| p.text)
         .collect()
 }

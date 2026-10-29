@@ -1,6 +1,8 @@
 //! A person links their Slack identity to their account (ADR-125). Writing
-//! to the application before they did, they are sent, in their direct
-//! conversation with it, a link to their account's page: it carries, in its
+//! to the application before they did, they are sent, in their own direct
+//! conversation with it (addressed by their identifier, not the
+//! conversation the event names, ADR-131), a link to their account's page:
+//! it carries, in its
 //! fragment (never sent to a server with the page), the gateway and their
 //! Slack user, sealed for their company by the server's master key, valid
 //! fifteen minutes; nothing is stored. Opened in their
@@ -76,7 +78,7 @@ impl GatewayService {
         };
         let code = LinkCode {
             gateway_id,
-            person: message.person,
+            person: message.person.clone(),
             expires_at: now + LINK_LIFETIME,
         };
         let sealed = seal_value(cipher, tenant_id, SEALED_AS, &code)?;
@@ -85,8 +87,9 @@ impl GatewayService {
         let text = link_text(&self.assistant_name, &url);
         let slack = self.slack.clone();
         self.background.spawn(async move {
-            let thread = message.thread_ts.as_deref();
-            if let Err(failure) = slack.post(&token, &message.channel, thread, &text).await {
+            // In their own direct conversation, found by Slack from their
+            // identifier, never the one the event names (ADR-131).
+            if let Err(failure) = slack.post(&token, &message.person, None, &text).await {
                 tracing::warn!(gateway = %gateway_id, failure = %failure.message(), "Slack link not sent");
             }
         });

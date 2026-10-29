@@ -32,6 +32,23 @@ pub struct SlackPerson {
     pub bot: bool,
 }
 
+/// A conversation as Slack knows it: a direct one, with whom.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SlackConversation {
+    /// A direct conversation between one person and the application.
+    pub direct: bool,
+    /// Whom, if direct.
+    pub person: Option<String>,
+}
+
+impl SlackConversation {
+    /// Whether it is the direct conversation of `person` with the
+    /// application: theirs alone to read.
+    pub fn is_direct_with(&self, person: &str) -> bool {
+        self.direct && self.person.as_deref() == Some(person)
+    }
+}
+
 /// Why Slack did not do what was asked.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SlackFailure {
@@ -83,7 +100,7 @@ impl SlackFailure {
                      de l’application installée (« OAuth & Permissions »)"
                     .into(),
                 "missing_scope" => "Permission manquante dans l’application Slack : donnez-lui \
-                     chat:write, im:history, users:read et users:read.email, puis \
+                     chat:write, im:history, im:read, users:read et users:read.email, puis \
                      réinstallez-la"
                     .into(),
                 "user_not_found" | "users_not_found" => {
@@ -117,6 +134,7 @@ fn shown_code(code: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::{Value, json};
 
     #[test]
     fn a_refusal_is_said_in_french_slack_s_words_reduced_to_a_code() {
@@ -153,6 +171,37 @@ mod tests {
             SlackFailure::Failed(502).message(),
             "Slack ne répond pas comme attendu (HTTP 502)"
         );
+    }
+
+    #[test]
+    fn a_conversation_is_read_as_slack_says_it() {
+        let answer = |channel: Value| json!({ "ok": true, "channel": channel });
+        let theirs = api::conversation_in(
+            &answer(json!({ "id": "D0MARC", "is_im": true, "user": "U0MARC" })),
+            "D0MARC",
+        )
+        .unwrap();
+        assert!(theirs.is_direct_with("U0MARC"));
+        assert!(!theirs.is_direct_with("U0LEA"));
+        // Another conversation than asked for: not read.
+        let other = answer(json!({ "id": "D0LEA", "is_im": true, "user": "U0LEA" }));
+        assert_eq!(
+            api::conversation_in(&other, "D0MARC"),
+            Err(SlackFailure::Unreadable)
+        );
+        // No word of its being direct: none.
+        let unsaid = answer(json!({ "id": "C0GENERAL", "user": "U0MARC" }));
+        let unsaid = api::conversation_in(&unsaid, "C0GENERAL").unwrap();
+        assert!(!unsaid.is_direct_with("U0MARC"));
+        // Whom, only a person.
+        let odd = answer(json!({ "id": "D0ODD", "is_im": true, "user": "<@U0MARC>" }));
+        assert_eq!(api::conversation_in(&odd, "D0ODD").unwrap().person, None);
+        // Direct with whom it says, not with anyone named elsewhere.
+        let named = SlackConversation {
+            direct: false,
+            person: Some("U0MARC".into()),
+        };
+        assert!(!named.is_direct_with("U0MARC"));
     }
 
     #[test]

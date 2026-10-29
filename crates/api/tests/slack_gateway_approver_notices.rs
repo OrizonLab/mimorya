@@ -22,7 +22,7 @@ use support::queue::as_owner;
 use support::refusals::{entries_since, latest_entry};
 use support::slack_approvers::{direct_to, nadia_s_request, notice_of, notify, refuse};
 use support::slack_conversations::{MARC_SLACK, confirm, link_code, linked, settle};
-use support::slack_validations::{buttons_of, press, pressed, pressed_by};
+use support::slack_validations::{buttons_of, moved_to, press, pressed, pressed_by};
 use support::sso::SSO_DEPLOYMENT;
 use support::{TestApi, email};
 use uuid::Uuid;
@@ -194,7 +194,13 @@ async fn an_action_sent_outside_the_company_is_told_without_buttons() {
     slack.add_person(LEA_SLACK, &email(user::LEA));
     let code = link_code(&api, &slack, gateway, LEA_SLACK).await;
     confirm(&lea, &code).await;
-    let body = pressed(WORKSPACE, LEA_SLACK, &shown, approval, true);
+    let body = pressed(
+        WORKSPACE,
+        LEA_SLACK,
+        &moved_to(&shown, LEA_SLACK),
+        approval,
+        true,
+    );
     press(&api, gateway, &body, false).await;
     settle(&api).await;
     let said = slack.posts().last().unwrap().text.clone();

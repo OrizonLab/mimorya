@@ -95,7 +95,7 @@ pub fn direct_message(event_id: &str, person: &str, text: &str) -> String {
         event_id,
         json!({
             "type": "message",
-            "channel": "D0LEA",
+            "channel": dm_of(person),
             "user": person,
             "text": text,
             "ts": "1700000100.000100",
@@ -103,6 +103,12 @@ pub fn direct_message(event_id: &str, person: &str, text: &str) -> String {
             "event_ts": "1700000100.000100"
         }),
     )
+}
+
+/// The direct conversation of the Slack user `person` with the
+/// application, as the local Slack names it: `D…` after their `U…`.
+pub fn dm_of(person: &str) -> String {
+    format!("D{}", &person[1..])
 }
 
 /// An event of `workspace`, as Slack wraps it.

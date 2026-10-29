@@ -23,7 +23,7 @@ use support::email;
 use support::gateways::{declare_slack, envelope, offered_code, post_signed};
 use support::queue::as_owner;
 use support::slack_conversations::{
-    MARC_SLACK, answer, event_id, in_thread, linked, settle, write, written,
+    MARC_DM, MARC_SLACK, answer, event_id, linked, settle, write, written,
 };
 use support::sso::SSO_DEPLOYMENT;
 use uuid::Uuid;
@@ -203,15 +203,16 @@ async fn each_company_is_answered_in_its_own_threads() {
     api.script(vec![ScriptedStep::text("Réponse Acme.")]);
     jeanne_writes(&api, acme, "Question", thread).await;
     assert_eq!(answer(&api).await, 2);
-    let marcs = in_thread(&slack, thread);
+    let said_in = |channel: &str| -> Vec<String> {
+        (slack.posts().into_iter())
+            .filter(|p| p.channel == channel && p.thread_ts.as_deref() == Some(thread))
+            .map(|p| p.text)
+            .collect()
+    };
+    let marcs = said_in(MARC_DM);
     assert_eq!(marcs.len(), 1);
     assert!(marcs[0].starts_with("Réponse Néo."), "{marcs:?}");
-    let jeannes: Vec<String> = slack
-        .posts()
-        .into_iter()
-        .filter(|p| p.channel == JEANNE_DM && p.thread_ts.as_deref() == Some(thread))
-        .map(|p| p.text)
-        .collect();
+    let jeannes = said_in(JEANNE_DM);
     assert_eq!(jeannes.len(), 1);
     assert!(jeannes[0].starts_with("Réponse Acme."), "{jeannes:?}");
     assert!(!jeannes[0].contains("Néo"), "{jeannes:?}");
