@@ -7308,7 +7308,8 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
       le compte de l'application que le lien relierait (« au compte de Marc Lefèvre »)
       et le lui propose (`gateway.link_code_offered`) ; jamais si son compte Telegram est
       déjà relié à une autre personne ; une seule offre l'attend par bot, la dernière
-      nommée, les précédentes retirées (index unique) ;
+      nommée, les précédentes retirées (index unique) ; les offres d'un bot se font
+      une à une (verrou de transaction), deux liens ouverts ensemble attendant leur tour ;
     - qui l'a ouvert l'accepte en envoyant `/oui` : cette offre seule, dont le bot nomme
       encore le compte ; son compte Telegram est gardé avec le code, une fois (le
       premier), et c'est audité (`gateway.link_code_claimed`) ;
@@ -7360,6 +7361,7 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     oublié ou expiré sans rien relier, autre entreprise, bot en pause, sans `agent:use`),
     `telegram_gateway_consent.rs` (lien d'un collègue ouvert sans rien relier, accord
     donné à la seule dernière offre nommée, liaison jamais reprise, code et secret de leur entreprise seulement, codes expirés oubliés
-    dans chaque entreprise), `crates/db/tests/definer_functions.rs` ;
+    dans chaque entreprise), `crates/db/tests/gateway_link_codes.rs` (deux liens ouverts
+    ensemble, le dernier seul offert), `crates/db/tests/definer_functions.rs` ;
   - restent : écrans de Telegram, conversations, validations par boutons, avis au
     responsable ; Teams.

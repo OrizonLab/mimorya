@@ -76,7 +76,8 @@ pub async fn link_code_owner(
 /// it back, if it is the gateway's, unexpired at `now` and not accepted by
 /// anyone yet: whose code it is. An earlier offer of it is replaced, and so
 /// is any other offer awaiting them: they accept only the last link the bot
-/// named to them.
+/// named to them. The bot's offers are made one at a time, until the
+/// transaction ends: two links opened at once wait their turn.
 pub async fn offer_link_code(
     conn: &mut PgConnection,
     gateway_id: Uuid,
@@ -84,6 +85,10 @@ pub async fn offer_link_code(
     now: DateTime<Utc>,
     external_id: &str,
 ) -> sqlx::Result<Option<Uuid>> {
+    sqlx::query("select pg_advisory_xact_lock(hashtextextended($1::text, 133))")
+        .bind(gateway_id)
+        .execute(&mut *conn)
+        .await?;
     sqlx::query(
         "update gateway_link_codes set offered_external_id = null, offered_at = null \
          where gateway_id = $1 and offered_external_id = $2 and claimed_at is null",

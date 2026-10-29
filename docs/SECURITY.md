@@ -170,7 +170,8 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   conversation privée. Telegram ne prouvant aucune adresse, un compte se relie depuis la
   session de la personne : un code de 256 bits qu'elle demande (gardé par son empreinte,
   quinze minutes), renvoyé par Telegram depuis la conversation privée de qui ouvre le
-  lien, à qui le bot nomme le compte qu'il relierait et qui l'accepte (`/oui`), puis
+  lien, à qui le bot nomme le compte qu'il relierait et qui l'accepte (`/oui`, la seule
+  offre qui l'attend : la dernière nommée), puis
   confirmé dans cette même session, qui voit le nom et l'identifiant Telegram (un nom
   libre ne passe jamais pour un nom d'utilisateur ni ne cache de caractère). Chaque côté
   consent donc en sachant à qui : un code vu par un autre ne relie rien sans la session ;
