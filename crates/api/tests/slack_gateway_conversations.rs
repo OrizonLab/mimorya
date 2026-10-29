@@ -24,8 +24,8 @@ use support::manager_approvals::{listed, without};
 use support::planning::{apply_proposal, propose};
 use support::refusals::{entries_since, latest_entry};
 use support::slack_conversations::{
-    MARC_DM, MARC_SLACK, answer, confirm, conversation_of, in_thread, link_code, linked,
-    replies_of, settle, slack_runs, write, written,
+    MARC_DM, MARC_SLACK, answer, confirm, conversation_of, in_thread, in_thread_of, link_code,
+    linked, replies_of, settle, slack_runs, write, written,
 };
 use support::sso::SSO_DEPLOYMENT;
 use support::{TestApi, WEB_ORIGIN, email};
@@ -316,11 +316,11 @@ async fn a_thread_held_for_another_account_is_refused() {
     let reply = written(shared, "Et la suite ?", "1700000300.000100", Some(FIRST));
     write(&api, gateway, &reply).await;
     assert_eq!(slack_runs(&api).await.len(), 1);
-    let said = in_thread(&slack, FIRST);
+    let said = in_thread_of(&slack, shared, FIRST);
     assert_eq!(said.len(), 1, "{said:?}");
     assert!(said[0].contains("autre compte"), "{said:?}");
     assert_eq!(answer(&api).await, 0);
-    assert_eq!(in_thread(&slack, FIRST).len(), 1);
+    assert_eq!(in_thread_of(&slack, shared, FIRST).len(), 1);
     assert_eq!(replies_of(&api, FIRST).await, [(Some("skipped".into()), 1)]);
 }
 

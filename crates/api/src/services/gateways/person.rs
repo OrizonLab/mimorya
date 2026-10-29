@@ -1,7 +1,8 @@
 //! Who writes or presses in Slack, before anything is done for them
 //! (ADR-127, ADR-129): in their own direct conversation with the
-//! application, as Slack says (otherwise nothing is said, ADR-131), a Slack
-//! user linked to an account of the company,
+//! application, as Slack says (ADR-131: another's, nothing said there and
+//! audited; Slack not saying, the sender told in their own), a Slack user
+//! linked to an account of the company,
 //! Slack still saying it is them, asked each time before anything is said of
 //! the account (no longer so: the identity is unlinked, audited with the
 //! reason, and a link to link it again offered), its temporary password
@@ -21,7 +22,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use super::PersonMessage;
-use super::direct::their_direct_conversation;
+use super::direct::{Whose, whose_conversation};
 use crate::app::Services;
 use crate::services::access::AuthIdentity;
 use crate::services::runs::COMPANY_NOT_ACTIVE;
@@ -58,8 +59,16 @@ pub(super) async fn acting_person(
     let message = &incoming.message;
     let gateway = (incoming.gateway.id, incoming.token.as_str());
     let slack = services.gateways.slack();
-    if !their_direct_conversation(slack, gateway, &message.channel, &message.person).await {
-        return Ok(None);
+    match whose_conversation(slack, gateway, &message.channel, &message.person).await {
+        Whose::Theirs => {}
+        Whose::Another => {
+            refuse_conversation(services, incoming).await?;
+            return Ok(None);
+        }
+        Whose::Unsaid(failure) => {
+            tell_unverified(services, incoming, act, &failure).await;
+            return Ok(None);
+        }
     }
     let mut tx = services.db.begin(tenant_id).await?;
     let account = linked_account(&mut tx, incoming.gateway.id, &incoming.message.person).await?;
@@ -192,6 +201,58 @@ pub(super) async fn slack_says_theirs(
     }
     tx.commit().await?;
     Ok(Ok(false))
+}
+
+/// Audits, for the company's administrators, a message or a press naming
+/// a conversation that is not its sender's own: whoever sent it holds the
+/// signing secret. Never what it says, nor where.
+async fn refuse_conversation(services: &Services, incoming: &PersonMessage) -> anyhow::Result<()> {
+    let tenant_id = incoming.tenant_id;
+    let mut tx = services.db.begin(tenant_id).await?;
+    let entry = AuditEntry::new(
+        tenant_id,
+        "system",
+        "gateway.conversation_refused",
+        "denied",
+    )
+    .resource("gateway", incoming.gateway.id)
+    .metadata(json!({ "externalId": incoming.message.person }));
+    append_audit(&mut tx, entry).await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+/// Tells the sender, in their own direct conversation with the application
+/// (found by Slack from their identifier, never the one the event names),
+/// that Slack did not say whose this one is, and that nothing was done.
+async fn tell_unverified(
+    services: &Services,
+    incoming: &PersonMessage,
+    act: Act,
+    failure: &SlackFailure,
+) {
+    let not_done = act.not_done();
+    let text = if matches!(failure, SlackFailure::Refused(code) if code == "missing_scope") {
+        format!(
+            "L’application Slack de l’entreprise n’a pas la permission im:read, qui lui fait \
+             dire si une conversation est la vôtre : {not_done}. Demandez à votre \
+             administrateur de la lui ajouter, puis de la réinstaller."
+        )
+    } else {
+        format!(
+            "Slack ne dit pas pour l’instant si cette conversation est la vôtre : {not_done}. \
+             Réessayez dans un instant."
+        )
+    };
+    let slack = services.gateways.slack();
+    let person = &incoming.message.person;
+    if let Err(failure) = slack
+        .post(&incoming.token, person, None, &escaped(&text))
+        .await
+    {
+        let failure = failure.message();
+        tracing::warn!(gateway = %incoming.gateway.id, %failure, "Slack answer not sent");
+    }
 }
 
 fn offer_link(services: &Services, incoming: &PersonMessage) -> anyhow::Result<()> {

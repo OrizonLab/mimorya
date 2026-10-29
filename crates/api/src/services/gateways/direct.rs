@@ -4,32 +4,42 @@
 //! holds the signing secret could name another's, and have what is meant
 //! for one person written where another reads it. So Slack is asked
 //! (`conversations.info`, `im:read`) before anything is written there or
-//! started: a direct conversation, and that Slack user's. Slack not saying
-//! is not so; nothing is said where it could not be checked.
+//! started: a direct conversation, and that Slack user's. Another's: nothing
+//! said there, audited for the company's administrators. Slack not saying:
+//! nothing written there either, the person told in their own direct
+//! conversation, which Slack finds from their identifier alone.
 
-use mimorya_connectors::slack::SlackApi;
+use mimorya_connectors::slack::{SlackApi, SlackFailure};
 use uuid::Uuid;
 
-/// Whether `channel` is, as Slack says, the direct conversation of the
-/// Slack user `person` with the gateway's application.
-pub(super) async fn their_direct_conversation(
+/// Whose a conversation is, as Slack says.
+pub(super) enum Whose {
+    /// The sender's own direct conversation with the application.
+    Theirs,
+    /// Another's, or no direct conversation.
+    Another,
+    /// Slack did not say.
+    Unsaid(SlackFailure),
+}
+
+/// Whose `channel` is, for the Slack user `person` of the gateway's
+/// application.
+pub(super) async fn whose_conversation(
     slack: &SlackApi,
     (gateway_id, token): (Uuid, &str),
     channel: &str,
     person: &str,
-) -> bool {
+) -> Whose {
     match slack.conversation(token, channel).await {
-        Ok(found) => {
-            let theirs = found.direct && found.person.as_deref() == Some(person);
-            if !theirs {
-                tracing::warn!(gateway = %gateway_id, "Slack event not from its person's direct conversation");
-            }
-            theirs
+        Ok(found) if found.is_direct_with(person) => Whose::Theirs,
+        Ok(_) => {
+            tracing::warn!(gateway = %gateway_id, "Slack event not from its person's direct conversation");
+            Whose::Another
         }
         Err(failure) => {
             let reason = failure.message();
             tracing::warn!(gateway = %gateway_id, %reason, "Slack direct conversation not verified");
-            false
+            Whose::Unsaid(failure)
         }
     }
 }

@@ -95,13 +95,20 @@ pub async fn answer(api: &TestApi) -> usize {
     reply_to_finished_runs(&api.app.services).await.unwrap()
 }
 
-/// What the application wrote in the thread `thread`, in whoever's direct
-/// conversation it is, oldest first.
+/// What the application wrote in the thread `thread` of Marc's direct
+/// conversation, oldest first.
 pub fn in_thread(slack: &FakeSlack, thread: &str) -> Vec<String> {
+    in_thread_of(slack, MARC_SLACK, thread)
+}
+
+/// What the application wrote in the thread `thread` of the direct
+/// conversation of the Slack user `person`, oldest first.
+pub fn in_thread_of(slack: &FakeSlack, person: &str, thread: &str) -> Vec<String> {
+    let channel = dm_of(person);
     slack
         .posts()
         .into_iter()
-        .filter(|p| p.thread_ts.as_deref() == Some(thread))
+        .filter(|p| p.channel == channel && p.thread_ts.as_deref() == Some(thread))
         .map(|p| p.text)
         .collect()
 }

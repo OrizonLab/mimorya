@@ -1,7 +1,8 @@
 //! A person links their Slack identity to their account (ADR-125). Writing
-//! to the application before they did, they are sent, in their direct
-//! conversation with it (once Slack says it is theirs, ADR-131), a link to
-//! their account's page: it carries, in its
+//! to the application before they did, they are sent, in their own direct
+//! conversation with it (addressed by their identifier, not the
+//! conversation the event names, ADR-131), a link to their account's page:
+//! it carries, in its
 //! fragment (never sent to a server with the page), the gateway and their
 //! Slack user, sealed for their company by the server's master key, valid
 //! fifteen minutes; nothing is stored. Opened in their
@@ -26,7 +27,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
 
-use super::direct::their_direct_conversation;
 use super::{GatewayService, LINK_PAGE, bot_token_name};
 use crate::services::AccessContext;
 use crate::services::sso::{open_value, seal_value};
@@ -87,15 +87,9 @@ impl GatewayService {
         let text = link_text(&self.assistant_name, &url);
         let slack = self.slack.clone();
         self.background.spawn(async move {
-            let channel = &message.channel;
-            // Only where the person alone reads it (ADR-131).
-            if !their_direct_conversation(&slack, (gateway_id, &token), channel, &message.person)
-                .await
-            {
-                return;
-            }
-            let thread = message.thread_ts.as_deref();
-            if let Err(failure) = slack.post(&token, channel, thread, &text).await {
+            // In their own direct conversation, found by Slack from their
+            // identifier, never the one the event names (ADR-131).
+            if let Err(failure) = slack.post(&token, &message.person, None, &text).await {
                 tracing::warn!(gateway = %gateway_id, failure = %failure.message(), "Slack link not sent");
             }
         });
