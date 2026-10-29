@@ -15,8 +15,9 @@ type Pressed = 'ask' | 'confirm' | 'refuse' | 'cancel' | 'unlink';
  * Telegram, where the bot tells them whose account it links and they
  * accept it (`/oui`); back here, they see which Telegram account accepted
  * it, by its name and its identifier, and confirm, or refuse it. The link
- * is shown once, as the server gives it (`link`, kept by the list): lost,
- * a new one is asked. Whatever an action answers, the row is read again.
+ * is shown once, as the server gives it (`link`, kept by the list), while
+ * it carries the code under way: lost or replaced, a new one is asked.
+ * Whatever an action answers, the row is read again.
  */
 export function TelegramIdentityRow({
   gateway,
@@ -36,6 +37,9 @@ export function TelegramIdentityRow({
   const path = `/account/gateways/${gateway.gatewayId}`;
   const { linked, pending } = gateway;
   const claimedBy = pending?.claimedBy ?? null;
+  // The link kept is shown only while it carries the code under way: another
+  // asked meanwhile (from another page) replaced it, and it is then lost.
+  const shown = link !== null && pending?.expiresAt === link.expiresAt ? link : null;
 
   async function run(button: Pressed, call: () => Promise<unknown>) {
     setPressed(button);
@@ -82,10 +86,10 @@ export function TelegramIdentityRow({
         </p>
       ) : pending ? (
         <div className="flex flex-col gap-2 text-sm text-muted">
-          {link ? (
+          {shown ? (
             <p>
               <a
-                href={link.link}
+                href={shown.link}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 font-medium text-accent underline"
@@ -143,7 +147,7 @@ export function TelegramIdentityRow({
         )}
         {!linked && gateway.available && pending && claimedBy === null && (
           <>
-            {!link && (
+            {!shown && (
               <Button disabled={held('ask')} loading={loading('ask')} onClick={ask}>
                 Demander un nouveau lien
               </Button>

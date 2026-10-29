@@ -7395,7 +7395,9 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     - **« Relier mon compte Telegram »** demande le code et montre une fois le lien du
       bot qu'il porte (« Ouvrir le bot @… dans Telegram »), avec ce qu'il faut y faire :
       démarrer le bot, qui dit à quel compte il relie, répondre `/oui`, revenir ici ;
-      le lien n'est connu que de cette page (perdu, on en demande un nouveau) ;
+      le lien n'est connu que de cette page, et montré tant qu'il porte le code en
+      cours (même échéance) : perdu, ou remplacé depuis une autre page, on en demande
+      un nouveau ;
     - **en attendant l'accord**, la liste est relue trois secondes après la fin de
       chaque lecture (`useRefreshWhile`, ADR-105, sans empiler les lectures), tant
       qu'un bot disponible attend l'accord de la personne ; le lien, gardé au-dessus
@@ -7419,7 +7421,8 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
   - tests : `apps/web/e2e/telegram-gateway.spec.ts`. Le parcours :
     - le bot est déclaré, sa carte relue dans l'API sans jeton ni secret, le webhook
       donné à l'adresse de la passerelle ;
-    - Léa demande le lien et démarre le bot avec, comme Telegram l'envoie ; le bot nomme
+    - Léa demande le lien (jamais son code dans ce que l'API liste) et démarre le bot
+      avec, comme Telegram l'envoie ; le bot nomme
       son compte, elle répond `/oui`, voit dans « Mon compte » le compte Telegram qui a
       accepté et confirme ; la liaison est relue dans l'API, et le bot lui dit ensuite à
       quel compte le sien est relié ;
@@ -7428,7 +7431,6 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
       comme une passerelle inconnue ;
     - un second parcours : le lien de Léa accepté par Marc, qu'elle refuse (« Ce n'est
       pas moi »), son code ne reliant plus rien ; un lien perdu avec la page, redemandé,
-      l'ancien ne reliant rien ; un lien annulé, ne reliant rien ; jamais le code dans
-      ce que l'API liste ;
+      l'ancien ne reliant rien ; un lien annulé, ne reliant rien ;
   - restent : conversations avec l'agent dans Telegram, validations par boutons, avis
     au responsable ; Teams.
