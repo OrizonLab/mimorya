@@ -145,9 +145,10 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   signature pourrait sinon faire écrire ce qui est destiné à une personne là où une
   autre le lit (sa réponse, un lien de liaison, un refus). Slack est donc interrogé
   (`conversations.info`, permission `im:read`) avant que rien n'y soit dit ni lancé :
-  une conversation directe, et celle de cet utilisateur. Celle d'un autre : rien n'y est
-  dit ni lancé, et c'est audité (`gateway.conversation_refused`, sans contenu). Slack ne
-  le disant pas : rien n'est lancé, et l'auteur est prévenu dans sa propre conversation,
+  une conversation directe, et celle de cet utilisateur. Celle d'un autre, ou une que
+  l'application ne voit pas (`channel_not_found`) : rien n'y est dit ni lancé, même si
+  l'audit échoue, et c'est audité (`gateway.conversation_refused`, sans contenu). Slack
+  ne le disant pas : rien n'est lancé, et l'auteur est prévenu dans sa propre conversation,
   adressée par son identifiant, jamais dans celle que l'événement nomme. Le lien de
   liaison part toujours ainsi.
 - Responsable prévenu dans Slack (ADR-130) : une demande qui attend un responsable est

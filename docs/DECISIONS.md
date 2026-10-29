@@ -7179,8 +7179,8 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
 - **Conséquences** :
   - une application déclarée sans `im:read` ne lance plus rien : chaque personne reliée
     qui lui écrit, ou qui presse un bouton, est prévenue dans sa propre conversation de
-    faire ajouter la permission, et c'est journalisé (une personne non reliée reçoit
-    son lien comme avant). Vérifier les permissions du jeton dès sa déclaration (en-tête
+    faire ajouter la permission, et c'est journalisé (une personne non reliée qui écrit
+    reçoit son lien comme avant). Vérifier les permissions du jeton dès sa déclaration (en-tête
     `x-oauth-scopes`) est un lot à venir ;
   - un appel de plus à Slack par message ou bouton pressé ; garder en cache à qui est
     une conversation directe, qui ne change pas, est une amélioration possible ;

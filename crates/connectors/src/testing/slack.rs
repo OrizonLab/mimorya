@@ -174,9 +174,9 @@ impl FakeSlack {
         self.shared.lock().expect("lock").post_refusal = code.map(str::to_owned);
     }
 
-    /// Whose a conversation is goes unsaid from now on: `conversations.info`
-    /// is answered with this error code, as without `im:read` (`None`: said
-    /// again).
+    /// `conversations.info` is refused with this error code from now on, as
+    /// without `im:read` or for a conversation the application cannot see
+    /// (`None`: answered again).
     pub fn refuse_conversations_with(&self, code: Option<&str>) {
         self.shared.lock().expect("lock").conversation_refusal = code.map(str::to_owned);
     }
