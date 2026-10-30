@@ -7,7 +7,8 @@
 //! never shown nor audited. A new token must be the application's in the
 //! same workspace: the identities people linked are that workspace's.
 //! Under the administration lock, audited; deleting a gateway deletes its
-//! people's identities.
+//! people's identities. A Telegram bot (`telegram_gateway`, ADR-133) and a
+//! Microsoft Teams bot (`teams_gateway`, ADR-138) are declared alike.
 
 use mimorya_connectors::slack::SlackWorkspace;
 use mimorya_core::DomainError;
@@ -24,12 +25,13 @@ use uuid::Uuid;
 
 use super::connectors::PERMISSION;
 use super::gateway_check::{application_of, other_workspace, scopes_metadata};
+use super::teams_gateway::change_teams_gateway;
 use super::telegram_gateway::change_telegram_gateway;
 use super::{audit_entry, begin_change};
 use crate::secrets::SecretRead;
 use crate::services::AccessContext;
 use crate::services::gateways::{
-    GatewayService, bot_token_name, signing_secret_name, webhook_secret_name,
+    GatewayService, bot_token_name, client_secret_name, signing_secret_name, webhook_secret_name,
 };
 
 const NOT_FOUND: &str = "Passerelle introuvable";
@@ -48,6 +50,8 @@ pub struct GatewayChanges {
     pub enabled: Option<bool>,
     pub bot_token: Option<String>,
     pub signing_secret: Option<String>,
+    /// A Teams bot's (ADR-138).
+    pub client_secret: Option<String>,
 }
 
 pub async fn declare_slack_gateway(
@@ -129,8 +133,21 @@ pub async fn change_gateway(
 ) -> anyhow::Result<()> {
     access.require_tenant_wide(PERMISSION)?;
     // A gateway's service never changes: read before the lock.
-    if kind_of(gateways, access, id).await? == Some(GatewayKind::Telegram) {
-        return change_telegram_gateway(gateways, access, id, changes).await;
+    match kind_of(gateways, access, id).await? {
+        Some(GatewayKind::Telegram) => {
+            return change_telegram_gateway(gateways, access, id, changes).await;
+        }
+        Some(GatewayKind::Teams) => {
+            return change_teams_gateway(gateways, access, id, changes).await;
+        }
+        _ => {}
+    }
+    if changes.client_secret.is_some() {
+        return Err(DomainError::validation(
+            "Une application Slack n’a pas de secret client : changez son jeton ou son secret \
+             de signature",
+        )
+        .into());
     }
     let name = changes
         .name
@@ -234,6 +251,7 @@ pub async fn remove_gateway(
     secrets.delete(&mut tx, &bot_token_name(id)).await?;
     secrets.delete(&mut tx, &signing_secret_name(id)).await?;
     secrets.delete(&mut tx, &webhook_secret_name(id)).await?;
+    secrets.delete(&mut tx, &client_secret_name(id)).await?;
     let entry = audit_entry(access, "gateway.deleted", "gateway", id).metadata(json!({
         "name": gateway.name,
         "type": gateway.kind,

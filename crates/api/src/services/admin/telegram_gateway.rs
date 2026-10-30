@@ -107,10 +107,10 @@ pub(super) async fn change_telegram_gateway(
     id: Uuid,
     changes: GatewayChanges,
 ) -> anyhow::Result<()> {
-    if changes.signing_secret.is_some() {
+    if changes.signing_secret.is_some() || changes.client_secret.is_some() {
         return Err(DomainError::validation(
-            "Un bot Telegram n’a pas de secret de signature : la plateforme donne le sien à \
-             Telegram",
+            "Un bot Telegram n’a ni secret de signature ni secret client : la plateforme donne \
+             le sien à Telegram, changez son jeton",
         )
         .into());
     }

@@ -43,6 +43,7 @@ mod skill_eval_cases;
 mod skill_evaluations;
 mod skill_proposals;
 mod skills;
+mod teams_gateway;
 mod telegram_gateway;
 mod users;
 
@@ -90,6 +91,7 @@ pub use skills::{
     SkillInput, VersionInput, activate_skill, add_skill_version, create_skill, delete_skill,
     retire_skill, update_skill,
 };
+pub use teams_gateway::{NewTeamsGatewayInput, declare_teams_gateway};
 pub use telegram_gateway::{NewTelegramGatewayInput, declare_telegram_gateway};
 pub use users::{NewUserInput, UserChanges, create_user, reset_password, update_user};
 

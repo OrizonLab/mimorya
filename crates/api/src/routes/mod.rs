@@ -37,7 +37,7 @@ use mimorya_core::DomainError;
 use crate::app::AppState;
 use crate::http::ApiError;
 
-pub use gateways::{SLACK_EVENTS_PREFIX, TELEGRAM_UPDATES_PREFIX};
+pub use gateways::{SLACK_EVENTS_PREFIX, TEAMS_ACTIVITIES_PREFIX, TELEGRAM_UPDATES_PREFIX};
 pub use hooks::DELIVERY_PREFIX as HOOK_DELIVERY_PREFIX;
 pub use saml::ACS_ROUTE as SAML_ACS_ROUTE;
 

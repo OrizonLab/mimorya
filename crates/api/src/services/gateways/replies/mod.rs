@@ -151,6 +151,8 @@ async fn reply(
         (Some(token), Some(GatewayKind::Telegram)) => {
             telegram::answer(gateways, &target, &awaiting, &token, now).await
         }
+        // No conversation is held in Teams yet (ADR-138): nothing to write.
+        (Some(_), Some(GatewayKind::Teams)) => ReplyRecord::Done("skipped"),
     };
     let mut tx = services.db.begin(tenant_id).await?;
     record_gateway_reply(&mut tx, tenant_id, event_id, thread_id, record).await?;

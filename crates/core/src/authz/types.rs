@@ -106,6 +106,9 @@ pub const SLACK_CHANNEL: &str = "slack";
 /// The channel of a run its author started by writing to their company's
 /// Telegram bot (ADR-135): their own words, answered in Telegram.
 pub const TELEGRAM_CHANNEL: &str = "telegram";
+/// The channel of a run its author starts by writing to their company's
+/// Teams bot (ADR-138): their own words, answered in Teams.
+pub const TEAMS_CHANNEL: &str = "teams";
 
 /// Who is performing the action: the user directly, or an agent on their behalf.
 #[derive(Debug, Clone, PartialEq, Eq)]

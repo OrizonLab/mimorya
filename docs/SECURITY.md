@@ -191,6 +191,21 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   de mise en forme et des liens web refermés ; jamais ses mots dans les journaux ni
   l'audit. Les validations se donnent dans l'application, qui en montre les paramètres
   exacts, ou avec les boutons de la pause pour celles qu'autorise ADR-136.
+- Bot Teams (ADR-138) : déclaré par l'entreprise (`connector:manage`, un par
+  entreprise) avec son application, l'annuaire Microsoft Entra commun au bot et aux
+  personnes, et son secret client, essayé auprès d'Entra avant que rien ne soit gardé ;
+  secret scellé, jamais rendu ni audité ; ni l'application ni l'annuaire ne changent.
+  Une activité n'est prise qu'avec le jeton que signe le Bot Framework (RS256, clé
+  publiée par Microsoft et endossée pour Teams, émetteur, audience du bot, validité à
+  cinq minutes près, service de l'activité), sinon répondue comme une passerelle
+  inconnue ; chemin exact dispensé de l'en-tête du navigateur. Seul le message d'une
+  personne dans sa conversation personnelle avec le bot, de l'annuaire de
+  l'entreprise, est lu, une fois ; le bot n'écrit qu'aux services Teams de Microsoft
+  (HTTPS, port par défaut, chemin simple), vérifiés à la réception et dans le client.
+  Une identité ne se relie que depuis la session de la personne, par le lien scellé que
+  le bot lui envoie (quinze minutes), quand Teams, interrogé alors dans la conversation
+  où le bot l'a rencontrée, nomme le même objet Entra, de l'annuaire de l'entreprise,
+  avec l'adresse du compte ; `agent:use` exigé ; refus audités sans adresse.
 - Validations dans Telegram (ADR-136) : seules les actions qui attendent la personne
   elle-même, sans effet hors de l'entreprise, réversibles, aux paramètres exacts
   montrés entiers, se valident avec les boutons de la pause ; un bouton pressé n'est

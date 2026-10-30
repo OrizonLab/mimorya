@@ -28,23 +28,26 @@ pub struct Gateways {
 #[serde(rename_all = "camelCase")]
 pub struct GatewayView {
     pub id: Uuid,
-    /// `slack` or `telegram`.
+    /// `slack`, `telegram` or `teams`.
     #[serde(rename = "type")]
     pub kind: String,
     pub name: String,
     pub enabled: bool,
     /// The workspace Slack said the application is installed in; the
-    /// Telegram bot's identifier.
+    /// Telegram bot's identifier; the Teams bot's Microsoft Entra directory.
     pub workspace_id: String,
-    /// Its name; the Telegram bot's username.
+    /// Its name; the Telegram bot's username; the Teams bot's directory.
     pub workspace_name: String,
-    /// The application's bot user; the Telegram bot's identifier.
+    /// The application's bot user; the Telegram bot's identifier; the Teams
+    /// bot's application (Microsoft App ID).
     pub bot_user_id: String,
     /// Where Slack sends the application's events (« Event Subscriptions »);
-    /// where Telegram sends the bot's updates, which the platform told it.
+    /// where Telegram sends the bot's updates, which the platform told it;
+    /// the Teams bot's messaging endpoint, to give the Azure bot.
     pub events_url: String,
     /// Whether its bot's token and its signing secret (Slack) or its
-    /// webhook's secret (Telegram) are stored.
+    /// webhook's secret (Telegram), or its client secret (Teams), are
+    /// stored.
     pub secrets_stored: bool,
     /// How many people linked their identity.
     pub identities: i64,
@@ -97,6 +100,29 @@ pub struct NewTelegramGateway {
     pub enabled: Option<bool>,
 }
 
+/// Body of `POST /admin/gateways/teams`: the company's Microsoft Teams bot
+/// (ADR-138).
+#[derive(Deserialize, Validate, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NewTeamsGateway {
+    #[serde(deserialize_with = "trimmed")]
+    #[validate(length(min = 2, max = 80))]
+    pub name: String,
+    /// The Azure bot's application (Microsoft App ID).
+    #[serde(deserialize_with = "trimmed")]
+    pub app_id: String,
+    /// The Microsoft Entra directory (tenant) of the bot and the company.
+    #[serde(deserialize_with = "trimmed")]
+    pub directory_id: String,
+    /// The application's client secret.
+    #[serde(deserialize_with = "trimmed")]
+    pub client_secret: String,
+    /// Absent: enabled.
+    #[serde(default)]
+    #[ts(optional)]
+    pub enabled: Option<bool>,
+}
+
 /// Body of `PATCH /admin/gateways/{id}`: an absent field is left as it
 /// stands.
 #[derive(Deserialize, Validate, TS)]
@@ -117,4 +143,8 @@ pub struct GatewayUpdate {
     #[serde(default, deserialize_with = "trimmed_opt")]
     #[ts(optional)]
     pub signing_secret: Option<String>,
+    /// A new client secret of the Teams bot's application.
+    #[serde(default, deserialize_with = "trimmed_opt")]
+    #[ts(optional)]
+    pub client_secret: Option<String>,
 }

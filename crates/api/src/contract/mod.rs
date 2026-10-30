@@ -202,6 +202,7 @@ macro_rules! request_bodies {
             admin::NewMicrosoft365Connector,
             admin::NewGoogleWorkspaceConnector,
             admin::NewSlackGateway,
+            admin::NewTeamsGateway,
             admin::NewTelegramGateway,
             admin::GatewayUpdate,
             admin::OpenApiDescription,

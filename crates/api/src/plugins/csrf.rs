@@ -5,10 +5,12 @@
 //! attempt in its own cookie and the signed response (ADR-068); a delivery
 //! to an inbound hook, from another system, which no session authorizes:
 //! its token alone does (ADR-109); an event Slack sends a company's
-//! gateway, which its signature alone proves (ADR-125); and an update
+//! gateway, which its signature alone proves (ADR-125); an update
 //! Telegram sends a company's bot, which the webhook's secret alone proves
-//! (ADR-133). The latter three's paths are matched whole, their identifier
-//! in canonical form.
+//! (ADR-133); and an activity the Bot Framework sends a company's Teams
+//! bot, which the token Microsoft signs it with alone proves (ADR-138).
+//! The latter four's paths are matched whole, their identifier in canonical
+//! form.
 
 use axum::extract::{Request, State};
 use axum::http::Method;
@@ -20,7 +22,8 @@ use mimorya_core::DomainError;
 use crate::app::AppState;
 use crate::http::ApiError;
 use crate::routes::{
-    HOOK_DELIVERY_PREFIX, SAML_ACS_ROUTE, SLACK_EVENTS_PREFIX, TELEGRAM_UPDATES_PREFIX,
+    HOOK_DELIVERY_PREFIX, SAML_ACS_ROUTE, SLACK_EVENTS_PREFIX, TEAMS_ACTIVITIES_PREFIX,
+    TELEGRAM_UPDATES_PREFIX,
 };
 use uuid::Uuid;
 
@@ -60,11 +63,13 @@ fn is_hook_delivery(path: &str) -> bool {
     names_one(path, HOOK_DELIVERY_PREFIX)
 }
 
-/// Whether `path` is where Slack sends a gateway's events, or Telegram a
-/// bot's updates: the prefix, then a gateway's identifier as it is
-/// written, and nothing else.
+/// Whether `path` is where Slack sends a gateway's events, Telegram a
+/// bot's updates, or the Bot Framework a Teams bot's activities: the
+/// prefix, then a gateway's identifier as it is written, and nothing else.
 fn is_gateway_event(path: &str) -> bool {
-    names_one(path, SLACK_EVENTS_PREFIX) || names_one(path, TELEGRAM_UPDATES_PREFIX)
+    names_one(path, SLACK_EVENTS_PREFIX)
+        || names_one(path, TELEGRAM_UPDATES_PREFIX)
+        || names_one(path, TEAMS_ACTIVITIES_PREFIX)
 }
 
 /// Whether `path` is `prefix` followed by an identifier in canonical form
@@ -103,7 +108,13 @@ mod tests {
         let id = "0b9c4c1e-7a4f-4f7e-9d1c-2a3b4c5d6e7f";
         assert!(is_gateway_event(&format!("/gateways/slack/{id}")));
         assert!(is_gateway_event(&format!("/gateways/telegram/{id}")));
+        assert!(is_gateway_event(&format!("/gateways/teams/{id}")));
         for path in [
+            "/gateways/teams/".to_owned(),
+            format!("/gateways/teams/{id}/"),
+            format!("/gateways/teams/{}", id.to_uppercase()),
+            format!("/gateways/teams/{id}/link"),
+            "/admin/gateways/teams".to_owned(),
             "/gateways/telegram/".to_owned(),
             format!("/gateways/telegram/{id}/"),
             format!("/gateways/telegram/{}", id.to_uppercase()),
@@ -117,7 +128,6 @@ mod tests {
             format!("/gateways/slack/{}", id.replace('-', "")),
             format!("/gateways/slack/{id}/link"),
             format!("/gateways/slack//{id}"),
-            format!("/gateways/teams/{id}"),
             format!("/gateways/{id}"),
             format!("/admin/gateways/{id}"),
             format!("/account/gateways/{id}"),

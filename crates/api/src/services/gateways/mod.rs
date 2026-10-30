@@ -22,7 +22,13 @@
 //! (ADR-136); a manager, or their stand-in, linked there is told there of
 //! the requests awaiting them, by the same pass as in Slack
 //! (`approver_notices`, ADR-137).
-//! The bot's token and the signing secret are sealed in the secret store.
+//! A company's Microsoft Teams bot receives the activities the Bot Framework
+//! sends it, proven by the token Microsoft signs them with; a person
+//! writing to it is sent a link to link their Teams identity, confirmed in
+//! their own session once Teams says who they are (`teams`, `link`,
+//! ADR-138).
+//! The bot's token, the signing secret and the Teams bot's client secret
+//! are sealed in the secret store.
 
 mod approver_notices;
 mod approver_text;
@@ -38,12 +44,14 @@ mod replies;
 mod reply_text;
 mod retry;
 mod started;
+mod teams;
 mod telegram;
 
 use std::sync::Arc;
 
 use mimorya_connectors::outbound::{NetworkPolicy, http_client};
 use mimorya_connectors::slack::SlackApi;
+use mimorya_connectors::teams::{TeamsApi, TeamsEndpoints};
 use mimorya_connectors::telegram::TelegramApi;
 use mimorya_db::{Database, TenantTx};
 use uuid::Uuid;
@@ -59,6 +67,7 @@ pub use identities::GatewayOfPerson;
 pub use link::{LINK_LIFETIME, LinkPreview};
 pub use replies::reply_to_finished_runs;
 pub use retry::MAX_ATTEMPTS;
+pub use teams::ActivityOutcome;
 pub use telegram::{
     ChatMessage, PendingLink, TelegramChoice, TelegramLinkCode, UpdateOutcome,
     converse_in_telegram, decide_in_telegram,
@@ -72,6 +81,10 @@ pub const SLACK_EVENTS_PREFIX: &str = "/gateways/slack/";
 /// Where Telegram sends a bot's updates, under the API's address: the
 /// other route a request without the browser's header reaches (ADR-133).
 pub const TELEGRAM_UPDATES_PREFIX: &str = "/gateways/telegram/";
+/// Where the Bot Framework sends a Teams bot's activities (its messaging
+/// endpoint), under the API's address: the last route a request without
+/// the browser's header reaches (ADR-138).
+pub const TEAMS_ACTIVITIES_PREFIX: &str = "/gateways/teams/";
 /// The page where a person confirms the link Slack gave them.
 pub const LINK_PAGE: &str = "/account/gateway-link";
 
@@ -90,12 +103,18 @@ pub fn webhook_secret_name(gateway_id: Uuid) -> String {
     format!("gateway.{gateway_id}.webhook_secret")
 }
 
+/// The secret store's name of a Teams bot's client secret (ADR-138).
+pub fn client_secret_name(gateway_id: Uuid) -> String {
+    format!("gateway.{gateway_id}.client_secret")
+}
+
 pub struct GatewayService {
     db: Database,
     secrets: SecretStore,
     cipher: Option<Arc<SecretCipher>>,
     slack: SlackApi,
     telegram: TelegramApi,
+    teams: TeamsApi,
     web_origin: String,
     assistant_name: String,
     background: Arc<BackgroundTasks>,
@@ -109,6 +128,8 @@ pub struct GatewaySettings {
     pub slack_api: String,
     /// Telegram's Bot API (`TELEGRAM_API`, a local one in tests).
     pub telegram_api: String,
+    /// Microsoft, as a Teams bot reaches it (a local one in tests).
+    pub teams: TeamsEndpoints,
     pub web_origin: String,
     pub assistant_name: String,
 }
@@ -122,12 +143,14 @@ impl GatewayService {
     ) -> anyhow::Result<Self> {
         let slack = SlackApi::new(&settings.slack_api, http_client(settings.network)?)?;
         let telegram = TelegramApi::new(&settings.telegram_api, http_client(settings.network)?)?;
+        let teams = TeamsApi::new(settings.teams, http_client(settings.network)?)?;
         Ok(Self {
             db,
             secrets: SecretStore::new(cipher.clone()),
             cipher,
             slack,
             telegram,
+            teams,
             web_origin: settings.web_origin,
             assistant_name: settings.assistant_name,
             background,
@@ -142,6 +165,11 @@ impl GatewayService {
     /// Telegram's Bot API.
     pub fn telegram(&self) -> &TelegramApi {
         &self.telegram
+    }
+
+    /// Microsoft, as a Teams bot reaches it.
+    pub fn teams(&self) -> &TeamsApi {
+        &self.teams
     }
 
     pub fn secrets(&self) -> &SecretStore {
@@ -171,6 +199,15 @@ impl GatewayService {
     pub fn telegram_updates_url(&self, gateway_id: Uuid) -> String {
         format!(
             "{}/api{TELEGRAM_UPDATES_PREFIX}{gateway_id}",
+            self.web_origin
+        )
+    }
+
+    /// The address the Bot Framework sends a Teams bot's activities to, its
+    /// messaging endpoint (ADR-138).
+    pub fn teams_activities_url(&self, gateway_id: Uuid) -> String {
+        format!(
+            "{}/api{TEAMS_ACTIVITIES_PREFIX}{gateway_id}",
             self.web_origin
         )
     }

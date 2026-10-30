@@ -18,6 +18,6 @@ pub use permissions::{
 pub use sensitivity::Sensitivity;
 pub use types::{
     AbacPolicy, Actor, ActorType, AssignmentScope, DataScope, Decision, HOOK_CHANNEL, PolicyEffect,
-    ResourceRef, RoleAssignment, RoleDefinition, SLACK_CHANNEL, Subject, TELEGRAM_CHANNEL,
-    WEB_CHANNEL,
+    ResourceRef, RoleAssignment, RoleDefinition, SLACK_CHANNEL, Subject, TEAMS_CHANNEL,
+    TELEGRAM_CHANNEL, WEB_CHANNEL,
 };

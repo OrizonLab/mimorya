@@ -198,6 +198,8 @@ async fn main() -> anyhow::Result<()> {
             slack_api: Some(slack.url.clone()),
             // Its bot reaches the local Telegram (ADR-134).
             telegram_api: Some(telegram.url.clone()),
+            // Microsoft's own (ADR-138): no Teams bot is declared there.
+            teams_api: None,
         },
     )
     .await?;

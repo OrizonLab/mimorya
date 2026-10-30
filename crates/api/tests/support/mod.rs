@@ -17,6 +17,7 @@ pub mod documents;
 pub mod embeddings;
 pub mod evaluation_passes;
 mod fixtures;
+pub mod gateway_apps;
 pub mod gateways;
 pub mod hooks;
 pub mod identity_provider;
@@ -54,6 +55,7 @@ pub mod slack_conversations;
 pub mod slack_validations;
 pub mod sso;
 pub mod sweeps;
+pub mod teams;
 pub mod telegram;
 pub mod telegram_conversations;
 
@@ -90,6 +92,8 @@ struct Setup<'a> {
     slack_api: Option<String>,
     /// Telegram's Bot API the bots reach, a local one (ADR-133).
     telegram_api: Option<String>,
+    /// Microsoft as the Teams bots reach it, a local one (ADR-138).
+    teams_api: Option<String>,
 }
 
 pub struct TestApi {
@@ -116,39 +120,6 @@ impl TestApi {
     /// App backed by the scripted model; queue its answers with `script`.
     pub async fn start() -> Self {
         Self::start_with(&[]).await
-    }
-
-    /// Same, its companies' gateways reaching the local Slack at `url`
-    /// (ADR-125), with configuration variables overridden.
-    pub async fn start_with_slack(env: &[(&str, &str)], url: &str) -> Self {
-        Self::scripted(Setup {
-            env,
-            slack_api: Some(url.to_owned()),
-            ..Setup::default()
-        })
-        .await
-    }
-
-    /// Same, its companies' bots reaching the local Telegram at `url`
-    /// (ADR-133), with configuration variables overridden.
-    pub async fn start_with_telegram(env: &[(&str, &str)], url: &str) -> Self {
-        Self::scripted(Setup {
-            env,
-            telegram_api: Some(url.to_owned()),
-            ..Setup::default()
-        })
-        .await
-    }
-
-    /// Same, its companies' gateways reaching the local Slack and Telegram.
-    pub async fn start_with_gateways(env: &[(&str, &str)], slack: &str, telegram: &str) -> Self {
-        Self::scripted(Setup {
-            env,
-            slack_api: Some(slack.to_owned()),
-            telegram_api: Some(telegram.to_owned()),
-            ..Setup::default()
-        })
-        .await
     }
 
     /// Same, with configuration variables overridden.
@@ -231,6 +202,7 @@ impl TestApi {
             run_leases,
             slack_api,
             telegram_api,
+            teams_api,
         } = setup;
         limits::forget_counts().await;
         let mut vars: HashMap<&str, String> = HashMap::from([
@@ -283,6 +255,7 @@ impl TestApi {
             account_link_issuer: None,
             slack_api,
             telegram_api,
+            teams_api,
         };
         let app = build_app(config, options).await.expect("app");
         Self {

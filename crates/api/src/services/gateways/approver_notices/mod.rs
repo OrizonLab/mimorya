@@ -215,6 +215,9 @@ async fn tell(
     match told.kind {
         GatewayKind::Slack => slack::tell(services, told, reach, theirs).await,
         GatewayKind::Telegram => Ok(telegram::tell(services, told, reach, theirs).await),
+        // Never picked (`system_gateway_approvals_to_notify` names Slack and
+        // Telegram): a Teams bot tells no manager yet (ADR-138).
+        GatewayKind::Teams => Ok(ReplyRecord::Done("skipped")),
     }
 }
 

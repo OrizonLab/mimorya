@@ -9,6 +9,7 @@ use axum::extract::DefaultBodyLimit;
 use axum::middleware::{from_fn, from_fn_with_state};
 use mimorya_agent::llm::{PriceTable, create_provider};
 use mimorya_connectors::slack::SLACK_API;
+use mimorya_connectors::teams::TeamsEndpoints;
 use mimorya_connectors::telegram::TELEGRAM_API;
 use mimorya_db::{Database, PoolOptions};
 use tokio::sync::watch;
@@ -191,6 +192,8 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
             network: options.sso_network.unwrap_or(config.mcp_network),
             slack_api: options.slack_api.unwrap_or_else(|| SLACK_API.to_string()),
             telegram_api: (options.telegram_api).unwrap_or_else(|| TELEGRAM_API.to_string()),
+            teams: (options.teams_api.as_deref())
+                .map_or_else(TeamsEndpoints::microsoft, TeamsEndpoints::local),
             web_origin: config.web_origin.clone(),
             assistant_name: config.assistant_name.clone(),
         },
