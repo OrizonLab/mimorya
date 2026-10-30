@@ -21,8 +21,9 @@ export function ShareForm({
   onDone: (changed: boolean) => void;
 }) {
   const options = unitOptions(units);
-  const [source, setSource] = useState(options[0]?.id ?? '');
-  const [target, setTarget] = useState(options[1]?.id ?? '');
+  // Both chosen by the administrator: no pair of units is right by default.
+  const [source, setSource] = useState('');
+  const [target, setTarget] = useState('');
   const [below, setBelow] = useState(false);
   const [memory, setMemory] = useState(true);
   const [documents, setDocuments] = useState(true);
@@ -51,6 +52,9 @@ export function ShareForm({
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Connaissances de l’unité">
           <Select value={source} onChange={(e) => setSource(e.target.value)}>
+            <option value="" disabled>
+              Choisir une unité
+            </option>
             {options.map((o) => (
               <option key={o.id} value={o.id}>
                 {o.label}
@@ -60,6 +64,9 @@ export function ShareForm({
         </Field>
         <Field label="Partagées avec">
           <Select value={target} onChange={(e) => setTarget(e.target.value)}>
+            <option value="" disabled>
+              Choisir une unité
+            </option>
             {options.map((o) => (
               <option key={o.id} value={o.id}>
                 {o.label}

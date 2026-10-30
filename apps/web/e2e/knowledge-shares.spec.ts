@@ -59,6 +59,8 @@ test('a team’s memory shared with another is read there until the share is rem
   await openAdmin(page, TAB);
   await expect(page.getByText('Aucun partage de connaissances')).toBeVisible();
   await page.getByRole('button', { name: 'Nouveau partage' }).click();
+  // No pair of units is offered: « Partager » waits for both.
+  await expect(page.getByRole('button', { name: 'Partager', exact: true })).toBeDisabled();
   await selectContaining(page.getByLabel('Connaissances de l’unité'), 'Équipe Nord');
   // Paul belongs to the administrative service: he would read it himself.
   await selectContaining(page.getByLabel('Partagées avec'), 'Service administratif');
@@ -67,6 +69,8 @@ test('a team’s memory shared with another is read there until the share is rem
 
   await selectContaining(page.getByLabel('Partagées avec'), 'Équipe Sud');
   await page.getByRole('checkbox', { name: 'Les documents qui y sont déposés' }).uncheck();
+  await page.getByRole('checkbox', { name: /^Lu aussi par les membres des unités sous/ }).check();
+  await page.getByLabel('Jusqu’au (facultatif)').fill('2099-12-31');
   await page.getByRole('button', { name: 'Partager', exact: true }).click();
   // The form closes once the share is made; then the share, as the API lists
   // it once the page is reloaded.
@@ -76,8 +80,9 @@ test('a team’s memory shared with another is read there until the share is rem
   const share = cardWith(page, SHARE, `Retirer ${SHARE}`);
   await expect(share.getByText('Mémoire', { exact: true })).toBeVisible();
   await expect(share.getByText('Documents', { exact: true })).toHaveCount(0);
-  const said = 'Lu par les membres de l’unité « Équipe Sud », jusqu’au niveau « Interne » ;';
-  await expect(page.getByText(`${said} sans échéance.`)).toBeVisible();
+  const readers = 'Lu par les membres de l’unité « Équipe Sud » et des unités en dessous';
+  const said = `${readers}, jusqu’au niveau « Interne » ; jusqu’au 31/12/2099`;
+  await expect(page.getByText(said)).toBeVisible();
   await noError(page);
   await readsNorthMemory(lea, true);
 
