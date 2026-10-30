@@ -282,10 +282,15 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   l'auteur (ADR-141), carte gardée avec celui à qui elle est écrite ; un bouton ne
   décide que pour une demande montrée sur une carte du bot dans la conversation de qui
   le presse, puis par les mêmes contrôles (`concerned::decide_as`) : seul celui que la
-  demande attend, ou son remplaçant, la décide. Qui détient le secret client de
-  l'application du bot peut donc aussi valider, au nom d'un responsable relié, ces
-  actions-là : jamais un envoi hors de l'entreprise ni une action irréversible. Une
-  annonce par passerelle, auditée avec son service, jamais ce qui est écrit.
+  demande attend, ou son remplaçant, la décide. Le secret client de l'application du
+  bot ne prouve aucune activité reçue (seul le jeton signé par le Bot Framework le
+  fait) : qui le détient peut écrire au nom du bot, un message trompeur par exemple,
+  mais aucune décision ne se prend sans l'appui du responsable lui-même, dans sa
+  propre conversation, sur une carte gardée ; et seules ces actions-là s'y décident,
+  jamais un envoi hors de l'entreprise ni une action irréversible. Une annonce par
+  passerelle, auditée avec son service, jamais ce qui est écrit ; les cartes des
+  avis oubliées une fois leurs demandes échues (huit jours), ou dès qu'elles ne sont
+  plus dans la conversation où le responsable est prévenu.
 - Déclencheurs (ADR-109) : un autre système envoie avec le jeton secret du déclencheur
   (`Authorization: Bearer`, 256 bits, gardé en empreinte SHA-256, montré une fois). Un
   déclencheur inconnu, un jeton faux et un déclencheur en pause répondent de même (404).

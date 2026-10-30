@@ -135,7 +135,8 @@ Repères à l'intérieur des crates :
   Framework, ADR-138), session,
   en-têtes de sécurité, audit des modifications d'administration refusées, sur une ressource introuvable ou envoyant un identifiant inconnu,
   maintenance périodique : runs bloqués, liens expirés, absences terminées, demandes de
-  validation échues et relances avant échéance, ADR-061, ADR-062 ; indexation de la
+  validation échues et relances avant échéance, ADR-061, ADR-062, cartes des avis Teams
+  oubliées, ADR-142 ; indexation de la
   mémoire et des passages des documents en arrière-plan, `memory_indexing.rs`, ADR-074,
   ADR-096 ; tâches planifiées lancées
   chaque minute, `scheduled_tasks.rs`, ADR-080 ; fin des missions annoncée à leur

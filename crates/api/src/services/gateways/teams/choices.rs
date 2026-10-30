@@ -1,7 +1,8 @@
 //! A validation given in Teams (ADR-141): the « Valider » or « Refuser »
 //! button a linked person pressed on the card of a pause of their own run,
-//! in their personal conversation with the company's Teams bot, sent by the
-//! Bot Framework with the token Microsoft signs. Teams sends what the
+//! or of a notice of requests awaiting them as a manager or stand-in
+//! (ADR-142), in their personal conversation with the company's Teams bot,
+//! sent by the Bot Framework with the token Microsoft signs. Teams sends what the
 //! button carries, as the client writes it, and the card it was pressed on,
 //! not what the card showed: only a request the platform keeps as shown on
 //! a card of its own, in that conversation, is decided (`gateway_cards`);
@@ -14,7 +15,8 @@
 //! (now, or meanwhile in the application), unless it shows an action
 //! its presser does not see, and their statuses read once more: a press
 //! decided meanwhile, whose card Teams took before, has it written again
-//! as it now is. What became of the press is said in the conversation.
+//! as it now is, with its pause's text, or its notice's (`approver_text`).
+//! What became of the press is said in the conversation.
 //! Audited as any decision, with the service, `teams`.
 
 use mimorya_core::gateways::teams::{

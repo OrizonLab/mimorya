@@ -37,7 +37,6 @@ use super::{bot_token_name, client_secret_name};
 use crate::app::Services;
 
 pub(super) use slack::after_failure;
-pub(super) use teams::{after_failure as after_teams_failure, keep_card as keep_teams_card};
 
 /// How long after a run's end or pause it is still answered: one that
 /// its service could not be reached for is not, days later.

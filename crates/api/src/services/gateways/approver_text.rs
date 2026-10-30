@@ -1,13 +1,14 @@
 //! What a manager, or whom they named to stand in for them, is told when
 //! requests of a paused run await them, in any messaging service (ADR-130,
-//! ADR-137): for whom the agent acts, and in whose absence; that the
+//! ADR-137, ADR-142): for whom the agent acts, and in whose absence; that the
 //! actions shown may be validated there, after their exact parameters are
 //! read, or in the application; how many others are to validate in the
 //! application, where every request awaiting them is listed. The same
 //! words in each service, each writing the names and the link as it reads
 //! them (`Written`) and showing the actions its own way: Slack's blocks
 //! (`approver_notices/slack.rs`), Telegram's text and buttons
-//! (`telegram::approver_notice`).
+//! (`telegram::approver_notice`), Teams' Markdown and the card it comes
+//! with (`teams::approver_notice`).
 
 use mimorya_core::gateways::ShownAction;
 

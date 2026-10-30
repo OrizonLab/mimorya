@@ -21,6 +21,7 @@ mod choices;
 mod conversations;
 mod reply_text;
 mod texts;
+mod written;
 
 use mimorya_core::gateways::teams::TeamsApplication;
 use uuid::Uuid;
@@ -31,6 +32,7 @@ pub(super) use choices::shown_action;
 pub use choices::{TeamsChoice, decide_in_teams};
 pub use conversations::{TeamsMessage, converse_in_teams};
 pub(super) use reply_text::{Pause as TeamsPause, reply_text as teams_reply_text};
+pub(super) use written::{after_failure as teams_after_failure, keep_card as keep_teams_card};
 
 use super::GatewayService;
 

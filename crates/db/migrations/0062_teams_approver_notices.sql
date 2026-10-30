@@ -17,6 +17,7 @@ ALTER TABLE gateway_identities
   ADD CONSTRAINT gateway_identities_teams_conversation CHECK (
     (service_url IS NULL AND conversation_id IS NULL)
     OR (kind = 'teams'
+      AND service_url IS NOT NULL AND conversation_id IS NOT NULL
       AND service_url ~ '^https?://[!-~]+$' AND char_length(service_url) <= 200
       AND conversation_id ~ '^[!-~]+$' AND char_length(conversation_id) <= 512)
   );
@@ -44,6 +45,35 @@ ALTER TABLE gateway_cards
     CHECK (channel_id ~ '^[!-~]+$' AND char_length(channel_id) <= 512),
   ADD CONSTRAINT gateway_cards_written_with
     CHECK ((thread_id IS NULL) <> (user_id IS NULL));
+
+-- Forgets, in every company, the cards of notices written before
+-- `p_before` (their requests no longer await anyone by then), and those
+-- written in a conversation that is no longer where their manager is
+-- written (their Teams account unlinked, or another linked since); how
+-- many. Only identifiers are kept, never what a card showed.
+CREATE FUNCTION system_purge_notice_cards(p_before timestamptz)
+RETURNS bigint
+LANGUAGE sql
+VOLATILE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  WITH purged AS (
+    DELETE FROM gateway_cards c
+     WHERE c.user_id IS NOT NULL
+       AND (c.created_at < p_before
+         OR NOT EXISTS (
+           SELECT 1 FROM gateway_identities i
+            WHERE i.gateway_id = c.gateway_id
+              AND i.user_id = c.user_id
+              AND i.conversation_id = c.channel_id))
+    RETURNING 1
+  )
+  SELECT count(*) FROM purged
+$$;
+
+REVOKE ALL ON FUNCTION system_purge_notice_cards(timestamptz) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION system_purge_notice_cards(timestamptz) TO mimorya_app;
 
 -- The paused runs, of every active company whose Slack application,
 -- Telegram bot or Teams bot is enabled, with requests made since `p_since`

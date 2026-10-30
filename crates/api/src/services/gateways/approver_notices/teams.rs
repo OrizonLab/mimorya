@@ -19,8 +19,9 @@ use uuid::Uuid;
 
 use super::{Reach, Told, shown_action};
 use crate::app::Services;
-use crate::services::gateways::replies::{after_teams_failure, keep_teams_card};
-use crate::services::gateways::teams::teams_approver_notice;
+use crate::services::gateways::teams::{
+    keep_teams_card, teams_after_failure, teams_approver_notice,
+};
 
 /// Writes `told.to`, in their personal conversation with the bot, the
 /// requests `theirs`; what became of the message.
@@ -48,7 +49,7 @@ pub(super) async fn tell(
     if shown.is_empty() {
         return match teams.send(&app, to, &text).await {
             Ok(()) => ReplyRecord::Done("sent"),
-            Err(failure) => after_teams_failure(&failure, reach.attempt, reach.now),
+            Err(failure) => teams_after_failure(&failure, reach.attempt, reach.now),
         };
     }
     let actions: Vec<CardAction> = (shown.iter())
@@ -71,9 +72,10 @@ pub(super) async fn tell(
             });
             let ids: Vec<Uuid> = shown.iter().map(|a| a.approval_id).collect();
             let in_application = i32::try_from(theirs.len() - shown.len()).unwrap_or(i32::MAX);
-            keep_teams_card(&services.gateways, written, &ids, (in_application, 0)).await;
+            let others = (in_application, 0);
+            keep_teams_card(&services.gateways, gateway.id, written, &ids, others).await;
             ReplyRecord::Done("sent")
         }
-        Err(failure) => after_teams_failure(&failure, reach.attempt, reach.now),
+        Err(failure) => teams_after_failure(&failure, reach.attempt, reach.now),
     }
 }

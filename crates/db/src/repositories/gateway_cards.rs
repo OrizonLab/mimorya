@@ -7,7 +7,8 @@
 //! kept, so that the card can be written again once some of its requests
 //! are decided.
 
-use sqlx::PgConnection;
+use chrono::{DateTime, Utc};
+use sqlx::{PgConnection, PgPool};
 use uuid::Uuid;
 
 /// A card the bot wrote: the requests it shows, in order, how many others
@@ -95,4 +96,14 @@ pub async fn find_gateway_card(
     .bind(activity_id)
     .fetch_optional(conn)
     .await
+}
+
+/// Forgets, in every company, the cards of notices written before `before`,
+/// and those no longer in the conversation their manager is written in;
+/// how many.
+pub async fn purge_notice_cards(pool: &PgPool, before: DateTime<Utc>) -> sqlx::Result<i64> {
+    sqlx::query_scalar("select system_purge_notice_cards($1)")
+        .bind(before)
+        .fetch_one(pool)
+        .await
 }

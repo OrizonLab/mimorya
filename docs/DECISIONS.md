@@ -8135,7 +8135,11 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     (`gateway_cards`). Elle n'a pas de fil, mais nomme celui à qui elle a été écrite
     (`user_id`). Chaque carte nomme désormais son bot et la conversation où elle a été
     écrite (`gateway_id`, `channel_id`), où seuls ses boutons décident. Elle part avec
-    le bot, ou avec la personne à qui elle a été écrite ;
+    le bot, ou avec la personne à qui elle a été écrite. La carte d'un avis est oubliée
+    huit jours après (ses demandes, annoncées dans la journée, échoient en une
+    semaine), ou dès qu'elle n'est plus dans la conversation où son responsable est
+    prévenu, son compte Teams délié ou un autre relié (`system_purge_notice_cards`,
+    passe de maintenance) ;
   - **le bouton pressé** arrive et décide comme sur la carte d'une pause (ADR-141), par
     les contrôles communs aux services (`concerned::decide_as`). Seule une demande
     montrée sur une carte du bot, dans la conversation de qui le presse, et qui
@@ -8148,6 +8152,9 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       d'écrire) ; personne de relié, rien d'écrit (`skipped`) ;
     - le bot en pause n'essaie ni n'enregistre rien ; remis en service, il annonce les
       demandes encore en attente ;
+    - le secret client de l'application du bot ne prouve aucune activité reçue (seul le
+      jeton du Bot Framework le fait) : qui le détient peut écrire au nom du bot, mais
+      aucune décision ne se prend sans l'appui du responsable dans sa conversation ;
     - Teams refuse (bot bloqué, conversation inconnue, secret refusé) : `refused`,
       plus réessayé ; Microsoft injoignable : réessayé quelques fois ;
     - une annonce par passerelle, ce qu'il en advient gardé pour chacune ;
@@ -8170,7 +8177,10 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     - `teams_gateway_approver_notice_outcomes.rs` : écrit là où le bot l'a vu en
       dernier (rien pour une identité reliée avant, jusqu'à son prochain message ;
       son service suivi) ; bot en pause puis remis en service ; Microsoft injoignable
-      réessayé ; bot bloqué refusé, plus réessayé ;
+      réessayé ; bot bloqué refusé, plus réessayé ; responsable qui relie un autre
+      compte Teams prévenu là seulement ; carte d'un avis oubliée une fois échue, ou
+      son compte délié ;
+    - `crates/db/tests/definer_functions.rs` : `system_purge_notice_cards` connue ;
     - unitaires : textes de l'avis et de sa carte réglée ;
   - reste : dans chaque service, « Validée. » ou « Refusée. » plutôt que « Décidée. »
     (ROADMAP).

@@ -2,8 +2,9 @@
 //! that executes runs: expired password reset links are deleted (ADR-028),
 //! ended absences (ADR-071), the shared rate limit windows long over
 //! (ADR-088), the evaluations of skills ended ninety days ago (ADR-104),
-//! the events a gateway took a day ago (ADR-125) and the Telegram link codes
-//! expired (ADR-133); from the second
+//! the events a gateway took a day ago (ADR-125), the Telegram link codes
+//! expired (ADR-133) and the cards of Teams notices to managers settled, or
+//! no longer where their manager is written (ADR-142); from the second
 //! minute, the notices a
 //! stop of the service lost are sent (ADR-070), requests nobody decided in
 //! time expire, and their runs go on (ADR-061), their managers reminded the
@@ -29,6 +30,7 @@ use mimorya_agent::runtime::RunEvent;
 use mimorya_core::skill_evaluations::EVALUATION_KEPT_DAYS;
 use mimorya_db::Database;
 use mimorya_db::repositories::approval_delegations::purge_ended_approval_delegations;
+use mimorya_db::repositories::gateway_cards::purge_notice_cards;
 use mimorya_db::repositories::gateway_link_codes::purge_link_codes;
 use mimorya_db::repositories::gateways::purge_gateway_events;
 use mimorya_db::repositories::password_resets::purge_expired_password_resets;
@@ -52,6 +54,9 @@ const RATE_LIMITS_KEPT: chrono::Duration = chrono::Duration::hours(2);
 /// Slack sends an event again for a few hours at most: a day past it, an
 /// event's identifier serves nothing more (ADR-125).
 const GATEWAY_EVENTS_KEPT: chrono::Duration = chrono::Duration::days(1);
+/// How long the card of a notice to a manager in Teams is kept: its
+/// requests, told of within a day, expire after a week (ADR-142).
+const NOTICE_CARDS_KEPT: chrono::Duration = chrono::Duration::days(8);
 
 pub fn spawn_maintenance(services: AppState) -> JoinHandle<()> {
     tokio::spawn(async move {
@@ -101,6 +106,11 @@ pub fn spawn_maintenance(services: AppState) -> JoinHandle<()> {
             let taken = Utc::now() - GATEWAY_EVENTS_KEPT;
             if let Err(error) = purge_gateway_events(db.pool(), taken).await {
                 tracing::warn!(error = %error, "Gateway event purge failed");
+            }
+            // Settled, or no longer where their manager is written.
+            let written = Utc::now() - NOTICE_CARDS_KEPT;
+            if let Err(error) = purge_notice_cards(db.pool(), written).await {
+                tracing::warn!(error = %error, "Teams notice card purge failed");
             }
             // Expired, a Telegram link code and whom it was sent back from
             // are forgotten (ADR-133).

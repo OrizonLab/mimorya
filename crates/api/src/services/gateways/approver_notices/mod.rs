@@ -8,18 +8,19 @@
 //! bot (`telegram`), in their personal conversation with its Teams bot
 //! (`teams`). For whom the agent acts, the actions that may be validated
 //! there with their exact parameters and buttons (ADR-129, ADR-136,
-//! ADR-141), the others to validate in the application. One message per run, manager and gateway, by the
-//! pass of a process that executes runs, one at a time (ADR-086), within
-//! `NOTIFIED_WITHIN` of the requests. Only whom may decide them now is
-//! told: a manager who lost `approval:decide` over the person is written
-//! nothing. Nobody linked to tell: nothing written, recorded so. While a
-//! gateway is paused, nothing is tried through it: enabled again, it tells
-//! of the requests still waiting. What the service refuses is not tried
-//! again; unreachable, tried again a few times. Told in addition to the
-//! e-mail (ADR-060), whatever the person chose of their e-mails (ADR-094):
-//! linking their account there is their choice, unlinking it ends these
-//! messages. Each request told of is audited with its service, never what
-//! was written.
+//! ADR-141), the others to validate in the application. One message per
+//! run, manager and gateway, by the pass of a process that executes runs,
+//! one at a time (ADR-086), within `NOTIFIED_WITHIN` of the requests. Only
+//! whom may decide them now is told: a manager who lost `approval:decide`
+//! over the person is written nothing. Nobody linked to tell, or a Teams
+//! user the bot has met in no conversation since it kept them: nothing
+//! written, recorded so. While a gateway is paused, nothing is tried
+//! through it: enabled again, it tells of the requests still waiting. What
+//! the service refuses is not tried again; unreachable, tried again a few
+//! times. Told in addition to the e-mail (ADR-060), whatever the person
+//! chose of their e-mails (ADR-094): linking their account there is their
+//! choice, unlinking it ends these messages. Each request told of is
+//! audited with its service, never what was written.
 
 mod slack;
 mod teams;
