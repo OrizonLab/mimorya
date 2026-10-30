@@ -21,7 +21,11 @@
 //! (`slack`, ADR-128). Their Telegram bots reach a local Telegram on
 //! 127.0.0.1:4104 (`TELEGRAM_ADDRESS`), which lists what the bots wrote and
 //! the webhook each was given (ADR-134); what she writes to the bot is
-//! answered apart (`telegram`, ADR-135).
+//! answered apart (`telegram`, ADR-135). Their Teams bots reach a local
+//! Microsoft on 127.0.0.1:4105 (`TEAMS_ADDRESS`): Entra, the Bot
+//! Framework's keys and a Teams service, which knows Léa's Teams account,
+//! lists what the bots wrote and signs the activities the tests send
+//! (ADR-139).
 //! A company's embedding model is a test one, whatever it chooses: no
 //! provider is ever reached (ADR-074). A finished run reread for a lesson
 //! always yields the same one (`lessons`, ADR-076). A mission is played
@@ -79,7 +83,7 @@ use mimorya_api::mail::Mailer;
 use mimorya_api::services::{EmbeddingFactory, ProviderFactory};
 use mimorya_api::{AppConfig, BuildOptions, build_app, log_filter};
 use mimorya_connectors::outbound::NetworkPolicy;
-use mimorya_connectors::testing::{FakeSlack, FakeTelegram};
+use mimorya_connectors::testing::{FakeSlack, FakeTeams, FakeTelegram};
 use mimorya_db::repositories::rate_limits::purge_rate_limits;
 
 /// Reference scenarios queued for the platform model, by the hour of their
@@ -110,8 +114,14 @@ const SLACK_ADDRESS: &str = "127.0.0.1:4103";
 /// webhook each was given: `telegram-gateway.spec.ts` reads them there
 /// (ADR-134).
 const TELEGRAM_ADDRESS: &str = "127.0.0.1:4104";
+/// Where Microsoft listens for the Teams bots, lists what they wrote and
+/// signs activities: `teams-gateway.spec.ts` reads and asks there (ADR-139).
+const TEAMS_ADDRESS: &str = "127.0.0.1:4105";
 /// Léa's Slack user, of the company's workspace, with her address.
 const LEA_SLACK: &str = "U0LEAE2E";
+/// Léa's Microsoft Entra object, of the test directory, and her name.
+const LEA_TEAMS: &str = "3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f";
+const LEA_NAME: &str = "Léa Fontaine";
 const LEA_ADDRESS: &str = "lea.fontaine@neo-maintenance.example";
 
 /// Requests per minute from the web relay, which every test goes through.
@@ -172,6 +182,9 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!(url = slack.url, "End-to-end Slack listening");
     let telegram = FakeTelegram::start_on(TELEGRAM_ADDRESS).await;
     tracing::info!(url = telegram.url, "End-to-end Telegram listening");
+    let teams = FakeTeams::start_on(TEAMS_ADDRESS).await;
+    teams.add_person(LEA_TEAMS, LEA_NAME, LEA_ADDRESS);
+    tracing::info!(url = teams.url, "End-to-end Microsoft listening");
     let address = format!("{}:{}", config.host, config.port);
     let app = build_app(
         config,
@@ -198,8 +211,8 @@ async fn main() -> anyhow::Result<()> {
             slack_api: Some(slack.url.clone()),
             // Its bot reaches the local Telegram (ADR-134).
             telegram_api: Some(telegram.url.clone()),
-            // Microsoft's own (ADR-138): no Teams bot is declared there.
-            teams_api: None,
+            // Its Teams bot reaches the local Microsoft (ADR-139).
+            teams_api: Some(teams.url.clone()),
         },
     )
     .await?;

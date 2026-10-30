@@ -10,8 +10,13 @@
 //! It writes an activity
 //! as the Bot Framework sends it, with its token (`signing`). A test may
 //! make it unavailable (503), slow to say where its keys are, or change
-//! what it says of a member.
+//! what it says of a member. For the end-to-end tests (ADR-139), it lists
+//! the messages the bots wrote at `GET /test/messages` and writes, at
+//! `POST /test/activity`, the activity a person's message would be with
+//! its token (`outside`): whoever reaches the test Microsoft can send the
+//! bots what the Bot Framework would.
 
+mod outside;
 mod routes;
 mod signing;
 
@@ -22,7 +27,6 @@ use std::time::Duration;
 
 use axum::Router;
 use axum::routing::{get, post};
-use mimorya_core::gateways::teams::BOT_FRAMEWORK_ISSUER;
 use serde_json::{Value, json};
 
 pub use signing::{Signer, TEAMS_KEY_ID, signed_token};
@@ -73,6 +77,12 @@ pub struct FakeTeams {
 
 impl FakeTeams {
     pub async fn start() -> Self {
+        Self::start_on("127.0.0.1:0").await
+    }
+
+    /// The same, at `address`: where the end-to-end tests read what the
+    /// bots wrote and have an activity signed (ADR-139).
+    pub async fn start_on(address: &str) -> Self {
         let shared = Arc::new(Mutex::new(Shared {
             endorsements: vec!["msteams".into(), "skype".into()],
             ..Shared::default()
@@ -95,8 +105,10 @@ impl FakeTeams {
                 "/ailleurs/v3/conversations/{conversation}/activities",
                 post(routes::send),
             )
+            .route("/test/messages", get(outside::messages))
+            .route("/test/activity", post(outside::activity))
             .with_state(shared.clone());
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        let listener = tokio::net::TcpListener::bind(address)
             .await
             .expect("local port");
         let address: SocketAddr = listener.local_addr().expect("local address");
@@ -186,14 +198,7 @@ impl FakeTeams {
     /// The claims of a token the Bot Framework sends the bot `app` with an
     /// activity of its service, valid now.
     pub fn claims(&self, app: &str) -> Value {
-        let now = chrono::Utc::now().timestamp();
-        json!({
-            "iss": BOT_FRAMEWORK_ISSUER,
-            "aud": app,
-            "exp": now + 3600,
-            "nbf": now - 60,
-            "serviceurl": self.service_url(),
-        })
+        outside::claims(&self.service_url(), app)
     }
 
     /// The token the Bot Framework sends the bot `app` with an activity.
@@ -204,25 +209,8 @@ impl FakeTeams {
     /// What the Bot Framework sends the bot `app` of the test directory
     /// when the person `aad`, named `name`, writes `text` in their personal
     /// conversation with it, as its activity `id`.
-    pub fn message(&self, app: &str, id: &str, (aad, name): (&str, &str), text: &str) -> Value {
-        json!({
-            "type": "message",
-            "id": id,
-            "timestamp": "2026-10-30T09:00:00.000Z",
-            "serviceUrl": self.service_url(),
-            "channelId": "msteams",
-            "from": { "id": member_id(aad), "name": name, "aadObjectId": aad },
-            "conversation": {
-                "conversationType": "personal",
-                "tenantId": TEAMS_DIRECTORY,
-                "id": conversation_of(aad),
-            },
-            "recipient": { "id": format!("28:{app}"), "name": "Assistant" },
-            "text": text,
-            "textFormat": "plain",
-            "locale": "fr-FR",
-            "channelData": { "tenant": { "id": TEAMS_DIRECTORY } },
-        })
+    pub fn message(&self, app: &str, id: &str, person: (&str, &str), text: &str) -> Value {
+        outside::message(&self.service_url(), app, id, person, text)
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Shared> {
