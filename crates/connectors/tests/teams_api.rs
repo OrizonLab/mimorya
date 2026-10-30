@@ -2,8 +2,9 @@
 //! local Microsoft: a token asked of Entra once and kept, for that secret
 //! only; a refused secret said in French; a message written and a member
 //! named only at a Teams service the bot may trust, nothing asked
-//! elsewhere; the Bot Framework's keys read once for many activities, and
-//! Microsoft unreachable, not asked again at once.
+//! elsewhere; the Bot Framework's keys read once for many activities, those
+//! arriving together waiting for that read, and Microsoft unreachable, not
+//! asked again at once.
 
 use mimorya_connectors::outbound::{NetworkPolicy, http_client};
 use mimorya_connectors::teams::{TeamsApi, TeamsEndpoints, TeamsFailure};
@@ -131,4 +132,17 @@ async fn microsoft_unreachable_is_not_asked_again_at_once() {
     // Within thirty seconds: no key, and Microsoft not asked.
     assert_eq!(api.keys(Some(TEAMS_KEY_ID)).await, Ok(Vec::new()));
     assert_eq!(teams.configuration_requests(), 1);
+}
+
+#[tokio::test]
+async fn activities_arriving_together_wait_for_the_one_read() {
+    let teams = FakeTeams::start().await;
+    let api = api(&teams);
+    // As on a restart: none kept, two activities at once.
+    let (first, second) = tokio::join!(api.keys(Some(TEAMS_KEY_ID)), api.keys(Some(TEAMS_KEY_ID)));
+    for keys in [first.unwrap(), second.unwrap()] {
+        assert_eq!(keys.len(), 1);
+        assert_eq!(keys[0].kid, TEAMS_KEY_ID);
+    }
+    assert_eq!(teams.key_reads(), 1);
 }

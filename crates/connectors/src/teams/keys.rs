@@ -4,9 +4,11 @@
 //! not kept, but at most every five minutes, so that a key Microsoft adds
 //! is known within minutes and a stream of forged activities does not make
 //! the platform ask Microsoft again and again. One read at a time: whoever
-//! finds one under way uses the keys kept. A failed read is tried again
-//! thirty seconds later at the soonest, the keys read last kept meanwhile;
-//! none kept, an activity is then proven by none.
+//! finds one under way waits for it, then takes what it kept, so that the
+//! activities arriving together (as on a restart) are all proven. A failed
+//! read is tried again thirty seconds after it ended at the soonest, the
+//! keys read last kept meanwhile; none kept, an activity is then proven by
+//! none.
 
 use std::time::{Duration, Instant};
 
@@ -60,16 +62,16 @@ impl TeamsApi {
         if !due(&cached) {
             return Ok(kept(cached));
         }
-        // One read at a time; read meanwhile by another, or under way.
-        let Ok(_reading) = self.reading().try_lock() else {
-            return Ok(kept(cached));
-        };
+        // One read at a time: the others wait for it, then take what it
+        // kept (it is no longer due).
+        let _reading = self.reading().lock().await;
         let cached = self.cached_keys();
         if !due(&cached) {
             return Ok(kept(cached));
         }
+        let read = self.read_keys().await;
         let now = Instant::now();
-        match self.read_keys().await {
+        match read {
             Ok(keys) => {
                 self.keep_keys(KeyCache {
                     keys: keys.clone(),

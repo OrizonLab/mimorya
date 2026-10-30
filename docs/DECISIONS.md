@@ -7732,9 +7732,10 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
 Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     - signé RS256 avec une clé du jeu de clés du Bot Framework, lu depuis sa
       configuration OpenID (adresse du même schéma qu'elle), gardé un jour, relu pour
-      une clé inconnue au plus toutes les cinq minutes, une lecture à la fois, une
-      lecture échouée retentée au plus tôt trente secondes après (les clés lues
-      gardées, aucune sinon) ; aucune connexion à la base n'est tenue pendant qu'on
+      une clé inconnue au plus toutes les cinq minutes, une lecture à la fois (les
+      activités arrivées pendant ce temps l'attendent, puis prennent ce qu'elle a
+      gardé), une lecture échouée retentée au plus tôt trente secondes après sa fin
+      (les clés lues gardées, aucune sinon) ; aucune connexion à la base n'est tenue pendant qu'on
       les demande à Microsoft ;
     - clé endossée pour `msteams` ;
     - émis par `https://api.botframework.com` ;
@@ -7809,6 +7810,6 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     - `teams_gateway_links.rs` : liaison prévisualisée puis confirmée, autre adresse,
       annuaire ou personne refusés et audités, lien ouvert par un autre, lien expiré,
       session d'une autre entreprise, bot en pause, `agent:use`, Teams injoignable ;
-  - reste à venir : les écrans (déclaration, carte, « Mon compte »), les conversations
-    avec l'agent dans Teams, les validations par cartes adaptatives et l'avis au
-    responsable.
+  - reste à venir : les écrans (déclaration, carte, « Mon compte ») avec leurs parcours
+    de bout en bout, dont la page du lien pour Teams, les conversations avec l'agent
+    dans Teams, les validations par cartes adaptatives et l'avis au responsable.

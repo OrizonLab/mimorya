@@ -165,6 +165,20 @@ async fn a_teams_bot_changes_its_name_state_and_secret_only() {
     );
     assert!(!audited.contains(TEAMS_SECRET), "{audited}");
 
+    // Nor permissions to check with Slack.
+    let checked = paul.post(&format!("{path}/check"), json!({})).await;
+    assert_eq!(
+        checked.status,
+        StatusCode::BAD_REQUEST,
+        "{}",
+        checked.text()
+    );
+    assert!(
+        checked.error_message().ends_with("un bot Teams n’en a pas"),
+        "{}",
+        checked.text()
+    );
+
     // A Slack application has no client secret.
     let slack = declare_slack(&paul).await;
     let refused = paul
