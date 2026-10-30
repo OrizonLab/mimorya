@@ -2,7 +2,8 @@
 // Paul shares the north team's memory with the south team. Léa, of the
 // south team, then reads the north team's memory, and no more once the
 // share is removed. A share Paul would read through himself is refused, its
-// reason shown. Whatever the test shares is removed whatever happens
+// reason shown; the share back is made as the form offers it (both kinds,
+// no date, no units below). Whatever the test shares is removed whatever happens
 // (`afterEach`). The rules themselves are tested on the API
 // (`crates/api/tests/knowledge_share*.rs`).
 import type { Page } from '@playwright/test';
@@ -92,6 +93,7 @@ test('a team’s memory shared with another is read there until the share is rem
   const dated = `${below}, jusqu’au niveau « Interne » ; jusqu’au 31/12/2099`;
   await expect(page.getByText(dated)).toBeVisible();
   const back = cardWith(page, BACK, `Retirer ${BACK}`);
+  await expect(back.getByText('Mémoire', { exact: true })).toBeVisible();
   await expect(back.getByText('Documents', { exact: true })).toBeVisible();
   const plain = 'Lu par les membres de l’unité « Équipe Nord », jusqu’au niveau « Interne » ;';
   await expect(page.getByText(`${plain} sans échéance.`)).toBeVisible();
