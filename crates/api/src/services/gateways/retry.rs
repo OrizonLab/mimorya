@@ -1,6 +1,6 @@
 //! When a message its messaging service did not take is tried again: a
-//! run's answer (ADR-127, ADR-135) or a manager's notice (ADR-130,
-//! ADR-137), in Slack as in Telegram. Each service says what it refused,
+//! run's answer (ADR-127, ADR-135, ADR-140) or a manager's notice (ADR-130,
+//! ADR-137), in Slack, in Telegram and in Teams. Each service says what it refused,
 //! never tried again, and what it could not take now, tried again here.
 
 use chrono::{DateTime, Duration, Utc};

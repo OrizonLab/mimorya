@@ -7955,7 +7955,9 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       Les seuls accents graves laissés tels quels ouvrent et ferment ainsi les codes
       gardés, qui n'en contiennent aucun : Markdown les apparie comme la plateforme,
       quelles que soient les suites que l'agent a écrites, et rien de ce qu'elles
-      entourent ne se lit comme une image, un lien ou une emphase. Elle est coupée au-delà de 3 000 caractères,
+      entourent ne se lit comme une image, un lien ou une emphase. Un titre ou un
+      élément de liste vide devient une ligne vide, et une ligne faite de `=` est
+      échappée : ni trait horizontal, ni titre fait de la ligne d'avant. Elle est coupée au-delà de 3 000 caractères,
       et le lien vers la conversation dans l'application la suit ;
     - une pause dit quelle validation la demande attend, la sienne ou celle de son
       responsable, à donner dans l'application ; les cartes de validation viennent avec

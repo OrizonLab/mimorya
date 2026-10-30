@@ -26,7 +26,10 @@
 //! sends it, proven by the token Microsoft signs them with; a person
 //! writing to it is sent a link to link their Teams identity, confirmed in
 //! their own session once Teams says who they are (`teams`, `link`,
-//! ADR-138).
+//! ADR-138); a linked person then talks with the agent in their personal
+//! conversation with the bot (ADR-140), one conversation at a time as in
+//! Telegram (`private_chats`), the run's end or pause written there by the
+//! same pass (`replies`), at the Teams service they last wrote from.
 //! The bot's token, the signing secret and the Teams bot's client secret
 //! are sealed in the secret store.
 

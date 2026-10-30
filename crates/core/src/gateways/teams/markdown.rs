@@ -2,8 +2,9 @@
 //! Markdown Teams reads: rebuilt from what the gateways read of it
 //! (emphasis, headings, list items, web links), everything else escaped
 //! (`escaped`), so that nothing in it reads as Markdown the agent did not
-//! write, nor as HTML. A heading is written in bold, a list item as `- `;
-//! emphasis is not nested (a span holds no other). Code,
+//! write, nor as HTML. A heading is written in bold, a list item as `- `,
+//! an empty one as an empty line, a line of `=` escaped; emphasis is not nested (a span holds no
+//! other). Code,
 //! in spans or fenced blocks, is kept as written, its HTML characters
 //! escaped; a fenced block left open is closed.
 
@@ -23,9 +24,23 @@ pub fn from_markdown(markdown: &str) -> String {
         } else if let Some(block) = code.as_mut() {
             block.push(html_escaped(line));
         } else if let Some(heading) = HEADING.captures(line) {
-            lines.push(format!("**{}**", escaped(&heading[1])));
+            let text = heading[1].trim();
+            lines.push(if text.is_empty() {
+                // Written `** **`, it would read as a rule.
+                String::new()
+            } else {
+                format!("**{}**", escaped(text))
+            });
+        } else if is_underline(line) {
+            // A line of `=` would make the line before a heading.
+            lines.push(format!("\\{}", line.trim()));
         } else if let Some(item) = ITEM.captures(line) {
-            lines.push(format!("{}- {}", &item[1], inline(&item[2])));
+            lines.push(if item[2].trim().is_empty() {
+                // A lone `- ` would make the line before a heading.
+                String::new()
+            } else {
+                format!("{}- {}", &item[1], inline(&item[2]))
+            });
         } else {
             lines.push(inline(line));
         }
@@ -34,6 +49,13 @@ pub fn from_markdown(markdown: &str) -> String {
         lines.push(fenced(&block));
     }
     lines.join("\n")
+}
+
+/// Whether `line` is only `=`, which underlines the line before as a
+/// heading.
+fn is_underline(line: &str) -> bool {
+    let line = line.trim();
+    !line.is_empty() && line.chars().all(|c| c == '=')
 }
 
 fn fenced(block: &[String]) -> String {
@@ -224,6 +246,11 @@ mod tests {
         assert_eq!(from_markdown("\\`a`"), "\\\\`a`");
         // Bold, then italic.
         assert_eq!(from_markdown("**a** et *b*"), "**a** et *b*");
+        // An empty heading or item: an empty line, neither a rule nor a
+        // heading made of the line before.
+        assert_eq!(from_markdown("Titre\n#  \n+ \n* x"), "Titre\n\n\n- x");
+        assert_eq!(from_markdown("~\n~~~\n+ "), "\\~\n\\~\\~\\~\n");
+        assert_eq!(from_markdown("Titre\n === "), "Titre\n\\===");
     }
 
     #[test]
