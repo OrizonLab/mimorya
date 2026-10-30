@@ -112,9 +112,10 @@ export function TeamsGatewayForm({
         point de terminaison de messagerie à saisir dans le bot Azure, dont le canal Microsoft Teams
         est à activer ; l’application du bot est ensuite à publier dans Teams pour l’entreprise.
         Chacun relie son compte Teams en écrivant au bot : il lui répond par un lien à ouvrir dans
-        l’application, connecté, et Teams doit donner pour son compte l’adresse de son compte. Les
-        échanges avec l’agent dans Teams ne sont pas encore ouverts : le bot y renvoie un compte
-        relié vers l’application.
+        l’application, connecté, et Teams doit donner pour son compte l’adresse de son compte. Une
+        fois relié, il écrit au bot : l’agent lui répond dans sa conversation avec le bot, avec ses
+        droits, une conversation à la fois (/nouvelle en ouvre une autre) ; les validations se
+        donnent dans l’application.
       </p>
       {action.error && <ErrorNote message={action.error} />}
       <div className="flex gap-2">

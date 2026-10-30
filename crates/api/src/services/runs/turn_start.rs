@@ -29,7 +29,8 @@ pub struct StartedTurn {
 }
 
 /// Where a new conversation is held on a gateway: a Slack thread (ADR-127),
-/// or a person's private chat with a Telegram bot (ADR-135).
+/// a person's private chat with a Telegram bot (ADR-135), or their personal
+/// conversation with a Teams bot (ADR-140).
 #[derive(Debug, Clone, Copy)]
 pub struct GatewayThread<'a> {
     pub gateway_id: Uuid,
@@ -40,8 +41,11 @@ pub struct GatewayThread<'a> {
     /// chat with the bot.
     pub channel_id: &'a str,
     /// The thread: the timestamp of its first message in Slack, the number
-    /// of the message that opens it in Telegram.
+    /// of the message that opens it in Telegram, that activity's identifier
+    /// in Teams.
     pub thread_ts: &'a str,
+    /// The Teams service its message came from (Teams only, ADR-140).
+    pub service_url: Option<&'a str>,
 }
 
 /// Where a turn is sent.
@@ -153,6 +157,7 @@ impl RunService {
                         external_id: thread.external_id,
                         channel_id: thread.channel_id,
                         thread_ts: thread.thread_ts,
+                        service_url: thread.service_url,
                     };
                     // A message of the same thread, or chat, opened its
                     // conversation first.

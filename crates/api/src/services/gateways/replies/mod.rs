@@ -1,8 +1,9 @@
-//! The answers where a person started a run (ADR-127, ADR-135): when a run
-//! a person started in Slack or in Telegram ends or pauses (its
+//! The answers where a person started a run (ADR-127, ADR-135, ADR-140):
+//! when a run a person started in Slack, Telegram or Teams ends or pauses (its
 //! `run_finished` event), what the conversation shows of it is written
 //! where the conversation is held: the Slack thread (`slack`), the person's
-//! private chat with the Telegram bot (`telegram`). Whichever path ended
+//! private chat with the Telegram bot (`telegram`), their personal
+//! conversation with the Teams bot (`teams`, ADR-140). Whichever path ended
 //! it: its outcome, a validation decided, the stale-run sweep, a stop. Each
 //! end or pause is answered once, by the pass of a process that executes
 //! runs, one at a time (ADR-086), within `ANSWERED_WITHIN` of it, in a
@@ -18,6 +19,7 @@
 //! written is logged nor recorded: it is in the conversation.
 
 mod slack;
+mod teams;
 mod telegram;
 
 use std::collections::HashSet;
@@ -31,7 +33,7 @@ use mimorya_db::repositories::gateway_replies::{
 };
 use uuid::Uuid;
 
-use super::bot_token_name;
+use super::{bot_token_name, client_secret_name};
 use crate::app::Services;
 
 pub(super) use slack::after_failure;
@@ -122,9 +124,14 @@ async fn reply(
     // Held until its outcome is recorded: should anything fail on the way,
     // the thread's later answers wait for the next pass.
     held.insert(thread_id);
-    let token = gateways
-        .secret(&mut tx, tenant_id, &bot_token_name(target.gateway_id))
-        .await?;
+    let kind = GatewayKind::of(&target.kind);
+    // A Teams bot answers with its application's secret; the others with
+    // their bot's token.
+    let secret_name = match kind {
+        Some(GatewayKind::Teams) => client_secret_name(target.gateway_id),
+        _ => bot_token_name(target.gateway_id),
+    };
+    let token = gateways.secret(&mut tx, tenant_id, &secret_name).await?;
     // A pause: the actions still awaiting a decision, at the time it is
     // answered (ADR-129).
     let awaiting = if target.status == "awaiting_approval" {
@@ -137,12 +144,11 @@ async fn reply(
         Vec::new()
     };
     tx.commit().await?;
-    let kind = GatewayKind::of(&target.kind);
     let record = match (token, kind) {
         // No master key, or another one: told the operator.
         (None, _) | (_, None) => {
             let gateway = target.gateway_id;
-            tracing::warn!(%gateway, "Gateway's bot token unreadable");
+            tracing::warn!(%gateway, "Gateway's bot token or secret unreadable");
             ReplyRecord::Done("failed")
         }
         (Some(token), Some(GatewayKind::Slack)) => {
@@ -151,8 +157,9 @@ async fn reply(
         (Some(token), Some(GatewayKind::Telegram)) => {
             telegram::answer(gateways, &target, &awaiting, &token, now).await
         }
-        // No conversation is held in Teams yet (ADR-138): nothing to write.
-        (Some(_), Some(GatewayKind::Teams)) => ReplyRecord::Done("skipped"),
+        (Some(secret), Some(GatewayKind::Teams)) => {
+            teams::answer(gateways, &target, &awaiting, secret, now).await
+        }
     };
     let mut tx = services.db.begin(tenant_id).await?;
     record_gateway_reply(&mut tx, tenant_id, event_id, thread_id, record).await?;

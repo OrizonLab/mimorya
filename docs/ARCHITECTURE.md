@@ -366,8 +366,15 @@ Détaillés dans [AGENT_ENGINE.md](AGENT_ENGINE.md). En résumé :
   Microsoft, avec un jeton qu'Entra lui donne. Une personne relie son identité Teams
   par le lien que le bot lui envoie, confirmé dans sa session quand Teams dit que le
   membre de la conversation a l'adresse du compte, dans l'annuaire de l'entreprise ;
-  elle la voit et la retire dans « Mon compte ». Les conversations avec l'agent dans
-  Teams viendront ensuite.
+  elle la voit et la retire dans « Mon compte ». Une personne reliée parle ensuite à
+  l'agent dans sa conversation personnelle avec le bot (ADR-140), comme dans Telegram :
+  une conversation à la fois, poursuivie jusqu'à `/nouvelle` (commandes lues par le
+  module que les deux services partagent, `core/src/gateways/command.rs`), ses runs
+  lancés en son nom sur le canal `teams`, chaque fin ou pause écrite là par la même
+  passe, en Markdown de Teams (`teams::from_markdown`), au service Teams d'où elle a
+  écrit en dernier (`gateway_threads.service_url`), avec le lien de la conversation,
+  marquée « Teams » dans l'application. Les validations par cartes adaptatives et
+  l'avis au responsable dans Teams viendront ensuite.
 - Les secrets ne transitent jamais par le contexte du modèle ni par les journaux.
 
 Connecteurs prévus : démonstration (MVP), MCP générique (MVP), déclencheurs (ADR-109),

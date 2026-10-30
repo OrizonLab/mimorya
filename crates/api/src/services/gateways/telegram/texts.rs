@@ -4,7 +4,7 @@
 //! so that no one's is linked to another's unknowingly. The agent's answers
 //! are written apart (`reply_text`).
 
-use mimorya_core::gateways::telegram::{HELP, NEW_CONVERSATION};
+use mimorya_core::gateways::{HELP, NEW_CONVERSATION};
 
 /// Where in the application a person links their Telegram account.
 const LINKS_PAGE: &str = "page « Mon compte », section « Messageries reliées »";

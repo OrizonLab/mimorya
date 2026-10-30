@@ -80,6 +80,7 @@ async fn answer(services: &Services, incoming: &ChatMessage) -> anyhow::Result<(
                 external_id: &person,
                 channel_id: &person,
                 thread_ts: &opening,
+                service_url: None,
             };
             (services.runs)
                 .start_in_thread(identity, chat, &title_of(text), text)

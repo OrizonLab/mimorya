@@ -347,6 +347,7 @@ async fn a_thread_opened_meanwhile_is_refused_as_busy() {
         external_id: MARC_SLACK,
         channel_id: MARC_DM,
         thread_ts: FIRST,
+        service_url: None,
     };
     let runs = &api.app.services.runs;
     api.script(vec![ScriptedStep::text("Réponse.")]);

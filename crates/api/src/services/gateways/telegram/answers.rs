@@ -14,9 +14,8 @@
 //! linked and how to talk with the agent.
 
 use chrono::{DateTime, Utc};
-use mimorya_core::gateways::telegram::{
-    PrivateMessage, command, is_consent, link_code_hash, new_conversation, start_code,
-};
+use mimorya_core::gateways::telegram::{PrivateMessage, is_consent, link_code_hash, start_code};
+use mimorya_core::gateways::{command, new_conversation};
 use mimorya_db::TenantTx;
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::gateway_identities::find_gateway_identity;

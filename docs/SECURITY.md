@@ -212,6 +212,20 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   le bot lui envoie (quinze minutes), quand Teams, interrogé alors dans la conversation
   où le bot l'a rencontrée, nomme le même objet Entra, de l'annuaire de l'entreprise,
   avec l'adresse du compte ; `agent:use` exigé ; refus audités sans adresse.
+- Conversations dans Teams (ADR-140) : les mots d'une personne reliée sont lancés en son
+  nom, avec ses droits tels qu'ils sont, sur le canal `teams` que les politiques
+  lisent, aux mêmes conditions que dans Slack et Telegram (`person::may_act`). Le Bot
+  Framework atteste qui écrit (le jeton que Microsoft signe, la conversation
+  personnelle de son objet Entra, l'annuaire de l'entreprise) ; un compte Teams relié
+  depuis à quelqu'un d'autre ne poursuit jamais la conversation de la personne d'avant,
+  et la réponse d'un run ne va dans la conversation personnelle que tant que ce compte
+  Teams est encore celui de la personne et le bot actif, au dernier service Teams d'où
+  elle a écrit (déjà vérifié comme de Microsoft à la réception, et de nouveau par le
+  client). Ce qui y est écrit est en Markdown que la plateforme produit, le texte de
+  l'agent échappé (balises HTML comprises), seuls sa mise en forme, son code et des
+  liens web aux adresses sans caractère de balisage gardés ; jamais ses mots dans les
+  journaux ni l'audit. Les validations se donnent dans l'application, qui en montre
+  les paramètres exacts.
 - Validations dans Telegram (ADR-136) : seules les actions qui attendent la personne
   elle-même, sans effet hors de l'entreprise, réversibles, aux paramètres exacts
   montrés entiers, se valident avec les boutons de la pause ; un bouton pressé n'est

@@ -365,6 +365,7 @@ async fn a_chat_opened_meanwhile_is_refused_as_busy() {
         external_id: &chat,
         channel_id: &chat,
         thread_ts: message,
+        service_url: None,
     };
     let runs = &api.app.services.runs;
     api.script(vec![ScriptedStep::text("Réponse.")]);

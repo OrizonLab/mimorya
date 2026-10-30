@@ -7,14 +7,18 @@
 //! ADR-133): its bot, the secret its updates prove themselves by, and the
 //! code a person links their account with; then Microsoft Teams (`teams`,
 //! ADR-138): its Azure bot, the Bot Framework token its activities prove
-//! themselves by, and when Teams proves a person.
+//! themselves by, and when Teams proves a person. What a person's message
+//! to a bot asks, a command or words for the agent, is read alike in
+//! Telegram and in Teams (`command`, ADR-140).
 
+mod command;
 mod markdown;
 pub mod slack;
 pub mod teams;
 pub mod telegram;
 mod validation;
 
+pub use command::{HELP, NEW_CONVERSATION, command, new_conversation};
 pub use markdown::bounded;
 pub use validation::{
     MAX_ACTION_CHARS, MAX_PARAMETERS_CHARS, ShownAction, exact_parameters, risk_label,

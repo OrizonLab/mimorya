@@ -4,9 +4,15 @@
 // and lists what the bots wrote, and which signs the activity a person's
 // message would be; that activity sent to the bot's messaging endpoint, as
 // the Bot Framework sends it, what the bot answers and the link it offers;
-// the bot read back from the API.
+// the bot read back from the API; the bot declared, and a person's account
+// linked from its link, through the API (ADR-140).
 import type { APIRequestContext, APIResponse, Page } from '@playwright/test';
-import type { GatewayView, Gateways } from '../../lib/api/contract';
+import type {
+  GatewayLinkCode,
+  GatewayView,
+  Gateways,
+  NewTeamsGateway,
+} from '../../lib/api/contract';
 import { expect } from './fixtures';
 
 /** The demo bot's application, its directory and its client secret. */
@@ -22,6 +28,7 @@ interface Written {
   app: string;
   conversation: string;
   text: string;
+  textFormat: string | null;
 }
 
 interface Signed {
@@ -59,25 +66,37 @@ export async function sendActivity(
   return outside.post(url, { headers: { Authorization: authorization }, data: activity });
 }
 
-/** What the bot answers `person` writing `text`, once it took the activity. */
+/**
+ * What the bot answers `person` writing `text`, once it took the activity:
+ * within `timeout`, which an answer of the agent's, written by the pass of
+ * every few seconds (ADR-140), needs longer. Always in Teams' Markdown.
+ */
 export async function botAnswer(
   outside: APIRequestContext,
   url: string,
   person: { aad: string; name: string },
   text: string,
+  timeout = 5_000,
 ): Promise<string> {
   const before = (await written(outside)).length;
   const taken = await sendActivity(outside, url, person, text);
   expect(taken.status()).toBe(200);
   let messages: Written[] = [];
   await expect
-    .poll(async () => {
-      messages = await written(outside);
-      return messages.length;
-    })
+    .poll(
+      async () => {
+        messages = await written(outside);
+        return messages.length;
+      },
+      { timeout },
+    )
     .toBeGreaterThan(before);
   const answer = messages[messages.length - 1];
-  expect(answer).toMatchObject({ app: TEAMS_APP, conversation: `a:conversation-${person.aad}` });
+  expect(answer).toMatchObject({
+    app: TEAMS_APP,
+    conversation: `a:conversation-${person.aad}`,
+    textFormat: 'markdown',
+  });
   return answer?.text ?? '';
 }
 
@@ -97,4 +116,41 @@ export async function storedTeamsBot(
   const listing = await listed.text();
   const { gateways } = JSON.parse(listing) as Gateways;
   return { gateway: gateways.find((g) => g.type === 'teams'), listing };
+}
+
+/** The bot `name`, declared by `admin`, signed in, through the API: its messaging endpoint. */
+export async function declareTeamsBot(admin: Page, name: string): Promise<string> {
+  const declared = await admin.request.post('/api/admin/gateways/teams', {
+    headers: { 'X-Mimorya-Request': '1' },
+    data: {
+      name,
+      appId: TEAMS_APP,
+      directoryId: TEAMS_DIRECTORY,
+      clientSecret: TEAMS_SECRET,
+    } satisfies NewTeamsGateway,
+  });
+  expect(declared.status()).toBe(201);
+  const endpoint = (await storedTeamsBot(admin)).gateway?.eventsUrl ?? '';
+  expect(endpoint).toMatch(/^http:\/\/localhost:3000\/api\/gateways\/teams\/[0-9a-f-]{36}$/);
+  return endpoint;
+}
+
+/**
+ * Links `person`'s Teams account `teams` to theirs on the bot at `url`,
+ * through the API, as the link page does: the link the bot offers when
+ * they write to it, confirmed in their session.
+ */
+export async function linkThroughBot(
+  person: Page,
+  url: string,
+  teams: { aad: string; name: string },
+) {
+  const offer = await botAnswer(person.request, url, teams, 'Bonjour');
+  const code = offeredLink(offer).split('#')[1] ?? '';
+  expect(code, offer).toBeTruthy();
+  const linked = await person.request.post('/api/account/gateways/link', {
+    headers: { 'X-Mimorya-Request': '1' },
+    data: { code } satisfies GatewayLinkCode,
+  });
+  expect(linked.status()).toBe(200);
 }
