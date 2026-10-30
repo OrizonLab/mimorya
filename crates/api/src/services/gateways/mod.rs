@@ -26,7 +26,10 @@
 //! sends it, proven by the token Microsoft signs them with; a person
 //! writing to it is sent a link to link their Teams identity, confirmed in
 //! their own session once Teams says who they are (`teams`, `link`,
-//! ADR-138).
+//! ADR-138); a linked person then talks with the agent in their personal
+//! conversation with the bot (ADR-140), one conversation at a time as in
+//! Telegram (`private_chats`), the run's end or pause written there by the
+//! same pass (`replies`), at the Teams service they last wrote from.
 //! The bot's token, the signing secret and the Teams bot's client secret
 //! are sealed in the secret store.
 
@@ -40,6 +43,7 @@ mod events;
 mod identities;
 mod link;
 mod person;
+mod private_chats;
 mod replies;
 mod reply_text;
 mod retry;
@@ -67,7 +71,7 @@ pub use identities::GatewayOfPerson;
 pub use link::{LINK_LIFETIME, LinkPreview};
 pub use replies::reply_to_finished_runs;
 pub use retry::MAX_ATTEMPTS;
-pub use teams::ActivityOutcome;
+pub use teams::{ActivityOutcome, TeamsMessage, converse_in_teams};
 pub use telegram::{
     ChatMessage, PendingLink, TelegramChoice, TelegramLinkCode, UpdateOutcome,
     converse_in_telegram, decide_in_telegram,

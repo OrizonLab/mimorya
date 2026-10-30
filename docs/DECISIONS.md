@@ -7777,7 +7777,7 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
   - **pas encore de conversation** : à une personne reliée qui écrit au bot, il répond
     que les échanges avec l'assistant dans Teams ne sont pas encore ouverts, et
     d'écrire dans l'application. Le canal `teams` des runs est ajouté à la base dès
-    maintenant (`agent_runs_channel_check`), pour le lot suivant ;
+    maintenant (`agent_runs_channel_check`), pour le lot suivant (ADR-140) ;
   - **le texte du bot en Markdown** : il est écrit dans le Markdown que Teams
     lit. Ce que la plateforme n'a pas écrit est échappé (entités HTML et caractères du
     Markdown), et un lien n'est écrit que depuis une adresse sans rien qui le ferme.
@@ -7816,8 +7816,9 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       annuaire ou personne refusés et audités, lien ouvert par un autre, lien expiré,
       session d'une autre entreprise, bot en pause, `agent:use`, Teams injoignable ;
   - reste à venir : les écrans (déclaration, carte, « Mon compte ») avec leurs parcours
-    de bout en bout, dont la page du lien pour Teams, les conversations avec l'agent
-    dans Teams, les validations par cartes adaptatives et l'avis au responsable.
+    de bout en bout, dont la page du lien pour Teams (ADR-139), les conversations avec
+    l'agent dans Teams (ADR-140), les validations par cartes adaptatives et l'avis au
+    responsable.
 
 ## ADR-139 — Écrans du bot Teams : bot dans « Connecteurs », compte relié depuis « Mon compte » (passerelles, lot 14b)
 
@@ -7839,7 +7840,8 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       - où saisir le point de terminaison de messagerie, et qu'il faut activer le canal
         Teams puis publier l'application du bot dans Teams ;
       - que chacun relie son compte en écrivant au bot ;
-      - que les échanges avec l'agent dans Teams ne sont pas encore ouverts ;
+      - que les échanges avec l'agent dans Teams ne sont pas encore ouverts (ils le
+        sont depuis ADR-140) ;
     - la carte montre :
       - l'application et l'annuaire ;
       - le secret client enregistré, jamais réaffiché ;
@@ -7859,8 +7861,8 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       dans l'application, connecté ; Teams doit donner pour le compte l'adresse du
       compte ;
     - reliée, elle montre l'adresse que Teams a donnée et la date. Tant que le bot est
-      disponible, elle dit que l'agent n'y répond pas encore. La liaison peut être
-      retirée ;
+      disponible, elle dit que l'agent n'y répond pas encore (depuis ADR-140 : qu'il y
+      répond). La liaison peut être retirée ;
     - une passerelle en pause, ou une personne sans `agent:use`, est dite indisponible ;
       la liaison reste à retirer ;
   - **page du lien** : inchangée ; elle nomme déjà Teams et l'annuaire (ADR-138).
@@ -7888,5 +7890,121 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       celui qu'Entra accepte ;
     - le bot est enfin supprimé. Le point de terminaison répond alors comme une
       passerelle inconnue ;
-  - restent : conversations avec l'agent dans Teams, validations par cartes
+  - restent : conversations avec l'agent dans Teams (ADR-140), validations par cartes
     adaptatives, avis au responsable.
+
+## ADR-140 — Conversations avec l'agent dans Teams (passerelles, lot 14c)
+
+- **Date** : 2026-10-30 · **Statut** : acceptée · complète ADR-138 et ADR-139, sur le
+  modèle d'ADR-135
+- **Contexte** : une personne pouvait relier son compte Teams au bot de l'entreprise
+  depuis le lien qu'il lui envoie (ADR-138, ADR-139), mais le bot ne faisait que lui
+  dire que son compte était relié. Comme avec un bot Telegram, la conversation
+  personnelle avec un bot Teams n'a pas de fils, et le bot y répond au service Teams
+  d'où l'activité est venue (`serviceUrl`), que Microsoft peut changer.
+- **Décision** :
+  - **ce qui va à l'agent** : les mots d'une personne reliée, dans sa conversation
+    personnelle avec le bot. Les commandes n'y vont pas ; elles se lisent comme dans
+    Telegram, par le module que les deux services partagent désormais
+    (`crates/core/src/gateways/command.rs`, déplacé de `telegram/`) :
+    - `/nouvelle` ferme la conversation en cours ; les mots qui la suivent, s'il y en a,
+      ouvrent la suivante ;
+    - `/aide`, toute autre commande, ou un message sans mots (un fichier, une carte)
+      disent à quel compte le sien est relié et comment parler à l'agent ;
+  - **une conversation à la fois**, comme dans Telegram (ADR-135) : la conversation
+    personnelle tient la conversation qu'un message de la personne a ouverte, que ses
+    messages suivants poursuivent jusqu'à `/nouvelle` ou son archivage dans
+    l'application. Côté base (`0060_teams_conversations.sql`), `gateway_threads` admet
+    le service `teams` :
+    - l'objet Microsoft Entra de la personne, l'identifiant de la conversation
+      personnelle (`a:…`, 512 caractères visibles au plus) et celui de l'activité qui
+      l'a ouverte ;
+    - `service_url`, le service Teams où répondre : requis pour un fil Teams, nul pour
+      Slack et Telegram, `http(s)` et 200 caractères au plus en tout, comme les
+      adresses auxquelles la plateforme écrit (ADR-138). Le rôle applicatif peut le
+      mettre à jour : chaque message prouvé d'une personne reliée, commande comprise,
+      l'écrit dans tous les fils Teams de sa conversation personnelle avec le bot
+      (`move_teams_threads`, dans `teams/activities.rs`). La réponse va donc au
+      dernier service d'où elle a écrit, y compris celle d'un run en pause dans une
+      conversation fermée depuis ;
+    - une conversation ouverte par personne, conversation personnelle et bot, comme
+      pour Telegram ;
+  - **comme dans l'application** : le run est lancé au nom de la personne, avec ses
+    droits tels qu'ils sont, sur le canal `teams` que les politiques lisent. Son message
+    porte `gateway: "teams"`, et l'audit le dit sien, avec la passerelle, jamais avec
+    ses mots. Avant de lancer quoi que ce soit, la plateforme vérifie que la personne
+    peut agir (`person::may_act`, les règles de Slack et de Telegram) et que le service
+    ne redémarre pas. Ce déroulé (personne reliée, droit d'agir, arrêt du service,
+    conversation ouverte poursuivie ou nouvelle, refus dit) est commun à Telegram et à
+    Teams (`services/gateways/private_chats.rs`) ; chaque service garde la forme de son
+    message et sa façon de parler. Le Bot Framework atteste qui écrit : l'activité est venue avec le
+    jeton que Microsoft signe, de la conversation personnelle de la personne, dans
+    l'annuaire de l'entreprise (ADR-138). Pourquoi rien n'a été lancé est dit là, en
+    texte échappé ;
+  - **la réponse** : la passe des réponses (ADR-127) écrit chaque fin ou pause d'un run
+    lancé depuis Teams (`replies/teams.rs`), au service Teams enregistré, avec le
+    secret client du bot :
+    - en Markdown de Teams (`textFormat: markdown`) : la réponse de l'agent y garde son
+      gras, son italique, ses titres (écrits en gras), ses listes, ses liens web dont
+      l'adresse n'a que des caractères sûrs, son code tel qu'écrit (caractères HTML
+      échappés, bloc laissé ouvert refermé). Tout le reste est échappé
+      (`teams::from_markdown`), pour que rien ne s'y lise comme une balise ou un
+      Markdown que l'agent n'a pas écrit. Un code en ligne n'est gardé que s'il est
+      ouvert par un accent grave seul et refermé par le suivant, seul lui aussi ; tout
+      autre accent grave (pris dans une suite, ou laissé ouvert) est échappé un par un.
+      Les seuls accents graves laissés tels quels ouvrent et ferment ainsi les codes
+      gardés, qui n'en contiennent aucun : Markdown les apparie comme la plateforme,
+      quelles que soient les suites que l'agent a écrites, et rien de ce qu'elles
+      entourent ne se lit comme une image, un lien ou une emphase. Un titre ou un
+      élément de liste vide devient une ligne vide ; une ligne faite de `=`, et un gras
+      qui ne contient que des blancs, sont échappés : ni trait horizontal, ni titre
+      fait de la ligne d'avant. Elle est coupée au-delà de 3 000 caractères,
+      et le lien vers la conversation dans l'application la suit ;
+    - une pause dit quelle validation la demande attend, la sienne ou celle de son
+      responsable, à donner dans l'application ; les cartes de validation viennent avec
+      un prochain lot ;
+    - un bot en pause, ou un compte Teams qui n'est plus celui de la personne, ne reçoit
+      rien (`skipped`) ;
+    - un refus de Teams (le bot bloqué ou retiré, la conversation inconnue) n'est pas
+      retenté, ni un secret qu'Entra refuse, ni un service qui ne serait pas celui de
+      Microsoft. Microsoft injoignable, limité ou en erreur (5xx) est retenté comme pour
+      Slack et Telegram, au plus quatre fois. Une réponse illisible d'Entra l'est aussi :
+      rien n'a encore été écrit (Teams prend tout message qu'il accepte, quoi qu'il
+      réponde) ;
+  - **l'interface** : une conversation tenue dans Teams est marquée « Teams » dans la
+    liste, chaque message écrit au bot « Écrit dans Teams », et la note de la
+    conversation dit qu'elle se tient aussi dans la conversation avec le bot, tant
+    qu'une nouvelle n'y est pas ouverte. Les textes du formulaire du bot et de « Mon
+    compte » disent que l'agent y répond, une conversation à la fois, les validations
+    se donnant dans l'application.
+- **Conséquences** :
+  - le Microsoft simulé des tests liste, avec chaque message écrit, son format
+    (`textFormat`) et le service où il l'a été. Il répond aussi comme une autre région
+    de Teams (`teams/amer/`, `other_service_url`), à laquelle les bots se fient de
+    même ;
+  - le code est échappé en HTML dans le Markdown de Teams, par prudence ; si Teams
+    suivait CommonMark à la lettre, `<` y apparaîtrait écrit `&lt;`. À vérifier lors du
+    premier essai avec un vrai Teams ;
+  - tests :
+    - `crates/api/tests/teams_gateway_conversations.rs` : conversation ouverte, suivie,
+      fermée par `/nouvelle`, avec ou sans mots, laissée une fois archivée ; service
+      Teams enregistré ; commandes et message vide ; audit ; pause puis réponse ; refus
+      dits ;
+    - `teams_gateway_app_view.rs` : conversation montrée avec son service, message
+      écrit dans l'application répondu là seulement, plus tenue dans Teams une fois
+      fermée ou archivée ;
+    - `teams_gateway_replies.rs` : bot en pause ou liaison retirée ; Microsoft
+      injoignable retenté puis abandonné ; bot bloqué ;
+    - `teams_gateway_conversation_rules.rs` : réponse au dernier service d'où la
+      personne a écrit, y compris celle d'un run en pause dans une conversation fermée
+      depuis ; identité Teams reliée depuis à quelqu'un d'autre, qui ne poursuit ni ne
+      ferme la conversation de la personne d'avant, dont la fin du run n'est pas écrite ;
+      conversation ouverte deux fois en même temps, la seconde refusée comme occupée ;
+    - `crates/core/src/gateways/teams/markdown.rs` : ce que le Markdown de Teams garde
+      et échappe, dont des suites d'accents graves qui décaleraient l'appariement des
+      codes ;
+    - `apps/web/e2e/teams-conversations.spec.ts` (modèle joué : `e2e_server/teams.rs`) :
+      question posée au bot, réponse dans la conversation avec lui, conversation montrée
+      « Teams » dans l'application, relance, puis `/nouvelle` ;
+  - restent : les validations par cartes adaptatives, et les demandes annoncées au
+    responsable dans Teams.

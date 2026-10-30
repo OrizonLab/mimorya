@@ -25,7 +25,8 @@
 //! Microsoft on 127.0.0.1:4105 (`TEAMS_ADDRESS`): Entra, the Bot
 //! Framework's keys and a Teams service, which knows Léa's Teams account,
 //! lists what the bots wrote and signs the activities the tests send
-//! (ADR-139).
+//! (ADR-139); what she writes to the bot is answered apart (`teams`,
+//! ADR-140).
 //! A company's embedding model is a test one, whatever it chooses: no
 //! provider is ever reached (ADR-074). A finished run reread for a lesson
 //! always yields the same one (`lessons`, ADR-076). A mission is played
@@ -70,6 +71,7 @@ mod skill_evaluations;
 mod skill_proposals;
 mod slack;
 mod sub_agents;
+mod teams;
 mod telegram;
 
 use std::net::SocketAddr;
@@ -150,7 +152,8 @@ async fn main() -> anyhow::Result<()> {
     let received = Arc::new(hooks::WithHooks::new(documents));
     let written = Arc::new(slack::WithSlack::new(received));
     let chatted = Arc::new(telegram::WithTelegram::new(written));
-    let delegations = Arc::new(sub_agents::WithSubAgents::new(chatted));
+    let met = Arc::new(teams::WithTeams::new(chatted));
+    let delegations = Arc::new(sub_agents::WithSubAgents::new(met));
     let proposals = Arc::new(skill_proposals::WithSkillProposals::new(delegations));
     let missions = Arc::new(missions::WithMissions::new(proposals));
     // In front of the missions, which pass any answer they are asked to judge.

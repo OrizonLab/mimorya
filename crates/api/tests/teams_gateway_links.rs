@@ -6,8 +6,8 @@
 //! address, another directory or another person links nothing, audited
 //! with the reason; a link opened by someone else links nothing; nor an
 //! expired link, a link opened in another company's session, a paused bot,
-//! or someone who may not talk with the agent. Once linked, writing to the bot is answered
-//! that the agent is not talked with in Teams yet.
+//! or someone who may not talk with the agent. Once linked, the bot says to
+//! whose account theirs is linked (ADR-140).
 
 mod support;
 
@@ -66,13 +66,13 @@ async fn a_person_links_their_teams_identity_from_the_bot_s_link() {
         1
     );
 
-    // Linked: writing to the bot is answered where to talk with the agent.
-    write(&api, &teams, id, "5001", MARC_TEAMS, "Bonjour").await;
+    // Linked: asked, the bot says to whose account his is linked.
+    write(&api, &teams, id, "5001", MARC_TEAMS, "/aide").await;
     let said = teams.sent().pop().unwrap();
     assert_eq!(said.conversation, conversation_of(MARC_TEAMS.0));
     assert!(
         said.text
-            .starts_with("Votre compte Teams est relié à votre compte."),
+            .starts_with("Votre compte Teams est relié au compte de Marc Lefèvre"),
         "{}",
         said.text
     );

@@ -47,11 +47,19 @@ pub struct ReplyTarget {
     pub conversation_id: Uuid,
     pub thread_id: Uuid,
     pub gateway_id: Uuid,
-    /// The gateway's service: `slack` or `telegram`.
+    /// The gateway's service: `slack`, `telegram` or `teams`.
     pub kind: String,
     pub channel_id: String,
     pub thread_ts: String,
+    /// The Teams service the conversation's latest message came from
+    /// (Teams only).
+    pub service_url: Option<String>,
     pub gateway_enabled: bool,
+    /// The gateway's bot user (Slack), bot (Telegram) or application
+    /// (Teams), and its workspace or directory: a Teams bot answers as its
+    /// application, of its directory.
+    pub bot_user_id: String,
+    pub workspace_id: String,
     /// Whether who wrote is still the person's identity there.
     pub still_linked: bool,
     /// The run's latest message in the conversation, written by then.
@@ -69,7 +77,8 @@ pub async fn gateway_reply_target(
     sqlx::query_as(
         "select e.id as event_id, e.run_id, coalesce(e.data->>'status', '') as status, \
          t.conversation_id, t.id as thread_id, t.gateway_id, t.kind, t.channel_id, t.thread_ts, \
-         g.enabled as gateway_enabled, \
+         t.service_url, \
+         g.enabled as gateway_enabled, g.bot_user_id, g.workspace_id, \
          exists (select 1 from gateway_identities i where i.gateway_id = t.gateway_id \
            and i.user_id = t.user_id and i.external_id = t.external_id) as still_linked, \
          (select m.content from messages m where m.conversation_id = t.conversation_id \

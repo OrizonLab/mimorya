@@ -1,5 +1,5 @@
 //! What a person's message to a gateway starts, said alike in Slack
-//! (ADR-127) and in Telegram (ADR-135): the title of the conversation it
+//! (ADR-127), in Telegram (ADR-135) and in Teams (ADR-140): the title of the conversation it
 //! opens, and why nothing was started when the service stops or the
 //! request fails.
 

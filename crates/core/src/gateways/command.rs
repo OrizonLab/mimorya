@@ -1,9 +1,10 @@
-//! What a linked person's message to the bot asks (ADR-135): a command of
-//! the bot's (`/nouvelle` opens a new conversation, `/aide` says how to
-//! talk with it, `/start` greets them), or words for the agent. A command
-//! is a slash and its name, as Telegram writes them (a bot's username may
-//! follow it, `@…bot`), alone or before the rest of the message; anything
-//! else (`/home/x`, a path) is words for the agent.
+//! What a linked person's message to a bot asks (ADR-135, ADR-140): a
+//! command of the bot's (`/nouvelle` opens a new conversation, `/aide` says
+//! how to talk with it, `/start` greets them in Telegram), or words for the
+//! agent, alike in Telegram and in Teams. A command is a slash and its name,
+//! as Telegram writes them (a bot's username may follow it, `@…bot`), alone
+//! or before the rest of the message; anything else (`/home/x`, a path) is
+//! words for the agent.
 
 /// What a person sends to leave their conversation for a new one.
 pub const NEW_CONVERSATION: &str = "/nouvelle";

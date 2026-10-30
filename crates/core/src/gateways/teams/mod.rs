@@ -9,6 +9,7 @@
 
 mod activity;
 mod identity;
+mod markdown;
 mod service_url;
 mod text;
 mod token;
@@ -17,6 +18,7 @@ pub use activity::{
     MAX_MESSAGE_CHARS, PersonalMessage, ReceivedActivity, TeamsUser, guid, read_activity, same_guid,
 };
 pub use identity::{IdentityRefusal, TeamsMember, identity_refusal};
+pub use markdown::from_markdown;
 pub use service_url::ServiceUrls;
 pub use text::{escaped, link};
 pub use token::{BotKey, Expected, MAX_SKEW_SECONDS, TokenProblem, bearer, key_id, verify_token};

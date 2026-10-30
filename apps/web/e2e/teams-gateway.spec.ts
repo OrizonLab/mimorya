@@ -5,10 +5,10 @@
 // how to link her Teams account; she writes to the bot, as the test Bot
 // Framework sends it, with its token, and the bot answers with a link.
 // Opened in her session, the link shows what it links and links it; she is
-// then told the agent is not talked with in Teams yet. Paul sees her
+// then told the agent answers her there (ADR-140). Paul sees her
 // account counted and disables the bot; the link, reopened, says why it
-// links nothing; Léa is told so (and no longer that the bot sends her to
-// the application) and removes her link; Paul renames the bot (its
+// links nothing; Léa is told so (and no longer that the agent answers her
+// there) and removes her link; Paul renames the bot (its
 // application and directory never offered; a new secret Entra refuses
 // changing nothing, a blank one keeping it) and enables it, after which it
 // answers Léa again with the secret kept; he deletes it, and the endpoint
@@ -125,13 +125,12 @@ test('a bot is declared, a Teams account linked from its link and removed, the b
   await expect(
     row.getByText(`Votre compte Teams (${demo.lea}) est relié depuis le`, { exact: false }),
   ).toBeVisible();
-  // The bot available, she is told the agent is not answering there yet.
-  await expect(row.getByText(/ne sont pas encore ouverts/)).toBeVisible();
+  // The bot available, she is told the agent answers her there.
+  await expect(row.getByText(/Vous y parlez à l’agent/)).toBeVisible();
 
-  // Linked, she is told the agent is not talked with in Teams yet.
-  const told = await botAnswer(request, endpoint, LEA_TEAMS, 'Bonjour');
-  expect(told).toContain('Votre compte Teams est relié à votre compte.');
-  expect(told).toContain('ne sont pas encore ouverts');
+  // Linked, asked, the bot says whose account hers is linked to.
+  const told = await botAnswer(request, endpoint, LEA_TEAMS, '/aide');
+  expect(told).toContain('Votre compte Teams est relié au compte de Léa Fontaine');
 
   // Paul sees her account counted, and disables the bot.
   await page.reload();
@@ -151,8 +150,8 @@ test('a bot is declared, a Teams account linked from its link and removed, the b
   // Léa is told so in « Mon compte », and removes her link.
   await lea.goto('/account');
   await expect(row.getByText(/^La passerelle est désactivée/)).toBeVisible();
-  // A disabled bot answers nobody: it is not said to send her anywhere.
-  await expect(row.getByText(/ne sont pas encore ouverts/)).toHaveCount(0);
+  // A disabled bot answers nobody: the agent is not said to answer there.
+  await expect(row.getByText(/Vous y parlez à l’agent/)).toHaveCount(0);
   await row.getByRole('button', { name: 'Retirer la liaison' }).click();
   await expect(row.getByText('Non relié', { exact: true })).toBeVisible();
   await expect(row.getByText('La passerelle est indisponible pour l’instant.')).toBeVisible();

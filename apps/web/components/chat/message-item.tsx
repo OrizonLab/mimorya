@@ -39,7 +39,7 @@ export function MessageItem({ message }: { message: Message }) {
     return (
       <div className="flex flex-col items-end gap-1">
         {mission === 'brief' && <Badge tone="accent">Mission confiée</Badge>}
-        {/* Written to the company's Slack application or Telegram bot (ADR-128, ADR-135). */}
+        {/* Written to the company's Slack application, Telegram bot or Teams bot (ADR-128, ADR-135, ADR-140). */}
         {gateway && (
           <Badge>
             <MessagesSquare className="size-3" aria-hidden />

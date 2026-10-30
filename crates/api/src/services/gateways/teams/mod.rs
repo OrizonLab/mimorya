@@ -2,17 +2,26 @@
 //! activities the Bot Framework sends it, proven by the token Microsoft
 //! signs them with (`activities`); a person writing to it is sent a link to
 //! link their Teams identity to their account, confirmed in their own
-//! session once Teams says who they are (`link`); what the bot says of
-//! itself (`texts`), written in the conversation the activity came from, in
-//! the background.
+//! session once Teams says who they are (`link`). A linked person's message
+//! is then read as a command or words for the agent (`answers`, ADR-140),
+//! their words answered by the agent in a conversation of theirs held in
+//! their personal conversation with the bot (`conversations`), the run's
+//! end or pause written there (`reply_text`, by `replies`). What the bot
+//! says of itself (`texts`) is written in the conversation the activity
+//! came from, in the background.
 
 mod activities;
+mod answers;
+mod conversations;
+mod reply_text;
 mod texts;
 
 use mimorya_core::gateways::teams::TeamsApplication;
 use uuid::Uuid;
 
 pub use activities::ActivityOutcome;
+pub use conversations::{TeamsMessage, converse_in_teams};
+pub(super) use reply_text::{Pause as TeamsPause, reply_text as teams_reply_text};
 
 use super::GatewayService;
 

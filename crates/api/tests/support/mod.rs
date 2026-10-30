@@ -56,6 +56,7 @@ pub mod slack_validations;
 pub mod sso;
 pub mod sweeps;
 pub mod teams;
+pub mod teams_conversations;
 pub mod telegram;
 pub mod telegram_conversations;
 

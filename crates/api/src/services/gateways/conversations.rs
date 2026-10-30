@@ -72,6 +72,7 @@ async fn answer(services: &Services, incoming: &PersonMessage) -> anyhow::Result
                 external_id: &message.person,
                 channel_id: &message.channel,
                 thread_ts,
+                service_url: None,
             };
             (services.runs)
                 .start_in_thread(identity, thread, &title, &text)

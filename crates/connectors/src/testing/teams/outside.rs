@@ -20,7 +20,14 @@ type SharedState = State<Arc<Mutex<Shared>>>;
 pub(super) async fn messages(State(shared): SharedState) -> Json<Value> {
     let shared = shared.lock().expect("lock");
     let messages: Vec<Value> = (shared.sent.iter())
-        .map(|m| json!({ "app": m.app, "conversation": m.conversation, "text": m.text }))
+        .map(|m| {
+            json!({
+                "app": m.app,
+                "conversation": m.conversation,
+                "text": m.text,
+                "textFormat": m.text_format,
+            })
+        })
         .collect();
     Json(json!(messages))
 }

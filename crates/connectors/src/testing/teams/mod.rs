@@ -4,9 +4,11 @@
 //! `TEAMS_SECRET`) or to another company's (`OTHER_TEAMS_APP`) and refuses any
 //! other secret; the Bot Framework's OpenID configuration and key set (its test
 //! key, endorsed for Teams); and a Teams service under `teams/`, which keeps
-//! the messages the bots write, with a token Entra gave, and says who the
-//! members of their conversations are; the same service answers under
-//! `ailleurs/`, an address no bot may trust (`untrusted_url`). It writes an
+//! the messages the bots write, with a token Entra gave, and the service
+//! they were written to, and says who the members of their conversations
+//! are; the same service answers under `teams/amer/`, another region the
+//! bots trust alike (`other_service_url`, ADR-140), and under `ailleurs/`,
+//! an address no bot may trust (`untrusted_url`). It writes an
 //! activity as the Bot Framework sends it (`activity`), with its token
 //! (`signing`). A test may make it unavailable (503), slow to say where its
 //! keys are, or change what it says of a member. For the end-to-end tests
@@ -45,6 +47,8 @@ pub const OTHER_TEAMS_SECRET: &str = "Zyx8Q~fictif.autre_secret-9876543210";
 pub struct TeamsSent {
     /// The application whose token wrote it.
     pub app: String,
+    /// The Teams service it was written to.
+    pub service: String,
     pub conversation: String,
     pub text: String,
     pub text_format: Option<String>,
@@ -99,6 +103,10 @@ impl FakeTeams {
                 "/teams/v3/conversations/{conversation}/members/{member}",
                 get(routes::member),
             )
+            .route(
+                "/teams/amer/v3/conversations/{conversation}/activities",
+                post(routes::send),
+            )
             // The same service at an address no bot may trust: what reaches
             // it is kept alike, so that a test sees nothing does.
             .route(
@@ -123,6 +131,12 @@ impl FakeTeams {
     /// The Teams service its activities name.
     pub fn service_url(&self) -> String {
         activity::service_url(&self.url)
+    }
+
+    /// Another region of the Teams service, which the bots trust alike: an
+    /// activity may come from it, and the answers then go there.
+    pub fn other_service_url(&self) -> String {
+        format!("{}/teams/amer/", self.url)
     }
 
     /// A Teams service at an address no bot may trust.
@@ -203,7 +217,12 @@ impl FakeTeams {
 
     /// The token the Bot Framework sends the bot `app` with an activity.
     pub fn token(&self, app: &str) -> String {
-        signed_token(Signer::BotFramework, &self.claims(app))
+        self.token_of(&self.service_url(), app)
+    }
+
+    /// The same, for an activity of the service `service_url`.
+    pub fn token_of(&self, service_url: &str, app: &str) -> String {
+        signed_token(Signer::BotFramework, &activity::claims(service_url, app))
     }
 
     /// What the Bot Framework sends the bot `app` of the test directory
@@ -211,6 +230,17 @@ impl FakeTeams {
     /// conversation with it, as its activity `id`.
     pub fn message(&self, app: &str, id: &str, person: (&str, &str), text: &str) -> Value {
         activity::message(&self.service_url(), app, id, person, text)
+    }
+
+    /// The same, from the service `service_url`.
+    pub fn message_from(
+        &self,
+        service_url: &str,
+        (app, id): (&str, &str),
+        person: (&str, &str),
+        text: &str,
+    ) -> Value {
+        activity::message(service_url, app, id, person, text)
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Shared> {
