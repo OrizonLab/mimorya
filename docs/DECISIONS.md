@@ -7877,12 +7877,16 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       point de terminaison est celui de la passerelle ;
     - Léa écrit au bot, qui lui répond par un lien. Ouvert dans sa session, le lien
       montre ce qu'il relie, puis relie ; la liaison est relue dans l'API et dans
-      « Mon compte », et le bot dit ensuite à Léa que l'agent n'y répond pas encore ;
-    - le bot est désactivé : le lien rouvert dit pourquoi il ne relie rien, et la
-      liaison est retirée ;
+      « Mon compte », qui dit que l'agent n'y répond pas encore, comme le bot le dit
+      ensuite à Léa ;
+    - le bot est désactivé : le lien rouvert dit pourquoi il ne relie rien ; « Mon
+      compte » le dit indisponible sans plus dire où il renvoie, et la liaison est
+      retirée ;
     - le bot est renommé (application et annuaire non proposés). Avec un nouveau
       secret refusé par Entra, rien ne change ; le secret laissé vide est gardé. Il est
-      ensuite réactivé, puis supprimé. Le point de terminaison répond alors comme une passerelle
-      inconnue ;
+      ensuite réactivé : il répond de nouveau à Léa, preuve que le secret gardé est
+      celui qu'Entra accepte ;
+    - le bot est enfin supprimé. Le point de terminaison répond alors comme une
+      passerelle inconnue ;
   - restent : conversations avec l'agent dans Teams, validations par cartes
     adaptatives, avis au responsable.

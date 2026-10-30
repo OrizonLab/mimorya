@@ -7,10 +7,9 @@
 //! which keeps the messages the bots write, with a token Entra gave, and
 //! says who the members of their conversations are; the same service
 //! answers under `ailleurs/`, an address no bot may trust (`untrusted_url`).
-//! It writes an activity
-//! as the Bot Framework sends it (`activity`), with its token (`signing`). A test may
-//! make it unavailable (503), slow to say where its keys are, or change
-//! what it says of a member. For the end-to-end tests (ADR-139), it lists
+//! It writes an activity as the Bot Framework sends it (`activity`), with
+//! its token (`signing`). A test may make it unavailable (503), slow to say
+//! where its keys are, or change what it says of a member. For the end-to-end tests (ADR-139), it lists
 //! the messages the bots wrote at `GET /test/messages` and writes, at
 //! `POST /test/activity`, the activity a person's message would be with
 //! its token (`outside`): whoever reaches the test Microsoft can send the

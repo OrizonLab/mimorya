@@ -7,12 +7,15 @@
 // Opened in her session, the link shows what it links and links it; she
 // is then told the agent is not talked with in Teams yet. Paul sees her
 // account counted and disables the bot; the link, reopened, says why it
-// links nothing; Léa is told so and removes her link; Paul renames the bot
-// (its application and directory never offered; a new secret Entra refuses
-// changing nothing, a blank one keeping it), enables it and deletes it,
-// after which the endpoint answers as to an unknown gateway. Each step is
-// read back from the API, each confirmation read. Whatever happens, the bot is deleted with its links. The rules
-// themselves are tested on the API (`crates/api/tests/teams_gateway_*.rs`).
+// links nothing; Léa is told so (and no longer that the bot sends her to
+// the application) and removes her link; Paul renames the bot (its
+// application and directory never offered; a new secret Entra refuses
+// changing nothing, a blank one keeping it) and enables it, after which
+// it answers Léa again with the secret kept; he deletes it, and the
+// endpoint answers as to an unknown gateway. Each step is read back from
+// the API, each confirmation read. Whatever
+// happens, the bot is deleted with its links. The rules themselves are
+// tested on the API (`crates/api/tests/teams_gateway_*.rs`).
 import type { Page } from '@playwright/test';
 import { demo, expect, noError, signIn, test } from './support/fixtures';
 import { cardWith, openAdmin } from './support/admin';
@@ -122,6 +125,8 @@ test('a bot is declared, a Teams account linked from its link and removed, the b
   await expect(
     row.getByText(`Votre compte Teams (${demo.lea}) est relié depuis le`, { exact: false }),
   ).toBeVisible();
+  // The bot available, she is told the agent is not answering there yet.
+  await expect(row.getByText(/ne sont pas encore ouverts/)).toBeVisible();
 
   // Linked, she is told the agent is not talked with in Teams yet.
   const told = await botAnswer(request, endpoint, LEA_TEAMS, 'Bonjour');
@@ -146,6 +151,8 @@ test('a bot is declared, a Teams account linked from its link and removed, the b
   // Léa is told so in « Mon compte », and removes her link.
   await lea.goto('/account');
   await expect(row.getByText(/^La passerelle est désactivée/)).toBeVisible();
+  // A disabled bot answers nobody: it is not said to send her anywhere.
+  await expect(row.getByText(/ne sont pas encore ouverts/)).toHaveCount(0);
   await row.getByRole('button', { name: 'Retirer la liaison' }).click();
   await expect(row.getByText('Non relié', { exact: true })).toBeVisible();
   await expect(row.getByText('La passerelle est indisponible pour l’instant.')).toBeVisible();
@@ -182,6 +189,9 @@ test('a bot is declared, a Teams account linked from its link and removed, the b
   await renamed.getByRole('button', { name: 'Activer' }).click();
   await expect(renamed.getByText('Active', { exact: true })).toBeVisible();
   expect((await storedTeamsBot(page)).gateway?.enabled).toBe(true);
+  // The secret kept is the one Entra takes: the bot answers Léa again.
+  const offered = await botAnswer(request, endpoint, LEA_TEAMS, 'Bonjour');
+  expect(offered).toContain('reliez votre compte Teams à votre compte');
 
   // Deleted: the endpoint answers as to an unknown gateway.
   await renamed.getByRole('button', { name: 'Supprimer' }).click();
