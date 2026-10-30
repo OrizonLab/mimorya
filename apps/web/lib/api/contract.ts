@@ -1058,7 +1058,11 @@ expiresAt: string | null, createdAt: string, };
 /**
  * `GET /admin/knowledge-shares`.
  */
-export type KnowledgeShares = { shares: Array<KnowledgeShareView>, };
+export type KnowledgeShares = { shares: Array<KnowledgeShareView>,
+/**
+ * The company's units, each with its parent.
+ */
+units: Array<ShareableUnit>, };
 
 /**
  * What became of the last delivery.
@@ -2037,6 +2041,11 @@ export type ScheduledTaskUpdate = { title?: string, instruction?: string, weekda
  * Highest sensitivity of the data an account may read.
  */
 export type Sensitivity = "public" | "internal" | "confidential" | "restricted";
+
+/**
+ * A unit a share may name.
+ */
+export type ShareableUnit = { id: string, parentId: string | null, name: string, };
 
 /**
  * Body of `PUT /admin/skills/{id}/activation`: the version made active.

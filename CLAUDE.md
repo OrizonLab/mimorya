@@ -276,7 +276,8 @@ Repères à l'intérieur des crates :
   YAML converti dans le navigateur, ADR-115, et l'application Microsoft 365, ADR-118,
   dont l'écriture permise, ADR-120, et le client Google Workspace, ADR-124, et les
   passerelles de conversation, l'application Slack, ADR-126, et ses permissions
-  vérifiées, ADR-132, le bot Telegram, ADR-134, le bot Teams, ADR-139, `admin/llm/` : modèle des conversations et modèle de contrôle des réponses, ADR-108, recherche dans la mémoire, leçons et limites des missions, ADR-075,
+  vérifiées, ADR-132, le bot Telegram, ADR-134, le bot Teams, ADR-139,
+  `admin/knowledge-shares/` : partages de connaissances entre unités, ADR-144, `admin/llm/` : modèle des conversations et modèle de contrôle des réponses, ADR-108, recherche dans la mémoire, leçons et limites des missions, ADR-075,
   ADR-077, ADR-093, `admin/users/` :
   comptes, dont l'absence d'un collaborateur empêché, ADR-079, et `admin/skills/` :
   compétences, propositions de l'agent, ADR-101, cas d'évaluation et évaluations,

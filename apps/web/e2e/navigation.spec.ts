@@ -22,6 +22,7 @@ const ADMIN_TABS = [
   'Rôles',
   'Politiques d’accès',
   'Circuit de validation',
+  'Partage de connaissances',
   'Journal d’audit',
   'Consommation',
   'Modèle d’IA',

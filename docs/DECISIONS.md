@@ -8245,13 +8245,46 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     documents lus par l'équipe Sud, plafond, dans un seul sens, jamais supprimés, retrait,
     unités en dessous, date passée) ; `knowledge_share_bounds.rs` (rien pour qui un refus
     empêche de lire, ni les unités sous l'unité partagée, ni la mémoire personnelle) ;
-    `knowledge_share_admin.rs` (qui partage et quoi, jamais pour soi-même, unité
-    supprimée après ses partages) ; `crates/db/tests/memory_search.rs`,
+    `knowledge_share_admin.rs` (qui partage et quoi, jamais pour soi-même, unités et
+    partages d'une autre entreprise inconnus, unité supprimée après ses partages) ; `crates/db/tests/memory_search.rs`,
     `document_search.rs` (recherche de l'agent, par les mots et par le sens) ;
   - le refus d'un partage dont son auteur serait lecteur vaut au moment de le faire : un
     administrateur qui gère aussi l'organisation (`org:manage`) pourrait ensuite placer
     son unité sous la cible. Il n'y gagne rien de plus qu'en la plaçant sous l'unité
     partagée, qu'il lirait alors directement ; la double validation des changements
     d'administration (ADR-019, phase 3) couvrira les deux ;
-  - reste : l'écran du partage dans l'administration et son parcours de bout en bout
-    (lot 15b).
+  - l'écran du partage dans l'administration et son parcours de bout en bout font le
+    lot 15b (ADR-144).
+
+## ADR-144 — Écran du partage de connaissances dans l'administration (partage de connaissances, lot 15b)
+
+- **Date** : 2026-10-30 · **Statut** : acceptée · complète ADR-143
+- **Contexte** : les partages de connaissances entre unités ne se faisaient que par l'API
+  (ADR-143).
+- **Décision** :
+  - **un onglet** « Partage de connaissances » dans l'administration, après le circuit
+    de validation, montré à qui administre les politiques d'accès (`policy:manage`),
+    comme la route qu'il appelle ;
+  - **ce qu'il montre** : chaque partage en clair, « Équipe Nord → Équipe Sud », ce
+    qu'il ouvre (« Mémoire », « Documents »), ses lecteurs (l'unité qui le reçoit, et
+    les unités en dessous si dit), le niveau de sensibilité jusqu'où il va, son échéance
+    ou son absence, « Échu » une fois passée ; un bouton le retire, après confirmation ;
+  - **ce qu'il fait** : un formulaire choisit l'unité partagée et celle qui reçoit le
+    partage dans l'organigramme, aucune n'étant choisie d'avance (« Partager » attend les
+    deux), ce qui est partagé (mémoire, documents, cochés tous les
+    deux d'abord), les unités en dessous, le niveau de sensibilité (« Interne »
+    d'abord) et une date facultative, jusqu'à la fin de ce jour. Les règles restent
+    celles du serveur : un refus, dont celui d'un partage que l'auteur lirait lui-même,
+    s'affiche tel qu'il le dit ;
+  - **les unités** viennent avec les partages (`GET /admin/knowledge-shares`, `units` :
+    identifiant, parent, nom), comme une politique arrive avec les permissions qu'elle
+    peut nommer : l'écran ne dépend d'aucune autre route, et `unitOptions` les range en
+    arbre comme dans les autres formulaires.
+- **Conséquences** :
+  - tests : `crates/api/tests/knowledge_share_admin.rs` (unités listées avec leur
+    parent) ; `apps/web/e2e/knowledge-shares.spec.ts` (partage refusé vers l'unité de
+    Paul, son motif affiché ; « Partager » attendant les deux unités ; partage de la
+    mémoire de l'équipe Nord avec l'équipe Sud et les unités en dessous jusqu'au
+    31/12/2099, et partage en retour tel que le formulaire le propose, sans échéance, les
+    deux relus après rechargement ; mémoire de l'équipe Nord lue par Léa, de l'équipe Sud,
+    puis plus une fois le partage retiré).

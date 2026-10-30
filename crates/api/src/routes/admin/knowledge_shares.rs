@@ -1,5 +1,6 @@
 //! A company's units' knowledge shared with other units (ADR-143,
-//! `policy:manage`, company-wide): listing, making and removing the shares.
+//! `policy:manage`, company-wide): listing the shares with the units they
+//! may name, making and removing them.
 
 use axum::Json;
 use axum::extract::State;
@@ -8,7 +9,9 @@ use mimorya_core::knowledge_shares::KnowledgeShare;
 use mimorya_db::repositories::knowledge_shares::list_knowledge_shares;
 
 use crate::app::AppState;
-use crate::contract::admin::{KnowledgeShareView, KnowledgeShares, NewKnowledgeShare};
+use crate::contract::admin::{
+    KnowledgeShareView, KnowledgeShares, NewKnowledgeShare, ShareableUnit,
+};
 use crate::contract::{Created, Done};
 use crate::http::{ApiResult, Body, PathId};
 use crate::plugins::Auth;
@@ -29,7 +32,14 @@ pub async fn list(
         .iter()
         .filter_map(KnowledgeShareView::from_row)
         .collect();
-    Ok(Json(KnowledgeShares { shares }))
+    let units = (access.org_tree().all().iter())
+        .map(|unit| ShareableUnit {
+            id: unit.id,
+            parent_id: unit.parent_id,
+            name: unit.name.clone(),
+        })
+        .collect();
+    Ok(Json(KnowledgeShares { shares, units }))
 }
 
 pub async fn create(

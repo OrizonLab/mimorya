@@ -56,6 +56,9 @@ export const AUTONOMY_LABELS: Record<string, string> = {
   autonomous_limited: 'Autonomie limitée',
 };
 
+/** The sensitivities, from the least to the most protected. */
+export const SENSITIVITIES: Sensitivity[] = ['public', 'internal', 'confidential', 'restricted'];
+
 export const CLEARANCE_LABELS: Record<Sensitivity, string> = {
   public: 'Public',
   internal: 'Interne',

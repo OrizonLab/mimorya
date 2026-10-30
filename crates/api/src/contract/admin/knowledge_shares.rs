@@ -51,11 +51,22 @@ impl KnowledgeShareView {
     }
 }
 
+/// A unit a share may name.
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ShareableUnit {
+    pub id: Uuid,
+    pub parent_id: Option<Uuid>,
+    pub name: String,
+}
+
 /// `GET /admin/knowledge-shares`.
 #[derive(Debug, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct KnowledgeShares {
     pub shares: Vec<KnowledgeShareView>,
+    /// The company's units, each with its parent.
+    pub units: Vec<ShareableUnit>,
 }
 
 /// Body of `POST /admin/knowledge-shares`.

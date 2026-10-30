@@ -47,7 +47,7 @@ pub use google_workspace::{GoogleWorkspaceApp, NewGoogleWorkspaceConnector};
 pub use identity_providers::{
     IdentityProviderUpdate, IdentityProviderView, IdentityProvidersView, NewIdentityProvider,
 };
-pub use knowledge_shares::{KnowledgeShareView, KnowledgeShares, NewKnowledgeShare};
+pub use knowledge_shares::{KnowledgeShareView, KnowledgeShares, NewKnowledgeShare, ShareableUnit};
 pub use llm::{LlmChoice, LlmSettingsView, LlmTestResult, LlmView, PlatformModel, ProviderKind};
 pub use memory_settings::{MemorySettingsUpdate, MemorySettingsView};
 pub use microsoft365::{Microsoft365App, NewMicrosoft365Connector};

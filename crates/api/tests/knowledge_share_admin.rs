@@ -106,6 +106,13 @@ async fn only_the_policies_administrator_shares_and_within_the_rules() {
     let listed = paul.get(SHARES).await.json();
     assert_eq!(listed["shares"].as_array().unwrap().len(), 1, "{listed}");
     assert_eq!(listed["shares"][0]["maxSensitivity"], "internal");
+    // With the units a share may name, each with its parent.
+    let north = (listed["units"].as_array().unwrap().iter())
+        .find(|u| u["id"] == json!(unit::TEAM_NORTH))
+        .cloned();
+    let expected =
+        json!({ "id": unit::TEAM_NORTH, "parentId": unit::TECHNICAL, "name": "Équipe Nord" });
+    assert_eq!(north, Some(expected), "{listed}");
 
     // Removed by him only; an unknown share is not found.
     let id = created.json()["id"].as_str().unwrap().to_owned();
@@ -198,6 +205,11 @@ async fn another_company_s_units_and_shares_are_unknown_here() {
     // Its share: neither listed nor removed here, traced.
     let listed = paul.get(SHARES).await.json();
     assert_eq!(listed["shares"], json!([]), "{listed}");
+    let units = listed["units"].as_array().unwrap();
+    assert!(
+        !units.iter().any(|u| u["id"] == json!(unit_elsewhere)),
+        "{listed}"
+    );
     let path = format!("{SHARES}/{share_elsewhere}");
     assert_eq!(paul.delete(&path).await.status, StatusCode::NOT_FOUND);
     let traced = not_found_since(&api, since).await;

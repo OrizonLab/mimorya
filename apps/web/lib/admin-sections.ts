@@ -5,6 +5,7 @@ export const ADMIN_SECTIONS = [
   { key: 'roles', label: 'Rôles', permission: 'role:manage' },
   { key: 'policies', label: 'Politiques d’accès', permission: 'policy:manage' },
   { key: 'approvalRouting', label: 'Circuit de validation', permission: 'policy:manage' },
+  { key: 'knowledgeShares', label: 'Partage de connaissances', permission: 'policy:manage' },
   { key: 'audit', label: 'Journal d’audit', permission: 'audit:read' },
   { key: 'usage', label: 'Consommation', permission: 'usage:read' },
   { key: 'llm', label: 'Modèle d’IA', permission: 'settings:manage' },
