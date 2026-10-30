@@ -116,7 +116,9 @@ export function TeamsGatewayForm({
         fois relié, il écrit au bot : l’agent lui répond dans sa conversation avec le bot, avec ses
         droits, une conversation à la fois (/nouvelle en ouvre une autre). Il y valide ou refuse,
         avec les boutons d’une carte, ses propres actions sans effet hors de l’entreprise et
-        réversibles ; les autres se valident dans l’application.
+        réversibles ; les autres se valident dans l’application. Un responsable relié, ou qui le
+        remplace, y est aussi prévenu des demandes qui attendent sa validation, et les valide de
+        même, dans la conversation où le bot l’a vu en dernier.
       </p>
       {action.error && <ErrorNote message={action.error} />}
       <div className="flex gap-2">

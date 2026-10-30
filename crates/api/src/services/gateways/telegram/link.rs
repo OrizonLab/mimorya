@@ -148,6 +148,7 @@ impl GatewayService {
                 external_id: &claim.external_id,
                 address: None,
                 display_name: Some(&claim.name),
+                conversation: None,
             },
         )
         .await

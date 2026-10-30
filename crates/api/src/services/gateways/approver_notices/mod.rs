@@ -1,26 +1,29 @@
 //! The requests awaiting a manager announced in a messaging service: in
-//! Slack (ADR-130), in Telegram (ADR-137). When a run pauses on requests a
-//! manager decides, that manager, or whom they named to stand in for them
-//! while away and who may decide them (`recipient`, ADR-071, as the e-mail
-//! tells), is written through each of the company's gateways their account
-//! is linked to: a direct message of its Slack application (`slack`), a
-//! message in their private chat with its Telegram bot (`telegram`). For
-//! whom the agent acts, the actions that may be validated there with their
-//! exact parameters and buttons (ADR-129, ADR-136), the others to validate
-//! in the application. One message per run, manager and gateway, by the
-//! pass of a process that executes runs, one at a time (ADR-086), within
-//! `NOTIFIED_WITHIN` of the requests. Only whom may decide them now is
-//! told: a manager who lost `approval:decide` over the person is written
-//! nothing. Nobody linked to tell: nothing written, recorded so. While a
-//! gateway is paused, nothing is tried through it: enabled again, it tells
-//! of the requests still waiting. What the service refuses is not tried
-//! again; unreachable, tried again a few times. Told in addition to the
-//! e-mail (ADR-060), whatever the person chose of their e-mails (ADR-094):
-//! linking their account there is their choice, unlinking it ends these
-//! messages. Each request told of is audited with its service, never what
-//! was written.
+//! Slack (ADR-130), in Telegram (ADR-137), in Teams (ADR-142). When a run
+//! pauses on requests a manager decides, that manager, or whom they named
+//! to stand in for them while away and who may decide them (`recipient`,
+//! ADR-071, as the e-mail tells), is written through each of the company's
+//! gateways their account is linked to: a direct message of its Slack
+//! application (`slack`), a message in their private chat with its Telegram
+//! bot (`telegram`), in their personal conversation with its Teams bot
+//! (`teams`). For whom the agent acts, the actions that may be validated
+//! there with their exact parameters and buttons (ADR-129, ADR-136,
+//! ADR-141), the others to validate in the application. One message per
+//! run, manager and gateway, by the pass of a process that executes runs,
+//! one at a time (ADR-086), within `NOTIFIED_WITHIN` of the requests. Only
+//! whom may decide them now is told: a manager who lost `approval:decide`
+//! over the person is written nothing. Nobody linked to tell, or a Teams
+//! user the bot has met in no conversation since it kept them: nothing
+//! written, recorded so. While a gateway is paused, nothing is tried
+//! through it: enabled again, it tells of the requests still waiting. What
+//! the service refuses is not tried again; unreachable, tried again a few
+//! times. Told in addition to the e-mail (ADR-060), whatever the person
+//! chose of their e-mails (ADR-094): linking their account there is their
+//! choice, unlinking it ends these messages. Each request told of is
+//! audited with its service, never what was written.
 
 mod slack;
+mod teams;
 mod telegram;
 
 use chrono::{DateTime, Duration, Utc};
@@ -37,7 +40,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use super::approver_text::ApproverNotice;
-use super::bot_token_name;
+use super::{bot_token_name, client_secret_name};
 use crate::app::Services;
 use crate::services::runs::{Recipient, may_decide_for, recipient};
 
@@ -117,8 +120,12 @@ async fn notify_run(
     };
     let ids = (run.run_id, gateway.id);
     let requests = gateway_approval_notices(&mut tx, ids, since, now).await?;
+    let secret = match kind {
+        GatewayKind::Teams => client_secret_name(gateway.id),
+        GatewayKind::Slack | GatewayKind::Telegram => bot_token_name(gateway.id),
+    };
     let token = (services.gateways)
-        .secret(&mut tx, tenant_id, &bot_token_name(gateway.id))
+        .secret(&mut tx, tenant_id, &secret)
         .await?;
     tx.commit().await?;
     let mut sent = 0;
@@ -145,7 +152,8 @@ struct Told<'a> {
     tenant_id: Uuid,
     gateway: &'a GatewayRow,
     kind: GatewayKind,
-    /// The bot's token, if it opens.
+    /// The bot's token (a Teams bot's: its application's client secret),
+    /// if it opens.
     token: Option<&'a str>,
     to: &'a Recipient,
 }
@@ -209,15 +217,14 @@ async fn tell(
     let reach = Reach {
         token,
         person: &identity.external_id,
+        conversation: identity.teams_conversation(),
         attempt,
         now,
     };
     match told.kind {
         GatewayKind::Slack => slack::tell(services, told, reach, theirs).await,
         GatewayKind::Telegram => Ok(telegram::tell(services, told, reach, theirs).await),
-        // Never picked (`system_gateway_approvals_to_notify` names Slack and
-        // Telegram): a Teams bot tells no manager yet (ADR-138).
-        GatewayKind::Teams => Ok(ReplyRecord::Done("skipped")),
+        GatewayKind::Teams => Ok(teams::tell(services, told, reach, theirs).await),
     }
 }
 
@@ -227,6 +234,8 @@ struct Reach<'a> {
     token: &'a str,
     /// Their identifier in the service, as linked to their account.
     person: &'a str,
+    /// A Teams user's personal conversation with the bot, at its service.
+    conversation: Option<(&'a str, &'a str)>,
     attempt: i32,
     now: DateTime<Utc>,
 }

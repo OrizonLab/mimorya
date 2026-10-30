@@ -1,10 +1,10 @@
-//! The requests awaiting a manager announced in Slack (ADR-130) or in
-//! Telegram (ADR-137): the manager, or whom they named to stand in for
-//! them, linked to the company's Slack application or Telegram bot, is
-//! written a message of a paused run's requests awaiting them, by the
-//! periodic pass, within a while of them, once through each gateway. What
-//! became of each is kept, never what was written: that is the request
-//! itself.
+//! The requests awaiting a manager announced in Slack (ADR-130), in
+//! Telegram (ADR-137) or in Teams (ADR-142): the manager, or whom they
+//! named to stand in for them, linked to the company's Slack application,
+//! Telegram bot or Teams bot, is written a message of a paused run's
+//! requests awaiting them, by the periodic pass, within a while of them,
+//! once through each gateway. What became of each is kept, never what was
+//! written: that is the request itself.
 
 use chrono::{DateTime, Utc};
 use serde_json::Value;

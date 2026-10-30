@@ -1,7 +1,8 @@
 //! A validation given in Teams (ADR-141): the « Valider » or « Refuser »
 //! button a linked person pressed on the card of a pause of their own run,
-//! in their personal conversation with the company's Teams bot, sent by the
-//! Bot Framework with the token Microsoft signs. Teams sends what the
+//! or of a notice of requests awaiting them as a manager or stand-in
+//! (ADR-142), in their personal conversation with the company's Teams bot,
+//! sent by the Bot Framework with the token Microsoft signs. Teams sends what the
 //! button carries, as the client writes it, and the card it was pressed on,
 //! not what the card showed: only a request the platform keeps as shown on
 //! a card of its own, in that conversation, is decided (`gateway_cards`);
@@ -14,7 +15,8 @@
 //! (now, or meanwhile in the application), unless it shows an action
 //! its presser does not see, and their statuses read once more: a press
 //! decided meanwhile, whose card Teams took before, has it written again
-//! as it now is. What became of the press is said in the conversation.
+//! as it now is, with its pause's text, or its notice's (`approver_text`).
+//! What became of the press is said in the conversation.
 //! Audited as any decision, with the service, `teams`.
 
 use mimorya_core::gateways::teams::{
@@ -26,6 +28,7 @@ use mimorya_db::repositories::gateway_cards::{GatewayCard, find_gateway_card};
 use mimorya_db::repositories::gateway_identities::linked_account;
 use uuid::Uuid;
 
+use super::approver_text::rewritten_notice;
 use super::reply_text::{Pause, reply_text, settled_text};
 use super::texts;
 use crate::app::Services;
@@ -197,14 +200,23 @@ async fn write_card(
             state: CardState::of(&a.status),
         })
         .collect();
-    let pause = Pause {
-        shown: actions.len(),
-        in_application: usize::try_from(card.in_application).unwrap_or(0),
-        managed: usize::try_from(card.managed).unwrap_or(0),
-    };
-    let url = services.gateways.conversation_url(card.conversation_id);
     let states: Vec<CardState> = actions.iter().map(|a| a.state).collect();
-    let text = message_text(&url, pause, &states);
+    let text = match card.conversation_id {
+        Some(conversation) => {
+            let pause = Pause {
+                shown: actions.len(),
+                in_application: usize::try_from(card.in_application).unwrap_or(0),
+                managed: usize::try_from(card.managed).unwrap_or(0),
+            };
+            let url = services.gateways.conversation_url(conversation);
+            message_text(&url, pause, &states)
+        }
+        // A notice's, to a manager (ADR-142).
+        None => {
+            let shown = (approvals, states.as_slice());
+            rewritten_notice(services, pressed.tenant_id, card, shown).await?
+        }
+    };
     let message = &pressed.message;
     let to = (
         message.service_url.as_str(),

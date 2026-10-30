@@ -8,25 +8,31 @@
 //! their personal conversation with the bot (`conversations`), the run's
 //! end or pause written there (`reply_text`, by `replies`), the actions
 //! awaiting their own validation on a card whose buttons decide them
-//! (`choices`, ADR-141). What the bot
-//! says of itself (`texts`) is written in the conversation the activity
-//! came from, in the background.
+//! (`choices`, ADR-141); a manager, or whom they named to stand in for
+//! them, told there of the requests awaiting them, those that may be
+//! validated there on a card too (`approver_text`, by `approver_notices`,
+//! ADR-142). What the bot says of itself (`texts`) is written in the
+//! conversation the activity came from, in the background.
 
 mod activities;
 mod answers;
+mod approver_text;
 mod choices;
 mod conversations;
 mod reply_text;
 mod texts;
+mod written;
 
 use mimorya_core::gateways::teams::TeamsApplication;
 use uuid::Uuid;
 
 pub use activities::ActivityOutcome;
+pub(super) use approver_text::approver_notice as teams_approver_notice;
 pub(super) use choices::shown_action;
 pub use choices::{TeamsChoice, decide_in_teams};
 pub use conversations::{TeamsMessage, converse_in_teams};
 pub(super) use reply_text::{Pause as TeamsPause, reply_text as teams_reply_text};
+pub(super) use written::{after_failure as teams_after_failure, keep_card as keep_teams_card};
 
 use super::GatewayService;
 

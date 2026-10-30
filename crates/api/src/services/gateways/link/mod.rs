@@ -175,6 +175,9 @@ impl GatewayService {
                 external_id: &code.person,
                 address: Some(address.trim()),
                 display_name: None,
+                // A Teams user: the conversation the link was sent in.
+                conversation: (code.teams.as_ref())
+                    .map(|teams| (teams.service_url.as_str(), teams.conversation_id.as_str())),
             },
         )
         .await?;

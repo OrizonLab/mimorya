@@ -15,16 +15,17 @@
 //! linked person, as their message asks (`answers`, ADR-140): a command
 //! answered by the bot, their words passed on to the agent
 //! (`conversations`), a card's button pressed decided (`choices`,
-//! ADR-141), the answers of their personal conversation's threads written
-//! from then on at the service it came from. What a message says is never
-//! logged nor audited.
+//! ADR-141), the answers of their personal conversation's threads, and the
+//! notices of the requests awaiting them as a manager (ADR-142), written
+//! from then on in that conversation, at the service it came from. What a
+//! message says is never logged nor audited.
 
 use chrono::{DateTime, Utc};
 use mimorya_core::gateways::GatewayKind;
 use mimorya_core::gateways::teams::{
     Expected, TeamsApplication, bearer, escaped, key_id, read_activity, verify_token,
 };
-use mimorya_db::repositories::gateway_identities::find_gateway_identity;
+use mimorya_db::repositories::gateway_identities::{find_gateway_identity, move_teams_identity};
 use mimorya_db::repositories::gateway_threads::move_teams_threads;
 use mimorya_db::repositories::gateways::{gateway_tenant, get_gateway, take_gateway_event};
 use uuid::Uuid;
@@ -110,6 +111,9 @@ impl GatewayService {
                 // Its conversation's answers go to the service it came
                 // from, a paused run's in a conversation closed since too.
                 move_teams_threads(&mut tx, gateway_id, chat, &message.service_url).await?;
+                // And a manager is told of requests there (ADR-142).
+                let met = (message.service_url.as_str(), chat.as_str());
+                move_teams_identity(&mut tx, (gateway_id, person), met).await?;
                 let assistant = &self.assistant_name;
                 let asked = (message.text.as_str(), message.choice);
                 Some(answer_to(&mut tx, to, chat, asked, assistant).await?)
