@@ -10,11 +10,11 @@
 //! they stand, as from the application's screen. Only an action awaiting
 //! their decision (their own, or a manager's they are or stand in for),
 //! that may be validated outside the application (`validated_in_gateway`),
-//! is decided there: any other is left to the application. The press is answered with what became of it;
-//! the buttons of the message's actions decided by then (now, or meanwhile
-//! in the application) are taken off, and the outcome said in answer to it.
-//! Audited as any decision, with the service it was given from, as in
-//! Slack (`concerned::decide_as`).
+//! is decided there: any other is left to the application. The press is
+//! answered with what became of it; the buttons of the message's actions
+//! decided by then (now, or meanwhile in the application) are taken off,
+//! and the outcome said in answer to it. Audited as any decision, with the
+//! service it was given from, as in Slack (`concerned::decide_as`).
 
 use mimorya_core::gateways::GatewayKind;
 use mimorya_core::gateways::telegram::{

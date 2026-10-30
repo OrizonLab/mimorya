@@ -71,15 +71,16 @@ pub(super) async fn answer(
     }
 }
 
-/// What becomes of an answer Slack did not take, at its `attempt`-th try:
-/// refused, never tried again; unreached, tried again later, a few times.
+/// What becomes of a message Slack did not take (a run's answer, or a
+/// manager's notice, ADR-130), at its `attempt`-th try: refused, never
+/// tried again; unreached, tried again later, a few times.
 pub(in crate::services::gateways) fn after_failure(
     failure: &SlackFailure,
     attempt: i32,
     now: DateTime<Utc>,
 ) -> ReplyRecord {
     let reason = failure.message();
-    tracing::warn!(attempt, %reason, "Slack answer not taken");
+    tracing::warn!(attempt, %reason, "Slack message not taken");
     match failure {
         SlackFailure::Refused(_) => ReplyRecord::Done("refused"),
         SlackFailure::Throttled { retry_after } => later(attempt, *retry_after, now),

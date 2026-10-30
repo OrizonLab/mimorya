@@ -25,8 +25,8 @@ pub struct ApproverNotice<'a> {
     pub link: &'a str,
 }
 
-/// A notice's names and link, as a service writes them: escaped, the name
-/// of whom the agent acts for set apart.
+/// A notice's names and link, as a service writes them: escaped, and the
+/// name of whom the agent acts for set apart, where its markup needs it.
 pub struct Written {
     pub requested_for: String,
     pub absent: Option<String>,

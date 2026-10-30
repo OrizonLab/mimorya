@@ -7673,7 +7673,8 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     rien. Dans Telegram, le message de l'autre service perd ses boutons à la pression
     suivante (ADR-136) ;
   - les mots de l'annonce sont les mêmes dans chaque service (`approver_text.rs`),
-    qui n'écrit à sa façon que les noms et le lien ;
+    qui n'écrit à sa façon que les noms et le lien ; le message Slack d'ADR-130 et ses
+    tests sont désormais dans `approver_notices/slack.rs` ;
   - l'écriture dans la conversation privée (HTML puis texte simple, boutons) et ce que
     devient un message que Telegram ne prend pas sont communs à la réponse d'un run et
     à l'annonce (`services/gateways/telegram/chat.rs`) ; quand un message qu'un service
