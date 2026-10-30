@@ -205,6 +205,11 @@ async fn another_company_s_units_and_shares_are_unknown_here() {
     // Its share: neither listed nor removed here, traced.
     let listed = paul.get(SHARES).await.json();
     assert_eq!(listed["shares"], json!([]), "{listed}");
+    let units = listed["units"].as_array().unwrap();
+    assert!(
+        !units.iter().any(|u| u["id"] == json!(unit_elsewhere)),
+        "{listed}"
+    );
     let path = format!("{SHARES}/{share_elsewhere}");
     assert_eq!(paul.delete(&path).await.status, StatusCode::NOT_FOUND);
     let traced = not_found_since(&api, since).await;

@@ -9,10 +9,8 @@ import {
   type Sensitivity,
   type ShareableUnit,
 } from '@/lib/api';
-import { CLEARANCE_LABELS } from '@/lib/labels';
+import { CLEARANCE_LABELS, SENSITIVITIES } from '@/lib/labels';
 import { unitOptions } from '../organization/types';
-
-const SENSITIVITIES: Sensitivity[] = ['public', 'internal', 'confidential', 'restricted'];
 
 /** Shares a unit's knowledge with another unit, up to a sensitivity and a date (ADR-143). */
 export function ShareForm({
@@ -106,7 +104,7 @@ export function ShareForm({
         <Button
           type="submit"
           loading={action.pending}
-          disabled={(!memory && !documents) || source === target}
+          disabled={!source || !target || source === target || (!memory && !documents)}
         >
           Partager
         </Button>

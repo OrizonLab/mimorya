@@ -8283,5 +8283,5 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
   - tests : `crates/api/tests/knowledge_share_admin.rs` (unités listées avec leur
     parent) ; `apps/web/e2e/knowledge-shares.spec.ts` (partage refusé vers l'unité de
     Paul, son motif affiché ; partage de la mémoire de l'équipe Nord avec l'équipe Sud,
-    relu après rechargement ; mémoire de l'équipe Nord lue par Hugo, puis plus une fois
+    relu après rechargement ; mémoire de l'équipe Nord lue par Léa, de l'équipe Sud, puis plus une fois
     le partage retiré).

@@ -1,5 +1,5 @@
 // A unit's knowledge shared with another (ADR-143, ADR-144): from the administration,
-// Paul shares the north team's memory with the south team. Hugo, of the
+// Paul shares the north team's memory with the south team. Léa, of the
 // south team, then reads the north team's memory, and no more once the
 // share is removed. A share Paul would read through himself is refused, its
 // reason shown. Whatever the test shares is removed whatever happens
@@ -51,9 +51,9 @@ test('a team’s memory shared with another is read there until the share is rem
   page,
   newContext,
 }) => {
-  const hugo = await (await newContext()).newPage();
-  await signIn(hugo, demo.hugo);
-  await readsNorthMemory(hugo, false);
+  const lea = await (await newContext()).newPage();
+  await signIn(lea, demo.lea);
+  await readsNorthMemory(lea, false);
 
   left.page = page;
   await openAdmin(page, TAB);
@@ -68,7 +68,9 @@ test('a team’s memory shared with another is read there until the share is rem
   await selectContaining(page.getByLabel('Partagées avec'), 'Équipe Sud');
   await page.getByRole('checkbox', { name: 'Les documents qui y sont déposés' }).uncheck();
   await page.getByRole('button', { name: 'Partager', exact: true }).click();
-  // The share, as the API lists it once the page is reloaded.
+  // The form closes once the share is made; then the share, as the API lists
+  // it once the page is reloaded.
+  await expect(page.getByRole('button', { name: 'Nouveau partage' })).toBeVisible();
   await page.reload();
   await page.getByRole('tab', { name: TAB }).click();
   const share = cardWith(page, SHARE, `Retirer ${SHARE}`);
@@ -77,9 +79,9 @@ test('a team’s memory shared with another is read there until the share is rem
   const said = 'Lu par les membres de l’unité « Équipe Sud », jusqu’au niveau « Interne » ;';
   await expect(page.getByText(`${said} sans échéance.`)).toBeVisible();
   await noError(page);
-  await readsNorthMemory(hugo, true);
+  await readsNorthMemory(lea, true);
 
   await page.getByRole('button', { name: `Retirer ${SHARE}` }).click();
   await expect(page.getByText('Aucun partage de connaissances')).toBeVisible();
-  await readsNorthMemory(hugo, false);
+  await readsNorthMemory(lea, false);
 });

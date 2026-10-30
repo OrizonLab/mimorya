@@ -13,11 +13,10 @@ import {
   type Sensitivity,
 } from '@/lib/api';
 import { formatBytes } from '@/lib/format';
-import { CLEARANCE_LABELS } from '@/lib/labels';
+import { CLEARANCE_LABELS, SENSITIVITIES } from '@/lib/labels';
 
 /** The files the API reads. */
 const ACCEPTED = '.pdf,.docx,.md,.markdown,.txt';
-const SENSITIVITIES: Sensitivity[] = ['public', 'internal', 'confidential', 'restricted'];
 
 /** The deposit's query string: its name, its space, its sensitivity. */
 function query(upload: Upload): string {
