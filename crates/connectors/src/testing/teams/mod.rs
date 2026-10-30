@@ -9,7 +9,8 @@
 //! answers under `ailleurs/`, an address no bot may trust (`untrusted_url`).
 //! It writes an activity
 //! as the Bot Framework sends it, with its token (`signing`). A test may
-//! make it unavailable (503), or change what it says of a member.
+//! make it unavailable (503), slow to say where its keys are, or change
+//! what it says of a member.
 
 mod routes;
 mod signing;
@@ -17,6 +18,7 @@ mod signing;
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use axum::Router;
 use axum::routing::{get, post};
@@ -48,6 +50,8 @@ pub struct TeamsSent {
 struct Shared {
     base: String,
     down: bool,
+    /// How late the Bot Framework's configuration is answered.
+    delay: Duration,
     /// The tokens Entra gave, and to which application.
     tokens: HashMap<String, String>,
     token_requests: usize,
@@ -117,6 +121,12 @@ impl FakeTeams {
     /// Every request answers 503 while `down`.
     pub fn unavailable(&self, down: bool) {
         self.lock().down = down;
+    }
+
+    /// The Bot Framework's configuration is answered `delay` late from now
+    /// on.
+    pub fn slow(&self, delay: Duration) {
+        self.lock().delay = delay;
     }
 
     /// The test key is endorsed for `channels` only from now on.

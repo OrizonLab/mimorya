@@ -3,8 +3,10 @@
 //! only; a refused secret said in French; a message written and a member
 //! named only at a Teams service the bot may trust, nothing asked
 //! elsewhere; the Bot Framework's keys read once for many activities, those
-//! arriving together waiting for that read, and Microsoft unreachable, not
-//! asked again at once.
+//! arriving together waiting for that read, and Microsoft unreachable or a
+//! read cut short, not asked again at once.
+
+use std::time::Duration;
 
 use mimorya_connectors::outbound::{NetworkPolicy, http_client};
 use mimorya_connectors::teams::{TeamsApi, TeamsEndpoints, TeamsFailure};
@@ -145,4 +147,29 @@ async fn activities_arriving_together_wait_for_the_one_read() {
         assert_eq!(keys[0].kid, TEAMS_KEY_ID);
     }
     assert_eq!(teams.key_reads(), 1);
+}
+
+#[tokio::test]
+async fn activities_arriving_together_ask_an_unreachable_microsoft_once() {
+    let teams = FakeTeams::start().await;
+    let api = api(&teams);
+    teams.unavailable(true);
+    let (first, second) = tokio::join!(api.keys(Some(TEAMS_KEY_ID)), api.keys(Some(TEAMS_KEY_ID)));
+    for keys in [first, second] {
+        assert!(keys.unwrap_or_default().is_empty());
+    }
+    assert_eq!(teams.configuration_requests(), 1);
+}
+
+#[tokio::test]
+async fn a_read_cut_short_is_not_tried_again_at_once() {
+    let teams = FakeTeams::start().await;
+    let api = api(&teams);
+    teams.slow(Duration::from_secs(5));
+    // The activity's connection closes while Microsoft is asked.
+    let cut = tokio::time::timeout(Duration::from_millis(500), api.keys(Some(TEAMS_KEY_ID))).await;
+    assert!(cut.is_err());
+    assert_eq!(teams.configuration_requests(), 1);
+    assert_eq!(api.keys(Some(TEAMS_KEY_ID)).await, Ok(Vec::new()));
+    assert_eq!(teams.configuration_requests(), 1);
 }

@@ -5,10 +5,11 @@
 //! is known within minutes and a stream of forged activities does not make
 //! the platform ask Microsoft again and again. One read at a time: whoever
 //! finds one under way waits for it, then takes what it kept, so that the
-//! activities arriving together (as on a restart) are all proven. A failed
-//! read is tried again thirty seconds after it ended at the soonest, the
-//! keys read last kept meanwhile; none kept, an activity is then proven by
-//! none.
+//! activities arriving together (as on a restart) are all proven. A read
+//! counts as tried from its start, so that one cut short (its activity's
+//! connection closed) is not tried again at once; a failed read is tried
+//! again thirty seconds after it ended at the soonest, the keys read last
+//! kept meanwhile; none kept, an activity is then proven by none.
 
 use std::time::{Duration, Instant};
 
@@ -69,20 +70,27 @@ impl TeamsApi {
         if !due(&cached) {
             return Ok(kept(cached));
         }
+        let read_at = cached.as_ref().and_then(|c| c.read_at);
+        let keys = kept(cached);
+        // Dropped before `_reading`: a read cut short is kept as tried
+        // before anyone waiting reads the cache.
+        let underway = Underway {
+            api: self,
+            before: Some((keys.clone(), read_at)),
+        };
         let read = self.read_keys().await;
+        underway.ended();
         let now = Instant::now();
         match read {
-            Ok(keys) => {
+            Ok(fresh) => {
                 self.keep_keys(KeyCache {
-                    keys: keys.clone(),
+                    keys: fresh.clone(),
                     read_at: Some(now),
                     tried_at: now,
                 });
-                Ok(keys)
+                Ok(fresh)
             }
             Err(failure) => {
-                let read_at = cached.as_ref().and_then(|c| c.read_at);
-                let keys = kept(cached);
                 self.keep_keys(KeyCache {
                     keys: keys.clone(),
                     read_at,
@@ -118,5 +126,32 @@ impl TeamsApi {
             return Err(TeamsFailure::Unreadable);
         }
         Ok(keys)
+    }
+}
+
+/// A read under way: cut short (its activity's connection closed), it
+/// still counts as tried, so that the next is not at once. Nothing is kept
+/// meanwhile: whoever comes waits for the read.
+struct Underway<'a> {
+    api: &'a TeamsApi,
+    /// The keys kept before, and when they were read; none once it ended.
+    before: Option<(Vec<BotKey>, Option<Instant>)>,
+}
+
+impl Underway<'_> {
+    fn ended(mut self) {
+        self.before = None;
+    }
+}
+
+impl Drop for Underway<'_> {
+    fn drop(&mut self) {
+        if let Some((keys, read_at)) = self.before.take() {
+            self.api.keep_keys(KeyCache {
+                keys,
+                read_at,
+                tried_at: Instant::now(),
+            });
+        }
     }
 }

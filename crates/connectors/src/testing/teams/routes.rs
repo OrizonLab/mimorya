@@ -1,8 +1,8 @@
 //! What the test Microsoft answers, as Microsoft does (ADR-138): a token
 //! from Entra for a known application with its own secret (client
 //! credentials), `invalid_client` otherwise; the Bot Framework's OpenID
-//! configuration and key set; a message written in a conversation, and
-//! who a member is, with a token Entra gave only.
+//! configuration (as late as a test asks) and key set; a message written
+//! in a conversation, and who a member is, with a token Entra gave only.
 
 use std::sync::{Arc, Mutex};
 
@@ -73,8 +73,13 @@ pub(super) async fn token(
 }
 
 pub(super) async fn openid(State(shared): SharedState) -> Response {
-    let mut shared = shared.lock().expect("lock");
-    shared.configuration_requests += 1;
+    let delay = {
+        let mut shared = shared.lock().expect("lock");
+        shared.configuration_requests += 1;
+        shared.delay
+    };
+    tokio::time::sleep(delay).await;
+    let shared = shared.lock().expect("lock");
     if shared.down {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     }
