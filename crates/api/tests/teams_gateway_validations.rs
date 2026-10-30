@@ -4,7 +4,8 @@
 //! audited so, the card written again without its buttons and the outcome
 //! said in the conversation, and the run goes on. An action decided
 //! meanwhile in the application has its buttons taken off at the next
-//! press, which decides nothing, but never by someone it is not for.
+//! press, which decides nothing, but never by someone it is not for; one
+//! expired is said to await nothing more, its card promising no answer.
 
 mod support;
 
@@ -15,6 +16,7 @@ use serde_json::json;
 use support::TestApi;
 use support::email;
 use support::manager_approvals::listed;
+use support::queue::as_owner;
 use support::refusals::{entries_since, latest_entry};
 use support::slack_conversations::answer;
 use support::sso::SSO_DEPLOYMENT;
@@ -170,6 +172,49 @@ async fn an_action_decided_meanwhile_has_its_buttons_taken_off() {
     assert!(buttons(&rewritten.card.unwrap()).is_empty());
     assert_eq!(rewritten.rewritten, 1);
     assert_eq!(listed(&marc, &run).await.unwrap()["status"], "approved");
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn an_expired_action_s_card_says_it_awaits_nothing_more() {
+    let teams = FakeTeams::start().await;
+    let api = TestApi::start_with_teams(&SSO_DEPLOYMENT, &teams.url).await;
+    let (paul, marc) = (api.sign_in(user::PAUL).await, api.sign_in(user::MARC).await);
+    let id = linked_teams(&api, &teams, (&paul, &marc), MARC_TEAMS, user::MARC).await;
+    let (run, approval) = asked(&api, &teams, (id, MARC_TEAMS), "Appliqué.").await;
+    assert_eq!(answer(&api).await, 1);
+    let pause = latest_card(&teams, MARC_TEAMS.0);
+    as_owner(
+        "update approvals set expires_at = now() - interval '1 minute' where id = $1",
+        approval,
+    )
+    .await;
+    // Pressed once its time is past: expired, nothing decided.
+    press(
+        &api,
+        &teams,
+        (id, &pause.id),
+        ("a-11", MARC_TEAMS),
+        choice(approval, true),
+    )
+    .await;
+    assert_eq!(listed(&marc, &run).await.unwrap()["status"], "expired");
+    // Said so, with its conversation, and no answer promised.
+    let rewritten = message(&teams, &pause.id);
+    let text = &rewritten.text;
+    assert!(
+        text.starts_with(
+            "L’action de cette demande montrée ci\\-dessous n’attend plus de décision \\("
+        ),
+        "{text}"
+    );
+    assert!(text.ends_with("\\)\\."), "{text}");
+    assert!(text.contains("/chat/"), "{text}");
+    let card = rewritten.card.unwrap();
+    assert!(buttons(&card).is_empty(), "{card}");
+    let shown = card_text(&card);
+    assert!(shown.contains("N’attend plus de décision."), "{shown}");
+    assert!(!shown.contains("Décidée."), "{shown}");
 }
 
 #[tokio::test]

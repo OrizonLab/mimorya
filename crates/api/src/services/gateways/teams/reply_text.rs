@@ -252,6 +252,13 @@ mod tests {
         );
         // Expired, or stopped with its request: no answer is promised.
         assert_eq!(
+            settled_text(URL, one, false),
+            format!(
+                "L’action de cette demande montrée ci\\-dessous n’attend plus de \
+                 décision \\({LINK}\\)\\."
+            )
+        );
+        assert_eq!(
             settled_text(URL, several, false),
             format!(
                 "Les actions de cette demande montrées ci\\-dessous n’attendent plus de \

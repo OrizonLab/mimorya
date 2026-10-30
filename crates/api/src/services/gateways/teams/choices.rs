@@ -203,12 +203,8 @@ async fn write_card(
         managed: usize::try_from(card.managed).unwrap_or(0),
     };
     let url = services.gateways.conversation_url(card.conversation_id);
-    let text = if actions.iter().any(|a| a.state == CardState::Open) {
-        reply_text("awaiting_approval", None, &url, pause)
-    } else {
-        let decided = actions.iter().all(|a| a.state == CardState::Decided);
-        settled_text(&url, pause, decided)
-    };
+    let states: Vec<CardState> = actions.iter().map(|a| a.state).collect();
+    let text = card_text(&url, pause, &states);
     let message = &pressed.message;
     let to = (
         message.service_url.as_str(),
@@ -222,6 +218,17 @@ async fn write_card(
         anyhow::bail!("Teams refused the card: {}", failure.message());
     }
     Ok(())
+}
+
+/// The text a card whose actions stand as `states` is written with: the
+/// pause's while one is open; once none is, that none awaits a decision,
+/// promising the answer only if each was validated or refused.
+fn card_text(url: &str, pause: Pause, states: &[CardState]) -> String {
+    if states.contains(&CardState::Open) {
+        return reply_text("awaiting_approval", None, url, pause);
+    }
+    let decided = states.iter().all(|&state| state == CardState::Decided);
+    settled_text(url, pause, decided)
 }
 
 /// What a decision is told: whom the agent acts for (`own`) reads that
@@ -272,5 +279,26 @@ mod tests {
         // state: written again.
         assert!(to_write(&[Decided, Decided], Some(&[Decided, Open])));
         assert!(to_write(&[Decided, Closed], Some(&[Decided, Open])));
+    }
+
+    #[test]
+    fn a_card_s_text_promises_the_answer_only_once_each_action_is_decided() {
+        use CardState::{Closed, Decided, Open};
+        const URL: &str = "https://app.example/chat/42";
+        let pause = Pause {
+            shown: 2,
+            ..Pause::default()
+        };
+        let waiting = card_text(URL, pause, &[Decided, Open]);
+        assert!(
+            waiting.starts_with("Des actions de cette demande attendent votre validation"),
+            "{waiting}"
+        );
+        let decided = card_text(URL, pause, &[Decided, Decided]);
+        assert!(decided.contains("sont décidées"), "{decided}");
+        assert!(decided.ends_with("La suite viendra ici\\."), "{decided}");
+        let closed = card_text(URL, pause, &[Decided, Closed]);
+        assert!(closed.contains("n’attendent plus de décision"), "{closed}");
+        assert!(!closed.contains("La suite"), "{closed}");
     }
 }

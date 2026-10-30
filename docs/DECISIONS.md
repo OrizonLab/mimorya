@@ -8092,8 +8092,9 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       relecture) et le texte d'une carte dont aucune action n'est ouverte ;
     - `crates/api/tests/teams_gateway_validations.rs` : action validée, puis refusée,
       depuis sa carte, auditée, carte réécrite, run repris ; bouton pressé de nouveau ;
-      action décidée entre-temps, ses boutons retirés ; carte laissée au compte Teams
-      relié depuis à quelqu'un d'autre ;
+      action décidée entre-temps, ses boutons retirés ; action expirée, sa carte disant
+      qu'elle n'attend plus de décision, sans promettre de suite ; carte laissée au
+      compte Teams relié depuis à quelqu'un d'autre ;
     - `teams_gateway_validation_checks.rs` : demande absente de la carte, message qui
       n'est pas une carte, bouton qui ne nomme aucune carte, carte de Marc nommée par
       Léa reliée, bot en pause, compte délié ; action envoyée hors de l'entreprise, ou
