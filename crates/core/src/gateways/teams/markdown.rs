@@ -3,10 +3,10 @@
 //! (emphasis, headings, list items, web links), everything else escaped
 //! (`escaped`), so that nothing in it reads as Markdown the agent did not
 //! write, nor as HTML. A heading is written in bold, a list item as `- `,
-//! an empty one as an empty line, a line of `=` escaped; emphasis is not nested (a span holds no
-//! other). Code,
-//! in spans or fenced blocks, is kept as written, its HTML characters
-//! escaped; a fenced block left open is closed.
+//! an empty one as an empty line, a line of `=` and bold of blanks
+//! escaped; emphasis is not nested (a span holds no other). Code, in spans
+//! or fenced blocks, is kept as written, its HTML characters escaped; a
+//! fenced block left open is closed.
 
 use super::text::escaped;
 use crate::gateways::markdown::{BOLD, HEADING, ITALIC, ITEM, LINK};
@@ -173,7 +173,12 @@ fn emphasis(text: &str) -> String {
             .or_else(|| found.get(2))
             .map_or("", |m| m.as_str());
         out.push_str(&italic(&text[rest..whole.start()]));
-        out.push_str(&format!("**{}**", escaped(inner)));
+        if inner.trim().is_empty() {
+            // Bold of blanks alone would read as a rule.
+            out.push_str(&escaped(whole.as_str()));
+        } else {
+            out.push_str(&format!("**{}**", escaped(inner)));
+        }
         rest = whole.end();
     }
     out.push_str(&italic(&text[rest..]));
@@ -251,6 +256,7 @@ mod tests {
         assert_eq!(from_markdown("Titre\n#  \n+ \n* x"), "Titre\n\n\n- x");
         assert_eq!(from_markdown("~\n~~~\n+ "), "\\~\n\\~\\~\\~\n");
         assert_eq!(from_markdown("Titre\n === "), "Titre\n\\===");
+        assert_eq!(from_markdown("**\t** __ __"), "\\*\\* \\*\\* \\_\\_ \\_\\_");
     }
 
     #[test]
