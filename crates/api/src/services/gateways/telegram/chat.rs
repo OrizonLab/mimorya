@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 use super::reply_text::Markup;
 use crate::services::gateways::GatewayService;
-use crate::services::gateways::replies::later;
+use crate::services::gateways::retry::later;
 
 /// A person's private chat with a company's bot.
 #[derive(Debug, Clone, Copy)]
@@ -78,7 +78,7 @@ pub fn after_failure(failure: &TelegramFailure, attempt: i32, now: DateTime<Utc>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::gateways::replies::MAX_ATTEMPTS;
+    use crate::services::gateways::retry::MAX_ATTEMPTS;
     use chrono::Duration;
     use mimorya_connectors::telegram::RefusalCause;
 

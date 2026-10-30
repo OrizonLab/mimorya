@@ -1,13 +1,15 @@
-//! What a manager, or whom they named to stand in for them, is written in
-//! Slack when requests of a paused run await them (ADR-130), in Slack's
-//! markup: for whom the agent acts, and in whose absence; the actions that
-//! may be validated there, each with its exact parameters and its buttons
-//! (ADR-129); how many others are to validate in the application, where
-//! every request awaiting them is listed.
+//! What a manager, or whom they named to stand in for them, is told when
+//! requests of a paused run await them, in any messaging service (ADR-130,
+//! ADR-137): for whom the agent acts, and in whose absence; that the
+//! actions shown may be validated there, after their exact parameters are
+//! read, or in the application; how many others are to validate in the
+//! application, where every request awaiting them is listed. The same
+//! words in each service, each writing the names and the link as it reads
+//! them (`Written`) and showing the actions its own way: Slack's blocks
+//! (`approver_notices/slack.rs`), Telegram's text and buttons
+//! (`telegram::approver_notice`).
 
 use mimorya_core::gateways::ShownAction;
-use mimorya_core::gateways::slack::{approval_blocks, escaped};
-use serde_json::Value;
 
 /// The requests awaiting a manager, as they are told of.
 pub struct ApproverNotice<'a> {
@@ -23,20 +25,26 @@ pub struct ApproverNotice<'a> {
     pub link: &'a str,
 }
 
-/// The direct message telling of `notice`: its text, and the blocks showing
-/// its actions with their buttons, if any is shown.
-pub fn approver_notice(notice: &ApproverNotice) -> (String, Option<Vec<Value>>) {
-    let link = format!("<{}|ouvrir les validations>", escaped(notice.link));
-    let who = escaped(notice.requested_for);
+/// A notice's names and link, as a service writes them: escaped, the name
+/// of whom the agent acts for set apart.
+pub struct Written {
+    pub requested_for: String,
+    pub absent: Option<String>,
+    pub link: String,
+}
+
+/// What `notice` says, its names and link as `written`.
+pub fn approver_words(notice: &ApproverNotice, written: &Written) -> String {
     let count = notice.shown.len() + notice.in_application;
     let actions = if count == 1 {
-        "une action".to_string()
+        "une action".to_owned()
     } else {
         format!("{count} actions")
     };
-    let mut text = format!("*{who}* : l’agent attend votre validation pour {actions}");
-    if let Some(absent) = notice.absent {
-        text.push_str(&format!(", en l’absence de {}", escaped(absent)));
+    let (who, link) = (&written.requested_for, &written.link);
+    let mut text = format!("{who} : l’agent attend votre validation pour {actions}");
+    if let Some(absent) = &written.absent {
+        text.push_str(&format!(", en l’absence de {absent}"));
     }
     text.push('.');
     if notice.shown.is_empty() {
@@ -48,7 +56,7 @@ pub fn approver_notice(notice: &ApproverNotice) -> (String, Option<Vec<Value>>) 
         text.push_str(&format!(
             " {pronoun} {verb} dans l’application, qui en montre les paramètres exacts : {link}."
         ));
-        return (text, None);
+        return text;
     }
     let them = if notice.shown.len() == 1 {
         "la valider ou la refuser"
@@ -62,8 +70,7 @@ pub fn approver_notice(notice: &ApproverNotice) -> (String, Option<Vec<Value>>) 
     if notice.in_application > 0 {
         text.push_str(" D’autres sont à valider dans l’application.");
     }
-    let blocks = approval_blocks(&text, notice.shown);
-    (text, Some(blocks))
+    text
 }
 
 #[cfg(test)]
@@ -73,49 +80,24 @@ mod tests {
 
     use super::*;
 
-    const URL: &str = "https://mimorya.example/approvals";
-    const LINK: &str = "<https://mimorya.example/approvals|ouvrir les validations>";
-
-    fn notice<'a>(shown: &'a [ShownAction<'a>], in_application: usize) -> ApproverNotice<'a> {
-        ApproverNotice {
-            requested_for: "Nadia <Benali>",
-            absent: None,
+    fn words(shown: &[ShownAction], in_application: usize, absent: Option<&str>) -> String {
+        let notice = ApproverNotice {
+            requested_for: "Nadia",
+            absent,
             shown,
             in_application,
-            link: URL,
-        }
-    }
-
-    #[test]
-    fn an_action_validated_in_slack_is_shown_with_its_buttons() {
-        let parameters = json!({ "intervention": "INT-2052" });
-        let action = ShownAction {
-            approval_id: Uuid::new_v4(),
-            summary: "Planifier INT-2052",
-            risk: "write",
-            parameters: &parameters,
+            link: "lien",
         };
-        let shown = [action];
-        let (text, blocks) = approver_notice(&notice(&shown, 0));
-        assert!(
-            text.starts_with(
-                "*Nadia &lt;Benali&gt;* : l’agent attend votre validation pour une action."
-            ),
-            "{text}"
-        );
-        assert!(
-            text.contains("Vous pouvez la valider ou la refuser ci-dessous"),
-            "{text}"
-        );
-        assert!(text.contains(LINK), "{text}");
-        assert!(!text.contains("D’autres"), "{text}");
-        let blocks = json!(blocks.expect("its buttons")).to_string();
-        assert!(blocks.contains("approval_approve"), "{blocks}");
-        assert!(blocks.contains("INT-2052"), "{blocks}");
+        let written = Written {
+            requested_for: "Nadia".into(),
+            absent: absent.map(str::to_owned),
+            link: "LIEN".into(),
+        };
+        approver_words(&notice, &written)
     }
 
     #[test]
-    fn the_others_and_an_absence_are_said() {
+    fn the_actions_shown_are_validated_below_the_others_in_the_application() {
         let parameters = json!({});
         let action = ShownAction {
             approval_id: Uuid::new_v4(),
@@ -123,37 +105,27 @@ mod tests {
             risk: "write",
             parameters: &parameters,
         };
-        let shown = [action, action];
-        let mut told = notice(&shown, 1);
-        told.absent = Some("Marc Dupont");
-        let (text, blocks) = approver_notice(&told);
-        assert!(
-            text.contains("pour 3 actions, en l’absence de Marc Dupont."),
-            "{text}"
+        assert_eq!(
+            words(&[action], 0, None),
+            "Nadia : l’agent attend votre validation pour une action. Vous pouvez la valider ou \
+             la refuser ci-dessous, après en avoir lu les paramètres exacts, ou dans \
+             l’application (LIEN)."
         );
-        assert!(
-            text.contains("Vous pouvez les valider ou les refuser"),
-            "{text}"
+        assert_eq!(
+            words(&[action, action], 1, Some("Marc")),
+            "Nadia : l’agent attend votre validation pour 3 actions, en l’absence de Marc. Vous \
+             pouvez les valider ou les refuser ci-dessous, après en avoir lu les paramètres \
+             exacts, ou dans l’application (LIEN). D’autres sont à valider dans l’application."
         );
-        assert!(
-            text.ends_with("D’autres sont à valider dans l’application."),
-            "{text}"
-        );
-        assert!(blocks.is_some());
     }
 
     #[test]
-    fn actions_validated_in_the_application_are_shown_without_buttons() {
-        let (one, blocks) = approver_notice(&notice(&[], 1));
+    fn actions_validated_in_the_application_are_said_so() {
         assert_eq!(
-            one,
-            format!(
-                "*Nadia &lt;Benali&gt;* : l’agent attend votre validation pour une action. Elle \
-                 se valide dans l’application, qui en montre les paramètres exacts : {LINK}."
-            )
+            words(&[], 1, None),
+            "Nadia : l’agent attend votre validation pour une action. Elle se valide dans \
+             l’application, qui en montre les paramètres exacts : LIEN."
         );
-        assert_eq!(blocks, None);
-        let (two, _) = approver_notice(&notice(&[], 2));
-        assert!(two.contains("pour 2 actions. Elles se valident"), "{two}");
+        assert!(words(&[], 2, None).contains("pour 2 actions. Elles se valident"));
     }
 }

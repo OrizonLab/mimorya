@@ -1,14 +1,16 @@
-//! A validation given in Telegram (ADR-136): the « Valider » or « Refuser »
-//! button a linked person pressed under a pause's message in their private
-//! chat with the bot, sent by Telegram with the webhook's secret. Only a
-//! button the bot showed under its own message there is taken: what the
-//! press carries must be one of that message's buttons, as Telegram holds
-//! it, whatever a client claims. Answered to Telegram at once, then decided
-//! in the background as that person, once they may act (`person::may_act`),
-//! with their rights as they stand, as from the application's screen. Only
-//! an action awaiting their own decision, that may be validated outside the
-//! application (`validated_in_gateway`), is decided there: any other is
-//! left to the application. The press is answered with what became of it;
+//! A validation given in Telegram: the « Valider » or « Refuser » button a
+//! linked person pressed under a message of the bot in their private chat
+//! with it, a pause of their own run (ADR-136) or the notice of requests
+//! awaiting them as a manager, or as whom stands in for one (ADR-137), sent
+//! by Telegram with the webhook's secret. Only a button the bot showed
+//! under its own message there is taken: what the press carries must be
+//! one of that message's buttons, as Telegram holds it, whatever a client
+//! claims. Answered to Telegram at once, then decided in the background as
+//! that person, once they may act (`person::may_act`), with their rights as
+//! they stand, as from the application's screen. Only an action awaiting
+//! their decision (their own, or a manager's they are or stand in for),
+//! that may be validated outside the application (`validated_in_gateway`),
+//! is decided there: any other is left to the application. The press is answered with what became of it;
 //! the buttons of the message's actions decided by then (now, or meanwhile
 //! in the application) are taken off, and the outcome said in answer to it.
 //! Audited as any decision, with the service it was given from, as in

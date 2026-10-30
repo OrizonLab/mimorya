@@ -9,9 +9,9 @@ use mimorya_core::gateways::{ShownAction, validated_in_gateway};
 use mimorya_db::repositories::approvals::ApprovalRow;
 use mimorya_db::repositories::gateway_replies::{ReplyRecord, ReplyTarget};
 
-use super::later;
 use crate::services::gateways::GatewayService;
 use crate::services::gateways::reply_text::{Pause, pause_reply, reply_text};
+use crate::services::gateways::retry::later;
 
 /// Writes the answer to `target` in its thread, with the bot's `token`;
 /// `awaiting`, a pause's actions still awaiting a decision. What became of
@@ -90,7 +90,7 @@ pub(in crate::services::gateways) fn after_failure(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::gateways::replies::MAX_ATTEMPTS;
+    use crate::services::gateways::retry::MAX_ATTEMPTS;
     use chrono::Duration;
 
     #[test]

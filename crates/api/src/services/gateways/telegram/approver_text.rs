@@ -1,67 +1,32 @@
 //! What a manager, or whom they named to stand in for them, is written in
 //! their private chat with the company's Telegram bot when requests of a
-//! paused run await them (ADR-137), in the HTML Telegram reads, or in plain
-//! text once Telegram refused it: for whom the agent acts, and in whose
-//! absence; the actions that may be validated there, each with its exact
-//! parameters, whole, its buttons under the message (ADR-136); how many
-//! others are to validate in the application, where every request awaiting
-//! them is listed.
+//! paused run await them (ADR-137): the words of `approver_text`, in the
+//! HTML Telegram reads, or in plain text once Telegram refused it, then the
+//! actions that may be validated there, each with its exact parameters,
+//! whole, their buttons under the message (ADR-136).
 
 use mimorya_core::gateways::telegram::{escaped, link, shown_actions};
 
 use super::reply_text::Markup;
-use crate::services::gateways::approver_text::ApproverNotice;
+use crate::services::gateways::approver_text::{ApproverNotice, Written, approver_words};
 
 /// The message telling of `notice`, in `markup`.
 pub fn approver_notice(markup: Markup, notice: &ApproverNotice) -> String {
     let html = markup == Markup::Html;
-    let (who, absent, link) = if html {
-        (
-            format!("<b>{}</b>", escaped(notice.requested_for)),
-            notice.absent.map(escaped),
-            link(notice.link, "ouvrir les validations"),
-        )
+    let written = if html {
+        Written {
+            requested_for: format!("<b>{}</b>", escaped(notice.requested_for)),
+            absent: notice.absent.map(escaped),
+            link: link(notice.link, "ouvrir les validations"),
+        }
     } else {
-        (
-            notice.requested_for.to_owned(),
-            notice.absent.map(str::to_owned),
-            notice.link.to_owned(),
-        )
+        Written {
+            requested_for: notice.requested_for.to_owned(),
+            absent: notice.absent.map(str::to_owned),
+            link: notice.link.to_owned(),
+        }
     };
-    let count = notice.shown.len() + notice.in_application;
-    let actions = if count == 1 {
-        "une action".to_owned()
-    } else {
-        format!("{count} actions")
-    };
-    let mut text = format!("{who} : l’agent attend votre validation pour {actions}");
-    if let Some(absent) = absent {
-        text.push_str(&format!(", en l’absence de {absent}"));
-    }
-    text.push('.');
-    if notice.shown.is_empty() {
-        let (pronoun, verb) = if count == 1 {
-            ("Elle", "se valide")
-        } else {
-            ("Elles", "se valident")
-        };
-        text.push_str(&format!(
-            " {pronoun} {verb} dans l’application, qui en montre les paramètres exacts : {link}."
-        ));
-        return text;
-    }
-    let them = if notice.shown.len() == 1 {
-        "la valider ou la refuser"
-    } else {
-        "les valider ou les refuser"
-    };
-    text.push_str(&format!(
-        " Vous pouvez {them} ci-dessous, après en avoir lu les paramètres exacts, ou dans \
-         l’application ({link})."
-    ));
-    if notice.in_application > 0 {
-        text.push_str(" D’autres sont à valider dans l’application.");
-    }
+    let mut text = approver_words(notice, &written);
     text.push_str(&shown_actions(notice.shown, html));
     text
 }

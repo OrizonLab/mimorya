@@ -36,6 +36,7 @@ mod link;
 mod person;
 mod replies;
 mod reply_text;
+mod retry;
 mod started;
 mod telegram;
 
@@ -56,7 +57,8 @@ pub use conversations::converse;
 pub use events::{EventOutcome, PersonMessage, SlackHeaders};
 pub use identities::GatewayOfPerson;
 pub use link::{LINK_LIFETIME, LinkPreview};
-pub use replies::{MAX_ATTEMPTS, reply_to_finished_runs};
+pub use replies::reply_to_finished_runs;
+pub use retry::MAX_ATTEMPTS;
 pub use telegram::{
     ChatMessage, PendingLink, TelegramChoice, TelegramLinkCode, UpdateOutcome,
     converse_in_telegram, decide_in_telegram,

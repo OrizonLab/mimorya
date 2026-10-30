@@ -7672,9 +7672,12 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     décidée par l'un garde ses boutons dans l'autre ; pressés, ils ne décident plus
     rien. Dans Telegram, le message de l'autre service perd ses boutons à la pression
     suivante (ADR-136) ;
+  - les mots de l'annonce sont les mêmes dans chaque service (`approver_text.rs`),
+    qui n'écrit à sa façon que les noms et le lien ;
   - l'écriture dans la conversation privée (HTML puis texte simple, boutons) et ce que
     devient un message que Telegram ne prend pas sont communs à la réponse d'un run et
-    à l'annonce (`services/gateways/telegram/chat.rs`) ;
+    à l'annonce (`services/gateways/telegram/chat.rs`) ; quand un message qu'un service
+    n'a pas pris est réessayé est commun aux deux services (`retry.rs`) ;
   - le texte d'aide du formulaire du bot dit qu'un responsable relié y est prévenu ;
   - tests :
     - `crates/core` : actions montrées dans un message, seules celles qui se valident
@@ -7687,8 +7690,9 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
       l'entreprise annoncée sans boutons, et ni sa pression prétendue ni celle d'une
       autre personne reliée ne décide ; responsable qui a perdu le droit : rien
       d'écrit ;
-    - `telegram_gateway_approver_notice_outcomes.rs` : personne de relié, bot en
-      pause puis remis en service, Telegram injoignable puis réessayé, HTML refusé
+    - `telegram_gateway_approver_notice_outcomes.rs` : responsable qui n'a relié
+      aucun compte (une autre personne reliée ne reçoit rien), bot en pause puis remis
+      en service, Telegram injoignable puis réessayé, HTML refusé
       (texte simple avec ses boutons), bot bloqué (refusé, plus réessayé) ;
       responsable relié à Slack et à Telegram prévenu dans chacun une fois, la
       passerelle injoignable réessayée seule ;

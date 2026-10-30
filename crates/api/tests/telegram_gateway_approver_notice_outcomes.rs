@@ -1,6 +1,6 @@
 //! What becomes of the notices to managers in Telegram (ADR-137): a manager
-//! whose Telegram account is linked to nothing is written nothing, recorded
-//! so and never tried again; a paused bot tells nobody until it is enabled
+//! who linked no Telegram account is written nothing, whoever else did,
+//! recorded so and never tried again; a paused bot tells nobody until it is enabled
 //! again, then tells of the requests still waiting; Telegram unreachable,
 //! the notice is tried again later; its HTML refused, it is said in plain
 //! text with its buttons; the bot blocked, it is refused and not tried
@@ -19,11 +19,14 @@ use support::approver_notices::{
 };
 use support::slack_conversations::{MARC_SLACK, linked};
 use support::sso::SSO_DEPLOYMENT;
-use support::telegram::{MARC_TELEGRAM, MARC_USERNAME, declare_telegram, declare_telegram_beside};
+use support::telegram::{
+    LEA_TELEGRAM, LEA_USERNAME, MARC_TELEGRAM, MARC_USERNAME, declare_telegram_beside,
+};
 use support::telegram_conversations::{chat_of, last_said, link_to, linked_bot};
 use support::{TestApi, email};
 
 const MARC: (i64, &str) = (MARC_TELEGRAM, MARC_USERNAME);
+const LEA: (i64, &str) = (LEA_TELEGRAM, LEA_USERNAME);
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
@@ -31,7 +34,10 @@ async fn a_manager_linked_to_nothing_is_written_nothing() {
     let telegram = FakeTelegram::start().await;
     let api = TestApi::start_with_telegram(&SSO_DEPLOYMENT, &telegram.url).await;
     let (paul, marc) = (api.sign_in(user::PAUL).await, api.sign_in(user::MARC).await);
-    declare_telegram(&paul).await;
+    // Someone else linked to the bot: Léa, not Marc.
+    let lea = api.sign_in(user::LEA).await;
+    linked_bot(&api, &telegram, (&paul, &lea), LEA).await;
+    let written = telegram.messages().len();
     let (_, approval) = nadia_s_request(&api, &paul, "09:00").await;
 
     assert_eq!(notify(&api).await, 0);
@@ -40,7 +46,7 @@ async fn a_manager_linked_to_nothing_is_written_nothing() {
         notice_of(&api, approval).await,
         Some((Some("skipped".into()), 1))
     );
-    assert!(telegram.messages().is_empty(), "nothing written");
+    assert_eq!(telegram.messages().len(), written, "nothing written");
     refuse(&api, &marc, approval).await;
 }
 

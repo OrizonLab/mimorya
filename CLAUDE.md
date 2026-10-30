@@ -160,8 +160,9 @@ Repères à l'intérieur des crates :
   dans le fil (`replies/`, un module par service, `reply_text.rs`), ADR-127 ; action validée ou refusée par
   son bouton dans le fil (`choices.rs`), qui peut agir, pour un message comme pour un
   bouton (`person.rs`), ADR-129 ; demandes qui attendent un responsable annoncées par
-  message direct (`approver_notices/`, un module par service, `approver_text.rs`),
-  ADR-130 ; conversation
+  message direct (`approver_notices/`, un module par service, mots communs aux
+  services : `approver_text.rs`), ADR-130 ; message qu'un service n'a pas pris réessayé
+  (`retry.rs`) ; conversation
   directe vérifiée auprès de Slack avant que rien n'y soit dit (`direct.rs`), ADR-131 ;
   bot Telegram : mises à jour reçues sur le secret du webhook et compte relié par un code
   de la session (`telegram/`), ADR-133 ; mots d'une personne reliée répondus dans une
