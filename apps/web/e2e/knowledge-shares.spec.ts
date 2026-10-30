@@ -15,6 +15,8 @@ const TAB = 'Partage de connaissances';
 /** A memory of the north team's space (seed). */
 const NORTH_MEMORY = 'Retours chantier équipe Nord';
 const SHARE = 'Équipe Nord → Équipe Sud';
+/** The other way, as the form offers it: both kinds, no date, no units below. */
+const BACK = 'Équipe Sud → Équipe Nord';
 
 /** The administrator's page, for the cleanup. */
 const left: { page?: Page } = {};
@@ -72,21 +74,33 @@ test('a team’s memory shared with another is read there until the share is rem
   await page.getByRole('checkbox', { name: /^Lu aussi par les membres des unités sous/ }).check();
   await page.getByLabel('Jusqu’au (facultatif)').fill('2099-12-31');
   await page.getByRole('button', { name: 'Partager', exact: true }).click();
-  // The form closes once the share is made; then the share, as the API lists
-  // it once the page is reloaded.
+  // The form closes once the share is made.
   await expect(page.getByRole('button', { name: 'Nouveau partage' })).toBeVisible();
+  await page.getByRole('button', { name: 'Nouveau partage' }).click();
+  await selectContaining(page.getByLabel('Connaissances de l’unité'), 'Équipe Sud');
+  await selectContaining(page.getByLabel('Partagées avec'), 'Équipe Nord');
+  await page.getByRole('button', { name: 'Partager', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Nouveau partage' })).toBeVisible();
+
+  // The shares, as the API lists them once the page is reloaded.
   await page.reload();
   await page.getByRole('tab', { name: TAB }).click();
   const share = cardWith(page, SHARE, `Retirer ${SHARE}`);
   await expect(share.getByText('Mémoire', { exact: true })).toBeVisible();
   await expect(share.getByText('Documents', { exact: true })).toHaveCount(0);
-  const readers = 'Lu par les membres de l’unité « Équipe Sud » et des unités en dessous';
-  const said = `${readers}, jusqu’au niveau « Interne » ; jusqu’au 31/12/2099`;
-  await expect(page.getByText(said)).toBeVisible();
+  const below = 'Lu par les membres de l’unité « Équipe Sud » et des unités en dessous';
+  const dated = `${below}, jusqu’au niveau « Interne » ; jusqu’au 31/12/2099`;
+  await expect(page.getByText(dated)).toBeVisible();
+  const back = cardWith(page, BACK, `Retirer ${BACK}`);
+  await expect(back.getByText('Documents', { exact: true })).toBeVisible();
+  const plain = 'Lu par les membres de l’unité « Équipe Nord », jusqu’au niveau « Interne » ;';
+  await expect(page.getByText(`${plain} sans échéance.`)).toBeVisible();
   await noError(page);
   await readsNorthMemory(lea, true);
 
   await page.getByRole('button', { name: `Retirer ${SHARE}` }).click();
-  await expect(page.getByText('Aucun partage de connaissances')).toBeVisible();
+  await expect(page.getByText(SHARE, { exact: true })).toHaveCount(0);
   await readsNorthMemory(lea, false);
+  await page.getByRole('button', { name: `Retirer ${BACK}` }).click();
+  await expect(page.getByText('Aucun partage de connaissances')).toBeVisible();
 });

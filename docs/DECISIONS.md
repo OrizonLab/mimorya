@@ -8270,7 +8270,8 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     les unités en dessous si dit), le niveau de sensibilité jusqu'où il va, son échéance
     ou son absence, « Échu » une fois passée ; un bouton le retire, après confirmation ;
   - **ce qu'il fait** : un formulaire choisit l'unité partagée et celle qui reçoit le
-    partage dans l'organigramme, ce qui est partagé (mémoire, documents, cochés tous les
+    partage dans l'organigramme, aucune n'étant choisie d'avance (« Partager » attend les
+    deux), ce qui est partagé (mémoire, documents, cochés tous les
     deux d'abord), les unités en dessous, le niveau de sensibilité (« Interne »
     d'abord) et une date facultative, jusqu'à la fin de ce jour. Les règles restent
     celles du serveur : un refus, dont celui d'un partage que l'auteur lirait lui-même,
@@ -8282,6 +8283,8 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
 - **Conséquences** :
   - tests : `crates/api/tests/knowledge_share_admin.rs` (unités listées avec leur
     parent) ; `apps/web/e2e/knowledge-shares.spec.ts` (partage refusé vers l'unité de
-    Paul, son motif affiché ; partage de la mémoire de l'équipe Nord avec l'équipe Sud,
-    relu après rechargement ; mémoire de l'équipe Nord lue par Léa, de l'équipe Sud, puis plus une fois
-    le partage retiré).
+    Paul, son motif affiché ; « Partager » attendant les deux unités ; partage de la
+    mémoire de l'équipe Nord avec l'équipe Sud et les unités en dessous jusqu'au
+    31/12/2099, et partage en retour tel que le formulaire le propose, sans échéance, les
+    deux relus après rechargement ; mémoire de l'équipe Nord lue par Léa, de l'équipe Sud,
+    puis plus une fois le partage retiré).
