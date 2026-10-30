@@ -418,8 +418,9 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
 - **Partage de connaissances** (ADR-143) : seul un administrateur des politiques
   d'accès (`policy:manage`, toute l'entreprise) partage les connaissances d'une unité
   (mémoire de son espace, documents qui y sont déposés) avec une autre, et si dit les
-  unités en dessous, jusqu'à une sensibilité et une date. Le partage n'accorde aucune
-  permission : il élargit seulement ce que lit qui lit déjà les connaissances de son
+  unités en dessous, jusqu'à une sensibilité et une date ; jamais un partage dont il
+  serait lui-même lecteur, qui revient à un autre administrateur (ADR-019, ADR-022).
+  Le partage n'accorde aucune permission : il élargit seulement ce que lit qui lit déjà les connaissances de son
   unité (`memory:read`, `document:read`), jamais au-delà de la sensibilité du partage
   ni de son habilitation, jamais en écriture ni en suppression, jamais la mémoire
   personnelle ni les unités sous l'unité partagée. Les filtres de lecture (SQL et

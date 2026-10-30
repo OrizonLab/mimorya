@@ -299,11 +299,15 @@ async fn the_application_changes_nothing_of_a_passage_but_its_vector() {
     assert!(given.rows_affected() > 0);
 }
 
-/// What Lucas finds by the words of `query` once the south team's documents
-/// are shared with his team up to `ceiling` (ADR-143).
-async fn lucas_finds_shared(tx: &mut TenantTx, query: &str, ceiling: Sensitivity) -> Vec<String> {
+/// What Lucas finds for `query`, of meaning along `along` if said, once the
+/// south team's documents are shared with his team up to `ceiling`
+/// (ADR-143).
+async fn lucas_finds_shared(
+    tx: &mut TenantTx,
+    (query, along): (&str, Option<usize>),
+    ceiling: Sensitivity,
+) -> Vec<String> {
     let share = KnowledgeShare {
-        id: Uuid::new_v4(),
         source_unit_id: unit::TEAM_SOUTH,
         target_unit_id: unit::TEAM_NORTH,
         include_descendants: false,
@@ -315,7 +319,15 @@ async fn lucas_finds_shared(tx: &mut TenantTx, query: &str, ceiling: Sensitivity
     let engine = demo::authorization_engine().with_knowledge_shares(vec![share]);
     let subject = demo::subject(user::LUCAS);
     let filter = document_read_filter(&engine, &subject, &Actor::user());
-    let hits = search_documents(tx, &filter, query, None, 5).await.unwrap();
+    let vector = along.map(axis);
+    let meaning = vector.as_deref().map(|vector| Meaning {
+        vector,
+        model: MODEL,
+        min_similarity: 0.5,
+    });
+    let hits = search_documents(tx, &filter, query, meaning, 5)
+        .await
+        .unwrap();
     hits.into_iter().map(|h| h.title).collect()
 }
 
@@ -324,9 +336,16 @@ async fn lucas_finds_shared(tx: &mut TenantTx, query: &str, ceiling: Sensitivity
 async fn another_team_s_documents_are_found_once_shared_up_to_their_sensitivity() {
     let db = app().await;
     let mut tx = db.begin(tenant::ID).await.unwrap();
-    let query = "retours chantier mardi";
-    let found = lucas_finds_shared(&mut tx, query, Sensitivity::Public).await;
-    assert!(!found.contains(&"Consignes Sud".to_owned()), "{found:?}");
-    let found = lucas_finds_shared(&mut tx, query, Sensitivity::Internal).await;
-    assert!(found.contains(&"Consignes Sud".to_owned()), "{found:?}");
+    let south = "Consignes Sud".to_owned();
+    // By their words, then by their meaning only, no word in common.
+    embed(&mut tx, &[(south.as_str(), 0, axis(2), MODEL)]).await;
+    for asked in [
+        ("retours chantier mardi", None),
+        ("Quelle tenue porter ?", Some(2)),
+    ] {
+        let found = lucas_finds_shared(&mut tx, asked, Sensitivity::Public).await;
+        assert!(!found.contains(&south), "{found:?}");
+        let found = lucas_finds_shared(&mut tx, asked, Sensitivity::Internal).await;
+        assert!(found.contains(&south), "{found:?}");
+    }
 }

@@ -42,8 +42,9 @@ Repères à l'intérieur des crates :
   chaque type, domaines, ce que prouve un jeton ou une assertion SAML, nom d'un compte
   créé, enregistrement DNS qui prouve un domaine (`domain_proof.rs`), ADR-063, ADR-067,
   ADR-068, ADR-069), `core/src/schedule.rs` (heure d'une tâche planifiée, ADR-080),
-  `core/src/knowledge_shares.rs` (connaissances d'une unité partagées avec une autre :
-  unités lues par chacun et sensibilité, ADR-143),
+  `core/src/knowledge_shares/` (connaissances d'une unité partagées avec une autre :
+  unités lues par chacun et sensibilité, ce qu'un partage peut dire, `rules.rs`,
+  ADR-143),
   `core/src/documents/` (documents déposés : types reconnus, nom et titre, limites,
   refus, découpage en passages, qui lit et dépose où (`spaces.rs`), ADR-095),
   `core/src/demo/` (entreprise fictive par thème), `core/src/gateways/` (passerelles de

@@ -158,6 +158,7 @@ pub async fn delete_unit(
             (usage.assignments, "habilitation(s)"),
             (usage.memories, "élément(s) de mémoire"),
             (usage.documents, "document(s)"),
+            (usage.knowledge_shares, "partage(s) de connaissances"),
         ]
         .into_iter()
         .filter(|(count, _)| *count > 0)

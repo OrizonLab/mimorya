@@ -7,7 +7,10 @@
 //! sensitivity nor their own clearance. Nothing else crosses: neither
 //! writing, nor the units under the unit shared, nor anyone's personal
 //! memory; and only for whom reads their own unit's knowledge
-//! (`memory:read`, `document:read`) at all.
+//! (`memory:read`, `document:read`) at all. What a share may say is in
+//! `rules`.
+
+mod rules;
 
 use std::collections::HashMap;
 
@@ -15,6 +18,8 @@ use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use crate::authz::{OrgTree, Sensitivity, Subject};
+
+pub use rules::{ShareProblem, share_problem};
 
 /// The knowledge a share opens.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -25,10 +30,9 @@ pub enum SharedKnowledge {
     Documents,
 }
 
-/// A unit's knowledge shared with another unit.
+/// A unit's knowledge shared with another unit: what the share says.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KnowledgeShare {
-    pub id: Uuid,
     /// The unit whose space is shared.
     pub source_unit_id: Uuid,
     /// The unit whose members read it.
@@ -90,5 +94,4 @@ pub fn shared_units(
 }
 
 #[cfg(test)]
-#[path = "knowledge_shares_tests.rs"]
 mod tests;

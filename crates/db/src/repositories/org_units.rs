@@ -74,8 +74,8 @@ pub async fn update_org_unit(
 }
 
 /// What still depends on a unit. Deleting it would cascade to memberships,
-/// role assignments and team memory, and its documents forbid it: it is
-/// refused while any remains.
+/// role assignments, team memory and knowledge shares, and its documents
+/// forbid it: it is refused while any remains.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, sqlx::FromRow)]
 pub struct OrgUnitUsage {
     pub children: i64,
@@ -83,6 +83,8 @@ pub struct OrgUnitUsage {
     pub assignments: i64,
     pub memories: i64,
     pub documents: i64,
+    /// Shares of its knowledge, or with it (ADR-143).
+    pub knowledge_shares: i64,
 }
 
 impl OrgUnitUsage {
@@ -97,7 +99,9 @@ pub async fn org_unit_usage(conn: &mut PgConnection, id: Uuid) -> sqlx::Result<O
          (select count(*) from org_memberships where org_unit_id = $1) as members, \
          (select count(*) from role_assignments where scope_org_unit_id = $1) as assignments, \
          (select count(*) from memory_items where org_unit_id = $1) as memories, \
-         (select count(*) from documents where org_unit_id = $1) as documents",
+         (select count(*) from documents where org_unit_id = $1) as documents, \
+         (select count(*) from knowledge_shares \
+          where source_org_unit_id = $1 or target_org_unit_id = $1) as knowledge_shares",
     )
     .bind(id)
     .fetch_one(conn)
@@ -105,8 +109,8 @@ pub async fn org_unit_usage(conn: &mut PgConnection, id: Uuid) -> sqlx::Result<O
 }
 
 /// Locks the unit's row until the end of the transaction: rows that would
-/// reference it (memberships, assignments, memory, documents) wait, then
-/// see it gone.
+/// reference it (memberships, assignments, memory, documents, knowledge
+/// shares) wait, then see it gone.
 /// Returns whether the unit exists.
 pub async fn lock_org_unit(conn: &mut PgConnection, id: Uuid) -> sqlx::Result<bool> {
     let found: Option<Uuid> =

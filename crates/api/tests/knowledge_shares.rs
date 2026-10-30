@@ -10,71 +10,15 @@ mod support;
 use axum::http::StatusCode;
 use mimorya_core::authz::Sensitivity;
 use mimorya_core::demo::{tenant, unit, user};
-use mimorya_core::memory::{MemoryKind, MemoryScope, MemorySource, MemoryStatus};
-use mimorya_db::repositories::memory::{NewMemory, create_memory};
 use serde_json::json;
+use support::TestApi;
 use support::documents::{Target, deposited, listed};
+use support::knowledge_shares::{SHARES, memories, north_to_south, share, team_memory, unshare};
 use support::queue::as_owner;
 use support::refusals::{entries_since, latest_entry};
-use support::{Client, TestApi};
 use uuid::Uuid;
 
-const SHARES: &str = "/admin/knowledge-shares";
 const TEXT: &[u8] = b"Consigne : purger le circuit avant intervention.";
-
-/// A memory of `unit`'s space, active, of `sensitivity`.
-async fn team_memory(api: &TestApi, unit_id: Uuid, sensitivity: Sensitivity) -> String {
-    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
-    let id = create_memory(
-        &mut tx,
-        NewMemory {
-            tenant_id: tenant::ID,
-            scope: MemoryScope::OrgUnit,
-            owner_user_id: None,
-            org_unit_id: Some(unit_id),
-            kind: MemoryKind::Fact,
-            title: format!("Consigne {}", sensitivity.as_str()),
-            content: "Demander le badge au gardien la veille.".into(),
-            sensitivity,
-            status: MemoryStatus::Active,
-            source: MemorySource::manual(None),
-            created_by_user_id: Some(user::JULIEN),
-            created_by_run_id: None,
-        },
-    )
-    .await
-    .unwrap();
-    tx.commit().await.unwrap();
-    id.to_string()
-}
-
-/// The memories `client` reads.
-async fn memories(client: &Client<'_>) -> Vec<String> {
-    let items = client.get("/memory").await.json()["items"].clone();
-    (items.as_array().unwrap().iter())
-        .map(|item| item["id"].as_str().unwrap().to_owned())
-        .collect()
-}
-
-/// Shares the north team's knowledge with the south team as `paul`: the
-/// memory, the documents, up to `max`; the share.
-async fn share_north(paul: &Client<'_>, (memory, documents): (bool, bool), max: &str) -> String {
-    let body = json!({
-        "sourceOrgUnitId": unit::TEAM_NORTH,
-        "targetOrgUnitId": unit::TEAM_SOUTH,
-        "memory": memory,
-        "documents": documents,
-        "maxSensitivity": max,
-    });
-    let created = paul.post(SHARES, body).await;
-    assert_eq!(created.status, StatusCode::CREATED, "{}", created.text());
-    created.json()["id"].as_str().unwrap().to_owned()
-}
-
-async fn unshare(paul: &Client<'_>, id: &str) {
-    let removed = paul.delete(&format!("{SHARES}/{id}")).await;
-    assert_eq!(removed.status, StatusCode::OK, "{}", removed.text());
-}
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
@@ -97,28 +41,31 @@ async fn a_team_reads_what_another_shares_with_it_and_only_that() {
 
     // Shared up to public: nothing of his read.
     let since = latest_entry(&api).await;
-    let share = share_north(&paul, (true, false), "public").await;
+    let made = share(&paul, north_to_south((true, false), "public")).await;
     assert!(!memories(&hugo).await.contains(&north));
-    unshare(&paul, &share).await;
+    unshare(&paul, &made).await;
     let audited = entries_since(&api, since).await;
     assert!(audited.contains("knowledge_share.created"), "{audited}");
     assert!(audited.contains("knowledge_share.deleted"), "{audited}");
 
     // Its memory, up to confidential: what Hugo's clearance (internal)
-    // reads of it; never its documents.
-    let share = share_north(&paul, (true, false), "confidential").await;
+    // reads of it, never deleted; never its documents.
+    let made = share(&paul, north_to_south((true, false), "confidential")).await;
     let read = memories(&hugo).await;
     assert!(read.contains(&north), "{read:?}");
     assert!(!read.contains(&secret), "{read:?}");
+    let refused = hugo.delete(&format!("/memory/{north}")).await;
+    assert_eq!(refused.status, StatusCode::NOT_FOUND);
+    assert!(memories(&julien).await.contains(&north));
     assert!(!listed(&hugo).await.contains(&document));
     let absent = hugo.get(&format!("/documents/{document}")).await;
     assert_eq!(absent.status, StatusCode::NOT_FOUND);
     // One way only: the south's memory stays the south's.
     assert!(!memories(&lucas).await.contains(&south));
-    unshare(&paul, &share).await;
+    unshare(&paul, &made).await;
 
     // Its documents too: read, never deleted.
-    let share = share_north(&paul, (true, true), "internal").await;
+    let made = share(&paul, north_to_south((true, true), "internal")).await;
     assert!(listed(&hugo).await.contains(&document));
     let read = hugo.get(&format!("/documents/{document}")).await;
     assert_eq!(read.status, StatusCode::OK, "{}", read.text());
@@ -127,7 +74,7 @@ async fn a_team_reads_what_another_shares_with_it_and_only_that() {
     assert_eq!(refused.status, StatusCode::NOT_FOUND);
 
     // Removed: nothing more read.
-    unshare(&paul, &share).await;
+    unshare(&paul, &made).await;
     assert!(!memories(&hugo).await.contains(&north));
     assert!(!listed(&hugo).await.contains(&document));
 }

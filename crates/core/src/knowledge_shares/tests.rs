@@ -19,7 +19,6 @@ fn member_of(unit_id: Uuid, clearance: Sensitivity) -> Subject {
 /// The Direction's memory shared with the technical department.
 fn direction_to_technical() -> KnowledgeShare {
     KnowledgeShare {
-        id: Uuid::new_v4(),
         source_unit_id: unit::DIRECTION,
         target_unit_id: unit::TECHNICAL,
         include_descendants: false,
@@ -79,7 +78,6 @@ fn what_is_read_stays_under_the_share_and_the_reader_s_clearance() {
     let both = [
         direction_to_technical(),
         KnowledgeShare {
-            id: Uuid::new_v4(),
             ceiling: Sensitivity::Confidential,
             ..direction_to_technical()
         },

@@ -73,7 +73,7 @@ pub use identity_providers::{
     remove_identity_provider,
 };
 pub use invitations::{IssuedInvitation, issue_invitation};
-pub use knowledge_shares::{ShareInput, remove_knowledge_share, share_knowledge};
+pub use knowledge_shares::{remove_knowledge_share, share_knowledge};
 pub use link_sender::LinkSender;
 pub use llm::{LlmInput, LlmTestOutcome, configure_llm, reset_llm, test_llm};
 pub use memory_settings::{lesson_capture, set_lesson_capture};

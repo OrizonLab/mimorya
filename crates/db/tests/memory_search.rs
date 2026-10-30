@@ -273,15 +273,15 @@ async fn only_an_active_company_that_chose_a_model_awaits_vectors() {
     tx.commit().await.unwrap();
 }
 
-/// What Lucas finds by the words of `query` once the south team's memory
-/// is shared with his team up to `ceiling` (ADR-143), if it is.
+/// What Lucas finds for `query`, of meaning along `along` if said, once
+/// the south team's memory is shared with his team up to `ceiling`
+/// (ADR-143), if it is.
 async fn lucas_finds_shared(
     tx: &mut TenantTx,
-    query: &str,
+    (query, along): (&str, Option<usize>),
     ceiling: Option<Sensitivity>,
 ) -> Vec<String> {
     let shares = ceiling.into_iter().map(|ceiling| KnowledgeShare {
-        id: Uuid::new_v4(),
         source_unit_id: unit::TEAM_SOUTH,
         target_unit_id: unit::TEAM_NORTH,
         include_descendants: false,
@@ -293,7 +293,13 @@ async fn lucas_finds_shared(
     let engine = demo::authorization_engine().with_knowledge_shares(shares.collect());
     let subject = demo::subject(user::LUCAS);
     let filter = memory_read_filter(&engine, &subject, &Actor::user());
-    let hits = search_memory(tx, &filter, query, None, 5, subject.clearance())
+    let vector = along.map(axis);
+    let meaning = vector.as_deref().map(|vector| Meaning {
+        vector,
+        model: MODEL,
+        min_similarity: 0.5,
+    });
+    let hits = search_memory(tx, &filter, query, meaning, 5, subject.clearance())
         .await
         .unwrap();
     hits.into_iter().map(|h| h.title).collect()
@@ -304,24 +310,20 @@ async fn lucas_finds_shared(
 async fn another_team_s_memory_is_found_once_shared_up_to_its_sensitivity() {
     let db = app().await;
     let mut tx = db.begin(tenant::ID).await.unwrap();
-    let south = "Retours chantier équipe Sud";
-    let query = "retours chantier mardi";
-    assert!(
-        !lucas_finds_shared(&mut tx, query, None)
-            .await
-            .contains(&south.to_owned())
-    );
-    // Shared up to public: an internal memory stays out of reach.
-    let public = Some(Sensitivity::Public);
-    assert!(
-        !lucas_finds_shared(&mut tx, query, public)
-            .await
-            .contains(&south.to_owned())
-    );
-    let internal = Some(Sensitivity::Internal);
-    assert!(
-        lucas_finds_shared(&mut tx, query, internal)
-            .await
-            .contains(&south.to_owned())
-    );
+    let south = "Retours chantier équipe Sud".to_owned();
+    let (public, internal) = (Some(Sensitivity::Public), Some(Sensitivity::Internal));
+    // By its words, then by its meaning only, no word in common.
+    embed(&mut tx, &[(south.as_str(), axis(2), MODEL)]).await;
+    for asked in [
+        ("retours chantier mardi", None),
+        ("Quelle tenue porter ?", Some(2)),
+    ] {
+        let found = lucas_finds_shared(&mut tx, asked, None).await;
+        assert!(!found.contains(&south), "{found:?}");
+        // Shared up to public: an internal memory stays out of reach.
+        let found = lucas_finds_shared(&mut tx, asked, public).await;
+        assert!(!found.contains(&south), "{found:?}");
+        let found = lucas_finds_shared(&mut tx, asked, internal).await;
+        assert!(found.contains(&south), "{found:?}");
+    }
 }

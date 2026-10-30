@@ -4,6 +4,7 @@
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
+use mimorya_core::knowledge_shares::KnowledgeShare;
 use mimorya_db::repositories::knowledge_shares::list_knowledge_shares;
 
 use crate::app::AppState;
@@ -11,7 +12,7 @@ use crate::contract::admin::{KnowledgeShareView, KnowledgeShares, NewKnowledgeSh
 use crate::contract::{Created, Done};
 use crate::http::{ApiResult, Body, PathId};
 use crate::plugins::Auth;
-use crate::services::admin::{ShareInput, remove_knowledge_share, share_knowledge};
+use crate::services::admin::{remove_knowledge_share, share_knowledge};
 
 const PERMISSION: &str = "policy:manage";
 
@@ -37,16 +38,16 @@ pub async fn create(
     Body(body): Body<NewKnowledgeShare>,
 ) -> ApiResult<(StatusCode, Json<Created>)> {
     let access = state.access.context(identity).await?;
-    let input = ShareInput {
-        source_org_unit_id: body.source_org_unit_id,
-        target_org_unit_id: body.target_org_unit_id,
+    let share = KnowledgeShare {
+        source_unit_id: body.source_org_unit_id,
+        target_unit_id: body.target_org_unit_id,
         include_descendants: body.include_descendants.unwrap_or(false),
         memory: body.memory,
         documents: body.documents,
-        max_sensitivity: body.max_sensitivity.into(),
+        ceiling: body.max_sensitivity.into(),
         expires_at: body.expires_at,
     };
-    let id = share_knowledge(&state.db, &state.access, &access, input).await?;
+    let id = share_knowledge(&state.db, &state.access, &access, share).await?;
     Ok((StatusCode::CREATED, Json(Created { id })))
 }
 

@@ -28,7 +28,6 @@ impl KnowledgeShareRow {
     /// does not hold (its constraint names them all).
     pub fn share(&self) -> Option<KnowledgeShare> {
         Some(KnowledgeShare {
-            id: self.id,
             source_unit_id: self.source_org_unit_id,
             target_unit_id: self.target_org_unit_id,
             include_descendants: self.include_descendants,

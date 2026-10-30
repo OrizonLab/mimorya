@@ -1,8 +1,9 @@
 //! Who shares a unit's knowledge, and what a share may say (ADR-143): only
 //! an administrator of the company's access policies (`policy:manage`,
-//! company-wide); between two of its units, the one shared not containing
-//! the other, once, something shared, until a date to come. An unknown unit
-//! is refused and traced; an unknown share is not found.
+//! company-wide), never one they would read through themself; between two
+//! of its units, the one shared not containing the other, once, something
+//! shared, until a date to come. An unknown unit is refused and traced; an
+//! unknown share is not found; a unit is not deleted while shared.
 
 mod support;
 
@@ -10,10 +11,9 @@ use axum::http::StatusCode;
 use mimorya_core::demo::{unit, user};
 use serde_json::{Value, json};
 use support::TestApi;
+use support::knowledge_shares::{SHARES, share as shared, unshare};
 use support::refusals::{latest_entry, unknown_references_since};
 use uuid::Uuid;
-
-const SHARES: &str = "/admin/knowledge-shares";
 
 fn share(source: Uuid, target: Uuid) -> Value {
     json!({
@@ -62,6 +62,25 @@ async fn only_the_policies_administrator_shares_and_within_the_rules() {
         );
     }
 
+    // Never one he would read through: it takes another administrator.
+    let mut everyone = share(unit::TEAM_NORTH, unit::COMPANY);
+    everyone["includeDescendants"] = json!(true);
+    for body in [share(unit::TEAM_NORTH, unit::ADMIN), everyone] {
+        let refused = paul.post(SHARES, body.clone()).await;
+        assert_eq!(
+            refused.status,
+            StatusCode::FORBIDDEN,
+            "{body}: {}",
+            refused.text()
+        );
+    }
+    // The company's own members only: not him.
+    let company = paul
+        .post(SHARES, share(unit::TEAM_NORTH, unit::COMPANY))
+        .await;
+    assert_eq!(company.status, StatusCode::CREATED, "{}", company.text());
+    unshare(&paul, company.json()["id"].as_str().unwrap()).await;
+
     // An unknown unit: refused, traced.
     let since = latest_entry(&api).await;
     let elsewhere = Uuid::new_v4();
@@ -90,4 +109,26 @@ async fn only_the_policies_administrator_shares_and_within_the_rules() {
     assert_eq!(marc.delete(&path).await.status, StatusCode::FORBIDDEN);
     assert_eq!(paul.delete(&path).await.status, StatusCode::OK);
     assert_eq!(paul.delete(&path).await.status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_unit_is_deleted_only_once_its_shares_are_removed() {
+    let api = TestApi::start().await;
+    let paul = api.sign_in(user::PAUL).await;
+    let unit_body = json!({ "parentId": unit::COMPANY, "name": "Cellule qualité", "type": "team" });
+    let created = paul.post("/admin/org-units", unit_body).await;
+    assert_eq!(created.status, StatusCode::CREATED, "{}", created.text());
+    let quality: Uuid = created.json()["id"].as_str().unwrap().parse().unwrap();
+    let path = format!("/admin/org-units/{quality}");
+
+    for units in [(unit::TEAM_NORTH, quality), (quality, unit::TEAM_NORTH)] {
+        let made = shared(&paul, share(units.0, units.1)).await;
+        let refused = paul.delete(&path).await;
+        assert_eq!(refused.status, StatusCode::CONFLICT, "{}", refused.text());
+        assert!(refused.text().contains("partage"), "{}", refused.text());
+        unshare(&paul, &made).await;
+    }
+    let removed = paul.delete(&path).await;
+    assert_eq!(removed.status, StatusCode::OK, "{}", removed.text());
 }
