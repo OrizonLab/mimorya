@@ -1,7 +1,8 @@
 //! The company's conversation gateways (`connector:manage`, company-wide,
 //! ADR-125): listed with what Slack said of each, its token's permissions
 //! among it (ADR-132), and how many people linked their identity;
-//! declared, changed, checked again with Slack and deleted.
+//! declared, changed, checked again with Slack and deleted. A Telegram bot
+//! (ADR-133) and a Teams bot (ADR-138) alike.
 
 use axum::Json;
 use axum::extract::State;
@@ -13,16 +14,20 @@ use mimorya_db::repositories::gateways::list_gateways;
 
 use crate::app::AppState;
 use crate::contract::admin::{
-    GatewayUpdate, GatewayView, Gateways, NewSlackGateway, NewTelegramGateway,
+    GatewayUpdate, GatewayView, Gateways, NewSlackGateway, NewTeamsGateway, NewTelegramGateway,
 };
 use crate::contract::{Created, Done};
 use crate::http::{ApiResult, Body, PathId, iso};
 use crate::plugins::Auth;
 use crate::services::admin::{
-    GatewayChanges, NewSlackGatewayInput, NewTelegramGatewayInput, change_gateway, check_gateway,
-    declare_slack_gateway, declare_telegram_gateway, remove_gateway,
+    GatewayChanges, NewSlackGatewayInput, NewTeamsGatewayInput, NewTelegramGatewayInput,
+    change_gateway, check_gateway, declare_slack_gateway, declare_teams_gateway,
+    declare_telegram_gateway, remove_gateway,
 };
-use crate::services::gateways::{bot_token_name, signing_secret_name, webhook_secret_name};
+use crate::services::gateways::{
+    GatewayService, bot_token_name, client_secret_name, signing_secret_name, webhook_secret_name,
+};
+use uuid::Uuid;
 
 const PERMISSION: &str = "connector:manage";
 
@@ -37,21 +42,11 @@ pub async fn list(
     let rows = list_gateways(&mut tx).await?;
     let mut gateways = Vec::with_capacity(rows.len());
     for gateway in rows {
-        // A Slack application's events prove themselves by its signing
-        // secret, a Telegram bot's updates by its webhook's (ADR-133).
-        let telegram = gateway.kind == GatewayKind::Telegram.as_str();
-        let (proof, events_url) = match telegram {
-            true => (
-                webhook_secret_name(gateway.id),
-                state.gateways.telegram_updates_url(gateway.id),
-            ),
-            false => (
-                signing_secret_name(gateway.id),
-                state.gateways.events_url(gateway.id),
-            ),
-        };
-        let secrets_stored = secrets.exists(&mut tx, &bot_token_name(gateway.id)).await?
-            && secrets.exists(&mut tx, &proof).await?;
+        let (stored, events_url) = served(&state.gateways, &gateway.kind, gateway.id);
+        let mut secrets_stored = true;
+        for name in &stored {
+            secrets_stored &= secrets.exists(&mut tx, name).await?;
+        }
         let granted = gateway.granted_scopes.as_deref();
         gateways.push(GatewayView {
             missing_scopes: granted
@@ -114,6 +109,25 @@ pub async fn create_telegram(
     Ok((StatusCode::CREATED, Json(Created { id })))
 }
 
+/// The company's Microsoft Teams bot, its client secret tried with
+/// Microsoft Entra (ADR-138).
+pub async fn create_teams(
+    State(state): State<AppState>,
+    Auth(identity): Auth,
+    Body(body): Body<NewTeamsGateway>,
+) -> ApiResult<(StatusCode, Json<Created>)> {
+    let access = state.access.context(identity).await?;
+    let input = NewTeamsGatewayInput {
+        name: body.name,
+        app_id: body.app_id,
+        directory_id: body.directory_id,
+        client_secret: body.client_secret,
+        enabled: body.enabled.unwrap_or(true),
+    };
+    let id = declare_teams_gateway(&state.gateways, &access, input).await?;
+    Ok((StatusCode::CREATED, Json(Created { id })))
+}
+
 pub async fn update(
     State(state): State<AppState>,
     Auth(identity): Auth,
@@ -126,6 +140,7 @@ pub async fn update(
         enabled: body.enabled,
         bot_token: body.bot_token,
         signing_secret: body.signing_secret,
+        client_secret: body.client_secret,
     };
     change_gateway(&state.gateways, &access, id, changes).await?;
     Ok(Json(Done::OK))
@@ -151,4 +166,26 @@ pub async fn remove(
     let access = state.access.context(identity).await?;
     remove_gateway(&state.gateways, &access, id).await?;
     Ok(Json(Done::OK))
+}
+
+/// The secrets a gateway of service `kind` keeps, and where its service
+/// sends it what proves itself: a Slack application's events by its signing
+/// secret, a Telegram bot's updates by its webhook's (ADR-133), a Teams
+/// bot's activities by Microsoft's token, its client secret writing back
+/// (ADR-138).
+fn served(gateways: &GatewayService, kind: &str, id: Uuid) -> (Vec<String>, String) {
+    match GatewayKind::of(kind) {
+        Some(GatewayKind::Telegram) => (
+            vec![bot_token_name(id), webhook_secret_name(id)],
+            gateways.telegram_updates_url(id),
+        ),
+        Some(GatewayKind::Teams) => (
+            vec![client_secret_name(id)],
+            gateways.teams_activities_url(id),
+        ),
+        _ => (
+            vec![bot_token_name(id), signing_secret_name(id)],
+            gateways.events_url(id),
+        ),
+    }
 }

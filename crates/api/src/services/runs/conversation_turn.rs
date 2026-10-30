@@ -4,7 +4,9 @@
 use mimorya_agent::llm::LlmMessage;
 use mimorya_agent::runtime::DEFAULT_BUDGET;
 use mimorya_core::DomainError;
-use mimorya_core::authz::{HOOK_CHANNEL, SLACK_CHANNEL, TELEGRAM_CHANNEL, WEB_CHANNEL};
+use mimorya_core::authz::{
+    HOOK_CHANNEL, SLACK_CHANNEL, TEAMS_CHANNEL, TELEGRAM_CHANNEL, WEB_CHANNEL,
+};
 use mimorya_core::autonomy::AutonomyLevel;
 use mimorya_core::gateways::GatewayKind;
 use mimorya_db::TenantTx;
@@ -143,6 +145,7 @@ pub async fn open_conversation_turn(
                 TurnSender::Gateway { kind, .. } => match kind {
                     GatewayKind::Slack => SLACK_CHANNEL,
                     GatewayKind::Telegram => TELEGRAM_CHANNEL,
+                    GatewayKind::Teams => TEAMS_CHANNEL,
                 },
                 TurnSender::User | TurnSender::Schedule { .. } => WEB_CHANNEL,
             },

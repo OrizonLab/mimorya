@@ -355,6 +355,16 @@ Détaillés dans [AGENT_ENGINE.md](AGENT_ENGINE.md). En résumé :
   remplaçant, relié au bot y est prévenu des demandes qui l'attendent par le même
   passage que dans Slack, une fois par passerelle (`gateway_approval_notices`, clé de
   la demande et de la passerelle), avec les mêmes boutons (ADR-137).
+- **Bot Teams** (ADR-138) : l'entreprise déclare aussi son bot Teams (un bot Azure, un
+  par entreprise) : son application, l'annuaire Microsoft Entra commun au bot et aux
+  personnes, son secret client essayé auprès d'Entra. Microsoft envoie chaque activité
+  au point de terminaison de la passerelle (`/api/gateways/teams/{id}`) avec un jeton
+  que signe le Bot Framework, seule preuve de l'activité, vérifié avec les clés qu'il
+  publie (gardées un jour). Le bot répond au service Teams de l'activité, s'il est de
+  Microsoft, avec un jeton qu'Entra lui donne. Une personne relie son identité Teams
+  par le lien que le bot lui envoie, confirmé dans sa session quand Teams dit que le
+  membre de la conversation a l'adresse du compte, dans l'annuaire de l'entreprise. Les
+  conversations avec l'agent dans Teams viendront ensuite.
 - Les secrets ne transitent jamais par le contexte du modèle ni par les journaux.
 
 Connecteurs prévus : démonstration (MVP), MCP générique (MVP), déclencheurs (ADR-109),

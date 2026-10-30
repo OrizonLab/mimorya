@@ -4,7 +4,8 @@
 //! until the test releases it); a REST API (`rest`); Microsoft Graph
 //! (`graph`, its writes in `graph_writes`); Gmail and Google Calendar
 //! (`google`, its writes in `google_writes`); Slack's Web API (`slack`);
-//! Telegram's Bot API (`telegram`).
+//! Telegram's Bot API (`telegram`); Microsoft as a Teams bot reaches it:
+//! Entra, the Bot Framework's keys and a Teams service (`teams`).
 
 mod google;
 mod google_writes;
@@ -14,6 +15,7 @@ mod hold;
 mod quirks;
 mod rest;
 mod slack;
+mod teams;
 mod telegram;
 
 use std::net::SocketAddr;
@@ -37,6 +39,11 @@ pub use rest::{KEY_HEADER, serve_rest_http};
 pub use slack::{
     BOT_TOKEN, BOT_USER, FakeSlack, OTHER_TOKEN, OTHER_WORKSPACE, SIGNING_SECRET, SlackPost,
     WORKSPACE, WORKSPACE_NAME, signed, signed_at,
+};
+pub use teams::{
+    FakeTeams, OTHER_TEAMS_APP, OTHER_TEAMS_DIRECTORY, OTHER_TEAMS_SECRET, Signer, TEAMS_APP,
+    TEAMS_DIRECTORY, TEAMS_KEY_ID, TEAMS_SECRET, TeamsSent, conversation_of, member_id,
+    signed_token,
 };
 pub use telegram::{
     FakeTelegram, OTHER_BOT, OTHER_BOT_TOKEN, TELEGRAM_BOT, TELEGRAM_BOT_USERNAME, TELEGRAM_TOKEN,

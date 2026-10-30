@@ -34,11 +34,12 @@ notified: boolean, };
  */
 export type AccountGatewayView = { gatewayId: string,
 /**
- * `slack` or `telegram`.
+ * `slack`, `telegram` or `teams`.
  */
 type: string, name: string,
 /**
- * Slack's workspace, or the Telegram bot's username.
+ * Slack's workspace, the Telegram bot's username, or the Teams bot's
+ * Microsoft Entra directory.
  */
 workspaceName: string,
 /**
@@ -721,11 +722,12 @@ export type EvaluationStatus = "queued" | "running" | "completed" | "failed";
  */
 export type GatewayIdentity = {
 /**
- * Their Slack user, or their Telegram identifier.
+ * Their Slack user, their Telegram identifier, or their Microsoft
+ * Entra object (Teams).
  */
 externalId: string,
 /**
- * The address Slack gave as theirs when they linked it.
+ * The address Slack or Teams gave as theirs when they linked it.
  */
 address: string | null,
 /**
@@ -735,8 +737,8 @@ name: string | null, linkedAt: string, };
 
 /**
  * Body of `POST /account/gateways/link/preview` and `POST
- * /account/gateways/link`: the code of the link Slack gave, from its
- * fragment.
+ * /account/gateways/link`: the code of the link Slack or a Teams bot
+ * gave, from its fragment.
  */
 export type GatewayLinkCode = { code: string, };
 
@@ -758,9 +760,14 @@ claimedId: string | null, };
 /**
  * `POST /account/gateways/link/preview`: what the link would link.
  */
-export type GatewayLinkPreview = { gatewayId: string, type: string, name: string, workspaceName: string,
+export type GatewayLinkPreview = { gatewayId: string,
 /**
- * The Slack user the link names.
+ * `slack` or `teams`.
+ */
+type: string, name: string, workspaceName: string,
+/**
+ * The Slack user, or the Teams user's Microsoft Entra object, the
+ * link names.
  */
 externalId: string, expiresAt: string, };
 
@@ -773,37 +780,44 @@ export type GatewayUpdate = { name?: string, enabled?: boolean,
  * A new token of the same application, or of one of the same
  * workspace; of the same Telegram bot.
  */
-botToken?: string, signingSecret?: string, };
+botToken?: string, signingSecret?: string,
+/**
+ * A new client secret of the Teams bot's application.
+ */
+clientSecret?: string, };
 
 /**
  * A gateway of the company.
  */
 export type GatewayView = { id: string,
 /**
- * `slack` or `telegram`.
+ * `slack`, `telegram` or `teams`.
  */
 type: string, name: string, enabled: boolean,
 /**
  * The workspace Slack said the application is installed in; the
- * Telegram bot's identifier.
+ * Telegram bot's identifier; the Teams bot's Microsoft Entra directory.
  */
 workspaceId: string,
 /**
- * Its name; the Telegram bot's username.
+ * Its name; the Telegram bot's username; the Teams bot's directory.
  */
 workspaceName: string,
 /**
- * The application's bot user; the Telegram bot's identifier.
+ * The application's bot user; the Telegram bot's identifier; the Teams
+ * bot's application (Microsoft App ID).
  */
 botUserId: string,
 /**
  * Where Slack sends the application's events (« Event Subscriptions »);
- * where Telegram sends the bot's updates, which the platform told it.
+ * where Telegram sends the bot's updates, which the platform told it;
+ * the Teams bot's messaging endpoint, to give the Azure bot.
  */
 eventsUrl: string,
 /**
  * Whether its bot's token and its signing secret (Slack) or its
- * webhook's secret (Telegram) are stored.
+ * webhook's secret (Telegram), or its client secret (Teams), are
+ * stored.
  */
 secretsStored: boolean,
 /**
@@ -1578,6 +1592,28 @@ botToken: string,
  * Its « Signing Secret ».
  */
 signingSecret: string,
+/**
+ * Absent: enabled.
+ */
+enabled?: boolean, };
+
+/**
+ * Body of `POST /admin/gateways/teams`: the company's Microsoft Teams bot
+ * (ADR-138).
+ */
+export type NewTeamsGateway = { name: string,
+/**
+ * The Azure bot's application (Microsoft App ID).
+ */
+appId: string,
+/**
+ * The Microsoft Entra directory (tenant) of the bot and the company.
+ */
+directoryId: string,
+/**
+ * The application's client secret.
+ */
+clientSecret: string,
 /**
  * Absent: enabled.
  */

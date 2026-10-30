@@ -59,23 +59,26 @@ export function GatewaysSection() {
                   )}
                 </div>
               )}
-              {data.gateways.map((gateway) =>
-                gateway.type === 'telegram' ? (
-                  <TelegramGatewayCard
-                    key={gateway.id}
-                    gateway={gateway}
-                    onChanged={state.reload}
-                  />
-                ) : (
-                  <GatewayCard
-                    key={gateway.id}
-                    gateway={gateway}
-                    scopes={data.slackScopes}
-                    events={data.slackEvents}
-                    onChanged={state.reload}
-                  />
-                ),
-              )}
+              {/* A Teams bot's own card comes with its next lot (ADR-138). */}
+              {data.gateways
+                .filter((gateway) => gateway.type !== 'teams')
+                .map((gateway) =>
+                  gateway.type === 'telegram' ? (
+                    <TelegramGatewayCard
+                      key={gateway.id}
+                      gateway={gateway}
+                      onChanged={state.reload}
+                    />
+                  ) : (
+                    <GatewayCard
+                      key={gateway.id}
+                      gateway={gateway}
+                      scopes={data.slackScopes}
+                      events={data.slackEvents}
+                      onChanged={state.reload}
+                    />
+                  ),
+                )}
             </div>
           );
         }}

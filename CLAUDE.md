@@ -55,7 +55,9 @@ Repères à l'intérieur des crates :
   bouton pressé (`buttons.rs`, `press.rs`), ADR-136, actions montrées sous un message,
   autant qu'il en tient (`shown.rs`), ADR-136, ADR-137 ; motifs Markdown lus par chaque
   service et texte trop long coupé, `markdown.rs` ; actions validées hors de
-  l'application, `validation.rs`, ADR-129, ADR-136).
+  l'application, `validation.rs`, ADR-129, ADR-136 ; bot Teams : déclaration, jeton du
+  Bot Framework vérifié (`token.rs`), activité lue, services Teams de Microsoft, preuve
+  d'une personne, texte en Markdown, `teams/`, ADR-138).
 - `db/migrations/` (SQL numéroté, source de vérité du schéma),
   `db/src/repositories/` (un fichier par entité ; la mémoire : `memory.rs`, recherche
   hybride `memory_search.rs`, vecteurs `memory_embeddings.rs`, ADR-074 ; fenêtres des
@@ -114,13 +116,17 @@ Repères à l'intérieur des crates :
   cachant rien (`compose.rs`, `new_mail.rs`, `new_event.rs`), ADR-119, ADR-123),
   `connectors/src/slack/` (API Web de Slack telle que la passerelle d'une entreprise
   l'atteint, ADR-125), `connectors/src/telegram/` (API des bots de Telegram, son jeton
-  jamais écrit, ADR-133), `connectors/src/testing/`
+  jamais écrit, ADR-133), `connectors/src/teams/` (Microsoft tel qu'un bot Teams
+  l'atteint : jeton d'Entra gardé pour son secret, clés du Bot Framework gardées un
+  jour, service Teams d'une activité, ADR-138), `connectors/src/testing/`
   (serveurs simulés des tests : MCP, API REST, Microsoft Graph, Gmail et agenda Google,
-  Slack, qui signe les événements comme lui, Telegram).
+  Slack, qui signe les événements comme lui, Telegram, Microsoft pour Teams, qui signe
+  les activités avec une clé de test).
 - `api/src/plugins/` (contexte de requête, limitation de débit (globale par processus ;
   d'authentification partagée par PostgreSQL, `shared_limit.rs`, ADR-088), CSRF (sauf la réception
   des réponses SAML, ADR-068, l'envoi à un déclencheur, ADR-109, les événements de
-  Slack, ADR-125, et les mises à jour de Telegram, ADR-133), session,
+  Slack, ADR-125, les mises à jour de Telegram, ADR-133, et les activités du Bot
+  Framework, ADR-138), session,
   en-têtes de sécurité, audit des modifications d'administration refusées, sur une ressource introuvable ou envoyant un identifiant inconnu,
   maintenance périodique : runs bloqués, liens expirés, absences terminées, demandes de
   validation échues et relances avant échéance, ADR-061, ADR-062 ; indexation de la
@@ -172,11 +178,15 @@ Repères à l'intérieur des crates :
   (`telegram/choices.rs`), qui voit et décide quoi, commun aux services
   (`concerned.rs`), ADR-136 ; demandes annoncées au responsable dans sa conversation
   privée avec le bot (`telegram/approver_text.rs`), message écrit là en HTML ou en
-  texte simple, avec ses boutons (`telegram/chat.rs`), ADR-137 ;
+  texte simple, avec ses boutons (`telegram/chat.rs`), ADR-137 ; bot Teams : activités
+  reçues sur le jeton que signe le Bot Framework (`teams/`), identité reliée par le lien
+  du bot quand Teams nomme l'adresse du compte (`link/`, un module par service),
+  ADR-138 ;
   déclarées par
   `services/admin/gateways.rs`, ce que Slack dit du jeton et ses permissions vérifiées
   à la demande par `services/admin/gateway_check.rs`, ADR-132, le bot Telegram par
-  `services/admin/telegram_gateway.rs`, ADR-133),
+  `services/admin/telegram_gateway.rs`, ADR-133, le bot Teams par
+  `services/admin/teams_gateway.rs`, ADR-138),
   `api/src/services/notification_settings.rs` (e-mails que chacun choisit de recevoir,
   lus au moment d'envoyer chaque avis, ADR-094),
   `api/src/services/skill_proposal_notice/` (propositions de l'agent annoncées par e-mail
@@ -275,7 +285,8 @@ Repères à l'intérieur des crates :
   ADR-118, ADR-121, et les passerelles parlent à un Slack simulé qui liste ce que
   l'application écrit, `BuildOptions::slack_api`, ADR-126, et à un Telegram simulé qui
   liste ce que les bots écrivent et le webhook de chacun, `BuildOptions::telegram_api`,
-  ADR-134).
+  ADR-134 ; les tests de l'API joignent un Microsoft simulé pour Teams,
+  `BuildOptions::teams_api`, ADR-138).
 - `infra/` : `docker/` (images de l'API et de l'interface, liste des images publiées
   `images.json`, test de fumée de la démonstration, test d'installation de la production,
   vérifications partagées `checks.sh`, dont les rôles des processus lus dans la base), `caddy/`
@@ -387,7 +398,7 @@ Avant chaque commit : `pnpm check && pnpm test:int` doivent passer.
    `access.context()` et vérifie la permission (`require`) ou la propriété de la
    ressource côté serveur ; une ressource hors périmètre répond 404. Les requêtes
    modifiantes exigent l'en-tête `X-Mimorya-Request: 1` et, si le navigateur la donne,
-   l'origine de l'application. Quatre en sont dispensées, de l'un comme de l'autre : la
+   l'origine de l'application. Cinq en sont dispensées, de l'un comme de l'autre : la
    réception des réponses SAML (`POST /api/auth/saml/acs`, ADR-068), que le fournisseur
    poste depuis son propre site, seules la liant au navigateur la tentative scellée dans
    son cookie, la demande qu'elle attend et la signature de l'assertion ; l'envoi d'un
@@ -396,14 +407,19 @@ Avant chaque commit : `pnpm check && pnpm test:int` doivent passer.
    envoie à la passerelle d'une entreprise (`POST /api/gateways/slack/{id}`, chemin
    exact, ADR-125), que leur signature seule prouve ; et les mises à jour que Telegram
    envoie au bot d'une entreprise (`POST /api/gateways/telegram/{id}`, chemin exact,
-   ADR-133), que le secret de son webhook seul prouve. Aucune autre exception sans ADR ;
+   ADR-133), que le secret de son webhook seul prouve ; et les activités que le Bot
+   Framework envoie au bot Teams d'une entreprise (`POST /api/gateways/teams/{id}`,
+   chemin exact, ADR-138), que le jeton signé par Microsoft seul prouve. Aucune autre
+   exception sans ADR ;
    les tests `only_the_saml_reception_goes_without_the_header`
    (`crates/api/tests/auth.rs`), `only_a_delivery_goes_without_the_header`
    (`crates/api/tests/inbound_hook_deliveries.rs`),
    `only_a_gateway_event_goes_without_the_header`
-   (`crates/api/tests/slack_gateway_events.rs`) et
+   (`crates/api/tests/slack_gateway_events.rs`),
    `only_a_bot_s_updates_go_without_the_header`
-   (`crates/api/tests/telegram_gateway_updates.rs`) tentent de les contourner.
+   (`crates/api/tests/telegram_gateway_updates.rs`) et
+   `only_a_teams_activity_goes_without_the_header`
+   (`crates/api/tests/teams_gateway_activities.rs`) tentent de les contourner.
 
 ## Règles de sécurité (non négociables)
 

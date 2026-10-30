@@ -5,10 +5,13 @@
 //! of its application, how an event Slack sends proves it comes from it,
 //! and which of its messages reach the agent; then Telegram (`telegram`,
 //! ADR-133): its bot, the secret its updates prove themselves by, and the
-//! code a person links their account with.
+//! code a person links their account with; then Microsoft Teams (`teams`,
+//! ADR-138): its Azure bot, the Bot Framework token its activities prove
+//! themselves by, and when Teams proves a person.
 
 mod markdown;
 pub mod slack;
+pub mod teams;
 pub mod telegram;
 mod validation;
 
@@ -27,6 +30,7 @@ pub const MAX_NAME_CHARS: usize = 80;
 pub enum GatewayKind {
     Slack,
     Telegram,
+    Teams,
 }
 
 impl GatewayKind {
@@ -35,6 +39,7 @@ impl GatewayKind {
         match self {
             Self::Slack => "slack",
             Self::Telegram => "telegram",
+            Self::Teams => "teams",
         }
     }
 
@@ -43,6 +48,7 @@ impl GatewayKind {
         match kind {
             "slack" => Some(Self::Slack),
             "telegram" => Some(Self::Telegram),
+            "teams" => Some(Self::Teams),
             _ => None,
         }
     }
@@ -52,6 +58,7 @@ impl GatewayKind {
         match self {
             Self::Slack => "Slack",
             Self::Telegram => "Telegram",
+            Self::Teams => "Teams",
         }
     }
 }
@@ -93,7 +100,11 @@ mod tests {
             Some(GatewayKind::Slack)
         );
         assert_eq!(GatewayKind::of("Slack"), None);
-        assert_eq!(GatewayKind::of("teams"), None);
+        assert_eq!(GatewayKind::of("discord"), None);
+        assert_eq!(
+            GatewayKind::of(GatewayKind::Teams.as_str()),
+            Some(GatewayKind::Teams)
+        );
         assert_eq!(
             GatewayKind::of(GatewayKind::Telegram.as_str()),
             Some(GatewayKind::Telegram)

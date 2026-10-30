@@ -57,4 +57,8 @@ pub struct BuildOptions {
     /// Replaces Telegram's Bot API, which the companies' bots reach (tests:
     /// a local one, ADR-133).
     pub telegram_api: Option<String>,
+    /// Replaces Microsoft as the companies' Teams bots reach it: Entra, the
+    /// Bot Framework's keys and the Teams services they write to (tests: a
+    /// local one, ADR-138).
+    pub teams_api: Option<String>,
 }

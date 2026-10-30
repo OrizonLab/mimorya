@@ -198,7 +198,7 @@ async fn only_a_gateway_event_goes_without_the_header() {
         format!("/gateways/slack/{}", id.to_string().replacen('-', "%2D", 1)),
         "/gateways/slack/pas-un-identifiant".to_owned(),
         format!("/gateways/slack//{id}"),
-        format!("/gateways/teams/{id}"),
+        format!("/gateways/discord/{id}"),
         "/admin/gateways/slack".to_owned(),
         format!("/admin/gateways/{id}/check"),
         "/account/gateways/link".to_owned(),

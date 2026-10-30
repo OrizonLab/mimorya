@@ -11,11 +11,14 @@
 //! same address (ADR-129). Where Telegram sends a company's bot its updates
 //! (ADR-133), proven by the webhook's secret Telegram sends back in a
 //! header alone: answered alike, 404 when not proven, 200 once taken, a
-//! linked person's words answered in the background (ADR-135).
+//! linked person's words answered in the background (ADR-135). Where the
+//! Bot Framework sends a company's Teams bot its activities (ADR-138),
+//! proven by the token Microsoft signs them with alone, in the
+//! `Authorization` header: answered alike.
 
 use axum::body::Body;
 use axum::extract::{Path, State};
-use axum::http::header::{CONTENT_LENGTH, CONTENT_TYPE};
+use axum::http::header::{AUTHORIZATION, CONTENT_LENGTH, CONTENT_TYPE};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
@@ -29,11 +32,13 @@ use uuid::Uuid;
 use crate::app::AppState;
 use crate::http::{ApiError, ApiResult};
 use crate::services::gateways::{
-    EventOutcome, SlackHeaders, UpdateOutcome, converse, converse_in_telegram, decide_in_slack,
-    decide_in_telegram,
+    ActivityOutcome, EventOutcome, SlackHeaders, UpdateOutcome, converse, converse_in_telegram,
+    decide_in_slack, decide_in_telegram,
 };
 
-pub use crate::services::gateways::{SLACK_EVENTS_PREFIX, TELEGRAM_UPDATES_PREFIX};
+pub use crate::services::gateways::{
+    SLACK_EVENTS_PREFIX, TEAMS_ACTIVITIES_PREFIX, TELEGRAM_UPDATES_PREFIX,
+};
 
 /// What Slack may send: its events are a few kibibytes.
 const MAX_BODY_BYTES: usize = 256 * 1024;
@@ -45,6 +50,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/gateways/slack/{id}", post(receive))
         .route("/gateways/telegram/{id}", post(receive_telegram))
+        .route("/gateways/teams/{id}", post(receive_teams))
 }
 
 async fn receive(
@@ -117,6 +123,27 @@ async fn receive_telegram(
         }
         UpdateOutcome::Unknown => Err(DomainError::not_found(UNKNOWN).into()),
         UpdateOutcome::Unreadable => Err(ApiError::request(StatusCode::BAD_REQUEST, UNREADABLE)),
+    }
+}
+
+async fn receive_teams(
+    State(state): State<AppState>,
+    Path(raw): Path<String>,
+    headers: HeaderMap,
+    body: Body,
+) -> ApiResult<Response> {
+    let Ok(id) = Uuid::parse_str(&raw) else {
+        return Err(DomainError::not_found(UNKNOWN).into());
+    };
+    let bytes = bounded_body(&headers, body).await?;
+    let authorization = (headers.get(AUTHORIZATION)).and_then(|value| value.to_str().ok());
+    match state
+        .gateways
+        .receive_teams(id, authorization, &bytes, Utc::now())
+        .await?
+    {
+        ActivityOutcome::Taken => Ok(StatusCode::OK.into_response()),
+        ActivityOutcome::Unknown => Err(DomainError::not_found(UNKNOWN).into()),
     }
 }
 
