@@ -8,7 +8,8 @@
 //! it is refused and not tried again. A manager who links another Teams
 //! account is written there only. A notice's card is forgotten once its
 //! requests are past, or once it is no longer where its manager is
-//! written.
+//! written (their Teams account unlinked, or another linked); a pause's
+//! card never by that pass.
 
 mod support;
 
@@ -20,10 +21,11 @@ use mimorya_db::repositories::gateway_cards::purge_notice_cards;
 use serde_json::json;
 use support::approver_notices::{nadia_s_request, notice_of, notify, refuse, retry_notices_now};
 use support::queue::as_owner;
+use support::slack_conversations::answer;
 use support::sso::SSO_DEPLOYMENT;
 use support::teams::{MARC_TEAMS, link_code};
 use support::teams_conversations::{linked_teams, said_to, talk, talk_from};
-use support::teams_validations::latest_card;
+use support::teams_validations::{asked, latest_card};
 use support::{TestApi, email};
 
 /// Another Teams account of Marc's, as Teams names it.
@@ -36,6 +38,18 @@ async fn notice_cards(api: &TestApi) -> i64 {
         .fetch_one(&mut *tx)
         .await
         .unwrap();
+    tx.commit().await.unwrap();
+    count
+}
+
+/// How many cards of pauses the company keeps.
+async fn pause_cards(api: &TestApi) -> i64 {
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    let count =
+        sqlx::query_scalar("select count(*) from gateway_cards where thread_id is not null")
+            .fetch_one(&mut *tx)
+            .await
+            .unwrap();
     tx.commit().await.unwrap();
     count
 }
@@ -158,6 +172,9 @@ async fn a_manager_who_links_another_teams_account_is_written_there_only() {
     let api = TestApi::start_with_teams(&SSO_DEPLOYMENT, &teams.url).await;
     let (paul, marc) = (api.sign_in(user::PAUL).await, api.sign_in(user::MARC).await);
     let id = linked_teams(&api, &teams, (&paul, &marc), MARC_TEAMS, user::MARC).await;
+    let (_, first) = nadia_s_request(&api, &paul, "09:00").await;
+    assert_eq!(notify(&api).await, 1);
+    refuse(&api, &marc, first).await;
     // Another Teams account with his address, linked since by him.
     teams.add_person(MARC_ELSEWHERE.0, MARC_ELSEWHERE.1, &email(user::MARC));
     let code = link_code(&api, &teams, id, "e-1", MARC_ELSEWHERE).await;
@@ -165,9 +182,11 @@ async fn a_manager_who_links_another_teams_account_is_written_there_only() {
         .post("/account/gateways/link", json!({ "code": code }))
         .await;
     assert_eq!(linked.status, StatusCode::OK, "{}", linked.text());
+    // The card told in the former conversation is forgotten.
+    assert_eq!(purge(&api).await, 1);
 
     let before = said_to(&teams, MARC_TEAMS.0).len();
-    let (_, approval) = nadia_s_request(&api, &paul, "09:00").await;
+    let (_, approval) = nadia_s_request(&api, &paul, "10:00").await;
     assert_eq!(notify(&api).await, 1);
     // Told in the conversation of the account linked now, never the former.
     assert!(
@@ -187,20 +206,28 @@ async fn a_notice_s_card_is_forgotten_once_past_or_no_longer_where_its_manager_i
     let (paul, marc) = (api.sign_in(user::PAUL).await, api.sign_in(user::MARC).await);
     let id = linked_teams(&api, &teams, (&paul, &marc), MARC_TEAMS, user::MARC).await;
     let kept = notice_cards(&api).await;
+    // A pause's card of his own, never forgotten by the pass (ADR-141).
+    let (_, own) = asked(&api, &teams, (id, MARC_TEAMS), "Appliqué.").await;
+    assert_eq!(answer(&api).await, 1);
+    assert_eq!(pause_cards(&api).await, 1);
+    // Decided, its run's end played, before her requests are.
+    refuse(&api, &marc, own).await;
 
     // Recent, where he is written: kept.
     let (_, first) = nadia_s_request(&api, &paul, "09:00").await;
     assert_eq!(notify(&api).await, 1);
     assert_eq!(notice_cards(&api).await, kept + 1);
     assert_eq!(purge(&api).await, 0);
-    // Written longer ago than its requests could wait: forgotten.
+    // Written longer ago than its requests could wait: forgotten, the
+    // pause's card as old kept.
     as_owner(
-        "update gateway_cards set created_at = now() - interval '9 days' where user_id = $1",
-        user::MARC,
+        "update gateway_cards set created_at = now() - interval '9 days' where gateway_id = $1",
+        id,
     )
     .await;
     assert_eq!(purge(&api).await, 1);
     assert_eq!(notice_cards(&api).await, kept);
+    assert_eq!(pause_cards(&api).await, 1);
     refuse(&api, &marc, first).await;
 
     // His Teams account unlinked: forgotten at once.
