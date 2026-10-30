@@ -61,7 +61,7 @@ async fn an_action_awaiting_its_author_is_validated_on_its_card() {
     );
 
     // Validated in Teams: decided as him, audited so, the card written
-    // again without its buttons, saying so, the outcome said there.
+    // again once, without its buttons, saying so, the outcome said there.
     let since = latest_entry(&api).await;
     press(
         &api,
@@ -83,6 +83,7 @@ async fn an_action_awaiting_its_author_is_validated_on_its_card() {
         "{}",
         rewritten.text
     );
+    assert_eq!(rewritten.rewritten, 1);
     let card = rewritten.card.unwrap();
     assert!(buttons(&card).is_empty(), "{card}");
     assert!(card_text(&card).contains("Décidée."), "{card}");
@@ -165,7 +166,9 @@ async fn an_action_decided_meanwhile_has_its_buttons_taken_off() {
         last_said(&teams, MARC_TEAMS.0),
         "Cette demande a déjà été traitée"
     );
-    assert!(buttons(&message(&teams, &pause.id).card.unwrap()).is_empty());
+    let rewritten = message(&teams, &pause.id);
+    assert!(buttons(&rewritten.card.unwrap()).is_empty());
+    assert_eq!(rewritten.rewritten, 1);
     assert_eq!(listed(&marc, &run).await.unwrap()["status"], "approved");
 }
 

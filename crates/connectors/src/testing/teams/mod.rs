@@ -56,6 +56,8 @@ pub struct TeamsSent {
     pub text_format: Option<String>,
     /// Its Adaptive Card, if it holds one (ADR-141).
     pub card: Option<Value>,
+    /// How many times it was written again in place.
+    pub rewritten: usize,
 }
 
 #[derive(Default)]

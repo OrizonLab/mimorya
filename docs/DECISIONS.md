@@ -8062,26 +8062,34 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
   - **la carte réécrite** : une fois une de ses actions décidée (maintenant, ou
     entre-temps dans l'application), la carte est écrite de nouveau, à sa place
     (`PUT` de l'activité), avec le texte de la pause. Ses actions décidées y restent,
-    sans boutons, marquées « Décidée. » ; une fois toutes décidées, le texte le dit
-    (`decided_text`) au lieu d'inviter à valider ci-dessous. Elle n'est pas réécrite
-    quand elle montre une action que la personne ne voit pas : un compte Teams relié
+    sans boutons, marquées « Décidée. », et celles qui n'attendent plus rien sans
+    avoir été décidées (expirées, ou arrêtées avec leur demande) « N’attend plus de
+    décision. » (`CardState`). Une fois aucune ouverte, le texte le dit
+    (`settled_text`) au lieu d'inviter à valider ci-dessous ; la suite n'y est
+    promise que si chacune a été validée ou refusée. Elle n'est pas réécrite quand
+    elle montre une action que la personne ne voit pas : un compte Teams relié
     depuis à quelqu'un d'autre n'apprend rien des actions de la personne d'avant.
     Deux boutons de la même carte pressés presque ensemble réécrivent chacun la
     carte, et Teams garde la dernière écrite, qui peut venir de l'état le plus
     ancien : après avoir écrit la carte, chaque appui relit donc ses actions et la
-    réécrit si l'une a été décidée depuis (trois écritures au plus par appui). Le
-    dernier à écrire voit ainsi toutes les décisions prises avant lui ;
+    réécrit si l'une n'est plus ouverte depuis. Une action ne fait que quitter son
+    attente : chaque écriture après la première suit une action de plus qui n'est
+    plus ouverte, au plus autant que la carte en montre, et la boucle s'arrête
+    là. Le dernier à écrire voit ainsi toutes les décisions prises avant lui ;
   - **le reste** : le bot en pause ne prend rien. Un compte Teams qui n'est plus relié
     reçoit le lien pour le relier, sans rien décider.
 - **Conséquences** :
   - le Microsoft simulé des tests :
     - garde la carte et le numéro de chaque message ;
-    - accepte qu'un message soit réécrit (`PUT …/activities/{id}`) ;
+    - accepte qu'un message soit réécrit (`PUT …/activities/{id}`), et compte ses
+      réécritures (une par appui quand rien n'a changé entre-temps) ;
     - écrit un bouton pressé comme Teams (`FakeTeams::press`, ou `POST /test/activity`
       avec `value` et `card` pour le bout en bout) ;
   - tests :
-    - `crates/core` : la carte (texte simple, boutons, actions décidées), les actions
-      qu'elle montre, et la lecture d'un bouton pressé ;
+    - `crates/core` : la carte (texte simple, boutons, actions décidées ou qui
+      n'attendent plus rien), les actions qu'elle montre, et la lecture d'un bouton
+      pressé ; `crates/api` : quand une carte est écrite de nouveau (règle de la
+      relecture) et le texte d'une carte dont aucune action n'est ouverte ;
     - `crates/api/tests/teams_gateway_validations.rs` : action validée, puis refusée,
       depuis sa carte, auditée, carte réécrite, run repris ; bouton pressé de nouveau ;
       action décidée entre-temps, ses boutons retirés ; carte laissée au compte Teams

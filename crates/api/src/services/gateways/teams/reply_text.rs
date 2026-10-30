@@ -4,8 +4,9 @@
 //! (`from_markdown`), cut when too long; a pause for validation, said with
 //! whose it is: the person's own shown on the card the text comes with, to
 //! validate there or in the application (ADR-141), the others in the
-//! application, which shows the actions' exact parameters; once every
-//! action of its card is decided, that they are (`decided_text`); a stop.
+//! application, which shows the actions' exact parameters; once no action
+//! of its card awaits a decision any more, that none does (`settled_text`);
+//! a stop.
 //! Each says where its conversation is in the application, where its
 //! sources and its details are.
 
@@ -82,17 +83,26 @@ pub fn reply_text(status: &str, answer: Option<&str>, url: &str, pause: Pause) -
 }
 
 /// What a pause's card is written again with once none of its actions
-/// awaits a decision any more, its buttons all taken off (ADR-141).
-pub fn decided_text(url: &str, pause: Pause) -> String {
+/// awaits a decision any more, its buttons all taken off (ADR-141): each
+/// validated or refused (`decided`), the request goes on; one expired, or
+/// stopped with its request, nothing more is promised.
+pub fn settled_text(url: &str, pause: Pause, decided: bool) -> String {
     let link = link(url, "ouvrir la conversation").unwrap_or_else(|| escaped(url));
-    let decided = if pause.shown == 1 {
-        "L’action de cette demande montrée ci-dessous est décidée ("
-    } else {
-        "Les actions de cette demande montrées ci-dessous sont décidées ("
+    let one = pause.shown == 1;
+    let settled = match (decided, one) {
+        (true, true) => "L’action de cette demande montrée ci-dessous est décidée (",
+        (true, false) => "Les actions de cette demande montrées ci-dessous sont décidées (",
+        (false, true) => "L’action de cette demande montrée ci-dessous n’attend plus de décision (",
+        (false, false) => {
+            "Les actions de cette demande montrées ci-dessous n’attendent plus de décision ("
+        }
     };
+    if !decided {
+        return format!("{}{link}{}", escaped(settled), escaped(")."));
+    }
     format!(
         "{}{link}{}{}",
-        escaped(decided),
+        escaped(settled),
         escaped("). La suite viendra ici."),
         others(pause)
     )
@@ -214,13 +224,13 @@ mod tests {
     }
 
     #[test]
-    fn a_card_whose_actions_are_all_decided_says_so() {
+    fn a_card_whose_actions_are_all_settled_says_so() {
         let one = Pause {
             shown: 1,
             ..Pause::default()
         };
         assert_eq!(
-            decided_text(URL, one),
+            settled_text(URL, one, true),
             format!(
                 "L’action de cette demande montrée ci\\-dessous est décidée \\({LINK}\\)\\. \
                  La suite viendra ici\\."
@@ -231,7 +241,7 @@ mod tests {
             in_application: 1,
             managed: 0,
         };
-        let text = decided_text(URL, several);
+        let text = settled_text(URL, several, true);
         assert!(
             text.starts_with("Les actions de cette demande montrées ci\\-dessous sont décidées"),
             "{text}"
@@ -239,6 +249,14 @@ mod tests {
         assert!(
             text.ends_with(" D’autres sont à valider dans l’application\\."),
             "{text}"
+        );
+        // Expired, or stopped with its request: no answer is promised.
+        assert_eq!(
+            settled_text(URL, several, false),
+            format!(
+                "Les actions de cette demande montrées ci\\-dessous n’attendent plus de \
+                 décision \\({LINK}\\)\\."
+            )
         );
     }
 }

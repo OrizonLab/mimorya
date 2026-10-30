@@ -18,7 +18,7 @@
 //! Audited as any decision, with the service, `teams`.
 
 use mimorya_core::gateways::teams::{
-    CardAction, CardChoice, PersonalMessage, TeamsApplication, escaped, validation_card,
+    CardAction, CardChoice, CardState, PersonalMessage, TeamsApplication, escaped, validation_card,
 };
 use mimorya_core::gateways::{GatewayKind, ShownAction};
 use mimorya_db::repositories::approvals::{ApprovalRow, get_approval};
@@ -26,7 +26,7 @@ use mimorya_db::repositories::gateway_cards::{GatewayCard, find_gateway_card};
 use mimorya_db::repositories::gateway_identities::linked_account;
 use uuid::Uuid;
 
-use super::reply_text::{Pause, decided_text, reply_text};
+use super::reply_text::{Pause, reply_text, settled_text};
 use super::texts;
 use crate::app::Services;
 use crate::services::gateways::concerned::{Concerned, NOT_DECIDED, decide_as};
@@ -34,10 +34,6 @@ use crate::services::gateways::person::{Act, may_act};
 
 /// What the press of a button the bot did not show there is told.
 const STALE: &str = "Ce bouton n’est plus valable : rien n’a été décidé.";
-
-/// The most times one press writes its card again: once, then for each
-/// decision another press wrote from an older state after it.
-const MAX_REWRITES: usize = 3;
 
 /// A linked person's press of a card's button, to decide.
 pub struct TeamsChoice {
@@ -132,29 +128,39 @@ async fn decide(services: &Services, pressed: &TeamsChoice) -> anyhow::Result<St
 
 /// Writes the card again as it was, without the buttons of its actions
 /// decided by now, then reads them again: written meanwhile by another
-/// press from an older state, it is written again as it now is. Left as it
-/// is when none is decided, or when it shows an action its presser does
-/// not see (a Teams account linked since to someone else learns nothing of
-/// the actions of the person before).
+/// press from an older state, it is written again as it now is. An action
+/// only ever leaves `Open`: each write but the first follows one more
+/// settled, as many as the card shows at most. Left as it is when none is
+/// settled, or when it shows an action its presser does not see (a Teams
+/// account linked since to someone else learns nothing of the actions of
+/// the person before).
 async fn rewrite_card(
     services: &Services,
     pressed: &TeamsChoice,
     card: &GatewayCard,
     concerned: &Concerned,
 ) -> anyhow::Result<()> {
-    let mut written: Option<Vec<bool>> = None;
-    for _ in 0..MAX_REWRITES {
+    let mut written: Option<Vec<CardState>> = None;
+    for _ in 0..=card.approval_ids.len() {
         let Some(approvals) = shown_on(services, pressed.tenant_id, card, concerned).await? else {
             return Ok(());
         };
-        let open: Vec<bool> = approvals.iter().map(|a| a.status == "pending").collect();
-        if open.iter().all(|&open| open) || written.as_ref() == Some(&open) {
+        let states: Vec<CardState> = (approvals.iter())
+            .map(|a| CardState::of(&a.status))
+            .collect();
+        if !to_write(&states, written.as_deref()) {
             return Ok(());
         }
         write_card(services, pressed, card, &approvals).await?;
-        written = Some(open);
+        written = Some(states);
     }
     Ok(())
+}
+
+/// Whether a card whose actions stand as `states` is to be written (again),
+/// as `written` last, if it was: once one is settled, and not as it was.
+fn to_write(states: &[CardState], written: Option<&[CardState]>) -> bool {
+    states.iter().any(|&state| state != CardState::Open) && written != Some(states)
 }
 
 /// The actions `card` shows, as they are now; none when its presser does
@@ -178,7 +184,7 @@ async fn shown_on(
 }
 
 /// Writes `card` again in place, its `approvals` as they are now: once none
-/// is open, its text says they are decided.
+/// is open, its text says none awaits a decision any more.
 async fn write_card(
     services: &Services,
     pressed: &TeamsChoice,
@@ -188,7 +194,7 @@ async fn write_card(
     let actions: Vec<CardAction> = (approvals.iter())
         .map(|a| CardAction {
             shown: shown_action(a),
-            open: a.status == "pending",
+            state: CardState::of(&a.status),
         })
         .collect();
     let pause = Pause {
@@ -197,10 +203,11 @@ async fn write_card(
         managed: usize::try_from(card.managed).unwrap_or(0),
     };
     let url = services.gateways.conversation_url(card.conversation_id);
-    let text = if actions.iter().any(|a| a.open) {
+    let text = if actions.iter().any(|a| a.state == CardState::Open) {
         reply_text("awaiting_approval", None, &url, pause)
     } else {
-        decided_text(&url, pause)
+        let decided = actions.iter().all(|a| a.state == CardState::Decided);
+        settled_text(&url, pause, decided)
     };
     let message = &pressed.message;
     let to = (
@@ -250,5 +257,20 @@ mod tests {
             "Refusée par vous dans Teams. La demande reprend."
         );
         assert_eq!(outcome(true, false, true), "Validée par vous dans Teams.");
+    }
+
+    #[test]
+    fn a_card_is_written_again_until_it_shows_every_settled_action() {
+        use CardState::{Closed, Decided, Open};
+        // None settled: left as Teams shows it.
+        assert!(!to_write(&[Open, Open], None));
+        // One settled: written without its buttons.
+        assert!(to_write(&[Decided, Open], None));
+        // Read again as written: done.
+        assert!(!to_write(&[Decided, Open], Some(&[Decided, Open])));
+        // Settled since, its card perhaps written over from an older
+        // state: written again.
+        assert!(to_write(&[Decided, Decided], Some(&[Decided, Open])));
+        assert!(to_write(&[Decided, Closed], Some(&[Decided, Open])));
     }
 }

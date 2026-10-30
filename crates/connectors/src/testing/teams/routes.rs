@@ -131,6 +131,7 @@ pub(super) async fn send(
         text: written.0,
         text_format: written.1,
         card: written.2,
+        rewritten: 0,
     });
     (StatusCode::CREATED, Json(json!({ "id": id }))).into_response()
 }
@@ -154,6 +155,7 @@ pub(super) async fn rewrite(
         return error(StatusCode::NOT_FOUND, "ActivityNotFound");
     };
     (kept.text, kept.text_format, kept.card) = written;
+    kept.rewritten += 1;
     (StatusCode::OK, Json(json!({ "id": id }))).into_response()
 }
 

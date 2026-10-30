@@ -2,7 +2,8 @@
 //! may be validated outside the application (`validated_in_gateway`), as
 //! many as one card holds, each with its description, its risk and its
 //! exact parameters, whole, then its « Valider » and « Refuser » buttons;
-//! once decided, an action stays shown, without buttons. Every text the
+//! once decided, or awaiting nothing more (expired, its request stopped),
+//! an action stays shown, without buttons, saying so. Every text the
 //! card shows is a run of plain text (`TextRun`), which Teams never reads
 //! as Markdown: nothing the agent wrote reads as markup there. A button
 //! carries its choice and its approval; pressed, Teams sends it back as a
@@ -24,12 +25,33 @@ const MAX_CARD_CHARS: usize = 3_400;
 /// The key of what a button carries, among what Teams adds to it.
 const KEY: &str = "mimorya";
 
-/// An action on a card: still open to a decision (with its buttons), or
-/// decided.
+/// An action on a card, and where it stands.
 #[derive(Debug, Clone, Copy)]
 pub struct CardAction<'a> {
     pub shown: ShownAction<'a>,
-    pub open: bool,
+    pub state: CardState,
+}
+
+/// Where an action on a card stands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CardState {
+    /// Awaiting a decision: its buttons shown.
+    Open,
+    /// Validated or refused.
+    Decided,
+    /// Awaiting nothing more, undecided: expired, or its request stopped.
+    Closed,
+}
+
+impl CardState {
+    /// Where an action whose request's status is `status` stands.
+    pub fn of(status: &str) -> Self {
+        match status {
+            "pending" => Self::Open,
+            "approved" | "rejected" => Self::Decided,
+            _ => Self::Closed,
+        }
+    }
 }
 
 /// A button of a card, pressed: the approval it decides, and how.
@@ -91,21 +113,25 @@ pub fn validation_card(actions: &[CardAction]) -> Value {
             "text": parameters,
             "fontType": "Monospace",
         })]));
-        if action.open {
-            body.push(json!({
-                "type": "ActionSet",
-                "actions": [
-                    button(&format!("Valider{number}"), "v", shown.approval_id),
-                    button(&format!("Refuser{number}"), "r", shown.approval_id),
-                ],
-            }));
-        } else {
-            body.push(runs(&[json!({
-                "type": "TextRun",
-                "text": "Décidée.",
-                "italic": true,
-            })]));
-        }
+        let settled = match action.state {
+            CardState::Open => {
+                body.push(json!({
+                    "type": "ActionSet",
+                    "actions": [
+                        button(&format!("Valider{number}"), "v", shown.approval_id),
+                        button(&format!("Refuser{number}"), "r", shown.approval_id),
+                    ],
+                }));
+                continue;
+            }
+            CardState::Decided => "Décidée.",
+            CardState::Closed => "N’attend plus de décision.",
+        };
+        body.push(runs(&[json!({
+            "type": "TextRun",
+            "text": settled,
+            "italic": true,
+        })]));
     }
     json!({
         "type": "AdaptiveCard",

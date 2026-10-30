@@ -67,7 +67,7 @@ fn a_card_shows_each_action_whole_as_plain_text_with_its_buttons() {
     let one = shown(7, "Planifier *INT-2052* [ici](x)", "write", &parameters);
     let card = validation_card(&[CardAction {
         shown: one,
-        open: true,
+        state: CardState::Open,
     }]);
     assert_eq!(card["type"], "AdaptiveCard");
     let texts = texts(&card);
@@ -96,27 +96,44 @@ fn a_card_shows_each_action_whole_as_plain_text_with_its_buttons() {
 }
 
 #[test]
-fn several_actions_are_numbered_a_decided_one_shown_without_its_buttons() {
+fn several_actions_are_numbered_a_settled_one_shown_without_its_buttons() {
     let small = json!({ "proposalId": "p-1" });
     let card = validation_card(&[
         CardAction {
             shown: shown(1, "Première", "write", &small),
-            open: false,
+            state: CardState::Decided,
         },
         CardAction {
             shown: shown(2, "Seconde", "write", &small),
-            open: true,
+            state: CardState::Open,
+        },
+        CardAction {
+            shown: shown(3, "Troisième", "write", &small),
+            state: CardState::Closed,
         },
     ]);
     let texts = texts(&card);
     assert_eq!(texts[0], "Action 1 à valider : ");
     assert!(texts.contains(&"Décidée.".to_owned()), "{texts:?}");
     assert!(
+        texts.contains(&"N’attend plus de décision.".to_owned()),
+        "{texts:?}"
+    );
+    assert!(
         texts.contains(&"Action 2 à valider : ".to_owned()),
         "{texts:?}"
     );
     let titles: Vec<String> = buttons(&card).into_iter().map(|(title, _)| title).collect();
     assert_eq!(titles, ["Valider 2", "Refuser 2"]);
+}
+
+#[test]
+fn an_action_stands_as_its_request_s_status() {
+    assert_eq!(CardState::of("pending"), CardState::Open);
+    assert_eq!(CardState::of("approved"), CardState::Decided);
+    assert_eq!(CardState::of("rejected"), CardState::Decided);
+    assert_eq!(CardState::of("expired"), CardState::Closed);
+    assert_eq!(CardState::of("cancelled"), CardState::Closed);
 }
 
 #[test]

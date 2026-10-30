@@ -14,7 +14,9 @@
 
 use chrono::{DateTime, Utc};
 use mimorya_connectors::teams::TeamsFailure;
-use mimorya_core::gateways::teams::{CardAction, TeamsApplication, shown_in_card, validation_card};
+use mimorya_core::gateways::teams::{
+    CardAction, CardState, TeamsApplication, shown_in_card, validation_card,
+};
 use mimorya_db::repositories::approvals::ApprovalRow;
 use mimorya_db::repositories::gateway_cards::{GatewayCard, record_gateway_card};
 use mimorya_db::repositories::gateway_replies::{ReplyRecord, ReplyTarget};
@@ -70,7 +72,10 @@ pub(super) async fn answer(
         };
     }
     let actions: Vec<CardAction> = (shown.iter())
-        .map(|&shown| CardAction { shown, open: true })
+        .map(|&shown| CardAction {
+            shown,
+            state: CardState::Open,
+        })
         .collect();
     let card = GatewayCard {
         approval_ids: shown.iter().map(|a| a.approval_id).collect(),
