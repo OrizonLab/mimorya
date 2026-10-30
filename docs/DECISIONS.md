@@ -8248,5 +8248,10 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     `knowledge_share_admin.rs` (qui partage et quoi, jamais pour soi-même, unité
     supprimée après ses partages) ; `crates/db/tests/memory_search.rs`,
     `document_search.rs` (recherche de l'agent, par les mots et par le sens) ;
+  - le refus d'un partage dont son auteur serait lecteur vaut au moment de le faire : un
+    administrateur qui gère aussi l'organisation (`org:manage`) pourrait ensuite placer
+    son unité sous la cible. Il n'y gagne rien de plus qu'en la plaçant sous l'unité
+    partagée, qu'il lirait alors directement ; la double validation des changements
+    d'administration (ADR-019, phase 3) couvrira les deux ;
   - reste : l'écran du partage dans l'administration et son parcours de bout en bout
     (lot 15b).

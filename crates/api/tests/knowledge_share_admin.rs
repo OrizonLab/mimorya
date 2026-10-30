@@ -2,17 +2,21 @@
 //! an administrator of the company's access policies (`policy:manage`,
 //! company-wide), never one they would read through themself; between two
 //! of its units, the one shared not containing the other, once, something
-//! shared, until a date to come. An unknown unit is refused and traced; an
-//! unknown share is not found; a unit is not deleted while shared.
+//! shared, until a date to come. An unknown unit is refused and traced, and
+//! so is another company's; an unknown share is not found, nor another
+//! company's; a unit is not deleted while shared.
 
 mod support;
 
 use axum::http::StatusCode;
 use mimorya_core::demo::{unit, user};
+use mimorya_db::testing::OTHER_TENANT_ID;
 use serde_json::{Value, json};
 use support::TestApi;
 use support::knowledge_shares::{SHARES, share as shared, unshare};
-use support::refusals::{latest_entry, unknown_references_since};
+use support::refusals::{
+    entries_of_since, latest_entry, latest_entry_of, not_found_since, unknown_references_since,
+};
 use uuid::Uuid;
 
 fn share(source: Uuid, target: Uuid) -> Value {
@@ -131,4 +135,84 @@ async fn a_unit_is_deleted_only_once_its_shares_are_removed() {
     }
     let removed = paul.delete(&path).await;
     assert_eq!(removed.status, StatusCode::OK, "{}", removed.text());
+}
+
+/// Two units of the other company, the second's knowledge shared with the
+/// first; that unit and the share.
+async fn foreign_share(api: &TestApi) -> (Uuid, Uuid) {
+    let (head, branch) = (Uuid::new_v4(), Uuid::new_v4());
+    let mut tx = api.app.services.db.begin(OTHER_TENANT_ID).await.unwrap();
+    let units = [
+        (head, None, "Siège voisin", "company"),
+        (branch, Some(head), "Agence voisine", "team"),
+    ];
+    for (id, parent_id, name, kind) in units {
+        sqlx::query(
+            "insert into org_units (id, tenant_id, parent_id, name, type) \
+             values ($1, $2, $3, $4, $5)",
+        )
+        .bind(id)
+        .bind(OTHER_TENANT_ID)
+        .bind(parent_id)
+        .bind(name)
+        .bind(kind)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    }
+    let share: Uuid = sqlx::query_scalar(
+        "insert into knowledge_shares (tenant_id, source_org_unit_id, target_org_unit_id, \
+         shares_memory, shares_documents, max_sensitivity) \
+         values ($1, $2, $3, true, false, 'internal') returning id",
+    )
+    .bind(OTHER_TENANT_ID)
+    .bind(branch)
+    .bind(head)
+    .fetch_one(&mut *tx)
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+    (head, share)
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn another_company_s_units_and_shares_are_unknown_here() {
+    let api = TestApi::start().await;
+    let paul = api.sign_in(user::PAUL).await;
+    let (unit_elsewhere, share_elsewhere) = foreign_share(&api).await;
+    let since = latest_entry(&api).await;
+    let elsewhere = latest_entry_of(&api, OTHER_TENANT_ID).await;
+
+    // Its unit: refused as unknown, traced.
+    let body = share(unit::TEAM_NORTH, unit_elsewhere);
+    let refused = paul.post(SHARES, body).await;
+    assert_eq!(
+        refused.status,
+        StatusCode::BAD_REQUEST,
+        "{}",
+        refused.text()
+    );
+    let traced = unknown_references_since(&api, since).await;
+    assert_eq!(traced.len(), 1, "{traced:?}");
+    // Its share: neither listed nor removed here, traced.
+    let listed = paul.get(SHARES).await.json();
+    assert_eq!(listed["shares"], json!([]), "{listed}");
+    let path = format!("{SHARES}/{share_elsewhere}");
+    assert_eq!(paul.delete(&path).await.status, StatusCode::NOT_FOUND);
+    let traced = not_found_since(&api, since).await;
+    assert_eq!(traced.len(), 1, "{traced:?}");
+    let mut tx = api.app.services.db.begin(OTHER_TENANT_ID).await.unwrap();
+    let kept: bool =
+        sqlx::query_scalar("select exists (select 1 from knowledge_shares where id = $1)")
+            .bind(share_elsewhere)
+            .fetch_one(&mut *tx)
+            .await
+            .unwrap();
+    assert!(kept);
+    // Nothing written in the other company's audit.
+    assert_eq!(
+        entries_of_since(&api, OTHER_TENANT_ID, elsewhere).await,
+        "[]"
+    );
 }
