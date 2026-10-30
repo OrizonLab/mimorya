@@ -115,37 +115,84 @@ pub(super) async fn send(
     Json(activity): Json<Value>,
 ) -> Response {
     let mut shared = shared.lock().expect("lock");
+    let (app, written) = match written(&shared, (&conversation, &headers), &activity) {
+        Ok(written) => written,
+        Err(refused) => return *refused,
+    };
     // The service written to: the path before `v3/`.
     let region = uri.path().split("v3/").next().unwrap_or_default();
+    let id = format!("envoi-{}", shared.sent.len() + 1);
     let service = format!("{}{region}", shared.base);
+    shared.sent.push(TeamsSent {
+        id: id.clone(),
+        app,
+        service,
+        conversation,
+        text: written.0,
+        text_format: written.1,
+        card: written.2,
+        rewritten: 0,
+    });
+    (StatusCode::CREATED, Json(json!({ "id": id }))).into_response()
+}
+
+/// A message the bot wrote, written again in place of what it was: its
+/// text and card replaced.
+pub(super) async fn rewrite(
+    State(shared): SharedState,
+    Path((conversation, id)): Path<(String, String)>,
+    headers: HeaderMap,
+    Json(activity): Json<Value>,
+) -> Response {
+    let mut shared = shared.lock().expect("lock");
+    let (app, written) = match written(&shared, (&conversation, &headers), &activity) {
+        Ok(written) => written,
+        Err(refused) => return *refused,
+    };
+    let kept = (shared.sent.iter_mut())
+        .find(|m| m.id == id && m.conversation == conversation && m.app == app);
+    let Some(kept) = kept else {
+        return error(StatusCode::NOT_FOUND, "ActivityNotFound");
+    };
+    (kept.text, kept.text_format, kept.card) = written;
+    kept.rewritten += 1;
+    (StatusCode::OK, Json(json!({ "id": id }))).into_response()
+}
+
+/// What a message holds: its text, its format and its card.
+type Written = (String, Option<String>, Option<Value>);
+
+/// What a bot writes in `conversation` with `headers`: whose token wrote
+/// it, and what; or why Teams refuses it.
+fn written(
+    shared: &Shared,
+    (conversation, headers): (&str, &HeaderMap),
+    activity: &Value,
+) -> Result<(String, Written), Box<Response>> {
     if shared.down {
-        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+        return Err(Box::new(StatusCode::SERVICE_UNAVAILABLE.into_response()));
     }
-    let Some(app) = bearer_app(&shared, &headers) else {
-        return error(StatusCode::UNAUTHORIZED, "Unauthorized");
+    let Some(app) = bearer_app(shared, headers) else {
+        return Err(Box::new(error(StatusCode::UNAUTHORIZED, "Unauthorized")));
     };
     let member = conversation
         .strip_prefix("a:conversation-")
         .map(|aad| format!("29:{aad}"));
     if member.is_some_and(|member| shared.blocked.contains(&member)) {
-        return error(StatusCode::FORBIDDEN, "BotDisabledByAdmin");
+        return Err(Box::new(error(StatusCode::FORBIDDEN, "BotDisabledByAdmin")));
     }
     let text = activity.get("text").and_then(Value::as_str);
     let Some(text) =
         text.filter(|_| activity.get("type").and_then(Value::as_str) == Some("message"))
     else {
-        return error(StatusCode::BAD_REQUEST, "BadArgument");
+        return Err(Box::new(error(StatusCode::BAD_REQUEST, "BadArgument")));
     };
     let text_format = (activity.get("textFormat").and_then(Value::as_str)).map(str::to_owned);
-    shared.sent.push(TeamsSent {
-        app,
-        service,
-        conversation,
-        text: text.to_owned(),
-        text_format,
-    });
-    let id = format!("envoi-{}", shared.sent.len());
-    (StatusCode::CREATED, Json(json!({ "id": id }))).into_response()
+    let card = (activity.get("attachments").and_then(Value::as_array))
+        .and_then(|attachments| attachments.first())
+        .filter(|a| a["contentType"] == "application/vnd.microsoft.card.adaptive")
+        .map(|a| a["content"].clone());
+    Ok((app, (text.to_owned(), text_format, card)))
 }
 
 pub(super) async fn member(

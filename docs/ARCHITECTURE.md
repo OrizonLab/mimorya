@@ -373,8 +373,11 @@ Détaillés dans [AGENT_ENGINE.md](AGENT_ENGINE.md). En résumé :
   lancés en son nom sur le canal `teams`, chaque fin ou pause écrite là par la même
   passe, en Markdown de Teams (`teams::from_markdown`), au service Teams d'où elle a
   écrit en dernier (`gateway_threads.service_url`), avec le lien de la conversation,
-  marquée « Teams » dans l'application. Les validations par cartes adaptatives et
-  l'avis au responsable dans Teams viendront ensuite.
+  marquée « Teams » dans l'application. Ce qui attend sa propre validation s'y valide
+  avec les boutons d'une carte adaptative, quand l'action ne sort pas de l'entreprise et
+  peut être défaite (ADR-141) ; la plateforme garde chaque carte écrite et les demandes
+  qu'elle montre (`gateway_cards`), seul ce qu'elle montre se décide, et la carte est
+  réécrite une fois décidée. L'avis au responsable dans Teams viendra ensuite.
 - Les secrets ne transitent jamais par le contexte du modèle ni par les journaux.
 
 Connecteurs prévus : démonstration (MVP), MCP générique (MVP), déclencheurs (ADR-109),

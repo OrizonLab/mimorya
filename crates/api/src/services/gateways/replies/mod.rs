@@ -158,7 +158,7 @@ async fn reply(
             telegram::answer(gateways, &target, &awaiting, &token, now).await
         }
         (Some(secret), Some(GatewayKind::Teams)) => {
-            teams::answer(gateways, &target, &awaiting, secret, now).await
+            teams::answer(gateways, (tenant_id, &target), &awaiting, secret, now).await
         }
     };
     let mut tx = services.db.begin(tenant_id).await?;

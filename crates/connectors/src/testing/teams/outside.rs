@@ -1,6 +1,7 @@
 //! What the end-to-end tests ask the test Microsoft from outside
-//! (ADR-139): the messages the bots wrote, and the activity a person's
-//! message to a bot would be (`activity`), with its token (`signing`), for
+//! (ADR-139): the messages the bots wrote (with their card, ADR-141), and
+//! the activity a person's message to a bot, or a button they press on one
+//! of its cards, would be (`activity`), with its token (`signing`), for
 //! them to send the bot's messaging endpoint.
 
 use std::sync::{Arc, Mutex};
@@ -11,7 +12,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::Shared;
-use super::activity::{claims, message, service_url};
+use super::activity::{claims, message, pressed, service_url};
 use super::signing::{Signer, signed_token};
 
 type SharedState = State<Arc<Mutex<Shared>>>;
@@ -22,10 +23,12 @@ pub(super) async fn messages(State(shared): SharedState) -> Json<Value> {
     let messages: Vec<Value> = (shared.sent.iter())
         .map(|m| {
             json!({
+                "id": m.id,
                 "app": m.app,
                 "conversation": m.conversation,
                 "text": m.text,
                 "textFormat": m.text_format,
+                "card": m.card,
             })
         })
         .collect();
@@ -40,7 +43,13 @@ pub(super) struct Written {
     id: String,
     aad: String,
     name: String,
+    #[serde(default)]
     text: String,
+    /// A button pressed instead: what it carries, on which card.
+    #[serde(default)]
+    value: Option<Value>,
+    #[serde(default)]
+    card: Option<String>,
 }
 
 /// `POST /test/activity`: the activity the person `aad` writing `text` to
@@ -54,6 +63,11 @@ pub(super) async fn activity(
     let token = signed_token(Signer::BotFramework, &claims(&service_url, &written.app));
     Json(json!({
         "authorization": format!("Bearer {token}"),
-        "activity": message(&service_url, &written.app, &written.id, person, &written.text),
+        "activity": match (written.value, written.card) {
+            (Some(value), Some(card)) => {
+                pressed(&service_url, (&written.app, &written.id), person, (&card, value))
+            }
+            _ => message(&service_url, &written.app, &written.id, person, &written.text),
+        },
     }))
 }

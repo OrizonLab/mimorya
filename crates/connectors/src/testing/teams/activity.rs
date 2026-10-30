@@ -57,3 +57,22 @@ pub(super) fn message(
         "channelData": { "tenant": { "id": TEAMS_DIRECTORY } },
     })
 }
+
+/// What the Bot Framework sends the bot `app` when the person `aad` presses
+/// a button carrying `value` on the bot's card `card`, as its activity
+/// `id`, from the service at `service_url`, as Teams writes an
+/// `Action.Submit`: a message of no text, carrying the value, answering the
+/// card.
+pub(super) fn pressed(
+    service_url: &str,
+    (app, id): (&str, &str),
+    person: (&str, &str),
+    (card, value): (&str, Value),
+) -> Value {
+    let mut pressed = message(service_url, app, id, person, "");
+    let object = pressed.as_object_mut().expect("an object");
+    object.remove("text");
+    object.insert("value".into(), value);
+    object.insert("replyToId".into(), json!(card));
+    pressed
+}

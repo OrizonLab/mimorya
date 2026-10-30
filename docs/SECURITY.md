@@ -226,8 +226,18 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   liens web aux adresses sans caractère de balisage gardés ; un code en ligne ne tient
   qu'entre deux accents graves seuls, tout autre accent grave échappé, pour qu'aucune
   suite d'accents graves ne décale ce qui se lit comme code et ne fasse lire une image
-  ou un lien ; jamais ses mots dans les journaux ni l'audit. Les validations se donnent dans l'application, qui en montre
-  les paramètres exacts.
+  ou un lien ; jamais ses mots dans les journaux ni l'audit. Les validations se donnent
+  dans l'application, qui en montre les paramètres exacts, ou sur la carte de la pause
+  pour celles qu'autorise ADR-141.
+- Validations dans Teams (ADR-141) : les mêmes actions que dans Telegram se valident
+  avec les boutons d'une carte adaptative, dont tout texte est une suite de texte simple
+  (jamais lue comme du Markdown). Teams renvoie ce qu'un client écrit du bouton et le
+  numéro de la carte, pas ce qu'elle montrait : la plateforme garde chaque carte qu'elle
+  a écrite et les demandes qu'elle montre (`gateway_cards`), et un bouton ne décide que
+  pour une demande montrée sur une carte du bot dans la conversation personnelle de qui
+  le presse, puis comme depuis l'écran, au nom de la personne reliée, audité avec le
+  service. Une carte n'est réécrite (sans les boutons des actions décidées) que si celui
+  qui l'a pressée voit chacune de ses actions.
 - Validations dans Telegram (ADR-136) : seules les actions qui attendent la personne
   elle-même, sans effet hors de l'entreprise, réversibles, aux paramètres exacts
   montrés entiers, se valident avec les boutons de la pause ; un bouton pressé n'est

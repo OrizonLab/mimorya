@@ -206,10 +206,9 @@ async fn a_pause_for_validation_is_said_then_the_answer_follows() {
     assert_eq!(status, "awaiting_approval");
     assert_eq!(answer(&api).await, 1);
     let paused = said();
+    // Validated there or in the application (its card: ADR-141).
     assert!(
-        paused.starts_with(
-            "Une action de cette demande attend votre validation, à donner dans l’application"
-        ),
+        paused.starts_with("Une action de cette demande attend votre validation"),
         "{paused}"
     );
     assert!(
