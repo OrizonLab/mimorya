@@ -8061,10 +8061,16 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       demande reprend : la suite viendra ici. »), ou pourquoi rien n'a été décidé ;
   - **la carte réécrite** : une fois une de ses actions décidée (maintenant, ou
     entre-temps dans l'application), la carte est écrite de nouveau, à sa place
-    (`PUT` de l'activité), avec le même texte. Ses actions décidées y restent, sans
-    boutons, marquées « Décidée. ». Elle n'est pas réécrite quand elle montre une
-    action que la personne ne voit pas : un compte Teams relié depuis à quelqu'un
-    d'autre n'apprend rien des actions de la personne d'avant ;
+    (`PUT` de l'activité), avec le texte de la pause. Ses actions décidées y restent,
+    sans boutons, marquées « Décidée. » ; une fois toutes décidées, le texte le dit
+    (`decided_text`) au lieu d'inviter à valider ci-dessous. Elle n'est pas réécrite
+    quand elle montre une action que la personne ne voit pas : un compte Teams relié
+    depuis à quelqu'un d'autre n'apprend rien des actions de la personne d'avant.
+    Deux boutons de la même carte pressés presque ensemble réécrivent chacun la
+    carte, et Teams garde la dernière écrite, qui peut venir de l'état le plus
+    ancien : après avoir écrit la carte, chaque appui relit donc ses actions et la
+    réécrit si l'une a été décidée depuis (trois écritures au plus par appui). Le
+    dernier à écrire voit ainsi toutes les décisions prises avant lui ;
   - **le reste** : le bot en pause ne prend rien. Un compte Teams qui n'est plus relié
     reçoit le lien pour le relier, sans rien décider.
 - **Conséquences** :

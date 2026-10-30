@@ -61,7 +61,7 @@ async fn an_action_awaiting_its_author_is_validated_on_its_card() {
     );
 
     // Validated in Teams: decided as him, audited so, the card written
-    // again without its buttons, the outcome said there.
+    // again without its buttons, saying so, the outcome said there.
     let since = latest_entry(&api).await;
     press(
         &api,
@@ -76,7 +76,13 @@ async fn an_action_awaiting_its_author_is_validated_on_its_card() {
         "Validée par vous dans Teams\\. La demande reprend : la suite viendra ici\\."
     );
     let rewritten = message(&teams, &pause.id);
-    assert_eq!(rewritten.text, pause.text);
+    assert!(
+        rewritten
+            .text
+            .starts_with("L’action de cette demande montrée ci\\-dessous est décidée"),
+        "{}",
+        rewritten.text
+    );
     let card = rewritten.card.unwrap();
     assert!(buttons(&card).is_empty(), "{card}");
     assert!(card_text(&card).contains("Décidée."), "{card}");

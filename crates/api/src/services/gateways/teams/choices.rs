@@ -12,8 +12,10 @@
 //! decision, that may be validated outside the application. The card is
 //! then written again without the buttons of its actions decided by then
 //! (now, or meanwhile in the application), unless it shows an action
-//! its presser does not see; what became of the press is said in the
-//! conversation. Audited as any decision, with the service, `teams`.
+//! its presser does not see, and their statuses read once more: a press
+//! decided meanwhile, whose card Teams took before, has it written again
+//! as it now is. What became of the press is said in the conversation.
+//! Audited as any decision, with the service, `teams`.
 
 use mimorya_core::gateways::teams::{
     CardAction, CardChoice, PersonalMessage, TeamsApplication, escaped, validation_card,
@@ -24,7 +26,7 @@ use mimorya_db::repositories::gateway_cards::{GatewayCard, find_gateway_card};
 use mimorya_db::repositories::gateway_identities::linked_account;
 use uuid::Uuid;
 
-use super::reply_text::{Pause, reply_text};
+use super::reply_text::{Pause, decided_text, reply_text};
 use super::texts;
 use crate::app::Services;
 use crate::services::gateways::concerned::{Concerned, NOT_DECIDED, decide_as};
@@ -32,6 +34,10 @@ use crate::services::gateways::person::{Act, may_act};
 
 /// What the press of a button the bot did not show there is told.
 const STALE: &str = "Ce bouton n’est plus valable : rien n’a été décidé.";
+
+/// The most times one press writes its card again: once, then for each
+/// decision another press wrote from an older state after it.
+const MAX_REWRITES: usize = 3;
 
 /// A linked person's press of a card's button, to decide.
 pub struct TeamsChoice {
@@ -125,27 +131,60 @@ async fn decide(services: &Services, pressed: &TeamsChoice) -> anyhow::Result<St
 }
 
 /// Writes the card again as it was, without the buttons of its actions
-/// decided by now. Left as it is when none is, or when it shows an action
-/// its presser does not see (a Teams account linked since to someone else
-/// learns nothing of the actions of the person before).
+/// decided by now, then reads them again: written meanwhile by another
+/// press from an older state, it is written again as it now is. Left as it
+/// is when none is decided, or when it shows an action its presser does
+/// not see (a Teams account linked since to someone else learns nothing of
+/// the actions of the person before).
 async fn rewrite_card(
     services: &Services,
     pressed: &TeamsChoice,
     card: &GatewayCard,
     concerned: &Concerned,
 ) -> anyhow::Result<()> {
+    let mut written: Option<Vec<bool>> = None;
+    for _ in 0..MAX_REWRITES {
+        let Some(approvals) = shown_on(services, pressed.tenant_id, card, concerned).await? else {
+            return Ok(());
+        };
+        let open: Vec<bool> = approvals.iter().map(|a| a.status == "pending").collect();
+        if open.iter().all(|&open| open) || written.as_ref() == Some(&open) {
+            return Ok(());
+        }
+        write_card(services, pressed, card, &approvals).await?;
+        written = Some(open);
+    }
+    Ok(())
+}
+
+/// The actions `card` shows, as they are now; none when its presser does
+/// not see one of them.
+async fn shown_on(
+    services: &Services,
+    tenant_id: Uuid,
+    card: &GatewayCard,
+    concerned: &Concerned,
+) -> anyhow::Result<Option<Vec<ApprovalRow>>> {
     let mut approvals = Vec::new();
-    let mut tx = services.db.begin(pressed.tenant_id).await?;
+    let mut tx = services.db.begin(tenant_id).await?;
     for id in &card.approval_ids {
         match get_approval(&mut tx, *id).await? {
             Some(approval) if concerned.sees(&approval) => approvals.push(approval),
-            _ => return Ok(()),
+            _ => return Ok(None),
         }
     }
     tx.commit().await?;
-    if approvals.iter().all(|a| a.status == "pending") {
-        return Ok(());
-    }
+    Ok(Some(approvals))
+}
+
+/// Writes `card` again in place, its `approvals` as they are now: once none
+/// is open, its text says they are decided.
+async fn write_card(
+    services: &Services,
+    pressed: &TeamsChoice,
+    card: &GatewayCard,
+    approvals: &[ApprovalRow],
+) -> anyhow::Result<()> {
     let actions: Vec<CardAction> = (approvals.iter())
         .map(|a| CardAction {
             shown: shown_action(a),
@@ -158,7 +197,11 @@ async fn rewrite_card(
         managed: usize::try_from(card.managed).unwrap_or(0),
     };
     let url = services.gateways.conversation_url(card.conversation_id);
-    let text = reply_text("awaiting_approval", None, &url, pause);
+    let text = if actions.iter().any(|a| a.open) {
+        reply_text("awaiting_approval", None, &url, pause)
+    } else {
+        decided_text(&url, pause)
+    };
     let message = &pressed.message;
     let to = (
         message.service_url.as_str(),

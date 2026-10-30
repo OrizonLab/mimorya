@@ -4,8 +4,10 @@
 //! (`from_markdown`), cut when too long; a pause for validation, said with
 //! whose it is: the person's own shown on the card the text comes with, to
 //! validate there or in the application (ADR-141), the others in the
-//! application, which shows the actions' exact parameters; a stop. Each says where its conversation is in the
-//! application, where its sources and its details are.
+//! application, which shows the actions' exact parameters; once every
+//! action of its card is decided, that they are (`decided_text`); a stop.
+//! Each says where its conversation is in the application, where its
+//! sources and its details are.
 
 use mimorya_core::gateways::bounded;
 use mimorya_core::gateways::teams::{escaped, from_markdown, link};
@@ -51,14 +53,7 @@ pub fn reply_text(status: &str, answer: Option<&str>, url: &str, pause: Pause) -
                 )),
                 escaped("). La suite viendra ici.")
             );
-            if pause.in_application > 0 {
-                text.push_str(&escaped(" D’autres sont à valider dans l’application."));
-            }
-            if pause.managed > 0 {
-                text.push_str(&escaped(
-                    " D’autres attendent la validation de votre responsable.",
-                ));
-            }
+            text.push_str(&others(pause));
             text
         }
         ("awaiting_approval", _) => {
@@ -84,6 +79,37 @@ pub fn reply_text(status: &str, answer: Option<&str>, url: &str, pause: Pause) -
         }
         _ => format!("La demande s’est terminée sans réponse : {link}\\."),
     }
+}
+
+/// What a pause's card is written again with once none of its actions
+/// awaits a decision any more, its buttons all taken off (ADR-141).
+pub fn decided_text(url: &str, pause: Pause) -> String {
+    let link = link(url, "ouvrir la conversation").unwrap_or_else(|| escaped(url));
+    let decided = if pause.shown == 1 {
+        "L’action de cette demande montrée ci-dessous est décidée ("
+    } else {
+        "Les actions de cette demande montrées ci-dessous sont décidées ("
+    };
+    format!(
+        "{}{link}{}{}",
+        escaped(decided),
+        escaped("). La suite viendra ici."),
+        others(pause)
+    )
+}
+
+/// What a pause with a card says of its other actions.
+fn others(pause: Pause) -> String {
+    let mut text = String::new();
+    if pause.in_application > 0 {
+        text.push_str(&escaped(" D’autres sont à valider dans l’application."));
+    }
+    if pause.managed > 0 {
+        text.push_str(&escaped(
+            " D’autres attendent la validation de votre responsable.",
+        ));
+    }
+    text
 }
 
 #[cfg(test)]
@@ -183,6 +209,35 @@ mod tests {
                 " D’autres sont à valider dans l’application\\. D’autres attendent la \
                  validation de votre responsable\\."
             ),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn a_card_whose_actions_are_all_decided_says_so() {
+        let one = Pause {
+            shown: 1,
+            ..Pause::default()
+        };
+        assert_eq!(
+            decided_text(URL, one),
+            format!(
+                "L’action de cette demande montrée ci\\-dessous est décidée \\({LINK}\\)\\. \
+                 La suite viendra ici\\."
+            )
+        );
+        let several = Pause {
+            shown: 2,
+            in_application: 1,
+            managed: 0,
+        };
+        let text = decided_text(URL, several);
+        assert!(
+            text.starts_with("Les actions de cette demande montrées ci\\-dessous sont décidées"),
+            "{text}"
+        );
+        assert!(
+            text.ends_with(" D’autres sont à valider dans l’application\\."),
             "{text}"
         );
     }
