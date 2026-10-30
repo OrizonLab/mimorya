@@ -59,7 +59,8 @@ Repères à l'intérieur des crates :
   l'application, `validation.rs`, ADR-129, ADR-136 ; bot Teams : déclaration, jeton du
   Bot Framework vérifié (`token.rs`), activité lue, services Teams de Microsoft, preuve
   d'une personne, texte en Markdown, `teams/`, ADR-138 ; réponse de l'agent écrite dans
-  le Markdown de Teams, `teams/markdown.rs`, ADR-140).
+  le Markdown de Teams, `teams/markdown.rs`, ADR-140 ; carte des actions à valider, en
+  texte simple, et bouton pressé lu, `teams/card.rs`, ADR-141).
 - `db/migrations/` (SQL numéroté, source de vérité du schéma),
   `db/src/repositories/` (un fichier par entité ; la mémoire : `memory.rs`, recherche
   hybride `memory_search.rs`, vecteurs `memory_embeddings.rs`, ADR-074 ; fenêtres des
@@ -78,7 +79,8 @@ Repères à l'intérieur des crates :
   événements pris : `gateways.rs`, identités reliées : `gateway_identities.rs`,
   ADR-125 ; fils Slack des conversations, et conversation privée avec le bot Telegram
   ou personnelle avec le bot Teams, une ouverte à la fois : `gateway_threads.rs`,
-  réponses écrites : `gateway_replies.rs`, ADR-127, ADR-135, ADR-140 ; demandes annoncées au responsable, une fois
+  réponses écrites : `gateway_replies.rs`, ADR-127, ADR-135, ADR-140 ; cartes écrites
+  dans Teams et les demandes qu'elles montrent : `gateway_cards.rs`, ADR-141 ; demandes annoncées au responsable, une fois
   par passerelle : `gateway_approval_notices.rs`, ADR-130, ADR-137 ; codes de liaison
   Telegram :
   `gateway_link_codes.rs`, ADR-133),
@@ -120,7 +122,8 @@ Repères à l'intérieur des crates :
   l'atteint, ADR-125), `connectors/src/telegram/` (API des bots de Telegram, son jeton
   jamais écrit, ADR-133), `connectors/src/teams/` (Microsoft tel qu'un bot Teams
   l'atteint : jeton d'Entra gardé pour son secret, clés du Bot Framework gardées un
-  jour, service Teams d'une activité, ADR-138), `connectors/src/testing/`
+  jour, service Teams d'une activité, ADR-138 ; carte écrite puis réécrite, `cards.rs`,
+  ADR-141), `connectors/src/testing/`
   (serveurs simulés des tests : MCP, API REST, Microsoft Graph, Gmail et agenda Google,
   Slack, qui signe les événements comme lui, Telegram, Microsoft pour Teams, qui signe
   les activités avec une clé de test).
@@ -187,7 +190,9 @@ Repères à l'intérieur des crates :
   ADR-138 ; mots d'une personne reliée répondus dans une conversation tenue dans sa
   conversation personnelle avec le bot (`teams/answers.rs`, `teams/conversations.rs`),
   réponse écrite là en Markdown de Teams (`teams/reply_text.rs`, `replies/teams.rs`),
-  au dernier service Teams d'où elle a écrit (`teams/activities.rs`), ADR-140 ;
+  au dernier service Teams d'où elle a écrit (`teams/activities.rs`), ADR-140 ; action
+  validée ou refusée par le bouton de sa carte, seule une carte gardée du bot décidant
+  (`teams/choices.rs`), ADR-141 ;
   conversation tenue dans la conversation privée avec un bot, Telegram ou Teams, une
   à la fois (`private_chats.rs`), ADR-135, ADR-140 ;
   déclarées par

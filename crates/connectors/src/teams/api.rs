@@ -86,24 +86,37 @@ impl TeamsApi {
     pub async fn send(
         &self,
         app: &TeamsApplication,
-        (service_url, conversation): (&str, &str),
+        to: (&str, &str),
         text: &str,
     ) -> Result<(), TeamsFailure> {
-        let url = self.service(
-            service_url,
-            &["v3", "conversations", conversation, "activities"],
-        )?;
         let body = json!({ "type": "message", "text": text, "textFormat": "markdown" });
+        self.write_activity(app, to, None, &body).await.map(drop)
+    }
+
+    /// Writes the activity `body` in the conversation `conversation` of the
+    /// service `service_url`, as the bot `app`: a new one, or in place of
+    /// its activity `replacing`. What Teams answers.
+    pub(super) async fn write_activity(
+        &self,
+        app: &TeamsApplication,
+        (service_url, conversation): (&str, &str),
+        replacing: Option<&str>,
+        body: &Value,
+    ) -> Result<Value, TeamsFailure> {
+        let mut segments = vec!["v3", "conversations", conversation, "activities"];
+        segments.extend(replacing);
+        let url = self.service(service_url, &segments)?;
         let token = self.token(app).await?;
-        let request = self
-            .inner
-            .client
-            .post(url)
+        let client = &self.inner.client;
+        let request = match replacing {
+            None => client.post(url),
+            Some(_) => client.put(url),
+        };
+        let request = request
             .header(CONTENT_TYPE, "application/json; charset=utf-8")
             .body(body.to_string());
         self.answered(request.header(AUTHORIZATION, format!("Bearer {token}")))
             .await
-            .map(drop)
     }
 
     /// Who the member `member` of the conversation `conversation` of the

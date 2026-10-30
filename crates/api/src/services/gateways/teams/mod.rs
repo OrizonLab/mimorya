@@ -6,12 +6,15 @@
 //! is then read as a command or words for the agent (`answers`, ADR-140),
 //! their words answered by the agent in a conversation of theirs held in
 //! their personal conversation with the bot (`conversations`), the run's
-//! end or pause written there (`reply_text`, by `replies`). What the bot
+//! end or pause written there (`reply_text`, by `replies`), the actions
+//! awaiting their own validation on a card whose buttons decide them
+//! (`choices`, ADR-141). What the bot
 //! says of itself (`texts`) is written in the conversation the activity
 //! came from, in the background.
 
 mod activities;
 mod answers;
+mod choices;
 mod conversations;
 mod reply_text;
 mod texts;
@@ -20,6 +23,8 @@ use mimorya_core::gateways::teams::TeamsApplication;
 use uuid::Uuid;
 
 pub use activities::ActivityOutcome;
+pub(super) use choices::shown_action;
+pub use choices::{TeamsChoice, decide_in_teams};
 pub use conversations::{TeamsMessage, converse_in_teams};
 pub(super) use reply_text::{Pause as TeamsPause, reply_text as teams_reply_text};
 

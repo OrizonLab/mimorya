@@ -28,7 +28,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use axum::Router;
-use axum::routing::{get, post};
+use axum::routing::{get, post, put};
 use serde_json::{Value, json};
 
 pub use signing::{Signer, TEAMS_KEY_ID, signed_token};
@@ -45,6 +45,8 @@ pub const OTHER_TEAMS_SECRET: &str = "Zyx8Q~fictif.autre_secret-9876543210";
 /// A message a bot wrote in a conversation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TeamsSent {
+    /// The activity Teams numbered it.
+    pub id: String,
     /// The application whose token wrote it.
     pub app: String,
     /// The Teams service it was written to.
@@ -52,6 +54,8 @@ pub struct TeamsSent {
     pub conversation: String,
     pub text: String,
     pub text_format: Option<String>,
+    /// Its Adaptive Card, if it holds one (ADR-141).
+    pub card: Option<Value>,
 }
 
 #[derive(Default)]
@@ -104,8 +108,16 @@ impl FakeTeams {
                 get(routes::member),
             )
             .route(
+                "/teams/v3/conversations/{conversation}/activities/{activity}",
+                put(routes::rewrite),
+            )
+            .route(
                 "/teams/amer/v3/conversations/{conversation}/activities",
                 post(routes::send),
+            )
+            .route(
+                "/teams/amer/v3/conversations/{conversation}/activities/{activity}",
+                put(routes::rewrite),
             )
             // The same service at an address no bot may trust: what reaches
             // it is kept alike, so that a test sees nothing does.
@@ -230,6 +242,19 @@ impl FakeTeams {
     /// conversation with it, as its activity `id`.
     pub fn message(&self, app: &str, id: &str, person: (&str, &str), text: &str) -> Value {
         activity::message(&self.service_url(), app, id, person, text)
+    }
+
+    /// What the Bot Framework sends the bot `app` when the person `aad`
+    /// presses a button carrying `value` on the bot's card `card`, as its
+    /// activity `id`: a message of no text carrying the button's value and
+    /// answering the card.
+    pub fn press(
+        &self,
+        (app, id): (&str, &str),
+        person: (&str, &str),
+        (card, value): (&str, Value),
+    ) -> Value {
+        activity::pressed(&self.service_url(), (app, id), person, (card, value))
     }
 
     /// The same, from the service `service_url`.

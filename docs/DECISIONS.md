@@ -8006,5 +8006,82 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     - `apps/web/e2e/teams-conversations.spec.ts` (modèle joué : `e2e_server/teams.rs`) :
       question posée au bot, réponse dans la conversation avec lui, conversation montrée
       « Teams » dans l'application, relance, puis `/nouvelle` ;
-  - restent : les validations par cartes adaptatives, et les demandes annoncées au
-    responsable dans Teams.
+  - restent : les validations par cartes adaptatives (ADR-141), et les demandes
+    annoncées au responsable dans Teams.
+
+## ADR-141 — Validations données dans Teams (passerelles, lot 14d)
+
+- **Date** : 2026-10-30 · **Statut** : acceptée · complète ADR-140, sur le modèle
+  d'ADR-136
+- **Contexte** : un run lancé depuis Teams qui attend la validation de son auteur disait
+  seulement d'aller valider dans l'application (ADR-140). Dans Slack et Telegram,
+  l'auteur valide ou refuse avec les boutons du message (ADR-129, ADR-136). Teams offre
+  les boutons d'une carte adaptative (`Action.Submit`). Mais un bouton pressé y revient
+  comme un message de la personne : il porte ce que le client écrit du bouton
+  (`value`) et le numéro de la carte (`replyToId`), jamais ce que la carte montrait.
+  Rien n'y garantit donc, comme Telegram le fait, que le bouton pressé était sur la
+  carte.
+- **Décision** :
+  - **mêmes actions que dans Slack et Telegram** : seule une action qui attend la
+    validation de la personne elle-même, sans effet hors de l'entreprise, réversible,
+    et dont les paramètres exacts tiennent entiers dans un message, se valide dans
+    Teams (`gateways::validated_in_gateway`). Toute autre se valide dans
+    l'application ;
+  - **la pause** : le texte dit de valider ou refuser ci-dessous, ou dans
+    l'application, et ce qui reste à valider ailleurs. Il porte une carte adaptative
+    (`teams::validation_card`) :
+    - chaque action y figure avec sa description, son risque et ses paramètres exacts,
+      entiers, numérotée quand il y en a plusieurs ;
+    - chaque action a ses boutons « Valider » et « Refuser » ;
+    - tout texte de la carte est une suite de texte simple (`TextRun`), que Teams ne
+      lit jamais comme du Markdown : rien de ce que l'agent a écrit ne s'y lit comme
+      une mise en forme ou un lien ;
+    - chaque bouton porte son choix (`mimorya` : `v` ou `r`) et son approbation
+      (`approval`) ;
+    - au plus cinq actions, et autant que la carte en contient (3 400 caractères de
+      paramètres et de descriptions, comme dans Telegram) ;
+  - **la carte gardée** : la plateforme garde chaque carte que Teams a prise, avec le
+    numéro qu'il lui a donné, les demandes qu'elle montre et ce que sa pause disait
+    d'autre (`gateway_cards`, migration 0061). Elle ne garde ni texte ni paramètres,
+    et la carte part avec son fil. Une carte que Teams n'a pas numérotée, ou qui n'a
+    pu être gardée, ne décide rien ; son message reste écrit ;
+  - **le bouton pressé** :
+    - il n'est pris que d'une personne reliée, dans sa conversation personnelle avec le
+      bot (le jeton du Bot Framework, ADR-138) ;
+    - il ne décide que si sa carte est l'une de celles que le bot a écrites dans cette
+      conversation, et si cette carte montre la demande que le bouton nomme. Sinon, il
+      est « plus valable » et rien n'est décidé : demande absente de la carte, message
+      du bot qui n'est pas une carte, bouton qui ne nomme aucune carte, carte d'une
+      autre conversation ;
+    - il est ensuite décidé en arrière-plan, au nom de la personne, comme depuis
+      l'écran : elle peut agir (`person::may_act`) et la demande l'attend elle
+      (`concerned::decide_as`, le chemin de Slack et de Telegram). La décision est
+      auditée avec le service, `teams` ;
+    - l'issue est dite dans la conversation (« Validée par vous dans Teams. », « La
+      demande reprend : la suite viendra ici. »), ou pourquoi rien n'a été décidé ;
+  - **la carte réécrite** : une fois une de ses actions décidée (maintenant, ou
+    entre-temps dans l'application), la carte est écrite de nouveau, à sa place
+    (`PUT` de l'activité), avec le même texte. Ses actions décidées y restent, sans
+    boutons, marquées « Décidée. ». Elle n'est pas réécrite quand elle montre une
+    action que la personne ne voit pas : un compte Teams relié depuis à quelqu'un
+    d'autre n'apprend rien des actions de la personne d'avant ;
+  - **le reste** : le bot en pause ne prend rien. Un compte Teams qui n'est plus relié
+    reçoit le lien pour le relier, sans rien décider.
+- **Conséquences** :
+  - le Microsoft simulé des tests :
+    - garde la carte et le numéro de chaque message ;
+    - accepte qu'un message soit réécrit (`PUT …/activities/{id}`) ;
+    - écrit un bouton pressé comme Teams (`FakeTeams::press`, ou `POST /test/activity`
+      avec `value` et `card` pour le bout en bout) ;
+  - tests :
+    - `crates/core` : la carte (texte simple, boutons, actions décidées), les actions
+      qu'elle montre, et la lecture d'un bouton pressé ;
+    - `crates/api/tests/teams_gateway_validations.rs` : action validée, puis refusée,
+      depuis sa carte, auditée, carte réécrite, run repris ; bouton pressé de nouveau ;
+      action décidée entre-temps, ses boutons retirés ; carte laissée au compte Teams
+      relié depuis à quelqu'un d'autre ;
+    - `teams_gateway_validation_checks.rs` : demande absente de la carte, message qui
+      n'est pas une carte, bouton qui ne nomme aucune carte, carte de Marc nommée par
+      Léa reliée, bot en pause, compte délié ; action envoyée hors de l'entreprise, ou
+      attendue par un responsable, sans carte, et qu'aucun bouton prétendu ne décide ;
+  - reste : les demandes annoncées au responsable dans Teams.

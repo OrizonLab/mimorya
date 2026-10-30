@@ -135,3 +135,27 @@ fn a_message_is_taken_once_in_its_conversation_only() {
     elsewhere["conversation"]["id"] = json!("a:2abc");
     assert_ne!(first.event_key(), message(&elsewhere).unwrap().event_key());
 }
+
+#[test]
+fn a_button_pressed_on_a_card_is_read_with_the_card_it_answers() {
+    let approval = "0d6f8a1b-2c3d-4e5f-8a9b-0c1d2e3f4a5b";
+    let mut pressed = activity();
+    pressed["text"] = Value::Null;
+    pressed["value"] = json!({ "mimorya": "v", "approval": approval });
+    pressed["replyToId"] = json!("1:carte-42");
+    let read = message(&pressed).expect("a personal message");
+    assert_eq!(read.text, "");
+    assert_eq!(read.reply_to_id.as_deref(), Some("1:carte-42"));
+    assert_eq!(
+        read.choice,
+        Some(CardChoice {
+            approval_id: approval.parse().unwrap(),
+            approved: true,
+        })
+    );
+    // Words written are no choice; a value of another kind neither.
+    let written = message(&activity()).unwrap();
+    assert_eq!((written.choice, written.reply_to_id), (None, None));
+    pressed["value"] = json!({ "action": "submit" });
+    assert_eq!(message(&pressed).unwrap().choice, None);
+}

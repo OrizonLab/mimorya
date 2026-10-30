@@ -4,13 +4,16 @@
 //! directory, sent to the bot itself. Anything else (a group chat, a
 //! channel, an installation, a reaction, another directory's person, an
 //! activity for another bot) is taken and ignored. The service the activity
-//! names is read first: its token must name it too (`token`).
+//! names is read first: its token must name it too (`token`). A button of
+//! one of the bot's cards, pressed, comes as such a message, carrying the
+//! button's value and naming the card it was pressed on (ADR-141).
 
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use super::CHANNEL;
+use super::card::{CardChoice, card_choice};
 
 /// The longest message read: Teams takes about 28 kibibytes a message.
 pub const MAX_MESSAGE_CHARS: usize = 4_000;
@@ -35,6 +38,10 @@ struct RawActivity {
     conversation: Option<RawConversation>,
     channel_data: Option<RawChannelData>,
     text: Option<String>,
+    /// What a pressed button of a card carries.
+    value: Option<serde_json::Value>,
+    /// The activity (a card) this one answers.
+    reply_to_id: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -88,6 +95,11 @@ pub struct PersonalMessage {
     pub conversation_id: String,
     pub person: TeamsUser,
     pub text: String,
+    /// The bot's message this one answers, if any: the card a button was
+    /// pressed on.
+    pub reply_to_id: Option<String>,
+    /// The choice of a card's button pressed, if the message is one.
+    pub choice: Option<CardChoice>,
 }
 
 impl PersonalMessage {
@@ -158,6 +170,10 @@ impl ReceivedActivity {
                 name,
             },
             text: text.to_owned(),
+            reply_to_id: (raw.reply_to_id.as_deref())
+                .filter(|id| bounded_id(id, MAX_ID_CHARS))
+                .map(str::to_owned),
+            choice: raw.value.as_ref().and_then(card_choice),
         })
     }
 }

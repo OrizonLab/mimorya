@@ -5,9 +5,11 @@
 //! channel (`token`), which activities reach the platform (`activity`),
 //! where the bot writes back (`service_url`), when Teams proves a Teams user
 //! is a person (`identity`), and how the bot's text is written there
-//! (`text`).
+//! (`text`), its answers (`markdown`, ADR-140) and the card of a pause's
+//! actions to validate (`card`, ADR-141).
 
 mod activity;
+mod card;
 mod identity;
 mod markdown;
 mod service_url;
@@ -16,6 +18,9 @@ mod token;
 
 pub use activity::{
     MAX_MESSAGE_CHARS, PersonalMessage, ReceivedActivity, TeamsUser, guid, read_activity, same_guid,
+};
+pub use card::{
+    CardAction, CardChoice, MAX_CARD_ACTIONS, card_choice, shown_in_card, validation_card,
 };
 pub use identity::{IdentityRefusal, TeamsMember, identity_refusal};
 pub use markdown::from_markdown;

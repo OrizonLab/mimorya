@@ -33,7 +33,7 @@ use crate::app::AppState;
 use crate::http::{ApiError, ApiResult};
 use crate::services::gateways::{
     ActivityOutcome, EventOutcome, SlackHeaders, UpdateOutcome, converse, converse_in_teams,
-    converse_in_telegram, decide_in_slack, decide_in_telegram,
+    converse_in_telegram, decide_in_slack, decide_in_teams, decide_in_telegram,
 };
 
 pub use crate::services::gateways::{
@@ -146,6 +146,11 @@ async fn receive_teams(
         ActivityOutcome::Message(incoming) => {
             let services = state.clone();
             (state.background).spawn(async move { converse_in_teams(&services, *incoming).await });
+            Ok(StatusCode::OK.into_response())
+        }
+        ActivityOutcome::Choice(pressed) => {
+            let services = state.clone();
+            (state.background).spawn(async move { decide_in_teams(&services, *pressed).await });
             Ok(StatusCode::OK.into_response())
         }
         ActivityOutcome::Unknown => Err(DomainError::not_found(UNKNOWN).into()),

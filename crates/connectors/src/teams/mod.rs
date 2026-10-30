@@ -3,11 +3,14 @@
 //! for the Bot Framework from its client secret (`api`); the Bot
 //! Framework's published keys, which sign the activities it sends
 //! (`keys`); and the Bot Connector service of an activity, where the bot
-//! writes back and asks who the member of a conversation is (`api`).
+//! writes back and asks who the member of a conversation is (`api`), and
+//! writes a pause's card, then writes it again once decided (`cards`,
+//! ADR-141).
 //! Microsoft's refusals are said in French, never in its own words beyond
 //! their status: what it writes back is not trusted.
 
 mod api;
+mod cards;
 mod keys;
 
 use std::time::Duration;

@@ -20,6 +20,7 @@ pub mod document_search;
 pub mod documents;
 pub mod embedding_settings;
 pub mod gateway_approval_notices;
+pub mod gateway_cards;
 pub mod gateway_identities;
 pub mod gateway_link_codes;
 pub mod gateway_replies;

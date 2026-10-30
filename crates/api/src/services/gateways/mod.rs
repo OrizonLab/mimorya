@@ -71,7 +71,7 @@ pub use identities::GatewayOfPerson;
 pub use link::{LINK_LIFETIME, LinkPreview};
 pub use replies::reply_to_finished_runs;
 pub use retry::MAX_ATTEMPTS;
-pub use teams::{ActivityOutcome, TeamsMessage, converse_in_teams};
+pub use teams::{ActivityOutcome, TeamsChoice, TeamsMessage, converse_in_teams, decide_in_teams};
 pub use telegram::{
     ChatMessage, PendingLink, TelegramChoice, TelegramLinkCode, UpdateOutcome,
     converse_in_telegram, decide_in_telegram,
