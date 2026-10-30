@@ -7,6 +7,7 @@
 //! names is read first: its token must name it too (`token`).
 
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use super::CHANNEL;
@@ -87,6 +88,20 @@ pub struct PersonalMessage {
     pub conversation_id: String,
     pub person: TeamsUser,
     pub text: String,
+}
+
+impl PersonalMessage {
+    /// What the message is taken once by: Teams numbers a message by its
+    /// time, unique within its conversation only, so both, as a digest (64
+    /// hexadecimal characters, as an event's identifier is bounded).
+    pub fn event_key(&self) -> String {
+        let digest = Sha256::new()
+            .chain_update(self.conversation_id.as_bytes())
+            .chain_update([0])
+            .chain_update(self.activity_id.as_bytes())
+            .finalize();
+        digest.iter().map(|byte| format!("{byte:02x}")).collect()
+    }
 }
 
 /// What the Bot Framework sent, if it reads as an activity naming its

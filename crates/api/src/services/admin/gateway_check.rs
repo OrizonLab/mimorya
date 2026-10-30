@@ -85,9 +85,10 @@ pub async fn check_gateway(
             return Err(DomainError::not_found(NOT_FOUND).into());
         };
         if gateway.kind != GatewayKind::Slack.as_str() {
-            return Err(DomainError::validation(
-                "Seule une application Slack dit ses permissions : un bot Telegram n’en a pas",
-            )
+            let product = GatewayKind::of(&gateway.kind).map_or("", GatewayKind::product);
+            return Err(DomainError::validation(format!(
+                "Seule une application Slack dit ses permissions : un bot {product} n’en a pas"
+            ))
             .into());
         }
         let token = stored_token(gateways, &mut tx, tenant_id, id).await?;

@@ -4,11 +4,13 @@
 //! publishes, endorsed for Teams, for the bot's application, naming the
 //! service the activity came from (`verify_token`). An unknown gateway, an
 //! activity not read, a token missing or proving nothing, and a gateway
-//! whose keys could not be read answer alike. Once proven: an activity of a
-//! paused gateway, of another directory, of anything but a person's own
-//! message to the bot in their personal conversation, naming a service not
-//! Microsoft's Teams, or already taken (the Bot Framework sends it again
-//! when it was not answered in time) is taken and ignored. A person's own
+//! whose keys could not be read answer alike; no connection to the database
+//! is held while Microsoft is asked for the keys. Once proven: an activity
+//! of a paused gateway, of another directory, of anything but a person's
+//! own message to the bot in their personal conversation, naming a service
+//! not Microsoft's Teams, or already taken in its conversation (the Bot
+//! Framework sends it again when it was not answered in time) is taken and
+//! ignored. A person's own
 //! message is answered: from someone who has not linked their Teams
 //! identity, with a link to do so (`link`); from a linked person, by
 //! saying the agent is not talked with in Teams yet. What a message says is
@@ -54,8 +56,11 @@ impl GatewayService {
         let (Some(token), Some(activity)) = (bearer(authorization), read_activity(body)) else {
             return Ok(ActivityOutcome::Unknown);
         };
+        // Read, then let go: no connection is held while Microsoft is asked.
         let mut tx = self.db.begin(tenant_id).await?;
-        let Some(gateway) = get_gateway(&mut tx, gateway_id).await? else {
+        let gateway = get_gateway(&mut tx, gateway_id).await?;
+        tx.commit().await?;
+        let Some(gateway) = gateway else {
             return Ok(ActivityOutcome::Unknown);
         };
         let keys = match self.teams.keys(key_id(token).as_deref()).await {
@@ -84,7 +89,8 @@ impl GatewayService {
             tracing::warn!(gateway = %gateway_id, "Teams activity of an unknown service ignored");
             return Ok(ActivityOutcome::Taken);
         }
-        if !take_gateway_event(&mut tx, tenant_id, gateway_id, &message.activity_id).await? {
+        let mut tx = self.db.begin(tenant_id).await?;
+        if !take_gateway_event(&mut tx, tenant_id, gateway_id, &message.event_key()).await? {
             return Ok(ActivityOutcome::Taken);
         }
         let person = &message.person.aad_object_id;

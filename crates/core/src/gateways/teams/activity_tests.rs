@@ -124,3 +124,14 @@ fn an_entra_identifier_is_read_as_microsoft_writes_it() {
     assert!(!same_guid(DIRECTORY, PERSON));
     assert!(!same_guid("x", "x"));
 }
+
+#[test]
+fn a_message_is_taken_once_in_its_conversation_only() {
+    let first = message(&activity()).unwrap();
+    assert_eq!(first.event_key().len(), 64);
+    assert_eq!(first.event_key(), message(&activity()).unwrap().event_key());
+    // The same number in another conversation is another message.
+    let mut elsewhere = activity();
+    elsewhere["conversation"]["id"] = json!("a:2abc");
+    assert_ne!(first.event_key(), message(&elsewhere).unwrap().event_key());
+}

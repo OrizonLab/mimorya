@@ -1,9 +1,12 @@
 //! The keys the Bot Framework signs its activities with (ADR-138): read
-//! from its OpenID configuration (its `jwks_uri`), kept a day, read again
-//! sooner when an activity names a key not kept, but at most every five
-//! minutes, so that a key Microsoft adds is known within minutes and a
-//! stream of forged activities does not make the platform ask Microsoft
-//! again and again. Microsoft unreachable, the keys read last are kept.
+//! from its OpenID configuration (its `jwks_uri`, of the configuration's
+//! own scheme), kept a day, read again sooner when an activity names a key
+//! not kept, but at most every five minutes, so that a key Microsoft adds
+//! is known within minutes and a stream of forged activities does not make
+//! the platform ask Microsoft again and again. One read at a time: whoever
+//! finds one under way uses the keys kept. A failed read is tried again
+//! thirty seconds later at the soonest, the keys read last kept meanwhile;
+//! none kept, an activity is then proven by none.
 
 use std::time::{Duration, Instant};
 
@@ -18,53 +21,88 @@ use super::api::TeamsApi;
 const KEPT_FOR: Duration = Duration::from_secs(24 * 3600);
 /// How soon they are read again for a key not kept.
 const READ_AGAIN_AFTER: Duration = Duration::from_secs(5 * 60);
+/// How soon a read is tried again after the last one, failed or not.
+const TRY_AGAIN_AFTER: Duration = Duration::from_secs(30);
 /// The most keys kept: Microsoft publishes a handful.
 const MAX_KEYS: usize = 64;
 
-/// The keys read, and when.
+/// The keys read, when, and when they were last tried.
 #[derive(Debug, Clone)]
 pub(super) struct KeyCache {
     keys: Vec<BotKey>,
-    read_at: Instant,
+    read_at: Option<Instant>,
+    tried_at: Instant,
+}
+
+impl KeyCache {
+    /// Whether the keys are to be read again for a token signed with
+    /// `wanted`.
+    fn due(&self, wanted: Option<&str>) -> bool {
+        if self.tried_at.elapsed() < TRY_AGAIN_AFTER {
+            return false;
+        }
+        let Some(read_at) = self.read_at else {
+            return true;
+        };
+        let known = wanted.is_none_or(|kid| self.keys.iter().any(|key| key.kid == kid));
+        read_at.elapsed() >= KEPT_FOR || (!known && read_at.elapsed() >= READ_AGAIN_AFTER)
+    }
 }
 
 impl TeamsApi {
     /// The keys the Bot Framework signs with, for a token signed with
-    /// `wanted`.
+    /// `wanted`: those kept, or read again when due. An error only when
+    /// the read tried now fails with none kept.
     pub async fn keys(&self, wanted: Option<&str>) -> Result<Vec<BotKey>, TeamsFailure> {
+        let due = |cache: &Option<KeyCache>| cache.as_ref().is_none_or(|c| c.due(wanted));
+        let kept = |cache: Option<KeyCache>| cache.map(|c| c.keys).unwrap_or_default();
         let cached = self.cached_keys();
-        if let Some(cache) = &cached {
-            let age = cache.read_at.elapsed();
-            let known = wanted.is_none_or(|kid| cache.keys.iter().any(|key| key.kid == kid));
-            if age < READ_AGAIN_AFTER || (age < KEPT_FOR && known) {
-                return Ok(cache.keys.clone());
-            }
+        if !due(&cached) {
+            return Ok(kept(cached));
         }
+        // One read at a time; read meanwhile by another, or under way.
+        let Ok(_reading) = self.reading().try_lock() else {
+            return Ok(kept(cached));
+        };
+        let cached = self.cached_keys();
+        if !due(&cached) {
+            return Ok(kept(cached));
+        }
+        let now = Instant::now();
         match self.read_keys().await {
             Ok(keys) => {
                 self.keep_keys(KeyCache {
                     keys: keys.clone(),
-                    read_at: Instant::now(),
+                    read_at: Some(now),
+                    tried_at: now,
                 });
                 Ok(keys)
             }
-            Err(failure) => match cached {
-                Some(cache) => {
-                    let reason = failure.message();
-                    tracing::warn!(%reason, "Bot Framework keys not read again");
-                    Ok(cache.keys)
+            Err(failure) => {
+                let read_at = cached.as_ref().and_then(|c| c.read_at);
+                let keys = kept(cached);
+                self.keep_keys(KeyCache {
+                    keys: keys.clone(),
+                    read_at,
+                    tried_at: now,
+                });
+                if read_at.is_none() {
+                    return Err(failure);
                 }
-                None => Err(failure),
-            },
+                let reason = failure.message();
+                tracing::warn!(%reason, "Bot Framework keys not read again");
+                Ok(keys)
+            }
         }
     }
 
     /// The keys, as the Bot Framework's configuration says where.
     async fn read_keys(&self) -> Result<Vec<BotKey>, TeamsFailure> {
         let configuration = self.get_json(self.openid().clone()).await?;
+        let scheme = self.openid().scheme().to_owned();
         let address = (configuration.get("jwks_uri").and_then(Value::as_str))
             .and_then(|uri| Url::parse(uri).ok())
-            .filter(|uri| matches!(uri.scheme(), "https" | "http"))
+            .filter(|uri| uri.scheme() == scheme)
             .ok_or(TeamsFailure::Unreadable)?;
         let set = self.get_json(address).await?;
         let keys: Vec<BotKey> = (set.get("keys").and_then(Value::as_array))

@@ -45,6 +45,8 @@ struct Inner {
     /// Each application's token, with its secret's digest and expiry.
     tokens: Mutex<HashMap<String, CachedToken>>,
     keys: Mutex<Option<KeyCache>>,
+    /// Held while the keys are read.
+    reading: tokio::sync::Mutex<()>,
 }
 
 struct CachedToken {
@@ -63,6 +65,7 @@ impl TeamsApi {
                 client,
                 tokens: Mutex::new(HashMap::new()),
                 keys: Mutex::new(None),
+                reading: tokio::sync::Mutex::new(()),
             }),
         })
     }
@@ -205,6 +208,10 @@ impl TeamsApi {
 
     pub(super) fn cached_keys(&self) -> Option<KeyCache> {
         self.inner.keys.lock().ok().and_then(|keys| keys.clone())
+    }
+
+    pub(super) fn reading(&self) -> &tokio::sync::Mutex<()> {
+        &self.inner.reading
     }
 
     pub(super) fn keep_keys(&self, cache: KeyCache) {

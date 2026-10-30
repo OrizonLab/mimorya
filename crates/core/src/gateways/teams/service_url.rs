@@ -1,21 +1,15 @@
 //! Where a company's Teams bot writes back (ADR-138): the service an
 //! activity names (`serviceUrl`), which its token, signed by the Bot
 //! Framework, names too. The platform still writes only to Microsoft's
-//! Teams services, in HTTPS, on their default port: an activity naming any
-//! other address, however signed, is not answered there. Tests name their
-//! local Teams instead.
+//! Teams services of the commercial cloud (GCC included), whose Bot
+//! Framework issues the tokens it takes, in HTTPS, on their default port:
+//! an activity naming any other address, however signed, is not answered
+//! there. Tests name their local Teams instead.
 
 /// The hosts of Microsoft's Teams services, and the domains their hosts
-/// end with (commercial, government and national clouds).
+/// end with, in the commercial cloud (GCC included).
 const MICROSOFT_HOSTS: [&str; 1] = ["smba.trafficmanager.net"];
-const MICROSOFT_DOMAINS: [&str; 6] = [
-    ".botframework.com",
-    ".teams.microsoft.com",
-    ".teams.microsoft.us",
-    ".botframework.us",
-    ".botframework.azure.us",
-    ".teams.cloud.microsoft",
-];
+const MICROSOFT_DOMAINS: [&str; 2] = [".botframework.com", ".teams.microsoft.com"];
 /// The longest service address written to.
 const MAX_URL_CHARS: usize = 200;
 
@@ -79,7 +73,6 @@ mod tests {
             "https://smba.trafficmanager.net/amer/",
             "https://SMBA.trafficmanager.net/emea/",
             "https://smba.infra.gcc.teams.microsoft.com/gcc/",
-            "https://smba.infra.gov.teams.microsoft.us/",
         ] {
             assert!(microsoft.trust(url), "{url}");
         }
@@ -96,6 +89,8 @@ mod tests {
             "https://smba.trafficmanager.net/emea/?x=1",
             "https://smba.trafficmanager.net/emea/#x",
             "https://127.0.0.1/",
+            // Another cloud, whose Bot Framework issues other tokens.
+            "https://smba.infra.gov.teams.microsoft.us/",
             "",
         ] {
             assert!(!microsoft.trust(url), "{url}");

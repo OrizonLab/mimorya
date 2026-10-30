@@ -51,6 +51,7 @@ struct Shared {
     /// The tokens Entra gave, and to which application.
     tokens: HashMap<String, String>,
     token_requests: usize,
+    configuration_requests: usize,
     key_reads: usize,
     endorsements: Vec<String>,
     /// What Teams says of each member (`29:…`).
@@ -164,6 +165,12 @@ impl FakeTeams {
     /// How many times the key set was read.
     pub fn key_reads(&self) -> usize {
         self.lock().key_reads
+    }
+
+    /// How many times the Bot Framework's configuration was asked for,
+    /// answered or not.
+    pub fn configuration_requests(&self) -> usize {
+        self.lock().configuration_requests
     }
 
     /// The claims of a token the Bot Framework sends the bot `app` with an

@@ -7,10 +7,10 @@ import { api, useAction, type GatewayLinkCode, type GatewayLinkPreview } from '@
 import { formatDate } from '@/lib/format';
 
 /**
- * What the link the company's Slack application sent a person would link
- * (ADR-125, ADR-126), shown in their own session, then confirmed: the
- * server asks Slack again whether this Slack user has their account's
- * address.
+ * What the link the company's Slack application, or its Teams bot, sent a
+ * person would link (ADR-125, ADR-126, ADR-138), shown in their own
+ * session, then confirmed: the server asks the service again whether this
+ * identity has their account's address.
  */
 export function GatewayLinkConfirmation({
   code,
@@ -21,6 +21,8 @@ export function GatewayLinkConfirmation({
 }) {
   const [linked, setLinked] = useState(false);
   const action = useAction();
+  const teams = preview.type === 'teams';
+  const service = teams ? 'Teams' : 'Slack';
 
   async function confirm() {
     const done = await action.run(() =>
@@ -31,11 +33,11 @@ export function GatewayLinkConfirmation({
 
   return (
     <Card className="flex flex-col gap-3 p-6">
-      <h2 className="font-medium">Relier votre compte Slack</h2>
+      <h2 className="font-medium">Relier votre compte {service}</h2>
       {linked ? (
         <>
           <p role="status" className="text-sm text-ok">
-            Votre compte Slack est relié à votre compte.
+            Votre compte {service} est relié à votre compte.
           </p>
           <Link href="/account" className="text-sm font-medium text-accent underline">
             Mon compte
@@ -44,14 +46,14 @@ export function GatewayLinkConfirmation({
       ) : (
         <>
           <p className="text-sm">
-            Relier le compte Slack <code>{preview.externalId}</code> de l’espace{' '}
-            {`« ${preview.workspaceName} »`} ({preview.name}) à votre compte ? Slack doit donner
-            pour lui l’adresse de votre compte. Lien valable jusqu’au{' '}
-            {formatDate(preview.expiresAt)}.
+            Relier le compte {service} <code>{preview.externalId}</code>{' '}
+            {teams ? 'de l’annuaire' : 'de l’espace'} {`« ${preview.workspaceName} »`} (
+            {preview.name}) à votre compte ? {service} doit donner pour lui l’adresse de votre
+            compte. Lien valable jusqu’au {formatDate(preview.expiresAt)}.
           </p>
           {action.error && <ErrorNote message={action.error} />}
           <Button loading={action.pending} onClick={() => void confirm()}>
-            Relier mon compte Slack
+            Relier mon compte {service}
           </Button>
         </>
       )}

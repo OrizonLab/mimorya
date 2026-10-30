@@ -7730,9 +7730,12 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
 
   - **une activité ne se prouve que par le jeton de Microsoft** (`Authorization:
 Bearer`), vérifié sans bibliothèque de plus (`ring`) :
-    - signé RS256 avec une clé du jeu de clés du Bot Framework (lu depuis sa
-      configuration OpenID, gardé un jour, relu pour une clé inconnue au plus toutes
-      les cinq minutes, gardé tel quel si Microsoft ne répond pas) ;
+    - signé RS256 avec une clé du jeu de clés du Bot Framework, lu depuis sa
+      configuration OpenID (adresse du même schéma qu'elle), gardé un jour, relu pour
+      une clé inconnue au plus toutes les cinq minutes, une lecture à la fois, une
+      lecture échouée retentée au plus tôt trente secondes après (les clés lues
+      gardées, aucune sinon) ; aucune connexion à la base n'est tenue pendant qu'on
+      les demande à Microsoft ;
     - clé endossée pour `msteams` ;
     - émis par `https://api.botframework.com` ;
     - pour l'application du bot (`aud`) ;
@@ -7748,9 +7751,12 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     avec le bot (`personal`), du canal Teams, adressé au bot (`28:<application>`), de
     l'annuaire de l'entreprise, une fois (identifiant de l'activité, comme les
     événements Slack). Tout le reste est pris et ignoré : conversation de groupe ou
-    canal, autre bot, autre annuaire, passerelle en pause. Le bot n'écrit qu'aux
-    services Teams de Microsoft (`smba.trafficmanager.net` et les domaines Teams et
-    Bot Framework des clouds de Microsoft), en HTTPS, sur le port par défaut, avec un
+    canal, autre bot, autre annuaire, passerelle en pause. Teams numérotant un
+    message par son instant, unique dans sa conversation seulement, l'activité est
+    prise une fois par l'empreinte de sa conversation et de son numéro. Le bot n'écrit
+    qu'aux services Teams de Microsoft du cloud commercial, GCC compris, dont le Bot
+    Framework émet les jetons pris (`smba.trafficmanager.net`, `*.botframework.com`,
+    `*.teams.microsoft.com`), en HTTPS, sur le port par défaut, avec un
     chemin simple : un service nommé ailleurs, même signé, n'est jamais écrit, et cette
     règle est vérifiée deux fois (à la réception et dans le client) ;
   - **identité reliée comme dans Slack** : à qui écrit au bot sans avoir relié son
@@ -7772,6 +7778,10 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
   - **le texte du bot en Markdown** : il est écrit dans le Markdown que Teams
     lit. Ce que la plateforme n'a pas écrit est échappé (entités HTML et caractères du
     Markdown), et un lien n'est écrit que depuis une adresse sans rien qui le ferme.
+  - **écrans** : en attendant les siens (lot suivant), le bot Teams n'est montré ni
+    dans « Connecteurs » ni dans « Mon compte », comme le bot Telegram avant ADR-134 ;
+    la page du lien, où le bot envoie déjà les personnes, nomme le service du lien
+    (Teams, annuaire) au lieu de Slack.
 - **Conséquences** :
   - `gateways` accepte le service `teams` (annuaire en `workspace_id` et
     `workspace_name`, application en `bot_user_id`). Seule une application Slack a des
@@ -7787,15 +7797,18 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       service), activité lue, services de Microsoft, preuve d'une personne, texte et
       lien ;
     - `crates/connectors/tests/teams_api.rs` : jeton gardé pour son secret, service
-      non sûr jamais interrogé, membre nommé, clés lues une fois ;
+      non sûr jamais interrogé, membre nommé, clés lues une fois, Microsoft injoignable
+      pas redemandé aussitôt ;
     - `crates/api/tests/teams_gateway_admin.rs` : déclaration essayée auprès d'Entra,
       une par entreprise, secret jamais rendu ni audité, changements, droits ;
     - `teams_gateway_activities.rs` : chemin dispensé de l'en-tête, jeton seul preuve
       (faussaire, autre bot, périmé, autre service, clé non endossée), prise unique,
-      tout le reste ignoré, service hors de Microsoft jamais écrit ;
+      même numéro dans deux conversations, tout le reste ignoré, service hors de
+      Microsoft jamais écrit, Microsoft injoignable (rien de prouvé, pas redemandé à
+      chaque activité) ;
     - `teams_gateway_links.rs` : liaison prévisualisée puis confirmée, autre adresse,
-      annuaire ou personne refusés et audités, lien ouvert par un autre, bot en pause,
-      `agent:use`, Teams injoignable ;
+      annuaire ou personne refusés et audités, lien ouvert par un autre, lien expiré,
+      session d'une autre entreprise, bot en pause, `agent:use`, Teams injoignable ;
   - reste à venir : les écrans (déclaration, carte, « Mon compte »), les conversations
     avec l'agent dans Teams, les validations par cartes adaptatives et l'avis au
     responsable.

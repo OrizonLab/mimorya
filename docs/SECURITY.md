@@ -201,7 +201,10 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   inconnue ; chemin exact dispensé de l'en-tête du navigateur. Seul le message d'une
   personne dans sa conversation personnelle avec le bot, de l'annuaire de
   l'entreprise, est lu, une fois ; le bot n'écrit qu'aux services Teams de Microsoft
-  (HTTPS, port par défaut, chemin simple), vérifiés à la réception et dans le client.
+  du cloud commercial (HTTPS, port par défaut, chemin simple), vérifiés à la réception
+  et dans le client. Les clés du Bot Framework sont relues au plus toutes les cinq
+  minutes pour une clé inconnue, une lecture à la fois, sans connexion à la base tenue
+  pendant ce temps : des activités forgées ne font pas demander Microsoft à chaque fois.
   Une identité ne se relie que depuis la session de la personne, par le lien scellé que
   le bot lui envoie (quinze minutes), quand Teams, interrogé alors dans la conversation
   où le bot l'a rencontrée, nomme le même objet Entra, de l'annuaire de l'entreprise,

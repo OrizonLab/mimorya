@@ -6,8 +6,10 @@
 //! A person's own message to the bot, in their personal conversation in
 //! the company's directory, is taken once: answered with a link to link
 //! their account, in that conversation; anything else, a paused bot, or a
-//! service not Microsoft's Teams, is taken and nothing written. The keys
-//! are read once for many activities.
+//! service not Microsoft's Teams, is taken and nothing written; the same
+//! number in two conversations is two messages. The keys are read once for
+//! many activities; Microsoft unreachable, each activity is answered as
+//! unknown, and Microsoft not asked again for each of them.
 
 mod support;
 
@@ -21,7 +23,7 @@ use support::TestApi;
 use support::gateways::GATEWAYS;
 use support::sso::SSO_DEPLOYMENT;
 use support::teams::{
-    MARC_TEAMS, declare_teams, deliver, deliver_signed, offered_code, post_activity,
+    LEA_TEAMS, MARC_TEAMS, declare_teams, deliver, deliver_signed, offered_code, post_activity,
 };
 use uuid::Uuid;
 
@@ -186,6 +188,42 @@ async fn a_service_not_microsoft_s_teams_is_never_written_to() {
     let token = format!("Bearer {}", signed_token(Signer::BotFramework, &claims));
     let taken = post_activity(&api, id, Some(&token), &activity).await;
     assert_eq!(taken.status, StatusCode::OK, "{}", taken.text());
+    assert!(teams.sent().is_empty(), "nothing written");
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn the_same_number_in_two_conversations_is_two_messages() {
+    let teams = FakeTeams::start().await;
+    let api = TestApi::start_with_teams(&SSO_DEPLOYMENT, &teams.url).await;
+    let paul = api.sign_in(user::PAUL).await;
+    let id = declare_teams(&paul).await;
+    // Teams numbers a message by its time: two people, the same instant.
+    for from in [MARC_TEAMS, LEA_TEAMS] {
+        let activity = teams.message(TEAMS_APP, "1700000000123", from, "Bonjour");
+        let taken = deliver(&api, &teams, id, &activity).await;
+        assert_eq!(taken.status, StatusCode::OK, "{}", taken.text());
+    }
+    let sent = teams.sent();
+    assert_eq!(sent.len(), 2, "{sent:?}");
+    assert_eq!(sent[1].conversation, conversation_of(LEA_TEAMS.0));
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn microsoft_unreachable_proves_nothing_and_is_not_asked_each_time() {
+    let teams = FakeTeams::start().await;
+    let api = TestApi::start_with_teams(&SSO_DEPLOYMENT, &teams.url).await;
+    let paul = api.sign_in(user::PAUL).await;
+    let id = declare_teams(&paul).await;
+    teams.unavailable(true);
+    for number in ["9100", "9101", "9102"] {
+        let activity = teams.message(TEAMS_APP, number, MARC_TEAMS, "Bonjour");
+        let unknown = deliver(&api, &teams, id, &activity).await;
+        assert_eq!(unknown.status, StatusCode::NOT_FOUND, "{}", unknown.text());
+    }
+    teams.unavailable(false);
+    assert_eq!(teams.configuration_requests(), 1);
     assert!(teams.sent().is_empty(), "nothing written");
 }
 

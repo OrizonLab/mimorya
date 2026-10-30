@@ -28,11 +28,13 @@ export function GatewayIdentities() {
   useRefreshWhile(waiting && !state.loading, state.reload, WAITING_REFRESH_MS);
   return (
     <Loaded state={state}>
-      {(data) =>
-        data.gateways.length === 0 ? null : (
+      {(data) => {
+        // A Teams bot's own rows come with its next lot (ADR-138).
+        const shown = data.gateways.filter((gateway) => gateway.type !== 'teams');
+        return shown.length === 0 ? null : (
           <Card className="flex max-w-2xl flex-col gap-3 p-4">
             <h2 className="font-medium">Messageries reliées</h2>
-            {data.gateways.map((gateway) =>
+            {shown.map((gateway) =>
               gateway.type === 'telegram' ? (
                 <TelegramIdentityRow
                   key={gateway.gatewayId}
@@ -50,8 +52,8 @@ export function GatewayIdentities() {
               ),
             )}
           </Card>
-        )
-      }
+        );
+      }}
     </Loaded>
   );
 }

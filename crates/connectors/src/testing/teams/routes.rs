@@ -73,7 +73,8 @@ pub(super) async fn token(
 }
 
 pub(super) async fn openid(State(shared): SharedState) -> Response {
-    let shared = shared.lock().expect("lock");
+    let mut shared = shared.lock().expect("lock");
+    shared.configuration_requests += 1;
     if shared.down {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     }

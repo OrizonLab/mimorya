@@ -34,11 +34,12 @@ notified: boolean, };
  */
 export type AccountGatewayView = { gatewayId: string,
 /**
- * `slack` or `telegram`.
+ * `slack`, `telegram` or `teams`.
  */
 type: string, name: string,
 /**
- * Slack's workspace, or the Telegram bot's username.
+ * Slack's workspace, the Telegram bot's username, or the Teams bot's
+ * Microsoft Entra directory.
  */
 workspaceName: string,
 /**
@@ -721,11 +722,12 @@ export type EvaluationStatus = "queued" | "running" | "completed" | "failed";
  */
 export type GatewayIdentity = {
 /**
- * Their Slack user, or their Telegram identifier.
+ * Their Slack user, their Telegram identifier, or their Microsoft
+ * Entra object (Teams).
  */
 externalId: string,
 /**
- * The address Slack gave as theirs when they linked it.
+ * The address Slack or Teams gave as theirs when they linked it.
  */
 address: string | null,
 /**
@@ -735,8 +737,8 @@ name: string | null, linkedAt: string, };
 
 /**
  * Body of `POST /account/gateways/link/preview` and `POST
- * /account/gateways/link`: the code of the link Slack gave, from its
- * fragment.
+ * /account/gateways/link`: the code of the link Slack or a Teams bot
+ * gave, from its fragment.
  */
 export type GatewayLinkCode = { code: string, };
 
@@ -758,9 +760,14 @@ claimedId: string | null, };
 /**
  * `POST /account/gateways/link/preview`: what the link would link.
  */
-export type GatewayLinkPreview = { gatewayId: string, type: string, name: string, workspaceName: string,
+export type GatewayLinkPreview = { gatewayId: string,
 /**
- * The Slack user the link names.
+ * `slack` or `teams`.
+ */
+type: string, name: string, workspaceName: string,
+/**
+ * The Slack user, or the Teams user's Microsoft Entra object, the
+ * link names.
  */
 externalId: string, expiresAt: string, };
 

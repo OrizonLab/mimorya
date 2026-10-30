@@ -5,19 +5,21 @@
 //! of the company's directory, with the account's own address. Another
 //! address, another directory or another person links nothing, audited
 //! with the reason; a link opened by someone else links nothing; nor an
-//! expired link, a paused bot, another company's session, or someone who
-//! may not talk with the agent. Once linked, writing to the bot is answered
+//! expired link, a link opened in another company's session, a paused bot,
+//! or someone who may not talk with the agent. Once linked, writing to the bot is answered
 //! that the agent is not talked with in Teams yet.
 
 mod support;
 
 use axum::http::StatusCode;
+use chrono::{Duration, Utc};
 use mimorya_connectors::testing::{FakeTeams, TEAMS_DIRECTORY, conversation_of, member_id};
-use mimorya_core::demo::user;
+use mimorya_core::demo::{tenant, user};
 use serde_json::{Value, json};
 use support::gateways::GATEWAYS;
 use support::manager_approvals::without;
 use support::refusals::{entries_since, latest_entry};
+use support::slack_companies::other_administrator;
 use support::sso::SSO_DEPLOYMENT;
 use support::teams::{LEA_TEAMS, MARC_TEAMS, declare_teams, link_code, write};
 use support::{Client, TestApi, TestResponse, email};
@@ -203,4 +205,46 @@ async fn who_may_not_talk_with_the_agent_or_whom_teams_cannot_name_links_nothing
     let confirmed = confirm(&lea, &code).await;
     assert_eq!(confirmed.status, StatusCode::OK, "{}", confirmed.text());
     assert_eq!(listed(&lea).await["linked"]["externalId"], LEA_TEAMS.0);
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn an_expired_link_or_another_company_s_session_links_nothing() {
+    let teams = FakeTeams::start().await;
+    let api = TestApi::start_with_teams(&SSO_DEPLOYMENT, &teams.url).await;
+    let (paul, marc) = (api.sign_in(user::PAUL).await, api.sign_in(user::MARC).await);
+    let id = declare_teams(&paul).await;
+    teams.add_person(MARC_TEAMS.0, MARC_TEAMS.1, &email(user::MARC));
+    let code = link_code(&api, &teams, id, "9000", MARC_TEAMS).await;
+    let gateways = &api.app.services.gateways;
+
+    // Sixteen minutes later.
+    let identity = mimorya_api::services::AuthIdentity {
+        tenant_id: tenant::ID,
+        user_id: user::MARC,
+        session_id: uuid::Uuid::nil(),
+        must_change_password: false,
+    };
+    let own = api.app.services.access.context(identity).await.unwrap();
+    let later = Utc::now() + Duration::minutes(16);
+    let expired = gateways.confirm_link(&own, &code, later).await;
+    let expired = expired.err().unwrap().to_string();
+    assert!(expired.starts_with("Ce lien a expiré"), "{expired}");
+    // In another company, as if it were none.
+    let (_, jeanne) = other_administrator(&api, "acme-teams-links").await;
+    let elsewhere = gateways.preview_link(&jeanne, &code, Utc::now()).await;
+    let elsewhere = elsewhere.err().unwrap().to_string();
+    assert!(
+        elsewhere.starts_with("Lien de liaison invalide"),
+        "{elsewhere}"
+    );
+    assert!(
+        gateways
+            .confirm_link(&jeanne, &code, Utc::now())
+            .await
+            .is_err()
+    );
+    // Still Marc's to use, now.
+    let confirmed = confirm(&marc, &code).await;
+    assert_eq!(confirmed.status, StatusCode::OK, "{}", confirmed.text());
 }

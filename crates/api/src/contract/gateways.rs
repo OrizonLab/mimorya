@@ -1,7 +1,7 @@
 //! The conversation gateways of the person's company, and who they are on
-//! each (ADR-125): what a link Slack gave them would link, and its
-//! confirmation; the link a Telegram bot is started with, and whom
-//! Telegram sent its code back from (ADR-133).
+//! each (ADR-125): what a link Slack or a Teams bot gave them would link,
+//! and its confirmation (ADR-138); the link a Telegram bot is started with,
+//! and whom Telegram sent its code back from (ADR-133).
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -21,11 +21,12 @@ pub struct AccountGateways {
 #[serde(rename_all = "camelCase")]
 pub struct AccountGatewayView {
     pub gateway_id: Uuid,
-    /// `slack` or `telegram`.
+    /// `slack`, `telegram` or `teams`.
     #[serde(rename = "type")]
     pub kind: String,
     pub name: String,
-    /// Slack's workspace, or the Telegram bot's username.
+    /// Slack's workspace, the Telegram bot's username, or the Teams bot's
+    /// Microsoft Entra directory.
     pub workspace_name: String,
     /// A link may be made: the gateway is enabled and the person may talk
     /// with the agent. Otherwise their identity stays theirs to remove.
@@ -61,9 +62,10 @@ pub struct TelegramLink {
 #[derive(Debug, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct GatewayIdentity {
-    /// Their Slack user, or their Telegram identifier.
+    /// Their Slack user, their Telegram identifier, or their Microsoft
+    /// Entra object (Teams).
     pub external_id: String,
-    /// The address Slack gave as theirs when they linked it.
+    /// The address Slack or Teams gave as theirs when they linked it.
     pub address: Option<String>,
     /// The name Telegram showed when they linked it (ADR-133).
     pub name: Option<String>,
@@ -75,18 +77,20 @@ pub struct GatewayIdentity {
 #[serde(rename_all = "camelCase")]
 pub struct GatewayLinkPreview {
     pub gateway_id: Uuid,
+    /// `slack` or `teams`.
     #[serde(rename = "type")]
     pub kind: String,
     pub name: String,
     pub workspace_name: String,
-    /// The Slack user the link names.
+    /// The Slack user, or the Teams user's Microsoft Entra object, the
+    /// link names.
     pub external_id: String,
     pub expires_at: String,
 }
 
 /// Body of `POST /account/gateways/link/preview` and `POST
-/// /account/gateways/link`: the code of the link Slack gave, from its
-/// fragment.
+/// /account/gateways/link`: the code of the link Slack or a Teams bot
+/// gave, from its fragment.
 #[derive(Deserialize, Validate, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct GatewayLinkCode {
