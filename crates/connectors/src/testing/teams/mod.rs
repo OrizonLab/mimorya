@@ -1,18 +1,18 @@
-//! Microsoft on a local port, as a company's Teams bot reaches it, for
-//! tests (feature `testing`, ADR-138): Microsoft Entra, which gives a token
-//! to the test bot's application (`TEAMS_APP` of `TEAMS_DIRECTORY`, with
-//! `TEAMS_SECRET`) or to another company's (`OTHER_TEAMS_APP`) and refuses
-//! any other secret; the Bot Framework's OpenID configuration and key set
-//! (its test key, endorsed for Teams); and a Teams service under `teams/`,
-//! which keeps the messages the bots write, with a token Entra gave, and
-//! says who the members of their conversations are; the same service
-//! answers under `ailleurs/`, an address no bot may trust (`untrusted_url`).
-//! It writes an activity as the Bot Framework sends it (`activity`), with
-//! its token (`signing`). A test may make it unavailable (503), slow to say
-//! where its keys are, or change what it says of a member. For the end-to-end tests (ADR-139), it lists
-//! the messages the bots wrote at `GET /test/messages` and writes, at
-//! `POST /test/activity`, the activity a person's message would be with
-//! its token (`outside`): whoever reaches the test Microsoft can send the
+//! Microsoft on a local port, as a company's Teams bot reaches it, for tests
+//! (feature `testing`, ADR-138): Microsoft Entra, which gives a token to the
+//! test bot's application (`TEAMS_APP` of `TEAMS_DIRECTORY`, with
+//! `TEAMS_SECRET`) or to another company's (`OTHER_TEAMS_APP`) and refuses any
+//! other secret; the Bot Framework's OpenID configuration and key set (its test
+//! key, endorsed for Teams); and a Teams service under `teams/`, which keeps
+//! the messages the bots write, with a token Entra gave, and says who the
+//! members of their conversations are; the same service answers under
+//! `ailleurs/`, an address no bot may trust (`untrusted_url`). It writes an
+//! activity as the Bot Framework sends it (`activity`), with its token
+//! (`signing`). A test may make it unavailable (503), slow to say where its
+//! keys are, or change what it says of a member. For the end-to-end tests
+//! (ADR-139), it lists the messages the bots wrote at `GET /test/messages` and
+//! writes, at `POST /test/activity`, the activity a person's message would be
+//! with its token (`outside`): whoever reaches the test Microsoft can send the
 //! bots what the Bot Framework would.
 
 mod activity;

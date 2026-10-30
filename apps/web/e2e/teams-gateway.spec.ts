@@ -4,18 +4,18 @@
 // messaging endpoint to give the Azure bot; Léa is told in « Mon compte »
 // how to link her Teams account; she writes to the bot, as the test Bot
 // Framework sends it, with its token, and the bot answers with a link.
-// Opened in her session, the link shows what it links and links it; she
-// is then told the agent is not talked with in Teams yet. Paul sees her
+// Opened in her session, the link shows what it links and links it; she is
+// then told the agent is not talked with in Teams yet. Paul sees her
 // account counted and disables the bot; the link, reopened, says why it
 // links nothing; Léa is told so (and no longer that the bot sends her to
 // the application) and removes her link; Paul renames the bot (its
 // application and directory never offered; a new secret Entra refuses
-// changing nothing, a blank one keeping it) and enables it, after which
-// it answers Léa again with the secret kept; he deletes it, and the
-// endpoint answers as to an unknown gateway. Each step is read back from
-// the API, each confirmation read. Whatever
-// happens, the bot is deleted with its links. The rules themselves are
-// tested on the API (`crates/api/tests/teams_gateway_*.rs`).
+// changing nothing, a blank one keeping it) and enables it, after which it
+// answers Léa again with the secret kept; he deletes it, and the endpoint
+// answers as to an unknown gateway. Each step is read back from the API,
+// each confirmation read. Whatever happens, the bot is deleted with its
+// links. The rules themselves are tested on the API
+// (`crates/api/tests/teams_gateway_*.rs`).
 import type { Page } from '@playwright/test';
 import { demo, expect, noError, signIn, test } from './support/fixtures';
 import { cardWith, openAdmin } from './support/admin';
