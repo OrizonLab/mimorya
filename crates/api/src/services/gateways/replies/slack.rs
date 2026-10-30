@@ -9,9 +9,9 @@ use mimorya_core::gateways::{ShownAction, validated_in_gateway};
 use mimorya_db::repositories::approvals::ApprovalRow;
 use mimorya_db::repositories::gateway_replies::{ReplyRecord, ReplyTarget};
 
-use super::later;
 use crate::services::gateways::GatewayService;
 use crate::services::gateways::reply_text::{Pause, pause_reply, reply_text};
+use crate::services::gateways::retry::later;
 
 /// Writes the answer to `target` in its thread, with the bot's `token`;
 /// `awaiting`, a pause's actions still awaiting a decision. What became of
@@ -71,15 +71,16 @@ pub(super) async fn answer(
     }
 }
 
-/// What becomes of an answer Slack did not take, at its `attempt`-th try:
-/// refused, never tried again; unreached, tried again later, a few times.
+/// What becomes of a message Slack did not take (a run's answer, or a
+/// manager's notice, ADR-130), at its `attempt`-th try: refused, never
+/// tried again; unreached, tried again later, a few times.
 pub(in crate::services::gateways) fn after_failure(
     failure: &SlackFailure,
     attempt: i32,
     now: DateTime<Utc>,
 ) -> ReplyRecord {
     let reason = failure.message();
-    tracing::warn!(attempt, %reason, "Slack answer not taken");
+    tracing::warn!(attempt, %reason, "Slack message not taken");
     match failure {
         SlackFailure::Refused(_) => ReplyRecord::Done("refused"),
         SlackFailure::Throttled { retry_after } => later(attempt, *retry_after, now),
@@ -90,7 +91,7 @@ pub(in crate::services::gateways) fn after_failure(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::gateways::replies::MAX_ATTEMPTS;
+    use crate::services::gateways::retry::MAX_ATTEMPTS;
     use chrono::Duration;
 
     #[test]

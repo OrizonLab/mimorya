@@ -13,11 +13,11 @@ use axum::http::StatusCode;
 use mimorya_connectors::testing::FakeSlack;
 use mimorya_core::demo::{tenant, user};
 use serde_json::json;
-use support::gateways::declare_slack;
-use support::queue::as_owner;
-use support::slack_approvers::{
+use support::approver_notices::{
     direct_to, nadia_s_request, notice_of, notify, refuse, retry_notices_now, to_notify,
 };
+use support::gateways::declare_slack;
+use support::queue::as_owner;
 use support::slack_conversations::{MARC_SLACK, linked};
 use support::sso::SSO_DEPLOYMENT;
 use support::{TestApi, email};

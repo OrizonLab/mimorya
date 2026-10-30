@@ -43,11 +43,6 @@ pub const ANSWERED_WITHIN: Duration = Duration::hours(24);
 /// within this delay. A run's next end comes within a validation's delay
 /// (seven days) of the latest; a margin above it.
 const THREAD_ACTIVE_WITHIN: Duration = Duration::days(30);
-/// The longest wait before an answer is tried again, whatever the service
-/// says.
-const MAX_WAIT: Duration = Duration::hours(1);
-/// The attempts an answer is given while its service cannot be reached.
-pub const MAX_ATTEMPTS: i32 = 4;
 /// The ends and pauses a pass answers, at most.
 const PER_PASS: i32 = 50;
 /// The pass's lock (ADR-086).
@@ -164,48 +159,4 @@ async fn reply(
         held.remove(&thread_id);
     }
     Ok(record == ReplyRecord::Done("sent"))
-}
-
-/// When an answer its service did not take, at its `attempt`-th try, is
-/// tried again: 30 s, 2 min, 8 min, or when the service says (`told`),
-/// within an hour; never past `MAX_ATTEMPTS`.
-fn later(attempt: i32, told: Option<std::time::Duration>, now: DateTime<Utc>) -> ReplyRecord {
-    if attempt >= MAX_ATTEMPTS {
-        return ReplyRecord::Done("failed");
-    }
-    let wait = match told {
-        Some(after) => Duration::from_std(after).unwrap_or(MAX_WAIT),
-        None => Duration::seconds(30 * 4_i64.pow(attempt.saturating_sub(1) as u32)),
-    };
-    ReplyRecord::Retry(now + wait.min(MAX_WAIT))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn an_answer_not_taken_is_tried_again_a_few_times_within_an_hour() {
-        let now = Utc::now();
-        assert_eq!(
-            later(1, None, now),
-            ReplyRecord::Retry(now + Duration::seconds(30))
-        );
-        assert_eq!(
-            later(3, None, now),
-            ReplyRecord::Retry(now + Duration::minutes(8))
-        );
-        assert_eq!(later(MAX_ATTEMPTS, None, now), ReplyRecord::Done("failed"));
-        let told = Some(std::time::Duration::from_secs(12));
-        assert_eq!(
-            later(1, told, now),
-            ReplyRecord::Retry(now + Duration::seconds(12))
-        );
-        // Whatever the service says, within an hour.
-        let far = Some(std::time::Duration::from_secs(100_000_000_000_000));
-        assert_eq!(
-            later(1, far, now),
-            ReplyRecord::Retry(now + Duration::hours(1))
-        );
-    }
 }

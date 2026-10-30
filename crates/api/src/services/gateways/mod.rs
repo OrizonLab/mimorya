@@ -19,7 +19,9 @@
 //! with the agent there, answered in their private chat with the bot
 //! (ADR-135), the run's end or pause written there by the same pass
 //! (`replies`), and validates there what awaits them with its buttons
-//! (ADR-136).
+//! (ADR-136); a manager, or their stand-in, linked there is told there of
+//! the requests awaiting them, by the same pass as in Slack
+//! (`approver_notices`, ADR-137).
 //! The bot's token and the signing secret are sealed in the secret store.
 
 mod approver_notices;
@@ -34,6 +36,7 @@ mod link;
 mod person;
 mod replies;
 mod reply_text;
+mod retry;
 mod started;
 mod telegram;
 
@@ -48,13 +51,14 @@ use uuid::Uuid;
 use crate::secrets::{SecretCipher, SecretRead, SecretStore};
 use crate::services::background::BackgroundTasks;
 
-pub use approver_notices::{NOTIFIED_IN_SLACK, NOTIFIED_WITHIN, notify_approvers_in_slack};
+pub use approver_notices::{APPROVAL_NOTIFIED, NOTIFIED_WITHIN, notify_approvers};
 pub use choices::{PersonChoice, decide_in_slack};
 pub use conversations::converse;
 pub use events::{EventOutcome, PersonMessage, SlackHeaders};
 pub use identities::GatewayOfPerson;
 pub use link::{LINK_LIFETIME, LinkPreview};
-pub use replies::{MAX_ATTEMPTS, reply_to_finished_runs};
+pub use replies::reply_to_finished_runs;
+pub use retry::MAX_ATTEMPTS;
 pub use telegram::{
     ChatMessage, PendingLink, TelegramChoice, TelegramLinkCode, UpdateOutcome,
     converse_in_telegram, decide_in_telegram,

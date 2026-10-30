@@ -1,5 +1,5 @@
 //! Who pressed a validation's button in a messaging service (ADR-129,
-//! ADR-130, ADR-136): the requests they see (made for them, or awaiting
+//! ADR-130, ADR-136, ADR-137): the requests they see (made for them, or awaiting
 //! them) and those they decide (their own, a manager's they are, or stand
 //! in for). Nothing is told of any other. A press is decided alike in each
 //! service (`decide_as`): only a request awaiting its presser, that may be

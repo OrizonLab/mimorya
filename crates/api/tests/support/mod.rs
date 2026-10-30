@@ -7,6 +7,7 @@
 pub mod access;
 pub mod account_links;
 pub mod accounts;
+pub mod approver_notices;
 mod client;
 pub mod companies;
 pub mod delegations;
@@ -48,7 +49,6 @@ pub mod scheduled_notices;
 pub mod skill_evaluations;
 pub mod skill_proposal_notices;
 pub mod skill_proposals;
-pub mod slack_approvers;
 pub mod slack_companies;
 pub mod slack_conversations;
 pub mod slack_validations;

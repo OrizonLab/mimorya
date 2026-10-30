@@ -1,18 +1,17 @@
-//! The validations given in Telegram (ADR-136): a run started there that
-//! pauses for its author's own validation shows, in their private chat with
-//! the bot, each action awaiting it that may be validated there
-//! (`validated_in_gateway`) with its exact parameters, whole, and a
-//! « Valider » and a « Refuser » button under the message. What a button
-//! carries names its approval and the choice (`v:` or `r:` and the
-//! approval's identifier, within Telegram's 64 bytes). Once an action is
-//! decided, its buttons are taken off the message; the others stay.
+//! The validations given in Telegram (ADR-136, ADR-137): under a message
+//! of the bot in a person's private chat (the pause written to whom the
+//! agent acts for, or the notice written to whom a request awaits), a
+//! « Valider » and a « Refuser » button for each action it shows
+//! (`shown`). What a button carries names its approval and the choice
+//! (`v:` or `r:` and the approval's identifier, within Telegram's 64
+//! bytes). Once an action is decided, its buttons are taken off the
+//! message; the others stay.
 
 use serde_json::{Value, json};
 use uuid::Uuid;
 
-use super::html::escaped;
 use super::press::KeyboardButton;
-use crate::gateways::{MAX_ACTION_CHARS, ShownAction, bounded, exact_parameters, risk_label};
+use crate::gateways::ShownAction;
 
 /// What a « Valider » button carries before its approval, and a « Refuser »
 /// one.
@@ -63,38 +62,6 @@ pub fn approval_keyboard(actions: &[ShownAction]) -> Value {
         })
         .collect();
     json!({ "inline_keyboard": rows })
-}
-
-/// The actions shown in a pause's message, in Telegram's HTML (`html`) or
-/// in plain text: each numbered when there are several, its description
-/// (escaped, bounded) and its risk, then its exact parameters whole, as
-/// literal text.
-pub fn shown_actions(actions: &[ShownAction], html: bool) -> String {
-    let mut text = String::new();
-    for (i, action) in actions.iter().enumerate() {
-        let number = if actions.len() > 1 {
-            format!(" {}", i + 1)
-        } else {
-            String::new()
-        };
-        let (summary, _) = bounded(action.summary.trim(), MAX_ACTION_CHARS);
-        let parameters = exact_parameters(action.parameters);
-        let risk = risk_label(action.risk);
-        text.push_str(&if html {
-            format!(
-                "\n\n<b>Action{number} à valider :</b> {}\n<b>Risque :</b> {risk}. Paramètres \
-                 exacts qui seront exécutés :\n<pre>{}</pre>",
-                escaped(&summary),
-                escaped(&parameters)
-            )
-        } else {
-            format!(
-                "\n\nAction{number} à valider : {summary}\nRisque : {risk}. Paramètres exacts \
-                 qui seront exécutés :\n{parameters}"
-            )
-        });
-    }
-    text
 }
 
 /// The approvals whose buttons are in `keyboard`.
@@ -188,32 +155,20 @@ mod tests {
     }
 
     #[test]
-    fn several_actions_are_numbered_and_shown_with_their_exact_parameters() {
-        let parameters = json!({ "to": "<b>co</b> & cie" });
-        let other = Uuid::new_v4();
-        let actions = [
-            shown(id(), "Écrire à <b>", &parameters),
-            shown(other, "Autre", &parameters),
-        ];
-        let keyboard = approval_keyboard(&actions);
+    fn several_actions_buttons_are_numbered() {
+        let parameters = json!({});
+        let keyboard = approval_keyboard(&[
+            shown(id(), "A", &parameters),
+            shown(Uuid::new_v4(), "B", &parameters),
+        ]);
         assert_eq!(
             keyboard["inline_keyboard"][1][0]["text"],
             "Valider l’action 2"
         );
-        let html = shown_actions(&actions, true);
-        assert!(
-            html.contains("<b>Action 1 à valider :</b> Écrire à &lt;b&gt;"),
-            "{html}"
+        assert_eq!(
+            keyboard["inline_keyboard"][1][1]["text"],
+            "Refuser l’action 2"
         );
-        assert!(html.contains("<b>Risque :</b> Modification."), "{html}");
-        let exact = escaped(&exact_parameters(&parameters));
-        assert!(html.contains(&format!("<pre>{exact}</pre>")), "{html}");
-        let plain = shown_actions(&actions, false);
-        assert!(plain.contains("Action 2 à valider : Autre"), "{plain}");
-        assert!(plain.contains(&exact_parameters(&parameters)), "{plain}");
-        let long = "x".repeat(MAX_ACTION_CHARS * 2);
-        let bounded = shown_actions(&[shown(id(), &long, &parameters)], false);
-        assert!(bounded.chars().count() < MAX_ACTION_CHARS + 200);
     }
 
     #[test]
