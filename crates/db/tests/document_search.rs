@@ -8,9 +8,10 @@
 
 mod support;
 
-use mimorya_core::authz::Actor;
+use mimorya_core::authz::{Actor, Sensitivity};
 use mimorya_core::demo::{self, tenant, unit, user};
 use mimorya_core::documents::{DocumentSpace, Passage, document_read_filter};
+use mimorya_core::knowledge_shares::KnowledgeShare;
 use mimorya_db::repositories::document_embeddings::{
     clear_passage_embeddings, passages_await_embeddings, passages_to_embed, store_passage_embedding,
 };
@@ -296,4 +297,36 @@ async fn the_application_changes_nothing_of_a_passage_but_its_vector() {
             .await
             .unwrap();
     assert!(given.rows_affected() > 0);
+}
+
+/// What Lucas finds by the words of `query` once the south team's documents
+/// are shared with his team up to `ceiling` (ADR-143).
+async fn lucas_finds_shared(tx: &mut TenantTx, query: &str, ceiling: Sensitivity) -> Vec<String> {
+    let share = KnowledgeShare {
+        id: Uuid::new_v4(),
+        source_unit_id: unit::TEAM_SOUTH,
+        target_unit_id: unit::TEAM_NORTH,
+        include_descendants: false,
+        memory: false,
+        documents: true,
+        ceiling,
+        expires_at: None,
+    };
+    let engine = demo::authorization_engine().with_knowledge_shares(vec![share]);
+    let subject = demo::subject(user::LUCAS);
+    let filter = document_read_filter(&engine, &subject, &Actor::user());
+    let hits = search_documents(tx, &filter, query, None, 5).await.unwrap();
+    hits.into_iter().map(|h| h.title).collect()
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn another_team_s_documents_are_found_once_shared_up_to_their_sensitivity() {
+    let db = app().await;
+    let mut tx = db.begin(tenant::ID).await.unwrap();
+    let query = "retours chantier mardi";
+    let found = lucas_finds_shared(&mut tx, query, Sensitivity::Public).await;
+    assert!(!found.contains(&"Consignes Sud".to_owned()), "{found:?}");
+    let found = lucas_finds_shared(&mut tx, query, Sensitivity::Internal).await;
+    assert!(found.contains(&"Consignes Sud".to_owned()), "{found:?}");
 }

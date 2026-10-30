@@ -15,6 +15,7 @@ pub mod documents;
 pub mod error;
 pub mod gateways;
 pub mod identity_providers;
+pub mod knowledge_shares;
 pub mod memory;
 pub mod plain_text;
 pub mod policy_rules;

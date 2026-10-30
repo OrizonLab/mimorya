@@ -8184,3 +8184,53 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     - unitaires : textes de l'avis et de sa carte réglée ;
   - reste : dans chaque service, « Validée. » ou « Refusée. » plutôt que « Décidée. »
     (ROADMAP).
+
+## ADR-143 — Partage de connaissances entre unités (partage de connaissances, lot 15a)
+
+- **Date** : 2026-10-30 · **Statut** : acceptée
+- **Contexte** : les connaissances d'une unité, mémoire de son espace (ADR-074) et
+  documents qui y sont déposés (ADR-095), sont lues par ses membres, par ceux des unités
+  en dessous (une équipe lit les connaissances de son service) et par qui a
+  `memory:read` ou `document:read` sur elle. Deux équipes sœurs ne se lisent pas : rien
+  ne permettait à une équipe de profiter des consignes d'une autre sans donner à ses
+  membres un rôle sur elle, donc aussi d'autres droits.
+- **Décision** :
+  - **un partage** : l'administrateur des politiques d'accès (`policy:manage`, toute
+    l'entreprise ; un partage est une politique d'accès, sans permission nouvelle)
+    partage les connaissances d'une unité avec une autre (`knowledge_shares`,
+    migration 0063) :
+    - la mémoire de son espace, les documents qui y sont déposés, ou les deux ;
+    - avec l'unité nommée, et si dit les unités en dessous ;
+    - jusqu'à une sensibilité (`max_sensitivity`) ;
+    - jusqu'à une date s'il en fixe une, passée laquelle le partage n'ouvre plus rien ;
+  - **ce qui est lu** : les membres de l'unité qui le reçoit lisent l'espace partagé
+    comme celui de leur unité, jamais au-delà de la sensibilité du partage ni de leur
+    propre habilitation ; de plusieurs partages d'une même unité, le plus large
+    l'emporte. Seul l'espace de l'unité partagée, non celui des unités en dessous ; jamais
+    la mémoire personnelle ; jamais en écriture ni en suppression ;
+  - **qui en profite** : le partage n'accorde aucune permission. Il élargit seulement les
+    filtres de lecture de qui lit déjà les connaissances de son unité (`memory:read`,
+    `document:read` sur un périmètre) : `memory_read_filter` et `document_read_filter`
+    y ajoutent les unités partagées avec les siennes (`from_shares`), avec la
+    sensibilité lue dans chacune. Qui lit déjà tout ne gagne rien ; qui ne lit rien ne
+    gagne rien ;
+  - **où** : les partages sont chargés avec le reste des règles de l'entreprise, dans le
+    moteur d'autorisation (`AuthorizationEngine::with_knowledge_shares`), recalculés à
+    chaque lecture selon son horloge, et rechargés dans chaque processus à chaque
+    changement (ADR-085). Le domaine reste pur (`core/src/knowledge_shares.rs`). Les
+    requêtes SQL de la mémoire et des documents, l'écran comme les outils de recherche
+    de l'agent, appliquent les unités partagées avec leur sensibilité ;
+  - **règles** : deux unités différentes de l'entreprise ; jamais vers une unité qui
+    lit déjà l'unité partagée (contenue en elle) ; une fois par couple ; mémoire ou
+    documents au moins ; date à venir. Une unité inconnue est refusée et tracée
+    (ADR-054). Chaque partage et son retrait sont audités
+    (`knowledge_share.created`, `knowledge_share.deleted`).
+- **Conséquences** :
+  - le partage vit tant que ses deux unités existent ;
+  - tests : `crates/core/src/knowledge_shares_tests.rs` (cible, unités en dessous,
+    sensibilité et habilitation, date) ; `crates/api/tests/knowledge_shares.rs` (mémoire
+    puis documents lus par l'équipe Sud, plafond, dans un seul sens, retrait, unités en
+    dessous, date passée) ; `knowledge_share_admin.rs` (qui partage et quoi) ;
+    `crates/db/tests/memory_search.rs`, `document_search.rs` (recherche de l'agent) ;
+  - reste : l'écran du partage dans l'administration et son parcours de bout en bout
+    (lot 15b).

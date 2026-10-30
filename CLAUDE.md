@@ -42,6 +42,8 @@ Repères à l'intérieur des crates :
   chaque type, domaines, ce que prouve un jeton ou une assertion SAML, nom d'un compte
   créé, enregistrement DNS qui prouve un domaine (`domain_proof.rs`), ADR-063, ADR-067,
   ADR-068, ADR-069), `core/src/schedule.rs` (heure d'une tâche planifiée, ADR-080),
+  `core/src/knowledge_shares.rs` (connaissances d'une unité partagées avec une autre :
+  unités lues par chacun et sensibilité, ADR-143),
   `core/src/documents/` (documents déposés : types reconnus, nom et titre, limites,
   refus, découpage en passages, qui lit et dépose où (`spaces.rs`), ADR-095),
   `core/src/demo/` (entreprise fictive par thème), `core/src/gateways/` (passerelles de
@@ -75,7 +77,8 @@ Repères à l'intérieur des crates :
   ADR-100, et leur annonce aux administrateurs : `skill_proposal_notices.rs`, ADR-102 ;
   cas d'évaluation des compétences : `skill_eval_cases.rs`, ADR-103, et leurs
   évaluations : `skill_evaluations.rs`, ADR-104 ; comptes reliés par chacun et leur
-  jeton de renouvellement scellé : `account_links.rs`, ADR-116 ; passerelles et
+  jeton de renouvellement scellé : `account_links.rs`, ADR-116 ; partages de connaissances entre unités :
+  `knowledge_shares.rs`, ADR-143 ; passerelles et
   événements pris : `gateways.rs`, identités reliées et conversation Teams où le bot a
   vu chacun en dernier : `gateway_identities.rs`, ADR-125, ADR-142 ; fils Slack des conversations, et conversation privée avec le bot Telegram
   ou personnelle avec le bot Teams, une ouverte à la fois : `gateway_threads.rs`,
@@ -156,6 +159,7 @@ Repères à l'intérieur des crates :
   (`absences.rs`, ADR-078), organisation, habilitations, connecteurs : ce que
   l'administration change de chacun (`connector_config.rs`) et API REST ajoutées
   (`rest_connectors.rs`, ADR-112, opérations lues d'une description OpenAPI, ADR-114),
+  partages de connaissances entre unités (`knowledge_shares.rs`, ADR-143),
   compétences, rejet des propositions de l'agent (`skill_proposals.rs`, ADR-100), cas d'évaluation
   (`skill_eval_cases.rs`, ADR-103) et évaluation demandée (`skill_evaluations.rs`,
   ADR-104), sous verrou par entreprise ; application Microsoft 365 déclarée,

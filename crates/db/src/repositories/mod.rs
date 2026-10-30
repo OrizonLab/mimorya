@@ -29,6 +29,7 @@ pub mod gateways;
 pub mod identity_providers;
 pub mod inbound_hooks;
 pub mod invitations;
+pub mod knowledge_shares;
 pub mod llm_settings;
 pub mod memory;
 pub mod memory_embeddings;

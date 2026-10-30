@@ -40,10 +40,14 @@ const MEMORY_COLUMNS: &str = "id, tenant_id, scope, owner_user_id, org_unit_id, 
     created_at, updated_at";
 
 /// Visibility predicate. Parameters: $1 owner, $2 shared, $3 all units,
-/// $4 unit ids, $5 clearance rank.
+/// $4 unit ids, $5 clearance rank, $6 the units shared with the subject's
+/// (ADR-143) and $7 the highest rank read in each.
 pub(super) const VISIBLE: &str = "((scope = 'user' and owner_user_id = $1) \
     or ($2 and ((scope = 'org_unit' and ($3 or org_unit_id = any($4))) or scope in ('tenant', 'experience')) \
-        and array_position(array['public', 'internal', 'confidential', 'restricted'], sensitivity) - 1 <= $5))";
+        and array_position(array['public', 'internal', 'confidential', 'restricted'], sensitivity) - 1 <= $5) \
+    or ($2 and scope = 'org_unit' and exists (select 1 from unnest($6::uuid[], $7::int[]) as shared(unit, cap) \
+        where shared.unit = org_unit_id \
+        and array_position(array['public', 'internal', 'confidential', 'restricted'], sensitivity) - 1 <= shared.cap)))";
 
 pub(super) const ACTIVE: &str = "status = 'active' and (expires_at is null or expires_at > now())";
 
@@ -56,12 +60,17 @@ pub(super) fn bind_visibility<'q, O>(
         UnitFilter::All => (true, Vec::new()),
         UnitFilter::Only(ids) => (false, ids.iter().copied().collect()),
     };
+    let (shared_units, shared_caps): (Vec<Uuid>, Vec<i32>) = (filter.from_shares.iter())
+        .map(|&(unit, cap)| (unit, i32::from(cap.rank())))
+        .unzip();
     query
         .bind(filter.owner_user_id)
         .bind(filter.shared)
         .bind(all_units)
         .bind(unit_ids)
         .bind(i32::from(clearance.rank()))
+        .bind(shared_units)
+        .bind(shared_caps)
 }
 
 /// Memories visible to the subject, newest first (memory management screen).
@@ -79,7 +88,7 @@ pub async fn list_visible_memory(
     };
     let sql = format!(
         "select {MEMORY_COLUMNS} from memory_items where {status} and {VISIBLE} \
-         order by updated_at desc limit $6"
+         order by updated_at desc limit $8"
     );
     bind_visibility(sqlx::query_as(&sql), filter, clearance)
         .bind(limit)

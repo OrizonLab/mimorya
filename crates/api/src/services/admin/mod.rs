@@ -27,6 +27,7 @@ mod gateways;
 mod google_workspace;
 mod identity_providers;
 mod invitations;
+mod knowledge_shares;
 mod link_applications;
 mod link_sender;
 mod llm;
@@ -72,6 +73,7 @@ pub use identity_providers::{
     remove_identity_provider,
 };
 pub use invitations::{IssuedInvitation, issue_invitation};
+pub use knowledge_shares::{ShareInput, remove_knowledge_share, share_knowledge};
 pub use link_sender::LinkSender;
 pub use llm::{LlmInput, LlmTestOutcome, configure_llm, reset_llm, test_llm};
 pub use memory_settings::{lesson_capture, set_lesson_capture};
@@ -132,11 +134,10 @@ async fn begin_change(
 /// policies.
 pub(crate) fn engine_of(data: AuthorizationData) -> anyhow::Result<AuthorizationEngine> {
     let definitions = data.roles.into_iter().map(|r| r.definition).collect();
-    Ok(AuthorizationEngine::new(
-        OrgTree::new(data.units)?,
-        definitions,
-        data.policies,
-    ))
+    Ok(
+        AuthorizationEngine::new(OrgTree::new(data.units)?, definitions, data.policies)
+            .with_knowledge_shares(data.knowledge_shares),
+    )
 }
 
 /// Whether `user_id` holds `permission` on the whole company as the stored

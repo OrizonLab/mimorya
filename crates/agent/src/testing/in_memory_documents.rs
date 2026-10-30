@@ -42,7 +42,10 @@ impl DocumentFixture {
                 UnitFilter::Only(units) => units.contains(&id),
             },
         };
-        space && self.sensitivity <= filter.clearance
+        // Shared with the reader's units, up to its sensitivity (ADR-143).
+        let shared = (filter.from_shares.iter())
+            .any(|&(unit, cap)| self.space == DocumentSpace::Unit(unit) && self.sensitivity <= cap);
+        (space && self.sensitivity <= filter.clearance) || shared
     }
 
     fn passage(&self, ordinal: usize) -> DocumentPassage {

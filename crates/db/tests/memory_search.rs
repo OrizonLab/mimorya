@@ -9,6 +9,7 @@ mod support;
 
 use mimorya_core::authz::{Actor, Sensitivity};
 use mimorya_core::demo::{self, tenant, unit, user};
+use mimorya_core::knowledge_shares::KnowledgeShare;
 use mimorya_core::memory::{MemoryKind, MemoryScope, MemoryStatus, memory_read_filter};
 use mimorya_db::repositories::document_embeddings::{
     clear_passage_embeddings, passages_to_embed, store_passage_embedding,
@@ -270,4 +271,57 @@ async fn only_an_active_company_that_chose_a_model_awaits_vectors() {
         .await
         .unwrap();
     tx.commit().await.unwrap();
+}
+
+/// What Lucas finds by the words of `query` once the south team's memory
+/// is shared with his team up to `ceiling` (ADR-143), if it is.
+async fn lucas_finds_shared(
+    tx: &mut TenantTx,
+    query: &str,
+    ceiling: Option<Sensitivity>,
+) -> Vec<String> {
+    let shares = ceiling.into_iter().map(|ceiling| KnowledgeShare {
+        id: Uuid::new_v4(),
+        source_unit_id: unit::TEAM_SOUTH,
+        target_unit_id: unit::TEAM_NORTH,
+        include_descendants: false,
+        memory: true,
+        documents: false,
+        ceiling,
+        expires_at: None,
+    });
+    let engine = demo::authorization_engine().with_knowledge_shares(shares.collect());
+    let subject = demo::subject(user::LUCAS);
+    let filter = memory_read_filter(&engine, &subject, &Actor::user());
+    let hits = search_memory(tx, &filter, query, None, 5, subject.clearance())
+        .await
+        .unwrap();
+    hits.into_iter().map(|h| h.title).collect()
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn another_team_s_memory_is_found_once_shared_up_to_its_sensitivity() {
+    let db = app().await;
+    let mut tx = db.begin(tenant::ID).await.unwrap();
+    let south = "Retours chantier équipe Sud";
+    let query = "retours chantier mardi";
+    assert!(
+        !lucas_finds_shared(&mut tx, query, None)
+            .await
+            .contains(&south.to_owned())
+    );
+    // Shared up to public: an internal memory stays out of reach.
+    let public = Some(Sensitivity::Public);
+    assert!(
+        !lucas_finds_shared(&mut tx, query, public)
+            .await
+            .contains(&south.to_owned())
+    );
+    let internal = Some(Sensitivity::Internal);
+    assert!(
+        lucas_finds_shared(&mut tx, query, internal)
+            .await
+            .contains(&south.to_owned())
+    );
 }

@@ -17,7 +17,9 @@
 //! attribute: they hold for the person and the actor whatever the resource.
 //!
 //! Hierarchical position never grants anything by itself: a manager sees their
-//! team's data only through a role assignment scoped to that team.
+//! team's data only through a role assignment scoped to that team. A unit's
+//! knowledge shared with another (ADR-143) widens only what its members
+//! read of it, never a permission (`knowledge_shared_with`).
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -29,10 +31,12 @@ use uuid::Uuid;
 use super::conditions::{evaluate_condition, reads_resource};
 use super::org_tree::OrgTree;
 use super::permissions::{is_non_delegable, matches_permission};
+use super::sensitivity::Sensitivity;
 use super::types::{
     AbacPolicy, Actor, AssignmentScope, DataScope, Decision, PolicyEffect, ResourceRef,
     RoleDefinition, Subject,
 };
+use crate::knowledge_shares::{KnowledgeShare, SharedKnowledge, shared_units};
 
 pub type Clock = Arc<dyn Fn() -> DateTime<Utc> + Send + Sync>;
 
@@ -42,6 +46,8 @@ pub struct AuthorizationEngine {
     policies: Vec<AbacPolicy>,
     /// Deny policies whose condition reads no resource attribute.
     holder_denials: Vec<usize>,
+    /// The units' knowledge shared with others (ADR-143).
+    knowledge_shares: Vec<KnowledgeShare>,
     now: Clock,
 }
 
@@ -67,8 +73,26 @@ impl AuthorizationEngine {
             roles: roles.into_iter().map(|r| (r.id, r)).collect(),
             policies,
             holder_denials,
+            knowledge_shares: Vec::new(),
             now: Arc::new(Utc::now),
         }
+    }
+
+    /// The units' knowledge the company shares with others (ADR-143).
+    pub fn with_knowledge_shares(mut self, shares: Vec<KnowledgeShare>) -> Self {
+        self.knowledge_shares = shares;
+        self
+    }
+
+    /// The units whose `kind` knowledge `subject` reads through the shares
+    /// in force, each with the highest sensitivity read there.
+    pub fn knowledge_shared_with(
+        &self,
+        subject: &Subject,
+        kind: SharedKnowledge,
+    ) -> Vec<(Uuid, Sensitivity)> {
+        let at = (kind, (self.now)());
+        shared_units(&self.knowledge_shares, &self.org_tree, subject, at)
     }
 
     /// Replaces the clock used to expire role assignments (tests).

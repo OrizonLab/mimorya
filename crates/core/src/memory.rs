@@ -8,14 +8,17 @@
 //! team member sees the department's knowledge) and by anyone whose
 //! `memory:read` scope covers the unit. Writing to a shared space requires
 //! `memory:write` on that scope. Personal memory is never shared through the
-//! hierarchy: a manager cannot read a collaborator's personal memory.
+//! hierarchy: a manager cannot read a collaborator's personal memory. A
+//! unit's space shared with another unit (ADR-143) is read by the members
+//! of that one too, up to the share's sensitivity.
 
 use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::authz::{Actor, AuthorizationEngine, DataScope, Subject};
+use crate::authz::{Actor, AuthorizationEngine, DataScope, Sensitivity, Subject};
+use crate::knowledge_shares::SharedKnowledge;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -94,6 +97,9 @@ pub struct MemoryReadFilter {
     pub org_units: UnitFilter,
     /// Company-wide and experience memories visible.
     pub shared: bool,
+    /// The units shared with the subject's whose memory they read besides
+    /// (ADR-143), each up to a sensitivity.
+    pub from_shares: Vec<(Uuid, Sensitivity)>,
 }
 
 pub fn memory_read_filter(
@@ -107,18 +113,39 @@ pub fn memory_read_filter(
             owner_user_id,
             org_units: UnitFilter::Only(HashSet::new()),
             shared: false,
+            from_shares: Vec::new(),
         },
         DataScope::All => MemoryReadFilter {
             owner_user_id,
             org_units: UnitFilter::All,
             shared: true,
+            from_shares: Vec::new(),
         },
-        DataScope::Restricted { org_unit_ids, .. } => MemoryReadFilter {
-            owner_user_id,
-            org_units: UnitFilter::Only(readable_units(engine, subject, org_unit_ids)),
-            shared: true,
-        },
+        DataScope::Restricted { org_unit_ids, .. } => {
+            let units = readable_units(engine, subject, org_unit_ids);
+            let from_shares = shared_beyond(engine, subject, SharedKnowledge::Memory, &units);
+            MemoryReadFilter {
+                owner_user_id,
+                org_units: UnitFilter::Only(units),
+                shared: true,
+                from_shares,
+            }
+        }
     }
+}
+
+/// The units whose `kind` knowledge is shared with `subject` (ADR-143),
+/// besides those they read already (`readable`), each with the highest
+/// sensitivity read there.
+pub fn shared_beyond(
+    engine: &AuthorizationEngine,
+    subject: &Subject,
+    kind: SharedKnowledge,
+    readable: &HashSet<Uuid>,
+) -> Vec<(Uuid, Sensitivity)> {
+    (engine.knowledge_shared_with(subject, kind).into_iter())
+        .filter(|(unit, _)| !readable.contains(unit))
+        .collect()
 }
 
 /// The units whose shared knowledge (memory, documents) a subject reads
