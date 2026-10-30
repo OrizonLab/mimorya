@@ -3,8 +3,8 @@
 //! only; a refused secret said in French; a message written and a member
 //! named only at a Teams service the bot may trust, nothing asked
 //! elsewhere; the Bot Framework's keys read once for many activities, those
-//! arriving together waiting for that read, and Microsoft unreachable or a
-//! read cut short, not asked again at once.
+//! arriving together waiting for that read, one cut short going to its
+//! end, and Microsoft unreachable, not asked again at once.
 
 use std::time::Duration;
 
@@ -162,14 +162,23 @@ async fn activities_arriving_together_ask_an_unreachable_microsoft_once() {
 }
 
 #[tokio::test]
-async fn a_read_cut_short_is_not_tried_again_at_once() {
+async fn a_read_cut_short_goes_to_its_end() {
     let teams = FakeTeams::start().await;
     let api = api(&teams);
-    teams.slow(Duration::from_secs(5));
-    // The activity's connection closes while Microsoft is asked.
-    let cut = tokio::time::timeout(Duration::from_millis(500), api.keys(Some(TEAMS_KEY_ID))).await;
-    assert!(cut.is_err());
+    teams.slow(Duration::from_secs(1));
+    // The activity's connection closes once Microsoft is asked.
+    let asked = async {
+        while teams.configuration_requests() == 0 {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    };
+    tokio::select! {
+        _ = api.keys(Some(TEAMS_KEY_ID)) => panic!("read before it was cut short"),
+        () = asked => {}
+    }
+    // The next activity takes what that read kept, Microsoft not asked again.
+    let keys = api.keys(Some(TEAMS_KEY_ID)).await.unwrap();
+    assert_eq!(keys[0].kid, TEAMS_KEY_ID);
     assert_eq!(teams.configuration_requests(), 1);
-    assert_eq!(api.keys(Some(TEAMS_KEY_ID)).await, Ok(Vec::new()));
-    assert_eq!(teams.configuration_requests(), 1);
+    assert_eq!(teams.key_reads(), 1);
 }

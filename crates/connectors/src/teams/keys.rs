@@ -6,10 +6,12 @@
 //! the platform ask Microsoft again and again. One read at a time: whoever
 //! finds one under way waits for it, then takes what it kept, so that the
 //! activities arriving together (as on a restart) are all proven. A read
-//! counts as tried from its start, so that one cut short (its activity's
-//! connection closed) is not tried again at once; a failed read is tried
-//! again thirty seconds after it ended at the soonest, the keys read last
-//! kept meanwhile; none kept, an activity is then proven by none.
+//! goes on in its own task to its end, even should the activity that asked
+//! for it be dropped (its connection closed): cutting reads short neither
+//! keeps the keys from being read nor makes Microsoft asked again. A failed
+//! read is tried again thirty seconds after it ended at the soonest, the
+//! keys read last kept meanwhile; none kept, an activity is then proven by
+//! none.
 
 use std::time::{Duration, Instant};
 
@@ -19,6 +21,7 @@ use url::Url;
 
 use super::TeamsFailure;
 use super::api::TeamsApi;
+use crate::outbound::UNREACHABLE;
 
 /// How long the keys read are kept.
 const KEPT_FOR: Duration = Duration::from_secs(24 * 3600);
@@ -52,34 +55,43 @@ impl KeyCache {
     }
 }
 
+/// Whether the keys `cache` holds are to be read again for a token signed
+/// with `wanted`: always when none were ever tried.
+fn due(cache: &Option<KeyCache>, wanted: Option<&str>) -> bool {
+    cache.as_ref().is_none_or(|c| c.due(wanted))
+}
+
+/// The keys `cache` holds, none if none.
+fn kept(cache: Option<KeyCache>) -> Vec<BotKey> {
+    cache.map(|c| c.keys).unwrap_or_default()
+}
+
 impl TeamsApi {
     /// The keys the Bot Framework signs with, for a token signed with
     /// `wanted`: those kept, or read again when due. An error only when
     /// the read tried now fails with none kept.
     pub async fn keys(&self, wanted: Option<&str>) -> Result<Vec<BotKey>, TeamsFailure> {
-        let due = |cache: &Option<KeyCache>| cache.as_ref().is_none_or(|c| c.due(wanted));
-        let kept = |cache: Option<KeyCache>| cache.map(|c| c.keys).unwrap_or_default();
         let cached = self.cached_keys();
-        if !due(&cached) {
+        if !due(&cached, wanted) {
             return Ok(kept(cached));
         }
-        // One read at a time: the others wait for it, then take what it
-        // kept (it is no longer due).
+        // In its own task, which a dropped activity does not cut short.
+        let api = self.clone();
+        let wanted = wanted.map(str::to_owned);
+        let read = tokio::spawn(async move { api.read_when_due(wanted.as_deref()).await });
+        read.await
+            .unwrap_or(Err(TeamsFailure::Unanswered(UNREACHABLE)))
+    }
+
+    /// One read at a time: the others wait for it, then take what it kept
+    /// (it is no longer due).
+    async fn read_when_due(&self, wanted: Option<&str>) -> Result<Vec<BotKey>, TeamsFailure> {
         let _reading = self.reading().lock().await;
         let cached = self.cached_keys();
-        if !due(&cached) {
+        if !due(&cached, wanted) {
             return Ok(kept(cached));
         }
-        let read_at = cached.as_ref().and_then(|c| c.read_at);
-        let keys = kept(cached);
-        // Dropped before `_reading`: a read cut short is kept as tried
-        // before anyone waiting reads the cache.
-        let underway = Underway {
-            api: self,
-            before: Some((keys.clone(), read_at)),
-        };
         let read = self.read_keys().await;
-        underway.ended();
         let now = Instant::now();
         match read {
             Ok(fresh) => {
@@ -91,6 +103,8 @@ impl TeamsApi {
                 Ok(fresh)
             }
             Err(failure) => {
+                let read_at = cached.as_ref().and_then(|c| c.read_at);
+                let keys = kept(cached);
                 self.keep_keys(KeyCache {
                     keys: keys.clone(),
                     read_at,
@@ -126,32 +140,5 @@ impl TeamsApi {
             return Err(TeamsFailure::Unreadable);
         }
         Ok(keys)
-    }
-}
-
-/// A read under way: cut short (its activity's connection closed), it
-/// still counts as tried, so that the next is not at once. Nothing is kept
-/// meanwhile: whoever comes waits for the read.
-struct Underway<'a> {
-    api: &'a TeamsApi,
-    /// The keys kept before, and when they were read; none once it ended.
-    before: Option<(Vec<BotKey>, Option<Instant>)>,
-}
-
-impl Underway<'_> {
-    fn ended(mut self) {
-        self.before = None;
-    }
-}
-
-impl Drop for Underway<'_> {
-    fn drop(&mut self) {
-        if let Some((keys, read_at)) = self.before.take() {
-            self.api.keep_keys(KeyCache {
-                keys,
-                read_at,
-                tried_at: Instant::now(),
-            });
-        }
     }
 }

@@ -204,9 +204,10 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   du cloud commercial (HTTPS, port par défaut, chemin simple), vérifiés à la réception
   et dans le client. Les clés du Bot Framework sont relues au plus toutes les cinq
   minutes pour une clé inconnue, une lecture à la fois que les autres attendent, sans
-  connexion à la base tenue pendant ce temps ; une lecture échouée ou interrompue n'est
-  retentée qu'après trente secondes : des activités forgées ne font pas demander
-  Microsoft à chaque fois.
+  connexion à la base tenue pendant ce temps ; une lecture va à son terme même quand
+  l'activité qui l'a demandée est coupée, une lecture échouée n'est retentée qu'après
+  trente secondes : des activités forgées ou coupées ne font pas demander Microsoft à
+  chaque fois ni n'empêchent de lire les clés.
   Une identité ne se relie que depuis la session de la personne, par le lien scellé que
   le bot lui envoie (quinze minutes), quand Teams, interrogé alors dans la conversation
   où le bot l'a rencontrée, nomme le même objet Entra, de l'annuaire de l'entreprise,

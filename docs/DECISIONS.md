@@ -7735,9 +7735,10 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       une clé inconnue au plus toutes les cinq minutes, une lecture à la fois (les
       activités arrivées pendant ce temps l'attendent, puis prennent ce qu'elle a
       gardé), une lecture échouée retentée au plus tôt trente secondes après sa fin
-      (les clés lues gardées, aucune sinon), une lecture interrompue (connexion de
-      l'activité fermée) comptée comme tentée ; aucune connexion à la base n'est tenue
-      pendant qu'on les demande à Microsoft ;
+      (les clés lues gardées, aucune sinon), une lecture menée à son terme dans sa
+      propre tâche même quand l'activité qui l'a demandée est abandonnée (connexion
+      fermée) : couper des lectures n'empêche pas de lire les clés ni ne fait redemander
+      Microsoft ; aucune connexion à la base n'est tenue pendant qu'on les lui demande ;
     - clé endossée pour `msteams` ;
     - émis par `https://api.botframework.com` ;
     - pour l'application du bot (`aud`) ;
@@ -7800,8 +7801,8 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       lien ;
     - `crates/connectors/tests/teams_api.rs` : jeton gardé pour son secret, service
       non sûr jamais interrogé, membre nommé, clés lues une fois, activités arrivées
-      ensemble qui attendent la même lecture, Microsoft injoignable ou lecture
-      interrompue pas redemandés aussitôt ;
+      ensemble qui attendent la même lecture, lecture coupée menée à son terme,
+      Microsoft injoignable pas redemandé aussitôt ;
     - `crates/api/tests/teams_gateway_admin.rs` : déclaration essayée auprès d'Entra,
       une par entreprise, secret jamais rendu ni audité, changements, droits ;
     - `teams_gateway_activities.rs` : chemin dispensé de l'en-tête, jeton seul preuve
