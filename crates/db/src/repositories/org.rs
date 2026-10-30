@@ -7,9 +7,12 @@ use mimorya_core::authz::{
     AbacPolicy, AssignmentScope, OrgUnit, OrgUnitType, PolicyEffect, RoleAssignment,
     RoleDefinition, Sensitivity, Subject,
 };
+use mimorya_core::knowledge_shares::KnowledgeShare;
 use serde_json::{Map, Value};
 use sqlx::PgConnection;
 use uuid::Uuid;
+
+use super::knowledge_shares::load_knowledge_shares;
 
 /// The order of a person's memberships, primary unit first: the unit their
 /// access and the approvals made for them are checked in (ADR-059).
@@ -38,6 +41,8 @@ pub struct AuthorizationData {
     pub units: Vec<OrgUnit>,
     pub roles: Vec<RoleRecord>,
     pub policies: Vec<AbacPolicy>,
+    /// The units' knowledge shared with others (ADR-143).
+    pub knowledge_shares: Vec<KnowledgeShare>,
 }
 
 #[derive(sqlx::FromRow)]
@@ -93,6 +98,7 @@ pub async fn load_authorization_data(conn: &mut PgConnection) -> anyhow::Result<
     )
     .fetch_all(&mut *conn)
     .await?;
+    let knowledge_shares = load_knowledge_shares(&mut *conn).await?;
 
     Ok(AuthorizationData {
         tenant: TenantRecord {
@@ -135,6 +141,7 @@ pub async fn load_authorization_data(conn: &mut PgConnection) -> anyhow::Result<
                 })
             })
             .collect::<anyhow::Result<_>>()?,
+        knowledge_shares,
     })
 }
 

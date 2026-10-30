@@ -10,10 +10,14 @@ use sqlx::PgConnection;
 use uuid::Uuid;
 
 /// What a reader may see: the company's space ($1), the units' ($2 all,
-/// $3 these), up to a clearance ($4).
-pub(super) const VISIBLE: &str = "((scope = 'tenant' and $1) \
+/// $3 these), up to a clearance ($4); and the units shared with the
+/// reader's (ADR-143, $5), each up to its own rank ($6).
+pub(super) const VISIBLE: &str = "((((scope = 'tenant' and $1) \
     or (scope = 'org_unit' and ($2 or org_unit_id = any($3)))) \
-    and array_position(array['public', 'internal', 'confidential', 'restricted'], sensitivity) - 1 <= $4";
+    and array_position(array['public', 'internal', 'confidential', 'restricted'], sensitivity) - 1 <= $4) \
+    or (scope = 'org_unit' and exists (select 1 from unnest($5::uuid[], $6::int[]) as shared(unit, cap) \
+        where shared.unit = org_unit_id \
+        and array_position(array['public', 'internal', 'confidential', 'restricted'], sensitivity) - 1 <= shared.cap)))";
 
 const COLUMNS: &str = "id, scope, org_unit_id, title, file_name, kind, sensitivity, byte_size, \
     page_count, uploaded_by_user_id, created_at";
@@ -41,11 +45,16 @@ pub(super) fn bind_visible<'q, O>(
         UnitFilter::All => (true, Vec::new()),
         UnitFilter::Only(ids) => (false, ids.iter().copied().collect()),
     };
+    let (shared_units, shared_caps): (Vec<Uuid>, Vec<i32>) = (filter.from_shares.iter())
+        .map(|&(unit, cap)| (unit, i32::from(cap.rank())))
+        .unzip();
     query
         .bind(filter.company)
         .bind(all_units)
         .bind(unit_ids)
         .bind(i32::from(filter.clearance.rank()))
+        .bind(shared_units)
+        .bind(shared_caps)
 }
 
 /// The documents `filter` reads, the latest first; at most `limit`.
@@ -55,7 +64,7 @@ pub async fn list_visible_documents(
     limit: i64,
 ) -> sqlx::Result<Vec<DocumentRow>> {
     let sql = format!(
-        "select {COLUMNS} from documents where {VISIBLE} order by created_at desc, id limit $5"
+        "select {COLUMNS} from documents where {VISIBLE} order by created_at desc, id limit $7"
     );
     bind_visible(sqlx::query_as(&sql), filter)
         .bind(limit)
@@ -69,7 +78,7 @@ pub async fn get_visible_document(
     filter: &DocumentReadFilter,
     id: Uuid,
 ) -> sqlx::Result<Option<DocumentRow>> {
-    let sql = format!("select {COLUMNS} from documents where {VISIBLE} and id = $5");
+    let sql = format!("select {COLUMNS} from documents where {VISIBLE} and id = $7");
     bind_visible(sqlx::query_as(&sql), filter)
         .bind(id)
         .fetch_optional(conn)

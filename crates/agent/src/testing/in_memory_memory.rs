@@ -19,7 +19,12 @@ fn is_visible(memory: &NewMemory, filter: &MemoryReadFilter) -> bool {
         _ if !filter.shared => false,
         MemoryScope::OrgUnit => match &filter.org_units {
             UnitFilter::All => true,
-            UnitFilter::Only(units) => memory.org_unit_id.is_some_and(|u| units.contains(&u)),
+            UnitFilter::Only(units) => memory.org_unit_id.is_some_and(|u| {
+                units.contains(&u)
+                    // Shared with the reader's units, up to its sensitivity.
+                    || (filter.from_shares.iter())
+                        .any(|&(unit, cap)| unit == u && memory.sensitivity <= cap)
+            }),
         },
         MemoryScope::Tenant | MemoryScope::Experience => true,
     }

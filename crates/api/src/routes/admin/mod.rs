@@ -14,6 +14,7 @@ mod connectors;
 mod embedding;
 mod gateways;
 mod identity_providers;
+mod knowledge_shares;
 mod llm;
 mod memory_settings;
 mod mission_settings;
@@ -57,6 +58,14 @@ pub fn routes(state: &AppState) -> Router<AppState> {
         .route(
             "/admin/roles/{id}",
             patch(roles::update).delete(roles::remove),
+        )
+        .route(
+            "/admin/knowledge-shares",
+            get(knowledge_shares::list).post(knowledge_shares::create),
+        )
+        .route(
+            "/admin/knowledge-shares/{id}",
+            delete(knowledge_shares::remove),
         )
         .route(
             "/admin/policies",

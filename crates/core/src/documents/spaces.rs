@@ -4,14 +4,17 @@
 //! the company's space; `document:write` deposits and deletes in the units
 //! of its scope, in the company's only with a company-wide scope. Neither
 //! reaches a document above one's clearance; `document:write` is never
-//! the agent's (non-delegable).
+//! the agent's (non-delegable). A unit's documents shared with another
+//! unit (ADR-143) are read by its members too, up to the share's
+//! sensitivity.
 
 use std::collections::HashSet;
 
 use uuid::Uuid;
 
 use crate::authz::{Actor, AuthorizationEngine, DataScope, Sensitivity, Subject};
-use crate::memory::{UnitFilter, readable_units};
+use crate::knowledge_shares::SharedKnowledge;
+use crate::memory::{UnitFilter, readable_units, shared_beyond};
 
 const READ: &str = "document:read";
 const WRITE: &str = "document:write";
@@ -58,6 +61,9 @@ pub struct DocumentReadFilter {
     pub company: bool,
     /// The highest sensitivity read.
     pub clearance: Sensitivity,
+    /// The units shared with the reader's whose documents they read besides
+    /// (ADR-143), each up to a sensitivity.
+    pub from_shares: Vec<(Uuid, Sensitivity)>,
 }
 
 pub fn document_read_filter(
@@ -71,17 +77,24 @@ pub fn document_read_filter(
             units: UnitFilter::Only(HashSet::new()),
             company: false,
             clearance,
+            from_shares: Vec::new(),
         },
         DataScope::All => DocumentReadFilter {
             units: UnitFilter::All,
             company: true,
             clearance,
+            from_shares: Vec::new(),
         },
-        DataScope::Restricted { org_unit_ids, .. } => DocumentReadFilter {
-            units: UnitFilter::Only(readable_units(engine, subject, org_unit_ids)),
-            company: true,
-            clearance,
-        },
+        DataScope::Restricted { org_unit_ids, .. } => {
+            let units = readable_units(engine, subject, org_unit_ids);
+            let from_shares = shared_beyond(engine, subject, SharedKnowledge::Documents, &units);
+            DocumentReadFilter {
+                units: UnitFilter::Only(units),
+                company: true,
+                clearance,
+                from_shares,
+            }
+        }
     }
 }
 

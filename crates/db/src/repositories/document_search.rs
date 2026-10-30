@@ -47,27 +47,27 @@ pub async fn search_documents(
            select id, title, created_at from documents where {VISIBLE}), \
          words as ( \
            select c.id, row_number() over (order by ts_rank_cd(c.content_tsv, \
-             to_tsquery('french', $5)) desc, v.created_at desc, c.document_id, c.ordinal) as rank \
+             to_tsquery('french', $7)) desc, v.created_at desc, c.document_id, c.ordinal) as rank \
            from document_chunks c join visible v on v.id = c.document_id \
-           where $5::text is not null and c.content_tsv @@ to_tsquery('french', $5) \
-           order by rank limit $6), \
+           where $7::text is not null and c.content_tsv @@ to_tsquery('french', $7) \
+           order by rank limit $8), \
          near as materialized ( \
            select c.id, c.document_id, c.ordinal, v.created_at, \
-             1 - (c.embedding <=> $7::vector) as similarity \
+             1 - (c.embedding <=> $9::vector) as similarity \
            from document_chunks c join visible v on v.id = c.document_id \
-           where $7::text is not null and c.embedding is not null and c.embedding_model = $8), \
+           where $9::text is not null and c.embedding is not null and c.embedding_model = $10), \
          meaning as ( \
            select id, row_number() over (order by similarity desc, created_at desc, \
              document_id, ordinal) as rank \
-           from near where similarity >= $9 and similarity <> 'NaN' \
-           order by rank limit $6) \
+           from near where similarity >= $11 and similarity <> 'NaN' \
+           order by rank limit $8) \
          select c.document_id, v.title, c.ordinal, c.page, c.heading, c.content, \
            (coalesce(1.0 / ({RANK_CONSTANT} + words.rank), 0) \
             + coalesce(1.0 / ({RANK_CONSTANT} + meaning.rank), 0))::real as score \
          from words full join meaning on meaning.id = words.id \
          join document_chunks c on c.id = coalesce(words.id, meaning.id) \
          join visible v on v.id = c.document_id \
-         order by score desc, v.created_at desc, c.document_id, c.ordinal limit $10"
+         order by score desc, v.created_at desc, c.document_id, c.ordinal limit $12"
     );
     bind_visible(sqlx::query_as(&sql), filter)
         .bind(ts_query)

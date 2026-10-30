@@ -415,6 +415,17 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
 
 - **RBAC à périmètre** : rôle × personne × périmètre (`self`, unité ± sous-unités,
   entreprise). La position hiérarchique (responsable d'unité) **n'accorde rien** seule.
+- **Partage de connaissances** (ADR-143) : seul un administrateur des politiques
+  d'accès (`policy:manage`, toute l'entreprise) partage les connaissances d'une unité
+  (mémoire de son espace, documents qui y sont déposés) avec une autre, et si dit les
+  unités en dessous, jusqu'à une sensibilité et une date ; jamais un partage dont il
+  serait lui-même lecteur, qui revient à un autre administrateur (ADR-019, ADR-022).
+  Le partage n'accorde aucune permission : il élargit seulement ce que lit qui lit déjà les connaissances de son
+  unité (`memory:read`, `document:read`), jamais au-delà de la sensibilité du partage
+  ni de son habilitation, jamais en écriture ni en suppression, jamais la mémoire
+  personnelle ni les unités sous l'unité partagée. Les filtres de lecture (SQL et
+  outils de l'agent) appliquent les partages du moteur d'autorisation, rechargé dans
+  chaque processus à chaque changement ; chaque partage et son retrait sont audités.
 - **ABAC** : politiques `allow` / `deny` à conditions JSON (attributs du sujet, de la
   ressource, du contexte), `deny` prioritaire ; exemple livré : le service
   administratif ne consulte que les interventions terminées. L'administration n'écrit

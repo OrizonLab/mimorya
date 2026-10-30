@@ -10,6 +10,7 @@ mod embedding;
 mod gateways;
 mod google_workspace;
 mod identity_providers;
+mod knowledge_shares;
 mod llm;
 mod memory_settings;
 mod microsoft365;
@@ -46,6 +47,7 @@ pub use google_workspace::{GoogleWorkspaceApp, NewGoogleWorkspaceConnector};
 pub use identity_providers::{
     IdentityProviderUpdate, IdentityProviderView, IdentityProvidersView, NewIdentityProvider,
 };
+pub use knowledge_shares::{KnowledgeShareView, KnowledgeShares, NewKnowledgeShare};
 pub use llm::{LlmChoice, LlmSettingsView, LlmTestResult, LlmView, PlatformModel, ProviderKind};
 pub use memory_settings::{MemorySettingsUpdate, MemorySettingsView};
 pub use microsoft365::{Microsoft365App, NewMicrosoft365Connector};

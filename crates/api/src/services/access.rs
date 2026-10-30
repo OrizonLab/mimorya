@@ -184,7 +184,10 @@ impl AccessService {
         let entry = Arc::new(TenantAccess {
             tenant: data.tenant,
             roles: Arc::new(data.roles),
-            engine: Arc::new(AuthorizationEngine::new(tree, definitions, data.policies)),
+            engine: Arc::new(
+                AuthorizationEngine::new(tree, definitions, data.policies)
+                    .with_knowledge_shares(data.knowledge_shares),
+            ),
         });
         self.cache.store(tenant_id, generation, entry.clone());
         Ok(entry)

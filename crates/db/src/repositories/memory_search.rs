@@ -73,24 +73,24 @@ pub async fn search_memory(
     let sql = format!(
         "with words as ( \
            select id, row_number() over (order by ts_rank_cd(content_tsv, \
-             to_tsquery('french', $6)) desc, updated_at desc, id) as rank \
-           from memory_items where $6::text is not null and {ACTIVE} and {VISIBLE} \
-             and content_tsv @@ to_tsquery('french', $6) \
-           order by rank limit $7), \
-         near as materialized ( \
-           select id, updated_at, 1 - (embedding <=> $8::vector) as similarity \
+             to_tsquery('french', $8)) desc, updated_at desc, id) as rank \
            from memory_items where $8::text is not null and {ACTIVE} and {VISIBLE} \
-             and embedding is not null and embedding_model = $9), \
+             and content_tsv @@ to_tsquery('french', $8) \
+           order by rank limit $9), \
+         near as materialized ( \
+           select id, updated_at, 1 - (embedding <=> $10::vector) as similarity \
+           from memory_items where $10::text is not null and {ACTIVE} and {VISIBLE} \
+             and embedding is not null and embedding_model = $11), \
          meaning as ( \
            select id, row_number() over (order by similarity desc, updated_at desc, id) as rank \
-           from near where similarity >= $10 and similarity <> 'NaN' \
-           order by rank limit $7) \
+           from near where similarity >= $12 and similarity <> 'NaN' \
+           order by rank limit $9) \
          select m.id, m.scope, m.kind, m.title, m.content, m.org_unit_id, m.updated_at, \
            (coalesce(1.0 / ({RANK_CONSTANT} + words.rank), 0) \
             + coalesce(1.0 / ({RANK_CONSTANT} + meaning.rank), 0))::real as score \
          from words full join meaning on meaning.id = words.id \
          join memory_items m on m.id = coalesce(words.id, meaning.id) \
-         order by score desc, m.updated_at desc, m.id limit $11"
+         order by score desc, m.updated_at desc, m.id limit $13"
     );
     bind_visibility(sqlx::query_as(&sql), filter, clearance)
         .bind(ts_query)

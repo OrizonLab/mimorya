@@ -1023,6 +1023,44 @@ link: string | null,
 problem: string | null, };
 
 /**
+ * A unit's knowledge shared with another.
+ */
+export type KnowledgeShareView = { id: string,
+/**
+ * The unit whose space is shared.
+ */
+sourceOrgUnitId: string,
+/**
+ * The unit whose members read it.
+ */
+targetOrgUnitId: string,
+/**
+ * Whether the members of the units under the target read it too.
+ */
+includeDescendants: boolean,
+/**
+ * The memory filed in the shared unit's space.
+ */
+memory: boolean,
+/**
+ * The documents deposited there.
+ */
+documents: boolean,
+/**
+ * The highest sensitivity read through it.
+ */
+maxSensitivity: Sensitivity,
+/**
+ * ISO 8601; absent, until removed.
+ */
+expiresAt: string | null, createdAt: string, };
+
+/**
+ * `GET /admin/knowledge-shares`.
+ */
+export type KnowledgeShares = { shares: Array<KnowledgeShareView>, };
+
+/**
  * What became of the last delivery.
  */
 export type LastDelivery = { at: string, outcome: DeliveryOutcome,
@@ -1467,6 +1505,15 @@ export type NewInboundHook = { title: string, instruction: string,
  * Paused from the start when `false`; receives by default.
  */
 enabled?: boolean, };
+
+/**
+ * Body of `POST /admin/knowledge-shares`.
+ */
+export type NewKnowledgeShare = { sourceOrgUnitId: string, targetOrgUnitId: string, includeDescendants?: boolean, memory: boolean, documents: boolean, maxSensitivity: Sensitivity,
+/**
+ * ISO 8601; absent, until removed.
+ */
+expiresAt?: string, };
 
 /**
  * Body of `POST /conversations/{id}/messages`.

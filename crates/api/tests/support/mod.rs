@@ -22,6 +22,7 @@ pub mod gateways;
 pub mod hooks;
 pub mod identity_provider;
 pub mod impostor;
+pub mod knowledge_shares;
 pub mod leases;
 pub mod lessons;
 pub mod limits;

@@ -130,6 +130,7 @@ pub fn typescript() -> String {
     declarations.add::<admin::SkillEvaluations>();
     declarations.add::<admin::SkillEvaluationDetail>();
     declarations.add::<admin::Policies>();
+    declarations.add::<admin::KnowledgeShares>();
     declarations.add::<admin::ApprovalRoutingView>();
     declarations.add::<admin::LlmView>();
     declarations.add::<admin::LlmTestResult>();
@@ -190,6 +191,7 @@ macro_rules! request_bodies {
             admin::RoleUpdate,
             admin::NewPolicy,
             admin::PolicyUpdate,
+            admin::NewKnowledgeShare,
             admin::NewSkill,
             admin::SkillUpdate,
             admin::NewSkillVersion,

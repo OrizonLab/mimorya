@@ -8184,3 +8184,74 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     - unitaires : textes de l'avis et de sa carte réglée ;
   - reste : dans chaque service, « Validée. » ou « Refusée. » plutôt que « Décidée. »
     (ROADMAP).
+
+## ADR-143 — Partage de connaissances entre unités (partage de connaissances, lot 15a)
+
+- **Date** : 2026-10-30 · **Statut** : acceptée
+- **Contexte** : les connaissances d'une unité, mémoire de son espace (ADR-074) et
+  documents qui y sont déposés (ADR-095), sont lues par ses membres, par ceux des unités
+  en dessous (une équipe lit les connaissances de son service) et par qui a
+  `memory:read` ou `document:read` sur elle. Deux équipes sœurs ne se lisent pas : rien
+  ne permettait à une équipe de profiter des consignes d'une autre sans donner à ses
+  membres un rôle sur elle, donc aussi d'autres droits.
+- **Décision** :
+  - **un partage** : l'administrateur des politiques d'accès (`policy:manage`, toute
+    l'entreprise ; un partage est une politique d'accès, sans permission nouvelle)
+    partage les connaissances d'une unité avec une autre (`knowledge_shares`,
+    migration 0063) :
+    - la mémoire de son espace, les documents qui y sont déposés, ou les deux ;
+    - avec l'unité nommée, et si dit les unités en dessous ;
+    - jusqu'à une sensibilité (`max_sensitivity`) ;
+    - jusqu'à une date s'il en fixe une, passée laquelle le partage n'ouvre plus rien ;
+  - **jamais pour soi-même** : un administrateur ne fait pas un partage dont il serait
+    lecteur, vers son unité, ou vers une unité au-dessus de la sienne si les unités en
+    dessous sont comprises. Le partage est refusé (403) et revient à un autre
+    administrateur, comme ses propres habilitations (ADR-019). L'ADR-022 a réservé aux
+    refus les politiques que l'administration écrit, parce qu'une autorisation pourrait
+    ouvrir les données métier à l'administrateur même ; le partage, qui ouvre des
+    lectures, tient la même règle par ce refus. Ses unités sont relues sous le verrou de
+    l'administration, non dans sa session ;
+  - **ce qui est lu** : les membres de l'unité qui le reçoit lisent l'espace partagé
+    comme celui de leur unité, jamais au-delà de la sensibilité du partage ni de leur
+    propre habilitation ; de plusieurs partages d'une même unité, le plus large
+    l'emporte. Seul l'espace de l'unité partagée, non celui des unités en dessous ; jamais
+    la mémoire personnelle ; jamais en écriture ni en suppression ;
+  - **qui en profite** : le partage n'accorde aucune permission. Il élargit seulement les
+    filtres de lecture de qui lit déjà les connaissances de son unité (`memory:read`,
+    `document:read` sur un périmètre) : `memory_read_filter` et `document_read_filter`
+    y ajoutent les unités partagées avec les siennes (`from_shares`), avec la
+    sensibilité lue dans chacune. Qui lit déjà tout ne gagne rien ; qui ne lit rien ne
+    gagne rien ;
+  - **où** : les partages sont chargés avec le reste des règles de l'entreprise, dans le
+    moteur d'autorisation (`AuthorizationEngine::with_knowledge_shares`), recalculés à
+    chaque lecture selon son horloge, et rechargés dans chaque processus à chaque
+    changement (ADR-085). Le domaine reste pur : `core/src/knowledge_shares/`, dont
+    ce qu'un partage peut dire (`rules.rs`, `share_problem`). Les
+    requêtes SQL de la mémoire et des documents, l'écran comme les outils de recherche
+    de l'agent, appliquent les unités partagées avec leur sensibilité ;
+  - **règles** : deux unités différentes de l'entreprise ; jamais vers une unité qui
+    lit déjà l'unité partagée (contenue en elle) ; une fois par couple ; mémoire ou
+    documents au moins ; date à venir ; jamais un partage dont son auteur serait
+    lecteur. Une unité inconnue est refusée et tracée
+    (ADR-054). Chaque partage et son retrait sont audités
+    (`knowledge_share.created`, `knowledge_share.deleted`).
+- **Conséquences** :
+  - une unité partagée, ou avec laquelle une autre partage, n'est supprimée qu'une fois
+    ses partages retirés, chacun audité (« Unité encore utilisée ») ; la suppression en
+    cascade de la base n'en est que la garde ;
+  - tests : `crates/core/src/knowledge_shares/tests.rs` (cible, unités en dessous,
+    sensibilité et habilitation, date), `rules_tests.rs` (ce qu'un partage peut dire,
+    jamais lu par son auteur) ; `crates/api/tests/knowledge_shares.rs` (mémoire puis
+    documents lus par l'équipe Sud, plafond, dans un seul sens, jamais supprimés, retrait,
+    unités en dessous, date passée) ; `knowledge_share_bounds.rs` (rien pour qui un refus
+    empêche de lire, ni les unités sous l'unité partagée, ni la mémoire personnelle) ;
+    `knowledge_share_admin.rs` (qui partage et quoi, jamais pour soi-même, unité
+    supprimée après ses partages) ; `crates/db/tests/memory_search.rs`,
+    `document_search.rs` (recherche de l'agent, par les mots et par le sens) ;
+  - le refus d'un partage dont son auteur serait lecteur vaut au moment de le faire : un
+    administrateur qui gère aussi l'organisation (`org:manage`) pourrait ensuite placer
+    son unité sous la cible. Il n'y gagne rien de plus qu'en la plaçant sous l'unité
+    partagée, qu'il lirait alors directement ; la double validation des changements
+    d'administration (ADR-019, phase 3) couvrira les deux ;
+  - reste : l'écran du partage dans l'administration et son parcours de bout en bout
+    (lot 15b).
