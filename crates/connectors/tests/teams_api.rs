@@ -3,7 +3,7 @@
 //! only; a refused secret said in French; a message written and a member
 //! named only at a Teams service the bot may trust, nothing asked
 //! elsewhere; the Bot Framework's keys read once for many activities, those
-//! arriving together waiting for that read, one cut short going to its
+//! arriving together waiting for that read, those cut short going to its
 //! end, and Microsoft unreachable, not asked again at once.
 
 use std::time::Duration;
@@ -167,18 +167,46 @@ async fn a_read_cut_short_goes_to_its_end() {
     let api = api(&teams);
     teams.slow(Duration::from_secs(1));
     // The activity's connection closes once Microsoft is asked.
-    let asked = async {
-        while teams.configuration_requests() == 0 {
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-    };
     tokio::select! {
         _ = api.keys(Some(TEAMS_KEY_ID)) => panic!("read before it was cut short"),
-        () = asked => {}
+        () = until(|| teams.configuration_requests() == 1) => {}
     }
     // The next activity takes what that read kept, Microsoft not asked again.
     let keys = api.keys(Some(TEAMS_KEY_ID)).await.unwrap();
     assert_eq!(keys[0].kid, TEAMS_KEY_ID);
     assert_eq!(teams.configuration_requests(), 1);
     assert_eq!(teams.key_reads(), 1);
+}
+
+#[tokio::test]
+async fn reads_cut_short_together_ask_microsoft_once() {
+    let teams = FakeTeams::start().await;
+    let api = api(&teams);
+    teams.slow(Duration::from_secs(1));
+    // Three activities' connections close while Microsoft is asked.
+    tokio::select! {
+        _ = api.keys(Some(TEAMS_KEY_ID)) => panic!("read before it was cut short"),
+        () = until(|| teams.configuration_requests() == 1) => {}
+    }
+    for _ in 0..2 {
+        let waiting = api.keys(Some(TEAMS_KEY_ID));
+        let cut = tokio::time::timeout(Duration::from_millis(50), waiting).await;
+        assert!(cut.is_err());
+    }
+    // None waiting when the read ends: the next activity takes what it kept.
+    until(|| teams.key_reads() == 1).await;
+    let keys = api.keys(Some(TEAMS_KEY_ID)).await.unwrap();
+    assert_eq!(keys[0].kid, TEAMS_KEY_ID);
+    assert_eq!(teams.configuration_requests(), 1);
+    assert_eq!(teams.key_reads(), 1);
+}
+
+/// Once `done` holds, within five seconds.
+async fn until(done: impl Fn() -> bool) {
+    let waited = tokio::time::timeout(Duration::from_secs(5), async {
+        while !done() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    });
+    waited.await.expect("not within five seconds");
 }

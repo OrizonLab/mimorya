@@ -69,7 +69,8 @@ fn kept(cache: Option<KeyCache>) -> Vec<BotKey> {
 impl TeamsApi {
     /// The keys the Bot Framework signs with, for a token signed with
     /// `wanted`: those kept, or read again when due. An error only when
-    /// the read tried now fails with none kept.
+    /// the read tried now fails with none kept, or the process stops
+    /// meanwhile.
     pub async fn keys(&self, wanted: Option<&str>) -> Result<Vec<BotKey>, TeamsFailure> {
         let cached = self.cached_keys();
         if !due(&cached, wanted) {
@@ -79,8 +80,13 @@ impl TeamsApi {
         let api = self.clone();
         let wanted = wanted.map(str::to_owned);
         let read = tokio::spawn(async move { api.read_when_due(wanted.as_deref()).await });
-        read.await
-            .unwrap_or(Err(TeamsFailure::Unanswered(UNREACHABLE)))
+        match read.await {
+            Ok(keys) => keys,
+            // A panic stays one, as if the read had not been apart.
+            Err(stopped) if stopped.is_panic() => std::panic::resume_unwind(stopped.into_panic()),
+            // The process stops: Microsoft did not answer.
+            Err(_) => Err(TeamsFailure::Unanswered(UNREACHABLE)),
+        }
     }
 
     /// One read at a time: the others wait for it, then take what it kept

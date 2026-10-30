@@ -7801,8 +7801,9 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       lien ;
     - `crates/connectors/tests/teams_api.rs` : jeton gardé pour son secret, service
       non sûr jamais interrogé, membre nommé, clés lues une fois, activités arrivées
-      ensemble qui attendent la même lecture, lecture coupée menée à son terme,
-      Microsoft injoignable pas redemandé aussitôt ;
+      ensemble qui attendent la même lecture, lectures coupées (une ou plusieurs)
+      menées à leur terme sans redemander Microsoft, Microsoft injoignable pas redemandé
+      aussitôt ;
     - `crates/api/tests/teams_gateway_admin.rs` : déclaration essayée auprès d'Entra,
       une par entreprise, secret jamais rendu ni audité, changements, droits ;
     - `teams_gateway_activities.rs` : chemin dispensé de l'en-tête, jeton seul preuve
