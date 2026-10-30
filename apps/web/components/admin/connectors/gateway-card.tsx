@@ -1,12 +1,9 @@
 'use client';
 
-import { useState } from 'react';
-import { Badge, Button, Card, ErrorNote } from '@/components/ui';
 import type { GatewayView } from '@/lib/api';
-import { formatDate } from '@/lib/format';
+import { GatewayCardFrame } from './gateway-card-frame';
 import { GatewayScopes } from './gateway-scopes';
 import { SlackGatewayForm } from './slack-gateway-form';
-import { useGatewayActions } from './use-gateway-actions';
 
 /**
  * One conversation gateway (ADR-125, ADR-126): what Slack said of its
@@ -27,23 +24,15 @@ export function GatewayCard({
   events: string[];
   onChanged: () => void;
 }) {
-  const [editing, setEditing] = useState(false);
-  const { action, loading, held, toggle, check, remove } = useGatewayActions(gateway, onChanged);
-
-  function done(changed: boolean) {
-    setEditing(false);
-    if (changed) onChanged();
-  }
-
   return (
-    <Card className="flex flex-col gap-3 p-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <p className="flex-1 font-medium">{gateway.name}</p>
-        <Badge>Slack</Badge>
-        <Badge tone={gateway.enabled ? 'ok' : 'neutral'}>
-          {gateway.enabled ? 'Active' : 'Désactivée'}
-        </Badge>
-      </div>
+    <GatewayCardFrame
+      gateway={gateway}
+      product="Slack"
+      check="Vérifier auprès de Slack"
+      removal={`Supprimer la passerelle « ${gateway.name} », son jeton, son secret et les ${gateway.identities} compte(s) Slack que les collaborateurs y ont relié(s) ?`}
+      form={(done) => <SlackGatewayForm gateway={gateway} onDone={done} />}
+      onChanged={onChanged}
+    >
       <div className="flex flex-col gap-1 text-sm text-muted">
         <p>
           Espace de travail « {gateway.workspaceName} » (<code>{gateway.workspaceId}</code>) · bot{' '}
@@ -61,44 +50,6 @@ export function GatewayCard({
         </p>
       </div>
       <GatewayScopes gateway={gateway} />
-      <p className="text-xs text-muted">Modifiée le {formatDate(gateway.updatedAt)}</p>
-      {action.error && <ErrorNote message={action.error} />}
-      <div className="flex flex-wrap gap-2">
-        {!editing && (
-          <Button variant="secondary" onClick={() => setEditing(true)}>
-            Modifier
-          </Button>
-        )}
-        <Button
-          variant="secondary"
-          disabled={held('check')}
-          loading={loading('check')}
-          onClick={check}
-        >
-          Vérifier auprès de Slack
-        </Button>
-        <Button
-          variant="secondary"
-          disabled={held('toggle')}
-          loading={loading('toggle')}
-          onClick={toggle}
-        >
-          {gateway.enabled ? 'Désactiver' : 'Activer'}
-        </Button>
-        <Button
-          variant="danger"
-          disabled={held('remove')}
-          loading={loading('remove')}
-          onClick={() =>
-            remove(
-              `Supprimer la passerelle « ${gateway.name} », son jeton, son secret et les ${gateway.identities} compte(s) Slack que les collaborateurs y ont relié(s) ?`,
-            )
-          }
-        >
-          Supprimer
-        </Button>
-      </div>
-      {editing && <SlackGatewayForm gateway={gateway} onDone={done} />}
-    </Card>
+    </GatewayCardFrame>
   );
 }

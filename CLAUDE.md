@@ -247,13 +247,14 @@ Repères à l'intérieur des crates :
   comptes reliés, ADR-118, au nom de leur fournisseur, ADR-124, et les permissions à
   accorder, ADR-120, les messageries reliées et la page du lien envoyé dans Slack,
   `app/account/gateway-link` hors du cadre de l'application, ADR-126, et le compte
-  Telegram relié avec l'accord donné dans Telegram, ADR-134 —,
+  Telegram relié avec l'accord donné dans Telegram, ADR-134, et le compte Teams relié
+  par le lien du bot, ADR-139 —,
   admin — dont `admin/connectors/` : serveurs MCP et API REST décrites opération par
   opération, ADR-113, et leurs opérations importées d'une description OpenAPI, JSON ou
   YAML converti dans le navigateur, ADR-115, et l'application Microsoft 365, ADR-118,
   dont l'écriture permise, ADR-120, et le client Google Workspace, ADR-124, et les
   passerelles de conversation, l'application Slack, ADR-126, et ses permissions
-  vérifiées, ADR-132, le bot Telegram, ADR-134, `admin/llm/` : modèle des conversations et modèle de contrôle des réponses, ADR-108, recherche dans la mémoire, leçons et limites des missions, ADR-075,
+  vérifiées, ADR-132, le bot Telegram, ADR-134, le bot Teams, ADR-139, `admin/llm/` : modèle des conversations et modèle de contrôle des réponses, ADR-108, recherche dans la mémoire, leçons et limites des missions, ADR-075,
   ADR-077, ADR-093, `admin/users/` :
   comptes, dont l'absence d'un collaborateur empêché, ADR-079, et `admin/skills/` :
   compétences, propositions de l'agent, ADR-101, cas d'évaluation et évaluations,
@@ -269,7 +270,9 @@ Repères à l'intérieur des crates :
   généré par `pnpm contract`, `useApiData`), `web/lib/use-synced-state.ts` (état d'un
   formulaire repris de la liste rechargée, ADR-041), `web/lib/focus-keeper.ts` (focus rendu
   au contrôle réactivé, ADR-043), `web/lib/use-refresh-while.ts` (liste relue tant
-  qu'un travail du serveur est en cours, ADR-105), `web/lib/labels.ts`, `web/lib/format.ts`, `web/proxy.ts` et
+  qu'un travail du serveur est en cours, ADR-105), `web/lib/labels.ts`, `web/lib/format.ts`,
+  `web/lib/input-patterns.ts` (ce qu'acceptent les champs, comme le serveur, ADR-139),
+  `web/proxy.ts` et
   `web/lib/security/` (CSP à nonce par page, ADR-030), `web/e2e/` (tests de bout en
   bout, un fichier par parcours, `support/`) et `api/examples/e2e_server/` (l'API qu'ils
   pilotent, avec un fournisseur OpenID Connect et un fournisseur SAML simulés, ADR-031,
@@ -285,8 +288,9 @@ Repères à l'intérieur des crates :
   ADR-118, ADR-121, et les passerelles parlent à un Slack simulé qui liste ce que
   l'application écrit, `BuildOptions::slack_api`, ADR-126, et à un Telegram simulé qui
   liste ce que les bots écrivent et le webhook de chacun, `BuildOptions::telegram_api`,
-  ADR-134 ; les tests de l'API joignent un Microsoft simulé pour Teams,
-  `BuildOptions::teams_api`, ADR-138).
+  ADR-134, et à un Microsoft simulé pour Teams qui liste ce que les bots écrivent et
+  signe les activités que les tests envoient, `BuildOptions::teams_api`, ADR-138,
+  ADR-139).
 - `infra/` : `docker/` (images de l'API et de l'interface, liste des images publiées
   `images.json`, test de fumée de la démonstration, test d'installation de la production,
   vérifications partagées `checks.sh`, dont les rôles des processus lus dans la base), `caddy/`

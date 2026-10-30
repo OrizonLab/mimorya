@@ -6,17 +6,20 @@ import { Button, Card, Loaded } from '@/components/ui';
 import { useApiData, type Gateways } from '@/lib/api';
 import { GatewayCard } from './gateway-card';
 import { SlackGatewayForm } from './slack-gateway-form';
+import { TeamsGatewayCard } from './teams-gateway-card';
+import { TeamsGatewayForm } from './teams-gateway-form';
 import { TelegramGatewayCard } from './telegram-gateway-card';
 import { TelegramGatewayForm } from './telegram-gateway-form';
 
 /** The services a company declares a gateway of, one each. */
-type Service = 'slack' | 'telegram';
+type Service = 'slack' | 'telegram' | 'teams';
+const SERVICES: Service[] = ['slack', 'telegram', 'teams'];
 
 /**
- * The company's conversation gateways (ADR-125, ADR-126, ADR-134): its
- * Slack application and its Telegram bot, one of each per company,
- * declared here. A gateway brings the agent no tool: it is where people
- * talk with it.
+ * The company's conversation gateways (ADR-125, ADR-126, ADR-134,
+ * ADR-139): its Slack application, its Telegram bot and its Teams bot, one
+ * of each per company, declared here. A gateway brings the agent no tool:
+ * it is where people talk with it.
  */
 export function GatewaysSection() {
   const state = useApiData<Gateways>('/admin/gateways');
@@ -45,7 +48,13 @@ export function GatewaysSection() {
                   <TelegramGatewayForm onDone={done} />
                 </Card>
               )}
-              {adding === null && (!declared('slack') || !declared('telegram')) && (
+              {adding === 'teams' && (
+                <Card className="p-4">
+                  <p className="mb-3 font-medium">Bot Teams de l’entreprise</p>
+                  <TeamsGatewayForm onDone={done} />
+                </Card>
+              )}
+              {adding === null && SERVICES.some((service) => !declared(service)) && (
                 <div className="flex flex-wrap gap-2">
                   {!declared('slack') && (
                     <Button variant="secondary" onClick={() => setAdding('slack')}>
@@ -57,28 +66,32 @@ export function GatewaysSection() {
                       <Plus className="size-4" aria-hidden /> Déclarer le bot Telegram
                     </Button>
                   )}
+                  {!declared('teams') && (
+                    <Button variant="secondary" onClick={() => setAdding('teams')}>
+                      <Plus className="size-4" aria-hidden /> Déclarer le bot Teams
+                    </Button>
+                  )}
                 </div>
               )}
-              {/* A Teams bot's own card comes with its next lot (ADR-138). */}
-              {data.gateways
-                .filter((gateway) => gateway.type !== 'teams')
-                .map((gateway) =>
-                  gateway.type === 'telegram' ? (
-                    <TelegramGatewayCard
-                      key={gateway.id}
-                      gateway={gateway}
-                      onChanged={state.reload}
-                    />
-                  ) : (
-                    <GatewayCard
-                      key={gateway.id}
-                      gateway={gateway}
-                      scopes={data.slackScopes}
-                      events={data.slackEvents}
-                      onChanged={state.reload}
-                    />
-                  ),
-                )}
+              {data.gateways.map((gateway) =>
+                gateway.type === 'telegram' ? (
+                  <TelegramGatewayCard
+                    key={gateway.id}
+                    gateway={gateway}
+                    onChanged={state.reload}
+                  />
+                ) : gateway.type === 'teams' ? (
+                  <TeamsGatewayCard key={gateway.id} gateway={gateway} onChanged={state.reload} />
+                ) : (
+                  <GatewayCard
+                    key={gateway.id}
+                    gateway={gateway}
+                    scopes={data.slackScopes}
+                    events={data.slackEvents}
+                    onChanged={state.reload}
+                  />
+                ),
+              )}
             </div>
           );
         }}

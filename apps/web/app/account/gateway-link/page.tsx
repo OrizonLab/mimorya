@@ -6,10 +6,10 @@ import type { GatewayLinkCode, GatewayLinkPreview } from '@/lib/api';
 const asCode = (code: string) => ({ code }) satisfies GatewayLinkCode;
 
 /**
- * Opened from the link the company's Slack application sends
- * (`/account/gateway-link#<code>`, ADR-126), in the person's own session:
- * outside the application's frame, which would send a signed-out visitor to
- * the sign-in page and lose the link.
+ * Opened from the link the company's Slack application or Teams bot sends
+ * (`/account/gateway-link#<code>`, ADR-126, ADR-139), in the person's own
+ * session: outside the application's frame, which would send a signed-out
+ * visitor to the sign-in page and lose the link.
  */
 export default function GatewayLinkPage() {
   const state = useLinkToken<GatewayLinkPreview>(

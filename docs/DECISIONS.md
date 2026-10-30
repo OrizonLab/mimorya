@@ -7781,8 +7781,9 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
   - **le texte du bot en Markdown** : il est écrit dans le Markdown que Teams
     lit. Ce que la plateforme n'a pas écrit est échappé (entités HTML et caractères du
     Markdown), et un lien n'est écrit que depuis une adresse sans rien qui le ferme.
-  - **écrans** : en attendant les siens (lot suivant), le bot Teams n'est montré ni
-    dans « Connecteurs » ni dans « Mon compte », comme le bot Telegram avant ADR-134 ;
+  - **écrans** : en attendant les siens (lot suivant, ADR-139), le bot Teams n'est
+    montré ni dans « Connecteurs » ni dans « Mon compte », comme le bot Telegram avant
+    ADR-134 ;
     la page du lien, où le bot envoie déjà les personnes, nomme le service du lien
     (Teams, annuaire) au lieu de Slack.
 - **Conséquences** :
@@ -7817,3 +7818,75 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
   - reste à venir : les écrans (déclaration, carte, « Mon compte ») avec leurs parcours
     de bout en bout, dont la page du lien pour Teams, les conversations avec l'agent
     dans Teams, les validations par cartes adaptatives et l'avis au responsable.
+
+## ADR-139 — Écrans du bot Teams : bot dans « Connecteurs », compte relié depuis « Mon compte » (passerelles, lot 14b)
+
+- **Date** : 2026-10-30 · **Statut** : acceptée · complète ADR-138
+- **Contexte** : le bot Teams de l'entreprise ne se déclarait que par l'API, et
+  l'interface le cachait en attendant ses écrans (ADR-138). Le bot envoyait déjà aux
+  personnes le lien de leur page, qui nommait le service du lien.
+- **Décision** :
+  - **« Connecteurs »**, section « Passerelles de conversation » :
+    - « Déclarer le bot Teams » tant que l'entreprise n'en a pas, à côté de Slack et de
+      Telegram ;
+    - le formulaire demande le nom, l'ID d'application (Microsoft App ID), l'ID de
+      l'annuaire (locataire Microsoft Entra) et le secret client. Le navigateur les
+      vérifie comme le serveur : GUID (motif partagé avec l'application Microsoft 365,
+      `lib/input-patterns.ts`), et secret de 16 à 256 caractères sans espace ;
+    - son texte d'aide dit :
+      - que le bot est le bot Azure d'un seul locataire, celui des collaborateurs ;
+      - que le secret est essayé auprès d'Entra avant d'être gardé, et jamais réaffiché ;
+      - où saisir le point de terminaison de messagerie, et qu'il faut activer le canal
+        Teams puis publier l'application du bot dans Teams ;
+      - que chacun relie son compte en écrivant au bot ;
+      - que les échanges avec l'agent dans Teams ne sont pas encore ouverts ;
+    - la carte montre :
+      - l'application et l'annuaire ;
+      - le secret client enregistré, jamais réaffiché ;
+      - le nombre de comptes reliés ;
+      - le point de terminaison de messagerie à saisir dans le bot Azure
+        (« Configuration ») ;
+    - la carte se modifie : le nom, et un secret client de la même application (laissé
+      vide, il est gardé). L'application et l'annuaire ne sont pas proposés, puisqu'ils
+      ne changent pas. Elle se désactive, se réactive et se supprime ; la confirmation
+      dit que le secret et les comptes reliés partent avec elle. Son en-tête, sa date et
+      ses boutons sont ceux de toute carte de passerelle (`gateway-card-frame.tsx`, que
+      les cartes de Slack et de Telegram reprennent aussi) ;
+  - **« Mon compte »**, carte « Messageries reliées » : une ligne pour le bot Teams
+    (`teams-identity-row.tsx`), de la même forme que celle de Slack, dont le lien vient
+    aussi d'un message (`linked-by-message-row.tsx`) :
+    - non reliée, elle dit d'écrire au bot dans Teams, qui répond par un lien à ouvrir
+      dans l'application, connecté ; Teams doit donner pour le compte l'adresse du
+      compte ;
+    - reliée, elle montre l'adresse que Teams a donnée et la date. Tant que le bot est
+      disponible, elle dit que l'agent n'y répond pas encore. La liaison peut être
+      retirée ;
+    - une passerelle en pause, ou une personne sans `agent:use`, est dite indisponible ;
+      la liaison reste à retirer ;
+  - **page du lien** : inchangée ; elle nomme déjà Teams et l'annuaire (ADR-138).
+- **Conséquences** :
+  - le Microsoft simulé des tests (`FakeTeams`) écoute, pour les tests de bout en bout,
+    à une adresse fixe : 127.0.0.1:4105 dans `e2e_server`, que `BuildOptions::teams_api`
+    y relie. Il y connaît le compte Teams de Léa. Il liste ce que les bots ont écrit
+    (`GET /test/messages`). À la demande (`POST /test/activity`), il écrit l'activité
+    qu'un message d'une personne au bot serait, avec le jeton qui la prouve : le test
+    l'envoie au point de terminaison comme le Bot Framework, sans signer lui-même ;
+  - tests : `apps/web/e2e/teams-gateway.spec.ts`. Le parcours :
+    - un secret refusé par Entra ne garde rien ;
+    - le bot est déclaré. Sa carte, relue dans l'API, ne contient aucun secret, et le
+      point de terminaison est celui de la passerelle ;
+    - Léa écrit au bot, qui lui répond par un lien. Ouvert dans sa session, le lien
+      montre ce qu'il relie, puis relie ; la liaison est relue dans l'API et dans
+      « Mon compte », qui dit que l'agent n'y répond pas encore, comme le bot le dit
+      ensuite à Léa ;
+    - le bot est désactivé : le lien rouvert dit pourquoi il ne relie rien ; « Mon
+      compte » le dit indisponible sans plus dire où il renvoie, et la liaison est
+      retirée ;
+    - le bot est renommé (application et annuaire non proposés). Avec un nouveau
+      secret refusé par Entra, rien ne change ; le secret laissé vide est gardé. Il est
+      ensuite réactivé : il répond de nouveau à Léa, preuve que le secret gardé est
+      celui qu'Entra accepte ;
+    - le bot est enfin supprimé. Le point de terminaison répond alors comme une
+      passerelle inconnue ;
+  - restent : conversations avec l'agent dans Teams, validations par cartes
+    adaptatives, avis au responsable.
