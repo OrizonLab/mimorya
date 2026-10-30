@@ -49,7 +49,8 @@ test('a mission keeps the limits its company set', async ({ page, newContext }) 
   await stages.fill('3');
   await cost.fill('5');
   await form.getByRole('button', { name: 'Enregistrer' }).click();
-  await expect(form.getByText('Limites propres à votre entreprise.')).toBeVisible();
+  // Anchored and case-sensitive: the platform's message holds these words too.
+  await expect(form.getByText(/^Limites propres à votre entreprise\./)).toBeVisible();
 
   // Read back from the API once the page is reloaded.
   await page.reload();
