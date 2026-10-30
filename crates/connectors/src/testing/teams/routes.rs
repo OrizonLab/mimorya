@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 
 use axum::Json;
 use axum::extract::{Path, State};
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::{HeaderMap, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
 use mimorya_core::gateways::teams::BOT_FRAMEWORK_SCOPE;
 use serde_json::{Value, json};
@@ -110,10 +110,14 @@ fn bearer_app(shared: &Shared, headers: &HeaderMap) -> Option<String> {
 pub(super) async fn send(
     State(shared): SharedState,
     Path(conversation): Path<String>,
+    uri: Uri,
     headers: HeaderMap,
     Json(activity): Json<Value>,
 ) -> Response {
     let mut shared = shared.lock().expect("lock");
+    // The service written to: the path before `v3/`.
+    let region = uri.path().split("v3/").next().unwrap_or_default();
+    let service = format!("{}{region}", shared.base);
     if shared.down {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     }
@@ -135,6 +139,7 @@ pub(super) async fn send(
     let text_format = (activity.get("textFormat").and_then(Value::as_str)).map(str::to_owned);
     shared.sent.push(TeamsSent {
         app,
+        service,
         conversation,
         text: text.to_owned(),
         text_format,

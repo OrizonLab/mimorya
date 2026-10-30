@@ -40,6 +40,7 @@ mod events;
 mod identities;
 mod link;
 mod person;
+mod private_chats;
 mod replies;
 mod reply_text;
 mod retry;

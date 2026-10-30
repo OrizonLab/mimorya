@@ -223,8 +223,10 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   elle a écrit (déjà vérifié comme de Microsoft à la réception, et de nouveau par le
   client). Ce qui y est écrit est en Markdown que la plateforme produit, le texte de
   l'agent échappé (balises HTML comprises), seuls sa mise en forme, son code et des
-  liens web aux adresses sans caractère de balisage gardés ; jamais ses mots dans les
-  journaux ni l'audit. Les validations se donnent dans l'application, qui en montre
+  liens web aux adresses sans caractère de balisage gardés ; un code en ligne ne tient
+  qu'entre deux accents graves seuls, tout autre accent grave échappé, pour qu'aucune
+  suite d'accents graves ne décale ce qui se lit comme code et ne fasse lire une image
+  ou un lien ; jamais ses mots dans les journaux ni l'audit. Les validations se donnent dans l'application, qui en montre
   les paramètres exacts.
 - Validations dans Telegram (ADR-136) : seules les actions qui attendent la personne
   elle-même, sans effet hors de l'entreprise, réversibles, aux paramètres exacts

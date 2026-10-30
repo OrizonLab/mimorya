@@ -14,7 +14,9 @@
 //! linked their Teams identity, with a link to do so (`link`); from a
 //! linked person, as their message asks (`answers`, ADR-140): a command
 //! answered by the bot, their words passed on to the agent
-//! (`conversations`). What a message says is never logged nor audited.
+//! (`conversations`), the answers of their personal conversation's threads
+//! written from then on at the service it came from. What a message says
+//! is never logged nor audited.
 
 use chrono::{DateTime, Utc};
 use mimorya_core::gateways::GatewayKind;
@@ -22,6 +24,7 @@ use mimorya_core::gateways::teams::{
     Expected, TeamsApplication, bearer, escaped, key_id, read_activity, verify_token,
 };
 use mimorya_db::repositories::gateway_identities::find_gateway_identity;
+use mimorya_db::repositories::gateway_threads::move_teams_threads;
 use mimorya_db::repositories::gateways::{gateway_tenant, get_gateway, take_gateway_event};
 use uuid::Uuid;
 
@@ -101,6 +104,9 @@ impl GatewayService {
         let answer = match &identity {
             Some(identity) => {
                 let (to, chat) = ((gateway_id, identity.user_id), &message.conversation_id);
+                // Its conversation's answers go to the service it came
+                // from, a paused run's in a conversation closed since too.
+                move_teams_threads(&mut tx, gateway_id, chat, &message.service_url).await?;
                 let assistant = &self.assistant_name;
                 Some(answer_to(&mut tx, to, chat, &message.text, assistant).await?)
             }

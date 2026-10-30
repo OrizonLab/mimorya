@@ -154,18 +154,22 @@ pub async fn close_gateway_chat(
     Ok(closed.rows_affected() > 0)
 }
 
-/// The Teams service the thread `thread_id`'s latest message came from
-/// (ADR-140): its answers are written there.
-pub async fn move_teams_thread(
+/// The Teams service the latest message in the personal conversation
+/// `chat` with the Teams bot `gateway_id` came from (ADR-140): the answers
+/// of each of its threads are written there, those of a run paused in a
+/// conversation closed since too.
+pub async fn move_teams_threads(
     conn: &mut PgConnection,
-    thread_id: Uuid,
+    gateway_id: Uuid,
+    chat: &str,
     service_url: &str,
 ) -> sqlx::Result<()> {
     sqlx::query(
-        "update gateway_threads set service_url = $2 where id = $1 and kind = 'teams' \
-         and service_url is distinct from $2",
+        "update gateway_threads set service_url = $3 where gateway_id = $1 \
+         and channel_id = $2 and kind = 'teams' and service_url is distinct from $3",
     )
-    .bind(thread_id)
+    .bind(gateway_id)
+    .bind(chat)
     .bind(service_url)
     .execute(conn)
     .await?;

@@ -187,7 +187,9 @@ Repères à l'intérieur des crates :
   ADR-138 ; mots d'une personne reliée répondus dans une conversation tenue dans sa
   conversation personnelle avec le bot (`teams/answers.rs`, `teams/conversations.rs`),
   réponse écrite là en Markdown de Teams (`teams/reply_text.rs`, `replies/teams.rs`),
-  ADR-140 ;
+  au dernier service Teams d'où elle a écrit (`teams/activities.rs`), ADR-140 ;
+  conversation tenue dans la conversation privée avec un bot, Telegram ou Teams, une
+  à la fois (`private_chats.rs`), ADR-135, ADR-140 ;
   déclarées par
   `services/admin/gateways.rs`, ce que Slack dit du jeton et ses permissions vérifiées
   à la demande par `services/admin/gateway_check.rs`, ADR-132, le bot Telegram par

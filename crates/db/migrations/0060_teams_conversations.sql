@@ -9,8 +9,9 @@
 -- messages until they ask for a new one (`/nouvelle`), which closes it
 -- (`closed_at`). Who wrote is their Microsoft Entra object. The bot answers
 -- at the Teams service the activities came from (`service_url`), the
--- latest one: Microsoft may move a conversation to another. Only a Teams
--- thread has one.
+-- latest one: Microsoft may move a conversation to another. A Teams thread
+-- always has one (200 characters at most, as the platform writes to), and
+-- only a Teams thread.
 ALTER TABLE gateway_threads ADD COLUMN service_url text;
 
 ALTER TABLE gateway_threads
@@ -29,7 +30,8 @@ ALTER TABLE gateway_threads
       AND external_id ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
       AND channel_id ~ '^[!-~]+$' AND char_length(channel_id) <= 512
       AND thread_ts ~ '^[!-~]{1,64}$'
-      AND service_url ~ '^https?://[!-~]{1,200}$')
+      AND service_url IS NOT NULL
+      AND service_url ~ '^https?://[!-~]+$' AND char_length(service_url) <= 200)
   );
 
 DROP INDEX gateway_threads_one_open_chat;

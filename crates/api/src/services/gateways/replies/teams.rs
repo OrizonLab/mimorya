@@ -5,8 +5,9 @@
 //! validation it awaits, to give in the application, which shows the
 //! actions' exact parameters. What Teams refuses (the bot blocked or
 //! removed, the conversation unknown, the application's secret refused) is
-//! not tried again; Microsoft unreachable or failing, tried again a few
-//! times (`retry::later`).
+//! not tried again, nor a service that is not Microsoft's; Microsoft
+//! unreachable, failing or answered unread (Entra's token), tried again a
+//! few times (`retry::later`).
 
 use chrono::{DateTime, Utc};
 use mimorya_connectors::teams::TeamsFailure;
@@ -28,6 +29,7 @@ pub(super) async fn answer(
     client_secret: String,
     now: DateTime<Utc>,
 ) -> ReplyRecord {
+    // A Teams thread always has one (the base requires it).
     let Some(service_url) = target.service_url.as_deref() else {
         tracing::warn!(gateway = %target.gateway_id, "Teams conversation's service unknown");
         return ReplyRecord::Done("failed");
@@ -56,12 +58,14 @@ fn after_failure(failure: &TeamsFailure, attempt: i32, now: DateTime<Utc>) -> Re
     let reason = failure.message();
     tracing::warn!(attempt, %reason, "Teams message not taken");
     match failure {
-        TeamsFailure::Refused { status, .. } if *status < 500 => ReplyRecord::Done("refused"),
+        // A refusal is a status below 500 (`Failed` holds the others).
+        TeamsFailure::Refused { .. } => ReplyRecord::Done("refused"),
         TeamsFailure::Throttled { retry_after } => later(attempt, *retry_after, now),
-        // Written to no one: never tried again. An answer not read may
-        // have been taken: not written twice.
-        TeamsFailure::Untrusted | TeamsFailure::Unreadable => ReplyRecord::Done("failed"),
-        TeamsFailure::Refused { .. } | TeamsFailure::Failed(_) | TeamsFailure::Unanswered(_) => {
+        // A service not Microsoft's: written to no one, never tried again.
+        TeamsFailure::Untrusted => ReplyRecord::Done("failed"),
+        // Only Entra's answer goes unread (any message Teams takes is
+        // taken, whatever it answers): nothing written yet.
+        TeamsFailure::Unreadable | TeamsFailure::Failed(_) | TeamsFailure::Unanswered(_) => {
             later(attempt, None, now)
         }
     }
@@ -101,8 +105,14 @@ mod tests {
             after_failure(&throttled, 1, now),
             ReplyRecord::Retry(now + Duration::seconds(12))
         );
+        // Entra's answer unread: nothing was written, tried again.
         assert_eq!(
-            after_failure(&TeamsFailure::Unreadable, 1, now),
+            after_failure(&TeamsFailure::Unreadable, 2, now),
+            ReplyRecord::Retry(now + Duration::minutes(2))
+        );
+        // A service not Microsoft's: never tried again.
+        assert_eq!(
+            after_failure(&TeamsFailure::Untrusted, 1, now),
             ReplyRecord::Done("failed")
         );
     }

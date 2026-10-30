@@ -7919,10 +7919,14 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     - l'objet Microsoft Entra de la personne, l'identifiant de la conversation
       personnelle (`a:…`, 512 caractères visibles au plus) et celui de l'activité qui
       l'a ouverte ;
-    - `service_url`, le service Teams où répondre, propre à Teams (nul pour Slack et
-      Telegram), `http(s)` et 200 caractères au plus, que le rôle applicatif peut
-      mettre à jour : chaque message qui poursuit la conversation y écrit le service
-      d'où il vient (`move_teams_thread`), et la réponse va au dernier ;
+    - `service_url`, le service Teams où répondre : requis pour un fil Teams, nul pour
+      Slack et Telegram, `http(s)` et 200 caractères au plus en tout, comme les
+      adresses auxquelles la plateforme écrit (ADR-138). Le rôle applicatif peut le
+      mettre à jour : chaque message prouvé d'une personne reliée, commande comprise,
+      l'écrit dans tous les fils Teams de sa conversation personnelle avec le bot
+      (`move_teams_threads`, dans `teams/activities.rs`). La réponse va donc au
+      dernier service d'où elle a écrit, y compris celle d'un run en pause dans une
+      conversation fermée depuis ;
     - une conversation ouverte par personne, conversation personnelle et bot, comme
       pour Telegram ;
   - **comme dans l'application** : le run est lancé au nom de la personne, avec ses
@@ -7930,7 +7934,10 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     porte `gateway: "teams"`, et l'audit le dit sien, avec la passerelle, jamais avec
     ses mots. Avant de lancer quoi que ce soit, la plateforme vérifie que la personne
     peut agir (`person::may_act`, les règles de Slack et de Telegram) et que le service
-    ne redémarre pas. Le Bot Framework atteste qui écrit : l'activité est venue avec le
+    ne redémarre pas. Ce déroulé (personne reliée, droit d'agir, arrêt du service,
+    conversation ouverte poursuivie ou nouvelle, refus dit) est commun à Telegram et à
+    Teams (`services/gateways/private_chats.rs`) ; chaque service garde la forme de son
+    message et sa façon de parler. Le Bot Framework atteste qui écrit : l'activité est venue avec le
     jeton que Microsoft signe, de la conversation personnelle de la personne, dans
     l'annuaire de l'entreprise (ADR-138). Pourquoi rien n'a été lancé est dit là, en
     texte échappé ;
@@ -7942,7 +7949,13 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       l'adresse n'a que des caractères sûrs, son code tel qu'écrit (caractères HTML
       échappés, bloc laissé ouvert refermé). Tout le reste est échappé
       (`teams::from_markdown`), pour que rien ne s'y lise comme une balise ou un
-      Markdown que l'agent n'a pas écrit. Elle est coupée au-delà de 3 000 caractères,
+      Markdown que l'agent n'a pas écrit. Un code en ligne n'est gardé que s'il est
+      ouvert par un accent grave seul et refermé par le suivant, seul lui aussi ; tout
+      autre accent grave (pris dans une suite, ou laissé ouvert) est échappé un par un.
+      Les seuls accents graves laissés tels quels ouvrent et ferment ainsi les codes
+      gardés, qui n'en contiennent aucun : Markdown les apparie comme la plateforme,
+      quelles que soient les suites que l'agent a écrites, et rien de ce qu'elles
+      entourent ne se lit comme une image, un lien ou une emphase. Elle est coupée au-delà de 3 000 caractères,
       et le lien vers la conversation dans l'application la suit ;
     - une pause dit quelle validation la demande attend, la sienne ou celle de son
       responsable, à donner dans l'application ; les cartes de validation viennent avec
@@ -7950,9 +7963,11 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     - un bot en pause, ou un compte Teams qui n'est plus celui de la personne, ne reçoit
       rien (`skipped`) ;
     - un refus de Teams (le bot bloqué ou retiré, la conversation inconnue) n'est pas
-      retenté, ni un jeton qu'Entra refuse ou une réponse illisible ; Microsoft
-      injoignable, limité ou en erreur (5xx) est retenté comme pour Slack et Telegram,
-      au plus quatre fois ;
+      retenté, ni un secret qu'Entra refuse, ni un service qui ne serait pas celui de
+      Microsoft. Microsoft injoignable, limité ou en erreur (5xx) est retenté comme pour
+      Slack et Telegram, au plus quatre fois. Une réponse illisible d'Entra l'est aussi :
+      rien n'a encore été écrit (Teams prend tout message qu'il accepte, quoi qu'il
+      réponde) ;
   - **l'interface** : une conversation tenue dans Teams est marquée « Teams » dans la
     liste, chaque message écrit au bot « Écrit dans Teams », et la note de la
     conversation dit qu'elle se tient aussi dans la conversation avec le bot, tant
@@ -7961,7 +7976,12 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     se donnant dans l'application.
 - **Conséquences** :
   - le Microsoft simulé des tests liste, avec chaque message écrit, son format
-    (`textFormat`) ;
+    (`textFormat`) et le service où il l'a été. Il répond aussi comme une autre région
+    de Teams (`teams/amer/`, `other_service_url`), à laquelle les bots se fient de
+    même ;
+  - le code est échappé en HTML dans le Markdown de Teams, par prudence ; si Teams
+    suivait CommonMark à la lettre, `<` y apparaîtrait écrit `&lt;`. À vérifier lors du
+    premier essai avec un vrai Teams ;
   - tests :
     - `crates/api/tests/teams_gateway_conversations.rs` : conversation ouverte, suivie,
       fermée par `/nouvelle`, avec ou sans mots, laissée une fois archivée ; service
@@ -7972,8 +7992,14 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       fermée ou archivée ;
     - `teams_gateway_replies.rs` : bot en pause ou liaison retirée ; Microsoft
       injoignable retenté puis abandonné ; bot bloqué ;
+    - `teams_gateway_conversation_rules.rs` : réponse au dernier service d'où la
+      personne a écrit, y compris celle d'un run en pause dans une conversation fermée
+      depuis ; identité Teams reliée depuis à quelqu'un d'autre, qui ne poursuit ni ne
+      ferme la conversation de la personne d'avant, dont la fin du run n'est pas écrite ;
+      conversation ouverte deux fois en même temps, la seconde refusée comme occupée ;
     - `crates/core/src/gateways/teams/markdown.rs` : ce que le Markdown de Teams garde
-      et échappe ;
+      et échappe, dont des suites d'accents graves qui décaleraient l'appariement des
+      codes ;
     - `apps/web/e2e/teams-conversations.spec.ts` (modèle joué : `e2e_server/teams.rs`) :
       question posée au bot, réponse dans la conversation avec lui, conversation montrée
       « Teams » dans l'application, relance, puis `/nouvelle` ;

