@@ -377,7 +377,10 @@ Détaillés dans [AGENT_ENGINE.md](AGENT_ENGINE.md). En résumé :
   avec les boutons d'une carte adaptative, quand l'action ne sort pas de l'entreprise et
   peut être défaite (ADR-141) ; la plateforme garde chaque carte écrite et les demandes
   qu'elle montre (`gateway_cards`), seul ce qu'elle montre se décide, et la carte est
-  réécrite une fois décidée. L'avis au responsable dans Teams viendra ensuite.
+  réécrite une fois décidée. Le responsable, ou son remplaçant, relié au bot y est
+  prévenu des demandes qui l'attendent, celles qui se valident hors de l'application
+  sur une carte de même (ADR-142), dans la conversation où le bot l'a vu en dernier,
+  gardée avec son identité (`gateway_identities.service_url`, `conversation_id`).
 - Les secrets ne transitent jamais par le contexte du modèle ni par les journaux.
 
 Connecteurs prévus : démonstration (MVP), MCP générique (MVP), déclencheurs (ADR-109),

@@ -76,12 +76,13 @@ Repères à l'intérieur des crates :
   cas d'évaluation des compétences : `skill_eval_cases.rs`, ADR-103, et leurs
   évaluations : `skill_evaluations.rs`, ADR-104 ; comptes reliés par chacun et leur
   jeton de renouvellement scellé : `account_links.rs`, ADR-116 ; passerelles et
-  événements pris : `gateways.rs`, identités reliées : `gateway_identities.rs`,
-  ADR-125 ; fils Slack des conversations, et conversation privée avec le bot Telegram
+  événements pris : `gateways.rs`, identités reliées et conversation Teams où le bot a
+  vu chacun en dernier : `gateway_identities.rs`, ADR-125, ADR-142 ; fils Slack des conversations, et conversation privée avec le bot Telegram
   ou personnelle avec le bot Teams, une ouverte à la fois : `gateway_threads.rs`,
   réponses écrites : `gateway_replies.rs`, ADR-127, ADR-135, ADR-140 ; cartes écrites
-  dans Teams et les demandes qu'elles montrent : `gateway_cards.rs`, ADR-141 ; demandes annoncées au responsable, une fois
-  par passerelle : `gateway_approval_notices.rs`, ADR-130, ADR-137 ; codes de liaison
+  dans Teams, d'une pause ou d'un avis au responsable, et les demandes qu'elles montrent :
+  `gateway_cards.rs`, ADR-141, ADR-142 ; demandes annoncées au responsable, une fois
+  par passerelle : `gateway_approval_notices.rs`, ADR-130, ADR-137, ADR-142 ; codes de liaison
   Telegram :
   `gateway_link_codes.rs`, ADR-133),
   `db/src/notifications.rs` (canaux PostgreSQL des événements des runs, de la file et des
@@ -173,7 +174,9 @@ Repères à l'intérieur des crates :
   son bouton dans le fil (`choices.rs`), qui peut agir, pour un message comme pour un
   bouton (`person.rs`), ADR-129 ; demandes qui attendent un responsable annoncées par
   message direct (`approver_notices/`, un module par service, mots communs aux
-  services : `approver_text.rs`), ADR-130 ; message qu'un service n'a pas pris réessayé
+  services : `approver_text.rs`), ADR-130 ; dans Teams sur une carte, à la
+  conversation où le bot l'a vu en dernier (`approver_notices/teams.rs`,
+  `teams/approver_text.rs`), ADR-142 ; message qu'un service n'a pas pris réessayé
   (`retry.rs`) ; conversation
   directe vérifiée auprès de Slack avant que rien n'y soit dit (`direct.rs`), ADR-131 ;
   bot Telegram : mises à jour reçues sur le secret du webhook et compte relié par un code

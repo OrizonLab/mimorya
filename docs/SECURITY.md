@@ -273,6 +273,19 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   de ses collaborateurs : jamais un envoi hors de l'entreprise ni une action
   irréversible. Chaque passerelle annonce une demande une fois, ce qu'il en advient
   gardé pour chacune ; chaque avis audité avec son service, jamais ce qui est écrit.
+- Responsable prévenu dans Teams (ADR-142) : de même, dans sa conversation personnelle
+  avec le bot Teams actif, seulement s'il peut encore décider et a relié son compte
+  Teams (Teams a nommé son objet Entra avec l'adresse du compte, ADR-138). Le bot
+  n'écrit que dans la conversation où il l'a vu en dernier, gardée avec l'identité : en
+  la confirmant, puis à chacun de ses messages (une identité reliée à quelqu'un d'autre
+  repart de la conversation de cette personne-là). Mêmes actions sur une carte qu'à
+  l'auteur (ADR-141), carte gardée avec celui à qui elle est écrite ; un bouton ne
+  décide que pour une demande montrée sur une carte du bot dans la conversation de qui
+  le presse, puis par les mêmes contrôles (`concerned::decide_as`) : seul celui que la
+  demande attend, ou son remplaçant, la décide. Qui détient le secret client de
+  l'application du bot peut donc aussi valider, au nom d'un responsable relié, ces
+  actions-là : jamais un envoi hors de l'entreprise ni une action irréversible. Une
+  annonce par passerelle, auditée avec son service, jamais ce qui est écrit.
 - Déclencheurs (ADR-109) : un autre système envoie avec le jeton secret du déclencheur
   (`Authorization: Bearer`, 256 bits, gardé en empreinte SHA-256, montré une fois). Un
   déclencheur inconnu, un jeton faux et un déclencheur en pause répondent de même (404).

@@ -8099,4 +8099,78 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       n'est pas une carte, bouton qui ne nomme aucune carte, carte de Marc nommée par
       Léa reliée, bot en pause, compte délié ; action envoyée hors de l'entreprise, ou
       attendue par un responsable, sans carte, et qu'aucun bouton prétendu ne décide ;
-  - reste : les demandes annoncées au responsable dans Teams.
+  - reste : les demandes annoncées au responsable dans Teams (ADR-142).
+
+## ADR-142 — Responsable prévenu dans Teams des demandes qui l'attendent (passerelles, lot 14e)
+
+- **Date** : 2026-10-30 · **Statut** : acceptée · complète ADR-141, sur le modèle
+  d'ADR-137
+- **Contexte** : une demande qu'un responsable décide lui est annoncée par e-mail
+  (ADR-060), ou à son remplaçant (ADR-071), et dans Slack et Telegram s'il y a relié
+  son compte (ADR-130, ADR-137). Le responsable qui a relié son compte Teams au bot de
+  l'entreprise y parle déjà à l'agent (ADR-140) et y valide ses propres actions sur une
+  carte (ADR-141). Mais le bot ne peut écrire que dans une conversation que Teams
+  connaît : la conversation personnelle d'une personne avec lui, à un service Teams.
+  Jusqu'ici, seul le fil d'une conversation avec l'agent la gardait (ADR-140). Un
+  responsable relié qui n'a jamais parlé à l'agent n'en avait donc aucune.
+- **Décision** :
+  - **la conversation gardée avec l'identité** : l'identité Teams d'une personne garde
+    la conversation personnelle où le bot l'a rencontrée, avec son service
+    (`gateway_identities.service_url`, `conversation_id`, migration 0062). C'est celle
+    où le lien lui a été envoyé, quand elle le confirme (ADR-138), puis celle de chacun
+    de ses messages au bot. Une identité reliée avant n'en a aucune tant que la
+    personne n'a pas écrit au bot de nouveau : rien ne lui est écrit (`skipped`), et
+    les demandes suivantes lui sont annoncées une fois qu'elle a écrit ;
+  - **un message dans sa conversation personnelle avec le bot** : quand un run se met
+    en pause sur des demandes qu'un responsable décide, ce responsable, ou le
+    remplaçant qui le serait aussi par e-mail (`recipient`), reçoit du bot, s'il y a
+    relié son compte Teams, les mots communs aux services (`approver_text.rs`) en
+    Markdown de Teams : qui l'agent sert, en gras et échappé, en l'absence de qui, et
+    le lien de l'écran « Validations » (`teams/approver_text.rs`). Les actions qui se
+    valident hors de l'application (`validated_in_gateway`) sont montrées sur une
+    carte adaptative avec leurs paramètres exacts et leurs boutons (`validation_card`,
+    ADR-141). Au plus cinq actions, et autant que la carte en contient ; les autres
+    sont à valider dans l'application ;
+  - **la carte gardée** : la carte d'un avis est gardée comme celle d'une pause
+    (`gateway_cards`). Elle n'a pas de fil, mais nomme celui à qui elle a été écrite
+    (`user_id`). Chaque carte nomme désormais son bot et la conversation où elle a été
+    écrite (`gateway_id`, `channel_id`), où seuls ses boutons décident. Elle part avec
+    le bot, ou avec la personne à qui elle a été écrite ;
+  - **le bouton pressé** arrive et décide comme sur la carte d'une pause (ADR-141), par
+    les contrôles communs aux services (`concerned::decide_as`). Seule une demande
+    montrée sur une carte du bot, dans la conversation de qui le presse, et qui
+    l'attend (le responsable, ou son remplaçant) est décidée. La carte est ensuite
+    réécrite sans les boutons des actions réglées, avec le texte de l'avis (qui l'agent
+    sert et le responsable absent, relus alors). Une fois aucune ouverte, son texte dit
+    qu'elles sont décidées, ou qu'elles n'attendent plus de décision ;
+  - **le reste comme dans Telegram** :
+    - seul qui peut encore décider est prévenu (`may_decide_for`, relu au moment
+      d'écrire) ; personne de relié, rien d'écrit (`skipped`) ;
+    - le bot en pause n'essaie ni n'enregistre rien ; remis en service, il annonce les
+      demandes encore en attente ;
+    - Teams refuse (bot bloqué, conversation inconnue, secret refusé) : `refused`,
+      plus réessayé ; Microsoft injoignable : réessayé quelques fois ;
+    - une annonce par passerelle, ce qu'il en advient gardé pour chacune ;
+    - le passage des annonces (`system_gateway_approvals_to_notify`) prend aussi les
+      bots Teams actifs, et lit le secret client de l'application du bot ;
+    - en plus de l'e-mail, de Slack et de Telegram, quel que soit le choix de chacun
+      pour ses e-mails ;
+    - chaque demande annoncée est auditée (`gateway.approval_notified`, service
+      `teams`), jamais ce qui est écrit.
+- **Conséquences** :
+  - l'écran du bot Teams et « Mon compte » disent qu'un responsable relié y est
+    prévenu des demandes qui l'attendent ;
+  - tests :
+    - `crates/api/tests/teams_gateway_approver_notices.rs` : responsable prévenu une
+      fois, avec la carte de l'action et ses boutons, qui la valide (décision auditée,
+      carte réécrite une fois, issue dite) ; remplaçant prévenu en l'absence du
+      responsable, qui refuse ; action envoyée hors de l'entreprise sans carte, qu'aucun
+      bouton prétendu ne décide ; carte du responsable nommée par une autre personne
+      reliée, sans effet ; responsable qui a perdu le droit, rien d'écrit ;
+    - `teams_gateway_approver_notice_outcomes.rs` : écrit là où le bot l'a vu en
+      dernier (rien pour une identité reliée avant, jusqu'à son prochain message ;
+      son service suivi) ; bot en pause puis remis en service ; Microsoft injoignable
+      réessayé ; bot bloqué refusé, plus réessayé ;
+    - unitaires : textes de l'avis et de sa carte réglée ;
+  - reste : dans chaque service, « Validée. » ou « Refusée. » plutôt que « Décidée. »
+    (ROADMAP).

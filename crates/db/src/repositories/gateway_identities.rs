@@ -1,9 +1,11 @@
 //! Who each person is on a gateway's service (ADR-125): their Slack user,
 //! linked by them from their own session, with the address the service gave
 //! as theirs then; or their Telegram user, with the name Telegram showed
-//! (ADR-133: it proves no address). One per person and gateway; a user of
-//! the service is one person's, so a new link of theirs replaces the former
-//! one, whoever's it was.
+//! (ADR-133: it proves no address); or their Teams user, with the address
+//! Teams gave and the personal conversation the bot last met them in, the
+//! only one it may write them in (ADR-142). One per person and gateway; a
+//! user of the service is one person's, so a new link of theirs replaces
+//! the former one, whoever's it was.
 
 use chrono::{DateTime, Utc};
 use sqlx::PgConnection;
@@ -19,11 +21,25 @@ pub struct GatewayIdentityRow {
     pub address: Option<String>,
     /// The name Telegram showed.
     pub display_name: Option<String>,
+    /// A Teams user's personal conversation with the bot, at its service.
+    pub service_url: Option<String>,
+    pub conversation_id: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
+impl GatewayIdentityRow {
+    /// Where a Teams user is written: their personal conversation with the
+    /// bot, at its service, if the bot met them in one since this was kept.
+    pub fn teams_conversation(&self) -> Option<(&str, &str)> {
+        Some((
+            self.service_url.as_deref()?,
+            self.conversation_id.as_deref()?,
+        ))
+    }
+}
+
 const SELECT: &str = "select id, gateway_id, user_id, external_id, address, display_name, \
-     created_at from gateway_identities";
+     service_url, conversation_id, created_at from gateway_identities";
 
 pub struct NewGatewayIdentity<'a> {
     pub tenant_id: Uuid,
@@ -34,6 +50,8 @@ pub struct NewGatewayIdentity<'a> {
     pub address: Option<&'a str>,
     /// The name it showed, if it proves no address.
     pub display_name: Option<&'a str>,
+    /// A Teams user's personal conversation with the bot, at its service.
+    pub conversation: Option<(&'a str, &'a str)>,
 }
 
 /// What a new link replaced.
@@ -67,12 +85,15 @@ pub async fn put_gateway_identity(
     .bind(identity.user_id)
     .fetch_optional(&mut *conn)
     .await?;
+    let (service_url, conversation_id) = identity.conversation.unzip();
     sqlx::query(
-        "insert into gateway_identities \
-         (tenant_id, gateway_id, kind, user_id, external_id, address, display_name) \
-         values ($1, $2, (select kind from gateways where id = $2), $3, $4, $5, $6) \
+        "insert into gateway_identities (tenant_id, gateway_id, kind, user_id, external_id, \
+         address, display_name, service_url, conversation_id) \
+         values ($1, $2, (select kind from gateways where id = $2), $3, $4, $5, $6, $7, $8) \
          on conflict (gateway_id, user_id) do update set external_id = excluded.external_id, \
-         address = excluded.address, display_name = excluded.display_name, created_at = now()",
+         address = excluded.address, display_name = excluded.display_name, \
+         service_url = excluded.service_url, conversation_id = excluded.conversation_id, \
+         created_at = now()",
     )
     .bind(identity.tenant_id)
     .bind(identity.gateway_id)
@@ -80,6 +101,8 @@ pub async fn put_gateway_identity(
     .bind(identity.external_id)
     .bind(identity.address)
     .bind(identity.display_name)
+    .bind(service_url)
+    .bind(conversation_id)
     .execute(conn)
     .await?;
     Ok(Replaced {
@@ -101,6 +124,28 @@ pub async fn find_gateway_identity(
     .bind(external_id)
     .fetch_optional(conn)
     .await
+}
+
+/// The Teams user `external_id` linked on the gateway met in their personal
+/// conversation `chat` with the bot, at `service_url`: where they are
+/// written from now on.
+pub async fn move_teams_identity(
+    conn: &mut PgConnection,
+    (gateway_id, external_id): (Uuid, &str),
+    (service_url, chat): (&str, &str),
+) -> sqlx::Result<()> {
+    sqlx::query(
+        "update gateway_identities set service_url = $3, conversation_id = $4 \
+         where gateway_id = $1 and external_id = $2 and kind = 'teams' \
+         and (service_url is distinct from $3 or conversation_id is distinct from $4)",
+    )
+    .bind(gateway_id)
+    .bind(external_id)
+    .bind(service_url)
+    .bind(chat)
+    .execute(conn)
+    .await?;
+    Ok(())
 }
 
 /// The person `user_id`'s identity on the gateway, if they linked one.

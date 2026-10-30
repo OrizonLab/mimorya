@@ -18,7 +18,7 @@ use mimorya_core::gateways::teams::{
     CardAction, CardState, TeamsApplication, shown_in_card, validation_card,
 };
 use mimorya_db::repositories::approvals::ApprovalRow;
-use mimorya_db::repositories::gateway_cards::{GatewayCard, record_gateway_card};
+use mimorya_db::repositories::gateway_cards::{CardPlace, WrittenCard, record_gateway_card};
 use mimorya_db::repositories::gateway_replies::{ReplyRecord, ReplyTarget};
 use uuid::Uuid;
 
@@ -77,41 +77,48 @@ pub(super) async fn answer(
             state: CardState::Open,
         })
         .collect();
-    let card = GatewayCard {
-        approval_ids: shown.iter().map(|a| a.approval_id).collect(),
-        in_application: i32::try_from(pause.in_application).unwrap_or(i32::MAX),
-        managed: i32::try_from(pause.managed).unwrap_or(i32::MAX),
-        conversation_id: target.conversation_id,
-    };
+    let ids: Vec<Uuid> = shown.iter().map(|a| a.approval_id).collect();
+    let others = (
+        i32::try_from(pause.in_application).unwrap_or(i32::MAX),
+        i32::try_from(pause.managed).unwrap_or(i32::MAX),
+    );
     match teams
         .send_card(&app, to, &text, &validation_card(&actions))
         .await
     {
         Ok(activity) => {
-            keep_card(gateways, (tenant_id, target), activity.as_deref(), &card).await;
+            let written = activity.as_deref().map(|activity_id| WrittenCard {
+                tenant_id,
+                gateway_id: target.gateway_id,
+                chat: &target.channel_id,
+                activity_id,
+                place: CardPlace::Thread(target.thread_id),
+            });
+            keep_card(gateways, written, &ids, others).await;
             ReplyRecord::Done("sent")
         }
         Err(failure) => after_failure(&failure, target.attempts + 1, now),
     }
 }
 
-/// Keeps the card Teams took as `activity`, so that its buttons decide; a
-/// card Teams did not number, or not kept, decides nothing (its buttons
-/// are said to be no longer valid), the message being written all the same.
-async fn keep_card(
+/// Keeps the card Teams took, `written`, showing `ids` with `others` said
+/// of beside it, so that its buttons decide; a card Teams did not number,
+/// or not kept, decides nothing (its buttons are said to be no longer
+/// valid), the message being written all the same.
+pub(in crate::services::gateways) async fn keep_card(
     gateways: &GatewayService,
-    (tenant_id, target): (Uuid, &ReplyTarget),
-    activity: Option<&str>,
-    card: &GatewayCard,
+    written: Option<WrittenCard<'_>>,
+    ids: &[Uuid],
+    others: (i32, i32),
 ) {
-    let gateway = target.gateway_id;
-    let Some(activity) = activity else {
-        tracing::warn!(%gateway, "Teams card not numbered: its buttons decide nothing");
+    let Some(written) = written else {
+        tracing::warn!("Teams card not numbered: its buttons decide nothing");
         return;
     };
+    let gateway = written.gateway_id;
     let kept = async {
-        let mut tx = gateways.db.begin(tenant_id).await?;
-        record_gateway_card(&mut tx, (tenant_id, target.thread_id), activity, card).await?;
+        let mut tx = gateways.db.begin(written.tenant_id).await?;
+        record_gateway_card(&mut tx, written, ids, others).await?;
         tx.commit().await?;
         anyhow::Ok(())
     };
@@ -121,8 +128,12 @@ async fn keep_card(
     }
 }
 
-/// What becomes of an answer Teams did not take, at its `attempt`-th try.
-fn after_failure(failure: &TeamsFailure, attempt: i32, now: DateTime<Utc>) -> ReplyRecord {
+/// What becomes of a message Teams did not take, at its `attempt`-th try.
+pub(in crate::services::gateways) fn after_failure(
+    failure: &TeamsFailure,
+    attempt: i32,
+    now: DateTime<Utc>,
+) -> ReplyRecord {
     let reason = failure.message();
     tracing::warn!(attempt, %reason, "Teams message not taken");
     match failure {
