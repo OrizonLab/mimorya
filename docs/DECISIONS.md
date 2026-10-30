@@ -7831,7 +7831,8 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       Telegram ;
     - le formulaire demande le nom, l'ID d'application (Microsoft App ID), l'ID de
       l'annuaire (locataire Microsoft Entra) et le secret client. Le navigateur les
-      vérifie comme le serveur : GUID, et secret de 16 à 256 caractères sans espace ;
+      vérifie comme le serveur : GUID (motif partagé avec l'application Microsoft 365,
+      `lib/input-patterns.ts`), et secret de 16 à 256 caractères sans espace ;
     - son texte d'aide dit :
       - que le bot est le bot Azure d'un seul locataire, celui des collaborateurs ;
       - que le secret est essayé auprès d'Entra avant d'être gardé, et jamais réaffiché ;
@@ -7848,15 +7849,18 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     - la carte se modifie : le nom, et un secret client de la même application (laissé
       vide, il est gardé). L'application et l'annuaire ne sont pas proposés, puisqu'ils
       ne changent pas. Elle se désactive, se réactive et se supprime ; la confirmation
-      dit que le secret et les comptes reliés partent avec elle. Ses boutons
-      partagent ceux des autres passerelles (`use-gateway-actions.ts`) ;
+      dit que le secret et les comptes reliés partent avec elle. Son en-tête, sa date et
+      ses boutons sont ceux de toute carte de passerelle (`gateway-card-frame.tsx`, que
+      les cartes de Slack et de Telegram reprennent aussi) ;
   - **« Mon compte »**, carte « Messageries reliées » : une ligne pour le bot Teams
-    (`teams-identity-row.tsx`) :
+    (`teams-identity-row.tsx`), de la même forme que celle de Slack, dont le lien vient
+    aussi d'un message (`linked-by-message-row.tsx`) :
     - non reliée, elle dit d'écrire au bot dans Teams, qui répond par un lien à ouvrir
       dans l'application, connecté ; Teams doit donner pour le compte l'adresse du
       compte ;
-    - reliée, elle montre l'adresse que Teams a donnée et la date. Elle dit que l'agent
-      ne répond pas encore dans Teams. La liaison peut être retirée ;
+    - reliée, elle montre l'adresse que Teams a donnée et la date. Tant que le bot est
+      disponible, elle dit que l'agent n'y répond pas encore. La liaison peut être
+      retirée ;
     - une passerelle en pause, ou une personne sans `agent:use`, est dite indisponible ;
       la liaison reste à retirer ;
   - **page du lien** : inchangée ; elle nomme déjà Teams et l'annuaire (ADR-138).
@@ -7876,8 +7880,9 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       « Mon compte », et le bot dit ensuite à Léa que l'agent n'y répond pas encore ;
     - le bot est désactivé : le lien rouvert dit pourquoi il ne relie rien, et la
       liaison est retirée ;
-    - le bot est renommé (application et annuaire non proposés, secret gardé),
-      réactivé, puis supprimé. Le point de terminaison répond alors comme une passerelle
+    - le bot est renommé (application et annuaire non proposés). Avec un nouveau
+      secret refusé par Entra, rien ne change ; le secret laissé vide est gardé. Il est
+      ensuite réactivé, puis supprimé. Le point de terminaison répond alors comme une passerelle
       inconnue ;
   - restent : conversations avec l'agent dans Teams, validations par cartes
     adaptatives, avis au responsable.

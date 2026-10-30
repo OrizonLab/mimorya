@@ -8,7 +8,7 @@
 //! says who the members of their conversations are; the same service
 //! answers under `ailleurs/`, an address no bot may trust (`untrusted_url`).
 //! It writes an activity
-//! as the Bot Framework sends it, with its token (`signing`). A test may
+//! as the Bot Framework sends it (`activity`), with its token (`signing`). A test may
 //! make it unavailable (503), slow to say where its keys are, or change
 //! what it says of a member. For the end-to-end tests (ADR-139), it lists
 //! the messages the bots wrote at `GET /test/messages` and writes, at
@@ -16,6 +16,7 @@
 //! its token (`outside`): whoever reaches the test Microsoft can send the
 //! bots what the Bot Framework would.
 
+mod activity;
 mod outside;
 mod routes;
 mod signing;
@@ -122,7 +123,7 @@ impl FakeTeams {
 
     /// The Teams service its activities name.
     pub fn service_url(&self) -> String {
-        format!("{}/teams/", self.url)
+        activity::service_url(&self.url)
     }
 
     /// A Teams service at an address no bot may trust.
@@ -198,7 +199,7 @@ impl FakeTeams {
     /// The claims of a token the Bot Framework sends the bot `app` with an
     /// activity of its service, valid now.
     pub fn claims(&self, app: &str) -> Value {
-        outside::claims(&self.service_url(), app)
+        activity::claims(&self.service_url(), app)
     }
 
     /// The token the Bot Framework sends the bot `app` with an activity.
@@ -210,7 +211,7 @@ impl FakeTeams {
     /// when the person `aad`, named `name`, writes `text` in their personal
     /// conversation with it, as its activity `id`.
     pub fn message(&self, app: &str, id: &str, person: (&str, &str), text: &str) -> Value {
-        outside::message(&self.service_url(), app, id, person, text)
+        activity::message(&self.service_url(), app, id, person, text)
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Shared> {

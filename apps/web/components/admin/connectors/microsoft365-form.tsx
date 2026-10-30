@@ -9,8 +9,7 @@ import {
   type ConnectorView,
   type NewMicrosoft365Connector,
 } from '@/lib/api';
-
-const GUID = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}';
+import { GUID_PATTERN } from '@/lib/input-patterns';
 
 /**
  * Declares the company's Microsoft 365 application (ADR-116, ADR-118), or
@@ -70,7 +69,7 @@ export function Microsoft365Form({
             <Field label="ID de l’annuaire (locataire)">
               <Input
                 required
-                pattern={GUID}
+                pattern={GUID_PATTERN}
                 placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
                 value={directory}
                 onChange={(e) => setDirectory(e.target.value)}
@@ -79,7 +78,7 @@ export function Microsoft365Form({
             <Field label="ID de l’application (client)">
               <Input
                 required
-                pattern={GUID}
+                pattern={GUID_PATTERN}
                 placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
                 value={clientId}
                 onChange={(e) => setClientId(e.target.value)}

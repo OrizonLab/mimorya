@@ -9,9 +9,8 @@ import {
   type GatewayView,
   type NewTeamsGateway,
 } from '@/lib/api';
+import { GUID_PATTERN } from '@/lib/input-patterns';
 
-/** A Microsoft identifier (GUID), as the server checks them. */
-const GUID = '[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}';
 /** A client secret, as Entra gives them and the server checks them. */
 const CLIENT_SECRET = '[\\x21-\\x7E]{16,256}';
 
@@ -71,7 +70,7 @@ export function TeamsGatewayForm({
               <Input
                 required
                 autoComplete="off"
-                pattern={GUID}
+                pattern={GUID_PATTERN}
                 title="L’identifiant de l’application du bot : un GUID"
                 value={appId}
                 onChange={(e) => setAppId(e.target.value)}
@@ -81,7 +80,7 @@ export function TeamsGatewayForm({
               <Input
                 required
                 autoComplete="off"
-                pattern={GUID}
+                pattern={GUID_PATTERN}
                 title="L’identifiant de l’annuaire de l’entreprise : un GUID"
                 value={directoryId}
                 onChange={(e) => setDirectoryId(e.target.value)}

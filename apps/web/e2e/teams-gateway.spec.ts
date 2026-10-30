@@ -8,14 +8,16 @@
 // is then told the agent is not talked with in Teams yet. Paul sees her
 // account counted and disables the bot; the link, reopened, says why it
 // links nothing; Léa is told so and removes her link; Paul renames the bot
-// (its application and directory shown, never changed, its secret kept),
-// enables it and deletes it, after which the endpoint answers as to an
-// unknown gateway. Each step is read back from the API, each confirmation
-// read. Whatever happens, the bot is deleted with its links. The rules
+// (its application and directory never offered; a new secret Entra refuses
+// changing nothing, a blank one keeping it), enables it and deletes it,
+// after which the endpoint answers as to an unknown gateway. Each step is
+// read back from the API, each confirmation read. Whatever happens, the bot is deleted with its links. The rules
 // themselves are tested on the API (`crates/api/tests/teams_gateway_*.rs`).
+import type { Page } from '@playwright/test';
 import { demo, expect, noError, signIn, test } from './support/fixtures';
 import { cardWith, openAdmin } from './support/admin';
 import { deleteGateways } from './support/slack';
+import type { AccountGateways } from '../lib/api/contract';
 import {
   LEA_TEAMS,
   TEAMS_APP,
@@ -111,10 +113,10 @@ test('a bot is declared, a Teams account linked from its link and removed, the b
   await lea.getByRole('button', { name: 'Relier mon compte Teams' }).click();
   await expect(lea.getByRole('status')).toHaveText(LINKED);
   await noError(lea);
-  const linked = await lea.request.get('/api/account/gateways');
-  expect(linked.status()).toBe(200);
-  const mine = ((await linked.json()) as { gateways: { linked: unknown }[] }).gateways[0];
-  expect(mine?.linked).toMatchObject({ externalId: LEA_TEAMS.aad, address: demo.lea });
+  expect((await identityOn(lea, gateway?.id))?.linked).toMatchObject({
+    externalId: LEA_TEAMS.aad,
+    address: demo.lea,
+  });
   await lea.getByRole('link', { name: 'Mon compte' }).click();
   await expect(row.getByText('Relié', { exact: true })).toBeVisible();
   await expect(
@@ -150,14 +152,12 @@ test('a bot is declared, a Teams account linked from its link and removed, the b
   expect(leaAsked).toEqual([
     `Retirer la liaison de votre compte Teams au bot « ${NAME} » ? Vous pourrez le relier de nouveau depuis le lien que le bot vous enverra.`,
   ]);
-  const unlinked = await lea.request.get('/api/account/gateways');
-  expect(((await unlinked.json()) as { gateways: { linked: unknown }[] }).gateways[0]?.linked).toBe(
-    null,
-  );
+  expect((await identityOn(lea, gateway?.id))?.linked).toBeNull();
   await noError(lea);
 
-  // Paul renames it, its application and directory not offered, its secret
-  // left blank and kept, then enables it.
+  // Paul renames it, its application and directory not offered: with a new
+  // secret Entra refuses, nothing changes; the secret left blank, it is
+  // kept. He then enables it.
   await page.reload();
   await page.getByRole('tab', { name: 'Connecteurs' }).click();
   await card.getByRole('button', { name: 'Modifier', exact: true }).click();
@@ -165,6 +165,11 @@ test('a bot is declared, a Teams account linked from its link and removed, the b
   await expect(edit.getByLabel('ID d’application (Microsoft App ID)')).toHaveCount(0);
   await expect(edit.getByLabel('ID de l’annuaire (locataire Microsoft Entra)')).toHaveCount(0);
   await edit.getByLabel('Nom', { exact: true }).fill(RENAMED);
+  await edit.getByLabel('Secret client').fill(REFUSED_SECRET);
+  await edit.getByRole('button', { name: 'Enregistrer' }).click();
+  await expect(edit.getByRole('alert')).toContainText('Microsoft Entra refuse l’application');
+  expect((await storedTeamsBot(page)).gateway).toMatchObject({ name: NAME, secretsStored: true });
+  await edit.getByLabel('Secret client').fill('');
   await edit.getByRole('button', { name: 'Enregistrer' }).click();
   const renamed = cardWith(page, RENAMED, 'Supprimer');
   await expect(renamed.getByText('0 compte(s) relié(s)', { exact: false })).toBeVisible();
@@ -190,3 +195,10 @@ test('a bot is declared, a Teams account linked from its link and removed, the b
   expect(gone.status()).toBe(404);
   await noError(page);
 });
+
+/** What `person`, signed in, is told of their identity on the gateway `id`. */
+async function identityOn(person: Page, id: string | undefined) {
+  const listed = await person.request.get('/api/account/gateways');
+  expect(listed.status()).toBe(200);
+  return ((await listed.json()) as AccountGateways).gateways.find((g) => g.gatewayId === id);
+}
