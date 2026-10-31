@@ -348,7 +348,9 @@ Avant chaque commit : `pnpm check && pnpm test:int` doivent passer.
 ## Processus de contribution
 
 1. Travailler sur une branche dédiée, en commits cohérents ; ouvrir une PR (brouillon)
-   vers `main`.
+   vers `main`. Une PR qui traite une issue la nomme dans sa description
+   (`Closes #N`, une ligne par issue entièrement traitée ; `#N` seul si elle ne l'est
+   qu'en partie).
 2. **Audit obligatoire avant fusion** : lancer l'agent `code-auditor`
    (`.claude/agents/code-auditor.md`, grille `REVIEW.md`) sur la branche. Il est en
    lecture seule, exécute tous les contrôles et rend un verdict.
@@ -360,6 +362,11 @@ Avant chaque commit : `pnpm check && pnpm test:int` doivent passer.
    `main` à jour pour la suite.
 5. Ne jamais fusionner avec un contrôle rouge ou non exécuté, ni désactiver un test
    pour obtenir le vert.
+6. **Après chaque fusion** : lancer l'agent `issue-steward`
+   (`.claude/agents/issue-steward.md`) en lui donnant la PR fusionnée. Il relit les
+   issues ouvertes et les rapproche de `main`. Il ferme, avec un commentaire qui le
+   prouve, celles qui sont entièrement traitées et testées, et commente celles qui ne
+   le sont qu'en partie. Il ne modifie aucun fichier.
 
 ## Structure du code
 
