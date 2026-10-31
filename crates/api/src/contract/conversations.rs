@@ -169,7 +169,6 @@ pub struct HistorySummary {
     pub summary: String,
     pub through_message_id: Uuid,
     pub folded_messages: i32,
-    pub updated_at: String,
 }
 
 impl From<&SummaryRow> for HistorySummary {
@@ -178,7 +177,6 @@ impl From<&SummaryRow> for HistorySummary {
             summary: s.content.clone(),
             through_message_id: s.through_message_id,
             folded_messages: s.folded_messages,
-            updated_at: iso(&s.updated_at),
         }
     }
 }

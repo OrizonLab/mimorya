@@ -891,7 +891,7 @@ llm: boolean, };
  * ADR-146): their summary, which it rereads instead of them, the last
  * message it covers and how many it covers.
  */
-export type HistorySummary = { summary: string, throughMessageId: string, foldedMessages: number, updatedAt: string, };
+export type HistorySummary = { summary: string, throughMessageId: string, foldedMessages: number, };
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
