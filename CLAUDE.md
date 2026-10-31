@@ -300,7 +300,7 @@ Repères à l'intérieur des crates :
   section « Absence » et son formulaire, commun, ADR-073 —, chat — dont la conversation tenue
   dans Slack, marquée et annoncée par une note, ADR-128, ou dans Telegram, ADR-135, ou dans
   Teams, ADR-140, et le résumé de ses premiers messages, ADR-146 —, documents — dépôt, liste
-  et téléchargement, ADR-097 —, memory, missions —
+  et téléchargement, ADR-097, nouvelle version et fichier glissé-déposé, ADR-151 —, memory, missions —
   missions longues, ADR-090 —, operations — dont les sous-agents d'une demande, ADR-099 —,
   scheduled-tasks — tâches planifiées, ADR-081 —, inbound-hooks — déclencheurs et leur
   jeton montré une fois, ADR-110 —,

@@ -1,6 +1,6 @@
 /** Labelled form controls sharing one input style. */
 import type {
-  InputHTMLAttributes,
+  ComponentProps,
   ReactNode,
   SelectHTMLAttributes,
   TextareaHTMLAttributes,
@@ -32,7 +32,8 @@ export function Field({
   );
 }
 
-export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
+/** A text, file or other input; its `ref` reaches the element (React 19). */
+export function Input({ className, ...props }: ComponentProps<'input'>) {
   return <input {...props} className={cx(CONTROL, className)} />;
 }
 

@@ -8665,3 +8665,53 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     - `crates/db/tests/document_versions.rs` : seule la version courante est remplacée,
       les vecteurs des anciens passages partis avec eux ; le rôle applicatif ne change
       rien d'autre d'un document ni de son fichier.
+
+## ADR-151 — Nouvelle version d'un document et fichier glissé-déposé dans la page « Documents » (documents, lot 4b)
+
+- **Date** : 2026-10-31 · **Statut** : acceptée · complète ADR-097, ADR-150
+- **Contexte** : l'API remplace un document par une nouvelle version de son fichier
+  (ADR-150), mais aucun écran ne le permettait. Le dépôt ne prenait qu'un fichier choisi
+  par le sélecteur du navigateur : un fichier glissé sur la page était ouvert par le
+  navigateur à sa place. ADR-097 laissait ces deux points à faire.
+- **Décision** :
+  - **nouvelle version** : sur chaque document qu'on peut écrire (`canWrite`), un bouton
+    « Nouvelle version de « … » » ouvre au-dessus de la liste un panneau du même nom :
+    - il dit quelle version il remplace, que l'agent ne lira plus que la nouvelle et que
+      l'ancien fichier n'est pas gardé, et que le document garde son espace et sa
+      sensibilité ;
+    - le fichier, choisi ou déposé, part tel quel avec la version que la page montrait
+      (`version`). Si le document a été remplacé entre-temps, le refus de l'API est
+      montré tel quel (« rechargez la liste… ») et rien n'est écrasé ;
+    - un fichier au-delà de la borne de l'API n'est pas envoyé, comme au dépôt ;
+    - une fois remplacé, la page dit la nouvelle version et le nombre de passages, puis
+      recharge la liste. Un seul panneau est ouvert à la fois, fermé par « Annuler » ou
+      par la suppression de son document ;
+  - **version dans la liste** : un document remplacé dit « Version N, remplacée le … »
+    sous la date de son premier dépôt ;
+  - **glisser-déposer** (`FileDrop`) : le champ « Fichier » du dépôt et de la nouvelle
+    version est entouré d'une zone où l'on dépose un fichier :
+    - seul le premier fichier déposé est pris, comme s'il avait été choisi. La zone dit
+      le fichier retenu et, si le navigateur le permet, le champ le montre aussi ;
+    - pendant un envoi, rien de déposé n'est pris ;
+    - le champ reste le moyen d'y arriver au clavier ; la zone n'ajoute rien qu'il ne
+      permette déjà ;
+  - **client** : `api.replace` envoie un fichier en `PUT`, comme `api.upload` en `POST`.
+    `Input` laisse passer `ref` jusqu'à son élément.
+- **Alternatives écartées** :
+  - une fenêtre modale pour la nouvelle version : la page n'en a aucune, et un panneau
+    dans la page suffit, comme pour le dépôt ;
+  - une zone de dépôt couvrant toute la page : on ne saurait pas, en lâchant le fichier,
+    s'il est déposé ou s'il remplace un document ;
+  - recharger le document avant de remplacer, pour éviter le refus : la version vue est
+    justement ce qui empêche d'écraser sans le savoir (ADR-150).
+- **Conséquences** :
+  - un fichier lâché à côté de la zone est ouvert par le navigateur, comme avant ;
+  - tests :
+    - `apps/web/e2e/document-versions.spec.ts` : Julien dépose une note en la glissant
+      sur le formulaire, puis la remplace depuis sa ligne. C'est le même document, qui
+      se télécharge dans sa nouvelle version, et la liste dit sa version après
+      rechargement. Un remplacement fait entre-temps, comme depuis un autre onglet, fait
+      refuser celui de la page avec sa raison. Lucas, qui lit la note, ne peut pas la
+      remplacer ;
+    - `apps/web/e2e/documents.spec.ts` : le dépôt par le sélecteur, les refus et la
+      borne de taille restent couverts.
