@@ -24,8 +24,11 @@ export function ChatView({ conversationId }: { conversationId: string | null }) 
   // Shown after the last message it covers, or first when that one is no
   // longer among the messages loaded (ADR-146).
   const summary = detail?.historySummary ?? null;
-  const summaryShownAbove =
-    summary !== null && detail?.messages.some((m) => m.id === summary.throughMessageId);
+  const covered = summary
+    ? (detail?.messages.findIndex((m) => m.id === summary.throughMessageId) ?? -1)
+    : -1;
+  // How many of the messages it covers are shown above it.
+  const shownAbove = covered >= 0 ? covered + 1 : null;
 
   // What appears at the bottom is brought into view, failures included.
   useEffect(() => {
@@ -68,14 +71,14 @@ export function ChatView({ conversationId }: { conversationId: string | null }) 
             {!conversationId && <Welcome onPick={setInput} />}
             {conversationId && !detail && !chat.error && <Spinner />}
             {detail?.conversation.gateway && <GatewayNote gateway={detail.conversation.gateway} />}
-            {summary && !summaryShownAbove && (
-              <HistorySummaryNote summary={summary} above={false} />
+            {summary && shownAbove === null && (
+              <HistorySummaryNote summary={summary} shown={null} />
             )}
             {detail?.messages.map((m) => (
               <Fragment key={m.id}>
                 <MessageItem message={m} />
                 {summary?.throughMessageId === m.id && (
-                  <HistorySummaryNote summary={summary} above />
+                  <HistorySummaryNote summary={summary} shown={shownAbove} />
                 )}
               </Fragment>
             ))}

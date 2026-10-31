@@ -8409,10 +8409,17 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     messages qu'il couvre, ou rien. Il n'est lu, comme la conversation, que par son
     propriétaire ; une autre personne reçoit 404 ;
   - **la conversation le montre** : une note se place juste après le dernier message
-    couvert (« Les 12 messages ci-dessus sont résumés pour l'assistant… »), ou en tête
-    quand ce message n'est plus parmi ceux affichés (« Les 12 messages les plus anciens
-    de cette conversation… »). Le résumé lui-même s'ouvre à la demande
-    (« Voir le résumé »), en texte simple, tel que l'assistant le relit ;
+    couvert. Une conversation montre ses 200 derniers messages, d'où trois formulations :
+    - tous les messages couverts sont au-dessus : « Les 12 messages ci-dessus sont
+      résumés pour l'assistant… » ;
+    - une partie seulement : « Les 290 premiers messages de cette conversation, jusqu'au
+      message ci-dessus, sont résumés… » ;
+    - aucun : la note vient en tête, « Les 8 premiers messages de cette conversation
+      sont résumés… ».
+
+    Le résumé lui-même s'ouvre à la demande (« Voir le résumé »), en texte simple, tel
+    que l'assistant le relit ;
+
   - **rien ne s'y modifie** : la personne lit le résumé, elle ne l'écrit pas. Le
     corriger reviendrait à donner des consignes à l'assistant par une voie qui n'est
     pas la sienne ; ses messages suivants le peuvent.
@@ -8424,6 +8431,11 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
   - tests : `crates/api/tests/conversation_summaries.rs` (résumé et dernier message
     couvert dans le détail, rien sans résumé, conversation d'un autre refusée sans
     rien en dire) ; `apps/web/e2e/conversation-summary.spec.ts` (note placée entre le
-    dernier message couvert et le premier gardé, résumé montré à la demande), contre une
-    conversation de Marc que le serveur de bout en bout laisse au démarrage, ses
-    premiers messages déjà résumés (`e2e_server/summaries.rs`).
+    dernier message couvert et le premier gardé, résumé montré à la demande ; note en
+    tête quand aucun message couvert n'est montré ; messages couverts comptés quand
+    certains ne le sont plus), contre trois conversations de Marc que le serveur de bout
+    en bout laisse au démarrage, leurs premiers messages déjà résumés, deux de 210
+    messages (`e2e_server/summaries.rs`) ;
+  - un résumé en retard de plus de vingt messages (ADR-145) ne fait pas relire mot pour
+    mot tous les messages placés sous la note : le dire dans la note viendra avec
+    l'enchaînement des passes, à suivre dans la feuille de route.

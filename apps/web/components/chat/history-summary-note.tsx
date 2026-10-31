@@ -5,25 +5,28 @@ import type { HistorySummary } from '@/lib/api';
  * Where a conversation's earlier messages stop being reread word for word
  * (ADR-145, ADR-146): the assistant rereads their summary instead, which its
  * owner may read too. Shown after the last message the summary covers, or
- * first when that message is no longer among those shown.
+ * first when that message is no longer among those shown; in between, it
+ * says when some of the messages it covers are no longer shown above it.
  */
 export function HistorySummaryNote({
   summary,
-  above,
+  shown,
 }: {
   summary: HistorySummary;
-  /** Whether the messages it covers are shown above it. */
-  above: boolean;
+  /** How many of the messages it covers are shown above it; `null` when none. */
+  shown: number | null;
 }) {
   const count = summary.foldedMessages;
-  const messages = count > 1 ? `${count} messages` : 'message';
-  const which = above
-    ? count > 1
-      ? `Les ${messages} ci-dessus sont résumés`
-      : 'Le message ci-dessus est résumé'
-    : count > 1
-      ? `Les ${messages} les plus anciens de cette conversation sont résumés`
-      : 'Le message le plus ancien de cette conversation est résumé';
+  const which =
+    shown === null
+      ? count > 1
+        ? `Les ${count} premiers messages de cette conversation sont résumés`
+        : 'Le premier message de cette conversation est résumé'
+      : shown >= count
+        ? count > 1
+          ? `Les ${count} messages ci-dessus sont résumés`
+          : 'Le message ci-dessus est résumé'
+        : `Les ${count} premiers messages de cette conversation, jusqu’au message ci-dessus, sont résumés`;
   return (
     <div
       role="note"

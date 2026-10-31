@@ -45,7 +45,7 @@
 //! minute, among them one a stop made miss its occurrence (`scheduled`,
 //! ADR-080), and claims the queued runs, among them one it leaves itself
 //! and holds until the browser followed it (`queued`, ADR-085). It also
-//! leaves a long conversation of Marc's whose earlier messages are
+//! leaves long conversations of Marc's whose earlier messages are
 //! summarised (`summaries`, ADR-146).
 
 mod dns_server;
