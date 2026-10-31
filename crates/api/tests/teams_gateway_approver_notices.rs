@@ -121,7 +121,8 @@ async fn the_manager_is_told_in_teams_and_validates_on_its_card() {
     );
     let card = rewritten.card.unwrap();
     assert!(buttons(&card).is_empty(), "{card}");
-    assert!(card_text(&card).contains("Décidée."), "{card}");
+    assert!(card_text(&card).contains("Validée."), "{card}");
+    assert!(!card_text(&card).contains("à valider"), "{card}");
     let decided = listed(&marc, &run).await.expect("the request he decided");
     assert_eq!(decided["status"], "approved");
     assert_eq!(decided["decidedBy"]["id"], json!(user::MARC));

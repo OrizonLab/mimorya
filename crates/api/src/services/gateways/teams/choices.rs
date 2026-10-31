@@ -19,8 +19,9 @@
 //! What became of the press is said in the conversation.
 //! Audited as any decision, with the service, `teams`.
 
+use mimorya_core::gateways::ActionState;
 use mimorya_core::gateways::teams::{
-    CardAction, CardChoice, CardState, PersonalMessage, TeamsApplication, escaped, validation_card,
+    CardAction, CardChoice, PersonalMessage, TeamsApplication, escaped, validation_card,
 };
 use mimorya_core::gateways::{GatewayKind, ShownAction};
 use mimorya_db::repositories::approvals::{ApprovalRow, get_approval};
@@ -143,13 +144,13 @@ async fn rewrite_card(
     card: &GatewayCard,
     concerned: &Concerned,
 ) -> anyhow::Result<()> {
-    let mut written: Option<Vec<CardState>> = None;
+    let mut written: Option<Vec<ActionState>> = None;
     for _ in 0..=card.approval_ids.len() {
         let Some(approvals) = shown_on(services, pressed.tenant_id, card, concerned).await? else {
             return Ok(());
         };
-        let states: Vec<CardState> = (approvals.iter())
-            .map(|a| CardState::of(&a.status))
+        let states: Vec<ActionState> = (approvals.iter())
+            .map(|a| ActionState::of(&a.status))
             .collect();
         if !to_write(&states, written.as_deref()) {
             return Ok(());
@@ -162,8 +163,8 @@ async fn rewrite_card(
 
 /// Whether a card whose actions stand as `states` is to be written (again),
 /// as `written` last, if it was: once one is settled, and not as it was.
-fn to_write(states: &[CardState], written: Option<&[CardState]>) -> bool {
-    states.iter().any(|&state| state != CardState::Open) && written != Some(states)
+fn to_write(states: &[ActionState], written: Option<&[ActionState]>) -> bool {
+    states.iter().any(|&state| state != ActionState::Open) && written != Some(states)
 }
 
 /// The actions `card` shows, as they are now; none when its presser does
@@ -197,10 +198,10 @@ async fn write_card(
     let actions: Vec<CardAction> = (approvals.iter())
         .map(|a| CardAction {
             shown: shown_action(a),
-            state: CardState::of(&a.status),
+            state: ActionState::of(&a.status),
         })
         .collect();
-    let states: Vec<CardState> = actions.iter().map(|a| a.state).collect();
+    let states: Vec<ActionState> = actions.iter().map(|a| a.state).collect();
     let text = match card.conversation_id {
         Some(conversation) => {
             let pause = Pause {
@@ -235,11 +236,11 @@ async fn write_card(
 /// The message's text a card whose actions stand as `states` is written
 /// with: the pause's while one is open; once none is, that none awaits a
 /// decision, promising the answer only if each was validated or refused.
-fn message_text(url: &str, pause: Pause, states: &[CardState]) -> String {
-    if states.contains(&CardState::Open) {
+fn message_text(url: &str, pause: Pause, states: &[ActionState]) -> String {
+    if states.contains(&ActionState::Open) {
         return reply_text("awaiting_approval", None, url, pause);
     }
-    let decided = states.iter().all(|&state| state == CardState::Decided);
+    let decided = states.iter().all(|state| state.is_decided());
     settled_text(url, pause, decided)
 }
 
@@ -280,36 +281,36 @@ mod tests {
 
     #[test]
     fn a_card_is_written_again_until_it_shows_every_settled_action() {
-        use CardState::{Closed, Decided, Open};
+        use ActionState::{Approved, Closed, Open, Rejected};
         // None settled: left as Teams shows it.
         assert!(!to_write(&[Open, Open], None));
         // One settled: written without its buttons.
-        assert!(to_write(&[Decided, Open], None));
+        assert!(to_write(&[Approved, Open], None));
         // Read again as written: done.
-        assert!(!to_write(&[Decided, Open], Some(&[Decided, Open])));
+        assert!(!to_write(&[Approved, Open], Some(&[Approved, Open])));
         // Settled since, its card perhaps written over from an older
         // state: written again.
-        assert!(to_write(&[Decided, Decided], Some(&[Decided, Open])));
-        assert!(to_write(&[Decided, Closed], Some(&[Decided, Open])));
+        assert!(to_write(&[Approved, Rejected], Some(&[Approved, Open])));
+        assert!(to_write(&[Approved, Closed], Some(&[Approved, Open])));
     }
 
     #[test]
     fn a_card_s_text_promises_the_answer_only_once_each_action_is_decided() {
-        use CardState::{Closed, Decided, Open};
+        use ActionState::{Approved, Closed, Open, Rejected};
         const URL: &str = "https://app.example/chat/42";
         let pause = Pause {
             shown: 2,
             ..Pause::default()
         };
-        let waiting = message_text(URL, pause, &[Decided, Open]);
+        let waiting = message_text(URL, pause, &[Rejected, Open]);
         assert!(
             waiting.starts_with("Des actions de cette demande attendent votre validation"),
             "{waiting}"
         );
-        let decided = message_text(URL, pause, &[Decided, Decided]);
+        let decided = message_text(URL, pause, &[Approved, Rejected]);
         assert!(decided.contains("sont décidées"), "{decided}");
         assert!(decided.ends_with("La suite viendra ici\\."), "{decided}");
-        let closed = message_text(URL, pause, &[Decided, Closed]);
+        let closed = message_text(URL, pause, &[Approved, Closed]);
         assert!(closed.contains("n’attendent plus de décision"), "{closed}");
         assert!(!closed.contains("La suite"), "{closed}");
     }

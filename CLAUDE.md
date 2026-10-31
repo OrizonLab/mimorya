@@ -61,7 +61,7 @@ Repères à l'intérieur des crates :
   bouton pressé (`buttons.rs`, `press.rs`), ADR-136, actions montrées sous un message,
   autant qu'il en tient (`shown.rs`), ADR-136, ADR-137 ; motifs Markdown lus par chaque
   service et texte trop long coupé, `markdown.rs` ; actions validées hors de
-  l'application, `validation.rs`, ADR-129, ADR-136 ; bot Teams : déclaration, jeton du
+  l'application et où en est chacune, `validation.rs`, ADR-129, ADR-136, ADR-147 ; bot Teams : déclaration, jeton du
   Bot Framework vérifié (`token.rs`), activité lue, services Teams de Microsoft, preuve
   d'une personne, texte en Markdown, `teams/`, ADR-138 ; réponse de l'agent écrite dans
   le Markdown de Teams, `teams/markdown.rs`, ADR-140 ; carte des actions à valider, en

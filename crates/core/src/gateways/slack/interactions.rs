@@ -8,7 +8,8 @@
 //! (`validated_in_gateway`); any other, in the application. Only the
 //! application's buttons are read: their approval, the person who pressed,
 //! where the message is. The message, once an action is decided, shows what
-//! became of each of its actions in place of their buttons.
+//! became of each of its actions in place of their buttons, no longer as
+//! one to validate (ADR-147).
 
 use regex::Regex;
 use serde_json::{Value, json};
@@ -18,7 +19,9 @@ use uuid::Uuid;
 use super::events::{is_person, is_workspace};
 use super::mrkdwn::escaped;
 use crate::gateways::bounded;
-use crate::gateways::validation::{MAX_ACTION_CHARS, ShownAction, exact_parameters, risk_label};
+use crate::gateways::validation::{
+    ActionState, MAX_ACTION_CHARS, ShownAction, exact_parameters, risk_label,
+};
 
 /// The buttons, as the application names them.
 pub const APPROVE_ACTION: &str = "approval_approve";
@@ -110,10 +113,10 @@ pub fn approval_blocks(intro: &str, actions: &[ShownAction]) -> Vec<Value> {
     let mut blocks = vec![section(intro)];
     for action in actions {
         let (summary, _) = bounded(action.summary.trim(), MAX_ACTION_CHARS);
-        blocks.push(section(&format!(
-            "*Action à valider :* {}\n*Risque :* {}. Paramètres exacts qui seront exécutés :",
-            escaped(&summary),
-            risk_label(action.risk)
+        blocks.push(section(&description(
+            ActionState::Open,
+            &escaped(&summary),
+            risk_label(action.risk),
         )));
         blocks.push(json!({
             "type": "rich_text",
@@ -144,24 +147,51 @@ pub fn buttons_in(blocks: &[Value]) -> Vec<Uuid> {
 }
 
 /// `blocks` with the buttons of each action of `outcomes` replaced by what
-/// became of it (in Slack's markup); the others left as they are.
+/// became of it (in Slack's markup), its description no longer one to
+/// validate; the others left as they are.
 pub fn decided_blocks(blocks: &[Value], outcomes: &[(Uuid, String)]) -> Vec<Value> {
-    (blocks.iter())
-        .map(|block| {
-            let named = block.get("block_id").and_then(Value::as_str);
-            let outcome = outcomes
-                .iter()
-                .find(|(id, _)| named == Some(format!("{BLOCK_PREFIX}{id}").as_str()));
-            match outcome {
-                Some((id, text)) => json!({
-                    "type": "context",
-                    "block_id": format!("{BLOCK_PREFIX}{id}"),
-                    "elements": [{ "type": "mrkdwn", "text": text }],
-                }),
-                None => block.clone(),
-            }
-        })
-        .collect()
+    let mut decided = blocks.to_vec();
+    for (i, block) in blocks.iter().enumerate() {
+        let named = block.get("block_id").and_then(Value::as_str);
+        let Some((id, text)) = outcomes
+            .iter()
+            .find(|(id, _)| named == Some(format!("{BLOCK_PREFIX}{id}").as_str()))
+        else {
+            continue;
+        };
+        decided[i] = json!({
+            "type": "context",
+            "block_id": format!("{BLOCK_PREFIX}{id}"),
+            "elements": [{ "type": "mrkdwn", "text": text }],
+        });
+        // Its description, two blocks above, before its exact parameters.
+        if let Some(settled) = i.checked_sub(2).and_then(|d| settled(&blocks[d])) {
+            decided[i - 2] = settled;
+        }
+    }
+    decided
+}
+
+/// An action's description: its heading and `summary`, its risk, and what
+/// its exact parameters below are, as `state` has them said.
+fn description(state: ActionState, summary: &str, risk: &str) -> String {
+    format!(
+        "*{}* {summary}\n*Risque :* {risk}. {}",
+        state.heading(""),
+        state.parameters_heading()
+    )
+}
+
+/// `block`, the description of an action to validate, as one settled;
+/// `None` for any other block.
+fn settled(block: &Value) -> Option<Value> {
+    let open = ActionState::Open;
+    let text = block.get("text")?.get("text")?.as_str()?;
+    let text = text.strip_prefix(&format!("*{}* ", open.heading("")))?;
+    let text = text.strip_suffix(open.parameters_heading())?;
+    let (summary, risk) = text.rsplit_once("\n*Risque :* ")?;
+    let risk = risk.strip_suffix(". ")?;
+    Some(section(&description(ActionState::Closed, summary, risk)))
 }
 
 fn section(text: &str) -> Value {
@@ -295,11 +325,22 @@ mod tests {
         assert_eq!(decided[3]["type"], "context");
         assert_eq!(decided[3]["elements"][0]["text"], "Validée");
         assert_eq!(decided[6]["type"], "actions");
+        // Settled, no longer one to validate; the other still is.
+        let text =
+            |blocks: &[Value], i: usize| blocks[i]["text"]["text"].as_str().unwrap().to_owned();
+        assert_eq!(
+            text(&decided, 1),
+            "*Action :* Appliquer\n*Risque :* Modification. Paramètres exacts :"
+        );
+        assert!(text(&decided, 4).starts_with("*Action à valider :* Autre"));
+        assert!(text(&decided, 4).ends_with("Paramètres exacts qui seront exécutés :"));
         let both = decided_blocks(
             &decided,
             &[(id(), "Validée".into()), (other, "Refusée".into())],
         );
         assert_eq!(both[6]["elements"][0]["text"], "Refusée");
+        assert_eq!(text(&both, 1), text(&decided, 1), "settled once");
+        assert!(text(&both, 4).starts_with("*Action :* Autre"));
         assert_eq!(buttons_in(&both), [id(), other], "named alike once decided");
     }
 }

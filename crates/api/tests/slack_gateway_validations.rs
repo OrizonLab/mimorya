@@ -92,6 +92,10 @@ async fn an_action_awaiting_its_author_is_validated_with_its_button() {
         "{blocks}"
     );
     assert!(!blocks.contains("approval_approve"), "{blocks}");
+    // No longer one to validate (ADR-147).
+    assert!(blocks.contains("*Action :* "), "{blocks}");
+    assert!(!blocks.contains("Action à valider"), "{blocks}");
+    assert!(!blocks.contains("qui seront exécutés"), "{blocks}");
     // The run went on: its end follows in the thread.
     assert_eq!(answer(&api).await, 1);
     let said = in_thread(&slack, ASKED_IN);

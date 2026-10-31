@@ -21,7 +21,7 @@ mod validation;
 pub use command::{HELP, NEW_CONVERSATION, command, new_conversation};
 pub use markdown::bounded;
 pub use validation::{
-    MAX_ACTION_CHARS, MAX_PARAMETERS_CHARS, ShownAction, exact_parameters, risk_label,
+    ActionState, MAX_ACTION_CHARS, MAX_PARAMETERS_CHARS, ShownAction, exact_parameters, risk_label,
     validated_in_gateway,
 };
 

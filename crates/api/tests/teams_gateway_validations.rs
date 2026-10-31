@@ -88,7 +88,12 @@ async fn an_action_awaiting_its_author_is_validated_on_its_card() {
     assert_eq!(rewritten.rewritten, 1);
     let card = rewritten.card.unwrap();
     assert!(buttons(&card).is_empty(), "{card}");
-    assert!(card_text(&card).contains("Décidée."), "{card}");
+    // Validated, and no longer one to validate (ADR-147).
+    let shown = card_text(&card);
+    assert!(shown.contains("Validée."), "{shown}");
+    assert!(shown.contains("Action : "), "{shown}");
+    assert!(!shown.contains("à valider"), "{shown}");
+    assert!(!shown.contains("qui seront exécutés"), "{shown}");
     assert_eq!(listed(&marc, &run).await.unwrap()["status"], "approved");
     let audited = entries_since(&api, since).await;
     assert!(audited.contains("approval.approved"), "{audited}");
@@ -214,7 +219,11 @@ async fn an_expired_action_s_card_says_it_awaits_nothing_more() {
     assert!(buttons(&card).is_empty(), "{card}");
     let shown = card_text(&card);
     assert!(shown.contains("N’attend plus de décision."), "{shown}");
-    assert!(!shown.contains("Décidée."), "{shown}");
+    assert!(
+        !shown.contains("Validée.") && !shown.contains("Refusée."),
+        "{shown}"
+    );
+    assert!(!shown.contains("à valider"), "{shown}");
 }
 
 #[tokio::test]
