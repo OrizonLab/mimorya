@@ -1,9 +1,11 @@
 //! The agent run: loop, tool calls, verification, budgets, the ports it
-//! uses to persist and report its progress, and the lesson drawn from it.
+//! uses to persist and report its progress, the lesson drawn from it and the
+//! summary of its conversation's older messages.
 
 pub mod answer_review;
 pub mod budget;
 pub mod context;
+pub mod conversation_summary;
 pub mod delegation;
 mod document_store;
 mod handoff;
@@ -22,6 +24,9 @@ pub mod verification;
 
 pub use budget::{BudgetLimits, DEFAULT_BUDGET, MISSION_STAGE_BUDGET, check_budget, share_left};
 pub use context::{UserProfileContext, build_system_prompt, build_user_turn, french_date};
+pub use conversation_summary::{
+    FoldedMessage, SummaryAnswer, summarise_conversation, summary_message,
+};
 pub use delegation::{
     MAX_PER_TURN, SUB_AGENT_BUDGET, SubAgentProfile, SubRun, SubRunRequest, SubRunStore,
 };

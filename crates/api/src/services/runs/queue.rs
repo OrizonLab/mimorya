@@ -19,10 +19,10 @@ use tokio::sync::watch;
 use uuid::Uuid;
 
 use super::approval_decision::resume_decisions;
-use super::conversation_turn::queued_turn_history;
 use super::db_ports::RunScope;
 use super::events::append_in;
 use super::executor::ExecutionMode;
+use super::history::queued_turn_history;
 use super::run_access::stopped_by;
 use super::service::RunService;
 use crate::services::event_bus::BusEvent;

@@ -9,9 +9,7 @@
 use std::sync::Arc;
 
 use mimorya_agent::llm::PriceTable;
-use mimorya_agent::runtime::{
-    LessonAnswer, MAX_KNOWN_LESSONS, RunOutcome, lesson_transcript, propose_lesson,
-};
+use mimorya_agent::runtime::{MAX_KNOWN_LESSONS, RunOutcome, lesson_transcript, propose_lesson};
 use mimorya_core::authz::Sensitivity;
 use mimorya_core::memory::{MemoryKind, MemoryScope, MemorySource, MemoryStatus};
 use mimorya_db::Database;
@@ -20,9 +18,9 @@ use mimorya_db::repositories::memory::{NewMemory, create_memory};
 use mimorya_db::repositories::memory_settings::{
     captures_lessons, personal_lesson_titled, personal_lesson_titles,
 };
-use mimorya_db::repositories::usage::{NewUsage, append_usage};
 use uuid::Uuid;
 
+use super::background_usage::{BackgroundCall, record_background_usage};
 use super::db_ports::RunScope;
 use crate::services::background::BackgroundTasks;
 use crate::services::llm::LlmService;
@@ -77,7 +75,12 @@ impl LessonCapture {
         };
         let answer = propose_lesson(provider.as_ref(), transcript, &known).await?;
         // Counted on its own: what the call cost stays, whatever follows.
-        self.record_usage(scope, &answer).await?;
+        let call = BackgroundCall {
+            provider: &answer.provider,
+            model: &answer.model,
+            usage: &answer.usage,
+        };
+        record_background_usage(&self.db, &self.prices, scope, call).await?;
         let Some(lesson) = answer.lesson else {
             return Ok(None);
         };
@@ -117,28 +120,5 @@ impl LessonCapture {
         // Indexed by meaning once approved, like any proposal.
         tx.commit().await?;
         Ok(Some(id))
-    }
-
-    async fn record_usage(&self, scope: RunScope, answer: &LessonAnswer) -> anyhow::Result<()> {
-        let usage = &answer.usage;
-        let mut tx = self.db.begin(scope.tenant_id).await?;
-        append_usage(
-            &mut tx,
-            NewUsage {
-                tenant_id: scope.tenant_id,
-                user_id: Some(scope.user_id),
-                run_id: Some(scope.run_id),
-                kind: "llm",
-                provider: answer.provider.clone(),
-                model: answer.model.clone(),
-                // Counted as runs count them: cached tokens are input too.
-                input_tokens: i32::try_from(usage.input_total()).unwrap_or(i32::MAX),
-                output_tokens: i32::try_from(usage.output_tokens).unwrap_or(i32::MAX),
-                cost_micros: self.prices.cost_micros(&answer.model, usage).unwrap_or(0),
-            },
-        )
-        .await?;
-        tx.commit().await?;
-        Ok(())
     }
 }

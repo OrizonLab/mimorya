@@ -13,6 +13,7 @@ pub mod audit;
 pub mod auth;
 pub mod author_notices;
 pub mod connectors;
+pub mod conversation_summaries;
 pub mod conversations;
 pub mod deliverables;
 pub mod document_embeddings;

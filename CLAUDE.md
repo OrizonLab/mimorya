@@ -42,6 +42,8 @@ Repères à l'intérieur des crates :
   chaque type, domaines, ce que prouve un jeton ou une assertion SAML, nom d'un compte
   créé, enregistrement DNS qui prouve un domaine (`domain_proof.rs`), ADR-063, ADR-067,
   ADR-068, ADR-069), `core/src/schedule.rs` (heure d'une tâche planifiée, ADR-080),
+  `core/src/conversation_summary.rs` (messages d'une conversation repliés dans son
+  résumé, et quand, ADR-145),
   `core/src/knowledge_shares/` (connaissances d'une unité partagées avec une autre :
   unités lues par chacun et sensibilité, ce qu'un partage peut dire, `rules.rs`,
   ADR-143),
@@ -65,7 +67,8 @@ Repères à l'intérieur des crates :
   le Markdown de Teams, `teams/markdown.rs`, ADR-140 ; carte des actions à valider, en
   texte simple, et bouton pressé lu, `teams/card.rs`, ADR-141).
 - `db/migrations/` (SQL numéroté, source de vérité du schéma),
-  `db/src/repositories/` (un fichier par entité ; la mémoire : `memory.rs`, recherche
+  `db/src/repositories/` (un fichier par entité ; résumé d'une conversation et messages
+  qu'il ne couvre pas : `conversation_summaries.rs`, ADR-145 ; la mémoire : `memory.rs`, recherche
   hybride `memory_search.rs`, vecteurs `memory_embeddings.rs`, ADR-074 ; fenêtres des
   limites d'authentification partagées : `rate_limits.rs`, ADR-088 ; avis à l'auteur
   d'une tâche planifiée ou d'une mission dont le run attend sa validation :
@@ -96,7 +99,8 @@ Repères à l'intérieur des crates :
 - `agent/src/llm/<fournisseur>/`, `agent/src/llm/embedding/` (modèles d'embeddings de la
   mémoire sémantique, ADR-074), `agent/src/runtime/` (boucle, appels modèle, appels
   d'outils, revue de réponse, reprise après un arrêt du service, leçon tirée d'un run
-  (`lesson.rs`, ADR-076), point d'étape d'une mission dont le budget est atteint
+  (`lesson.rs`, ADR-076), résumé des messages anciens d'une conversation
+  (`conversation_summary.rs`, ADR-145), point d'étape d'une mission dont le budget est atteint
   (`handoff.rs`, ADR-089), ports, dont les documents lus par un run
   (`document_store.rs`, ADR-096), sous-agents : profils, consignes, run enfant et
   sa part du budget (`delegation/`), délégations d'une étape en parallèle
@@ -220,7 +224,9 @@ Repères à l'intérieur des crates :
   `mimorya-extract`, `api/src/bin/extract.rs`, bornée en nombre, en temps et en taille,
   `extractor.rs` ; dépôt sous le quota de l'entreprise, `deposit.rs` ; liste,
   téléchargement et suppression, `library.rs`, ADR-095),
-  `api/src/services/runs/` (tour de conversation, dont celui envoyé pour quelqu'un dans une
+  `api/src/services/runs/` (historique remis à un run, résumé puis derniers messages
+  (`history.rs`), et résumé tenu à la fin d'un run (`summaries.rs`), ADR-145 ; coût des appels
+  faits seuls après un run, leçon ou résumé, compté dans ce run (`background_usage.rs`) ; tour de conversation, dont celui envoyé pour quelqu'un dans une
   conversation nouvelle, ouverte avec lui (`turn_start.rs`, ADR-109), ou tenue dans le fil
   Slack qu'il ouvre, ADR-127, décisions, contexte, exécution,
   ports PostgreSQL (lectures de la mémoire et des documents, partagées avec les

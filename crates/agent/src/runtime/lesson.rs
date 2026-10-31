@@ -7,7 +7,7 @@
 
 use std::sync::LazyLock;
 
-use mimorya_core::plain_text::without_hidden;
+use mimorya_core::plain_text::{capped, without_hidden};
 use regex::Regex;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -61,16 +61,6 @@ struct Submitted {
     titre: Option<String>,
     #[serde(default)]
     contenu: Option<String>,
-}
-
-fn capped(text: &str, max: usize) -> String {
-    let mut chars = text.chars();
-    let head: String = chars.by_ref().take(max).collect();
-    if chars.next().is_some() {
-        format!("{head} […]")
-    } else {
-        head
-    }
 }
 
 /// The run as the model rereads it, from the request that started it: `None`

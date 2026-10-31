@@ -1,5 +1,6 @@
 //! Opening a conversation turn: the user message, the run that will answer it
-//! and the history replayed to the model, recorded in one transaction.
+//! and the history replayed to the model (`history.rs`), recorded in one
+//! transaction.
 
 use mimorya_agent::llm::LlmMessage;
 use mimorya_agent::runtime::DEFAULT_BUDGET;
@@ -12,8 +13,8 @@ use mimorya_core::gateways::GatewayKind;
 use mimorya_db::TenantTx;
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::conversations::{
-    ConversationPatch, DEFAULT_CONVERSATION_TITLE, MessageRow, NewMessage, add_message,
-    list_messages, lock_conversation, update_conversation,
+    ConversationPatch, DEFAULT_CONVERSATION_TITLE, NewMessage, add_message, lock_conversation,
+    update_conversation,
 };
 use mimorya_db::repositories::gateway_threads::touch_gateway_thread;
 use mimorya_db::repositories::runs::{
@@ -23,10 +24,10 @@ use mimorya_db::repositories::scheduled_tasks::link_started_run;
 use serde_json::json;
 use uuid::Uuid;
 
+use super::history::conversation_history;
 use crate::contract::MessageMetadata;
 use crate::services::access::{AccessContext, AuthIdentity};
 
-const HISTORY_LIMIT: i64 = 20;
 /// How much of a person's first words titles their conversation.
 pub const TITLE_LENGTH: usize = 80;
 /// A turn sent while the conversation's request is still in progress.
@@ -83,7 +84,7 @@ pub async fn open_conversation_turn(
         return Err(DomainError::conflict(BUSY).into());
     }
 
-    let previous = list_messages(tx, conversation_id, HISTORY_LIMIT).await?;
+    let history = conversation_history(tx, conversation_id).await?;
     let user_message = add_message(
         tx,
         NewMessage {
@@ -194,7 +195,7 @@ pub async fn open_conversation_turn(
     .await?;
     Ok(OpenedTurn {
         run,
-        history: to_history(previous),
+        history,
         user_message_id: user_message.id,
     })
 }
@@ -208,39 +209,4 @@ pub fn tenant_autonomy_level(access: &AccessContext) -> AutonomyLevel {
         .and_then(|v| v.as_str())
         .and_then(AutonomyLevel::parse)
         .unwrap_or(AutonomyLevel::ExecuteWithApproval)
-}
-
-/// What a queued turn's run is first given (ADR-085): its conversation's
-/// earlier messages, as the turn that queued it read them, and its request,
-/// named on the run. `None` when the request is no longer there.
-pub async fn queued_turn_history(
-    tx: &mut TenantTx,
-    run: &RunRow,
-) -> anyhow::Result<Option<(Vec<LlmMessage>, String)>> {
-    let (Some(conversation_id), Some(request_id)) = (run.conversation_id, run.request_message_id)
-    else {
-        return Ok(None);
-    };
-    // The turn read the conversation's last messages, then added its
-    // request: nothing else is added until its run runs.
-    let mut messages = list_messages(tx, conversation_id, HISTORY_LIMIT + 1).await?;
-    let Some(at) = messages.iter().position(|m| m.id == request_id) else {
-        return Ok(None);
-    };
-    let request = messages.remove(at);
-    Ok(Some((to_history(messages), request.content)))
-}
-
-/// Stored messages replayed as plain text turns (tool exchanges stay in the run).
-fn to_history(rows: Vec<MessageRow>) -> Vec<LlmMessage> {
-    rows.into_iter()
-        .filter(|m| !m.content.trim().is_empty())
-        .map(|m| {
-            if m.role == "user" {
-                LlmMessage::user(m.content)
-            } else {
-                LlmMessage::assistant(m.content)
-            }
-        })
-        .collect()
 }

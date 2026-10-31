@@ -39,7 +39,7 @@ pub struct MessageRow {
     pub created_at: DateTime<Utc>,
 }
 
-const MESSAGE_COLUMNS: &str =
+pub(crate) const MESSAGE_COLUMNS: &str =
     "id, tenant_id, conversation_id, role, author_user_id, content, run_id, metadata, created_at";
 
 pub async fn list_conversations(

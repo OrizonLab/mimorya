@@ -55,6 +55,7 @@ pub mod slack_companies;
 pub mod slack_conversations;
 pub mod slack_validations;
 pub mod sso;
+pub mod summaries;
 pub mod sweeps;
 pub mod teams;
 pub mod teams_conversations;
