@@ -62,6 +62,7 @@ pub mod teams_conversations;
 pub mod teams_validations;
 pub mod telegram;
 pub mod telegram_conversations;
+pub mod telegram_validations;
 
 pub use client::{Client, TestResponse};
 use fixtures::urls;

@@ -19,12 +19,11 @@
 //! What became of the press is said in the conversation.
 //! Audited as any decision, with the service, `teams`.
 
-use mimorya_core::gateways::ActionState;
 use mimorya_core::gateways::teams::{
     CardAction, CardChoice, PersonalMessage, TeamsApplication, escaped, validation_card,
 };
-use mimorya_core::gateways::{GatewayKind, ShownAction};
-use mimorya_db::repositories::approvals::{ApprovalRow, get_approval};
+use mimorya_core::gateways::{ActionState, GatewayKind, to_write_again};
+use mimorya_db::repositories::approvals::ApprovalRow;
 use mimorya_db::repositories::gateway_cards::{GatewayCard, find_gateway_card};
 use mimorya_db::repositories::gateway_identities::linked_account;
 use uuid::Uuid;
@@ -33,7 +32,7 @@ use super::approver_text::rewritten_notice;
 use super::reply_text::{Pause, reply_text, settled_text};
 use super::texts;
 use crate::app::Services;
-use crate::services::gateways::concerned::{Concerned, NOT_DECIDED, decide_as};
+use crate::services::gateways::concerned::{Concerned, NOT_DECIDED, decide_as, shown_action};
 use crate::services::gateways::person::{Act, may_act};
 
 /// What the press of a button the bot did not show there is told.
@@ -56,16 +55,6 @@ impl std::fmt::Debug for TeamsChoice {
             .field("gateway_id", &self.gateway_id)
             .field("approval", &self.choice.approval_id)
             .finish_non_exhaustive()
-    }
-}
-
-/// An action awaiting validation, as a card shows it.
-pub(in crate::services::gateways) fn shown_action(approval: &ApprovalRow) -> ShownAction<'_> {
-    ShownAction {
-        approval_id: approval.id,
-        summary: &approval.action_summary,
-        risk: &approval.risk,
-        parameters: &approval.payload,
     }
 }
 
@@ -144,47 +133,22 @@ async fn rewrite_card(
     card: &GatewayCard,
     concerned: &Concerned,
 ) -> anyhow::Result<()> {
+    let (tenant_id, ids) = (pressed.tenant_id, card.approval_ids.as_slice());
     let mut written: Option<Vec<ActionState>> = None;
-    for _ in 0..=card.approval_ids.len() {
-        let Some(approvals) = shown_on(services, pressed.tenant_id, card, concerned).await? else {
+    for _ in 0..=ids.len() {
+        let Some(approvals) = concerned.shown_now(services, tenant_id, ids).await? else {
             return Ok(());
         };
         let states: Vec<ActionState> = (approvals.iter())
             .map(|a| ActionState::of(&a.status))
             .collect();
-        if !to_write(&states, written.as_deref()) {
+        if !to_write_again(&states, written.as_deref()) {
             return Ok(());
         }
         write_card(services, pressed, card, &approvals).await?;
         written = Some(states);
     }
     Ok(())
-}
-
-/// Whether a card whose actions stand as `states` is to be written (again),
-/// as `written` last, if it was: once one is settled, and not as it was.
-fn to_write(states: &[ActionState], written: Option<&[ActionState]>) -> bool {
-    states.iter().any(|&state| state != ActionState::Open) && written != Some(states)
-}
-
-/// The actions `card` shows, as they are now; none when its presser does
-/// not see one of them.
-async fn shown_on(
-    services: &Services,
-    tenant_id: Uuid,
-    card: &GatewayCard,
-    concerned: &Concerned,
-) -> anyhow::Result<Option<Vec<ApprovalRow>>> {
-    let mut approvals = Vec::new();
-    let mut tx = services.db.begin(tenant_id).await?;
-    for id in &card.approval_ids {
-        match get_approval(&mut tx, *id).await? {
-            Some(approval) if concerned.sees(&approval) => approvals.push(approval),
-            _ => return Ok(None),
-        }
-    }
-    tx.commit().await?;
-    Ok(Some(approvals))
 }
 
 /// Writes `card` again in place, its `approvals` as they are now: once none
@@ -277,21 +241,6 @@ mod tests {
             "Refusée par vous dans Teams. La demande reprend."
         );
         assert_eq!(outcome(true, false, true), "Validée par vous dans Teams.");
-    }
-
-    #[test]
-    fn a_card_is_written_again_until_it_shows_every_settled_action() {
-        use ActionState::{Approved, Closed, Open, Rejected};
-        // None settled: left as Teams shows it.
-        assert!(!to_write(&[Open, Open], None));
-        // One settled: written without its buttons.
-        assert!(to_write(&[Approved, Open], None));
-        // Read again as written: done.
-        assert!(!to_write(&[Approved, Open], Some(&[Approved, Open])));
-        // Settled since, its card perhaps written over from an older
-        // state: written again.
-        assert!(to_write(&[Approved, Rejected], Some(&[Approved, Open])));
-        assert!(to_write(&[Approved, Closed], Some(&[Approved, Open])));
     }
 
     #[test]

@@ -70,10 +70,16 @@ pub fn last_said(telegram: &FakeTelegram, person: i64) -> TelegramMessage {
     chat_of(telegram, person).pop().expect("a message")
 }
 
+/// The message numbered `number`, as it stands.
+pub fn message_numbered(telegram: &FakeTelegram, number: i64) -> TelegramMessage {
+    telegram.messages()[usize::try_from(number - 1).unwrap()].clone()
+}
+
 /// The keyboard under the message numbered `number`, as it stands.
 pub fn keyboard_of(telegram: &FakeTelegram, number: i64) -> Value {
-    let message = &telegram.messages()[usize::try_from(number - 1).unwrap()];
-    message.keyboard.clone().unwrap_or(Value::Null)
+    message_numbered(telegram, number)
+        .keyboard
+        .unwrap_or(Value::Null)
 }
 
 /// The number of the latest message the bot wrote.

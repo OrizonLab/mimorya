@@ -183,6 +183,29 @@ impl TelegramApi {
             .map(drop)
     }
 
+    /// Writes again the message `message_id` of the private chat `chat`:
+    /// `text` (in Telegram's HTML when `html`), with `keyboard`'s buttons
+    /// under it in place of its own (`editMessageText`, ADR-148).
+    pub async fn edit_message(
+        &self,
+        token: &str,
+        (chat, message_id): (i64, i64),
+        (text, html): (&str, bool),
+        keyboard: &Value,
+    ) -> Result<(), TelegramFailure> {
+        let mut body = json!({
+            "chat_id": chat,
+            "message_id": message_id,
+            "text": text,
+            "link_preview_options": { "is_disabled": true },
+            "reply_markup": keyboard,
+        });
+        if html {
+            body["parse_mode"] = json!("HTML");
+        }
+        self.call(token, "editMessageText", &body).await.map(drop)
+    }
+
     async fn send_message(&self, token: &str, body: &Value) -> Result<i64, TelegramFailure> {
         let result = self.call(token, "sendMessage", body).await?;
         (result.get("message_id").and_then(Value::as_i64)).ok_or(TelegramFailure::Unreadable)

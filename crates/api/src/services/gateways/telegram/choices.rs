@@ -11,25 +11,24 @@
 //! their decision (their own, or a manager's they are or stand in for),
 //! that may be validated outside the application (`validated_in_gateway`),
 //! is decided there: any other is left to the application. The press is
-//! answered with what became of it; the buttons of the message's actions
-//! decided by then (now, or meanwhile in the application) are taken off,
-//! and the outcome said in answer to it. Audited as any decision, with the
-//! service it was given from, as in Slack (`concerned::decide_as`).
+//! answered with what became of it; the message is written again, its
+//! actions decided by then (now, or meanwhile in the application) without
+//! their buttons and said as settled (`rewrite`, ADR-148), and the outcome
+//! said in answer to it. Audited as any decision, with the service it was
+//! given from, as in Slack (`concerned::decide_as`).
 
 use mimorya_core::gateways::GatewayKind;
-use mimorya_core::gateways::telegram::{
-    ApprovalChoice, ButtonPress, approval_choice, buttons_in, without_decided,
-};
-use mimorya_db::repositories::approvals::get_approval;
+use mimorya_core::gateways::telegram::{ApprovalChoice, ButtonPress, approval_choice};
 use mimorya_db::repositories::gateway_identities::linked_account;
 use mimorya_db::repositories::gateways::GatewayRow;
 use uuid::Uuid;
 
+use super::rewrite::write_again;
 use super::texts;
 use super::updates::UpdateOutcome;
 use crate::app::Services;
 use crate::services::gateways::GatewayService;
-use crate::services::gateways::concerned::{Concerned, NOT_DECIDED, decide_as};
+use crate::services::gateways::concerned::{NOT_DECIDED, decide_as};
 use crate::services::gateways::person::{Act, may_act};
 
 /// What the press of a button the bot did not show there is answered.
@@ -164,50 +163,16 @@ async fn decide(services: &Services, pressed: &TelegramChoice) -> anyhow::Result
     let choice = (pressed.choice.approval_id, pressed.choice.approved);
     let (concerned, decided) = decide_as(services, identity, choice, GatewayKind::Telegram).await?;
     // Decided now, or meanwhile (in the application, or expired): its
-    // buttons are taken off, a failure to do so being no reason to say
+    // message is written again, a failure to do so being no reason to say
     // otherwise.
-    if let Err(error) = take_off_decided(services, pressed, &concerned).await {
+    if let Err(error) = write_again(services, pressed, &concerned).await {
         let error = format!("{error:#}");
-        tracing::warn!(%gateway_id, %error, "Telegram buttons not taken off");
+        tracing::warn!(%gateway_id, %error, "Telegram message not written again");
     }
     Ok(match decided {
         Ok(decided) => outcome(pressed.choice.approved, decided.resumed, decided.own),
         Err(refusal) => Told::nothing(refusal),
     })
-}
-
-/// Takes off the message the buttons of its actions decided by now: the
-/// one just decided, and any other decided meanwhile; the others stay. A
-/// message none of whose actions is decided is left as it is.
-async fn take_off_decided(
-    services: &Services,
-    pressed: &TelegramChoice,
-    concerned: &Concerned,
-) -> anyhow::Result<()> {
-    let press = &pressed.press;
-    let mut decided = Vec::new();
-    let mut tx = services.db.begin(pressed.tenant_id).await?;
-    for id in buttons_in(&press.keyboard) {
-        let approval = get_approval(&mut tx, id).await?;
-        if approval.is_some_and(|a| concerned.sees(&a) && a.status != "pending") {
-            decided.push(id);
-        }
-    }
-    tx.commit().await?;
-    if decided.is_empty() {
-        return Ok(());
-    }
-    let keyboard = without_decided(&press.keyboard, &decided);
-    let telegram = services.gateways.telegram();
-    let (chat, message) = (press.person.id, press.message_id);
-    if let Err(failure) = telegram
-        .edit_buttons(&pressed.token, chat, message, &keyboard)
-        .await
-    {
-        let failure = failure.message();
-        tracing::warn!(gateway = %pressed.gateway_id, %failure, "Telegram buttons not edited");
-    }
-    Ok(())
 }
 
 /// What a decision is answered: whom the agent acts for (`own`) reads that

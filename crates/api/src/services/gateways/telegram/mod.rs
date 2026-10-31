@@ -12,15 +12,20 @@
 //! for them, linked there is told in their chat of the requests awaiting
 //! them (`approver_text`, by `approver_notices`, ADR-137), decided with the
 //! same buttons. What the bot writes of itself there, an answer or a
-//! notice, is written alike (`chat`).
+//! notice, is written alike (`chat`); a message with buttons is kept
+//! (`kept`), to be written again once some of its actions are settled
+//! (`rewrite`, `settled_text`, ADR-148).
 
 mod answers;
 mod approver_text;
 mod chat;
 mod choices;
 mod conversations;
+mod kept;
 mod link;
 mod reply_text;
+mod rewrite;
+mod settled_text;
 mod texts;
 mod updates;
 
@@ -28,6 +33,7 @@ pub(super) use approver_text::approver_notice;
 pub(super) use chat::{BotChat, after_failure, write_in_chat};
 pub use choices::{TelegramChoice, decide_in_telegram};
 pub use conversations::converse_in_telegram;
+pub(super) use kept::{WrittenMessage, keep_message};
 pub use link::{PendingLink, TelegramLinkCode};
 pub(super) use reply_text::{Pause, reply_text};
 pub use updates::{ChatMessage, UpdateOutcome};

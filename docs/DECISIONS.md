@@ -8479,3 +8479,62 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     statut inconnu réglé) ; `crates/api/tests/teams_gateway_validations.rs`,
     `teams_gateway_approver_notices.rs`, `slack_gateway_validations.rs` (après une
     décision réelle, plus de « à valider » ni de « qui seront exécutés »).
+
+## ADR-148 — Un message Telegram réécrit une fois ses actions réglées (passerelles, lot 17b)
+
+- **Date** : 2026-10-31 · **Statut** : acceptée · complète ADR-136, ADR-137, ADR-147
+- **Contexte** : après une décision dans Telegram, le bot retirait les boutons de
+  l'action et répondait sous le message, mais le message lui-même disait encore « Action
+  à valider : … Paramètres exacts qui seront exécutés : » (ADR-147). Pour le réécrire,
+  il faut savoir ce qu'il montrait : Telegram ne renvoie, avec un bouton pressé, que le
+  texte simple du message et ses boutons, pas son HTML ni ses demandes.
+- **Décision** :
+  - **message gardé** : un message du bot écrit avec des boutons, d'une pause (ADR-136)
+    ou d'un avis à un responsable (ADR-137), est gardé comme une carte Teams
+    (`gateway_cards`, ADR-141, ADR-142) : son bot, la conversation privée (identifiant
+    de la personne), le numéro que Telegram a donné au message, les demandes qu'il
+    montre et ce qu'il disait des autres. Identifiants et nombres seuls, jamais le
+    texte. Ce qui est gardé ne décide rien : les boutons décident toujours sur ce que
+    Telegram garde du message (ADR-136) ;
+  - **réécriture** : une fois l'une de ses actions décidée (par ce bouton, ou entre-temps
+    dans l'application), le message est réécrit en place (`editMessageText`) :
+    - chaque action telle qu'elle se trouve (`ActionState`, ADR-147) : une action
+      réglée n'est plus « à valider », ses paramètres ne sont plus « qui seront
+      exécutés », et elle dit « Validée. », « Refusée. » ou « N'attend plus de
+      décision. » ;
+    - ses boutons, ceux des actions réglées retirés, les autres tels quels ;
+    - tant qu'une action attend, les mots du message d'origine ; quand aucune
+      n'attend plus, ceux de la carte Teams : « L'action de cette demande montrée
+      ci-dessous est décidée (…). La suite viendra ici. » pour une pause, « Nadia
+      Benali : l'action montrée ci-dessous est décidée. » pour un avis, ou « n'attend
+      plus de décision » quand l'une a expiré ou que sa demande s'est arrêtée ;
+    - en HTML, puis en texte simple si Telegram refuse le HTML ;
+    - les statuts relus après chaque écriture, comme pour Teams : un message réécrit
+      entre-temps d'après un état plus ancien est réécrit tel qu'il est maintenant ;
+      Telegram qui répond qu'il est déjà écrit ainsi, c'est fait ;
+  - **repli** : un message écrit avant ce lot, que la plateforme n'a pas gardé, ou qui
+    montre une action que son lecteur ne voit pas (un compte Telegram relié depuis à
+    quelqu'un d'autre n'apprend rien des actions de la personne d'avant), garde son
+    texte : seuls les boutons des actions décidées qu'il voit sont retirés, comme avant ;
+  - **oubli** : le message d'un avis est oublié huit jours après, ou dès qu'il n'est plus
+    dans la conversation privée du compte Telegram relié à son responsable (retiré, ou
+    un autre relié), par la même passe que les cartes Teams (`system_purge_notice_cards`,
+    migration 0065). Celui d'une pause part avec sa conversation ;
+  - **commun** : ce qui décide d'une réécriture (`to_write_again`), les demandes
+    qu'un message montre lues pour qui l'a pressé (`Concerned::shown_now`), les noms
+    d'un avis tels qu'ils sont (`approver_text::notice_names`) et une action telle
+    qu'un message la montre (`concerned::shown_action`) servent à Teams et à Telegram.
+- **Conséquences** :
+  - le lot 17 est terminé : dans les trois services, une action réglée n'est plus
+    intitulée « à valider ». Les messages Telegram écrits avant ce lot gardent leur
+    texte ;
+  - tests : `crates/core/src/gateways/telegram/shown.rs` (actions réglées et ouverte
+    dans un message), `validation.rs` (réécriture jusqu'à montrer chaque action
+    réglée), `crates/api/src/services/gateways/telegram/settled_text.rs` (pause et avis
+    réécrits, en HTML et en texte simple) ;
+    `crates/api/tests/telegram_gateway_validations.rs`,
+    `telegram_gateway_approver_notices.rs` (message réécrit après une décision réelle,
+    plus de « à valider », pas pour une autre personne) et
+    `telegram_gateway_kept_messages.rs` (message non gardé : boutons seuls ; HTML
+    refusé : texte simple ; oubli d'un avis passé, d'un compte retiré ou remplacé, la
+    pause gardée).

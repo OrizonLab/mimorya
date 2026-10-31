@@ -2,8 +2,9 @@
 //! linked to the company's bot is written, in their private chat with it, a
 //! paused run's requests awaiting them, once, the actions that may be
 //! validated there with their exact parameters and buttons; pressed, the
-//! request is decided as that manager, audited so, the press answered, its
-//! buttons taken off and the outcome said in answer. While the manager is
+//! request is decided as that manager, audited so, the press answered, the
+//! notice written again with the action said as settled and without its
+//! buttons (ADR-148), the outcome said in answer. While the manager is
 //! away, whom they named to stand in for them is told instead, and decides.
 //! An action sent outside the company is told without buttons, and no press
 //! decides it; nor does another linked person's press. A manager who lost
@@ -26,7 +27,7 @@ use support::sso::SSO_DEPLOYMENT;
 use support::telegram::{LEA_TELEGRAM, LEA_USERNAME, MARC_TELEGRAM, MARC_USERNAME};
 use support::telegram_conversations::{
     chat_of, claimed_press, deliver, keyboard_of, last_brief, last_said, latest_number, link_to,
-    linked_bot,
+    linked_bot, message_numbered,
 };
 use uuid::Uuid;
 
@@ -112,6 +113,22 @@ async fn the_manager_is_told_in_telegram_and_validates_with_a_button() {
         keyboard_of(&telegram, number),
         json!({ "inline_keyboard": [] })
     );
+    // The notice written again: its action settled, no longer to validate.
+    let rewritten = message_numbered(&telegram, number);
+    assert_eq!(rewritten.edits, 1);
+    assert!(
+        rewritten.text.starts_with(
+            "<b>Nadia Benali</b> : l’action montrée ci-dessous est décidée.\n\n<b>Action :</b> "
+        ),
+        "{}",
+        rewritten.text
+    );
+    assert!(
+        rewritten.text.ends_with("<i>Validée.</i>"),
+        "{}",
+        rewritten.text
+    );
+    assert!(!rewritten.text.contains("à valider"), "{}", rewritten.text);
     let decided = listed(&marc, &run).await.expect("the request he decided");
     assert_eq!(decided["status"], "approved");
     assert_eq!(decided["decidedBy"]["id"], json!(user::MARC));
@@ -151,6 +168,12 @@ async fn the_stand_in_is_told_and_decides_in_the_manager_s_absence() {
     let press = telegram.press(10, JULIEN, number, &format!("r:{approval}"));
     deliver(&api, &telegram, id, &press).await;
     assert_eq!(last_brief(&telegram), "Refusée");
+    let rewritten = message_numbered(&telegram, number).text;
+    assert!(
+        rewritten.starts_with("<b>Nadia Benali</b> : l’action montrée ci-dessous est décidée."),
+        "{rewritten}"
+    );
+    assert!(rewritten.ends_with("<i>Refusée.</i>"), "{rewritten}");
     let decided = listed(&julien, &run).await.expect("the request he decided");
     assert_eq!(decided["status"], "rejected");
     assert_eq!(decided["decidedBy"]["id"], json!(user::JULIEN));

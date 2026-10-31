@@ -34,7 +34,7 @@ pub use link::{
     start_code,
 };
 pub use press::{ButtonPress, KeyboardButton};
-pub use shown::{MAX_SHOWN_ACTIONS, shown_actions, shown_in_message};
+pub use shown::{MAX_SHOWN_ACTIONS, shown_actions, shown_in_message, stated_actions};
 pub use update::{
     MAX_MESSAGE_CHARS, PrivateMessage, ReceivedUpdate, TelegramUser, Update, is_user_id,
     read_update,

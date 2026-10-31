@@ -3,9 +3,12 @@
 //! (ADR-141), or a notice's, to the manager the requests await (ADR-142).
 //! A button pressed names its card, not what the card showed: only a
 //! request shown on a card of the bot's own, in the personal conversation
-//! it was pressed in, is decided there. Only identifiers and counts are
-//! kept, so that the card can be written again once some of its requests
-//! are decided.
+//! it was pressed in, is decided there. Kept alike, the messages the
+//! company's Telegram bot showed actions on with their buttons, in a
+//! person's private chat, whose buttons decide on what Telegram holds of
+//! them (ADR-148). Only identifiers and counts are kept, so that the card
+//! or the message can be written again once some of its requests are
+//! decided.
 
 use chrono::{DateTime, Utc};
 use sqlx::{PgConnection, PgPool};
@@ -34,7 +37,8 @@ pub enum CardPlace {
 }
 
 /// The card `activity_id` the Teams bot `gateway_id` wrote in its personal
-/// conversation `chat`.
+/// conversation `chat`, or the message of that number the Telegram bot
+/// wrote in its private chat `chat`.
 #[derive(Debug, Clone, Copy)]
 pub struct WrittenCard<'a> {
     pub tenant_id: Uuid,
@@ -98,9 +102,9 @@ pub async fn find_gateway_card(
     .await
 }
 
-/// Forgets, in every company, the cards of notices written before `before`,
-/// and those no longer in the conversation their manager is written in;
-/// how many.
+/// Forgets, in every company, the cards (Teams) and messages (Telegram) of
+/// notices written before `before`, and those no longer where their manager
+/// is written; how many.
 pub async fn purge_notice_cards(pool: &PgPool, before: DateTime<Utc>) -> sqlx::Result<i64> {
     sqlx::query_scalar("select system_purge_notice_cards($1)")
         .bind(before)

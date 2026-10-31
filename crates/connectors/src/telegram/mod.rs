@@ -49,6 +49,8 @@ pub enum RefusalCause {
     Chat,
     /// A text whose markup Telegram cannot read (ADR-135).
     Markup,
+    /// A message written again just as it was (ADR-148).
+    Unchanged,
     /// Anything else.
     Other,
 }
@@ -60,6 +62,18 @@ impl TelegramFailure {
             self,
             Self::Refused {
                 cause: RefusalCause::Markup,
+                ..
+            }
+        )
+    }
+
+    /// Whether Telegram refuses to write a message again just as it was:
+    /// it is then as asked.
+    pub fn unchanged(&self) -> bool {
+        matches!(
+            self,
+            Self::Refused {
+                cause: RefusalCause::Unchanged,
                 ..
             }
         )
@@ -91,6 +105,7 @@ impl TelegramFailure {
                 RefusalCause::Markup => {
                     "Telegram n’a pas pu lire la mise en forme du message".into()
                 }
+                RefusalCause::Unchanged => "Le message est déjà écrit ainsi dans Telegram".into(),
                 RefusalCause::Other => format!("Telegram a refusé la demande (code {status})"),
             },
             Self::Throttled { .. } => {
@@ -119,6 +134,8 @@ pub(crate) fn refusal_cause(status: u16, description: &str) -> RefusalCause {
         RefusalCause::Chat
     } else if status == 400 && description.contains("can't parse entities") {
         RefusalCause::Markup
+    } else if status == 400 && description.contains("message is not modified") {
+        RefusalCause::Unchanged
     } else {
         RefusalCause::Other
     }
@@ -158,6 +175,12 @@ mod tests {
             refused(400, "Bad Request: chat not found").message(),
             "Conversation Telegram introuvable pour le bot"
         );
+        let unchanged = refused(
+            400,
+            "Bad Request: message is not modified: specified new message content and reply \
+             markup are exactly the same as a current content and reply markup of the message",
+        );
+        assert!(unchanged.unchanged() && !unchanged.markup_refused());
         let markup = refused(
             400,
             "Bad Request: can't parse entities: Can't find end tag corresponding to start tag \"b\"",
