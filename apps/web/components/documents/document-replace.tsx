@@ -105,8 +105,10 @@ export function DocumentReplace({
           Elle remplace la version {seen} : l’agent ne lira plus que la nouvelle, et l’ancien
           fichier n’est pas gardé. Le document garde son espace et sa sensibilité.
         </p>
-        {document.version !== seen && (
-          <p className="text-xs text-warn">
+        {/* Newer only: until the list is reloaded after a refusal, it may
+            still show an older version than the one learnt. */}
+        {document.version > seen && (
+          <p role="status" className="text-xs text-warn">
             La liste montre maintenant la version {document.version} : la version {seen} n’est plus
             la dernière, et la remplacer sera refusé.
           </p>

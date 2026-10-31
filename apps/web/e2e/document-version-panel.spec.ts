@@ -3,8 +3,8 @@
 // another action shows a newer one, which the panel says, and its
 // replacement is refused, then it says the version now there. While it
 // sends, the rows' actions wait and a file dropped is not taken. Its
-// document gone from the reloaded list, it closes. Whatever happens, the
-// notes are deleted.
+// document deleted elsewhere, its replacement is refused as absent and it
+// closes with the reloaded list. Whatever happens, the notes are deleted.
 import { Buffer } from 'node:buffer';
 import type { Page } from '@playwright/test';
 import type { DocumentList } from '../lib/api/contract';
@@ -15,7 +15,6 @@ const WRITE = { 'X-Mimorya-Request': '1' };
 const NOTE = 'Consignes panneau';
 const A = `${NOTE} A`;
 const B = `${NOTE} B`;
-const C = `${NOTE} C`;
 
 /** Who deposited, for the cleanup. */
 const left: { julien?: Page } = {};
@@ -126,18 +125,11 @@ test('the panel keeps the version it opened on and closes with its document', as
   expect(kept).toMatchObject({ version: 2 });
   await expect(open).toBeEnabled();
 
-  // Gone, deleted elsewhere: the list reloaded by a deposit, the panel
-  // closes with it.
+  // Gone, deleted elsewhere: replacing it is refused as absent, and the
+  // list reloaded, the panel closes with its document.
   const deleted = await page.request.delete(`/api/documents/${a}`, { headers: WRITE });
   expect(deleted.status()).toBe(200);
-  const deposit = page.getByRole('region', { name: 'Déposer un document' });
-  await deposit.getByLabel('Fichier').setInputFiles({
-    name: `${C}.md`,
-    mimeType: 'text/markdown',
-    buffer: Buffer.from(`# ${C}\n\nPurger le circuit.\n`),
-  });
-  await deposit.getByRole('button', { name: 'Déposer' }).click();
-  await expect(page.getByRole('row').filter({ hasText: C })).toBeVisible();
+  await panel.getByRole('button', { name: 'Remplacer' }).click();
   await expect(panel).toHaveCount(0);
   await expect(page.getByRole('row').filter({ hasText: A })).toHaveCount(0);
   await noError(page);

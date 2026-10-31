@@ -8685,8 +8685,8 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       sensibilité ;
     - il garde la version vue à son ouverture, et c'est elle qu'il envoie (`version`).
       Si la liste, rechargée par une autre action, montre une version plus récente, il
-      le dit, et son remplacement sera refusé : jamais il ne reprend en silence la
-      version de la liste ;
+      le dit (annoncé aux lecteurs d'écran), et son remplacement sera refusé : jamais il
+      ne reprend en silence la version de la liste ;
     - le fichier, choisi ou déposé, part tel quel. Refusé pour un conflit (document
       remplacé entre-temps, ou quota de l'entreprise, 409), le panneau relit le document
       et dit la version désormais là, la liste rechargée ; il reste ouvert avec la raison
@@ -8740,7 +8740,7 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       referme son panneau ; remplacé ailleurs puis la liste rechargée par une
       suppression, le panneau garde la version 1 et dit que la liste montre la 2 ; pendant
       son envoi, retenu, les boutons des lignes sont désactivés et un fichier déposé
-      n'est pas pris ; refusé, il dit la version 2 ; son document supprimé ailleurs puis
-      la liste rechargée par un dépôt, il se ferme ;
+      n'est pas pris ; refusé, il dit la version 2 ; son document supprimé ailleurs, son
+      remplacement est refusé comme introuvable et il se ferme avec la liste rechargée ;
     - `apps/web/e2e/documents.spec.ts` : le dépôt par le sélecteur, les refus et la
       borne de taille restent couverts.
