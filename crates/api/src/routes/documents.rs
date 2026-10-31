@@ -25,7 +25,7 @@ use crate::contract::{
 };
 use crate::http::{ApiError, ApiResult, PathId, Query};
 use crate::plugins::Auth;
-use crate::services::documents::{Deposit, DepositFailure, Replacement};
+use crate::services::documents::{Deposit, FileFailure, Replacement};
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -113,11 +113,11 @@ async fn file_body(headers: &HeaderMap, body: RawBody) -> ApiResult<axum::body::
         .map_err(|_| refused(Refusal::TooLarge))
 }
 
-fn failed(failure: DepositFailure) -> ApiError {
+fn failed(failure: FileFailure) -> ApiError {
     match failure {
-        DepositFailure::Refused(refusal) => refused(refusal),
-        DepositFailure::Domain(error) => error.into(),
-        DepositFailure::Internal(error) => error.into(),
+        FileFailure::Refused(refusal) => refused(refusal),
+        FileFailure::Domain(error) => error.into(),
+        FileFailure::Internal(error) => error.into(),
     }
 }
 

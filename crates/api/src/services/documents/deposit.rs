@@ -14,7 +14,7 @@ use mimorya_db::repositories::documents::{
 };
 use serde_json::json;
 
-use super::{DepositFailure, DocumentService};
+use super::{DocumentService, FileFailure};
 use crate::contract::DocumentCreated;
 use crate::services::AccessContext;
 
@@ -55,9 +55,9 @@ impl DocumentService {
         &self,
         access: &AccessContext,
         deposit: Deposit<'_>,
-    ) -> Result<DocumentCreated, DepositFailure> {
+    ) -> Result<DocumentCreated, FileFailure> {
         self.check_deposit(access, deposit.space, deposit.sensitivity)?;
-        let file = self.read_file(access, deposit.name, &deposit.bytes).await?;
+        let file = (self.read_file(access, deposit.name, &deposit.bytes, None)).await?;
         let tenant_id = access.subject.tenant_id;
         let size = deposit.bytes.len();
         let mut tx = self.db.begin(tenant_id).await?;

@@ -19,7 +19,7 @@ pub use extractor::{
     CONCURRENT_EXTRACTIONS, EXTRACTION_TIMEOUT, ExtractionFailure, Extractor, extractor_beside,
 };
 pub use library::{DocumentFile, LISTED};
-pub use reading::DepositFailure;
+pub use reading::FileFailure;
 pub use replace::Replacement;
 
 use super::embeddings::EmbeddingService;

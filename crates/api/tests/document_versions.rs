@@ -4,15 +4,13 @@
 //! audited without its name. A replacement names the version it replaces:
 //! of two made at once, one is taken, the other refused, and neither a past
 //! nor a future version is replaced. A refused file, or request, leaves the
-//! document as it was. The company's quota counts only what the new file
-//! adds; a smaller one is taken even over the quota.
+//! document as it was. Its bounds: `document_version_bounds.rs`.
 
 mod support;
 
 use axum::http::StatusCode;
-use mimorya_core::demo::{tenant, unit, user};
+use mimorya_core::demo::{unit, user};
 use mimorya_core::documents::limits::MAX_FILE_BYTES;
-use mimorya_db::repositories::documents::{NewDocument, delete_document, insert_document};
 use serde_json::{Value, json};
 use support::documents::{
     Target, audited, deposited, kept, passages_of, remove, replace, replace_url,
@@ -38,10 +36,6 @@ async fn file(client: &Client<'_>, id: Uuid) -> Vec<u8> {
     let download = client.get(&format!("/documents/{id}/file")).await;
     assert_eq!(download.status, StatusCode::OK);
     download.body.to_vec()
-}
-
-fn quota_used(list: &Value) -> i64 {
-    list["quota"]["usedBytes"].as_i64().unwrap()
 }
 
 #[tokio::test]
@@ -209,63 +203,5 @@ async fn a_refused_replacement_leaves_the_document_as_it_was() {
     assert_eq!(kept(&api).await, before);
     let entries = audited(&api, "document.replaced").await;
     assert!(!entries.iter().any(|(r, _)| *r == Some(id.to_string())));
-    remove(&julien, id).await;
-}
-
-#[tokio::test]
-#[ignore = "requires PostgreSQL"]
-async fn the_quota_counts_only_what_the_new_file_adds() {
-    let api = TestApi::start_with(&[("MIMORYA_DOCUMENT_QUOTA_MB", "1")]).await;
-    let julien = api.sign_in(user::JULIEN).await;
-    // The demo documents count too.
-    let demo = quota_used(&julien.get("/documents").await.json());
-    let id = deposited(&julien, "Gros.txt", NORTH, &vec![b'a'; 600 * 1024]).await;
-
-    // 900 KB in place of 600: within the quota, the former file not counted.
-    let replaced = replace(&julien, id, "Gros.txt", 1, &vec![b'b'; 900 * 1024]).await;
-    assert_eq!(replaced.status, StatusCode::OK, "{}", replaced.text());
-    let list = julien.get("/documents").await.json();
-    assert_eq!(quota_used(&list), demo + 900 * 1024);
-    // 1,100 KB would hold more than the quota: two bytes a character, read
-    // within the characters a document may hold.
-    let wide = "é".repeat(1100 * 512).into_bytes();
-    let refused = replace(&julien, id, "Gros.txt", 2, &wide).await;
-    assert_eq!(refused.status, StatusCode::CONFLICT);
-    assert!(
-        refused.error_message().contains("quota"),
-        "{}",
-        refused.text()
-    );
-
-    // Over the quota (a document laid in the store directly), a smaller
-    // file is still taken, never a larger one.
-    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
-    let over = insert_document(
-        &mut tx,
-        NewDocument {
-            tenant_id: tenant::ID,
-            scope: "tenant",
-            org_unit_id: None,
-            title: "Archive",
-            file_name: "Archive.txt",
-            kind: "text",
-            sensitivity: "internal",
-            page_count: None,
-            uploaded_by_user_id: user::CLAIRE,
-            content: &vec![b'z'; 500 * 1024],
-        },
-    )
-    .await
-    .unwrap();
-    tx.commit().await.unwrap();
-    let refused = replace(&julien, id, "Gros.txt", 2, &vec![b'd'; 901 * 1024]).await;
-    assert_eq!(refused.status, StatusCode::CONFLICT);
-    let smaller = replace(&julien, id, "Petit.txt", 2, &vec![b'e'; 100 * 1024]).await;
-    assert_eq!(smaller.status, StatusCode::OK, "{}", smaller.text());
-    assert_eq!(smaller.json()["version"], 3);
-
-    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
-    assert!(delete_document(&mut tx, over).await.unwrap());
-    tx.commit().await.unwrap();
     remove(&julien, id).await;
 }

@@ -8628,7 +8628,7 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     a remplacé la précédente (contrainte `documents_replaced`) ;
   - **audit** : `document.replaced` (version, type, taille, pages, passages), jamais le
     nom du fichier, son titre ni son texte. Un fichier illisible est tracé comme au
-    dépôt (`document.rejected`).
+    dépôt (`document.rejected`), avec le document qu'il devait remplacer.
 - **Alternatives écartées** :
   - garder les versions précédentes : elles compteraient dans le quota et resteraient
     lisibles par l'agent (ou il faudrait une règle pour l'en empêcher), pour un besoin
@@ -8650,9 +8650,12 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     - `crates/api/tests/document_versions.rs` : le même document, son fichier et ses
       passages remplacés, audité sans son nom ; de deux remplacements simultanés, l'un
       est pris et l'autre refusé, et ni une version passée ni une version à venir n'est
-      remplacée ; un fichier ou une demande refusés laissent le document tel quel ; le
-      quota ne compte que ce que le nouveau fichier ajoute, et un fichier plus petit
-      passe même au-dessus du quota ;
+      remplacée ; un fichier ou une demande refusés laissent le document tel quel ;
+    - `crates/api/tests/document_version_bounds.rs` : le quota ne compte que ce que le
+      nouveau fichier ajoute, et un fichier plus petit passe même au-dessus du quota ;
+      d'un dépôt et d'un remplacement simultanés près du quota, l'un est pris, l'autre
+      refusé ; un lecteur qui échoue refuse la nouvelle version, tracée avec son
+      document, laissé tel quel ;
     - `crates/api/tests/document_access.rs`, `knowledge_shares.rs` : un document qu'on ne
       lit pas, ou qu'on lit sans pouvoir l'écrire (lecteur de son équipe, document de
       l'entreprise, politique de refus, partage d'unité, autre entreprise), répond comme

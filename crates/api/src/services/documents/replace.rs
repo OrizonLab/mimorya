@@ -5,7 +5,8 @@
 //! replaces: one made since is not overwritten. The file is read as at a
 //! deposit; the document keeps its identifier, space, sensitivity and
 //! first deposit, the company's quota counting only what the new file adds.
-//! Audited without its name nor its text; its new passages await their
+//! Audited without its name nor its text, as a file the reader could not
+//! read is, with the document it was for; its new passages await their
 //! vectors.
 
 use axum::body::Bytes;
@@ -20,7 +21,7 @@ use sqlx::PgConnection;
 use uuid::Uuid;
 
 use super::library::can_write;
-use super::{DepositFailure, DocumentService};
+use super::{DocumentService, FileFailure};
 use crate::contract::DocumentReplaced;
 use crate::services::AccessContext;
 
@@ -45,7 +46,7 @@ impl DocumentService {
         access: &AccessContext,
         id: Uuid,
         replaces: i32,
-    ) -> Result<(), DepositFailure> {
+    ) -> Result<(), FileFailure> {
         let mut tx = self.db.begin(access.subject.tenant_id).await?;
         replaceable(&mut tx, access, id, replaces).await?;
         tx.commit().await?;
@@ -56,11 +57,11 @@ impl DocumentService {
         &self,
         access: &AccessContext,
         replacement: Replacement<'_>,
-    ) -> Result<DocumentReplaced, DepositFailure> {
+    ) -> Result<DocumentReplaced, FileFailure> {
         let (id, replaces) = (replacement.document_id, replacement.replaces);
         self.check_replacement(access, id, replaces).await?;
         let bytes = &replacement.bytes;
-        let file = self.read_file(access, replacement.name, bytes).await?;
+        let file = (self.read_file(access, replacement.name, bytes, Some(id))).await?;
         let tenant_id = access.subject.tenant_id;
         let size = bytes.len() as i64;
         let mut tx = self.db.begin(tenant_id).await?;
@@ -116,7 +117,7 @@ async fn replaceable(
     access: &AccessContext,
     id: Uuid,
     replaces: i32,
-) -> Result<DocumentRow, DepositFailure> {
+) -> Result<DocumentRow, FileFailure> {
     let filter = document_read_filter(&access.engine, &access.subject, &Actor::user());
     let row = (get_visible_document(conn, &filter, id).await?)
         .filter(|row| can_write(access, row))

@@ -694,7 +694,8 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   téléchargement (`document.downloaded`), suppression
   (`document.deleted`), et fichier que le processus de lecture n'a pu lire
   (`document.rejected`, résultat `failure`, raison `timed_out` ou `reader_failed`,
-  type et taille) ; jamais le nom du fichier, son titre ni son texte. Les fichiers
+  type et taille, et le document qu'il devait remplacer) ; jamais le nom du fichier,
+  son titre ni son texte. Les fichiers
   refusés pour leur forme (taille, type, chiffrement, texte absent) ne sont pas tracés,
   comme les autres requêtes invalides.
 - Phase 3 : chaînage cryptographique des entrées et export vers un SIEM.
