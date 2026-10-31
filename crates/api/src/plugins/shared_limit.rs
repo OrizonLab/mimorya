@@ -4,9 +4,10 @@
 //! Only a digest of each key (client address, e-mail address) and value
 //! leaves the process: its HMAC under a key derived from the server's master
 //! key (ADR-152), which whoever reads the database or a backup does not
-//! hold, so that guessed addresses cannot be matched against it. A count
-//! that cannot be read is an error: these limits guard the sign-in, which
-//! reads the same database.
+//! hold, so that guessed addresses cannot be matched against it; taken with
+//! the limit's name, so that one address's rows of two limits cannot be
+//! linked either. A count that cannot be read is an error: these limits
+//! guard the sign-in, which reads the same database.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -23,9 +24,10 @@ use crate::secrets::SecretCipher;
 /// The purpose of the key derived for the rate limits.
 const RATE_LIMIT_PURPOSE: &[u8] = b"rate-limits";
 
-/// How a key or value leaves the process: its HMAC under the key derived
-/// from the master key, the same for every process of a deployment; without
-/// a master key, its unkeyed SHA-256 digest, which an address can be
+/// How a key or value of a limit leaves the process: the HMAC of the
+/// limit's name, a zero byte and the value, under the key derived from the
+/// master key, the same for every process of a deployment; without a master
+/// key, the unkeyed SHA-256 digest of the same, which an address can be
 /// guessed against by whoever reads the database (said at startup).
 pub enum KeyDigest {
     Keyed(hmac::Key),
@@ -44,11 +46,22 @@ impl KeyDigest {
         matches!(self, Self::Keyed(_))
     }
 
-    pub fn digest(&self, value: &str) -> [u8; 32] {
+    /// The digest of `value` for the limit `limiter`, a name without a
+    /// zero byte.
+    pub fn digest(&self, limiter: &str, value: &str) -> [u8; 32] {
+        let parts = [limiter.as_bytes(), &[0], value.as_bytes()];
         let mut digest = [0; 32];
         match self {
-            Self::Keyed(key) => digest.copy_from_slice(hmac::sign(key, value.as_bytes()).as_ref()),
-            Self::Unkeyed => digest = Sha256::digest(value.as_bytes()).into(),
+            Self::Keyed(key) => {
+                let mut context = hmac::Context::with_key(key);
+                parts.iter().for_each(|part| context.update(part));
+                digest.copy_from_slice(context.sign().as_ref());
+            }
+            Self::Unkeyed => {
+                let mut hasher = Sha256::new();
+                parts.iter().for_each(|part| hasher.update(part));
+                digest = hasher.finalize().into();
+            }
         }
         digest
     }
@@ -87,19 +100,10 @@ impl SharedLimiter {
         }
     }
 
-    pub fn per_minute(
-        db: Database,
-        digest: Arc<KeyDigest>,
-        name: &'static str,
-        limit: u32,
-    ) -> Self {
-        Self::new(db, digest, name, limit, Duration::from_secs(60))
-    }
-
     /// Counts one hit for `key`; `false` when the limit is reached.
     pub async fn allow(&self, key: &str) -> anyhow::Result<bool> {
         let seconds = self.window.as_secs_f64();
-        let key = self.digest.digest(key);
+        let key = self.digest.digest(self.name, key);
         Ok(hit_rate_limit(self.db.pool(), self.name, &key, self.limit, seconds).await?)
     }
 
@@ -107,7 +111,7 @@ impl SharedLimiter {
     /// that cannot be given back stays counted: it is logged, not raised.
     pub async fn release(&self, key: &str) {
         let seconds = self.window.as_secs_f64();
-        let key = self.digest.digest(key);
+        let key = self.digest.digest(self.name, key);
         let released =
             release_rate_limit(self.db.pool(), self.name, &key, self.limit, seconds).await;
         if let Err(error) = released {
@@ -145,7 +149,8 @@ impl SharedDistinctLimiter {
     /// Counts `value` for `client`, once per window; `false` when it is a
     /// new one past the limit.
     pub async fn allow(&self, client: &str, value: &str) -> anyhow::Result<bool> {
-        let (key, value) = (self.digest.digest(client), self.digest.digest(value));
+        let digest = |part| self.digest.digest(self.name, part);
+        let (key, value) = (digest(client), digest(value));
         let seconds = self.window.as_secs_f64();
         let pool = self.db.pool();
         Ok(hit_distinct_rate_limit(pool, self.name, &key, &value, self.limit, seconds).await?)
@@ -166,10 +171,15 @@ mod tests {
     #[test]
     fn only_a_digest_of_a_key_leaves_the_process() {
         for digest in [keyed(7), KeyDigest::Unkeyed] {
-            let key = digest.digest(NADIA);
-            assert_eq!(key, digest.digest(NADIA));
-            assert_ne!(key, digest.digest("paul.renaud@neo-maintenance.example"));
+            let key = digest.digest("login", NADIA);
+            assert_eq!(key, digest.digest("login", NADIA));
+            assert_ne!(
+                key,
+                digest.digest("login", "paul.renaud@neo-maintenance.example")
+            );
             assert!(!key.windows(5).any(|w| w == b"nadia"));
+            // One address's rows of two limits are not linked.
+            assert_ne!(key, digest.digest("reset_requests", NADIA));
         }
     }
 
@@ -178,13 +188,14 @@ mod tests {
         let (one, same, other) = (keyed(7), keyed(7), keyed(8));
         assert!(one.is_keyed() && !KeyDigest::Unkeyed.is_keyed());
         // Every process of a deployment counts alike.
-        assert_eq!(one.digest(NADIA), same.digest(NADIA));
+        assert_eq!(one.digest("login", NADIA), same.digest("login", NADIA));
         // Neither the unkeyed digest one could compute from a guess, nor
         // another deployment's.
-        let guessed: [u8; 32] = Sha256::digest(NADIA.as_bytes()).into();
-        assert_ne!(one.digest(NADIA), guessed);
-        assert_eq!(KeyDigest::Unkeyed.digest(NADIA), guessed);
-        assert_ne!(one.digest(NADIA), other.digest(NADIA));
+        let guessed: [u8; 32] =
+            Sha256::digest(b"login\0nadia.benali@neo-maintenance.example").into();
+        assert_eq!(KeyDigest::Unkeyed.digest("login", NADIA), guessed);
+        assert_ne!(one.digest("login", NADIA), guessed);
+        assert_ne!(one.digest("login", NADIA), other.digest("login", NADIA));
     }
 
     #[test]

@@ -198,6 +198,10 @@ mod tests {
     fn keeps_the_rate_limit_windows_past_the_longest() {
         use crate::plugins::rate_limit::{FAILED_LOGIN_WINDOW, RESET_REQUEST_WINDOW};
         let kept = RATE_LIMITS_KEPT.to_std().unwrap();
+        // The purge itself keeps two hours, whatever it is asked (ADR-152).
+        let purge = include_str!("../../../db/migrations/0067_rate_limit_purge_horizon.sql");
+        assert!(purge.contains("least(p_before, now() - interval '2 hours')"));
+        assert_eq!(kept, std::time::Duration::from_secs(2 * 60 * 60));
         // Logins and sign-in steps count by the minute.
         for window in [FAILED_LOGIN_WINDOW, RESET_REQUEST_WINDOW] {
             assert!(kept > window, "{window:?}");

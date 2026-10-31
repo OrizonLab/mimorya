@@ -8759,7 +8759,10 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
 - **Décision** :
   - **HMAC à clé du serveur** : chaque clé et chaque valeur quittent le processus en
     HMAC-SHA256 sous une clé propre à cet usage, dérivée de la clé maître
-    (`MIMORYA_MASTER_KEY`) par HKDF-SHA256 :
+    (`MIMORYA_MASTER_KEY`) par HKDF-SHA256. Le HMAC porte sur le nom de la limite, un
+    octet nul puis la valeur : les lignes d'une même adresse dans deux limites
+    (échecs de connexion, liens de réinitialisation, adresses essayées) ne se
+    rapprochent pas :
     - la dérivation passe par `SecretCipher::derived_key(purpose)`, avec un sel propre
       à la plateforme et un objet par usage (`rate-limits`). La clé obtenue ne révèle
       ni la clé maître ni celle d'un autre usage ;
@@ -8767,7 +8770,8 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       pareil ;
     - qui lit la base ou une sauvegarde sans la clé maître ne retrouve plus une
       adresse ;
-  - **sans clé maître** : les empreintes restent en SHA-256, comme avant. En production,
+  - **sans clé maître** : les empreintes restent en SHA-256, du nom de la limite et de
+    la valeur comme ci-dessus. En production,
     le démarrage le signale (ce déploiement n'enregistre de toute façon aucun secret).
     La limite globale, comptée en mémoire par chaque processus, ne fait sortir aucune
     adresse et ne change pas ;
@@ -8777,8 +8781,12 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
   - **purge bornée en SQL** (migration 0067) : `system_purge_rate_limits` ne touche
     jamais une fenêtre ouverte depuis moins de deux heures, quel que soit l'horizon
     demandé. Deux heures, c'est deux fois la plus longue fenêtre (une heure, celle des
-    liens de réinitialisation), et c'est ce que garde la maintenance. Le rôle
-    applicatif, seul à l'appeler, ne peut plus oublier un décompte en cours ;
+    liens de réinitialisation), et c'est ce que garde la maintenance (un test le lie à
+    la migration). Par cette fonction, le rôle applicatif ne peut plus oublier un
+    décompte en cours. C'est une protection contre une erreur de l'appelant (comme
+    l'ancien démarrage des tests de bout en bout), pas contre le rôle applicatif
+    lui-même : un processus compromis peut ne pas compter, ou rouvrir une fenêtre par
+    les autres fonctions (`p_seconds`) ;
   - **tests de bout en bout** : leur serveur effaçait au démarrage les fenêtres d'une
     exécution précédente par cette fonction. Il les efface désormais avec le rôle
     propriétaire, que l'environnement de test nomme (`DATABASE_URL`, `rate_limits.rs`) ;
@@ -8802,10 +8810,14 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     - `crates/api/src/secrets/cipher.rs` : une clé par usage et par clé maître, qui
       n'est pas la clé maître elle-même ;
     - `crates/api/src/plugins/shared_limit.rs` : l'empreinte est le HMAC sous la clé
-      dérivée, la même d'un processus à l'autre, différente du SHA-256 et d'un autre
-      déploiement ;
+      dérivée, la même d'un processus à l'autre, différente du SHA-256, de celle d'un
+      autre déploiement et de celle de la même valeur dans une autre limite ;
+    - `crates/api/src/plugins/rate_limit.rs` : seule la production sans clé maître est
+      signalée au démarrage ;
+    - `crates/api/src/plugins/maintenance.rs` : ce que garde la maintenance égale la
+      borne de la migration, et dépasse chaque fenêtre ;
     - `crates/api/tests/shared_rate_limits.rs` : avec une clé maître, la base garde le
-      HMAC de l'adresse sous la clé dérivée, pas son SHA-256 ; sans clé maître, son
-      SHA-256 ;
+      HMAC sous la clé dérivée d'une clé (adresse e-mail) comme d'une valeur (adresse
+      essayée), pas leur SHA-256 ; sans clé maître, le SHA-256 ;
     - `crates/db/tests/rate_limits.rs` : invitée à tout oublier, la purge n'efface que
       la fenêtre ouverte depuis plus de deux heures.

@@ -61,7 +61,8 @@ pub async fn hit_distinct_rate_limit(
         .await
 }
 
-/// Forgets the windows opened before `before`; how many.
+/// Forgets the windows opened before `before`, but never one opened within
+/// the last two hours, whatever `before` (ADR-152); how many.
 pub async fn purge_rate_limits(pool: &PgPool, before: DateTime<Utc>) -> sqlx::Result<i64> {
     sqlx::query_scalar("select system_purge_rate_limits($1)")
         .bind(before)

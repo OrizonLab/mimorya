@@ -112,7 +112,7 @@ impl RateLimits {
     /// production is warned of.
     pub fn new(db: &Database, config: &AppConfig, global: u32) -> anyhow::Result<Self> {
         let digest = Arc::new(KeyDigest::of(config.secrets.as_deref())?);
-        if !digest.is_keyed() && config.env == Environment::Production {
+        if warns_of_unkeyed(config.env, &digest) {
             tracing::warn!(
                 "No MIMORYA_MASTER_KEY: the rate limit keys are kept as unkeyed digests, \
                  which an address can be guessed against by whoever reads the database"
@@ -150,6 +150,12 @@ impl RateLimits {
     }
 }
 
+/// Whether starting in `env` with `digest` is warned of: an unkeyed one in
+/// production.
+fn warns_of_unkeyed(env: Environment, digest: &KeyDigest) -> bool {
+    !digest.is_keyed() && env == Environment::Production
+}
+
 pub async fn global_rate_limit(
     State(state): State<AppState>,
     request: Request,
@@ -168,6 +174,21 @@ pub async fn global_rate_limit(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn production_without_a_master_key_is_warned_of() {
+        let cipher = crate::secrets::SecretCipher::new(&[7; 32]).unwrap();
+        let keyed = KeyDigest::of(Some(&cipher)).unwrap();
+        assert!(warns_of_unkeyed(
+            Environment::Production,
+            &KeyDigest::Unkeyed
+        ));
+        assert!(!warns_of_unkeyed(Environment::Production, &keyed));
+        assert!(!warns_of_unkeyed(
+            Environment::Development,
+            &KeyDigest::Unkeyed
+        ));
+    }
 
     #[test]
     fn limits_each_client_separately_within_a_window() {

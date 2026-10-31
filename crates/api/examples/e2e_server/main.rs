@@ -5,9 +5,10 @@
 //!
 //!   cargo run -p mimorya-api --example e2e_server
 //!
-//! Reads the usual configuration (`DATABASE_APP_URL`, `WEB_ORIGIN`…) and
+//! Reads the usual configuration (`DATABASE_APP_URL`, `WEB_ORIGIN`…),
 //! `E2E_MAIL_DIR`, where each e-mail becomes a JSON file (the ones a former
-//! start left are deleted). An OpenID Connect provider listens on
+//! start left are deleted), and `DATABASE_URL`, the database's owner, which
+//! forgets a former start's rate limit windows (`rate_limits`, ADR-152). An OpenID Connect provider listens on
 //! 127.0.0.1:4100 (`IDP_ADDRESS`, which the tests declare), signing in
 //! whoever the sign-in names, and a SAML provider on 127.0.0.1:4101
 //! (`SAML_IDP_ADDRESS`), signing in whoever is typed at its page; identity
