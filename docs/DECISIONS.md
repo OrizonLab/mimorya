@@ -8675,22 +8675,28 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
   navigateur à sa place. ADR-097 laissait ces deux points à faire.
 - **Décision** :
   - **nouvelle version** : sur chaque document qu'on peut écrire (`canWrite`), un bouton
-    « Nouvelle version de « … » » ouvre au-dessus de la liste un panneau du même nom, qu'il
-    dit contrôler (`aria-expanded`, `aria-controls`) :
+    « Nouvelle version de « … » » ouvre au-dessus de la liste un panneau du même nom, et
+    le referme ; il dit le contrôler (`aria-expanded`, `aria-controls`) :
     - le titre du panneau prend le focus à son ouverture, ce qui l'amène à l'écran ;
-      fermé (« Annuler » ou remplacement fait), le focus revient au bouton de sa ligne ;
+      fermé (par son bouton, « Annuler » ou un remplacement fait), le focus revient au
+      bouton de sa ligne ;
     - il dit quelle version il remplace, que l'agent ne lira plus que la nouvelle et que
       l'ancien fichier n'est pas gardé, et que le document garde son espace et sa
       sensibilité ;
-    - il suit la liste rechargée : la version qu'il dit, et qu'il envoie (`version`), est
-      celle de la liste ; il se ferme quand son document n'y est plus ou ne peut plus
-      être écrit ;
+    - il garde la version vue à son ouverture, et c'est elle qu'il envoie (`version`).
+      Si la liste, rechargée par une autre action, montre une version plus récente, il
+      le dit, et son remplacement sera refusé : jamais il ne reprend en silence la
+      version de la liste ;
     - le fichier, choisi ou déposé, part tel quel. Refusé pour un conflit (document
-      remplacé entre-temps, ou quota de l'entreprise, 409), la liste est rechargée et le
-      panneau reste ouvert avec la raison du refus : il dit la version désormais là, que
-      la personne remplace ensuite en connaissance de cause. Le message de l'API ne
-      demande plus de recharger la liste (« Ce document a été remplacé entre-temps par
-      une autre version : vérifiez-la avant de la remplacer ») ;
+      remplacé entre-temps, ou quota de l'entreprise, 409), le panneau relit le document
+      et dit la version désormais là, la liste rechargée ; il reste ouvert avec la raison
+      du refus, et la personne remplace ensuite cette version en connaissance de cause.
+      Le message de l'API ne demande plus de recharger la liste (« Ce document a été
+      remplacé entre-temps par une autre version : vérifiez-la avant de la remplacer »).
+      Refusé comme introuvable (404), la liste est rechargée et le panneau se ferme avec
+      elle ;
+    - il se ferme quand son document n'est plus dans la liste rechargée ou ne peut plus
+      être écrit ;
     - un fichier au-delà de la borne de l'API n'est pas envoyé, comme au dépôt
       (`refuseBeyond`, `file-rules.ts`) ;
     - pendant qu'il envoie, aucun bouton des lignes (nouvelle version, suppression) ne
@@ -8714,8 +8720,10 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     dans la page suffit, comme pour le dépôt ;
   - une zone de dépôt couvrant toute la page : on ne saurait pas, en lâchant le fichier,
     s'il est déposé ou s'il remplace un document ;
-  - recharger le document avant de remplacer, pour éviter le refus : la version vue est
-    justement ce qui empêche d'écraser sans le savoir (ADR-150).
+  - recharger le document avant de remplacer, pour éviter le refus, ou faire suivre au
+    panneau la version de la liste rechargée : la version vue est justement ce qui
+    empêche d'écraser sans le savoir (ADR-150) ; le panneau ne l'abandonne qu'après un
+    refus que la personne a lu.
 - **Conséquences** :
   - un fichier lâché à côté de la zone est ouvert par le navigateur, comme avant ;
   - tests :
@@ -8728,5 +8736,11 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       un autre onglet, fait refuser celui de la page avec sa raison ; la liste
       rechargée, le panneau dit la version 3, qu'il remplace ensuite. Lucas, qui lit la
       note, ne peut pas la remplacer ;
+    - `apps/web/e2e/document-version-panel.spec.ts` : le bouton d'une ligne ouvre et
+      referme son panneau ; remplacé ailleurs puis la liste rechargée par une
+      suppression, le panneau garde la version 1 et dit que la liste montre la 2 ; pendant
+      son envoi, retenu, les boutons des lignes sont désactivés et un fichier déposé
+      n'est pas pris ; refusé, il dit la version 2 ; son document supprimé ailleurs puis
+      la liste rechargée par un dépôt, il se ferme ;
     - `apps/web/e2e/documents.spec.ts` : le dépôt par le sélecteur, les refus et la
       borne de taille restent couverts.

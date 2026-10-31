@@ -14,10 +14,10 @@ import { DocumentReplace } from './document-replace';
  * by whoever may write its space, its version said once replaced. When
  * older ones are left out, the list says so (ADR-097).
  *
- * One new version is chosen at a time, in a panel above the list that
- * follows the reloaded list: it closes once its document is gone or may no
- * longer be written. Closed, the focus goes back to its row's button; while
- * it sends, no row's action starts another.
+ * One new version is chosen at a time, in a panel above the list, opened
+ * and closed by its row's button: it closes once its document is gone from
+ * the reloaded list or may no longer be written. Closed, the focus goes
+ * back to its row's button; while it sends, no row's action starts.
  */
 export function DocumentLibrary({
   documents,
@@ -94,7 +94,7 @@ export function DocumentLibrary({
           document={replacing}
           maxFileBytes={maxFileBytes}
           onCancel={() => close(false)}
-          onConflict={onChanged}
+          onStale={onChanged}
           onSending={setSending}
           onReplaced={(said) => {
             setReplaced(said);
@@ -144,7 +144,7 @@ export function DocumentLibrary({
                 replacing={replacing?.id === document.id}
                 busy={action.pending || sending}
                 register={register}
-                onReplace={() => open(document)}
+                onReplace={() => (replacing?.id === document.id ? close(false) : open(document))}
                 onRemove={() => void remove(document)}
               />
             </Cell>

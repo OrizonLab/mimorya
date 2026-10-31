@@ -26,20 +26,23 @@ function query(replacement: Replacement): string {
 
 /**
  * A new version of `document` (ADR-150, ADR-151): its file, chosen or
- * dropped, replaces the version the panel says, the list's. The document
+ * dropped, replaces the version seen when the panel opened. The document
  * keeps its space and sensitivity; the agent reads only the new version,
- * the former file not kept. Refused as replaced in between, or for the
- * company's quota (both a conflict), the list is reloaded and the panel
- * stays, its reason shown, saying the version now there. A file beyond the
- * largest the API takes is not even sent. Its title takes the focus when it
- * opens; it tells the list while it sends.
+ * the former file not kept. The list reloaded meanwhile may show a newer
+ * version: the panel says so, and still sends the one seen, refused. Once
+ * refused as replaced in between (or for the company's quota: both a
+ * conflict), the panel learns the version now there and says it, the list
+ * reloaded, its reason shown: the person then replaces that one knowingly.
+ * Refused as gone, the list is reloaded and the panel closes with it. A
+ * file beyond the largest the API takes is not even sent. Its title takes
+ * the focus when it opens; it tells the list while it sends.
  */
 export function DocumentReplace({
   document,
   maxFileBytes,
   onReplaced,
   onCancel,
-  onConflict,
+  onStale,
   onSending,
 }: {
   document: DocumentItem;
@@ -47,13 +50,17 @@ export function DocumentReplace({
   /** Told what became of it, once replaced. */
   onReplaced: (said: string) => void;
   onCancel: () => void;
-  /** Refused for a conflict: the list is to be read again. */
-  onConflict: () => void;
+  /** Refused as replaced in between or gone: the list is to be read again. */
+  onStale: () => void;
   onSending: (sending: boolean) => void;
 }) {
   const action = useAction();
   const [file, setFile] = useState<File | null>(null);
+  // The version replaced: seen when the panel opened, or learnt once a
+  // replacement was refused for it.
+  const [seen, setSeen] = useState(document.version);
   const heading = useRef<HTMLHeadingElement>(null);
+  const url = `/documents/${encodeURIComponent(document.id)}`;
 
   useEffect(() => heading.current?.focus(), []);
   useEffect(() => {
@@ -63,20 +70,24 @@ export function DocumentReplace({
 
   async function replace() {
     if (!file) return;
-    const replacement = { name: file.name, version: document.version } satisfies Replacement;
-    const path = `/documents/${encodeURIComponent(document.id)}/file?${query(replacement)}`;
-    let conflict = false;
+    const replacement = { name: file.name, version: seen } satisfies Replacement;
+    let refused = 0;
     const replaced = await action.run(async () => {
       refuseBeyond(file, maxFileBytes);
       try {
-        return await api.replace<DocumentReplaced>(path, file);
+        return await api.replace<DocumentReplaced>(`${url}/file?${query(replacement)}`, file);
       } catch (error) {
-        conflict = error instanceof ApiError && error.status === 409;
+        if (error instanceof ApiError) refused = error.status;
         throw error;
       }
     });
     if (replaced === null) {
-      if (conflict) onConflict();
+      if (refused === 409) {
+        // The version now there, told once the refusal is shown.
+        const current = await api.get<DocumentItem>(url).catch(() => null);
+        if (current) setSeen(current.version);
+      }
+      if (refused === 409 || refused === 404) onStale();
       return;
     }
     onReplaced(
@@ -91,9 +102,15 @@ export function DocumentReplace({
           Nouvelle version de « {document.title} »
         </h2>
         <p className="text-xs text-muted">
-          Elle remplace la version {document.version} : l’agent ne lira plus que la nouvelle, et
-          l’ancien fichier n’est pas gardé. Le document garde son espace et sa sensibilité.
+          Elle remplace la version {seen} : l’agent ne lira plus que la nouvelle, et l’ancien
+          fichier n’est pas gardé. Le document garde son espace et sa sensibilité.
         </p>
+        {document.version !== seen && (
+          <p className="text-xs text-warn">
+            La liste montre maintenant la version {document.version} : la version {seen} n’est plus
+            la dernière, et la remplacer sera refusé.
+          </p>
+        )}
         <FileDrop file={file} onFile={setFile} disabled={action.pending} />
         <div className="flex gap-2">
           <Button onClick={replace} loading={action.pending} disabled={!file}>

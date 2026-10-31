@@ -10,6 +10,7 @@
 import { Buffer } from 'node:buffer';
 import type { Locator, Page, Request } from '@playwright/test';
 import type { DocumentItem, DocumentList } from '../lib/api/contract';
+import { drop } from './support/drop';
 import { demo, expect, noError, signIn, test } from './support/fixtures';
 
 const WRITE = { 'X-Mimorya-Request': '1' };
@@ -41,20 +42,6 @@ async function download(page: Page, link: Locator): Promise<string> {
   const file = await page.request.get((await link.getAttribute('href')) ?? '');
   expect(file.status()).toBe(200);
   return (await file.body()).toString();
-}
-
-/** Drops on `zone` the file `name` holding `text`, as a browser would. */
-async function drop(zone: Locator, name: string, text: string) {
-  const transfer = await zone.page().evaluateHandle(
-    ({ name, text }) => {
-      const dropped = new DataTransfer();
-      dropped.items.add(new File([text], name, { type: 'text/markdown' }));
-      return dropped;
-    },
-    { name, text },
-  );
-  await zone.dispatchEvent('dragover', { dataTransfer: transfer });
-  await zone.dispatchEvent('drop', { dataTransfer: transfer });
 }
 
 test.afterEach(async () => {
