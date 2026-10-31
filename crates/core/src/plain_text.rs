@@ -2,7 +2,8 @@
 //! attributes and in policy values: in canonical form (NFC) and without hidden
 //! characters, so that two values that look the same compare equal. Texts the
 //! model reads hide nothing either: refused when an administrator writes them,
-//! taken out of what a third party (an MCP server) declares.
+//! taken out of what a third party (an MCP server) declares. A long text
+//! handed to the model is cut at a bound, and says so.
 
 use unicode_normalization::UnicodeNormalization;
 use unicode_properties::{GeneralCategory, UnicodeGeneralCategory};
@@ -44,6 +45,19 @@ pub fn without_hidden(text: &str) -> String {
         .collect()
 }
 
+/// The first `max` characters of `text`, followed by « […] » when it held
+/// more: what the model rereads of a run (ADR-076) or of a message folded
+/// into a conversation's summary (ADR-145).
+pub fn capped(text: &str, max: usize) -> String {
+    let mut chars = text.chars();
+    let head: String = chars.by_ref().take(max).collect();
+    if chars.next().is_some() {
+        format!("{head} […]")
+    } else {
+        head
+    }
+}
+
 /// Unicode's `Default_Ignorable_Code_Point` (DerivedCoreProperties).
 fn is_default_ignorable(c: char) -> bool {
     matches!(
@@ -71,6 +85,13 @@ fn is_default_ignorable(c: char) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_long_text_is_cut_at_its_bound_and_says_so() {
+        assert_eq!(capped("été", 3), "été");
+        assert_eq!(capped("étés", 3), "été […]");
+        assert_eq!(capped("", 0), "");
+    }
 
     #[test]
     fn takes_hidden_characters_out_but_line_breaks_and_tabs() {

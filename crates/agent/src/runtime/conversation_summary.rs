@@ -7,7 +7,7 @@
 //! history.
 
 use mimorya_core::conversation_summary::Speaker;
-use mimorya_core::plain_text::without_hidden;
+use mimorya_core::plain_text::{capped, without_hidden};
 use serde_json::Value;
 
 use crate::llm::{Effort, LlmError, LlmMessage, LlmProvider, LlmRequest, LlmUsage};
@@ -48,16 +48,6 @@ pub struct SummaryAnswer {
     pub provider: String,
     pub model: String,
     pub usage: LlmUsage,
-}
-
-fn capped(text: &str, max: usize) -> String {
-    let mut chars = text.chars();
-    let head: String = chars.by_ref().take(max).collect();
-    if chars.next().is_some() {
-        format!("{head} […]")
-    } else {
-        head
-    }
 }
 
 /// The messages as the model rereads them: who wrote each, said by the

@@ -8369,6 +8369,15 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     résumé qui couvre les messages purgés ;
   - une passe coûte un appel de modèle, à effort bas, par repli, soit environ tous les
     six échanges d'une longue conversation ;
+  - les limites de coût d'une mission (ADR-093) comptent les runs de ses étapes, pas
+    les passes faites après eux : une passe, à effort bas et sur 24 messages de
+    3 000 caractères au plus, n'y ajoute qu'un peu, environ toutes les six étapes. La
+    compter imposerait de réécrire un run terminé, ce que la plateforme ne fait
+    jamais ;
+  - un résumé en retard de plus de vingt messages (une longue conversation déjà là au
+    déploiement) laisse un écart entre ce qu'il couvre et les messages rejoués, que
+    les passes suivantes comblent à raison de 24 messages chacune. Enchaîner les passes
+    tant qu'il est en retard, ou signaler l'écart dans la note, reste à faire ;
   - tests : `crates/core/src/conversation_summary.rs` (seuils, part gardée, échange
     entier, borne d'une passe sans séparer une réponse de sa question, message le plus
     récent jamais replié) ; `crates/agent/src/runtime/conversation_summary.rs`
