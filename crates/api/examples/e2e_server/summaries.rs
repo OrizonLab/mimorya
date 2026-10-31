@@ -4,7 +4,8 @@
 //! on the Lumière site, the first six summarised and all shown above the
 //! note; and two of 105 exchanges, more than a conversation shows (200
 //! messages), whose summary stops before the messages shown (Horizon) or
-//! among them, the first ones it covers no longer shown (Azur). Written at
+//! among them, the first ones it covers no longer shown (Azur); both lag
+//! behind, more messages after them than are reread (ADR-149). Written at
 //! start, so that the scripted model plays no pass.
 
 use mimorya_api::contract::MessageMetadata;

@@ -43,7 +43,8 @@ Repères à l'intérieur des crates :
   créé, enregistrement DNS qui prouve un domaine (`domain_proof.rs`), ADR-063, ADR-067,
   ADR-068, ADR-069), `core/src/schedule.rs` (heure d'une tâche planifiée, ADR-080),
   `core/src/conversation_summary.rs` (messages d'une conversation repliés dans son
-  résumé, et quand, ADR-145),
+  résumé, et quand, ADR-145 ; passes enchaînées et messages laissés hors de
+  l'historique, ADR-149),
   `core/src/knowledge_shares/` (connaissances d'une unité partagées avec une autre :
   unités lues par chacun et sensibilité, ce qu'un partage peut dire, `rules.rs`,
   ADR-143),
@@ -229,7 +230,8 @@ Repères à l'intérieur des crates :
   `extractor.rs` ; dépôt sous le quota de l'entreprise, `deposit.rs` ; liste,
   téléchargement et suppression, `library.rs`, ADR-095),
   `api/src/services/runs/` (historique remis à un run, résumé puis derniers messages
-  (`history.rs`), et résumé tenu à la fin d'un run (`summaries.rs`), ADR-145 ; coût des appels
+  (`history.rs`), et résumé tenu à la fin d'un run (`summaries.rs`), ADR-145, passes
+  enchaînées tant qu'il est en retard, ADR-149 ; coût des appels
   faits seuls après un run, leçon ou résumé, compté dans ce run (`background_usage.rs`) ; tour de conversation, dont celui envoyé pour quelqu'un dans une
   conversation nouvelle, ouverte avec lui (`turn_start.rs`, ADR-109), ou tenue dans le fil
   Slack qu'il ouvre, ADR-127, décisions, contexte, exécution,

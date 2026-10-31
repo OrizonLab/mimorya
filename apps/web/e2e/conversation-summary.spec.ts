@@ -4,8 +4,10 @@
 // messages stop: after the last one when they are all shown above; first
 // when none is shown any more (a conversation shows its last 200 messages);
 // after the last one, counting those no longer shown, when only some are.
-// The summary is shown on demand. Nothing is changed: the folding itself is
-// tested on the API (`crates/api/tests/conversation_summar*.rs`).
+// A summary that lags says how many messages after it are neither
+// summarised nor reread yet (ADR-149). The summary is shown on demand.
+// Nothing is changed: the folding itself is tested on the API
+// (`crates/api/tests/conversation_summar*.rs`).
 import type { Locator, Page } from '@playwright/test';
 import { demo, expect, noError, signIn, test } from './support/fixtures';
 
@@ -48,6 +50,9 @@ test('the messages summarised above are said so, and the summary shown', async (
   expect(around[1]).toContain('Les 12 messages ci-dessus');
   expect(around[2]).toBe('Question 7 sur le chantier Lumière');
 
+  // Caught up: nothing said of messages left out.
+  await expect(note).not.toContainText('pas encore résumé');
+
   // The summary itself, on demand.
   const summary = 'Marc suit le chantier Lumière : INT-2049 reste en cours';
   await expect(page.getByText(summary)).toBeHidden();
@@ -68,6 +73,10 @@ test('summarised messages no longer shown are said so first, or counted', async 
   expect(opening).toHaveLength(2);
   expect(opening[0]).toContain('Les 8 premiers messages');
   expect(opening[1]).toBe('Question 6 sur le chantier Horizon');
+  // Lagging 202 messages behind, of which the last 20 are reread.
+  await expect(first).toContainText(
+    'Les 182 messages suivants ne sont pas encore résumés, et l’assistant ne les relit pas : ils le seront après ses prochaines réponses.',
+  );
   await first.getByText('Voir le résumé').click();
   await expect(first.getByText('réserves levées')).toBeVisible();
 
@@ -86,5 +95,6 @@ test('summarised messages no longer shown are said so first, or counted', async 
   expect(between[0]).toBe('Réponse 10 sur le chantier Azur');
   expect(between[1]).toContain('Les 20 premiers messages');
   expect(between[2]).toBe('Question 11 sur le chantier Azur');
+  await expect(counted).toContainText('Les 170 messages suivants ne sont pas encore résumés');
   await noError(page);
 });

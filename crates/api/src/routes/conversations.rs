@@ -6,7 +6,9 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use chrono::Utc;
 use mimorya_core::DomainError;
-use mimorya_db::repositories::conversation_summaries::conversation_summary;
+use mimorya_db::repositories::conversation_summaries::{
+    conversation_summary, count_messages_after,
+};
 use mimorya_db::repositories::conversations::{
     ConversationPatch, ConversationRow, create_conversation, get_conversation, list_conversations,
     list_messages, update_conversation,
@@ -17,7 +19,8 @@ use mimorya_db::repositories::runs::list_runs_for_conversation;
 use crate::app::AppState;
 use crate::contract::{
     ConversationChanges, ConversationCreated, ConversationDetail, ConversationList,
-    ConversationSummary, Done, Message, MessageAccepted, NewConversation, NewMessage,
+    ConversationSummary, Done, HistorySummary, Message, MessageAccepted, NewConversation,
+    NewMessage,
 };
 use crate::http::{ApiResult, Body, PathId};
 use crate::plugins::Auth;
@@ -96,7 +99,14 @@ async fn detail(
     let messages = list_messages(&mut tx, id, MESSAGE_PAGE).await?;
     let runs = list_runs_for_conversation(&mut tx, id, RUN_PAGE).await?;
     let gateway = conversations_held(&mut tx, &[id]).await?.remove(&id);
-    let summary = conversation_summary(&mut tx, id).await?;
+    let summary = match conversation_summary(&mut tx, id).await? {
+        Some(summary) => {
+            let after = Some(summary.through_message_id);
+            let count = count_messages_after(&mut tx, id, after).await?;
+            Some(HistorySummary::of(&summary, count))
+        }
+        None => None,
+    };
     tx.commit().await?;
     Ok(Json(ConversationDetail {
         conversation: ConversationSummary::held(&conversation, gateway),
@@ -105,7 +115,7 @@ async fn detail(
             .map(Message::from_row)
             .collect::<anyhow::Result<_>>()?,
         runs: runs.iter().map(Into::into).collect(),
-        history_summary: summary.as_ref().map(Into::into),
+        history_summary: summary,
     }))
 }
 

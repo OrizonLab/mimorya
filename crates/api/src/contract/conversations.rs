@@ -1,6 +1,7 @@
 //! Conversations of the signed-in user, their messages and the runs they
 //! started; starting, renaming or archiving one, and sending a message.
 
+use mimorya_core::conversation_summary::not_replayed;
 use mimorya_core::tools::Citation as ToolCitation;
 use mimorya_db::repositories::conversation_summaries::SummaryRow;
 use mimorya_db::repositories::conversations::{ConversationRow, MessageRow};
@@ -162,21 +163,27 @@ impl Message {
 
 /// What the assistant keeps of a conversation's earlier messages (ADR-145,
 /// ADR-146): their summary, which it rereads instead of them, the last
-/// message it covers and how many it covers.
+/// message it covers and how many it covers; and how many of the messages
+/// after it, should it lag, are neither summarised nor reread yet
+/// (ADR-149).
 #[derive(Debug, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct HistorySummary {
     pub summary: String,
     pub through_message_id: Uuid,
     pub folded_messages: i32,
+    pub not_replayed: i32,
 }
 
-impl From<&SummaryRow> for HistorySummary {
-    fn from(s: &SummaryRow) -> Self {
+impl HistorySummary {
+    /// `s`, followed by `after` messages it does not cover yet.
+    pub fn of(s: &SummaryRow, after: i64) -> Self {
+        let after = usize::try_from(after).unwrap_or(0);
         Self {
             summary: s.content.clone(),
             through_message_id: s.through_message_id,
             folded_messages: s.folded_messages,
+            not_replayed: i32::try_from(not_replayed(after)).unwrap_or(i32::MAX),
         }
     }
 }

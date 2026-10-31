@@ -135,8 +135,10 @@ fait par le modèle de l'entreprise à partir de l'ancien résumé et des messag
 remis comme données, chacun dans son enveloppe ; les six derniers messages au plus restent mot
 pour mot. Le résumé ouvre ensuite l'historique, comme une donnée
 (`<donnees_outil source="resume_conversation">`), avant les messages qu'il ne couvre pas.
-Un échec perd la passe, jamais le run. La personne le lit dans sa conversation, après le
-dernier message qu'il couvre (ADR-146). Dans un run, rien n'est replié : l'historique
+Un échec perd la passe, jamais le run. Un résumé en retard (plus de vingt messages
+qu'il ne couvre pas) est rattrapé par des passes enchaînées, huit au plus par fin de
+run (ADR-149). La personne le lit dans sa conversation, après le dernier message qu'il
+couvre (ADR-146), avec le nombre de messages qui le suivent sans être relus. Dans un run, rien n'est replié : l'historique
 reste en ajout seul, les blocs de raisonnement étant liés à tout ce qui les précède.
 
 **Erreurs** : erreurs d'outil renvoyées au modèle (il peut corriger son appel) ;
