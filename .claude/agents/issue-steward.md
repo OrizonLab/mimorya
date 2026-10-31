@@ -81,7 +81,8 @@ nommer.
    en état `closed` renvoie des PR). Sans cet accès, signale-le et ne conclus rien.
 3. **Issues fermées à la fusion**, que la liste des ouvertes soit vide ou non : relis
    les issues fermées depuis la fusion (`list_issues`, état `CLOSED`, `since` à la
-   date de fusion de la PR). Si GitHub en a fermé une par un mot-clé de la PR,
+   date de fusion de la PR ; sans PR donnée au lancement, le `merged_at` de la
+   dernière PR fusionnée, lu par `list_pull_requests`, état `closed`). Si GitHub en a fermé une par un mot-clé de la PR,
    vérifie-la comme à l'étape 4 et signale-la sous « À signaler » si `main` ne la
    traite pas entièrement. S'il n'y a aucune issue ouverte, rends alors ton rapport
    (« Aucune issue ouverte ») ; sinon, continue.
@@ -116,8 +117,8 @@ nommer.
    Un commentaire que tu as déjà écrit et qui dit encore vrai n'est pas répété :
    n'écris que si la situation a changé depuis ton dernier commentaire.
 
-6. **Vérification** : relis chaque issue fermée (`issue_read`) pour confirmer son
-   état.
+6. **Vérification** : relis chaque issue que tu as toi-même fermée (`issue_read`)
+   pour confirmer son état.
 
 ## Format de réponse (obligatoire)
 
