@@ -1,7 +1,8 @@
 //! The company's documents as a person reaches them (ADR-095): listed,
 //! read, downloaded and deleted where `document:read` reaches, at or under
-//! their clearance; anything else answers as absent. Deleting needs
-//! `document:write` over the document's space as well. Downloads and
+//! their clearance; anything else answers as absent. Deleting, as
+//! replacing (ADR-150), needs `document:write` over the document's space,
+//! at its sensitivity, as well. Downloads and
 //! deletions are audited, never with the document's name.
 
 use mimorya_core::authz::{Actor, Sensitivity};
@@ -126,7 +127,7 @@ impl DocumentService {
         let Some(row) = get_visible_document(&mut tx, &filter, id).await? else {
             return Ok(false);
         };
-        if !can_delete(access, &row) || !delete_document(&mut tx, id).await? {
+        if !can_write(access, &row) || !delete_document(&mut tx, id).await? {
             return Ok(false);
         }
         let entry = AuditEntry::new(tenant_id, "user", "document.deleted", "success")
@@ -148,7 +149,8 @@ fn sensitivity_of(row: &DocumentRow) -> Sensitivity {
     row.sensitivity.parse().unwrap_or(Sensitivity::Restricted)
 }
 
-fn can_delete(access: &AccessContext, row: &DocumentRow) -> bool {
+/// The person may replace or delete the document `row`.
+pub(super) fn can_write(access: &AccessContext, row: &DocumentRow) -> bool {
     space_of(row).is_some_and(|space| {
         let sensitivity = sensitivity_of(row);
         can_write_document(
@@ -188,6 +190,8 @@ fn item(access: &AccessContext, row: &DocumentRow) -> anyhow::Result<DocumentIte
         byte_size: row.byte_size,
         page_count: row.page_count,
         created_at: crate::http::iso(&row.created_at),
-        can_delete: can_delete(access, row),
+        version: row.version,
+        replaced_at: row.replaced_at.as_ref().map(crate::http::iso),
+        can_write: can_write(access, row),
     })
 }

@@ -1,8 +1,10 @@
 //! The company's documents (ADR-095): listed, deposited (the file as the
 //! request's body, its name and space in a strict query string), read,
-//! downloaded and deleted, each where the person's rights reach; anything
-//! beyond answers as absent. A deposit's space is checked before its file
-//! is read, and a file announced or found beyond its bound is not read on.
+//! downloaded, replaced by a new version of their file (ADR-150) and
+//! deleted, each where the person's rights reach; anything beyond answers
+//! as absent. What a deposit or a replacement may do is checked before its
+//! file is read, and a file announced or found beyond its bound is not
+//! read on.
 
 use axum::body::Body as RawBody;
 use axum::extract::State;
@@ -17,16 +19,19 @@ use mimorya_core::documents::limits::MAX_FILE_BYTES;
 use mimorya_core::documents::{DocumentSpace, Refusal};
 
 use crate::app::AppState;
-use crate::contract::{DocumentCreated, DocumentItem, DocumentList, DocumentUpload, Done};
+use crate::contract::{
+    DocumentCreated, DocumentItem, DocumentList, DocumentReplaced, DocumentReplacement,
+    DocumentUpload, Done,
+};
 use crate::http::{ApiError, ApiResult, PathId, Query};
 use crate::plugins::Auth;
-use crate::services::documents::{Deposit, DepositFailure};
+use crate::services::documents::{Deposit, DepositFailure, Replacement};
 
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/documents", get(list).post(deposit))
         .route("/documents/{id}", get(read).delete(remove))
-        .route("/documents/{id}/file", get(download))
+        .route("/documents/{id}/file", get(download).put(replace))
 }
 
 fn absent() -> ApiError {
@@ -56,6 +61,46 @@ async fn deposit(
         .sensitivity
         .map_or(Sensitivity::Internal, Sensitivity::from);
     state.documents.check_deposit(&access, space, sensitivity)?;
+    let bytes = file_body(&headers, body).await?;
+    let deposit = Deposit {
+        name: &upload.name,
+        space,
+        sensitivity,
+        bytes,
+    };
+    let created = state.documents.deposit(&access, deposit).await;
+    Ok((StatusCode::CREATED, Json(created.map_err(failed)?)))
+}
+
+async fn replace(
+    State(state): State<AppState>,
+    Auth(identity): Auth,
+    PathId(id): PathId,
+    Query(replacement): Query<DocumentReplacement>,
+    headers: HeaderMap,
+    body: RawBody,
+) -> ApiResult<Json<DocumentReplaced>> {
+    let access = state.access.context(identity).await?;
+    let replaces = replacement.version;
+    (state
+        .documents
+        .check_replacement(&access, id, replaces)
+        .await)
+        .map_err(failed)?;
+    let bytes = file_body(&headers, body).await?;
+    let replacement = Replacement {
+        document_id: id,
+        name: &replacement.name,
+        replaces,
+        bytes,
+    };
+    let replaced = state.documents.replace(&access, replacement).await;
+    Ok(Json(replaced.map_err(failed)?))
+}
+
+/// The file the request carries: refused, unread, when announced beyond
+/// its bound, or when found so.
+async fn file_body(headers: &HeaderMap, body: RawBody) -> ApiResult<axum::body::Bytes> {
     let announced = headers
         .get(CONTENT_LENGTH)
         .and_then(|length| length.to_str().ok())
@@ -63,20 +108,16 @@ async fn deposit(
     if announced.is_some_and(|length| length > MAX_FILE_BYTES as u64) {
         return Err(refused(Refusal::TooLarge));
     }
-    let bytes = axum::body::to_bytes(body, MAX_FILE_BYTES)
+    axum::body::to_bytes(body, MAX_FILE_BYTES)
         .await
-        .map_err(|_| refused(Refusal::TooLarge))?;
-    let deposit = Deposit {
-        name: &upload.name,
-        space,
-        sensitivity,
-        bytes,
-    };
-    match state.documents.deposit(&access, deposit).await {
-        Ok(created) => Ok((StatusCode::CREATED, Json(created))),
-        Err(DepositFailure::Refused(refusal)) => Err(refused(refusal)),
-        Err(DepositFailure::Domain(error)) => Err(error.into()),
-        Err(DepositFailure::Internal(error)) => Err(error.into()),
+        .map_err(|_| refused(Refusal::TooLarge))
+}
+
+fn failed(failure: DepositFailure) -> ApiError {
+    match failure {
+        DepositFailure::Refused(refusal) => refused(refusal),
+        DepositFailure::Domain(error) => error.into(),
+        DepositFailure::Internal(error) => error.into(),
     }
 }
 

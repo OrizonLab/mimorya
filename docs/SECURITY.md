@@ -689,7 +689,9 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   envoyés (`metadata.reference`), dans l'entreprise de l'administrateur seulement. Les
   autres requêtes invalides ne sont pas tracées.
 - Documents (ADR-095) : dépôt (`document.uploaded` : espace, unité, type, taille,
-  pages, passages, sensibilité), téléchargement (`document.downloaded`), suppression
+  pages, passages, sensibilité), remplacement par une nouvelle version
+  (`document.replaced` : version, type, taille, pages, passages, ADR-150),
+  téléchargement (`document.downloaded`), suppression
   (`document.deleted`), et fichier que le processus de lecture n'a pu lire
   (`document.rejected`, résultat `failure`, raison `timed_out` ou `reader_failed`,
   type et taille) ; jamais le nom du fichier, son titre ni son texte. Les fichiers
@@ -716,7 +718,10 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   complète d'une entreprise ; journal conservant la trace sans le contenu. Un document
   déposé (ADR-095) appartient à l'entreprise : il reste au départ de celui qui l'a
   déposé, se télécharge tel quel par qui le lit, et sa suppression par qui peut écrire
-  son espace emporte son fichier, ses passages et leurs vecteurs. L'agent n'en lit,
+  son espace emporte son fichier, ses passages et leurs vecteurs. Remplacé par une
+  nouvelle version (ADR-150), il ne garde pas l'ancienne : fichier, passages et
+  vecteurs sont ceux du nouveau fichier ; qui l'a remplacé en dernier reste avec lui,
+  effacé si son compte est supprimé, comme celui qui l'a déposé. L'agent n'en lit,
   par `document_search` et `document_read` (ADR-096), que ce que son utilisateur peut
   lire, avec ses droits du moment ; un document hors de portée lui répond comme
   inexistant, et ses passages lui sont remis comme données.

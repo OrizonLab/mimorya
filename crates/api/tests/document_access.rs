@@ -3,11 +3,12 @@
 //! units above, never by a sibling team; the company's by everyone with
 //! `document:read`; none above one's clearance. One deposits only where
 //! `document:write` reaches, never above one's clearance, and deletes the
-//! same way; what one may not delete, or not read, answers as absent. A
+//! and replaces (ADR-150) the same way; what one may not delete or replace,
+//! or not read, answers as absent. A
 //! deny on `document:read` hides them all, one on `document:write` leaves
 //! them read only. Another company's document, or unit, is absent. A
-//! deposit is refused before its file is read. A unit holding documents is
-//! not deleted.
+//! deposit or a replacement is refused before its file is read. A unit
+//! holding documents is not deleted.
 
 mod support;
 
@@ -18,7 +19,7 @@ use mimorya_db::repositories::documents::{NewDocument, insert_document};
 use mimorya_db::testing::{OTHER_TENANT_ID, OTHER_USER_ID};
 use serde_json::json;
 use support::companies::create;
-use support::documents::{Target, deposit, deposited, kept, listed, remove};
+use support::documents::{Target, deposit, deposited, kept, listed, remove, replace};
 use support::{Client, TestApi};
 use uuid::Uuid;
 
@@ -29,8 +30,22 @@ async fn absent(client: &Client<'_>, id: Uuid) {
         let refused = client.get(&url).await;
         assert_eq!(refused.status, StatusCode::NOT_FOUND, "{url}");
     }
+    not_written(client, id).await;
+}
+
+/// The document `id` is neither deleted nor replaced by `client`: absent.
+async fn not_written(client: &Client<'_>, id: Uuid) {
     let refused = client.delete(&format!("/documents/{id}")).await;
     assert_eq!(refused.status, StatusCode::NOT_FOUND);
+    let refused = replace(client, id, "Autre.txt", 1, TEXT).await;
+    assert_eq!(refused.status, StatusCode::NOT_FOUND, "{}", refused.text());
+}
+
+/// `client` reads the document `id`, and may neither delete nor replace it.
+async fn read_only(client: &Client<'_>, id: Uuid) {
+    let read = client.get(&format!("/documents/{id}")).await.json();
+    assert_eq!(read["canWrite"], false);
+    not_written(client, id).await;
 }
 
 #[tokio::test]
@@ -64,11 +79,9 @@ async fn rights_follow_the_space_and_the_clearance() {
     );
     absent(&lucas, confidential).await;
     absent(&lucas, south).await;
-    // He reads his team's but may not delete it, nor deposit anywhere.
-    let read = lucas.get(&format!("/documents/{team}")).await.json();
-    assert_eq!(read["canDelete"], false);
-    let refused = lucas.delete(&format!("/documents/{team}")).await;
-    assert_eq!(refused.status, StatusCode::NOT_FOUND);
+    // He reads his team's but may not delete nor replace it, nor deposit
+    // anywhere.
+    read_only(&lucas, team).await;
     assert!(listed(&julien).await.contains(&team));
     for into in [north, Target::default()] {
         let refused = deposit(&lucas, "Lucas.txt", into, TEXT).await;
@@ -94,13 +107,8 @@ async fn rights_follow_the_space_and_the_clearance() {
     }
     let seen = listed(&julien).await;
     assert!(seen.contains(&confidential) && !seen.contains(&south));
-    // The company's document he reads, and may not delete.
-    let read = julien.get(&format!("/documents/{company}")).await.json();
-    assert_eq!(read["canDelete"], false);
-    assert_eq!(
-        julien.delete(&format!("/documents/{company}")).await.status,
-        StatusCode::NOT_FOUND
-    );
+    // The company's document he reads, and may not delete nor replace.
+    read_only(&julien, company).await;
     absent(&julien, south).await;
 
     // Marc, over the technical service, reads and deletes in both teams.
@@ -228,13 +236,10 @@ async fn a_deny_on_writing_documents_leaves_them_read_only() {
     let policy = created.json()["id"].as_str().unwrap().to_string();
     let refused = deposit(&julien, "Encore.txt", Target::unit(unit::TEAM_NORTH), TEXT).await;
     assert_eq!(refused.status, StatusCode::FORBIDDEN, "{}", refused.text());
-    let read = julien.get(&format!("/documents/{id}")).await.json();
-    assert_eq!(read["canDelete"], false);
+    read_only(&julien, id).await;
     let list = julien.get("/documents").await.json();
     assert_eq!(list["spaces"], json!([]));
     assert_eq!(list["quota"], json!(null));
-    let kept_back = julien.delete(&format!("/documents/{id}")).await;
-    assert_eq!(kept_back.status, StatusCode::NOT_FOUND);
     let removed = paul.delete(&format!("/admin/policies/{policy}")).await;
     assert_eq!(removed.status, StatusCode::OK);
     remove(&julien, id).await;
@@ -256,6 +261,19 @@ async fn a_deposit_is_refused_before_its_file_is_read() {
     let large = vec![b'a'; 11 * 1024 * 1024];
     let refused = deposit(&lucas, "Gros.txt", Target::unit(unit::TEAM_NORTH), &large).await;
     assert_eq!(refused.status, StatusCode::FORBIDDEN, "{}", refused.text());
+    // Nor replace his team's document: absent, the file not read either.
+    let team = deposited(&julien, "Nord.txt", Target::unit(unit::TEAM_NORTH), TEXT).await;
+    let refused = replace(&lucas, team, "Gros.txt", 1, &large).await;
+    assert_eq!(refused.status, StatusCode::NOT_FOUND, "{}", refused.text());
+    // Nor Julien without the request header.
+    let request = Request::put(format!("/documents/{team}/file?name=a.txt&version=1"))
+        .header("cookie", format!("mimorya_session={}", julien.session))
+        .body(Body::from(TEXT))
+        .unwrap();
+    assert_eq!(api.send(request).await.status, StatusCode::FORBIDDEN);
+    let read = julien.get(&format!("/documents/{team}")).await.json();
+    assert_eq!(read["version"], 1);
+    remove(&julien, team).await;
 }
 
 #[tokio::test]

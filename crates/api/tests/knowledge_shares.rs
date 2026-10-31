@@ -12,7 +12,7 @@ use mimorya_core::authz::Sensitivity;
 use mimorya_core::demo::{tenant, unit, user};
 use serde_json::json;
 use support::TestApi;
-use support::documents::{Target, deposited, listed};
+use support::documents::{Target, deposited, listed, replace};
 use support::knowledge_shares::{SHARES, memories, north_to_south, share, team_memory, unshare};
 use support::queue::as_owner;
 use support::refusals::{entries_since, latest_entry};
@@ -64,14 +64,16 @@ async fn a_team_reads_what_another_shares_with_it_and_only_that() {
     assert!(!memories(&lucas).await.contains(&south));
     unshare(&paul, &made).await;
 
-    // Its documents too: read, never deleted.
+    // Its documents too: read, never deleted nor replaced.
     let made = share(&paul, north_to_south((true, true), "internal")).await;
     assert!(listed(&hugo).await.contains(&document));
     let read = hugo.get(&format!("/documents/{document}")).await;
     assert_eq!(read.status, StatusCode::OK, "{}", read.text());
-    assert_eq!(read.json()["canDelete"], false);
+    assert_eq!(read.json()["canWrite"], false);
     let refused = hugo.delete(&format!("/documents/{document}")).await;
     assert_eq!(refused.status, StatusCode::NOT_FOUND);
+    let refused = replace(&hugo, document, "Sud.txt", 1, b"Autre consigne").await;
+    assert_eq!(refused.status, StatusCode::NOT_FOUND, "{}", refused.text());
 
     // Removed: nothing more read.
     unshare(&paul, &made).await;

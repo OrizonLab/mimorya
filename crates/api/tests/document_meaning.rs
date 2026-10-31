@@ -2,8 +2,9 @@
 //! embedding model, the passages of its documents get their vectors, with
 //! its memories, and `document_search` finds what is close to a request
 //! with no word in common, within what its user may read only. A failure
-//! shows while passages alone await their vectors. A deposit wakes the
-//! indexer; going back to words wipes every passage's vector.
+//! shows while passages alone await their vectors. A deposit, or a
+//! replacement by a new version (ADR-150), wakes the indexer; going back to
+//! words wipes every passage's vector.
 
 mod support;
 
@@ -12,7 +13,7 @@ use std::time::Duration;
 use mimorya_core::demo::{tenant, unit, user};
 use support::TestApi;
 use support::document_search::found;
-use support::documents::{Target, deposited, remove};
+use support::documents::{Target, deposited, passages_of, remove, replace};
 use support::embeddings::{ASKED, MODEL, back_to_words, choose, indexed, start, start_indexing};
 use uuid::Uuid;
 
@@ -140,7 +141,7 @@ async fn the_indexing_failure_shows_while_passages_alone_await() {
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
-async fn a_deposit_wakes_the_indexer() {
+async fn a_deposit_or_a_replacement_wakes_the_indexer() {
     let api = start_indexing().await;
     let paul = api.sign_in(user::PAUL).await;
     let julien = api.sign_in(user::JULIEN).await;
@@ -173,6 +174,23 @@ async fn a_deposit_wakes_the_indexer() {
         given = vectors_of(&api, vans).await;
     }
     assert_eq!(given, [(Some(MODEL.into()), true)]);
+
+    // Its new version's passages, their former vectors gone with the former
+    // ones, get theirs as soon.
+    let text = "Les camionnettes partent de Villeurbanne à 6 h 30.";
+    let replaced = replace(&julien, vans, "Tournées Nord.md", 1, text.as_bytes()).await;
+    assert_eq!(replaced.json()["passages"], 1, "{}", replaced.text());
+    let mut given = vectors_of(&api, vans).await;
+    for _ in 0..200 {
+        if given.iter().all(|(_, embedded)| *embedded) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        given = vectors_of(&api, vans).await;
+    }
+    assert_eq!(given, [(Some(MODEL.into()), true)]);
+    let (_, _, content) = &passages_of(&api, vans).await[0];
+    assert!(content.contains("Villeurbanne"), "{content}");
     remove(&julien, vans).await;
     back_to_words(&paul).await;
 }

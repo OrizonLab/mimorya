@@ -1,5 +1,5 @@
-//! Documents deposited through the API (ADR-095), and what the database
-//! keeps of them.
+//! Documents deposited through the API (ADR-095), replaced by a new version
+//! (ADR-150), and what the database keeps of them.
 
 use axum::http::StatusCode;
 use mimorya_core::demo::tenant;
@@ -63,6 +63,30 @@ pub async fn deposited(client: &Client<'_>, name: &str, into: Target<'_>, bytes:
     let taken = deposit(client, name, into, bytes).await;
     assert_eq!(taken.status, StatusCode::CREATED, "{}", taken.text());
     taken.json()["id"].as_str().unwrap().parse().unwrap()
+}
+
+/// The URL replacing the file of the document `id`, at `version`, by the
+/// file `name`.
+pub fn replace_url(id: Uuid, name: &str, version: i32) -> String {
+    let mut query = url::form_urlencoded::Serializer::new(String::new());
+    query.append_pair("name", name);
+    query.append_pair("version", &version.to_string());
+    format!("/documents/{id}/file?{}", query.finish())
+}
+
+/// Replaces the file of the document `id`, at `version`, by `bytes` named
+/// `name`.
+pub async fn replace(
+    client: &Client<'_>,
+    id: Uuid,
+    name: &str,
+    version: i32,
+    bytes: &[u8],
+) -> TestResponse {
+    let url = replace_url(id, name, version);
+    client
+        .put_file(&url, bytes.to_vec(), "application/octet-stream")
+        .await
 }
 
 /// Deletes the document `id`, as `client` may.

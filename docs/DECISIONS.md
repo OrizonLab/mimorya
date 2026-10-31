@@ -8585,3 +8585,80 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       demandé, la passe faite quand le service tourne ;
     - `apps/web/e2e/conversation-summary.spec.ts` : la note dit combien de messages sont
       laissés de côté, au pluriel ou au singulier, ou rien pour un résumé à jour.
+
+## ADR-150 — Un document remplacé par une nouvelle version de son fichier (documents, lot 4a)
+
+- **Date** : 2026-10-31 · **Statut** : acceptée · complète ADR-095, ADR-097
+- **Contexte** : un document déposé (ADR-095) ne changeait jamais. Pour le mettre à jour,
+  il fallait le supprimer puis en déposer un autre. Le nouveau document perdait son
+  identifiant : les conversations qui citaient l'ancien menaient à un document
+  introuvable, et l'agent pouvait lire les deux le temps que quelqu'un supprime le
+  premier. ADR-097 laissait ce remplacement à faire.
+- **Décision** :
+  - **remplacement** (`PUT /documents/{id}/file?name=…&version=…`, le nouveau fichier en
+    corps de requête, comme un dépôt) :
+    - le document reste le même : son identifiant, son espace, sa sensibilité, celui qui
+      l'a déposé et la date de son premier dépôt ne changent pas ;
+    - son fichier, son nom, son titre, son type, sa taille, ses pages et ses passages
+      deviennent ceux du nouveau fichier, lu comme à un dépôt (même processus, mêmes
+      bornes, mêmes refus) ;
+    - l'ancienne version n'est pas gardée. Ses passages et leurs vecteurs partent avec
+      elle ; les nouveaux passages attendent leurs vecteurs, et l'indexation est
+      réveillée comme après un dépôt (ADR-096) ;
+    - le document compte ses versions (`version`, 1 au dépôt) et garde la date de son
+      dernier remplacement et qui l'a fait (`replaced_at`, `replaced_by_user_id`, vidé
+      si le compte est supprimé, comme `uploaded_by_user_id`) ;
+  - **droits** : remplacer demande ce que demande la suppression, `document:write` sur
+    l'espace du document, à sa sensibilité. Un document que la personne ne lit pas, ou
+    ne peut pas écrire, répond comme introuvable, avant que le fichier soit lu, puis de
+    nouveau dans la transaction qui l'enregistre. La liste dit si on peut écrire chaque
+    document (`canWrite`, qui remplace `canDelete`) ;
+  - **version nommée** : la demande nomme la version qu'elle remplace, celle que la
+    personne a vue. Si le document a été remplacé entre-temps, elle est refusée (409,
+    « Ce document a été remplacé entre-temps : rechargez la liste pour voir sa dernière
+    version ») : deux personnes ne s'écrasent jamais sans le savoir. Les remplacements
+    et les dépôts d'une entreprise passent l'un après l'autre sous le verrou de son
+    quota ; seule une suppression peut se glisser entre la lecture du document et son
+    remplacement, et le remplacement répond alors comme introuvable ;
+  - **quota** : seul compte ce que le nouveau fichier ajoute à l'ancien. Un fichier plus
+    petit est toujours pris, même au-dessus du quota ;
+  - **base** : le rôle applicatif ne peut changer d'un document que ce que change un
+    nouveau fichier (titre, nom, type, taille, pages, version et remplacement), et du
+    fichier que son contenu ; une version au-delà de la première dit toujours quand elle
+    a remplacé la précédente (contrainte `documents_replaced`) ;
+  - **audit** : `document.replaced` (version, type, taille, pages, passages), jamais le
+    nom du fichier, son titre ni son texte. Un fichier illisible est tracé comme au
+    dépôt (`document.rejected`).
+- **Alternatives écartées** :
+  - garder les versions précédentes : elles compteraient dans le quota et resteraient
+    lisibles par l'agent (ou il faudrait une règle pour l'en empêcher), pour un besoin
+    que personne n'a exprimé. L'entreprise garde l'historique de ses fichiers chez elle ;
+  - un nouveau document à chaque version : les conversations qui citent l'ancien
+    mèneraient à un document supprimé ;
+  - laisser la sensibilité ou l'espace changer avec le fichier : ce sont des décisions
+    de rangement, qui changent qui lit le document ; elles ne doivent pas suivre un
+    simple dépôt de fichier ;
+  - le dernier remplacement gagne, sans version nommée : une personne pourrait écraser
+    sans le savoir la version qu'une autre vient de déposer.
+- **Conséquences** :
+  - une citation d'une conversation passée mène à la version actuelle du document, dont
+    le texte a pu changer. Un run en cours qui relit un document remplacé lit la nouvelle
+    version ;
+  - l'écran « Documents » (nouvelle version d'un document, glisser-déposer) suit au
+    lot 4b ;
+  - tests :
+    - `crates/api/tests/document_versions.rs` : le même document, son fichier et ses
+      passages remplacés, audité sans son nom ; de deux remplacements simultanés, l'un
+      est pris et l'autre refusé, et ni une version passée ni une version à venir n'est
+      remplacée ; un fichier ou une demande refusés laissent le document tel quel ; le
+      quota ne compte que ce que le nouveau fichier ajoute, et un fichier plus petit
+      passe même au-dessus du quota ;
+    - `crates/api/tests/document_access.rs`, `knowledge_shares.rs` : un document qu'on ne
+      lit pas, ou qu'on lit sans pouvoir l'écrire (lecteur de son équipe, document de
+      l'entreprise, politique de refus, partage d'unité, autre entreprise), répond comme
+      introuvable au remplacement, et le fichier n'est pas lu ;
+    - `crates/api/tests/document_meaning.rs` : les passages de la nouvelle version
+      reçoivent leurs vecteurs ;
+    - `crates/db/tests/document_versions.rs` : seule la version courante est remplacée,
+      les vecteurs des anciens passages partis avec eux ; le rôle applicatif ne change
+      rien d'autre d'un document ni de son fichier.

@@ -18,6 +18,7 @@ pub mod conversations;
 pub mod deliverables;
 pub mod document_embeddings;
 pub mod document_search;
+pub mod document_versions;
 pub mod documents;
 pub mod embedding_settings;
 pub mod gateway_approval_notices;
