@@ -182,8 +182,9 @@ async fn a_failed_pass_loses_the_summary_never_the_run_and_a_later_one_catches_u
     let c = conversation(&marc).await;
     exchanges(c, 1, 8).await;
 
-    // No answer scripted for the summary: the model fails it.
-    let run = turn(&api, &marc, c, "Question 9", vec![answer(9)]).await;
+    // The model fails the summary, as a busy provider would.
+    let failing = ScriptedStep::fails("Fournisseur surchargé");
+    let run = turn(&api, &marc, c, "Question 9", vec![answer(9), failing]).await;
     assert!(last_system(&api).starts_with(SUMMARY_SYSTEM));
     assert_eq!(stored(c).await, None);
     let detail = marc.get(&format!("/conversations/{c}")).await.json();

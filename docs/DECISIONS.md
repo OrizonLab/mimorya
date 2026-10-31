@@ -8580,7 +8580,8 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       modèle, pas une neuvième, puis la suite à la fin du run suivant, avec le nombre
       dit par le détail ; une passe qui échoue comme un fournisseur surchargé arrête la
       chaîne, la passe d'avant gardée et la suivante jamais demandée ;
-    - `crates/api/tests/conversation_summary_limits.rs` : aucune passe une fois l'arrêt
+    - `crates/api/tests/conversation_summary_limits.rs` : un run qui se termine pendant
+      l'arrêt du service n'est suivi d'aucune passe ; aucune passe une fois l'arrêt
       demandé, la passe faite quand le service tourne ;
     - `apps/web/e2e/conversation-summary.spec.ts` : la note dit combien de messages sont
       laissés de côté, au pluriel ou au singulier, ou rien pour un résumé à jour.

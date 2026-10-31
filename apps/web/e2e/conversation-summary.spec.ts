@@ -100,8 +100,12 @@ test('summarised messages no longer shown are said so first, or counted', async 
 });
 
 test('a summary lagging by a single message says so', async ({ page }) => {
-  // Nine messages summarised, twenty-one after them, the latest twenty reread.
-  const note = await open(page, 'Écluse', 'Les 9 messages ci-dessus sont résumés pour l’assistant');
+  // Ten messages summarised, twenty-one after them, the latest twenty reread.
+  const note = await open(
+    page,
+    'Écluse',
+    'Les 10 messages ci-dessus sont résumés pour l’assistant',
+  );
   await expect(note).toContainText(
     'Le message suivant n’est pas encore résumé, et l’assistant ne le relit pas : il le sera après sa prochaine réponse.',
   );

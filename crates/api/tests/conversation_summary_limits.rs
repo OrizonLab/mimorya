@@ -7,7 +7,7 @@
 mod support;
 
 use axum::http::StatusCode;
-use mimorya_agent::testing::ScriptedStep;
+use mimorya_agent::testing::{ScriptedReply, ScriptedStep};
 use mimorya_api::services::runs::{ConversationSummaries, RunScope};
 use mimorya_core::demo::{tenant, user};
 use serde_json::json;
@@ -100,6 +100,29 @@ async fn a_company_without_a_model_has_nothing_summarised() {
         mission_id: None,
     };
     assert!(!summaries.fold(scope, c).await.unwrap());
+    assert_eq!(stored(c).await, None);
+    assert_eq!(audited_passes(c).await, 0);
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_run_ending_as_the_service_stops_is_followed_by_no_pass() {
+    let api = TestApi::start().await;
+    let marc = api.sign_in(user::MARC).await;
+    let c = conversation(&marc).await;
+    exchanges(c, 1, 8).await;
+
+    // The service told to stop while the model answers: the run ends with
+    // its answer, and the application chains no pass after it.
+    let services = api.app.services.clone();
+    let stopping = ScriptedStep::dynamic(move |_| {
+        services.shutdown.send_replace(true);
+        ScriptedReply::text("Réponse 9")
+    });
+    let steps = vec![stopping, ScriptedStep::text(SUMMARY)];
+    let run = turn(&api, &marc, c, "Question 9", steps).await;
+    assert_eq!(status(run).await, "completed");
+    assert_eq!(api.model.as_ref().unwrap().remaining(), 1);
     assert_eq!(stored(c).await, None);
     assert_eq!(audited_passes(c).await, 0);
 }
