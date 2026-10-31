@@ -196,7 +196,7 @@ mod tests {
 
     #[test]
     fn keeps_the_rate_limit_windows_past_the_longest() {
-        use crate::app::{FAILED_LOGIN_WINDOW, RESET_REQUEST_WINDOW};
+        use crate::plugins::rate_limit::{FAILED_LOGIN_WINDOW, RESET_REQUEST_WINDOW};
         let kept = RATE_LIMITS_KEPT.to_std().unwrap();
         // Logins and sign-in steps count by the minute.
         for window in [FAILED_LOGIN_WINDOW, RESET_REQUEST_WINDOW] {

@@ -2,13 +2,16 @@
 //! under the server's master key (`MIMORYA_MASTER_KEY`), with the company and
 //! the secret's name as associated data, so that a sealed value only opens
 //! in its own place: copied to another company or another name, it fails
-//! (ADR-024).
+//! (ADR-024). Keys for other uses are derived from the master key, each its
+//! own (HKDF-SHA256, ADR-152).
 
 use anyhow::{Context, anyhow, bail};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use mimorya_db::repositories::secrets::StoredSecret;
 use ring::aead::{AES_256_GCM, Aad, LessSafeKey, NONCE_LEN, Nonce, UnboundKey};
+use ring::hkdf;
+use ring::hmac;
 use ring::rand::{SecureRandom, SystemRandom};
 use uuid::Uuid;
 
@@ -16,9 +19,13 @@ pub const MASTER_KEY_LEN: usize = 32;
 /// Recorded with each secret: a later key rotation knows which key opens it.
 pub const KEY_VERSION: i32 = 1;
 const TAG_LEN: usize = 16;
+/// The salt of the keys derived from the master key.
+const DERIVATION_SALT: &[u8] = b"mimorya/derived-keys/v1";
 
 pub struct SecretCipher {
     key: LessSafeKey,
+    /// Whence the keys for other uses are derived.
+    derived: hkdf::Prk,
     random: SystemRandom,
 }
 
@@ -42,11 +49,23 @@ impl SecretCipher {
         if key.len() != MASTER_KEY_LEN {
             bail!("master key: {MASTER_KEY_LEN} bytes expected");
         }
+        let derived = hkdf::Salt::new(hkdf::HKDF_SHA256, DERIVATION_SALT).extract(key);
         let key = UnboundKey::new(&AES_256_GCM, key).map_err(|_| anyhow!("master key"))?;
         Ok(Self {
             key: LessSafeKey::new(key),
+            derived,
             random: SystemRandom::new(),
         })
+    }
+
+    /// The HMAC key of `purpose`, derived from the master key: the same for
+    /// every process given the same master key, its own for each purpose,
+    /// and telling nothing of the master key nor of another purpose's.
+    pub fn derived_key(&self, purpose: &'static [u8]) -> anyhow::Result<hmac::Key> {
+        let info = [purpose];
+        let okm = (self.derived.expand(&info, hmac::HMAC_SHA256))
+            .map_err(|_| anyhow!("key derivation"))?;
+        Ok(hmac::Key::from(okm))
     }
 
     pub fn seal(&self, tenant_id: Uuid, name: &str, value: &str) -> anyhow::Result<StoredSecret> {
@@ -130,6 +149,24 @@ mod tests {
         assert_ne!(again.iv, sealed.iv);
         assert_ne!(again.ciphertext, sealed.ciphertext);
         assert!(!format!("{cipher:?} {sealed:?}").contains("secret\""));
+    }
+
+    #[test]
+    fn derives_one_key_per_purpose_and_master_key() {
+        let tag = |cipher: &SecretCipher, purpose| {
+            let key = cipher.derived_key(purpose).unwrap();
+            hmac::sign(&key, b"nadia.benali@neo-maintenance.example")
+                .as_ref()
+                .to_vec()
+        };
+        let (one, same, other) = (cipher(7), cipher(7), cipher(8));
+        assert_eq!(tag(&one, b"rate-limits"), tag(&same, b"rate-limits"));
+        assert_ne!(tag(&one, b"rate-limits"), tag(&one, b"another"));
+        assert_ne!(tag(&one, b"rate-limits"), tag(&other, b"rate-limits"));
+        // Not the master key itself as the HMAC key.
+        let master = hmac::Key::new(hmac::HMAC_SHA256, &[7; MASTER_KEY_LEN]);
+        let plain = hmac::sign(&master, b"nadia.benali@neo-maintenance.example");
+        assert_ne!(tag(&one, b"rate-limits"), plain.as_ref());
     }
 
     #[test]

@@ -140,7 +140,7 @@ Repères à l'intérieur des crates :
   Slack, qui signe les événements comme lui, Telegram, Microsoft pour Teams, qui signe
   les activités avec une clé de test).
 - `api/src/plugins/` (contexte de requête, limitation de débit (globale par processus ;
-  d'authentification partagée par PostgreSQL, `shared_limit.rs`, ADR-088), CSRF (sauf la réception
+  d'authentification partagée par PostgreSQL, clés en HMAC sous une clé dérivée de la clé maître, `shared_limit.rs`, ADR-088, ADR-152), CSRF (sauf la réception
   des réponses SAML, ADR-068, l'envoi à un déclencheur, ADR-109, les événements de
   Slack, ADR-125, les mises à jour de Telegram, ADR-133, et les activités du Bot
   Framework, ADR-138), session,

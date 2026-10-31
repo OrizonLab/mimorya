@@ -197,8 +197,9 @@ utilisateur).
   - `_sqlx_migrations` (journal des migrations) : aucun droit ;
   - `rate_limit_windows` et `rate_limit_values` (fenêtres des limites d'authentification
     partagées par tous les processus, ADR-088) : aucun droit. Elles ne portent aucune
-    donnée d'entreprise : une empreinte (SHA-256) de chaque clé (adresse cliente, adresse
-    e-mail) et de chaque valeur, le début de la fenêtre et son compte ; non journalisées
+    donnée d'entreprise : une empreinte de chaque clé (adresse cliente, adresse e-mail)
+    et de chaque valeur, leur HMAC sous une clé dérivée de la clé maître (SHA-256 sans
+    clé maître, ADR-152), le début de la fenêtre et son compte ; non journalisées
     (`UNLOGGED` : une panne de la base les vide), purgées deux heures après par la
     maintenance. Une politique refuse toute ligne : seules les fonctions ci-dessous y
     touchent.
@@ -261,7 +262,7 @@ utilisateur).
   `system_rate_limit_release` et `system_rate_limit_distinct` (compter, rendre, et
   compter une fois par valeur, un passage dans la fenêtre d'une clé de limite : rien que
   des empreintes, ADR-088) et `system_purge_rate_limits` (oublier les fenêtres closes
-  depuis longtemps), `system_unreplied_gateway_events` (lister, à chaque passage, les fins
+  depuis longtemps, jamais une fenêtre ouverte depuis moins de deux heures, ADR-152), `system_unreplied_gateway_events` (lister, à chaque passage, les fins
   et pauses des runs lancés depuis Slack dans une conversation tenue dans un fil actif,
   encore à y répondre, celles d'un fil dans l'ordre : entreprise et identifiant de
   l'événement seulement, le run et l'événement de l'entreprise du fil, chacune répondue
