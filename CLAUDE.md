@@ -348,9 +348,11 @@ Avant chaque commit : `pnpm check && pnpm test:int` doivent passer.
 ## Processus de contribution
 
 1. Travailler sur une branche dédiée, en commits cohérents ; ouvrir une PR (brouillon)
-   vers `main`. Une PR qui traite une issue la nomme dans sa description
-   (`Closes #N`, une ligne par issue entièrement traitée ; `#N` seul si elle ne l'est
-   qu'en partie).
+   vers `main`. Une PR qui traite une issue la nomme dans sa description et dans le
+   message du squash (« Traite #N », ou « Partie de #N » si elle ne la traite qu'en
+   partie), **jamais avec un mot-clé de fermeture** (`close`, `fix`, `resolve` et leurs
+   formes) : GitHub fermerait l'issue à la fusion, avant toute vérification. Seul
+   l'agent `issue-steward` la ferme (point 6).
 2. **Audit obligatoire avant fusion** : lancer l'agent `code-auditor`
    (`.claude/agents/code-auditor.md`, grille `REVIEW.md`) sur la branche. Il est en
    lecture seule, exécute tous les contrôles et rend un verdict.
@@ -366,7 +368,8 @@ Avant chaque commit : `pnpm check && pnpm test:int` doivent passer.
    (`.claude/agents/issue-steward.md`) en lui donnant la PR fusionnée. Il relit les
    issues ouvertes et les rapproche de `main`. Il ferme, avec un commentaire qui le
    prouve, celles qui sont entièrement traitées et testées, et commente celles qui ne
-   le sont qu'en partie. Il ne modifie aucun fichier.
+   le sont qu'en partie. Il signale une issue que GitHub aurait fermée sans preuve. Il
+   ne modifie aucun fichier.
 
 ## Structure du code
 
