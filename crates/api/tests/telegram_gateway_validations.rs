@@ -1,26 +1,25 @@
 //! Validations given in Telegram (ADR-136): a run started there that
 //! pauses for its author's own validation shows the action with its exact
 //! parameters and its buttons; pressed, it is decided as its author,
-//! audited so, the press answered, its buttons taken off and the outcome
+//! audited so, the press answered, the message written again with the
+//! action said as settled and without its buttons (ADR-148), the outcome
 //! said in answer to the message, and the run goes on. Only a button the
 //! bot showed under its own message decides, and only for whom the request
 //! awaits: a button no message carries, a message not the bot's, a press in
 //! another's chat, another linked person's press of it, a Telegram account
 //! no longer linked, a paused bot decide nothing. An action decided
-//! meanwhile in the application has its buttons taken off, but never by
-//! someone it is not for. An action sent outside the company, or one a
+//! meanwhile in the application is written again so, but never by someone
+//! it is not for. An action sent outside the company, or one a
 //! manager decides, is shown without buttons, and no press decides it.
 
 mod support;
 
 use axum::http::StatusCode;
-use mimorya_agent::testing::ScriptedStep;
 use mimorya_connectors::testing::{FakeTelegram, TELEGRAM_BOT};
-use mimorya_core::demo::{tenant, user};
+use mimorya_core::demo::user;
 use serde_json::json;
 use support::TestApi;
 use support::manager_approvals::{listed, route_to_managers};
-use support::planning::{apply_proposal, propose};
 use support::queue::as_owner;
 use support::refusals::{entries_since, latest_entry};
 use support::slack_conversations::answer;
@@ -29,9 +28,10 @@ use support::telegram::{
     LEA_TELEGRAM, LEA_USERNAME, MARC_TELEGRAM, MARC_USERNAME, ask_code, confirm, open_and_accept,
 };
 use support::telegram_conversations::{
-    claimed_press, deliver, keyboard_of, last_brief, last_said, latest_number, linked_bot, talk,
-    telegram_runs,
+    claimed_press, deliver, keyboard_of, last_brief, last_said, latest_number, linked_bot,
+    message_numbered,
 };
+use support::telegram_validations::asked;
 use uuid::Uuid;
 
 const MARC: (i64, &str) = (MARC_TELEGRAM, MARC_USERNAME);
@@ -39,36 +39,6 @@ const LEA: (i64, &str) = (LEA_TELEGRAM, LEA_USERNAME);
 /// Nadia's Telegram account.
 const NADIA_TELEGRAM: i64 = 6161;
 const NADIA: (i64, &str) = (NADIA_TELEGRAM, "nadia_ben");
-
-/// The request `writer` writes to plan INT-2052, ending with `end` once
-/// validated: its run and its approval.
-async fn asked(
-    api: &TestApi,
-    telegram: &FakeTelegram,
-    (id, writer): (Uuid, (i64, &str)),
-    end: &str,
-) -> (String, Uuid) {
-    api.script(vec![
-        propose("INT-2052", "15:00"),
-        apply_proposal(""),
-        ScriptedStep::text(end),
-    ]);
-    talk(api, telegram, id, 10, writer, "Planifie INT-2052").await;
-    let run = telegram_runs(api).await.remove(0).0;
-    (run.to_string(), approval_of(api, run).await)
-}
-
-/// The approval the run `run` awaits.
-async fn approval_of(api: &TestApi, run: Uuid) -> Uuid {
-    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
-    let approval = sqlx::query_scalar("select id from approvals where run_id = $1")
-        .bind(run)
-        .fetch_one(&mut *tx)
-        .await
-        .unwrap();
-    tx.commit().await.unwrap();
-    approval
-}
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
@@ -128,6 +98,41 @@ async fn an_action_awaiting_its_author_is_validated_with_its_button() {
         keyboard_of(&telegram, number),
         json!({ "inline_keyboard": [] })
     );
+    // Its message written again: the action settled, no longer to
+    // validate, its answer still to come here.
+    let rewritten = message_numbered(&telegram, number);
+    assert_eq!(rewritten.edits, 1);
+    assert!(rewritten.html);
+    assert!(
+        rewritten
+            .text
+            .starts_with("L’action de cette demande montrée ci-dessous est décidée (<a href=\""),
+        "{}",
+        rewritten.text
+    );
+    assert!(
+        rewritten
+            .text
+            .contains("). La suite viendra ici.\n\n<b>Action :</b> "),
+        "{}",
+        rewritten.text
+    );
+    assert!(
+        rewritten.text.contains("Paramètres exacts :\n<pre>"),
+        "{}",
+        rewritten.text
+    );
+    assert!(
+        rewritten.text.ends_with("</pre>\n<i>Validée.</i>"),
+        "{}",
+        rewritten.text
+    );
+    assert!(!rewritten.text.contains("à valider"), "{}", rewritten.text);
+    assert!(
+        !rewritten.text.contains("qui seront exécutés"),
+        "{}",
+        rewritten.text
+    );
     assert_eq!(listed(&marc, &run).await.unwrap()["status"], "approved");
     let audited = entries_since(&api, since).await;
     assert!(audited.contains("approval.approved"), "{audited}");
@@ -162,6 +167,9 @@ async fn an_action_refused_with_its_button_is_not_carried_out() {
         said.starts_with("Refusée par vous dans Telegram."),
         "{said}"
     );
+    let rewritten = message_numbered(&telegram, number).text;
+    assert!(rewritten.ends_with("<i>Refusée.</i>"), "{rewritten}");
+    assert!(!rewritten.contains("à valider"), "{rewritten}");
     assert_eq!(listed(&marc, &run).await.unwrap()["status"], "rejected");
 }
 
@@ -184,7 +192,7 @@ async fn an_action_decided_meanwhile_has_its_buttons_taken_off() {
         .await;
     assert_eq!(decided.status, StatusCode::OK, "{}", decided.text());
     // Its button pressed in Telegram then: nothing more decided, and its
-    // buttons taken off.
+    // message written again as the application decided it.
     let press = telegram.press(11, MARC, number, &format!("r:{approval}"));
     deliver(&api, &telegram, id, &press).await;
     assert_eq!(last_brief(&telegram), "Rien n’a été décidé.");
@@ -194,6 +202,8 @@ async fn an_action_decided_meanwhile_has_its_buttons_taken_off() {
         keyboard_of(&telegram, number),
         json!({ "inline_keyboard": [] })
     );
+    let rewritten = message_numbered(&telegram, number).text;
+    assert!(rewritten.ends_with("<i>Validée.</i>"), "{rewritten}");
     assert_eq!(listed(&marc, &run).await.unwrap()["status"], "approved");
 }
 
@@ -225,6 +235,14 @@ async fn a_decided_action_s_buttons_are_left_to_whom_it_is_for() {
     assert_eq!(said, "Demande de validation introuvable");
     let buttons = &keyboard_of(&telegram, number)["inline_keyboard"][0];
     assert_eq!(buttons.as_array().map(Vec::len), Some(2));
+    // Nor is his message written again for her.
+    let pause = message_numbered(&telegram, number);
+    assert_eq!(pause.edits, 0);
+    assert!(
+        pause.text.contains("<b>Action à valider :</b>"),
+        "{}",
+        pause.text
+    );
 }
 
 #[tokio::test]

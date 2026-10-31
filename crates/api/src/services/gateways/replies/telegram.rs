@@ -5,25 +5,30 @@
 //! person's own validation that may be given there with their exact
 //! parameters and their buttons (ADR-136), as many as one message holds
 //! (`shown_in_message`); the others are validated in the application,
-//! which shows them whole.
+//! which shows them whole. Kept, it is written again once some of them
+//! are settled (ADR-148).
 
 use chrono::{DateTime, Utc};
-use mimorya_core::gateways::ShownAction;
 use mimorya_core::gateways::telegram::{approval_keyboard, shown_in_message};
 use mimorya_db::repositories::approvals::ApprovalRow;
+use mimorya_db::repositories::gateway_cards::CardPlace;
 use mimorya_db::repositories::gateway_replies::{ReplyRecord, ReplyTarget};
+use uuid::Uuid;
 
 use crate::services::gateways::GatewayService;
+use crate::services::gateways::concerned::shown_action;
 use crate::services::gateways::telegram::{
-    BotChat, Pause, after_failure, reply_text, write_in_chat,
+    BotChat, Pause, WrittenMessage, after_failure, keep_message, reply_text, write_in_chat,
 };
 
-/// Writes the answer to `target` in the person's private chat, with the
-/// bot's `token`; `awaiting`, a pause's actions still awaiting a decision.
-/// What became of it.
+/// Writes the answer to `target`, of the company `tenant_id`, in the
+/// person's private chat, with the bot's `token`; `awaiting`, a pause's
+/// actions still awaiting a decision. What became of it. A pause written
+/// with buttons is kept, to be written again once some of its actions are
+/// settled (ADR-148).
 pub(super) async fn answer(
     gateways: &GatewayService,
-    target: &ReplyTarget,
+    (tenant_id, target): (Uuid, &ReplyTarget),
     awaiting: &[ApprovalRow],
     token: &str,
     now: DateTime<Utc>,
@@ -37,12 +42,7 @@ pub(super) async fn answer(
     let own: Vec<&ApprovalRow> = (awaiting.iter())
         .filter(|a| !a.routed_to_manager())
         .collect();
-    let shown = shown_in_message(own.iter().map(|a| ShownAction {
-        approval_id: a.id,
-        summary: &a.action_summary,
-        risk: &a.risk,
-        parameters: &a.payload,
-    }));
+    let shown = shown_in_message(own.iter().map(|a| shown_action(a)));
     let pause = Pause {
         shown: &shown,
         in_application: own.len() - shown.len(),
@@ -58,7 +58,22 @@ pub(super) async fn answer(
     };
     let text = |markup| reply_text(markup, status, said, &url, pause);
     match write_in_chat(gateways, to, text, keyboard.as_ref()).await {
-        Ok(_) => ReplyRecord::Done("sent"),
+        Ok(number) => {
+            if keyboard.is_some() {
+                let written = WrittenMessage {
+                    tenant_id,
+                    gateway_id: target.gateway_id,
+                    chat,
+                    number,
+                    place: CardPlace::Thread(target.thread_id),
+                };
+                let ids: Vec<Uuid> = shown.iter().map(|a| a.approval_id).collect();
+                let count = |n: usize| i32::try_from(n).unwrap_or(i32::MAX);
+                let others = (count(pause.in_application), count(pause.managed));
+                keep_message(gateways, written, &ids, others).await;
+            }
+            ReplyRecord::Done("sent")
+        }
         Err(failure) => after_failure(&failure, target.attempts + 1, now),
     }
 }

@@ -21,8 +21,9 @@ use mimorya_db::repositories::gateway_replies::{ReplyRecord, ReplyTarget};
 use uuid::Uuid;
 
 use crate::services::gateways::GatewayService;
+use crate::services::gateways::concerned::shown_action;
 use crate::services::gateways::teams::{
-    TeamsPause, keep_teams_card, shown_action, teams_after_failure, teams_reply_text,
+    TeamsPause, keep_teams_card, teams_after_failure, teams_reply_text,
 };
 
 /// Writes the answer to `target`, of the company `tenant_id`, in the

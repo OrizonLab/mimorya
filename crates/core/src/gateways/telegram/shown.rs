@@ -4,7 +4,9 @@
 //! exact parameters, whole, as many as one message holds; the others are
 //! validated in the application, which shows them whole. Alike in the pause
 //! written to whom the agent acts for and in the notice written to whom a
-//! request awaits.
+//! request awaits. Written again once some are settled, each as it stands
+//! (ADR-148): a settled one no longer « à valider », its parameters no
+//! longer those « qui seront exécutés », followed by what became of it.
 
 use super::html::escaped;
 use crate::gateways::{
@@ -40,13 +42,24 @@ pub fn shown_in_message<'a>(
     shown
 }
 
-/// The actions shown in a message, in Telegram's HTML (`html`) or in plain
-/// text: each numbered when there are several, its description (escaped,
-/// bounded) and its risk, then its exact parameters whole, as literal text.
+/// The actions shown in a message as it is sent, each awaiting a decision,
+/// in Telegram's HTML (`html`) or in plain text (`stated_actions`).
 pub fn shown_actions(actions: &[ShownAction], html: bool) -> String {
+    stated_actions(actions.iter().map(|&a| (a, ActionState::Open)), html)
+}
+
+/// The actions shown in a message, each as it stands, in Telegram's HTML
+/// (`html`) or in plain text: each numbered when there are several, its
+/// description (escaped, bounded) and its risk, then its exact parameters
+/// whole, as literal text; a settled one, what became of it.
+pub fn stated_actions<'a>(
+    actions: impl ExactSizeIterator<Item = (ShownAction<'a>, ActionState)>,
+    html: bool,
+) -> String {
+    let several = actions.len() > 1;
     let mut text = String::new();
-    for (i, action) in actions.iter().enumerate() {
-        let number = if actions.len() > 1 {
+    for (i, (action, state)) in actions.enumerate() {
+        let number = if several {
             (i + 1).to_string()
         } else {
             String::new()
@@ -54,11 +67,7 @@ pub fn shown_actions(actions: &[ShownAction], html: bool) -> String {
         let (summary, _) = bounded(action.summary.trim(), MAX_ACTION_CHARS);
         let parameters = exact_parameters(action.parameters);
         let risk = risk_label(action.risk);
-        // Shown with their buttons: open.
-        let (heading, exact) = (
-            ActionState::Open.heading(&number),
-            ActionState::Open.parameters_heading(),
-        );
+        let (heading, exact) = (state.heading(&number), state.parameters_heading());
         text.push_str(&if html {
             format!(
                 "\n\n<b>{heading}</b> {}\n<b>Risque :</b> {risk}. {exact}\n<pre>{}</pre>",
@@ -68,6 +77,13 @@ pub fn shown_actions(actions: &[ShownAction], html: bool) -> String {
         } else {
             format!("\n\n{heading} {summary}\nRisque : {risk}. {exact}\n{parameters}")
         });
+        if let Some(outcome) = state.outcome() {
+            text.push_str(&if html {
+                format!("\n<i>{outcome}</i>")
+            } else {
+                format!("\n{outcome}")
+            });
+        }
     }
     text
 }
@@ -109,6 +125,47 @@ mod tests {
         let long = "x".repeat(MAX_ACTION_CHARS * 2);
         let bounded = shown_actions(&[shown(&long, "write", &parameters)], false);
         assert!(bounded.chars().count() < MAX_ACTION_CHARS + 200);
+    }
+
+    #[test]
+    fn a_settled_action_is_shown_as_such_beside_one_still_open() {
+        let parameters = json!({ "intervention": "INT-2052" });
+        let actions = [
+            (
+                shown("Planifier", "write", &parameters),
+                ActionState::Approved,
+            ),
+            (shown("Prévenir", "write", &parameters), ActionState::Open),
+            (shown("Clore", "write", &parameters), ActionState::Rejected),
+            (shown("Relancer", "write", &parameters), ActionState::Closed),
+        ];
+        let html = stated_actions(actions.into_iter(), true);
+        assert!(
+            html.starts_with(
+                "\n\n<b>Action 1 :</b> Planifier\n<b>Risque :</b> Modification. \
+                 Paramètres exacts :\n<pre>"
+            ),
+            "{html}"
+        );
+        assert!(html.contains("</pre>\n<i>Validée.</i>\n\n<b>Action 2 à valider :</b>"));
+        assert!(html.contains("<i>Refusée.</i>"), "{html}");
+        assert!(
+            html.ends_with("</pre>\n<i>N’attend plus de décision.</i>"),
+            "{html}"
+        );
+        // Only the open one is still to validate, its parameters executed.
+        assert_eq!(html.matches("à valider").count(), 1, "{html}");
+        assert_eq!(html.matches("qui seront exécutés").count(), 1, "{html}");
+        let plain = stated_actions(actions.into_iter(), false);
+        assert!(plain.contains("Action 3 : Clore\n"), "{plain}");
+        assert!(
+            plain.contains("}\nRefusée.\n\nAction 4 : Relancer"),
+            "{plain}"
+        );
+        // One alone: not numbered.
+        let one = stated_actions([actions[0]].into_iter(), false);
+        assert!(one.starts_with("\n\nAction : Planifier"), "{one}");
+        assert!(one.ends_with("\nValidée."), "{one}");
     }
 
     #[test]

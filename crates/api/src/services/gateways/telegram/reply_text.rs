@@ -24,7 +24,7 @@ pub enum Markup {
 
 impl Markup {
     /// Where the conversation is, at `url`.
-    fn conversation(self, url: &str) -> String {
+    pub(super) fn conversation(self, url: &str) -> String {
         match self {
             Self::Html => link(url, "ouvrir la conversation"),
             Self::Plain => url.to_owned(),
@@ -74,25 +74,7 @@ pub fn reply_text(
     let answer = answer.map(str::trim).filter(|a| !a.is_empty());
     match (status, answer) {
         ("awaiting_approval", _) if !pause.shown.is_empty() => {
-            let mut text = if pause.shown.len() == 1 {
-                format!(
-                    "Une action de cette demande attend votre validation : validez-la ou \
-                     refusez-la ci-dessous, après en avoir lu les paramètres exacts, ou dans \
-                     l’application ({link}). La suite viendra ici."
-                )
-            } else {
-                format!(
-                    "Des actions de cette demande attendent votre validation : validez-les ou \
-                     refusez-les ci-dessous, après en avoir lu les paramètres exacts, ou dans \
-                     l’application ({link}). La suite viendra ici."
-                )
-            };
-            if pause.in_application > 0 {
-                text.push_str(" D’autres sont à valider dans l’application.");
-            }
-            if pause.managed > 0 {
-                text.push_str(" D’autres attendent la validation de votre responsable.");
-            }
+            let mut text = awaiting_words(&link, pause);
             text.push_str(&shown_actions(pause.shown, markup == Markup::Html));
             text
         }
@@ -120,6 +102,38 @@ pub fn reply_text(
         }
         _ => format!("La demande s’est terminée sans réponse : {link}."),
     }
+}
+
+/// What a pause showing actions with their buttons says before them, its
+/// conversation at `link`.
+pub(super) fn awaiting_words(link: &str, pause: Pause) -> String {
+    let mut text = if pause.shown.len() == 1 {
+        format!(
+            "Une action de cette demande attend votre validation : validez-la ou refusez-la \
+             ci-dessous, après en avoir lu les paramètres exacts, ou dans l’application \
+             ({link}). La suite viendra ici."
+        )
+    } else {
+        format!(
+            "Des actions de cette demande attendent votre validation : validez-les ou \
+             refusez-les ci-dessous, après en avoir lu les paramètres exacts, ou dans \
+             l’application ({link}). La suite viendra ici."
+        )
+    };
+    text.push_str(&others(pause));
+    text
+}
+
+/// What a pause showing actions says of its others.
+pub(super) fn others(pause: Pause) -> String {
+    let mut text = String::new();
+    if pause.in_application > 0 {
+        text.push_str(" D’autres sont à valider dans l’application.");
+    }
+    if pause.managed > 0 {
+        text.push_str(" D’autres attendent la validation de votre responsable.");
+    }
+    text
 }
 
 #[cfg(test)]

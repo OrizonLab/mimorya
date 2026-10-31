@@ -13,6 +13,8 @@
 use mimorya_core::gateways::bounded;
 use mimorya_core::gateways::teams::{escaped, from_markdown, link};
 
+use crate::services::gateways::settled_words::settled_pause;
+
 /// The most of an answer written in Teams, which takes about 28 kibibytes
 /// a message: as in the other services.
 pub const MAX_ANSWER_CHARS: usize = 3_000;
@@ -88,21 +90,13 @@ pub fn reply_text(status: &str, answer: Option<&str>, url: &str, pause: Pause) -
 /// stopped with its request, nothing more is promised.
 pub fn settled_text(url: &str, pause: Pause, decided: bool) -> String {
     let link = link(url, "ouvrir la conversation").unwrap_or_else(|| escaped(url));
-    let one = pause.shown == 1;
-    let settled = match (decided, one) {
-        (true, true) => "L’action de cette demande montrée ci-dessous est décidée (",
-        (true, false) => "Les actions de cette demande montrées ci-dessous sont décidées (",
-        (false, true) => "L’action de cette demande montrée ci-dessous n’attend plus de décision (",
-        (false, false) => {
-            "Les actions de cette demande montrées ci-dessous n’attendent plus de décision ("
-        }
-    };
+    let settled = format!("{} (", settled_pause(decided, pause.shown == 1));
     if !decided {
-        return format!("{}{link}{}", escaped(settled), escaped(")."));
+        return format!("{}{link}{}", escaped(&settled), escaped(")."));
     }
     format!(
         "{}{link}{}{}",
-        escaped(settled),
+        escaped(&settled),
         escaped("). La suite viendra ici."),
         others(pause)
     )

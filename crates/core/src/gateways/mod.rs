@@ -22,7 +22,7 @@ pub use command::{HELP, NEW_CONVERSATION, command, new_conversation};
 pub use markdown::bounded;
 pub use validation::{
     ActionState, MAX_ACTION_CHARS, MAX_PARAMETERS_CHARS, ShownAction, exact_parameters, risk_label,
-    validated_in_gateway,
+    to_write_again, validated_in_gateway,
 };
 
 /// A gateway's name, as kept: bounded like the column.

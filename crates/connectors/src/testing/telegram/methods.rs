@@ -1,7 +1,8 @@
 //! The methods of Telegram's Bot API the test Telegram answers, as Telegram
 //! does: the bot a token is, its webhook, the messages it writes (in plain
 //! text or HTML, with buttons under them), the answer to a button pressed
-//! and the buttons taken off a message (ADR-133, ADR-135, ADR-136).
+//! and the buttons taken off a message (ADR-133, ADR-135, ADR-136), or the
+//! message written again (ADR-148).
 
 use std::sync::{Arc, Mutex};
 
@@ -93,6 +94,7 @@ pub(super) async fn call(
                 html,
                 keyboard: body.get("reply_markup").cloned(),
                 reply_to,
+                edits: 0,
             });
             answered(json!({ "message_id": shared.messages.len(), "chat": { "id": chat } }))
         }
@@ -106,10 +108,22 @@ pub(super) async fn call(
                 .push((callback, field("text").unwrap_or_default()));
             answered(json!(true))
         }
-        "editMessageReplyMarkup" => {
+        "editMessageReplyMarkup" | "editMessageText" => {
             let chat = body.get("chat_id").and_then(Value::as_i64);
             let number = body.get("message_id").and_then(Value::as_i64);
             let index = number.and_then(|n| usize::try_from(n - 1).ok());
+            let html = body.get("parse_mode").and_then(Value::as_str) == Some("HTML");
+            let text = body.get("text").and_then(Value::as_str);
+            if method == "editMessageText" {
+                let readable =
+                    text.is_some_and(|t| !html || (!shared.html_refused && readable_html(t)));
+                if !readable {
+                    return refusal(
+                        StatusCode::BAD_REQUEST,
+                        "Bad Request: can't parse entities: Unsupported start tag",
+                    );
+                }
+            }
             let edited = index
                 .and_then(|i| shared.messages.get_mut(i))
                 .filter(|m| m.bot == id && Some(m.chat) == chat);
@@ -119,7 +133,21 @@ pub(super) async fn call(
                     "Bad Request: message to edit not found",
                 );
             };
-            message.keyboard = body.get("reply_markup").cloned();
+            let keyboard = body.get("reply_markup").cloned();
+            if let Some(text) = text.filter(|_| method == "editMessageText") {
+                if message.text == text && message.html == html && message.keyboard == keyboard {
+                    return refusal(
+                        StatusCode::BAD_REQUEST,
+                        "Bad Request: message is not modified: specified new message content \
+                         and reply markup are exactly the same as a current content and reply \
+                         markup of the message",
+                    );
+                }
+                message.text = text.to_owned();
+                message.html = html;
+                message.edits += 1;
+            }
+            message.keyboard = keyboard;
             answered(json!(true))
         }
         _ => refusal(StatusCode::NOT_FOUND, "Not Found"),

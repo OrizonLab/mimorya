@@ -155,7 +155,7 @@ async fn reply(
             slack::answer(gateways, &target, &awaiting, &token, now).await
         }
         (Some(token), Some(GatewayKind::Telegram)) => {
-            telegram::answer(gateways, &target, &awaiting, &token, now).await
+            telegram::answer(gateways, (tenant_id, &target), &awaiting, &token, now).await
         }
         (Some(secret), Some(GatewayKind::Teams)) => {
             teams::answer(gateways, (tenant_id, &target), &awaiting, secret, now).await

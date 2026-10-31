@@ -87,8 +87,9 @@ Repères à l'intérieur des crates :
   vu chacun en dernier : `gateway_identities.rs`, ADR-125, ADR-142 ; fils Slack des conversations, et conversation privée avec le bot Telegram
   ou personnelle avec le bot Teams, une ouverte à la fois : `gateway_threads.rs`,
   réponses écrites : `gateway_replies.rs`, ADR-127, ADR-135, ADR-140 ; cartes écrites
-  dans Teams, d'une pause ou d'un avis au responsable, et les demandes qu'elles montrent :
-  `gateway_cards.rs`, ADR-141, ADR-142 ; demandes annoncées au responsable, une fois
+  dans Teams, d'une pause ou d'un avis au responsable, et les demandes qu'elles montrent,
+  et de même les messages Telegram à boutons : `gateway_cards.rs`, ADR-141, ADR-142,
+  ADR-148 ; demandes annoncées au responsable, une fois
   par passerelle : `gateway_approval_notices.rs`, ADR-130, ADR-137, ADR-142 ; codes de liaison
   Telegram :
   `gateway_link_codes.rs`, ADR-133),
@@ -197,7 +198,10 @@ Repères à l'intérieur des crates :
   (`telegram/choices.rs`), qui voit et décide quoi, commun aux services
   (`concerned.rs`), ADR-136 ; demandes annoncées au responsable dans sa conversation
   privée avec le bot (`telegram/approver_text.rs`), message écrit là en HTML ou en
-  texte simple, avec ses boutons (`telegram/chat.rs`), ADR-137 ; bot Teams : activités
+  texte simple, avec ses boutons (`telegram/chat.rs`), ADR-137 ; message à boutons
+  gardé (`telegram/kept.rs`) et réécrit une fois ses actions réglées
+  (`telegram/rewrite.rs`, `telegram/settled_text.rs`), mots communs avec Teams d'un
+  message dont aucune action n'attend plus (`settled_words.rs`), ADR-148 ; bot Teams : activités
   reçues sur le jeton que signe le Bot Framework (`teams/`), identité reliée par le lien
   du bot quand Teams nomme l'adresse du compte (`link/`, un module par service),
   ADR-138 ; mots d'une personne reliée répondus dans une conversation tenue dans sa

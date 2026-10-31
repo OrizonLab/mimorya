@@ -244,7 +244,11 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   pris que dans la conversation privée de qui le presse, sous un message du bot et
   s'il est l'un des boutons de ce message tel que Telegram le garde (ce qu'un client
   prétend presser ne décide rien), puis décidé au nom de la personne reliée, comme
-  depuis l'écran, audité avec le service. Toute autre action, dans l'application.
+  depuis l'écran, audité avec le service. Toute autre action, dans l'application. Le
+  message est ensuite réécrit, ses actions réglées dites telles (ADR-148), à partir des
+  demandes qu'il montre, gardées par la plateforme (`gateway_cards`, identifiants
+  seuls), et seulement si qui l'a pressé voit chacune d'elles ; sinon, seuls les boutons
+  des actions décidées qu'il voit sont retirés. Ce qui est gardé ne décide rien.
 - Responsable prévenu dans Slack (ADR-130) : une demande qui attend un responsable est
   annoncée par un message direct au responsable, ou au remplaçant (ADR-071), seulement
   s'il peut encore la décider (`approval:decide` sur la personne servie, relu au

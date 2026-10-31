@@ -12,23 +12,40 @@ use crate::services::gateways::approver_text::{ApproverNotice, Written, approver
 
 /// The message telling of `notice`, in `markup`.
 pub fn approver_notice(markup: Markup, notice: &ApproverNotice) -> String {
-    let html = markup == Markup::Html;
-    let written = if html {
-        Written {
-            requested_for: format!("<b>{}</b>", escaped(notice.requested_for)),
-            absent: notice.absent.map(escaped),
-            link: link(notice.link, "ouvrir les validations"),
-        }
-    } else {
-        Written {
-            requested_for: notice.requested_for.to_owned(),
-            absent: notice.absent.map(str::to_owned),
-            link: notice.link.to_owned(),
-        }
-    };
-    let mut text = approver_words(notice, &written);
-    text.push_str(&shown_actions(notice.shown, html));
+    let mut text = notice_words(markup, notice);
+    text.push_str(&shown_actions(notice.shown, markup == Markup::Html));
     text
+}
+
+/// What the message telling of `notice` says before its actions, in
+/// `markup`.
+pub(super) fn notice_words(markup: Markup, notice: &ApproverNotice) -> String {
+    let absent = match markup {
+        Markup::Html => notice.absent.map(escaped),
+        Markup::Plain => notice.absent.map(str::to_owned),
+    };
+    let written = Written {
+        requested_for: requested_for(markup, notice.requested_for),
+        absent,
+        link: validations_link(markup, notice.link),
+    };
+    approver_words(notice, &written)
+}
+
+/// The « Validations » screen, at `url`, as a notice links it in `markup`.
+pub(super) fn validations_link(markup: Markup, url: &str) -> String {
+    match markup {
+        Markup::Html => link(url, "ouvrir les validations"),
+        Markup::Plain => url.to_owned(),
+    }
+}
+
+/// Whom the agent acts for, as a notice names them in `markup`: set apart.
+pub(super) fn requested_for(markup: Markup, name: &str) -> String {
+    match markup {
+        Markup::Html => format!("<b>{}</b>", escaped(name)),
+        Markup::Plain => name.to_owned(),
+    }
 }
 
 #[cfg(test)]

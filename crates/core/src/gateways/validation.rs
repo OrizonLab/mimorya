@@ -118,6 +118,15 @@ impl ActionState {
     }
 }
 
+/// Whether a message (a Teams card, a Telegram message) whose actions stand
+/// as `states` is to be written again, as `written` last, if it was: once
+/// one is settled, and not as it was. An action only ever leaves `Open`:
+/// each write but the first follows one more settled, as many as the
+/// message shows at most.
+pub fn to_write_again(states: &[ActionState], written: Option<&[ActionState]>) -> bool {
+    states.iter().any(|&state| state != ActionState::Open) && written != Some(states)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -169,5 +178,23 @@ mod tests {
             assert_eq!(state.parameters_heading(), "Paramètres exacts :");
             assert_eq!(state.outcome(), Some(outcome));
         }
+    }
+
+    #[test]
+    fn a_message_is_written_again_until_it_shows_every_settled_action() {
+        use ActionState::{Approved, Closed, Open, Rejected};
+        // None settled: left as the service shows it.
+        assert!(!to_write_again(&[Open, Open], None));
+        // One settled: written without its buttons.
+        assert!(to_write_again(&[Approved, Open], None));
+        // Read again as written: done.
+        assert!(!to_write_again(&[Approved, Open], Some(&[Approved, Open])));
+        // Settled since, perhaps written over from an older state: written
+        // again.
+        assert!(to_write_again(
+            &[Approved, Rejected],
+            Some(&[Approved, Open])
+        ));
+        assert!(to_write_again(&[Approved, Closed], Some(&[Approved, Open])));
     }
 }

@@ -8,9 +8,16 @@
 //! them (`Written`) and showing the actions its own way: Slack's blocks
 //! (`approver_notices/slack.rs`), Telegram's text and buttons
 //! (`telegram::approver_notice`), Teams' Markdown and the card it comes
-//! with (`teams::approver_notice`).
+//! with (`teams::approver_notice`). Written again once one of the actions
+//! shown is decided (ADR-142, ADR-148), with the names as they are then
+//! (`notice_names`).
 
 use mimorya_core::gateways::ShownAction;
+use mimorya_db::repositories::approvals::ApprovalRow;
+use mimorya_db::repositories::users::get_user;
+use uuid::Uuid;
+
+use crate::app::Services;
 
 /// The requests awaiting a manager, as they are told of.
 pub struct ApproverNotice<'a> {
@@ -32,6 +39,28 @@ pub struct Written {
     pub requested_for: String,
     pub absent: Option<String>,
     pub link: String,
+}
+
+/// The names a notice is written again with, as they are now: for whom
+/// the agent acts in its requests (`first` of them, all of one run), and
+/// the absent manager, when it was written to whom stands in for them
+/// (`notice_for`).
+pub async fn notice_names(
+    services: &Services,
+    tenant_id: Uuid,
+    first: &ApprovalRow,
+    notice_for: Option<Uuid>,
+) -> anyhow::Result<(String, Option<String>)> {
+    let mut tx = services.db.begin(tenant_id).await?;
+    let requested_for = get_user(&mut tx, first.requested_for_user_id).await?;
+    // Whom it awaits, when written to whom stands in for them.
+    let absent = match (first.approver_user_id, notice_for) {
+        (Some(approver), Some(to)) if approver != to => get_user(&mut tx, approver).await?,
+        _ => None,
+    };
+    tx.commit().await?;
+    let requested_for = requested_for.map(|u| u.display_name).unwrap_or_default();
+    Ok((requested_for, absent.map(|u| u.display_name)))
 }
 
 /// What `notice` says, its names and link as `written`.

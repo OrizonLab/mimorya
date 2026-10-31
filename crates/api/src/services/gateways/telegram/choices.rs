@@ -11,20 +11,19 @@
 //! their decision (their own, or a manager's they are or stand in for),
 //! that may be validated outside the application (`validated_in_gateway`),
 //! is decided there: any other is left to the application. The press is
-//! answered with what became of it; the buttons of the message's actions
-//! decided by then (now, or meanwhile in the application) are taken off,
-//! and the outcome said in answer to it. Audited as any decision, with the
-//! service it was given from, as in Slack (`concerned::decide_as`).
+//! answered with what became of it; the message is written again, its
+//! actions decided by then (now, or meanwhile in the application) without
+//! their buttons and said as settled (`rewrite`, ADR-148), and the outcome
+//! said in answer to it. Audited as any decision, with the service it was
+//! given from, as in Slack (`concerned::decide_as`).
 
 use mimorya_core::gateways::GatewayKind;
-use mimorya_core::gateways::telegram::{
-    ApprovalChoice, ButtonPress, approval_choice, buttons_in, without_decided,
-};
-use mimorya_db::repositories::approvals::get_approval;
+use mimorya_core::gateways::telegram::{ApprovalChoice, ButtonPress, approval_choice};
 use mimorya_db::repositories::gateway_identities::linked_account;
 use mimorya_db::repositories::gateways::GatewayRow;
 use uuid::Uuid;
 
+use super::rewrite::write_again;
 use super::texts;
 use super::updates::UpdateOutcome;
 use crate::app::Services;
@@ -115,15 +114,17 @@ impl GatewayService {
     }
 }
 
-/// Decides what `pressed` chose, as its person, or says why not.
+/// Decides what `pressed` chose, as its person, or says why not: the press
+/// answered first, then its message written again, then what became of it
+/// said in answer to the message.
 pub async fn decide_in_telegram(services: &Services, pressed: TelegramChoice) {
-    let told = match decide(services, &pressed).await {
-        Ok(told) => told,
+    let gateway_id = pressed.gateway_id;
+    let (told, concerned) = match decide(services, &pressed).await {
+        Ok(decided) => decided,
         Err(error) => {
-            let gateway = pressed.gateway_id;
             let error = format!("{error:#}");
-            tracing::warn!(%gateway, %error, "Telegram validation not decided");
-            Told::nothing(NOT_DECIDED)
+            tracing::warn!(%gateway_id, %error, "Telegram validation not decided");
+            (Told::nothing(NOT_DECIDED), None)
         }
     };
     let telegram = services.gateways.telegram();
@@ -134,7 +135,16 @@ pub async fn decide_in_telegram(services: &Services, pressed: TelegramChoice) {
         .await
     {
         let failure = failure.message();
-        tracing::warn!(gateway = %pressed.gateway_id, %failure, "Telegram press not answered");
+        tracing::warn!(%gateway_id, %failure, "Telegram press not answered");
+    }
+    // Decided now, or meanwhile (in the application, or expired): its
+    // message is written again, a failure to do so being no reason to say
+    // otherwise.
+    if let Some(concerned) = concerned
+        && let Err(error) = write_again(services, &pressed, &concerned).await
+    {
+        let error = format!("{error:#}");
+        tracing::warn!(%gateway_id, %error, "Telegram message not written again");
     }
     // In their private chat, which their identifier names.
     let chat = press.person.id;
@@ -143,11 +153,16 @@ pub async fn decide_in_telegram(services: &Services, pressed: TelegramChoice) {
         .await
     {
         let failure = failure.message();
-        tracing::warn!(gateway = %pressed.gateway_id, %failure, "Telegram answer not sent");
+        tracing::warn!(%gateway_id, %failure, "Telegram answer not sent");
     }
 }
 
-async fn decide(services: &Services, pressed: &TelegramChoice) -> anyhow::Result<Told> {
+/// What `pressed` is answered, and who pressed it once they may decide:
+/// whose message is then written again.
+async fn decide(
+    services: &Services,
+    pressed: &TelegramChoice,
+) -> anyhow::Result<(Told, Option<Concerned>)> {
     let (tenant_id, gateway_id) = (pressed.tenant_id, pressed.gateway_id);
     let person = pressed.press.person.id.to_string();
     let mut tx = services.db.begin(tenant_id).await?;
@@ -155,59 +170,19 @@ async fn decide(services: &Services, pressed: &TelegramChoice) -> anyhow::Result
     tx.commit().await?;
     let Some(account) = account else {
         let unlinked = texts::unlinked(&services.gateways.assistant_name);
-        return Ok(Told::nothing(unlinked));
+        return Ok((Told::nothing(unlinked), None));
     };
     let identity = match may_act(services, tenant_id, &account, Act::Decide).await? {
         Ok(identity) => identity,
-        Err(refusal) => return Ok(Told::nothing(refusal)),
+        Err(refusal) => return Ok((Told::nothing(refusal), None)),
     };
     let choice = (pressed.choice.approval_id, pressed.choice.approved);
     let (concerned, decided) = decide_as(services, identity, choice, GatewayKind::Telegram).await?;
-    // Decided now, or meanwhile (in the application, or expired): its
-    // buttons are taken off, a failure to do so being no reason to say
-    // otherwise.
-    if let Err(error) = take_off_decided(services, pressed, &concerned).await {
-        let error = format!("{error:#}");
-        tracing::warn!(%gateway_id, %error, "Telegram buttons not taken off");
-    }
-    Ok(match decided {
+    let told = match decided {
         Ok(decided) => outcome(pressed.choice.approved, decided.resumed, decided.own),
         Err(refusal) => Told::nothing(refusal),
-    })
-}
-
-/// Takes off the message the buttons of its actions decided by now: the
-/// one just decided, and any other decided meanwhile; the others stay. A
-/// message none of whose actions is decided is left as it is.
-async fn take_off_decided(
-    services: &Services,
-    pressed: &TelegramChoice,
-    concerned: &Concerned,
-) -> anyhow::Result<()> {
-    let press = &pressed.press;
-    let mut decided = Vec::new();
-    let mut tx = services.db.begin(pressed.tenant_id).await?;
-    for id in buttons_in(&press.keyboard) {
-        let approval = get_approval(&mut tx, id).await?;
-        if approval.is_some_and(|a| concerned.sees(&a) && a.status != "pending") {
-            decided.push(id);
-        }
-    }
-    tx.commit().await?;
-    if decided.is_empty() {
-        return Ok(());
-    }
-    let keyboard = without_decided(&press.keyboard, &decided);
-    let telegram = services.gateways.telegram();
-    let (chat, message) = (press.person.id, press.message_id);
-    if let Err(failure) = telegram
-        .edit_buttons(&pressed.token, chat, message, &keyboard)
-        .await
-    {
-        let failure = failure.message();
-        tracing::warn!(gateway = %pressed.gateway_id, %failure, "Telegram buttons not edited");
-    }
-    Ok(())
+    };
+    Ok((told, Some(concerned)))
 }
 
 /// What a decision is answered: whom the agent acts for (`own`) reads that

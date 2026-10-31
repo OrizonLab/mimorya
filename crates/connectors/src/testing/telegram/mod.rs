@@ -52,6 +52,8 @@ pub struct TelegramMessage {
     pub keyboard: Option<Value>,
     /// The message of the chat it answers, if any.
     pub reply_to: Option<i64>,
+    /// How many times its text was written again (`editMessageText`).
+    pub edits: usize,
 }
 
 #[derive(Default)]

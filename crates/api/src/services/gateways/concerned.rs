@@ -8,7 +8,7 @@
 
 use chrono::Utc;
 use mimorya_core::DomainError;
-use mimorya_core::gateways::{GatewayKind, validated_in_gateway};
+use mimorya_core::gateways::{GatewayKind, ShownAction, validated_in_gateway};
 use mimorya_db::repositories::approval_delegations::standing_in_for;
 use mimorya_db::repositories::approvals::{ApprovalRow, get_approval};
 use uuid::Uuid;
@@ -27,6 +27,16 @@ const IN_APPLICATION: &str = "Cette action se valide dans l’application, qui e
 const AWAITS_A_MANAGER: &str = "Cette action attend la validation de votre \
      responsable : rien n’a été décidé.";
 
+/// An action awaiting validation, as a message of the bot shows it.
+pub(super) fn shown_action(approval: &ApprovalRow) -> ShownAction<'_> {
+    ShownAction {
+        approval_id: approval.id,
+        summary: &approval.action_summary,
+        risk: &approval.risk,
+        parameters: &approval.payload,
+    }
+}
+
 /// Who pressed a button: the requests they see, and those they decide.
 pub(super) struct Concerned {
     pub(super) user_id: Uuid,
@@ -44,6 +54,28 @@ impl Concerned {
     /// they are, or stand in for.
     pub(super) fn decides(&self, approval: &ApprovalRow) -> bool {
         approval.decider() == Some(self.user_id) || stands_in(approval, &self.standing_in_for)
+    }
+
+    /// The requests `ids` a message of the bot shows, as they are now, in
+    /// order; none when they do not see one of them (an account linked
+    /// since to someone else learns nothing of the actions of the person
+    /// before), nor when one is no more.
+    pub(super) async fn shown_now(
+        &self,
+        services: &Services,
+        tenant_id: Uuid,
+        ids: &[Uuid],
+    ) -> anyhow::Result<Option<Vec<ApprovalRow>>> {
+        let mut approvals = Vec::with_capacity(ids.len());
+        let mut tx = services.db.begin(tenant_id).await?;
+        for id in ids {
+            match get_approval(&mut tx, *id).await? {
+                Some(approval) if self.sees(&approval) => approvals.push(approval),
+                _ => return Ok(None),
+            }
+        }
+        tx.commit().await?;
+        Ok(Some(approvals))
     }
 }
 

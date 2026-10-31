@@ -54,8 +54,9 @@ const RATE_LIMITS_KEPT: chrono::Duration = chrono::Duration::hours(2);
 /// Slack sends an event again for a few hours at most: a day past it, an
 /// event's identifier serves nothing more (ADR-125).
 const GATEWAY_EVENTS_KEPT: chrono::Duration = chrono::Duration::days(1);
-/// How long the card of a notice to a manager in Teams is kept: its
-/// requests, told of within a day, expire after a week (ADR-142).
+/// How long the card of a notice to a manager in Teams, or its message in
+/// Telegram, is kept: its requests, told of within a day, expire after a
+/// week (ADR-142, ADR-148).
 const NOTICE_CARDS_KEPT: chrono::Duration = chrono::Duration::days(8);
 
 pub fn spawn_maintenance(services: AppState) -> JoinHandle<()> {
@@ -110,7 +111,7 @@ pub fn spawn_maintenance(services: AppState) -> JoinHandle<()> {
             // Settled, or no longer where their manager is written.
             let written = Utc::now() - NOTICE_CARDS_KEPT;
             if let Err(error) = purge_notice_cards(db.pool(), written).await {
-                tracing::warn!(error = %error, "Teams notice card purge failed");
+                tracing::warn!(error = %error, "Notice card purge failed");
             }
             // Expired, a Telegram link code and whom it was sent back from
             // are forgotten (ADR-133).

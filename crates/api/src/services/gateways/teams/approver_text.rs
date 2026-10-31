@@ -12,12 +12,14 @@ use mimorya_core::gateways::ShownAction;
 use mimorya_core::gateways::teams::{escaped, link};
 use mimorya_db::repositories::approvals::ApprovalRow;
 use mimorya_db::repositories::gateway_cards::GatewayCard;
-use mimorya_db::repositories::users::get_user;
 use uuid::Uuid;
 
-use super::choices::shown_action;
 use crate::app::Services;
-use crate::services::gateways::approver_text::{ApproverNotice, Written, approver_words};
+use crate::services::gateways::approver_text::{
+    ApproverNotice, Written, approver_words, notice_names,
+};
+use crate::services::gateways::concerned::shown_action;
+use crate::services::gateways::settled_words::settled_notice as settled_notice_words;
 
 /// The message telling of `notice`, its shown actions on a card.
 pub fn approver_notice(notice: &ApproverNotice) -> String {
@@ -39,13 +41,8 @@ pub fn settled_notice(
     decided: bool,
     url: &str,
 ) -> String {
-    let settled = match (decided, shown == 1) {
-        (true, true) => "l’action montrée ci-dessous est décidée.",
-        (true, false) => "les actions montrées ci-dessous sont décidées.",
-        (false, true) => "l’action montrée ci-dessous n’attend plus de décision.",
-        (false, false) => "les actions montrées ci-dessous n’attendent plus de décision.",
-    };
-    let mut text = format!("**{}** : {}", escaped(requested_for), escaped(settled));
+    let settled = format!("{}.", settled_notice_words(decided, shown == 1));
+    let mut text = format!("**{}** : {}", escaped(requested_for), escaped(&settled));
     if in_application > 0 {
         text.push_str(&format!(
             "{}{}{}",
@@ -70,15 +67,7 @@ pub(super) async fn rewritten_notice(
     let Some(first) = approvals.first() else {
         anyhow::bail!("a notice's card shows no request");
     };
-    let mut tx = services.db.begin(tenant_id).await?;
-    let requested_for = get_user(&mut tx, first.requested_for_user_id).await?;
-    // Whom it awaits, when written to whom stands in for them.
-    let absent = match (first.approver_user_id, card.notice_for) {
-        (Some(approver), Some(to)) if approver != to => get_user(&mut tx, approver).await?,
-        _ => None,
-    };
-    tx.commit().await?;
-    let requested_for = requested_for.map(|u| u.display_name).unwrap_or_default();
+    let (requested_for, absent) = notice_names(services, tenant_id, first, card.notice_for).await?;
     let url = services.gateways.approvals_url();
     let in_application = usize::try_from(card.in_application).unwrap_or(0);
     if !states.contains(&ActionState::Open) {
@@ -87,7 +76,6 @@ pub(super) async fn rewritten_notice(
         return Ok(settled_notice(&requested_for, counts, decided, &url));
     }
     let shown: Vec<ShownAction> = approvals.iter().map(shown_action).collect();
-    let absent = absent.map(|u| u.display_name);
     Ok(approver_notice(&ApproverNotice {
         requested_for: &requested_for,
         absent: absent.as_deref(),
