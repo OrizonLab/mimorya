@@ -135,6 +135,7 @@ const AUTHENTICATED_ROUTES: &[(&str, &str)] = &[
     ("GET", "/documents/{id}"),
     ("DELETE", "/documents/{id}"),
     ("GET", "/documents/{id}/file"),
+    ("PUT", "/documents/{id}/file"),
     ("GET", "/scheduled-tasks"),
     ("POST", "/scheduled-tasks"),
     ("PATCH", "/scheduled-tasks/{id}"),

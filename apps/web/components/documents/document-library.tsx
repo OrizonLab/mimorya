@@ -80,7 +80,7 @@ export function DocumentLibrary({
                 >
                   <Download className="size-4" />
                 </a>
-                {document.canDelete && (
+                {document.canWrite && (
                   <button
                     type="button"
                     aria-label={`Supprimer « ${document.title} »`}

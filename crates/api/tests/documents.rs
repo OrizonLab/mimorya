@@ -44,7 +44,7 @@ async fn a_document_is_deposited_read_downloaded_and_deleted() {
     assert_eq!(item["orgUnit"], "Équipe Nord");
     assert_eq!(item["sensitivity"], "internal");
     assert_eq!(item["byteSize"], file.len());
-    assert_eq!(item["canDelete"], true);
+    assert_eq!(item["canWrite"], true);
     // Julien deposits in his team's space only.
     assert_eq!(
         list["spaces"],

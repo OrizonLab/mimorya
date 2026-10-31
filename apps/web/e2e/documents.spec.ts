@@ -70,7 +70,7 @@ test('a team lead deposits a note his team reads, then deletes it', async ({ new
   await expect(row.getByText('Markdown')).toBeVisible();
   await expect(row.getByText('Interne')).toBeVisible();
   const recorded = (await listed(julien)).find((d) => d.title === NOTE);
-  expect(recorded).toMatchObject({ fileName: NOTE_FILE, orgUnit: 'Équipe Nord', canDelete: true });
+  expect(recorded).toMatchObject({ fileName: NOTE_FILE, orgUnit: 'Équipe Nord', canWrite: true });
 
   // Lucas reads and downloads it, as deposited; he deposits and deletes nothing.
   const lucas = await (await newContext()).newPage();

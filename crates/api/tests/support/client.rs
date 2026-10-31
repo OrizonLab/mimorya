@@ -121,8 +121,23 @@ impl<'a> Client<'a> {
 
     /// Sends `bytes` as the request's body, a file of `content_type`.
     pub async fn post_file(&self, url: &str, bytes: Vec<u8>, content_type: &str) -> TestResponse {
+        self.send_file(Method::POST, url, bytes, content_type).await
+    }
+
+    /// Puts `bytes` as the request's body, a file of `content_type`.
+    pub async fn put_file(&self, url: &str, bytes: Vec<u8>, content_type: &str) -> TestResponse {
+        self.send_file(Method::PUT, url, bytes, content_type).await
+    }
+
+    async fn send_file(
+        &self,
+        method: Method,
+        url: &str,
+        bytes: Vec<u8>,
+        content_type: &str,
+    ) -> TestResponse {
         let request = self
-            .request(Method::POST, url)
+            .request(method, url)
             .header("content-type", content_type)
             .header("content-length", bytes.len())
             .body(Body::from(bytes))

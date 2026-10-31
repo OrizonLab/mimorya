@@ -75,7 +75,8 @@ Repères à l'intérieur des crates :
   d'une tâche planifiée ou d'une mission dont le run attend sa validation :
   `author_notices.rs`, ADR-082, ADR-091, et d'un déclencheur, ADR-111 ; missions terminées à annoncer :
   `mission_end_notices.rs`, ADR-091 ; documents déposés, leur fichier et leurs passages,
-  lus là où le filtre du lecteur atteint : `documents.rs`, ADR-095 ; passages cherchés
+  lus là où le filtre du lecteur atteint : `documents.rs`, ADR-095, et remplacés par une
+  nouvelle version de leur fichier : `document_versions.rs`, ADR-150 ; passages cherchés
   par les mots et par le sens et lus dans l'ordre : `document_search.rs`, leurs vecteurs :
   `document_embeddings.rs`, ADR-096 ; runs des sous-agents, ouverts sous leur parent :
   `sub_runs.rs`, ADR-098 ; compétences proposées par l'agent : `skill_proposals.rs`,
@@ -227,8 +228,10 @@ Repères à l'intérieur des crates :
   (`ports/`), lecture (`view.rs`), ADR-104),
   `api/src/services/documents/` (documents déposés : lecture par le processus
   `mimorya-extract`, `api/src/bin/extract.rs`, bornée en nombre, en temps et en taille,
-  `extractor.rs` ; dépôt sous le quota de l'entreprise, `deposit.rs` ; liste,
-  téléchargement et suppression, `library.rs`, ADR-095),
+  `extractor.rs`, fichier lu et refusé, commun au dépôt et au remplacement,
+  `reading.rs` ; dépôt sous le quota de l'entreprise, `deposit.rs` ; nouvelle version
+  d'un document, à la version nommée, `replace.rs`, ADR-150 ; liste, téléchargement et
+  suppression, `library.rs`, ADR-095),
   `api/src/services/runs/` (historique remis à un run, résumé puis derniers messages
   (`history.rs`), et résumé tenu à la fin d'un run (`summaries.rs`), ADR-145, passes
   enchaînées tant qu'il est en retard, ADR-149 ; coût des appels

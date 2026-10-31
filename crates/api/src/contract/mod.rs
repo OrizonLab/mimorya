@@ -36,8 +36,8 @@ pub use conversations::{
     MissionPart, NewConversation, NewMessage,
 };
 pub use documents::{
-    DocumentCreated, DocumentItem, DocumentKind, DocumentList, DocumentQuota, DocumentScope,
-    DocumentSpaceOption, DocumentUpload,
+    DocumentCreated, DocumentItem, DocumentKind, DocumentList, DocumentQuota, DocumentReplaced,
+    DocumentReplacement, DocumentScope, DocumentSpaceOption, DocumentUpload,
 };
 pub use errors::{ErrorBody, ErrorDetail, ErrorKind};
 pub use gateways::{
@@ -110,6 +110,7 @@ pub fn typescript() -> String {
     declarations.add::<DocumentList>();
     declarations.add::<DocumentItem>();
     declarations.add::<DocumentCreated>();
+    declarations.add::<DocumentReplaced>();
     declarations.add::<Mission>();
     declarations.add::<Created>();
     declarations.add::<InvitationDetails>();
@@ -182,6 +183,7 @@ macro_rules! request_bodies {
             ManualMemory,
             MemoryReview,
             DocumentUpload,
+            DocumentReplacement,
             admin::NewAccount,
             admin::AccountUpdate,
             admin::RoleGrant,

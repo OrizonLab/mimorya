@@ -516,11 +516,24 @@ orgUnit: string | null, sensitivity: Sensitivity, byteSize: number,
 /**
  * Its pages, for a PDF.
  */
-pageCount: number | null, createdAt: string,
+pageCount: number | null,
 /**
- * The reader may delete it.
+ * When it was first deposited.
  */
-canDelete: boolean, };
+createdAt: string,
+/**
+ * Its file's version: 1 as deposited, one more at each replacement.
+ */
+version: number,
+/**
+ * When its file was last replaced, if it was.
+ */
+replacedAt: string | null,
+/**
+ * The reader may replace or delete it: `document:write` over its space,
+ * at its sensitivity.
+ */
+canWrite: boolean, };
 
 /**
  * The kind of a deposited file.
@@ -553,6 +566,18 @@ maxFileBytes: number, };
  * deposit.
  */
 export type DocumentQuota = { usedBytes: number, quotaBytes: number, };
+
+/**
+ * A document replaced: its new version and the passages its text gave.
+ */
+export type DocumentReplaced = { version: number, pageCount: number | null, passages: number, };
+
+/**
+ * `PUT /documents/{id}/file?name=…&version=…`, the new file as body: its
+ * name, and the version it replaces, the one the reader last saw; refused
+ * if the document has been replaced since.
+ */
+export type DocumentReplacement = { name: string, version: number, };
 
 /**
  * Whose space a document is in.

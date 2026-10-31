@@ -1,21 +1,26 @@
 //! Documents a company deposits for its agent to read (ADR-095): their
-//! text read by the extraction process (`extractor`), deposited under the
-//! company's quota (`deposit`), listed, downloaded and deleted (`library`),
-//! each where the person's rights reach only.
+//! text read by the extraction process (`extractor`, `reading`), deposited
+//! under the company's quota (`deposit`), replaced by a new version of
+//! their file (`replace`, ADR-150), listed, downloaded and deleted
+//! (`library`), each where the person's rights reach only.
 
 mod deposit;
 mod extractor;
 mod library;
+mod reading;
+mod replace;
 
 use std::sync::Arc;
 
 use mimorya_db::Database;
 
-pub use deposit::{Deposit, DepositFailure};
+pub use deposit::Deposit;
 pub use extractor::{
     CONCURRENT_EXTRACTIONS, EXTRACTION_TIMEOUT, ExtractionFailure, Extractor, extractor_beside,
 };
 pub use library::{DocumentFile, LISTED};
+pub use reading::FileFailure;
+pub use replace::Replacement;
 
 use super::embeddings::EmbeddingService;
 

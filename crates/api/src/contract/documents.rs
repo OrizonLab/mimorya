@@ -1,6 +1,7 @@
-//! The company's documents, as listed to a reader, and what a deposit
-//! sends and gets back (ADR-095). The file itself is the request's body;
-//! what describes it travels in the query string, strict as a body.
+//! The company's documents, as listed to a reader, and what a deposit or a
+//! replacement by a new version sends and gets back (ADR-095, ADR-150). The
+//! file itself is the request's body; what describes it travels in the
+//! query string, strict as a body.
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -44,9 +45,15 @@ pub struct DocumentItem {
     pub byte_size: i32,
     /// Its pages, for a PDF.
     pub page_count: Option<i32>,
+    /// When it was first deposited.
     pub created_at: String,
-    /// The reader may delete it.
-    pub can_delete: bool,
+    /// Its file's version: 1 as deposited, one more at each replacement.
+    pub version: i32,
+    /// When its file was last replaced, if it was.
+    pub replaced_at: Option<String>,
+    /// The reader may replace or delete it: `document:write` over its space,
+    /// at its sensitivity.
+    pub can_write: bool,
 }
 
 /// A space the reader may deposit into: the company's (no unit) or a unit's.
@@ -102,6 +109,27 @@ pub struct DocumentUpload {
 #[serde(rename_all = "camelCase")]
 pub struct DocumentCreated {
     pub id: Uuid,
+    pub page_count: Option<i32>,
+    pub passages: i64,
+}
+
+/// `PUT /documents/{id}/file?name=…&version=…`, the new file as body: its
+/// name, and the version it replaces, the one the reader last saw; refused
+/// if the document has been replaced since.
+#[derive(Debug, Clone, Deserialize, Validate, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DocumentReplacement {
+    #[validate(length(min = 1, max = 255))]
+    pub name: String,
+    #[validate(range(min = 1))]
+    pub version: i32,
+}
+
+/// A document replaced: its new version and the passages its text gave.
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentReplaced {
+    pub version: i32,
     pub page_count: Option<i32>,
     pub passages: i64,
 }
