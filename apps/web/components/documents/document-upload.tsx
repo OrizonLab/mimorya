@@ -1,10 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { Button, Card, ErrorNote, Field, Input, Select } from '@/components/ui';
+import { Button, Card, ErrorNote, Field, Select } from '@/components/ui';
 import {
   api,
-  ApiError,
   useAction,
   type DocumentCreated,
   type DocumentQuota,
@@ -14,9 +13,8 @@ import {
 } from '@/lib/api';
 import { formatBytes } from '@/lib/format';
 import { CLEARANCE_LABELS, SENSITIVITIES } from '@/lib/labels';
-
-/** The files the API reads. */
-const ACCEPTED = '.pdf,.docx,.md,.markdown,.txt';
+import { FileDrop } from './file-drop';
+import { refuseBeyond } from './file-rules';
 
 /** The deposit's query string: its name, its space, its sensitivity. */
 function query(upload: Upload): string {
@@ -28,9 +26,9 @@ function query(upload: Upload): string {
 
 /**
  * Deposits a file into a space the reader may write (ADR-095): the
- * company's, or a unit's, up to a sensitivity. The file goes as it is; the
- * API reads it, and says why when it cannot. A file beyond the largest the
- * API takes, which it gives, is not even sent.
+ * company's, or a unit's, up to a sensitivity. The file, chosen or dropped
+ * (ADR-151), goes as it is; the API reads it, and says why when it cannot.
+ * A file beyond the largest the API takes, which it gives, is not even sent.
  */
 export function DocumentUpload({
   spaces,
@@ -66,13 +64,7 @@ export function DocumentUpload({
       sensitivity,
     } satisfies Upload;
     const created = await action.run(() => {
-      if (file.size > maxFileBytes) {
-        throw new ApiError(
-          413,
-          'too_large',
-          `Ce fichier dépasse ${largest} : il n’est pas envoyé.`,
-        );
-      }
+      refuseBeyond(file, maxFileBytes);
       return api.upload<DocumentCreated>(`/documents?${query(upload)}`, file);
     });
     if (created === null) return;
@@ -93,15 +85,9 @@ export function DocumentUpload({
           par ceux qui ont accès à son espace, jusqu’à sa sensibilité.
         </p>
         <div className="grid gap-3 sm:grid-cols-3">
-          <Field label="Fichier" className="sm:col-span-3">
-            <Input
-              key={picker}
-              type="file"
-              accept={ACCEPTED}
-              disabled={action.pending}
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-            />
-          </Field>
+          <div className="sm:col-span-3">
+            <FileDrop file={file} onFile={setFile} disabled={action.pending} reset={picker} />
+          </div>
           <Field label="Espace">
             <Select
               value={space}

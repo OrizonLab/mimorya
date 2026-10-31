@@ -24,7 +24,12 @@ export default function DocumentsPage() {
                 onDeposited={state.reload}
               />
             )}
-            <DocumentLibrary documents={documents} truncated={truncated} onChanged={state.reload} />
+            <DocumentLibrary
+              documents={documents}
+              truncated={truncated}
+              maxFileBytes={maxFileBytes}
+              onChanged={state.reload}
+            />
           </>
         )}
       </Loaded>

@@ -124,7 +124,7 @@ async fn replaceable(
         .ok_or_else(absent)?;
     if row.version != replaces {
         return Err(DomainError::conflict(
-            "Ce document a été remplacé entre-temps : rechargez la liste pour voir sa dernière version",
+            "Ce document a été remplacé entre-temps par une autre version : vérifiez-la avant de la remplacer",
         )
         .into());
     }

@@ -85,4 +85,6 @@ export const api = {
   delete: <T>(path: string) => request<T>('DELETE', path),
   /** Sends `file` as the body; what describes it goes in `path`'s query. */
   upload: <T>(path: string, file: Blob) => request<T>('POST', path, file),
+  /** Puts `file` in place of the one at `path` (ADR-150), described as `upload`'s. */
+  replace: <T>(path: string, file: Blob) => request<T>('PUT', path, file),
 };
