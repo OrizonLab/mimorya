@@ -61,7 +61,17 @@ pub fn messages_to_fold(messages: &[Unfolded]) -> usize {
         }
         folded += 1;
     }
-    folded.min(MAX_FOLDED)
+    if folded <= MAX_FOLDED {
+        return folded;
+    }
+    // Bounded, the pass stops before a person's message, so that what the
+    // next pass folds opens on it too; a run of answers with no question in
+    // reach is cut at the bound.
+    let mut bound = MAX_FOLDED;
+    while bound > 0 && messages[bound].speaker == Speaker::Assistant {
+        bound -= 1;
+    }
+    if bound > 0 { bound } else { MAX_FOLDED }
 }
 
 #[cfg(test)]
@@ -113,6 +123,30 @@ mod tests {
         let mut messages = exchange(10, 100);
         messages.extend(exchange(3, 25_000));
         assert_eq!(messages_to_fold(&messages), 11);
+    }
+
+    #[test]
+    fn a_bounded_pass_keeps_an_answer_with_its_question() {
+        // A request left unanswered shifts the exchanges after it: at the
+        // bound, an answer whose question would be folded.
+        let mut messages = vec![Unfolded {
+            speaker: Speaker::Person,
+            chars: 100,
+        }];
+        messages.extend(exchange(29, 100));
+        assert_eq!(messages[MAX_FOLDED].speaker, Speaker::Assistant);
+        let folded = messages_to_fold(&messages);
+        assert_eq!(folded, MAX_FOLDED - 1);
+        assert_eq!(messages[folded].speaker, Speaker::Person);
+        // Answers alone up to the bound: cut there all the same.
+        let answers = vec![
+            Unfolded {
+                speaker: Speaker::Assistant,
+                chars: 100,
+            };
+            40
+        ];
+        assert_eq!(messages_to_fold(&answers), MAX_FOLDED);
     }
 
     #[test]

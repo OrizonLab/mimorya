@@ -225,7 +225,8 @@ Repères à l'intérieur des crates :
   `extractor.rs` ; dépôt sous le quota de l'entreprise, `deposit.rs` ; liste,
   téléchargement et suppression, `library.rs`, ADR-095),
   `api/src/services/runs/` (historique remis à un run, résumé puis derniers messages
-  (`history.rs`), et résumé tenu à la fin d'un run (`summaries.rs`), ADR-145 ; tour de conversation, dont celui envoyé pour quelqu'un dans une
+  (`history.rs`), et résumé tenu à la fin d'un run (`summaries.rs`), ADR-145 ; coût des appels
+  faits seuls après un run, leçon ou résumé, compté dans ce run (`background_usage.rs`) ; tour de conversation, dont celui envoyé pour quelqu'un dans une
   conversation nouvelle, ouverte avec lui (`turn_start.rs`, ADR-109), ou tenue dans le fil
   Slack qu'il ouvre, ADR-127, décisions, contexte, exécution,
   ports PostgreSQL (lectures de la mémoire et des documents, partagées avec les

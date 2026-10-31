@@ -5,6 +5,7 @@ mod approval_decision;
 mod approval_delegation;
 mod approval_notice;
 mod approval_routing;
+mod background_usage;
 mod context;
 mod conversation_turn;
 mod db_ports;

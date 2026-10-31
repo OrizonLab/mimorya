@@ -129,9 +129,10 @@ critères de la mission (§6).
 **Historique d'une conversation** (ADR-145) : un run reçoit en historique, en texte
 simple, les derniers messages de sa conversation (vingt au plus ; les échanges avec les
 outils restent dans leur run). Passé 16 messages ou 60 000 caractères non couverts, une
-passe en arrière-plan, à la fin d'un run, replie les plus anciens dans le **résumé** de la
-conversation, fait par le modèle de l'entreprise à partir de l'ancien résumé et des
-messages repliés, remis comme données ; les six derniers messages au plus restent mot
+passe en arrière-plan, à la fin d'un run (sauf s'il attend une validation), pour qui peut
+encore utiliser l'agent, replie les plus anciens dans le **résumé** de la conversation,
+fait par le modèle de l'entreprise à partir de l'ancien résumé et des messages repliés,
+remis comme données, chacun dans son enveloppe ; les six derniers messages au plus restent mot
 pour mot. Le résumé ouvre ensuite l'historique, comme une donnée
 (`<donnees_outil source="resume_conversation">`), avant les messages qu'il ne couvre pas.
 Un échec perd la passe, jamais le run. Dans un run, rien n'est replié : l'historique

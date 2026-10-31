@@ -2,7 +2,7 @@
 //! replayed word for word, the model folds them, with the summary it had,
 //! into one summary that keeps the thread (request, decisions, facts and
 //! their sources, what is done and what remains). The messages are handed
-//! over as data (an untrusted envelope), never as instructions; what comes
+//! over as data (an untrusted envelope each), never as instructions; what comes
 //! back is cleaned and bounded, and replayed in turn as data, first in the
 //! history.
 
@@ -60,16 +60,20 @@ fn capped(text: &str, max: usize) -> String {
     }
 }
 
-/// The messages as the model rereads them, each bounded.
+/// The messages as the model rereads them: who wrote each, said by the
+/// platform, then the message in an envelope of its own. Each is bounded
+/// well within what an envelope holds, so that every message folded is
+/// read whole or up to its bound, never cut off by the envelope's.
 fn transcript(messages: &[FoldedMessage<'_>]) -> String {
     messages
         .iter()
         .map(|m| {
-            let who = match m.speaker {
-                Speaker::Person => "[Collaborateur]",
-                Speaker::Assistant => "[Assistant]",
+            let (who, source) = match m.speaker {
+                Speaker::Person => ("[Collaborateur]", "message_collaborateur"),
+                Speaker::Assistant => ("[Assistant]", "message_assistant"),
             };
-            format!("{who}\n{}", capped(m.content, MAX_FOLDED_CHARS))
+            let text = capped(m.content, MAX_FOLDED_CHARS);
+            format!("{who}\n{}", wrap_untrusted(source, &Value::String(text)))
         })
         .collect::<Vec<_>>()
         .join("\n\n")
@@ -100,8 +104,8 @@ pub async fn summarise_conversation(
         ));
     }
     parts.push(format!(
-        "Messages à fondre dans le résumé, du plus ancien au plus récent :\n{}",
-        wrap_untrusted("messages_anciens", &Value::String(transcript(messages)))
+        "Messages à fondre dans le résumé, du plus ancien au plus récent :\n\n{}",
+        transcript(messages)
     ));
     parts.push("Écris le résumé.".to_string());
     let mut request = LlmRequest::new(SUMMARY_SYSTEM, vec![LlmMessage::user(parts.join("\n\n"))]);
@@ -125,6 +129,8 @@ pub fn summary_message(summary: &str) -> LlmMessage {
 
 #[cfg(test)]
 mod tests {
+    use mimorya_core::conversation_summary::MAX_FOLDED;
+
     use super::*;
     use crate::testing::{ScriptedProvider, ScriptedStep};
 
@@ -183,9 +189,42 @@ mod tests {
         };
         assert!(content.contains("source=\"resume_precedent\""));
         assert!(content.contains("Semaine 42 en préparation."));
-        assert!(content.contains("[Collaborateur]\nQuelles interventions restent en cours ?"));
+        let asked = "[Collaborateur]\n<donnees_outil source=\"message_collaborateur\" \
+                     fiabilite=\"non_fiable\">\nQuelles interventions restent en cours ?\n";
+        assert!(content.contains(asked), "{content}");
         // Each message bounded.
         assert!(content.contains(&format!("{} […]", "x".repeat(MAX_FOLDED_CHARS))));
         assert!(!content.contains(&"x".repeat(MAX_FOLDED_CHARS + 1)));
+    }
+
+    #[tokio::test]
+    async fn every_message_of_a_full_pass_reaches_the_model() {
+        let provider = ScriptedProvider::new(vec![ScriptedStep::text(
+            "Vingt-quatre messages longs, tous lus jusqu’à leur borne.",
+        )]);
+        // As many long messages as a pass folds at most.
+        let texts: Vec<String> = (1..=MAX_FOLDED)
+            .map(|n| format!("MSG{n:02} {}", "y".repeat(5_000)))
+            .collect();
+        let messages: Vec<FoldedMessage<'_>> = texts
+            .iter()
+            .map(|content| FoldedMessage {
+                speaker: Speaker::Assistant,
+                content,
+            })
+            .collect();
+        summarise_conversation(&provider, None, &messages)
+            .await
+            .unwrap();
+        let LlmMessage::User { content } = &provider.requests()[0].messages[0] else {
+            panic!("a user message");
+        };
+        for n in 1..=MAX_FOLDED {
+            assert!(
+                content.contains(&format!("MSG{n:02} ")),
+                "MSG{n:02} missing"
+            );
+        }
+        assert!(!content.contains("tronqué par la plateforme"));
     }
 }

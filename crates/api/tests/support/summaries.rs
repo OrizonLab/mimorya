@@ -4,11 +4,11 @@
 
 use axum::http::StatusCode;
 use mimorya_agent::llm::LlmMessage;
-use mimorya_agent::testing::ScriptedStep;
+use mimorya_agent::testing::{ScriptedReply, ScriptedStep, call};
 use serde_json::json;
 use uuid::Uuid;
 
-use super::{Client, TestApi, owner_url};
+use super::{Client, TestApi, owner_url, week};
 
 /// What the model answers when asked for the summary.
 pub const SUMMARY: &str = "Le collaborateur prépare la semaine 42 : INT-2049 reste en cours.";
@@ -28,7 +28,17 @@ pub async fn conversation(client: &Client<'_>) -> Uuid {
 /// `count` exchanges added to `conversation`, numbered from `from`
 /// (« Question n » then « Réponse n »).
 pub async fn exchanges(conversation: Uuid, from: usize, count: usize) {
+    padded_exchanges(conversation, from, count, 0).await;
+}
+
+/// The same, each message followed by `padding` characters.
+pub async fn padded_exchanges(conversation: Uuid, from: usize, count: usize, padding: usize) {
     let owner = sqlx::PgPool::connect(owner_url()).await.unwrap();
+    let pad = if padding == 0 {
+        String::new()
+    } else {
+        format!(" {}", "x".repeat(padding))
+    };
     for n in from..from + count {
         for (role, text) in [("user", "Question"), ("assistant", "Réponse")] {
             sqlx::query(
@@ -38,7 +48,7 @@ pub async fn exchanges(conversation: Uuid, from: usize, count: usize) {
             )
             .bind(conversation)
             .bind(role)
-            .bind(format!("{text} {n}"))
+            .bind(format!("{text} {n}{pad}"))
             .execute(&owner)
             .await
             .unwrap();
@@ -104,4 +114,46 @@ pub fn given(api: &TestApi) -> Vec<String> {
 pub fn last_system(api: &TestApi) -> String {
     let requests = api.model.as_ref().unwrap().requests();
     requests.last().unwrap().system.clone()
+}
+
+/// `account`'s status set, as an administrator would.
+pub async fn set_status(account: Uuid, status: &str) {
+    let owner = sqlx::PgPool::connect(owner_url()).await.unwrap();
+    sqlx::query("update users set status = $2 where id = $1")
+        .bind(account)
+        .bind(status)
+        .execute(&owner)
+        .await
+        .unwrap();
+    owner.close().await;
+}
+
+/// A step during which `account` is disabled, while the model answers,
+/// then asks for a search.
+pub fn disabling(account: Uuid) -> ScriptedStep {
+    ScriptedStep::dynamic(move |_| {
+        std::thread::spawn(move || {
+            tokio::runtime::Runtime::new()
+                .expect("runtime")
+                .block_on(set_status(account, "disabled"));
+        })
+        .join()
+        .expect("change thread");
+        ScriptedReply::calls("Je cherche.", vec![call("interventions_search", week())])
+    })
+}
+
+/// How many passes were audited for `conversation`.
+pub async fn audited_passes(conversation: Uuid) -> i64 {
+    let owner = sqlx::PgPool::connect(owner_url()).await.unwrap();
+    let count = sqlx::query_scalar(
+        "select count(*) from audit_log where action = 'conversation.summarised' \
+         and resource_id = $1",
+    )
+    .bind(conversation.to_string())
+    .fetch_one(&owner)
+    .await
+    .unwrap();
+    owner.close().await;
+    count
 }

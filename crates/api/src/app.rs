@@ -208,7 +208,12 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
         prices: llm.prices().clone(),
         embeddings: embeddings.clone(),
         lessons: LessonCapture::new(db.clone(), llm.clone(), background.clone()),
-        summaries: ConversationSummaries::new(db.clone(), llm.clone(), background.clone()),
+        summaries: ConversationSummaries::new(
+            db.clone(),
+            access.clone(),
+            llm.clone(),
+            background.clone(),
+        ),
         connectors: connectors.clone(),
         account_links: account_links.clone(),
         bus: bus.clone(),

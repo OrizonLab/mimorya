@@ -8313,18 +8313,24 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     (`services/runs/summaries.rs`). Au-delà de 16 messages ou de 60 000 caractères, elle
     replie les plus anciens et garde mot pour mot les plus récents. Elle garde au plus
     six messages et 20 000 caractères, jamais moins que le dernier échange, et
-    l'échange entier quand elle le peut. Une passe replie 24 messages au plus, la
-    suivante continue. La règle est pure (`core/src/conversation_summary.rs`). Le seuil
+    l'échange entier quand elle le peut. Une passe replie 24 messages au plus, arrêtée
+    avant une question pour ne pas séparer une réponse de la sienne ; la suivante
+    continue. La règle est pure (`core/src/conversation_summary.rs`). Le seuil
     reste sous les vingt messages rejoués : un résumé à jour évite toute coupure.
     L'historique ne change plus qu'à chaque repli, d'où des préfixes stables pour le
     cache ;
+  - **pour qui** : seulement pour qui peut encore utiliser l'agent, comme chaque étape
+    d'un run (ADR-035) : un compte désactivé, privé d'`agent:use` ou d'une entreprise
+    suspendue n'a aucune passe, et le modèle n'est pas appelé ;
   - **comment** : le modèle de l'entreprise, celui de ses conversations (aucun pour une
     entreprise qui n'en a pas), avec un effort bas, fond l'ancien résumé et les
     messages repliés en un résumé :
     - **ce qu'il garde** : demandes et buts, décisions, faits avec leurs identifiants,
       dates, montants et sources, fait et reste à faire, préférences ;
-    - **en entrée** : ancien résumé et messages lui sont remis comme données
-      (enveloppe non fiable), chaque message borné à 3 000 caractères ;
+    - **en entrée** : ancien résumé et messages lui sont remis comme données, chacun
+      dans son enveloppe non fiable, chaque message borné à 3 000 caractères, bien
+      en deçà de ce qu'une enveloppe garde : tout message replié est lu par le modèle,
+      entier ou jusqu'à sa borne ;
     - **en sortie** : la réponse est nettoyée (caractères cachés, enveloppes) et
       bornée à 6 000 caractères (`agent/src/runtime/conversation_summary.rs`) ;
     - **à la relecture** : le résumé est rejoué en tête de l'historique comme une
@@ -8358,16 +8364,25 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
 - **Conséquences** :
   - donnée personnelle nouvelle, tirée de la conversation : supprimée avec elle (ou avec
     le message où il s'arrête), donc avec le compte de son propriétaire ; à joindre à
-    l'export de ses conversations. Aucune route ne la montre encore ;
+    l'export de ses conversations. Aucune route ne la montre encore. Les purges de
+    rétention des messages, quand elles viendront, devront refaire ou supprimer le
+    résumé qui couvre les messages purgés ;
   - une passe coûte un appel de modèle, à effort bas, par repli, soit environ tous les
     six échanges d'une longue conversation ;
   - tests : `crates/core/src/conversation_summary.rs` (seuils, part gardée, échange
-    entier, borne d'une passe, message le plus récent jamais replié) ;
-    `crates/agent/src/runtime/conversation_summary.rs` (nettoyage et bornes, données,
-    ancien résumé fondu, messages bornés) ; `crates/api/tests/conversation_summaries.rs`
+    entier, borne d'une passe sans séparer une réponse de sa question, message le plus
+    récent jamais replié) ; `crates/agent/src/runtime/conversation_summary.rs`
+    (nettoyage et bornes, données, ancien résumé fondu, messages bornés, chaque
+    message d'une passe complète lu) ; `crates/api/tests/conversation_summaries.rs`
     (repli des douze plus anciens, tour suivant parti du résumé puis des six messages
     gardés, audit sans texte, coût dans le run, deuxième passe depuis le premier
-    résumé, échec sans effet sur le run puis rattrapage, tour mis en file parti du
-    résumé) ; `crates/db/tests/isolation.rs` (table protégée par la RLS) ;
+    résumé, messages longs repliés selon leur taille et lus chacun, échec sans effet
+    sur le run puis rattrapage, tour mis en file parti du résumé) ;
+    `conversation_summary_limits.rs` (rien pour un compte désactivé pendant que le
+    modèle répond, rien pendant une validation attendue puis repli à la fin du run,
+    rien sans modèle) ; `crates/db/tests/conversation_summaries.rs` (de deux passes
+    tirées du même résumé, la seconde ne change rien, ni en arrière ni en double ;
+    messages lus dans l'ordre) ; `crates/db/tests/isolation.rs` (table protégée par la
+    RLS) ;
   - reste le lot 16b : montrer dans la conversation que ses premiers messages sont
     résumés pour l'assistant, et ce résumé.

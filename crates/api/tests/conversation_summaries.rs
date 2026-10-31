@@ -16,9 +16,15 @@ use serde_json::{Value, json};
 use support::TestApi;
 use support::queue::{API, take_queued, worker};
 use support::summaries::{
-    SUMMARY, SUMMARY_SYSTEM, conversation, exchanges, given, last_system, stored, turn,
+    SUMMARY, SUMMARY_SYSTEM, conversation, exchanges, given, last_system, padded_exchanges, stored,
+    turn,
 };
 use uuid::Uuid;
+
+/// A message folded as the model rereads it: in an envelope of its own.
+fn folded(speaker: &str, text: &str) -> String {
+    format!("source=\"message_{speaker}\" fiabilite=\"non_fiable\">\n{text}\n")
+}
 
 fn answer(n: usize) -> ScriptedStep {
     ScriptedStep::text(format!("Réponse {n}"))
@@ -39,8 +45,14 @@ async fn older_messages_are_folded_into_a_summary_the_next_turns_start_from() {
     // exchanges kept.
     assert!(last_system(&api).starts_with(SUMMARY_SYSTEM));
     let reread = given(&api).join("\n");
-    assert!(reread.contains("[Collaborateur]\nQuestion 1"), "{reread}");
-    assert!(reread.contains("[Assistant]\nRéponse 6"), "{reread}");
+    assert!(
+        reread.contains(&folded("collaborateur", "Question 1")),
+        "{reread}"
+    );
+    assert!(
+        reread.contains(&folded("assistant", "Réponse 6")),
+        "{reread}"
+    );
     assert!(!reread.contains("Question 7"), "{reread}");
     assert!(!reread.contains("Résumé précédent"), "{reread}");
     let summary = stored(c).await;
@@ -100,13 +112,48 @@ async fn older_messages_are_folded_into_a_summary_the_next_turns_start_from() {
     let reread = given(&api).join("\n");
     assert!(reread.contains("source=\"resume_precedent\""), "{reread}");
     assert!(reread.contains(SUMMARY), "{reread}");
-    assert!(reread.contains("[Collaborateur]\nQuestion 7"), "{reread}");
-    assert!(reread.contains("[Assistant]\nRéponse 13"), "{reread}");
+    assert!(
+        reread.contains(&folded("collaborateur", "Question 7")),
+        "{reread}"
+    );
+    assert!(
+        reread.contains(&folded("assistant", "Réponse 13")),
+        "{reread}"
+    );
     assert!(!reread.contains("Question 14"), "{reread}");
     let summary = stored(c).await.unwrap();
     assert_eq!(summary.1, "Réponse 13");
     assert_eq!(summary.2, 26);
     assert!(summary.0.starts_with("Semaine 42 préparée"));
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn long_messages_are_folded_by_their_size_each_read_by_the_model() {
+    let api = TestApi::start().await;
+    let marc = api.sign_in(user::MARC).await;
+    let c = conversation(&marc).await;
+    // Twelve messages of 5 000 characters: past 60 000 once answered.
+    padded_exchanges(c, 1, 6, 5_000).await;
+
+    let summary = ScriptedStep::text(SUMMARY);
+    turn(&api, &marc, c, "Question 7", vec![answer(7), summary]).await;
+    // The latest kept within their 20 000 characters, from a question: the
+    // ten oldest folded, each read by the model up to its bound.
+    assert!(last_system(&api).starts_with(SUMMARY_SYSTEM));
+    let reread = given(&api).join("\n");
+    for n in 1..=5 {
+        assert!(
+            reread.contains(&format!(">\nQuestion {n} x")),
+            "Question {n}"
+        );
+        assert!(reread.contains(&format!(">\nRéponse {n} x")), "Réponse {n}");
+    }
+    assert!(!reread.contains("Question 6"), "{reread}");
+    assert!(!reread.contains("tronqué par la plateforme"));
+    let (_, through, folded) = stored(c).await.unwrap();
+    assert!(through.starts_with("Réponse 5 x"));
+    assert_eq!(folded, 10);
 }
 
 #[tokio::test]

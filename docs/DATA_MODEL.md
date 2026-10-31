@@ -283,6 +283,7 @@ utilisateur).
 | Absences déclarées                            | Jusqu'à leur fin ou leur retrait ; terminées : purgées                                                                                                     |
 | Tâches planifiées                             | Jusqu'à suppression par leur auteur ou avec son compte ; compte désactivé : en pause                                                                       |
 | Missions                                      | Comme leur conversation, supprimées avec elle ou avec le compte de leur auteur                                                                             |
+| Résumés des conversations                     | Avec leur conversation ou le dernier message qu'ils couvrent, donc avec le compte de son propriétaire (ADR-145)                                            |
 | Documents déposés                             | Jusqu'à suppression par qui peut écrire leur espace, ou avec l'entreprise                                                                                  |
 | Compétences et propositions                   | Avec leur compétence, rejetées comprises ; auteur et run oubliés avec eux (ADR-100)                                                                        |
 | Cas d'évaluation des compétences              | Avec leur compétence ; leur auteur parti, ils restent à l'entreprise (ADR-103)                                                                             |
