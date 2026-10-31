@@ -126,6 +126,17 @@ d'étape) et des sources trouvées par les précédentes (`StartInput.evidence`)
 comptent pour l'ancrage. Sa réponse finale est revue par un modèle au regard des
 critères de la mission (§6).
 
+**Historique d'une conversation** (ADR-145) : un run reçoit en historique, en texte
+simple, les derniers messages de sa conversation (vingt au plus ; les échanges avec les
+outils restent dans leur run). Passé 16 messages ou 60 000 caractères non couverts, une
+passe en arrière-plan, à la fin d'un run, replie les plus anciens dans le **résumé** de la
+conversation, fait par le modèle de l'entreprise à partir de l'ancien résumé et des
+messages repliés, remis comme données ; les six derniers messages au plus restent mot
+pour mot. Le résumé ouvre ensuite l'historique, comme une donnée
+(`<donnees_outil source="resume_conversation">`), avant les messages qu'il ne couvre pas.
+Un échec perd la passe, jamais le run. Dans un run, rien n'est replié : l'historique
+reste en ajout seul, les blocs de raisonnement étant liés à tout ce qui les précède.
+
 **Erreurs** : erreurs d'outil renvoyées au modèle (il peut corriger son appel) ;
 erreurs de fournisseur classées (`rate_limit`, `overloaded`, `auth`, `context_overflow`,
 `invalid_request`) → nouvelle tentative avec attente exponentielle, bascule vers un

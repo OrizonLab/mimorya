@@ -8288,3 +8288,86 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     31/12/2099, et partage en retour tel que le formulaire le propose, sans échéance, les
     deux relus après rechargement ; mémoire de l'équipe Nord lue par Léa, de l'équipe Sud,
     puis plus une fois le partage retiré).
+
+## ADR-145 — Résumé des longues conversations (compression du contexte, lot 16a)
+
+- **Date** : 2026-10-31 · **Statut** : acceptée
+- **Contexte** : un run reçoit en historique les derniers messages de sa conversation,
+  en texte simple (les échanges avec les outils restent dans leur run). Ils étaient
+  vingt au plus : passé dix échanges, le début d'une conversation disparaissait
+  d'un coup, la demande initiale comprise, sans que le modèle le sache. Une mission ou
+  une conversation tenue dans Slack, Telegram ou Teams s'allonge vite. La fenêtre
+  glissante changeait aussi l'historique à chaque tour : le cache du fournisseur
+  ne servait pas d'un tour à l'autre. Dans un run, l'historique est en ajout seul :
+  les modèles récents lient leurs blocs de raisonnement à tout ce qui les précède
+  (« preserved thinking »). Pour les comptes ouverts depuis le 31 août 2026, une
+  requête qui rejoue un historique modifié est refusée (400).
+- **Décision** :
+  - **un résumé par conversation** (`conversation_summaries`, migration 0064) : son
+    texte, le dernier message qu'il couvre et le nombre de messages repliés en tout.
+    L'historique d'un run qui démarre est ce résumé, puis les messages qui le suivent,
+    vingt au plus (`services/runs/history.rs`), pour un tour ouvert tout de suite comme
+    pour un tour mis en file (ADR-085). Sans résumé, rien ne change ;
+  - **quand** : à la fin d'un run de la conversation, sauf s'il attend une validation,
+    une passe en arrière-plan relit les messages que le résumé ne couvre pas encore
+    (`services/runs/summaries.rs`). Au-delà de 16 messages ou de 60 000 caractères, elle
+    replie les plus anciens et garde mot pour mot les plus récents. Elle garde au plus
+    six messages et 20 000 caractères, jamais moins que le dernier échange, et
+    l'échange entier quand elle le peut. Une passe replie 24 messages au plus, la
+    suivante continue. La règle est pure (`core/src/conversation_summary.rs`). Le seuil
+    reste sous les vingt messages rejoués : un résumé à jour évite toute coupure.
+    L'historique ne change plus qu'à chaque repli, d'où des préfixes stables pour le
+    cache ;
+  - **comment** : le modèle de l'entreprise, celui de ses conversations (aucun pour une
+    entreprise qui n'en a pas), avec un effort bas, fond l'ancien résumé et les
+    messages repliés en un résumé :
+    - **ce qu'il garde** : demandes et buts, décisions, faits avec leurs identifiants,
+      dates, montants et sources, fait et reste à faire, préférences ;
+    - **en entrée** : ancien résumé et messages lui sont remis comme données
+      (enveloppe non fiable), chaque message borné à 3 000 caractères ;
+    - **en sortie** : la réponse est nettoyée (caractères cachés, enveloppes) et
+      bornée à 6 000 caractères (`agent/src/runtime/conversation_summary.rs`) ;
+    - **à la relecture** : le résumé est rejoué en tête de l'historique comme une
+      donnée lui aussi, après une note de la plateforme qui le présente. Les messages
+      d'origine, eux, étaient rejoués comme des tours ;
+  - **une passe à la fois** : un résumé n'avance que depuis celui dont il a été tiré
+    (comparaison du dernier message couvert). De deux passes simultanées, la première
+    enregistrée l'emporte ; l'autre est perdue, son coût compté ;
+  - **un échec** (modèle en panne, réponse vide) perd la passe, jamais le run.
+    L'historique rejoue alors les derniers messages comme avant, et la passe suivante
+    rattrape ;
+  - **ce qui est tracé** : le coût de la passe est compté dans le run qui l'a
+    déclenchée, comme une leçon (ADR-076). La passe est auditée
+    (`conversation.summarised`, acteur agent, au nom de la personne servie, avec le
+    nombre de messages repliés), jamais avec son texte ;
+  - **dans un run, rien n'est replié** : l'historique reste en ajout seul. Les
+    résultats d'outils restent bornés chacun (24 000 caractères), et le run par ses
+    budgets d'étapes et de tokens.
+- **Alternatives écartées** :
+  - **élaguer les vieux résultats d'outils pendant un run**, côté plateforme : cela
+    réécrirait des messages déjà envoyés, interdit (CLAUDE.md) et refusé par les modèles
+    récents. L'édition du contexte ou la compaction côté serveur de l'API Anthropic
+    pourront venir pour les runs longs, propres à ce fournisseur ;
+  - **résumer avant le run**, de façon synchrone : chaque tour concerné attendrait un
+    appel de plus ;
+  - **un réglage par entreprise**, comme les leçons : le résumé remplace un oubli
+    silencieux par le même modèle, sur la même conversation de la même personne. Rien
+    ne sort d'où c'était déjà ;
+  - **une fenêtre en caractères seulement** : elle oublie aussi, sans rien garder de ce
+    qui sort.
+- **Conséquences** :
+  - donnée personnelle nouvelle, tirée de la conversation : supprimée avec elle (ou avec
+    le message où il s'arrête), donc avec le compte de son propriétaire ; à joindre à
+    l'export de ses conversations. Aucune route ne la montre encore ;
+  - une passe coûte un appel de modèle, à effort bas, par repli, soit environ tous les
+    six échanges d'une longue conversation ;
+  - tests : `crates/core/src/conversation_summary.rs` (seuils, part gardée, échange
+    entier, borne d'une passe, message le plus récent jamais replié) ;
+    `crates/agent/src/runtime/conversation_summary.rs` (nettoyage et bornes, données,
+    ancien résumé fondu, messages bornés) ; `crates/api/tests/conversation_summaries.rs`
+    (repli des douze plus anciens, tour suivant parti du résumé puis des six messages
+    gardés, audit sans texte, coût dans le run, deuxième passe depuis le premier
+    résumé, échec sans effet sur le run puis rattrapage, tour mis en file parti du
+    résumé) ; `crates/db/tests/isolation.rs` (table protégée par la RLS) ;
+  - reste le lot 16b : montrer dans la conversation que ses premiers messages sont
+    résumés pour l'assistant, et ce résumé.

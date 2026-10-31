@@ -31,6 +31,7 @@ use super::fence::{LeaseFence, lost};
 use super::lesson_capture::LessonCapture;
 use super::outcome::{CRASH_MESSAGE, record_crash};
 use super::run_access::RunAccess;
+use super::summaries::ConversationSummaries;
 use crate::services::access::{AccessContext, AccessService};
 use crate::services::account_links::AccountLinkService;
 use crate::services::connectors::ConnectorService;
@@ -50,6 +51,8 @@ pub struct RunExecutor {
     pub embeddings: Arc<EmbeddingService>,
     /// Draws a lesson from each completed run, where chosen (ADR-076).
     pub lessons: LessonCapture,
+    /// Folds each conversation's older messages into its summary (ADR-145).
+    pub summaries: ConversationSummaries,
     pub connectors: Arc<ConnectorService>,
     /// Where the tools reach the accounts each person linked (ADR-117).
     pub account_links: Arc<AccountLinkService>,

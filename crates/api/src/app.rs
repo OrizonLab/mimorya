@@ -41,7 +41,7 @@ use crate::services::embeddings::{EmbeddingServiceOptions, default_embedding_fac
 use crate::services::gateways::{GatewayService, GatewaySettings};
 use crate::services::invalidations::{Invalidations, share_invalidations};
 use crate::services::llm::{LlmServiceOptions, default_factory};
-use crate::services::runs::{ApprovalNotifier, LessonCapture, RunExecutor};
+use crate::services::runs::{ApprovalNotifier, ConversationSummaries, LessonCapture, RunExecutor};
 use crate::services::sso::{SsoService, SystemDns};
 use crate::services::{
     AccessService, ConnectorService, EmbeddingService, LlmService, RunEventBus, RunService,
@@ -208,6 +208,7 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
         prices: llm.prices().clone(),
         embeddings: embeddings.clone(),
         lessons: LessonCapture::new(db.clone(), llm.clone(), background.clone()),
+        summaries: ConversationSummaries::new(db.clone(), llm.clone(), background.clone()),
         connectors: connectors.clone(),
         account_links: account_links.clone(),
         bus: bus.clone(),

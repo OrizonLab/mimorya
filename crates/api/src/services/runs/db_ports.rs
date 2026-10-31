@@ -34,6 +34,7 @@ use super::fence::LeaseFence;
 use super::lesson_capture::LessonCapture;
 use super::outcome::persist_outcome;
 use super::reads::Reader;
+use super::summaries::ConversationSummaries;
 use crate::services::access::AccessService;
 use crate::services::account_links::{AccountLinkService, PersonAccounts};
 use crate::services::embeddings::{EmbeddingService, UsageBy};
@@ -76,6 +77,8 @@ pub struct DbPorts {
     pub(super) embeddings: Arc<EmbeddingService>,
     /// Draws a lesson from the run once completed (ADR-076).
     lessons: LessonCapture,
+    /// Folds the run's conversation into its summary once it ends (ADR-145).
+    summaries: ConversationSummaries,
     /// The execution's lease on the run, held by each change (ADR-086).
     fence: LeaseFence,
     /// Whether this execution ended the run: what follows (its last event)
@@ -101,6 +104,7 @@ pub fn engine_ports(executor: &RunExecutor, scope: RunScope, fence: LeaseFence) 
         notifier: executor.notifier.clone(),
         embeddings: executor.embeddings.clone(),
         lessons: executor.lessons.clone(),
+        summaries: executor.summaries.clone(),
         fence,
         ended: Arc::new(AtomicBool::new(false)),
         leased: scope.run_id,
@@ -343,6 +347,7 @@ impl RunStore for DbPorts {
             return Ok(());
         }
         self.lessons.after_run(self.scope, outcome);
+        self.summaries.after_run(self.scope, outcome);
         // Paused, and so decidable: the managers of its requests are told,
         // once per pause (ADR-060).
         if let RunOutcome::AwaitingApproval { approvals, .. } = outcome {
