@@ -13,7 +13,8 @@ import {
 } from '@/lib/api';
 import { formatBytes } from '@/lib/format';
 import { CLEARANCE_LABELS, SENSITIVITIES } from '@/lib/labels';
-import { FileDrop, refuseBeyond } from './file-drop';
+import { FileDrop } from './file-drop';
+import { refuseBeyond } from './file-rules';
 
 /** The deposit's query string: its name, its space, its sensitivity. */
 function query(upload: Upload): string {

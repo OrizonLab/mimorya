@@ -2,25 +2,7 @@
 
 import { useRef, useState, type DragEvent } from 'react';
 import { cx, Field, Input } from '@/components/ui';
-import { ApiError } from '@/lib/api';
-import { formatBytes } from '@/lib/format';
-
-/** The files the API reads (ADR-095). */
-export const ACCEPTED = '.pdf,.docx,.md,.markdown,.txt';
-
-/**
- * Refuses, before it is sent, a file beyond the largest the API takes,
- * which it gives with the list (ADR-097).
- */
-export function refuseBeyond(file: File, maxFileBytes: number): void {
-  if (file.size > maxFileBytes) {
-    throw new ApiError(
-      413,
-      'too_large',
-      `Ce fichier dépasse ${formatBytes(maxFileBytes)} : il n’est pas envoyé.`,
-    );
-  }
-}
+import { ACCEPTED } from './file-rules';
 
 /** Whether what is dragged carries files. */
 function carriesFiles(event: DragEvent): boolean {
@@ -30,9 +12,11 @@ function carriesFiles(event: DragEvent): boolean {
 /**
  * A file chosen or dropped (ADR-151): the form's file input, labelled
  * « Fichier », inside a zone a file can be dropped on. A dropped file is
- * taken as a chosen one, the first only; the zone says which file is
- * taken. While the form is busy, nothing dropped is taken. `reset` changes
- * once the file is sent: a new input, empty.
+ * taken as a chosen one, the first only, which the input shows too where
+ * the browser lets it (it is emptied otherwise); the zone says which file
+ * is taken. While the form is busy, nothing dropped is taken, nor opened
+ * by the browser instead. `reset` changes once the file is sent: a new
+ * input, empty.
  */
 export function FileDrop({
   file,
@@ -49,11 +33,12 @@ export function FileDrop({
   const [over, setOver] = useState(false);
 
   function dragOver(event: DragEvent) {
-    if (disabled || !carriesFiles(event)) return;
-    // Lets the file be dropped here rather than opened by the browser.
+    if (!carriesFiles(event)) return;
+    // The file is dropped here rather than opened by the browser, even
+    // while busy: then nothing is taken.
     event.preventDefault();
-    event.dataTransfer.dropEffect = 'copy';
-    setOver(true);
+    event.dataTransfer.dropEffect = disabled ? 'none' : 'copy';
+    setOver(!disabled);
   }
 
   function drop(event: DragEvent) {
@@ -62,11 +47,21 @@ export function FileDrop({
     setOver(false);
     const dropped = event.dataTransfer.files[0];
     if (disabled || !dropped) return;
-    // The input shows it too, where the browser lets it.
-    if (input.current && event.dataTransfer.files.length === 1) {
-      input.current.files = event.dataTransfer.files;
-    }
+    shown(dropped);
     onFile(dropped);
+  }
+
+  /** The input shows `dropped` alone, or nothing where it cannot. */
+  function shown(dropped: File) {
+    const field = input.current;
+    if (!field) return;
+    try {
+      const only = new DataTransfer();
+      only.items.add(dropped);
+      field.files = only.files;
+    } catch {
+      field.value = '';
+    }
   }
 
   return (

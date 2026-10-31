@@ -131,7 +131,7 @@ async fn a_replacement_names_the_version_it_replaces() {
     assert_eq!(taken.json()["version"], 2);
     assert_eq!(
         refused.error_message(),
-        "Ce document a été remplacé entre-temps : rechargez la liste pour voir sa dernière version"
+        "Ce document a été remplacé entre-temps par une autre version : vérifiez-la avant de la remplacer"
     );
     assert_eq!(file(&julien, id).await, kept_file);
 

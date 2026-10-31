@@ -8615,8 +8615,8 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     document (`canWrite`, qui remplace `canDelete`) ;
   - **version nommée** : la demande nomme la version qu'elle remplace, celle que la
     personne a vue. Si le document a été remplacé entre-temps, elle est refusée (409,
-    « Ce document a été remplacé entre-temps : rechargez la liste pour voir sa dernière
-    version ») : deux personnes ne s'écrasent jamais sans le savoir. Les remplacements
+    « Ce document a été remplacé entre-temps par une autre version : vérifiez-la avant
+    de la remplacer », ADR-151) : deux personnes ne s'écrasent jamais sans le savoir. Les remplacements
     et les dépôts d'une entreprise passent l'un après l'autre sous le verrou de son
     quota ; seule une suppression peut se glisser entre la lecture du document et son
     remplacement, et le remplacement répond alors comme introuvable ;
@@ -8675,24 +8675,36 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
   navigateur à sa place. ADR-097 laissait ces deux points à faire.
 - **Décision** :
   - **nouvelle version** : sur chaque document qu'on peut écrire (`canWrite`), un bouton
-    « Nouvelle version de « … » » ouvre au-dessus de la liste un panneau du même nom :
+    « Nouvelle version de « … » » ouvre au-dessus de la liste un panneau du même nom, qu'il
+    dit contrôler (`aria-expanded`, `aria-controls`) :
+    - le titre du panneau prend le focus à son ouverture, ce qui l'amène à l'écran ;
+      fermé (« Annuler » ou remplacement fait), le focus revient au bouton de sa ligne ;
     - il dit quelle version il remplace, que l'agent ne lira plus que la nouvelle et que
       l'ancien fichier n'est pas gardé, et que le document garde son espace et sa
       sensibilité ;
-    - le fichier, choisi ou déposé, part tel quel avec la version que la page montrait
-      (`version`). Si le document a été remplacé entre-temps, le refus de l'API est
-      montré tel quel (« rechargez la liste… ») et rien n'est écrasé ;
-    - un fichier au-delà de la borne de l'API n'est pas envoyé, comme au dépôt ;
-    - une fois remplacé, la page dit la nouvelle version et le nombre de passages, puis
-      recharge la liste. Un seul panneau est ouvert à la fois, fermé par « Annuler » ou
-      par la suppression de son document ;
+    - il suit la liste rechargée : la version qu'il dit, et qu'il envoie (`version`), est
+      celle de la liste ; il se ferme quand son document n'y est plus ou ne peut plus
+      être écrit ;
+    - le fichier, choisi ou déposé, part tel quel. Refusé pour un conflit (document
+      remplacé entre-temps, ou quota de l'entreprise, 409), la liste est rechargée et le
+      panneau reste ouvert avec la raison du refus : il dit la version désormais là, que
+      la personne remplace ensuite en connaissance de cause. Le message de l'API ne
+      demande plus de recharger la liste (« Ce document a été remplacé entre-temps par
+      une autre version : vérifiez-la avant de la remplacer ») ;
+    - un fichier au-delà de la borne de l'API n'est pas envoyé, comme au dépôt
+      (`refuseBeyond`, `file-rules.ts`) ;
+    - pendant qu'il envoie, aucun bouton des lignes (nouvelle version, suppression) ne
+      part ; une fois remplacé, la page dit la nouvelle version et le nombre de passages,
+      puis recharge la liste ;
   - **version dans la liste** : un document remplacé dit « Version N, remplacée le … »
     sous la date de son premier dépôt ;
   - **glisser-déposer** (`FileDrop`) : le champ « Fichier » du dépôt et de la nouvelle
     version est entouré d'une zone où l'on dépose un fichier :
     - seul le premier fichier déposé est pris, comme s'il avait été choisi. La zone dit
-      le fichier retenu et, si le navigateur le permet, le champ le montre aussi ;
-    - pendant un envoi, rien de déposé n'est pris ;
+      le fichier retenu ; le champ le montre seul, ou se vide si le navigateur ne le
+      permet pas ;
+    - pendant un envoi, rien de déposé n'est pris, ni ouvert par le navigateur à la
+      place ;
     - le champ reste le moyen d'y arriver au clavier ; la zone n'ajoute rien qu'il ne
       permette déjà ;
   - **client** : `api.replace` envoie un fichier en `PUT`, comme `api.upload` en `POST`.
@@ -8708,10 +8720,13 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
   - un fichier lâché à côté de la zone est ouvert par le navigateur, comme avant ;
   - tests :
     - `apps/web/e2e/document-versions.spec.ts` : Julien dépose une note en la glissant
-      sur le formulaire, puis la remplace depuis sa ligne. C'est le même document, qui
-      se télécharge dans sa nouvelle version, et la liste dit sa version après
-      rechargement. Un remplacement fait entre-temps, comme depuis un autre onglet, fait
-      refuser celui de la page avec sa raison. Lucas, qui lit la note, ne peut pas la
-      remplacer ;
+      sur le formulaire, puis ouvre sa nouvelle version depuis sa ligne : le titre du
+      panneau a le focus ; un fichier de plus de 10 Mo n'est pas envoyé ; annulé, le
+      focus revient au bouton. Il la remplace : le focus revient au bouton de sa ligne,
+      c'est le même document, qui se télécharge dans sa nouvelle version, et la liste
+      dit sa version après rechargement. Un remplacement fait entre-temps, comme depuis
+      un autre onglet, fait refuser celui de la page avec sa raison ; la liste
+      rechargée, le panneau dit la version 3, qu'il remplace ensuite. Lucas, qui lit la
+      note, ne peut pas la remplacer ;
     - `apps/web/e2e/documents.spec.ts` : le dépôt par le sélecteur, les refus et la
       borne de taille restent couverts.
