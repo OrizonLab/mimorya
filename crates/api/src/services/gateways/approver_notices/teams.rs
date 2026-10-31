@@ -9,9 +9,8 @@
 //! nothing. The Teams account the bot met is theirs: Teams named its Entra
 //! object with the account's address when they linked it (ADR-138).
 
-use mimorya_core::gateways::teams::{
-    CardAction, CardState, TeamsApplication, shown_in_card, validation_card,
-};
+use mimorya_core::gateways::ActionState;
+use mimorya_core::gateways::teams::{CardAction, TeamsApplication, shown_in_card, validation_card};
 use mimorya_db::repositories::gateway_approval_notices::GatewayApprovalNotice;
 use mimorya_db::repositories::gateway_cards::{CardPlace, WrittenCard};
 use mimorya_db::repositories::gateway_replies::ReplyRecord;
@@ -55,7 +54,7 @@ pub(super) async fn tell(
     let actions: Vec<CardAction> = (shown.iter())
         .map(|&shown| CardAction {
             shown,
-            state: CardState::Open,
+            state: ActionState::Open,
         })
         .collect();
     match teams

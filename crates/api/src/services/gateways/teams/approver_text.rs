@@ -7,8 +7,9 @@
 //! Written again once one of them is decided, with the names as they are
 //! then; once none awaits a decision any more, that none does.
 
+use mimorya_core::gateways::ActionState;
 use mimorya_core::gateways::ShownAction;
-use mimorya_core::gateways::teams::{CardState, escaped, link};
+use mimorya_core::gateways::teams::{escaped, link};
 use mimorya_db::repositories::approvals::ApprovalRow;
 use mimorya_db::repositories::gateway_cards::GatewayCard;
 use mimorya_db::repositories::users::get_user;
@@ -63,7 +64,7 @@ pub(super) async fn rewritten_notice(
     services: &Services,
     tenant_id: Uuid,
     card: &GatewayCard,
-    (approvals, states): (&[ApprovalRow], &[CardState]),
+    (approvals, states): (&[ApprovalRow], &[ActionState]),
 ) -> anyhow::Result<String> {
     // A card shows one request at least, all of one run.
     let Some(first) = approvals.first() else {
@@ -80,8 +81,8 @@ pub(super) async fn rewritten_notice(
     let requested_for = requested_for.map(|u| u.display_name).unwrap_or_default();
     let url = services.gateways.approvals_url();
     let in_application = usize::try_from(card.in_application).unwrap_or(0);
-    if !states.contains(&CardState::Open) {
-        let decided = states.iter().all(|&state| state == CardState::Decided);
+    if !states.contains(&ActionState::Open) {
+        let decided = states.iter().all(|state| state.is_decided());
         let counts = (approvals.len(), in_application);
         return Ok(settled_notice(&requested_for, counts, decided, &url));
     }

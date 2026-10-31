@@ -8439,3 +8439,43 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
   - un résumé en retard de plus de vingt messages (ADR-145) ne fait pas relire mot pour
     mot tous les messages placés sous la note : le dire dans la note viendra avec
     l'enchaînement des passes, à suivre dans la feuille de route.
+
+## ADR-147 — Une action réglée dite telle quelle dans Slack et dans Teams (passerelles, lot 17a)
+
+- **Date** : 2026-10-31 · **Statut** : acceptée · complète ADR-129, ADR-141
+- **Contexte** : une action validée hors de l'application restait intitulée « Action à
+  valider : … Paramètres exacts qui seront exécutés : » une fois réglée. Dans Slack, ses
+  boutons laissaient place à « Validée » ou « Refusée », sous un titre qui disait
+  encore le contraire. La carte de Teams disait « Décidée. », sans dire dans quel sens.
+- **Décision** :
+  - **un état commun** : `ActionState` (`core/src/gateways/validation.rs`) dit où en
+    est une action montrée dans une messagerie : ouverte, validée, refusée, ou
+    n'attendant plus de décision (expirée, sa demande arrêtée). Il donne aux trois
+    services les intitulés d'une action, et à Teams son issue :
+    - **ouverte** : « Action 1 à valider : » et « Paramètres exacts qui seront
+      exécutés : » ;
+    - **réglée** : « Action 1 : » et « Paramètres exacts : », suivis de « Validée. »,
+      « Refusée. » ou « N'attend plus de décision. » ;
+  - **Teams** : la carte, réécrite après chaque décision (ADR-141), suit cet état. Elle
+    ne dit plus « Décidée. » ;
+  - **Slack** : la même mise à jour qui remplace les boutons d'une action par ce qu'elle
+    est devenue réécrit aussi sa description, deux blocs au-dessus, comme celle d'une
+    action réglée. Une description qui n'a pas la forme d'une action à valider reste
+    telle quelle. Ce qu'elle est devenue y reste dit plus précisément qu'ailleurs
+    (« Validée par vous dans Slack. », « Refusée. », « Expirée : elle n'a pas été
+    validée à temps. », « Annulée. »), tiré du même état : un autre statut y dit « N'attend
+    plus de décision. » ;
+  - **Telegram** : les mêmes intitulés à l'envoi. Après une décision, le bot retire
+    les boutons et répond, mais ne réécrit pas encore le texte du message : il faut
+    garder les actions montrées par chaque message, comme Teams garde ses cartes. C'est
+    le lot 17b.
+- **Conséquences** :
+  - tests : `crates/core/src/gateways/validation.rs` (état lu du statut d'une demande,
+    intitulés et issue), `teams/card_tests.rs` (actions validée, refusée, ouverte et
+    sans décision sur une carte, « à valider » une seule fois),
+    `slack/interactions.rs` (description réglée avec ses boutons, l'autre action encore
+    à valider, réécriture qui ne se répète pas, résumé écrit comme une description
+    gardé tel quel) ; `api/src/services/gateways/choices.rs` (issue dite dans Slack, un
+    statut inconnu réglé) ; `crates/api/tests/teams_gateway_validations.rs`,
+    `teams_gateway_approver_notices.rs`, `slack_gateway_validations.rs` (après une
+    décision réelle, plus de « à valider » ni de « qui seront exécutés »).

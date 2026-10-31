@@ -20,8 +20,7 @@ pub use activity::{
     MAX_MESSAGE_CHARS, PersonalMessage, ReceivedActivity, TeamsUser, guid, read_activity, same_guid,
 };
 pub use card::{
-    CardAction, CardChoice, CardState, MAX_CARD_ACTIONS, card_choice, shown_in_card,
-    validation_card,
+    CardAction, CardChoice, MAX_CARD_ACTIONS, card_choice, shown_in_card, validation_card,
 };
 pub use identity::{IdentityRefusal, TeamsMember, identity_refusal};
 pub use markdown::from_markdown;

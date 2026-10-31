@@ -13,9 +13,8 @@
 //! few times (`teams::written`).
 
 use chrono::{DateTime, Utc};
-use mimorya_core::gateways::teams::{
-    CardAction, CardState, TeamsApplication, shown_in_card, validation_card,
-};
+use mimorya_core::gateways::ActionState;
+use mimorya_core::gateways::teams::{CardAction, TeamsApplication, shown_in_card, validation_card};
 use mimorya_db::repositories::approvals::ApprovalRow;
 use mimorya_db::repositories::gateway_cards::{CardPlace, WrittenCard};
 use mimorya_db::repositories::gateway_replies::{ReplyRecord, ReplyTarget};
@@ -74,7 +73,7 @@ pub(super) async fn answer(
     let actions: Vec<CardAction> = (shown.iter())
         .map(|&shown| CardAction {
             shown,
-            state: CardState::Open,
+            state: ActionState::Open,
         })
         .collect();
     let ids: Vec<Uuid> = shown.iter().map(|a| a.approval_id).collect();

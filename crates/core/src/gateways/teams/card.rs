@@ -2,8 +2,9 @@
 //! may be validated outside the application (`validated_in_gateway`), as
 //! many as one card holds, each with its description, its risk and its
 //! exact parameters, whole, then its « Valider » and « Refuser » buttons;
-//! once decided, or awaiting nothing more (expired, its request stopped),
-//! an action stays shown, without buttons, saying so. Every text the
+//! once validated, refused, or awaiting nothing more (expired, its request
+//! stopped), an action stays shown, without buttons, no longer as one to
+//! validate, saying what became of it (ADR-147). Every text the
 //! card shows is a run of plain text (`TextRun`), which Teams never reads
 //! as Markdown: nothing the agent wrote reads as markup there. A button
 //! carries its choice and its approval; pressed, Teams sends it back as a
@@ -14,7 +15,8 @@ use serde_json::{Value, json};
 use uuid::Uuid;
 
 use crate::gateways::{
-    MAX_ACTION_CHARS, ShownAction, bounded, exact_parameters, risk_label, validated_in_gateway,
+    ActionState, MAX_ACTION_CHARS, ShownAction, bounded, exact_parameters, risk_label,
+    validated_in_gateway,
 };
 
 /// The most actions shown on one card.
@@ -29,29 +31,7 @@ const KEY: &str = "mimorya";
 #[derive(Debug, Clone, Copy)]
 pub struct CardAction<'a> {
     pub shown: ShownAction<'a>,
-    pub state: CardState,
-}
-
-/// Where an action on a card stands.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CardState {
-    /// Awaiting a decision: its buttons shown.
-    Open,
-    /// Validated or refused.
-    Decided,
-    /// Awaiting nothing more, undecided: expired, or its request stopped.
-    Closed,
-}
-
-impl CardState {
-    /// Where an action whose request's status is `status` stands.
-    pub fn of(status: &str) -> Self {
-        match status {
-            "pending" => Self::Open,
-            "approved" | "rejected" => Self::Decided,
-            _ => Self::Closed,
-        }
-    }
+    pub state: ActionState,
 }
 
 /// A button of a card, pressed: the approval it decides, and how.
@@ -90,21 +70,22 @@ pub fn validation_card(actions: &[CardAction]) -> Value {
     let mut body = Vec::new();
     for (i, action) in actions.iter().enumerate() {
         let number = if actions.len() > 1 {
-            format!(" {}", i + 1)
+            (i + 1).to_string()
         } else {
             String::new()
         };
-        let shown = &action.shown;
+        let (shown, state) = (&action.shown, action.state);
         let (summary, _) = bounded(shown.summary.trim(), MAX_ACTION_CHARS);
         body.push(runs(&[
-            bold(&format!("Action{number} à valider : ")),
+            bold(&format!("{} ", state.heading(&number))),
             plain(&summary),
         ]));
         body.push(runs(&[
             bold("Risque : "),
             plain(&format!(
-                "{}. Paramètres exacts qui seront exécutés :",
-                risk_label(shown.risk)
+                "{}. {}",
+                risk_label(shown.risk),
+                state.parameters_heading()
             )),
         ]));
         let parameters = exact_parameters(shown.parameters);
@@ -113,19 +94,22 @@ pub fn validation_card(actions: &[CardAction]) -> Value {
             "text": parameters,
             "fontType": "Monospace",
         })]));
-        let settled = match action.state {
-            CardState::Open => {
-                body.push(json!({
-                    "type": "ActionSet",
-                    "actions": [
-                        button(&format!("Valider{number}"), "v", shown.approval_id),
-                        button(&format!("Refuser{number}"), "r", shown.approval_id),
-                    ],
-                }));
-                continue;
-            }
-            CardState::Decided => "Décidée.",
-            CardState::Closed => "N’attend plus de décision.",
+        let Some(settled) = state.outcome() else {
+            let label = |verb: &str| {
+                if number.is_empty() {
+                    verb.to_owned()
+                } else {
+                    format!("{verb} {number}")
+                }
+            };
+            body.push(json!({
+                "type": "ActionSet",
+                "actions": [
+                    button(&label("Valider"), "v", shown.approval_id),
+                    button(&label("Refuser"), "r", shown.approval_id),
+                ],
+            }));
+            continue;
         };
         body.push(runs(&[json!({
             "type": "TextRun",

@@ -8,7 +8,8 @@
 
 use super::html::escaped;
 use crate::gateways::{
-    MAX_ACTION_CHARS, ShownAction, bounded, exact_parameters, risk_label, validated_in_gateway,
+    ActionState, MAX_ACTION_CHARS, ShownAction, bounded, exact_parameters, risk_label,
+    validated_in_gateway,
 };
 
 /// The most actions shown with their buttons in one message.
@@ -46,25 +47,26 @@ pub fn shown_actions(actions: &[ShownAction], html: bool) -> String {
     let mut text = String::new();
     for (i, action) in actions.iter().enumerate() {
         let number = if actions.len() > 1 {
-            format!(" {}", i + 1)
+            (i + 1).to_string()
         } else {
             String::new()
         };
         let (summary, _) = bounded(action.summary.trim(), MAX_ACTION_CHARS);
         let parameters = exact_parameters(action.parameters);
         let risk = risk_label(action.risk);
+        // Shown with their buttons: open.
+        let (heading, exact) = (
+            ActionState::Open.heading(&number),
+            ActionState::Open.parameters_heading(),
+        );
         text.push_str(&if html {
             format!(
-                "\n\n<b>Action{number} à valider :</b> {}\n<b>Risque :</b> {risk}. Paramètres \
-                 exacts qui seront exécutés :\n<pre>{}</pre>",
+                "\n\n<b>{heading}</b> {}\n<b>Risque :</b> {risk}. {exact}\n<pre>{}</pre>",
                 escaped(&summary),
                 escaped(&parameters)
             )
         } else {
-            format!(
-                "\n\nAction{number} à valider : {summary}\nRisque : {risk}. Paramètres exacts \
-                 qui seront exécutés :\n{parameters}"
-            )
+            format!("\n\n{heading} {summary}\nRisque : {risk}. {exact}\n{parameters}")
         });
     }
     text
