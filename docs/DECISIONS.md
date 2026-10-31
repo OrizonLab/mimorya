@@ -8744,3 +8744,80 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       remplacement est refusé comme introuvable et il se ferme avec la liste rechargée ;
     - `apps/web/e2e/documents.spec.ts` : le dépôt par le sélecteur, les refus et la
       borne de taille restent couverts.
+
+## ADR-152 — Clés des limites d'authentification gardées en HMAC sous une clé du serveur, purge bornée en SQL
+
+- **Date** : 2026-10-31 · **Statut** : acceptée · complète ADR-088
+- **Contexte** : les limites d'authentification partagées par tous les processus
+  (ADR-088) gardent en base une empreinte SHA-256 de chaque clé et de chaque valeur
+  (adresse IP, adresse e-mail). Sans clé, cette empreinte se retrouve par force brute :
+  il y a peu d'adresses IPv4, et une liste d'adresses e-mail se devine. Qui lit la base
+  ou une sauvegarde peut donc savoir qui a essayé de se connecter. Par ailleurs, la
+  fonction de purge oubliait toute fenêtre ouverte avant l'horizon que lui donnait le
+  rôle applicatif : un horizon « maintenant » effaçait les décomptes encore en cours. La
+  feuille de route notait les deux points.
+- **Décision** :
+  - **HMAC à clé du serveur** : chaque clé et chaque valeur quittent le processus en
+    HMAC-SHA256 sous une clé propre à cet usage, dérivée de la clé maître
+    (`MIMORYA_MASTER_KEY`) par HKDF-SHA256. Le HMAC porte sur le nom de la limite, un
+    octet nul puis la valeur : les lignes d'une même adresse dans deux limites
+    (échecs de connexion, liens de réinitialisation, adresses essayées) ne se
+    rapprochent pas :
+    - la dérivation passe par `SecretCipher::derived_key(purpose)`, avec un sel propre
+      à la plateforme et un objet par usage (`rate-limits`). La clé obtenue ne révèle
+      ni la clé maître ni celle d'un autre usage ;
+    - tous les processus d'un déploiement partagent la même clé maître, donc comptent
+      pareil ;
+    - qui lit la base ou une sauvegarde sans la clé maître ne retrouve plus une
+      adresse ;
+  - **sans clé maître** : les empreintes restent en SHA-256, du nom de la limite et de
+    la valeur comme ci-dessus. En production,
+    le démarrage le signale (ce déploiement n'enregistre de toute façon aucun secret).
+    La limite globale, comptée en mémoire par chaque processus, ne fait sortir aucune
+    adresse et ne change pas ;
+  - **changement de clé** : changer de clé maître, ou passer de l'absence de clé à une
+    clé, change les empreintes. Les fenêtres en cours repartent de zéro, une fois :
+    elles durent au plus une heure et ne sont pas journalisées (ADR-088) ;
+  - **purge bornée en SQL** (migration 0067) : `system_purge_rate_limits` ne touche
+    jamais une fenêtre ouverte depuis moins de deux heures, quel que soit l'horizon
+    demandé. Deux heures, c'est deux fois la plus longue fenêtre (une heure, celle des
+    liens de réinitialisation), et c'est ce que garde la maintenance (un test le lie à
+    la migration). Par cette fonction, le rôle applicatif ne peut plus oublier un
+    décompte en cours. C'est une protection contre une erreur de l'appelant (comme
+    l'ancien démarrage des tests de bout en bout), pas contre le rôle applicatif
+    lui-même : un processus compromis peut ne pas compter, ou rouvrir une fenêtre par
+    les autres fonctions (`p_seconds`) ;
+  - **tests de bout en bout** : leur serveur effaçait au démarrage les fenêtres d'une
+    exécution précédente par cette fonction. Il les efface désormais avec le rôle
+    propriétaire, que l'environnement de test nomme (`DATABASE_URL`, `rate_limits.rs`) ;
+  - **structure** : la construction des limites et leurs constantes passent de `app.rs`
+    à `plugins/rate_limit.rs` (`RateLimits::new`).
+- **Alternatives écartées** :
+  - une variable d'environnement de plus, propre aux limites : la clé maître est déjà
+    le secret du serveur, partagé par tous ses processus, et une clé dérivée l'utilise
+    sans l'exposer ;
+  - un HMAC sous la clé maître elle-même : la même clé servirait à deux usages ;
+  - une clé tirée au hasard par processus : les processus ne compteraient plus
+    ensemble ;
+  - une clé gardée dans la base : qui lit la base la lirait aussi ;
+  - une purge qui refuse un horizon trop récent : la borner suffit, et la maintenance
+    n'a pas à connaître la règle.
+- **Conséquences** :
+  - une installation sans clé maître garde des empreintes sans clé. Le fichier
+    d'environnement de production du README en génère désormais une
+    (`openssl rand -base64 32`), qui sert aussi à enregistrer des secrets ;
+  - tests :
+    - `crates/api/src/secrets/cipher.rs` : une clé par usage et par clé maître, qui
+      n'est pas la clé maître elle-même ;
+    - `crates/api/src/plugins/shared_limit.rs` : l'empreinte est le HMAC sous la clé
+      dérivée, la même d'un processus à l'autre, différente du SHA-256, de celle d'un
+      autre déploiement et de celle de la même valeur dans une autre limite ;
+    - `crates/api/src/plugins/rate_limit.rs` : seule la production sans clé maître est
+      signalée au démarrage ;
+    - `crates/api/src/plugins/maintenance.rs` : ce que garde la maintenance égale la
+      borne de la migration, et dépasse chaque fenêtre ;
+    - `crates/api/tests/shared_rate_limits.rs` : avec une clé maître, la base garde le
+      HMAC sous la clé dérivée d'une clé (adresse e-mail) comme d'une valeur (adresse
+      essayée), pas leur SHA-256 ; sans clé maître, le SHA-256 ;
+    - `crates/db/tests/rate_limits.rs` : invitée à tout oublier, la purge n'efface que
+      la fenêtre ouverte depuis plus de deux heures.

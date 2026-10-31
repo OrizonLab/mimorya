@@ -40,6 +40,19 @@ pub async fn windows_of(limiter: &str) -> Vec<(Vec<u8>, i32)> {
     windows
 }
 
+/// The digests of the values `limiter` counted, whatever their key.
+pub async fn values_of(limiter: &str) -> Vec<Vec<u8>> {
+    let owner = sqlx::PgPool::connect(owner_url()).await.unwrap();
+    let values =
+        sqlx::query_scalar("select value_digest from rate_limit_values where limiter = $1")
+            .bind(limiter)
+            .fetch_all(&owner)
+            .await
+            .unwrap();
+    owner.close().await;
+    values
+}
+
 /// Withdraws, or gives back, the application's right to count a hit: a
 /// count it cannot read, as when the database fails it.
 pub async fn allow_counting(allowed: bool) {

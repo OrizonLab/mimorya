@@ -2,7 +2,6 @@
 //! lifecycle. No business rule lives here.
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use axum::Router;
 use axum::extract::DefaultBodyLimit;
@@ -18,10 +17,12 @@ use tokio::task::JoinHandle;
 pub use crate::build_options::BuildOptions;
 use crate::config::AppConfig;
 use crate::mail::{Mailer, SmtpMailer};
+use crate::plugins::RateLimits;
 use crate::plugins::csrf::csrf_protection;
 use crate::plugins::gateway_replies::spawn_gateway_replies;
 use crate::plugins::maintenance::spawn_maintenance;
 use crate::plugins::memory_indexing::spawn_memory_indexing;
+use crate::plugins::rate_limit::GLOBAL_RATE_LIMIT_PER_MINUTE;
 use crate::plugins::rate_limit::global_rate_limit;
 use crate::plugins::request_context::request_context;
 use crate::plugins::run_event_relay::{spawn_delta_outbox, spawn_run_event_relay};
@@ -30,7 +31,6 @@ use crate::plugins::run_queue::spawn_run_queue;
 use crate::plugins::scheduled_tasks::spawn_scheduled_tasks;
 use crate::plugins::security_headers::security_headers;
 use crate::plugins::session::resolve_identity;
-use crate::plugins::{RateLimiter, RateLimits, SharedDistinctLimiter, SharedLimiter};
 use crate::routes;
 use crate::secrets::SecretStore;
 use crate::services::account_links::AccountLinkService;
@@ -48,13 +48,6 @@ use crate::services::{
 };
 
 const BODY_LIMIT_BYTES: usize = 1_000_000;
-const GLOBAL_RATE_LIMIT_PER_MINUTE: u32 = 600;
-/// Failed logins allowed per account before it is throttled for the window.
-const FAILED_LOGINS_PER_ACCOUNT: u32 = 10;
-pub(crate) const FAILED_LOGIN_WINDOW: Duration = Duration::from_secs(15 * 60);
-/// Password reset links an address may ask for in the window.
-const RESET_REQUESTS_PER_ADDRESS: u32 = 3;
-pub(crate) const RESET_REQUEST_WINDOW: Duration = Duration::from_secs(60 * 60);
 
 pub struct Services {
     pub config: AppConfig,
@@ -230,36 +223,8 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
         assistant_name: config.assistant_name.clone(),
         llm_judge: config.llm_judge,
     };
-    let limits = RateLimits {
-        global: RateLimiter::per_minute(
-            options
-                .global_rate_limit_per_minute
-                .unwrap_or(GLOBAL_RATE_LIMIT_PER_MINUTE),
-        ),
-        login: SharedLimiter::per_minute(db.clone(), "login", config.login_rate_limit_per_minute),
-        sso_addresses: SharedDistinctLimiter::per_minute(
-            db.clone(),
-            "sso_addresses",
-            config.login_rate_limit_per_minute,
-        ),
-        sso_sign_in: SharedLimiter::per_minute(
-            db.clone(),
-            "sso_sign_in",
-            config.login_rate_limit_per_minute.saturating_mul(2),
-        ),
-        failed_logins: SharedLimiter::new(
-            db.clone(),
-            "failed_logins",
-            FAILED_LOGINS_PER_ACCOUNT,
-            FAILED_LOGIN_WINDOW,
-        ),
-        reset_requests: SharedLimiter::new(
-            db.clone(),
-            "reset_requests",
-            RESET_REQUESTS_PER_ADDRESS,
-            RESET_REQUEST_WINDOW,
-        ),
-    };
+    let global = options.global_rate_limit_per_minute;
+    let limits = RateLimits::new(&db, &config, global.unwrap_or(GLOBAL_RATE_LIMIT_PER_MINUTE))?;
     let documents = Arc::new(DocumentService::new(
         db.clone(),
         Extractor::new(config.document_extractor.clone()),

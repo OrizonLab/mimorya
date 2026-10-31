@@ -5,9 +5,10 @@
 //!
 //!   cargo run -p mimorya-api --example e2e_server
 //!
-//! Reads the usual configuration (`DATABASE_APP_URL`, `WEB_ORIGIN`…) and
+//! Reads the usual configuration (`DATABASE_APP_URL`, `WEB_ORIGIN`…),
 //! `E2E_MAIL_DIR`, where each e-mail becomes a JSON file (the ones a former
-//! start left are deleted). An OpenID Connect provider listens on
+//! start left are deleted), and `DATABASE_URL`, the database's owner, which
+//! forgets a former start's rate limit windows (`rate_limits`, ADR-152). An OpenID Connect provider listens on
 //! 127.0.0.1:4100 (`IDP_ADDRESS`, which the tests declare), signing in
 //! whoever the sign-in names, and a SAML provider on 127.0.0.1:4101
 //! (`SAML_IDP_ADDRESS`), signing in whoever is typed at its page; identity
@@ -63,6 +64,7 @@ mod mailbox;
 mod missions;
 mod played;
 mod queued;
+mod rate_limits;
 mod saml_idp;
 #[allow(dead_code)] // the API's tests use the rest
 #[path = "../../tests/support/saml_provider.rs"]
@@ -81,7 +83,6 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use chrono::Utc;
 use mimorya_agent::llm::{EmbeddingProvider, LlmProvider};
 use mimorya_agent::testing::{ConceptEmbedder, ScriptedProvider, ScriptedStep};
 use mimorya_api::mail::Mailer;
@@ -89,7 +90,6 @@ use mimorya_api::services::{EmbeddingFactory, ProviderFactory};
 use mimorya_api::{AppConfig, BuildOptions, build_app, log_filter};
 use mimorya_connectors::outbound::NetworkPolicy;
 use mimorya_connectors::testing::{FakeSlack, FakeTeams, FakeTelegram};
-use mimorya_db::repositories::rate_limits::purge_rate_limits;
 
 /// Reference scenarios queued for the platform model, by the hour of their
 /// follow-up: one per run that converses, in the order they run (the
@@ -226,9 +226,7 @@ async fn main() -> anyhow::Result<()> {
     scheduled::leave(&app).await?;
     queued::leave(&app).await?;
     summaries::leave(&app).await?;
-    // A former start's windows, which a restart forgot when they were counted
-    // in memory: the suite runs again within the hour (ADR-088).
-    purge_rate_limits(app.services.db.pool(), Utc::now()).await?;
+    rate_limits::forget().await?;
     let listener = tokio::net::TcpListener::bind(&address).await?;
     let taken = app.recover_interrupted_runs().await?;
     tracing::info!(address, taken, "End-to-end API listening");

@@ -330,10 +330,17 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
     liens par adresse e-mail, adresses essayées et connexions par le fournisseur
     d'identité) sont partagées par tous les processus `api` (ADR-088) : comptées dans
     PostgreSQL, une tentative répartie sur plusieurs instances ne gagne rien. La base
-    n'en garde qu'une empreinte (SHA-256) de chaque clé et de chaque valeur, dans des
-    tables que le rôle applicatif ne lit pas (seules des fonctions `SECURITY DEFINER`
-    les comptent), purgées deux heures après. Un décompte que la base ne rend pas fait
-    échouer la tentative : ces limites gardent la connexion, qui lit la même base.
+    n'en garde qu'une empreinte de chaque clé et de chaque valeur : leur HMAC-SHA256, avec
+    le nom de la limite, sous une clé dérivée de la clé maître (HKDF-SHA256, propre à cet
+    usage, ADR-152), que
+    seuls les processus détiennent, de sorte qu'une adresse IP ou e-mail devinée ne se
+    retrouve pas dans la base ou une sauvegarde ; sans clé maître, leur SHA-256, ce que
+    le démarrage signale en production. Ces tables, que le rôle applicatif ne lit pas
+    (seules des fonctions `SECURITY DEFINER` les comptent), sont purgées deux heures
+    après, et jamais plus tôt : la fonction de purge ne touche à aucune fenêtre ouverte
+    depuis moins de deux heures, quel que soit l'horizon demandé. Un décompte que la
+    base ne rend pas fait échouer la tentative : ces limites gardent la connexion, qui
+    lit la même base.
   - La limite globale par requête (600 par minute et par adresse) reste comptée en
     mémoire, par processus, pour ne pas écrire en base à chaque requête : avec N
     processus `api`, un client réparti sur toutes les instances en dispose N fois.
@@ -610,7 +617,9 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   par l'environnement (`MIMORYA_MASTER_KEY`, 32 octets base64), un nonce aléatoire par
   écriture, et l'entreprise et le nom du secret comme données associées : une valeur
   déplacée vers une autre entreprise ou un autre nom ne s'ouvre pas (ADR-024). Sans
-  clé maître, aucun secret n'est enregistré. En production, les clés maîtres publiées
+  clé maître, aucun secret n'est enregistré. La clé maître sert aussi, par une clé qui
+  en est dérivée, aux empreintes des limites d'authentification (ADR-152) : la changer,
+  ou en ajouter une, fait repartir de zéro une fois les fenêtres en cours. En production, les clés maîtres publiées
   par les tests du dépôt (`PUBLIC_TEST_MASTER_KEYS`) sont refusées au démarrage : une
   installation qui en utilisait une en génère une autre, et les secrets scellés avec
   l'ancienne (clé du modèle, jetons des connecteurs) sont à ressaisir. `key_version` prépare la rotation (avec
