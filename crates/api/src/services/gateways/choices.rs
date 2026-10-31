@@ -14,10 +14,10 @@
 //! in place of their buttons; why nothing was decided is said in its
 //! thread. Audited as any decision, with the service it was given from.
 
-use mimorya_core::gateways::GatewayKind;
 use mimorya_core::gateways::slack::{
     ApprovalChoice, DirectMessage, approval_choice, buttons_in, decided_blocks,
 };
+use mimorya_core::gateways::{ActionState, GatewayKind};
 use mimorya_db::repositories::approvals::{ApprovalRow, get_approval};
 use mimorya_db::repositories::gateways::GatewayRow;
 use uuid::Uuid;
@@ -180,19 +180,23 @@ async fn show_outcomes(
     Ok(())
 }
 
-/// What became of `approval`, in Slack's markup, once decided; `None`
-/// while it waits. Whom the agent acts for (`own`) reads that their
-/// request goes on in this thread.
+/// What became of `approval`, in Slack's markup, once settled
+/// (`ActionState`); `None` while it waits. Said more closely than in the
+/// other services: who decided it, or why it no longer awaits a decision.
+/// Whom the agent acts for (`own`) reads that their request goes on in
+/// this thread.
 fn outcome(approval: &ApprovalRow, just_decided: bool, resumed: bool, own: bool) -> Option<String> {
-    let said = match approval.status.as_str() {
-        "approved" => "*Validée*",
-        "rejected" => "*Refusée*",
-        "expired" => "*Expirée* : elle n’a pas été validée à temps.",
-        "cancelled" => "*Annulée*.",
-        _ => return None,
+    let state = ActionState::of(&approval.status);
+    let said = match (state, approval.status.as_str()) {
+        (ActionState::Open, _) => return None,
+        (ActionState::Approved, _) => "*Validée*",
+        (ActionState::Rejected, _) => "*Refusée*",
+        (ActionState::Closed, "expired") => "*Expirée* : elle n’a pas été validée à temps.",
+        (ActionState::Closed, "cancelled") => "*Annulée*.",
+        (ActionState::Closed, _) => "*N’attend plus de décision*.",
     };
     let mut outcome = said.to_string();
-    if matches!(approval.status.as_str(), "approved" | "rejected") {
+    if state.is_decided() {
         outcome.push_str(if just_decided {
             " par vous dans Slack."
         } else {
@@ -275,5 +279,10 @@ mod tests {
             Some("*Annulée*.")
         );
         assert_eq!(outcome(&with_status("pending"), false, false, true), None);
+        // Any other status: settled all the same, as in the other services.
+        assert_eq!(
+            outcome(&with_status("withdrawn"), false, false, true).as_deref(),
+            Some("*N’attend plus de décision*.")
+        );
     }
 }

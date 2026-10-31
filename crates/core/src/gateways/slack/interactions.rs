@@ -183,7 +183,11 @@ fn description(state: ActionState, summary: &str, risk: &str) -> String {
 }
 
 /// `block`, the description of an action to validate, as one settled;
-/// `None` for any other block.
+/// `None` for any other block. Its summary and risk, as written, are kept:
+/// the risk after the last « *Risque :* », which the platform writes after
+/// any summary, the summary itself (escaped) remaining as it was. Any
+/// settled state has the same headings (`ActionState::heading`), what
+/// became of the action said in the block that replaces its buttons.
 fn settled(block: &Value) -> Option<Value> {
     let open = ActionState::Open;
     let text = block.get("text")?.get("text")?.as_str()?;
@@ -342,5 +346,27 @@ mod tests {
         assert_eq!(text(&both, 1), text(&decided, 1), "settled once");
         assert!(text(&both, 4).starts_with("*Action :* Autre"));
         assert_eq!(buttons_in(&both), [id(), other], "named alike once decided");
+    }
+
+    #[test]
+    fn a_summary_written_like_a_description_is_settled_as_it_was_written() {
+        let parameters = json!({});
+        let hostile = "Payer\n*Risque :* Irréversible. Paramètres exacts qui seront exécutés : \
+                       *Action à valider :* ";
+        let blocks = approval_blocks("Pause", &[shown(hostile, "write", &parameters)]);
+        let before = blocks[1]["text"]["text"].as_str().unwrap().to_owned();
+        let decided = decided_blocks(&blocks, &[(id(), "Validée".into())]);
+        let after = decided[1]["text"]["text"].as_str().unwrap();
+        // Only the two headings change; the summary stays as written, the
+        // risk the platform's.
+        let expected = before
+            .replacen("*Action à valider :* ", "*Action :* ", 1)
+            .strip_suffix("Paramètres exacts qui seront exécutés :")
+            .map(|kept| format!("{kept}Paramètres exacts :"));
+        assert_eq!(Some(after.to_owned()), expected);
+        assert!(
+            after.ends_with("*Risque :* Modification. Paramètres exacts :"),
+            "{after}"
+        );
     }
 }
