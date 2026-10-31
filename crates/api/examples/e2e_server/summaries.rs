@@ -5,8 +5,9 @@
 //! note; and two of 105 exchanges, more than a conversation shows (200
 //! messages), whose summary stops before the messages shown (Horizon) or
 //! among them, the first ones it covers no longer shown (Azur); both lag
-//! behind, more messages after them than are reread (ADR-149). Written at
-//! start, so that the scripted model plays no pass.
+//! behind, more messages after them than are reread (ADR-149), as one more
+//! does by a single message (Écluse). Written at start, so that the
+//! scripted model plays no pass.
 
 use mimorya_api::contract::MessageMetadata;
 use mimorya_core::demo::{tenant, user};
@@ -23,7 +24,7 @@ struct Summarised {
     summary: &'static str,
 }
 
-const CONVERSATIONS: [Summarised; 3] = [
+const CONVERSATIONS: [Summarised; 4] = [
     Summarised {
         site: "Lumière",
         exchanges: 9,
@@ -44,6 +45,12 @@ const CONVERSATIONS: [Summarised; 3] = [
         folded: 20,
         summary: "Marc suit les retards du chantier Azur : livraison des panneaux \
                   décalée, Léa replanifie la pose.",
+    },
+    Summarised {
+        site: "Écluse",
+        exchanges: 15,
+        folded: 9,
+        summary: "Marc prépare la visite du chantier Écluse : accès par la rive nord.",
     },
 ];
 

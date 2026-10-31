@@ -1,5 +1,5 @@
 // Long conversations whose earlier messages are summarised for the
-// assistant (ADR-145, ADR-146): the end-to-end server leaves three of
+// assistant (ADR-145, ADR-146): the end-to-end server leaves four of
 // Marc's (`e2e_server/summaries.rs`). Each says so where its summarised
 // messages stop: after the last one when they are all shown above; first
 // when none is shown any more (a conversation shows its last 200 messages);
@@ -96,5 +96,14 @@ test('summarised messages no longer shown are said so first, or counted', async 
   expect(between[1]).toContain('Les 20 premiers messages');
   expect(between[2]).toBe('Question 11 sur le chantier Azur');
   await expect(counted).toContainText('Les 170 messages suivants ne sont pas encore résumés');
+  await noError(page);
+});
+
+test('a summary lagging by a single message says so', async ({ page }) => {
+  // Nine messages summarised, twenty-one after them, the latest twenty reread.
+  const note = await open(page, 'Écluse', 'Les 9 messages ci-dessus sont résumés pour l’assistant');
+  await expect(note).toContainText(
+    'Le message suivant n’est pas encore résumé, et l’assistant ne le relit pas : il le sera après sa prochaine réponse.',
+  );
   await noError(page);
 });

@@ -3,7 +3,8 @@
 //! own model call and audited apart, at most a few per run's end; what is
 //! left waits for the next run's end. Until then the conversation says how
 //! many messages after the summary are neither summarised nor reread. A
-//! failed pass stops the chain, the passes before it kept.
+//! failed pass stops the chain, the passes before it kept; none is chained
+//! once the service stops.
 
 mod support;
 
@@ -11,7 +12,16 @@ use mimorya_agent::testing::ScriptedStep;
 use mimorya_core::conversation_summary::MAX_PASSES;
 use mimorya_core::demo::user;
 use support::TestApi;
-use support::summaries::{audited_passes, conversation, exchanges, stored, turn};
+use support::summaries::{SUMMARY_SYSTEM, audited_passes, conversation, exchanges, stored, turn};
+
+/// How many summary passes asked the model so far: each request is
+/// recorded before it is answered, a pass beyond the script included.
+fn passes_asked(api: &TestApi) -> usize {
+    let requests = api.model.as_ref().unwrap().requests();
+    (requests.iter())
+        .filter(|r| r.system.starts_with(SUMMARY_SYSTEM))
+        .count()
+}
 
 fn answer(n: usize) -> ScriptedStep {
     ScriptedStep::text(format!("Réponse {n}"))
@@ -36,6 +46,8 @@ async fn a_lagging_summary_is_caught_up_pass_after_pass_a_few_at_a_time() {
     steps.extend((1..=MAX_PASSES).map(|n| ScriptedStep::text(summary(n))));
     turn(&api, &marc, c, "Question 111", steps).await;
     assert_eq!(api.model.as_ref().unwrap().remaining(), 0);
+    // Eight passes asked, no ninth.
+    assert_eq!(passes_asked(&api), MAX_PASSES);
     let (text, through, folded) = stored(c).await.expect("a summary");
     assert_eq!(text, summary(MAX_PASSES));
     assert_eq!((through.as_str(), folded), ("Réponse 96", 192));
@@ -50,6 +62,8 @@ async fn a_lagging_summary_is_caught_up_pass_after_pass_a_few_at_a_time() {
     let steps = vec![answer(112), ScriptedStep::text(summary(9))];
     turn(&api, &marc, c, "Question 112", steps).await;
     assert_eq!(api.model.as_ref().unwrap().remaining(), 0);
+    // One more, then caught up: nothing left to ask.
+    assert_eq!(passes_asked(&api), MAX_PASSES + 1);
     let (text, through, folded) = stored(c).await.expect("a summary");
     assert_eq!(text, summary(9));
     assert_eq!((through.as_str(), folded), ("Réponse 108", 216));
@@ -66,9 +80,17 @@ async fn a_failed_pass_stops_the_chain_keeping_the_passes_before() {
     let c = conversation(&marc).await;
     exchanges(c, 1, 40).await;
 
-    // Three passes needed, one answered: the second fails, the chain stops.
-    let steps = vec![answer(41), ScriptedStep::text(summary(1))];
+    // Three passes needed: the second fails as a busy provider would, and
+    // the chain stops there, the answer scripted for a third left unasked.
+    let steps = vec![
+        answer(41),
+        ScriptedStep::text(summary(1)),
+        ScriptedStep::fails("Fournisseur surchargé"),
+        ScriptedStep::text(summary(3)),
+    ];
     let run = turn(&api, &marc, c, "Question 41", steps).await;
+    assert_eq!(passes_asked(&api), 2);
+    assert_eq!(api.model.as_ref().unwrap().remaining(), 1);
     let (text, through, folded) = stored(c).await.expect("a summary");
     assert_eq!(text, summary(1));
     assert_eq!((through.as_str(), folded), ("Réponse 12", 24));

@@ -8561,6 +8561,9 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       personne, modèle de l'entreprise), comptée dans le run et auditée à part ;
     - la chaîne s'arrête dès qu'une passe ne range rien (rattrapé, plus permis, ou une
       autre passe d'abord) ou échoue. Les passes d'avant restent ;
+    - aucune passe n'est enchaînée une fois l'arrêt du service demandé : l'arrêt attend
+      au plus la passe en cours, et le reste attend la fin d'un run après le
+      redémarrage ;
   - **dit dans la conversation** :
     - le détail d'une conversation donne, avec son résumé, le nombre de messages qui le
       suivent sans être relus (`historySummary.notReplayed`). C'est le nombre de messages
@@ -8573,8 +8576,11 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     comptés dans ce run (ADR-145) ;
   - tests :
     - `crates/core/src/conversation_summary.rs` : messages laissés hors de l'historique ;
-    - `crates/api/tests/conversation_summary_catch_up.rs` : huit passes au plus, puis la
-      suite à la fin du run suivant, avec le nombre dit par le détail ; une passe en
-      échec arrête la chaîne et garde les passes d'avant ;
+    - `crates/api/tests/conversation_summary_catch_up.rs` : huit passes demandées au
+      modèle, pas une neuvième, puis la suite à la fin du run suivant, avec le nombre
+      dit par le détail ; une passe qui échoue comme un fournisseur surchargé arrête la
+      chaîne, la passe d'avant gardée et la suivante jamais demandée ;
+    - `crates/api/tests/conversation_summary_limits.rs` : aucune passe une fois l'arrêt
+      demandé, la passe faite quand le service tourne ;
     - `apps/web/e2e/conversation-summary.spec.ts` : la note dit combien de messages sont
-      laissés de côté, ou rien pour un résumé à jour.
+      laissés de côté, au pluriel ou au singulier, ou rien pour un résumé à jour.
