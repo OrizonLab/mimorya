@@ -418,7 +418,11 @@ export type ConversationCreated = { conversation: ConversationSummary, };
 /**
  * `GET /conversations/{id}`.
  */
-export type ConversationDetail = { conversation: ConversationSummary, messages: Array<Message>, runs: Array<RunRef>, };
+export type ConversationDetail = { conversation: ConversationSummary, messages: Array<Message>, runs: Array<RunRef>,
+/**
+ * The summary of its earlier messages, once there is one (ADR-145).
+ */
+historySummary: HistorySummary | null, };
 
 /**
  * `GET /conversations`.
@@ -881,6 +885,13 @@ status: string,
  * A platform model provider is configured (companies may have their own).
  */
 llm: boolean, };
+
+/**
+ * What the assistant keeps of a conversation's earlier messages (ADR-145,
+ * ADR-146): their summary, which it rereads instead of them, the last
+ * message it covers and how many it covers.
+ */
+export type HistorySummary = { summary: string, throughMessageId: string, foldedMessages: number, };
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
