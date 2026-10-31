@@ -138,6 +138,7 @@ fichier d'environnement gardé hors du dépôt, lisible par vous seul :
 (umask 077 && cat > .env.production <<VARIABLES
 POSTGRES_PASSWORD=$(openssl rand -hex 32)
 MIMORYA_APP_DB_PASSWORD=$(openssl rand -hex 32)
+MIMORYA_MASTER_KEY=$(openssl rand -base64 32)   # scelle les secrets, clé des limites (ADR-024, ADR-152)
 MIMORYA_DOMAIN=mimorya.acme.example
 MIMORYA_TLS=exploitation@acme.example
 MIMORYA_VERSION=1.2.0            # images publiées à installer (ADR-051) : version ou sha-…

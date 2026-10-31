@@ -5,10 +5,11 @@
 //! process (`shared_limit`, ADR-088): logins per client address and, for
 //! failures, per account; reset links per e-mail address; the addresses
 //! asked about and the sign-ins through an identity provider, per client
-//! address.
+//! address. Their keys leave the process as their HMAC under the server's
+//! key (ADR-152).
 
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use axum::extract::{Request, State};
@@ -16,12 +17,22 @@ use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 
 use super::request_context::RequestContext;
-use super::shared_limit::{SharedDistinctLimiter, SharedLimiter};
+use super::shared_limit::{KeyDigest, SharedDistinctLimiter, SharedLimiter};
 use crate::app::AppState;
+use crate::config::{AppConfig, Environment};
 use crate::http::ApiError;
+use mimorya_db::Database;
 
 /// Above this many tracked clients, expired windows are purged.
 const PURGE_THRESHOLD: usize = 10_000;
+/// Requests per client address and minute, in each process.
+pub(crate) const GLOBAL_RATE_LIMIT_PER_MINUTE: u32 = 600;
+/// Failed logins allowed per account before it is throttled for the window.
+const FAILED_LOGINS_PER_ACCOUNT: u32 = 10;
+pub(crate) const FAILED_LOGIN_WINDOW: Duration = Duration::from_secs(15 * 60);
+/// Password reset links an address may ask for in the window.
+const RESET_REQUESTS_PER_ADDRESS: u32 = 3;
+pub(crate) const RESET_REQUEST_WINDOW: Duration = Duration::from_secs(60 * 60);
 
 pub struct RateLimiter {
     limit: u32,
@@ -92,6 +103,51 @@ pub struct RateLimits {
     pub failed_logins: SharedLimiter,
     /// Password reset links asked for, per e-mail address, known or not.
     pub reset_requests: SharedLimiter,
+}
+
+impl RateLimits {
+    /// A process's limits: the global one its own, `global` requests a
+    /// minute; the authentication ones shared, their keys digested under
+    /// the key derived from the master key, or unkeyed without one, which
+    /// production is warned of.
+    pub fn new(db: &Database, config: &AppConfig, global: u32) -> anyhow::Result<Self> {
+        let digest = Arc::new(KeyDigest::of(config.secrets.as_deref())?);
+        if !digest.is_keyed() && config.env == Environment::Production {
+            tracing::warn!(
+                "No MIMORYA_MASTER_KEY: the rate limit keys are kept as unkeyed digests, \
+                 which an address can be guessed against by whoever reads the database"
+            );
+        }
+        let login = config.login_rate_limit_per_minute;
+        let shared = |name, limit, window| {
+            SharedLimiter::new(db.clone(), digest.clone(), name, limit, window)
+        };
+        Ok(Self {
+            global: RateLimiter::per_minute(global),
+            login: shared("login", login, Duration::from_secs(60)),
+            sso_addresses: SharedDistinctLimiter::per_minute(
+                db.clone(),
+                digest.clone(),
+                "sso_addresses",
+                login,
+            ),
+            sso_sign_in: shared(
+                "sso_sign_in",
+                login.saturating_mul(2),
+                Duration::from_secs(60),
+            ),
+            failed_logins: shared(
+                "failed_logins",
+                FAILED_LOGINS_PER_ACCOUNT,
+                FAILED_LOGIN_WINDOW,
+            ),
+            reset_requests: shared(
+                "reset_requests",
+                RESET_REQUESTS_PER_ADDRESS,
+                RESET_REQUEST_WINDOW,
+            ),
+        })
+    }
 }
 
 pub async fn global_rate_limit(

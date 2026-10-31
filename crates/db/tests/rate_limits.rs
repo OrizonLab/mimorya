@@ -1,8 +1,9 @@
 //! The shared rate limit windows (ADR-088), through the functions that alone
 //! touch them: a key's hits within its window, a refused hit not counted
 //! on, a hit given back, distinct values counted once, even asked at once,
-//! windows reopened once over and purged long after, the largest limits
-//! counted without overflowing. Keys stay apart by limiter.
+//! windows reopened once over and purged long after, never within two
+//! hours whatever the horizon asked (ADR-152), the largest limits counted
+//! without overflowing. Keys stay apart by limiter.
 
 mod support;
 
@@ -237,4 +238,43 @@ async fn windows_long_over_are_purged_with_their_values() {
             .await
             .unwrap();
     assert_eq!(values, 0);
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_purge_never_forgets_a_window_opened_within_two_hours() {
+    let db = app().await;
+    let pool = db.pool();
+    let keys: [(&[u8], i64); 3] = [
+        (b"key-now", 0),
+        (b"key-almost-two-hours", 115),
+        (b"key-over-two-hours", 125),
+    ];
+    for (key, minutes) in keys {
+        assert!(
+            hit_rate_limit(pool, "test_horizon", key, 5, MINUTE)
+                .await
+                .unwrap()
+        );
+        age("test_horizon", key, minutes).await;
+    }
+
+    // Asked to forget everything, even what is still counting: only the
+    // window opened over two hours ago goes.
+    let purged = purge_rate_limits(pool, Utc::now() + Duration::hours(1))
+        .await
+        .unwrap();
+    assert_eq!(purged, 1);
+    let owner = support::connect(&support::urls(|_| {}).owner).await;
+    let mut left: Vec<Vec<u8>> = sqlx::query_scalar(
+        "select key_digest from rate_limit_windows where limiter = 'test_horizon'",
+    )
+    .fetch_all(owner.pool())
+    .await
+    .unwrap();
+    left.sort();
+    assert_eq!(
+        left,
+        [b"key-almost-two-hours".to_vec(), b"key-now".to_vec()]
+    );
 }
