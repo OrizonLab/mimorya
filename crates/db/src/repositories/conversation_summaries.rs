@@ -79,6 +79,24 @@ pub async fn earliest_messages_after(
     messages_after(conn, conversation_id, after, limit, false).await
 }
 
+/// How many messages come after `after` (all of them when `None`): those a
+/// summary stopping there does not cover yet.
+pub async fn count_messages_after(
+    conn: &mut PgConnection,
+    conversation_id: Uuid,
+    after: Option<Uuid>,
+) -> sqlx::Result<i64> {
+    sqlx::query_scalar(
+        "select count(*) from messages where conversation_id = $1 \
+         and ($2::uuid is null or (created_at, id) > \
+           (select created_at, id from messages where id = $2))",
+    )
+    .bind(conversation_id)
+    .bind(after)
+    .fetch_one(conn)
+    .await
+}
+
 #[derive(Debug, Clone)]
 pub struct FoldedSummary {
     pub tenant_id: Uuid,

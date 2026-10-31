@@ -7,6 +7,9 @@ import type { HistorySummary } from '@/lib/api';
  * owner may read too. Shown after the last message the summary covers, or
  * first when that message is no longer among those shown; in between, it
  * says when some of the messages it covers are no longer shown above it.
+ * A summary that lags says how many of the messages after it are neither
+ * summarised nor reread yet, until the assistant's next answers catch up
+ * (ADR-149).
  */
 export function HistorySummaryNote({
   summary,
@@ -27,6 +30,13 @@ export function HistorySummaryNote({
           ? `Les ${count} messages ci-dessus sont résumés`
           : 'Le message ci-dessus est résumé'
         : `Les ${count} premiers messages de cette conversation, jusqu’au message ci-dessus, sont résumés`;
+  const lagging = summary.notReplayed;
+  const behind =
+    lagging > 1
+      ? ` Les ${lagging} messages suivants ne sont pas encore résumés, et l’assistant ne les relit pas : ils le seront après ses prochaines réponses.`
+      : lagging === 1
+        ? ' Le message suivant n’est pas encore résumé, et l’assistant ne le relit pas : il le sera après sa prochaine réponse.'
+        : '';
   return (
     <div
       role="note"
@@ -36,7 +46,7 @@ export function HistorySummaryNote({
         <ScrollText className="mt-0.5 size-3.5 shrink-0" aria-hidden />
         <span>
           {which} pour l’assistant : il ne {count > 1 ? 'les' : 'le'} relit plus mot pour mot, mais
-          à travers ce résumé, établi par la plateforme.
+          à travers ce résumé, établi par la plateforme.{behind}
         </span>
       </p>
       <details>

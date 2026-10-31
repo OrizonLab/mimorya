@@ -5,6 +5,7 @@
 
 use mimorya_agent::llm::LlmMessage;
 use mimorya_agent::runtime::summary_message;
+use mimorya_core::conversation_summary::REPLAYED_MESSAGES;
 use mimorya_db::TenantTx;
 use mimorya_db::repositories::conversation_summaries::{
     SummaryRow, conversation_summary, latest_messages_after,
@@ -15,7 +16,7 @@ use uuid::Uuid;
 
 /// Messages replayed word for word at most: what the summary does not
 /// cover yet, should it lag.
-const HISTORY_LIMIT: i64 = 20;
+const HISTORY_LIMIT: i64 = REPLAYED_MESSAGES as i64;
 
 /// The history of a turn opened now in `conversation_id`.
 pub async fn conversation_history(

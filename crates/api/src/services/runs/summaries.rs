@@ -2,16 +2,19 @@
 //! of it ends: when the messages its summary does not cover yet grow past
 //! what is replayed word for word, the oldest are folded into it by the
 //! company's model (none for a company without one), for whom may still use
-//! the agent (ADR-035). A failure loses that
-//! pass, never the run: the history then replays the latest messages as
-//! before. What the folding cost is recorded like the run's; its text stays
-//! out of the audit.
+//! the agent (ADR-035). Passes are chained while it lags, a few at most
+//! (`MAX_PASSES`, ADR-149), each its own model call, read again and checked
+//! again, none once the service stops; the rest waits for the next run's
+//! end. A failure loses that pass
+//! and stops the others, never the run: the history then replays the latest
+//! messages as before. What the folding cost is recorded like the run's;
+//! its text stays out of the audit.
 
 use std::sync::Arc;
 
 use mimorya_agent::llm::PriceTable;
 use mimorya_agent::runtime::{FoldedMessage, RunOutcome, summarise_conversation};
-use mimorya_core::conversation_summary::{Speaker, Unfolded, messages_to_fold};
+use mimorya_core::conversation_summary::{MAX_PASSES, Speaker, Unfolded, messages_to_fold};
 use mimorya_db::Database;
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::conversation_summaries::{
@@ -19,6 +22,7 @@ use mimorya_db::repositories::conversation_summaries::{
 };
 use mimorya_db::repositories::conversations::MessageRow;
 use serde_json::json;
+use tokio::sync::watch;
 use uuid::Uuid;
 
 use super::background_usage::{BackgroundCall, record_background_usage};
@@ -40,6 +44,8 @@ pub struct ConversationSummaries {
     llm: Arc<LlmService>,
     prices: Arc<PriceTable>,
     background: Arc<BackgroundTasks>,
+    /// Raised when the service stops: no further pass is chained.
+    stopping: watch::Receiver<bool>,
 }
 
 impl ConversationSummaries {
@@ -55,7 +61,15 @@ impl ConversationSummaries {
             access,
             llm,
             background,
+            stopping: watch::channel(false).1,
         }
+    }
+
+    /// No further pass chained once `shutdown` is raised: what is left
+    /// waits for a run's end after the service starts again.
+    pub fn stopping_on(mut self, shutdown: watch::Receiver<bool>) -> Self {
+        self.stopping = shutdown;
+        self
     }
 
     /// Folds the conversation of a run that ended, in the background. A
@@ -69,7 +83,7 @@ impl ConversationSummaries {
         }
         let summaries = self.clone();
         self.background.spawn(async move {
-            if let Err(error) = summaries.fold(scope, conversation_id).await {
+            if let Err(error) = summaries.catch_up(scope, conversation_id).await {
                 tracing::warn!(
                     run_id = %scope.run_id,
                     error = format!("{error:#}"),
@@ -77,6 +91,21 @@ impl ConversationSummaries {
                 );
             }
         });
+    }
+
+    /// Folds the conversation pass after pass while its summary lags, at
+    /// most `MAX_PASSES`: how many summaries were stored. Stops at the first
+    /// pass that stores none (caught up, no longer allowed, or another pass
+    /// first), or fails, and before any pass once the service stops.
+    pub async fn catch_up(&self, scope: RunScope, conversation_id: Uuid) -> anyhow::Result<usize> {
+        let mut stored = 0;
+        while stored < MAX_PASSES
+            && !*self.stopping.borrow()
+            && self.fold(scope, conversation_id).await?
+        {
+            stored += 1;
+        }
+        Ok(stored)
     }
 
     /// Whether a summary was stored: none while nothing needs folding, nor

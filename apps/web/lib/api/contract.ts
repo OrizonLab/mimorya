@@ -889,9 +889,11 @@ llm: boolean, };
 /**
  * What the assistant keeps of a conversation's earlier messages (ADR-145,
  * ADR-146): their summary, which it rereads instead of them, the last
- * message it covers and how many it covers.
+ * message it covers and how many it covers; and how many of the messages
+ * after it, should it lag, are neither summarised nor reread yet
+ * (ADR-149).
  */
-export type HistorySummary = { summary: string, throughMessageId: string, foldedMessages: number, };
+export type HistorySummary = { summary: string, throughMessageId: string, foldedMessages: number, notReplayed: number, };
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 

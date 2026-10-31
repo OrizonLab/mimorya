@@ -1,12 +1,18 @@
 //! When a conversation's older messages are folded into its summary
 //! (ADR-145): the history replayed to the model is the summary, then the
-//! messages it does not cover yet. Once those grow past a count or a size,
-//! the oldest are folded in; the latest exchanges stay word for word, and
-//! the newest message is never folded, nor half of an exchange when a whole
-//! one can be kept.
+//! latest messages it does not cover yet, as many as the history window
+//! holds. Once those grow past a count or a size, the oldest are folded in;
+//! the latest exchanges stay word for word, and the newest message is never
+//! folded, nor half of an exchange when a whole one can be kept. A summary
+//! that lags behind (more than the window holds) is caught up by passes
+//! chained at a run's end, a few at most (ADR-149); until then, the
+//! messages between it and the window are neither summarised nor reread.
 
+/// Messages replayed word for word at most after the summary: the history
+/// window.
+pub const REPLAYED_MESSAGES: usize = 20;
 /// Messages not covered yet past which the oldest are folded: below the
-/// history window (20), so that a summary keeps it from cutting anything.
+/// history window, so that a summary keeps it from cutting anything.
 pub const FOLD_AFTER_MESSAGES: usize = 16;
 /// Their characters past which the oldest are folded, whatever their count.
 pub const FOLD_AFTER_CHARS: usize = 60_000;
@@ -18,6 +24,17 @@ pub const KEPT_CHARS: usize = 20_000;
 pub const MIN_KEPT: usize = 2;
 /// Messages folded in one pass at most: the rest waits for the next.
 pub const MAX_FOLDED: usize = 24;
+/// Passes chained at a run's end at most, while its conversation's summary
+/// lags (ADR-149): about as many messages as a conversation shows; the rest
+/// waits for the next run's end.
+pub const MAX_PASSES: usize = 8;
+
+/// Of the `after_summary` messages a summary does not cover yet, those the
+/// history leaves out: neither summarised nor replayed, until passes catch
+/// up.
+pub fn not_replayed(after_summary: usize) -> usize {
+    after_summary.saturating_sub(REPLAYED_MESSAGES)
+}
 
 /// Who wrote a message.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -157,5 +174,13 @@ mod tests {
             chars: FOLD_AFTER_CHARS + 1,
         }];
         assert_eq!(messages_to_fold(&alone), 0);
+    }
+
+    #[test]
+    fn what_a_lagging_summary_leaves_out_is_neither_summarised_nor_replayed() {
+        assert_eq!(not_replayed(0), 0);
+        assert_eq!(not_replayed(REPLAYED_MESSAGES), 0);
+        assert_eq!(not_replayed(REPLAYED_MESSAGES + 1), 1);
+        assert_eq!(not_replayed(202), 182);
     }
 }

@@ -8542,3 +8542,46 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     l'autre encore à valider avec ses boutons, puis les deux ; action expirée ; message
     non gardé : boutons seuls ; HTML refusé : texte simple ; oubli d'un avis passé, d'un compte retiré ou remplacé, la
     pause gardée).
+
+## ADR-149 — Un résumé en retard rattrapé à la fin d'un run, et dit dans la conversation (compression de contexte, lot 16c)
+
+- **Date** : 2026-10-31 · **Statut** : acceptée · complète ADR-145, ADR-146
+- **Contexte** : une passe replie 24 messages au plus (ADR-145). Le résumé d'une longue
+  conversation déjà là au déploiement, ou d'une conversation dont des passes ont échoué,
+  peut donc avoir plus de vingt messages de retard. Les messages entre la fin du résumé
+  et les vingt derniers ne sont alors ni résumés ni rejoués. La note de la conversation
+  (ADR-146) laissait croire que tous les messages sous elle étaient relus mot pour mot.
+- **Décision** :
+  - **passes enchaînées** : à la fin d'un run, la plateforme replie la conversation
+    passe après passe, tant que son résumé est en retard, huit passes au plus
+    (`MAX_PASSES`, `core/src/conversation_summary.rs`) :
+    - huit passes replient environ 190 messages, autant qu'une conversation en montre ;
+      le reste attend la fin du run suivant ;
+    - chaque passe est un appel de modèle à part, relu et vérifié à nouveau (accès de la
+      personne, modèle de l'entreprise), comptée dans le run et auditée à part ;
+    - la chaîne s'arrête dès qu'une passe ne range rien (rattrapé, plus permis, ou une
+      autre passe d'abord) ou échoue. Les passes d'avant restent ;
+    - aucune passe n'est enchaînée une fois l'arrêt du service demandé : l'arrêt attend
+      au plus la passe en cours, et le reste attend la fin d'un run après le
+      redémarrage ;
+  - **dit dans la conversation** :
+    - le détail d'une conversation donne, avec son résumé, le nombre de messages qui le
+      suivent sans être relus (`historySummary.notReplayed`). C'est le nombre de messages
+      après le résumé, moins les vingt rejoués (`REPLAYED_MESSAGES`, `not_replayed`) ;
+    - la note le dit : « Les 182 messages suivants ne sont pas encore résumés, et
+      l'assistant ne les relit pas : ils le seront après ses prochaines réponses. »
+      Elle n'en dit rien quand le résumé est à jour.
+- **Conséquences** :
+  - le coût d'un rattrapage est borné : huit appels à effort bas par fin de run au plus,
+    comptés dans ce run (ADR-145) ;
+  - tests :
+    - `crates/core/src/conversation_summary.rs` : messages laissés hors de l'historique ;
+    - `crates/api/tests/conversation_summary_catch_up.rs` : huit passes demandées au
+      modèle, pas une neuvième, puis la suite à la fin du run suivant, avec le nombre
+      dit par le détail ; une passe qui échoue comme un fournisseur surchargé arrête la
+      chaîne, la passe d'avant gardée et la suivante jamais demandée ;
+    - `crates/api/tests/conversation_summary_limits.rs` : un run qui se termine pendant
+      l'arrêt du service n'est suivi d'aucune passe ; aucune passe une fois l'arrêt
+      demandé, la passe faite quand le service tourne ;
+    - `apps/web/e2e/conversation-summary.spec.ts` : la note dit combien de messages sont
+      laissés de côté, au pluriel ou au singulier, ou rien pour un résumé à jour.

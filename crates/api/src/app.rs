@@ -201,6 +201,7 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
     )?);
     let (bus, outbox) = RunEventBus::new();
     let bus = Arc::new(bus);
+    let shutdown = watch::channel(false).0;
     let executor = RunExecutor {
         db: db.clone(),
         access: access.clone(),
@@ -213,7 +214,8 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
             access.clone(),
             llm.clone(),
             background.clone(),
-        ),
+        )
+        .stopping_on(shutdown.subscribe()),
         connectors: connectors.clone(),
         account_links: account_links.clone(),
         bus: bus.clone(),
@@ -287,7 +289,7 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
         invalidations,
         limits,
         background,
-        shutdown: watch::channel(false).0,
+        shutdown,
     });
 
     // Layers run from the last added to the first: security headers (on
