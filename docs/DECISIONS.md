@@ -8395,3 +8395,35 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     RLS) ;
   - reste le lot 16b : montrer dans la conversation que ses premiers messages sont
     résumés pour l'assistant, et ce résumé.
+
+## ADR-146 — Résumé montré dans la conversation (compression du contexte, lot 16b)
+
+- **Date** : 2026-10-31 · **Statut** : acceptée · complète ADR-145
+- **Contexte** : depuis l'ADR-145, l'assistant relit les premiers messages d'une longue
+  conversation à travers leur résumé, sans que personne ne le voie : la personne ne
+  savait pas que ses premiers messages n'étaient plus relus mot pour mot, ni ce que
+  l'assistant en gardait.
+- **Décision** :
+  - **l'API le dit** : le détail d'une conversation (`GET /conversations/{id}`) porte
+    `historySummary` : le résumé, le dernier message qu'il couvre et le nombre de
+    messages qu'il couvre, ou rien. Il n'est lu, comme la conversation, que par son
+    propriétaire ; une autre personne reçoit 404 ;
+  - **la conversation le montre** : une note se place juste après le dernier message
+    couvert (« Les 12 messages ci-dessus sont résumés pour l'assistant… »), ou en tête
+    quand ce message n'est plus parmi ceux affichés (« Les 12 messages les plus anciens
+    de cette conversation… »). Le résumé lui-même s'ouvre à la demande
+    (« Voir le résumé »), en texte simple, tel que l'assistant le relit ;
+  - **rien ne s'y modifie** : la personne lit le résumé, elle ne l'écrit pas. Le
+    corriger reviendrait à donner des consignes à l'assistant par une voie qui n'est
+    pas la sienne ; ses messages suivants le peuvent.
+- **Conséquences** :
+  - le résumé, donnée personnelle tirée de la conversation, est lisible par la personne
+    qu'il concerne, comme le reste de sa conversation (transparence, SECURITY §9) ;
+  - un résumé tenu après la fin d'un run n'apparaît qu'au prochain chargement de la
+    conversation ;
+  - tests : `crates/api/tests/conversation_summaries.rs` (résumé et dernier message
+    couvert dans le détail, rien sans résumé, conversation d'un autre refusée sans
+    rien en dire) ; `apps/web/e2e/conversation-summary.spec.ts` (note placée entre le
+    dernier message couvert et le premier gardé, résumé montré à la demande), contre une
+    conversation de Marc que le serveur de bout en bout laisse au démarrage, ses
+    premiers messages déjà résumés (`e2e_server/summaries.rs`).

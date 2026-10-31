@@ -6,6 +6,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use chrono::Utc;
 use mimorya_core::DomainError;
+use mimorya_db::repositories::conversation_summaries::conversation_summary;
 use mimorya_db::repositories::conversations::{
     ConversationPatch, ConversationRow, create_conversation, get_conversation, list_conversations,
     list_messages, update_conversation,
@@ -95,6 +96,7 @@ async fn detail(
     let messages = list_messages(&mut tx, id, MESSAGE_PAGE).await?;
     let runs = list_runs_for_conversation(&mut tx, id, RUN_PAGE).await?;
     let gateway = conversations_held(&mut tx, &[id]).await?.remove(&id);
+    let summary = conversation_summary(&mut tx, id).await?;
     tx.commit().await?;
     Ok(Json(ConversationDetail {
         conversation: ConversationSummary::held(&conversation, gateway),
@@ -103,6 +105,7 @@ async fn detail(
             .map(Message::from_row)
             .collect::<anyhow::Result<_>>()?,
         runs: runs.iter().map(Into::into).collect(),
+        history_summary: summary.as_ref().map(Into::into),
     }))
 }
 

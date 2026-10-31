@@ -1,7 +1,7 @@
 'use client';
 
 import { PanelLeft } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { ApprovalCard } from '@/components/approvals';
 import { ErrorNote, Failure, Spinner } from '@/components/ui';
 import { useMe } from '@/lib/me-context';
@@ -9,6 +9,7 @@ import { ActivityPanel } from './activity-panel';
 import { Composer } from './composer';
 import { ConversationList } from './conversation-list';
 import { GatewayNote } from './gateway-note';
+import { HistorySummaryNote } from './history-summary-note';
 import { MessageItem } from './message-item';
 import { useConversation } from './use-conversation';
 import { Welcome } from './welcome';
@@ -20,6 +21,11 @@ export function ChatView({ conversationId }: { conversationId: string | null }) 
   const [input, setInput] = useState('');
   const [listOpen, setListOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  // Shown after the last message it covers, or first when that one is no
+  // longer among the messages loaded (ADR-146).
+  const summary = detail?.historySummary ?? null;
+  const summaryShownAbove =
+    summary !== null && detail?.messages.some((m) => m.id === summary.throughMessageId);
 
   // What appears at the bottom is brought into view, failures included.
   useEffect(() => {
@@ -62,8 +68,16 @@ export function ChatView({ conversationId }: { conversationId: string | null }) 
             {!conversationId && <Welcome onPick={setInput} />}
             {conversationId && !detail && !chat.error && <Spinner />}
             {detail?.conversation.gateway && <GatewayNote gateway={detail.conversation.gateway} />}
+            {summary && !summaryShownAbove && (
+              <HistorySummaryNote summary={summary} above={false} />
+            )}
             {detail?.messages.map((m) => (
-              <MessageItem key={m.id} message={m} />
+              <Fragment key={m.id}>
+                <MessageItem message={m} />
+                {summary?.throughMessageId === m.id && (
+                  <HistorySummaryNote summary={summary} above />
+                )}
+              </Fragment>
             ))}
             {busy && <ActivityPanel activity={activity} />}
             {busy && activity.lost && (

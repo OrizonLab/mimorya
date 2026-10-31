@@ -2,6 +2,7 @@
 //! started; starting, renaming or archiving one, and sending a message.
 
 use mimorya_core::tools::Citation as ToolCitation;
+use mimorya_db::repositories::conversation_summaries::SummaryRow;
 use mimorya_db::repositories::conversations::{ConversationRow, MessageRow};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -159,12 +160,38 @@ impl Message {
     }
 }
 
+/// What the assistant keeps of a conversation's earlier messages (ADR-145,
+/// ADR-146): their summary, which it rereads instead of them, the last
+/// message it covers and how many it covers.
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct HistorySummary {
+    pub summary: String,
+    pub through_message_id: Uuid,
+    pub folded_messages: i32,
+    pub updated_at: String,
+}
+
+impl From<&SummaryRow> for HistorySummary {
+    fn from(s: &SummaryRow) -> Self {
+        Self {
+            summary: s.content.clone(),
+            through_message_id: s.through_message_id,
+            folded_messages: s.folded_messages,
+            updated_at: iso(&s.updated_at),
+        }
+    }
+}
+
 /// `GET /conversations/{id}`.
 #[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
 pub struct ConversationDetail {
     pub conversation: ConversationSummary,
     pub messages: Vec<Message>,
     pub runs: Vec<RunRef>,
+    /// The summary of its earlier messages, once there is one (ADR-145).
+    pub history_summary: Option<HistorySummary>,
 }
 
 /// `POST /conversations/{id}/messages`: the run started for the message.

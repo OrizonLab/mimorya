@@ -58,6 +58,24 @@ async fn older_messages_are_folded_into_a_summary_the_next_turns_start_from() {
     let summary = stored(c).await;
     assert_eq!(summary, Some((SUMMARY.into(), "Réponse 6".into(), 12)));
 
+    // Shown to whom the conversation is (ADR-146), with the last message it
+    // covers; to no one else.
+    let shown = marc.get(&format!("/conversations/{c}")).await.json();
+    let held = &shown["historySummary"];
+    assert_eq!(held["summary"], SUMMARY);
+    assert_eq!(held["foldedMessages"], 12);
+    let covered = shown["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["content"] == "Réponse 6")
+        .unwrap();
+    assert_eq!(held["throughMessageId"], covered["id"]);
+    let lucas = api.sign_in(user::LUCAS).await;
+    let refused = lucas.get(&format!("/conversations/{c}")).await;
+    assert_eq!(refused.status, StatusCode::NOT_FOUND);
+    assert!(!refused.text().contains(SUMMARY));
+
     // Audited without its text; its cost counted in the run.
     let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
     let audited: (Option<Uuid>, Option<Uuid>, Value) = sqlx::query_as(
@@ -168,6 +186,8 @@ async fn a_failed_pass_loses_the_summary_never_the_run_and_a_later_one_catches_u
     let run = turn(&api, &marc, c, "Question 9", vec![answer(9)]).await;
     assert!(last_system(&api).starts_with(SUMMARY_SYSTEM));
     assert_eq!(stored(c).await, None);
+    let detail = marc.get(&format!("/conversations/{c}")).await.json();
+    assert_eq!(detail["historySummary"], Value::Null);
     let shown = marc.get(&format!("/runs/{run}")).await;
     assert_eq!(shown.status, StatusCode::OK);
     assert_eq!(shown.json()["run"]["status"], "completed");

@@ -32,8 +32,8 @@ pub use approvals::{Approval, ApprovalDecided, ApprovalList, ApprovalPerson, App
 pub use common::{Created, Done};
 pub use conversations::{
     Citation, ConversationChanges, ConversationCreated, ConversationDetail, ConversationList,
-    ConversationSummary, Message, MessageAccepted, MessageMetadata, MessageRole, MissionPart,
-    NewConversation, NewMessage,
+    ConversationSummary, HistorySummary, Message, MessageAccepted, MessageMetadata, MessageRole,
+    MissionPart, NewConversation, NewMessage,
 };
 pub use documents::{
     DocumentCreated, DocumentItem, DocumentKind, DocumentList, DocumentQuota, DocumentScope,

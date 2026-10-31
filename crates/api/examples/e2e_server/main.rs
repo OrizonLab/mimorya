@@ -44,7 +44,9 @@
 //! (`interrupted`, ADR-053, ADR-086); then fires the scheduled tasks due every
 //! minute, among them one a stop made miss its occurrence (`scheduled`,
 //! ADR-080), and claims the queued runs, among them one it leaves itself
-//! and holds until the browser followed it (`queued`, ADR-085).
+//! and holds until the browser followed it (`queued`, ADR-085). It also
+//! leaves a long conversation of Marc's whose earlier messages are
+//! summarised (`summaries`, ADR-146).
 
 mod dns_server;
 mod documents;
@@ -71,6 +73,7 @@ mod skill_evaluations;
 mod skill_proposals;
 mod slack;
 mod sub_agents;
+mod summaries;
 mod teams;
 mod telegram;
 
@@ -222,6 +225,7 @@ async fn main() -> anyhow::Result<()> {
     interrupted::leave(&app).await?;
     scheduled::leave(&app).await?;
     queued::leave(&app).await?;
+    summaries::leave(&app).await?;
     // A former start's windows, which a restart forgot when they were counted
     // in memory: the suite runs again within the hour (ADR-088).
     purge_rate_limits(app.services.db.pool(), Utc::now()).await?;
