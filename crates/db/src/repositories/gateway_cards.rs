@@ -81,7 +81,9 @@ pub async fn record_gateway_card(
 }
 
 /// The card `activity_id`, if it is one the Teams bot `gateway_id` wrote in
-/// its personal conversation `chat`.
+/// its personal conversation `chat`; or the message of that number, if it
+/// is one the Telegram bot `gateway_id` wrote with buttons in its private
+/// chat `chat` (ADR-148).
 pub async fn find_gateway_card(
     conn: &mut PgConnection,
     gateway_id: Uuid,

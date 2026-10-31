@@ -47,6 +47,7 @@ mod private_chats;
 mod replies;
 mod reply_text;
 mod retry;
+mod settled_words;
 mod started;
 mod teams;
 mod telegram;

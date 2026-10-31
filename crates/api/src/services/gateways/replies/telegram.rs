@@ -9,7 +9,6 @@
 //! are settled (ADR-148).
 
 use chrono::{DateTime, Utc};
-use mimorya_core::gateways::ShownAction;
 use mimorya_core::gateways::telegram::{approval_keyboard, shown_in_message};
 use mimorya_db::repositories::approvals::ApprovalRow;
 use mimorya_db::repositories::gateway_cards::CardPlace;
@@ -17,6 +16,7 @@ use mimorya_db::repositories::gateway_replies::{ReplyRecord, ReplyTarget};
 use uuid::Uuid;
 
 use crate::services::gateways::GatewayService;
+use crate::services::gateways::concerned::shown_action;
 use crate::services::gateways::telegram::{
     BotChat, Pause, WrittenMessage, after_failure, keep_message, reply_text, write_in_chat,
 };
@@ -42,12 +42,7 @@ pub(super) async fn answer(
     let own: Vec<&ApprovalRow> = (awaiting.iter())
         .filter(|a| !a.routed_to_manager())
         .collect();
-    let shown = shown_in_message(own.iter().map(|a| ShownAction {
-        approval_id: a.id,
-        summary: &a.action_summary,
-        risk: &a.risk,
-        parameters: &a.payload,
-    }));
+    let shown = shown_in_message(own.iter().map(|a| shown_action(a)));
     let pause = Pause {
         shown: &shown,
         in_application: own.len() - shown.len(),

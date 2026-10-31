@@ -19,6 +19,7 @@ use crate::services::gateways::approver_text::{
     ApproverNotice, Written, approver_words, notice_names,
 };
 use crate::services::gateways::concerned::shown_action;
+use crate::services::gateways::settled_words::settled_notice as settled_notice_words;
 
 /// The message telling of `notice`, its shown actions on a card.
 pub fn approver_notice(notice: &ApproverNotice) -> String {
@@ -40,13 +41,8 @@ pub fn settled_notice(
     decided: bool,
     url: &str,
 ) -> String {
-    let settled = match (decided, shown == 1) {
-        (true, true) => "l’action montrée ci-dessous est décidée.",
-        (true, false) => "les actions montrées ci-dessous sont décidées.",
-        (false, true) => "l’action montrée ci-dessous n’attend plus de décision.",
-        (false, false) => "les actions montrées ci-dessous n’attendent plus de décision.",
-    };
-    let mut text = format!("**{}** : {}", escaped(requested_for), escaped(settled));
+    let settled = format!("{}.", settled_notice_words(decided, shown == 1));
+    let mut text = format!("**{}** : {}", escaped(requested_for), escaped(&settled));
     if in_application > 0 {
         text.push_str(&format!(
             "{}{}{}",

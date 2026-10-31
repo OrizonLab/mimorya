@@ -200,7 +200,8 @@ Repères à l'intérieur des crates :
   privée avec le bot (`telegram/approver_text.rs`), message écrit là en HTML ou en
   texte simple, avec ses boutons (`telegram/chat.rs`), ADR-137 ; message à boutons
   gardé (`telegram/kept.rs`) et réécrit une fois ses actions réglées
-  (`telegram/rewrite.rs`, `telegram/settled_text.rs`), ADR-148 ; bot Teams : activités
+  (`telegram/rewrite.rs`, `telegram/settled_text.rs`), mots communs avec Teams d'un
+  message dont aucune action n'attend plus (`settled_words.rs`), ADR-148 ; bot Teams : activités
   reçues sur le jeton que signe le Bot Framework (`teams/`), identité reliée par le lien
   du bot quand Teams nomme l'adresse du compte (`link/`, un module par service),
   ADR-138 ; mots d'une personne reliée répondus dans une conversation tenue dans sa

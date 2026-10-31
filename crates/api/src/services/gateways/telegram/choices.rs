@@ -28,7 +28,7 @@ use super::texts;
 use super::updates::UpdateOutcome;
 use crate::app::Services;
 use crate::services::gateways::GatewayService;
-use crate::services::gateways::concerned::{NOT_DECIDED, decide_as};
+use crate::services::gateways::concerned::{Concerned, NOT_DECIDED, decide_as};
 use crate::services::gateways::person::{Act, may_act};
 
 /// What the press of a button the bot did not show there is answered.
@@ -114,15 +114,17 @@ impl GatewayService {
     }
 }
 
-/// Decides what `pressed` chose, as its person, or says why not.
+/// Decides what `pressed` chose, as its person, or says why not: the press
+/// answered first, then its message written again, then what became of it
+/// said in answer to the message.
 pub async fn decide_in_telegram(services: &Services, pressed: TelegramChoice) {
-    let told = match decide(services, &pressed).await {
-        Ok(told) => told,
+    let gateway_id = pressed.gateway_id;
+    let (told, concerned) = match decide(services, &pressed).await {
+        Ok(decided) => decided,
         Err(error) => {
-            let gateway = pressed.gateway_id;
             let error = format!("{error:#}");
-            tracing::warn!(%gateway, %error, "Telegram validation not decided");
-            Told::nothing(NOT_DECIDED)
+            tracing::warn!(%gateway_id, %error, "Telegram validation not decided");
+            (Told::nothing(NOT_DECIDED), None)
         }
     };
     let telegram = services.gateways.telegram();
@@ -133,7 +135,16 @@ pub async fn decide_in_telegram(services: &Services, pressed: TelegramChoice) {
         .await
     {
         let failure = failure.message();
-        tracing::warn!(gateway = %pressed.gateway_id, %failure, "Telegram press not answered");
+        tracing::warn!(%gateway_id, %failure, "Telegram press not answered");
+    }
+    // Decided now, or meanwhile (in the application, or expired): its
+    // message is written again, a failure to do so being no reason to say
+    // otherwise.
+    if let Some(concerned) = concerned
+        && let Err(error) = write_again(services, &pressed, &concerned).await
+    {
+        let error = format!("{error:#}");
+        tracing::warn!(%gateway_id, %error, "Telegram message not written again");
     }
     // In their private chat, which their identifier names.
     let chat = press.person.id;
@@ -142,11 +153,16 @@ pub async fn decide_in_telegram(services: &Services, pressed: TelegramChoice) {
         .await
     {
         let failure = failure.message();
-        tracing::warn!(gateway = %pressed.gateway_id, %failure, "Telegram answer not sent");
+        tracing::warn!(%gateway_id, %failure, "Telegram answer not sent");
     }
 }
 
-async fn decide(services: &Services, pressed: &TelegramChoice) -> anyhow::Result<Told> {
+/// What `pressed` is answered, and who pressed it once they may decide:
+/// whose message is then written again.
+async fn decide(
+    services: &Services,
+    pressed: &TelegramChoice,
+) -> anyhow::Result<(Told, Option<Concerned>)> {
     let (tenant_id, gateway_id) = (pressed.tenant_id, pressed.gateway_id);
     let person = pressed.press.person.id.to_string();
     let mut tx = services.db.begin(tenant_id).await?;
@@ -154,25 +170,19 @@ async fn decide(services: &Services, pressed: &TelegramChoice) -> anyhow::Result
     tx.commit().await?;
     let Some(account) = account else {
         let unlinked = texts::unlinked(&services.gateways.assistant_name);
-        return Ok(Told::nothing(unlinked));
+        return Ok((Told::nothing(unlinked), None));
     };
     let identity = match may_act(services, tenant_id, &account, Act::Decide).await? {
         Ok(identity) => identity,
-        Err(refusal) => return Ok(Told::nothing(refusal)),
+        Err(refusal) => return Ok((Told::nothing(refusal), None)),
     };
     let choice = (pressed.choice.approval_id, pressed.choice.approved);
     let (concerned, decided) = decide_as(services, identity, choice, GatewayKind::Telegram).await?;
-    // Decided now, or meanwhile (in the application, or expired): its
-    // message is written again, a failure to do so being no reason to say
-    // otherwise.
-    if let Err(error) = write_again(services, pressed, &concerned).await {
-        let error = format!("{error:#}");
-        tracing::warn!(%gateway_id, %error, "Telegram message not written again");
-    }
-    Ok(match decided {
+    let told = match decided {
         Ok(decided) => outcome(pressed.choice.approved, decided.resumed, decided.own),
         Err(refusal) => Told::nothing(refusal),
-    })
+    };
+    Ok((told, Some(concerned)))
 }
 
 /// What a decision is answered: whom the agent acts for (`own`) reads that

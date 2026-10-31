@@ -8522,8 +8522,11 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     migration 0065). Celui d'une pause part avec sa conversation ;
   - **commun** : ce qui décide d'une réécriture (`to_write_again`), les demandes
     qu'un message montre lues pour qui l'a pressé (`Concerned::shown_now`), les noms
-    d'un avis tels qu'ils sont (`approver_text::notice_names`) et une action telle
-    qu'un message la montre (`concerned::shown_action`) servent à Teams et à Telegram.
+    d'un avis tels qu'ils sont (`approver_text::notice_names`), une action telle
+    qu'un message la montre (`concerned::shown_action`) et ce que dit un message dont
+    aucune action n'attend plus (`settled_words`) servent à Teams et à Telegram ;
+  - **ordre** : la pression est répondue d'abord, puis le message réécrit, puis ce qu'est
+    devenue l'action dit en réponse au message.
 - **Conséquences** :
   - le lot 17 est terminé : dans les trois services, une action réglée n'est plus
     intitulée « à valider ». Les messages Telegram écrits avant ce lot gardent leur
@@ -8535,6 +8538,7 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     `crates/api/tests/telegram_gateway_validations.rs`,
     `telegram_gateway_approver_notices.rs` (message réécrit après une décision réelle,
     plus de « à valider », pas pour une autre personne) et
-    `telegram_gateway_kept_messages.rs` (message non gardé : boutons seuls ; HTML
-    refusé : texte simple ; oubli d'un avis passé, d'un compte retiré ou remplacé, la
+    `telegram_gateway_kept_messages.rs` (message de deux actions : l'une réglée,
+    l'autre encore à valider avec ses boutons, puis les deux ; action expirée ; message
+    non gardé : boutons seuls ; HTML refusé : texte simple ; oubli d'un avis passé, d'un compte retiré ou remplacé, la
     pause gardée).

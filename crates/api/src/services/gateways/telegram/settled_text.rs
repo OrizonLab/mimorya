@@ -13,6 +13,7 @@ use mimorya_core::gateways::telegram::stated_actions;
 use super::approver_text::{notice_words, requested_for, validations_link};
 use super::reply_text::{Markup, Pause, awaiting_words, others};
 use crate::services::gateways::approver_text::ApproverNotice;
+use crate::services::gateways::settled_words::{settled_notice, settled_pause};
 
 /// The pause `pause`, whose shown actions stand as `states`, written again
 /// in `markup`, its conversation at `url`.
@@ -21,7 +22,7 @@ pub fn pause_again(markup: Markup, url: &str, pause: Pause, states: &[ActionStat
     let mut text = if states.contains(&ActionState::Open) {
         awaiting_words(&link, pause)
     } else {
-        settled_pause(&link, pause, states)
+        pause_settled(&link, pause, states)
     };
     let stated = pause.shown.iter().copied().zip(states.iter().copied());
     text.push_str(&stated_actions(stated, markup == Markup::Html));
@@ -34,7 +35,7 @@ pub fn notice_again(markup: Markup, notice: &ApproverNotice, states: &[ActionSta
     let mut text = if states.contains(&ActionState::Open) {
         notice_words(markup, notice)
     } else {
-        settled_notice(markup, notice, states)
+        notice_settled(markup, notice, states)
     };
     let stated = notice.shown.iter().copied().zip(states.iter().copied());
     text.push_str(&stated_actions(stated, markup == Markup::Html));
@@ -44,16 +45,9 @@ pub fn notice_again(markup: Markup, notice: &ApproverNotice, states: &[ActionSta
 /// What a pause none of whose shown actions awaits a decision any more says
 /// before them: decided, each validated or refused, its answer to come
 /// here, with its others; or no longer awaiting a decision.
-fn settled_pause(link: &str, pause: Pause, states: &[ActionState]) -> String {
+fn pause_settled(link: &str, pause: Pause, states: &[ActionState]) -> String {
     let decided = states.iter().all(|state| state.is_decided());
-    let settled = match (decided, pause.shown.len() == 1) {
-        (true, true) => "L’action de cette demande montrée ci-dessous est décidée",
-        (true, false) => "Les actions de cette demande montrées ci-dessous sont décidées",
-        (false, true) => "L’action de cette demande montrée ci-dessous n’attend plus de décision",
-        (false, false) => {
-            "Les actions de cette demande montrées ci-dessous n’attendent plus de décision"
-        }
-    };
+    let settled = settled_pause(decided, pause.shown.len() == 1);
     if !decided {
         return format!("{settled} ({link}).");
     }
@@ -62,16 +56,11 @@ fn settled_pause(link: &str, pause: Pause, states: &[ActionState]) -> String {
 
 /// What a notice none of whose shown actions awaits a decision any more
 /// says before them, and where its others are.
-fn settled_notice(markup: Markup, notice: &ApproverNotice, states: &[ActionState]) -> String {
+fn notice_settled(markup: Markup, notice: &ApproverNotice, states: &[ActionState]) -> String {
     let decided = states.iter().all(|state| state.is_decided());
-    let settled = match (decided, notice.shown.len() == 1) {
-        (true, true) => "l’action montrée ci-dessous est décidée.",
-        (true, false) => "les actions montrées ci-dessous sont décidées.",
-        (false, true) => "l’action montrée ci-dessous n’attend plus de décision.",
-        (false, false) => "les actions montrées ci-dessous n’attendent plus de décision.",
-    };
+    let settled = settled_notice(decided, notice.shown.len() == 1);
     let who = requested_for(markup, notice.requested_for);
-    let mut text = format!("{who} : {settled}");
+    let mut text = format!("{who} : {settled}.");
     if notice.in_application > 0 {
         let link = validations_link(markup, notice.link);
         text.push_str(&format!(
