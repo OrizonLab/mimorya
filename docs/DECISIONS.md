@@ -9345,3 +9345,9 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     (`a_tag_name_is_read_as_written_not_as_a_pattern` : `<axb>` et `<cc>` restent
     intacts, `<a.b>` et `</C+>` sont neutralisés) ; `crates/agent/src/runtime/verification.rs`
     (une demande qui contient un `\r` seul est lue avec un `\n`).
+- **Complément (lot 27)** : le résumé qu'écrit le modèle d'une conversation
+  (`cleaned_summary`, ADR-145) lit lui aussi un retour à la ligne de toute forme
+  (`\r` seul, U+2028, saut de page…) comme `\n`, au lieu de le supprimer. Ce qui cache
+  y passe toujours avant les enveloppes. Test : `crates/agent/src/runtime/conversation_summary.rs`
+  (les mots de part et d'autre d'un tel retour ne se collent plus, et un nom
+  d'enveloppe coupé par une espace sans largeur n'est pas reformé).
