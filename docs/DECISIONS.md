@@ -5079,7 +5079,8 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     rappellera (lot 4c) (levée par ADR-153 : la proposition et la version active sont
     jouées sans les connecteurs qui joignent l'extérieur) ;
   - une seule passe pour la plateforme : une évaluation la tient jusqu'à une heure
-    environ, celles des autres entreprises attendent ;
+    environ, celles des autres entreprises attendent (levée par ADR-157 : une passe par
+    entreprise, sous son propre verrou) ;
   - rien ne borne les évaluations demandées l'une après l'autre (10 USD environ chacune
     au plus), sinon une à la fois par entreprise (levée par ADR-154 : ce qu'elles
     coûtent sur trente jours est borné par entreprise).
@@ -5103,7 +5104,9 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
       restreint) ; une évaluation laissée en cours par un arrêt ; une passe dont une
       autre a close l'évaluation n'écrit plus rien et s'arrête, de même qu'une passe dont
       la session du verrou s'est perdue ; une passe à la fois, seulement dans un
-      processus qui exécute les runs ; les cinq dernières gardées, 90 jours au plus ;
+      processus qui exécute les runs ; les cinq dernières gardées, 90 jours au plus. Les
+      tests des passes sont depuis dans `skill_evaluation_passes.rs`, une passe par
+      entreprise (ADR-157) ;
     - `crates/api/tests/several_workers.rs` : le verrou d'une passe que son détenteur
       trouve perdu avec sa session ;
     - `crates/api/tests/skill_access.rs` : les routes refusées à un membre, le détail
@@ -8986,9 +8989,9 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
         ajoute ce qu'il a coûté : ceux d'une évaluation atteignent la limite, qui l'arrête
         au cas suivant, échouée en disant pourquoi, la dépense égale à son coût, et la
         suivante est refusée ;
-    - `crates/api/tests/skill_evaluation_rules.rs` : le cas qu'une passe a joué pour une
-      évaluation qu'une autre a terminée entre-temps n'est pas écrit, mais son coût est
-      compté.
+    - `crates/api/tests/skill_evaluation_passes.rs` (d'abord `skill_evaluation_rules.rs`,
+      ADR-157) : le cas qu'une passe a joué pour une évaluation qu'une autre a terminée
+      entre-temps n'est pas écrit, mais son coût est compté.
 
 ## ADR-155 — Limite de coût des évaluations dans « Modèle d'IA », dépense montrée dans « Compétences »
 
@@ -9097,3 +9100,81 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       mention est lue dans « Compétences », et `insideOnly` dans l'API ;
     - `apps/web/e2e/skill-evaluations.spec.ts` : une version écrite par un
       administrateur ne porte pas la mention.
+
+## ADR-157 — Une passe des évaluations par entreprise
+
+- **Date** : 2026-11-01 · **Statut** : acceptée · modifie ADR-104
+- **Contexte** : l'ADR-104 joue les évaluations des compétences dans une seule passe
+  pour la plateforme, sous un seul verrou (ADR-086). Une évaluation peut la tenir près
+  d'une heure : dix cas, deux versions, trois minutes au plus chacun, et les jugements.
+  Pendant ce temps, les évaluations des autres entreprises attendent, alors que rien ne
+  les lie. C'était une réserve de l'ADR-104.
+- **Décision** :
+  - **une passe par entreprise** : chaque entreprise a son verrou,
+    `evaluations:<identifiant>`. La connexion qui le tient s'appelle
+    `mimorya-sweep-evaluations:<identifiant>`, ce qui tient dans les 63 caractères d'un
+    nom de connexion PostgreSQL. Seul le processus qui tient ce verrou joue les
+    évaluations de l'entreprise. Plusieurs processus qui exécutent les runs se
+    partagent ainsi les entreprises ;
+  - **plusieurs entreprises à la fois** : un processus joue au plus quatre entreprises
+    en même temps (`COMPANIES_AT_ONCE`), chacune dans sa propre tâche. Il commence par
+    celle dont l'évaluation attend depuis le plus longtemps. Les entreprises suivantes
+    attendent qu'une place se libère, puis la passe suivante, lancée chaque minute ou
+    dès qu'une évaluation est demandée. L'échec d'une passe n'arrête que la sienne, et
+    le journal nomme l'entreprise ;
+  - **dans une entreprise, rien ne change** :
+    - une seule évaluation en file ou en cours (ADR-104) ;
+    - celle que la passe trouve en cours sous le verrou de l'entreprise a été laissée
+      par un arrêt : elle échoue, « interrompue » ;
+    - une passe dont la session du verrou s'est perdue s'arrête ;
+    - une passe joue au plus 50 évaluations.
+- **Alternatives écartées** :
+  - **garder une passe pour la plateforme et borner la durée d'une évaluation** : une
+    entreprise attendrait encore celles des autres, seulement moins longtemps ;
+  - **un bail par évaluation, comme pour les runs (ADR-083)** : il faudrait le
+    renouveler, le reprendre et garder les écritures, pour une file d'une seule
+    évaluation par entreprise. Le verrou de session suffit, et il garde la règle « en
+    cours sous le verrou, donc laissée par un arrêt » ;
+  - **les jouer dans la file des runs (ADR-085)** : une évaluation n'est pas un run. Elle
+    n'a ni conversation, ni flux en direct, ni validation ;
+  - **toutes les entreprises à la fois, sans limite** : chaque verrou tient une
+    connexion hors du pool. Quatre par processus bornent les connexions ouvertes et les
+    appels simultanés au modèle.
+- **Réserves assumées** :
+  - **pendant une mise à jour** : un ancien processus encore en marche joue sous le
+    verrou unique de la plateforme, un nouveau sous celui de l'entreprise, et aucun ne
+    voit le verrou de l'autre. Le nouveau peut faire échouer, « interrompue »,
+    l'évaluation que joue l'ancien. L'ancien, qui fait échouer toutes les évaluations
+    en cours sous son verrou, peut faire de même pour celles que jouent les nouveaux, à
+    chaque minute et à chaque demande qu'il reçoit. Dans les deux cas, l'évaluation est
+    à demander de nouveau, comme l'arrêt de l'ancien processus l'aurait laissée. Celui
+    qui la jouait n'écrit plus rien ensuite, car un résultat ne s'écrit que dans une
+    évaluation encore en cours ;
+  - **au-delà de quatre entreprises** : si plus de quatre entreprises attendent en même
+    temps dans un processus, les suivantes attendent qu'une passe se termine.
+- **Conséquences** :
+  - la réserve de l'ADR-104 est levée ;
+  - un processus qui exécute les runs ouvre jusqu'à quatre connexions de plus pendant
+    qu'il joue des évaluations. Avec plusieurs processus, chaque entreprise dont un
+    autre tient le verrou coûte aussi, à chaque passe, une connexion ouverte hors du
+    pool puis refermée ;
+  - tests :
+    - `crates/api/src/services/skill_evaluations/pass.rs` : chaque entreprise vient une
+      fois, celle qui attend depuis le plus longtemps d'abord, et le nom de la
+      connexion du verrou tient en entier ;
+    - `crates/api/tests/skill_evaluation_passes.rs`, où passent les tests des passes
+      (d'abord dans `skill_evaluation_rules.rs`) :
+      - l'évaluation d'une autre entreprise, demandée après, se termine pendant qu'un cas
+        de la première est joué. Avec des entreprises jouées l'une après l'autre, ce test
+        échoue : l'évaluation de l'autre entreprise est encore en file ;
+      - quand le verrou d'une entreprise est tenu ailleurs, son évaluation n'est pas
+        jouée, mais celle d'une autre entreprise l'est ;
+      - une évaluation laissée en cours échoue sous le verrou de son entreprise ;
+      - une passe qui a perdu la session de son verrou ne joue rien, et la suivante joue
+        l'évaluation ;
+      - une passe dont l'évaluation a été close par une autre n'écrit plus rien ;
+      - quand le processus joue déjà quatre entreprises, une cinquième attend. Elle est
+        jouée par la passe suivante, une place libérée ;
+      - quand la passe d'une entreprise échoue (la base refuse de clore ses
+        évaluations), celle d'une autre entreprise joue la sienne. La passe suivante
+        reprend la première.

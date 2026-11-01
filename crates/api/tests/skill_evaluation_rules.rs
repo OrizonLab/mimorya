@@ -4,18 +4,15 @@
 //! model, for a version the skill has and its cases, one at a time in the
 //! company; another company's skill or evaluation answers as absent. It
 //! ends, failed, once whom it runs for may no longer administer the skills
-//! or use the agent (their account disabled, their role narrowed), or when
-//! a stopped process left it running, and is written no further; a pass
-//! that finds its own ended by another stops, what its case cost counted
-//! all the same (ADR-154). Only a process that executes
-//! runs plays them, one at a time; the last five of a skill are kept,
-//! ninety days at most. How one is played: `skill_evaluations.rs`.
+//! or use the agent (their account disabled, their role narrowed). The last
+//! five of a skill are kept, ninety days at most. How one is played:
+//! `skill_evaluations.rs`; the passes that play them, one per company:
+//! `skill_evaluation_passes.rs`.
 
 mod support;
 
 use axum::http::StatusCode;
 use chrono::Utc;
-use mimorya_api::services::skill_evaluations::{EVALUATION_SWEEP, play_pending_evaluations};
 use mimorya_core::demo::{tenant, user};
 use mimorya_core::skill_evaluations::EVALUATION_KEPT_DAYS;
 use mimorya_db::repositories::skill_evaluations::purge_finished_evaluations;
@@ -23,12 +20,10 @@ use mimorya_db::seed::DEMO_SKILL_ID;
 use mimorya_db::testing::OTHER_TENANT_ID;
 use serde_json::json;
 use support::accounts::holder_of;
-use support::evaluation_passes::{TAKEN_OVER, forget_elsewhere, lock_lost, taken_over};
-use support::llm::SCRIPTED_CALL_MICROS;
 use support::queue::API;
 use support::skill_evaluations::{
-    count, detail, evaluations, executing, forget, launch, launched, new_version, play, status_of,
-    stored_evaluation, verdict, write_case,
+    count, detail, evaluations, forget, launch, launched, new_version, play, status_of,
+    stored_evaluation, write_case,
 };
 use support::{Client, TestApi};
 use uuid::Uuid;
@@ -228,80 +223,6 @@ async fn an_evaluation_ends_once_whom_it_runs_for_no_longer_administers_the_skil
     assert_eq!(status, "failed");
     assert!(failure.unwrap().contains("n’administre plus"));
     assert_eq!(results, 0);
-    forget(&api, DEMO_SKILL_ID).await;
-}
-
-#[tokio::test]
-#[ignore = "requires PostgreSQL"]
-async fn one_left_running_by_a_stopped_process_fails_and_one_process_plays_at_a_time() {
-    let api = TestApi::start().await;
-    let left = stored_evaluation(&api, "running", 0).await.to_string();
-    // A process that executes no runs plays nothing.
-    let services = &api.app.services;
-    assert_eq!(play_pending_evaluations(services).await.unwrap(), 0);
-    assert_eq!(status_of(&api, &left).await.0, "running");
-    // Nor while another holds the pass.
-    services.runs.start_executing().unwrap();
-    let held = services.db.try_sweep_lock(EVALUATION_SWEEP).await.unwrap();
-    let held = held.expect("free");
-    assert_eq!(play_pending_evaluations(services).await.unwrap(), 0);
-    assert_eq!(status_of(&api, &left).await.0, "running");
-    held.release().await;
-
-    play(&api).await;
-    let (status, failure, _) = status_of(&api, &left).await;
-    assert_eq!(status, "failed");
-    assert!(
-        failure
-            .unwrap()
-            .contains("interrompue par un arrêt du service")
-    );
-    forget(&api, DEMO_SKILL_ID).await;
-}
-
-#[tokio::test]
-#[ignore = "requires PostgreSQL"]
-async fn a_pass_whose_evaluation_another_ended_writes_nothing_more_and_stops() {
-    let api = TestApi::start_priced().await;
-    let paul = api.sign_in(user::PAUL).await;
-    let version = new_version(&paul).await;
-    write_case(&paul, DEMO_SKILL_ID, "Retards", "Quels retards ?").await;
-    api.script(vec![taken_over("Trois retards."), verdict(true)]);
-    let id = launched(&paul, DEMO_SKILL_ID, version).await;
-    executing(&api).await;
-    // It played one, and left the one asked for since to the other pass.
-    let services = &api.app.services;
-    assert_eq!(play_pending_evaluations(services).await.unwrap(), 1);
-
-    let (status, failure, results) = status_of(&api, &id).await;
-    assert_eq!(status, "failed");
-    assert_eq!(failure.as_deref(), Some(TAKEN_OVER));
-    assert_eq!(results, 0, "no result written");
-    let listed = evaluations(&paul, DEMO_SKILL_ID).await;
-    assert_eq!(listed[0]["status"], "queued", "{}", listed[0]);
-    assert_eq!(listed[1]["id"], id.as_str());
-    // What the case it played cost is spent all the same (ADR-154): the
-    // agent's call and the judge's.
-    let spent = paul.get("/admin/evaluation-settings").await.json()["spentMicros"].clone();
-    assert_eq!(spent, json!(2 * SCRIPTED_CALL_MICROS));
-    forget(&api, DEMO_SKILL_ID).await;
-}
-
-#[tokio::test]
-#[ignore = "requires PostgreSQL"]
-async fn a_pass_whose_lock_s_session_is_lost_plays_no_further() {
-    let api = TestApi::start().await;
-    let paul = api.sign_in(user::PAUL).await;
-    write_case(&paul, DEMO_SKILL_ID, "Retards", "Quels retards ?").await;
-    api.script(vec![lock_lost("Trois retards."), verdict(true)]);
-    let id = launched(&paul, DEMO_SKILL_ID, 1).await;
-    executing(&api).await;
-    // Its own ended, it found the lock lost: the other company's waits.
-    let services = &api.app.services;
-    assert_eq!(play_pending_evaluations(services).await.unwrap(), 1);
-
-    assert_eq!(status_of(&api, &id).await.0, "completed");
-    assert_eq!(forget_elsewhere(), "queued");
     forget(&api, DEMO_SKILL_ID).await;
 }
 
