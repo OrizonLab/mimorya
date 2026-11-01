@@ -191,15 +191,15 @@ pub async fn claim_evaluation(
     }
 }
 
-/// Marks the running evaluation `id` as played without the connectors that
-/// reach outside the platform (ADR-156).
+/// Marks the evaluation `id` as played without the connectors that reach
+/// outside the platform (ADR-156), in the transaction that wrote a result
+/// played so: whatever its status by then, since a pass that failed it
+/// meanwhile leaves that result shown.
 pub async fn mark_inside_only(conn: &mut PgConnection, id: Uuid) -> sqlx::Result<()> {
-    sqlx::query(
-        "update skill_evaluations set inside_only = true where id = $1 and status = 'running'",
-    )
-    .bind(id)
-    .execute(conn)
-    .await?;
+    sqlx::query("update skill_evaluations set inside_only = true where id = $1")
+        .bind(id)
+        .execute(conn)
+        .await?;
     Ok(())
 }
 

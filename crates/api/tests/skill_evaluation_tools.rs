@@ -203,6 +203,8 @@ async fn a_proposal_stopped_before_its_first_case_says_nothing_of_it() {
 
     let read = detail(&paul, &id).await.json();
     assert_eq!(read["evaluation"]["status"], "failed", "{read}");
+    let failure = read["evaluation"]["failure"].as_str().unwrap_or_default();
+    assert!(failure.contains("sur les trente derniers jours"), "{read}");
     assert_eq!(read["evaluation"]["played"], 0, "{read}");
     assert_eq!(read["evaluation"]["insideOnly"], false, "{read}");
     assert_eq!(paul.delete(SETTINGS).await.status, StatusCode::OK);
