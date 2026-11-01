@@ -224,8 +224,8 @@ Repères à l'intérieur des crates :
   lus au moment d'envoyer chaque avis, ADR-094),
   `api/src/services/skill_proposal_notice/` (propositions de l'agent annoncées par e-mail
   aux administrateurs des compétences, ADR-102),
-  `api/src/services/skill_evaluations/` (évaluations des compétences : passe une à la
-  fois (`pass.rs`), cas joués et jugés (`play.rs`, `case.rs`) avec leurs propres ports
+  `api/src/services/skill_evaluations/` (évaluations des compétences : une passe par
+  entreprise, quatre à la fois par processus (`pass.rs`, ADR-157), cas joués et jugés (`play.rs`, `case.rs`) avec leurs propres ports
   (`ports/`), lecture (`view.rs`), ADR-104 ; ce qu'elles peuvent coûter sur trente jours
   (`spending.rs`), réglé par `services/admin/evaluation_settings.rs`, ADR-154 ; une
   proposition de l'agent jouée sans les connecteurs qui joignent l'extérieur, retirés par

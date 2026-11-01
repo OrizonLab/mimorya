@@ -42,6 +42,7 @@ use crate::services::gateways::{GatewayService, GatewaySettings};
 use crate::services::invalidations::{Invalidations, share_invalidations};
 use crate::services::llm::{LlmServiceOptions, default_factory};
 use crate::services::runs::{ApprovalNotifier, ConversationSummaries, LessonCapture, RunExecutor};
+use crate::services::skill_evaluations::EvaluationSlots;
 use crate::services::sso::{SsoService, SystemDns};
 use crate::services::{
     AccessService, ConnectorService, EmbeddingService, LlmService, RunEventBus, RunService,
@@ -72,6 +73,9 @@ pub struct Services {
     /// The conversation gateways of each company: its Slack application
     /// (ADR-125).
     pub gateways: Arc<GatewayService>,
+    /// The companies whose skill evaluations this process plays at once
+    /// (ADR-157).
+    pub evaluation_slots: EvaluationSlots,
     /// Sends the invitation and reset e-mails; `None` when no relay is
     /// configured.
     pub mailer: Option<Arc<dyn Mailer>>,
@@ -243,6 +247,7 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
         sso,
         account_links,
         gateways,
+        evaluation_slots: EvaluationSlots::default(),
         mailer,
         config,
         db: db.clone(),

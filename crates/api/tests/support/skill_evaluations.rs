@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use axum::http::StatusCode;
 use mimorya_agent::testing::{ScriptedStep, call};
-use mimorya_api::services::skill_evaluations::{EVALUATION_SWEEP, play_pending_evaluations};
+use mimorya_api::services::skill_evaluations::{evaluation_sweep, play_pending_evaluations};
 use mimorya_core::demo::tenant;
 use mimorya_db::seed::DEMO_SKILL_ID;
 use serde_json::{Value, json};
@@ -101,9 +101,13 @@ pub async fn play(api: &TestApi) {
     executing(api).await;
     let services = &api.app.services;
     play_pending_evaluations(services).await.unwrap();
-    // A maintenance pass may have played them meanwhile: once it is done.
+    // A maintenance pass may have played the company's meanwhile: once it
+    // is done.
     let wait = Duration::from_secs(60);
-    let done = services.db.sweep_lock(EVALUATION_SWEEP, wait).await;
+    let done = services
+        .db
+        .sweep_lock(&evaluation_sweep(tenant::ID), wait)
+        .await;
     done.unwrap().release().await;
 }
 
