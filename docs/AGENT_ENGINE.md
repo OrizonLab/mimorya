@@ -220,7 +220,9 @@ Deux niveaux, cumulables :
    avec `MIMORYA_LLM_JUDGE` ; critères de qualité d'une compétence chargée, toujours
    (ADR-106)) : un appel séparé, par le modèle de contrôle que l'entreprise a choisi à
    part (ADR-108) ou, sans lui ou si son appel échoue, par celui de ses conversations, juge la réponse au
-   regard de l'objectif et des critères et renvoie `{ pass, issues[] }` via un outil structuré. Le verdict garde
+   regard de l'objectif et des critères et renvoie `{ pass, issues[] }` via un outil structuré. Ce qu'il lit
+   (demande, critères, sources, réponse) ne cache aucun caractère et aucune partie n'y
+   peut en refermer une autre (ADR-159). Le verdict garde
    ses dix premiers manquements, chacun sur une ligne, nettoyé des caractères invisibles
    et des balises d'enveloppe, coupé à 500 caractères, les autres comptés (ADR-092) ;
    un verdict illisible laisse la réponse non jugée.

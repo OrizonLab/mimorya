@@ -9281,12 +9281,18 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     des caractères ont été retirés, le même avis que pour un résultat d'outil suit
     l'enveloppe, hors d'elle : « [N caractères invisibles retirés par la plateforme] ».
     La mémoire enregistrée n'est pas modifiée : seule la copie que lit le modèle change ;
-  - **le contrôle des réponses** : dans tout ce que lit le modèle de contrôle (la
-    demande, chaque critère, le libellé de chaque source, la réponse), une balise
-    ouvrante ou fermante de ses propres parties est rendue inoffensive, comme le sont
-    les enveloppes de la plateforme (`<\/reponse_a_evaluer>`). C'est vrai quelle que
-    soit sa casse, et même avec des espaces ou des caractères invisibles autour de la
-    barre. Le texte reste lisible, et aucune partie ne peut en refermer une autre.
+  - **le contrôle des réponses** : tout ce que lit le modèle de contrôle (la demande,
+    chaque critère, le libellé de chaque source, la réponse) perd d'abord ses
+    caractères invisibles. Puis une balise ouvrante ou fermante de ses propres parties
+    y est rendue inoffensive, comme le sont les enveloppes de la plateforme
+    (`<\/reponse_a_evaluer>`). C'est vrai quelle que soit sa casse, et même avec des
+    espaces ou des caractères invisibles autour de la barre. Le texte reste lisible, et
+    aucune partie ne peut en refermer une autre ;
+  - **dans cet ordre** : partout, ce qui cache est retiré avant que les balises soient
+    neutralisées. Dans l'ordre inverse, un nom de balise coupé par un caractère
+    invisible (`</contexte\u{200b}_memoire>`) échapperait à la neutralisation, puis serait
+    reformé une fois le caractère retiré. Une seule fonction décrit ces balises, pour
+    les enveloppes comme pour le contrôle (`tags_named`, `neutralise_tags`).
 - **Alternatives écartées** :
   - **refuser l'écriture d'une mémoire qui cache des caractères** : la mémoire existante
     garderait les siens. Et une mémoire tirée d'un e-mail ou d'une conversation
@@ -9299,7 +9305,12 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
   - les règles d'écriture de la mémoire ne changent pas : ce qu'elle garde reste tel
     qu'il a été écrit, et c'est la lecture par le modèle qui le nettoie ;
   - le texte que l'utilisateur tape lui-même n'est pas nettoyé : c'est sa demande, pas
-    une donnée tierce.
+    une donnée tierce ;
+  - la demande d'un run lancé par un déclencheur contient la vraie enveloppe de ce qu'il
+    a reçu (ADR-109). Le modèle de contrôle la lit neutralisée
+    (`<\donnees_outil source="declencheur" fiabilite="non_fiable">`). C'est sans
+    danger : il traite tout ce qu'il lit comme des données, et lit encore
+    « non_fiable ».
 - **Conséquences** :
   - la réserve de l'ADR-158 sur la mémoire est levée, ainsi que la suggestion de l'audit
     de la PR #168 sur les balises du contrôle ;
@@ -9309,8 +9320,14 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       modèle sans aucun caractère invisible, son séparateur de ligne lu comme `\n`. L'avis
       suit l'enveloppe et donne le nombre retiré, et la demande de l'utilisateur vient
       ensuite, inchangée ;
+    - `crates/agent/tests/context.rs` : une mémoire dont le nom de balise est coupé par
+      une espace sans largeur, un gluon de mots ou un trait d'union conditionnel
+      (`</contexte\u{200b}_memoire>`, `<procedure\u{2060}_entreprise>`) ne ferme ni n'ouvre aucune
+      enveloppe. Si l'on neutralise avant de retirer ce qui cache, ce test échoue ;
+    - `crates/agent/src/tools/untrusted.rs` : de même pour un résultat d'outil ;
     - `crates/agent/src/runtime/verification.rs` : une demande, un critère, le libellé
       d'une source et une réponse qui écrivent les balises du contrôle (en majuscules,
-      avec des espaces ou une espace sans largeur) laissent chacune des quatre parties
-      ouverte et fermée une seule fois. Si l'on ne neutralise plus ces balises, ce test
+      avec des espaces, coupées par une espace sans largeur, fermées par un caractère
+      d'étiquette) laissent chacune des quatre parties ouverte et fermée une seule fois,
+      sans aucun caractère invisible. Si l'on ne neutralise plus ces balises, ce test
       échoue.
