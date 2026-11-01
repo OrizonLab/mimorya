@@ -82,7 +82,8 @@ Repères à l'intérieur des crates :
   `sub_runs.rs`, ADR-098 ; compétences proposées par l'agent : `skill_proposals.rs`,
   ADR-100, et leur annonce aux administrateurs : `skill_proposal_notices.rs`, ADR-102 ;
   cas d'évaluation des compétences : `skill_eval_cases.rs`, ADR-103, et leurs
-  évaluations : `skill_evaluations.rs`, ADR-104 ; comptes reliés par chacun et leur
+  évaluations : `skill_evaluations.rs`, ADR-104, ce qu'elles ont coûté jour par jour et
+  leur limite : `evaluation_spending.rs`, `evaluation_settings.rs`, ADR-154 ; comptes reliés par chacun et leur
   jeton de renouvellement scellé : `account_links.rs`, ADR-116 ; partages de connaissances entre unités :
   `knowledge_shares.rs`, ADR-143 ; passerelles et
   événements pris : `gateways.rs`, identités reliées et conversation Teams où le bot a
@@ -225,9 +226,10 @@ Repères à l'intérieur des crates :
   aux administrateurs des compétences, ADR-102),
   `api/src/services/skill_evaluations/` (évaluations des compétences : passe une à la
   fois (`pass.rs`), cas joués et jugés (`play.rs`, `case.rs`) avec leurs propres ports
-  (`ports/`), lecture (`view.rs`), ADR-104 ; une proposition de l'agent jouée sans les
-  connecteurs qui joignent l'extérieur, retirés par `services/connectors/tenant_tools.rs`,
-  ADR-153),
+  (`ports/`), lecture (`view.rs`), ADR-104 ; ce qu'elles peuvent coûter sur trente jours
+  (`spending.rs`), réglé par `services/admin/evaluation_settings.rs`, ADR-154 ; une
+  proposition de l'agent jouée sans les connecteurs qui joignent l'extérieur, retirés par
+  `services/connectors/tenant_tools.rs`, ADR-153),
   `api/src/services/documents/` (documents déposés : lecture par le processus
   `mimorya-extract`, `api/src/bin/extract.rs`, bornée en nombre, en temps et en taille,
   `extractor.rs`, fichier lu et refusé, commun au dépôt et au remplacement,

@@ -99,6 +99,8 @@ struct Setup<'a> {
     telegram_api: Option<String>,
     /// Microsoft as the Teams bots reach it, a local one (ADR-138).
     teams_api: Option<String>,
+    /// The scripted model priced (`llm::SCRIPTED_CALL_MICROS` a call).
+    priced: bool,
 }
 
 pub struct TestApi {
@@ -168,6 +170,16 @@ impl TestApi {
     }
 
     /// Same, with e-mails recorded in `mail` instead of sent.
+    /// App backed by the scripted model, priced: each call costs
+    /// `llm::SCRIPTED_CALL_MICROS`.
+    pub async fn start_priced() -> Self {
+        Self::scripted(Setup {
+            priced: true,
+            ..Setup::default()
+        })
+        .await
+    }
+
     pub async fn start_with_mailer() -> Self {
         Self::start_with_mailer_and(&[]).await
     }
@@ -208,6 +220,7 @@ impl TestApi {
             slack_api,
             telegram_api,
             teams_api,
+            priced,
         } = setup;
         limits::forget_counts().await;
         let mut vars: HashMap<&str, String> = HashMap::from([
@@ -261,6 +274,7 @@ impl TestApi {
             slack_api,
             telegram_api,
             teams_api,
+            prices: priced.then(llm::scripted_prices),
         };
         let app = build_app(config, options).await.expect("app");
         Self {

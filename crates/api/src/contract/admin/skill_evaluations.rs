@@ -71,10 +71,17 @@ impl SkillEvaluationView {
     }
 }
 
-/// `GET /admin/skills/{id}/evaluations`: the latest first.
+/// `GET /admin/skills/{id}/evaluations`: the latest first, and what the
+/// company's evaluations cost over thirty days against their limit
+/// (ADR-154).
 #[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
 pub struct SkillEvaluations {
     pub evaluations: Vec<SkillEvaluationView>,
+    pub spent_micros: i64,
+    /// What they may cost over thirty days, as `/admin/evaluation-settings`
+    /// names it.
+    pub max_cost_micros: i64,
 }
 
 /// As `skill_evaluations::CaseOutcome` stores it.

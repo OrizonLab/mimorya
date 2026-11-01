@@ -6,7 +6,7 @@ use std::sync::Arc;
 use axum::Router;
 use axum::extract::DefaultBodyLimit;
 use axum::middleware::{from_fn, from_fn_with_state};
-use mimorya_agent::llm::{PriceTable, create_provider};
+use mimorya_agent::llm::create_provider;
 use mimorya_connectors::slack::SLACK_API;
 use mimorya_connectors::teams::TeamsEndpoints;
 use mimorya_connectors::telegram::TELEGRAM_API;
@@ -130,7 +130,7 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
             secrets: SecretStore::new(config.secrets.clone()),
             listed_endpoints: config.tenant_llm_endpoints.clone(),
             factory: options.provider_factory.unwrap_or_else(default_factory),
-            prices: Arc::new(PriceTable::default()),
+            prices: Arc::new(options.prices.unwrap_or_default()),
             invalidations: invalidations.clone(),
         },
     ));

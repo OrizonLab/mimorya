@@ -156,9 +156,14 @@ pub async fn stored_evaluation(api: &TestApi, status: &str, days: i32) -> Uuid {
     id
 }
 
-/// Deletes the company's evaluations and the cases of `skill`.
+/// Deletes the company's evaluations, what they cost (ADR-154) and the
+/// cases of `skill`.
 pub async fn forget(api: &TestApi, skill: Uuid) {
     let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    sqlx::query("delete from skill_evaluation_spending")
+        .execute(&mut *tx)
+        .await
+        .unwrap();
     for statement in [
         "delete from skill_evaluations",
         "delete from skill_eval_cases where skill_id = $1",

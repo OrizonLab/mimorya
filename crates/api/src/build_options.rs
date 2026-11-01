@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use mimorya_agent::llm::LlmProvider;
+use mimorya_agent::llm::{LlmProvider, PriceTable};
 use mimorya_connectors::outbound::NetworkPolicy;
 
 use crate::mail::Mailer;
@@ -61,4 +61,7 @@ pub struct BuildOptions {
     /// Bot Framework's keys and the Teams services they write to (tests: a
     /// local one, ADR-138).
     pub teams_api: Option<String>,
+    /// Replaces the prices of the models (tests that count what calls cost:
+    /// the scripted model has none of its own).
+    pub prices: Option<PriceTable>,
 }

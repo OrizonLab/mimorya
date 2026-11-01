@@ -1,5 +1,6 @@
 //! The evaluations of the company's skills (`skill:manage`, company-wide,
-//! ADR-104): one asked for, the skill's listed, and one read case by case,
+//! ADR-104): one asked for, the skill's listed with what the company's
+//! evaluations cost over thirty days (ADR-154), and one read case by case,
 //! its answers shown to whom it ran for only.
 
 use axum::Json;
@@ -16,7 +17,7 @@ use crate::contract::admin::{
 use crate::http::{ApiResult, Body, PathId};
 use crate::plugins::Auth;
 use crate::services::admin::launch_evaluation;
-use crate::services::skill_evaluations::{evaluation, evaluations_of, shown_to};
+use crate::services::skill_evaluations::{evaluation, evaluations_of, shown_to, spending};
 
 const PERMISSION: &str = "skill:manage";
 
@@ -43,12 +44,15 @@ pub async fn list(
         return Err(DomainError::not_found("Compétence introuvable").into());
     }
     let evaluations = evaluations_of(&mut tx, skill_id).await?;
+    let spending = spending(&mut tx).await?;
     tx.commit().await?;
     Ok(Json(SkillEvaluations {
         evaluations: evaluations
             .iter()
             .map(SkillEvaluationView::from_read)
             .collect::<anyhow::Result<_>>()?,
+        spent_micros: spending.spent_micros,
+        max_cost_micros: spending.limit_micros,
     }))
 }
 
