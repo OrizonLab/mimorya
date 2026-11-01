@@ -9,12 +9,13 @@
 //! `E2E_MAIL_DIR`, where each e-mail becomes a JSON file (the ones a former
 //! start left are deleted), and `DATABASE_URL`, the database's owner, which
 //! forgets a former start's rate limit windows (`rate_limits`, ADR-152). An
-//! OpenID Connect provider listens on 127.0.0.1:4100 (`IDP_ADDRESS`, which the tests declare), signing in
-//! whoever the sign-in names, and a SAML provider on 127.0.0.1:4101
-//! (`SAML_IDP_ADDRESS`), signing in whoever is typed at its page; identity
-//! providers alone are reached on the private network, connectors keep to
-//! the public one. The DNS a domain's proof is read from is the tests' own,
-//! where they publish records on 127.0.0.1:4102 (`DNS_ADDRESS`, ADR-069).
+//! OpenID Connect provider listens on 127.0.0.1:4100 (`IDP_ADDRESS`, which
+//! the tests declare), signing in whoever the sign-in names, and a SAML
+//! provider on 127.0.0.1:4101 (`SAML_IDP_ADDRESS`), signing in whoever is
+//! typed at its page; identity providers alone are reached on the private
+//! network, connectors keep to the public one. The DNS a domain's proof is
+//! read from is the tests' own, where they publish records on
+//! 127.0.0.1:4102 (`DNS_ADDRESS`, ADR-069).
 //! The companies' Slack gateways reach a local Slack on 127.0.0.1:4103
 //! (`SLACK_ADDRESS`), which knows Léa's Slack user, lists what the
 //! gateways posted (ADR-126) and is told the permissions its token has

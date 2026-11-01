@@ -169,7 +169,6 @@ impl TestApi {
         .await
     }
 
-    /// Same, with e-mails recorded in `mail` instead of sent.
     /// App backed by the scripted model, priced: each call costs
     /// `llm::SCRIPTED_CALL_MICROS`.
     pub async fn start_priced() -> Self {
@@ -180,6 +179,7 @@ impl TestApi {
         .await
     }
 
+    /// Same, with e-mails recorded in `mail` instead of sent.
     pub async fn start_with_mailer() -> Self {
         Self::start_with_mailer_and(&[]).await
     }

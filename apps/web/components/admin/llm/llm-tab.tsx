@@ -4,6 +4,7 @@ import { Loaded } from '@/components/ui';
 import { useApiData, type LlmView } from '@/lib/api';
 import { ConversationModel } from './conversation-model';
 import { EmbeddingSection } from './embedding-section';
+import { EvaluationSection } from './evaluation-section';
 import { LessonSection } from './lesson-section';
 import { MissionSection } from './mission-section';
 import { ReviewModel } from './review-model';
@@ -12,7 +13,8 @@ import { ReviewModel } from './review-model';
  * platform's or its own, and for reviewing their answers, one apart if it
  * chooses (ADR-108); for searching its memory by meaning, its own if any
  * (ADR-074); whether the first rereads finished conversations for a lesson
- * (ADR-076); and how far a mission may go (ADR-093). */
+ * (ADR-076); how far a mission may go (ADR-093); and what the skill
+ * evaluations may cost over thirty days (ADR-154). */
 export function LlmTab() {
   return (
     <div className="flex flex-col gap-6">
@@ -20,6 +22,7 @@ export function LlmTab() {
       <EmbeddingSection />
       <LessonSection />
       <MissionSection />
+      <EvaluationSection />
     </div>
   );
 }
