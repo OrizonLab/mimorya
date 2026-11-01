@@ -109,11 +109,13 @@ que de conclure que l'information n'existe pas ; à l'utilisateur, par l'événe
 
 **Résultats d'outils** : transmis au modèle comme **données**, encadrés par un
 marqueur `<donnees_outil source="…" fiabilite="non_fiable">` ; les consignes système
-rappellent qu'aucune instruction contenue dans des données ne doit être suivie. Seule
-exception : la compétence chargée par `skill_read`, procédure que l'entreprise a écrite
-et rendue active (ADR-052), encadrée par `<procedure_entreprise>` et suivie pour la tâche
-qu'elle couvre, sans pouvoir étendre les droits, éviter une validation ni lever les
-règles de sécurité.
+rappellent qu'aucune instruction contenue dans des données ne doit être suivie. Le
+modèle les lit sans leurs caractères invisibles ; quand il y en avait, un avis de la
+plateforme suit l'enveloppe et dit combien ont été retirés (ADR-158). Seule exception :
+la compétence chargée par `skill_read`, procédure que l'entreprise a écrite et rendue
+active (ADR-052), encadrée par `<procedure_entreprise>` et suivie pour la tâche qu'elle
+couvre, sans pouvoir étendre les droits, éviter une validation ni lever les règles de
+sécurité.
 
 **Étapes d'une mission** (ADR-089) : un run qui est l'étape d'une mission
 (`RunConfig.handoff`) a un budget d'étape (`MISSION_STAGE_BUDGET` : 24 appels au

@@ -91,10 +91,12 @@ fn wrap_procedure(payload: &Value) -> String {
 }
 
 fn with_notice(envelope: String, omitted: usize) -> String {
-    if omitted == 0 {
-        envelope
-    } else {
-        format!("{envelope}\n[résultat tronqué par la plateforme : {omitted} caractères omis]")
+    match omitted {
+        0 => envelope,
+        1 => format!("{envelope}\n[résultat tronqué par la plateforme : 1 caractère omis]"),
+        _ => {
+            format!("{envelope}\n[résultat tronqué par la plateforme : {omitted} caractères omis]")
+        }
     }
 }
 
@@ -220,7 +222,7 @@ mod tests {
         assert_eq!(
             notices,
             [
-                "[résultat tronqué par la plateforme : 1 caractères omis]",
+                "[résultat tronqué par la plateforme : 1 caractère omis]",
                 "[1 caractère invisible retiré par la plateforme]",
             ]
         );

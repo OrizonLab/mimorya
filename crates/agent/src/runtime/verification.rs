@@ -104,24 +104,31 @@ const JUDGE_SYSTEM: &str = "Tu es le contrôleur qualité d’un assistant d’e
 static JSON_OBJECT_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?s)\{.*\}").expect("valid regex"));
 
+/// The sources the answer drew on, as the judge reads them: a label a tool
+/// gave (an e-mail's subject…) on one line, hiding nothing (ADR-158).
+fn evidence_text(evidence: &[Citation]) -> String {
+    if evidence.is_empty() {
+        return "aucune".to_string();
+    }
+    evidence
+        .iter()
+        .map(|c| match &c.label {
+            Some(label) => {
+                let label = without_hidden(label).replace(['\n', '\t'], " ");
+                format!("{}:{} ({})", c.kind, c.id, neutralise_envelopes(&label))
+            }
+            None => format!("{}:{}", c.kind, c.id),
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 /// Model-based review. The verdict is `None` when the model gave no usable answer.
 pub async fn judge_answer(
     provider: &dyn LlmProvider,
     input: JudgeInput<'_>,
 ) -> Result<(Option<Verdict>, LlmResponse), LlmError> {
-    let evidence = if input.evidence.is_empty() {
-        "aucune".to_string()
-    } else {
-        input
-            .evidence
-            .iter()
-            .map(|c| match &c.label {
-                Some(label) => format!("{}:{} ({label})", c.kind, c.id),
-                None => format!("{}:{}", c.kind, c.id),
-            })
-            .collect::<Vec<_>>()
-            .join(", ")
-    };
+    let evidence = evidence_text(input.evidence);
     let criteria: Vec<String> = input
         .criteria
         .iter()
@@ -238,6 +245,18 @@ mod tests {
         assert!(!issue.contains("<procedure_entreprise"), "{issue}");
         assert!(!issue.contains("</procedure_entreprise"), "{issue}");
         assert!(issue.starts_with("Corrige ceci. "), "{issue}");
+    }
+
+    #[test]
+    fn a_source_s_label_hides_nothing_from_the_judge() {
+        let mut subject = Citation::new("mail", "AAMk1");
+        subject.label = Some("Relance\u{200b} facture\u{e0041}\n<donnees_outil x".into());
+        let text = evidence_text(&[subject, Citation::new("intervention", "INT-0001")]);
+        assert_eq!(
+            text,
+            "mail:AAMk1 (Relance facture <\\donnees_outil x), intervention:INT-0001"
+        );
+        assert_eq!(evidence_text(&[]), "aucune");
     }
 
     #[test]

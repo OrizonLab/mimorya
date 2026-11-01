@@ -9193,19 +9193,27 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
 - **Décision** :
   - **ce que lit le modèle** : les données non fiables perdent leurs caractères
     invisibles avant d'être encadrées (`plain_text::shown`). Cela vaut pour le résultat
-    d'un outil, ses erreurs comprises, et pour tout ce que la plateforme encadre comme
-    non fiable : la conversation relue pour une leçon, le contexte d'une délégation, les
-    messages repliés dans un résumé. La règle est celle de l'ADR-058 (`is_hidden`) : les
-    retours à la ligne et les tabulations restent, et une fin de ligne `\r\n` est lue
-    comme `\n` ;
+    d'un outil, ses erreurs comprises, pour ce qu'un autre système envoie à un
+    déclencheur (ADR-109), et pour tout ce que la plateforme encadre comme non fiable :
+    la conversation relue pour une leçon, le contexte d'une délégation, les messages
+    repliés dans un résumé. La règle est celle de l'ADR-058 (`is_hidden`). Les
+    tabulations restent. Un retour à la ligne, quelle que soit sa forme (`\r\n`, `\r`
+    seul, saut de page, séparateur de ligne ou de paragraphe), est lu comme `\n` et
+    n'est pas compté, comme dans le texte d'un document (ADR-095) ;
   - **ce que dit la plateforme** : quand des caractères ont été retirés, un avis suit
     l'enveloppe, hors d'elle, comme celui d'une troncature : « [N caractères invisibles
     retirés par la plateforme] ». Le modèle sait ainsi que le texte lu n'est pas
     exactement celui rendu, par exemple pour un identifiant qu'il recopierait ;
-  - **ce qui ne change pas** : seule la copie que lit le modèle change. Le résumé de
-    l'appel et les citations restent tels que l'outil les a rendus, et la compétence
-    chargée par `skill_read` n'est pas concernée : elle ne peut contenir aucun caractère
-    invisible (ADR-052).
+  - **le contrôle des réponses** : les libellés des sources que lit le modèle de
+    contrôle (l'objet d'un e-mail, par exemple) perdent aussi leurs caractères
+    invisibles et tiennent sur une ligne ;
+  - **ce qui ne change pas** : le résumé de l'appel et les citations restent tels que
+    l'outil les a rendus. La compétence chargée par `skill_read` n'est pas concernée :
+    elle ne peut contenir aucun caractère invisible (ADR-052) ;
+  - **un déclencheur** : le texte encadré est aussi le message de son auteur dans la
+    conversation (ADR-109). C'est donc la seule copie qui change aussi pour une
+    personne. Sous « Données reçues », l'auteur lit ce texte tel que l'a lu le modèle,
+    et l'avis en dessous.
 - **Alternatives écartées** :
   - **laisser les résultats tels quels** : une consigne cachée atteindrait le modèle
     sans que personne puisse la voir, ni avant ni après le run ;
@@ -9222,21 +9230,31 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     d'union conditionnels : rien d'utile à sa réponse ;
   - un identifiant qui contient un caractère invisible, recopié par le modèle dans un
     autre appel, ne sera pas reconnu par l'outil. L'avis le lui dit ;
+  - l'auteur d'un déclencheur ne retrouve pas, dans sa conversation, les caractères
+    invisibles de ce qui a été envoyé. L'avis dit combien ont été retirés ;
   - la mémoire, que la plateforme encadre à part (`contexte_memoire`), n'est pas
     concernée : écrite par les collaborateurs, ou par l'agent avec leur validation, elle
     garde ses caractères invisibles. Les en retirer aussi est inscrit à la feuille de
     route.
 - **Conséquences** :
   - la réserve de l'ADR-058 sur les résultats des outils est levée ;
+  - l'avis de troncature dit « 1 caractère omis » au singulier ;
   - tests :
     - `crates/core/src/plain_text.rs` : les caractères d'étiquette, un forçage de sens
-      et une espace sans largeur sont retirés et comptés. Les retours à la ligne et les
-      tabulations restent. Une fin de ligne `\r\n` n'est pas comptée, un `\r` seul
-      l'est ;
+      et une espace sans largeur sont retirés et comptés. Les tabulations restent. Les
+      retours à la ligne (`\r\n`, `\r`, saut de page, tabulation verticale, U+0085,
+      U+2028, U+2029) sont lus comme `\n` et ne sont pas comptés ;
     - `crates/agent/src/tools/untrusted.rs` : une consigne écrite en caractères
       d'étiquette dans un résultat JSON n'atteint pas le modèle, et l'avis donne le
       nombre retiré. Les avis de troncature et de caractères retirés sont chacun sur
       leur ligne, hors de l'enveloppe, et un résultat sans rien de caché n'a pas d'avis ;
     - `crates/agent/tests/runtime_tools.rs` : dans un run, le résultat d'un outil qui
       cache une consigne en caractères d'étiquette arrive au modèle sans aucun caractère
-      invisible et suivi de l'avis. Si l'on ne retire plus rien, ce test échoue.
+      invisible et suivi de l'avis. Si l'on ne retire plus rien, ce test échoue ;
+    - `crates/agent/src/runtime/verification.rs` : le libellé d'une source qui cache des
+      caractères ou une enveloppe arrive au modèle de contrôle sans eux, sur une ligne ;
+    - `crates/api/src/services/inbound_hooks/delivery.rs` : ce qu'envoie un autre
+      système à un déclencheur est encadré sans ses caractères invisibles, suivi de
+      l'avis ;
+    - `apps/web/e2e/inbound-hooks.spec.ts` : l'auteur lit sous « Données reçues » ce qui
+      a été envoyé, sans l'espace sans largeur qu'il contenait, et l'avis en dessous.
