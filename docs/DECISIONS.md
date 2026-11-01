@@ -9029,4 +9029,19 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     dépense sont lues, puis une limite est réglée et relue après rechargement, comme
     l'API l'a enregistrée. Elle est montrée avec la dépense dans les évaluations d'une
     compétence, puis la page revient à la limite de la plateforme. Le test remet
-    toujours la limite de la plateforme, que les fichiers suivants attendent.
+    toujours la limite de la plateforme, pour laisser l'entreprise de démonstration
+    telle que les fichiers suivants la trouvent.
+- **Complément (lot 21c, suites de l'audit)** :
+  - le champ d'un coût en USD (`admin/llm/cost-field.tsx`) et la conversion entre
+    dollars et micro-dollars (`dollarsOf`, `microsOf`, `lib/format.ts`) sont communs
+    aux limites des missions et des évaluations ;
+  - la section s'appelle `EvaluationLimitSection` (`evaluation-limit-section.tsx`), pour
+    ne pas se confondre avec la liste des évaluations d'une compétence ;
+  - « Enregistrer » compare la valeur en micro-dollars (et les étapes en nombre) : la
+    même limite écrite autrement (`2.50`, `06`) n'est rien à enregistrer, dans les
+    deux sections ;
+  - le serveur des tests de bout en bout écrit au démarrage ce qu'ont dépensé les
+    évaluations de l'entreprise de démonstration (1,234 USD), pour que l'écran montre
+    une dépense non nulle. Les tests le lisent dans « Modèle d'IA » et dans
+    « Compétences » (`evaluation-limit.spec.ts`), et vérifient que la même limite écrite
+    autrement ne s'enregistre pas (avec `mission-limits.spec.ts`).

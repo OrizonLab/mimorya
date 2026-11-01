@@ -1,10 +1,12 @@
 // What the company's skill evaluations may cost over thirty days (ADR-154,
 // ADR-155): Paul sets the limit in « Modèle d'IA », read back once the page
-// is reloaded, sees what was spent there and beside the evaluations of a
-// skill in « Compétences », then goes back to the platform's limit.
-// Whatever happens, the platform's limit is set again: the next files
-// expect it (`skill-evaluations.spec.ts`). The rules themselves are tested
-// on the API (`crates/api/tests/evaluation_limits.rs`).
+// is reloaded, sees what was spent there (what the server wrote at start,
+// `e2e_server/skill_evaluations.rs`) and beside the evaluations of a skill
+// in « Compétences », then goes back to the platform's limit. The same
+// amount written otherwise saves nothing. Whatever happens, the platform's
+// limit is set again, to leave the demo company as the next files find it.
+// The rules themselves are tested on the API
+// (`crates/api/tests/evaluation_limits.rs`).
 import type { Page } from '@playwright/test';
 import type { EvaluationSettingsView, SkillEvaluations, SkillList } from '../lib/api/contract';
 import { openAdmin } from './support/admin';
@@ -38,18 +40,23 @@ test('the company sets what its skill evaluations may cost', async ({ page }) =>
   const cost = form.getByLabel('Coût au plus sur 30 jours (USD)');
   await expect(cost).toHaveValue('50');
   await expect(form.getByText('Limite de la plateforme, faute de')).toBeVisible();
-  // The scripted model has no price: nothing spent.
   // Amounts as French reads them, a no-break space before the currency.
-  await expect(form.getByText(/^Dépensé sur les 30 derniers jours : 0,000\s\$US\.$/)).toBeVisible();
-  await expect(form.getByRole('button', { name: 'Enregistrer' })).toBeDisabled();
+  await expect(form.getByText(/^Dépensé sur les 30 derniers jours : 1,234\s\$US\.$/)).toBeVisible();
+  const save = form.getByRole('button', { name: 'Enregistrer' });
+  await expect(save).toBeDisabled();
+  // The limit saved, written otherwise: nothing to save.
+  await cost.fill('50.00');
+  await expect(save).toBeDisabled();
   await cost.fill('2.5');
-  await form.getByRole('button', { name: 'Enregistrer' }).click();
+  await save.click();
   // Anchored and case-sensitive: the platform's message holds these words too.
   await expect(form.getByText(/^Limite propre à votre entreprise\./)).toBeVisible();
 
   // Read back from the API once the page is reloaded.
   await openTheTab(page);
   await expect(cost).toHaveValue('2.5');
+  await cost.fill('2.50');
+  await expect(save).toBeDisabled();
   const stored = (await (await page.request.get(SETTINGS)).json()) as EvaluationSettingsView;
   expect([stored.maxCostMicros, stored.own]).toEqual([2_500_000, true]);
   await noError(page);
@@ -59,14 +66,14 @@ test('the company sets what its skill evaluations may cost', async ({ page }) =>
   await page.getByRole('button', { name: SKILL, exact: true }).click();
   const evaluations = page.getByRole('region', { name: 'Évaluations' });
   await expect(evaluations).toContainText(
-    /Évaluations de l’entreprise sur trente jours : 0,000\s\$US dépensés, pour une limite de 2,500\s\$US\./,
+    /Évaluations de l’entreprise sur trente jours : 1,234\s\$US dépensés, pour une limite de 2,500\s\$US\./,
   );
   const { skills } = (await (await page.request.get('/api/admin/skills')).json()) as SkillList;
   const skill = skills.find((s) => s.name === SKILL);
   const listed = (await (
     await page.request.get(`/api/admin/skills/${skill?.id}/evaluations`)
   ).json()) as SkillEvaluations;
-  expect([listed.spentMicros, listed.maxCostMicros]).toEqual([0, 2_500_000]);
+  expect([listed.spentMicros, listed.maxCostMicros]).toEqual([1_234_000, 2_500_000]);
 
   // Back to the platform's limit.
   await openTheTab(page);

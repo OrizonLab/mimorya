@@ -4,7 +4,7 @@ import { Loaded } from '@/components/ui';
 import { useApiData, type LlmView } from '@/lib/api';
 import { ConversationModel } from './conversation-model';
 import { EmbeddingSection } from './embedding-section';
-import { EvaluationSection } from './evaluation-section';
+import { EvaluationLimitSection } from './evaluation-limit-section';
 import { LessonSection } from './lesson-section';
 import { MissionSection } from './mission-section';
 import { ReviewModel } from './review-model';
@@ -22,7 +22,7 @@ export function LlmTab() {
       <EmbeddingSection />
       <LessonSection />
       <MissionSection />
-      <EvaluationSection />
+      <EvaluationLimitSection />
     </div>
   );
 }

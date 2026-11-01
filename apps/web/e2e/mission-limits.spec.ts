@@ -1,5 +1,6 @@
 // A company's own mission limits (ADR-093): Paul sets them in « Modèle
-// d'IA », read back once the page is reloaded; a mission Emma entrusts
+// d'IA » (the same limits written otherwise save nothing), read back once
+// the page is reloaded; a mission Emma entrusts
 // then keeps them, whose model takes its time, and is stopped. Back to the
 // platform's limits, the page says so. Whatever happens, the platform's
 // limits are set again and Emma's missions under way stopped: the next
@@ -46,6 +47,10 @@ test('a mission keeps the limits its company set', async ({ page, newContext }) 
   await expect(stages).toHaveValue('6');
   await expect(cost).toHaveValue('12');
   await expect(form.getByText('Limites de la plateforme, faute de')).toBeVisible();
+  // The limits saved, written otherwise: nothing to save.
+  await stages.fill('06');
+  await cost.fill('12.0');
+  await expect(form.getByRole('button', { name: 'Enregistrer' })).toBeDisabled();
   await stages.fill('3');
   await cost.fill('5');
   await form.getByRole('button', { name: 'Enregistrer' }).click();
