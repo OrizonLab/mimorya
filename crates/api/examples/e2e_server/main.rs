@@ -8,8 +8,8 @@
 //! Reads the usual configuration (`DATABASE_APP_URL`, `WEB_ORIGIN`…),
 //! `E2E_MAIL_DIR`, where each e-mail becomes a JSON file (the ones a former
 //! start left are deleted), and `DATABASE_URL`, the database's owner, which
-//! forgets a former start's rate limit windows (`rate_limits`, ADR-152). An OpenID Connect provider listens on
-//! 127.0.0.1:4100 (`IDP_ADDRESS`, which the tests declare), signing in
+//! forgets a former start's rate limit windows (`rate_limits`, ADR-152). An
+//! OpenID Connect provider listens on 127.0.0.1:4100 (`IDP_ADDRESS`, which the tests declare), signing in
 //! whoever the sign-in names, and a SAML provider on 127.0.0.1:4101
 //! (`SAML_IDP_ADDRESS`), signing in whoever is typed at its page; identity
 //! providers alone are reached on the private network, connectors keep to
@@ -219,6 +219,7 @@ async fn main() -> anyhow::Result<()> {
             telegram_api: Some(telegram.url.clone()),
             // Its Teams bot reaches the local Microsoft (ADR-139).
             teams_api: Some(teams.url.clone()),
+            prices: None,
         },
     )
     .await?;

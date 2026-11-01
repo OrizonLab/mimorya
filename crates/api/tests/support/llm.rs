@@ -1,11 +1,13 @@
 //! A company's own model providers: master keys, a key to store, the
 //! factory that builds them, and a turn of conversation to see which
-//! provider answers.
+//! provider answers. And the scripted model's prices, when a test counts
+//! what its calls cost.
 
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use axum::http::StatusCode;
-use mimorya_agent::llm::{LlmProvider, ProviderConfig};
+use mimorya_agent::llm::{LlmProvider, ModelPrice, PriceTable, ProviderConfig};
 use mimorya_agent::testing::ScriptedProvider;
 use mimorya_api::secrets::PUBLIC_TEST_MASTER_KEYS;
 use mimorya_api::services::ProviderFactory;
@@ -22,6 +24,23 @@ pub const ENDPOINT: &str = "http://ollama.test:11434/v1";
 /// The model a company chooses to review its answers (ADR-108): built as
 /// `TestApi::review_model`.
 pub const REVIEW_MODEL: &str = "modele-de-controle";
+
+/// What a call of the scripted model costs when priced
+/// (`TestApi::start_priced`): its 100 tokens in at 1500 USD a million, its
+/// 20 out at 2500 USD a million.
+pub const SCRIPTED_CALL_MICROS: i64 = 200_000;
+
+/// The prices that make each call of the scripted model cost
+/// `SCRIPTED_CALL_MICROS`.
+pub fn scripted_prices() -> PriceTable {
+    let price = ModelPrice {
+        input_per_mtok: 1500.0,
+        output_per_mtok: 2500.0,
+        cache_read_per_mtok: None,
+        cache_write_per_mtok: None,
+    };
+    PriceTable::new(HashMap::from([("scripted-model".to_string(), price)]))
+}
 
 /// Builds a company's own providers, each configuration recorded in
 /// `built`: `review` for `REVIEW_MODEL`, `company` for any other.

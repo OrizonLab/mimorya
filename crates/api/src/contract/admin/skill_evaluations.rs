@@ -79,7 +79,9 @@ impl SkillEvaluationView {
 pub struct SkillEvaluations {
     pub evaluations: Vec<SkillEvaluationView>,
     pub spent_micros: i64,
-    pub limit_micros: i64,
+    /// What they may cost over thirty days, as `/admin/evaluation-settings`
+    /// names it.
+    pub max_cost_micros: i64,
 }
 
 /// As `skill_evaluations::CaseOutcome` stores it.

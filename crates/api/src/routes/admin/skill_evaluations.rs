@@ -52,7 +52,7 @@ pub async fn list(
             .map(SkillEvaluationView::from_read)
             .collect::<anyhow::Result<_>>()?,
         spent_micros: spending.spent_micros,
-        limit_micros: spending.limit_micros,
+        max_cost_micros: spending.limit_micros,
     }))
 }
 

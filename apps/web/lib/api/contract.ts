@@ -2192,7 +2192,12 @@ regressions: number, launchedBy: string | null, costMicros: number, createdAt: s
  * company's evaluations cost over thirty days against their limit
  * (ADR-154).
  */
-export type SkillEvaluations = { evaluations: Array<SkillEvaluationView>, spentMicros: number, limitMicros: number, };
+export type SkillEvaluations = { evaluations: Array<SkillEvaluationView>, spentMicros: number,
+/**
+ * What they may cost over thirty days, as `/admin/evaluation-settings`
+ * names it.
+ */
+maxCostMicros: number, };
 
 /**
  * `GET /admin/skills`.

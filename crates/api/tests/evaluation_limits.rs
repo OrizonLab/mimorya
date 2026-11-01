@@ -1,9 +1,10 @@
 //! What the company's skill evaluations may cost over thirty days
 //! (ADR-154): the platform's limit unless those who manage the company's
 //! settings set its own, within the platform's bounds, audited; not those
-//! who evaluate the skills. Each case played is counted; an evaluation is
-//! refused once the limit is reached, and one under way ends there. The
-//! skill's evaluations are listed with what was spent.
+//! who evaluate the skills. Each case played counts what it cost; an
+//! evaluation is refused once the limit is reached, and one under way ends
+//! there, at the case its played ones reached it. The skill's evaluations
+//! are listed with what was spent.
 
 mod support;
 
@@ -12,6 +13,7 @@ use mimorya_core::demo::{tenant, user};
 use mimorya_db::seed::DEMO_SKILL_ID;
 use serde_json::{Value, json};
 use support::accounts::{activate, create_partial_admin, holder_of};
+use support::llm::SCRIPTED_CALL_MICROS;
 use support::skill_evaluations::{
     evaluations, forget, launch, launched, new_version, play, played, status_of, write_case,
 };
@@ -20,6 +22,7 @@ use support::{Client, TestApi};
 
 const SETTINGS: &str = "/admin/evaluation-settings";
 const LATE: &str = "Quels retards cette semaine ?";
+const FOLLOW_UPS: &str = "Quels suivis faut-il planifier ?";
 const REFUSAL: &str = "Les évaluations de l’entreprise ont coûté 1,00 USD sur les trente \
                        derniers jours, pour une limite de 1,00 USD : ceux qui gèrent ses \
                        réglages peuvent la relever.";
@@ -49,15 +52,6 @@ async fn spent_today(api: &TestApi, cost_micros: i64) {
     tx.commit().await.unwrap();
 }
 
-/// The days of spending the company holds.
-async fn spending_days(api: &TestApi) -> i64 {
-    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
-    sqlx::query_scalar("select count(*) from skill_evaluation_spending")
-        .fetch_one(&mut *tx)
-        .await
-        .unwrap()
-}
-
 /// The audited changes of the company's limit: action and metadata.
 async fn changes(api: &TestApi) -> Vec<(String, Value)> {
     let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
@@ -70,15 +64,9 @@ async fn changes(api: &TestApi) -> Vec<(String, Value)> {
     .unwrap()
 }
 
-/// The demo company as the seed left it: no spending, the platform's
-/// limit, no evaluation, the weekly report alone.
+/// The demo company as the seed left it: the platform's limit, no
+/// evaluation nor spending, the weekly report alone.
 async fn leave(api: &TestApi, paul: &Client<'_>) {
-    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
-    sqlx::query("delete from skill_evaluation_spending")
-        .execute(&mut *tx)
-        .await
-        .unwrap();
-    tx.commit().await.unwrap();
     assert_eq!(paul.delete(SETTINGS).await.status, StatusCode::OK);
     forget(api, DEMO_SKILL_ID).await;
     restore_the_report(api).await;
@@ -172,7 +160,7 @@ async fn an_evaluation_is_refused_once_the_limit_is_reached() {
         (
             &listed["evaluations"],
             &listed["spentMicros"],
-            &listed["limitMicros"]
+            &listed["maxCostMicros"]
         ),
         (&json!([]), &json!(1_000_000), &json!(1_000_000))
     );
@@ -193,37 +181,44 @@ async fn an_evaluation_is_refused_once_the_limit_is_reached() {
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
-async fn each_case_is_counted_and_an_evaluation_under_way_ends_at_the_limit() {
-    let api = TestApi::start().await;
+async fn played_cases_count_their_cost_until_the_limit_ends_the_evaluation() {
+    let api = TestApi::start_priced().await;
     let paul = api.sign_in(user::PAUL).await;
     let version = new_version(&paul).await;
     write_case(&paul, DEMO_SKILL_ID, "Retards", LATE).await;
+    write_case(&paul, DEMO_SKILL_ID, "Suivis", FOLLOW_UPS).await;
     set(&paul, 1_000_000).await;
-    assert_eq!(spending_days(&api).await, 0);
-
-    // Played, its cases are counted in today's spending (nothing, with a
-    // model the platform has no price for).
-    let mut script = played(false, "Trois retards cette semaine.", true);
-    script.extend(played(false, "Trois retards, par technicien.", true));
+    // Each case, for each version, costs the agent's call and the judge's.
+    let case = 2 * SCRIPTED_CALL_MICROS;
+    let mut script = Vec::new();
+    for _ in 0..3 {
+        script.extend(played(false, "Trois retards cette semaine.", true));
+    }
     api.script(script);
-    launched(&paul, DEMO_SKILL_ID, version).await;
-    play(&api).await;
-    assert_eq!(
-        evaluations(&paul, DEMO_SKILL_ID).await[0]["status"],
-        "completed"
-    );
-    assert_eq!(spending_days(&api).await, 1);
 
-    // Asked for under the limit, then reached before its first case: it
-    // ends there, failed, saying why.
     let id = launched(&paul, DEMO_SKILL_ID, version).await;
-    spent_today(&api, 1_000_000).await;
     play(&api).await;
+    // 0.40 then 0.80 USD spent: under the limit, the third case is played;
+    // 1.20 USD spent before the fourth: the evaluation ends there.
     let (status, failure, results) = status_of(&api, &id).await;
+    let reached = "Les évaluations de l’entreprise ont coûté 1,20 USD sur les trente derniers \
+                   jours, pour une limite de 1,00 USD : ceux qui gèrent ses réglages peuvent la \
+                   relever.";
     assert_eq!(
         (status.as_str(), failure.as_deref(), results),
-        ("failed", Some(REFUSAL), 0)
+        ("failed", Some(reached), 3)
     );
     assert_eq!(api.model.as_ref().unwrap().remaining(), 0);
+    let spent = paul.get(SETTINGS).await.json()["spentMicros"].clone();
+    assert_eq!(spent, json!(3 * case));
+    assert_eq!(
+        evaluations(&paul, DEMO_SKILL_ID).await[0]["costMicros"],
+        json!(3 * case)
+    );
+
+    // Reached, it refuses the next one.
+    let refused = launch(&paul, DEMO_SKILL_ID, version).await;
+    assert_eq!(refused.status, StatusCode::CONFLICT, "{}", refused.text());
+    assert!(refused.error_message().contains("1,20 USD"));
     leave(&api, &paul).await;
 }

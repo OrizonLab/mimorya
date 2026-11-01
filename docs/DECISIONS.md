@@ -8944,7 +8944,8 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       raison, avec les résultats qu'elle a. Elle dépasse donc la limite d'un cas au plus
       (0,50 USD et un jugement) ;
   - **lecture** : la liste des évaluations d'une compétence donne aussi la dépense et la
-    limite, que l'écran « Compétences » montrera (lot 21b).
+    limite (`spentMicros`, `maxCostMicros`, nommés comme dans
+    `/admin/evaluation-settings`), que l'écran « Compétences » montrera (lot 21b).
 - **Alternatives écartées** :
   - additionner le coût des évaluations gardées : une compétence élague ses anciennes
     évaluations, et la somme baisserait à chaque nouvelle ;
@@ -8957,8 +8958,9 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
   - borner chaque évaluation au lieu de leur somme : une évaluation est déjà bornée par
     ses cas (ADR-104).
 - **Réserves assumées** :
-  - la dépense comptée est celle des cas écrits : un cas que l'arrêt du service
-    interrompt avant son écriture n'est pas compté ;
+  - la dépense comptée est celle des cas arrivés à leur enregistrement, écrits ou non :
+    un cas que l'arrêt du service interrompt avant, ou qu'une erreur interne arrête
+    (ce qu'il a coûté jusque-là est alors perdu), n'est pas compté ;
   - un modèle sans prix connu coûte 0 (`llm/pricing.rs`), comme pour les runs : seul
     le nombre d'évaluations le borne alors, une à la fois ;
   - l'écran de la limite et de la dépense est le lot 21b.
@@ -8968,8 +8970,9 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     - `crates/api/src/services/skill_evaluations/spending.rs` : bornes, limite atteinte
       une fois dépensée, refus dit en USD ;
     - `crates/db/tests/evaluation_spending.rs` : chaque coût ajouté à celui du jour,
-      rien de négatif, fenêtre de trente jours, jours anciens supprimés, dépense d'une
-      autre entreprise à part, bornes de la limite tenues par la base ;
+      rien de négatif, fenêtre de trente jours, jours anciens supprimés ; la dépense et
+      la limite d'une autre entreprise, enregistrées, ni lues, ni retirées, ni purgées,
+      et rien n'est écrit pour elle ; bornes de la limite tenues par la base ;
     - `crates/api/tests/evaluation_limits.rs` :
       - limite de la plateforme, puis réglée dans les bornes, avec la dépense, et
         retour à celle de la plateforme, tracés ;
@@ -8979,5 +8982,10 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
         compétences ;
       - évaluation refusée une fois la limite atteinte, la liste donnant dépense et
         limite, puis jouée une fois la limite relevée ;
-      - les cas joués comptés dans la dépense du jour ; une évaluation demandée sous la
-        limite, atteinte avant son premier cas, s'arrête échouée en disant pourquoi.
+      - avec un modèle tarifé pour les tests (`BuildOptions::prices`), chaque cas joué
+        ajoute ce qu'il a coûté : ceux d'une évaluation atteignent la limite, qui l'arrête
+        au cas suivant, échouée en disant pourquoi, la dépense égale à son coût, et la
+        suivante est refusée ;
+    - `crates/api/tests/skill_evaluation_rules.rs` : le cas qu'une passe a joué pour une
+      évaluation qu'une autre a terminée entre-temps n'est pas écrit, mais son coût est
+      compté.

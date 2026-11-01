@@ -6,7 +6,8 @@
 //! ends, failed, once whom it runs for may no longer administer the skills
 //! or use the agent (their account disabled, their role narrowed), or when
 //! a stopped process left it running, and is written no further; a pass
-//! that finds its own ended by another stops. Only a process that executes
+//! that finds its own ended by another stops, what its case cost counted
+//! all the same (ADR-154). Only a process that executes
 //! runs plays them, one at a time; the last five of a skill are kept,
 //! ninety days at most. How one is played: `skill_evaluations.rs`.
 
@@ -23,6 +24,7 @@ use mimorya_db::testing::OTHER_TENANT_ID;
 use serde_json::json;
 use support::accounts::holder_of;
 use support::evaluation_passes::{TAKEN_OVER, forget_elsewhere, lock_lost, taken_over};
+use support::llm::SCRIPTED_CALL_MICROS;
 use support::queue::API;
 use support::skill_evaluations::{
     count, detail, evaluations, executing, forget, launch, launched, new_version, play, status_of,
@@ -260,7 +262,7 @@ async fn one_left_running_by_a_stopped_process_fails_and_one_process_plays_at_a_
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
 async fn a_pass_whose_evaluation_another_ended_writes_nothing_more_and_stops() {
-    let api = TestApi::start().await;
+    let api = TestApi::start_priced().await;
     let paul = api.sign_in(user::PAUL).await;
     let version = new_version(&paul).await;
     write_case(&paul, DEMO_SKILL_ID, "Retards", "Quels retards ?").await;
@@ -278,6 +280,10 @@ async fn a_pass_whose_evaluation_another_ended_writes_nothing_more_and_stops() {
     let listed = evaluations(&paul, DEMO_SKILL_ID).await;
     assert_eq!(listed[0]["status"], "queued", "{}", listed[0]);
     assert_eq!(listed[1]["id"], id.as_str());
+    // What the case it played cost is spent all the same (ADR-154): the
+    // agent's call and the judge's.
+    let spent = paul.get("/admin/evaluation-settings").await.json()["spentMicros"].clone();
+    assert_eq!(spent, json!(2 * SCRIPTED_CALL_MICROS));
     forget(&api, DEMO_SKILL_ID).await;
 }
 
