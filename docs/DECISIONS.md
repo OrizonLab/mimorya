@@ -8945,7 +8945,7 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       (0,50 USD et un jugement) ;
   - **lecture** : la liste des évaluations d'une compétence donne aussi la dépense et la
     limite (`spentMicros`, `maxCostMicros`, nommés comme dans
-    `/admin/evaluation-settings`), que l'écran « Compétences » montrera (lot 21b).
+    `/admin/evaluation-settings`), que l'écran « Compétences » montre (lot 21b, ADR-155).
 - **Alternatives écartées** :
   - additionner le coût des évaluations gardées : une compétence élague ses anciennes
     évaluations, et la somme baisserait à chaque nouvelle ;
@@ -8963,7 +8963,7 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     (ce qu'il a coûté jusque-là est alors perdu), n'est pas compté ;
   - un modèle sans prix connu coûte 0 (`llm/pricing.rs`), comme pour les runs : seul
     le nombre d'évaluations le borne alors, une à la fois ;
-  - l'écran de la limite et de la dépense est le lot 21b.
+  - l'écran de la limite et de la dépense est le lot 21b (ADR-155).
 - **Conséquences** :
   - la réserve de l'ADR-104 est levée ;
   - tests :
@@ -8989,3 +8989,44 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     - `crates/api/tests/skill_evaluation_rules.rs` : le cas qu'une passe a joué pour une
       évaluation qu'une autre a terminée entre-temps n'est pas écrit, mais son coût est
       compté.
+
+## ADR-155 — Limite de coût des évaluations dans « Modèle d'IA », dépense montrée dans « Compétences »
+
+- **Date** : 2026-11-01 · **Statut** : acceptée · complète ADR-154
+- **Contexte** : l'ADR-154 borne par l'API ce que coûtent les évaluations d'une entreprise
+  sur trente jours. Ceux qui gèrent ses réglages n'avaient pas d'écran pour régler cette
+  limite ni lire la dépense, et ceux qui évaluent ses compétences ne voyaient pas où ils
+  en étaient avant d'être refusés.
+- **Décision** :
+  - **« Modèle d'IA »**, section « Limite des évaluations des compétences », sous les
+    limites des missions, qu'elle imite (ADR-093) :
+    - le coût au plus sur trente jours, en USD, entre les bornes de la plateforme ;
+    - la dépense des trente derniers jours ;
+    - si la limite est celle de l'entreprise ou celle de la plateforme, avec les
+      plafonds ;
+    - « Revenir à la limite de la plateforme », après confirmation ;
+    - le formulaire repart de la limite relue (ADR-041), et « Enregistrer » n'est actif
+      qu'une fois la valeur changée ;
+  - **« Compétences »**, section « Évaluations » d'une compétence : sous la liste, la
+    dépense des évaluations de l'entreprise sur trente jours et la limite, lues avec la
+    liste. Le texte d'aide dit qu'une fois la limite atteinte aucune évaluation ne peut
+    être demandée, et où elle se règle. Le refus de l'API reste affiché comme les autres
+    erreurs du formulaire ;
+  - **montants** : en USD, au format français de la page (`formatCost`), comme ceux des
+    missions.
+- **Alternatives écartées** :
+  - régler la limite depuis « Compétences » : ceux qui évaluent ne la règlent pas
+    (ADR-154), et les limites de coût de l'entreprise sont réunies dans « Modèle
+    d'IA » ;
+  - griser le bouton « Lancer l'évaluation » une fois la limite atteinte : la dépense
+    lue peut avoir changé depuis, et le refus de l'API dit déjà pourquoi, avec les
+    montants.
+- **Conséquences** :
+  - les deux points laissés par l'audit de l'ADR-154 sont corrigés au passage : le
+    commentaire de `start_with_mailer` dans le support des tests, et l'en-tête de
+    `e2e_server/main.rs` replié sous 100 caractères ;
+  - tests : `apps/web/e2e/evaluation-limit.spec.ts`. La limite de la plateforme et la
+    dépense sont lues, puis une limite est réglée et relue après rechargement, comme
+    l'API l'a enregistrée. Elle est montrée avec la dépense dans les évaluations d'une
+    compétence, puis la page revient à la limite de la plateforme. Le test remet
+    toujours la limite de la plateforme, que les fichiers suivants attendent.
