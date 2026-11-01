@@ -1,5 +1,6 @@
 //! Runtime: tool visibility (connectors that could not start included),
-//! policy enforcement and untrusted tool output.
+//! policy enforcement and untrusted tool output, which neither closes its
+//! envelope nor hides anything from the model.
 
 mod support;
 
@@ -7,8 +8,9 @@ use mimorya_agent::llm::LlmMessage;
 use mimorya_agent::runtime::RunOutcome;
 use mimorya_agent::testing::{ScriptedReply, ScriptedStep, call, last_tool_results};
 use mimorya_core::demo::{self, user};
+use mimorya_core::plain_text::is_hidden;
 use serde_json::json;
-use support::{Options, setup};
+use support::{HIDDEN_ORDER, Options, hidden, setup};
 
 #[tokio::test]
 async fn only_shows_the_model_the_tools_the_user_may_use_never_non_delegable_ones() {
@@ -158,6 +160,14 @@ async fn neutralises_prompt_injection_carried_by_tool_results() {
                 let content = &last_tool_results(req)[0].content;
                 // The payload cannot close the untrusted envelope.
                 assert_eq!(content.matches("</donnees_outil>").count(), 1);
+                // Nor hide an order from whoever reads it: the model reads
+                // neither, and that some were taken out (ADR-158).
+                assert!(!content.contains(&hidden(HIDDEN_ORDER)));
+                assert!(content.chars().all(|c| c == '\n' || !is_hidden(c)));
+                let taken_out = HIDDEN_ORDER.chars().count();
+                let notice =
+                    format!("[{taken_out} caractères invisibles retirés par la plateforme]");
+                assert!(content.ends_with(&notice), "{content}");
                 // A compromised model following the injected instruction is still stopped by the PEP.
                 ScriptedReply::calls("", vec![call("users_disable", json!({ "userId": "all" }))])
             }),

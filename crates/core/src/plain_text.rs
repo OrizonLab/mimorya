@@ -2,8 +2,9 @@
 //! attributes and in policy values: in canonical form (NFC) and without hidden
 //! characters, so that two values that look the same compare equal. Texts the
 //! model reads hide nothing either: refused when an administrator writes them,
-//! taken out of what a third party (an MCP server) declares. A long text
-//! handed to the model is cut at a bound, and says so.
+//! taken out of what a third party declares (an MCP server) or returns (a
+//! tool's result, counted). A long text handed to the model is cut at a
+//! bound, and says so.
 
 use unicode_normalization::UnicodeNormalization;
 use unicode_properties::{GeneralCategory, UnicodeGeneralCategory};
@@ -33,16 +34,45 @@ pub fn is_hidden(c: char) -> bool {
 /// is what the model reads (a skill's content, ADR-052; a tool's
 /// description, ADR-057).
 pub fn shows_all_it_holds(text: &str) -> bool {
-    !text.chars().any(|c| c != '\n' && c != '\t' && is_hidden(c))
+    text.chars().all(shows)
 }
 
 /// The text without its hidden characters, line breaks and tabs aside: what
 /// a third party writes for the model (an MCP server's declarations,
 /// ADR-058) then shows all it holds.
 pub fn without_hidden(text: &str) -> String {
-    text.chars()
-        .filter(|&c| c == '\n' || c == '\t' || !is_hidden(c))
-        .collect()
+    text.chars().filter(|&c| shows(c)).collect()
+}
+
+/// Whether `c` shows in a text of several lines: a line break, a tab or a
+/// character that hides nothing.
+fn shows(c: char) -> bool {
+    c == '\n' || c == '\t' || !is_hidden(c)
+}
+
+/// Characters that break a line otherwise than `\n`: read as `\n` in what a
+/// third party returned, as in a document's text.
+const LINE_BREAKS: [char; 6] = [
+    '\r', '\u{000B}', '\u{000C}', '\u{0085}', '\u{2028}', '\u{2029}',
+];
+
+/// What a third party returned, as the model reads it (a tool's result,
+/// ADR-158): line breaks kept, whatever their form (`\r\n`, `\r`, a form
+/// feed, a line separator… read as `\n`, uncounted), tabs too, every other
+/// hidden character taken out, and how many were.
+pub fn shown(text: &str) -> (String, usize) {
+    let mut removed = 0;
+    let shown = text
+        .replace("\r\n", "\n")
+        .replace(LINE_BREAKS, "\n")
+        .chars()
+        .filter(|&c| {
+            let kept = shows(c);
+            removed += usize::from(!kept);
+            kept
+        })
+        .collect();
+    (shown, removed)
 }
 
 /// The first `max` characters of `text`, followed by « […] » when it held
@@ -100,5 +130,25 @@ mod tests {
         assert_eq!(kept, "Cherche une procédure.\nRéponse :\tune liste");
         assert!(shows_all_it_holds(&kept));
         assert!(!shows_all_it_holds(hidden));
+    }
+
+    #[test]
+    fn what_a_third_party_returned_shows_all_it_holds_and_counts_the_rest() {
+        // An instruction spelt in tag characters, a direction override and a
+        // zero-width space: four characters taken out.
+        let returned = "Rapport\u{e0049}\u{e0047}\u{202e} du\u{200b} jour.\r\nFin\t.\n";
+        let (text, removed) = shown(returned);
+        assert_eq!(text, "Rapport du jour.\nFin\t.\n");
+        assert_eq!(removed, 4);
+        assert!(shows_all_it_holds(&text));
+        // A line break, whatever its form, is one, and is not counted.
+        assert_eq!(shown("a\r\nb"), ("a\nb".to_string(), 0));
+        assert_eq!(
+            shown("Ligne 1\rLigne 2"),
+            ("Ligne 1\nLigne 2".to_string(), 0)
+        );
+        let breaks = "1 200\u{000C}2 rue\u{000B}3\u{0085}4\u{2028}5\u{2029}6";
+        assert_eq!(shown(breaks), ("1 200\n2 rue\n3\n4\n5\n6".to_string(), 0));
+        assert_eq!(shown("Rien à cacher."), ("Rien à cacher.".to_string(), 0));
     }
 }

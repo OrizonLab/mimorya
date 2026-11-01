@@ -212,4 +212,15 @@ mod tests {
         assert_eq!(text.matches("<donnees_outil").count(), 1);
         assert_eq!(text.matches("</donnees_outil>").count(), 1);
     }
+
+    #[test]
+    fn what_was_posted_hides_nothing_and_the_platform_says_so() {
+        // The author reads it so in « Données reçues », the notice under it.
+        let text = turn_text("Résume la panne.", "Panne\u{200b} pompe\u{e0041}");
+        assert!(text.contains(">\nPanne pompe\n</donnees_outil>"), "{text}");
+        assert!(
+            text.ends_with("</donnees_outil>\n[2 caractères invisibles retirés par la plateforme]"),
+            "{text}"
+        );
+    }
 }

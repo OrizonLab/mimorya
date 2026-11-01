@@ -2,7 +2,9 @@
 // token, shown once. Another system then posts to its address, as it would:
 // without a session, with the token alone. She reads what became of the
 // delivery and opens its conversation, where her request and the data
-// received are apart, then the agent's answer. She pauses it (a delivery
+// received are apart (the data as the model read it, the invisible character
+// it held taken out and the platform saying so, ADR-158), then the agent's
+// answer. She pauses it (a delivery
 // answers as to an unknown hook), resumes it, renews its token twice (the
 // former no longer serves; what the notice said of a copy goes with it, and
 // a copy the browser refuses is said), changes it and deletes it, each
@@ -19,6 +21,8 @@ const MARK = ' (e2e)';
 const TITLE = `Alerte supervision${MARK}`;
 const INSTRUCTION = 'Résume l’alerte reçue et propose une intervention.';
 const POSTED = '{"alerte": "Pompe P2 à l’arrêt", "site": "Lyon Nord"}';
+/** The same, with a zero-width space the platform takes out (ADR-158). */
+const POSTED_HIDING = POSTED.replace('Lyon', 'Lyon\u200b');
 /** What the end-to-end model answers what a hook sends (`e2e_server/hooks.rs`). */
 const ANSWER = 'Panne reçue de la supervision';
 
@@ -107,7 +111,7 @@ test('a person makes a hook, another system posts to it, and she reads the run',
   expect(JSON.stringify(await hooks(page))).not.toContain(token);
 
   // Another system posts, its token its only proof.
-  const accepted = await deliver(request, url, token);
+  const accepted = await deliver(request, url, token, POSTED_HIDING);
   expect(accepted.status()).toBe(202);
   await expect.poll(async () => (await hook(page, TITLE))?.lastDelivery?.outcome).toBe('started');
   await page.reload();
@@ -117,7 +121,11 @@ test('a person makes a hook, another system posts to it, and she reads the run',
   await expect(page.getByText('Envoyé par un déclencheur')).toBeVisible();
   await expect(page.getByText(INSTRUCTION, { exact: true })).toBeVisible();
   await page.getByText('Données reçues').click();
-  await expect(page.getByText(POSTED)).toBeVisible();
+  // As the model read it, and what the platform took out of it.
+  await expect(page.getByText(POSTED, { exact: true })).toBeVisible();
+  await expect(
+    page.getByText('[1 caractère invisible retiré par la plateforme]', { exact: true }),
+  ).toBeVisible();
   await expect(page.getByText(ANSWER)).toBeVisible();
   await noError(page);
 
