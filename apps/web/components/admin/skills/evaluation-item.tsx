@@ -10,7 +10,8 @@ import { EvaluationDetail } from './evaluation-detail';
 /**
  * One evaluation of a skill (ADR-104): its state, what its cases add up to
  * for the version evaluated and for the reference, the version active when
- * it was asked for, the regressions found; its cases read on demand.
+ * it was asked for, the regressions found, whether it was played without
+ * the connectors that reach outside (ADR-156); its cases read on demand.
  */
 export function EvaluationItem({ evaluation }: { evaluation: SkillEvaluationView }) {
   const [open, setOpen] = useState(false);
@@ -44,6 +45,12 @@ export function EvaluationItem({ evaluation }: { evaluation: SkillEvaluationView
           e.referencePassed !== null &&
           ` · version de référence ${e.referenceVersion} : ${e.referencePassed} sur ${e.cases}`}
       </p>
+      {e.insideOnly && (
+        <p className="mt-1 text-xs">
+          Jouée sans les connecteurs qui joignent l’extérieur (serveurs MCP, API REST, comptes
+          reliés) : la version évaluée était une proposition de l’agent.
+        </p>
+      )}
       {e.failure && <p className="mt-1 text-xs text-danger">{e.failure}</p>}
       <p className="mt-1 text-xs text-muted">
         Demandée par {e.launchedBy ?? 'un compte supprimé'} le {formatDate(e.createdAt)}

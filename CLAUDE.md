@@ -325,7 +325,9 @@ Repères à l'intérieur des crates :
   `documents.rs`, ADR-097, lus par `mimorya-extract` qu'ils construisent, une question
   confiée à un sous-agent, `sub_agents.rs`, ADR-099, une compétence que l'agent propose,
   `skill_proposals.rs`, ADR-101, et une version de compétence jouée sur son cas,
-  `skill_evaluations.rs`, ADR-105, et ce qu'envoie un déclencheur, `hooks.rs`, ADR-110, et quatre conversations de Marc déjà
+  `skill_evaluations.rs`, ADR-105, ce qu'ont laissé les évaluations de l'entreprise, leur
+  dépense du jour et une évaluation jouée sans les connecteurs qui joignent l'extérieur,
+  écrites au démarrage, `evaluation_records.rs`, ADR-155, ADR-156, et ce qu'envoie un déclencheur, `hooks.rs`, ADR-110, et quatre conversations de Marc déjà
   résumées, dont deux de plus de 200 messages et une en retard d'un message, `summaries.rs`, ADR-146, et ce qu'une personne écrit dans Slack,
   `slack.rs`, ADR-128, ou au bot Telegram, `telegram.rs`, ADR-135, ou au bot Teams, `teams.rs`, ADR-140 ; les personnes y sont envoyées
   au fournisseur simulé au lieu de Microsoft ou Google, `BuildOptions::account_link_issuer`,

@@ -3,8 +3,9 @@
 //! rejected, is played, and the active version beside it, without the tools
 //! of the connectors that reach outside the platform (an MCP server, a REST
 //! API), each named to the agent as unavailable: a call it makes anyway is
-//! refused before the API. A version an administrator wrote, or a proposal
-//! once made active, is played with them, as a run would be.
+//! refused before the API; the evaluation says so (ADR-156). A version an
+//! administrator wrote, or a proposal once made active, is played with
+//! them, as a run would be.
 
 mod support;
 
@@ -82,13 +83,15 @@ fn calls_the_api() -> Vec<ScriptedStep> {
 }
 
 /// Evaluates `version` on one case, played as `script` has it for the
-/// version and for the active one; its id, and the requests of each
-/// version's agent and judge, the version's first.
+/// version and for the active one, and listed as played `inside_only` or
+/// not (ADR-156); its id, and the requests of each version's agent and
+/// judge, the version's first.
 async fn evaluate(
     api: &TestApi,
     paul: &Client<'_>,
     version: i32,
     script: fn() -> Vec<ScriptedStep>,
+    inside_only: bool,
 ) -> (String, [Vec<RecordedRequest>; 2]) {
     let mut both = script();
     let steps = both.len();
@@ -101,6 +104,7 @@ async fn evaluate(
     let listed = evaluations(paul, DEMO_SKILL_ID).await;
     assert_eq!(listed[0]["status"], "completed", "{}", listed[0]);
     assert_eq!(listed[0]["referenceVersion"], 1);
+    assert_eq!(listed[0]["insideOnly"], inside_only, "{}", listed[0]);
     let requests = model.requests().split_off(before);
     assert_eq!(requests.len(), 2 * steps);
     let (evaluated, active) = requests.split_at(steps);
@@ -139,7 +143,7 @@ async fn a_proposal_of_the_agent_is_played_without_what_reaches_outside() {
 
     // The proposal (version 2), and the active version beside it: the
     // tool it calls anyway is refused before the API.
-    let (id, played) = evaluate(&api, &paul, 2, calls_the_api).await;
+    let (id, played) = evaluate(&api, &paul, 2, calls_the_api, true).await;
     for requests in &played {
         assert_withheld(requests);
         let result = &last_tool_results(&requests[1])[0];
@@ -166,7 +170,7 @@ async fn a_proposal_of_the_agent_is_played_without_what_reaches_outside() {
             .await;
         assert_eq!(activated.status, StatusCode::OK, "{}", activated.text());
     }
-    let (_, played) = evaluate(&api, &paul, 2, answers).await;
+    let (_, played) = evaluate(&api, &paul, 2, answers, false).await;
     played.iter().for_each(|requests| assert_offered(requests));
     remove(&paul, &connectors).await;
     forget(&api, DEMO_SKILL_ID).await;
@@ -189,7 +193,7 @@ async fn a_rejected_proposal_is_played_without_them_too() {
     assert_eq!(rejected.status, StatusCode::OK, "{}", rejected.text());
     write_case(&paul, DEMO_SKILL_ID, "Retards", LATE).await;
 
-    let (_, played) = evaluate(&api, &paul, 2, answers).await;
+    let (_, played) = evaluate(&api, &paul, 2, answers, true).await;
     played.iter().for_each(|requests| assert_withheld(requests));
     remove(&paul, &connectors).await;
     forget(&api, DEMO_SKILL_ID).await;
@@ -205,7 +209,7 @@ async fn a_version_an_administrator_wrote_is_played_with_them() {
     let version = new_version(&paul).await;
     write_case(&paul, DEMO_SKILL_ID, "Retards", LATE).await;
 
-    let (_, played) = evaluate(&api, &paul, version, answers).await;
+    let (_, played) = evaluate(&api, &paul, version, answers, false).await;
     played.iter().for_each(|requests| assert_offered(requests));
     remove(&paul, &connectors).await;
     forget(&api, DEMO_SKILL_ID).await;

@@ -19,7 +19,7 @@ use mimorya_core::skill_evaluations::summarize;
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::skill_evaluations::{
     EvaluationRow, NewResult, VersionText, claim_evaluation, finish_evaluation, get_evaluation,
-    record_result, results_of, version_text,
+    mark_inside_only, record_result, results_of, version_text,
 };
 use serde_json::json;
 use uuid::Uuid;
@@ -100,8 +100,14 @@ async fn play_cases(
         return Ok(Some(VERSION_GONE.into()));
     };
     // A proposal no administrator made active, and the active version
-    // beside it, played without what reaches outside (ADR-153).
+    // beside it, played without what reaches outside (ADR-153), as the
+    // evaluation says (ADR-156).
     let inside_only = evaluated.unvetted_proposal;
+    if inside_only {
+        let mut tx = services.db.begin(tenant_id).await?;
+        mark_inside_only(&mut tx, evaluation.id).await?;
+        tx.commit().await?;
+    }
     let mut versions = vec![(false, played_as(evaluated, evaluation.version))];
     versions.extend(reference.map(|version| (true, version)));
     // Both versions judged on the same bar: the criteria of either, so that

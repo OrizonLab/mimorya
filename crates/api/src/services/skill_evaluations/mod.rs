@@ -18,6 +18,6 @@ pub use pass::{EVALUATION_SWEEP, play_pending_evaluations, wake};
 pub use ports::NO_LINKED_ACCOUNT;
 pub use spending::{
     MAX_EVALUATION_LIMIT_MICROS, MIN_EVALUATION_LIMIT_MICROS, PLATFORM_EVALUATION_LIMIT_MICROS,
-    SPENDING_WINDOW_DAYS, Spending, checked_limit, spending,
+    SPENDING_WINDOW_DAYS, Spending, checked_limit, count_spent, spending,
 };
 pub use view::{EvaluationRead, evaluation, evaluations_of, last_evaluation, shown_to};

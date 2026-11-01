@@ -8885,7 +8885,7 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     (ADR-104) ;
   - l'évaluation ne garde pas qu'elle a été jouée sans ces connecteurs : l'écran le dit
     avant qu'elle soit demandée, et la réponse de l'agent nomme le connecteur qui lui
-    manquait ;
+    manquait (levée par ADR-156 : l'évaluation le garde et le dit) ;
   - une proposition peut encore glisser dans la réponse une consigne trompeuse pour
     l'administrateur (« copiez ceci dans… ») : il lit la proposition avant de l'évaluer,
     puis la réponse.
@@ -9045,3 +9045,45 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     une dépense non nulle. Les tests le lisent dans « Modèle d'IA » et dans
     « Compétences » (`evaluation-limit.spec.ts`), et vérifient que la même limite écrite
     autrement ne s'enregistre pas (avec `mission-limits.spec.ts`).
+
+## ADR-156 — Une évaluation dit qu'elle a été jouée sans les connecteurs qui joignent l'extérieur
+
+- **Date** : 2026-11-01 · **Statut** : acceptée · complète ADR-153
+- **Contexte** : l'ADR-153 joue une proposition de l'agent qu'aucun administrateur n'a
+  rendue active, et la version active à côté d'elle, sans les outils des connecteurs
+  qui joignent l'extérieur. L'évaluation n'en gardait rien. Seuls l'écran, avant qu'elle
+  soit demandée, et la réponse de l'agent le disaient. Relue plus tard, une évaluation
+  dont un cas a échoué faute d'un outil ne disait pas pourquoi l'outil manquait.
+- **Décision** :
+  - **gardé** (migration 0069) : `skill_evaluations.inside_only`, faux par défaut. Il
+    passe à vrai quand l'évaluation commence à jouer ses cas sans ces connecteurs, au
+    moment même où la décision de l'ADR-153 est prise. Il dit donc ce qui a été joué,
+    même si la proposition a été rendue active entre-temps ;
+  - **lu** : l'API le donne avec chaque évaluation (`insideOnly`, liste et détail) ;
+  - **montré** : dans « Compétences », une évaluation jouée ainsi porte la mention
+    « Jouée sans les connecteurs qui joignent l'extérieur (serveurs MCP, API REST,
+    comptes reliés) : la version évaluée était une proposition de l'agent ».
+- **Alternatives écartées** :
+  - le déduire à la lecture, de la version évaluée : une proposition rendue active
+    depuis ne le dirait plus, alors que l'évaluation a bien été jouée ainsi ;
+  - le fixer à la demande de l'évaluation : elle peut attendre dans la file, et c'est
+    au moment de jouer que la décision est prise.
+- **Conséquences** :
+  - la réserve de l'ADR-153 sur ce point est levée ;
+  - les points laissés par l'audit du lot 21c sont corrigés au passage :
+    - la carte de `CLAUDE.md` cite ce que le serveur des tests écrit au démarrage
+      (`evaluation_records.rs`) ;
+    - l'en-tête de `lib/format.ts` couvre les conversions d'un champ de coût ;
+    - le serveur des tests compte sa dépense par `count_spent` du service, sans répéter
+      la durée gardée ;
+    - `microsOf('')` vaut `NaN` : un champ vide ne vaut aucun montant ;
+  - tests :
+    - `crates/api/tests/skill_evaluation_tools.rs` : une proposition en attente ou
+      rejetée est listée `insideOnly`, une proposition rendue active ou une version
+      écrite par un administrateur ne l'est pas ;
+    - `apps/web/e2e/skill-evaluation-note.spec.ts` : le serveur des tests laisse au
+      démarrage une évaluation de la compétence de démonstration jouée ainsi
+      (`e2e_server/evaluation_records.rs`). La mention est lue dans « Compétences »,
+      et `insideOnly` dans l'API ;
+    - `apps/web/e2e/skill-evaluations.spec.ts` : une version écrite par un
+      administrateur ne porte pas la mention.

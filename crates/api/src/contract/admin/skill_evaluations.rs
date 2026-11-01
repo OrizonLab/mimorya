@@ -46,6 +46,10 @@ pub struct SkillEvaluationView {
     pub created_at: String,
     pub started_at: Option<String>,
     pub finished_at: Option<String>,
+    /// Played without the connectors that reach outside the platform: the
+    /// version evaluated was a proposal of the agent no administrator had
+    /// made active (ADR-153, ADR-156).
+    pub inside_only: bool,
 }
 
 impl SkillEvaluationView {
@@ -67,6 +71,7 @@ impl SkillEvaluationView {
             created_at: iso(&row.created_at),
             started_at: row.started_at.as_ref().map(iso),
             finished_at: row.finished_at.as_ref().map(iso),
+            inside_only: row.inside_only,
         })
     }
 }

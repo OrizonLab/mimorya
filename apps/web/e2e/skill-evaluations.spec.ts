@@ -97,6 +97,8 @@ test('a version is evaluated on a case, its regression read, then made active on
   await expect(evaluation).toContainText(
     'Version 2 : 0 cas réussi sur 1 · version de référence 1 : 1 sur 1',
   );
+  // A version an administrator wrote keeps the connectors (ADR-156).
+  await expect(evaluation).not.toContainText('Jouée sans les connecteurs');
   await evaluation.getByRole('button', { name: /Voir les cas/ }).click();
   await expect(evaluation.getByText('Régression', { exact: true })).toBeVisible();
   await expect(evaluation.getByText(NONE_CITED)).toBeVisible();
@@ -131,6 +133,13 @@ test('a version is evaluated on a case, its regression read, then made active on
     await page.request.get(`${skillPath}/evaluations`)
   ).json()) as SkillEvaluations;
   expect(
-    stored.map((e) => [e.version, e.status, e.passed, e.referencePassed, e.regressions]),
-  ).toEqual([[2, 'completed', 0, 1, 1]]);
+    stored.map((e) => [
+      e.version,
+      e.status,
+      e.passed,
+      e.referencePassed,
+      e.regressions,
+      e.insideOnly,
+    ]),
+  ).toEqual([[2, 'completed', 0, 1, 1, false]]);
 });
