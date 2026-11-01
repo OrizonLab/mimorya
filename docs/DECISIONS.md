@@ -1981,7 +1981,8 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     s'applique ;
   - le test de connexion montre les deux : celle du serveur et le remplacement
     (`replacedDescription`), que l'éditeur des règles d'outils reprend. La modification
-    est tracée avec les politiques (`connector.updated`).
+    est tracée avec les politiques (`connector.updated`) (précisé par ADR-160 : seules
+    les politiques qui changent, une description seulement quand elle change).
 - **Conséquences** :
   - une description remplacée ne suit pas les changements du serveur : si celui-ci change
     le comportement de l'outil, l'administrateur doit la mettre à jour (le test de
@@ -9351,3 +9352,43 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
   y passe toujours avant les enveloppes. Test : `crates/agent/src/runtime/conversation_summary.rs`
   (les mots de part et d'autre d'un tel retour ne se collent plus, et un nom
   d'enveloppe coupé par une espace sans largeur n'est pas reformé).
+
+## ADR-160 — L'audit d'un connecteur modifié ne garde que les politiques qui changent
+
+- **Date** : 2026-11-01 · **Statut** : acceptée · précise ADR-057
+- **Contexte** : chaque modification d'un connecteur (`connector.updated`) recopiait
+  toutes ses politiques d'outils dans l'audit, y compris les descriptions remplacées par
+  l'administrateur (ADR-057). Elles peuvent atteindre 1 000 caractères par outil et
+  256 Kio par serveur. Renommer un connecteur, ou décocher un seul outil, réécrivait
+  ainsi tout le reste, et l'audit ne disait plus ce qui avait réellement changé.
+- **Décision** :
+  - l'audit ne garde, dans `toolPolicies`, que les outils dont la politique a changé.
+    Chacun y figure avec sa nouvelle politique, ou `null` s'il n'en a plus ;
+  - la description n'y figure que si elle a changé : écrite ou réécrite, avec son
+    nouveau texte, ou retirée, avec `null`. Une description laissée telle quelle n'est
+    pas recopiée ;
+  - quand aucune politique n'a changé, `toolPolicies` est `null`. Les autres champs de
+    l'audit (nom, adresse, jeton, politiques retirées avec leurs opérations) ne changent
+    pas ;
+  - la comparaison se fait sur ce qui est enregistré avant et après la modification
+    (`policy_changes`, dans `services/admin/policy_changes.rs`).
+- **Alternatives écartées** :
+  - **garder toutes les politiques** : l'audit grossit à chaque modification sans dire
+    ce qui a changé ;
+  - **ne garder que les noms des outils changés** : l'audit ne dirait plus ce qu'est
+    devenue une permission, un risque ou une validation, alors que c'est ce qu'il doit
+    permettre de retrouver ;
+  - **ne jamais garder les descriptions** : un remplacement de description change ce
+    que lit le modèle, et doit pouvoir être retrouvé.
+- **Conséquences** :
+  - le point de la feuille de route sur l'audit des connecteurs est traité ;
+  - tests :
+    - `crates/api/src/services/admin/policy_changes.rs` : seuls les outils dont la
+      politique change sont gardés, un outil retiré comme `null`. Une description
+      réécrite garde son texte, une description retirée vaut `null`, une description
+      inchangée est omise. Rien de changé ne donne rien ;
+    - `crates/api/tests/connector_descriptions.rs` : une description écrite est
+      auditée avec son texte. Un outil désactivé est audité sans sa description restée
+      la même. Un connecteur seulement renommé n'audite aucune politique, et une
+      description retirée est auditée comme `null`. Si l'on recopie toutes les
+      politiques, ce test échoue.

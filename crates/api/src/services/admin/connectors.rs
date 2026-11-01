@@ -22,6 +22,7 @@ use uuid::Uuid;
 
 use super::connector_config::{Editable, RestChanges, added_here, operation_names, prefix_taken};
 use super::connector_rules::{ToolPolicyInput, mcp_addition_problem};
+use super::policy_changes::policy_changes;
 use super::{audit_entry, begin_change};
 use crate::secrets::SecretStore;
 use crate::services::AccessContext;
@@ -249,7 +250,11 @@ pub async fn update_connector(
         "tokenHeader": header,
         "operations": operations,
         "writeTools": changes.write_tools,
-        "toolPolicies": patch.tool_policies,
+        // Only what changed, a description only when it did (ADR-160).
+        "toolPolicies": patch
+            .tool_policies
+            .as_ref()
+            .and_then(|after| policy_changes(&instance.tool_policies, after)),
         "droppedPolicies": (!dropped.is_empty()).then_some(&dropped),
     });
     match update_connector_instance(&mut tx, id, patch).await {

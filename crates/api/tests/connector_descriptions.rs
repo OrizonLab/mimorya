@@ -3,14 +3,15 @@
 //! after the server's name. The replacement reaches the model in the next
 //! run, the connection test shows both, and one beyond a server's bounds is
 //! refused without being stored. Another type of connector's tools keep
-//! their own, whatever is stored.
+//! their own, whatever is stored. Its change is audited with the policies
+//! that changed only, a description only when it did (ADR-160).
 
 mod support;
 
 use axum::http::StatusCode;
 use mimorya_agent::testing::ScriptedStep;
 use mimorya_connectors::testing::serve_demo_docs_http;
-use mimorya_core::demo::user;
+use mimorya_core::demo::{tenant, user};
 use serde_json::{Value, json};
 use support::mcp::{PRIVATE_DEPLOYMENT, TOKEN, TOOL, add, listed, mcp_body};
 use support::recovery::{restore_demo_policies, set_demo_policies};
@@ -28,6 +29,28 @@ fn mapped(description: Option<&str>) -> Value {
         policy["description"] = json!(description);
     }
     json!({ "toolPolicies": { TOOL: policy } })
+}
+
+/// The tool policies the last `connector.updated` of `id` kept.
+async fn audited_policies(api: &TestApi, id: &str) -> Value {
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    let metadata: Value = sqlx::query_scalar(
+        "select metadata from audit_log where resource_id = $1 \
+         and action = 'connector.updated' order by id desc limit 1",
+    )
+    .bind(id)
+    .fetch_one(&mut *tx)
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+    metadata["toolPolicies"].clone()
+}
+
+/// The policy of `TOOL`, the only tool `audited` names.
+fn only_tool(audited: &Value) -> &Value {
+    let tools = audited.as_object().expect("policies audited");
+    assert_eq!(tools.len(), 1, "{audited}");
+    &tools[TOOL]
 }
 
 /// The tool as the connection test shows it.
@@ -80,6 +103,9 @@ async fn the_model_reads_the_description_an_administrator_wrote() {
     assert_eq!(replaced.status, StatusCode::OK, "{}", replaced.text());
     let stored = &listed(&paul, &id).await["toolPolicies"][TOOL];
     assert_eq!(stored["description"], WRITTEN);
+    // Audited as written, the policy with it.
+    let audited = audited_policies(&api, &id).await;
+    assert_eq!(only_tool(&audited)["description"], WRITTEN, "{audited}");
     // The test shows both: the server's, and the replacement as written.
     let tool = tested(&paul, &id).await;
     assert_eq!(tool["description"], format!("{FROM}{DECLARED}"));
@@ -90,11 +116,32 @@ async fn the_model_reads_the_description_an_administrator_wrote() {
         format!("{FROM}{WRITTEN}")
     );
 
-    // Left out of the policy, the server's own is read again.
-    let restored = paul
-        .patch(&format!("/admin/connectors/{id}"), mapped(None))
+    // A policy changed, its description left as it was: not written again.
+    let mut disabled = mapped(Some(WRITTEN));
+    disabled["toolPolicies"][TOOL]["enabled"] = json!(false);
+    let path = format!("/admin/connectors/{id}");
+    assert_eq!(paul.patch(&path, disabled).await.status, StatusCode::OK);
+    let audited = audited_policies(&api, &id).await;
+    let policy = only_tool(&audited);
+    assert_eq!(policy["enabled"], false, "{audited}");
+    assert!(policy.get("description").is_none(), "{audited}");
+    // Nothing of the policies changed: none is audited.
+    let renamed = paul
+        .patch(&path, json!({ "name": "Procédures (bis)" }))
         .await;
+    assert_eq!(renamed.status, StatusCode::OK, "{}", renamed.text());
+    assert_eq!(audited_policies(&api, &id).await, Value::Null);
+
+    // Left out of the policy, the server's own is read again.
+    let restored = paul.patch(&path, mapped(None)).await;
     assert_eq!(restored.status, StatusCode::OK, "{}", restored.text());
+    // A description removed is audited as such.
+    let audited = audited_policies(&api, &id).await;
+    assert_eq!(
+        only_tool(&audited).get("description"),
+        Some(&Value::Null),
+        "{audited}"
+    );
     assert_eq!(tested(&paul, &id).await["replacedDescription"], Value::Null);
     assert_eq!(
         read_by_the_model(&api, &marc, TOOL).await,
