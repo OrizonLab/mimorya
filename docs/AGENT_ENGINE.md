@@ -350,8 +350,10 @@ demande : il retient comme un tour de l'application.
    proposition, une fois approuvée).
 3. Exclusion des éléments expirés, archivés ou d'une sensibilité supérieure à
    l'habilitation.
-4. Injection dans le contexte **avec la source** (identifiant, espace, date) ; mise à
-   jour de `last_used_at` / `use_count`.
+4. Injection dans le contexte **avec la source** (identifiant, espace, date), comme
+   donnée encadrée par `<contexte_memoire>`, sans caractère invisible (un avis de la
+   plateforme dit combien ont été retirés, ADR-159) ; mise à jour de `last_used_at` /
+   `use_count`.
 
 Les documents déposés (ADR-095) se cherchent de même, mais à la demande de l'agent
 seulement (ADR-096) : `document_search` classe leurs passages par les mots et par le

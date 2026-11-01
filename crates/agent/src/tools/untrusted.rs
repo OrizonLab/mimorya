@@ -103,10 +103,22 @@ fn with_notice(envelope: String, omitted: usize) -> String {
 /// The envelope, followed by how many invisible characters were taken out of
 /// it, if any (ADR-158).
 fn with_hidden_notice(envelope: String, hidden: usize) -> String {
+    match hidden_notice(hidden) {
+        Some(notice) => format!("{envelope}\n{notice}"),
+        None => envelope,
+    }
+}
+
+/// What the platform says of `hidden` invisible characters it took out of
+/// what it enclosed, if any (ADR-158): a tool's result, the memories of a
+/// turn (ADR-159).
+pub fn hidden_notice(hidden: usize) -> Option<String> {
     match hidden {
-        0 => envelope,
-        1 => format!("{envelope}\n[1 caractère invisible retiré par la plateforme]"),
-        _ => format!("{envelope}\n[{hidden} caractères invisibles retirés par la plateforme]"),
+        0 => None,
+        1 => Some("[1 caractère invisible retiré par la plateforme]".into()),
+        _ => Some(format!(
+            "[{hidden} caractères invisibles retirés par la plateforme]"
+        )),
     }
 }
 
