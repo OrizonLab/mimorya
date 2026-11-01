@@ -1,9 +1,9 @@
 //! What befalls the passes playing the evaluations (ADR-104, ADR-157):
 //! from the model's step, another pass, having taken the company's lock
 //! over, ends its evaluation, or another company's evaluation is played
-//! meanwhile; or the session holding a company's lock is lost. The other
-//! company's evaluation, asked for by an account gone, ends as soon as it
-//! is played.
+//! meanwhile; or the session holding a company's lock is lost, or ending
+//! its evaluations fails. The other company's evaluation, asked for by an
+//! account gone, ends as soon as it is played.
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -76,24 +76,28 @@ async fn ask_again(owner: &sqlx::PgPool) {
 }
 
 /// The agent answers `answer` once the other company's evaluation `id` has
-/// ended, ten seconds at most; `seen` gets its status then.
+/// ended, ten seconds at most; `seen` gets its status then. On a
+/// multi-threaded runtime: waiting holds none of its other tasks back.
 pub fn once_ended_elsewhere(answer: &str, id: Uuid, seen: Arc<Mutex<String>>) -> ScriptedStep {
     let answer = answer.to_owned();
     ScriptedStep::dynamic(move |_| {
-        let status = blocking(move |owner| async move {
-            let mut status = String::new();
-            for _ in 0..100 {
-                status = status_of(&owner, id).await;
-                if status != "queued" && status != "running" {
-                    break;
-                }
-                tokio::time::sleep(Duration::from_millis(100)).await;
-            }
-            status
-        });
+        let status = tokio::task::block_in_place(|| blocking(move |owner| ended(owner, id)));
         *seen.lock().unwrap() = status;
         ScriptedReply::text(answer.clone())
     })
+}
+
+/// The status of the evaluation `id` once ended, or after ten seconds.
+async fn ended(owner: sqlx::PgPool, id: Uuid) -> String {
+    let mut status = String::new();
+    for _ in 0..100 {
+        status = status_of(&owner, id).await;
+        if status != "queued" && status != "running" {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    status
 }
 
 /// An evaluation of the other company's skill, asked for by an account
@@ -128,6 +132,47 @@ pub async fn forget_elsewhere(id: Uuid) -> String {
         .unwrap();
     owner.close().await;
     status
+}
+
+/// The status of the other company's evaluation `id`.
+pub async fn status_elsewhere(id: Uuid) -> String {
+    let owner = sqlx::PgPool::connect(owner_url()).await.unwrap();
+    let status = status_of(&owner, id).await;
+    owner.close().await;
+    status
+}
+
+/// Makes ending the company's evaluations fail, as a fault of the database
+/// would, until `allow_endings`.
+pub async fn refuse_endings() {
+    let refuse = format!(
+        "create function refuse_evaluation_endings() returns trigger language plpgsql as $$ \
+         begin \
+           if new.tenant_id = '{}' and new.status in ('completed', 'failed') then \
+             raise exception 'Évaluation non close (test)'; \
+           end if; \
+           return new; \
+         end $$; \
+         create trigger refuse_evaluation_endings before update on skill_evaluations \
+         for each row execute function refuse_evaluation_endings()",
+        tenant::ID
+    );
+    as_owner(&refuse).await;
+}
+
+/// Ends what `refuse_endings` did.
+pub async fn allow_endings() {
+    as_owner(
+        "drop trigger refuse_evaluation_endings on skill_evaluations; \
+         drop function refuse_evaluation_endings()",
+    )
+    .await;
+}
+
+async fn as_owner(sql: &str) {
+    let owner = sqlx::PgPool::connect(owner_url()).await.unwrap();
+    sqlx::raw_sql(sql).execute(&owner).await.unwrap();
+    owner.close().await;
 }
 
 async fn status_of(owner: &sqlx::PgPool, id: Uuid) -> String {

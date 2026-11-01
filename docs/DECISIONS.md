@@ -5104,7 +5104,9 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
       restreint) ; une évaluation laissée en cours par un arrêt ; une passe dont une
       autre a close l'évaluation n'écrit plus rien et s'arrête, de même qu'une passe dont
       la session du verrou s'est perdue ; une passe à la fois, seulement dans un
-      processus qui exécute les runs ; les cinq dernières gardées, 90 jours au plus ;
+      processus qui exécute les runs ; les cinq dernières gardées, 90 jours au plus. Les
+      tests des passes sont depuis dans `skill_evaluation_passes.rs`, une passe par
+      entreprise (ADR-157) ;
     - `crates/api/tests/several_workers.rs` : le verrou d'une passe que son détenteur
       trouve perdu avec sa session ;
     - `crates/api/tests/skill_access.rs` : les routes refusées à un membre, le détail
@@ -9140,17 +9142,22 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     appels simultanés au modèle.
 - **Réserves assumées** :
   - **pendant une mise à jour** : un ancien processus encore en marche joue sous le
-    verrou unique de la plateforme. Un nouveau processus, sous le verrou de
-    l'entreprise, peut alors trouver en cours l'évaluation que l'ancien joue. Il la fait
-    échouer, « interrompue », à demander de nouveau, comme l'arrêt de l'ancien processus
-    l'aurait fait. L'ancien n'écrit plus rien ensuite, car un résultat ne s'écrit que
-    dans une évaluation encore en cours ;
+    verrou unique de la plateforme, un nouveau sous celui de l'entreprise, et aucun ne
+    voit le verrou de l'autre. Le nouveau peut faire échouer, « interrompue »,
+    l'évaluation que joue l'ancien. L'ancien, qui fait échouer toutes les évaluations
+    en cours sous son verrou, peut faire de même pour celles que jouent les nouveaux, à
+    chaque minute et à chaque demande qu'il reçoit. Dans les deux cas, l'évaluation est
+    à demander de nouveau, comme l'arrêt de l'ancien processus l'aurait laissée. Celui
+    qui la jouait n'écrit plus rien ensuite, car un résultat ne s'écrit que dans une
+    évaluation encore en cours ;
   - **au-delà de quatre entreprises** : si plus de quatre entreprises attendent en même
     temps dans un processus, les suivantes attendent qu'une passe se termine.
 - **Conséquences** :
   - la réserve de l'ADR-104 est levée ;
   - un processus qui exécute les runs ouvre jusqu'à quatre connexions de plus pendant
-    qu'il joue des évaluations ;
+    qu'il joue des évaluations. Avec plusieurs processus, chaque entreprise dont un
+    autre tient le verrou coûte aussi, à chaque passe, une connexion ouverte hors du
+    pool puis refermée ;
   - tests :
     - `crates/api/src/services/skill_evaluations/pass.rs` : chaque entreprise vient une
       fois, celle qui attend depuis le plus longtemps d'abord, et le nom de la
@@ -9165,4 +9172,9 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       - une évaluation laissée en cours échoue sous le verrou de son entreprise ;
       - une passe qui a perdu la session de son verrou ne joue rien, et la suivante joue
         l'évaluation ;
-      - une passe dont l'évaluation a été close par une autre n'écrit plus rien.
+      - une passe dont l'évaluation a été close par une autre n'écrit plus rien ;
+      - quand le processus joue déjà quatre entreprises, une cinquième attend. Elle est
+        jouée par la passe suivante, une place libérée ;
+      - quand la passe d'une entreprise échoue (la base refuse de clore ses
+        évaluations), celle d'une autre entreprise joue la sienne. La passe suivante
+        reprend la première.

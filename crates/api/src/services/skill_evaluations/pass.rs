@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 use mimorya_db::SweepLock;
 use mimorya_db::repositories::skill_evaluations::{PendingEvaluation, pending_evaluations};
-use tokio::sync::Semaphore;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio::task::JoinSet;
 use uuid::Uuid;
 
@@ -40,6 +40,14 @@ impl Default for EvaluationSlots {
     }
 }
 
+impl EvaluationSlots {
+    /// A place for one company's pass, held until dropped; `None` when this
+    /// process plays as many as it may.
+    pub fn take(&self) -> Option<OwnedSemaphorePermit> {
+        Arc::clone(&self.0).try_acquire_owned().ok()
+    }
+}
+
 /// The lock of the company `tenant_id`'s pass (ADR-086), whose connection
 /// is named after it within PostgreSQL's 63 characters.
 pub fn evaluation_sweep(tenant_id: Uuid) -> String {
@@ -54,20 +62,22 @@ pub async fn play_pending_evaluations(services: &AppState) -> anyhow::Result<usi
     }
     let pending = pending_evaluations(services.db.pool()).await?;
     let mut passes = JoinSet::new();
-    let mut failed = None;
     for tenant_id in companies(&pending) {
-        let Ok(slot) = Arc::clone(&services.evaluation_slots.0).try_acquire_owned() else {
+        let Some(slot) = services.evaluation_slots.take() else {
             break;
         };
-        let lock = match services
-            .db
-            .try_sweep_lock(&evaluation_sweep(tenant_id))
-            .await
-        {
+        let name = evaluation_sweep(tenant_id);
+        let lock = match services.db.try_sweep_lock(&name).await {
             Ok(Some(lock)) => lock,
             Ok(None) => continue,
             Err(error) => {
-                failed = Some(error);
+                // Said now, not once the passes started end: the next pass
+                // tries again.
+                tracing::warn!(
+                    tenant_id = %tenant_id,
+                    error = %error,
+                    "Skill evaluation lock not taken"
+                );
                 break;
             }
         };
@@ -85,10 +95,7 @@ pub async fn play_pending_evaluations(services: &AppState) -> anyhow::Result<usi
             Err(error) => tracing::warn!(error = %error, "Skill evaluation pass stopped"),
         }
     }
-    match failed {
-        Some(error) => Err(error.into()),
-        None => Ok(played),
-    }
+    Ok(played)
 }
 
 /// The companies with an evaluation to play or to fail, the one whose
@@ -103,7 +110,8 @@ fn companies(pending: &[PendingEvaluation]) -> Vec<Uuid> {
     companies
 }
 
-/// Plays the company's evaluations under its lock, which the caller took,
+/// Plays the company's evaluations under its lock, which the caller took
+/// (`evaluation_sweep(tenant_id)`: no other lock keeps another pass out),
 /// then releases it; how many it played, a failure ending its pass alone.
 pub async fn play_company(services: &Services, tenant_id: Uuid, mut lock: SweepLock) -> usize {
     let mut played = 0;

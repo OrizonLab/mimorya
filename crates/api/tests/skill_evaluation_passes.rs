@@ -1,25 +1,29 @@
 //! The passes that play the evaluations (ADR-104, ADR-157): one per
 //! company, under its own lock, so that another company's evaluation is
-//! played while one is, and one company's evaluations one at a time. Only a
-//! process that executes runs plays them; an evaluation a stopped process
-//! left running fails; a pass whose evaluation another ended, or whose
-//! lock's session is lost, plays no further, what its case cost counted all
-//! the same (ADR-154).
+//! played while one is, and one company's evaluations one at a time; four
+//! companies at once in a process, a failing pass ending its company's
+//! alone. Only a process that executes runs plays them; an evaluation a
+//! stopped process left running fails; a pass whose evaluation another
+//! ended, or whose lock's session is lost, plays no further, what its case
+//! cost counted all the same (ADR-154).
 
 mod support;
 
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use mimorya_agent::testing::ScriptedStep;
 use mimorya_api::services::skill_evaluations::{
-    evaluation_sweep, play_company, play_pending_evaluations,
+    COMPANIES_AT_ONCE, evaluation_sweep, play_company, play_pending_evaluations,
 };
 use mimorya_core::demo::{tenant, user};
 use mimorya_db::seed::DEMO_SKILL_ID;
+use mimorya_db::testing::OTHER_TENANT_ID;
 use serde_json::json;
 use support::TestApi;
 use support::evaluation_passes::{
-    TAKEN_OVER, ask_elsewhere, forget_elsewhere, lose_lock, once_ended_elsewhere, taken_over,
+    TAKEN_OVER, allow_endings, ask_elsewhere, forget_elsewhere, lose_lock, once_ended_elsewhere,
+    refuse_endings, status_elsewhere, taken_over,
 };
 use support::llm::SCRIPTED_CALL_MICROS;
 use support::skill_evaluations::{
@@ -130,5 +134,50 @@ async fn a_pass_whose_lock_s_session_is_lost_plays_no_further() {
     api.script(vec![ScriptedStep::text("Trois retards."), verdict(true)]);
     play(&api).await;
     assert_eq!(status_of(&api, &id).await.0, "completed");
+    forget(&api, DEMO_SKILL_ID).await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_process_plays_four_companies_at_once_at_most() {
+    let api = TestApi::start().await;
+    let elsewhere = ask_elsewhere().await;
+    executing(&api).await;
+    // Four companies played meanwhile in the process: the fifth waits.
+    let services = &api.app.services;
+    let slots = &services.evaluation_slots;
+    let mut taken: Vec<_> = (0..COMPANIES_AT_ONCE).map(|_| slots.take()).collect();
+    assert!(taken.iter().all(Option::is_some));
+    assert!(slots.take().is_none(), "no fifth place");
+    assert_eq!(play_pending_evaluations(services).await.unwrap(), 0);
+    assert_eq!(status_elsewhere(elsewhere).await, "queued");
+
+    // One ended, the next pass plays it.
+    taken.pop();
+    play_pending_evaluations(services).await.unwrap();
+    let name = evaluation_sweep(OTHER_TENANT_ID);
+    let done = services.db.sweep_lock(&name, Duration::from_secs(60)).await;
+    done.unwrap().release().await;
+    assert_eq!(forget_elsewhere(elsewhere).await, "failed");
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_company_s_failing_pass_leaves_the_others_played() {
+    let api = TestApi::start().await;
+    let left = stored_evaluation(&api, "running", 0).await.to_string();
+    let elsewhere = ask_elsewhere().await;
+    refuse_endings().await;
+    executing(&api).await;
+    // The company's pass fails as it ends the one left running; the other
+    // company's plays its own.
+    let services = &api.app.services;
+    play_pending_evaluations(services).await.unwrap();
+    assert_eq!(status_of(&api, &left).await.0, "running");
+    assert_eq!(forget_elsewhere(elsewhere).await, "failed");
+
+    allow_endings().await;
+    play(&api).await;
+    assert_eq!(status_of(&api, &left).await.0, "failed");
     forget(&api, DEMO_SKILL_ID).await;
 }
