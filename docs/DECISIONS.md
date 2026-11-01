@@ -9056,10 +9056,12 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
   dont un cas a échoué faute d'un outil ne disait pas pourquoi l'outil manquait.
 - **Décision** :
   - **gardé** (migration 0069) : `skill_evaluations.inside_only`, faux par défaut. Il
-    passe à vrai quand l'évaluation commence à jouer ses cas sans ces connecteurs, au
-    moment même où la décision de l'ADR-153 est prise. Il dit donc ce qui a été joué,
-    même si la proposition a été rendue active entre-temps ;
-  - **lu** : l'API le donne avec chaque évaluation (`insideOnly`, liste et détail) ;
+    passe à vrai avec le premier cas joué sans ces connecteurs, dans la transaction qui
+    écrit son résultat. Une évaluation arrêtée avant tout cas (limite de coût atteinte,
+    droits retirés, arrêt du service) ne le porte donc pas. Il dit ce qui a été joué,
+    même si la proposition a été rendue active depuis ;
+  - **lu** : l'API le donne avec chaque évaluation (`insideOnly`, liste et détail),
+    et l'audit `skill.evaluated` le garde dans ses métadonnées ;
   - **montré** : dans « Compétences », une évaluation jouée ainsi porte la mention
     « Jouée sans les connecteurs qui joignent l'extérieur (serveurs MCP, API REST,
     comptes reliés) : la version évaluée était une proposition de l'agent ».
@@ -9067,7 +9069,14 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
   - le déduire à la lecture, de la version évaluée : une proposition rendue active
     depuis ne le dirait plus, alors que l'évaluation a bien été jouée ainsi ;
   - le fixer à la demande de l'évaluation : elle peut attendre dans la file, et c'est
-    au moment de jouer que la décision est prise.
+    au moment de jouer que la décision est prise ;
+  - le poser dès le début du jeu : une évaluation arrêtée avant son premier cas le
+    porterait sans avoir rien joué.
+- **Réserves assumées** :
+  - les évaluations jouées sans ces connecteurs avant la migration 0069 (depuis
+    l'ADR-153) se lisent `insideOnly: false` : rien ne permet de le savoir sûrement
+    après coup, une proposition ayant pu être rendue active depuis. Elles sont gardées
+    90 jours au plus (ADR-104).
 - **Conséquences** :
   - la réserve de l'ADR-153 sur ce point est levée ;
   - les points laissés par l'audit du lot 21c sont corrigés au passage :
@@ -9079,11 +9088,12 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     - `microsOf('')` vaut `NaN` : un champ vide ne vaut aucun montant ;
   - tests :
     - `crates/api/tests/skill_evaluation_tools.rs` : une proposition en attente ou
-      rejetée est listée `insideOnly`, une proposition rendue active ou une version
-      écrite par un administrateur ne l'est pas ;
+      rejetée est listée `insideOnly`, et son évaluation le dit encore une fois la
+      proposition rendue active. Une proposition rendue active, une version écrite par
+      un administrateur ou une évaluation arrêtée avant son premier cas ne le sont pas ;
     - `apps/web/e2e/skill-evaluation-note.spec.ts` : le serveur des tests laisse au
-      démarrage une évaluation de la compétence de démonstration jouée ainsi
-      (`e2e_server/evaluation_records.rs`). La mention est lue dans « Compétences »,
-      et `insideOnly` dans l'API ;
+      démarrage une proposition de l'agent pour la compétence de démonstration, depuis
+      rejetée, et son évaluation jouée ainsi (`e2e_server/evaluation_records.rs`). La
+      mention est lue dans « Compétences », et `insideOnly` dans l'API ;
     - `apps/web/e2e/skill-evaluations.spec.ts` : une version écrite par un
       administrateur ne porte pas la mention.

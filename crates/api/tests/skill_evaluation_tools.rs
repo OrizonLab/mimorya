@@ -3,17 +3,19 @@
 //! rejected, is played, and the active version beside it, without the tools
 //! of the connectors that reach outside the platform (an MCP server, a REST
 //! API), each named to the agent as unavailable: a call it makes anyway is
-//! refused before the API; the evaluation says so (ADR-156). A version an
-//! administrator wrote, or a proposal once made active, is played with
-//! them, as a run would be.
+//! refused before the API; the evaluation says so once a case is played so,
+//! and keeps saying it once the proposal is made active (ADR-156). A
+//! version an administrator wrote, or a proposal once made active, is
+//! played with them, as a run would be.
 
 mod support;
 
 use axum::http::StatusCode;
 use mimorya_agent::llm::LlmMessage;
 use mimorya_agent::testing::{RecordedRequest, ScriptedStep, call, last_tool_results};
+use mimorya_api::services::skill_evaluations::count_spent;
 use mimorya_connectors::testing::{serve_demo_docs_http, serve_rest_http};
-use mimorya_core::demo::user;
+use mimorya_core::demo::{tenant, user};
 use mimorya_db::seed::DEMO_SKILL_ID;
 use serde_json::json;
 use support::mcp::{PRIVATE_DEPLOYMENT, TOKEN, TOOL, add, mcp_body};
@@ -27,6 +29,7 @@ use support::skill_proposals::{
 use support::{Client, TestApi};
 
 const LATE: &str = "Quels retards cette semaine ?";
+const SETTINGS: &str = "/admin/evaluation-settings";
 const NOTICE: &str = "<connecteurs_indisponibles>";
 
 /// The company's REST API and MCP server, each tool read without
@@ -172,7 +175,37 @@ async fn a_proposal_of_the_agent_is_played_without_what_reaches_outside() {
     }
     let (_, played) = evaluate(&api, &paul, 2, answers, false).await;
     played.iter().for_each(|requests| assert_offered(requests));
+    // The first one still says how it was played (ADR-156).
+    let first = detail(&paul, &id).await.json();
+    assert_eq!(first["evaluation"]["insideOnly"], true, "{first}");
     remove(&paul, &connectors).await;
+    forget(&api, DEMO_SKILL_ID).await;
+    restore_the_report(&api).await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_proposal_stopped_before_its_first_case_says_nothing_of_it() {
+    let api = TestApi::start().await;
+    let paul = api.sign_in(user::PAUL).await;
+    proposal(&api).await;
+    write_case(&paul, DEMO_SKILL_ID, "Retards", LATE).await;
+    let limit = json!({ "maxCostMicros": 1_000_000 });
+    let set = paul.put(SETTINGS, limit).await;
+    assert_eq!(set.status, StatusCode::OK, "{}", set.text());
+
+    // Asked for under the limit, which is reached before its first case.
+    let id = launched(&paul, DEMO_SKILL_ID, 2).await;
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    count_spent(&mut tx, tenant::ID, 1_000_000).await.unwrap();
+    tx.commit().await.unwrap();
+    play(&api).await;
+
+    let read = detail(&paul, &id).await.json();
+    assert_eq!(read["evaluation"]["status"], "failed", "{read}");
+    assert_eq!(read["evaluation"]["played"], 0, "{read}");
+    assert_eq!(read["evaluation"]["insideOnly"], false, "{read}");
+    assert_eq!(paul.delete(SETTINGS).await.status, StatusCode::OK);
     forget(&api, DEMO_SKILL_ID).await;
     restore_the_report(&api).await;
 }

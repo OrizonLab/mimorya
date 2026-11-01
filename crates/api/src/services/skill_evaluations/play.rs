@@ -101,13 +101,8 @@ async fn play_cases(
     };
     // A proposal no administrator made active, and the active version
     // beside it, played without what reaches outside (ADR-153), as the
-    // evaluation says (ADR-156).
+    // evaluation says once a case is played so (ADR-156).
     let inside_only = evaluated.unvetted_proposal;
-    if inside_only {
-        let mut tx = services.db.begin(tenant_id).await?;
-        mark_inside_only(&mut tx, evaluation.id).await?;
-        tx.commit().await?;
-    }
     let mut versions = vec![(false, played_as(evaluated, evaluation.version))];
     versions.extend(reference.map(|version| (true, version)));
     // Both versions judged on the same bar: the criteria of either, so that
@@ -144,7 +139,12 @@ async fn play_cases(
             )
             .await;
             let position = i32::try_from(position)?;
-            if !record(services, scope, position, *reference, &played).await? {
+            let recorded = Recorded {
+                position,
+                reference: *reference,
+                inside_only,
+            };
+            if !record(services, scope, recorded, &played).await? {
                 // Failed as interrupted meanwhile, by a pass that took over
                 // the lock (its session lost): it is played no further.
                 return Ok(Some(INTERRUPTED.into()));
@@ -191,16 +191,29 @@ async fn limit_reached(services: &Services, tenant_id: Uuid) -> anyhow::Result<O
     Ok(spending.reached().then(|| spending.refusal()))
 }
 
-/// Writes the case's result, and counts what it cost in the company's
-/// spending even when it is not written; `false` when the evaluation is not
-/// running any more.
+/// Where a case's result goes, and how it was played.
+struct Recorded {
+    position: i32,
+    reference: bool,
+    /// Without the connectors that reach outside (ADR-153).
+    inside_only: bool,
+}
+
+/// Writes the case's result, marks the evaluation as played without the
+/// connectors that reach outside when it was (ADR-156), and counts what it
+/// cost in the company's spending even when it is not written; `false`
+/// when the evaluation is not running any more.
 async fn record(
     services: &Services,
     scope: CaseScope,
-    position: i32,
-    reference: bool,
+    recorded: Recorded,
     played: &Played,
 ) -> anyhow::Result<bool> {
+    let Recorded {
+        position,
+        reference,
+        inside_only,
+    } = recorded;
     let tools = serde_json::to_value(&played.tools)?;
     let mut tx = services.db.begin(scope.tenant_id).await?;
     let written = record_result(
@@ -222,6 +235,10 @@ async fn record(
         },
     )
     .await?;
+    // Played so, the evaluation says it with its first case (ADR-156).
+    if written && inside_only {
+        mark_inside_only(&mut tx, scope.evaluation_id).await?;
+    }
     count_spent(&mut tx, scope.tenant_id, played.usage.cost_micros).await?;
     tx.commit().await?;
     Ok(written)
@@ -266,6 +283,7 @@ async fn finish(
         "referencePassed": summary.reference_passed,
         "regressions": summary.regressions,
         "costMicros": evaluation.cost_micros,
+        "insideOnly": evaluation.inside_only,
     }));
     if let Some(launcher) = evaluation.launched_by_user_id {
         entry = entry.on_behalf_of(launcher);
