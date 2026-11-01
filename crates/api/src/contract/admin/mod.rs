@@ -7,6 +7,7 @@ mod assignments;
 mod connectors;
 mod domain_proofs;
 mod embedding;
+mod evaluation_settings;
 mod gateways;
 mod google_workspace;
 mod identity_providers;
@@ -40,6 +41,7 @@ pub use domain_proofs::{DomainProofRequest, DomainProofView};
 pub use embedding::{
     EmbeddingChoice, EmbeddingKind, EmbeddingSettingsView, EmbeddingTestResult, EmbeddingView,
 };
+pub use evaluation_settings::{EvaluationSettingsUpdate, EvaluationSettingsView};
 pub use gateways::{
     GatewayUpdate, GatewayView, Gateways, NewSlackGateway, NewTeamsGateway, NewTelegramGateway,
 };

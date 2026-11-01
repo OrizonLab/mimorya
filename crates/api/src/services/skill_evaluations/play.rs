@@ -6,8 +6,9 @@
 //! administrator made active is played, and the active version beside it,
 //! without the connectors that reach outside the platform (ADR-153). Before
 //! each case, whom it runs for must still administer the company's skills
-//! and use the agent: otherwise the evaluation ends there, failed, with the
-//! results it has.
+//! and use the agent, and the company's evaluations must not have reached
+//! what they may cost over thirty days (ADR-154): otherwise the evaluation
+//! ends there, failed, with the results it has.
 //! Its end is audited with what its cases add up to, never an answer.
 
 use std::sync::Arc;
@@ -25,6 +26,7 @@ use uuid::Uuid;
 
 use super::case::{CaseRequest, Played, StoredCase, play_case};
 use super::ports::{CaseScope, EvaluatedVersion};
+use super::spending::{count_spent, spending};
 use super::view::case_results;
 use crate::app::Services;
 use crate::services::AccessContext;
@@ -118,6 +120,9 @@ async fn play_cases(
                 Ok(access) => access,
                 Err(why) => return Ok(Some(why)),
             };
+            if let Some(why) = limit_reached(services, tenant_id).await? {
+                return Ok(Some(why));
+            }
             let played = play_case(
                 services,
                 CaseRequest {
@@ -171,8 +176,18 @@ async fn launcher_may(
     })
 }
 
-/// Writes the case's result; `false` when the evaluation is not running
-/// any more.
+/// Why the evaluation may go no further: what the company's evaluations
+/// cost over thirty days reached its limit (ADR-154).
+async fn limit_reached(services: &Services, tenant_id: Uuid) -> anyhow::Result<Option<String>> {
+    let mut tx = services.db.begin(tenant_id).await?;
+    let spending = spending(&mut tx).await?;
+    tx.commit().await?;
+    Ok(spending.reached().then(|| spending.refusal()))
+}
+
+/// Writes the case's result, and counts what it cost in the company's
+/// spending even when it is not written; `false` when the evaluation is not
+/// running any more.
 async fn record(
     services: &Services,
     scope: CaseScope,
@@ -201,6 +216,7 @@ async fn record(
         },
     )
     .await?;
+    count_spent(&mut tx, scope.tenant_id, played.usage.cost_micros).await?;
     tx.commit().await?;
     Ok(written)
 }

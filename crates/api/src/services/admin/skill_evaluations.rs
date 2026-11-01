@@ -4,8 +4,10 @@
 //! evaluated. Every case runs for the administrator, with their rights: they
 //! must be able to use the agent, and the agent to read the skills for
 //! them; the company needs a model. One evaluation queued or running per
-//! company; the oldest of a skill are deleted past the last ones kept. A
-//! process that executes runs plays it (`services::skill_evaluations`).
+//! company, none once its evaluations reached what they may cost over
+//! thirty days (ADR-154); the oldest of a skill are deleted past the last
+//! ones kept. A process that executes runs plays it
+//! (`services::skill_evaluations`).
 
 use mimorya_core::DomainError;
 use mimorya_core::authz::Actor;
@@ -22,7 +24,7 @@ use super::skills::existing;
 use super::{audit_entry, begin_change};
 use crate::app::AppState;
 use crate::services::AccessContext;
-use crate::services::skill_evaluations::{StoredCase, wake};
+use crate::services::skill_evaluations::{StoredCase, spending, wake};
 
 const PERMISSION: &str = "skill:manage";
 
@@ -84,6 +86,10 @@ pub async fn launch_evaluation(
             "Une évaluation est déjà en cours dans l’entreprise : attendez sa fin",
         )
         .into());
+    }
+    let spending = spending(&mut tx).await?;
+    if spending.reached() {
+        return Err(DomainError::conflict(spending.refusal()).into());
     }
     let reference_version = skill.active_version.filter(|active| *active != version);
     prune_evaluations(&mut tx, skill_id, EVALUATIONS_KEPT_PER_SKILL - 1).await?;

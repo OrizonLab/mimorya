@@ -12,6 +12,7 @@ mod assignments;
 mod connector_applications;
 mod connectors;
 mod embedding;
+mod evaluation_settings;
 mod gateways;
 mod identity_providers;
 mod knowledge_shares;
@@ -105,6 +106,12 @@ pub fn routes(state: &AppState) -> Router<AppState> {
             get(mission_settings::show)
                 .put(mission_settings::update)
                 .delete(mission_settings::reset),
+        )
+        .route(
+            "/admin/evaluation-settings",
+            get(evaluation_settings::show)
+                .put(evaluation_settings::update)
+                .delete(evaluation_settings::reset),
         )
         .route(
             "/admin/connectors",

@@ -21,6 +21,8 @@ pub mod document_search;
 pub mod document_versions;
 pub mod documents;
 pub mod embedding_settings;
+pub mod evaluation_settings;
+pub mod evaluation_spending;
 pub mod gateway_approval_notices;
 pub mod gateway_cards;
 pub mod gateway_identities;

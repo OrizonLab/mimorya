@@ -22,6 +22,7 @@ mod connector_trial;
 mod connectors;
 mod domain_proofs;
 mod embedding;
+mod evaluation_settings;
 mod gateway_check;
 mod gateways;
 mod google_workspace;
@@ -62,6 +63,9 @@ pub use connectors::{
 pub use domain_proofs::prove_domain;
 pub use embedding::{
     EmbeddingInput, EmbeddingTestOutcome, configure_embedding, reset_embedding, test_embedding,
+};
+pub use evaluation_settings::{
+    company_evaluation_spending, reset_company_evaluation_limit, set_company_evaluation_limit,
 };
 pub use gateway_check::check_gateway;
 pub use gateways::{

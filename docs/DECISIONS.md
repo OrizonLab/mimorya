@@ -5081,7 +5081,8 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
   - une seule passe pour la plateforme : une évaluation la tient jusqu'à une heure
     environ, celles des autres entreprises attendent ;
   - rien ne borne les évaluations demandées l'une après l'autre (10 USD environ chacune
-    au plus), sinon une à la fois par entreprise.
+    au plus), sinon une à la fois par entreprise (levée par ADR-154 : ce qu'elles
+    coûtent sur trente jours est borné par entreprise).
 - **Conséquences** :
   - coût au plus : 10 cas, 2 versions, 0,50 USD chacun, et les jugements ;
   - reste à faire : l'écran « Compétences » (lot 4c), qui saura confirmer une
@@ -8904,3 +8905,79 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       version écrite par un administrateur, les deux outils sont offerts ;
     - `apps/web/e2e/skill-proposals.spec.ts` : la note et la confirmation le disent, la
       note sans parler d'une version active que la compétence en brouillon n'a pas.
+
+## ADR-154 — Ce que coûtent les évaluations des compétences, borné par entreprise sur trente jours
+
+- **Date** : 2026-11-01 · **Statut** : acceptée · complète ADR-104
+- **Contexte** : une évaluation (ADR-104) coûte 10 USD au plus : dix cas, deux
+  versions, 0,50 USD chacun, et les jugements. Rien ne bornait celles qu'un
+  administrateur des compétences demande l'une après l'autre, sinon une à la fois par
+  entreprise. L'ADR-104 gardait cette réserve et la feuille de route la notait. Les
+  missions ont déjà des limites que l'entreprise règle (ADR-093).
+- **Décision** :
+  - **limite sur trente jours glissants** : ce que coûtent les évaluations d'une
+    entreprise sur les trente derniers jours, aujourd'hui compris, est borné :
+    - sans réglage propre, la limite de la plateforme s'applique : 50 USD, soit cinq
+      évaluations de dix cas ;
+    - ceux qui gèrent les réglages de l'entreprise (`settings:manage`, sur toute
+      l'entreprise) la fixent entre 1 et 1000 USD, cent évaluations de dix cas. La base
+      porte les mêmes bornes, et l'API refuse au-delà en les disant ;
+    - ceux qui évaluent les compétences (`skill:manage`) ne la fixent pas : ils
+      relèveraient la limite sous laquelle ils dépensent ;
+    - chaque changement est tracé (`skill.evaluation_limit_configured` avec la limite,
+      `skill.evaluation_limit_reset`) ;
+    - routes : `GET`, `PUT` et `DELETE /api/admin/evaluation-settings`. La lecture
+      donne aussi la dépense, la fenêtre, la limite de la plateforme et les bornes ;
+  - **dépense comptée à part** (migration 0068, `skill_evaluation_spending`) :
+    - chaque cas joué ajoute son coût à celui du jour (UTC) de l'entreprise, dans la
+      transaction qui écrit son résultat ;
+    - il est compté même quand il n'est plus écrit (évaluation arrêtée entre-temps) :
+      l'argent est dépensé ;
+    - cette dépense est gardée à part des évaluations, qu'une compétence élague au-delà
+      des dernières gardées : élaguer ne baisse rien ;
+    - les jours de plus de quarante jours sont supprimés à l'écriture suivante ;
+  - **application** :
+    - une évaluation est refusée (409) quand la dépense atteint la limite, en disant ce
+      qui a été dépensé et la limite ;
+    - celle en cours relit la dépense avant chaque cas, comme elle relit les droits de
+      qui l'a demandée : la limite atteinte, elle s'arrête là, échouée pour cette
+      raison, avec les résultats qu'elle a. Elle dépasse donc la limite d'un cas au plus
+      (0,50 USD et un jugement) ;
+  - **lecture** : la liste des évaluations d'une compétence donne aussi la dépense et la
+    limite, que l'écran « Compétences » montrera (lot 21b).
+- **Alternatives écartées** :
+  - additionner le coût des évaluations gardées : une compétence élague ses anciennes
+    évaluations, et la somme baisserait à chaque nouvelle ;
+  - lire `usage_records` : les appels d'une évaluation n'y portent pas de run, comme
+    d'autres appels faits hors d'un run, et rien ne les distingue ;
+  - un mois civil : la limite tomberait d'un coup le premier du mois ; une fenêtre
+    glissante libère la dépense jour après jour ;
+  - laisser les administrateurs des compétences régler la limite : celui qui dépense
+    fixerait son propre plafond ;
+  - borner chaque évaluation au lieu de leur somme : une évaluation est déjà bornée par
+    ses cas (ADR-104).
+- **Réserves assumées** :
+  - la dépense comptée est celle des cas écrits : un cas que l'arrêt du service
+    interrompt avant son écriture n'est pas compté ;
+  - un modèle sans prix connu coûte 0 (`llm/pricing.rs`), comme pour les runs : seul
+    le nombre d'évaluations le borne alors, une à la fois ;
+  - l'écran de la limite et de la dépense est le lot 21b.
+- **Conséquences** :
+  - la réserve de l'ADR-104 est levée ;
+  - tests :
+    - `crates/api/src/services/skill_evaluations/spending.rs` : bornes, limite atteinte
+      une fois dépensée, refus dit en USD ;
+    - `crates/db/tests/evaluation_spending.rs` : chaque coût ajouté à celui du jour,
+      rien de négatif, fenêtre de trente jours, jours anciens supprimés, dépense d'une
+      autre entreprise à part, bornes de la limite tenues par la base ;
+    - `crates/api/tests/evaluation_limits.rs` :
+      - limite de la plateforme, puis réglée dans les bornes, avec la dépense, et
+        retour à celle de la plateforme, tracés ;
+      - hors bornes ou champ inconnu refusés ;
+      - réglée seulement par les administrateurs des réglages de toute l'entreprise :
+        ni un collaborateur, ni un administrateur partiel, ni un administrateur des
+        compétences ;
+      - évaluation refusée une fois la limite atteinte, la liste donnant dépense et
+        limite, puis jouée une fois la limite relevée ;
+      - les cas joués comptés dans la dépense du jour ; une évaluation demandée sous la
+        limite, atteinte avant son premier cas, s'arrête échouée en disant pourquoi.

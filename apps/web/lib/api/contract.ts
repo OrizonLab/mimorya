@@ -744,6 +744,46 @@ reference: CaseResultView | null, regression: boolean, };
  */
 export type EvaluationRequest = { version: number, };
 
+/**
+ * Body of `PUT /admin/evaluation-settings`: checked against the platform's
+ * bounds by the service, which says them in its refusal.
+ */
+export type EvaluationSettingsUpdate = { maxCostMicros: number, };
+
+/**
+ * `GET /admin/evaluation-settings`.
+ */
+export type EvaluationSettingsView = {
+/**
+ * What the company's evaluations may cost over the window, in
+ * micro-dollars.
+ */
+maxCostMicros: number,
+/**
+ * Whether it is the company's own limit, not the platform's.
+ */
+own: boolean,
+/**
+ * What they cost over the window, today included.
+ */
+spentMicros: number,
+/**
+ * The days the limit counts.
+ */
+windowDays: number,
+/**
+ * The platform's limit, which applies without the company's own.
+ */
+platformMaxCostMicros: number,
+/**
+ * What a company may set: from this much…
+ */
+minCostMicros: number,
+/**
+ * …to this much.
+ */
+maxCostCeilingMicros: number, };
+
 export type EvaluationStatus = "queued" | "running" | "completed" | "failed";
 
 /**
@@ -2148,9 +2188,11 @@ played: number, passed: number, referencePassed: number | null,
 regressions: number, launchedBy: string | null, costMicros: number, createdAt: string, startedAt: string | null, finishedAt: string | null, };
 
 /**
- * `GET /admin/skills/{id}/evaluations`: the latest first.
+ * `GET /admin/skills/{id}/evaluations`: the latest first, and what the
+ * company's evaluations cost over thirty days against their limit
+ * (ADR-154).
  */
-export type SkillEvaluations = { evaluations: Array<SkillEvaluationView>, };
+export type SkillEvaluations = { evaluations: Array<SkillEvaluationView>, spentMicros: number, limitMicros: number, };
 
 /**
  * `GET /admin/skills`.
