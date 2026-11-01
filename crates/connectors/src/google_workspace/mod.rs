@@ -86,6 +86,7 @@ impl Connector for GoogleWorkspaceConnector {
             description: "La boîte Gmail et l’agenda Google de chacun, que chaque personne relie elle-même à son compte Workspace : l’agent n’y lit que ce que la personne servie peut lire, et n’y écrit, si l’entreprise le permet, que ce qui est validé.",
             demo: false,
             permissions: &[],
+            reaches_outside: true,
         }
     }
 

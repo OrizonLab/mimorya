@@ -5076,7 +5076,8 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     lecture restent offerts : une proposition malveillante pourrait faire lire ce que
     l'administrateur peut lire et le passer en paramètre à un serveur MCP de
     l'entreprise. L'administrateur lit la proposition avant de l'évaluer ; l'écran le
-    rappellera (lot 4c) ;
+    rappellera (lot 4c) (levée par ADR-153 : la proposition et la version active sont
+    jouées sans les connecteurs qui joignent l'extérieur) ;
   - une seule passe pour la plateforme : une évaluation la tient jusqu'à une heure
     environ, celles des autres entreprises attendent ;
   - rien ne borne les évaluations demandées l'une après l'autre (10 USD environ chacune
@@ -8821,3 +8822,81 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       essayée), pas leur SHA-256 ; sans clé maître, le SHA-256 ;
     - `crates/db/tests/rate_limits.rs` : invitée à tout oublier, la purge n'efface que
       la fenêtre ouverte depuis plus de deux heures.
+
+## ADR-153 — Une proposition de l'agent évaluée sans les connecteurs qui joignent l'extérieur
+
+- **Date** : 2026-10-31 · **Statut** : acceptée · complète ADR-104
+- **Contexte** : une évaluation (ADR-104) remet la version évaluée à l'agent comme
+  procédure de l'entreprise, avec les droits de l'administrateur qui la demande. Pour
+  une proposition de l'agent (ADR-100), aucun administrateur n'a encore validé ce texte.
+  Une proposition malveillante pourrait faire lire à l'agent ce que l'administrateur
+  peut lire (mémoire, documents, données des connecteurs), puis le passer en paramètre
+  à un outil qui sort de la plateforme : un serveur MCP ou une API REST que l'entreprise
+  a classés en lecture. L'administrateur lit la proposition avant de l'évaluer, et
+  l'écran le lui rappelle (ADR-105). L'ADR-104 gardait cette réserve et la feuille de
+  route la notait.
+- **Décision** :
+  - **proposition non validée** : une version proposée par l'agent qu'aucun
+    administrateur n'a rendue active (`proposed`, sans `approved_at`) est jouée sans les
+    outils des connecteurs qui joignent l'extérieur. C'est la règle que l'écran suit
+    déjà pour rappeler de la relire. Une fois rendue active, la version devient la
+    procédure de l'entreprise, que les runs suivent avec tous leurs outils : son
+    évaluation les retrouve ;
+  - **les deux versions** : la version active, jouée à côté pour la comparaison, est
+    elle aussi jouée sans eux. Les deux versions ont ainsi les mêmes outils, et aucune
+    régression ne vient d'un outil retiré à une seule ;
+  - **connecteurs qui joignent l'extérieur** : chaque type de connecteur le déclare
+    (`ConnectorInfo::reaches_outside`). C'est le cas des serveurs MCP, des API REST, de
+    Microsoft 365 et de Google Workspace ; seul le connecteur de démonstration reste dans
+    la plateforme :
+    - un type que le service ne connaît pas est traité comme joignant l'extérieur ;
+    - un serveur MCP local (stdio) en fait partie : c'est un programme de l'entreprise,
+      qui peut joindre le réseau ;
+  - **retrait** : le service des connecteurs démarre et prépare les connecteurs comme
+    pour un run, puis `TenantTools::inside_only` retire leurs outils et leurs
+    politiques :
+    - chaque connecteur retiré est nommé à l'agent comme indisponible, par la note des
+      connecteurs indisponibles (ADR-048). L'agent dit ainsi ce qui manque au lieu de
+      conclure que l'information n'existe pas ;
+    - comme un connecteur arrêté, il n'est nommé qu'à qui pourrait atteindre ses
+      outils ;
+  - **moment** : la décision est lue une fois, quand l'évaluation commence, et vaut pour
+    tous ses cas ;
+  - **écran** : dans « Compétences », la confirmation et la note sous le formulaire
+    disent que la proposition est jouée, comme la version active, sans les serveurs MCP,
+    les API REST ni les comptes reliés.
+- **Alternatives écartées** :
+  - retirer ces outils de toute évaluation : une version qu'un administrateur a écrite,
+    ou rendue active, l'engage. L'évaluer sans les outils de ses runs rendrait la
+    comparaison moins fidèle, sans rien protéger ;
+  - ne les retirer qu'à la version proposée : la version active aurait des outils que la
+    proposition n'a pas, et chaque cas qui en dépend deviendrait une régression ;
+  - ne retirer que les serveurs MCP : une API REST reçoit aussi les paramètres de ses
+    outils, et un compte relié (Microsoft 365, Google) de même, même si une évaluation
+    n'en lit aucun (ADR-117) ;
+  - ne pas démarrer les connecteurs retirés : les connecteurs d'une entreprise partagent
+    les noms d'outils, et le plus ancien garde les siens. Les préparer comme pour un run
+    donne aux autres le même jeu d'outils que dans les runs.
+- **Réserves assumées** :
+  - les outils de la plateforme (mémoire, documents, compétences) et le connecteur de
+    démonstration restent offerts : ils ne font rien sortir de la plateforme, et les
+    réponses ne sont lues que par l'administrateur qui a demandé l'évaluation
+    (ADR-104) ;
+  - l'évaluation ne garde pas qu'elle a été jouée sans ces connecteurs : l'écran le dit
+    avant qu'elle soit demandée, et la réponse de l'agent nomme le connecteur qui lui
+    manquait ;
+  - une proposition peut encore glisser dans la réponse une consigne trompeuse pour
+    l'administrateur (« copiez ceci dans… ») : il lit la proposition avant de l'évaluer,
+    puis la réponse.
+- **Conséquences** :
+  - la réserve de l'ADR-104 est levée ;
+  - tests :
+    - `crates/api/src/services/connectors/tenant_tools.rs` : seul le connecteur de
+      démonstration reste dans la plateforme, et un type inconnu est traité comme
+      joignant l'extérieur ; les outils et politiques d'un connecteur qui joint
+      l'extérieur sont retirés, et ce connecteur est nommé comme indisponible ;
+    - `crates/api/tests/skill_evaluation_tools.rs` : une proposition de l'agent, et la
+      version active à côté d'elle, sont jouées sans l'outil d'une API REST ni celui d'un
+      serveur MCP, tous deux nommés à l'agent. Une fois la proposition rendue active,
+      comme pour une version écrite par un administrateur, les deux outils sont offerts ;
+    - `apps/web/e2e/skill-proposals.spec.ts` : la note et la confirmation le disent.

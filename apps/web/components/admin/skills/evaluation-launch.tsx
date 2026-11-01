@@ -9,7 +9,8 @@ import { api, useAction, type EvaluationRequest, type SkillVersionView } from '@
  * latest one not active by default. A version the agent wrote that no
  * person made active, awaiting a decision or turned down, is read before
  * it is played: the assistant follows it with the rights of whom asked for
- * the evaluation, reading only.
+ * the evaluation, reading only, without the connectors that reach outside
+ * the platform (ADR-153).
  */
 export function EvaluationLaunch({
   skillId,
@@ -35,7 +36,7 @@ export function EvaluationLaunch({
     if (
       proposal &&
       !window.confirm(
-        `La version ${version} est une proposition de l’agent. L’évaluer la fait suivre à l’assistant avec vos droits, en lecture seule. Avez-vous relu son contenu ?`,
+        `La version ${version} est une proposition de l’agent. L’évaluer la fait suivre à l’assistant avec vos droits, en lecture seule, sans les connecteurs qui joignent l’extérieur. Avez-vous relu son contenu ?`,
       )
     ) {
       return;
@@ -66,7 +67,8 @@ export function EvaluationLaunch({
       </div>
       {proposal && (
         <p className="text-xs text-warn">
-          Proposition de l’agent : relisez son contenu avant de l’évaluer.
+          Proposition de l’agent : relisez son contenu avant de l’évaluer. Elle est jouée, comme la
+          version active à côté d’elle, sans les serveurs MCP, les API REST ni les comptes reliés.
         </p>
       )}
       {action.error && <ErrorNote message={action.error} />}

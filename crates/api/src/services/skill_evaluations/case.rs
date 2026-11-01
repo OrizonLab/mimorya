@@ -3,7 +3,9 @@
 //! theirs, with what a sub-agent is given (ADR-098): the tools that only
 //! read and run without validation, the read-only autonomy, a budget of its
 //! own; told that actions are not available, it describes the one it would
-//! propose. `skill_read` serves the version played. A model then judges the
+//! propose. `skill_read` serves the version played. The tools of the
+//! connectors that reach outside the platform are withheld when the version
+//! evaluated is a proposal of the agent (ADR-153). A model then judges the
 //! answer on the case's criteria, on the quality criteria of either version
 //! (the same bar for both), and on those of the other skills the agent
 //! loaded, as a run's answer is (ADR-106). The result keeps the answer, the
@@ -30,7 +32,7 @@ use super::access::EvaluationAccess;
 use super::ports::{CasePorts, CaseScope, EvaluatedVersion, Journal, ToolTrace, case_ports};
 use crate::app::Services;
 use crate::services::AccessContext;
-use crate::services::runs::{build_run_tools, user_profile};
+use crate::services::runs::{run_tools, user_profile};
 
 /// What one case may spend at most, for one version.
 pub const CASE_BUDGET: BudgetLimits = BudgetLimits {
@@ -75,6 +77,10 @@ pub struct CaseRequest<'a> {
     pub judge: Arc<dyn LlmProvider>,
     pub version: EvaluatedVersion,
     pub case: &'a StoredCase,
+    /// Without the tools of the connectors that reach outside the platform,
+    /// each named to the agent as unavailable: the version evaluated is a
+    /// proposal of the agent no administrator made active (ADR-153).
+    pub inside_only: bool,
 }
 
 /// How the case went for the version.
@@ -147,7 +153,11 @@ async fn answer_and_judge(
     } = request;
     let run_id = Uuid::new_v4();
     let actor = Actor::agent(Some(run_id)).with_channel(CHANNEL);
-    let tools = build_run_tools(access, &actor, &ports, &services.connectors).await?;
+    let mut connector_tools = services.connectors.tools_for(scope.tenant_id).await?;
+    if request.inside_only {
+        connector_tools = connector_tools.inside_only();
+    }
+    let tools = run_tools(access, &actor, &ports, connector_tools)?;
     let skills = if access.engine.has(&access.subject, "skill:read", &actor) {
         ports.skills.list_active().await?
     } else {

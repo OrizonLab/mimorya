@@ -83,6 +83,7 @@ impl Connector for Microsoft365Connector {
             description: "La boîte e-mail et l’agenda Microsoft 365 de chacun, que chaque personne relie elle-même à son compte : l’agent n’y lit que ce que la personne servie peut lire, et n’y écrit, si l’entreprise le permet, que ce qui est validé.",
             demo: false,
             permissions: &[],
+            reaches_outside: true,
         }
     }
 

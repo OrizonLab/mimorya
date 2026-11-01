@@ -16,7 +16,7 @@ use mimorya_db::repositories::skills::list_active_skills;
 use uuid::Uuid;
 
 use crate::services::access::AccessContext;
-use crate::services::connectors::{ConnectorService, unavailable_in_reach};
+use crate::services::connectors::{ConnectorService, TenantTools, unavailable_in_reach};
 use crate::services::embeddings::{EmbeddingService, UsageBy};
 
 const MEMORY_RECALL_LIMIT: i64 = 5;
@@ -35,6 +35,16 @@ pub async fn build_run_tools(
     connectors: &ConnectorService,
 ) -> anyhow::Result<RunTools> {
     let connector_tools = connectors.tools_for(access.subject.tenant_id).await?;
+    run_tools(access, actor, ports, connector_tools)
+}
+
+/// The tools of a run given those of its company's connectors.
+pub fn run_tools(
+    access: &AccessContext,
+    actor: &Actor,
+    ports: &EnginePorts,
+    connector_tools: TenantTools,
+) -> anyhow::Result<RunTools> {
     let holds = |permission: &str| access.engine.has(&access.subject, permission, actor);
     let unavailable_connectors = unavailable_in_reach(&connector_tools.issues, holds);
     let mut tools = platform_tools(

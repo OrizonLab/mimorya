@@ -225,7 +225,9 @@ Repères à l'intérieur des crates :
   aux administrateurs des compétences, ADR-102),
   `api/src/services/skill_evaluations/` (évaluations des compétences : passe une à la
   fois (`pass.rs`), cas joués et jugés (`play.rs`, `case.rs`) avec leurs propres ports
-  (`ports/`), lecture (`view.rs`), ADR-104),
+  (`ports/`), lecture (`view.rs`), ADR-104 ; une proposition de l'agent jouée sans les
+  connecteurs qui joignent l'extérieur, retirés par `services/connectors/tenant_tools.rs`,
+  ADR-153),
   `api/src/services/documents/` (documents déposés : lecture par le processus
   `mimorya-extract`, `api/src/bin/extract.rs`, bornée en nombre, en temps et en taille,
   `extractor.rs`, fichier lu et refusé, commun au dépôt et au remplacement,

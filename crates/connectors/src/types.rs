@@ -19,6 +19,11 @@ pub struct ConnectorInfo {
     pub demo: bool,
     /// Business permissions introduced by this connector.
     pub permissions: &'static [PermissionInfo],
+    /// Whether its tools send what they are given outside the platform: to
+    /// a server, an API or an account declared by the company or linked by
+    /// a person. A skill version the agent proposed is evaluated without
+    /// them (ADR-153).
+    pub reaches_outside: bool,
 }
 
 /// Releases what a live connector holds (processes, connections), and tells
