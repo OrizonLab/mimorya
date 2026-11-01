@@ -9292,7 +9292,11 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     neutralisées. Dans l'ordre inverse, un nom de balise coupé par un caractère
     invisible (`</contexte\u{200b}_memoire>`) échapperait à la neutralisation, puis serait
     reformé une fois le caractère retiré. Une seule fonction décrit ces balises, pour
-    les enveloppes comme pour le contrôle (`tags_named`, `neutralise_tags`).
+    les enveloppes comme pour le contrôle (`tags_named`, `neutralise_tags`), un nom y
+    étant lu tel qu'il est écrit. Un retour à la ligne de toute forme y reste un `\n`
+    (`plain_text::shown`) dans la mémoire et dans la demande, les critères et la réponse
+    que lit le contrôle ; le libellé d'une source tient, lui, sur une ligne, ses retours
+    à la ligne lus comme des espaces.
 - **Alternatives écartées** :
   - **refuser l'écriture d'une mémoire qui cache des caractères** : la mémoire existante
     garderait les siens. Et une mémoire tirée d'un e-mail ou d'une conversation
@@ -9304,8 +9308,9 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
 - **Réserves assumées** :
   - les règles d'écriture de la mémoire ne changent pas : ce qu'elle garde reste tel
     qu'il a été écrit, et c'est la lecture par le modèle qui le nettoie ;
-  - le texte que l'utilisateur tape lui-même n'est pas nettoyé : c'est sa demande, pas
-    une donnée tierce ;
+  - le texte que l'utilisateur tape lui-même n'est pas nettoyé pour le modèle de la
+    conversation : c'est sa demande, pas une donnée tierce. Le modèle de contrôle, lui,
+    le lit nettoyé, comme tout ce qu'il lit ;
   - la demande d'un run lancé par un déclencheur contient la vraie enveloppe de ce qu'il
     a reçu (ADR-109). Le modèle de contrôle la lit neutralisée
     (`<\donnees_outil source="declencheur" fiabilite="non_fiable">`). C'est sans
@@ -9331,3 +9336,12 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       d'étiquette) laissent chacune des quatre parties ouverte et fermée une seule fois,
       sans aucun caractère invisible. Si l'on ne neutralise plus ces balises, ce test
       échoue.
+- **Complément (lot 26, suites de l'audit de la PR #169)** :
+  - `tags_named` échappe chaque nom : un nom de balise est lu tel qu'il est écrit, jamais
+    comme un motif. La fonction et `neutralise_tags` restent internes à la crate ;
+  - le contrôle lit un retour à la ligne de toute forme (`\r` seul, U+2028…) comme `\n`,
+    au lieu de le supprimer, comme pour la mémoire et les résultats d'outils ;
+  - tests : `crates/agent/src/tools/untrusted.rs`
+    (`a_tag_name_is_read_as_written_not_as_a_pattern` : `<axb>` et `<cc>` restent
+    intacts, `<a.b>` et `</C+>` sont neutralisés) ; `crates/agent/src/runtime/verification.rs`
+    (une demande qui contient un `\r` seul est lue avec un `\n`).

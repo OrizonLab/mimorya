@@ -30,14 +30,15 @@ const PROCEDURE_CLOSE: &str = "</procedure_entreprise>";
 /// any case, spaces or invisible characters (zero-width space, soft
 /// hyphen…) around the slash. A name cut by an invisible character is not
 /// one: the text is taken out of what hides first (ADR-158, ADR-159).
-pub fn tags_named(names: &[&str]) -> Regex {
+pub(crate) fn tags_named(names: &[&str]) -> Regex {
     let gap = r"[\s\p{Cf}\p{Default_Ignorable_Code_Point}]*";
+    let names: Vec<String> = names.iter().map(|name| regex::escape(name)).collect();
     Regex::new(&format!("(?i)<{gap}(/?){gap}({})", names.join("|"))).expect("valid regex")
 }
 
 /// `text` with each tag `tags` matches broken (`<\donnees_outil`,
 /// `<\/procedure_entreprise`…): it can open or close none of them.
-pub fn neutralise_tags(tags: &Regex, text: &str) -> String {
+pub(crate) fn neutralise_tags(tags: &Regex, text: &str) -> String {
     tags.replace_all(text, r"<\${1}${2}").into_owned()
 }
 
@@ -257,6 +258,15 @@ mod tests {
         assert!(
             plain.ends_with(&format!("Ligne 1\nLigne 2\n{CLOSE}")),
             "{plain}"
+        );
+    }
+
+    #[test]
+    fn a_tag_name_is_read_as_written_not_as_a_pattern() {
+        let tags = tags_named(&["a.b", "c+"]);
+        assert_eq!(
+            neutralise_tags(&tags, "<a.b> <axb> </C+> <cc>"),
+            "<\\a.b> <axb> <\\/C+> <cc>"
         );
     }
 
