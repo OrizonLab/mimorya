@@ -9362,9 +9362,9 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
   connecteur. Décocher un seul outil recopiait donc dans l'audit toutes les politiques, et
   avec elles les descriptions remplacées par l'administrateur (ADR-057). Celles-ci
   peuvent atteindre 1 000 caractères par outil et 256 Kio par serveur. Remplacer les
-  opérations d'une API REST recopiait de même les politiques restantes. L'audit ne
-  disait pas ce qui avait changé. Une modification qui n'envoie aucune politique, comme
-  un renommage, n'en recopiait déjà aucune.
+  opérations d'une API REST, quand cela en retirait une, recopiait de même les autres.
+  L'audit ne disait pas ce qui avait changé. Une modification qui ne touche à aucune
+  politique, comme un renommage, n'en recopiait déjà aucune.
 - **Décision** :
   - l'audit ne garde, dans `toolPolicies`, que les outils dont la politique a changé.
     Chacun y figure avec sa nouvelle politique, ou `null` s'il n'en a plus ;
