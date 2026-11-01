@@ -11,9 +11,9 @@ mod support;
 use axum::http::StatusCode;
 use mimorya_agent::testing::ScriptedStep;
 use mimorya_connectors::testing::serve_demo_docs_http;
-use mimorya_core::demo::{tenant, user};
+use mimorya_core::demo::user;
 use serde_json::{Value, json};
-use support::mcp::{PRIVATE_DEPLOYMENT, TOKEN, TOOL, add, listed, mcp_body};
+use support::mcp::{PRIVATE_DEPLOYMENT, TOKEN, TOOL, add, last_update, listed, mcp_body};
 use support::recovery::{restore_demo_policies, set_demo_policies};
 use support::{Client, TestApi};
 
@@ -33,17 +33,7 @@ fn mapped(description: Option<&str>) -> Value {
 
 /// The tool policies the last `connector.updated` of `id` kept.
 async fn audited_policies(api: &TestApi, id: &str) -> Value {
-    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
-    let metadata: Value = sqlx::query_scalar(
-        "select metadata from audit_log where resource_id = $1 \
-         and action = 'connector.updated' order by id desc limit 1",
-    )
-    .bind(id)
-    .fetch_one(&mut *tx)
-    .await
-    .unwrap();
-    tx.commit().await.unwrap();
-    metadata["toolPolicies"].clone()
+    last_update(api, id).await["toolPolicies"].clone()
 }
 
 /// The policy of `TOOL`, the only tool `audited` names.
@@ -125,7 +115,7 @@ async fn the_model_reads_the_description_an_administrator_wrote() {
     let policy = only_tool(&audited);
     assert_eq!(policy["enabled"], false, "{audited}");
     assert!(policy.get("description").is_none(), "{audited}");
-    // Nothing of the policies changed: none is audited.
+    // A rename sends no policies: none is audited (as before ADR-160).
     let renamed = paul
         .patch(&path, json!({ "name": "Procédures (bis)" }))
         .await;

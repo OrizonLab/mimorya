@@ -102,3 +102,18 @@ pub async fn write_policies(api: &TestApi, id: &str, policies: Value) {
     .unwrap();
     tx.commit().await.unwrap();
 }
+
+/// What the last `connector.updated` of the connector `id` kept (ADR-160).
+pub async fn last_update(api: &TestApi, id: &str) -> Value {
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    let metadata = sqlx::query_scalar(
+        "select metadata from audit_log where resource_id = $1 \
+         and action = 'connector.updated' order by id desc limit 1",
+    )
+    .bind(id)
+    .fetch_one(&mut *tx)
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+    metadata
+}
