@@ -87,6 +87,7 @@ mod tests {
     use mimorya_connectors::{InstanceContext, connector_types};
     use serde_json::json;
 
+    use super::super::reach::added_by_companies;
     use super::*;
 
     fn names(tools: &[ToolRef]) -> Vec<String> {
@@ -134,6 +135,18 @@ mod tests {
         assert_eq!(inside, ["demo_interventions"]);
         for type_name in ["mcp", "rest", "microsoft365", "google_workspace", "inconnu"] {
             assert!(reaches_outside(type_name), "{type_name}");
+        }
+    }
+
+    /// What a company adds itself (its own server, API or accounts) is
+    /// outside the platform: a new type of the kind is withheld too.
+    #[test]
+    fn every_type_a_company_adds_reaches_outside() {
+        for definition in connector_types() {
+            let info = definition.info();
+            if added_by_companies(info.connector_type) {
+                assert!(info.reaches_outside, "{}", info.connector_type);
+            }
         }
     }
 }

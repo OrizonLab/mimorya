@@ -67,8 +67,9 @@ export function EvaluationLaunch({
       </div>
       {proposal && (
         <p className="text-xs text-warn">
-          Proposition de l’agent : relisez son contenu avant de l’évaluer. Elle est jouée, comme la
-          version active à côté d’elle, sans les serveurs MCP, les API REST ni les comptes reliés.
+          Proposition de l’agent : relisez son contenu avant de l’évaluer. Elle est jouée
+          {activeVersion === null ? '' : ', comme la version active à côté d’elle,'} sans les
+          serveurs MCP, les API REST ni les comptes reliés.
         </p>
       )}
       {action.error && <ErrorNote message={action.error} />}

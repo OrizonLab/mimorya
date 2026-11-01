@@ -3,14 +3,14 @@
 //! theirs, with what a sub-agent is given (ADR-098): the tools that only
 //! read and run without validation, the read-only autonomy, a budget of its
 //! own; told that actions are not available, it describes the one it would
-//! propose. `skill_read` serves the version played. The tools of the
-//! connectors that reach outside the platform are withheld when the version
-//! evaluated is a proposal of the agent (ADR-153). A model then judges the
-//! answer on the case's criteria, on the quality criteria of either version
-//! (the same bar for both), and on those of the other skills the agent
-//! loaded, as a run's answer is (ADR-106). The result keeps the answer, the
-//! issues the judge found, the tools called and whether the version was
-//! loaded.
+//! propose. `skill_read` serves the version played. When the version
+//! evaluated is a proposal of the agent no administrator made active, both
+//! versions go without the tools of the connectors that reach outside the
+//! platform (ADR-153). A model then judges the answer on the case's
+//! criteria, on the quality criteria of either version (the same bar for
+//! both), and on those of the other skills the agent loaded, as a run's
+//! answer is (ADR-106). The result keeps the answer, the issues the judge
+//! found, the tools called and whether the version was loaded.
 
 use std::sync::Arc;
 

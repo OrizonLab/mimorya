@@ -8863,8 +8863,8 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
   - **moment** : la décision est lue une fois, quand l'évaluation commence, et vaut pour
     tous ses cas ;
   - **écran** : dans « Compétences », la confirmation et la note sous le formulaire
-    disent que la proposition est jouée, comme la version active, sans les serveurs MCP,
-    les API REST ni les comptes reliés.
+    disent que la proposition est jouée sans les serveurs MCP, les API REST ni les
+    comptes reliés, comme la version active à côté d'elle quand la compétence en a une.
 - **Alternatives écartées** :
   - retirer ces outils de toute évaluation : une version qu'un administrateur a écrite,
     ou rendue active, l'engage. L'évaluer sans les outils de ses runs rendrait la
@@ -8893,10 +8893,14 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
   - tests :
     - `crates/api/src/services/connectors/tenant_tools.rs` : seul le connecteur de
       démonstration reste dans la plateforme, et un type inconnu est traité comme
-      joignant l'extérieur ; les outils et politiques d'un connecteur qui joint
-      l'extérieur sont retirés, et ce connecteur est nommé comme indisponible ;
-    - `crates/api/tests/skill_evaluation_tools.rs` : une proposition de l'agent, et la
-      version active à côté d'elle, sont jouées sans l'outil d'une API REST ni celui d'un
-      serveur MCP, tous deux nommés à l'agent. Une fois la proposition rendue active,
-      comme pour une version écrite par un administrateur, les deux outils sont offerts ;
-    - `apps/web/e2e/skill-proposals.spec.ts` : la note et la confirmation le disent.
+      joignant l'extérieur, comme tout type qu'une entreprise ajoute elle-même ; les
+      outils et politiques d'un connecteur qui joint l'extérieur sont retirés, et ce
+      connecteur est nommé comme indisponible ;
+    - `crates/api/tests/skill_evaluation_tools.rs` : une proposition de l'agent, en
+      attente ou rejetée, et la version active à côté d'elle, sont jouées sans l'outil
+      d'une API REST ni celui d'un serveur MCP, tous deux nommés à l'agent ; l'appel que
+      le modèle fait quand même à l'outil de l'API est refusé comme un outil inconnu, et
+      aucun outil ne s'exécute. Une fois la proposition rendue active, comme pour une
+      version écrite par un administrateur, les deux outils sont offerts ;
+    - `apps/web/e2e/skill-proposals.spec.ts` : la note et la confirmation le disent, la
+      note sans parler d'une version active que la compétence en brouillon n'a pas.

@@ -100,8 +100,10 @@ test('a skill the agent proposes is validated, then turned down by an administra
   await cases.getByRole('button', { name: 'Ajouter le cas' }).click();
   const evaluations = page.getByRole('region', { name: 'Évaluations' });
   await expect(evaluations).toContainText('Proposition de l’agent : relisez son contenu');
-  // Played without what reaches outside the platform (ADR-153).
+  // Played without what reaches outside the platform (ADR-153), beside no
+  // active version: the skill is a draft.
   await expect(evaluations).toContainText('sans les serveurs MCP, les API REST ni les comptes');
+  await expect(evaluations).not.toContainText('comme la version active');
   await evaluations.getByRole('button', { name: 'Lancer l’évaluation' }).click();
   await expect.poll(() => dialogs.join('\n')).toContain('Avez-vous relu son contenu ?');
   expect(dialogs.join('\n')).toContain('sans les connecteurs qui joignent l’extérieur');
