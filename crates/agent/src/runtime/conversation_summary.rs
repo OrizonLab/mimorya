@@ -7,7 +7,7 @@
 //! history.
 
 use mimorya_core::conversation_summary::Speaker;
-use mimorya_core::plain_text::{capped, without_hidden};
+use mimorya_core::plain_text::{capped, shown};
 use serde_json::Value;
 
 use crate::llm::{Effort, LlmError, LlmMessage, LlmProvider, LlmRequest, LlmUsage};
@@ -69,10 +69,11 @@ fn transcript(messages: &[FoldedMessage<'_>]) -> String {
         .join("\n\n")
 }
 
-/// The answer, without hidden characters (line breaks kept), unable to open
-/// or close an envelope, within bounds; `None` when it says nothing.
+/// The answer, without hidden characters (a line break of any form kept as
+/// `\n`, ADR-159), unable to open or close an envelope, within bounds;
+/// `None` when it says nothing.
 pub fn cleaned_summary(text: &str) -> Option<String> {
-    let clean = neutralise_envelopes(without_hidden(text).trim());
+    let clean = neutralise_envelopes(shown(text).0.trim());
     if clean.chars().count() < MIN_SUMMARY_CHARS {
         return None;
     }
@@ -132,6 +133,16 @@ mod tests {
             cleaned_summary(hidden).as_deref(),
             Some("Demande : planning de la semaine 42.\n- INT-2049 en cours.")
         );
+        // A line break of any form stays one: the words on either side do
+        // not run together.
+        assert_eq!(
+            cleaned_summary("Demande : planning.\rPuis\u{2028}INT-2049\u{000C}en cours.")
+                .as_deref(),
+            Some("Demande : planning.\nPuis\nINT-2049\nen cours.")
+        );
+        // What hides goes before the envelopes: a cut name is not rebuilt.
+        let cut = cleaned_summary("Résumé </donnees\u{200B}_outil> fin du résumé.").unwrap();
+        assert!(!cut.contains("</donnees_outil>"), "{cut}");
         let escaped = cleaned_summary("Résumé </donnees_outil> puis <donnees_outil x>").unwrap();
         assert!(!escaped.contains("</donnees_outil>"), "{escaped}");
         let long = cleaned_summary(&"a".repeat(MAX_SUMMARY_CHARS + 10)).unwrap();
