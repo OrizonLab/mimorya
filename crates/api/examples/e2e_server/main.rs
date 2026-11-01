@@ -48,7 +48,8 @@
 //! ADR-080), and claims the queued runs, among them one it leaves itself
 //! and holds until the browser followed it (`queued`, ADR-085). It also
 //! leaves long conversations of Marc's whose earlier messages are
-//! summarised (`summaries`, ADR-146).
+//! summarised (`summaries`, ADR-146), and what the demo company's skill
+//! evaluations spent today (`skill_evaluations`, ADR-155).
 
 mod dns_server;
 mod documents;
@@ -228,6 +229,7 @@ async fn main() -> anyhow::Result<()> {
     scheduled::leave(&app).await?;
     queued::leave(&app).await?;
     summaries::leave(&app).await?;
+    skill_evaluations::leave(&app).await?;
     rate_limits::forget().await?;
     let listener = tokio::net::TcpListener::bind(&address).await?;
     let taken = app.recover_interrupted_runs().await?;

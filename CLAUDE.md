@@ -300,7 +300,7 @@ Repères à l'intérieur des crates :
   ADR-077, ADR-093, limite de coût des évaluations des compétences, ADR-155, `admin/users/` :
   comptes, dont l'absence d'un collaborateur empêché, ADR-079, et `admin/skills/` :
   compétences, propositions de l'agent, ADR-101, cas d'évaluation et évaluations,
-  ADR-105, critères de qualité, ADR-107 —, approvals — dont la
+  ADR-105, critères de qualité, ADR-107, dépense et limite des évaluations, ADR-155 —, approvals — dont la
   section « Absence » et son formulaire, commun, ADR-073 —, chat — dont la conversation tenue
   dans Slack, marquée et annoncée par une note, ADR-128, ou dans Telegram, ADR-135, ou dans
   Teams, ADR-140, et le résumé de ses premiers messages, ADR-146 —, documents — dépôt, liste

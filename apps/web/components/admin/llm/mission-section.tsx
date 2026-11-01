@@ -9,11 +9,11 @@ import {
   type MissionSettingsUpdate,
   type MissionSettingsView,
 } from '@/lib/api';
-import { formatCost } from '@/lib/format';
+import { dollarsOf, formatCost, microsOf } from '@/lib/format';
 import { useSyncedState } from '@/lib/use-synced-state';
+import { CostField } from './cost-field';
 
 const SETTINGS = '/admin/mission-settings';
-const MICROS = 1_000_000;
 
 /** The limits of the missions the company's people entrust (ADR-093). */
 export function MissionSection() {
@@ -25,20 +25,22 @@ export function MissionSection() {
 
 /** The limits as the form writes them: stages, and dollars. */
 function draftOf(data: MissionSettingsView) {
-  return { stages: String(data.maxStages), dollars: String(data.maxCostMicros / MICROS) };
+  return { stages: String(data.maxStages), dollars: dollarsOf(data.maxCostMicros) };
 }
 
 function MissionForm({ data, onSaved }: { data: MissionSettingsView; onSaved: () => void }) {
   // Started again from each reloaded setting (ADR-041).
   const [draft, setDraft] = useSyncedState(draftOf(data));
   const action = useAction();
-  const unchanged = JSON.stringify(draft) === JSON.stringify(draftOf(data));
+  // `2.50` is the `2.5` saved, `06` the `6`: nothing to save.
+  const unchanged =
+    Number(draft.stages) === data.maxStages && microsOf(draft.dollars) === data.maxCostMicros;
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     const body = {
       maxStages: Number(draft.stages),
-      maxCostMicros: Math.round(Number(draft.dollars) * MICROS),
+      maxCostMicros: microsOf(draft.dollars),
     } satisfies MissionSettingsUpdate;
     if (await action.run(() => api.put(SETTINGS, body))) onSaved();
   }
@@ -66,17 +68,13 @@ function MissionForm({ data, onSaved }: { data: MissionSettingsView; onSaved: ()
               onChange={(e) => setDraft({ ...draft, stages: e.target.value })}
             />
           </Field>
-          <Field label="Coût au plus par mission (USD)">
-            <Input
-              type="number"
-              required
-              min={data.minCostMicros / MICROS}
-              max={data.maxCostCeilingMicros / MICROS}
-              step="any"
-              value={draft.dollars}
-              onChange={(e) => setDraft({ ...draft, dollars: e.target.value })}
-            />
-          </Field>
+          <CostField
+            label="Coût au plus par mission (USD)"
+            dollars={draft.dollars}
+            onChange={(dollars) => setDraft({ ...draft, dollars })}
+            minMicros={data.minCostMicros}
+            maxMicros={data.maxCostCeilingMicros}
+          />
         </div>
         <p className="text-xs text-muted">
           {data.own

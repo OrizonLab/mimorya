@@ -4,12 +4,16 @@
 //! conversations keep their order (`skill-evaluations.spec.ts`). The agent
 //! loads the skill, then answers as the version played says: the version
 //! that says to cite no delay makes it answer without one, which the judge
-//! fails, while the active version passes. A regression.
+//! fails, while the active version passes. A regression. The model has no
+//! price: what the company's evaluations spent is written at start, for the
+//! screens to show it (`evaluation-limit.spec.ts`, ADR-155).
 
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use mimorya_agent::llm::{LlmError, LlmMessage, LlmProvider, LlmRequest, LlmResponse, LlmToolCall};
+use mimorya_core::demo::tenant;
+use mimorya_db::repositories::evaluation_spending::add_evaluation_spending;
 use serde_json::json;
 
 use crate::played;
@@ -25,6 +29,17 @@ const CITED: &str = "Deux retards : l’intervention de Lyon et celle de Nantes.
 const NONE_CITED: &str = "Aucun retard à signaler.";
 /// The issue the judge finds in the answer that cites none.
 const ISSUE: &str = "Les retards de la semaine ne sont pas cités.";
+/// What the demo company's evaluations spent today, as the screens show it
+/// (1,234 USD), well under the platform's limit.
+const SPENT_MICROS: i64 = 1_234_000;
+
+/// Writes what the demo company's evaluations spent today.
+pub async fn leave(app: &mimorya_api::app::App) -> anyhow::Result<()> {
+    let mut tx = app.services.db.begin(tenant::ID).await?;
+    add_evaluation_spending(&mut tx, tenant::ID, SPENT_MICROS, 40).await?;
+    tx.commit().await?;
+    Ok(())
+}
 
 /// The platform model: the case is played here, the rest goes on.
 pub struct WithSkillEvaluations {
