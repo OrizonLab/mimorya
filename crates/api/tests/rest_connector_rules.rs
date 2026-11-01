@@ -13,7 +13,7 @@ use mimorya_connectors::testing::serve_rest_http;
 use mimorya_core::demo::{tenant, user};
 use serde_json::{Value, json};
 use support::TestApi;
-use support::mcp::{PRIVATE_DEPLOYMENT, add, listed, mcp_body};
+use support::mcp::{PRIVATE_DEPLOYMENT, add, last_update, listed, mcp_body};
 use support::rest::{CREATE, KEY, READ, add_rest, operations, rest_body};
 
 /// The message of a refusal, with its status.
@@ -149,17 +149,10 @@ async fn a_change_is_checked_and_the_key_never_follows_the_api_elsewhere() {
     let saved = paul.patch(&path, json!({ "operations": deleting })).await;
     assert_eq!(saved.status, StatusCode::OK, "{}", saved.text());
     assert_eq!(listed(&paul, &id).await["toolPolicies"], json!({}));
-    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
-    let audited: Value = sqlx::query_scalar(
-        "select metadata from audit_log where resource_id = $1 \
-         and action = 'connector.updated' order by id desc limit 1",
-    )
-    .bind(&id)
-    .fetch_one(&mut *tx)
-    .await
-    .unwrap();
-    drop(tx);
+    let audited = last_update(&api, &id).await;
     assert_eq!(audited["droppedPolicies"], json!([READ]));
+    // The policies audited are those that changed: the one dropped (ADR-160).
+    assert_eq!(audited["toolPolicies"], json!({ READ: null }));
 
     // A policy names a declared operation only, never one to come.
     let unknown = json!({ "toolPolicies": { "rest_crm_export_all": { "risk": "read" } } });

@@ -37,6 +37,7 @@ mod microsoft365;
 mod mission_settings;
 mod org_units;
 mod policies;
+mod policy_changes;
 mod provider_designation;
 mod reset_links;
 mod rest_connectors;

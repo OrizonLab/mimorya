@@ -166,7 +166,8 @@ Repères à l'intérieur des crates :
   TypeScript, ADR-036, ADR-039),
   `api/src/services/admin/` (comptes et absence d'un collaborateur empêché
   (`absences.rs`, ADR-078), organisation, habilitations, connecteurs : ce que
-  l'administration change de chacun (`connector_config.rs`) et API REST ajoutées
+  l'administration change de chacun (`connector_config.rs`), seules les politiques changées
+  tracées (`policy_changes.rs`, ADR-160) et API REST ajoutées
   (`rest_connectors.rs`, ADR-112, opérations lues d'une description OpenAPI, ADR-114),
   partages de connaissances entre unités (`knowledge_shares.rs`, ADR-143),
   compétences, rejet des propositions de l'agent (`skill_proposals.rs`, ADR-100), cas d'évaluation
