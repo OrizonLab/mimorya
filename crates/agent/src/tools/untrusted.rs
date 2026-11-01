@@ -265,8 +265,8 @@ mod tests {
     fn a_tag_name_is_read_as_written_not_as_a_pattern() {
         let tags = tags_named(&["a.b", "c+"]);
         assert_eq!(
-            neutralise_tags(&tags, "<a.b> <axb> </C+>"),
-            "<\\a.b> <axb> <\\/C+>"
+            neutralise_tags(&tags, "<a.b> <axb> </C+> <cc>"),
+            "<\\a.b> <axb> <\\/C+> <cc>"
         );
     }
 
