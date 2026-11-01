@@ -2038,7 +2038,8 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     exemple. Le message nomme l'outil, que l'éditeur du serveur peut corriger ;
   - les résultats des outils ne sont pas filtrés : ce sont des données non fiables,
     encadrées comme telles (`wrap_tool_result`), et les modifier altérerait ce que lit
-    l'utilisateur (feuille de route) ;
+    l'utilisateur (feuille de route) (levée par ADR-158 : la copie que lit le modèle
+    perd ses caractères invisibles, la plateforme dit combien) ;
   - tests :
     - `mcp/declarations.rs` : retrait avant le masquage, un jeton coupé de caractères
       invisibles restant masqué ; refus d'une valeur permise qui cache du texte, et d'un
@@ -9178,3 +9179,64 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       - quand la passe d'une entreprise échoue (la base refuse de clore ses
         évaluations), celle d'une autre entreprise joue la sienne. La passe suivante
         reprend la première.
+
+## ADR-158 — Les données non fiables ne cachent rien au modèle
+
+- **Date** : 2026-11-01 · **Statut** : acceptée · complète ADR-058
+- **Contexte** : l'ADR-058 retire les caractères invisibles de ce que déclare un serveur
+  MCP. Elle laisse tels quels les résultats des outils, qui sont pourtant le texte le
+  plus exposé : un e-mail, une page, un document ou la réponse d'une API peuvent écrire
+  une consigne en caractères d'étiquette (U+E0000 et suivants). Personne ne la voit en
+  relisant le résultat, alors que le modèle peut la lire. L'enveloppe « non fiable »
+  dit au modèle de ne pas suivre ce qu'il lit, mais ne l'empêche pas de le lire, et
+  personne ne peut relever après coup une consigne invisible.
+- **Décision** :
+  - **ce que lit le modèle** : les données non fiables perdent leurs caractères
+    invisibles avant d'être encadrées (`plain_text::shown`). Cela vaut pour le résultat
+    d'un outil, ses erreurs comprises, et pour tout ce que la plateforme encadre comme
+    non fiable : la conversation relue pour une leçon, le contexte d'une délégation, les
+    messages repliés dans un résumé. La règle est celle de l'ADR-058 (`is_hidden`) : les
+    retours à la ligne et les tabulations restent, et une fin de ligne `\r\n` est lue
+    comme `\n` ;
+  - **ce que dit la plateforme** : quand des caractères ont été retirés, un avis suit
+    l'enveloppe, hors d'elle, comme celui d'une troncature : « [N caractères invisibles
+    retirés par la plateforme] ». Le modèle sait ainsi que le texte lu n'est pas
+    exactement celui rendu, par exemple pour un identifiant qu'il recopierait ;
+  - **ce qui ne change pas** : seule la copie que lit le modèle change. Le résumé de
+    l'appel et les citations restent tels que l'outil les a rendus, et la compétence
+    chargée par `skill_read` n'est pas concernée : elle ne peut contenir aucun caractère
+    invisible (ADR-052).
+- **Alternatives écartées** :
+  - **laisser les résultats tels quels** : une consigne cachée atteindrait le modèle
+    sans que personne puisse la voir, ni avant ni après le run ;
+  - **remplacer chaque suite invisible par une marque dans le texte** : un texte
+    ordinaire (traits d'union conditionnels, émojis composés) se couvrirait de marques.
+    Un avis unique, hors de l'enveloppe, dit la même chose ;
+  - **retirer seulement les caractères d'étiquette** : les espaces sans largeur et les
+    forçages de sens servent aussi à cacher ou à couper un texte. La règle de l'ADR-058
+    est déjà celle de la plateforme ;
+  - **refuser le résultat** : un e-mail légitime contient souvent un émoji composé ou un
+    trait d'union conditionnel.
+- **Réserves assumées** :
+  - le modèle lit un émoji composé en plusieurs émojis, et un texte sans ses traits
+    d'union conditionnels : rien d'utile à sa réponse ;
+  - un identifiant qui contient un caractère invisible, recopié par le modèle dans un
+    autre appel, ne sera pas reconnu par l'outil. L'avis le lui dit ;
+  - la mémoire, que la plateforme encadre à part (`contexte_memoire`), n'est pas
+    concernée : écrite par les collaborateurs, ou par l'agent avec leur validation, elle
+    garde ses caractères invisibles. Les en retirer aussi est inscrit à la feuille de
+    route.
+- **Conséquences** :
+  - la réserve de l'ADR-058 sur les résultats des outils est levée ;
+  - tests :
+    - `crates/core/src/plain_text.rs` : les caractères d'étiquette, un forçage de sens
+      et une espace sans largeur sont retirés et comptés. Les retours à la ligne et les
+      tabulations restent. Une fin de ligne `\r\n` n'est pas comptée, un `\r` seul
+      l'est ;
+    - `crates/agent/src/tools/untrusted.rs` : une consigne écrite en caractères
+      d'étiquette dans un résultat JSON n'atteint pas le modèle, et l'avis donne le
+      nombre retiré. Les avis de troncature et de caractères retirés sont chacun sur
+      leur ligne, hors de l'enveloppe, et un résultat sans rien de caché n'a pas d'avis ;
+    - `crates/agent/tests/runtime_tools.rs` : dans un run, le résultat d'un outil qui
+      cache une consigne en caractères d'étiquette arrive au modèle sans aucun caractère
+      invisible et suivi de l'avis. Si l'on ne retire plus rien, ce test échoue.
