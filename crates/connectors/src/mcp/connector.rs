@@ -2,7 +2,8 @@
 //! (what companies configure, ADR-025) or stdio (a child process, written by
 //! the operator of a private deployment only) and exposes its tools through
 //! the bridge. Connecting and listing the tools are bounded in time; a
-//! failure is explained in French, without the token (`failure`, `redact`).
+//! failure is explained in French, without the token (`failure`, `redact`);
+//! what an HTTP server answers is read within bounds (`http`, ADR-161).
 //! A session whose transport closed (a local server that exited) says so,
 //! for the platform to start it again; an HTTP server that restarts is
 //! reached again by the client itself (`reinit_on_expired_session`).
@@ -22,6 +23,7 @@ use tokio::process::Command;
 
 use super::bridge::{McpClient, McpToolsetOptions, create_mcp_toolset};
 use super::failure::start_failed;
+use super::http::{BoundedHttpClient, MAX_RESPONSE_BYTES};
 use crate::outbound::{Redactor, TOO_SLOW, http_client, token_problem, url_problem};
 use crate::types::{Connector, ConnectorCloser, ConnectorInfo, ConnectorRuntime, InstanceContext};
 
@@ -150,8 +152,10 @@ async fn start(
             if let Some(token) = context.secret {
                 config = config.auth_header(token);
             }
-            let transport =
-                StreamableHttpClientTransport::with_client(http_client(context.network)?, config);
+            // Each event of the session's stream, as each answer (ADR-161).
+            config.max_sse_event_size = MAX_RESPONSE_BYTES;
+            let client = BoundedHttpClient(http_client(context.network)?);
+            let transport = StreamableHttpClientTransport::with_client(client, config);
             let client = ()
                 .serve(transport)
                 .await

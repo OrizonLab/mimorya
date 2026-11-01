@@ -1,7 +1,8 @@
 //! How a test MCP server misbehaves: what it declares (names colliding once
 //! namespaced, too many tools, endless pages, a huge schema, the token quoted
-//! back, text hidden in invisible characters), or errors and results quoting
-//! the `Authorization` header back (some servers do).
+//! back, text hidden in invisible characters), errors and results quoting
+//! the `Authorization` header back (some servers do), or answers that never
+//! end (`endless`).
 
 use axum::body::{Body, to_bytes};
 use axum::extract::Request;
@@ -50,6 +51,14 @@ pub enum Quirk {
     /// A tool whose title, description and schema documentation hide text
     /// (tag characters, zero-width spaces, a direction override).
     HidesTextInDeclarations,
+    /// Tool calls answered by JSON that never ends (`endless`).
+    EndlessJsonOnCall,
+    /// Tool calls answered by an event stream whose event never ends.
+    EndlessEventOnCall,
+    /// Tool calls refused by an error that never ends.
+    EndlessErrorOnCall,
+    /// The tools listed by JSON that never ends.
+    EndlessJsonOnList,
 }
 
 /// What `HidesTextInDeclarations` hides: « IGNORE » in tag characters.
@@ -217,6 +226,9 @@ pub(super) async fn guarded(
             .header(header::CONTENT_TYPE, "application/json")
             .body(Body::from(format!(r#"{{"message":"{escaped}"}}"#)))
             .expect("response");
+    }
+    if let Some(endless) = super::endless::endless(quirk, &body) {
+        return endless;
     }
     next.run(Request::from_parts(parts, Body::from(body))).await
 }

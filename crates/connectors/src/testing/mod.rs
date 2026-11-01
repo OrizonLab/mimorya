@@ -1,12 +1,14 @@
 //! Test support (feature `testing`): MCP servers over Streamable HTTP on a
 //! local port, optionally behind a bearer token, and misbehaving ones (what
 //! they declare, a token quoted back, a server that never answers, one held
-//! until the test releases it); a REST API (`rest`); Microsoft Graph
-//! (`graph`, its writes in `graph_writes`); Gmail and Google Calendar
+//! until the test releases it, answers that never end: `endless`); a REST
+//! API (`rest`); Microsoft Graph (`graph`, its writes in `graph_writes`);
+//! Gmail and Google Calendar
 //! (`google`, its writes in `google_writes`); Slack's Web API (`slack`);
 //! Telegram's Bot API (`telegram`); Microsoft as a Teams bot reaches it:
 //! Entra, the Bot Framework's keys and a Teams service (`teams`).
 
+mod endless;
 mod google;
 mod google_writes;
 mod graph;

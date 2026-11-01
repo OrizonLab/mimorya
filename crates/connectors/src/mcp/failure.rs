@@ -11,6 +11,7 @@ use rmcp::transport::DynamicTransportError;
 use rmcp::transport::streamable_http_client::StreamableHttpError;
 use rmcp::transport::worker::WorkerQuitReason;
 
+use super::http::TOO_LONG;
 use crate::outbound::{
     ACCESS_DENIED, Cause, Redactor, TOO_SLOW, explained, request_cause as request,
 };
@@ -34,6 +35,8 @@ pub fn start_failed(error: &anyhow::Error, redactor: &Redactor) -> anyhow::Error
 /// A failed tool call, explained.
 pub fn call_failed(error: &ServiceError, redactor: &Redactor) -> anyhow::Error {
     let cause = match error {
+        // Said by the platform: nothing of the server's answer to add.
+        ServiceError::McpError(data) if data.message == TOO_LONG => too_long(),
         ServiceError::McpError(data) => Cause {
             summary: REFUSED_CALL,
             detail: data.message.to_string(),
@@ -57,8 +60,12 @@ pub fn call_failed(error: &ServiceError, redactor: &Redactor) -> anyhow::Error {
 /// The transport errors this module knows how to explain, wherever they sit
 /// in the chain (the MCP library does not always link them as sources).
 fn known(error: &(dyn StdError + 'static)) -> Option<Cause> {
-    if let Some(ClientInitializeError::TransportError { error, .. }) = error.downcast_ref() {
-        return transport(error);
+    match error.downcast_ref() {
+        Some(ClientInitializeError::TransportError { error, .. }) => return transport(error),
+        Some(ClientInitializeError::JsonRpcError(data)) if data.message == TOO_LONG => {
+            return Some(too_long());
+        }
+        _ => {}
     }
     if let Some(ServiceError::TransportSend(error)) = error.downcast_ref() {
         return transport(error);
@@ -73,6 +80,14 @@ fn known(error: &(dyn StdError + 'static)) -> Option<Cause> {
         return Some(http(error));
     }
     error.downcast_ref::<reqwest_mcp::Error>().map(request)
+}
+
+/// An answer longer than the platform reads (ADR-161).
+fn too_long() -> Cause {
+    Cause {
+        summary: TOO_LONG,
+        detail: String::new(),
+    }
 }
 
 fn transport(error: &DynamicTransportError) -> Option<Cause> {
