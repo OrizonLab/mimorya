@@ -81,6 +81,7 @@ impl Connector for DemoInterventionsConnector {
             description: "Connecteur de démonstration : comptes rendus d’intervention et planning d’une PME fictive. Données inventées, état en mémoire.",
             demo: true,
             permissions: PERMISSIONS,
+            reaches_outside: false,
         }
     }
 

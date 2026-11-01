@@ -307,7 +307,11 @@ composables par les compétences.
    administrateurs, au plus 10, ADR-103), comparée à la version active sur les mêmes
    cas (non-régression) : chaque cas joué en lecture seule pour l'administrateur qui la
    demande, la version jouée servie par `skill_read`, la réponse jugée par un modèle sur
-   les critères ; budget plafonné par cas ; aucun run, aucune action (ADR-104).
+   les critères ; budget plafonné par cas ; aucun run, aucune action (ADR-104). Une
+   proposition de l'agent qu'aucun administrateur n'a rendue active est jouée, comme la
+   version active à côté d'elle, sans les outils des connecteurs qui joignent
+   l'extérieur (serveurs MCP, API REST, comptes reliés), nommés à l'agent comme
+   indisponibles (ADR-153).
 7. **Activation** par une personne habilitée (`skill:manage`), confirmée contre les
    régressions de la dernière évaluation de la version (ADR-104), ou rejet de la
    proposition ; historique conservé ; retour à la version précédente en un geste si

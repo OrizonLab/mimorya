@@ -76,6 +76,7 @@ impl Connector for McpConnector {
             description: "Connecte un serveur Model Context Protocol. Chaque outil exposé doit être associé à des permissions et à un niveau de risque par l’administrateur.",
             demo: false,
             permissions: &[],
+            reaches_outside: true,
         }
     }
 

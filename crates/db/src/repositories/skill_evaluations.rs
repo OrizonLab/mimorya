@@ -283,6 +283,10 @@ pub struct VersionText {
     pub content: String,
     /// What an answer that follows it must meet (ADR-106).
     pub quality_criteria: Vec<String>,
+    /// Proposed by the agent (ADR-100) and never made active by an
+    /// administrator: evaluated without the connectors that reach outside
+    /// the platform (ADR-153).
+    pub unvetted_proposal: bool,
 }
 
 /// The skill's `version`, as the index and `skill_read` give it.
@@ -292,7 +296,8 @@ pub async fn version_text(
     version: i32,
 ) -> sqlx::Result<Option<VersionText>> {
     sqlx::query_as(
-        "select s.name, s.description, v.content, v.quality_criteria from skills s \
+        "select s.name, s.description, v.content, v.quality_criteria, \
+         v.proposed and v.approved_at is null as unvetted_proposal from skills s \
          join skill_versions v on v.skill_id = s.id \
          where s.id = $1 and v.version = $2",
     )

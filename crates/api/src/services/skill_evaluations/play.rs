@@ -2,9 +2,12 @@
 //! the version evaluated and, beside it, for the active one, each result
 //! written as it comes while the evaluation runs: one failed meanwhile as
 //! interrupted (the lock's session lost, another pass took over) is played
-//! no further, and its pass stops there. Before each case, whom it runs
-//! for must still administer the company's skills and use the agent:
-//! otherwise the evaluation ends there, failed, with the results it has.
+//! no further, and its pass stops there. A proposal of the agent no
+//! administrator made active is played, and the active version beside it,
+//! without the connectors that reach outside the platform (ADR-153). Before
+//! each case, whom it runs for must still administer the company's skills
+//! and use the agent: otherwise the evaluation ends there, failed, with the
+//! results it has.
 //! Its end is audited with what its cases add up to, never an answer.
 
 use std::sync::Arc;
@@ -94,6 +97,9 @@ async fn play_cases(
     let Some(evaluated) = evaluated else {
         return Ok(Some(VERSION_GONE.into()));
     };
+    // A proposal no administrator made active, and the active version
+    // beside it, played without what reaches outside (ADR-153).
+    let inside_only = evaluated.unvetted_proposal;
     let mut versions = vec![(false, played_as(evaluated, evaluation.version))];
     versions.extend(reference.map(|version| (true, version)));
     // Both versions judged on the same bar: the criteria of either, so that
@@ -122,6 +128,7 @@ async fn play_cases(
                     judge: Arc::<dyn LlmProvider>::clone(&judge),
                     version: version.clone(),
                     case,
+                    inside_only,
                 },
             )
             .await;

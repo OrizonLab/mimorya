@@ -10,24 +10,24 @@
 //! policies, a tool name taken) makes that connector alone unavailable. How
 //! each start went is recorded on the instance (`status`, `last_error`).
 //! The starts an administration asks for are bounded per company
-//! (`admin_starts`, ADR-055).
+//! (`admin_starts`, ADR-055). The tools of the connectors that reach
+//! outside the platform can be withheld (`tenant_tools`, ADR-153).
 
 mod admin_starts;
 mod cache;
 mod failures;
 mod policies;
 mod reach;
+mod tenant_tools;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
 
 use futures::future::join_all;
-use mimorya_agent::tools::ToolOverride;
 use mimorya_connectors::outbound::NetworkPolicy;
 use mimorya_connectors::{ConnectorRuntime, InstanceContext, connector_type};
 use mimorya_core::DomainError;
-use mimorya_core::tools::ToolRef;
 use mimorya_db::Database;
 use mimorya_db::repositories::connectors::{
     ConnectorInstanceRow, list_connector_instances, report_connector_status,
@@ -42,6 +42,7 @@ pub use failures::{failure, opened};
 pub use mimorya_connectors::outbound::CONNECTOR_USE;
 pub use policies::{Policies, read_policies, scoped_overrides};
 pub use reach::unavailable_in_reach;
+pub use tenant_tools::TenantTools;
 
 use super::invalidations::{Invalidation, Invalidations};
 use crate::secrets::SecretStore;
@@ -64,13 +65,6 @@ pub struct ConnectorIssue {
     pub connector: String,
     pub connector_type: String,
     pub message: String,
-}
-
-#[derive(Default)]
-pub struct TenantTools {
-    pub tools: Vec<ToolRef>,
-    pub overrides: HashMap<String, ToolOverride>,
-    pub issues: Vec<ConnectorIssue>,
 }
 
 struct Ready {
@@ -156,8 +150,12 @@ impl ConnectorService {
             let error = match outcome {
                 Ok(ready) => {
                     names.extend(ready.names);
-                    result.tools.extend(ready.runtime.tools.iter().cloned());
-                    result.overrides.extend(ready.overrides);
+                    result.give(
+                        &instance.name,
+                        &instance.connector_type,
+                        &ready.runtime.tools,
+                        ready.overrides,
+                    );
                     None
                 }
                 Err(unavailable) => {

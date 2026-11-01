@@ -28,6 +28,7 @@ impl Connector for RestConnector {
             description: "Connecte une API REST décrite opération par opération. Chaque opération devient un outil, à associer à des permissions et à un niveau de risque par l’administrateur.",
             demo: false,
             permissions: &[],
+            reaches_outside: true,
         }
     }
 
