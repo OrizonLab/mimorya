@@ -49,10 +49,12 @@
 //! and holds until the browser followed it (`queued`, ADR-085). It also
 //! leaves long conversations of Marc's whose earlier messages are
 //! summarised (`summaries`, ADR-146), and what the demo company's skill
-//! evaluations spent today (`skill_evaluations`, ADR-155).
+//! evaluations left: what they spent today and one played without the
+//! connectors that reach outside (`evaluation_records`, ADR-155, ADR-156).
 
 mod dns_server;
 mod documents;
+mod evaluation_records;
 #[allow(dead_code)] // the API's tests use the rest
 #[path = "../../tests/support/dns.rs"]
 mod fake_dns;
@@ -229,7 +231,7 @@ async fn main() -> anyhow::Result<()> {
     scheduled::leave(&app).await?;
     queued::leave(&app).await?;
     summaries::leave(&app).await?;
-    skill_evaluations::leave(&app).await?;
+    evaluation_records::leave(&app).await?;
     rate_limits::forget().await?;
     let listener = tokio::net::TcpListener::bind(&address).await?;
     let taken = app.recover_interrupted_runs().await?;

@@ -1,7 +1,7 @@
 // What the company's skill evaluations may cost over thirty days (ADR-154,
 // ADR-155): Paul sets the limit in « Modèle d'IA », read back once the page
 // is reloaded, sees what was spent there (what the server wrote at start,
-// `e2e_server/skill_evaluations.rs`) and beside the evaluations of a skill
+// `e2e_server/evaluation_records.rs`) and beside the evaluations of a skill
 // in « Compétences », then goes back to the platform's limit. The same
 // amount written otherwise saves nothing. Whatever happens, the platform's
 // limit is set again, to leave the demo company as the next files find it.

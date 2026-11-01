@@ -26,11 +26,14 @@ pub struct EvaluationRow {
     pub created_at: DateTime<Utc>,
     pub started_at: Option<DateTime<Utc>>,
     pub finished_at: Option<DateTime<Utc>>,
+    /// Played without the connectors that reach outside the platform
+    /// (ADR-153, ADR-156).
+    pub inside_only: bool,
 }
 
 const EVALUATION_SELECT: &str = "select e.id, e.skill_id, e.version, e.reference_version, \
      e.status, e.failure, e.cases, e.launched_by_user_id, author.display_name as launched_by, \
-     e.cost_micros, e.created_at, e.started_at, e.finished_at \
+     e.cost_micros, e.created_at, e.started_at, e.finished_at, e.inside_only \
      from skill_evaluations e left join users author on author.id = e.launched_by_user_id";
 
 pub struct NewEvaluation<'a> {
@@ -186,6 +189,18 @@ pub async fn claim_evaluation(
         Some(id) => get_evaluation(conn, id).await,
         None => Ok(None),
     }
+}
+
+/// Marks the evaluation `id` as played without the connectors that reach
+/// outside the platform (ADR-156), in the transaction that wrote a result
+/// played so: whatever its status by then, since a pass that failed it
+/// meanwhile leaves that result shown.
+pub async fn mark_inside_only(conn: &mut PgConnection, id: Uuid) -> sqlx::Result<()> {
+    sqlx::query("update skill_evaluations set inside_only = true where id = $1")
+        .bind(id)
+        .execute(conn)
+        .await?;
+    Ok(())
 }
 
 pub struct NewResult<'a> {

@@ -2185,7 +2185,13 @@ played: number, passed: number, referencePassed: number | null,
 /**
  * Cases the active version passed and the evaluated one did not.
  */
-regressions: number, launchedBy: string | null, costMicros: number, createdAt: string, startedAt: string | null, finishedAt: string | null, };
+regressions: number, launchedBy: string | null, costMicros: number, createdAt: string, startedAt: string | null, finishedAt: string | null,
+/**
+ * Played without the connectors that reach outside the platform: the
+ * version evaluated was a proposal of the agent no administrator had
+ * made active (ADR-153, ADR-156).
+ */
+insideOnly: boolean, };
 
 /**
  * `GET /admin/skills/{id}/evaluations`: the latest first, and what the
