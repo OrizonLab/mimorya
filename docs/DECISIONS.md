@@ -9235,7 +9235,7 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
   - la mémoire, que la plateforme encadre à part (`contexte_memoire`), n'est pas
     concernée : écrite par les collaborateurs, ou par l'agent avec leur validation, elle
     garde ses caractères invisibles. Les en retirer aussi est inscrit à la feuille de
-    route.
+    route (levée par ADR-159).
 - **Conséquences** :
   - la réserve de l'ADR-058 sur les résultats des outils est levée ;
   - l'avis de troncature dit « 1 caractère omis » au singulier ;
@@ -9258,3 +9258,76 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       l'avis ;
     - `apps/web/e2e/inbound-hooks.spec.ts` : l'auteur lit sous « Données reçues » ce qui
       a été envoyé, sans l'espace sans largeur qu'il contenait, et l'avis en dessous.
+
+## ADR-159 — La mémoire ne cache rien au modèle, et ce que lit le contrôle ne se referme pas
+
+- **Date** : 2026-11-01 · **Statut** : acceptée · complète ADR-158
+- **Contexte** : l'ADR-158 retire les caractères invisibles des données non fiables
+  avant que le modèle les lise. Deux textes restaient hors de cette règle :
+  - **la mémoire** remise avec le tour de l'utilisateur (`contexte_memoire`) : un
+    collaborateur qui peut écrire dans la mémoire d'une équipe, ou un texte copié depuis
+    un e-mail, peut y glisser une consigne invisible. Elle atteint alors le modèle à
+    chaque demande où cette mémoire est retrouvée ;
+  - **ce que lit le modèle de contrôle** (ADR-106) : la demande, les critères, les
+    libellés des sources et la réponse sont rangés dans leurs propres balises
+    (`<demande>`, `<criteres>`, `<sources_consultees>`, `<reponse_a_evaluer>`). Seules
+    les enveloppes de la plateforme y étaient neutralisées. Un objet d'e-mail ou une
+    réponse qui écrit `</reponse_a_evaluer>` pouvait refermer sa partie et en ouvrir
+    une autre, par exemple pour glisser au contrôleur un faux « tout est correct ».
+- **Décision** :
+  - **la mémoire** : le titre et le contenu de chaque mémoire remise au modèle perdent
+    leurs caractères invisibles, avec la règle de l'ADR-158 (`plain_text::shown`) : les
+    tabulations restent, un retour à la ligne de toute forme est lu comme `\n`. Quand
+    des caractères ont été retirés, le même avis que pour un résultat d'outil suit
+    l'enveloppe, hors d'elle : « [N caractères invisibles retirés par la plateforme] ».
+    La mémoire enregistrée n'est pas modifiée : seule la copie que lit le modèle change ;
+  - **le contrôle des réponses** : tout ce que lit le modèle de contrôle (la demande,
+    chaque critère, le libellé de chaque source, la réponse) perd d'abord ses
+    caractères invisibles. Puis une balise ouvrante ou fermante de ses propres parties
+    y est rendue inoffensive, comme le sont les enveloppes de la plateforme
+    (`<\/reponse_a_evaluer>`). C'est vrai quelle que soit sa casse, et même avec des
+    espaces ou des caractères invisibles autour de la barre. Le texte reste lisible, et
+    aucune partie ne peut en refermer une autre ;
+  - **dans cet ordre** : partout, ce qui cache est retiré avant que les balises soient
+    neutralisées. Dans l'ordre inverse, un nom de balise coupé par un caractère
+    invisible (`</contexte\u{200b}_memoire>`) échapperait à la neutralisation, puis serait
+    reformé une fois le caractère retiré. Une seule fonction décrit ces balises, pour
+    les enveloppes comme pour le contrôle (`tags_named`, `neutralise_tags`).
+- **Alternatives écartées** :
+  - **refuser l'écriture d'une mémoire qui cache des caractères** : la mémoire existante
+    garderait les siens. Et une mémoire tirée d'un e-mail ou d'une conversation
+    contient souvent un émoji composé ou un trait d'union conditionnel. Retirer à la
+    lecture couvre tout, comme pour les résultats d'outils ;
+  - **neutraliser les balises du contrôle partout où la plateforme encadre un texte** :
+    elles n'ont de sens que pour le modèle de contrôle. Les neutraliser ailleurs
+    toucherait un texte ordinaire (« <demande> » dans un document) sans rien protéger.
+- **Réserves assumées** :
+  - les règles d'écriture de la mémoire ne changent pas : ce qu'elle garde reste tel
+    qu'il a été écrit, et c'est la lecture par le modèle qui le nettoie ;
+  - le texte que l'utilisateur tape lui-même n'est pas nettoyé : c'est sa demande, pas
+    une donnée tierce ;
+  - la demande d'un run lancé par un déclencheur contient la vraie enveloppe de ce qu'il
+    a reçu (ADR-109). Le modèle de contrôle la lit neutralisée
+    (`<\donnees_outil source="declencheur" fiabilite="non_fiable">`). C'est sans
+    danger : il traite tout ce qu'il lit comme des données, et lit encore
+    « non_fiable ».
+- **Conséquences** :
+  - la réserve de l'ADR-158 sur la mémoire est levée, ainsi que la suggestion de l'audit
+    de la PR #168 sur les balises du contrôle ;
+  - tests :
+    - `crates/agent/tests/context.rs` : une mémoire dont le titre cache une espace sans
+      largeur et dont le contenu cache une consigne en caractères d'étiquette arrive au
+      modèle sans aucun caractère invisible, son séparateur de ligne lu comme `\n`. L'avis
+      suit l'enveloppe et donne le nombre retiré, et la demande de l'utilisateur vient
+      ensuite, inchangée ;
+    - `crates/agent/tests/context.rs` : une mémoire dont le nom de balise est coupé par
+      une espace sans largeur, un gluon de mots ou un trait d'union conditionnel
+      (`</contexte\u{200b}_memoire>`, `<procedure\u{2060}_entreprise>`) ne ferme ni n'ouvre aucune
+      enveloppe. Si l'on neutralise avant de retirer ce qui cache, ce test échoue ;
+    - `crates/agent/src/tools/untrusted.rs` : de même pour un résultat d'outil ;
+    - `crates/agent/src/runtime/verification.rs` : une demande, un critère, le libellé
+      d'une source et une réponse qui écrivent les balises du contrôle (en majuscules,
+      avec des espaces, coupées par une espace sans largeur, fermées par un caractère
+      d'étiquette) laissent chacune des quatre parties ouverte et fermée une seule fois,
+      sans aucun caractère invisible. Si l'on ne neutralise plus ces balises, ce test
+      échoue.

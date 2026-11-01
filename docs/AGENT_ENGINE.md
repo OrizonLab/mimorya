@@ -220,7 +220,9 @@ Deux niveaux, cumulables :
    avec `MIMORYA_LLM_JUDGE` ; critères de qualité d'une compétence chargée, toujours
    (ADR-106)) : un appel séparé, par le modèle de contrôle que l'entreprise a choisi à
    part (ADR-108) ou, sans lui ou si son appel échoue, par celui de ses conversations, juge la réponse au
-   regard de l'objectif et des critères et renvoie `{ pass, issues[] }` via un outil structuré. Le verdict garde
+   regard de l'objectif et des critères et renvoie `{ pass, issues[] }` via un outil structuré. Ce qu'il lit
+   (demande, critères, sources, réponse) ne cache aucun caractère et aucune partie n'y
+   peut en refermer une autre (ADR-159). Le verdict garde
    ses dix premiers manquements, chacun sur une ligne, nettoyé des caractères invisibles
    et des balises d'enveloppe, coupé à 500 caractères, les autres comptés (ADR-092) ;
    un verdict illisible laisse la réponse non jugée.
@@ -350,8 +352,10 @@ demande : il retient comme un tour de l'application.
    proposition, une fois approuvée).
 3. Exclusion des éléments expirés, archivés ou d'une sensibilité supérieure à
    l'habilitation.
-4. Injection dans le contexte **avec la source** (identifiant, espace, date) ; mise à
-   jour de `last_used_at` / `use_count`.
+4. Injection dans le contexte **avec la source** (identifiant, espace, date), comme
+   donnée encadrée par `<contexte_memoire>`, sans caractère invisible (un avis de la
+   plateforme dit combien ont été retirés, ADR-159) ; mise à jour de `last_used_at` /
+   `use_count`.
 
 Les documents déposés (ADR-095) se cherchent de même, mais à la demande de l'agent
 seulement (ADR-096) : `document_search` classe leurs passages par les mots et par le
