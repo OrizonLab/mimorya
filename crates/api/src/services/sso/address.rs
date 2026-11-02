@@ -43,10 +43,12 @@ mod tests {
     const SAAS: NetworkPolicy = NetworkPolicy {
         allow_private_network: false,
         allow_stdio: false,
+        proxy: None,
     };
     const PRIVATE: NetworkPolicy = NetworkPolicy {
         allow_private_network: true,
         allow_stdio: false,
+        proxy: None,
     };
 
     #[test]

@@ -9493,3 +9493,89 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     - les tests existants des serveurs MCP (`mcp_bridge`, `mcp_failures`, `mcp_sessions`,
       `mcp_transports`, `scenario`) passent sans changement : jeton masqué dans les refus,
       accès refusé, session rejointe après un redémarrage.
+
+## ADR-162 — Un mandataire HTTP de l'exploitant pour ce que les entreprises connectent
+
+- **Date** : 2026-11-02 · **Statut** : acceptée · précise ADR-025
+- **Contexte** : le client HTTP durci (`outbound::http_client`, ADR-025) joint tout ce
+  que les entreprises connectent :
+  - les serveurs MCP et les API REST ;
+  - Microsoft 365 et Google Workspace ;
+  - Slack, Telegram et Teams ;
+  - les fournisseurs d'identité.
+
+  Il ignore exprès les mandataires de l'environnement : un mandataire résout les noms à
+  sa place, et le filtre qui ne laisse joindre que des adresses publiques ne tiendrait
+  plus. Or une installation privée ne sort souvent sur Internet que par le mandataire
+  de son entreprise. Elle ne pouvait donc joindre aucun de ces services.
+
+- **Décision** :
+  - l'exploitant peut nommer un mandataire, `MIMORYA_OUTBOUND_PROXY` (`http://` ou
+    `https://`, hôte et port, identifiants permis, ni chemin, ni paramètres), et les hôtes
+    joints sans lui, `MIMORYA_OUTBOUND_NO_PROXY` (noms, domaines, adresses et plages,
+    séparés par des virgules, comme `NO_PROXY`). Toute requête du client durci passe
+    alors par lui, sauf vers ces hôtes :
+    - vers une adresse `http://`, le mandataire relaie la requête ;
+    - vers une adresse `https://`, celle de tous les services réels, il ouvre un tunnel
+      (`CONNECT`), et ses identifiants sont donnés là. Il ne lit pas ce que le tunnel
+      porte : un mandataire qui intercepte le TLS n'est pas pris en charge, et un
+      mandataire joint en `https://` doit porter un certificat d'une autorité publique,
+      le client ne faisant confiance à aucune autre ;
+  - le mandataire n'est accepté qu'avec `MIMORYA_MCP_ALLOW_PRIVATE_NETWORK=true` : il
+    résout les noms, et la plateforme ne peut plus vérifier qu'une adresse mène à un
+    serveur public. C'est donc au mandataire de refuser ce que la plateforme ne doit pas
+    joindre. Sans cette autorisation, la configuration est refusée au démarrage, et le
+    client refuse lui-même de se construire avec un mandataire ;
+  - les mandataires de l'environnement (`HTTPS_PROXY`…) restent ignorés par ce client :
+    seul celui que l'exploitant nomme pour lui compte ;
+  - les identifiants du mandataire ne sont jamais écrits :
+    - ni dans les journaux, où le démarrage dit seulement son schéma, son hôte, son
+      port et les hôtes joints sans lui ;
+    - ni dans la représentation de débogage de la configuration ;
+    - ni dans les refus de la configuration, qui ne répètent jamais son adresse ;
+  - une requête que le mandataire refuse est dite ainsi :
+    - vers une adresse `http://`, comme un refus du serveur, par son statut (407) ;
+    - vers une adresse `https://`, le tunnel refusé, comme un serveur injoignable
+      (« Serveur injoignable à cette adresse », détail « proxy authorization
+      required ») ;
+  - la pile de production transmet ces variables, et `MIMORYA_MCP_ALLOW_PRIVATE_NETWORK`,
+    à l'API comme aux workers.
+- **Alternatives écartées** :
+  - **suivre `HTTPS_PROXY` et `NO_PROXY`** : une variable posée pour d'autres usages par
+    la plateforme d'hébergement changerait sans bruit le chemin des connecteurs, et le
+    filtre des adresses publiques ;
+  - **un mandataire avec le seul réseau public permis, la plateforme résolvant les noms
+    avant de les confier au mandataire** : il faudrait lui confier l'adresse résolue
+    plutôt que le nom, pour qu'il ne la résolve pas autrement. Or un mandataire
+    d'entreprise décide par nom de ce qui peut sortir, et ne pourrait plus le faire ;
+  - **un mandataire par entreprise** : c'est l'exploitant qui décide par où sort son
+    serveur.
+- **Conséquences** :
+  - le point « mandataire HTTP sortant configurable pour les serveurs MCP » de la feuille
+    de route est traité, pour tous les services que joint le client durci ;
+  - les appels aux modèles (fournisseurs LLM) gardent leur propre client, qui suit les
+    mandataires de l'environnement du processus (`HTTPS_PROXY`, `NO_PROXY`) : la pile de
+    production ne les transmet pas, l'exploitant qui en a besoin les ajoute à son
+    environnement ;
+  - tests :
+    - `crates/connectors/tests/outbound_proxy.rs`, contre un mandataire de test qui note
+      où il va et exige ses identifiants (`testing/proxy.rs`) :
+      - un serveur MCP et une API REST sont joints par le mandataire, en `http://` ;
+      - un serveur `https://` l'est par un tunnel, les identifiants donnés à son
+        ouverture ;
+      - un hôte de la liste est joint sans lui ;
+      - un mandataire qui refuse les identifiants, ou qui ne répond pas, est dit sans
+        eux, en `http://` comme pour un tunnel ;
+      - les mandataires de l'environnement ne sont pas suivis (dans un processus enfant,
+        dont l'environnement en nomme un) ;
+      - sans le réseau privé permis, aucun client ne se construit avec un mandataire ;
+      - si le client ignore le mandataire, ne le prend que pour `http://`, ignore sa
+        liste d'hôtes ou suit les mandataires de l'environnement, ces tests échouent ;
+    - `crates/connectors/src/outbound/proxy.rs` : adresse acceptée ou refusée,
+      identifiants jamais montrés ;
+    - `crates/api/src/config/tests.rs` :
+      - aucun mandataire par défaut, ni s'il est vide ;
+      - un mandataire refusé sans le réseau privé permis, sans répéter son adresse ;
+      - une adresse refusée ;
+      - une liste d'hôtes refusée sans mandataire, ou illisible, sous son propre nom ;
+      - les identifiants absents de la représentation de débogage.

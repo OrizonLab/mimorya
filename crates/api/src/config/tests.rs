@@ -99,8 +99,14 @@ fn never_prints_credentials_in_debug_output() {
         ("MIMORYA_MASTER_KEY", MASTER_KEY),
         ("SMTP_URL", "smtps://mailer:s3cret-smtp@smtp.exemple.fr"),
         ("MAIL_FROM", "Mimorya <no-reply@exemple.fr>"),
+        ("MIMORYA_MCP_ALLOW_PRIVATE_NETWORK", "true"),
+        (
+            "MIMORYA_OUTBOUND_PROXY",
+            "http://proxy:s3cret-proxy@proxy.exemple.fr:3128",
+        ),
     ])
     .unwrap();
+    assert!(config.mcp_network.proxy.is_some());
     let printed = format!("{config:?}");
     assert!(!printed.contains("s3cret"), "{printed}");
     assert!(!printed.contains(MASTER_KEY), "{printed}");
@@ -208,4 +214,62 @@ fn reads_what_the_process_does() {
     assert!(ProcessRole::All.serves_http() && ProcessRole::All.executes_runs());
     assert!(ProcessRole::Api.serves_http() && !ProcessRole::Api.executes_runs());
     assert!(!ProcessRole::Worker.serves_http() && ProcessRole::Worker.executes_runs());
+}
+
+#[test]
+fn a_proxy_needs_private_addresses_allowed() {
+    let proxy = (
+        "MIMORYA_OUTBOUND_PROXY",
+        "http://compte:secret@proxy.example:3128",
+    );
+    let private = ("MIMORYA_MCP_ALLOW_PRIVATE_NETWORK", "true");
+    // None by default, or empty.
+    assert!(load(&[DB]).unwrap().mcp_network.proxy.is_none());
+    let empty = ("MIMORYA_OUTBOUND_PROXY", " ");
+    assert!(load(&[DB, empty]).unwrap().mcp_network.proxy.is_none());
+    // Where the platform keeps to public servers, the proxy would resolve
+    // the names for it: refused, its address never repeated.
+    let error = load(&[DB, proxy]).unwrap_err().to_string();
+    assert!(error.contains("MIMORYA_OUTBOUND_PROXY"), "{error}");
+    assert!(
+        error.contains("MIMORYA_MCP_ALLOW_PRIVATE_NETWORK"),
+        "{error}"
+    );
+    assert!(!error.contains("secret"), "{error}");
+    let bypass = ("MIMORYA_OUTBOUND_NO_PROXY", "intranet.example");
+    let config = load(&[DB, proxy, private, bypass]).unwrap();
+    let kept = config.mcp_network.proxy.expect("a proxy");
+    assert_eq!(kept.shown(), "http://proxy.example:3128");
+    assert_eq!(kept.bypass(), Some("intranet.example"));
+    // An environment file written with Windows line ends reads the same.
+    let crlf = ("MIMORYA_OUTBOUND_NO_PROXY", "intranet.example\r");
+    let config = load(&[DB, proxy, private, crlf]).unwrap();
+    let kept = config.mcp_network.proxy.expect("a proxy");
+    assert_eq!(kept.bypass(), Some("intranet.example"));
+}
+
+#[test]
+fn a_proxy_is_an_http_s_address_and_its_bypass_needs_it() {
+    let private = ("MIMORYA_MCP_ALLOW_PRIVATE_NETWORK", "true");
+    for refused in [
+        "proxy.example:3128",
+        "socks5://proxy.example",
+        "http://p.example/x",
+    ] {
+        let proxy = ("MIMORYA_OUTBOUND_PROXY", refused);
+        let error = load(&[DB, private, proxy]).unwrap_err().to_string();
+        assert!(error.contains("MIMORYA_OUTBOUND_PROXY"), "{error}");
+        assert!(!error.contains(refused), "{error}");
+    }
+    let bypass = ("MIMORYA_OUTBOUND_NO_PROXY", "intranet.example");
+    let error = load(&[DB, private, bypass]).unwrap_err().to_string();
+    assert!(error.contains("MIMORYA_OUTBOUND_NO_PROXY"), "{error}");
+    // A bypass that cannot be read is said of its own variable.
+    let proxy = ("MIMORYA_OUTBOUND_PROXY", "http://proxy.example:3128");
+    let unreadable = ("MIMORYA_OUTBOUND_NO_PROXY", "intranet\n.example");
+    let error = load(&[DB, private, proxy, unreadable])
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("- MIMORYA_OUTBOUND_NO_PROXY:"), "{error}");
+    assert!(!error.contains("- MIMORYA_OUTBOUND_PROXY:"), "{error}");
 }

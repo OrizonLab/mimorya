@@ -13,6 +13,8 @@ use std::time::Duration;
 use reqwest_mcp::dns::{Addrs, Name, Resolve, Resolving};
 use reqwest_mcp::{Client, Url, redirect};
 
+use super::proxy::OutboundProxy;
+
 /// What the operator allows (environment), never the companies.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct NetworkPolicy {
@@ -22,6 +24,10 @@ pub struct NetworkPolicy {
     /// Child processes (`MIMORYA_MCP_ALLOW_STDIO`): only the operator writes
     /// such a configuration.
     pub allow_stdio: bool,
+    /// The proxy every request goes through, unless its bypass names the
+    /// host (`MIMORYA_OUTBOUND_PROXY`, ADR-162): only with private
+    /// addresses allowed, the proxy resolving the names.
+    pub proxy: Option<&'static OutboundProxy>,
 }
 
 pub const MAX_URL_CHARS: usize = 2000;
@@ -136,8 +142,9 @@ impl Resolve for PublicOnly {
     }
 }
 
-/// The HTTP client of MCP connections: explicit TLS (ring, webpki roots), no
-/// redirect, no proxy from the environment, public addresses unless allowed.
+/// The HTTP client of what companies connect: explicit TLS (ring, webpki
+/// roots), no redirect, never a proxy from the environment, the operator's
+/// own if any (ADR-162), public addresses unless allowed.
 pub fn http_client(policy: NetworkPolicy) -> anyhow::Result<Client> {
     let roots = rustls::RootCertStore {
         roots: webpki_roots::TLS_SERVER_ROOTS.to_vec(),
@@ -152,8 +159,16 @@ pub fn http_client(policy: NetworkPolicy) -> anyhow::Result<Client> {
         .tls_backend_preconfigured(tls)
         .redirect(redirect::Policy::none())
         .connect_timeout(CONNECT_TIMEOUT)
-        .pool_max_idle_per_host(0)
-        .no_proxy();
+        .pool_max_idle_per_host(0);
+    builder = match policy.proxy {
+        // The proxy resolves the names: only where the operator lifted the
+        // public-only rule, as the configuration checks (ADR-162).
+        Some(_) if !policy.allow_private_network => {
+            anyhow::bail!("A proxy needs private addresses allowed")
+        }
+        Some(proxy) => builder.proxy(proxy.reqwest()?),
+        None => builder.no_proxy(),
+    };
     if !policy.allow_private_network {
         builder = builder.dns_resolver(PublicOnly);
     }
@@ -167,6 +182,7 @@ mod tests {
     const SAAS: NetworkPolicy = NetworkPolicy {
         allow_private_network: false,
         allow_stdio: false,
+        proxy: None,
     };
 
     #[test]
@@ -226,6 +242,7 @@ mod tests {
         let private = NetworkPolicy {
             allow_private_network: true,
             allow_stdio: false,
+            proxy: None,
         };
         assert_eq!(url_problem("http://127.0.0.1:8080/mcp", private), None);
         assert!(url_problem("ftp://127.0.0.1", private).is_some());

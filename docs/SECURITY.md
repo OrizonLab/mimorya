@@ -764,6 +764,12 @@ no-store` (le flux d'événements garde `no-cache, no-transform`) ;
   compte), voir §4 pour la détermination de l'adresse cliente. Les démarrages de
   connecteurs demandés par l'administration (test, essai) sont de plus bornés à deux en
   cours par entreprise (ADR-055).
+- Mandataire sortant (ADR-162) : le client durci des connecteurs ignore les mandataires
+  de l'environnement. Il ne passe que par celui que l'exploitant nomme
+  (`MIMORYA_OUTBOUND_PROXY`, hôtes joints sans lui dans `MIMORYA_OUTBOUND_NO_PROXY`), et
+  seulement avec le réseau privé permis : le mandataire résout les noms, et c'est à lui
+  de refuser ce que la plateforme ne doit pas joindre. Ses identifiants ne sont jamais
+  écrits (journaux, débogage, refus de la configuration).
 - Documents déposés (ADR-095) : lus dans un processus à part (`mimorya-extract`), jamais
   dans celui de l'API, lancé avec un environnement vide et borné par lui-même avant de
   rien lire (1 Gio de mémoire, 20 s de processeur, aucun fichier écrit), tué au bout de

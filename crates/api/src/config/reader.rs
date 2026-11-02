@@ -4,6 +4,7 @@
 use std::sync::Arc;
 
 use mimorya_agent::llm::{PROVIDER_KINDS, ProviderConfig};
+use mimorya_connectors::outbound::OutboundProxy;
 
 use super::Environment;
 use crate::mail::MailSettings;
@@ -84,6 +85,44 @@ impl Reader<'_> {
             self.issue(key, "URL http(s) séparées par des virgules attendues");
         }
         endpoints
+    }
+
+    /// The operator's proxy (`MIMORYA_OUTBOUND_PROXY`, the hosts reached
+    /// without it in `MIMORYA_OUTBOUND_NO_PROXY`), only with private
+    /// addresses allowed: the proxy resolves the names, the platform can no
+    /// longer check they lead to public servers (ADR-162). Its address is
+    /// never repeated: it may hold credentials.
+    pub(super) fn outbound_proxy(
+        &mut self,
+        private_allowed: bool,
+    ) -> Option<&'static OutboundProxy> {
+        let given = |reader: &Self, key: &str| reader.value(key).filter(|v| !v.trim().is_empty());
+        let bypass = given(self, "MIMORYA_OUTBOUND_NO_PROXY");
+        let Some(address) = given(self, "MIMORYA_OUTBOUND_PROXY") else {
+            if bypass.is_some() {
+                self.issue(
+                    "MIMORYA_OUTBOUND_NO_PROXY",
+                    "sans effet sans MIMORYA_OUTBOUND_PROXY",
+                );
+            }
+            return None;
+        };
+        if !private_allowed {
+            return self.invalid(
+                "MIMORYA_OUTBOUND_PROXY",
+                "seulement avec MIMORYA_MCP_ALLOW_PRIVATE_NETWORK=true : le mandataire résout \
+                 les noms, la plateforme ne peut plus vérifier qu’une adresse mène à un serveur \
+                 public",
+            );
+        }
+        let read = bypass.as_deref().map(str::trim);
+        if let Some(problem) = read.and_then(OutboundProxy::bypass_problem) {
+            return self.invalid("MIMORYA_OUTBOUND_NO_PROXY", problem);
+        }
+        match OutboundProxy::new(&address, bypass.as_deref()) {
+            Ok(proxy) => Some(proxy.leak()),
+            Err(problem) => self.invalid("MIMORYA_OUTBOUND_PROXY", &problem),
+        }
     }
 
     /// Both or neither of `SMTP_URL` and `MAIL_FROM`.

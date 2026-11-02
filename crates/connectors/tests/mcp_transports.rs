@@ -57,6 +57,7 @@ async fn starts_a_stdio_server_only_when_the_operator_allows_it() {
     let allowed = NetworkPolicy {
         allow_private_network: false,
         allow_stdio: true,
+        proxy: None,
     };
     let runtime = start(config, None, allowed).await.unwrap();
     assert_eq!(names(&runtime), ["mcp_docs_search_procedures"]);
