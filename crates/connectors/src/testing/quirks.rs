@@ -59,6 +59,10 @@ pub enum Quirk {
     EndlessErrorOnCall,
     /// The tools listed by JSON that never ends.
     EndlessJsonOnList,
+    /// The start answered by JSON that never ends.
+    EndlessJsonOnInitialize,
+    /// The start answered by an event stream whose event never ends.
+    EndlessEventOnInitialize,
 }
 
 /// What `HidesTextInDeclarations` hides: « IGNORE » in tag characters.

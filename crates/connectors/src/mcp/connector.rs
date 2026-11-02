@@ -23,7 +23,7 @@ use tokio::process::Command;
 
 use super::bridge::{McpClient, McpToolsetOptions, create_mcp_toolset};
 use super::failure::start_failed;
-use super::http::{BoundedHttpClient, MAX_RESPONSE_BYTES};
+use super::http::{BoundedHttpClient, TOO_LONG};
 use crate::outbound::{Redactor, TOO_SLOW, http_client, token_problem, url_problem};
 use crate::types::{Connector, ConnectorCloser, ConnectorInfo, ConnectorRuntime, InstanceContext};
 
@@ -152,14 +152,18 @@ async fn start(
             if let Some(token) = context.secret {
                 config = config.auth_header(token);
             }
-            // Each event of the session's stream, as each answer (ADR-161).
-            config.max_sse_event_size = MAX_RESPONSE_BYTES;
-            let client = BoundedHttpClient(http_client(context.network)?);
+            // Its answers read within bounds (ADR-161).
+            let client = BoundedHttpClient::new(http_client(context.network)?);
+            let cuts = client.cuts();
             let transport = StreamableHttpClientTransport::with_client(client, config);
-            let client = ()
-                .serve(transport)
-                .await
-                .map_err(|error| start_failed(&error.into(), &Redactor::new(context.secret)))?;
+            let client = ().serve(transport).await.map_err(|error| {
+                // The library does not say why it gave up: the client does.
+                if cuts.any() {
+                    anyhow::anyhow!(TOO_LONG)
+                } else {
+                    start_failed(&error.into(), &Redactor::new(context.secret))
+                }
+            })?;
             (client, prefix)
         }
     };

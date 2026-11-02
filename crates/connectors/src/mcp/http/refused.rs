@@ -7,6 +7,8 @@
 use std::borrow::Cow;
 
 use reqwest_mcp::{Response, StatusCode};
+#[cfg(test)]
+use rmcp::model::ErrorCode;
 use rmcp::model::ServerJsonRpcMessage;
 use rmcp::model::{ClientJsonRpcMessage, ClientRequest, ErrorData, JsonRpcMessage};
 use rmcp::transport::streamable_http_client::{StreamableHttpError, StreamableHttpPostResponse};
@@ -80,4 +82,77 @@ fn discover_refused(
         ),
     };
     Some(ServerJsonRpcMessage::error(error, Some(request.id.clone())))
+}
+
+#[cfg(test)]
+mod tests {
+    use rmcp::model::{
+        DiscoverRequest, DiscoverRequestParams, NumberOrString, PingRequest, RequestId,
+    };
+
+    use super::*;
+
+    const ID: RequestId = NumberOrString::Number(3);
+
+    fn discover() -> ClientJsonRpcMessage {
+        let request = DiscoverRequest::new(DiscoverRequestParams::default());
+        ClientJsonRpcMessage::request(ClientRequest::DiscoverRequest(request), ID)
+    }
+
+    /// The error a refusal of the discovery is answered with, if any.
+    fn answered(
+        message: &ClientJsonRpcMessage,
+        attached: bool,
+        status: StatusCode,
+        body: &str,
+    ) -> Option<ErrorData> {
+        match discover_refused(message, attached, status, body)? {
+            JsonRpcMessage::Error(error) => {
+                assert_eq!(error.id, Some(ID), "matched to the discovery");
+                Some(error.error)
+            }
+            answer => panic!("an error: {answer:?}"),
+        }
+    }
+
+    #[test]
+    fn a_discovery_refused_by_a_client_error_is_answered_as_its_error() {
+        let error = answered(&discover(), false, StatusCode::NOT_FOUND, "absent").unwrap();
+        assert_eq!(error.code, ErrorCode::INVALID_REQUEST);
+        assert!(error.message.contains("HTTP 404"), "{}", error.message);
+        // The server's own error, if it gave one.
+        let own =
+            r#"{"jsonrpc":"2.0","id":"server-error","error":{"code":-32601,"message":"inconnue"}}"#;
+        let error = answered(&discover(), false, StatusCode::BAD_REQUEST, own).unwrap();
+        assert_eq!(error.message, "inconnue");
+    }
+
+    #[test]
+    fn nothing_else_is_answered_so() {
+        for status in [
+            StatusCode::UNAUTHORIZED,
+            StatusCode::FORBIDDEN,
+            StatusCode::INTERNAL_SERVER_ERROR,
+        ] {
+            assert!(
+                answered(&discover(), false, status, "").is_none(),
+                "{status}"
+            );
+        }
+        // Within a session, or another request.
+        assert!(answered(&discover(), true, StatusCode::NOT_FOUND, "").is_none());
+        let ping = ClientRequest::PingRequest(PingRequest::default());
+        let ping = ClientJsonRpcMessage::request(ping, ID);
+        assert!(answered(&ping, false, StatusCode::NOT_FOUND, "").is_none());
+    }
+
+    #[test]
+    fn only_a_whole_json_rpc_error_is_taken_as_such() {
+        let error = r#"{"jsonrpc":"2.0","id":3,"error":{"code":-32000,"message":"non"}}"#;
+        assert!(json_rpc_error(error).is_some());
+        // Cut, as `refused` says it.
+        assert!(json_rpc_error(&format!("{}…", &error[..40])).is_none());
+        let result = r#"{"jsonrpc":"2.0","id":3,"result":{}}"#;
+        assert!(json_rpc_error(result).is_none());
+    }
 }

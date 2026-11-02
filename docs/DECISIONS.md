@@ -9425,26 +9425,35 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     (`BoundedHttpClient`, dans `crates/connectors/src/mcp/http/`), construit sur le
     client durci des connecteurs (ADR-025). Il envoie chaque message comme la
     bibliothèque : mêmes en-têtes, mêmes refus du jeton, même session expirée, même
-    réponse vide acceptée, même `server/discover` refusé changé en erreur que le cycle
-    de vie sait classer. Seule différence, les corps sont lus dans des bornes :
+    réponse vide acceptée. Il change de même un `server/discover` refusé en erreur que le
+    cycle de vie sait classer, bien que le démarrage de la plateforme commence par
+    `initialize` et n'envoie pas `server/discover`. Seule différence, les corps sont lus
+    dans des bornes :
     - la réponse à un message, JSON ou flux d'événements, est lue jusqu'à 4 Mio en tout
       (`MAX_RESPONSE_BYTES`). Ce que rendent ses outils parvient de toute façon
       raccourci au modèle ;
     - au-delà, rien n'est lu et la connexion est fermée. Une requête reçoit alors de la
       plateforme une erreur JSON-RPC qui le dit (`TOO_LONG`), à la place de la réponse du
-      serveur. Pour un flux, l'événement en cours de lecture est abandonné. Un message
-      qui n'attend pas de réponse (notification, réponse) n'en reçoit pas ;
+      serveur. Pour un flux, les événements entiers reçus avant la borne passent, même
+      dans le morceau qui la franchit ; celui en cours de lecture est abandonné. Un
+      message qui n'attend pas de réponse (notification, réponse) n'en reçoit pas ;
     - un refus (tout statut autre qu'un succès) est lu jusqu'à 64 Kio
       (`MAX_ERROR_BYTES`). C'est assez pour une erreur JSON-RPC, et bien plus que les
-      200 caractères qu'en lit un administrateur. Un refus coupé est dit coupé (« … ») ;
-      il n'est jamais lu comme une erreur JSON-RPC entière ;
+      200 caractères qu'en lit un administrateur. Un refus coupé reçoit un « … » final :
+      il ne peut ainsi jamais être lu comme une erreur JSON-RPC entière (le lecteur, lui,
+      n'en voit que le début) ;
   - le flux d'événements de la session (`GET`) et sa fin (`DELETE`) restent ceux de la
-    bibliothèque, qui ne lisent aucun corps en entier. Chaque événement de ce flux est
-    borné à 4 Mio, comme une réponse (`max_sse_event_size` du transport) ;
+    bibliothèque, qui ne lisent aucun corps en entier. Le client borne chaque événement
+    de ce flux à 4 Mio, quelle que soit la borne que demande le transport (16 Mio par
+    défaut) ;
   - une réponse trop longue est dite ainsi à l'administrateur et au modèle : « La
     réponse du serveur MCP dépasse 4 Mio : elle n’a pas été lue au-delà ». Elle arrive
     aussitôt, et non à la fin du délai. Un appel ou une liste d'outils trop longs ne
-    ferment pas la session ; un démarrage dont la liste d'outils est trop longue échoue ;
+    ferment pas la session ; un démarrage dont la réponse à `initialize` ou la liste
+    d'outils est trop longue échoue, en le disant. La bibliothèque ne dit pas pourquoi
+    un démarrage a échoué (une erreur reçue dans le flux de la réponse à `initialize` est
+    ignorée, puis le flux se termine) : le client note chaque réponse qu'il coupe
+    (`Cuts`), et le connecteur le dit ;
   - la portée demandée par un refus 403 n'est pas lue : la plateforme n'en demande
     aucune.
 - **Alternatives écartées** :
@@ -9463,14 +9472,24 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
   - tests :
     - `crates/connectors/tests/mcp_response_bounds.rs`, contre un serveur de test dont la
       réponse ne finit jamais (`testing/endless.rs`) :
-      - un JSON, un événement de flux, un refus sans fin : l'appel échoue aussitôt, le
-        dit (le refus par son début), et la session reste ouverte ;
-      - une liste d'outils sans fin arrête le démarrage, en le disant ;
-      - avec le client de la bibliothèque, les quatre tests échouent ;
-    - `crates/connectors/src/mcp/http/body.rs` : les événements dans la borne passent
-      tels quels ; au-delà, la réponse de la plateforme termine le flux, et l'événement
-      en cours est abandonné ; ce qui n'attend pas de réponse n'en reçoit pas ; un échec
-      de lecture est dit tel quel ;
+      - un JSON, un événement de flux sans fin : l'appel échoue aussitôt, avec le message
+        de la plateforme tel quel (jamais comme une erreur du serveur), et la session
+        reste ouverte ;
+      - un refus sans fin est dit par son début ;
+      - une liste d'outils sans fin, une réponse à `initialize` sans fin, en JSON comme
+        en flux : le démarrage échoue avec ce seul message ;
+      - un événement du flux de la session de plus de 4 Mio est refusé, même quand le
+        transport en demande 16 ;
+      - avec le client de la bibliothèque, les quatre premiers tests échouent ; sans la
+        traduction de l'erreur de la plateforme, sans la note des réponses coupées ou sans
+        la borne du flux de la session, celui qui les vérifie échoue ;
+    - `crates/connectors/src/mcp/http/` : un corps lu jusqu'à sa borne exactement
+      (`body.rs`) ; les événements dans la borne passent tels quels, ceux d'un morceau qui
+      la franchit aussi, la réponse de la plateforme termine le flux et la coupure est
+      notée ; ce qui n'attend pas de réponse n'en reçoit pas ; un échec de lecture est dit
+      tel quel (`events.rs`) ; un `server/discover` refusé par une erreur du client devient
+      l'erreur de cette découverte, rien d'autre ; un refus coupé n'est jamais lu comme
+      une erreur JSON-RPC (`refused.rs`) ;
     - les tests existants des serveurs MCP (`mcp_bridge`, `mcp_failures`, `mcp_sessions`,
       `mcp_transports`, `scenario`) passent sans changement : jeton masqué dans les refus,
       accès refusé, session rejointe après un redémarrage.

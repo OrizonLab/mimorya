@@ -2,12 +2,14 @@
 //! library's own client read whole the JSON answers and the refusals of the
 //! messages it posted: a server could make the process hold as much as it
 //! sent, within the start or call delay. This one posts the messages as the
-//! library does, but reads their answers within bounds (`body`, `refused`);
-//! the library's own client still opens the session's event stream (each
-//! event bounded as the transport configures it: `MAX_RESPONSE_BYTES`) and
-//! ends the session, neither reading a body whole.
+//! library does, but reads their answers within bounds (`body`, `events`,
+//! `refused`), noting each answer it cut: the library does not say why a
+//! start failed, the connector does. The library's own client still opens
+//! the session's event stream, each event bounded at `MAX_RESPONSE_BYTES`,
+//! and ends the session, neither reading a body whole.
 
 mod body;
+mod events;
 mod post;
 mod refused;
 
@@ -22,13 +24,29 @@ use rmcp::transport::streamable_http_client::{
 };
 use sse_stream::Sse;
 
-use post::HttpError;
-
-pub use body::{MAX_ERROR_BYTES, MAX_RESPONSE_BYTES, TOO_LONG};
+pub use body::{Cuts, MAX_RESPONSE_BYTES, TOO_LONG};
+pub use post::HttpError;
 
 /// The client of `outbound::http_client`, reading answers within bounds.
 #[derive(Clone)]
-pub struct BoundedHttpClient(pub reqwest_mcp::Client);
+pub struct BoundedHttpClient {
+    client: reqwest_mcp::Client,
+    cuts: Cuts,
+}
+
+impl BoundedHttpClient {
+    pub fn new(client: reqwest_mcp::Client) -> Self {
+        Self {
+            client,
+            cuts: Cuts::default(),
+        }
+    }
+
+    /// The answers this client, and every clone of it, cut.
+    pub fn cuts(&self) -> Cuts {
+        self.cuts.clone()
+    }
+}
 
 impl StreamableHttpClient for BoundedHttpClient {
     type Error = reqwest_mcp::Error;
@@ -42,7 +60,8 @@ impl StreamableHttpClient for BoundedHttpClient {
         custom_headers: HashMap<HeaderName, HeaderValue>,
     ) -> Result<StreamableHttpPostResponse, HttpError> {
         post::post(
-            &self.0,
+            &self.client,
+            &self.cuts,
             uri,
             message,
             session_id,
@@ -53,7 +72,7 @@ impl StreamableHttpClient for BoundedHttpClient {
     }
 
     /// Its bound is `MAX_RESPONSE_BYTES` in all, whatever the transport's
-    /// per event (the same: see `connector`).
+    /// per event.
     async fn post_message_with_max_sse_event_size(
         &self,
         uri: Arc<str>,
@@ -64,7 +83,8 @@ impl StreamableHttpClient for BoundedHttpClient {
         _max_sse_event_size: usize,
     ) -> Result<StreamableHttpPostResponse, HttpError> {
         post::post(
-            &self.0,
+            &self.client,
+            &self.cuts,
             uri,
             message,
             session_id,
@@ -81,7 +101,7 @@ impl StreamableHttpClient for BoundedHttpClient {
         auth_header: Option<String>,
         custom_headers: HashMap<HeaderName, HeaderValue>,
     ) -> Result<(), HttpError> {
-        let client = &self.0;
+        let client = &self.client;
         client
             .delete_session(uri, session_id, auth_header, custom_headers)
             .await
@@ -95,7 +115,7 @@ impl StreamableHttpClient for BoundedHttpClient {
         auth_header: Option<String>,
         custom_headers: HashMap<HeaderName, HeaderValue>,
     ) -> Result<BoxStream<'static, Result<Sse, SseError>>, HttpError> {
-        let client = &self.0;
+        let client = &self.client;
         client
             .get_stream_with_max_sse_event_size(
                 uri,
@@ -117,7 +137,7 @@ impl StreamableHttpClient for BoundedHttpClient {
         custom_headers: HashMap<HeaderName, HeaderValue>,
         max_sse_event_size: usize,
     ) -> Result<BoxStream<'static, Result<Sse, SseError>>, HttpError> {
-        let client = &self.0;
+        let client = &self.client;
         let max = max_sse_event_size.min(MAX_RESPONSE_BYTES);
         client
             .get_stream_with_max_sse_event_size(

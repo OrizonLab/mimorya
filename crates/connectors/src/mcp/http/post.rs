@@ -18,14 +18,18 @@ use rmcp::transport::streamable_http_client::{
     AuthRequiredError, InsufficientScopeError, StreamableHttpError, StreamableHttpPostResponse,
 };
 
-use super::body::{MAX_RESPONSE_BYTES, Read, bounded_events, read_within, too_long};
+use super::body::{Cuts, MAX_RESPONSE_BYTES, Read, read_within, too_long};
+use super::events::bounded_events;
 use super::refused::refused;
 
+/// What the transport's HTTP client fails with.
 pub type HttpError = StreamableHttpError<reqwest_mcp::Error>;
 
-/// Posts `message`, then reads the server's answer within bounds.
+/// Posts `message`, then reads the server's answer within bounds, noting
+/// in `cuts` an answer cut.
 pub async fn post(
     client: &Client,
+    cuts: &Cuts,
     uri: Arc<str>,
     message: ClientJsonRpcMessage,
     session_id: Option<Arc<str>>,
@@ -80,10 +84,10 @@ pub async fn post(
     }
     match content_type.as_deref() {
         Some(ct) if is(ct, EVENT_STREAM_MIME_TYPE) => {
-            let events = bounded_events(response, too_long(&message));
+            let events = bounded_events(response, too_long(&message), cuts.clone());
             Ok(StreamableHttpPostResponse::Sse(events, new_session_id))
         }
-        Some(ct) if is(ct, JSON_MIME_TYPE) => json(response, &message, new_session_id).await,
+        Some(ct) if is(ct, JSON_MIME_TYPE) => json(response, &message, cuts, new_session_id).await,
         _ => Err(StreamableHttpError::UnexpectedContentType(content_type)),
     }
 }
@@ -92,11 +96,13 @@ pub async fn post(
 async fn json(
     response: Response,
     message: &ClientJsonRpcMessage,
+    cuts: &Cuts,
     session_id: Option<String>,
 ) -> Result<StreamableHttpPostResponse, HttpError> {
     let body = match read_within(response, MAX_RESPONSE_BYTES).await? {
         Read::Whole(body) => body,
         Read::Cut(_) => {
+            cuts.record();
             return Ok(match too_long(message) {
                 Some(answer) => StreamableHttpPostResponse::Json(answer, session_id),
                 None => StreamableHttpPostResponse::Accepted,
