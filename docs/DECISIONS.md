@@ -9867,7 +9867,8 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     compare `(tenant_id, colonne)` à `(tenant_id, id)`. La migration `0070` les
     recrée sous leur nom et avec leur action, et ajoute à chacune des 17 tables
     référencées une clé unique `(tenant_id, id)`. `gateways` reçoit aussi
-    `(tenant_id, id, kind)`, pour les clés qui nomment le type de la passerelle ;
+    `(tenant_id, id, kind)`, pour les clés qui nomment le type de la passerelle, à la
+    place de sa clé `(id, kind)` (0056), qu'aucune clé n'utilise plus ;
   - une clé qui vide sa référence à la suppression ne vide que cette colonne
     (`ON DELETE SET NULL (colonne)`, PostgreSQL 15 ou plus) : la ligne garde son
     entreprise. Sans cela, la suppression d'un compte échouerait sur `tenant_id`, qui
@@ -9879,14 +9880,21 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
   - une référence croisée entre entreprises est refusée par la base, même si
     l'application la laisse passer : défense en profondeur, sous la RLS ;
   - les données existantes la respectaient déjà : la migration s'applique sans erreur à
-    la base de démonstration remplie, en une fraction de seconde. Elle pose des verrous
-    sur toutes les tables concernées le temps de les vérifier ; la pile la joue avant de
-    démarrer (service `migrate`) ;
-  - 17 index uniques de plus, un par table référencée ;
+    la base de démonstration remplie, en 0,16 s. Jouée en une transaction, elle garde
+    jusqu'à sa fin des verrous exclusifs sur toutes les tables concernées : 1,5 s sur
+    un million d'événements de runs, un million d'entrées d'audit et 500 000 messages.
+    La pile la joue avant de démarrer (service `migrate`) ;
+  - 18 index uniques de plus, un par table référencée et deux pour `gateways`, dont la
+    clé `(id, kind)` est retirée ;
+  - les clés étrangères seules sont tenues : une liste d'identifiants dans une colonne
+    (`gateway_cards.approval_ids`) n'est couverte par aucune clé, et reste vérifiée par
+    le code qui la lit dans l'entreprise de sa transaction ;
   - test (`crates/db/tests/tenant_references.rs`) :
     - le catalogue ne contient aucune clé entre tables d'entreprise qui ne compare pas
-      l'entreprise en premier, des deux côtés, ni aucune qui la viderait ;
+      l'entreprise en premier, des deux côtés, ni aucune qui la viderait, ni aucune
+      d'une table hors de toute entreprise vers une table d'entreprise ;
     - une ligne qui nomme l'utilisateur d'une autre entreprise est refusée par sa clé,
-      dans une transaction que la RLS laisse écrire ;
+      dans une transaction que la RLS laisse écrire, alors que la même ligne s'écrit
+      dans l'entreprise de cet utilisateur ;
     - un compte supprimé laisse l'entrée d'audit qui le nommait dans son entreprise,
       sa référence vidée.

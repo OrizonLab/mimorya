@@ -39,8 +39,11 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   Les migrations utilisent un rôle distinct.
 - **Clés étrangères composites** (ADR-167) : une référence d'une table d'entreprise à
   une autre compare `(tenant_id, id)`, et pas `id` seul. PostgreSQL vérifie les clés
-  étrangères sans la RLS ; la clé elle-même refuse donc qu'une ligne pointe vers celle
-  d'une autre entreprise, même par une écriture fautive que la RLS laisserait passer.
+  étrangères sans la RLS ; la clé elle-même refuse donc qu'une ligne pointe, par une
+  clé étrangère, vers celle d'une autre entreprise, même par une écriture fautive que
+  la RLS laisserait passer. Une liste d'identifiants dans une colonne
+  (`gateway_cards.approval_ids`) n'est couverte par aucune clé : le code la lit dans
+  l'entreprise de sa transaction.
   Une clé qui vide sa référence à la suppression ne vide que cette colonne
   (`SET NULL (colonne)`), et la ligne garde son entreprise.
 - Le contexte `app.tenant_id` est posé **par transaction** (`set_config(..., true)`),

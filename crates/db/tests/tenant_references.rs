@@ -8,7 +8,7 @@ mod support;
 
 use mimorya_core::demo::tenant;
 use mimorya_db::Database;
-use mimorya_db::testing::OTHER_USER_ID;
+use mimorya_db::testing::{OTHER_TENANT_ID, OTHER_USER_ID};
 use serde_json::json;
 use uuid::Uuid;
 
@@ -21,7 +21,9 @@ async fn owner() -> Database {
 }
 
 /// The keys from a company table to another one (but tenants) that do not
-/// compare the company first, on both sides, or that would set it to null.
+/// compare the company first, on both sides, or that would set it to null;
+/// and the keys into a company table from a table outside any company,
+/// which nothing would hold to one company.
 const LOOSE_KEYS: &str = "\
     with keys as ( \
       select c.conname::text as name, c.conkey, c.confkey, c.confdeltype, c.confdelsetcols, \
@@ -31,8 +33,8 @@ const LOOSE_KEYS: &str = "\
       where c.contype = 'f' and c.connamespace = 'public'::regnamespace \
         and c.confrelid <> 'tenants'::regclass) \
     select name from keys \
-    where child is not null and parent is not null \
-      and (conkey[1] <> child or confkey[1] <> parent \
+    where parent is not null \
+      and (child is null or conkey[1] <> child or confkey[1] <> parent \
            or (confdeltype = 'n' and (confdelsetcols is null or child = any(confdelsetcols)))) \
     order by name";
 
@@ -60,22 +62,39 @@ async fn every_reference_between_company_tables_carries_the_company() {
     assert!(composite >= 100, "{composite} keys compare the company");
 }
 
+/// A memory of `company` owned by `owner`.
+async fn insert_memory(
+    tx: &mut sqlx::PgConnection,
+    company: Uuid,
+    owner: Uuid,
+) -> sqlx::Result<sqlx::postgres::PgQueryResult> {
+    sqlx::query(
+        "insert into memory_items (tenant_id, scope, kind, title, content, source, owner_user_id) \
+         values ($1, 'user', 'fact', 'Référence croisée', 'tentative', $2, $3)",
+    )
+    .bind(company)
+    .bind(json!({ "type": "manual" }))
+    .bind(owner)
+    .execute(tx)
+    .await
+}
+
 /// Row-level security lets a company's transaction write its own rows; the
-/// key refuses the one that names another company's user.
+/// key refuses the one that names another company's user, who does exist:
+/// that company's own transaction writes the same row.
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
 async fn a_row_cannot_point_at_another_company_s_row() {
     let db = app().await;
+    let mut tx = db.begin(OTHER_TENANT_ID).await.unwrap();
+    insert_memory(&mut tx, OTHER_TENANT_ID, OTHER_USER_ID)
+        .await
+        .unwrap();
+    // Dropped, the transaction is rolled back: nothing stays for the others.
+    drop(tx);
+
     let mut tx = db.begin(tenant::ID).await.unwrap();
-    let insert = sqlx::query(
-        "insert into memory_items (tenant_id, scope, kind, title, content, source, owner_user_id) \
-         values ($1, 'user', 'fact', 'Référence croisée', 'tentative', $2, $3)",
-    )
-    .bind(tenant::ID)
-    .bind(json!({ "type": "manual" }))
-    .bind(OTHER_USER_ID)
-    .execute(&mut *tx)
-    .await;
+    let insert = insert_memory(&mut tx, tenant::ID, OTHER_USER_ID).await;
     assert!(support::db_error(insert).contains("memory_items_owner_user_id_users_id_fk"));
 }
 

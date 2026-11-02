@@ -10,6 +10,10 @@ l'agent).
 - [ ] Toute nouvelle table métier a `tenant_id`, la RLS active et la politique
       `tenant_isolation` (le test `protects_every_tenant_scoped_table_with_rls_and_a_policy`
       échoue sinon).
+- [ ] Ses clés étrangères vers une autre table d'entreprise sont composites,
+      `(tenant_id, colonne)` vers `(tenant_id, id)`, `SET NULL (colonne)` si elles
+      vident leur référence (ADR-167 ; `crates/db/tests/tenant_references.rs` échoue
+      sinon).
 - [ ] Tout accès base au runtime passe par `Database::begin(tenant_id)` (`TenantTx`) avec
       le rôle applicatif ; aucun usage du rôle propriétaire hors migrations et seed.
 - [ ] Aucune nouvelle lecture inter-entreprises, sauf fonction `SECURITY DEFINER`

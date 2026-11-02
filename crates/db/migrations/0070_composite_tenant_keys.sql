@@ -6,7 +6,8 @@
 -- faulty write would have let through.
 --
 -- Each referenced table gets a unique (tenant_id, id) key, gateways also
--- (tenant_id, id, kind) for the keys that name the gateway's kind. Each key
+-- (tenant_id, id, kind) for the keys that name the gateway's kind, in place
+-- of its (id, kind) key, which no key uses any longer. Each key
 -- keeps its name and its action; a key that sets its reference to null on
 -- deletion names that column alone (SET NULL (column)), so that the row
 -- keeps its company. The three keys that already compared the company
@@ -473,3 +474,7 @@ ALTER TABLE verified_domains
   DROP CONSTRAINT verified_domains_verified_by_user_id_fkey,
   ADD CONSTRAINT verified_domains_verified_by_user_id_fkey FOREIGN KEY (tenant_id, verified_by_user_id)
     REFERENCES users (tenant_id, id) ON DELETE SET NULL (verified_by_user_id);
+
+-- No key names a gateway by (id, kind) alone any longer: the unique key that
+-- served them (0056) is now an index nothing uses.
+ALTER TABLE gateways DROP CONSTRAINT gateways_id_kind;
