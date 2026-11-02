@@ -9,6 +9,12 @@ Ce document en donne la lecture métier.
 - Clés primaires `uuid` (`gen_random_uuid()`), sauf journaux à fort volume (`bigserial`).
 - **Toute table métier porte `tenant_id`** et est protégée par une politique RLS
   `tenant_isolation` (voir §4). Exceptions : aucune en MVP (même `tenants` est filtrée).
+- **Toute clé étrangère d'une table d'entreprise vers une autre est composite**,
+  `(tenant_id, colonne)` vers `(tenant_id, id)` (ADR-167) : chaque table référencée
+  porte une clé unique `(tenant_id, id)`, et une ligne ne peut pointer vers celle d'une
+  autre entreprise. Une clé qui vide sa référence à la suppression ne vide que cette
+  colonne (`ON DELETE SET NULL (colonne)`). Le test `crates/db/tests/tenant_references.rs`
+  échoue sur une clé qui n'en est pas là.
 - Horodatages `timestamptz` en UTC : `created_at`, `updated_at`.
 - Énumérations stockées en `text` + contrainte `CHECK` (évolutives sans migration de type).
 - Les secrets ne sont jamais stockés en clair (table `secrets`, AES-256-GCM).

@@ -401,10 +401,13 @@ Défense en profondeur (détails : [SECURITY.md](SECURITY.md)) :
    `app.tenant_id` ; les dépôts filtrent systématiquement par entreprise.
 2. **Base** : **Row-Level Security** sur toutes les tables métier ; l'application se
    connecte avec un rôle **sans** `BYPASSRLS` et non propriétaire des tables. Sans
-   `app.tenant_id`, aucune ligne n'est visible.
+   `app.tenant_id`, aucune ligne n'est visible. Les clés étrangères entre tables
+   d'entreprise comparent `(tenant_id, id)` : une ligne ne peut pointer vers celle
+   d'une autre entreprise (ADR-167).
 3. **Moteur** : `AuthorizationEngine.check` refuse toute ressource d'une autre
    entreprise avant toute autre règle.
-4. **Tests** : suites d'intégration qui tentent des lectures croisées.
+4. **Tests** : suites d'intégration qui tentent des lectures croisées et des références
+   croisées.
 
 ## 8. Temps réel
 

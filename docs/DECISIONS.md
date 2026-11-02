@@ -9851,3 +9851,42 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     et fichier lisibles par leur seul propriétaire ;
   - l'ouverture d'une entreprise des tests de pile passe le mot de passe par
     `json_string`, comme la connexion.
+
+## ADR-167 — Clés étrangères composites entre tables d'entreprise
+
+- **Date** : 2026-11-02 · **Statut** : acceptée · complète ADR-003
+- **Contexte** : l'isolation des entreprises repose sur la RLS (ADR-003). Une écriture
+  ne peut viser qu'une ligne de l'entreprise de sa transaction, mais une ligne de cette
+  entreprise pouvait encore pointer vers celle d'une autre : 106 clés étrangères
+  comparaient `id` seul, et PostgreSQL vérifie les clés étrangères sans la RLS. Une
+  écriture fautive (un identifiant venu d'ailleurs) aurait donc relié deux entreprises
+  sans rien refuser. La feuille de route prévoyait ces clés composites (phase 3,
+  « Conformité »).
+- **Décision** :
+  - toute clé étrangère d'une table portant `tenant_id` vers une autre (sauf `tenants`)
+    compare `(tenant_id, colonne)` à `(tenant_id, id)`. La migration `0070` les
+    recrée sous leur nom et avec leur action, et ajoute à chacune des 17 tables
+    référencées une clé unique `(tenant_id, id)`. `gateways` reçoit aussi
+    `(tenant_id, id, kind)`, pour les clés qui nomment le type de la passerelle ;
+  - une clé qui vide sa référence à la suppression ne vide que cette colonne
+    (`ON DELETE SET NULL (colonne)`, PostgreSQL 15 ou plus) : la ligne garde son
+    entreprise. Sans cela, la suppression d'un compte échouerait sur `tenant_id`, qui
+    n'accepte pas d'être vide ;
+  - les trois clés vers `identity_providers`, déjà composites, et `rate_limit_values`,
+    hors de toute entreprise, ne changent pas ;
+  - `CLAUDE.md` en fait une règle pour toute nouvelle table.
+- **Conséquences** :
+  - une référence croisée entre entreprises est refusée par la base, même si
+    l'application la laisse passer : défense en profondeur, sous la RLS ;
+  - les données existantes la respectaient déjà : la migration s'applique sans erreur à
+    la base de démonstration remplie, en une fraction de seconde. Elle pose des verrous
+    sur toutes les tables concernées le temps de les vérifier ; la pile la joue avant de
+    démarrer (service `migrate`) ;
+  - 17 index uniques de plus, un par table référencée ;
+  - test (`crates/db/tests/tenant_references.rs`) :
+    - le catalogue ne contient aucune clé entre tables d'entreprise qui ne compare pas
+      l'entreprise en premier, des deux côtés, ni aucune qui la viderait ;
+    - une ligne qui nomme l'utilisateur d'une autre entreprise est refusée par sa clé,
+      dans une transaction que la RLS laisse écrire ;
+    - un compte supprimé laisse l'entrée d'audit qui le nommait dans son entreprise,
+      sa référence vidée.
