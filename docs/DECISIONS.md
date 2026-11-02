@@ -9779,7 +9779,7 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       ses propres sauvegardes ;
     - rien de clair n'est écrit sur le disque. Le fichier n'est lisible que par son
       propriétaire et apparaît entier ou pas du tout. Par défaut, il est écrit dans
-      `backups/mimorya-<heure UTC>.dump.age`, hors du dépôt ;
+      `backups/mimorya-<heure UTC>.dump.age`, à la racine du dépôt, que git ignore ;
   - `infra/backup/restore.sh` restaure une sauvegarde dans la base d'une pile nouvelle :
     - la pile n'a que sa base démarrée, et attend la fin de son initialisation (rôle
       applicatif, extensions) ;
@@ -9826,3 +9826,18 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     - les migrations se rejouent sans changement ;
   - `production-test.sh` et `backup-test.sh` partagent l'ouverture d'une entreprise et
     la connexion (`infra/docker/checks.sh`).
+- **Complément (lot 35, suites de l'audit de la PR #178)** :
+  - une sauvegarde n'en remplace jamais une autre. Chaque exécution écrit son propre
+    fichier partiel, fait par `mktemp` et lisible par son seul propriétaire dès sa
+    création, jamais un fichier trouvé là. Un lien physique nomme ensuite la sauvegarde,
+    entière, et échoue plutôt que de remplacer un fichier. De deux sauvegardes lancées
+    ensemble vers le même fichier, l'une l'écrit, l'autre est refusée et rien d'elle ne
+    reste. Le dossier des sauvegardes doit donc accepter les liens physiques, ce que font
+    les systèmes de fichiers locaux et NFS ;
+  - le test le vérifie en lançant deux sauvegardes ensemble vers le même fichier : une
+    seule l'écrit, l'autre dit qu'il existe déjà, le fichier se déchiffre jusqu'au bout
+    et aucun fichier partiel ne reste. Il fait aussi une sauvegarde sans fichier nommé :
+    elle va dans `backups/` à la racine du dépôt, nommée par son chemin complet, dossier
+    et fichier lisibles par leur seul propriétaire ;
+  - l'ouverture d'une entreprise des tests de pile passe le mot de passe par
+    `json_string`, comme la connexion.

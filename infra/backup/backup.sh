@@ -5,7 +5,9 @@
 # identity that opens a backup stays off the server, which cannot read its
 # own backups. Nothing unencrypted touches the disk; the file, and the
 # folders the script creates for it, are readable by their owner only, and
-# the file appears complete or not at all.
+# the file appears complete or not at all. It is never replaced: of two runs
+# naming the same file, one writes it and the other is refused. Its folder
+# must take hard links, as local file systems and NFS do.
 #   MIMORYA_BACKUP_RECIPIENTS='age1…' infra/backup/backup.sh [file]
 #   MIMORYA_BACKUP_RECIPIENTS_FILE=recipients.txt infra/backup/backup.sh [file]
 # The file defaults to backups/mimorya-<UTC time>.dump.age, in the
@@ -46,15 +48,19 @@ fi
 file=${file:-$PWD/backups/mimorya-$(date -u +%Y%m%dT%H%M%SZ).dump.age}
 [[ ! -e $file ]] || fail "$file existe déjà"
 umask 077
-mkdir -p "$(dirname "$file")"
-partial="$file.partial"
-# A partial file found there, left by a run that was killed or put there by
-# someone else, is replaced: age would keep its mode, which may not be 600.
-rm -f "$partial"
+mkdir -p "$(dirname "$file")" || fail "impossible de créer le dossier de $file"
+# Each run writes its own partial file, made by mktemp: readable by its
+# owner only from its creation, never one found there nor another run's.
+partial=$(mktemp "$file.partial.XXXXXX") || fail "impossible d'écrire à côté de $file"
 trap 'rm -f "$partial"' EXIT
 docker compose exec -T db pg_dump --username mimorya --dbname mimorya --format custom |
   age "${recipients[@]}" --output "$partial" ||
   fail "le dump ou son chiffrement a échoué : rien n'a été gardé"
-mv "$partial" "$file"
-trap - EXIT
+# A hard link names the backup whole, and fails rather than replace a file:
+# another run's backup, written meanwhile under the same name, is kept.
+if ! ln "$partial" "$file" 2>/dev/null; then
+  [[ ! -e $file ]] ||
+    fail "$file existe déjà : une autre sauvegarde l'a écrit pendant celle-ci, qui n'est pas gardée"
+  fail "impossible de nommer la sauvegarde $file (son dossier doit accepter les liens physiques)"
+fi
 echo "Sauvegarde écrite : $file"

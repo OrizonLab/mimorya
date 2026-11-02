@@ -200,7 +200,9 @@ COMPOSE_ENV_FILES=.env.production MIMORYA_BACKUP_RECIPIENTS='age1… age1…' \
   infra/backup/backup.sh            # écrit backups/mimorya-<heure UTC>.dump.age (600)
 ```
 
-Un fichier de destinataires (`MIMORYA_BACKUP_RECIPIENTS_FILE`) remplace la variable.
+Un fichier de destinataires (`MIMORYA_BACKUP_RECIPIENTS_FILE`) remplace la variable. Une
+sauvegarde n'en remplace jamais une autre : son dossier doit accepter les liens physiques
+(disque local, NFS).
 La fréquence, la conservation et la copie hors site sont à votre charge, par exemple une
 ligne de `cron` qui lance la sauvegarde chaque nuit et une copie vers un autre site. Une
 donnée supprimée de la plateforme (un compte, une entreprise) reste dans les sauvegardes
