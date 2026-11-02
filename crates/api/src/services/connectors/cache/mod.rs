@@ -6,20 +6,31 @@
 //! run. A start invalidated while it ran (instance changed, disabled or
 //! deleted) is released, never kept. A live instance whose session closed
 //! for good (a local server that exited) is released and started again by
-//! the next run that needs it.
+//! the next run that needs it; closed within `QUICK_EXIT` of its start, it
+//! is a failed start, remembered as one (ADR-163): a server that exits as
+//! soon as started is not started again by every run.
 
 use std::collections::HashMap;
 use std::future::Future;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use mimorya_connectors::ConnectorRuntime;
 use tokio::sync::{Mutex, watch};
+use tokio::time::Instant;
 use uuid::Uuid;
 
 /// How long a failed start is remembered before the next run tries again.
 pub const RETRY_AFTER: Duration = Duration::from_secs(60);
+
+/// A session closed within this time of its start was a failed start.
+pub const QUICK_EXIT: Duration = RETRY_AFTER;
+
+/// Why an instance whose session closed within `QUICK_EXIT` of its start
+/// is not started again at once.
+pub const EXITED_AT_ONCE: &str = "La connexion au serveur s’est fermée moins d’une minute après \
+     son démarrage : nouvel essai dans une minute";
 
 /// Where an unavailability comes from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -60,6 +71,8 @@ enum Slot {
     Live {
         version: DateTime<Utc>,
         runtime: Arc<ConnectorRuntime>,
+        /// When it started: a session closed soon after is a failed start.
+        since: Instant,
     },
     Failed {
         version: DateTime<Utc>,
@@ -120,16 +133,15 @@ impl RuntimeCache {
         let (_finished, done) = loop {
             let mut waiting = {
                 let mut state = self.state.lock().await;
-                if matches!(state.slots.get(&id), Some(Slot::Live { version: v, runtime }) if *v == version && runtime.is_closed())
-                {
-                    tracing::warn!(connector = %id, "A kept connector's session closed: starting it again");
-                    release(state.slots.remove(&id));
+                if let Some(failed) = closed(&mut state, id, version) {
+                    return Err(failed);
                 }
                 let stale = state.stale(id, ticket);
                 match state.slots.get(&id) {
                     Some(Slot::Live {
                         version: v,
                         runtime,
+                        ..
                     }) if *v == version => return Ok(runtime.clone()),
                     Some(Slot::Failed {
                         version: v,
@@ -178,6 +190,7 @@ impl RuntimeCache {
             Some(Slot::Live {
                 version: v,
                 runtime,
+                ..
             }) if *v >= version => Some(runtime.clone()),
             _ => None,
         };
@@ -196,6 +209,7 @@ impl RuntimeCache {
                 let live = Slot::Live {
                     version,
                     runtime: runtime.clone(),
+                    since: Instant::now(),
                 };
                 release(state.slots.insert(id, live));
                 Ok(runtime)
@@ -249,6 +263,32 @@ impl RuntimeCache {
             }
         }
     }
+}
+
+/// Releases the live instance of this version if its session closed for
+/// good, to be started again; remembered as a failed start, and told so,
+/// if it closed within `QUICK_EXIT` of its start.
+fn closed(state: &mut State, id: Uuid, version: DateTime<Utc>) -> Option<Unavailable> {
+    let since = match state.slots.get(&id) {
+        Some(Slot::Live {
+            version: v,
+            runtime,
+            since,
+        }) if *v == version && runtime.is_closed() => *since,
+        _ => return None,
+    };
+    release(state.slots.remove(&id));
+    if since.elapsed() >= QUICK_EXIT {
+        tracing::warn!(connector = %id, "A kept connector's session closed: starting it again");
+        return None;
+    }
+    let failed = Slot::Failed {
+        version,
+        until: Instant::now() + RETRY_AFTER,
+        message: EXITED_AT_ONCE.into(),
+    };
+    state.slots.insert(id, failed);
+    Some(Unavailable::new(EXITED_AT_ONCE))
 }
 
 fn release(slot: Option<Slot>) {

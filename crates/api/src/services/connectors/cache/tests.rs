@@ -1,7 +1,10 @@
 //! The cache's rules: live instances and failures per version, starts
-//! invalidated while they ran, starts shared by the runs that need them.
+//! invalidated while they ran, starts shared by the runs that need them,
+//! sessions closed for good started again, unless they closed soon after
+//! their start.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Duration;
 
 use super::*;
 
@@ -241,7 +244,7 @@ impl mimorya_connectors::ConnectorCloser for Closer {
     }
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn starts_again_an_instance_whose_session_closed_for_good() {
     let cache = RuntimeCache::default();
     let (id, version) = (Uuid::new_v4(), Utc::now());
@@ -266,7 +269,8 @@ async fn starts_again_an_instance_whose_session_closed_for_good() {
     assert!(Arc::ptr_eq(&live, &kept));
     assert_eq!(starts.load(Ordering::SeqCst), 1);
 
-    // Closed for good: released, and started again.
+    // Closed for good, long after its start: released, and started again.
+    tokio::time::advance(QUICK_EXIT).await;
     first_session.closed.store(true, Ordering::SeqCst);
     let Ok(again) = cache.get_or_start(id, version, 0, start).await else {
         panic!("expected a new instance");
@@ -280,4 +284,42 @@ async fn starts_again_an_instance_whose_session_closed_for_good() {
     })
     .await
     .expect("the closed instance is released");
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_session_closed_soon_after_its_start_is_a_failed_start() {
+    let cache = RuntimeCache::default();
+    let (id, version) = (Uuid::new_v4(), Utc::now());
+    let starts = AtomicUsize::new(0);
+    let session = Arc::new(Session::default());
+    let start = || async {
+        starts.fetch_add(1, Ordering::SeqCst);
+        Ok(ConnectorRuntime {
+            tools: Vec::new(),
+            closer: Some(Box::new(Closer(session.clone()))),
+        })
+    };
+    let Ok(_) = cache.get_or_start(id, version, 0, start).await else {
+        panic!("expected a live instance");
+    };
+    // A server that exits as soon as started: told once, then remembered.
+    tokio::time::advance(QUICK_EXIT - Duration::from_secs(1)).await;
+    session.closed.store(true, Ordering::SeqCst);
+    let exited = unavailable(cache.get_or_start(id, version, 0, start).await);
+    assert_eq!(exited.origin, Origin::Fresh);
+    assert_eq!(exited.message, EXITED_AT_ONCE);
+    let remembered = unavailable(cache.get_or_start(id, version, 0, start).await);
+    assert_eq!(remembered.origin, Origin::Remembered);
+    assert_eq!(
+        starts.load(Ordering::SeqCst),
+        1,
+        "not started again at once"
+    );
+    // Tried again once the retry delay is over.
+    session.closed.store(false, Ordering::SeqCst);
+    tokio::time::advance(RETRY_AFTER).await;
+    let Ok(_) = cache.get_or_start(id, version, 0, start).await else {
+        panic!("expected a new instance");
+    };
+    assert_eq!(starts.load(Ordering::SeqCst), 2);
 }
