@@ -9830,10 +9830,14 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
   - une sauvegarde n'en remplace jamais une autre. Chaque exécution écrit son propre
     fichier partiel, fait par `mktemp` et lisible par son seul propriétaire dès sa
     création, jamais un fichier trouvé là. Un lien physique nomme ensuite la sauvegarde,
-    entière, et échoue plutôt que de remplacer un fichier. De deux sauvegardes lancées
-    ensemble vers le même fichier, l'une l'écrit, l'autre est refusée et rien d'elle ne
-    reste. Le dossier des sauvegardes doit donc accepter les liens physiques, ce que font
-    les systèmes de fichiers locaux et NFS ;
+    entière, et échoue plutôt que de remplacer quoi que ce soit : un fichier, un lien
+    symbolique, même cassé, ou un dossier (`ln -T`). De deux sauvegardes lancées ensemble
+    vers le même fichier, l'une l'écrit, l'autre est refusée et rien d'elle ne reste. Un
+    autre échec du lien est dit avec sa raison ;
+  - le dossier des sauvegardes doit donc accepter les liens physiques, ce que font ext4,
+    XFS, Btrfs, ZFS et NFS, mais pas FAT, exFAT ni certains montages FUSE. Un lien d'essai
+    le vérifie avant le dump, pour ne pas le découvrir après. Une sauvegarde tuée
+    brutalement peut laisser son fichier partiel, chiffré, que le README dit de supprimer ;
   - le test le vérifie en lançant deux sauvegardes ensemble vers le même fichier : une
     seule l'écrit, l'autre dit qu'il existe déjà, le fichier se déchiffre jusqu'au bout
     et aucun fichier partiel ne reste. Il fait aussi une sauvegarde sans fichier nommé :

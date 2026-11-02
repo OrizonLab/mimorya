@@ -7,7 +7,8 @@
 # folders the script creates for it, are readable by their owner only, and
 # the file appears complete or not at all. It is never replaced: of two runs
 # naming the same file, one writes it and the other is refused. Its folder
-# must take hard links, as local file systems and NFS do.
+# must take hard links, as ext4, XFS, Btrfs, ZFS and NFS do and FAT, exFAT
+# and some FUSE mounts do not: that is tried before the dump.
 #   MIMORYA_BACKUP_RECIPIENTS='age1…' infra/backup/backup.sh [file]
 #   MIMORYA_BACKUP_RECIPIENTS_FILE=recipients.txt infra/backup/backup.sh [file]
 # The file defaults to backups/mimorya-<UTC time>.dump.age, in the
@@ -46,21 +47,30 @@ fi
   fail "aucun destinataire : renseignez MIMORYA_BACKUP_RECIPIENTS (clés publiques age) ou MIMORYA_BACKUP_RECIPIENTS_FILE"
 
 file=${file:-$PWD/backups/mimorya-$(date -u +%Y%m%dT%H%M%SZ).dump.age}
-[[ ! -e $file ]] || fail "$file existe déjà"
+# Anything at that name, a dangling symbolic link included, is in the way.
+taken() { [[ -e $file || -L $file ]]; }
+! taken || fail "$file existe déjà"
 umask 077
 mkdir -p "$(dirname "$file")" || fail "impossible de créer le dossier de $file"
 # Each run writes its own partial file, made by mktemp: readable by its
 # owner only from its creation, never one found there nor another run's.
+partial=
+trap '[[ -z $partial ]] || rm -f "$partial" "$partial.link"' EXIT
 partial=$(mktemp "$file.partial.XXXXXX") || fail "impossible d'écrire à côté de $file"
-trap 'rm -f "$partial"' EXIT
+# The backup is named by a hard link: tried first, so that a folder which
+# takes none is said before the dump rather than after it.
+ln -T "$partial" "$partial.link" 2>/dev/null ||
+  fail "le dossier de $file n'accepte pas les liens physiques : ext4, XFS, Btrfs, ZFS ou NFS conviennent ; FAT, exFAT et certains montages FUSE, non"
+rm -f "$partial.link"
 docker compose exec -T db pg_dump --username mimorya --dbname mimorya --format custom |
   age "${recipients[@]}" --output "$partial" ||
   fail "le dump ou son chiffrement a échoué : rien n'a été gardé"
-# A hard link names the backup whole, and fails rather than replace a file:
-# another run's backup, written meanwhile under the same name, is kept.
-if ! ln "$partial" "$file" 2>/dev/null; then
-  [[ ! -e $file ]] ||
+# The hard link names the backup whole, and fails rather than replace
+# anything: another run's backup, written meanwhile under the same name, is
+# kept; with -T, a folder made at that name is not linked into either.
+if ! said=$(ln -T "$partial" "$file" 2>&1); then
+  ! taken ||
     fail "$file existe déjà : une autre sauvegarde l'a écrit pendant celle-ci, qui n'est pas gardée"
-  fail "impossible de nommer la sauvegarde $file (son dossier doit accepter les liens physiques)"
+  fail "impossible de nommer la sauvegarde $file : $said"
 fi
 echo "Sauvegarde écrite : $file"
