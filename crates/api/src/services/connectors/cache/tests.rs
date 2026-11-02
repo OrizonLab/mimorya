@@ -6,6 +6,7 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
+use super::closed::{EXITED_AT_ONCE, QUICK_EXIT};
 use super::*;
 
 fn unavailable(result: Result<Arc<ConnectorRuntime>, Unavailable>) -> Unavailable {
@@ -277,13 +278,20 @@ async fn starts_again_an_instance_whose_session_closed_for_good() {
     };
     assert!(!Arc::ptr_eq(&live, &again));
     assert_eq!(starts.load(Ordering::SeqCst), 2);
-    tokio::time::timeout(std::time::Duration::from_secs(5), async {
-        while !first_session.released.load(Ordering::SeqCst) {
-            tokio::task::yield_now().await;
+    released(&first_session).await;
+}
+
+/// Returns once the session was released, in the background. Counted in
+/// turns given to the other tasks, not in time: a paused clock does not
+/// advance while this test runs.
+async fn released(session: &Session) {
+    for _ in 0..10_000 {
+        if session.released.load(Ordering::SeqCst) {
+            return;
         }
-    })
-    .await
-    .expect("the closed instance is released");
+        tokio::task::yield_now().await;
+    }
+    panic!("the closed instance is never released");
 }
 
 #[tokio::test(start_paused = true)]
@@ -315,6 +323,7 @@ async fn a_session_closed_soon_after_its_start_is_a_failed_start() {
         1,
         "not started again at once"
     );
+    released(&session).await;
     // Tried again once the retry delay is over.
     session.closed.store(false, Ordering::SeqCst);
     tokio::time::advance(RETRY_AFTER).await;

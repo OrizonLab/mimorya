@@ -9592,26 +9592,40 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
   runs retardés, que de runs.
 - **Décision** :
   - une instance gardée retient l'heure de son démarrage ;
-  - une session fermée moins d'une minute après son démarrage (`QUICK_EXIT`, égal au
-    délai qui suit un échec, `RETRY_AFTER`) est traitée comme un démarrage échoué :
-    l'instance est libérée et l'échec est retenu une minute, avec le message « La
-    connexion au serveur s'est fermée moins d'une minute après son démarrage : nouvel
-    essai dans une minute ». Il est dit au run qui la trouve fermée, journalisé et noté
-    sur l'instance, comme un échec nouveau, puis reçu comme retenu par les runs suivants ;
-  - une session fermée plus tard est démarrée de nouveau par le run qui en a besoin,
-    comme avant.
+  - une session qu'un run trouve fermée moins d'une minute après son démarrage
+    (`QUICK_EXIT`, égal au délai qui suit un échec, `RETRY_AFTER`) est traitée comme
+    un démarrage échoué : l'instance est libérée et l'échec est retenu une minute, avec
+    le message « La connexion au serveur s'est fermée moins d'une minute après son
+    démarrage : il n'est pas redémarré avant une minute ». Il est dit à ce run, journalisé
+    et noté sur l'instance, comme un échec nouveau, puis reçu comme retenu par les runs
+    suivants ;
+  - le temps compté va jusqu'au moment où un run trouve la session fermée : la plateforme
+    ne date pas sa fermeture. Une session trouvée fermée une minute ou plus après son
+    démarrage est démarrée de nouveau par ce run, comme avant ;
+  - la règle est dans `cache/closed.rs`.
 - **Conséquences** :
   - un serveur qui s'arrête dès son démarrage est démarré au plus une fois par minute,
-    comme un serveur qui ne démarre pas ;
-  - le point « un serveur stdio qui démarre puis s'arrête aussitôt est démarré de nouveau
-    par chaque run » des limites de l'ADR-056 est traité ;
+    comme un serveur qui ne démarre pas, tant que des runs en ont besoin à moins d'une
+    minute d'intervalle. Le point « un serveur stdio qui démarre puis s'arrête aussitôt
+    est démarré de nouveau par chaque run » des limites de l'ADR-056 est traité dans ce
+    cas ;
+  - limite restante : si les runs qui ont besoin du connecteur arrivent à plus d'une
+    minute d'intervalle, chacun démarre de nouveau ce serveur, qui est dit opérationnel,
+    et reçoit des outils qui échouent, sans avis d'indisponibilité. Dater la fermeture
+    de la session lèverait cette limite ;
+  - un serveur qui a servi des appels, puis s'arrête dans sa première minute (sur un
+    appel précis, par exemple), rend le connecteur indisponible une minute pour tous les
+    runs de l'entreprise. Avant, le run suivant le démarrait de nouveau aussitôt ;
+  - le message ne promet pas de nouvel essai : rien ne redémarre le serveur de lui-même,
+    seul un run qui en a besoin le fait, une minute au plus tôt après. Le message reste
+    affiché à l'administrateur jusque-là ;
   - le cache mesure le temps par l'horloge de tokio, que les tests peuvent arrêter
     (`start_paused`, fonctionnalité `test-util` en développement seulement) ;
   - tests (`crates/api/src/services/connectors/cache/tests.rs`) :
-    - une session fermée moins d'une minute après son démarrage donne l'échec, nouveau
-      puis retenu, sans nouveau démarrage, et l'instance est démarrée de nouveau une fois
-      le délai passé ;
-    - une session fermée plus d'une minute après son démarrage est démarrée de nouveau
-      aussitôt ;
+    - une session trouvée fermée moins d'une minute après son démarrage donne l'échec,
+      nouveau puis retenu, sans nouveau démarrage ; l'instance fermée est libérée, et
+      démarrée de nouveau une fois le délai passé ;
+    - une session trouvée fermée une minute ou plus après son démarrage est libérée et
+      démarrée de nouveau aussitôt ;
     - si le cache démarre toujours de nouveau, ou retient toujours l'échec, l'un de ces
       tests échoue.
