@@ -9,8 +9,7 @@
 //! answers the ping keeps its session, even refusing it: with an error of
 //! its own, or a 429 (alive, limiting its rate). Limit: a server that
 //! handles one request at a time answers the ping only once its slow call
-//! is over, cancelled or not; a call of more than twice the call delay
-//! loses it its session.
+//! is over: a call of more than twice the call delay loses it its session.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};

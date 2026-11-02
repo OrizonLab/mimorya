@@ -1,8 +1,8 @@
-//! What keeps a session whose call failed (ADR-164): a call past its delay
-//! is cancelled, and the server pinged, one ping for failures that come
-//! together; a server that answers the ping keeps its session, even
-//! refusing it as a method it does not know or with a 429. A refusal of
-//! the server's own is an answer: no ping follows it.
+//! What keeps a session whose call failed (ADR-164): after a call past its
+//! delay, the server is pinged, one ping for failures that come together; a
+//! server that answers the ping keeps its session, even refusing it as a
+//! method it does not know or with a 429. A refusal of the server's own is
+//! an answer: no ping follows it.
 
 mod support;
 
@@ -59,11 +59,11 @@ async fn a_slow_tool_keeps_the_session_of_a_server_that_answers_its_ping() {
 }
 
 #[tokio::test]
-async fn calls_past_their_delay_are_cancelled_and_failing_together_send_one_ping() {
+async fn calls_failing_together_send_one_ping() {
     let (runtime, seen) = start(Ping::Answered).await;
     // Three calls that fail together, while the first ping is under way.
     tokio::join!(too_slow(&runtime), too_slow(&runtime), too_slow(&runtime));
-    assert!(reaches(|| seen.cancelled(), 3).await, "{seen:?}");
+    assert!(reaches(|| seen.pings(), 1).await, "{seen:?}");
     tokio::time::sleep(CALL).await;
     assert_eq!(seen.pings(), 1);
     assert!(!runtime.is_closed());

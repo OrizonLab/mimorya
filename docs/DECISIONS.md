@@ -9643,9 +9643,12 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     404, le seul statut auquel le client ouvre une nouvelle session.
 - **Décision** :
   - un appel à un outil MCP est borné par le délai d'un appel (`call_timeout`, 20 s,
-    comme pour une API REST). Au-delà, il échoue avec « Le serveur n'a pas répondu à
-    temps (délai de 20 s) », et la bibliothèque MCP dit au serveur que l'appel est
-    annulé (`notifications/cancelled`, que la spécification recommande) ;
+    comme pour une API REST), tours `input_required` compris (SEP-2322, joués par la
+    bibliothèque MCP comme avant). Au-delà, il échoue avec « Le serveur n'a pas répondu
+    à temps (délai de 20 s) ». La fonction de la bibliothèque qui joue ces tours ne prend
+    pas de délai et ne donne pas l'identifiant de sa requête : le serveur n'est pas
+    prévenu que l'appel est abandonné (`notifications/cancelled`, que la spécification
+    recommande). L'envoyer soi-même ferait perdre ces tours ;
   - un appel qui a échoué sans réponse du serveur est suivi d'un ping, en arrière-plan,
     sans retarder le run, et un seul à la fois par session. Sont concernés : un appel
     sans réponse à temps, ou dont le transport a été refusé ou rompu. N'en déclenchent
@@ -9670,10 +9673,11 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     par la même session à son retour. Un serveur redémarré entre deux appels, qui le
     dit par 404, est toujours rejoint par la même session ;
   - un outil lent dont le serveur répond au ping garde sa session : seul cet appel
-    échoue, au bout de 20 s au lieu de 30 s, et le serveur est prévenu de son
-    annulation ;
+    échoue, au bout de 20 s au lieu de 30 s ;
+  - limite : le serveur n'est pas prévenu qu'un appel est abandonné, et peut le mener à
+    son terme, une écriture validée comprise ;
   - limite : un serveur qui traite une requête à la fois ne répond au ping qu'une fois
-    l'appel en cours fini (s'il n'abandonne pas un appel annulé). Un appel de plus de
+    l'appel en cours fini. Un appel de plus de
     deux fois le délai d'un appel (40 s) lui fait perdre sa session, et le connecteur est
     démarré de nouveau, ou indisponible une minute s'il a moins d'une minute. Un refus
     du ping par un autre statut que 429 (503 d'un intermédiaire, par exemple) fait aussi
@@ -9692,9 +9696,13 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     - `crates/connectors/tests/mcp_pings.rs`, contre un serveur lent qui compte ce qu'il
       voit (`testing/slow.rs`) : un outil lent garde sa session, que le serveur réponde
       au ping, le refuse comme méthode inconnue ou par un 429 ; trois appels qui expirent
-      ensemble sont annulés chez le serveur et suivis d'un seul ping ; une erreur du
-      serveur lui-même n'est suivie d'aucun ping ;
+      ensemble sont suivis d'un seul ping ; une erreur du serveur lui-même n'est suivie
+      d'aucun ping ;
+    - `crates/connectors/tests/mcp_rounds.rs`, contre un serveur écrit à la main : un
+      appel joue le tour sans demande de saisie que le serveur lui demande, puis reçoit
+      sa réponse ;
     - mutations, toutes détectées : sans ping, les trois premiers tests de
       `mcp_sessions` échouent ; une session perdue sans ping, un refus du ping (méthode
       inconnue ou 429) compté comme une absence de réponse, plusieurs pings à la fois ou
-      un ping après une erreur du serveur font échouer un test de `mcp_pings`.
+      un ping après une erreur du serveur font échouer un test de `mcp_pings` ; un seul
+      tour permis fait échouer celui de `mcp_rounds`.

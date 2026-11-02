@@ -1,8 +1,7 @@
 //! A test MCP server whose tool is slow (ADR-164): `get_item` answers after
-//! `SLOW_CALL` unless the call is cancelled, `refused_item` refuses at once
-//! with an error of its own. It answers a ping after `PING_DELAY`, refuses it
-//! as a method it does not know, or refuses it with a 429, as chosen; it
-//! counts the pings and the cancelled calls it saw.
+//! `SLOW_CALL`, `refused_item` refuses at once with an error of its own. It
+//! answers a ping after `PING_DELAY`, refuses it as a method it does not
+//! know, or refuses it with a 429, as chosen; it counts the pings it saw.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -21,7 +20,7 @@ use rmcp::model::{
 use rmcp::service::RequestContext;
 use rmcp::{RoleServer, ServerHandler};
 
-/// How long `get_item` takes, when not cancelled.
+/// How long `get_item` takes.
 pub const SLOW_CALL: Duration = Duration::from_secs(3);
 
 /// How long an answered ping takes: long enough for failures that come
@@ -42,17 +41,11 @@ pub enum Ping {
 #[derive(Debug, Default)]
 pub struct Seen {
     pings: AtomicUsize,
-    cancelled: AtomicUsize,
 }
 
 impl Seen {
     pub fn pings(&self) -> usize {
         self.pings.load(Ordering::SeqCst)
-    }
-
-    /// Calls of `get_item` cancelled before their end.
-    pub fn cancelled(&self) -> usize {
-        self.cancelled.load(Ordering::SeqCst)
     }
 }
 
@@ -125,18 +118,14 @@ impl ServerHandler for SlowServer {
     async fn call_tool(
         &self,
         request: CallToolRequestParams,
-        context: RequestContext<RoleServer>,
+        _context: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, ErrorData> {
-        if request.name == "refused_item" {
-            return Err(ErrorData::invalid_request("Élément refusé", None));
-        }
-        tokio::select! {
-            () = tokio::time::sleep(SLOW_CALL) => {}
-            () = context.ct.cancelled() => {
-                self.seen.cancelled.fetch_add(1, Ordering::SeqCst);
-                return Err(ErrorData::internal_error("Appel annulé", None));
+        match request.name.as_ref() {
+            "refused_item" => Err(ErrorData::invalid_request("Élément refusé", None)),
+            _ => {
+                tokio::time::sleep(SLOW_CALL).await;
+                Ok(CallToolResult::success(vec![ContentBlock::text("ok")]).into())
             }
         }
-        Ok(CallToolResult::success(vec![ContentBlock::text("ok")]).into())
     }
 }

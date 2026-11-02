@@ -6,9 +6,9 @@
 //! (connector `tool_policies`). Results are untrusted data like any tool output.
 //!
 //! What a server declares is read and checked by `declarations`; what its
-//! tools return has the token masked. A call is bounded by its delay, past
-//! which the server is told it is cancelled; one that failed without the
-//! server's answer has the server pinged (`liveness`, ADR-164).
+//! tools return has the token masked. A call, its `input_required` rounds
+//! played, is bounded by its delay; one that failed without the server's
+//! answer has the server pinged (`liveness`, ADR-164).
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -16,10 +16,8 @@ use std::time::Duration;
 use async_trait::async_trait;
 use mimorya_core::autonomy::ToolRisk;
 use mimorya_core::tools::{Tool, ToolContext, ToolInfo, ToolRef, ToolResult};
-use rmcp::model::{
-    CallToolRequest, CallToolRequestParams, CallToolResult, ClientRequest, ServerResult,
-};
-use rmcp::service::{PeerRequestOptions, RunningService};
+use rmcp::model::{CallToolRequestParams, CallToolResult};
+use rmcp::service::RunningService;
 use rmcp::{RoleClient, ServiceError};
 use serde_json::{Value, json};
 
@@ -149,19 +147,15 @@ impl Tool for McpTool {
 }
 
 impl McpTool {
-    /// The call, bounded by its delay: past it, the MCP library tells the
-    /// server the call is cancelled (`notifications/cancelled`).
+    /// The call, its `input_required` rounds played by the MCP library,
+    /// bounded by its delay. The library takes no delay for it, nor gives
+    /// its request's identifier: the server is not told the call was
+    /// abandoned (ADR-164).
     async fn call(&self, params: CallToolRequestParams) -> Result<CallToolResult, ServiceError> {
         let timeout = self.call_timeout;
-        let request = ClientRequest::CallToolRequest(CallToolRequest::new(params));
-        let options = PeerRequestOptions::with_timeout(timeout);
-        let sent = self.client.send_request_with_option(request, options);
-        let handle = tokio::time::timeout(timeout, sent)
-            .await
-            .map_err(|_| ServiceError::Timeout { timeout })??;
-        match handle.await_response().await? {
-            ServerResult::CallToolResult(result) => Ok(result),
-            _ => Err(ServiceError::UnexpectedResponse),
+        match tokio::time::timeout(timeout, self.client.call_tool(params)).await {
+            Ok(answer) => answer,
+            Err(_) => Err(ServiceError::Timeout { timeout }),
         }
     }
 }
