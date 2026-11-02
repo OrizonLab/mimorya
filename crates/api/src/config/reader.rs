@@ -115,6 +115,9 @@ impl Reader<'_> {
                  public",
             );
         }
+        if let Some(problem) = bypass.as_deref().and_then(OutboundProxy::bypass_problem) {
+            return self.invalid("MIMORYA_OUTBOUND_NO_PROXY", problem);
+        }
         match OutboundProxy::new(&address, bypass.as_deref()) {
             Ok(proxy) => Some(proxy.leak()),
             Err(problem) => self.invalid("MIMORYA_OUTBOUND_PROXY", &problem),

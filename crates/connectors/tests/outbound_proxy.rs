@@ -1,15 +1,18 @@
 //! What companies connect, reached through the operator's proxy (ADR-162):
-//! an MCP server and a REST API alike, the proxy given its credentials, a
-//! host of the bypass reached without it, and a proxy that refuses or does
-//! not answer told without its credentials. Without private addresses
-//! allowed, no client is built with a proxy.
+//! an MCP server and a REST API alike, over plain HTTP (the proxy forwards
+//! the request) or HTTPS (the proxy opens a tunnel), the proxy given its
+//! credentials; a host of the bypass reached without it. A proxy that
+//! refuses is told without its credentials: by its status (407) for plain
+//! HTTP, as an unreachable server for a tunnel. The environment's proxies
+//! are never followed, and without private addresses allowed, no client is
+//! built with a proxy.
 
 mod support;
 
 use std::time::Duration;
 
 use mimorya_connectors::ConnectorRuntime;
-use mimorya_connectors::outbound::{NetworkPolicy, OutboundProxy, http_client};
+use mimorya_connectors::outbound::{NetworkPolicy, OutboundProxy, UNREACHABLE, http_client};
 use mimorya_connectors::testing::{serve_demo_docs_http, serve_proxy, serve_rest_http};
 use serde_json::json;
 use support::mcp::{PRIVATE, call_as_reader, http, start_mcp_within};
@@ -102,6 +105,75 @@ async fn a_proxy_that_refuses_or_does_not_answer_is_told_without_its_credentials
         .expect("unreachable");
     let said = format!("{error:#}");
     assert!(!said.contains("secret-du-mandataire"), "{said}");
+}
+
+#[tokio::test]
+async fn an_https_server_is_reached_through_a_tunnel() {
+    // What every service the client reaches is: a tunnel (`CONNECT`), its
+    // credentials given there, the proxy noting where after checking them.
+    let (proxy, proxied) = serve_proxy(Some(CREDENTIALS)).await;
+    let network = through(&proxy, CREDENTIALS, None);
+    // Nothing answers there: where it went is what counts.
+    let _ = mcp("https://audit.invalid/mcp", network).await;
+    assert_eq!(proxied.targets(), ["audit.invalid:443"]);
+}
+
+#[tokio::test]
+async fn a_tunnel_the_proxy_refuses_is_told_without_its_credentials() {
+    let (proxy, proxied) = serve_proxy(Some(CREDENTIALS)).await;
+    let network = through(&proxy, "compte:mauvais-secret", None);
+    let error = mcp("https://audit.invalid/mcp", network)
+        .await
+        .err()
+        .expect("refused");
+    let said = format!("{error:#}");
+    // Refused on the tunnel: no server answered, as said.
+    assert!(said.contains(UNREACHABLE), "{said}");
+    assert!(said.contains("proxy authorization required"), "{said}");
+    assert!(!said.contains("mauvais-secret"), "{said}");
+    assert!(proxied.targets().is_empty());
+}
+
+/// Where the child process of `the_environment_s_proxies_are_never_followed`
+/// sends its request.
+const CHILD_TARGET: &str = "MIMORYA_TEST_CHILD_TARGET";
+
+#[tokio::test]
+async fn the_environment_s_proxies_are_never_followed() {
+    let (proxy, proxied) = serve_proxy(None).await;
+    // In a child process: the environment is the process's own.
+    let mut child = tokio::process::Command::new(std::env::current_exe().unwrap());
+    child
+        .args(["--exact", "requested_by_the_child", "--include-ignored"])
+        .env(CHILD_TARGET, "http://audit.invalid/")
+        .env_remove("NO_PROXY")
+        .env_remove("no_proxy")
+        .stdout(std::process::Stdio::null());
+    for name in [
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "ALL_PROXY",
+        "http_proxy",
+        "https_proxy",
+    ] {
+        child.env(name, &proxy);
+    }
+    let status = child.status().await.unwrap();
+    assert!(status.success(), "the child ran");
+    assert!(proxied.targets().is_empty(), "{:?}", proxied.targets());
+}
+
+/// Run by `the_environment_s_proxies_are_never_followed`, in a child
+/// process whose environment names a proxy; nothing to do otherwise.
+#[tokio::test]
+#[ignore = "run in a child process by the_environment_s_proxies_are_never_followed"]
+async fn requested_by_the_child() {
+    let Ok(target) = std::env::var(CHILD_TARGET) else {
+        return;
+    };
+    let client = http_client(PRIVATE).unwrap();
+    // Nothing answers there: where it went is what counts.
+    let _ = client.get(target).send().await;
 }
 
 #[test]

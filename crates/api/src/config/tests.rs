@@ -259,4 +259,12 @@ fn a_proxy_is_an_http_s_address_and_its_bypass_needs_it() {
     let bypass = ("MIMORYA_OUTBOUND_NO_PROXY", "intranet.example");
     let error = load(&[DB, private, bypass]).unwrap_err().to_string();
     assert!(error.contains("MIMORYA_OUTBOUND_NO_PROXY"), "{error}");
+    // A bypass that cannot be read is said of its own variable.
+    let proxy = ("MIMORYA_OUTBOUND_PROXY", "http://proxy.example:3128");
+    let unreadable = ("MIMORYA_OUTBOUND_NO_PROXY", "intranet\n.example");
+    let error = load(&[DB, private, proxy, unreadable])
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("- MIMORYA_OUTBOUND_NO_PROXY:"), "{error}");
+    assert!(!error.contains("- MIMORYA_OUTBOUND_PROXY:"), "{error}");
 }
