@@ -1,7 +1,8 @@
 //! Model Context Protocol: the bridge exposing MCP tools as platform tools,
 //! the connector type (its servers reached as `outbound` says, their answers
-//! read within bounds by `http`), how their failures are explained (token
-//! masked), and a demo server.
+//! read within bounds by `http`, a session kept while its server answers,
+//! `liveness`), how their failures are explained (token masked), and a demo
+//! server.
 
 mod bridge;
 mod connector;
@@ -9,6 +10,7 @@ mod declarations;
 mod demo_docs;
 mod failure;
 mod http;
+mod liveness;
 mod visible;
 
 pub use bridge::{McpClient, McpToolsetOptions, create_mcp_toolset, mcp_tool_description};
@@ -19,3 +21,4 @@ pub use declarations::{
 pub use demo_docs::DemoDocsServer;
 pub use failure::NOT_MCP;
 pub use http::{BoundedHttpClient, MAX_RESPONSE_BYTES, TOO_LONG};
+pub use liveness::Liveness;

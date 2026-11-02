@@ -84,6 +84,31 @@ fn transport(error: &DynamicTransportError) -> Option<Cause> {
     known(error.error.as_ref())
 }
 
+/// Whether the server refused the message with `status`, without an error
+/// of its own (ADR-164: a 429 is an answer).
+pub fn refused_with(error: &ServiceError, status: u16) -> bool {
+    let ServiceError::TransportSend(error) = error else {
+        return false;
+    };
+    let said = format!("HTTP {status} ");
+    matches!(
+        http_error(error.error.as_ref()),
+        Some(StreamableHttpError::UnexpectedServerResponse(text)) if text.starts_with(&said)
+    )
+}
+
+/// The HTTP transport's error, wherever it sits.
+fn http_error<'a>(error: &'a (dyn StdError + 'static)) -> Option<&'a HttpError> {
+    if let Some(error) = error.downcast_ref::<HttpError>() {
+        return Some(error);
+    }
+    if let Some(WorkerQuitReason::Fatal { error, .. }) = error.downcast_ref::<WorkerError>() {
+        return Some(error);
+    }
+    let inner = error.downcast_ref::<DynamicTransportError>()?;
+    http_error(inner.error.as_ref())
+}
+
 fn http(error: &HttpError) -> Cause {
     let detail = error.to_string();
     let summary = match error {

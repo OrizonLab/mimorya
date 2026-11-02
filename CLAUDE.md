@@ -116,7 +116,9 @@ Repères à l'intérieur des crates :
   `agent/src/testing/` (fonctionnalité `testing`).
 - `connectors/src/demo_interventions/` (données, planning, accès, `tools/` un fichier
   par outil), `connectors/src/mcp/` (dont son client HTTP, qui lit les réponses des
-  serveurs dans leurs bornes, `http/`, ADR-161), `connectors/src/bin/mcp_demo_docs.rs`,
+  serveurs dans leurs bornes, `http/`, ADR-161, et le ping qui suit un appel échoué
+  sans réponse du serveur, la session dite perdue s'il n'y répond pas, `liveness.rs`,
+  ADR-164), `connectors/src/bin/mcp_demo_docs.rs`,
   `connectors/src/outbound/` (ce que partagent les serveurs MCP et les API REST d'une
   entreprise : réseau, préfixe, jeton, masquage, échecs, ADR-025, ADR-112 ; mandataire
   de l'exploitant, `proxy.rs`, ADR-162),
@@ -139,7 +141,8 @@ Repères à l'intérieur des crates :
   l'atteint : jeton d'Entra gardé pour son secret, clés du Bot Framework gardées un
   jour, service Teams d'une activité, ADR-138 ; carte écrite puis réécrite, `cards.rs`,
   ADR-141), `connectors/src/testing/`
-  (serveurs simulés des tests : MCP, dont des réponses sans fin (`endless.rs`), mandataire
+  (serveurs simulés des tests : MCP, dont des réponses sans fin (`endless.rs`) et un
+  serveur lent qui compte les pings qu'il voit (`slow.rs`), mandataire
   HTTP qui note où il va (`proxy.rs`), API REST, Microsoft Graph, Gmail et agenda Google,
   Slack, qui signe les événements comme lui, Telegram, Microsoft pour Teams, qui signe
   les activités avec une clé de test).

@@ -65,6 +65,23 @@ pub async fn start_mcp_within(
         .await
 }
 
+/// Starts an MCP instance whose calls may each take `call_timeout`.
+pub async fn start_mcp_calling_within(
+    config: Value,
+    network: NetworkPolicy,
+    call_timeout: Duration,
+) -> anyhow::Result<ConnectorRuntime> {
+    let context = InstanceContext {
+        network,
+        call_timeout,
+        ..InstanceContext::default()
+    };
+    connector_type("mcp")
+        .unwrap()
+        .instantiate(&config, context)
+        .await
+}
+
 /// Runs the tool `name` as Lucas, the tool mapped to a read of interventions.
 pub async fn call_as_reader(runtime: &ConnectorRuntime, name: &str, input: Value) -> ToolResult {
     let read = ToolOverride {

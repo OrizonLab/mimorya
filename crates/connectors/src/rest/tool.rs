@@ -17,7 +17,7 @@ use serde_json::Value;
 use super::declaration::{HttpMethod, RestOperation, rest_tool_description, rest_tool_name};
 use super::request::{build, described, input_schema, parse_input};
 use super::response::read;
-use crate::outbound::{CONNECTOR_USE, Redactor, TOO_SLOW, explained, request_cause};
+use crate::outbound::{CONNECTOR_USE, Redactor, explained, request_cause, too_slow};
 
 const ACCEPTED: &str = "application/json, text/plain;q=0.9, */*;q=0.5";
 const AGENT: &str = concat!("Mimorya/", env!("CARGO_PKG_VERSION"));
@@ -125,10 +125,7 @@ impl Tool for RestTool {
         let answer = match tokio::time::timeout(self.api.call_timeout, call).await {
             Ok(Ok(answer)) => answer,
             Ok(Err(error)) => return Err(explained(request_cause(&error), &self.api.redactor)),
-            Err(_) => {
-                let seconds = self.api.call_timeout.as_secs_f32().to_string();
-                anyhow::bail!("{TOO_SLOW} (délai de {} s)", seconds.replace('.', ","));
-            }
+            Err(_) => return Err(too_slow(self.api.call_timeout)),
         };
         Ok(ToolResult {
             content: answer.content(&self.api.redactor),

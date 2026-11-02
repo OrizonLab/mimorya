@@ -4,9 +4,11 @@
 //! the bridge. Connecting and listing the tools are bounded in time; a
 //! failure is explained in French, without the token (`failure`, `redact`);
 //! what an HTTP server answers is read within bounds (`http`, ADR-161).
-//! A session whose transport closed (a local server that exited) says so,
-//! for the platform to start it again; an HTTP server that restarts is
-//! reached again by the client itself (`reinit_on_expired_session`).
+//! A session whose transport closed (a local server that exited), or whose
+//! server did not answer a ping after a failed call (`liveness`, ADR-164),
+//! says so, for the platform to start it again; an HTTP server that
+//! restarts and says so (404) is reached again by the client itself
+//! (`reinit_on_expired_session`).
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -24,7 +26,8 @@ use tokio::process::Command;
 use super::bridge::{McpClient, McpToolsetOptions, create_mcp_toolset};
 use super::failure::start_failed;
 use super::http::{BoundedHttpClient, TOO_LONG};
-use crate::outbound::{Redactor, TOO_SLOW, http_client, token_problem, url_problem};
+use super::liveness::Liveness;
+use crate::outbound::{Redactor, http_client, token_problem, too_slow, url_problem};
 use crate::types::{Connector, ConnectorCloser, ConnectorInfo, ConnectorRuntime, InstanceContext};
 
 /// No `Debug`: `env` may carry credentials of the MCP server.
@@ -48,10 +51,12 @@ pub enum McpConnectorConfig {
 /// Variables passed to a child process besides the configured ones.
 const INHERITED_ENV: [&str; 2] = ["PATH", "HOME"];
 
-/// The session with the server: cancelled once, closed when its transport is.
+/// The session with the server: cancelled once, closed when its transport
+/// is or its server did not answer a ping.
 struct Session {
     client: Arc<McpClient>,
     cancel: std::sync::Mutex<Option<RunningServiceCancellationToken>>,
+    liveness: Arc<Liveness>,
 }
 
 #[async_trait]
@@ -63,7 +68,7 @@ impl ConnectorCloser for Session {
     }
 
     fn is_closed(&self) -> bool {
-        self.client.is_transport_closed()
+        self.client.is_transport_closed() || self.liveness.is_lost()
     }
 }
 
@@ -91,10 +96,7 @@ impl Connector for McpConnector {
         // Connecting to the server and listing its tools, together.
         match tokio::time::timeout(context.start_timeout, start(config, context)).await {
             Ok(started) => started,
-            Err(_) => {
-                let seconds = context.start_timeout.as_secs_f32().to_string();
-                bail!("{TOO_SLOW} (délai de {} s)", seconds.replace('.', ","))
-            }
+            Err(_) => Err(too_slow(context.start_timeout)),
         }
     }
 }
@@ -170,6 +172,7 @@ async fn start(
     let token = client.cancellation_token();
     let options = McpToolsetOptions {
         redactor: Redactor::new(context.secret),
+        call_timeout: context.call_timeout,
         ..McpToolsetOptions::new(prefix)
     };
     let client = Arc::new(client);
@@ -180,6 +183,7 @@ async fn start(
     let closer = Session {
         client,
         cancel: std::sync::Mutex::new(Some(token)),
+        liveness: options.liveness.clone(),
     };
     match tools {
         Ok(tools) => Ok(ConnectorRuntime {

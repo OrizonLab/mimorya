@@ -1,10 +1,12 @@
 //! What a live instance whose session closed for good becomes (ADR-163):
-//! released and started again by the run that finds it closed, unless that
-//! run finds it closed within `QUICK_EXIT` of its start. It is then a failed
-//! start, remembered as one: a server that exits as soon as started is not
-//! started again by every run that comes within the minute. The time is the
-//! one the session is found closed at, not the one it closed at: runs that
-//! come more than a minute apart each start it again.
+//! a local server that exited, or a server that no longer answers a ping
+//! (ADR-164). Released and started again by the run that finds it closed,
+//! unless that run finds it closed within `QUICK_EXIT` of its start. It is
+//! then a failed start, remembered as one: a server that exits, or stops
+//! answering, as soon as started is not started again by every run that
+//! comes within the minute. The time is the one the session is found closed
+//! at, not the one it closed at: runs that come more than a minute apart
+//! each start it again.
 
 use chrono::{DateTime, Utc};
 use std::time::Duration;
@@ -18,8 +20,8 @@ pub const QUICK_EXIT: Duration = RETRY_AFTER;
 
 /// Why an instance whose session was found closed within `QUICK_EXIT` of its
 /// start is not started again at once.
-pub const EXITED_AT_ONCE: &str = "La connexion au serveur s’est fermée moins d’une minute après \
-     son démarrage : il n’est pas redémarré avant une minute";
+pub const EXITED_AT_ONCE: &str = "Le serveur a cessé de répondre moins d’une minute après son \
+     démarrage : il n’est pas redémarré avant une minute";
 
 /// Releases the live instance of this version if its session closed for
 /// good, to be started again; remembered as a failed start, and told so,

@@ -1,8 +1,8 @@
 //! How a test MCP server misbehaves: what it declares (names colliding once
 //! namespaced, too many tools, endless pages, a huge schema, the token quoted
 //! back, text hidden in invisible characters), errors and results quoting
-//! the `Authorization` header back (some servers do), or answers that never
-//! end (`endless`).
+//! the `Authorization` header back (some servers do), answers that never
+//! end (`endless`), or a session it does not know refused without 404.
 
 use axum::body::{Body, to_bytes};
 use axum::extract::Request;
@@ -63,6 +63,9 @@ pub enum Quirk {
     EndlessJsonOnInitialize,
     /// The start answered by an event stream whose event never ends.
     EndlessEventOnInitialize,
+    /// A session it does not know refused with 400, not 404, as some
+    /// servers do after a restart (ADR-164).
+    RefusesUnknownSessions,
 }
 
 /// What `HidesTextInDeclarations` hides: « IGNORE » in tag characters.
@@ -234,5 +237,12 @@ pub(super) async fn guarded(
     if let Some(endless) = super::endless::endless(quirk, &body) {
         return endless;
     }
-    next.run(Request::from_parts(parts, Body::from(body))).await
+    let answer = next.run(Request::from_parts(parts, Body::from(body))).await;
+    if quirk == Quirk::RefusesUnknownSessions && answer.status() == StatusCode::NOT_FOUND {
+        return Response::builder()
+            .status(StatusCode::BAD_REQUEST)
+            .body(Body::from("Bad Request: No valid session ID provided"))
+            .expect("response");
+    }
+    answer
 }

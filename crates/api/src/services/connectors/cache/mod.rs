@@ -5,8 +5,9 @@
 //! delays the runs of one start, then one run per retry delay, not every
 //! run. A start invalidated while it ran (instance changed, disabled or
 //! deleted) is released, never kept. A live instance whose session closed
-//! for good is released and started again by the next run that needs it,
-//! or remembered as a failed start (`closed`, ADR-163).
+//! for good (a local server that exited, a server that no longer answers a
+//! ping, ADR-164) is released and started again by the next run that needs
+//! it, or remembered as a failed start (`closed`, ADR-163).
 
 use std::collections::HashMap;
 use std::future::Future;
