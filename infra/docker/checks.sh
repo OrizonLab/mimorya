@@ -1,8 +1,11 @@
 # Checks shared by the tests of the containerised stacks (ADR-032, ADR-034),
-# sourced by smoke-test.sh and production-test.sh. The caller names its
-# check in `check_name` (failure messages); every function takes the stack's
-# base URL first, but `stack_workers` and `check_roles`, which read the
-# stack through `docker compose` (COMPOSE_FILE names its files) and jq.
+# sourced by smoke-test.sh, production-test.sh and backup-test.sh (ADR-166).
+# The caller names its check in `check_name` (failure messages). The
+# functions that reach the stack over HTTP take its base URL first;
+# `json_string` and `session_of` only read the text they are given.
+# `open_company`, `stack_workers` and `check_roles` also reach the stack
+# through `docker compose` (COMPOSE_FILE names its files); `stack_workers`
+# reads its answer with jq.
 
 fail() {
   echo "${check_name:-check} failed: $1" >&2
@@ -49,6 +52,51 @@ api_post() {
   curl -sk --max-time 10 -D - -X POST "$1/api$2" \
     -H 'content-type: application/json' -H 'x-mimorya-request: 1' -H "origin: $1" \
     --data "$3" || fail "no answer from $2"
+}
+
+# Prints the session of the Set-Cookie headers in $1, checked secure.
+session_of() {
+  local cookie session
+  cookie=$(grep -io '^set-cookie: mimorya_session=[^;]*;.*secure' <<<"$1" | head -1) ||
+    fail "session cookie missing or not secure"
+  session=${cookie#*mimorya_session=}
+  printf '%s' "${session%%;*}"
+}
+
+# The operator creates the company named $3, its slug $2 (ADR-033); its
+# first administrator, admin@$2.example, opens the invitation link, which
+# leads to the stack at $1, and chooses the password $4. Prints the session
+# they get.
+open_company() {
+  local base=$1 slug=$2 name=$3 password=$4 output link accepted
+  output=$(docker compose exec -T api mimorya-admin create-company \
+    --name "$name" --slug "$slug" \
+    --admin-email "admin@$slug.example" --admin-name 'Administrateur de vérification') ||
+    fail "company not created"
+  link=$(grep -o "$base/invitation#[A-Za-z0-9_-]*" <<<"$output") ||
+    fail "no invitation link leading to $base"
+  accepted=$(api_post "$base" /auth/invitation/accept \
+    "{\"token\":\"${link#*#}\",\"password\":\"$password\"}")
+  grep -q '^HTTP/[0-9.]* 200' <<<"$accepted" || fail "invitation refused: $(head -1 <<<"$accepted")"
+  session_of "$accepted"
+}
+
+# Signs in as $2 with the password $3; prints the session.
+sign_in() {
+  local base=$1 email=$2 password=$3 answer
+  answer=$(api_post "$base" /auth/login \
+    "{\"email\":\"$(json_string "$email")\",\"password\":\"$(json_string "$password")\"}")
+  grep -q '^HTTP/[0-9.]* 200' <<<"$answer" || fail "sign-in refused: $(head -1 <<<"$answer")"
+  session_of "$answer"
+}
+
+# The session $2 is accepted, in the company named $3, which is not a demo.
+check_company_of() {
+  local base=$1 session=$2 name=$3 me
+  me=$(curl -skf --max-time 10 "$base/api/auth/me" -H "cookie: mimorya_session=$session") ||
+    fail "the session is refused"
+  grep -q "\"name\":\"$name\"" <<<"$me" || fail "unexpected company: $me"
+  grep -q '"demo":false' <<<"$me" || fail "the company is marked as a demo: $me"
 }
 
 # How many workers the stack runs (MIMORYA_WORKERS, 1 by default; ADR-087).

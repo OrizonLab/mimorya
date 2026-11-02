@@ -43,3 +43,6 @@ next-env.d.ts
 
 # Rust
 /target/
+
+# Backups of a stack (infra/backup, ADR-166): encrypted, kept off the repository
+/backups/

@@ -182,7 +182,45 @@ parcours, rôles et second worker compris, jusqu'à la première connexion de
 l'administrateur avec les images construites depuis le dépôt
 (`compose.production.build.yml`), pas avec les images téléchargées
 (`infra/docker/production-test.sh`, réservé à une pile jetable : il y laisse une
-entreprise de vérification). Les sauvegardes restent à faire (voir la feuille de route).
+entreprise de vérification).
+
+### Sauvegardes
+
+La base se sauvegarde chiffrée par [age](https://age-encryption.org), à installer sur
+l'hôte de la pile (ADR-166). Une sauvegarde est chiffrée pour des clés publiques :
+l'identité qui l'ouvre, la clé privée, se garde hors du serveur, qui ne peut donc pas relire
+ses propres sauvegardes. Prévoyez deux destinataires, dont un conservé à part : une
+identité perdue rend ses sauvegardes illisibles. Gardez une copie de la clé maître
+(`MIMORYA_MASTER_KEY`) avec l'identité, hors du serveur : elle scelle les secrets de la
+base et ne fait pas partie d'une sauvegarde.
+
+```bash
+age-keygen -o identite.txt          # sur un poste à part ; la clé publique s'affiche
+COMPOSE_ENV_FILES=.env.production MIMORYA_BACKUP_RECIPIENTS='age1… age1…' \
+  infra/backup/backup.sh            # écrit backups/mimorya-<heure UTC>.dump.age (600)
+```
+
+Un fichier de destinataires (`MIMORYA_BACKUP_RECIPIENTS_FILE`) remplace la variable.
+La fréquence, la conservation et la copie hors site sont à votre charge, par exemple une
+ligne de `cron` qui lance la sauvegarde chaque nuit et une copie vers un autre site. Une
+donnée supprimée de la plateforme (un compte, une entreprise) reste dans les sauvegardes
+déjà faites jusqu'à ce que leur conservation les retire : fixez cette durée en
+conséquence.
+
+Une sauvegarde se restaure dans une pile nouvelle, sa base seule démarrée : une base qui
+contient déjà des tables est refusée, et le dump est lu en une transaction, tout ou rien.
+La pile nouvelle garde ses propres mots de passe de base, et la clé maître de la pile
+sauvegardée.
+
+```bash
+docker compose --env-file .env.production -f compose.production.yml up -d db
+COMPOSE_ENV_FILES=.env.production infra/backup/restore.sh backups/mimorya-….dump.age identite.txt
+docker compose --env-file .env.production -f compose.production.yml up -d
+```
+
+La CI sauvegarde la pile de production qu'elle vient d'installer, jette sa base, la
+restaure dans une base nouvelle et vérifie que l'administrateur s'y connecte encore
+(`infra/docker/backup-test.sh`). La restauration à un instant précis (WAL) reste à faire.
 
 ## Qualité
 

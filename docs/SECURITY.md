@@ -734,7 +734,9 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   effacé si son compte est supprimé, comme celui qui l'a déposé. L'agent n'en lit,
   par `document_search` et `document_read` (ADR-096), que ce que son utilisateur peut
   lire, avec ses droits du moment ; un document hors de portée lui répond comme
-  inexistant, et ses passages lui sont remis comme données.
+  inexistant, et ses passages lui sont remis comme données. Une suppression n'atteint
+  pas les sauvegardes déjà faites (ADR-166) : la donnée y reste, chiffrée, jusqu'à ce
+  que la conservation fixée par l'exploitant retire ces sauvegardes.
 - **Rétention** paramétrable (voir [DATA_MODEL.md](DATA_MODEL.md) §5).
 - **Sous-traitants** : choix du fournisseur LLM et de sa région par entreprise ;
   possibilité de modèles locaux ; registre des sous-traitants et DPA.
@@ -777,7 +779,9 @@ no-store` (le flux d'événements garde `no-cache, no-transform`) ;
   limites de taille, de pages, de texte et de décompression, aucune entité XML développée.
 - Dépendances verrouillées (`Cargo.lock`, `pnpm-lock.yaml`), audit des vulnérabilités en CI
   (phase 2), revue des licences (MIT/Apache/BSD privilégiées, AGPL exclue).
-- Sauvegardes chiffrées, restauration testée périodiquement (phase 3).
+- Sauvegardes de la base chiffrées par `age` pour des clés publiques, l'identité qui les
+  ouvre restant hors du serveur, et restauration dans une pile nouvelle vérifiée en CI
+  (ADR-166, `infra/backup/`) ; restauration à un instant précis (WAL) en phase 3.
 
 ## 11. Liste de contrôle pour chaque contribution
 

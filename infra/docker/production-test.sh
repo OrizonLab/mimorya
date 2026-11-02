@@ -58,25 +58,7 @@ if grep -q 'Comptes de démonstration' <<<"$page"; then
 fi
 
 slug=verification-$(date +%s)
-output=$("${compose[@]}" exec -T api mimorya-admin create-company \
-  --name 'Entreprise de vérification' --slug "$slug" \
-  --admin-email "admin@$slug.example" --admin-name 'Administrateur de vérification') ||
-  fail "company not created"
-link=$(grep -o "$base/invitation#[A-Za-z0-9_-]*" <<<"$output") ||
-  fail "no invitation link leading to $base"
-
-password=$(openssl rand -hex 24)
-accepted=$(api_post "$base" /auth/invitation/accept \
-  "{\"token\":\"${link#*#}\",\"password\":\"$password\"}")
-grep -q '^HTTP/[0-9.]* 200' <<<"$accepted" || fail "invitation refused: $(head -1 <<<"$accepted")"
-cookie=$(grep -io '^set-cookie: mimorya_session=[^;]*;.*secure' <<<"$accepted" | head -1) ||
-  fail "session cookie missing or not secure"
-session=${cookie#*mimorya_session=}
-session=${session%%;*}
-
-me=$(curl -skf --max-time 10 "$base/api/auth/me" -H "cookie: mimorya_session=$session") ||
-  fail "the new session is refused"
-grep -q '"name":"Entreprise de vérification"' <<<"$me" || fail "unexpected company: $me"
-grep -q '"demo":false' <<<"$me" || fail "the company is marked as a demo: $me"
+session=$(open_company "$base" "$slug" 'Entreprise de vérification' "$(openssl rand -hex 24)")
+check_company_of "$base" "$session" 'Entreprise de vérification'
 
 echo "production test passed: $base"
