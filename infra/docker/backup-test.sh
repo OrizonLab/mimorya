@@ -4,7 +4,14 @@
 # backed up for an age key made here. The backup is checked:
 #   - readable by its owner only;
 #   - encrypted: another identity cannot open it, the right one decrypts it
-#     to its end, a PostgreSQL archive.
+#     to its end, a PostgreSQL archive;
+#   - never replaced: of two backups to one file at once, one writes it, the
+#     other is refused at its hard link; a folder made at its name during
+#     the dump does not take it; a dangling symbolic link there is refused
+#     before the dump; a folder without hard links is said before the dump,
+#     with ln's reason; no partial file is left;
+#   - by default in backups/, at the repository's root, named by its full
+#     path, the folder and the file readable by their owner only.
 # The stack's database is then thrown away (`down -v`) and the backup
 # restored into the new one. A second restore, into a database no longer
 # empty, is refused by the script's guard. The stack started again serves
@@ -64,8 +71,8 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 age-keygen -o "$work/identity.txt" 2>/dev/null
 age-keygen -o "$work/other.txt" 2>/dev/null
-MIMORYA_BACKUP_RECIPIENTS=$(age-keygen -y "$work/identity.txt") \
-  infra/backup/backup.sh "$work/stack.dump.age" >/dev/null
+recipient=$(age-keygen -y "$work/identity.txt")
+MIMORYA_BACKUP_RECIPIENTS=$recipient infra/backup/backup.sh "$work/stack.dump.age" >/dev/null
 [[ $(stat -c %a "$work/stack.dump.age") == 600 ]] || fail "the backup is readable by others"
 if age --decrypt --identity "$work/other.txt" "$work/stack.dump.age" >/dev/null 2>&1; then
   fail "another identity opens the backup"
@@ -76,6 +83,85 @@ fi
 magic=$(age --decrypt --identity "$work/identity.txt" "$work/stack.dump.age" |
   { head -c 5; cat >/dev/null; }) || fail "the backup does not decrypt to its end"
 [[ $magic == PGDMP ]] || fail "the backup does not hold a PostgreSQL archive"
+
+# A docker standing for the real one: after a dump it makes the folder
+# FOLDER_DURING_DUMP names, if any, then waits DUMP_DELAY seconds, as if both
+# happened during the dump. backup.sh run through it says what it said.
+real_docker=$(command -v docker)
+mkdir "$work/bin"
+cat >"$work/bin/docker" <<EOF
+#!/usr/bin/env bash
+"$real_docker" "\$@" || exit
+if [[ \$* == *pg_dump* ]]; then
+  [[ -z \${FOLDER_DURING_DUMP:-} ]] || mkdir "\$FOLDER_DURING_DUMP"
+  sleep "\${DUMP_DELAY:-0}"
+fi
+EOF
+chmod +x "$work/bin/docker"
+slow_backup() {
+  PATH=$work/bin:$PATH MIMORYA_BACKUP_RECIPIENTS=$recipient infra/backup/backup.sh "$@" 2>&1
+}
+
+# Two backups to one file at once, both past the first check: one writes it,
+# the hard link refuses the other; the file decrypts to its end.
+DUMP_DELAY=3 slow_backup "$work/twice.dump.age" >"$work/first.txt" &
+first=$!
+DUMP_DELAY=3 slow_backup "$work/twice.dump.age" >"$work/second.txt" &
+second=$!
+written=0
+wait "$first" && written=$((written + 1))
+wait "$second" && written=$((written + 1))
+said=$(cat "$work/first.txt" "$work/second.txt")
+((written == 1)) || fail "two backups to one file, $written written: $said"
+grep -q 'pendant celle-ci' <<<"$said" || fail "the second backup was not refused at its link: $said"
+age --decrypt --identity "$work/identity.txt" "$work/twice.dump.age" | cat >/dev/null ||
+  fail "the backup written by one of two runs does not decrypt to its end"
+
+# A folder made at the backup's name during the dump is refused, empty; a
+# dangling symbolic link at that name is in the way.
+if said=$(FOLDER_DURING_DUMP=$work/folder.dump.age slow_backup "$work/folder.dump.age"); then
+  fail "a backup was linked into a folder made at its name: $said"
+fi
+grep -q 'pendant celle-ci' <<<"$said" || fail "the folder made at its name was not said: $said"
+[[ -z $(ls -A "$work/folder.dump.age") ]] || fail "the folder made at the backup's name holds it"
+ln -s "$work/nowhere" "$work/dangling.dump.age"
+if said=$(slow_backup "$work/dangling.dump.age"); then
+  fail "a backup replaced a dangling symbolic link: $said"
+fi
+# Refused at the first check, before the dump: not at the link after it.
+grep -q 'existe déjà' <<<"$said" && ! grep -q 'pendant celle-ci' <<<"$said" ||
+  fail "the dangling symbolic link was not said before the dump: $said"
+
+# A folder that takes no hard links is said before the dump: a ln that always
+# fails stands for it, and the dump, made ten seconds long, never runs.
+printf '#!/usr/bin/env bash\necho "ln: Operation not permitted" >&2\nexit 1\n' >"$work/bin/ln"
+chmod +x "$work/bin/ln"
+start=$SECONDS
+if said=$(DUMP_DELAY=10 slow_backup "$work/unlinked.dump.age"); then
+  fail "a backup was written without a hard link: $said"
+fi
+rm "$work/bin/ln"
+grep -qF 'ln: Operation not permitted. Son dossier doit accepter les liens physiques' <<<"$said" ||
+  fail "the missing hard links were not said with ln's reason: $said"
+((SECONDS - start < 10)) || fail "the hard link was tried only after the dump"
+if compgen -G "$work/*.partial.*" >/dev/null; then
+  fail "a partial file was left: $(ls "$work")"
+fi
+
+# Without a file named, the backup goes to backups/ in the repository's root,
+# named by its full path, readable by its owner only; it is removed here.
+[[ -e backups ]] && fresh=no || fresh=yes
+said=$(MIMORYA_BACKUP_RECIPIENTS=$recipient infra/backup/backup.sh)
+default=${said#Sauvegarde écrite : }
+[[ $default == "$PWD"/backups/mimorya-*Z.dump.age && -f $default ]] ||
+  fail "unexpected default backup: $said"
+[[ $(stat -c %a "$default") == 600 ]] || fail "the default backup is readable by others"
+if [[ $fresh == yes ]]; then
+  [[ $(stat -c %a backups) == 700 ]] || fail "the backups folder is readable by others"
+  rm -f "$default" && rmdir backups
+else
+  rm -f "$default"
+fi
 
 docker compose down -v >/dev/null 2>&1 || fail "the stack did not stop"
 docker compose up -d db >/dev/null 2>&1 || fail "the new database did not start"

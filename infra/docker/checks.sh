@@ -76,7 +76,7 @@ open_company() {
   link=$(grep -o "$base/invitation#[A-Za-z0-9_-]*" <<<"$output") ||
     fail "no invitation link leading to $base"
   accepted=$(api_post "$base" /auth/invitation/accept \
-    "{\"token\":\"${link#*#}\",\"password\":\"$password\"}")
+    "{\"token\":\"${link#*#}\",\"password\":\"$(json_string "$password")\"}")
   grep -q '^HTTP/[0-9.]* 200' <<<"$accepted" || fail "invitation refused: $(head -1 <<<"$accepted")"
   session_of "$accepted"
 }

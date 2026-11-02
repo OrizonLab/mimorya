@@ -9779,7 +9779,7 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       ses propres sauvegardes ;
     - rien de clair n'est écrit sur le disque. Le fichier n'est lisible que par son
       propriétaire et apparaît entier ou pas du tout. Par défaut, il est écrit dans
-      `backups/mimorya-<heure UTC>.dump.age`, hors du dépôt ;
+      `backups/mimorya-<heure UTC>.dump.age`, à la racine du dépôt, que git ignore ;
   - `infra/backup/restore.sh` restaure une sauvegarde dans la base d'une pile nouvelle :
     - la pile n'a que sa base démarrée, et attend la fin de son initialisation (rôle
       applicatif, extensions) ;
@@ -9826,3 +9826,28 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     - les migrations se rejouent sans changement ;
   - `production-test.sh` et `backup-test.sh` partagent l'ouverture d'une entreprise et
     la connexion (`infra/docker/checks.sh`).
+- **Complément (lot 35, suites de l'audit de la PR #178)** :
+  - une sauvegarde n'en remplace jamais une autre. Chaque exécution écrit son propre
+    fichier partiel, fait par `mktemp` et lisible par son seul propriétaire dès sa
+    création, jamais un fichier trouvé là. Un lien physique nomme ensuite la sauvegarde,
+    entière, et échoue plutôt que de remplacer quoi que ce soit : un fichier, un lien
+    symbolique, même cassé, ou un dossier (`ln -T`). De deux sauvegardes lancées ensemble
+    vers le même fichier, l'une l'écrit, l'autre est refusée et rien d'elle ne reste. Un
+    autre échec du lien est dit avec sa raison ;
+  - le dossier des sauvegardes doit donc accepter les liens physiques, ce que font ext4,
+    XFS, Btrfs, ZFS et NFS, mais pas FAT, exFAT ni certains montages FUSE. Un lien d'essai,
+    sous un nom aussi long que celui du fichier partiel, le vérifie avant le dump, pour ne
+    pas le découvrir après, et un refus dit la raison de `ln`. Une sauvegarde tuée
+    brutalement peut laisser son fichier partiel, chiffré, que le README dit de supprimer ;
+  - le test le vérifie par un `docker` qui tient la place du vrai et rallonge le dump.
+    Deux sauvegardes lancées ensemble vers le même fichier passent la première
+    vérification : une seule l'écrit, le lien physique refuse l'autre, et le fichier se
+    déchiffre jusqu'au bout. Un dossier créé au nom de la sauvegarde pendant le dump est
+    refusé et reste vide ; un lien symbolique cassé à ce nom est refusé dès la première
+    vérification, avant le dump. Un `ln` qui échoue toujours tient lieu d'un dossier sans
+    liens physiques : la sauvegarde est refusée avant le dump, avec la raison de `ln`.
+    Aucun fichier partiel ne reste. Le test fait aussi une sauvegarde sans fichier nommé :
+    elle va dans `backups/` à la racine du dépôt, nommée par son chemin complet, dossier
+    et fichier lisibles par leur seul propriétaire ;
+  - l'ouverture d'une entreprise des tests de pile passe le mot de passe par
+    `json_string`, comme la connexion.
