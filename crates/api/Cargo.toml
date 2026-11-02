@@ -64,6 +64,8 @@ mimorya-connectors = { workspace = true, features = ["testing"] }
 mimorya-db = { workspace = true, features = ["testing"] }
 mimorya-extract = { workspace = true, features = ["testing"] }
 regex.workspace = true
+# A paused clock for the tests that measure time (`start_paused`).
+tokio = { workspace = true, features = ["test-util"] }
 tower.workspace = true
 
 [lints]

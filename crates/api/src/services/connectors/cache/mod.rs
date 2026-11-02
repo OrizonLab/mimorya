@@ -5,18 +5,23 @@
 //! delays the runs of one start, then one run per retry delay, not every
 //! run. A start invalidated while it ran (instance changed, disabled or
 //! deleted) is released, never kept. A live instance whose session closed
-//! for good (a local server that exited) is released and started again by
-//! the next run that needs it.
+//! for good is released and started again by the next run that needs it,
+//! or remembered as a failed start (`closed`, ADR-163).
 
 use std::collections::HashMap;
 use std::future::Future;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use mimorya_connectors::ConnectorRuntime;
 use tokio::sync::{Mutex, watch};
+use tokio::time::Instant;
 use uuid::Uuid;
+
+mod closed;
+
+use closed::closed;
 
 /// How long a failed start is remembered before the next run tries again.
 pub const RETRY_AFTER: Duration = Duration::from_secs(60);
@@ -60,6 +65,8 @@ enum Slot {
     Live {
         version: DateTime<Utc>,
         runtime: Arc<ConnectorRuntime>,
+        /// When it started: a session closed soon after is a failed start.
+        since: Instant,
     },
     Failed {
         version: DateTime<Utc>,
@@ -120,16 +127,15 @@ impl RuntimeCache {
         let (_finished, done) = loop {
             let mut waiting = {
                 let mut state = self.state.lock().await;
-                if matches!(state.slots.get(&id), Some(Slot::Live { version: v, runtime }) if *v == version && runtime.is_closed())
-                {
-                    tracing::warn!(connector = %id, "A kept connector's session closed: starting it again");
-                    release(state.slots.remove(&id));
+                if let Some(failed) = closed(&mut state, id, version) {
+                    return Err(failed);
                 }
                 let stale = state.stale(id, ticket);
                 match state.slots.get(&id) {
                     Some(Slot::Live {
                         version: v,
                         runtime,
+                        ..
                     }) if *v == version => return Ok(runtime.clone()),
                     Some(Slot::Failed {
                         version: v,
@@ -178,6 +184,7 @@ impl RuntimeCache {
             Some(Slot::Live {
                 version: v,
                 runtime,
+                ..
             }) if *v >= version => Some(runtime.clone()),
             _ => None,
         };
@@ -196,6 +203,7 @@ impl RuntimeCache {
                 let live = Slot::Live {
                     version,
                     runtime: runtime.clone(),
+                    since: Instant::now(),
                 };
                 release(state.slots.insert(id, live));
                 Ok(runtime)
