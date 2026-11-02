@@ -9,7 +9,7 @@
 #     other is refused at its hard link; a folder made at its name during
 #     the dump does not take it; a dangling symbolic link there is refused
 #     before the dump; a folder without hard links is said before the dump,
-#     with ln's reason; no partial file is left;
+#     with ln's reason; no partial file nor probe is left;
 #   - by default in backups/, at the repository's root, named by its full
 #     path, the folder and the file readable by their owner only.
 # The stack's database is then thrown away (`down -v`) and the backup
@@ -144,8 +144,8 @@ rm "$work/bin/ln"
 grep -qF 'ln: Operation not permitted. Son dossier doit accepter les liens physiques' <<<"$said" ||
   fail "the missing hard links were not said with ln's reason: $said"
 ((SECONDS - start < 10)) || fail "the hard link was tried only after the dump"
-if compgen -G "$work/*.partial.*" >/dev/null; then
-  fail "a partial file was left: $(ls "$work")"
+if compgen -G "$work/*.partial.*" >/dev/null || compgen -G "$work/*.probe.*" >/dev/null; then
+  fail "a partial file or a probe was left: $(ls "$work")"
 fi
 
 # Without a file named, the backup goes to backups/ in the repository's root,

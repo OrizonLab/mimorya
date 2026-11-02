@@ -9837,7 +9837,9 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
   - le dossier des sauvegardes doit donc accepter les liens physiques, ce que font ext4,
     XFS, Btrfs, ZFS et NFS, mais pas FAT, exFAT ni certains montages FUSE. Un lien d'essai,
     sous un nom aussi long que celui du fichier partiel, le vérifie avant le dump, pour ne
-    pas le découvrir après, et un refus dit la raison de `ln`. Une sauvegarde tuée
+    pas le découvrir après, et un refus dit la raison de `ln`. Ce nom suit un gabarit à
+    lui (`….probe.XXXXXXXX`, depuis le lot 37) : il n'est jamais le fichier partiel d'une
+    autre sauvegarde, que le `trap` de celle-ci retirerait. Une sauvegarde tuée
     brutalement peut laisser son fichier partiel, chiffré, que le README dit de supprimer ;
   - le test le vérifie par un `docker` qui tient la place du vrai et rallonge le dump.
     Deux sauvegardes lancées ensemble vers le même fichier passent la première
@@ -9854,7 +9856,7 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
 
 ## ADR-167 — Clés étrangères composites entre tables d'entreprise
 
-- **Date** : 2026-11-02 · **Statut** : acceptée · complète ADR-003
+- **Date** : 2026-11-02 · **Statut** : acceptée · complète ADR-003, ADR-133 et ADR-135
 - **Contexte** : l'isolation des entreprises repose sur la RLS (ADR-003). Une écriture
   ne peut viser qu'une ligne de l'entreprise de sa transaction, mais une ligne de cette
   entreprise pouvait encore pointer vers celle d'une autre : 106 clés étrangères
