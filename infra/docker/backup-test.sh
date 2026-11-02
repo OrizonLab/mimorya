@@ -6,7 +6,9 @@
 #   - encrypted: another identity cannot open it, the right one decrypts it
 #     to its end, a PostgreSQL archive;
 #   - never replaced: of two backups to one file at once, one writes it, the
-#     other is refused, and no partial file is left;
+#     other is refused at its hard link; neither a folder made at its name
+#     during the dump nor a dangling symbolic link there takes it; a folder
+#     without hard links is said before the dump; no partial file is left;
 #   - by default in backups/, at the repository's root, named by its full
 #     path, the folder and the file readable by their owner only.
 # The stack's database is then thrown away (`down -v`) and the backup
@@ -81,22 +83,64 @@ magic=$(age --decrypt --identity "$work/identity.txt" "$work/stack.dump.age" |
   { head -c 5; cat >/dev/null; }) || fail "the backup does not decrypt to its end"
 [[ $magic == PGDMP ]] || fail "the backup does not hold a PostgreSQL archive"
 
-# Two backups to one file at once: one writes it, the other is refused; the
-# file decrypts to its end and no partial file is left.
-MIMORYA_BACKUP_RECIPIENTS=$recipient infra/backup/backup.sh "$work/twice.dump.age" \
-  >"$work/first.txt" 2>&1 &
+# A docker standing for the real one: after a dump it makes the folder
+# FOLDER_DURING_DUMP names, if any, then waits DUMP_DELAY seconds, as if both
+# happened during the dump. backup.sh run through it says what it said.
+real_docker=$(command -v docker)
+mkdir "$work/bin"
+cat >"$work/bin/docker" <<EOF
+#!/usr/bin/env bash
+"$real_docker" "\$@" || exit
+if [[ \$* == *pg_dump* ]]; then
+  [[ -z \${FOLDER_DURING_DUMP:-} ]] || mkdir "\$FOLDER_DURING_DUMP"
+  sleep "\${DUMP_DELAY:-0}"
+fi
+EOF
+chmod +x "$work/bin/docker"
+slow_backup() {
+  PATH=$work/bin:$PATH MIMORYA_BACKUP_RECIPIENTS=$recipient infra/backup/backup.sh "$@" 2>&1
+}
+
+# Two backups to one file at once, both past the first check: one writes it,
+# the hard link refuses the other; the file decrypts to its end.
+DUMP_DELAY=3 slow_backup "$work/twice.dump.age" >"$work/first.txt" &
 first=$!
-MIMORYA_BACKUP_RECIPIENTS=$recipient infra/backup/backup.sh "$work/twice.dump.age" \
-  >"$work/second.txt" 2>&1 &
+DUMP_DELAY=3 slow_backup "$work/twice.dump.age" >"$work/second.txt" &
 second=$!
 written=0
 wait "$first" && written=$((written + 1))
 wait "$second" && written=$((written + 1))
 said=$(cat "$work/first.txt" "$work/second.txt")
 ((written == 1)) || fail "two backups to one file, $written written: $said"
-grep -q 'existe déjà' <<<"$said" || fail "the second backup failed otherwise: $said"
+grep -q 'pendant celle-ci' <<<"$said" || fail "the second backup was not refused at its link: $said"
 age --decrypt --identity "$work/identity.txt" "$work/twice.dump.age" | cat >/dev/null ||
   fail "the backup written by one of two runs does not decrypt to its end"
+
+# A folder made at the backup's name during the dump is refused, empty; a
+# dangling symbolic link at that name is in the way.
+if said=$(FOLDER_DURING_DUMP=$work/folder.dump.age slow_backup "$work/folder.dump.age"); then
+  fail "a backup was linked into a folder made at its name: $said"
+fi
+grep -q 'pendant celle-ci' <<<"$said" || fail "the folder made at its name was not said: $said"
+[[ -z $(ls -A "$work/folder.dump.age") ]] || fail "the folder made at the backup's name holds it"
+ln -s "$work/nowhere" "$work/dangling.dump.age"
+if said=$(slow_backup "$work/dangling.dump.age"); then
+  fail "a backup replaced a dangling symbolic link: $said"
+fi
+grep -q 'existe déjà' <<<"$said" || fail "the dangling symbolic link was not said: $said"
+
+# A folder that takes no hard links is said before the dump: a ln that always
+# fails stands for it, and the dump, made ten seconds long, never runs.
+printf '#!/usr/bin/env bash\necho "ln: Operation not permitted" >&2\nexit 1\n' >"$work/bin/ln"
+chmod +x "$work/bin/ln"
+start=$SECONDS
+if said=$(DUMP_DELAY=10 slow_backup "$work/unlinked.dump.age"); then
+  fail "a backup was written without a hard link: $said"
+fi
+rm "$work/bin/ln"
+grep -q 'Son dossier doit accepter les liens physiques' <<<"$said" ||
+  fail "the missing hard links were not said: $said"
+((SECONDS - start < 10)) || fail "the hard link was tried only after the dump"
 if compgen -G "$work/*.partial.*" >/dev/null; then
   fail "a partial file was left: $(ls "$work")"
 fi

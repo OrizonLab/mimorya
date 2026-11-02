@@ -55,12 +55,13 @@ mkdir -p "$(dirname "$file")" || fail "impossible de créer le dossier de $file"
 # Each run writes its own partial file, made by mktemp: readable by its
 # owner only from its creation, never one found there nor another run's.
 partial=
-trap '[[ -z $partial ]] || rm -f "$partial" "$partial.link"' EXIT
+trap '[[ -z $partial ]] || rm -f "$partial" "$partial.link" 2>/dev/null' EXIT
 partial=$(mktemp "$file.partial.XXXXXX") || fail "impossible d'écrire à côté de $file"
 # The backup is named by a hard link: tried first, so that a folder which
-# takes none is said before the dump rather than after it.
-ln -T "$partial" "$partial.link" 2>/dev/null ||
-  fail "le dossier de $file n'accepte pas les liens physiques : ext4, XFS, Btrfs, ZFS ou NFS conviennent ; FAT, exFAT et certains montages FUSE, non"
+# takes none is said before the dump rather than after it, with the reason
+# ln gives, which may be another (a name too long, say).
+said=$(ln -T "$partial" "$partial.link" 2>&1) ||
+  fail "lien physique impossible à côté de $file : $said. Son dossier doit accepter les liens physiques : ext4, XFS, Btrfs, ZFS ou NFS conviennent ; FAT, exFAT et certains montages FUSE, non"
 rm -f "$partial.link"
 docker compose exec -T db pg_dump --username mimorya --dbname mimorya --format custom |
   age "${recipients[@]}" --output "$partial" ||

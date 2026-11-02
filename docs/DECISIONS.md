@@ -9838,9 +9838,14 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     XFS, Btrfs, ZFS et NFS, mais pas FAT, exFAT ni certains montages FUSE. Un lien d'essai
     le vérifie avant le dump, pour ne pas le découvrir après. Une sauvegarde tuée
     brutalement peut laisser son fichier partiel, chiffré, que le README dit de supprimer ;
-  - le test le vérifie en lançant deux sauvegardes ensemble vers le même fichier : une
-    seule l'écrit, l'autre dit qu'il existe déjà, le fichier se déchiffre jusqu'au bout
-    et aucun fichier partiel ne reste. Il fait aussi une sauvegarde sans fichier nommé :
+  - le test le vérifie par un `docker` qui tient la place du vrai et rallonge le dump.
+    Deux sauvegardes lancées ensemble vers le même fichier passent la première
+    vérification : une seule l'écrit, le lien physique refuse l'autre, et le fichier se
+    déchiffre jusqu'au bout. Un dossier créé au nom de la sauvegarde pendant le dump est
+    refusé et reste vide ; un lien symbolique cassé à ce nom est refusé. Un `ln` qui
+    échoue toujours tient lieu d'un dossier sans liens physiques : la sauvegarde est
+    refusée avant le dump, avec la raison de `ln`. Aucun fichier partiel ne reste. Le
+    test fait aussi une sauvegarde sans fichier nommé :
     elle va dans `backups/` à la racine du dépôt, nommée par son chemin complet, dossier
     et fichier lisibles par leur seul propriétaire ;
   - l'ouverture d'une entreprise des tests de pile passe le mot de passe par
