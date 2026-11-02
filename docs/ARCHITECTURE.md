@@ -255,7 +255,9 @@ Détaillés dans [AGENT_ENGINE.md](AGENT_ENGINE.md). En résumé :
   panne (serveur, jeton, politiques, noms d'outils en collision) n'écarte que son
   connecteur, et un échec est mémorisé une minute : un serveur muet ne retarde que
   les runs lancés pendant une tentative de démarrage (une par minute, partagée par
-  les runs qui l'attendent, ADR-049), du délai de démarrage au plus. L'état (« Non testé », « Opérationnel »,
+  les runs qui l'attendent, ADR-049), du délai de démarrage au plus. Un appel est borné
+  à 20 s ; une session gardée dont le serveur ne répond plus à un ping, après un appel
+  échoué, est démarrée de nouveau par le run suivant (ADR-164). L'état (« Non testé », « Opérationnel »,
   « En erreur ») et la dernière erreur, jeton masqué, sont affichés à
   l'administrateur.
 - **API REST** : une entreprise décrit une API opération par opération (méthode, chemin,

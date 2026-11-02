@@ -4,6 +4,7 @@
 //! (ADR-025) and REST APIs (ADR-112).
 
 use std::error::Error as StdError;
+use std::time::Duration;
 
 use super::redact::Redactor;
 
@@ -31,6 +32,12 @@ pub fn explained(cause: Cause, redactor: &Redactor) -> anyhow::Error {
     } else {
         anyhow::anyhow!("{} (détail : {detail})", cause.summary)
     }
+}
+
+/// A server that did not answer within `delay`, told with it.
+pub fn too_slow(delay: Duration) -> anyhow::Error {
+    let seconds = delay.as_secs_f32().to_string();
+    anyhow::anyhow!("{TOO_SLOW} (délai de {} s)", seconds.replace('.', ","))
 }
 
 /// An HTTP request that got no answer: refused address, timeout or

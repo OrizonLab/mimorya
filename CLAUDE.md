@@ -116,7 +116,8 @@ Repères à l'intérieur des crates :
   `agent/src/testing/` (fonctionnalité `testing`).
 - `connectors/src/demo_interventions/` (données, planning, accès, `tools/` un fichier
   par outil), `connectors/src/mcp/` (dont son client HTTP, qui lit les réponses des
-  serveurs dans leurs bornes, `http/`, ADR-161), `connectors/src/bin/mcp_demo_docs.rs`,
+  serveurs dans leurs bornes, `http/`, ADR-161, et le ping qui suit un appel échoué,
+  la session perdue démarrée de nouveau, `liveness.rs`, ADR-164), `connectors/src/bin/mcp_demo_docs.rs`,
   `connectors/src/outbound/` (ce que partagent les serveurs MCP et les API REST d'une
   entreprise : réseau, préfixe, jeton, masquage, échecs, ADR-025, ADR-112 ; mandataire
   de l'exploitant, `proxy.rs`, ADR-162),

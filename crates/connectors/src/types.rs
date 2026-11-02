@@ -27,15 +27,16 @@ pub struct ConnectorInfo {
 }
 
 /// Releases what a live connector holds (processes, connections), and tells
-/// whether its connection is gone for good (a local server that exited): an
-/// instance kept between runs is then started again rather than served.
+/// whether its connection is gone for good (a local server that exited, a
+/// server that no longer answers a ping, ADR-164): an instance kept between
+/// runs is then started again rather than served.
 #[async_trait]
 pub trait ConnectorCloser: Send + Sync {
     async fn close(&self);
 
-    /// Whether the connection is closed and cannot recover by itself. Asked
-    /// before each run is served the instance, under the cache's lock: it
-    /// reads a state, never waits on the server.
+    /// Whether the connection is closed, or its server lost, and cannot
+    /// recover by itself. Asked before each run is served the instance,
+    /// under the cache's lock: it reads a state, never waits on the server.
     fn is_closed(&self) -> bool {
         false
     }

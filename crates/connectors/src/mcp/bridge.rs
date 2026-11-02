@@ -6,9 +6,12 @@
 //! (connector `tool_policies`). Results are untrusted data like any tool output.
 //!
 //! What a server declares is read and checked by `declarations`; what its
-//! tools return has the token masked.
+//! tools return has the token masked. A call is bounded by its delay; one
+//! that failed without the server's answer has the server pinged
+//! (`liveness`, ADR-164).
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use mimorya_core::autonomy::ToolRisk;
@@ -20,7 +23,9 @@ use serde_json::{Value, json};
 
 use super::declarations::declared_tools;
 use super::failure::call_failed;
-use crate::outbound::{CONNECTOR_USE, Redactor};
+use super::liveness::{Liveness, PING_TIMEOUT};
+use crate::outbound::{CONNECTOR_USE, Redactor, too_slow};
+use crate::types::DEFAULT_CALL_TIMEOUT;
 
 pub type McpClient = RunningService<RoleClient, ()>;
 
@@ -32,6 +37,11 @@ pub struct McpToolsetOptions {
     pub default_permissions: Vec<String>,
     /// Masks the server's token in what it declares and its tools return.
     pub redactor: Redactor,
+    /// How long a call may take, its answer read.
+    pub call_timeout: Duration,
+    /// Whether the server still answers, shared by the tools and read by
+    /// the session (ADR-164).
+    pub liveness: Arc<Liveness>,
 }
 
 impl McpToolsetOptions {
@@ -41,6 +51,8 @@ impl McpToolsetOptions {
             default_risk: ToolRisk::Write,
             default_permissions: vec![CONNECTOR_USE.into()],
             redactor: Redactor::default(),
+            call_timeout: DEFAULT_CALL_TIMEOUT,
+            liveness: Arc::default(),
         }
     }
 }
@@ -52,6 +64,8 @@ struct McpTool {
     input_schema: Value,
     client: Arc<McpClient>,
     redactor: Redactor,
+    call_timeout: Duration,
+    liveness: Arc<Liveness>,
 }
 
 #[async_trait]
@@ -86,11 +100,20 @@ impl Tool for McpTool {
             _ => serde_json::Map::new(),
         };
         let params = CallToolRequestParams::new(self.remote_name.clone()).with_arguments(arguments);
-        let result = self
-            .client
-            .call_tool(params)
-            .await
-            .map_err(|error| call_failed(&error, &self.redactor))?;
+        let ping = PING_TIMEOUT.min(self.call_timeout);
+        let call = self.client.call_tool(params);
+        let result = match tokio::time::timeout(self.call_timeout, call).await {
+            Ok(Ok(result)) => result,
+            Ok(Err(error)) => {
+                self.liveness
+                    .after_failure(&self.client, Some(&error), ping);
+                return Err(call_failed(&error, &self.redactor));
+            }
+            Err(_) => {
+                self.liveness.after_failure(&self.client, None, ping);
+                return Err(too_slow(self.call_timeout));
+            }
+        };
         let text: Vec<String> = result
             .content
             .iter()
@@ -147,6 +170,8 @@ pub async fn create_mcp_toolset(
             input_schema: tool.input_schema,
             client: client.clone(),
             redactor: options.redactor.clone(),
+            call_timeout: options.call_timeout,
+            liveness: options.liveness.clone(),
         }));
     }
     Ok(result)

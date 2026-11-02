@@ -39,7 +39,7 @@ pub use google_writes::SentMail;
 pub use graph::{FORBIDDEN_MESSAGE, FakeGraph, GRAPH_DETAIL, GraphRequest, OVERSIZED_MESSAGE};
 pub use hold::Hold;
 pub use proxy::{Proxied, serve_proxy};
-pub use quirks::{DeclaredToolsServer, HIDDEN_TEXT, Quirk};
+pub use quirks::{DeclaredToolsServer, HIDDEN_TEXT, Quirk, SLOW_CALL};
 pub use rest::{KEY_HEADER, serve_rest_http};
 pub use slack::{
     BOT_TOKEN, BOT_USER, FakeSlack, OTHER_TOKEN, OTHER_WORKSPACE, SIGNING_SECRET, SlackPost,
@@ -89,7 +89,8 @@ pub async fn serve_mcp_http_on(port: u16, token: Option<&str>, quirk: Quirk) -> 
         Quirk::None
         | Quirk::EchoesTokenOnStart
         | Quirk::EchoesEscapedTokenOnStart
-        | Quirk::EchoesTokenOnCall => mcp_router(DemoDocsServer::default),
+        | Quirk::EchoesTokenOnCall
+        | Quirk::RefusesUnknownSessions => mcp_router(DemoDocsServer::default),
         _ => mcp_router(move || DeclaredToolsServer::new(quirk)),
     };
     let expected = token.map(|t| format!("Bearer {t}"));
