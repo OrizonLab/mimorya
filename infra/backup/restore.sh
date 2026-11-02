@@ -10,43 +10,52 @@
 # the database holds are sealed with it. Its database passwords may differ:
 # roles are not part of a backup, the new stack's own are kept.
 #   infra/backup/restore.sh backups/mimorya-….dump.age identity.txt
-# From the repository's root, where it runs from wherever started; the
-# stack's variables and files as for backup.sh. Needs age on the host.
+# The files are read from where the script was started; the stack's
+# variables and compose files as for backup.sh. Needs age on the host. Its
+# messages are for the operator, in French (ADR-013).
 set -euo pipefail
-cd "$(dirname "$0")/../.."
-export COMPOSE_FILE=${COMPOSE_FILE:-compose.production.yml}
 
 fail() {
-  echo "restore failed: $1" >&2
+  echo "Échec de la restauration : $1" >&2
   exit 1
 }
 
-(($# == 2)) || fail "usage: infra/backup/restore.sh <backup file> <age identity file>"
+(($# == 2)) || fail "usage : infra/backup/restore.sh <sauvegarde> <fichier d'identité age>"
 file=$1
 identity=$2
-command -v age >/dev/null || fail "age is not installed (https://age-encryption.org)"
-[[ -r $file ]] || fail "cannot read $file"
-[[ -r $identity ]] || fail "cannot read $identity"
+# Read from where the script was started, before it moves to the
+# repository's root, where compose finds the stack.
+[[ $file == /* ]] || file=$PWD/$file
+[[ $identity == /* ]] || identity=$PWD/$identity
+cd "$(dirname "$0")/../.."
+export COMPOSE_FILE=${COMPOSE_FILE:-compose.production.yml}
+
+command -v age >/dev/null || fail "age n'est pas installé (https://age-encryption.org)"
+[[ -r $file ]] || fail "impossible de lire $file"
+[[ -r $identity ]] || fail "impossible de lire $identity"
 
 # The database is ready once it listens over TCP: while it initialises (the
-# application's role, the extensions), it answers on its socket only.
+# application's role, the extensions), it answers on its socket only. What
+# compose said last is shown if it never is: a variable left out, say.
 ready=no
+said=
 for _ in $(seq 1 60); do
-  if docker compose exec -T db pg_isready --host 127.0.0.1 --username mimorya >/dev/null 2>&1; then
+  if said=$(docker compose exec -T db pg_isready --host 127.0.0.1 --username mimorya 2>&1); then
     ready=yes
     break
   fi
   sleep 2
 done
-[[ $ready == yes ]] || fail "the stack's database is not ready (docker compose up -d db)"
+[[ $ready == yes ]] ||
+  fail "la base de la pile n'est pas prête (docker compose up -d db) ; dernière réponse : $said"
 tables=$(docker compose exec -T db psql --username mimorya --dbname mimorya -tAc \
   "select count(*) from pg_tables where schemaname = 'public'") ||
-  fail "cannot read the stack's database"
+  fail "impossible de lire la base de la pile"
 [[ $tables == 0 ]] ||
-  fail "the database holds $tables tables: restore into a new stack's database only"
+  fail "la base contient déjà $tables tables : restaurez seulement dans la base d'une pile nouvelle"
 
 age --decrypt --identity "$identity" "$file" |
   docker compose exec -T db pg_restore --username mimorya --dbname mimorya \
     --single-transaction --exit-on-error ||
-  fail "nothing was restored (wrong identity, damaged file, or a database that refused it)"
-echo "backup restored: $file; start the stack now (up -d)"
+  fail "rien n'a été restauré (mauvaise identité, fichier abîmé, ou base qui l'a refusé)"
+echo "Sauvegarde restaurée : $file ; démarrez maintenant la pile (up -d)"

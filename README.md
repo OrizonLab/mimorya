@@ -190,9 +190,9 @@ La base se sauvegarde chiffrée par [age](https://age-encryption.org), à instal
 l'hôte de la pile (ADR-166). Une sauvegarde est chiffrée pour des clés publiques :
 l'identité qui l'ouvre, la clé privée, se garde hors du serveur, qui ne peut donc pas relire
 ses propres sauvegardes. Prévoyez deux destinataires, dont un conservé à part : une
-identité perdue rend ses sauvegardes illisibles. Gardez avec elles la clé maître
-(`MIMORYA_MASTER_KEY`), qui scelle les secrets de la base et ne fait pas partie d'une
-sauvegarde.
+identité perdue rend ses sauvegardes illisibles. Gardez la clé maître
+(`MIMORYA_MASTER_KEY`) avec l'identité, hors du serveur : elle scelle les secrets de la
+base et ne fait pas partie d'une sauvegarde.
 
 ```bash
 age-keygen -o identite.txt          # sur un poste à part ; la clé publique s'affiche
@@ -202,7 +202,10 @@ COMPOSE_ENV_FILES=.env.production MIMORYA_BACKUP_RECIPIENTS='age1… age1…' \
 
 Un fichier de destinataires (`MIMORYA_BACKUP_RECIPIENTS_FILE`) remplace la variable.
 La fréquence, la conservation et la copie hors site sont à votre charge, par exemple une
-ligne de `cron` qui lance la sauvegarde chaque nuit et une copie vers un autre site.
+ligne de `cron` qui lance la sauvegarde chaque nuit et une copie vers un autre site. Une
+donnée supprimée de la plateforme (un compte, une entreprise) reste dans les sauvegardes
+déjà faites jusqu'à ce que leur conservation les retire : fixez cette durée en
+conséquence.
 
 Une sauvegarde se restaure dans une pile nouvelle, sa base seule démarrée : une base qui
 contient déjà des tables est refusée, et le dump est lu en une transaction, tout ou rien.

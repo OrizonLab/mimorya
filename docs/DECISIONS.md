@@ -9792,6 +9792,9 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     pile sauvegardée (`MIMORYA_MASTER_KEY`), qui scelle les secrets de la base. Cette clé
     se conserve avec l'identité, hors du serveur ;
   - `age` est requis sur l'hôte de la pile ;
+  - les deux scripts parlent à l'exploitant en français, comme `mimorya-admin`
+    (ADR-013), et lisent les chemins qu'on leur donne depuis le dossier d'où ils sont
+    lancés ;
   - la fréquence, la conservation et le transport hors site sont laissés à l'exploitant
     (une ligne de `cron` suffit). Le README en donne un exemple.
 - **Conséquences** :
@@ -9800,16 +9803,23 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     destinataires, dont un conservé à part ;
   - la restauration se fait sur une pile nouvelle, arrêtée : il n'y a pas de restauration
     à chaud ni à un instant précis (WAL), qui restent à faire, comme le plan de reprise ;
+  - une donnée supprimée de la plateforme (un compte, une entreprise) reste dans les
+    sauvegardes déjà faites, chiffrée, jusqu'à ce que la conservation de l'exploitant les
+    retire. Le README et SECURITY.md (§9) le disent ;
   - test (`infra/docker/backup-test.sh`, en CI après le test d'installation de la pile de
     production) :
     - une entreprise est ouverte, puis la pile est sauvegardée pour une clé faite par le
       test ;
     - la sauvegarde n'est lisible que par son propriétaire ;
-    - une autre identité ne l'ouvre pas, la bonne y trouve une archive PostgreSQL ;
+    - une autre identité ne l'ouvre pas ; la bonne la déchiffre jusqu'au bout et y trouve
+      une archive PostgreSQL ;
     - la base est jetée (`down -v`), puis la sauvegarde restaurée dans une base nouvelle ;
-    - une seconde restauration, dans une base qui n'est plus vide, est refusée ;
-    - la pile redémarrée sert les mêmes entreprises, et l'administrateur se connecte avec
-      le mot de passe choisi avant la sauvegarde ;
+    - une seconde restauration, dans une base qui n'est plus vide, est refusée par la garde
+      du script, dont le message est vérifié ;
+    - la pile redémarrée sert les mêmes entreprises, aussi séparées qu'avant : autant de
+      tables sous RLS, de politiques et de droits du rôle applicatif sur les tables et les
+      fonctions. L'administrateur se connecte avec le mot de passe choisi avant la
+      sauvegarde ;
     - les migrations se rejouent sans changement ;
   - `production-test.sh` et `backup-test.sh` partagent l'ouverture d'une entreprise et
     la connexion (`infra/docker/checks.sh`).

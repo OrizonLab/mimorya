@@ -1,10 +1,11 @@
 # Checks shared by the tests of the containerised stacks (ADR-032, ADR-034),
 # sourced by smoke-test.sh, production-test.sh and backup-test.sh (ADR-166).
-# The caller names its check in `check_name` (failure messages); every
-# function takes the stack's base URL first, but `session_of`,
-# `stack_workers` and `check_roles`. These two read the stack through
-# `docker compose` (COMPOSE_FILE names its files) and jq; `open_company`
-# reaches it through `docker compose` too.
+# The caller names its check in `check_name` (failure messages). The
+# functions that reach the stack over HTTP take its base URL first;
+# `json_string` and `session_of` only read the text they are given.
+# `open_company`, `stack_workers` and `check_roles` also reach the stack
+# through `docker compose` (COMPOSE_FILE names its files); `stack_workers`
+# reads its answer with jq.
 
 fail() {
   echo "${check_name:-check} failed: $1" >&2
