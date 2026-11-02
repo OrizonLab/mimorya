@@ -190,7 +190,7 @@ La base se sauvegarde chiffrée par [age](https://age-encryption.org), à instal
 l'hôte de la pile (ADR-166). Une sauvegarde est chiffrée pour des clés publiques :
 l'identité qui l'ouvre, la clé privée, se garde hors du serveur, qui ne peut donc pas relire
 ses propres sauvegardes. Prévoyez deux destinataires, dont un conservé à part : une
-identité perdue rend ses sauvegardes illisibles. Gardez la clé maître
+identité perdue rend ses sauvegardes illisibles. Gardez une copie de la clé maître
 (`MIMORYA_MASTER_KEY`) avec l'identité, hors du serveur : elle scelle les secrets de la
 base et ne fait pas partie d'une sauvegarde.
 

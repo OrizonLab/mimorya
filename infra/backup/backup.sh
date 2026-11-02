@@ -3,16 +3,17 @@
 # custom format, read from the database's container and encrypted on its way
 # out with age, for the recipients given. Recipients are public keys: the
 # identity that opens a backup stays off the server, which cannot read its
-# own backups. Nothing unencrypted touches the disk; the file and its folder
-# are readable by their owner only, and the file appears complete or not at
-# all.
+# own backups. Nothing unencrypted touches the disk; the file, and the
+# folders the script creates for it, are readable by their owner only, and
+# the file appears complete or not at all.
 #   MIMORYA_BACKUP_RECIPIENTS='age1…' infra/backup/backup.sh [file]
 #   MIMORYA_BACKUP_RECIPIENTS_FILE=recipients.txt infra/backup/backup.sh [file]
 # The file defaults to backups/mimorya-<UTC time>.dump.age, in the
 # repository's root; a file or recipients file given is read from where the
 # script was started. The stack's variables come from the environment (or
 # COMPOSE_ENV_FILES), its compose files from COMPOSE_FILE
-# (compose.production.yml by default). Needs age (https://age-encryption.org)
+# (compose.production.yml by default): compose reads those from the
+# repository's root, where it runs. Needs age (https://age-encryption.org)
 # on the host. Its messages are for the operator, in French (ADR-013).
 set -euo pipefail
 
@@ -42,11 +43,14 @@ fi
 ((${#recipients[@]})) ||
   fail "aucun destinataire : renseignez MIMORYA_BACKUP_RECIPIENTS (clés publiques age) ou MIMORYA_BACKUP_RECIPIENTS_FILE"
 
-file=${file:-backups/mimorya-$(date -u +%Y%m%dT%H%M%SZ).dump.age}
+file=${file:-$PWD/backups/mimorya-$(date -u +%Y%m%dT%H%M%SZ).dump.age}
 [[ ! -e $file ]] || fail "$file existe déjà"
 umask 077
 mkdir -p "$(dirname "$file")"
 partial="$file.partial"
+# A partial file found there, left by a run that was killed or put there by
+# someone else, is replaced: age would keep its mode, which may not be 600.
+rm -f "$partial"
 trap 'rm -f "$partial"' EXIT
 docker compose exec -T db pg_dump --username mimorya --dbname mimorya --format custom |
   age "${recipients[@]}" --output "$partial" ||

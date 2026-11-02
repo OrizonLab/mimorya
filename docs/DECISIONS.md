@@ -9793,16 +9793,19 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     se conserve avec l'identité, hors du serveur ;
   - `age` est requis sur l'hôte de la pile ;
   - les deux scripts parlent à l'exploitant en français, comme `mimorya-admin`
-    (ADR-013), et lisent les chemins qu'on leur donne depuis le dossier d'où ils sont
-    lancés ;
+    (ADR-013). Les fichiers qu'on leur donne (sauvegarde, identité, fichier de
+    destinataires) se lisent depuis le dossier d'où ils sont lancés ; ceux de compose
+    (`COMPOSE_FILE`, `COMPOSE_ENV_FILES`), depuis la racine du dépôt, où ils lancent
+    compose ;
   - la fréquence, la conservation et le transport hors site sont laissés à l'exploitant
     (une ligne de `cron` suffit). Le README en donne un exemple.
 - **Conséquences** :
   - une sauvegarde volée avec le serveur reste illisible sans l'identité ;
   - une identité perdue rend ses sauvegardes illisibles. Le README recommande deux
     destinataires, dont un conservé à part ;
-  - la restauration se fait sur une pile nouvelle, arrêtée : il n'y a pas de restauration
-    à chaud ni à un instant précis (WAL), qui restent à faire, comme le plan de reprise ;
+  - la restauration se fait sur une pile nouvelle, dont seule la base est démarrée : il
+    n'y a pas de restauration à chaud ni à un instant précis (WAL), qui restent à faire,
+    comme le plan de reprise ;
   - une donnée supprimée de la plateforme (un compte, une entreprise) reste dans les
     sauvegardes déjà faites, chiffrée, jusqu'à ce que la conservation de l'exploitant les
     retire. Le README et SECURITY.md (§9) le disent ;

@@ -11,8 +11,9 @@
 # roles are not part of a backup, the new stack's own are kept.
 #   infra/backup/restore.sh backups/mimorya-….dump.age identity.txt
 # The files are read from where the script was started; the stack's
-# variables and compose files as for backup.sh. Needs age on the host. Its
-# messages are for the operator, in French (ADR-013).
+# variables and compose files as for backup.sh, compose reading those from
+# the repository's root. Needs age on the host. Its messages are for the
+# operator, in French (ADR-013).
 set -euo pipefail
 
 fail() {
