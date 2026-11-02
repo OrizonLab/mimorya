@@ -777,7 +777,9 @@ no-store` (le flux d'événements garde `no-cache, no-transform`) ;
   limites de taille, de pages, de texte et de décompression, aucune entité XML développée.
 - Dépendances verrouillées (`Cargo.lock`, `pnpm-lock.yaml`), audit des vulnérabilités en CI
   (phase 2), revue des licences (MIT/Apache/BSD privilégiées, AGPL exclue).
-- Sauvegardes chiffrées, restauration testée périodiquement (phase 3).
+- Sauvegardes de la base chiffrées par `age` pour des clés publiques, l'identité qui les
+  ouvre restant hors du serveur, et restauration dans une pile nouvelle vérifiée en CI
+  (ADR-166, `infra/backup/`) ; restauration à un instant précis (WAL) en phase 3.
 
 ## 11. Liste de contrôle pour chaque contribution
 

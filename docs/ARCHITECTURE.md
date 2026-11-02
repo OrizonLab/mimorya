@@ -447,11 +447,11 @@ qu'au-delà de ce que PostgreSQL tient.
 
 ## 11. Déploiement
 
-| Mode          | Description                                                                                               |
-| ------------- | --------------------------------------------------------------------------------------------------------- |
-| Développement | `docker compose up db` + `cargo run --bin mimorya-api` / `pnpm dev:web`                                   |
-| Privé (PME)   | `docker compose` : web, api (rôle `api`), worker(s) (ADR-087), PostgreSQL ; sauvegardes `pg_dump`/WAL     |
-| SaaS          | Même image en rôles `api` (plusieurs) et `worker` (ADR-085), PostgreSQL managé, montée en charge de l'API |
+| Mode          | Description                                                                                                           |
+| ------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Développement | `docker compose up db` + `cargo run --bin mimorya-api` / `pnpm dev:web`                                               |
+| Privé (PME)   | `docker compose` : web, api (rôle `api`), worker(s) (ADR-087), PostgreSQL ; sauvegardes `pg_dump` chiffrées (ADR-166) |
+| SaaS          | Même image en rôles `api` (plusieurs) et `worker` (ADR-085), PostgreSQL managé, montée en charge de l'API             |
 
 Configuration exclusivement par variables d'environnement (voir `.env.example`).
 Les secrets d'infrastructure (clé maître de chiffrement, clés LLM) viennent de

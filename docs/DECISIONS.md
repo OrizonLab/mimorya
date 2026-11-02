@@ -9720,8 +9720,7 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
 - **Décision** :
   - une session MCP date sa fin, une fois pour toutes :
     - perdue (ping sans réponse, ADR-164), elle prend fin quand a été fait l'appel resté
-      sans réponse, la dernière demande que le serveur a laissée sans réponse, non à
-      l'échec de cet appel ni au ping manqué ;
+      sans réponse que le ping a suivi, non à l'échec de cet appel ni au ping manqué ;
     - fermée (transport fermé, serveur local arrêté), elle prend fin quand une veille la
       trouve fermée. Cette veille regarde le transport toutes les cinq secondes
       (`WATCH_EVERY`) et s'arrête avec la session, quand plus rien ne tient son client ;
@@ -9763,3 +9762,54 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     - mutations, toutes détectées : le cache qui ignore la date de fin, une veille qui
       ne date jamais ou qui tient le client de la session, une perte datée à l'échec de
       l'appel ou au ping, des tours en trop comptés comme une absence de réponse.
+
+## ADR-166 — Sauvegarde chiffrée de la base, et restauration vérifiée en CI
+
+- **Date** : 2026-11-02 · **Statut** : acceptée · complète ADR-034
+- **Contexte** : la pile de production (ADR-034) ne prévoyait aucune sauvegarde : la
+  feuille de route et le README le disaient. Une installation privée doit pouvoir
+  sauvegarder sa base, garder ces sauvegardes hors de portée d'un serveur compromis, et
+  savoir qu'une sauvegarde se restaure.
+- **Décision** :
+  - `infra/backup/backup.sh` sauvegarde la base de la pile :
+    - un `pg_dump` au format personnalisé, lu dans le conteneur de la base ;
+    - chiffré à la sortie par `age`, pour les destinataires donnés : des clés publiques
+      (`MIMORYA_BACKUP_RECIPIENTS`, ou un fichier, `MIMORYA_BACKUP_RECIPIENTS_FILE`).
+      L'identité qui ouvre une sauvegarde reste hors du serveur, qui ne peut pas relire
+      ses propres sauvegardes ;
+    - rien de clair n'est écrit sur le disque. Le fichier n'est lisible que par son
+      propriétaire et apparaît entier ou pas du tout. Par défaut, il est écrit dans
+      `backups/mimorya-<heure UTC>.dump.age`, hors du dépôt ;
+  - `infra/backup/restore.sh` restaure une sauvegarde dans la base d'une pile nouvelle :
+    - la pile n'a que sa base démarrée, et attend la fin de son initialisation (rôle
+      applicatif, extensions) ;
+    - une base qui contient déjà des tables est refusée ;
+    - l'identité ouvre la sauvegarde à l'entrée, et le dump est lu en une transaction :
+      tout ou rien ;
+    - la pile démarrée ensuite applique les migrations qui manquent à la sauvegarde ;
+  - les rôles ne font pas partie d'une sauvegarde : la pile nouvelle garde les siens, et
+    ses mots de passe de base peuvent différer. Elle garde en revanche la clé maître de la
+    pile sauvegardée (`MIMORYA_MASTER_KEY`), qui scelle les secrets de la base. Cette clé
+    se conserve avec l'identité, hors du serveur ;
+  - `age` est requis sur l'hôte de la pile ;
+  - la fréquence, la conservation et le transport hors site sont laissés à l'exploitant
+    (une ligne de `cron` suffit). Le README en donne un exemple.
+- **Conséquences** :
+  - une sauvegarde volée avec le serveur reste illisible sans l'identité ;
+  - une identité perdue rend ses sauvegardes illisibles. Le README recommande deux
+    destinataires, dont un conservé à part ;
+  - la restauration se fait sur une pile nouvelle, arrêtée : il n'y a pas de restauration
+    à chaud ni à un instant précis (WAL), qui restent à faire, comme le plan de reprise ;
+  - test (`infra/docker/backup-test.sh`, en CI après le test d'installation de la pile de
+    production) :
+    - une entreprise est ouverte, puis la pile est sauvegardée pour une clé faite par le
+      test ;
+    - la sauvegarde n'est lisible que par son propriétaire ;
+    - une autre identité ne l'ouvre pas, la bonne y trouve une archive PostgreSQL ;
+    - la base est jetée (`down -v`), puis la sauvegarde restaurée dans une base nouvelle ;
+    - une seconde restauration, dans une base qui n'est plus vide, est refusée ;
+    - la pile redémarrée sert les mêmes entreprises, et l'administrateur se connecte avec
+      le mot de passe choisi avant la sauvegarde ;
+    - les migrations se rejouent sans changement ;
+  - `production-test.sh` et `backup-test.sh` partagent l'ouverture d'une entreprise et
+    la connexion (`infra/docker/checks.sh`).

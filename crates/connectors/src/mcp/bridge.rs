@@ -102,8 +102,8 @@ impl Tool for McpTool {
             _ => serde_json::Map::new(),
         };
         let params = CallToolRequestParams::new(self.remote_name.clone()).with_arguments(arguments);
-        // A ping is given as long as a call; a lost server ended when it
-        // was last asked.
+        // A ping is given as long as a call; a server lost after this call
+        // ended when it was made.
         let (ping, asked) = (self.call_timeout, Instant::now());
         let result = match self.call(params).await {
             Ok(result) => result,

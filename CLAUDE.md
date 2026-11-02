@@ -346,7 +346,10 @@ Repères à l'intérieur des crates :
   ADR-139).
 - `infra/` : `docker/` (images de l'API et de l'interface, liste des images publiées
   `images.json`, test de fumée de la démonstration, test d'installation de la production,
-  vérifications partagées `checks.sh`, dont les rôles des processus lus dans la base), `caddy/`
+  sauvegarde et restauration de la pile de production `backup-test.sh`, ADR-166,
+  vérifications partagées `checks.sh`, dont les rôles des processus lus dans la base),
+  `backup/` (sauvegarde de la base chiffrée par age pour des clés publiques, restauration
+  dans une pile nouvelle, ADR-166), `caddy/`
   (reverse proxy : TLS, HSTS), `postgres/` (rôles et extensions ; production : `entrypoint-production.sh` vérifie les
   mots de passe, `init-production.sh` crée le rôle applicatif) ; `docker-compose.yml`
   (base de développement, sur 127.0.0.1), `compose.production.yml` (pile de production,

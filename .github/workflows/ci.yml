@@ -214,6 +214,14 @@ jobs:
           DISPOSABLE_STACK: 'yes'
           COMPOSE_FILE: compose.production.yml:compose.production.build.yml
         run: infra/docker/production-test.sh https://localhost
+      - name: Install age (the backups' encryption)
+        run: sudo apt-get update -q && sudo apt-get install -yq age
+      - name: Backup and restore of the production stack
+        env:
+          # The test throws the stack's database away.
+          DISPOSABLE_STACK: 'yes'
+          COMPOSE_FILE: compose.production.yml:compose.production.build.yml
+        run: infra/docker/backup-test.sh https://localhost
       - name: Logs of the production stack
         if: always()
         run: docker compose -f compose.production.yml -f compose.production.build.yml logs --no-color | tail -n 200

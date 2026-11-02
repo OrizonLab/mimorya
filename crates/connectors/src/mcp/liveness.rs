@@ -88,7 +88,7 @@ impl Liveness {
     /// After a call made at `asked` that failed (`error`, or no answer in
     /// time: `None`): pings the server in the background, within `bound`,
     /// unless the server answered the call, its session is closed or lost
-    /// already, or a ping is under way. A server lost ended at `asked`.
+    /// already, or a ping is under way. A server lost then ended at `asked`.
     pub fn after_failure(
         self: &Arc<Self>,
         client: &Arc<McpClient>,
@@ -105,7 +105,8 @@ impl Liveness {
         let (liveness, client) = (self.clone(), client.clone());
         tokio::spawn(async move {
             if !pinged(&client, bound).await {
-                // Ended when last asked, as far as the platform knows.
+                // Ended when the call the ping followed was made, as far as
+                // the platform knows.
                 let _ = liveness.ended.set(asked);
                 liveness.lost.store(true, Ordering::Release);
                 tracing::warn!(
