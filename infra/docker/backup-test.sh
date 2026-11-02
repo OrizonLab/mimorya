@@ -9,7 +9,8 @@
 #     other is refused at its hard link; a folder made at its name during
 #     the dump does not take it; a dangling symbolic link there is refused
 #     before the dump; a folder without hard links is said before the dump,
-#     with ln's reason; no partial file nor probe is left;
+#     with ln's reason; the longest name it takes is not refused for its
+#     probe, of its own template; no partial file nor probe is left;
 #   - by default in backups/, at the repository's root, named by its full
 #     path, the folder and the file readable by their owner only.
 # The stack's database is then thrown away (`down -v`) and the backup
@@ -144,6 +145,23 @@ rm "$work/bin/ln"
 grep -qF 'ln: Operation not permitted. Son dossier doit accepter les liens physiques' <<<"$said" ||
   fail "the missing hard links were not said with ln's reason: $said"
 ((SECONDS - start < 10)) || fail "the hard link was tried only after the dump"
+
+# The longest name a backup takes (240 bytes, its partial file 255) is not
+# refused for its probe: the probe, as long as the partial file, is named
+# from its own template, never a partial file's. A ln that notes what it
+# links stands for the real one.
+real_ln=$(command -v ln)
+printf '#!/usr/bin/env bash\necho "$*" >>"%s"\nexec "%s" "$@"\n' "$work/ln.txt" "$real_ln" \
+  >"$work/bin/ln"
+chmod +x "$work/bin/ln"
+long=$work/$(printf 'b%.0s' $(seq 1 240))
+said=$(slow_backup "$long") || fail "a backup named with 240 bytes was refused: $said"
+rm "$work/bin/ln"
+read -r _ partial_name probe_name <"$work/ln.txt"
+[[ $probe_name == "$long".probe.???????? && ${#probe_name} == "${#partial_name}" ]] ||
+  fail "the probe is not of its own template and the partial file's length: $(cat "$work/ln.txt")"
+age --decrypt --identity "$work/identity.txt" "$long" | cat >/dev/null ||
+  fail "the backup named with 240 bytes does not decrypt to its end"
 if compgen -G "$work/*.partial.*" >/dev/null || compgen -G "$work/*.probe.*" >/dev/null; then
   fail "a partial file or a probe was left: $(ls "$work")"
 fi
