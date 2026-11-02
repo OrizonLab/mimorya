@@ -241,6 +241,11 @@ fn a_proxy_needs_private_addresses_allowed() {
     let kept = config.mcp_network.proxy.expect("a proxy");
     assert_eq!(kept.shown(), "http://proxy.example:3128");
     assert_eq!(kept.bypass(), Some("intranet.example"));
+    // An environment file written with Windows line ends reads the same.
+    let crlf = ("MIMORYA_OUTBOUND_NO_PROXY", "intranet.example\r");
+    let config = load(&[DB, proxy, private, crlf]).unwrap();
+    let kept = config.mcp_network.proxy.expect("a proxy");
+    assert_eq!(kept.bypass(), Some("intranet.example"));
 }
 
 #[test]

@@ -147,8 +147,7 @@ async fn the_environment_s_proxies_are_never_followed() {
         .args(["--exact", "requested_by_the_child", "--include-ignored"])
         .env(CHILD_TARGET, "http://audit.invalid/")
         .env_remove("NO_PROXY")
-        .env_remove("no_proxy")
-        .stdout(std::process::Stdio::null());
+        .env_remove("no_proxy");
     for name in [
         "HTTP_PROXY",
         "HTTPS_PROXY",
@@ -158,8 +157,10 @@ async fn the_environment_s_proxies_are_never_followed() {
     ] {
         child.env(name, &proxy);
     }
-    let status = child.status().await.unwrap();
-    assert!(status.success(), "the child ran");
+    let ran = child.output().await.unwrap();
+    let said = String::from_utf8_lossy(&ran.stdout);
+    // The child ran its request: a filter naming no test would prove nothing.
+    assert!(ran.status.success() && said.contains("1 passed"), "{said}");
     assert!(proxied.targets().is_empty(), "{:?}", proxied.targets());
 }
 
