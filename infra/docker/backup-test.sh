@@ -6,9 +6,10 @@
 #   - encrypted: another identity cannot open it, the right one decrypts it
 #     to its end, a PostgreSQL archive;
 #   - never replaced: of two backups to one file at once, one writes it, the
-#     other is refused at its hard link; neither a folder made at its name
-#     during the dump nor a dangling symbolic link there takes it; a folder
-#     without hard links is said before the dump; no partial file is left;
+#     other is refused at its hard link; a folder made at its name during
+#     the dump does not take it; a dangling symbolic link there is refused
+#     before the dump; a folder without hard links is said before the dump,
+#     with ln's reason; no partial file is left;
 #   - by default in backups/, at the repository's root, named by its full
 #     path, the folder and the file readable by their owner only.
 # The stack's database is then thrown away (`down -v`) and the backup

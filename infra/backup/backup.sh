@@ -61,10 +61,15 @@ partial=$(mktemp "$file.partial.XXXXXX") || fail "impossible d'écrire à côté
 # The backup is named by a hard link: tried first, under a name as long as
 # the partial file's, so that a folder which takes none is said before the
 # dump rather than after it, with the reason ln gives, which may be another.
+# The trap removes the probe only while it is this run's: a failed ln made
+# none, and once removed its name may be another run's partial file.
 probe=$(mktemp -u "$file.partial.XXXXXX")
-said=$(ln -T "$partial" "$probe" 2>&1) ||
+if ! said=$(ln -T "$partial" "$probe" 2>&1); then
+  probe=
   fail "lien physique impossible à côté de $file : $said. Son dossier doit accepter les liens physiques : ext4, XFS, Btrfs, ZFS ou NFS conviennent ; FAT, exFAT et certains montages FUSE, non"
+fi
 rm -f "$probe"
+probe=
 docker compose exec -T db pg_dump --username mimorya --dbname mimorya --format custom |
   age "${recipients[@]}" --output "$partial" ||
   fail "le dump ou son chiffrement a échoué : rien n'a été gardé"

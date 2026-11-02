@@ -9843,10 +9843,10 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     Deux sauvegardes lancées ensemble vers le même fichier passent la première
     vérification : une seule l'écrit, le lien physique refuse l'autre, et le fichier se
     déchiffre jusqu'au bout. Un dossier créé au nom de la sauvegarde pendant le dump est
-    refusé et reste vide ; un lien symbolique cassé à ce nom est refusé dès la première vérification, avant le dump. Un `ln` qui
-    échoue toujours tient lieu d'un dossier sans liens physiques : la sauvegarde est
-    refusée avant le dump, avec la raison de `ln`. Aucun fichier partiel ne reste. Le
-    test fait aussi une sauvegarde sans fichier nommé :
+    refusé et reste vide ; un lien symbolique cassé à ce nom est refusé dès la première
+    vérification, avant le dump. Un `ln` qui échoue toujours tient lieu d'un dossier sans
+    liens physiques : la sauvegarde est refusée avant le dump, avec la raison de `ln`.
+    Aucun fichier partiel ne reste. Le test fait aussi une sauvegarde sans fichier nommé :
     elle va dans `backups/` à la racine du dépôt, nommée par son chemin complet, dossier
     et fichier lisibles par leur seul propriétaire ;
   - l'ouverture d'une entreprise des tests de pile passe le mot de passe par
