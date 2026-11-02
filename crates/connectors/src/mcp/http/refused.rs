@@ -7,8 +7,6 @@
 use std::borrow::Cow;
 
 use reqwest_mcp::{Response, StatusCode};
-#[cfg(test)]
-use rmcp::model::ErrorCode;
 use rmcp::model::ServerJsonRpcMessage;
 use rmcp::model::{ClientJsonRpcMessage, ClientRequest, ErrorData, JsonRpcMessage};
 use rmcp::transport::streamable_http_client::{StreamableHttpError, StreamableHttpPostResponse};
@@ -87,7 +85,7 @@ fn discover_refused(
 #[cfg(test)]
 mod tests {
     use rmcp::model::{
-        DiscoverRequest, DiscoverRequestParams, NumberOrString, PingRequest, RequestId,
+        DiscoverRequest, DiscoverRequestParams, ErrorCode, NumberOrString, PingRequest, RequestId,
     };
 
     use super::*;
