@@ -127,7 +127,9 @@ ln -s "$work/nowhere" "$work/dangling.dump.age"
 if said=$(slow_backup "$work/dangling.dump.age"); then
   fail "a backup replaced a dangling symbolic link: $said"
 fi
-grep -q 'existe déjà' <<<"$said" || fail "the dangling symbolic link was not said: $said"
+# Refused at the first check, before the dump: not at the link after it.
+grep -q 'existe déjà' <<<"$said" && ! grep -q 'pendant celle-ci' <<<"$said" ||
+  fail "the dangling symbolic link was not said before the dump: $said"
 
 # A folder that takes no hard links is said before the dump: a ln that always
 # fails stands for it, and the dump, made ten seconds long, never runs.
@@ -138,8 +140,8 @@ if said=$(DUMP_DELAY=10 slow_backup "$work/unlinked.dump.age"); then
   fail "a backup was written without a hard link: $said"
 fi
 rm "$work/bin/ln"
-grep -q 'Son dossier doit accepter les liens physiques' <<<"$said" ||
-  fail "the missing hard links were not said: $said"
+grep -qF 'ln: Operation not permitted. Son dossier doit accepter les liens physiques' <<<"$said" ||
+  fail "the missing hard links were not said with ln's reason: $said"
 ((SECONDS - start < 10)) || fail "the hard link was tried only after the dump"
 if compgen -G "$work/*.partial.*" >/dev/null; then
   fail "a partial file was left: $(ls "$work")"

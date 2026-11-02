@@ -55,14 +55,16 @@ mkdir -p "$(dirname "$file")" || fail "impossible de créer le dossier de $file"
 # Each run writes its own partial file, made by mktemp: readable by its
 # owner only from its creation, never one found there nor another run's.
 partial=
-trap '[[ -z $partial ]] || rm -f "$partial" "$partial.link" 2>/dev/null' EXIT
+probe=
+trap 'rm -f ${partial:+"$partial"} ${probe:+"$probe"} 2>/dev/null' EXIT
 partial=$(mktemp "$file.partial.XXXXXX") || fail "impossible d'écrire à côté de $file"
-# The backup is named by a hard link: tried first, so that a folder which
-# takes none is said before the dump rather than after it, with the reason
-# ln gives, which may be another (a name too long, say).
-said=$(ln -T "$partial" "$partial.link" 2>&1) ||
+# The backup is named by a hard link: tried first, under a name as long as
+# the partial file's, so that a folder which takes none is said before the
+# dump rather than after it, with the reason ln gives, which may be another.
+probe=$(mktemp -u "$file.partial.XXXXXX")
+said=$(ln -T "$partial" "$probe" 2>&1) ||
   fail "lien physique impossible à côté de $file : $said. Son dossier doit accepter les liens physiques : ext4, XFS, Btrfs, ZFS ou NFS conviennent ; FAT, exFAT et certains montages FUSE, non"
-rm -f "$partial.link"
+rm -f "$probe"
 docker compose exec -T db pg_dump --username mimorya --dbname mimorya --format custom |
   age "${recipients[@]}" --output "$partial" ||
   fail "le dump ou son chiffrement a échoué : rien n'a été gardé"
@@ -71,7 +73,7 @@ docker compose exec -T db pg_dump --username mimorya --dbname mimorya --format c
 # kept; with -T, a folder made at that name is not linked into either.
 if ! said=$(ln -T "$partial" "$file" 2>&1); then
   ! taken ||
-    fail "$file existe déjà : une autre sauvegarde l'a écrit pendant celle-ci, qui n'est pas gardée"
+    fail "$file existe déjà : il a été créé pendant celle-ci, qui n'est pas gardée"
   fail "impossible de nommer la sauvegarde $file : $said"
 fi
 echo "Sauvegarde écrite : $file"
