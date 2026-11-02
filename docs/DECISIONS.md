@@ -9579,3 +9579,39 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       - une adresse refusée ;
       - une liste d'hôtes refusée sans mandataire, ou illisible, sous son propre nom ;
       - les identifiants absents de la représentation de débogage.
+
+## ADR-163 — Une session fermée peu après son démarrage est un démarrage échoué
+
+- **Date** : 2026-11-02 · **Statut** : acceptée · complète ADR-049 et ADR-056
+- **Contexte** : le cache des connecteurs libère une instance dont la session s'est
+  fermée pour de bon, et le run suivant la démarre de nouveau (ADR-056). Un démarrage
+  échoué, lui, est retenu une minute : pendant ce temps, les runs reçoivent l'échec sans
+  rien démarrer (ADR-049). Mais un serveur local (stdio) qui démarre bien, puis s'arrête
+  aussitôt, n'était jamais un démarrage échoué. Chaque run le démarrait donc de nouveau,
+  attendait sa liste d'outils, puis le perdait : autant de processus lancés, et autant de
+  runs retardés, que de runs.
+- **Décision** :
+  - une instance gardée retient l'heure de son démarrage ;
+  - une session fermée moins d'une minute après son démarrage (`QUICK_EXIT`, égal au
+    délai qui suit un échec, `RETRY_AFTER`) est traitée comme un démarrage échoué :
+    l'instance est libérée et l'échec est retenu une minute, avec le message « La
+    connexion au serveur s'est fermée moins d'une minute après son démarrage : nouvel
+    essai dans une minute ». Il est dit au run qui la trouve fermée, journalisé et noté
+    sur l'instance, comme un échec nouveau, puis reçu comme retenu par les runs suivants ;
+  - une session fermée plus tard est démarrée de nouveau par le run qui en a besoin,
+    comme avant.
+- **Conséquences** :
+  - un serveur qui s'arrête dès son démarrage est démarré au plus une fois par minute,
+    comme un serveur qui ne démarre pas ;
+  - le point « un serveur stdio qui démarre puis s'arrête aussitôt est démarré de nouveau
+    par chaque run » des limites de l'ADR-056 est traité ;
+  - le cache mesure le temps par l'horloge de tokio, que les tests peuvent arrêter
+    (`start_paused`, fonctionnalité `test-util` en développement seulement) ;
+  - tests (`crates/api/src/services/connectors/cache/tests.rs`) :
+    - une session fermée moins d'une minute après son démarrage donne l'échec, nouveau
+      puis retenu, sans nouveau démarrage, et l'instance est démarrée de nouveau une fois
+      le délai passé ;
+    - une session fermée plus d'une minute après son démarrage est démarrée de nouveau
+      aussitôt ;
+    - si le cache démarre toujours de nouveau, ou retient toujours l'échec, l'un de ces
+      tests échoue.
