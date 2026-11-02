@@ -436,6 +436,10 @@ Avant chaque commit : `pnpm check && pnpm test:int` doivent passer.
 2. **Base de données**
    - Toute table métier porte `tenant_id`, la RLS et la politique `tenant_isolation` ;
      le test `crates/db/tests/isolation.rs` échoue sinon.
+   - Toute clé étrangère d'une table d'entreprise vers une autre est composite :
+     `(tenant_id, colonne)` vers `(tenant_id, id)`, `ON DELETE SET NULL (colonne)` si
+     elle vide sa référence (ADR-167) ; `crates/db/tests/tenant_references.rs` échoue
+     sinon.
    - Le runtime utilise exclusivement `DATABASE_APP_URL` (rôle `mimorya_app`, RLS
      appliquée). Le rôle propriétaire ne sert qu'aux migrations et au seed.
    - Migrations : nouveau fichier SQL numéroté dans `crates/db/migrations/`

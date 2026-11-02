@@ -37,6 +37,15 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   `tenant_id = current_setting('app.tenant_id', true)::uuid` en lecture et écriture.
 - L'application utilise un rôle PostgreSQL **non propriétaire, sans `BYPASSRLS`**.
   Les migrations utilisent un rôle distinct.
+- **Clés étrangères composites** (ADR-167) : une référence d'une table d'entreprise à
+  une autre compare `(tenant_id, id)`, et pas `id` seul. PostgreSQL vérifie les clés
+  étrangères sans la RLS ; la clé elle-même refuse donc qu'une ligne pointe, par une
+  clé étrangère, vers celle d'une autre entreprise, même par une écriture fautive que
+  la RLS laisserait passer. Une liste d'identifiants dans une colonne
+  (`gateway_cards.approval_ids`) n'est couverte par aucune clé : le code la lit dans
+  l'entreprise de sa transaction.
+  Une clé qui vide sa référence à la suppression ne vide que cette colonne
+  (`SET NULL (colonne)`), et la ligne garde son entreprise.
 - Le contexte `app.tenant_id` est posé **par transaction** (`set_config(..., true)`),
   jamais au niveau de la connexion (pas de fuite par le pool).
 - Les seules opérations qui traversent les entreprises (connexion, résolution de
@@ -785,7 +794,8 @@ no-store` (le flux d'événements garde `no-cache, no-transform`) ;
 
 ## 11. Liste de contrôle pour chaque contribution
 
-- [ ] Toute nouvelle table métier a `tenant_id`, la politique RLS et des tests.
+- [ ] Toute nouvelle table métier a `tenant_id`, la politique RLS et des tests ; ses
+      clés étrangères vers d’autres tables d’entreprise sont composites (ADR-167).
 - [ ] Toute nouvelle route vérifie l'authentification et les permissions côté serveur.
 - [ ] Tout nouvel outil déclare permissions requises et niveau de risque, et filtre ses
       données avec `ctx.authz`.
