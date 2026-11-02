@@ -53,6 +53,7 @@ async fn a_local_server_that_exits_leaves_a_session_that_says_it_is_closed() {
     let allowed = NetworkPolicy {
         allow_private_network: false,
         allow_stdio: true,
+        proxy: None,
     };
     let runtime = start_mcp(config, None, allowed).await.unwrap();
     assert!(searched(&runtime).await);

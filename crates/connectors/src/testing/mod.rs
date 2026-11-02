@@ -1,9 +1,9 @@
 //! Test support (feature `testing`): MCP servers over Streamable HTTP on a
 //! local port, optionally behind a bearer token, and misbehaving ones (what
 //! they declare, a token quoted back, a server that never answers, one held
-//! until the test releases it, answers that never end: `endless`); a REST
-//! API (`rest`); Microsoft Graph (`graph`, its writes in `graph_writes`);
-//! Gmail and Google Calendar
+//! until the test releases it, answers that never end: `endless`); an HTTP
+//! proxy that lists where it went (`proxy`); a REST API (`rest`); Microsoft
+//! Graph (`graph`, its writes in `graph_writes`); Gmail and Google Calendar
 //! (`google`, its writes in `google_writes`); Slack's Web API (`slack`);
 //! Telegram's Bot API (`telegram`); Microsoft as a Teams bot reaches it:
 //! Entra, the Bot Framework's keys and a Teams service (`teams`).
@@ -14,6 +14,7 @@ mod google_writes;
 mod graph;
 mod graph_writes;
 mod hold;
+mod proxy;
 mod quirks;
 mod rest;
 mod slack;
@@ -37,6 +38,7 @@ pub use google::{FakeGoogle, GOOGLE_DETAIL, GoogleRequest, LISTED_GONE, LISTED_R
 pub use google_writes::SentMail;
 pub use graph::{FORBIDDEN_MESSAGE, FakeGraph, GRAPH_DETAIL, GraphRequest, OVERSIZED_MESSAGE};
 pub use hold::Hold;
+pub use proxy::{Proxied, serve_proxy};
 pub use quirks::{DeclaredToolsServer, HIDDEN_TEXT, Quirk};
 pub use rest::{KEY_HEADER, serve_rest_http};
 pub use slack::{

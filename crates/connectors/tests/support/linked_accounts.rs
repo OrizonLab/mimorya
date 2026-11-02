@@ -23,6 +23,7 @@ use uuid::Uuid;
 pub const LOCAL: NetworkPolicy = NetworkPolicy {
     allow_private_network: true,
     allow_stdio: false,
+    proxy: None,
 };
 
 /// The person's accounts: none reachable, for this reason.

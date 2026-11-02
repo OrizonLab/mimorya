@@ -210,6 +210,7 @@ async fn main() -> anyhow::Result<()> {
             sso_network: Some(NetworkPolicy {
                 allow_private_network: true,
                 allow_stdio: false,
+                proxy: None,
             }),
             // The browser's requests all come through the web relay, from one
             // address: the whole suite would share a minute's 600.

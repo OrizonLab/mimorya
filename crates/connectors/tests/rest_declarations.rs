@@ -13,6 +13,7 @@ const BASE: &str = "https://api.example.com/v1";
 const PUBLIC: NetworkPolicy = NetworkPolicy {
     allow_private_network: false,
     allow_stdio: false,
+    proxy: None,
 };
 
 fn operation(changes: Value) -> Value {

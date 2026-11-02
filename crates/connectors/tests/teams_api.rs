@@ -21,6 +21,7 @@ fn api(teams: &FakeTeams) -> TeamsApi {
     let local = NetworkPolicy {
         allow_private_network: true,
         allow_stdio: false,
+        proxy: None,
     };
     TeamsApi::new(
         TeamsEndpoints::local(&teams.url),

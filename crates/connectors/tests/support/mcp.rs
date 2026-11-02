@@ -20,6 +20,7 @@ use super::executor_for;
 pub const PRIVATE: NetworkPolicy = NetworkPolicy {
     allow_private_network: true,
     allow_stdio: false,
+    proxy: None,
 };
 
 /// A server reached over HTTP, its tools prefixed `docs`.

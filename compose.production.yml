@@ -47,6 +47,11 @@ x-backend-environment: &backend-environment
   MIMORYA_MASTER_KEY: ${MIMORYA_MASTER_KEY:-}
   SMTP_URL: ${SMTP_URL:-}
   MAIL_FROM: ${MAIL_FROM:-}
+  # What companies connect may reach: public servers only unless lifted, and
+  # through the operator's proxy if any, which needs it lifted (ADR-162).
+  MIMORYA_MCP_ALLOW_PRIVATE_NETWORK: ${MIMORYA_MCP_ALLOW_PRIVATE_NETWORK:-false}
+  MIMORYA_OUTBOUND_PROXY: ${MIMORYA_OUTBOUND_PROXY:-}
+  MIMORYA_OUTBOUND_NO_PROXY: ${MIMORYA_OUTBOUND_NO_PROXY:-}
 
 services:
   db:

@@ -16,6 +16,14 @@ async fn main() -> anyhow::Result<()> {
         .with_env_filter(log_filter(&config.log_level)?)
         .init();
 
+    if let Some(proxy) = config.mcp_network.proxy {
+        // Its address without its credentials (ADR-162).
+        tracing::info!(
+            proxy = proxy.shown(),
+            bypass = proxy.bypass().unwrap_or_default(),
+            "Outbound requests go through a proxy"
+        );
+    }
     let address = format!("{}:{}", config.host, config.port);
     let role = config.role;
     let app = build_app(config, BuildOptions::default()).await?;

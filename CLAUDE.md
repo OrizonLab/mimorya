@@ -118,7 +118,8 @@ Repères à l'intérieur des crates :
   par outil), `connectors/src/mcp/` (dont son client HTTP, qui lit les réponses des
   serveurs dans leurs bornes, `http/`, ADR-161), `connectors/src/bin/mcp_demo_docs.rs`,
   `connectors/src/outbound/` (ce que partagent les serveurs MCP et les API REST d'une
-  entreprise : réseau, préfixe, jeton, masquage, échecs, ADR-025, ADR-112),
+  entreprise : réseau, préfixe, jeton, masquage, échecs, ADR-025, ADR-112 ; mandataire
+  de l'exploitant, `proxy.rs`, ADR-162),
   `connectors/src/rest/` (API REST décrites par l'entreprise : déclaration et ses
   règles, requête, réponse bornée, outil d'une opération, ADR-112 ; opérations lues
   d'une description OpenAPI, `openapi/`, ADR-114), `connectors/src/microsoft365/`
@@ -138,7 +139,8 @@ Repères à l'intérieur des crates :
   l'atteint : jeton d'Entra gardé pour son secret, clés du Bot Framework gardées un
   jour, service Teams d'une activité, ADR-138 ; carte écrite puis réécrite, `cards.rs`,
   ADR-141), `connectors/src/testing/`
-  (serveurs simulés des tests : MCP, dont des réponses sans fin (`endless.rs`), API REST, Microsoft Graph, Gmail et agenda Google,
+  (serveurs simulés des tests : MCP, dont des réponses sans fin (`endless.rs`), mandataire
+  HTTP qui note où il va (`proxy.rs`), API REST, Microsoft Graph, Gmail et agenda Google,
   Slack, qui signe les événements comme lui, Telegram, Microsoft pour Teams, qui signe
   les activités avec une clé de test).
 - `api/src/plugins/` (contexte de requête, limitation de débit (globale par processus ;

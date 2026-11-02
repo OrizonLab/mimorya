@@ -79,7 +79,9 @@ pub struct AppConfig {
     /// (`MIMORYA_TENANT_LLM_ENDPOINTS`): no other address is ever reached.
     pub tenant_llm_endpoints: Vec<String>,
     /// What MCP connectors may reach (`MIMORYA_MCP_ALLOW_PRIVATE_NETWORK`,
-    /// `MIMORYA_MCP_ALLOW_STDIO`): public HTTPS servers only by default.
+    /// `MIMORYA_MCP_ALLOW_STDIO`): public HTTPS servers only by default; and
+    /// the proxy what companies connect is reached through
+    /// (`MIMORYA_OUTBOUND_PROXY`, ADR-162).
     pub mcp_network: NetworkPolicy,
     /// How long an MCP server may take to connect and list its tools
     /// (`MIMORYA_MCP_START_TIMEOUT_SECS`, 20 by default).
@@ -189,9 +191,11 @@ impl AppConfig {
         let llm = reader.llm();
         let secrets = reader.master_key(env);
         let tenant_llm_endpoints = reader.endpoints("MIMORYA_TENANT_LLM_ENDPOINTS");
+        let allow_private_network = reader.boolean("MIMORYA_MCP_ALLOW_PRIVATE_NETWORK", false);
         let mcp_network = NetworkPolicy {
-            allow_private_network: reader.boolean("MIMORYA_MCP_ALLOW_PRIVATE_NETWORK", false),
+            allow_private_network,
             allow_stdio: reader.boolean("MIMORYA_MCP_ALLOW_STDIO", false),
+            proxy: reader.outbound_proxy(allow_private_network),
         };
         let start_seconds = reader.parsed("MIMORYA_MCP_START_TIMEOUT_SECS", 20_u64);
         if !(1..=120).contains(&start_seconds) {
