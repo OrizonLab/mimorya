@@ -9706,3 +9706,60 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       inconnue ou 429) compté comme une absence de réponse, plusieurs pings à la fois ou
       un ping après une erreur du serveur font échouer un test de `mcp_pings` ; un seul
       tour permis fait échouer celui de `mcp_rounds`.
+
+## ADR-165 — La fin d'une session est datée, et la session jugée sur sa durée de vie
+
+- **Date** : 2026-11-02 · **Statut** : acceptée · complète ADR-163 et ADR-164
+- **Contexte** : une session trouvée fermée moins d'une minute après son démarrage est
+  un démarrage échoué (ADR-163). Mais le temps n'était compté que jusqu'au moment où un
+  run la trouvait fermée, la plateforme ne datant pas sa fin. Un serveur qui s'arrête
+  aussitôt démarré était donc démarré de nouveau par chaque run quand les runs qui en ont
+  besoin arrivent à plus d'une minute d'intervalle, et dit opérationnel. Par ailleurs,
+  l'audit de l'ADR-164 a noté qu'un serveur qui demande plus de tours `input_required`
+  qu'un appel n'en joue a pourtant répondu, et ne devrait pas déclencher de ping.
+- **Décision** :
+  - une session MCP date sa fin, une fois pour toutes :
+    - perdue (ping sans réponse, ADR-164), elle prend fin quand a été fait l'appel resté
+      sans réponse, la dernière demande que le serveur a laissée sans réponse, non à
+      l'échec de cet appel ni au ping manqué ;
+    - fermée (transport fermé, serveur local arrêté), elle prend fin quand une veille la
+      trouve fermée. Cette veille regarde le transport toutes les cinq secondes
+      (`WATCH_EVERY`) et s'arrête avec la session, quand plus rien ne tient son client ;
+  - le contrat d'un connecteur dit cette date (`ConnectorCloser::ended_at`, aucune par
+    défaut) ;
+  - le cache juge une session fermée sur sa durée de vie, de son démarrage à sa fin quand
+    elle est datée, et sinon jusqu'au run qui la trouve fermée, comme avant. Une session
+    qui a vécu moins d'une minute est un démarrage échoué (ADR-163), quel que soit le
+    moment où un run la trouve ;
+  - plus de tours `input_required` qu'un appel n'en joue (`InputRequiredRoundsExceeded`)
+    comptent comme une réponse du serveur : aucun ping ne les suit.
+- **Conséquences** :
+  - un serveur dont le transport se ferme dès son démarrage (serveur local qui se termine)
+    est dit en échec par le run qui le trouve fermé, même plus d'une minute après, au lieu
+    d'être démarré de nouveau et dit opérationnel ;
+  - limite : des runs espacés de plus d'une minute démarrent encore un tel serveur un sur
+    deux. Le run qui le démarre de nouveau, une fois l'échec oublié, reçoit des outils qui
+    échouent ; le suivant le trouve fermé et retient l'échec ;
+  - limite : un serveur qui accepte son démarrage puis se tait (serveur local muet,
+    serveur HTTP qui refuse sa session sans 404) n'est connu perdu que par un appel resté
+    sans réponse, et sa vie dure jusqu'à cet appel. Il n'est un démarrage échoué que si
+    cet appel a été fait dans sa première minute ; sinon, chaque run qui en a besoin le
+    démarre encore, comme avant l'ADR, et reçoit des outils qui échouent ;
+  - une session fermée sans que la veille l'ait encore vue, moins de cinq secondes avant,
+    est jugée jusqu'au run qui la trouve, comme avant ;
+  - une veille par session gardée, réveillée toutes les cinq secondes, sans requête au
+    serveur. Elle ne tient rien de la session entre deux réveils : une session lâchée
+    sans être fermée prend fin aussitôt, son serveur local avec elle ;
+  - tests :
+    - `crates/api/src/services/connectors/cache/tests.rs` : une session datée, finie une
+      seconde après son démarrage et trouvée deux minutes plus tard, est un démarrage
+      échoué ; finie une minute après, elle est démarrée de nouveau ;
+    - `crates/connectors/tests/mcp_sessions.rs` : un serveur stdio arrêté date sa fin
+      entre son arrêt et le moment présent ; un serveur muet la date à l'appel resté sans
+      réponse ; une session lâchée sans être fermée laisse finir son serveur local avant
+      que sa veille ne regarde de nouveau ;
+    - `crates/connectors/tests/mcp_rounds.rs` : plus de tours qu'un appel n'en joue ne
+      déclenchent aucun ping ; ce test passe par l'aide commune `call_as_reader` ;
+    - mutations, toutes détectées : le cache qui ignore la date de fin, une veille qui
+      ne date jamais ou qui tient le client de la session, une perte datée à l'échec de
+      l'appel ou au ping, des tours en trop comptés comme une absence de réponse.

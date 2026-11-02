@@ -229,6 +229,8 @@ async fn a_run_that_read_a_changed_instance_does_not_start_it() {
 struct Session {
     closed: std::sync::atomic::AtomicBool,
     released: std::sync::atomic::AtomicBool,
+    /// When it ended, if it says so (ADR-165).
+    ended: std::sync::Mutex<Option<Instant>>,
 }
 
 /// The closer an instance holds, sharing the session with the test.
@@ -242,6 +244,10 @@ impl mimorya_connectors::ConnectorCloser for Closer {
 
     fn is_closed(&self) -> bool {
         self.0.closed.load(Ordering::SeqCst)
+    }
+
+    fn ended_at(&self) -> Option<Instant> {
+        *self.0.ended.lock().unwrap()
     }
 }
 
@@ -331,4 +337,38 @@ async fn a_session_closed_soon_after_its_start_is_a_failed_start() {
         panic!("expected a new instance");
     };
     assert_eq!(starts.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_session_is_judged_by_when_it_ended_once_dated() {
+    // Ended a second after its start, or a minute after: found long after.
+    for (lived, failed) in [(Duration::from_secs(1), true), (QUICK_EXIT, false)] {
+        let cache = RuntimeCache::default();
+        let (id, version) = (Uuid::new_v4(), Utc::now());
+        let starts = AtomicUsize::new(0);
+        let session = Arc::new(Session::default());
+        let start = || async {
+            starts.fetch_add(1, Ordering::SeqCst);
+            Ok(ConnectorRuntime {
+                tools: Vec::new(),
+                closer: Some(Box::new(Closer(session.clone()))),
+            })
+        };
+        let Ok(_) = cache.get_or_start(id, version, 0, start).await else {
+            panic!("expected a live instance");
+        };
+        tokio::time::advance(lived).await;
+        *session.ended.lock().unwrap() = Some(Instant::now());
+        session.closed.store(true, Ordering::SeqCst);
+        tokio::time::advance(QUICK_EXIT * 2).await;
+        let found = cache.get_or_start(id, version, 0, start).await;
+        released(&session).await;
+        if failed {
+            assert_eq!(unavailable(found).message, EXITED_AT_ONCE);
+            assert_eq!(starts.load(Ordering::SeqCst), 1, "not started again");
+        } else {
+            assert!(found.is_ok());
+            assert_eq!(starts.load(Ordering::SeqCst), 2, "started again");
+        }
+    }
 }

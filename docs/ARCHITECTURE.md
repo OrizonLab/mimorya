@@ -258,8 +258,8 @@ Détaillés dans [AGENT_ENGINE.md](AGENT_ENGINE.md). En résumé :
   les runs qui l'attendent, ADR-049), du délai de démarrage au plus. Un appel est borné
   à 20 s ; après un appel échoué sans réponse du serveur, un ping suit, et une session
   dont le serveur n'y répond pas est démarrée de nouveau par le run suivant, ou retenue
-  indisponible une minute si ce run la trouve perdue dans sa première minute (ADR-163,
-  ADR-164). L'état (« Non testé », « Opérationnel »,
+  indisponible une minute si elle a pris fin dans sa première minute, sa fin étant datée
+  (ADR-163, ADR-164, ADR-165). L'état (« Non testé », « Opérationnel »,
   « En erreur ») et la dernière erreur, jeton masqué, sont affichés à
   l'administrateur.
 - **API REST** : une entreprise décrit une API opération par opération (méthode, chemin,

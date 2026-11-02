@@ -20,6 +20,7 @@ use rmcp::model::{CallToolRequestParams, CallToolResult};
 use rmcp::service::RunningService;
 use rmcp::{RoleClient, ServiceError};
 use serde_json::{Value, json};
+use tokio::time::Instant;
 
 use super::declarations::declared_tools;
 use super::failure::call_failed;
@@ -101,17 +102,18 @@ impl Tool for McpTool {
             _ => serde_json::Map::new(),
         };
         let params = CallToolRequestParams::new(self.remote_name.clone()).with_arguments(arguments);
-        // A ping is given as long as a call.
-        let ping = self.call_timeout;
+        // A ping is given as long as a call; a lost server ended when it
+        // was last asked.
+        let (ping, asked) = (self.call_timeout, Instant::now());
         let result = match self.call(params).await {
             Ok(result) => result,
             Err(ServiceError::Timeout { .. }) => {
-                self.liveness.after_failure(&self.client, None, ping);
+                self.liveness.after_failure(&self.client, None, ping, asked);
                 return Err(too_slow(self.call_timeout));
             }
             Err(error) => {
                 self.liveness
-                    .after_failure(&self.client, Some(&error), ping);
+                    .after_failure(&self.client, Some(&error), ping, asked);
                 return Err(call_failed(&error, &self.redactor));
             }
         };
