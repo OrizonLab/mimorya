@@ -11,11 +11,11 @@ use rmcp::transport::DynamicTransportError;
 use rmcp::transport::streamable_http_client::StreamableHttpError;
 use rmcp::transport::worker::WorkerQuitReason;
 
+use super::http::{HttpError, TOO_LONG};
 use crate::outbound::{
     ACCESS_DENIED, Cause, Redactor, TOO_SLOW, explained, request_cause as request,
 };
 
-type HttpError = StreamableHttpError<reqwest_mcp::Error>;
 type WorkerError = WorkerQuitReason<HttpError>;
 
 pub const NOT_MCP: &str = "Le serveur n’a pas répondu comme un serveur MCP";
@@ -34,6 +34,11 @@ pub fn start_failed(error: &anyhow::Error, redactor: &Redactor) -> anyhow::Error
 /// A failed tool call, explained.
 pub fn call_failed(error: &ServiceError, redactor: &Redactor) -> anyhow::Error {
     let cause = match error {
+        // Said by the platform: nothing of the server's answer to add.
+        ServiceError::McpError(data) if data.message == TOO_LONG => Cause {
+            summary: TOO_LONG,
+            detail: String::new(),
+        },
         ServiceError::McpError(data) => Cause {
             summary: REFUSED_CALL,
             detail: data.message.to_string(),
