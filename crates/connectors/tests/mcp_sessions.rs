@@ -15,6 +15,7 @@ use std::time::Duration;
 use tokio::time::Instant;
 
 use mimorya_connectors::ConnectorRuntime;
+use mimorya_connectors::mcp::WATCH_EVERY;
 use mimorya_connectors::outbound::{NetworkPolicy, TOO_SLOW};
 use mimorya_connectors::testing::{Quirk, serve_mcp_http_on, serve_stoppable_demo_docs_http};
 use serde_json::{Value, json};
@@ -189,10 +190,10 @@ async fn a_mute_local_server_loses_its_session() {
 
     // Alive, but reading nothing more: the call, then the ping, go
     // unanswered.
-    let muted = Instant::now();
     signal(&pid_file, "-STOP");
     assert!(stopped(&pid_file).await, "the server never stopped");
     let search = json!({ "query": "circulateur" });
+    let asked = Instant::now();
     let result = call_as_reader(&runtime, "mcp_docs_search_procedures", search).await;
     let said = result.content.to_string();
     assert!(said.contains(TOO_SLOW), "{said}");
@@ -201,10 +202,39 @@ async fn a_mute_local_server_loses_its_session() {
     signal(&pid_file, "-KILL");
     let _ = std::fs::remove_file(&pid_file);
     assert!(lost, "the session never said it was lost");
-    // Ended when its call failed, not when the ping did.
+    // Ended when the call left unanswered was made, not when it failed nor
+    // when the ping did.
     let ended = ended.expect("its end dated");
-    assert!(
-        muted <= ended && ended + CALL / 2 < Instant::now(),
-        "{ended:?}"
-    );
+    assert!(asked <= ended && ended < asked + CALL / 2, "{ended:?}");
+}
+
+/// Whether the process whose id is in `pid_file` has ended (gone, or a
+/// zombie not yet reaped).
+fn ended(pid_file: &PathBuf) -> bool {
+    let pid = std::fs::read_to_string(pid_file).unwrap();
+    let stat = std::fs::read_to_string(format!("/proc/{}/stat", pid.trim())).unwrap_or_default();
+    stat.rsplit_once(')')
+        .is_none_or(|(_, rest)| rest.trim_start().starts_with('Z'))
+}
+
+#[tokio::test]
+async fn a_session_dropped_without_being_closed_lets_its_server_end() {
+    // Its watch holds nothing of it between two looks: dropped, the session
+    // ends at once, and its local server with it, before the watch looks
+    // again.
+    let (config, pid_file, allowed) = local_server();
+    let runtime = start_mcp(config, None, allowed).await.unwrap();
+    assert!(searched(&runtime).await);
+    drop(runtime);
+    let waited = async {
+        while !ended(&pid_file) {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    };
+    let gone = tokio::time::timeout(WATCH_EVERY / 2, waited).await.is_ok();
+    if !gone {
+        signal(&pid_file, "-KILL");
+    }
+    let _ = std::fs::remove_file(&pid_file);
+    assert!(gone, "the server outlived its session");
 }

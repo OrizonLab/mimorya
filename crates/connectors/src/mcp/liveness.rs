@@ -1,20 +1,21 @@
 //! Whether a kept session's server still answers (ADR-164). A tool call
 //! that failed without an answer of the server's (none in time, a transport
 //! refused or broken) is followed by a ping, in the background, one at a
-//! time, given as long as a call: a server that does not answer it has
-//! lost its session, which then says it is closed, for the platform to
-//! start it again. So are found a local server alive but mute, and an HTTP
-//! server that refuses a session it no longer knows without saying 404 (the
-//! client reaches a restarted server again only on a 404). A server that
-//! answers the ping keeps its session, even refusing it: with an error of
-//! its own, a 429 (alive, limiting its rate) or more `input_required` rounds
-//! than a call plays. Limit: a server that handles one request at a time
-//! answers the ping only once its slow call is over: a call of more than
-//! twice the call delay loses it its session.
+//! time, given as long as a call; one the server answered, even with more
+//! `input_required` rounds than a call plays, is not. A server that does not
+//! answer the ping has lost its session, which then says it is closed, for
+//! the platform to start it again. So are found a local server alive but
+//! mute, and an HTTP server that refuses a session it no longer knows
+//! without saying 404 (the client reaches a restarted server again only on
+//! a 404). A server that answers the ping keeps its session, even refusing
+//! it: with an error of its own, or a 429 (alive, limiting its rate).
+//! Limit: a server that handles one request at a time answers the ping
+//! only once its slow call is over: a call of more than twice the call
+//! delay loses it its session.
 //!
-//! When the session ended is kept (ADR-165): lost, at the failure the ping
-//! followed; closed, as a watch every `WATCH_EVERY` finds it, the watch
-//! ending with the session.
+//! When the session ended is kept (ADR-165): lost, when the call left
+//! unanswered was made; closed, as a watch every `WATCH_EVERY` finds it, the
+//! watch ending with the session.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
@@ -84,15 +85,16 @@ impl Liveness {
         });
     }
 
-    /// After a call that failed (`error`, or no answer in time: `None`):
-    /// pings the server in the background, within `bound`, unless the
-    /// server answered the call, its session is closed or lost already, or
-    /// a ping is under way.
+    /// After a call made at `asked` that failed (`error`, or no answer in
+    /// time: `None`): pings the server in the background, within `bound`,
+    /// unless the server answered the call, its session is closed or lost
+    /// already, or a ping is under way. A server lost ended at `asked`.
     pub fn after_failure(
         self: &Arc<Self>,
         client: &Arc<McpClient>,
         error: Option<&ServiceError>,
         bound: Duration,
+        asked: Instant,
     ) {
         if error.is_some_and(answered) || self.is_lost() || client.is_transport_closed() {
             return;
@@ -100,12 +102,11 @@ impl Liveness {
         if self.checking.swap(true, Ordering::AcqRel) {
             return;
         }
-        let failed_at = Instant::now();
         let (liveness, client) = (self.clone(), client.clone());
         tokio::spawn(async move {
             if !pinged(&client, bound).await {
-                // Ended when the call failed, as far as the platform knows.
-                let _ = liveness.ended.set(failed_at);
+                // Ended when last asked, as far as the platform knows.
+                let _ = liveness.ended.set(asked);
                 liveness.lost.store(true, Ordering::Release);
                 tracing::warn!(
                     server = %liveness.server,
