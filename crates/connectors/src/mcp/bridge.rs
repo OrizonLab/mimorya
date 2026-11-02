@@ -6,9 +6,9 @@
 //! (connector `tool_policies`). Results are untrusted data like any tool output.
 //!
 //! What a server declares is read and checked by `declarations`; what its
-//! tools return has the token masked. A call is bounded by its delay; one
-//! that failed without the server's answer has the server pinged
-//! (`liveness`, ADR-164).
+//! tools return has the token masked. A call is bounded by its delay, past
+//! which the server is told it is cancelled; one that failed without the
+//! server's answer has the server pinged (`liveness`, ADR-164).
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -16,14 +16,16 @@ use std::time::Duration;
 use async_trait::async_trait;
 use mimorya_core::autonomy::ToolRisk;
 use mimorya_core::tools::{Tool, ToolContext, ToolInfo, ToolRef, ToolResult};
-use rmcp::RoleClient;
-use rmcp::model::CallToolRequestParams;
-use rmcp::service::RunningService;
+use rmcp::model::{
+    CallToolRequest, CallToolRequestParams, CallToolResult, ClientRequest, ServerResult,
+};
+use rmcp::service::{PeerRequestOptions, RunningService};
+use rmcp::{RoleClient, ServiceError};
 use serde_json::{Value, json};
 
 use super::declarations::declared_tools;
 use super::failure::call_failed;
-use super::liveness::{Liveness, PING_TIMEOUT};
+use super::liveness::Liveness;
 use crate::outbound::{CONNECTOR_USE, Redactor, too_slow};
 use crate::types::DEFAULT_CALL_TIMEOUT;
 
@@ -46,13 +48,14 @@ pub struct McpToolsetOptions {
 
 impl McpToolsetOptions {
     pub fn new(prefix: impl Into<String>) -> Self {
+        let prefix = prefix.into();
         Self {
-            prefix: prefix.into(),
+            liveness: Arc::new(Liveness::new(prefix.clone())),
+            prefix,
             default_risk: ToolRisk::Write,
             default_permissions: vec![CONNECTOR_USE.into()],
             redactor: Redactor::default(),
             call_timeout: DEFAULT_CALL_TIMEOUT,
-            liveness: Arc::default(),
         }
     }
 }
@@ -100,18 +103,18 @@ impl Tool for McpTool {
             _ => serde_json::Map::new(),
         };
         let params = CallToolRequestParams::new(self.remote_name.clone()).with_arguments(arguments);
-        let ping = PING_TIMEOUT.min(self.call_timeout);
-        let call = self.client.call_tool(params);
-        let result = match tokio::time::timeout(self.call_timeout, call).await {
-            Ok(Ok(result)) => result,
-            Ok(Err(error)) => {
+        // A ping is given as long as a call.
+        let ping = self.call_timeout;
+        let result = match self.call(params).await {
+            Ok(result) => result,
+            Err(ServiceError::Timeout { .. }) => {
+                self.liveness.after_failure(&self.client, None, ping);
+                return Err(too_slow(self.call_timeout));
+            }
+            Err(error) => {
                 self.liveness
                     .after_failure(&self.client, Some(&error), ping);
                 return Err(call_failed(&error, &self.redactor));
-            }
-            Err(_) => {
-                self.liveness.after_failure(&self.client, None, ping);
-                return Err(too_slow(self.call_timeout));
             }
         };
         let text: Vec<String> = result
@@ -142,6 +145,24 @@ impl Tool for McpTool {
             // Neither citations nor quality criteria: a server only answers.
             ..ToolResult::default()
         })
+    }
+}
+
+impl McpTool {
+    /// The call, bounded by its delay: past it, the MCP library tells the
+    /// server the call is cancelled (`notifications/cancelled`).
+    async fn call(&self, params: CallToolRequestParams) -> Result<CallToolResult, ServiceError> {
+        let timeout = self.call_timeout;
+        let request = ClientRequest::CallToolRequest(CallToolRequest::new(params));
+        let options = PeerRequestOptions::with_timeout(timeout);
+        let sent = self.client.send_request_with_option(request, options);
+        let handle = tokio::time::timeout(timeout, sent)
+            .await
+            .map_err(|_| ServiceError::Timeout { timeout })??;
+        match handle.await_response().await? {
+            ServerResult::CallToolResult(result) => Ok(result),
+            _ => Err(ServiceError::UnexpectedResponse),
+        }
     }
 }
 

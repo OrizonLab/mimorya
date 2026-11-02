@@ -4,8 +4,7 @@
 //! session that says it is closed, for the platform to start it again. So
 //! does a session whose server did not answer a ping after a failed call
 //! (ADR-164): a server stopped, mute, or that refuses a session it no longer
-//! knows without saying 404. A slow tool of a server that answers its ping
-//! keeps its session.
+//! knows without saying 404 (what keeps a session: `mcp_pings`).
 
 mod support;
 
@@ -14,9 +13,7 @@ use std::time::Duration;
 
 use mimorya_connectors::ConnectorRuntime;
 use mimorya_connectors::outbound::{NetworkPolicy, TOO_SLOW};
-use mimorya_connectors::testing::{
-    Quirk, SLOW_CALL, serve_mcp_http, serve_mcp_http_on, serve_stoppable_demo_docs_http,
-};
+use mimorya_connectors::testing::{Quirk, serve_mcp_http_on, serve_stoppable_demo_docs_http};
 use serde_json::{Value, json};
 use support::mcp::{PRIVATE, call_as_reader, http, port_of, start_mcp, start_mcp_calling_within};
 
@@ -90,25 +87,6 @@ async fn a_server_that_refuses_an_unknown_session_without_404_loses_it() {
     again.closer.unwrap().close().await;
 }
 
-#[tokio::test]
-async fn a_slow_tool_keeps_the_session_of_a_server_that_answers_its_ping() {
-    // Answered, or refused as a method it does not know: an answer still.
-    for quirk in [Quirk::SlowCall, Quirk::SlowCallPingUnknown] {
-        let url = serve_mcp_http(None, quirk).await;
-        let runtime = start_mcp_calling_within(http(&url), PRIVATE, CALL)
-            .await
-            .unwrap();
-        let result = call_as_reader(&runtime, "mcp_docs_get_item", json!({})).await;
-        let said = result.content.to_string();
-        assert!(result.is_error && said.contains(TOO_SLOW), "{said}");
-        // Long enough for the ping, not for the call: its session is kept.
-        assert!(CALL * 2 < SLOW_CALL);
-        tokio::time::sleep(CALL * 2).await;
-        assert!(!runtime.is_closed(), "{quirk:?}");
-        runtime.closer.unwrap().close().await;
-    }
-}
-
 /// A local demo server whose process the test knows: its configuration,
 /// the file its process id is written to, and the policy that allows it.
 fn local_server() -> (Value, PathBuf, NetworkPolicy) {
@@ -137,6 +115,33 @@ fn signal(pid_file: &PathBuf, signal: &str) {
     assert!(sent.success());
 }
 
+/// Whether every thread of the process whose id is in `pid_file` is
+/// stopped (`T`), within five seconds: `kill -STOP` returns before they
+/// all are.
+async fn stopped(pid_file: &PathBuf) -> bool {
+    let pid = std::fs::read_to_string(pid_file).unwrap();
+    let tasks = format!("/proc/{}/task", pid.trim());
+    let all_stopped = || {
+        let Ok(entries) = std::fs::read_dir(&tasks) else {
+            return false;
+        };
+        entries.flatten().all(|task| {
+            let stat = std::fs::read_to_string(task.path().join("stat")).unwrap_or_default();
+            // The state follows the command's name, in parentheses.
+            stat.rsplit_once(')')
+                .is_some_and(|(_, rest)| rest.trim_start().starts_with('T'))
+        })
+    };
+    let waited = async {
+        while !all_stopped() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    };
+    tokio::time::timeout(Duration::from_secs(5), waited)
+        .await
+        .is_ok()
+}
+
 #[tokio::test]
 async fn a_local_server_that_exits_leaves_a_session_that_says_it_is_closed() {
     let (config, pid_file, allowed) = local_server();
@@ -161,6 +166,7 @@ async fn a_mute_local_server_loses_its_session() {
     // Alive, but reading nothing more: the call, then the ping, go
     // unanswered.
     signal(&pid_file, "-STOP");
+    assert!(stopped(&pid_file).await, "the server never stopped");
     let search = json!({ "query": "circulateur" });
     let result = call_as_reader(&runtime, "mcp_docs_search_procedures", search).await;
     let said = result.content.to_string();

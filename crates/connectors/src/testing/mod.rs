@@ -1,12 +1,13 @@
 //! Test support (feature `testing`): MCP servers over Streamable HTTP on a
 //! local port, optionally behind a bearer token, and misbehaving ones (what
 //! they declare, a token quoted back, a server that never answers, one held
-//! until the test releases it, answers that never end: `endless`); an HTTP
-//! proxy that lists where it went (`proxy`); a REST API (`rest`); Microsoft
-//! Graph (`graph`, its writes in `graph_writes`); Gmail and Google Calendar
-//! (`google`, its writes in `google_writes`); Slack's Web API (`slack`);
-//! Telegram's Bot API (`telegram`); Microsoft as a Teams bot reaches it:
-//! Entra, the Bot Framework's keys and a Teams service (`teams`).
+//! until the test releases it, answers that never end: `endless`, a slow one
+//! that counts the pings it sees: `slow`); an HTTP proxy that lists where it
+//! went (`proxy`); a REST API (`rest`); Microsoft Graph (`graph`, its writes
+//! in `graph_writes`); Gmail and Google Calendar (`google`, its writes in
+//! `google_writes`); Slack's Web API (`slack`); Telegram's Bot API
+//! (`telegram`); Microsoft as a Teams bot reaches it: Entra, the Bot
+//! Framework's keys and a Teams service (`teams`).
 
 mod endless;
 mod google;
@@ -18,6 +19,7 @@ mod proxy;
 mod quirks;
 mod rest;
 mod slack;
+mod slow;
 mod teams;
 mod telegram;
 
@@ -39,12 +41,13 @@ pub use google_writes::SentMail;
 pub use graph::{FORBIDDEN_MESSAGE, FakeGraph, GRAPH_DETAIL, GraphRequest, OVERSIZED_MESSAGE};
 pub use hold::Hold;
 pub use proxy::{Proxied, serve_proxy};
-pub use quirks::{DeclaredToolsServer, HIDDEN_TEXT, Quirk, SLOW_CALL};
+pub use quirks::{DeclaredToolsServer, HIDDEN_TEXT, Quirk};
 pub use rest::{KEY_HEADER, serve_rest_http};
 pub use slack::{
     BOT_TOKEN, BOT_USER, FakeSlack, OTHER_TOKEN, OTHER_WORKSPACE, SIGNING_SECRET, SlackPost,
     WORKSPACE, WORKSPACE_NAME, signed, signed_at,
 };
+pub use slow::{PING_DELAY, Ping, SLOW_CALL, Seen, serve_slow_mcp_http};
 pub use teams::{
     FakeTeams, OTHER_TEAMS_APP, OTHER_TEAMS_DIRECTORY, OTHER_TEAMS_SECRET, Signer, TEAMS_APP,
     TEAMS_DIRECTORY, TEAMS_KEY_ID, TEAMS_SECRET, TeamsSent, conversation_of, member_id,

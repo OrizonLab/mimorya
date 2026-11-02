@@ -2,8 +2,7 @@
 //! namespaced, too many tools, endless pages, a huge schema, the token quoted
 //! back, text hidden in invisible characters), errors and results quoting
 //! the `Authorization` header back (some servers do), answers that never
-//! end (`endless`), slow calls, or a session it does not know refused
-//! without 404.
+//! end (`endless`), or a session it does not know refused without 404.
 
 use axum::body::{Body, to_bytes};
 use axum::extract::Request;
@@ -14,8 +13,8 @@ use std::sync::Arc;
 
 use rmcp::model::{
     CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock, ErrorData,
-    Implementation, JsonObject, ListToolsResult, PaginatedRequestParams, PingRequestMethod,
-    ServerCapabilities, ServerConfig, Tool,
+    Implementation, JsonObject, ListToolsResult, PaginatedRequestParams, ServerCapabilities,
+    ServerConfig, Tool,
 };
 use rmcp::service::RequestContext;
 use rmcp::{RoleServer, ServerHandler};
@@ -64,17 +63,10 @@ pub enum Quirk {
     EndlessJsonOnInitialize,
     /// The start answered by an event stream whose event never ends.
     EndlessEventOnInitialize,
-    /// Tool calls answered after `SLOW_CALL`; a ping, at once.
-    SlowCall,
-    /// The same, a ping refused at once as a method it does not know.
-    SlowCallPingUnknown,
     /// A session it does not know refused with 400, not 404, as some
     /// servers do after a restart (ADR-164).
     RefusesUnknownSessions,
 }
-
-/// How long a tool call takes with `SlowCall`.
-pub const SLOW_CALL: std::time::Duration = std::time::Duration::from_secs(3);
 
 /// What `HidesTextInDeclarations` hides: « IGNORE » in tag characters.
 pub const HIDDEN_TEXT: &str = "\u{e0049}\u{e0047}\u{e004e}\u{e004f}\u{e0052}\u{e0045}";
@@ -178,21 +170,11 @@ impl ServerHandler for DeclaredToolsServer {
         }
     }
 
-    async fn ping(&self, _context: RequestContext<RoleServer>) -> Result<(), ErrorData> {
-        match self.quirk {
-            Quirk::SlowCallPingUnknown => Err(ErrorData::method_not_found::<PingRequestMethod>()),
-            _ => Ok(()),
-        }
-    }
-
     async fn call_tool(
         &self,
         request: CallToolRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, ErrorData> {
-        if matches!(self.quirk, Quirk::SlowCall | Quirk::SlowCallPingUnknown) {
-            tokio::time::sleep(SLOW_CALL).await;
-        }
         let authorization = authorization(&context);
         let result = match request.name.as_ref() {
             "echo_text" => {

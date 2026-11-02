@@ -9644,41 +9644,57 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
 - **Décision** :
   - un appel à un outil MCP est borné par le délai d'un appel (`call_timeout`, 20 s,
     comme pour une API REST). Au-delà, il échoue avec « Le serveur n'a pas répondu à
-    temps (délai de 20 s) » ;
+    temps (délai de 20 s) », et la bibliothèque MCP dit au serveur que l'appel est
+    annulé (`notifications/cancelled`, que la spécification recommande) ;
   - un appel qui a échoué sans réponse du serveur est suivi d'un ping, en arrière-plan,
     sans retarder le run, et un seul à la fois par session. Sont concernés : un appel
     sans réponse à temps, ou dont le transport a été refusé ou rompu. N'en déclenchent
-    pas : une erreur du serveur lui-même (JSON-RPC), une réponse trop longue (ADR-161)
-    ou une réponse inattendue ;
-  - le ping est borné à 5 s, ou au délai d'un appel s'il est plus court. Une erreur
-    du serveur, même « méthode inconnue », vaut une réponse ;
+    pas : une réponse du serveur (voir ci-dessous), une réponse trop longue (ADR-161) ou
+    inattendue, ni une session déjà fermée ;
+  - le ping a autant de temps qu'un appel (20 s). Vaut une réponse : une erreur du
+    serveur lui-même (JSON-RPC), même « méthode inconnue », ou un refus 429 (serveur
+    vivant qui limite son débit) ;
   - un serveur qui ne répond pas au ping a perdu sa session. Elle se dit alors fermée
     (`ConnectorCloser::is_closed`), comme un transport fermé : le run suivant la démarre
     de nouveau (ADR-056), ou retient l'échec une minute s'il la trouve perdue moins d'une
-    minute après son démarrage (ADR-163) ;
+    minute après son démarrage (ADR-163). Le journal nomme le serveur par son préfixe ;
   - le message d'ADR-163 couvre les deux cas : « Le serveur a cessé de répondre moins
     d'une minute après son démarrage : il n'est pas redémarré avant une minute ».
 - **Conséquences** :
   - un serveur muet, ou qui refuse sa session sans 404, est démarré de nouveau par le
-    run suivant. S'il ne démarre pas, les runs l'apprennent dès leur début, connecteur
-    indisponible, au lieu d'outils qui échouent un à un ;
+    run suivant, ou retenu indisponible une minute (ADR-163). S'il ne démarre pas, les
+    runs l'apprennent dès leur début, connecteur indisponible, au lieu d'outils qui
+    échouent un à un ;
   - un serveur HTTP arrêté perd aussi sa session au premier appel échoué : il est
     démarré de nouveau, ou dit injoignable pendant une minute, au lieu d'être rejoint
     par la même session à son retour. Un serveur redémarré entre deux appels, qui le
     dit par 404, est toujours rejoint par la même session ;
   - un outil lent dont le serveur répond au ping garde sa session : seul cet appel
-    échoue, au bout de 20 s au lieu de 30 s ;
+    échoue, au bout de 20 s au lieu de 30 s, et le serveur est prévenu de son
+    annulation ;
+  - limite : un serveur qui traite une requête à la fois ne répond au ping qu'une fois
+    l'appel en cours fini (s'il n'abandonne pas un appel annulé). Un appel de plus de
+    deux fois le délai d'un appel (40 s) lui fait perdre sa session, et le connecteur est
+    démarré de nouveau, ou indisponible une minute s'il a moins d'une minute. Un refus
+    du ping par un autre statut que 429 (503 d'un intermédiaire, par exemple) fait aussi
+    perdre la session ;
   - les deux premières limites restantes de l'ADR-056 (serveur stdio muet, serveur HTTP
     sans 404) sont traitées. Son test du serveur HTTP relancé le relance désormais entre
     deux appels, sans appel échoué entre eux ;
   - les appels en cours sur une session libérée échouent avec elle ;
   - comme pour une session fermée, le temps compté va jusqu'au run qui la trouve perdue,
     non jusqu'au ping manqué : la limite restante de l'ADR-163 vaut aussi ici ;
-  - tests (`crates/connectors/tests/mcp_sessions.rs`) :
-    - un serveur stdio suspendu (`SIGSTOP`), un serveur HTTP arrêté et un serveur qui
-      refuse une session inconnue par un 400 perdent leur session après un appel
-      échoué ; le dernier est rejoint par une session démarrée de nouveau ;
-    - un outil lent garde sa session, que le serveur réponde au ping ou le refuse comme
-      méthode inconnue ;
-    - sans ping, les trois premiers tests échouent ; une session perdue sans ping, ou
-      un refus du ping compté comme une absence de réponse, fait échouer le dernier.
+  - tests :
+    - `crates/connectors/tests/mcp_sessions.rs` : un serveur stdio suspendu (`SIGSTOP`,
+      ses threads attendus tous arrêtés), un serveur HTTP arrêté et un serveur qui refuse
+      une session inconnue par un 400 perdent leur session après un appel échoué ; le
+      dernier est rejoint par une session démarrée de nouveau ;
+    - `crates/connectors/tests/mcp_pings.rs`, contre un serveur lent qui compte ce qu'il
+      voit (`testing/slow.rs`) : un outil lent garde sa session, que le serveur réponde
+      au ping, le refuse comme méthode inconnue ou par un 429 ; trois appels qui expirent
+      ensemble sont annulés chez le serveur et suivis d'un seul ping ; une erreur du
+      serveur lui-même n'est suivie d'aucun ping ;
+    - mutations, toutes détectées : sans ping, les trois premiers tests de
+      `mcp_sessions` échouent ; une session perdue sans ping, un refus du ping (méthode
+      inconnue ou 429) compté comme une absence de réponse, plusieurs pings à la fois ou
+      un ping après une erreur du serveur font échouer un test de `mcp_pings`.

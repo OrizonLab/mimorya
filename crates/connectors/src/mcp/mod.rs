@@ -21,4 +21,4 @@ pub use declarations::{
 pub use demo_docs::DemoDocsServer;
 pub use failure::NOT_MCP;
 pub use http::{BoundedHttpClient, MAX_RESPONSE_BYTES, TOO_LONG};
-pub use liveness::{Liveness, PING_TIMEOUT};
+pub use liveness::Liveness;
