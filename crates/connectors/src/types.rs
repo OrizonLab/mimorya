@@ -7,6 +7,7 @@ use async_trait::async_trait;
 use mimorya_core::authz::PermissionInfo;
 use mimorya_core::tools::ToolRef;
 use serde_json::Value;
+use tokio::time::Instant;
 
 use crate::outbound::NetworkPolicy;
 
@@ -40,6 +41,12 @@ pub trait ConnectorCloser: Send + Sync {
     fn is_closed(&self) -> bool {
         false
     }
+
+    /// When the connection ended, once known: an instance found closed is
+    /// judged by how long it lived, not by when it was found (ADR-165).
+    fn ended_at(&self) -> Option<Instant> {
+        None
+    }
 }
 
 /// A live connector instance: its tools and how to release its resources.
@@ -54,6 +61,11 @@ impl ConnectorRuntime {
         self.closer
             .as_ref()
             .is_some_and(|closer| closer.is_closed())
+    }
+
+    /// When its connection ended, once known.
+    pub fn ended_at(&self) -> Option<Instant> {
+        self.closer.as_ref().and_then(|closer| closer.ended_at())
     }
 }
 

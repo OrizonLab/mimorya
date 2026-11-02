@@ -6,7 +6,7 @@
 //! what an HTTP server answers is read within bounds (`http`, ADR-161).
 //! A session whose transport closed (a local server that exited), or whose
 //! server did not answer a ping after a failed call (`liveness`, ADR-164),
-//! says so, for the platform to start it again; an HTTP server that
+//! says so, and when it ended (ADR-165), for the platform to start it again; an HTTP server that
 //! restarts and says so (404) is reached again by the client itself
 //! (`reinit_on_expired_session`).
 
@@ -22,6 +22,7 @@ use rmcp::transport::{ConfigureCommandExt, StreamableHttpClientTransport, TokioC
 use serde::Deserialize;
 use serde_json::Value;
 use tokio::process::Command;
+use tokio::time::Instant;
 
 use super::bridge::{McpClient, McpToolsetOptions, create_mcp_toolset};
 use super::failure::start_failed;
@@ -69,6 +70,10 @@ impl ConnectorCloser for Session {
 
     fn is_closed(&self) -> bool {
         self.client.is_transport_closed() || self.liveness.is_lost()
+    }
+
+    fn ended_at(&self) -> Option<Instant> {
+        self.liveness.ended_at()
     }
 }
 
@@ -186,10 +191,13 @@ async fn start(
         liveness: options.liveness.clone(),
     };
     match tools {
-        Ok(tools) => Ok(ConnectorRuntime {
-            tools,
-            closer: Some(Box::new(closer)),
-        }),
+        Ok(tools) => {
+            options.liveness.watch(&closer.client);
+            Ok(ConnectorRuntime {
+                tools,
+                closer: Some(Box::new(closer)),
+            })
+        }
         Err(error) => {
             closer.close().await;
             Err(error)
