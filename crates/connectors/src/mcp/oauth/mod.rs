@@ -9,13 +9,15 @@
 
 mod challenge;
 mod protected_resource;
+mod quoted;
 mod resource;
 mod scope;
 mod server_metadata;
 
 pub use challenge::{BearerChallenge, MAX_HEADER_CHARS, bearer_challenge};
 pub use protected_resource::{
-    MAX_AUTHORIZATION_SERVERS, ProtectedResource, issuer_problem, read_protected_resource,
+    MAX_AUTHORIZATION_SERVERS, ProtectedResource, endpoint_problem, issuer_problem,
+    read_protected_resource,
 };
 pub use resource::{canonical_resource, protected_resource_locations, same_origin, same_resource};
 pub use scope::{MAX_SCOPE_CHARS, MAX_SCOPES, scope_problem, scopes_problem, suggested_scopes};

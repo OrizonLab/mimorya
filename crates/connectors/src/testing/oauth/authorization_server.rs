@@ -1,24 +1,21 @@
 //! An OAuth authorization server, as an MCP server's would be: its metadata
 //! (RFC 8414), an authorization endpoint answering at once (no one to sign
-//! in, the code sent back to the redirect address), and a token endpoint
-//! checking the client, PKCE S256 and the resource (RFC 8707), renewing
-//! with rotation and revoking the whole grant when a rotated refresh token
-//! is used again, as careful servers do. Every request is recorded; the
-//! tests turn its behaviour (`Settings`).
+//! in, the code sent back to the redirect address), and its token endpoint
+//! (`token_endpoint`). Every request is recorded; the tests turn its
+//! behaviour (`Settings`).
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use axum::Router;
-use axum::extract::{Form, Query, State};
-use axum::http::{HeaderMap, StatusCode, header};
+use axum::extract::{Query, State};
+use axum::http::StatusCode;
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
-use base64::Engine;
-use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
-use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
+use serde_json::json;
+
+use super::token_endpoint;
 
 pub const CLIENT_ID: &str = "mimorya-test-client";
 pub const CLIENT_SECRET: &str = "secret-du-client-de-test";
@@ -63,36 +60,36 @@ pub struct AuthRequest {
     pub basic: Option<String>,
 }
 
-struct Code {
-    redirect_uri: String,
-    challenge: String,
-    resource: Option<String>,
-    scope: String,
+pub(super) struct Code {
+    pub(super) redirect_uri: String,
+    pub(super) challenge: String,
+    pub(super) resource: Option<String>,
+    pub(super) scope: String,
 }
 
-struct Refresh {
-    grant: u64,
-    current: bool,
-    resource: Option<String>,
-    scope: String,
+pub(super) struct Refresh {
+    pub(super) grant: u64,
+    pub(super) current: bool,
+    pub(super) resource: Option<String>,
+    pub(super) scope: String,
 }
 
 #[derive(Default)]
-struct Inner {
-    settings: Settings,
-    codes: HashMap<String, Code>,
+pub(super) struct Inner {
+    pub(super) settings: Settings,
+    pub(super) codes: HashMap<String, Code>,
     access: HashMap<String, (u64, Option<String>, Option<Instant>)>,
-    refresh: HashMap<String, Refresh>,
-    revoked: Vec<u64>,
-    next: u64,
-    requests: Vec<AuthRequest>,
+    pub(super) refresh: HashMap<String, Refresh>,
+    pub(super) revoked: Vec<u64>,
+    pub(super) next: u64,
+    pub(super) requests: Vec<AuthRequest>,
 }
 
 /// The server, served at `issuer` until the process ends.
 #[derive(Clone)]
 pub struct FakeAuthorizationServer {
     pub issuer: String,
-    inner: Arc<Mutex<Inner>>,
+    pub(super) inner: Arc<Mutex<Inner>>,
 }
 
 impl FakeAuthorizationServer {
@@ -108,7 +105,7 @@ impl FakeAuthorizationServer {
         let router = Router::new()
             .route("/.well-known/oauth-authorization-server", get(metadata))
             .route("/authorize", get(authorize))
-            .route("/token", post(token))
+            .route("/token", post(token_endpoint::token))
             .with_state(server.clone());
         tokio::spawn(async move { axum::serve(listener, router).await.expect("test server") });
         server
@@ -154,7 +151,7 @@ impl FakeAuthorizationServer {
     }
 }
 
-fn token_value(inner: &mut Inner, kind: &str) -> String {
+pub(super) fn token_value(inner: &mut Inner, kind: &str) -> String {
     inner.next += 1;
     let mark = if inner.settings.off_alphabet {
         "é"
@@ -168,7 +165,7 @@ fn rand_part(seed: u64) -> u64 {
     seed.wrapping_mul(0x9e37_79b9_7f4a_7c15) ^ 0x5851_f42d_4c95_7f2d
 }
 
-fn issue_access(inner: &mut Inner, grant: u64, resource: Option<String>) -> String {
+pub(super) fn issue_access(inner: &mut Inner, grant: u64, resource: Option<String>) -> String {
     let token = token_value(inner, "acces");
     let expires = inner
         .settings
@@ -231,7 +228,9 @@ async fn authorize(
             scope: field("scope"),
         },
     );
-    let mut back = url::Url::parse(&field("redirect_uri")).expect("redirect address");
+    let Ok(mut back) = url::Url::parse(&field("redirect_uri")) else {
+        return (StatusCode::BAD_REQUEST, "invalid_request").into_response();
+    };
     back.query_pairs_mut()
         .append_pair("code", &code)
         .append_pair("state", &field("state"));
@@ -239,103 +238,4 @@ async fn authorize(
         back.query_pairs_mut().append_pair("iss", &server.issuer);
     }
     Redirect::to(back.as_str()).into_response()
-}
-
-async fn token(
-    State(server): State<FakeAuthorizationServer>,
-    headers: HeaderMap,
-    Form(params): Form<HashMap<String, String>>,
-) -> Response {
-    let mut inner = server.inner.lock().expect("server");
-    let basic = headers
-        .get(header::AUTHORIZATION)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.strip_prefix("Basic "))
-        .and_then(|v| STANDARD.decode(v).ok())
-        .and_then(|v| String::from_utf8(v).ok());
-    inner.requests.push(AuthRequest {
-        endpoint: "token",
-        params: params.clone(),
-        basic: basic.clone(),
-    });
-    let field = |name: &str| params.get(name).cloned().unwrap_or_default();
-    let (client, secret) = match &basic {
-        Some(pair) => match pair.split_once(':') {
-            Some((id, secret)) => (id.to_string(), Some(secret.to_string())),
-            None => return refused("invalid_client"),
-        },
-        None => (field("client_id"), params.get("client_secret").cloned()),
-    };
-    if client != CLIENT_ID || secret.as_deref().is_some_and(|s| s != CLIENT_SECRET) {
-        return refused("invalid_client");
-    }
-    match field("grant_type").as_str() {
-        "authorization_code" => {
-            let Some(code) = inner.codes.remove(&field("code")) else {
-                return refused("invalid_grant");
-            };
-            let verified =
-                URL_SAFE_NO_PAD.encode(Sha256::digest(field("code_verifier").as_bytes()));
-            if code.redirect_uri != field("redirect_uri")
-                || verified != code.challenge
-                || code.resource != params.get("resource").cloned()
-            {
-                return refused("invalid_grant");
-            }
-            inner.next += 1;
-            let grant = inner.next;
-            granted(&mut inner, grant, code.resource, code.scope)
-        }
-        "refresh_token" => {
-            let given = field("refresh_token");
-            let Some(refresh) = inner.refresh.get_mut(&given) else {
-                return refused("invalid_grant");
-            };
-            let (grant, current) = (refresh.grant, refresh.current);
-            let (resource, scope) = (refresh.resource.clone(), refresh.scope.clone());
-            refresh.current = false;
-            if !current {
-                // A rotated token used again: the whole grant is revoked.
-                inner.revoked.push(grant);
-            }
-            if !current
-                || inner.revoked.contains(&grant)
-                || resource != params.get("resource").cloned()
-            {
-                return refused("invalid_grant");
-            }
-            granted(&mut inner, grant, resource, scope)
-        }
-        _ => refused("unsupported_grant_type"),
-    }
-}
-
-fn granted(inner: &mut Inner, grant: u64, resource: Option<String>, scope: String) -> Response {
-    let access = issue_access(inner, grant, resource.clone());
-    let mut body = json!({ "access_token": access, "token_type": "Bearer", "scope": scope });
-    if let Some(lifetime) = inner.settings.lifetime {
-        body["expires_in"] = Value::from(lifetime);
-    }
-    if inner.settings.refresh {
-        let refresh = token_value(inner, "renouvellement");
-        inner.refresh.insert(
-            refresh.clone(),
-            Refresh {
-                grant,
-                current: true,
-                resource,
-                scope,
-            },
-        );
-        body["refresh_token"] = Value::from(refresh);
-    }
-    axum::Json(body).into_response()
-}
-
-fn refused(error: &str) -> Response {
-    (
-        StatusCode::BAD_REQUEST,
-        axum::Json(json!({ "error": error })),
-    )
-        .into_response()
 }

@@ -10235,12 +10235,26 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       adresse permise, et si elles offrent le code d'autorisation avec PKCE S256, que la
       spécification exige : sinon le serveur est refusé, la raison dite ;
     - l'administrateur peut nommer l'émetteur, jamais les points eux-mêmes ;
+    - un émetteur n'a ni paramètres, ni fragment, ni identifiants (RFC 8414) ; un point
+      peut avoir des paramètres (RFC 6749 §3.1), ni fragment ni identifiants ;
+    - les adresses sont cherchées avec leur chemin tel qu'écrit (seule la barre qui suit
+      directement l'hôte disparaît, RFC 8414 §3.1, RFC 9728 §3.1), puis sans barre
+      finale ;
+    - ce qu'un message cite d'un document du serveur (un émetteur, un point) est court
+      (120 caractères), sur une ligne, ses caractères cachés écrits en clair : le serveur
+      y écrit ce qu'il veut ;
+    - reste à trancher au lot 40b : des métadonnées publiées à la racine nomment
+      l'origine comme ressource (RFC 9728 §3.3), qu'aujourd'hui seule une ressource sans
+      chemin accepte ;
   - **chaque échange** : PKCE S256 toujours ; la ressource (l'adresse canonique du
     serveur MCP) à la demande d'autorisation, à l'échange du code et à chaque
     renouvellement ; l'émetteur du retour (RFC 9207) vérifié s'il est donné, exigé si le
     serveur l'annonce ; les portées, celles de l'administrateur, sinon celles du refus,
-    sinon celles des métadonnées, chacune un jeton visible sans espace ni guillemet, 20
-    au plus de 200 caractères au plus ;
+    sinon celles des métadonnées : chacune un jeton visible sans espace, guillemet ni
+    barre oblique inversée ; 20 portées au plus, de 200 caractères au plus chacune. Les
+    portées qu'annonce le serveur d'autorisation, aussi nombreuses soient-elles, sont
+    gardées une à une si elles pourraient être envoyées : `offline_access` n'est pas
+    perdu dans une longue liste ;
   - **le client** : déclaré par l'administrateur (identifiant, secret facultatif, scellé
     et jamais rendu ni tracé). Il prouve ce qu'il est comme le serveur l'accepte : dans
     le corps de la requête s'il le liste, sinon dans l'en-tête Basic, et sans secret
@@ -10281,9 +10295,18 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
         (`server_metadata.rs`) ;
       - les portées (`scope.rs`) ;
       - un serveur MCP qui, refusé, montre ses métadonnées, le dit : « Serveur protégé
-        par OAuth : il refuse les appels sans une autorisation OAuth » ;
-      - un serveur d'autorisation simulé et le serveur de démonstration protégé par ses
-        jetons (`connectors/src/testing/oauth/`) ;
+        par OAuth : il refuse les appels sans une autorisation OAuth » ; à un jeton saisi,
+        « Accès refusé par le serveur : jeton invalide ; ce serveur annonce aussi une
+        autorisation OAuth », car il peut aussi accepter ses propres jetons ; chaque ligne
+        de l'en-tête `WWW-Authenticate` est lue ;
+      - un serveur d'autorisation simulé, aussi strict qu'un vrai doit être attendu :
+        le client prouve ce qu'il est d'une seule façon, parmi celles annoncées, avec son
+        secret, un refus de Basic répondu 401 ; le code n'est bon qu'une fois ; le
+        vérificateur PKCE bien formé et juste ; la ressource celle autorisée
+        (`invalid_target`, qui n'use rien) ; le jeton de renouvellement tourne, et celui
+        déjà tourné, resservi, révoque toute l'autorisation ;
+      - le serveur de démonstration protégé par ses jetons, avec ses travers
+        (`connectors/src/testing/oauth/`) ;
     - 40b : la déclaration par l'administrateur, la découverte ;
     - 40c : l'autorisation, son retour, ses jetons scellés ;
     - 40d : le jeton dans les sessions ;
@@ -10294,20 +10317,26 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
 - **Conséquences** :
   - tests du lot 40a :
     - unitaires dans chaque module : le refus lu dans ses bornes, ambigu ou mal formé
-      non lu ; l'adresse canonique et l'origine ; des métadonnées d'une autre ressource,
-      sans serveur, ou nommant un serveur que les règles réseau interdisent, refusées ;
-      un autre émetteur, un point en `http://` ou à une adresse privée, ou sans S256,
-      refusés ; la preuve du client ; une portée qui ne pourrait être envoyée telle
-      quelle refusée ;
+      non lu ; l'adresse canonique et l'origine (une adresse `blob:` n'en est pas) ; les
+      emplacements, barre finale gardée puis retirée ; des métadonnées d'une autre
+      ressource, sans serveur, ou nommant un serveur que les règles réseau interdisent,
+      refusées ; un autre émetteur, un point en `http://` ou à une adresse privée, ou
+      sans S256, refusés, un point avec des paramètres accepté ; une adresse citée
+      courte et sur une ligne ; `offline_access` vu parmi plus de 20 portées ; la preuve
+      du client ; une portée qui ne pourrait être envoyée telle quelle refusée ;
     - `crates/connectors/tests/mcp_oauth.rs` :
-      - un serveur protégé dit qu'il veut OAuth, même à un jeton saisi ;
+      - un serveur protégé dit qu'il veut OAuth, un jeton saisi dit autrement, même le
+        défi sur sa propre ligne d'en-tête ;
       - il s'ouvre à un jeton émis pour sa propre adresse, pas à un jeton émis pour un
         autre serveur, ni révoqué ;
       - son refus et ses métadonnées mènent au serveur d'autorisation ;
       - des métadonnées d'une autre origine ou d'une autre ressource, ou un émetteur
         différent, ne sont pas suivis ;
-      - le serveur d'autorisation simulé vérifie PKCE, la ressource et le client, et
-        révoque une autorisation dont le jeton de renouvellement tourné resservirait ;
+    - `crates/connectors/tests/mcp_oauth_authority.rs` : le serveur d'autorisation
+      simulé use le code, vérifie PKCE et la ressource ; refuse un client qui se prouve de
+      deux façons, d'une façon non annoncée ou avec un autre secret ; fait tourner le
+      jeton de renouvellement et révoque l'autorisation à sa réutilisation ; ses réglages
+      changent ce qu'il émet ;
   - les serveurs qui n'offrent pas S256, n'ont pas de métadonnées, ou n'acceptent qu'un
     client enregistré dynamiquement restent refusés jusqu'au lot qui les accepte, la
     raison dite.

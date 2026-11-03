@@ -9,8 +9,10 @@
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use super::protected_resource::issuer_problem;
-use super::scope::scopes_problem;
+use super::protected_resource::endpoint_problem;
+use super::quoted::quoted;
+use super::resource::paths;
+use super::scope::scope_problem;
 use crate::outbound::NetworkPolicy;
 
 /// How the platform proves to the token endpoint it is the client.
@@ -56,19 +58,33 @@ struct Document {
 
 /// Where the metadata of `issuer` may be, in the order the MCP
 /// specification tries them: RFC 8414 with the well-known path inserted,
-/// then OpenID Connect discovery inserted, then appended.
+/// then OpenID Connect discovery inserted, then appended. The path is kept
+/// as RFC 8414 §3.1 writes it (only a slash right after the host goes),
+/// then without its final slash, as some servers publish it.
 pub fn metadata_locations(issuer: &str) -> Vec<String> {
     let Ok(parsed) = Url::parse(issuer) else {
         return Vec::new();
     };
     let origin = parsed.origin().ascii_serialization();
-    let path = parsed.path().trim_end_matches('/');
-    let mut locations = vec![
-        format!("{origin}/.well-known/oauth-authorization-server{path}"),
-        format!("{origin}/.well-known/openid-configuration{path}"),
-    ];
-    if !path.is_empty() {
-        locations.push(format!("{origin}{path}/.well-known/openid-configuration"));
+    let mut locations = Vec::new();
+    for path in paths(parsed.path()) {
+        for found in [
+            format!("{origin}/.well-known/oauth-authorization-server{path}"),
+            format!("{origin}/.well-known/openid-configuration{path}"),
+        ] {
+            if !locations.contains(&found) {
+                locations.push(found);
+            }
+        }
+    }
+    for path in paths(parsed.path()) {
+        if !path.is_empty() {
+            let path = path.trim_end_matches('/');
+            let found = format!("{origin}{path}/.well-known/openid-configuration");
+            if !locations.contains(&found) {
+                locations.push(found);
+            }
+        }
     }
     locations
 }
@@ -84,14 +100,15 @@ pub fn read_server_metadata(
         .map_err(|_| "Métadonnées du serveur d’autorisation illisibles".to_string())?;
     if document.issuer.as_deref() != Some(issuer) {
         return Err(format!(
-            "Les métadonnées du serveur d’autorisation nomment un autre émetteur que « {issuer} »"
+            "Les métadonnées du serveur d’autorisation nomment un autre émetteur que « {} »",
+            quoted(issuer)
         ));
     }
     let endpoint = |name: &str, url: Option<String>| -> Result<String, String> {
         let url =
             url.ok_or_else(|| format!("Le serveur d’autorisation ne donne pas son {name}"))?;
-        match issuer_problem(&url, policy) {
-            Some(problem) => Err(format!("{name} : {problem}")),
+        match endpoint_problem(&url, name, policy) {
+            Some(problem) => Err(problem),
             None => Ok(url),
         }
     };
@@ -115,18 +132,21 @@ pub fn read_server_metadata(
                 .into(),
         );
     }
-    let scopes = document.scopes_supported.unwrap_or_default();
+    // What the server supports, however many: each kept if it could be
+    // sent as such (what is asked for is bounded when it is chosen).
+    let scopes = document
+        .scopes_supported
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|scope| scope_problem(scope).is_none())
+        .collect();
     Ok(AuthorizationServer {
         issuer: issuer.to_string(),
         authorization_endpoint,
         token_endpoint,
         registration_endpoint,
         revocation_endpoint,
-        scopes_supported: if scopes_problem(&scopes).is_none() {
-            scopes
-        } else {
-            Vec::new()
-        },
+        scopes_supported: scopes,
         auth_methods: document.token_endpoint_auth_methods_supported,
         names_issuer_on_return: document.authorization_response_iss_parameter_supported,
     })
@@ -272,5 +292,40 @@ mod tests {
         server.auth_methods = Some(vec!["none".into()]);
         assert_eq!(server.client_auth(false), Ok(ClientAuth::None));
         assert!(server.client_auth(true).is_err());
+    }
+
+    #[test]
+    fn many_scopes_or_a_strange_one_do_not_hide_offline_access() {
+        let mut document = metadata();
+        let mut scopes: Vec<String> = (0..24).map(|i| format!("okta.scope{i}.read")).collect();
+        scopes.push("bad scope".into());
+        scopes.push("offline_access".into());
+        document["scopes_supported"] = json!(scopes);
+        let server = read(&document).expect("read");
+        assert!(server.offers_offline_access());
+        assert_eq!(server.scopes_supported.len(), 25);
+    }
+
+    #[test]
+    fn an_endpoint_may_carry_parameters_and_is_quoted_short() {
+        let mut document = metadata();
+        document["authorization_endpoint"] = json!("https://auth.example.com/t1/authorize?p=b2c");
+        assert!(read(&document).is_ok());
+        document["token_endpoint"] = json!(format!("https://{}.example/token", "a".repeat(50_000)));
+        assert!(read(&document).expect_err("refused").chars().count() < 400);
+    }
+
+    #[test]
+    fn a_final_slash_is_kept_then_tried_without() {
+        assert_eq!(
+            metadata_locations("https://auth.example.com/t1/"),
+            [
+                "https://auth.example.com/.well-known/oauth-authorization-server/t1/",
+                "https://auth.example.com/.well-known/openid-configuration/t1/",
+                "https://auth.example.com/.well-known/oauth-authorization-server/t1",
+                "https://auth.example.com/.well-known/openid-configuration/t1",
+                "https://auth.example.com/t1/.well-known/openid-configuration",
+            ]
+        );
     }
 }

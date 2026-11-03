@@ -36,6 +36,8 @@ pub enum OAuthQuirk {
     TwoServers,
     /// Every token refused, even a good one.
     RefusesAll,
+    /// The refusal's challenges on two header lines, `Basic` then `Bearer`.
+    SplitChallenge,
 }
 
 /// The server: its address, and the `Authorization` headers it received.
@@ -96,8 +98,11 @@ pub async fn serve_oauth_mcp_http(
                 {
                     return next.run(request).await;
                 }
-                Response::builder()
-                    .status(StatusCode::UNAUTHORIZED)
+                let mut refusal = Response::builder().status(StatusCode::UNAUTHORIZED);
+                if quirk == OAuthQuirk::SplitChallenge {
+                    refusal = refusal.header(header::WWW_AUTHENTICATE, "Basic realm=\"mcp\"");
+                }
+                refusal
                     .header(header::WWW_AUTHENTICATE, challenge)
                     .body(Body::empty())
                     .expect("response")

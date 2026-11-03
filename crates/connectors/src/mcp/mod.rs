@@ -20,6 +20,6 @@ pub use declarations::{
     MAX_DECLARATIONS_BYTES, MAX_DESCRIPTION_CHARS, MAX_TOOLS, mcp_tool_name, tool_namespace,
 };
 pub use demo_docs::DemoDocsServer;
-pub use failure::{NOT_MCP, OAUTH_REQUIRED};
+pub use failure::{NOT_MCP, OAUTH_OFFERED, OAUTH_REQUIRED};
 pub use http::{BoundedHttpClient, MAX_RESPONSE_BYTES, TOO_LONG};
 pub use liveness::{Liveness, WATCH_EVERY};

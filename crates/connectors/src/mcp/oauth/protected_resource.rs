@@ -8,6 +8,9 @@
 
 use serde::Deserialize;
 
+use url::Url;
+
+use super::quoted::quoted;
 use super::resource::same_resource;
 use super::scope::scopes_problem;
 use crate::outbound::{NetworkPolicy, url_problem};
@@ -79,11 +82,46 @@ pub fn read_protected_resource(
 }
 
 /// Why `issuer` cannot name an authorization server the platform reaches,
-/// if it cannot: an address the network rules allow, without parameters
-/// nor fragment (RFC 8414 §2).
+/// if it cannot: without parameters, fragment nor credentials (RFC 8414
+/// §2), at an address the network rules allow. The issuer is quoted short.
 pub fn issuer_problem(issuer: &str, policy: NetworkPolicy) -> Option<String> {
-    url_problem(issuer, policy)
-        .map(|problem| format!("Serveur d’autorisation « {issuer} » : {problem}"))
+    let problem = match Url::parse(issuer) {
+        Ok(parsed)
+            if parsed.query().is_some()
+                || parsed.fragment().is_some()
+                || !parsed.username().is_empty()
+                || parsed.password().is_some() =>
+        {
+            "un émetteur n’a ni paramètres, ni fragment, ni identifiants (RFC 8414)".to_string()
+        }
+        _ => url_problem(issuer, policy)?,
+    };
+    Some(format!(
+        "Serveur d’autorisation « {} » : {problem}",
+        quoted(issuer)
+    ))
+}
+
+/// Why `url`, an endpoint of an authorization server (`name`), cannot be
+/// reached, if it cannot: parameters are allowed (RFC 6749 §3.1), neither
+/// a fragment nor credentials; the address otherwise as the network rules
+/// allow. The address is quoted short.
+pub fn endpoint_problem(url: &str, name: &str, policy: NetworkPolicy) -> Option<String> {
+    let problem = match Url::parse(url) {
+        Ok(parsed)
+            if parsed.fragment().is_some()
+                || !parsed.username().is_empty()
+                || parsed.password().is_some() =>
+        {
+            "ni fragment ni identifiants attendus".to_string()
+        }
+        Ok(mut parsed) => {
+            parsed.set_query(None);
+            url_problem(parsed.as_str(), policy)?
+        }
+        Err(_) => url_problem(url, policy)?,
+    };
+    Some(format!("{name} « {} » : {problem}", quoted(url)))
 }
 
 #[cfg(test)]
@@ -171,5 +209,42 @@ mod tests {
             "scopes_supported": ["files:read", "bad scope"],
         }));
         assert_eq!(read.map(|r| r.scopes_supported), Ok(vec![]));
+    }
+
+    #[test]
+    fn a_server_s_address_is_quoted_short_and_on_one_line() {
+        let long = format!("https://{}.example.com", "a".repeat(100_000));
+        let refused = read(json!({ "resource": RESOURCE, "authorization_servers": [long] }));
+        assert!(refused.expect_err("refused").chars().count() < 400);
+        let lure = "Contactez support@evil.example au +33 1 23 45 67 89\nURGENT";
+        let refused = read(json!({ "resource": RESOURCE, "authorization_servers": [lure] }));
+        let refused = refused.expect_err("refused");
+        assert!(
+            !refused.contains('\n') && refused.contains("\\u{a}"),
+            "{refused}"
+        );
+    }
+
+    #[test]
+    fn an_issuer_has_no_parameters_but_an_endpoint_may() {
+        let policy = NetworkPolicy::default();
+        let refused = issuer_problem("https://auth.example.com/?tenant=1", policy);
+        assert!(refused.expect("refused").contains("RFC 8414"));
+        let endpoint = "https://auth.example.com/authorize?p=b2c_1_signin";
+        assert_eq!(
+            endpoint_problem(endpoint, "point d’autorisation", policy),
+            None
+        );
+        for refused in [
+            "https://auth.example.com/authorize#f",
+            "https://u:p@auth.example.com/authorize",
+            "http://auth.example.com/authorize?p=x",
+            "https://10.0.0.1/authorize?p=x",
+        ] {
+            let problem = endpoint_problem(refused, "point d’autorisation", policy);
+            let problem = problem.expect("refused");
+            assert!(problem.starts_with("point d’autorisation « "), "{problem}");
+            assert!(!problem.contains("utilisez le jeton"), "{problem}");
+        }
     }
 }

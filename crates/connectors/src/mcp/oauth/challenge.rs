@@ -122,7 +122,7 @@ fn lex(header: &str) -> Option<Vec<Item>> {
                     match chars.next()? {
                         '"' => break,
                         '\\' => value.push(chars.next()?),
-                        c if c.is_control() => return None,
+                        c if c.is_control() && c != '\t' => return None,
                         c => value.push(c),
                     }
                 }
@@ -181,6 +181,13 @@ mod tests {
         );
         assert_eq!(bearer_challenge("Basic dXNlcjpwYXNz=="), None);
         assert_eq!(bearer_challenge("bearer"), Some(BearerChallenge::default()));
+        // A tab within a quoted string (RFC 9110 qdtext).
+        assert_eq!(
+            bearer_challenge("Bearer error=\"a\tb\"")
+                .and_then(|c| c.error)
+                .as_deref(),
+            Some("a\tb")
+        );
         assert_eq!(
             bearer_challenge(r#"Bearer error="invalid_\"token""#)
                 .and_then(|c| c.error)
