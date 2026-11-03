@@ -60,6 +60,23 @@ jobs:
       - name: Integration tests (PostgreSQL)
         run: cargo test-int
 
+  msrv:
+    # The Rust version Cargo.toml promises (rust-version): what compiles on
+    # the latest stable may use syntax it does not have.
+    name: Rust 1.88 (minimal version)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_PROFILE_DEV_DEBUG: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: msrv
+      - run: cargo check --workspace --all-targets --all-features
+
   web:
     name: Web (typecheck, lint, build)
     runs-on: ubuntu-latest
