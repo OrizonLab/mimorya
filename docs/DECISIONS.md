@@ -10190,3 +10190,11 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     - son en-tête décrit les deux cas du troisième test ;
   - le harnais des tests lit dans l'e-mail le lien d'invitation d'un compte créé quand un
     relais est configuré.
+  - suites de l'audit de la PR #184 (lot 39) :
+    - SECURITY.md décrit cet e-mail parmi les avis : ce qu'il ne dit pas, à qui il va ;
+    - les administrateurs d'une entreprise suspendue, qui ne peuvent pas se connecter pour
+      décider, ne sont pas prévenus. C'est désormais testé, ici comme pour les propositions
+      de compétences (ADR-102) : l'entreprise n'est pas même listée, puis l'est de nouveau
+      une fois active ;
+    - `owner_runs`, qui écrit en tant que propriétaire de la base ce que l'API refuserait,
+      est commun aux tests.

@@ -72,15 +72,3 @@ pub async fn announced(api: &TestApi, id: &str) -> bool {
     tx.commit().await.unwrap();
     announced
 }
-
-/// Runs `statement`, bound to `binds`, as the database's owner: what the
-/// API would refuse to write.
-pub async fn owner_runs(statement: &str, binds: &[Uuid]) {
-    let owner = sqlx::PgPool::connect(owner_url()).await.unwrap();
-    let mut query = sqlx::query(statement);
-    for bind in binds {
-        query = query.bind(*bind);
-    }
-    query.execute(&owner).await.unwrap();
-    owner.close().await;
-}

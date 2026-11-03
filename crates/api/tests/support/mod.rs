@@ -69,6 +69,9 @@ pub mod telegram_validations;
 pub use client::{Client, TestResponse};
 use fixtures::urls;
 pub use fixtures::{PASSWORD, WEB_ORIGIN, app_url, email, next_monday, owner_url, week};
+// Called by some test binaries only.
+#[allow(unused_imports)]
+pub use fixtures::owner_runs;
 use mail::RecordingMailer;
 
 use std::collections::HashMap;

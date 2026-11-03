@@ -498,7 +498,11 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   contient ni sa réponse ni la raison de son arrêt (ADR-091) ; celui qui annonce aux
   administrateurs des compétences les propositions de l'agent ne nomme que les
   compétences, jamais leur procédure ni la personne pour qui elles ont été proposées,
-  et ne va qu'à qui détient `skill:manage` sur toute l'entreprise (ADR-102). Chacun peut ne plus
+  et ne va qu'à qui détient `skill:manage` sur toute l'entreprise (ADR-102) ; celui qui
+  annonce aux autres administrateurs des politiques les autorisations proposées ne dit que
+  leur nombre et leurs auteurs, jamais leur description ni leur condition, ne va qu'à qui
+  détient `policy:manage` sur toute l'entreprise, jamais à leur auteur, et à personne
+  tant que l'entreprise est suspendue (ADR-170). Chacun peut ne plus
   recevoir ces avis (ADR-094) : un avis non voulu n'est pas envoyé, mais tracé, refusé ;
   les e-mails d'invitation et de mot de passe sont toujours envoyés.
 - **Remplaçant d'un responsable absent** (ADR-071) : désigné par le responsable (ou pour

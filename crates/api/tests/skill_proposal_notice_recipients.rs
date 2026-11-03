@@ -1,32 +1,23 @@
 //! Who is told of the agent's proposals (ADR-102): each account that may
 //! decide them on the whole company, as the company's rules say now, which
-//! the administration requires too (`holds_company_wide`). Not an
+//! the administration requires too (`company_wide_administrators`). Not an
 //! administrator of a unit only, nor a disabled account, nor a role whose
 //! assignment expired, nor someone a deny policy keeps from the skills:
-//! with nobody to tell, the proposals wait for an administrator. How they
-//! are told: `skill_proposal_notices.rs`.
+//! with nobody to tell, the proposals wait for an administrator. Nor while
+//! the company is suspended, whose people cannot sign in to decide. How
+//! they are told: `skill_proposal_notices.rs`.
 
 mod support;
 
 use mimorya_core::demo::{tenant, user};
+use mimorya_db::repositories::skill_proposal_notices::companies_with_unannounced_proposals;
 use serde_json::json;
 use support::skill_proposal_notices::{
     announce, announced, forget_notices, notices, one_proposal, told,
 };
 use support::skill_proposals::restore_the_report;
-use support::{TestApi, email, owner_url};
+use support::{TestApi, email, owner_runs, owner_url};
 use uuid::Uuid;
-
-/// Runs `statement`, bound to `binds`, as the database's owner.
-async fn owner_runs(statement: &str, binds: &[Uuid]) {
-    let owner = sqlx::PgPool::connect(owner_url()).await.unwrap();
-    let mut query = sqlx::query(statement);
-    for bind in binds {
-        query = query.bind(*bind);
-    }
-    query.execute(&owner).await.unwrap();
-    owner.close().await;
-}
 
 /// The company's administrators' role.
 async fn admin_role() -> Uuid {
@@ -122,6 +113,30 @@ async fn with_nobody_who_may_decide_the_proposals_wait_for_one() {
         notices(tenant::ID).await[0].2,
         json!({ "proposals": 1, "skills": ["synthese-hebdo-interventions"] })
     );
+    restore_the_report(&api).await;
+    forget_notices().await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_suspended_company_s_administrators_are_not_told() {
+    let api = TestApi::start_with_mailer().await;
+    one_proposal(&api).await;
+    let suspend = "update tenants set status = 'suspended' where id = $1";
+    owner_runs(suspend, &[tenant::ID]).await;
+
+    // Its people cannot sign in to decide: not even listed.
+    let pool = api.app.services.db.pool();
+    let listed = companies_with_unannounced_proposals(pool).await;
+    assert!(!listed.unwrap().contains(&tenant::ID));
+    assert_eq!(announce(&api).await, 0);
+    assert!(told(&api).is_empty());
+    assert_eq!(announced(&api).await, [(2, false)]);
+    // Active again: told then.
+    let resume = "update tenants set status = 'active' where id = $1";
+    owner_runs(resume, &[tenant::ID]).await;
+    assert_eq!(announce(&api).await, 1);
+    assert_eq!(told(&api), [email(user::PAUL)]);
     restore_the_report(&api).await;
     forget_notices().await;
 }
