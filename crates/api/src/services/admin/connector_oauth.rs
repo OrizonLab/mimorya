@@ -8,7 +8,8 @@
 //! has not changed meanwhile. The client's secret is sealed apart, never
 //! shown nor audited. A typed token goes: OAuth replaces it. Declared
 //! again, everything is replaced, secret included. Until an administrator
-//! authorizes it (lot 40d), the connector starts no session.
+//! authorizes it (lot 40d), the connector starts no session. A declaration
+//! that can no longer be read is replaced or withdrawn all the same.
 
 use mimorya_connectors::mcp::oauth::{
     OAuthDeclaration, client_id_problem, client_secret_problem, discover, scopes_problem,
@@ -21,8 +22,9 @@ use mimorya_db::repositories::connectors::{
 use serde_json::json;
 use uuid::Uuid;
 
-use super::connector_config::{Editable, mcp_config};
+use super::connector_config::Editable;
 use super::connectors::{ConnectorAdmin, PERMISSION};
+use super::mcp_config::{mcp_config, oauth_unreadable};
 use super::{audit_entry, begin_change};
 use crate::services::AccessContext;
 use crate::services::connectors::{client_secret_name, token_secret_name};
@@ -37,16 +39,44 @@ pub struct OAuthInput {
     pub scopes: Option<Vec<String>>,
 }
 
-/// The MCP server `instance` is, with its prefix, address and declaration.
-fn mcp_server(
-    instance: Option<ConnectorInstanceRow>,
-) -> Result<(String, String, Option<OAuthDeclaration>), DomainError> {
-    let instance = instance.ok_or_else(|| DomainError::not_found("Connecteur introuvable"))?;
-    match Editable::of(&instance) {
-        Some(Editable::Mcp { prefix, url, oauth }) => Ok((prefix, url, oauth)),
-        _ => Err(DomainError::validation(
+/// An MCP server added here, as its OAuth sees it.
+struct McpServer {
+    prefix: String,
+    url: String,
+    declared: Option<OAuthDeclaration>,
+    /// A declaration is stored but cannot be read: it is replaced or
+    /// withdrawn all the same.
+    unreadable: bool,
+}
+
+impl McpServer {
+    fn of(instance: Option<ConnectorInstanceRow>) -> Result<Self, DomainError> {
+        let instance = instance.ok_or_else(|| DomainError::not_found("Connecteur introuvable"))?;
+        if let Some(Editable::Mcp { prefix, url, oauth }) = Editable::of(&instance) {
+            return Ok(Self {
+                prefix,
+                url,
+                declared: oauth,
+                unreadable: false,
+            });
+        }
+        if oauth_unreadable(&instance) {
+            let text = |key: &str| {
+                instance.config[key]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string()
+            };
+            return Ok(Self {
+                prefix: text("prefix"),
+                url: text("url"),
+                declared: None,
+                unreadable: true,
+            });
+        }
+        Err(DomainError::validation(
             "Seul un serveur MCP ajouté ici s’autorise par OAuth",
-        )),
+        ))
     }
 }
 
@@ -74,7 +104,7 @@ pub async fn declare_oauth(
     let tenant_id = access.subject.tenant_id;
     // The address asked, read before anything is asked of it.
     let mut tx = admin.db.begin(tenant_id).await?;
-    let (_, url, _) = mcp_server(get_connector_instance(&mut tx, id).await?)?;
+    let url = McpServer::of(get_connector_instance(&mut tx, id).await?)?.url;
     tx.commit().await?;
     let found = {
         let _start = admin.connectors.claim_admin_start(tenant_id)?;
@@ -88,15 +118,15 @@ pub async fn declare_oauth(
         .map_err(DomainError::validation)?;
 
     let mut tx = begin_change(admin.db, access, PERMISSION).await?;
-    let (prefix, current, previous) = mcp_server(get_connector_instance(&mut tx, id).await?)?;
-    if current != url {
+    let current = McpServer::of(get_connector_instance(&mut tx, id).await?)?;
+    if current.url != url {
         return Err(DomainError::conflict(
             "L’adresse du serveur a changé pendant la recherche de son autorisation : recommencez",
         )
         .into());
     }
     let patch = ConnectorPatch {
-        config: Some(mcp_config(&prefix, &url, Some(&declaration))),
+        config: Some(mcp_config(&current.prefix, &url, Some(&declaration))),
         reachability_changed: true,
         ..ConnectorPatch::default()
     };
@@ -128,7 +158,7 @@ pub async fn declare_oauth(
             "scopes": declaration.scopes,
             "clientSecretStored": has_secret,
             "tokenRemoved": token_removed,
-            "replaced": previous.is_some(),
+            "replaced": current.declared.is_some() || current.unreadable,
         })),
     )
     .await?;
@@ -144,15 +174,15 @@ pub async fn remove_oauth(
 ) -> anyhow::Result<()> {
     access.require_tenant_wide(PERMISSION)?;
     let mut tx = begin_change(admin.db, access, PERMISSION).await?;
-    let (prefix, url, declared) = mcp_server(get_connector_instance(&mut tx, id).await?)?;
-    let Some(declared) = declared else {
+    let server = McpServer::of(get_connector_instance(&mut tx, id).await?)?;
+    if server.declared.is_none() && !server.unreadable {
         return Err(DomainError::validation(
             "Aucune autorisation OAuth n’est déclarée sur ce serveur",
         )
         .into());
-    };
+    }
     let patch = ConnectorPatch {
-        config: Some(mcp_config(&prefix, &url, None)),
+        config: Some(mcp_config(&server.prefix, &server.url, None)),
         reachability_changed: true,
         ..ConnectorPatch::default()
     };
@@ -164,8 +194,9 @@ pub async fn remove_oauth(
     append_audit(
         &mut tx,
         audit_entry(access, "connector.oauth_removed", "connector", id).metadata(json!({
-            "issuer": declared.issuer,
-            "clientId": declared.client_id,
+            "issuer": server.declared.as_ref().map(|d| &d.issuer),
+            "clientId": server.declared.as_ref().map(|d| &d.client_id),
+            "unreadable": server.unreadable,
         })),
     )
     .await?;

@@ -23,6 +23,7 @@ use uuid::Uuid;
 
 use super::connector_config::{Editable, RestChanges, added_here, operation_names, prefix_taken};
 use super::connector_rules::{ToolPolicyInput, mcp_addition_problem};
+use super::mcp_config::{mcp_config, oauth_unreadable};
 use super::policy_changes::policy_changes;
 use super::{audit_entry, begin_change};
 use crate::secrets::SecretStore;
@@ -68,7 +69,7 @@ pub async fn create_mcp_connector(
             DomainError::conflict("Ce préfixe est déjà utilisé par un autre connecteur").into(),
         );
     }
-    let config = json!({ "transport": "http", "prefix": input.prefix, "url": input.url });
+    let config = mcp_config(&input.prefix, &input.url, None);
     let created = create_connector_instance(
         &mut tx,
         NewConnectorInstance {
@@ -179,6 +180,9 @@ pub async fn update_connector(
         let Some(editable) = Editable::of(&instance) else {
             let refusal = if instance.connector_type == "rest" {
                 "Déclaration de cette API illisible : supprimez-la puis ajoutez-la de nouveau"
+            } else if oauth_unreadable(&instance) {
+                "Déclaration OAuth de ce serveur illisible : retirez-la, puis déclarez-la de \
+                 nouveau"
             } else if let Some(kind) = LinkKind::of(&instance.connector_type) {
                 &format!(
                     "Déclaration {} illisible : supprimez le connecteur puis ajoutez-le de \

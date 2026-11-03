@@ -21,10 +21,11 @@ use mimorya_core::DomainError;
 use mimorya_core::account_links::{GOOGLE_WORKSPACE, LinkKind, MICROSOFT365};
 use mimorya_core::authz::PermissionInfo;
 use mimorya_db::repositories::connectors::{ConnectorInstanceRow, list_connector_instances};
-use serde_json::{Value, json};
+use serde_json::Value;
 use sqlx::PgConnection;
 
 use super::connector_rules::{PolicyScope, ToolPolicyInput, checked_policies};
+use super::mcp_config::mcp_config;
 
 /// A REST API's changes: `None` keeps what is stored.
 #[derive(Default)]
@@ -332,15 +333,6 @@ fn application_changed(
         ));
     }
     Ok(write_tools)
-}
-
-/// The stored configuration of an MCP server added over HTTPS.
-pub fn mcp_config(prefix: &str, url: &str, oauth: Option<&OAuthDeclaration>) -> Value {
-    let mut config = json!({ "transport": "http", "prefix": prefix, "url": url });
-    if let Some(oauth) = oauth {
-        config["oauth"] = json!(oauth);
-    }
-    config
 }
 
 /// Whether the administration added this connector, and may delete it.

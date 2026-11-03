@@ -208,6 +208,13 @@ async fn another_companys_connector_does_not_exist_from_here() {
         paul.post(&format!("{url}/test"), json!({})).await.status,
         StatusCode::NOT_FOUND
     );
+    let oauth = format!("{url}/oauth");
+    let declaration = json!({ "clientId": "mimorya" });
+    assert_eq!(
+        paul.put(&oauth, declaration).await.status,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(paul.delete(&oauth).await.status, StatusCode::NOT_FOUND);
     assert_eq!(paul.delete(&url).await.status, StatusCode::NOT_FOUND);
     assert_eq!(
         listed(&paul, &foreign.to_string()).await,

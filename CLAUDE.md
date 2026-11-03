@@ -184,7 +184,8 @@ Repères à l'intérieur des crates :
   `api/src/services/admin/` (comptes et absence d'un collaborateur empêché
   (`absences.rs`, ADR-078), organisation, habilitations, connecteurs : ce que
   l'administration change de chacun (`connector_config.rs`), OAuth déclaré sur un serveur
-  MCP (`connector_oauth.rs`, ADR-171), seules les politiques changées
+  MCP (`connector_oauth.rs`, sa configuration gardée : `mcp_config.rs`, ADR-171), seules
+  les politiques changées
   tracées (`policy_changes.rs`, ADR-160) et API REST ajoutées
   (`rest_connectors.rs`, ADR-112, opérations lues d'une description OpenAPI, ADR-114),
   partages de connaissances entre unités (`knowledge_shares.rs`, ADR-143), politiques

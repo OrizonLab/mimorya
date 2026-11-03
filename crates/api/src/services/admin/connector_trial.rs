@@ -17,6 +17,7 @@ use uuid::Uuid;
 
 use super::connector_rules::mcp_addition_problem;
 use super::connector_test::{ConnectorTestOutcome, start_and_list};
+use super::mcp_config::mcp_config;
 use crate::services::AccessContext;
 use crate::services::background::BackgroundTasks;
 use crate::services::connectors::{ConnectorService, Policies};
@@ -53,7 +54,7 @@ pub async fn try_mcp_connector(
     let (answer, answered) = oneshot::channel();
     let background = services.background.clone();
     background.spawn(async move {
-        let config = json!({ "transport": "http", "prefix": trial.prefix, "url": trial.url });
+        let config = mcp_config(&trial.prefix, &trial.url, None);
         let token = trial.token.as_deref();
         let outcome = start_and_list(&services.connectors, "mcp", &config, token, |_| {
             Policies::new()

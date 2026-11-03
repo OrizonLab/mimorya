@@ -10355,6 +10355,10 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
         l'adresse du serveur ou supprimer le connecteur retire la déclaration et le
         secret ;
       - jusqu'à son autorisation, le connecteur ne démarre aucune session et le dit ;
+      - une déclaration qui ne se lit plus (écrite à la main, ou par un processus d'une
+        autre version) est dite telle, et se retire ou se déclare de nouveau ; un champ
+        ajouté plus tard à la déclaration l'est avec une valeur par défaut, pour qu'une
+        déclaration écrite avant se lise encore ;
       - tracés : `connector.oauth_declared` (émetteur, ressource, client, façon de se
         prouver, portées, secret gardé ou non, jeton retiré ou non, déclaration
         remplacée ou non), `connector.oauth_removed`, et `oauth: removed` dans
@@ -10409,9 +10413,14 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       est vérifié avant que le serveur ne soit sollicité ; un serveur dont
       l'autorisation est introuvable, un connecteur qui n'est pas un serveur MCP ajouté
       ici, ou absent, sont refusés ; un administrateur d'une partie de l'entreprise ne
-      déclare rien ; aucun jeton saisi avec OAuth ; la même adresse garde la
-      déclaration, une autre la retire avec le secret, de même que la suppression du
-      connecteur ;
+      déclare rien ; aucun jeton saisi avec OAuth, même avec une autre adresse dans le
+      même changement ; la même adresse garde la déclaration, une autre la retire avec
+      le secret, de même que la suppression du connecteur ; ce qui est trouvé pour une
+      adresse qu'un autre administrateur change, ou pour un connecteur qu'il supprime,
+      pendant la recherche n'est pas gardé (409, 404) ; une déclaration illisible se
+      retire ou se remplace ; le secret n'est pas journalisé ; les deux routes, sur le
+      connecteur d'une autre entreprise ou absent, répondent 404 et sont tracées
+      (`connector_runs.rs`, `admin_absent_resources.rs`) ;
     - `crates/connectors/tests/mcp_oauth_authority.rs` : le serveur d'autorisation
       simulé use le code, vérifie PKCE et la ressource ; refuse un client qui se prouve de
       deux façons, d'une façon non annoncée ou avec un autre secret, un Basic refusé

@@ -33,6 +33,7 @@ mod knowledge_shares;
 mod link_applications;
 mod link_sender;
 mod llm;
+mod mcp_config;
 mod memory_settings;
 mod microsoft365;
 mod mission_settings;
