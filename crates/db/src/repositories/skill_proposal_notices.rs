@@ -6,20 +6,15 @@
 use sqlx::{PgConnection, PgPool};
 use uuid::Uuid;
 
+pub use super::administrators::Recipient;
+use super::administrators::possible_administrators;
+
 /// A proposal awaiting a decision, never announced.
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct UnannouncedProposal {
     pub version_id: Uuid,
     /// The skill it is a version of.
     pub name: String,
-}
-
-/// An active account of the company, to tell if it may decide.
-#[derive(Debug, Clone, sqlx::FromRow)]
-pub struct Recipient {
-    pub user_id: Uuid,
-    pub email: String,
-    pub display_name: String,
 }
 
 /// Every active company holding proposals never announced, through a
@@ -52,18 +47,7 @@ pub async fn unannounced_proposals(
 pub async fn possible_skill_administrators(
     conn: &mut PgConnection,
 ) -> sqlx::Result<Vec<Recipient>> {
-    sqlx::query_as(
-        "select distinct u.id as user_id, u.email::text as email, u.display_name \
-         from users u \
-         join role_assignments a on a.user_id = u.id \
-         join roles r on r.id = a.role_id \
-         where u.status = 'active' and a.scope_type <> 'self' \
-         and 'skill:manage' = any(r.permissions) \
-         and (a.expires_at is null or a.expires_at > now()) \
-         order by u.display_name",
-    )
-    .fetch_all(conn)
-    .await
+    possible_administrators(conn, "skill:manage").await
 }
 
 /// Records that `version_ids` were announced, or that the relay refused

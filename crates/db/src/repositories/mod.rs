@@ -4,6 +4,7 @@
 
 pub mod access_policies;
 pub mod account_links;
+pub mod administrators;
 pub mod approval_delegations;
 pub mod approval_notices;
 pub mod approval_settings;
@@ -46,6 +47,7 @@ pub mod notification_settings;
 pub mod org;
 pub mod org_units;
 pub mod password_resets;
+pub mod policy_proposal_notices;
 pub mod policy_proposals;
 pub mod rate_limits;
 pub mod role_assignments;

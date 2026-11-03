@@ -10121,3 +10121,53 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     - le refus d'une proposition hors des règles du jour est vérifié sur son message, et
       `insert_proposal` est partagé (`tests/support/policy_proposals.rs`) ;
   - l'avis aux autres administrateurs qu'une proposition les attend reste à faire.
+
+## ADR-170 — Autorisations proposées annoncées par e-mail aux autres administrateurs (lot 38c)
+
+- **Date** : 2026-11-03 · **Statut** : acceptée · complète ADR-168
+- **Contexte** : une politique d'autorisation proposée n'ouvre rien avant qu'un autre
+  administrateur des politiques l'approuve, dans les sept jours (ADR-168). Sans avis, il ne
+  l'apprend qu'en ouvrant « Politiques d'accès », et la proposition peut expirer sans
+  avoir été lue.
+- **Décision** :
+  - **chaque minute**, un processus qui exécute les runs, un seul à la fois (ADR-086),
+    rassemble les propositions de chaque entreprise qui attendent encore (en attente, non
+    expirées) et n'ont jamais été annoncées (`policy_proposals.announced_at`, migration
+    `0072`, lues par `system_unannounced_policy_proposals`) ;
+  - **à qui** : chaque compte qui peut les décider, c'est-à-dire qui détient
+    `policy:manage` sur toute l'entreprise selon les règles du moment
+    (`holds_company_wide`), reçoit un e-mail qui compte les propositions faites par un
+    autre que lui. L'auteur n'est jamais prévenu de la sienne. Une proposition que nul
+    autre que son auteur ne peut décider n'est pas annoncée : elle attend un autre
+    administrateur, et l'est dès qu'il y en a un ;
+  - **ce que dit l'e-mail** : combien de propositions, par qui, ce qu'une approbation
+    fait et où décider. Ni leur description ni leur condition : le message quitte la
+    plateforme ;
+  - **comme les autres avis** (ADR-102) :
+    - chaque proposition est annoncée une fois ;
+    - un administrateur qui a choisi de ne pas recevoir les demandes qui attendent sa
+      décision (ADR-094) n'en reçoit pas, et c'est tracé ;
+    - un message refusé par le relais est tracé, et n'est pas renvoyé ;
+    - sans relais, rien n'est envoyé ni noté ;
+    - chaque avis est audité (`policy.proposals_announced`, avec les propositions, sans
+      l'adresse) ;
+  - la liste des comptes qui pourraient administrer une permission devient commune
+    (`repositories/administrators.rs`, `possible_administrators`), utilisée aussi par les
+    propositions de compétences.
+- **Conséquences** :
+  - tests (`crates/api/tests/policy_proposal_notices.rs`) :
+    - une proposition est annoncée une fois aux autres administrateurs, jamais à son
+      auteur, sans sa description ;
+    - une proposition que nul autre ne peut décider attend, et une proposition décidée
+      avant la passe n'est pas annoncée ;
+    - un administrateur qui a choisi de ne pas être prévenu ne reçoit rien, et c'est
+      tracé ;
+    - rien n'est annoncé sans relais ;
+  - le gabarit de l'e-mail est testé dans `services/policy_proposal_notice/mail.rs` ;
+  - suites de l'audit de la PR #183 :
+    - l'avertissement du formulaire est annoncé (`role="status"`) ;
+    - le test de bout en bout vérifie qu'il est absent tant que rien n'a changé, et relit
+      les deux autorisations désactivées une à une ;
+    - son en-tête décrit les deux cas du troisième test ;
+  - le harnais des tests lit dans l'e-mail le lien d'invitation d'un compte créé quand un
+    relais est configuré.
