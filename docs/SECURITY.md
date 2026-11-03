@@ -448,8 +448,10 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   chaque processus à chaque changement ; chaque partage et son retrait sont audités.
 - **ABAC** : politiques `allow` / `deny` à conditions JSON (attributs du sujet, de la
   ressource, du contexte), `deny` prioritaire ; exemple livré : le service
-  administratif ne consulte que les interventions terminées. L'administration n'écrit
-  que des politiques de refus, sur des permissions métier que la plateforme vérifie
+  administratif ne consulte que les interventions terminées. L'administration écrit
+  directement les politiques de refus ; une politique d'autorisation ne l'est qu'à
+  l'approbation d'une proposition par un autre administrateur (ADR-168, ci-dessous). Les
+  unes et les autres portent sur des permissions métier que la plateforme vérifie
   (jamais d'administration, ni `org:read`/`user:read`), avec une condition vérifiée
   avant stockage. Un refus portant sur le collaborateur ou le contexte s'applique
   partout où la permission est vérifiée, outils de l'agent compris ; un refus portant
@@ -567,8 +569,10 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
       réinitialisation par mot de passe provisoire lui permet de se connecter à la place
       de la personne (y compris un autre administrateur) et donc de lire ses conversations et
       sa mémoire personnelle. Tout est tracé (`user.created`, `role.assigned`,
-      `user.password_reset`…) ; la double validation des actions d'administration est
-      prévue en phase 3 ;
+      `user.password_reset`…). La double validation des politiques d'autorisation est
+      faite (ADR-168), mais un administrateur qui peut ainsi faire seul un second
+      administrateur des politiques l'accomplit seul ; celle des autres actions
+      d'administration est prévue en phase 3 ;
     - les adresses e-mail sont uniques entre entreprises (ADR-011) : créer un compte
       avec une adresse déjà utilisée ailleurs est refusé (409), ce qui révèle à
       l'administrateur qu'elle existe dans une autre entreprise. L'invitation par

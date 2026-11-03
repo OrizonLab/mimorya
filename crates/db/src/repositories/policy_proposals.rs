@@ -39,7 +39,7 @@ pub struct ProposalRow {
     pub decided_by_user_id: Option<Uuid>,
     pub decided_by_name: Option<String>,
     pub decided_at: Option<DateTime<Utc>>,
-    /// The policy changed since the proposal: it can no longer be approved.
+    /// Pending, its policy changed since: it can no longer be approved.
     pub outdated: bool,
 }
 
@@ -47,7 +47,8 @@ const PROPOSAL_SELECT: &str = "select p.id, p.policy_id, p.policy_updated_at, p.
     p.permissions, p.condition, p.enabled, p.proposed_by_user_id, \
     author.display_name as proposed_by_name, p.proposed_at, p.expires_at, p.status, \
     p.decided_by_user_id, decider.display_name as decided_by_name, p.decided_at, \
-    coalesce(policy.updated_at <> p.policy_updated_at, false) as outdated \
+    (p.status = 'pending' and coalesce(policy.updated_at <> p.policy_updated_at, false)) \
+      as outdated \
     from policy_proposals p \
     join users author on author.tenant_id = p.tenant_id and author.id = p.proposed_by_user_id \
     left join users decider on decider.tenant_id = p.tenant_id \
@@ -93,10 +94,22 @@ pub async fn create_proposal(conn: &mut PgConnection, input: NewProposal) -> sql
 pub async fn list_proposals(conn: &mut PgConnection) -> sqlx::Result<Vec<ProposalRow>> {
     sqlx::query_as(&format!(
         "{PROPOSAL_SELECT} order by (p.status = 'pending' and p.expires_at > now()) desc, \
-         coalesce(p.decided_at, least(p.expires_at, now()), p.proposed_at) desc, p.id limit $1"
+         coalesce(p.decided_at, \
+           case when p.expires_at > now() then p.proposed_at else p.expires_at end) desc, \
+         p.id limit $1"
     ))
     .bind(LISTED_PROPOSALS)
     .fetch_all(conn)
+    .await
+}
+
+/// How many proposals of the policy `policy_id` wait for a decision.
+pub async fn count_policy_proposals(conn: &mut PgConnection, policy_id: Uuid) -> sqlx::Result<i64> {
+    sqlx::query_scalar(
+        "select count(*) from policy_proposals where policy_id = $1 and status = 'pending'",
+    )
+    .bind(policy_id)
+    .fetch_one(conn)
     .await
 }
 

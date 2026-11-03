@@ -9937,7 +9937,9 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     sera : une nouvelle, ou le changement d'une autorisation existante (`policyId`), avec sa
     description, ses permissions, sa condition et son état. Un administrateur des politiques
     (`policy:manage`, toute l'entreprise) la fait (`POST /api/admin/policy-proposals`). Une
-    proposition qui ne change rien est refusée, de même qu'une cinquante et unième qui attendrait une décision dans l'entreprise (`MAX_PENDING_PROPOSALS`) : toutes celles qui attendent sont listées. Une politique de refus ne se propose pas :
+    proposition qui ne change rien est refusée, de même qu'une cinquante et unième qui
+    attendrait une décision dans l'entreprise (`MAX_PENDING_PROPOSALS`) : toutes celles
+    qui attendent sont listées. Une politique de refus ne se propose pas :
     elle s'écrit directement. Une politique inconnue est refusée et tracée (ADR-054) ;
   - **l'approbation** revient à un autre administrateur des politiques que son auteur
     (`POST …/{id}/approval`), qui l'écrit telle quelle. Elle est vérifiée sous le verrou
@@ -9966,7 +9968,11 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     l'approbation, `policy.created` ou `policy.updated` par l'approbateur, avec la
     proposition, son auteur et l'état précédent. La désactivation et la suppression d'une
     autorisation sont tracées comme celles d'un refus (`policy.updated`, `policy.deleted`,
-    avec l'effet) ;
+    avec l'effet) ; la suppression compte les propositions qui attendaient encore sur
+    elle (`pendingProposals`). Les écritures d'une autorisation sont datées par l'horloge,
+    sous le verrou (`clock_timestamp()`), non par le début de leur transaction : deux
+    écritures ne partagent jamais une date, et une proposition faite entre elles est bien
+    périmée par la seconde ;
   - **conservation** : une proposition suit le compte de son auteur. Qui l'a décidée est
     gardé tant que son compte existe. Décidée ou expirée, elle est purgée quatre-vingt-dix
     jours plus tard par la maintenance (`system_purge_policy_proposals`) ; l'audit garde ce
@@ -9974,8 +9980,13 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
 - **Conséquences** :
   - une entreprise peut élargir l'accès par politique, à deux administrateurs. Deux
     administrateurs d'accord peuvent encore s'ouvrir des données : la double validation
-    empêche qu'un seul le fasse, comme partout où elle s'applique. L'approbateur voit la
-    politique entière, et une condition qui nomme quelqu'un se lit ;
+    empêche qu'un seul le fasse, comme partout où elle s'applique. Elle ne lie pourtant
+    qu'un administrateur qui ne peut pas faire seul un second administrateur des
+    politiques : qui détient aussi `user:manage` et `role:manage` peut inviter un compte à
+    une adresse qu'il tient et lui donner `policy:manage`, limite que l'ADR-019 assume
+    déjà (`SECURITY.md` §5, limites assumées). L'audit nomme alors l'invitation,
+    l'habilitation, puis la proposition et son approbation. L'approbateur voit la politique
+    entière, et une condition qui nomme quelqu'un se lit ;
   - le moteur n'ouvre plus rien à qui ne détient pas la permission : une autorisation écrite
     à la main avant cette décision, qui l'aurait fait, n'a plus cet effet ;
   - les permissions vérifiées sur la personne (`Enforcement::Holder`) s'accordent toujours
@@ -9999,5 +10010,10 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       politique inconnue nommés, qui voit et décide, proposition d'une autre entreprise
       inconnue, refus par un autre et retrait par l'auteur, expiration, auteur qui a perdu
       son droit, plafond des propositions en attente, purge ;
+    - `crates/api/tests/policy_proposal_bypasses.rs` : une proposition écrite hors des
+      règles du jour (permission vérifiée sur la personne ou d'administration, condition
+      illisible) n'est jamais approuvée ; l'autorisation d'une autre entreprise est
+      inconnue d'une proposition, et tracée ; un administrateur des politiques d'une seule
+      unité ne voit, ne propose ni ne décide rien ;
     - `crates/api/tests/admin_policy_storage.rs` : une autorisation écrite à la main se
       désactive et se supprime, sans rien d'autre.

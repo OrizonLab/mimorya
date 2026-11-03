@@ -140,6 +140,8 @@ async fn a_change_applies_only_while_its_policy_stands_as_proposed() {
     let widened = approve(&claire, &to_cancelled).await;
     assert_eq!(widened.status, StatusCode::OK, "{}", widened.text());
     assert!(reads_south(&api, user::LUCAS, "cancelled").await);
+    // Approved, a change is no longer said outdated by its own write.
+    assert_eq!(listed(&paul, &to_cancelled).await["outdated"], false);
     assert_eq!(listed(&paul, &switched_off).await["outdated"], true);
     let stale = approve(&paul, &switched_off).await;
     assert_eq!(stale.status, StatusCode::CONFLICT, "{}", stale.text());
@@ -190,5 +192,7 @@ async fn a_change_applies_only_while_its_policy_stands_as_proposed() {
     assert_eq!(listed(&paul, &last).await, json!(null));
     let deleted = audited(&api, "policy.deleted", &policy_id).await;
     assert_eq!(deleted[0].1["effect"], "allow");
+    // The last one, and the two that earlier changes outdated: all waiting.
+    assert_eq!(deleted[0].1["pendingProposals"], 3, "{}", deleted[0].1);
     assert!(!reads_south(&api, user::LUCAS, "completed").await);
 }

@@ -301,5 +301,6 @@ utilisateur).
 | Cas d'évaluation des compétences              | Avec leur compétence ; leur auteur parti, ils restent à l'entreprise (ADR-103)                                                                             |
 | Évaluations des compétences et leurs réponses | Les cinq dernières par compétence, 90 jours au plus après leur fin ; avec leur compétence ; leur auteur parti, plus personne ne lit les réponses (ADR-104) |
 | Choix des e-mails reçus                       | Jusqu'à modification par la personne ou suppression de son compte                                                                                          |
+| Propositions de politiques d'autorisation     | 90 jours après leur décision ou leur expiration ; avec le compte de leur auteur, ou avec la politique qu'elles changent (ADR-168)                          |
 | Comptes reliés (ADR-116, ADR-121)             | Jusqu'à leur retrait par la personne, la suppression du connecteur ou la désactivation du compte                                                           |
 | Consommation                                  | 5 ans (facturation)                                                                                                                                        |

@@ -1927,7 +1927,9 @@ export type PolicyView = { id: string, description: string, effect: PolicyEffect
  */
 condition: Record<string, unknown>, enabled: boolean,
 /**
- * Only deny policies are written from the administration (ADR-022).
+ * A deny policy, written directly (ADR-022). An allow policy is only
+ * switched off or deleted directly; any other change of it takes a
+ * proposal another administrator approves (ADR-168).
  */
 editable: boolean, updatedAt: string, };
 

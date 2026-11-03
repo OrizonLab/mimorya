@@ -242,12 +242,18 @@ async fn a_company_has_at_most_so_many_proposals_waiting() {
         .post("/admin/policy-proposals", completed_interventions())
         .await;
     assert_eq!(one_more.status, StatusCode::CONFLICT, "{}", one_more.text());
-    // All listed, waiting first.
+    // All listed, waiting first, the latest first.
     let listing = paul.get("/admin/policy-proposals").await.json();
     let first: Vec<&Value> = listing["proposals"].as_array().unwrap()[..limit]
         .iter()
         .collect();
     assert!(first.iter().all(|p| p["status"] == "pending"));
+    assert_eq!(first[0]["id"], json!(mine.last().unwrap()));
+    let proposed: Vec<&str> = first
+        .iter()
+        .map(|p| p["proposedAt"].as_str().unwrap())
+        .collect();
+    assert!(proposed.windows(2).all(|w| w[0] >= w[1]), "{proposed:?}");
     for id in &mine {
         let url = format!("/admin/policy-proposals/{id}/withdrawal");
         assert_eq!(paul.post(&url, json!({})).await.status, StatusCode::OK);

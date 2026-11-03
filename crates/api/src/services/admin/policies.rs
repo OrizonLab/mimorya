@@ -13,6 +13,7 @@ use mimorya_db::repositories::access_policies::{
     get_policy, switch_off_allow_policy, update_deny_policy,
 };
 use mimorya_db::repositories::audit::append_audit;
+use mimorya_db::repositories::policy_proposals::count_policy_proposals;
 use mimorya_db::{Database, TenantTx};
 use serde_json::json;
 use uuid::Uuid;
@@ -168,16 +169,20 @@ pub async fn delete_policy(
     access.require_tenant_wide(PERMISSION)?;
     let mut tx = begin_change(db, access, PERMISSION).await?;
     let previous = existing_policy(&mut tx, id).await?;
-    // Deleting an allow policy only takes access away (ADR-168).
+    // Deleting an allow policy only takes access away (ADR-168); the
+    // proposals waiting on it go with it, counted in the audit.
+    let mut dropped_proposals = 0;
     if previous.effect == "deny" {
         delete_deny_policy(&mut tx, id).await?;
     } else {
+        dropped_proposals = count_policy_proposals(&mut tx, id).await?;
         delete_allow_policy(&mut tx, id).await?;
     }
     append_audit(
         &mut tx,
         audit_entry(access, "policy.deleted", "policy", id).metadata(json!({
             "effect": previous.effect,
+            "pendingProposals": dropped_proposals,
             "description": previous.description,
             "permissions": previous.permissions,
             "condition": previous.condition,

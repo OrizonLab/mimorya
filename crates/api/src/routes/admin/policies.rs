@@ -1,6 +1,8 @@
-//! Access policies (`policy:manage`, company-wide): reading all of them, and
-//! creating, changing or deleting deny policies (ADR-022). The listing also
-//! gives what a policy may restrict and the attributes a condition can read.
+//! Access policies (`policy:manage`, company-wide): reading all of them;
+//! creating, changing or deleting deny policies (ADR-022); switching off or
+//! deleting allow policies, which another administrator approved
+//! (`policy_proposals`, ADR-168). The listing also gives what a policy may
+//! restrict and the attributes a condition can read.
 
 use std::collections::BTreeSet;
 

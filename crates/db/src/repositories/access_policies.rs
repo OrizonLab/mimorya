@@ -121,7 +121,10 @@ pub async fn delete_deny_policy(conn: &mut PgConnection, id: Uuid) -> sqlx::Resu
 
 /// Writes the allow policy `id` as `input` says, only from an approved
 /// proposal (ADR-168) and while the policy was last changed at
-/// `updated_at`: returns whether it was.
+/// `updated_at`: returns whether it was. The writes of an allow policy are
+/// dated by the clock, under the administration lock, not by their
+/// transaction's start (`now()`): two of them never share a date, so that a
+/// proposal made between them is never taken for one on the latest.
 pub async fn replace_allow_policy(
     conn: &mut PgConnection,
     id: Uuid,
@@ -130,7 +133,7 @@ pub async fn replace_allow_policy(
 ) -> sqlx::Result<bool> {
     let result = sqlx::query(
         "update access_policies set description = $3, permissions = $4, condition = $5, \
-         enabled = $6, updated_at = now() \
+         enabled = $6, updated_at = clock_timestamp() \
          where id = $1 and effect = 'allow' and updated_at = $2",
     )
     .bind(id)
@@ -148,7 +151,7 @@ pub async fn replace_allow_policy(
 /// whether it is an allow policy.
 pub async fn switch_off_allow_policy(conn: &mut PgConnection, id: Uuid) -> sqlx::Result<bool> {
     let result = sqlx::query(
-        "update access_policies set enabled = false, updated_at = now() \
+        "update access_policies set enabled = false, updated_at = clock_timestamp() \
          where id = $1 and effect = 'allow'",
     )
     .bind(id)
