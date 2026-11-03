@@ -199,6 +199,10 @@ async fn a_change_applies_only_while_its_policy_stands_as_proposed() {
     .await
     .unwrap();
     tx.commit().await.unwrap();
+    // Expired, it is no longer said outdated, only expired.
+    let expired = listed(&paul, &pending).await;
+    assert_eq!(expired["status"], "expired");
+    assert_eq!(expired["outdated"], false);
     assert_eq!(paul.delete(&url).await.status, StatusCode::OK);
     assert_eq!(listed(&paul, &last).await, json!(null));
     let deleted = audited(&api, "policy.deleted", &policy_id).await;

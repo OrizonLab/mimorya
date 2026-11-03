@@ -34,6 +34,8 @@ export function GrantForm({
     // The proposal states the whole policy, its condition included.
     const body = {
       policyId: policy?.id,
+      // Changed since the form opened, the policy is not proposed on.
+      policyUpdatedAt: policy?.updatedAt,
       description,
       permissions: [...granted],
       condition,

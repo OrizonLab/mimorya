@@ -35,7 +35,10 @@ export function PolicyCard({
   }
 
   async function remove() {
-    if (!window.confirm(`Supprimer la politique « ${policy.description} » ?`)) return;
+    const question = policy.editable
+      ? `Supprimer la politique « ${policy.description} » ?`
+      : `Supprimer l’autorisation « ${policy.description} » ? Les propositions qui la modifient sont retirées avec elle.`;
+    if (!window.confirm(question)) return;
     if (await action.run(() => api.delete(`/admin/policies/${policy.id}`))) onChanged();
   }
 
@@ -66,42 +69,24 @@ export function PolicyCard({
           {policy.effect === 'deny' ? 'Refus' : 'Autorisation'}
         </Badge>
         {!policy.enabled && <Badge tone="neutral">Désactivée</Badge>}
-        {policy.editable ? (
-          <span className="ml-auto flex gap-1">
+        <span className="ml-auto flex gap-1">
+          {/* An allow policy is switched on again only through a proposal. */}
+          {(policy.editable || policy.enabled) && (
             <Button variant="ghost" className="px-2 py-1" onClick={toggle} loading={action.pending}>
               {policy.enabled ? 'Désactiver' : 'Activer'}
             </Button>
-            <Button variant="ghost" className="px-2 py-1" onClick={() => onEdit(true)}>
-              <Pencil className="size-3.5" aria-hidden />
-              <span className="sr-only">Modifier {policy.description}</span>
-            </Button>
-            <Button variant="ghost" className="px-2 py-1" onClick={remove}>
-              <Trash2 className="size-3.5" aria-hidden />
-              <span className="sr-only">Supprimer {policy.description}</span>
-            </Button>
-          </span>
-        ) : (
-          <span className="ml-auto flex gap-1">
-            {policy.enabled && (
-              <Button
-                variant="ghost"
-                className="px-2 py-1"
-                onClick={toggle}
-                loading={action.pending}
-              >
-                Désactiver
-              </Button>
-            )}
-            <Button variant="ghost" className="px-2 py-1" onClick={() => onEdit(true)}>
-              <Pencil className="size-3.5" aria-hidden />
-              <span className="sr-only">Proposer une modification de {policy.description}</span>
-            </Button>
-            <Button variant="ghost" className="px-2 py-1" onClick={remove}>
-              <Trash2 className="size-3.5" aria-hidden />
-              <span className="sr-only">Supprimer {policy.description}</span>
-            </Button>
-          </span>
-        )}
+          )}
+          <Button variant="ghost" className="px-2 py-1" onClick={() => onEdit(true)}>
+            <Pencil className="size-3.5" aria-hidden />
+            <span className="sr-only">
+              {policy.editable ? 'Modifier' : 'Proposer une modification de'} {policy.description}
+            </span>
+          </Button>
+          <Button variant="ghost" className="px-2 py-1" onClick={remove}>
+            <Trash2 className="size-3.5" aria-hidden />
+            <span className="sr-only">Supprimer {policy.description}</span>
+          </Button>
+        </span>
       </div>
       <p className="mt-2 text-sm">
         <span className="text-muted">Quand : </span>

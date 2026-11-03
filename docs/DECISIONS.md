@@ -10056,19 +10056,48 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     modifie par « Proposer une modification », qui ouvre le même formulaire déjà rempli.
     Désactivée, une note dit qu'elle se réactive par une proposition. Une décision ou un
     changement recharge les deux listes, l'une changeant l'autre ;
+  - **une modification nomme la version qu'elle change** : le formulaire envoie le
+    `updatedAt` de l'autorisation qu'il a lue (`policyUpdatedAt` de
+    `NewPolicyProposal`, à la milliseconde). Changée depuis, la proposition est refusée
+    (409, « rechargez-la ») : un administrateur qui désactive une autorisation pendant
+    qu'un autre remplit son formulaire ne la voit pas réactivée par une proposition faite
+    sur l'état d'avant. Sans ce champ, l'API prend la version du moment, comme avant ;
+  - **précisions** :
+    - « Périmée » ne vaut que pour une proposition qui attend encore : expirée, elle
+      n'est plus qu'« Expirée » ;
+    - la confirmation de l'approbation dit si l'autorisation s'applique aussitôt ou
+      s'écrit désactivée, et celle de la suppression d'une autorisation que ses
+      propositions partent avec elle ;
+    - les boutons de chaque proposition se nomment par elle pour un lecteur d'écran
+      (« Approuver « … » ») ;
+    - une permission enregistrée qui ne s'offre plus (autorisation écrite à la main sur
+      une permission vérifiée sur la personne, par exemple) reste montrée, cochée, pour
+      être décochée ;
   - les règles restent celles du serveur : un refus s'affiche tel qu'il le dit.
 - **Conséquences** :
-  - tests : `apps/web/e2e/policy-proposals.spec.ts`. Paul fait par l'API un second
-    administrateur des politiques, Claire, qui active son compte par son invitation.
-    Puis :
-    - la proposition de Paul est en attente, sans « Approuver » pour lui, et rien n'est
-      écrit ;
-    - Claire l'approuve : l'autorisation est listée, relue telle que proposée ;
-    - une seconde proposition, refusée par Claire, n'ouvre rien ;
-    - Paul désactive puis supprime l'autorisation.
+  - tests :
+    - `apps/web/e2e/policy-proposals.spec.ts` : dans chaque test, Paul fait par l'API un
+      second administrateur des politiques, Claire, qui active son compte par son
+      invitation. Le premier test :
+      - la proposition de Paul est en attente, sans « Approuver » pour lui, et rien
+        n'est écrit ;
+      - Claire l'approuve : l'autorisation est listée, relue telle que proposée ;
+      - Paul en propose une modification par « Proposer une modification », sur cette
+        autorisation (`policyId`) ; approuvée, elle change la même autorisation ;
+      - Paul la désactive puis la supprime.
 
-    Le test retire ses autorisations et ses propositions en attente, puis le rôle de
-    Claire, désactive son compte et supprime le rôle, même s'il échoue ;
+      Le second test :
+      - une proposition refusée par Claire n'ouvre rien ;
+      - une modification que Paul rend périmée en désactivant l'autorisation est montrée
+        « Périmée », Claire ne peut pas l'approuver, et Paul la retire.
+
+      Chaque test retire ses autorisations et ses propositions en attente, puis, quoi
+      qu'il arrive, le rôle de Claire ; il désactive son compte et supprime le rôle ;
+
+    - `crates/api/tests/policy_proposal_bypasses.rs` : une modification faite sur une
+      version changée depuis est refusée, faite sur la version du moment, acceptée ;
+    - `crates/api/tests/policy_proposals.rs` : une proposition expirée n'est plus dite
+      périmée ;
 
   - suites de l'audit de la PR #182 :
     - la limite de la double validation, dans l'ADR-168 et `SECURITY.md` §5, nomme aussi

@@ -57,6 +57,7 @@ export function ProposalCard({
                 }
               >
                 Retirer
+                <span className="sr-only"> « {proposal.description} »</span>
               </Button>
             ) : (
               <>
@@ -68,11 +69,14 @@ export function ProposalCard({
                   onClick={() =>
                     decide(
                       'approval',
-                      `Approuver « ${proposal.description} » ? L’autorisation s’applique aussitôt.`,
+                      proposal.enabled
+                        ? `Approuver « ${proposal.description} » ? L’autorisation s’applique aussitôt.`
+                        : `Approuver « ${proposal.description} » ? L’autorisation est écrite désactivée.`,
                     )
                   }
                 >
                   Approuver
+                  <span className="sr-only"> « {proposal.description} »</span>
                 </Button>
                 <Button
                   variant="ghost"
@@ -81,6 +85,7 @@ export function ProposalCard({
                   onClick={() => decide('rejection', `Refuser « ${proposal.description} » ?`)}
                 >
                   Refuser
+                  <span className="sr-only"> « {proposal.description} »</span>
                 </Button>
               </>
             )}

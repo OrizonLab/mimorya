@@ -1653,7 +1653,13 @@ enabled?: boolean, };
  * Body of `POST /admin/policy-proposals`: the allow policy as it will
  * stand, a new one or `policyId` changed.
  */
-export type NewPolicyProposal = { policyId?: string, description: string, permissions: Array<string>,
+export type NewPolicyProposal = { policyId?: string,
+/**
+ * The version of `policyId` the proposal starts from (its `updatedAt`,
+ * to the millisecond): changed since, the proposal is refused rather
+ * than made on a policy its author did not see. Absent: as it stands.
+ */
+policyUpdatedAt?: string, description: string, permissions: Array<string>,
 /**
  * `{ all }`, `{ any }`, `{ not }` or a comparison, as `PolicyView.condition`.
  */
@@ -1902,7 +1908,8 @@ mine: boolean, proposedAt: string,
  */
 expiresAt: string, status: ProposalStatus,
 /**
- * Pending, its policy changed since: it can no longer be approved.
+ * Waiting (pending, not expired), its policy changed since: it can no
+ * longer be approved.
  */
 outdated: boolean,
 /**

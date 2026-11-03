@@ -1,13 +1,26 @@
-// An allow policy takes two administrators (ADR-168): Paul proposes one from
-// « Politiques d’accès »; Claire, a second administrator of the policies
-// made for the test, approves it, and it is listed as an authorisation.
-// Paul proposes another, which Claire refuses. Paul switches the first one
-// off, then deletes it. Whatever happens, the test leaves no allow policy of
-// its own nor proposal waiting, and Claire's account without role, disabled.
-// The rules themselves are tested on the API
-// (`crates/api/tests/policy_proposal*.rs`).
+// An allow policy takes two administrators (ADR-168, ADR-169). Claire, a
+// second administrator of the policies made for each test, decides what
+// Paul proposes from « Politiques d’accès »:
+// - she approves a new authorisation, listed as proposed; Paul proposes a
+//   change of it, which she approves on the same policy; Paul switches it
+//   off, then deletes it;
+// - she refuses another proposal, which opens nothing; a change Paul
+//   proposes is outdated by his switch-off, which she cannot approve, and
+//   he withdraws it.
+// Whatever happens, a test leaves no allow policy of its own nor proposal
+// waiting, and Claire's account without role, disabled. The rules
+// themselves are tested on the API (`crates/api/tests/policy_proposal*.rs`).
 import type { Page } from '@playwright/test';
-import type { Directory, Policies, PolicyProposals, PolicyProposalView } from '../lib/api/contract';
+import type {
+  AccountUpdate,
+  Directory,
+  NewAccount,
+  NewRole,
+  Policies,
+  PolicyProposals,
+  PolicyProposalView,
+  RoleGrant,
+} from '../lib/api/contract';
 import { cardWith, openAdmin } from './support/admin';
 import { expect, noError, test } from './support/fixtures';
 import { lastLink } from './support/mail';
@@ -15,55 +28,58 @@ import { lastLink } from './support/mail';
 const WRITE = { 'X-Mimorya-Request': '1' };
 const MARK = '(e2e double validation)';
 const CHOSEN = 'phrase-de-passe-politiques-e2e';
-const GRANTED = `Interventions terminées ouvertes à tous ${MARK}`;
-const REFUSED = `Interventions annulées ouvertes à tous ${MARK}`;
 
-/** What the test made, for its cleanup. */
+/** What a test made, for its cleanup. */
 const made: { paul?: Page; claire?: string; role?: string } = {};
 
 test.afterEach(async () => {
   const paul = made.paul;
   if (!paul) return;
-  // Its allow policies deleted, their proposals with them.
-  const listing = (await (await paul.request.get('/api/admin/policies')).json()) as Policies;
-  for (const policy of listing.policies.filter((p) => p.description.includes(MARK))) {
-    const deleted = await paul.request.delete(`/api/admin/policies/${policy.id}`, {
-      headers: WRITE,
-    });
-    expect(deleted.status()).toBe(200);
-  }
-  // Paul withdraws his own waiting proposals and refuses Claire's.
-  for (const proposal of (await proposalsOf(paul)).filter((p) => p.status === 'pending')) {
-    const decision = proposal.mine ? 'withdrawal' : 'rejection';
-    const decided = await paul.request.post(
-      `/api/admin/policy-proposals/${proposal.id}/${decision}`,
-      { headers: WRITE },
-    );
-    expect(decided.status()).toBe(200);
-  }
-  if (made.claire) {
-    const directory = (await (await paul.request.get('/api/admin/users')).json()) as Directory;
-    const claire = directory.users.find((user) => user.id === made.claire);
-    for (const assignment of claire?.assignments ?? []) {
-      const revoked = await paul.request.delete(`/api/admin/assignments/${assignment.id}`, {
+  try {
+    // Its allow policies deleted, their proposals with them; Paul withdraws
+    // his other waiting proposals and refuses Claire's.
+    for (const policy of await grantsOf(paul)) {
+      const deleted = await paul.request.delete(`/api/admin/policies/${policy.id}`, {
         headers: WRITE,
       });
-      expect(revoked.status()).toBe(200);
+      expect.soft(deleted.status()).toBe(200);
     }
-    const disabled = await paul.request.patch(`/api/admin/users/${made.claire}`, {
-      headers: WRITE,
-      data: { status: 'disabled' },
-    });
-    expect(disabled.status()).toBe(200);
+    for (const proposal of (await proposalsOf(paul)).filter((p) => p.status === 'pending')) {
+      const decision = proposal.mine ? 'withdrawal' : 'rejection';
+      const decided = await paul.request.post(
+        `/api/admin/policy-proposals/${proposal.id}/${decision}`,
+        { headers: WRITE },
+      );
+      expect.soft(decided.status()).toBe(200);
+    }
+  } finally {
+    // Whatever happened above, Claire keeps no role and no active account.
+    if (made.claire) {
+      const directory = (await (await paul.request.get('/api/admin/users')).json()) as Directory;
+      const claire = directory.users.find((user) => user.id === made.claire);
+      for (const assignment of claire?.assignments ?? []) {
+        const revoked = await paul.request.delete(`/api/admin/assignments/${assignment.id}`, {
+          headers: WRITE,
+        });
+        expect.soft(revoked.status()).toBe(200);
+      }
+      const disabled = await paul.request.patch(`/api/admin/users/${made.claire}`, {
+        headers: WRITE,
+        data: { status: 'disabled' } satisfies AccountUpdate,
+      });
+      expect.soft(disabled.status()).toBe(200);
+    }
+    if (made.role) {
+      const removed = await paul.request.delete(`/api/admin/roles/${made.role}`, {
+        headers: WRITE,
+      });
+      expect.soft(removed.status()).toBe(200);
+    }
+    made.paul = made.claire = made.role = undefined;
   }
-  if (made.role) {
-    const removed = await paul.request.delete(`/api/admin/roles/${made.role}`, { headers: WRITE });
-    expect(removed.status()).toBe(200);
-  }
-  made.paul = made.claire = made.role = undefined;
 });
 
-/** The test's proposals, as the API lists them. */
+/** The tests' proposals, as the API lists them. */
 async function proposalsOf(page: Page): Promise<PolicyProposalView[]> {
   const listed = (await (
     await page.request.get('/api/admin/policy-proposals')
@@ -71,17 +87,22 @@ async function proposalsOf(page: Page): Promise<PolicyProposalView[]> {
   return listed.proposals.filter((p) => p.description.includes(MARK));
 }
 
-/** The test's allow policies, as the API lists them. */
+/** The tests' allow policies, as the API lists them. */
 async function grantsOf(page: Page) {
   const listing = (await (await page.request.get('/api/admin/policies')).json()) as Policies;
   return listing.policies.filter((p) => p.effect === 'allow' && p.description.includes(MARK));
 }
 
 /**
- * Claire, an account holding only the administration of the policies,
- * company-wide, made by Paul and activated from her invitation.
+ * Signs Paul in on `paul`, then makes Claire: an account holding only the
+ * administration of the policies, company-wide, activated on `claire` from
+ * her invitation. Both pages accept the confirmations.
  */
-async function secondAdministrator(paul: Page, claire: Page) {
+async function administrators(paul: Page, claire: Page) {
+  paul.on('dialog', (dialog) => dialog.accept());
+  claire.on('dialog', (dialog) => dialog.accept());
+  await openAdmin(paul, 'Politiques d’accès');
+  made.paul = paul;
   const stamp = Date.now();
   const email = `claire.politiques.${stamp}@neo-maintenance.example`;
   const role = await paul.request.post('/api/admin/roles', {
@@ -90,19 +111,19 @@ async function secondAdministrator(paul: Page, claire: Page) {
       name: `Politiques d’accès ${stamp} ${MARK}`,
       description: 'Administre les politiques d’accès, pour le test',
       permissions: ['policy:manage'],
-    },
+    } satisfies NewRole,
   });
   expect(role.status()).toBe(201);
   made.role = ((await role.json()) as { id: string }).id;
   const account = await paul.request.post('/api/admin/users', {
     headers: WRITE,
-    data: { email, displayName: 'Claire Dumas' },
+    data: { email, displayName: 'Claire Dumas' } satisfies NewAccount,
   });
   expect(account.status()).toBe(201);
   made.claire = ((await account.json()) as { id: string }).id;
   const granted = await paul.request.post(`/api/admin/users/${made.claire}/assignments`, {
     headers: WRITE,
-    data: { roleId: made.role, scope: { type: 'tenant' } },
+    data: { roleId: made.role, scope: { type: 'tenant' } } satisfies RoleGrant,
   });
   expect(granted.status()).toBe(201);
 
@@ -121,7 +142,7 @@ async function openPolicies(page: Page) {
   await expect(page.getByText('Chargement…')).toHaveCount(0);
 }
 
-/** Proposes, from the open tab, an allow policy on completed or cancelled interventions. */
+/** Proposes, from the open tab, an authorisation on interventions in `status`. */
 async function propose(page: Page, description: string, status: string) {
   await page.getByRole('button', { name: 'Proposer une autorisation' }).click();
   await page.getByLabel('Description (ce que la politique autorise, et à qui)').fill(description);
@@ -129,29 +150,37 @@ async function propose(page: Page, description: string, status: string) {
   await page.getByLabel('Attribut').fill('resource.attributes.status');
   await page.getByLabel('Valeur').fill(status);
   await page.getByRole('button', { name: 'Proposer', exact: true }).click();
-  await expect(
-    cardWith(page, description, 'Retirer').getByText('En attente', { exact: true }),
-  ).toBeVisible();
+  await waiting(page, description);
 }
 
-test('an allow policy is proposed by one administrator and approved by another', async ({
+/** Proposes, from the open tab, the change of `policy`'s description to `description`. */
+async function proposeChange(page: Page, policy: string, description: string) {
+  await page.getByRole('button', { name: `Proposer une modification de ${policy}` }).click();
+  await page.getByLabel('Description (ce que la politique autorise, et à qui)').fill(description);
+  await page.getByRole('button', { name: 'Proposer', exact: true }).click();
+  await waiting(page, description);
+}
+
+/** The author's proposal `description` is shown waiting, with no approval for them. */
+async function waiting(page: Page, description: string) {
+  const card = cardWith(page, description, `Retirer « ${description} »`);
+  await expect(card.getByText('En attente', { exact: true })).toBeVisible();
+  await expect(card.getByRole('button', { name: /^Approuver/ })).toHaveCount(0);
+}
+
+test('an authorisation is approved by another administrator, then changed, switched off and deleted', async ({
   page,
   newContext,
 }) => {
+  const granted = `Interventions terminées ouvertes à tous ${MARK}`;
+  const renamed = `Interventions terminées consultables partout ${MARK}`;
   const paul = page;
-  paul.on('dialog', (dialog) => dialog.accept());
-  await openAdmin(paul, 'Politiques d’accès');
-  made.paul = paul;
   const claire = await (await newContext()).newPage();
-  claire.on('dialog', (dialog) => dialog.accept());
-  await secondAdministrator(paul, claire);
+  await administrators(paul, claire);
 
-  // Paul proposes: nothing is written yet, and he cannot approve it.
+  // Paul proposes: nothing is written yet.
   await openPolicies(paul);
-  await propose(paul, GRANTED, 'completed');
-  await expect(
-    cardWith(paul, GRANTED, 'Retirer').getByRole('button', { name: 'Approuver' }),
-  ).toHaveCount(0);
+  await propose(paul, granted, 'completed');
   const [proposed] = await proposalsOf(paul);
   expect(proposed?.status).toBe('pending');
   expect(proposed?.permissions).toEqual(['intervention:read']);
@@ -159,16 +188,12 @@ test('an allow policy is proposed by one administrator and approved by another',
 
   // Claire approves it: the policy is written, as proposed.
   await openPolicies(claire);
-  await cardWith(claire, GRANTED, 'Approuver')
-    .getByRole('button', { name: 'Approuver', exact: true })
-    .click();
+  await claire.getByRole('button', { name: `Approuver « ${granted} »` }).click();
   await expect(
-    cardWith(claire, GRANTED, 'Désactiver').getByText('Autorisation', { exact: true }),
+    cardWith(claire, granted, 'Désactiver').getByText('Autorisation', { exact: true }),
   ).toBeVisible();
   await noError(claire);
-  const [approved] = await proposalsOf(claire);
-  expect(approved?.status).toBe('approved');
-  expect(approved?.decidedBy?.displayName).toBe('Claire Dumas');
+  expect((await proposalsOf(claire))[0]?.decidedBy?.displayName).toBe('Claire Dumas');
   const [grant] = await grantsOf(paul);
   expect(grant?.enabled).toBe(true);
   expect(grant?.condition).toEqual({
@@ -177,21 +202,21 @@ test('an allow policy is proposed by one administrator and approved by another',
     ],
   });
 
-  // Another proposal of Paul's, refused by Claire, opens nothing.
+  // Paul proposes a change of it; approved, it changes that same policy.
   await openPolicies(paul);
-  await propose(paul, REFUSED, 'cancelled');
+  await proposeChange(paul, granted, renamed);
+  const change = (await proposalsOf(paul)).find((p) => p.description === renamed);
+  expect(change?.policyId).toBe(grant?.id);
+  await expect(paul.getByText(`Modifie l’autorisation « ${granted} »`)).toBeVisible();
   await openPolicies(claire);
-  await cardWith(claire, REFUSED, 'Refuser')
-    .getByRole('button', { name: 'Refuser', exact: true })
-    .click();
-  await expect(claire.getByText('Refusée', { exact: true })).toBeVisible();
-  const refused = (await proposalsOf(paul)).find((p) => p.description === REFUSED);
-  expect(refused?.status).toBe('rejected');
-  expect((await grantsOf(paul)).map((p) => p.description)).toEqual([GRANTED]);
+  await claire.getByRole('button', { name: `Approuver « ${renamed} »` }).click();
+  await expect(cardWith(claire, renamed, 'Désactiver')).toBeVisible();
+  const changed = await grantsOf(paul);
+  expect(changed.map((p) => [p.id, p.description])).toEqual([[grant?.id, renamed]]);
 
-  // Paul switches the authorisation off, then deletes it, both at once.
+  // Paul switches it off, then deletes it, both at once.
   await openPolicies(paul);
-  await cardWith(paul, GRANTED, 'Désactiver')
+  await cardWith(paul, renamed, 'Désactiver')
     .getByRole('button', { name: 'Désactiver', exact: true })
     .click();
   await expect(
@@ -200,8 +225,57 @@ test('an allow policy is proposed by one administrator and approved by another',
     ),
   ).toBeVisible();
   expect((await grantsOf(paul))[0]?.enabled).toBe(false);
-  await paul.getByRole('button', { name: `Supprimer ${GRANTED}` }).click();
-  await expect(paul.getByRole('button', { name: `Supprimer ${GRANTED}` })).toHaveCount(0);
+  await paul.getByRole('button', { name: `Supprimer ${renamed}` }).click();
+  await expect(paul.getByRole('button', { name: `Supprimer ${renamed}` })).toHaveCount(0);
   await noError(paul);
   expect(await grantsOf(paul)).toEqual([]);
+});
+
+test('a proposal is refused, or outdated by a switch-off and withdrawn', async ({
+  page,
+  newContext,
+}) => {
+  const refused = `Interventions annulées ouvertes à tous ${MARK}`;
+  const granted = `Interventions terminées pour la facturation ${MARK}`;
+  const outdated = `Interventions terminées pour tous les services ${MARK}`;
+  const paul = page;
+  const claire = await (await newContext()).newPage();
+  await administrators(paul, claire);
+
+  // Refused by Claire, a proposal opens nothing.
+  await openPolicies(paul);
+  await propose(paul, refused, 'cancelled');
+  await openPolicies(claire);
+  await claire.getByRole('button', { name: `Refuser « ${refused} »` }).click();
+  await expect(claire.getByText('Refusée', { exact: true })).toBeVisible();
+  expect((await proposalsOf(paul)).find((p) => p.description === refused)?.status).toBe('rejected');
+  expect(await grantsOf(paul)).toEqual([]);
+
+  // An authorisation approved, Paul proposes a change, then switches it off:
+  // the change is outdated, and Claire cannot approve it.
+  await openPolicies(paul);
+  await propose(paul, granted, 'completed');
+  await openPolicies(claire);
+  await claire.getByRole('button', { name: `Approuver « ${granted} »` }).click();
+  await expect(cardWith(claire, granted, 'Désactiver')).toBeVisible();
+  await openPolicies(paul);
+  await proposeChange(paul, granted, outdated);
+  await cardWith(paul, granted, 'Désactiver')
+    .getByRole('button', { name: 'Désactiver', exact: true })
+    .click();
+  await expect(
+    cardWith(paul, outdated, `Retirer « ${outdated} »`).getByText('Périmée', { exact: true }),
+  ).toBeVisible();
+  await openPolicies(claire);
+  await expect(claire.getByRole('button', { name: `Approuver « ${outdated} »` })).toBeDisabled();
+  expect((await proposalsOf(claire)).find((p) => p.description === outdated)?.outdated).toBe(true);
+
+  // Paul withdraws it.
+  await openPolicies(paul);
+  await paul.getByRole('button', { name: `Retirer « ${outdated} »` }).click();
+  await expect(paul.getByText('Retirée', { exact: true })).toBeVisible();
+  await noError(paul);
+  expect((await proposalsOf(paul)).find((p) => p.description === outdated)?.status).toBe(
+    'withdrawn',
+  );
 });

@@ -54,7 +54,8 @@ pub struct PolicyProposalView {
     /// Past it, nobody approves it.
     pub expires_at: String,
     pub status: ProposalStatus,
-    /// Pending, its policy changed since: it can no longer be approved.
+    /// Waiting (pending, not expired), its policy changed since: it can no
+    /// longer be approved.
     pub outdated: bool,
     /// Absent while pending, or once their account is gone.
     pub decided_by: Option<ProposalPerson>,
@@ -108,6 +109,12 @@ pub struct NewPolicyProposal {
     #[serde(default)]
     #[ts(optional)]
     pub policy_id: Option<Uuid>,
+    /// The version of `policyId` the proposal starts from (its `updatedAt`,
+    /// to the millisecond): changed since, the proposal is refused rather
+    /// than made on a policy its author did not see. Absent: as it stands.
+    #[serde(default)]
+    #[ts(optional, type = "string")]
+    pub policy_updated_at: Option<DateTime<Utc>>,
     #[serde(deserialize_with = "trimmed")]
     #[validate(length(min = 3, max = 300))]
     pub description: String,

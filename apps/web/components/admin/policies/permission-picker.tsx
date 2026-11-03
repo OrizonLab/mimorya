@@ -21,6 +21,12 @@ export function PermissionPicker({
   grant?: boolean;
 }) {
   const offered = grant ? data.permissions.filter((p) => p.perResource) : data.permissions;
+  // Stored before a rule refused them, or written by hand: shown so that they
+  // can be unchecked, never offered.
+  const shown = new Set(offered.map((p) => p.permission));
+  const kept = [...selected].filter(
+    (p) => !shown.has(p) && !(p.endsWith(':*') && !grant && data.domains.includes(p.slice(0, -2))),
+  );
   const byDomain = new Map<string, Policies['permissions']>();
   for (const p of offered) {
     const domain = p.permission.split(':')[0] ?? p.permission;
@@ -61,6 +67,19 @@ export function PermissionPicker({
           </fieldset>
         );
       })}
+      {kept.length > 0 && (
+        <fieldset className="flex flex-col gap-1 text-sm">
+          <legend className="mb-1 text-xs font-medium text-muted">
+            Enregistrées, plus acceptées ici : à décocher
+          </legend>
+          {kept.map((permission) => (
+            <label key={permission} className="flex items-start gap-2">
+              <Checkbox className="mt-0.5" checked onChange={() => onToggle(permission)} />
+              <span>{permission}</span>
+            </label>
+          ))}
+        </fieldset>
+      )}
     </div>
   );
 }
