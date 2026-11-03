@@ -46,6 +46,7 @@ pub async fn create(
     let access = state.access.context(identity).await?;
     let input = ProposalInput {
         policy_id: body.policy_id,
+        policy_updated_at: body.policy_updated_at,
         description: body.description,
         permissions: body.permissions,
         condition: body.condition,

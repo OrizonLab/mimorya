@@ -40,6 +40,34 @@ pub fn completed_interventions() -> Value {
     })
 }
 
+/// A pending proposal written without the API's checks, by `author`, in
+/// `tenant_id`; returns its id.
+pub async fn insert_proposal(
+    api: &TestApi,
+    tenant_id: Uuid,
+    author: Uuid,
+    permissions: &[&str],
+    condition: Value,
+) -> String {
+    let id = Uuid::new_v4();
+    let mut tx = api.app.services.db.begin(tenant_id).await.unwrap();
+    sqlx::query(
+        "insert into policy_proposals (id, tenant_id, description, permissions, condition, \
+         enabled, proposed_by_user_id, expires_at) \
+         values ($1, $2, 'Écrite à la main', $3, $4, true, $5, now() + interval '1 day')",
+    )
+    .bind(id)
+    .bind(tenant_id)
+    .bind(permissions)
+    .bind(condition)
+    .bind(author)
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+    id.to_string()
+}
+
 /// Proposes `body` as `admin`; returns the proposal's id.
 pub async fn propose(admin: &Client<'_>, body: Value) -> String {
     let proposed = admin.post("/admin/policy-proposals", body).await;

@@ -16,8 +16,8 @@ use serde_json::{Value, json};
 use support::TestApi;
 use support::accounts::directory_entry;
 use support::policy_proposals::{
-    approve, audited, completed_interventions, completed_only, listed, propose, reads_south,
-    second_admin,
+    approve, audited, completed_interventions, completed_only, insert_proposal, listed, propose,
+    reads_south, second_admin,
 };
 use support::refusals::{latest_entry, unknown_references_since};
 use uuid::Uuid;
@@ -45,6 +45,8 @@ async fn proposals_outside_the_rules_of_a_grant_are_refused() {
         with("permissions", json!([])),
         with("condition", json!({ "all": [] })),
         with("policyId", json!(DEMO_POLICY)),
+        // A version without the policy it would name.
+        with("policyUpdatedAt", json!("2026-11-03T00:00:00.000Z")),
     ] {
         let refused = paul.post("/admin/policy-proposals", body.clone()).await;
         assert_eq!(
@@ -97,21 +99,14 @@ async fn only_administrators_of_the_policies_of_the_company_see_or_decide_propos
     assert_eq!(approve(&lucas, &id).await.status, StatusCode::FORBIDDEN);
 
     // Another company's proposal is unknown here.
-    let foreign = Uuid::new_v4();
-    let mut tx = api.app.services.db.begin(OTHER_TENANT_ID).await.unwrap();
-    sqlx::query(
-        "insert into policy_proposals (id, tenant_id, description, permissions, condition, \
-         enabled, proposed_by_user_id, expires_at) \
-         values ($1, $2, 'Ailleurs', '{intervention:read}', $3, true, $4, now() + interval '1 day')",
+    let foreign = insert_proposal(
+        &api,
+        OTHER_TENANT_ID,
+        OTHER_USER_ID,
+        &["intervention:read"],
+        completed_only(),
     )
-    .bind(foreign)
-    .bind(OTHER_TENANT_ID)
-    .bind(completed_only())
-    .bind(OTHER_USER_ID)
-    .execute(&mut *tx)
-    .await
-    .unwrap();
-    tx.commit().await.unwrap();
+    .await;
     for decision in ["approval", "rejection", "withdrawal"] {
         let url = format!("/admin/policy-proposals/{foreign}/{decision}");
         assert_eq!(
@@ -120,7 +115,7 @@ async fn only_administrators_of_the_policies_of_the_company_see_or_decide_propos
             "{decision}"
         );
     }
-    assert_eq!(listed(&paul, &foreign.to_string()).await, json!(null));
+    assert_eq!(listed(&paul, &foreign).await, json!(null));
 }
 
 #[tokio::test]

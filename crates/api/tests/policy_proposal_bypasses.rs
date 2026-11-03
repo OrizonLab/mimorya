@@ -2,7 +2,8 @@
 //! proposal stored outside the rules a grant follows today is never
 //! approved; another company's allow policy is unknown to a proposal; an
 //! administrator of the policies on one unit only neither sees, proposes
-//! nor decides.
+//! nor decides; a change made on a version of the policy since changed is
+//! refused.
 
 mod support;
 
@@ -13,37 +14,11 @@ use serde_json::{Value, json};
 use support::TestApi;
 use support::accounts::{activate, create_partial_admin};
 use support::policy_proposals::{
-    approve, completed_interventions, completed_only, listed, propose, reads_south, second_admin,
+    approve, approved_policy, completed_interventions, completed_only, insert_proposal, listed,
+    propose, reads_south, second_admin,
 };
 use support::refusals::{latest_entry, unknown_references_since};
 use uuid::Uuid;
-
-/// A pending proposal written without the API's checks, by `author`.
-async fn insert_proposal(
-    api: &TestApi,
-    tenant_id: Uuid,
-    author: Uuid,
-    permissions: &[&str],
-    condition: Value,
-) -> String {
-    let id = Uuid::new_v4();
-    let mut tx = api.app.services.db.begin(tenant_id).await.unwrap();
-    sqlx::query(
-        "insert into policy_proposals (id, tenant_id, description, permissions, condition, \
-         enabled, proposed_by_user_id, expires_at) \
-         values ($1, $2, 'Écrite à la main', $3, $4, true, $5, now() + interval '1 day')",
-    )
-    .bind(id)
-    .bind(tenant_id)
-    .bind(permissions)
-    .bind(condition)
-    .bind(author)
-    .execute(&mut *tx)
-    .await
-    .unwrap();
-    tx.commit().await.unwrap();
-    id.to_string()
-}
 
 fn allow_policies(listing: &Value) -> usize {
     listing["policies"]
@@ -73,6 +48,12 @@ async fn a_proposal_the_rules_no_longer_accept_is_never_approved() {
         let id = insert_proposal(&api, tenant::ID, claire_id, permissions, condition).await;
         let refused = approve(&paul, &id).await;
         assert_eq!(refused.status, StatusCode::CONFLICT, "{}", refused.text());
+        // Refused for its content, not for any other reason a 409 gives.
+        assert!(
+            refused.text().contains("n’est plus acceptée"),
+            "{}",
+            refused.text()
+        );
         assert_eq!(listed(&paul, &id).await["status"], "pending");
     }
     let after = paul.get("/admin/policies").await.json();
@@ -158,4 +139,47 @@ async fn an_administrator_of_one_unit_neither_sees_proposes_nor_decides() {
         )
         .await;
     assert_eq!(withdrawn.status, StatusCode::OK);
+}
+
+/// The version of the allow policy `id` as the administration lists it.
+async fn version_of(admin: &support::Client<'_>, id: &str) -> Value {
+    admin.get("/admin/policies").await.json()["policies"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["id"] == json!(id))
+        .expect("policy listed")["updatedAt"]
+        .clone()
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_change_made_on_a_version_since_changed_is_refused() {
+    let api = TestApi::start().await;
+    let paul = api.sign_in(user::PAUL).await;
+    let (claire, _) = second_admin(&api, &paul, "claire.versions").await;
+    let first = propose(&paul, completed_interventions()).await;
+    assert_eq!(approve(&claire, &first).await.status, StatusCode::OK);
+    let policy_id = approved_policy(&api, &first).await;
+    let read = version_of(&paul, &policy_id).await;
+
+    // Claire switches it off while Paul's form, opened before, stays enabled.
+    let url = format!("/admin/policies/{policy_id}");
+    let off = claire.patch(&url, json!({ "enabled": false })).await;
+    assert_eq!(off.status, StatusCode::OK, "{}", off.text());
+    let change = |seen: &Value| {
+        let mut body = completed_interventions();
+        body["policyId"] = json!(policy_id);
+        body["description"] = json!("Les interventions terminées, renommée");
+        body["policyUpdatedAt"] = seen.clone();
+        body
+    };
+    let stale = paul.post("/admin/policy-proposals", change(&read)).await;
+    assert_eq!(stale.status, StatusCode::CONFLICT, "{}", stale.text());
+    assert!(stale.text().contains("rouvrez-la"), "{}", stale.text());
+    // On the version as it stands, the proposal is made.
+    let current = version_of(&paul, &policy_id).await;
+    let made = paul.post("/admin/policy-proposals", change(&current)).await;
+    assert_eq!(made.status, StatusCode::CREATED, "{}", made.text());
+    assert_eq!(paul.delete(&url).await.status, StatusCode::OK);
 }

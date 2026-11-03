@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
-import { Button, Checkbox, ErrorNote, Field, Input } from '@/components/ui';
+import { Button, ErrorNote, Field, Input } from '@/components/ui';
 import {
   api,
   useAction,
@@ -10,8 +10,8 @@ import {
   type PolicyUpdate,
   type PolicyView,
 } from '@/lib/api';
-import { PERMISSION_GROUPS } from '@/lib/labels';
 import { ConditionEditor, editorCondition, initialEditor } from './condition-editor';
+import { PermissionPicker, toggled } from './permission-picker';
 
 /** Creates a deny policy, or edits `policy`: description, permissions, condition. */
 export function PolicyForm({
@@ -31,15 +31,6 @@ export function PolicyForm({
   const [problem, setProblem] = useState<string | null>(null);
   const action = useAction();
 
-  function toggle(permission: string) {
-    setRestricted((current) => {
-      const next = new Set(current);
-      if (next.has(permission)) next.delete(permission);
-      else next.add(permission);
-      return next;
-    });
-  }
-
   async function submit(event: FormEvent) {
     event.preventDefault();
     const { condition, error } = editorCondition(editor);
@@ -58,12 +49,6 @@ export function PolicyForm({
     if (saved) onDone(true);
   }
 
-  const byDomain = new Map<string, Policies['permissions']>();
-  for (const p of data.permissions) {
-    const domain = p.permission.split(':')[0] ?? p.permission;
-    byDomain.set(domain, [...(byDomain.get(domain) ?? []), p]);
-  }
-
   return (
     <form onSubmit={submit} className="flex flex-col gap-4 rounded-lg bg-surface-2 p-3">
       <Field label="Description (ce que la politique interdit, et à qui)">
@@ -75,42 +60,11 @@ export function PolicyForm({
           onChange={(e) => setDescription(e.target.value)}
         />
       </Field>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {[...byDomain.entries()].map(([domain, permissions]) => {
-          const whole = `${domain}:*`;
-          const wholeAllowed = data.domains.includes(domain);
-          return (
-            <fieldset key={domain} className="flex flex-col gap-1 text-sm">
-              <legend className="mb-1 text-xs font-medium text-muted">
-                {PERMISSION_GROUPS[domain] ?? domain}
-              </legend>
-              {wholeAllowed && (
-                <label className="flex items-start gap-2">
-                  <Checkbox
-                    className="mt-0.5"
-                    checked={restricted.has(whole)}
-                    onChange={() => toggle(whole)}
-                  />
-                  <span>Toutes les permissions de ce domaine</span>
-                </label>
-              )}
-              {permissions.map((p) => (
-                <label key={p.permission} className="flex items-start gap-2">
-                  <Checkbox
-                    className="mt-0.5"
-                    checked={restricted.has(p.permission)}
-                    onChange={() => toggle(p.permission)}
-                  />
-                  <span>
-                    {p.label}
-                    {p.perResource && <span className="text-muted"> · par ressource</span>}
-                  </span>
-                </label>
-              ))}
-            </fieldset>
-          );
-        })}
-      </div>
+      <PermissionPicker
+        data={data}
+        selected={restricted}
+        onToggle={(permission) => setRestricted((current) => toggled(current, permission))}
+      />
       <ConditionEditor
         value={editor}
         attributes={data.attributes}

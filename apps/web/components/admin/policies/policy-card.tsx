@@ -4,9 +4,14 @@ import { Pencil, Trash2 } from 'lucide-react';
 import { Badge, Button, Card, ErrorNote } from '@/components/ui';
 import { api, useAction, type Policies, type PolicyUpdate, type PolicyView } from '@/lib/api';
 import { describeCondition } from './describe';
+import { GrantForm } from './grant-form';
 import { PolicyForm } from './policy-form';
 
-/** One policy, in plain French; deny policies can be switched, edited, deleted. */
+/**
+ * One policy, in plain French. A deny policy is switched, edited and deleted
+ * at once; an allow policy is switched off or deleted at once, which only
+ * takes access away, and changed through a proposal (ADR-168).
+ */
 export function PolicyCard({
   policy,
   data,
@@ -30,22 +35,28 @@ export function PolicyCard({
   }
 
   async function remove() {
-    if (!window.confirm(`Supprimer la politique « ${policy.description} » ?`)) return;
+    const question = policy.editable
+      ? `Supprimer la politique « ${policy.description} » ?`
+      : `Supprimer l’autorisation « ${policy.description} » ? Les propositions qui la modifient sont supprimées avec elle.`;
+    if (!window.confirm(question)) return;
     if (await action.run(() => api.delete(`/admin/policies/${policy.id}`))) onChanged();
   }
 
   if (editing) {
+    const done = (changed: boolean) => {
+      onEdit(false);
+      if (changed) onChanged();
+    };
     return (
       <Card className="p-4">
-        <p className="mb-3 font-medium">Modifier la politique</p>
-        <PolicyForm
-          data={data}
-          policy={policy}
-          onDone={(changed) => {
-            onEdit(false);
-            if (changed) onChanged();
-          }}
-        />
+        <p className="mb-3 font-medium">
+          {policy.editable ? 'Modifier la politique' : 'Proposer une modification'}
+        </p>
+        {policy.editable ? (
+          <PolicyForm data={data} policy={policy} onDone={done} />
+        ) : (
+          <GrantForm data={data} policy={policy} onDone={done} />
+        )}
       </Card>
     );
   }
@@ -58,23 +69,24 @@ export function PolicyCard({
           {policy.effect === 'deny' ? 'Refus' : 'Autorisation'}
         </Badge>
         {!policy.enabled && <Badge tone="neutral">Désactivée</Badge>}
-        {policy.editable ? (
-          <span className="ml-auto flex gap-1">
+        <span className="ml-auto flex gap-1">
+          {/* An allow policy is switched on again only through a proposal. */}
+          {(policy.editable || policy.enabled) && (
             <Button variant="ghost" className="px-2 py-1" onClick={toggle} loading={action.pending}>
               {policy.enabled ? 'Désactiver' : 'Activer'}
             </Button>
-            <Button variant="ghost" className="px-2 py-1" onClick={() => onEdit(true)}>
-              <Pencil className="size-3.5" aria-hidden />
-              <span className="sr-only">Modifier {policy.description}</span>
-            </Button>
-            <Button variant="ghost" className="px-2 py-1" onClick={remove}>
-              <Trash2 className="size-3.5" aria-hidden />
-              <span className="sr-only">Supprimer {policy.description}</span>
-            </Button>
-          </span>
-        ) : (
-          <span className="ml-auto text-xs text-muted">Lecture seule</span>
-        )}
+          )}
+          <Button variant="ghost" className="px-2 py-1" onClick={() => onEdit(true)}>
+            <Pencil className="size-3.5" aria-hidden />
+            <span className="sr-only">
+              {policy.editable ? 'Modifier' : 'Proposer une modification de'} {policy.description}
+            </span>
+          </Button>
+          <Button variant="ghost" className="px-2 py-1" onClick={remove}>
+            <Trash2 className="size-3.5" aria-hidden />
+            <span className="sr-only">Supprimer {policy.description}</span>
+          </Button>
+        </span>
       </div>
       <p className="mt-2 text-sm">
         <span className="text-muted">Quand : </span>
@@ -87,6 +99,11 @@ export function PolicyCard({
           </li>
         ))}
       </ul>
+      {!policy.editable && !policy.enabled && (
+        <p className="mt-2 text-xs text-muted">
+          Une autorisation se réactive par une proposition qu’un autre administrateur approuve.
+        </p>
+      )}
       {action.error && <ErrorNote message={action.error} />}
     </Card>
   );
