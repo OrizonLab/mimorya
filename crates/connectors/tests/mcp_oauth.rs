@@ -89,7 +89,8 @@ async fn the_challenge_and_metadata_lead_to_the_authorization_server() {
     assert_eq!(protected_resource_locations(&server.url)[0], metadata);
     assert_eq!(challenge.scope.as_deref(), Some("files:read"));
     let (_, _, protected) = get(&metadata).await;
-    let resource = read_protected_resource(&protected, &server.url, PRIVATE).expect("metadata");
+    let resource =
+        read_protected_resource(&protected, &metadata, &server.url, PRIVATE).expect("metadata");
     assert_eq!(
         resource.authorization_servers,
         std::slice::from_ref(&authority.issuer)
@@ -104,7 +105,7 @@ async fn the_challenge_and_metadata_lead_to_the_authorization_server() {
     assert!(found.offers_offline_access());
     // Without the private network the operator allows: its local
     // authorization server is refused, and said so.
-    let refused = read_protected_resource(&protected, &server.url, Default::default());
+    let refused = read_protected_resource(&protected, &metadata, &server.url, Default::default());
     let refused = refused.expect_err("refused");
     assert!(
         refused.contains("Adresse en https:// attendue"),
@@ -122,13 +123,16 @@ async fn misleading_metadata_is_not_followed() {
     assert!(!same_origin(&foreign.url, &named.expect("named")));
     // Metadata naming another resource.
     let other = serve_oauth_mcp_http(&authority, OAuthQuirk::OtherResource).await;
-    let (_, _, body) = get(&protected_resource_locations(&other.url)[0]).await;
-    let refused = read_protected_resource(&body, &other.url, PRIVATE).expect_err("refused");
+    let location = &protected_resource_locations(&other.url)[0];
+    let (_, _, body) = get(location).await;
+    let refused = read_protected_resource(&body, location, &other.url, PRIVATE);
+    let refused = refused.expect_err("refused");
     assert!(refused.contains("une autre ressource"), "{refused}");
     // Two authorization servers: both read, the administrator to choose.
     let two = serve_oauth_mcp_http(&authority, OAuthQuirk::TwoServers).await;
-    let (_, _, body) = get(&protected_resource_locations(&two.url)[0]).await;
-    let read = read_protected_resource(&body, &two.url, PRIVATE).expect("read");
+    let location = &protected_resource_locations(&two.url)[0];
+    let (_, _, body) = get(location).await;
+    let read = read_protected_resource(&body, location, &two.url, PRIVATE).expect("read");
     assert_eq!(read.authorization_servers.len(), 2);
     // No metadata at all, nor named.
     let none = serve_oauth_mcp_http(&authority, OAuthQuirk::NoMetadata).await;

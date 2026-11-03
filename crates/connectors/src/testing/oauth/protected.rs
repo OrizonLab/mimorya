@@ -2,7 +2,8 @@
 //! it takes only a token the fake authorization server issued for its very
 //! address, refuses any other request with a `Bearer` challenge naming its
 //! metadata, and publishes that metadata on its own origin. Its quirks are
-//! what a server may get wrong, or what an attacker may try; it records the
+//! what a server may get wrong, or what an attacker may try (those that
+//! test the bounds of the discovery: `hostile`); it records the
 //! `Authorization` header of every request it receives.
 
 use std::sync::{Arc, Mutex};
@@ -16,6 +17,7 @@ use axum::routing::get;
 use serde_json::json;
 
 use super::authorization_server::FakeAuthorizationServer;
+use super::hostile::{hostile_routes, lure_path};
 use crate::mcp::DemoDocsServer;
 use crate::testing::mcp_router;
 
@@ -43,6 +45,35 @@ pub enum OAuthQuirk {
     /// Metadata at the root only, naming the origin as the resource
     /// (RFC 9728 §3.3), and a challenge that names none.
     RootMetadata,
+    /// Metadata under its path naming the origin as the resource.
+    OriginAtPath,
+    /// No metadata of its own, but its origin publishes that of an
+    /// authorization server whose issuer it is (`hostile`).
+    OwnAuthority,
+    /// Metadata longer than any document is (`hostile`).
+    HugeMetadata,
+    /// Metadata that never comes (`hostile`).
+    SilentMetadata,
+    /// Metadata whose answer breaks off, at a long address the challenge
+    /// names (`hostile`).
+    BrokenMetadata,
+    /// Metadata answered 503 (`hostile`).
+    UnavailableMetadata,
+}
+
+impl OAuthQuirk {
+    /// Whether the server publishes the usual metadata document.
+    fn publishes_metadata(self) -> bool {
+        !matches!(
+            self,
+            Self::NoMetadata
+                | Self::OwnAuthority
+                | Self::HugeMetadata
+                | Self::SilentMetadata
+                | Self::BrokenMetadata
+                | Self::UnavailableMetadata
+        )
+    }
 }
 
 /// The server: its address, and the `Authorization` headers it received.
@@ -72,9 +103,16 @@ pub async fn serve_oauth_mcp_http(
     let url = format!("{origin}/mcp");
     let seen = Arc::new(Mutex::new(Vec::new()));
     let challenge = match quirk {
-        OAuthQuirk::NoMetadata | OAuthQuirk::RootMetadata => "Bearer realm=\"mcp\"".to_string(),
+        OAuthQuirk::NoMetadata | OAuthQuirk::RootMetadata | OAuthQuirk::OwnAuthority => {
+            "Bearer realm=\"mcp\"".to_string()
+        }
         OAuthQuirk::ForeignMetadata => format!(
-            "Bearer error=\"invalid_token\", resource_metadata=\"http://127.0.0.2:9{METADATA_PATH}\""
+            "Bearer error=\"invalid_token\", resource_metadata=\"http://127.0.0.2:9{METADATA_PATH}\", \
+             scope=\"files:read\""
+        ),
+        OAuthQuirk::BrokenMetadata => format!(
+            "Bearer error=\"invalid_token\", resource_metadata=\"{origin}{}\"",
+            lure_path()
         ),
         _ => format!(
             "Bearer error=\"invalid_token\", resource_metadata=\"{origin}{METADATA_PATH}\", \
@@ -115,10 +153,11 @@ pub async fn serve_oauth_mcp_http(
         }
     };
     let mut router = mcp_router(DemoDocsServer::default).route_layer(middleware::from_fn(guard));
-    if quirk != OAuthQuirk::NoMetadata {
+    router = hostile_routes(router, quirk, &origin, authority);
+    if quirk.publishes_metadata() {
         let resource = match quirk {
             OAuthQuirk::OtherResource => format!("{url}/autre"),
-            OAuthQuirk::RootMetadata => origin.clone(),
+            OAuthQuirk::RootMetadata | OAuthQuirk::OriginAtPath => origin.clone(),
             _ => url.clone(),
         };
         let mut servers = vec![authority.issuer.clone()];
@@ -128,7 +167,7 @@ pub async fn serve_oauth_mcp_http(
         let document = json!({
             "resource": resource,
             "authorization_servers": servers,
-            "scopes_supported": ["files:read"],
+            "scopes_supported": ["files:read", "files:write"],
             "bearer_methods_supported": ["header"],
         });
         let path = if quirk == OAuthQuirk::RootMetadata {

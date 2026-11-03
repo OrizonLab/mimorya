@@ -152,7 +152,7 @@ Repères à l'intérieur des crates :
   ADR-141), `connectors/src/testing/`
   (serveurs simulés des tests : MCP, dont des réponses sans fin (`endless.rs`) et un
   serveur lent qui compte les pings qu'il voit (`slow.rs`), et un serveur protégé par
-  OAuth avec son serveur d'autorisation (`oauth/`, ADR-171), mandataire
+  OAuth avec son serveur d'autorisation, hostile à volonté (`oauth/`, ADR-171), mandataire
   HTTP qui note où il va (`proxy.rs`), API REST, Microsoft Graph, Gmail et agenda Google,
   Slack, qui signe les événements comme lui, Telegram, Microsoft pour Teams, qui signe
   les activités avec une clé de test).

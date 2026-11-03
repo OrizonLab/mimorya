@@ -4,11 +4,12 @@
 //! `resource`, `protected_resource`, the challenge of its refusals,
 //! `challenge`); the authorization server says how to ask (RFC 8414,
 //! `server_metadata`); what is asked for is checked (`scope`). `discovery`
-//! follows these rules through the hardened client, once, when an
+//! follows these rules through the hardened client (`fetch`), once, when an
 //! administrator declares OAuth on a server.
 
 mod challenge;
 mod discovery;
+mod fetch;
 mod protected_resource;
 mod quoted;
 mod resource;
@@ -16,7 +17,7 @@ mod scope;
 mod server_metadata;
 
 pub use challenge::{BearerChallenge, MAX_HEADER_CHARS, bearer_challenge};
-pub use discovery::{Discovery, discover};
+pub use discovery::{Discovery, DiscoveryLimits, discover, discover_within};
 pub use protected_resource::{
     MAX_AUTHORIZATION_SERVERS, ProtectedResource, endpoint_problem, issuer_problem,
     read_protected_resource,

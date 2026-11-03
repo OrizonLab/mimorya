@@ -1,10 +1,11 @@
 //! An MCP server's Protected Resource Metadata (RFC 9728): the resource its
 //! tokens are for, which authorization servers issue them, and the scopes
 //! it supports. The document comes from the server: it is taken only if
-//! the resource it names covers this very server (the same, or its origin
-//! and a path the server's continues, as metadata published at the root
-//! names it, RFC 9728 §3.3; a document copied from another resource is
-//! refused), and names between one and ten authorization servers, each an
+//! the resource it names is this very server, or, read at the root of its
+//! origin, covers it (its origin and a path the server's continues, as
+//! metadata published there names it, RFC 9728 §3.3), a document copied
+//! from another resource refused, and names between one and ten
+//! authorization servers, each an
 //! address the network rules allow (ADR-025). Its scopes are only
 //! suggestions: kept if each could be asked for, else none.
 
@@ -13,7 +14,7 @@ use serde::Deserialize;
 use url::Url;
 
 use super::quoted::quoted;
-use super::resource::{canonical_resource, covers};
+use super::resource::{canonical_resource, covers, root_location, same_resource};
 use super::scope::scopes_problem;
 use mimorya_core::plain_text::is_hidden;
 
@@ -38,19 +39,27 @@ struct Document {
     scopes_supported: Option<Vec<String>>,
 }
 
-/// The metadata in `body`, if it is that of `resource` and names
-/// authorization servers the platform may reach.
+/// The metadata in `body`, read at `location`, if it is that of `resource`
+/// and names authorization servers the platform may reach.
 pub fn read_protected_resource(
     body: &[u8],
+    location: &str,
     resource: &str,
     policy: NetworkPolicy,
 ) -> Result<ProtectedResource, String> {
     let document: Document = serde_json::from_slice(body)
         .map_err(|_| "Métadonnées de la ressource protégée illisibles".to_string())?;
+    let at_root = root_location(resource).is_some_and(|root| same_resource(location, &root));
     let named = document
         .resource
         .as_deref()
-        .filter(|named| covers(named, resource))
+        .filter(|named| {
+            if at_root {
+                covers(named, resource)
+            } else {
+                same_resource(named, resource)
+            }
+        })
         .and_then(canonical_resource);
     let Some(named) = named else {
         return Err(
@@ -157,13 +166,21 @@ mod tests {
     use super::*;
 
     const RESOURCE: &str = "https://mcp.example.com/mcp";
+    const UNDER_PATH: &str = "https://mcp.example.com/.well-known/oauth-protected-resource/mcp";
+    const AT_ROOT: &str = "https://MCP.example.com:443/.well-known/oauth-protected-resource";
 
-    fn read(document: serde_json::Value) -> Result<ProtectedResource, String> {
+    fn read_at(location: &str, document: serde_json::Value) -> Result<ProtectedResource, String> {
+        let body = document.to_string();
         read_protected_resource(
-            document.to_string().as_bytes(),
+            body.as_bytes(),
+            location,
             RESOURCE,
             NetworkPolicy::default(),
         )
+    }
+
+    fn read(document: serde_json::Value) -> Result<ProtectedResource, String> {
+        read_at(UNDER_PATH, document)
     }
 
     #[test]
@@ -199,7 +216,8 @@ mod tests {
         ] {
             assert!(read(document.clone()).is_err(), "{document}");
         }
-        assert!(read_protected_resource(b"<html>", RESOURCE, NetworkPolicy::default()).is_err());
+        let policy = NetworkPolicy::default();
+        assert!(read_protected_resource(b"<html>", UNDER_PATH, RESOURCE, policy).is_err());
         let many: Vec<String> = (0..=MAX_AUTHORIZATION_SERVERS)
             .map(|i| format!("https://auth{i}.example.com"))
             .collect();
@@ -225,7 +243,8 @@ mod tests {
         };
         let body =
             json!({ "resource": RESOURCE, "authorization_servers": ["http://10.0.0.1:8080"] });
-        assert!(read_protected_resource(body.to_string().as_bytes(), RESOURCE, private).is_ok());
+        let body = body.to_string();
+        assert!(read_protected_resource(body.as_bytes(), UNDER_PATH, RESOURCE, private).is_ok());
     }
 
     #[test]
@@ -305,13 +324,18 @@ mod tests {
 
     #[test]
     fn metadata_at_the_root_names_the_origin_the_tokens_are_for() {
-        let read = read(json!({
-            "resource": "https://MCP.example.com",
-            "authorization_servers": ["https://auth.example.com"],
-        }));
+        let servers = json!(["https://auth.example.com"]);
+        let origin =
+            json!({ "resource": "https://MCP.example.com", "authorization_servers": servers });
         assert_eq!(
-            read.map(|r| r.resource),
+            read_at(AT_ROOT, origin.clone()).map(|r| r.resource),
             Ok("https://mcp.example.com".to_string())
         );
+        let server = json!({ "resource": RESOURCE, "authorization_servers": servers });
+        assert!(read_at(AT_ROOT, server).is_ok());
+        // Anywhere else, the server itself: a hosting service's customer
+        // cannot claim the whole origin.
+        let refused = read(origin).expect_err("refused");
+        assert!(refused.contains("une autre ressource"), "{refused}");
     }
 }

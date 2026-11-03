@@ -10203,7 +10203,7 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     - le test de bout en bout des autorisations proposées attend que chaque approbation
       soit écrite avant de lire la politique (il échouait parfois en CI).
 
-## ADR-171 — OAuth des serveurs MCP : une autorisation de l'entreprise (lots 40a à 40e)
+## ADR-171 — OAuth des serveurs MCP : une autorisation de l'entreprise (lots 40a à 40f)
 
 - **Date** : 2026-11-03 · **Statut** : acceptée · complète ADR-025, ADR-161, ADR-162
 - **Contexte** : un serveur MCP distant s'ouvre aujourd'hui par un jeton saisi par
@@ -10247,11 +10247,15 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       (120 caractères), sur une ligne, ses caractères cachés écrits en clair : le serveur
       y écrit ce qu'il veut ;
     - des métadonnées publiées à la racine nomment l'origine comme ressource (RFC 9728
-      §3.3) : la ressource qu'elles nomment est acceptée si elle couvre le serveur MCP,
-      c'est-à-dire si elle est la même, ou sur son origine avec un chemin que celui du
-      serveur prolonge segment par segment (`https://a.example` couvre
-      `https://a.example/mcp`, `https://a.example/mc` non), comme le SDK TypeScript ; les
-      jetons sont alors demandés pour cette ressource (lot 40b) ;
+      §3.3) : la ressource que nomment celles lues à la racine de l'origine
+      (`/.well-known/oauth-protected-resource`) est acceptée si elle couvre le serveur
+      MCP, c'est-à-dire si elle est la même, ou sur son origine avec un chemin que celui
+      du serveur prolonge segment par segment (`https://a.example` couvre
+      `https://a.example/mcp`, ni `https://a.example/mc` ni `https://a.example/mcp/`),
+      comme le SDK TypeScript ; les jetons sont alors demandés pour cette ressource
+      (lot 40b). Lues ailleurs, sous le chemin du serveur ou là où son refus les nomme,
+      elles doivent nommer le serveur lui-même : chez un hébergeur de serveurs MCP, un
+      client ne fait pas demander des jetons valables pour toute l'origine ;
   - **chaque échange** : PKCE S256 toujours ; la ressource (l'adresse canonique du
     serveur MCP) à la demande d'autorisation, à l'échange du code et à chaque
     renouvellement ; l'émetteur du retour (RFC 9207) vérifié s'il est donné, exigé si le
@@ -10314,15 +10318,25 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       - le serveur de démonstration protégé par ses jetons, avec ses travers
         (`connectors/src/testing/oauth/`) ;
     - 40b : la découverte (`connectors/src/mcp/oauth/discovery.rs`), à travers le
-      client durci, bornée en temps (10 s par requête) et en taille (256 Kio) :
-      - le serveur est sollicité sans jeton (`initialize`) ;
-      - les métadonnées que nomme son refus sont lues si elles sont sur son origine,
-        sinon aux adresses bien connues ;
+      client durci (`fetch.rs`), bornée en temps (10 s par requête, 30 s en tout) et
+      en taille (256 Kio par document) :
+      - le serveur est sollicité sans jeton (`initialize`) ; seuls son statut et son
+        défi sont lus, pas son corps, qui peut être un flux sans fin ;
+      - les métadonnées que nomme son refus sont lues si elles sont sur son origine et
+        à une adresse permise, sinon aux adresses bien connues ;
       - l'émetteur de l'administrateur, s'il en nomme un, doit être parmi ceux qu'elles
         nomment ; sans lui, il n'en faut qu'un ;
       - sans métadonnées, l'émetteur de l'administrateur, sinon l'origine du serveur,
-        est interrogé ;
-      - les portées suggérées sont celles du refus, sinon celles des métadonnées ;
+        est interrogé, si le serveur a refusé la sollicitation ; un serveur qui y
+        répond sans rien publier n'annonce pas OAuth, et le dit ;
+      - un serveur qui répond 429 ou 5xx est dit indisponible, « réessayez plus tard » :
+        ce n'est pas une absence de métadonnées ;
+      - un échec de requête est dit comme pour les autres connecteurs (adresse refusée,
+        trop lent, injoignable), l'adresse citée courte, jamais dans les mots du client
+        HTTP, qui l'écrivent entière ;
+      - les portées suggérées sont celles du refus, sinon celles des métadonnées ; les
+        portées du refus sont la parole du serveur même quand les métadonnées qu'il
+        nomme, ailleurs, ne sont pas suivies ;
       - un job de CI vérifie aussi la version minimale de Rust (1.88) ;
     - 40c : la déclaration par l'administrateur ;
     - 40d : l'autorisation, son retour, ses jetons scellés ;
@@ -10351,12 +10365,19 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       - des métadonnées d'une autre origine ou d'une autre ressource, ou un émetteur
         différent, ne sont pas suivis ;
     - `crates/connectors/tests/mcp_oauth_discovery.rs` (lot 40b) : le refus et les
-      métadonnées mènent au serveur d'autorisation, sans jeton envoyé ; des métadonnées à
-      la racine nomment l'origine ; un défi d'une autre origine n'est pas suivi ;
-      plusieurs serveurs d'autorisation attendent le choix de l'administrateur, qui doit
-      en nommer un du serveur ; sans métadonnées, l'émetteur nommé est interrogé ; des
-      métadonnées trompeuses ou un autre émetteur sont refusés ; rien n'est demandé là
-      où les règles réseau l'interdisent ;
+      métadonnées mènent au serveur d'autorisation, sans jeton envoyé, les portées du
+      refus avant celles des métadonnées ; des métadonnées à la racine nomment l'origine,
+      pas celles lues sous le chemin du serveur ; un défi d'une autre origine n'est pas
+      suivi, ses portées gardées ; plusieurs serveurs d'autorisation attendent le choix
+      de l'administrateur, qui doit en nommer un du serveur ; sans métadonnées,
+      l'émetteur nommé est interrogé, sinon l'origine du serveur, qui peut l'être ; un
+      serveur qui répond sans jeton n'est pas à autoriser ; des métadonnées trompeuses
+      ou un autre émetteur sont refusés ; rien n'est demandé là où les règles réseau
+      l'interdisent ;
+    - `crates/connectors/tests/mcp_oauth_discovery_bounds.rs` (lot 40b) : un document
+      trop long, une réponse qui ne vient jamais, pour une requête ou pour toutes, une
+      réponse coupée à une longue adresse écrite pour tromper, dite courte, un 503, un
+      nom qui ne mène à aucun serveur public, chacun refusé et dit ;
     - `crates/connectors/tests/mcp_oauth_authority.rs` : le serveur d'autorisation
       simulé use le code, vérifie PKCE et la ressource ; refuse un client qui se prouve de
       deux façons, d'une façon non annoncée ou avec un autre secret, un Basic refusé
