@@ -125,7 +125,8 @@ Repères à l'intérieur des crates :
   serveurs dans leurs bornes, `http/`, ADR-161, et le ping qui suit un appel échoué
   sans réponse du serveur, la session dite perdue s'il n'y répond pas, et sa fin datée,
   `liveness.rs`, ADR-164, ADR-165, et les règles de son autorisation OAuth : refus lu,
-  ressource protégée, serveur d'autorisation, portées, `oauth/`, ADR-171),
+  ressource protégée, serveur d'autorisation, portées, et la découverte qui les suit,
+  `oauth/`, ADR-171),
   `connectors/src/bin/mcp_demo_docs.rs`,
   `connectors/src/outbound/` (ce que partagent les serveurs MCP et les API REST d'une
   entreprise : réseau, préfixe, jeton, masquage, échecs, ADR-025, ADR-112 ; mandataire

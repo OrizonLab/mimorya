@@ -35,6 +35,32 @@ pub fn same_resource(a: &str, b: &str) -> bool {
     matches!((canonical_resource(a), canonical_resource(b)), (Some(a), Some(b)) if a == b)
 }
 
+/// Whether the resource `named` by a server's metadata covers the MCP
+/// server at `server`: the same, or on its origin with a path the server's
+/// continues segment by segment (`https://a.example` covers
+/// `https://a.example/mcp`; `https://a.example/mc` does not). Metadata
+/// published at the root names the origin (RFC 9728 §3.3).
+pub fn covers(named: &str, server: &str) -> bool {
+    if same_resource(named, server) {
+        return true;
+    }
+    let (Ok(named), Ok(server)) = (Url::parse(named), Url::parse(server)) else {
+        return false;
+    };
+    if !matches!(named.scheme(), "http" | "https")
+        || named.origin() != server.origin()
+        || named.query().is_some()
+        || named.fragment().is_some()
+        || !named.username().is_empty()
+        || named.password().is_some()
+    {
+        return false;
+    }
+    let prefix = named.path().trim_end_matches('/');
+    let path = server.path();
+    prefix.is_empty() || path == prefix || path.starts_with(&format!("{prefix}/"))
+}
+
 /// Whether `candidate` is on the origin of `server`: an http(s) address of
 /// the same scheme, host and port (a `blob:` address holding the server's
 /// is not).
@@ -165,5 +191,28 @@ mod tests {
                 "https://mcp.example.com/.well-known/oauth-protected-resource",
             ]
         );
+    }
+
+    #[test]
+    fn a_resource_covers_the_server_on_its_origin_and_path() {
+        let server = "https://mcp.example.com/tools/mcp";
+        for covering in [
+            "https://mcp.example.com",
+            "https://mcp.example.com/",
+            "https://mcp.example.com/tools",
+            "https://MCP.example.com:443/tools/mcp",
+        ] {
+            assert!(covers(covering, server), "{covering}");
+        }
+        for other in [
+            "https://mcp.example.com/tool",
+            "https://mcp.example.com/tools/mcp/more",
+            "https://mcp.example.com/?a=1",
+            "http://mcp.example.com",
+            "https://evil.example.com",
+            "blob:https://mcp.example.com/tools",
+        ] {
+            assert!(!covers(other, server), "{other}");
+        }
     }
 }

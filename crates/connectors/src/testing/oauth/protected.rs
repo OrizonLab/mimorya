@@ -21,6 +21,8 @@ use crate::testing::mcp_router;
 
 /// Where the server publishes its metadata, under its path (RFC 9728 §3.1).
 pub const METADATA_PATH: &str = "/.well-known/oauth-protected-resource/mcp";
+/// Where a server publishes it for its whole origin.
+const ROOT_METADATA_PATH: &str = "/.well-known/oauth-protected-resource";
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum OAuthQuirk {
@@ -38,6 +40,9 @@ pub enum OAuthQuirk {
     RefusesAll,
     /// The refusal's challenges on two header lines, `Basic` then `Bearer`.
     SplitChallenge,
+    /// Metadata at the root only, naming the origin as the resource
+    /// (RFC 9728 §3.3), and a challenge that names none.
+    RootMetadata,
 }
 
 /// The server: its address, and the `Authorization` headers it received.
@@ -67,7 +72,7 @@ pub async fn serve_oauth_mcp_http(
     let url = format!("{origin}/mcp");
     let seen = Arc::new(Mutex::new(Vec::new()));
     let challenge = match quirk {
-        OAuthQuirk::NoMetadata => "Bearer realm=\"mcp\"".to_string(),
+        OAuthQuirk::NoMetadata | OAuthQuirk::RootMetadata => "Bearer realm=\"mcp\"".to_string(),
         OAuthQuirk::ForeignMetadata => format!(
             "Bearer error=\"invalid_token\", resource_metadata=\"http://127.0.0.2:9{METADATA_PATH}\""
         ),
@@ -111,10 +116,10 @@ pub async fn serve_oauth_mcp_http(
     };
     let mut router = mcp_router(DemoDocsServer::default).route_layer(middleware::from_fn(guard));
     if quirk != OAuthQuirk::NoMetadata {
-        let resource = if quirk == OAuthQuirk::OtherResource {
-            format!("{url}/autre")
-        } else {
-            url.clone()
+        let resource = match quirk {
+            OAuthQuirk::OtherResource => format!("{url}/autre"),
+            OAuthQuirk::RootMetadata => origin.clone(),
+            _ => url.clone(),
         };
         let mut servers = vec![authority.issuer.clone()];
         if quirk == OAuthQuirk::TwoServers {
@@ -126,8 +131,13 @@ pub async fn serve_oauth_mcp_http(
             "scopes_supported": ["files:read"],
             "bearer_methods_supported": ["header"],
         });
+        let path = if quirk == OAuthQuirk::RootMetadata {
+            ROOT_METADATA_PATH
+        } else {
+            METADATA_PATH
+        };
         router = router.route(
-            METADATA_PATH,
+            path,
             get(move || {
                 let document = document.clone();
                 async move { axum::Json(document).into_response() }

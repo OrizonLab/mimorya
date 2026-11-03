@@ -1,9 +1,11 @@
-//! An MCP server's Protected Resource Metadata (RFC 9728): which
-//! authorization servers issue its tokens, and the scopes it supports. The
-//! document comes from the server: it is taken only if it names this very
-//! server as its resource (RFC 9728 §3.3, a document copied from another
-//! resource is refused), between one and ten authorization servers, each
-//! an address the network rules allow (ADR-025). Its scopes are only
+//! An MCP server's Protected Resource Metadata (RFC 9728): the resource its
+//! tokens are for, which authorization servers issue them, and the scopes
+//! it supports. The document comes from the server: it is taken only if
+//! the resource it names covers this very server (the same, or its origin
+//! and a path the server's continues, as metadata published at the root
+//! names it, RFC 9728 §3.3; a document copied from another resource is
+//! refused), and names between one and ten authorization servers, each an
+//! address the network rules allow (ADR-025). Its scopes are only
 //! suggestions: kept if each could be asked for, else none.
 
 use serde::Deserialize;
@@ -11,7 +13,7 @@ use serde::Deserialize;
 use url::Url;
 
 use super::quoted::quoted;
-use super::resource::same_resource;
+use super::resource::{canonical_resource, covers};
 use super::scope::scopes_problem;
 use mimorya_core::plain_text::is_hidden;
 
@@ -22,6 +24,8 @@ pub const MAX_AUTHORIZATION_SERVERS: usize = 10;
 /// What the platform keeps of the metadata.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProtectedResource {
+    /// The resource tokens are asked for (RFC 8707), canonical.
+    pub resource: String,
     pub authorization_servers: Vec<String>,
     pub scopes_supported: Vec<String>,
 }
@@ -43,16 +47,17 @@ pub fn read_protected_resource(
 ) -> Result<ProtectedResource, String> {
     let document: Document = serde_json::from_slice(body)
         .map_err(|_| "Métadonnées de la ressource protégée illisibles".to_string())?;
-    if !document
+    let named = document
         .resource
         .as_deref()
-        .is_some_and(|named| same_resource(named, resource))
-    {
+        .filter(|named| covers(named, resource))
+        .and_then(canonical_resource);
+    let Some(named) = named else {
         return Err(
             "Les métadonnées de la ressource protégée nomment une autre ressource que ce serveur"
                 .into(),
         );
-    }
+    };
     let servers = document.authorization_servers.unwrap_or_default();
     if servers.is_empty() {
         return Err(
@@ -74,6 +79,7 @@ pub fn read_protected_resource(
     }
     let scopes = document.scopes_supported.unwrap_or_default();
     Ok(ProtectedResource {
+        resource: named,
         authorization_servers: servers,
         scopes_supported: if scopes_problem(&scopes).is_none() {
             scopes
@@ -171,6 +177,7 @@ mod tests {
         assert_eq!(
             read,
             Ok(ProtectedResource {
+                resource: RESOURCE.into(),
                 authorization_servers: vec![
                     "https://auth.example.com".into(),
                     "https://auth.example.com/t1".into()
@@ -294,5 +301,17 @@ mod tests {
             "authorization_servers": ["https://auth.example.com/\u{202e}moc.elgoog\nURGENT"],
         });
         assert!(read(document).is_err());
+    }
+
+    #[test]
+    fn metadata_at_the_root_names_the_origin_the_tokens_are_for() {
+        let read = read(json!({
+            "resource": "https://MCP.example.com",
+            "authorization_servers": ["https://auth.example.com"],
+        }));
+        assert_eq!(
+            read.map(|r| r.resource),
+            Ok("https://mcp.example.com".to_string())
+        );
     }
 }
