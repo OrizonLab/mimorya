@@ -125,8 +125,8 @@ Repères à l'intérieur des crates :
   serveurs dans leurs bornes, `http/`, ADR-161, et le ping qui suit un appel échoué
   sans réponse du serveur, la session dite perdue s'il n'y répond pas, et sa fin datée,
   `liveness.rs`, ADR-164, ADR-165, et les règles de son autorisation OAuth : refus lu,
-  ressource protégée, serveur d'autorisation, portées, et la découverte qui les suit,
-  `oauth/`, ADR-171),
+  ressource protégée, serveur d'autorisation, portées, la découverte qui les suit et
+  la déclaration qu'en garde l'administrateur, `oauth/`, ADR-171),
   `connectors/src/bin/mcp_demo_docs.rs`,
   `connectors/src/outbound/` (ce que partagent les serveurs MCP et les API REST d'une
   entreprise : réseau, préfixe, jeton, masquage, échecs, ADR-025, ADR-112 ; mandataire
@@ -183,7 +183,8 @@ Repères à l'intérieur des crates :
   TypeScript, ADR-036, ADR-039),
   `api/src/services/admin/` (comptes et absence d'un collaborateur empêché
   (`absences.rs`, ADR-078), organisation, habilitations, connecteurs : ce que
-  l'administration change de chacun (`connector_config.rs`), seules les politiques changées
+  l'administration change de chacun (`connector_config.rs`), OAuth déclaré sur un serveur
+  MCP (`connector_oauth.rs`, ADR-171), seules les politiques changées
   tracées (`policy_changes.rs`, ADR-160) et API REST ajoutées
   (`rest_connectors.rs`, ADR-112, opérations lues d'une description OpenAPI, ADR-114),
   partages de connaissances entre unités (`knowledge_shares.rs`, ADR-143), politiques

@@ -15,6 +15,7 @@ use uuid::Uuid;
 use validator::Validate;
 
 use super::google_workspace::GoogleWorkspaceApp;
+use super::mcp_oauth::McpOAuth;
 use super::microsoft365::Microsoft365App;
 use super::rest_connectors::{RestApi, RestOperation};
 use crate::contract::{ToolRisk, stored_text};
@@ -63,6 +64,8 @@ pub struct McpEndpoint {
     pub prefix: String,
     pub url: String,
     pub token_stored: bool,
+    /// OAuth declared on it (ADR-171), which no typed token goes with.
+    pub oauth: Option<McpOAuth>,
 }
 
 #[derive(Debug, Serialize, TS)]

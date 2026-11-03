@@ -13,6 +13,7 @@ mod google_workspace;
 mod identity_providers;
 mod knowledge_shares;
 mod llm;
+mod mcp_oauth;
 mod memory_settings;
 mod microsoft365;
 mod mission_settings;
@@ -52,6 +53,7 @@ pub use identity_providers::{
 };
 pub use knowledge_shares::{KnowledgeShareView, KnowledgeShares, NewKnowledgeShare, ShareableUnit};
 pub use llm::{LlmChoice, LlmSettingsView, LlmTestResult, LlmView, PlatformModel, ProviderKind};
+pub use mcp_oauth::{McpOAuth, McpOAuthDeclaration, OAuthClientAuth};
 pub use memory_settings::{MemorySettingsUpdate, MemorySettingsView};
 pub use microsoft365::{Microsoft365App, NewMicrosoft365Connector};
 pub use mission_settings::{MissionSettingsUpdate, MissionSettingsView};

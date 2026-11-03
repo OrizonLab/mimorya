@@ -72,6 +72,16 @@ async fn a_challenge_naming_another_origin_is_not_followed() {
 }
 
 #[tokio::test]
+async fn a_challenge_naming_metadata_the_platform_does_not_reach_is_passed_over() {
+    // Its address carries parameters, which the platform never sends: the
+    // well-known location is read instead.
+    let authority = FakeAuthorizationServer::start().await;
+    let server = serve_oauth_mcp_http(&authority, OAuthQuirk::ParamsInChallenge).await;
+    let found = discover(&server.url, None, PRIVATE).await.expect("found");
+    assert_eq!(found.issuer, authority.issuer);
+}
+
+#[tokio::test]
 async fn several_authorization_servers_wait_for_the_administrator_s_choice() {
     let authority = FakeAuthorizationServer::start().await;
     let server = serve_oauth_mcp_http(&authority, OAuthQuirk::TwoServers).await;

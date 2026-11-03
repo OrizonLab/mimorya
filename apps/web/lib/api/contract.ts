@@ -1272,7 +1272,44 @@ export type McpEndpoint = {
 /**
  * Its tools are named `mcp_<prefix>_<tool>`.
  */
-prefix: string, url: string, tokenStored: boolean, };
+prefix: string, url: string, tokenStored: boolean,
+/**
+ * OAuth declared on it (ADR-171), which no typed token goes with.
+ */
+oauth: McpOAuth | null, };
+
+/**
+ * OAuth declared on an MCP server, as `McpEndpoint` shows it and its
+ * declaration answers it.
+ */
+export type McpOAuth = { issuer: string,
+/**
+ * The resource tokens are asked for.
+ */
+resource: string, authorizationEndpoint: string, tokenEndpoint: string, clientId: string, clientAuth: OAuthClientAuth, scopes: Array<string>, clientSecretStored: boolean, };
+
+/**
+ * Body of `PUT /admin/connectors/{id}/oauth`: declared again, everything
+ * is replaced, the secret included.
+ */
+export type McpOAuthDeclaration = {
+/**
+ * The authorization server's issuer: needed when the server names
+ * several, or none.
+ */
+issuer?: string,
+/**
+ * The client registered at the authorization server.
+ */
+clientId: string,
+/**
+ * Absent or blank: a public client.
+ */
+clientSecret?: string,
+/**
+ * Absent: those the server suggests.
+ */
+scopes?: Array<string>, };
 
 /**
  * `GET /auth/me`.
@@ -1802,6 +1839,11 @@ ownRuns: boolean,
  * The end of their missions.
  */
 missionEnds: boolean, };
+
+/**
+ * How the client proves itself to the token endpoint.
+ */
+export type OAuthClientAuth = "none" | "client_secret_basic" | "client_secret_post";
 
 export type OccurrenceOutcome = "started" | "still_running" | "missed" | "refused" | "failed";
 

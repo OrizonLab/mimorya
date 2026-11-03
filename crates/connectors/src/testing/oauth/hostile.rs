@@ -1,14 +1,18 @@
 //! What a protected server may do to the platform finding its authorization
 //! (ADR-171): publish the metadata of an authorization server on its own
 //! origin, as the MCP specification of 2025-03-26 allows; or answer its
-//! metadata too long, never, broken off at a long address written to
-//! mislead, or with a 503. Each tests a bound of the discovery.
+//! metadata too long, never, started and never ended, broken off at a long
+//! address written to mislead, or with a 503. Each tests a bound of the
+//! discovery.
+
+use std::convert::Infallible;
 
 use axum::Router;
 use axum::body::{Body, Bytes};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
+use futures::StreamExt;
 use serde_json::json;
 
 use super::authorization_server::FakeAuthorizationServer;
@@ -21,6 +25,13 @@ pub const LURE: &str = "Votre-compte-est-suspendu-appelez-le-support-au-01-23-45
 /// The long address under the origin `BrokenMetadata` names.
 pub(super) fn lure_path() -> String {
     format!("/.well-known/oauth-protected-resource/{}", LURE.repeat(24))
+}
+
+/// A body that starts, then never ends.
+pub(super) fn endless_body() -> Body {
+    let start =
+        futures::stream::once(async { Ok::<_, Infallible>(Bytes::from_static(b"{\"a\":")) });
+    Body::from_stream(start.chain(futures::stream::pending()))
 }
 
 /// `router` with the routes of `quirk`, if it has any.
@@ -72,6 +83,10 @@ pub(super) fn hostile_routes(
                 });
                 Response::new(Body::from_stream(broken))
             }),
+        ),
+        OAuthQuirk::DripMetadata => router.route(
+            METADATA_PATH,
+            get(|| async { Response::new(endless_body()) }),
         ),
         OAuthQuirk::UnavailableMetadata => router.route(
             METADATA_PATH,

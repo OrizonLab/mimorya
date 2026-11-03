@@ -14,6 +14,7 @@ use reqwest_mcp::header::{ACCEPT, CONTENT_TYPE, WWW_AUTHENTICATE};
 use reqwest_mcp::{Client, RequestBuilder, Response};
 
 use super::quoted::quoted;
+use crate::mcp::http::{Read, read_within};
 use crate::outbound::{
     NetworkPolicy, Redactor, TOO_SLOW, explained, http_client, request_cause, url_problem,
 };
@@ -77,7 +78,7 @@ impl Fetcher {
     pub async fn document(&self, location: &str) -> Result<Option<Vec<u8>>, String> {
         let request = self.client.get(location).header(ACCEPT, "application/json");
         self.within(location, async {
-            let mut response = self.send(request, location).await?;
+            let response = self.send(request, location).await?;
             let status = response.status().as_u16();
             if let Some(problem) = unavailable(location, status) {
                 return Err(problem);
@@ -85,22 +86,15 @@ impl Fetcher {
             if status != 200 {
                 return Ok(None);
             }
-            let mut body = Vec::new();
-            while let Some(chunk) = response
-                .chunk()
-                .await
-                .map_err(|error| failed(location, error))?
-            {
-                if body.len() + chunk.len() > MAX_DOCUMENT_BYTES {
-                    return Err(format!(
-                        "Réponse de « {} » trop longue ({} Kio au plus)",
-                        quoted(location),
-                        MAX_DOCUMENT_BYTES / 1024
-                    ));
-                }
-                body.extend_from_slice(&chunk);
+            match read_within(response, MAX_DOCUMENT_BYTES).await {
+                Ok(Read::Whole(body)) => Ok(Some(body)),
+                Ok(Read::Cut(_)) => Err(format!(
+                    "Réponse de « {} » trop longue ({} Kio au plus)",
+                    quoted(location),
+                    MAX_DOCUMENT_BYTES / 1024
+                )),
+                Err(error) => Err(failed(location, error)),
             }
-            Ok(Some(body))
         })
         .await
     }

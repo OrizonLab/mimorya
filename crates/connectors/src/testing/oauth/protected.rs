@@ -17,7 +17,7 @@ use axum::routing::get;
 use serde_json::json;
 
 use super::authorization_server::FakeAuthorizationServer;
-use super::hostile::{hostile_routes, lure_path};
+use super::hostile::{endless_body, hostile_routes, lure_path};
 use crate::mcp::DemoDocsServer;
 use crate::testing::mcp_router;
 
@@ -59,6 +59,16 @@ pub enum OAuthQuirk {
     BrokenMetadata,
     /// Metadata answered 503 (`hostile`).
     UnavailableMetadata,
+    /// Metadata whose answer starts, then never ends (`hostile`).
+    DripMetadata,
+    /// A request without a token answered with this status instead of a
+    /// refusal.
+    ProbeAnswered(u16),
+    /// A refusal whose body never ends.
+    EndlessRefusal,
+    /// A challenge naming its metadata with parameters, which the
+    /// platform does not send.
+    ParamsInChallenge,
 }
 
 impl OAuthQuirk {
@@ -72,6 +82,7 @@ impl OAuthQuirk {
                 | Self::SilentMetadata
                 | Self::BrokenMetadata
                 | Self::UnavailableMetadata
+                | Self::DripMetadata
         )
     }
 }
@@ -114,6 +125,9 @@ pub async fn serve_oauth_mcp_http(
             "Bearer error=\"invalid_token\", resource_metadata=\"{origin}{}\"",
             lure_path()
         ),
+        OAuthQuirk::ParamsInChallenge => format!(
+            "Bearer error=\"invalid_token\", resource_metadata=\"{origin}{METADATA_PATH}?v=2\""
+        ),
         _ => format!(
             "Bearer error=\"invalid_token\", resource_metadata=\"{origin}{METADATA_PATH}\", \
              scope=\"files:read\""
@@ -141,13 +155,22 @@ pub async fn serve_oauth_mcp_http(
                 {
                     return next.run(request).await;
                 }
+                if let OAuthQuirk::ProbeAnswered(status) = quirk {
+                    let status = StatusCode::from_u16(status).expect("status");
+                    return status.into_response();
+                }
                 let mut refusal = Response::builder().status(StatusCode::UNAUTHORIZED);
                 if quirk == OAuthQuirk::SplitChallenge {
                     refusal = refusal.header(header::WWW_AUTHENTICATE, "Basic realm=\"mcp\"");
                 }
+                let body = if quirk == OAuthQuirk::EndlessRefusal {
+                    endless_body()
+                } else {
+                    Body::empty()
+                };
                 refusal
                     .header(header::WWW_AUTHENTICATE, challenge)
-                    .body(Body::empty())
+                    .body(body)
                     .expect("response")
             }
         }

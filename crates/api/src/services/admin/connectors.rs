@@ -3,7 +3,8 @@
 //! ADR-112) with an optional access token (sealed in the secret store, never
 //! shown nor audited), changed, switched on or off, and deleted, under the
 //! administration lock. A token never follows the connector to another
-//! address.
+//! address, nor does an OAuth declaration and its client's secret
+//! (`connector_oauth`, ADR-171), which no typed token goes with.
 
 use std::collections::HashMap;
 
@@ -26,7 +27,7 @@ use super::policy_changes::policy_changes;
 use super::{audit_entry, begin_change};
 use crate::secrets::SecretStore;
 use crate::services::AccessContext;
-use crate::services::connectors::{ConnectorService, token_secret_name};
+use crate::services::connectors::{ConnectorService, client_secret_name, token_secret_name};
 
 pub(super) const PERMISSION: &str = "connector:manage";
 
@@ -171,6 +172,7 @@ pub async fn update_connector(
         .map(|names| json!(names));
     let mut previous_url = None;
     let mut dropped = Vec::new();
+    let mut oauth = None;
     let configured =
         changes.url.is_some() || changes.rest.is_some() || changes.write_tools.is_some();
     if configured || changes.token.is_some() || changes.tool_policies.is_some() {
@@ -189,6 +191,13 @@ pub async fn update_connector(
             };
             return Err(DomainError::validation(refusal).into());
         };
+        if editable.oauth().is_some() && matches!(changes.token, Some(TokenChange::Replace(_))) {
+            return Err(DomainError::validation(
+                "Ce serveur est déclaré avec OAuth : retirez la déclaration OAuth avant de saisir \
+                 un jeton",
+            )
+            .into());
+        }
         if editable.requires_secret() && matches!(changes.token, Some(TokenChange::Remove)) {
             return Err(DomainError::validation(
                 "Le secret de l’application ne se retire pas : remplacez-le, ou supprimez le \
@@ -207,6 +216,13 @@ pub async fn update_connector(
         dropped = policies.dropped;
         let current_url = editable.url().to_string();
         let moved = changes.url.as_ref().is_some_and(|url| *url != current_url);
+        if moved && editable.oauth().is_some() {
+            admin
+                .secrets
+                .delete(&mut tx, &client_secret_name(id))
+                .await?;
+            oauth = Some("removed");
+        }
         let rehomed = header
             .as_ref()
             .is_some_and(|header| header.as_deref() != editable.token_header());
@@ -247,6 +263,7 @@ pub async fn update_connector(
         "url": changes.url,
         "previousUrl": previous_url,
         "token": token,
+        "oauth": oauth,
         "tokenHeader": header,
         "operations": operations,
         "writeTools": changes.write_tools,
@@ -292,10 +309,9 @@ pub async fn delete_connector(
         .into());
     }
     delete_connector_instance(&mut tx, id).await?;
-    admin
-        .secrets
-        .delete(&mut tx, &token_secret_name(id))
-        .await?;
+    for secret in [token_secret_name(id), client_secret_name(id)] {
+        admin.secrets.delete(&mut tx, &secret).await?;
+    }
     append_audit(
         &mut tx,
         audit_entry(access, "connector.deleted", "connector", id).metadata(json!({

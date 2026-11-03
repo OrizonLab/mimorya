@@ -16,6 +16,7 @@ mod absences;
 mod approval_routing;
 mod assignments;
 mod connector_config;
+mod connector_oauth;
 mod connector_rules;
 mod connector_test;
 mod connector_trial;
@@ -56,6 +57,7 @@ pub use absences::{AbsenceAdmin, absence_of, declare_absence_for, end_absence_fo
 pub use approval_routing::{manager_risks, set_manager_risks};
 pub use assignments::{grant_role, revoke_role};
 pub use connector_config::{Editable, RestChanges};
+pub use connector_oauth::{OAuthInput, declare_oauth, remove_oauth};
 pub use connector_rules::ToolPolicyInput;
 pub use connector_test::{ConnectorTestOutcome, TestedTool, test_connector};
 pub use connector_trial::{McpTrial, TrialServices, try_mcp_connector};

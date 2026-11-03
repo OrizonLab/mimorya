@@ -10338,7 +10338,27 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
         portées du refus sont la parole du serveur même quand les métadonnées qu'il
         nomme, ailleurs, ne sont pas suivies ;
       - un job de CI vérifie aussi la version minimale de Rust (1.88) ;
-    - 40c : la déclaration par l'administrateur ;
+    - 40c : la déclaration par l'administrateur (`PUT` et `DELETE`
+      `/api/admin/connectors/{id}/oauth`, `services/admin/connector_oauth.rs`) :
+      - l'identifiant du client, son secret facultatif, l'émetteur et les portées sont
+        vérifiés avant que rien ne soit demandé au serveur ;
+      - la découverte se fait hors de toute transaction, sous une place des démarrages
+        de l'administration de l'entreprise (ADR-055) ; ce qu'elle trouve n'est gardé
+        que si l'adresse du serveur n'a pas changé entre-temps ;
+      - la déclaration (`mcp/oauth/declaration.rs`) est gardée dans la configuration du
+        connecteur : émetteur, ressource, points d'autorisation et de jeton, émetteur
+        nommé au retour ou non, identifiant du client, façon dont il se prouve
+        (choisie selon qu'il a un secret), portées ; le secret est scellé à part
+        (`connector.{id}.client_secret`) ;
+      - le jeton saisi est retiré par la déclaration, et refusé tant qu'elle tient ;
+        déclarée de nouveau, elle est remplacée entière, secret compris ; changer
+        l'adresse du serveur ou supprimer le connecteur retire la déclaration et le
+        secret ;
+      - jusqu'à son autorisation, le connecteur ne démarre aucune session et le dit ;
+      - tracés : `connector.oauth_declared` (émetteur, ressource, client, façon de se
+        prouver, portées, secret gardé ou non, jeton retiré ou non, déclaration
+        remplacée ou non), `connector.oauth_removed`, et `oauth: removed` dans
+        `connector.updated` quand l'adresse change ; jamais le secret ;
     - 40d : l'autorisation, son retour, ses jetons scellés ;
     - 40e : le jeton dans les sessions ;
     - 40f : le renouvellement ;
@@ -10377,7 +10397,21 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     - `crates/connectors/tests/mcp_oauth_discovery_bounds.rs` (lot 40b) : un document
       trop long, une réponse qui ne vient jamais, pour une requête ou pour toutes, une
       réponse coupée à une longue adresse écrite pour tromper, dite courte, un 503, un
-      nom qui ne mène à aucun serveur public, chacun refusé et dit ;
+      nom qui ne mène à aucun serveur public, chacun refusé et dit ; au lot 40c, un
+      document dont le corps ne finit pas, borné par le délai de sa requête, un refus
+      au corps sans fin, non lu, un 429 ou un 503 à la sollicitation, et un défi qui
+      nomme des métadonnées avec des paramètres, passé pour les adresses bien connues ;
+    - `crates/api/tests/connector_oauth_declaration.rs` (lot 40c) : un administrateur
+      déclare OAuth là où la découverte le trouve, le serveur sollicité sans aucun
+      jeton, le jeton saisi retiré, le secret scellé, jamais montré ni tracé ; le
+      connecteur, pas encore autorisé, le dit ; déclarée de nouveau, la déclaration est
+      remplacée, secret compris, puis retirée une fois ; ce qu'écrit l'administrateur
+      est vérifié avant que le serveur ne soit sollicité ; un serveur dont
+      l'autorisation est introuvable, un connecteur qui n'est pas un serveur MCP ajouté
+      ici, ou absent, sont refusés ; un administrateur d'une partie de l'entreprise ne
+      déclare rien ; aucun jeton saisi avec OAuth ; la même adresse garde la
+      déclaration, une autre la retire avec le secret, de même que la suppression du
+      connecteur ;
     - `crates/connectors/tests/mcp_oauth_authority.rs` : le serveur d'autorisation
       simulé use le code, vérifie PKCE et la ressource ; refuse un client qui se prouve de
       deux façons, d'une façon non annoncée ou avec un autre secret, un Basic refusé
