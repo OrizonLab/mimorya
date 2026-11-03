@@ -4,6 +4,8 @@
 //! where to decide. Neither the policies' descriptions nor their conditions:
 //! the message leaves the platform, and they are shown after signing in.
 
+use mimorya_core::policy_rules::GRANT_PROPOSAL_DAYS;
+
 use crate::mail::Mail;
 
 pub struct PolicyProposalsMail<'a> {
@@ -53,8 +55,9 @@ pub fn policy_proposals_mail(notice: &PolicyProposalsMail<'_>) -> Mail {
              {what}\n\n\
              Une autorisation ouvre des données au-delà des rôles : elle ne s’applique qu’une \
              fois approuvée par un autre administrateur des politiques que son auteur, dans les \
-             sept jours. Pour la relire, l’approuver ou la refuser, connectez-vous et ouvrez \
-             l’onglet « Politiques d’accès » de l’administration :\n\
+             {GRANT_PROPOSAL_DAYS} jours qui suivent la proposition. Pour la relire, \
+             l’approuver ou la refuser, connectez-vous et ouvrez l’onglet « Politiques \
+             d’accès » de l’administration :\n\
              {link}\n"
         ),
     }
@@ -88,6 +91,10 @@ mod tests {
         assert!(one.text.starts_with("Bonjour Claire Dumas,\n\n"));
         assert!(one.text.contains(
             "Paul Renaud propose une politique d’autorisation dans Mimorya (Néo Maintenance)."
+        ));
+        assert!(one.text.contains(
+            "approuvée par un autre administrateur des politiques que son auteur, dans les 7 \
+             jours qui suivent la proposition."
         ));
         assert!(one.text.contains(
             "ouvrez l’onglet « Politiques d’accès » de l’administration :\n\

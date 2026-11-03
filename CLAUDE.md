@@ -164,7 +164,8 @@ Repères à l'intérieur des crates :
   mémoire et des passages des documents en arrière-plan, `memory_indexing.rs`, ADR-074,
   ADR-096 ; tâches planifiées lancées
   chaque minute, `scheduled_tasks.rs`, ADR-080 ; fin des missions annoncée à leur
-  auteur, ADR-091, et propositions de compétences à leurs administrateurs, ADR-102 ;
+  auteur, ADR-091, propositions de compétences à leurs administrateurs, ADR-102, et
+  autorisations proposées aux autres administrateurs des politiques, ADR-170 ;
   évaluations des compétences jouées, ADR-104 ; baux des runs renouvelés et runs au
   bail expiré repris, `run_leases.rs`, ADR-083 ; événements des autres processus écoutés
   et fragments de texte envoyés, `run_event_relay.rs`, ADR-084 ; runs en file réservés

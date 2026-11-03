@@ -259,7 +259,11 @@ utilisateur).
   entreprise, ADR-074, ADR-096), `system_unannounced_skill_proposals` (lister les
   entreprises actives dont des propositions de compétences attendent une décision sans
   avoir été annoncées à leurs administrateurs : entreprise seulement, chacune lue ensuite
-  dans sa propre entreprise, ADR-102), `system_pending_skill_evaluations` (lister les
+  dans sa propre entreprise, ADR-102), `system_unannounced_policy_proposals` (de même
+  pour les autorisations proposées qui attendent encore, non expirées, sans avoir été
+  annoncées aux autres administrateurs des politiques, ADR-170),
+  `system_purge_policy_proposals` (supprimer les autorisations proposées décidées, ou
+  laissées expirer, depuis plus de 90 jours, ADR-168), `system_pending_skill_evaluations` (lister les
   évaluations de compétences en file dans une entreprise active, les plus anciennes
   d'abord, et celles qu'un arrêt a laissées en cours : entreprise et identifiant
   seulement, chacune jouée ou close ensuite dans sa propre entreprise, ADR-104),
@@ -277,7 +281,17 @@ utilisateur).
   et pauses des runs lancés depuis Slack dans une conversation tenue dans un fil actif,
   encore à y répondre, celles d'un fil dans l'ordre : entreprise et identifiant de
   l'événement seulement, le run et l'événement de l'entreprise du fil, chacune répondue
-  ensuite dans sa propre entreprise, ADR-127), `system_purge_gateway_link_codes`
+  ensuite dans sa propre entreprise, ADR-127), `auth_gateway_tenant` (l'entreprise de la
+  passerelle désignée par son identifiant et son type, avant toute session, la requête du
+  service étant prouvée ensuite par sa signature, son secret ou son jeton lus dans cette
+  entreprise : entreprise seulement, ADR-125, ADR-133, ADR-138),
+  `system_gateway_approvals_to_notify` (lister les runs en pause des entreprises actives
+  dont une passerelle est active, avec des demandes qui attendent un responsable au compte
+  actif et dont l'avis par cette passerelle reste à tenter : entreprise, run et passerelle
+  seulement, chacun annoncé ensuite dans sa propre entreprise, ADR-130, ADR-137, ADR-142),
+  `system_purge_gateway_events` (oublier les événements des passerelles reçus depuis plus
+  d'un jour, dont seuls les identifiants et les heures sont gardés, ADR-125),
+  `system_purge_gateway_link_codes`
   (oublier les codes de liaison Telegram expirés de toutes les entreprises, ADR-133).
 
 ## 5. Rétention (valeurs par défaut, configurables par entreprise)

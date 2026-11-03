@@ -10136,10 +10136,13 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     `0072`, lues par `system_unannounced_policy_proposals`) ;
   - **à qui** : chaque compte qui peut les décider, c'est-à-dire qui détient
     `policy:manage` sur toute l'entreprise selon les règles du moment
-    (`holds_company_wide`), reçoit un e-mail qui compte les propositions faites par un
-    autre que lui. L'auteur n'est jamais prévenu de la sienne. Une proposition que nul
-    autre que son auteur ne peut décider n'est pas annoncée : elle attend un autre
-    administrateur, et l'est dès qu'il y en a un ;
+    (`company_wide_administrators`, qui vérifie chacun par `holds_company_wide`), reçoit
+    un e-mail qui compte les propositions faites par un autre que lui. L'auteur n'est
+    jamais prévenu de la sienne. Une proposition que nul autre que son auteur ne peut
+    décider n'est pas annoncée : elle attend un autre administrateur, et l'est dès qu'il y
+    en a un. De même, une proposition dont l'auteur n'administre plus les politiques, que
+    nul ne peut alors approuver (ADR-168), attend qu'il les administre de nouveau, ou
+    son expiration ;
   - **ce que dit l'e-mail** : combien de propositions, par qui, ce qu'une approbation
     fait et où décider. Ni leur description ni leur condition : le message quitte la
     plateforme ;
@@ -10152,17 +10155,33 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     - chaque avis est audité (`policy.proposals_announced`, avec les propositions, sans
       l'adresse) ;
   - la liste des comptes qui pourraient administrer une permission devient commune
-    (`repositories/administrators.rs`, `possible_administrators`), utilisée aussi par les
-    propositions de compétences.
+    (`repositories/administrators.rs`, `possible_administrators`), de même que ceux qui
+    l'administrent sur toute l'entreprise (`services/admin`,
+    `company_wide_administrators`). Les propositions de compétences s'en servent aussi ;
+  - l'e-mail dit le délai d'une proposition à partir de `GRANT_PROPOSAL_DAYS`, la durée
+    qui la fait expirer.
 - **Conséquences** :
-  - tests (`crates/api/tests/policy_proposal_notices.rs`) :
+  - tests de la manière dont ils sont prévenus (`crates/api/tests/policy_proposal_notices.rs`) :
     - une proposition est annoncée une fois aux autres administrateurs, jamais à son
       auteur, sans sa description ;
     - une proposition que nul autre ne peut décider attend, et une proposition décidée
       avant la passe n'est pas annoncée ;
     - un administrateur qui a choisi de ne pas être prévenu ne reçoit rien, et c'est
       tracé ;
-    - rien n'est annoncé sans relais ;
+    - un message refusé par le relais est tracé, la proposition notée, et rien n'est
+      renvoyé ;
+    - rien n'est annoncé sans relais, ni par un processus qui n'exécute pas les runs, ni
+      pendant qu'un autre tient le verrou de la passe ;
+  - tests de qui est prévenu (`crates/api/tests/policy_proposal_notice_recipients.rs`) :
+    - ni un administrateur d'une unité seulement, ni un compte désactivé, ni un rôle dont
+      l'affectation a expiré : la proposition attend, puis seul un administrateur de toute
+      l'entreprise est prévenu ;
+    - ni un administrateur qu'une politique de refus écarte des politiques, prévenu
+      dès qu'elle est retirée ;
+    - aucun avis tant que l'auteur n'administre plus les politiques, puis un avis dès
+      qu'il les administre de nouveau ;
+    - une proposition expirée n'est ni annoncée ni notée, et son entreprise n'est même
+      pas listée ;
   - le gabarit de l'e-mail est testé dans `services/policy_proposal_notice/mail.rs` ;
   - suites de l'audit de la PR #183 :
     - l'avertissement du formulaire est annoncé (`role="status"`) ;

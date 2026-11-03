@@ -1,13 +1,10 @@
 //! What tells the skills' administrators of the agent's proposals
 //! (ADR-102): the companies holding proposals never announced, those
-//! proposals, the accounts that may decide them, and the record that they
-//! were told, or that the relay refused it.
+//! proposals, and the record that they were told, or that the relay refused
+//! it. The accounts that may decide them: `administrators.rs`.
 
 use sqlx::{PgConnection, PgPool};
 use uuid::Uuid;
-
-pub use super::administrators::Recipient;
-use super::administrators::possible_administrators;
 
 /// A proposal awaiting a decision, never announced.
 #[derive(Debug, Clone, sqlx::FromRow)]
@@ -39,15 +36,6 @@ pub async fn unannounced_proposals(
     )
     .fetch_all(conn)
     .await
-}
-
-/// The company's active accounts holding, unexpired, a role that grants
-/// `skill:manage` on the company or a unit: whether each may decide, on
-/// the whole company, is then checked with the company's rules.
-pub async fn possible_skill_administrators(
-    conn: &mut PgConnection,
-) -> sqlx::Result<Vec<Recipient>> {
-    possible_administrators(conn, "skill:manage").await
 }
 
 /// Records that `version_ids` were announced, or that the relay refused

@@ -5,11 +5,13 @@
 //! minute, a process that executes runs gathers each company's proposals
 //! still waiting and never announced, one process at a time (ADR-086), and
 //! sends each account that may decide them (`policy:manage` on the whole
-//! company, as the company's rules say now, `holds_company_wide`) one
-//! e-mail counting those it did not propose itself, unless it chose not to
-//! receive the requests awaiting its decision (ADR-094): recorded as
+//! company, as the company's rules say now, `company_wide_administrators`)
+//! one e-mail counting those it did not propose itself, unless it chose not
+//! to receive the requests awaiting its decision (ADR-094): recorded as
 //! refused. A proposal that nobody but its author may decide waits,
-//! unannounced, for another administrator. Each proposal is announced once,
+//! unannounced, for another administrator; so does one whose author no
+//! longer administers the policies, which nobody may approve meanwhile
+//! (`approve.rs`), until they do again. Each proposal is announced once,
 //! unless the service stops between the messages sent and their record; an
 //! administrator failing leaves the others told, and one the relay refuses
 //! is recorded too, and not sent again. Without a relay, nothing is sent
@@ -18,7 +20,7 @@
 
 mod mail;
 
-use mimorya_db::repositories::administrators::{Recipient, possible_administrators};
+use mimorya_db::repositories::administrators::Recipient;
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::org::load_authorization_data;
 use mimorya_db::repositories::policy_proposal_notices::{
@@ -30,7 +32,7 @@ use uuid::Uuid;
 
 use crate::app::Services;
 use crate::mail::Mailer;
-use crate::services::admin::{engine_of, holds_company_wide};
+use crate::services::admin::{company_wide_administrators, engine_of};
 use crate::services::notification_settings::{Notice as Choice, deliver};
 use mail::{PolicyProposalsMail, policy_proposals_mail};
 
@@ -79,7 +81,8 @@ async fn announce_all(services: &Services, mailer: &dyn Mailer) -> anyhow::Resul
 }
 
 /// Tells each administrator of the company of the proposals never
-/// announced that another made; how many proposals were told to someone.
+/// announced that another made, while their author administers the
+/// policies; how many proposals were told to someone.
 /// One administrator failing leaves the others told, and the proposals
 /// recorded as announced.
 async fn announce(
@@ -88,17 +91,19 @@ async fn announce(
     tenant_id: Uuid,
 ) -> anyhow::Result<usize> {
     let mut tx = services.db.begin(tenant_id).await?;
-    let proposals = unannounced_policy_proposals(&mut tx).await?;
+    let mut proposals = unannounced_policy_proposals(&mut tx).await?;
     let rules = load_authorization_data(&mut tx).await?;
     let company = rules.tenant.name.clone();
     let engine = engine_of(rules)?;
-    let mut administrators = Vec::new();
-    for candidate in possible_administrators(&mut tx, PERMISSION).await? {
-        if holds_company_wide(&mut tx, &engine, candidate.user_id, PERMISSION).await? {
-            administrators.push(candidate);
-        }
-    }
+    let administrators = company_wide_administrators(&mut tx, &engine, PERMISSION).await?;
     tx.commit().await?;
+    // Its author no longer administering the policies, nobody may approve
+    // it: it waits for them to again, or for its expiry.
+    proposals.retain(|p| {
+        administrators
+            .iter()
+            .any(|a| a.user_id == p.proposed_by_user_id)
+    });
 
     let mut told = Vec::new();
     for administrator in &administrators {
