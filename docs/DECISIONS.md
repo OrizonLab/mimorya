@@ -10057,11 +10057,14 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     Désactivée, une note dit qu'elle se réactive par une proposition. Une décision ou un
     changement recharge les deux listes, l'une changeant l'autre ;
   - **une modification nomme la version qu'elle change** : le formulaire envoie le
-    `updatedAt` de l'autorisation qu'il a lue (`policyUpdatedAt` de
-    `NewPolicyProposal`, à la milliseconde). Changée depuis, la proposition est refusée
-    (409, « rechargez-la ») : un administrateur qui désactive une autorisation pendant
-    qu'un autre remplit son formulaire ne la voit pas réactivée par une proposition faite
-    sur l'état d'avant. Sans ce champ, l'API prend la version du moment, comme avant ;
+    `updatedAt` de l'autorisation qu'il a lue à son ouverture (`policyUpdatedAt` de
+    `NewPolicyProposal`, à la milliseconde), figé comme le reste du formulaire : un
+    rechargement des listes pendant qu'il est ouvert ne le remplace pas. Changée depuis,
+    la proposition est refusée (409, « rouvrez-la ») : un administrateur qui désactive
+    une autorisation pendant qu'un autre remplit son formulaire ne la voit pas réactivée
+    par une proposition faite sur l'état d'avant. « Annuler » après ce refus recharge les
+    listes, et le formulaire se rouvre sur la politique telle qu'elle est. Sans ce champ,
+    l'API prend la version du moment, comme avant ; donné sans `policyId`, il est refusé ;
   - **précisions** :
     - « Périmée » ne vaut que pour une proposition qui attend encore : expirée, elle
       n'est plus qu'« Expirée » ;
@@ -10090,6 +10093,11 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       - une proposition refusée par Claire n'ouvre rien ;
       - une modification que Paul rend périmée en désactivant l'autorisation est montrée
         « Périmée », Claire ne peut pas l'approuver, et Paul la retire.
+
+      Le troisième test : Paul ouvre la modification d'une autorisation active ; Claire
+      la désactive ; les listes de Paul se rechargent (il retire une autre proposition) ;
+      sa modification est refusée, rien n'est proposé, et, annulée, elle se rouvre sur
+      l'autorisation désactivée.
 
       Chaque test retire ses autorisations et ses propositions en attente, puis, quoi
       qu'il arrive, le rôle de Claire ; il désactive son compte et supprime le rôle ;

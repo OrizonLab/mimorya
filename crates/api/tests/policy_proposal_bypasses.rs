@@ -176,7 +176,7 @@ async fn a_change_made_on_a_version_since_changed_is_refused() {
     };
     let stale = paul.post("/admin/policy-proposals", change(&read)).await;
     assert_eq!(stale.status, StatusCode::CONFLICT, "{}", stale.text());
-    assert!(stale.text().contains("rechargez-la"), "{}", stale.text());
+    assert!(stale.text().contains("rouvrez-la"), "{}", stale.text());
     // On the version as it stands, the proposal is made.
     let current = version_of(&paul, &policy_id).await;
     let made = paul.post("/admin/policy-proposals", change(&current)).await;

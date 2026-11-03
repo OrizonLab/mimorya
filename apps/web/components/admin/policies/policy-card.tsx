@@ -37,7 +37,7 @@ export function PolicyCard({
   async function remove() {
     const question = policy.editable
       ? `Supprimer la politique « ${policy.description} » ?`
-      : `Supprimer l’autorisation « ${policy.description} » ? Les propositions qui la modifient sont retirées avec elle.`;
+      : `Supprimer l’autorisation « ${policy.description} » ? Les propositions qui la modifient sont supprimées avec elle.`;
     if (!window.confirm(question)) return;
     if (await action.run(() => api.delete(`/admin/policies/${policy.id}`))) onChanged();
   }

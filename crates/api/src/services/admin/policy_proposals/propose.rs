@@ -39,6 +39,12 @@ pub async fn propose_policy(
     input: ProposalInput,
 ) -> anyhow::Result<Uuid> {
     access.require_tenant_wide(PERMISSION)?;
+    if input.policy_id.is_none() && input.policy_updated_at.is_some() {
+        return Err(DomainError::validation(
+            "Une version de politique ne se donne qu’avec la politique qu’elle désigne",
+        )
+        .into());
+    }
     let permissions = checked_grant(&input.permissions, catalog)?;
     let condition = checked_condition(&input.condition)?;
     let mut tx = begin_change(db, access, PERMISSION).await?;
@@ -53,8 +59,8 @@ pub async fn propose_policy(
         && policy.updated_at.timestamp_millis() != seen.timestamp_millis()
     {
         return Err(DomainError::conflict(
-            "La politique a changé depuis que vous l’avez ouverte : rechargez-la avant de \
-             proposer",
+            "La politique a changé depuis que vous l’avez ouverte : annulez, puis rouvrez-la \
+             avant de proposer",
         )
         .into());
     }

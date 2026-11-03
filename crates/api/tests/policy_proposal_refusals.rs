@@ -45,6 +45,8 @@ async fn proposals_outside_the_rules_of_a_grant_are_refused() {
         with("permissions", json!([])),
         with("condition", json!({ "all": [] })),
         with("policyId", json!(DEMO_POLICY)),
+        // A version without the policy it would name.
+        with("policyUpdatedAt", json!("2026-11-03T00:00:00.000Z")),
     ] {
         let refused = paul.post("/admin/policy-proposals", body.clone()).await;
         assert_eq!(

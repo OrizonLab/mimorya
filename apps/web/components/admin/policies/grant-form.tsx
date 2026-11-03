@@ -23,6 +23,9 @@ export function GrantForm({
   const [granted, setGranted] = useState(new Set(policy?.permissions ?? []));
   const [editor, setEditor] = useState(() => initialEditor(policy?.condition));
   const [enabled, setEnabled] = useState(policy?.enabled ?? true);
+  // The version the form was filled from, frozen like the rest: a reload of
+  // the list meanwhile must not stand for what its author saw.
+  const [seen] = useState(policy?.updatedAt);
   const [problem, setProblem] = useState<string | null>(null);
   const action = useAction();
 
@@ -35,7 +38,7 @@ export function GrantForm({
     const body = {
       policyId: policy?.id,
       // Changed since the form opened, the policy is not proposed on.
-      policyUpdatedAt: policy?.updatedAt,
+      policyUpdatedAt: seen,
       description,
       permissions: [...granted],
       condition,
@@ -83,7 +86,9 @@ export function GrantForm({
           type="button"
           variant="ghost"
           disabled={action.pending}
-          onClick={() => onDone(false)}
+          // After a refusal (the policy changed meanwhile), the lists are
+          // reloaded: the form opens again on the policy as it stands.
+          onClick={() => onDone(action.error !== null)}
         >
           Annuler
         </Button>
