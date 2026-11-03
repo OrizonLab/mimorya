@@ -232,6 +232,8 @@ const AUTHENTICATED_ROUTES: &[(&str, &str)] = &[
     ("POST", "/admin/connectors/{id}/test"),
     ("PUT", "/admin/connectors/{id}/oauth"),
     ("DELETE", "/admin/connectors/{id}/oauth"),
+    ("POST", "/admin/connectors/{id}/oauth/authorization"),
+    ("DELETE", "/admin/connectors/{id}/oauth/authorization"),
     ("GET", "/admin/identity-providers"),
     ("POST", "/admin/identity-providers"),
     ("PATCH", "/admin/identity-providers/{id}"),
@@ -310,9 +312,10 @@ const OTHER_ROUTES: &[(&str, &str)] = &[
     ("POST", "/auth/sso/link"),
     ("POST", "/auth/sso/link/start"),
     ("GET", "/auth/sso/callback"),
-    // A navigation back from Microsoft: without a usable session, the sign-in
-    // page (ADR-116).
+    // A navigation back from Microsoft or from an MCP server's authorization
+    // server: without a usable session, the sign-in page (ADR-116, ADR-171).
     ("GET", "/account/links/callback"),
+    ("GET", "/admin/connectors/oauth/callback"),
     ("GET", "/auth/saml/{id}/metadata"),
     ("POST", "/auth/saml/acs"),
     ("GET", "/auth/me"),

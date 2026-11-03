@@ -147,6 +147,8 @@ pub fn typescript() -> String {
     // Named by `ConnectorView.toolPolicies`, which holds the stored value.
     declarations.add::<admin::ToolPolicy>();
     declarations.add::<admin::ConnectorTest>();
+    declarations.add::<admin::McpOAuth>();
+    declarations.add::<admin::OAuthAuthorizationStart>();
     declarations.add::<admin::RestImport>();
     declarations.add::<admin::AuditLog>();
     declarations.add::<admin::UsageSummary>();

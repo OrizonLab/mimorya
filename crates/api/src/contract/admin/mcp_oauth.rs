@@ -7,7 +7,9 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use validator::Validate;
 
-use crate::http::{trimmed, trimmed_opt};
+use mimorya_db::repositories::connector_authorizations::ConnectorAuthorizationRow;
+
+use crate::http::{iso, trimmed, trimmed_opt};
 
 /// Body of `PUT /admin/connectors/{id}/oauth`: declared again, everything
 /// is replaced, the secret included.
@@ -66,10 +68,48 @@ pub struct McpOAuth {
     pub client_auth: OAuthClientAuth,
     pub scopes: Vec<String>,
     pub client_secret_stored: bool,
+    /// The authorization given under this declaration, if any.
+    pub authorization: Option<McpOAuthAuthorization>,
+}
+
+/// An MCP server's authorization, as its declaration shows it: never its
+/// tokens.
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct McpOAuthAuthorization {
+    pub authorized_at: String,
+    /// When the access token expires, if it does.
+    pub expires_at: Option<String>,
+    /// Whether a refresh token is kept.
+    pub renewable: bool,
+    pub scopes: Vec<String>,
+}
+
+impl From<ConnectorAuthorizationRow> for McpOAuthAuthorization {
+    fn from(row: ConnectorAuthorizationRow) -> Self {
+        Self {
+            authorized_at: iso(&row.authorized_at),
+            expires_at: row.access_expires_at.as_ref().map(iso),
+            renewable: row.renewable,
+            scopes: row.scopes.split_whitespace().map(String::from).collect(),
+        }
+    }
+}
+
+/// Answer of `POST /admin/connectors/{id}/oauth/authorization`: where to
+/// send the browser; the attempt goes in a cookie.
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct OAuthAuthorizationStart {
+    pub redirect_url: String,
 }
 
 impl McpOAuth {
-    pub fn new(declaration: OAuthDeclaration, client_secret_stored: bool) -> Self {
+    pub fn new(
+        declaration: OAuthDeclaration,
+        client_secret_stored: bool,
+        authorization: Option<ConnectorAuthorizationRow>,
+    ) -> Self {
         Self {
             issuer: declaration.issuer,
             resource: declaration.resource,
@@ -79,6 +119,7 @@ impl McpOAuth {
             client_auth: declaration.client_auth.into(),
             scopes: declaration.scopes,
             client_secret_stored,
+            authorization: authorization.map(Into::into),
         }
     }
 }

@@ -75,6 +75,30 @@ pub async fn authorized(
         .collect()
 }
 
+/// Where the browser sent to `url` is sent back: the return's parameters.
+pub async fn sent_back(url: &str) -> HashMap<String, String> {
+    let answer = http_client(PRIVATE)
+        .expect("client")
+        .get(url)
+        .send()
+        .await
+        .expect("answer");
+    let location = answer.headers()[LOCATION]
+        .to_str()
+        .expect("location")
+        .to_string();
+    url::Url::parse(&location)
+        .expect("return")
+        .query_pairs()
+        .into_owned()
+        .collect()
+}
+
+/// The S256 challenge of `verifier` (RFC 7636).
+pub fn challenge_of(verifier: &str) -> String {
+    URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()))
+}
+
 /// How the client proves itself in a request to the token endpoint.
 #[derive(Clone, Copy)]
 pub enum Proof<'a> {

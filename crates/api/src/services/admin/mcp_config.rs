@@ -16,14 +16,25 @@ pub fn mcp_config(prefix: &str, url: &str, oauth: Option<&OAuthDeclaration>) -> 
     config
 }
 
+/// A declaration stored but no longer readable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Unreadable;
+
+/// The OAuth declared in a stored MCP configuration, if any: the one
+/// reading of it.
+pub fn stored_oauth(config: &Value) -> Result<Option<OAuthDeclaration>, Unreadable> {
+    match config.get("oauth").filter(|oauth| !oauth.is_null()) {
+        None => Ok(None),
+        Some(oauth) => serde_json::from_value(oauth.clone())
+            .map(Some)
+            .map_err(|_| Unreadable),
+    }
+}
+
 /// Whether `instance` is an MCP server added here whose OAuth declaration
 /// cannot be read.
 pub fn oauth_unreadable(instance: &ConnectorInstanceRow) -> bool {
-    let config = &instance.config;
     instance.connector_type == "mcp"
-        && config["transport"] == "http"
-        && config
-            .get("oauth")
-            .filter(|oauth| !oauth.is_null())
-            .is_some_and(|oauth| serde_json::from_value::<OAuthDeclaration>(oauth.clone()).is_err())
+        && instance.config["transport"] == "http"
+        && stored_oauth(&instance.config).is_err()
 }

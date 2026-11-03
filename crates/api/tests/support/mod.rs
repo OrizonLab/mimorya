@@ -10,6 +10,7 @@ pub mod accounts;
 pub mod approver_notices;
 mod client;
 pub mod companies;
+pub mod connector_oauth;
 pub mod delegations;
 pub mod dns;
 pub mod document_search;
