@@ -89,7 +89,9 @@ Repères à l'intérieur des crates :
   leur limite : `evaluation_spending.rs`, `evaluation_settings.rs`, ADR-154 ; comptes reliés par chacun et leur
   jeton de renouvellement scellé : `account_links.rs`, ADR-116 ; partages de connaissances entre unités :
   `knowledge_shares.rs`, ADR-143 ; politiques d'autorisation proposées et décidées :
-  `policy_proposals.rs`, ADR-168 ; passerelles et
+  `policy_proposals.rs`, ADR-168, et leur annonce aux autres administrateurs :
+  `policy_proposal_notices.rs`, ADR-170 ; comptes qui pourraient administrer une
+  permission : `administrators.rs` ; passerelles et
   événements pris : `gateways.rs`, identités reliées et conversation Teams où le bot a
   vu chacun en dernier : `gateway_identities.rs`, ADR-125, ADR-142 ; fils Slack des conversations, et conversation privée avec le bot Telegram
   ou personnelle avec le bot Teams, une ouverte à la fois : `gateway_threads.rs`,
@@ -162,7 +164,8 @@ Repères à l'intérieur des crates :
   mémoire et des passages des documents en arrière-plan, `memory_indexing.rs`, ADR-074,
   ADR-096 ; tâches planifiées lancées
   chaque minute, `scheduled_tasks.rs`, ADR-080 ; fin des missions annoncée à leur
-  auteur, ADR-091, et propositions de compétences à leurs administrateurs, ADR-102 ;
+  auteur, ADR-091, propositions de compétences à leurs administrateurs, ADR-102, et
+  autorisations proposées aux autres administrateurs des politiques, ADR-170 ;
   évaluations des compétences jouées, ADR-104 ; baux des runs renouvelés et runs au
   bail expiré repris, `run_leases.rs`, ADR-083 ; événements des autres processus écoutés
   et fragments de texte envoyés, `run_event_relay.rs`, ADR-084 ; runs en file réservés
@@ -238,6 +241,8 @@ Repères à l'intérieur des crates :
   lus au moment d'envoyer chaque avis, ADR-094),
   `api/src/services/skill_proposal_notice/` (propositions de l'agent annoncées par e-mail
   aux administrateurs des compétences, ADR-102),
+  `api/src/services/policy_proposal_notice/` (autorisations proposées annoncées par e-mail
+  aux autres administrateurs des politiques, jamais à leur auteur, ADR-170),
   `api/src/services/skill_evaluations/` (évaluations des compétences : une passe par
   entreprise, quatre à la fois par processus (`pass.rs`, ADR-157), cas joués et jugés (`play.rs`, `case.rs`) avec leurs propres ports
   (`ports/`), lecture (`view.rs`), ADR-104 ; ce qu'elles peuvent coûter sur trente jours

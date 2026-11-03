@@ -11,7 +11,7 @@ use mimorya_db::repositories::role_assignments::{NewRoleAssignment, create_role_
 use serde_json::{Value, json};
 use uuid::Uuid;
 
-use super::mail::token_of;
+use super::mail::{link_in, token_of};
 use super::{Client, TestApi, TestResponse};
 
 /// The password an account chooses to replace its temporary one.
@@ -66,12 +66,20 @@ pub async fn accept(api: &TestApi, link: &str, password: &str) -> TestResponse {
 /// administration tests start from.
 pub async fn create_account(admin: &Client<'_>, login: &str) -> NewAccount {
     let (mut account, invitation) = invite_account(admin, login).await;
-    let accepted = accept(
-        admin.api(),
-        invitation["link"].as_str().unwrap(),
-        INVITED_PASSWORD,
-    )
-    .await;
+    // Given in the answer without a relay, e-mailed with one.
+    let link = match invitation["link"].as_str() {
+        Some(link) => link.to_string(),
+        None => {
+            let sent = admin.api().mail.sent();
+            let mail = sent
+                .iter()
+                .rev()
+                .find(|m| m.to == account.email)
+                .expect("invitation e-mailed");
+            link_in(mail)
+        }
+    };
+    let accepted = accept(admin.api(), &link, INVITED_PASSWORD).await;
     assert_eq!(accepted.status, StatusCode::OK, "{}", accepted.text());
     let reset = admin
         .post(&format!("/admin/users/{}/password", account.id), json!({}))

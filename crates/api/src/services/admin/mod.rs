@@ -110,6 +110,7 @@ pub use users::{NewUserInput, UserChanges, create_user, reset_password, update_u
 
 use mimorya_core::DomainError;
 use mimorya_core::authz::{Actor, AuthorizationEngine, DataScope, OrgTree};
+use mimorya_db::repositories::administrators::{Recipient, possible_administrators};
 use mimorya_db::repositories::audit::AuditEntry;
 use mimorya_db::repositories::org::{
     AuthorizationData, load_authorization_data, load_org_units, load_user_access,
@@ -165,8 +166,8 @@ pub(crate) fn engine_of(data: AuthorizationData) -> anyhow::Result<Authorization
 /// Whether `user_id` holds `permission` on the whole company as the stored
 /// data say now: an active account, its assignments, and `engine`'s rules,
 /// deny policies included. What an administration change requires
-/// (`begin_change`), and what tells the skills' administrators apart
-/// (ADR-102).
+/// (`begin_change`), and what tells apart the administrators told of what
+/// awaits their decision (`company_wide_administrators`).
 pub(crate) async fn holds_company_wide(
     tx: &mut TenantTx,
     engine: &AuthorizationEngine,
@@ -179,6 +180,25 @@ pub(crate) async fn holds_company_wide(
         .is_some_and(|a| {
             engine.data_scope(&a.subject, permission, &Actor::user()) == DataScope::All
         }))
+}
+
+/// The company's accounts holding `permission` on the whole company as the
+/// stored data say now (`holds_company_wide`), by name: who is told of what
+/// awaits an administrator's decision (ADR-102, ADR-170). Not an
+/// administrator of a unit only, nor a disabled account, nor a role whose
+/// assignment expired, nor someone a deny policy keeps from it.
+pub(crate) async fn company_wide_administrators(
+    tx: &mut TenantTx,
+    engine: &AuthorizationEngine,
+    permission: &str,
+) -> anyhow::Result<Vec<Recipient>> {
+    let mut administrators = Vec::new();
+    for candidate in possible_administrators(tx, permission).await? {
+        if holds_company_wide(tx, engine, candidate.user_id, permission).await? {
+            administrators.push(candidate);
+        }
+    }
+    Ok(administrators)
 }
 
 /// The organisation tree as stored now (read under the administration lock).

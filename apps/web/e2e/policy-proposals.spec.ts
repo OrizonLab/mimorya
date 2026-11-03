@@ -8,8 +8,9 @@
 //   proposes is outdated by his switch-off, which she cannot approve, and
 //   he withdraws it;
 // - she switches an authorisation off while Paul's change of it is open:
-//   once the lists reload, the change is still refused, and his form opens
-//   again on the policy as it stands.
+//   with nothing reloading his page, the change is refused, and cancelling
+//   opens the form again on the policy as it stands; on another one, once
+//   his lists reload, his form says it changed and the change is refused.
 // Whatever happens, a test leaves no allow policy of its own nor proposal
 // waiting, and Claire's account without role, disabled. The rules
 // themselves are tested on the API (`crates/api/tests/policy_proposal*.rs`).
@@ -331,6 +332,8 @@ test('a change is refused on an authorisation switched off since its form opened
   await propose(paul, other, 'planned');
   await changeForm(first).click();
   await expect(enabledOnce).toBeChecked();
+  // Nothing changed yet: no warning.
+  await expect(paul.getByText(/a changé depuis l’ouverture du formulaire/)).toHaveCount(0);
   await switchOff(first);
   await paul.getByRole('button', { name: 'Proposer', exact: true }).click();
   await expect(paul.getByText(/a changé depuis que vous l’avez ouverte/)).toBeVisible();
@@ -353,5 +356,11 @@ test('a change is refused on an authorisation switched off since its form opened
   await paul.getByRole('button', { name: 'Proposer', exact: true }).click();
   await expect(paul.getByText(/a changé depuis que vous l’avez ouverte/)).toBeVisible();
   expect((await proposalsOf(paul)).map((p) => p.description)).not.toContain(renamed);
-  expect((await grantsOf(paul)).every((p) => !p.enabled)).toBe(true);
+  const states = (await grantsOf(paul)).map((p) => [p.description, p.enabled]).sort();
+  expect(states).toEqual(
+    [
+      [first, false],
+      [second, false],
+    ].sort(),
+  );
 });

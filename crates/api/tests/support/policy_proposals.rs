@@ -139,3 +139,21 @@ pub async fn reads_south(api: &TestApi, user_id: Uuid, status: &str) -> bool {
         )
         .allowed
 }
+
+/// Withdraws every assignment of `user_id`, as Paul: the account no longer
+/// administers anything, for the next tests.
+pub async fn retire(paul: &Client<'_>, user_id: Uuid) {
+    let entry = super::accounts::directory_entry(paul, user_id).await;
+    for assignment in entry["assignments"].as_array().unwrap() {
+        let url = format!("/admin/assignments/{}", assignment["id"].as_str().unwrap());
+        let revoked = paul.delete(&url).await;
+        assert_eq!(revoked.status, StatusCode::OK, "{}", revoked.text());
+    }
+}
+
+/// Withdraws the waiting proposal `id`, as its author.
+pub async fn withdraw(author: &Client<'_>, id: &str) {
+    let url = format!("/admin/policy-proposals/{id}/withdrawal");
+    let withdrawn = author.post(&url, json!({})).await;
+    assert_eq!(withdrawn.status, StatusCode::OK, "{}", withdrawn.text());
+}

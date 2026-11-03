@@ -77,7 +77,7 @@ export function GrantForm({
         sept jours, et seulement si la politique n’a pas changé entre-temps.
       </p>
       {policy && policy.updatedAt !== seen && (
-        <p className="text-sm text-warn">
+        <p role="status" className="text-sm text-warn">
           Cette autorisation a changé depuis l’ouverture du formulaire : annulez, puis rouvrez-la
           pour proposer sur ce qu’elle est devenue.
         </p>

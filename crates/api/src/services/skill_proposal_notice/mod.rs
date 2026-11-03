@@ -5,7 +5,7 @@
 //! company's proposals awaiting a decision and never announced, one
 //! process at a time (ADR-086), and sends each account that may decide them
 //! (`skill:manage` on the whole company, as the company's rules say now,
-//! `holds_company_wide`) one e-mail naming their skills, unless it chose not
+//! `company_wide_administrators`) one e-mail naming their skills, unless it chose not
 //! to receive the requests awaiting its decision (ADR-094): recorded as
 //! refused. Each proposal is announced once, unless the service stops
 //! between the messages sent and their record; an administrator failing
@@ -16,18 +16,18 @@
 
 mod mail;
 
+use mimorya_db::repositories::administrators::Recipient;
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::org::load_authorization_data;
 use mimorya_db::repositories::skill_proposal_notices::{
-    Recipient, companies_with_unannounced_proposals, possible_skill_administrators,
-    record_announced, unannounced_proposals,
+    companies_with_unannounced_proposals, record_announced, unannounced_proposals,
 };
 use serde_json::json;
 use uuid::Uuid;
 
 use crate::app::Services;
 use crate::mail::Mailer;
-use crate::services::admin::{engine_of, holds_company_wide};
+use crate::services::admin::{company_wide_administrators, engine_of};
 use crate::services::notification_settings::{Notice as Choice, deliver};
 use mail::{ProposalsMail, proposals_mail};
 
@@ -91,12 +91,7 @@ async fn announce(
     let rules = load_authorization_data(&mut tx).await?;
     let company = rules.tenant.name.clone();
     let engine = engine_of(rules)?;
-    let mut administrators = Vec::new();
-    for candidate in possible_skill_administrators(&mut tx).await? {
-        if holds_company_wide(&mut tx, &engine, candidate.user_id, PERMISSION).await? {
-            administrators.push(candidate);
-        }
-    }
+    let administrators = company_wide_administrators(&mut tx, &engine, PERMISSION).await?;
     tx.commit().await?;
     if proposals.is_empty() || administrators.is_empty() {
         return Ok(0);
