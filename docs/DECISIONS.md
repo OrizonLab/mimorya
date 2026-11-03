@@ -10202,3 +10202,146 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       tests suivants ne sont pas refusés à la connexion ;
     - le test de bout en bout des autorisations proposées attend que chaque approbation
       soit écrite avant de lire la politique (il échouait parfois en CI).
+
+## ADR-171 — OAuth des serveurs MCP : une autorisation de l'entreprise (lots 40a à 40e)
+
+- **Date** : 2026-11-03 · **Statut** : acceptée · complète ADR-025, ADR-161, ADR-162
+- **Contexte** : un serveur MCP distant s'ouvre aujourd'hui par un jeton saisi par
+  l'administrateur (ADR-025). La spécification MCP protège un serveur par OAuth 2.1 :
+  le serveur est une ressource protégée qui nomme son serveur d'autorisation (RFC 9728),
+  et un client obtient un jeton par le code d'autorisation avec PKCE, pour cette seule
+  ressource (RFC 8707). Beaucoup de serveurs n'acceptent plus d'autre jeton.
+- **Décision** :
+  - **à qui le jeton** : à l'entreprise. Un administrateur qui détient `connector:manage`
+    sur toute l'entreprise (permission non délégable) autorise le connecteur une fois.
+    Le jeton obtenu remplace le jeton saisi et sert à tous les runs de l'entreprise,
+    comme lui : une session par connecteur, partagée comme aujourd'hui (ADR-039, ADR-056).
+    - Tous agissent alors sous le compte qui a autorisé : il est recommandé d'autoriser
+      avec un compte de service. Les politiques des outils et les validations
+      s'appliquent comme pour un jeton saisi.
+    - Une autorisation par personne, comme les comptes reliés (ADR-116), viendra plus
+      tard, avec une session par personne : rien de ce lot n'est à défaire pour elle ;
+  - **trouver le serveur d'autorisation**, une fois, quand l'administrateur déclare
+    OAuth sur le connecteur, puis l'émetteur est gardé :
+    - le refus du serveur (`WWW-Authenticate: Bearer resource_metadata=…`) n'est suivi
+      que s'il désigne l'origine même du serveur MCP ; sinon les adresses bien connues
+      de RFC 9728 §3.1 (le chemin inséré, puis la racine) ;
+    - les métadonnées de la ressource protégée ne sont prises que si elles nomment ce
+      serveur comme ressource, et de un à dix serveurs d'autorisation, chacun une
+      adresse que permettent les règles réseau ; s'il en nomme plusieurs,
+      l'administrateur choisit l'émetteur parmi eux ;
+    - les métadonnées du serveur d'autorisation (RFC 8414, sinon OpenID Connect) ne sont
+      prises que si elles nomment exactement l'émetteur attendu, si chaque point est une
+      adresse permise, et si elles offrent le code d'autorisation avec PKCE S256, que la
+      spécification exige : sinon le serveur est refusé, la raison dite ;
+    - l'administrateur peut nommer l'émetteur, jamais les points eux-mêmes ;
+    - un émetteur n'a ni paramètres, ni fragment, ni identifiants (RFC 8414) ; un point
+      peut avoir des paramètres (RFC 6749 §3.1), ni fragment ni identifiants ; l'un
+      comme l'autre est gardé tel qu'écrit : 2000 caractères au plus, paramètres
+      compris, sans blanc ni caractère caché, que l'analyse d'une adresse retirerait ou
+      encoderait sans que l'administrateur le voie ;
+    - les adresses sont cherchées avec leur chemin tel qu'écrit (seule la barre qui suit
+      directement l'hôte disparaît, RFC 8414 §3.1, RFC 9728 §3.1), puis sans barre
+      finale ;
+    - ce qu'un message cite d'un document du serveur (un émetteur, un point) est court
+      (120 caractères), sur une ligne, ses caractères cachés écrits en clair : le serveur
+      y écrit ce qu'il veut ;
+    - reste à trancher au lot 40b : des métadonnées publiées à la racine nomment
+      l'origine comme ressource (RFC 9728 §3.3), qu'aujourd'hui seule une ressource sans
+      chemin accepte ;
+  - **chaque échange** : PKCE S256 toujours ; la ressource (l'adresse canonique du
+    serveur MCP) à la demande d'autorisation, à l'échange du code et à chaque
+    renouvellement ; l'émetteur du retour (RFC 9207) vérifié s'il est donné, exigé si le
+    serveur l'annonce ; les portées, celles de l'administrateur, sinon celles du refus,
+    sinon celles des métadonnées : chacune un jeton visible sans espace, guillemet ni
+    barre oblique inversée ; 20 portées au plus, de 200 caractères au plus chacune. Les
+    portées qu'annonce le serveur d'autorisation, aussi nombreuses soient-elles, sont
+    gardées une à une si elles pourraient être envoyées : `offline_access` n'est pas
+    perdu dans une longue liste ;
+  - **le client** : déclaré par l'administrateur (identifiant, secret facultatif, scellé
+    et jamais rendu ni tracé). Il prouve ce qu'il est comme le serveur l'accepte : dans
+    le corps de la requête s'il le liste, sinon dans l'en-tête Basic, et sans secret
+    seulement s'il accepte un client public (`none`). Un jeton saisi et OAuth ne vont
+    pas ensemble ;
+  - **le retour** : une requête GET dans la session de l'administrateur, liée à une
+    tentative scellée dans son propre cookie. Aucune nouvelle exception à l'en-tête
+    `X-Mimorya-Request` ni à l'origine ;
+  - **les jetons** : scellés dans une table de l'entreprise, le jeton d'accès avec son
+    échéance, celui de renouvellement à part. Un jeton qui expire sans pouvoir être
+    renouvelé, ou hors de l'alphabet de RFC 6750 (qu'on ne pourrait masquer), est
+    refusé. Une session ne porte qu'un jeton : elle n'est plus donnée à un nouveau run
+    passé l'échéance moins la durée d'un run, et finit quand le dernier la quitte ;
+  - **le renouvellement** se fait sous un verrou de la ligne de l'autorisation, borné
+    (5 s pour le verrou, 10 s pour l'échange), le jeton de renouvellement tourné écrit
+    dans la même transaction. C'est l'inverse d'ADR-117, qui ne tient pas de
+    transaction pendant l'échange : ici tous les processus partagent une seule
+    autorisation, et un serveur qui voit un jeton tourné resservir révoque tout ;
+  - **la révocation** : `invalid_grant` retire l'autorisation (tracé) ; le connecteur dit
+    alors qu'un administrateur doit l'autoriser de nouveau. Un 401 avec un jeton gardé
+    mène à un renouvellement et un nouvel essai, une fois ;
+  - **le réseau** : chaque appel OAuth passe par le client durci (adresses publiques,
+    pas de redirection suivie, mandataire de l'exploitant, ADR-162). Le jeton ne part
+    que vers l'origine du serveur déclaré ; le secret et le jeton de renouvellement que
+    vers le point de jeton de l'émetteur gardé ;
+  - **l'autorisation suit la déclaration** : changer l'adresse du serveur ou la
+    déclaration OAuth, ou supprimer le connecteur, retire l'autorisation et le secret ;
+  - **ce qui est tracé** : la déclaration, son retrait, l'autorisation donnée ou refusée,
+    son retrait et sa révocation, jamais un jeton, un code ni un secret ;
+  - la fonctionnalité `auth` de la bibliothèque MCP n'est pas utilisée : elle a son
+    propre client HTTP, hors des règles réseau, et ses propres journaux ;
+  - **lots** :
+    - 40a, ce lot : les règles, sans échange (`connectors/src/mcp/oauth/`) :
+      - le refus lu (`challenge.rs`) ;
+      - la ressource canonique, ses métadonnées cherchées puis lues
+        (`resource.rs`, `protected_resource.rs`) ;
+      - les métadonnées du serveur d'autorisation et la preuve du client
+        (`server_metadata.rs`) ;
+      - les portées (`scope.rs`) ;
+      - un serveur MCP qui, refusé, montre ses métadonnées, le dit : « Serveur protégé
+        par OAuth : il refuse les appels sans une autorisation OAuth » ; à un jeton saisi,
+        « Accès refusé par le serveur : jeton invalide ; ce serveur annonce aussi une
+        autorisation OAuth », car il peut aussi accepter ses propres jetons ; chaque ligne
+        de l'en-tête `WWW-Authenticate` est lue ;
+      - un serveur d'autorisation simulé, aussi strict qu'un vrai doit être attendu :
+        le client prouve ce qu'il est d'une seule façon, parmi celles annoncées, avec son
+        secret, un refus de Basic répondu 401 ; le code n'est bon qu'une fois ; le
+        vérificateur PKCE bien formé et juste ; la ressource celle autorisée
+        (`invalid_target`, qui n'use rien) ; le jeton de renouvellement tourne, et celui
+        déjà tourné, resservi, révoque toute l'autorisation ;
+      - le serveur de démonstration protégé par ses jetons, avec ses travers
+        (`connectors/src/testing/oauth/`) ;
+    - 40b : la déclaration par l'administrateur, la découverte ;
+    - 40c : l'autorisation, son retour, ses jetons scellés ;
+    - 40d : le jeton dans les sessions ;
+    - 40e : le renouvellement ;
+    - 40f : l'enregistrement dynamique du client (RFC 7591) et la révocation auprès du
+      serveur (RFC 7009), ADR à venir ;
+    - puis l'écran et son parcours de bout en bout, et l'autorisation par personne.
+- **Conséquences** :
+  - tests du lot 40a :
+    - unitaires dans chaque module : le refus lu dans ses bornes, ambigu ou mal formé
+      non lu ; l'adresse canonique et l'origine (une adresse `blob:` n'en est pas) ; les
+      emplacements, barre finale gardée puis retirée ; des métadonnées d'une autre
+      ressource, sans serveur, ou nommant un serveur que les règles réseau interdisent,
+      refusées ; un autre émetteur, un point en `http://` ou à une adresse privée, ou
+      sans S256, refusés, un point avec des paramètres accepté mais borné avec eux ; un
+      blanc ou un caractère caché refusé ; une adresse citée courte et sur une ligne,
+      coupée entre deux caractères ; `offline_access` vu parmi plus de 20 portées ; la preuve
+      du client ; une portée qui ne pourrait être envoyée telle quelle refusée ;
+    - `crates/connectors/tests/mcp_oauth.rs` :
+      - un serveur protégé dit qu'il veut OAuth, un jeton saisi dit autrement, même le
+        défi sur sa propre ligne d'en-tête ;
+      - il s'ouvre à un jeton émis pour sa propre adresse, pas à un jeton émis pour un
+        autre serveur, ni révoqué ;
+      - son refus et ses métadonnées mènent au serveur d'autorisation ;
+      - des métadonnées d'une autre origine ou d'une autre ressource, ou un émetteur
+        différent, ne sont pas suivis ;
+    - `crates/connectors/tests/mcp_oauth_authority.rs` : le serveur d'autorisation
+      simulé use le code, vérifie PKCE et la ressource ; refuse un client qui se prouve de
+      deux façons, d'une façon non annoncée ou avec un autre secret, un Basic refusé
+      répondu 401 avec son schéma ; refuse une adresse de retour invalide ; fait tourner le
+      jeton de renouvellement et révoque l'autorisation à sa réutilisation ; ses réglages
+      changent ce qu'il émet ;
+  - les serveurs qui n'offrent pas S256, n'ont pas de métadonnées, ou n'acceptent qu'un
+    client enregistré dynamiquement restent refusés jusqu'au lot qui les accepte, la
+    raison dite.

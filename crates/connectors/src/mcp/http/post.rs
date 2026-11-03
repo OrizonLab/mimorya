@@ -130,17 +130,20 @@ fn denied(response: &Response) -> Result<(), HttpError> {
     if status != StatusCode::UNAUTHORIZED && status != StatusCode::FORBIDDEN {
         return Ok(());
     }
-    let Some(header) = response.headers().get(WWW_AUTHENTICATE) else {
-        return Ok(());
-    };
-    let header = header
-        .to_str()
-        .map_err(|_| {
+    // Every line of the header, as one list (RFC 9110 §5.3): a challenge
+    // may come on a line of its own.
+    let mut lines = Vec::new();
+    for line in response.headers().get_all(WWW_AUTHENTICATE) {
+        lines.push(line.to_str().map_err(|_| {
             StreamableHttpError::UnexpectedServerResponse(Cow::Borrowed(
                 "invalid www-authenticate header value",
             ))
-        })?
-        .to_string();
+        })?);
+    }
+    if lines.is_empty() {
+        return Ok(());
+    }
+    let header = lines.join(", ");
     Err(if status == StatusCode::UNAUTHORIZED {
         StreamableHttpError::AuthRequired(AuthRequiredError::new(header))
     } else {

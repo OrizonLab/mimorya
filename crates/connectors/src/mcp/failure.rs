@@ -1,7 +1,8 @@
 //! What an administrator, or the model, reads when an MCP server cannot be
 //! used: what happened, in French, then the most precise cause the transport
 //! gave, with the token masked (`outbound::failure`). The type names of the
-//! MCP library never reach that message.
+//! MCP library never reach that message. A server whose refusal points to
+//! its OAuth metadata says it wants an OAuth authorization (ADR-171).
 
 use std::error::Error as StdError;
 
@@ -12,6 +13,7 @@ use rmcp::transport::streamable_http_client::StreamableHttpError;
 use rmcp::transport::worker::WorkerQuitReason;
 
 use super::http::{HttpError, TOO_LONG};
+use super::oauth::bearer_challenge;
 use crate::outbound::{
     ACCESS_DENIED, Cause, Redactor, TOO_SLOW, explained, request_cause as request,
 };
@@ -19,6 +21,14 @@ use crate::outbound::{
 type WorkerError = WorkerQuitReason<HttpError>;
 
 pub const NOT_MCP: &str = "Le serveur n’a pas répondu comme un serveur MCP";
+/// A refusal, without a token, whose challenge names where the server's
+/// authorization is described (RFC 9728, ADR-171).
+pub const OAUTH_REQUIRED: &str =
+    "Serveur protégé par OAuth : il refuse les appels sans une autorisation OAuth";
+/// The same refusal of a token: the server may take tokens of its own as
+/// well as OAuth ones, and only says where its OAuth metadata is.
+pub const OAUTH_OFFERED: &str = "Accès refusé par le serveur : jeton invalide ; ce serveur annonce aussi une autorisation \
+     OAuth";
 const CLOSED: &str = "La connexion au serveur MCP est fermée";
 const REFUSED_CALL: &str = "Le serveur MCP a renvoyé une erreur";
 
@@ -28,7 +38,19 @@ pub fn start_failed(error: &anyhow::Error, redactor: &Redactor) -> anyhow::Error
         summary: NOT_MCP,
         detail: error.root_cause().to_string(),
     });
-    explained(cause, redactor)
+    explained(with_token(cause, redactor), redactor)
+}
+
+/// An OAuth refusal of a token typed by hand is told as such.
+fn with_token(cause: Cause, redactor: &Redactor) -> Cause {
+    if cause.summary == OAUTH_REQUIRED && redactor.longest() > 0 {
+        Cause {
+            summary: OAUTH_OFFERED,
+            ..cause
+        }
+    } else {
+        cause
+    }
 }
 
 /// A failed tool call, explained.
@@ -56,7 +78,7 @@ pub fn call_failed(error: &ServiceError, redactor: &Redactor) -> anyhow::Error {
             detail: error.to_string(),
         }),
     };
-    explained(cause, redactor)
+    explained(with_token(cause, redactor), redactor)
 }
 
 /// The transport errors this module knows how to explain, wherever they sit
@@ -113,6 +135,12 @@ fn http(error: &HttpError) -> Cause {
     let detail = error.to_string();
     let summary = match error {
         StreamableHttpError::Client(error) => return request(error),
+        StreamableHttpError::AuthRequired(refusal)
+            if bearer_challenge(&refusal.www_authenticate_header)
+                .is_some_and(|challenge| challenge.resource_metadata.is_some()) =>
+        {
+            OAUTH_REQUIRED
+        }
         StreamableHttpError::AuthRequired(_) | StreamableHttpError::InsufficientScope(_) => {
             ACCESS_DENIED
         }
