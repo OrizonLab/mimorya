@@ -91,6 +91,17 @@ async function proposalsOf(page: Page): Promise<PolicyProposalView[]> {
   return listed.proposals.filter((p) => p.description.includes(MARK));
 }
 
+/**
+ * Approves `description` as `page`, then waits for the decision itself:
+ * decided, the proposal no longer offers its approval. Before, the list
+ * holding the proposal and any policy card already matches `cardWith`.
+ */
+async function approve(page: Page, description: string) {
+  const button = page.getByRole('button', { name: `Approuver « ${description} »` });
+  await button.click();
+  await expect(button).toHaveCount(0);
+}
+
 /** The tests' allow policies, as the API lists them. */
 async function grantsOf(page: Page) {
   const listing = (await (await page.request.get('/api/admin/policies')).json()) as Policies;
@@ -200,7 +211,7 @@ test('an authorisation is approved by another administrator, then changed, switc
 
   // Claire approves it: the policy is written, as proposed.
   await openPolicies(claire);
-  await claire.getByRole('button', { name: `Approuver « ${granted} »` }).click();
+  await approve(claire, granted);
   await expect(
     cardWith(claire, granted, 'Désactiver').getByText('Autorisation', { exact: true }),
   ).toBeVisible();
@@ -221,7 +232,7 @@ test('an authorisation is approved by another administrator, then changed, switc
   expect(change?.policyId).toBe(grant?.id);
   await expect(paul.getByText(`Modifie l’autorisation « ${granted} »`)).toBeVisible();
   await openPolicies(claire);
-  await claire.getByRole('button', { name: `Approuver « ${renamed} »` }).click();
+  await approve(claire, renamed);
   await expect(cardWith(claire, renamed, 'Désactiver')).toBeVisible();
   const changed = await grantsOf(paul);
   expect(changed.map((p) => [p.id, p.description])).toEqual([[grant?.id, renamed]]);
@@ -268,7 +279,7 @@ test('a proposal is refused, or outdated by a switch-off and withdrawn', async (
   await openPolicies(paul);
   await propose(paul, granted, 'completed');
   await openPolicies(claire);
-  await claire.getByRole('button', { name: `Approuver « ${granted} »` }).click();
+  await approve(claire, granted);
   await expect(cardWith(claire, granted, 'Désactiver')).toBeVisible();
   await openPolicies(paul);
   await proposeChange(paul, granted, outdated);
@@ -308,7 +319,7 @@ test('a change is refused on an authorisation switched off since its form opened
   await propose(paul, second, 'completed');
   await openPolicies(claire);
   for (const description of [first, second]) {
-    await claire.getByRole('button', { name: `Approuver « ${description} »` }).click();
+    await approve(claire, description);
     await expect(cardWith(claire, description, 'Désactiver')).toBeVisible();
   }
   const changeForm = (description: string) =>

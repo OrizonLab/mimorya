@@ -86,7 +86,5 @@ pub async fn queued_ago(run: Uuid, minutes: i64) {
 /// Runs `sql` as the owner, `$1` bound to `id`: what an operator, or an
 /// administrator through another process, changes meanwhile.
 pub async fn as_owner(sql: &str, id: Uuid) {
-    let owner = sqlx::PgPool::connect(owner_url()).await.unwrap();
-    sqlx::query(sql).bind(id).execute(&owner).await.unwrap();
-    owner.close().await;
+    super::owner::owner_runs(sql, &[id]).await;
 }

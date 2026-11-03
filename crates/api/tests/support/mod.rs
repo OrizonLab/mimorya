@@ -35,6 +35,7 @@ pub mod mcp;
 pub mod mission_notices;
 pub mod missions;
 pub mod notification_choices;
+pub mod owner;
 pub mod planning;
 pub mod policy_proposal_notices;
 pub mod policy_proposals;
