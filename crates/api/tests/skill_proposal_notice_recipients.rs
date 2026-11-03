@@ -12,11 +12,12 @@ mod support;
 use mimorya_core::demo::{tenant, user};
 use mimorya_db::repositories::skill_proposal_notices::companies_with_unannounced_proposals;
 use serde_json::json;
+use support::owner::owner_runs;
 use support::skill_proposal_notices::{
     announce, announced, forget_notices, notices, one_proposal, told,
 };
 use support::skill_proposals::restore_the_report;
-use support::{TestApi, email, owner_runs, owner_url};
+use support::{TestApi, email, owner_url};
 use uuid::Uuid;
 
 /// The company's administrators' role.
@@ -124,17 +125,18 @@ async fn a_suspended_company_s_administrators_are_not_told() {
     one_proposal(&api).await;
     let suspend = "update tenants set status = 'suspended' where id = $1";
     owner_runs(suspend, &[tenant::ID]).await;
-
-    // Its people cannot sign in to decide: not even listed.
+    // Its people cannot sign in to decide: not even listed. Read while
+    // suspended, checked once active again, which a failure leaves it for
+    // the next tests.
     let pool = api.app.services.db.pool();
     let listed = companies_with_unannounced_proposals(pool).await;
-    assert!(!listed.unwrap().contains(&tenant::ID));
-    assert_eq!(announce(&api).await, 0);
-    assert!(told(&api).is_empty());
-    assert_eq!(announced(&api).await, [(2, false)]);
-    // Active again: told then.
+    let suspended = (announce(&api).await, told(&api), announced(&api).await);
     let resume = "update tenants set status = 'active' where id = $1";
     owner_runs(resume, &[tenant::ID]).await;
+    assert!(!listed.unwrap().contains(&tenant::ID));
+    assert_eq!(suspended, (0, Vec::new(), vec![(2, false)]));
+
+    // Active again: told then.
     assert_eq!(announce(&api).await, 1);
     assert_eq!(told(&api), [email(user::PAUL)]);
     restore_the_report(&api).await;

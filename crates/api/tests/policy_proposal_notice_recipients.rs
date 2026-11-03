@@ -15,9 +15,10 @@ use axum::http::StatusCode;
 use mimorya_core::demo::{role, tenant, user};
 use mimorya_db::repositories::policy_proposal_notices::companies_with_unannounced_policy_proposals;
 use serde_json::json;
+use support::TestApi;
+use support::owner::owner_runs;
 use support::policy_proposal_notices::{announce, announced, notices_and_forget, told};
 use support::policy_proposals::{completed_interventions, propose, retire, second_admin, withdraw};
-use support::{TestApi, owner_runs};
 use uuid::Uuid;
 
 #[tokio::test]
@@ -189,17 +190,18 @@ async fn a_suspended_company_s_administrators_are_not_told() {
     let id = propose(&paul, completed_interventions()).await;
     let suspend = "update tenants set status = 'suspended' where id = $1";
     owner_runs(suspend, &[tenant::ID]).await;
-
-    // Its people cannot sign in to decide: not even listed.
+    // Its people cannot sign in to decide: not even listed. Read while
+    // suspended, checked once active again, which a failure leaves it for
+    // the next tests.
     let pool = api.app.services.db.pool();
     let listed = companies_with_unannounced_policy_proposals(pool).await;
-    assert!(!listed.unwrap().contains(&tenant::ID));
-    assert_eq!(announce(&api).await, 0);
-    assert!(told(&api).is_empty());
-    assert!(!announced(&api, &id).await);
-    // Active again: told then.
+    let suspended = (announce(&api).await, told(&api), announced(&api, &id).await);
     let resume = "update tenants set status = 'active' where id = $1";
     owner_runs(resume, &[tenant::ID]).await;
+    assert!(!listed.unwrap().contains(&tenant::ID));
+    assert_eq!(suspended, (0, Vec::new(), false));
+
+    // Active again: told then.
     assert_eq!(announce(&api).await, 1);
     assert_eq!(told(&api), ["claire.suspendue@neo-maintenance.example"]);
     notices_and_forget().await;

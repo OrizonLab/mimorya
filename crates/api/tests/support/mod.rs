@@ -35,6 +35,7 @@ pub mod mcp;
 pub mod mission_notices;
 pub mod missions;
 pub mod notification_choices;
+pub mod owner;
 pub mod planning;
 pub mod policy_proposal_notices;
 pub mod policy_proposals;
@@ -69,9 +70,6 @@ pub mod telegram_validations;
 pub use client::{Client, TestResponse};
 use fixtures::urls;
 pub use fixtures::{PASSWORD, WEB_ORIGIN, app_url, email, next_monday, owner_url, week};
-// Called by some test binaries only.
-#[allow(unused_imports)]
-pub use fixtures::owner_runs;
 use mail::RecordingMailer;
 
 use std::collections::HashMap;

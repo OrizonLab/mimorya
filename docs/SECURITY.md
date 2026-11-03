@@ -501,8 +501,9 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   et ne va qu'à qui détient `skill:manage` sur toute l'entreprise (ADR-102) ; celui qui
   annonce aux autres administrateurs des politiques les autorisations proposées ne dit que
   leur nombre et leurs auteurs, jamais leur description ni leur condition, ne va qu'à qui
-  détient `policy:manage` sur toute l'entreprise, jamais à leur auteur, et à personne
-  tant que l'entreprise est suspendue (ADR-170). Chacun peut ne plus
+  détient `policy:manage` sur toute l'entreprise, jamais à leur auteur (ADR-170) ; ni
+  l'un ni l'autre de ces deux avis ne part tant que l'entreprise est suspendue, ses
+  membres ne pouvant pas se connecter pour décider. Chacun peut ne plus
   recevoir ces avis (ADR-094) : un avis non voulu n'est pas envoyé, mais tracé, refusé ;
   les e-mails d'invitation et de mot de passe sont toujours envoyés.
 - **Remplaçant d'un responsable absent** (ADR-071) : désigné par le responsable (ou pour

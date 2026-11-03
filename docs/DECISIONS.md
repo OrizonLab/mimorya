@@ -10197,4 +10197,8 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       de compétences (ADR-102) : l'entreprise n'est pas même listée, puis l'est de nouveau
       une fois active ;
     - `owner_runs`, qui écrit en tant que propriétaire de la base ce que l'API refuserait,
-      est commun aux tests.
+      est commun aux tests (`support/owner.rs`), et `as_owner` s'en sert ;
+    - un test qui suspend l'entreprise la réactive avant ses assertions : s'il échoue, les
+      tests suivants ne sont pas refusés à la connexion ;
+    - le test de bout en bout des autorisations proposées attend que chaque approbation
+      soit écrite avant de lire la politique (il échouait parfois en CI).

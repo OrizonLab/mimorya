@@ -1,6 +1,5 @@
 //! What every test app shares: the test database (reset once per test
-//! binary, its URLs for the application and owner roles, a statement run
-//! as its owner), the demo
+//! binary, its URLs for the application and owner roles), the demo
 //! accounts' addresses and password, the web origin, and the week the demo
 //! interventions are dated in.
 
@@ -22,18 +21,6 @@ static URLS: OnceLock<TestDatabaseUrls> = OnceLock::new();
 /// The owner role's URL, for what the application role may not write.
 pub fn owner_url() -> &'static str {
     &urls().owner
-}
-
-/// Runs `statement`, bound to `binds`, as the database's owner: what the
-/// API would refuse to write, or what no route changes.
-pub async fn owner_runs(statement: &str, binds: &[Uuid]) {
-    let owner = sqlx::PgPool::connect(owner_url()).await.unwrap();
-    let mut query = sqlx::query(statement);
-    for bind in binds {
-        query = query.bind(*bind);
-    }
-    query.execute(&owner).await.unwrap();
-    owner.close().await;
 }
 
 /// The application role's URL (row-level security applies).

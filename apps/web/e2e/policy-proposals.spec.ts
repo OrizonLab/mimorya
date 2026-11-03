@@ -91,7 +91,6 @@ async function proposalsOf(page: Page): Promise<PolicyProposalView[]> {
   return listed.proposals.filter((p) => p.description.includes(MARK));
 }
 
-/** The tests' allow policies, as the API lists them. */
 /**
  * Approves `description` as `page`, then waits for the decision itself:
  * decided, the proposal no longer offers its approval. Before, the list
@@ -103,6 +102,7 @@ async function approve(page: Page, description: string) {
   await expect(button).toHaveCount(0);
 }
 
+/** The tests' allow policies, as the API lists them. */
 async function grantsOf(page: Page) {
   const listing = (await (await page.request.get('/api/admin/policies')).json()) as Policies;
   return listing.policies.filter((p) => p.effect === 'allow' && p.description.includes(MARK));
