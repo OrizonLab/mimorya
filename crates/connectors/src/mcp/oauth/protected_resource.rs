@@ -13,7 +13,9 @@ use url::Url;
 use super::quoted::quoted;
 use super::resource::same_resource;
 use super::scope::scopes_problem;
-use crate::outbound::{NetworkPolicy, url_problem};
+use mimorya_core::plain_text::is_hidden;
+
+use crate::outbound::{MAX_URL_CHARS, NetworkPolicy, url_problem};
 
 pub const MAX_AUTHORIZATION_SERVERS: usize = 10;
 
@@ -81,11 +83,28 @@ pub fn read_protected_resource(
     })
 }
 
+/// Why an address a server wrote cannot be kept as written, if it cannot:
+/// longer than any address the platform reaches (its parameters counted),
+/// or holding a blank or a hidden character, which the address parser would
+/// drop or encode and the administrator would not see.
+fn written_problem(address: &str) -> Option<String> {
+    if address.chars().count() > MAX_URL_CHARS {
+        return Some(format!(
+            "Adresse trop longue ({MAX_URL_CHARS} caractères au plus)"
+        ));
+    }
+    if address.chars().any(|c| c.is_whitespace() || is_hidden(c)) {
+        return Some("Adresse avec un blanc ou un caractère caché".to_string());
+    }
+    None
+}
+
 /// Why `issuer` cannot name an authorization server the platform reaches,
 /// if it cannot: without parameters, fragment nor credentials (RFC 8414
 /// §2), at an address the network rules allow. The issuer is quoted short.
 pub fn issuer_problem(issuer: &str, policy: NetworkPolicy) -> Option<String> {
     let problem = match Url::parse(issuer) {
+        _ if let Some(problem) = written_problem(issuer) => problem,
         Ok(parsed)
             if parsed.query().is_some()
                 || parsed.fragment().is_some()
@@ -108,6 +127,7 @@ pub fn issuer_problem(issuer: &str, policy: NetworkPolicy) -> Option<String> {
 /// allow. The address is quoted short.
 pub fn endpoint_problem(url: &str, name: &str, policy: NetworkPolicy) -> Option<String> {
     let problem = match Url::parse(url) {
+        _ if let Some(problem) = written_problem(url) => problem,
         Ok(parsed)
             if parsed.fragment().is_some()
                 || !parsed.username().is_empty()
@@ -246,5 +266,33 @@ mod tests {
             assert!(problem.starts_with("point d’autorisation « "), "{problem}");
             assert!(!problem.contains("utilisez le jeton"), "{problem}");
         }
+    }
+
+    #[test]
+    fn an_address_is_bounded_with_its_parameters_and_hides_nothing() {
+        let policy = NetworkPolicy::default();
+        let long = format!(
+            "https://auth.example.com/authorize?p={}",
+            "a".repeat(100_000)
+        );
+        let refused = endpoint_problem(&long, "point d’autorisation", policy);
+        assert!(refused.expect("refused").contains("trop longue"));
+        for hiding in [
+            "https://auth.example.com/\u{202e}moc.elgoog",
+            "https://auth.example.com/t1\n",
+            "https://auth.example.com/a b",
+            " https://auth.example.com",
+            "https://auth.example.com/\u{200b}",
+        ] {
+            let refused = issuer_problem(hiding, policy).expect("issuer refused");
+            assert!(refused.contains("caché"), "{refused}");
+            let refused = endpoint_problem(hiding, "point de jeton", policy).expect("refused");
+            assert!(refused.contains("caché"), "{refused}");
+        }
+        let document = json!({
+            "resource": RESOURCE,
+            "authorization_servers": ["https://auth.example.com/\u{202e}moc.elgoog\nURGENT"],
+        });
+        assert!(read(document).is_err());
     }
 }

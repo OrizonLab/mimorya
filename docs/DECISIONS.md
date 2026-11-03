@@ -10236,7 +10236,10 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       spécification exige : sinon le serveur est refusé, la raison dite ;
     - l'administrateur peut nommer l'émetteur, jamais les points eux-mêmes ;
     - un émetteur n'a ni paramètres, ni fragment, ni identifiants (RFC 8414) ; un point
-      peut avoir des paramètres (RFC 6749 §3.1), ni fragment ni identifiants ;
+      peut avoir des paramètres (RFC 6749 §3.1), ni fragment ni identifiants ; l'un
+      comme l'autre est gardé tel qu'écrit : 2000 caractères au plus, paramètres
+      compris, sans blanc ni caractère caché, que l'analyse d'une adresse retirerait ou
+      encoderait sans que l'administrateur le voie ;
     - les adresses sont cherchées avec leur chemin tel qu'écrit (seule la barre qui suit
       directement l'hôte disparaît, RFC 8414 §3.1, RFC 9728 §3.1), puis sans barre
       finale ;
@@ -10321,8 +10324,9 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       emplacements, barre finale gardée puis retirée ; des métadonnées d'une autre
       ressource, sans serveur, ou nommant un serveur que les règles réseau interdisent,
       refusées ; un autre émetteur, un point en `http://` ou à une adresse privée, ou
-      sans S256, refusés, un point avec des paramètres accepté ; une adresse citée
-      courte et sur une ligne ; `offline_access` vu parmi plus de 20 portées ; la preuve
+      sans S256, refusés, un point avec des paramètres accepté mais borné avec eux ; un
+      blanc ou un caractère caché refusé ; une adresse citée courte et sur une ligne,
+      coupée entre deux caractères ; `offline_access` vu parmi plus de 20 portées ; la preuve
       du client ; une portée qui ne pourrait être envoyée telle quelle refusée ;
     - `crates/connectors/tests/mcp_oauth.rs` :
       - un serveur protégé dit qu'il veut OAuth, un jeton saisi dit autrement, même le
@@ -10334,7 +10338,8 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
         différent, ne sont pas suivis ;
     - `crates/connectors/tests/mcp_oauth_authority.rs` : le serveur d'autorisation
       simulé use le code, vérifie PKCE et la ressource ; refuse un client qui se prouve de
-      deux façons, d'une façon non annoncée ou avec un autre secret ; fait tourner le
+      deux façons, d'une façon non annoncée ou avec un autre secret, un Basic refusé
+      répondu 401 avec son schéma ; refuse une adresse de retour invalide ; fait tourner le
       jeton de renouvellement et révoque l'autorisation à sa réutilisation ; ses réglages
       changent ce qu'il émet ;
   - les serveurs qui n'offrent pas S256, n'ont pas de métadonnées, ou n'acceptent qu'un

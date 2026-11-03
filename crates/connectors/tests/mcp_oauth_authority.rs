@@ -8,9 +8,12 @@
 
 mod support;
 
+use mimorya_connectors::outbound::http_client;
 use mimorya_connectors::testing::{
-    CLIENT_SECRET, FakeAuthorizationServer, OAuthQuirk, serve_oauth_mcp_http,
+    CLIENT_ID, CLIENT_SECRET, FakeAuthorizationServer, OAuthQuirk, serve_oauth_mcp_http,
 };
+use reqwest_mcp::header::WWW_AUTHENTICATE;
+use support::mcp::PRIVATE;
 use support::oauth::{
     BACK, Proof, VERIFIER, authorized, exchange, renew, token_request, tokens_for,
 };
@@ -163,4 +166,40 @@ async fn its_settings_change_what_it_issues() {
             .expect("access")
             .contains('é')
     );
+}
+
+#[tokio::test]
+async fn a_refused_basic_proof_names_its_scheme_and_a_bad_return_is_refused() {
+    let authority = FakeAuthorizationServer::start().await;
+    let client = http_client(PRIVATE).expect("client");
+    let refused = client
+        .post(format!("{}/token", authority.issuer))
+        .basic_auth(CLIENT_ID, Some("autre-secret"))
+        .header("content-type", "application/x-www-form-urlencoded")
+        .body("grant_type=refresh_token&refresh_token=x")
+        .send()
+        .await
+        .expect("answer");
+    assert_eq!(refused.status().as_u16(), 401);
+    let scheme = refused
+        .headers()
+        .get(WWW_AUTHENTICATE)
+        .and_then(|v| v.to_str().ok());
+    assert!(
+        scheme.is_some_and(|v| v.starts_with("Basic ")),
+        "{scheme:?}"
+    );
+    // A return address that is no address: refused, the server unharmed.
+    let mut address = url::Url::parse(&format!("{}/authorize", authority.issuer)).expect("address");
+    address.query_pairs_mut().extend_pairs([
+        ("response_type", "code"),
+        ("client_id", CLIENT_ID),
+        ("redirect_uri", "pas une adresse"),
+        ("code_challenge", "defi"),
+        ("code_challenge_method", "S256"),
+    ]);
+    let answer = client.get(address).send().await.expect("answer");
+    assert_eq!(answer.status().as_u16(), 400);
+    let server = serve_oauth_mcp_http(&authority, OAuthQuirk::None).await;
+    assert!(tokens_for(&authority, &server.url).await["access_token"].is_string());
 }

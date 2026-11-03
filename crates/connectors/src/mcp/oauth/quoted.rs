@@ -2,24 +2,27 @@
 //! server writes what it wants there, so it is quoted short and on one
 //! line, its hidden characters spelled out, never as written.
 
-use mimorya_core::plain_text::{capped, is_hidden};
+use mimorya_core::plain_text::is_hidden;
 
 const MAX_QUOTED_CHARS: usize = 120;
 
-/// `value` as a message quotes it.
+/// `value` as a message quotes it: its first characters, each hidden one
+/// spelled out, the cut falling between two of them, followed by « […] »
+/// when it held more.
 pub(super) fn quoted(value: &str) -> String {
-    let visible: String = value
-        .chars()
-        .flat_map(|c| {
-            let spelled: Vec<char> = if is_hidden(c) {
-                c.escape_unicode().collect()
-            } else {
-                vec![c]
-            };
-            spelled
-        })
-        .collect();
-    capped(&visible, MAX_QUOTED_CHARS)
+    let mut chars = value.chars();
+    let mut shown = String::new();
+    for c in chars.by_ref().take(MAX_QUOTED_CHARS) {
+        if is_hidden(c) {
+            shown.extend(c.escape_unicode());
+        } else {
+            shown.push(c);
+        }
+    }
+    if chars.next().is_some() {
+        shown.push_str(" […]");
+    }
+    shown
 }
 
 #[cfg(test)]
