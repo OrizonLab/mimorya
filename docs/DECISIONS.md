@@ -10063,7 +10063,8 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     la proposition est refusée (409, « rouvrez-la ») : un administrateur qui désactive
     une autorisation pendant qu'un autre remplit son formulaire ne la voit pas réactivée
     par une proposition faite sur l'état d'avant. « Annuler » après ce refus recharge les
-    listes, et le formulaire se rouvre sur la politique telle qu'elle est. Sans ce champ,
+    listes, et le formulaire se rouvre sur la politique telle qu'elle est ; après un
+    rechargement qui la montre changée, le formulaire le dit avant l'envoi. Sans ce champ,
     l'API prend la version du moment, comme avant ; donné sans `policyId`, il est refusé ;
   - **précisions** :
     - « Périmée » ne vaut que pour une proposition qui attend encore : expirée, elle
@@ -10094,10 +10095,15 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       - une modification que Paul rend périmée en désactivant l'autorisation est montrée
         « Périmée », Claire ne peut pas l'approuver, et Paul la retire.
 
-      Le troisième test : Paul ouvre la modification d'une autorisation active ; Claire
-      la désactive ; les listes de Paul se rechargent (il retire une autre proposition) ;
-      sa modification est refusée, rien n'est proposé, et, annulée, elle se rouvre sur
-      l'autorisation désactivée.
+      Le troisième test, sur deux autorisations actives :
+      - Paul ouvre la modification de la première ; Claire la désactive ; sans que rien
+        ne recharge sa page, Paul propose : refusé. Il annule, ce qui recharge les
+        listes, et le formulaire rouvert la montre désactivée (il échoue si « Annuler »
+        ne recharge pas) ;
+      - Paul ouvre la modification de la seconde ; Claire la désactive ; ses listes se
+        rechargent (il retire une autre proposition) : le formulaire, figé sur ce qu'il a
+        lu, dit que l'autorisation a changé depuis son ouverture, et sa proposition est
+        refusée ; rien n'est proposé.
 
       Chaque test retire ses autorisations et ses propositions en attente, puis, quoi
       qu'il arrive, le rôle de Claire ; il désactive son compte et supprime le rôle ;

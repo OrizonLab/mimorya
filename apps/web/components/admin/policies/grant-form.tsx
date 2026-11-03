@@ -76,6 +76,12 @@ export function GrantForm({
         ne s’applique qu’une fois approuvée par un autre administrateur des politiques, dans les
         sept jours, et seulement si la politique n’a pas changé entre-temps.
       </p>
+      {policy && policy.updatedAt !== seen && (
+        <p className="text-sm text-warn">
+          Cette autorisation a changé depuis l’ouverture du formulaire : annulez, puis rouvrez-la
+          pour proposer sur ce qu’elle est devenue.
+        </p>
+      )}
       {problem && <ErrorNote message={problem} />}
       {action.error && <ErrorNote message={action.error} />}
       <div className="flex gap-2">

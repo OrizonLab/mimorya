@@ -164,13 +164,12 @@ async function proposeChange(page: Page, policy: string, description: string) {
   await waiting(page, description);
 }
 
-/** The proposal `description`, shown in `status` (decided: no button left). */
+/** The status badge of the proposal `description`, in its card's header row. */
 function shownAs(page: Page, description: string, status: string) {
   return page
-    .locator('div')
-    .filter({ hasText: description })
-    .filter({ has: page.getByText(status, { exact: true }) })
-    .last();
+    .getByText(description, { exact: true })
+    .locator('..')
+    .getByText(status, { exact: true });
 }
 
 /** The author's proposal `description` is shown waiting, with no approval for them. */
@@ -296,43 +295,63 @@ test('a change is refused on an authorisation switched off since its form opened
   page,
   newContext,
 }) => {
-  const granted = `Interventions terminées pour les responsables ${MARK}`;
+  const first = `Interventions terminées pour les responsables ${MARK}`;
+  const second = `Interventions terminées pour la direction ${MARK}`;
   const other = `Interventions planifiées ouvertes à tous ${MARK}`;
   const renamed = `Interventions terminées pour toute l’entreprise ${MARK}`;
   const paul = page;
   const claire = await (await newContext()).newPage();
   await administrators(paul, claire);
   await openPolicies(paul);
-  await propose(paul, granted, 'completed');
+  await propose(paul, first, 'completed');
+  await propose(paul, second, 'completed');
   await openPolicies(claire);
-  await claire.getByRole('button', { name: `Approuver « ${granted} »` }).click();
-  await expect(cardWith(claire, granted, 'Désactiver')).toBeVisible();
+  for (const description of [first, second]) {
+    await claire.getByRole('button', { name: `Approuver « ${description} »` }).click();
+    await expect(cardWith(claire, description, 'Désactiver')).toBeVisible();
+  }
+  const changeForm = (description: string) =>
+    paul.getByRole('button', { name: `Proposer une modification de ${description}` });
+  const enabledOnce = paul.getByRole('checkbox', { name: 'Active une fois approuvée' });
+  /** Claire switches `description` off. */
+  async function switchOff(description: string) {
+    await cardWith(claire, description, 'Désactiver')
+      .getByRole('button', { name: 'Désactiver', exact: true })
+      .click();
+    await expect(
+      cardWith(claire, description, `Supprimer ${description}`).getByText('Désactivée', {
+        exact: true,
+      }),
+    ).toBeVisible();
+  }
 
-  // Paul opens a change of it, still enabled, and waits.
+  // Paul opens a change of the first, still enabled; Claire switches it off
+  // meanwhile; nothing reloads Paul's page before he proposes.
   await openPolicies(paul);
   await propose(paul, other, 'planned');
-  await paul.getByRole('button', { name: `Proposer une modification de ${granted}` }).click();
-  await paul.getByLabel('Description (ce que la politique autorise, et à qui)').fill(renamed);
-  // Claire switches it off meanwhile.
-  await openPolicies(claire);
-  await cardWith(claire, granted, 'Désactiver')
-    .getByRole('button', { name: 'Désactiver', exact: true })
-    .click();
-  await expect(
-    cardWith(claire, granted, 'Supprimer ' + granted).getByText('Désactivée', { exact: true }),
-  ).toBeVisible();
+  await changeForm(first).click();
+  await expect(enabledOnce).toBeChecked();
+  await switchOff(first);
+  await paul.getByRole('button', { name: 'Proposer', exact: true }).click();
+  await expect(paul.getByText(/a changé depuis que vous l’avez ouverte/)).toBeVisible();
+  // Cancelled after the refusal, the lists reload: the form opens again on
+  // the policy as it stands, switched off.
+  await paul.getByRole('button', { name: 'Annuler' }).click();
+  await changeForm(first).click();
+  await expect(enabledOnce).not.toBeChecked();
+  await paul.getByRole('button', { name: 'Annuler' }).click();
 
-  // Paul's lists reload (he withdraws another proposal); his form, still
-  // open on what he saw, is refused.
+  // Paul opens a change of the second; Claire switches it off; Paul's lists
+  // reload (he withdraws another proposal): his form, frozen on what he saw,
+  // says so and is still refused.
+  await changeForm(second).click();
+  await paul.getByLabel('Description (ce que la politique autorise, et à qui)').fill(renamed);
+  await switchOff(second);
   await paul.getByRole('button', { name: `Retirer « ${other} »` }).click();
   await expect(shownAs(paul, other, 'Retirée')).toBeVisible();
+  await expect(paul.getByText(/a changé depuis l’ouverture du formulaire/)).toBeVisible();
   await paul.getByRole('button', { name: 'Proposer', exact: true }).click();
   await expect(paul.getByText(/a changé depuis que vous l’avez ouverte/)).toBeVisible();
   expect((await proposalsOf(paul)).map((p) => p.description)).not.toContain(renamed);
-  expect((await grantsOf(paul))[0]?.enabled).toBe(false);
-
-  // Cancelled, the form opens again on the policy as it stands.
-  await paul.getByRole('button', { name: 'Annuler' }).click();
-  await paul.getByRole('button', { name: `Proposer une modification de ${granted}` }).click();
-  await expect(paul.getByRole('checkbox', { name: 'Active une fois approuvée' })).not.toBeChecked();
+  expect((await grantsOf(paul)).every((p) => !p.enabled)).toBe(true);
 });
