@@ -31,7 +31,9 @@ pub struct PolicyView {
     #[ts(type = "Record<string, unknown>")]
     pub condition: Value,
     pub enabled: bool,
-    /// Only deny policies are written from the administration (ADR-022).
+    /// A deny policy, written directly (ADR-022). An allow policy is only
+    /// switched off or deleted directly; any other change of it takes a
+    /// proposal another administrator approves (ADR-168).
     pub editable: bool,
     pub updated_at: String,
 }

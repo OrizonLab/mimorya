@@ -448,8 +448,10 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   chaque processus à chaque changement ; chaque partage et son retrait sont audités.
 - **ABAC** : politiques `allow` / `deny` à conditions JSON (attributs du sujet, de la
   ressource, du contexte), `deny` prioritaire ; exemple livré : le service
-  administratif ne consulte que les interventions terminées. L'administration n'écrit
-  que des politiques de refus, sur des permissions métier que la plateforme vérifie
+  administratif ne consulte que les interventions terminées. L'administration écrit
+  directement les politiques de refus ; une politique d'autorisation ne l'est qu'à
+  l'approbation d'une proposition par un autre administrateur (ADR-168, ci-dessous). Les
+  unes et les autres portent sur des permissions métier que la plateforme vérifie
   (jamais d'administration, ni `org:read`/`user:read`), avec une condition vérifiée
   avant stockage. Un refus portant sur le collaborateur ou le contexte s'applique
   partout où la permission est vérifiée, outils de l'agent compris ; un refus portant
@@ -459,9 +461,18 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   administrateurs compris : le formulaire le signale. Les attributs des
   collaborateurs (`subject.attributes.*`) sont posés par un administrateur des comptes,
   jamais sur son propre compte. Ils sont typés et courts. L'audit nomme les attributs
-  modifiés, jamais leurs valeurs (ADR-023). Les
-  politiques d'autorisation, qui pourraient ouvrir les données métier à leur auteur,
-  restent en lecture seule jusqu'à la double validation (ADR-022).
+  modifiés, jamais leurs valeurs (ADR-023).
+- **Double validation des autorisations** (ADR-168) : une politique d'autorisation, qui
+  pourrait ouvrir les données métier à son auteur, est proposée par un administrateur des
+  politiques et approuvée par un autre, sous le verrou d'administration et sur les
+  règles stockées : l'un et l'autre détiennent encore `policy:manage` sur toute
+  l'entreprise, la proposition n'a pas expiré (sept jours) et, pour un changement, la
+  politique n'a pas changé depuis. Rien n'est ouvert avant l'approbation. Une
+  autorisation n'élargit que le périmètre de qui détient déjà la permission, ressource
+  par ressource ; elle n'accorde jamais la permission elle-même, et ne porte que sur des
+  permissions vérifiées ressource par ressource. Un refus et l'habilitation l'emportent
+  sur elle. La désactiver ou la supprimer, qui ne retire qu'un accès, se fait sans
+  proposition. Chaque étape est auditée.
 - **Sensibilité** : `public < internal < confidential < restricted`, comparée à
   l'habilitation (`clearance`) de la personne ; le propriétaire voit toujours ses
   propres données.
@@ -558,8 +569,10 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
       réinitialisation par mot de passe provisoire lui permet de se connecter à la place
       de la personne (y compris un autre administrateur) et donc de lire ses conversations et
       sa mémoire personnelle. Tout est tracé (`user.created`, `role.assigned`,
-      `user.password_reset`…) ; la double validation des actions d'administration est
-      prévue en phase 3 ;
+      `user.password_reset`…). La double validation des politiques d'autorisation est
+      faite (ADR-168), mais un administrateur qui peut ainsi faire seul un second
+      administrateur des politiques l'accomplit seul ; celle des autres actions
+      d'administration est prévue en phase 3 ;
     - les adresses e-mail sont uniques entre entreprises (ADR-011) : créer un compte
       avec une adresse déjà utilisée ailleurs est refusé (409), ce qui révèle à
       l'administrateur qu'elle existe dans une autre entreprise. L'invitation par

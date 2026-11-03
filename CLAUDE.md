@@ -27,7 +27,10 @@ l'unique paquet Node (ADR-018).
 
 Repères à l'intérieur des crates :
 
-- `core/src/authz/` (types, moteur, conditions ABAC, organigramme), `core/src/tools/`
+- `core/src/authz/` (types, moteur, conditions ABAC, organigramme ; une autorisation
+  n'élargit que le périmètre de qui détient la permission, ADR-168), `core/src/policy_rules/`
+  (ce qu'une politique peut dire, ADR-022 ; ce qu'une autorisation accorde et le délai de
+  sa proposition, `grants.rs`, ADR-168), `core/src/tools/`
   (contrat d'outil, outils typés, comptes reliés de la personne servie : `accounts.rs`,
   ADR-117), `core/src/time_zone.rs` (fuseau de la plateforme : date donnée au modèle,
   jours des outils), `core/src/skill_rules.rs` (ce qu'une compétence peut
@@ -85,7 +88,8 @@ Repères à l'intérieur des crates :
   évaluations : `skill_evaluations.rs`, ADR-104, ce qu'elles ont coûté jour par jour et
   leur limite : `evaluation_spending.rs`, `evaluation_settings.rs`, ADR-154 ; comptes reliés par chacun et leur
   jeton de renouvellement scellé : `account_links.rs`, ADR-116 ; partages de connaissances entre unités :
-  `knowledge_shares.rs`, ADR-143 ; passerelles et
+  `knowledge_shares.rs`, ADR-143 ; politiques d'autorisation proposées et décidées :
+  `policy_proposals.rs`, ADR-168 ; passerelles et
   événements pris : `gateways.rs`, identités reliées et conversation Teams où le bot a
   vu chacun en dernier : `gateway_identities.rs`, ADR-125, ADR-142 ; fils Slack des conversations, et conversation privée avec le bot Telegram
   ou personnelle avec le bot Teams, une ouverte à la fois : `gateway_threads.rs`,
@@ -154,7 +158,7 @@ Repères à l'intérieur des crates :
   en-têtes de sécurité, audit des modifications d'administration refusées, sur une ressource introuvable ou envoyant un identifiant inconnu,
   maintenance périodique : runs bloqués, liens expirés, absences terminées, demandes de
   validation échues et relances avant échéance, ADR-061, ADR-062, cartes des avis Teams
-  oubliées, ADR-142 ; indexation de la
+  oubliées, ADR-142, propositions de politiques décidées ou expirées, ADR-168 ; indexation de la
   mémoire et des passages des documents en arrière-plan, `memory_indexing.rs`, ADR-074,
   ADR-096 ; tâches planifiées lancées
   chaque minute, `scheduled_tasks.rs`, ADR-080 ; fin des missions annoncée à leur
@@ -175,7 +179,10 @@ Repères à l'intérieur des crates :
   l'administration change de chacun (`connector_config.rs`), seules les politiques changées
   tracées (`policy_changes.rs`, ADR-160) et API REST ajoutées
   (`rest_connectors.rs`, ADR-112, opérations lues d'une description OpenAPI, ADR-114),
-  partages de connaissances entre unités (`knowledge_shares.rs`, ADR-143),
+  partages de connaissances entre unités (`knowledge_shares.rs`, ADR-143), politiques
+  d'accès vérifiées avant d'être écrites (`policy_checks.rs`), refus écrits directement
+  (`policies.rs`, ADR-022) et autorisations proposées par un administrateur, approuvées par
+  un autre (`policy_proposals/`, ADR-168),
   compétences, rejet des propositions de l'agent (`skill_proposals.rs`, ADR-100), cas d'évaluation
   (`skill_eval_cases.rs`, ADR-103) et évaluation demandée (`skill_evaluations.rs`,
   ADR-104), sous verrou par entreprise ; application Microsoft 365 déclarée,

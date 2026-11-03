@@ -9,7 +9,8 @@
 //!   3. ABAC deny policies (deny overrides)
 //!   4. sensitivity vs. subject clearance (owners always see their own data)
 //!   5. RBAC grant within the assignment scope
-//!   6. ABAC allow policies
+//!   6. ABAC allow policies, for whoever holds the permission in some scope:
+//!      they widen its reach to other resources, never grant it (ADR-168)
 //!   7. default deny
 //!
 //! `data_scope()` (and so `has()`, routes, tools and list scopes) applies the
@@ -239,7 +240,9 @@ impl AuthorizationEngine {
             return Decision::allow(format!("Rôle accordant {permission} sur ce périmètre"));
         }
 
-        if let Some(allowed) = matching(PolicyEffect::Allow) {
+        if scope != DataScope::None
+            && let Some(allowed) = matching(PolicyEffect::Allow)
+        {
             return allowed;
         }
 

@@ -1,20 +1,22 @@
-//! Rules for the access policies an administrator writes (ADR-022): only
-//! restrictive (deny) policies, on business permissions the platform actually
-//! checks, with a condition checked before it is stored. Allow policies widen
+//! Rules for the access policies administrators write (ADR-022): on business
+//! permissions the platform actually checks, with a condition checked before
+//! it is stored. A deny policy applies as written; an allow policy widens
 //! access beyond the role scopes, and an administrator could aim one at
-//! themselves: they stay out of reach until administration actions need a
-//! second approval.
+//! themselves: it takes a second administrator's approval, and grants only
+//! permissions checked resource by resource (`grants`, ADR-168).
 //!
 //! Where a deny applies (`authz::engine`): a condition about the person or the
 //! actor holds wherever the permission is checked; a condition reading the
 //! resource only where each resource is checked (`Enforcement::PerResource`).
 
 mod condition;
+mod grants;
 
 pub use condition::{
     ATTRIBUTE_ROOTS, MAX_CONDITION_COMPARISONS, MAX_CONDITION_DEPTH, canonical_condition,
     condition_problem,
 };
+pub use grants::{GRANT_PROPOSAL_DAYS, grant_problem};
 
 use crate::administration::TENANT_WIDE_PERMISSIONS;
 use crate::authz::{Condition, Enforcement, PermissionInfo, matches_permission, reads_resource};

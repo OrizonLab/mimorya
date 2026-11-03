@@ -5,7 +5,7 @@
 
 mod support;
 
-const EXPECTED: [&str; 35] = [
+const EXPECTED: [&str; 36] = [
     "auth_domain_held_elsewhere",
     "auth_find_identity_provider",
     "auth_find_identity_provider_link",
@@ -27,6 +27,7 @@ const EXPECTED: [&str; 35] = [
     "system_purge_gateway_events",
     "system_purge_gateway_link_codes",
     "system_purge_notice_cards",
+    "system_purge_policy_proposals",
     "system_purge_rate_limits",
     "system_purge_skill_evaluations",
     "system_queued_runs",

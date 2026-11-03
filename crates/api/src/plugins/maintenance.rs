@@ -2,8 +2,9 @@
 //! that executes runs: expired password reset links are deleted (ADR-028),
 //! ended absences (ADR-071), the shared rate limit windows long over
 //! (ADR-088), the evaluations of skills ended ninety days ago (ADR-104),
-//! the events a gateway took a day ago (ADR-125), the Telegram link codes
-//! expired (ADR-133) and the cards of Teams notices to managers settled, or
+//! the events a gateway took a day ago (ADR-125), the proposals of allow
+//! policies decided or expired ninety days ago (ADR-168), the Telegram link
+//! codes expired (ADR-133) and the cards of Teams notices to managers settled, or
 //! no longer where their manager is written (ADR-142); from the second
 //! minute, the notices a
 //! stop of the service lost are sent (ADR-070), requests nobody decided in
@@ -34,6 +35,7 @@ use mimorya_db::repositories::gateway_cards::purge_notice_cards;
 use mimorya_db::repositories::gateway_link_codes::purge_link_codes;
 use mimorya_db::repositories::gateways::purge_gateway_events;
 use mimorya_db::repositories::password_resets::purge_expired_password_resets;
+use mimorya_db::repositories::policy_proposals::purge_policy_proposals;
 use mimorya_db::repositories::rate_limits::purge_rate_limits;
 use mimorya_db::repositories::runs::fail_stale_runs;
 use mimorya_db::repositories::skill_evaluations::purge_finished_evaluations;
@@ -58,6 +60,9 @@ const GATEWAY_EVENTS_KEPT: chrono::Duration = chrono::Duration::days(1);
 /// Telegram, is kept: its requests, told of within a day, expire after a
 /// week (ADR-142, ADR-148).
 const NOTICE_CARDS_KEPT: chrono::Duration = chrono::Duration::days(8);
+/// How long a proposal of an allow policy is kept once decided or expired:
+/// the audit log keeps what was proposed and decided (ADR-168).
+const POLICY_PROPOSALS_KEPT: chrono::Duration = chrono::Duration::days(90);
 
 pub fn spawn_maintenance(services: AppState) -> JoinHandle<()> {
     tokio::spawn(async move {
@@ -112,6 +117,10 @@ pub fn spawn_maintenance(services: AppState) -> JoinHandle<()> {
             let written = Utc::now() - NOTICE_CARDS_KEPT;
             if let Err(error) = purge_notice_cards(db.pool(), written).await {
                 tracing::warn!(error = %error, "Notice card purge failed");
+            }
+            let settled = Utc::now() - POLICY_PROPOSALS_KEPT;
+            if let Err(error) = purge_policy_proposals(db.pool(), settled).await {
+                tracing::warn!(error = %error, "Policy proposal purge failed");
             }
             // Expired, a Telegram link code and whom it was sent back from
             // are forgotten (ADR-133).

@@ -1650,6 +1650,20 @@ condition: Record<string, unknown>,
 enabled?: boolean, };
 
 /**
+ * Body of `POST /admin/policy-proposals`: the allow policy as it will
+ * stand, a new one or `policyId` changed.
+ */
+export type NewPolicyProposal = { policyId?: string, description: string, permissions: Array<string>,
+/**
+ * `{ all }`, `{ any }`, `{ not }` or a comparison, as `PolicyView.condition`.
+ */
+condition: Record<string, unknown>,
+/**
+ * Absent: enabled.
+ */
+enabled?: boolean, };
+
+/**
  * Body of `POST /admin/connectors/rest`: a REST API and its operations,
  * checked as a whole by the platform (ADR-112).
  */
@@ -1867,6 +1881,42 @@ domains: Array<string>, attributes: Array<ConditionAttribute>, };
 export type PolicyEffect = "allow" | "deny";
 
 /**
+ * An allow policy as proposed: a new one, or the change of `policyId`.
+ */
+export type PolicyProposalView = { id: string,
+/**
+ * The allow policy it changes; absent for a new one.
+ */
+policyId: string | null,
+/**
+ * The policy as it will stand once approved.
+ */
+description: string, permissions: Array<string>, condition: Record<string, unknown>, enabled: boolean, proposedBy: ProposalPerson,
+/**
+ * Proposed by the administrator reading: they may withdraw it, never
+ * approve or reject it.
+ */
+mine: boolean, proposedAt: string,
+/**
+ * Past it, nobody approves it.
+ */
+expiresAt: string, status: ProposalStatus,
+/**
+ * Changed since the proposal: it can no longer be approved.
+ */
+outdated: boolean,
+/**
+ * Absent while pending, or once their account is gone.
+ */
+decidedBy: ProposalPerson | null, decidedAt: string | null, };
+
+/**
+ * `GET /admin/policy-proposals`: every pending proposal, then the latest
+ * decided.
+ */
+export type PolicyProposals = { proposals: Array<PolicyProposalView>, };
+
+/**
  * Body of `PATCH /admin/policies/{id}`: only the fields sent change.
  */
 export type PolicyUpdate = { description?: string, permissions?: Array<string>, condition?: Record<string, unknown>, enabled?: boolean, };
@@ -1877,9 +1927,21 @@ export type PolicyView = { id: string, description: string, effect: PolicyEffect
  */
 condition: Record<string, unknown>, enabled: boolean,
 /**
- * Only deny policies are written from the administration (ADR-022).
+ * A deny policy, written directly (ADR-022). An allow policy is only
+ * switched off or deleted directly; any other change of it takes a
+ * proposal another administrator approves (ADR-168).
  */
 editable: boolean, updatedAt: string, };
+
+/**
+ * An administrator who proposed or decided.
+ */
+export type ProposalPerson = { id: string, displayName: string, };
+
+/**
+ * Where a proposal stands: a pending one past its expiry is `expired`.
+ */
+export type ProposalStatus = "pending" | "approved" | "rejected" | "withdrawn" | "expired";
 
 /**
  * A kind of provider a company may choose.
