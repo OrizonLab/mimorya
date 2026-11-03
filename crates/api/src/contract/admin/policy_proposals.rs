@@ -54,7 +54,7 @@ pub struct PolicyProposalView {
     /// Past it, nobody approves it.
     pub expires_at: String,
     pub status: ProposalStatus,
-    /// Changed since the proposal: it can no longer be approved.
+    /// Pending, its policy changed since: it can no longer be approved.
     pub outdated: bool,
     /// Absent while pending, or once their account is gone.
     pub decided_by: Option<ProposalPerson>,

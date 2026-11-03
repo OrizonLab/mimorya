@@ -1902,7 +1902,7 @@ mine: boolean, proposedAt: string,
  */
 expiresAt: string, status: ProposalStatus,
 /**
- * Changed since the proposal: it can no longer be approved.
+ * Pending, its policy changed since: it can no longer be approved.
  */
 outdated: boolean,
 /**

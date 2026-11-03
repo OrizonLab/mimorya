@@ -10,6 +10,7 @@ import type {
   MissionStatus,
   OccurrenceOutcome,
   OrgUnitType,
+  ProposalStatus,
   Sensitivity,
   SkillStatus,
   SkillVersionStatus,
@@ -84,6 +85,15 @@ export const SKILL_VERSION_STATUS: Record<SkillVersionStatus, ToneLabel> = {
   active: { label: 'Active', tone: 'ok' },
   rejected: { label: 'Rejetée', tone: 'warn' },
   retired: { label: 'Retirée', tone: 'neutral' },
+};
+
+/** Where a proposed allow policy stands (ADR-168). */
+export const PROPOSAL_STATUS: Record<ProposalStatus, ToneLabel> = {
+  pending: { label: 'En attente', tone: 'accent' },
+  approved: { label: 'Approuvée', tone: 'ok' },
+  rejected: { label: 'Refusée', tone: 'warn' },
+  withdrawn: { label: 'Retirée', tone: 'neutral' },
+  expired: { label: 'Expirée', tone: 'neutral' },
 };
 
 export const EVALUATION_STATUS: Record<EvaluationStatus, ToneLabel> = {

@@ -6,7 +6,7 @@
 mod support;
 
 use axum::http::StatusCode;
-use mimorya_core::demo::user;
+use mimorya_core::demo::{tenant, user};
 use serde_json::json;
 use support::TestApi;
 use support::policy_proposals::{
@@ -188,11 +188,23 @@ async fn a_change_applies_only_while_its_policy_stands_as_proposed() {
                 "permissions": ["intervention:read"], "condition": cancelled }),
     )
     .await;
+    // Expired, a proposal no longer waits on the policy.
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    sqlx::query(
+        "update policy_proposals set proposed_at = now() - interval '8 days', \
+         expires_at = now() - interval '1 day' where id = $1",
+    )
+    .bind(pending.parse::<uuid::Uuid>().unwrap())
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
     assert_eq!(paul.delete(&url).await.status, StatusCode::OK);
     assert_eq!(listed(&paul, &last).await, json!(null));
     let deleted = audited(&api, "policy.deleted", &policy_id).await;
     assert_eq!(deleted[0].1["effect"], "allow");
-    // The last one, and the two that earlier changes outdated: all waiting.
-    assert_eq!(deleted[0].1["pendingProposals"], 3, "{}", deleted[0].1);
+    // The last one, and the one an earlier change outdated, still waiting;
+    // not the expired one.
+    assert_eq!(deleted[0].1["pendingProposals"], 2, "{}", deleted[0].1);
     assert!(!reads_south(&api, user::LUCAS, "completed").await);
 }

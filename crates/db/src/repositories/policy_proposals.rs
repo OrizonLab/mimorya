@@ -103,10 +103,12 @@ pub async fn list_proposals(conn: &mut PgConnection) -> sqlx::Result<Vec<Proposa
     .await
 }
 
-/// How many proposals of the policy `policy_id` wait for a decision.
+/// How many proposals of the policy `policy_id` wait for a decision, none
+/// expired.
 pub async fn count_policy_proposals(conn: &mut PgConnection, policy_id: Uuid) -> sqlx::Result<i64> {
     sqlx::query_scalar(
-        "select count(*) from policy_proposals where policy_id = $1 and status = 'pending'",
+        "select count(*) from policy_proposals where policy_id = $1 and status = 'pending' \
+         and expires_at > now()",
     )
     .bind(policy_id)
     .fetch_one(conn)

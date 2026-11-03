@@ -9981,12 +9981,16 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
   - une entreprise peut élargir l'accès par politique, à deux administrateurs. Deux
     administrateurs d'accord peuvent encore s'ouvrir des données : la double validation
     empêche qu'un seul le fasse, comme partout où elle s'applique. Elle ne lie pourtant
-    qu'un administrateur qui ne peut pas faire seul un second administrateur des
-    politiques : qui détient aussi `user:manage` et `role:manage` peut inviter un compte à
-    une adresse qu'il tient et lui donner `policy:manage`, limite que l'ADR-019 assume
-    déjà (`SECURITY.md` §5, limites assumées). L'audit nomme alors l'invitation,
-    l'habilitation, puis la proposition et son approbation. L'approbateur voit la politique
-    entière, et une condition qui nomme quelqu'un se lit ;
+    qu'un administrateur qui ne peut ni faire seul un second administrateur des
+    politiques, ni prendre la place de l'autre. Qui détient aussi `user:manage` et
+    `role:manage` peut inviter un compte à une adresse qu'il tient et lui donner
+    `policy:manage`. Qui détient `user:manage` seul peut réinitialiser le mot de passe de
+    l'autre administrateur des politiques (le mot de passe provisoire lui est montré), se
+    connecter à sa place et approuver en son nom. Ce sont les limites que l'ADR-019 assume
+    déjà (`SECURITY.md` §5, limites assumées). L'audit nomme alors l'invitation et
+    l'habilitation, ou la réinitialisation (`user.password_reset`), avant la proposition et
+    son approbation. L'approbateur voit la politique entière, et une condition qui nomme
+    quelqu'un se lit ;
   - le moteur n'ouvre plus rien à qui ne détient pas la permission : une autorisation écrite
     à la main avant cette décision, qui l'aurait fait, n'a plus cet effet ;
   - les permissions vérifiées sur la personne (`Enforcement::Holder`) s'accordent toujours
@@ -10017,3 +10021,60 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       unité ne voit, ne propose ni ne décide rien ;
     - `crates/api/tests/admin_policy_storage.rs` : une autorisation écrite à la main se
       désactive et se supprime, sans rien d'autre.
+
+## ADR-169 — Écran des autorisations proposées dans l'administration (lot 38b)
+
+- **Date** : 2026-11-03 · **Statut** : acceptée · complète ADR-168
+- **Contexte** : les politiques d'autorisation ne se proposaient et ne se décidaient que
+  par l'API (ADR-168). L'onglet « Politiques d'accès » les marquait « Lecture seule » et
+  disait qu'elles ne se créent pas depuis l'administration.
+- **Décision** :
+  - **dans l'onglet** « Politiques d'accès », montré à qui administre les politiques
+    (`policy:manage`), deux boutons : « Nouvelle politique de refus » (écrite aussitôt,
+    comme avant) et « Proposer une autorisation » ;
+  - **le formulaire d'une autorisation** :
+    - il dit la politique telle qu'elle sera : description, permissions, condition et
+      « Active une fois approuvée » ;
+    - il n'offre que les permissions vérifiées ressource par ressource, une à une, sans
+      « Toutes les permissions de ce domaine » ;
+    - il explique qu'elle n'ouvre des ressources qu'à qui détient déjà la permission,
+      qu'un refus et l'habilitation l'emportent, et qu'elle attend un autre administrateur
+      dans les sept jours ;
+    - la sélection des permissions est commune aux deux formulaires (`PermissionPicker`) ;
+  - **les autorisations proposées** sont listées au-dessus des politiques, comme l'API
+    les donne, avec pour chacune :
+    - son état (« En attente », « Approuvée », « Refusée », « Retirée », « Expirée ») ;
+    - « Périmée » quand sa politique a changé depuis, avec une note qui le dit ;
+    - ce qu'elle change (« Nouvelle autorisation », ou l'autorisation qu'elle modifie) ;
+    - son auteur et sa date, son échéance tant qu'elle attend, puis qui l'a décidée.
+
+    Ses boutons : « Approuver » et « Refuser » pour un autre administrateur que l'auteur,
+    « Approuver » désactivé sur une proposition périmée, « Retirer » pour l'auteur ;
+    chacun après confirmation ;
+
+  - **une autorisation** se désactive (tant qu'elle est active), se supprime, ou se
+    modifie par « Proposer une modification », qui ouvre le même formulaire déjà rempli.
+    Désactivée, une note dit qu'elle se réactive par une proposition. Une décision ou un
+    changement recharge les deux listes, l'une changeant l'autre ;
+  - les règles restent celles du serveur : un refus s'affiche tel qu'il le dit.
+- **Conséquences** :
+  - tests : `apps/web/e2e/policy-proposals.spec.ts`. Paul fait par l'API un second
+    administrateur des politiques, Claire, qui active son compte par son invitation.
+    Puis :
+    - la proposition de Paul est en attente, sans « Approuver » pour lui, et rien n'est
+      écrit ;
+    - Claire l'approuve : l'autorisation est listée, relue telle que proposée ;
+    - une seconde proposition, refusée par Claire, n'ouvre rien ;
+    - Paul désactive puis supprime l'autorisation.
+
+    Le test retire ses autorisations et ses propositions en attente, puis le rôle de
+    Claire, désactive son compte et supprime le rôle, même s'il échoue ;
+
+  - suites de l'audit de la PR #182 :
+    - la limite de la double validation, dans l'ADR-168 et `SECURITY.md` §5, nomme aussi
+      la réinitialisation du mot de passe de l'autre administrateur ;
+    - l'audit d'une suppression ne compte plus les propositions expirées ;
+    - le contrat dit `outdated` d'une proposition en attente ;
+    - le refus d'une proposition hors des règles du jour est vérifié sur son message, et
+      `insert_proposal` est partagé (`tests/support/policy_proposals.rs`) ;
+  - l'avis aux autres administrateurs qu'une proposition les attend reste à faire.

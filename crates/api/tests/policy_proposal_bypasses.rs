@@ -13,37 +13,11 @@ use serde_json::{Value, json};
 use support::TestApi;
 use support::accounts::{activate, create_partial_admin};
 use support::policy_proposals::{
-    approve, completed_interventions, completed_only, listed, propose, reads_south, second_admin,
+    approve, completed_interventions, completed_only, insert_proposal, listed, propose,
+    reads_south, second_admin,
 };
 use support::refusals::{latest_entry, unknown_references_since};
 use uuid::Uuid;
-
-/// A pending proposal written without the API's checks, by `author`.
-async fn insert_proposal(
-    api: &TestApi,
-    tenant_id: Uuid,
-    author: Uuid,
-    permissions: &[&str],
-    condition: Value,
-) -> String {
-    let id = Uuid::new_v4();
-    let mut tx = api.app.services.db.begin(tenant_id).await.unwrap();
-    sqlx::query(
-        "insert into policy_proposals (id, tenant_id, description, permissions, condition, \
-         enabled, proposed_by_user_id, expires_at) \
-         values ($1, $2, 'Écrite à la main', $3, $4, true, $5, now() + interval '1 day')",
-    )
-    .bind(id)
-    .bind(tenant_id)
-    .bind(permissions)
-    .bind(condition)
-    .bind(author)
-    .execute(&mut *tx)
-    .await
-    .unwrap();
-    tx.commit().await.unwrap();
-    id.to_string()
-}
 
 fn allow_policies(listing: &Value) -> usize {
     listing["policies"]
@@ -73,6 +47,12 @@ async fn a_proposal_the_rules_no_longer_accept_is_never_approved() {
         let id = insert_proposal(&api, tenant::ID, claire_id, permissions, condition).await;
         let refused = approve(&paul, &id).await;
         assert_eq!(refused.status, StatusCode::CONFLICT, "{}", refused.text());
+        // Refused for its content, not for any other reason a 409 gives.
+        assert!(
+            refused.text().contains("n’est plus acceptée"),
+            "{}",
+            refused.text()
+        );
         assert_eq!(listed(&paul, &id).await["status"], "pending");
     }
     let after = paul.get("/admin/policies").await.json();

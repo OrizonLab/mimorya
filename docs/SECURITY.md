@@ -571,8 +571,9 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
       sa mémoire personnelle. Tout est tracé (`user.created`, `role.assigned`,
       `user.password_reset`…). La double validation des politiques d'autorisation est
       faite (ADR-168), mais un administrateur qui peut ainsi faire seul un second
-      administrateur des politiques l'accomplit seul ; celle des autres actions
-      d'administration est prévue en phase 3 ;
+      administrateur des politiques, ou prendre la place de l'autre (réinitialisation de
+      son mot de passe), l'accomplit seul ; celle des autres actions d'administration est
+      prévue en phase 3 ;
     - les adresses e-mail sont uniques entre entreprises (ADR-011) : créer un compte
       avec une adresse déjà utilisée ailleurs est refusé (409), ce qui révèle à
       l'administrateur qu'elle existe dans une autre entreprise. L'invitation par
