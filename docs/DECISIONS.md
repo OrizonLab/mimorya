@@ -345,7 +345,8 @@ cité, renvoi) y sont faites sur place.
   - les changements passent sous le verrou d'administration (ADR-020), sont audités
     (avec l'état précédent) et s'appliquent aussitôt (cache invalidé).
 - **Conséquences** : les entreprises ne peuvent pas encore élargir l'accès par
-  politique (elles le font par rôles) ; un nouveau connecteur déclare l'`Enforcement`
+  politique (elles le font par rôles ; depuis l'ADR-168, une autorisation proposée par un
+  administrateur et approuvée par un autre le fait) ; un nouveau connecteur déclare l'`Enforcement`
   de chacune de ses permissions ; les attributs des collaborateurs utilisés par les
   conditions (`subject.attributes.*`) se modifient depuis l'administration
   (ADR-023).
@@ -9910,3 +9911,93 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       dans l'entreprise de cet utilisateur ;
     - un compte supprimé laisse l'entrée d'audit qui le nommait dans son entreprise,
       sa référence vidée.
+
+## ADR-168 — Politiques d'autorisation : proposées par un administrateur, approuvées par un autre
+
+- **Date** : 2026-11-03 · **Statut** : acceptée · complète ADR-019, modifie ADR-022
+- **Contexte** : une politique d'autorisation ouvre l'accès à des ressources au-delà du
+  périmètre des rôles. Écrite par un seul administrateur, elle pourrait viser cet
+  administrateur même (une condition sur son identifiant, ou une condition large). L'ADR-022
+  les avait donc laissées en lecture seule jusqu'à une double validation (phase 3). Le
+  moteur les appliquait en outre dans `check` à quiconque remplissait leur condition, même
+  sans détenir la permission nulle part, alors que `has()` et les routes lui refusaient
+  cette permission.
+- **Décision** :
+  - **ce qu'accorde une autorisation** : le moteur ne l'applique qu'à qui détient déjà la
+    permission sur un périmètre (`data_scope` non vide). Elle élargit ce périmètre à
+    d'autres ressources, ressource par ressource (`check`), et n'accorde jamais la
+    permission elle-même. Un refus l'emporte toujours, et la sensibilité de la ressource
+    reste comparée à l'habilitation. Une autorisation ne porte donc que sur des permissions
+    vérifiées ressource par ressource (`Enforcement::PerResource`, aujourd'hui
+    `intervention:read` et `approval:decide`), y compris chaque permission que couvre un
+    `domaine:*` (`core::policy_rules::grant_problem`). Elle suit les autres règles des
+    politiques (ADR-022) : pas de permission d'administration, condition vérifiée puis
+    stockée sous sa forme canonique ;
+  - **une proposition** (`policy_proposals`, migration `0071`) dit la politique telle qu'elle
+    sera : une nouvelle, ou le changement d'une autorisation existante (`policyId`), avec sa
+    description, ses permissions, sa condition et son état. Un administrateur des politiques
+    (`policy:manage`, toute l'entreprise) la fait (`POST /api/admin/policy-proposals`). Une
+    proposition qui ne change rien est refusée, de même qu'une cinquante et unième qui attendrait une décision dans l'entreprise (`MAX_PENDING_PROPOSALS`) : toutes celles qui attendent sont listées. Une politique de refus ne se propose pas :
+    elle s'écrit directement. Une politique inconnue est refusée et tracée (ADR-054) ;
+  - **l'approbation** revient à un autre administrateur des politiques que son auteur
+    (`POST …/{id}/approval`), qui l'écrit telle quelle. Elle est vérifiée sous le verrou
+    d'administration (ADR-020), sur les règles stockées :
+    - l'approbateur et l'auteur détiennent tous deux `policy:manage` sur toute l'entreprise,
+      leur compte actif ;
+    - la proposition attend encore et n'a pas expiré : sept jours après qu'elle est faite
+      (`GRANT_PROPOSAL_DAYS`) ;
+    - son contenu passe les règles du jour ;
+    - un changement ne s'applique que si la politique est restée telle qu'à la proposition
+      (`policy_updated_at`). Deux changements d'une même politique ne s'enchaînent donc
+      jamais à l'insu de l'approbateur : le premier approuvé rend l'autre périmé
+      (`outdated`).
+
+    La politique s'applique aussitôt (cache invalidé, ADR-085) ;
+
+  - **refus et retrait** : un autre administrateur que l'auteur refuse la proposition
+    (`…/rejection`) ; son auteur la retire (`…/withdrawal`). Une proposition décidée ne se
+    décide plus ;
+  - **ce qui reste direct** : désactiver ou supprimer une autorisation ne fait que retirer
+    un accès, et se fait sans proposition (`PATCH /api/admin/policies/{id}` avec
+    `{ "enabled": false }` seul, `DELETE`). Une désactivation rend périmées les propositions
+    faites avant elle ; une suppression emporte ses propositions. Tout autre changement
+    d'une autorisation, y compris sa réactivation, passe par une proposition ;
+  - **audit** : `policy_proposal.created`, `.approved`, `.rejected`, `.withdrawn`, et, à
+    l'approbation, `policy.created` ou `policy.updated` par l'approbateur, avec la
+    proposition, son auteur et l'état précédent. La désactivation et la suppression d'une
+    autorisation sont tracées comme celles d'un refus (`policy.updated`, `policy.deleted`,
+    avec l'effet) ;
+  - **conservation** : une proposition suit le compte de son auteur. Qui l'a décidée est
+    gardé tant que son compte existe. Décidée ou expirée, elle est purgée quatre-vingt-dix
+    jours plus tard par la maintenance (`system_purge_policy_proposals`) ; l'audit garde ce
+    qui a été proposé et décidé.
+- **Conséquences** :
+  - une entreprise peut élargir l'accès par politique, à deux administrateurs. Deux
+    administrateurs d'accord peuvent encore s'ouvrir des données : la double validation
+    empêche qu'un seul le fasse, comme partout où elle s'applique. L'approbateur voit la
+    politique entière, et une condition qui nomme quelqu'un se lit ;
+  - le moteur n'ouvre plus rien à qui ne détient pas la permission : une autorisation écrite
+    à la main avant cette décision, qui l'aurait fait, n'a plus cet effet ;
+  - les permissions vérifiées sur la personne (`Enforcement::Holder`) s'accordent toujours
+    par un rôle : une autorisation n'y aurait aucun effet, puisqu'elles ne sont jamais
+    vérifiées ressource par ressource ;
+  - les autres changements d'administration (comptes, habilitations, rôles, partages) ne
+    passent pas encore par une double validation (ADR-019) ;
+  - l'écran des propositions dans l'administration et son parcours de bout en bout font le
+    lot 38b ; l'avis aux autres administrateurs qu'une proposition les attend, plus tard ;
+  - tests :
+    - `crates/core/tests/allow_policies.rs` : une autorisation ouvre à qui détient la
+      permission, jamais à qui ne la détient pas, ni à un agent restreint ; un refus et
+      l'habilitation l'emportent ;
+    - `crates/core/src/policy_rules/grants.rs` : seules les permissions vérifiées ressource
+      par ressource, chaque permission d'un domaine comprise ;
+    - `crates/api/tests/policy_proposals.rs` : rien n'est ouvert avant l'approbation d'un
+      autre administrateur, puis aussitôt ; un changement approuvé rend l'autre périmé ; la
+      désactivation directe, la réactivation par proposition, la suppression qui emporte
+      ses propositions ; l'audit de chaque étape ;
+    - `crates/api/tests/policy_proposal_refusals.rs` : règles d'une autorisation, refus ou
+      politique inconnue nommés, qui voit et décide, proposition d'une autre entreprise
+      inconnue, refus par un autre et retrait par l'auteur, expiration, auteur qui a perdu
+      son droit, plafond des propositions en attente, purge ;
+    - `crates/api/tests/admin_policy_storage.rs` : une autorisation écrite à la main se
+      désactive et se supprime, sans rien d'autre.

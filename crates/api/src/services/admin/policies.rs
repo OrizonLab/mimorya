@@ -1,23 +1,25 @@
 //! Access policies (ADR-022): an administrator creates, changes, disables and
-//! deletes deny policies on business permissions; allow policies are shown but
-//! not touched here. Conditions are checked before they are stored, since an
-//! unreadable one would stop the whole company's authorization from loading.
-//! Changes apply at once (cache refreshed).
+//! deletes deny policies on business permissions, at once. An allow policy is
+//! written only once another administrator approved its proposal
+//! (`policy_proposals`, ADR-168); here it is only switched off or deleted,
+//! which only takes access away. Conditions are checked before they are
+//! stored (`policy_checks`). Changes apply at once (cache refreshed).
 
 use mimorya_core::DomainError;
 use mimorya_core::authz::{Condition, PermissionInfo};
-use mimorya_core::policy_rules::{
-    canonical_condition, condition_problem, normalize_policy_permissions, scope_problem,
-};
+use mimorya_core::policy_rules::normalize_policy_permissions;
 use mimorya_db::repositories::access_policies::{
-    NewDenyPolicy, PolicyPatch, PolicyRow, create_deny_policy, delete_deny_policy, get_policy,
-    update_deny_policy,
+    NewPolicy, PolicyPatch, PolicyRow, create_deny_policy, delete_allow_policy, delete_deny_policy,
+    get_policy, switch_off_allow_policy, update_deny_policy,
 };
 use mimorya_db::repositories::audit::append_audit;
 use mimorya_db::{Database, TenantTx};
-use serde_json::{Value, json};
+use serde_json::json;
 use uuid::Uuid;
 
+use super::policy_checks::{
+    checked_condition, checked_permissions, checked_scope, stored_condition,
+};
 use super::{audit_entry, begin_change};
 use crate::services::{AccessContext, AccessService};
 
@@ -45,7 +47,7 @@ pub async fn create_policy(
     let mut tx = begin_change(db, access, PERMISSION).await?;
     let id = create_deny_policy(
         &mut tx,
-        NewDenyPolicy {
+        NewPolicy {
             tenant_id,
             description: input.description.clone(),
             permissions: permissions.clone(),
@@ -87,6 +89,15 @@ pub async fn update_policy(
     changes: PolicyChanges,
 ) -> anyhow::Result<()> {
     access.require_tenant_wide(PERMISSION)?;
+    let only_switches_off = matches!(
+        changes,
+        PolicyChanges {
+            description: None,
+            permissions: None,
+            condition: None,
+            enabled: Some(false),
+        }
+    );
     let permissions = changes
         .permissions
         .map(|p| checked_permissions(&p, catalog))
@@ -97,7 +108,10 @@ pub async fn update_policy(
         .map(checked_condition)
         .transpose()?;
     let mut tx = begin_change(db, access, PERMISSION).await?;
-    let previous = editable_policy(&mut tx, id).await?;
+    let previous = existing_policy(&mut tx, id).await?;
+    if previous.effect != "deny" {
+        return switch_off(tx, access_service, access, previous, only_switches_off).await;
+    }
     // The policy as it will stand is checked whenever it acts or its rule
     // changes: what is stored may predate a rule or have been written by
     // hand, and enabling must never load what the API would refuse. A
@@ -110,7 +124,7 @@ pub async fn update_policy(
         };
         let effective_condition = match changes.condition.clone() {
             Some(condition) => condition,
-            None => stored_condition(&previous)?,
+            None => stored_condition(&previous.condition)?,
         };
         checked_scope(&effective_permissions, &effective_condition, catalog)?;
     }
@@ -153,11 +167,17 @@ pub async fn delete_policy(
 ) -> anyhow::Result<()> {
     access.require_tenant_wide(PERMISSION)?;
     let mut tx = begin_change(db, access, PERMISSION).await?;
-    let previous = editable_policy(&mut tx, id).await?;
-    delete_deny_policy(&mut tx, id).await?;
+    let previous = existing_policy(&mut tx, id).await?;
+    // Deleting an allow policy only takes access away (ADR-168).
+    if previous.effect == "deny" {
+        delete_deny_policy(&mut tx, id).await?;
+    } else {
+        delete_allow_policy(&mut tx, id).await?;
+    }
     append_audit(
         &mut tx,
         audit_entry(access, "policy.deleted", "policy", id).metadata(json!({
+            "effect": previous.effect,
             "description": previous.description,
             "permissions": previous.permissions,
             "condition": previous.condition,
@@ -167,24 +187,6 @@ pub async fn delete_policy(
     tx.commit().await?;
     access_service.invalidate(access.subject.tenant_id);
     Ok(())
-}
-
-fn checked_permissions(
-    requested: &[String],
-    catalog: &[PermissionInfo],
-) -> Result<Vec<String>, DomainError> {
-    normalize_policy_permissions(requested, catalog).map_err(DomainError::validation)
-}
-
-fn checked_scope(
-    permissions: &[String],
-    condition: &Condition,
-    catalog: &[PermissionInfo],
-) -> Result<(), DomainError> {
-    match scope_problem(permissions, condition, catalog) {
-        Some(problem) => Err(DomainError::validation(problem)),
-        None => Ok(()),
-    }
 }
 
 /// The stored permissions, checked again (they may predate a rule).
@@ -200,42 +202,45 @@ fn stored_permissions(
     })
 }
 
-/// The stored condition, read and checked again (it may predate a rule).
-fn stored_condition(policy: &PolicyRow) -> Result<Condition, DomainError> {
-    let refused = || {
-        DomainError::validation(
-            "La condition enregistrée n’est plus valide : remplacez-la en modifiant la politique",
-        )
-    };
-    let condition: Condition =
-        serde_json::from_value(policy.condition.clone()).map_err(|_| refused())?;
-    if condition_problem(&condition).is_some() {
-        return Err(refused());
-    }
-    Ok(condition)
+/// The policy, as stored now.
+async fn existing_policy(tx: &mut TenantTx, id: Uuid) -> anyhow::Result<PolicyRow> {
+    get_policy(tx, id)
+        .await?
+        .ok_or_else(|| DomainError::not_found("Politique introuvable").into())
 }
 
-/// The condition as it will be stored, once it passed the checks: its text
-/// values in canonical form, like the attributes they are compared with.
-fn checked_condition(condition: &Condition) -> anyhow::Result<Value> {
-    if let Some(problem) = condition_problem(condition) {
-        return Err(DomainError::validation(problem).into());
-    }
-    Ok(serde_json::to_value(canonical_condition(
-        condition.clone(),
-    ))?)
-}
-
-/// The policy, as stored now, if an administrator may change it.
-async fn editable_policy(tx: &mut TenantTx, id: Uuid) -> anyhow::Result<PolicyRow> {
-    let Some(policy) = get_policy(tx, id).await? else {
-        return Err(DomainError::not_found("Politique introuvable").into());
-    };
-    if policy.effect != "deny" {
+/// What the administration changes of an allow policy by itself: it switches
+/// it off, which only takes access away. Anything else takes a proposal that
+/// another administrator approves (ADR-168).
+async fn switch_off(
+    mut tx: TenantTx,
+    access_service: &AccessService,
+    access: &AccessContext,
+    previous: PolicyRow,
+    only_switches_off: bool,
+) -> anyhow::Result<()> {
+    if !only_switches_off {
         return Err(DomainError::forbidden(
-            "Les politiques d’autorisation ne se modifient pas depuis l’administration",
+            "Une politique d’autorisation se modifie par une proposition qu’un autre \
+             administrateur approuve ; elle se désactive ou se supprime directement",
         )
         .into());
     }
-    Ok(policy)
+    // Already off: nothing changes, not even what its proposals were made on.
+    if !previous.enabled {
+        return Ok(());
+    }
+    switch_off_allow_policy(&mut tx, previous.id).await?;
+    append_audit(
+        &mut tx,
+        audit_entry(access, "policy.updated", "policy", previous.id).metadata(json!({
+            "effect": previous.effect,
+            "enabled": false,
+            "previousEnabled": true,
+        })),
+    )
+    .await?;
+    tx.commit().await?;
+    access_service.invalidate(access.subject.tenant_id);
+    Ok(())
 }

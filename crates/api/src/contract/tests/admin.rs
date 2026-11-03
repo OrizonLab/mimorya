@@ -9,6 +9,7 @@ use mimorya_core::autonomy::ToolRisk;
 use mimorya_db::repositories::access_policies::POLICY_EFFECTS;
 use mimorya_db::repositories::audit::{AUDIT_ACTORS, AUDIT_OUTCOMES};
 use mimorya_db::repositories::connectors::CONNECTOR_STATUSES;
+use mimorya_db::repositories::policy_proposals::PROPOSAL_STATUSES;
 use mimorya_db::repositories::skills::{SKILL_STATUSES, SKILL_VERSION_STATUSES};
 use mimorya_db::repositories::usage::USAGE_KINDS;
 use mimorya_db::repositories::users::USER_STATUSES;
@@ -42,6 +43,7 @@ fn activity_policy_and_connector_columns_read_back_as_their_contract_values() {
     every_value_reads_back::<admin::AuditOutcome>("audit outcome", &AUDIT_OUTCOMES);
     every_value_reads_back::<admin::UsageKind>("usage kind", &USAGE_KINDS);
     every_value_reads_back::<admin::PolicyEffect>("policy effect", &POLICY_EFFECTS);
+    every_value_reads_back::<admin::ProposalStatus>("policy proposal status", &PROPOSAL_STATUSES);
     every_value_reads_back::<admin::ConnectorStatus>("connector status", &CONNECTOR_STATUSES);
     every_value_reads_back::<admin::SkillVersionStatus>(
         "skill version status",

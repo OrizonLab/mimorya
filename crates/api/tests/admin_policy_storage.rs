@@ -1,7 +1,8 @@
-//! Access policies the API did not write (ADR-022): allow policies and another
-//! company's are out of reach; a stored deny policy that the current rules
-//! refuse (hand-written, or older than a rule) is never enabled, yet can still
-//! be renamed or switched off.
+//! Access policies the API did not write (ADR-022): an allow policy is only
+//! switched off or deleted directly, any other change takes a proposal
+//! (ADR-168); another company's are out of reach; a stored deny policy that
+//! the current rules refuse (hand-written, or older than a rule) is never
+//! enabled, yet can still be renamed or switched off.
 
 mod support;
 
@@ -43,7 +44,7 @@ async fn insert_deny(
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
-async fn allow_policies_and_other_companies_policies_are_out_of_reach() {
+async fn allow_policies_are_only_switched_off_and_other_companies_out_of_reach() {
     let api = TestApi::start().await;
     let paul = api.sign_in(user::PAUL).await;
     let (allow, foreign) = (Uuid::new_v4(), Uuid::new_v4());
@@ -77,7 +78,27 @@ async fn allow_policies_and_other_companies_policies_are_out_of_reach() {
         paul.patch(&allow_url, narrowed.clone()).await.status,
         StatusCode::FORBIDDEN
     );
-    assert_eq!(paul.delete(&allow_url).await.status, StatusCode::FORBIDDEN);
+    let renamed_off = json!({ "description": "Renommée", "enabled": false });
+    assert_eq!(
+        paul.patch(&allow_url, renamed_off).await.status,
+        StatusCode::FORBIDDEN
+    );
+    let off = paul.patch(&allow_url, json!({ "enabled": false })).await;
+    assert_eq!(off.status, StatusCode::OK, "{}", off.text());
+    let again = paul.patch(&allow_url, json!({ "enabled": false })).await;
+    assert_eq!(again.status, StatusCode::OK, "{}", again.text());
+    let listing = paul.get("/admin/policies").await.json();
+    let listed_allow = listing["policies"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["id"] == json!(allow))
+        .unwrap()
+        .clone();
+    assert_eq!(listed_allow["enabled"], false);
+    assert_eq!(listed_allow["description"], "Insérée par le test");
+    assert_eq!(paul.delete(&allow_url).await.status, StatusCode::OK);
+    assert_eq!(paul.delete(&allow_url).await.status, StatusCode::NOT_FOUND);
     let foreign_url = format!("/admin/policies/{foreign}");
     assert_eq!(
         paul.patch(&foreign_url, narrowed).await.status,

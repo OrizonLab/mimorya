@@ -21,6 +21,7 @@ mod memory_settings;
 mod mission_settings;
 mod organization;
 mod policies;
+mod policy_proposals;
 mod roles;
 mod skill_eval_cases;
 mod skill_evaluations;
@@ -75,6 +76,22 @@ pub fn routes(state: &AppState) -> Router<AppState> {
         .route(
             "/admin/policies/{id}",
             patch(policies::update).delete(policies::remove),
+        )
+        .route(
+            "/admin/policy-proposals",
+            get(policy_proposals::list).post(policy_proposals::create),
+        )
+        .route(
+            "/admin/policy-proposals/{id}/approval",
+            post(policy_proposals::approve),
+        )
+        .route(
+            "/admin/policy-proposals/{id}/rejection",
+            post(policy_proposals::reject),
+        )
+        .route(
+            "/admin/policy-proposals/{id}/withdrawal",
+            post(policy_proposals::withdraw),
         )
         .route(
             "/admin/approval-routing",

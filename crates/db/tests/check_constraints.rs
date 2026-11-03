@@ -15,6 +15,7 @@ use mimorya_db::repositories::approvals::APPROVAL_STATUSES;
 use mimorya_db::repositories::audit::{AUDIT_ACTORS, AUDIT_OUTCOMES};
 use mimorya_db::repositories::connectors::CONNECTOR_STATUSES;
 use mimorya_db::repositories::conversations::MESSAGE_ROLES;
+use mimorya_db::repositories::policy_proposals::PROPOSAL_STATUSES;
 use mimorya_db::repositories::runs::RunStatus;
 use mimorya_db::repositories::skills::{SKILL_STATUSES, SKILL_VERSION_STATUSES};
 use mimorya_db::repositories::tool_invocations::TOOL_DECISIONS;
@@ -81,6 +82,7 @@ async fn constrained_columns_allow_exactly_the_platform_s_values() {
         ("audit_log_outcome_check", owned(AUDIT_OUTCOMES)),
         ("usage_records_kind_check", owned(USAGE_KINDS)),
         ("access_policies_effect_check", owned(POLICY_EFFECTS)),
+        ("policy_proposals_status_check", owned(PROPOSAL_STATUSES)),
         (
             "connector_instances_status_check",
             owned(CONNECTOR_STATUSES),

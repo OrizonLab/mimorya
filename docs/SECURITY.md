@@ -459,9 +459,18 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   administrateurs compris : le formulaire le signale. Les attributs des
   collaborateurs (`subject.attributes.*`) sont posés par un administrateur des comptes,
   jamais sur son propre compte. Ils sont typés et courts. L'audit nomme les attributs
-  modifiés, jamais leurs valeurs (ADR-023). Les
-  politiques d'autorisation, qui pourraient ouvrir les données métier à leur auteur,
-  restent en lecture seule jusqu'à la double validation (ADR-022).
+  modifiés, jamais leurs valeurs (ADR-023).
+- **Double validation des autorisations** (ADR-168) : une politique d'autorisation, qui
+  pourrait ouvrir les données métier à son auteur, est proposée par un administrateur des
+  politiques et approuvée par un autre, sous le verrou d'administration et sur les
+  règles stockées : l'un et l'autre détiennent encore `policy:manage` sur toute
+  l'entreprise, la proposition n'a pas expiré (sept jours) et, pour un changement, la
+  politique n'a pas changé depuis. Rien n'est ouvert avant l'approbation. Une
+  autorisation n'élargit que le périmètre de qui détient déjà la permission, ressource
+  par ressource ; elle n'accorde jamais la permission elle-même, et ne porte que sur des
+  permissions vérifiées ressource par ressource. Un refus et l'habilitation l'emportent
+  sur elle. La désactiver ou la supprimer, qui ne retire qu'un accès, se fait sans
+  proposition. Chaque étape est auditée.
 - **Sensibilité** : `public < internal < confidential < restricted`, comparée à
   l'habilitation (`clearance`) de la personne ; le propriétaire voit toujours ses
   propres données.

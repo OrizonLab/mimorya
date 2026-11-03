@@ -18,6 +18,7 @@ mod microsoft365;
 mod mission_settings;
 mod organization;
 mod policies;
+mod policy_proposals;
 mod rest_connectors;
 mod rest_import;
 mod roles;
@@ -57,6 +58,9 @@ pub use mission_settings::{MissionSettingsUpdate, MissionSettingsView};
 pub use policies::{
     ConditionAttribute, NewPolicy, Policies, PolicyEffect, PolicyUpdate, PolicyView,
     RestrictablePermission,
+};
+pub use policy_proposals::{
+    NewPolicyProposal, PolicyProposalView, PolicyProposals, ProposalPerson, ProposalStatus,
 };
 pub use rest_connectors::{
     HttpMethod, NewRestConnector, ParameterLocation, ParameterType, RestApi, RestOperation,

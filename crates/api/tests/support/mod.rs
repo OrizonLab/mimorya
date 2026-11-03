@@ -36,6 +36,7 @@ pub mod mission_notices;
 pub mod missions;
 pub mod notification_choices;
 pub mod planning;
+pub mod policy_proposals;
 pub mod privileges;
 pub mod queue;
 pub mod recovery;

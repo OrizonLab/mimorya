@@ -38,6 +38,8 @@ mod mission_settings;
 mod org_units;
 mod policies;
 mod policy_changes;
+mod policy_checks;
+mod policy_proposals;
 mod provider_designation;
 mod reset_links;
 mod rest_connectors;
@@ -88,6 +90,10 @@ pub use mission_settings::{
 };
 pub use org_units::{NewUnitInput, UnitChanges, create_unit, delete_unit, update_unit};
 pub use policies::{PolicyChanges, PolicyInput, create_policy, delete_policy, update_policy};
+pub use policy_proposals::{
+    ProposalInput, approve_policy_proposal, propose_policy, reject_policy_proposal,
+    withdraw_policy_proposal,
+};
 pub use reset_links::send_reset_link;
 pub use rest_connectors::{NewRestConnector, create_rest_connector, read_openapi};
 pub use roles::{RoleChanges, RoleInput, create_role, delete_role, update_role};
@@ -123,6 +129,17 @@ async fn begin_change(
     access: &AccessContext,
     permission: &str,
 ) -> anyhow::Result<TenantTx> {
+    Ok(begin_checked_change(db, access, permission).await?.0)
+}
+
+/// `begin_change`, with the engine of the stored rules it checked the
+/// administrator on: what checks another account's rights in the same
+/// change (`holds_company_wide`).
+async fn begin_checked_change(
+    db: &Database,
+    access: &AccessContext,
+    permission: &str,
+) -> anyhow::Result<(TenantTx, AuthorizationEngine)> {
     let mut tx = db.begin(access.subject.tenant_id).await?;
     tx.lock_administration().await?;
     let engine = engine_of(load_authorization_data(&mut tx).await?)?;
@@ -132,7 +149,7 @@ async fn begin_change(
         ))
         .into());
     }
-    Ok(tx)
+    Ok((tx, engine))
 }
 
 /// The engine of the company's rules as stored: its units, roles and

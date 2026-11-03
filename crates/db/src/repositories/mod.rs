@@ -46,6 +46,7 @@ pub mod notification_settings;
 pub mod org;
 pub mod org_units;
 pub mod password_resets;
+pub mod policy_proposals;
 pub mod rate_limits;
 pub mod role_assignments;
 pub mod roles;
