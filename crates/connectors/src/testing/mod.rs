@@ -3,7 +3,8 @@
 //! they declare, a token quoted back, a server that never answers, one held
 //! until the test releases it, answers that never end: `endless`, a slow one
 //! that counts the pings it sees: `slow`); an HTTP proxy that lists where it
-//! went (`proxy`); a REST API (`rest`); Microsoft Graph (`graph`, its writes
+//! went (`proxy`); an MCP server protected by OAuth and its authorization
+//! server (`oauth`); a REST API (`rest`); Microsoft Graph (`graph`, its writes
 //! in `graph_writes`); Gmail and Google Calendar (`google`, its writes in
 //! `google_writes`); Slack's Web API (`slack`); Telegram's Bot API
 //! (`telegram`); Microsoft as a Teams bot reaches it: Entra, the Bot
@@ -15,6 +16,7 @@ mod google_writes;
 mod graph;
 mod graph_writes;
 mod hold;
+mod oauth;
 mod proxy;
 mod quirks;
 mod rest;
@@ -40,6 +42,10 @@ pub use google::{FakeGoogle, GOOGLE_DETAIL, GoogleRequest, LISTED_GONE, LISTED_R
 pub use google_writes::SentMail;
 pub use graph::{FORBIDDEN_MESSAGE, FakeGraph, GRAPH_DETAIL, GraphRequest, OVERSIZED_MESSAGE};
 pub use hold::Hold;
+pub use oauth::{
+    AuthRequest, CLIENT_ID, CLIENT_SECRET, FakeAuthorizationServer, METADATA_PATH, OAuthQuirk,
+    ProtectedMcp, Settings as AuthorizationSettings, serve_oauth_mcp_http,
+};
 pub use proxy::{Proxied, serve_proxy};
 pub use quirks::{DeclaredToolsServer, HIDDEN_TEXT, Quirk};
 pub use rest::{KEY_HEADER, serve_rest_http};

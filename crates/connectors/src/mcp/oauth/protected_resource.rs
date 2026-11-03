@@ -1,0 +1,175 @@
+//! An MCP server's Protected Resource Metadata (RFC 9728): which
+//! authorization servers issue its tokens, and the scopes it supports. The
+//! document comes from the server: it is taken only if it names this very
+//! server as its resource (RFC 9728 §3.3, a document copied from another
+//! resource is refused), between one and ten authorization servers, each
+//! an address the network rules allow (ADR-025). Its scopes are only
+//! suggestions: kept if each could be asked for, else none.
+
+use serde::Deserialize;
+
+use super::resource::same_resource;
+use super::scope::scopes_problem;
+use crate::outbound::{NetworkPolicy, url_problem};
+
+pub const MAX_AUTHORIZATION_SERVERS: usize = 10;
+
+/// What the platform keeps of the metadata.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProtectedResource {
+    pub authorization_servers: Vec<String>,
+    pub scopes_supported: Vec<String>,
+}
+
+/// The fields read; any other is passed over (the format is extensible).
+#[derive(Deserialize)]
+struct Document {
+    resource: Option<String>,
+    authorization_servers: Option<Vec<String>>,
+    scopes_supported: Option<Vec<String>>,
+}
+
+/// The metadata in `body`, if it is that of `resource` and names
+/// authorization servers the platform may reach.
+pub fn read_protected_resource(
+    body: &[u8],
+    resource: &str,
+    policy: NetworkPolicy,
+) -> Result<ProtectedResource, String> {
+    let document: Document = serde_json::from_slice(body)
+        .map_err(|_| "Métadonnées de la ressource protégée illisibles".to_string())?;
+    if !document
+        .resource
+        .as_deref()
+        .is_some_and(|named| same_resource(named, resource))
+    {
+        return Err(
+            "Les métadonnées de la ressource protégée nomment une autre ressource que ce serveur"
+                .into(),
+        );
+    }
+    let servers = document.authorization_servers.unwrap_or_default();
+    if servers.is_empty() {
+        return Err(
+            "Les métadonnées de la ressource protégée ne nomment aucun serveur \
+                    d’autorisation"
+                .into(),
+        );
+    }
+    if servers.len() > MAX_AUTHORIZATION_SERVERS {
+        return Err(format!(
+            "Les métadonnées de la ressource protégée nomment plus de \
+             {MAX_AUTHORIZATION_SERVERS} serveurs d’autorisation"
+        ));
+    }
+    for server in &servers {
+        if let Some(problem) = issuer_problem(server, policy) {
+            return Err(problem);
+        }
+    }
+    let scopes = document.scopes_supported.unwrap_or_default();
+    Ok(ProtectedResource {
+        authorization_servers: servers,
+        scopes_supported: if scopes_problem(&scopes).is_none() {
+            scopes
+        } else {
+            Vec::new()
+        },
+    })
+}
+
+/// Why `issuer` cannot name an authorization server the platform reaches,
+/// if it cannot: an address the network rules allow, without parameters
+/// nor fragment (RFC 8414 §2).
+pub fn issuer_problem(issuer: &str, policy: NetworkPolicy) -> Option<String> {
+    url_problem(issuer, policy)
+        .map(|problem| format!("Serveur d’autorisation « {issuer} » : {problem}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    const RESOURCE: &str = "https://mcp.example.com/mcp";
+
+    fn read(document: serde_json::Value) -> Result<ProtectedResource, String> {
+        read_protected_resource(
+            document.to_string().as_bytes(),
+            RESOURCE,
+            NetworkPolicy::default(),
+        )
+    }
+
+    #[test]
+    fn the_metadata_of_this_server_names_its_authorization_servers() {
+        let read = read(json!({
+            "resource": "https://MCP.example.com:443/mcp",
+            "authorization_servers": ["https://auth.example.com", "https://auth.example.com/t1"],
+            "scopes_supported": ["files:read"],
+            "bearer_methods_supported": ["header"],
+        }));
+        assert_eq!(
+            read,
+            Ok(ProtectedResource {
+                authorization_servers: vec![
+                    "https://auth.example.com".into(),
+                    "https://auth.example.com/t1".into()
+                ],
+                scopes_supported: vec!["files:read".into()],
+            })
+        );
+    }
+
+    #[test]
+    fn metadata_of_another_resource_or_without_servers_is_refused() {
+        let servers = json!(["https://auth.example.com"]);
+        for document in [
+            json!({ "resource": "https://mcp.example.com/other", "authorization_servers": servers }),
+            json!({ "resource": "https://evil.example.com/mcp", "authorization_servers": servers }),
+            json!({ "authorization_servers": servers }),
+            json!({ "resource": RESOURCE }),
+            json!({ "resource": RESOURCE, "authorization_servers": [] }),
+        ] {
+            assert!(read(document.clone()).is_err(), "{document}");
+        }
+        assert!(read_protected_resource(b"<html>", RESOURCE, NetworkPolicy::default()).is_err());
+        let many: Vec<String> = (0..=MAX_AUTHORIZATION_SERVERS)
+            .map(|i| format!("https://auth{i}.example.com"))
+            .collect();
+        assert!(read(json!({ "resource": RESOURCE, "authorization_servers": many })).is_err());
+    }
+
+    #[test]
+    fn an_authorization_server_the_network_rules_forbid_is_refused() {
+        for issuer in [
+            "http://auth.example.com",
+            "https://10.0.0.1",
+            "https://auth.example.com/?tenant=1",
+            "https://auth.example.com/#f",
+            "auth.example.com",
+        ] {
+            let document = json!({ "resource": RESOURCE, "authorization_servers": [issuer] });
+            assert!(read(document).is_err(), "{issuer}");
+        }
+        // A private deployment reaches its own.
+        let private = NetworkPolicy {
+            allow_private_network: true,
+            ..NetworkPolicy::default()
+        };
+        let body =
+            json!({ "resource": RESOURCE, "authorization_servers": ["http://10.0.0.1:8080"] });
+        assert!(read_protected_resource(body.to_string().as_bytes(), RESOURCE, private).is_ok());
+    }
+
+    #[test]
+    fn scopes_that_could_not_be_asked_for_are_not_kept() {
+        let read = read(json!({
+            "resource": RESOURCE,
+            "authorization_servers": ["https://auth.example.com"],
+            "scopes_supported": ["files:read", "bad scope"],
+        }));
+        assert_eq!(read.map(|r| r.scopes_supported), Ok(vec![]));
+    }
+}

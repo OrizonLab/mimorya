@@ -191,8 +191,8 @@ async fn a_suspended_company_s_administrators_are_not_told() {
     let suspend = "update tenants set status = 'suspended' where id = $1";
     owner_runs(suspend, &[tenant::ID]).await;
     // Its people cannot sign in to decide: not even listed. Read while
-    // suspended, checked once active again, which a failure leaves it for
-    // the next tests.
+    // suspended, asserted once active again: a failed assertion leaves the
+    // company active for the next tests.
     let pool = api.app.services.db.pool();
     let listed = companies_with_unannounced_policy_proposals(pool).await;
     let suspended = (announce(&api).await, told(&api), announced(&api, &id).await);
