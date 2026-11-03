@@ -103,9 +103,9 @@ fn written_problem(address: &str) -> Option<String> {
 /// if it cannot: without parameters, fragment nor credentials (RFC 8414
 /// §2), at an address the network rules allow. The issuer is quoted short.
 pub fn issuer_problem(issuer: &str, policy: NetworkPolicy) -> Option<String> {
-    let problem = match Url::parse(issuer) {
-        _ if let Some(problem) = written_problem(issuer) => problem,
-        Ok(parsed)
+    let problem = match (written_problem(issuer), Url::parse(issuer)) {
+        (Some(problem), _) => problem,
+        (None, Ok(parsed))
             if parsed.query().is_some()
                 || parsed.fragment().is_some()
                 || !parsed.username().is_empty()
@@ -113,7 +113,7 @@ pub fn issuer_problem(issuer: &str, policy: NetworkPolicy) -> Option<String> {
         {
             "un émetteur n’a ni paramètres, ni fragment, ni identifiants (RFC 8414)".to_string()
         }
-        _ => url_problem(issuer, policy)?,
+        (None, _) => url_problem(issuer, policy)?,
     };
     Some(format!(
         "Serveur d’autorisation « {} » : {problem}",
@@ -126,20 +126,20 @@ pub fn issuer_problem(issuer: &str, policy: NetworkPolicy) -> Option<String> {
 /// a fragment nor credentials; the address otherwise as the network rules
 /// allow. The address is quoted short.
 pub fn endpoint_problem(url: &str, name: &str, policy: NetworkPolicy) -> Option<String> {
-    let problem = match Url::parse(url) {
-        _ if let Some(problem) = written_problem(url) => problem,
-        Ok(parsed)
+    let problem = match (written_problem(url), Url::parse(url)) {
+        (Some(problem), _) => problem,
+        (None, Ok(parsed))
             if parsed.fragment().is_some()
                 || !parsed.username().is_empty()
                 || parsed.password().is_some() =>
         {
             "ni fragment ni identifiants attendus".to_string()
         }
-        Ok(mut parsed) => {
+        (None, Ok(mut parsed)) => {
             parsed.set_query(None);
             url_problem(parsed.as_str(), policy)?
         }
-        Err(_) => url_problem(url, policy)?,
+        (None, Err(_)) => url_problem(url, policy)?,
     };
     Some(format!("{name} « {} » : {problem}", quoted(url)))
 }
