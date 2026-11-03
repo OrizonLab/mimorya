@@ -180,6 +180,19 @@ async fn every_resource_the_administration_changes_is_traced_when_absent() {
             "connector",
         ),
         (
+            paul.put(
+                &format!("/admin/connectors/{absent}/oauth"),
+                json!({ "clientId": MARKER }),
+            )
+            .await,
+            "connector",
+        ),
+        (
+            paul.delete(&format!("/admin/connectors/{absent}/oauth"))
+                .await,
+            "connector",
+        ),
+        (
             paul.patch(
                 &format!("/admin/identity-providers/{absent}"),
                 json!({ "name": MARKER }),

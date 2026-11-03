@@ -28,6 +28,7 @@ use super::bridge::{McpClient, McpToolsetOptions, create_mcp_toolset};
 use super::failure::start_failed;
 use super::http::{BoundedHttpClient, TOO_LONG};
 use super::liveness::Liveness;
+use super::oauth::{OAUTH_TO_AUTHORIZE, OAuthDeclaration};
 use crate::outbound::{Redactor, http_client, token_problem, too_slow, url_problem};
 use crate::types::{Connector, ConnectorCloser, ConnectorInfo, ConnectorRuntime, InstanceContext};
 
@@ -46,6 +47,9 @@ pub enum McpConnectorConfig {
     Http {
         prefix: String,
         url: String,
+        /// Declared by an administrator (ADR-171).
+        #[serde(default)]
+        oauth: Option<OAuthDeclaration>,
     },
 }
 
@@ -140,10 +144,14 @@ async fn start(
                 .map_err(|error| start_failed(&error.into(), &Redactor::default()))?;
             (client, prefix)
         }
-        McpConnectorConfig::Http { prefix, url } => {
+        McpConnectorConfig::Http { prefix, url, oauth } => {
             // Checked again here: the operator may have narrowed the policy.
             if let Some(problem) = url_problem(&url, context.network) {
                 bail!("{problem}");
+            }
+            // Its token comes from an authorization, not yet given.
+            if oauth.is_some() {
+                bail!(OAUTH_TO_AUTHORIZE);
             }
             // A token saved before the rule may hold what the masking cannot follow.
             if context

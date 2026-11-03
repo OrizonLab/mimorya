@@ -52,6 +52,11 @@ pub fn token_secret_name(instance_id: Uuid) -> String {
     format!("connector.{instance_id}.token")
 }
 
+/// The secret of the OAuth client declared on an MCP server (ADR-171).
+pub fn client_secret_name(instance_id: Uuid) -> String {
+    format!("connector.{instance_id}.client_secret")
+}
+
 /// What the operator lets connectors do.
 #[derive(Debug, Clone, Copy)]
 pub struct ConnectorSettings {

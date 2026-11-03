@@ -17,9 +17,9 @@ use axum::routing::get;
 use serde_json::json;
 
 use super::authorization_server::FakeAuthorizationServer;
-use super::hostile::{hostile_routes, lure_path};
+use super::hostile::{endless_body, hostile_routes, lure_path};
 use crate::mcp::DemoDocsServer;
-use crate::testing::mcp_router;
+use crate::testing::{Hold, mcp_router};
 
 /// Where the server publishes its metadata, under its path (RFC 9728 §3.1).
 pub const METADATA_PATH: &str = "/.well-known/oauth-protected-resource/mcp";
@@ -59,6 +59,18 @@ pub enum OAuthQuirk {
     BrokenMetadata,
     /// Metadata answered 503 (`hostile`).
     UnavailableMetadata,
+    /// Metadata whose answer starts, then never ends (`hostile`).
+    DripMetadata,
+    /// A request without a token answered with this status instead of a
+    /// refusal.
+    ProbeAnswered(u16),
+    /// A refusal whose body never ends.
+    EndlessRefusal,
+    /// A challenge naming its metadata with parameters, which the
+    /// platform does not send.
+    ParamsInChallenge,
+    /// Its metadata answered only once the test releases `hold`.
+    HeldMetadata,
 }
 
 impl OAuthQuirk {
@@ -72,6 +84,7 @@ impl OAuthQuirk {
                 | Self::SilentMetadata
                 | Self::BrokenMetadata
                 | Self::UnavailableMetadata
+                | Self::DripMetadata
         )
     }
 }
@@ -79,6 +92,8 @@ impl OAuthQuirk {
 /// The server: its address, and the `Authorization` headers it received.
 pub struct ProtectedMcp {
     pub url: String,
+    /// What holds its metadata, with `HeldMetadata`.
+    pub hold: Arc<Hold>,
     seen: Arc<Mutex<Vec<Option<String>>>>,
 }
 
@@ -102,6 +117,7 @@ pub async fn serve_oauth_mcp_http(
     let origin = format!("http://{}", listener.local_addr().expect("address"));
     let url = format!("{origin}/mcp");
     let seen = Arc::new(Mutex::new(Vec::new()));
+    let hold = Arc::new(Hold::default());
     let challenge = match quirk {
         OAuthQuirk::NoMetadata | OAuthQuirk::RootMetadata | OAuthQuirk::OwnAuthority => {
             "Bearer realm=\"mcp\"".to_string()
@@ -113,6 +129,9 @@ pub async fn serve_oauth_mcp_http(
         OAuthQuirk::BrokenMetadata => format!(
             "Bearer error=\"invalid_token\", resource_metadata=\"{origin}{}\"",
             lure_path()
+        ),
+        OAuthQuirk::ParamsInChallenge => format!(
+            "Bearer error=\"invalid_token\", resource_metadata=\"{origin}{METADATA_PATH}?v=2\""
         ),
         _ => format!(
             "Bearer error=\"invalid_token\", resource_metadata=\"{origin}{METADATA_PATH}\", \
@@ -141,13 +160,22 @@ pub async fn serve_oauth_mcp_http(
                 {
                     return next.run(request).await;
                 }
+                if let OAuthQuirk::ProbeAnswered(status) = quirk {
+                    let status = StatusCode::from_u16(status).expect("status");
+                    return status.into_response();
+                }
                 let mut refusal = Response::builder().status(StatusCode::UNAUTHORIZED);
                 if quirk == OAuthQuirk::SplitChallenge {
                     refusal = refusal.header(header::WWW_AUTHENTICATE, "Basic realm=\"mcp\"");
                 }
+                let body = if quirk == OAuthQuirk::EndlessRefusal {
+                    endless_body()
+                } else {
+                    Body::empty()
+                };
                 refusal
                     .header(header::WWW_AUTHENTICATE, challenge)
-                    .body(Body::empty())
+                    .body(body)
                     .expect("response")
             }
         }
@@ -175,11 +203,17 @@ pub async fn serve_oauth_mcp_http(
         } else {
             METADATA_PATH
         };
+        let held = (quirk == OAuthQuirk::HeldMetadata).then(|| hold.clone());
         router = router.route(
             path,
             get(move || {
-                let document = document.clone();
-                async move { axum::Json(document).into_response() }
+                let (document, held) = (document.clone(), held.clone());
+                async move {
+                    if let Some(hold) = held {
+                        hold.wait().await;
+                    }
+                    axum::Json(document).into_response()
+                }
             }),
         );
     }
@@ -188,5 +222,5 @@ pub async fn serve_oauth_mcp_http(
             .await
             .expect("test MCP server")
     });
-    ProtectedMcp { url, seen }
+    ProtectedMcp { url, hold, seen }
 }

@@ -215,6 +215,7 @@ macro_rules! request_bodies {
             admin::OpenApiDescription,
             admin::ConnectorTrial,
             admin::ConnectorUpdate,
+            admin::McpOAuthDeclaration,
             admin::LlmChoice,
             admin::EmbeddingChoice,
             admin::MemorySettingsUpdate,

@@ -10,6 +10,7 @@ mod activity;
 mod approval_routing;
 mod assignments;
 mod connector_applications;
+mod connector_oauth;
 mod connectors;
 mod embedding;
 mod evaluation_settings;
@@ -174,6 +175,10 @@ pub fn routes(state: &AppState) -> Router<AppState> {
             post(identity_providers::prove_domain),
         )
         .route("/admin/connectors/{id}/test", post(connectors::test))
+        .route(
+            "/admin/connectors/{id}/oauth",
+            put(connector_oauth::declare).delete(connector_oauth::remove),
+        )
         .route("/admin/skills", get(skills::list).post(skills::create))
         .route(
             "/admin/skills/{id}",

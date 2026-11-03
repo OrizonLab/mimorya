@@ -5,9 +5,11 @@
 //! `challenge`); the authorization server says how to ask (RFC 8414,
 //! `server_metadata`); what is asked for is checked (`scope`). `discovery`
 //! follows these rules through the hardened client (`fetch`), once, when an
-//! administrator declares OAuth on a server.
+//! administrator declares OAuth on a server; what is kept of it is the
+//! declaration (`declaration`).
 
 mod challenge;
+mod declaration;
 mod discovery;
 mod fetch;
 mod protected_resource;
@@ -17,6 +19,10 @@ mod scope;
 mod server_metadata;
 
 pub use challenge::{BearerChallenge, MAX_HEADER_CHARS, bearer_challenge};
+pub use declaration::{
+    MAX_CLIENT_ID_CHARS, MAX_CLIENT_SECRET_CHARS, OAUTH_TO_AUTHORIZE, OAuthDeclaration,
+    client_id_problem, client_secret_problem,
+};
 pub use discovery::{Discovery, DiscoveryLimits, discover, discover_within};
 pub use protected_resource::{
     MAX_AUTHORIZATION_SERVERS, ProtectedResource, endpoint_problem, issuer_problem,

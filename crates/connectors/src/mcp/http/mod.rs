@@ -25,6 +25,7 @@ use rmcp::transport::streamable_http_client::{
 use sse_stream::Sse;
 
 pub use body::{Cuts, MAX_RESPONSE_BYTES, TOO_LONG};
+pub(in crate::mcp) use body::{Read, read_within};
 pub use post::HttpError;
 
 /// The client of `outbound::http_client`, reading answers within bounds.

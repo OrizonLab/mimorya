@@ -334,8 +334,16 @@ mod tests {
         let server = json!({ "resource": RESOURCE, "authorization_servers": servers });
         assert!(read_at(AT_ROOT, server).is_ok());
         // Anywhere else, the server itself: a hosting service's customer
-        // cannot claim the whole origin.
-        let refused = read(origin).expect_err("refused");
-        assert!(refused.contains("une autre ressource"), "{refused}");
+        // cannot claim the whole origin, not even next to the root.
+        for elsewhere in [
+            UNDER_PATH,
+            "https://mcp.example.com/.well-known/oauth-protected-resource/",
+            "https://mcp.example.com/.WELL-KNOWN/oauth-protected-resource",
+            "https://mcp.example.com/.well-known/oauth-protected-resource?a=1",
+            "http://mcp.example.com/.well-known/oauth-protected-resource",
+        ] {
+            let refused = read_at(elsewhere, origin.clone()).expect_err(elsewhere);
+            assert!(refused.contains("une autre ressource"), "{refused}");
+        }
     }
 }

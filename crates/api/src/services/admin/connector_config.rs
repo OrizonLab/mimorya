@@ -4,14 +4,16 @@
 //! Microsoft 365 application (ADR-116) or Google Workspace client (ADR-121),
 //! whose addresses are the platform's, and whether its tools may write
 //! (ADR-119).
-//! The demo connector and the servers the operator wrote change only their
-//! name and activation here.
+//! An MCP server's OAuth declaration (ADR-171) is kept while its address
+//! is. The demo connector and the servers the operator wrote change only
+//! their name and activation here.
 //! Tool prefixes never overlap within a kind, operator-written servers
 //! included.
 
 use std::collections::HashMap;
 
 use mimorya_connectors::google_workspace::{GOOGLE_WORKSPACE_TOOLS, GoogleWorkspaceConfig};
+use mimorya_connectors::mcp::oauth::OAuthDeclaration;
 use mimorya_connectors::microsoft365::{MICROSOFT365_TOOLS, Microsoft365Config};
 use mimorya_connectors::outbound::NetworkPolicy;
 use mimorya_connectors::{mcp, rest};
@@ -19,10 +21,11 @@ use mimorya_core::DomainError;
 use mimorya_core::account_links::{GOOGLE_WORKSPACE, LinkKind, MICROSOFT365};
 use mimorya_core::authz::PermissionInfo;
 use mimorya_db::repositories::connectors::{ConnectorInstanceRow, list_connector_instances};
-use serde_json::{Value, json};
+use serde_json::Value;
 use sqlx::PgConnection;
 
 use super::connector_rules::{PolicyScope, ToolPolicyInput, checked_policies};
+use super::mcp_config::mcp_config;
 
 /// A REST API's changes: `None` keeps what is stored.
 #[derive(Default)]
@@ -42,10 +45,11 @@ pub struct PoliciesAfter {
 
 /// A configuration the administration may change.
 pub enum Editable {
-    /// An MCP server added over HTTPS.
+    /// An MCP server added over HTTPS, OAuth declared on it or not.
     Mcp {
         prefix: String,
         url: String,
+        oauth: Option<OAuthDeclaration>,
     },
     Rest(rest::RestConfig),
     /// The company's Microsoft 365 application: its secret and whether its
@@ -62,13 +66,17 @@ const GOOGLE_WORKSPACE_NAMESPACE: &str = "google_";
 
 impl Editable {
     /// `None` for the demo connector, an operator's server (stdio) or a
-    /// REST declaration no longer readable.
+    /// declaration no longer readable.
     pub fn of(instance: &ConnectorInstanceRow) -> Option<Self> {
         let config = &instance.config;
         match instance.connector_type.as_str() {
             "mcp" if config["transport"] == "http" => Some(Self::Mcp {
                 prefix: config["prefix"].as_str().unwrap_or_default().to_string(),
                 url: config["url"].as_str().unwrap_or_default().to_string(),
+                oauth: match config.get("oauth").filter(|oauth| !oauth.is_null()) {
+                    Some(oauth) => Some(serde_json::from_value(oauth.clone()).ok()?),
+                    None => None,
+                },
             }),
             "rest" => serde_json::from_value(config.clone()).ok().map(Self::Rest),
             MICROSOFT365 => Microsoft365Config::read(config)
@@ -87,6 +95,14 @@ impl Editable {
             Self::Rest(config) => &config.url,
             Self::Microsoft365(config) => &config.graph,
             Self::GoogleWorkspace(config) => &config.gmail,
+        }
+    }
+
+    /// The OAuth declared on an MCP server, if any.
+    pub fn oauth(&self) -> Option<&OAuthDeclaration> {
+        match self {
+            Self::Mcp { oauth, .. } => oauth.as_ref(),
+            _ => None,
         }
     }
 
@@ -236,14 +252,17 @@ impl Editable {
             Self::Mcp {
                 prefix,
                 url: current,
+                oauth,
             } => {
                 if changes.is_some() {
                     return Err(DomainError::validation(
                         "Seule une API REST a un en-tête de jeton et des opérations",
                     ));
                 }
+                // The declaration goes with the address it was found for.
+                let oauth = oauth.filter(|_| url.as_ref().is_none_or(|url| *url == current));
                 let url = url.unwrap_or(current);
-                Ok(json!({ "transport": "http", "prefix": prefix, "url": url }))
+                Ok(mcp_config(&prefix, &url, oauth.as_ref()))
             }
             Self::Rest(mut config) => {
                 if let Some(url) = url {

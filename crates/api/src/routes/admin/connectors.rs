@@ -5,7 +5,8 @@
 //! company's Microsoft 365 and Google Workspace applications too
 //! (`connector_applications`, ADR-116, ADR-121) (address, token or
 //! secret, per-tool policies, activation; a REST API's token header and
-//! operations), deleting it and testing it. Tokens are write-only.
+//! operations), deleting it and testing it. Tokens are write-only. OAuth
+//! on an MCP server: `connector_oauth` (ADR-171).
 
 use axum::Json;
 use axum::extract::State;
@@ -18,7 +19,7 @@ use mimorya_db::repositories::connectors::list_connector_instances;
 use crate::app::AppState;
 use crate::contract::admin::{
     ConnectorDetails, ConnectorTest, ConnectorTrial, ConnectorUpdate, ConnectorView, Connectors,
-    DelegablePermission, GoogleWorkspaceApp, McpEndpoint, Microsoft365App, NewConnector,
+    DelegablePermission, GoogleWorkspaceApp, McpEndpoint, McpOAuth, Microsoft365App, NewConnector,
     NewRestConnector, OpenApiDescription, RestApi, RestImport, risks,
 };
 use crate::contract::{Created, Done};
@@ -31,7 +32,7 @@ use crate::services::admin::{
     TokenChange, TrialServices, create_mcp_connector, create_rest_connector, delete_connector,
     read_openapi, test_connector, try_mcp_connector, update_connector,
 };
-use crate::services::connectors::token_secret_name;
+use crate::services::connectors::{client_secret_name, token_secret_name};
 use crate::services::permission_catalog::permission_catalog;
 
 const PERMISSION: &str = "connector:manage";
@@ -55,11 +56,20 @@ pub async fn list(
             let token_stored = store.exists(&mut tx, &token_secret_name(i.id)).await?;
             let redirect_uri = state.account_links.redirect_uri().to_string();
             match editable {
-                Editable::Mcp { prefix, url } => {
+                Editable::Mcp { prefix, url, oauth } => {
+                    let oauth = match oauth {
+                        Some(declared) => {
+                            let secret = client_secret_name(i.id);
+                            let stored = store.exists(&mut tx, &secret).await?;
+                            Some(McpOAuth::new(declared, stored))
+                        }
+                        None => None,
+                    };
                     details.mcp = Some(McpEndpoint {
                         prefix,
                         url,
                         token_stored,
+                        oauth,
                     });
                 }
                 Editable::Rest(config) => {

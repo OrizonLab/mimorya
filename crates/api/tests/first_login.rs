@@ -230,6 +230,8 @@ const AUTHENTICATED_ROUTES: &[(&str, &str)] = &[
     ("PATCH", "/admin/connectors/{id}"),
     ("DELETE", "/admin/connectors/{id}"),
     ("POST", "/admin/connectors/{id}/test"),
+    ("PUT", "/admin/connectors/{id}/oauth"),
+    ("DELETE", "/admin/connectors/{id}/oauth"),
     ("GET", "/admin/identity-providers"),
     ("POST", "/admin/identity-providers"),
     ("PATCH", "/admin/identity-providers/{id}"),
