@@ -9851,10 +9851,22 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     et fichier lisibles par leur seul propriétaire ;
   - l'ouverture d'une entreprise des tests de pile passe le mot de passe par
     `json_string`, comme la connexion.
+- **Complément (lot 37, suites des audits des PR #179 et #180)** :
+  - le lien d'essai prend son nom dans un gabarit à lui, `….probe.XXXXXXXX`, de la même
+    longueur (15 caractères après le nom de la sauvegarde) que celui du fichier partiel,
+    `….partial.XXXXXX` : un nom que la sauvegarde peut prendre n'est pas refusé pour son
+    lien d'essai, et ce lien n'est jamais le fichier partiel d'une autre sauvegarde, que
+    le `trap` de la sauvegarde qui a tiré ce nom retirerait ;
+  - une sauvegarde tuée brutalement peut laisser son fichier partiel, chiffré, et le lien
+    d'essai qui le nomme : le README dit de les supprimer ;
+  - le test fait une sauvegarde au nom le plus long qu'elle accepte (240 octets, son
+    fichier partiel en a 255) : elle est écrite et se déchiffre, et une cale de `ln`
+    vérifie que son lien d'essai suit son propre gabarit et a la longueur du fichier
+    partiel. À la fin, ni fichier partiel ni lien d'essai ne reste.
 
 ## ADR-167 — Clés étrangères composites entre tables d'entreprise
 
-- **Date** : 2026-11-02 · **Statut** : acceptée · complète ADR-003
+- **Date** : 2026-11-02 · **Statut** : acceptée · complète ADR-003, ADR-133 et ADR-135
 - **Contexte** : l'isolation des entreprises repose sur la RLS (ADR-003). Une écriture
   ne peut viser qu'une ligne de l'entreprise de sa transaction, mais une ligne de cette
   entreprise pouvait encore pointer vers celle d'une autre : 106 clés étrangères

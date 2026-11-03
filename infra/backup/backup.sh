@@ -58,12 +58,14 @@ partial=
 probe=
 trap 'rm -f ${partial:+"$partial"} ${probe:+"$probe"} 2>/dev/null' EXIT
 partial=$(mktemp "$file.partial.XXXXXX") || fail "impossible d'écrire à côté de $file"
-# The backup is named by a hard link: tried first, under a name as long as
-# the partial file's, so that a folder which takes none is said before the
-# dump rather than after it, with the reason ln gives, which may be another.
-# The trap removes the probe only while it is this run's: a failed ln made
-# none, and once removed its name may be another run's partial file.
-probe=$(mktemp -u "$file.partial.XXXXXX")
+# The backup is named by a hard link: tried first, so that a folder which
+# takes none is said before the dump rather than after it, with the reason
+# ln gives, which may be another. The probe's name is as long as the partial
+# file's, so that a name the backup can take is not refused for its probe's,
+# and of a template of its own, so that it is never another run's partial
+# file. The trap removes it only while it is this run's: a failed ln made
+# none.
+probe=$(mktemp -u "$file.probe.XXXXXXXX")
 if ! said=$(ln -T "$partial" "$probe" 2>&1); then
   probe=
   fail "lien physique impossible à côté de $file : $said. Son dossier doit accepter les liens physiques : ext4, XFS, Btrfs, ZFS ou NFS conviennent ; FAT, exFAT et certains montages FUSE, non"
