@@ -10434,10 +10434,15 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
         session et la durée minimale d'un jeton émis) est renouvelée avec son jeton de
         renouvellement, au point de jeton déclaré, pour la ressource déclarée, le
         client se prouvant comme la déclaration le dit, jamais sous une autre
-        déclaration que celle sous laquelle elle a été donnée ;
+        déclaration que celle sous laquelle elle a été donnée (règle commune avec la
+        session), ni pour un connecteur désactivé ; les autorisations d'une
+        entreprise sont renouvelées côte à côte ;
       - le renouvellement est d'abord réservé pour une minute par une seule requête
         (`renewing_until`, migration 0074) : un autre processus le voit réservé et
-        démarre avec le jeton courant, qui dure encore assez ; rien n'est tenu
+        démarre avec le jeton courant, qui dure encore assez si le renouvellement est
+        réservé à plus de trois minutes de l'échéance (le premier run qui le trouve
+        dû le réserve ; sinon, les runs simultanés se passent du connecteur le temps
+        de l'appel) ; rien n'est tenu
         pendant l'appel au point de jeton (borné à dix secondes), si bien qu'un
         serveur muet ne retarde qu'un run et n'occupe aucune connexion à la base ; un
         point qui n'a pas répondu n'est pas sollicité de nouveau avant la fin de la
@@ -10574,12 +10579,19 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       ou d'un autre code sont réessayés ; `invalid_client` et des jetons trop courts
       font perdre l'autorisation ; en unitaire, un jeton renouvelé sans nouveau jeton
       de renouvellement garde l'ancien ;
+    - `crates/db/tests/connector_renewals.rs` (lot 40f) : un renouvellement n'est
+      réservé qu'une fois tant que la réservation tient, jamais pour un connecteur
+      désactivé ; ce qu'il apporte, ou le retrait de l'autorisation, n'est écrit que
+      sur l'autorisation réservée : ni sur une autorisation donnée de nouveau
+      entre-temps, ni sur une autorisation renouvelée depuis, ni sur celle d'un autre
+      connecteur ;
     - `crates/api/tests/connector_oauth_renewals.rs` (lot 40f) : un jeton qui expire
       bientôt est renouvelé avant que la session ne démarre, le serveur recevant le
       nouveau jeton, et un jeton renouvelé ne l'est pas de nouveau au run suivant ;
       deux processus qui le renouvellent au même moment ne le renouvellent qu'une
       fois ; un point de jeton muet ne retarde qu'un de cinq runs simultanés, tous
-      servis, et n'est pas sollicité de nouveau tant que la réservation tient ; un
+      servis, et n'est pas sollicité de nouveau tant que la réservation tient (ce
+      test, déterministe, est celui qui garde la réservation) ; un
       serveur injoignable laisse l'autorisation, le jeton trop court ne démarrant
       rien ; une autorisation révoquée ou des jetons trop courts la retirent, tracé
       par le système sans jeton ; une autorisation gardée sous un autre émetteur

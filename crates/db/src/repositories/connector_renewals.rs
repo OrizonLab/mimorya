@@ -14,16 +14,19 @@ use uuid::Uuid;
 use super::connector_authorizations::credential_changed;
 use super::secrets::StoredSecret;
 
-/// The connectors whose access token expires within `within`, that can be
-/// renewed and whose renewal is not claimed.
+/// The enabled connectors whose access token expires within `within`, that
+/// can be renewed and whose renewal is not claimed: a disabled connector's
+/// server is not asked.
 pub async fn connector_authorizations_due(
     conn: &mut PgConnection,
     within: std::time::Duration,
 ) -> sqlx::Result<Vec<Uuid>> {
     sqlx::query_scalar(
-        "select connector_id from connector_authorizations where refresh_ciphertext is not null \
-         and access_expires_at < now() + make_interval(secs => $1) \
-         and (renewing_until is null or renewing_until <= now()) order by connector_id",
+        "select a.connector_id from connector_authorizations a \
+         join connector_instances i on i.id = a.connector_id and i.enabled \
+         where a.refresh_ciphertext is not null \
+         and a.access_expires_at < now() + make_interval(secs => $1) \
+         and (a.renewing_until is null or a.renewing_until <= now()) order by a.connector_id",
     )
     .bind(within.as_secs_f64())
     .fetch_all(conn)
@@ -61,7 +64,8 @@ struct ClaimedRow {
 }
 
 /// Claims the renewal of the connector's authorization for `hold`, if it is
-/// due within `within`, renewable and not claimed already.
+/// due within `within`, renewable, not claimed already, and the connector
+/// enabled.
 pub async fn claim_connector_renewal(
     conn: &mut PgConnection,
     connector_id: Uuid,
@@ -73,6 +77,7 @@ pub async fn claim_connector_renewal(
          where connector_id = $1 and refresh_ciphertext is not null \
          and access_expires_at < now() + make_interval(secs => $2) \
          and (renewing_until is null or renewing_until <= now()) \
+         and exists (select 1 from connector_instances i where i.id = connector_id and i.enabled) \
          returning id, refreshed_at, issuer, client_id, resource, refresh_ciphertext, \
          refresh_iv, refresh_auth_tag, refresh_key_version",
     )

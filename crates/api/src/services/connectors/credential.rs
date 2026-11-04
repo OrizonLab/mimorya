@@ -52,10 +52,12 @@ pub async fn credential_of(
         return Ok(Ok(Credential::default()));
     };
     // Issued under another declaration: not for this server as declared.
-    if access.issuer != declared.issuer
-        || access.client_id != declared.client_id
-        || access.resource != declared.resource
-    {
+    if !given_under(
+        &declared,
+        &access.issuer,
+        &access.client_id,
+        &access.resource,
+    ) {
         return Ok(Ok(Credential::default()));
     }
     let Ok(cipher) = secrets.cipher() else {
@@ -74,6 +76,18 @@ pub async fn credential_of(
              ce connecteur"
         )),
     })
+}
+
+/// Whether an authorization kept for this issuer, client and resource was
+/// given under `declared`: its tokens are neither sent nor renewed under
+/// another.
+pub(super) fn given_under(
+    declared: &OAuthDeclaration,
+    issuer: &str,
+    client_id: &str,
+    resource: &str,
+) -> bool {
+    declared.issuer == issuer && declared.client_id == client_id && declared.resource == resource
 }
 
 /// The OAuth declaration of an MCP server reached over HTTP, if it has one.

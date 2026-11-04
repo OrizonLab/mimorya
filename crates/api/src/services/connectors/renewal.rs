@@ -17,6 +17,7 @@
 use std::time::Duration;
 
 use anyhow::anyhow;
+use futures::future::join_all;
 use mimorya_connectors::mcp::RENEW_WITHIN;
 use mimorya_connectors::mcp::oauth::{ClientAuth, RenewalFailure, refresh_tokens};
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
@@ -27,7 +28,7 @@ use mimorya_db::repositories::connector_renewals::{
 use mimorya_db::repositories::connectors::get_connector_instance;
 use uuid::Uuid;
 
-use super::credential::oauth_of;
+use super::credential::{given_under, oauth_of};
 use super::grants::{AUTHORIZATION_REMOVED, seal_grant};
 use super::{ConnectorService, client_secret_name, refresh_sealed_as};
 use crate::secrets::SecretRead;
@@ -51,9 +52,8 @@ impl ConnectorService {
         let mut tx = self.db.begin(tenant_id).await?;
         let due = connector_authorizations_due(&mut tx, RENEW_WITHIN).await?;
         tx.commit().await?;
-        for connector_id in due {
-            self.renew_if_due(tenant_id, connector_id).await;
-        }
+        // Side by side: each bounded in time, none waits for another.
+        join_all(due.into_iter().map(|id| self.renew_if_due(tenant_id, id))).await;
         Ok(())
     }
 
@@ -136,9 +136,12 @@ impl ConnectorService {
         };
         let instance = get_connector_instance(&mut tx, connector_id).await?;
         let declared = instance.as_ref().and_then(oauth_of).filter(|declared| {
-            declared.issuer == claimed.issuer
-                && declared.client_id == claimed.client_id
-                && declared.resource == claimed.resource
+            given_under(
+                declared,
+                &claimed.issuer,
+                &claimed.client_id,
+                &claimed.resource,
+            )
         });
         // Never sent under another declaration than the one it was given under.
         let Some(declared) = declared else {
