@@ -6,6 +6,7 @@
 mod authorization_server;
 mod hostile;
 mod protected;
+mod revocation_endpoint;
 mod token_endpoint;
 
 pub use authorization_server::{

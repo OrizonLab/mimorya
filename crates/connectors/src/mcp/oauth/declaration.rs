@@ -33,6 +33,11 @@ pub struct OAuthDeclaration {
     pub client_id: String,
     pub client_auth: ClientAuth,
     pub scopes: Vec<String>,
+    /// Where the platform asks for the tokens it lets go of to be revoked
+    /// (RFC 7009, ADR-172), if the server names one: absent from the
+    /// declarations kept before it was read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revocation_endpoint: Option<String>,
 }
 
 impl OAuthDeclaration {
@@ -63,6 +68,7 @@ impl OAuthDeclaration {
             authorization_endpoint: server.authorization_endpoint,
             token_endpoint: server.token_endpoint,
             names_issuer_on_return: server.names_issuer_on_return,
+            revocation_endpoint: server.revocation_endpoint,
             client_id: client_id.to_string(),
             scopes,
         })

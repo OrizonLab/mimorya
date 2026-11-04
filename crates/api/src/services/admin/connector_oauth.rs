@@ -16,13 +16,13 @@ use mimorya_connectors::mcp::oauth::{
 };
 use mimorya_core::DomainError;
 use mimorya_db::repositories::audit::append_audit;
-use mimorya_db::repositories::connector_authorizations::delete_connector_authorization;
 use mimorya_db::repositories::connectors::{
     ConnectorInstanceRow, ConnectorPatch, get_connector_instance, update_connector_instance,
 };
 use serde_json::json;
 use uuid::Uuid;
 
+use super::connector_authorization::{revoke, take_authorization};
 use super::connectors::{ConnectorAdmin, PERMISSION};
 use super::mcp_config::{Unreadable, mcp_config, stored_oauth};
 use super::{audit_entry, begin_change};
@@ -123,8 +123,11 @@ pub async fn declare_oauth(
         ..ConnectorPatch::default()
     };
     update_connector_instance(&mut tx, id, patch).await?;
-    // An authorization given under another declaration does not follow.
-    let authorization_removed = delete_connector_authorization(&mut tx, id).await?;
+    // An authorization given under another declaration does not follow:
+    // taken before the former secret is replaced, to be revoked under it.
+    let previous = current.declared.as_ref();
+    let taken = take_authorization(&mut tx, admin, tenant_id, id, previous).await?;
+    let authorization_removed = taken.is_some();
     // OAuth replaces a typed token.
     let token_removed = admin
         .secrets
@@ -159,6 +162,9 @@ pub async fn declare_oauth(
     .await?;
     tx.commit().await?;
     admin.connectors.invalidate(id).await;
+    if let Some(taken) = taken {
+        revoke(admin, access, taken).await?;
+    }
     Ok(declaration)
 }
 
@@ -182,7 +188,10 @@ pub async fn remove_oauth(
         ..ConnectorPatch::default()
     };
     update_connector_instance(&mut tx, id, patch).await?;
-    let authorization_removed = delete_connector_authorization(&mut tx, id).await?;
+    let tenant_id = access.subject.tenant_id;
+    let declared = server.declared.as_ref();
+    let taken = take_authorization(&mut tx, admin, tenant_id, id, declared).await?;
+    let authorization_removed = taken.is_some();
     admin
         .secrets
         .delete(&mut tx, &client_secret_name(id))
@@ -199,5 +208,8 @@ pub async fn remove_oauth(
     .await?;
     tx.commit().await?;
     admin.connectors.invalidate(id).await;
-    Ok(())
+    match taken {
+        Some(taken) => revoke(admin, access, taken).await,
+        None => Ok(()),
+    }
 }

@@ -27,17 +27,7 @@ pub(super) async fn token(
     Form(params): Form<HashMap<String, String>>,
 ) -> Response {
     let mut inner = server.inner.lock().expect("server");
-    let basic = headers
-        .get(header::AUTHORIZATION)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.strip_prefix("Basic "))
-        .map(|v| {
-            STANDARD
-                .decode(v)
-                .ok()
-                .and_then(|v| String::from_utf8(v).ok())
-                .unwrap_or_default()
-        });
+    let basic = basic_credentials(&headers);
     inner.requests.push(AuthRequest {
         endpoint: "token",
         params: params.clone(),
@@ -96,9 +86,24 @@ pub(super) async fn token(
     }
 }
 
+/// The `id:secret` of a Basic proof, if the request carries one.
+pub(super) fn basic_credentials(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Basic "))
+        .map(|v| {
+            STANDARD
+                .decode(v)
+                .ok()
+                .and_then(|v| String::from_utf8(v).ok())
+                .unwrap_or_default()
+        })
+}
+
 /// The refusal of a client that did not prove itself one way only, a way
 /// the server lists, with its own id and secret.
-fn client_refusal(
+pub(super) fn client_refusal(
     methods: &[String],
     basic: Option<&str>,
     params: &HashMap<String, String>,

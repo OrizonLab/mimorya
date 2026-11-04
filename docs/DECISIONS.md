@@ -10517,8 +10517,8 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
         privée reste refusée, et ce que vérifient les autres parcours ne change pas ;
         cette liste n'est jamais lue de l'environnement et reste vide en production ;
     - l'enregistrement dynamique du client (RFC 7591) et la révocation auprès du
-      serveur (RFC 7009), qui auront leur propre ADR, viennent après : un client
-      enregistré à la main suffit ;
+      serveur (RFC 7009, ADR-172, lot 41a), qui ont leur propre ADR, viennent après : un
+      client enregistré à la main suffit ;
     - puis l'autorisation par personne.
 - **Conséquences** :
   - tests du lot 40a :
@@ -10687,3 +10687,59 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
   - les serveurs qui n'offrent pas S256, n'ont pas de métadonnées, ou n'acceptent qu'un
     client enregistré dynamiquement restent refusés jusqu'au lot qui les accepte, la
     raison dite.
+
+## ADR-172 — Jetons révoqués chez le serveur d'autorisation quand la plateforme les laisse (lot 41a)
+
+- **Statut** : accepté (2026-11-04).
+- **Contexte** : retirer l'autorisation OAuth d'un serveur MCP (ADR-171) efface ses
+  jetons scellés, mais l'accord reste chez le serveur d'autorisation : le jeton de
+  renouvellement y est encore bon, jusqu'à ce qu'un administrateur le retire chez lui.
+  RFC 7009 offre un point de révocation, que la plupart des serveurs annoncent dans
+  leurs métadonnées (`revocation_endpoint`, déjà lu et vérifié par la découverte).
+- **Décision** :
+  - la déclaration garde le point de révocation que le serveur annonce
+    (`revocationEndpoint`, facultatif : une déclaration gardée avant ce lot se lit
+    toujours, sans lui) ; la liste des connecteurs dit si le serveur révoque
+    (`revocable`) et l'écran le dit, sinon, avec ce qu'il reste à faire chez lui ;
+  - quand l'administration laisse une autorisation (retirée, déclaration retirée ou
+    déclarée de nouveau, adresse du serveur changée, connecteur supprimé), la
+    transaction qui la retire prend ses jetons scellés, ce pour quoi elle a été donnée,
+    et le secret du client avant qu'il ne parte ou ne soit remplacé
+    (`take_connector_authorization`, `connector_authorization/revocation.rs`) ;
+  - une fois cette transaction validée, et sans rien tenir, la plateforme demande au
+    point de révocation de les révoquer : le jeton de renouvellement d'abord (la
+    plupart des serveurs retirent avec lui tout l'accord), puis le jeton d'accès,
+    `token_type_hint` donné, le client se prouvant comme au point de jeton
+    (`mcp/oauth/revocation.rs`, requête commune avec le point de jeton) ; dix secondes
+    au plus en tout ;
+  - jamais sous une autre déclaration que celle sous laquelle l'autorisation a été
+    donnée (règle commune avec la session et le renouvellement) ;
+  - le retrait tient quoi qu'il arrive : un serveur qui n'annonce pas de point de
+    révocation, ne répond pas à temps ou refuse le dit, et l'issue est tracée
+    (`connector.oauth_authorization_revoked`, réussite ou échec et sa raison), jamais un
+    jeton ni un secret ;
+  - une nouvelle autorisation ne révoque pas l'ancienne : chez certains serveurs,
+    l'accord est celui du même client pour le même compte, et révoquer l'ancien jeton
+    retirerait aussi le nouveau ;
+  - une autorisation que le serveur dit n'être plus bonne au renouvellement (ADR-171)
+    n'est pas révoquée : il n'y a rien à révoquer.
+- **Conséquences** :
+  - un administrateur n'a plus à retirer l'accord à la main chez la plupart des
+    serveurs ; l'écran lui dit quand il le doit encore ;
+  - retirer une autorisation peut attendre dix secondes un serveur muet ;
+  - tests :
+    - `crates/connectors/tests/mcp_oauth_revocation.rs` : les jetons sont révoqués dans
+      l'ordre, le client prouvé comme déclaré, sans ressource ; l'accès refusé ensuite
+      et le renouvellement aussi ; un serveur sans point de révocation, injoignable ou
+      qui ne connaît pas le client le dit sans jeton ; une déclaration gardée avant ce
+      lot se lit et s'écrit de même ;
+    - `crates/api/tests/connector_oauth_revocations.rs` : une autorisation retirée est
+      révoquée et tracée sans jeton, la liste disant que le serveur révoque ; une
+      déclaration retirée ou déclarée de nouveau (avec l'ancien secret), une nouvelle
+      adresse et un connecteur supprimé révoquent chacun l'autorisation ; un serveur
+      qui n'annonce pas de révocation ou ne répond pas laisse le retrait tenir, dit et
+      tracé, dans le délai ; une autorisation gardée sous un autre émetteur n'est
+      envoyée nulle part ; une nouvelle autorisation ne révoque pas l'ancienne ;
+    - le serveur d'autorisation simulé a son point de révocation, strict sur le client
+      comme celui de jeton, et peut ne pas l'annoncer ou rester muet ;
+  - reste : l'enregistrement dynamique du client (RFC 7591), lot 41b.

@@ -9,7 +9,8 @@
 //! declaration (`declaration`). An administrator's browser is then sent to
 //! authorize it (`departure`), and the code it brings back exchanged for
 //! tokens (`exchange`), at the token endpoint (`token_request`) that later
-//! renews them with the refresh token (`refresh`).
+//! renews them with the refresh token (`refresh`). The tokens the platform
+//! lets go of are revoked there (`revocation`, ADR-172).
 
 mod challenge;
 mod declaration;
@@ -21,6 +22,7 @@ mod protected_resource;
 mod quoted;
 mod refresh;
 mod resource;
+mod revocation;
 mod scope;
 mod server_metadata;
 mod token_request;
@@ -43,6 +45,7 @@ pub use refresh::{RenewalFailure, refresh_tokens};
 pub use resource::{
     canonical_resource, covers, protected_resource_locations, same_origin, same_resource,
 };
+pub use revocation::{HeldToken, NO_REVOCATION_ENDPOINT, revoke_tokens};
 pub use scope::{MAX_SCOPE_CHARS, MAX_SCOPES, scope_problem, scopes_problem, suggested_scopes};
 pub use server_metadata::{
     AuthorizationServer, ClientAuth, metadata_locations, read_server_metadata,

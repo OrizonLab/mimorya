@@ -129,7 +129,7 @@ Repères à l'intérieur des crates :
   `liveness.rs`, ADR-164, ADR-165, et les règles de son autorisation OAuth : refus lu,
   ressource protégée, serveur d'autorisation, portées, la découverte qui les suit,
   la déclaration qu'en garde l'administrateur, le départ du navigateur et l'échange du
-  code, et le renouvellement des jetons, `oauth/`, ADR-171, et la session retirée
+  code, et le renouvellement des jetons, `oauth/`, ADR-171, et leur révocation, `oauth/revocation.rs`, ADR-172, et la session retirée
   avant l'échéance du jeton de son autorisation, `expiry.rs`, ADR-171),
   `connectors/src/bin/mcp_demo_docs.rs`,
   `connectors/src/outbound/` (ce que partagent les serveurs MCP et les API REST d'une
@@ -189,7 +189,7 @@ Repères à l'intérieur des crates :
   (`absences.rs`, ADR-078), organisation, habilitations, connecteurs : ce que
   l'administration change de chacun (`connector_config.rs`), OAuth déclaré sur un serveur
   MCP (`connector_oauth.rs`, sa configuration gardée : `mcp_config.rs`, ADR-171) et son
-  autorisation, départ, retour et jetons scellés (`connector_authorization/`), seules
+  autorisation, départ, retour et jetons scellés (`connector_authorization/`), révoqués chez le serveur quand l'administration les laisse (`connector_authorization/revocation.rs`, ADR-172), seules
   les politiques changées
   tracées (`policy_changes.rs`, ADR-160) et API REST ajoutées
   (`rest_connectors.rs`, ADR-112, opérations lues d'une description OpenAPI, ADR-114),

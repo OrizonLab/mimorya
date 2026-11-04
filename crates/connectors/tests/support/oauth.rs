@@ -1,13 +1,19 @@
 //! An MCP server's OAuth as the tests reach it (ADR-171): plain requests to
 //! a server or its documents, a whole authorization with PKCE at the
-//! simulated authorization server, and requests to its token endpoint.
+//! simulated authorization server, and requests to its token endpoint; a
+//! declaration and its first tokens.
 
 use std::collections::HashMap;
 
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use mimorya_connectors::mcp::oauth::{
+    CodeExchange, Departure, Granted, OAuthDeclaration, authorization_url, discover, exchange_code,
+};
 use mimorya_connectors::outbound::http_client;
-use mimorya_connectors::testing::{CLIENT_ID, CLIENT_SECRET, FakeAuthorizationServer};
+use mimorya_connectors::testing::{
+    CLIENT_ID, CLIENT_SECRET, FakeAuthorizationServer, OAuthQuirk, serve_oauth_mcp_http,
+};
 use reqwest_mcp::header::{CONTENT_TYPE, LOCATION, WWW_AUTHENTICATE};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -178,4 +184,34 @@ pub async fn renew(authority: &FakeAuthorizationServer, token: &str, resource: &
 pub async fn tokens_for(authority: &FakeAuthorizationServer, resource: &str) -> Value {
     let returned = authorized(authority, resource, VERIFIER).await;
     exchange(authority, &returned["code"], VERIFIER, resource).await
+}
+
+/// A declaration at a server the simulated authorization server protects,
+/// and the tokens of a first authorization, the client proving itself with
+/// its secret or by its identifier alone: the declaration, the tokens, the
+/// server's address.
+pub async fn declared_and_granted(
+    authority: &FakeAuthorizationServer,
+    secret: bool,
+) -> (OAuthDeclaration, Granted, String) {
+    let server = serve_oauth_mcp_http(authority, OAuthQuirk::None).await;
+    let found = discover(&server.url, None, PRIVATE).await.expect("found");
+    let declaration = OAuthDeclaration::new(found, CLIENT_ID, secret, None).expect("declared");
+    let challenge = challenge_of(VERIFIER);
+    let departure = Departure {
+        redirect_uri: BACK,
+        state: "etat",
+        code_challenge: &challenge,
+    };
+    let back = sent_back(&authorization_url(&declaration, departure).expect("url")).await;
+    let exchange = CodeExchange {
+        code: &back["code"],
+        verifier: VERIFIER,
+        redirect_uri: BACK,
+        client_secret: secret.then_some(CLIENT_SECRET),
+    };
+    let granted = exchange_code(&declaration, exchange, PRIVATE)
+        .await
+        .expect("granted");
+    (declaration, granted, server.url)
 }

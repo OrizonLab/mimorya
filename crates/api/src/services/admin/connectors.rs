@@ -13,7 +13,6 @@ use mimorya_core::DomainError;
 use mimorya_core::account_links::LinkKind;
 use mimorya_core::authz::PermissionInfo;
 use mimorya_db::repositories::audit::append_audit;
-use mimorya_db::repositories::connector_authorizations::delete_connector_authorization;
 use mimorya_db::repositories::connectors::{
     ConnectorPatch, NewConnectorInstance, create_connector_instance, delete_connector_instance,
     get_connector_instance, update_connector_instance,
@@ -22,6 +21,7 @@ use mimorya_db::{Database, is_unique_violation};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
+use super::connector_authorization::{revoke, take_authorization};
 use super::connector_config::{Editable, RestChanges, added_here, operation_names, prefix_taken};
 use super::connector_rules::{ToolPolicyInput, mcp_addition_problem};
 use super::mcp_config::{mcp_config, oauth_unreadable};
@@ -175,6 +175,7 @@ pub async fn update_connector(
     let mut previous_url = None;
     let mut dropped = Vec::new();
     let mut oauth = None;
+    let mut taken = None;
     let configured =
         changes.url.is_some() || changes.rest.is_some() || changes.write_tools.is_some();
     if configured || changes.token.is_some() || changes.tool_policies.is_some() {
@@ -222,11 +223,13 @@ pub async fn update_connector(
         let current_url = editable.url().to_string();
         let moved = changes.url.as_ref().is_some_and(|url| *url != current_url);
         if moved && editable.oauth().is_some() {
+            // Taken before the secret goes, to be revoked under it.
+            let declared = editable.oauth();
+            taken = take_authorization(&mut tx, admin, tenant_id, id, declared).await?;
             admin
                 .secrets
                 .delete(&mut tx, &client_secret_name(id))
                 .await?;
-            delete_connector_authorization(&mut tx, id).await?;
             oauth = Some("removed");
         }
         let rehomed = header
@@ -294,7 +297,10 @@ pub async fn update_connector(
     .await?;
     tx.commit().await?;
     admin.connectors.invalidate(id).await;
-    Ok(())
+    match taken {
+        Some(taken) => revoke(admin, access, taken).await,
+        None => Ok(()),
+    }
 }
 
 pub async fn delete_connector(
@@ -314,6 +320,10 @@ pub async fn delete_connector(
         )
         .into());
     }
+    // Its authorization taken before the client's secret goes.
+    let declared = Editable::of(&instance).and_then(|editable| editable.oauth().cloned());
+    let tenant_id = access.subject.tenant_id;
+    let taken = take_authorization(&mut tx, admin, tenant_id, id, declared.as_ref()).await?;
     delete_connector_instance(&mut tx, id).await?;
     for secret in [token_secret_name(id), client_secret_name(id)] {
         admin.secrets.delete(&mut tx, &secret).await?;
@@ -328,7 +338,10 @@ pub async fn delete_connector(
     .await?;
     tx.commit().await?;
     admin.connectors.invalidate(id).await;
-    Ok(())
+    match taken {
+        Some(taken) => revoke(admin, access, taken).await,
+        None => Ok(()),
+    }
 }
 
 /// What an audit entry may keep of a configuration: no environment of a

@@ -46,7 +46,7 @@ use admin_starts::AdminStarts;
 pub use admin_starts::{AdminStart, MAX_ADMIN_STARTS, TOO_MANY_ADMIN_STARTS};
 pub use cache::RETRY_AFTER;
 use cache::{Origin, RuntimeCache, Unavailable};
-pub use credential::{Credential, credential_of};
+pub use credential::{Credential, credential_of, given_under};
 pub use failures::{failure, opened};
 pub use grants::{AUTHORIZATION_REMOVED, SealedGrant, seal_grant};
 pub use mimorya_connectors::outbound::CONNECTOR_USE;

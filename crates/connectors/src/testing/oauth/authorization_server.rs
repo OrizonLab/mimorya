@@ -15,7 +15,7 @@ use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use serde_json::json;
 
-use super::token_endpoint;
+use super::{revocation_endpoint, token_endpoint};
 use crate::outbound::{NetworkPolicy, http_client};
 
 pub const CLIENT_ID: &str = "mimorya-test-client";
@@ -38,6 +38,10 @@ pub struct Settings {
     pub wrong_issuer: bool,
     /// What `token_endpoint_auth_methods_supported` lists.
     pub auth_methods: Vec<String>,
+    /// Whether its metadata names its revocation endpoint (RFC 7009).
+    pub revocation: bool,
+    /// A revocation endpoint that takes the request and does not answer.
+    pub mute_revocation: bool,
 }
 
 impl Default for Settings {
@@ -52,6 +56,8 @@ impl Default for Settings {
             auth_methods: ["client_secret_basic", "client_secret_post", "none"]
                 .map(String::from)
                 .to_vec(),
+            revocation: true,
+            mute_revocation: false,
         }
     }
 }
@@ -115,6 +121,7 @@ impl FakeAuthorizationServer {
             .route("/.well-known/oauth-authorization-server", get(metadata))
             .route("/authorize", get(authorize))
             .route("/token", post(token_endpoint::token))
+            .route("/revoke", post(revocation_endpoint::revoke))
             .with_state(server.clone());
         tokio::spawn(async move { axum::serve(listener, router).await.expect("test server") });
         server
@@ -181,6 +188,14 @@ impl FakeAuthorizationServer {
     }
 }
 
+impl Inner {
+    /// The grant a token it issued, access or refresh, belongs to.
+    pub(super) fn grant_of(&self, token: &str) -> Option<u64> {
+        let access = self.access.get(token).map(|(grant, ..)| *grant);
+        access.or_else(|| self.refresh.get(token).map(|refresh| refresh.grant))
+    }
+}
+
 pub(super) fn token_value(inner: &mut Inner, kind: &str) -> String {
     inner.next += 1;
     let mark = if inner.settings.off_alphabet {
@@ -223,8 +238,10 @@ async fn metadata(State(server): State<FakeAuthorizationServer>) -> Response {
     } else {
         issuer.clone()
     };
+    let revocation = settings.revocation.then(|| format!("{issuer}/revoke"));
     axum::Json(json!({
         "issuer": named,
+        "revocation_endpoint": revocation,
         "authorization_endpoint": format!("{issuer}/authorize"),
         "token_endpoint": format!("{issuer}/token"),
         "response_types_supported": ["code"],

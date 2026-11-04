@@ -106,10 +106,15 @@ async fn an_administrator_authorizes_a_server_declared_with_oauth() {
         paul.delete(&authorization).await.status,
         StatusCode::BAD_REQUEST
     );
+    // Audited, then its tokens revoked at the server (ADR-172).
     let entries = authorization_entries(&api, &id).await;
+    let last: Vec<&str> = entries.iter().rev().take(2).map(|e| e.0.as_str()).collect();
     assert_eq!(
-        entries.last().expect("audited").0,
-        "connector.oauth_authorization_removed"
+        last,
+        [
+            "connector.oauth_authorization_revoked",
+            "connector.oauth_authorization_removed"
+        ]
     );
     assert_eq!(
         paul.delete(&format!("/admin/connectors/{id}")).await.status,
