@@ -15,6 +15,7 @@ mod absence_mail;
 mod absences;
 mod approval_routing;
 mod assignments;
+mod connector_authorization;
 mod connector_config;
 mod connector_oauth;
 mod connector_rules;
@@ -57,6 +58,11 @@ mod users;
 pub use absences::{AbsenceAdmin, absence_of, declare_absence_for, end_absence_for};
 pub use approval_routing::{manager_risks, set_manager_risks};
 pub use assignments::{grant_role, revoke_role};
+pub use connector_authorization::{
+    AUTHORIZATION_COOKIE, AuthorizationFailure, AuthorizationStart, OAuthReturn, access_sealed_as,
+    authorization_cookie, cleared_authorization_cookie, finish_authorization, refresh_sealed_as,
+    remove_authorization, start_authorization,
+};
 pub use connector_config::{Editable, RestChanges};
 pub use connector_oauth::{OAuthInput, declare_oauth, remove_oauth};
 pub use connector_rules::ToolPolicyInput;

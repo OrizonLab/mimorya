@@ -21,6 +21,8 @@ use crate::outbound::{
 
 /// Metadata documents are a few kilobytes.
 pub(super) const MAX_DOCUMENT_BYTES: usize = 256 * 1024;
+/// A token response is a few hundred bytes, a few kilobytes with a JWT.
+pub(super) const MAX_TOKEN_RESPONSE_BYTES: usize = 64 * 1024;
 /// What starts an MCP session: the server answers it, or says it wants a
 /// token.
 const INITIALIZE: &str = r#"{"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"mimorya","version":"1"}}}"#;
@@ -94,6 +96,44 @@ impl Fetcher {
                     MAX_DOCUMENT_BYTES / 1024
                 )),
                 Err(error) => Err(failed(location, error)),
+            }
+        })
+        .await
+    }
+
+    /// `form` posted to `endpoint`, an endpoint of the authorization server
+    /// already checked by its caller (it may carry parameters), the client
+    /// proving itself in the Basic header if `basic`: the answer's status
+    /// and body, read within its bound.
+    pub async fn form(
+        &self,
+        endpoint: &str,
+        form: String,
+        basic: Option<(&str, &str)>,
+    ) -> Result<(u16, Vec<u8>), String> {
+        let mut request = self
+            .client
+            .post(endpoint)
+            .header(ACCEPT, "application/json")
+            .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
+            .body(form);
+        if let Some((id, secret)) = basic {
+            request = request.basic_auth(id, Some(secret));
+        }
+        self.within(endpoint, async {
+            let response = request
+                .send()
+                .await
+                .map_err(|error| failed(endpoint, error))?;
+            let status = response.status().as_u16();
+            match read_within(response, MAX_TOKEN_RESPONSE_BYTES).await {
+                Ok(Read::Whole(body)) => Ok((status, body)),
+                Ok(Read::Cut(_)) => Err(format!(
+                    "Réponse de « {} » trop longue ({} Kio au plus)",
+                    quoted(endpoint),
+                    MAX_TOKEN_RESPONSE_BYTES / 1024
+                )),
+                Err(error) => Err(failed(endpoint, error)),
             }
         })
         .await

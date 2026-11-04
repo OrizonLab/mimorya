@@ -6,11 +6,15 @@
 //! `server_metadata`); what is asked for is checked (`scope`). `discovery`
 //! follows these rules through the hardened client (`fetch`), once, when an
 //! administrator declares OAuth on a server; what is kept of it is the
-//! declaration (`declaration`).
+//! declaration (`declaration`). An administrator's browser is then sent to
+//! authorize it (`departure`), and the code it brings back exchanged for
+//! tokens (`exchange`).
 
 mod challenge;
 mod declaration;
+mod departure;
 mod discovery;
+mod exchange;
 mod fetch;
 mod protected_resource;
 mod quoted;
@@ -23,7 +27,11 @@ pub use declaration::{
     MAX_CLIENT_ID_CHARS, MAX_CLIENT_SECRET_CHARS, OAUTH_TO_AUTHORIZE, OAuthDeclaration,
     client_id_problem, client_secret_problem,
 };
+pub use departure::{Departure, authorization_url};
 pub use discovery::{Discovery, DiscoveryLimits, discover, discover_within};
+pub use exchange::{
+    CodeExchange, Granted, MAX_OAUTH_TOKEN_CHARS, access_token_problem, exchange_code,
+};
 pub use protected_resource::{
     MAX_AUTHORIZATION_SERVERS, ProtectedResource, endpoint_problem, issuer_problem,
     read_protected_resource,

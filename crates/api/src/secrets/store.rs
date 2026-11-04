@@ -64,7 +64,8 @@ impl SecretStore {
         self.cipher().map(|_| ())
     }
 
-    fn cipher(&self) -> Result<&SecretCipher, DomainError> {
+    /// What seals for this server, or why nothing can be stored here.
+    pub(crate) fn cipher(&self) -> Result<&SecretCipher, DomainError> {
         self.cipher.as_deref().ok_or_else(|| {
             DomainError::unavailable(
                 "Ce serveur ne peut pas conserver de clé : l’exploitant n’a pas configuré \

@@ -193,6 +193,19 @@ async fn every_resource_the_administration_changes_is_traced_when_absent() {
             "connector",
         ),
         (
+            paul.post(
+                &format!("/admin/connectors/{absent}/oauth/authorization"),
+                json!({}),
+            )
+            .await,
+            "connector",
+        ),
+        (
+            paul.delete(&format!("/admin/connectors/{absent}/oauth/authorization"))
+                .await,
+            "connector",
+        ),
+        (
             paul.patch(
                 &format!("/admin/identity-providers/{absent}"),
                 json!({ "name": MARKER }),

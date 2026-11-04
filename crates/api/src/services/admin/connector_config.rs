@@ -25,7 +25,7 @@ use serde_json::Value;
 use sqlx::PgConnection;
 
 use super::connector_rules::{PolicyScope, ToolPolicyInput, checked_policies};
-use super::mcp_config::mcp_config;
+use super::mcp_config::{mcp_config, stored_oauth};
 
 /// A REST API's changes: `None` keeps what is stored.
 #[derive(Default)]
@@ -73,10 +73,7 @@ impl Editable {
             "mcp" if config["transport"] == "http" => Some(Self::Mcp {
                 prefix: config["prefix"].as_str().unwrap_or_default().to_string(),
                 url: config["url"].as_str().unwrap_or_default().to_string(),
-                oauth: match config.get("oauth").filter(|oauth| !oauth.is_null()) {
-                    Some(oauth) => Some(serde_json::from_value(oauth.clone()).ok()?),
-                    None => None,
-                },
+                oauth: stored_oauth(config).ok()?,
             }),
             "rest" => serde_json::from_value(config.clone()).ok().map(Self::Rest),
             MICROSOFT365 => Microsoft365Config::read(config)

@@ -1286,7 +1286,25 @@ export type McpOAuth = { issuer: string,
 /**
  * The resource tokens are asked for.
  */
-resource: string, authorizationEndpoint: string, tokenEndpoint: string, clientId: string, clientAuth: OAuthClientAuth, scopes: Array<string>, clientSecretStored: boolean, };
+resource: string, authorizationEndpoint: string, tokenEndpoint: string, clientId: string, clientAuth: OAuthClientAuth, scopes: Array<string>, clientSecretStored: boolean,
+/**
+ * The authorization given under this declaration, if any.
+ */
+authorization: McpOAuthAuthorization | null, };
+
+/**
+ * An MCP server's authorization, as its declaration shows it: never its
+ * tokens.
+ */
+export type McpOAuthAuthorization = { authorizedAt: string,
+/**
+ * When the access token expires, if it does.
+ */
+expiresAt: string | null,
+/**
+ * Whether a refresh token is kept.
+ */
+renewable: boolean, scopes: Array<string>, };
 
 /**
  * Body of `PUT /admin/connectors/{id}/oauth`: declared again, everything
@@ -1839,6 +1857,12 @@ ownRuns: boolean,
  * The end of their missions.
  */
 missionEnds: boolean, };
+
+/**
+ * Answer of `POST /admin/connectors/{id}/oauth/authorization`: where to
+ * send the browser; the attempt goes in a cookie.
+ */
+export type OAuthAuthorizationStart = { redirectUrl: string, };
 
 /**
  * How the client proves itself to the token endpoint.

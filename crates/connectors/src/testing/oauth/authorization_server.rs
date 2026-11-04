@@ -16,6 +16,7 @@ use axum::routing::{get, post};
 use serde_json::json;
 
 use super::token_endpoint;
+use crate::outbound::{NetworkPolicy, http_client};
 
 pub const CLIENT_ID: &str = "mimorya-test-client";
 pub const CLIENT_SECRET: &str = "secret-du-client-de-test";
@@ -140,6 +141,27 @@ impl FakeAuthorizationServer {
                     && issued_for.as_deref() == Some(resource)
                     && expires.is_none_or(|at| Instant::now() < at)
             })
+    }
+
+    /// The browser sent to `url`, one of this server's authorization
+    /// addresses: where it is sent back.
+    pub async fn sent_back(&self, url: &str) -> String {
+        let policy = NetworkPolicy {
+            allow_private_network: true,
+            ..NetworkPolicy::default()
+        };
+        let answer = http_client(policy)
+            .expect("client")
+            .get(url)
+            .send()
+            .await
+            .expect("answer");
+        answer
+            .headers()
+            .get(reqwest_mcp::header::LOCATION)
+            .and_then(|value| value.to_str().ok())
+            .expect("sent back")
+            .to_string()
     }
 
     /// Revokes every grant made so far, as an administrator at the

@@ -13,6 +13,7 @@ pub mod approvals;
 pub mod audit;
 pub mod auth;
 pub mod author_notices;
+pub mod connector_authorizations;
 pub mod connectors;
 pub mod conversation_summaries;
 pub mod conversations;

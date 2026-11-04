@@ -179,6 +179,14 @@ pub fn routes(state: &AppState) -> Router<AppState> {
             "/admin/connectors/{id}/oauth",
             put(connector_oauth::declare).delete(connector_oauth::remove),
         )
+        .route(
+            "/admin/connectors/{id}/oauth/authorization",
+            post(connector_oauth::start).delete(connector_oauth::remove_authorized),
+        )
+        .route(
+            "/admin/connectors/oauth/callback",
+            get(connector_oauth::callback),
+        )
         .route("/admin/skills", get(skills::list).post(skills::create))
         .route(
             "/admin/skills/{id}",

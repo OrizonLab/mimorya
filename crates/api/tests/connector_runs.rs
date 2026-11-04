@@ -215,6 +215,15 @@ async fn another_companys_connector_does_not_exist_from_here() {
         StatusCode::NOT_FOUND
     );
     assert_eq!(paul.delete(&oauth).await.status, StatusCode::NOT_FOUND);
+    let authorization = format!("{url}/oauth/authorization");
+    assert_eq!(
+        paul.post(&authorization, json!({})).await.status,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        paul.delete(&authorization).await.status,
+        StatusCode::NOT_FOUND
+    );
     assert_eq!(paul.delete(&url).await.status, StatusCode::NOT_FOUND);
     assert_eq!(
         listed(&paul, &foreign.to_string()).await,

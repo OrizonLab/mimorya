@@ -7,8 +7,8 @@
 //! what was found in the connector's configuration if the server's address
 //! has not changed meanwhile. The client's secret is sealed apart, never
 //! shown nor audited. A typed token goes: OAuth replaces it. Declared
-//! again, everything is replaced, secret included. Until an administrator
-//! authorizes it (lot 40d), the connector starts no session. A declaration
+//! again, everything is replaced, secret included, and the authorization
+//! given under the previous declaration goes (`connector_authorization`). A declaration
 //! that can no longer be read is replaced or withdrawn all the same.
 
 use mimorya_connectors::mcp::oauth::{
@@ -16,15 +16,15 @@ use mimorya_connectors::mcp::oauth::{
 };
 use mimorya_core::DomainError;
 use mimorya_db::repositories::audit::append_audit;
+use mimorya_db::repositories::connector_authorizations::delete_connector_authorization;
 use mimorya_db::repositories::connectors::{
     ConnectorInstanceRow, ConnectorPatch, get_connector_instance, update_connector_instance,
 };
 use serde_json::json;
 use uuid::Uuid;
 
-use super::connector_config::Editable;
 use super::connectors::{ConnectorAdmin, PERMISSION};
-use super::mcp_config::{mcp_config, oauth_unreadable};
+use super::mcp_config::{Unreadable, mcp_config, stored_oauth};
 use super::{audit_entry, begin_change};
 use crate::services::AccessContext;
 use crate::services::connectors::{client_secret_name, token_secret_name};
@@ -40,43 +40,35 @@ pub struct OAuthInput {
 }
 
 /// An MCP server added here, as its OAuth sees it.
-struct McpServer {
-    prefix: String,
-    url: String,
-    declared: Option<OAuthDeclaration>,
+pub(super) struct McpServer {
+    pub prefix: String,
+    pub url: String,
+    pub declared: Option<OAuthDeclaration>,
     /// A declaration is stored but cannot be read: it is replaced or
     /// withdrawn all the same.
-    unreadable: bool,
+    pub unreadable: bool,
 }
 
 impl McpServer {
-    fn of(instance: Option<ConnectorInstanceRow>) -> Result<Self, DomainError> {
+    pub fn of(instance: Option<ConnectorInstanceRow>) -> Result<Self, DomainError> {
         let instance = instance.ok_or_else(|| DomainError::not_found("Connecteur introuvable"))?;
-        if let Some(Editable::Mcp { prefix, url, oauth }) = Editable::of(&instance) {
-            return Ok(Self {
-                prefix,
-                url,
-                declared: oauth,
-                unreadable: false,
-            });
+        let config = &instance.config;
+        if instance.connector_type != "mcp" || config["transport"] != "http" {
+            return Err(DomainError::validation(
+                "Seul un serveur MCP ajouté ici s’autorise par OAuth",
+            ));
         }
-        if oauth_unreadable(&instance) {
-            let text = |key: &str| {
-                instance.config[key]
-                    .as_str()
-                    .unwrap_or_default()
-                    .to_string()
-            };
-            return Ok(Self {
-                prefix: text("prefix"),
-                url: text("url"),
-                declared: None,
-                unreadable: true,
-            });
-        }
-        Err(DomainError::validation(
-            "Seul un serveur MCP ajouté ici s’autorise par OAuth",
-        ))
+        let text = |key: &str| config[key].as_str().unwrap_or_default().to_string();
+        let (declared, unreadable) = match stored_oauth(config) {
+            Ok(declared) => (declared, false),
+            Err(Unreadable) => (None, true),
+        };
+        Ok(Self {
+            prefix: text("prefix"),
+            url: text("url"),
+            declared,
+            unreadable,
+        })
     }
 }
 
@@ -131,6 +123,8 @@ pub async fn declare_oauth(
         ..ConnectorPatch::default()
     };
     update_connector_instance(&mut tx, id, patch).await?;
+    // An authorization given under another declaration does not follow.
+    let authorization_removed = delete_connector_authorization(&mut tx, id).await?;
     // OAuth replaces a typed token.
     let token_removed = admin
         .secrets
@@ -159,6 +153,7 @@ pub async fn declare_oauth(
             "clientSecretStored": has_secret,
             "tokenRemoved": token_removed,
             "replaced": current.declared.is_some() || current.unreadable,
+            "authorizationRemoved": authorization_removed,
         })),
     )
     .await?;
@@ -187,6 +182,7 @@ pub async fn remove_oauth(
         ..ConnectorPatch::default()
     };
     update_connector_instance(&mut tx, id, patch).await?;
+    let authorization_removed = delete_connector_authorization(&mut tx, id).await?;
     admin
         .secrets
         .delete(&mut tx, &client_secret_name(id))
@@ -197,6 +193,7 @@ pub async fn remove_oauth(
             "issuer": server.declared.as_ref().map(|d| &d.issuer),
             "clientId": server.declared.as_ref().map(|d| &d.client_id),
             "unreadable": server.unreadable,
+            "authorizationRemoved": authorization_removed,
         })),
     )
     .await?;

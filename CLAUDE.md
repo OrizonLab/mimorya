@@ -87,7 +87,9 @@ Repères à l'intérieur des crates :
   cas d'évaluation des compétences : `skill_eval_cases.rs`, ADR-103, et leurs
   évaluations : `skill_evaluations.rs`, ADR-104, ce qu'elles ont coûté jour par jour et
   leur limite : `evaluation_spending.rs`, `evaluation_settings.rs`, ADR-154 ; comptes reliés par chacun et leur
-  jeton de renouvellement scellé : `account_links.rs`, ADR-116 ; partages de connaissances entre unités :
+  jeton de renouvellement scellé : `account_links.rs`, ADR-116 ; autorisation OAuth d'un
+  serveur MCP et ses jetons scellés : `connector_authorizations.rs`, ADR-171 ; partages de
+  connaissances entre unités :
   `knowledge_shares.rs`, ADR-143 ; politiques d'autorisation proposées et décidées :
   `policy_proposals.rs`, ADR-168, et leur annonce aux autres administrateurs :
   `policy_proposal_notices.rs`, ADR-170 ; comptes qui pourraient administrer une
@@ -125,8 +127,9 @@ Repères à l'intérieur des crates :
   serveurs dans leurs bornes, `http/`, ADR-161, et le ping qui suit un appel échoué
   sans réponse du serveur, la session dite perdue s'il n'y répond pas, et sa fin datée,
   `liveness.rs`, ADR-164, ADR-165, et les règles de son autorisation OAuth : refus lu,
-  ressource protégée, serveur d'autorisation, portées, la découverte qui les suit et
-  la déclaration qu'en garde l'administrateur, `oauth/`, ADR-171),
+  ressource protégée, serveur d'autorisation, portées, la découverte qui les suit,
+  la déclaration qu'en garde l'administrateur, le départ du navigateur et l'échange du
+  code, `oauth/`, ADR-171),
   `connectors/src/bin/mcp_demo_docs.rs`,
   `connectors/src/outbound/` (ce que partagent les serveurs MCP et les API REST d'une
   entreprise : réseau, préfixe, jeton, masquage, échecs, ADR-025, ADR-112 ; mandataire
@@ -184,7 +187,8 @@ Repères à l'intérieur des crates :
   `api/src/services/admin/` (comptes et absence d'un collaborateur empêché
   (`absences.rs`, ADR-078), organisation, habilitations, connecteurs : ce que
   l'administration change de chacun (`connector_config.rs`), OAuth déclaré sur un serveur
-  MCP (`connector_oauth.rs`, sa configuration gardée : `mcp_config.rs`, ADR-171), seules
+  MCP (`connector_oauth.rs`, sa configuration gardée : `mcp_config.rs`, ADR-171) et son
+  autorisation, départ, retour et jetons scellés (`connector_authorization/`), seules
   les politiques changées
   tracées (`policy_changes.rs`, ADR-160) et API REST ajoutées
   (`rest_connectors.rs`, ADR-112, opérations lues d'une description OpenAPI, ADR-114),

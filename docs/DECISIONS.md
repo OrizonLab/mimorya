@@ -10363,7 +10363,40 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
         prouver, portées, secret gardé ou non, jeton retiré ou non, déclaration
         remplacée ou non), `connector.oauth_removed`, et `oauth: removed` dans
         `connector.updated` quand l'adresse change ; jamais le secret ;
-    - 40d : l'autorisation, son retour, ses jetons scellés ;
+    - 40d : l'autorisation, son retour, ses jetons scellés
+      (`services/admin/connector_authorization/`, `mcp/oauth/departure.rs`,
+      `mcp/oauth/exchange.rs`, table `connector_authorizations`, migration 0073) :
+      - `POST /api/admin/connectors/{id}/oauth/authorization`, par un administrateur
+        des connecteurs de toute l'entreprise, sur un serveur déclaré dont le secret
+        du client est gardé s'il en faut un : le navigateur est envoyé au point
+        d'autorisation déclaré (paramètres du point gardés, jamais l'un de ceux de
+        la plateforme), avec PKCE S256, un `state` neuf, la ressource et les
+        portées déclarées ; la tentative (connecteur, administrateur, `state`,
+        vérificateur, empreinte de l'adresse et de la déclaration) est scellée
+        dans son cookie (`HttpOnly`, au seul chemin du retour, dix minutes) ;
+      - le retour, `GET /api/admin/connectors/oauth/callback`, dans la session de
+        l'administrateur, sans exception à l'en-tête ni à l'origine : la tentative
+        doit être la sienne et son `state` celui du retour ; l'émetteur du retour,
+        s'il est donné, celui déclaré, et exigé si le serveur l'annonce
+        (RFC 9207) ; ses droits sont relus ; l'adresse et la déclaration doivent
+        être celles du départ ; le code est échangé au point de jeton déclaré, le
+        client prouvant ce qu'il est comme la déclaration le dit, sous une place
+        des démarrages de l'administration ;
+      - un jeton d'accès hors de l'alphabet de RFC 6750, d'un autre type que
+        Bearer, ou qui expire sans jeton de renouvellement est refusé, de même que
+        des portées accordées que la plateforme ne saurait lire (non dites, ce sont
+        celles demandées, RFC 6749 §5.1) ; les jetons
+        sont scellés pour le connecteur (le nom scellé avec eux le désigne),
+        gardés sous le verrou d'administration si la déclaration n'a pas changé,
+        une autorisation précédente remplacée ;
+      - le navigateur revient à `/admin?autorisation=ok`, ou `=echec` ; la raison
+        d'un refus est tracée (`connector.oauth_authorized`, refusée), jamais un
+        code, un jeton ni un secret ;
+      - `DELETE …/oauth/authorization` la retire ; une nouvelle déclaration, son
+        retrait, une autre adresse ou la suppression du connecteur la retirent
+        aussi ; la liste montre quand elle a été donnée, quand le jeton expire,
+        s'il se renouvelle et les portées accordées ;
+      - jusqu'au lot 40e, un serveur autorisé ne démarre pas encore de session ;
     - 40e : le jeton dans les sessions ;
     - 40f : le renouvellement ;
     - 40g : l'enregistrement dynamique du client (RFC 7591) et la révocation auprès du
@@ -10421,6 +10454,29 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       retire ou se remplace ; le secret n'est pas journalisé ; les deux routes, sur le
       connecteur d'une autre entreprise ou absent, répondent 404 et sont tracées
       (`connector_runs.rs`, `admin_absent_resources.rs`) ;
+    - `crates/connectors/tests/mcp_oauth_exchange.rs` (lot 40d) : le navigateur envoyé
+      où la déclaration le dit revient avec un code échangé contre des jetons pour le
+      serveur ; le client se prouve comme déclaré (corps, Basic, client public) ; un
+      code déjà servi ou un autre vérificateur est refusé par son seul code
+      d'erreur ; un jeton qui expire sans renouvellement ou qu'on ne pourrait masquer
+      est refusé ; rien n'est demandé là où les règles réseau l'interdisent ; en
+      unitaire, des portées accordées illisibles ou répétées sont refusées ;
+    - `crates/api/tests/connector_oauth_authorization.rs`,
+      `connector_oauth_authorization_returns.rs` et
+      `connector_oauth_authorization_rights.rs` (lot 40d) : un administrateur
+      autorise un serveur déclaré, les jetons scellés pour lui, jamais montrés ni
+      tracés, l'autorisation remplacée, retirée, et partie avec la déclaration,
+      l'adresse ou le connecteur ; un retour sans la tentative, d'une autre
+      tentative, refusé par le serveur, d'un autre émetteur ou sans celui annoncé,
+      présenté par un autre administrateur (d'une partie ou de toute
+      l'entreprise : le retour reste celui de qui l'a commencé), par un
+      administrateur qui a perdu ses droits depuis le départ, sans code, pour un
+      connecteur supprimé entre-temps, après une déclaration changée, ou
+      apportant des jetons qui expirent sans renouvellement, est refusé et tracé
+      sans le code, rien n'étant gardé ; les jetons d'accès et de renouvellement
+      ne sont ni montrés ni tracés ; seul un administrateur de toute l'entreprise commence une
+      autorisation, sur un serveur déclaré ; les deux routes, sur le connecteur
+      d'une autre entreprise ou absent, répondent 404 et sont tracées ;
     - `crates/connectors/tests/mcp_oauth_authority.rs` : le serveur d'autorisation
       simulé use le code, vérifie PKCE et la ressource ; refuse un client qui se prouve de
       deux façons, d'une façon non annoncée ou avec un autre secret, un Basic refusé

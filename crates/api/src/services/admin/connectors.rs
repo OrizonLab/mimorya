@@ -13,6 +13,7 @@ use mimorya_core::DomainError;
 use mimorya_core::account_links::LinkKind;
 use mimorya_core::authz::PermissionInfo;
 use mimorya_db::repositories::audit::append_audit;
+use mimorya_db::repositories::connector_authorizations::delete_connector_authorization;
 use mimorya_db::repositories::connectors::{
     ConnectorPatch, NewConnectorInstance, create_connector_instance, delete_connector_instance,
     get_connector_instance, update_connector_instance,
@@ -225,6 +226,7 @@ pub async fn update_connector(
                 .secrets
                 .delete(&mut tx, &client_secret_name(id))
                 .await?;
+            delete_connector_authorization(&mut tx, id).await?;
             oauth = Some("removed");
         }
         let rehomed = header

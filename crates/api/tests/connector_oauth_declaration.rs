@@ -256,10 +256,11 @@ async fn an_oauth_declaration_follows_its_rules() {
     // No token to remove: nothing changes.
     let none = paul.patch(&instance, json!({ "token": null })).await;
     assert_eq!(none.status, StatusCode::OK);
-    assert_eq!(
-        listed(&paul, &id).await["mcp"]["oauth"]["clientId"],
-        CLIENT_ID
-    );
+    let kept = listed(&paul, &id).await["mcp"]["oauth"].clone();
+    assert_eq!(kept["clientId"], CLIENT_ID);
+    // The client's secret stays with the declaration.
+    assert_eq!(kept["clientSecretStored"], true);
+    assert!(sealed_secret(&api, &id).await.is_some());
     // The same address keeps it; another one does not, nor its secret.
     let same = paul.patch(&instance, json!({ "url": server.url })).await;
     assert_eq!(same.status, StatusCode::OK);
@@ -367,14 +368,22 @@ async fn a_declaration_that_can_no_longer_be_read_is_withdrawn_or_replaced() {
         .unwrap();
         tx.commit().await.unwrap();
     };
+    // Declared with a secret, then spoilt.
+    let secret = json!({ "clientId": CLIENT_ID, "clientSecret": CLIENT_SECRET });
+    assert_eq!(paul.put(&oauth, secret).await.status, StatusCode::OK);
     spoil().await;
     // Said as such, not as the operator's.
     let same = json!({ "url": server.url });
     let refused = paul.patch(&instance, same.clone()).await;
     assert_eq!(refused.status, StatusCode::BAD_REQUEST);
     assert!(refused.text().contains("OAuth"), "{}", refused.text());
-    // Withdrawn.
+    // Withdrawn, its secret with it, the audit saying it was unreadable.
     assert_eq!(paul.delete(&oauth).await.status, StatusCode::OK);
+    assert_eq!(sealed_secret(&api, &id).await, None);
+    let entries = audited(&api, &id).await;
+    let (action, removed) = entries.last().expect("audited");
+    assert_eq!(action, "connector.oauth_removed");
+    assert_eq!(removed["unreadable"], true);
     let repaired = paul.patch(&instance, same).await;
     assert_eq!(repaired.status, StatusCode::OK, "{}", repaired.text());
     // Or declared again over it.
