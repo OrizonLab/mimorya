@@ -4,7 +4,9 @@
 //! again, the server's address changed or the connector deleted; the
 //! refresh token first, under the declaration it was given under, its
 //! client's secret read before it goes, never under another declaration
-//! or one that can no longer be read. The withdrawal stands whatever the
+//! or one that can no longer be read, nor without its secret; a
+//! declaration kept before revocation endpoints were is revoked at the one
+//! its server names once declared again. The withdrawal stands whatever the
 //! server does: one naming no revocation endpoint, or not answering in
 //! time, is audited as such, never with a token. A new authorization does
 //! not revoke the former: at some servers, that would revoke the new one.
@@ -182,7 +184,29 @@ async fn a_server_that_cannot_revoke_keeps_the_withdrawal_and_says_so() {
         reason.as_deref().unwrap_or_default().contains("à temps"),
         "{reason:?}"
     );
-    for connector in [&id, &other] {
+    // Its client's secret gone: never sent without it, said as such.
+    let authority = FakeAuthorizationServer::start().await;
+    let (_, third) = declared(&paul, &authority, "sanssecret").await;
+    assert_eq!(
+        location(&authorize(&paul, &authority, &third).await),
+        AUTHORIZED
+    );
+    let gone = "delete from secrets where name = 'connector.' || $1::text || '.client_secret'";
+    alter(&api, &third, gone).await;
+    let path = format!("/admin/connectors/{third}/oauth/authorization");
+    assert_eq!(paul.delete(&path).await.status, StatusCode::OK);
+    assert_eq!(asked(&authority), 0);
+    let audited = revocations(&api, &third).await;
+    let (outcome, reason) = audited.last().expect("audited");
+    assert_eq!(outcome, "failure");
+    assert!(
+        reason
+            .as_deref()
+            .unwrap_or_default()
+            .contains("Secret du client absent ou illisible : retirez"),
+        "{reason:?}"
+    );
+    for connector in [&id, &other, &third] {
         let deleted = paul.delete(&format!("/admin/connectors/{connector}")).await;
         assert_eq!(deleted.status, StatusCode::OK);
     }
@@ -262,6 +286,40 @@ async fn a_new_authorization_does_not_revoke_the_former() {
     assert_eq!(asked(&authority), 0);
     assert!(authority.accepts(&first, &server.url));
     assert!(revocations(&api, &id).await.is_empty());
+    assert_eq!(
+        paul.delete(&format!("/admin/connectors/{id}")).await.status,
+        StatusCode::OK
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_declaration_kept_before_revocation_endpoints_is_revoked_when_declared_again() {
+    let api = TestApi::start_with(&PRIVATE_DEPLOYMENT).await;
+    let paul = api.sign_in(user::PAUL).await;
+    let authority = FakeAuthorizationServer::start().await;
+    let (server, id) = declared(&paul, &authority, "ancienne").await;
+    assert_eq!(
+        location(&authorize(&paul, &authority, &id).await),
+        AUTHORIZED
+    );
+    let (access, _) = kept_tokens(&api, &id).await.expect("kept");
+    // Kept as before this lot: no revocation endpoint known.
+    let older = "update connector_instances set config = config #- \
+                 '{oauth,revocationEndpoint}' where id = $1";
+    alter(&api, &id, older).await;
+    assert_eq!(listed(&paul, &id).await["mcp"]["oauth"]["revocable"], false);
+    // Declared again: revoked at the endpoint its server now names.
+    let oauth = format!("/admin/connectors/{id}/oauth");
+    let secret = json!({ "clientId": CLIENT_ID, "clientSecret": CLIENT_SECRET });
+    let again = paul.put(&oauth, secret).await;
+    assert_eq!(again.status, StatusCode::OK, "{}", again.text());
+    assert!(!authority.accepts(&access, &server.url));
+    assert_eq!(
+        revocations(&api, &id).await,
+        vec![("success".to_string(), None)]
+    );
+    assert_eq!(listed(&paul, &id).await["mcp"]["oauth"]["revocable"], true);
     assert_eq!(
         paul.delete(&format!("/admin/connectors/{id}")).await.status,
         StatusCode::OK

@@ -22,7 +22,7 @@ use mimorya_db::repositories::connectors::{
 use serde_json::json;
 use uuid::Uuid;
 
-use super::connector_authorization::{revoke, take_authorization};
+use super::connector_authorization::{revocable_under, revoke, take_authorization};
 use super::connectors::{ConnectorAdmin, PERMISSION};
 use super::mcp_config::{Unreadable, mcp_config, stored_oauth};
 use super::{audit_entry, begin_change};
@@ -124,9 +124,13 @@ pub async fn declare_oauth(
     };
     update_connector_instance(&mut tx, id, patch).await?;
     // An authorization given under another declaration does not follow:
-    // taken before the former secret is replaced, to be revoked under it.
-    let previous = current.declared.as_ref();
-    let taken = take_authorization(&mut tx, admin, tenant_id, id, previous).await?;
+    // taken before the former secret is replaced, to be revoked under it,
+    // at the revocation endpoint its server now names if it named none.
+    let previous = current
+        .declared
+        .as_ref()
+        .map(|previous| revocable_under(previous, &declaration));
+    let taken = take_authorization(&mut tx, admin, tenant_id, id, previous.as_ref()).await?;
     let authorization_removed = taken.is_some();
     // OAuth replaces a typed token.
     let token_removed = admin

@@ -2,11 +2,12 @@
 // added at its address, declared with the client registered at its
 // authorization server, which the platform finds from the server itself,
 // authorized there and back, its session started with the authorization's
-// token, then its authorization and its declaration withdrawn. A return
-// that failed is said; a declaration that no longer reads is withdrawn from
-// its card. The end-to-end API serves both servers and reaches them alone
-// of the private network (`e2e_server`). What the test adds is deleted,
-// even when it fails.
+// token, then its authorization and its declaration withdrawn; one whose
+// authorization server names no revocation endpoint says what is left to
+// do there (ADR-172). A return that failed is said; a declaration that no
+// longer reads is withdrawn from its card. The end-to-end API serves these
+// servers and reaches them alone of the private network (`e2e_server`).
+// What the test adds is deleted, even when it fails.
 import type { Page } from '@playwright/test';
 import type { Connectors } from '../lib/api/contract';
 import { cardWith, openAdmin } from './support/admin';
@@ -14,6 +15,9 @@ import { expect, noError, test } from './support/fixtures';
 
 const SERVER = 'Fichiers OAuth e2e';
 const ADDRESS = 'http://127.0.0.1:4107/mcp';
+/** A server whose authorization server names no revocation endpoint. */
+const UNREVOKING = 'Fichiers OAuth sans révocation e2e';
+const UNREVOKING_ADDRESS = 'http://127.0.0.1:4109/mcp';
 const ISSUER = 'http://127.0.0.1:4106';
 /** The client the authorization server knows, with its secret. */
 const CLIENT_ID = 'mimorya-test-client';
@@ -47,7 +51,7 @@ test.afterEach(async ({ page }) => {
   const response = await page.request.get('/api/admin/connectors');
   if (response.status() === 401) return;
   for (const connector of await listed(page)) {
-    if (connector.name !== SERVER) continue;
+    if (connector.name !== SERVER && connector.name !== UNREVOKING) continue;
     const deleted = await page.request.delete(`/api/admin/connectors/${connector.id}`, {
       headers: WRITE,
     });
@@ -108,6 +112,34 @@ test('an MCP server is authorized by OAuth, started with its token, then withdra
   await expect(card.getByRole('button', { name: 'Déclarer OAuth' })).toBeVisible();
   const withdrawn = (await listed(page)).find((c) => c.name === SERVER);
   expect(withdrawn?.mcp?.oauth).toBeNull();
+  await noError(page);
+});
+
+test('a server whose authorization server cannot revoke says what is left to do', async ({
+  page,
+}) => {
+  await openAdmin(page, 'Connecteurs');
+  await page.getByRole('button', { name: 'Ajouter un serveur MCP' }).click();
+  await page.getByLabel('Nom').fill(UNREVOKING);
+  await page.getByLabel('Préfixe des outils (définitif)').fill('fichsr');
+  await page.getByLabel(/^Adresse du serveur/).fill(UNREVOKING_ADDRESS);
+  await page.getByRole('button', { name: 'Ajouter le serveur' }).click();
+  const card = cardWith(page, UNREVOKING, 'Supprimer');
+  await card.getByRole('button', { name: 'Déclarer OAuth' }).click();
+  await card.getByLabel('Identifiant du client').fill(CLIENT_ID);
+  await card.getByLabel(/^Secret du client/).fill(CLIENT_SECRET);
+  await card.getByRole('button', { name: 'Déclarer', exact: true }).click();
+  // No revocation endpoint known: said, with what is left to do there.
+  await expect(card.getByText(/^Aucun point de révocation n’est connu/)).toBeVisible();
+  const declared = (await listed(page)).find((c) => c.name === UNREVOKING);
+  expect(declared?.mcp?.oauth?.revocable).toBe(false);
+  await card.getByRole('button', { name: 'Autoriser', exact: true }).click();
+  await expect(page.getByText('Serveur MCP autorisé')).toBeVisible();
+  await expect(card.getByText(/^Autorisé le /)).toBeVisible();
+  // Withdrawn: the confirmation says the agreement is to withdraw there too.
+  await card.getByRole('button', { name: 'Retirer l’autorisation' }).click();
+  await expect(card.getByText('Non autorisé', { exact: true })).toBeVisible();
+  expect(confirmations.at(-1)).toContain('retirez aussi l’accord chez lui');
   await noError(page);
 });
 

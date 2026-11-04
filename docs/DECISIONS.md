@@ -10699,7 +10699,8 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
 - **Décision** :
   - la déclaration garde le point de révocation que le serveur annonce
     (`revocationEndpoint`, facultatif : une déclaration gardée avant ce lot se lit
-    toujours, sans lui, et le découvre si elle est faite de nouveau) ; la liste des
+    toujours, sans lui ; faite de nouveau chez le même serveur, l'autorisation donnée
+    sous l'ancienne est révoquée au point que celui-ci annonce désormais) ; la liste des
     connecteurs dit si un point de révocation est connu (`revocable`), et l'écran dit,
     quand aucun ne l'est, ce qu'il reste à faire chez le serveur ;
   - quand l'administration laisse une autorisation (retirée, déclaration retirée ou
@@ -10722,7 +10723,7 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     sans faire échouer un retrait déjà validé ;
   - jamais sous une autre déclaration que celle sous laquelle l'autorisation a été
     donnée (règle commune avec la session et le renouvellement), ni sous une
-    déclaration illisible ; la trace dit laquelle des deux ;
+    déclaration illisible, ni sans le secret de son client ; la trace dit lequel ;
   - le retrait tient quoi qu'il arrive : une déclaration qui ne connaît pas de point
     de révocation, un serveur qui ne répond pas à temps ou refuse le dit, et l'issue
     est tracée au journal d'audit (`connector.oauth_authorization_revoked`, réussite ou
@@ -10734,13 +10735,17 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     retirerait aussi le nouveau ;
   - une autorisation que le serveur dit n'être plus bonne au renouvellement (ADR-171)
     n'est pas révoquée : il n'y a rien à révoquer ;
-  - un renouvellement en vol quand l'autorisation est retirée ramène des jetons que
-    personne ne garde : s'il ne reste aucune autorisation au connecteur, ils sont
-    révoqués sous la déclaration sous laquelle ils ont été demandés, dans le même
-    délai, un échec dit dans les journaux sans jeton ; si une nouvelle autorisation a
-    pris sa place, ils ne le sont pas, pour la même raison qu'au point précédent (ils
-    expirent ; leur jeton de renouvellement reste bon chez le serveur jusqu'à ce qu'il
-    le retire).
+  - des jetons accordés que personne ne garde sont révoqués sous la déclaration sous
+    laquelle ils ont été demandés, avec son secret, dans le même délai, par une tâche
+    que personne n'attend (ni le run, ni la requête), un échec dit dans les journaux
+    sans jeton : ceux d'un renouvellement en vol quand l'autorisation est retirée ou
+    remplacée, et ceux d'un retour d'autorisation qui ne les garde pas (déclaration ou
+    adresse changée pendant l'échange du code, connecteur supprimé, droits retirés) ;
+    pas quand une autorisation du même client chez le même serveur est tenue pour le
+    connecteur, pour la même raison qu'une nouvelle autorisation ne révoque pas
+    l'ancienne (ils expirent ; leur jeton de renouvellement reste bon chez le serveur
+    jusqu'à ce qu'il le retire), mais quand celle tenue est d'un autre serveur ou d'un
+    autre client.
 - **Conséquences** :
   - un administrateur n'a plus à retirer l'accord à la main chez la plupart des
     serveurs ; l'écran lui dit quand il le doit encore ;
@@ -10757,14 +10762,23 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       déclaration retirée ou déclarée de nouveau (avec l'ancien secret), une nouvelle
       adresse et un connecteur supprimé révoquent chacun l'autorisation ; un serveur
       qui n'annonce pas de révocation ou ne répond pas laisse le retrait tenir, dit et
-      tracé, dans le délai ; une autorisation gardée sous un autre émetteur ou sous une
-      déclaration devenue illisible n'est envoyée nulle part, chacune dite comme telle ;
-      une nouvelle autorisation ne révoque pas l'ancienne ;
+      tracé, dans le délai, comme un secret du client disparu ; une autorisation gardée
+      sous un autre émetteur ou sous une déclaration devenue illisible n'est envoyée
+      nulle part, chacune dite comme telle ; une déclaration gardée sans point de
+      révocation, faite de nouveau, révoque au point annoncé désormais ; une nouvelle
+      autorisation ne révoque pas l'ancienne ;
     - `crates/api/tests/connector_oauth_revocation_races.rs` : un retrait dont la
       requête est abandonnée pendant que le serveur se tait est révoqué jusqu'au délai
       et tracé ; les jetons d'un renouvellement en vol quand l'autorisation est retirée
-      sont révoqués après ceux du retrait ; pas quand une nouvelle autorisation a pris
-      sa place ;
+      sont révoqués après ceux du retrait, sans que le run les attende ; pas quand une
+      nouvelle autorisation chez le même serveur a pris sa place, mais quand elle est
+      chez un autre ;
+    - `crates/api/tests/connector_oauth_return_guards.rs` : les jetons d'un retour dont
+      la déclaration a changé pendant l'échange sont révoqués sous l'ancienne, avec son
+      secret ;
+    - `apps/web/e2e/mcp-oauth.spec.ts` : la confirmation du retrait dit que la
+      plateforme demande la révocation, ou, chez un serveur d'autorisation simulé qui
+      n'annonce pas de révocation, ce qu'il reste à faire chez lui ;
     - le serveur d'autorisation simulé a son point de révocation, strict sur le client
       comme celui de jeton, et peut ne pas l'annoncer, rester muet ou ne pas révoquer
       les jetons d'accès ; son point de jeton peut retenir la réponse d'un

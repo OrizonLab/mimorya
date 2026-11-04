@@ -2,7 +2,7 @@
 //! attempt: past the limit it shares with the start, a return is turned
 //! away before the authorization server is asked, its reason audited; a
 //! declaration changed while the code was being exchanged keeps nothing,
-//! the tokens granted under the former one dropped.
+//! the tokens granted under the former one revoked under it (ADR-172).
 
 mod support;
 
@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use axum::http::StatusCode;
-use mimorya_connectors::testing::{CLIENT_ID, FakeAuthorizationServer};
+use mimorya_connectors::testing::{CLIENT_ID, CLIENT_SECRET, FakeAuthorizationServer};
 use mimorya_core::demo::user;
 use serde_json::json;
 use support::TestApi;
@@ -121,6 +121,23 @@ async fn a_declaration_changed_during_the_exchange_keeps_nothing() {
         "{reason}"
     );
     assert!(kept_tokens(&api, &id).await.is_none());
+    // The tokens granted, kept nowhere, revoked under the former
+    // declaration, with its secret, by a task of their own.
+    let deadline = std::time::Instant::now() + Duration::from_secs(20);
+    let revoked = loop {
+        let requests = authority.requests();
+        let revoked: Vec<_> = requests
+            .into_iter()
+            .filter(|r| r.endpoint == "revoke")
+            .collect();
+        if revoked.len() >= 2 || std::time::Instant::now() > deadline {
+            break revoked;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    };
+    let tokens: Vec<_> = revoked.iter().map(|r| r.params["token"].as_str()).collect();
+    assert_eq!(tokens, ["renouvellement-retenu", "jeton-retenu"]);
+    assert_eq!(revoked[0].params["client_secret"], CLIENT_SECRET);
     assert_eq!(
         paul.delete(&format!("/admin/connectors/{id}")).await.status,
         StatusCode::OK

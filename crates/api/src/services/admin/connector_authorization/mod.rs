@@ -15,7 +15,7 @@ mod start;
 
 pub use attempt::{AUTHORIZATION_COOKIE, authorization_cookie, cleared_authorization_cookie};
 pub use finish::{AuthorizationFailure, OAuthReturn, finish_authorization};
-pub(super) use revocation::{revoke, take_authorization};
+pub(super) use revocation::{revocable_under, revoke, take_authorization};
 pub use start::{AuthorizationStart, start_authorization};
 
 use mimorya_core::DomainError;

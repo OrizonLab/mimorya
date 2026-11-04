@@ -89,6 +89,17 @@ pub async fn take_authorization(
     }))
 }
 
+/// `previous`, the declaration an authorization was given under, revoked
+/// at the endpoint `new` names when it names none and both are the same
+/// server's: a declaration kept before revocation endpoints were (ADR-172).
+pub fn revocable_under(previous: &OAuthDeclaration, new: &OAuthDeclaration) -> OAuthDeclaration {
+    let mut revocable = previous.clone();
+    if revocable.revocation_endpoint.is_none() && previous.issuer == new.issuer {
+        revocable.revocation_endpoint = new.revocation_endpoint.clone();
+    }
+    revocable
+}
+
 /// What the task that revokes owns.
 struct Revoking {
     db: Database,
@@ -129,6 +140,15 @@ impl Revoking {
                 .to_string()),
             Declared::Under(declared) if declared.revocation_endpoint.is_none() => {
                 Err(NO_REVOCATION_ENDPOINT.to_string())
+            }
+            Declared::Under(declared)
+                if declared.client_auth != ClientAuth::None && self.revocation.secret.is_none() =>
+            {
+                Err(
+                    "Secret du client absent ou illisible : retirez l’accord chez le serveur \
+                     d’autorisation"
+                        .to_string(),
+                )
             }
             Declared::Under(declared) => self.send(declared).await,
         };
