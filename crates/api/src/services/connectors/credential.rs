@@ -77,7 +77,7 @@ pub async fn credential_of(
 }
 
 /// The OAuth declaration of an MCP server reached over HTTP, if it has one.
-fn oauth_of(instance: &ConnectorInstanceRow) -> Option<OAuthDeclaration> {
+pub(super) fn oauth_of(instance: &ConnectorInstanceRow) -> Option<OAuthDeclaration> {
     if instance.connector_type != "mcp" {
         return None;
     }

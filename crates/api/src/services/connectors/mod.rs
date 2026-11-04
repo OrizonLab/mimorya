@@ -13,7 +13,8 @@
 //! (`admin_starts`, ADR-055). The tools of the connectors that reach
 //! outside the platform can be withheld (`tenant_tools`, ADR-153). An MCP
 //! server declared with OAuth starts with its authorization's access token,
-//! its session retired before the token expires (`credential`, ADR-171).
+//! its session retired before the token expires (`credential`, ADR-171),
+//! the token renewed before the instances are read (`renewal`).
 
 mod admin_starts;
 mod cache;
@@ -21,6 +22,7 @@ mod credential;
 mod failures;
 mod policies;
 mod reach;
+mod renewal;
 mod tenant_tools;
 
 use std::collections::HashSet;
@@ -133,6 +135,8 @@ impl ConnectorService {
     }
 
     pub async fn tools_for(&self, tenant_id: Uuid) -> anyhow::Result<TenantTools> {
+        // Before anything is read: a renewal makes a new version.
+        self.renew_due(tenant_id).await?;
         let ticket = self.cache.ticket().await;
         // Instances and tokens read in one snapshot: a token always goes
         // with the address it was saved, or authorized, for.

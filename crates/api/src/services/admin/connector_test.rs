@@ -47,6 +47,8 @@ pub async fn test_connector(
 ) -> anyhow::Result<ConnectorTestOutcome> {
     access.require_tenant_wide(PERMISSION)?;
     let tenant_id = access.subject.tenant_id;
+    // As a run would: an authorization about to expire renewed first.
+    admin.connectors.renew_due(tenant_id).await?;
     // The instance and its token from one snapshot.
     let mut tx = admin.db.begin_snapshot(tenant_id).await?;
     let Some(instance) = get_connector_instance(&mut tx, id).await? else {

@@ -1,29 +1,17 @@
 //! The code an authorization's return brings, exchanged for tokens at the
-//! token endpoint kept in the declaration (ADR-171): with the PKCE verifier,
-//! the same return address, the resource the tokens are for (RFC 8707), and
-//! the client proving itself as the declaration says (in the body, in the
-//! Basic header, or by its identifier alone). The answer is read within its
-//! bounds and taken only if a server could be sent its access token as
+//! token endpoint kept in the declaration (ADR-171): with the PKCE verifier
+//! and the same return address (`token_request`). The answer, as a renewal's
+//! (`refresh`), is taken only if a server could be sent its access token as
 //! written: a Bearer token in the alphabet of RFC 6750, which the platform
-//! can mask, and one that expires only with a refresh token. A refusal is
-//! said by its error code, never by what the server wrote around it; no
-//! code, secret nor token is ever in a message.
-
-use std::time::Duration;
-
+//! can mask, one that expires only with a refresh token, and lasts long
+//! enough for a session to open.
 use serde::Deserialize;
-use url::form_urlencoded::{Serializer, byte_serialize};
 
 use super::declaration::OAuthDeclaration;
-use super::fetch::Fetcher;
-use super::protected_resource::endpoint_problem;
-use super::quoted::quoted;
 use super::scope::scopes_problem;
-use super::server_metadata::ClientAuth;
+use super::token_request::{TokenAnswer, request_tokens};
 use crate::mcp::expiry::MIN_GRANTED_LIFE;
 use crate::outbound::NetworkPolicy;
-
-const TIMEOUT: Duration = Duration::from_secs(10);
 /// A JWT access token is a few kilobytes at most.
 pub const MAX_OAUTH_TOKEN_CHARS: usize = 8192;
 
@@ -57,69 +45,28 @@ struct TokenResponse {
     scope: Option<String>,
 }
 
-#[derive(Deserialize)]
-struct ErrorResponse {
-    error: Option<String>,
-}
-
 /// The tokens the token endpoint of `declaration` grants for `exchange`.
 pub async fn exchange_code(
     declaration: &OAuthDeclaration,
     exchange: CodeExchange<'_>,
     policy: NetworkPolicy,
 ) -> Result<Granted, String> {
-    let endpoint = &declaration.token_endpoint;
-    if let Some(problem) = endpoint_problem(endpoint, "Point de jeton", policy) {
-        return Err(problem);
-    }
-    // Built whole before anything is awaited: the serializer is not `Send`.
-    let (form, basic) = {
-        let mut form = Serializer::new(String::new());
-        form.append_pair("grant_type", "authorization_code")
-            .append_pair("code", exchange.code)
-            .append_pair("redirect_uri", exchange.redirect_uri)
-            .append_pair("code_verifier", exchange.verifier)
-            .append_pair("resource", &declaration.resource);
-        let secret = || {
-            exchange
-                .client_secret
-                .ok_or_else(|| "Secret du client absent : déclarez OAuth de nouveau".to_string())
-        };
-        // RFC 6749 §2.3.1: the identifier and secret form-encoded, then Basic.
-        let encoded = |value: &str| byte_serialize(value.as_bytes()).collect::<String>();
-        let basic = match declaration.client_auth {
-            ClientAuth::None => {
-                form.append_pair("client_id", &declaration.client_id);
-                None
-            }
-            ClientAuth::ClientSecretPost => {
-                form.append_pair("client_id", &declaration.client_id)
-                    .append_pair("client_secret", secret()?);
-                None
-            }
-            ClientAuth::ClientSecretBasic => {
-                Some((encoded(&declaration.client_id), encoded(secret()?)))
-            }
-        };
-        (form.finish(), basic)
-    };
-    let fetcher = Fetcher::new(policy, TIMEOUT)?;
-    let basic = basic
-        .as_ref()
-        .map(|(id, secret)| (id.as_str(), secret.as_str()));
-    let (status, body) = fetcher.form(endpoint, form, basic).await?;
-    match status {
-        200 => granted(&body),
-        400 | 401 => Err(refusal(&body)),
-        _ => Err(format!(
-            "« {} » a répondu {status} à la demande de jetons",
-            quoted(endpoint)
-        )),
+    let grant = [
+        ("grant_type", "authorization_code"),
+        ("code", exchange.code),
+        ("redirect_uri", exchange.redirect_uri),
+        ("code_verifier", exchange.verifier),
+    ];
+    match request_tokens(declaration, &grant, exchange.client_secret, policy).await {
+        TokenAnswer::Granted(body) => granted(&body, false),
+        TokenAnswer::Refused(said) | TokenAnswer::Failed(said) => Err(said),
     }
 }
 
-/// The tokens of a successful answer, if the platform may keep them.
-fn granted(body: &[u8]) -> Result<Granted, String> {
+/// The tokens of a successful answer, if the platform may keep them;
+/// `renewing` one whose refresh token is kept, that may not be given again
+/// (RFC 6749 §6).
+pub(super) fn granted(body: &[u8], renewing: bool) -> Result<Granted, String> {
     let answer: TokenResponse = serde_json::from_slice(body)
         .map_err(|_| "Réponse du point de jeton illisible".to_string())?;
     let access_token = answer
@@ -155,7 +102,7 @@ fn granted(body: &[u8]) -> Result<Granted, String> {
         ),
         Some(_) => return Err("Échéance du jeton illisible".into()),
     };
-    if expires_in.is_some() && refresh_token.is_none() {
+    if expires_in.is_some() && refresh_token.is_none() && !renewing {
         return Err(
             "Jeton d’accès qui expire sans jeton de renouvellement : la plateforme le perdrait \
              (demandez la portée offline_access si le serveur l’annonce)"
@@ -193,22 +140,6 @@ fn granted(body: &[u8]) -> Result<Granted, String> {
     })
 }
 
-/// A refusal as RFC 6749 §5.2 writes one: its error code only, if it reads
-/// as one.
-fn refusal(body: &[u8]) -> String {
-    let code = serde_json::from_slice::<ErrorResponse>(body)
-        .ok()
-        .and_then(|answer| answer.error)
-        .filter(|code| {
-            (1..=40).contains(&code.len())
-                && code.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
-        });
-    match code {
-        Some(code) => format!("Refusée par le serveur d’autorisation ({code})"),
-        None => "Refusée par le serveur d’autorisation".into(),
-    }
-}
-
 /// Why `token` cannot be sent and masked as written, if it cannot: the
 /// `b64token` of RFC 6750, within a bound.
 pub fn access_token_problem(token: &str) -> Option<String> {
@@ -236,11 +167,12 @@ fn visible_token(token: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mcp::oauth::ClientAuth;
 
     #[test]
     fn a_token_is_kept_only_if_it_can_be_sent_and_renewed() {
         let ok = br#"{"access_token":"jeton.abc-123","token_type":"bearer","expires_in":"3600","refresh_token":"r-1","scope":"a b"}"#;
-        let kept = granted(ok).expect("granted");
+        let kept = granted(ok, false).expect("granted");
         assert_eq!(kept.expires_in, Some(3600));
         assert_eq!(kept.scopes, Some(vec!["a".into(), "b".into()]));
         for (body, said) in [
@@ -254,7 +186,7 @@ mod tests {
             (br#"{"access_token":"jeton-abc-123","token_type":"Bearer","scope":"a \"b"}"#, "guillemet"),
             (br#"{"access_token":"jeton-abc-123","token_type":"Bearer","scope":"a a"}"#, "deux fois"),
         ] {
-            let refused = granted(body).err().expect("refused");
+            let refused = granted(body, false).err().expect("refused");
             assert!(refused.contains(said), "{refused}");
         }
         // Well formed but more than the platform keeps: said as such.
@@ -263,11 +195,11 @@ mod tests {
             r#"{{"access_token":"jeton-abc-123","token_type":"Bearer","scope":"{}"}}"#,
             many.join(" ")
         );
-        let refused = granted(body.as_bytes()).err().expect("refused");
+        let refused = granted(body.as_bytes(), false).err().expect("refused");
         assert!(refused.contains("20 portées au plus"), "{refused}");
         // Without an expiry, nothing to renew.
         let lasting = br#"{"access_token":"jeton-abc-123","token_type":"Bearer"}"#;
-        assert!(granted(lasting).is_ok());
+        assert!(granted(lasting, false).is_ok());
     }
 
     #[test]
@@ -294,16 +226,5 @@ mod tests {
             exchange,
             NetworkPolicy::default(),
         ));
-    }
-
-    #[test]
-    fn a_refusal_is_said_by_its_code_alone() {
-        let said = refusal(br#"{"error":"invalid_grant","error_description":"Appelez le 01 23"}"#);
-        assert_eq!(
-            said,
-            "Refusée par le serveur d’autorisation (invalid_grant)"
-        );
-        let odd = refusal(br#"{"error":"Appelez le 01 23 45 67 89 maintenant"}"#);
-        assert_eq!(odd, "Refusée par le serveur d’autorisation");
     }
 }

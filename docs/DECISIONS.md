@@ -10424,9 +10424,30 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       - un jeton que le serveur refuse, au démarrage ou à un appel (révoqué, expiré
         plus tôt, sans les portées voulues), dit d'autoriser de nouveau le
         connecteur, et non qu'un jeton saisi est invalide ;
-      - jusqu'au lot 40f, un jeton expiré n'est pas renouvelé : l'administrateur
-        autorise de nouveau le connecteur ;
-    - 40f : le renouvellement ;
+      - un jeton qui expire est renouvelé au lot 40f ;
+    - 40f : le renouvellement (`mcp/oauth/refresh.rs`, `mcp/oauth/token_request.rs`,
+      `services/connectors/renewal.rs`, `repositories/connector_renewals.rs`) :
+      - avant que les instances d'une entreprise ne soient lues, pour un run ou le
+        test de l'administration, chaque autorisation dont le jeton expire dans
+        moins de quatre minutes (`RENEW_WITHIN`, entre la durée qu'il faut pour
+        démarrer une session et la durée minimale d'un jeton émis) est renouvelée
+        avec son jeton de renouvellement, au point de jeton déclaré, pour la
+        ressource déclarée, le client se prouvant comme la déclaration le dit ;
+      - sous le verrou de sa ligne, le temps de l'appel (borné à dix secondes) : un
+        autre processus qui la renouvelle au même moment attend, puis la trouve
+        renouvelée ; un jeton de renouvellement que le serveur fait tourner n'est
+        ainsi utilisé qu'une fois (réutilisé, il ferait révoquer toute
+        l'autorisation) ;
+      - les nouveaux jetons sont scellés pour le connecteur, le jeton de
+        renouvellement gardé s'il n'en est pas donné un autre, les portées
+        accordées gardées si le serveur les dit, la version du connecteur changée ;
+      - un refus du serveur (400 ou 401), ou une réponse que la plateforme ne
+        saurait garder, retire l'autorisation, tracé par le système
+        (`connector.oauth_authorization_removed`, la raison par son seul code
+        d'erreur) : un administrateur autorise de nouveau le serveur ;
+      - un serveur qui ne répond pas laisse l'autorisation telle quelle, essayée de
+        nouveau au run suivant ; jusque-là, le jeton trop court ne démarre pas de
+        session et le dit ;
     - 40g : l'enregistrement dynamique du client (RFC 7591) et la révocation auprès du
       serveur (RFC 7009), ADR à venir ;
     - puis l'écran et son parcours de bout en bout, et l'autorisation par personne.
@@ -10524,13 +10545,24 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       de l'autorisation, et son état passe à « ok » ; l'autorisation retirée, la
       session est relâchée et il le redit ; une autorisation donnée pour une autre
       ressource, un autre émetteur ou un autre client n'est pas utilisée ; un jeton
-      scellé pour un autre connecteur ne s'ouvre pas ; un jeton qui expire bientôt ne
-      démarre rien ; un jeton refusé par le serveur dit d'autoriser de nouveau, jamais
+      scellé pour un autre connecteur ne s'ouvre pas ; un jeton refusé par le serveur dit d'autoriser de nouveau, jamais
       montré ; les connecteurs d'un autre processus, qui n'entendent aucun avis,
       démarrent la session dès la première autorisation malgré l'échec qu'ils
       retenaient, la redémarrent avec le nouveau jeton quand elle est autorisée de
       nouveau, et s'en passent quand elle est retirée, le connecteur repassant « à
       tester » à chaque fois ;
+    - `crates/connectors/tests/mcp_oauth_refresh.rs` (lot 40f) : un jeton de
+      renouvellement apporte de nouveaux jetons pour la même ressource, le jeton de
+      renouvellement tourné ; réutilisé, il est refusé par son seul code d'erreur et
+      toute l'autorisation est révoquée ; un client public se renouvelle par son
+      identifiant ; un serveur injoignable n'est pas un refus ; en unitaire, un jeton
+      renouvelé sans nouveau jeton de renouvellement garde l'ancien ;
+    - `crates/api/tests/connector_oauth_renewals.rs` (lot 40f) : un jeton qui expire
+      bientôt est renouvelé avant que la session ne démarre, le serveur recevant le
+      nouveau jeton, et un jeton renouvelé ne l'est pas de nouveau au run suivant ;
+      deux processus qui le renouvellent au même moment ne le renouvellent qu'une
+      fois ; un serveur injoignable laisse l'autorisation, le jeton trop court ne
+      démarrant rien ; un refus la retire, tracé par le système sans jeton ;
     - `crates/connectors/tests/mcp_oauth_authority.rs` : le serveur d'autorisation
       simulé use le code, vérifie PKCE et la ressource ; refuse un client qui se prouve de
       deux façons, d'une façon non annoncée ou avec un autre secret, un Basic refusé
