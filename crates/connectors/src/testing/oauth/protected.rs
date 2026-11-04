@@ -71,7 +71,12 @@ pub enum OAuthQuirk {
     ParamsInChallenge,
     /// Its metadata answered only once the test releases `hold`.
     HeldMetadata,
+    /// Every request answered after `SLOW_ANSWER`: a session long to start.
+    SlowStart,
 }
+
+/// How long `SlowStart` takes to answer each request.
+pub const SLOW_ANSWER: std::time::Duration = std::time::Duration::from_secs(1);
 
 impl OAuthQuirk {
     /// Whether the server publishes the usual metadata document.
@@ -154,6 +159,9 @@ pub async fn serve_oauth_mcp_http(
                     .and_then(|v| v.to_str().ok())
                     .map(str::to_string);
                 seen.lock().expect("seen").push(given.clone());
+                if quirk == OAuthQuirk::SlowStart {
+                    tokio::time::sleep(SLOW_ANSWER).await;
+                }
                 let token = given.as_deref().and_then(|v| v.strip_prefix("Bearer "));
                 if quirk != OAuthQuirk::RefusesAll
                     && token.is_some_and(|t| authority.accepts(t, &url))

@@ -10396,8 +10396,36 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
         retrait, une autre adresse ou la suppression du connecteur la retirent
         aussi ; la liste montre quand elle a été donnée, quand le jeton expire,
         s'il se renouvelle et les portées accordées ;
-      - jusqu'au lot 40e, un serveur autorisé ne démarre pas encore de session ;
-    - 40e : le jeton dans les sessions ;
+    - 40e : le jeton dans les sessions (`services/connectors/credential.rs`,
+      `mcp/expiry.rs`) :
+      - un serveur déclaré avec OAuth démarre sa session avec le jeton d'accès de son
+        autorisation, ouvert pour lui, et jamais un jeton saisi ; ce jeton ne part
+        qu'à l'adresse du serveur, le client ne suivant aucune redirection, et il est
+        masqué dans ce que le serveur renvoie et dans les échecs ; il est tenu à la
+        règle sous laquelle il a été gardé (jusqu'à 8 192 caractères), non à celle
+        d'un jeton saisi (2 000) : un JWT chargé de revendications passe ;
+      - non autorisé, son autorisation retirée ou donnée sous une autre déclaration
+        (émetteur, client ou ressource), il ne démarre pas et dit qu'un administrateur
+        doit l'autoriser ; un jeton qui ne s'ouvre pas pour lui le dit aussi ;
+      - l'autorisation fait partie de la version du connecteur : la garder, la
+        remplacer ou la retirer change son `updated_at` (« à tester »), dans la même
+        transaction ; un processus qui n'a pas reçu l'avis d'invalidation (ADR-085)
+        démarre donc lui aussi la session de nouveau avec le jeton relu ;
+      - un jeton qui expire dans moins de trois minutes ne démarre rien, le serveur
+        n'étant pas même sollicité, et le dit ; c'est vérifié de nouveau une fois la
+        session démarrée, comme la plateforme compte sa vie ; une session est retirée
+        une minute avant l'échéance de son jeton, sa fin datée d'alors (ADR-165), et
+        démarrée de nouveau par le run suivant avec le jeton relu : elle vit donc
+        deux minutes au moins depuis son démarrage, plus qu'une session jugée un
+        démarrage manqué (ADR-163) ;
+      - un serveur d'autorisation qui délivre un jeton valable moins de cinq minutes
+        est refusé dès l'échange, la raison dite : aucune session n'aurait le temps
+        de s'ouvrir avec lui ;
+      - un jeton que le serveur refuse, au démarrage ou à un appel (révoqué, expiré
+        plus tôt, sans les portées voulues), dit d'autoriser de nouveau le
+        connecteur, et non qu'un jeton saisi est invalide ;
+      - jusqu'au lot 40f, un jeton expiré n'est pas renouvelé : l'administrateur
+        autorise de nouveau le connecteur ;
     - 40f : le renouvellement ;
     - 40g : l'enregistrement dynamique du client (RFC 7591) et la révocation auprès du
       serveur (RFC 7009), ADR à venir ;
@@ -10469,7 +10497,8 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       l'adresse ou le connecteur ; un retour sans la tentative, d'une autre
       tentative, refusé par le serveur, d'un autre émetteur ou sans celui annoncé,
       présenté par un autre administrateur (d'une partie ou de toute
-      l'entreprise : le retour reste celui de qui l'a commencé), par un
+      l'entreprise : le retour reste celui de qui l'a commencé ; au lot 40e, d'une
+      autre entreprise), par un
       administrateur qui a perdu ses droits depuis le départ, sans code, pour un
       connecteur supprimé entre-temps, après une déclaration changée, ou
       apportant des jetons qui expirent sans renouvellement, est refusé et tracé
@@ -10477,6 +10506,31 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       ne sont ni montrés ni tracés ; seul un administrateur de toute l'entreprise commence une
       autorisation, sur un serveur déclaré ; les deux routes, sur le connecteur
       d'une autre entreprise ou absent, répondent 404 et sont tracées ;
+    - `crates/connectors/tests/mcp_oauth_session.rs` (lot 40e) : un serveur déclaré
+      reçoit le jeton de son autorisation à chaque requête, même long de 2 500
+      caractères ; sans jeton, avec un jeton qui expire bientôt ou qu'on ne pourrait
+      envoyer tel qu'il a été gardé, rien ne démarre et le serveur n'est pas
+      sollicité ; un démarrage lent qui a usé ce qui restait au jeton ne garde pas la
+      session ; un jeton émis pour un autre serveur, ou révoqué pendant la session,
+      dit d'autoriser de nouveau, au démarrage comme à l'appel, le jeton masqué ; à
+      horloge suspendue, la session encore ouverte à 61 secondes de l'échéance de son
+      jeton est close à 60, sa fin datée de ce moment ; en unitaire (`expiry.rs`), le
+      calcul du retrait et un jeton de moins de trois minutes refusé ; des portées
+      accordées refusées disent pourquoi, et un jeton valable moins de cinq minutes
+      est refusé à l'échange ;
+    - `crates/api/tests/connector_oauth_sessions.rs` (lot 40e) : déclaré mais pas
+      autorisé, le serveur le dit et les runs s'en passent ; autorisé, ses outils
+      servent le test de l'administration et les runs, chaque requête avec le jeton
+      de l'autorisation, et son état passe à « ok » ; l'autorisation retirée, la
+      session est relâchée et il le redit ; une autorisation donnée pour une autre
+      ressource, un autre émetteur ou un autre client n'est pas utilisée ; un jeton
+      scellé pour un autre connecteur ne s'ouvre pas ; un jeton qui expire bientôt ne
+      démarre rien ; un jeton refusé par le serveur dit d'autoriser de nouveau, jamais
+      montré ; les connecteurs d'un autre processus, qui n'entendent aucun avis,
+      démarrent la session dès la première autorisation malgré l'échec qu'ils
+      retenaient, la redémarrent avec le nouveau jeton quand elle est autorisée de
+      nouveau, et s'en passent quand elle est retirée, le connecteur repassant « à
+      tester » à chaque fois ;
     - `crates/connectors/tests/mcp_oauth_authority.rs` : le serveur d'autorisation
       simulé use le code, vérifie PKCE et la ressource ; refuse un client qui se prouve de
       deux façons, d'une façon non annoncée ou avec un autre secret, un Basic refusé

@@ -30,6 +30,8 @@ pub struct Settings {
     pub refresh: bool,
     /// Tokens with characters RFC 6750 does not allow.
     pub off_alphabet: bool,
+    /// Access tokens of `LONG_TOKEN_CHARS`, as a JWT full of claims can be.
+    pub long_tokens: bool,
     /// Whether the return names the issuer (RFC 9207), as its metadata says.
     pub iss_on_return: bool,
     /// Metadata naming another issuer than the server's.
@@ -44,6 +46,7 @@ impl Default for Settings {
             lifetime: Some(3600),
             refresh: true,
             off_alphabet: false,
+            long_tokens: false,
             iss_on_return: false,
             wrong_issuer: false,
             auth_methods: ["client_secret_basic", "client_secret_post", "none"]
@@ -187,8 +190,16 @@ fn rand_part(seed: u64) -> u64 {
     seed.wrapping_mul(0x9e37_79b9_7f4a_7c15) ^ 0x5851_f42d_4c95_7f2d
 }
 
+/// How long an access token is with `long_tokens`: more than a typed
+/// token may be (`MAX_TOKEN_CHARS`).
+pub const LONG_TOKEN_CHARS: usize = 2500;
+
 pub(super) fn issue_access(inner: &mut Inner, grant: u64, resource: Option<String>) -> String {
-    let token = token_value(inner, "acces");
+    let mut token = token_value(inner, "acces");
+    if inner.settings.long_tokens {
+        let pad = LONG_TOKEN_CHARS.saturating_sub(token.len() + 1);
+        token = format!("{token}.{}", "x".repeat(pad));
+    }
     let expires = inner
         .settings
         .lifetime

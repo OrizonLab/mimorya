@@ -16,7 +16,7 @@ use rmcp::model::{PaginatedRequestParams, Tool};
 use serde_json::Value;
 
 use super::bridge::McpClient;
-use super::failure::call_failed;
+use super::failure::{TokenKind, call_failed};
 use super::visible::{one_line, visible_schema};
 use crate::outbound::Redactor;
 
@@ -84,6 +84,7 @@ pub async fn declared_tools(
     client: &McpClient,
     prefix: &str,
     redactor: &Redactor,
+    token: TokenKind,
 ) -> anyhow::Result<Vec<Declared>> {
     let mut tools = Vec::new();
     let mut cursor = None;
@@ -92,7 +93,7 @@ pub async fn declared_tools(
         let page = client
             .list_tools(Some(params))
             .await
-            .map_err(|error| call_failed(&error, redactor))?;
+            .map_err(|error| call_failed(&error, redactor, token))?;
         tools.extend(page.tools);
         if tools.len() > MAX_TOOLS {
             bail!("Le serveur déclare plus de {MAX_TOOLS} outils");

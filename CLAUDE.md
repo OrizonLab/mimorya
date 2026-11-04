@@ -129,7 +129,8 @@ Repères à l'intérieur des crates :
   `liveness.rs`, ADR-164, ADR-165, et les règles de son autorisation OAuth : refus lu,
   ressource protégée, serveur d'autorisation, portées, la découverte qui les suit,
   la déclaration qu'en garde l'administrateur, le départ du navigateur et l'échange du
-  code, `oauth/`, ADR-171),
+  code, `oauth/`, ADR-171, et la session retirée avant l'échéance du jeton de son
+  autorisation, `expiry.rs`, ADR-171),
   `connectors/src/bin/mcp_demo_docs.rs`,
   `connectors/src/outbound/` (ce que partagent les serveurs MCP et les API REST d'une
   entreprise : réseau, préfixe, jeton, masquage, échecs, ADR-025, ADR-112 ; mandataire
@@ -259,6 +260,10 @@ Repères à l'intérieur des crates :
   (`spending.rs`), réglé par `services/admin/evaluation_settings.rs`, ADR-154 ; une
   proposition de l'agent jouée sans les connecteurs qui joignent l'extérieur, retirés par
   `services/connectors/tenant_tools.rs`, ADR-153),
+  `api/src/services/connectors/` (instances des connecteurs gardées par processus,
+  démarrages partagés et échecs retenus, `cache/`, ADR-049 ; jeton avec lequel chacune
+  démarre : celui de l'autorisation OAuth d'un serveur MCP déclaré, jamais un jeton
+  saisi, sinon le jeton gardé, `credential.rs`, ADR-171),
   `api/src/services/documents/` (documents déposés : lecture par le processus
   `mimorya-extract`, `api/src/bin/extract.rs`, bornée en nombre, en temps et en taille,
   `extractor.rs`, fichier lu et refusé, commun au dépôt et au remplacement,

@@ -51,6 +51,8 @@ optional = true
 [dev-dependencies]
 mimorya-agent = { workspace = true, features = ["testing"] }
 mimorya-connectors = { path = ".", features = ["testing"] }
+# A session retired at its token's expiry, under a paused clock.
+tokio = { workspace = true, features = ["test-util"] }
 
 [lints]
 workspace = true

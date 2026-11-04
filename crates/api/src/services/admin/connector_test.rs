@@ -17,7 +17,7 @@ use super::audit_entry;
 use super::connectors::ConnectorAdmin;
 use crate::services::AccessContext;
 use crate::services::connectors::{
-    ConnectorService, Policies, failure, opened, read_policies, scoped_overrides, token_secret_name,
+    ConnectorService, Credential, Policies, credential_of, failure, read_policies, scoped_overrides,
 };
 
 const PERMISSION: &str = "connector:manage";
@@ -52,18 +52,13 @@ pub async fn test_connector(
     let Some(instance) = get_connector_instance(&mut tx, id).await? else {
         return Err(DomainError::not_found("Connecteur introuvable").into());
     };
-    let secret = opened(
-        admin
-            .secrets
-            .read(&mut tx, tenant_id, &token_secret_name(id))
-            .await?,
-    );
+    let credential = credential_of(&mut tx, admin.secrets, &instance).await?;
     tx.commit().await?;
     // Once the connector is known to exist (an absent one is answered as
     // such, and traced: ADR-047), held until the outcome is recorded.
     let _start = admin.connectors.claim_admin_start(tenant_id)?;
 
-    let outcome = match (read_policies(&instance), secret) {
+    let outcome = match (read_policies(&instance), credential) {
         (Err(error), _) => ConnectorTestOutcome {
             tools: Vec::new(),
             error: Some(error),
@@ -72,7 +67,7 @@ pub async fn test_connector(
             tools: Vec::new(),
             error: Some(error.to_string()),
         },
-        (Ok(policies), Ok(token)) => {
+        (Ok(policies), Ok(credential)) => {
             let (kind, config) = (&instance.connector_type, &instance.config);
             // Written by an administrator, shown as written: an MCP server's
             // only, as runs read no other (ADR-057).
@@ -84,7 +79,7 @@ pub async fn test_connector(
             // As runs apply them.
             let effective = |names: &[String]| scoped_overrides(&instance, policies, names);
             let mut outcome =
-                start_and_list(admin.connectors, kind, config, token.as_deref(), effective).await;
+                start_and_list(admin.connectors, kind, config, &credential, effective).await;
             for tool in &mut outcome.tools {
                 tool.replaced_description = written.get(&tool.name).cloned();
             }
@@ -115,10 +110,10 @@ pub(super) async fn start_and_list(
     connectors: &ConnectorService,
     connector_type: &str,
     config: &Value,
-    token: Option<&str>,
+    credential: &Credential,
     effective: impl FnOnce(&[String]) -> Policies,
 ) -> ConnectorTestOutcome {
-    match connectors.start(connector_type, config, token).await {
+    match connectors.start(connector_type, config, credential).await {
         Ok(runtime) => {
             let names: Vec<String> = runtime
                 .tools
@@ -138,7 +133,7 @@ pub(super) async fn start_and_list(
         }
         Err(error) => ConnectorTestOutcome {
             tools: Vec::new(),
-            error: Some(failure(&error, token)),
+            error: Some(failure(&error, credential.token.as_deref())),
         },
     }
 }

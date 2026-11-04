@@ -80,6 +80,9 @@ pub const DEFAULT_CALL_TIMEOUT: Duration = Duration::from_secs(20);
 pub struct InstanceContext<'a> {
     /// The instance's secret (an access token), opened from the secret store.
     pub secret: Option<&'a str>,
+    /// When the secret stops being accepted, if it says: an MCP server's
+    /// OAuth access token, its session retired before (ADR-171).
+    pub secret_until: Option<Instant>,
     /// What the operator lets connectors reach.
     pub network: NetworkPolicy,
     pub start_timeout: Duration,
@@ -91,6 +94,7 @@ impl Default for InstanceContext<'_> {
     fn default() -> Self {
         Self {
             secret: None,
+            secret_until: None,
             network: NetworkPolicy::default(),
             start_timeout: DEFAULT_START_TIMEOUT,
             call_timeout: DEFAULT_CALL_TIMEOUT,

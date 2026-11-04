@@ -23,7 +23,7 @@ use serde_json::{Value, json};
 use tokio::time::Instant;
 
 use super::declarations::declared_tools;
-use super::failure::call_failed;
+use super::failure::{TokenKind, call_failed};
 use super::liveness::Liveness;
 use crate::outbound::{CONNECTOR_USE, Redactor, too_slow};
 use crate::types::DEFAULT_CALL_TIMEOUT;
@@ -38,6 +38,8 @@ pub struct McpToolsetOptions {
     pub default_permissions: Vec<String>,
     /// Masks the server's token in what it declares and its tools return.
     pub redactor: Redactor,
+    /// Whose token that is, for a refusal to say what to do (ADR-171).
+    pub token: TokenKind,
     /// How long a call may take, its answer read.
     pub call_timeout: Duration,
     /// Whether the server still answers, shared by the tools and read by
@@ -54,6 +56,7 @@ impl McpToolsetOptions {
             default_risk: ToolRisk::Write,
             default_permissions: vec![CONNECTOR_USE.into()],
             redactor: Redactor::default(),
+            token: TokenKind::Typed,
             call_timeout: DEFAULT_CALL_TIMEOUT,
         }
     }
@@ -66,6 +69,7 @@ struct McpTool {
     input_schema: Value,
     client: Arc<McpClient>,
     redactor: Redactor,
+    token: TokenKind,
     call_timeout: Duration,
     liveness: Arc<Liveness>,
 }
@@ -114,7 +118,7 @@ impl Tool for McpTool {
             Err(error) => {
                 self.liveness
                     .after_failure(&self.client, Some(&error), ping, asked);
-                return Err(call_failed(&error, &self.redactor));
+                return Err(call_failed(&error, &self.redactor, self.token));
             }
         };
         let text: Vec<String> = result
@@ -173,7 +177,8 @@ pub async fn create_mcp_toolset(
     client: Arc<McpClient>,
     options: &McpToolsetOptions,
 ) -> anyhow::Result<Vec<ToolRef>> {
-    let declared = declared_tools(&client, &options.prefix, &options.redactor).await?;
+    let declared =
+        declared_tools(&client, &options.prefix, &options.redactor, options.token).await?;
     let mut result: Vec<ToolRef> = Vec::with_capacity(declared.len());
     for tool in declared {
         let description = mcp_tool_description(&options.prefix, &tool.description);
@@ -187,6 +192,7 @@ pub async fn create_mcp_toolset(
             input_schema: tool.input_schema,
             client: client.clone(),
             redactor: options.redactor.clone(),
+            token: options.token,
             call_timeout: options.call_timeout,
             liveness: options.liveness.clone(),
         }));
