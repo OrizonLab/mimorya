@@ -24,6 +24,8 @@ fn applies_defaults_and_infers_the_anthropic_provider() {
 
     let without = load(&[DB, ("LLM_PROVIDER", "")]).unwrap();
     assert!(without.llm.is_none());
+    // The tests' simulated servers are never read from the environment.
+    assert!(config.mcp_network.test_servers.is_empty());
 }
 
 #[test]

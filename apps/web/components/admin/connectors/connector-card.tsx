@@ -114,7 +114,9 @@ export function ConnectorCard({
   async function remove() {
     const question = linked
       ? `Supprimer ${google ? 'le client' : 'l’application'} « ${connector.name} », son secret et les ${linked.links} compte(s) que les collaborateurs y ont relié(s) ?`
-      : `Supprimer le connecteur « ${connector.name} » et son jeton ?`;
+      : connector.mcp?.oauth
+        ? `Supprimer le serveur « ${connector.name} », sa déclaration OAuth, le secret du client et son autorisation ?`
+        : `Supprimer le connecteur « ${connector.name} » et son jeton ?`;
     if (!window.confirm(question)) return;
     if (await action.run(() => api.delete(`/admin/connectors/${connector.id}`))) onChanged();
   }
@@ -131,7 +133,9 @@ export function ConnectorCard({
         <p className="text-sm text-muted">
           <code>{connector.mcp.url}</code> · outils <code>mcp_{connector.mcp.prefix}_…</code> ·{' '}
           {connector.mcp.oauth
-            ? 'autorisé par OAuth'
+            ? connector.mcp.oauth.authorization
+              ? 'autorisé par OAuth'
+              : 'OAuth déclaré, non autorisé'
             : connector.mcp.tokenStored
               ? 'jeton enregistré'
               : 'sans jeton'}

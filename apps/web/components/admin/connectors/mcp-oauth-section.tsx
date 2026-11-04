@@ -140,6 +140,7 @@ export function McpOAuthSection({
           {authorization && (
             <Button
               variant="secondary"
+              disabled={action.pending}
               onClick={() =>
                 remove(
                   `${base}/authorization`,
@@ -150,11 +151,12 @@ export function McpOAuthSection({
               Retirer l’autorisation
             </Button>
           )}
-          <Button variant="ghost" onClick={() => setDeclaring(true)}>
+          <Button variant="ghost" disabled={action.pending} onClick={() => setDeclaring(true)}>
             Modifier la déclaration
           </Button>
           <Button
             variant="danger"
+            disabled={action.pending}
             onClick={() =>
               remove(
                 base,

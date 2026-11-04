@@ -41,7 +41,8 @@ pub struct BuildOptions {
     pub mailer: Option<Option<Arc<dyn Mailer>>>,
     /// Replaces the network the identity providers are reached on, the
     /// connectors' otherwise (end-to-end tests: a local provider, while
-    /// connectors keep to the public network).
+    /// connectors keep to the public network but for
+    /// `connector_test_servers`).
     pub sso_network: Option<NetworkPolicy>,
     /// Replaces the limit of requests per minute and address (end-to-end
     /// tests: every request comes through the one web relay).

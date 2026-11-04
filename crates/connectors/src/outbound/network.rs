@@ -291,6 +291,20 @@ mod tests {
         }
         // Without them, as in production: refused.
         assert!(url_problem("http://127.0.0.1:4106/authorize", SAAS).is_some());
+        // Another spelling of a listed address is another address: refused.
+        assert!(url_problem("http://[::ffff:127.0.0.1]:4106/authorize", tests).is_some());
+        // An IPv6 one, and a default port, are listed as such.
+        const OTHERS: [SocketAddr; 2] = [
+            SocketAddr::new(IpAddr::V6(Ipv6Addr::LOCALHOST), 4108),
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 80),
+        ];
+        let others = NetworkPolicy {
+            test_servers: &OTHERS,
+            ..SAAS
+        };
+        assert_eq!(url_problem("http://[::1]:4108/mcp", others), None);
+        assert_eq!(url_problem("http://127.0.0.1/mcp", others), None);
+        assert!(url_problem("https://127.0.0.1/mcp", others).is_some());
     }
 
     #[tokio::test]

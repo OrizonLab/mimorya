@@ -151,9 +151,8 @@ export function McpForm({
         </p>
       )}
       <p className="text-xs text-muted">
-        Le jeton (lettres sans accent, chiffres et - . _ ~ + /, puis éventuellement des =) est
-        envoyé en en-tête « Authorization: Bearer », chiffré sur le serveur et jamais réaffiché. Il
-        ne suit pas le connecteur vers une autre adresse.{' '}
+        {!oauth &&
+          'Le jeton (lettres sans accent, chiffres et - . _ ~ + /, puis éventuellement des =) est envoyé en en-tête « Authorization: Bearer », chiffré sur le serveur et jamais réaffiché. Il ne suit pas le connecteur vers une autre adresse. '}
         {data.allowPrivateNetwork
           ? 'Ce déploiement autorise les serveurs de son réseau privé.'
           : 'Seules les adresses publiques en https sont acceptées.'}

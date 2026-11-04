@@ -66,15 +66,17 @@ test('an MCP server is authorized by OAuth, started with its token, then withdra
   await card.getByLabel('Identifiant du client').fill(CLIENT_ID);
   await card.getByLabel(/^Secret du client/).fill(CLIENT_SECRET);
   await card.getByRole('button', { name: 'Déclarer', exact: true }).click();
-  // Found from the server itself, not yet authorized.
+  // Found from the server itself, not yet authorized: said so in its summary.
   await expect(card.getByText(ISSUER, { exact: true })).toBeVisible();
-  await expect(card.getByText('Non autorisé')).toBeVisible();
+  await expect(card.getByText('Non autorisé', { exact: true })).toBeVisible();
+  await expect(card.getByText(/· OAuth déclaré, non autorisé$/)).toBeVisible();
 
   // There and back: the browser comes back to the connectors, authorized.
   await card.getByRole('button', { name: 'Autoriser', exact: true }).click();
   await expect(page.getByText('Serveur MCP autorisé')).toBeVisible();
   await expect(page).toHaveURL(/\/admin$/);
   await expect(card.getByText(/^Autorisé le /)).toBeVisible();
+  await expect(card.getByText(/· autorisé par OAuth$/)).toBeVisible();
   const authorized = (await listed(page)).find((c) => c.name === SERVER);
   expect(authorized?.mcp?.tokenStored).toBe(false);
   expect(authorized?.mcp?.oauth?.issuer).toBe(ISSUER);
@@ -90,7 +92,7 @@ test('an MCP server is authorized by OAuth, started with its token, then withdra
 
   // The authorization withdrawn, then the declaration: back to a token.
   await card.getByRole('button', { name: 'Retirer l’autorisation' }).click();
-  await expect(card.getByText('Non autorisé')).toBeVisible();
+  await expect(card.getByText('Non autorisé', { exact: true })).toBeVisible();
   const unauthorized = (await listed(page)).find((c) => c.name === SERVER);
   expect(unauthorized?.mcp?.oauth?.authorization).toBeNull();
   await card.getByRole('button', { name: 'Retirer OAuth' }).click();
