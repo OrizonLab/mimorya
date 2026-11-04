@@ -1,10 +1,13 @@
 //! An authorization's access token renewed with its refresh token (ADR-171,
 //! RFC 6749 §6): at the declared token endpoint, for the declared resource,
-//! the client proving itself as declared (`token_request`). A refusal says
-//! the grant is no longer good, and so does an answer the platform could
-//! not keep (the server may have rotated the refresh token already): the
-//! authorization is then lost. Told apart from a server that could not
-//! answer, tried again later. A refresh token not given again is kept.
+//! the client proving itself as declared (`token_request`). The grant is
+//! lost only when the server says so (`invalid_grant`, or the client no
+//! longer accepted, `invalid_client`), or when it grants tokens the platform
+//! could not keep; any other refusal, an answer that does not read as
+//! tokens, or a server that does not answer, is tried again later (as
+//! ADR-117 does for linked accounts). A refresh token not given again is
+//! kept.
+use serde_json::Value;
 
 use super::declaration::OAuthDeclaration;
 use super::exchange::{Granted, granted};
@@ -32,10 +35,32 @@ pub async fn refresh_tokens(
         ("refresh_token", refresh_token),
     ];
     match request_tokens(declaration, &grant, client_secret, policy).await {
-        TokenAnswer::Granted(body) => granted(&body, true).map_err(RenewalFailure::Refused),
-        TokenAnswer::Refused(said) => Err(RenewalFailure::Refused(said)),
-        TokenAnswer::Failed(said) => Err(RenewalFailure::Unavailable(said)),
+        TokenAnswer::Granted(body) if reads_as_tokens(&body) => {
+            granted(&body, true).map_err(RenewalFailure::Refused)
+        }
+        TokenAnswer::Granted(_) => Err(RenewalFailure::Unavailable(
+            "Réponse du point de jeton illisible".into(),
+        )),
+        TokenAnswer::Refused { code, said } if lost(code.as_deref()) => {
+            Err(RenewalFailure::Refused(said))
+        }
+        TokenAnswer::Refused { said, .. } | TokenAnswer::Failed(said) => {
+            Err(RenewalFailure::Unavailable(said))
+        }
     }
+}
+
+/// Whether the server says the grant, or the client, is no longer good.
+fn lost(code: Option<&str>) -> bool {
+    matches!(code, Some("invalid_grant" | "invalid_client"))
+}
+
+/// Whether the answer is a JSON object naming an access token: one that
+/// does not may be a proxy's page, tried again later.
+fn reads_as_tokens(body: &[u8]) -> bool {
+    serde_json::from_slice::<Value>(body)
+        .ok()
+        .is_some_and(|answer| answer.get("access_token").is_some_and(Value::is_string))
 }
 
 #[cfg(test)]
@@ -62,6 +87,22 @@ mod tests {
             Some("secret"),
             NetworkPolicy::default(),
         ));
+    }
+
+    #[test]
+    fn only_the_server_saying_the_grant_is_gone_loses_it() {
+        assert!(lost(Some("invalid_grant")) && lost(Some("invalid_client")));
+        for other in [
+            None,
+            Some("invalid_request"),
+            Some("temporarily_unavailable"),
+        ] {
+            assert!(!lost(other), "{other:?}");
+        }
+        assert!(reads_as_tokens(br#"{"access_token":"jeton-abc-123"}"#));
+        for page in [&b"<html>"[..], b"{}", br#"{"access_token":12}"#] {
+            assert!(!reads_as_tokens(page));
+        }
     }
 
     #[test]

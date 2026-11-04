@@ -24,8 +24,9 @@ const TIMEOUT: Duration = Duration::from_secs(10);
 pub(super) enum TokenAnswer {
     /// Its body, to be read as granted tokens.
     Granted(Vec<u8>),
-    /// Refused (RFC 6749 §5.2): the grant, or the client, is no longer good.
-    Refused(String),
+    /// Refused (RFC 6749 §5.2): its error code, if it reads as one, and
+    /// what to say.
+    Refused { code: Option<String>, said: String },
     /// Not answered as a token endpoint does, or not reached: why.
     Failed(String),
 }
@@ -61,7 +62,13 @@ pub(super) async fn request_tokens(
         .map(|(id, secret)| (id.as_str(), secret.as_str()));
     match fetcher.form(endpoint, form, basic).await {
         Ok((200, body)) => TokenAnswer::Granted(body),
-        Ok((400 | 401, body)) => TokenAnswer::Refused(refusal(&body)),
+        Ok((400 | 401, body)) => {
+            let code = error_code(&body);
+            TokenAnswer::Refused {
+                said: said(code.as_deref()),
+                code,
+            }
+        }
         Ok((status, _)) => TokenAnswer::Failed(format!(
             "« {} » a répondu {status} à la demande de jetons",
             quoted(endpoint)
@@ -104,16 +111,20 @@ fn form(
     Ok((form.finish(), basic))
 }
 
-/// A refusal as RFC 6749 §5.2 writes one: its error code only, if it reads
-/// as one.
-pub(super) fn refusal(body: &[u8]) -> String {
-    let code = serde_json::from_slice::<ErrorResponse>(body)
+/// The error code of a refusal as RFC 6749 §5.2 writes one, if it reads as
+/// one: never what the server wrote around it.
+fn error_code(body: &[u8]) -> Option<String> {
+    serde_json::from_slice::<ErrorResponse>(body)
         .ok()
         .and_then(|answer| answer.error)
         .filter(|code| {
             (1..=40).contains(&code.len())
                 && code.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
-        });
+        })
+}
+
+/// A refusal, said by its code alone.
+fn said(code: Option<&str>) -> String {
     match code {
         Some(code) => format!("Refusée par le serveur d’autorisation ({code})"),
         None => "Refusée par le serveur d’autorisation".into(),
@@ -126,12 +137,15 @@ mod tests {
 
     #[test]
     fn a_refusal_is_said_by_its_code_alone() {
-        let said = refusal(br#"{"error":"invalid_grant","error_description":"Appelez le 01 23"}"#);
+        let body = br#"{"error":"invalid_grant","error_description":"Appelez le 01 23"}"#;
+        let code = error_code(body);
+        assert_eq!(code.as_deref(), Some("invalid_grant"));
         assert_eq!(
-            said,
+            said(code.as_deref()),
             "Refusée par le serveur d’autorisation (invalid_grant)"
         );
-        let odd = refusal(br#"{"error":"Appelez le 01 23 45 67 89 maintenant"}"#);
-        assert_eq!(odd, "Refusée par le serveur d’autorisation");
+        let odd = error_code(br#"{"error":"Appelez le 01 23 45 67 89 maintenant"}"#);
+        assert_eq!(odd, None);
+        assert_eq!(said(None), "Refusée par le serveur d’autorisation");
     }
 }

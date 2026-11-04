@@ -1,9 +1,11 @@
 //! An MCP server's access token renewed with its refresh token (ADR-171):
 //! the server issues new tokens for the same resource, the refresh token
 //! rotated; one rotated away and used again is refused by its error code
-//! alone, and the whole grant is then revoked; a server that cannot be
-//! reached is told apart from a refusal; the client proves itself as the
-//! declaration says.
+//! alone, and the whole grant is then revoked; the client proves itself as
+//! the declaration says. Only the server saying the grant or the client is
+//! gone, or tokens the platform could not keep, lose the authorization; a
+//! server that cannot be reached, a proxy's page or another refusal is
+//! tried again later.
 
 mod support;
 
@@ -16,6 +18,8 @@ use mimorya_connectors::testing::{
 };
 use support::mcp::PRIVATE;
 use support::oauth::{BACK, VERIFIER, challenge_of, sent_back};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpListener;
 
 /// A declaration at the simulated server and the tokens of a first
 /// authorization: its access token, its refresh token, the server's address.
@@ -99,4 +103,69 @@ async fn a_public_client_renews_with_its_identifier_and_an_absent_server_is_not_
         panic!("not reached, not refused");
     };
     assert!(!said.contains(&refresh), "{said}");
+}
+
+/// A token endpoint answering every request with `response`, written whole.
+async fn answering(response: &'static str) -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("port");
+    let url = format!("http://{}/token", listener.local_addr().expect("address"));
+    tokio::spawn(async move {
+        while let Ok((mut socket, _)) = listener.accept().await {
+            tokio::spawn(async move {
+                let mut request = [0_u8; 8192];
+                let _ = socket.read(&mut request).await;
+                let _ = socket.write_all(response.as_bytes()).await;
+                let _ = socket.shutdown().await;
+            });
+        }
+    });
+    url
+}
+
+fn http(status: &str, body: &str) -> &'static str {
+    let response = format!(
+        "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\
+         Connection: close\r\n\r\n{body}",
+        body.len()
+    );
+    Box::leak(response.into_boxed_str())
+}
+
+#[tokio::test]
+async fn only_a_gone_grant_or_tokens_it_cannot_keep_lose_the_authorization() {
+    let authority = FakeAuthorizationServer::start().await;
+    let (declaration, refresh, _) = authorized(&authority, true).await;
+    let at = |endpoint: String| OAuthDeclaration {
+        token_endpoint: endpoint,
+        ..declaration.clone()
+    };
+    // Tried again later: a proxy's page, a refusal without a code or with
+    // another one than a gone grant.
+    for answer in [
+        http("200 OK", "<html>"),
+        http("400 Bad Request", ""),
+        http("400 Bad Request", r#"{"error":"invalid_request"}"#),
+        http("401 Unauthorized", r#"{"error":"temporarily_unavailable"}"#),
+    ] {
+        let endpoint = at(answering(answer).await);
+        let renewed = refresh_tokens(&endpoint, &refresh, Some(CLIENT_SECRET), PRIVATE).await;
+        assert!(
+            matches!(renewed, Err(RenewalFailure::Unavailable(_))),
+            "{answer}"
+        );
+    }
+    // Lost: the client no longer accepted.
+    let endpoint = at(answering(http("401 Unauthorized", r#"{"error":"invalid_client"}"#)).await);
+    let renewed = refresh_tokens(&endpoint, &refresh, Some(CLIENT_SECRET), PRIVATE).await;
+    let Err(RenewalFailure::Refused(said)) = renewed else {
+        panic!("lost");
+    };
+    assert!(said.contains("(invalid_client)"), "{said}");
+    // Lost: tokens too short-lived to keep.
+    authority.set(|settings| settings.lifetime = Some(60));
+    let renewed = refresh_tokens(&declaration, &refresh, Some(CLIENT_SECRET), PRIVATE).await;
+    let Err(RenewalFailure::Refused(said)) = renewed else {
+        panic!("lost");
+    };
+    assert!(said.contains("moins de 5 minutes"), "{said}");
 }

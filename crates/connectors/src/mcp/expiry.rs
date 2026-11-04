@@ -30,9 +30,12 @@ pub const RENEW_WITHIN: Duration = Duration::from_secs(240);
 pub const OAUTH_UNUSABLE: &str = "Le jeton de l’autorisation OAuth n’a pas un format accepté : \
      un administrateur doit autoriser de nouveau ce connecteur";
 
-/// What a server whose authorization's token expired, or is about to, says.
-pub const OAUTH_EXPIRED: &str = "Jeton de l’autorisation OAuth expiré : un administrateur doit \
-     autoriser de nouveau ce connecteur";
+/// What a server whose authorization's token expired, or is about to, says:
+/// its renewal is tried again by the next runs, unless the server refused
+/// it, the authorization then removed.
+pub const OAUTH_EXPIRED: &str = "Jeton de l’autorisation OAuth expiré ou sur le point de l’être : \
+     son renouvellement sera tenté de nouveau ; s’il est refusé, un administrateur devra autoriser \
+     de nouveau ce connecteur";
 
 /// When a session is retired, if its token expires.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

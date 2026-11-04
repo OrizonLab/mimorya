@@ -59,7 +59,7 @@ pub async fn exchange_code(
     ];
     match request_tokens(declaration, &grant, exchange.client_secret, policy).await {
         TokenAnswer::Granted(body) => granted(&body, false),
-        TokenAnswer::Refused(said) | TokenAnswer::Failed(said) => Err(said),
+        TokenAnswer::Refused { said, .. } | TokenAnswer::Failed(said) => Err(said),
     }
 }
 

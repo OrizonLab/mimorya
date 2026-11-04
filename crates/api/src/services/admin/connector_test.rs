@@ -47,8 +47,17 @@ pub async fn test_connector(
 ) -> anyhow::Result<ConnectorTestOutcome> {
     access.require_tenant_wide(PERMISSION)?;
     let tenant_id = access.subject.tenant_id;
-    // As a run would: an authorization about to expire renewed first.
-    admin.connectors.renew_due(tenant_id).await?;
+    let mut tx = admin.db.begin(tenant_id).await?;
+    let known = get_connector_instance(&mut tx, id).await?.is_some();
+    tx.commit().await?;
+    if !known {
+        return Err(DomainError::not_found("Connecteur introuvable").into());
+    }
+    // Once the connector is known to exist (an absent one is answered as
+    // such, and traced: ADR-047), held until the outcome is recorded.
+    let _start = admin.connectors.claim_admin_start(tenant_id)?;
+    // As a run would: its authorization renewed first if about to expire.
+    admin.connectors.renew_if_due(tenant_id, id).await;
     // The instance and its token from one snapshot.
     let mut tx = admin.db.begin_snapshot(tenant_id).await?;
     let Some(instance) = get_connector_instance(&mut tx, id).await? else {
@@ -56,9 +65,6 @@ pub async fn test_connector(
     };
     let credential = credential_of(&mut tx, admin.secrets, &instance).await?;
     tx.commit().await?;
-    // Once the connector is known to exist (an absent one is answered as
-    // such, and traced: ADR-047), held until the outcome is recorded.
-    let _start = admin.connectors.claim_admin_start(tenant_id)?;
 
     let outcome = match (read_policies(&instance), credential) {
         (Err(error), _) => ConnectorTestOutcome {

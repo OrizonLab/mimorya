@@ -263,8 +263,8 @@ Repères à l'intérieur des crates :
   `api/src/services/connectors/` (instances des connecteurs gardées par processus,
   démarrages partagés et échecs retenus, `cache/`, ADR-049 ; jeton avec lequel chacune
   démarre : celui de l'autorisation OAuth d'un serveur MCP déclaré, jamais un jeton
-  saisi, sinon le jeton gardé, `credential.rs`, renouvelé avant son échéance sous le
-  verrou de sa ligne, `renewal.rs`, ADR-171),
+  saisi, sinon le jeton gardé, `credential.rs`, renouvelé avant son échéance, réservé par
+  un seul processus, `renewal.rs`, jetons accordés scellés, `grants.rs`, ADR-171),
   `api/src/services/documents/` (documents déposés : lecture par le processus
   `mimorya-extract`, `api/src/bin/extract.rs`, bornée en nombre, en temps et en taille,
   `extractor.rs`, fichier lu et refusé, commun au dépôt et au remplacement,
