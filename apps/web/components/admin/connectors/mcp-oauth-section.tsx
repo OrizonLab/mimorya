@@ -176,7 +176,9 @@ export function McpOAuthSection({
             onClick={() =>
               remove(
                 base,
-                'Retirer OAuth de ce serveur, avec le secret du client et l’autorisation ?',
+                oauth.registered
+                  ? 'Retirer OAuth de ce serveur, avec le secret du client et l’autorisation ? Le client que la plateforme avait enregistré reste chez le serveur d’autorisation : retirez-le chez lui.'
+                  : 'Retirer OAuth de ce serveur, avec le secret du client et l’autorisation ?',
               )
             }
           >

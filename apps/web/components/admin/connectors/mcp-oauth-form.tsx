@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
-import { Button, ErrorNote, Field, Input } from '@/components/ui';
+import { Button, ErrorNote, Field, Input, Radio } from '@/components/ui';
 import { api, useAction, type ConnectorView, type McpOAuthDeclaration } from '@/lib/api';
 
 /**
@@ -36,14 +36,19 @@ export function McpOAuthForm({
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (
-      declared?.authorization &&
-      !window.confirm(
-        'Déclarer de nouveau retire l’autorisation donnée : il faudra autoriser ce serveur de nouveau. Continuer ?',
-      )
-    ) {
-      return;
+    // What declaring again leaves behind, said before it is done.
+    const warnings: string[] = [];
+    if (declared?.authorization) {
+      warnings.push(
+        'Déclarer de nouveau retire l’autorisation donnée : il faudra autoriser ce serveur de nouveau.',
+      );
     }
+    if (declared?.registered) {
+      warnings.push(
+        'Le client que la plateforme avait enregistré reste chez le serveur d’autorisation : retirez-le chez lui.',
+      );
+    }
+    if (warnings.length > 0 && !window.confirm(`${warnings.join(' ')} Continuer ?`)) return;
     const asked = scopes.trim();
     const body = {
       issuer: issuer.trim() || undefined,
@@ -62,8 +67,7 @@ export function McpOAuthForm({
         <fieldset className="flex flex-col gap-1 text-sm">
           <legend className="mb-1 font-medium">Client</legend>
           <label className="flex items-center gap-2">
-            <input
-              type="radio"
+            <Radio
               name={`client-${connector.id}`}
               checked={register}
               onChange={() => setRegister(true)}
@@ -71,8 +75,7 @@ export function McpOAuthForm({
             La plateforme s’enregistre elle-même auprès du serveur d’autorisation
           </label>
           <label className="flex items-center gap-2">
-            <input
-              type="radio"
+            <Radio
               name={`client-${connector.id}`}
               checked={!register}
               onChange={() => setRegister(false)}
@@ -95,6 +98,8 @@ export function McpOAuthForm({
         )}{' '}
         La plateforme trouve ce serveur à partir du serveur MCP : n’indiquez son émetteur que s’il
         en annonce plusieurs, ou aucun.
+        {!secretsAvailable &&
+          ' Sans clé maître, la plateforme ne peut pas s’enregistrer elle-même : enregistrez le client à la main.'}
       </p>
       <div className="grid gap-3 sm:grid-cols-2">
         {!register && (

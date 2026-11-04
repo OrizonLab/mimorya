@@ -2,6 +2,7 @@ export { Badge, LabelBadge, type Tone, type ToneLabel } from './badge';
 export { Button } from './button';
 export { Card } from './card';
 export { Checkbox } from './checkbox';
+export { Radio } from './radio';
 export { cx } from './cx';
 export { Failure } from './failure';
 export { EmptyState, ErrorNote, Spinner } from './feedback';

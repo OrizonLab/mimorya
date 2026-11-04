@@ -206,6 +206,9 @@ async fn main() -> anyhow::Result<()> {
     let telegram = FakeTelegram::start_on(TELEGRAM_ADDRESS).await;
     tracing::info!(url = telegram.url, "End-to-end Telegram listening");
     let authority = FakeAuthorizationServer::start_on(OAUTH_AUTHORITY_ADDRESS).await;
+    // The clients it registers have a secret lasting thirty days, which the
+    // card says (ADR-173); typed clients are not concerned.
+    authority.set(|settings| settings.secret_lifetime = Some(30 * 86_400));
     let protected = serve_oauth_mcp_http_on(&authority, OAuthQuirk::None, OAUTH_MCP_ADDRESS).await;
     tracing::info!(
         url = protected.url,

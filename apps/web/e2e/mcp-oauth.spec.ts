@@ -163,11 +163,15 @@ test('an MCP server is authorized with the client the platform registers itself'
   await expect(card.getByLabel('Identifiant du client')).toHaveCount(0);
   await expect(card.getByLabel(/^Secret du client/)).toHaveCount(0);
   await card.getByRole('button', { name: 'Déclarer', exact: true }).click();
-  await expect(card.getByText(/\(enregistré par la plateforme, secret enregistré\)/)).toBeVisible();
+  // Said as its own, with when its secret expires.
+  await expect(
+    card.getByText(/\(enregistré par la plateforme, secret enregistré, secret valable jusqu’au /),
+  ).toBeVisible();
   const declared = (await listed(page)).find((c) => c.name === SERVER);
   expect(declared?.mcp?.oauth?.registered).toBe(true);
   expect(declared?.mcp?.oauth?.clientId).not.toBe(CLIENT_ID);
   expect(declared?.mcp?.oauth?.clientSecretStored).toBe(true);
+  expect(declared?.mcp?.oauth?.clientSecretExpiresAt).not.toBeNull();
 
   // Authorized there and back with it.
   await card.getByRole('button', { name: 'Autoriser', exact: true }).click();
@@ -175,6 +179,23 @@ test('an MCP server is authorized with the client the platform registers itself'
   await expect(card.getByText(/^Autorisé le /)).toBeVisible();
   const authorized = (await listed(page)).find((c) => c.name === SERVER);
   expect(authorized?.mcp?.oauth?.authorization).not.toBeNull();
+
+  // Declared again: its own client chosen, nothing of it typed; by hand,
+  // its identifier is not offered as a typed client's.
+  await card.getByRole('button', { name: 'Modifier la déclaration' }).click();
+  const own = card.getByLabel(
+    'La plateforme s’enregistre elle-même auprès du serveur d’autorisation',
+  );
+  await expect(own).toBeChecked();
+  await expect(card.getByLabel('Identifiant du client')).toHaveCount(0);
+  await card.getByLabel('Client enregistré à la main').check();
+  await expect(card.getByLabel('Identifiant du client')).toHaveValue('');
+  await card.getByRole('button', { name: 'Annuler' }).click();
+
+  // Withdrawn: the client registered stays at the server, said so.
+  await card.getByRole('button', { name: 'Retirer OAuth' }).click();
+  await expect(card.getByRole('button', { name: 'Déclarer OAuth' })).toBeVisible();
+  expect(confirmations.at(-1)).toContain('reste chez le serveur d’autorisation');
   await noError(page);
 });
 
