@@ -72,6 +72,7 @@ mod tests {
     fn a_renewal_can_be_awaited_by_a_request_handler() {
         fn sendable<T: Send>(_: T) {}
         let declaration = OAuthDeclaration {
+            revocation_endpoint: None,
             issuer: "https://auth.example.com".into(),
             resource: "https://mcp.example.com/mcp".into(),
             authorization_endpoint: "https://auth.example.com/authorize".into(),

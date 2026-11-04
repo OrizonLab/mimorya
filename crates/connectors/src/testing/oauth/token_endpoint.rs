@@ -26,24 +26,29 @@ pub(super) async fn token(
     headers: HeaderMap,
     Form(params): Form<HashMap<String, String>>,
 ) -> Response {
+    let answer = answer(&server, &headers, &params);
+    let held = server.inner.lock().expect("server").settings.held_renewals;
+    // A renewal's tokens issued already, its answer kept back.
+    let renewal = params.get("grant_type").map(String::as_str) == Some("refresh_token");
+    if let Some(held) = held.filter(|_| renewal) {
+        tokio::time::sleep(held).await;
+    }
+    answer
+}
+
+fn answer(
+    server: &FakeAuthorizationServer,
+    headers: &HeaderMap,
+    params: &HashMap<String, String>,
+) -> Response {
     let mut inner = server.inner.lock().expect("server");
-    let basic = headers
-        .get(header::AUTHORIZATION)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.strip_prefix("Basic "))
-        .map(|v| {
-            STANDARD
-                .decode(v)
-                .ok()
-                .and_then(|v| String::from_utf8(v).ok())
-                .unwrap_or_default()
-        });
+    let basic = basic_credentials(headers);
     inner.requests.push(AuthRequest {
         endpoint: "token",
         params: params.clone(),
         basic: basic.clone(),
     });
-    if let Some(refusal) = client_refusal(&inner.settings.auth_methods, basic.as_deref(), &params) {
+    if let Some(refusal) = client_refusal(&inner.settings.auth_methods, basic.as_deref(), params) {
         return refusal;
     }
     let field = |name: &str| params.get(name).cloned().unwrap_or_default();
@@ -96,9 +101,24 @@ pub(super) async fn token(
     }
 }
 
+/// The `id:secret` of a Basic proof, if the request carries one.
+pub(super) fn basic_credentials(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Basic "))
+        .map(|v| {
+            STANDARD
+                .decode(v)
+                .ok()
+                .and_then(|v| String::from_utf8(v).ok())
+                .unwrap_or_default()
+        })
+}
+
 /// The refusal of a client that did not prove itself one way only, a way
 /// the server lists, with its own id and secret.
-fn client_refusal(
+pub(super) fn client_refusal(
     methods: &[String],
     basic: Option<&str>,
     params: &HashMap<String, String>,

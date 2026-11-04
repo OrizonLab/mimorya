@@ -81,7 +81,7 @@ pub async fn credential_of(
 /// Whether an authorization kept for this issuer, client and resource was
 /// given under `declared`: its tokens are neither sent nor renewed under
 /// another.
-pub(super) fn given_under(
+pub fn given_under(
     declared: &OAuthDeclaration,
     issuer: &str,
     client_id: &str,

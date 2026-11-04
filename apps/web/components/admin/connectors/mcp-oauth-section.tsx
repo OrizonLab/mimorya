@@ -128,6 +128,12 @@ export function McpOAuthSection({
           </span>
         </p>
       )}
+      {!oauth.revocable && (
+        <p className="text-xs text-muted">
+          Aucun point de révocation n’est connu pour ce serveur d’autorisation : quand la plateforme
+          laisse ses jetons, retirez aussi l’accord chez lui.
+        </p>
+      )}
       {authorization?.renewalFailure && (
         <ErrorNote message={`Dernier renouvellement échoué : ${authorization.renewalFailure}`} />
       )}
@@ -144,7 +150,9 @@ export function McpOAuthSection({
               onClick={() =>
                 remove(
                   `${base}/authorization`,
-                  'Retirer l’autorisation ? Les runs n’auront plus les outils de ce serveur ; le serveur d’autorisation garde son accord tant qu’il n’est pas révoqué chez lui.',
+                  oauth.revocable
+                    ? 'Retirer l’autorisation ? Les runs n’auront plus les outils de ce serveur ; la plateforme demande au serveur d’autorisation de révoquer ses jetons.'
+                    : 'Retirer l’autorisation ? Les runs n’auront plus les outils de ce serveur ; aucun point de révocation n’étant connu pour ce serveur d’autorisation, retirez aussi l’accord chez lui.',
                 )
               }
             >

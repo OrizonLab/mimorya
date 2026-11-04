@@ -2,6 +2,7 @@
 //! code or a refresh token: the resource the tokens are for (RFC 8707), the
 //! client proving itself as the declaration says (in the body, in the Basic
 //! header, or by its identifier alone), the answer read within its bounds.
+//! The revocation endpoint is asked the same way (`post_form`, ADR-172).
 //! A refusal (400, 401) is said by its error code, never by what the server
 //! wrote around it, and told apart from a server that could not answer; no
 //! code, secret nor token is ever in a message.
@@ -36,20 +37,47 @@ struct ErrorResponse {
     error: Option<String>,
 }
 
+/// An endpoint of the authorization server the client posts a form to.
+pub(super) struct FormEndpoint<'a> {
+    pub url: &'a str,
+    /// How a refusal of its address names it.
+    pub named: &'static str,
+    /// What was asked, as an unexpected status says it.
+    pub asked: &'static str,
+}
+
 /// Asks the declared token endpoint for tokens with `grant` (its own
-/// parameters), the client proving itself with `client_secret` if the
-/// declaration says it has one.
+/// parameters), for the declared resource, the client proving itself with
+/// `client_secret` if the declaration says it has one.
 pub(super) async fn request_tokens(
     declaration: &OAuthDeclaration,
     grant: &[(&str, &str)],
     client_secret: Option<&str>,
     policy: NetworkPolicy,
 ) -> TokenAnswer {
-    let endpoint = &declaration.token_endpoint;
-    if let Some(problem) = endpoint_problem(endpoint, "Point de jeton", policy) {
+    let mut params = grant.to_vec();
+    params.push(("resource", &declaration.resource));
+    let endpoint = FormEndpoint {
+        url: &declaration.token_endpoint,
+        named: "Point de jeton",
+        asked: "la demande de jetons",
+    };
+    post_form(declaration, &endpoint, &params, client_secret, policy).await
+}
+
+/// Posts `params` to `endpoint` as the declaration's client.
+pub(super) async fn post_form(
+    declaration: &OAuthDeclaration,
+    endpoint: &FormEndpoint<'_>,
+    params: &[(&str, &str)],
+    client_secret: Option<&str>,
+    policy: NetworkPolicy,
+) -> TokenAnswer {
+    let (url, named, asked) = (endpoint.url, endpoint.named, endpoint.asked);
+    if let Some(problem) = endpoint_problem(url, named, policy) {
         return TokenAnswer::Failed(problem);
     }
-    let (form, basic) = match form(declaration, grant, client_secret) {
+    let (form, basic) = match form(declaration, params, client_secret) {
         Ok(built) => built,
         Err(problem) => return TokenAnswer::Failed(problem),
     };
@@ -60,7 +88,7 @@ pub(super) async fn request_tokens(
     let basic = basic
         .as_ref()
         .map(|(id, secret)| (id.as_str(), secret.as_str()));
-    match fetcher.form(endpoint, form, basic).await {
+    match fetcher.form(url, form, basic).await {
         Ok((200, body)) => TokenAnswer::Granted(body),
         Ok((400 | 401, body)) => {
             let code = error_code(&body);
@@ -69,10 +97,9 @@ pub(super) async fn request_tokens(
                 code,
             }
         }
-        Ok((status, _)) => TokenAnswer::Failed(format!(
-            "« {} » a répondu {status} à la demande de jetons",
-            quoted(endpoint)
-        )),
+        Ok((status, _)) => {
+            TokenAnswer::Failed(format!("« {} » a répondu {status} à {asked}", quoted(url)))
+        }
         Err(problem) => TokenAnswer::Failed(problem),
     }
 }
@@ -82,12 +109,11 @@ pub(super) async fn request_tokens(
 #[allow(clippy::type_complexity)]
 fn form(
     declaration: &OAuthDeclaration,
-    grant: &[(&str, &str)],
+    params: &[(&str, &str)],
     client_secret: Option<&str>,
 ) -> Result<(String, Option<(String, String)>), String> {
     let mut form = Serializer::new(String::new());
-    form.extend_pairs(grant)
-        .append_pair("resource", &declaration.resource);
+    form.extend_pairs(params);
     let secret = || {
         client_secret
             .ok_or_else(|| "Secret du client absent : déclarez OAuth de nouveau".to_string())

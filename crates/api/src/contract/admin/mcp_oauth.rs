@@ -68,6 +68,9 @@ pub struct McpOAuth {
     pub client_auth: OAuthClientAuth,
     pub scopes: Vec<String>,
     pub client_secret_stored: bool,
+    /// Whether its authorization server names a revocation endpoint, where
+    /// the tokens the platform lets go of are revoked (ADR-172).
+    pub revocable: bool,
     /// The authorization given under this declaration, if any.
     pub authorization: Option<McpOAuthAuthorization>,
 }
@@ -124,6 +127,7 @@ impl McpOAuth {
             token_endpoint: declaration.token_endpoint,
             client_id: declaration.client_id,
             client_auth: declaration.client_auth.into(),
+            revocable: declaration.revocation_endpoint.is_some(),
             scopes: declaration.scopes,
             client_secret_stored,
             authorization: authorization.map(Into::into),

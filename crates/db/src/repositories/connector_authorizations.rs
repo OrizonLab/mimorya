@@ -50,7 +50,14 @@ pub async fn put_connector_authorization(
     conn: &mut PgConnection,
     new: NewConnectorAuthorization<'_>,
 ) -> sqlx::Result<bool> {
-    let replaced = delete_connector_authorization(&mut *conn, new.connector_id).await?;
+    // The previous one replaced, not revoked: at some servers, revoking it
+    // would revoke this one (ADR-172).
+    let replaced = sqlx::query("delete from connector_authorizations where connector_id = $1")
+        .bind(new.connector_id)
+        .execute(&mut *conn)
+        .await?
+        .rows_affected()
+        > 0;
     let refresh = new.refresh_token;
     sqlx::query(
         "insert into connector_authorizations (tenant_id, connector_id, issuer, client_id, \
@@ -121,18 +128,23 @@ pub async fn sealed_connector_tokens(
     .bind(connector_id)
     .fetch_optional(conn)
     .await?;
-    Ok(row.map(|row| {
+    Ok(row.map(SealedRow::tokens))
+}
+
+impl SealedRow {
+    /// The sealed access token, and the refresh token if one is kept whole.
+    fn tokens(self) -> (StoredSecret, Option<StoredSecret>) {
         let access = StoredSecret {
-            ciphertext: row.access_ciphertext,
-            iv: row.access_iv,
-            auth_tag: row.access_auth_tag,
-            key_version: row.access_key_version,
+            ciphertext: self.access_ciphertext,
+            iv: self.access_iv,
+            auth_tag: self.access_auth_tag,
+            key_version: self.access_key_version,
         };
         let refresh = match (
-            row.refresh_ciphertext,
-            row.refresh_iv,
-            row.refresh_auth_tag,
-            row.refresh_key_version,
+            self.refresh_ciphertext,
+            self.refresh_iv,
+            self.refresh_auth_tag,
+            self.refresh_key_version,
         ) {
             (Some(ciphertext), Some(iv), Some(auth_tag), Some(key_version)) => Some(StoredSecret {
                 ciphertext,
@@ -143,6 +155,55 @@ pub async fn sealed_connector_tokens(
             _ => None,
         };
         (access, refresh)
+    }
+}
+
+/// An authorization taken away, with what revoking its tokens at its
+/// authorization server needs (ADR-172): what it was issued for, and its
+/// sealed tokens.
+pub struct TakenAuthorization {
+    pub issuer: String,
+    pub client_id: String,
+    pub resource: String,
+    pub access: StoredSecret,
+    pub refresh: Option<StoredSecret>,
+}
+
+#[derive(sqlx::FromRow)]
+struct TakenRow {
+    issuer: String,
+    client_id: String,
+    resource: String,
+    #[sqlx(flatten)]
+    sealed: SealedRow,
+}
+
+/// Removes the connector's authorization, if it has one, and returns what
+/// revoking it needs: a new version of the connector.
+pub async fn take_connector_authorization(
+    conn: &mut PgConnection,
+    connector_id: Uuid,
+) -> sqlx::Result<Option<TakenAuthorization>> {
+    let row: Option<TakenRow> = sqlx::query_as(
+        "delete from connector_authorizations where connector_id = $1 \
+         returning issuer, client_id, resource, access_ciphertext, access_iv, access_auth_tag, \
+         access_key_version, refresh_ciphertext, refresh_iv, refresh_auth_tag, \
+         refresh_key_version",
+    )
+    .bind(connector_id)
+    .fetch_optional(&mut *conn)
+    .await?;
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    credential_changed(conn, connector_id).await?;
+    let (access, refresh) = row.sealed.tokens();
+    Ok(Some(TakenAuthorization {
+        issuer: row.issuer,
+        client_id: row.client_id,
+        resource: row.resource,
+        access,
+        refresh,
     }))
 }
 
@@ -193,22 +254,6 @@ pub async fn connector_access_token(
         },
         expires_at: row.access_expires_at,
     }))
-}
-
-/// Removes the connector's authorization; returns whether it had one.
-pub async fn delete_connector_authorization(
-    conn: &mut PgConnection,
-    connector_id: Uuid,
-) -> sqlx::Result<bool> {
-    let deleted = sqlx::query("delete from connector_authorizations where connector_id = $1")
-        .bind(connector_id)
-        .execute(&mut *conn)
-        .await?;
-    let removed = deleted.rows_affected() > 0;
-    if removed {
-        credential_changed(conn, connector_id).await?;
-    }
-    Ok(removed)
 }
 
 /// A new version of the connector (`updated_at`), untested unless disabled:

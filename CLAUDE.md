@@ -129,7 +129,7 @@ Repères à l'intérieur des crates :
   `liveness.rs`, ADR-164, ADR-165, et les règles de son autorisation OAuth : refus lu,
   ressource protégée, serveur d'autorisation, portées, la découverte qui les suit,
   la déclaration qu'en garde l'administrateur, le départ du navigateur et l'échange du
-  code, et le renouvellement des jetons, `oauth/`, ADR-171, et la session retirée
+  code, et le renouvellement des jetons, `oauth/`, ADR-171, et leur révocation, `oauth/revocation.rs`, ADR-172, et la session retirée
   avant l'échéance du jeton de son autorisation, `expiry.rs`, ADR-171),
   `connectors/src/bin/mcp_demo_docs.rs`,
   `connectors/src/outbound/` (ce que partagent les serveurs MCP et les API REST d'une
@@ -189,7 +189,7 @@ Repères à l'intérieur des crates :
   (`absences.rs`, ADR-078), organisation, habilitations, connecteurs : ce que
   l'administration change de chacun (`connector_config.rs`), OAuth déclaré sur un serveur
   MCP (`connector_oauth.rs`, sa configuration gardée : `mcp_config.rs`, ADR-171) et son
-  autorisation, départ, retour et jetons scellés (`connector_authorization/`), seules
+  autorisation, départ, retour et jetons scellés (`connector_authorization/`), révoqués chez le serveur quand l'administration les laisse (`connector_authorization/revocation.rs`, ADR-172), seules
   les politiques changées
   tracées (`policy_changes.rs`, ADR-160) et API REST ajoutées
   (`rest_connectors.rs`, ADR-112, opérations lues d'une description OpenAPI, ADR-114),
@@ -264,7 +264,10 @@ Repères à l'intérieur des crates :
   démarrages partagés et échecs retenus, `cache/`, ADR-049 ; jeton avec lequel chacune
   démarre : celui de l'autorisation OAuth d'un serveur MCP déclaré, jamais un jeton
   saisi, sinon le jeton gardé, `credential.rs`, renouvelé avant son échéance, réservé par
-  un seul processus, `renewal.rs`, jetons accordés scellés, `grants.rs`, ADR-171),
+  un seul processus, `renewal.rs`, jetons accordés scellés, `grants.rs`, ADR-171 ; jetons
+  laissés révoqués dans un délai, et ceux que personne ne garde (renouvellement en vol au
+  retrait, retour dont la déclaration a changé) par une tâche à part, `revocation.rs`,
+  ADR-172),
   `api/src/services/documents/` (documents déposés : lecture par le processus
   `mimorya-extract`, `api/src/bin/extract.rs`, bornée en nombre, en temps et en taille,
   `extractor.rs`, fichier lu et refusé, commun au dépôt et au remplacement,
@@ -372,7 +375,8 @@ Repères à l'intérieur des crates :
   liste ce que les bots écrivent et le webhook de chacun, `BuildOptions::telegram_api`,
   ADR-134, et à un Microsoft simulé pour Teams qui liste ce que les bots écrivent et
   signe les activités que les tests envoient, `BuildOptions::teams_api`, ADR-138,
-  ADR-139, et à un serveur MCP protégé par OAuth et son serveur d'autorisation, les
+  ADR-139, et à un serveur MCP protégé par OAuth et son serveur d'autorisation, un
+  autre dont le serveur d'autorisation n'annonce pas de révocation, ADR-172, les
   seules adresses privées que ses connecteurs joignent,
   `BuildOptions::connector_test_servers`, une déclaration OAuth illisible laissée au
   démarrage, `unreadable_oauth.rs`, ADR-171).

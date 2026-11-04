@@ -1298,6 +1298,11 @@ export type McpOAuth = { issuer: string,
  */
 resource: string, authorizationEndpoint: string, tokenEndpoint: string, clientId: string, clientAuth: OAuthClientAuth, scopes: Array<string>, clientSecretStored: boolean,
 /**
+ * Whether its authorization server names a revocation endpoint, where
+ * the tokens the platform lets go of are revoked (ADR-172).
+ */
+revocable: boolean,
+/**
  * The authorization given under this declaration, if any.
  */
 authorization: McpOAuthAuthorization | null, };

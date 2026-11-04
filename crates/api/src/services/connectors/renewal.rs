@@ -15,10 +15,11 @@
 //! authorization is still the one claimed: sealed for the connector, a
 //! rotated refresh token kept, the connector's version changed. A server
 //! saying the grant is gone removes it (audited by the system, never a
-//! token): an administrator authorizes the server again. Any other failure
-//! of the token endpoint, or a refresh token the platform can no longer
-//! open, is said on the authorization, for its administrators, until a
-//! renewal is kept.
+//! token): an administrator authorizes the server again. Tokens it brings
+//! for an authorization withdrawn or replaced meanwhile, which no one keeps,
+//! are revoked (`revocation`, ADR-172). Any other failure of the token endpoint, or a refresh token
+//! the platform can no longer open, is said on the authorization, for its
+//! administrators, until a renewal is kept.
 
 use std::time::Duration;
 
@@ -36,6 +37,7 @@ use uuid::Uuid;
 
 use super::credential::{given_under, oauth_of};
 use super::grants::{AUTHORIZATION_REMOVED, seal_grant};
+use super::revocation::Unkept;
 use super::{ConnectorService, client_secret_name, refresh_sealed_as};
 use crate::secrets::SecretRead;
 
@@ -122,8 +124,18 @@ impl ConnectorService {
                     refresh_token: sealed.refresh.as_ref(),
                     scopes: sealed.scopes.as_deref(),
                 };
-                keep_connector_renewal(&mut tx, call.claimed.key, renewed).await?;
+                let kept = keep_connector_renewal(&mut tx, call.claimed.key, renewed).await?;
                 tx.commit().await?;
+                // Withdrawn or replaced meanwhile: no one keeps these.
+                if kept.is_none() {
+                    self.revoke_unkept(Unkept {
+                        tenant_id,
+                        connector_id,
+                        declared: call.declared,
+                        granted,
+                        client_secret: call.secret,
+                    });
+                }
             }
             Err(RenewalFailure::Refused(reason)) => {
                 let mut tx = self.db.begin(tenant_id).await?;

@@ -4,11 +4,13 @@
 //! server says it names it); the administrator must still administer the
 //! company's connectors, and the server's address and declaration be those
 //! the attempt was started under. The code is then exchanged, the tokens
-//! sealed for the connector and kept, the previous authorization replaced.
-//! Every refusal says why, for the audit; the browser learns only whether
-//! it was authorized.
+//! sealed for the connector and kept, the previous authorization replaced;
+//! tokens granted and not kept are revoked (ADR-172). Every refusal says
+//! why, for the audit; the browser learns only whether it was authorized.
 
-use mimorya_connectors::mcp::oauth::{ClientAuth, CodeExchange, OAuthDeclaration, exchange_code};
+use mimorya_connectors::mcp::oauth::{
+    ClientAuth, CodeExchange, Granted, OAuthDeclaration, exchange_code,
+};
 use mimorya_db::repositories::audit::append_audit;
 use mimorya_db::repositories::connector_authorizations::{
     NewConnectorAuthorization, put_connector_authorization,
@@ -26,7 +28,7 @@ use crate::services::AccessContext;
 use crate::services::admin::connector_oauth::McpServer;
 use crate::services::admin::connectors::{ConnectorAdmin, PERMISSION};
 use crate::services::admin::{audit_entry, begin_change};
-use crate::services::connectors::{client_secret_name, seal_grant};
+use crate::services::connectors::{Unkept, client_secret_name, seal_grant};
 use crate::services::sso::{error_code, same_state};
 
 /// What the authorization server sends back (RFC 6749 §4.1.2, RFC 9207).
@@ -117,7 +119,18 @@ pub async fn finish_authorization(
             .await
             .map_err(|failure| at(&failure))?
     };
-    keep(admin, access, &attempt, &declared, granted).await
+    let kept = keep(admin, access, &attempt, &declared, &granted).await;
+    if kept.is_err() {
+        // Granted, kept nowhere (ADR-172).
+        admin.connectors.revoke_unkept(Unkept {
+            tenant_id: access.subject.tenant_id,
+            connector_id: id,
+            declared,
+            granted,
+            client_secret: secret,
+        });
+    }
+    kept
 }
 
 /// The attempt the browser kept, if it is the signed-in administrator's own.
@@ -195,13 +208,13 @@ async fn keep(
     access: &AccessContext,
     attempt: &AuthorizationAttempt,
     declared: &OAuthDeclaration,
-    granted: mimorya_connectors::mcp::oauth::Granted,
+    granted: &Granted,
 ) -> Outcome<Uuid> {
     let id = attempt.connector_id;
     let internal = |error: anyhow::Error| internal(id, error);
     let tenant_id = access.subject.tenant_id;
     let cipher = admin.secrets.cipher().map_err(|e| internal(e.into()))?;
-    let sealed = seal_grant(cipher, tenant_id, id, &granted).map_err(internal)?;
+    let sealed = seal_grant(cipher, tenant_id, id, granted).map_err(internal)?;
     let (access_token, refresh_token, expires_at) =
         (sealed.access, sealed.refresh, sealed.expires_at);
     // Not said by the server: those asked (RFC 6749 §5.1).

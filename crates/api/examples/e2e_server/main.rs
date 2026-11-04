@@ -132,9 +132,13 @@ const TELEGRAM_ADDRESS: &str = "127.0.0.1:4104";
 const TEAMS_ADDRESS: &str = "127.0.0.1:4105";
 /// Where an MCP server's authorization server listens, and the server it
 /// protects: `mcp-oauth.spec.ts` declares and authorizes it (ADR-171). The
-/// connectors reach these two alone of the private network.
+/// connectors reach these alone of the private network.
 const OAUTH_AUTHORITY_ADDRESS: &str = "127.0.0.1:4106";
 const OAUTH_MCP_ADDRESS: &str = "127.0.0.1:4107";
+/// The same, its authorization server naming no revocation endpoint
+/// (ADR-172).
+const UNREVOKING_AUTHORITY_ADDRESS: &str = "127.0.0.1:4108";
+const UNREVOKING_MCP_ADDRESS: &str = "127.0.0.1:4109";
 /// Léa's Slack user, of the company's workspace, with her address.
 const LEA_SLACK: &str = "U0LEAE2E";
 /// Léa's Microsoft Entra object, of the test directory, and her name.
@@ -207,6 +211,14 @@ async fn main() -> anyhow::Result<()> {
         url = protected.url,
         "End-to-end MCP server protected by OAuth listening"
     );
+    let unrevoking = FakeAuthorizationServer::start_on(UNREVOKING_AUTHORITY_ADDRESS).await;
+    unrevoking.set(|settings| settings.revocation = false);
+    let protected =
+        serve_oauth_mcp_http_on(&unrevoking, OAuthQuirk::None, UNREVOKING_MCP_ADDRESS).await;
+    tracing::info!(
+        url = protected.url,
+        "End-to-end MCP server protected by an authorization server that does not revoke"
+    );
     let teams = FakeTeams::start_on(TEAMS_ADDRESS).await;
     teams.add_person(LEA_TEAMS, LEA_NAME, LEA_ADDRESS);
     tracing::info!(url = teams.url, "End-to-end Microsoft listening");
@@ -241,10 +253,15 @@ async fn main() -> anyhow::Result<()> {
             // Its Teams bot reaches the local Microsoft (ADR-139).
             teams_api: Some(teams.url.clone()),
             prices: None,
-            connector_test_servers: [OAUTH_AUTHORITY_ADDRESS, OAUTH_MCP_ADDRESS]
-                .iter()
-                .map(|address| address.parse())
-                .collect::<Result<_, _>>()?,
+            connector_test_servers: [
+                OAUTH_AUTHORITY_ADDRESS,
+                OAUTH_MCP_ADDRESS,
+                UNREVOKING_AUTHORITY_ADDRESS,
+                UNREVOKING_MCP_ADDRESS,
+            ]
+            .iter()
+            .map(|address| address.parse())
+            .collect::<Result<_, _>>()?,
         },
     )
     .await?;

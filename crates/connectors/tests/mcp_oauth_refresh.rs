@@ -9,45 +9,20 @@
 
 mod support;
 
-use mimorya_connectors::mcp::oauth::{
-    CodeExchange, Departure, OAuthDeclaration, RenewalFailure, authorization_url, discover,
-    exchange_code, refresh_tokens,
-};
-use mimorya_connectors::testing::{
-    CLIENT_ID, CLIENT_SECRET, FakeAuthorizationServer, OAuthQuirk, serve_oauth_mcp_http,
-};
+use mimorya_connectors::mcp::oauth::{OAuthDeclaration, RenewalFailure, refresh_tokens};
+use mimorya_connectors::testing::{CLIENT_ID, CLIENT_SECRET, FakeAuthorizationServer};
 use support::mcp::PRIVATE;
-use support::oauth::{BACK, VERIFIER, challenge_of, sent_back};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
 /// A declaration at the simulated server and the tokens of a first
-/// authorization: its access token, its refresh token, the server's address.
+/// authorization: its refresh token, the server's address.
 async fn authorized(
     authority: &FakeAuthorizationServer,
     secret: bool,
 ) -> (OAuthDeclaration, String, String) {
-    let server = serve_oauth_mcp_http(authority, OAuthQuirk::None).await;
-    let found = discover(&server.url, None, PRIVATE).await.expect("found");
-    let declaration = OAuthDeclaration::new(found, CLIENT_ID, secret, None).expect("declared");
-    let challenge = challenge_of(VERIFIER);
-    let departure = Departure {
-        redirect_uri: BACK,
-        state: "etat",
-        code_challenge: &challenge,
-    };
-    let back = sent_back(&authorization_url(&declaration, departure).expect("url")).await;
-    let exchange = CodeExchange {
-        code: &back["code"],
-        verifier: VERIFIER,
-        redirect_uri: BACK,
-        client_secret: secret.then_some(CLIENT_SECRET),
-    };
-    let granted = exchange_code(&declaration, exchange, PRIVATE)
-        .await
-        .expect("granted");
-    let refresh = granted.refresh_token.expect("renewable");
-    (declaration, refresh, server.url)
+    let (declaration, granted, url) = support::oauth::declared_and_granted(authority, secret).await;
+    (declaration, granted.refresh_token.expect("renewable"), url)
 }
 
 #[tokio::test]
@@ -95,6 +70,7 @@ async fn a_public_client_renews_with_its_identifier_and_an_absent_server_is_not_
     assert!(!last.params.contains_key("client_secret"));
     // Its token endpoint gone: tried again later, not lost.
     let gone = OAuthDeclaration {
+        revocation_endpoint: None,
         token_endpoint: "http://127.0.0.1:1/token".into(),
         ..declaration
     };
@@ -136,6 +112,7 @@ async fn only_a_gone_grant_or_tokens_it_cannot_keep_lose_the_authorization() {
     let authority = FakeAuthorizationServer::start().await;
     let (declaration, refresh, _) = authorized(&authority, true).await;
     let at = |endpoint: String| OAuthDeclaration {
+        revocation_endpoint: None,
         token_endpoint: endpoint,
         ..declaration.clone()
     };

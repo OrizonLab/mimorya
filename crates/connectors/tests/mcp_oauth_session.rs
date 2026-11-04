@@ -27,6 +27,7 @@ use tokio::time::Instant;
 /// The server's configuration once an administrator declared OAuth on it.
 fn declared(server: &ProtectedMcp, authority: &FakeAuthorizationServer) -> Value {
     let declaration = OAuthDeclaration {
+        revocation_endpoint: None,
         issuer: authority.issuer.clone(),
         resource: server.url.clone(),
         authorization_endpoint: format!("{}/authorize", authority.issuer),
