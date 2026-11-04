@@ -210,10 +210,11 @@ pub async fn delete_connector_authorization(
 
 /// A new version of the connector (`updated_at`), untested unless disabled:
 /// its session is started again with the token read anew (ADR-171), as
-/// after a change of its own token.
+/// after a change of its own token. Dated like every other change of the
+/// connector (`update_connector_instance`): when the transaction began.
 async fn credential_changed(conn: &mut PgConnection, connector_id: Uuid) -> sqlx::Result<()> {
     sqlx::query(
-        "update connector_instances set updated_at = clock_timestamp(), \
+        "update connector_instances set updated_at = now(), \
          status = case when enabled then 'untested' else status end, \
          last_error = case when enabled then null else last_error end \
          where id = $1",

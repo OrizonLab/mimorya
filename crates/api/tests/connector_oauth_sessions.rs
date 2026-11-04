@@ -224,18 +224,30 @@ async fn a_process_that_missed_the_notice_follows_the_authorization() {
     let paul = api.sign_in(user::PAUL).await;
     let authority = FakeAuthorizationServer::start().await;
     let (server, id) = declared(&paul, &authority, "processus").await;
-    // The worker, say, whose listening was reconnecting meanwhile.
+    // The worker, say, whose listening was reconnecting meanwhile: it
+    // remembers that the server is to be authorized.
     let worker = another_process(&api);
+    assert!(!sees(&worker, "processus").await);
+    assert_eq!(listed(&paul, &id).await["status"], "error");
+    // Each change of the authorization makes a new version, to be tested.
+    let untested = |shown: Value| {
+        assert_eq!(shown["status"], "untested", "{shown}");
+        assert!(shown["lastError"].is_null(), "{shown}");
+    };
+    // Authorized: it starts the session at once.
     assert_eq!(
         location(&authorize(&paul, &authority, &id).await),
         AUTHORIZED
     );
+    untested(listed(&paul, &id).await);
     assert!(sees(&worker, "processus").await);
+    assert_eq!(listed(&paul, &id).await["status"], "ok");
     // Authorized again: its session started again with the new token.
     assert_eq!(
         location(&authorize(&paul, &authority, &id).await),
         AUTHORIZED
     );
+    untested(listed(&paul, &id).await);
     let (second, _) = kept_tokens(&api, &id).await.expect("kept");
     let asked = server.authorizations().len();
     assert!(sees(&worker, "processus").await);
@@ -244,6 +256,7 @@ async fn a_process_that_missed_the_notice_follows_the_authorization() {
     // Withdrawn: it goes without it.
     let authorization = format!("/admin/connectors/{id}/oauth/authorization");
     assert_eq!(paul.delete(&authorization).await.status, StatusCode::OK);
+    untested(listed(&paul, &id).await);
     assert!(!sees(&worker, "processus").await);
     worker.close().await;
     assert_eq!(

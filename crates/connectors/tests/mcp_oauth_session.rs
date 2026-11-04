@@ -1,8 +1,9 @@
 //! A session with an MCP server declared with OAuth (ADR-171): it is sent
 //! the access token of the server's authorization, however long the
-//! authorization server writes it, and starts without one by saying it
-//! must be authorized; a token about to expire starts nothing, the server
-//! not even asked, and a session is retired a minute before its token
+//! authorization server writes it, and starts without one, or with one that
+//! could not be sent as kept, by saying it must be authorized again; a
+//! token about to expire starts nothing, the server not even asked, nor one
+//! a slow start used up; a session is retired a minute before its token
 //! expires; a token the server refuses, at the start or on a call, says to
 //! authorize it again, the token masked.
 
@@ -11,10 +12,12 @@ mod support;
 use std::time::Duration;
 
 use mimorya_connectors::mcp::oauth::{ClientAuth, OAUTH_TO_AUTHORIZE, OAuthDeclaration};
-use mimorya_connectors::mcp::{OAUTH_EXPIRED, OAUTH_OFFERED, OAUTH_REFUSED, RETIRE_BEFORE};
+use mimorya_connectors::mcp::{
+    MIN_TOKEN_LIFE, OAUTH_EXPIRED, OAUTH_OFFERED, OAUTH_REFUSED, OAUTH_UNUSABLE, RETIRE_BEFORE,
+};
 use mimorya_connectors::outbound::MAX_TOKEN_CHARS;
 use mimorya_connectors::testing::{
-    CLIENT_ID, FakeAuthorizationServer, LONG_TOKEN_CHARS, OAuthQuirk, ProtectedMcp,
+    CLIENT_ID, FakeAuthorizationServer, LONG_TOKEN_CHARS, OAuthQuirk, ProtectedMcp, SLOW_ANSWER,
     serve_oauth_mcp_http,
 };
 use serde_json::{Value, json};
@@ -61,6 +64,16 @@ async fn a_declared_server_is_sent_its_authorization_s_token_and_none_other() {
     assert!(
         format!("{expiring:#}").contains(OAUTH_EXPIRED),
         "{expiring:#}"
+    );
+    // One that could not be sent as kept: nothing starts.
+    let unusable = Some("jeton,illisible");
+    let unusable = start_mcp_until(config.clone(), unusable, in_an_hour(), PRIVATE)
+        .await
+        .err()
+        .expect("refused");
+    assert!(
+        format!("{unusable:#}").contains(OAUTH_UNUSABLE),
+        "{unusable:#}"
     );
     assert!(server.authorizations().is_empty());
     // Authorized: its tools, every request with its token.
@@ -148,4 +161,24 @@ async fn a_session_is_retired_a_minute_before_its_token_expires() {
     assert!(runtime.is_closed());
     assert_eq!(runtime.ended_at(), Some(retired));
     runtime.closer.expect("closer").close().await;
+}
+
+#[tokio::test]
+async fn a_token_a_slow_start_used_up_starts_nothing() {
+    let authority = FakeAuthorizationServer::start().await;
+    let server = serve_oauth_mcp_http(&authority, OAuthQuirk::SlowStart).await;
+    let token = authority.issue(&server.url);
+    // Enough left when the start begins, no longer once it is done.
+    let until = Instant::now() + MIN_TOKEN_LIFE + SLOW_ANSWER / 2;
+    let config = declared(&server, &authority);
+    let refused = start_mcp_until(config, Some(&token), Some(until), PRIVATE)
+        .await
+        .err()
+        .expect("refused");
+    assert!(
+        format!("{refused:#}").contains(OAUTH_EXPIRED),
+        "{refused:#}"
+    );
+    // The server was reached: the second look refused it.
+    assert!(!server.authorizations().is_empty());
 }

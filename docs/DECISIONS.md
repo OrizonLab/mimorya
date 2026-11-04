@@ -10508,14 +10508,16 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       d'une autre entreprise ou absent, répondent 404 et sont tracées ;
     - `crates/connectors/tests/mcp_oauth_session.rs` (lot 40e) : un serveur déclaré
       reçoit le jeton de son autorisation à chaque requête, même long de 2 500
-      caractères ; sans jeton, ou avec un jeton qui expire bientôt, rien ne démarre et
-      le serveur n'est pas sollicité ; un jeton émis pour un autre serveur, ou révoqué
-      pendant la session, dit d'autoriser de nouveau, au démarrage comme à l'appel, le
-      jeton masqué ; à horloge suspendue, la session encore ouverte à 61 secondes de
-      l'échéance de son jeton est close à 60, sa fin datée de ce moment ; en unitaire
-      (`expiry.rs`), le calcul du retrait et un jeton de moins de trois minutes
-      refusé ; des portées accordées refusées disent pourquoi, et un jeton valable
-      moins de cinq minutes est refusé à l'échange ;
+      caractères ; sans jeton, avec un jeton qui expire bientôt ou qu'on ne pourrait
+      envoyer tel qu'il a été gardé, rien ne démarre et le serveur n'est pas
+      sollicité ; un démarrage lent qui a usé ce qui restait au jeton ne garde pas la
+      session ; un jeton émis pour un autre serveur, ou révoqué pendant la session,
+      dit d'autoriser de nouveau, au démarrage comme à l'appel, le jeton masqué ; à
+      horloge suspendue, la session encore ouverte à 61 secondes de l'échéance de son
+      jeton est close à 60, sa fin datée de ce moment ; en unitaire (`expiry.rs`), le
+      calcul du retrait et un jeton de moins de trois minutes refusé ; des portées
+      accordées refusées disent pourquoi, et un jeton valable moins de cinq minutes
+      est refusé à l'échange ;
     - `crates/api/tests/connector_oauth_sessions.rs` (lot 40e) : déclaré mais pas
       autorisé, le serveur le dit et les runs s'en passent ; autorisé, ses outils
       servent le test de l'administration et les runs, chaque requête avec le jeton
@@ -10525,8 +10527,10 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       scellé pour un autre connecteur ne s'ouvre pas ; un jeton qui expire bientôt ne
       démarre rien ; un jeton refusé par le serveur dit d'autoriser de nouveau, jamais
       montré ; les connecteurs d'un autre processus, qui n'entendent aucun avis,
-      redémarrent la session avec le nouveau jeton quand elle est autorisée de
-      nouveau, et s'en passent quand elle est retirée ;
+      démarrent la session dès la première autorisation malgré l'échec qu'ils
+      retenaient, la redémarrent avec le nouveau jeton quand elle est autorisée de
+      nouveau, et s'en passent quand elle est retirée, le connecteur repassant « à
+      tester » à chaque fois ;
     - `crates/connectors/tests/mcp_oauth_authority.rs` : le serveur d'autorisation
       simulé use le code, vérifie PKCE et la ressource ; refuse un client qui se prouve de
       deux façons, d'une façon non annoncée ou avec un autre secret, un Basic refusé

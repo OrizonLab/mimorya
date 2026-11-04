@@ -44,7 +44,7 @@ pub use graph::{FORBIDDEN_MESSAGE, FakeGraph, GRAPH_DETAIL, GraphRequest, OVERSI
 pub use hold::Hold;
 pub use oauth::{
     AuthRequest, CLIENT_ID, CLIENT_SECRET, FakeAuthorizationServer, LONG_TOKEN_CHARS, LURE,
-    METADATA_PATH, OAuthQuirk, ProtectedMcp, Settings as AuthorizationSettings,
+    METADATA_PATH, OAuthQuirk, ProtectedMcp, SLOW_ANSWER, Settings as AuthorizationSettings,
     serve_oauth_mcp_http,
 };
 pub use proxy::{Proxied, serve_proxy};
