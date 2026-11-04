@@ -1298,6 +1298,15 @@ export type McpOAuth = { issuer: string,
  */
 resource: string, authorizationEndpoint: string, tokenEndpoint: string, clientId: string, clientAuth: OAuthClientAuth, scopes: Array<string>, clientSecretStored: boolean,
 /**
+ * Whether the platform registered this client itself (ADR-173).
+ */
+registered: boolean,
+/**
+ * When the secret of the client the platform registered expires, if
+ * it does.
+ */
+clientSecretExpiresAt: string | null,
+/**
  * Whether its authorization server names a revocation endpoint, where
  * the tokens the platform lets go of are revoked (ADR-172).
  */
@@ -1341,13 +1350,19 @@ export type McpOAuthDeclaration = {
  */
 issuer?: string,
 /**
- * The client registered at the authorization server.
+ * The client registered at the authorization server; absent when the
+ * platform registers its own (`register`).
  */
-clientId: string,
+clientId?: string,
 /**
  * Absent or blank: a public client.
  */
 clientSecret?: string,
+/**
+ * The platform registers its client at the authorization server
+ * itself (RFC 7591, ADR-173): no identifier nor secret is then given.
+ */
+register?: boolean,
 /**
  * Absent: those the server suggests.
  */

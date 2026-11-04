@@ -5,15 +5,15 @@
 //! discovery, outside any transaction, under a slot of the company's
 //! administration starts); then, under the administration lock, it keeps
 //! what was found in the connector's configuration if the server's address
-//! has not changed meanwhile. The client's secret is sealed apart, never
+//! has not changed meanwhile. The client is the one the administrator
+//! typed, or the platform's own, registered at the authorization server
+//! once it is found (`oauth_client`, ADR-173). The client's secret is sealed apart, never
 //! shown nor audited. A typed token goes: OAuth replaces it. Declared
 //! again, everything is replaced, secret included, and the authorization
 //! given under the previous declaration goes (`connector_authorization`). A declaration
 //! that can no longer be read is replaced or withdrawn all the same.
 
-use mimorya_connectors::mcp::oauth::{
-    OAuthDeclaration, client_id_problem, client_secret_problem, discover, scopes_problem,
-};
+use mimorya_connectors::mcp::oauth::{OAuthDeclaration, discover, scopes_problem};
 use mimorya_core::DomainError;
 use mimorya_db::repositories::audit::append_audit;
 use mimorya_db::repositories::connectors::{
@@ -25,6 +25,7 @@ use uuid::Uuid;
 use super::connector_authorization::{revocable_under, revoke, take_authorization};
 use super::connectors::{ConnectorAdmin, PERMISSION};
 use super::mcp_config::{Unreadable, mcp_config, stored_oauth};
+use super::oauth_client::{Declared, OAuthClient, declared};
 use super::{audit_entry, begin_change};
 use crate::services::AccessContext;
 use crate::services::connectors::{client_secret_name, token_secret_name};
@@ -33,10 +34,15 @@ use crate::services::connectors::{client_secret_name, token_secret_name};
 pub struct OAuthInput {
     /// The authorization server's issuer, if the administrator names it.
     pub issuer: Option<String>,
-    pub client_id: String,
+    /// Whether the platform registers its own client, rather than one
+    /// typed (ADR-173).
+    pub register: bool,
+    pub client_id: Option<String>,
     pub client_secret: Option<String>,
     /// Those to ask for; the server's suggestions if `None`.
     pub scopes: Option<Vec<String>>,
+    /// The platform's return address, given a registered client.
+    pub redirect_uri: String,
 }
 
 /// An MCP server added here, as its OAuth sees it.
@@ -79,18 +85,15 @@ pub async fn declare_oauth(
     input: OAuthInput,
 ) -> anyhow::Result<OAuthDeclaration> {
     access.require_tenant_wide(PERMISSION)?;
-    let problem = client_id_problem(&input.client_id)
-        .or_else(|| {
-            input
-                .client_secret
-                .as_deref()
-                .and_then(client_secret_problem)
-        })
+    let client = OAuthClient::chosen(input.register, input.client_id, input.client_secret)?;
+    let problem = client
+        .problem()
         .or_else(|| input.scopes.as_deref().and_then(scopes_problem));
     if let Some(problem) = problem {
         return Err(DomainError::validation(problem).into());
     }
-    if input.client_secret.is_some() {
+    // Before anything is sent: nothing registered that could not be kept.
+    if client.needs_sealing() {
         admin.secrets.require()?;
     }
     let tenant_id = access.subject.tenant_id;
@@ -98,16 +101,23 @@ pub async fn declare_oauth(
     let mut tx = admin.db.begin(tenant_id).await?;
     let url = McpServer::of(get_connector_instance(&mut tx, id).await?)?.url;
     tx.commit().await?;
-    let found = {
+    // Found, and the platform's client registered there if it is asked to.
+    let (declaration, client_secret) = {
         let _start = admin.connectors.claim_admin_start(tenant_id)?;
         let network = admin.connectors.network();
-        discover(&url, input.issuer.as_deref(), network)
+        let found = discover(&url, input.issuer.as_deref(), network)
+            .await
+            .map_err(DomainError::validation)?;
+        let with = Declared {
+            scopes: input.scopes,
+            redirect_uri: &input.redirect_uri,
+            network,
+        };
+        declared(found, client, with)
             .await
             .map_err(DomainError::validation)?
     };
-    let has_secret = input.client_secret.is_some();
-    let declaration = OAuthDeclaration::new(found, &input.client_id, has_secret, input.scopes)
-        .map_err(DomainError::validation)?;
+    let has_secret = client_secret.is_some();
 
     let mut tx = begin_change(admin.db, access, PERMISSION).await?;
     let current = McpServer::of(get_connector_instance(&mut tx, id).await?)?;
@@ -138,7 +148,7 @@ pub async fn declare_oauth(
         .delete(&mut tx, &token_secret_name(id))
         .await?;
     let secret_name = client_secret_name(id);
-    match &input.client_secret {
+    match &client_secret {
         Some(secret) => {
             admin
                 .secrets
@@ -158,6 +168,7 @@ pub async fn declare_oauth(
             "clientAuth": declaration.client_auth,
             "scopes": declaration.scopes,
             "clientSecretStored": has_secret,
+            "registered": declaration.registered.is_some(),
             "tokenRemoved": token_removed,
             "replaced": current.declared.is_some() || current.unreadable,
             "authorizationRemoved": authorization_removed,

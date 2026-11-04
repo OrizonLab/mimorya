@@ -2,7 +2,8 @@
 //! in the connector's configuration: where the discovery found it is
 //! authorized (the resource tokens are for, the issuer and its endpoints,
 //! whether its return names the issuer), the client the company registered
-//! there, how that client proves itself, and the scopes it asks for. The
+//! there or the platform registered itself (ADR-173), how that client
+//! proves itself, and the scopes it asks for. The
 //! client's secret is not here: it is sealed apart, and only whether there
 //! is one decides how the client proves itself. Until it is authorized, a
 //! declared server starts no session.
@@ -10,6 +11,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::discovery::Discovery;
+use super::registration::Registration;
 use super::scope::scopes_problem;
 use super::server_metadata::ClientAuth;
 
@@ -38,6 +40,19 @@ pub struct OAuthDeclaration {
     /// declarations kept before it was read.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub revocation_endpoint: Option<String>,
+    /// The client, if the platform registered it itself (RFC 7591,
+    /// ADR-173): absent for one an administrator typed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub registered: Option<RegisteredClient>,
+}
+
+/// What a declaration keeps of the client the platform registered.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RegisteredClient {
+    /// When its secret expires, in seconds since the epoch, if it does.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub secret_expires_at: Option<u64>,
 }
 
 impl OAuthDeclaration {
@@ -53,16 +68,35 @@ impl OAuthDeclaration {
         if let Some(problem) = client_id_problem(client_id) {
             return Err(problem);
         }
-        let scopes = match scopes {
-            Some(scopes) => match scopes_problem(&scopes) {
-                Some(problem) => return Err(problem),
-                None => scopes,
-            },
-            None => discovery.suggested_scopes,
+        let scopes = asked_scopes(&discovery, scopes)?;
+        let client_auth = discovery.server.client_auth(has_secret)?;
+        Ok(Self::of(discovery, client_id, client_auth, scopes, None))
+    }
+
+    /// The declaration of the client the platform registered at the
+    /// authorization server `discovery` found, for `scopes`.
+    pub fn registered(
+        discovery: Discovery,
+        registration: &Registration,
+        scopes: Vec<String>,
+    ) -> Self {
+        let registered = RegisteredClient {
+            secret_expires_at: registration.secret_expires_at,
         };
+        let (client_id, client_auth) = (&registration.client_id, registration.client_auth);
+        Self::of(discovery, client_id, client_auth, scopes, Some(registered))
+    }
+
+    fn of(
+        discovery: Discovery,
+        client_id: &str,
+        client_auth: ClientAuth,
+        scopes: Vec<String>,
+        registered: Option<RegisteredClient>,
+    ) -> Self {
         let server = discovery.server;
-        Ok(Self {
-            client_auth: server.client_auth(has_secret)?,
+        Self {
+            client_auth,
             issuer: discovery.issuer,
             resource: discovery.resource,
             authorization_endpoint: server.authorization_endpoint,
@@ -71,7 +105,23 @@ impl OAuthDeclaration {
             revocation_endpoint: server.revocation_endpoint,
             client_id: client_id.to_string(),
             scopes,
-        })
+            registered,
+        }
+    }
+}
+
+/// The scopes to ask for: `scopes`, if they can be sent, else those the
+/// server suggests.
+pub fn asked_scopes(
+    discovery: &Discovery,
+    scopes: Option<Vec<String>>,
+) -> Result<Vec<String>, String> {
+    match scopes {
+        Some(scopes) => match scopes_problem(&scopes) {
+            Some(problem) => Err(problem),
+            None => Ok(scopes),
+        },
+        None => Ok(discovery.suggested_scopes.clone()),
     }
 }
 

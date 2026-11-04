@@ -10,7 +10,8 @@
 //! authorize it (`departure`), and the code it brings back exchanged for
 //! tokens (`exchange`), at the token endpoint (`token_request`) that later
 //! renews them with the refresh token (`refresh`). The tokens the platform
-//! lets go of are revoked there (`revocation`, ADR-172).
+//! lets go of are revoked there (`revocation`, ADR-172). The platform can
+//! register its client there itself (`registration`, ADR-173).
 
 mod challenge;
 mod declaration;
@@ -21,6 +22,7 @@ mod fetch;
 mod protected_resource;
 mod quoted;
 mod refresh;
+mod registration;
 mod resource;
 mod revocation;
 mod scope;
@@ -30,7 +32,7 @@ mod token_request;
 pub use challenge::{BearerChallenge, MAX_HEADER_CHARS, bearer_challenge};
 pub use declaration::{
     MAX_CLIENT_ID_CHARS, MAX_CLIENT_SECRET_CHARS, OAUTH_TO_AUTHORIZE, OAuthDeclaration,
-    client_id_problem, client_secret_problem,
+    RegisteredClient, asked_scopes, client_id_problem, client_secret_problem,
 };
 pub use departure::{Departure, authorization_url};
 pub use discovery::{Discovery, DiscoveryLimits, discover, discover_within};
@@ -42,6 +44,9 @@ pub use protected_resource::{
     read_protected_resource,
 };
 pub use refresh::{RenewalFailure, refresh_tokens};
+pub use registration::{
+    CLIENT_NAME, NO_REGISTRATION_ENDPOINT, REGISTRATION_TOKEN_NEEDED, Registration, register_client,
+};
 pub use resource::{
     canonical_resource, covers, protected_resource_locations, same_origin, same_resource,
 };

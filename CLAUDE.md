@@ -129,7 +129,7 @@ Repères à l'intérieur des crates :
   `liveness.rs`, ADR-164, ADR-165, et les règles de son autorisation OAuth : refus lu,
   ressource protégée, serveur d'autorisation, portées, la découverte qui les suit,
   la déclaration qu'en garde l'administrateur, le départ du navigateur et l'échange du
-  code, et le renouvellement des jetons, `oauth/`, ADR-171, et leur révocation, `oauth/revocation.rs`, ADR-172, et la session retirée
+  code, et le renouvellement des jetons, `oauth/`, ADR-171, et leur révocation, `oauth/revocation.rs`, ADR-172, et le client que la plateforme y enregistre elle-même, `oauth/registration.rs`, ADR-173, et la session retirée
   avant l'échéance du jeton de son autorisation, `expiry.rs`, ADR-171),
   `connectors/src/bin/mcp_demo_docs.rs`,
   `connectors/src/outbound/` (ce que partagent les serveurs MCP et les API REST d'une
@@ -156,7 +156,7 @@ Repères à l'intérieur des crates :
   ADR-141), `connectors/src/testing/`
   (serveurs simulés des tests : MCP, dont des réponses sans fin (`endless.rs`) et un
   serveur lent qui compte les pings qu'il voit (`slow.rs`), et un serveur protégé par
-  OAuth avec son serveur d'autorisation, hostile à volonté (`oauth/`, ADR-171), mandataire
+  OAuth avec son serveur d'autorisation, hostile à volonté, qui enregistre des clients (`oauth/`, ADR-171, ADR-173), mandataire
   HTTP qui note où il va (`proxy.rs`), API REST, Microsoft Graph, Gmail et agenda Google,
   Slack, qui signe les événements comme lui, Telegram, Microsoft pour Teams, qui signe
   les activités avec une clé de test).
@@ -188,7 +188,7 @@ Repères à l'intérieur des crates :
   `api/src/services/admin/` (comptes et absence d'un collaborateur empêché
   (`absences.rs`, ADR-078), organisation, habilitations, connecteurs : ce que
   l'administration change de chacun (`connector_config.rs`), OAuth déclaré sur un serveur
-  MCP (`connector_oauth.rs`, sa configuration gardée : `mcp_config.rs`, ADR-171) et son
+  MCP (`connector_oauth.rs`, sa configuration gardée : `mcp_config.rs`, ADR-171 ; client saisi ou enregistré par la plateforme : `oauth_client.rs`, ADR-173) et son
   autorisation, départ, retour et jetons scellés (`connector_authorization/`), révoqués chez le serveur quand l'administration les laisse (`connector_authorization/revocation.rs`, ADR-172), seules
   les politiques changées
   tracées (`policy_changes.rs`, ADR-160) et API REST ajoutées

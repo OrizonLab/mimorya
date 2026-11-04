@@ -6,6 +6,7 @@
 mod authorization_server;
 mod hostile;
 mod protected;
+mod registration_endpoint;
 mod revocation_endpoint;
 mod token_endpoint;
 

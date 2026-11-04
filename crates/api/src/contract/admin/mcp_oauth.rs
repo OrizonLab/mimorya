@@ -2,6 +2,7 @@
 //! administrator writes, and what the platform found and keeps. The
 //! client's secret is never returned, only whether one is stored.
 
+use chrono::{DateTime, Utc};
 use mimorya_connectors::mcp::oauth::{ClientAuth, OAuthDeclaration};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -9,7 +10,7 @@ use validator::Validate;
 
 use mimorya_db::repositories::connector_authorizations::ConnectorAuthorizationRow;
 
-use crate::http::{iso, trimmed, trimmed_opt};
+use crate::http::{iso, trimmed_opt};
 
 /// Body of `PUT /admin/connectors/{id}/oauth`: declared again, everything
 /// is replaced, the secret included.
@@ -21,13 +22,20 @@ pub struct McpOAuthDeclaration {
     #[serde(default, deserialize_with = "trimmed_opt")]
     #[ts(optional)]
     pub issuer: Option<String>,
-    /// The client registered at the authorization server.
-    #[serde(deserialize_with = "trimmed")]
-    pub client_id: String,
+    /// The client registered at the authorization server; absent when the
+    /// platform registers its own (`register`).
+    #[serde(default, deserialize_with = "trimmed_opt")]
+    #[ts(optional)]
+    pub client_id: Option<String>,
     /// Absent or blank: a public client.
     #[serde(default, deserialize_with = "trimmed_opt")]
     #[ts(optional)]
     pub client_secret: Option<String>,
+    /// The platform registers its client at the authorization server
+    /// itself (RFC 7591, ADR-173): no identifier nor secret is then given.
+    #[serde(default)]
+    #[ts(optional)]
+    pub register: Option<bool>,
     /// Absent: those the server suggests.
     #[serde(default)]
     #[ts(optional)]
@@ -68,6 +76,11 @@ pub struct McpOAuth {
     pub client_auth: OAuthClientAuth,
     pub scopes: Vec<String>,
     pub client_secret_stored: bool,
+    /// Whether the platform registered this client itself (ADR-173).
+    pub registered: bool,
+    /// When the secret of the client the platform registered expires, if
+    /// it does.
+    pub client_secret_expires_at: Option<String>,
     /// Whether its authorization server names a revocation endpoint, where
     /// the tokens the platform lets go of are revoked (ADR-172).
     pub revocable: bool,
@@ -128,6 +141,14 @@ impl McpOAuth {
             client_id: declaration.client_id,
             client_auth: declaration.client_auth.into(),
             revocable: declaration.revocation_endpoint.is_some(),
+            client_secret_expires_at: declaration
+                .registered
+                .as_ref()
+                .and_then(|registered| registered.secret_expires_at)
+                .and_then(|at| DateTime::<Utc>::from_timestamp(i64::try_from(at).ok()?, 0))
+                .as_ref()
+                .map(iso),
+            registered: declaration.registered.is_some(),
             scopes: declaration.scopes,
             client_secret_stored,
             authorization: authorization.map(Into::into),
