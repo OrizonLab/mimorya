@@ -2,7 +2,7 @@
 //! authorization server issued for the company, sealed by the API before
 //! they reach the database, with what they were issued for, who authorized
 //! and when. One per connector; a new authorization replaces the previous.
-//! Keeping or removing one makes a new version of the connector: every
+//! Keeping, renewing or removing one makes a new version of the connector: every
 //! process starts its session again with the token it then reads, even one
 //! that missed the invalidation.
 
@@ -212,7 +212,10 @@ pub async fn delete_connector_authorization(
 /// its session is started again with the token read anew (ADR-171), as
 /// after a change of its own token. Dated like every other change of the
 /// connector (`update_connector_instance`): when the transaction began.
-async fn credential_changed(conn: &mut PgConnection, connector_id: Uuid) -> sqlx::Result<()> {
+pub(super) async fn credential_changed(
+    conn: &mut PgConnection,
+    connector_id: Uuid,
+) -> sqlx::Result<()> {
     sqlx::query(
         "update connector_instances set updated_at = now(), \
          status = case when enabled then 'untested' else status end, \

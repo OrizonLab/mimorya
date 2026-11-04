@@ -88,7 +88,7 @@ Repères à l'intérieur des crates :
   évaluations : `skill_evaluations.rs`, ADR-104, ce qu'elles ont coûté jour par jour et
   leur limite : `evaluation_spending.rs`, `evaluation_settings.rs`, ADR-154 ; comptes reliés par chacun et leur
   jeton de renouvellement scellé : `account_links.rs`, ADR-116 ; autorisation OAuth d'un
-  serveur MCP et ses jetons scellés : `connector_authorizations.rs`, ADR-171 ; partages de
+  serveur MCP et ses jetons scellés : `connector_authorizations.rs`, et leur renouvellement : `connector_renewals.rs`, ADR-171 ; partages de
   connaissances entre unités :
   `knowledge_shares.rs`, ADR-143 ; politiques d'autorisation proposées et décidées :
   `policy_proposals.rs`, ADR-168, et leur annonce aux autres administrateurs :
@@ -129,8 +129,8 @@ Repères à l'intérieur des crates :
   `liveness.rs`, ADR-164, ADR-165, et les règles de son autorisation OAuth : refus lu,
   ressource protégée, serveur d'autorisation, portées, la découverte qui les suit,
   la déclaration qu'en garde l'administrateur, le départ du navigateur et l'échange du
-  code, `oauth/`, ADR-171, et la session retirée avant l'échéance du jeton de son
-  autorisation, `expiry.rs`, ADR-171),
+  code, et le renouvellement des jetons, `oauth/`, ADR-171, et la session retirée
+  avant l'échéance du jeton de son autorisation, `expiry.rs`, ADR-171),
   `connectors/src/bin/mcp_demo_docs.rs`,
   `connectors/src/outbound/` (ce que partagent les serveurs MCP et les API REST d'une
   entreprise : réseau, préfixe, jeton, masquage, échecs, ADR-025, ADR-112 ; mandataire
@@ -263,7 +263,8 @@ Repères à l'intérieur des crates :
   `api/src/services/connectors/` (instances des connecteurs gardées par processus,
   démarrages partagés et échecs retenus, `cache/`, ADR-049 ; jeton avec lequel chacune
   démarre : celui de l'autorisation OAuth d'un serveur MCP déclaré, jamais un jeton
-  saisi, sinon le jeton gardé, `credential.rs`, ADR-171),
+  saisi, sinon le jeton gardé, `credential.rs`, renouvelé avant son échéance, réservé par
+  un seul processus, `renewal.rs`, jetons accordés scellés, `grants.rs`, ADR-171),
   `api/src/services/documents/` (documents déposés : lecture par le processus
   `mimorya-extract`, `api/src/bin/extract.rs`, bornée en nombre, en temps et en taille,
   `extractor.rs`, fichier lu et refusé, commun au dépôt et au remplacement,

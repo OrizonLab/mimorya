@@ -10424,9 +10424,50 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       - un jeton que le serveur refuse, au démarrage ou à un appel (révoqué, expiré
         plus tôt, sans les portées voulues), dit d'autoriser de nouveau le
         connecteur, et non qu'un jeton saisi est invalide ;
-      - jusqu'au lot 40f, un jeton expiré n'est pas renouvelé : l'administrateur
-        autorise de nouveau le connecteur ;
-    - 40f : le renouvellement ;
+      - un jeton qui expire est renouvelé au lot 40f ;
+    - 40f : le renouvellement (`mcp/oauth/refresh.rs`, `mcp/oauth/token_request.rs`,
+      `services/connectors/renewal.rs`, `repositories/connector_renewals.rs`) :
+      - avant que les instances d'une entreprise ne soient lues pour un run, et avant
+        que l'administration ne teste un connecteur (le seul testé, après sa place de
+        démarrage, ADR-055), chaque autorisation dont le jeton expire dans moins de
+        quatre minutes (`RENEW_WITHIN`, entre la durée qu'il faut pour démarrer une
+        session et la durée minimale d'un jeton émis) est renouvelée avec son jeton de
+        renouvellement, au point de jeton déclaré, pour la ressource déclarée, le
+        client se prouvant comme la déclaration le dit, jamais sous une autre
+        déclaration que celle sous laquelle elle a été donnée (règle commune avec la
+        session), ni pour un connecteur désactivé ; les autorisations d'une
+        entreprise sont renouvelées côte à côte ;
+      - le renouvellement est d'abord réservé pour une minute par une seule requête
+        (`renewing_until`, migration 0074) : un autre processus le voit réservé et
+        démarre avec le jeton courant, qui dure encore assez si le renouvellement est
+        réservé à plus de trois minutes de l'échéance (le premier run qui le trouve
+        dû le réserve ; sinon, les runs simultanés se passent du connecteur le temps
+        de l'appel) ; rien n'est tenu
+        pendant l'appel au point de jeton (borné à dix secondes), si bien qu'un
+        serveur muet ne retarde qu'un run et n'occupe aucune connexion à la base ; un
+        point qui n'a pas répondu n'est pas sollicité de nouveau avant la fin de la
+        réservation ; un jeton de renouvellement que le serveur fait tourner n'est
+        ainsi utilisé qu'une fois (réutilisé, il ferait révoquer toute
+        l'autorisation) ;
+      - ce qu'il apporte est gardé dans une transaction courte, sous le verrou
+        d'administration de l'entreprise (pour prendre les verrous des lignes dans le
+        même ordre que l'administration), et seulement si l'autorisation est encore
+        celle qui a été réservée (même ligne, pas renouvelée depuis) : les nouveaux
+        jetons scellés pour le connecteur (par la même aide qu'au retour de
+        l'autorisation), le jeton de renouvellement gardé s'il n'en est pas donné un
+        autre, les portées gardées si le serveur les dit, la version du connecteur
+        changée ;
+      - l'autorisation n'est retirée que si le serveur dit qu'elle n'est plus bonne
+        (`invalid_grant`) ou que le client n'est plus accepté (`invalid_client`), ou
+        s'il accorde des jetons que la plateforme ne saurait garder ; tracé par le
+        système (`connector.oauth_authorization_removed`, « Autorisation retirée au
+        renouvellement », la raison par son seul code d'erreur) : un administrateur
+        autorise de nouveau le serveur ;
+      - un autre refus, une réponse qui ne se lit pas comme des jetons (la page d'un
+        mandataire) ou un serveur qui ne répond pas laissent l'autorisation telle
+        quelle, essayée de nouveau après la réservation, comme pour les comptes reliés
+        (ADR-117) ; jusque-là, un jeton trop court ne démarre pas de session et dit que
+        son renouvellement sera tenté de nouveau ;
     - 40g : l'enregistrement dynamique du client (RFC 7591) et la révocation auprès du
       serveur (RFC 7009), ADR à venir ;
     - puis l'écran et son parcours de bout en bout, et l'autorisation par personne.
@@ -10524,13 +10565,37 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       de l'autorisation, et son état passe à « ok » ; l'autorisation retirée, la
       session est relâchée et il le redit ; une autorisation donnée pour une autre
       ressource, un autre émetteur ou un autre client n'est pas utilisée ; un jeton
-      scellé pour un autre connecteur ne s'ouvre pas ; un jeton qui expire bientôt ne
-      démarre rien ; un jeton refusé par le serveur dit d'autoriser de nouveau, jamais
+      scellé pour un autre connecteur ne s'ouvre pas ; un jeton refusé par le serveur dit d'autoriser de nouveau, jamais
       montré ; les connecteurs d'un autre processus, qui n'entendent aucun avis,
       démarrent la session dès la première autorisation malgré l'échec qu'ils
       retenaient, la redémarrent avec le nouveau jeton quand elle est autorisée de
       nouveau, et s'en passent quand elle est retirée, le connecteur repassant « à
       tester » à chaque fois ;
+    - `crates/connectors/tests/mcp_oauth_refresh.rs` (lot 40f) : un jeton de
+      renouvellement apporte de nouveaux jetons pour la même ressource, le jeton de
+      renouvellement tourné ; réutilisé, il est refusé par son seul code d'erreur et
+      toute l'autorisation est révoquée ; un client public se renouvelle par son
+      identifiant ; un serveur injoignable, la page d'un mandataire, un refus sans code
+      ou d'un autre code sont réessayés ; `invalid_client` et des jetons trop courts
+      font perdre l'autorisation ; en unitaire, un jeton renouvelé sans nouveau jeton
+      de renouvellement garde l'ancien ;
+    - `crates/db/tests/connector_renewals.rs` (lot 40f) : un renouvellement n'est
+      réservé qu'une fois tant que la réservation tient, jamais pour un connecteur
+      désactivé ; ce qu'il apporte, ou le retrait de l'autorisation, n'est écrit que
+      sur l'autorisation réservée : ni sur une autorisation donnée de nouveau
+      entre-temps, ni sur une autorisation renouvelée depuis, ni sur celle d'un autre
+      connecteur ;
+    - `crates/api/tests/connector_oauth_renewals.rs` (lot 40f) : un jeton qui expire
+      bientôt est renouvelé avant que la session ne démarre, le serveur recevant le
+      nouveau jeton, et un jeton renouvelé ne l'est pas de nouveau au run suivant ;
+      deux processus qui le renouvellent au même moment ne le renouvellent qu'une
+      fois ; un point de jeton muet ne retarde qu'un de cinq runs simultanés, tous
+      servis, et n'est pas sollicité de nouveau tant que la réservation tient (ce
+      test, déterministe, est celui qui garde la réservation) ; un
+      serveur injoignable laisse l'autorisation, le jeton trop court ne démarrant
+      rien ; une autorisation révoquée ou des jetons trop courts la retirent, tracé
+      par le système sans jeton ; une autorisation gardée sous un autre émetteur
+      n'est jamais renouvelée ;
     - `crates/connectors/tests/mcp_oauth_authority.rs` : le serveur d'autorisation
       simulé use le code, vérifie PKCE et la ressource ; refuse un client qui se prouve de
       deux façons, d'une façon non annoncée ou avec un autre secret, un Basic refusé

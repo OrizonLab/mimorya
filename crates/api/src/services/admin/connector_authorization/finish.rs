@@ -8,7 +8,6 @@
 //! Every refusal says why, for the audit; the browser learns only whether
 //! it was authorized.
 
-use chrono::{Duration, Utc};
 use mimorya_connectors::mcp::oauth::{ClientAuth, CodeExchange, OAuthDeclaration, exchange_code};
 use mimorya_db::repositories::audit::append_audit;
 use mimorya_db::repositories::connector_authorizations::{
@@ -27,11 +26,8 @@ use crate::services::AccessContext;
 use crate::services::admin::connector_oauth::McpServer;
 use crate::services::admin::connectors::{ConnectorAdmin, PERMISSION};
 use crate::services::admin::{audit_entry, begin_change};
-use crate::services::connectors::{access_sealed_as, client_secret_name, refresh_sealed_as};
+use crate::services::connectors::{client_secret_name, seal_grant};
 use crate::services::sso::{error_code, same_state};
-
-/// An expiry further than this is read as this.
-const MAX_LIFETIME_SECONDS: u64 = 10 * 365 * 24 * 3600;
 
 /// What the authorization server sends back (RFC 6749 §4.1.2, RFC 9207).
 #[derive(Debug, Default, Deserialize)]
@@ -205,24 +201,11 @@ async fn keep(
     let internal = |error: anyhow::Error| internal(id, error);
     let tenant_id = access.subject.tenant_id;
     let cipher = admin.secrets.cipher().map_err(|e| internal(e.into()))?;
-    let access_token = cipher
-        .seal(tenant_id, &access_sealed_as(id), &granted.access_token)
-        .map_err(internal)?;
-    let refresh_token = match &granted.refresh_token {
-        Some(token) => Some(
-            cipher
-                .seal(tenant_id, &refresh_sealed_as(id), token)
-                .map_err(internal)?,
-        ),
-        None => None,
-    };
-    let expires_at = granted
-        .expires_in
-        .map(|seconds| Utc::now() + Duration::seconds(seconds.min(MAX_LIFETIME_SECONDS) as i64));
-    let scopes = granted
-        .scopes
-        .unwrap_or_else(|| declared.scopes.clone())
-        .join(" ");
+    let sealed = seal_grant(cipher, tenant_id, id, &granted).map_err(internal)?;
+    let (access_token, refresh_token, expires_at) =
+        (sealed.access, sealed.refresh, sealed.expires_at);
+    // Not said by the server: those asked (RFC 6749 §5.1).
+    let scopes = sealed.scopes.unwrap_or_else(|| declared.scopes.join(" "));
     // Under the administration lock, the administrator's rights read again.
     let mut tx = begin_change(admin.db, access, PERMISSION)
         .await

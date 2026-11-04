@@ -2,83 +2,24 @@
 //! the administration's test are given its tools through the access token
 //! of its authorization, sent to the server alone; not authorized, its
 //! authorization withdrawn or issued under another declaration, it says to
-//! authorize it; a token about to expire, one that cannot be opened, or one
-//! the server refuses, says to authorize it again, the token never shown.
+//! authorize it; a token that cannot be opened, or one the server refuses,
+//! says to authorize it again, the token never shown.
 //! A process that missed the notice of a change still follows it: the
 //! authorization is part of the connector's version.
 
 mod support;
 
 use axum::http::StatusCode;
-use mimorya_api::secrets::SecretStore;
-use mimorya_api::services::connectors::{ConnectorService, ConnectorSettings};
-use mimorya_api::services::invalidations::Invalidations;
+use mimorya_connectors::mcp::OAUTH_REFUSED;
 use mimorya_connectors::mcp::oauth::OAUTH_TO_AUTHORIZE;
-use mimorya_connectors::mcp::{OAUTH_EXPIRED, OAUTH_REFUSED};
 use mimorya_connectors::testing::FakeAuthorizationServer;
-use mimorya_core::demo::{tenant, user};
-use serde_json::{Value, json};
+use mimorya_core::demo::user;
+use serde_json::Value;
+use support::TestApi;
 use support::connector_oauth::{AUTHORIZED, authorize, declared, kept_tokens};
+use support::connector_sessions::{alter, another_process, runs_see, said, sees, tested};
 use support::mcp::{PRIVATE_DEPLOYMENT, listed};
 use support::sso::location;
-use support::{Client, TestApi};
-use uuid::Uuid;
-
-/// The administration's test of the connector: its tools, or why not.
-async fn tested(admin: &Client<'_>, id: &str) -> Value {
-    let tested = admin
-        .post(&format!("/admin/connectors/{id}/test"), json!({}))
-        .await;
-    assert_eq!(tested.status, StatusCode::OK, "{}", tested.text());
-    tested.json()
-}
-
-fn said(outcome: &Value) -> String {
-    outcome["error"].as_str().unwrap_or_default().to_string()
-}
-
-/// Whether runs are given the server's tools (prefixed with `prefix`).
-async fn runs_see(api: &TestApi, prefix: &str) -> bool {
-    sees(&api.app.services.connectors, prefix).await
-}
-
-/// Whether the runs of the process holding `connectors` are given them.
-async fn sees(connectors: &ConnectorService, prefix: &str) -> bool {
-    let tools = connectors.tools_for(tenant::ID).await.unwrap();
-    let namespace = format!("mcp_{prefix}_");
-    tools
-        .tools
-        .iter()
-        .any(|tool| tool.info().name.starts_with(&namespace))
-}
-
-/// Another process's connectors, which hear none of this one's notices.
-fn another_process(api: &TestApi) -> ConnectorService {
-    let services = &api.app.services;
-    let config = &services.config;
-    let settings = ConnectorSettings {
-        network: config.mcp_network,
-        start_timeout: config.mcp_start_timeout,
-    };
-    let secrets = SecretStore::new(config.secrets.clone());
-    ConnectorService::new(
-        services.db.clone(),
-        secrets,
-        settings,
-        Invalidations::new().0,
-    )
-}
-
-/// Changes the stored authorization as an operator could, then releases the
-/// live instance.
-async fn alter(api: &TestApi, id: &str, sql: &str) {
-    let id: Uuid = id.parse().unwrap();
-    let services = &api.app.services;
-    let mut tx = services.db.begin(tenant::ID).await.unwrap();
-    sqlx::query(sql).bind(id).execute(&mut *tx).await.unwrap();
-    tx.commit().await.unwrap();
-    services.connectors.invalidate(id).await;
-}
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
@@ -136,7 +77,7 @@ async fn an_authorized_server_serves_its_tools_with_its_authorization_s_token() 
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
-async fn an_authorization_issued_elsewhere_about_to_expire_or_refused_says_so() {
+async fn an_authorization_issued_elsewhere_or_refused_says_so() {
     let api = TestApi::start_with(&PRIVATE_DEPLOYMENT).await;
     let paul = api.sign_in(user::PAUL).await;
     let authority = FakeAuthorizationServer::start().await;
@@ -187,17 +128,7 @@ async fn an_authorization_issued_elsewhere_about_to_expire_or_refused_says_so() 
             .status,
         StatusCode::OK
     );
-    // About to expire: nothing starts.
-    assert_eq!(
-        location(&authorize(&paul, &authority, &id).await),
-        AUTHORIZED
-    );
-    let soon = "update connector_authorizations set access_expires_at = \
-                now() + interval '2 minutes' where connector_id = $1";
-    alter(&api, &id, soon).await;
-    let expiring = tested(&paul, &id).await;
-    assert!(said(&expiring).contains(OAUTH_EXPIRED), "{expiring}");
-    assert!(!runs_see(&api, "echeances").await);
+    // A token about to expire is renewed first (`connector_oauth_renewals.rs`).
     // Refused by the server (revoked there): to authorize again, the
     // token never shown.
     assert_eq!(

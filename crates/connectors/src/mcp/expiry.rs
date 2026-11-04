@@ -21,13 +21,21 @@ pub const MIN_TOKEN_LIFE: Duration = Duration::from_secs(180);
 /// session could hardly start with it before it expires.
 pub const MIN_GRANTED_LIFE: Duration = Duration::from_secs(300);
 
+/// A token that expires sooner is renewed before a session is started with
+/// it: still enough to start one if the renewal fails, and less than any
+/// token lasts when issued, so that a fresh one is not renewed at once.
+pub const RENEW_WITHIN: Duration = Duration::from_secs(240);
+
 /// What a server whose authorization's token cannot be sent as kept says.
 pub const OAUTH_UNUSABLE: &str = "Le jeton de l’autorisation OAuth n’a pas un format accepté : \
      un administrateur doit autoriser de nouveau ce connecteur";
 
-/// What a server whose authorization's token expired, or is about to, says.
-pub const OAUTH_EXPIRED: &str = "Jeton de l’autorisation OAuth expiré : un administrateur doit \
-     autoriser de nouveau ce connecteur";
+/// What a server whose authorization's token expired, or is about to, says:
+/// its renewal is tried again by the next runs, unless the server refused
+/// it, the authorization then removed.
+pub const OAUTH_EXPIRED: &str = "Jeton de l’autorisation OAuth expiré ou sur le point de l’être : \
+     son renouvellement sera tenté de nouveau ; s’il est refusé, un administrateur devra autoriser \
+     de nouveau ce connecteur";
 
 /// When a session is retired, if its token expires.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -74,6 +82,12 @@ mod tests {
         assert_eq!(expiring.passed(retired - Duration::from_secs(1)), None);
         assert_eq!(expiring.passed(retired), Some(retired));
         assert_eq!(expiring.passed(until), Some(retired));
+    }
+
+    #[test]
+    fn a_token_is_renewed_before_it_could_no_longer_start_a_session() {
+        assert!(MIN_TOKEN_LIFE < RENEW_WITHIN && RENEW_WITHIN < MIN_GRANTED_LIFE);
+        assert!(RETIRE_BEFORE < MIN_TOKEN_LIFE);
     }
 
     #[test]

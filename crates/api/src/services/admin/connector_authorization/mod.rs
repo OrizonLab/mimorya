@@ -25,6 +25,7 @@ use super::connector_oauth::McpServer;
 use super::connectors::{ConnectorAdmin, PERMISSION};
 use super::{audit_entry, begin_change};
 use crate::services::AccessContext;
+use crate::services::connectors::AUTHORIZATION_REMOVED;
 
 /// Where the authorization server sends the browser back, under the web
 /// origin: the address to register for the client.
@@ -49,12 +50,7 @@ pub async fn remove_authorization(
     }
     append_audit(
         &mut tx,
-        audit_entry(
-            access,
-            "connector.oauth_authorization_removed",
-            "connector",
-            id,
-        ),
+        audit_entry(access, AUTHORIZATION_REMOVED, "connector", id),
     )
     .await?;
     tx.commit().await?;

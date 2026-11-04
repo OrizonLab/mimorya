@@ -8,7 +8,8 @@
 //! administrator declares OAuth on a server; what is kept of it is the
 //! declaration (`declaration`). An administrator's browser is then sent to
 //! authorize it (`departure`), and the code it brings back exchanged for
-//! tokens (`exchange`).
+//! tokens (`exchange`), at the token endpoint (`token_request`) that later
+//! renews them with the refresh token (`refresh`).
 
 mod challenge;
 mod declaration;
@@ -18,9 +19,11 @@ mod exchange;
 mod fetch;
 mod protected_resource;
 mod quoted;
+mod refresh;
 mod resource;
 mod scope;
 mod server_metadata;
+mod token_request;
 
 pub use challenge::{BearerChallenge, MAX_HEADER_CHARS, bearer_challenge};
 pub use declaration::{
@@ -36,6 +39,7 @@ pub use protected_resource::{
     MAX_AUTHORIZATION_SERVERS, ProtectedResource, endpoint_problem, issuer_problem,
     read_protected_resource,
 };
+pub use refresh::{RenewalFailure, refresh_tokens};
 pub use resource::{
     canonical_resource, covers, protected_resource_locations, same_origin, same_resource,
 };
