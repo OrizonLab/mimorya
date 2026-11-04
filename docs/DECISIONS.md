@@ -10869,6 +10869,12 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       adresses de retour, les octrois et la façon de prouver le client ; les clients qu'il
       enregistre sont acceptés ensuite comme ils se sont enregistrés ; il peut ne pas
       l'annoncer, demander un jeton initial ou donner des secrets qui expirent ;
-  - reste : l'écran de « Connecteurs » qui offre ce choix, lot 41c ; la gestion du client
-    enregistré (RFC 7592) ; le jeton d'enregistrement initial ; l'autorisation par
-    personne.
+  - lot 41c, l'écran : le formulaire de « Connecteurs » offre, quand la plateforme a sa clé
+    maître, le choix entre un client enregistré à la main et la plateforme qui s'enregistre
+    elle-même (le client saisi restant le choix par défaut), sans identifiant ni secret à
+    saisir dans ce cas ; la carte dit le client « enregistré par la plateforme » et
+    l'échéance de son secret ; `apps/web/e2e/mcp-oauth.spec.ts` déclare ainsi un serveur
+    au serveur d'autorisation simulé, qui enregistre le client, puis l'autorise par un
+    aller et retour du navigateur ;
+  - reste : la gestion du client enregistré (RFC 7592) ; le jeton d'enregistrement
+    initial ; l'autorisation par personne.

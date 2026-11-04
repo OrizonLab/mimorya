@@ -4,7 +4,8 @@
 // authorized there and back, its session started with the authorization's
 // token, then its authorization and its declaration withdrawn; one whose
 // authorization server names no revocation endpoint says what is left to
-// do there (ADR-172). A return that failed is said; a declaration that no
+// do there (ADR-172); one authorized with the client the platform
+// registered itself there (ADR-173). A return that failed is said; a declaration that no
 // longer reads is withdrawn from its card. The end-to-end API serves these
 // servers and reaches them alone of the private network (`e2e_server`).
 // What the test adds is deleted, even when it fails.
@@ -140,6 +141,40 @@ test('a server whose authorization server cannot revoke says what is left to do'
   await card.getByRole('button', { name: 'Retirer l’autorisation' }).click();
   await expect(card.getByText('Non autorisé', { exact: true })).toBeVisible();
   expect(confirmations.at(-1)).toContain('retirez aussi l’accord chez lui');
+  await noError(page);
+});
+
+test('an MCP server is authorized with the client the platform registers itself', async ({
+  page,
+}) => {
+  await openAdmin(page, 'Connecteurs');
+  await page.getByRole('button', { name: 'Ajouter un serveur MCP' }).click();
+  await page.getByLabel('Nom').fill(SERVER);
+  await page.getByLabel('Préfixe des outils (définitif)').fill('fichin');
+  await page.getByLabel(/^Adresse du serveur/).fill(ADDRESS);
+  await page.getByRole('button', { name: 'Ajouter le serveur' }).click();
+
+  // The platform registers itself: no client to type.
+  const card = cardWith(page, SERVER, 'Supprimer');
+  await card.getByRole('button', { name: 'Déclarer OAuth' }).click();
+  await card
+    .getByLabel('La plateforme s’enregistre elle-même auprès du serveur d’autorisation')
+    .check();
+  await expect(card.getByLabel('Identifiant du client')).toHaveCount(0);
+  await expect(card.getByLabel(/^Secret du client/)).toHaveCount(0);
+  await card.getByRole('button', { name: 'Déclarer', exact: true }).click();
+  await expect(card.getByText(/\(enregistré par la plateforme, secret enregistré\)/)).toBeVisible();
+  const declared = (await listed(page)).find((c) => c.name === SERVER);
+  expect(declared?.mcp?.oauth?.registered).toBe(true);
+  expect(declared?.mcp?.oauth?.clientId).not.toBe(CLIENT_ID);
+  expect(declared?.mcp?.oauth?.clientSecretStored).toBe(true);
+
+  // Authorized there and back with it.
+  await card.getByRole('button', { name: 'Autoriser', exact: true }).click();
+  await expect(page.getByText('Serveur MCP autorisé')).toBeVisible();
+  await expect(card.getByText(/^Autorisé le /)).toBeVisible();
+  const authorized = (await listed(page)).find((c) => c.name === SERVER);
+  expect(authorized?.mcp?.oauth?.authorization).not.toBeNull();
   await noError(page);
 });
 

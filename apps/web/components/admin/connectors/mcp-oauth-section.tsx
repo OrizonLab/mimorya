@@ -8,7 +8,8 @@ import { McpOAuthForm } from './mcp-oauth-form';
 
 /**
  * An MCP server's OAuth on its card (ADR-171): declared or not, what was
- * found (its authorization server, the client, the scopes), its
+ * found (its authorization server, the client, typed or registered by the
+ * platform itself with when its secret expires, ADR-173, the scopes), its
  * authorization and its renewal; authorized at the authorization server,
  * where the browser goes and comes back to the administration, and
  * withdrawn. A declaration that no longer reads is withdrawn first.
@@ -93,12 +94,19 @@ export function McpOAuthSection({
     );
   }
 
-  const client =
+  const proof =
     oauth.clientAuth === 'none'
       ? 'client public'
       : oauth.clientSecretStored
         ? 'secret enregistré'
         : 'secret absent';
+  const client = oauth.registered
+    ? `enregistré par la plateforme, ${proof}${
+        oauth.clientSecretExpiresAt
+          ? `, secret valable jusqu’au ${formatDate(oauth.clientSecretExpiresAt)}`
+          : ''
+      }`
+    : proof;
   return (
     <section className="flex flex-col gap-2 rounded-md border border-line p-3 text-sm">
       <p className="font-medium">Autorisation OAuth</p>
