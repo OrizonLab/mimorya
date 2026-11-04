@@ -130,8 +130,8 @@ export function McpOAuthSection({
       )}
       {!oauth.revocable && (
         <p className="text-xs text-muted">
-          Ce serveur d’autorisation n’annonce pas de révocation : quand la plateforme laisse ses
-          jetons, retirez aussi l’accord chez lui.
+          Aucun point de révocation n’est connu pour ce serveur d’autorisation : quand la plateforme
+          laisse ses jetons, retirez aussi l’accord chez lui.
         </p>
       )}
       {authorization?.renewalFailure && (
@@ -152,7 +152,7 @@ export function McpOAuthSection({
                   `${base}/authorization`,
                   oauth.revocable
                     ? 'Retirer l’autorisation ? Les runs n’auront plus les outils de ce serveur ; la plateforme demande au serveur d’autorisation de révoquer ses jetons.'
-                    : 'Retirer l’autorisation ? Les runs n’auront plus les outils de ce serveur ; ce serveur d’autorisation n’annonçant pas de révocation, retirez aussi l’accord chez lui.',
+                    : 'Retirer l’autorisation ? Les runs n’auront plus les outils de ce serveur ; aucun point de révocation n’étant connu pour ce serveur d’autorisation, retirez aussi l’accord chez lui.',
                 )
               }
             >

@@ -297,10 +297,10 @@ pub async fn update_connector(
     .await?;
     tx.commit().await?;
     admin.connectors.invalidate(id).await;
-    match taken {
-        Some(taken) => revoke(admin, access, taken).await,
-        None => Ok(()),
+    if let Some(taken) = taken {
+        revoke(admin, access, taken).await;
     }
+    Ok(())
 }
 
 pub async fn delete_connector(
@@ -338,10 +338,10 @@ pub async fn delete_connector(
     .await?;
     tx.commit().await?;
     admin.connectors.invalidate(id).await;
-    match taken {
-        Some(taken) => revoke(admin, access, taken).await,
-        None => Ok(()),
+    if let Some(taken) = taken {
+        revoke(admin, access, taken).await;
     }
+    Ok(())
 }
 
 /// What an audit entry may keep of a configuration: no environment of a

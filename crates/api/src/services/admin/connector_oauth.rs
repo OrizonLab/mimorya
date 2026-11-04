@@ -163,7 +163,7 @@ pub async fn declare_oauth(
     tx.commit().await?;
     admin.connectors.invalidate(id).await;
     if let Some(taken) = taken {
-        revoke(admin, access, taken).await?;
+        revoke(admin, access, taken).await;
     }
     Ok(declaration)
 }
@@ -208,8 +208,8 @@ pub async fn remove_oauth(
     .await?;
     tx.commit().await?;
     admin.connectors.invalidate(id).await;
-    match taken {
-        Some(taken) => revoke(admin, access, taken).await,
-        None => Ok(()),
+    if let Some(taken) = taken {
+        revoke(admin, access, taken).await;
     }
+    Ok(())
 }

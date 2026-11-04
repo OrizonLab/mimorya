@@ -30,9 +30,16 @@ async function listed(page: Page) {
   return ((await response.json()) as Connectors).instances;
 }
 
+/** The confirmations asked so far in the test, in order. */
+let confirmations: string[] = [];
+
 test.beforeEach(({ page }) => {
   // Withdrawals and deletions ask for a confirmation.
-  page.on('dialog', (dialog) => dialog.accept());
+  confirmations = [];
+  page.on('dialog', (dialog) => {
+    confirmations.push(dialog.message());
+    void dialog.accept();
+  });
 });
 
 test.afterEach(async ({ page }) => {
@@ -93,6 +100,8 @@ test('an MCP server is authorized by OAuth, started with its token, then withdra
   // The authorization withdrawn, then the declaration: back to a token.
   await card.getByRole('button', { name: 'Retirer l’autorisation' }).click();
   await expect(card.getByText('Non autorisé', { exact: true })).toBeVisible();
+  // Its server names a revocation endpoint: the confirmation says it is asked.
+  expect(confirmations.at(-1)).toContain('demande au serveur d’autorisation de révoquer');
   const unauthorized = (await listed(page)).find((c) => c.name === SERVER);
   expect(unauthorized?.mcp?.oauth?.authorization).toBeNull();
   await card.getByRole('button', { name: 'Retirer OAuth' }).click();

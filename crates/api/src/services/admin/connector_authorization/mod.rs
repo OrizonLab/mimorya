@@ -59,5 +59,6 @@ pub async fn remove_authorization(
     .await?;
     tx.commit().await?;
     admin.connectors.invalidate(id).await;
-    revoke(admin, access, taken).await
+    revoke(admin, access, taken).await;
+    Ok(())
 }

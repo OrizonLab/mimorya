@@ -1,7 +1,8 @@
 //! The revocation endpoint of the simulated authorization server (RFC 7009):
 //! the client proves itself as at the token endpoint; a token it issued,
 //! access or refresh, revokes its whole grant; one it does not know is
-//! answered as revoked all the same (§2.2). Unless the tests turn it mute.
+//! answered as revoked all the same (§2.2). Unless the tests turn it mute,
+//! or make it one that revokes no access token (§2.2.1).
 
 use std::collections::HashMap;
 use std::time::Duration;
@@ -9,6 +10,7 @@ use std::time::Duration;
 use axum::extract::{Form, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
+use serde_json::json;
 
 use super::authorization_server::{AuthRequest, FakeAuthorizationServer};
 use super::token_endpoint::{basic_credentials, client_refusal};
@@ -35,11 +37,15 @@ pub(super) async fn revoke(
         {
             return refusal;
         }
-        if !inner.settings.mute_revocation {
-            let token = params.get("token").map_or("", String::as_str);
-            if let Some(grant) = inner.grant_of(token) {
-                inner.revoked.push(grant);
-            }
+        let token = params.get("token").map_or("", String::as_str);
+        if !inner.settings.revokes_access && inner.issued_access(token) {
+            let body = json!({ "error": "unsupported_token_type" });
+            return (StatusCode::BAD_REQUEST, axum::Json(body)).into_response();
+        }
+        if !inner.settings.mute_revocation
+            && let Some(grant) = inner.grant_of(token)
+        {
+            inner.revoked.push(grant);
         }
         inner.settings.mute_revocation
     };

@@ -42,6 +42,11 @@ pub struct Settings {
     pub revocation: bool,
     /// A revocation endpoint that takes the request and does not answer.
     pub mute_revocation: bool,
+    /// Whether it revokes access tokens; if not, it answers
+    /// `unsupported_token_type` for one (RFC 7009 §2.2.1).
+    pub revokes_access: bool,
+    /// A renewal's answer kept back this long, its tokens issued.
+    pub held_renewals: Option<Duration>,
 }
 
 impl Default for Settings {
@@ -58,6 +63,8 @@ impl Default for Settings {
                 .to_vec(),
             revocation: true,
             mute_revocation: false,
+            revokes_access: true,
+            held_renewals: None,
         }
     }
 }
@@ -193,6 +200,11 @@ impl Inner {
     pub(super) fn grant_of(&self, token: &str) -> Option<u64> {
         let access = self.access.get(token).map(|(grant, ..)| *grant);
         access.or_else(|| self.refresh.get(token).map(|refresh| refresh.grant))
+    }
+
+    /// Whether `token` is an access token it issued.
+    pub(super) fn issued_access(&self, token: &str) -> bool {
+        self.access.contains_key(token)
     }
 }
 

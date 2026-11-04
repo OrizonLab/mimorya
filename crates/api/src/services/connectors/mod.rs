@@ -14,7 +14,9 @@
 //! outside the platform can be withheld (`tenant_tools`, ADR-153). An MCP
 //! server declared with OAuth starts with its authorization's access token,
 //! its session retired before the token expires (`credential`, ADR-171),
-//! the token renewed before the instances are read (`renewal`).
+//! the token renewed before the instances are read (`renewal`); the tokens
+//! the platform lets go of are revoked at its server (`revocation`,
+//! ADR-172).
 
 mod admin_starts;
 mod cache;
@@ -24,6 +26,7 @@ mod grants;
 mod policies;
 mod reach;
 mod renewal;
+mod revocation;
 mod tenant_tools;
 
 use std::collections::HashSet;
@@ -52,6 +55,7 @@ pub use grants::{AUTHORIZATION_REMOVED, SealedGrant, seal_grant};
 pub use mimorya_connectors::outbound::CONNECTOR_USE;
 pub use policies::{Policies, read_policies, scoped_overrides};
 pub use reach::unavailable_in_reach;
+pub use revocation::{LetGo, revoke_within};
 pub use tenant_tools::TenantTools;
 
 use super::invalidations::{Invalidation, Invalidations};

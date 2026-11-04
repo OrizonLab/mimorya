@@ -15,18 +15,20 @@
 //! authorization is still the one claimed: sealed for the connector, a
 //! rotated refresh token kept, the connector's version changed. A server
 //! saying the grant is gone removes it (audited by the system, never a
-//! token): an administrator authorizes the server again. Any other failure
-//! of the token endpoint, or a refresh token the platform can no longer
-//! open, is said on the authorization, for its administrators, until a
-//! renewal is kept.
+//! token): an administrator authorizes the server again. Tokens it brings
+//! for an authorization withdrawn meanwhile, none in its place, are revoked
+//! (ADR-172). Any other failure of the token endpoint, or a refresh token
+//! the platform can no longer open, is said on the authorization, for its
+//! administrators, until a renewal is kept.
 
 use std::time::Duration;
 
 use anyhow::anyhow;
 use futures::future::join_all;
 use mimorya_connectors::mcp::RENEW_WITHIN;
-use mimorya_connectors::mcp::oauth::{ClientAuth, RenewalFailure, refresh_tokens};
+use mimorya_connectors::mcp::oauth::{ClientAuth, Granted, RenewalFailure, refresh_tokens};
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
+use mimorya_db::repositories::connector_authorizations::get_connector_authorization;
 use mimorya_db::repositories::connector_renewals::{
     Claimed, RenewalFor, Renewed, claim_connector_renewal, connector_authorizations_due,
     keep_connector_renewal, record_renewal_failure, remove_claimed_authorization,
@@ -36,6 +38,7 @@ use uuid::Uuid;
 
 use super::credential::{given_under, oauth_of};
 use super::grants::{AUTHORIZATION_REMOVED, seal_grant};
+use super::revocation::{LetGo, revoke_within};
 use super::{ConnectorService, client_secret_name, refresh_sealed_as};
 use crate::secrets::SecretRead;
 
@@ -122,8 +125,16 @@ impl ConnectorService {
                     refresh_token: sealed.refresh.as_ref(),
                     scopes: sealed.scopes.as_deref(),
                 };
-                keep_connector_renewal(&mut tx, call.claimed.key, renewed).await?;
+                let kept = keep_connector_renewal(&mut tx, call.claimed.key, renewed).await?;
+                // Withdrawn meanwhile, none in its place: no one keeps these.
+                let unkept = kept.is_none()
+                    && get_connector_authorization(&mut tx, connector_id)
+                        .await?
+                        .is_none();
                 tx.commit().await?;
+                if unkept {
+                    self.revoke_unkept(connector_id, &call, &granted).await;
+                }
             }
             Err(RenewalFailure::Refused(reason)) => {
                 let mut tx = self.db.begin(tenant_id).await?;
@@ -151,6 +162,26 @@ impl ConnectorService {
             }
         }
         Ok(())
+    }
+
+    /// Revokes the tokens a renewal brought for an authorization withdrawn
+    /// meanwhile, under the declaration they were asked under; not when
+    /// another authorization took its place, which revoking them could take
+    /// with them at some servers (ADR-172).
+    async fn revoke_unkept(&self, connector_id: Uuid, call: &Call, granted: &Granted) {
+        let tokens = LetGo {
+            access: &granted.access_token,
+            refresh: granted.refresh_token.as_deref(),
+        };
+        let secret = call.secret.as_deref();
+        let network = self.settings.network;
+        if let Err(reason) = revoke_within(&call.declared, tokens, secret, network).await {
+            tracing::warn!(
+                connector = %connector_id,
+                reason,
+                "The tokens of a renewal no one keeps were not revoked"
+            );
+        }
     }
 
     /// The renewal claimed, with what calling the token endpoint needs, if

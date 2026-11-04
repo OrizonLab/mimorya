@@ -2,9 +2,11 @@
 //! authorization server (RFC 7009, ADR-172): the refresh token first, then
 //! the access token, at the declared revocation endpoint, the client
 //! proving itself as declared; the grant is gone there, its refresh token
-//! no longer renews. A server naming no revocation endpoint, one that
-//! cannot be reached, or one refusing the client, is said, never with a
-//! token; a declaration kept before the endpoint was read still reads.
+//! no longer renews; an access token a server does not revoke, once the
+//! refresh token was, is not a failure, alone it is. A server naming no
+//! revocation endpoint, one that cannot be reached, or one refusing the
+//! client, is said, never with a token; a declaration kept before the
+//! endpoint was read still reads.
 
 mod support;
 
@@ -105,6 +107,42 @@ async fn what_keeps_a_revocation_from_being_asked_is_said_without_a_token() {
     let last = asked.last().expect("asked");
     assert_eq!(last.params["client_id"], CLIENT_ID);
     assert!(!last.params.contains_key("client_secret"));
+    assert!(!authority.accepts(&granted.access_token, &url));
+}
+
+#[tokio::test]
+async fn an_access_token_not_revoked_after_its_refresh_token_is_no_failure() {
+    let authority = FakeAuthorizationServer::start().await;
+    authority.set(|settings| settings.revokes_access = false);
+    let (declaration, granted, url) = declared_and_granted(&authority, true).await;
+    let refresh = granted.refresh_token.expect("renewable");
+    let access = HeldToken {
+        token: &granted.access_token,
+        refresh: false,
+    };
+    // Alone, the access token is not revoked: said by its code.
+    let alone = revoke_tokens(&declaration, &[access], Some(CLIENT_SECRET), PRIVATE).await;
+    let said = alone.unwrap_err();
+    assert!(
+        said.contains("(unsupported_token_type)") && !said.contains(&granted.access_token),
+        "{said}"
+    );
+    assert!(authority.accepts(&granted.access_token, &url));
+    // After its refresh token, the grant gone with it: revoked.
+    let access = HeldToken {
+        token: &granted.access_token,
+        refresh: false,
+    };
+    let both = [
+        HeldToken {
+            token: &refresh,
+            refresh: true,
+        },
+        access,
+    ];
+    revoke_tokens(&declaration, &both, Some(CLIENT_SECRET), PRIVATE)
+        .await
+        .expect("revoked");
     assert!(!authority.accepts(&granted.access_token, &url));
 }
 

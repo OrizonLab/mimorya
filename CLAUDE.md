@@ -264,7 +264,9 @@ Repères à l'intérieur des crates :
   démarrages partagés et échecs retenus, `cache/`, ADR-049 ; jeton avec lequel chacune
   démarre : celui de l'autorisation OAuth d'un serveur MCP déclaré, jamais un jeton
   saisi, sinon le jeton gardé, `credential.rs`, renouvelé avant son échéance, réservé par
-  un seul processus, `renewal.rs`, jetons accordés scellés, `grants.rs`, ADR-171),
+  un seul processus, `renewal.rs`, jetons accordés scellés, `grants.rs`, ADR-171 ; jetons
+  laissés révoqués dans un délai, ceux d'un renouvellement en vol au retrait compris,
+  `revocation.rs`, ADR-172),
   `api/src/services/documents/` (documents déposés : lecture par le processus
   `mimorya-extract`, `api/src/bin/extract.rs`, bornée en nombre, en temps et en taille,
   `extractor.rs`, fichier lu et refusé, commun au dépôt et au remplacement,

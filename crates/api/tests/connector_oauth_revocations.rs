@@ -3,8 +3,8 @@
 //! the authorization is withdrawn, the declaration withdrawn or declared
 //! again, the server's address changed or the connector deleted; the
 //! refresh token first, under the declaration it was given under, its
-//! client's secret read before it goes, never under another declaration.
-//! The withdrawal stands whatever the
+//! client's secret read before it goes, never under another declaration
+//! or one that can no longer be read. The withdrawal stands whatever the
 //! server does: one naming no revocation endpoint, or not answering in
 //! time, is audited as such, never with a token. A new authorization does
 //! not revoke the former: at some servers, that would revoke the new one.
@@ -190,7 +190,7 @@ async fn a_server_that_cannot_revoke_keeps_the_withdrawal_and_says_so() {
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
-async fn tokens_kept_under_another_declaration_are_never_sent_under_this_one() {
+async fn tokens_are_never_sent_under_another_declaration_or_an_unreadable_one() {
     let api = TestApi::start_with(&PRIVATE_DEPLOYMENT).await;
     let paul = api.sign_in(user::PAUL).await;
     let authority = FakeAuthorizationServer::start().await;
@@ -213,6 +213,28 @@ async fn tokens_kept_under_another_declaration_are_never_sent_under_this_one() {
             .as_deref()
             .unwrap_or_default()
             .contains("autre déclaration"),
+        "{reason:?}"
+    );
+    // Its declaration no longer readable: said as such.
+    assert_eq!(
+        location(&authorize(&paul, &authority, &id).await),
+        AUTHORIZED
+    );
+    let spoilt = "update connector_instances set config = config || \
+                  '{\"oauth\": {\"issuer\": 1}}' where id = $1";
+    alter(&api, &id, spoilt).await;
+    let oauth = format!("/admin/connectors/{id}/oauth");
+    assert_eq!(paul.delete(&oauth).await.status, StatusCode::OK);
+    assert!(kept_tokens(&api, &id).await.is_none());
+    assert_eq!(asked(&authority), 0);
+    let audited = revocations(&api, &id).await;
+    let (outcome, reason) = audited.last().expect("audited");
+    assert_eq!((audited.len(), outcome.as_str()), (2, "failure"));
+    assert!(
+        reason
+            .as_deref()
+            .unwrap_or_default()
+            .contains("Déclaration OAuth illisible"),
         "{reason:?}"
     );
     assert_eq!(
