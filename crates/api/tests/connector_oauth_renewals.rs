@@ -7,7 +7,8 @@
 //! is not asked again before its claim ends; a company's renewals wait for
 //! one another in no run; a disabled connector's is asked by its test
 //! alone; a server that cannot be reached leaves the authorization, the
-//! failure shown until it is renewed; one saying the grant is gone, or
+//! failure shown until it is renewed, as is a refresh token the platform
+//! can no longer open; one saying the grant is gone, or
 //! granting tokens the platform could not keep, removes it, audited by the
 //! system, never a token; a renewal is never asked under another
 //! declaration.
@@ -23,7 +24,7 @@ use chrono::{DateTime, Duration, Utc};
 use futures::future::join_all;
 use mimorya_connectors::mcp::OAUTH_EXPIRED;
 use mimorya_connectors::mcp::oauth::OAUTH_TO_AUTHORIZE;
-use mimorya_connectors::testing::FakeAuthorizationServer;
+use mimorya_connectors::testing::{CLIENT_SECRET, FakeAuthorizationServer};
 use mimorya_core::demo::{tenant, user};
 use serde_json::{Value, json};
 use support::TestApi;
@@ -186,14 +187,17 @@ async fn a_server_out_of_reach_is_said_until_renewed_and_a_gone_grant_removes_it
     // the failure shown to its administrators without a token.
     alter(&api, &id, &token_endpoint("http://127.0.0.1:1/token")).await;
     alter(&api, &id, EXPIRING).await;
-    let (before, _) = kept_tokens(&api, &id).await.expect("kept");
+    let (before, refresh) = kept_tokens(&api, &id).await.expect("kept");
     let expiring = tested(&paul, &id).await;
     assert!(said(&expiring).contains(OAUTH_EXPIRED), "{expiring}");
     assert_eq!(kept_tokens(&api, &id).await.expect("kept").0, before);
     let failed = shown(&paul, &id).await;
     let failure = failed["renewalFailure"].as_str().unwrap_or_default();
     assert!(failure.contains("127.0.0.1:1"), "{failed}");
-    assert!(!failure.contains(&before));
+    let refresh = refresh.expect("renewable");
+    for secret in [before.as_str(), refresh.as_str(), CLIENT_SECRET] {
+        assert!(!failure.contains(secret), "{failure}");
+    }
     // Reached again once its claim is over: renewed, the failure gone.
     let issued_at = format!("{}/token", authority.issuer);
     alter(&api, &id, &token_endpoint(&issued_at)).await;
@@ -312,6 +316,34 @@ async fn tokens_it_cannot_keep_remove_it_and_another_declaration_asks_nothing() 
     let reasons = removed_by_the_system(&api, &id).await;
     let reason = reasons.last().expect("audited");
     assert!(reason.contains("moins de 5 minutes"), "{reason}");
+    assert_eq!(
+        paul.delete(&format!("/admin/connectors/{id}")).await.status,
+        StatusCode::OK
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_refresh_token_the_platform_cannot_open_is_said() {
+    let api = TestApi::start_with(&PRIVATE_DEPLOYMENT).await;
+    let paul = api.sign_in(user::PAUL).await;
+    let authority = FakeAuthorizationServer::start().await;
+    let (_, id) = declared(&paul, &authority, "illisible").await;
+    assert_eq!(
+        location(&authorize(&paul, &authority, &id).await),
+        AUTHORIZED
+    );
+    // As if sealed under another master key: never sent, said to authorize
+    // the connector again.
+    let spoilt = "update connector_authorizations set refresh_ciphertext = '\\x00', \
+                  access_expires_at = now() + interval '2 minutes' where connector_id = $1";
+    alter(&api, &id, spoilt).await;
+    let expiring = tested(&paul, &id).await;
+    assert!(said(&expiring).contains(OAUTH_EXPIRED), "{expiring}");
+    assert_eq!(renewals(&authority), 0);
+    let failed = shown(&paul, &id).await;
+    let failure = failed["renewalFailure"].as_str().unwrap_or_default();
+    assert!(failure.contains("autorisez de nouveau"), "{failed}");
     assert_eq!(
         paul.delete(&format!("/admin/connectors/{id}")).await.status,
         StatusCode::OK

@@ -10203,7 +10203,7 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     - le test de bout en bout des autorisations proposées attend que chaque approbation
       soit écrite avant de lire la politique (il échouait parfois en CI).
 
-## ADR-171 — OAuth des serveurs MCP : une autorisation de l'entreprise (lots 40a à 40f)
+## ADR-171 — OAuth des serveurs MCP : une autorisation de l'entreprise (lots 40a à 40h)
 
 - **Date** : 2026-11-03 · **Statut** : acceptée · complète ADR-025, ADR-161, ADR-162
 - **Contexte** : un serveur MCP distant s'ouvre aujourd'hui par un jeton saisi par
@@ -10481,17 +10481,18 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
         `renewal_failure`, migration 0075) : les mots de la plateforme ou le seul code
         d'erreur du serveur, jamais un jeton, 300 caractères au plus, écrits seulement
         sur l'autorisation réservée, effacés par un renouvellement gardé ; une
-        autorisation donnée de nouveau part sans ; l'échec reste aussi dans les
-        journaux ;
+        autorisation donnée de nouveau part sans ; un jeton de renouvellement que la
+        plateforme ne peut plus ouvrir (clé maître changée) est dit de même, à
+        autoriser de nouveau ; l'échec reste aussi dans les journaux ;
       - le test d'un connecteur désactivé, qui le démarre quand même, renouvelle
         d'abord son autorisation : seuls les runs laissent le serveur d'un connecteur
         désactivé tranquille ;
       - la date « Modifié le » d'un connecteur change à chaque renouvellement, qui en
         change la version : l'écran montrera la date du renouvellement à côté ;
     - 40h : l'écran et son parcours de bout en bout ; l'enregistrement dynamique du
-      client (RFC 7591) et la révocation auprès du serveur (RFC 7009), qui ont leur
-      ADR, viennent après : sans écran, rien de l'autorisation n'est utilisable depuis
-      l'application, alors qu'un client enregistré à la main suffit ;
+      client (RFC 7591) et la révocation auprès du serveur (RFC 7009), qui auront
+      leur propre ADR, viennent après : sans écran, rien de l'autorisation n'est
+      utilisable depuis l'application, alors qu'un client enregistré à la main suffit ;
     - puis l'autorisation par personne.
 - **Conséquences** :
   - tests du lot 40a :
@@ -10621,12 +10622,16 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       montré sans jeton puis effacé quand le jeton est renouvelé, la date du
       renouvellement montrée ; deux autorisations dues sont renouvelées côte à côte,
       un run n'attendant qu'un délai de point de jeton muet, non deux ; un
-      connecteur désactivé n'est renouvelé que par son test ;
+      connecteur désactivé n'est renouvelé que par son test ; la raison montrée ne
+      contient ni le jeton d'accès, ni le jeton de renouvellement, ni le secret du
+      client ; un jeton de renouvellement que la plateforme ne peut ouvrir n'est pas
+      envoyé et le dit ;
     - `crates/db/tests/connector_renewals.rs` (lot 40g) : la raison d'un échec n'est
       écrite, bornée, que sur l'autorisation réservée, ni sur une autorisation
       renouvelée depuis ni sur une autorisation donnée de nouveau, et un
-      renouvellement gardé l'efface ; le test d'un connecteur désactivé en réserve le
-      renouvellement ;
+      renouvellement gardé l'efface ; une raison vide est dite « Échec du
+      renouvellement » ; une autorisation donnée de nouveau après un échec part sans ;
+      le test d'un connecteur désactivé en réserve le renouvellement ;
     - `crates/api/tests/connector_oauth_return_guards.rs` (lot 40g) : au-delà de la
       limite que le retour partage avec le départ, un retour est refusé avant que le
       serveur d'autorisation ne soit sollicité, « Trop de tentatives » tracé ; une

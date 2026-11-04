@@ -291,10 +291,19 @@ async fn a_renewal_failure_is_said_on_the_authorization_claimed_until_one_is_kep
     assert_eq!(kept, Some(first));
     assert_eq!(failure(&db, first).await, None);
 
-    // Renewed since, or given again: a former claim's failure is not said.
+    // Renewed since: a former claim's failure is not said.
     assert!(!fail(&db, claimed, "Trop tard").await);
+    // Nothing to say: said as a failure all the same.
     let claimed = claim(&db, first).await;
+    assert!(fail(&db, claimed, "  ").await);
+    assert_eq!(
+        failure(&db, first).await.as_deref(),
+        Some("Échec du renouvellement")
+    );
+    // Given again: it starts without the former one's failure, which its
+    // claim no longer writes.
     authorize(&db, first, 32).await;
+    assert_eq!(failure(&db, first).await, None);
     assert!(!fail(&db, claimed, "Autorisation remplacée").await);
     assert_eq!(failure(&db, first).await, None);
 }

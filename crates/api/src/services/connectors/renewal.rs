@@ -16,8 +16,9 @@
 //! rotated refresh token kept, the connector's version changed. A server
 //! saying the grant is gone removes it (audited by the system, never a
 //! token): an administrator authorizes the server again. Any other failure
-//! is said on the authorization, for its administrators, until a renewal is
-//! kept.
+//! of the token endpoint, or a refresh token the platform can no longer
+//! open, is said on the authorization, for its administrators, until a
+//! renewal is kept.
 
 use std::time::Duration;
 
@@ -37,6 +38,11 @@ use super::credential::{given_under, oauth_of};
 use super::grants::{AUTHORIZATION_REMOVED, seal_grant};
 use super::{ConnectorService, client_secret_name, refresh_sealed_as};
 use crate::secrets::SecretRead;
+
+/// What a refresh token the platform can no longer open says: sealed under
+/// another master key, or the master key gone.
+const REFRESH_UNREADABLE: &str = "Jeton de renouvellement illisible pour la plateforme (clé de \
+                                  chiffrement changée ?) : autorisez de nouveau ce connecteur";
 
 /// How long a renewal stays claimed: longer than a call to the token
 /// endpoint may take, and the delay before one that did not answer is
@@ -91,16 +97,17 @@ impl ConnectorService {
         let Some(call) = self.claim(tenant_id, connector_id, asker).await? else {
             return Ok(());
         };
-        let refresh = self
-            .secrets
-            .cipher()
-            .map_err(|e| anyhow!("{e}"))?
-            .open(
-                tenant_id,
-                &refresh_sealed_as(connector_id),
-                &call.claimed.refresh,
-            )
-            .map_err(|_| anyhow!("refresh token not opened for its connector"))?;
+        let opened = self.secrets.cipher().ok().and_then(|cipher| {
+            let name = refresh_sealed_as(connector_id);
+            cipher.open(tenant_id, &name, &call.claimed.refresh).ok()
+        });
+        // Said to its administrators: it will not open by waiting.
+        let Some(refresh) = opened else {
+            let mut tx = self.db.begin(tenant_id).await?;
+            record_renewal_failure(&mut tx, call.claimed.key, REFRESH_UNREADABLE).await?;
+            tx.commit().await?;
+            anyhow::bail!("refresh token not opened for its connector");
+        };
         let network = self.settings.network;
         let renewed = refresh_tokens(&call.declared, &refresh, call.secret.as_deref(), network);
         match renewed.await {

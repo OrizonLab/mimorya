@@ -169,6 +169,8 @@ pub async fn keep_connector_renewal(
 
 /// What a renewal that failed, the authorization kept, says of it.
 const MAX_FAILURE_CHARS: usize = 300;
+/// Said for a reason with nothing to say.
+const UNSAID_FAILURE: &str = "Échec du renouvellement";
 
 /// Says on the authorization claimed why its renewal failed, if it is still
 /// that one; returns whether it was said. The claim is left to end: it is
@@ -178,14 +180,18 @@ pub async fn record_renewal_failure(
     claimed: ClaimedRenewal,
     reason: &str,
 ) -> sqlx::Result<bool> {
-    let reason: String = reason.chars().take(MAX_FAILURE_CHARS).collect();
+    let reason: String = reason.trim().chars().take(MAX_FAILURE_CHARS).collect();
+    let reason = match reason.trim_end() {
+        "" => UNSAID_FAILURE,
+        said => said,
+    };
     let said = sqlx::query(
         "update connector_authorizations set renewal_failure = $3 \
          where id = $1 and refreshed_at = $2",
     )
     .bind(claimed.authorization_id)
     .bind(claimed.refreshed_at)
-    .bind(reason.trim())
+    .bind(reason)
     .execute(conn)
     .await?;
     Ok(said.rows_affected() == 1)
