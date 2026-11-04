@@ -10383,7 +10383,9 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
         client prouvant ce qu'il est comme la déclaration le dit, sous une place
         des démarrages de l'administration ;
       - un jeton d'accès hors de l'alphabet de RFC 6750, d'un autre type que
-        Bearer, ou qui expire sans jeton de renouvellement est refusé ; les jetons
+        Bearer, ou qui expire sans jeton de renouvellement est refusé, de même que
+        des portées accordées que la plateforme ne saurait lire (non dites, ce sont
+        celles demandées, RFC 6749 §5.1) ; les jetons
         sont scellés pour le connecteur (le nom scellé avec eux le désigne),
         gardés sous le verrou d'administration si la déclaration n'a pas changé,
         une autorisation précédente remplacée ;
@@ -10457,16 +10459,22 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       serveur ; le client se prouve comme déclaré (corps, Basic, client public) ; un
       code déjà servi ou un autre vérificateur est refusé par son seul code
       d'erreur ; un jeton qui expire sans renouvellement ou qu'on ne pourrait masquer
-      est refusé ; rien n'est demandé là où les règles réseau l'interdisent ;
-    - `crates/api/tests/connector_oauth_authorization.rs` et
-      `connector_oauth_authorization_returns.rs` (lot 40d) : un administrateur
+      est refusé ; rien n'est demandé là où les règles réseau l'interdisent ; en
+      unitaire, des portées accordées illisibles ou répétées sont refusées ;
+    - `crates/api/tests/connector_oauth_authorization.rs`,
+      `connector_oauth_authorization_returns.rs` et
+      `connector_oauth_authorization_rights.rs` (lot 40d) : un administrateur
       autorise un serveur déclaré, les jetons scellés pour lui, jamais montrés ni
       tracés, l'autorisation remplacée, retirée, et partie avec la déclaration,
       l'adresse ou le connecteur ; un retour sans la tentative, d'une autre
       tentative, refusé par le serveur, d'un autre émetteur ou sans celui annoncé,
-      présenté par un autre administrateur, après une déclaration changée, ou
+      présenté par un autre administrateur (d'une partie ou de toute
+      l'entreprise : le retour reste celui de qui l'a commencé), par un
+      administrateur qui a perdu ses droits depuis le départ, sans code, pour un
+      connecteur supprimé entre-temps, après une déclaration changée, ou
       apportant des jetons qui expirent sans renouvellement, est refusé et tracé
-      sans le code ; seul un administrateur de toute l'entreprise commence une
+      sans le code, rien n'étant gardé ; les jetons d'accès et de renouvellement
+      ne sont ni montrés ni tracés ; seul un administrateur de toute l'entreprise commence une
       autorisation, sur un serveur déclaré ; les deux routes, sur le connecteur
       d'une autre entreprise ou absent, répondent 404 et sont tracées ;
     - `crates/connectors/tests/mcp_oauth_authority.rs` : le serveur d'autorisation

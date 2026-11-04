@@ -143,8 +143,6 @@ impl FakeAuthorizationServer {
             })
     }
 
-    /// Revokes every grant made so far, as an administrator at the
-    /// authorization server would.
     /// The browser sent to `url`, one of this server's authorization
     /// addresses: where it is sent back.
     pub async fn sent_back(&self, url: &str) -> String {
@@ -166,6 +164,8 @@ impl FakeAuthorizationServer {
             .to_string()
     }
 
+    /// Revokes every grant made so far, as an administrator at the
+    /// authorization server would.
     pub fn revoke_all(&self) {
         let mut inner = self.inner.lock().expect("server");
         let grants = 1..=inner.next;

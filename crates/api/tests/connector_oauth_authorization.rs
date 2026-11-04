@@ -55,19 +55,24 @@ async fn an_administrator_authorizes_a_server_declared_with_oauth() {
     assert!(cleared.contains("Max-Age=0"));
     let (access, refresh) = kept_tokens(&api, &id).await.expect("kept");
     assert!(authority.accepts(&access, &server.url));
-    assert!(refresh.is_some());
+    let refresh = refresh.expect("renewable");
     let shown = listed(&paul, &id).await["mcp"]["oauth"]["authorization"].clone();
     assert_eq!(shown["renewable"], true);
     assert_eq!(shown["scopes"], json!(["files:read"]));
     assert!(shown["expiresAt"].is_string() && shown["authorizedAt"].is_string());
     // Never shown, never audited.
-    assert!(!paul.get("/admin/connectors").await.text().contains(&access));
+    let list = paul.get("/admin/connectors").await.text();
     let entries = authorization_entries(&api, &id).await;
-    assert!(
-        entries
-            .iter()
-            .all(|(_, _, _, m)| !m.to_string().contains(&access))
-    );
+    for token in [&access, &refresh] {
+        assert!(!list.contains(token.as_str()));
+        assert!(entries.iter().all(|(_, _, reason, metadata)| {
+            !metadata.to_string().contains(token.as_str())
+                && !reason
+                    .as_deref()
+                    .unwrap_or_default()
+                    .contains(token.as_str())
+        }));
+    }
     let (action, outcome, _, metadata) = entries.last().expect("audited");
     assert_eq!(
         (action.as_str(), outcome.as_str()),

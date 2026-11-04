@@ -12,6 +12,7 @@ use mimorya_connectors::testing::{
 use mimorya_core::demo::tenant;
 use mimorya_db::repositories::connector_authorizations::sealed_connector_tokens;
 use serde_json::{Value, json};
+use uuid::Uuid;
 
 use super::WEB_ORIGIN;
 use super::mcp::{add, mcp_body};
@@ -128,4 +129,43 @@ pub async fn authorization_entries(
     .unwrap();
     tx.commit().await.unwrap();
     rows
+}
+
+/// The last refusal's reason, of this connector's.
+pub async fn refused_because(api: &TestApi, id: &str) -> String {
+    let entries = authorization_entries(api, id).await;
+    let (_, outcome, reason, _) = entries.last().expect("audited");
+    assert_eq!(outcome, "denied");
+    reason.clone().unwrap_or_default()
+}
+
+/// The reasons of the authorizations refused to `user_id`, in order; a
+/// refusal before the connector is known names none.
+pub async fn refusals_by(api: &TestApi, user_id: Uuid) -> Vec<String> {
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    let reasons: Vec<Option<String>> = sqlx::query_scalar(
+        "select reason from audit_log where actor_user_id = $1 \
+         and action = 'connector.oauth_authorized' and outcome = 'denied' order by id",
+    )
+    .bind(user_id)
+    .fetch_all(&mut *tx)
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+    reasons.into_iter().map(Option::unwrap_or_default).collect()
+}
+
+/// `path` with its parameter `name` replaced (or removed with `None`).
+pub fn with_param(path: &str, name: &str, value: Option<&str>) -> String {
+    let mut url = url::Url::parse(&format!("http://h{path}")).expect("path");
+    let kept: Vec<(String, String)> = url
+        .query_pairs()
+        .into_owned()
+        .filter(|(key, _)| key != name)
+        .collect();
+    url.query_pairs_mut().clear().extend_pairs(&kept);
+    if let Some(value) = value {
+        url.query_pairs_mut().append_pair(name, value);
+    }
+    format!("{}?{}", url.path(), url.query().unwrap_or_default())
 }

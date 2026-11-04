@@ -1,10 +1,12 @@
 //! The returns an MCP server's authorization refuses (ADR-171): without
 //! the attempt's cookie, with another attempt's state, refused by the
 //! authorization server, from another issuer or without the one it
-//! announces, to another administrator, after the declaration changed, or
-//! with tokens the platform could not keep; each sends the browser back
-//! saying it failed, its reason audited without a code. Starting needs a
-//! company-wide connector administrator and a declared server.
+//! announces, to another administrator (who may finish one:
+//! `connector_oauth_authorization_rights.rs`), after the declaration
+//! changed, or with tokens the platform could not keep; each sends the
+//! browser back saying it failed, its reason audited without a code.
+//! Starting needs a company-wide connector administrator and a declared
+//! server.
 
 mod support;
 
@@ -15,33 +17,11 @@ use serde_json::json;
 use support::TestApi;
 use support::accounts::{activate, create_partial_admin};
 use support::connector_oauth::{
-    FAILED, api_path, authorization_entries, come_back, declared, kept_tokens, start, try_start,
+    FAILED, api_path, authorization_entries, come_back, declared, kept_tokens, refusals_by,
+    refused_because, start, try_start, with_param,
 };
 use support::mcp::PRIVATE_DEPLOYMENT;
 use support::sso::location;
-
-/// The last refusal's reason.
-async fn refused_because(api: &TestApi, id: &str) -> String {
-    let entries = authorization_entries(api, id).await;
-    let (_, outcome, reason, _) = entries.last().expect("audited");
-    assert_eq!(outcome, "denied");
-    reason.clone().unwrap_or_default()
-}
-
-/// `path` with its parameter `name` replaced (or removed with `None`).
-fn with_param(path: &str, name: &str, value: Option<&str>) -> String {
-    let mut url = url::Url::parse(&format!("http://h{path}")).expect("path");
-    let kept: Vec<(String, String)> = url
-        .query_pairs()
-        .into_owned()
-        .filter(|(key, _)| key != name)
-        .collect();
-    url.query_pairs_mut().clear().extend_pairs(&kept);
-    if let Some(value) = value {
-        url.query_pairs_mut().append_pair(name, value);
-    }
-    format!("{}?{}", url.path(), url.query().unwrap_or_default())
-}
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
@@ -82,13 +62,17 @@ async fn a_return_that_is_not_the_attempt_s_own_is_refused() {
     );
     assert!(refused_because(&api, &id).await.contains("autre émetteur"));
     // To another administrator than the one who started it.
-    let mut partial = create_partial_admin(&api, &paul, "admin.equipe.autorisation").await;
-    let partial = activate(&api, &mut partial).await;
+    let mut account = create_partial_admin(&api, &paul, "admin.equipe.autorisation").await;
+    let partial = activate(&api, &mut account).await;
     let (url, cookie_d) = start(&paul, &id).await;
     let back_d = api_path(&authority.sent_back(&url).await);
     assert_eq!(
         location(&come_back(&partial, &back_d, Some(&cookie_d)).await),
         FAILED
+    );
+    assert_eq!(
+        refusals_by(&api, account.id).await,
+        ["Tentative d’un autre administrateur"]
     );
     // The declaration changed meanwhile (its scopes).
     let (url, cookie_e) = start(&paul, &id).await;

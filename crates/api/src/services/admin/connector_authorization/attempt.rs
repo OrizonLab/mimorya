@@ -119,5 +119,8 @@ mod tests {
         ));
         assert!(cookie.ends_with("; Secure"));
         assert!(cleared_authorization_cookie(false).contains("Max-Age=0"));
+        // The return's address is under the cookie's path.
+        let under = super::super::CALLBACK_PATH.strip_prefix(COOKIE_PATH);
+        assert!(under.is_some_and(|rest| rest.starts_with('/')));
     }
 }

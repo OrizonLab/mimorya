@@ -149,7 +149,8 @@ async fn start(
             if let Some(problem) = url_problem(&url, context.network) {
                 bail!("{problem}");
             }
-            // Its token comes from an authorization, not yet given.
+            // Its token comes from the authorization an administrator
+            // gives, which sessions do not use yet (ADR-171): none starts.
             if oauth.is_some() {
                 bail!(OAUTH_TO_AUTHORIZE);
             }

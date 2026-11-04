@@ -42,7 +42,8 @@ pub struct Granted {
     /// Seconds from now, if the server says when it expires.
     pub expires_in: Option<u64>,
     pub refresh_token: Option<String>,
-    /// The scopes granted, if the server says so (else those asked).
+    /// The scopes granted, if the server says so (else those asked); never
+    /// a list it said that could not be read.
     pub scopes: Option<Vec<String>>,
 }
 
@@ -160,11 +161,19 @@ fn granted(body: &[u8]) -> Result<Granted, String> {
                 .into(),
         );
     }
+    // Not said: those asked (RFC 6749 §5.1); said, read or refused.
+    let scopes =
+        match answer.scope.as_deref() {
+            None => None,
+            Some(list) => Some(suggested_scopes(list).ok_or(
+                "Portées accordées illisibles : la plateforme ne pourrait dire lesquelles",
+            )?),
+        };
     Ok(Granted {
         access_token,
         expires_in,
         refresh_token,
-        scopes: answer.scope.as_deref().and_then(suggested_scopes),
+        scopes,
     })
 }
 
@@ -225,6 +234,8 @@ mod tests {
             (br#"{"access_token":"jeton-abc-123","token_type":"Bearer","expires_in":60}"#, "renouvellement"),
             (br#"{"access_token":"jeton-abc-123","token_type":"Bearer","expires_in":-1,"refresh_token":"r"}"#, "Échéance"),
             (b"<html>", "illisible"),
+            (br#"{"access_token":"jeton-abc-123","token_type":"Bearer","scope":"a \"b"}"#, "Portées"),
+            (br#"{"access_token":"jeton-abc-123","token_type":"Bearer","scope":"a a"}"#, "Portées"),
         ] {
             let refused = granted(body).err().expect("refused");
             assert!(refused.contains(said), "{refused}");

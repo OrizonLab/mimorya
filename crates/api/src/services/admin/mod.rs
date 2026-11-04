@@ -59,8 +59,7 @@ pub use absences::{AbsenceAdmin, absence_of, declare_absence_for, end_absence_fo
 pub use approval_routing::{manager_risks, set_manager_risks};
 pub use assignments::{grant_role, revoke_role};
 pub use connector_authorization::{
-    AUTHORIZATION_COOKIE, AuthorizationFailure, AuthorizationStart,
-    CALLBACK_PATH as AUTHORIZATION_CALLBACK_PATH, OAuthReturn, access_sealed_as,
+    AUTHORIZATION_COOKIE, AuthorizationFailure, AuthorizationStart, OAuthReturn, access_sealed_as,
     authorization_cookie, cleared_authorization_cookie, finish_authorization, refresh_sealed_as,
     remove_authorization, start_authorization,
 };
