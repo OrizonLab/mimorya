@@ -26,6 +26,9 @@ pub struct ConnectorAuthorizationRow {
     pub authorized_by_user_id: Option<Uuid>,
     pub authorized_at: DateTime<Utc>,
     pub refreshed_at: DateTime<Utc>,
+    /// Why its last renewal failed, the authorization kept: cleared once
+    /// renewed.
+    pub renewal_failure: Option<String>,
 }
 
 pub struct NewConnectorAuthorization<'a> {
@@ -86,7 +89,7 @@ pub async fn get_connector_authorization(
     sqlx::query_as(
         "select connector_id, issuer, client_id, resource, scopes, access_expires_at, \
          refresh_ciphertext is not null as renewable, authorized_by_user_id, authorized_at, \
-         refreshed_at from connector_authorizations where connector_id = $1",
+         refreshed_at, renewal_failure from connector_authorizations where connector_id = $1",
     )
     .bind(connector_id)
     .fetch_optional(conn)

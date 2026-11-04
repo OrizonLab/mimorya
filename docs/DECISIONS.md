@@ -10203,7 +10203,7 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     - le test de bout en bout des autorisations proposées attend que chaque approbation
       soit écrite avant de lire la politique (il échouait parfois en CI).
 
-## ADR-171 — OAuth des serveurs MCP : une autorisation de l'entreprise (lots 40a à 40f)
+## ADR-171 — OAuth des serveurs MCP : une autorisation de l'entreprise (lots 40a à 40h)
 
 - **Date** : 2026-11-03 · **Statut** : acceptée · complète ADR-025, ADR-161, ADR-162
 - **Contexte** : un serveur MCP distant s'ouvre aujourd'hui par un jeton saisi par
@@ -10435,8 +10435,9 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
         renouvellement, au point de jeton déclaré, pour la ressource déclarée, le
         client se prouvant comme la déclaration le dit, jamais sous une autre
         déclaration que celle sous laquelle elle a été donnée (règle commune avec la
-        session), ni pour un connecteur désactivé ; les autorisations d'une
-        entreprise sont renouvelées côte à côte ;
+        session), ni pour les runs d'un connecteur désactivé (son test, qui le démarre
+        quand même, le renouvelle, lot 40g) ; les autorisations d'une entreprise sont
+        renouvelées côte à côte ;
       - le renouvellement est d'abord réservé pour une minute par une seule requête
         (`renewing_until`, migration 0074) : un autre processus le voit réservé et
         démarre avec le jeton courant, qui dure encore assez si le renouvellement est
@@ -10468,9 +10469,31 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
         quelle, essayée de nouveau après la réservation, comme pour les comptes reliés
         (ADR-117) ; jusque-là, un jeton trop court ne démarre pas de session et dit que
         son renouvellement sera tenté de nouveau ;
-    - 40g : l'enregistrement dynamique du client (RFC 7591) et la révocation auprès du
-      serveur (RFC 7009), ADR à venir ;
-    - puis l'écran et son parcours de bout en bout, et l'autorisation par personne.
+    - 40g : ce dont l'écran a besoin, par l'API :
+      - la liste des connecteurs donne l'adresse de retour à déclarer pour le client
+        auprès du serveur d'autorisation, avant toute déclaration
+        (`oauthRedirectUri`), et marque un serveur dont la déclaration OAuth ne se lit
+        plus (`oauthUnreadable`) : rien d'autre n'y change tant qu'elle n'est pas
+        retirée ;
+      - l'autorisation montrée dit quand son jeton a été renouvelé pour la dernière
+        fois depuis qu'elle a été donnée (`renewedAt`) et pourquoi son dernier
+        renouvellement a échoué, l'autorisation gardée (`renewalFailure`,
+        `renewal_failure`, migration 0075) : les mots de la plateforme ou le seul code
+        d'erreur du serveur, jamais un jeton, 300 caractères au plus, écrits seulement
+        sur l'autorisation réservée, effacés par un renouvellement gardé ; une
+        autorisation donnée de nouveau part sans ; un jeton de renouvellement que la
+        plateforme ne peut plus ouvrir (clé maître changée) est dit de même, à
+        autoriser de nouveau ; l'échec reste aussi dans les journaux ;
+      - le test d'un connecteur désactivé, qui le démarre quand même, renouvelle
+        d'abord son autorisation : seuls les runs laissent le serveur d'un connecteur
+        désactivé tranquille ;
+      - la date « Modifié le » d'un connecteur change à chaque renouvellement, qui en
+        change la version : l'écran montrera la date du renouvellement à côté ;
+    - 40h : l'écran et son parcours de bout en bout ; l'enregistrement dynamique du
+      client (RFC 7591) et la révocation auprès du serveur (RFC 7009), qui auront
+      leur propre ADR, viennent après : sans écran, rien de l'autorisation n'est
+      utilisable depuis l'application, alors qu'un client enregistré à la main suffit ;
+    - puis l'autorisation par personne.
 - **Conséquences** :
   - tests du lot 40a :
     - unitaires dans chaque module : le refus lu dans ses bornes, ambigu ou mal formé
@@ -10595,7 +10618,30 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       serveur injoignable laisse l'autorisation, le jeton trop court ne démarrant
       rien ; une autorisation révoquée ou des jetons trop courts la retirent, tracé
       par le système sans jeton ; une autorisation gardée sous un autre émetteur
-      n'est jamais renouvelée ;
+      n'est jamais renouvelée ; au lot 40g, l'échec d'un serveur injoignable est
+      montré sans jeton puis effacé quand le jeton est renouvelé, la date du
+      renouvellement montrée ; deux autorisations dues sont renouvelées côte à côte,
+      un run n'attendant qu'un délai de point de jeton muet, non deux ; un
+      connecteur désactivé n'est renouvelé que par son test ; la raison montrée ne
+      contient ni le jeton d'accès, ni le jeton de renouvellement, ni le secret du
+      client ; un jeton de renouvellement que la plateforme ne peut ouvrir n'est pas
+      envoyé et le dit ;
+    - `crates/db/tests/connector_renewals.rs` (lot 40g) : la raison d'un échec n'est
+      écrite, bornée, que sur l'autorisation réservée, ni sur une autorisation
+      renouvelée depuis ni sur une autorisation donnée de nouveau, et un
+      renouvellement gardé l'efface ; une raison vide est dite « Échec du
+      renouvellement » ; une autorisation donnée de nouveau après un échec part sans ;
+      le test d'un connecteur désactivé en réserve le renouvellement ;
+    - `crates/api/tests/connector_oauth_return_guards.rs` (lot 40g) : au-delà de la
+      limite que le retour partage avec le départ, un retour est refusé avant que le
+      serveur d'autorisation ne soit sollicité, « Trop de tentatives » tracé ; une
+      déclaration changée pendant l'échange du code ne garde aucun jeton (seconde
+      comparaison, sous le verrou) ;
+    - `crates/api/tests/connector_oauth_declaration.rs` et
+      `connector_oauth_authorization.rs` (lot 40g) : une déclaration illisible est
+      marquée dans la liste, le serveur sans rien d'autre à changer, puis ne l'est plus
+      une fois retirée ; l'adresse de retour que donne la liste est celle que la
+      plateforme envoie au serveur d'autorisation ;
     - `crates/connectors/tests/mcp_oauth_authority.rs` : le serveur d'autorisation
       simulé use le code, vérifie PKCE et la ressource ; refuse un client qui se prouve de
       deux façons, d'une façon non annoncée ou avec un autre secret, un Basic refusé

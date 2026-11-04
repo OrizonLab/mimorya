@@ -68,3 +68,11 @@ pub async fn alter(api: &TestApi, id: &str, sql: &str) {
     tx.commit().await.unwrap();
     services.connectors.invalidate(id).await;
 }
+
+/// What moves the connector's declared token endpoint to `to`, for `alter`.
+pub fn token_endpoint(to: &str) -> String {
+    format!(
+        "update connector_instances set config = jsonb_set(config, \
+         '{{oauth,tokenEndpoint}}', '\"{to}\"') where id = $1"
+    )
+}

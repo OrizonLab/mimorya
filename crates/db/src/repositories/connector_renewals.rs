@@ -5,7 +5,8 @@
 //! answer is not asked again before the claim ends. What the renewal brings
 //! is kept, or the authorization removed, only if it is still the one that
 //! was claimed (same row, not renewed since): a new version of the
-//! connector either way.
+//! connector either way. A renewal that failed, the authorization kept, says
+//! why on it until one is kept.
 
 use chrono::{DateTime, Utc};
 use sqlx::PgConnection;
@@ -63,27 +64,41 @@ struct ClaimedRow {
     refresh_key_version: i32,
 }
 
+/// Who a renewal is for: what decides whether a disabled connector's
+/// server is asked.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RenewalFor {
+    /// A run, which starts only enabled connectors.
+    Runs,
+    /// An administrator's test of the connector, which starts it whatever
+    /// its state.
+    Test,
+}
+
 /// Claims the renewal of the connector's authorization for `hold`, if it is
 /// due within `within`, renewable, not claimed already, and the connector
-/// enabled.
+/// enabled unless it is for a test.
 pub async fn claim_connector_renewal(
     conn: &mut PgConnection,
     connector_id: Uuid,
     within: std::time::Duration,
     hold: std::time::Duration,
+    asker: RenewalFor,
 ) -> sqlx::Result<Option<Claimed>> {
     let row: Option<ClaimedRow> = sqlx::query_as(
         "update connector_authorizations set renewing_until = now() + make_interval(secs => $3) \
          where connector_id = $1 and refresh_ciphertext is not null \
          and access_expires_at < now() + make_interval(secs => $2) \
          and (renewing_until is null or renewing_until <= now()) \
-         and exists (select 1 from connector_instances i where i.id = connector_id and i.enabled) \
+         and ($4 or exists (select 1 from connector_instances i \
+                            where i.id = connector_id and i.enabled)) \
          returning id, refreshed_at, issuer, client_id, resource, refresh_ciphertext, \
          refresh_iv, refresh_auth_tag, refresh_key_version",
     )
     .bind(connector_id)
     .bind(within.as_secs_f64())
     .bind(hold.as_secs_f64())
+    .bind(asker == RenewalFor::Test)
     .fetch_optional(conn)
     .await?;
     Ok(row.map(|row| Claimed {
@@ -128,7 +143,8 @@ pub async fn keep_connector_renewal(
          refresh_iv = coalesce($9, refresh_iv), \
          refresh_auth_tag = coalesce($10, refresh_auth_tag), \
          refresh_key_version = coalesce($11, refresh_key_version), \
-         scopes = coalesce($12, scopes), refreshed_at = now(), renewing_until = null \
+         scopes = coalesce($12, scopes), refreshed_at = now(), renewing_until = null, \
+         renewal_failure = null \
          where id = $1 and refreshed_at = $2 returning connector_id",
     )
     .bind(claimed.authorization_id)
@@ -149,6 +165,36 @@ pub async fn keep_connector_renewal(
         credential_changed(conn, connector_id).await?;
     }
     Ok(connector)
+}
+
+/// What a renewal that failed, the authorization kept, says of it.
+const MAX_FAILURE_CHARS: usize = 300;
+/// Said for a reason with nothing to say.
+const UNSAID_FAILURE: &str = "Échec du renouvellement";
+
+/// Says on the authorization claimed why its renewal failed, if it is still
+/// that one; returns whether it was said. The claim is left to end: it is
+/// the delay before the next attempt.
+pub async fn record_renewal_failure(
+    conn: &mut PgConnection,
+    claimed: ClaimedRenewal,
+    reason: &str,
+) -> sqlx::Result<bool> {
+    let reason: String = reason.trim().chars().take(MAX_FAILURE_CHARS).collect();
+    let reason = match reason.trim_end() {
+        "" => UNSAID_FAILURE,
+        said => said,
+    };
+    let said = sqlx::query(
+        "update connector_authorizations set renewal_failure = $3 \
+         where id = $1 and refreshed_at = $2",
+    )
+    .bind(claimed.authorization_id)
+    .bind(claimed.refreshed_at)
+    .bind(reason)
+    .execute(conn)
+    .await?;
+    Ok(said.rows_affected() == 1)
 }
 
 /// Removes the authorization claimed, the server no longer honouring it, if

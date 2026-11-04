@@ -169,10 +169,8 @@ async fn an_oauth_declaration_follows_its_rules() {
     let authority = FakeAuthorizationServer::start().await;
     let server = serve_oauth_mcp_http(&authority, OAuthQuirk::None).await;
     let id = add(&paul, mcp_body("Dossiers", "folders", &server.url, None)).await;
-    let (instance, oauth) = (
-        format!("/admin/connectors/{id}"),
-        format!("/admin/connectors/{id}/oauth"),
-    );
+    let instance = format!("/admin/connectors/{id}");
+    let oauth = format!("{instance}/oauth");
 
     // What the administrator writes is checked before the server is asked.
     for body in [
@@ -296,10 +294,8 @@ async fn what_was_found_for_an_address_no_longer_its_own_is_not_kept() {
     let authority = FakeAuthorizationServer::start().await;
     let server = serve_oauth_mcp_http(&authority, OAuthQuirk::HeldMetadata).await;
     let id = add(&paul, mcp_body("Retenu", "held", &server.url, None)).await;
-    let (instance, oauth) = (
-        format!("/admin/connectors/{id}"),
-        format!("/admin/connectors/{id}/oauth"),
-    );
+    let instance = format!("/admin/connectors/{id}");
+    let oauth = format!("{instance}/oauth");
     let body = json!({ "clientId": CLIENT_ID, "clientSecret": CLIENT_SECRET });
     // Another administrator moves the server while its authorization is
     // looked for.
@@ -352,10 +348,8 @@ async fn a_declaration_that_can_no_longer_be_read_is_withdrawn_or_replaced() {
     let authority = FakeAuthorizationServer::start().await;
     let server = serve_oauth_mcp_http(&authority, OAuthQuirk::None).await;
     let id = add(&paul, mcp_body("Abîmé", "broken", &server.url, None)).await;
-    let (instance, oauth) = (
-        format!("/admin/connectors/{id}"),
-        format!("/admin/connectors/{id}/oauth"),
-    );
+    let instance = format!("/admin/connectors/{id}");
+    let oauth = format!("{instance}/oauth");
     let spoil = async || {
         let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
         sqlx::query(
@@ -372,6 +366,12 @@ async fn a_declaration_that_can_no_longer_be_read_is_withdrawn_or_replaced() {
     let secret = json!({ "clientId": CLIENT_ID, "clientSecret": CLIENT_SECRET });
     assert_eq!(paul.put(&oauth, secret).await.status, StatusCode::OK);
     spoil().await;
+    // Listed as such, nothing else to change: its declaration to withdraw.
+    let spoilt = listed(&paul, &id).await;
+    assert!(
+        spoilt["oauthUnreadable"] == true && spoilt["mcp"].is_null(),
+        "{spoilt}"
+    );
     // Said as such, not as the operator's.
     let same = json!({ "url": server.url });
     let refused = paul.patch(&instance, same.clone()).await;
@@ -384,6 +384,7 @@ async fn a_declaration_that_can_no_longer_be_read_is_withdrawn_or_replaced() {
     let (action, removed) = entries.last().expect("audited");
     assert_eq!(action, "connector.oauth_removed");
     assert_eq!(removed["unreadable"], true);
+    assert_eq!(listed(&paul, &id).await["oauthUnreadable"], false);
     let repaired = paul.patch(&instance, same).await;
     assert_eq!(repaired.status, StatusCode::OK, "{}", repaired.text());
     // Or declared again over it.

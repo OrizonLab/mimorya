@@ -9,6 +9,7 @@ use mimorya_agent::tools::ToolOverride;
 use mimorya_core::DomainError;
 use mimorya_core::autonomy::ToolRisk;
 use mimorya_db::repositories::audit::append_audit;
+use mimorya_db::repositories::connector_renewals::RenewalFor;
 use mimorya_db::repositories::connectors::{get_connector_instance, report_connector_status};
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -56,8 +57,10 @@ pub async fn test_connector(
     // Once the connector is known to exist (an absent one is answered as
     // such, and traced: ADR-047), held until the outcome is recorded.
     let _start = admin.connectors.claim_admin_start(tenant_id)?;
-    // As a run would: its authorization renewed first if about to expire.
-    admin.connectors.renew_if_due(tenant_id, id).await;
+    // As a run would: its authorization renewed first if about to expire;
+    // even disabled, the test starting it all the same.
+    let asker = RenewalFor::Test;
+    admin.connectors.renew_if_due(tenant_id, id, asker).await;
     // The instance and its token from one snapshot.
     let mut tx = admin.db.begin_snapshot(tenant_id).await?;
     let Some(instance) = get_connector_instance(&mut tx, id).await? else {

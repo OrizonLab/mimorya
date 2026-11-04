@@ -380,7 +380,12 @@ microsoft365: Microsoft365App | null,
 /**
  * A company's Google Workspace client (ADR-121).
  */
-googleWorkspace: GoogleWorkspaceApp | null, updatedAt: string, };
+googleWorkspace: GoogleWorkspaceApp | null,
+/**
+ * An MCP server whose OAuth declaration can no longer be read: it is
+ * withdrawn (`DELETE …/oauth`) before anything else changes (ADR-171).
+ */
+oauthUnreadable: boolean, updatedAt: string, };
 
 /**
  * `GET /admin/connectors`.
@@ -393,7 +398,12 @@ secretsAvailable: boolean,
 /**
  * The operator lets connectors reach its private network (private deployment).
  */
-allowPrivateNetwork: boolean, };
+allowPrivateNetwork: boolean,
+/**
+ * Where an MCP server's authorization server sends the browser back:
+ * the address to register for the client before declaring it (ADR-171).
+ */
+oauthRedirectUri: string, };
 
 /**
  * Connectors of the company in reach of the user that could not start:
@@ -1304,7 +1314,16 @@ expiresAt: string | null,
 /**
  * Whether a refresh token is kept.
  */
-renewable: boolean, scopes: Array<string>, };
+renewable: boolean, scopes: Array<string>,
+/**
+ * When its access token was last renewed, if it was since it was given.
+ */
+renewedAt: string | null,
+/**
+ * Why its last renewal failed, the authorization kept (never a token):
+ * tried again, cleared once renewed.
+ */
+renewalFailure: string | null, };
 
 /**
  * Body of `PUT /admin/connectors/{id}/oauth`: declared again, everything

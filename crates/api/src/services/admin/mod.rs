@@ -60,8 +60,8 @@ pub use approval_routing::{manager_risks, set_manager_risks};
 pub use assignments::{grant_role, revoke_role};
 pub use connector_authorization::{
     AUTHORIZATION_COOKIE, AuthorizationFailure, AuthorizationStart, OAuthReturn,
-    authorization_cookie, cleared_authorization_cookie, finish_authorization, remove_authorization,
-    start_authorization,
+    authorization_cookie, cleared_authorization_cookie, finish_authorization,
+    redirect_uri as oauth_redirect_uri, remove_authorization, start_authorization,
 };
 pub use connector_config::{Editable, RestChanges};
 pub use connector_oauth::{OAuthInput, declare_oauth, remove_oauth};
@@ -92,6 +92,7 @@ pub use invitations::{IssuedInvitation, issue_invitation};
 pub use knowledge_shares::{remove_knowledge_share, share_knowledge};
 pub use link_sender::LinkSender;
 pub use llm::{LlmInput, LlmTestOutcome, configure_llm, reset_llm, test_llm};
+pub use mcp_config::oauth_unreadable;
 pub use memory_settings::{lesson_capture, set_lesson_capture};
 pub use microsoft365::{NewMicrosoft365, create_microsoft365_connector};
 pub use mission_settings::{
