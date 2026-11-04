@@ -14,6 +14,7 @@ import { formatDate } from '@/lib/format';
 import { GoogleWorkspaceDetails } from './google-workspace-details';
 import { GoogleWorkspaceForm } from './google-workspace-form';
 import { McpForm } from './mcp-form';
+import { McpOAuthSection } from './mcp-oauth-section';
 import { Microsoft365Details } from './microsoft365-details';
 import { Microsoft365Form } from './microsoft365-form';
 import { RestForm } from './rest-form';
@@ -72,8 +73,9 @@ export function ConnectorCard({
   const declared = isRest || isMicrosoft365 || isGoogle;
   const status =
     (declared && REST_STATUS[connector.status]) || (STATUS[connector.status] ?? STATUS.error);
-  // Added from the administration: deleted here, and changed while readable.
-  const added = Boolean(connector.mcp) || declared;
+  // Added from the administration: deleted here, and changed while readable
+  // (an MCP server whose OAuth declaration no longer reads is deleted too).
+  const added = Boolean(connector.mcp) || declared || connector.oauthUnreadable;
   const editable = Boolean(connector.mcp ?? rest ?? linked);
 
   async function test() {
@@ -112,7 +114,9 @@ export function ConnectorCard({
   async function remove() {
     const question = linked
       ? `Supprimer ${google ? 'le client' : 'l’application'} « ${connector.name} », son secret et les ${linked.links} compte(s) que les collaborateurs y ont relié(s) ?`
-      : `Supprimer le connecteur « ${connector.name} » et son jeton ?`;
+      : connector.mcp?.oauth
+        ? `Supprimer le serveur « ${connector.name} », sa déclaration OAuth, le secret du client et son autorisation ?`
+        : `Supprimer le connecteur « ${connector.name} » et son jeton ?`;
     if (!window.confirm(question)) return;
     if (await action.run(() => api.delete(`/admin/connectors/${connector.id}`))) onChanged();
   }
@@ -128,8 +132,22 @@ export function ConnectorCard({
       {connector.mcp && (
         <p className="text-sm text-muted">
           <code>{connector.mcp.url}</code> · outils <code>mcp_{connector.mcp.prefix}_…</code> ·{' '}
-          {connector.mcp.tokenStored ? 'jeton enregistré' : 'sans jeton'}
+          {connector.mcp.oauth
+            ? connector.mcp.oauth.authorization
+              ? 'autorisé par OAuth'
+              : 'OAuth déclaré, non autorisé'
+            : connector.mcp.tokenStored
+              ? 'jeton enregistré'
+              : 'sans jeton'}
         </p>
+      )}
+      {(connector.mcp || connector.oauthUnreadable) && (
+        <McpOAuthSection
+          connector={connector}
+          redirectUri={data.oauthRedirectUri}
+          secretsAvailable={data.secretsAvailable}
+          onChanged={onChanged}
+        />
       )}
       {rest && (
         <p className="text-sm text-muted">

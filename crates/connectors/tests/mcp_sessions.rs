@@ -105,6 +105,7 @@ fn local_server() -> (Value, PathBuf, NetworkPolicy) {
         allow_private_network: false,
         allow_stdio: true,
         proxy: None,
+        test_servers: &[],
     };
     (config, pid_file, allowed)
 }

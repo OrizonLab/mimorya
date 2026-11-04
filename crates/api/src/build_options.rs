@@ -2,6 +2,7 @@
 //! the mailer, the networks and services it reaches. A production start
 //! leaves every option to its default.
 
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use mimorya_agent::llm::{LlmProvider, PriceTable};
@@ -40,7 +41,8 @@ pub struct BuildOptions {
     pub mailer: Option<Option<Arc<dyn Mailer>>>,
     /// Replaces the network the identity providers are reached on, the
     /// connectors' otherwise (end-to-end tests: a local provider, while
-    /// connectors keep to the public network).
+    /// connectors keep to the public network but for
+    /// `connector_test_servers`).
     pub sso_network: Option<NetworkPolicy>,
     /// Replaces the limit of requests per minute and address (end-to-end
     /// tests: every request comes through the one web relay).
@@ -64,4 +66,9 @@ pub struct BuildOptions {
     /// Replaces the prices of the models (tests that count what calls cost:
     /// the scripted model has none of its own).
     pub prices: Option<PriceTable>,
+    /// Local servers the connectors reach all the same, by their exact
+    /// address and port (end-to-end tests: an MCP server protected by OAuth
+    /// and its authorization server, ADR-171), while every other private
+    /// address stays refused.
+    pub connector_test_servers: Vec<SocketAddr>,
 }

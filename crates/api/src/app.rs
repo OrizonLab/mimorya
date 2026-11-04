@@ -7,6 +7,7 @@ use axum::Router;
 use axum::extract::DefaultBodyLimit;
 use axum::middleware::{from_fn, from_fn_with_state};
 use mimorya_agent::llm::create_provider;
+use mimorya_connectors::outbound::NetworkPolicy;
 use mimorya_connectors::slack::SLACK_API;
 use mimorya_connectors::teams::TeamsEndpoints;
 use mimorya_connectors::telegram::TELEGRAM_API;
@@ -155,7 +156,11 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
         db.clone(),
         SecretStore::new(config.secrets.clone()),
         ConnectorSettings {
-            network: config.mcp_network,
+            network: NetworkPolicy {
+                // Only a test builds a server with some (`BuildOptions`).
+                test_servers: Vec::leak(options.connector_test_servers),
+                ..config.mcp_network
+            },
             start_timeout: config.mcp_start_timeout,
         },
         invalidations.clone(),

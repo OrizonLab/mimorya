@@ -116,7 +116,17 @@ pub async fn serve_oauth_mcp_http(
     authority: &FakeAuthorizationServer,
     quirk: OAuthQuirk,
 ) -> ProtectedMcp {
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+    serve_oauth_mcp_http_on(authority, quirk, "127.0.0.1:0").await
+}
+
+/// `serve_oauth_mcp_http`, listening at `address` (end-to-end tests: a known
+/// port).
+pub async fn serve_oauth_mcp_http_on(
+    authority: &FakeAuthorizationServer,
+    quirk: OAuthQuirk,
+    address: &str,
+) -> ProtectedMcp {
+    let listener = tokio::net::TcpListener::bind(address)
         .await
         .expect("local port");
     let origin = format!("http://{}", listener.local_addr().expect("address"));

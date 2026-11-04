@@ -14,6 +14,7 @@ const PUBLIC: NetworkPolicy = NetworkPolicy {
     allow_private_network: false,
     allow_stdio: false,
     proxy: None,
+    test_servers: &[],
 };
 
 fn operation(changes: Value) -> Value {

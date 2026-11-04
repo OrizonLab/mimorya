@@ -98,7 +98,12 @@ pub struct FakeAuthorizationServer {
 
 impl FakeAuthorizationServer {
     pub async fn start() -> Self {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        Self::start_on("127.0.0.1:0").await
+    }
+
+    /// The server, listening at `address` (end-to-end tests: a known port).
+    pub async fn start_on(address: &str) -> Self {
+        let listener = tokio::net::TcpListener::bind(address)
             .await
             .expect("local port");
         let issuer = format!("http://{}", listener.local_addr().expect("address"));

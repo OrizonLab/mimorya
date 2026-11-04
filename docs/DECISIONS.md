@@ -10489,10 +10489,36 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
         désactivé tranquille ;
       - la date « Modifié le » d'un connecteur change à chaque renouvellement, qui en
         change la version : l'écran montrera la date du renouvellement à côté ;
-    - 40h : l'écran et son parcours de bout en bout ; l'enregistrement dynamique du
-      client (RFC 7591) et la révocation auprès du serveur (RFC 7009), qui auront
-      leur propre ADR, viennent après : sans écran, rien de l'autorisation n'est
-      utilisable depuis l'application, alors qu'un client enregistré à la main suffit ;
+    - 40h : l'écran (`components/admin/connectors/`) :
+      - sur la carte d'un serveur MCP, une section « Autorisation OAuth » : sans
+        déclaration, « Déclarer OAuth » ; déclaré, ce que la découverte a trouvé (le
+        serveur d'autorisation, le client et comment il se prouve, les portées), puis
+        l'autorisation (date, échéance du jeton, renouvellement et sa date, raison du
+        dernier échec) ou « Non autorisé », avec « Autoriser » (ou « Autoriser de
+        nouveau »), « Retirer l'autorisation », « Modifier la déclaration » et
+        « Retirer OAuth », chaque retrait confirmé ;
+      - le formulaire de déclaration dit d'abord l'adresse de retour à enregistrer
+        pour le client, puis demande l'identifiant du client, son secret (vide : client
+        public ; à saisir de nouveau à chaque déclaration, qui remplace tout), l'émetteur
+        (facultatif) et les portées (facultatives) ; déclarer de nouveau un serveur
+        autorisé est confirmé, l'autorisation partant avec ;
+      - « Autoriser » envoie le navigateur au serveur d'autorisation ; au retour, la
+        page d'administration ouvre « Connecteurs », qui dit une fois si
+        l'autorisation a abouti (la raison d'un échec est au journal d'audit) ;
+      - un serveur autorisé par OAuth n'a pas de champ de jeton, et son formulaire dit
+        qu'en changer l'adresse retire la déclaration et l'autorisation ;
+      - une déclaration illisible est un état du serveur, montré comme son statut et
+        non comme une alerte, avec « Retirer la déclaration OAuth » ; le serveur peut
+        aussi être supprimé ;
+      - parcours de bout en bout : le serveur des tests démarre un serveur
+        d'autorisation et le serveur MCP qu'il protège, à des ports connus, que ses
+        connecteurs joignent par leur seule adresse exacte (`test_servers` de
+        `NetworkPolicy`, `BuildOptions::connector_test_servers`) : toute autre adresse
+        privée reste refusée, et ce que vérifient les autres parcours ne change pas ;
+        cette liste n'est jamais lue de l'environnement et reste vide en production ;
+    - l'enregistrement dynamique du client (RFC 7591) et la révocation auprès du
+      serveur (RFC 7009), qui auront leur propre ADR, viennent après : un client
+      enregistré à la main suffit ;
     - puis l'autorisation par personne.
 - **Conséquences** :
   - tests du lot 40a :
@@ -10642,6 +10668,16 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       marquée dans la liste, le serveur sans rien d'autre à changer, puis ne l'est plus
       une fois retirée ; l'adresse de retour que donne la liste est celle que la
       plateforme envoie au serveur d'autorisation ;
+    - `apps/web/e2e/mcp-oauth.spec.ts` (lot 40h) : un serveur MCP ajouté à son
+      adresse est déclaré avec le client enregistré, l'adresse de retour dite d'abord,
+      le serveur d'autorisation trouvé à partir du serveur ; autorisé par un aller et
+      retour du navigateur, relu de l'API (jeton saisi absent, secret gardé jamais
+      montré, autorisation renouvelable), sa session démarre avec le jeton de
+      l'autorisation ; l'autorisation puis la déclaration sont retirées et relues ; un
+      retour en échec est dit une fois ; une déclaration illisible, laissée au
+      démarrage sur un serveur désactivé, n'est pas une alerte, est retirée puis le
+      serveur supprimé ; en unitaire (`outbound/network.rs`), les serveurs des tests
+      ne sont joints que par leur adresse et leur port exacts ;
     - `crates/connectors/tests/mcp_oauth_authority.rs` : le serveur d'autorisation
       simulé use le code, vérifie PKCE et la ressource ; refuse un client qui se prouve de
       deux façons, d'une façon non annoncée ou avec un autre secret, un Basic refusé

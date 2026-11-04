@@ -280,6 +280,7 @@ impl TestApi {
             telegram_api,
             teams_api,
             prices: priced.then(llm::scripted_prices),
+            connector_test_servers: Vec::new(),
         };
         let app = build_app(config, options).await.expect("app");
         Self {

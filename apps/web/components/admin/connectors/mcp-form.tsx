@@ -43,6 +43,8 @@ export function McpForm({
   const action = useAction();
   const [trying, setTrying] = useState(false);
   const moved = connector?.mcp && url.trim() !== connector.mcp.url;
+  // Authorized by OAuth: no typed token (ADR-171).
+  const oauth = Boolean(connector?.mcp?.oauth);
   // A saved server keeps its token, which a trial never sends: its own test,
   // on its card, tries it with that token.
   const triable = !connector || moved || token.trim() !== '';
@@ -124,7 +126,7 @@ export function McpForm({
             onChange={(e) => setUrl(e.target.value)}
           />
         </Field>
-        {data.secretsAvailable && (
+        {data.secretsAvailable && !oauth && (
           <Field
             label={
               connector?.mcp?.tokenStored && !moved
@@ -142,10 +144,15 @@ export function McpForm({
           </Field>
         )}
       </div>
+      {oauth && (
+        <p className="text-xs text-muted">
+          Ce serveur s’autorise par OAuth, sans jeton saisi. Changer son adresse retire sa
+          déclaration OAuth et son autorisation.
+        </p>
+      )}
       <p className="text-xs text-muted">
-        Le jeton (lettres sans accent, chiffres et - . _ ~ + /, puis éventuellement des =) est
-        envoyé en en-tête « Authorization: Bearer », chiffré sur le serveur et jamais réaffiché. Il
-        ne suit pas le connecteur vers une autre adresse.{' '}
+        {!oauth &&
+          'Le jeton (lettres sans accent, chiffres et - . _ ~ + /, puis éventuellement des =) est envoyé en en-tête « Authorization: Bearer », chiffré sur le serveur et jamais réaffiché. Il ne suit pas le connecteur vers une autre adresse. '}
         {data.allowPrivateNetwork
           ? 'Ce déploiement autorise les serveurs de son réseau privé.'
           : 'Seules les adresses publiques en https sont acceptées.'}

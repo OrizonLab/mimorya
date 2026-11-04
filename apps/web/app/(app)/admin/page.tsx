@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, type ComponentType } from 'react';
+import { useEffect, useState, type ComponentType } from 'react';
 import {
   ApprovalRoutingTab,
   AuditTab,
+  AUTHORIZATION_RETURN,
   ConnectorsTab,
   IdentityProvidersTab,
   KnowledgeSharesTab,
@@ -39,6 +40,13 @@ export default function AdminPage() {
   const me = useMe();
   const sections = visibleAdminSections(me.permissions);
   const [active, setActive] = useState<AdminSectionKey | null>(null);
+  // Back from an MCP server's authorization server (ADR-171): its tab says
+  // how it went.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).has(AUTHORIZATION_RETURN)) {
+      setActive('connectors');
+    }
+  }, []);
   const current = sections.find((s) => s.key === active) ?? sections[0];
   const View = current ? SECTION_VIEWS[current.key] : null;
 
