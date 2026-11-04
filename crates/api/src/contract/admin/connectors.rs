@@ -20,7 +20,9 @@ use super::microsoft365::Microsoft365App;
 use super::rest_connectors::{RestApi, RestOperation};
 use crate::contract::{ToolRisk, stored_text};
 use crate::http::{iso, trimmed, trimmed_nullable, trimmed_opt};
-use crate::services::admin::{ConnectorTestOutcome, TestedTool as Tested, ToolPolicyInput};
+use crate::services::admin::{
+    ConnectorTestOutcome, TestedTool as Tested, ToolPolicyInput, oauth_unreadable,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "snake_case")]
@@ -88,6 +90,9 @@ pub struct ConnectorView {
     pub microsoft365: Option<Microsoft365App>,
     /// A company's Google Workspace client (ADR-121).
     pub google_workspace: Option<GoogleWorkspaceApp>,
+    /// An MCP server whose OAuth declaration can no longer be read: it is
+    /// withdrawn (`DELETE …/oauth`) before anything else changes (ADR-171).
+    pub oauth_unreadable: bool,
     pub updated_at: String,
 }
 
@@ -121,6 +126,7 @@ impl ConnectorView {
             rest,
             microsoft365,
             google_workspace,
+            oauth_unreadable: oauth_unreadable(i),
             updated_at: iso(&i.updated_at),
         })
     }
@@ -167,6 +173,9 @@ pub struct Connectors {
     pub secrets_available: bool,
     /// The operator lets connectors reach its private network (private deployment).
     pub allow_private_network: bool,
+    /// Where an MCP server's authorization server sends the browser back:
+    /// the address to register for the client before declaring it (ADR-171).
+    pub oauth_redirect_uri: String,
 }
 
 /// A tool a server declared, with the policy in force.

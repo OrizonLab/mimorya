@@ -47,6 +47,9 @@ async fn an_administrator_authorizes_a_server_declared_with_oauth() {
         format!("{WEB_ORIGIN}/api/admin/connectors/oauth/callback")
     );
     assert!(query["state"].len() >= 16 && query["code_challenge"].len() >= 43);
+    // The address the administration says to register for the client.
+    let all = paul.get("/admin/connectors").await.json();
+    assert_eq!(all["oauthRedirectUri"], json!(query["redirect_uri"]));
 
     // There and back: authorized, the attempt cleared.
     let back = authorize(&paul, &authority, &id).await;

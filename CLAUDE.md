@@ -88,7 +88,7 @@ Repères à l'intérieur des crates :
   évaluations : `skill_evaluations.rs`, ADR-104, ce qu'elles ont coûté jour par jour et
   leur limite : `evaluation_spending.rs`, `evaluation_settings.rs`, ADR-154 ; comptes reliés par chacun et leur
   jeton de renouvellement scellé : `account_links.rs`, ADR-116 ; autorisation OAuth d'un
-  serveur MCP et ses jetons scellés : `connector_authorizations.rs`, et leur renouvellement : `connector_renewals.rs`, ADR-171 ; partages de
+  serveur MCP et ses jetons scellés : `connector_authorizations.rs`, et leur renouvellement, réservé par un processus, la raison d'un échec gardée : `connector_renewals.rs`, ADR-171 ; partages de
   connaissances entre unités :
   `knowledge_shares.rs`, ADR-143 ; politiques d'autorisation proposées et décidées :
   `policy_proposals.rs`, ADR-168, et leur annonce aux autres administrateurs :

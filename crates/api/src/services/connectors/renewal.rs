@@ -1,18 +1,23 @@
 //! The access tokens of MCP servers' OAuth authorizations renewed before
 //! they expire (ADR-171). Before a company's instances are read for a run,
-//! and before the administration tests a connector, an authorization whose
-//! token expires within `RENEW_WITHIN` is renewed with its refresh token.
+//! an enabled connector's authorization whose token expires within
+//! `RENEW_WITHIN` is renewed with its refresh token; before the
+//! administration tests a connector, whatever its state, so is its own.
 //! Its renewal is first claimed for `RENEWAL_HOLD` by one short statement:
 //! another process skips it and starts with the current token, which still
-//! lasts long enough; nothing is held while the token endpoint is called
-//! (bounded in time), and a token endpoint that did not answer is not asked
-//! again before the claim ends. What it brings is then kept in a short
-//! transaction, under the company's administration lock (so that it takes
-//! its locks in the administration's order), only if the authorization is
-//! still the one claimed: sealed for the connector, a rotated refresh token
-//! kept, the connector's version changed. A server saying the grant is gone
-//! removes it (audited by the system, never a token): an administrator
-//! authorizes the server again.
+//! lasts long enough if the claim was taken more than `MIN_TOKEN_LIFE`
+//! before it expires (the first run that finds it due takes it; otherwise
+//! runs meanwhile go without the connector). Nothing is held while the
+//! token endpoint is called (bounded in time), and a token endpoint that did
+//! not answer is not asked again before the claim ends. What it brings is
+//! then kept in a short transaction, under the company's administration lock
+//! (so that it takes its locks in the administration's order), only if the
+//! authorization is still the one claimed: sealed for the connector, a
+//! rotated refresh token kept, the connector's version changed. A server
+//! saying the grant is gone removes it (audited by the system, never a
+//! token): an administrator authorizes the server again. Any other failure
+//! is said on the authorization, for its administrators, until a renewal is
+//! kept.
 
 use std::time::Duration;
 
@@ -22,8 +27,8 @@ use mimorya_connectors::mcp::RENEW_WITHIN;
 use mimorya_connectors::mcp::oauth::{ClientAuth, RenewalFailure, refresh_tokens};
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::connector_renewals::{
-    Claimed, Renewed, claim_connector_renewal, connector_authorizations_due,
-    keep_connector_renewal, remove_claimed_authorization,
+    Claimed, RenewalFor, Renewed, claim_connector_renewal, connector_authorizations_due,
+    keep_connector_renewal, record_renewal_failure, remove_claimed_authorization,
 };
 use mimorya_db::repositories::connectors::get_connector_instance;
 use uuid::Uuid;
@@ -53,14 +58,22 @@ impl ConnectorService {
         let due = connector_authorizations_due(&mut tx, RENEW_WITHIN).await?;
         tx.commit().await?;
         // Side by side: each bounded in time, none waits for another.
-        join_all(due.into_iter().map(|id| self.renew_if_due(tenant_id, id))).await;
+        let renewals = due
+            .into_iter()
+            .map(|id| self.renew_if_due(tenant_id, id, RenewalFor::Runs));
+        join_all(renewals).await;
         Ok(())
     }
 
     /// Renews the connector's authorization if it is about to expire and no
-    /// other renewal of it is under way.
-    pub(crate) async fn renew_if_due(&self, tenant_id: Uuid, connector_id: Uuid) {
-        if let Err(error) = self.renew(tenant_id, connector_id).await {
+    /// other renewal of it is under way; for runs, only if it is enabled.
+    pub(crate) async fn renew_if_due(
+        &self,
+        tenant_id: Uuid,
+        connector_id: Uuid,
+        asker: RenewalFor,
+    ) {
+        if let Err(error) = self.renew(tenant_id, connector_id, asker).await {
             tracing::warn!(
                 connector = %connector_id,
                 error = format!("{error:#}"),
@@ -69,8 +82,13 @@ impl ConnectorService {
         }
     }
 
-    async fn renew(&self, tenant_id: Uuid, connector_id: Uuid) -> anyhow::Result<()> {
-        let Some(call) = self.claim(tenant_id, connector_id).await? else {
+    async fn renew(
+        &self,
+        tenant_id: Uuid,
+        connector_id: Uuid,
+        asker: RenewalFor,
+    ) -> anyhow::Result<()> {
+        let Some(call) = self.claim(tenant_id, connector_id, asker).await? else {
             return Ok(());
         };
         let refresh = self
@@ -113,13 +131,16 @@ impl ConnectorService {
                 }
                 tx.commit().await?;
             }
-            // Asked again once the claim ends.
+            // Said to its administrators, asked again once the claim ends.
             Err(RenewalFailure::Unavailable(reason)) => {
                 tracing::warn!(
                     connector = %connector_id,
                     reason,
                     "A connector's authorization server could not renew its token"
                 );
+                let mut tx = self.db.begin(tenant_id).await?;
+                record_renewal_failure(&mut tx, call.claimed.key, &reason).await?;
+                tx.commit().await?;
             }
         }
         Ok(())
@@ -128,9 +149,15 @@ impl ConnectorService {
     /// The renewal claimed, with what calling the token endpoint needs, if
     /// it is due, not claimed already, and still under the declaration in
     /// force.
-    async fn claim(&self, tenant_id: Uuid, connector_id: Uuid) -> anyhow::Result<Option<Call>> {
+    async fn claim(
+        &self,
+        tenant_id: Uuid,
+        connector_id: Uuid,
+        asker: RenewalFor,
+    ) -> anyhow::Result<Option<Call>> {
         let mut tx = self.db.begin(tenant_id).await?;
-        let claim = claim_connector_renewal(&mut tx, connector_id, RENEW_WITHIN, RENEWAL_HOLD);
+        let claim =
+            claim_connector_renewal(&mut tx, connector_id, RENEW_WITHIN, RENEWAL_HOLD, asker);
         let Some(claimed) = claim.await? else {
             return Ok(None);
         };

@@ -1,13 +1,16 @@
 //! An MCP server's OAuth access token renewed (ADR-171): one about to
 //! expire is renewed with its refresh token before the session starts, the
-//! rotated refresh token kept, the server sent the new token; a fresh one is
-//! not renewed again; two processes renewing it at once renew it once (a
-//! rotated refresh token used twice would revoke the grant); a token
-//! endpoint that does not answer delays one run alone, and is not asked
-//! again before its claim ends; a server that cannot be reached leaves the
-//! authorization; one saying the grant is gone, or granting tokens the
-//! platform could not keep, removes it, audited by the system, never a
-//! token; a renewal is never asked under another declaration.
+//! rotated refresh token kept, the server sent the new token, and shown
+//! renewed; a fresh one is not renewed again; two processes renewing it at
+//! once renew it once (a rotated refresh token used twice would revoke the
+//! grant); a token endpoint that does not answer delays one run alone, and
+//! is not asked again before its claim ends; a company's renewals wait for
+//! one another in no run; a disabled connector's is asked by its test
+//! alone; a server that cannot be reached leaves the authorization, the
+//! failure shown until it is renewed; one saying the grant is gone, or
+//! granting tokens the platform could not keep, removes it, audited by the
+//! system, never a token; a renewal is never asked under another
+//! declaration.
 
 mod support;
 
@@ -22,9 +25,12 @@ use mimorya_connectors::mcp::OAUTH_EXPIRED;
 use mimorya_connectors::mcp::oauth::OAUTH_TO_AUTHORIZE;
 use mimorya_connectors::testing::FakeAuthorizationServer;
 use mimorya_core::demo::{tenant, user};
+use serde_json::{Value, json};
 use support::TestApi;
 use support::connector_oauth::{AUTHORIZED, authorize, declared, kept_tokens};
-use support::connector_sessions::{alter, another_process, runs_see, said, sees, tested};
+use support::connector_sessions::{
+    alter, another_process, runs_see, said, sees, tested, token_endpoint,
+};
 use support::mcp::{PRIVATE_DEPLOYMENT, listed};
 use support::sso::location;
 use tokio::net::TcpListener;
@@ -39,14 +45,6 @@ const EXPIRING: &str = "update connector_authorizations set access_expires_at = 
 /// The renewal's claim over, as if its delay had passed.
 const UNCLAIMED: &str =
     "update connector_authorizations set renewing_until = null where connector_id = $1";
-
-/// The connector's token endpoint moved to `to`.
-fn token_endpoint(to: &str) -> String {
-    format!(
-        "update connector_instances set config = jsonb_set(config, \
-         '{{oauth,tokenEndpoint}}', '\"{to}\"') where id = $1"
-    )
-}
 
 /// A token endpoint that takes every connection and never answers: its
 /// address, and how many connections it took.
@@ -80,6 +78,11 @@ async fn removed_by_the_system(api: &TestApi, id: &str) -> Vec<String> {
     reasons.into_iter().map(Option::unwrap_or_default).collect()
 }
 
+/// The connector's authorization as its administrators see it.
+async fn shown(admin: &support::Client<'_>, id: &str) -> Value {
+    listed(admin, id).await["mcp"]["oauth"]["authorization"].clone()
+}
+
 /// How many renewals the authorization server was asked for.
 fn renewals(authority: &FakeAuthorizationServer) -> usize {
     authority
@@ -104,6 +107,8 @@ async fn a_token_about_to_expire_is_renewed_before_the_session_starts() {
         AUTHORIZED
     );
     let (first, first_refresh) = kept_tokens(&api, &id).await.expect("kept");
+    let given = shown(&paul, &id).await;
+    assert!(given["renewedAt"].is_null(), "{given}");
     alter(&api, &id, SOON).await;
     let asked = server.authorizations().len();
     assert!(runs_see(&api, "renouvele").await);
@@ -119,13 +124,19 @@ async fn a_token_about_to_expire_is_renewed_before_the_session_starts() {
             .iter()
             .all(|given| given.as_deref() == Some(bearer.as_str()))
     );
-    // Shown lasting an hour; renewed, the next run renews nothing.
-    let shown = listed(&paul, &id).await;
-    let expires = shown["mcp"]["oauth"]["authorization"]["expiresAt"]
-        .as_str()
-        .and_then(|at| DateTime::parse_from_rfc3339(at).ok())
-        .expect("expiry");
-    assert!(expires > Utc::now() + Duration::minutes(50), "{shown}");
+    // Shown renewed, lasting an hour; the next run renews nothing.
+    let renewed = shown(&paul, &id).await;
+    let at = |field: &str| {
+        renewed[field]
+            .as_str()
+            .and_then(|at| DateTime::parse_from_rfc3339(at).ok())
+            .unwrap_or_else(|| panic!("{field}: {renewed}"))
+    };
+    assert!(
+        at("expiresAt") > Utc::now() + Duration::minutes(50),
+        "{renewed}"
+    );
+    assert!(at("renewedAt") > at("authorizedAt"), "{renewed}");
     assert!(runs_see(&api, "renouvele").await);
     assert_eq!(renewals(&authority), 1);
     assert_eq!(
@@ -162,7 +173,7 @@ async fn two_processes_renew_it_once() {
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
-async fn an_absent_server_keeps_the_authorization_and_a_gone_grant_removes_it() {
+async fn a_server_out_of_reach_is_said_until_renewed_and_a_gone_grant_removes_it() {
     let api = TestApi::start_with(&PRIVATE_DEPLOYMENT).await;
     let paul = api.sign_in(user::PAUL).await;
     let authority = FakeAuthorizationServer::start().await;
@@ -171,18 +182,30 @@ async fn an_absent_server_keeps_the_authorization_and_a_gone_grant_removes_it() 
         location(&authorize(&paul, &authority, &id).await),
         AUTHORIZED
     );
-    // Its token endpoint unreachable: kept, too short to start a session.
+    // Its token endpoint unreachable: kept, too short to start a session,
+    // the failure shown to its administrators without a token.
     alter(&api, &id, &token_endpoint("http://127.0.0.1:1/token")).await;
     alter(&api, &id, EXPIRING).await;
     let (before, _) = kept_tokens(&api, &id).await.expect("kept");
     let expiring = tested(&paul, &id).await;
     assert!(said(&expiring).contains(OAUTH_EXPIRED), "{expiring}");
     assert_eq!(kept_tokens(&api, &id).await.expect("kept").0, before);
-    // Reached again once its claim is over, the grant revoked there:
-    // removed, by the system, the reason without a token.
+    let failed = shown(&paul, &id).await;
+    let failure = failed["renewalFailure"].as_str().unwrap_or_default();
+    assert!(failure.contains("127.0.0.1:1"), "{failed}");
+    assert!(!failure.contains(&before));
+    // Reached again once its claim is over: renewed, the failure gone.
     let issued_at = format!("{}/token", authority.issuer);
     alter(&api, &id, &token_endpoint(&issued_at)).await;
     alter(&api, &id, UNCLAIMED).await;
+    let renewed = tested(&paul, &id).await;
+    assert_eq!(renewed["ok"], json!(true), "{renewed}");
+    let recovered = shown(&paul, &id).await;
+    assert!(recovered["renewalFailure"].is_null(), "{recovered}");
+    assert!(recovered["renewedAt"].is_string(), "{recovered}");
+    // Expiring again, the grant revoked there: removed, by the system, the
+    // reason without a token.
+    alter(&api, &id, EXPIRING).await;
     authority.revoke_all();
     let refused = tested(&paul, &id).await;
     assert!(said(&refused).contains(OAUTH_TO_AUTHORIZE), "{refused}");
@@ -232,10 +255,28 @@ async fn a_mute_token_endpoint_delays_one_run_alone() {
     let (seen, took) = run().await;
     assert!(seen && took < slow, "{took:?}");
     assert_eq!(calls.load(Ordering::SeqCst), 1);
+    // Two of them due at once: renewed side by side, one run waiting for
+    // one token endpoint's delay (ten seconds), not for both in turn.
+    let (_, other) = declared(&paul, &authority, "muetbis").await;
     assert_eq!(
-        paul.delete(&format!("/admin/connectors/{id}")).await.status,
-        StatusCode::OK
+        location(&authorize(&paul, &authority, &other).await),
+        AUTHORIZED
     );
+    let (other_endpoint, other_calls) = mute().await;
+    alter(&api, &other, &token_endpoint(&other_endpoint)).await;
+    alter(&api, &other, SOON).await;
+    alter(&api, &id, UNCLAIMED).await;
+    let started = Instant::now();
+    let both = sees(connectors, "muet").await && sees(connectors, "muetbis").await;
+    let took = started.elapsed();
+    assert!(both);
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+    assert_eq!(other_calls.load(Ordering::SeqCst), 1);
+    assert!(took < std::time::Duration::from_secs(15), "{took:?}");
+    for connector in [&id, &other] {
+        let deleted = paul.delete(&format!("/admin/connectors/{connector}")).await;
+        assert_eq!(deleted.status, StatusCode::OK);
+    }
 }
 
 #[tokio::test]
@@ -271,6 +312,40 @@ async fn tokens_it_cannot_keep_remove_it_and_another_declaration_asks_nothing() 
     let reasons = removed_by_the_system(&api, &id).await;
     let reason = reasons.last().expect("audited");
     assert!(reason.contains("moins de 5 minutes"), "{reason}");
+    assert_eq!(
+        paul.delete(&format!("/admin/connectors/{id}")).await.status,
+        StatusCode::OK
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_disabled_connector_is_renewed_for_its_test_alone() {
+    let api = TestApi::start_with(&PRIVATE_DEPLOYMENT).await;
+    let paul = api.sign_in(user::PAUL).await;
+    let authority = FakeAuthorizationServer::start().await;
+    let (_, id) = declared(&paul, &authority, "eteint").await;
+    assert_eq!(
+        location(&authorize(&paul, &authority, &id).await),
+        AUTHORIZED
+    );
+    let disabled = paul
+        .patch(
+            &format!("/admin/connectors/{id}"),
+            json!({ "enabled": false }),
+        )
+        .await;
+    assert_eq!(disabled.status, StatusCode::OK, "{}", disabled.text());
+    alter(&api, &id, EXPIRING).await;
+    // Runs leave its server alone.
+    assert!(!runs_see(&api, "eteint").await);
+    assert_eq!(renewals(&authority), 0);
+    // Its test starts it all the same: renewed first, then started.
+    let (before, _) = kept_tokens(&api, &id).await.expect("kept");
+    let outcome = tested(&paul, &id).await;
+    assert_eq!(outcome["ok"], json!(true), "{outcome}");
+    assert_eq!(renewals(&authority), 1);
+    assert_ne!(kept_tokens(&api, &id).await.expect("renewed").0, before);
     assert_eq!(
         paul.delete(&format!("/admin/connectors/{id}")).await.status,
         StatusCode::OK

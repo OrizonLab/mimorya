@@ -31,7 +31,7 @@ use crate::services::admin::NewRestConnector as RestInput;
 use crate::services::admin::{
     ConnectorAdmin, ConnectorChanges, Editable, McpTrial, NewMcpConnector, RestChanges,
     TokenChange, TrialServices, create_mcp_connector, create_rest_connector, delete_connector,
-    read_openapi, test_connector, try_mcp_connector, update_connector,
+    oauth_redirect_uri, read_openapi, test_connector, try_mcp_connector, update_connector,
 };
 use crate::services::connectors::{client_secret_name, token_secret_name};
 use crate::services::permission_catalog::permission_catalog;
@@ -127,6 +127,7 @@ pub async fn list(
         risks: risks(),
         secrets_available: store.available(),
         allow_private_network: state.connectors.network().allow_private_network,
+        oauth_redirect_uri: oauth_redirect_uri(&state.config.web_origin),
     }))
 }
 

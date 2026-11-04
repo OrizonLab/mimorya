@@ -83,6 +83,11 @@ pub struct McpOAuthAuthorization {
     /// Whether a refresh token is kept.
     pub renewable: bool,
     pub scopes: Vec<String>,
+    /// When its access token was last renewed, if it was since it was given.
+    pub renewed_at: Option<String>,
+    /// Why its last renewal failed, the authorization kept (never a token):
+    /// tried again, cleared once renewed.
+    pub renewal_failure: Option<String>,
 }
 
 impl From<ConnectorAuthorizationRow> for McpOAuthAuthorization {
@@ -92,6 +97,8 @@ impl From<ConnectorAuthorizationRow> for McpOAuthAuthorization {
             expires_at: row.access_expires_at.as_ref().map(iso),
             renewable: row.renewable,
             scopes: row.scopes.split_whitespace().map(String::from).collect(),
+            renewed_at: (row.refreshed_at > row.authorized_at).then(|| iso(&row.refreshed_at)),
+            renewal_failure: row.renewal_failure,
         }
     }
 }
