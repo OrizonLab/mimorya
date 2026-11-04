@@ -1,10 +1,10 @@
 //! Who finishes an MCP server's authorization (ADR-171): only the
 //! administrator who started it, while they still administer the company's
 //! connectors, with the server's code, on a connector still there. Another
-//! company-wide administrator presenting the attempt's cookie and return, a
-//! starter whose role was withdrawn meanwhile, a return without a code or
-//! for a connector deleted meanwhile: refused, nothing kept, the reason
-//! audited.
+//! company-wide administrator, or another company's, presenting the
+//! attempt's cookie and return, a starter whose role was withdrawn
+//! meanwhile, a return without a code or for a connector deleted meanwhile:
+//! refused, nothing kept, the reason audited.
 
 mod support;
 
@@ -13,10 +13,11 @@ use mimorya_connectors::testing::FakeAuthorizationServer;
 use mimorya_core::demo::{role, user};
 use serde_json::json;
 use support::TestApi;
-use support::accounts::{activate, assignment_of, create_account};
+use support::accounts::{INVITED_PASSWORD, accept, activate, assignment_of, create_account};
+use support::companies;
 use support::connector_oauth::{
-    AUTHORIZED, FAILED, api_path, come_back, declared, kept_tokens, refusals_by, refused_because,
-    start, with_param,
+    AUTHORIZED, FAILED, api_path, come_back, declared, kept_tokens, refusals_by, refusals_in,
+    refused_because, start, with_param,
 };
 use support::mcp::PRIVATE_DEPLOYMENT;
 use support::sso::location;
@@ -109,4 +110,36 @@ async fn a_return_without_a_code_or_for_a_deleted_connector_is_refused() {
     );
     assert!(refused_because(&api, &id).await.contains("supprimé"));
     assert!(kept_tokens(&api, &id).await.is_none());
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn another_company_s_administrator_does_not_finish_one() {
+    let api = TestApi::start_with(&PRIVATE_DEPLOYMENT).await;
+    let paul = api.sign_in(user::PAUL).await;
+    let authority = FakeAuthorizationServer::start().await;
+    let (_, id) = declared(&paul, &authority, "ailleurs").await;
+    // Jeanne administers another company.
+    let address = "jeanne.martin@acme-oauth.example";
+    let acme = companies::create(&api, "acme-oauth", address).await;
+    let accepted = accept(&api, &acme.invitation.link, INVITED_PASSWORD).await;
+    assert_eq!(accepted.status, StatusCode::OK, "{}", accepted.text());
+    let jeanne = api.sign_in_with(address, INVITED_PASSWORD).await;
+    // Paul's attempt and return, presented by her: refused in her company,
+    // nothing kept in his.
+    let (url, cookie) = start(&paul, &id).await;
+    let back = api_path(&authority.sent_back(&url).await);
+    assert_eq!(
+        location(&come_back(&jeanne, &back, Some(&cookie)).await),
+        FAILED
+    );
+    assert!(kept_tokens(&api, &id).await.is_none());
+    assert_eq!(
+        refusals_in(&api, acme.tenant_id, acme.admin_id).await,
+        ["Tentative d’un autre administrateur"]
+    );
+    assert_eq!(
+        paul.delete(&format!("/admin/connectors/{id}")).await.status,
+        StatusCode::OK
+    );
 }

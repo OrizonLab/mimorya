@@ -65,6 +65,25 @@ pub async fn start_mcp_within(
         .await
 }
 
+/// Starts an MCP instance as a run would, its token lasting until `until`.
+pub async fn start_mcp_until(
+    config: Value,
+    secret: Option<&str>,
+    until: Option<tokio::time::Instant>,
+    network: NetworkPolicy,
+) -> anyhow::Result<ConnectorRuntime> {
+    let context = InstanceContext {
+        secret,
+        secret_until: until,
+        network,
+        ..InstanceContext::default()
+    };
+    connector_type("mcp")
+        .unwrap()
+        .instantiate(&config, context)
+        .await
+}
+
 /// Starts an MCP instance whose calls may each take `call_timeout`.
 pub async fn start_mcp_calling_within(
     config: Value,

@@ -2,7 +2,9 @@
 //! used: what happened, in French, then the most precise cause the transport
 //! gave, with the token masked (`outbound::failure`). The type names of the
 //! MCP library never reach that message. A server whose refusal points to
-//! its OAuth metadata says it wants an OAuth authorization (ADR-171).
+//! its OAuth metadata says it wants an OAuth authorization; one that
+//! refuses the token of its authorization says to authorize it again
+//! (ADR-171).
 
 use std::error::Error as StdError;
 
@@ -29,32 +31,49 @@ pub const OAUTH_REQUIRED: &str =
 /// well as OAuth ones, and only says where its OAuth metadata is.
 pub const OAUTH_OFFERED: &str = "Accès refusé par le serveur : jeton invalide ; ce serveur annonce aussi une autorisation \
      OAuth";
+/// A refusal of the access token of the server's own authorization:
+/// revoked, expired early, or without the scopes the call needs.
+pub const OAUTH_REFUSED: &str = "Le serveur refuse le jeton de son autorisation OAuth (révoqué, \
+     expiré ou sans les portées voulues) : un administrateur doit autoriser de nouveau ce \
+     connecteur";
 const CLOSED: &str = "La connexion au serveur MCP est fermée";
+
+/// Whose token the platform sends the server.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum TokenKind {
+    /// Typed by an administrator, if any.
+    #[default]
+    Typed,
+    /// The access token of the server's OAuth authorization (ADR-171).
+    Authorization,
+}
 const REFUSED_CALL: &str = "Le serveur MCP a renvoyé une erreur";
 
 /// A failed start, explained.
-pub fn start_failed(error: &anyhow::Error, redactor: &Redactor) -> anyhow::Error {
+pub fn start_failed(error: &anyhow::Error, redactor: &Redactor, kind: TokenKind) -> anyhow::Error {
     let cause = error.chain().find_map(known).unwrap_or_else(|| Cause {
         summary: NOT_MCP,
         detail: error.root_cause().to_string(),
     });
-    explained(with_token(cause, redactor), redactor)
+    explained(with_token(cause, redactor, kind), redactor)
 }
 
-/// An OAuth refusal of a token typed by hand is told as such.
-fn with_token(cause: Cause, redactor: &Redactor) -> Cause {
-    if cause.summary == OAUTH_REQUIRED && redactor.longest() > 0 {
-        Cause {
-            summary: OAUTH_OFFERED,
-            ..cause
+/// A refusal of the token sent, told by whose it is: one typed by hand
+/// refused by a server that announces OAuth, or the authorization's.
+fn with_token(cause: Cause, redactor: &Redactor, kind: TokenKind) -> Cause {
+    let refused = cause.summary == OAUTH_REQUIRED || cause.summary == ACCESS_DENIED;
+    let summary = match kind {
+        TokenKind::Authorization if refused => OAUTH_REFUSED,
+        TokenKind::Typed if cause.summary == OAUTH_REQUIRED && redactor.longest() > 0 => {
+            OAUTH_OFFERED
         }
-    } else {
-        cause
-    }
+        _ => return cause,
+    };
+    Cause { summary, ..cause }
 }
 
 /// A failed tool call, explained.
-pub fn call_failed(error: &ServiceError, redactor: &Redactor) -> anyhow::Error {
+pub fn call_failed(error: &ServiceError, redactor: &Redactor, kind: TokenKind) -> anyhow::Error {
     let cause = match error {
         // Said by the platform: nothing of the server's answer to add.
         ServiceError::McpError(data) if data.message == TOO_LONG => Cause {
@@ -78,7 +97,7 @@ pub fn call_failed(error: &ServiceError, redactor: &Redactor) -> anyhow::Error {
             detail: error.to_string(),
         }),
     };
-    explained(with_token(cause, redactor), redactor)
+    explained(with_token(cause, redactor, kind), redactor)
 }
 
 /// The transport errors this module knows how to explain, wherever they sit

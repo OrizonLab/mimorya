@@ -11,10 +11,13 @@
 //! each start went is recorded on the instance (`status`, `last_error`).
 //! The starts an administration asks for are bounded per company
 //! (`admin_starts`, ADR-055). The tools of the connectors that reach
-//! outside the platform can be withheld (`tenant_tools`, ADR-153).
+//! outside the platform can be withheld (`tenant_tools`, ADR-153). An MCP
+//! server declared with OAuth starts with its authorization's access token,
+//! its session retired before the token expires (`credential`, ADR-171).
 
 mod admin_starts;
 mod cache;
+mod credential;
 mod failures;
 mod policies;
 mod reach;
@@ -24,6 +27,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
 
+use chrono::Utc;
 use futures::future::join_all;
 use mimorya_connectors::outbound::NetworkPolicy;
 use mimorya_connectors::{ConnectorRuntime, InstanceContext, connector_type};
@@ -32,12 +36,14 @@ use mimorya_db::Database;
 use mimorya_db::repositories::connectors::{
     ConnectorInstanceRow, list_connector_instances, report_connector_status,
 };
+use tokio::time::Instant;
 use uuid::Uuid;
 
 use admin_starts::AdminStarts;
 pub use admin_starts::{AdminStart, MAX_ADMIN_STARTS, TOO_MANY_ADMIN_STARTS};
 pub use cache::RETRY_AFTER;
 use cache::{Origin, RuntimeCache, Unavailable};
+pub use credential::{Credential, credential_of};
 pub use failures::{failure, opened};
 pub use mimorya_connectors::outbound::CONNECTOR_USE;
 pub use policies::{Policies, read_policies, scoped_overrides};
@@ -55,6 +61,17 @@ pub fn token_secret_name(instance_id: Uuid) -> String {
 /// The secret of the OAuth client declared on an MCP server (ADR-171).
 pub fn client_secret_name(instance_id: Uuid) -> String {
     format!("connector.{instance_id}.client_secret")
+}
+
+/// What the access token of an MCP server's OAuth authorization is sealed
+/// as: never another connector's (ADR-171).
+pub fn access_sealed_as(instance_id: Uuid) -> String {
+    format!("connector.{instance_id}.oauth_access")
+}
+
+/// What its refresh token is sealed as.
+pub fn refresh_sealed_as(instance_id: Uuid) -> String {
+    format!("connector.{instance_id}.oauth_refresh")
 }
 
 /// What the operator lets connectors do.
@@ -118,26 +135,22 @@ impl ConnectorService {
     pub async fn tools_for(&self, tenant_id: Uuid) -> anyhow::Result<TenantTools> {
         let ticket = self.cache.ticket().await;
         // Instances and tokens read in one snapshot: a token always goes
-        // with the address it was saved with.
+        // with the address it was saved, or authorized, for.
         let mut tx = self.db.begin_snapshot(tenant_id).await?;
         let mut instances = list_connector_instances(&mut tx, true).await?;
         // The oldest keeps its tools when two connectors name the same one.
         instances.sort_by_key(|instance| instance.created_at);
-        let mut secrets = Vec::with_capacity(instances.len());
+        let mut credentials = Vec::with_capacity(instances.len());
         for instance in &instances {
-            let read = self
-                .secrets
-                .read(&mut tx, tenant_id, &token_secret_name(instance.id))
-                .await?;
-            secrets.push(opened(read));
+            credentials.push(credential_of(&mut tx, &self.secrets, instance).await?);
         }
         tx.commit().await?;
 
         let prepared = join_all(
             instances
                 .iter()
-                .zip(secrets)
-                .map(|(instance, secret)| self.prepare(instance, secret, ticket)),
+                .zip(credentials)
+                .map(|(instance, credential)| self.prepare(instance, credential, ticket)),
         )
         .await;
         let mut result = TenantTools::default();
@@ -198,21 +211,17 @@ impl ConnectorService {
     async fn prepare(
         &self,
         instance: &ConnectorInstanceRow,
-        secret: anyhow::Result<Option<String>>,
+        credential: anyhow::Result<Credential>,
         ticket: u64,
     ) -> Result<Ready, Unavailable> {
         let policies = read_policies(instance).map_err(Unavailable::new)?;
-        let secret = secret.map_err(|error| Unavailable::new(error.to_string()))?;
+        let credential = credential.map_err(|error| Unavailable::new(error.to_string()))?;
         let runtime = self
             .cache
             .get_or_start(instance.id, instance.updated_at, ticket, || async {
-                self.start(
-                    &instance.connector_type,
-                    &instance.config,
-                    secret.as_deref(),
-                )
-                .await
-                .map_err(|error| failure(&error, secret.as_deref()))
+                self.start(&instance.connector_type, &instance.config, &credential)
+                    .await
+                    .map_err(|error| failure(&error, credential.token.as_deref()))
             })
             .await?;
         let names: Vec<String> = runtime
@@ -233,13 +242,19 @@ impl ConnectorService {
         &self,
         connector: &str,
         config: &serde_json::Value,
-        secret: Option<&str>,
+        credential: &Credential,
     ) -> anyhow::Result<ConnectorRuntime> {
         let Some(definition) = connector_type(connector) else {
             anyhow::bail!("Type de connecteur inconnu : {connector}");
         };
+        // Past, now; too far for the clock, as if it did not expire.
+        let until = credential.expires_at.and_then(|at| {
+            let left = (at - Utc::now()).to_std().unwrap_or_default();
+            Instant::now().checked_add(left)
+        });
         let context = InstanceContext {
-            secret,
+            secret: credential.token.as_deref(),
+            secret_until: until,
             network: self.settings.network,
             start_timeout: self.settings.start_timeout,
             ..InstanceContext::default()

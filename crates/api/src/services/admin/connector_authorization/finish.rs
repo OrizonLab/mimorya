@@ -20,14 +20,14 @@ use serde_json::json;
 use uuid::Uuid;
 
 use super::attempt::{self, AuthorizationAttempt, declared_print};
-use super::{access_sealed_as, redirect_uri, refresh_sealed_as};
+use super::redirect_uri;
 use crate::http::iso;
 use crate::secrets::SecretRead;
 use crate::services::AccessContext;
 use crate::services::admin::connector_oauth::McpServer;
 use crate::services::admin::connectors::{ConnectorAdmin, PERMISSION};
 use crate::services::admin::{audit_entry, begin_change};
-use crate::services::connectors::client_secret_name;
+use crate::services::connectors::{access_sealed_as, client_secret_name, refresh_sealed_as};
 use crate::services::sso::{error_code, same_state};
 
 /// An expiry further than this is read as this.

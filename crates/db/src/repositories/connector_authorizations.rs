@@ -139,6 +139,55 @@ pub async fn sealed_connector_tokens(
     }))
 }
 
+/// The sealed access token a session starts with, and what it was issued
+/// for (ADR-171).
+pub struct ConnectorAccessToken {
+    pub issuer: String,
+    pub client_id: String,
+    pub resource: String,
+    pub sealed: StoredSecret,
+    pub expires_at: Option<DateTime<Utc>>,
+}
+
+#[derive(sqlx::FromRow)]
+struct AccessRow {
+    issuer: String,
+    client_id: String,
+    resource: String,
+    access_ciphertext: Vec<u8>,
+    access_iv: Vec<u8>,
+    access_auth_tag: Vec<u8>,
+    access_key_version: i32,
+    access_expires_at: Option<DateTime<Utc>>,
+}
+
+/// The connector's access token, if it is authorized.
+pub async fn connector_access_token(
+    conn: &mut PgConnection,
+    connector_id: Uuid,
+) -> sqlx::Result<Option<ConnectorAccessToken>> {
+    let row: Option<AccessRow> = sqlx::query_as(
+        "select issuer, client_id, resource, access_ciphertext, access_iv, access_auth_tag, \
+         access_key_version, access_expires_at from connector_authorizations \
+         where connector_id = $1",
+    )
+    .bind(connector_id)
+    .fetch_optional(conn)
+    .await?;
+    Ok(row.map(|row| ConnectorAccessToken {
+        issuer: row.issuer,
+        client_id: row.client_id,
+        resource: row.resource,
+        sealed: StoredSecret {
+            ciphertext: row.access_ciphertext,
+            iv: row.access_iv,
+            auth_tag: row.access_auth_tag,
+            key_version: row.access_key_version,
+        },
+        expires_at: row.access_expires_at,
+    }))
+}
+
 /// Removes the connector's authorization; returns whether it had one.
 pub async fn delete_connector_authorization(
     conn: &mut PgConnection,

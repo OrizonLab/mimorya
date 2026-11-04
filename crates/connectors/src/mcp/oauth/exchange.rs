@@ -18,7 +18,7 @@ use super::declaration::OAuthDeclaration;
 use super::fetch::Fetcher;
 use super::protected_resource::endpoint_problem;
 use super::quoted::quoted;
-use super::scope::suggested_scopes;
+use super::scope::scopes_problem;
 use super::server_metadata::ClientAuth;
 use crate::outbound::NetworkPolicy;
 
@@ -161,14 +161,22 @@ fn granted(body: &[u8]) -> Result<Granted, String> {
                 .into(),
         );
     }
-    // Not said: those asked (RFC 6749 §5.1); said, read or refused.
-    let scopes =
-        match answer.scope.as_deref() {
-            None => None,
-            Some(list) => Some(suggested_scopes(list).ok_or(
-                "Portées accordées illisibles : la plateforme ne pourrait dire lesquelles",
-            )?),
-        };
+    // Not said: those asked (RFC 6749 §5.1); said, kept as the platform
+    // could ask them, or refused saying why.
+    let scopes = match answer.scope.as_deref() {
+        None => None,
+        Some(list) => {
+            let scopes: Vec<String> = list
+                .split(' ')
+                .filter(|scope| !scope.is_empty())
+                .map(String::from)
+                .collect();
+            if let Some(problem) = scopes_problem(&scopes) {
+                return Err(format!("Portées accordées refusées : {problem}"));
+            }
+            Some(scopes)
+        }
+    };
     Ok(Granted {
         access_token,
         expires_in,
@@ -234,12 +242,20 @@ mod tests {
             (br#"{"access_token":"jeton-abc-123","token_type":"Bearer","expires_in":60}"#, "renouvellement"),
             (br#"{"access_token":"jeton-abc-123","token_type":"Bearer","expires_in":-1,"refresh_token":"r"}"#, "Échéance"),
             (b"<html>", "illisible"),
-            (br#"{"access_token":"jeton-abc-123","token_type":"Bearer","scope":"a \"b"}"#, "Portées"),
-            (br#"{"access_token":"jeton-abc-123","token_type":"Bearer","scope":"a a"}"#, "Portées"),
+            (br#"{"access_token":"jeton-abc-123","token_type":"Bearer","scope":"a \"b"}"#, "guillemet"),
+            (br#"{"access_token":"jeton-abc-123","token_type":"Bearer","scope":"a a"}"#, "deux fois"),
         ] {
             let refused = granted(body).err().expect("refused");
             assert!(refused.contains(said), "{refused}");
         }
+        // Well formed but more than the platform keeps: said as such.
+        let many: Vec<String> = (0..21).map(|i| format!("s{i}")).collect();
+        let body = format!(
+            r#"{{"access_token":"jeton-abc-123","token_type":"Bearer","scope":"{}"}}"#,
+            many.join(" ")
+        );
+        let refused = granted(body.as_bytes()).err().expect("refused");
+        assert!(refused.contains("20 portées au plus"), "{refused}");
         // Without an expiry, nothing to renew.
         let lasting = br#"{"access_token":"jeton-abc-123","token_type":"Bearer"}"#;
         assert!(granted(lasting).is_ok());

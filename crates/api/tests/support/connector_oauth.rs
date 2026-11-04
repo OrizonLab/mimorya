@@ -4,7 +4,7 @@
 //! audit keep.
 
 use axum::http::StatusCode;
-use mimorya_api::services::admin::{access_sealed_as, refresh_sealed_as};
+use mimorya_api::services::connectors::{access_sealed_as, refresh_sealed_as};
 use mimorya_connectors::testing::{
     CLIENT_ID, CLIENT_SECRET, FakeAuthorizationServer, OAuthQuirk, ProtectedMcp,
     serve_oauth_mcp_http,
@@ -142,7 +142,12 @@ pub async fn refused_because(api: &TestApi, id: &str) -> String {
 /// The reasons of the authorizations refused to `user_id`, in order; a
 /// refusal before the connector is known names none.
 pub async fn refusals_by(api: &TestApi, user_id: Uuid) -> Vec<String> {
-    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    refusals_in(api, tenant::ID, user_id).await
+}
+
+/// `refusals_by`, of an account of the company `tenant_id`.
+pub async fn refusals_in(api: &TestApi, tenant_id: Uuid, user_id: Uuid) -> Vec<String> {
+    let mut tx = api.app.services.db.begin(tenant_id).await.unwrap();
     let reasons: Vec<Option<String>> = sqlx::query_scalar(
         "select reason from audit_log where actor_user_id = $1 \
          and action = 'connector.oauth_authorized' and outcome = 'denied' order by id",

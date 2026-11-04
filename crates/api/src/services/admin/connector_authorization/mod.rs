@@ -34,16 +34,6 @@ pub fn redirect_uri(web_origin: &str) -> String {
     format!("{web_origin}{CALLBACK_PATH}")
 }
 
-/// What the access token is sealed as: never another connector's.
-pub fn access_sealed_as(connector_id: Uuid) -> String {
-    format!("connector.{connector_id}.oauth_access")
-}
-
-/// What the refresh token is sealed as.
-pub fn refresh_sealed_as(connector_id: Uuid) -> String {
-    format!("connector.{connector_id}.oauth_refresh")
-}
-
 /// Withdraws the connector's authorization: its tokens go with it. The
 /// grant stays at the authorization server until revoked there.
 pub async fn remove_authorization(

@@ -59,9 +59,9 @@ pub use absences::{AbsenceAdmin, absence_of, declare_absence_for, end_absence_fo
 pub use approval_routing::{manager_risks, set_manager_risks};
 pub use assignments::{grant_role, revoke_role};
 pub use connector_authorization::{
-    AUTHORIZATION_COOKIE, AuthorizationFailure, AuthorizationStart, OAuthReturn, access_sealed_as,
-    authorization_cookie, cleared_authorization_cookie, finish_authorization, refresh_sealed_as,
-    remove_authorization, start_authorization,
+    AUTHORIZATION_COOKIE, AuthorizationFailure, AuthorizationStart, OAuthReturn,
+    authorization_cookie, cleared_authorization_cookie, finish_authorization, remove_authorization,
+    start_authorization,
 };
 pub use connector_config::{Editable, RestChanges};
 pub use connector_oauth::{OAuthInput, declare_oauth, remove_oauth};
