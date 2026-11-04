@@ -50,7 +50,14 @@ pub async fn put_connector_authorization(
     conn: &mut PgConnection,
     new: NewConnectorAuthorization<'_>,
 ) -> sqlx::Result<bool> {
-    let replaced = delete_connector_authorization(&mut *conn, new.connector_id).await?;
+    // The previous one replaced, not revoked: at some servers, revoking it
+    // would revoke this one (ADR-172).
+    let replaced = sqlx::query("delete from connector_authorizations where connector_id = $1")
+        .bind(new.connector_id)
+        .execute(&mut *conn)
+        .await?
+        .rows_affected()
+        > 0;
     let refresh = new.refresh_token;
     sqlx::query(
         "insert into connector_authorizations (tenant_id, connector_id, issuer, client_id, \
@@ -247,22 +254,6 @@ pub async fn connector_access_token(
         },
         expires_at: row.access_expires_at,
     }))
-}
-
-/// Removes the connector's authorization; returns whether it had one.
-pub async fn delete_connector_authorization(
-    conn: &mut PgConnection,
-    connector_id: Uuid,
-) -> sqlx::Result<bool> {
-    let deleted = sqlx::query("delete from connector_authorizations where connector_id = $1")
-        .bind(connector_id)
-        .execute(&mut *conn)
-        .await?;
-    let removed = deleted.rows_affected() > 0;
-    if removed {
-        credential_changed(conn, connector_id).await?;
-    }
-    Ok(removed)
 }
 
 /// A new version of the connector (`updated_at`), untested unless disabled:

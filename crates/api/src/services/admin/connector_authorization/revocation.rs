@@ -206,3 +206,41 @@ impl Revoking {
         revoke_within(declared, tokens, secret, self.network).await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn declaration(issuer: &str, revocation: Option<&str>) -> OAuthDeclaration {
+        OAuthDeclaration {
+            revocation_endpoint: revocation.map(String::from),
+            issuer: issuer.into(),
+            resource: "https://mcp.example.com/mcp".into(),
+            authorization_endpoint: format!("{issuer}/authorize"),
+            token_endpoint: format!("{issuer}/token"),
+            names_issuer_on_return: false,
+            client_id: "mimorya".into(),
+            client_auth: ClientAuth::ClientSecretPost,
+            scopes: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn a_former_declaration_takes_only_its_own_server_s_revocation_endpoint() {
+        let before = declaration("https://a.example", None);
+        // Its server now names one: taken.
+        let now = declaration("https://a.example", Some("https://a.example/revoke"));
+        let revocable = revocable_under(&before, &now);
+        assert_eq!(
+            revocable.revocation_endpoint.as_deref(),
+            Some("https://a.example/revoke")
+        );
+        // Another server's: never, its tokens and its client's secret are
+        // not to be sent there.
+        let elsewhere = declaration("https://b.example", Some("https://b.example/revoke"));
+        assert_eq!(revocable_under(&before, &elsewhere), before);
+        // One it named already: kept.
+        let named = declaration("https://a.example", Some("https://a.example/revoquer"));
+        assert_eq!(revocable_under(&named, &now), named);
+    }
+}

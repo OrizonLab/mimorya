@@ -5,7 +5,8 @@
 //! brings back, which no one keeps, are revoked as well, by a task the run
 //! does not wait for; not when another authorization of the same client at
 //! the same server took its place, which revoking them could take with
-//! them at some servers, but when one at another server did.
+//! them at some servers, but when one of another client or at another
+//! server did.
 
 mod support;
 
@@ -169,6 +170,46 @@ async fn a_renewal_in_flight_when_authorized_again_revokes_nothing() {
     assert!(asked_at(&authority, "revoke").is_empty());
     let (access, _) = kept_tokens(&api, &id).await.expect("kept");
     assert!(authority.accepts(&access, &server.url));
+    assert_eq!(
+        paul.delete(&format!("/admin/connectors/{id}")).await.status,
+        StatusCode::OK
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_renewal_in_flight_when_another_client_authorized_is_revoked() {
+    let api = TestApi::start_with(&PRIVATE_DEPLOYMENT).await;
+    let paul = api.sign_in(user::PAUL).await;
+    let authority = FakeAuthorizationServer::start().await;
+    let (_, id) = declared(&paul, &authority, "client").await;
+    assert_eq!(
+        location(&authorize(&paul, &authority, &id).await),
+        AUTHORIZED
+    );
+    alter(&api, &id, SOON).await;
+    authority.set(|settings| settings.held_renewals = Some(Duration::from_secs(3)));
+    // Authorized again while the renewal waits, held for another client of
+    // the same server.
+    let again = async {
+        while asked_at(&authority, "token").len() < 2 {
+            sleep(Duration::from_millis(20)).await;
+        }
+        let authorized = authorize(&paul, &authority, &id).await;
+        let other = "update connector_authorizations set client_id = 'un-autre-client' \
+                     where connector_id = $1";
+        alter(&api, &id, other).await;
+        authorized
+    };
+    let (_, again) = tokio::join!(runs_see(&api, "client"), again);
+    assert_eq!(location(&again), AUTHORIZED);
+    // The renewal's tokens, of another client than the one held: revoked.
+    let revoked = asked_until(&authority, 2).await;
+    let hints: Vec<_> = revoked
+        .iter()
+        .map(|r| r.params["token_type_hint"].as_str())
+        .collect();
+    assert_eq!(hints, ["refresh_token", "access_token"]);
     assert_eq!(
         paul.delete(&format!("/admin/connectors/{id}")).await.status,
         StatusCode::OK

@@ -10771,8 +10771,11 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       requête est abandonnée pendant que le serveur se tait est révoqué jusqu'au délai
       et tracé ; les jetons d'un renouvellement en vol quand l'autorisation est retirée
       sont révoqués après ceux du retrait, sans que le run les attende ; pas quand une
-      nouvelle autorisation chez le même serveur a pris sa place, mais quand elle est
-      chez un autre ;
+      nouvelle autorisation du même client chez le même serveur a pris sa place, mais
+      quand elle est d'un autre client ou chez un autre serveur ;
+    - `connector_authorization/revocation.rs` (test unitaire) : une ancienne
+      déclaration ne prend que le point de révocation de son propre serveur, jamais
+      celui d'un autre, à qui ses jetons et le secret de son client n'ont pas à aller ;
     - `crates/api/tests/connector_oauth_return_guards.rs` : les jetons d'un retour dont
       la déclaration a changé pendant l'échange sont révoqués sous l'ancienne, avec son
       secret ;
