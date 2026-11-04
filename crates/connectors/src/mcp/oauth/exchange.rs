@@ -207,6 +207,7 @@ mod tests {
         fn sendable<T: Send>(_: T) {}
         let declaration = OAuthDeclaration {
             revocation_endpoint: None,
+            registered: None,
             issuer: "https://auth.example.com".into(),
             resource: "https://mcp.example.com/mcp".into(),
             authorization_endpoint: "https://auth.example.com/authorize".into(),

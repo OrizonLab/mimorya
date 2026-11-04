@@ -139,7 +139,7 @@ fn form(
 
 /// The error code of a refusal as RFC 6749 §5.2 writes one, if it reads as
 /// one: never what the server wrote around it.
-fn error_code(body: &[u8]) -> Option<String> {
+pub(super) fn error_code(body: &[u8]) -> Option<String> {
     serde_json::from_slice::<ErrorResponse>(body)
         .ok()
         .and_then(|answer| answer.error)

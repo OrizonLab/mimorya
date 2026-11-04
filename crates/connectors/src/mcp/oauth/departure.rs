@@ -72,6 +72,7 @@ mod tests {
     fn declaration(endpoint: &str, scopes: &[&str]) -> OAuthDeclaration {
         OAuthDeclaration {
             revocation_endpoint: None,
+            registered: None,
             issuer: "https://auth.example.com".into(),
             resource: "https://mcp.example.com/mcp".into(),
             authorization_endpoint: endpoint.into(),

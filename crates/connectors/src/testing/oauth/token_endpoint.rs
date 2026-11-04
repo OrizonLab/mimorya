@@ -48,7 +48,7 @@ fn answer(
         params: params.clone(),
         basic: basic.clone(),
     });
-    if let Some(refusal) = client_refusal(&inner.settings.auth_methods, basic.as_deref(), params) {
+    if let Some(refusal) = client_refusal(&inner, basic.as_deref(), params) {
         return refusal;
     }
     let field = |name: &str| params.get(name).cloned().unwrap_or_default();
@@ -117,12 +117,14 @@ pub(super) fn basic_credentials(headers: &HeaderMap) -> Option<String> {
 }
 
 /// The refusal of a client that did not prove itself one way only, a way
-/// the server lists, with its own id and secret.
+/// the server lists, with its own id and secret: the test client, or one
+/// registered, the way it registered.
 pub(super) fn client_refusal(
-    methods: &[String],
+    inner: &Inner,
     basic: Option<&str>,
     params: &HashMap<String, String>,
 ) -> Option<Response> {
+    let methods = &inner.settings.auth_methods;
     let (method, id, secret) = match (basic, params.get("client_secret")) {
         (Some(_), Some(_)) => return Some(refused("invalid_client")),
         (Some(pair), None) => match pair.split_once(':') {
@@ -140,9 +142,14 @@ pub(super) fn client_refusal(
             None,
         ),
     };
-    let proven = methods.iter().any(|m| m == method)
-        && id == CLIENT_ID
-        && secret.is_none_or(|secret| secret == CLIENT_SECRET);
+    let proven = match inner.clients.get(id) {
+        Some(client) => client.method == method && client.secret.as_deref() == secret,
+        None => {
+            methods.iter().any(|m| m == method)
+                && id == CLIENT_ID
+                && secret.is_none_or(|secret| secret == CLIENT_SECRET)
+        }
+    };
     match (proven, basic.is_some()) {
         (true, _) => None,
         (false, true) => Some(refused_basic()),
@@ -181,7 +188,7 @@ fn granted(inner: &mut Inner, grant: u64, resource: Option<String>, scope: Strin
     axum::Json(body).into_response()
 }
 
-fn refused(error: &str) -> Response {
+pub(super) fn refused(error: &str) -> Response {
     (
         StatusCode::BAD_REQUEST,
         axum::Json(json!({ "error": error })),

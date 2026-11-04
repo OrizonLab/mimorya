@@ -12,6 +12,7 @@ use axum::extract::{Query, State};
 use axum::http::header::{LOCATION, SET_COOKIE};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{AppendHeaders, IntoResponse, Response};
+use mimorya_connectors::mcp::oauth::ClientAuth;
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 
 use super::connectors::{admin, secrets};
@@ -23,9 +24,9 @@ use crate::http::{ApiError, ApiResult, Body, PathId};
 use crate::plugins::{Auth, RequestContext};
 use crate::services::AccessContext;
 use crate::services::admin::{
-    AUTHORIZATION_COOKIE, AuthorizationFailure, OAuthInput, OAuthReturn, authorization_cookie,
-    cleared_authorization_cookie, declare_oauth, finish_authorization, remove_authorization,
-    remove_oauth, start_authorization,
+    AUTHORIZATION_COOKIE, AuthorizationFailure, OAuthClient, OAuthInput, OAuthReturn,
+    authorization_cookie, cleared_authorization_cookie, declare_oauth, finish_authorization,
+    oauth_redirect_uri, remove_authorization, remove_oauth, start_authorization,
 };
 use crate::services::permission_catalog::permission_catalog;
 
@@ -43,15 +44,21 @@ pub async fn declare(
 ) -> ApiResult<Json<McpOAuth>> {
     let access = state.access.context(identity).await?;
     let (store, catalog) = (secrets(&state), permission_catalog());
+    let client = OAuthClient::chosen(
+        body.register.unwrap_or(false),
+        body.client_id.filter(|id| !id.is_empty()),
+        body.client_secret.filter(|secret| !secret.is_empty()),
+    )?;
     let input = OAuthInput {
         issuer: body.issuer.filter(|issuer| !issuer.is_empty()),
-        client_id: body.client_id,
-        client_secret: body.client_secret.filter(|secret| !secret.is_empty()),
+        client,
         scopes: body.scopes,
+        redirect_uri: oauth_redirect_uri(&state.config.web_origin),
     };
-    let has_secret = input.client_secret.is_some();
     let declared = declare_oauth(&admin(&state, &store, &catalog), &access, id, input).await?;
-    // A new declaration: no authorization yet.
+    // Its secret, typed or granted, stored if it proves itself with one; no
+    // authorization yet.
+    let has_secret = declared.client_auth != ClientAuth::None;
     Ok(Json(McpOAuth::new(declared, has_secret, None)))
 }
 

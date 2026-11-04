@@ -32,9 +32,7 @@ pub(super) async fn revoke(
             params: params.clone(),
             basic: basic.clone(),
         });
-        if let Some(refusal) =
-            client_refusal(&inner.settings.auth_methods, basic.as_deref(), &params)
-        {
+        if let Some(refusal) = client_refusal(&inner, basic.as_deref(), &params) {
             return refusal;
         }
         let token = params.get("token").map_or("", String::as_str);

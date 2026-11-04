@@ -1,7 +1,7 @@
 //! An OAuth authorization server, as an MCP server's would be: its metadata
 //! (RFC 8414), an authorization endpoint answering at once (no one to sign
-//! in, the code sent back to the redirect address), and its token endpoint
-//! (`token_endpoint`). Every request is recorded; the tests turn its
+//! in, the code sent back to the redirect address), its token endpoint
+//! (`token_endpoint`), and those that revoke tokens and register clients. Every request is recorded; the tests turn its
 //! behaviour (`Settings`).
 
 use std::collections::HashMap;
@@ -15,7 +15,7 @@ use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use serde_json::json;
 
-use super::{revocation_endpoint, token_endpoint};
+use super::{registration_endpoint, revocation_endpoint, token_endpoint};
 use crate::outbound::{NetworkPolicy, http_client};
 
 pub const CLIENT_ID: &str = "mimorya-test-client";
@@ -47,6 +47,13 @@ pub struct Settings {
     pub revokes_access: bool,
     /// A renewal's answer kept back this long, its tokens issued.
     pub held_renewals: Option<Duration>,
+    /// Whether its metadata names its registration endpoint (RFC 7591).
+    pub registration: bool,
+    /// A registration endpoint that asks for an initial access token.
+    pub registration_token: bool,
+    /// Seconds a registered client's secret lasts; `None`: it does not
+    /// expire.
+    pub secret_lifetime: Option<u64>,
 }
 
 impl Default for Settings {
@@ -65,6 +72,9 @@ impl Default for Settings {
             mute_revocation: false,
             revokes_access: true,
             held_renewals: None,
+            registration: true,
+            registration_token: false,
+            secret_lifetime: None,
         }
     }
 }
@@ -84,6 +94,14 @@ pub(super) struct Code {
     pub(super) scope: String,
 }
 
+/// A client registered at the server (RFC 7591).
+pub(super) struct Client {
+    pub(super) secret: Option<String>,
+    /// How it proves itself, as registered.
+    pub(super) method: String,
+    pub(super) redirect_uris: Vec<String>,
+}
+
 pub(super) struct Refresh {
     pub(super) grant: u64,
     pub(super) current: bool,
@@ -98,6 +116,7 @@ pub(super) struct Inner {
     access: HashMap<String, (u64, Option<String>, Option<Instant>)>,
     pub(super) refresh: HashMap<String, Refresh>,
     pub(super) revoked: Vec<u64>,
+    pub(super) clients: HashMap<String, Client>,
     pub(super) next: u64,
     pub(super) requests: Vec<AuthRequest>,
 }
@@ -129,6 +148,7 @@ impl FakeAuthorizationServer {
             .route("/authorize", get(authorize))
             .route("/token", post(token_endpoint::token))
             .route("/revoke", post(revocation_endpoint::revoke))
+            .route("/register", post(registration_endpoint::register))
             .with_state(server.clone());
         tokio::spawn(async move { axum::serve(listener, router).await.expect("test server") });
         server
@@ -184,6 +204,12 @@ impl FakeAuthorizationServer {
             .and_then(|value| value.to_str().ok())
             .expect("sent back")
             .to_string()
+    }
+
+    /// The clients registered so far.
+    pub fn registered(&self) -> Vec<String> {
+        let inner = self.inner.lock().expect("server");
+        inner.clients.keys().cloned().collect()
     }
 
     /// Revokes every grant made so far, as an administrator at the
@@ -251,9 +277,11 @@ async fn metadata(State(server): State<FakeAuthorizationServer>) -> Response {
         issuer.clone()
     };
     let revocation = settings.revocation.then(|| format!("{issuer}/revoke"));
+    let registration = settings.registration.then(|| format!("{issuer}/register"));
     axum::Json(json!({
         "issuer": named,
         "revocation_endpoint": revocation,
+        "registration_endpoint": registration,
         "authorization_endpoint": format!("{issuer}/authorize"),
         "token_endpoint": format!("{issuer}/token"),
         "response_types_supported": ["code"],
@@ -277,8 +305,19 @@ async fn authorize(
         basic: None,
     });
     let field = |name: &str| params.get(name).cloned().unwrap_or_default();
+    // The test client, or a registered one at a return address it gave.
+    let known = field("client_id") == CLIENT_ID
+        || inner
+            .clients
+            .get(&field("client_id"))
+            .is_some_and(|client| {
+                client
+                    .redirect_uris
+                    .iter()
+                    .any(|uri| *uri == field("redirect_uri"))
+            });
     if field("response_type") != "code"
-        || field("client_id") != CLIENT_ID
+        || !known
         || field("code_challenge_method") != "S256"
         || field("code_challenge").is_empty()
         || field("redirect_uri").is_empty()

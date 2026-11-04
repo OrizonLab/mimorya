@@ -10516,9 +10516,9 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
         `NetworkPolicy`, `BuildOptions::connector_test_servers`) : toute autre adresse
         privée reste refusée, et ce que vérifient les autres parcours ne change pas ;
         cette liste n'est jamais lue de l'environnement et reste vide en production ;
-    - l'enregistrement dynamique du client (RFC 7591) et la révocation auprès du
-      serveur (RFC 7009, ADR-172, lot 41a), qui ont leur propre ADR, viennent après : un
-      client enregistré à la main suffit ;
+    - l'enregistrement dynamique du client (RFC 7591, ADR-173, lot 41b) et la
+      révocation auprès du serveur (RFC 7009, ADR-172, lot 41a), qui ont leur propre ADR,
+      viennent après : un client enregistré à la main suffit ;
     - puis l'autorisation par personne.
 - **Conséquences** :
   - tests du lot 40a :
@@ -10790,3 +10790,76 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     d'authentification propre au point de révocation
     (`revocation_endpoint_auth_methods_supported`), quand un serveur la distinguera de
     celle du point de jeton.
+
+## ADR-173 — La plateforme enregistre elle-même son client OAuth chez le serveur d'autorisation (lot 41b)
+
+- **Statut** : accepté (2026-11-04).
+- **Contexte** : déclarer OAuth sur un serveur MCP (ADR-171) suppose qu'un administrateur
+  ait enregistré un client chez le serveur d'autorisation, à la main, avec l'adresse de
+  retour de la plateforme, puis saisi son identifiant et son secret. La spécification MCP
+  recommande l'enregistrement dynamique des clients (RFC 7591), que beaucoup de serveurs
+  d'autorisation de serveurs MCP offrent, souvent sans jeton initial ; la découverte lit
+  déjà leur point d'enregistrement (`registration_endpoint`) et le vérifie.
+- **Décision** :
+  - une déclaration peut demander que la plateforme s'enregistre elle-même
+    (`register: true`) ; elle ne donne alors ni identifiant ni secret. Sans cela,
+    l'identifiant reste requis ; les deux à la fois sont refusés
+    (`services/admin/oauth_client.rs`) ;
+  - une fois la découverte faite, sous la même place des démarrages de l'administration,
+    la plateforme s'enregistre au point d'enregistrement que nomment les métadonnées,
+    vérifié comme les autres points et de nouveau à l'envoi (`mcp/oauth/registration.rs`).
+    Elle demande :
+    - son nom (`client_name`) et sa seule adresse de retour ;
+    - les octrois `authorization_code` et `refresh_token`, `response_types: code` ;
+    - les portées qui seront demandées ;
+    - un secret seulement si elle peut le sceller (clé maître) et si le serveur en prend,
+      la façon de le prouver choisie comme pour un client saisi ; sinon un client public ;
+  - la réponse est lue dans ses bornes (64 Kio, dix secondes) et vérifiée comme un client
+    saisi :
+    - identifiant et secret au format de RFC 6749 ;
+    - façon de prouver le client connue et cohérente avec la présence d'un secret, celle
+      que dit le serveur prévalant sur celle demandée ;
+    - adresse de retour gardée, si le serveur liste celles qu'il garde ;
+    - secret valable au moins un jour, sinon refusé : l'autorisation ne durerait pas ;
+  - un serveur sans point d'enregistrement, qui demande un jeton d'enregistrement initial
+    (401, 403), refuse (400, dit par son seul code) ou répond autre chose le dit, jamais
+    avec un secret, et rien n'est gardé ;
+  - le secret accordé est scellé à part comme un secret saisi, jamais rendu ni tracé ; la
+    déclaration garde que le client est celui de la plateforme et l'échéance de son
+    secret, que l'API montre (`registered`, `clientSecretExpiresAt`) et que la trace de la
+    déclaration dit (`registered`) ;
+  - déclarer de nouveau enregistre un nouveau client. La gestion du client enregistré
+    (RFC 7592 : lecture, mise à jour, suppression) n'est pas faite : quand la déclaration
+    est retirée ou remplacée, le client reste enregistré chez le serveur, à retirer
+    là-bas. Un secret qui expire n'est pas renouvelé : le renouvellement des jetons
+    échoue alors (`invalid_client`), l'autorisation est retirée et l'administrateur
+    déclare de nouveau ;
+  - le jeton d'enregistrement initial (RFC 7591 §3) n'est pas pris en charge : le client
+    est alors enregistré à la main, comme avant.
+- **Conséquences** :
+  - un administrateur n'a plus à enregistrer le client à la main chez les serveurs qui
+    offrent l'enregistrement dynamique sans jeton initial ;
+  - tests :
+    - `mcp/oauth/registration.rs` (tests unitaires) : une réponse est gardée telle que le
+      serveur la dit, ou telle que demandée ; une réponse illisible, sans identifiant,
+      avec un identifiant ou un secret illisible, une façon inconnue ou incohérente, une
+      adresse de retour perdue ou un secret qui expire avant un jour est refusée, sans
+      son secret ;
+    - `crates/connectors/tests/mcp_oauth_registration.rs` : le client enregistré, pour la
+      seule adresse de retour, avec un secret, est autorisé et son code échangé comme un
+      client saisi ; une plateforme sans clé enregistre un client public, refusé par un
+      serveur qui n'en prend pas ; un serveur sans point d'enregistrement, qui demande un
+      jeton initial, donne un secret trop bref ou refuse l'adresse de retour le dit ;
+    - `crates/api/tests/connector_oauth_registration.rs` : la plateforme s'enregistre pour
+      son adresse de retour, le dit, garde le secret scellé, jamais montré ni tracé, est
+      autorisée et les runs voient les outils du serveur ; déclarée de nouveau à la main,
+      le client n'est plus le sien ; un corps qui nomme son client de deux façons, ou
+      d'aucune, est refusé pour sa raison ; un serveur sans enregistrement ou qui demande
+      un jeton initial le dit, rien n'étant gardé ;
+    - le serveur d'autorisation simulé a son point d'enregistrement, strict sur les
+      adresses de retour, les octrois et la façon de prouver le client ; les clients qu'il
+      enregistre sont acceptés ensuite comme ils se sont enregistrés ; il peut ne pas
+      l'annoncer, demander un jeton initial ou donner des secrets qui expirent ;
+  - reste : l'écran de « Connecteurs » qui offre ce choix, lot 41c ; la gestion du client
+    enregistré (RFC 7592) ; le jeton d'enregistrement initial ; l'autorisation par
+    personne.

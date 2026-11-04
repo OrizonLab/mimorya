@@ -38,6 +38,7 @@ mod mcp_config;
 mod memory_settings;
 mod microsoft365;
 mod mission_settings;
+mod oauth_client;
 mod org_units;
 mod policies;
 mod policy_changes;
@@ -98,6 +99,7 @@ pub use microsoft365::{NewMicrosoft365, create_microsoft365_connector};
 pub use mission_settings::{
     company_mission_limits, reset_company_mission_limits, set_company_mission_limits,
 };
+pub use oauth_client::OAuthClient;
 pub use org_units::{NewUnitInput, UnitChanges, create_unit, delete_unit, update_unit};
 pub use policies::{PolicyChanges, PolicyInput, create_policy, delete_policy, update_policy};
 pub use policy_proposals::{

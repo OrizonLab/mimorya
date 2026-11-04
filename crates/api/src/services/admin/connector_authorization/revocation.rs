@@ -214,6 +214,7 @@ mod tests {
     fn declaration(issuer: &str, revocation: Option<&str>) -> OAuthDeclaration {
         OAuthDeclaration {
             revocation_endpoint: revocation.map(String::from),
+            registered: None,
             issuer: issuer.into(),
             resource: "https://mcp.example.com/mcp".into(),
             authorization_endpoint: format!("{issuer}/authorize"),

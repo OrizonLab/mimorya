@@ -120,6 +120,28 @@ impl Fetcher {
         if let Some((id, secret)) = basic {
             request = request.basic_auth(id, Some(secret));
         }
+        self.answer(endpoint, request).await
+    }
+
+    /// The JSON `document` posted to `endpoint`, an endpoint of the
+    /// authorization server already checked by its caller: the answer's
+    /// status and body, read within its bound.
+    pub async fn json(&self, endpoint: &str, document: String) -> Result<(u16, Vec<u8>), String> {
+        let request = self
+            .client
+            .post(endpoint)
+            .header(ACCEPT, "application/json")
+            .header(CONTENT_TYPE, "application/json")
+            .body(document);
+        self.answer(endpoint, request).await
+    }
+
+    /// The status and body `request` to `endpoint` is answered with.
+    async fn answer(
+        &self,
+        endpoint: &str,
+        request: RequestBuilder,
+    ) -> Result<(u16, Vec<u8>), String> {
         self.within(endpoint, async {
             let response = request
                 .send()
