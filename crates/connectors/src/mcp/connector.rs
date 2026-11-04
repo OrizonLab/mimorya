@@ -27,11 +27,11 @@ use tokio::process::Command;
 use tokio::time::Instant;
 
 use super::bridge::{McpClient, McpToolsetOptions, create_mcp_toolset};
-use super::expiry::Expiry;
+use super::expiry::{Expiry, OAUTH_UNUSABLE};
 use super::failure::{TokenKind, start_failed};
 use super::http::{BoundedHttpClient, TOO_LONG};
 use super::liveness::Liveness;
-use super::oauth::{OAUTH_TO_AUTHORIZE, OAuthDeclaration};
+use super::oauth::{OAUTH_TO_AUTHORIZE, OAuthDeclaration, access_token_problem};
 use crate::outbound::{Redactor, http_client, token_problem, too_slow, url_problem};
 use crate::types::{Connector, ConnectorCloser, ConnectorInfo, ConnectorRuntime, InstanceContext};
 
@@ -169,15 +169,19 @@ async fn start(
                 expiry =
                     Expiry::of(context.secret_until, Instant::now()).map_err(anyhow::Error::msg)?;
             }
-            // A token saved before the rule may hold what the masking cannot follow.
-            if context
-                .secret
-                .is_some_and(|token| token_problem(token).is_some())
-            {
-                bail!(
+            // A token saved before the rule may hold what the masking cannot
+            // follow; an authorization's is held to the rule it was kept by.
+            match (kind, context.secret) {
+                (TokenKind::Typed, Some(token)) if token_problem(token).is_some() => bail!(
                     "Le jeton enregistré n’a plus un format accepté (RFC 6750) : saisissez un \
                      jeton conforme"
-                );
+                ),
+                (TokenKind::Authorization, Some(token))
+                    if access_token_problem(token).is_some() =>
+                {
+                    bail!(OAUTH_UNUSABLE)
+                }
+                _ => {}
             }
             let mut config = StreamableHttpClientTransportConfig::with_uri(url);
             if let Some(token) = context.secret {
@@ -210,6 +214,13 @@ async fn start(
     let tools = create_mcp_toolset(client.clone(), &options)
         .await
         .map_err(|error| anyhow::anyhow!(options.redactor.text(&format!("{error:#}"))));
+    // Its life counted from now, as the platform counts it (ADR-163): a
+    // slow start may have used up what the token had left.
+    let tools = tools.and_then(|tools| {
+        Expiry::of(context.secret_until, Instant::now())
+            .map(|_| tools)
+            .map_err(anyhow::Error::msg)
+    });
     let closer = Session {
         client,
         cancel: std::sync::Mutex::new(Some(token)),

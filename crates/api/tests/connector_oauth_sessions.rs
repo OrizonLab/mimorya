@@ -2,12 +2,17 @@
 //! the administration's test are given its tools through the access token
 //! of its authorization, sent to the server alone; not authorized, its
 //! authorization withdrawn or issued under another declaration, it says to
-//! authorize it; a token about to expire, or one the server refuses, says
-//! to authorize it again, the token never shown.
+//! authorize it; a token about to expire, one that cannot be opened, or one
+//! the server refuses, says to authorize it again, the token never shown.
+//! A process that missed the notice of a change still follows it: the
+//! authorization is part of the connector's version.
 
 mod support;
 
 use axum::http::StatusCode;
+use mimorya_api::secrets::SecretStore;
+use mimorya_api::services::connectors::{ConnectorService, ConnectorSettings};
+use mimorya_api::services::invalidations::Invalidations;
 use mimorya_connectors::mcp::oauth::OAUTH_TO_AUTHORIZE;
 use mimorya_connectors::mcp::{OAUTH_EXPIRED, OAUTH_REFUSED};
 use mimorya_connectors::testing::FakeAuthorizationServer;
@@ -34,18 +39,34 @@ fn said(outcome: &Value) -> String {
 
 /// Whether runs are given the server's tools (prefixed with `prefix`).
 async fn runs_see(api: &TestApi, prefix: &str) -> bool {
-    let tools = api
-        .app
-        .services
-        .connectors
-        .tools_for(tenant::ID)
-        .await
-        .unwrap();
+    sees(&api.app.services.connectors, prefix).await
+}
+
+/// Whether the runs of the process holding `connectors` are given them.
+async fn sees(connectors: &ConnectorService, prefix: &str) -> bool {
+    let tools = connectors.tools_for(tenant::ID).await.unwrap();
     let namespace = format!("mcp_{prefix}_");
     tools
         .tools
         .iter()
         .any(|tool| tool.info().name.starts_with(&namespace))
+}
+
+/// Another process's connectors, which hear none of this one's notices.
+fn another_process(api: &TestApi) -> ConnectorService {
+    let services = &api.app.services;
+    let config = &services.config;
+    let settings = ConnectorSettings {
+        network: config.mcp_network,
+        start_timeout: config.mcp_start_timeout,
+    };
+    let secrets = SecretStore::new(config.secrets.clone());
+    ConnectorService::new(
+        services.db.clone(),
+        secrets,
+        settings,
+        Invalidations::new().0,
+    )
 }
 
 /// Changes the stored authorization as an operator could, then releases the
@@ -124,12 +145,48 @@ async fn an_authorization_issued_elsewhere_about_to_expire_or_refused_says_so() 
         location(&authorize(&paul, &authority, &id).await),
         AUTHORIZED
     );
-    // Issued for another resource than the one declared: not used.
-    let elsewhere = "update connector_authorizations set resource = \
-                     'https://autre.example/mcp' where connector_id = $1";
-    alter(&api, &id, elsewhere).await;
-    let other = tested(&paul, &id).await;
-    assert!(said(&other).contains(OAUTH_TO_AUTHORIZE), "{other}");
+    // Issued under another declaration (resource, issuer, client): not used.
+    for elsewhere in [
+        "resource = 'https://autre.example/mcp'",
+        "issuer = 'https://autre-emetteur.example'",
+        "client_id = 'autre-client'",
+    ] {
+        let sql =
+            format!("update connector_authorizations set {elsewhere} where connector_id = $1");
+        alter(&api, &id, &sql).await;
+        let other = tested(&paul, &id).await;
+        assert!(
+            said(&other).contains(OAUTH_TO_AUTHORIZE),
+            "{elsewhere}: {other}"
+        );
+        assert_eq!(
+            location(&authorize(&paul, &authority, &id).await),
+            AUTHORIZED
+        );
+    }
+    // Sealed for another connector: not opened.
+    let (_, other_id) = declared(&paul, &authority, "voisin").await;
+    assert_eq!(
+        location(&authorize(&paul, &authority, &other_id).await),
+        AUTHORIZED
+    );
+    let swapped = format!(
+        "update connector_authorizations a set access_ciphertext = b.access_ciphertext, \
+         access_iv = b.access_iv, access_auth_tag = b.access_auth_tag \
+         from connector_authorizations b where a.connector_id = $1 and b.connector_id = '{other_id}'"
+    );
+    alter(&api, &id, &swapped).await;
+    let unopened = tested(&paul, &id).await;
+    assert!(
+        said(&unopened).contains("ne peut pas être déchiffré"),
+        "{unopened}"
+    );
+    assert_eq!(
+        paul.delete(&format!("/admin/connectors/{other_id}"))
+            .await
+            .status,
+        StatusCode::OK
+    );
     // About to expire: nothing starts.
     assert_eq!(
         location(&authorize(&paul, &authority, &id).await),
@@ -154,6 +211,41 @@ async fn an_authorization_issued_elsewhere_about_to_expire_or_refused_says_so() 
     assert!(!refused.to_string().contains(&access));
     let shown = listed(&paul, &id).await.to_string();
     assert!(!shown.contains(&access));
+    assert_eq!(
+        paul.delete(&format!("/admin/connectors/{id}")).await.status,
+        StatusCode::OK
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_process_that_missed_the_notice_follows_the_authorization() {
+    let api = TestApi::start_with(&PRIVATE_DEPLOYMENT).await;
+    let paul = api.sign_in(user::PAUL).await;
+    let authority = FakeAuthorizationServer::start().await;
+    let (server, id) = declared(&paul, &authority, "processus").await;
+    // The worker, say, whose listening was reconnecting meanwhile.
+    let worker = another_process(&api);
+    assert_eq!(
+        location(&authorize(&paul, &authority, &id).await),
+        AUTHORIZED
+    );
+    assert!(sees(&worker, "processus").await);
+    // Authorized again: its session started again with the new token.
+    assert_eq!(
+        location(&authorize(&paul, &authority, &id).await),
+        AUTHORIZED
+    );
+    let (second, _) = kept_tokens(&api, &id).await.expect("kept");
+    let asked = server.authorizations().len();
+    assert!(sees(&worker, "processus").await);
+    let bearer = Some(format!("Bearer {second}"));
+    assert!(server.authorizations()[asked..].contains(&bearer));
+    // Withdrawn: it goes without it.
+    let authorization = format!("/admin/connectors/{id}/oauth/authorization");
+    assert_eq!(paul.delete(&authorization).await.status, StatusCode::OK);
+    assert!(!sees(&worker, "processus").await);
+    worker.close().await;
     assert_eq!(
         paul.delete(&format!("/admin/connectors/{id}")).await.status,
         StatusCode::OK

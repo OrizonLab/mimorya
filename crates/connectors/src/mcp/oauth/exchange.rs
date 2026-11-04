@@ -20,6 +20,7 @@ use super::protected_resource::endpoint_problem;
 use super::quoted::quoted;
 use super::scope::scopes_problem;
 use super::server_metadata::ClientAuth;
+use crate::mcp::expiry::MIN_GRANTED_LIFE;
 use crate::outbound::NetworkPolicy;
 
 const TIMEOUT: Duration = Duration::from_secs(10);
@@ -161,6 +162,13 @@ fn granted(body: &[u8]) -> Result<Granted, String> {
                 .into(),
         );
     }
+    if expires_in.is_some_and(|seconds| seconds < MIN_GRANTED_LIFE.as_secs()) {
+        return Err(format!(
+            "Jeton d’accès valable moins de {} minutes : la plateforme n’aurait pas le temps \
+             d’ouvrir une session avec lui",
+            MIN_GRANTED_LIFE.as_secs() / 60
+        ));
+    }
     // Not said: those asked (RFC 6749 §5.1); said, kept as the platform
     // could ask them, or refused saying why.
     let scopes = match answer.scope.as_deref() {
@@ -241,6 +249,7 @@ mod tests {
             (br#"{"access_token":"jeton-abc-123","token_type":"MAC"}"#, "Bearer"),
             (br#"{"access_token":"jeton-abc-123","token_type":"Bearer","expires_in":60}"#, "renouvellement"),
             (br#"{"access_token":"jeton-abc-123","token_type":"Bearer","expires_in":-1,"refresh_token":"r"}"#, "Échéance"),
+            (br#"{"access_token":"jeton-abc-123","token_type":"Bearer","expires_in":299,"refresh_token":"r"}"#, "moins de 5 minutes"),
             (b"<html>", "illisible"),
             (br#"{"access_token":"jeton-abc-123","token_type":"Bearer","scope":"a \"b"}"#, "guillemet"),
             (br#"{"access_token":"jeton-abc-123","token_type":"Bearer","scope":"a a"}"#, "deux fois"),

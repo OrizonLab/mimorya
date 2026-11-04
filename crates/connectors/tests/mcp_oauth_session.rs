@@ -1,17 +1,21 @@
 //! A session with an MCP server declared with OAuth (ADR-171): it is sent
-//! the access token of the server's authorization, and starts without one
-//! by saying it must be authorized; a token about to expire starts nothing,
-//! the server not even asked; a token the server refuses, at the start or
-//! on a call, says to authorize it again, the token masked.
+//! the access token of the server's authorization, however long the
+//! authorization server writes it, and starts without one by saying it
+//! must be authorized; a token about to expire starts nothing, the server
+//! not even asked, and a session is retired a minute before its token
+//! expires; a token the server refuses, at the start or on a call, says to
+//! authorize it again, the token masked.
 
 mod support;
 
 use std::time::Duration;
 
 use mimorya_connectors::mcp::oauth::{ClientAuth, OAUTH_TO_AUTHORIZE, OAuthDeclaration};
-use mimorya_connectors::mcp::{OAUTH_EXPIRED, OAUTH_OFFERED, OAUTH_REFUSED};
+use mimorya_connectors::mcp::{OAUTH_EXPIRED, OAUTH_OFFERED, OAUTH_REFUSED, RETIRE_BEFORE};
+use mimorya_connectors::outbound::MAX_TOKEN_CHARS;
 use mimorya_connectors::testing::{
-    CLIENT_ID, FakeAuthorizationServer, OAuthQuirk, ProtectedMcp, serve_oauth_mcp_http,
+    CLIENT_ID, FakeAuthorizationServer, LONG_TOKEN_CHARS, OAuthQuirk, ProtectedMcp,
+    serve_oauth_mcp_http,
 };
 use serde_json::{Value, json};
 use support::mcp::{PRIVATE, call_as_reader, start_mcp_until};
@@ -105,5 +109,43 @@ async fn a_refused_authorization_says_to_authorize_again_without_the_token() {
     assert!(result.is_error, "{shown}");
     assert!(shown.contains(OAUTH_REFUSED), "{shown}");
     assert!(!shown.contains(&token), "{shown}");
+    runtime.closer.expect("closer").close().await;
+}
+
+#[tokio::test]
+async fn a_long_token_is_sent_as_issued() {
+    let authority = FakeAuthorizationServer::start().await;
+    authority.set(|settings| settings.long_tokens = true);
+    let server = serve_oauth_mcp_http(&authority, OAuthQuirk::None).await;
+    let token = authority.issue(&server.url);
+    assert!(token.len() == LONG_TOKEN_CHARS && token.len() > MAX_TOKEN_CHARS);
+    let config = declared(&server, &authority);
+    let runtime = start_mcp_until(config, Some(&token), in_an_hour(), PRIVATE)
+        .await
+        .expect("started");
+    assert!(!runtime.tools.is_empty());
+    let bearer = format!("Bearer {token}");
+    assert!(server.authorizations().contains(&Some(bearer)));
+    runtime.closer.expect("closer").close().await;
+}
+
+#[tokio::test]
+async fn a_session_is_retired_a_minute_before_its_token_expires() {
+    let authority = FakeAuthorizationServer::start().await;
+    let server = serve_oauth_mcp_http(&authority, OAuthQuirk::None).await;
+    let token = authority.issue(&server.url);
+    let until = Instant::now() + Duration::from_secs(200);
+    let config = declared(&server, &authority);
+    let runtime = start_mcp_until(config, Some(&token), Some(until), PRIVATE)
+        .await
+        .expect("started");
+    // From here the clock moves only as the test says.
+    tokio::time::pause();
+    let retired = until - RETIRE_BEFORE;
+    tokio::time::advance(retired - Instant::now() - Duration::from_secs(1)).await;
+    assert!(!runtime.is_closed() && runtime.ended_at().is_none());
+    tokio::time::advance(Duration::from_secs(1)).await;
+    assert!(runtime.is_closed());
+    assert_eq!(runtime.ended_at(), Some(retired));
     runtime.closer.expect("closer").close().await;
 }

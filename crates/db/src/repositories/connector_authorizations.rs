@@ -2,6 +2,9 @@
 //! authorization server issued for the company, sealed by the API before
 //! they reach the database, with what they were issued for, who authorized
 //! and when. One per connector; a new authorization replaces the previous.
+//! Keeping or removing one makes a new version of the connector: every
+//! process starts its session again with the token it then reads, even one
+//! that missed the invalidation.
 
 use chrono::{DateTime, Utc};
 use sqlx::PgConnection;
@@ -69,8 +72,9 @@ pub async fn put_connector_authorization(
     .bind(refresh.map(|r| r.auth_tag.clone()))
     .bind(refresh.map(|r| r.key_version))
     .bind(new.authorized_by_user_id)
-    .execute(conn)
+    .execute(&mut *conn)
     .await?;
+    credential_changed(conn, new.connector_id).await?;
     Ok(replaced)
 }
 
@@ -195,7 +199,27 @@ pub async fn delete_connector_authorization(
 ) -> sqlx::Result<bool> {
     let deleted = sqlx::query("delete from connector_authorizations where connector_id = $1")
         .bind(connector_id)
-        .execute(conn)
+        .execute(&mut *conn)
         .await?;
-    Ok(deleted.rows_affected() > 0)
+    let removed = deleted.rows_affected() > 0;
+    if removed {
+        credential_changed(conn, connector_id).await?;
+    }
+    Ok(removed)
+}
+
+/// A new version of the connector (`updated_at`), untested unless disabled:
+/// its session is started again with the token read anew (ADR-171), as
+/// after a change of its own token.
+async fn credential_changed(conn: &mut PgConnection, connector_id: Uuid) -> sqlx::Result<()> {
+    sqlx::query(
+        "update connector_instances set updated_at = clock_timestamp(), \
+         status = case when enabled then 'untested' else status end, \
+         last_error = case when enabled then null else last_error end \
+         where id = $1",
+    )
+    .bind(connector_id)
+    .execute(conn)
+    .await?;
+    Ok(())
 }

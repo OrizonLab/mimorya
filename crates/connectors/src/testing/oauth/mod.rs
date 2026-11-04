@@ -9,7 +9,7 @@ mod protected;
 mod token_endpoint;
 
 pub use authorization_server::{
-    AuthRequest, CLIENT_ID, CLIENT_SECRET, FakeAuthorizationServer, Settings,
+    AuthRequest, CLIENT_ID, CLIENT_SECRET, FakeAuthorizationServer, LONG_TOKEN_CHARS, Settings,
 };
 pub use hostile::LURE;
 pub use protected::{METADATA_PATH, OAuthQuirk, ProtectedMcp, serve_oauth_mcp_http};

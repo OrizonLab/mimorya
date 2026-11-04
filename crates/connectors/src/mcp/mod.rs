@@ -22,7 +22,9 @@ pub use declarations::{
     MAX_DECLARATIONS_BYTES, MAX_DESCRIPTION_CHARS, MAX_TOOLS, mcp_tool_name, tool_namespace,
 };
 pub use demo_docs::DemoDocsServer;
-pub use expiry::{Expiry, MIN_TOKEN_LIFE, OAUTH_EXPIRED, RETIRE_BEFORE};
+pub use expiry::{
+    Expiry, MIN_GRANTED_LIFE, MIN_TOKEN_LIFE, OAUTH_EXPIRED, OAUTH_UNUSABLE, RETIRE_BEFORE,
+};
 pub use failure::{NOT_MCP, OAUTH_OFFERED, OAUTH_REFUSED, OAUTH_REQUIRED, TokenKind};
 pub use http::{BoundedHttpClient, MAX_RESPONSE_BYTES, TOO_LONG};
 pub use liveness::{Liveness, WATCH_EVERY};

@@ -12,9 +12,18 @@ use tokio::time::Instant;
 pub const RETIRE_BEFORE: Duration = Duration::from_secs(60);
 
 /// A token that expires sooner does not start a session: it would be
-/// retired at once. A session then lives two minutes at least, more than a
+/// retired at once. Checked before the start and again once started, a
+/// session then lives two minutes at least from its start, more than a
 /// session judged a failed start for having closed so soon (ADR-163).
 pub const MIN_TOKEN_LIFE: Duration = Duration::from_secs(180);
+
+/// An authorization whose token lasts less when issued is refused: a
+/// session could hardly start with it before it expires.
+pub const MIN_GRANTED_LIFE: Duration = Duration::from_secs(300);
+
+/// What a server whose authorization's token cannot be sent as kept says.
+pub const OAUTH_UNUSABLE: &str = "Le jeton de l’autorisation OAuth n’a pas un format accepté : \
+     un administrateur doit autoriser de nouveau ce connecteur";
 
 /// What a server whose authorization's token expired, or is about to, says.
 pub const OAUTH_EXPIRED: &str = "Jeton de l’autorisation OAuth expiré : un administrateur doit \
