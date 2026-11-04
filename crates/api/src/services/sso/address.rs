@@ -44,11 +44,13 @@ mod tests {
         allow_private_network: false,
         allow_stdio: false,
         proxy: None,
+        test_servers: &[],
     };
     const PRIVATE: NetworkPolicy = NetworkPolicy {
         allow_private_network: true,
         allow_stdio: false,
         proxy: None,
+        test_servers: &[],
     };
 
     #[test]

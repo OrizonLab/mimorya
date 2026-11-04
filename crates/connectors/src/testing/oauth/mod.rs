@@ -12,4 +12,7 @@ pub use authorization_server::{
     AuthRequest, CLIENT_ID, CLIENT_SECRET, FakeAuthorizationServer, LONG_TOKEN_CHARS, Settings,
 };
 pub use hostile::LURE;
-pub use protected::{METADATA_PATH, OAuthQuirk, ProtectedMcp, SLOW_ANSWER, serve_oauth_mcp_http};
+pub use protected::{
+    METADATA_PATH, OAuthQuirk, ProtectedMcp, SLOW_ANSWER, serve_oauth_mcp_http,
+    serve_oauth_mcp_http_on,
+};

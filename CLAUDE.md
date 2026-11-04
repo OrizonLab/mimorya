@@ -331,6 +331,7 @@ Repères à l'intérieur des crates :
   dont l'écriture permise, ADR-120, et le client Google Workspace, ADR-124, et les
   passerelles de conversation, l'application Slack, ADR-126, et ses permissions
   vérifiées, ADR-132, le bot Telegram, ADR-134, le bot Teams, ADR-139,
+  et l'OAuth d'un serveur MCP : déclaration, autorisation, état et retraits, ADR-171,
   `admin/knowledge-shares/` : partages de connaissances entre unités, ADR-144, `admin/policies/` : refus écrits aussitôt et autorisations proposées, approuvées par un autre administrateur, ADR-169, `admin/llm/` : modèle des conversations et modèle de contrôle des réponses, ADR-108, recherche dans la mémoire, leçons et limites des missions, ADR-075,
   ADR-077, ADR-093, limite de coût des évaluations des compétences, ADR-155, `admin/users/` :
   comptes, dont l'absence d'un collaborateur empêché, ADR-079, et `admin/skills/` :
@@ -371,7 +372,10 @@ Repères à l'intérieur des crates :
   liste ce que les bots écrivent et le webhook de chacun, `BuildOptions::telegram_api`,
   ADR-134, et à un Microsoft simulé pour Teams qui liste ce que les bots écrivent et
   signe les activités que les tests envoient, `BuildOptions::teams_api`, ADR-138,
-  ADR-139).
+  ADR-139, et à un serveur MCP protégé par OAuth et son serveur d'autorisation, les
+  seules adresses privées que ses connecteurs joignent,
+  `BuildOptions::connector_test_servers`, une déclaration OAuth illisible laissée au
+  démarrage, `unreadable_oauth.rs`, ADR-171).
 - `infra/` : `docker/` (images de l'API et de l'interface, liste des images publiées
   `images.json`, test de fumée de la démonstration, test d'installation de la production,
   sauvegarde et restauration de la pile de production `backup-test.sh`, ADR-166,

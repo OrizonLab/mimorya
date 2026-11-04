@@ -82,6 +82,7 @@ mod sub_agents;
 mod summaries;
 mod teams;
 mod telegram;
+mod unreadable_oauth;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -93,7 +94,10 @@ use mimorya_api::mail::Mailer;
 use mimorya_api::services::{EmbeddingFactory, ProviderFactory};
 use mimorya_api::{AppConfig, BuildOptions, build_app, log_filter};
 use mimorya_connectors::outbound::NetworkPolicy;
-use mimorya_connectors::testing::{FakeSlack, FakeTeams, FakeTelegram};
+use mimorya_connectors::testing::{
+    FakeAuthorizationServer, FakeSlack, FakeTeams, FakeTelegram, OAuthQuirk,
+    serve_oauth_mcp_http_on,
+};
 
 /// Reference scenarios queued for the platform model, by the hour of their
 /// follow-up: one per run that converses, in the order they run (the
@@ -126,6 +130,11 @@ const TELEGRAM_ADDRESS: &str = "127.0.0.1:4104";
 /// Where Microsoft listens for the Teams bots, lists what they wrote and
 /// signs activities: `teams-gateway.spec.ts` reads and asks there (ADR-139).
 const TEAMS_ADDRESS: &str = "127.0.0.1:4105";
+/// Where an MCP server's authorization server listens, and the server it
+/// protects: `mcp-oauth.spec.ts` declares and authorizes it (ADR-171). The
+/// connectors reach these two alone of the private network.
+const OAUTH_AUTHORITY_ADDRESS: &str = "127.0.0.1:4106";
+const OAUTH_MCP_ADDRESS: &str = "127.0.0.1:4107";
 /// Léa's Slack user, of the company's workspace, with her address.
 const LEA_SLACK: &str = "U0LEAE2E";
 /// Léa's Microsoft Entra object, of the test directory, and her name.
@@ -192,6 +201,12 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!(url = slack.url, "End-to-end Slack listening");
     let telegram = FakeTelegram::start_on(TELEGRAM_ADDRESS).await;
     tracing::info!(url = telegram.url, "End-to-end Telegram listening");
+    let authority = FakeAuthorizationServer::start_on(OAUTH_AUTHORITY_ADDRESS).await;
+    let protected = serve_oauth_mcp_http_on(&authority, OAuthQuirk::None, OAUTH_MCP_ADDRESS).await;
+    tracing::info!(
+        url = protected.url,
+        "End-to-end MCP server protected by OAuth listening"
+    );
     let teams = FakeTeams::start_on(TEAMS_ADDRESS).await;
     teams.add_person(LEA_TEAMS, LEA_NAME, LEA_ADDRESS);
     tracing::info!(url = teams.url, "End-to-end Microsoft listening");
@@ -211,6 +226,7 @@ async fn main() -> anyhow::Result<()> {
                 allow_private_network: true,
                 allow_stdio: false,
                 proxy: None,
+                test_servers: &[],
             }),
             // The browser's requests all come through the web relay, from one
             // address: the whole suite would share a minute's 600.
@@ -225,6 +241,10 @@ async fn main() -> anyhow::Result<()> {
             // Its Teams bot reaches the local Microsoft (ADR-139).
             teams_api: Some(teams.url.clone()),
             prices: None,
+            connector_test_servers: [OAUTH_AUTHORITY_ADDRESS, OAUTH_MCP_ADDRESS]
+                .iter()
+                .map(|address| address.parse())
+                .collect::<Result<_, _>>()?,
         },
     )
     .await?;
@@ -233,6 +253,7 @@ async fn main() -> anyhow::Result<()> {
     queued::leave(&app).await?;
     summaries::leave(&app).await?;
     evaluation_records::leave(&app).await?;
+    unreadable_oauth::leave(&app).await?;
     rate_limits::forget().await?;
     let listener = tokio::net::TcpListener::bind(&address).await?;
     let taken = app.recover_interrupted_runs().await?;

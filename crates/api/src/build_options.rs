@@ -2,6 +2,7 @@
 //! the mailer, the networks and services it reaches. A production start
 //! leaves every option to its default.
 
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use mimorya_agent::llm::{LlmProvider, PriceTable};
@@ -64,4 +65,9 @@ pub struct BuildOptions {
     /// Replaces the prices of the models (tests that count what calls cost:
     /// the scripted model has none of its own).
     pub prices: Option<PriceTable>,
+    /// Local servers the connectors reach all the same, by their exact
+    /// address and port (end-to-end tests: an MCP server protected by OAuth
+    /// and its authorization server, ADR-171), while every other private
+    /// address stays refused.
+    pub connector_test_servers: Vec<SocketAddr>,
 }

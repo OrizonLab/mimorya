@@ -28,6 +28,7 @@ fn through(proxy: &str, credentials: &str, bypass: Option<&str>) -> NetworkPolic
     let proxy = OutboundProxy::new(&address, bypass).expect("a proxy");
     NetworkPolicy {
         proxy: Some(proxy.leak()),
+        test_servers: &[],
         ..PRIVATE
     }
 }
@@ -184,6 +185,7 @@ fn without_private_addresses_no_client_takes_a_proxy() {
         allow_private_network: false,
         allow_stdio: false,
         proxy: Some(proxy.leak()),
+        test_servers: &[],
     };
     assert!(http_client(public_only).is_err());
 }

@@ -28,6 +28,24 @@ pub struct NetworkPolicy {
     /// host (`MIMORYA_OUTBOUND_PROXY`, ADR-162): only with private
     /// addresses allowed, the proxy resolving the names.
     pub proxy: Option<&'static OutboundProxy>,
+    /// Local servers the end-to-end tests simulate, reached all the same by
+    /// their exact address and port, in plain `http://` (`BuildOptions`):
+    /// never read from the environment, empty in production.
+    pub test_servers: &'static [SocketAddr],
+}
+
+impl NetworkPolicy {
+    /// Whether `url` names one of the tests' simulated servers, by its
+    /// literal address and port.
+    fn serves_tests(self, url: &Url) -> bool {
+        let ip = match url.host() {
+            Some(url::Host::Ipv4(ip)) => IpAddr::V4(ip),
+            Some(url::Host::Ipv6(ip)) => IpAddr::V6(ip),
+            _ => return false,
+        };
+        url.port_or_known_default()
+            .is_some_and(|port| self.test_servers.contains(&SocketAddr::new(ip, port)))
+    }
 }
 
 pub const MAX_URL_CHARS: usize = 2000;
@@ -90,7 +108,8 @@ pub fn url_problem(url: &str, policy: NetworkPolicy) -> Option<String> {
         return Some("Adresse invalide : https://… attendu".into());
     };
     let secure = parsed.scheme() == "https";
-    if !secure && !(parsed.scheme() == "http" && policy.allow_private_network) {
+    let local = policy.allow_private_network || policy.serves_tests(&parsed);
+    if !secure && !(parsed.scheme() == "http" && local) {
         return Some("Adresse en https:// attendue".into());
     }
     // A credential in the address would be stored, shown and audited in clear.
@@ -110,7 +129,7 @@ pub fn url_problem(url: &str, policy: NetworkPolicy) -> Option<String> {
         Some(url::Host::Ipv4(ip)) => Some(IpAddr::V4(ip)),
         Some(url::Host::Ipv6(ip)) => Some(IpAddr::V6(ip)),
     };
-    if literal.is_some_and(|ip| !is_public_ip(ip)) && !policy.allow_private_network {
+    if literal.is_some_and(|ip| !is_public_ip(ip)) && !local {
         return Some("Adresse d’un réseau privé : refusée sur ce serveur".into());
     }
     None
@@ -183,6 +202,7 @@ mod tests {
         allow_private_network: false,
         allow_stdio: false,
         proxy: None,
+        test_servers: &[],
     };
 
     #[test]
@@ -241,11 +261,36 @@ mod tests {
         }
         let private = NetworkPolicy {
             allow_private_network: true,
-            allow_stdio: false,
-            proxy: None,
+            ..SAAS
         };
         assert_eq!(url_problem("http://127.0.0.1:8080/mcp", private), None);
         assert!(url_problem("ftp://127.0.0.1", private).is_some());
+    }
+
+    #[test]
+    fn reaches_the_tests_servers_alone_by_their_exact_address() {
+        const SERVERS: [SocketAddr; 2] = [
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 4106),
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 4107),
+        ];
+        let tests = NetworkPolicy {
+            test_servers: &SERVERS,
+            ..SAAS
+        };
+        assert_eq!(url_problem("http://127.0.0.1:4106/authorize", tests), None);
+        assert_eq!(url_problem("https://127.0.0.1:4107/mcp", tests), None);
+        for refused in [
+            "http://127.0.0.1:4108/mcp",
+            "http://127.0.0.1/mcp",
+            "http://localhost:4106/mcp",
+            "http://10.0.0.7:4106/mcp",
+            "http://[::1]:4106/mcp",
+            "http://mcp.example.com:4106/mcp",
+        ] {
+            assert!(url_problem(refused, tests).is_some(), "{refused}");
+        }
+        // Without them, as in production: refused.
+        assert!(url_problem("http://127.0.0.1:4106/authorize", SAAS).is_some());
     }
 
     #[tokio::test]

@@ -1,5 +1,6 @@
 export { ApprovalRoutingTab } from './approval-routing/approval-routing-tab';
 export { AuditTab } from './audit-tab';
+export { AUTHORIZATION_RETURN } from './connectors/authorization-outcome';
 export { ConnectorsTab } from './connectors/connectors-tab';
 export { IdentityProvidersTab } from './identity-providers/identity-providers-tab';
 export { KnowledgeSharesTab } from './knowledge-shares/knowledge-shares-tab';
