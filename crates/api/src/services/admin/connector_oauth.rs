@@ -34,7 +34,11 @@ use crate::services::connectors::{client_secret_name, token_secret_name};
 pub struct OAuthInput {
     /// The authorization server's issuer, if the administrator names it.
     pub issuer: Option<String>,
-    pub client: OAuthClient,
+    /// Whether the platform registers its own client, rather than one
+    /// typed (ADR-173).
+    pub register: bool,
+    pub client_id: Option<String>,
+    pub client_secret: Option<String>,
     /// Those to ask for; the server's suggestions if `None`.
     pub scopes: Option<Vec<String>>,
     /// The platform's return address, given a registered client.
@@ -81,14 +85,15 @@ pub async fn declare_oauth(
     input: OAuthInput,
 ) -> anyhow::Result<OAuthDeclaration> {
     access.require_tenant_wide(PERMISSION)?;
-    let problem = input
-        .client
+    let client = OAuthClient::chosen(input.register, input.client_id, input.client_secret)?;
+    let problem = client
         .problem()
         .or_else(|| input.scopes.as_deref().and_then(scopes_problem));
     if let Some(problem) = problem {
         return Err(DomainError::validation(problem).into());
     }
-    if input.client.typed_secret() {
+    // Before anything is sent: nothing registered that could not be kept.
+    if client.needs_sealing() {
         admin.secrets.require()?;
     }
     let tenant_id = access.subject.tenant_id;
@@ -106,10 +111,9 @@ pub async fn declare_oauth(
         let with = Declared {
             scopes: input.scopes,
             redirect_uri: &input.redirect_uri,
-            can_keep_secret: admin.secrets.require().is_ok(),
             network,
         };
-        declared(found, input.client, with)
+        declared(found, client, with)
             .await
             .map_err(DomainError::validation)?
     };

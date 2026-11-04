@@ -2,14 +2,17 @@
 //! 7591, ADR-173): an administrator declares OAuth asking for it, the
 //! platform registers at the authorization server the discovery found, for
 //! its own return address, keeps the granted secret sealed (never shown nor
-//! audited) and the declaration says the client is its own; it is then
-//! authorized like a typed one, and runs see the server's tools. A body
-//! names its client one way only; a server that offers no registration or
-//! asks for an initial token is said, nothing kept.
+//! audited) and the declaration says the client is its own, and when its
+//! secret expires; it is then authorized like a typed one, and runs see the
+//! server's tools. A body names its client one way only; nothing is sent
+//! without the master key that keeps what is granted, nor by an
+//! administrator of some connectors only; a server that offers no
+//! registration or asks for an initial token is said, nothing kept.
 
 mod support;
 
 use axum::http::StatusCode;
+use chrono::{DateTime, Duration, Utc};
 use mimorya_connectors::mcp::oauth::{NO_REGISTRATION_ENDPOINT, REGISTRATION_TOKEN_NEEDED};
 use mimorya_connectors::testing::{
     CLIENT_ID, CLIENT_SECRET, FakeAuthorizationServer, OAuthQuirk, serve_oauth_mcp_http,
@@ -17,6 +20,7 @@ use mimorya_connectors::testing::{
 use mimorya_core::demo::{tenant, user};
 use serde_json::{Value, json};
 use support::TestApi;
+use support::accounts::{activate, create_partial_admin};
 use support::connector_oauth::{AUTHORIZED, authorize, kept_tokens};
 use support::connector_sessions::runs_see;
 use support::mcp::{PRIVATE_DEPLOYMENT, add, listed, mcp_body};
@@ -155,4 +159,83 @@ async fn a_client_is_named_one_way_only_and_a_server_that_cannot_register_keeps_
         let deleted = paul.delete(&format!("/admin/connectors/{connector}")).await;
         assert_eq!(deleted.status, StatusCode::OK);
     }
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_granted_secret_s_expiry_is_kept_and_shown() {
+    let api = TestApi::start_with(&PRIVATE_DEPLOYMENT).await;
+    let paul = api.sign_in(user::PAUL).await;
+    let authority = FakeAuthorizationServer::start().await;
+    authority.set(|settings| settings.secret_lifetime = Some(30 * 24 * 3600));
+    let server = serve_oauth_mcp_http(&authority, OAuthQuirk::None).await;
+    let id = add(&paul, mcp_body("Fichiers datés", "date", &server.url, None)).await;
+    let oauth = format!("/admin/connectors/{id}/oauth");
+    let declared = paul.put(&oauth, json!({ "register": true })).await;
+    assert_eq!(declared.status, StatusCode::OK, "{}", declared.text());
+    // Shown at once, and as listed after a reload: in about thirty days.
+    let expected = Utc::now() + Duration::days(30);
+    let shown = declared.json()["clientSecretExpiresAt"].clone();
+    let listed = listed(&paul, &id).await["mcp"]["oauth"]["clientSecretExpiresAt"].clone();
+    assert_eq!(shown, listed);
+    let at: DateTime<Utc> = shown.as_str().expect("dated").parse().expect("ISO");
+    assert!((at - expected).num_minutes().abs() < 5, "{at}");
+    assert_eq!(
+        paul.delete(&format!("/admin/connectors/{id}")).await.status,
+        StatusCode::OK
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn nothing_is_registered_without_the_master_key_or_by_a_partial_administrator() {
+    // Without the master key, nothing granted could be kept: refused before
+    // anything is sent.
+    let keyless = TestApi::start_with(&[("MIMORYA_MCP_ALLOW_PRIVATE_NETWORK", "true")]).await;
+    let paul = keyless.sign_in(user::PAUL).await;
+    let authority = FakeAuthorizationServer::start().await;
+    let server = serve_oauth_mcp_http(&authority, OAuthQuirk::None).await;
+    let id = add(
+        &paul,
+        mcp_body("Fichiers sans clé", "sanscle", &server.url, None),
+    )
+    .await;
+    let oauth = format!("/admin/connectors/{id}/oauth");
+    let refused = paul.put(&oauth, json!({ "register": true })).await;
+    assert_eq!(
+        refused.status,
+        StatusCode::SERVICE_UNAVAILABLE,
+        "{}",
+        refused.text()
+    );
+    assert!(authority.requests().is_empty());
+    assert!(listed(&paul, &id).await["mcp"]["oauth"].is_null());
+    let deleted = paul.delete(&format!("/admin/connectors/{id}")).await;
+    assert_eq!(deleted.status, StatusCode::OK);
+    drop(paul);
+    drop(keyless);
+    // An administrator of some connectors only: refused, nothing sent,
+    // whatever the body says.
+    let api = TestApi::start_with(&PRIVATE_DEPLOYMENT).await;
+    let paul = api.sign_in(user::PAUL).await;
+    let id = add(
+        &paul,
+        mcp_body("Fichiers réservés", "reserve", &server.url, None),
+    )
+    .await;
+    let oauth = format!("/admin/connectors/{id}/oauth");
+    let mut partial = create_partial_admin(&api, &paul, "admin.equipe.inscription").await;
+    let partial = activate(&api, &mut partial).await;
+    for body in [
+        json!({ "register": true }),
+        json!({ "register": true, "clientId": CLIENT_ID }),
+    ] {
+        let refused = partial.put(&oauth, body.clone()).await;
+        assert_eq!(refused.status, StatusCode::FORBIDDEN, "{body}");
+    }
+    assert!(authority.requests().is_empty());
+    assert_eq!(
+        paul.delete(&format!("/admin/connectors/{id}")).await.status,
+        StatusCode::OK
+    );
 }

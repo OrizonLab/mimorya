@@ -3,8 +3,9 @@
 //! than typing a client registered by hand: at the registration endpoint
 //! the server's metadata names, for the platform's return address alone,
 //! the authorization code and refresh token grants and the scopes to be
-//! asked for, the client proving itself with a secret if the platform can
-//! seal one and the server takes one, else by its identifier alone. The
+//! asked for, the client proving itself with a secret if the server takes
+//! one, else by its identifier alone (the platform seals the secret: its
+//! caller makes sure it can, as it must to keep tokens at all). The
 //! answer is read within its bounds and checked as a typed client would
 //! be: an identifier and a secret RFC 6749 can carry, a way to prove itself
 //! the platform knows and that matches whether a secret came, the return
@@ -70,13 +71,11 @@ struct Answer {
     redirect_uris: Option<Vec<String>>,
 }
 
-/// Registers the platform at `server` for `redirect_uri` and `scopes`, the
-/// client proving itself with a secret only if `can_keep_secret`.
+/// Registers the platform at `server` for `redirect_uri` and `scopes`.
 pub async fn register_client(
     server: &AuthorizationServer,
     redirect_uri: &str,
     scopes: &[String],
-    can_keep_secret: bool,
     policy: NetworkPolicy,
 ) -> Result<Registration, String> {
     let Some(endpoint) = server.registration_endpoint.as_deref() else {
@@ -85,7 +84,7 @@ pub async fn register_client(
     if let Some(problem) = endpoint_problem(endpoint, "Point d’enregistrement", policy) {
         return Err(problem);
     }
-    let asked = asked_auth(server, can_keep_secret)?;
+    let asked = asked_auth(server)?;
     let request = Request {
         client_name: CLIENT_NAME,
         redirect_uris: [redirect_uri],
@@ -113,23 +112,17 @@ pub async fn register_client(
     }
 }
 
-/// How the registered client is to prove itself: with a secret the
-/// platform can keep if the server takes one, else by its identifier.
-fn asked_auth(server: &AuthorizationServer, can_keep_secret: bool) -> Result<ClientAuth, String> {
-    if can_keep_secret && let Ok(auth) = server.client_auth(true) {
-        return Ok(auth);
-    }
-    server.client_auth(false).map_err(|_| {
-        if can_keep_secret {
+/// How the registered client is to prove itself: with a secret if the
+/// server takes one, else by its identifier.
+fn asked_auth(server: &AuthorizationServer) -> Result<ClientAuth, String> {
+    server
+        .client_auth(true)
+        .or_else(|_| server.client_auth(false))
+        .map_err(|_| {
             "Ce serveur d’autorisation n’offre aucune façon de prouver un client que la \
              plateforme sache tenir"
                 .to_string()
-        } else {
-            "Ce serveur d’autorisation n’enregistre que des clients à secret, que la plateforme \
-             ne peut garder sans sa clé de chiffrement"
-                .to_string()
-        }
-    })
+        })
 }
 
 /// The registration the answer `body` gives, if the platform can keep it.

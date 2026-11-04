@@ -10804,7 +10804,11 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
   - une déclaration peut demander que la plateforme s'enregistre elle-même
     (`register: true`) ; elle ne donne alors ni identifiant ni secret. Sans cela,
     l'identifiant reste requis ; les deux à la fois sont refusés
-    (`services/admin/oauth_client.rs`) ;
+    (`services/admin/oauth_client.rs`). Ce choix est lu après la permission : un
+    administrateur de quelques connecteurs seulement est refusé quoi que dise le corps ;
+  - la plateforme ne s'enregistre que si elle a sa clé maître, vérifiée avant tout
+    envoi : sans elle, ni le secret accordé ni les jetons ne pourraient être gardés, et
+    un client enregistré resterait orphelin chez le serveur ;
   - une fois la découverte faite, sous la même place des démarrages de l'administration,
     la plateforme s'enregistre au point d'enregistrement que nomment les métadonnées,
     vérifié comme les autres points et de nouveau à l'envoi (`mcp/oauth/registration.rs`).
@@ -10812,8 +10816,8 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     - son nom (`client_name`) et sa seule adresse de retour ;
     - les octrois `authorization_code` et `refresh_token`, `response_types: code` ;
     - les portées qui seront demandées ;
-    - un secret seulement si elle peut le sceller (clé maître) et si le serveur en prend,
-      la façon de le prouver choisie comme pour un client saisi ; sinon un client public ;
+    - un secret si le serveur en prend, la façon de le prouver choisie comme pour un
+      client saisi ; sinon un client public ;
   - la réponse est lue dans ses bornes (64 Kio, dix secondes) et vérifiée comme un client
     saisi :
     - identifiant et secret au format de RFC 6749 ;
@@ -10829,9 +10833,10 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     secret, que l'API montre (`registered`, `clientSecretExpiresAt`) et que la trace de la
     déclaration dit (`registered`) ;
   - déclarer de nouveau enregistre un nouveau client. La gestion du client enregistré
-    (RFC 7592 : lecture, mise à jour, suppression) n'est pas faite : quand la déclaration
-    est retirée ou remplacée, le client reste enregistré chez le serveur, à retirer
-    là-bas. Un secret qui expire n'est pas renouvelé : le renouvellement des jetons
+    (RFC 7592 : lecture, mise à jour, suppression) n'est pas faite : le client reste
+    enregistré chez le serveur, à retirer là-bas, quand la déclaration est retirée ou
+    remplacée, et aussi quand elle échoue après l'enregistrement (adresse du serveur
+    changée entre-temps, base indisponible). Un secret qui expire n'est pas renouvelé : le renouvellement des jetons
     échoue alors (`invalid_client`), l'autorisation est retirée et l'administrateur
     déclare de nouveau ;
   - le jeton d'enregistrement initial (RFC 7591 §3) n'est pas pris en charge : le client
@@ -10847,15 +10852,19 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       son secret ;
     - `crates/connectors/tests/mcp_oauth_registration.rs` : le client enregistré, pour la
       seule adresse de retour, avec un secret, est autorisé et son code échangé comme un
-      client saisi ; une plateforme sans clé enregistre un client public, refusé par un
-      serveur qui n'en prend pas ; un serveur sans point d'enregistrement, qui demande un
-      jeton initial, donne un secret trop bref ou refuse l'adresse de retour le dit ;
+      client saisi, la déclaration disant qu'il est celui de la plateforme et quand son
+      secret expire ; un serveur qui ne prend que des clients publics en enregistre un,
+      un serveur qui n'offre aucune façon connue n'en enregistre pas ; un serveur sans
+      point d'enregistrement, qui demande un jeton initial, donne un secret trop bref ou
+      refuse l'adresse de retour le dit ;
     - `crates/api/tests/connector_oauth_registration.rs` : la plateforme s'enregistre pour
       son adresse de retour, le dit, garde le secret scellé, jamais montré ni tracé, est
       autorisée et les runs voient les outils du serveur ; déclarée de nouveau à la main,
       le client n'est plus le sien ; un corps qui nomme son client de deux façons, ou
       d'aucune, est refusé pour sa raison ; un serveur sans enregistrement ou qui demande
-      un jeton initial le dit, rien n'étant gardé ;
+      un jeton initial le dit, rien n'étant gardé ; l'échéance d'un secret accordé est
+      montrée, relue après rechargement ; sans clé maître, ou par un administrateur de
+      quelques connecteurs seulement, rien n'est envoyé au serveur ;
     - le serveur d'autorisation simulé a son point d'enregistrement, strict sur les
       adresses de retour, les octrois et la façon de prouver le client ; les clients qu'il
       enregistre sont acceptés ensuite comme ils se sont enregistrés ; il peut ne pas

@@ -2,9 +2,10 @@
 //! one an administrator registered at the authorization server by hand and
 //! types, checked as RFC 6749 writes it, or one the platform registers
 //! there itself (RFC 7591), once the discovery has found the server, for
-//! the platform's return address and the scopes to be asked for, with a
-//! secret only if the platform can seal one. Its secret, typed or granted,
-//! is handed back to be sealed apart, never in the declaration.
+//! the platform's return address and the scopes to be asked for; then
+//! only if the platform can seal what it is granted, before anything is
+//! sent. Its secret, typed or granted, is handed back to be sealed apart,
+//! never in the declaration.
 
 use mimorya_connectors::mcp::oauth::{
     Discovery, OAuthDeclaration, asked_scopes, client_id_problem, client_secret_problem,
@@ -62,15 +63,16 @@ impl OAuthClient {
         }
     }
 
-    /// Whether a secret is typed, which the platform must then be able to
-    /// seal.
-    pub fn typed_secret(&self) -> bool {
+    /// Whether the platform must be able to seal secrets to declare it: a
+    /// typed secret, or whatever registering grants (and the tokens, which
+    /// the platform keeps sealed).
+    pub fn needs_sealing(&self) -> bool {
         matches!(
             self,
             Self::Typed {
                 client_secret: Some(_),
                 ..
-            }
+            } | Self::Register
         )
     }
 }
@@ -80,8 +82,6 @@ pub struct Declared<'a> {
     pub scopes: Option<Vec<String>>,
     /// The platform's return address, which a registered client is given.
     pub redirect_uri: &'a str,
-    /// Whether the platform can seal a granted secret.
-    pub can_keep_secret: bool,
     pub network: NetworkPolicy,
 }
 
@@ -103,14 +103,8 @@ pub async fn declared(
         }
         OAuthClient::Register => {
             let scopes = asked_scopes(&found, with.scopes)?;
-            let registration = register_client(
-                &found.server,
-                with.redirect_uri,
-                &scopes,
-                with.can_keep_secret,
-                with.network,
-            )
-            .await?;
+            let registration =
+                register_client(&found.server, with.redirect_uri, &scopes, with.network).await?;
             let declaration = OAuthDeclaration::registered(found, &registration, scopes);
             Ok((declaration, registration.client_secret))
         }
