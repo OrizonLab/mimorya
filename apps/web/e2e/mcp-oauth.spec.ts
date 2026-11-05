@@ -11,7 +11,7 @@
 // What the test adds is deleted, even when it fails.
 import type { Page } from '@playwright/test';
 import type { Connectors } from '../lib/api/contract';
-import { cardWith, openAdmin } from './support/admin';
+import { addServer, cardWith, openAdmin } from './support/admin';
 import { expect, noError, test } from './support/fixtures';
 
 const SERVER = 'Fichiers OAuth e2e';
@@ -64,11 +64,7 @@ test('an MCP server is authorized by OAuth, started with its token, then withdra
   page,
 }) => {
   await openAdmin(page, 'Connecteurs');
-  await page.getByRole('button', { name: 'Ajouter un serveur MCP' }).click();
-  await page.getByLabel('Nom').fill(SERVER);
-  await page.getByLabel('Préfixe des outils (définitif)').fill('fichoa');
-  await page.getByLabel(/^Adresse du serveur/).fill(ADDRESS);
-  await page.getByRole('button', { name: 'Ajouter le serveur' }).click();
+  await addServer(page, SERVER, 'fichoa', ADDRESS);
 
   // Declared with the client registered at the authorization server, the
   // address to register said first.
@@ -120,11 +116,7 @@ test('a server whose authorization server cannot revoke says what is left to do'
   page,
 }) => {
   await openAdmin(page, 'Connecteurs');
-  await page.getByRole('button', { name: 'Ajouter un serveur MCP' }).click();
-  await page.getByLabel('Nom').fill(UNREVOKING);
-  await page.getByLabel('Préfixe des outils (définitif)').fill('fichsr');
-  await page.getByLabel(/^Adresse du serveur/).fill(UNREVOKING_ADDRESS);
-  await page.getByRole('button', { name: 'Ajouter le serveur' }).click();
+  await addServer(page, UNREVOKING, 'fichsr', UNREVOKING_ADDRESS);
   const card = cardWith(page, UNREVOKING, 'Supprimer');
   await card.getByRole('button', { name: 'Déclarer OAuth' }).click();
   await card.getByLabel('Identifiant du client').fill(CLIENT_ID);
@@ -148,11 +140,7 @@ test('an MCP server is authorized with the client the platform registers itself'
   page,
 }) => {
   await openAdmin(page, 'Connecteurs');
-  await page.getByRole('button', { name: 'Ajouter un serveur MCP' }).click();
-  await page.getByLabel('Nom').fill(SERVER);
-  await page.getByLabel('Préfixe des outils (définitif)').fill('fichin');
-  await page.getByLabel(/^Adresse du serveur/).fill(ADDRESS);
-  await page.getByRole('button', { name: 'Ajouter le serveur' }).click();
+  await addServer(page, SERVER, 'fichin', ADDRESS);
 
   // The platform registers itself: no client to type.
   const card = cardWith(page, SERVER, 'Supprimer');

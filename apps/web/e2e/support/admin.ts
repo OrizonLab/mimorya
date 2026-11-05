@@ -22,17 +22,22 @@ export function cardWith(page: Page, text: string, button: string): Locator {
     .last();
 }
 
+/** Adds, from the open « Connecteurs » tab, an MCP server at `address`. */
+export async function addServer(page: Page, name: string, prefix: string, address: string) {
+  await page.getByRole('button', { name: 'Ajouter un serveur MCP' }).click();
+  await page.getByLabel('Nom').fill(name);
+  await page.getByLabel('Préfixe des outils (définitif)').fill(prefix);
+  await page.getByLabel(/^Adresse du serveur/).fill(address);
+  await page.getByRole('button', { name: 'Ajouter le serveur' }).click();
+}
+
 /**
  * Adds, from the open « Connecteurs » tab, an MCP server at a foreign host
  * the platform never reaches (its connection test is answered by the test's
  * own route): the card that shows it.
  */
 export async function addForeignServer(page: Page, name: string, prefix: string) {
-  await page.getByRole('button', { name: 'Ajouter un serveur MCP' }).click();
-  await page.getByLabel('Nom').fill(name);
-  await page.getByLabel('Préfixe des outils (définitif)').fill(prefix);
-  await page.getByLabel(/^Adresse du serveur/).fill(`https://mcp.${FOREIGN_HOST}/mcp`);
-  await page.getByRole('button', { name: 'Ajouter le serveur' }).click();
+  await addServer(page, name, prefix, `https://mcp.${FOREIGN_HOST}/mcp`);
   return cardWith(page, name, 'Tester la connexion');
 }
 

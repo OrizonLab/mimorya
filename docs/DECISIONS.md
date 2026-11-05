@@ -10900,7 +10900,7 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       déclaré de nouveau ainsi, la confirmation dit ce qui est laissé et la liste relue
       donne un autre client, sans autorisation ; le formulaire de l'adresse dit que le
       client resterait chez le serveur ; retiré, puis déclaré de nouveau et le serveur
-      supprimé, chaque confirmation le dit aussi ; la phrase est la même partout
-      (`registered-client.ts`) ;
+      supprimé, chaque confirmation le dit aussi ; la phrase vient d'un seul fichier
+      (`registered-client.ts`), au conditionnel dans la note de l'adresse ;
   - reste : la gestion du client enregistré (RFC 7592) ; le jeton d'enregistrement
     initial ; l'autorisation par personne.
