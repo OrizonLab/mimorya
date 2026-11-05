@@ -9,7 +9,9 @@
 //! why on it until one is kept.
 
 use chrono::{DateTime, Utc};
-use sqlx::PgConnection;
+use sqlx::postgres::PgArguments;
+use sqlx::query::{QueryAs, QueryScalar};
+use sqlx::{PgConnection, Postgres};
 use uuid::Uuid;
 
 use super::connector_authorizations::credential_changed;
@@ -75,6 +77,35 @@ pub enum RenewalFor {
     Test,
 }
 
+/// How a claim takes an authorization, the company's or a person's: due
+/// within `$2` seconds, renewable, not claimed already, and its connector
+/// enabled unless `$4` (a test); held for `$3` seconds.
+pub(super) const CLAIM: &str = "set renewing_until = now() + make_interval(secs => $3) \
+     where connector_id = $1 and refresh_ciphertext is not null \
+     and access_expires_at < now() + make_interval(secs => $2) \
+     and (renewing_until is null or renewing_until <= now()) \
+     and ($4 or exists (select 1 from connector_instances i \
+                        where i.id = connector_id and i.enabled))";
+
+/// What a claim reads of the authorization it took.
+pub(super) const CLAIMED: &str = "returning id, refreshed_at, issuer, client_id, resource, \
+     refresh_ciphertext, refresh_iv, refresh_auth_tag, refresh_key_version";
+
+/// A claim's statement (`CLAIM`) with its first four parameters bound.
+pub(super) fn claim_query(
+    sql: &str,
+    connector_id: Uuid,
+    within: std::time::Duration,
+    hold: std::time::Duration,
+    asker: RenewalFor,
+) -> QueryAs<'_, Postgres, ClaimedRow, PgArguments> {
+    sqlx::query_as(sql)
+        .bind(connector_id)
+        .bind(within.as_secs_f64())
+        .bind(hold.as_secs_f64())
+        .bind(asker == RenewalFor::Test)
+}
+
 /// Claims the renewal of the connector's authorization for `hold`, if it is
 /// due within `within`, renewable, not claimed already, and the connector
 /// enabled unless it is for a test.
@@ -85,22 +116,10 @@ pub async fn claim_connector_renewal(
     hold: std::time::Duration,
     asker: RenewalFor,
 ) -> sqlx::Result<Option<Claimed>> {
-    let row: Option<ClaimedRow> = sqlx::query_as(
-        "update connector_authorizations set renewing_until = now() + make_interval(secs => $3) \
-         where connector_id = $1 and refresh_ciphertext is not null \
-         and access_expires_at < now() + make_interval(secs => $2) \
-         and (renewing_until is null or renewing_until <= now()) \
-         and ($4 or exists (select 1 from connector_instances i \
-                            where i.id = connector_id and i.enabled)) \
-         returning id, refreshed_at, issuer, client_id, resource, refresh_ciphertext, \
-         refresh_iv, refresh_auth_tag, refresh_key_version",
-    )
-    .bind(connector_id)
-    .bind(within.as_secs_f64())
-    .bind(hold.as_secs_f64())
-    .bind(asker == RenewalFor::Test)
-    .fetch_optional(conn)
-    .await?;
+    let sql = format!("update connector_authorizations {CLAIM} {CLAIMED}");
+    let row = claim_query(&sql, connector_id, within, hold, asker)
+        .fetch_optional(conn)
+        .await?;
     Ok(row.map(Claimed::from))
 }
 
@@ -134,6 +153,40 @@ pub struct Renewed<'a> {
     pub scopes: Option<&'a str>,
 }
 
+/// What a kept renewal writes on the authorization, the company's or a
+/// person's: parameters 3 to 12, bound by `bind_renewed`.
+pub(super) const RENEWED: &str = "set access_ciphertext = $3, access_iv = $4, \
+     access_auth_tag = $5, access_key_version = $6, access_expires_at = $7, \
+     refresh_ciphertext = coalesce($8, refresh_ciphertext), \
+     refresh_iv = coalesce($9, refresh_iv), \
+     refresh_auth_tag = coalesce($10, refresh_auth_tag), \
+     refresh_key_version = coalesce($11, refresh_key_version), \
+     scopes = coalesce($12, scopes), refreshed_at = now(), renewing_until = null, \
+     renewal_failure = null where id = $1 and refreshed_at = $2 returning connector_id";
+
+/// The statement keeping a renewal (`RENEWED`), all its parameters bound:
+/// the authorization claimed, then what the renewal brings.
+pub(super) fn keep_query<'q>(
+    sql: &'q str,
+    claimed: ClaimedRenewal,
+    renewed: Renewed<'q>,
+) -> QueryScalar<'q, Postgres, Uuid, PgArguments> {
+    let refresh = renewed.refresh_token;
+    sqlx::query_scalar(sql)
+        .bind(claimed.authorization_id)
+        .bind(claimed.refreshed_at)
+        .bind(&renewed.access_token.ciphertext)
+        .bind(&renewed.access_token.iv)
+        .bind(&renewed.access_token.auth_tag)
+        .bind(renewed.access_token.key_version)
+        .bind(renewed.access_expires_at)
+        .bind(refresh.map(|r| r.ciphertext.clone()))
+        .bind(refresh.map(|r| r.iv.clone()))
+        .bind(refresh.map(|r| r.auth_tag.clone()))
+        .bind(refresh.map(|r| r.key_version))
+        .bind(renewed.scopes)
+}
+
 /// Keeps a renewal of the authorization claimed, if it is still that one;
 /// returns its connector if it was kept.
 pub async fn keep_connector_renewal(
@@ -141,32 +194,10 @@ pub async fn keep_connector_renewal(
     claimed: ClaimedRenewal,
     renewed: Renewed<'_>,
 ) -> sqlx::Result<Option<Uuid>> {
-    let refresh = renewed.refresh_token;
-    let connector: Option<Uuid> = sqlx::query_scalar(
-        "update connector_authorizations set access_ciphertext = $3, access_iv = $4, \
-         access_auth_tag = $5, access_key_version = $6, access_expires_at = $7, \
-         refresh_ciphertext = coalesce($8, refresh_ciphertext), \
-         refresh_iv = coalesce($9, refresh_iv), \
-         refresh_auth_tag = coalesce($10, refresh_auth_tag), \
-         refresh_key_version = coalesce($11, refresh_key_version), \
-         scopes = coalesce($12, scopes), refreshed_at = now(), renewing_until = null, \
-         renewal_failure = null \
-         where id = $1 and refreshed_at = $2 returning connector_id",
-    )
-    .bind(claimed.authorization_id)
-    .bind(claimed.refreshed_at)
-    .bind(&renewed.access_token.ciphertext)
-    .bind(&renewed.access_token.iv)
-    .bind(&renewed.access_token.auth_tag)
-    .bind(renewed.access_token.key_version)
-    .bind(renewed.access_expires_at)
-    .bind(refresh.map(|r| r.ciphertext.clone()))
-    .bind(refresh.map(|r| r.iv.clone()))
-    .bind(refresh.map(|r| r.auth_tag.clone()))
-    .bind(refresh.map(|r| r.key_version))
-    .bind(renewed.scopes)
-    .fetch_optional(&mut *conn)
-    .await?;
+    let sql = format!("update connector_authorizations {RENEWED}");
+    let connector = keep_query(&sql, claimed, renewed)
+        .fetch_optional(&mut *conn)
+        .await?;
     if let Some(connector_id) = connector {
         credential_changed(conn, connector_id).await?;
     }

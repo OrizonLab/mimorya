@@ -141,7 +141,8 @@ impl ConnectorService {
             Err(RenewalFailure::Refused(reason)) => {
                 let mut tx = self.db.begin(tenant_id).await?;
                 tx.lock_administration().await?;
-                if whose.remove_claimed(&mut tx, key).await? {
+                let removed = whose.remove_claimed(&mut tx, key).await?;
+                if removed {
                     let reason = format!("Autorisation retirée au renouvellement : {reason}");
                     let reason: String = reason.chars().take(300).collect();
                     let entry = whose.removed(tenant_id);
@@ -149,8 +150,9 @@ impl ConnectorService {
                     append_audit(&mut tx, entry).await?;
                 }
                 tx.commit().await?;
-                // Their session goes with it here (ADR-174).
-                if let Some(user) = whose.person() {
+                // Their session goes with it here (ADR-174); not one given
+                // anew meanwhile, which another run may hold.
+                if let Some(user) = whose.person().filter(|_| removed) {
                     self.forget_person(connector_id, user).await;
                 }
             }

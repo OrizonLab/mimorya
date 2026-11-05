@@ -11131,20 +11131,20 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     `db/src/repositories/connector_person_renewals.rs`). Avant qu'un run lise les
     instances de la personne qu'il sert, si elle utilise les connecteurs, ses
     autorisations dont le jeton échoit dans les quatre minutes, sur un serveur activé,
-    sont renouvelées côte à côte, jamais celles d'une autre personne ; avant le test
+    sont renouvelées côte à côte, et en même temps que celles de l'entreprise, jamais celles d'une autre personne ; avant le test
     d'un administrateur, la sienne, serveur désactivé compris. Le renouvellement est
     réservé une minute par une seule instruction (un autre processus passe et démarre
     avec le jeton en cours) et demandé au serveur d'autorisation sous la déclaration en
     vigueur seulement, pour le mode qu'elle dit : jamais l'autorisation d'une personne
     quand l'entreprise autorise le serveur. Ce qu'il apporte est scellé pour la personne
-    et gardé si l'autorisation est encore celle réservée, sinon révoqué. Il ne change
+    et gardé si l'autorisation est encore celle réservée, sinon révoqué, sauf si la personne garde une autorisation du même client au même serveur (ADR-172). Il ne change
     pas la version du connecteur : la session de la personne suit son `refreshed_at` et
     redémarre avec le nouveau jeton. Un serveur injoignable laisse l'autorisation, la
     raison dite dans « Mon compte » (`renewalFailure`, jamais un jeton) jusqu'au prochain
     renouvellement gardé ; de même un jeton de renouvellement que la plateforme ne peut
     plus ouvrir, jamais envoyé, qui dit de l'autoriser de nouveau. Un serveur qui dit
     l'accord perdu la retire, tracé par le système (`connector.person_oauth_removed`, la
-    personne dans les métadonnées, sans jeton), et libère sa session dans ce processus.
+    personne dans les métadonnées, sans jeton), et libère sa session dans ce processus ; s'il ne retire rien (une autorisation donnée de nouveau entre-temps), la session de la nouvelle reste aux runs qui la tiennent.
     « Mon compte » montre aussi le dernier renouvellement (`renewedAt`) ; un jeton échu
     dit que son renouvellement sera tenté de nouveau (`OAUTH_EXPIRED_PERSON`) et reste
     « à autoriser » pour le run ; tests : `crates/api/tests/connector_person_renewals.rs`
@@ -11157,9 +11157,9 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     (rien pour qui n'utilise pas les connecteurs ni pour une évaluation ; serveur
     désactivé renouvelé pour le test de l'administrateur, le sien seul ; jamais sous un
     autre émetteur, ni quand l'entreprise autorise ; jeton de renouvellement illisible
-    jamais envoyé, dit dans « Mon compte »), `connector_person_authorization_tested.rs`
+    jamais envoyé, dit dans « Mon compte »), `connector_person_renewal_races.rs` (retrait de Marc pendant son renouvellement : ses jetons révoqués, puis ceux du renouvellement ; autorisé de nouveau pendant son renouvellement : rien de révoqué, la nouvelle autorisation gardée ; refus de l'ancien accord après une nouvelle autorisation : rien de retiré, la session de la nouvelle gardée et reprise par le run qui renouvelait), `connector_person_authorization_tested.rs`
     et `connector_person_sessions.rs` (jeton échu dont le renouvellement échoue, dit de
-    même) ; vérifiés par mutation (renouvellement avant le run retiré ; renouvellement pour qui n'utilise pas les connecteurs ; réservation sans la personne ; mode de la déclaration ignoré ; session gardée au retrait ; personne absente de l'audit ; échec non dit ; test sans la propre autorisation de l'administrateur ; serveur désactivé non renouvelé pour son test ; mots de l'entreprise pour un jeton illisible ; jetons scellés sous les noms de l'entreprise) ;
+    même) ; vérifiés par mutation (renouvellement avant le run retiré ; renouvellement pour qui n'utilise pas les connecteurs ; réservation sans la personne ; mode de la déclaration ignoré ; session gardée au retrait ; personne absente de l'audit ; échec non dit ; test sans la propre autorisation de l'administrateur ; serveur désactivé non renouvelé pour son test ; mots de l'entreprise pour un jeton illisible ; jetons scellés sous les noms de l'entreprise ; jetons non gardés révoqués comme ceux de l'entreprise, ou jamais révoqués pour une personne ; session libérée sans retrait) ;
   - aucune preuve d'identité n'est demandée au serveur d'autorisation : une personne
     peut autoriser avec un compte qu'elle partage ; l'écran le dira ;
   - deux personnes qui autorisent avec le même compte chez le serveur peuvent voir

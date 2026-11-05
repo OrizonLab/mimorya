@@ -120,3 +120,37 @@ pub async fn person_removals(api: &TestApi, id: &str) -> Vec<(String, Value)> {
         .map(|(reason, metadata)| (reason.unwrap_or_default(), metadata))
         .collect()
 }
+
+/// The requests the authorization server received at `endpoint`.
+pub fn asked_at(
+    authority: &FakeAuthorizationServer,
+    endpoint: &str,
+) -> Vec<mimorya_connectors::testing::AuthRequest> {
+    authority
+        .requests()
+        .into_iter()
+        .filter(|asked| asked.endpoint == endpoint)
+        .collect()
+}
+
+/// The revocations asked, once there are `count` of them (or 20 s passed).
+pub async fn revoked_until(
+    authority: &FakeAuthorizationServer,
+    count: usize,
+) -> Vec<mimorya_connectors::testing::AuthRequest> {
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(20);
+    loop {
+        let revoked = asked_at(authority, "revoke");
+        if revoked.len() >= count || tokio::time::Instant::now() > deadline {
+            return revoked;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+}
+
+/// Once the token endpoint was asked `count` times: a renewal under way.
+pub async fn token_asked(authority: &FakeAuthorizationServer, count: usize) {
+    while asked_at(authority, "token").len() < count {
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+}

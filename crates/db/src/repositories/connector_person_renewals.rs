@@ -12,7 +12,8 @@ use sqlx::PgConnection;
 use uuid::Uuid;
 
 use super::connector_renewals::{
-    Claimed, ClaimedRenewal, ClaimedRow, RenewalFor, Renewed, failure_said,
+    CLAIM, CLAIMED, Claimed, ClaimedRenewal, RENEWED, RenewalFor, Renewed, claim_query,
+    failure_said, keep_query,
 };
 
 /// The enabled connectors whose access token the person's authorization
@@ -47,24 +48,12 @@ pub async fn claim_person_renewal(
     hold: std::time::Duration,
     asker: RenewalFor,
 ) -> sqlx::Result<Option<Claimed>> {
-    let row: Option<ClaimedRow> = sqlx::query_as(
-        "update connector_person_authorizations \
-         set renewing_until = now() + make_interval(secs => $4) \
-         where connector_id = $1 and user_id = $2 and refresh_ciphertext is not null \
-         and access_expires_at < now() + make_interval(secs => $3) \
-         and (renewing_until is null or renewing_until <= now()) \
-         and ($5 or exists (select 1 from connector_instances i \
-                            where i.id = connector_id and i.enabled)) \
-         returning id, refreshed_at, issuer, client_id, resource, refresh_ciphertext, \
-         refresh_iv, refresh_auth_tag, refresh_key_version",
-    )
-    .bind(connector_id)
-    .bind(user_id)
-    .bind(within.as_secs_f64())
-    .bind(hold.as_secs_f64())
-    .bind(asker == RenewalFor::Test)
-    .fetch_optional(conn)
-    .await?;
+    // The person's own alone.
+    let sql = format!("update connector_person_authorizations {CLAIM} and user_id = $5 {CLAIMED}");
+    let row = claim_query(&sql, connector_id, within, hold, asker)
+        .bind(user_id)
+        .fetch_optional(conn)
+        .await?;
     Ok(row.map(Claimed::from))
 }
 
@@ -75,33 +64,11 @@ pub async fn keep_person_renewal(
     claimed: ClaimedRenewal,
     renewed: Renewed<'_>,
 ) -> sqlx::Result<bool> {
-    let refresh = renewed.refresh_token;
-    let kept = sqlx::query(
-        "update connector_person_authorizations set access_ciphertext = $3, access_iv = $4, \
-         access_auth_tag = $5, access_key_version = $6, access_expires_at = $7, \
-         refresh_ciphertext = coalesce($8, refresh_ciphertext), \
-         refresh_iv = coalesce($9, refresh_iv), \
-         refresh_auth_tag = coalesce($10, refresh_auth_tag), \
-         refresh_key_version = coalesce($11, refresh_key_version), \
-         scopes = coalesce($12, scopes), refreshed_at = now(), renewing_until = null, \
-         renewal_failure = null \
-         where id = $1 and refreshed_at = $2",
-    )
-    .bind(claimed.authorization_id)
-    .bind(claimed.refreshed_at)
-    .bind(&renewed.access_token.ciphertext)
-    .bind(&renewed.access_token.iv)
-    .bind(&renewed.access_token.auth_tag)
-    .bind(renewed.access_token.key_version)
-    .bind(renewed.access_expires_at)
-    .bind(refresh.map(|r| r.ciphertext.clone()))
-    .bind(refresh.map(|r| r.iv.clone()))
-    .bind(refresh.map(|r| r.auth_tag.clone()))
-    .bind(refresh.map(|r| r.key_version))
-    .bind(renewed.scopes)
-    .execute(conn)
-    .await?;
-    Ok(kept.rows_affected() == 1)
+    let sql = format!("update connector_person_authorizations {RENEWED}");
+    let kept = keep_query(&sql, claimed, renewed)
+        .fetch_optional(conn)
+        .await?;
+    Ok(kept.is_some())
 }
 
 /// Says on the person's authorization claimed why its renewal failed, if it

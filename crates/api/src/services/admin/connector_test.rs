@@ -72,12 +72,14 @@ pub async fn test_connector(
     // the company's or, where each person authorizes it, the
     // administrator's own (ADR-174); even disabled, the test starting it
     // all the same.
-    let (asker, own) = (RenewalFor::Test, Whose::Person(access.subject.user_id));
+    let (asker, admin_own) = (RenewalFor::Test, Whose::Person(access.subject.user_id));
     let connectors = admin.connectors;
     connectors
         .renew_if_due(tenant_id, id, Whose::Company, asker)
         .await;
-    connectors.renew_if_due(tenant_id, id, own, asker).await;
+    connectors
+        .renew_if_due(tenant_id, id, admin_own, asker)
+        .await;
     // The instance and its token from one snapshot.
     let mut tx = admin.db.begin_snapshot(tenant_id).await?;
     let Some(instance) = get_connector_instance(&mut tx, id).await? else {
