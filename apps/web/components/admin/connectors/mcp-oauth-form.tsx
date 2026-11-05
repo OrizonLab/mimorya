@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from 'react';
 import { Button, ErrorNote, Field, Input, Radio } from '@/components/ui';
 import { api, useAction, type ConnectorView, type McpOAuthDeclaration } from '@/lib/api';
+import { REGISTERED_CLIENT_STAYS } from './registered-client';
 
 /**
  * Declares OAuth on an MCP server (ADR-171): the client registered at its
@@ -44,9 +45,7 @@ export function McpOAuthForm({
       );
     }
     if (declared?.registered) {
-      warnings.push(
-        'Le client que la plateforme avait enregistré reste chez le serveur d’autorisation : retirez-le chez lui.',
-      );
+      warnings.push(REGISTERED_CLIENT_STAYS);
     }
     if (warnings.length > 0 && !window.confirm(`${warnings.join(' ')} Continuer ?`)) return;
     const asked = scopes.trim();

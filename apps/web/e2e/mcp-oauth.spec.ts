@@ -201,10 +201,27 @@ test('an MCP server is authorized with the client the platform registers itself'
   expect(again?.mcp?.oauth?.clientId).not.toBe(declared?.mcp?.oauth?.clientId);
   expect(again?.mcp?.oauth?.authorization).toBeNull();
 
+  // Its address to change: the form says the client would stay there.
+  await card.getByRole('button', { name: 'Modifier', exact: true }).click();
+  await expect(
+    card.getByText(/Changer son adresse.*reste chez le serveur d’autorisation/),
+  ).toBeVisible();
+  await card.getByRole('button', { name: 'Annuler' }).click();
+
   // Withdrawn: the client registered stays at the server, said so.
   await card.getByRole('button', { name: 'Retirer OAuth' }).click();
   await expect(card.getByRole('button', { name: 'Déclarer OAuth' })).toBeVisible();
   expect(confirmations.at(-1)).toContain('reste chez le serveur d’autorisation');
+
+  // Its own client once more, then the server deleted: said there too.
+  await card.getByRole('button', { name: 'Déclarer OAuth' }).click();
+  await own.check();
+  await card.getByRole('button', { name: 'Déclarer', exact: true }).click();
+  await expect(card.getByText(/\(enregistré par la plateforme/)).toBeVisible();
+  await card.getByRole('button', { name: 'Supprimer', exact: true }).click();
+  await expect(page.getByText(SERVER)).toHaveCount(0);
+  expect(confirmations.at(-1)).toContain('reste chez le serveur d’autorisation');
+  expect((await listed(page)).some((c) => c.name === SERVER)).toBe(false);
   await noError(page);
 });
 
