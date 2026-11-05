@@ -10944,7 +10944,12 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     connecteur est indisponible pour ce run, et la note dit à la personne de
     l'autoriser dans « Mon compte ». Une évaluation de compétence n'utilise aucune
     autorisation de personne : ces connecteurs y sont retenus et nommés (ADR-153) ;
-  - **le test de l'administrateur** se fait avec sa propre autorisation ;
+  - **le test de l'administrateur** se fait avec sa propre autorisation, jamais celle
+    d'une autre personne ni celle de l'entreprise. Sans elle, ou avec une autorisation
+    donnée sous une autre déclaration, il est refusé (409) et lui dit de l'autoriser
+    d'abord dans « Mon compte ». Ce qu'il donne dit autant de son autorisation que du
+    serveur : il n'est pas écrit dans l'état du connecteur, que voient tous les
+    administrateurs, et l'audit le marque (`ownAuthorization`) ;
   - **les sessions** sont gardées par connecteur et par personne, en nombre borné, et
     retirées après un temps sans run ;
   - **la révocation** (ADR-172) : les jetons de toutes les personnes sont révoqués quand
@@ -11038,6 +11043,24 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     l'autorisation que la même personne garde du même client ; vérifiés par mutation).
     Un retour dont aucune tentative ne s'ouvre est celui d'une personne si l'appelant
     n'administre pas les connecteurs de toute l'entreprise ;
+  - lot 43d : le test d'un serveur que chacun autorise lit l'autorisation de
+    l'administrateur qui le lance (`credential_for`, `services/connectors/credential.rs`,
+    qui servira aux runs du lot 43e : l'autorisation de la personne servie, jamais une
+    autre) ; ce que partagent le retour de l'entreprise et celui d'une personne est
+    regroupé (`connector_authorization/returned.rs`) ; la révocation de l'autorisation de
+    l'entreprise est tracée dès qu'elle est envoyée, sans attendre celles des personnes.
+    Tant que le lot 43f ne renouvelle pas l'autorisation d'une personne, un test avec
+    une autorisation échue est refusé par le serveur, et le dit ; tests :
+    `connector_person_authorization_tested.rs` (refusé sans autorisation de
+    l'administrateur, celle de Marc jamais envoyée ; refusé avec une autorisation donnée
+    sous une autre déclaration ; avec la sienne, elle seule envoyée, l'audit marqué,
+    l'état du connecteur inchangé, même quand le serveur la refuse ; Marc, qui l'a
+    autorisé, ne le teste pas ; un administrateur d'une autre entreprise ne le teste pas
+    et ne change pas qui l'autorise), `connector_oauth_holder.rs` (l'autorisation de
+    l'entreprise gardée par un ancien processus jamais envoyée, même par le test de
+    l'administrateur), `connector_person_authorization_rights.rs` (aucun jeton demandé
+    pour un retour refusé avant l'échange, serveur désactivé compris) ; vérifiés par
+    mutation ;
   - aucune preuve d'identité n'est demandée au serveur d'autorisation : une personne
     peut autoriser avec un compte qu'elle partage ; l'écran le dira ;
   - deux personnes qui autorisent avec le même compte chez le serveur peuvent voir

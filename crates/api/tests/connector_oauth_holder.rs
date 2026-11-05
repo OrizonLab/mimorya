@@ -12,8 +12,8 @@
 mod support;
 
 use axum::http::StatusCode;
+use mimorya_api::services::admin::TEST_OWN_AUTHORIZATION;
 use mimorya_api::services::connectors::{access_sealed_as, refresh_sealed_as};
-use mimorya_connectors::mcp::oauth::OAUTH_EACH_PERSON;
 use mimorya_connectors::testing::{CLIENT_ID, CLIENT_SECRET, FakeAuthorizationServer};
 use mimorya_core::demo::{tenant, user};
 use mimorya_db::repositories::connector_authorizations::{
@@ -112,8 +112,15 @@ async fn a_server_each_person_authorizes_never_opens_with_the_company_s() {
     .await
     .unwrap();
     tx.commit().await.unwrap();
+    // Tested by Paul, who has not authorized it for himself: refused.
+    let test = format!("/admin/connectors/{id}/test");
+    let refused = paul.post(&test, json!({})).await;
+    assert_eq!(refused.status, StatusCode::CONFLICT, "{}", refused.text());
+    assert!(refused.text().contains(TEST_OWN_AUTHORIZATION));
+    // With his own: his alone is sent.
+    let pauls = person_authorized(&api, &id, user::PAUL, &authority, &resource).await;
     let outcome = tested(&paul, &id).await;
-    assert!(said(&outcome).contains(OAUTH_EACH_PERSON), "{outcome}");
+    assert_eq!(said(&outcome), "", "{outcome}");
     let renewals = authority.requests();
     assert!(
         renewals.iter().all(|asked| asked.endpoint != "token"),
@@ -125,6 +132,10 @@ async fn a_server_each_person_authorizes_never_opens_with_the_company_s() {
     assert!(
         sent.iter()
             .all(|header| header.as_deref() != Some(&format!("Bearer {token}")))
+    );
+    assert!(
+        sent.iter()
+            .any(|header| header.as_deref() == Some(&format!("Bearer {pauls}")))
     );
     assert_eq!(
         paul.delete(&format!("/admin/connectors/{id}")).await.status,

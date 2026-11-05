@@ -1,7 +1,11 @@
 //! Tries a connector the way a run would start it (a fresh instance) and
 //! lists its tools with the policy in force for each, so that an
 //! administrator maps them knowingly. How it went is recorded on the
-//! instance; the audit keeps the outcome, never the token.
+//! instance; the audit keeps the outcome, never the token. A server each
+//! person authorizes is tried with the administrator's own authorization,
+//! never another person's nor the company's, and refused without it; how
+//! it went then says as much of their authorization as of the server, and
+//! is not recorded on the instance (ADR-174).
 
 use std::collections::HashMap;
 
@@ -18,10 +22,16 @@ use super::audit_entry;
 use super::connectors::ConnectorAdmin;
 use crate::services::AccessContext;
 use crate::services::connectors::{
-    ConnectorService, Credential, Policies, credential_of, failure, read_policies, scoped_overrides,
+    ConnectorService, Credential, CredentialFor, Policies, credential_for, failure, read_policies,
+    scoped_overrides,
 };
 
 const PERMISSION: &str = "connector:manage";
+
+/// Why a server each person authorizes is not tried by an administrator
+/// who has not authorized it (ADR-174).
+pub const TEST_OWN_AUTHORIZATION: &str = "Chaque personne autorise ce serveur pour elle-même : \
+     autorisez-le d’abord dans « Mon compte », le test se fait avec votre autorisation";
 
 pub struct TestedTool {
     pub name: String,
@@ -66,8 +76,16 @@ pub async fn test_connector(
     let Some(instance) = get_connector_instance(&mut tx, id).await? else {
         return Err(DomainError::not_found("Connecteur introuvable").into());
     };
-    let credential = credential_of(&mut tx, admin.secrets, &instance).await?;
+    let user_id = access.subject.user_id;
+    let credential = credential_for(&mut tx, admin.secrets, &instance, user_id).await?;
     tx.commit().await?;
+    let (credential, own) = match credential {
+        CredentialFor::Shared(credential) => (credential, false),
+        CredentialFor::Own(credential) => (credential, true),
+        CredentialFor::NotAuthorized => {
+            return Err(DomainError::conflict(TEST_OWN_AUTHORIZATION).into());
+        }
+    };
 
     let outcome = match (read_policies(&instance), credential) {
         (Err(error), _) => ConnectorTestOutcome {
@@ -101,13 +119,21 @@ pub async fn test_connector(
         admin.connectors.retry_now(id).await;
     }
     let mut tx = admin.db.begin(tenant_id).await?;
-    report_connector_status(&mut tx, id, instance.updated_at, outcome.error.as_deref()).await?;
+    // One person's authorization failing is not the server's status.
+    if !own {
+        let error = outcome.error.as_deref();
+        report_connector_status(&mut tx, id, instance.updated_at, error).await?;
+    }
+    let mut metadata = json!({
+        "ok": outcome.error.is_none(),
+        "tools": outcome.tools.len(),
+    });
+    if own {
+        metadata["ownAuthorization"] = json!(true);
+    }
     append_audit(
         &mut tx,
-        audit_entry(access, "connector.tested", "connector", id).metadata(json!({
-            "ok": outcome.error.is_none(),
-            "tools": outcome.tools.len(),
-        })),
+        audit_entry(access, "connector.tested", "connector", id).metadata(metadata),
     )
     .await?;
     tx.commit().await?;

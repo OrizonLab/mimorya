@@ -10,6 +10,7 @@
 mod support;
 
 use axum::http::StatusCode;
+use mimorya_api::services::connectors::REVOCATION_BOUND;
 use mimorya_connectors::testing::{
     CLIENT_ID, CLIENT_SECRET, FakeAuthorizationServer, OAuthQuirk, serve_oauth_mcp_http,
 };
@@ -240,7 +241,10 @@ async fn the_request_does_not_wait_for_every_person_s_revocation() {
     let withdrawn = paul.delete(&format!("/admin/connectors/{id}/oauth")).await;
     let waited = started.elapsed();
     assert_eq!(withdrawn.status, StatusCode::OK, "{}", withdrawn.text());
-    assert!(waited < std::time::Duration::from_secs(17), "{waited:?}");
+    // Waited for the bound of one revocation and five seconds (ADR-174),
+    // and two seconds for the rest of the request.
+    let ceiling = REVOCATION_BOUND + std::time::Duration::from_secs(5 + 2);
+    assert!(waited < ceiling, "{waited:?}");
     assert_eq!(person_count(&api, &id).await, 0, "taken before the answer");
     // The revocations go on after the answer, and are audited.
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);

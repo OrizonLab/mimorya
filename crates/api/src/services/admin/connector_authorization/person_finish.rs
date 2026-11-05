@@ -12,9 +12,7 @@
 //! for it or is seen by it. Tokens granted and not kept are revoked
 //! (ADR-172). Every refusal says why, for the audit.
 
-use mimorya_connectors::mcp::oauth::{
-    CodeExchange, Granted, OAuthDeclaration, OAuthHolder, exchange_code,
-};
+use mimorya_connectors::mcp::oauth::{Granted, OAuthDeclaration, OAuthHolder};
 use mimorya_db::repositories::account_links::lock_active_account;
 use mimorya_db::repositories::audit::append_audit;
 use mimorya_db::repositories::connector_person_authorizations::{
@@ -24,21 +22,22 @@ use mimorya_db::repositories::connectors::get_connector_instance;
 use serde_json::json;
 use uuid::Uuid;
 
-use super::attempt::{self, AuthorizationAttempt, declared_print};
-use super::finish::{
-    AuthorizationFailure, OAuthReturn, Outcome, declaration, internal, issuer_refused,
+use super::attempt::{self, AuthorizationAttempt};
+use super::returned::{
+    AuthorizationFailure, CHANGED, OAuthReturn, Outcome, declaration, exchanged, internal,
+    issuer_refused, own_attempt, returned_code, unchanged,
 };
-use super::redirect_uri;
 use crate::http::iso;
 use crate::services::AccessContext;
 use crate::services::admin::audit_entry;
-use crate::services::admin::connector_oauth::McpServer;
 use crate::services::admin::connectors::{ConnectorAdmin, PERMISSION};
 use crate::services::connectors::{CONNECTOR_USE, Unkept, seal_person_grant};
-use crate::services::sso::{error_code, same_state};
 
 /// What the audit calls a person's own authorization.
 pub const PERSON_AUTHORIZED: &str = "connector.person_oauth_authorized";
+
+/// A server disabled between the start and the return: nothing is asked.
+const DISABLED: &str = "Serveur désactivé pendant l’autorisation";
 
 /// Whose return this is: the attempt's that opens, an administrator's for
 /// the company or a person's own, finished here; with none, a person's if
@@ -72,102 +71,37 @@ pub async fn finish_person_authorization(
     cookie: Option<&str>,
     web_origin: &str,
 ) -> Outcome<Uuid> {
-    let attempt = own_attempt(admin, access, cookie)?;
+    let attempt = own_attempt(admin, access, cookie, OAuthHolder::Person)?;
     let id = attempt.connector_id;
     let at = |reason: &str| AuthorizationFailure::new(Some(id), reason);
-    if !back
-        .state
-        .as_deref()
-        .is_some_and(|state| same_state(state, &attempt.state))
-    {
-        return Err(at("Retour d’une autre tentative"));
-    }
-    if let Some(error) = back.error {
-        let code = error_code(&error);
-        return Err(at(&format!(
-            "Refusée par le serveur d’autorisation ({code})"
-        )));
-    }
-    let code = back.code.ok_or_else(|| at("Retour sans code"))?;
+    let code = returned_code(&back, &attempt)?;
     // Their rights may have changed since the start.
     if !access.has(CONNECTOR_USE) {
         return Err(at("Connecteurs non autorisés"));
     }
-    let (declared, secret) = declaration(admin, access, &attempt).await?;
+    let server = declaration(admin, access, &attempt).await?;
     // Nothing is asked for a server that is disabled: checked again once
     // granted, under the lock.
-    if !enabled(admin, access, id).await? {
-        return Err(at("Serveur désactivé pendant l’autorisation"));
+    if !server.enabled {
+        return Err(at(DISABLED));
     }
-    if let Some(refused) = issuer_refused(back.iss.as_deref(), &declared) {
+    if let Some(refused) = issuer_refused(back.iss.as_deref(), &server.declared) {
         return Err(at(refused));
     }
-    let back_to = redirect_uri(web_origin);
-    let exchange = CodeExchange {
-        code: &code,
-        verifier: &attempt.pkce_verifier,
-        redirect_uri: &back_to,
-        client_secret: secret.as_deref(),
-    };
-    let granted = {
-        // Counted with the company's starts: one company's exchanges stay
-        // bounded however many people come back at once.
-        let _start = admin
-            .connectors
-            .claim_admin_start(access.subject.tenant_id)
-            .map_err(|refusal| at(&refusal.to_string()))?;
-        exchange_code(&declared, exchange, admin.connectors.network())
-            .await
-            .map_err(|failure| at(&failure))?
-    };
-    let kept = keep(admin, access, &attempt, &declared, &granted).await;
+    let granted = exchanged(admin, access, &attempt, &server, &code, web_origin).await?;
+    let kept = keep(admin, access, &attempt, &server.declared, &granted).await;
     if kept.is_err() {
         // Granted, kept nowhere (ADR-172).
         admin.connectors.revoke_unkept(Unkept {
             tenant_id: access.subject.tenant_id,
             connector_id: id,
             user_id: Some(access.subject.user_id),
-            declared,
+            declared: server.declared,
             granted,
-            client_secret: secret,
+            client_secret: server.secret,
         });
     }
     kept
-}
-
-/// Whether the server is enabled now.
-async fn enabled(admin: &ConnectorAdmin<'_>, access: &AccessContext, id: Uuid) -> Outcome<bool> {
-    let internal = |error: anyhow::Error| internal(id, error);
-    let mut tx = admin
-        .db
-        .begin(access.subject.tenant_id)
-        .await
-        .map_err(|e| internal(e.into()))?;
-    let instance = get_connector_instance(&mut tx, id)
-        .await
-        .map_err(|e| internal(e.into()))?;
-    tx.commit().await.map_err(|e| internal(e.into()))?;
-    Ok(instance.is_some_and(|instance| instance.enabled))
-}
-
-/// The attempt the browser kept, if it is the signed-in person's own.
-fn own_attempt(
-    admin: &ConnectorAdmin<'_>,
-    access: &AccessContext,
-    cookie: Option<&str>,
-) -> Outcome<AuthorizationAttempt> {
-    let unknown = || AuthorizationFailure::new(None, "Tentative inconnue ou expirée");
-    let cipher = admin.secrets.cipher().map_err(|_| unknown())?;
-    let (tenant_id, attempt) = cookie
-        .and_then(|value| attempt::open_person(cipher, value, chrono::Utc::now()))
-        .ok_or_else(unknown)?;
-    if tenant_id != access.subject.tenant_id || attempt.user_id != access.subject.user_id {
-        return Err(AuthorizationFailure::new(
-            None,
-            "Tentative d’une autre personne",
-        ));
-    }
-    Ok(attempt)
 }
 
 /// The tokens sealed for the connector and the person and kept, if the
@@ -208,18 +142,11 @@ async fn keep(
         .await
         .map_err(|e| internal(e.into()))?;
     let enabled = instance.as_ref().is_some_and(|instance| instance.enabled);
-    let unchanged = McpServer::of(instance).ok().is_some_and(|server| {
-        server
-            .declared
-            .is_some_and(|now| declared_print(&server.url, &now) == attempt.declared)
-    });
-    if !unchanged {
-        return Err(refused(
-            "Adresse ou déclaration OAuth changée pendant l’autorisation",
-        ));
+    if !unchanged(instance, attempt) {
+        return Err(refused(CHANGED));
     }
     if !enabled {
-        return Err(refused("Serveur désactivé pendant l’autorisation"));
+        return Err(refused(DISABLED));
     }
     let replaced = put_person_authorization(
         &mut tx,

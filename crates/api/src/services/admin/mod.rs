@@ -71,7 +71,9 @@ pub use connector_config::{Editable, RestChanges};
 pub use connector_oauth::{OAuthInput, declare_oauth, remove_oauth};
 pub use connector_oauth_holder::set_oauth_holder;
 pub use connector_rules::ToolPolicyInput;
-pub use connector_test::{ConnectorTestOutcome, TestedTool, test_connector};
+pub use connector_test::{
+    ConnectorTestOutcome, TEST_OWN_AUTHORIZATION, TestedTool, test_connector,
+};
 pub use connector_trial::{McpTrial, TrialServices, try_mcp_connector};
 pub use connectors::{
     ConnectorAdmin, ConnectorChanges, NewMcpConnector, TokenChange, create_mcp_connector,
