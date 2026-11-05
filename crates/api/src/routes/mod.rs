@@ -9,6 +9,7 @@
 //! account holding a temporary password can replace it.
 
 mod account;
+mod account_connector_authorizations;
 mod account_gateways;
 mod account_links;
 mod admin;
@@ -51,6 +52,7 @@ pub fn router(state: &AppState) -> Router<AppState> {
         .merge(password_reset::routes())
         .merge(account::routes())
         .merge(account_links::routes())
+        .merge(account_connector_authorizations::routes())
         .merge(account_gateways::routes())
         .merge(conversations::routes())
         .merge(runs::routes())

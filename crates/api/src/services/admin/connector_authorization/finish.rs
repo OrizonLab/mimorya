@@ -49,7 +49,7 @@ pub struct AuthorizationFailure {
 }
 
 impl AuthorizationFailure {
-    fn new(connector_id: Option<Uuid>, reason: impl Into<String>) -> Self {
+    pub(super) fn new(connector_id: Option<Uuid>, reason: impl Into<String>) -> Self {
         Self {
             connector_id,
             reason: reason.into(),
@@ -57,7 +57,7 @@ impl AuthorizationFailure {
     }
 }
 
-type Outcome<T> = Result<T, AuthorizationFailure>;
+pub(super) type Outcome<T> = Result<T, AuthorizationFailure>;
 
 pub async fn finish_authorization(
     admin: &ConnectorAdmin<'_>,
@@ -90,18 +90,8 @@ pub async fn finish_authorization(
         .require_tenant_wide(PERMISSION)
         .map_err(|_| at("Droits d’administration des connecteurs retirés"))?;
     let (declared, secret) = declaration(admin, access, &attempt).await?;
-    match back.iss {
-        Some(issuer) if issuer != declared.issuer => {
-            return Err(at(
-                "Retour d’un autre émetteur que le serveur d’autorisation déclaré",
-            ));
-        }
-        None if declared.names_issuer_on_return => {
-            return Err(at(
-                "Retour sans l’émetteur que ce serveur d’autorisation annonce",
-            ));
-        }
-        _ => {}
+    if let Some(refused) = issuer_refused(back.iss.as_deref(), &declared) {
+        return Err(at(refused));
     }
     let back_to = redirect_uri(web_origin);
     let exchange = CodeExchange {
@@ -125,12 +115,30 @@ pub async fn finish_authorization(
         admin.connectors.revoke_unkept(Unkept {
             tenant_id: access.subject.tenant_id,
             connector_id: id,
+            user_id: None,
             declared,
             granted,
             client_secret: secret,
         });
     }
     kept
+}
+
+/// Why the return's issuer is refused, if it is (RFC 9207): another than
+/// the declared one, or none when the server says it names it.
+pub(super) fn issuer_refused(
+    issuer: Option<&str>,
+    declared: &OAuthDeclaration,
+) -> Option<&'static str> {
+    match issuer {
+        Some(issuer) if issuer != declared.issuer => {
+            Some("Retour d’un autre émetteur que le serveur d’autorisation déclaré")
+        }
+        None if declared.names_issuer_on_return => {
+            Some("Retour sans l’émetteur que ce serveur d’autorisation annonce")
+        }
+        _ => None,
+    }
 }
 
 /// The attempt the browser kept, if it is the signed-in administrator's own.
@@ -155,7 +163,7 @@ fn own_attempt(
 
 /// The declaration the attempt was started under, still the server's, and
 /// the client's secret if it proves itself with one.
-async fn declaration(
+pub(super) async fn declaration(
     admin: &ConnectorAdmin<'_>,
     access: &AccessContext,
     attempt: &AuthorizationAttempt,
@@ -272,7 +280,7 @@ async fn keep(
 }
 
 /// The database failing: still a refusal for the browser.
-fn internal(connector_id: Uuid, error: anyhow::Error) -> AuthorizationFailure {
+pub(super) fn internal(connector_id: Uuid, error: anyhow::Error) -> AuthorizationFailure {
     tracing::error!(error = %error, "Connector authorization failed");
     AuthorizationFailure::new(Some(connector_id), "Erreur interne")
 }

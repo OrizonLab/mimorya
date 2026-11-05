@@ -14,6 +14,7 @@ use mimorya_db::repositories::invitations::pending_invitations;
 use mimorya_db::repositories::role_assignments::{RoleAssignmentRow, list_role_assignments};
 use mimorya_db::repositories::users::list_users;
 
+use super::connectors::{admin, secrets};
 use crate::app::AppState;
 use crate::contract::Done;
 use crate::contract::admin::{
@@ -28,6 +29,7 @@ use crate::services::admin::{
     LinkSender, NewUserInput, UserChanges, create_user, issue_invitation, reset_password,
     send_reset_link, update_user,
 };
+use crate::services::permission_catalog::permission_catalog;
 
 pub async fn list(
     State(state): State<AppState>,
@@ -189,7 +191,8 @@ pub async fn update(
         active: body.status.map(|s| s == StatusChange::Active),
         attributes: body.attributes,
     };
-    update_user(&state.db, &access, id, changes).await?;
+    let (store, catalog) = (secrets(&state), permission_catalog());
+    update_user(&admin(&state, &store, &catalog), &access, id, changes).await?;
     Ok(Json(Done::OK))
 }
 

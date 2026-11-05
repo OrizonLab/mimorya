@@ -1,7 +1,8 @@
 //! Accounts: creation (invited, ADR-027), profile, attributes (read by access
 //! policies) and status changes, password reset to a temporary password. A
-//! disabled account loses its sessions, its pending invitation and the
-//! accounts it linked at its company's providers (ADR-116) at once.
+//! disabled account loses its sessions, its pending invitation, the
+//! accounts it linked at its company's providers (ADR-116) and its own
+//! authorizations of MCP servers, revoked once committed (ADR-174), at once.
 
 use std::collections::BTreeSet;
 
@@ -25,6 +26,8 @@ use mimorya_db::{Database, TenantTx, is_unique_violation};
 use serde_json::{Map, Value, json};
 use uuid::Uuid;
 
+use super::connector_authorization::{revoke_all, take_persons_of_user};
+use super::connectors::ConnectorAdmin;
 use super::{audit_entry, begin_change, current_tree, refuse_self};
 use crate::auth::credentials::{generate_temporary_password, hash_password_async};
 use crate::services::sso::required_provider;
@@ -135,11 +138,12 @@ pub struct UserChanges {
 }
 
 pub async fn update_user(
-    db: &Database,
+    admin: &ConnectorAdmin<'_>,
     access: &AccessContext,
     user_id: Uuid,
     changes: UserChanges,
 ) -> anyhow::Result<()> {
+    let db = admin.db;
     access.require_tenant_wide(PERMISSION)?;
     refuse_self(access, user_id)?;
     let attributes = changes
@@ -184,6 +188,7 @@ pub async fn update_user(
     if let Some(unit) = changes.org_unit_id {
         set_primary_unit(&mut tx, tenant_id, user_id, unit).await?;
     }
+    let mut revocations = Vec::new();
     if changes.active == Some(false) {
         revoke_user_sessions(&mut tx, user_id, None).await?;
         delete_invitation_of(&mut tx, user_id).await?;
@@ -191,6 +196,10 @@ pub async fn update_user(
         delete_account_links_of(&mut tx, user_id).await?;
         // Nor may their identity on a gateway speak for them (ADR-125).
         delete_gateway_identities_of(&mut tx, user_id).await?;
+        // Nor may what they authorized MCP servers to do for them be used
+        // (ADR-174): taken now, revoked once committed.
+        let tenant_id = access.subject.tenant_id;
+        revocations = take_persons_of_user(&mut tx, admin, tenant_id, user_id).await?;
     }
     let action = match changes.active {
         Some(true) => "user.enabled",
@@ -208,6 +217,9 @@ pub async fn update_user(
     )
     .await?;
     tx.commit().await?;
+    if !revocations.is_empty() {
+        revoke_all(admin, access, revocations).await;
+    }
     Ok(())
 }
 

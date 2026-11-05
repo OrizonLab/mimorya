@@ -12,6 +12,7 @@
 //! no revocation endpoint, does not answer or refuses keeps its grant, to be
 //! withdrawn there; the withdrawal stands.
 
+mod persons;
 mod sending;
 
 use mimorya_connectors::mcp::oauth::{ClientAuth, OAuthDeclaration};
@@ -29,7 +30,8 @@ use crate::secrets::SecretRead;
 use crate::services::AccessContext;
 use crate::services::connectors::client_secret_name;
 
-pub use sending::revoke;
+pub use persons::{take_person, take_persons_of_user};
+pub use sending::{revoke, revoke_all};
 
 /// Authorizations of one connector taken away, with what revoking their
 /// tokens needs.

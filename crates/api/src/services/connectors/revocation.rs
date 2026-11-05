@@ -6,8 +6,9 @@
 //! authorization withdrawn meanwhile, an authorization's whose return found
 //! its declaration changed. These go in a task of their own, which no one
 //! waits for, and not when an authorization of the same client at the same
-//! server is held for the connector: revoking them could take it with them
-//! at some servers. Why one was not revoked is said, never with a token.
+//! server is held for the connector, or for the same person when they were
+//! a person's (ADR-174): revoking them could take it with them at some
+//! servers. Why one was not revoked is said, never with a token.
 
 use std::time::Duration;
 
@@ -15,6 +16,7 @@ use mimorya_connectors::mcp::oauth::{Granted, HeldToken, OAuthDeclaration, revok
 use mimorya_connectors::outbound::NetworkPolicy;
 use mimorya_db::Database;
 use mimorya_db::repositories::connector_authorizations::get_connector_authorization;
+use mimorya_db::repositories::connector_person_authorizations::get_person_authorization;
 use uuid::Uuid;
 
 use super::ConnectorService;
@@ -61,6 +63,9 @@ pub async fn revoke_within(
 pub struct Unkept {
     pub tenant_id: Uuid,
     pub connector_id: Uuid,
+    /// The person they were granted to, for themself (ADR-174); `None`, the
+    /// company.
+    pub user_id: Option<Uuid>,
     /// The declaration they were asked under.
     pub declared: OAuthDeclaration,
     pub granted: Granted,
@@ -82,16 +87,25 @@ impl ConnectorService {
 
 async fn revoke_if_unheld(db: Database, network: NetworkPolicy, unkept: Unkept) {
     let id = unkept.connector_id;
+    // The authorization they would take with them: the company's, or that
+    // same person's.
     let held = async {
         let mut tx = db.begin(unkept.tenant_id).await?;
-        let held = get_connector_authorization(&mut tx, id).await?;
+        let held = match unkept.user_id {
+            None => get_connector_authorization(&mut tx, id)
+                .await?
+                .map(|held| (held.issuer, held.client_id)),
+            Some(user_id) => get_person_authorization(&mut tx, id, user_id)
+                .await?
+                .map(|held| (held.issuer, held.client_id)),
+        };
         tx.commit().await?;
         anyhow::Ok(held)
     };
     let declared = &unkept.declared;
     match held.await {
-        Ok(Some(held))
-            if held.issuer == declared.issuer && held.client_id == declared.client_id =>
+        Ok(Some((issuer, client_id)))
+            if issuer == declared.issuer && client_id == declared.client_id =>
         {
             return;
         }

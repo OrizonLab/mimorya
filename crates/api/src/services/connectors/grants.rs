@@ -8,7 +8,9 @@ use mimorya_connectors::mcp::oauth::Granted;
 use mimorya_db::repositories::secrets::StoredSecret;
 use uuid::Uuid;
 
-use super::{access_sealed_as, refresh_sealed_as};
+use super::{
+    access_sealed_as, person_access_sealed_as, person_refresh_sealed_as, refresh_sealed_as,
+};
 use crate::secrets::SecretCipher;
 
 /// What an authorization's removal is audited as: by an administrator, or
@@ -35,13 +37,38 @@ pub fn seal_grant(
     connector_id: Uuid,
     granted: &Granted,
 ) -> anyhow::Result<SealedGrant> {
-    let access = cipher.seal(
-        tenant_id,
-        &access_sealed_as(connector_id),
-        &granted.access_token,
-    )?;
+    let names = (
+        access_sealed_as(connector_id),
+        refresh_sealed_as(connector_id),
+    );
+    seal_as(cipher, tenant_id, names, granted)
+}
+
+/// `granted`, sealed for the connector `connector_id` and the person
+/// `user_id` (ADR-174): opened for that person only.
+pub fn seal_person_grant(
+    cipher: &SecretCipher,
+    tenant_id: Uuid,
+    connector_id: Uuid,
+    user_id: Uuid,
+    granted: &Granted,
+) -> anyhow::Result<SealedGrant> {
+    let names = (
+        person_access_sealed_as(connector_id, user_id),
+        person_refresh_sealed_as(connector_id, user_id),
+    );
+    seal_as(cipher, tenant_id, names, granted)
+}
+
+fn seal_as(
+    cipher: &SecretCipher,
+    tenant_id: Uuid,
+    (access_name, refresh_name): (String, String),
+    granted: &Granted,
+) -> anyhow::Result<SealedGrant> {
+    let access = cipher.seal(tenant_id, &access_name, &granted.access_token)?;
     let refresh = match &granted.refresh_token {
-        Some(token) => Some(cipher.seal(tenant_id, &refresh_sealed_as(connector_id), token)?),
+        Some(token) => Some(cipher.seal(tenant_id, &refresh_name, token)?),
         None => None,
     };
     let expires_at = granted

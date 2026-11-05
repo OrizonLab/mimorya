@@ -9,9 +9,10 @@
 mod support;
 
 use axum::http::StatusCode;
+use mimorya_api::secrets::SecretStore;
 use mimorya_api::services::admin::{
-    PolicyChanges, RoleChanges, UnitChanges, UserChanges, grant_role, revoke_role, update_policy,
-    update_role, update_unit, update_user,
+    ConnectorAdmin, PolicyChanges, RoleChanges, UnitChanges, UserChanges, grant_role, revoke_role,
+    update_policy, update_role, update_unit, update_user,
 };
 use mimorya_api::services::permission_catalog::permission_catalog;
 use mimorya_api::services::{AccessContext, AuthIdentity};
@@ -155,10 +156,18 @@ async fn crossed_revocations_leave_an_administrator() {
         active: Some(false),
         ..UserChanges::default()
     };
-    update_user(&services.db, &from_paul, account.id, disable())
+    let secrets = SecretStore::new(services.config.secrets.clone());
+    let catalog = permission_catalog();
+    let admin = ConnectorAdmin {
+        db: &services.db,
+        connectors: &services.connectors,
+        secrets: &secrets,
+        catalog: &catalog,
+    };
+    update_user(&admin, &from_paul, account.id, disable())
         .await
         .unwrap();
-    let crossed = update_user(&services.db, &from_second, user::PAUL, disable()).await;
+    let crossed = update_user(&admin, &from_second, user::PAUL, disable()).await;
     assert_eq!(code_of(crossed), ErrorCode::Forbidden);
     assert_eq!(paul.get("/auth/me").await.status, StatusCode::OK);
 }
