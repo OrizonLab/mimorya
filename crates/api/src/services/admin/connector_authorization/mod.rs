@@ -21,7 +21,7 @@ mod start;
 pub use attempt::{AUTHORIZATION_COOKIE, authorization_cookie, cleared_authorization_cookie};
 pub use finish::{AuthorizationFailure, OAuthReturn, finish_authorization};
 pub use person::{PersonServer, list_person_servers, remove_person_authorization};
-pub use person_finish::{PERSON_AUTHORIZED, finish_person_authorization, is_person_attempt};
+pub use person_finish::{PERSON_AUTHORIZED, attempt_holder, finish_person_authorization};
 pub(super) use revocation::{
     revocable_under, revoke, revoke_all, take_authorization, take_authorizations,
     take_persons_of_user,

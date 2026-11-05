@@ -21,6 +21,7 @@ pub mod evaluation_passes;
 mod fixtures;
 pub mod gateway_apps;
 pub mod gateways;
+pub mod held_token;
 pub mod hooks;
 pub mod identity_provider;
 pub mod impostor;

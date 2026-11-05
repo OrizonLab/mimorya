@@ -29,8 +29,8 @@ use crate::plugins::{Auth, RequestContext};
 use crate::services::AccessContext;
 use crate::services::admin::{
     AUTHORIZATION_COOKIE, AuthorizationFailure, OAuthInput, OAuthReturn, PERSON_AUTHORIZED,
-    authorization_cookie, cleared_authorization_cookie, declare_oauth, finish_authorization,
-    finish_person_authorization, is_person_attempt, oauth_redirect_uri, remove_authorization,
+    attempt_holder, authorization_cookie, cleared_authorization_cookie, declare_oauth,
+    finish_authorization, finish_person_authorization, oauth_redirect_uri, remove_authorization,
     remove_oauth, set_oauth_holder, start_authorization,
 };
 use crate::services::permission_catalog::permission_catalog;
@@ -38,6 +38,8 @@ use crate::services::permission_catalog::permission_catalog;
 /// Where the browser lands after the authorization server.
 const AUTHORIZED: &str = "/admin?autorisation=ok";
 const FAILED: &str = "/admin?autorisation=echec";
+/// Who authorizes a server for the company (ADR-171).
+const CONNECTOR_MANAGE: &str = "connector:manage";
 /// Where a person's own authorization lands (ADR-174): their account.
 const PERSON_AUTHORIZED_BACK: &str = "/account?serveur=ok";
 const PERSON_FAILED_BACK: &str = "/account?serveur=echec";
@@ -167,8 +169,13 @@ pub async fn callback(
     let (store, catalog) = (secrets(&state), permission_catalog());
     let admin = admin(&state, &store, &catalog);
     // A person's own attempt comes back here too (ADR-174), finished as
-    // theirs and sent back to their account.
-    let person = is_person_attempt(&admin, cookie.as_deref());
+    // theirs and sent back to their account; so is a return without any
+    // attempt that opens, from someone who does not administer the
+    // company's connectors.
+    let person = match attempt_holder(&admin, cookie.as_deref()) {
+        Some(holder) => holder == OAuthHolder::Person,
+        None => access.require_tenant_wide(CONNECTOR_MANAGE).is_err(),
+    };
     let allowed = state
         .limits
         .sso_sign_in

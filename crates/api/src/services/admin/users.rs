@@ -198,7 +198,6 @@ pub async fn update_user(
         delete_gateway_identities_of(&mut tx, user_id).await?;
         // Nor may what they authorized MCP servers to do for them be used
         // (ADR-174): taken now, revoked once committed.
-        let tenant_id = access.subject.tenant_id;
         revocations = take_persons_of_user(&mut tx, admin, tenant_id, user_id).await?;
     }
     let action = match changes.active {

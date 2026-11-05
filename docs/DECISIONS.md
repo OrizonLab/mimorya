@@ -11031,7 +11031,13 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     présentée par une autre personne ou un administrateur, tentative d'un
     administrateur présentée par une personne, serveur autorisé par l'entreprise ou
     absent, personne sans `connector:use`, droit perdu, déclaration changée ou serveur
-    désactivé pendant l'aller et retour) ;
+    désactivé pendant l'aller et retour, retour sans tentative d'une personne qui
+    n'administre rien renvoyé vers son compte), `connector_person_authorization_races.rs`
+    (compte désactivé ou déclaration changée pendant l'échange du code : rien n'est
+    gardé, la raison tracée, les jetons accordés révoqués ; refus qui ne révoque pas
+    l'autorisation que la même personne garde du même client ; vérifiés par mutation).
+    Un retour dont aucune tentative ne s'ouvre est celui d'une personne si l'appelant
+    n'administre pas les connecteurs de toute l'entreprise ;
   - aucune preuve d'identité n'est demandée au serveur d'autorisation : une personne
     peut autoriser avec un compte qu'elle partage ; l'écran le dira ;
   - deux personnes qui autorisent avec le même compte chez le serveur peuvent voir

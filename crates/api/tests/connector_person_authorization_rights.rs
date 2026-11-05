@@ -56,6 +56,19 @@ async fn only_the_person_who_started_it_finishes_it() {
         assert_eq!(reason, "Tentative d’une autre personne");
     }
 
+    // A return without any attempt, from someone who administers nothing:
+    // refused as theirs, back to their account.
+    let lost = come_back(&marc, &back, None).await;
+    assert_eq!(location(&lost), PERSON_FAILED);
+    let refused = entries_by(&api, None, user::MARC, AUTHORIZED).await;
+    let reason = refused
+        .last()
+        .expect("audited")
+        .1
+        .clone()
+        .unwrap_or_default();
+    assert_eq!(reason, "Tentative inconnue ou expirée");
+
     // An administrator's attempt on a server the company authorizes is
     // never finished as a person's.
     let (_, company) = declared(&paul, &authority, "aquient").await;

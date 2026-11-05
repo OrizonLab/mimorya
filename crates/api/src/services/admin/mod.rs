@@ -62,8 +62,8 @@ pub use approval_routing::{manager_risks, set_manager_risks};
 pub use assignments::{grant_role, revoke_role};
 pub use connector_authorization::{
     AUTHORIZATION_COOKIE, AuthorizationFailure, AuthorizationStart, OAuthReturn, PERSON_AUTHORIZED,
-    PersonServer, authorization_cookie, cleared_authorization_cookie, finish_authorization,
-    finish_person_authorization, is_person_attempt, list_person_servers,
+    PersonServer, attempt_holder, authorization_cookie, cleared_authorization_cookie,
+    finish_authorization, finish_person_authorization, list_person_servers,
     redirect_uri as oauth_redirect_uri, remove_authorization, remove_person_authorization,
     start_authorization, start_person_authorization,
 };

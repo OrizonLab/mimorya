@@ -12,7 +12,9 @@
 //! for it or is seen by it. Tokens granted and not kept are revoked
 //! (ADR-172). Every refusal says why, for the audit.
 
-use mimorya_connectors::mcp::oauth::{CodeExchange, Granted, OAuthDeclaration, exchange_code};
+use mimorya_connectors::mcp::oauth::{
+    CodeExchange, Granted, OAuthDeclaration, OAuthHolder, exchange_code,
+};
 use mimorya_db::repositories::account_links::lock_active_account;
 use mimorya_db::repositories::audit::append_audit;
 use mimorya_db::repositories::connector_person_authorizations::{
@@ -38,13 +40,18 @@ use crate::services::sso::{error_code, same_state};
 /// What the audit calls a person's own authorization.
 pub const PERSON_AUTHORIZED: &str = "connector.person_oauth_authorized";
 
-/// Whether the browser's attempt is a person's own: its return is finished
-/// here, not as an administrator's.
-pub fn is_person_attempt(admin: &ConnectorAdmin<'_>, cookie: Option<&str>) -> bool {
-    let Ok(cipher) = admin.secrets.cipher() else {
-        return false;
-    };
-    cookie.is_some_and(|value| attempt::open_person(cipher, value, chrono::Utc::now()).is_some())
+/// Whose attempt the browser kept, if one opens: an administrator's for
+/// the company, or a person's own, finished here.
+pub fn attempt_holder(admin: &ConnectorAdmin<'_>, cookie: Option<&str>) -> Option<OAuthHolder> {
+    let cipher = admin.secrets.cipher().ok()?;
+    let (value, now) = (cookie?, chrono::Utc::now());
+    if attempt::open_person(cipher, value, now).is_some() {
+        Some(OAuthHolder::Person)
+    } else if attempt::open(cipher, value, now).is_some() {
+        Some(OAuthHolder::Company)
+    } else {
+        None
+    }
 }
 
 pub async fn finish_person_authorization(
