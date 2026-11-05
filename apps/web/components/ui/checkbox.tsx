@@ -31,7 +31,8 @@ export function Checkbox({
         aria-hidden
         data-checkbox-mark
         strokeWidth={3}
-        className="pointer-events-none absolute inset-0 m-auto hidden size-3 text-accent-fg peer-checked:block peer-disabled:opacity-60"
+        // Forced colors (Windows high contrast): the check in the text's colour.
+        className="pointer-events-none absolute inset-0 m-auto hidden size-3 text-accent-fg forced-color-adjust-none peer-checked:block peer-disabled:opacity-60 forced-colors:text-[CanvasText]"
       />
     </span>
   );

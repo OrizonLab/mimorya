@@ -30,15 +30,20 @@ export default tseslint.config(
     },
   },
   {
-    // A checkbox the browser draws greys at once when locked (ADR-045).
+    // A checkbox or a radio the browser draws greys at once when locked
+    // (ADR-045).
     files: ['apps/web/**/*.tsx'],
-    ignores: ['apps/web/components/ui/checkbox.tsx'],
+    ignores: ['apps/web/components/ui/checkbox.tsx', 'apps/web/components/ui/radio.tsx'],
     rules: {
       'no-restricted-syntax': [
         'error',
         {
           selector: "JSXAttribute[name.name='type'] Literal[value='checkbox']",
           message: 'Use Checkbox (components/ui, ADR-045) for a checkbox.',
+        },
+        {
+          selector: "JSXAttribute[name.name='type'] Literal[value='radio']",
+          message: 'Use Radio (components/ui, ADR-045) for a radio button.',
         },
       ],
     },

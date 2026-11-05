@@ -1,16 +1,17 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
-import { Button, ErrorNote, Field, Input } from '@/components/ui';
+import { Button, ErrorNote, Field, Input, Radio } from '@/components/ui';
 import { api, useAction, type ConnectorView, type McpOAuthDeclaration } from '@/lib/api';
 
 /**
  * Declares OAuth on an MCP server (ADR-171): the client registered at its
- * authorization server, which the platform finds from the server itself;
- * its issuer only when the server names several, or none. Declared again,
- * everything is replaced, the secret too, and the authorization given
- * under the former declaration goes. A typed token goes as well: OAuth
- * replaces it.
+ * authorization server by hand, or the platform's own, which it registers
+ * there itself (ADR-173) when it has its master key; the authorization
+ * server is found from the server itself, its issuer given only when the
+ * server names several, or none. Declared again, everything is replaced,
+ * the secret too, and the authorization given under the former declaration
+ * goes. A typed token goes as well: OAuth replaces it.
  */
 export function McpOAuthForm({
   connector,
@@ -26,26 +27,34 @@ export function McpOAuthForm({
 }) {
   const declared = connector.mcp?.oauth ?? null;
   const [issuer, setIssuer] = useState(declared?.issuer ?? '');
-  const [clientId, setClientId] = useState(declared?.clientId ?? '');
+  // The platform registers itself only where it can seal what is granted.
+  const [register, setRegister] = useState(secretsAvailable && (declared?.registered ?? false));
+  const [clientId, setClientId] = useState(declared?.registered ? '' : (declared?.clientId ?? ''));
   const [secret, setSecret] = useState('');
   const [scopes, setScopes] = useState(declared?.scopes.join(' ') ?? '');
   const action = useAction();
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (
-      declared?.authorization &&
-      !window.confirm(
-        'Déclarer de nouveau retire l’autorisation donnée : il faudra autoriser ce serveur de nouveau. Continuer ?',
-      )
-    ) {
-      return;
+    // What declaring again leaves behind, said before it is done.
+    const warnings: string[] = [];
+    if (declared?.authorization) {
+      warnings.push(
+        'Déclarer de nouveau retire l’autorisation donnée : il faudra autoriser ce serveur de nouveau.',
+      );
     }
+    if (declared?.registered) {
+      warnings.push(
+        'Le client que la plateforme avait enregistré reste chez le serveur d’autorisation : retirez-le chez lui.',
+      );
+    }
+    if (warnings.length > 0 && !window.confirm(`${warnings.join(' ')} Continuer ?`)) return;
     const asked = scopes.trim();
     const body = {
       issuer: issuer.trim() || undefined,
-      clientId,
-      clientSecret: secret.trim() || undefined,
+      register: register || undefined,
+      clientId: register ? undefined : clientId,
+      clientSecret: register ? undefined : secret.trim() || undefined,
       scopes: asked ? asked.split(/\s+/) : undefined,
     } satisfies McpOAuthDeclaration;
     const saved = await action.run(() => api.put(`/admin/connectors/${connector.id}/oauth`, body));
@@ -54,22 +63,57 @@ export function McpOAuthForm({
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-3">
+      {secretsAvailable && (
+        <fieldset className="flex flex-col gap-1 text-sm">
+          <legend className="mb-1 font-medium">Client</legend>
+          <label className="flex items-center gap-2">
+            <Radio
+              name={`client-${connector.id}`}
+              checked={register}
+              onChange={() => setRegister(true)}
+            />
+            La plateforme s’enregistre elle-même auprès du serveur d’autorisation
+          </label>
+          <label className="flex items-center gap-2">
+            <Radio
+              name={`client-${connector.id}`}
+              checked={!register}
+              onChange={() => setRegister(false)}
+            />
+            Client enregistré à la main
+          </label>
+        </fieldset>
+      )}
       <p className="text-sm text-muted">
-        Enregistrez d’abord la plateforme comme client auprès du serveur d’autorisation, avec
-        l’adresse de retour <code>{redirectUri}</code>. La plateforme trouve ce serveur à partir du
-        serveur MCP : n’indiquez son émetteur que s’il en annonce plusieurs, ou aucun.
+        {register ? (
+          <>
+            La plateforme s’enregistre comme client auprès du serveur d’autorisation, pour l’adresse
+            de retour <code>{redirectUri}</code>, s’il le permet sans jeton d’enregistrement.
+          </>
+        ) : (
+          <>
+            Enregistrez d’abord la plateforme comme client auprès du serveur d’autorisation, avec
+            l’adresse de retour <code>{redirectUri}</code>.
+          </>
+        )}{' '}
+        La plateforme trouve ce serveur à partir du serveur MCP : n’indiquez son émetteur que s’il
+        en annonce plusieurs, ou aucun.
+        {!secretsAvailable &&
+          ' Sans clé maître, la plateforme ne peut pas s’enregistrer elle-même : enregistrez le client à la main.'}
       </p>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Identifiant du client">
-          <Input
-            required
-            maxLength={255}
-            autoComplete="off"
-            value={clientId}
-            onChange={(e) => setClientId(e.target.value)}
-          />
-        </Field>
-        {secretsAvailable && (
+        {!register && (
+          <Field label="Identifiant du client">
+            <Input
+              required
+              maxLength={255}
+              autoComplete="off"
+              value={clientId}
+              onChange={(e) => setClientId(e.target.value)}
+            />
+          </Field>
+        )}
+        {secretsAvailable && !register && (
           <Field
             label={
               declared
