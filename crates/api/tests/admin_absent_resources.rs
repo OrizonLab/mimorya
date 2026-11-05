@@ -193,6 +193,14 @@ async fn every_resource_the_administration_changes_is_traced_when_absent() {
             "connector",
         ),
         (
+            paul.put(
+                &format!("/admin/connectors/{absent}/oauth/holder"),
+                json!({ "perPerson": true }),
+            )
+            .await,
+            "connector",
+        ),
+        (
             paul.post(
                 &format!("/admin/connectors/{absent}/oauth/authorization"),
                 json!({}),

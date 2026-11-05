@@ -92,6 +92,19 @@ async fn token_mark(db: &Database, connector_id: Uuid, user_id: Uuid) -> Option<
     token.map(|token| token.sealed.ciphertext[0])
 }
 
+/// The connector's version and state, which a person's authorization
+/// leaves as they are.
+async fn version(db: &Database, connector_id: Uuid) -> (chrono::DateTime<Utc>, String) {
+    let mut tx = db.begin(tenant::ID).await.unwrap();
+    let row = sqlx::query_as("select updated_at, status from connector_instances where id = $1")
+        .bind(connector_id)
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    row
+}
+
 async fn count(db: &Database, connector_id: Uuid) -> i64 {
     let mut tx = db.begin(tenant::ID).await.unwrap();
     let count = count_person_authorizations(&mut tx, connector_id)
@@ -106,6 +119,7 @@ async fn count(db: &Database, connector_id: Uuid) -> i64 {
 async fn each_person_keeps_their_own_authorization() {
     let db = support::connect(&support::urls(|_| {}).app).await;
     let server = connector(&db, "chacun").await;
+    let before = version(&db, server).await;
     assert!(!authorize(&db, server, user::MARC, 1).await);
     assert!(!authorize(&db, server, user::PAUL, 2).await);
     assert_eq!(count(&db, server).await, 2);
@@ -115,6 +129,8 @@ async fn each_person_keeps_their_own_authorization() {
 
     // A new authorization replaces only the person's own.
     assert!(authorize(&db, server, user::MARC, 3).await);
+    // No new version of the connector: a person's session follows their own.
+    assert_eq!(version(&db, server).await, before);
     assert_eq!(count(&db, server).await, 2);
     assert_eq!(token_mark(&db, server, user::MARC).await, Some(3));
     assert_eq!(token_mark(&db, server, user::PAUL).await, Some(2));
@@ -155,6 +171,8 @@ async fn a_removal_takes_only_what_it_names() {
         authorize(&db, server, user::LEA, mark + 2).await;
     }
 
+    let before = version(&db, first).await;
+
     // One person's, on one connector.
     let mut tx = db.begin(tenant::ID).await.unwrap();
     let taken = take_person_authorization(&mut tx, first, user::MARC)
@@ -173,6 +191,7 @@ async fn a_removal_takes_only_what_it_names() {
     tx.commit().await.unwrap();
     assert_eq!(token_mark(&db, second, user::MARC).await, Some(20));
     assert_eq!(token_mark(&db, first, user::PAUL).await, Some(11));
+    assert_eq!(version(&db, first).await, before, "no new version either");
 
     // Every one of a person's: no one else's.
     let mut tx = db.begin(tenant::ID).await.unwrap();

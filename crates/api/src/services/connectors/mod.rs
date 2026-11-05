@@ -55,7 +55,7 @@ pub use grants::{AUTHORIZATION_REMOVED, SealedGrant, seal_grant};
 pub use mimorya_connectors::outbound::CONNECTOR_USE;
 pub use policies::{Policies, read_policies, scoped_overrides};
 pub use reach::unavailable_in_reach;
-pub use revocation::{LetGo, Unkept, revoke_within};
+pub use revocation::{LetGo, REVOCATION_BOUND, Unkept, revoke_within};
 pub use tenant_tools::TenantTools;
 
 use super::invalidations::{Invalidation, Invalidations};
@@ -80,6 +80,17 @@ pub fn access_sealed_as(instance_id: Uuid) -> String {
 /// What its refresh token is sealed as.
 pub fn refresh_sealed_as(instance_id: Uuid) -> String {
     format!("connector.{instance_id}.oauth_refresh")
+}
+
+/// What the access token a person's own authorization of an MCP server
+/// brought is sealed as (ADR-174): opened for that person only.
+pub fn person_access_sealed_as(instance_id: Uuid, user_id: Uuid) -> String {
+    format!("connector.{instance_id}.person.{user_id}.oauth_access")
+}
+
+/// What its refresh token is sealed as.
+pub fn person_refresh_sealed_as(instance_id: Uuid, user_id: Uuid) -> String {
+    format!("connector.{instance_id}.person.{user_id}.oauth_refresh")
 }
 
 /// What the operator lets connectors do.

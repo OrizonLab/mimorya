@@ -21,7 +21,7 @@ use mimorya_db::{Database, is_unique_violation};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
-use super::connector_authorization::{revoke, take_authorization};
+use super::connector_authorization::{revoke, take_authorizations};
 use super::connector_config::{Editable, RestChanges, added_here, operation_names, prefix_taken};
 use super::connector_rules::{ToolPolicyInput, mcp_addition_problem};
 use super::mcp_config::{mcp_config, oauth_unreadable};
@@ -225,7 +225,7 @@ pub async fn update_connector(
         if moved && editable.oauth().is_some() {
             // Taken before the secret goes, to be revoked under it.
             let declared = editable.oauth();
-            taken = take_authorization(&mut tx, admin, tenant_id, id, declared).await?;
+            taken = take_authorizations(&mut tx, admin, tenant_id, id, declared).await?;
             admin
                 .secrets
                 .delete(&mut tx, &client_secret_name(id))
@@ -320,10 +320,11 @@ pub async fn delete_connector(
         )
         .into());
     }
-    // Its authorization taken before the client's secret goes.
+    // Its authorizations, the company's and each person's, taken before
+    // the client's secret goes.
     let declared = Editable::of(&instance).and_then(|editable| editable.oauth().cloned());
     let tenant_id = access.subject.tenant_id;
-    let taken = take_authorization(&mut tx, admin, tenant_id, id, declared.as_ref()).await?;
+    let taken = take_authorizations(&mut tx, admin, tenant_id, id, declared.as_ref()).await?;
     delete_connector_instance(&mut tx, id).await?;
     for secret in [token_secret_name(id), client_secret_name(id)] {
         admin.secrets.delete(&mut tx, &secret).await?;

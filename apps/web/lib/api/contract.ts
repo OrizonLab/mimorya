@@ -1314,7 +1314,16 @@ revocable: boolean,
 /**
  * The authorization given under this declaration, if any.
  */
-authorization: McpOAuthAuthorization | null, };
+authorization: McpOAuthAuthorization | null,
+/**
+ * Whether each person authorizes the server for themself (ADR-174),
+ * rather than the company.
+ */
+perPerson: boolean,
+/**
+ * How many people authorized it for themselves: never who.
+ */
+personAuthorizations: number, };
 
 /**
  * An MCP server's authorization, as its declaration shows it: never its
@@ -1366,7 +1375,19 @@ register?: boolean,
 /**
  * Absent: those the server suggests.
  */
-scopes?: Array<string>, };
+scopes?: Array<string>,
+/**
+ * Each person authorizes the server for themself (ADR-174); false, the
+ * company does; absent, as under the declaration replaced (the company
+ * for a first one, or after one that could not be read).
+ */
+perPerson?: boolean, };
+
+/**
+ * Body of `PUT /admin/connectors/{id}/oauth/holder`: who authorizes the
+ * server, changed without declaring it again (ADR-174).
+ */
+export type McpOAuthHolder = { perPerson: boolean, };
 
 /**
  * `GET /auth/me`.

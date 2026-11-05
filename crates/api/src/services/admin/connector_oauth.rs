@@ -10,10 +10,13 @@
 //! once it is found (`oauth_client`, ADR-173). The client's secret is sealed apart, never
 //! shown nor audited. A typed token goes: OAuth replaces it. Declared
 //! again, everything is replaced, secret included, and the authorization
-//! given under the previous declaration goes (`connector_authorization`). A declaration
-//! that can no longer be read is replaced or withdrawn all the same.
+//! given under the previous declaration goes (`connector_authorization`),
+//! the company's and each person's (ADR-174). The declaration says who
+//! authorizes the server: the company, or each person for themself. A
+//! declaration that can no longer be read is replaced or withdrawn all the
+//! same.
 
-use mimorya_connectors::mcp::oauth::{OAuthDeclaration, discover, scopes_problem};
+use mimorya_connectors::mcp::oauth::{OAuthDeclaration, OAuthHolder, discover, scopes_problem};
 use mimorya_core::DomainError;
 use mimorya_db::repositories::audit::append_audit;
 use mimorya_db::repositories::connectors::{
@@ -22,7 +25,7 @@ use mimorya_db::repositories::connectors::{
 use serde_json::json;
 use uuid::Uuid;
 
-use super::connector_authorization::{revocable_under, revoke, take_authorization};
+use super::connector_authorization::{revocable_under, revoke, take_authorizations};
 use super::connectors::{ConnectorAdmin, PERMISSION};
 use super::mcp_config::{Unreadable, mcp_config, stored_oauth};
 use super::oauth_client::{Declared, OAuthClient, declared};
@@ -43,6 +46,9 @@ pub struct OAuthInput {
     pub scopes: Option<Vec<String>>,
     /// The platform's return address, given a registered client.
     pub redirect_uri: String,
+    /// Who authorizes the server (ADR-174); `None` keeps who did under the
+    /// declaration replaced, the company for a first one.
+    pub holder: Option<OAuthHolder>,
 }
 
 /// An MCP server added here, as its OAuth sees it.
@@ -102,7 +108,7 @@ pub async fn declare_oauth(
     let url = McpServer::of(get_connector_instance(&mut tx, id).await?)?.url;
     tx.commit().await?;
     // Found, and the platform's client registered there if it is asked to.
-    let (declaration, client_secret) = {
+    let (mut declaration, client_secret) = {
         let _start = admin.connectors.claim_admin_start(tenant_id)?;
         let network = admin.connectors.network();
         let found = discover(&url, input.issuer.as_deref(), network)
@@ -121,6 +127,8 @@ pub async fn declare_oauth(
 
     let mut tx = begin_change(admin.db, access, PERMISSION).await?;
     let current = McpServer::of(get_connector_instance(&mut tx, id).await?)?;
+    let kept = current.declared.as_ref().map(|current| current.holder);
+    declaration.holder = input.holder.or(kept).unwrap_or_default();
     if current.url != url {
         return Err(DomainError::conflict(
             "L’adresse du serveur a changé pendant la recherche de son autorisation : recommencez",
@@ -140,8 +148,9 @@ pub async fn declare_oauth(
         .declared
         .as_ref()
         .map(|previous| revocable_under(previous, &declaration));
-    let taken = take_authorization(&mut tx, admin, tenant_id, id, previous.as_ref()).await?;
-    let authorization_removed = taken.is_some();
+    let taken = take_authorizations(&mut tx, admin, tenant_id, id, previous.as_ref()).await?;
+    let authorization_removed = taken.as_ref().is_some_and(|t| t.company_taken());
+    let persons_removed = taken.as_ref().map_or(0, |t| t.persons_taken());
     // OAuth replaces a typed token.
     let token_removed = admin
         .secrets
@@ -171,7 +180,9 @@ pub async fn declare_oauth(
             "registered": declaration.registered.is_some(),
             "tokenRemoved": token_removed,
             "replaced": current.declared.is_some() || current.unreadable,
+            "perPerson": declaration.holder == OAuthHolder::Person,
             "authorizationRemoved": authorization_removed,
+            "personAuthorizationsRemoved": persons_removed,
         })),
     )
     .await?;
@@ -205,8 +216,9 @@ pub async fn remove_oauth(
     update_connector_instance(&mut tx, id, patch).await?;
     let tenant_id = access.subject.tenant_id;
     let declared = server.declared.as_ref();
-    let taken = take_authorization(&mut tx, admin, tenant_id, id, declared).await?;
-    let authorization_removed = taken.is_some();
+    let taken = take_authorizations(&mut tx, admin, tenant_id, id, declared).await?;
+    let authorization_removed = taken.as_ref().is_some_and(|t| t.company_taken());
+    let persons_removed = taken.as_ref().map_or(0, |t| t.persons_taken());
     admin
         .secrets
         .delete(&mut tx, &client_secret_name(id))
@@ -218,6 +230,7 @@ pub async fn remove_oauth(
             "clientId": server.declared.as_ref().map(|d| &d.client_id),
             "unreadable": server.unreadable,
             "authorizationRemoved": authorization_removed,
+            "personAuthorizationsRemoved": persons_removed,
         })),
     )
     .await?;

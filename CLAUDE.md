@@ -88,8 +88,8 @@ Repères à l'intérieur des crates :
   évaluations : `skill_evaluations.rs`, ADR-104, ce qu'elles ont coûté jour par jour et
   leur limite : `evaluation_spending.rs`, `evaluation_settings.rs`, ADR-154 ; comptes reliés par chacun et leur
   jeton de renouvellement scellé : `account_links.rs`, ADR-116 ; autorisation OAuth d'un
-  serveur MCP et ses jetons scellés : `connector_authorizations.rs`, celle que chacun donne pour
-  soi : `connector_person_authorizations.rs`, ADR-174, et leur renouvellement, réservé par un processus, la raison d'un échec gardée : `connector_renewals.rs`, ADR-171 ; partages de
+  serveur MCP et ses jetons scellés : `connector_authorizations.rs`, et son renouvellement, réservé par un processus, la raison d'un échec gardée : `connector_renewals.rs`, ADR-171 ; celle que chacun donne pour
+  soi : `connector_person_authorizations.rs`, ADR-174 ; partages de
   connaissances entre unités :
   `knowledge_shares.rs`, ADR-143 ; politiques d'autorisation proposées et décidées :
   `policy_proposals.rs`, ADR-168, et leur annonce aux autres administrateurs :
@@ -190,7 +190,7 @@ Repères à l'intérieur des crates :
   (`absences.rs`, ADR-078), organisation, habilitations, connecteurs : ce que
   l'administration change de chacun (`connector_config.rs`), OAuth déclaré sur un serveur
   MCP (`connector_oauth.rs`, sa configuration gardée : `mcp_config.rs`, ADR-171 ; client saisi ou enregistré par la plateforme : `oauth_client.rs`, ADR-173) et son
-  autorisation, départ, retour et jetons scellés (`connector_authorization/`), révoqués chez le serveur quand l'administration les laisse (`connector_authorization/revocation.rs`, ADR-172), seules
+  autorisation, départ, retour et jetons scellés (`connector_authorization/`), révoqués chez le serveur quand l'administration les laisse, ceux de l'entreprise et ceux des personnes (`connector_authorization/revocation/`, ADR-172, ADR-174), qui l'autorise, l'entreprise ou chacun, changé sur place (`connector_oauth_holder.rs`, ADR-174), seules
   les politiques changées
   tracées (`policy_changes.rs`, ADR-160) et API REST ajoutées
   (`rest_connectors.rs`, ADR-112, opérations lues d'une description OpenAPI, ADR-114),

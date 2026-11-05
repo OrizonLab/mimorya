@@ -2,7 +2,9 @@
 //! attempt: past the limit it shares with the start, a return is turned
 //! away before the authorization server is asked, its reason audited; a
 //! declaration changed while the code was being exchanged keeps nothing,
-//! the tokens granted under the former one revoked under it (ADR-172).
+//! the tokens granted under the former one revoked under it (ADR-172); so
+//! does one that comes back after each person became who authorizes the
+//! server (ADR-174).
 
 mod support;
 
@@ -85,6 +87,32 @@ async fn a_return_past_the_limit_is_turned_away_before_the_server() {
     );
     assert!(authority.requests().iter().all(|r| r.endpoint != "token"));
     assert!(kept_tokens(&api, &id).await.is_none());
+    assert_eq!(
+        paul.delete(&format!("/admin/connectors/{id}")).await.status,
+        StatusCode::OK
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_return_after_each_person_became_the_holder_keeps_nothing() {
+    let api = TestApi::start_with(&PRIVATE_DEPLOYMENT).await;
+    let paul = api.sign_in(user::PAUL).await;
+    let authority = FakeAuthorizationServer::start().await;
+    let (_, id) = declared(&paul, &authority, "devenu").await;
+    let (url, cookie) = start(&paul, &id).await;
+    let back = api_path(&authority.sent_back(&url).await);
+    // Each person authorizes it now (ADR-174): the company's attempt ends.
+    let holder = format!("/admin/connectors/{id}/oauth/holder");
+    let each = paul.put(&holder, json!({ "perPerson": true })).await;
+    assert_eq!(each.status, StatusCode::OK, "{}", each.text());
+    assert_eq!(
+        location(&come_back(&paul, &back, Some(&cookie)).await),
+        FAILED
+    );
+    assert!(kept_tokens(&api, &id).await.is_none());
+    let reason = refused_because(&api, &id).await;
+    assert!(reason.contains("changée"), "{reason}");
     assert_eq!(
         paul.delete(&format!("/admin/connectors/{id}")).await.status,
         StatusCode::OK

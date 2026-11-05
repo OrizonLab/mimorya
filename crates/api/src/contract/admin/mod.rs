@@ -54,7 +54,8 @@ pub use identity_providers::{
 pub use knowledge_shares::{KnowledgeShareView, KnowledgeShares, NewKnowledgeShare, ShareableUnit};
 pub use llm::{LlmChoice, LlmSettingsView, LlmTestResult, LlmView, PlatformModel, ProviderKind};
 pub use mcp_oauth::{
-    McpOAuth, McpOAuthAuthorization, McpOAuthDeclaration, OAuthAuthorizationStart, OAuthClientAuth,
+    McpOAuth, McpOAuthAuthorization, McpOAuthDeclaration, McpOAuthHolder, OAuthAuthorizationStart,
+    OAuthClientAuth,
 };
 pub use memory_settings::{MemorySettingsUpdate, MemorySettingsView};
 pub use microsoft365::{Microsoft365App, NewMicrosoft365Connector};
