@@ -10961,14 +10961,19 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     autorisation en cours à son retour est refusée, sa déclaration ayant changé. Tant
     que chaque personne autorise le serveur, l'entreprise ne l'autorise pas, et aucune
     session ne s'ouvre avec une autorisation de l'entreprise, même gardée par un
-    processus qui ne connaissait qu'elle ;
+    processus qui ne connaissait qu'elle, et une telle autorisation n'est pas
+    renouvelée. Une déclaration écrite de nouveau sans dire qui autorise garde qui
+    autorisait sous la précédente (l'entreprise pour une première) ;
   - **toutes les autorisations des personnes** sont prises, et leurs jetons révoqués,
     chaque fois que la déclaration est écrite de nouveau ou retirée, que l'adresse du
     serveur change ou que le connecteur est supprimé, quel que soit le mode lu avant :
     un processus qui ne connaissait que l'entreprise a pu laisser la déclaration
     changer sous elles. Elles sont révoquées quatre à la fois, chacune bornée comme
     celle de l'entreprise, et tracées ensemble (`connector.oauth_person_authorizations_revoked` :
-    combien révoquées, combien non, la première raison), sans jeton ni nom ;
+    combien révoquées, combien non, la première raison), sans jeton ni nom; jamais envoyées sous une autre déclaration que la leur
+    ni sous une déclaration illisible, mais prises quand même, comptées comme des
+    échecs. La requête qui les laisse n'attend pas plus de quinze secondes : au-delà, la
+    tâche continue de les révoquer et de les tracer ;
   - **lots** : 43a, la table, son dépôt et le mode dans la déclaration ; 43b, le choix
     du mode par l'administrateur et le retrait de toutes les autorisations des
     personnes ; 43c, l'autorisation de la personne par l'API, son retrait par elle et
@@ -10994,7 +10999,11 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     et révoque ; refus à qui n'administre pas les connecteurs, champ inconnu, connecteur
     introuvable, serveur sans OAuth), `connector_oauth_person_revocations.rs` (déclaration
     écrite de nouveau ou retirée, adresse changée, connecteur supprimé : autorisations des
-    personnes prises et révoquées, celles d'un autre connecteur gardées) ;
+    personnes prises et révoquées, celles d'un autre connecteur gardées ; jamais
+    envoyées sous une autre déclaration ni sous une déclaration illisible, échecs
+    comptés, vérifié par mutation), retour d'une autorisation de l'entreprise après le
+    changement de mode refusé (`connector_oauth_return_guards.rs`), route du mode tracée
+    pour une ressource absente (`admin_absent_resources.rs`) ;
   - aucune preuve d'identité n'est demandée au serveur d'autorisation : une personne
     peut autoriser avec un compte qu'elle partage ; l'écran le dira ;
   - deux personnes qui autorisent avec le même compte chez le serveur peuvent voir

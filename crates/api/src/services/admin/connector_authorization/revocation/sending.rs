@@ -27,6 +27,9 @@ const AUTHORIZATION_REVOKED: &str = "connector.oauth_authorization_revoked";
 const PERSON_AUTHORIZATIONS_REVOKED: &str = "connector.oauth_person_authorizations_revoked";
 /// How many people's authorizations are revoked at once.
 const PERSONS_AT_ONCE: usize = 4;
+/// How long the request that let them go waits for the revocations: the
+/// bound of one, and a margin (ADR-172).
+const WAITED: std::time::Duration = std::time::Duration::from_secs(15);
 
 /// What the task that revokes owns.
 struct Revoking {
@@ -52,8 +55,13 @@ pub async fn revoke(admin: &ConnectorAdmin<'_>, access: &AccessContext, revocati
         revocation,
     };
     // A task of its own: the request may be abandoned, not the revocation.
-    if let Err(error) = tokio::spawn(revoking.run()).await {
-        tracing::error!(error = %error, "The revocation of a connector's tokens stopped");
+    // Waited for a while only: many people's tokens at a server that does
+    // not answer go on being revoked, and audited, after the answer.
+    match tokio::time::timeout(WAITED, tokio::spawn(revoking.run())).await {
+        Ok(Ok(())) | Err(_) => {}
+        Ok(Err(error)) => {
+            tracing::error!(error = %error, "The revocation of a connector's tokens stopped");
+        }
     }
 }
 

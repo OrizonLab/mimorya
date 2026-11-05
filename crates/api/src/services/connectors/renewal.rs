@@ -26,7 +26,7 @@ use std::time::Duration;
 use anyhow::anyhow;
 use futures::future::join_all;
 use mimorya_connectors::mcp::RENEW_WITHIN;
-use mimorya_connectors::mcp::oauth::{ClientAuth, RenewalFailure, refresh_tokens};
+use mimorya_connectors::mcp::oauth::{ClientAuth, OAuthHolder, RenewalFailure, refresh_tokens};
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::connector_renewals::{
     Claimed, RenewalFor, Renewed, claim_connector_renewal, connector_authorizations_due,
@@ -182,14 +182,17 @@ impl ConnectorService {
         };
         let instance = get_connector_instance(&mut tx, connector_id).await?;
         let declared = instance.as_ref().and_then(oauth_of).filter(|declared| {
-            given_under(
-                declared,
-                &claimed.issuer,
-                &claimed.client_id,
-                &claimed.resource,
-            )
+            declared.holder == OAuthHolder::Company
+                && given_under(
+                    declared,
+                    &claimed.issuer,
+                    &claimed.client_id,
+                    &claimed.resource,
+                )
         });
-        // Never sent under another declaration than the one it was given under.
+        // Never sent under another declaration than the one it was given
+        // under, nor under one each person authorizes (ADR-174): the
+        // company's would never be used there.
         let Some(declared) = declared else {
             tx.commit().await?;
             return Ok(None);

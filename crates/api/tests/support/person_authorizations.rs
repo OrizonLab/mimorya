@@ -82,3 +82,19 @@ pub async fn person_revocations(api: &TestApi, id: &str) -> Vec<(String, Option<
     tx.commit().await.unwrap();
     rows
 }
+
+/// The metadata of the connector's last audit entry `action`.
+pub async fn last_metadata(api: &TestApi, id: &str, action: &str) -> Value {
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    let metadata = sqlx::query_scalar(
+        "select metadata from audit_log where resource_id = $1 and action = $2 \
+         order by id desc limit 1",
+    )
+    .bind(id)
+    .bind(action)
+    .fetch_one(&mut *tx)
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+    metadata
+}

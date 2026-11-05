@@ -46,8 +46,9 @@ pub struct OAuthInput {
     pub scopes: Option<Vec<String>>,
     /// The platform's return address, given a registered client.
     pub redirect_uri: String,
-    /// Who authorizes the server (ADR-174).
-    pub holder: OAuthHolder,
+    /// Who authorizes the server (ADR-174); `None` keeps who did under the
+    /// declaration replaced, the company for a first one.
+    pub holder: Option<OAuthHolder>,
 }
 
 /// An MCP server added here, as its OAuth sees it.
@@ -122,11 +123,12 @@ pub async fn declare_oauth(
             .await
             .map_err(DomainError::validation)?
     };
-    declaration.holder = input.holder;
     let has_secret = client_secret.is_some();
 
     let mut tx = begin_change(admin.db, access, PERMISSION).await?;
     let current = McpServer::of(get_connector_instance(&mut tx, id).await?)?;
+    let kept = current.declared.as_ref().map(|current| current.holder);
+    declaration.holder = input.holder.or(kept).unwrap_or_default();
     if current.url != url {
         return Err(DomainError::conflict(
             "L’adresse du serveur a changé pendant la recherche de son autorisation : recommencez",

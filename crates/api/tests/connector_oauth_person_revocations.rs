@@ -3,7 +3,9 @@
 //! authorization server (ADR-172), audited together without a token nor a
 //! name: when OAuth is declared again or withdrawn, when the server's
 //! address changes and when the connector is deleted; another connector's
-//! stay.
+//! stay. Taken all the same, a person's tokens are never sent under another
+//! declaration than theirs, nor under one that can no longer be read: said
+//! as failures, counted with the others.
 
 mod support;
 
@@ -14,8 +16,11 @@ use mimorya_connectors::testing::{
 use mimorya_core::demo::user;
 use serde_json::json;
 use support::connector_oauth::declared;
+use support::connector_sessions::alter;
 use support::mcp::{PRIVATE_DEPLOYMENT, listed};
-use support::person_authorizations::{person_authorized, person_count, person_revocations};
+use support::person_authorizations::{
+    last_metadata, person_authorized, person_count, person_revocations,
+};
 use support::{Client, TestApi};
 
 /// A server each person authorizes, declared, with Marc's and Léa's own
@@ -87,6 +92,9 @@ async fn the_people_s_authorizations_go_with_their_declaration() {
     assert_eq!(again.status, StatusCode::OK, "{}", again.text());
     assert_eq!(again.json()["personAuthorizations"], 0);
     revoked(&api, &authority, &id, &resource, &tokens).await;
+    let declared = last_metadata(&api, &id, "connector.oauth_declared").await;
+    assert_eq!(declared["perPerson"], true);
+    assert_eq!(declared["personAuthorizationsRemoved"], 2);
     assert_eq!(
         paul.delete(&format!("/admin/connectors/{id}")).await.status,
         StatusCode::OK
@@ -97,6 +105,9 @@ async fn the_people_s_authorizations_go_with_their_declaration() {
     let withdrawn = paul.delete(&format!("/admin/connectors/{id}/oauth")).await;
     assert_eq!(withdrawn.status, StatusCode::OK, "{}", withdrawn.text());
     revoked(&api, &authority, &id, &resource, &tokens).await;
+    let removed = last_metadata(&api, &id, "connector.oauth_removed").await;
+    assert_eq!(removed["personAuthorizationsRemoved"], 2);
+    assert!(!removed.to_string().contains(&user::MARC.to_string()));
     assert_eq!(
         paul.delete(&format!("/admin/connectors/{id}")).await.status,
         StatusCode::OK
@@ -141,4 +152,73 @@ async fn the_people_s_authorizations_go_with_their_declaration() {
         StatusCode::OK
     );
     assert_eq!(person_count(&api, &other).await, 0);
+}
+
+/// How many revocations the authorization server was asked for.
+fn asked(authority: &FakeAuthorizationServer) -> usize {
+    let requests = authority.requests();
+    requests.iter().filter(|r| r.endpoint == "revoke").count()
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_person_s_tokens_are_never_sent_under_another_declaration_or_an_unreadable_one() {
+    let api = TestApi::start_with(&PRIVATE_DEPLOYMENT).await;
+    let paul = api.sign_in(user::PAUL).await;
+    let authority = FakeAuthorizationServer::start().await;
+
+    // Léa's given under another issuer: never sent, Marc's revoked.
+    let (id, resource, [marc, lea]) = authorized_by_two(&api, &paul, &authority, "ailleurs").await;
+    let elsewhere = format!(
+        "update connector_person_authorizations set issuer = 'https://autre-emetteur.example' \
+         where connector_id = $1 and user_id = '{}'",
+        user::LEA
+    );
+    alter(&api, &id, &elsewhere).await;
+    let before = asked(&authority);
+    let withdrawn = paul.delete(&format!("/admin/connectors/{id}/oauth")).await;
+    assert_eq!(withdrawn.status, StatusCode::OK, "{}", withdrawn.text());
+    assert_eq!(person_count(&api, &id).await, 0, "taken all the same");
+    assert_eq!(asked(&authority) - before, 1, "Marc's alone was sent");
+    assert!(!authority.accepts(&marc, &resource));
+    assert!(
+        authority.accepts(&lea, &resource),
+        "Léa's left at its server"
+    );
+    let audited = person_revocations(&api, &id).await;
+    let (outcome, reason, counts) = audited.last().expect("audited");
+    assert_eq!(outcome, "failure");
+    assert_eq!(counts, &json!({ "revoked": 1, "failed": 1 }));
+    let reason = reason.as_deref().unwrap_or_default();
+    assert!(reason.contains("autre déclaration"), "{reason}");
+    assert_eq!(
+        paul.delete(&format!("/admin/connectors/{id}")).await.status,
+        StatusCode::OK
+    );
+
+    // A declaration no longer readable: taken, nothing sent, said as such.
+    let (id, resource, tokens) = authorized_by_two(&api, &paul, &authority, "illisible").await;
+    let spoilt = "update connector_instances set config = config || \
+                  '{\"oauth\": {\"issuer\": 1}}' where id = $1";
+    alter(&api, &id, spoilt).await;
+    let before = asked(&authority);
+    let withdrawn = paul.delete(&format!("/admin/connectors/{id}/oauth")).await;
+    assert_eq!(withdrawn.status, StatusCode::OK, "{}", withdrawn.text());
+    assert_eq!(person_count(&api, &id).await, 0);
+    assert_eq!(asked(&authority), before, "nothing sent");
+    assert!(
+        tokens
+            .iter()
+            .all(|token| authority.accepts(token, &resource))
+    );
+    let audited = person_revocations(&api, &id).await;
+    let (outcome, reason, counts) = audited.last().expect("audited");
+    assert_eq!(outcome, "failure");
+    assert_eq!(counts, &json!({ "revoked": 0, "failed": 2 }));
+    let reason = reason.as_deref().unwrap_or_default();
+    assert!(reason.contains("Déclaration OAuth illisible"), "{reason}");
+    assert_eq!(
+        paul.delete(&format!("/admin/connectors/{id}")).await.status,
+        StatusCode::OK
+    );
 }

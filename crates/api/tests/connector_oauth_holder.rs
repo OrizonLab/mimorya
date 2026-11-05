@@ -4,8 +4,9 @@
 //! authorizes never opens a session with the company's authorization,
 //! even one kept, nor lets the company authorize it; changing who
 //! authorizes takes the authorizations given under the former holder and
-//! revokes their tokens. Refused to anyone who does not administer the
-//! company's connectors, for a connector that is not the company's, for a server without a
+//! revokes their tokens. Declared again without saying who, the server
+//! keeps who authorized it. Refused to anyone who does not administer the
+//! company's connectors, for a connector the company does not have, for a server without a
 //! readable declaration, and with a field it does not know.
 
 mod support;
@@ -23,7 +24,9 @@ use support::TestApi;
 use support::connector_oauth::{AUTHORIZED, authorize, declared, kept_tokens, try_start};
 use support::connector_sessions::{said, tested};
 use support::mcp::{PRIVATE_DEPLOYMENT, listed};
-use support::person_authorizations::{person_authorized, person_count, person_revocations};
+use support::person_authorizations::{
+    last_metadata, person_authorized, person_count, person_revocations,
+};
 use support::sso::location;
 
 fn holder_path(id: &str) -> String {
@@ -54,6 +57,16 @@ async fn a_server_each_person_authorizes_never_opens_with_the_company_s() {
         ),
         (json!(true), json!(0))
     );
+
+    // Declared again without saying who: still each person.
+    let again = paul
+        .put(
+            &format!("/admin/connectors/{id}/oauth"),
+            json!({ "clientId": CLIENT_ID, "clientSecret": CLIENT_SECRET }),
+        )
+        .await;
+    assert_eq!(again.status, StatusCode::OK, "{}", again.text());
+    assert_eq!(again.json()["perPerson"], true);
 
     // The company does not authorize it.
     let refused = try_start(&paul, &id).await;
@@ -134,6 +147,11 @@ async fn changing_who_authorizes_takes_what_the_former_holder_gave() {
     assert_eq!(oauth["perPerson"], true);
     assert!(oauth["authorization"].is_null());
     let resource = oauth["resource"].as_str().unwrap().to_string();
+    let changed = "connector.oauth_holder_changed";
+    assert_eq!(
+        last_metadata(&api, &id, changed).await,
+        json!({ "perPerson": true, "authorizationRemoved": true, "personAuthorizationsRemoved": 0 })
+    );
 
     // Back to the company: every person's goes, revoked, audited together.
     let marc = person_authorized(&api, &id, user::MARC, &authority, &resource).await;
@@ -153,6 +171,10 @@ async fn changing_who_authorizes_takes_what_the_former_holder_gave() {
     let (outcome, reason, counts) = &revocations[0];
     assert_eq!((outcome.as_str(), reason), ("success", &None));
     assert_eq!(counts, &json!({ "revoked": 2, "failed": 0 }));
+    assert_eq!(
+        last_metadata(&api, &id, changed).await,
+        json!({ "perPerson": false, "authorizationRemoved": false, "personAuthorizationsRemoved": 2 })
+    );
     let audited = format!("{revocations:?}");
     assert!(!audited.contains(&marc) && !audited.contains(&user::MARC.to_string()));
     assert_eq!(
@@ -188,7 +210,7 @@ async fn only_a_company_wide_administrator_changes_who_authorizes() {
         "{}",
         unknown.text()
     );
-    // A connector that is not there, or not this company's.
+    // A connector the company does not have: answered as absent.
     let elsewhere = paul
         .put(
             &holder_path(&uuid::Uuid::new_v4().to_string()),

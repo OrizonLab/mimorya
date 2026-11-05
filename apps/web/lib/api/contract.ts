@@ -1377,8 +1377,9 @@ register?: boolean,
  */
 scopes?: Array<string>,
 /**
- * Each person authorizes the server for themself (ADR-174); absent or
- * false, the company does.
+ * Each person authorizes the server for themself (ADR-174); false, the
+ * company does; absent, as under the declaration replaced (the company
+ * for a first one).
  */
 perPerson?: boolean, };
 

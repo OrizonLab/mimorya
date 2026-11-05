@@ -54,7 +54,7 @@ pub async fn declare(
         client_secret: body.client_secret.filter(|secret| !secret.is_empty()),
         scopes: body.scopes,
         redirect_uri: oauth_redirect_uri(&state.config.web_origin),
-        holder: holder(body.per_person.unwrap_or(false)),
+        holder: body.per_person.map(holder),
     };
     let declared = declare_oauth(&admin(&state, &store, &catalog), &access, id, input).await?;
     // Its secret, typed or granted, stored if it proves itself with one; no
