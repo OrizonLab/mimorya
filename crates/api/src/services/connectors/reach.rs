@@ -27,6 +27,19 @@ pub fn unavailable_in_reach(
         .collect()
 }
 
+/// Of those, the ones the person must first authorize for themself in
+/// their account (ADR-174).
+pub fn to_authorize_in_reach(
+    issues: &[ConnectorIssue],
+    holds: impl Fn(&str) -> bool,
+) -> Vec<String> {
+    issues
+        .iter()
+        .filter(|issue| issue.to_authorize && in_reach(&issue.connector_type, &holds))
+        .map(|issue| issue.connector.clone())
+        .collect()
+}
+
 fn in_reach(type_name: &str, holds: &impl Fn(&str) -> bool) -> bool {
     if added_by_companies(type_name) {
         return holds(CONNECTOR_USE);
@@ -58,7 +71,25 @@ mod tests {
             connector: name.into(),
             connector_type: connector_type.into(),
             message: "Connecteur indisponible".into(),
+            to_authorize: false,
         }
+    }
+
+    #[test]
+    fn names_those_to_authorize_among_them() {
+        let to_authorize = ConnectorIssue {
+            to_authorize: true,
+            ..issue("mcp", "Fichiers")
+        };
+        let issues = [issue("mcp", "Documentation"), to_authorize];
+        let member = |p: &str| p == CONNECTOR_USE;
+        assert_eq!(
+            unavailable_in_reach(&issues, member),
+            ["Documentation", "Fichiers"]
+        );
+        assert_eq!(to_authorize_in_reach(&issues, member), ["Fichiers"]);
+        // Out of reach: neither named.
+        assert!(to_authorize_in_reach(&issues, |_| false).is_empty());
     }
 
     #[test]

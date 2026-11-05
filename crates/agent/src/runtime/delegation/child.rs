@@ -127,7 +127,7 @@ impl SubAgents {
             system: sub_agent_system(parent_system, input.profile),
             history: Vec::new(),
             user_turn: sub_agent_turn(&input.task, input.context.as_deref()),
-            unavailable_connectors: Vec::new(),
+            unavailable: Default::default(),
             evidence: Vec::new(),
         };
         let outcome = started_apart(&runtime, start).await?;

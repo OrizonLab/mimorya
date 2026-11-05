@@ -153,8 +153,8 @@ pub async fn person_access_token(
 ) -> sqlx::Result<Option<ConnectorAccessToken>> {
     let row: Option<AccessRow> = sqlx::query_as(
         "select issuer, client_id, resource, access_ciphertext, access_iv, access_auth_tag, \
-         access_key_version, access_expires_at from connector_person_authorizations \
-         where connector_id = $1 and user_id = $2",
+         access_key_version, access_expires_at, refreshed_at from \
+         connector_person_authorizations where connector_id = $1 and user_id = $2",
     )
     .bind(connector_id)
     .bind(user_id)

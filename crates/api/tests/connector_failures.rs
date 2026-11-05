@@ -46,7 +46,7 @@ async fn a_failing_connector_never_breaks_the_company_runs() {
         .app
         .services
         .connectors
-        .tools_for(tenant::ID)
+        .tools_for(tenant::ID, support::connector_sessions::RUN)
         .await
         .unwrap();
     assert_eq!(tools.issues.len(), 2);
@@ -114,7 +114,7 @@ async fn a_token_quoted_back_reaches_neither_logs_nor_administrators_nor_the_mod
         .app
         .services
         .connectors
-        .tools_for(tenant::ID)
+        .tools_for(tenant::ID, support::connector_sessions::RUN)
         .await
         .unwrap();
     let logged = logs.text();
@@ -148,7 +148,7 @@ async fn a_token_quoted_back_reaches_neither_logs_nor_administrators_nor_the_mod
         .app
         .services
         .connectors
-        .tools_for(tenant::ID)
+        .tools_for(tenant::ID, support::connector_sessions::RUN)
         .await
         .unwrap();
     let echoed: Vec<_> = tools
@@ -227,7 +227,10 @@ async fn a_mute_server_delays_one_run_per_retry_delay() {
 
     // Side by side: one start timeout, not one per server.
     let started = Instant::now();
-    let tools = connectors.tools_for(tenant::ID).await.unwrap();
+    let tools = connectors
+        .tools_for(tenant::ID, support::connector_sessions::RUN)
+        .await
+        .unwrap();
     let waited = started.elapsed();
     assert!(waited >= Duration::from_secs(1), "{waited:?}");
     assert!(waited < Duration::from_millis(1900), "{waited:?}");
@@ -250,7 +253,10 @@ async fn a_mute_server_delays_one_run_per_retry_delay() {
 
     // Remembered: the next runs do not wait for it.
     let started = Instant::now();
-    let tools = connectors.tools_for(tenant::ID).await.unwrap();
+    let tools = connectors
+        .tools_for(tenant::ID, support::connector_sessions::RUN)
+        .await
+        .unwrap();
     assert!(started.elapsed() < Duration::from_millis(500));
     assert_eq!(tools.issues.len(), 2);
 
@@ -260,7 +266,10 @@ async fn a_mute_server_delays_one_run_per_retry_delay() {
         .patch(&format!("/admin/connectors/{first}"), json!({ "url": url }))
         .await;
     assert_eq!(moved.status, StatusCode::OK);
-    let tools = connectors.tools_for(tenant::ID).await.unwrap();
+    let tools = connectors
+        .tools_for(tenant::ID, support::connector_sessions::RUN)
+        .await
+        .unwrap();
     assert_eq!(tools.issues.len(), 1);
     assert_eq!(listed(&paul, &first).await["status"], "ok");
     for id in [first, second] {
@@ -293,7 +302,10 @@ async fn a_start_outdated_by_a_change_is_not_a_failure() {
         hold.release();
         renamed
     };
-    let (tools, renamed) = tokio::join!(connectors.tools_for(tenant::ID), renamed);
+    let (tools, renamed) = tokio::join!(
+        connectors.tools_for(tenant::ID, support::connector_sessions::RUN),
+        renamed
+    );
     let logged = logs.text();
     drop(logs);
     assert_eq!(renamed.status, StatusCode::OK);
@@ -304,7 +316,10 @@ async fn a_start_outdated_by_a_change_is_not_a_failure() {
     assert_eq!(instance["lastError"], serde_json::Value::Null);
 
     // The next run starts the current configuration.
-    let tools = connectors.tools_for(tenant::ID).await.unwrap();
+    let tools = connectors
+        .tools_for(tenant::ID, support::connector_sessions::RUN)
+        .await
+        .unwrap();
     assert!(tools.issues.is_empty());
     assert_eq!(listed(&paul, &id).await["status"], "ok");
     assert_eq!(

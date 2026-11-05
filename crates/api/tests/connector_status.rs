@@ -35,7 +35,10 @@ async fn the_state_shows_only_what_was_observed() {
     let id = add(&paul, mcp_body("Procédures", "docs", &url, Some(TOKEN))).await;
     let instance = format!("/admin/connectors/{id}");
     assert_eq!(state(&paul, &id).await, ("untested".into(), Value::Null));
-    connectors.tools_for(tenant::ID).await.unwrap();
+    connectors
+        .tools_for(tenant::ID, support::connector_sessions::RUN)
+        .await
+        .unwrap();
     assert_eq!(state(&paul, &id).await.0, "ok");
 
     // A name or policies: what was observed still holds.
@@ -52,7 +55,10 @@ async fn the_state_shows_only_what_was_observed() {
         .await;
     assert_eq!(wrong.status, StatusCode::OK);
     assert_eq!(state(&paul, &id).await.0, "untested");
-    connectors.tools_for(tenant::ID).await.unwrap();
+    connectors
+        .tools_for(tenant::ID, support::connector_sessions::RUN)
+        .await
+        .unwrap();
     let (status, error) = state(&paul, &id).await;
     assert_eq!(status, "error");
     assert!(
@@ -178,14 +184,24 @@ async fn a_successful_test_lets_the_next_run_try_again() {
     let url = format!("http://127.0.0.1:{port}/mcp");
     let id = add(&paul, mcp_body("Procédures", "docs", &url, None)).await;
     assert_eq!(
-        connectors.tools_for(tenant::ID).await.unwrap().issues.len(),
+        connectors
+            .tools_for(tenant::ID, support::connector_sessions::RUN)
+            .await
+            .unwrap()
+            .issues
+            .len(),
         1
     );
 
     // The server comes back: runs keep the remembered failure for a while...
     serve_mcp_http_on(port, None, Quirk::None).await;
     assert_eq!(
-        connectors.tools_for(tenant::ID).await.unwrap().issues.len(),
+        connectors
+            .tools_for(tenant::ID, support::connector_sessions::RUN)
+            .await
+            .unwrap()
+            .issues
+            .len(),
         1
     );
     // ...until a test succeeds.
@@ -193,7 +209,10 @@ async fn a_successful_test_lets_the_next_run_try_again() {
         .post(&format!("/admin/connectors/{id}/test"), json!({}))
         .await;
     assert_eq!(tested.json()["ok"], true);
-    let tools = connectors.tools_for(tenant::ID).await.unwrap();
+    let tools = connectors
+        .tools_for(tenant::ID, support::connector_sessions::RUN)
+        .await
+        .unwrap();
     assert!(tools.issues.is_empty());
     assert!(tools.tools.iter().any(|t| t.info().name == TOOL));
     assert_eq!(state(&paul, &id).await.0, "ok");

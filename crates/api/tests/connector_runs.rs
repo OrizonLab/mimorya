@@ -78,7 +78,7 @@ async fn a_failing_server_is_reported_without_affecting_the_others() {
         .app
         .services
         .connectors
-        .tools_for(tenant::ID)
+        .tools_for(tenant::ID, support::connector_sessions::RUN)
         .await
         .unwrap();
     assert_eq!(tools.issues.len(), 1);
@@ -108,7 +108,7 @@ async fn a_failing_server_is_reported_without_affecting_the_others() {
     api.app
         .services
         .connectors
-        .tools_for(tenant::ID)
+        .tools_for(tenant::ID, support::connector_sessions::RUN)
         .await
         .unwrap();
     assert_eq!(listed(&paul, &id).await["status"], "ok");
@@ -154,7 +154,7 @@ async fn policies_reach_their_own_tools_and_duplicates_stay_apart() {
         .app
         .services
         .connectors
-        .tools_for(tenant::ID)
+        .tools_for(tenant::ID, support::connector_sessions::RUN)
         .await
         .unwrap();
     assert!(!tools.overrides.contains_key("interventions_search"));

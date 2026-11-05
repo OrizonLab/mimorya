@@ -16,7 +16,9 @@
 //! its session retired before the token expires (`credential`, ADR-171),
 //! the token renewed before the instances are read (`renewal`); the tokens
 //! the platform lets go of are revoked at its server (`revocation`,
-//! ADR-172).
+//! ADR-172). On a server each person authorizes, a run is given the
+//! instance of the person it serves, started with their own authorization,
+//! never another's (`served`, ADR-174).
 
 mod admin_starts;
 mod cache;
@@ -27,35 +29,34 @@ mod policies;
 mod reach;
 mod renewal;
 mod revocation;
+mod served;
 mod tenant_tools;
 
-use std::collections::HashSet;
-use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::Utc;
-use futures::future::join_all;
 use mimorya_connectors::outbound::NetworkPolicy;
 use mimorya_connectors::{ConnectorRuntime, InstanceContext, connector_type};
 use mimorya_core::DomainError;
 use mimorya_db::Database;
-use mimorya_db::repositories::connectors::{
-    ConnectorInstanceRow, list_connector_instances, report_connector_status,
-};
 use tokio::time::Instant;
 use uuid::Uuid;
 
 use admin_starts::AdminStarts;
 pub use admin_starts::{AdminStart, MAX_ADMIN_STARTS, TOO_MANY_ADMIN_STARTS};
-pub use cache::RETRY_AFTER;
-use cache::{Origin, RuntimeCache, Unavailable};
-pub use credential::{Credential, CredentialFor, credential_for, credential_of, given_under};
+use cache::RuntimeCache;
+pub use cache::{MAX_PERSON_SESSIONS, PERSON_IDLE, RETRY_AFTER};
+pub use credential::{
+    Credential, CredentialFor, UNOPENED_PERSON, credential_for, credential_of, each_person,
+    given_under,
+};
 pub use failures::{failure, opened};
 pub use grants::{AUTHORIZATION_REMOVED, SealedGrant, seal_grant, seal_person_grant};
 pub use mimorya_connectors::outbound::CONNECTOR_USE;
 pub use policies::{Policies, read_policies, scoped_overrides};
-pub use reach::unavailable_in_reach;
+pub use reach::{to_authorize_in_reach, unavailable_in_reach};
 pub use revocation::{LetGo, REVOCATION_BOUND, Unkept, revoke_within};
+pub use served::{NOT_FOR_THEM, Served, TO_AUTHORIZE, WITHHELD_PERSONAL};
 pub use tenant_tools::TenantTools;
 
 use super::invalidations::{Invalidation, Invalidations};
@@ -106,12 +107,9 @@ pub struct ConnectorIssue {
     pub connector: String,
     pub connector_type: String,
     pub message: String,
-}
-
-struct Ready {
-    runtime: Arc<ConnectorRuntime>,
-    names: Vec<String>,
-    overrides: Policies,
+    /// Whether the person the run serves must first authorize it for
+    /// themself (ADR-174).
+    pub to_authorize: bool,
 }
 
 pub struct ConnectorService {
@@ -151,113 +149,6 @@ impl ConnectorService {
         self.admin_starts.claim(tenant_id)
     }
 
-    pub async fn tools_for(&self, tenant_id: Uuid) -> anyhow::Result<TenantTools> {
-        // Before anything is read: a renewal makes a new version.
-        self.renew_due(tenant_id).await?;
-        let ticket = self.cache.ticket().await;
-        // Instances and tokens read in one snapshot: a token always goes
-        // with the address it was saved, or authorized, for.
-        let mut tx = self.db.begin_snapshot(tenant_id).await?;
-        let mut instances = list_connector_instances(&mut tx, true).await?;
-        // The oldest keeps its tools when two connectors name the same one.
-        instances.sort_by_key(|instance| instance.created_at);
-        let mut credentials = Vec::with_capacity(instances.len());
-        for instance in &instances {
-            credentials.push(credential_of(&mut tx, &self.secrets, instance).await?);
-        }
-        tx.commit().await?;
-
-        let prepared = join_all(
-            instances
-                .iter()
-                .zip(credentials)
-                .map(|(instance, credential)| self.prepare(instance, credential, ticket)),
-        )
-        .await;
-        let mut result = TenantTools::default();
-        let mut names = HashSet::new();
-        let mut reports = Vec::new();
-        for (instance, prepared) in instances.iter().zip(prepared) {
-            let outcome = prepared.and_then(|ready| {
-                if ready.names.iter().any(|name| names.contains(name)) {
-                    return Err(Unavailable::new(
-                        "Des outils portent le même nom que ceux d’un connecteur plus ancien",
-                    ));
-                }
-                Ok(ready)
-            });
-            let error = match outcome {
-                Ok(ready) => {
-                    names.extend(ready.names);
-                    result.give(
-                        &instance.name,
-                        &instance.connector_type,
-                        &ready.runtime.tools,
-                        ready.overrides,
-                    );
-                    None
-                }
-                Err(unavailable) => {
-                    result.issues.push(ConnectorIssue {
-                        connector: instance.name.clone(),
-                        connector_type: instance.connector_type.clone(),
-                        message: "Connecteur indisponible".into(),
-                    });
-                    match unavailable.origin {
-                        Origin::Changed => continue,
-                        Origin::Remembered => {}
-                        Origin::Fresh => {
-                            tracing::warn!(connector = %instance.id, error = %unavailable.message, "Connector unavailable");
-                        }
-                    }
-                    Some(unavailable.message)
-                }
-            };
-            let status = if error.is_some() { "error" } else { "ok" };
-            if instance.status != status || instance.last_error != error {
-                reports.push((instance.id, instance.updated_at, error));
-            }
-        }
-        if !reports.is_empty() {
-            let mut tx = self.db.begin(tenant_id).await?;
-            for (id, version, error) in &reports {
-                report_connector_status(&mut tx, *id, *version, error.as_deref()).await?;
-            }
-            tx.commit().await?;
-        }
-        Ok(result)
-    }
-
-    /// The instance's tools and policies, or why it is unavailable.
-    async fn prepare(
-        &self,
-        instance: &ConnectorInstanceRow,
-        credential: anyhow::Result<Credential>,
-        ticket: u64,
-    ) -> Result<Ready, Unavailable> {
-        let policies = read_policies(instance).map_err(Unavailable::new)?;
-        let credential = credential.map_err(|error| Unavailable::new(error.to_string()))?;
-        let runtime = self
-            .cache
-            .get_or_start(instance.id, instance.updated_at, ticket, || async {
-                self.start(&instance.connector_type, &instance.config, &credential)
-                    .await
-                    .map_err(|error| failure(&error, credential.token.as_deref()))
-            })
-            .await?;
-        let names: Vec<String> = runtime
-            .tools
-            .iter()
-            .map(|tool| tool.info().name.clone())
-            .collect();
-        let overrides = scoped_overrides(instance, policies, &names);
-        Ok(Ready {
-            runtime,
-            names,
-            overrides,
-        })
-    }
-
     /// A fresh instance (not cached): the caller releases it.
     pub async fn start(
         &self,
@@ -294,6 +185,23 @@ impl ConnectorService {
     /// Releases the live instance here: another process changed it.
     pub(crate) async fn forget(&self, instance_id: Uuid) {
         self.cache.invalidate(instance_id).await;
+    }
+
+    /// Releases a person's instance of a server here, their authorization
+    /// gone (ADR-174). Another process never gives it to a run (it reads the
+    /// authorization first) and releases it once idle.
+    pub async fn forget_person(&self, instance_id: Uuid, user_id: Uuid) {
+        self.cache.forget_person(instance_id, user_id).await;
+    }
+
+    /// Releases the people's instances no run was given for a while.
+    pub async fn release_idle(&self) {
+        self.cache.release_idle().await;
+    }
+
+    /// How many people's instances this process keeps live (ADR-174).
+    pub async fn person_sessions(&self) -> usize {
+        self.cache.person_sessions().await
     }
 
     /// The instance answered a test: the next run tries it again at once,

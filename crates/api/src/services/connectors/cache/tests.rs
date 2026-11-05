@@ -6,6 +6,8 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
+use chrono::Utc;
+
 use super::closed::{EXITED_AT_ONCE, QUICK_EXIT};
 use super::*;
 

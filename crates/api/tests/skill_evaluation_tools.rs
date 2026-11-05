@@ -6,7 +6,9 @@
 //! refused before the API; the evaluation says so once a case is played so,
 //! and keeps saying it once the proposal is made active (ADR-156). A
 //! version an administrator wrote, or a proposal once made active, is
-//! played with them, as a run would be.
+//! played with them, as a run would be. A server each person authorizes is
+//! withheld from every evaluation, which serves no one, even when the one
+//! who asked for it authorized the server (ADR-174).
 
 mod support;
 
@@ -14,11 +16,12 @@ use axum::http::StatusCode;
 use mimorya_agent::llm::LlmMessage;
 use mimorya_agent::testing::{RecordedRequest, ScriptedStep, call, last_tool_results};
 use mimorya_api::services::skill_evaluations::count_spent;
-use mimorya_connectors::testing::{serve_demo_docs_http, serve_rest_http};
+use mimorya_connectors::testing::{FakeAuthorizationServer, serve_demo_docs_http, serve_rest_http};
 use mimorya_core::demo::{tenant, user};
 use mimorya_db::seed::DEMO_SKILL_ID;
 use serde_json::json;
-use support::mcp::{PRIVATE_DEPLOYMENT, TOKEN, TOOL, add, mcp_body};
+use support::mcp::{PRIVATE_DEPLOYMENT, TOKEN, TOOL, add, listed, mcp_body};
+use support::person_authorizations::{declared_per_person, person_authorized};
 use support::rest::{KEY, READ, add_rest, rest_body};
 use support::skill_evaluations::{
     detail, evaluations, forget, launched, new_version, play, played, verdict, write_case,
@@ -247,6 +250,47 @@ async fn a_version_an_administrator_wrote_is_played_with_them() {
     let (_, played) = evaluate(&api, &paul, version, answers, false).await;
     played.iter().for_each(|requests| assert_offered(requests));
     remove(&paul, &connectors).await;
+    forget(&api, DEMO_SKILL_ID).await;
+    restore_the_report(&api).await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_server_each_person_authorizes_is_withheld_from_every_evaluation() {
+    let api = TestApi::start_with(&PRIVATE_DEPLOYMENT).await;
+    let paul = api.sign_in(user::PAUL).await;
+    let authority = FakeAuthorizationServer::start().await;
+    let (server, id) = declared_per_person(&paul, &authority, "evalsoi").await;
+    let resource = listed(&paul, &id).await["mcp"]["oauth"]["resource"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    // Paul, who asks for the evaluation, authorized it for himself.
+    let pauls = person_authorized(&api, &id, user::PAUL, &authority, &resource).await;
+    let version = new_version(&paul).await;
+    write_case(&paul, DEMO_SKILL_ID, "Retards", LATE).await;
+
+    let (_, played) = evaluate(&api, &paul, version, answers, false).await;
+    for requests in &played {
+        let tools = requests[0].tool_names();
+        assert!(
+            tools.iter().all(|tool| !tool.starts_with("mcp_evalsoi_")),
+            "{tools:?}"
+        );
+        let turn = user_turn(&requests[0]);
+        assert!(turn.starts_with(NOTICE), "{turn}");
+        assert!(turn.contains("« Fichiers evalsoi »"), "{turn}");
+        // Withheld, not his to authorize: the evaluation is not his run.
+        assert!(!turn.contains("Mon compte"), "{turn}");
+    }
+    let bearer = format!("Bearer {pauls}");
+    assert!(
+        server
+            .authorizations()
+            .iter()
+            .all(|header| header.as_deref() != Some(bearer.as_str()))
+    );
+    remove(&paul, &[id]).await;
     forget(&api, DEMO_SKILL_ID).await;
     restore_the_report(&api).await;
 }

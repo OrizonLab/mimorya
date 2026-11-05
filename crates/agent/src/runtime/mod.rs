@@ -47,4 +47,5 @@ pub use state::{PendingApproval, PendingCalls, RunCheckpoint, RunUsageTotals};
 pub use types::{
     ApprovalDecision, ApprovalDecisions, RunConfig, RunOutcome, RuntimeDeps, VerificationConfig,
 };
+pub use unavailable::UnavailableConnectors;
 pub use verification::VerificationReport;

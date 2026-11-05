@@ -34,7 +34,7 @@ async fn a_run_reads_its_persons_mailbox_with_a_renewed_token() {
         .app
         .services
         .connectors
-        .tools_for(tenant::ID)
+        .tools_for(tenant::ID, support::connector_sessions::RUN)
         .await
         .unwrap();
     for name in MICROSOFT365_TOOLS {
@@ -172,7 +172,7 @@ async fn a_policy_keeps_the_connectors_permission() {
         .app
         .services
         .connectors
-        .tools_for(tenant::ID)
+        .tools_for(tenant::ID, support::connector_sessions::RUN)
         .await
         .unwrap();
     assert_eq!(

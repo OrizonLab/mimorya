@@ -74,13 +74,18 @@ pub async fn credential_of(
     }
     let sealed_as = access_sealed_as(instance.id);
     Ok(open_access(
-        secrets,
-        tenant_id,
-        &sealed_as,
-        access,
-        "ce connecteur",
+        secrets, tenant_id, &sealed_as, access, UNOPENED,
     ))
 }
+
+/// What a company's authorization whose token the platform can no longer
+/// open says.
+const UNOPENED: &str = "Le jeton de l’autorisation OAuth ne peut pas être déchiffré : autorisez \
+     de nouveau ce connecteur";
+
+/// The same of a person's own (ADR-174): they authorize it again.
+pub const UNOPENED_PERSON: &str = "Le jeton de votre autorisation OAuth ne peut pas être \
+     déchiffré : autorisez de nouveau ce serveur dans « Mon compte »";
 
 /// What an instance starts with for one person (ADR-174).
 pub enum CredentialFor {
@@ -88,8 +93,12 @@ pub enum CredentialFor {
     /// company's authorization (`credential_of`).
     Shared(anyhow::Result<Credential>),
     /// The person's own authorization of a server each person authorizes,
-    /// or why it cannot be used.
-    Own(anyhow::Result<Credential>),
+    /// or why it cannot be used, and when it was given or last renewed:
+    /// their session follows it (ADR-174).
+    Own {
+        credential: anyhow::Result<Credential>,
+        since: DateTime<Utc>,
+    },
     /// A server each person authorizes, which this person has not, or not
     /// under its declaration: nothing to start it with.
     NotAuthorized,
@@ -125,24 +134,26 @@ pub async fn credential_for(
         return Ok(CredentialFor::NotAuthorized);
     }
     let sealed_as = person_access_sealed_as(instance.id, user_id);
-    let tenant_id = instance.tenant_id;
-    Ok(CredentialFor::Own(open_access(
-        secrets,
-        tenant_id,
-        &sealed_as,
-        access,
-        "ce serveur dans « Mon compte »",
-    )))
+    let (tenant_id, since) = (instance.tenant_id, access.refreshed_at);
+    Ok(CredentialFor::Own {
+        credential: open_access(secrets, tenant_id, &sealed_as, access, UNOPENED_PERSON),
+        since,
+    })
+}
+
+/// Whether each person authorizes the instance for themself (ADR-174).
+pub fn each_person(instance: &ConnectorInstanceRow) -> bool {
+    oauth_of(instance).is_some_and(|declared| declared.holder == OAuthHolder::Person)
 }
 
 /// The access token kept, opened under the name it was sealed as, with
-/// when it expires; `again` says what to authorize again if it cannot be.
+/// when it expires; `unopened` says what to do if it cannot be.
 fn open_access(
     secrets: &SecretStore,
     tenant_id: Uuid,
     sealed_as: &str,
     access: ConnectorAccessToken,
-    again: &str,
+    unopened: &'static str,
 ) -> anyhow::Result<Credential> {
     let Ok(cipher) = secrets.cipher() else {
         return Err(anyhow!(
@@ -154,10 +165,7 @@ fn open_access(
             token: Some(token),
             expires_at: access.expires_at,
         }),
-        Err(_) => Err(anyhow!(
-            "Le jeton de l’autorisation OAuth ne peut pas être déchiffré : autorisez de nouveau \
-             {again}"
-        )),
+        Err(_) => Err(anyhow!(unopened)),
     }
 }
 

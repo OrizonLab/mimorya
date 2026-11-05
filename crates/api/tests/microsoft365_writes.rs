@@ -34,7 +34,7 @@ async fn write_tools_offered(api: &TestApi) -> usize {
         .app
         .services
         .connectors
-        .tools_for(tenant::ID)
+        .tools_for(tenant::ID, support::connector_sessions::RUN)
         .await
         .unwrap();
     let names: Vec<String> = tools.tools.iter().map(|t| t.info().name.clone()).collect();

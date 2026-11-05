@@ -217,6 +217,9 @@ pub struct ConnectorAccessToken {
     pub resource: String,
     pub sealed: StoredSecret,
     pub expires_at: Option<DateTime<Utc>>,
+    /// When it was given or last renewed: a session started with an older
+    /// one is not this one's (ADR-174).
+    pub refreshed_at: DateTime<Utc>,
 }
 
 #[derive(sqlx::FromRow)]
@@ -229,6 +232,7 @@ pub(super) struct AccessRow {
     access_auth_tag: Vec<u8>,
     access_key_version: i32,
     access_expires_at: Option<DateTime<Utc>>,
+    refreshed_at: DateTime<Utc>,
 }
 
 /// The connector's access token, if it is authorized.
@@ -238,7 +242,7 @@ pub async fn connector_access_token(
 ) -> sqlx::Result<Option<ConnectorAccessToken>> {
     let row: Option<AccessRow> = sqlx::query_as(
         "select issuer, client_id, resource, access_ciphertext, access_iv, access_auth_tag, \
-         access_key_version, access_expires_at from connector_authorizations \
+         access_key_version, access_expires_at, refreshed_at from connector_authorizations \
          where connector_id = $1",
     )
     .bind(connector_id)
@@ -260,6 +264,7 @@ impl From<AccessRow> for ConnectorAccessToken {
                 key_version: row.access_key_version,
             },
             expires_at: row.access_expires_at,
+            refreshed_at: row.refreshed_at,
         }
     }
 }

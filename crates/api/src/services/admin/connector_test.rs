@@ -82,7 +82,7 @@ pub async fn test_connector(
     tx.commit().await?;
     let (credential, own) = match credential {
         CredentialFor::Shared(credential) => (credential, false),
-        CredentialFor::Own(credential) => (credential, true),
+        CredentialFor::Own { credential, .. } => (credential, true),
         CredentialFor::NotAuthorized => {
             return Err(DomainError::conflict(TEST_OWN_AUTHORIZATION).into());
         }

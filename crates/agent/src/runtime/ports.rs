@@ -31,9 +31,13 @@ pub enum RunEvent {
         objective: String,
     },
     /// Connectors of the company that could not start, in reach of the
-    /// user (ADR-048): their tools are missing from the run.
+    /// user (ADR-048): their tools are missing from the run. Among them,
+    /// those the user is to authorize for themself in their account
+    /// (ADR-174).
     ConnectorsUnavailable {
         connectors: Vec<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        to_authorize: Vec<String>,
     },
     AssistantMessage {
         text: String,

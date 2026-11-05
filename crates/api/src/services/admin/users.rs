@@ -217,6 +217,10 @@ pub async fn update_user(
     .await?;
     tx.commit().await?;
     if !revocations.is_empty() {
+        for revocation in &revocations {
+            let connector = revocation.connector_id;
+            admin.connectors.forget_person(connector, user_id).await;
+        }
         revoke_all(admin, access, revocations).await;
     }
     Ok(())

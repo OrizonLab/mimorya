@@ -14,7 +14,8 @@
 //! the skills' administrators of the agent's proposals, and the other
 //! administrators of the policies of the allow policies proposed, each in
 //! one process at a time too (ADR-091, ADR-102, ADR-170); the evaluations of the skills asked for
-//! are played, in the background and one at a time (ADR-104); runs without
+//! are played, in the background and one at a time (ADR-104); the people's
+//! connector sessions no run used for a while are released (ADR-174); runs without
 //! progress for a while belong to a stuck process and are marked as
 //! failed, their `run_finished` event recorded and broadcast to the clients
 //! following them. That sweep waits until the process has run as long as a
@@ -95,6 +96,8 @@ pub fn spawn_maintenance(services: AppState) -> JoinHandle<()> {
             }
             // Played apart, for as long as they take (ADR-104).
             play_skill_evaluations(&services);
+            // A person who stopped running keeps no session here (ADR-174).
+            services.connectors.release_idle().await;
             if sweeps_stale_runs(started.elapsed()) {
                 match sweep_stale_runs(db, bus, STALE_AFTER).await {
                     Ok(0) => {}

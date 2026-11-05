@@ -14,7 +14,8 @@ use mimorya_agent::llm::{Effort, LlmMessage, ModelRouter, PriceTable};
 
 use mimorya_agent::runtime::{
     AgentRuntime, ApprovalDecisions, BudgetLimits, EnginePorts, InterruptedCall, RunCheckpoint,
-    RunConfig, RunEvent, RuntimeDeps, StartInput, VerificationConfig, build_user_turn,
+    RunConfig, RunEvent, RuntimeDeps, StartInput, UnavailableConnectors, VerificationConfig,
+    build_user_turn,
 };
 use mimorya_core::authz::Actor;
 use mimorya_core::autonomy::{AutonomyLevel, AutonomyPolicy};
@@ -150,7 +151,7 @@ impl RunExecutor {
     ) -> anyhow::Result<()> {
         // A hook's run stays one when it resumes (ADR-109).
         let actor = Actor::agent(Some(run.id)).with_channel(run.channel.clone());
-        let (runtime, unavailable_connectors) = self
+        let (runtime, unavailable) = self
             .runtime_for(access, run, ports, actor.clone(), fence)
             .await?;
         match mode {
@@ -179,7 +180,7 @@ impl RunExecutor {
                         system,
                         history,
                         user_turn: build_user_turn(&text, &memories),
-                        unavailable_connectors,
+                        unavailable,
                         evidence,
                     })
                     .await?;
@@ -226,7 +227,7 @@ impl RunExecutor {
         ports: &EnginePorts,
         actor: Actor,
         fence: &LeaseFence,
-    ) -> anyhow::Result<(AgentRuntime, Vec<String>)> {
+    ) -> anyhow::Result<(AgentRuntime, UnavailableConnectors)> {
         // A run awaiting approval may be resumed after a restart without a
         // provider, or after its company changed or removed its own.
         let Some(provider) = self.llm.provider_for(access.subject.tenant_id).await? else {
@@ -273,6 +274,6 @@ impl RunExecutor {
                 handoff: run.mission_id.is_some(),
             },
         );
-        Ok((runtime, tools.unavailable_connectors))
+        Ok((runtime, tools.unavailable))
     }
 }
