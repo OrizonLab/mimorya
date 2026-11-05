@@ -218,6 +218,7 @@ macro_rules! request_bodies {
             admin::ConnectorTrial,
             admin::ConnectorUpdate,
             admin::McpOAuthDeclaration,
+            admin::McpOAuthHolder,
             admin::LlmChoice,
             admin::EmbeddingChoice,
             admin::MemorySettingsUpdate,

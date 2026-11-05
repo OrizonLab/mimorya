@@ -180,6 +180,10 @@ pub fn routes(state: &AppState) -> Router<AppState> {
             put(connector_oauth::declare).delete(connector_oauth::remove),
         )
         .route(
+            "/admin/connectors/{id}/oauth/holder",
+            put(connector_oauth::set_holder),
+        )
+        .route(
             "/admin/connectors/{id}/oauth/authorization",
             post(connector_oauth::start).delete(connector_oauth::remove_authorized),
         )

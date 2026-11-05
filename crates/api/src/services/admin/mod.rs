@@ -18,6 +18,7 @@ mod assignments;
 mod connector_authorization;
 mod connector_config;
 mod connector_oauth;
+mod connector_oauth_holder;
 mod connector_rules;
 mod connector_test;
 mod connector_trial;
@@ -66,6 +67,7 @@ pub use connector_authorization::{
 };
 pub use connector_config::{Editable, RestChanges};
 pub use connector_oauth::{OAuthInput, declare_oauth, remove_oauth};
+pub use connector_oauth_holder::set_oauth_holder;
 pub use connector_rules::ToolPolicyInput;
 pub use connector_test::{ConnectorTestOutcome, TestedTool, test_connector};
 pub use connector_trial::{McpTrial, TrialServices, try_mcp_connector};

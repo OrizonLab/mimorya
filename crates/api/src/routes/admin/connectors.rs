@@ -15,6 +15,7 @@ use mimorya_connectors::connector_types;
 use mimorya_connectors::rest::RestConfig;
 use mimorya_db::repositories::account_links::count_account_links;
 use mimorya_db::repositories::connector_authorizations::get_connector_authorization;
+use mimorya_db::repositories::connector_person_authorizations::count_person_authorizations;
 use mimorya_db::repositories::connectors::list_connector_instances;
 
 use crate::app::AppState;
@@ -63,7 +64,8 @@ pub async fn list(
                             let secret = client_secret_name(i.id);
                             let stored = store.exists(&mut tx, &secret).await?;
                             let authorized = get_connector_authorization(&mut tx, i.id).await?;
-                            Some(McpOAuth::new(declared, stored, authorized))
+                            let persons = count_person_authorizations(&mut tx, i.id).await?;
+                            Some(McpOAuth::new(declared, stored, authorized, persons))
                         }
                         None => None,
                     };

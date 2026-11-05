@@ -31,7 +31,9 @@ use super::expiry::{Expiry, OAUTH_UNUSABLE};
 use super::failure::{TokenKind, start_failed};
 use super::http::{BoundedHttpClient, TOO_LONG};
 use super::liveness::Liveness;
-use super::oauth::{OAUTH_TO_AUTHORIZE, OAuthDeclaration, access_token_problem};
+use super::oauth::{
+    OAUTH_EACH_PERSON, OAUTH_TO_AUTHORIZE, OAuthDeclaration, OAuthHolder, access_token_problem,
+};
 use crate::outbound::{Redactor, http_client, token_problem, too_slow, url_problem};
 use crate::types::{Connector, ConnectorCloser, ConnectorInfo, ConnectorRuntime, InstanceContext};
 
@@ -160,10 +162,14 @@ async fn start(
                 bail!("{problem}");
             }
             // Its token is its authorization's, given by an administrator
-            // (ADR-171): none, nothing starts.
-            if oauth.is_some() {
+            // (ADR-171), or by each person for themself (ADR-174): none,
+            // nothing starts.
+            if let Some(declared) = &oauth {
                 if context.secret.is_none() {
-                    bail!(OAUTH_TO_AUTHORIZE);
+                    match declared.holder {
+                        OAuthHolder::Company => bail!(OAUTH_TO_AUTHORIZE),
+                        OAuthHolder::Person => bail!(OAUTH_EACH_PERSON),
+                    }
                 }
                 kind = TokenKind::Authorization;
                 expiry =

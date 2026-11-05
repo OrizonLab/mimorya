@@ -1,5 +1,6 @@
 //! OAuth on an MCP server (`connector:manage`, company-wide, ADR-171):
-//! declared, where the discovery finds it is authorized, and withdrawn; its
+//! declared, where the discovery finds it is authorized, and withdrawn; who
+//! authorizes it, the company or each person, changed (ADR-174); its
 //! authorization started towards its authorization server and withdrawn;
 //! the return, a top-level navigation in the administrator's session, which
 //! sends the browser back to the administration saying only whether it was
@@ -12,21 +13,23 @@ use axum::extract::{Query, State};
 use axum::http::header::{LOCATION, SET_COOKIE};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{AppendHeaders, IntoResponse, Response};
-use mimorya_connectors::mcp::oauth::ClientAuth;
+use mimorya_connectors::mcp::oauth::{ClientAuth, OAuthHolder};
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 
 use super::connectors::{admin, secrets};
 use crate::app::AppState;
 use crate::auth::cookies::cookie_value;
 use crate::contract::Done;
-use crate::contract::admin::{McpOAuth, McpOAuthDeclaration, OAuthAuthorizationStart};
+use crate::contract::admin::{
+    McpOAuth, McpOAuthDeclaration, McpOAuthHolder, OAuthAuthorizationStart,
+};
 use crate::http::{ApiError, ApiResult, Body, PathId};
 use crate::plugins::{Auth, RequestContext};
 use crate::services::AccessContext;
 use crate::services::admin::{
     AUTHORIZATION_COOKIE, AuthorizationFailure, OAuthInput, OAuthReturn, authorization_cookie,
     cleared_authorization_cookie, declare_oauth, finish_authorization, oauth_redirect_uri,
-    remove_authorization, remove_oauth, start_authorization,
+    remove_authorization, remove_oauth, set_oauth_holder, start_authorization,
 };
 use crate::services::permission_catalog::permission_catalog;
 
@@ -51,12 +54,35 @@ pub async fn declare(
         client_secret: body.client_secret.filter(|secret| !secret.is_empty()),
         scopes: body.scopes,
         redirect_uri: oauth_redirect_uri(&state.config.web_origin),
+        holder: holder(body.per_person.unwrap_or(false)),
     };
     let declared = declare_oauth(&admin(&state, &store, &catalog), &access, id, input).await?;
     // Its secret, typed or granted, stored if it proves itself with one; no
-    // authorization yet.
+    // authorization yet, the company's nor anyone's.
     let has_secret = declared.client_auth != ClientAuth::None;
-    Ok(Json(McpOAuth::new(declared, has_secret, None)))
+    Ok(Json(McpOAuth::new(declared, has_secret, None, 0)))
+}
+
+/// Who authorizes the server, changed in place (ADR-174).
+pub async fn set_holder(
+    State(state): State<AppState>,
+    Auth(identity): Auth,
+    PathId(id): PathId,
+    Body(body): Body<McpOAuthHolder>,
+) -> ApiResult<Json<Done>> {
+    let access = state.access.context(identity).await?;
+    let (store, catalog) = (secrets(&state), permission_catalog());
+    let admin = admin(&state, &store, &catalog);
+    set_oauth_holder(&admin, &access, id, holder(body.per_person)).await?;
+    Ok(Json(Done::OK))
+}
+
+fn holder(per_person: bool) -> OAuthHolder {
+    if per_person {
+        OAuthHolder::Person
+    } else {
+        OAuthHolder::Company
+    }
 }
 
 pub async fn remove(

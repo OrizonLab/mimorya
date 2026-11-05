@@ -19,6 +19,12 @@ use super::server_metadata::ClientAuth;
 pub const OAUTH_TO_AUTHORIZE: &str = "Autorisation OAuth à donner : un administrateur doit \
      autoriser ce connecteur auprès de son serveur d’autorisation";
 
+/// What a server each person authorizes for themself says (ADR-174): no
+/// session opens with the company's authorization, and none yet with a
+/// person's.
+pub const OAUTH_EACH_PERSON: &str = "Autorisation OAuth donnée par chaque personne pour \
+     elle-même : aucune session ne s’ouvre encore avec les autorisations des personnes";
+
 pub const MAX_CLIENT_ID_CHARS: usize = 255;
 pub const MAX_CLIENT_SECRET_CHARS: usize = 512;
 

@@ -10929,9 +10929,10 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     raison de son dernier échec. Une nouvelle autorisation remplace l'ancienne de la
     même personne sans la révoquer (ADR-172) ; elle ne change pas la version du
     connecteur : la session d'une personne suit sa propre autorisation ;
-  - **chaque lecture et chaque retrait nomment la personne**, sauf ceux qui prennent
-    toutes les autorisations d'un connecteur quand sa déclaration change ou qu'il
-    disparaît, et toutes celles d'une personne quand son compte est désactivé ;
+  - **chaque lecture et chaque retrait nomment la personne**, sauf le compte de celles
+    d'un connecteur (combien, jamais qui), et ceux qui prennent toutes les autorisations
+    d'un connecteur quand sa déclaration change ou qu'il disparaît, et toutes celles
+    d'une personne quand son compte est désactivé ;
   - **qui peut autoriser pour soi** : qui détient `connector:use`, comme pour un compte
     relié, depuis « Mon compte », par un aller et retour du navigateur ; le retour
     arrive à la même adresse que celui de l'entreprise, que connaissent déjà les clients
@@ -10953,10 +10954,26 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
   - **rétention** : jusqu'à ce retrait, à ces changements ou à cette désactivation ; la
     suppression d'un compte ou de l'entreprise par l'exploitant emporte les
     autorisations (cascade), sans révocation possible chez le serveur ;
+  - **le mode** se choisit à la déclaration (`perPerson`) ou se change sur place
+    (`PUT /admin/connectors/{id}/oauth/holder`), par un administrateur des connecteurs
+    de toute l'entreprise, sans nouvelle découverte ni nouvel enregistrement du client.
+    Le changer prend l'autorisation de l'entreprise et celles des personnes ; une
+    autorisation en cours à son retour est refusée, sa déclaration ayant changé. Tant
+    que chaque personne autorise le serveur, l'entreprise ne l'autorise pas, et aucune
+    session ne s'ouvre avec une autorisation de l'entreprise, même gardée par un
+    processus qui ne connaissait qu'elle ;
+  - **toutes les autorisations des personnes** sont prises, et leurs jetons révoqués,
+    chaque fois que la déclaration est écrite de nouveau ou retirée, que l'adresse du
+    serveur change ou que le connecteur est supprimé, quel que soit le mode lu avant :
+    un processus qui ne connaissait que l'entreprise a pu laisser la déclaration
+    changer sous elles. Elles sont révoquées quatre à la fois, chacune bornée comme
+    celle de l'entreprise, et tracées ensemble (`connector.oauth_person_authorizations_revoked` :
+    combien révoquées, combien non, la première raison), sans jeton ni nom ;
   - **lots** : 43a, la table, son dépôt et le mode dans la déclaration ; 43b, le choix
     du mode par l'administrateur et le retrait de toutes les autorisations des
-    personnes ; 43c, l'autorisation de la personne par l'API ; 43d, le test de
-    l'administrateur ; 43e, les sessions par personne dans les runs ; 43f, le
+    personnes ; 43c, l'autorisation de la personne par l'API, son retrait par elle et
+    celui de toutes les siennes, révoquées, quand son compte est désactivé ; 43d, le
+    test de l'administrateur ; 43e, les sessions par personne dans les runs ; 43f, le
     renouvellement par personne ; 43g, les écrans et le parcours de bout en bout.
 - **Conséquences** :
   - lot 43a : migration 0076, `db/src/repositories/connector_person_authorizations.rs`,
@@ -10966,6 +10983,18 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     lit, ne prend ni n'écrit rien), tests unitaires de la déclaration (déclaration
     ancienne lue comme celle de l'entreprise et écrite comme avant, mode inconnu
     refusé) ;
+  - lot 43b : mode dans le corps de la déclaration et route du mode
+    (`services/admin/connector_oauth_holder.rs`), autorisation de l'entreprise refusée
+    et jamais utilisée en mode par personne (`services/connectors/credential.rs`,
+    `connector_authorization/start.rs`, `OAUTH_EACH_PERSON`), révocation des
+    autorisations des personnes (`connector_authorization/revocation/`), `perPerson` et
+    `personAuthorizations` (un nombre) dans la déclaration listée ; tests :
+    `crates/api/tests/connector_oauth_holder.rs` (serveur autorisé par chacun jamais
+    ouvert avec l'autorisation de l'entreprise, même gardée ; changement de mode qui prend
+    et révoque ; refus à qui n'administre pas les connecteurs, champ inconnu, connecteur
+    introuvable, serveur sans OAuth), `connector_oauth_person_revocations.rs` (déclaration
+    écrite de nouveau ou retirée, adresse changée, connecteur supprimé : autorisations des
+    personnes prises et révoquées, celles d'un autre connecteur gardées) ;
   - aucune preuve d'identité n'est demandée au serveur d'autorisation : une personne
     peut autoriser avec un compte qu'elle partage ; l'écran le dira ;
   - deux personnes qui autorisent avec le même compte chez le serveur peuvent voir

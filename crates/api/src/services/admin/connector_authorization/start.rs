@@ -6,7 +6,9 @@
 //! sealed for it.
 
 use chrono::Utc;
-use mimorya_connectors::mcp::oauth::{ClientAuth, Departure, authorization_url, endpoint_problem};
+use mimorya_connectors::mcp::oauth::{
+    ClientAuth, Departure, OAuthHolder, authorization_url, endpoint_problem,
+};
 use mimorya_core::DomainError;
 use mimorya_db::repositories::connectors::get_connector_instance;
 use openidconnect::{CsrfToken, PkceCodeChallenge};
@@ -55,6 +57,13 @@ pub async fn start_authorization(
             return Err(DomainError::validation("Déclarez d’abord OAuth sur ce serveur").into());
         }
     };
+    // Each person authorizes it for themself (ADR-174): never the company.
+    if declared.holder == OAuthHolder::Person {
+        return Err(DomainError::conflict(
+            "Chaque personne autorise ce serveur pour elle-même : l’entreprise ne l’autorise pas",
+        )
+        .into());
+    }
     if declared.client_auth != ClientAuth::None && !secret_kept {
         return Err(DomainError::validation(
             "Secret du client absent : déclarez OAuth de nouveau avec son secret",

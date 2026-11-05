@@ -1,14 +1,15 @@
 //! What an instance starts with (ADR-171): an MCP server declared with
-//! OAuth is given the access token of its authorization, opened for it,
-//! with when it expires, and never a token typed by hand; one not
-//! authorized, or authorized under another declaration, none (it then says
-//! it must be authorized). Any other connector is given its saved token.
-//! Read in the caller's transaction, with the instance.
+//! OAuth for the company is given the access token of its authorization,
+//! opened for it, with when it expires, and never a token typed by hand;
+//! one not authorized, or authorized under another declaration, none (it
+//! then says it must be authorized); one each person authorizes for
+//! themself, never the company's (ADR-174). Any other connector is given
+//! its saved token. Read in the caller's transaction, with the instance.
 
 use anyhow::anyhow;
 use chrono::{DateTime, Utc};
 use mimorya_connectors::mcp::McpConnectorConfig;
-use mimorya_connectors::mcp::oauth::OAuthDeclaration;
+use mimorya_connectors::mcp::oauth::{OAuthDeclaration, OAuthHolder};
 use mimorya_db::TenantTx;
 use mimorya_db::repositories::connector_authorizations::connector_access_token;
 use mimorya_db::repositories::connectors::ConnectorInstanceRow;
@@ -48,6 +49,11 @@ pub async fn credential_of(
             .await?;
         return Ok(opened(read).map(Credential::typed));
     };
+    // Each person authorizes it for themself (ADR-174): never the
+    // company's authorization, whatever is kept.
+    if declared.holder == OAuthHolder::Person {
+        return Ok(Ok(Credential::default()));
+    }
     let Some(access) = connector_access_token(tx, instance.id).await? else {
         return Ok(Ok(Credential::default()));
     };

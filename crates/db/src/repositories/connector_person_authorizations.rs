@@ -6,8 +6,9 @@
 //! authorization (ADR-171), keeping or removing one makes no new version of
 //! the connector: a person's session is versioned by their own
 //! authorization. Every read and every removal names the person, except
-//! those that take all of a connector's when the administration changes the
-//! declaration they were given under.
+//! the count of a connector's (how many, never who) and those that take all
+//! of a connector's when the administration changes the declaration they
+//! were given under, or all of a person's when their account is disabled.
 
 use chrono::{DateTime, Utc};
 use sqlx::PgConnection;

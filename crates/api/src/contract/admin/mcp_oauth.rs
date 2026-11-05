@@ -1,9 +1,10 @@
 //! OAuth declared on an MCP server (`connector:manage`, ADR-171): what the
-//! administrator writes, and what the platform found and keeps. The
+//! administrator writes, who authorizes it (ADR-174), and what the platform
+//! found and keeps. The
 //! client's secret is never returned, only whether one is stored.
 
 use chrono::{DateTime, Utc};
-use mimorya_connectors::mcp::oauth::{ClientAuth, OAuthDeclaration};
+use mimorya_connectors::mcp::oauth::{ClientAuth, OAuthDeclaration, OAuthHolder};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use validator::Validate;
@@ -40,6 +41,19 @@ pub struct McpOAuthDeclaration {
     #[serde(default)]
     #[ts(optional)]
     pub scopes: Option<Vec<String>>,
+    /// Each person authorizes the server for themself (ADR-174); absent or
+    /// false, the company does.
+    #[serde(default)]
+    #[ts(optional)]
+    pub per_person: Option<bool>,
+}
+
+/// Body of `PUT /admin/connectors/{id}/oauth/holder`: who authorizes the
+/// server, changed without declaring it again (ADR-174).
+#[derive(Deserialize, Validate, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct McpOAuthHolder {
+    pub per_person: bool,
 }
 
 /// How the client proves itself to the token endpoint.
@@ -86,6 +100,11 @@ pub struct McpOAuth {
     pub revocable: bool,
     /// The authorization given under this declaration, if any.
     pub authorization: Option<McpOAuthAuthorization>,
+    /// Whether each person authorizes the server for themself (ADR-174),
+    /// rather than the company.
+    pub per_person: bool,
+    /// How many people authorized it for themselves: never who.
+    pub person_authorizations: i64,
 }
 
 /// An MCP server's authorization, as its declaration shows it: never its
@@ -132,8 +151,11 @@ impl McpOAuth {
         declaration: OAuthDeclaration,
         client_secret_stored: bool,
         authorization: Option<ConnectorAuthorizationRow>,
+        person_authorizations: i64,
     ) -> Self {
         Self {
+            per_person: declaration.holder == OAuthHolder::Person,
+            person_authorizations,
             issuer: declaration.issuer,
             resource: declaration.resource,
             authorization_endpoint: declaration.authorization_endpoint,
