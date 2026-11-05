@@ -17,6 +17,10 @@ use crate::secrets::SecretCipher;
 /// by the system when the server no longer honours its refresh token.
 pub const AUTHORIZATION_REMOVED: &str = "connector.oauth_authorization_removed";
 
+/// What the audit calls a person's own authorization removed, by them or,
+/// its grant gone, by the system (ADR-174).
+pub const PERSON_REMOVED: &str = "connector.person_oauth_removed";
+
 /// An expiry further than this is read as this.
 const MAX_LIFETIME_SECONDS: u64 = 10 * 365 * 24 * 3600;
 

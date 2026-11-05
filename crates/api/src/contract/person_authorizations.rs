@@ -36,6 +36,8 @@ pub struct PersonAuthorizationState {
     pub authorized_at: String,
     /// When the access token expires, if it does.
     pub expires_at: Option<String>,
+    /// When its tokens were last renewed, if they were since it was given.
+    pub renewed_at: Option<String>,
     /// Whether a refresh token is kept.
     pub renewable: bool,
     pub scopes: Vec<String>,
@@ -48,6 +50,7 @@ impl From<PersonAuthorizationRow> for PersonAuthorizationState {
         Self {
             authorized_at: iso(&row.authorized_at),
             expires_at: row.access_expires_at.as_ref().map(iso),
+            renewed_at: (row.refreshed_at > row.authorized_at).then(|| iso(&row.refreshed_at)),
             renewable: row.renewable,
             scopes: row.scopes.split_whitespace().map(String::from).collect(),
             renewal_failure: row.renewal_failure,

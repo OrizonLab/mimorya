@@ -19,10 +19,7 @@ use crate::services::AccessContext;
 use crate::services::admin::audit_entry;
 use crate::services::admin::connector_oauth::McpServer;
 use crate::services::admin::connectors::ConnectorAdmin;
-use crate::services::connectors::CONNECTOR_USE;
-
-/// What the audit calls a person withdrawing their own authorization.
-const PERSON_REMOVED: &str = "connector.person_oauth_removed";
+use crate::services::connectors::{CONNECTOR_USE, PERSON_REMOVED};
 
 /// A server the person may authorize, or did.
 pub struct PersonServer {

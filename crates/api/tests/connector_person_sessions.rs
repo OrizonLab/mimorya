@@ -22,7 +22,7 @@ use mimorya_connectors::testing::{FakeAuthorizationServer, ProtectedMcp};
 use mimorya_core::demo::{tenant, user};
 use serde_json::{Value, json};
 use support::accounts::{activate, create_account};
-use support::connector_sessions::{as_person, sees_for};
+use support::connector_sessions::{alter, as_person, sees_for, token_endpoint};
 use support::mcp::{PRIVATE_DEPLOYMENT, listed};
 use support::person_authorizations::{
     declared_per_person, person_authorized, person_authorized_until,
@@ -129,8 +129,10 @@ async fn each_person_s_runs_use_their_own_authorization() {
         Some((TO_AUTHORIZE.to_string(), true))
     );
 
-    // His own expired, then refused at the authorization server: never
-    // sent expired, refused when sent; his to authorize again either way.
+    // His own expired, its renewal out of reach, then refused at the
+    // authorization server: never sent expired, refused when sent; his to
+    // authorize again either way.
+    alter(&api, &id, &token_endpoint("http://127.0.0.1:1/token")).await;
     let past = Some(chrono::Utc::now() - chrono::Duration::minutes(5));
     let expired = person_authorized_until(&api, &id, user::MARC, &authority, &resource, past).await;
     assert!(!sees_for(connectors, "chacun", as_marc).await);

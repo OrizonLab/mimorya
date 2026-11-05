@@ -93,6 +93,14 @@ impl ConnectorService {
     pub async fn tools_for(&self, tenant_id: Uuid, served: Served) -> anyhow::Result<TenantTools> {
         // Before anything is read: a renewal makes a new version.
         self.renew_due(tenant_id).await?;
+        // And the person's own, if anything is sent for them (ADR-174).
+        if let Served::Person {
+            user,
+            uses_connectors: true,
+        } = served
+        {
+            self.renew_person_due(tenant_id, user).await?;
+        }
         let ticket = self.cache.ticket().await;
         // Instances and tokens read in one snapshot: a token always goes
         // with the address it was saved, or authorized, for.

@@ -52,7 +52,7 @@ pub struct Claimed {
 }
 
 #[derive(sqlx::FromRow)]
-struct ClaimedRow {
+pub(super) struct ClaimedRow {
     id: Uuid,
     refreshed_at: DateTime<Utc>,
     issuer: String,
@@ -101,21 +101,27 @@ pub async fn claim_connector_renewal(
     .bind(asker == RenewalFor::Test)
     .fetch_optional(conn)
     .await?;
-    Ok(row.map(|row| Claimed {
-        key: ClaimedRenewal {
-            authorization_id: row.id,
-            refreshed_at: row.refreshed_at,
-        },
-        issuer: row.issuer,
-        client_id: row.client_id,
-        resource: row.resource,
-        refresh: StoredSecret {
-            ciphertext: row.refresh_ciphertext,
-            iv: row.refresh_iv,
-            auth_tag: row.refresh_auth_tag,
-            key_version: row.refresh_key_version,
-        },
-    }))
+    Ok(row.map(Claimed::from))
+}
+
+impl From<ClaimedRow> for Claimed {
+    fn from(row: ClaimedRow) -> Self {
+        Self {
+            key: ClaimedRenewal {
+                authorization_id: row.id,
+                refreshed_at: row.refreshed_at,
+            },
+            issuer: row.issuer,
+            client_id: row.client_id,
+            resource: row.resource,
+            refresh: StoredSecret {
+                ciphertext: row.refresh_ciphertext,
+                iv: row.refresh_iv,
+                auth_tag: row.refresh_auth_tag,
+                key_version: row.refresh_key_version,
+            },
+        }
+    }
 }
 
 /// What a renewal brings, sealed for the connector.
@@ -180,21 +186,26 @@ pub async fn record_renewal_failure(
     claimed: ClaimedRenewal,
     reason: &str,
 ) -> sqlx::Result<bool> {
-    let reason: String = reason.trim().chars().take(MAX_FAILURE_CHARS).collect();
-    let reason = match reason.trim_end() {
-        "" => UNSAID_FAILURE,
-        said => said,
-    };
+    let reason = failure_said(reason);
     let said = sqlx::query(
         "update connector_authorizations set renewal_failure = $3 \
          where id = $1 and refreshed_at = $2",
     )
     .bind(claimed.authorization_id)
     .bind(claimed.refreshed_at)
-    .bind(reason)
+    .bind(&reason)
     .execute(conn)
     .await?;
     Ok(said.rows_affected() == 1)
+}
+
+/// A renewal's failure as kept: bounded, never empty.
+pub(super) fn failure_said(reason: &str) -> String {
+    let reason: String = reason.trim().chars().take(MAX_FAILURE_CHARS).collect();
+    match reason.trim_end() {
+        "" => UNSAID_FAILURE.to_string(),
+        said => said.to_string(),
+    }
 }
 
 /// Removes the authorization claimed, the server no longer honouring it, if

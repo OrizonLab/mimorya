@@ -40,6 +40,7 @@ pub mod missions;
 pub mod notification_choices;
 pub mod owner;
 pub mod person_authorizations;
+pub mod person_renewals;
 pub mod planning;
 pub mod policy_proposal_notices;
 pub mod policy_proposals;
