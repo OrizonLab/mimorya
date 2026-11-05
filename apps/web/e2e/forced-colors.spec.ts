@@ -5,8 +5,8 @@
 // checked checkbox (its tool's rule) and a checked radio (its OAuth form's
 // client choice). What the test adds is deleted, even when it fails.
 import type { ConnectorTest, Connectors, TestedTool } from '../lib/api/contract';
-import { cardWith, openAdmin } from './support/admin';
-import { expect, FOREIGN_HOST, noError, test } from './support/fixtures';
+import { addForeignServer, openAdmin } from './support/admin';
+import { expect, noError, test } from './support/fixtures';
 
 const SERVER = 'Contraste e2e';
 const WRITE = { 'X-Mimorya-Request': '1' };
@@ -40,12 +40,7 @@ test('the marks drawn over checkboxes and radios stay visible in forced colors',
     route.fulfill({ json: { ok: true, error: null, tools: [tool] } satisfies ConnectorTest }),
   );
   await openAdmin(page, 'Connecteurs');
-  await page.getByRole('button', { name: 'Ajouter un serveur MCP' }).click();
-  await page.getByLabel('Nom').fill(SERVER);
-  await page.getByLabel('Préfixe des outils (définitif)').fill('cont');
-  await page.getByLabel(/^Adresse du serveur/).fill(`https://mcp.${FOREIGN_HOST}/mcp`);
-  await page.getByRole('button', { name: 'Ajouter le serveur' }).click();
-  const card = cardWith(page, SERVER, 'Tester la connexion');
+  const card = await addForeignServer(page, SERVER, 'cont');
   // The text's colour and the background's, as forced colors give them.
   const text = await page.evaluate(() => getComputedStyle(document.body).color);
   const background = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
