@@ -3,7 +3,7 @@
 //! the authorization server the declaration names, an attempt sealed in
 //! their cookie (`attempt`, `start`); the return, in their session,
 //! exchanges the code and keeps the tokens sealed for the connector
-//! (`finish`). An authorization is withdrawn here, and goes with the
+//! (`finish`, with what it shares with a person's: `returned`). An authorization is withdrawn here, and goes with the
 //! declaration it was given under (`connector_oauth`, `connectors`) or with
 //! the connector; its tokens are then revoked at the authorization server
 //! (`revocation`, ADR-172). On a server each person authorizes, each person
@@ -15,13 +15,15 @@ pub(crate) mod attempt;
 mod finish;
 mod person;
 mod person_finish;
+mod returned;
 mod revocation;
 mod start;
 
 pub use attempt::{AUTHORIZATION_COOKIE, authorization_cookie, cleared_authorization_cookie};
-pub use finish::{AuthorizationFailure, OAuthReturn, finish_authorization};
+pub use finish::finish_authorization;
 pub use person::{PersonServer, list_person_servers, remove_person_authorization};
 pub use person_finish::{PERSON_AUTHORIZED, attempt_holder, finish_person_authorization};
+pub use returned::{AuthorizationFailure, OAuthReturn};
 pub(super) use revocation::{
     revocable_under, revoke, revoke_all, take_authorization, take_authorizations,
     take_persons_of_user,

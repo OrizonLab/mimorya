@@ -3,18 +3,24 @@
 //! opened for it, with when it expires, and never a token typed by hand;
 //! one not authorized, or authorized under another declaration, none (it
 //! then says it must be authorized); one each person authorizes for
-//! themself, never the company's (ADR-174). Any other connector is given
-//! its saved token. Read in the caller's transaction, with the instance.
+//! themself, never the company's (ADR-174), but, for that person, their own
+//! authorization's (`credential_for`), never another's. Any other connector
+//! is given its saved token. Read in the caller's transaction, with the
+//! instance.
 
 use anyhow::anyhow;
 use chrono::{DateTime, Utc};
 use mimorya_connectors::mcp::McpConnectorConfig;
 use mimorya_connectors::mcp::oauth::{OAuthDeclaration, OAuthHolder};
 use mimorya_db::TenantTx;
-use mimorya_db::repositories::connector_authorizations::connector_access_token;
+use mimorya_db::repositories::connector_authorizations::{
+    ConnectorAccessToken, connector_access_token,
+};
+use mimorya_db::repositories::connector_person_authorizations::person_access_token;
 use mimorya_db::repositories::connectors::ConnectorInstanceRow;
+use uuid::Uuid;
 
-use super::{access_sealed_as, opened, token_secret_name};
+use super::{access_sealed_as, opened, person_access_sealed_as, token_secret_name};
 use crate::secrets::SecretStore;
 
 /// The token an instance starts with, if any, and when it expires.
@@ -66,22 +72,93 @@ pub async fn credential_of(
     ) {
         return Ok(Ok(Credential::default()));
     }
-    let Ok(cipher) = secrets.cipher() else {
-        return Ok(Err(anyhow!(
-            "Ce serveur n’a pas de clé maîtresse : le jeton de l’autorisation ne peut pas être lu"
-        )));
+    let sealed_as = access_sealed_as(instance.id);
+    Ok(open_access(
+        secrets,
+        tenant_id,
+        &sealed_as,
+        access,
+        "ce connecteur",
+    ))
+}
+
+/// What an instance starts with for one person (ADR-174).
+pub enum CredentialFor {
+    /// The same for everyone: a token typed by an administrator, or the
+    /// company's authorization (`credential_of`).
+    Shared(anyhow::Result<Credential>),
+    /// The person's own authorization of a server each person authorizes,
+    /// or why it cannot be used.
+    Own(anyhow::Result<Credential>),
+    /// A server each person authorizes, which this person has not, or not
+    /// under its declaration: nothing to start it with.
+    NotAuthorized,
+}
+
+/// The instance's credential for `user_id`: on a server each person
+/// authorizes, their own authorization's access token and never another
+/// person's nor the company's; on any other, the shared one. The outer
+/// error is the database's.
+pub async fn credential_for(
+    tx: &mut TenantTx,
+    secrets: &SecretStore,
+    instance: &ConnectorInstanceRow,
+    user_id: Uuid,
+) -> anyhow::Result<CredentialFor> {
+    let declared = match oauth_of(instance) {
+        Some(declared) if declared.holder == OAuthHolder::Person => declared,
+        _ => {
+            return Ok(CredentialFor::Shared(
+                credential_of(tx, secrets, instance).await?,
+            ));
+        }
     };
-    let opened = cipher.open(tenant_id, &access_sealed_as(instance.id), &access.sealed);
-    Ok(match opened {
+    let Some(access) = person_access_token(tx, instance.id, user_id).await? else {
+        return Ok(CredentialFor::NotAuthorized);
+    };
+    if !given_under(
+        &declared,
+        &access.issuer,
+        &access.client_id,
+        &access.resource,
+    ) {
+        return Ok(CredentialFor::NotAuthorized);
+    }
+    let sealed_as = person_access_sealed_as(instance.id, user_id);
+    let tenant_id = instance.tenant_id;
+    Ok(CredentialFor::Own(open_access(
+        secrets,
+        tenant_id,
+        &sealed_as,
+        access,
+        "ce serveur dans « Mon compte »",
+    )))
+}
+
+/// The access token kept, opened under the name it was sealed as, with
+/// when it expires; `again` says what to authorize again if it cannot be.
+fn open_access(
+    secrets: &SecretStore,
+    tenant_id: Uuid,
+    sealed_as: &str,
+    access: ConnectorAccessToken,
+    again: &str,
+) -> anyhow::Result<Credential> {
+    let Ok(cipher) = secrets.cipher() else {
+        return Err(anyhow!(
+            "Ce serveur n’a pas de clé maîtresse : le jeton de l’autorisation ne peut pas être lu"
+        ));
+    };
+    match cipher.open(tenant_id, sealed_as, &access.sealed) {
         Ok(token) => Ok(Credential {
             token: Some(token),
             expires_at: access.expires_at,
         }),
         Err(_) => Err(anyhow!(
             "Le jeton de l’autorisation OAuth ne peut pas être déchiffré : autorisez de nouveau \
-             ce connecteur"
+             {again}"
         )),
-    })
+    }
 }
 
 /// Whether an authorization kept for this issuer, client and resource was

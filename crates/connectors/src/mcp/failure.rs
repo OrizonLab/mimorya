@@ -4,7 +4,8 @@
 //! MCP library never reach that message. A server whose refusal points to
 //! its OAuth metadata says it wants an OAuth authorization; one that
 //! refuses the token of its authorization says to authorize it again
-//! (ADR-171).
+//! (ADR-171): an administrator, or the person whose own it is, in their
+//! account (ADR-174).
 
 use std::error::Error as StdError;
 
@@ -14,6 +15,7 @@ use rmcp::transport::DynamicTransportError;
 use rmcp::transport::streamable_http_client::StreamableHttpError;
 use rmcp::transport::worker::WorkerQuitReason;
 
+use super::expiry::{OAUTH_EXPIRED, OAUTH_EXPIRED_PERSON, OAUTH_UNUSABLE, OAUTH_UNUSABLE_PERSON};
 use super::http::{HttpError, TOO_LONG};
 use super::oauth::bearer_challenge;
 use crate::outbound::{
@@ -36,6 +38,11 @@ pub const OAUTH_OFFERED: &str = "Accès refusé par le serveur : jeton invalide 
 pub const OAUTH_REFUSED: &str = "Le serveur refuse le jeton de son autorisation OAuth (révoqué, \
      expiré ou sans les portées voulues) : un administrateur doit autoriser de nouveau ce \
      connecteur";
+/// The same refusal of the access token a person gave for themself
+/// (ADR-174): they, not an administrator, authorize it again.
+pub const OAUTH_REFUSED_PERSON: &str = "Le serveur refuse le jeton de votre autorisation OAuth \
+     (révoquée, expirée ou sans les portées voulues) : autorisez de nouveau ce serveur dans « Mon \
+     compte »";
 const CLOSED: &str = "La connexion au serveur MCP est fermée";
 
 /// Whose token the platform sends the server.
@@ -46,6 +53,34 @@ pub enum TokenKind {
     Typed,
     /// The access token of the server's OAuth authorization (ADR-171).
     Authorization,
+    /// The access token of a person's own authorization of a server each
+    /// person authorizes (ADR-174).
+    PersonAuthorization,
+}
+
+impl TokenKind {
+    /// Whether it is an OAuth authorization's access token.
+    pub fn authorizes(self) -> bool {
+        self != Self::Typed
+    }
+
+    /// What a start with an authorization's token that expired, or is about
+    /// to, says: renewed for the company's, not yet for a person's.
+    pub fn expired(self) -> &'static str {
+        match self {
+            Self::PersonAuthorization => OAUTH_EXPIRED_PERSON,
+            _ => OAUTH_EXPIRED,
+        }
+    }
+
+    /// What a start with an authorization's token that cannot be sent as
+    /// kept says.
+    pub fn unusable(self) -> &'static str {
+        match self {
+            Self::PersonAuthorization => OAUTH_UNUSABLE_PERSON,
+            _ => OAUTH_UNUSABLE,
+        }
+    }
 }
 const REFUSED_CALL: &str = "Le serveur MCP a renvoyé une erreur";
 
@@ -64,6 +99,7 @@ fn with_token(cause: Cause, redactor: &Redactor, kind: TokenKind) -> Cause {
     let refused = cause.summary == OAUTH_REQUIRED || cause.summary == ACCESS_DENIED;
     let summary = match kind {
         TokenKind::Authorization if refused => OAUTH_REFUSED,
+        TokenKind::PersonAuthorization if refused => OAUTH_REFUSED_PERSON,
         TokenKind::Typed if cause.summary == OAUTH_REQUIRED && redactor.longest() > 0 => {
             OAUTH_OFFERED
         }
@@ -171,4 +207,50 @@ fn http(error: &HttpError) -> Cause {
         _ => NOT_MCP,
     };
     Cause { summary, detail }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn refusal(summary: &'static str) -> Cause {
+        Cause {
+            summary,
+            detail: String::new(),
+        }
+    }
+
+    #[test]
+    fn a_refused_token_is_told_by_whose_it_is() {
+        let none = Redactor::default();
+        for refused in [OAUTH_REQUIRED, ACCESS_DENIED] {
+            let company = with_token(refusal(refused), &none, TokenKind::Authorization);
+            assert_eq!(company.summary, OAUTH_REFUSED);
+            let person = with_token(refusal(refused), &none, TokenKind::PersonAuthorization);
+            assert_eq!(person.summary, OAUTH_REFUSED_PERSON);
+        }
+        // Not a refusal: told as it is, whoever's.
+        let person = with_token(refusal(NOT_MCP), &none, TokenKind::PersonAuthorization);
+        assert_eq!(person.summary, NOT_MCP);
+    }
+
+    #[test]
+    fn a_person_is_told_to_authorize_again_in_their_account() {
+        let person = TokenKind::PersonAuthorization;
+        assert_eq!(person.expired(), OAUTH_EXPIRED_PERSON);
+        assert_eq!(person.unusable(), OAUTH_UNUSABLE_PERSON);
+        for said in [
+            OAUTH_REFUSED_PERSON,
+            OAUTH_EXPIRED_PERSON,
+            OAUTH_UNUSABLE_PERSON,
+        ] {
+            assert!(said.contains("« Mon compte »"), "{said}");
+            assert!(!said.contains("administrateur"), "{said}");
+        }
+        let company = TokenKind::Authorization;
+        assert_eq!(company.expired(), OAUTH_EXPIRED);
+        assert_eq!(company.unusable(), OAUTH_UNUSABLE);
+        assert!(person.authorizes() && company.authorizes());
+        assert!(!TokenKind::Typed.authorizes());
+    }
 }

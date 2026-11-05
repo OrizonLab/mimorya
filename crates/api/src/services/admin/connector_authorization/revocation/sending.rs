@@ -1,7 +1,8 @@
 //! The tokens taken sent to the revocation endpoint (ADR-172), by a task of
 //! their own, once the withdrawal is committed: the company's authorization
-//! audited as one, the people's (ADR-174) four at a time and audited
-//! together, how many were revoked and how many not, never who nor a token.
+//! audited as one as soon as it is sent, the people's (ADR-174) four at a
+//! time and audited together, how many were revoked and how many not, never
+//! who nor a token.
 
 use futures::StreamExt;
 use mimorya_connectors::mcp::oauth::{ClientAuth, NO_REVOCATION_ENDPOINT, OAuthDeclaration};
@@ -88,13 +89,15 @@ impl Revoking {
                 .by_user(self.user_id)
                 .resource("connector", id)
         };
-        let mut entries = Vec::new();
+        // The company's audited as soon as it is sent, whatever the
+        // people's then take.
         if let Some(company) = &self.revocation.company {
             let names = (access_sealed_as(id), refresh_sealed_as(id));
-            entries.push(match self.send(company, names).await {
+            self.audit(match self.send(company, names).await {
                 Ok(()) => entry(AUTHORIZATION_REVOKED, "success"),
                 Err(reason) => entry(AUTHORIZATION_REVOKED, "failure").reason(bounded(&reason)),
-            });
+            })
+            .await;
         }
         if !self.revocation.persons.is_empty() {
             // The futures made first: a stream's own `map` would ask more of
@@ -116,29 +119,31 @@ impl Revoking {
             let failures: Vec<String> = sent.into_iter().filter_map(Result::err).collect();
             let revoked = self.revocation.persons.len() - failures.len();
             let counts = json!({ "revoked": revoked, "failed": failures.len() });
-            entries.push(match failures.first() {
+            self.audit(match failures.first() {
                 None => entry(PERSON_AUTHORIZATIONS_REVOKED, "success").metadata(counts),
                 Some(reason) => entry(PERSON_AUTHORIZATIONS_REVOKED, "failure")
                     .reason(bounded(reason))
                     .metadata(counts),
-            });
+            })
+            .await;
         }
-        if let Err(error) = self.audit(entries).await {
+    }
+
+    /// Writes `entry`; a failure is logged, never the token.
+    async fn audit(&self, entry: AuditEntry) {
+        let written = async {
+            let mut tx = self.db.begin(self.tenant_id).await?;
+            append_audit(&mut tx, entry).await?;
+            tx.commit().await?;
+            anyhow::Ok(())
+        };
+        if let Err(error) = written.await {
             tracing::error!(
-                connector = %id,
+                connector = %self.revocation.connector_id,
                 error = format!("{error:#}"),
                 "Failed to audit the revocation of a connector's tokens"
             );
         }
-    }
-
-    async fn audit(&self, entries: Vec<AuditEntry>) -> anyhow::Result<()> {
-        let mut tx = self.db.begin(self.tenant_id).await?;
-        for entry in entries {
-            append_audit(&mut tx, entry).await?;
-        }
-        tx.commit().await?;
-        Ok(())
     }
 
     /// One authorization's tokens, opened under the names they were sealed

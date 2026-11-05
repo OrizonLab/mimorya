@@ -192,6 +192,13 @@ async fn a_person_authorizes_only_what_they_may_use_while_they_may() {
             .unwrap_or_default()
             .contains("désactivé")
     );
+    // Each refused before its code was exchanged: no token asked for.
+    let asked = authority.requests();
+    assert!(
+        asked.iter().all(|request| request.endpoint != "token"),
+        "{:?}",
+        asked.iter().map(|r| &r.endpoint).collect::<Vec<_>>()
+    );
     let refused = try_person_start(&marc, &id).await;
     assert_eq!(refused.status, StatusCode::CONFLICT, "{}", refused.text());
     for connector in [id, company] {

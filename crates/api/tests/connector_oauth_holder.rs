@@ -12,17 +12,15 @@
 mod support;
 
 use axum::http::StatusCode;
-use mimorya_api::services::connectors::{access_sealed_as, refresh_sealed_as};
-use mimorya_connectors::mcp::oauth::OAUTH_EACH_PERSON;
+use mimorya_api::services::admin::TEST_OWN_AUTHORIZATION;
 use mimorya_connectors::testing::{CLIENT_ID, CLIENT_SECRET, FakeAuthorizationServer};
-use mimorya_core::demo::{tenant, user};
-use mimorya_db::repositories::connector_authorizations::{
-    NewConnectorAuthorization, put_connector_authorization,
-};
+use mimorya_core::demo::user;
 use serde_json::json;
 use support::TestApi;
-use support::connector_oauth::{AUTHORIZED, authorize, declared, kept_tokens, try_start};
-use support::connector_sessions::{alter, said, tested};
+use support::connector_oauth::{
+    AUTHORIZED, authorize, company_kept, declared, kept_tokens, try_start,
+};
+use support::connector_sessions::{alter, runs_see, said, tested};
 use support::mcp::{PRIVATE_DEPLOYMENT, listed};
 use support::person_authorizations::{
     last_metadata, person_authorized, person_count, person_revocations,
@@ -79,41 +77,21 @@ async fn a_server_each_person_authorizes_never_opens_with_the_company_s() {
     // Nor does a company's authorization kept meanwhile (a process that
     // knew only the company's) open a session: never sent. Due for renewal,
     // it is not renewed either: its server is never asked.
-    let connector: uuid::Uuid = id.parse().unwrap();
     let resource = oauth["resource"].as_str().unwrap().to_string();
-    let token = authority.issue(&resource);
-    let cipher = api.app.services.config.secrets.clone().expect("master key");
-    let sealed = cipher
-        .seal(tenant::ID, &access_sealed_as(connector), &token)
-        .unwrap();
-    let refresh = cipher
-        .seal(
-            tenant::ID,
-            &refresh_sealed_as(connector),
-            "renouvellement-garde",
-        )
-        .unwrap();
-    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
-    put_connector_authorization(
-        &mut tx,
-        NewConnectorAuthorization {
-            tenant_id: tenant::ID,
-            connector_id: connector,
-            issuer: &authority.issuer,
-            client_id: CLIENT_ID,
-            resource: &resource,
-            scopes: "",
-            access_token: &sealed,
-            access_expires_at: Some(chrono::Utc::now() + chrono::Duration::seconds(210)),
-            refresh_token: Some(&refresh),
-            authorized_by_user_id: user::PAUL,
-        },
-    )
-    .await
-    .unwrap();
-    tx.commit().await.unwrap();
+    let token = company_kept(&api, &id, &authority, &resource).await;
+    // Runs do not see it.
+    assert!(!runs_see(&api, "chacun").await);
+    // Tested by Paul, who has not authorized it for himself: refused.
+    let test = format!("/admin/connectors/{id}/test");
+    let refused = paul.post(&test, json!({})).await;
+    assert_eq!(refused.status, StatusCode::CONFLICT, "{}", refused.text());
+    assert!(refused.text().contains(TEST_OWN_AUTHORIZATION));
+    // With his own: his alone is sent.
+    let pauls = person_authorized(&api, &id, user::PAUL, &authority, &resource).await;
     let outcome = tested(&paul, &id).await;
-    assert!(said(&outcome).contains(OAUTH_EACH_PERSON), "{outcome}");
+    assert_eq!(said(&outcome), "", "{outcome}");
+    // Runs still do not open it with the company's.
+    assert!(!runs_see(&api, "chacun").await);
     let renewals = authority.requests();
     assert!(
         renewals.iter().all(|asked| asked.endpoint != "token"),
@@ -125,6 +103,10 @@ async fn a_server_each_person_authorizes_never_opens_with_the_company_s() {
     assert!(
         sent.iter()
             .all(|header| header.as_deref() != Some(&format!("Bearer {token}")))
+    );
+    assert!(
+        sent.iter()
+            .any(|header| header.as_deref() == Some(&format!("Bearer {pauls}")))
     );
     assert_eq!(
         paul.delete(&format!("/admin/connectors/{id}")).await.status,
