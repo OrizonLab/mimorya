@@ -206,8 +206,7 @@ async fn answer_and_judge(
             system,
             history: Vec::new(),
             user_turn: format!("{}\n\n{READ_ONLY}", case.request),
-            unavailable_connectors: tools.unavailable_connectors,
-            connectors_to_authorize: tools.connectors_to_authorize,
+            unavailable: tools.unavailable,
             evidence: Vec::new(),
         })
         .await?;

@@ -14,7 +14,8 @@ use mimorya_agent::llm::{Effort, LlmMessage, ModelRouter, PriceTable};
 
 use mimorya_agent::runtime::{
     AgentRuntime, ApprovalDecisions, BudgetLimits, EnginePorts, InterruptedCall, RunCheckpoint,
-    RunConfig, RunEvent, RuntimeDeps, StartInput, VerificationConfig, build_user_turn,
+    RunConfig, RunEvent, RuntimeDeps, StartInput, UnavailableConnectors, VerificationConfig,
+    build_user_turn,
 };
 use mimorya_core::authz::Actor;
 use mimorya_core::autonomy::{AutonomyLevel, AutonomyPolicy};
@@ -179,8 +180,7 @@ impl RunExecutor {
                         system,
                         history,
                         user_turn: build_user_turn(&text, &memories),
-                        unavailable_connectors: unavailable.unavailable_connectors,
-                        connectors_to_authorize: unavailable.connectors_to_authorize,
+                        unavailable,
                         evidence,
                     })
                     .await?;
@@ -227,7 +227,7 @@ impl RunExecutor {
         ports: &EnginePorts,
         actor: Actor,
         fence: &LeaseFence,
-    ) -> anyhow::Result<(AgentRuntime, Unavailable)> {
+    ) -> anyhow::Result<(AgentRuntime, UnavailableConnectors)> {
         // A run awaiting approval may be resumed after a restart without a
         // provider, or after its company changed or removed its own.
         let Some(provider) = self.llm.provider_for(access.subject.tenant_id).await? else {
@@ -274,18 +274,6 @@ impl RunExecutor {
                 handoff: run.mission_id.is_some(),
             },
         );
-        let unavailable = Unavailable {
-            unavailable_connectors: tools.unavailable_connectors,
-            connectors_to_authorize: tools.connectors_to_authorize,
-        };
-        Ok((runtime, unavailable))
+        Ok((runtime, tools.unavailable))
     }
-}
-
-/// The connectors in reach of a run's user that could not start (told to a
-/// run that starts, ADR-048), and those of them they are to authorize for
-/// themself (ADR-174).
-struct Unavailable {
-    unavailable_connectors: Vec<String>,
-    connectors_to_authorize: Vec<String>,
 }

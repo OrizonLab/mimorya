@@ -24,7 +24,7 @@ use super::state::{PendingCalls, RunCheckpoint};
 use super::tool_calls::{ToolCallProcessor, order_by_request};
 use super::tool_refusals::{Since, since, why_not_run};
 use super::types::{ApprovalDecisions, RunConfig, RunOutcome, RuntimeDeps};
-use super::unavailable::with_unavailable_connectors;
+use super::unavailable::UnavailableConnectors;
 use super::verification::correction_message;
 use crate::llm::{LlmMessage, LlmResponse, LlmToolCall, LlmToolResult, StopReason, TaskClass};
 
@@ -37,9 +37,7 @@ pub struct StartInput {
     pub history: Vec<LlmMessage>,
     pub user_turn: String,
     /// Connectors in reach of the user that could not start (ADR-048).
-    pub unavailable_connectors: Vec<String>,
-    /// Those of them the user is to authorize for themself (ADR-174).
-    pub connectors_to_authorize: Vec<String>,
+    pub unavailable: UnavailableConnectors,
     /// Sources a mission's earlier stages collected (ADR-089): an answer
     /// may cite them.
     pub evidence: Vec<Citation>,
@@ -63,22 +61,14 @@ impl AgentRuntime {
 
     pub async fn start(&self, input: StartInput) -> anyhow::Result<RunOutcome> {
         let mut messages = input.history;
-        let connectors = input.unavailable_connectors;
-        let to_authorize = input.connectors_to_authorize;
-        let turn = with_unavailable_connectors(&connectors, &to_authorize, input.user_turn);
-        messages.push(LlmMessage::user(turn));
+        messages.push(LlmMessage::user(input.unavailable.note(input.user_turn)));
         let mut state = RunCheckpoint::new(input.system, messages);
         state.evidence = input.evidence;
         let events = &self.deps.ports.events;
         let objective = self.config.objective.clone();
         events.emit(RunEvent::RunStarted { objective }).await?;
-        if !connectors.is_empty() {
-            events
-                .emit(RunEvent::ConnectorsUnavailable {
-                    connectors,
-                    to_authorize,
-                })
-                .await?;
+        if let Some(unavailable) = input.unavailable.event() {
+            events.emit(unavailable).await?;
         }
         // Saved before the first model call: a run the service stops from
         // here on can be taken up again (ADR-053).

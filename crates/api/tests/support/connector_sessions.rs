@@ -28,7 +28,15 @@ pub fn said(outcome: &Value) -> String {
 
 /// A run serving Marc, who may use connectors: on a server the company
 /// authorizes, as any run (ADR-174).
-pub const RUN: Served = Served::Person(user::MARC);
+pub const RUN: Served = as_person(user::MARC);
+
+/// A run serving `user`, who may use connectors.
+pub const fn as_person(user: Uuid) -> Served {
+    Served::Person {
+        user,
+        uses_connectors: true,
+    }
+}
 
 /// Whether runs are given the server's tools (prefixed with `prefix`).
 pub async fn runs_see(api: &TestApi, prefix: &str) -> bool {

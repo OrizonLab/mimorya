@@ -335,3 +335,40 @@ async fn another_company_neither_reads_nor_takes_one() {
     assert_eq!(token_mark(&db, server, user::MARC).await, Some(7));
     assert_eq!(token_mark(&db, server, user::PAUL).await, None);
 }
+
+/// What the runs wrote on a server each person authorizes before each
+/// person's session existed (ADR-174).
+const STALE: &str = "Autorisation OAuth donnée par chaque personne pour elle-même : aucune \
+     session ne s’ouvre encore avec les autorisations des personnes";
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn the_stale_error_of_a_server_each_person_authorizes_is_cleared() {
+    let urls = support::urls(|_| {});
+    let db = support::connect(&urls.app).await;
+    let (stale, other) = (
+        connector(&db, "perime").await,
+        connector(&db, "autre").await,
+    );
+    let mut tx = db.begin(tenant::ID).await.unwrap();
+    for (id, error) in [(stale, STALE), (other, "Serveur injoignable")] {
+        sqlx::query(
+            "update connector_instances set status = 'error', last_error = $2 where id = $1",
+        )
+        .bind(id)
+        .bind(error)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    }
+    tx.commit().await.unwrap();
+    // The migration, as the owner runs it.
+    let owner = support::connect(&urls.owner).await;
+    let migration = include_str!("../migrations/0077_person_connector_status.sql");
+    sqlx::raw_sql(migration)
+        .execute(owner.pool())
+        .await
+        .unwrap();
+    assert_eq!(version(&db, stale).await.1, "untested");
+    assert_eq!(version(&db, other).await.1, "error");
+}

@@ -47,7 +47,8 @@ pub use admin_starts::{AdminStart, MAX_ADMIN_STARTS, TOO_MANY_ADMIN_STARTS};
 use cache::RuntimeCache;
 pub use cache::{MAX_PERSON_SESSIONS, PERSON_IDLE, RETRY_AFTER};
 pub use credential::{
-    Credential, CredentialFor, credential_for, credential_of, each_person, given_under,
+    Credential, CredentialFor, UNOPENED_PERSON, credential_for, credential_of, each_person,
+    given_under,
 };
 pub use failures::{failure, opened};
 pub use grants::{AUTHORIZATION_REMOVED, SealedGrant, seal_grant, seal_person_grant};
@@ -55,7 +56,7 @@ pub use mimorya_connectors::outbound::CONNECTOR_USE;
 pub use policies::{Policies, read_policies, scoped_overrides};
 pub use reach::{to_authorize_in_reach, unavailable_in_reach};
 pub use revocation::{LetGo, REVOCATION_BOUND, Unkept, revoke_within};
-pub use served::{Served, TO_AUTHORIZE, WITHHELD_PERSONAL};
+pub use served::{NOT_FOR_THEM, Served, TO_AUTHORIZE, WITHHELD_PERSONAL};
 pub use tenant_tools::TenantTools;
 
 use super::invalidations::{Invalidation, Invalidations};
@@ -196,6 +197,11 @@ impl ConnectorService {
     /// Releases the people's instances no run was given for a while.
     pub async fn release_idle(&self) {
         self.cache.release_idle().await;
+    }
+
+    /// How many people's instances this process keeps live (ADR-174).
+    pub async fn person_sessions(&self) -> usize {
+        self.cache.person_sessions().await
     }
 
     /// The instance answered a test: the next run tries it again at once,

@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use mimorya_agent::llm::{LlmProvider, ModelRouter, PriceTable};
+use mimorya_agent::runtime::UnavailableConnectors;
 use mimorya_agent::runtime::{
     AgentRuntime, BudgetLimits, DEFAULT_BUDGET, NewMemory, RunConfig, RunOutcome, RuntimeDeps,
     StartInput, VerificationConfig,
@@ -260,8 +261,10 @@ impl Harness {
                 system: "SYSTEM".into(),
                 history: Vec::new(),
                 user_turn: "Fais la synthèse".into(),
-                unavailable_connectors,
-                connectors_to_authorize: Vec::new(),
+                unavailable: UnavailableConnectors {
+                    connectors: unavailable_connectors,
+                    to_authorize: Vec::new(),
+                },
                 evidence: Vec::new(),
             })
             .await
@@ -275,8 +278,7 @@ impl Harness {
                 system: "SYSTEM".into(),
                 history: Vec::new(),
                 user_turn: "Fais la synthèse".into(),
-                unavailable_connectors: Vec::new(),
-                connectors_to_authorize: Vec::new(),
+                unavailable: Default::default(),
                 evidence,
             })
             .await

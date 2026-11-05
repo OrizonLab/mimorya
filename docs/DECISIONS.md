@@ -11077,36 +11077,51 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     mission ou d'un déclencheur, et la personne reliée d'une passerelle), démarrée avec
     sa propre autorisation (`credential_for`), jamais celle d'une autre ni celle de
     l'entreprise (`services/connectors/served.rs`, `Served::Person`). Un sous-agent prend
-    le registre d'outils de son parent, donc la même personne. Les instances sont gardées
-    par connecteur et par personne (`SessionKey`, `cache/people.rs`) et versionnées par
-    la date la plus récente entre la version du connecteur et le dernier renouvellement
-    de l'autorisation (`refreshed_at`) : une autorisation donnée de nouveau démarre une
+    le registre d'outils de son parent, donc la même personne. Rien n'est démarré, ni
+    son jeton envoyé, pour une personne qui n'utilise pas les connecteurs
+    (`connector:use`) : aucun de leurs outils ne lui serait donné. Les instances sont
+    gardées par connecteur et par personne (`SessionKey`, `cache/keys.rs`) et
+    versionnées par le couple (version du connecteur, dernier renouvellement de
+    l'autorisation, `refreshed_at`) : une autorisation donnée de nouveau démarre une
     nouvelle session. Un processus en garde au plus 200 ; la moins récemment utilisée
     est libérée pour faire place, et toute instance d'une personne est libérée après
-    quinze minutes sans run, par la maintenance de chaque minute. Le retrait d'une
-    autorisation par la personne, ou la désactivation de son compte, libère sa session
-    dans ce processus ; un autre processus ne la donne plus à aucun run (il relit
-    l'autorisation à chaque fois) et la libère quand elle devient inactive. Sans
-    autorisation, ou avec une autorisation donnée sous une autre déclaration, rien n'est
-    envoyé pour la personne. Le connecteur est nommé comme indisponible et comme « à
-    autoriser » : la note du tour dit au modèle de l'envoyer dans « Mon compte », et
-    l'événement `connectors_unavailable` porte `toAuthorize`. Une évaluation de
-    compétence ne sert personne (`Served::Evaluation`) : ces connecteurs y sont retenus
-    et nommés, même si la personne qui la demande les a autorisés. Ce qu'il advient de
-    l'instance d'une personne (refus, échec, autorisation absente) n'est pas écrit dans
-    l'état du connecteur, sauf des politiques d'outils illisibles ; un jeton de la
-    personne échu, refusé ou illisible lui est dit dans ses propres mots (lot 43d) ;
-    tests : `crates/api/tests/connector_person_sessions.rs` (Marc et Claire chacun avec
-    son jeton, leurs sessions gardées à part ; Léa, sans autorisation, ne reçoit rien et
-    rien n'est envoyé pour elle ; une évaluation retient le serveur ; une autorisation
-    donnée de nouveau démarre une nouvelle session ; un jeton refusé n'écrit rien dans
-    l'état ; un retrait rend le serveur « à autoriser » ; le run de Léa dit au modèle et
-    à l'utilisateur de l'autoriser dans « Mon compte », celui de Marc ne dit rien),
-    `skill_evaluation_tools.rs` (serveur retenu d'une évaluation demandée par Paul,
-    pourtant autorisé par lui), tests unitaires de `cache/people.rs` (une instance par
-    personne, libérée seule à son retrait, toutes à la modification du connecteur,
-    libérée après quinze minutes sans run, la moins récemment utilisée cédant la place,
-    celle de l'entreprise jamais comptée), de `reach.rs` et de
+    quinze minutes sans run, par la maintenance de chaque minute (`cache/people.rs`).
+    Une instance qu'un run tient encore (son registre garde ses outils) n'est jamais
+    libérée, ni pour inactivité ni pour faire place : son temps sans run part de la fin
+    du run, et la borne peut être dépassée tant que les runs les tiennent toutes. Le
+    retrait d'une autorisation par la personne, ou la désactivation de son compte,
+    libère sa session dans ce processus, et un démarrage en cours n'y est pas gardé ;
+    un autre processus ne la donne plus à aucun run (il relit l'autorisation à chaque
+    fois) et la libère quand elle devient inactive. Sans autorisation, avec une
+    autorisation donnée sous une autre déclaration, ou avec un jeton de la personne
+    échu, refusé par le serveur, inutilisable ou indéchiffrable, le connecteur est
+    nommé comme indisponible et « à autoriser » : la note du tour dit au modèle
+    d'envoyer la personne dans « Mon compte », et l'événement `connectors_unavailable`
+    porte `toAuthorize` (affiché par l'interface au lot 43g) ; rien n'est envoyé pour
+    elle sans autorisation ou avec un jeton échu. Une évaluation de compétence ne sert
+    personne (`Served::Evaluation`) : ces connecteurs y sont retenus et nommés, même si
+    la personne qui la demande les a autorisés. Ce qu'il advient de l'instance d'une
+    personne n'est pas écrit dans l'état du connecteur, sauf des politiques d'outils
+    illisibles ; l'erreur que les runs écrivaient avant ce lot sur ces serveurs
+    (« aucune session ne s'ouvre encore… ») est effacée (migration 0077). Tant que le
+    lot 43f ne renouvelle pas l'autorisation d'une personne, elle l'autorise de
+    nouveau quand son jeton échoit ; tests : `crates/api/tests/connector_person_sessions.rs`
+    (Marc et Claire chacun avec son jeton, leurs sessions gardées à part ; Léa, sans
+    autorisation, ne reçoit rien et rien n'est envoyé pour elle ; une évaluation retient
+    le serveur ; une autorisation donnée de nouveau démarre une nouvelle session ; un
+    retrait libère la session et rend le serveur « à autoriser » ; un jeton échu (jamais
+    envoyé) ou refusé le rend « à autoriser » ; rien n'est écrit dans l'état ; rien ne
+    démarre pour qui n'utilise pas les connecteurs ; la session d'un compte désactivé
+    est libérée ; le run de Léa dit au modèle et à l'événement de l'autoriser dans
+    « Mon compte », celui de Marc ne dit rien), `skill_evaluation_tools.rs` (serveur
+    retenu d'une évaluation demandée par Paul, pourtant autorisé par lui),
+    `crates/db/tests/connector_person_authorizations.rs` (erreur périmée effacée par la
+    migration, une autre gardée), tests unitaires de `cache/people.rs` (une instance par
+    personne, libérée seule à son retrait, toutes à la modification du connecteur ;
+    libérée après quinze minutes sans run ; la moins récemment utilisée cédant la place ;
+    celle de l'entreprise jamais comptée ; une instance tenue par un run jamais libérée,
+    ni pour inactivité ni pour faire place, la borne dépassée seulement quand toutes le
+    sont ; un démarrage en cours au retrait non gardé), de `reach.rs` et de
     `agent/src/runtime/unavailable.rs` (connecteurs à autoriser nommés dans la note, sans
     pouvoir la fermer) ; vérifiés par mutation (clé de session partagée, version sans
     l'autorisation, état écrit pour une personne, évaluation avec l'autorisation de qui

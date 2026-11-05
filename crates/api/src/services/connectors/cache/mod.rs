@@ -18,16 +18,17 @@ use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 
-use chrono::{DateTime, Utc};
 use mimorya_connectors::ConnectorRuntime;
 use tokio::sync::{Mutex, watch};
 use tokio::time::Instant;
 use uuid::Uuid;
 
 mod closed;
+mod keys;
 mod people;
 
 use closed::closed;
+pub use keys::{SessionKey, Version};
 pub use people::{MAX_PERSON_SESSIONS, PERSON_IDLE};
 
 /// How long a failed start is remembered before the next run tries again.
@@ -68,36 +69,9 @@ impl Unavailable {
     }
 }
 
-/// Whose instance: the company's, or one person's on a server each person
-/// authorizes (ADR-174).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct SessionKey {
-    pub instance: Uuid,
-    pub person: Option<Uuid>,
-}
-
-impl SessionKey {
-    /// One person's instance of a server each person authorizes.
-    pub fn person(instance: Uuid, person: Uuid) -> Self {
-        Self {
-            instance,
-            person: Some(person),
-        }
-    }
-}
-
-impl From<Uuid> for SessionKey {
-    fn from(instance: Uuid) -> Self {
-        Self {
-            instance,
-            person: None,
-        }
-    }
-}
-
 enum Slot {
     Live {
-        version: DateTime<Utc>,
+        version: Version,
         runtime: Arc<ConnectorRuntime>,
         /// When it started: a session closed soon after is a failed start.
         since: Instant,
@@ -105,14 +79,14 @@ enum Slot {
         used: Instant,
     },
     Failed {
-        version: DateTime<Utc>,
+        version: Version,
         until: Instant,
         message: String,
     },
     /// A start in progress: `done` changes or closes when it ends, or when
     /// the run that makes it gives it up.
     Starting {
-        version: DateTime<Utc>,
+        version: Version,
         done: watch::Receiver<()>,
     },
 }
@@ -124,14 +98,18 @@ struct State {
     generation: u64,
     /// The generation at which each instance was last invalidated.
     invalidated: HashMap<Uuid, u64>,
+    /// The generation at which each person's instance was last forgotten,
+    /// and when: forgotten in turn once no start could still read it.
+    forgotten: HashMap<SessionKey, (u64, Instant)>,
 }
 
 impl State {
-    /// Whether the instance was invalidated after the caller read it.
+    /// Whether the instance, or the person's, was invalidated after the
+    /// caller read it.
     fn stale(&self, key: SessionKey, ticket: u64) -> bool {
-        self.invalidated
-            .get(&key.instance)
-            .is_some_and(|at| *at > ticket)
+        let instance = self.invalidated.get(&key.instance);
+        let person = self.forgotten.get(&key).map(|(at, _)| at);
+        instance.into_iter().chain(person).any(|at| *at > ticket)
     }
 
     /// Releases every slot of the instance, the people's included.
@@ -166,7 +144,7 @@ impl RuntimeCache {
     pub async fn get_or_start<F, Fut>(
         &self,
         key: impl Into<SessionKey>,
-        version: DateTime<Utc>,
+        version: impl Into<Version>,
         ticket: u64,
         start: F,
     ) -> Result<Arc<ConnectorRuntime>, Unavailable>
@@ -174,7 +152,7 @@ impl RuntimeCache {
         F: FnOnce() -> Fut,
         Fut: Future<Output = Result<ConnectorRuntime, String>>,
     {
-        let id = key.into();
+        let (id, version) = (key.into(), version.into());
         // Dropped when this start ends, or is given up: it wakes the others.
         let (_finished, done) = loop {
             let mut waiting = {
@@ -300,13 +278,24 @@ impl RuntimeCache {
     }
 
     /// Releases a person's instance of a server, and forgets their failed
-    /// start: their authorization went (ADR-174).
+    /// start: their authorization went (ADR-174). A start of it in
+    /// progress is not kept either.
     pub async fn forget_person(&self, id: Uuid, person: Uuid) {
         let mut state = self.state.lock().await;
+        state.generation += 1;
         let key = SessionKey::person(id, person);
-        if !matches!(state.slots.get(&key), Some(Slot::Starting { .. })) {
-            release(state.slots.remove(&key));
-        }
+        let forgotten = (state.generation, Instant::now());
+        state.forgotten.insert(key, forgotten);
+        release(state.slots.remove(&key));
+    }
+
+    /// How many people's instances this process keeps live.
+    pub async fn person_sessions(&self) -> usize {
+        let state = self.state.lock().await;
+        let live = |(key, slot): &(&SessionKey, &Slot)| {
+            key.person.is_some() && matches!(slot, Slot::Live { .. })
+        };
+        state.slots.iter().filter(live).count()
     }
 
     /// Releases the people's instances no run was given for a while, and

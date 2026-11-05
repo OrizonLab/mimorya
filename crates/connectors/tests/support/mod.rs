@@ -245,8 +245,7 @@ impl Scenario {
                 system,
                 history: Vec::new(),
                 user_turn: build_user_turn(REQUEST, &memories),
-                unavailable_connectors: Vec::new(),
-                connectors_to_authorize: Vec::new(),
+                unavailable: Default::default(),
                 evidence: Vec::new(),
             })
             .await

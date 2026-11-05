@@ -18,18 +18,22 @@ use mimorya_db::repositories::connectors::{
 };
 use uuid::Uuid;
 
-use super::cache::{Origin, SessionKey, Unavailable};
+use mimorya_connectors::mcp::{OAUTH_EXPIRED_PERSON, OAUTH_REFUSED_PERSON, OAUTH_UNUSABLE_PERSON};
+
+use super::cache::{Origin, SessionKey, Unavailable, Version};
 use super::{
     ConnectorIssue, ConnectorService, Credential, CredentialFor, Policies, TenantTools,
-    credential_for, credential_of, each_person, failure, read_policies, scoped_overrides,
+    UNOPENED_PERSON, credential_for, credential_of, each_person, failure, read_policies,
+    scoped_overrides,
 };
 
 /// Whom a run's connectors are started for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Served {
-    /// The person a run serves: on a server each person authorizes, their
-    /// own authorization (ADR-174).
-    Person(Uuid),
+    /// The person a run serves, and whether they may use connectors: on a
+    /// server each person authorizes, their own authorization, and nothing
+    /// sent without that right (ADR-174).
+    Person { user: Uuid, uses_connectors: bool },
     /// A skill's evaluation: no one's authorization.
     Evaluation,
 }
@@ -38,6 +42,11 @@ pub enum Served {
 /// has not authorized it (ADR-174).
 pub const TO_AUTHORIZE: &str = "Connecteur que chaque personne autorise pour elle-même : à \
      autoriser dans « Mon compte »";
+
+/// Why one is not started for a person who may not use connectors: their
+/// token is not sent for tools they could not be given.
+pub const NOT_FOR_THEM: &str = "Connecteur que chaque personne autorise pour elle-même : la \
+     personne servie n’utilise pas les connecteurs";
 
 /// Why one is missing from an evaluation, which serves no one.
 pub const WITHHELD_PERSONAL: &str = "Connecteur que chaque personne autorise pour elle-même : \
@@ -144,7 +153,15 @@ impl ConnectorService {
                     None
                 }
                 Err(unavailable) => {
-                    result.issues.push(issue("Connecteur indisponible", false));
+                    // A person's token that no longer serves is theirs to
+                    // authorize anew, in their account.
+                    let theirs = !shared && theirs_to_authorize(&unavailable.message);
+                    let said = if theirs {
+                        TO_AUTHORIZE
+                    } else {
+                        "Connecteur indisponible"
+                    };
+                    result.issues.push(issue(said, theirs));
                     match unavailable.origin {
                         Origin::Changed => continue,
                         Origin::Remembered => {}
@@ -179,7 +196,16 @@ impl ConnectorService {
         served: Served,
     ) -> anyhow::Result<Plan> {
         let person = match served {
-            Served::Person(person) => person,
+            Served::Person {
+                uses_connectors: false,
+                ..
+            } if each_person(instance) => {
+                return Ok(Plan::Missing {
+                    message: NOT_FOR_THEM,
+                    to_authorize: false,
+                });
+            }
+            Served::Person { user, .. } => user,
             Served::Evaluation if each_person(instance) => {
                 return Ok(Plan::Missing {
                     message: WITHHELD_PERSONAL,
@@ -222,18 +248,20 @@ impl ConnectorService {
             }
             Plan::Shared(credential) => (
                 SessionKey::from(instance.id),
-                instance.updated_at,
+                Version::from(instance.updated_at),
                 credential,
             ),
-            // Started again when the instance or the authorization changes:
-            // each is dated when it changes, so the later of the two does.
+            // Started again when the instance or the authorization changes.
             Plan::Own {
                 person,
                 credential,
                 since,
             } => (
                 SessionKey::person(instance.id, person),
-                instance.updated_at.max(since),
+                Version {
+                    connector: instance.updated_at,
+                    authorization: Some(since),
+                },
                 credential,
             ),
         };
@@ -271,7 +299,7 @@ impl ConnectorService {
         &self,
         instance: &ConnectorInstanceRow,
         key: SessionKey,
-        version: DateTime<Utc>,
+        version: Version,
         credential: anyhow::Result<Credential>,
         ticket: u64,
     ) -> Result<std::sync::Arc<mimorya_connectors::ConnectorRuntime>, Unavailable> {
@@ -284,4 +312,18 @@ impl ConnectorService {
             })
             .await
     }
+}
+
+/// Whether a person's instance failed for their authorization's token,
+/// expired, refused by the server, unusable or unopenable: theirs to give
+/// anew (ADR-174).
+fn theirs_to_authorize(message: &str) -> bool {
+    [
+        OAUTH_EXPIRED_PERSON,
+        OAUTH_REFUSED_PERSON,
+        OAUTH_UNUSABLE_PERSON,
+        UNOPENED_PERSON,
+    ]
+    .iter()
+    .any(|said| message.starts_with(said))
 }

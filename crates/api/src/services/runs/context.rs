@@ -4,7 +4,8 @@
 
 use chrono::{DateTime, Utc};
 use mimorya_agent::runtime::{
-    EnginePorts, MemoryHit, SkillSummary, UserProfileContext, build_system_prompt,
+    EnginePorts, MemoryHit, SkillSummary, UnavailableConnectors, UserProfileContext,
+    build_system_prompt,
 };
 use mimorya_agent::tools::ToolRegistry;
 use mimorya_agent::tools::platform::platform_tools;
@@ -17,7 +18,8 @@ use uuid::Uuid;
 
 use crate::services::access::AccessContext;
 use crate::services::connectors::{
-    ConnectorService, Served, TenantTools, to_authorize_in_reach, unavailable_in_reach,
+    CONNECTOR_USE, ConnectorService, Served, TenantTools, to_authorize_in_reach,
+    unavailable_in_reach,
 };
 use crate::services::embeddings::{EmbeddingService, UsageBy};
 
@@ -28,8 +30,7 @@ const MEMORY_RECALL_LIMIT: i64 = 5;
 /// themself (ADR-174).
 pub struct RunTools {
     pub registry: ToolRegistry,
-    pub unavailable_connectors: Vec<String>,
-    pub connectors_to_authorize: Vec<String>,
+    pub unavailable: UnavailableConnectors,
 }
 
 /// The tools of a run serving `access`'s person: on a server each person
@@ -40,7 +41,11 @@ pub async fn build_run_tools(
     ports: &EnginePorts,
     connectors: &ConnectorService,
 ) -> anyhow::Result<RunTools> {
-    let served = Served::Person(access.subject.user_id);
+    let served = Served::Person {
+        user: access.subject.user_id,
+        // Nothing sent for tools they could not be given (ADR-174).
+        uses_connectors: access.engine.has(&access.subject, CONNECTOR_USE, actor),
+    };
     let connector_tools = connectors
         .tools_for(access.subject.tenant_id, served)
         .await?;
@@ -55,8 +60,10 @@ pub fn run_tools(
     connector_tools: TenantTools,
 ) -> anyhow::Result<RunTools> {
     let holds = |permission: &str| access.engine.has(&access.subject, permission, actor);
-    let unavailable_connectors = unavailable_in_reach(&connector_tools.issues, holds);
-    let connectors_to_authorize = to_authorize_in_reach(&connector_tools.issues, holds);
+    let unavailable = UnavailableConnectors {
+        connectors: unavailable_in_reach(&connector_tools.issues, holds),
+        to_authorize: to_authorize_in_reach(&connector_tools.issues, holds),
+    };
     let mut tools = platform_tools(
         ports.memory.clone(),
         ports.skills.clone(),
@@ -66,8 +73,7 @@ pub fn run_tools(
     let registry = ToolRegistry::new(tools, &connector_tools.overrides)?;
     Ok(RunTools {
         registry,
-        unavailable_connectors,
-        connectors_to_authorize,
+        unavailable,
     })
 }
 

@@ -74,13 +74,18 @@ pub async fn credential_of(
     }
     let sealed_as = access_sealed_as(instance.id);
     Ok(open_access(
-        secrets,
-        tenant_id,
-        &sealed_as,
-        access,
-        "ce connecteur",
+        secrets, tenant_id, &sealed_as, access, UNOPENED,
     ))
 }
+
+/// What a company's authorization whose token the platform can no longer
+/// open says.
+const UNOPENED: &str = "Le jeton de l’autorisation OAuth ne peut pas être déchiffré : autorisez \
+     de nouveau ce connecteur";
+
+/// The same of a person's own (ADR-174): they authorize it again.
+pub const UNOPENED_PERSON: &str = "Le jeton de votre autorisation OAuth ne peut pas être \
+     déchiffré : autorisez de nouveau ce serveur dans « Mon compte »";
 
 /// What an instance starts with for one person (ADR-174).
 pub enum CredentialFor {
@@ -130,9 +135,8 @@ pub async fn credential_for(
     }
     let sealed_as = person_access_sealed_as(instance.id, user_id);
     let (tenant_id, since) = (instance.tenant_id, access.refreshed_at);
-    let again = "ce serveur dans « Mon compte »";
     Ok(CredentialFor::Own {
-        credential: open_access(secrets, tenant_id, &sealed_as, access, again),
+        credential: open_access(secrets, tenant_id, &sealed_as, access, UNOPENED_PERSON),
         since,
     })
 }
@@ -143,13 +147,13 @@ pub fn each_person(instance: &ConnectorInstanceRow) -> bool {
 }
 
 /// The access token kept, opened under the name it was sealed as, with
-/// when it expires; `again` says what to authorize again if it cannot be.
+/// when it expires; `unopened` says what to do if it cannot be.
 fn open_access(
     secrets: &SecretStore,
     tenant_id: Uuid,
     sealed_as: &str,
     access: ConnectorAccessToken,
-    again: &str,
+    unopened: &'static str,
 ) -> anyhow::Result<Credential> {
     let Ok(cipher) = secrets.cipher() else {
         return Err(anyhow!(
@@ -161,10 +165,7 @@ fn open_access(
             token: Some(token),
             expires_at: access.expires_at,
         }),
-        Err(_) => Err(anyhow!(
-            "Le jeton de l’autorisation OAuth ne peut pas être déchiffré : autorisez de nouveau \
-             {again}"
-        )),
+        Err(_) => Err(anyhow!(unopened)),
     }
 }
 

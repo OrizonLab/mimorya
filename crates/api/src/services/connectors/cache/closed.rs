@@ -7,11 +7,10 @@
 //! session ended, when the session dates its end (ADR-165), or else until
 //! a run finds it closed.
 
-use chrono::{DateTime, Utc};
 use std::time::Duration;
 use tokio::time::Instant;
 
-use super::{RETRY_AFTER, SessionKey, Slot, State, Unavailable, release};
+use super::{RETRY_AFTER, SessionKey, Slot, State, Unavailable, Version, release};
 
 /// A session that lived less than this was a failed start.
 pub const QUICK_EXIT: Duration = RETRY_AFTER;
@@ -24,11 +23,7 @@ pub const EXITED_AT_ONCE: &str = "Le serveur a cessé de répondre moins d’une
 /// Releases the live instance of this version if its session closed for
 /// good, to be started again; remembered as a failed start, and told so,
 /// if it lived less than `QUICK_EXIT`.
-pub(super) fn closed(
-    state: &mut State,
-    id: SessionKey,
-    version: DateTime<Utc>,
-) -> Option<Unavailable> {
+pub(super) fn closed(state: &mut State, id: SessionKey, version: Version) -> Option<Unavailable> {
     let lived = match state.slots.get(&id) {
         Some(Slot::Live {
             version: v,

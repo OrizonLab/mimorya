@@ -2,8 +2,11 @@
 //! instance of the person it serves, started with their own authorization,
 //! never another's; one instance per person, kept for their next runs,
 //! started again once they authorize anew, released when they withdraw it.
-//! A person who has not authorized it is told to, in their account, and
-//! nothing is sent for them; an evaluation serves no one and withholds it.
+//! A person who has not authorized it, or whose token expired or was
+//! refused, is told to, in their account, and nothing is sent for them
+//! unless their token is; nor for one who may not use connectors; an
+//! evaluation serves no one and withholds it. A withdrawal, or an account
+//! disabled, releases the session.
 //! None of this is written on the connector's status, which every
 //! administrator sees.
 
@@ -13,14 +16,17 @@ use axum::http::StatusCode;
 use mimorya_agent::llm::LlmMessage;
 use mimorya_agent::testing::ScriptedStep;
 use mimorya_api::services::connectors::{
-    ConnectorService, Served, TO_AUTHORIZE, WITHHELD_PERSONAL,
+    ConnectorService, NOT_FOR_THEM, Served, TO_AUTHORIZE, WITHHELD_PERSONAL,
 };
 use mimorya_connectors::testing::{FakeAuthorizationServer, ProtectedMcp};
 use mimorya_core::demo::{tenant, user};
 use serde_json::{Value, json};
-use support::connector_sessions::sees_for;
+use support::accounts::{activate, create_account};
+use support::connector_sessions::{as_person, sees_for};
 use support::mcp::{PRIVATE_DEPLOYMENT, listed};
-use support::person_authorizations::{declared_per_person, person_authorized};
+use support::person_authorizations::{
+    declared_per_person, person_authorized, person_authorized_until,
+};
 use support::runs::start_run;
 use support::{Client, TestApi};
 
@@ -74,9 +80,9 @@ async fn each_person_s_runs_use_their_own_authorization() {
     let before = status(&paul, &id).await;
     let connectors = &api.app.services.connectors;
     let (as_marc, as_claire, as_lea) = (
-        Served::Person(user::MARC),
-        Served::Person(user::CLAIRE),
-        Served::Person(user::LEA),
+        as_person(user::MARC),
+        as_person(user::CLAIRE),
+        as_person(user::LEA),
     );
 
     // Marc's and Claire's runs, each with their own.
@@ -109,27 +115,86 @@ async fn each_person_s_runs_use_their_own_authorization() {
     assert_eq!(server.authorizations().len(), requests);
 
     // Marc authorizes anew: his next run starts with his new token.
+    assert_eq!(connectors.person_sessions().await, 2);
     let renewed = person_authorized(&api, &id, user::MARC, &authority, &resource).await;
     assert!(sees_for(connectors, "chacun", as_marc).await);
     assert!(sent(&server, &renewed) > 0);
-    // Given anew, then revoked at the authorization server: his next run
-    // starts with it, refused; his runs alone go without the server.
+    assert_eq!(connectors.person_sessions().await, 2);
+    // He withdraws it: his session goes, he is told to authorize it again.
+    let path = format!("/account/connector-authorizations/{id}");
+    assert_eq!(marc.delete(&path).await.status, StatusCode::OK);
+    assert_eq!(connectors.person_sessions().await, 1);
+    assert_eq!(
+        issue_for(connectors, as_marc).await,
+        Some((TO_AUTHORIZE.to_string(), true))
+    );
+
+    // His own expired, then refused at the authorization server: never
+    // sent expired, refused when sent; his to authorize again either way.
+    let past = Some(chrono::Utc::now() - chrono::Duration::minutes(5));
+    let expired = person_authorized_until(&api, &id, user::MARC, &authority, &resource, past).await;
+    assert!(!sees_for(connectors, "chacun", as_marc).await);
+    assert_eq!(sent(&server, &expired), 0);
+    let issue = issue_for(connectors, as_marc).await;
+    assert_eq!(issue, Some((TO_AUTHORIZE.to_string(), true)));
     let refused = person_authorized(&api, &id, user::MARC, &authority, &resource).await;
     authority.revoke_all();
     assert!(!sees_for(connectors, "chacun", as_marc).await);
     assert!(sent(&server, &refused) > 0);
     let issue = issue_for(connectors, as_marc).await;
-    assert_eq!(issue, Some(("Connecteur indisponible".to_string(), false)));
+    assert_eq!(issue, Some((TO_AUTHORIZE.to_string(), true)));
     // None of it is the server's status.
     assert_eq!(status(&paul, &id).await, before);
-
-    // Marc withdraws his: told to authorize it again.
-    let path = format!("/account/connector-authorizations/{id}");
-    assert_eq!(marc.delete(&path).await.status, StatusCode::OK);
     assert_eq!(
-        issue_for(connectors, as_marc).await,
-        Some((TO_AUTHORIZE.to_string(), true))
+        paul.delete(&format!("/admin/connectors/{id}")).await.status,
+        StatusCode::OK
     );
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn nothing_starts_for_who_may_not_use_it_and_a_disabled_account_s_session_goes() {
+    let api = TestApi::start_with(&PRIVATE_DEPLOYMENT).await;
+    let paul = api.sign_in(user::PAUL).await;
+    let authority = FakeAuthorizationServer::start().await;
+    let (server, id) = declared_per_person(&paul, &authority, "partis").await;
+    let resource = listed(&paul, &id).await["mcp"]["oauth"]["resource"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let connectors = &api.app.services.connectors;
+
+    // Marc authorized it, then may no longer use connectors: his token is
+    // not sent for tools he could not be given.
+    let marcs = person_authorized(&api, &id, user::MARC, &authority, &resource).await;
+    let barred = Served::Person {
+        user: user::MARC,
+        uses_connectors: false,
+    };
+    assert!(!sees_for(connectors, "partis", barred).await);
+    assert_eq!(sent(&server, &marcs), 0);
+    let tools = connectors.tools_for(tenant::ID, barred).await.unwrap();
+    let issue = tools
+        .issues
+        .iter()
+        .find(|issue| issue.connector_type == "mcp");
+    assert!(issue.is_some_and(|issue| issue.message == NOT_FOR_THEM && !issue.to_authorize));
+    assert_eq!(connectors.person_sessions().await, 0);
+
+    // An account disabled: its session goes with its authorizations.
+    let mut account = create_account(&paul, "session.partie").await;
+    activate(&api, &mut account).await;
+    person_authorized(&api, &id, account.id, &authority, &resource).await;
+    assert!(sees_for(connectors, "partis", as_person(account.id)).await);
+    assert_eq!(connectors.person_sessions().await, 1);
+    let disabled = paul
+        .patch(
+            &format!("/admin/users/{}", account.id),
+            json!({ "status": "disabled" }),
+        )
+        .await;
+    assert_eq!(disabled.status, StatusCode::OK, "{}", disabled.text());
+    assert_eq!(connectors.person_sessions().await, 0);
     assert_eq!(
         paul.delete(&format!("/admin/connectors/{id}")).await.status,
         StatusCode::OK

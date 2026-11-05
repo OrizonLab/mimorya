@@ -1,14 +1,21 @@
 //! The instances each person has of a server each person authorizes
 //! (ADR-174): one per connector and person, so as many as the people who
-//! run with it. Bounded in number per process, the one no run was given
-//! for the longest released to make room; released after `PERSON_IDLE`
-//! without a run, so that a person who stopped using a server does not
-//! keep a session, nor the token it holds, open here. Their failed starts
-//! are forgotten once over, not to pile up one per person. The company's
-//! instances, one per connector, are neither counted nor released here.
+//! run with it. Bounded in number per process, the one no run used for the
+//! longest released to make room; released after `PERSON_IDLE` without a
+//! run, so that a person who stopped using a server does not keep a
+//! session, nor the token it holds, open here. An instance a run still
+//! holds (its registry keeps the tools) is never released, neither for
+//! being idle nor to make room: its time without a run starts when the run
+//! lets it go, and the bound may be passed while every instance is held.
+//! Their failed starts are forgotten once over, not to pile up one per
+//! person, and so are the marks of their withdrawn authorizations. The
+//! company's instances, one per connector, are neither counted nor
+//! released here.
 
+use std::sync::Arc;
 use std::time::Duration;
 
+use mimorya_connectors::ConnectorRuntime;
 use tokio::time::Instant;
 
 use super::{SessionKey, Slot, State, release};
@@ -19,43 +26,59 @@ pub const MAX_PERSON_SESSIONS: usize = 200;
 /// How long a person's instance is kept without a run.
 pub const PERSON_IDLE: Duration = Duration::from_secs(15 * 60);
 
-/// Releases the people's instances unused for `PERSON_IDLE` at `now`, and
-/// forgets their failed starts over at `now`.
+/// Whether a run holds the instance now: its tools, which only the cache
+/// holds otherwise, are in a run's registry.
+fn held(runtime: &ConnectorRuntime) -> bool {
+    runtime.tools.iter().any(|tool| Arc::strong_count(tool) > 1)
+}
+
+/// Releases the people's instances unused for `PERSON_IDLE` at `now`, a
+/// held one counted as used now, and forgets their failed starts over at
+/// `now`.
 pub(super) fn release_idle(state: &mut State, now: Instant) {
-    let gone: Vec<SessionKey> = state
-        .slots
-        .iter()
-        .filter(|(key, _)| key.person.is_some())
-        .filter(|(_, slot)| match slot {
-            Slot::Live { used, .. } => now.saturating_duration_since(*used) >= PERSON_IDLE,
-            Slot::Failed { until, .. } => *until <= now,
-            Slot::Starting { .. } => false,
-        })
-        .map(|(key, _)| *key)
-        .collect();
+    let mut gone = Vec::new();
+    for (key, slot) in state.slots.iter_mut() {
+        if key.person.is_none() {
+            continue;
+        }
+        match slot {
+            Slot::Live { runtime, used, .. } if held(runtime) => *used = now,
+            Slot::Live { used, .. } if now.saturating_duration_since(*used) >= PERSON_IDLE => {
+                gone.push(*key);
+            }
+            Slot::Failed { until, .. } if *until <= now => gone.push(*key),
+            _ => {}
+        }
+    }
     for key in gone {
         release(state.slots.remove(&key));
     }
+    // No start lasts that long: none can still have read what was forgotten.
+    state
+        .forgotten
+        .retain(|_, (_, at)| now.saturating_duration_since(*at) < PERSON_IDLE);
 }
 
 /// Makes room for one more person's instance, `coming`: while the process
-/// keeps `MAX_PERSON_SESSIONS` of them, the one no run was given for the
-/// longest is released.
+/// keeps `MAX_PERSON_SESSIONS` of them, the one no run used for the
+/// longest, and none holds, is released.
 pub(super) fn make_room(state: &mut State, coming: SessionKey) {
     loop {
-        let live: Vec<(SessionKey, Instant)> = state
+        let live: Vec<(SessionKey, Instant, bool)> = state
             .slots
             .iter()
             .filter(|(key, _)| key.person.is_some() && **key != coming)
             .filter_map(|(key, slot)| match slot {
-                Slot::Live { used, .. } => Some((*key, *used)),
+                Slot::Live { runtime, used, .. } => Some((*key, *used, held(runtime))),
                 _ => None,
             })
             .collect();
         if live.len() < MAX_PERSON_SESSIONS {
             return;
         }
-        let Some((oldest, _)) = live.into_iter().min_by_key(|(_, used)| *used) else {
+        let free = live.into_iter().filter(|(_, _, held)| !held);
+        let Some((oldest, _, _)) = free.min_by_key(|(_, used, _)| *used) else {
+            // Every one held by a run: the bound is passed until they end.
             return;
         };
         release(state.slots.remove(&oldest));
@@ -218,5 +241,97 @@ mod tests {
         );
         // The company's instance does not count, nor is released.
         assert!(!company.load(Ordering::SeqCst));
+    }
+
+    /// A start whose instance has tools, the demo connector's: the tools,
+    /// for a test to hold them as a run's registry would.
+    async fn with_tools(
+        cache: &RuntimeCache,
+        key: SessionKey,
+    ) -> (Arc<AtomicBool>, Vec<mimorya_core::tools::ToolRef>) {
+        let demo = mimorya_connectors::connector_type("demo_interventions")
+            .unwrap()
+            .instantiate(&serde_json::json!({}), Default::default())
+            .await
+            .unwrap();
+        let released = Arc::new(AtomicBool::new(false));
+        let runtime = ConnectorRuntime {
+            tools: demo.tools,
+            closer: Some(Box::new(Closer(released.clone()))),
+        };
+        let version = chrono::DateTime::<Utc>::UNIX_EPOCH;
+        let got = cache
+            .get_or_start(key, version, 0, || async { Ok(runtime) })
+            .await;
+        let Ok(live) = got else {
+            panic!("expected a live instance");
+        };
+        (released, live.tools.clone())
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn an_instance_a_run_holds_is_never_released_while_it_does() {
+        let cache = RuntimeCache::default();
+        let server = Uuid::new_v4();
+        let (marc, starts) = (Uuid::new_v4(), AtomicUsize::new(0));
+        let (flag, registry) = with_tools(&cache, SessionKey::person(server, marc)).await;
+        // A run longer than the idle time: kept while it holds the tools.
+        tokio::time::advance(PERSON_IDLE * 2).await;
+        cache.release_idle().await;
+        assert!(!released(&flag).await);
+        // Nor released to make room: others not held go first.
+        for _ in 0..MAX_PERSON_SESSIONS {
+            let key = SessionKey::person(server, Uuid::new_v4());
+            assert!(start(&cache, key, &starts).await.is_some());
+        }
+        assert!(!flag.load(Ordering::SeqCst));
+        assert_eq!(cache.person_sessions().await, MAX_PERSON_SESSIONS);
+        // The run over, its time without a run starts then.
+        drop(registry);
+        tokio::time::advance(PERSON_IDLE - Duration::from_secs(60)).await;
+        cache.release_idle().await;
+        assert!(!flag.load(Ordering::SeqCst));
+        tokio::time::advance(Duration::from_secs(60)).await;
+        cache.release_idle().await;
+        assert!(released(&flag).await);
+    }
+
+    #[tokio::test]
+    async fn the_bound_is_passed_only_while_runs_hold_every_instance() {
+        let cache = RuntimeCache::default();
+        let server = Uuid::new_v4();
+        let mut held = Vec::new();
+        for _ in 0..MAX_PERSON_SESSIONS {
+            let key = SessionKey::person(server, Uuid::new_v4());
+            held.push(with_tools(&cache, key).await);
+        }
+        let (flag, _registry) =
+            with_tools(&cache, SessionKey::person(server, Uuid::new_v4())).await;
+        assert_eq!(cache.person_sessions().await, MAX_PERSON_SESSIONS + 1);
+        assert!(held.iter().all(|(flag, _)| !flag.load(Ordering::SeqCst)));
+        assert!(!flag.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn a_start_under_way_when_the_authorization_goes_is_not_kept() {
+        let cache = RuntimeCache::default();
+        let (server, marc) = (Uuid::new_v4(), Uuid::new_v4());
+        let key = SessionKey::person(server, marc);
+        let ticket = cache.ticket().await;
+        let flag = std::sync::Mutex::new(None);
+        let starts = AtomicUsize::new(0);
+        let version = chrono::DateTime::<Utc>::UNIX_EPOCH;
+        let got = cache
+            .get_or_start(key, version, ticket, || async {
+                cache.forget_person(server, marc).await;
+                let (runtime, released) = started(&starts);
+                *flag.lock().unwrap() = Some(released);
+                Ok(runtime)
+            })
+            .await;
+        assert!(got.is_err());
+        let started = flag.lock().unwrap().clone().unwrap();
+        assert!(released(&started).await);
+        assert_eq!(cache.person_sessions().await, 0);
     }
 }

@@ -5,7 +5,32 @@
 //! authorizes for themself and the user has not (ADR-174): the model is
 //! told to send the user to their account to authorize them.
 
+use super::ports::RunEvent;
+
 const OPEN: &str = "<connecteurs_indisponibles>";
+
+/// The connectors in reach of the user that could not start, and those of
+/// them the user is to authorize for themself (ADR-048, ADR-174).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct UnavailableConnectors {
+    pub connectors: Vec<String>,
+    pub to_authorize: Vec<String>,
+}
+
+impl UnavailableConnectors {
+    /// The user turn the model is given: preceded by the note, if any.
+    pub(super) fn note(&self, user_turn: String) -> String {
+        with_unavailable_connectors(&self.connectors, &self.to_authorize, user_turn)
+    }
+
+    /// What the user is told, if anything.
+    pub(super) fn event(self) -> Option<RunEvent> {
+        (!self.connectors.is_empty()).then_some(RunEvent::ConnectorsUnavailable {
+            connectors: self.connectors,
+            to_authorize: self.to_authorize,
+        })
+    }
+}
 const CLOSE: &str = "</connecteurs_indisponibles>";
 
 /// The user turn, preceded by the note naming the unavailable connectors,
