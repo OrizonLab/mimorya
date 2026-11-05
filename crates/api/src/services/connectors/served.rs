@@ -327,3 +327,30 @@ fn theirs_to_authorize(message: &str) -> bool {
     .iter()
     .any(|said| message.starts_with(said))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_person_s_own_token_failing_is_theirs_to_authorize_again() {
+        for said in [
+            OAUTH_EXPIRED_PERSON,
+            OAUTH_REFUSED_PERSON,
+            OAUTH_UNUSABLE_PERSON,
+            UNOPENED_PERSON,
+        ] {
+            assert!(theirs_to_authorize(said), "{said}");
+            let detailed = format!("{said} (détail : HTTP 401)");
+            assert!(theirs_to_authorize(&detailed), "{detailed}");
+        }
+        // The server's own failures stay unavailable.
+        for said in [
+            "Le serveur MCP a renvoyé une erreur",
+            "Délai dépassé",
+            mimorya_connectors::mcp::OAUTH_REFUSED,
+        ] {
+            assert!(!theirs_to_authorize(said), "{said}");
+        }
+    }
+}

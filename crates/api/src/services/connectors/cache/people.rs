@@ -26,10 +26,11 @@ pub const MAX_PERSON_SESSIONS: usize = 200;
 /// How long a person's instance is kept without a run.
 pub const PERSON_IDLE: Duration = Duration::from_secs(15 * 60);
 
-/// Whether a run holds the instance now: its tools, which only the cache
-/// holds otherwise, are in a run's registry.
-fn held(runtime: &ConnectorRuntime) -> bool {
-    runtime.tools.iter().any(|tool| Arc::strong_count(tool) > 1)
+/// Whether a run holds the instance now: the instance itself, between its
+/// start and its tools' registry, or its tools, in that registry; only the
+/// cache holds either otherwise.
+fn held(runtime: &Arc<ConnectorRuntime>) -> bool {
+    Arc::strong_count(runtime) > 1 || runtime.tools.iter().any(|tool| Arc::strong_count(tool) > 1)
 }
 
 /// Releases the people's instances unused for `PERSON_IDLE` at `now`, a
@@ -288,6 +289,22 @@ mod tests {
         assert_eq!(cache.person_sessions().await, MAX_PERSON_SESSIONS);
         // The run over, its time without a run starts then.
         drop(registry);
+        let given = cache
+            .get_or_start(
+                SessionKey::person(server, marc),
+                chrono::DateTime::<Utc>::UNIX_EPOCH,
+                0,
+                || async { Err("jamais démarré".to_string()) },
+            )
+            .await;
+        let Ok(given) = given else {
+            panic!("expected the live instance");
+        };
+        // Given to a run, its tools not yet in a registry: held all the same.
+        tokio::time::advance(PERSON_IDLE * 2).await;
+        cache.release_idle().await;
+        assert!(!flag.load(Ordering::SeqCst));
+        drop(given);
         tokio::time::advance(PERSON_IDLE - Duration::from_secs(60)).await;
         cache.release_idle().await;
         assert!(!flag.load(Ordering::SeqCst));

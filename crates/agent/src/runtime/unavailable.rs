@@ -7,8 +7,6 @@
 
 use super::ports::RunEvent;
 
-const OPEN: &str = "<connecteurs_indisponibles>";
-
 /// The connectors in reach of the user that could not start, and those of
 /// them the user is to authorize for themself (ADR-048, ADR-174).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -31,6 +29,7 @@ impl UnavailableConnectors {
         })
     }
 }
+const OPEN: &str = "<connecteurs_indisponibles>";
 const CLOSE: &str = "</connecteurs_indisponibles>";
 
 /// The user turn, preceded by the note naming the unavailable connectors,
