@@ -29,6 +29,7 @@ fn declared(server: &ProtectedMcp, authority: &FakeAuthorizationServer) -> Value
     let declaration = OAuthDeclaration {
         revocation_endpoint: None,
         registered: None,
+        holder: Default::default(),
         issuer: authority.issuer.clone(),
         resource: server.url.clone(),
         authorization_endpoint: format!("{}/authorize", authority.issuer),

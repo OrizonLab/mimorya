@@ -73,6 +73,7 @@ mod tests {
         OAuthDeclaration {
             revocation_endpoint: None,
             registered: None,
+            holder: Default::default(),
             issuer: "https://auth.example.com".into(),
             resource: "https://mcp.example.com/mcp".into(),
             authorization_endpoint: endpoint.into(),

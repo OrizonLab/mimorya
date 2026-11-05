@@ -6,7 +6,7 @@
 // Whatever happens, the company keeps the platform's model and loses the test
 // server: the scenario that follows runs with them.
 import type { ConnectorTest, Connectors, TestedTool } from '../lib/api/contract';
-import { cardWith, openAdmin } from './support/admin';
+import { addForeignServer, cardWith, openAdmin } from './support/admin';
 import { expect, FOREIGN_HOST, noError, test } from './support/fixtures';
 
 const SERVER = 'Documents e2e';
@@ -138,13 +138,7 @@ test('a tool’s description is replaced from its rules, then given back to the 
     route.fulfill({ json: answers.shift() }),
   );
   await openAdmin(page, 'Connecteurs');
-  await page.getByRole('button', { name: 'Ajouter un serveur MCP' }).click();
-  await page.getByLabel('Nom').fill(SERVER);
-  await page.getByLabel('Préfixe des outils (définitif)').fill('doce');
-  await page.getByLabel(/^Adresse du serveur/).fill(`https://mcp.${FOREIGN_HOST}/mcp`);
-  await page.getByRole('button', { name: 'Ajouter le serveur' }).click();
-
-  const card = cardWith(page, SERVER, 'Tester la connexion');
+  const card = await addForeignServer(page, SERVER, 'doce');
   const description = card.getByLabel('Description de mcp_doce_search lue par le modèle');
   const save = card.getByRole('button', { name: 'Enregistrer les règles des outils' });
   const stored = async () => {

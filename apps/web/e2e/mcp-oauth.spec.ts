@@ -107,6 +107,9 @@ test('an MCP server is authorized by OAuth, started with its token, then withdra
   expect(unauthorized?.mcp?.oauth?.authorization).toBeNull();
   await card.getByRole('button', { name: 'Retirer OAuth' }).click();
   await expect(card.getByRole('button', { name: 'Déclarer OAuth' })).toBeVisible();
+  // A client the company typed: nothing said of one the platform registered.
+  expect(confirmations.at(-1)).toContain('Retirer OAuth de ce serveur');
+  expect(confirmations.at(-1)).not.toContain('reste chez le serveur d’autorisation');
   const withdrawn = (await listed(page)).find((c) => c.name === SERVER);
   expect(withdrawn?.mcp?.oauth).toBeNull();
   await noError(page);
