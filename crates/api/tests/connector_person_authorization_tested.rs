@@ -1,8 +1,8 @@
 //! An administrator's test of a server each person authorizes (ADR-174): with
 //! their own authorization, never another person's nor the company's; refused
 //! without it, or with one given under another declaration; how it went is
-//! theirs, not written on the server's status, an expired or refused one
-//! said to them to authorize again in their account; unreadable policies,
+//! theirs, not written on the server's status, an expired, refused or
+//! unopenable one said to them to authorize again in their account; unreadable policies,
 //! the server's own, written all the same. A person who authorized it does
 //! not test it, nor does another company's administrator, who neither
 //! changes who authorizes it.
@@ -107,6 +107,20 @@ async fn an_administrator_tests_with_their_own_authorization_alone() {
     );
     assert_eq!(status(&paul, &id).await, before);
     assert!(!sent(&server, &marcs));
+
+    // His no longer opens: said to him alike, never sent.
+    let unopened = person_authorized(&api, &id, user::PAUL, &authority, &resource).await;
+    let spoilt = format!(
+        "update connector_person_authorizations set access_ciphertext = '\\x00' \
+         where connector_id = $1 and user_id = '{}'",
+        user::PAUL
+    );
+    alter(&api, &id, &spoilt).await;
+    let outcome = tested(&paul, &id).await;
+    assert!(said(&outcome).contains("déchiffré"), "{outcome}");
+    assert!(said(&outcome).contains("« Mon compte »"), "{outcome}");
+    assert!(!sent(&server, &unopened));
+    assert_eq!(status(&paul, &id).await, before);
 
     // Its policies unreadable: the server's own, written for everyone.
     let spoilt = "update connector_instances set tool_policies = \
