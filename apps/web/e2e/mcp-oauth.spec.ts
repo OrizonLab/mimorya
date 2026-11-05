@@ -190,7 +190,16 @@ test('an MCP server is authorized with the client the platform registers itself'
   await expect(card.getByLabel('Identifiant du client')).toHaveCount(0);
   await card.getByLabel('Client enregistré à la main').check();
   await expect(card.getByLabel('Identifiant du client')).toHaveValue('');
-  await card.getByRole('button', { name: 'Annuler' }).click();
+  // Its own again: declaring says first what it leaves, then registers anew.
+  await own.check();
+  await card.getByRole('button', { name: 'Déclarer', exact: true }).click();
+  await expect(card.getByText('Non autorisé', { exact: true })).toBeVisible();
+  expect(confirmations.at(-1)).toContain('retire l’autorisation donnée');
+  expect(confirmations.at(-1)).toContain('reste chez le serveur d’autorisation');
+  const again = (await listed(page)).find((c) => c.name === SERVER);
+  expect(again?.mcp?.oauth?.registered).toBe(true);
+  expect(again?.mcp?.oauth?.clientId).not.toBe(declared?.mcp?.oauth?.clientId);
+  expect(again?.mcp?.oauth?.authorization).toBeNull();
 
   // Withdrawn: the client registered stays at the server, said so.
   await card.getByRole('button', { name: 'Retirer OAuth' }).click();

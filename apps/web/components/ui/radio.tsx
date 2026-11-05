@@ -29,7 +29,9 @@ export function Radio({
       <span
         aria-hidden
         data-checkbox-mark
-        className="pointer-events-none absolute inset-0 m-auto hidden size-2 rounded-full bg-accent peer-checked:block peer-disabled:opacity-60"
+        // Forced colors (Windows high contrast) would paint the dot as the
+        // background: drawn in the text's colour there.
+        className="pointer-events-none absolute inset-0 m-auto hidden size-2 rounded-full bg-accent forced-color-adjust-none peer-checked:block peer-disabled:opacity-60 forced-colors:bg-[CanvasText]"
       />
     </span>
   );

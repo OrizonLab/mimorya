@@ -1376,7 +1376,11 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
   - complément (lot 41c, ADR-173) : les boutons radio suivent la même règle. `Radio`
     (`components/ui/radio.tsx`) garde un vrai `<input type="radio">` sans l'apparence
     du navigateur et dessine son point par-dessus, atténué avec lui ; la règle ESLint
-    refuse aussi `type="radio"` ailleurs que dans `Radio`.
+    refuse aussi `type="radio"` ailleurs que dans `Radio`. En contraste forcé, le point de
+    `Radio` et la coche de `Checkbox` prennent la couleur du texte, au lieu de disparaître
+    dans le fond. Test : `apps/web/e2e/reloads.spec.ts` vérifie, pendant le verrou, que
+    les boutons radio du choix du client OAuth sont désactivés, sans apparence native,
+    animés par le verrou, et qu'ils finissent atténués avec le point du bouton coché.
 
 ## ADR-046 — Le suivi en direct d'un run qui s'interrompt se signale et se rouvre
 
@@ -10884,13 +10888,16 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     - ces premiers boutons radio de l'interface sont dessinés par elle (`Radio`,
       complément d'ADR-045) ;
     - la carte dit le client « enregistré par la plateforme » et l'échéance de son
-      secret ; retirer OAuth, ou déclarer de nouveau, dit avant de le faire que ce client
-      reste chez le serveur d'autorisation, à retirer là-bas ;
+      secret ; retirer OAuth, déclarer de nouveau, supprimer le serveur ou changer son
+      adresse dit avant de le faire que ce client reste chez le serveur d'autorisation, à
+      retirer là-bas ;
     - `apps/web/e2e/mcp-oauth.spec.ts` déclare ainsi un serveur au serveur
       d'autorisation simulé, qui enregistre le client avec un secret de trente jours ;
       la carte et la liste relue disent le client de la plateforme et l'échéance de son
       secret ; le serveur est autorisé par un aller et retour du navigateur ; déclaré de
       nouveau, l'enregistrement est présélectionné et l'identifiant n'est pas repris ;
-      retiré, la confirmation dit que le client reste chez le serveur ;
+      déclaré de nouveau ainsi, la confirmation dit ce qui est laissé et la liste relue
+      donne un autre client, sans autorisation ; retiré, la confirmation dit que le
+      client reste chez le serveur ;
   - reste : la gestion du client enregistré (RFC 7592) ; le jeton d'enregistrement
     initial ; l'autorisation par personne.

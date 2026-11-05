@@ -18,6 +18,8 @@ import { holdList } from './support/hold';
 
 const ROLE = 'Réviseur e2e';
 const SERVER = 'Outils e2e';
+/** A server whose OAuth form is open while the list reloads. */
+const CHOICE = 'Choix OAuth e2e';
 const WRITE = { 'X-Mimorya-Request': '1' };
 
 test.afterEach(async ({ page }) => {
@@ -32,7 +34,7 @@ test.afterEach(async ({ page }) => {
   const connectors = await page.request.get('/api/admin/connectors');
   expect(connectors.status()).toBe(200);
   const { instances } = (await connectors.json()) as Connectors;
-  for (const connector of instances.filter((c) => c.name === SERVER)) {
+  for (const connector of instances.filter((c) => c.name === SERVER || c.name === CHOICE)) {
     const deleted = await page.request.delete(`/api/admin/connectors/${connector.id}`, {
       headers: WRITE,
     });
@@ -220,5 +222,42 @@ test('tool policies start again from each connection test', async ({ page }) => 
   // The second test's rules, not the first's: saving them keeps what it brought.
   await expect(card.getByLabel('Risque de mcp_oute_delete')).toHaveValue('irreversible');
   await expect(card.getByLabel('Risque de mcp_oute_search')).toHaveValue('write');
+  await noError(page);
+});
+
+test('the OAuth client choice keeps its look under a reload’s lock', async ({ page }) => {
+  // The server is never reached: its test answers at once.
+  await page.route('**/api/admin/connectors/*/test', (route) =>
+    route.fulfill({ json: { ok: true, error: null, tools: [] } satisfies ConnectorTest }),
+  );
+  await openAdmin(page, 'Connecteurs');
+  await page.getByRole('button', { name: 'Ajouter un serveur MCP' }).click();
+  await page.getByLabel('Nom').fill(CHOICE);
+  await page.getByLabel('Préfixe des outils (définitif)').fill('choi');
+  await page.getByLabel(/^Adresse du serveur/).fill(`https://mcp.${FOREIGN_HOST}/mcp`);
+  await page.getByRole('button', { name: 'Ajouter le serveur' }).click();
+
+  // The OAuth form open, the list reloaded by the server's test.
+  const card = cardWith(page, CHOICE, 'Tester la connexion');
+  await card.getByRole('button', { name: 'Déclarer OAuth' }).click();
+  const typed = card.getByRole('radio', { name: 'Client enregistré à la main' });
+  await expect(typed).toBeChecked();
+  const connectors = await holdList(page, '/api/admin/connectors');
+  const reload = connectors.arm();
+  await card.getByRole('button', { name: 'Tester la connexion' }).click();
+  await reload;
+  // Drawn by the interface, the radios are dimmed past 150 ms like the
+  // other controls, the dot of the one checked with them.
+  for (const radio of [typed, card.getByRole('radio', { name: /La plateforme s’enregistre/ })]) {
+    await expect(radio).toBeDisabled();
+    await expect(radio).toHaveCSS('appearance', 'none');
+    await expect(radio).toHaveCSS('animation-name', 'locked-dim');
+    await expect(radio).toHaveCSS('opacity', '0.6');
+  }
+  const dot = typed.locator('xpath=following-sibling::*[1]');
+  await expect(dot).toHaveCSS('animation-name', 'locked-dim');
+  await expect(dot).toHaveCSS('opacity', '0.6');
+  connectors.release();
+  await expect(typed).toBeEnabled();
   await noError(page);
 });
