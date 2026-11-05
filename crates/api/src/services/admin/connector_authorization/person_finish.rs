@@ -33,25 +33,36 @@ use crate::http::iso;
 use crate::services::AccessContext;
 use crate::services::admin::audit_entry;
 use crate::services::admin::connector_oauth::McpServer;
-use crate::services::admin::connectors::ConnectorAdmin;
+use crate::services::admin::connectors::{ConnectorAdmin, PERMISSION};
 use crate::services::connectors::{CONNECTOR_USE, Unkept, seal_person_grant};
 use crate::services::sso::{error_code, same_state};
 
 /// What the audit calls a person's own authorization.
 pub const PERSON_AUTHORIZED: &str = "connector.person_oauth_authorized";
 
-/// Whose attempt the browser kept, if one opens: an administrator's for
-/// the company, or a person's own, finished here.
-pub fn attempt_holder(admin: &ConnectorAdmin<'_>, cookie: Option<&str>) -> Option<OAuthHolder> {
-    let cipher = admin.secrets.cipher().ok()?;
-    let (value, now) = (cookie?, chrono::Utc::now());
-    if attempt::open_person(cipher, value, now).is_some() {
-        Some(OAuthHolder::Person)
-    } else if attempt::open(cipher, value, now).is_some() {
-        Some(OAuthHolder::Company)
-    } else {
-        None
-    }
+/// Whose return this is: the attempt's that opens, an administrator's for
+/// the company or a person's own, finished here; with none, a person's if
+/// the caller does not administer the company's connectors, so that it is
+/// refused as theirs and they go back to their account.
+pub fn attempt_holder(
+    admin: &ConnectorAdmin<'_>,
+    access: &AccessContext,
+    cookie: Option<&str>,
+) -> OAuthHolder {
+    let opened = admin.secrets.cipher().ok().and_then(|cipher| {
+        let (value, now) = (cookie?, chrono::Utc::now());
+        if attempt::open_person(cipher, value, now).is_some() {
+            Some(OAuthHolder::Person)
+        } else if attempt::open(cipher, value, now).is_some() {
+            Some(OAuthHolder::Company)
+        } else {
+            None
+        }
+    });
+    opened.unwrap_or_else(|| match access.require_tenant_wide(PERMISSION) {
+        Ok(()) => OAuthHolder::Company,
+        Err(_) => OAuthHolder::Person,
+    })
 }
 
 pub async fn finish_person_authorization(
@@ -83,6 +94,11 @@ pub async fn finish_person_authorization(
         return Err(at("Connecteurs non autorisés"));
     }
     let (declared, secret) = declaration(admin, access, &attempt).await?;
+    // Nothing is asked for a server that is disabled: checked again once
+    // granted, under the lock.
+    if !enabled(admin, access, id).await? {
+        return Err(at("Serveur désactivé pendant l’autorisation"));
+    }
     if let Some(refused) = issuer_refused(back.iss.as_deref(), &declared) {
         return Err(at(refused));
     }
@@ -117,6 +133,21 @@ pub async fn finish_person_authorization(
         });
     }
     kept
+}
+
+/// Whether the server is enabled now.
+async fn enabled(admin: &ConnectorAdmin<'_>, access: &AccessContext, id: Uuid) -> Outcome<bool> {
+    let internal = |error: anyhow::Error| internal(id, error);
+    let mut tx = admin
+        .db
+        .begin(access.subject.tenant_id)
+        .await
+        .map_err(|e| internal(e.into()))?;
+    let instance = get_connector_instance(&mut tx, id)
+        .await
+        .map_err(|e| internal(e.into()))?;
+    tx.commit().await.map_err(|e| internal(e.into()))?;
+    Ok(instance.is_some_and(|instance| instance.enabled))
 }
 
 /// The attempt the browser kept, if it is the signed-in person's own.

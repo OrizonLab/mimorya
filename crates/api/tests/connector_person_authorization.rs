@@ -3,8 +3,10 @@
 //! and back at the address the company's return uses, then sent to their
 //! account; the tokens kept for them alone, sealed under their name, never
 //! the company's nor anyone else's; listed in their account, never another
-//! person's; withdrawn by them, revoked at the authorization server. Their
-//! account disabled, every authorization they gave goes, revoked.
+//! person's; withdrawn by them, revoked at the authorization server, even
+//! once the server is disabled or they lost the right to use connectors.
+//! Their account disabled, every authorization they gave goes, revoked.
+//! Another company's administrator neither starts nor withdraws one.
 
 mod support;
 
@@ -13,7 +15,8 @@ use mimorya_connectors::testing::FakeAuthorizationServer;
 use mimorya_core::demo::{role, user};
 use serde_json::json;
 use support::TestApi;
-use support::accounts::{activate, create_account};
+use support::accounts::{INVITED_PASSWORD, accept, activate, assignment_of, create_account};
+use support::companies;
 use support::connector_oauth::kept_tokens;
 use support::mcp::{PRIVATE_DEPLOYMENT, listed};
 use support::person_authorizations::{
@@ -166,6 +169,95 @@ async fn a_disabled_account_s_authorizations_are_revoked() {
             paul.delete(&format!("/admin/connectors/{connector}"))
                 .await
                 .status,
+            StatusCode::OK
+        );
+    }
+}
+
+/// The servers listed in `person`'s account, by id: whether they may
+/// authorize it, and whether they did.
+async fn listed_for(person: &support::Client<'_>) -> Vec<(String, bool, bool)> {
+    let mine = person.get("/account/connector-authorizations").await.json();
+    mine["servers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|server| {
+            (
+                server["connectorId"].as_str().unwrap().to_string(),
+                server["available"].as_bool().unwrap(),
+                server["authorization"]["authorizedAt"].is_string(),
+            )
+        })
+        .collect()
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn what_a_person_authorized_stays_theirs_to_withdraw() {
+    let api = TestApi::start_with(&PRIVATE_DEPLOYMENT).await;
+    let paul = api.sign_in(user::PAUL).await;
+    let marc = api.sign_in(user::MARC).await;
+    let authority = FakeAuthorizationServer::start().await;
+    let (server, id) = declared_per_person(&paul, &authority, "retirable").await;
+    // Never listed: a server the company authorizes, one disabled that no
+    // one authorized.
+    let (_, company) = support::connector_oauth::declared(&paul, &authority, "entrep").await;
+    let (_, off) = declared_per_person(&paul, &authority, "eteint").await;
+    let instance = |id: &str| format!("/admin/connectors/{id}");
+    let disabled = paul
+        .patch(&instance(&off), json!({ "enabled": false }))
+        .await;
+    assert_eq!(disabled.status, StatusCode::OK, "{}", disabled.text());
+    assert_eq!(
+        location(&person_authorize(&marc, &authority, &id).await),
+        PERSON_AUTHORIZED
+    );
+    let listed = listed_for(&marc).await;
+    assert!(listed.contains(&(id.clone(), true, true)), "{listed:?}");
+    assert!(
+        listed
+            .iter()
+            .all(|(listed, ..)| *listed != company && *listed != off)
+    );
+
+    // Disabled once authorized: listed, not available, still withdrawable.
+    let token = person_kept(&api, &id, user::MARC).await.expect("kept");
+    let disabled = paul
+        .patch(&instance(&id), json!({ "enabled": false }))
+        .await;
+    assert_eq!(disabled.status, StatusCode::OK, "{}", disabled.text());
+    assert!(listed_for(&marc).await.contains(&(id.clone(), false, true)));
+    let path = format!("/account/connector-authorizations/{id}");
+    assert_eq!(marc.delete(&path).await.status, StatusCode::OK);
+    assert!(!authority.accepts(&token, &server.url));
+
+    // Their right to use connectors withdrawn: listed, withdrawable too.
+    let enabled = paul.patch(&instance(&id), json!({ "enabled": true })).await;
+    assert_eq!(enabled.status, StatusCode::OK, "{}", enabled.text());
+    let mut account = create_account(&paul, "droit.retire").await;
+    let losing = activate(&api, &mut account).await;
+    person_authorize(&losing, &authority, &id).await;
+    let token = person_kept(&api, &id, account.id).await.expect("kept");
+    let member = assignment_of(&paul, account.id, role::MEMBER).await;
+    let withdrawn = paul.delete(&format!("/admin/assignments/{member}")).await;
+    assert_eq!(withdrawn.status, StatusCode::OK, "{}", withdrawn.text());
+    assert_eq!(listed_for(&losing).await, vec![(id.clone(), false, true)]);
+    assert_eq!(losing.delete(&path).await.status, StatusCode::OK);
+    assert!(!authority.accepts(&token, &server.url));
+
+    // Another company's administrator neither starts nor withdraws one.
+    let address = "jeanne.martin@acme-soi.example";
+    let acme = companies::create(&api, "acme-soi", address).await;
+    let accepted = accept(&api, &acme.invitation.link, INVITED_PASSWORD).await;
+    assert_eq!(accepted.status, StatusCode::OK, "{}", accepted.text());
+    let jeanne = api.sign_in_with(address, INVITED_PASSWORD).await;
+    let start = jeanne.post(&path, json!({})).await;
+    assert_eq!(start.status, StatusCode::NOT_FOUND, "{}", start.text());
+    assert_eq!(jeanne.delete(&path).await.status, StatusCode::NOT_FOUND);
+    for connector in [id, company, off] {
+        assert_eq!(
+            paul.delete(&instance(&connector)).await.status,
             StatusCode::OK
         );
     }

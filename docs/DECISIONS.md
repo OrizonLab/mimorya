@@ -11026,7 +11026,7 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     `person.rs`, `person_finish.rs`, `revocation/persons.rs`) ; tests :
     `connector_person_authorization.rs` (autorisée pour soi seule, jamais celle de
     l'entreprise ni d'un autre, listée sans jeton, retirée et révoquée, Léa ne retire
-    pas celle de Marc, compte désactivé dont toutes les autorisations sont révoquées,
+    pas celle de Marc, compte désactivé dont toutes les autorisations sont révoquées, serveur désactivé ou droit perdu après coup : l'autorisation reste listée, non disponible, et retirable ; serveur de l'entreprise ou désactivé jamais autorisé non listé ; administrateur d'une autre entreprise qui ne démarre ni ne retire rien,
     celle de Marc gardée), `connector_person_authorization_rights.rs` (tentative
     présentée par une autre personne ou un administrateur, tentative d'un
     administrateur présentée par une personne, serveur autorisé par l'entreprise ou
