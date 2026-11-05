@@ -13,6 +13,7 @@ import {
   type Connectors,
   type NewConnector,
 } from '@/lib/api';
+import { REGISTERED_CLIENT_WOULD_STAY } from './registered-client';
 
 /** What a trial answered, for the values it tried. */
 interface Trial {
@@ -148,8 +149,7 @@ export function McpForm({
         <p className="text-xs text-muted">
           Ce serveur s’autorise par OAuth, sans jeton saisi. Changer son adresse retire sa
           déclaration OAuth et son autorisation.
-          {connector?.mcp?.oauth?.registered &&
-            ' Le client que la plateforme avait enregistré reste alors chez le serveur d’autorisation : retirez-le chez lui.'}
+          {connector?.mcp?.oauth?.registered && ` ${REGISTERED_CLIENT_WOULD_STAY}`}
         </p>
       )}
       <p className="text-xs text-muted">

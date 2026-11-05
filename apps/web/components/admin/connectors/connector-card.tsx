@@ -19,6 +19,7 @@ import { Microsoft365Details } from './microsoft365-details';
 import { Microsoft365Form } from './microsoft365-form';
 import { RestForm } from './rest-form';
 import { ToolPolicies } from './tool-policies';
+import { REGISTERED_CLIENT_STAYS } from './registered-client';
 
 const STATUS = {
   untested: { label: 'Non testé', tone: 'neutral' },
@@ -116,9 +117,7 @@ export function ConnectorCard({
       ? `Supprimer ${google ? 'le client' : 'l’application'} « ${connector.name} », son secret et les ${linked.links} compte(s) que les collaborateurs y ont relié(s) ?`
       : connector.mcp?.oauth
         ? `Supprimer le serveur « ${connector.name} », sa déclaration OAuth, le secret du client et son autorisation ?${
-            connector.mcp.oauth.registered
-              ? ' Le client que la plateforme avait enregistré reste chez le serveur d’autorisation : retirez-le chez lui.'
-              : ''
+            connector.mcp.oauth.registered ? ` ${REGISTERED_CLIENT_STAYS}` : ''
           }`
         : `Supprimer le connecteur « ${connector.name} » et son jeton ?`;
     if (!window.confirm(question)) return;

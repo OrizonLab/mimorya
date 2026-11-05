@@ -5,6 +5,7 @@ import { Badge, Button, ErrorNote } from '@/components/ui';
 import { api, useAction, type ConnectorView, type OAuthAuthorizationStart } from '@/lib/api';
 import { formatDate } from '@/lib/format';
 import { McpOAuthForm } from './mcp-oauth-form';
+import { REGISTERED_CLIENT_STAYS } from './registered-client';
 
 /**
  * An MCP server's OAuth on its card (ADR-171): declared or not, what was
@@ -177,7 +178,7 @@ export function McpOAuthSection({
               remove(
                 base,
                 oauth.registered
-                  ? 'Retirer OAuth de ce serveur, avec le secret du client et l’autorisation ? Le client que la plateforme avait enregistré reste chez le serveur d’autorisation : retirez-le chez lui.'
+                  ? `Retirer OAuth de ce serveur, avec le secret du client et l’autorisation ? ${REGISTERED_CLIENT_STAYS}`
                   : 'Retirer OAuth de ce serveur, avec le secret du client et l’autorisation ?',
               )
             }

@@ -1,5 +1,5 @@
 import type { Locator, Page } from '@playwright/test';
-import { demo, expect, signIn } from './fixtures';
+import { demo, expect, FOREIGN_HOST, signIn } from './fixtures';
 
 /** Signs in as the demo administrator and opens a tab of the administration. */
 export async function openAdmin(page: Page, tab: string) {
@@ -20,6 +20,25 @@ export function cardWith(page: Page, text: string, button: string): Locator {
     .filter({ hasText: text })
     .filter({ has: page.getByRole('button', { name: button, exact: true }) })
     .last();
+}
+
+/** Adds, from the open « Connecteurs » tab, an MCP server at `address`. */
+export async function addServer(page: Page, name: string, prefix: string, address: string) {
+  await page.getByRole('button', { name: 'Ajouter un serveur MCP' }).click();
+  await page.getByLabel('Nom').fill(name);
+  await page.getByLabel('Préfixe des outils (définitif)').fill(prefix);
+  await page.getByLabel(/^Adresse du serveur/).fill(address);
+  await page.getByRole('button', { name: 'Ajouter le serveur' }).click();
+}
+
+/**
+ * Adds, from the open « Connecteurs » tab, an MCP server at a foreign host
+ * the platform never reaches (its connection test is answered by the test's
+ * own route): the card that shows it.
+ */
+export async function addForeignServer(page: Page, name: string, prefix: string) {
+  await addServer(page, name, prefix, `https://mcp.${FOREIGN_HOST}/mcp`);
+  return cardWith(page, name, 'Tester la connexion');
 }
 
 /** Selects the option whose text contains `text` (unit names are indented). */

@@ -1378,7 +1378,8 @@ includeSubDomains`, `/api/*` envoyé directement à l'API (qui lit l'adresse du 
     du navigateur et dessine son point par-dessus, atténué avec lui ; la règle ESLint
     refuse aussi `type="radio"` ailleurs que dans `Radio`. En contraste forcé, le point de
     `Radio` et la coche de `Checkbox` prennent la couleur du texte, au lieu de disparaître
-    dans le fond. Test : `apps/web/e2e/reloads.spec.ts` vérifie, pendant le verrou, que
+    dans le fond (`apps/web/e2e/forced-colors.spec.ts`, en contraste forcé émulé : la coche
+    d'une case cochée et le point d'un bouton coché ont la couleur du texte de la page). Test : `apps/web/e2e/reloads.spec.ts` vérifie, pendant le verrou, que
     les boutons radio du choix du client OAuth sont désactivés, sans apparence native,
     animés par le verrou, et qu'ils finissent atténués avec le point du bouton coché.
 
@@ -10897,7 +10898,9 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       secret ; le serveur est autorisé par un aller et retour du navigateur ; déclaré de
       nouveau, l'enregistrement est présélectionné et l'identifiant n'est pas repris ;
       déclaré de nouveau ainsi, la confirmation dit ce qui est laissé et la liste relue
-      donne un autre client, sans autorisation ; retiré, la confirmation dit que le
-      client reste chez le serveur ;
+      donne un autre client, sans autorisation ; le formulaire de l'adresse dit que le
+      client resterait chez le serveur ; retiré, puis déclaré de nouveau et le serveur
+      supprimé, chaque confirmation le dit aussi ; la phrase vient d'un seul fichier
+      (`registered-client.ts`), au conditionnel dans la note de l'adresse ;
   - reste : la gestion du client enregistré (RFC 7592) ; le jeton d'enregistrement
     initial ; l'autorisation par personne.

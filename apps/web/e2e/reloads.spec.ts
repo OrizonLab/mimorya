@@ -12,8 +12,8 @@ import type {
   Roles,
   TestedTool,
 } from '../lib/api/contract';
-import { cardWith, openAdmin } from './support/admin';
-import { expect, FOREIGN_HOST, noError, test } from './support/fixtures';
+import { addForeignServer, openAdmin } from './support/admin';
+import { expect, noError, test } from './support/fixtures';
 import { holdList } from './support/hold';
 
 const ROLE = 'Réviseur e2e';
@@ -187,13 +187,7 @@ test('tool policies start again from each connection test', async ({ page }) => 
     route.fulfill({ json: answers.shift() }),
   );
   await openAdmin(page, 'Connecteurs');
-  await page.getByRole('button', { name: 'Ajouter un serveur MCP' }).click();
-  await page.getByLabel('Nom').fill(SERVER);
-  await page.getByLabel('Préfixe des outils (définitif)').fill('oute');
-  await page.getByLabel(/^Adresse du serveur/).fill(`https://mcp.${FOREIGN_HOST}/mcp`);
-  await page.getByRole('button', { name: 'Ajouter le serveur' }).click();
-
-  const card = cardWith(page, SERVER, 'Tester la connexion');
+  const card = await addForeignServer(page, SERVER, 'oute');
   const testButton = card.getByRole('button', { name: 'Tester la connexion' });
   await expect(testButton).toBeEnabled();
   const connectors = await holdList(page, '/api/admin/connectors');
@@ -231,14 +225,9 @@ test('the OAuth client choice keeps its look under a reload’s lock', async ({ 
     route.fulfill({ json: { ok: true, error: null, tools: [] } satisfies ConnectorTest }),
   );
   await openAdmin(page, 'Connecteurs');
-  await page.getByRole('button', { name: 'Ajouter un serveur MCP' }).click();
-  await page.getByLabel('Nom').fill(CHOICE);
-  await page.getByLabel('Préfixe des outils (définitif)').fill('choi');
-  await page.getByLabel(/^Adresse du serveur/).fill(`https://mcp.${FOREIGN_HOST}/mcp`);
-  await page.getByRole('button', { name: 'Ajouter le serveur' }).click();
+  const card = await addForeignServer(page, CHOICE, 'choi');
 
   // The OAuth form open, the list reloaded by the server's test.
-  const card = cardWith(page, CHOICE, 'Tester la connexion');
   await card.getByRole('button', { name: 'Déclarer OAuth' }).click();
   const typed = card.getByRole('radio', { name: 'Client enregistré à la main' });
   await expect(typed).toBeChecked();
