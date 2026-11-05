@@ -191,7 +191,14 @@ async fn a_connector_a_test_through_an_api_process_found_answering_is_tried_agai
     let url = format!("http://127.0.0.1:{port}/mcp");
     let id = add(&paul, mcp_body("Procédures", "docs", &url, None)).await;
     let connectors = &worker.app.services.connectors;
-    let issues = || async { connectors.tools_for(tenant::ID).await.unwrap().issues.len() };
+    let issues = || async {
+        connectors
+            .tools_for(tenant::ID, support::connector_sessions::RUN)
+            .await
+            .unwrap()
+            .issues
+            .len()
+    };
     // The worker remembers the failure for a minute.
     assert_eq!(issues().await, 1);
 

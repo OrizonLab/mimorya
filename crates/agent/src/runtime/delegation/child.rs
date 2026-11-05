@@ -128,6 +128,7 @@ impl SubAgents {
             history: Vec::new(),
             user_turn: sub_agent_turn(&input.task, input.context.as_deref()),
             unavailable_connectors: Vec::new(),
+            connectors_to_authorize: Vec::new(),
             evidence: Vec::new(),
         };
         let outcome = started_apart(&runtime, start).await?;

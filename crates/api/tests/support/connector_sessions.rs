@@ -5,9 +5,9 @@
 
 use axum::http::StatusCode;
 use mimorya_api::secrets::SecretStore;
-use mimorya_api::services::connectors::{ConnectorService, ConnectorSettings};
+use mimorya_api::services::connectors::{ConnectorService, ConnectorSettings, Served};
 use mimorya_api::services::invalidations::Invalidations;
-use mimorya_core::demo::tenant;
+use mimorya_core::demo::{tenant, user};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
@@ -26,6 +26,10 @@ pub fn said(outcome: &Value) -> String {
     outcome["error"].as_str().unwrap_or_default().to_string()
 }
 
+/// A run serving Marc, who may use connectors: on a server the company
+/// authorizes, as any run (ADR-174).
+pub const RUN: Served = Served::Person(user::MARC);
+
 /// Whether runs are given the server's tools (prefixed with `prefix`).
 pub async fn runs_see(api: &TestApi, prefix: &str) -> bool {
     sees(&api.app.services.connectors, prefix).await
@@ -33,7 +37,12 @@ pub async fn runs_see(api: &TestApi, prefix: &str) -> bool {
 
 /// Whether the runs of the process holding `connectors` are given them.
 pub async fn sees(connectors: &ConnectorService, prefix: &str) -> bool {
-    let tools = connectors.tools_for(tenant::ID).await.unwrap();
+    sees_for(connectors, prefix, RUN).await
+}
+
+/// Whether the runs serving `served` there are given them.
+pub async fn sees_for(connectors: &ConnectorService, prefix: &str, served: Served) -> bool {
+    let tools = connectors.tools_for(tenant::ID, served).await.unwrap();
     let namespace = format!("mcp_{prefix}_");
     tools
         .tools

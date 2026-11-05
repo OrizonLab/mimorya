@@ -36,7 +36,7 @@ pub use sending::{revoke, revoke_all};
 /// Authorizations of one connector taken away, with what revoking their
 /// tokens needs.
 pub struct Revocation {
-    connector_id: Uuid,
+    pub(in crate::services::admin) connector_id: Uuid,
     /// The declaration in force before the change, if it can be read: each
     /// authorization's tokens go only to the server it was given under.
     declared: Option<OAuthDeclaration>,

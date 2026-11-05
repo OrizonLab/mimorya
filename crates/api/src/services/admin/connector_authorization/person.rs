@@ -88,6 +88,9 @@ pub async fn remove_person_authorization(
     )
     .await?;
     tx.commit().await?;
+    // Their session goes with it here; elsewhere it is never given to a
+    // run again, and goes once idle.
+    admin.connectors.forget_person(id, user_id).await;
     revoke(admin, access, taken).await;
     Ok(())
 }

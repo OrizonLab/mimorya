@@ -39,10 +39,15 @@ pub struct RunStarted {
 /// Connectors of the company in reach of the user that could not start:
 /// their tools are missing from the run (ADR-048).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ConnectorsUnavailable {
     /// Their names, as the administration shows them.
     pub connectors: Vec<String>,
+    /// Those of them each person authorizes for themself and the user has
+    /// not: to authorize in their account (ADR-174). Absent when none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(as = "Option<Vec<String>>", optional)]
+    pub to_authorize: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]

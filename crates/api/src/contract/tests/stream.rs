@@ -18,6 +18,11 @@ fn every_engine_event() -> Vec<RunEvent> {
         },
         RunEvent::ConnectorsUnavailable {
             connectors: vec!["Documentation".into()],
+            to_authorize: Vec::new(),
+        },
+        RunEvent::ConnectorsUnavailable {
+            connectors: vec!["Documentation".into(), "Fichiers".into()],
+            to_authorize: vec!["Fichiers".into()],
         },
         RunEvent::AssistantMessage {
             text: "Je regarde le planning.".into(),

@@ -7,7 +7,11 @@
 //! deleted) is released, never kept. A live instance whose session closed
 //! for good (a local server that exited, a server that no longer answers a
 //! ping, ADR-164) is released and started again by the next run that needs
-//! it, or remembered as a failed start (`closed`, ADR-163).
+//! it, or remembered as a failed start (`closed`, ADR-163). On a server
+//! each person authorizes, each person has their own instance, started
+//! with their own authorization and versioned by it too; those are bounded
+//! in number, the least recently used released first, and released after a
+//! while without a run (`people`, ADR-174).
 
 use std::collections::HashMap;
 use std::future::Future;
@@ -21,8 +25,10 @@ use tokio::time::Instant;
 use uuid::Uuid;
 
 mod closed;
+mod people;
 
 use closed::closed;
+pub use people::{MAX_PERSON_SESSIONS, PERSON_IDLE};
 
 /// How long a failed start is remembered before the next run tries again.
 pub const RETRY_AFTER: Duration = Duration::from_secs(60);
@@ -62,12 +68,41 @@ impl Unavailable {
     }
 }
 
+/// Whose instance: the company's, or one person's on a server each person
+/// authorizes (ADR-174).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct SessionKey {
+    pub instance: Uuid,
+    pub person: Option<Uuid>,
+}
+
+impl SessionKey {
+    /// One person's instance of a server each person authorizes.
+    pub fn person(instance: Uuid, person: Uuid) -> Self {
+        Self {
+            instance,
+            person: Some(person),
+        }
+    }
+}
+
+impl From<Uuid> for SessionKey {
+    fn from(instance: Uuid) -> Self {
+        Self {
+            instance,
+            person: None,
+        }
+    }
+}
+
 enum Slot {
     Live {
         version: DateTime<Utc>,
         runtime: Arc<ConnectorRuntime>,
         /// When it started: a session closed soon after is a failed start.
         since: Instant,
+        /// When a run was last given it.
+        used: Instant,
     },
     Failed {
         version: DateTime<Utc>,
@@ -84,7 +119,7 @@ enum Slot {
 
 #[derive(Default)]
 struct State {
-    slots: HashMap<Uuid, Slot>,
+    slots: HashMap<SessionKey, Slot>,
     /// Bumped by each invalidation.
     generation: u64,
     /// The generation at which each instance was last invalidated.
@@ -93,8 +128,23 @@ struct State {
 
 impl State {
     /// Whether the instance was invalidated after the caller read it.
-    fn stale(&self, id: Uuid, ticket: u64) -> bool {
-        self.invalidated.get(&id).is_some_and(|at| *at > ticket)
+    fn stale(&self, key: SessionKey, ticket: u64) -> bool {
+        self.invalidated
+            .get(&key.instance)
+            .is_some_and(|at| *at > ticket)
+    }
+
+    /// Releases every slot of the instance, the people's included.
+    fn remove_instance(&mut self, id: Uuid, which: impl Fn(&Slot) -> bool) {
+        let keys: Vec<SessionKey> = self
+            .slots
+            .iter()
+            .filter(|(key, slot)| key.instance == id && which(slot))
+            .map(|(key, _)| *key)
+            .collect();
+        for key in keys {
+            release(self.slots.remove(&key));
+        }
     }
 }
 
@@ -115,7 +165,7 @@ impl RuntimeCache {
     /// lock: a slow server delays its own instance only.
     pub async fn get_or_start<F, Fut>(
         &self,
-        id: Uuid,
+        key: impl Into<SessionKey>,
         version: DateTime<Utc>,
         ticket: u64,
         start: F,
@@ -124,20 +174,26 @@ impl RuntimeCache {
         F: FnOnce() -> Fut,
         Fut: Future<Output = Result<ConnectorRuntime, String>>,
     {
+        let id = key.into();
         // Dropped when this start ends, or is given up: it wakes the others.
         let (_finished, done) = loop {
             let mut waiting = {
                 let mut state = self.state.lock().await;
+                people::release_idle(&mut state, Instant::now());
                 if let Some(failed) = closed(&mut state, id, version) {
                     return Err(failed);
                 }
                 let stale = state.stale(id, ticket);
-                match state.slots.get(&id) {
+                match state.slots.get_mut(&id) {
                     Some(Slot::Live {
                         version: v,
                         runtime,
+                        used,
                         ..
-                    }) if *v == version => return Ok(runtime.clone()),
+                    }) if *v == version => {
+                        *used = Instant::now();
+                        return Ok(runtime.clone());
+                    }
                     Some(Slot::Failed {
                         version: v,
                         until,
@@ -201,10 +257,15 @@ impl RuntimeCache {
         match started {
             Ok(runtime) => {
                 let runtime = Arc::new(runtime);
+                if id.person.is_some() {
+                    people::make_room(&mut state, id);
+                }
+                let now = Instant::now();
                 let live = Slot::Live {
                     version,
                     runtime: runtime.clone(),
-                    since: Instant::now(),
+                    since: now,
+                    used: now,
                 };
                 release(state.slots.insert(id, live));
                 Ok(runtime)
@@ -222,22 +283,36 @@ impl RuntimeCache {
     }
 
     /// Releases the live instance after a change, a deactivation or a
-    /// deletion, and forgets a remembered failure.
+    /// deletion, the people's too, and forgets a remembered failure.
     pub async fn invalidate(&self, id: Uuid) {
         let mut state = self.state.lock().await;
         state.generation += 1;
         let generation = state.generation;
         state.invalidated.insert(id, generation);
-        release(state.slots.remove(&id));
+        state.remove_instance(id, |_| true);
     }
 
     /// Forgets a remembered failure (the instance answered a test): the next
     /// run tries again at once.
     pub async fn retry_now(&self, id: Uuid) {
         let mut state = self.state.lock().await;
-        if matches!(state.slots.get(&id), Some(Slot::Failed { .. })) {
-            state.slots.remove(&id);
+        state.remove_instance(id, |slot| matches!(slot, Slot::Failed { .. }));
+    }
+
+    /// Releases a person's instance of a server, and forgets their failed
+    /// start: their authorization went (ADR-174).
+    pub async fn forget_person(&self, id: Uuid, person: Uuid) {
+        let mut state = self.state.lock().await;
+        let key = SessionKey::person(id, person);
+        if !matches!(state.slots.get(&key), Some(Slot::Starting { .. })) {
+            release(state.slots.remove(&key));
         }
+    }
+
+    /// Releases the people's instances no run was given for a while, and
+    /// forgets their failed starts once over.
+    pub async fn release_idle(&self) {
+        people::release_idle(&mut *self.state.lock().await, Instant::now());
     }
 
     /// Releases every live instance (shutdown).

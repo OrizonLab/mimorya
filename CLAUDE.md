@@ -265,7 +265,9 @@ Repères à l'intérieur des crates :
   démarrages partagés et échecs retenus, `cache/`, ADR-049 ; jeton avec lequel chacune
   démarre : celui de l'autorisation OAuth d'un serveur MCP déclaré, jamais un jeton
   saisi, sinon le jeton gardé, `credential.rs`, et celui d'une personne sur un serveur que chacun autorise,
-  sa propre autorisation (`credential_for`, ADR-174), renouvelé avant son échéance, réservé par
+  sa propre autorisation (`credential_for`, ADR-174) ; outils d'un run, l'instance de la personne qu'il
+  sert, rien pour une évaluation, `served.rs`, gardée par connecteur et par personne, bornée et libérée
+  après un temps sans run, `cache/people.rs`, ADR-174 ; renouvelé avant son échéance, réservé par
   un seul processus, `renewal.rs`, jetons accordés scellés, `grants.rs`, ADR-171 ; jetons
   laissés révoqués dans un délai, et ceux que personne ne garde (renouvellement en vol au
   retrait, retour dont la déclaration a changé) par une tâche à part, `revocation.rs`,

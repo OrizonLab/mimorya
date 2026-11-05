@@ -70,6 +70,7 @@ impl TenantTools {
                 connector: outside.connector,
                 connector_type: outside.connector_type,
                 message: WITHHELD.into(),
+                to_authorize: false,
             });
         }
         self
@@ -120,6 +121,7 @@ mod tests {
                 connector: "Procédures".into(),
                 connector_type: "mcp".into(),
                 message: WITHHELD.into(),
+                to_authorize: false,
             }]
         );
     }

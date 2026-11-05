@@ -38,6 +38,8 @@ pub struct StartInput {
     pub user_turn: String,
     /// Connectors in reach of the user that could not start (ADR-048).
     pub unavailable_connectors: Vec<String>,
+    /// Those of them the user is to authorize for themself (ADR-174).
+    pub connectors_to_authorize: Vec<String>,
     /// Sources a mission's earlier stages collected (ADR-089): an answer
     /// may cite them.
     pub evidence: Vec<Citation>,
@@ -62,7 +64,8 @@ impl AgentRuntime {
     pub async fn start(&self, input: StartInput) -> anyhow::Result<RunOutcome> {
         let mut messages = input.history;
         let connectors = input.unavailable_connectors;
-        let turn = with_unavailable_connectors(&connectors, input.user_turn);
+        let to_authorize = input.connectors_to_authorize;
+        let turn = with_unavailable_connectors(&connectors, &to_authorize, input.user_turn);
         messages.push(LlmMessage::user(turn));
         let mut state = RunCheckpoint::new(input.system, messages);
         state.evidence = input.evidence;
@@ -71,7 +74,10 @@ impl AgentRuntime {
         events.emit(RunEvent::RunStarted { objective }).await?;
         if !connectors.is_empty() {
             events
-                .emit(RunEvent::ConnectorsUnavailable { connectors })
+                .emit(RunEvent::ConnectorsUnavailable {
+                    connectors,
+                    to_authorize,
+                })
                 .await?;
         }
         // Saved before the first model call: a run the service stops from

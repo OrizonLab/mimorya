@@ -32,6 +32,7 @@ use super::access::EvaluationAccess;
 use super::ports::{CasePorts, CaseScope, EvaluatedVersion, Journal, ToolTrace, case_ports};
 use crate::app::Services;
 use crate::services::AccessContext;
+use crate::services::connectors::Served;
 use crate::services::runs::{run_tools, user_profile};
 
 /// What one case may spend at most, for one version.
@@ -153,7 +154,12 @@ async fn answer_and_judge(
     } = request;
     let run_id = Uuid::new_v4();
     let actor = Actor::agent(Some(run_id)).with_channel(CHANNEL);
-    let mut connector_tools = services.connectors.tools_for(scope.tenant_id).await?;
+    // No one's authorization: a server each person authorizes is withheld
+    // (ADR-174).
+    let mut connector_tools = services
+        .connectors
+        .tools_for(scope.tenant_id, Served::Evaluation)
+        .await?;
     if request.inside_only {
         connector_tools = connector_tools.inside_only();
     }
@@ -201,6 +207,7 @@ async fn answer_and_judge(
             history: Vec::new(),
             user_turn: format!("{}\n\n{READ_ONLY}", case.request),
             unavailable_connectors: tools.unavailable_connectors,
+            connectors_to_authorize: tools.connectors_to_authorize,
             evidence: Vec::new(),
         })
         .await?;

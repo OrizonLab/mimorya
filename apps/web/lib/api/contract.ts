@@ -413,7 +413,12 @@ export type ConnectorsUnavailable = {
 /**
  * Their names, as the administration shows them.
  */
-connectors: Array<string>, };
+connectors: Array<string>,
+/**
+ * Those of them each person authorizes for themself and the user has
+ * not: to authorize in their account (ADR-174). Absent when none.
+ */
+toAuthorize?: Array<string>, };
 
 /**
  * Body of `PATCH /conversations/{id}`.

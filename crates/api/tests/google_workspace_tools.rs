@@ -47,7 +47,7 @@ async fn a_run_reads_its_persons_gmail_and_calendar_with_a_renewed_token() {
         .app
         .services
         .connectors
-        .tools_for(tenant::ID)
+        .tools_for(tenant::ID, support::connector_sessions::RUN)
         .await
         .unwrap();
     // Reading only: the company did not let them write.
@@ -183,7 +183,7 @@ async fn a_policy_keeps_the_connectors_permission() {
         .app
         .services
         .connectors
-        .tools_for(tenant::ID)
+        .tools_for(tenant::ID, support::connector_sessions::RUN)
         .await
         .unwrap();
     assert_eq!(

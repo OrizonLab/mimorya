@@ -150,7 +150,7 @@ impl RunExecutor {
     ) -> anyhow::Result<()> {
         // A hook's run stays one when it resumes (ADR-109).
         let actor = Actor::agent(Some(run.id)).with_channel(run.channel.clone());
-        let (runtime, unavailable_connectors) = self
+        let (runtime, unavailable) = self
             .runtime_for(access, run, ports, actor.clone(), fence)
             .await?;
         match mode {
@@ -179,7 +179,8 @@ impl RunExecutor {
                         system,
                         history,
                         user_turn: build_user_turn(&text, &memories),
-                        unavailable_connectors,
+                        unavailable_connectors: unavailable.unavailable_connectors,
+                        connectors_to_authorize: unavailable.connectors_to_authorize,
                         evidence,
                     })
                     .await?;
@@ -226,7 +227,7 @@ impl RunExecutor {
         ports: &EnginePorts,
         actor: Actor,
         fence: &LeaseFence,
-    ) -> anyhow::Result<(AgentRuntime, Vec<String>)> {
+    ) -> anyhow::Result<(AgentRuntime, Unavailable)> {
         // A run awaiting approval may be resumed after a restart without a
         // provider, or after its company changed or removed its own.
         let Some(provider) = self.llm.provider_for(access.subject.tenant_id).await? else {
@@ -273,6 +274,18 @@ impl RunExecutor {
                 handoff: run.mission_id.is_some(),
             },
         );
-        Ok((runtime, tools.unavailable_connectors))
+        let unavailable = Unavailable {
+            unavailable_connectors: tools.unavailable_connectors,
+            connectors_to_authorize: tools.connectors_to_authorize,
+        };
+        Ok((runtime, unavailable))
     }
+}
+
+/// The connectors in reach of a run's user that could not start (told to a
+/// run that starts, ADR-048), and those of them they are to authorize for
+/// themself (ADR-174).
+struct Unavailable {
+    unavailable_connectors: Vec<String>,
+    connectors_to_authorize: Vec<String>,
 }

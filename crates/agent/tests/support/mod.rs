@@ -261,6 +261,7 @@ impl Harness {
                 history: Vec::new(),
                 user_turn: "Fais la synthèse".into(),
                 unavailable_connectors,
+                connectors_to_authorize: Vec::new(),
                 evidence: Vec::new(),
             })
             .await
@@ -275,6 +276,7 @@ impl Harness {
                 history: Vec::new(),
                 user_turn: "Fais la synthèse".into(),
                 unavailable_connectors: Vec::new(),
+                connectors_to_authorize: Vec::new(),
                 evidence,
             })
             .await
