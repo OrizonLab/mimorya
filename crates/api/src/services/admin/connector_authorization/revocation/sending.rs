@@ -45,21 +45,36 @@ struct Revoking {
 /// withdrawal is committed, and audits how it went, never a token. Never
 /// fails: the withdrawal stands whatever happens.
 pub async fn revoke(admin: &ConnectorAdmin<'_>, access: &AccessContext, revocation: Revocation) {
+    revoke_all(admin, access, vec![revocation]).await;
+}
+
+/// `revoke`, of several connectors' at once (a person's, their account
+/// disabled), waited for together.
+pub async fn revoke_all(
+    admin: &ConnectorAdmin<'_>,
+    access: &AccessContext,
+    revocations: Vec<Revocation>,
+) {
     let (tenant_id, user_id) = letting_go(access);
-    let revoking = Revoking {
-        db: admin.db.clone(),
-        secrets: admin.secrets.clone(),
-        network: admin.connectors.network(),
-        tenant_id,
-        user_id,
-        revocation,
-    };
-    // A task of its own: the request may be abandoned, not the revocation.
-    // Waited for a while only: many people's tokens at a server that does
-    // not answer go on being revoked, and audited, after the answer.
-    match tokio::time::timeout(WAITED, tokio::spawn(revoking.run())).await {
-        Ok(Ok(())) | Err(_) => {}
-        Ok(Err(error)) => {
+    // Tasks of their own: the request may be abandoned, not the revocation.
+    let tasks: Vec<_> = revocations
+        .into_iter()
+        .map(|revocation| {
+            let revoking = Revoking {
+                db: admin.db.clone(),
+                secrets: admin.secrets.clone(),
+                network: admin.connectors.network(),
+                tenant_id,
+                user_id,
+                revocation,
+            };
+            tokio::spawn(revoking.run())
+        })
+        .collect();
+    // Waited for a while only: many tokens at a server that does not answer
+    // go on being revoked, and audited, after the answer.
+    if let Ok(ended) = tokio::time::timeout(WAITED, futures::future::join_all(tasks)).await {
+        for error in ended.into_iter().filter_map(Result::err) {
             tracing::error!(error = %error, "The revocation of a connector's tokens stopped");
         }
     }

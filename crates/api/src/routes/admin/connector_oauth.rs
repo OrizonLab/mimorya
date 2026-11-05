@@ -4,7 +4,8 @@
 //! authorization started towards its authorization server and withdrawn;
 //! the return, a top-level navigation in the administrator's session, which
 //! sends the browser back to the administration saying only whether it was
-//! authorized (the reason is audited). The client's secret and the tokens
+//! authorized (the reason is audited); a person's own return, at the same
+//! address, sent back to their account (ADR-174). The client's secret and the tokens
 //! are write-only.
 
 use axum::Json;
@@ -27,15 +28,19 @@ use crate::http::{ApiError, ApiResult, Body, PathId};
 use crate::plugins::{Auth, RequestContext};
 use crate::services::AccessContext;
 use crate::services::admin::{
-    AUTHORIZATION_COOKIE, AuthorizationFailure, OAuthInput, OAuthReturn, authorization_cookie,
-    cleared_authorization_cookie, declare_oauth, finish_authorization, oauth_redirect_uri,
-    remove_authorization, remove_oauth, set_oauth_holder, start_authorization,
+    AUTHORIZATION_COOKIE, AuthorizationFailure, OAuthInput, OAuthReturn, PERSON_AUTHORIZED,
+    attempt_holder, authorization_cookie, cleared_authorization_cookie, declare_oauth,
+    finish_authorization, finish_person_authorization, oauth_redirect_uri, remove_authorization,
+    remove_oauth, set_oauth_holder, start_authorization,
 };
 use crate::services::permission_catalog::permission_catalog;
 
 /// Where the browser lands after the authorization server.
 const AUTHORIZED: &str = "/admin?autorisation=ok";
 const FAILED: &str = "/admin?autorisation=echec";
+/// Where a person's own authorization lands (ADR-174): their account.
+const PERSON_AUTHORIZED_BACK: &str = "/account?serveur=ok";
+const PERSON_FAILED_BACK: &str = "/account?serveur=echec";
 /// Without a session, nothing can be authorized: the sign-in page.
 const SIGNED_OUT: &str = "/login";
 
@@ -158,6 +163,12 @@ pub async fn callback(
     let Ok(access) = state.access.context(identity).await else {
         return away(SIGNED_OUT);
     };
+    let cookie = cookie_value(&headers, AUTHORIZATION_COOKIE);
+    let (store, catalog) = (secrets(&state), permission_catalog());
+    let admin = admin(&state, &store, &catalog);
+    // A person's own attempt comes back here too (ADR-174), finished as
+    // theirs and sent back to their account (`attempt_holder`).
+    let person = attempt_holder(&admin, &access, cookie.as_deref()) == OAuthHolder::Person;
     let allowed = state
         .limits
         .sso_sign_in
@@ -167,22 +178,33 @@ pub async fn callback(
     let outcome = if allowed {
         // An address that does not read as a return reads as an empty one.
         let back = back.map(|Query(back)| back).unwrap_or_default();
-        let cookie = cookie_value(&headers, AUTHORIZATION_COOKIE);
-        let (store, catalog) = (secrets(&state), permission_catalog());
-        let admin = admin(&state, &store, &catalog);
         let origin = &state.config.web_origin;
-        finish_authorization(&admin, &access, back, cookie.as_deref(), origin).await
+        let cookie = cookie.as_deref();
+        if person {
+            finish_person_authorization(&admin, &access, back, cookie, origin).await
+        } else {
+            finish_authorization(&admin, &access, back, cookie, origin).await
+        }
     } else {
         Err(AuthorizationFailure {
             connector_id: None,
             reason: "Trop de tentatives".into(),
         })
     };
+    let (action, authorized, failed) = if person {
+        (
+            PERSON_AUTHORIZED,
+            PERSON_AUTHORIZED_BACK,
+            PERSON_FAILED_BACK,
+        )
+    } else {
+        ("connector.oauth_authorized", AUTHORIZED, FAILED)
+    };
     match outcome {
-        Ok(_) => away(AUTHORIZED),
+        Ok(_) => away(authorized),
         Err(failure) => {
-            record_refusal(&state, &context, &access, failure).await;
-            away(FAILED)
+            record_refusal(&state, &context, &access, action, failure).await;
+            away(failed)
         }
     }
 }
@@ -192,10 +214,11 @@ async fn record_refusal(
     state: &AppState,
     context: &RequestContext,
     access: &AccessContext,
+    action: &'static str,
     failure: AuthorizationFailure,
 ) {
     let tenant_id = access.subject.tenant_id;
-    let mut entry = AuditEntry::new(tenant_id, "user", "connector.oauth_authorized", "denied")
+    let mut entry = AuditEntry::new(tenant_id, "user", action, "denied")
         .by_user(access.subject.user_id)
         .reason(failure.reason.chars().take(300).collect::<String>())
         .ip(context.ip_string());

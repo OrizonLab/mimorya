@@ -1,9 +1,11 @@
 //! The start of an MCP server's authorization (ADR-171): a company-wide
-//! connector administrator, a server declared with OAuth, its client's
-//! secret kept if it proves itself with one, an authorization endpoint the
-//! network rules still allow; the browser is sent there with PKCE S256, a
-//! fresh `state`, the resource and the scopes declared, and an attempt
-//! sealed for it.
+//! connector administrator for the company, or a person who may use
+//! connectors for themself on a server each person authorizes (ADR-174); a
+//! server declared with OAuth, its client's secret kept if it proves itself
+//! with one, an authorization endpoint the network rules still allow; the
+//! browser is sent there with PKCE S256, a fresh `state`, the resource and
+//! the scopes declared, and an attempt sealed for it, under a name that
+//! says whose it is.
 
 use chrono::Utc;
 use mimorya_connectors::mcp::oauth::{
@@ -19,7 +21,7 @@ use super::redirect_uri;
 use crate::services::AccessContext;
 use crate::services::admin::connector_oauth::McpServer;
 use crate::services::admin::connectors::{ConnectorAdmin, PERMISSION};
-use crate::services::connectors::client_secret_name;
+use crate::services::connectors::{CONNECTOR_USE, client_secret_name};
 
 /// Where the browser goes, and the attempt it keeps.
 pub struct AuthorizationStart {
@@ -27,6 +29,7 @@ pub struct AuthorizationStart {
     pub attempt: String,
 }
 
+/// The company's authorization, started by a company-wide administrator.
 pub async fn start_authorization(
     admin: &ConnectorAdmin<'_>,
     access: &AccessContext,
@@ -34,10 +37,34 @@ pub async fn start_authorization(
     web_origin: &str,
 ) -> anyhow::Result<AuthorizationStart> {
     access.require_tenant_wide(PERMISSION)?;
+    started(admin, access, id, web_origin, OAuthHolder::Company).await
+}
+
+/// The signed-in person's own authorization of a server each person
+/// authorizes (ADR-174).
+pub async fn start_person_authorization(
+    admin: &ConnectorAdmin<'_>,
+    access: &AccessContext,
+    id: Uuid,
+    web_origin: &str,
+) -> anyhow::Result<AuthorizationStart> {
+    access.require(CONNECTOR_USE)?;
+    started(admin, access, id, web_origin, OAuthHolder::Person).await
+}
+
+async fn started(
+    admin: &ConnectorAdmin<'_>,
+    access: &AccessContext,
+    id: Uuid,
+    web_origin: &str,
+    holder: OAuthHolder,
+) -> anyhow::Result<AuthorizationStart> {
     let tenant_id = access.subject.tenant_id;
     let mut tx = admin.db.begin(tenant_id).await?;
+    let instance = get_connector_instance(&mut tx, id).await?;
+    let enabled = instance.as_ref().is_some_and(|instance| instance.enabled);
     // An absent connector is answered as such first (ADR-047).
-    let server = McpServer::of(get_connector_instance(&mut tx, id).await?)?;
+    let server = McpServer::of(instance)?;
     let secret_kept = admin
         .secrets
         .exists(&mut tx, &client_secret_name(id))
@@ -57,12 +84,28 @@ pub async fn start_authorization(
             return Err(DomainError::validation("Déclarez d’abord OAuth sur ce serveur").into());
         }
     };
-    // Each person authorizes it for themself (ADR-174): never the company.
-    if declared.holder == OAuthHolder::Person {
-        return Err(DomainError::conflict(
-            "Chaque personne autorise ce serveur pour elle-même : l’entreprise ne l’autorise pas",
-        )
-        .into());
+    // Each person authorizes it for themself, or the company does: never
+    // the other (ADR-174).
+    match (holder, declared.holder) {
+        (OAuthHolder::Company, OAuthHolder::Person) => {
+            return Err(DomainError::conflict(
+                "Chaque personne autorise ce serveur pour elle-même : l’entreprise ne l’autorise \
+                 pas",
+            )
+            .into());
+        }
+        (OAuthHolder::Person, OAuthHolder::Company) => {
+            return Err(DomainError::conflict(
+                "L’entreprise autorise ce serveur : personne ne l’autorise pour soi",
+            )
+            .into());
+        }
+        _ => {}
+    }
+    // A person's authorization serves runs only: none for a server they
+    // cannot use.
+    if holder == OAuthHolder::Person && !enabled {
+        return Err(DomainError::conflict("Ce serveur est désactivé").into());
     }
     if declared.client_auth != ClientAuth::None && !secret_kept {
         return Err(DomainError::validation(
@@ -93,8 +136,12 @@ pub async fn start_authorization(
         declared: declared_print(&server.url, &declared),
         expires_at: Utc::now() + AUTHORIZATION_LIFETIME,
     };
+    let sealed = match holder {
+        OAuthHolder::Company => attempt::seal(cipher, tenant_id, &attempt)?,
+        OAuthHolder::Person => attempt::seal_person(cipher, tenant_id, &attempt)?,
+    };
     Ok(AuthorizationStart {
         redirect_url: url,
-        attempt: attempt::seal(cipher, tenant_id, &attempt)?,
+        attempt: sealed,
     })
 }

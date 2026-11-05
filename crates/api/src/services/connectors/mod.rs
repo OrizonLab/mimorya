@@ -51,7 +51,7 @@ pub use cache::RETRY_AFTER;
 use cache::{Origin, RuntimeCache, Unavailable};
 pub use credential::{Credential, credential_of, given_under};
 pub use failures::{failure, opened};
-pub use grants::{AUTHORIZATION_REMOVED, SealedGrant, seal_grant};
+pub use grants::{AUTHORIZATION_REMOVED, SealedGrant, seal_grant, seal_person_grant};
 pub use mimorya_connectors::outbound::CONNECTOR_USE;
 pub use policies::{Policies, read_policies, scoped_overrides};
 pub use reach::unavailable_in_reach;

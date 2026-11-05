@@ -11,7 +11,7 @@ mod approval_routing;
 mod assignments;
 mod connector_applications;
 mod connector_oauth;
-mod connectors;
+pub(crate) mod connectors;
 mod embedding;
 mod evaluation_settings;
 mod gateways;

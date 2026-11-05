@@ -18,6 +18,7 @@ mod links;
 mod memory;
 mod missions;
 mod notifications;
+mod person_authorizations;
 mod run_stream;
 mod runs;
 mod scheduled_tasks;
@@ -56,6 +57,9 @@ pub use memory::{
 };
 pub use missions::{Mission, MissionList, MissionStatus, NewMission};
 pub use notifications::NotificationSettings;
+pub use person_authorizations::{
+    PersonAuthorizationState, PersonAuthorizationView, PersonAuthorizations,
+};
 pub use run_stream::{
     ApprovalRequestedEvent, ApprovalResolvedEvent, AssistantDelta, AssistantMessage,
     ConnectorsUnavailable, RunFinished, RunQueued, RunResumed, RunStarted, RunStreamEvent,
@@ -89,6 +93,7 @@ pub fn typescript() -> String {
     declarations.add::<Done>();
     declarations.add::<AccountLinks>();
     declarations.add::<AccountLinkStart>();
+    declarations.add::<PersonAuthorizations>();
     declarations.add::<AccountGateways>();
     declarations.add::<GatewayLinkPreview>();
     declarations.add::<TelegramLink>();

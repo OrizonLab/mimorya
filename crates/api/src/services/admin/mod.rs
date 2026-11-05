@@ -61,9 +61,11 @@ pub use absences::{AbsenceAdmin, absence_of, declare_absence_for, end_absence_fo
 pub use approval_routing::{manager_risks, set_manager_risks};
 pub use assignments::{grant_role, revoke_role};
 pub use connector_authorization::{
-    AUTHORIZATION_COOKIE, AuthorizationFailure, AuthorizationStart, OAuthReturn,
-    authorization_cookie, cleared_authorization_cookie, finish_authorization,
-    redirect_uri as oauth_redirect_uri, remove_authorization, start_authorization,
+    AUTHORIZATION_COOKIE, AuthorizationFailure, AuthorizationStart, OAuthReturn, PERSON_AUTHORIZED,
+    PersonServer, attempt_holder, authorization_cookie, cleared_authorization_cookie,
+    finish_authorization, finish_person_authorization, list_person_servers,
+    redirect_uri as oauth_redirect_uri, remove_authorization, remove_person_authorization,
+    start_authorization, start_person_authorization,
 };
 pub use connector_config::{Editable, RestChanges};
 pub use connector_oauth::{OAuthInput, declare_oauth, remove_oauth};

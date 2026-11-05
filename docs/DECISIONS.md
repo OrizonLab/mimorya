@@ -11006,7 +11006,38 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     envoyées sous une autre déclaration ni sous une déclaration illisible, échecs
     comptés, vérifié par mutation), retour d'une autorisation de l'entreprise après le
     changement de mode refusé (`connector_oauth_return_guards.rs`), route du mode tracée
-    pour une ressource absente (`admin_absent_resources.rs`) ;
+    pour une ressource absente (`admin_absent_resources.rs`), autorisation de
+    l'entreprise gardée sous une déclaration par personne jamais renouvelée, changement de mode refusé sur une
+    déclaration illisible, requête bornée à quinze secondes et révocations tracées
+    après la réponse (`connector_oauth_holder.rs`, `connector_oauth_person_revocations.rs`,
+    vérifiés par mutation) ;
+  - lot 43c : chacun autorise un serveur pour soi depuis son compte
+    (`GET`, `POST`, `DELETE /api/account/connector-authorizations`,
+    `routes/account_connector_authorizations.rs`), sous `connector:use`, sur un serveur
+    activé que chacun autorise. La tentative est scellée sous un autre nom que celle
+    d'un administrateur : l'une n'est jamais finie comme l'autre. Le retour arrive à
+    l'adresse de celui de l'entreprise, qui l'aiguille et renvoie le navigateur vers
+    `/account?serveur=ok|echec`. Il relit `connector:use` et garde les jetons, scellés
+    sous le nom de la personne, sous le verrou d'administration et le compte tenu
+    actif : un changement de déclaration ou une désactivation l'attend ou le voit.
+    Jetons accordés et non gardés révoqués, sauf si la même personne garde une
+    autorisation du même client. Retrait par la personne, et de toutes les siennes
+    quand son compte est désactivé, révoquées ensemble (`connector_authorization/`
+    `person.rs`, `person_finish.rs`, `revocation/persons.rs`) ; tests :
+    `connector_person_authorization.rs` (autorisée pour soi seule, jamais celle de
+    l'entreprise ni d'un autre, listée sans jeton, retirée et révoquée, Léa ne retire
+    pas celle de Marc, compte désactivé dont toutes les autorisations sont révoquées, serveur désactivé ou droit perdu après coup : l'autorisation reste listée, non disponible, et retirable ; serveur de l'entreprise ou désactivé jamais autorisé non listé ; administrateur d'une autre entreprise qui ne démarre ni ne retire rien,
+    celle de Marc gardée), `connector_person_authorization_rights.rs` (tentative
+    présentée par une autre personne ou un administrateur, tentative d'un
+    administrateur présentée par une personne, serveur autorisé par l'entreprise ou
+    absent, personne sans `connector:use`, droit perdu, déclaration changée ou serveur
+    désactivé pendant l'aller et retour, retour sans tentative d'une personne qui
+    n'administre rien renvoyé vers son compte), `connector_person_authorization_races.rs`
+    (compte désactivé ou déclaration changée pendant l'échange du code : rien n'est
+    gardé, la raison tracée, les jetons accordés révoqués ; refus qui ne révoque pas
+    l'autorisation que la même personne garde du même client ; vérifiés par mutation).
+    Un retour dont aucune tentative ne s'ouvre est celui d'une personne si l'appelant
+    n'administre pas les connecteurs de toute l'entreprise ;
   - aucune preuve d'identité n'est demandée au serveur d'autorisation : une personne
     peut autoriser avec un compte qu'elle partage ; l'écran le dira ;
   - deux personnes qui autorisent avec le même compte chez le serveur peuvent voir

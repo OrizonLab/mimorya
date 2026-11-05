@@ -190,7 +190,7 @@ Repères à l'intérieur des crates :
   (`absences.rs`, ADR-078), organisation, habilitations, connecteurs : ce que
   l'administration change de chacun (`connector_config.rs`), OAuth déclaré sur un serveur
   MCP (`connector_oauth.rs`, sa configuration gardée : `mcp_config.rs`, ADR-171 ; client saisi ou enregistré par la plateforme : `oauth_client.rs`, ADR-173) et son
-  autorisation, départ, retour et jetons scellés (`connector_authorization/`), révoqués chez le serveur quand l'administration les laisse, ceux de l'entreprise et ceux des personnes (`connector_authorization/revocation/`, ADR-172, ADR-174), qui l'autorise, l'entreprise ou chacun, changé sur place (`connector_oauth_holder.rs`, ADR-174), seules
+  autorisation, départ, retour et jetons scellés (`connector_authorization/`), révoqués chez le serveur quand l'administration les laisse, ceux de l'entreprise et ceux des personnes (`connector_authorization/revocation/`, ADR-172, ADR-174), autorisation d'un serveur par chacun pour soi, son retour à la même adresse, sa liste et son retrait (`connector_authorization/person.rs`, `person_finish.rs`, routes `account_connector_authorizations.rs`, ADR-174), qui l'autorise, l'entreprise ou chacun, changé sur place (`connector_oauth_holder.rs`, ADR-174), seules
   les politiques changées
   tracées (`policy_changes.rs`, ADR-160) et API REST ajoutées
   (`rest_connectors.rs`, ADR-112, opérations lues d'une description OpenAPI, ADR-114),

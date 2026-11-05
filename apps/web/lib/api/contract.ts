@@ -1997,6 +1997,39 @@ export type PermissionView = { permission: string, label: string,
 delegable: boolean, enforcement: Enforcement, };
 
 /**
+ * The person's own authorization of a server: never its tokens.
+ */
+export type PersonAuthorizationState = { authorizedAt: string,
+/**
+ * When the access token expires, if it does.
+ */
+expiresAt: string | null,
+/**
+ * Whether a refresh token is kept.
+ */
+renewable: boolean, scopes: Array<string>,
+/**
+ * Why its last renewal failed, the authorization kept.
+ */
+renewalFailure: string | null, };
+
+/**
+ * A server the person may authorize, or did.
+ */
+export type PersonAuthorizationView = { connectorId: string, name: string,
+/**
+ * An authorization may start: the server is enabled, declared for each
+ * person, and the person may use the company's connectors. Otherwise
+ * their authorization stays theirs to withdraw.
+ */
+available: boolean, authorization: PersonAuthorizationState | null, };
+
+/**
+ * `GET /account/connector-authorizations`.
+ */
+export type PersonAuthorizations = { servers: Array<PersonAuthorizationView>, };
+
+/**
  * The provider the platform offers every company.
  */
 export type PlatformModel = { provider: string, model: string, priced: boolean, };

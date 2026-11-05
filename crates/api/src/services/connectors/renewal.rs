@@ -131,6 +131,7 @@ impl ConnectorService {
                     self.revoke_unkept(Unkept {
                         tenant_id,
                         connector_id,
+                        user_id: None,
                         declared: call.declared,
                         granted,
                         client_secret: call.secret,

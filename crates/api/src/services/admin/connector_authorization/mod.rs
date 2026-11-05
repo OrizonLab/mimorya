@@ -6,17 +6,27 @@
 //! (`finish`). An authorization is withdrawn here, and goes with the
 //! declaration it was given under (`connector_oauth`, `connectors`) or with
 //! the connector; its tokens are then revoked at the authorization server
-//! (`revocation`, ADR-172).
+//! (`revocation`, ADR-172). On a server each person authorizes, each person
+//! does so for themself, from their account, the return arriving at the
+//! same address (`person_finish`), and lists or withdraws their own
+//! (`person`, ADR-174).
 
-mod attempt;
+pub(crate) mod attempt;
 mod finish;
+mod person;
+mod person_finish;
 mod revocation;
 mod start;
 
 pub use attempt::{AUTHORIZATION_COOKIE, authorization_cookie, cleared_authorization_cookie};
 pub use finish::{AuthorizationFailure, OAuthReturn, finish_authorization};
-pub(super) use revocation::{revocable_under, revoke, take_authorization, take_authorizations};
-pub use start::{AuthorizationStart, start_authorization};
+pub use person::{PersonServer, list_person_servers, remove_person_authorization};
+pub use person_finish::{PERSON_AUTHORIZED, attempt_holder, finish_person_authorization};
+pub(super) use revocation::{
+    revocable_under, revoke, revoke_all, take_authorization, take_authorizations,
+    take_persons_of_user,
+};
+pub use start::{AuthorizationStart, start_authorization, start_person_authorization};
 
 use mimorya_core::DomainError;
 use mimorya_db::repositories::audit::append_audit;

@@ -1,5 +1,6 @@
 //! An MCP server's authorization under way at its authorization server,
-//! kept by the administrator's browser until it comes back (ADR-171): the
+//! kept by the administrator's browser until it comes back (ADR-171), or a
+//! person's for themself, sealed under its own name (ADR-174): the
 //! connector, the administrator who started it, `state`, the PKCE verifier
 //! and a print of the declaration it was started under, sealed by the
 //! master key for the company, which the value names in clear. Nothing is
@@ -20,6 +21,9 @@ const COOKIE_PATH: &str = "/api/admin/connectors/oauth";
 pub const AUTHORIZATION_LIFETIME: Duration = Duration::minutes(10);
 /// The associated data's name: never a link's nor a sign-in's.
 const SEALED_AS: &str = "connector_oauth.attempt";
+/// A person's own attempt (ADR-174): never opened as an administrator's,
+/// nor the other way round.
+const SEALED_AS_PERSON: &str = "connector_oauth.person_attempt";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AuthorizationAttempt {
@@ -60,7 +64,35 @@ pub fn open(
     value: &str,
     now: DateTime<Utc>,
 ) -> Option<(Uuid, AuthorizationAttempt)> {
-    let (tenant_id, attempt): (Uuid, AuthorizationAttempt) = open_value(cipher, value, SEALED_AS)?;
+    open_as(cipher, value, now, SEALED_AS)
+}
+
+/// A person's own attempt, sealed as such (ADR-174).
+pub fn seal_person(
+    cipher: &SecretCipher,
+    tenant_id: Uuid,
+    attempt: &AuthorizationAttempt,
+) -> anyhow::Result<String> {
+    seal_value(cipher, tenant_id, SEALED_AS_PERSON, attempt)
+}
+
+/// The company and a person's own attempt, as `open` reads an
+/// administrator's.
+pub fn open_person(
+    cipher: &SecretCipher,
+    value: &str,
+    now: DateTime<Utc>,
+) -> Option<(Uuid, AuthorizationAttempt)> {
+    open_as(cipher, value, now, SEALED_AS_PERSON)
+}
+
+fn open_as(
+    cipher: &SecretCipher,
+    value: &str,
+    now: DateTime<Utc>,
+    sealed_as: &str,
+) -> Option<(Uuid, AuthorizationAttempt)> {
+    let (tenant_id, attempt): (Uuid, AuthorizationAttempt) = open_value(cipher, value, sealed_as)?;
     (attempt.expires_at > now).then_some((tenant_id, attempt))
 }
 
@@ -109,6 +141,14 @@ mod tests {
         // A link's attempt is not an authorization's, though sealed alike.
         let link = seal_value(&cipher, tenant, "account_link.attempt", &attempt).unwrap();
         assert_eq!(open(&cipher, &link, now), None);
+        // Nor is a person's an administrator's, nor the other way round.
+        let person = seal_person(&cipher, tenant, &attempt).unwrap();
+        assert_eq!(open(&cipher, &person, now), None);
+        assert_eq!(open_person(&cipher, &value, now), None);
+        assert_eq!(
+            open_person(&cipher, &person, now),
+            Some((tenant, attempt.clone()))
+        );
     }
 
     #[test]

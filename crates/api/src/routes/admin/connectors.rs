@@ -38,7 +38,7 @@ use crate::services::connectors::{client_secret_name, token_secret_name};
 use crate::services::permission_catalog::permission_catalog;
 
 const PERMISSION: &str = "connector:manage";
-pub(super) fn secrets(state: &AppState) -> SecretStore {
+pub(crate) fn secrets(state: &AppState) -> SecretStore {
     SecretStore::new(state.config.secrets.clone())
 }
 
@@ -133,7 +133,7 @@ pub async fn list(
     }))
 }
 
-pub(super) fn admin<'a>(
+pub(crate) fn admin<'a>(
     state: &'a AppState,
     store: &'a SecretStore,
     catalog: &'a [mimorya_core::authz::PermissionInfo],
