@@ -1,23 +1,28 @@
 //! An administrator's test of a server each person authorizes (ADR-174): with
 //! their own authorization, never another person's nor the company's; refused
 //! without it, or with one given under another declaration; how it went is
-//! theirs, not written on the server's status. A person who authorized it
-//! does not test it, nor does another company's administrator, who neither
+//! theirs, not written on the server's status, an expired or refused one
+//! said to them to authorize again in their account; unreadable policies,
+//! the server's own, written all the same. A person who authorized it does
+//! not test it, nor does another company's administrator, who neither
 //! changes who authorizes it.
 
 mod support;
 
 use axum::http::StatusCode;
 use mimorya_api::services::admin::TEST_OWN_AUTHORIZATION;
+use mimorya_connectors::mcp::{OAUTH_EXPIRED_PERSON, OAUTH_REFUSED_PERSON};
 use mimorya_connectors::testing::FakeAuthorizationServer;
 use mimorya_core::demo::user;
 use serde_json::{Value, json};
 use support::TestApi;
 use support::accounts::{INVITED_PASSWORD, accept};
 use support::companies;
-use support::connector_sessions::{said, tested};
+use support::connector_sessions::{alter, said, tested};
 use support::mcp::{PRIVATE_DEPLOYMENT, listed};
-use support::person_authorizations::{declared_per_person, last_metadata, person_authorized};
+use support::person_authorizations::{
+    declared_per_person, last_metadata, person_authorized, person_authorized_until,
+};
 
 /// Whether the server was ever sent `token`.
 fn sent(server: &mimorya_connectors::testing::ProtectedMcp, token: &str) -> bool {
@@ -81,10 +86,20 @@ async fn an_administrator_tests_with_their_own_authorization_alone() {
     );
     assert_eq!(status(&paul, &id).await, before);
 
-    // His refused by the server: said to him, not written on the server.
+    // His expired: said to him, to authorize it again in his account, not
+    // sent, not written on the server.
+    let past = Some(chrono::Utc::now() - chrono::Duration::minutes(5));
+    let expired = person_authorized_until(&api, &id, user::PAUL, &authority, &resource, past).await;
+    let outcome = tested(&paul, &id).await;
+    assert!(said(&outcome).contains(OAUTH_EXPIRED_PERSON), "{outcome}");
+    assert!(!sent(&server, &expired));
+    assert_eq!(status(&paul, &id).await, before);
+
+    // His refused by the server: said to him alike.
+    let pauls = person_authorized(&api, &id, user::PAUL, &authority, &resource).await;
     authority.revoke_all();
     let outcome = tested(&paul, &id).await;
-    assert!(!said(&outcome).is_empty(), "{outcome}");
+    assert!(said(&outcome).contains(OAUTH_REFUSED_PERSON), "{outcome}");
     assert!(!said(&outcome).contains(&pauls));
     assert_eq!(
         last_metadata(&api, &id, "connector.tested").await,
@@ -92,6 +107,19 @@ async fn an_administrator_tests_with_their_own_authorization_alone() {
     );
     assert_eq!(status(&paul, &id).await, before);
     assert!(!sent(&server, &marcs));
+
+    // Its policies unreadable: the server's own, written for everyone.
+    let spoilt = "update connector_instances set tool_policies = \
+                  '{\"outil\": {\"risk\": \"inconnu\"}}' where id = $1";
+    alter(&api, &id, spoilt).await;
+    let outcome = tested(&paul, &id).await;
+    assert!(
+        said(&outcome).contains("Politiques d’outils illisibles"),
+        "{outcome}"
+    );
+    let (state, error) = status(&paul, &id).await;
+    assert_eq!(state, json!("error"));
+    assert!(error.as_str().unwrap_or_default().contains("illisibles"));
     assert_eq!(
         paul.delete(&format!("/admin/connectors/{id}")).await.status,
         StatusCode::OK

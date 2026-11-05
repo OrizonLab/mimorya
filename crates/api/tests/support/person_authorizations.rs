@@ -3,7 +3,7 @@
 //! simulated authorization server and sealed for that person, and what the
 //! database and the audit keep of them.
 
-use mimorya_api::services::connectors::person_access_sealed_as;
+use mimorya_api::services::connectors::{person_access_sealed_as, person_refresh_sealed_as};
 use mimorya_connectors::testing::{CLIENT_ID, FakeAuthorizationServer};
 use mimorya_core::demo::tenant;
 use mimorya_db::repositories::connector_person_authorizations::{
@@ -24,6 +24,18 @@ pub async fn person_authorized(
     authority: &FakeAuthorizationServer,
     resource: &str,
 ) -> String {
+    person_authorized_until(api, id, user, authority, resource, None).await
+}
+
+/// `person_authorized`, its access token said to expire `until`.
+pub async fn person_authorized_until(
+    api: &TestApi,
+    id: &str,
+    user: Uuid,
+    authority: &FakeAuthorizationServer,
+    resource: &str,
+    until: Option<chrono::DateTime<chrono::Utc>>,
+) -> String {
     let connector: Uuid = id.parse().expect("id");
     let token = authority.issue(resource);
     let services = &api.app.services;
@@ -35,6 +47,16 @@ pub async fn person_authorized(
             &token,
         )
         .expect("sealed");
+    // One that expires is kept with a refresh token, as granted.
+    let refresh = until.map(|_| {
+        cipher
+            .seal(
+                tenant::ID,
+                &person_refresh_sealed_as(connector, user),
+                "renouvellement-personne",
+            )
+            .expect("sealed")
+    });
     let mut tx = services.db.begin(tenant::ID).await.unwrap();
     put_person_authorization(
         &mut tx,
@@ -47,8 +69,8 @@ pub async fn person_authorized(
             resource,
             scopes: "",
             access_token: &sealed,
-            access_expires_at: None,
-            refresh_token: None,
+            access_expires_at: until,
+            refresh_token: refresh.as_ref(),
         },
     )
     .await

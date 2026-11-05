@@ -16,13 +16,16 @@ use mimorya_connectors::testing::{
 };
 use mimorya_core::demo::user;
 use serde_json::json;
-use support::connector_oauth::declared;
+use support::connector_oauth::{company_kept, declared};
 use support::connector_sessions::alter;
 use support::mcp::{PRIVATE_DEPLOYMENT, listed};
 use support::person_authorizations::{
-    last_metadata, person_authorized, person_count, person_revocations,
+    entries_by, last_metadata, person_authorized, person_count, person_revocations,
 };
 use support::{Client, TestApi};
+
+/// What the audit calls the company's authorization's revocation.
+const COMPANY_REVOKED: &str = "connector.oauth_authorization_revoked";
 
 /// A server each person authorizes, declared, with Marc's and Léa's own
 /// authorizations: its id, its resource and their tokens.
@@ -234,8 +237,10 @@ async fn the_request_does_not_wait_for_every_person_s_revocation() {
     for person in [user::PAUL, user::CLAIRE, user::JULIEN] {
         person_authorized(&api, &id, person, &authority, &resource).await;
     }
-    // Its revocation endpoint never answers: five people, four at a time,
-    // ten seconds each, twenty in all.
+    // And the company's, kept by a process that knew only the company's.
+    company_kept(&api, &id, &authority, &resource).await;
+    // Its revocation endpoint never answers: the company's ten seconds,
+    // then five people, four at a time, ten seconds each, twenty in all.
     authority.set(|settings| settings.mute_revocation = true);
     let started = std::time::Instant::now();
     let withdrawn = paul.delete(&format!("/admin/connectors/{id}/oauth")).await;
@@ -246,6 +251,11 @@ async fn the_request_does_not_wait_for_every_person_s_revocation() {
     let ceiling = REVOCATION_BOUND + std::time::Duration::from_secs(5 + 2);
     assert!(waited < ceiling, "{waited:?}");
     assert_eq!(person_count(&api, &id).await, 0, "taken before the answer");
+    // The company's audited as soon as it gave up, the people's still sent.
+    let company = entries_by(&api, Some(&id), user::PAUL, COMPANY_REVOKED).await;
+    assert_eq!(company.len(), 1, "{company:?}");
+    assert_eq!(company[0].0, "failure");
+    assert!(person_revocations(&api, &id).await.is_empty());
     // The revocations go on after the answer, and are audited.
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
     let audited = loop {

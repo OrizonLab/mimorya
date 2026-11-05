@@ -4,8 +4,9 @@
 //! instance; the audit keeps the outcome, never the token. A server each
 //! person authorizes is tried with the administrator's own authorization,
 //! never another person's nor the company's, and refused without it; how
-//! it went then says as much of their authorization as of the server, and
-//! is not recorded on the instance (ADR-174).
+//! it went then says as much of their authorization as of the server: not
+//! recorded on the instance nor retried for everyone, unless its policies,
+//! the server's own, cannot be read (ADR-174).
 
 use std::collections::HashMap;
 
@@ -87,7 +88,10 @@ pub async fn test_connector(
         }
     };
 
-    let outcome = match (read_policies(&instance), credential) {
+    let policies = read_policies(&instance);
+    // The server's own: written whoever's authorization it was tried with.
+    let unreadable_policies = policies.is_err();
+    let outcome = match (policies, credential) {
         (Err(error), _) => ConnectorTestOutcome {
             tools: Vec::new(),
             error: Some(error),
@@ -115,12 +119,13 @@ pub async fn test_connector(
             outcome
         }
     };
-    if outcome.error.is_none() {
+    // One person's authorization, failing or not, is not the server's
+    // status: neither written nor retried for everyone.
+    if outcome.error.is_none() && !own {
         admin.connectors.retry_now(id).await;
     }
     let mut tx = admin.db.begin(tenant_id).await?;
-    // One person's authorization failing is not the server's status.
-    if !own {
+    if !own || unreadable_policies {
         let error = outcome.error.as_deref();
         report_connector_status(&mut tx, id, instance.updated_at, error).await?;
     }

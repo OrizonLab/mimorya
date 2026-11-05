@@ -9,8 +9,10 @@ use mimorya_connectors::testing::{
     CLIENT_ID, CLIENT_SECRET, FakeAuthorizationServer, OAuthQuirk, ProtectedMcp,
     serve_oauth_mcp_http,
 };
-use mimorya_core::demo::tenant;
-use mimorya_db::repositories::connector_authorizations::sealed_connector_tokens;
+use mimorya_core::demo::{tenant, user};
+use mimorya_db::repositories::connector_authorizations::{
+    NewConnectorAuthorization, put_connector_authorization, sealed_connector_tokens,
+};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
@@ -173,4 +175,48 @@ pub fn with_param(path: &str, name: &str, value: Option<&str>) -> String {
         url.query_pairs_mut().append_pair(name, value);
     }
     format!("{}?{}", url.path(), url.query().unwrap_or_default())
+}
+
+/// Keeps a company's authorization of the connector as a process that knew
+/// only the company's would have (ADR-174), under its declaration
+/// (`resource`), due for renewal: its access token.
+pub async fn company_kept(
+    api: &TestApi,
+    id: &str,
+    authority: &FakeAuthorizationServer,
+    resource: &str,
+) -> String {
+    let connector: Uuid = id.parse().expect("id");
+    let token = authority.issue(resource);
+    let cipher = api.app.services.config.secrets.clone().expect("master key");
+    let sealed = cipher
+        .seal(tenant::ID, &access_sealed_as(connector), &token)
+        .expect("sealed");
+    let refresh = cipher
+        .seal(
+            tenant::ID,
+            &refresh_sealed_as(connector),
+            "renouvellement-garde",
+        )
+        .expect("sealed");
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    put_connector_authorization(
+        &mut tx,
+        NewConnectorAuthorization {
+            tenant_id: tenant::ID,
+            connector_id: connector,
+            issuer: &authority.issuer,
+            client_id: CLIENT_ID,
+            resource,
+            scopes: "",
+            access_token: &sealed,
+            access_expires_at: Some(chrono::Utc::now() + chrono::Duration::seconds(210)),
+            refresh_token: Some(&refresh),
+            authorized_by_user_id: user::PAUL,
+        },
+    )
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+    token
 }
