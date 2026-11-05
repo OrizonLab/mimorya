@@ -14,6 +14,7 @@ pub mod audit;
 pub mod auth;
 pub mod author_notices;
 pub mod connector_authorizations;
+pub mod connector_person_authorizations;
 pub mod connector_renewals;
 pub mod connectors;
 pub mod conversation_summaries;

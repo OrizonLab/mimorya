@@ -10904,3 +10904,70 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       (`registered-client.ts`), au conditionnel dans la note de l'adresse ;
   - reste : la gestion du client enregistré (RFC 7592) ; le jeton d'enregistrement
     initial ; l'autorisation par personne.
+
+## ADR-174 — OAuth des serveurs MCP : une autorisation par personne (lots 43a à 43g)
+
+- **Statut** : accepté (2026-11-05) · complète ADR-171, ADR-172, ADR-173.
+- **Contexte** : l'autorisation OAuth d'un serveur MCP est aujourd'hui celle de
+  l'entreprise (ADR-171) : un administrateur l'autorise une fois, et tous les runs
+  agissent sous le compte qui a autorisé. Beaucoup de serveurs MCP (messagerie, fichiers,
+  outils de projet) ne montrent à chacun que ce que son propre compte voit. Agir sous un
+  compte de service y donnerait trop à tous, ou trop peu. ADR-171 annonçait une
+  autorisation par personne, comme les comptes reliés (ADR-116), avec une session par
+  personne.
+- **Décision** :
+  - **qui autorise** : la déclaration OAuth d'un serveur dit qui l'autorise (`holder`) :
+    l'entreprise, comme jusqu'ici, ou chaque personne pour elle-même. Une déclaration
+    gardée avant ce choix est celle de l'entreprise. Le choix n'est écrit que pour
+    chaque personne : un processus qui ne connaît que l'entreprise lit alors la
+    déclaration comme illisible et ne démarre rien (ADR-171), au lieu d'utiliser un
+    jeton d'entreprise qui n'existe pas ;
+  - **les autorisations des personnes** sont gardées à part de celle de l'entreprise,
+    une par connecteur et par personne (`connector_person_authorizations`), avec ce
+    qu'ADR-171 garde de celle de l'entreprise : jetons scellés et liés au connecteur et
+    à la personne, émetteur, client, ressource, portées, renouvellement réservé et
+    raison de son dernier échec. Une nouvelle autorisation remplace l'ancienne de la
+    même personne sans la révoquer (ADR-172) ; elle ne change pas la version du
+    connecteur : la session d'une personne suit sa propre autorisation ;
+  - **chaque lecture et chaque retrait nomment la personne**, sauf ceux qui prennent
+    toutes les autorisations d'un connecteur quand sa déclaration change ou qu'il
+    disparaît, et toutes celles d'une personne quand son compte est désactivé ;
+  - **qui peut autoriser pour soi** : qui détient `connector:use`, comme pour un compte
+    relié, depuis « Mon compte », par un aller et retour du navigateur ; le retour
+    arrive à la même adresse que celui de l'entreprise, que connaissent déjà les clients
+    enregistrés à la main ou par la plateforme (ADR-173), et la tentative de la personne
+    est scellée sous un autre nom que celle d'un administrateur ;
+  - **ce qu'un run utilise** : l'autorisation de la personne qu'il sert (l'auteur d'une
+    tâche planifiée, d'une mission ou d'un déclencheur ; la personne reliée d'une
+    passerelle ; le parent d'un sous-agent), jamais celle d'une autre. Sans elle, le
+    connecteur est indisponible pour ce run, et la note dit à la personne de
+    l'autoriser dans « Mon compte ». Une évaluation de compétence n'utilise aucune
+    autorisation de personne : ces connecteurs y sont retenus et nommés (ADR-153) ;
+  - **le test de l'administrateur** se fait avec sa propre autorisation ;
+  - **les sessions** sont gardées par connecteur et par personne, en nombre borné, et
+    retirées après un temps sans run ;
+  - **la révocation** (ADR-172) : les jetons de toutes les personnes sont révoqués quand
+    le mode, la déclaration ou l'adresse du serveur changent, quand le connecteur est
+    supprimé, et ceux d'une personne quand son compte est désactivé ou qu'elle retire
+    son autorisation ;
+  - **rétention** : jusqu'à ce retrait, à ces changements ou à cette désactivation ; la
+    suppression d'un compte ou de l'entreprise par l'exploitant emporte les
+    autorisations (cascade), sans révocation possible chez le serveur ;
+  - **lots** : 43a, la table, son dépôt et le mode dans la déclaration ; 43b, le choix
+    du mode par l'administrateur et le retrait de toutes les autorisations des
+    personnes ; 43c, l'autorisation de la personne par l'API ; 43d, le test de
+    l'administrateur ; 43e, les sessions par personne dans les runs ; 43f, le
+    renouvellement par personne ; 43g, les écrans et le parcours de bout en bout.
+- **Conséquences** :
+  - lot 43a : migration 0076, `db/src/repositories/connector_person_authorizations.rs`,
+    `OAuthHolder` (`connectors/src/mcp/oauth/declaration.rs`) ; tests :
+    `crates/db/tests/connector_person_authorizations.rs` (une autorisation par
+    personne, un retrait ne prend que ce qu'il nomme, cascades, autre entreprise qui ne
+    lit, ne prend ni n'écrit rien), tests unitaires de la déclaration (déclaration
+    ancienne lue comme celle de l'entreprise et écrite comme avant, mode inconnu
+    refusé) ;
+  - aucune preuve d'identité n'est demandée au serveur d'autorisation : une personne
+    peut autoriser avec un compte qu'elle partage ; l'écran le dira ;
+  - deux personnes qui autorisent avec le même compte chez le serveur peuvent voir
+    l'une révoquer l'autre ;
+  - reste : vérifier l'identité de la personne chez le serveur (OpenID Connect).

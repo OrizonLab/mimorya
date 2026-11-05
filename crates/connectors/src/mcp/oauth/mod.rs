@@ -32,7 +32,7 @@ mod token_request;
 pub use challenge::{BearerChallenge, MAX_HEADER_CHARS, bearer_challenge};
 pub use declaration::{
     MAX_CLIENT_ID_CHARS, MAX_CLIENT_SECRET_CHARS, OAUTH_TO_AUTHORIZE, OAuthDeclaration,
-    RegisteredClient, asked_scopes, client_id_problem, client_secret_problem,
+    OAuthHolder, RegisteredClient, asked_scopes, client_id_problem, client_secret_problem,
 };
 pub use departure::{Departure, authorization_url};
 pub use discovery::{Discovery, DiscoveryLimits, discover, discover_within};

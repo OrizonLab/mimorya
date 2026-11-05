@@ -44,6 +44,30 @@ pub struct OAuthDeclaration {
     /// ADR-173): absent for one an administrator typed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub registered: Option<RegisteredClient>,
+    /// Who authorizes the server (ADR-174): the company, absent from the
+    /// declarations kept before each person could, and written only for
+    /// each person, so that a process that knows only the company's reads
+    /// such a declaration as unreadable and starts nothing.
+    #[serde(default, skip_serializing_if = "OAuthHolder::is_company")]
+    pub holder: OAuthHolder,
+}
+
+/// Who an MCP server's OAuth authorization is given by (ADR-174): an
+/// administrator once for the company, every run then acting under the
+/// account that authorized (ADR-171), or each person for themself, a run
+/// then acting under the account of the person it serves.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum OAuthHolder {
+    #[default]
+    Company,
+    Person,
+}
+
+impl OAuthHolder {
+    pub fn is_company(&self) -> bool {
+        *self == Self::Company
+    }
 }
 
 /// What a declaration keeps of the client the platform registered.
@@ -106,6 +130,7 @@ impl OAuthDeclaration {
             client_id: client_id.to_string(),
             scopes,
             registered,
+            holder: OAuthHolder::Company,
         }
     }
 }
@@ -160,6 +185,54 @@ fn credential_problem(value: &str, max: usize) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn declaration(holder: OAuthHolder) -> OAuthDeclaration {
+        OAuthDeclaration {
+            issuer: "https://as.example".into(),
+            resource: "https://mcp.example/mcp".into(),
+            authorization_endpoint: "https://as.example/authorize".into(),
+            token_endpoint: "https://as.example/token".into(),
+            names_issuer_on_return: false,
+            client_id: "mimorya".into(),
+            client_auth: ClientAuth::None,
+            scopes: Vec::new(),
+            revocation_endpoint: None,
+            registered: None,
+            holder,
+        }
+    }
+
+    #[test]
+    fn a_declaration_kept_before_the_holder_is_the_company_s() {
+        let kept = serde_json::json!({
+            "issuer": "https://as.example",
+            "resource": "https://mcp.example/mcp",
+            "authorizationEndpoint": "https://as.example/authorize",
+            "tokenEndpoint": "https://as.example/token",
+            "namesIssuerOnReturn": false,
+            "clientId": "mimorya",
+            "clientAuth": "none",
+            "scopes": [],
+        });
+        let read: OAuthDeclaration = serde_json::from_value(kept.clone()).expect("read");
+        assert_eq!(read, declaration(OAuthHolder::Company));
+        // Written as before: a process that knows only the company's reads it.
+        let written = serde_json::to_value(&read).expect("written");
+        assert_eq!(written, kept);
+    }
+
+    #[test]
+    fn each_person_s_holder_is_written_and_read_back() {
+        let person = declaration(OAuthHolder::Person);
+        let written = serde_json::to_value(&person).expect("written");
+        assert_eq!(written["holder"], "person");
+        let read: OAuthDeclaration = serde_json::from_value(written).expect("read");
+        assert_eq!(read, person);
+        let unknown = serde_json::json!({ "holder": "team" });
+        let mut kept = serde_json::to_value(&person).expect("written");
+        kept["holder"] = unknown["holder"].clone();
+        assert!(serde_json::from_value::<OAuthDeclaration>(kept).is_err());
+    }
 
     #[test]
     fn a_client_is_written_in_visible_ascii() {

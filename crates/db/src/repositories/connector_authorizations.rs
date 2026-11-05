@@ -103,8 +103,10 @@ pub async fn get_connector_authorization(
     .await
 }
 
+/// An authorization's sealed tokens as read: a company's or a person's
+/// (ADR-174).
 #[derive(sqlx::FromRow)]
-struct SealedRow {
+pub(super) struct SealedRow {
     access_ciphertext: Vec<u8>,
     access_iv: Vec<u8>,
     access_auth_tag: Vec<u8>,
@@ -133,7 +135,7 @@ pub async fn sealed_connector_tokens(
 
 impl SealedRow {
     /// The sealed access token, and the refresh token if one is kept whole.
-    fn tokens(self) -> (StoredSecret, Option<StoredSecret>) {
+    pub(super) fn tokens(self) -> (StoredSecret, Option<StoredSecret>) {
         let access = StoredSecret {
             ciphertext: self.access_ciphertext,
             iv: self.access_iv,
@@ -218,7 +220,7 @@ pub struct ConnectorAccessToken {
 }
 
 #[derive(sqlx::FromRow)]
-struct AccessRow {
+pub(super) struct AccessRow {
     issuer: String,
     client_id: String,
     resource: String,
@@ -242,18 +244,24 @@ pub async fn connector_access_token(
     .bind(connector_id)
     .fetch_optional(conn)
     .await?;
-    Ok(row.map(|row| ConnectorAccessToken {
-        issuer: row.issuer,
-        client_id: row.client_id,
-        resource: row.resource,
-        sealed: StoredSecret {
-            ciphertext: row.access_ciphertext,
-            iv: row.access_iv,
-            auth_tag: row.access_auth_tag,
-            key_version: row.access_key_version,
-        },
-        expires_at: row.access_expires_at,
-    }))
+    Ok(row.map(ConnectorAccessToken::from))
+}
+
+impl From<AccessRow> for ConnectorAccessToken {
+    fn from(row: AccessRow) -> Self {
+        Self {
+            issuer: row.issuer,
+            client_id: row.client_id,
+            resource: row.resource,
+            sealed: StoredSecret {
+                ciphertext: row.access_ciphertext,
+                iv: row.access_iv,
+                auth_tag: row.access_auth_tag,
+                key_version: row.access_key_version,
+            },
+            expires_at: row.access_expires_at,
+        }
+    }
 }
 
 /// A new version of the connector (`updated_at`), untested unless disabled:

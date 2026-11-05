@@ -215,6 +215,7 @@ mod tests {
         OAuthDeclaration {
             revocation_endpoint: revocation.map(String::from),
             registered: None,
+            holder: Default::default(),
             issuer: issuer.into(),
             resource: "https://mcp.example.com/mcp".into(),
             authorization_endpoint: format!("{issuer}/authorize"),

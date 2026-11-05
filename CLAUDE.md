@@ -88,7 +88,8 @@ Repères à l'intérieur des crates :
   évaluations : `skill_evaluations.rs`, ADR-104, ce qu'elles ont coûté jour par jour et
   leur limite : `evaluation_spending.rs`, `evaluation_settings.rs`, ADR-154 ; comptes reliés par chacun et leur
   jeton de renouvellement scellé : `account_links.rs`, ADR-116 ; autorisation OAuth d'un
-  serveur MCP et ses jetons scellés : `connector_authorizations.rs`, et leur renouvellement, réservé par un processus, la raison d'un échec gardée : `connector_renewals.rs`, ADR-171 ; partages de
+  serveur MCP et ses jetons scellés : `connector_authorizations.rs`, celle que chacun donne pour
+  soi : `connector_person_authorizations.rs`, ADR-174, et leur renouvellement, réservé par un processus, la raison d'un échec gardée : `connector_renewals.rs`, ADR-171 ; partages de
   connaissances entre unités :
   `knowledge_shares.rs`, ADR-143 ; politiques d'autorisation proposées et décidées :
   `policy_proposals.rs`, ADR-168, et leur annonce aux autres administrateurs :
@@ -128,7 +129,7 @@ Repères à l'intérieur des crates :
   sans réponse du serveur, la session dite perdue s'il n'y répond pas, et sa fin datée,
   `liveness.rs`, ADR-164, ADR-165, et les règles de son autorisation OAuth : refus lu,
   ressource protégée, serveur d'autorisation, portées, la découverte qui les suit,
-  la déclaration qu'en garde l'administrateur, le départ du navigateur et l'échange du
+  la déclaration qu'en garde l'administrateur, dont qui autorise, l'entreprise ou chacun (ADR-174), le départ du navigateur et l'échange du
   code, et le renouvellement des jetons, `oauth/`, ADR-171, et leur révocation, `oauth/revocation.rs`, ADR-172, et le client que la plateforme y enregistre elle-même, `oauth/registration.rs`, ADR-173, et la session retirée
   avant l'échéance du jeton de son autorisation, `expiry.rs`, ADR-171),
   `connectors/src/bin/mcp_demo_docs.rs`,
