@@ -12,7 +12,7 @@
 mod support;
 
 use axum::http::StatusCode;
-use mimorya_api::services::connectors::access_sealed_as;
+use mimorya_api::services::connectors::{access_sealed_as, refresh_sealed_as};
 use mimorya_connectors::mcp::oauth::OAUTH_EACH_PERSON;
 use mimorya_connectors::testing::{CLIENT_ID, CLIENT_SECRET, FakeAuthorizationServer};
 use mimorya_core::demo::{tenant, user};
@@ -22,7 +22,7 @@ use mimorya_db::repositories::connector_authorizations::{
 use serde_json::json;
 use support::TestApi;
 use support::connector_oauth::{AUTHORIZED, authorize, declared, kept_tokens, try_start};
-use support::connector_sessions::{said, tested};
+use support::connector_sessions::{alter, said, tested};
 use support::mcp::{PRIVATE_DEPLOYMENT, listed};
 use support::person_authorizations::{
     last_metadata, person_authorized, person_count, person_revocations,
@@ -77,13 +77,21 @@ async fn a_server_each_person_authorizes_never_opens_with_the_company_s() {
             .contains("Chaque personne autorise ce serveur")
     );
     // Nor does a company's authorization kept meanwhile (a process that
-    // knew only the company's) open a session: never sent.
+    // knew only the company's) open a session: never sent. Due for renewal,
+    // it is not renewed either: its server is never asked.
     let connector: uuid::Uuid = id.parse().unwrap();
     let resource = oauth["resource"].as_str().unwrap().to_string();
     let token = authority.issue(&resource);
     let cipher = api.app.services.config.secrets.clone().expect("master key");
     let sealed = cipher
         .seal(tenant::ID, &access_sealed_as(connector), &token)
+        .unwrap();
+    let refresh = cipher
+        .seal(
+            tenant::ID,
+            &refresh_sealed_as(connector),
+            "renouvellement-garde",
+        )
         .unwrap();
     let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
     put_connector_authorization(
@@ -96,8 +104,8 @@ async fn a_server_each_person_authorizes_never_opens_with_the_company_s() {
             resource: &resource,
             scopes: "",
             access_token: &sealed,
-            access_expires_at: None,
-            refresh_token: None,
+            access_expires_at: Some(chrono::Utc::now() + chrono::Duration::seconds(210)),
+            refresh_token: Some(&refresh),
             authorized_by_user_id: user::PAUL,
         },
     )
@@ -106,6 +114,13 @@ async fn a_server_each_person_authorizes_never_opens_with_the_company_s() {
     tx.commit().await.unwrap();
     let outcome = tested(&paul, &id).await;
     assert!(said(&outcome).contains(OAUTH_EACH_PERSON), "{outcome}");
+    let renewals = authority.requests();
+    assert!(
+        renewals.iter().all(|asked| asked.endpoint != "token"),
+        "never renewed"
+    );
+    let (kept, _) = kept_tokens(&api, &id).await.expect("kept as it was");
+    assert_eq!(kept, token);
     let sent = server.authorizations();
     assert!(
         sent.iter()
@@ -224,6 +239,23 @@ async fn only_a_company_wide_administrator_changes_who_authorizes() {
         elsewhere.text()
     );
     assert_eq!(listed(&paul, &id).await["mcp"]["oauth"]["perPerson"], false);
+
+    // A declaration that can no longer be read: declared again first.
+    let spoilt = "update connector_instances set config = config || \
+                  '{\"oauth\": {\"issuer\": 1}}' where id = $1";
+    alter(&api, &id, spoilt).await;
+    let unreadable = paul.put(&holder_path(&id), to_person.clone()).await;
+    assert_eq!(
+        unreadable.status,
+        StatusCode::BAD_REQUEST,
+        "{}",
+        unreadable.text()
+    );
+    assert!(
+        unreadable.text().contains("illisible"),
+        "{}",
+        unreadable.text()
+    );
 
     // A server without OAuth declared: nothing to change.
     let withdrawn = paul.delete(&format!("/admin/connectors/{id}/oauth")).await;

@@ -222,3 +222,44 @@ async fn a_person_s_tokens_are_never_sent_under_another_declaration_or_an_unread
         StatusCode::OK
     );
 }
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn the_request_does_not_wait_for_every_person_s_revocation() {
+    let api = TestApi::start_with(&PRIVATE_DEPLOYMENT).await;
+    let paul = api.sign_in(user::PAUL).await;
+    let authority = FakeAuthorizationServer::start().await;
+    let (id, resource, _) = authorized_by_two(&api, &paul, &authority, "muet").await;
+    for person in [user::PAUL, user::CLAIRE, user::JULIEN] {
+        person_authorized(&api, &id, person, &authority, &resource).await;
+    }
+    // Its revocation endpoint never answers: five people, four at a time,
+    // ten seconds each, twenty in all.
+    authority.set(|settings| settings.mute_revocation = true);
+    let started = std::time::Instant::now();
+    let withdrawn = paul.delete(&format!("/admin/connectors/{id}/oauth")).await;
+    let waited = started.elapsed();
+    assert_eq!(withdrawn.status, StatusCode::OK, "{}", withdrawn.text());
+    assert!(waited < std::time::Duration::from_secs(17), "{waited:?}");
+    assert_eq!(person_count(&api, &id).await, 0, "taken before the answer");
+    // The revocations go on after the answer, and are audited.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    let audited = loop {
+        let audited = person_revocations(&api, &id).await;
+        if !audited.is_empty() || std::time::Instant::now() > deadline {
+            break audited;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    };
+    let (outcome, reason, counts) = audited.last().expect("audited after the answer");
+    assert_eq!(outcome, "failure");
+    assert_eq!(counts, &json!({ "revoked": 0, "failed": 5 }));
+    assert!(
+        reason.as_deref().unwrap_or_default().contains("à temps"),
+        "{reason:?}"
+    );
+    assert_eq!(
+        paul.delete(&format!("/admin/connectors/{id}")).await.status,
+        StatusCode::OK
+    );
+}

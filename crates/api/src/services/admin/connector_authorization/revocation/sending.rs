@@ -17,8 +17,8 @@ use super::{Revocation, letting_go};
 use crate::secrets::SecretStore;
 use crate::services::AccessContext;
 use crate::services::connectors::{
-    LetGo, access_sealed_as, given_under, person_access_sealed_as, person_refresh_sealed_as,
-    refresh_sealed_as, revoke_within,
+    LetGo, REVOCATION_BOUND, access_sealed_as, given_under, person_access_sealed_as,
+    person_refresh_sealed_as, refresh_sealed_as, revoke_within,
 };
 
 /// What the audit calls a revocation asked of the authorization server.
@@ -28,8 +28,8 @@ const PERSON_AUTHORIZATIONS_REVOKED: &str = "connector.oauth_person_authorizatio
 /// How many people's authorizations are revoked at once.
 const PERSONS_AT_ONCE: usize = 4;
 /// How long the request that let them go waits for the revocations: the
-/// bound of one, and a margin (ADR-172).
-const WAITED: std::time::Duration = std::time::Duration::from_secs(15);
+/// bound of one (ADR-172), and a margin.
+const WAITED: std::time::Duration = std::time::Duration::from_secs(REVOCATION_BOUND.as_secs() + 5);
 
 /// What the task that revokes owns.
 struct Revoking {

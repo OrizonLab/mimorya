@@ -10963,17 +10963,20 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     session ne s'ouvre avec une autorisation de l'entreprise, même gardée par un
     processus qui ne connaissait qu'elle, et une telle autorisation n'est pas
     renouvelée. Une déclaration écrite de nouveau sans dire qui autorise garde qui
-    autorisait sous la précédente (l'entreprise pour une première) ;
+    autorisait sous la précédente (l'entreprise pour une première, ou après une
+    déclaration illisible) ;
   - **toutes les autorisations des personnes** sont prises, et leurs jetons révoqués,
     chaque fois que la déclaration est écrite de nouveau ou retirée, que l'adresse du
     serveur change ou que le connecteur est supprimé, quel que soit le mode lu avant :
     un processus qui ne connaissait que l'entreprise a pu laisser la déclaration
     changer sous elles. Elles sont révoquées quatre à la fois, chacune bornée comme
-    celle de l'entreprise, et tracées ensemble (`connector.oauth_person_authorizations_revoked` :
-    combien révoquées, combien non, la première raison), sans jeton ni nom; jamais envoyées sous une autre déclaration que la leur
-    ni sous une déclaration illisible, mais prises quand même, comptées comme des
-    échecs. La requête qui les laisse n'attend pas plus de quinze secondes : au-delà, la
-    tâche continue de les révoquer et de les tracer ;
+    celle de l'entreprise, et tracées ensemble
+    (`connector.oauth_person_authorizations_revoked` : combien révoquées, combien non,
+    la première raison), sans jeton ni nom ; jamais envoyées sous une autre
+    déclaration que la leur ni sous une déclaration illisible, mais prises quand même,
+    comptées comme des échecs. La requête qui les laisse n'attend pas plus de quinze
+    secondes (la borne d'une révocation et cinq secondes) : au-delà, la tâche continue
+    de les révoquer et de les tracer ;
   - **lots** : 43a, la table, son dépôt et le mode dans la déclaration ; 43b, le choix
     du mode par l'administrateur et le retrait de toutes les autorisations des
     personnes ; 43c, l'autorisation de la personne par l'API, son retrait par elle et

@@ -43,7 +43,7 @@ pub struct McpOAuthDeclaration {
     pub scopes: Option<Vec<String>>,
     /// Each person authorizes the server for themself (ADR-174); false, the
     /// company does; absent, as under the declaration replaced (the company
-    /// for a first one).
+    /// for a first one, or after one that could not be read).
     #[serde(default)]
     #[ts(optional)]
     pub per_person: Option<bool>,

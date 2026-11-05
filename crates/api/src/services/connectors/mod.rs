@@ -55,7 +55,7 @@ pub use grants::{AUTHORIZATION_REMOVED, SealedGrant, seal_grant};
 pub use mimorya_connectors::outbound::CONNECTOR_USE;
 pub use policies::{Policies, read_policies, scoped_overrides};
 pub use reach::unavailable_in_reach;
-pub use revocation::{LetGo, Unkept, revoke_within};
+pub use revocation::{LetGo, REVOCATION_BOUND, Unkept, revoke_within};
 pub use tenant_tools::TenantTools;
 
 use super::invalidations::{Invalidation, Invalidations};
