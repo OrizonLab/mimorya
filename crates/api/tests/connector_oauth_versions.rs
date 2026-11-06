@@ -1,8 +1,8 @@
 //! A declaration replaces only what its administrator saw (ADR-176): it
 //! names the version of the server's OAuth its form was opened on, which
 //! changes with what is declared, who authorizes the server, the
-//! authorizations declaring again takes, and its client's secret written
-//! again. Naming one changed since, it is refused before anything is asked
+//! authorizations declaring again takes (one withdrawn and another given
+//! included), and its client's secret written again. Naming one changed since, it is refused before anything is asked
 //! of the server, or under the lock when the change came while the server
 //! was being found; the change stays. Naming none, it is not checked.
 
@@ -142,4 +142,34 @@ async fn a_change_made_while_the_server_is_found_is_seen_under_the_lock() {
     assert_changed(&declaring);
     assert!(person_kept(&api, &id, user::MARC).await.is_some());
     assert_ne!(version(&paul, &id).await, opened);
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn one_authorization_withdrawn_and_another_given_changes_it() {
+    let api = TestApi::start_with(&PRIVATE_DEPLOYMENT).await;
+    let paul = api.sign_in(user::PAUL).await;
+    let marc = api.sign_in(user::MARC).await;
+    let lucas = api.sign_in(user::LUCAS).await;
+    let authority = FakeAuthorizationServer::start().await;
+    let (_, id) = declared_per_person(&paul, &authority, "qui").await;
+
+    // A version longer than any: refused as such, not as changed.
+    let long = replacing(&paul, &id, &"0".repeat(65)).await;
+    assert_eq!(long.status, StatusCode::BAD_REQUEST, "{}", long.text());
+
+    // Opened while Marc's is given; Marc withdraws it and Lucas gives his:
+    // one person still, another, and the form opened before is refused.
+    let his = person_authorize(&marc, &authority, &id).await;
+    assert_eq!(location(&his), PERSON_AUTHORIZED);
+    let opened = version(&paul, &id).await;
+    let path = format!("/account/connector-authorizations/{id}");
+    let withdrawn = marc.delete(&path).await;
+    assert_eq!(withdrawn.status, StatusCode::OK, "{}", withdrawn.text());
+    let theirs = person_authorize(&lucas, &authority, &id).await;
+    assert_eq!(location(&theirs), PERSON_AUTHORIZED);
+    let oauth = listed(&paul, &id).await["mcp"]["oauth"].clone();
+    assert_eq!(oauth["personAuthorizations"], 1, "{oauth}");
+    assert_changed(&replacing(&paul, &id, &opened).await);
+    assert!(person_kept(&api, &id, user::LUCAS).await.is_some());
 }
