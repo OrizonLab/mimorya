@@ -3,7 +3,8 @@
 //! instance, live, starting or failed, serves a run that read an older one
 //! rather than it start the older in its place, while its reading is not
 //! stale and the failure remembered; an older start ending late never
-//! takes a newer one's place (ADR-177).
+//! takes a newer one's place, unless that one's failure is forgotten
+//! (ADR-177).
 
 use super::*;
 
@@ -144,18 +145,6 @@ async fn a_newer_failure_serves_a_run_that_read_an_older_one() {
     assert_eq!(starts.load(Ordering::SeqCst), 1);
 }
 
-/// Returns once `flag` is set, in the background: counted in turns given
-/// to the other tasks, a paused clock not advancing meanwhile.
-async fn set(flag: &AtomicBool) -> bool {
-    for _ in 0..10_000 {
-        if flag.load(Ordering::SeqCst) {
-            return true;
-        }
-        tokio::task::yield_now().await;
-    }
-    false
-}
-
 /// An older start that ends while a newer one runs leaves it in place:
 /// its instance released, the runs of the newer version wait for theirs.
 #[tokio::test(start_paused = true)]
@@ -175,7 +164,7 @@ async fn an_older_start_ending_late_leaves_a_newer_start_in_place() {
     let waited = within(cache.get_or_start(id, newer, 0, patience, newer_start)).await;
     assert_eq!(unavailable(waited).origin, Origin::Starting);
     older_gate.notify_one();
-    assert!(set(&released).await, "the older instance is released");
+    assert!(raised(&released).await, "the older instance is released");
     let again = counted(&starts, || Ok(runtime()));
     let (served, ()) = within(async {
         tokio::join!(cache.get_or_start(id, newer, 0, None, again), async {
@@ -207,7 +196,7 @@ async fn an_older_start_ending_late_leaves_a_newer_failure_remembered() {
     let failed = within(cache.get_or_start(id, newer, 0, None, newer_start)).await;
     assert_eq!(unavailable(failed).message, "injoignable");
     gate.notify_one();
-    assert!(set(&released).await, "the older instance is released");
+    assert!(raised(&released).await, "the older instance is released");
     let again = counted(&starts, || Ok(runtime()));
     let remembered = unavailable(cache.get_or_start(id, newer, 0, None, again).await);
     assert_eq!(remembered.origin, Origin::Remembered);
@@ -240,5 +229,28 @@ async fn a_newer_failure_serves_only_a_current_reading_while_remembered() {
     let read = counted(&starts, || Ok(runtime()));
     let started = cache.get_or_start(id, older, current, None, read).await;
     assert!(started.is_ok());
+    assert_eq!(starts.load(Ordering::SeqCst), 2);
+}
+
+/// An older start that ends once a newer failure is forgotten keeps its
+/// instance: the run that waited for it gets it, nothing started again.
+#[tokio::test(start_paused = true)]
+async fn an_older_start_ending_after_a_newer_failure_forgotten_keeps_its_instance() {
+    let cache = RuntimeCache::default();
+    let id = Uuid::new_v4();
+    let (older, newer) = (Utc::now(), Utc::now() + chrono::Duration::seconds(1));
+    let starts = Arc::new(AtomicUsize::new(0));
+    let gate = Arc::new(Notify::new());
+    let older_start = gated(&starts, &gate, || Ok(runtime()));
+    // Not bounded by `within`: the clock jumps past the retry delay.
+    let (waited, ()) = tokio::join!(cache.get_or_start(id, older, 0, None, older_start), async {
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        let newer_start = counted(&starts, failing);
+        let failed = cache.get_or_start(id, newer, 0, None, newer_start).await;
+        assert_eq!(unavailable(failed).message, "injoignable");
+        tokio::time::advance(RETRY_AFTER).await;
+        gate.notify_one();
+    });
+    assert!(waited.is_ok(), "the older start's instance serves its run");
     assert_eq!(starts.load(Ordering::SeqCst), 2);
 }

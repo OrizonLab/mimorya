@@ -87,6 +87,18 @@ fn flagged(released: &Arc<AtomicBool>) -> ConnectorRuntime {
     }
 }
 
+/// Whether `flag` is raised in the background: counted in turns given to
+/// the other tasks, not in time, a paused clock not advancing meanwhile.
+pub(super) async fn raised(flag: &AtomicBool) -> bool {
+    for _ in 0..10_000 {
+        if flag.load(Ordering::SeqCst) {
+            return true;
+        }
+        tokio::task::yield_now().await;
+    }
+    false
+}
+
 /// Bounded: a run that kept waiting would never end.
 async fn within<T>(waited: impl Future<Output = T>) -> T {
     let Ok(got) = tokio::time::timeout(Duration::from_secs(5), waited).await else {
@@ -295,11 +307,9 @@ async fn a_start_ending_after_the_cache_closed_releases_its_instance() {
     assert_eq!(unavailable(waited).origin, Origin::Starting);
     cache.close().await;
     gate.notify_one();
-    for _ in 0..10_000 {
-        if released.load(Ordering::SeqCst) {
-            return;
-        }
-        tokio::task::yield_now().await;
-    }
-    panic!("the instance started after the cache closed is kept");
+    let released = raised(&released).await;
+    assert!(
+        released,
+        "the instance started after the cache closed is kept"
+    );
 }

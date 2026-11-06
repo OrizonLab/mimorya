@@ -2,8 +2,9 @@
 //! on whether the runs that wait for it still do or not, and leaves its
 //! outcome in the cache for them and for the runs that follow. Its outcome
 //! is kept unless the instance was invalidated while it ran, the cache
-//! closed, or a newer version took its place meanwhile, live, starting or
-//! failed: an older version never replaces it. A failure is remembered,
+//! closed, or another took its place meanwhile: an instance of its version
+//! or a newer one live, a newer one starting, or a newer one's failure still
+//! remembered. An older version never replaces it. A failure is remembered,
 //! and logged here, where it is found: no run may read it before it is
 //! forgotten. A start that panics is a failure too.
 
@@ -64,11 +65,13 @@ impl Start {
             state.slots.remove(&id);
         }
         let stale = state.stale(id, ticket) || state.closed;
+        // As `get_or_start` reads them: a newer failure forgotten is gone.
         let newer = match state.slots.get(&id) {
             Some(Slot::Live { version: v, .. }) => *v >= version,
-            Some(Slot::Starting { version: v, .. } | Slot::Failed { version: v, .. }) => {
-                *v > version
-            }
+            Some(Slot::Starting { version: v, .. }) => *v > version,
+            Some(Slot::Failed {
+                version: v, until, ..
+            }) => *v > version && Instant::now() < *until,
             None => false,
         };
         if stale || newer {

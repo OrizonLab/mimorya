@@ -11498,12 +11498,14 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     règle nouvelle du cache : avant, ce run démarrait l'ancienne version à la place
     de la plus récente, qu'il fermait, ou dont il effaçait l'échec retenu. Une
     instance plus récente vivante est jugée avant d'être servie : sa session fermée
-    pour de bon, elle est libérée, ou retenue comme démarrage échoué de sa propre
-    version si elle a vécu moins d'une minute (ADR-163), jamais donnée au run
-    (lot 49) ;
+    pour de bon, elle est libérée, et le run démarre la version qu'il a lue, ou
+    retenue comme démarrage échoué de sa propre version si elle a vécu moins d'une
+    minute (ADR-163), jamais donnée au run (lot 49) ;
   - **l'issue d'une version plus ancienne ne prend jamais la place d'une plus
     récente** (lot 49) : un démarrage qui finit alors qu'une version plus récente
-    démarre, vit ou a échoué ferme ce qu'il a démarré et laisse l'entrée en place.
+    démarre, vit ou a échoué, son échec encore retenu, ferme ce qu'il a démarré et
+    laisse l'entrée en place ; un échec oublié ne retient plus rien, comme pour les
+    runs qui le lisent.
     Avant, il la remplaçait, et les runs de la version plus récente démarraient la
     leur une deuxième fois, ou oubliaient son échec retenu.
 - **Conséquences** :
@@ -11531,12 +11533,14 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       - une tentative qui panique, retenue comme échouée ;
       - une tentative qui finit après la fermeture du cache, libérée ;
       - au lot 49 (`versions.rs`) : une tentative plus ancienne qui finit tard laisse
-        en place la tentative ou l'échec plus récents ; un échec plus récent ne sert
-        qu'une lecture qui n'est pas périmée, et tant qu'il est retenu ;
+        en place la tentative ou l'échec plus récents, et garde son instance une fois
+        cet échec oublié ; un échec plus récent ne sert qu'une lecture qui n'est pas
+        périmée, et tant qu'il est retenu ;
     - un démarrage qui panique devient interrompu, à enregistrer
       (`connectors/failures.rs`) ;
     - les tests des sessions fermées passent dans `cache/closed.rs`, dont, au lot 49,
-      une instance plus récente fermée jugée avant de servir un run plus ancien ;
+      une instance plus récente fermée, tôt ou tard, jugée avant de servir un run plus
+      ancien ;
     - `crates/api/tests/connector_start_patience.rs` :
       - face à un serveur retenu, un tour revient après sa patience, sans que rien
         soit enregistré, et le serveur sert le tour suivant ;
