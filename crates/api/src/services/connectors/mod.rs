@@ -51,10 +51,13 @@ pub use credential::{
     given_under,
 };
 pub use failures::{failure, opened};
-pub use grants::{AUTHORIZATION_REMOVED, SealedGrant, seal_grant, seal_person_grant};
+pub use grants::{
+    AUTHORIZATION_REMOVED, PERSON_REMOVED, SealedGrant, seal_grant, seal_person_grant,
+};
 pub use mimorya_connectors::outbound::CONNECTOR_USE;
 pub use policies::{Policies, read_policies, scoped_overrides};
 pub use reach::{to_authorize_in_reach, unavailable_in_reach};
+pub(crate) use renewal::Whose;
 pub use revocation::{LetGo, REVOCATION_BOUND, Unkept, revoke_within};
 pub use served::{NOT_FOR_THEM, Served, TO_AUTHORIZE, WITHHELD_PERSONAL};
 pub use tenant_tools::TenantTools;

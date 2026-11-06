@@ -91,8 +91,25 @@ enum Prepared {
 
 impl ConnectorService {
     pub async fn tools_for(&self, tenant_id: Uuid, served: Served) -> anyhow::Result<TenantTools> {
-        // Before anything is read: a renewal makes a new version.
-        self.renew_due(tenant_id).await?;
+        // Before anything is read: a renewal makes a new version. The
+        // person's own too, if anything is sent for them (ADR-174); side by
+        // side, a mute token endpoint delaying the run once.
+        let person = match served {
+            Served::Person {
+                user,
+                uses_connectors: true,
+            } => Some(user),
+            _ => None,
+        };
+        let own = async {
+            match person {
+                Some(user) => self.renew_person_due(tenant_id, user).await,
+                None => Ok(()),
+            }
+        };
+        let (company, own) = tokio::join!(self.renew_due(tenant_id), own);
+        company?;
+        own?;
         let ticket = self.cache.ticket().await;
         // Instances and tokens read in one snapshot: a token always goes
         // with the address it was saved, or authorized, for.

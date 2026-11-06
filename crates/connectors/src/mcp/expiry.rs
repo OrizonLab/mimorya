@@ -37,15 +37,17 @@ pub const OAUTH_EXPIRED: &str = "Jeton de l’autorisation OAuth expiré ou sur 
      son renouvellement sera tenté de nouveau ; s’il est refusé, un administrateur devra autoriser \
      de nouveau ce connecteur";
 
-/// The same, of a person's own authorization (ADR-174): not renewed yet,
-/// they authorize it again.
+/// The same, of a person's own authorization (ADR-174): they authorize it
+/// again.
 pub const OAUTH_UNUSABLE_PERSON: &str = "Le jeton de votre autorisation OAuth n’a pas un format \
      accepté : autorisez de nouveau ce serveur dans « Mon compte »";
 
 /// What a server whose person's own authorization's token expired, or is
-/// about to, says (ADR-174): not renewed yet, they authorize it again.
+/// about to, says (ADR-174): its renewal tried again by their next runs,
+/// they authorize it again if it cannot be.
 pub const OAUTH_EXPIRED_PERSON: &str = "Jeton de votre autorisation OAuth expiré ou sur le point \
-     de l’être : autorisez de nouveau ce serveur dans « Mon compte »";
+     de l’être : son renouvellement sera tenté de nouveau ; s’il n’est pas possible, autorisez de \
+     nouveau ce serveur dans « Mon compte »";
 
 /// When a session is retired, if its token expires.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

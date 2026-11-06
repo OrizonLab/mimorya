@@ -89,7 +89,7 @@ Repères à l'intérieur des crates :
   leur limite : `evaluation_spending.rs`, `evaluation_settings.rs`, ADR-154 ; comptes reliés par chacun et leur
   jeton de renouvellement scellé : `account_links.rs`, ADR-116 ; autorisation OAuth d'un
   serveur MCP et ses jetons scellés : `connector_authorizations.rs`, et son renouvellement, réservé par un processus, la raison d'un échec gardée : `connector_renewals.rs`, ADR-171 ; celle que chacun donne pour
-  soi : `connector_person_authorizations.rs`, ADR-174 ; partages de
+  soi : `connector_person_authorizations.rs`, et son renouvellement : `connector_person_renewals.rs`, ADR-174 ; partages de
   connaissances entre unités :
   `knowledge_shares.rs`, ADR-143 ; politiques d'autorisation proposées et décidées :
   `policy_proposals.rs`, ADR-168, et leur annonce aux autres administrateurs :
@@ -268,7 +268,7 @@ Repères à l'intérieur des crates :
   sa propre autorisation (`credential_for`, ADR-174) ; outils d'un run, l'instance de la personne qu'il
   sert, rien pour une évaluation, `served.rs`, gardée par connecteur et par personne (`cache/keys.rs`), bornée et libérée
   après un temps sans run, jamais pendant qu'un run la tient, `cache/people.rs`, ADR-174 ; renouvelé avant son échéance, réservé par
-  un seul processus, `renewal.rs`, jetons accordés scellés, `grants.rs`, ADR-171 ; jetons
+  un seul processus, `renewal/`, jetons accordés scellés, `grants.rs`, ADR-171, et celui d'une personne avant ses runs et son test, réservation (`renewal/claim.rs`) et ce qui diffère de l'entreprise (`renewal/whose.rs`), ADR-174 ; jetons
   laissés révoqués dans un délai, et ceux que personne ne garde (renouvellement en vol au
   retrait, retour dont la déclaration a changé) par une tâche à part, `revocation.rs`,
   ADR-172),

@@ -2010,6 +2010,10 @@ export type PersonAuthorizationState = { authorizedAt: string,
  */
 expiresAt: string | null,
 /**
+ * When its tokens were last renewed, if they were since it was given.
+ */
+renewedAt: string | null,
+/**
  * Whether a refresh token is kept.
  */
 renewable: boolean, scopes: Array<string>,

@@ -18,7 +18,7 @@ use serde_json::{Value, json};
 use support::TestApi;
 use support::accounts::{INVITED_PASSWORD, accept};
 use support::companies;
-use support::connector_sessions::{alter, said, tested};
+use support::connector_sessions::{alter, said, tested, token_endpoint};
 use support::mcp::{PRIVATE_DEPLOYMENT, listed};
 use support::person_authorizations::{
     declared_per_person, last_metadata, person_authorized, person_authorized_until,
@@ -86,8 +86,9 @@ async fn an_administrator_tests_with_their_own_authorization_alone() {
     );
     assert_eq!(status(&paul, &id).await, before);
 
-    // His expired: said to him, to authorize it again in his account, not
-    // sent, not written on the server.
+    // His expired, its renewal out of reach: said to him, to authorize it
+    // again in his account, not sent, not written on the server.
+    alter(&api, &id, &token_endpoint("http://127.0.0.1:1/token")).await;
     let past = Some(chrono::Utc::now() - chrono::Duration::minutes(5));
     let expired = person_authorized_until(&api, &id, user::PAUL, &authority, &resource, past).await;
     let outcome = tested(&paul, &id).await;
