@@ -19,11 +19,10 @@ use mimorya_db::repositories::connectors::{
 use uuid::Uuid;
 
 use super::cache::{Origin, STILL_STARTING, SessionKey, Unavailable, Version};
-use super::failures::{record_failure, theirs_to_authorize};
+use super::failures::{outcome, record_failure, theirs_to_authorize};
 use super::{
     ConnectorIssue, ConnectorService, Credential, CredentialFor, Policies, TenantTools,
-    credential_for, credential_of, each_person, failure, read_policies, scoped_overrides,
-    start_instance,
+    credential_for, credential_of, each_person, read_policies, scoped_overrides, start_instance,
 };
 
 /// Whom a run's connectors are started for.
@@ -337,8 +336,9 @@ impl ConnectorService {
     ) -> Result<std::sync::Arc<mimorya_connectors::ConnectorRuntime>, Unavailable> {
         let credential = credential.map_err(|error| Unavailable::new(error.to_string()))?;
         // Started in the background, owning what it needs (ADR-177); the
-        // company's failure recorded there, where it is found, for its
-        // version alone: no run may read it before it is forgotten.
+        // company's failure, a panic included, recorded there, where it is
+        // found, for its version alone: no run may read it before it is
+        // forgotten.
         let settings = self.settings;
         let connector = instance.connector_type.clone();
         let config = instance.config.clone();
@@ -347,9 +347,8 @@ impl ConnectorService {
             (self.db.clone(), at)
         });
         let start = move || async move {
-            let started = start_instance(settings, &connector, &config, &credential)
-                .await
-                .map_err(|error| failure(&error, credential.token.as_deref()));
+            let starting = start_instance(settings, &connector, &config, &credential);
+            let started = outcome(starting, credential.token.as_deref()).await;
             if let (Err(message), Some((db, (tenant_id, id, version)))) = (&started, recorder) {
                 record_failure(&db, tenant_id, id, version, message).await;
             }

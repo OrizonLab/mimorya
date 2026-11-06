@@ -1,16 +1,23 @@
 //! What administrators see of a connector that cannot be used: its token
 //! opened from the secret store or why it cannot be, and the recorded
 //! message of a failed start (bounded, the token masked once more),
-//! recorded by the start that failed (ADR-177); and whether a person's
-//! failed instance is theirs to authorize again (ADR-174).
+//! recorded by the start that failed, a start that panicked an interrupted
+//! one (ADR-177); and whether a person's failed instance is theirs to
+//! authorize again (ADR-174).
+
+use std::future::Future;
+use std::panic::AssertUnwindSafe;
 
 use chrono::{DateTime, Utc};
+use futures::FutureExt;
+use mimorya_connectors::ConnectorRuntime;
 use mimorya_connectors::mcp::{OAUTH_EXPIRED_PERSON, OAUTH_REFUSED_PERSON, OAUTH_UNUSABLE_PERSON};
 use mimorya_connectors::outbound::Redactor;
 use mimorya_db::repositories::connectors::report_connector_status;
 use uuid::Uuid;
 
 use super::UNOPENED_PERSON;
+use super::cache::INTERRUPTED;
 use crate::secrets::SecretRead;
 
 const MAX_ERROR_CHARS: usize = 300;
@@ -39,6 +46,18 @@ pub fn failure(error: &anyhow::Error, secret: Option<&str>) -> String {
         .chars()
         .take(MAX_ERROR_CHARS)
         .collect()
+}
+
+/// What a start came to: its instance, or its failure's recorded message,
+/// a start that panicked an interrupted one.
+pub(super) async fn outcome(
+    started: impl Future<Output = anyhow::Result<ConnectorRuntime>>,
+    secret: Option<&str>,
+) -> Result<ConnectorRuntime, String> {
+    match AssertUnwindSafe(started).catch_unwind().await {
+        Ok(started) => started.map_err(|error| failure(&error, secret)),
+        Err(_) => Err(INTERRUPTED.to_string()),
+    }
 }
 
 /// Records the company's instance as failing with `message`, for the
@@ -90,6 +109,16 @@ mod tests {
         assert!(opened(SecretRead::NoMasterKey).is_err());
         assert!(opened(SecretRead::Unreadable).is_err());
         assert_eq!(opened(SecretRead::Absent).unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn a_start_that_panics_comes_to_an_interrupted_one() {
+        let panicking = async { panic!("démarrage interrompu par le test") };
+        let came = outcome(panicking, None).await;
+        assert_eq!(came.err().as_deref(), Some(INTERRUPTED));
+        let failing = async { anyhow::bail!("Jeton jeton-secret-123 refusé") };
+        let came = outcome(failing, Some("jeton-secret-123")).await;
+        assert_eq!(came.err().as_deref(), Some("Jeton *** refusé"));
     }
 
     #[test]

@@ -2,9 +2,11 @@
 //! starting no longer than its patience (ADR-177): it goes without it,
 //! told the connector still starts, and nothing is recorded as a failure;
 //! the start goes on in the background and serves the next run, or, if
-//! it fails, is logged and recorded where it fails, no run reading it. A run
-//! resumed to do an action a person validated has no patience: it waits
-//! for its connector however long it takes to start again.
+//! it fails, is logged and recorded where it fails, no run reading it. A
+//! person's turn, through the executor, goes on without it, named to them
+//! as unavailable. A run resumed to do an action a person validated has no
+//! patience: it waits for its connector however long it takes to start
+//! again. The runs no one awaits: `connector_start_waits.rs`.
 
 mod support;
 
@@ -20,15 +22,8 @@ use support::TestApi;
 use support::connector_sessions::RUN;
 use support::llm::MASTER_KEY;
 use support::mcp::{add, capture_logs, listed, mcp_body};
-
-/// A server whose runs wait a second for a connector starting, which may
-/// take ten.
-const PATIENT: [(&str, &str); 4] = [
-    ("MIMORYA_MASTER_KEY", MASTER_KEY),
-    ("MIMORYA_MCP_ALLOW_PRIVATE_NETWORK", "true"),
-    ("MIMORYA_MCP_START_TIMEOUT_SECS", "10"),
-    ("MIMORYA_MCP_START_PATIENCE_SECS", "1"),
-];
+use support::runs::start_run;
+use support::slow_starts::{PATIENT, remove, slow_connector};
 
 /// The same, a start lasting two seconds at most.
 const SHORT_START: [(&str, &str); 4] = [
@@ -80,6 +75,32 @@ async fn a_run_goes_without_a_connector_still_starting() {
     assert_eq!(listed(&paul, &id).await["status"], "ok");
     let deleted = paul.delete(&format!("/admin/connectors/{id}")).await;
     assert_eq!(deleted.status, StatusCode::OK);
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_person_s_turn_goes_on_without_a_connector_still_starting() {
+    let api = TestApi::start_with(&PATIENT).await;
+    let paul = api.sign_in(user::PAUL).await;
+    let marc = api.sign_in(user::MARC).await;
+    let (id, hold) = slow_connector(&paul).await;
+    api.script(vec![ScriptedStep::text(
+        "Les procédures ne sont pas encore disponibles.",
+    )]);
+    let started = Instant::now();
+    let run = start_run(&marc).await;
+    api.idle().await;
+    let waited = started.elapsed();
+    hold.release();
+    // Its patience, not the connector's start.
+    assert!(waited < Duration::from_secs(5), "{waited:?}");
+    let stream = marc.get(&format!("/runs/{run}/events")).await.text();
+    let announced = stream
+        .split("\n\n")
+        .find(|event| event.contains("event: connectors_unavailable"))
+        .unwrap_or_default();
+    assert!(announced.contains("\"Lent\""), "{stream}");
+    remove(&paul, &id).await;
 }
 
 #[tokio::test]

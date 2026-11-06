@@ -35,7 +35,7 @@ mod starting;
 use closed::closed;
 pub use keys::{SessionKey, Version};
 pub use people::{MAX_PERSON_SESSIONS, PERSON_IDLE};
-pub use starting::STILL_STARTING;
+pub use starting::{INTERRUPTED, STILL_STARTING};
 
 /// How long a failed start is remembered before the next run tries again.
 pub const RETRY_AFTER: Duration = Duration::from_secs(60);
@@ -99,8 +99,9 @@ enum Slot {
         until: Instant,
         message: String,
     },
-    /// A start in progress: `done` changes or closes when it ends, or when
-    /// the run that makes it gives it up.
+    /// A start in progress, in the background whether the runs that wait
+    /// for it still do or not: `done` closes once it left its outcome, or
+    /// ended without one (ADR-177).
     Starting {
         version: Version,
         done: watch::Receiver<()>,
@@ -210,9 +211,10 @@ impl RuntimeCache {
                     // token) serves even a caller whose reading is stale; any
                     // other start would be discarded.
                     _ if stale => return Err(Unavailable::changed()),
-                    // Unless its start ended without leaving an outcome.
+                    // Unless its start ended without leaving an outcome; a
+                    // newer one's serves the run as its instance would.
                     Some(Slot::Starting { version: v, done })
-                        if *v == version && done.has_changed().is_ok() =>
+                        if *v >= version && done.has_changed().is_ok() =>
                     {
                         done.clone()
                     }

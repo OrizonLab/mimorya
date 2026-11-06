@@ -11457,9 +11457,9 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     (`start_instance`). Il laisse son issue dans le cache des instances : une instance
     vivante, ou un échec retenu une minute (ADR-049). Les runs qui l'attendent la
     lisent, comme ceux qui suivent. Une tentative qu'un run abandonne continue. Une
-    tentative qui panique est un démarrage échoué, retenu comme les autres (« Le
-    démarrage du connecteur s'est interrompu »). Une tentative qui finit après la
-    fermeture du cache (arrêt du service) ferme ce qu'elle a démarré ;
+    tentative qui panique est un démarrage échoué, retenu et enregistré comme les
+    autres (« Le démarrage du connecteur s'est interrompu »). Une tentative qui finit
+    après la fermeture du cache (arrêt du service) ferme ce qu'elle a démarré ;
   - **une panne est dite là où elle est trouvée**, par le démarrage lui-même : il la
     journalise, et pour l'instance de l'entreprise, l'enregistre sur le connecteur,
     pour la version qui a échoué seulement. Ainsi une panne que plus aucun run
@@ -11468,7 +11468,8 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     (`Origin::Remembered`) ;
   - **seule une personne qui attend la première réponse de son tour a une patience**
     (`MIMORYA_MCP_START_PATIENCE_SECS`, 5 s par défaut, de 0 à 120 ;
-    `tools_within_patience`). Passé ce délai, le run continue sans ce connecteur, qui
+    `tools_within_patience`) : l'exécuteur en décide au départ du run
+    (`runs/executor.rs`). Passé ce délai, le run continue sans ce connecteur, qui
     est compté parmi les connecteurs indisponibles et nommé à la personne et au modèle
     comme tel. La raison (`STILL_STARTING`, « Le connecteur démarre encore… ») reste
     dans ce que le run reçoit, sans être affichée. Rien n'est retenu comme une panne
@@ -11478,50 +11479,58 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     - un run repris après une validation ou un arrêt du service (`Resume`,
       `Recover`) : l'action qu'une personne a validée est faite avec l'outil qu'elle
       a validé, même si son connecteur doit redémarrer ;
-    - un run lancé par un déclencheur (`channel = hook`) ou une étape de mission :
-      personne n'attend sa première réponse ;
+    - un run lancé par un déclencheur (`channel = hook`), une étape de mission ou le
+      run d'une tâche planifiée : personne n'attend sa première réponse. Ce dernier
+      est reconnu comme le dernier run de sa tâche (`scheduled_tasks.last_run_id`,
+      écrit dans la transaction qui le crée) ; aucune occurrence ne part tant qu'il
+      n'est pas fini, et il le reste donc à son départ ;
     - une évaluation de compétence : son verdict ne dépend pas d'un serveur lent à
-      démarrer.
+      démarrer ;
 
-    Une tâche planifiée reste un tour comme un autre, car rien ne l'en distingue
-    aujourd'hui dans le run : son premier démarrage d'un connecteur lent peut s'en
-    passer (point ouvert de la feuille de route) ;
-
-  - **une instance plus récente déjà vivante est servie** à un run qui a lu une version
-    plus ancienne sans que sa lecture soit périmée : c'est le cas de deux runs d'une
-    même personne de part et d'autre du renouvellement de son autorisation. C'est une
-    règle nouvelle du cache : avant, ce run démarrait l'ancienne version à la place
-    de la plus récente, qu'il fermait.
+  - **une instance plus récente, vivante ou en train de démarrer, sert** un run qui a
+    lu une version plus ancienne sans que sa lecture soit périmée : c'est le cas de
+    deux runs d'une même personne de part et d'autre du renouvellement de son
+    autorisation. Ce run attend le démarrage de la plus récente comme le sien. C'est
+    une règle nouvelle du cache : avant, ce run démarrait l'ancienne version à la
+    place de la plus récente, qu'il fermait.
 - **Conséquences** :
   - le premier tour d'une personne peut se passer des outils d'un serveur qui met plus
     de cinq secondes à démarrer : juste après un redémarrage du service, sur un worker
     qui n'a pas encore démarré ce connecteur, après un changement du connecteur, ou
     quand l'instance d'une personne a été libérée (après quinze minutes sans run,
     ADR-174) ou retirée avant l'échéance de son jeton (ADR-171). Ses tours suivants ont
-    ces outils. Un serveur qui ne répond pas ne retient plus une personne que sa
-    patience ;
+    ces outils. Le démarrage d'un serveur qui ne répond pas ne retient plus une
+    personne que sa patience ; le renouvellement de son jeton OAuth avant le run
+    (ADR-171, ADR-174) garde sa propre borne ;
   - rien n'est démarré deux fois parce qu'un run est parti, et une panne trouvée en
     arrière-plan est montrée aux administrateurs comme celle d'un run ;
   - un test d'un connecteur par l'administration attend toujours son démarrage entier
     (ADR-050, ADR-055) : il ne passe pas par ce cache ;
   - tests :
-    - `crates/api/src/services/connectors/cache/tests.rs` :
+    - `crates/api/src/services/connectors/cache/tests/` :
       - une tentative partagée, sa panne retenue pour chacun ;
       - un run qui n'attend que sa patience, la tentative servant au run suivant ;
       - une tentative qui continue après le départ du run qui l'a demandée ;
       - une panne trouvée en arrière-plan, retenue pour les runs suivants ;
-      - une instance plus récente servie à un run qui a lu une version plus
-        ancienne, sans en démarrer une ;
+      - une instance plus récente, vivante ou en train de démarrer, servie à un run
+        qui a lu une version plus ancienne, sans en démarrer une (`versions.rs`) ;
       - une tentative qui panique, retenue comme échouée ;
       - une tentative qui finit après la fermeture du cache, libérée ;
+    - un démarrage qui panique devient interrompu, à enregistrer
+      (`connectors/failures.rs`) ;
     - les tests des sessions fermées passent dans `cache/closed.rs` ;
     - `crates/api/tests/connector_start_patience.rs` :
       - face à un serveur retenu, un tour revient après sa patience, sans que rien
         soit enregistré, et le serveur sert le tour suivant ;
+      - le tour d'une personne, passé par l'exécuteur, se passe du connecteur qui
+        démarre encore, nommé indisponible ;
       - une panne trouvée en arrière-plan, qu'aucun run ne lit, est journalisée et
         enregistrée ;
       - une action validée, son connecteur à redémarrer plus lentement que la
         patience, est faite après la reprise ;
+    - `crates/api/tests/connector_start_waits.rs` : le run d'un déclencheur, une
+      étape de mission et le run d'une tâche planifiée utilisent l'outil d'un
+      connecteur qui répond plus tard que la patience ;
     - tests unitaires de la patience (`connectors/mod.rs`, `config/tests.rs`).
 
     Ce lot reprend aussi les points de l'audit de la PR #209 :
