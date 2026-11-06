@@ -5,7 +5,8 @@
 //! remembered as one: a server that exits, or stops answering, as soon as
 //! started is not started again by every run. Its life lasts until its
 //! session ended, when the session dates its end (ADR-165), or else until
-//! a run finds it closed.
+//! a run finds it closed. A newer instance about to serve a run that read
+//! an older version is judged so too (ADR-177).
 
 use std::time::Duration;
 use tokio::time::Instant;
@@ -20,26 +21,30 @@ pub const QUICK_EXIT: Duration = RETRY_AFTER;
 pub const EXITED_AT_ONCE: &str = "Le serveur a cessé de répondre moins d’une minute après son \
      démarrage : il n’est pas redémarré avant une minute";
 
-/// Releases the live instance of this version if its session closed for
-/// good, to be started again; remembered as a failed start, and told so,
-/// if it lived less than `QUICK_EXIT`.
+/// Releases the live instance that would serve a run that read `version`
+/// (of that version, or a newer one) if its session closed for good: the
+/// run then starts the version it read; remembered as a failed start of its
+/// own version, and told so, if it lived less than `QUICK_EXIT`.
 pub(super) fn closed(state: &mut State, id: SessionKey, version: Version) -> Option<Unavailable> {
-    let lived = match state.slots.get(&id) {
+    let (lived, version) = match state.slots.get(&id) {
         Some(Slot::Live {
             version: v,
             runtime,
             since,
             ..
-        }) if *v == version && runtime.is_closed() => match runtime.ended_at() {
-            Some(ended) => ended.saturating_duration_since(*since),
-            None => since.elapsed(),
-        },
+        }) if *v >= version && runtime.is_closed() => {
+            let lived = match runtime.ended_at() {
+                Some(ended) => ended.saturating_duration_since(*since),
+                None => since.elapsed(),
+            };
+            (lived, *v)
+        }
         _ => return None,
     };
     release(state.slots.remove(&id));
     if lived >= QUICK_EXIT {
         let connector = id.instance;
-        tracing::warn!(%connector, "A kept connector's session closed: starting it again");
+        tracing::warn!(%connector, "A kept connector's session closed: released");
         return None;
     }
     let failed = Slot::Failed {
@@ -63,7 +68,7 @@ mod tests {
     use mimorya_connectors::ConnectorRuntime;
     use uuid::Uuid;
 
-    use super::super::tests::{Started, unavailable};
+    use super::super::tests::{Started, raised, unavailable};
     use super::super::{Origin, RuntimeCache};
     use super::*;
 
@@ -111,17 +116,10 @@ mod tests {
         }
     }
 
-    /// Returns once the session was released, in the background. Counted
-    /// in turns given to the other tasks, not in time: a paused clock does
-    /// not advance while this test runs.
+    /// Returns once the session was released, in the background.
     async fn released(session: &Session) {
-        for _ in 0..10_000 {
-            if session.released.load(Ordering::SeqCst) {
-                return;
-            }
-            tokio::task::yield_now().await;
-        }
-        panic!("the closed instance is never released");
+        let released = raised(&session.released).await;
+        assert!(released, "the closed instance is never released");
     }
 
     #[tokio::test(start_paused = true)]
@@ -187,6 +185,56 @@ mod tests {
             panic!("expected a new instance");
         };
         assert_eq!(starts.load(Ordering::SeqCst), 2);
+    }
+
+    /// A newer live instance about to serve a run that read an older
+    /// version is judged first: closed soon after its start, it is a failed
+    /// start of its own version, told as such, never given to the run.
+    #[tokio::test(start_paused = true)]
+    async fn a_newer_instance_closed_is_judged_before_it_serves_an_older_run() {
+        let cache = RuntimeCache::default();
+        let id = Uuid::new_v4();
+        let (older, newer) = (Utc::now(), Utc::now() + chrono::Duration::seconds(1));
+        let starts = Arc::new(AtomicUsize::new(0));
+        let (session, other) = (Arc::new(Session::default()), Arc::new(Session::default()));
+        let started = cache.get_or_start(id, newer, 0, None, with(&starts, &session));
+        let Ok(_) = started.await else {
+            panic!("expected a live instance");
+        };
+        session.closed.store(true, Ordering::SeqCst);
+        let read_older = cache.get_or_start(id, older, 0, None, with(&starts, &other));
+        let exited = unavailable(read_older.await);
+        assert_eq!(exited.message, EXITED_AT_ONCE);
+        // Remembered for the newer version's runs: not started again by them.
+        let read_newer = cache.get_or_start(id, newer, 0, None, with(&starts, &other));
+        assert_eq!(unavailable(read_newer.await).origin, Origin::Remembered);
+        assert_eq!(starts.load(Ordering::SeqCst), 1);
+        released(&session).await;
+    }
+
+    /// A newer live instance whose session closed long after its start is
+    /// released, never given to a run that read an older version: that run
+    /// starts the version it read, as it would have with no newer one.
+    #[tokio::test(start_paused = true)]
+    async fn a_newer_instance_closed_late_is_released_for_an_older_run() {
+        let cache = RuntimeCache::default();
+        let id = Uuid::new_v4();
+        let (older, newer) = (Utc::now(), Utc::now() + chrono::Duration::seconds(1));
+        let starts = Arc::new(AtomicUsize::new(0));
+        let (session, other) = (Arc::new(Session::default()), Arc::new(Session::default()));
+        let started = cache.get_or_start(id, newer, 0, None, with(&starts, &session));
+        let Ok(closing) = started.await else {
+            panic!("expected a live instance");
+        };
+        tokio::time::advance(QUICK_EXIT).await;
+        session.closed.store(true, Ordering::SeqCst);
+        let read_older = cache.get_or_start(id, older, 0, None, with(&starts, &other));
+        let Ok(own) = read_older.await else {
+            panic!("expected the older version started");
+        };
+        assert!(!Arc::ptr_eq(&closing, &own));
+        assert_eq!(starts.load(Ordering::SeqCst), 2);
+        released(&session).await;
     }
 
     #[tokio::test(start_paused = true)]

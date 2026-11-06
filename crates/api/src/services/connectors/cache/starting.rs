@@ -1,10 +1,12 @@
 //! A connector instance's start, run in the background (ADR-177): it goes
 //! on whether the runs that wait for it still do or not, and leaves its
-//! outcome in the cache for them and for the runs that follow. A live
-//! instance it started is kept unless the instance was invalidated while
-//! it ran, a newer one went live meanwhile, or the cache closed; a failure
-//! is remembered, and logged here, where it is found: no run may read it
-//! before it is forgotten. A start that panics is a failure too.
+//! outcome in the cache for them and for the runs that follow. Its outcome
+//! is kept unless the instance was invalidated while it ran, the cache
+//! closed, or another took its place meanwhile: an instance of its version
+//! or a newer one live, a newer one starting, or a newer one's failure still
+//! remembered. An older version never replaces it. A failure is remembered,
+//! and logged here, where it is found: no run may read it before it is
+//! forgotten. A start that panics is a failure too.
 
 use std::future::Future;
 use std::sync::Arc;
@@ -63,8 +65,15 @@ impl Start {
             state.slots.remove(&id);
         }
         let stale = state.stale(id, ticket) || state.closed;
-        let newer =
-            matches!(state.slots.get(&id), Some(Slot::Live { version: v, .. }) if *v >= version);
+        // As `get_or_start` reads them: a newer failure forgotten is gone.
+        let newer = match state.slots.get(&id) {
+            Some(Slot::Live { version: v, .. }) => *v >= version,
+            Some(Slot::Starting { version: v, .. }) => *v > version,
+            Some(Slot::Failed {
+                version: v, until, ..
+            }) => *v > version && Instant::now() < *until,
+            None => false,
+        };
         if stale || newer {
             if let Ok(runtime) = started {
                 close_in_background(Arc::new(runtime));

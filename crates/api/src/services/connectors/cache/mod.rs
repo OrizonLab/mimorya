@@ -8,7 +8,8 @@
 //! the instance, which serves the runs that follow; one the run gave up
 //! goes on. A failure is logged where it is found, by the start itself. A
 //! newer instance, live, starting or failed, serves a run that read an
-//! older one. A start invalidated while it ran (instance changed, disabled
+//! older one, and an older one's start never takes its place (`starting`).
+//! A start invalidated while it ran (instance changed, disabled
 //! or deleted) is released, never kept, and one that ends after the cache
 //! closed too. A live instance whose session closed for good (a local
 //! server that exited, a server that no longer answers a ping, ADR-164) is
