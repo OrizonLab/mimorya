@@ -331,14 +331,15 @@ Repères à l'intérieur des crates :
   accorder, ADR-120, les messageries reliées et la page du lien envoyé dans Slack,
   `app/account/gateway-link` hors du cadre de l'application, ADR-126, et le compte
   Telegram relié avec l'accord donné dans Telegram, ADR-134, et le compte Teams relié
-  par le lien du bot, ADR-139 —,
+  par le lien du bot, ADR-139, et les serveurs MCP que chacun autorise pour soi
+  (`server-authorizations.tsx`), ADR-174 —,
   admin — dont `admin/connectors/` : serveurs MCP et API REST décrites opération par
   opération, ADR-113, et leurs opérations importées d'une description OpenAPI, JSON ou
   YAML converti dans le navigateur, ADR-115, et l'application Microsoft 365, ADR-118,
   dont l'écriture permise, ADR-120, et le client Google Workspace, ADR-124, et les
   passerelles de conversation, l'application Slack, ADR-126, et ses permissions
   vérifiées, ADR-132, le bot Telegram, ADR-134, le bot Teams, ADR-139,
-  et l'OAuth d'un serveur MCP : déclaration, autorisation, état et retraits, ADR-171, client saisi ou enregistré par la plateforme, ADR-173,
+  et l'OAuth d'un serveur MCP : déclaration, autorisation, état et retraits, ADR-171, client saisi ou enregistré par la plateforme, ADR-173, qui l'autorise, l'entreprise ou chacun, et combien l'ont fait (`mcp-oauth-holder.tsx`), ADR-174,
   `admin/knowledge-shares/` : partages de connaissances entre unités, ADR-144, `admin/policies/` : refus écrits aussitôt et autorisations proposées, approuvées par un autre administrateur, ADR-169, `admin/llm/` : modèle des conversations et modèle de contrôle des réponses, ADR-108, recherche dans la mémoire, leçons et limites des missions, ADR-075,
   ADR-077, ADR-093, limite de coût des évaluations des compétences, ADR-155, `admin/users/` :
   comptes, dont l'absence d'un collaborateur empêché, ADR-079, et `admin/skills/` :
@@ -346,7 +347,7 @@ Repères à l'intérieur des crates :
   ADR-105, critères de qualité, ADR-107, dépense et limite des évaluations, ADR-155 —, approvals — dont la
   section « Absence » et son formulaire, commun, ADR-073 —, chat — dont la conversation tenue
   dans Slack, marquée et annoncée par une note, ADR-128, ou dans Telegram, ADR-135, ou dans
-  Teams, ADR-140, et le résumé de ses premiers messages, ADR-146 —, documents — dépôt, liste
+  Teams, ADR-140, et le résumé de ses premiers messages, ADR-146, et les connecteurs indisponibles, ceux à autoriser soi-même menant à « Mon compte » (`unavailable-notices.tsx`), ADR-174 —, documents — dépôt, liste
   et téléchargement, ADR-097, nouvelle version et fichier glissé-déposé, ADR-151 —, memory, missions —
   missions longues, ADR-090 —, operations — dont les sous-agents d'une demande, ADR-099 —,
   scheduled-tasks — tâches planifiées, ADR-081 —, inbound-hooks — déclencheurs et leur

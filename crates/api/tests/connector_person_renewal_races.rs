@@ -91,8 +91,9 @@ async fn their_renewal_in_flight_when_they_authorize_again_revokes_nothing() {
     let run = sees_for(connectors, "relaissoi", as_person(user::MARC));
     let (_, again) = tokio::join!(run, again);
     assert_eq!(location(&again), PERSON_AUTHORIZED);
-    // His new authorization kept; nothing revoked at its server.
-    sleep(Duration::from_secs(1)).await;
+    // His new authorization kept; nothing revoked at its server, the task
+    // that would revoke them given its time.
+    sleep(Duration::from_secs(2)).await;
     assert!(asked_at(&authority, "revoke").is_empty());
     let access = person_kept(&api, &id, user::MARC).await.expect("kept");
     assert!(authority.accepts(&access, &server.url));

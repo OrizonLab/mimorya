@@ -6,11 +6,13 @@
 //! is kept, or the authorization removed, only if it is still the one that
 //! was claimed (same row, not renewed since): a new version of the
 //! connector either way. A renewal that failed, the authorization kept, says
-//! why on it until one is kept.
+//! why on it until one is kept. Its statements are shared with a person's
+//! own authorization (`connector_person_renewals`, ADR-174): only the table
+//! and the person's filter differ.
 
 use chrono::{DateTime, Utc};
 use sqlx::postgres::PgArguments;
-use sqlx::query::{QueryAs, QueryScalar};
+use sqlx::query::QueryAs;
 use sqlx::{PgConnection, Postgres};
 use uuid::Uuid;
 
@@ -116,7 +118,7 @@ pub async fn claim_connector_renewal(
     hold: std::time::Duration,
     asker: RenewalFor,
 ) -> sqlx::Result<Option<Claimed>> {
-    let sql = format!("update connector_authorizations {CLAIM} {CLAIMED}");
+    let sql = format!("update {COMPANY} {CLAIM} {CLAIMED}");
     let row = claim_query(&sql, connector_id, within, hold, asker)
         .fetch_optional(conn)
         .await?;
@@ -154,25 +156,34 @@ pub struct Renewed<'a> {
 }
 
 /// What a kept renewal writes on the authorization, the company's or a
-/// person's: parameters 3 to 12, bound by `bind_renewed`.
-pub(super) const RENEWED: &str = "set access_ciphertext = $3, access_iv = $4, \
+/// person's: parameters 3 to 12, bound by `keep_in`.
+const RENEWED: &str = "set access_ciphertext = $3, access_iv = $4, \
      access_auth_tag = $5, access_key_version = $6, access_expires_at = $7, \
      refresh_ciphertext = coalesce($8, refresh_ciphertext), \
      refresh_iv = coalesce($9, refresh_iv), \
      refresh_auth_tag = coalesce($10, refresh_auth_tag), \
      refresh_key_version = coalesce($11, refresh_key_version), \
      scopes = coalesce($12, scopes), refreshed_at = now(), renewing_until = null, \
-     renewal_failure = null where id = $1 and refreshed_at = $2 returning connector_id";
+     renewal_failure = null";
 
-/// The statement keeping a renewal (`RENEWED`), all its parameters bound:
-/// the authorization claimed, then what the renewal brings.
-pub(super) fn keep_query<'q>(
-    sql: &'q str,
+/// The row a claim still names, parameters 1 and 2: the one claimed, not
+/// renewed since.
+const STILL_CLAIMED: &str = "where id = $1 and refreshed_at = $2";
+
+/// Where the company's authorizations are.
+const COMPANY: &str = "connector_authorizations";
+
+/// Keeps a renewal of the authorization claimed in `table`, the company's
+/// or a person's, if it is still that one: its connector, if it was kept.
+pub(super) async fn keep_in(
+    conn: &mut PgConnection,
+    table: &str,
     claimed: ClaimedRenewal,
-    renewed: Renewed<'q>,
-) -> QueryScalar<'q, Postgres, Uuid, PgArguments> {
+    renewed: Renewed<'_>,
+) -> sqlx::Result<Option<Uuid>> {
+    let sql = format!("update {table} {RENEWED} {STILL_CLAIMED} returning connector_id");
     let refresh = renewed.refresh_token;
-    sqlx::query_scalar(sql)
+    sqlx::query_scalar(&sql)
         .bind(claimed.authorization_id)
         .bind(claimed.refreshed_at)
         .bind(&renewed.access_token.ciphertext)
@@ -185,6 +196,8 @@ pub(super) fn keep_query<'q>(
         .bind(refresh.map(|r| r.auth_tag.clone()))
         .bind(refresh.map(|r| r.key_version))
         .bind(renewed.scopes)
+        .fetch_optional(conn)
+        .await
 }
 
 /// Keeps a renewal of the authorization claimed, if it is still that one;
@@ -194,10 +207,7 @@ pub async fn keep_connector_renewal(
     claimed: ClaimedRenewal,
     renewed: Renewed<'_>,
 ) -> sqlx::Result<Option<Uuid>> {
-    let sql = format!("update connector_authorizations {RENEWED}");
-    let connector = keep_query(&sql, claimed, renewed)
-        .fetch_optional(&mut *conn)
-        .await?;
+    let connector = keep_in(&mut *conn, COMPANY, claimed, renewed).await?;
     if let Some(connector_id) = connector {
         credential_changed(conn, connector_id).await?;
     }
@@ -217,21 +227,29 @@ pub async fn record_renewal_failure(
     claimed: ClaimedRenewal,
     reason: &str,
 ) -> sqlx::Result<bool> {
-    let reason = failure_said(reason);
-    let said = sqlx::query(
-        "update connector_authorizations set renewal_failure = $3 \
-         where id = $1 and refreshed_at = $2",
-    )
-    .bind(claimed.authorization_id)
-    .bind(claimed.refreshed_at)
-    .bind(&reason)
-    .execute(conn)
-    .await?;
+    say_failure_in(conn, COMPANY, claimed, reason).await
+}
+
+/// Says why the renewal of the authorization claimed in `table` failed, if
+/// it is still that one; whether it was said.
+pub(super) async fn say_failure_in(
+    conn: &mut PgConnection,
+    table: &str,
+    claimed: ClaimedRenewal,
+    reason: &str,
+) -> sqlx::Result<bool> {
+    let sql = format!("update {table} set renewal_failure = $3 {STILL_CLAIMED}");
+    let said = sqlx::query(&sql)
+        .bind(claimed.authorization_id)
+        .bind(claimed.refreshed_at)
+        .bind(failure_said(reason))
+        .execute(conn)
+        .await?;
     Ok(said.rows_affected() == 1)
 }
 
 /// A renewal's failure as kept: bounded, never empty.
-pub(super) fn failure_said(reason: &str) -> String {
+fn failure_said(reason: &str) -> String {
     let reason: String = reason.trim().chars().take(MAX_FAILURE_CHARS).collect();
     match reason.trim_end() {
         "" => UNSAID_FAILURE.to_string(),
@@ -245,19 +263,26 @@ pub async fn remove_claimed_authorization(
     conn: &mut PgConnection,
     claimed: ClaimedRenewal,
 ) -> sqlx::Result<bool> {
-    let connector: Option<Uuid> = sqlx::query_scalar(
-        "delete from connector_authorizations where id = $1 and refreshed_at = $2 \
-         returning connector_id",
-    )
-    .bind(claimed.authorization_id)
-    .bind(claimed.refreshed_at)
-    .fetch_optional(&mut *conn)
-    .await?;
-    match connector {
+    match remove_claimed_from(&mut *conn, COMPANY, claimed).await? {
         Some(connector_id) => {
             credential_changed(conn, connector_id).await?;
             Ok(true)
         }
         None => Ok(false),
     }
+}
+
+/// Removes the authorization claimed from `table`, if it is still that one:
+/// its connector, if it was removed.
+pub(super) async fn remove_claimed_from(
+    conn: &mut PgConnection,
+    table: &str,
+    claimed: ClaimedRenewal,
+) -> sqlx::Result<Option<Uuid>> {
+    let sql = format!("delete from {table} {STILL_CLAIMED} returning connector_id");
+    sqlx::query_scalar(&sql)
+        .bind(claimed.authorization_id)
+        .bind(claimed.refreshed_at)
+        .fetch_optional(conn)
+        .await
 }

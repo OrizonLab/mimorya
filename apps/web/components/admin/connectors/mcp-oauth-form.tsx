@@ -10,9 +10,11 @@ import { REGISTERED_CLIENT_STAYS } from './registered-client';
  * authorization server by hand, or the platform's own, which it registers
  * there itself (ADR-173) when it has its master key; the authorization
  * server is found from the server itself, its issuer given only when the
- * server names several, or none. Declared again, everything is replaced,
- * the secret too, and the authorization given under the former declaration
- * goes. A typed token goes as well: OAuth replaces it.
+ * server names several, or none. The company authorizes it once, or each
+ * person for themself in their account (ADR-174). Declared again,
+ * everything is replaced, the secret too, and the authorizations given
+ * under the former declaration go. A typed token goes as well: OAuth
+ * replaces it.
  */
 export function McpOAuthForm({
   connector,
@@ -33,6 +35,7 @@ export function McpOAuthForm({
   const [clientId, setClientId] = useState(declared?.registered ? '' : (declared?.clientId ?? ''));
   const [secret, setSecret] = useState('');
   const [scopes, setScopes] = useState(declared?.scopes.join(' ') ?? '');
+  const [perPerson, setPerPerson] = useState(declared?.perPerson ?? false);
   const action = useAction();
 
   async function submit(event: FormEvent) {
@@ -42,6 +45,11 @@ export function McpOAuthForm({
     if (declared?.authorization) {
       warnings.push(
         'Déclarer de nouveau retire l’autorisation donnée : il faudra autoriser ce serveur de nouveau.',
+      );
+    }
+    if (declared && declared.personAuthorizations > 0) {
+      warnings.push(
+        'Déclarer de nouveau retire les autorisations des personnes : chacune devra autoriser ce serveur de nouveau.',
       );
     }
     if (declared?.registered) {
@@ -55,6 +63,7 @@ export function McpOAuthForm({
       clientId: register ? undefined : clientId,
       clientSecret: register ? undefined : secret.trim() || undefined,
       scopes: asked ? asked.split(/\s+/) : undefined,
+      perPerson,
     } satisfies McpOAuthDeclaration;
     const saved = await action.run(() => api.put(`/admin/connectors/${connector.id}/oauth`, body));
     if (saved) onDone(true);
@@ -83,6 +92,25 @@ export function McpOAuthForm({
           </label>
         </fieldset>
       )}
+      <fieldset className="flex flex-col gap-1 text-sm">
+        <legend className="mb-1 font-medium">Qui autorise ce serveur</legend>
+        <label className="flex items-center gap-2">
+          <Radio
+            name={`holder-${connector.id}`}
+            checked={!perPerson}
+            onChange={() => setPerPerson(false)}
+          />
+          L’entreprise, une fois pour tous les runs
+        </label>
+        <label className="flex items-center gap-2">
+          <Radio
+            name={`holder-${connector.id}`}
+            checked={perPerson}
+            onChange={() => setPerPerson(true)}
+          />
+          Chaque personne, pour elle-même, dans « Mon compte »
+        </label>
+      </fieldset>
       <p className="text-sm text-muted">
         {register ? (
           <>

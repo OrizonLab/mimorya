@@ -103,13 +103,13 @@ use mimorya_connectors::testing::{
 /// follow-up: one per run that converses, in the order they run (the
 /// interrupted run taken up at startup, which `interrupted-run.spec.ts`
 /// refuses, then the one of `lessons.spec.ts`, that of
-/// `manager-absence.spec.ts`, the two of `manager-approvals.spec.ts`,
-/// `reference-scenario.spec.ts`, the three of `timeouts.spec.ts` and
-/// `unavailable-connectors.spec.ts`). Only the one of
+/// `manager-absence.spec.ts`, the two of `manager-approvals.spec.ts`, that
+/// of `mcp-person-oauth.spec.ts`, `reference-scenario.spec.ts`, the three of
+/// `timeouts.spec.ts` and `unavailable-connectors.spec.ts`). Only the one of
 /// `reference-scenario.spec.ts` is validated: the others are refused (or
 /// withdrawn), so their slots, which may overlap (two hours each, within
 /// the working day, 8 h – 17 h), are never taken.
-const SCENARIO_HOURS: [u32; 10] = [10, 10, 12, 14, 12, 13, 15, 9, 11, 8];
+const SCENARIO_HOURS: [u32; 11] = [10, 10, 12, 14, 12, 10, 13, 15, 9, 11, 8];
 
 /// Where the identity provider listens: `single-sign-on.spec.ts` declares it.
 const IDP_ADDRESS: &str = "127.0.0.1:4100";

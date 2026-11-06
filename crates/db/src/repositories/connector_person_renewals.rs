@@ -12,9 +12,12 @@ use sqlx::PgConnection;
 use uuid::Uuid;
 
 use super::connector_renewals::{
-    CLAIM, CLAIMED, Claimed, ClaimedRenewal, RENEWED, RenewalFor, Renewed, claim_query,
-    failure_said, keep_query,
+    CLAIM, CLAIMED, Claimed, ClaimedRenewal, RenewalFor, Renewed, claim_query, keep_in,
+    remove_claimed_from, say_failure_in,
 };
+
+/// Where the people's own authorizations are.
+const PERSON: &str = "connector_person_authorizations";
 
 /// The enabled connectors whose access token the person's authorization
 /// lets expire within `within`, that can be renewed and whose renewal is
@@ -49,7 +52,7 @@ pub async fn claim_person_renewal(
     asker: RenewalFor,
 ) -> sqlx::Result<Option<Claimed>> {
     // The person's own alone.
-    let sql = format!("update connector_person_authorizations {CLAIM} and user_id = $5 {CLAIMED}");
+    let sql = format!("update {PERSON} {CLAIM} and user_id = $5 {CLAIMED}");
     let row = claim_query(&sql, connector_id, within, hold, asker)
         .bind(user_id)
         .fetch_optional(conn)
@@ -64,11 +67,7 @@ pub async fn keep_person_renewal(
     claimed: ClaimedRenewal,
     renewed: Renewed<'_>,
 ) -> sqlx::Result<bool> {
-    let sql = format!("update connector_person_authorizations {RENEWED}");
-    let kept = keep_query(&sql, claimed, renewed)
-        .fetch_optional(conn)
-        .await?;
-    Ok(kept.is_some())
+    Ok(keep_in(conn, PERSON, claimed, renewed).await?.is_some())
 }
 
 /// Says on the person's authorization claimed why its renewal failed, if it
@@ -78,16 +77,7 @@ pub async fn record_person_renewal_failure(
     claimed: ClaimedRenewal,
     reason: &str,
 ) -> sqlx::Result<bool> {
-    let said = sqlx::query(
-        "update connector_person_authorizations set renewal_failure = $3 \
-         where id = $1 and refreshed_at = $2",
-    )
-    .bind(claimed.authorization_id)
-    .bind(claimed.refreshed_at)
-    .bind(failure_said(reason))
-    .execute(conn)
-    .await?;
-    Ok(said.rows_affected() == 1)
+    say_failure_in(conn, PERSON, claimed, reason).await
 }
 
 /// Removes the person's authorization claimed, the server no longer
@@ -96,12 +86,5 @@ pub async fn remove_claimed_person_authorization(
     conn: &mut PgConnection,
     claimed: ClaimedRenewal,
 ) -> sqlx::Result<bool> {
-    let removed = sqlx::query(
-        "delete from connector_person_authorizations where id = $1 and refreshed_at = $2",
-    )
-    .bind(claimed.authorization_id)
-    .bind(claimed.refreshed_at)
-    .execute(conn)
-    .await?;
-    Ok(removed.rows_affected() == 1)
+    Ok(remove_claimed_from(conn, PERSON, claimed).await?.is_some())
 }

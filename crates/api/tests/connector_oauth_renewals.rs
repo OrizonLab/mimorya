@@ -15,8 +15,7 @@
 
 mod support;
 
-use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::Ordering;
 use std::time::Instant;
 
 use axum::http::StatusCode;
@@ -34,7 +33,7 @@ use support::connector_sessions::{
 };
 use support::mcp::{PRIVATE_DEPLOYMENT, listed};
 use support::sso::location;
-use tokio::net::TcpListener;
+use support::token_endpoints::mute;
 
 /// The access token expiring in three minutes and a half: due for renewal,
 /// still long enough to start a session.
@@ -46,23 +45,6 @@ const EXPIRING: &str = "update connector_authorizations set access_expires_at = 
 /// The renewal's claim over, as if its delay had passed.
 const UNCLAIMED: &str =
     "update connector_authorizations set renewing_until = null where connector_id = $1";
-
-/// A token endpoint that takes every connection and never answers: its
-/// address, and how many connections it took.
-async fn mute() -> (String, Arc<AtomicUsize>) {
-    let listener = TcpListener::bind("127.0.0.1:0").await.expect("port");
-    let url = format!("http://{}/token", listener.local_addr().expect("address"));
-    let calls = Arc::new(AtomicUsize::new(0));
-    let counted = calls.clone();
-    tokio::spawn(async move {
-        let mut held = Vec::new();
-        while let Ok((socket, _)) = listener.accept().await {
-            counted.fetch_add(1, Ordering::SeqCst);
-            held.push(socket);
-        }
-    });
-    (url, calls)
-}
 
 /// The system's removals of this connector's authorization: their reasons.
 async fn removed_by_the_system(api: &TestApi, id: &str) -> Vec<String> {

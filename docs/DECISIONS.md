@@ -11160,8 +11160,36 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     jamais envoyé, dit dans « Mon compte »), `connector_person_renewal_races.rs` (retrait de Marc pendant son renouvellement : ses jetons révoqués, puis ceux du renouvellement ; autorisé de nouveau pendant son renouvellement : rien de révoqué, la nouvelle autorisation gardée ; refus de l'ancien accord après une nouvelle autorisation : rien de retiré, la session de la nouvelle gardée et reprise par le run qui renouvelait), `connector_person_authorization_tested.rs`
     et `connector_person_sessions.rs` (jeton échu dont le renouvellement échoue, dit de
     même) ; vérifiés par mutation (renouvellement avant le run retiré ; renouvellement pour qui n'utilise pas les connecteurs ; réservation sans la personne ; mode de la déclaration ignoré ; session gardée au retrait ; personne absente de l'audit ; échec non dit ; test sans la propre autorisation de l'administrateur ; serveur désactivé non renouvelé pour son test ; mots de l'entreprise pour un jeton illisible ; jetons scellés sous les noms de l'entreprise ; jetons non gardés révoqués comme ceux de l'entreprise, ou jamais révoqués pour une personne ; session libérée sans retrait) ;
+  - lot 43g : les écrans. Dans « Connecteurs », la déclaration OAuth d'un serveur MCP
+    choisit qui l'autorise, l'entreprise une fois pour tous les runs ou chaque personne
+    pour elle-même dans « Mon compte » ; un serveur que chacun autorise dit combien de
+    personnes l'ont fait, jamais lesquelles, que chaque run use de l'autorisation de la
+    personne qu'il sert et que son test se fait avec celle de l'administrateur, et ne
+    propose plus de l'autoriser pour l'entreprise ; qui l'autorise se change sur sa
+    carte, la confirmation disant combien d'autorisations sont retirées et si leurs
+    jetons sont révoqués (`admin/connectors/mcp-oauth-holder.tsx`). « Mon compte »
+    montre « Serveurs que vous autorisez » (`account/server-authorizations.tsx`) : les
+    serveurs que chacun autorise dans la portée de la personne, ou dont elle garde une
+    autorisation ; l'autorisation par un aller et retour du navigateur, dont le retour
+    est dit une fois ; l'état (date, échéance, dernier renouvellement, raison d'un échec)
+    ; le retrait. La section dit qu'aucune vérification n'est faite du compte choisi chez
+    le serveur d'autorisation, et qu'un compte partagé peut voir son accord retiré par un
+    autre. Dans la conversation, un connecteur à autoriser par la personne est dit à part
+    des connecteurs indisponibles, avec le lien vers « Mon compte »
+    (`chat/unavailable-notices.tsx`) ; test : `apps/web/e2e/mcp-person-oauth.spec.ts`
+    (déclaré pour chacun, aucune personne, rien à autoriser pour l'entreprise ; test de
+    Paul refusé sans son autorisation ; run de Marc qui le dit, lien vers « Mon compte »,
+    autorisé là par un aller et retour, état montré ; Paul l'autorise pour lui, deux
+    personnes comptées, son test réussi ; retrait par Marc ; retour à l'entreprise, les autorisations des personnes retirées). Suites de l'audit du
+    lot 43f : les renouvellements d'avant un run sont réunis dans `renew_before_run`
+    (`services/connectors/renewal/mod.rs`) ; l'échec dit et le retrait partagent leur SQL
+    entre l'entreprise et la personne comme la réservation et la conservation
+    (`keep_in`, `say_failure_in`, `remove_claimed_from`) ; test
+    `crates/api/tests/connector_person_renewal_delays.rs` (l'autorisation de l'entreprise
+    et celle de Marc, dues, leurs points de jeton muets, renouvelées côte à côte : le run
+    attend une borne, non deux ; vérifié par mutation) ;
   - aucune preuve d'identité n'est demandée au serveur d'autorisation : une personne
-    peut autoriser avec un compte qu'elle partage ; l'écran le dira ;
+    peut autoriser avec un compte qu'elle partage ; « Mon compte » le dit ;
   - deux personnes qui autorisent avec le même compte chez le serveur peuvent voir
     l'une révoquer l'autre ;
   - reste : vérifier l'identité de la personne chez le serveur (OpenID Connect).

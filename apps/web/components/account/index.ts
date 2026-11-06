@@ -10,5 +10,6 @@ export { LinkedAccounts } from './linked-accounts';
 export { NotificationForm } from './notification-form';
 export { ResetPasswordForm } from './reset-password-form';
 export { ResetRequestForm } from './reset-request-form';
+export { ServerAuthorizations } from './server-authorizations';
 export { SsoSignIn } from './sso-sign-in';
 export { useLinkToken, type LinkState } from './use-link-token';

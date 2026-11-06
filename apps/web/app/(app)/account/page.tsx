@@ -5,6 +5,7 @@ import {
   LinkedAccounts,
   NotificationForm,
   PasswordForm,
+  ServerAuthorizations,
 } from '@/components/account';
 import { Card, PageHeader } from '@/components/ui';
 import { useMe } from '@/lib/me-context';
@@ -26,6 +27,7 @@ export default function AccountPage() {
           </Card>
         )}
         <LinkedAccounts />
+        <ServerAuthorizations />
         <GatewayIdentities />
         <NotificationForm />
       </div>

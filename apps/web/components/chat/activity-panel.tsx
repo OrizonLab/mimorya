@@ -12,6 +12,7 @@ import {
   ShieldAlert,
   XCircle,
 } from 'lucide-react';
+import { UnavailableNotices } from './unavailable-notices';
 import type { RunActivity } from './use-run-stream';
 
 export function ActivityPanel({ activity }: { activity: RunActivity }) {
@@ -22,9 +23,7 @@ export function ActivityPanel({ activity }: { activity: RunActivity }) {
       aria-live="polite"
     >
       <RunHeading status={activity.status} />
-      {activity.unavailable.length > 0 && (
-        <p className="mt-2 text-xs text-warn">{unavailableNotice(activity.unavailable)}</p>
-      )}
+      <UnavailableNotices unavailable={activity.unavailable} toAuthorize={activity.toAuthorize} />
       {(activity.notes.length > 0 ||
         activity.steps.length > 0 ||
         activity.resumptions.length > 0) && (
@@ -83,14 +82,6 @@ function ResumedNotices({ resumptions, at }: { resumptions: number[]; at: number
         Le service a redémarré : la demande a repris à sa dernière étape enregistrée.
       </li>
     ));
-}
-
-/** Which connectors the run goes without, and what it means for the answer. */
-function unavailableNotice(connectors: string[]): string {
-  const names = connectors.map((name) => `« ${name} »`).join(', ');
-  return connectors.length === 1
-    ? `Le connecteur ${names} est indisponible : la réponse peut être incomplète.`
-    : `Les connecteurs ${names} sont indisponibles : la réponse peut être incomplète.`;
 }
 
 function StepIcon({ step }: { step: RunActivity['steps'][number] }) {
