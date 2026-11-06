@@ -11338,3 +11338,82 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       des serveurs de test ; `apps/web/e2e/mcp-person-oauth-identity.spec.ts` (déclaré
       pour chacun avec la vérification, carte et « Mon compte » qui le disent, Marc
       autorisé, Lucas connecté chez le serveur comme Marc refusé et prévenu une fois, puis le serveur passé à l'entreprise, la confirmation disant la vérification retirée) ; la case de la déclaration porte un libellé court, son explication lui étant liée (`aria-describedby`), et « Compte vérifié » a le même ton sur la carte et dans « Mon compte ».
+
+## ADR-176 — OAuth des serveurs MCP : une déclaration ne remplace que ce que son administrateur a vu (lot 46)
+
+- **Statut** : accepté (2026-11-06) · complète ADR-171, ADR-174 et ADR-175.
+- **Contexte** : le formulaire de déclaration OAuth d'un serveur MCP est prérempli de
+  la déclaration lue à son ouverture : qui autorise le serveur, vérification du compte
+  de chacun, portées. Avant d'envoyer, il dit ce que déclarer de nouveau retire :
+  l'autorisation de l'entreprise, celles des personnes. Entre l'ouverture et l'envoi, un
+  autre administrateur peut changer la déclaration (la déclarer de nouveau, changer qui
+  autorise, la retirer) ; l'entreprise ou une personne peut autoriser le serveur.
+  L'envoi remplaçait alors tout sans le voir : la déclaration de l'autre défaite, des
+  autorisations retirées sans que la confirmation l'ait dit. Les contrôles d'ADR-175
+  (`verification_unchanged`) ne couvrent que la découverte, pas le temps où le
+  formulaire reste ouvert. L'audit du lot 45b l'avait noté en suggestion.
+- **Décision** :
+  - **une version de l'OAuth d'un serveur**, que la liste des connecteurs donne
+    (`McpEndpoint.oauthVersion`, `services/admin/oauth_version.rs`). C'est l'empreinte
+    SHA-256 de ce qu'un administrateur voit en ouvrant le formulaire :
+    - la déclaration telle qu'elle est stockée, absente ou illisible comprise ;
+    - la date de l'autorisation de l'entreprise, s'il y en a une ;
+    - le nombre de personnes qui ont autorisé le serveur pour elles-mêmes.
+
+    Tout changement de l'un d'eux la change. Une autorisation renouvelée ne la change
+    pas : son jeton change, pas ce que déclarer de nouveau retire ;
+
+  - **une déclaration la nomme** (`replaces`, facultatif dans le corps de
+    `PUT /admin/connectors/{id}/oauth`). Si elle diffère de la version lue, la
+    déclaration est refusée (409, « La déclaration OAuth de ce serveur a changé depuis
+    l'ouverture de ce formulaire : fermez-le et rouvrez-le »), et rien de ce qui a
+    changé n'est défait. La version est contrôlée deux fois :
+    - avant tout appel au serveur, découverte ou enregistrement d'un client : un
+      formulaire périmé ne coûte rien au serveur d'autorisation ;
+    - de nouveau sous le verrou d'administration, avant toute écriture : un changement
+      venu pendant la découverte est vu, même celui que rien d'autre ne signale (une
+      personne qui autorise le serveur pendant ce temps).
+
+    Une déclaration qui ne nomme pas de version n'est pas contrôlée, comme avant : les
+    clients de l'API qui ne lisent pas la liste restent possibles, et les contrôles
+    d'ADR-175 valent toujours pour eux ;
+
+  - **le formulaire envoie la version lue à son ouverture**, gardée même si la liste
+    est relue pendant qu'il est ouvert (`mcp-oauth-form.tsx`). Refusé, il garde le
+    message ; fermé, il fait relire la liste, et rouvert, il montre la déclaration
+    telle qu'elle est, avec ce qu'elle retirerait ;
+  - **le retour d'une autorisation garde sa place** parmi les démarrages de
+    l'administration de l'entreprise (ADR-055) jusqu'à la fin de la vérification de
+    l'identité (ADR-175), et non seulement pendant l'échange du code. Un test le montre
+    (`a_return_keeps_its_start_while_it_verifies_who_authorized`) : deux retours
+    vérifient en même temps, la configuration OpenID du serveur retenue ; un troisième
+    démarrage est refusé, puis accepté une fois les deux finis.
+- **Conséquences** :
+  - un administrateur ne remplace plus sans le voir la déclaration d'un autre, ni ne
+    retire des autorisations que la confirmation n'a pas dites. Le prix : un formulaire
+    ouvert pendant qu'une personne autorise le serveur est refusé, et il faut le
+    rouvrir ;
+  - la même empreinte reviendrait après un aller-retour (entreprise, puis chacun, puis
+    l'entreprise, sans autorisation entre-temps) : ce que l'administrateur a vu est
+    alors exactement ce qui est là, et sa déclaration est acceptée ;
+  - changer qui autorise (`…/oauth/holder`) et retirer la déclaration ne nomment pas de
+    version : ce sont des actions d'un bouton, confirmées sur ce que la carte montre, et
+    leur effet ne dépend pas de ce qui était prérempli ;
+  - tests : `crates/api/tests/connector_oauth_versions.rs` :
+    - deux formulaires ouverts sur aucune déclaration : le second est refusé, sans rien
+      demander au serveur ;
+    - une autorisation de l'entreprise, un changement de qui autorise ou l'autorisation
+      d'une personne rendent périmée la version d'avant, et le refus garde
+      l'autorisation ;
+    - une déclaration ouverte sur ce qui est là est acceptée ; sans version, elle n'est
+      pas contrôlée ;
+    - une autorisation donnée pendant la découverte est vue sous le verrou.
+
+    S'y ajoutent `connector_person_identity_races.rs` (la place gardée pendant la
+    vérification de l'identité) et les tests unitaires de l'empreinte.
+    `apps/web/e2e/mcp-person-oauth-declarations.spec.ts` couvre l'écran : un formulaire
+    ouvert, la déclaration changée ailleurs, l'envoi refusé et le changement gardé ;
+    fermé puis rouvert, le formulaire montre le changement et déclare ;
+
+  - le serveur d'autorisation simulé retient aussi sa configuration OpenID à volonté et
+    compte ceux qui la demandent (`held_configuration`, `configuration_asked`).

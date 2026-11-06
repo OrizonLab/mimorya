@@ -1291,7 +1291,12 @@ prefix: string, url: string, tokenStored: boolean,
 /**
  * OAuth declared on it (ADR-171), which no typed token goes with.
  */
-oauth: McpOAuth | null, };
+oauth: McpOAuth | null,
+/**
+ * The version of its OAuth, declared or not, that a declaration names
+ * to replace only what its administrator saw (ADR-176).
+ */
+oauthVersion: string, };
 
 /**
  * OAuth declared on an MCP server, as `McpEndpoint` shows it and its
@@ -1397,7 +1402,12 @@ perPerson?: boolean,
  * person authorizes with their own account (ADR-175): only when each
  * person authorizes; absent, as under the declaration replaced.
  */
-verifyIdentity?: boolean, };
+verifyIdentity?: boolean,
+/**
+ * The `oauthVersion` of the server as the form was opened: refused
+ * if what is declared changed since (ADR-176); absent, not checked.
+ */
+replaces?: string, };
 
 /**
  * Body of `PUT /admin/connectors/{id}/oauth/holder`: who authorizes the

@@ -53,6 +53,11 @@ pub struct McpOAuthDeclaration {
     #[serde(default)]
     #[ts(optional)]
     pub verify_identity: Option<bool>,
+    /// The `oauthVersion` of the server as the form was opened: refused
+    /// if what is declared changed since (ADR-176); absent, not checked.
+    #[serde(default)]
+    #[ts(optional)]
+    pub replaces: Option<String>,
 }
 
 /// Body of `PUT /admin/connectors/{id}/oauth/holder`: who authorizes the

@@ -75,6 +75,23 @@ pub fn api_path(location: &str) -> String {
         .to_string()
 }
 
+/// Until `asked` of `authority` counts more than `before`: a declaration
+/// is finding the server, or a return verifying who authorized. Failing,
+/// rather than waiting forever, if none ever is.
+pub async fn until_asked(
+    authority: &FakeAuthorizationServer,
+    asked: fn(&FakeAuthorizationServer) -> usize,
+    before: usize,
+) {
+    let reached = tokio::time::timeout(std::time::Duration::from_secs(30), async {
+        while asked(authority) <= before {
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+    })
+    .await;
+    assert!(reached.is_ok(), "the authorization server was never asked");
+}
+
 /// The browser's return, signed in as `admin`, with this cookie, if any.
 pub async fn come_back(admin: &Client<'_>, path: &str, cookie: Option<&str>) -> TestResponse {
     match cookie {

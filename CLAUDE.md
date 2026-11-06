@@ -157,7 +157,7 @@ Repères à l'intérieur des crates :
   ADR-141), `connectors/src/testing/`
   (serveurs simulés des tests : MCP, dont des réponses sans fin (`endless.rs`) et un
   serveur lent qui compte les pings qu'il voit (`slow.rs`), et un serveur protégé par
-  OAuth avec son serveur d'autorisation, hostile à volonté, qui enregistre des clients (`oauth/`, ADR-171, ADR-173), fournisseur OpenID Connect quand un test y connecte quelqu'un (`oauth/openid.rs`, ADR-175), ses métadonnées retenues à volonté (`oauth/metadata_endpoint.rs`), mandataire
+  OAuth avec son serveur d'autorisation, hostile à volonté, qui enregistre des clients (`oauth/`, ADR-171, ADR-173), fournisseur OpenID Connect quand un test y connecte quelqu'un (`oauth/openid.rs`, ADR-175), ses métadonnées retenues à volonté (`oauth/metadata_endpoint.rs`), et sa configuration OpenID de même, mandataire
   HTTP qui note où il va (`proxy.rs`), API REST, Microsoft Graph, Gmail et agenda Google,
   Slack, qui signe les événements comme lui, Telegram, Microsoft pour Teams, qui signe
   les activités avec une clé de test).
@@ -189,7 +189,7 @@ Repères à l'intérieur des crates :
   `api/src/services/admin/` (comptes et absence d'un collaborateur empêché
   (`absences.rs`, ADR-078), organisation, habilitations, connecteurs : ce que
   l'administration change de chacun (`connector_config.rs`), OAuth déclaré sur un serveur
-  MCP (`connector_oauth.rs`, sa configuration gardée : `mcp_config.rs`, ADR-171 ; client saisi ou enregistré par la plateforme : `oauth_client.rs`, ADR-173) et son
+  MCP (`connector_oauth.rs`, sa configuration gardée : `mcp_config.rs`, ADR-171 ; version de ce qu'un administrateur en voit, déclaration et autorisations, que nomme une déclaration pour ne remplacer que cela : `oauth_version.rs`, ADR-176 ; client saisi ou enregistré par la plateforme : `oauth_client.rs`, ADR-173) et son
   autorisation, départ, retour et jetons scellés (`connector_authorization/`), révoqués chez le serveur quand l'administration les laisse, ceux de l'entreprise et ceux des personnes (`connector_authorization/revocation/`, ADR-172, ADR-174), autorisation d'un serveur par chacun pour soi, son retour à la même adresse, sa liste et son retrait (`connector_authorization/person.rs`, `person_finish.rs`, ce que partagent les deux retours : `returned.rs`, routes `account_connector_authorizations.rs`, ADR-174), identité de qui l'autorise prouvée par le jeton d'identité au retour (`connector_authorization/identity.rs`), option déclarée, serveur lu comme fournisseur OpenID Connect et option changée pendant une déclaration (`connector_identity.rs`, ADR-175), test d'un connecteur, d'un serveur que chacun autorise avec l'autorisation de l'administrateur (`connector_test.rs`, ADR-174), qui l'autorise, l'entreprise ou chacun, changé sur place (`connector_oauth_holder.rs`, ADR-174), seules
   les politiques changées
   tracées (`policy_changes.rs`, ADR-160) et API REST ajoutées
@@ -340,7 +340,7 @@ Repères à l'intérieur des crates :
   dont l'écriture permise, ADR-120, et le client Google Workspace, ADR-124, et les
   passerelles de conversation, l'application Slack, ADR-126, et ses permissions
   vérifiées, ADR-132, le bot Telegram, ADR-134, le bot Teams, ADR-139,
-  et l'OAuth d'un serveur MCP : déclaration, autorisation, état et retraits, ADR-171, client saisi ou enregistré par la plateforme, ADR-173, qui l'autorise, l'entreprise ou chacun, et combien l'ont fait (`mcp-oauth-holder.tsx`), ADR-174, et si le compte de chacun est vérifié, ADR-175,
+  et l'OAuth d'un serveur MCP : déclaration, autorisation, état et retraits, ADR-171, client saisi ou enregistré par la plateforme, ADR-173, qui l'autorise, l'entreprise ou chacun, et combien l'ont fait (`mcp-oauth-holder.tsx`), ADR-174, et si le compte de chacun est vérifié, ADR-175, une déclaration refusée si elle a changé depuis l'ouverture de son formulaire, ADR-176,
   `admin/knowledge-shares/` : partages de connaissances entre unités, ADR-144, `admin/policies/` : refus écrits aussitôt et autorisations proposées, approuvées par un autre administrateur, ADR-169, `admin/llm/` : modèle des conversations et modèle de contrôle des réponses, ADR-108, recherche dans la mémoire, leçons et limites des missions, ADR-075,
   ADR-077, ADR-093, limite de coût des évaluations des compétences, ADR-155, `admin/users/` :
   comptes, dont l'absence d'un collaborateur empêché, ADR-079, et `admin/skills/` :
