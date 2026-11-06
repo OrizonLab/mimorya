@@ -32,6 +32,8 @@ export interface RunActivity {
   error: string | null;
   /** Connectors in reach of the user that could not start (ADR-048). */
   unavailable: string[];
+  /** Those of them each person authorizes, not authorized by the user (ADR-174). */
+  toAuthorize: string[];
   /** Where, among the steps, the run went on after a stop of the service (ADR-053). */
   resumptions: number[];
   /** The browser gave the stream up (an error answered it): it follows nothing more. */
@@ -47,6 +49,7 @@ const INITIAL: RunActivity = {
   verification: null,
   error: null,
   unavailable: [],
+  toAuthorize: [],
   resumptions: [],
   lost: false,
 };
@@ -91,8 +94,8 @@ export function useRunStream(
 
     on('run_queued', () => setActivity((a) => ({ ...a, status: 'queued' })));
     on('run_started', () => setActivity((a) => ({ ...a, status: 'running' })));
-    on('connectors_unavailable', ({ connectors }) =>
-      setActivity((a) => ({ ...a, unavailable: connectors })),
+    on('connectors_unavailable', ({ connectors, toAuthorize }) =>
+      setActivity((a) => ({ ...a, unavailable: connectors, toAuthorize: toAuthorize ?? [] })),
     );
     on('assistant_delta', ({ text }) => setActivity((a) => ({ ...a, draft: a.draft + text })));
     on('assistant_message', ({ text, final }) =>

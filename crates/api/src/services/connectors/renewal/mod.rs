@@ -40,9 +40,9 @@ use mimorya_db::repositories::connector_renewals::{
 };
 use uuid::Uuid;
 
-use super::ConnectorService;
 use super::grants::{seal_grant, seal_person_grant};
 use super::revocation::Unkept;
+use super::{ConnectorService, Served};
 use claim::Call;
 
 mod claim;
@@ -56,9 +56,35 @@ pub(crate) use whose::Whose;
 const RENEWAL_HOLD: Duration = Duration::from_secs(60);
 
 impl ConnectorService {
+    /// Before a run reads its instances: the company's authorizations about
+    /// to expire renewed, and the person's own if anything is sent for them
+    /// (ADR-174), side by side, a mute token endpoint delaying the run once.
+    pub(crate) async fn renew_before_run(
+        &self,
+        tenant_id: Uuid,
+        served: Served,
+    ) -> anyhow::Result<()> {
+        let person = match served {
+            Served::Person {
+                user,
+                uses_connectors: true,
+            } => Some(user),
+            _ => None,
+        };
+        let own = async {
+            match person {
+                Some(user) => self.renew_person_due(tenant_id, user).await,
+                None => Ok(()),
+            }
+        };
+        let (company, own) = tokio::join!(self.renew_due(tenant_id), own);
+        company?;
+        own
+    }
+
     /// Renews the company's authorizations about to expire; one that fails
     /// is said in the logs, without a token, and does not stop the others.
-    pub(crate) async fn renew_due(&self, tenant_id: Uuid) -> anyhow::Result<()> {
+    async fn renew_due(&self, tenant_id: Uuid) -> anyhow::Result<()> {
         let mut tx = self.db.begin(tenant_id).await?;
         let due = connector_authorizations_due(&mut tx, RENEW_WITHIN).await?;
         tx.commit().await?;
@@ -68,11 +94,7 @@ impl ConnectorService {
 
     /// Renews the person's own authorizations about to expire, before their
     /// run reads them (ADR-174); never another person's.
-    pub(crate) async fn renew_person_due(
-        &self,
-        tenant_id: Uuid,
-        user_id: Uuid,
-    ) -> anyhow::Result<()> {
+    async fn renew_person_due(&self, tenant_id: Uuid, user_id: Uuid) -> anyhow::Result<()> {
         let mut tx = self.db.begin(tenant_id).await?;
         let due = person_authorizations_due(&mut tx, user_id, RENEW_WITHIN).await?;
         tx.commit().await?;

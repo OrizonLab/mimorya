@@ -136,9 +136,11 @@ export function ConnectorCard({
         <p className="text-sm text-muted">
           <code>{connector.mcp.url}</code> · outils <code>mcp_{connector.mcp.prefix}_…</code> ·{' '}
           {connector.mcp.oauth
-            ? connector.mcp.oauth.authorization
-              ? 'autorisé par OAuth'
-              : 'OAuth déclaré, non autorisé'
+            ? connector.mcp.oauth.perPerson
+              ? 'OAuth, autorisé par chaque personne'
+              : connector.mcp.oauth.authorization
+                ? 'autorisé par OAuth'
+                : 'OAuth déclaré, non autorisé'
             : connector.mcp.tokenStored
               ? 'jeton enregistré'
               : 'sans jeton'}

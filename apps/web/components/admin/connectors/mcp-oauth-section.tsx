@@ -2,10 +2,18 @@
 
 import { useState } from 'react';
 import { Badge, Button, ErrorNote } from '@/components/ui';
-import { api, useAction, type ConnectorView, type OAuthAuthorizationStart } from '@/lib/api';
-import { formatDate } from '@/lib/format';
+import {
+  api,
+  useAction,
+  type ConnectorView,
+  type McpOAuthHolder,
+  type OAuthAuthorizationStart,
+} from '@/lib/api';
+import { authorizationSummary, formatDate } from '@/lib/format';
 import { McpOAuthForm } from './mcp-oauth-form';
+import { PersonAuthorizedState, holderChange } from './mcp-oauth-holder';
 import { REGISTERED_CLIENT_STAYS } from './registered-client';
+import { NO_REVOCATION, REVOCATION_ASKED } from './revocation-words';
 
 /**
  * An MCP server's OAuth on its card (ADR-171): declared or not, what was
@@ -13,7 +21,9 @@ import { REGISTERED_CLIENT_STAYS } from './registered-client';
  * platform itself with when its secret expires, ADR-173, the scopes), its
  * authorization and its renewal; authorized at the authorization server,
  * where the browser goes and comes back to the administration, and
- * withdrawn. A declaration that no longer reads is withdrawn first.
+ * withdrawn. One each person authorizes for themself says how many did
+ * (ADR-174); who authorizes it is changed here. A declaration that no
+ * longer reads is withdrawn first.
  */
 export function McpOAuthSection({
   connector,
@@ -44,6 +54,15 @@ export function McpOAuthSection({
       api.post<OAuthAuthorizationStart>(`${base}/authorization`, {}),
     );
     if (started) window.location.assign(started.redirectUrl);
+  }
+
+  // Every authorization given goes with the change (ADR-174).
+  async function changeHolder() {
+    if (!oauth) return;
+    const change = holderChange(oauth);
+    if (!window.confirm(change.question)) return;
+    const body = { perPerson: change.perPerson } satisfies McpOAuthHolder;
+    if (await action.run(() => api.put(`${base}/holder`, body))) onChanged();
   }
 
   if (connector.oauthUnreadable) {
@@ -116,18 +135,12 @@ export function McpOAuthSection({
         {client}) · portées{' '}
         {oauth.scopes.length > 0 ? <code>{oauth.scopes.join(' ')}</code> : 'aucune'}
       </p>
-      {authorization ? (
+      {oauth.perPerson ? (
+        <PersonAuthorizedState oauth={oauth} />
+      ) : authorization ? (
         <p className="flex flex-wrap items-center gap-2">
           <Badge tone="ok">Autorisé</Badge>
-          <span>
-            Autorisé le {formatDate(authorization.authorizedAt)}
-            {authorization.expiresAt
-              ? ` · jeton valable jusqu’au ${formatDate(authorization.expiresAt)}`
-              : ' · jeton sans échéance'}
-            {authorization.renewable && ' · renouvelé avant son échéance'}
-            {authorization.renewedAt &&
-              ` · dernier renouvellement le ${formatDate(authorization.renewedAt)}`}
-          </span>
+          <span>{authorizationSummary(authorization)}</span>
         </p>
       ) : (
         <p className="flex flex-wrap items-center gap-2">
@@ -149,25 +162,30 @@ export function McpOAuthSection({
       {action.error && <ErrorNote message={action.error} />}
       {!declaring && (
         <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" loading={action.pending} onClick={authorize}>
-            {authorization ? 'Autoriser de nouveau' : 'Autoriser'}
-          </Button>
-          {authorization && (
+          {!oauth.perPerson && (
+            <Button variant="secondary" loading={action.pending} onClick={authorize}>
+              {authorization ? 'Autoriser de nouveau' : 'Autoriser'}
+            </Button>
+          )}
+          {!oauth.perPerson && authorization && (
             <Button
               variant="secondary"
               disabled={action.pending}
               onClick={() =>
                 remove(
                   `${base}/authorization`,
-                  oauth.revocable
-                    ? 'Retirer l’autorisation ? Les runs n’auront plus les outils de ce serveur ; la plateforme demande au serveur d’autorisation de révoquer ses jetons.'
-                    : 'Retirer l’autorisation ? Les runs n’auront plus les outils de ce serveur ; aucun point de révocation n’étant connu pour ce serveur d’autorisation, retirez aussi l’accord chez lui.',
+                  `Retirer l’autorisation ? Les runs n’auront plus les outils de ce serveur ; ${
+                    oauth.revocable ? REVOCATION_ASKED : NO_REVOCATION
+                  }.`,
                 )
               }
             >
               Retirer l’autorisation
             </Button>
           )}
+          <Button variant="ghost" disabled={action.pending} onClick={changeHolder}>
+            {holderChange(oauth).label}
+          </Button>
           <Button variant="ghost" disabled={action.pending} onClick={() => setDeclaring(true)}>
             Modifier la déclaration
           </Button>
@@ -177,9 +195,9 @@ export function McpOAuthSection({
             onClick={() =>
               remove(
                 base,
-                oauth.registered
-                  ? `Retirer OAuth de ce serveur, avec le secret du client et l’autorisation ? ${REGISTERED_CLIENT_STAYS}`
-                  : 'Retirer OAuth de ce serveur, avec le secret du client et l’autorisation ?',
+                `Retirer OAuth de ce serveur, avec le secret du client et ${
+                  oauth.perPerson ? 'les autorisations des personnes' : 'l’autorisation'
+                } ?${oauth.registered ? ` ${REGISTERED_CLIENT_STAYS}` : ''}`,
               )
             }
           >

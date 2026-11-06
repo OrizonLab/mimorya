@@ -18,10 +18,10 @@ jobs:
   rust:
     name: Rust (format, lint, tests)
     runs-on: ubuntu-latest
-    # About two hundred PostgreSQL test binaries: 20 to 28 minutes with a warm
-    # cache, past 30 with a cold one; a job cancelled saves no cache, so the
-    # next one starts cold too.
-    timeout-minutes: 45
+    # Over two hundred PostgreSQL test binaries: about 43 minutes now on a
+    # pull request, more with a cold cache; a job cancelled saves no cache,
+    # so the next one starts cold too.
+    timeout-minutes: 60
     services:
       postgres:
         image: pgvector/pgvector:pg16
