@@ -2,9 +2,10 @@
 //! names the version of the server's OAuth its form was opened on, which
 //! changes with what is declared, who authorizes the server, the
 //! authorizations declaring again takes (one withdrawn and another given
-//! included), and its client's secret written again. Naming one changed since, it is refused before anything is asked
-//! of the server, or under the lock when the change came while the server
-//! was being found; the change stays. Naming none, it is not checked.
+//! included), and its client's secret written again. Naming one changed
+//! since, it is refused before anything is asked of the server, or under
+//! the lock when the change came while the server was being found; the
+//! change stays. Naming none, it is not checked.
 
 mod support;
 

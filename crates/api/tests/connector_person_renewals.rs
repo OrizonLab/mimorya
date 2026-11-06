@@ -87,6 +87,7 @@ async fn a_person_s_token_about_to_expire_is_renewed_for_their_runs_alone() {
         for_person(&api, &id, person, SOON).await;
     }
     let claires = person_kept(&api, &id, user::CLAIRE).await.expect("kept");
+    let declared = listed(&paul, &id).await["mcp"]["oauthVersion"].clone();
 
     // His run renews his alone, and its session starts with the new token.
     let asked = server.authorizations().len();
@@ -121,6 +122,10 @@ async fn a_person_s_token_about_to_expire_is_renewed_for_their_runs_alone() {
         at(&shown, "renewedAt") > at(&shown, "authorizedAt"),
         "{shown}"
     );
+    // Renewed, not given anew: a declaration's form opened before is still
+    // on what is there (ADR-176).
+    let now = listed(&paul, &id).await["mcp"]["oauthVersion"].clone();
+    assert_eq!(now, declared);
     assert!(sees_for(connectors, "renouvsoi", as_marc).await);
     assert_eq!(renewals(&authority), 1);
     // Claire's own run renews hers.

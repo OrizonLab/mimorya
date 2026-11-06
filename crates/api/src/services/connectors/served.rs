@@ -20,11 +20,11 @@ use uuid::Uuid;
 
 use mimorya_connectors::mcp::{OAUTH_EXPIRED_PERSON, OAUTH_REFUSED_PERSON, OAUTH_UNUSABLE_PERSON};
 
-use super::cache::{Origin, SessionKey, Unavailable, Version};
+use super::cache::{Origin, STILL_STARTING, SessionKey, Unavailable, Version};
 use super::{
     ConnectorIssue, ConnectorService, Credential, CredentialFor, Policies, TenantTools,
     UNOPENED_PERSON, credential_for, credential_of, each_person, failure, read_policies,
-    scoped_overrides,
+    scoped_overrides, start_instance,
 };
 
 /// Whom a run's connectors are started for.
@@ -158,12 +158,14 @@ impl ConnectorService {
                     let theirs = !shared && theirs_to_authorize(&unavailable.message);
                     let said = if theirs {
                         TO_AUTHORIZE
+                    } else if unavailable.origin == Origin::Starting {
+                        STILL_STARTING
                     } else {
                         "Connecteur indisponible"
                     };
                     result.issues.push(issue(said, theirs));
                     match unavailable.origin {
-                        Origin::Changed => continue,
+                        Origin::Changed | Origin::Starting => continue,
                         Origin::Remembered => {}
                         Origin::Fresh => {
                             tracing::warn!(connector = %instance.id, error = %unavailable.message, "Connector unavailable");
@@ -304,12 +306,18 @@ impl ConnectorService {
         ticket: u64,
     ) -> Result<std::sync::Arc<mimorya_connectors::ConnectorRuntime>, Unavailable> {
         let credential = credential.map_err(|error| Unavailable::new(error.to_string()))?;
+        // Started in the background, owning what it needs (ADR-177).
+        let settings = self.settings;
+        let connector = instance.connector_type.clone();
+        let config = instance.config.clone();
+        let start = move || async move {
+            start_instance(settings, &connector, &config, &credential)
+                .await
+                .map_err(|error| failure(&error, credential.token.as_deref()))
+        };
+        let patience = self.settings.start_patience;
         self.cache
-            .get_or_start(key, version, ticket, || async {
-                self.start(&instance.connector_type, &instance.config, &credential)
-                    .await
-                    .map_err(|error| failure(&error, credential.token.as_deref()))
-            })
+            .get_or_start(key, version, ticket, patience, start)
             .await
     }
 }

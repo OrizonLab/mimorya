@@ -11439,3 +11439,62 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     OpenID jusqu'à ce que le test les laisse passer (`metadata_hold`,
     `configuration_hold`, `Hold`), et non plus pendant une durée : les tests de
     concurrence ne dépendent d'aucun délai, ceux d'ADR-175 compris.
+
+## ADR-177 — Connecteurs : un démarrage en arrière-plan, qu'un run n'attend que sa patience (lot 48)
+
+- **Statut** : accepté (2026-11-06) · complète ADR-049, ADR-163 et ADR-174.
+- **Contexte** : un run qui a besoin d'une instance de connecteur la démarre, ou attend
+  la tentative en cours qu'un autre run a lancée (ADR-049). Il l'attend jusqu'au bout,
+  donc jusqu'au délai de démarrage (20 s par défaut, `MIMORYA_MCP_START_TIMEOUT_SECS`)
+  pour un serveur qui ne répond pas. La tentative vivait dans le run qui l'avait
+  lancée : abandonnée avec lui (requête annulée), elle était reprise par un run qui
+  l'attendait. Un serveur lent faisait donc attendre la première réponse de chaque run
+  du délai entier. Les audits l'avaient relevé.
+- **Décision** :
+  - **le démarrage tourne en arrière-plan** (`services/connectors/cache/starting.rs`).
+    Il possède ce dont il a besoin : réglages, type, configuration et jeton
+    (`start_instance`). Il laisse son issue dans le cache des instances : instance
+    vivante, ou échec retenu une minute (ADR-049). Les runs qui l'attendent la lisent,
+    comme ceux qui suivent. Un démarrage qu'un run abandonne continue. Les règles du
+    cache ne changent pas :
+    - une instance changée pendant son démarrage n'est pas gardée ;
+    - une instance plus récente déjà vivante est servie, celle de la tentative fermée ;
+  - **un run ne l'attend que sa patience** (`MIMORYA_MCP_START_PATIENCE_SECS`, 5 s par
+    défaut, de 0 à 120). Passé ce délai, le run continue sans ce connecteur. Il en est
+    prévenu comme d'un connecteur indisponible (« Le connecteur démarre encore : ses
+    outils serviront aux demandes suivantes », `STILL_STARTING`), et le modèle aussi.
+    Rien n'est retenu comme une panne : ni journal, ni état du connecteur, ni erreur
+    montrée aux administrateurs (`Origin::Starting`). Une patience au moins égale au
+    délai de démarrage n'en est pas une : le run attend alors l'issue, comme avant ;
+  - **une panne trouvée en arrière-plan est dite une fois** : par le premier run qui la
+    lit, qu'il ait attendu le démarrage ou qu'il vienne après. Ce run la journalise et
+    l'enregistre sur le connecteur (`Origin::Fresh`) ; les suivants la lisent retenue.
+    Avant, c'était toujours le run qui avait lancé la tentative ; il a pu partir depuis.
+- **Conséquences** :
+  - le premier run après un redémarrage du service, ou après un changement du
+    connecteur, peut se passer des outils d'un serveur lent à démarrer (au-delà de
+    cinq secondes). Les runs qui suivent les ont. Un serveur qui ne répond pas ne
+    retient plus un run que sa patience ;
+  - le tableau des démarrages en cours ne dépend plus de la vie des requêtes : rien
+    n'est démarré deux fois parce qu'un run est parti ;
+  - un test d'un connecteur par l'administration attend toujours son démarrage entier
+    (ADR-050, ADR-055) : il ne passe pas par ce cache ;
+  - tests :
+    - `crates/api/src/services/connectors/cache/tests.rs` :
+      - une tentative partagée ;
+      - une panne dite une fois, quel que soit le run qui la lit en premier ;
+      - un run qui n'attend que sa patience, la tentative servant au run suivant ;
+      - une tentative qui continue après le départ du run qui l'a demandée ;
+      - une panne trouvée en arrière-plan dite par le run suivant ;
+    - les tests des sessions fermées passent dans `cache/closed.rs` ;
+    - `crates/api/tests/connector_start_patience.rs` : un run revient après sa
+      patience face à un serveur retenu, prévenu, rien n'étant enregistré, et le
+      serveur sert le run suivant ;
+    - `crates/api/src/config/tests.rs` : bornes de la patience.
+
+    Ce lot reprend aussi les points de l'audit de la PR #209 :
+    - l'en-tête du dépôt des autorisations des personnes cite la lecture de leurs
+      dates ;
+    - deux en-têtes sont recoupés ;
+    - un renouvellement de l'autorisation d'une personne ne change pas la version de
+      la déclaration (`connector_person_renewals.rs`).

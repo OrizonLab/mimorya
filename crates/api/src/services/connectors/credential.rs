@@ -24,7 +24,7 @@ use super::{access_sealed_as, opened, person_access_sealed_as, token_secret_name
 use crate::secrets::SecretStore;
 
 /// The token an instance starts with, if any, and when it expires.
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Credential {
     pub token: Option<String>,
     /// If it says: an OAuth access token.

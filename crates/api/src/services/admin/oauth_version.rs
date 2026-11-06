@@ -4,10 +4,10 @@
 //! it again would take: the company's authorization and those people gave
 //! for themselves, each counted by when it was given, so that one withdrawn
 //! and another given still changes it, never by who gave it. The
-//! connectors list and a declaration read it alike
-//! (`OAuthSeen`). A declaration naming the version its form was opened on
-//! is refused once that changed: what its administrator saw, and was told
-//! declaring again would take, is no longer what is there.
+//! connectors list and a declaration read it alike (`OAuthSeen`). A
+//! declaration naming the version its form was opened on is refused once
+//! that changed: what its administrator saw, and was told declaring again
+//! would take, is no longer what is there.
 
 use chrono::{DateTime, Utc};
 use mimorya_core::DomainError;

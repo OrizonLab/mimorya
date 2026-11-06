@@ -1,28 +1,76 @@
 //! The cache's rules: live instances and failures per version, starts
 //! invalidated while they ran, starts shared by the runs that need them,
-//! sessions closed for good started again, unless they closed soon after
-//! their start.
+//! and run in the background (ADR-177): waited for at most a run's
+//! patience, going on when the run that asked for one is gone, their
+//! failure told once. The sessions closed for good are tested with
+//! `closed`.
 
+use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use chrono::Utc;
+use tokio::sync::Notify;
 
-use super::closed::{EXITED_AT_ONCE, QUICK_EXIT};
 use super::*;
 
-fn unavailable(result: Result<Arc<ConnectorRuntime>, Unavailable>) -> Unavailable {
+pub(super) type Started = Pin<Box<dyn Future<Output = Result<ConnectorRuntime, String>> + Send>>;
+
+pub(super) fn unavailable(result: Result<Arc<ConnectorRuntime>, Unavailable>) -> Unavailable {
     match result {
         Err(unavailable) => unavailable,
         Ok(_) => panic!("expected the instance to be unavailable"),
     }
 }
 
-fn runtime() -> ConnectorRuntime {
+pub(super) fn runtime() -> ConnectorRuntime {
     ConnectorRuntime {
         tools: Vec::new(),
         closer: None,
     }
+}
+
+/// A start that counts itself, then gives what `make` makes.
+pub(super) fn counted(
+    starts: &Arc<AtomicUsize>,
+    make: impl FnOnce() -> Result<ConnectorRuntime, String> + Send + 'static,
+) -> impl FnOnce() -> Started + Send + 'static {
+    let starts = starts.clone();
+    move || -> Started {
+        Box::pin(async move {
+            starts.fetch_add(1, Ordering::SeqCst);
+            make()
+        })
+    }
+}
+
+/// A start that counts itself, then waits for `gate` before it gives what
+/// `make` makes.
+fn gated(
+    starts: &Arc<AtomicUsize>,
+    gate: &Arc<Notify>,
+    make: impl FnOnce() -> Result<ConnectorRuntime, String> + Send + 'static,
+) -> impl FnOnce() -> Started + Send + 'static {
+    let (starts, gate) = (starts.clone(), gate.clone());
+    move || -> Started {
+        Box::pin(async move {
+            starts.fetch_add(1, Ordering::SeqCst);
+            gate.notified().await;
+            make()
+        })
+    }
+}
+
+fn failing() -> Result<ConnectorRuntime, String> {
+    Err("injoignable".to_string())
+}
+
+/// Bounded: a run that kept waiting would never end.
+async fn within<T>(waited: impl Future<Output = T>) -> T {
+    let Ok(got) = tokio::time::timeout(Duration::from_secs(5), waited).await else {
+        panic!("a run kept waiting");
+    };
+    got
 }
 
 #[tokio::test]
@@ -33,32 +81,26 @@ async fn keeps_a_live_instance_and_remembers_a_failure_per_version() {
         Utc::now(),
         Utc::now() + chrono::Duration::seconds(1),
     );
-    let starts = AtomicUsize::new(0);
-    let failing = || async {
-        starts.fetch_add(1, Ordering::SeqCst);
-        Err::<ConnectorRuntime, _>("injoignable".to_string())
-    };
-    let first = unavailable(cache.get_or_start(id, v1, 0, failing).await);
+    let starts = Arc::new(AtomicUsize::new(0));
+    let failing = || counted(&starts, failing);
+    let first = unavailable(cache.get_or_start(id, v1, 0, None, failing()).await);
     assert_eq!(first.origin, Origin::Fresh);
-    let again = unavailable(cache.get_or_start(id, v1, 0, failing).await);
+    let again = unavailable(cache.get_or_start(id, v1, 0, None, failing()).await);
     assert_eq!(again.origin, Origin::Remembered);
     assert_eq!(again.message, "injoignable");
     assert_eq!(starts.load(Ordering::SeqCst), 1);
     // A tested instance is tried again at once.
     cache.retry_now(id).await;
-    let retried = unavailable(cache.get_or_start(id, v1, 0, failing).await);
+    let retried = unavailable(cache.get_or_start(id, v1, 0, None, failing()).await);
     assert_eq!(retried.origin, Origin::Fresh);
     assert_eq!(starts.load(Ordering::SeqCst), 2);
 
     // A new version starts again, then stays live.
-    let working = || async {
-        starts.fetch_add(1, Ordering::SeqCst);
-        Ok(runtime())
-    };
-    let Ok(live) = cache.get_or_start(id, v2, 0, working).await else {
+    let working = || counted(&starts, || Ok(runtime()));
+    let Ok(live) = cache.get_or_start(id, v2, 0, None, working()).await else {
         panic!("expected a live instance");
     };
-    let Ok(reused) = cache.get_or_start(id, v2, 0, working).await else {
+    let Ok(reused) = cache.get_or_start(id, v2, 0, None, working()).await else {
         panic!("expected the live instance");
     };
     assert!(Arc::ptr_eq(&live, &reused));
@@ -70,24 +112,20 @@ async fn never_keeps_a_start_invalidated_while_it_ran() {
     let cache = RuntimeCache::default();
     let (id, version) = (Uuid::new_v4(), Utc::now());
     let ticket = cache.ticket().await;
-    let invalidated = unavailable(
-        cache
-            .get_or_start(id, version, ticket, || async {
-                cache.invalidate(id).await;
-                Ok(runtime())
-            })
-            .await,
-    );
-    assert_eq!(invalidated.origin, Origin::Changed);
-    // Nothing was kept: the next run (a later ticket) starts again.
-    let starts = AtomicUsize::new(0);
-    let ticket = cache.ticket().await;
-    let restarted = cache
-        .get_or_start(id, version, ticket, || async {
-            starts.fetch_add(1, Ordering::SeqCst);
+    let invalidating = cache.clone();
+    let start = move || -> Started {
+        Box::pin(async move {
+            invalidating.invalidate(id).await;
             Ok(runtime())
         })
-        .await;
+    };
+    let invalidated = unavailable(cache.get_or_start(id, version, ticket, None, start).await);
+    assert_eq!(invalidated.origin, Origin::Changed);
+    // Nothing was kept: the next run (a later ticket) starts again.
+    let starts = Arc::new(AtomicUsize::new(0));
+    let ticket = cache.ticket().await;
+    let working = counted(&starts, || Ok(runtime()));
+    let restarted = cache.get_or_start(id, version, ticket, None, working).await;
     assert!(restarted.is_ok());
     assert_eq!(starts.load(Ordering::SeqCst), 1);
 }
@@ -97,30 +135,23 @@ async fn never_keeps_a_start_invalidated_while_it_ran() {
 async fn a_start_in_progress_is_shared_by_the_runs_that_need_it() {
     let cache = RuntimeCache::default();
     let (id, version) = (Uuid::new_v4(), Utc::now());
-    let starts = AtomicUsize::new(0);
-    let gate = tokio::sync::Notify::new();
-    let start = || async {
-        starts.fetch_add(1, Ordering::SeqCst);
-        gate.notified().await;
-        Ok(runtime())
-    };
-    // Bounded: a second start would wait for the gate forever.
-    let both = async {
+    let starts = Arc::new(AtomicUsize::new(0));
+    let gate = Arc::new(Notify::new());
+    let start = || gated(&starts, &gate, || Ok(runtime()));
+    let (first, second, ()) = within(async {
         tokio::join!(
-            cache.get_or_start(id, version, 0, start),
+            cache.get_or_start(id, version, 0, None, start()),
             async {
                 tokio::time::sleep(Duration::from_millis(10)).await;
-                cache.get_or_start(id, version, 0, start).await
+                cache.get_or_start(id, version, 0, None, start()).await
             },
             async {
                 tokio::time::sleep(Duration::from_millis(50)).await;
-                gate.notify_waiters();
+                gate.notify_one();
             },
         )
-    };
-    let Ok((first, second, ())) = tokio::time::timeout(Duration::from_secs(5), both).await else {
-        panic!("a run kept waiting");
-    };
+    })
+    .await;
     let (Ok(first), Ok(second)) = (first, second) else {
         panic!("expected the started instance");
     };
@@ -128,60 +159,110 @@ async fn a_start_in_progress_is_shared_by_the_runs_that_need_it() {
     assert_eq!(starts.load(Ordering::SeqCst), 1);
 }
 
-/// The failure of the start a run waited for is told once, then remembered.
+/// The failure of the start two runs waited for is told once, then
+/// remembered, whichever run reads it first.
 #[tokio::test]
-async fn a_failed_start_in_progress_is_shared_as_remembered() {
+async fn a_failed_start_in_progress_is_told_once() {
     let cache = RuntimeCache::default();
     let (id, version) = (Uuid::new_v4(), Utc::now());
-    let starts = AtomicUsize::new(0);
-    let start = || async {
-        starts.fetch_add(1, Ordering::SeqCst);
-        tokio::time::sleep(Duration::from_millis(50)).await;
-        Err::<ConnectorRuntime, _>("injoignable".to_string())
-    };
-    let both = async {
-        tokio::join!(cache.get_or_start(id, version, 0, start), async {
-            tokio::time::sleep(Duration::from_millis(10)).await;
-            cache.get_or_start(id, version, 0, start).await
-        })
-    };
-    let Ok((first, second)) = tokio::time::timeout(Duration::from_secs(5), both).await else {
-        panic!("a run kept waiting");
-    };
-    assert_eq!(unavailable(first).origin, Origin::Fresh);
-    let second = unavailable(second);
-    assert_eq!(second.origin, Origin::Remembered);
-    assert_eq!(second.message, "injoignable");
+    let starts = Arc::new(AtomicUsize::new(0));
+    let gate = Arc::new(Notify::new());
+    let start = || gated(&starts, &gate, failing);
+    let (first, second, ()) = within(async {
+        tokio::join!(
+            cache.get_or_start(id, version, 0, None, start()),
+            async {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+                cache.get_or_start(id, version, 0, None, start()).await
+            },
+            async {
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                gate.notify_one();
+            },
+        )
+    })
+    .await;
+    let mut origins = [unavailable(first).origin, unavailable(second).origin];
+    origins.sort_by_key(|origin| *origin == Origin::Remembered);
+    assert_eq!(origins, [Origin::Fresh, Origin::Remembered]);
     assert_eq!(starts.load(Ordering::SeqCst), 1);
 }
 
-/// The run making a start gives it up: a run waiting for it starts instead.
+/// A run waits for a start at most its patience: it goes without the
+/// instance, told it still starts, and the start serves the next run.
 #[tokio::test]
-async fn a_start_given_up_is_taken_over_by_a_run_waiting_for_it() {
+async fn a_run_waits_for_a_start_no_longer_than_its_patience() {
     let cache = RuntimeCache::default();
     let (id, version) = (Uuid::new_v4(), Utc::now());
-    let starts = AtomicUsize::new(0);
-    let never = || async {
-        starts.fetch_add(1, Ordering::SeqCst);
-        std::future::pending::<Result<ConnectorRuntime, String>>().await
-    };
-    let working = || async {
-        starts.fetch_add(1, Ordering::SeqCst);
-        Ok(runtime())
-    };
-    let given_up = tokio::time::timeout(
-        Duration::from_millis(50),
-        cache.get_or_start(id, version, 0, never),
-    );
-    // Bounded: a run that kept waiting for a start given up would never end.
-    let (given_up, taken_over) = tokio::join!(given_up, async {
-        tokio::time::sleep(Duration::from_millis(10)).await;
-        let waiting = cache.get_or_start(id, version, 0, working);
-        tokio::time::timeout(Duration::from_secs(5), waiting).await
-    });
-    assert!(given_up.is_err());
-    assert!(matches!(taken_over, Ok(Ok(_))));
-    assert_eq!(starts.load(Ordering::SeqCst), 2);
+    let starts = Arc::new(AtomicUsize::new(0));
+    let gate = Arc::new(Notify::new());
+    let patience = Some(Duration::from_millis(50));
+    let start = || gated(&starts, &gate, || Ok(runtime()));
+    let waited = within(cache.get_or_start(id, version, 0, patience, start())).await;
+    let starting = unavailable(waited);
+    assert_eq!(starting.origin, Origin::Starting);
+    assert_eq!(starting.message, STILL_STARTING);
+    // Another run, as patient, waits for the same start, which then ends.
+    let (next, ()) = within(async {
+        tokio::join!(
+            cache.get_or_start(id, version, 0, patience, start()),
+            async {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+                gate.notify_one();
+            }
+        )
+    })
+    .await;
+    assert!(next.is_ok());
+    assert_eq!(starts.load(Ordering::SeqCst), 1);
+}
+
+/// A start goes on when the run that asked for it is gone: a run waiting
+/// for it gets its outcome, nothing started again.
+#[tokio::test]
+async fn a_start_goes_on_when_the_run_that_asked_for_it_is_gone() {
+    let cache = RuntimeCache::default();
+    let (id, version) = (Uuid::new_v4(), Utc::now());
+    let starts = Arc::new(AtomicUsize::new(0));
+    let gate = Arc::new(Notify::new());
+    let start = || gated(&starts, &gate, || Ok(runtime()));
+    let gone = tokio::time::timeout(
+        Duration::from_millis(20),
+        cache.get_or_start(id, version, 0, None, start()),
+    )
+    .await;
+    assert!(gone.is_err(), "the run is gone before the start ends");
+    let (waiting, ()) = within(async {
+        tokio::join!(cache.get_or_start(id, version, 0, None, start()), async {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            gate.notify_one();
+        })
+    })
+    .await;
+    assert!(waiting.is_ok());
+    assert_eq!(starts.load(Ordering::SeqCst), 1);
+}
+
+/// A failure found once no run waited any more is told by the next run
+/// that reads it, then remembered.
+#[tokio::test]
+async fn a_failure_found_in_the_background_is_told_by_the_next_run() {
+    let cache = RuntimeCache::default();
+    let (id, version) = (Uuid::new_v4(), Utc::now());
+    let starts = Arc::new(AtomicUsize::new(0));
+    let gate = Arc::new(Notify::new());
+    let patience = Some(Duration::from_millis(20));
+    let start = || gated(&starts, &gate, failing);
+    let waited = within(cache.get_or_start(id, version, 0, patience, start())).await;
+    assert_eq!(unavailable(waited).origin, Origin::Starting);
+    gate.notify_one();
+    let told = within(cache.get_or_start(id, version, 0, None, start())).await;
+    let told = unavailable(told);
+    assert_eq!(told.origin, Origin::Fresh);
+    assert_eq!(told.message, "injoignable");
+    let remembered = within(cache.get_or_start(id, version, 0, None, start())).await;
+    assert_eq!(unavailable(remembered).origin, Origin::Remembered);
+    assert_eq!(starts.load(Ordering::SeqCst), 1);
 }
 
 /// A run that read an instance since changed does not start it, but gets
@@ -192,185 +273,20 @@ async fn a_run_that_read_a_changed_instance_does_not_start_it() {
     let (id, version) = (Uuid::new_v4(), Utc::now());
     let ticket = cache.ticket().await;
     cache.invalidate(id).await;
-    let starts = AtomicUsize::new(0);
-    let changed = unavailable(
-        cache
-            .get_or_start(id, version, ticket, || async {
-                starts.fetch_add(1, Ordering::SeqCst);
-                Ok(runtime())
-            })
-            .await,
-    );
+    let starts = Arc::new(AtomicUsize::new(0));
+    let start = || counted(&starts, || Ok(runtime()));
+    let changed = unavailable(cache.get_or_start(id, version, ticket, None, start()).await);
     assert_eq!(changed.origin, Origin::Changed);
     assert_eq!(starts.load(Ordering::SeqCst), 0);
 
     // Started meanwhile for a run with a later reading: shared all the same.
-    let Ok(live) = cache
-        .get_or_start(id, version, cache.ticket().await, || async {
-            Ok(runtime())
-        })
-        .await
-    else {
+    let later = cache.ticket().await;
+    let Ok(live) = cache.get_or_start(id, version, later, None, start()).await else {
         panic!("expected a live instance");
     };
-    let Ok(shared) = cache
-        .get_or_start(id, version, ticket, || async {
-            starts.fetch_add(1, Ordering::SeqCst);
-            Ok(runtime())
-        })
-        .await
-    else {
+    let Ok(shared) = cache.get_or_start(id, version, ticket, None, start()).await else {
         panic!("expected the live instance");
     };
     assert!(Arc::ptr_eq(&live, &shared));
-    assert_eq!(starts.load(Ordering::SeqCst), 0);
-}
-
-/// A session that can be told it closed, and records being released.
-#[derive(Default)]
-struct Session {
-    closed: std::sync::atomic::AtomicBool,
-    released: std::sync::atomic::AtomicBool,
-    /// When it ended, if it says so (ADR-165).
-    ended: std::sync::Mutex<Option<Instant>>,
-}
-
-/// The closer an instance holds, sharing the session with the test.
-struct Closer(Arc<Session>);
-
-#[async_trait::async_trait]
-impl mimorya_connectors::ConnectorCloser for Closer {
-    async fn close(&self) {
-        self.0.released.store(true, Ordering::SeqCst);
-    }
-
-    fn is_closed(&self) -> bool {
-        self.0.closed.load(Ordering::SeqCst)
-    }
-
-    fn ended_at(&self) -> Option<Instant> {
-        *self.0.ended.lock().unwrap()
-    }
-}
-
-#[tokio::test(start_paused = true)]
-async fn starts_again_an_instance_whose_session_closed_for_good() {
-    let cache = RuntimeCache::default();
-    let (id, version) = (Uuid::new_v4(), Utc::now());
-    let starts = AtomicUsize::new(0);
-    let first_session = Arc::new(Session::default());
-    let sessions = std::sync::Mutex::new(vec![Arc::new(Session::default()), first_session.clone()]);
-    let start = || async {
-        starts.fetch_add(1, Ordering::SeqCst);
-        let session = sessions.lock().unwrap().pop().unwrap();
-        Ok(ConnectorRuntime {
-            tools: Vec::new(),
-            closer: Some(Box::new(Closer(session))),
-        })
-    };
-    let Ok(live) = cache.get_or_start(id, version, 0, start).await else {
-        panic!("expected a live instance");
-    };
-    // Still open: kept.
-    let Ok(kept) = cache.get_or_start(id, version, 0, start).await else {
-        panic!("expected the live instance");
-    };
-    assert!(Arc::ptr_eq(&live, &kept));
     assert_eq!(starts.load(Ordering::SeqCst), 1);
-
-    // Closed for good, long after its start: released, and started again.
-    tokio::time::advance(QUICK_EXIT).await;
-    first_session.closed.store(true, Ordering::SeqCst);
-    let Ok(again) = cache.get_or_start(id, version, 0, start).await else {
-        panic!("expected a new instance");
-    };
-    assert!(!Arc::ptr_eq(&live, &again));
-    assert_eq!(starts.load(Ordering::SeqCst), 2);
-    released(&first_session).await;
-}
-
-/// Returns once the session was released, in the background. Counted in
-/// turns given to the other tasks, not in time: a paused clock does not
-/// advance while this test runs.
-async fn released(session: &Session) {
-    for _ in 0..10_000 {
-        if session.released.load(Ordering::SeqCst) {
-            return;
-        }
-        tokio::task::yield_now().await;
-    }
-    panic!("the closed instance is never released");
-}
-
-#[tokio::test(start_paused = true)]
-async fn a_session_closed_soon_after_its_start_is_a_failed_start() {
-    let cache = RuntimeCache::default();
-    let (id, version) = (Uuid::new_v4(), Utc::now());
-    let starts = AtomicUsize::new(0);
-    let session = Arc::new(Session::default());
-    let start = || async {
-        starts.fetch_add(1, Ordering::SeqCst);
-        Ok(ConnectorRuntime {
-            tools: Vec::new(),
-            closer: Some(Box::new(Closer(session.clone()))),
-        })
-    };
-    let Ok(_) = cache.get_or_start(id, version, 0, start).await else {
-        panic!("expected a live instance");
-    };
-    // A server that exits as soon as started: told once, then remembered.
-    tokio::time::advance(QUICK_EXIT - Duration::from_secs(1)).await;
-    session.closed.store(true, Ordering::SeqCst);
-    let exited = unavailable(cache.get_or_start(id, version, 0, start).await);
-    assert_eq!(exited.origin, Origin::Fresh);
-    assert_eq!(exited.message, EXITED_AT_ONCE);
-    let remembered = unavailable(cache.get_or_start(id, version, 0, start).await);
-    assert_eq!(remembered.origin, Origin::Remembered);
-    assert_eq!(
-        starts.load(Ordering::SeqCst),
-        1,
-        "not started again at once"
-    );
-    released(&session).await;
-    // Tried again once the retry delay is over.
-    session.closed.store(false, Ordering::SeqCst);
-    tokio::time::advance(RETRY_AFTER).await;
-    let Ok(_) = cache.get_or_start(id, version, 0, start).await else {
-        panic!("expected a new instance");
-    };
-    assert_eq!(starts.load(Ordering::SeqCst), 2);
-}
-
-#[tokio::test(start_paused = true)]
-async fn a_session_is_judged_by_when_it_ended_once_dated() {
-    // Ended a second after its start, or a minute after: found long after.
-    for (lived, failed) in [(Duration::from_secs(1), true), (QUICK_EXIT, false)] {
-        let cache = RuntimeCache::default();
-        let (id, version) = (Uuid::new_v4(), Utc::now());
-        let starts = AtomicUsize::new(0);
-        let session = Arc::new(Session::default());
-        let start = || async {
-            starts.fetch_add(1, Ordering::SeqCst);
-            Ok(ConnectorRuntime {
-                tools: Vec::new(),
-                closer: Some(Box::new(Closer(session.clone()))),
-            })
-        };
-        let Ok(_) = cache.get_or_start(id, version, 0, start).await else {
-            panic!("expected a live instance");
-        };
-        tokio::time::advance(lived).await;
-        *session.ended.lock().unwrap() = Some(Instant::now());
-        session.closed.store(true, Ordering::SeqCst);
-        tokio::time::advance(QUICK_EXIT * 2).await;
-        let found = cache.get_or_start(id, version, 0, start).await;
-        released(&session).await;
-        if failed {
-            assert_eq!(unavailable(found).message, EXITED_AT_ONCE);
-            assert_eq!(starts.load(Ordering::SeqCst), 1, "not started again");
-        } else {
-            assert!(found.is_ok());
-            assert_eq!(starts.load(Ordering::SeqCst), 2, "started again");
-        }
-    }
 }

@@ -133,26 +133,27 @@ mod tests {
     async fn start(
         cache: &RuntimeCache,
         key: SessionKey,
-        starts: &AtomicUsize,
+        starts: &Arc<AtomicUsize>,
     ) -> Option<Arc<AtomicBool>> {
-        let flag = std::sync::Mutex::new(None);
+        let flag = Arc::new(std::sync::Mutex::new(None));
         let version = chrono::DateTime::<Utc>::UNIX_EPOCH;
+        let (starting, kept) = (starts.clone(), flag.clone());
         let got = cache
-            .get_or_start(key, version, 0, || async {
-                let (runtime, released) = started(starts);
-                *flag.lock().unwrap() = Some(released);
+            .get_or_start(key, version, 0, None, move || async move {
+                let (runtime, released) = started(&starting);
+                *kept.lock().unwrap() = Some(released);
                 Ok(runtime)
             })
             .await;
         assert!(got.is_ok());
-        flag.into_inner().unwrap()
+        flag.lock().unwrap().take()
     }
 
     #[tokio::test]
     async fn each_person_has_an_instance_of_their_own() {
         let cache = RuntimeCache::default();
         let (server, marc, lea) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
-        let starts = AtomicUsize::new(0);
+        let starts = Arc::new(AtomicUsize::new(0));
         let company = start(&cache, server.into(), &starts).await.unwrap();
         let mine = start(&cache, SessionKey::person(server, marc), &starts).await;
         let hers = start(&cache, SessionKey::person(server, lea), &starts).await;
@@ -183,7 +184,7 @@ mod tests {
         let cache = RuntimeCache::default();
         let server = Uuid::new_v4();
         let (marc, lea) = (Uuid::new_v4(), Uuid::new_v4());
-        let starts = AtomicUsize::new(0);
+        let starts = Arc::new(AtomicUsize::new(0));
         let company = start(&cache, server.into(), &starts).await.unwrap();
         let mine = start(&cache, SessionKey::person(server, marc), &starts)
             .await
@@ -216,7 +217,7 @@ mod tests {
     async fn the_person_no_run_used_for_the_longest_makes_room() {
         let cache = RuntimeCache::default();
         let server = Uuid::new_v4();
-        let starts = AtomicUsize::new(0);
+        let starts = Arc::new(AtomicUsize::new(0));
         let people: Vec<Uuid> = (0..MAX_PERSON_SESSIONS).map(|_| Uuid::new_v4()).collect();
         let mut flags = Vec::new();
         for person in &people {
@@ -262,7 +263,7 @@ mod tests {
         };
         let version = chrono::DateTime::<Utc>::UNIX_EPOCH;
         let got = cache
-            .get_or_start(key, version, 0, || async { Ok(runtime) })
+            .get_or_start(key, version, 0, None, move || async move { Ok(runtime) })
             .await;
         let Ok(live) = got else {
             panic!("expected a live instance");
@@ -274,7 +275,7 @@ mod tests {
     async fn an_instance_a_run_holds_is_never_released_while_it_does() {
         let cache = RuntimeCache::default();
         let server = Uuid::new_v4();
-        let (marc, starts) = (Uuid::new_v4(), AtomicUsize::new(0));
+        let (marc, starts) = (Uuid::new_v4(), Arc::new(AtomicUsize::new(0)));
         let (flag, registry) = with_tools(&cache, SessionKey::person(server, marc)).await;
         // A run longer than the idle time: kept while it holds the tools.
         tokio::time::advance(PERSON_IDLE * 2).await;
@@ -294,6 +295,7 @@ mod tests {
                 SessionKey::person(server, marc),
                 chrono::DateTime::<Utc>::UNIX_EPOCH,
                 0,
+                None,
                 || async { Err("jamais démarré".to_string()) },
             )
             .await;
@@ -335,14 +337,15 @@ mod tests {
         let (server, marc) = (Uuid::new_v4(), Uuid::new_v4());
         let key = SessionKey::person(server, marc);
         let ticket = cache.ticket().await;
-        let flag = std::sync::Mutex::new(None);
-        let starts = AtomicUsize::new(0);
+        let flag = Arc::new(std::sync::Mutex::new(None));
+        let starts = Arc::new(AtomicUsize::new(0));
         let version = chrono::DateTime::<Utc>::UNIX_EPOCH;
+        let (forgetting, kept) = (cache.clone(), flag.clone());
         let got = cache
-            .get_or_start(key, version, ticket, || async {
-                cache.forget_person(server, marc).await;
+            .get_or_start(key, version, ticket, None, move || async move {
+                forgetting.forget_person(server, marc).await;
                 let (runtime, released) = started(&starts);
-                *flag.lock().unwrap() = Some(released);
+                *kept.lock().unwrap() = Some(released);
                 Ok(runtime)
             })
             .await;
