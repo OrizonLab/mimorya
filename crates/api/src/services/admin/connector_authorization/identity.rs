@@ -51,11 +51,6 @@ pub(super) async fn proven_identity(
         .ok_or_else(|| at(UNPROVEN))?
         .parse()
         .map_err(|_| at("Jeton d’identité illisible"))?;
-    // Counted with the company's starts, as the exchange before it.
-    let _start = admin
-        .connectors
-        .claim_admin_start(access.subject.tenant_id)
-        .map_err(|refusal| at(&refusal.to_string()))?;
     let http = ProviderHttp::new(admin.connectors.network()).map_err(|e| internal(id, e))?;
     let metadata = discover(&http, &declared.issuer).await.map_err(|failure| {
         at(&format!(

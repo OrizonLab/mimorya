@@ -2,13 +2,20 @@
 // that each authorizes with their own account (ADR-175): declared so in
 // « Connecteurs », said on its card and in each person's account. Marc,
 // signed in there as himself, authorizes it; Lucas, signed in there as
-// Marc, is refused, and told why. The end-to-end API serves this
+// Marc, is refused, and told why. Made the company's to authorize, it
+// verifies nobody's account any more. The end-to-end API serves this
 // authorization server, an OpenID provider where Marc is signed in. The
 // server added is deleted, with the authorizations given, even when the
 // test fails.
 import type { Page } from '@playwright/test';
 import type { PersonAuthorizations } from '../lib/api/contract';
-import { addServer, cardWith, deleteConnectorsNamed, openAdmin } from './support/admin';
+import {
+  addServer,
+  cardWith,
+  connectorsTab,
+  deleteConnectorsNamed,
+  openAdmin,
+} from './support/admin';
 import { demo, expect, noError, signIn, test } from './support/fixtures';
 import {
   OAUTH_CLIENT_ID as CLIENT_ID,
@@ -19,7 +26,7 @@ import {
 const SERVER = 'Fichiers vérifiés e2e';
 /** Protected by an OpenID provider where Marc is signed in. */
 const ADDRESS = 'http://127.0.0.1:4111/mcp';
-const VERIFY = /^Vérifier que chacun l’autorise avec son propre compte/;
+const VERIFY = 'Vérifier le compte de chacun (OpenID Connect)';
 
 test.afterEach(async ({ page }) => {
   await deleteConnectorsNamed(page, [SERVER], [401, 403]);
@@ -89,4 +96,21 @@ test('each person must authorize with their own account', async ({ page, newCont
   await lucas.reload();
   await expect(lucas.getByText('Chargement…')).toHaveCount(0);
   await expect(lucas.getByText(/n’est pas le vôtre/)).toHaveCount(0);
+
+  // Made the company's to authorize: the verification goes, said before.
+  const confirmations: string[] = [];
+  page.on('dialog', (dialog) => {
+    confirmations.push(dialog.message());
+    void dialog.accept();
+  });
+  await connectorsTab(page);
+  const company = cardWith(page, SERVER, 'Supprimer');
+  await expect(company.getByText('Compte vérifié', { exact: true })).toBeVisible();
+  await company.getByRole('button', { name: 'Faire autoriser par l’entreprise' }).click();
+  await expect(company.getByText('Compte vérifié', { exact: true })).toHaveCount(0);
+  expect(confirmations.at(-1)).toContain('La vérification du compte de chacun est retirée.');
+  const changed = await connectorNamed(page, SERVER);
+  expect(changed?.mcp?.oauth?.perPerson).toBe(false);
+  expect(changed?.mcp?.oauth?.verifiesIdentity).toBe(false);
+  await noError(page);
 });

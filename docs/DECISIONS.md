@@ -11310,8 +11310,10 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       (`/account?serveur=autre-compte`) et le dit une fois : rien n'est gardé, autoriser
       de nouveau avec son propre compte ; tout autre refus reste un échec ;
     - l'audit d'une autorisation réussie dit si l'identité a été prouvée
-      (`identityVerified`) ; la découverte OpenID du retour est comptée avec les
-      démarrages de l'entreprise, comme l'échange ;
+      (`identityVerified`) ; la découverte OpenID du retour se fait sous la place que
+      l'échange du code a prise parmi les démarrages de l'entreprise, gardée jusqu'à la
+      fin de la vérification : un refus faute de place n'arrive jamais après que les
+      jetons sont accordés ;
     - une déclaration écrite de nouveau sans parler de la vérification est refusée, à
       recommencer, si un autre administrateur l'a changée pendant sa découverte, comme
       si l'entreprise est devenue qui autorise (`verification_unchanged`,
@@ -11335,4 +11337,4 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       `identityVerified`), tests unitaires de `verification_unchanged` et de l'adresse
       des serveurs de test ; `apps/web/e2e/mcp-person-oauth-identity.spec.ts` (déclaré
       pour chacun avec la vérification, carte et « Mon compte » qui le disent, Marc
-      autorisé, Lucas connecté chez le serveur comme Marc refusé et prévenu une fois).
+      autorisé, Lucas connecté chez le serveur comme Marc refusé et prévenu une fois, puis le serveur passé à l'entreprise, la confirmation disant la vérification retirée) ; la case de la déclaration porte un libellé court, son explication lui étant liée (`aria-describedby`), et « Compte vérifié » a le même ton sur la carte et dans « Mon compte ».

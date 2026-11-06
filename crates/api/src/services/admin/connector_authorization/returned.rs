@@ -20,7 +20,7 @@ use crate::secrets::SecretRead;
 use crate::services::AccessContext;
 use crate::services::admin::connector_oauth::McpServer;
 use crate::services::admin::connectors::ConnectorAdmin;
-use crate::services::connectors::client_secret_name;
+use crate::services::connectors::{AdminStart, client_secret_name};
 use crate::services::sso::{error_code, same_state};
 
 /// What the authorization server sends back (RFC 6749 §4.1.2, RFC 9207).
@@ -184,7 +184,9 @@ pub(super) fn issuer_refused(
 
 /// The code exchanged at the declared token endpoint. Counted with the
 /// company's starts: one company's exchanges stay bounded however many
-/// come back at once.
+/// come back at once. The place is given back with the tokens, for the
+/// caller to keep while it still asks the server (the identity, ADR-175),
+/// never refused for want of one once the tokens are granted.
 pub(super) async fn exchanged(
     admin: &ConnectorAdmin<'_>,
     access: &AccessContext,
@@ -192,7 +194,7 @@ pub(super) async fn exchanged(
     server: &AttemptServer,
     code: &str,
     web_origin: &str,
-) -> Outcome<Granted> {
+) -> Outcome<(Granted, AdminStart)> {
     let at = |reason: &str| AuthorizationFailure::new(Some(attempt.connector_id), reason);
     let back_to = redirect_uri(web_origin);
     let exchange = CodeExchange {
@@ -201,13 +203,14 @@ pub(super) async fn exchanged(
         redirect_uri: &back_to,
         client_secret: server.secret.as_deref(),
     };
-    let _start = admin
+    let start = admin
         .connectors
         .claim_admin_start(access.subject.tenant_id)
         .map_err(|refusal| at(&refusal.to_string()))?;
-    exchange_code(&server.declared, exchange, admin.connectors.network())
+    let granted = exchange_code(&server.declared, exchange, admin.connectors.network())
         .await
-        .map_err(|failure| at(&failure))
+        .map_err(|failure| at(&failure))?;
+    Ok((granted, start))
 }
 
 /// Whether the instance read under the lock still has the address and the

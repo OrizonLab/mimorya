@@ -18,11 +18,16 @@ use support::person_authorizations::declared_per_person;
 use support::person_identity::{declare, signed_in_as};
 
 /// Until the authorization server's metadata was asked once more than
-/// `before`: a declaration is finding it.
+/// `before`: a declaration is finding it. Failing, rather than waiting
+/// forever, if none ever does.
 async fn finding(authority: &FakeAuthorizationServer, before: usize) {
-    while authority.metadata_asked() <= before {
-        tokio::time::sleep(Duration::from_millis(20)).await;
-    }
+    let asked = tokio::time::timeout(Duration::from_secs(30), async {
+        while authority.metadata_asked() <= before {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await;
+    assert!(asked.is_ok(), "no declaration asked for the metadata");
 }
 
 #[tokio::test]

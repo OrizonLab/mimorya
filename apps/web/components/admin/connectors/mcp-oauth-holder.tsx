@@ -19,7 +19,7 @@ export function PersonAuthorizedState({ oauth }: { oauth: McpOAuth }) {
     <>
       <p className="flex flex-wrap items-center gap-2">
         <Badge tone="neutral">Chaque personne l’autorise</Badge>
-        {oauth.verifiesIdentity && <Badge tone="ok">Compte vérifié</Badge>}
+        {oauth.verifiesIdentity && <Badge tone="neutral">Compte vérifié</Badge>}
         <span>{counted(oauth.personAuthorizations)}</span>
       </p>
       {oauth.verifiesIdentity && (

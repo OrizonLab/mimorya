@@ -120,18 +120,21 @@ export function McpOAuthForm({
         </label>
       </fieldset>
       {perPerson && (
-        <label className="flex items-start gap-2 text-sm">
-          <Checkbox
-            className="mt-0.5"
-            checked={verifyIdentity}
-            onChange={(e) => setVerifyIdentity(e.target.checked)}
-          />
-          <span>
-            Vérifier que chacun l’autorise avec son propre compte : le serveur d’autorisation,
-            fournisseur OpenID Connect, doit prouver l’adresse du compte autorisé, qui doit être
-            celle de la personne. Les portées openid, email et profile sont demandées en plus.
-          </span>
-        </label>
+        <div className="flex flex-col gap-1 text-sm">
+          <label className="flex items-center gap-2">
+            <Checkbox
+              checked={verifyIdentity}
+              aria-describedby={`verify-${connector.id}`}
+              onChange={(e) => setVerifyIdentity(e.target.checked)}
+            />
+            Vérifier le compte de chacun (OpenID Connect)
+          </label>
+          <p id={`verify-${connector.id}`} className="text-xs text-muted">
+            Le serveur d’autorisation, fournisseur OpenID Connect, doit prouver l’adresse du compte
+            autorisé, qui doit être celle de la personne. Les portées openid, email et profile sont
+            demandées en plus.
+          </p>
+        </div>
       )}
       <p className="text-sm text-muted">
         {register ? (

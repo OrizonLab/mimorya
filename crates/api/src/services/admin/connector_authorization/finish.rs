@@ -48,7 +48,8 @@ pub async fn finish_authorization(
     if let Some(refused) = issuer_refused(back.iss.as_deref(), &server.declared) {
         return Err(at(refused));
     }
-    let granted = exchanged(admin, access, &attempt, &server, &code, web_origin).await?;
+    let (granted, start) = exchanged(admin, access, &attempt, &server, &code, web_origin).await?;
+    drop(start);
     let kept = keep(admin, access, &attempt, &server.declared, &granted).await;
     if kept.is_err() {
         // Granted, kept nowhere (ADR-172).
