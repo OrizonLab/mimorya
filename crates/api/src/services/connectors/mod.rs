@@ -105,8 +105,8 @@ pub fn person_refresh_sealed_as(instance_id: Uuid, user_id: Uuid) -> String {
 pub struct ConnectorSettings {
     pub network: NetworkPolicy,
     pub start_timeout: Duration,
-    /// How long a run waits for an instance starting before it goes
-    /// without it (ADR-177); `None`: until the start ends.
+    /// How long a person's turn waits for an instance starting before it
+    /// goes without it (ADR-177); `None`: until the start ends.
     pub start_patience: Option<Duration>,
 }
 

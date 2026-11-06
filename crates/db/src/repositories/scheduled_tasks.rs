@@ -219,8 +219,9 @@ pub async fn link_started_run(
 }
 
 /// Whether `run_id` is the last run an occurrence of a task started: a run
-/// no one awaits (ADR-177). Read as it starts, it is: no occurrence starts
-/// while that run is under way.
+/// no one awaits (ADR-177). Read as it starts, it is, no occurrence
+/// starting while that run is under way; unless its task was deleted
+/// meanwhile, the run then taken for a person's turn.
 pub async fn started_by_a_task(conn: &mut PgConnection, run_id: Uuid) -> sqlx::Result<bool> {
     sqlx::query_scalar("select exists (select 1 from scheduled_tasks where last_run_id = $1)")
         .bind(run_id)

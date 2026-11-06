@@ -1,7 +1,7 @@
 //! Versions of an instance: a start invalidated while it ran is not kept,
 //! a run that read a changed instance does not start it, and a newer
-//! instance, live or starting, serves a run that read an older one rather
-//! than it start the older in its place (ADR-177).
+//! instance, live, starting or failed, serves a run that read an older one
+//! rather than it start the older in its place (ADR-177).
 
 use super::*;
 
@@ -108,5 +108,36 @@ async fn a_newer_start_serves_a_run_that_read_an_older_one() {
         panic!("expected the newer instance, live");
     };
     assert!(Arc::ptr_eq(&served, &live));
+    assert_eq!(starts.load(Ordering::SeqCst), 1);
+}
+
+/// A run that read an older version while a newer one starts, which then
+/// fails, is told that failure, remembered: it neither starts the older in
+/// its place nor makes the newer version's runs start it again at once.
+#[tokio::test(start_paused = true)]
+async fn a_newer_failure_serves_a_run_that_read_an_older_one() {
+    let cache = RuntimeCache::default();
+    let id = Uuid::new_v4();
+    let (older, newer) = (Utc::now(), Utc::now() + chrono::Duration::seconds(1));
+    let starts = Arc::new(AtomicUsize::new(0));
+    let gate = Arc::new(Notify::new());
+    let patience = Some(Duration::from_millis(20));
+    let newer_start = gated(&starts, &gate, failing);
+    let waited = within(cache.get_or_start(id, newer, 0, patience, newer_start)).await;
+    assert_eq!(unavailable(waited).origin, Origin::Starting);
+    let older_start = counted(&starts, || Ok(runtime()));
+    let (told, ()) = within(async {
+        tokio::join!(cache.get_or_start(id, older, 0, None, older_start), async {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            gate.notify_one();
+        })
+    })
+    .await;
+    let told = unavailable(told);
+    assert_eq!(told.origin, Origin::Remembered);
+    assert_eq!(told.message, "injoignable");
+    let again = counted(&starts, || Ok(runtime()));
+    let remembered = unavailable(cache.get_or_start(id, newer, 0, None, again).await);
+    assert_eq!(remembered.origin, Origin::Remembered);
     assert_eq!(starts.load(Ordering::SeqCst), 1);
 }

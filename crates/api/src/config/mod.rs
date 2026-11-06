@@ -86,10 +86,10 @@ pub struct AppConfig {
     /// How long an MCP server may take to connect and list its tools
     /// (`MIMORYA_MCP_START_TIMEOUT_SECS`, 20 by default).
     pub mcp_start_timeout: Duration,
-    /// How long a run waits for a connector starting before it goes
-    /// without it, the start going on for the runs that follow
+    /// How long a person's turn waits for a connector starting before it
+    /// goes without it, the start going on for the runs that follow
     /// (`MIMORYA_MCP_START_PATIENCE_SECS`, 5 by default, ADR-177); no
-    /// shorter than the start's timeout, the run waits for its outcome.
+    /// shorter than the start's timeout, the turn waits for its outcome.
     pub mcp_start_patience: Duration,
     /// Sends the invitation e-mails (`SMTP_URL`, `MAIL_FROM`); without it,
     /// the administrator transmits the invitation link (ADR-027).

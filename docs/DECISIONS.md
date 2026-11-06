@@ -11483,16 +11483,19 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       run d'une tâche planifiée : personne n'attend sa première réponse. Ce dernier
       est reconnu comme le dernier run de sa tâche (`scheduled_tasks.last_run_id`,
       écrit dans la transaction qui le crée) ; aucune occurrence ne part tant qu'il
-      n'est pas fini, et il le reste donc à son départ ;
+      n'est pas fini, et il le reste donc à son départ, sauf si sa tâche est
+      supprimée pendant qu'il attend dans la file : il est alors pris pour le tour
+      d'une personne et n'attend que la patience ;
     - une évaluation de compétence : son verdict ne dépend pas d'un serveur lent à
       démarrer ;
 
-  - **une instance plus récente, vivante ou en train de démarrer, sert** un run qui a
-    lu une version plus ancienne sans que sa lecture soit périmée : c'est le cas de
-    deux runs d'une même personne de part et d'autre du renouvellement de son
-    autorisation. Ce run attend le démarrage de la plus récente comme le sien. C'est
-    une règle nouvelle du cache : avant, ce run démarrait l'ancienne version à la
-    place de la plus récente, qu'il fermait.
+  - **une instance plus récente, vivante, en train de démarrer ou en échec retenu,
+    sert** un run qui a lu une version plus ancienne sans que sa lecture soit
+    périmée : c'est le cas de deux runs d'une même personne de part et d'autre du
+    renouvellement de son autorisation. Ce run attend le démarrage de la plus récente
+    comme le sien, et en lit l'échec comme les runs de cette version. C'est une
+    règle nouvelle du cache : avant, ce run démarrait l'ancienne version à la place
+    de la plus récente, qu'il fermait, ou dont il effaçait l'échec retenu.
 - **Conséquences** :
   - le premier tour d'une personne peut se passer des outils d'un serveur qui met plus
     de cinq secondes à démarrer : juste après un redémarrage du service, sur un worker
@@ -11512,8 +11515,9 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       - un run qui n'attend que sa patience, la tentative servant au run suivant ;
       - une tentative qui continue après le départ du run qui l'a demandée ;
       - une panne trouvée en arrière-plan, retenue pour les runs suivants ;
-      - une instance plus récente, vivante ou en train de démarrer, servie à un run
-        qui a lu une version plus ancienne, sans en démarrer une (`versions.rs`) ;
+      - une instance plus récente, vivante, en train de démarrer ou en échec, servie
+        à un run qui a lu une version plus ancienne, sans en démarrer une
+        (`versions.rs`) ;
       - une tentative qui panique, retenue comme échouée ;
       - une tentative qui finit après la fermeture du cache, libérée ;
     - un démarrage qui panique devient interrompu, à enregistrer

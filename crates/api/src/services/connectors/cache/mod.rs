@@ -7,11 +7,13 @@
 //! run waits for it at most its patience, if it has one, then goes without
 //! the instance, which serves the runs that follow; one the run gave up
 //! goes on. A failure is logged where it is found, by the start itself. A
-//! start invalidated while it ran (instance changed, disabled or deleted)
-//! is released, never kept, and one that ends after the cache closed too. A live instance whose session closed
-//! for good (a local server that exited, a server that no longer answers a
-//! ping, ADR-164) is released and started again by the next run that needs
-//! it, or remembered as a failed start (`closed`, ADR-163). On a server
+//! newer instance, live, starting or failed, serves a run that read an
+//! older one. A start invalidated while it ran (instance changed, disabled
+//! or deleted) is released, never kept, and one that ends after the cache
+//! closed too. A live instance whose session closed for good (a local
+//! server that exited, a server that no longer answers a ping, ADR-164) is
+//! released and started again by the next run that needs it, or
+//! remembered as a failed start (`closed`, ADR-163). On a server
 //! each person authorizes, each person has their own instance, started
 //! with their own authorization and versioned by it too; those are bounded
 //! in number, the least recently used released first, and released after a
@@ -228,6 +230,17 @@ impl RuntimeCache {
                     }) if *v > version => {
                         *used = Instant::now();
                         return Ok(runtime.clone());
+                    }
+                    // Or its failure, remembered as it is for its own runs.
+                    Some(Slot::Failed {
+                        version: v,
+                        until,
+                        message,
+                    }) if *v > version && Instant::now() < *until => {
+                        return Err(Unavailable {
+                            message: message.clone(),
+                            origin: Origin::Remembered,
+                        });
                     }
                     _ => {
                         // Its own start ended, and another took its place.

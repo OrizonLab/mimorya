@@ -58,9 +58,10 @@ pub fn searching(answer: &str) -> Vec<ScriptedStep> {
 }
 
 /// Lets the server answer two seconds after a start reached it: later
-/// than the patience.
+/// than the patience. A start that never reaches it fails the test.
 pub async fn answering_late(hold: &Hold) {
-    hold.holding().await;
+    let reached = tokio::time::timeout(Duration::from_secs(30), hold.holding()).await;
+    assert!(reached.is_ok(), "no start reached the slow server");
     tokio::time::sleep(Duration::from_secs(2)).await;
     hold.release();
 }
