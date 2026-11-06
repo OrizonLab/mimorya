@@ -43,7 +43,7 @@ export function holderChange(oauth: McpOAuth): {
   if (oauth.perPerson) {
     const revoked = oauth.revocable
       ? 'la plateforme demande au serveur d’autorisation de révoquer leurs jetons'
-      : 'aucun point de révocation n’étant connu pour ce serveur d’autorisation, chacune retire aussi son accord chez lui';
+      : 'aucun point de révocation n’étant connu pour ce serveur d’autorisation, chacune doit aussi retirer son accord chez lui';
     const taken =
       oauth.personAuthorizations === 0
         ? 'Aucune autorisation de personne n’est à retirer.'

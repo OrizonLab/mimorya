@@ -11187,6 +11187,16 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     `crates/api/tests/connector_person_renewal_delays.rs` (l'autorisation de l'entreprise
     et celle de Marc, dues, leurs points de jeton muets, renouvelées côte à côte : le run
     attend une borne, non deux ; vérifié par mutation) ;
+  - lot 44, suites de l'audit du lot 43g : test `apps/web/e2e/mcp-person-oauth-declarations.spec.ts`
+    (déclaré de nouveau pour l'entreprise, les autorisations des personnes dites retirées ;
+    puis, autorisé pour l'entreprise, déclaré de nouveau pour chaque personne, celle de
+    l'entreprise dite retirée ; la déclaration relue par l'API) ; le retour échoué attend
+    la fin du chargement avant de vérifier une absence ; le nettoyage des e2e signale un
+    statut inattendu ; « chacune doit aussi retirer son accord chez lui » ; `cardWith`
+    dit d'ancrer sur un bouton que toutes les cartes portent ; le harnais des tests de
+    l'API sépare ses requêtes et ses sessions (`tests/support/sign_in.rs`). La durée du
+    job Rust de la CI varie d'un run de `main` à l'autre (de 26 à 39 minutes) comme sur
+    les PR : un cache manqué des PR n'est pas établi, le délai de 60 minutes est gardé ;
   - aucune preuve d'identité n'est demandée au serveur d'autorisation : une personne
     peut autoriser avec un compte qu'elle partage ; « Mon compte » le dit ;
   - deux personnes qui autorisent avec le même compte chez le serveur peuvent voir

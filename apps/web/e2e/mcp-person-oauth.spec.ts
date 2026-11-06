@@ -15,13 +15,14 @@
 // waiting is refused, even when the test fails.
 import type { Page } from '@playwright/test';
 import type { PersonAuthorizations } from '../lib/api/contract';
-import { addServer, cardWith, openAdmin } from './support/admin';
+import { addServer, cardWith, connectorsTab, openAdmin } from './support/admin';
 import { refuseWaiting } from './support/approvals';
 import { demo, expect, noError, signIn, test } from './support/fixtures';
 import {
   OAUTH_CLIENT_ID as CLIENT_ID,
   OAUTH_CLIENT_SECRET as CLIENT_SECRET,
   OAUTH_SERVER as ADDRESS,
+  connectorNamed,
   listedConnectors as listed,
 } from './support/oauth';
 import { REFERENCE_REQUEST } from './support/scenario';
@@ -33,14 +34,7 @@ const TO_RENEW = 'Serveur à renouveler';
 
 /** The server as the API lists it to its administrators. */
 async function server(page: Page) {
-  return (await listed(page)).find((connector) => connector.name === SERVER);
-}
-
-/** The administration's « Connecteurs » tab, the administrator signed in. */
-async function connectorsTab(page: Page) {
-  await page.goto('/admin');
-  await page.getByRole('tab', { name: 'Connecteurs' }).click();
-  await expect(page.getByText('Chargement…')).toHaveCount(0);
+  return connectorNamed(page, SERVER);
 }
 
 /** The confirmations asked so far in the test, in order, on any page. */
@@ -63,8 +57,9 @@ test.afterEach(async ({ page, newContext }) => {
   await signIn(marc, demo.marc);
   await refuseWaiting(marc);
   // 401 or 403: the test never signed in, or not as an administrator, so
-  // added nothing.
+  // added nothing; any other failure is said.
   const response = await page.request.get('/api/admin/connectors');
+  expect([200, 401, 403]).toContain(response.status());
   if (response.status() !== 200) return;
   for (const connector of await listed(page)) {
     if (connector.name !== SERVER) continue;
@@ -206,6 +201,8 @@ test('a failed return is said in « Mon compte », once', async ({ page }) => {
   await expect(said).toBeVisible();
   await expect(page).toHaveURL(/\/account$/);
   await page.reload();
+  // Its sections loaded, so that what is absent is truly absent.
+  await expect(page.getByText('Chargement…')).toHaveCount(0);
   await expect(page.getByText('Serveurs que vous autorisez')).toHaveCount(0);
   await expect(said).toHaveCount(0);
 });
