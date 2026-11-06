@@ -47,3 +47,28 @@ export function formatBytes(bytes: number): string {
   if (kilo < 1024) return `${formatNumber(Math.round(kilo * 10) / 10)} Ko`;
   return `${formatNumber(Math.round((kilo / 1024) * 10) / 10)} Mo`;
 }
+
+/**
+ * An OAuth authorization's state, as the administration and « Mon compte »
+ * say it (ADR-171, ADR-174): when it was given, until when its token
+ * lasts, whether it is renewed, and its last renewal. Never its tokens.
+ */
+export function authorizationSummary(authorization: {
+  authorizedAt: string;
+  expiresAt: string | null;
+  renewable: boolean;
+  renewedAt: string | null;
+}): string {
+  return [
+    `Autorisé le ${formatDate(authorization.authorizedAt)}`,
+    authorization.expiresAt
+      ? `jeton valable jusqu’au ${formatDate(authorization.expiresAt)}`
+      : 'jeton sans échéance',
+    authorization.renewable ? 'renouvelé avant son échéance' : null,
+    authorization.renewedAt
+      ? `dernier renouvellement le ${formatDate(authorization.renewedAt)}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}

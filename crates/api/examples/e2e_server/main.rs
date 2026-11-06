@@ -66,6 +66,7 @@ mod interrupted;
 mod lessons;
 mod mailbox;
 mod missions;
+mod person_renewal;
 mod played;
 mod queued;
 mod rate_limits;
@@ -274,6 +275,7 @@ async fn main() -> anyhow::Result<()> {
     summaries::leave(&app).await?;
     evaluation_records::leave(&app).await?;
     unreadable_oauth::leave(&app).await?;
+    person_renewal::leave(&app).await?;
     rate_limits::forget().await?;
     let listener = tokio::net::TcpListener::bind(&address).await?;
     let taken = app.recover_interrupted_runs().await?;

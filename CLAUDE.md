@@ -384,7 +384,7 @@ Repères à l'intérieur des crates :
   autre dont le serveur d'autorisation n'annonce pas de révocation, ADR-172, les
   seules adresses privées que ses connecteurs joignent,
   `BuildOptions::connector_test_servers`, une déclaration OAuth illisible laissée au
-  démarrage, `unreadable_oauth.rs`, ADR-171).
+  démarrage, `unreadable_oauth.rs`, ADR-171, et l'autorisation de Lucas d'un serveur que chacun autorise, son renouvellement échoué, `person_renewal.rs`, ADR-174).
 - `infra/` : `docker/` (images de l'API et de l'interface, liste des images publiées
   `images.json`, test de fumée de la démonstration, test d'installation de la production,
   sauvegarde et restauration de la pile de production `backup-test.sh`, ADR-166,

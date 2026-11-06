@@ -6,30 +6,30 @@
 //   to « Mon compte », where he authorizes it there and back with the
 //   authorization server, then withdraws it;
 // - who authorizes it is changed back to the company, every person's
-//   authorization taken.
+//   authorization taken, then to each person again, the company's taken.
+// A return that failed is said in « Mon compte », once; a renewal that
+// failed is said to whose authorization it is (Lucas's, written by the
+// end-to-end API at its start, `person_renewal.rs`).
 // The end-to-end API serves the server and its authorization server
 // (`e2e_server`). The server added is deleted, and a validation left
 // waiting is refused, even when the test fails.
 import type { Page } from '@playwright/test';
-import type { Connectors, PersonAuthorizations } from '../lib/api/contract';
+import type { PersonAuthorizations } from '../lib/api/contract';
 import { addServer, cardWith, openAdmin } from './support/admin';
 import { refuseWaiting } from './support/approvals';
 import { demo, expect, noError, signIn, test } from './support/fixtures';
+import {
+  OAUTH_CLIENT_ID as CLIENT_ID,
+  OAUTH_CLIENT_SECRET as CLIENT_SECRET,
+  OAUTH_SERVER as ADDRESS,
+  listedConnectors as listed,
+} from './support/oauth';
 import { REFERENCE_REQUEST } from './support/scenario';
 
 const SERVER = 'Fichiers de chacun e2e';
-const ADDRESS = 'http://127.0.0.1:4107/mcp';
-/** The client the authorization server knows, with its secret. */
-const CLIENT_ID = 'mimorya-test-client';
-const CLIENT_SECRET = 'secret-du-client-de-test';
 const WRITE = { 'X-Mimorya-Request': '1' };
-
-/** The company's connectors, as the API lists them. */
-async function listed(page: Page) {
-  const response = await page.request.get('/api/admin/connectors');
-  expect(response.status()).toBe(200);
-  return ((await response.json()) as Connectors).instances;
-}
+/** Lucas's, its last renewal failed: written by the end-to-end API. */
+const TO_RENEW = 'Serveur à renouveler';
 
 /** The server as the API lists it to its administrators. */
 async function server(page: Page) {
@@ -62,9 +62,10 @@ test.afterEach(async ({ page, newContext }) => {
   const marc = await (await newContext()).newPage();
   await signIn(marc, demo.marc);
   await refuseWaiting(marc);
-  // 401: the test never signed in, so added nothing.
+  // 401 or 403: the test never signed in, or not as an administrator, so
+  // added nothing.
   const response = await page.request.get('/api/admin/connectors');
-  if (response.status() === 401) return;
+  if (response.status() !== 200) return;
   for (const connector of await listed(page)) {
     if (connector.name !== SERVER) continue;
     const deleted = await page.request.delete(`/api/admin/connectors/${connector.id}`, {
@@ -181,5 +182,53 @@ test('each person authorizes a server for themself, told to by their run', async
   const company = await server(page);
   expect(company?.mcp?.oauth?.perPerson).toBe(false);
   expect(company?.mcp?.oauth?.personAuthorizations).toBe(0);
+
+  // Authorized for the company, then each person's again: the company's
+  // taken, its tokens revoked.
+  await card2.getByRole('button', { name: 'Autoriser', exact: true }).click();
+  await expect(page.getByText('Serveur MCP autorisé')).toBeVisible();
+  await expect(card2.getByText(/^Autorisé le /)).toBeVisible();
+  await card2.getByRole('button', { name: 'Faire autoriser par chaque personne' }).click();
+  expect(confirmations.at(-1)).toContain(
+    'L’autorisation de l’entreprise est retirée ; la plateforme demande au serveur d’autorisation de révoquer ses jetons.',
+  );
+  await expect(card2.getByText('Chaque personne l’autorise', { exact: true })).toBeVisible();
+  const each = await server(page);
+  expect(each?.mcp?.oauth?.perPerson).toBe(true);
+  expect(each?.mcp?.oauth?.authorization).toBeNull();
   await noError(page);
+});
+
+test('a failed return is said in « Mon compte », once', async ({ page }) => {
+  await signIn(page, demo.marc);
+  await page.goto('/account?serveur=echec');
+  const said = page.getByText(/^L’autorisation a échoué : rien n’a été gardé\./);
+  await expect(said).toBeVisible();
+  await expect(page).toHaveURL(/\/account$/);
+  await page.reload();
+  await expect(page.getByText('Serveurs que vous autorisez')).toHaveCount(0);
+  await expect(said).toHaveCount(0);
+});
+
+test('a renewal that failed is said to whose authorization it is', async ({ page, newContext }) => {
+  await signIn(page, demo.lucas);
+  await page.goto('/account');
+  const row = page.getByRole('region', { name: TO_RENEW });
+  await expect(row.getByText('Autorisé', { exact: true })).toBeVisible();
+  await expect(
+    row.getByText(
+      'Dernier renouvellement échoué : Serveur d’autorisation injoignable (délai dépassé)',
+    ),
+  ).toBeVisible();
+  // Disabled: no longer his to authorize, his to withdraw.
+  await expect(row.getByText(/^Ce serveur n’est plus disponible pour vous/)).toBeVisible();
+  await expect(row.getByRole('button', { name: /^Autoriser/ })).toHaveCount(0);
+  await expect(row.getByRole('button', { name: 'Retirer mon autorisation' })).toBeVisible();
+  // His alone: nothing of it in Marc's account.
+  const marc = await (await newContext()).newPage();
+  await signIn(marc, demo.marc);
+  const his = await marc.request.get('/api/account/connector-authorizations');
+  expect(his.status()).toBe(200);
+  const servers = ((await his.json()) as PersonAuthorizations).servers;
+  expect(servers.map((server) => server.name)).not.toContain(TO_RENEW);
 });

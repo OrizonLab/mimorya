@@ -11175,12 +11175,11 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     ; le retrait. La section dit qu'aucune vérification n'est faite du compte choisi chez
     le serveur d'autorisation, et qu'un compte partagé peut voir son accord retiré par un
     autre. Dans la conversation, un connecteur à autoriser par la personne est dit à part
-    des connecteurs indisponibles, avec le lien vers « Mon compte »
-    (`chat/unavailable-notices.tsx`) ; test : `apps/web/e2e/mcp-person-oauth.spec.ts`
+    des connecteurs indisponibles, avec le lien vers « Mon compte », pendant le run comme eux (`chat/unavailable-notices.tsx`) ; test : `apps/web/e2e/mcp-person-oauth.spec.ts`
     (déclaré pour chacun, aucune personne, rien à autoriser pour l'entreprise ; test de
     Paul refusé sans son autorisation ; run de Marc qui le dit, lien vers « Mon compte »,
     autorisé là par un aller et retour, état montré ; Paul l'autorise pour lui, deux
-    personnes comptées, son test réussi ; retrait par Marc ; retour à l'entreprise, les autorisations des personnes retirées). Suites de l'audit du
+    personnes comptées, son test réussi ; retrait par Marc ; retour à l'entreprise, les autorisations des personnes retirées, puis à chaque personne, celle de l'entreprise retirée ; retour échoué dit une fois dans « Mon compte » ; échec du renouvellement de l'autorisation de Lucas, écrite au démarrage de l'API de bout en bout (`person_renewal.rs`), dit à lui seul). Suites de l'audit du
     lot 43f : les renouvellements d'avant un run sont réunis dans `renew_before_run`
     (`services/connectors/renewal/mod.rs`) ; l'échec dit et le retrait partagent leur SQL
     entre l'entreprise et la personne comme la réservation et la conservation

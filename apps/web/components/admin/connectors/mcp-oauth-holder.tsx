@@ -1,5 +1,6 @@
 import { Badge } from '@/components/ui';
 import type { McpOAuth } from '@/lib/api';
+import { NO_REVOCATION, REVOCATION_ASKED } from './revocation-words';
 
 /** How many people authorized the server for themselves: never who. */
 function counted(count: number): string {
@@ -39,10 +40,10 @@ export function holderChange(oauth: McpOAuth): {
   label: string;
   question: string;
 } {
-  const revoked = oauth.revocable
-    ? 'la plateforme demande au serveur d’autorisation de révoquer leurs jetons'
-    : 'aucun point de révocation n’étant connu pour ce serveur d’autorisation, retirez aussi les accords chez lui';
   if (oauth.perPerson) {
+    const revoked = oauth.revocable
+      ? 'la plateforme demande au serveur d’autorisation de révoquer leurs jetons'
+      : 'aucun point de révocation n’étant connu pour ce serveur d’autorisation, chacune retire aussi son accord chez lui';
     const taken =
       oauth.personAuthorizations === 0
         ? 'Aucune autorisation de personne n’est à retirer.'
@@ -53,6 +54,7 @@ export function holderChange(oauth: McpOAuth): {
       question: `Faire autoriser ce serveur par l’entreprise, une fois pour tous les runs ? ${taken} Un administrateur l’autorise ensuite ici.`,
     };
   }
+  const revoked = oauth.revocable ? REVOCATION_ASKED : NO_REVOCATION;
   const taken = oauth.authorization
     ? `L’autorisation de l’entreprise est retirée ; ${revoked}.`
     : 'Aucune autorisation de l’entreprise n’est à retirer.';

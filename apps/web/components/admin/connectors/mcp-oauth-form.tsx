@@ -44,12 +44,16 @@ export function McpOAuthForm({
     const warnings: string[] = [];
     if (declared?.authorization) {
       warnings.push(
-        'Déclarer de nouveau retire l’autorisation donnée : il faudra autoriser ce serveur de nouveau.',
+        perPerson
+          ? 'Déclarer de nouveau retire l’autorisation de l’entreprise : chaque personne autorisera ensuite ce serveur pour elle-même.'
+          : 'Déclarer de nouveau retire l’autorisation donnée : il faudra autoriser ce serveur de nouveau.',
       );
     }
     if (declared && declared.personAuthorizations > 0) {
       warnings.push(
-        'Déclarer de nouveau retire les autorisations des personnes : chacune devra autoriser ce serveur de nouveau.',
+        perPerson
+          ? 'Déclarer de nouveau retire les autorisations des personnes : chacune devra autoriser ce serveur de nouveau.'
+          : `Déclarer de nouveau retire les autorisations des personnes (${declared.personAuthorizations}) : l’entreprise autorisera ensuite ce serveur pour tous les runs.`,
       );
     }
     if (declared?.registered) {

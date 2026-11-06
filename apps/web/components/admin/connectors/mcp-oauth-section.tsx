@@ -9,10 +9,11 @@ import {
   type McpOAuthHolder,
   type OAuthAuthorizationStart,
 } from '@/lib/api';
-import { formatDate } from '@/lib/format';
+import { authorizationSummary, formatDate } from '@/lib/format';
 import { McpOAuthForm } from './mcp-oauth-form';
 import { PersonAuthorizedState, holderChange } from './mcp-oauth-holder';
 import { REGISTERED_CLIENT_STAYS } from './registered-client';
+import { NO_REVOCATION, REVOCATION_ASKED } from './revocation-words';
 
 /**
  * An MCP server's OAuth on its card (ADR-171): declared or not, what was
@@ -139,15 +140,7 @@ export function McpOAuthSection({
       ) : authorization ? (
         <p className="flex flex-wrap items-center gap-2">
           <Badge tone="ok">Autorisé</Badge>
-          <span>
-            Autorisé le {formatDate(authorization.authorizedAt)}
-            {authorization.expiresAt
-              ? ` · jeton valable jusqu’au ${formatDate(authorization.expiresAt)}`
-              : ' · jeton sans échéance'}
-            {authorization.renewable && ' · renouvelé avant son échéance'}
-            {authorization.renewedAt &&
-              ` · dernier renouvellement le ${formatDate(authorization.renewedAt)}`}
-          </span>
+          <span>{authorizationSummary(authorization)}</span>
         </p>
       ) : (
         <p className="flex flex-wrap items-center gap-2">
@@ -181,9 +174,9 @@ export function McpOAuthSection({
               onClick={() =>
                 remove(
                   `${base}/authorization`,
-                  oauth.revocable
-                    ? 'Retirer l’autorisation ? Les runs n’auront plus les outils de ce serveur ; la plateforme demande au serveur d’autorisation de révoquer ses jetons.'
-                    : 'Retirer l’autorisation ? Les runs n’auront plus les outils de ce serveur ; aucun point de révocation n’étant connu pour ce serveur d’autorisation, retirez aussi l’accord chez lui.',
+                  `Retirer l’autorisation ? Les runs n’auront plus les outils de ce serveur ; ${
+                    oauth.revocable ? REVOCATION_ASKED : NO_REVOCATION
+                  }.`,
                 )
               }
             >

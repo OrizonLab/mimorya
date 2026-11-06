@@ -10,7 +10,7 @@ import {
   type PersonAuthorizationView,
   type PersonAuthorizations,
 } from '@/lib/api';
-import { formatDate } from '@/lib/format';
+import { authorizationSummary } from '@/lib/format';
 
 const SERVERS = '/account/connector-authorizations';
 
@@ -121,15 +121,7 @@ function ServerRow({
         </Badge>
       </div>
       {authorization ? (
-        <p className="text-sm text-muted">
-          Autorisé le {formatDate(authorization.authorizedAt)}
-          {authorization.expiresAt
-            ? ` · jeton valable jusqu’au ${formatDate(authorization.expiresAt)}`
-            : ' · jeton sans échéance'}
-          {authorization.renewable && ' · renouvelé avant son échéance'}
-          {authorization.renewedAt &&
-            ` · dernier renouvellement le ${formatDate(authorization.renewedAt)}`}
-        </p>
+        <p className="text-sm text-muted">{authorizationSummary(authorization)}</p>
       ) : (
         <p className="text-sm text-muted">
           Autorisez ce serveur pour que l’agent l’utilise pour vous, avec vos propres droits chez
@@ -141,8 +133,9 @@ function ServerRow({
       )}
       {authorization && !server.available && (
         <p className="text-sm text-muted">
-          Ce serveur est désactivé, ou vous n’utilisez plus les connecteurs : l’agent ne l’utilise
-          pas. Vous pouvez retirer votre autorisation.
+          Ce serveur n’est plus disponible pour vous (désactivé, déclaré autrement, ou vous
+          n’utilisez plus les connecteurs) : l’agent ne l’utilise pas. Vous pouvez retirer votre
+          autorisation.
         </p>
       )}
       {action.error && <ErrorNote message={action.error} />}

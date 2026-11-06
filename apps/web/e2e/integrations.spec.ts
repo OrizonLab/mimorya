@@ -50,8 +50,13 @@ test('an MCP server is added with its token, disabled and deleted', async ({ pag
   expect(await page.content()).not.toContain(token);
 
   await card('Désactiver').getByRole('button', { name: 'Désactiver', exact: true }).click();
-  // The status the API now gives it, before anything else is sent.
-  await expect(card('Activer').getByText('Désactivé', { exact: true })).toBeVisible();
+  // The status the API now gives it, before anything else is sent: on its
+  // own card, which every card's « Supprimer » names apart from the other
+  // disabled servers.
+  await expect(
+    card('Supprimer').getByRole('button', { name: 'Activer', exact: true }),
+  ).toBeVisible();
+  await expect(card('Supprimer').getByText('Désactivé', { exact: true })).toBeVisible();
   await noError(page);
 
   await card('Supprimer').getByRole('button', { name: 'Supprimer', exact: true }).click();

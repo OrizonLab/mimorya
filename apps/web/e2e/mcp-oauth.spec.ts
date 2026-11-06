@@ -9,31 +9,24 @@
 // longer reads is withdrawn from its card. The end-to-end API serves these
 // servers and reaches them alone of the private network (`e2e_server`).
 // What the test adds is deleted, even when it fails.
-import type { Page } from '@playwright/test';
-import type { Connectors } from '../lib/api/contract';
 import { addServer, cardWith, openAdmin } from './support/admin';
 import { expect, noError, test } from './support/fixtures';
+import {
+  OAUTH_CLIENT_ID as CLIENT_ID,
+  OAUTH_CLIENT_SECRET as CLIENT_SECRET,
+  OAUTH_ISSUER as ISSUER,
+  OAUTH_SERVER as ADDRESS,
+  listedConnectors as listed,
+} from './support/oauth';
 
 const SERVER = 'Fichiers OAuth e2e';
-const ADDRESS = 'http://127.0.0.1:4107/mcp';
 /** A server whose authorization server names no revocation endpoint. */
 const UNREVOKING = 'Fichiers OAuth sans révocation e2e';
 const UNREVOKING_ADDRESS = 'http://127.0.0.1:4109/mcp';
-const ISSUER = 'http://127.0.0.1:4106';
-/** The client the authorization server knows, with its secret. */
-const CLIENT_ID = 'mimorya-test-client';
-const CLIENT_SECRET = 'secret-du-client-de-test';
 const RETURN_ADDRESS = 'http://localhost:3000/api/admin/connectors/oauth/callback';
 /** Left by the end-to-end API at its start, disabled. */
 const UNREADABLE = 'Serveur OAuth illisible';
 const WRITE = { 'X-Mimorya-Request': '1' };
-
-/** The company's connectors, as the API lists them. */
-async function listed(page: Page) {
-  const response = await page.request.get('/api/admin/connectors');
-  expect(response.status()).toBe(200);
-  return ((await response.json()) as Connectors).instances;
-}
 
 /** The confirmations asked so far in the test, in order. */
 let confirmations: string[] = [];
