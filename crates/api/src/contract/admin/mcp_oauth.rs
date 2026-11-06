@@ -47,6 +47,12 @@ pub struct McpOAuthDeclaration {
     #[serde(default)]
     #[ts(optional)]
     pub per_person: Option<bool>,
+    /// Its authorization server proves, by an identity token, that each
+    /// person authorizes with their own account (ADR-175): only when each
+    /// person authorizes; absent, as under the declaration replaced.
+    #[serde(default)]
+    #[ts(optional)]
+    pub verify_identity: Option<bool>,
 }
 
 /// Body of `PUT /admin/connectors/{id}/oauth/holder`: who authorizes the
@@ -106,6 +112,9 @@ pub struct McpOAuth {
     pub per_person: bool,
     /// How many people authorized it for themselves: never who.
     pub person_authorizations: i64,
+    /// Whether its authorization server must prove that each person
+    /// authorizes with their own account (ADR-175).
+    pub verifies_identity: bool,
 }
 
 /// An MCP server's authorization, as its declaration shows it: never its
@@ -156,6 +165,7 @@ impl McpOAuth {
     ) -> Self {
         Self {
             per_person: declaration.holder == OAuthHolder::Person,
+            verifies_identity: declaration.verifies_identity,
             person_authorizations,
             issuer: declaration.issuer,
             resource: declaration.resource,

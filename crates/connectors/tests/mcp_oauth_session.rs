@@ -30,6 +30,7 @@ fn declared(server: &ProtectedMcp, authority: &FakeAuthorizationServer) -> Value
         revocation_endpoint: None,
         registered: None,
         holder: Default::default(),
+        verifies_identity: false,
         issuer: authority.issuer.clone(),
         resource: server.url.clone(),
         authorization_endpoint: format!("{}/authorize", authority.issuer),

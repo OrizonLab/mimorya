@@ -1328,7 +1328,12 @@ perPerson: boolean,
 /**
  * How many people authorized it for themselves: never who.
  */
-personAuthorizations: number, };
+personAuthorizations: number,
+/**
+ * Whether its authorization server must prove that each person
+ * authorizes with their own account (ADR-175).
+ */
+verifiesIdentity: boolean, };
 
 /**
  * An MCP server's authorization, as its declaration shows it: never its
@@ -1386,7 +1391,13 @@ scopes?: Array<string>,
  * company does; absent, as under the declaration replaced (the company
  * for a first one, or after one that could not be read).
  */
-perPerson?: boolean, };
+perPerson?: boolean,
+/**
+ * Its authorization server proves, by an identity token, that each
+ * person authorizes with their own account (ADR-175): only when each
+ * person authorizes; absent, as under the declaration replaced.
+ */
+verifyIdentity?: boolean, };
 
 /**
  * Body of `PUT /admin/connectors/{id}/oauth/holder`: who authorizes the

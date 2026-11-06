@@ -1,8 +1,10 @@
 //! An MCP server's authorization under way at its authorization server,
 //! kept by the administrator's browser until it comes back (ADR-171), or a
 //! person's for themself, sealed under its own name (ADR-174): the
-//! connector, the administrator who started it, `state`, the PKCE verifier
-//! and a print of the declaration it was started under, sealed by the
+//! connector, the administrator who started it, `state`, the PKCE verifier,
+//! the nonce the identity token must name if the declaration verifies who
+//! authorizes (ADR-175), and a print of the declaration it was started
+//! under, sealed by the
 //! master key for the company, which the value names in clear. Nothing is
 //! written to the database; the code it awaits is redeemable once.
 
@@ -32,6 +34,10 @@ pub struct AuthorizationAttempt {
     pub user_id: Uuid,
     pub state: String,
     pub pkce_verifier: String,
+    /// The nonce sent, if the declaration verifies who authorizes: absent
+    /// from the attempts sealed before it could.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nonce: Option<String>,
     /// The print of the server's address and declaration (`declared_print`).
     pub declared: String,
     pub expires_at: DateTime<Utc>,
@@ -123,6 +129,7 @@ mod tests {
             user_id: Uuid::new_v4(),
             state: "state".into(),
             pkce_verifier: "verifier".into(),
+            nonce: None,
             declared: "print".into(),
             expires_at: now + AUTHORIZATION_LIFETIME,
         }

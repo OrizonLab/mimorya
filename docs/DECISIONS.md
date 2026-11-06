@@ -11195,10 +11195,108 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     statut inattendu ; « chacune doit aussi retirer son accord chez lui » ; `cardWith`
     dit d'ancrer sur un bouton que toutes les cartes portent ; le harnais des tests de
     l'API sépare ses requêtes et ses sessions (`tests/support/sign_in.rs`). La durée du
-    job Rust de la CI varie d'un run de `main` à l'autre (de 26 à 39 minutes) comme sur
-    les PR : un cache manqué des PR n'est pas établi, le délai de 60 minutes est gardé ;
+    job Rust de la CI varie d'un run de `main` à l'autre (de 24 à 43 minutes sur les dix
+    derniers) comme sur les PR : un cache manqué des PR n'est pas établi, le délai de 60
+    minutes est gardé ;
   - aucune preuve d'identité n'est demandée au serveur d'autorisation : une personne
     peut autoriser avec un compte qu'elle partage ; « Mon compte » le dit ;
   - deux personnes qui autorisent avec le même compte chez le serveur peuvent voir
     l'une révoquer l'autre ;
-  - reste : vérifier l'identité de la personne chez le serveur (OpenID Connect).
+  - reste : vérifier l'identité de la personne chez le serveur (OpenID Connect), fait
+    par ADR-175 quand l'administrateur le demande.
+
+## ADR-175 — OAuth des serveurs MCP : l'identité de qui autorise, prouvée par OpenID Connect (lots 45a et 45b)
+
+- **Statut** : accepté (2026-11-06) · complète ADR-174.
+- **Contexte** : quand chaque personne autorise un serveur MCP pour elle-même
+  (ADR-174), rien ne vérifie que le compte choisi chez le serveur d'autorisation est le
+  sien. Elle peut autoriser avec un compte partagé, ou celui d'un collègue dont elle
+  connaît l'accès. Ses runs agiraient alors sous un autre compte, avec ses droits.
+  « Mon compte » le dit, et ADR-174 laissait cette vérification à faire. Un serveur
+  d'autorisation qui est aussi fournisseur OpenID Connect (Entra ID, Google, Okta,
+  Keycloak, Auth0…) peut prouver qui s'est connecté, par un jeton d'identité signé.
+- **Décision** :
+  - **une option de la déclaration** : l'administrateur demande que le serveur
+    vérifie l'identité de qui l'autorise (`verifyIdentity`). Seule l'autorisation que
+    chaque personne donne pour elle-même peut le demander : celle de l'entreprise est
+    celle d'un administrateur, souvent sous un compte de service, et la demander pour
+    elle est refusé. L'option est écrite dans la déclaration seulement quand elle est
+    demandée, comme `holder` : un processus qui l'ignore lit la déclaration comme
+    illisible et ne démarre rien, au lieu de garder une autorisation sans la vérifier ;
+  - **ce qu'elle demande au serveur** :
+    - les portées `openid`, `email` et `profile` sont ajoutées à celles déclarées, et le
+      client que la plateforme enregistre l'est pour elles. `profile` est demandé parce
+      qu'un annuaire Microsoft ne donne qu'avec lui le nom de connexion et
+      l'identifiant d'objet que lit la règle ;
+    - le serveur doit se déclarer fournisseur OpenID Connect
+      (`/.well-known/openid-configuration` de son émetteur, celui-ci identique, avec ses
+      clés). Sinon, la déclaration est refusée avant d'être écrite ;
+  - **au départ** : un nonce aléatoire est envoyé et gardé dans la tentative scellée.
+    `nonce` rejoint les paramètres que la plateforme envoie elle-même : un point
+    d'autorisation qui le porte déjà est refusé ;
+  - **au retour**, après l'échange du code et avant que rien ne soit gardé :
+    - le jeton d'identité est exigé ;
+    - il est vérifié par `openidconnect`, comme une connexion (ADR-063) : signature par
+      les clés publiées par le serveur (relues à chaque retour : une personne autorise
+      un serveur rarement), émetteur, audience (le client déclaré, avec son secret s'il
+      en a un, jamais un jeton signé par secret pour un client public), échéance et
+      nonce de la tentative ;
+    - l'adresse qu'il garantit doit être celle du compte de la personne, à la casse
+      près. Elle est lue comme une connexion la lit : un émetteur Microsoft ou Google
+      suit ses propres règles (le nom de connexion de l'annuaire ; une adresse vérifiée
+      du domaine Workspace du compte), que `email_verified` seul ne satisfait pas ; tout
+      autre émetteur garantit une adresse par `email_verified`
+      (`core/src/account_links/authorized.rs`) ;
+    - sinon, l'autorisation est refusée et sa raison tracée, jamais le jeton. Les
+      jetons accordés ne sont gardés nulle part et sont révoqués (ADR-172) ;
+  - **rien de nouveau n'est gardé** : ni le sujet ni l'adresse prouvés. La preuve vaut
+    au moment de l'autorisation. Un renouvellement ne la redemande pas : il prolonge
+    l'accord de la même personne ;
+  - **changer qui autorise** sur place vers l'entreprise retire l'option ; revenir à
+    chaque personne ne la rétablit pas. Une déclaration écrite de nouveau sans en
+    parler la garde, tant que chaque personne autorise le serveur. Ajouter ou retirer
+    l'option change la déclaration : toutes les autorisations des personnes sont
+    prises et révoquées (ADR-174), et chacune autorise de nouveau, vérifiée ;
+  - **lots** : 45a, l'API ; 45b, les écrans (l'option dans la déclaration, ce que
+    « Mon compte » dit d'un serveur qui vérifie, le refus d'un autre compte dit à la
+    personne) et le parcours de bout en bout.
+- **Conséquences** :
+  - lot 45a :
+    - règle : `core/src/account_links/authorized.rs` ;
+    - déclaration : `verifiesIdentity` (`connectors/src/mcp/oauth/declaration.rs`),
+      portées de l'identité ajoutées (`with_identity_scopes`, `scope.rs`), nonce du
+      départ (`departure.rs`), jeton d'identité lu de la réponse
+      (`Granted::id_token`, `exchange.rs`) ;
+    - côté API :
+      - option déclarée et serveur lu comme fournisseur OpenID Connect
+        (`services/admin/connector_identity.rs`) ;
+      - nonce de la tentative (`connector_authorization/attempt.rs`, `start.rs`) ;
+      - preuve vérifiée au retour (`connector_authorization/identity.rs`) ;
+      - vérification d'un jeton pour un client avec ou sans secret
+        (`services/sso/id_token.rs`, sortie de `oidc.rs`) ;
+      - option retirée par le changement sur place (`connector_oauth_holder.rs`) ;
+      - `verifyIdentity` dans le corps de la déclaration et `verifiesIdentity` dans la
+        déclaration listée ;
+    - le serveur d'autorisation simulé devient fournisseur OpenID Connect quand un test
+      y connecte quelqu'un (`connectors/src/testing/oauth/openid.rs`). Il signe avec la
+      clé de test du Bot Framework simulé, sous un autre nom, et gâte le jeton à
+      volonté (`IdTokenQuirk`) ;
+    - tests : `crates/api/tests/connector_person_identity.rs` :
+      - compte de la personne prouvé, nonce et portées demandés ;
+      - compte d'une autre adresse refusé, ses jetons révoqués ;
+      - adresse non garantie refusée ;
+      - jeton absent, d'un autre nonce, d'un autre client, signé d'une clé non publiée
+        ou échu : refusé ;
+      - rien demandé sans l'option ;
+      - l'option refusée pour l'entreprise et retirée par le changement sur place ;
+      - serveur qui n'est pas fournisseur OpenID Connect refusé ;
+      - tentative commencée avant l'option refusée ;
+    - tests unitaires de la règle, de la déclaration et du départ ;
+    - vérifiés par mutation : preuve ignorée au retour ; adresse comparée à elle-même ;
+      départ sans nonce ; autre nonce attendu ; option acceptée pour l'entreprise ;
+      option gardée au changement de qui autorise ; serveur qui n'est pas fournisseur
+      OpenID Connect déclaré quand même ; jetons d'un retour refusé non révoqués ;
+      portées de l'identité non ajoutées ; jeton d'identité perdu à l'échange ; option
+      oubliée par la déclaration ; `email_verified` ignoré.
+  - Le refus d'un autre compte est seulement tracé jusqu'au lot 45b : le retour mène à
+    « Mon compte » comme tout échec.

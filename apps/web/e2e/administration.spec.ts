@@ -47,10 +47,12 @@ test('a deny policy is created, disabled and deleted', async ({ page }) => {
   await expect(policy.last().getByText('Consulter les interventions')).toBeVisible();
   await expect(policy.last().getByText(/interim_e2e/)).toBeVisible();
 
-  await cardWith(page, description, 'Désactiver')
+  await cardWith(page, description, `Supprimer ${description}`)
     .getByRole('button', { name: 'Désactiver', exact: true })
     .click();
-  await expect(cardWith(page, description, 'Activer').getByText('Désactivée')).toBeVisible();
+  await expect(
+    cardWith(page, description, `Supprimer ${description}`).getByText('Désactivée'),
+  ).toBeVisible();
   await noError(page);
 
   await page.getByRole('button', { name: `Supprimer ${description}` }).click();

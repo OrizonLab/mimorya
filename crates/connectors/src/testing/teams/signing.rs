@@ -1,7 +1,9 @@
 //! How the test Microsoft signs what the Bot Framework sends a bot
 //! (ADR-138): a JSON Web Token (RS256) with its test key, published in its
 //! key set, endorsed for Teams; or with another key, never published, as a
-//! forger would. Test keys only, never anything else's.
+//! forger would. Test keys only, never anything else's. The simulated
+//! OpenID provider signs its identity tokens with the same key, published
+//! under its own name (`published_key`, `signed_as`, ADR-175).
 
 use base64::Engine;
 use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
@@ -35,20 +37,31 @@ fn pair(signer: Signer) -> RsaKeyPair {
 /// The key set the test Bot Framework publishes: its key, endorsed for
 /// `endorsements`.
 pub(super) fn key_set(endorsements: &[String]) -> Value {
+    let mut key = published_key(TEAMS_KEY_ID);
+    key["endorsements"] = json!(endorsements);
+    json!({ "keys": [key] })
+}
+
+/// The test key, as a JSON Web Key named `kid`.
+pub(crate) fn published_key(kid: &str) -> Value {
     let public: RsaPublicKeyComponents<Vec<u8>> = pair(Signer::BotFramework).public().into();
-    json!({ "keys": [{
+    json!({
         "kty": "RSA",
         "use": "sig",
-        "kid": TEAMS_KEY_ID,
+        "kid": kid,
         "n": URL_SAFE_NO_PAD.encode(&public.n),
         "e": URL_SAFE_NO_PAD.encode(&public.e),
-        "endorsements": endorsements,
-    }] })
+    })
 }
 
 /// `claims` signed by `signer`, naming the published key.
 pub fn signed_token(signer: Signer, claims: &Value) -> String {
-    let header = json!({ "alg": "RS256", "kid": TEAMS_KEY_ID, "typ": "JWT" });
+    signed_as(signer, TEAMS_KEY_ID, claims)
+}
+
+/// `claims` signed by `signer`, naming the key `kid`.
+pub(crate) fn signed_as(signer: Signer, kid: &str, claims: &Value) -> String {
+    let header = json!({ "alg": "RS256", "kid": kid, "typ": "JWT" });
     let input = format!(
         "{}.{}",
         URL_SAFE_NO_PAD.encode(header.to_string()),

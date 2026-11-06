@@ -20,7 +20,8 @@ use uuid::Uuid;
 use super::account::account_of;
 use super::admission::{Admission, admit};
 use super::attempt::{self, Attempt};
-use super::oidc::{self, Application, Unverified};
+use super::id_token::{self, Unverified};
+use super::oidc::{self, Application};
 use super::{SsoService, client_secret_name};
 use crate::auth::sessions::open_session;
 use crate::plugins::RequestContext;
@@ -123,7 +124,7 @@ impl SsoService {
             .await
             .map_err(|failure| at(&failure))?;
         let kind = ProviderKind::parse(&provider.kind).ok_or_else(|| at("Type inconnu"))?;
-        let said = oidc::token_claims(&claims);
+        let said = id_token::token_claims(&claims);
         let proven = proven_identity(kind, &said, &provider.domains).map_err(at)?;
         // The account's name, should this sign-in create it: started from
         // the company's link, never from an address (ADR-067).
@@ -191,11 +192,11 @@ impl SsoService {
             attempt.pkce_verifier,
         )
         .await?;
-        match oidc::verify(declaration.metadata, &application, &token, &attempt.nonce) {
+        match id_token::verify(declaration.metadata, &application, &token, &attempt.nonce) {
             // The provider rolled its keys over since they were kept.
             Err(Unverified::Signature(_)) if declaration.kept => {
                 let metadata = self.read_declaration(provider.id, &provider.issuer).await?;
-                oidc::verify(metadata, &application, &token, &attempt.nonce)
+                id_token::verify(metadata, &application, &token, &attempt.nonce)
                     .map_err(Unverified::failure)
             }
             verified => verified.map_err(Unverified::failure),

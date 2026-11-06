@@ -1,8 +1,10 @@
 //! An OAuth authorization server, as an MCP server's would be: its metadata
 //! (RFC 8414), an authorization endpoint answering at once (no one to sign
 //! in, the code sent back to the redirect address), its token endpoint
-//! (`token_endpoint`), and those that revoke tokens and register clients. Every request is recorded; the tests turn its
-//! behaviour (`Settings`).
+//! (`token_endpoint`), and those that revoke tokens and register clients;
+//! an OpenID provider too once a test signs someone in there (`openid`,
+//! ADR-175). Every request is recorded; the tests turn its behaviour
+//! (`Settings`).
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -15,7 +17,8 @@ use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use serde_json::json;
 
-use super::{registration_endpoint, revocation_endpoint, token_endpoint};
+use super::openid::{IdTokenQuirk, SignedIn};
+use super::{openid, registration_endpoint, revocation_endpoint, token_endpoint};
 use crate::outbound::{NetworkPolicy, http_client};
 
 pub const CLIENT_ID: &str = "mimorya-test-client";
@@ -54,6 +57,11 @@ pub struct Settings {
     /// Seconds a registered client's secret lasts; `None`: it does not
     /// expire.
     pub secret_lifetime: Option<u64>,
+    /// Who is signed in at the server, as an OpenID provider: `None`, it
+    /// is none, and gives no identity token.
+    pub identity: Option<SignedIn>,
+    /// How it spoils the identity tokens it gives.
+    pub id_token_quirk: IdTokenQuirk,
 }
 
 impl Default for Settings {
@@ -75,6 +83,8 @@ impl Default for Settings {
             registration: true,
             registration_token: false,
             secret_lifetime: None,
+            identity: None,
+            id_token_quirk: IdTokenQuirk::None,
         }
     }
 }
@@ -92,6 +102,9 @@ pub(super) struct Code {
     pub(super) challenge: String,
     pub(super) resource: Option<String>,
     pub(super) scope: String,
+    /// The client it was given to, and the nonce its attempt sent.
+    pub(super) client_id: String,
+    pub(super) nonce: Option<String>,
 }
 
 /// A client registered at the server (RFC 7591).
@@ -149,6 +162,11 @@ impl FakeAuthorizationServer {
             .route("/token", post(token_endpoint::token))
             .route("/revoke", post(revocation_endpoint::revoke))
             .route("/register", post(registration_endpoint::register))
+            .route(
+                "/.well-known/openid-configuration",
+                get(openid::configuration),
+            )
+            .route("/jwks", get(openid::keys))
             .with_state(server.clone());
         tokio::spawn(async move { axum::serve(listener, router).await.expect("test server") });
         server
@@ -332,6 +350,8 @@ async fn authorize(
             challenge: field("code_challenge"),
             resource: params.get("resource").cloned(),
             scope: field("scope"),
+            client_id: field("client_id"),
+            nonce: params.get("nonce").cloned(),
         },
     );
     let Ok(mut back) = url::Url::parse(&field("redirect_uri")) else {

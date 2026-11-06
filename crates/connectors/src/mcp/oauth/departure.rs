@@ -2,15 +2,17 @@
 //! (ADR-171): the authorization endpoint kept in the declaration, asked for
 //! a code for the declared client, at the platform's return address, with
 //! PKCE S256 always, for the resource the tokens will be for (RFC 8707) and
-//! the scopes declared; `state` ties the return to the attempt. The
-//! endpoint's own parameters are kept (RFC 6749 §3.1), never one of these.
+//! the scopes declared; `state` ties the return to the attempt, and the
+//! attempt's `nonce` the identity token a declaration that verifies
+//! identities awaits (ADR-175). The endpoint's own parameters are kept
+//! (RFC 6749 §3.1), never one of these.
 
 use url::Url;
 
 use super::declaration::OAuthDeclaration;
 
 /// What the platform adds to the endpoint.
-const OWN_PARAMETERS: [&str; 8] = [
+const OWN_PARAMETERS: [&str; 9] = [
     "response_type",
     "client_id",
     "redirect_uri",
@@ -19,6 +21,7 @@ const OWN_PARAMETERS: [&str; 8] = [
     "code_challenge_method",
     "resource",
     "scope",
+    "nonce",
 ];
 
 /// What the attempt brings to the departure.
@@ -27,6 +30,9 @@ pub struct Departure<'a> {
     pub state: &'a str,
     /// The S256 challenge of the attempt's PKCE verifier.
     pub code_challenge: &'a str,
+    /// What the identity token must name, if the declaration verifies who
+    /// authorizes (OpenID Connect).
+    pub nonce: Option<&'a str>,
 }
 
 /// The address the browser is sent to, or why there is none.
@@ -58,6 +64,9 @@ pub fn authorization_url(
         if !declaration.scopes.is_empty() {
             query.append_pair("scope", &declaration.scopes.join(" "));
         }
+        if let Some(nonce) = departure.nonce {
+            query.append_pair("nonce", nonce);
+        }
     }
     Ok(url.into())
 }
@@ -74,6 +83,7 @@ mod tests {
             revocation_endpoint: None,
             registered: None,
             holder: Default::default(),
+            verifies_identity: false,
             issuer: "https://auth.example.com".into(),
             resource: "https://mcp.example.com/mcp".into(),
             authorization_endpoint: endpoint.into(),
@@ -90,6 +100,7 @@ mod tests {
             redirect_uri: "https://app.example.com/api/admin/connectors/oauth/callback",
             state: "etat",
             code_challenge: "defi",
+            nonce: None,
         }
     }
 
@@ -116,6 +127,23 @@ mod tests {
             departure(),
         );
         assert!(!none.expect("url").contains("scope="));
+        assert!(!url.contains("nonce="));
+    }
+
+    #[test]
+    fn an_attempt_that_awaits_an_identity_token_sends_its_nonce() {
+        let declared = declaration("https://auth.example.com/authorize", &["openid"]);
+        let departure = Departure {
+            nonce: Some("nonce-de-la-tentative"),
+            ..departure()
+        };
+        let url = authorization_url(&declared, departure).expect("url");
+        let query: HashMap<String, String> = Url::parse(&url)
+            .expect("parsed")
+            .query_pairs()
+            .into_owned()
+            .collect();
+        assert_eq!(query["nonce"], "nonce-de-la-tentative");
     }
 
     #[test]
@@ -124,6 +152,7 @@ mod tests {
             "https://auth.example.com/authorize?client_id=autre",
             "https://auth.example.com/authorize?redirect_uri=https://evil.example",
             "https://auth.example.com/authorize?code_challenge_method=plain",
+            "https://auth.example.com/authorize?nonce=fixe",
         ] {
             let refused = authorization_url(&declaration(endpoint, &[]), departure());
             assert!(refused.expect_err(endpoint).contains("déjà"), "{endpoint}");

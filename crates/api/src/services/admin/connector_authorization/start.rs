@@ -13,7 +13,7 @@ use mimorya_connectors::mcp::oauth::{
 };
 use mimorya_core::DomainError;
 use mimorya_db::repositories::connectors::get_connector_instance;
-use openidconnect::{CsrfToken, PkceCodeChallenge};
+use openidconnect::{CsrfToken, Nonce, PkceCodeChallenge};
 use uuid::Uuid;
 
 use super::attempt::{self, AUTHORIZATION_LIFETIME, AuthorizationAttempt, declared_print};
@@ -121,11 +121,17 @@ async fn started(
     }
     let (challenge, verifier) = PkceCodeChallenge::new_random_sha256();
     let state = CsrfToken::new_random();
+    // What the identity token must name, if who authorizes is verified
+    // (ADR-175).
+    let nonce = declared
+        .verifies_identity
+        .then(|| Nonce::new_random().secret().clone());
     let back = redirect_uri(web_origin);
     let departure = Departure {
         redirect_uri: &back,
         state: state.secret(),
         code_challenge: challenge.as_str(),
+        nonce: nonce.as_deref(),
     };
     let url = authorization_url(&declared, departure).map_err(DomainError::validation)?;
     let attempt = AuthorizationAttempt {
@@ -133,6 +139,7 @@ async fn started(
         user_id: access.subject.user_id,
         state: state.secret().clone(),
         pkce_verifier: verifier.secret().clone(),
+        nonce,
         declared: declared_print(&server.url, &declared),
         expires_at: Utc::now() + AUTHORIZATION_LIFETIME,
     };

@@ -63,13 +63,9 @@ impl TestApi {
     pub async fn login(&self, user_id: Uuid) -> String {
         let response = self.try_login(&email(user_id), PASSWORD).await;
         assert_eq!(response.status, StatusCode::OK, "{}", response.text());
-        let cookie = response.headers["set-cookie"].to_str().unwrap().to_string();
+        let cookie = response.headers["set-cookie"].to_str().unwrap();
         assert!(cookie.contains("HttpOnly"));
-        let token = cookie
-            .strip_prefix("mimorya_session=")
-            .and_then(|rest| rest.split(';').next())
-            .expect("session cookie");
-        token.to_string()
+        session_token(&response).to_string()
     }
 
     pub fn as_user(&self, session: &str) -> Client<'_> {
@@ -90,11 +86,16 @@ impl TestApi {
 
     /// The session opened by a successful login response.
     pub fn session_from(&self, login: &TestResponse) -> Client<'_> {
-        let cookie = login.headers["set-cookie"].to_str().unwrap();
-        let token = cookie
-            .strip_prefix("mimorya_session=")
-            .and_then(|rest| rest.split(';').next())
-            .expect("session cookie");
-        self.as_user(token)
+        self.as_user(session_token(login))
     }
+}
+
+/// The session token a successful login response sets in its cookie.
+fn session_token(login: &TestResponse) -> &str {
+    login.headers["set-cookie"]
+        .to_str()
+        .unwrap()
+        .strip_prefix("mimorya_session=")
+        .and_then(|rest| rest.split(';').next())
+        .expect("session cookie")
 }

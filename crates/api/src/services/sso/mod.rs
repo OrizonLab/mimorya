@@ -16,6 +16,7 @@ mod admission;
 mod attempt;
 mod dns;
 mod http;
+mod id_token;
 mod metadata;
 mod oidc;
 mod requirement;
@@ -39,10 +40,11 @@ pub use sign_in::{Return, SignInFailure};
 pub(crate) use address::address_problem;
 pub(crate) use attempt::{open_value, seal_value};
 pub(crate) use http::ProviderHttp;
+pub(crate) use id_token::{token_claims, verify, verify_for};
 pub(crate) use metadata::MetadataCache;
 pub(crate) use oidc::{
     Application, Failure, IdToken, Unrefreshed, authorization, discover, error_code, redeem,
-    refresh, token_claims, verify,
+    refresh,
 };
 pub(crate) use sign_in::same_state;
 

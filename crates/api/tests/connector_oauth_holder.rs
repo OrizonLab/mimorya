@@ -147,7 +147,12 @@ async fn changing_who_authorizes_takes_what_the_former_holder_gave() {
     let changed = "connector.oauth_holder_changed";
     assert_eq!(
         last_metadata(&api, &id, changed).await,
-        json!({ "perPerson": true, "authorizationRemoved": true, "personAuthorizationsRemoved": 0 })
+        json!({
+            "perPerson": true,
+            "verificationRemoved": false,
+            "authorizationRemoved": true,
+            "personAuthorizationsRemoved": 0,
+        })
     );
 
     // Back to the company: every person's goes, revoked, audited together.
@@ -170,7 +175,12 @@ async fn changing_who_authorizes_takes_what_the_former_holder_gave() {
     assert_eq!(counts, &json!({ "revoked": 2, "failed": 0 }));
     assert_eq!(
         last_metadata(&api, &id, changed).await,
-        json!({ "perPerson": false, "authorizationRemoved": false, "personAuthorizationsRemoved": 2 })
+        json!({
+            "perPerson": false,
+            "verificationRemoved": false,
+            "authorizationRemoved": false,
+            "personAuthorizationsRemoved": 2,
+        })
     );
     let audited = format!("{revocations:?}");
     assert!(!audited.contains(&marc) && !audited.contains(&user::MARC.to_string()));

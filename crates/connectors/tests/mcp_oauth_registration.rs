@@ -57,6 +57,7 @@ async fn a_registered_client_is_authorized_like_a_typed_one() {
         redirect_uri: BACK,
         state: "etat",
         code_challenge: &challenge,
+        nonce: None,
     };
     let back = sent_back(&authorization_url(&declaration, departure).expect("url")).await;
     let exchange = CodeExchange {

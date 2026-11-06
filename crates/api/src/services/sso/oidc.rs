@@ -1,9 +1,8 @@
 //! OpenID Connect with a declared provider, through `openidconnect`:
 //! discovery, the authorization address (code flow, PKCE, `state`,
-//! `nonce`), the code exchange, and the verification of the identity token
-//! (signature by the provider's keys, issuer, audience, expiry, nonce).
+//! `nonce`) and the code exchange; the identity token it gives is verified
+//! by `id_token`.
 
-use mimorya_core::identity_providers::TokenClaims;
 use openidconnect::core::{
     CoreAuthDisplay, CoreAuthPrompt, CoreAuthenticationFlow, CoreClientAuthMethod,
     CoreErrorResponseType, CoreGenderClaim, CoreJsonWebKey, CoreJweContentEncryptionAlgorithm,
@@ -11,11 +10,10 @@ use openidconnect::core::{
     CoreTokenIntrospectionResponse, CoreTokenType,
 };
 use openidconnect::{
-    AdditionalClaims, AuthType, AuthorizationCode, ClaimsVerificationError, ClientId, ClientSecret,
-    CsrfToken, EmptyExtraTokenFields, EndpointMaybeSet, EndpointNotSet, EndpointSet, IdTokenClaims,
-    IssuerUrl, LoginHint, Nonce, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RefreshToken,
-    RequestTokenError, Scope, SignatureVerificationError, StandardErrorResponse,
-    StandardTokenResponse, TokenResponse,
+    AdditionalClaims, AuthType, AuthorizationCode, ClientId, ClientSecret, CsrfToken,
+    EmptyExtraTokenFields, EndpointMaybeSet, EndpointNotSet, EndpointSet, IdTokenClaims, IssuerUrl,
+    LoginHint, Nonce, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RefreshToken,
+    RequestTokenError, Scope, StandardErrorResponse, StandardTokenResponse, TokenResponse,
 };
 use serde::{Deserialize, Serialize};
 
@@ -46,7 +44,7 @@ type IdTokenFields = openidconnect::IdTokenFields<
     CoreJwsSigningAlgorithm,
 >;
 
-type OidcClient = openidconnect::Client<
+pub(super) type OidcClient = openidconnect::Client<
     ExtraClaims,
     CoreAuthDisplay,
     CoreGenderClaim,
@@ -276,78 +274,6 @@ pub async fn exchange_code(
         .id_token()
         .cloned()
         .ok_or_else(|| "échange : réponse sans jeton d’identité".into())
-}
-
-/// Why an identity token was not verified.
-pub enum Unverified {
-    /// Its signature verified by none of the declaration's keys: perhaps
-    /// rolled over since they were read, with or without a key identifier.
-    Signature(SignatureVerificationError),
-    Other(Failure),
-}
-
-impl Unverified {
-    pub fn failure(self) -> Failure {
-        match self {
-            Self::Signature(SignatureVerificationError::NoMatchingKey) => {
-                "jeton d’identité : clé de signature inconnue".into()
-            }
-            Self::Signature(error) => format!("jeton d’identité : signature refusée ({error})"),
-            Self::Other(failure) => failure,
-        }
-    }
-}
-
-/// The token's claims, verified against the declaration's keys, issuer,
-/// the application's audience, its expiry and the attempt's nonce.
-pub fn verify(
-    metadata: CoreProviderMetadata,
-    application: &Application<'_>,
-    token: &IdToken,
-    nonce: &str,
-) -> Result<VerifiedClaims, Unverified> {
-    let client = client(
-        metadata,
-        application.client_id,
-        Some(application.client_secret),
-        application.redirect_uri,
-    )
-    .map_err(Unverified::Other)?;
-    token
-        .claims(&client.id_token_verifier(), &Nonce::new(nonce.into()))
-        .cloned()
-        .map_err(|error| match error {
-            ClaimsVerificationError::SignatureVerification(error) => Unverified::Signature(error),
-            error => Unverified::Other(format!("jeton d’identité : {error}")),
-        })
-}
-
-/// What the rules read of verified claims.
-pub fn token_claims(claims: &VerifiedClaims) -> TokenClaims<'_> {
-    let extra = claims.additional_claims();
-    TokenClaims {
-        subject: claims.subject().as_str(),
-        email: claims.email().map(|e| e.as_str()),
-        email_verified: claims.email_verified(),
-        preferred_username: claims.preferred_username().map(|u| u.as_str()),
-        oid: extra.oid.as_deref(),
-        hosted_domain: extra.hd.as_deref(),
-        name: claims.name().and_then(|n| n.get(None)).map(|n| n.as_str()),
-        given_name: claims
-            .given_name()
-            .and_then(|n| n.get(None))
-            .map(|n| n.as_str()),
-        family_name: claims
-            .family_name()
-            .and_then(|n| n.get(None))
-            .map(|n| n.as_str()),
-        email_domain_verified: extra.xms_edov.as_ref().map(|value| {
-            matches!(value, serde_json::Value::Bool(true))
-                || value.as_str() == Some("true")
-                || value.as_u64() == Some(1)
-                || value.as_str() == Some("1")
-        }),
-    }
 }
 
 /// A provider's error code (`access_denied`…), as it may be audited: letters,

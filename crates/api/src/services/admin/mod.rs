@@ -17,6 +17,7 @@ mod approval_routing;
 mod assignments;
 mod connector_authorization;
 mod connector_config;
+mod connector_identity;
 mod connector_oauth;
 mod connector_oauth_holder;
 mod connector_rules;

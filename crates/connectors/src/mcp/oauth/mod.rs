@@ -15,6 +15,8 @@
 
 mod challenge;
 mod declaration;
+#[cfg(test)]
+mod declaration_tests;
 mod departure;
 mod discovery;
 mod exchange;
@@ -52,7 +54,10 @@ pub use resource::{
     canonical_resource, covers, protected_resource_locations, same_origin, same_resource,
 };
 pub use revocation::{HeldToken, NO_REVOCATION_ENDPOINT, revoke_tokens};
-pub use scope::{MAX_SCOPE_CHARS, MAX_SCOPES, scope_problem, scopes_problem, suggested_scopes};
+pub use scope::{
+    MAX_SCOPE_CHARS, MAX_SCOPES, scope_problem, scopes_problem, suggested_scopes,
+    with_identity_scopes,
+};
 pub use server_metadata::{
     AuthorizationServer, ClientAuth, metadata_locations, read_server_metadata,
 };

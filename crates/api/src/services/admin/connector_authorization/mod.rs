@@ -13,6 +13,7 @@
 
 pub(crate) mod attempt;
 mod finish;
+mod identity;
 mod person;
 mod person_finish;
 mod returned;

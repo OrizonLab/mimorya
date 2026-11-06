@@ -4,23 +4,15 @@
 // A server at a foreign host, its connection test answered here, gives a
 // checked checkbox (its tool's rule) and a checked radio (its OAuth form's
 // client choice). What the test adds is deleted, even when it fails.
-import type { ConnectorTest, Connectors, TestedTool } from '../lib/api/contract';
-import { addForeignServer, openAdmin } from './support/admin';
+import type { ConnectorTest, TestedTool } from '../lib/api/contract';
+import { addForeignServer, deleteConnectorsNamed, openAdmin } from './support/admin';
 import { expect, noError, test } from './support/fixtures';
 
 const SERVER = 'Contraste e2e';
-const WRITE = { 'X-Mimorya-Request': '1' };
 
 test.afterEach(async ({ page }) => {
-  const response = await page.request.get('/api/admin/connectors');
-  if (response.status() === 401) return;
-  const { instances } = (await response.json()) as Connectors;
-  for (const connector of instances.filter((c) => c.name === SERVER)) {
-    const deleted = await page.request.delete(`/api/admin/connectors/${connector.id}`, {
-      headers: WRITE,
-    });
-    expect(deleted.status()).toBe(200);
-  }
+  // 401: the test never signed in, so added nothing.
+  await deleteConnectorsNamed(page, [SERVER], [401]);
 });
 
 test('the marks drawn over checkboxes and radios stay visible in forced colors', async ({
