@@ -21,6 +21,7 @@ use super::{
     metadata_endpoint, openid, registration_endpoint, revocation_endpoint, token_endpoint,
 };
 use crate::outbound::{NetworkPolicy, http_client};
+use crate::testing::Hold;
 
 pub const CLIENT_ID: &str = "mimorya-test-client";
 pub const CLIENT_SECRET: &str = "secret-du-client-de-test";
@@ -63,8 +64,12 @@ pub struct Settings {
     pub identity: Option<SignedIn>,
     /// How it spoils the identity tokens it gives.
     pub id_token_quirk: IdTokenQuirk,
-    /// Its metadata kept back this long: a discovery that takes its time.
-    pub held_metadata: Option<Duration>,
+    /// Its metadata held until the test lets it through: a discovery
+    /// that takes its time.
+    pub metadata_hold: Option<Arc<Hold>>,
+    /// Its OpenID configuration held the same way: a verification of an
+    /// identity token that takes its time.
+    pub configuration_hold: Option<Arc<Hold>>,
 }
 
 impl Default for Settings {
@@ -88,7 +93,8 @@ impl Default for Settings {
             secret_lifetime: None,
             identity: None,
             id_token_quirk: IdTokenQuirk::None,
-            held_metadata: None,
+            metadata_hold: None,
+            configuration_hold: None,
         }
     }
 }

@@ -6,7 +6,7 @@
 use axum::http::StatusCode;
 use mimorya_api::services::connectors::{access_sealed_as, refresh_sealed_as};
 use mimorya_connectors::testing::{
-    CLIENT_ID, CLIENT_SECRET, FakeAuthorizationServer, OAuthQuirk, ProtectedMcp,
+    CLIENT_ID, CLIENT_SECRET, FakeAuthorizationServer, Hold, OAuthQuirk, ProtectedMcp,
     serve_oauth_mcp_http,
 };
 use mimorya_core::demo::{tenant, user};
@@ -73,6 +73,18 @@ pub fn api_path(location: &str) -> String {
         .strip_prefix(&format!("{WEB_ORIGIN}/api"))
         .expect("under the API")
         .to_string()
+}
+
+/// Until `hold` holds `count` requests at once: declarations finding the
+/// server, or returns verifying who authorized. Failing, rather than
+/// waiting forever, if it never does.
+pub async fn holding(hold: &Hold, count: usize) {
+    let held = tokio::time::timeout(
+        std::time::Duration::from_secs(30),
+        hold.holding_at_once(count),
+    )
+    .await;
+    assert!(held.is_ok(), "the authorization server never held {count}");
 }
 
 /// The browser's return, signed in as `admin`, with this cookie, if any.

@@ -1,6 +1,7 @@
 //! Encrypted secrets of a company (API keys…), as bytes: the API seals and
 //! opens them; the database never sees a value in clear.
 
+use chrono::{DateTime, Utc};
 use sqlx::PgConnection;
 use uuid::Uuid;
 
@@ -49,6 +50,18 @@ pub async fn put_secret(
 
 pub async fn get_secret(conn: &mut PgConnection, name: &str) -> sqlx::Result<Option<StoredSecret>> {
     sqlx::query_as("select ciphertext, iv, auth_tag, key_version from secrets where name = $1")
+        .bind(name)
+        .fetch_optional(conn)
+        .await
+}
+
+/// When the secret of that name was last written, if one is stored: never
+/// its value.
+pub async fn secret_written_at(
+    conn: &mut PgConnection,
+    name: &str,
+) -> sqlx::Result<Option<DateTime<Utc>>> {
+    sqlx::query_scalar("select updated_at from secrets where name = $1")
         .bind(name)
         .fetch_optional(conn)
         .await

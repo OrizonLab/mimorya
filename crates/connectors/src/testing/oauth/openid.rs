@@ -64,9 +64,12 @@ pub enum IdTokenQuirk {
 }
 
 /// Its OpenID configuration, naming its key set: absent until someone is
-/// signed in.
+/// signed in; held until the test lets it through (`configuration_hold`).
 pub(super) async fn configuration(State(server): State<FakeAuthorizationServer>) -> Response {
     let settings = server.inner.lock().expect("server").settings.clone();
+    if let Some(hold) = settings.configuration_hold {
+        hold.wait().await;
+    }
     if settings.identity.is_none() {
         return StatusCode::NOT_FOUND.into_response();
     }

@@ -68,6 +68,9 @@ pub struct McpEndpoint {
     pub token_stored: bool,
     /// OAuth declared on it (ADR-171), which no typed token goes with.
     pub oauth: Option<McpOAuth>,
+    /// The version of its OAuth, declared or not, that a declaration names
+    /// to replace only what its administrator saw (ADR-176).
+    pub oauth_version: String,
 }
 
 #[derive(Debug, Serialize, TS)]

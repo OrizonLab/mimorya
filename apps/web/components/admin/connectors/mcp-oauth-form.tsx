@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from 'react';
 import { Button, Checkbox, ErrorNote, Field, Input, Radio } from '@/components/ui';
-import { api, useAction, type ConnectorView, type McpOAuthDeclaration } from '@/lib/api';
+import { api, ApiError, useAction, type ConnectorView, type McpOAuthDeclaration } from '@/lib/api';
 import { REGISTERED_CLIENT_STAYS } from './registered-client';
 
 /**
@@ -16,18 +16,23 @@ import { REGISTERED_CLIENT_STAYS } from './registered-client';
  * account (OpenID Connect, ADR-175). Declared again,
  * everything is replaced, the secret too, and the authorizations given
  * under the former declaration go. A typed token goes as well: OAuth
- * replaces it.
+ * replaces it. It replaces only what it was opened on (ADR-176): changed
+ * meanwhile, it is refused, and the list is read again once it closes.
  */
 export function McpOAuthForm({
   connector,
+  opened,
   redirectUri,
   secretsAvailable,
   onDone,
 }: {
   connector: ConnectorView;
+  /** The server's `oauthVersion` as the form was opened (ADR-176). */
+  opened: string | undefined;
   /** Where the authorization server sends the browser back. */
   redirectUri: string;
   secretsAvailable: boolean;
+  /** Closes it; `true`: the list is read again, saved or changed meanwhile. */
   onDone: (changed: boolean) => void;
 }) {
   const declared = connector.mcp?.oauth ?? null;
@@ -39,6 +44,7 @@ export function McpOAuthForm({
   const [scopes, setScopes] = useState(declared?.scopes.join(' ') ?? '');
   const [perPerson, setPerPerson] = useState(declared?.perPerson ?? false);
   const [verifyIdentity, setVerifyIdentity] = useState(declared?.verifiesIdentity ?? false);
+  const [stale, setStale] = useState(false);
   const action = useAction();
 
   async function submit(event: FormEvent) {
@@ -72,8 +78,16 @@ export function McpOAuthForm({
       scopes: asked ? asked.split(/\s+/) : undefined,
       perPerson,
       verifyIdentity: perPerson && verifyIdentity,
+      replaces: opened,
     } satisfies McpOAuthDeclaration;
-    const saved = await action.run(() => api.put(`/admin/connectors/${connector.id}/oauth`, body));
+    const saved = await action.run(async () => {
+      try {
+        return await api.put(`/admin/connectors/${connector.id}/oauth`, body);
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 409) setStale(true);
+        throw error;
+      }
+    });
     if (saved) onDone(true);
   }
 
@@ -207,7 +221,7 @@ export function McpOAuthForm({
           type="button"
           variant="ghost"
           disabled={action.pending}
-          onClick={() => onDone(false)}
+          onClick={() => onDone(stale)}
         >
           Annuler
         </Button>

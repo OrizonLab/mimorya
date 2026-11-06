@@ -1,9 +1,11 @@
 // An MCP server's OAuth declared again with the other holder (ADR-174):
 // the confirmation says what goes, every person's authorization when the
 // company is to authorize it, the company's when each person is, and the
-// declaration then read back from the API. The server added is deleted,
-// even when the test fails.
+// declaration then read back from the API. A declaration changed while
+// its form was open is not replaced from it (ADR-176). The server added is
+// deleted, even when the test fails.
 import type { Page } from '@playwright/test';
+import type { McpOAuthHolder } from '../lib/api/contract';
 import {
   addServer,
   cardWith,
@@ -88,5 +90,47 @@ test('declaring again with the other holder says what it takes', async ({ page }
   const each = await connectorNamed(page, SERVER);
   expect(each?.mcp?.oauth?.perPerson).toBe(true);
   expect(each?.mcp?.oauth?.authorization).toBeNull();
+  await noError(page);
+});
+
+test('a declaration changed while its form is open is not replaced', async ({ page }) => {
+  await openAdmin(page, 'Connecteurs');
+  await addServer(page, SERVER, 'redecl', ADDRESS);
+  const card = cardWith(page, SERVER, 'Supprimer');
+  await card.getByRole('button', { name: 'Déclarer OAuth' }).click();
+  await card.getByLabel('Identifiant du client').fill(CLIENT_ID);
+  await card.getByLabel(/^Secret du client/).fill(CLIENT_SECRET);
+  await card.getByRole('button', { name: 'Déclarer', exact: true }).click();
+  await expect(card.getByText('Non autorisé', { exact: true })).toBeVisible();
+
+  // Opened, then changed elsewhere: each person is to authorize it.
+  await card.getByRole('button', { name: 'Modifier la déclaration' }).click();
+  await expect(card.getByLabel(COMPANY)).toBeChecked();
+  const declared = await connectorNamed(page, SERVER);
+  const elsewhere = await page.request.put(`/api/admin/connectors/${declared?.id}/oauth/holder`, {
+    headers: { 'X-Mimorya-Request': '1' },
+    data: { perPerson: true } satisfies McpOAuthHolder,
+  });
+  expect(elsewhere.status()).toBe(200);
+
+  // Declared from the form opened before: refused, the change kept.
+  await card.getByLabel(/^Secret du client/).fill(CLIENT_SECRET);
+  await card.getByRole('button', { name: 'Déclarer', exact: true }).click();
+  await expect(
+    card.getByText(/^La déclaration OAuth de ce serveur a changé depuis l’ouverture/),
+  ).toBeVisible();
+  expect((await connectorNamed(page, SERVER))?.mcp?.oauth?.perPerson).toBe(true);
+
+  // Closed, the list is read again: reopened, the form shows the change.
+  await card.getByRole('button', { name: 'Annuler' }).click();
+  await expect(card.getByText('Chaque personne l’autorise', { exact: true })).toBeVisible();
+  await card.getByRole('button', { name: 'Modifier la déclaration' }).click();
+  await expect(card.getByLabel(EACH)).toBeChecked();
+  await card.getByLabel(/^Secret du client/).fill(CLIENT_SECRET);
+  await card.getByRole('button', { name: 'Déclarer', exact: true }).click();
+  await expect(card.getByRole('button', { name: 'Modifier la déclaration' })).toBeVisible();
+  const kept = await connectorNamed(page, SERVER);
+  expect(kept?.mcp?.oauth?.perPerson).toBe(true);
+  expect(kept?.mcp?.oauthVersion).not.toBe(declared?.mcp?.oauthVersion);
   await noError(page);
 });

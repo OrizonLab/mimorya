@@ -15,7 +15,9 @@
 //! authorizes the server: the company, or each person for themself, and
 //! then whether its authorization server must prove who does
 //! (`connector_identity`, ADR-175). A declaration that can no longer be
-//! read is replaced or withdrawn all the same.
+//! read is replaced or withdrawn all the same. One naming the version of
+//! what it replaces is refused once that changed (ADR-176): checked before
+//! anything is asked of the server, and again under the lock.
 
 use mimorya_connectors::mcp::oauth::{OAuthDeclaration, OAuthHolder, discover, scopes_problem};
 use mimorya_core::DomainError;
@@ -23,7 +25,7 @@ use mimorya_db::repositories::audit::append_audit;
 use mimorya_db::repositories::connectors::{
     ConnectorInstanceRow, ConnectorPatch, get_connector_instance, update_connector_instance,
 };
-use serde_json::json;
+use serde_json::{Value, json};
 use uuid::Uuid;
 
 use super::connector_authorization::{revocable_under, revoke, take_authorizations};
@@ -31,6 +33,7 @@ use super::connector_identity::{identity_scopes, verification_unchanged, verifie
 use super::connectors::{ConnectorAdmin, PERMISSION};
 use super::mcp_config::{Unreadable, mcp_config, stored_oauth};
 use super::oauth_client::{Declared, OAuthClient, declared};
+use super::oauth_version::unchanged_since;
 use super::{audit_entry, begin_change};
 use crate::services::AccessContext;
 use crate::services::connectors::{client_secret_name, token_secret_name};
@@ -55,6 +58,9 @@ pub struct OAuthInput {
     /// `None` keeps what the declaration replaced said, while each person
     /// authorizes it.
     pub verify_identity: Option<bool>,
+    /// The version of the OAuth stored that this declaration replaces, as
+    /// its administrator saw it (ADR-176); `None`: whatever it is.
+    pub replaces: Option<String>,
 }
 
 /// An MCP server added here, as its OAuth sees it.
@@ -65,6 +71,8 @@ pub(super) struct McpServer {
     /// A declaration is stored but cannot be read: it is replaced or
     /// withdrawn all the same.
     pub unreadable: bool,
+    /// What is stored of its OAuth, as it is, for its version (ADR-176).
+    stored: Option<Value>,
 }
 
 impl McpServer {
@@ -86,6 +94,7 @@ impl McpServer {
             url: text("url"),
             declared,
             unreadable,
+            stored: config.get("oauth").cloned(),
         })
     }
 }
@@ -113,6 +122,8 @@ pub async fn declare_oauth(
     // who authorizes is to be verified, as the holder will be.
     let mut tx = admin.db.begin(tenant_id).await?;
     let read = McpServer::of(get_connector_instance(&mut tx, id).await?)?;
+    let replaces = input.replaces.as_deref();
+    unchanged_since(&mut tx, id, read.stored.as_ref(), replaces).await?;
     tx.commit().await?;
     let read_holder = read.declared.as_ref().map(|declared| declared.holder);
     let holder = input.holder.or(read_holder).unwrap_or_default();
@@ -145,6 +156,7 @@ pub async fn declare_oauth(
 
     let mut tx = begin_change(admin.db, access, PERMISSION).await?;
     let current = McpServer::of(get_connector_instance(&mut tx, id).await?)?;
+    unchanged_since(&mut tx, id, current.stored.as_ref(), replaces).await?;
     let kept = current.declared.as_ref().map(|current| current.holder);
     declaration.holder = input.holder.or(kept).unwrap_or_default();
     declaration.verifies_identity = verify;
