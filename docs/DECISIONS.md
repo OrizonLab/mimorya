@@ -11442,8 +11442,8 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
 
 ## ADR-177 — Connecteurs : un démarrage en arrière-plan, qu'une personne n'attend que sa patience (lot 48)
 
-- **Statut** : accepté (2026-11-06), complété au lot 49 · complète ADR-049, ADR-163 et
-  ADR-174.
+- **Statut** : accepté (2026-11-06), complété aux lots 49 et 50 · complète ADR-049,
+  ADR-163 et ADR-174.
 - **Contexte** : un run qui a besoin d'une instance de connecteur la démarre, ou attend
   la tentative en cours qu'un autre run a lancée (ADR-049). Il l'attend jusqu'au bout,
   c'est-à-dire jusqu'au délai de démarrage (20 s par défaut,
@@ -11505,7 +11505,10 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     récente** (lot 49) : un démarrage qui finit alors qu'une version plus récente
     démarre, vit ou a échoué, son échec encore retenu, ferme ce qu'il a démarré et
     laisse l'entrée en place ; un échec oublié ne retient plus rien, comme pour les
-    runs qui le lisent.
+    runs qui le lisent. Une seule règle dit quelle entrée plus récente garde la place,
+    pour les runs comme pour les démarrages (`Slot::newer_than`, lot 50) ; un
+    démarrage juge d'abord la session d'une instance vivante en place, comme un run :
+    fermée pour de bon, elle ne garde pas la place (lot 50).
     Avant, il la remplaçait, et les runs de la version plus récente démarraient la
     leur une deuxième fois, ou oubliaient son échec retenu.
 - **Conséquences** :
@@ -11540,7 +11543,8 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       (`connectors/failures.rs`) ;
     - les tests des sessions fermées passent dans `cache/closed.rs`, dont, au lot 49,
       une instance plus récente fermée, tôt ou tard, jugée avant de servir un run plus
-      ancien ;
+      ancien, et, au lot 50, avant qu'un démarrage plus ancien qui finit tard lui cède
+      la place ;
     - `crates/api/tests/connector_start_patience.rs` :
       - face à un serveur retenu, un tour revient après sa patience, sans que rien
         soit enregistré, et le serveur sert le tour suivant ;

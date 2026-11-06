@@ -68,7 +68,7 @@ mod tests {
     use mimorya_connectors::ConnectorRuntime;
     use uuid::Uuid;
 
-    use super::super::tests::{Started, raised, unavailable};
+    use super::super::tests::{Started, gated, raised, unavailable};
     use super::super::{Origin, RuntimeCache};
     use super::*;
 
@@ -233,6 +233,38 @@ mod tests {
             panic!("expected the older version started");
         };
         assert!(!Arc::ptr_eq(&closing, &own));
+        assert_eq!(starts.load(Ordering::SeqCst), 2);
+        released(&session).await;
+    }
+
+    /// A start of an older version ending once a newer instance's session
+    /// closed for good does not give way to it: that instance is released,
+    /// the older start's kept for the run that waited for it.
+    #[tokio::test(start_paused = true)]
+    async fn an_older_start_ending_late_judges_a_newer_instance_first() {
+        let cache = RuntimeCache::default();
+        let id = Uuid::new_v4();
+        let (older, newer) = (Utc::now(), Utc::now() + chrono::Duration::seconds(1));
+        let starts = Arc::new(AtomicUsize::new(0));
+        let session = Arc::new(Session::default());
+        let gate = Arc::new(tokio::sync::Notify::new());
+        let older_start = gated(&starts, &gate, || {
+            Ok(ConnectorRuntime {
+                tools: Vec::new(),
+                closer: None,
+            })
+        });
+        // Not bounded by a timeout: the clock jumps past `QUICK_EXIT`.
+        let (waited, ()) =
+            tokio::join!(cache.get_or_start(id, older, 0, None, older_start), async {
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                let started = cache.get_or_start(id, newer, 0, None, with(&starts, &session));
+                assert!(started.await.is_ok(), "the newer instance went live");
+                tokio::time::advance(QUICK_EXIT).await;
+                session.closed.store(true, Ordering::SeqCst);
+                gate.notify_one();
+            });
+        assert!(waited.is_ok(), "the older start's instance serves its run");
         assert_eq!(starts.load(Ordering::SeqCst), 2);
         released(&session).await;
     }

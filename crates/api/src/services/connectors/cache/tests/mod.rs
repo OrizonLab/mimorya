@@ -50,7 +50,7 @@ pub(super) fn counted(
 
 /// A start that counts itself, then waits for `gate` before it gives what
 /// `make` makes.
-fn gated(
+pub(super) fn gated(
     starts: &Arc<AtomicUsize>,
     gate: &Arc<Notify>,
     make: impl FnOnce() -> Result<ConnectorRuntime, String> + Send + 'static,
