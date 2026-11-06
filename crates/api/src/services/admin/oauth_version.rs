@@ -2,7 +2,9 @@
 //! (ADR-176): what is declared on it, or nothing, when its client's secret
 //! was written (sealed apart, never in the declaration), and what declaring
 //! it again would take: the company's authorization and those people gave
-//! for themselves. The connectors list and a declaration read it alike
+//! for themselves, each counted by when it was given, so that one withdrawn
+//! and another given still changes it, never by who gave it. The
+//! connectors list and a declaration read it alike
 //! (`OAuthSeen`). A declaration naming the version its form was opened on
 //! is refused once that changed: what its administrator saw, and was told
 //! declaring again would take, is no longer what is there.
@@ -12,7 +14,7 @@ use mimorya_core::DomainError;
 use mimorya_db::repositories::connector_authorizations::{
     ConnectorAuthorizationRow, get_connector_authorization,
 };
-use mimorya_db::repositories::connector_person_authorizations::count_person_authorizations;
+use mimorya_db::repositories::connector_person_authorizations::person_authorization_times;
 use mimorya_db::repositories::secrets::secret_written_at;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -32,6 +34,8 @@ pub struct OAuthSeen {
     pub authorization: Option<ConnectorAuthorizationRow>,
     /// How many people authorized the server for themselves.
     pub persons: i64,
+    /// When each of them did, in order: never who.
+    person_times: Vec<DateTime<Utc>>,
     /// When its client's secret was last written, if one is stored.
     pub secret_written_at: Option<DateTime<Utc>>,
 }
@@ -39,9 +43,11 @@ pub struct OAuthSeen {
 impl OAuthSeen {
     /// As `conn` reads it for connector `id`.
     pub async fn read(conn: &mut PgConnection, id: Uuid) -> anyhow::Result<Self> {
+        let person_times = person_authorization_times(conn, id).await?;
         Ok(Self {
             authorization: get_connector_authorization(conn, id).await?,
-            persons: count_person_authorizations(conn, id).await?,
+            persons: i64::try_from(person_times.len()).unwrap_or(i64::MAX),
+            person_times,
             secret_written_at: secret_written_at(conn, &client_secret_name(id)).await?,
         })
     }
@@ -51,7 +57,7 @@ impl OAuthSeen {
     pub fn version(&self, stored: Option<&Value>) -> String {
         let authorized_at = self.authorization.as_ref().map(|row| &row.authorized_at);
         let secret = self.secret_written_at.as_ref();
-        version_of(stored, authorized_at, self.persons, secret)
+        version_of(stored, authorized_at, &self.person_times, secret)
     }
 }
 
@@ -59,9 +65,13 @@ impl OAuthSeen {
 fn version_of(
     stored: Option<&Value>,
     authorized_at: Option<&DateTime<Utc>>,
-    persons: i64,
+    person_times: &[DateTime<Utc>],
     secret_written_at: Option<&DateTime<Utc>>,
 ) -> String {
+    let persons: Vec<i64> = person_times
+        .iter()
+        .map(DateTime::timestamp_micros)
+        .collect();
     let seen = json!({
         "oauth": stored.unwrap_or(&Value::Null),
         "authorizedAt": authorized_at.map(DateTime::timestamp_micros),
@@ -106,29 +116,39 @@ mod tests {
         let declared = json!({ "clientId": "a" });
         let at = DateTime::from_timestamp(1_700_000_000, 0).expect("date");
         let later = at + chrono::Duration::microseconds(1);
-        let version = version_of(Some(&declared), Some(&at), 2, Some(&at));
+        let latest = later + chrono::Duration::microseconds(1);
+        let two = [at, later];
+        let seen = |stored: Option<&Value>, authorized, people: &[_], secret| {
+            version_of(stored, authorized, people, secret)
+        };
+        let version = seen(Some(&declared), Some(&at), &two, Some(&at));
         assert_eq!(version.len(), 64);
-        assert_eq!(
-            version,
-            version_of(Some(&declared), Some(&at), 2, Some(&at))
-        );
+        assert_eq!(version, seen(Some(&declared), Some(&at), &two, Some(&at)));
         for other in [
-            version_of(Some(&json!({ "clientId": "b" })), Some(&at), 2, Some(&at)),
-            version_of(Some(&json!("illisible")), Some(&at), 2, Some(&at)),
-            version_of(None, Some(&at), 2, Some(&at)),
-            version_of(Some(&declared), None, 2, Some(&at)),
-            version_of(Some(&declared), Some(&later), 2, Some(&at)),
-            version_of(Some(&declared), Some(&at), 3, Some(&at)),
+            seen(
+                Some(&json!({ "clientId": "b" })),
+                Some(&at),
+                &two,
+                Some(&at),
+            ),
+            seen(Some(&json!("illisible")), Some(&at), &two, Some(&at)),
+            seen(None, Some(&at), &two, Some(&at)),
+            seen(Some(&declared), None, &two, Some(&at)),
+            seen(Some(&declared), Some(&later), &two, Some(&at)),
+            // One more person, one fewer, or one withdrawn and another given.
+            seen(Some(&declared), Some(&at), &[at, later, latest], Some(&at)),
+            seen(Some(&declared), Some(&at), &[at], Some(&at)),
+            seen(Some(&declared), Some(&at), &[at, latest], Some(&at)),
             // Its client's secret written again, or gone.
-            version_of(Some(&declared), Some(&at), 2, Some(&later)),
-            version_of(Some(&declared), Some(&at), 2, None),
+            seen(Some(&declared), Some(&at), &two, Some(&later)),
+            seen(Some(&declared), Some(&at), &two, None),
         ] {
             assert_ne!(version, other);
         }
         // Nothing declared, or null: alike.
         assert_eq!(
-            version_of(None, None, 0, None),
-            version_of(Some(&Value::Null), None, 0, None)
+            seen(None, None, &[], None),
+            seen(Some(&Value::Null), None, &[], None)
         );
     }
 

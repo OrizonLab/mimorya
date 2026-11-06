@@ -11339,7 +11339,7 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       pour chacun avec la vérification, carte et « Mon compte » qui le disent, Marc
       autorisé, Lucas connecté chez le serveur comme Marc refusé et prévenu une fois, puis le serveur passé à l'entreprise, la confirmation disant la vérification retirée) ; la case de la déclaration porte un libellé court, son explication lui étant liée (`aria-describedby`), et « Compte vérifié » a le même ton sur la carte et dans « Mon compte ».
 
-## ADR-176 — OAuth des serveurs MCP : une déclaration ne remplace que ce que son administrateur a vu (lot 46)
+## ADR-176 — OAuth des serveurs MCP : une déclaration ne remplace que ce que son administrateur a vu (lots 46 et 47)
 
 - **Statut** : accepté (2026-11-06) · complète ADR-171, ADR-174 et ADR-175.
 - **Contexte** : le formulaire de déclaration OAuth d'un serveur MCP est prérempli de
@@ -11363,7 +11363,9 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       l'identique avec un autre secret (une rotation) la change ainsi ; jamais la
       valeur du secret ;
     - la date de l'autorisation de l'entreprise, s'il y en a une ;
-    - le nombre de personnes qui ont autorisé le serveur pour elles-mêmes.
+    - quand chaque personne a autorisé le serveur pour elle-même, jamais qui : une
+      autorisation retirée et une autre donnée la changent, même si leur nombre
+      reste le même (lot 47 ; au lot 46, l'empreinte ne comptait que ce nombre).
 
     Tout changement de l'un d'eux la change. Une autorisation renouvelée ne la change
     pas : son jeton change, pas ce que déclarer de nouveau retire. Une déclaration
@@ -11372,9 +11374,9 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     que le service lit, et l'envoi est refusé ;
 
   - **une déclaration la nomme** (`replaces`, facultatif dans le corps de
-    `PUT /admin/connectors/{id}/oauth`, 64 caractères au plus). Si elle diffère de la
-    version lue, la
-    déclaration est refusée (409, « La déclaration OAuth de ce serveur a changé depuis
+    `PUT /admin/connectors/{id}/oauth`, 64 caractères au plus : au-delà, le corps est
+    refusé comme invalide, 400). Si elle diffère de la version lue, la déclaration
+    est refusée (409, « La déclaration OAuth de ce serveur a changé depuis
     l'ouverture de ce formulaire : fermez-le et rouvrez-le »), et rien de ce qui a
     changé n'est défait. La version est contrôlée deux fois :
     - avant tout appel au serveur, découverte ou enregistrement d'un client : un
@@ -11394,10 +11396,11 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     mais la version reste celle de l'ouverture, et l'envoi est refusé. Refusé, le
     formulaire garde le message ; fermé, il fait relire la liste, et rouvert, il
     montre la déclaration telle qu'elle est, avec ce qu'elle retirerait ;
-  - **le retour d'une autorisation garde sa place** parmi les démarrages de
-    l'administration de l'entreprise (ADR-055) jusqu'à la fin de la vérification de
-    l'identité (ADR-175), et non seulement pendant l'échange du code. Un test le montre
-    (`a_return_keeps_its_start_while_it_verifies_who_authorized`) : deux retours
+  - **un test confirme une règle d'ADR-175** : depuis le lot 45b, le retour d'une
+    autorisation garde sa place parmi les démarrages de l'administration de
+    l'entreprise (ADR-055) jusqu'à la fin de la vérification de l'identité, et non
+    seulement pendant l'échange du code ; aucun test ne le montrait. C'est fait par
+    `a_return_keeps_its_start_while_it_verifies_who_authorized` : deux retours
     vérifient en même temps, la configuration OpenID du serveur retenue ; un troisième
     démarrage est refusé, puis accepté une fois les deux finis.
 - **Conséquences** :
@@ -11421,7 +11424,10 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       pas contrôlée ;
     - le secret du client écrit de nouveau, rien d'autre ne changeant, rend périmée
       la version d'avant ;
-    - une autorisation donnée pendant la découverte est vue sous le verrou.
+    - une autorisation donnée pendant la découverte est vue sous le verrou ;
+    - une autorisation retirée et une autre donnée, leur nombre inchangé, rendent
+      périmée la version d'avant ; une version de plus de 64 caractères est refusée
+      comme invalide (lot 47).
 
     S'y ajoutent `connector_person_identity_races.rs` (la place gardée pendant la
     vérification de l'identité) et les tests unitaires de l'empreinte.

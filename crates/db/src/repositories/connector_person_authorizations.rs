@@ -145,6 +145,22 @@ pub async fn count_person_authorizations(
     .await
 }
 
+/// When each authorization of the connector was given, in order: what the
+/// version of its OAuth counts (ADR-176), so that any authorization given
+/// or withdrawn changes it, never naming who.
+pub async fn person_authorization_times(
+    conn: &mut PgConnection,
+    connector_id: Uuid,
+) -> sqlx::Result<Vec<DateTime<Utc>>> {
+    sqlx::query_scalar(
+        "select authorized_at from connector_person_authorizations where connector_id = $1 \
+         order by authorized_at",
+    )
+    .bind(connector_id)
+    .fetch_all(conn)
+    .await
+}
+
 /// The person's access token for the connector, if they authorized it.
 pub async fn person_access_token(
     conn: &mut PgConnection,
