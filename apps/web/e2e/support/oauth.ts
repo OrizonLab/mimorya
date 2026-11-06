@@ -18,3 +18,8 @@ export async function listedConnectors(page: Page) {
   expect(response.status()).toBe(200);
   return ((await response.json()) as Connectors).instances;
 }
+
+/** The company's connector named `name`, as the API lists it, if any. */
+export async function connectorNamed(page: Page, name: string) {
+  return (await listedConnectors(page)).find((connector) => connector.name === name);
+}

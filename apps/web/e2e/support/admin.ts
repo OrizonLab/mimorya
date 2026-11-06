@@ -9,10 +9,20 @@ export async function openAdmin(page: Page, tab: string) {
   await expect(page.getByText('Chargement…')).toHaveCount(0);
 }
 
+/** The administration's « Connecteurs » tab, the administrator signed in already. */
+export async function connectorsTab(page: Page) {
+  await page.goto('/admin');
+  await page.getByRole('tab', { name: 'Connecteurs' }).click();
+  await expect(page.getByText('Chargement…')).toHaveCount(0);
+}
+
 /**
  * The innermost block showing `text` and a button named exactly `button`:
  * one card's row. Locators keep the document's order, where a block comes
  * before the blocks it contains, so the last match is the innermost one.
+ * Anchor it on a button every card of the list has (« Supprimer »): one
+ * only some cards have (« Activer ») may name a block holding several of
+ * them while the card sought does not show it yet.
  */
 export function cardWith(page: Page, text: string, button: string): Locator {
   return page
