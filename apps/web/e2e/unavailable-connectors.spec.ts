@@ -3,7 +3,8 @@
 // The server the test adds is deleted, and a validation left waiting is
 // refused, even when it fails.
 import type { BrowserContext } from '@playwright/test';
-import type { Connectors, NewConnector } from '../lib/api/contract';
+import type { NewConnector } from '../lib/api/contract';
+import { deleteConnectorsNamed } from './support/admin';
 import { refuseWaiting } from './support/approvals';
 import { demo, expect, noError, signIn, test } from './support/fixtures';
 import { REFERENCE_REQUEST } from './support/scenario';
@@ -21,15 +22,7 @@ async function administrator(newContext: () => Promise<BrowserContext>) {
 test.afterEach(async ({ page, newContext }) => {
   await refuseWaiting(page);
   const admin = await administrator(newContext);
-  const listed = await admin.request.get('/api/admin/connectors');
-  expect(listed.status()).toBe(200);
-  const { instances } = (await listed.json()) as Connectors;
-  for (const connector of instances.filter((c) => c.name === SERVER)) {
-    const deleted = await admin.request.delete(`/api/admin/connectors/${connector.id}`, {
-      headers: WRITE,
-    });
-    expect(deleted.status()).toBe(200);
-  }
+  await deleteConnectorsNamed(admin, [SERVER]);
 });
 
 test('a request names the connector it goes without', async ({ page, newContext }) => {

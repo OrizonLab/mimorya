@@ -132,7 +132,9 @@ const TELEGRAM_ADDRESS: &str = "127.0.0.1:4104";
 /// signs activities: `teams-gateway.spec.ts` reads and asks there (ADR-139).
 const TEAMS_ADDRESS: &str = "127.0.0.1:4105";
 /// Where an MCP server's authorization server listens, and the server it
-/// protects: `mcp-oauth.spec.ts` declares and authorizes it (ADR-171). The
+/// protects: `mcp-oauth.spec.ts` declares and authorizes it for the company
+/// (ADR-171), `mcp-person-oauth.spec.ts` and
+/// `mcp-person-oauth-declarations.spec.ts` for each person (ADR-174). The
 /// connectors reach these alone of the private network.
 const OAUTH_AUTHORITY_ADDRESS: &str = "127.0.0.1:4106";
 const OAUTH_MCP_ADDRESS: &str = "127.0.0.1:4107";

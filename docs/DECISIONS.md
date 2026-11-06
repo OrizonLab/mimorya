@@ -11195,8 +11195,9 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     statut inattendu ; « chacune doit aussi retirer son accord chez lui » ; `cardWith`
     dit d'ancrer sur un bouton que toutes les cartes portent ; le harnais des tests de
     l'API sépare ses requêtes et ses sessions (`tests/support/sign_in.rs`). La durée du
-    job Rust de la CI varie d'un run de `main` à l'autre (de 26 à 39 minutes) comme sur
-    les PR : un cache manqué des PR n'est pas établi, le délai de 60 minutes est gardé ;
+    job Rust de la CI varie d'un run de `main` à l'autre (de 24 à 43 minutes sur les dix
+    derniers) comme sur les PR : un cache manqué des PR n'est pas établi, le délai de 60
+    minutes est gardé ;
   - aucune preuve d'identité n'est demandée au serveur d'autorisation : une personne
     peut autoriser avec un compte qu'elle partage ; « Mon compte » le dit ;
   - deux personnes qui autorisent avec le même compte chez le serveur peuvent voir

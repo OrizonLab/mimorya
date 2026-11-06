@@ -6,7 +6,7 @@
 // Whatever happens, the company keeps the platform's model and loses the test
 // server: the scenario that follows runs with them.
 import type { ConnectorTest, Connectors, TestedTool } from '../lib/api/contract';
-import { addForeignServer, cardWith, openAdmin } from './support/admin';
+import { addForeignServer, cardWith, deleteConnectorsNamed, openAdmin } from './support/admin';
 import { expect, FOREIGN_HOST, noError, test } from './support/fixtures';
 
 const SERVER = 'Documents e2e';
@@ -23,15 +23,7 @@ test.afterEach(async ({ page }) => {
   const reset = await page.request.delete('/api/admin/llm', { headers: WRITE });
   expect([200, 401, 404]).toContain(reset.status());
   if (reset.status() === 401) return;
-  const listed = await page.request.get('/api/admin/connectors');
-  expect(listed.status()).toBe(200);
-  const { instances } = (await listed.json()) as Connectors;
-  for (const connector of instances.filter((c) => c.name === SERVER)) {
-    const deleted = await page.request.delete(`/api/admin/connectors/${connector.id}`, {
-      headers: WRITE,
-    });
-    expect(deleted.status()).toBe(200);
-  }
+  await deleteConnectorsNamed(page, [SERVER]);
 });
 
 test('an MCP server is added with its token, disabled and deleted', async ({ page }) => {

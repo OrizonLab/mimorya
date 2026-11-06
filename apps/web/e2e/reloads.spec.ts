@@ -7,12 +7,11 @@
 import type {
   AccountUpdate,
   ConnectorTest,
-  Connectors,
   Directory,
   Roles,
   TestedTool,
 } from '../lib/api/contract';
-import { addForeignServer, openAdmin } from './support/admin';
+import { addForeignServer, deleteConnectorsNamed, openAdmin } from './support/admin';
 import { expect, noError, test } from './support/fixtures';
 import { holdList } from './support/hold';
 
@@ -31,15 +30,7 @@ test.afterEach(async ({ page }) => {
     const deleted = await page.request.delete(`/api/admin/roles/${role.id}`, { headers: WRITE });
     expect(deleted.status()).toBe(200);
   }
-  const connectors = await page.request.get('/api/admin/connectors');
-  expect(connectors.status()).toBe(200);
-  const { instances } = (await connectors.json()) as Connectors;
-  for (const connector of instances.filter((c) => c.name === SERVER || c.name === CHOICE)) {
-    const deleted = await page.request.delete(`/api/admin/connectors/${connector.id}`, {
-      headers: WRITE,
-    });
-    expect(deleted.status()).toBe(200);
-  }
+  await deleteConnectorsNamed(page, [SERVER, CHOICE]);
 });
 
 test('an account’s forms wait for, then follow, the reloaded directory', async ({ page }) => {

@@ -4,18 +4,22 @@
 // declaration then read back from the API. The server added is deleted,
 // even when the test fails.
 import type { Page } from '@playwright/test';
-import { addServer, cardWith, connectorsTab, openAdmin } from './support/admin';
+import {
+  addServer,
+  cardWith,
+  connectorsTab,
+  deleteConnectorsNamed,
+  openAdmin,
+} from './support/admin';
 import { expect, noError, test } from './support/fixtures';
 import {
   OAUTH_CLIENT_ID as CLIENT_ID,
   OAUTH_CLIENT_SECRET as CLIENT_SECRET,
   OAUTH_SERVER as ADDRESS,
   connectorNamed,
-  listedConnectors,
 } from './support/oauth';
 
 const SERVER = 'Fichiers redéclarés e2e';
-const WRITE = { 'X-Mimorya-Request': '1' };
 const EACH = 'Chaque personne, pour elle-même, dans « Mon compte »';
 const COMPANY = 'L’entreprise, une fois pour tous les runs';
 
@@ -31,17 +35,7 @@ test.beforeEach(({ page }) => {
 });
 
 test.afterEach(async ({ page }) => {
-  // 401: the test never signed in, so added nothing.
-  const response = await page.request.get('/api/admin/connectors');
-  expect([200, 401]).toContain(response.status());
-  if (response.status() !== 200) return;
-  for (const connector of await listedConnectors(page)) {
-    if (connector.name !== SERVER) continue;
-    const deleted = await page.request.delete(`/api/admin/connectors/${connector.id}`, {
-      headers: WRITE,
-    });
-    expect(deleted.status()).toBe(200);
-  }
+  await deleteConnectorsNamed(page, [SERVER], [401]);
 });
 
 /** Declares the server again, `holder` chosen, its secret typed anew. */

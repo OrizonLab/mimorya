@@ -15,7 +15,13 @@
 // waiting is refused, even when the test fails.
 import type { Page } from '@playwright/test';
 import type { PersonAuthorizations } from '../lib/api/contract';
-import { addServer, cardWith, connectorsTab, openAdmin } from './support/admin';
+import {
+  addServer,
+  cardWith,
+  connectorsTab,
+  deleteConnectorsNamed,
+  openAdmin,
+} from './support/admin';
 import { refuseWaiting } from './support/approvals';
 import { demo, expect, noError, signIn, test } from './support/fixtures';
 import {
@@ -23,12 +29,10 @@ import {
   OAUTH_CLIENT_SECRET as CLIENT_SECRET,
   OAUTH_SERVER as ADDRESS,
   connectorNamed,
-  listedConnectors as listed,
 } from './support/oauth';
 import { REFERENCE_REQUEST } from './support/scenario';
 
 const SERVER = 'Fichiers de chacun e2e';
-const WRITE = { 'X-Mimorya-Request': '1' };
 /** Lucas's, its last renewal failed: written by the end-to-end API. */
 const TO_RENEW = 'Serveur à renouveler';
 
@@ -58,16 +62,7 @@ test.afterEach(async ({ page, newContext }) => {
   await refuseWaiting(marc);
   // 401 or 403: the test never signed in, or not as an administrator, so
   // added nothing; any other failure is said.
-  const response = await page.request.get('/api/admin/connectors');
-  expect([200, 401, 403]).toContain(response.status());
-  if (response.status() !== 200) return;
-  for (const connector of await listed(page)) {
-    if (connector.name !== SERVER) continue;
-    const deleted = await page.request.delete(`/api/admin/connectors/${connector.id}`, {
-      headers: WRITE,
-    });
-    expect(deleted.status()).toBe(200);
-  }
+  await deleteConnectorsNamed(page, [SERVER], [401, 403]);
 });
 
 test('each person authorizes a server for themself, told to by their run', async ({

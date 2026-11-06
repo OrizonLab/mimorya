@@ -9,7 +9,7 @@
 // longer reads is withdrawn from its card. The end-to-end API serves these
 // servers and reaches them alone of the private network (`e2e_server`).
 // What the test adds is deleted, even when it fails.
-import { addServer, cardWith, openAdmin } from './support/admin';
+import { addServer, cardWith, deleteConnectorsNamed, openAdmin } from './support/admin';
 import { expect, noError, test } from './support/fixtures';
 import {
   OAUTH_CLIENT_ID as CLIENT_ID,
@@ -26,7 +26,6 @@ const UNREVOKING_ADDRESS = 'http://127.0.0.1:4109/mcp';
 const RETURN_ADDRESS = 'http://localhost:3000/api/admin/connectors/oauth/callback';
 /** Left by the end-to-end API at its start, disabled. */
 const UNREADABLE = 'Serveur OAuth illisible';
-const WRITE = { 'X-Mimorya-Request': '1' };
 
 /** The confirmations asked so far in the test, in order. */
 let confirmations: string[] = [];
@@ -41,16 +40,7 @@ test.beforeEach(({ page }) => {
 });
 
 test.afterEach(async ({ page }) => {
-  // 401: the test never signed in, so added nothing.
-  const response = await page.request.get('/api/admin/connectors');
-  if (response.status() === 401) return;
-  for (const connector of await listed(page)) {
-    if (connector.name !== SERVER && connector.name !== UNREVOKING) continue;
-    const deleted = await page.request.delete(`/api/admin/connectors/${connector.id}`, {
-      headers: WRITE,
-    });
-    expect(deleted.status()).toBe(200);
-  }
+  await deleteConnectorsNamed(page, [SERVER, UNREVOKING], [401]);
 });
 
 test('an MCP server is authorized by OAuth, started with its token, then withdrawn', async ({

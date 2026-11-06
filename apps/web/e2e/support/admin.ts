@@ -1,5 +1,27 @@
 import type { Locator, Page } from '@playwright/test';
+import type { Connectors } from '../../lib/api/contract';
 import { demo, expect, FOREIGN_HOST, signIn } from './fixtures';
+
+const WRITE = { 'X-Mimorya-Request': '1' };
+
+/**
+ * A test's cleanup: deletes the company's connectors named in `names`, as
+ * `page`'s session, each deletion expected to succeed. A listing answered
+ * with one of `skipped` means the test added nothing (401: it never signed
+ * in; 403: not as an administrator); any other failure is said.
+ */
+export async function deleteConnectorsNamed(page: Page, names: string[], skipped: number[] = []) {
+  const response = await page.request.get('/api/admin/connectors');
+  if (skipped.includes(response.status())) return;
+  expect(response.status()).toBe(200);
+  const { instances } = (await response.json()) as Connectors;
+  for (const connector of instances.filter((c) => names.includes(c.name))) {
+    const deleted = await page.request.delete(`/api/admin/connectors/${connector.id}`, {
+      headers: WRITE,
+    });
+    expect(deleted.status()).toBe(200);
+  }
+}
 
 /** Signs in as the demo administrator and opens a tab of the administration. */
 export async function openAdmin(page: Page, tab: string) {

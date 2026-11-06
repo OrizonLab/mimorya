@@ -10,7 +10,7 @@
 // tests' APIs are deleted.
 import type { Page } from '@playwright/test';
 import type { ConnectorView, Connectors, NewRestConnector } from '../lib/api/contract';
-import { cardWith, openAdmin } from './support/admin';
+import { cardWith, deleteConnectorsNamed, openAdmin } from './support/admin';
 import { expect, FOREIGN_HOST, noError, test } from './support/fixtures';
 
 const API = 'Assistance e2e';
@@ -61,17 +61,8 @@ paths:
 `;
 
 test.afterEach(async ({ page }) => {
-  const listed = await page.request.get('/api/admin/connectors');
   // 401: the test never signed in, so changed nothing.
-  if (listed.status() === 401) return;
-  expect(listed.status()).toBe(200);
-  const { instances } = (await listed.json()) as Connectors;
-  for (const connector of instances.filter((c) => c.name === API || c.name === FULL)) {
-    const deleted = await page.request.delete(`/api/admin/connectors/${connector.id}`, {
-      headers: WRITE,
-    });
-    expect(deleted.status()).toBe(200);
-  }
+  await deleteConnectorsNamed(page, [API, FULL], [401]);
 });
 
 /** A test's API as the API records it. */
