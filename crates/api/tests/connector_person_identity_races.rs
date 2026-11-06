@@ -8,24 +8,33 @@
 
 mod support;
 
-use std::time::Duration;
+use std::sync::Arc;
 
 use axum::http::StatusCode;
 use mimorya_api::services::connectors::{MAX_ADMIN_STARTS, TOO_MANY_ADMIN_STARTS};
-use mimorya_connectors::testing::{FakeAuthorizationServer, serve_demo_docs_http};
+use mimorya_connectors::testing::{FakeAuthorizationServer, Hold, serve_demo_docs_http};
 use mimorya_core::demo::user;
 use serde_json::json;
 use support::TestApi;
-use support::connector_oauth::until_asked;
+use support::connector_oauth::holding;
 use support::mcp::{PRIVATE_DEPLOYMENT, listed};
 use support::person_authorizations::{PERSON_AUTHORIZED, declared_per_person, person_authorize};
 use support::person_identity::{PERSON_OTHER_ACCOUNT, declare, declared_verifying, signed_in_as};
 use support::sso::location;
 
-/// Until a declaration asked for the authorization server's metadata
-/// after `before` requests: it is finding the server.
-async fn finding(authority: &FakeAuthorizationServer, before: usize) {
-    until_asked(authority, FakeAuthorizationServer::metadata_asked, before).await;
+/// The authorization server's metadata held from now on: the declaration
+/// asked next finds the server only once the hold is released.
+fn holding_metadata(authority: &FakeAuthorizationServer) -> Arc<Hold> {
+    let hold = Arc::new(Hold::default());
+    authority.set(|settings| settings.metadata_hold = Some(hold.clone()));
+    hold
+}
+
+/// Once a declaration is held finding the server: the requests that
+/// follow are not.
+async fn finding(authority: &FakeAuthorizationServer, hold: &Hold) {
+    holding(hold, 1).await;
+    authority.set(|settings| settings.metadata_hold = None);
 }
 
 #[tokio::test]
@@ -36,16 +45,15 @@ async fn a_change_made_while_a_declaration_finds_its_server_is_never_undone() {
     let authority = FakeAuthorizationServer::start().await;
     signed_in_as(&authority, user::PAUL);
     let (_, id) = declared_per_person(&paul, &authority, "pendant").await;
-    let held = Some(Duration::from_secs(3));
 
     // Declared again without a word of it, while another turns it on.
-    authority.set(|settings| settings.held_metadata = held);
-    let before = authority.metadata_asked();
+    let hold = holding_metadata(&authority);
     let unsaid = declare(&paul, &id, json!({}));
     let turned_on = async {
-        finding(&authority, before).await;
-        authority.set(|settings| settings.held_metadata = None);
-        declare(&paul, &id, json!({ "verifyIdentity": true })).await
+        finding(&authority, &hold).await;
+        let turned_on = declare(&paul, &id, json!({ "verifyIdentity": true })).await;
+        hold.release();
+        turned_on
     };
     let (unsaid, turned_on) = tokio::join!(unsaid, turned_on);
     assert_eq!(turned_on.status, StatusCode::OK, "{}", turned_on.text());
@@ -55,14 +63,14 @@ async fn a_change_made_while_a_declaration_finds_its_server_is_never_undone() {
     assert_eq!(oauth["verifiesIdentity"], true, "{oauth}");
 
     // Asked for, while another makes the company authorize the server.
-    authority.set(|settings| settings.held_metadata = held);
-    let before = authority.metadata_asked();
+    let hold = holding_metadata(&authority);
     let asked = declare(&paul, &id, json!({ "verifyIdentity": true }));
     let to_company = async {
-        finding(&authority, before).await;
-        authority.set(|settings| settings.held_metadata = None);
+        finding(&authority, &hold).await;
         let path = format!("/admin/connectors/{id}/oauth/holder");
-        paul.put(&path, json!({ "perPerson": false })).await
+        let to_company = paul.put(&path, json!({ "perPerson": false })).await;
+        hold.release();
+        to_company
     };
     let (asked, to_company) = tokio::join!(asked, to_company);
     assert_eq!(to_company.status, StatusCode::OK, "{}", to_company.text());
@@ -92,15 +100,15 @@ async fn a_return_keeps_its_start_while_it_verifies_who_authorized() {
     // Marc's return and Lucas's, signed in there as Marc, both verifying
     // who authorized while the server's OpenID configuration is held: a
     // third start, a trial, is refused meanwhile.
-    authority.set(|settings| settings.held_configuration = Some(Duration::from_secs(4)));
-    let before = authority.configuration_asked();
+    let hold = Arc::new(Hold::default());
+    authority.set(|settings| settings.configuration_hold = Some(hold.clone()));
     let his = person_authorize(&marc, &authority, &id);
     let other = person_authorize(&lucas, &authority, &id);
     let third = async {
-        let asked = FakeAuthorizationServer::configuration_asked;
-        until_asked(&authority, asked, before + 1).await;
-        authority.set(|settings| settings.held_configuration = None);
-        trial().await
+        holding(&hold, 2).await;
+        let refused = trial().await;
+        hold.release();
+        refused
     };
     let (his, other, refused) = tokio::join!(his, other, third);
     assert_eq!(refused.status, StatusCode::CONFLICT, "{}", refused.text());

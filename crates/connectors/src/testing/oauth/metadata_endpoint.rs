@@ -1,7 +1,7 @@
 //! The simulated authorization server's metadata (RFC 8414): its endpoints,
 //! what it supports, and whether its return names the issuer; another
-//! issuer named at will, the answer kept back at will (`held_metadata`),
-//! each request counted.
+//! issuer named at will, the answer held until the test lets it through
+//! (`metadata_hold`), each request counted.
 
 use axum::extract::State;
 use axum::response::{IntoResponse, Response};
@@ -15,8 +15,8 @@ pub(super) async fn metadata(State(server): State<FakeAuthorizationServer>) -> R
         inner.metadata_asked += 1;
         inner.settings.clone()
     };
-    if let Some(held) = settings.held_metadata {
-        tokio::time::sleep(held).await;
+    if let Some(hold) = settings.metadata_hold {
+        hold.wait().await;
     }
     let issuer = &server.issuer;
     let named = if settings.wrong_issuer {

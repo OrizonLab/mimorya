@@ -11355,16 +11355,25 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
 - **Décision** :
   - **une version de l'OAuth d'un serveur**, que la liste des connecteurs donne
     (`McpEndpoint.oauthVersion`, `services/admin/oauth_version.rs`). C'est l'empreinte
-    SHA-256 de ce qu'un administrateur voit en ouvrant le formulaire :
-    - la déclaration telle qu'elle est stockée, absente ou illisible comprise ;
+    SHA-256 de ce qu'un administrateur voit en ouvrant le formulaire, lu de la même
+    façon par la liste et par la déclaration (`OAuthSeen`) :
+    - la déclaration telle qu'elle est stockée, ou son absence ;
+    - quand le secret du client a été écrit, s'il y en a un : le secret, scellé à
+      part, n'est pas dans la déclaration, et une déclaration écrite de nouveau à
+      l'identique avec un autre secret (une rotation) la change ainsi ; jamais la
+      valeur du secret ;
     - la date de l'autorisation de l'entreprise, s'il y en a une ;
     - le nombre de personnes qui ont autorisé le serveur pour elles-mêmes.
 
     Tout changement de l'un d'eux la change. Une autorisation renouvelée ne la change
-    pas : son jeton change, pas ce que déclarer de nouveau retire ;
+    pas : son jeton change, pas ce que déclarer de nouveau retire. Une déclaration
+    illisible n'est pas montrée dans la liste (on la retire d'abord), mais une
+    déclaration devenue illisible depuis l'ouverture du formulaire change la version
+    que le service lit, et l'envoi est refusé ;
 
   - **une déclaration la nomme** (`replaces`, facultatif dans le corps de
-    `PUT /admin/connectors/{id}/oauth`). Si elle diffère de la version lue, la
+    `PUT /admin/connectors/{id}/oauth`, 64 caractères au plus). Si elle diffère de la
+    version lue, la
     déclaration est refusée (409, « La déclaration OAuth de ce serveur a changé depuis
     l'ouverture de ce formulaire : fermez-le et rouvrez-le »), et rien de ce qui a
     changé n'est défait. La version est contrôlée deux fois :
@@ -11378,10 +11387,13 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     clients de l'API qui ne lisent pas la liste restent possibles, et les contrôles
     d'ADR-175 valent toujours pour eux ;
 
-  - **le formulaire envoie la version lue à son ouverture**, gardée même si la liste
-    est relue pendant qu'il est ouvert (`mcp-oauth-form.tsx`). Refusé, il garde le
-    message ; fermé, il fait relire la liste, et rouvert, il montre la déclaration
-    telle qu'elle est, avec ce qu'elle retirerait ;
+  - **le formulaire envoie la version lue à son ouverture**. Elle est gardée par la
+    carte (`mcp-oauth-section.tsx`), non par le formulaire : une liste relue pendant
+    qu'il est ouvert peut le redessiner, par exemple quand un autre administrateur a
+    déclaré le serveur entre-temps ; ses champs reprennent alors ce qui est déclaré,
+    mais la version reste celle de l'ouverture, et l'envoi est refusé. Refusé, le
+    formulaire garde le message ; fermé, il fait relire la liste, et rouvert, il
+    montre la déclaration telle qu'elle est, avec ce qu'elle retirerait ;
   - **le retour d'une autorisation garde sa place** parmi les démarrages de
     l'administration de l'entreprise (ADR-055) jusqu'à la fin de la vérification de
     l'identité (ADR-175), et non seulement pendant l'échange du code. Un test le montre
@@ -11407,6 +11419,8 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       l'autorisation ;
     - une déclaration ouverte sur ce qui est là est acceptée ; sans version, elle n'est
       pas contrôlée ;
+    - le secret du client écrit de nouveau, rien d'autre ne changeant, rend périmée
+      la version d'avant ;
     - une autorisation donnée pendant la découverte est vue sous le verrou.
 
     S'y ajoutent `connector_person_identity_races.rs` (la place gardée pendant la
@@ -11415,5 +11429,7 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     ouvert, la déclaration changée ailleurs, l'envoi refusé et le changement gardé ;
     fermé puis rouvert, le formulaire montre le changement et déclare ;
 
-  - le serveur d'autorisation simulé retient aussi sa configuration OpenID à volonté et
-    compte ceux qui la demandent (`held_configuration`, `configuration_asked`).
+  - le serveur d'autorisation simulé retient ses métadonnées et sa configuration
+    OpenID jusqu'à ce que le test les laisse passer (`metadata_hold`,
+    `configuration_hold`, `Hold`), et non plus pendant une durée : les tests de
+    concurrence ne dépendent d'aucun délai, ceux d'ADR-175 compris.

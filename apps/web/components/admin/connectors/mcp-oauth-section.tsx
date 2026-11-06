@@ -23,7 +23,9 @@ import { NO_REVOCATION, REVOCATION_ASKED } from './revocation-words';
  * where the browser goes and comes back to the administration, and
  * withdrawn. One each person authorizes for themself says how many did
  * (ADR-174); who authorizes it is changed here. A declaration that no
- * longer reads is withdrawn first.
+ * longer reads is withdrawn first. The form declares again only what it
+ * was opened on (ADR-176): its version is kept here, where it survives the
+ * form being drawn anew when the list read since changes the card.
  */
 export function McpOAuthSection({
   connector,
@@ -37,6 +39,7 @@ export function McpOAuthSection({
   onChanged: () => void;
 }) {
   const [declaring, setDeclaring] = useState(false);
+  const [opened, setOpened] = useState<string>();
   const action = useAction();
   const oauth = connector.mcp?.oauth ?? null;
   const authorization = oauth?.authorization ?? null;
@@ -87,9 +90,15 @@ export function McpOAuthSection({
     );
   }
 
+  function startDeclaring() {
+    setOpened(connector.mcp?.oauthVersion);
+    setDeclaring(true);
+  }
+
   const form = declaring && (
     <McpOAuthForm
       connector={connector}
+      opened={opened}
       redirectUri={redirectUri}
       secretsAvailable={secretsAvailable}
       onDone={(changed) => {
@@ -107,7 +116,7 @@ export function McpOAuthSection({
       </section>
     ) : (
       <div>
-        <Button variant="ghost" onClick={() => setDeclaring(true)}>
+        <Button variant="ghost" onClick={startDeclaring}>
           Déclarer OAuth
         </Button>
       </div>
@@ -186,7 +195,7 @@ export function McpOAuthSection({
           <Button variant="ghost" disabled={action.pending} onClick={changeHolder}>
             {holderChange(oauth).label}
           </Button>
-          <Button variant="ghost" disabled={action.pending} onClick={() => setDeclaring(true)}>
+          <Button variant="ghost" disabled={action.pending} onClick={startDeclaring}>
             Modifier la déclaration
           </Button>
           <Button

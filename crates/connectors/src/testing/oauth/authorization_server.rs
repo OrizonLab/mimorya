@@ -21,6 +21,7 @@ use super::{
     metadata_endpoint, openid, registration_endpoint, revocation_endpoint, token_endpoint,
 };
 use crate::outbound::{NetworkPolicy, http_client};
+use crate::testing::Hold;
 
 pub const CLIENT_ID: &str = "mimorya-test-client";
 pub const CLIENT_SECRET: &str = "secret-du-client-de-test";
@@ -63,11 +64,12 @@ pub struct Settings {
     pub identity: Option<SignedIn>,
     /// How it spoils the identity tokens it gives.
     pub id_token_quirk: IdTokenQuirk,
-    /// Its metadata kept back this long: a discovery that takes its time.
-    pub held_metadata: Option<Duration>,
-    /// Its OpenID configuration kept back this long: a verification of an
+    /// Its metadata held until the test lets it through: a discovery
+    /// that takes its time.
+    pub metadata_hold: Option<Arc<Hold>>,
+    /// Its OpenID configuration held the same way: a verification of an
     /// identity token that takes its time.
-    pub held_configuration: Option<Duration>,
+    pub configuration_hold: Option<Arc<Hold>>,
 }
 
 impl Default for Settings {
@@ -91,8 +93,8 @@ impl Default for Settings {
             secret_lifetime: None,
             identity: None,
             id_token_quirk: IdTokenQuirk::None,
-            held_metadata: None,
-            held_configuration: None,
+            metadata_hold: None,
+            configuration_hold: None,
         }
     }
 }
@@ -142,8 +144,6 @@ pub(super) struct Inner {
     pub(super) requests: Vec<AuthRequest>,
     /// How many times its metadata was asked for.
     pub(super) metadata_asked: usize,
-    /// How many times its OpenID configuration was asked for.
-    pub(super) configuration_asked: usize,
 }
 
 /// The server, served at `issuer` until the process ends.
@@ -242,11 +242,6 @@ impl FakeAuthorizationServer {
     /// How many times its metadata was asked for (RFC 8414).
     pub fn metadata_asked(&self) -> usize {
         self.inner.lock().expect("server").metadata_asked
-    }
-
-    /// How many times its OpenID configuration was asked for.
-    pub fn configuration_asked(&self) -> usize {
-        self.inner.lock().expect("server").configuration_asked
     }
 
     /// The clients registered so far.

@@ -5,6 +5,13 @@
 
 use tokio::sync::{Notify, watch};
 
+/// What the test sees of it: not its state.
+impl std::fmt::Debug for Hold {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Hold").finish_non_exhaustive()
+    }
+}
+
 pub struct Hold {
     reached: Notify,
     released: watch::Sender<bool>,
@@ -39,8 +46,13 @@ impl Hold {
 
     /// Returns once a request is held: one received while not released.
     pub async fn holding(&self) {
+        self.holding_at_once(1).await;
+    }
+
+    /// Returns once `count` requests are held at the same time.
+    pub async fn holding_at_once(&self, count: usize) {
         let mut held = self.held.subscribe();
-        let _ = held.wait_for(|held| *held > 0).await;
+        let _ = held.wait_for(|held| *held >= count).await;
     }
 
     /// Lets every held and later request through.

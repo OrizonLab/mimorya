@@ -1,20 +1,22 @@
 //! A declaration replaces only what its administrator saw (ADR-176): it
 //! names the version of the server's OAuth its form was opened on, which
-//! changes with what is declared, who authorizes the server, and the
-//! authorizations declaring again takes. Naming one changed since, it is
-//! refused before anything is asked of the server, or under the lock when
-//! the change came while the server was being found; the change stays.
-//! Naming none, it is not checked.
+//! changes with what is declared, who authorizes the server, the
+//! authorizations declaring again takes, and its client's secret written
+//! again. Naming one changed since, it is refused before anything is asked
+//! of the server, or under the lock when the change came while the server
+//! was being found; the change stays. Naming none, it is not checked.
 
 mod support;
 
-use std::time::Duration;
+use std::sync::Arc;
 
 use axum::http::StatusCode;
-use mimorya_connectors::testing::{FakeAuthorizationServer, OAuthQuirk, serve_oauth_mcp_http};
+use mimorya_connectors::testing::{
+    FakeAuthorizationServer, Hold, OAuthQuirk, serve_oauth_mcp_http,
+};
 use mimorya_core::demo::user;
 use serde_json::json;
-use support::connector_oauth::{AUTHORIZED, authorize, kept_tokens, until_asked};
+use support::connector_oauth::{AUTHORIZED, authorize, holding, kept_tokens};
 use support::mcp::{PRIVATE_DEPLOYMENT, add, listed, mcp_body};
 use support::person_authorizations::{
     PERSON_AUTHORIZED, declared_per_person, person_authorize, person_kept,
@@ -103,9 +105,14 @@ async fn a_declaration_opened_on_what_changed_since_is_refused() {
     let current = replacing(&paul, &id, &with_his).await;
     assert_eq!(current.status, StatusCode::OK, "{}", current.text());
     assert!(person_kept(&api, &id, user::MARC).await.is_none());
-    // Naming no version: not checked.
+
+    // Declared again alike, naming no version (not checked): its client's
+    // secret, written again, is all that changed, and a form opened before
+    // is refused.
+    let before = version(&paul, &id).await;
     let unchecked = declare(&paul, &id, json!({})).await;
     assert_eq!(unchecked.status, StatusCode::OK, "{}", unchecked.text());
+    assert_changed(&replacing(&paul, &id, &before).await);
 }
 
 #[tokio::test]
@@ -120,13 +127,15 @@ async fn a_change_made_while_the_server_is_found_is_seen_under_the_lock() {
 
     // Declared from a form opened on the current version, while Marc
     // authorizes the server for himself: nothing else tells it.
-    authority.set(|settings| settings.held_metadata = Some(Duration::from_secs(3)));
-    let before = authority.metadata_asked();
+    let hold = Arc::new(Hold::default());
+    authority.set(|settings| settings.metadata_hold = Some(hold.clone()));
     let declaring = replacing(&paul, &id, &opened);
     let his = async {
-        until_asked(&authority, FakeAuthorizationServer::metadata_asked, before).await;
-        authority.set(|settings| settings.held_metadata = None);
-        person_authorize(&marc, &authority, &id).await
+        holding(&hold, 1).await;
+        authority.set(|settings| settings.metadata_hold = None);
+        let his = person_authorize(&marc, &authority, &id).await;
+        hold.release();
+        his
     };
     let (declaring, his) = tokio::join!(declaring, his);
     assert_eq!(location(&his), PERSON_AUTHORIZED);

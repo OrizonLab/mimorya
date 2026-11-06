@@ -21,11 +21,14 @@ import { REGISTERED_CLIENT_STAYS } from './registered-client';
  */
 export function McpOAuthForm({
   connector,
+  opened,
   redirectUri,
   secretsAvailable,
   onDone,
 }: {
   connector: ConnectorView;
+  /** The server's `oauthVersion` as the form was opened (ADR-176). */
+  opened: string | undefined;
   /** Where the authorization server sends the browser back. */
   redirectUri: string;
   secretsAvailable: boolean;
@@ -41,8 +44,6 @@ export function McpOAuthForm({
   const [scopes, setScopes] = useState(declared?.scopes.join(' ') ?? '');
   const [perPerson, setPerPerson] = useState(declared?.perPerson ?? false);
   const [verifyIdentity, setVerifyIdentity] = useState(declared?.verifiesIdentity ?? false);
-  // What it was opened on, whatever the list reads since.
-  const [opened] = useState(connector.mcp?.oauthVersion);
   const [stale, setStale] = useState(false);
   const action = useAction();
 

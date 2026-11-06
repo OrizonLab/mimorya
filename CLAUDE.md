@@ -157,7 +157,7 @@ Repères à l'intérieur des crates :
   ADR-141), `connectors/src/testing/`
   (serveurs simulés des tests : MCP, dont des réponses sans fin (`endless.rs`) et un
   serveur lent qui compte les pings qu'il voit (`slow.rs`), et un serveur protégé par
-  OAuth avec son serveur d'autorisation, hostile à volonté, qui enregistre des clients (`oauth/`, ADR-171, ADR-173), fournisseur OpenID Connect quand un test y connecte quelqu'un (`oauth/openid.rs`, ADR-175), ses métadonnées retenues à volonté (`oauth/metadata_endpoint.rs`), et sa configuration OpenID de même, mandataire
+  OAuth avec son serveur d'autorisation, hostile à volonté, qui enregistre des clients (`oauth/`, ADR-171, ADR-173), fournisseur OpenID Connect quand un test y connecte quelqu'un (`oauth/openid.rs`, ADR-175), ses métadonnées retenues jusqu'à ce que le test les laisse passer (`oauth/metadata_endpoint.rs`), et sa configuration OpenID de même, mandataire
   HTTP qui note où il va (`proxy.rs`), API REST, Microsoft Graph, Gmail et agenda Google,
   Slack, qui signe les événements comme lui, Telegram, Microsoft pour Teams, qui signe
   les activités avec une clé de test).
@@ -189,7 +189,7 @@ Repères à l'intérieur des crates :
   `api/src/services/admin/` (comptes et absence d'un collaborateur empêché
   (`absences.rs`, ADR-078), organisation, habilitations, connecteurs : ce que
   l'administration change de chacun (`connector_config.rs`), OAuth déclaré sur un serveur
-  MCP (`connector_oauth.rs`, sa configuration gardée : `mcp_config.rs`, ADR-171 ; version de ce qu'un administrateur en voit, déclaration et autorisations, que nomme une déclaration pour ne remplacer que cela : `oauth_version.rs`, ADR-176 ; client saisi ou enregistré par la plateforme : `oauth_client.rs`, ADR-173) et son
+  MCP (`connector_oauth.rs`, sa configuration gardée : `mcp_config.rs`, ADR-171 ; version de ce qu'un administrateur en voit, déclaration, secret écrit et autorisations, que nomme une déclaration pour ne remplacer que cela : `oauth_version.rs`, ADR-176 ; client saisi ou enregistré par la plateforme : `oauth_client.rs`, ADR-173) et son
   autorisation, départ, retour et jetons scellés (`connector_authorization/`), révoqués chez le serveur quand l'administration les laisse, ceux de l'entreprise et ceux des personnes (`connector_authorization/revocation/`, ADR-172, ADR-174), autorisation d'un serveur par chacun pour soi, son retour à la même adresse, sa liste et son retrait (`connector_authorization/person.rs`, `person_finish.rs`, ce que partagent les deux retours : `returned.rs`, routes `account_connector_authorizations.rs`, ADR-174), identité de qui l'autorise prouvée par le jeton d'identité au retour (`connector_authorization/identity.rs`), option déclarée, serveur lu comme fournisseur OpenID Connect et option changée pendant une déclaration (`connector_identity.rs`, ADR-175), test d'un connecteur, d'un serveur que chacun autorise avec l'autorisation de l'administrateur (`connector_test.rs`, ADR-174), qui l'autorise, l'entreprise ou chacun, changé sur place (`connector_oauth_holder.rs`, ADR-174), seules
   les politiques changées
   tracées (`policy_changes.rs`, ADR-160) et API REST ajoutées

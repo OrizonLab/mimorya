@@ -64,16 +64,11 @@ pub enum IdTokenQuirk {
 }
 
 /// Its OpenID configuration, naming its key set: absent until someone is
-/// signed in; kept back at will (`held_configuration`), each request
-/// counted.
+/// signed in; held until the test lets it through (`configuration_hold`).
 pub(super) async fn configuration(State(server): State<FakeAuthorizationServer>) -> Response {
-    let settings = {
-        let mut inner = server.inner.lock().expect("server");
-        inner.configuration_asked += 1;
-        inner.settings.clone()
-    };
-    if let Some(held) = settings.held_configuration {
-        tokio::time::sleep(held).await;
+    let settings = server.inner.lock().expect("server").settings.clone();
+    if let Some(hold) = settings.configuration_hold {
+        hold.wait().await;
     }
     if settings.identity.is_none() {
         return StatusCode::NOT_FOUND.into_response();

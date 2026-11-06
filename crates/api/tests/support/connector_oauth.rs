@@ -6,7 +6,7 @@
 use axum::http::StatusCode;
 use mimorya_api::services::connectors::{access_sealed_as, refresh_sealed_as};
 use mimorya_connectors::testing::{
-    CLIENT_ID, CLIENT_SECRET, FakeAuthorizationServer, OAuthQuirk, ProtectedMcp,
+    CLIENT_ID, CLIENT_SECRET, FakeAuthorizationServer, Hold, OAuthQuirk, ProtectedMcp,
     serve_oauth_mcp_http,
 };
 use mimorya_core::demo::{tenant, user};
@@ -75,21 +75,16 @@ pub fn api_path(location: &str) -> String {
         .to_string()
 }
 
-/// Until `asked` of `authority` counts more than `before`: a declaration
-/// is finding the server, or a return verifying who authorized. Failing,
-/// rather than waiting forever, if none ever is.
-pub async fn until_asked(
-    authority: &FakeAuthorizationServer,
-    asked: fn(&FakeAuthorizationServer) -> usize,
-    before: usize,
-) {
-    let reached = tokio::time::timeout(std::time::Duration::from_secs(30), async {
-        while asked(authority) <= before {
-            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-        }
-    })
+/// Until `hold` holds `count` requests at once: declarations finding the
+/// server, or returns verifying who authorized. Failing, rather than
+/// waiting forever, if it never does.
+pub async fn holding(hold: &Hold, count: usize) {
+    let held = tokio::time::timeout(
+        std::time::Duration::from_secs(30),
+        hold.holding_at_once(count),
+    )
     .await;
-    assert!(reached.is_ok(), "the authorization server was never asked");
+    assert!(held.is_ok(), "the authorization server never held {count}");
 }
 
 /// The browser's return, signed in as `admin`, with this cookie, if any.

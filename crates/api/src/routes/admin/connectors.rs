@@ -14,8 +14,6 @@ use axum::http::StatusCode;
 use mimorya_connectors::connector_types;
 use mimorya_connectors::rest::RestConfig;
 use mimorya_db::repositories::account_links::count_account_links;
-use mimorya_db::repositories::connector_authorizations::get_connector_authorization;
-use mimorya_db::repositories::connector_person_authorizations::count_person_authorizations;
 use mimorya_db::repositories::connectors::list_connector_instances;
 
 use crate::app::AppState;
@@ -30,12 +28,11 @@ use crate::plugins::Auth;
 use crate::secrets::SecretStore;
 use crate::services::admin::NewRestConnector as RestInput;
 use crate::services::admin::{
-    ConnectorAdmin, ConnectorChanges, Editable, McpTrial, NewMcpConnector, RestChanges,
+    ConnectorAdmin, ConnectorChanges, Editable, McpTrial, NewMcpConnector, OAuthSeen, RestChanges,
     TokenChange, TrialServices, create_mcp_connector, create_rest_connector, delete_connector,
-    oauth_redirect_uri, oauth_version, read_openapi, test_connector, try_mcp_connector,
-    update_connector,
+    oauth_redirect_uri, read_openapi, test_connector, try_mcp_connector, update_connector,
 };
-use crate::services::connectors::{client_secret_name, token_secret_name};
+use crate::services::connectors::token_secret_name;
 use crate::services::permission_catalog::permission_catalog;
 
 const PERMISSION: &str = "connector:manage";
@@ -60,19 +57,13 @@ pub async fn list(
             let redirect_uri = state.account_links.redirect_uri().to_string();
             match editable {
                 Editable::Mcp { prefix, url, oauth } => {
-                    let authorized = get_connector_authorization(&mut tx, i.id).await?;
-                    let persons = count_person_authorizations(&mut tx, i.id).await?;
+                    let seen = OAuthSeen::read(&mut tx, i.id).await?;
                     // What a declaration replaces, as its form is opened on it.
-                    let at = authorized.as_ref().map(|row| &row.authorized_at);
-                    let oauth_version = oauth_version(i.config.get("oauth"), at, persons);
-                    let oauth = match oauth {
-                        Some(declared) => {
-                            let secret = client_secret_name(i.id);
-                            let stored = store.exists(&mut tx, &secret).await?;
-                            Some(McpOAuth::new(declared, stored, authorized, persons))
-                        }
-                        None => None,
-                    };
+                    let oauth_version = seen.version(i.config.get("oauth"));
+                    let oauth = oauth.map(|declared| {
+                        let stored = seen.secret_written_at.is_some();
+                        McpOAuth::new(declared, stored, seen.authorization, seen.persons)
+                    });
                     details.mcp = Some(McpEndpoint {
                         prefix,
                         url,
