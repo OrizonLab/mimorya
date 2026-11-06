@@ -17,12 +17,13 @@ use mimorya_agent::runtime::{
     RunConfig, RunEvent, RuntimeDeps, StartInput, UnavailableConnectors, VerificationConfig,
     build_user_turn,
 };
-use mimorya_core::authz::Actor;
+use mimorya_core::authz::{Actor, HOOK_CHANNEL};
 use mimorya_core::autonomy::{AutonomyLevel, AutonomyPolicy};
 use mimorya_core::tools::Citation;
 use mimorya_db::Database;
 use mimorya_db::repositories::missions::mission_evidence;
 use mimorya_db::repositories::runs::{RunRow, RunStatus};
+use mimorya_db::repositories::scheduled_tasks::started_by_a_task;
 
 use super::approval_notice::ApprovalNotifier;
 use super::context::{build_run_system_prompt, build_run_tools, recall_memories};
@@ -151,8 +152,9 @@ impl RunExecutor {
     ) -> anyhow::Result<()> {
         // A hook's run stays one when it resumes (ADR-109).
         let actor = Actor::agent(Some(run.id)).with_channel(run.channel.clone());
+        let patient = self.awaited(run, &mode).await?;
         let (runtime, unavailable) = self
-            .runtime_for(access, run, ports, actor.clone(), fence)
+            .runtime_for(access, run, ports, actor.clone(), fence, patient)
             .await?;
         match mode {
             ExecutionMode::Start { history, text } => {
@@ -227,6 +229,7 @@ impl RunExecutor {
         ports: &EnginePorts,
         actor: Actor,
         fence: &LeaseFence,
+        patient: bool,
     ) -> anyhow::Result<(AgentRuntime, UnavailableConnectors)> {
         // A run awaiting approval may be resumed after a restart without a
         // provider, or after its company changed or removed its own.
@@ -238,7 +241,7 @@ impl RunExecutor {
             Some(reviewer) => ModelRouter::new(provider).with_verification(reviewer),
             None => ModelRouter::new(provider),
         };
-        let tools = build_run_tools(access, &actor, ports, &self.connectors).await?;
+        let tools = build_run_tools(access, &actor, ports, &self.connectors, patient).await?;
         let budget: BudgetLimits = serde_json::from_value(run.budget.clone())?;
         let level = AutonomyLevel::parse(&run.autonomy_level)
             .ok_or_else(|| anyhow::anyhow!("unknown autonomy level {}", run.autonomy_level))?;
@@ -275,5 +278,23 @@ impl RunExecutor {
             },
         );
         Ok((runtime, tools.unavailable))
+    }
+
+    /// Whether a person awaits the run's first answer: only then does it go
+    /// without a connector still starting once its patience is over. Not a
+    /// resumed run, which does the actions that were validated with every
+    /// tool it had, nor a hook's, a mission's stage or a scheduled task's
+    /// (ADR-177).
+    async fn awaited(&self, run: &RunRow, mode: &ExecutionMode) -> anyhow::Result<bool> {
+        if !matches!(mode, ExecutionMode::Start { .. })
+            || run.channel == HOOK_CHANNEL
+            || run.mission_id.is_some()
+        {
+            return Ok(false);
+        }
+        let mut tx = self.db.begin(run.tenant_id).await?;
+        let scheduled = started_by_a_task(&mut tx, run.id).await?;
+        tx.commit().await?;
+        Ok(!scheduled)
     }
 }

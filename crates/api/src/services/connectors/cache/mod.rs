@@ -3,11 +3,17 @@
 //! for a while. A run that needs an instance while it starts waits for that
 //! start rather than make its own (ADR-049): a server that does not answer
 //! delays the runs of one start, then one run per retry delay, not every
-//! run. A start invalidated while it ran (instance changed, disabled or
-//! deleted) is released, never kept. A live instance whose session closed
-//! for good (a local server that exited, a server that no longer answers a
-//! ping, ADR-164) is released and started again by the next run that needs
-//! it, or remembered as a failed start (`closed`, ADR-163). On a server
+//! run. A start runs in the background, whoever asked for it (ADR-177): a
+//! run waits for it at most its patience, if it has one, then goes without
+//! the instance, which serves the runs that follow; one the run gave up
+//! goes on. A failure is logged where it is found, by the start itself. A
+//! newer instance, live, starting or failed, serves a run that read an
+//! older one. A start invalidated while it ran (instance changed, disabled
+//! or deleted) is released, never kept, and one that ends after the cache
+//! closed too. A live instance whose session closed for good (a local
+//! server that exited, a server that no longer answers a ping, ADR-164) is
+//! released and started again by the next run that needs it, or
+//! remembered as a failed start (`closed`, ADR-163). On a server
 //! each person authorizes, each person has their own instance, started
 //! with their own authorization and versioned by it too; those are bounded
 //! in number, the least recently used released first, and released after a
@@ -26,10 +32,12 @@ use uuid::Uuid;
 mod closed;
 mod keys;
 mod people;
+mod starting;
 
 use closed::closed;
 pub use keys::{SessionKey, Version};
 pub use people::{MAX_PERSON_SESSIONS, PERSON_IDLE};
+pub use starting::{INTERRUPTED, STILL_STARTING};
 
 /// How long a failed start is remembered before the next run tries again.
 pub const RETRY_AFTER: Duration = Duration::from_secs(60);
@@ -44,6 +52,9 @@ pub enum Origin {
     /// The instance changed during its start: not a failure of any
     /// configuration, neither logged nor recorded.
     Changed,
+    /// Still starting when the run's patience ran out (ADR-177): no
+    /// failure either; its tools serve the runs that follow.
+    Starting,
 }
 
 /// Why an instance is not available to a run.
@@ -67,6 +78,13 @@ impl Unavailable {
             origin: Origin::Changed,
         }
     }
+
+    fn still_starting() -> Self {
+        Self {
+            message: STILL_STARTING.into(),
+            origin: Origin::Starting,
+        }
+    }
 }
 
 enum Slot {
@@ -83,8 +101,9 @@ enum Slot {
         until: Instant,
         message: String,
     },
-    /// A start in progress: `done` changes or closes when it ends, or when
-    /// the run that makes it gives it up.
+    /// A start in progress, in the background whether the runs that wait
+    /// for it still do or not: `done` closes once it left its outcome, or
+    /// ended without one (ADR-177).
     Starting {
         version: Version,
         done: watch::Receiver<()>,
@@ -101,6 +120,8 @@ struct State {
     /// The generation at which each person's instance was last forgotten,
     /// and when: forgotten in turn once no start could still read it.
     forgotten: HashMap<SessionKey, (u64, Instant)>,
+    /// Closed (shutdown): a start that ends now releases what it started.
+    closed: bool,
 }
 
 impl State {
@@ -126,9 +147,10 @@ impl State {
     }
 }
 
-#[derive(Default)]
+/// Shared with the starts it runs in the background.
+#[derive(Default, Clone)]
 pub struct RuntimeCache {
-    state: Mutex<State>,
+    state: Arc<Mutex<State>>,
 }
 
 impl RuntimeCache {
@@ -139,22 +161,25 @@ impl RuntimeCache {
     }
 
     /// The live instance of this version, a remembered failure, the outcome
-    /// of the start in progress, or a new start. Starts run without the
-    /// lock: a slow server delays its own instance only.
+    /// of the start in progress, or a new start, run in the background:
+    /// waited for at most `patience`, if any (ADR-177). Starts run without
+    /// the lock: a slow server delays its own instance only.
     pub async fn get_or_start<F, Fut>(
         &self,
         key: impl Into<SessionKey>,
         version: impl Into<Version>,
         ticket: u64,
+        patience: Option<Duration>,
         start: F,
     ) -> Result<Arc<ConnectorRuntime>, Unavailable>
     where
-        F: FnOnce() -> Fut,
-        Fut: Future<Output = Result<ConnectorRuntime, String>>,
+        F: FnOnce() -> Fut + Send + 'static,
+        Fut: Future<Output = Result<ConnectorRuntime, String>> + Send + 'static,
     {
         let (id, version) = (key.into(), version.into());
-        // Dropped when this start ends, or is given up: it wakes the others.
-        let (_finished, done) = loop {
+        let deadline = patience.map(|patience| Instant::now() + patience);
+        let mut start = Some(start);
+        loop {
             let mut waiting = {
                 let mut state = self.state.lock().await;
                 people::release_idle(&mut state, Instant::now());
@@ -172,6 +197,8 @@ impl RuntimeCache {
                         *used = Instant::now();
                         return Ok(runtime.clone());
                     }
+                    // Logged by its start, recorded by it if it is the
+                    // company's (ADR-177).
                     Some(Slot::Failed {
                         version: v,
                         until,
@@ -186,76 +213,70 @@ impl RuntimeCache {
                     // token) serves even a caller whose reading is stale; any
                     // other start would be discarded.
                     _ if stale => return Err(Unavailable::changed()),
-                    // Unless the run making it gave it up (its sender is gone).
+                    // Unless its start ended without leaving an outcome; a
+                    // newer one's serves the run as its instance would.
                     Some(Slot::Starting { version: v, done })
-                        if *v == version && done.has_changed().is_ok() =>
+                        if *v >= version && done.has_changed().is_ok() =>
                     {
                         done.clone()
                     }
+                    // A newer one, live meanwhile: the run gets it rather
+                    // than start an older one in its place.
+                    Some(Slot::Live {
+                        version: v,
+                        runtime,
+                        used,
+                        ..
+                    }) if *v > version => {
+                        *used = Instant::now();
+                        return Ok(runtime.clone());
+                    }
+                    // Or its failure, remembered as it is for its own runs.
+                    Some(Slot::Failed {
+                        version: v,
+                        until,
+                        message,
+                    }) if *v > version && Instant::now() < *until => {
+                        return Err(Unavailable {
+                            message: message.clone(),
+                            origin: Origin::Remembered,
+                        });
+                    }
                     _ => {
+                        // Its own start ended, and another took its place.
+                        let Some(start) = start.take() else {
+                            return Err(Unavailable::changed());
+                        };
                         let (finished, done) = watch::channel(());
                         let starting = Slot::Starting {
                             version,
                             done: done.clone(),
                         };
                         release(state.slots.insert(id, starting));
-                        break (finished, done);
+                        let started = starting::Start {
+                            state: self.state.clone(),
+                            id,
+                            version,
+                            ticket,
+                            finished,
+                            mine: done.clone(),
+                        };
+                        tokio::spawn(started.run(start()));
+                        done
                     }
                 }
             };
-            // Ended or given up: what it left is read again.
-            let _ = waiting.changed().await;
-        };
-        let started = start().await;
-        let mut state = self.state.lock().await;
-        // Defensive: the outcome below replaces this start's slot anyway
-        // (an invalidation already removed it).
-        if matches!(state.slots.get(&id), Some(Slot::Starting { done: d, .. }) if d.same_channel(&done))
-        {
-            state.slots.remove(&id);
-        }
-        let stale = state.stale(id, ticket);
-        let newer = match state.slots.get(&id) {
-            Some(Slot::Live {
-                version: v,
-                runtime,
-                ..
-            }) if *v >= version => Some(runtime.clone()),
-            _ => None,
-        };
-        if stale || newer.is_some() {
-            if let Ok(runtime) = started {
-                close_in_background(Arc::new(runtime));
-            }
-            return match newer {
-                Some(runtime) if !stale => Ok(runtime),
-                _ => Err(Unavailable::changed()),
-            };
-        }
-        match started {
-            Ok(runtime) => {
-                let runtime = Arc::new(runtime);
-                if id.person.is_some() {
-                    people::make_room(&mut state, id);
+            // Ended, or ended without an outcome: what it left is read again.
+            let ended = waiting.changed();
+            match deadline {
+                None => {
+                    let _ = ended.await;
                 }
-                let now = Instant::now();
-                let live = Slot::Live {
-                    version,
-                    runtime: runtime.clone(),
-                    since: now,
-                    used: now,
-                };
-                release(state.slots.insert(id, live));
-                Ok(runtime)
-            }
-            Err(message) => {
-                let failed = Slot::Failed {
-                    version,
-                    until: Instant::now() + RETRY_AFTER,
-                    message: message.clone(),
-                };
-                release(state.slots.insert(id, failed));
-                Err(Unavailable::new(message))
+                Some(deadline) => {
+                    if tokio::time::timeout_at(deadline, ended).await.is_err() {
+                        return Err(Unavailable::still_starting());
+                    }
+                }
             }
         }
     }
@@ -304,16 +325,14 @@ impl RuntimeCache {
         people::release_idle(&mut *self.state.lock().await, Instant::now());
     }
 
-    /// Releases every live instance (shutdown).
+    /// Releases every live instance (shutdown), and those of the starts
+    /// still under way once they end.
     pub async fn close(&self) {
-        let slots: Vec<Slot> = self
-            .state
-            .lock()
-            .await
-            .slots
-            .drain()
-            .map(|(_, s)| s)
-            .collect();
+        let slots: Vec<Slot> = {
+            let mut state = self.state.lock().await;
+            state.closed = true;
+            state.slots.drain().map(|(_, s)| s).collect()
+        };
         for slot in slots {
             if let Slot::Live { runtime, .. } = slot
                 && let Some(closer) = &runtime.closer

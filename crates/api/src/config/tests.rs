@@ -54,6 +54,22 @@ fn bounds_the_mcp_start_timeout() {
 }
 
 #[test]
+fn bounds_the_mcp_start_patience() {
+    let url = ("DATABASE_APP_URL", "postgres://app@localhost/mimorya");
+    let key = "MIMORYA_MCP_START_PATIENCE_SECS";
+    assert_eq!(
+        load(&[url]).unwrap().mcp_start_patience,
+        Duration::from_secs(5)
+    );
+    // 0: a run never waits for a connector still starting.
+    let none = load(&[url, (key, "0")]).unwrap();
+    assert_eq!(none.mcp_start_patience, Duration::ZERO);
+    for refused in ["121", "-1", "x"] {
+        assert!(load(&[url, (key, refused)]).is_err(), "{refused}");
+    }
+}
+
+#[test]
 fn finds_the_document_reader_and_bounds_the_quota() {
     let config = load(&[DB]).unwrap();
     assert_eq!(

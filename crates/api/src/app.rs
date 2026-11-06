@@ -162,6 +162,10 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
                 ..config.mcp_network
             },
             start_timeout: config.mcp_start_timeout,
+            start_patience: ConnectorSettings::patience(
+                config.mcp_start_timeout,
+                config.mcp_start_patience,
+            ),
         },
         invalidations.clone(),
     ));

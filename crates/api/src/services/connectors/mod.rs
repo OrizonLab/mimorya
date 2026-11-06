@@ -3,12 +3,15 @@
 //! when its configuration changes (`updated_at`) and released when it is
 //! changed, disabled or deleted.
 //!
-//! Instances start side by side; a start in progress is shared by the runs
-//! that need it, and a failed start is remembered for a while (`cache`,
-//! ADR-049): a server that does not answer delays the runs of one start,
-//! then one run per retry delay, by the start timeout at most. One connector failing (server, token,
-//! policies, a tool name taken) makes that connector alone unavailable. How
-//! each start went is recorded on the instance (`status`, `last_error`).
+//! Instances start side by side, in the background; a start in progress is
+//! shared by the runs that need it, and a failed start is remembered for a
+//! while (`cache`, ADR-049): a server that does not answer delays the runs
+//! of one start, then one run per retry delay, by the start timeout at
+//! most, and a person's turn by its patience only (ADR-177). One connector
+//! failing (server, token, policies, a tool name taken) makes that
+//! connector alone unavailable. How each start of the company's instance
+//! went is recorded on it (`status`, `last_error`), a failure by the start
+//! that found it.
 //! The starts an administration asks for are bounded per company
 //! (`admin_starts`, ADR-055). The tools of the connectors that reach
 //! outside the platform can be withheld (`tenant_tools`, ADR-153). An MCP
@@ -45,7 +48,7 @@ use uuid::Uuid;
 use admin_starts::AdminStarts;
 pub use admin_starts::{AdminStart, MAX_ADMIN_STARTS, TOO_MANY_ADMIN_STARTS};
 use cache::RuntimeCache;
-pub use cache::{MAX_PERSON_SESSIONS, PERSON_IDLE, RETRY_AFTER};
+pub use cache::{MAX_PERSON_SESSIONS, PERSON_IDLE, RETRY_AFTER, STILL_STARTING};
 pub use credential::{
     Credential, CredentialFor, UNOPENED_PERSON, credential_for, credential_of, each_person,
     given_under,
@@ -102,6 +105,17 @@ pub fn person_refresh_sealed_as(instance_id: Uuid, user_id: Uuid) -> String {
 pub struct ConnectorSettings {
     pub network: NetworkPolicy,
     pub start_timeout: Duration,
+    /// How long a person's turn waits for an instance starting before it
+    /// goes without it (ADR-177); `None`: until the start ends.
+    pub start_patience: Option<Duration>,
+}
+
+impl ConnectorSettings {
+    /// A patience that does not run out before the start's own timeout is
+    /// none: the run waits for the start's outcome.
+    pub fn patience(start_timeout: Duration, patience: Duration) -> Option<Duration> {
+        (patience < start_timeout).then_some(patience)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -159,22 +173,7 @@ impl ConnectorService {
         config: &serde_json::Value,
         credential: &Credential,
     ) -> anyhow::Result<ConnectorRuntime> {
-        let Some(definition) = connector_type(connector) else {
-            anyhow::bail!("Type de connecteur inconnu : {connector}");
-        };
-        // Past, now; too far for the clock, as if it did not expire.
-        let until = credential.expires_at.and_then(|at| {
-            let left = (at - Utc::now()).to_std().unwrap_or_default();
-            Instant::now().checked_add(left)
-        });
-        let context = InstanceContext {
-            secret: credential.token.as_deref(),
-            secret_until: until,
-            network: self.settings.network,
-            start_timeout: self.settings.start_timeout,
-            ..InstanceContext::default()
-        };
-        definition.instantiate(config, context).await
+        start_instance(self.settings, connector, config, credential).await
     }
 
     /// Releases the live instance after a change, a deactivation or a
@@ -222,5 +221,48 @@ impl ConnectorService {
     /// Releases every live connector (shutdown).
     pub async fn close(&self) {
         self.cache.close().await;
+    }
+}
+
+/// A fresh instance of `connector`, started as `settings` allow: what a run
+/// starts in the background, owning all it needs (ADR-177).
+pub async fn start_instance(
+    settings: ConnectorSettings,
+    connector: &str,
+    config: &serde_json::Value,
+    credential: &Credential,
+) -> anyhow::Result<ConnectorRuntime> {
+    let Some(definition) = connector_type(connector) else {
+        anyhow::bail!("Type de connecteur inconnu : {connector}");
+    };
+    // Past, now; too far for the clock, as if it did not expire.
+    let until = credential.expires_at.and_then(|at| {
+        let left = (at - Utc::now()).to_std().unwrap_or_default();
+        Instant::now().checked_add(left)
+    });
+    let context = InstanceContext {
+        secret: credential.token.as_deref(),
+        secret_until: until,
+        network: settings.network,
+        start_timeout: settings.start_timeout,
+        ..InstanceContext::default()
+    };
+    definition.instantiate(config, context).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_patience_no_shorter_than_the_start_is_none() {
+        let timeout = Duration::from_secs(20);
+        let five = Duration::from_secs(5);
+        assert_eq!(ConnectorSettings::patience(timeout, five), Some(five));
+        let none = Duration::ZERO;
+        assert_eq!(ConnectorSettings::patience(timeout, none), Some(none));
+        assert_eq!(ConnectorSettings::patience(timeout, timeout), None);
+        let longer = Duration::from_secs(30);
+        assert_eq!(ConnectorSettings::patience(timeout, longer), None);
     }
 }

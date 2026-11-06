@@ -86,6 +86,11 @@ pub struct AppConfig {
     /// How long an MCP server may take to connect and list its tools
     /// (`MIMORYA_MCP_START_TIMEOUT_SECS`, 20 by default).
     pub mcp_start_timeout: Duration,
+    /// How long a person's turn waits for a connector starting before it
+    /// goes without it, the start going on for the runs that follow
+    /// (`MIMORYA_MCP_START_PATIENCE_SECS`, 5 by default, ADR-177); no
+    /// shorter than the start's timeout, the turn waits for its outcome.
+    pub mcp_start_patience: Duration,
     /// Sends the invitation e-mails (`SMTP_URL`, `MAIL_FROM`); without it,
     /// the administrator transmits the invitation link (ADR-027).
     pub mail: Option<MailSettings>,
@@ -126,6 +131,7 @@ impl std::fmt::Debug for AppConfig {
             .field("tenant_llm_endpoints", &self.tenant_llm_endpoints)
             .field("mcp_network", &self.mcp_network)
             .field("mcp_start_timeout", &self.mcp_start_timeout)
+            .field("mcp_start_patience", &self.mcp_start_patience)
             .field("mail", &self.mail)
             .field("llm_judge", &self.llm_judge)
             .field(
@@ -203,6 +209,11 @@ impl AppConfig {
             reader.issue("MIMORYA_MCP_START_TIMEOUT_SECS", "entre 1 et 120 secondes");
         }
         let mcp_start_timeout = Duration::from_secs(start_seconds);
+        let patience_seconds = reader.parsed("MIMORYA_MCP_START_PATIENCE_SECS", 5_u64);
+        if patience_seconds > 120 {
+            reader.issue("MIMORYA_MCP_START_PATIENCE_SECS", "entre 0 et 120 secondes");
+        }
+        let mcp_start_patience = Duration::from_secs(patience_seconds);
         let mail = reader.mail();
         let llm_judge = reader.boolean("MIMORYA_LLM_JUDGE", false);
         let login_rate_limit_per_minute = reader.parsed("LOGIN_RATE_LIMIT_PER_MINUTE", 10_u32);
@@ -240,6 +251,7 @@ impl AppConfig {
             tenant_llm_endpoints,
             mcp_network,
             mcp_start_timeout,
+            mcp_start_patience,
             mail,
             llm_judge,
             login_rate_limit_per_minute,

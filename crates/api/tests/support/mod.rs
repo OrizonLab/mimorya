@@ -64,6 +64,7 @@ pub mod skill_proposals;
 pub mod slack_companies;
 pub mod slack_conversations;
 pub mod slack_validations;
+pub mod slow_starts;
 pub mod sso;
 pub mod summaries;
 pub mod sweeps;

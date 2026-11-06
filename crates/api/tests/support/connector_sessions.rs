@@ -65,6 +65,10 @@ pub fn another_process(api: &TestApi) -> ConnectorService {
     let settings = ConnectorSettings {
         network: config.mcp_network,
         start_timeout: config.mcp_start_timeout,
+        start_patience: ConnectorSettings::patience(
+            config.mcp_start_timeout,
+            config.mcp_start_patience,
+        ),
     };
     let secrets = SecretStore::new(config.secrets.clone());
     ConnectorService::new(

@@ -253,9 +253,13 @@ Détaillés dans [AGENT_ENGINE.md](AGENT_ENGINE.md). En résumé :
   publiques (ADR-025). Les politiques d'un connecteur ne
   portent que sur ses propres outils. Les connecteurs démarrent en parallèle ; une
   panne (serveur, jeton, politiques, noms d'outils en collision) n'écarte que son
-  connecteur, et un échec est mémorisé une minute : un serveur muet ne retarde que
-  les runs lancés pendant une tentative de démarrage (une par minute, partagée par
-  les runs qui l'attendent, ADR-049), du délai de démarrage au plus. Un appel est borné
+  connecteur, et un échec est mémorisé une minute. Un démarrage tourne en
+  arrière-plan, une tentative par minute pour un serveur muet, partagée par les runs
+  qui l'attendent (ADR-049) : seul le tour d'une personne ne l'attend que sa patience
+  (5 s par défaut), puis s'en passe, le démarrage servant aux tours suivants ; les
+  runs que personne n'attend (reprise après une validation, déclencheur, mission,
+  tâche planifiée, évaluation) attendent son issue, du délai de démarrage au plus
+  (ADR-177). Un appel est borné
   à 20 s ; après un appel échoué sans réponse du serveur, un ping suit, et une session
   dont le serveur n'y répond pas est démarrée de nouveau par le run suivant, ou retenue
   indisponible une minute si elle a pris fin dans sa première minute, sa fin étant datée
