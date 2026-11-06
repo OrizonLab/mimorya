@@ -32,6 +32,7 @@ use axum::routing::{get, post, put};
 use serde_json::{Value, json};
 
 pub use signing::{Signer, TEAMS_KEY_ID, signed_token};
+pub(crate) use signing::{published_key, signed_as};
 
 /// The test bot's application, its directory and its client secret.
 pub const TEAMS_APP: &str = "6f1c2b7a-0d3e-4c5b-9a8f-7e6d5c4b3a21";

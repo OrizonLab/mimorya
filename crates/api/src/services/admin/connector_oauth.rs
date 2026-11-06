@@ -12,9 +12,10 @@
 //! again, everything is replaced, secret included, and the authorization
 //! given under the previous declaration goes (`connector_authorization`),
 //! the company's and each person's (ADR-174). The declaration says who
-//! authorizes the server: the company, or each person for themself. A
-//! declaration that can no longer be read is replaced or withdrawn all the
-//! same.
+//! authorizes the server: the company, or each person for themself, and
+//! then whether its authorization server must prove who does
+//! (`connector_identity`, ADR-175). A declaration that can no longer be
+//! read is replaced or withdrawn all the same.
 
 use mimorya_connectors::mcp::oauth::{OAuthDeclaration, OAuthHolder, discover, scopes_problem};
 use mimorya_core::DomainError;
@@ -26,6 +27,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use super::connector_authorization::{revocable_under, revoke, take_authorizations};
+use super::connector_identity::{identity_scopes, verifies_identity};
 use super::connectors::{ConnectorAdmin, PERMISSION};
 use super::mcp_config::{Unreadable, mcp_config, stored_oauth};
 use super::oauth_client::{Declared, OAuthClient, declared};
@@ -49,6 +51,10 @@ pub struct OAuthInput {
     /// Who authorizes the server (ADR-174); `None` keeps who did under the
     /// declaration replaced, the company for a first one.
     pub holder: Option<OAuthHolder>,
+    /// Whether its authorization server proves who authorizes it (ADR-175);
+    /// `None` keeps what the declaration replaced said, while each person
+    /// authorizes it.
+    pub verify_identity: Option<bool>,
 }
 
 /// An MCP server added here, as its OAuth sees it.
@@ -103,10 +109,15 @@ pub async fn declare_oauth(
         admin.secrets.require()?;
     }
     let tenant_id = access.subject.tenant_id;
-    // The address asked, read before anything is asked of it.
+    // The address asked, read before anything is asked of it, and whether
+    // who authorizes is to be verified, as the holder will be.
     let mut tx = admin.db.begin(tenant_id).await?;
-    let url = McpServer::of(get_connector_instance(&mut tx, id).await?)?.url;
+    let read = McpServer::of(get_connector_instance(&mut tx, id).await?)?;
     tx.commit().await?;
+    let read_holder = read.declared.as_ref().map(|declared| declared.holder);
+    let holder = input.holder.or(read_holder).unwrap_or_default();
+    let verify = verifies_identity(input.verify_identity, holder, read.declared.as_ref())?;
+    let url = read.url;
     // Found, and the platform's client registered there if it is asked to.
     let (mut declaration, client_secret) = {
         let _start = admin.connectors.claim_admin_start(tenant_id)?;
@@ -114,8 +125,14 @@ pub async fn declare_oauth(
         let found = discover(&url, input.issuer.as_deref(), network)
             .await
             .map_err(DomainError::validation)?;
+        let scopes = if verify {
+            let scopes = identity_scopes(&found, input.scopes, network).await;
+            Some(scopes.map_err(DomainError::validation)?)
+        } else {
+            input.scopes
+        };
         let with = Declared {
-            scopes: input.scopes,
+            scopes,
             redirect_uri: &input.redirect_uri,
             network,
         };
@@ -129,6 +146,13 @@ pub async fn declare_oauth(
     let current = McpServer::of(get_connector_instance(&mut tx, id).await?)?;
     let kept = current.declared.as_ref().map(|current| current.holder);
     declaration.holder = input.holder.or(kept).unwrap_or_default();
+    declaration.verifies_identity = verify;
+    if verify && declaration.holder != OAuthHolder::Person {
+        return Err(DomainError::conflict(
+            "Qui autorise ce serveur a changé pendant sa déclaration : recommencez",
+        )
+        .into());
+    }
     if current.url != url {
         return Err(DomainError::conflict(
             "L’adresse du serveur a changé pendant la recherche de son autorisation : recommencez",
@@ -181,6 +205,7 @@ pub async fn declare_oauth(
             "tokenRemoved": token_removed,
             "replaced": current.declared.is_some() || current.unreadable,
             "perPerson": declaration.holder == OAuthHolder::Person,
+            "verifiesIdentity": declaration.verifies_identity,
             "authorizationRemoved": authorization_removed,
             "personAuthorizationsRemoved": persons_removed,
         })),

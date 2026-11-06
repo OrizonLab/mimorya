@@ -5,7 +5,9 @@
 //! authorizations given under the former holder go, the company's and every
 //! person's, their tokens revoked at the authorization server once the
 //! change is committed (ADR-172); an authorization started before the change
-//! is refused on its return, its declaration having changed.
+//! is refused on its return, its declaration having changed. A verification
+//! of who authorizes goes too (ADR-175): only each person's authorization is
+//! verified, and an administrator asks for it again by declaring anew.
 
 use mimorya_connectors::mcp::oauth::OAuthHolder;
 use mimorya_core::DomainError;
@@ -46,6 +48,9 @@ pub async fn set_oauth_holder(
     }
     let mut declaration = previous.clone();
     declaration.holder = holder;
+    // Only each person's authorization verifies who gives it (ADR-175):
+    // not kept for the company's, nor brought back with each person's.
+    declaration.verifies_identity = false;
     let patch = ConnectorPatch {
         config: Some(mcp_config(&server.prefix, &server.url, Some(&declaration))),
         reachability_changed: true,
@@ -58,6 +63,7 @@ pub async fn set_oauth_holder(
         &mut tx,
         audit_entry(access, "connector.oauth_holder_changed", "connector", id).metadata(json!({
             "perPerson": holder == OAuthHolder::Person,
+            "verificationRemoved": previous.verifies_identity,
             "authorizationRemoved": taken.as_ref().is_some_and(|t| t.company_taken()),
             "personAuthorizationsRemoved": taken.as_ref().map_or(0, |t| t.persons_taken()),
         })),

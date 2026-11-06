@@ -37,7 +37,7 @@ Repères à l'intérieur des crates :
   contenir, ADR-052), `core/src/account_links/` (comptes que chacun relie :
   application Microsoft 365 ou client Google Workspace déclaré, permissions déléguées,
   identité qui prouve que le compte est le sien, `microsoft365.rs`, `google.rs` ; ce qui
-  change d'un fournisseur à l'autre, `LinkKind`, `kind.rs`, ADR-116, ADR-121), `core/src/skill_proposals.rs` (où va une compétence que
+  change d'un fournisseur à l'autre, `LinkKind`, `kind.rs`, ADR-116, ADR-121 ; compte avec lequel chacun autorise un serveur MCP, le sien ou non, `authorized.rs`, ADR-175), `core/src/skill_proposals.rs` (où va une compétence que
   l'agent propose, ADR-100), `core/src/skill_eval_cases.rs` (ce qu'un cas d'évaluation d'une
   compétence contient, ADR-103), `core/src/skill_evaluations.rs` (régression, bilan et
   confirmation à l'activation, ADR-104), `core/src/skill_quality.rs` (critères de qualité
@@ -157,7 +157,7 @@ Repères à l'intérieur des crates :
   ADR-141), `connectors/src/testing/`
   (serveurs simulés des tests : MCP, dont des réponses sans fin (`endless.rs`) et un
   serveur lent qui compte les pings qu'il voit (`slow.rs`), et un serveur protégé par
-  OAuth avec son serveur d'autorisation, hostile à volonté, qui enregistre des clients (`oauth/`, ADR-171, ADR-173), mandataire
+  OAuth avec son serveur d'autorisation, hostile à volonté, qui enregistre des clients (`oauth/`, ADR-171, ADR-173), fournisseur OpenID Connect quand un test y connecte quelqu'un (`oauth/openid.rs`, ADR-175), mandataire
   HTTP qui note où il va (`proxy.rs`), API REST, Microsoft Graph, Gmail et agenda Google,
   Slack, qui signe les événements comme lui, Telegram, Microsoft pour Teams, qui signe
   les activités avec une clé de test).
@@ -190,7 +190,7 @@ Repères à l'intérieur des crates :
   (`absences.rs`, ADR-078), organisation, habilitations, connecteurs : ce que
   l'administration change de chacun (`connector_config.rs`), OAuth déclaré sur un serveur
   MCP (`connector_oauth.rs`, sa configuration gardée : `mcp_config.rs`, ADR-171 ; client saisi ou enregistré par la plateforme : `oauth_client.rs`, ADR-173) et son
-  autorisation, départ, retour et jetons scellés (`connector_authorization/`), révoqués chez le serveur quand l'administration les laisse, ceux de l'entreprise et ceux des personnes (`connector_authorization/revocation/`, ADR-172, ADR-174), autorisation d'un serveur par chacun pour soi, son retour à la même adresse, sa liste et son retrait (`connector_authorization/person.rs`, `person_finish.rs`, ce que partagent les deux retours : `returned.rs`, routes `account_connector_authorizations.rs`, ADR-174), test d'un connecteur, d'un serveur que chacun autorise avec l'autorisation de l'administrateur (`connector_test.rs`, ADR-174), qui l'autorise, l'entreprise ou chacun, changé sur place (`connector_oauth_holder.rs`, ADR-174), seules
+  autorisation, départ, retour et jetons scellés (`connector_authorization/`), révoqués chez le serveur quand l'administration les laisse, ceux de l'entreprise et ceux des personnes (`connector_authorization/revocation/`, ADR-172, ADR-174), autorisation d'un serveur par chacun pour soi, son retour à la même adresse, sa liste et son retrait (`connector_authorization/person.rs`, `person_finish.rs`, ce que partagent les deux retours : `returned.rs`, routes `account_connector_authorizations.rs`, ADR-174), identité de qui l'autorise prouvée par le jeton d'identité au retour (`connector_authorization/identity.rs`), option déclarée et serveur lu comme fournisseur OpenID Connect (`connector_identity.rs`, ADR-175), test d'un connecteur, d'un serveur que chacun autorise avec l'autorisation de l'administrateur (`connector_test.rs`, ADR-174), qui l'autorise, l'entreprise ou chacun, changé sur place (`connector_oauth_holder.rs`, ADR-174), seules
   les politiques changées
   tracées (`policy_changes.rs`, ADR-160) et API REST ajoutées
   (`rest_connectors.rs`, ADR-112, opérations lues d'une description OpenAPI, ADR-114),
@@ -312,7 +312,7 @@ Repères à l'intérieur des crates :
   documents, `sources.rs`, ADR-074, ADR-096), `api/src/services/invitations/` (liens d'invitation, ADR-027),
   `api/src/services/password_reset/` (mot de passe oublié, ADR-028),
   `api/src/services/sso/` (connexion par le fournisseur d'identité de l'entreprise :
-  départ (`start.rs`), tentative scellée, OpenID Connect, adresses contrôlées, liaison des
+  départ (`start.rs`), tentative scellée, OpenID Connect, jeton d'identité vérifié pour un client avec ou sans secret (`id_token.rs`, ADR-175), adresses contrôlées, liaison des
   comptes, acceptation des invitations, ADR-063, ADR-064 ; déclarations et clés gardées une
   heure, ADR-065 ; fournisseur obligatoire pour ses domaines (`requirement.rs`, ADR-066) ;
   compte créé à la première connexion par le lien de l'entreprise (`account.rs`, ADR-067) ;

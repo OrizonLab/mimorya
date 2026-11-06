@@ -33,6 +33,7 @@ async fn code(declaration: &OAuthDeclaration) -> String {
         redirect_uri: BACK,
         state: "etat-de-la-tentative",
         code_challenge: &challenge,
+        nonce: None,
     };
     let url = authorization_url(declaration, departure).expect("url");
     let back = sent_back(&url).await;

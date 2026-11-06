@@ -163,6 +163,7 @@ mod tests {
             revocation_endpoint: revocation.map(String::from),
             registered: None,
             holder: Default::default(),
+            verifies_identity: false,
             issuer: issuer.into(),
             resource: "https://mcp.example.com/mcp".into(),
             authorization_endpoint: format!("{issuer}/authorize"),

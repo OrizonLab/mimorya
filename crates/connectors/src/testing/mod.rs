@@ -43,9 +43,9 @@ pub use google_writes::SentMail;
 pub use graph::{FORBIDDEN_MESSAGE, FakeGraph, GRAPH_DETAIL, GraphRequest, OVERSIZED_MESSAGE};
 pub use hold::Hold;
 pub use oauth::{
-    AuthRequest, CLIENT_ID, CLIENT_SECRET, FakeAuthorizationServer, LONG_TOKEN_CHARS, LURE,
-    METADATA_PATH, OAuthQuirk, ProtectedMcp, SLOW_ANSWER, Settings as AuthorizationSettings,
-    serve_oauth_mcp_http, serve_oauth_mcp_http_on,
+    AuthRequest, CLIENT_ID, CLIENT_SECRET, FakeAuthorizationServer, IdTokenQuirk, LONG_TOKEN_CHARS,
+    LURE, METADATA_PATH, OAuthQuirk, ProtectedMcp, SLOW_ANSWER, Settings as AuthorizationSettings,
+    SignedIn, serve_oauth_mcp_http, serve_oauth_mcp_http_on,
 };
 pub use proxy::{Proxied, serve_proxy};
 pub use quirks::{DeclaredToolsServer, HIDDEN_TEXT, Quirk};

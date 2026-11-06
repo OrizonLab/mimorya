@@ -60,6 +60,7 @@ pub async fn declare(
         scopes: body.scopes,
         redirect_uri: oauth_redirect_uri(&state.config.web_origin),
         holder: body.per_person.map(holder),
+        verify_identity: body.verify_identity,
     };
     let declared = declare_oauth(&admin(&state, &store, &catalog), &access, id, input).await?;
     // Its secret, typed or granted, stored if it proves itself with one; no

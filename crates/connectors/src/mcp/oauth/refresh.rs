@@ -75,6 +75,7 @@ mod tests {
             revocation_endpoint: None,
             registered: None,
             holder: Default::default(),
+            verifies_identity: false,
             issuer: "https://auth.example.com".into(),
             resource: "https://mcp.example.com/mcp".into(),
             authorization_endpoint: "https://auth.example.com/authorize".into(),

@@ -5,7 +5,9 @@
 //! issuer the declared one (RFC 9207); the person must still be allowed to
 //! use connectors, the server's address and declaration be those the attempt
 //! was started under (each person authorizing it), and the server enabled.
-//! The code is then exchanged, the tokens sealed for the connector and the
+//! The code is then exchanged and, if the declaration asks, the account
+//! authorized proven the person's own by the identity token that came with
+//! the tokens (ADR-175); the tokens are sealed for the connector and the
 //! person, and kept under the administration lock with the person's account
 //! held active: a change of the declaration, which takes every person's
 //! authorization, or a deactivation, which takes the person's, either waits
@@ -23,6 +25,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use super::attempt::{self, AuthorizationAttempt};
+use super::identity::proven_identity;
 use super::returned::{
     AuthorizationFailure, CHANGED, OAuthReturn, Outcome, declaration, exchanged, internal,
     issuer_refused, own_attempt, returned_code, unchanged,
@@ -89,7 +92,11 @@ pub async fn finish_person_authorization(
         return Err(at(refused));
     }
     let granted = exchanged(admin, access, &attempt, &server, &code, web_origin).await?;
-    let kept = keep(admin, access, &attempt, &server.declared, &granted).await;
+    let kept = async {
+        proven_identity(admin, access, &attempt, &server, &granted).await?;
+        keep(admin, access, &attempt, &server.declared, &granted).await
+    }
+    .await;
     if kept.is_err() {
         // Granted, kept nowhere (ADR-172).
         admin.connectors.revoke_unkept(Unkept {

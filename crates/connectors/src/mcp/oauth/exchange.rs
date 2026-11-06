@@ -34,6 +34,9 @@ pub struct Granted {
     /// The scopes granted, if the server says so (else those asked); never
     /// a list it said that could not be read.
     pub scopes: Option<Vec<String>>,
+    /// The identity token that came with them, if any (OpenID Connect):
+    /// verified only where a declaration asks who authorized (ADR-175).
+    pub id_token: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -43,6 +46,7 @@ struct TokenResponse {
     expires_in: Option<serde_json::Value>,
     refresh_token: Option<String>,
     scope: Option<String>,
+    id_token: Option<String>,
 }
 
 /// The tokens the token endpoint of `declaration` grants for `exchange`.
@@ -137,6 +141,7 @@ pub(super) fn granted(body: &[u8], renewing: bool) -> Result<Granted, String> {
         expires_in,
         refresh_token,
         scopes,
+        id_token: answer.id_token,
     })
 }
 
@@ -209,6 +214,7 @@ mod tests {
             revocation_endpoint: None,
             registered: None,
             holder: Default::default(),
+            verifies_identity: false,
             issuer: "https://auth.example.com".into(),
             resource: "https://mcp.example.com/mcp".into(),
             authorization_endpoint: "https://auth.example.com/authorize".into(),

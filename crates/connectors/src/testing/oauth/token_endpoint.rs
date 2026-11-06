@@ -20,6 +20,7 @@ use super::authorization_server::{
     AuthRequest, CLIENT_ID, CLIENT_SECRET, FakeAuthorizationServer, Inner, Refresh, issue_access,
     token_value,
 };
+use super::openid::id_token;
 
 pub(super) async fn token(
     State(server): State<FakeAuthorizationServer>,
@@ -72,7 +73,19 @@ fn answer(
             }
             inner.next += 1;
             let grant = inner.next;
-            granted(&mut inner, grant, code.resource, code.scope)
+            let settings = &inner.settings;
+            let identity = id_token(
+                &server.issuer,
+                settings,
+                &code.client_id,
+                &code.scope,
+                code.nonce.as_deref(),
+            );
+            let mut answer = granted(&mut inner, grant, code.resource, code.scope);
+            if let Some(identity) = identity {
+                answer["id_token"] = Value::from(identity);
+            }
+            axum::Json(answer).into_response()
         }
         "refresh_token" => {
             let given = field("refresh_token");
@@ -95,7 +108,7 @@ fn answer(
             if let Some(refresh) = inner.refresh.get_mut(&given) {
                 refresh.current = false;
             }
-            granted(&mut inner, grant, granted_for, scope)
+            axum::Json(granted(&mut inner, grant, granted_for, scope)).into_response()
         }
         _ => refused("unsupported_grant_type"),
     }
@@ -166,7 +179,7 @@ fn well_formed(verifier: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b"-._~".contains(&b))
 }
 
-fn granted(inner: &mut Inner, grant: u64, resource: Option<String>, scope: String) -> Response {
+fn granted(inner: &mut Inner, grant: u64, resource: Option<String>, scope: String) -> Value {
     let access = issue_access(inner, grant, resource.clone());
     let mut body = json!({ "access_token": access, "token_type": "Bearer", "scope": scope });
     if let Some(lifetime) = inner.settings.lifetime {
@@ -185,7 +198,7 @@ fn granted(inner: &mut Inner, grant: u64, resource: Option<String>, scope: Strin
         );
         body["refresh_token"] = Value::from(refresh);
     }
-    axum::Json(body).into_response()
+    body
 }
 
 pub(super) fn refused(error: &str) -> Response {

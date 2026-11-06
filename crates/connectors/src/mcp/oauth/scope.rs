@@ -4,6 +4,8 @@
 //! or challenge suggests, is checked alike: a scope that could not be sent
 //! as such is never kept.
 
+use mimorya_core::account_links::IDENTITY_SCOPES;
+
 pub const MAX_SCOPES: usize = 20;
 pub const MAX_SCOPE_CHARS: usize = 200;
 
@@ -55,6 +57,21 @@ pub fn suggested_scopes(list: &str) -> Option<Vec<String>> {
     scopes_problem(&scopes).is_none().then_some(scopes)
 }
 
+/// `scopes` and, after them, those of the identity token a declaration
+/// that verifies identities asks for (ADR-175), each once; refused if they
+/// could not be asked for together.
+pub fn with_identity_scopes(mut scopes: Vec<String>) -> Result<Vec<String>, String> {
+    for scope in IDENTITY_SCOPES {
+        if !scopes.iter().any(|asked| asked == scope) {
+            scopes.push(scope.into());
+        }
+    }
+    match scopes_problem(&scopes) {
+        Some(problem) => Err(problem),
+        None => Ok(scopes),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -98,5 +115,16 @@ mod tests {
         );
         assert_eq!(suggested_scopes(""), Some(vec![]));
         assert_eq!(suggested_scopes("read wr\"ite"), None);
+    }
+
+    #[test]
+    fn the_identity_token_s_scopes_are_added_once_after_those_asked() {
+        let asked = vec!["files:read".to_string(), "email".to_string()];
+        assert_eq!(
+            with_identity_scopes(asked).expect("scopes"),
+            ["files:read", "email", "openid", "profile"]
+        );
+        let full: Vec<String> = (0..MAX_SCOPES).map(|i| format!("s{i}")).collect();
+        assert!(with_identity_scopes(full).is_err());
     }
 }

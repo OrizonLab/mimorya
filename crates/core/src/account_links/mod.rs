@@ -4,12 +4,15 @@
 //! an application permission, which would open every mailbox of the
 //! directory or domain), and when a verified token proves the linked
 //! account is the person's own. Each provider's rules are in its module;
-//! `LinkKind` says which apply.
+//! `LinkKind` says which apply. The same rules tell whether the account a
+//! person authorizes an MCP server with is theirs (`authorized`, ADR-175).
 
+mod authorized;
 mod google;
 mod kind;
 mod microsoft365;
 
+pub use authorized::{IDENTITY_SCOPES, authorizing_identity};
 pub use google::{
     CALENDAR_EVENTS, CALENDAR_READONLY, GMAIL_READONLY, GMAIL_SEND, GOOGLE_CALENDAR, GOOGLE_GMAIL,
     GOOGLE_WORKSPACE, GoogleWorkspaceApplication, google_workspace_application,
