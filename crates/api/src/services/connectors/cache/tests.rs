@@ -2,16 +2,18 @@
 //! invalidated while they ran, starts shared by the runs that need them,
 //! and run in the background (ADR-177): waited for at most a run's
 //! patience, going on when the run that asked for one is gone, their
-//! failure told once. The sessions closed for good are tested with
-//! `closed`.
+//! failure remembered, a start that panics failed, one ending after the
+//! cache closed released; a newer instance serves a run that read an older
+//! one. The sessions closed for good are tested with `closed`.
 
 use std::pin::Pin;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
 
 use chrono::Utc;
 use tokio::sync::Notify;
 
+use super::starting::INTERRUPTED;
 use super::*;
 
 pub(super) type Started = Pin<Box<dyn Future<Output = Result<ConnectorRuntime, String>> + Send>>;
@@ -65,6 +67,24 @@ fn failing() -> Result<ConnectorRuntime, String> {
     Err("injoignable".to_string())
 }
 
+/// The closer of an instance, telling the test it was released.
+struct Flag(Arc<AtomicBool>);
+
+#[async_trait::async_trait]
+impl mimorya_connectors::ConnectorCloser for Flag {
+    async fn close(&self) {
+        self.0.store(true, Ordering::SeqCst);
+    }
+}
+
+/// An instance whose release `released` tells.
+fn flagged(released: &Arc<AtomicBool>) -> ConnectorRuntime {
+    ConnectorRuntime {
+        tools: Vec::new(),
+        closer: Some(Box::new(Flag(released.clone()))),
+    }
+}
+
 /// Bounded: a run that kept waiting would never end.
 async fn within<T>(waited: impl Future<Output = T>) -> T {
     let Ok(got) = tokio::time::timeout(Duration::from_secs(5), waited).await else {
@@ -83,8 +103,9 @@ async fn keeps_a_live_instance_and_remembers_a_failure_per_version() {
     );
     let starts = Arc::new(AtomicUsize::new(0));
     let failing = || counted(&starts, failing);
+    // Logged by its start: remembered for every run that reads it.
     let first = unavailable(cache.get_or_start(id, v1, 0, None, failing()).await);
-    assert_eq!(first.origin, Origin::Fresh);
+    assert_eq!(first.origin, Origin::Remembered);
     let again = unavailable(cache.get_or_start(id, v1, 0, None, failing()).await);
     assert_eq!(again.origin, Origin::Remembered);
     assert_eq!(again.message, "injoignable");
@@ -92,7 +113,7 @@ async fn keeps_a_live_instance_and_remembers_a_failure_per_version() {
     // A tested instance is tried again at once.
     cache.retry_now(id).await;
     let retried = unavailable(cache.get_or_start(id, v1, 0, None, failing()).await);
-    assert_eq!(retried.origin, Origin::Fresh);
+    assert_eq!(retried.message, "injoignable");
     assert_eq!(starts.load(Ordering::SeqCst), 2);
 
     // A new version starts again, then stays live.
@@ -131,7 +152,7 @@ async fn never_keeps_a_start_invalidated_while_it_ran() {
 }
 
 /// Two runs need the instance at once: the second waits for the first's start.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_start_in_progress_is_shared_by_the_runs_that_need_it() {
     let cache = RuntimeCache::default();
     let (id, version) = (Uuid::new_v4(), Utc::now());
@@ -159,10 +180,10 @@ async fn a_start_in_progress_is_shared_by_the_runs_that_need_it() {
     assert_eq!(starts.load(Ordering::SeqCst), 1);
 }
 
-/// The failure of the start two runs waited for is told once, then
-/// remembered, whichever run reads it first.
-#[tokio::test]
-async fn a_failed_start_in_progress_is_told_once() {
+/// The failure of the start two runs waited for, logged by the start, is
+/// remembered for both.
+#[tokio::test(start_paused = true)]
+async fn a_failed_start_in_progress_is_shared_as_remembered() {
     let cache = RuntimeCache::default();
     let (id, version) = (Uuid::new_v4(), Utc::now());
     let starts = Arc::new(AtomicUsize::new(0));
@@ -182,15 +203,14 @@ async fn a_failed_start_in_progress_is_told_once() {
         )
     })
     .await;
-    let mut origins = [unavailable(first).origin, unavailable(second).origin];
-    origins.sort_by_key(|origin| *origin == Origin::Remembered);
-    assert_eq!(origins, [Origin::Fresh, Origin::Remembered]);
+    let origins = [unavailable(first).origin, unavailable(second).origin];
+    assert_eq!(origins, [Origin::Remembered, Origin::Remembered]);
     assert_eq!(starts.load(Ordering::SeqCst), 1);
 }
 
 /// A run waits for a start at most its patience: it goes without the
 /// instance, told it still starts, and the start serves the next run.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_run_waits_for_a_start_no_longer_than_its_patience() {
     let cache = RuntimeCache::default();
     let (id, version) = (Uuid::new_v4(), Utc::now());
@@ -219,7 +239,7 @@ async fn a_run_waits_for_a_start_no_longer_than_its_patience() {
 
 /// A start goes on when the run that asked for it is gone: a run waiting
 /// for it gets its outcome, nothing started again.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_start_goes_on_when_the_run_that_asked_for_it_is_gone() {
     let cache = RuntimeCache::default();
     let (id, version) = (Uuid::new_v4(), Utc::now());
@@ -243,10 +263,10 @@ async fn a_start_goes_on_when_the_run_that_asked_for_it_is_gone() {
     assert_eq!(starts.load(Ordering::SeqCst), 1);
 }
 
-/// A failure found once no run waited any more is told by the next run
-/// that reads it, then remembered.
-#[tokio::test]
-async fn a_failure_found_in_the_background_is_told_by_the_next_run() {
+/// A failure found once no run waited any more is remembered for the next
+/// runs, logged by the start that found it.
+#[tokio::test(start_paused = true)]
+async fn a_failure_found_in_the_background_is_remembered_for_the_next_runs() {
     let cache = RuntimeCache::default();
     let (id, version) = (Uuid::new_v4(), Utc::now());
     let starts = Arc::new(AtomicUsize::new(0));
@@ -258,7 +278,7 @@ async fn a_failure_found_in_the_background_is_told_by_the_next_run() {
     gate.notify_one();
     let told = within(cache.get_or_start(id, version, 0, None, start())).await;
     let told = unavailable(told);
-    assert_eq!(told.origin, Origin::Fresh);
+    assert_eq!(told.origin, Origin::Remembered);
     assert_eq!(told.message, "injoignable");
     let remembered = within(cache.get_or_start(id, version, 0, None, start())).await;
     assert_eq!(unavailable(remembered).origin, Origin::Remembered);
@@ -289,4 +309,68 @@ async fn a_run_that_read_a_changed_instance_does_not_start_it() {
     };
     assert!(Arc::ptr_eq(&live, &shared));
     assert_eq!(starts.load(Ordering::SeqCst), 1);
+}
+
+/// A run that read an older version than the one live, its reading not
+/// stale (a person's authorization renewed meanwhile), gets the newer one
+/// rather than start the older in its place.
+#[tokio::test]
+async fn a_newer_live_instance_serves_a_run_that_read_an_older_one() {
+    let cache = RuntimeCache::default();
+    let id = Uuid::new_v4();
+    let (older, newer) = (Utc::now(), Utc::now() + chrono::Duration::seconds(1));
+    let starts = Arc::new(AtomicUsize::new(0));
+    let released = Arc::new(AtomicBool::new(false));
+    let live = flagged(&released);
+    let starting = counted(&starts, move || Ok(live));
+    let Ok(live) = cache.get_or_start(id, newer, 0, None, starting).await else {
+        panic!("expected a live instance");
+    };
+    let older_start = counted(&starts, || Ok(runtime()));
+    let Ok(served) = cache.get_or_start(id, older, 0, None, older_start).await else {
+        panic!("expected the newer instance");
+    };
+    assert!(Arc::ptr_eq(&live, &served));
+    assert_eq!(starts.load(Ordering::SeqCst), 1);
+    assert!(!released.load(Ordering::SeqCst));
+}
+
+/// A start that panics is a failed one, remembered: not started again by
+/// every run.
+#[tokio::test]
+async fn a_start_that_panics_is_a_failed_start() {
+    let cache = RuntimeCache::default();
+    let (id, version) = (Uuid::new_v4(), Utc::now());
+    let starts = Arc::new(AtomicUsize::new(0));
+    let panicking = || counted(&starts, || panic!("démarrage interrompu par le test"));
+    let failed = unavailable(cache.get_or_start(id, version, 0, None, panicking()).await);
+    assert_eq!(failed.message, INTERRUPTED);
+    let again = unavailable(cache.get_or_start(id, version, 0, None, panicking()).await);
+    assert_eq!(again.origin, Origin::Remembered);
+    assert_eq!(starts.load(Ordering::SeqCst), 1);
+}
+
+/// A start ending once the cache closed (shutdown) releases what it
+/// started rather than keep it.
+#[tokio::test(start_paused = true)]
+async fn a_start_ending_after_the_cache_closed_releases_its_instance() {
+    let cache = RuntimeCache::default();
+    let (id, version) = (Uuid::new_v4(), Utc::now());
+    let starts = Arc::new(AtomicUsize::new(0));
+    let gate = Arc::new(Notify::new());
+    let released = Arc::new(AtomicBool::new(false));
+    let live = flagged(&released);
+    let start = gated(&starts, &gate, move || Ok(live));
+    let patience = Some(Duration::from_millis(20));
+    let waited = within(cache.get_or_start(id, version, 0, patience, start)).await;
+    assert_eq!(unavailable(waited).origin, Origin::Starting);
+    cache.close().await;
+    gate.notify_one();
+    for _ in 0..10_000 {
+        if released.load(Ordering::SeqCst) {
+            return;
+        }
+        tokio::task::yield_now().await;
+    }
+    panic!("the instance started after the cache closed is kept");
 }

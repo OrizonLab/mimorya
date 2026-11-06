@@ -151,8 +151,14 @@ impl RunExecutor {
     ) -> anyhow::Result<()> {
         // A hook's run stays one when it resumes (ADR-109).
         let actor = Actor::agent(Some(run.id)).with_channel(run.channel.clone());
+        // Only a person's turn, its first answer awaited, goes without a
+        // connector still starting; a resumed run does the actions that
+        // were validated with every tool it had (ADR-177).
+        let patient = matches!(mode, ExecutionMode::Start { .. })
+            && run.channel != "hook"
+            && run.mission_id.is_none();
         let (runtime, unavailable) = self
-            .runtime_for(access, run, ports, actor.clone(), fence)
+            .runtime_for(access, run, ports, actor.clone(), fence, patient)
             .await?;
         match mode {
             ExecutionMode::Start { history, text } => {
@@ -227,6 +233,7 @@ impl RunExecutor {
         ports: &EnginePorts,
         actor: Actor,
         fence: &LeaseFence,
+        patient: bool,
     ) -> anyhow::Result<(AgentRuntime, UnavailableConnectors)> {
         // A run awaiting approval may be resumed after a restart without a
         // provider, or after its company changed or removed its own.
@@ -238,7 +245,7 @@ impl RunExecutor {
             Some(reviewer) => ModelRouter::new(provider).with_verification(reviewer),
             None => ModelRouter::new(provider),
         };
-        let tools = build_run_tools(access, &actor, ports, &self.connectors).await?;
+        let tools = build_run_tools(access, &actor, ports, &self.connectors, patient).await?;
         let budget: BudgetLimits = serde_json::from_value(run.budget.clone())?;
         let level = AutonomyLevel::parse(&run.autonomy_level)
             .ok_or_else(|| anyhow::anyhow!("unknown autonomy level {}", run.autonomy_level))?;

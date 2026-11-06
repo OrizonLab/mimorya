@@ -2,8 +2,9 @@
 //! on whether the runs that wait for it still do or not, and leaves its
 //! outcome in the cache for them and for the runs that follow. A live
 //! instance it started is kept unless the instance was invalidated while
-//! it ran, or a newer one went live meanwhile; a failure is remembered,
-//! told by the first run that reads it.
+//! it ran, a newer one went live meanwhile, or the cache closed; a failure
+//! is remembered, and logged here, where it is found: no run may read it
+//! before it is forgotten. A start that panics is a failure too.
 
 use std::future::Future;
 use std::sync::Arc;
@@ -18,6 +19,9 @@ use super::{RETRY_AFTER, SessionKey, Slot, State, Version, close_in_background, 
 /// out: its tools serve the runs that follow.
 pub const STILL_STARTING: &str = "Le connecteur démarre encore : ses outils serviront aux \
      demandes suivantes";
+
+/// A start that ended without an outcome (it panicked).
+pub const INTERRUPTED: &str = "Le démarrage du connecteur s’est interrompu";
 
 /// A start in progress, and where its outcome goes.
 pub(super) struct Start {
@@ -36,9 +40,13 @@ pub(super) struct Start {
 impl Start {
     pub async fn run<Fut>(self, started: Fut)
     where
-        Fut: Future<Output = Result<ConnectorRuntime, String>>,
+        Fut: Future<Output = Result<ConnectorRuntime, String>> + Send + 'static,
     {
-        let started = started.await;
+        // In a task of its own: a start that panics is a failed one.
+        let started = match tokio::spawn(started).await {
+            Ok(started) => started,
+            Err(_) => Err(INTERRUPTED.to_string()),
+        };
         let Self {
             state,
             id,
@@ -54,7 +62,7 @@ impl Start {
         {
             state.slots.remove(&id);
         }
-        let stale = state.stale(id, ticket);
+        let stale = state.stale(id, ticket) || state.closed;
         let newer =
             matches!(state.slots.get(&id), Some(Slot::Live { version: v, .. }) if *v >= version);
         if stale || newer {
@@ -77,11 +85,12 @@ impl Start {
                     release(state.slots.insert(id, live));
                 }
                 Err(message) => {
+                    let connector = id.instance;
+                    tracing::warn!(%connector, error = %message, "Connector unavailable");
                     let failed = Slot::Failed {
                         version,
                         until: Instant::now() + RETRY_AFTER,
                         message,
-                        fresh: true,
                     };
                     release(state.slots.insert(id, failed));
                 }

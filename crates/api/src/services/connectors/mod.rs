@@ -3,12 +3,15 @@
 //! when its configuration changes (`updated_at`) and released when it is
 //! changed, disabled or deleted.
 //!
-//! Instances start side by side; a start in progress is shared by the runs
-//! that need it, and a failed start is remembered for a while (`cache`,
-//! ADR-049): a server that does not answer delays the runs of one start,
-//! then one run per retry delay, by the start timeout at most. One connector failing (server, token,
-//! policies, a tool name taken) makes that connector alone unavailable. How
-//! each start went is recorded on the instance (`status`, `last_error`).
+//! Instances start side by side, in the background; a start in progress is
+//! shared by the runs that need it, and a failed start is remembered for a
+//! while (`cache`, ADR-049): a server that does not answer delays the runs
+//! of one start, then one run per retry delay, by the start timeout at
+//! most, and a person's turn by its patience only (ADR-177). One connector
+//! failing (server, token, policies, a tool name taken) makes that
+//! connector alone unavailable. How each start of the company's instance
+//! went is recorded on it (`status`, `last_error`), a failure by the start
+//! that found it.
 //! The starts an administration asks for are bounded per company
 //! (`admin_starts`, ADR-055). The tools of the connectors that reach
 //! outside the platform can be withheld (`tenant_tools`, ADR-153). An MCP
@@ -245,4 +248,21 @@ pub async fn start_instance(
         ..InstanceContext::default()
     };
     definition.instantiate(config, context).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_patience_no_shorter_than_the_start_is_none() {
+        let timeout = Duration::from_secs(20);
+        let five = Duration::from_secs(5);
+        assert_eq!(ConnectorSettings::patience(timeout, five), Some(five));
+        let none = Duration::ZERO;
+        assert_eq!(ConnectorSettings::patience(timeout, none), Some(none));
+        assert_eq!(ConnectorSettings::patience(timeout, timeout), None);
+        let longer = Duration::from_secs(30);
+        assert_eq!(ConnectorSettings::patience(timeout, longer), None);
+    }
 }

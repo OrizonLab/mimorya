@@ -34,21 +34,26 @@ pub struct RunTools {
 }
 
 /// The tools of a run serving `access`'s person: on a server each person
-/// authorizes, their own authorization (ADR-174).
+/// authorizes, their own authorization (ADR-174); `patient`, a connector
+/// still starting once the patience is over is gone without (ADR-177).
 pub async fn build_run_tools(
     access: &AccessContext,
     actor: &Actor,
     ports: &EnginePorts,
     connectors: &ConnectorService,
+    patient: bool,
 ) -> anyhow::Result<RunTools> {
     let served = Served::Person {
         user: access.subject.user_id,
         // Nothing sent for tools they could not be given (ADR-174).
         uses_connectors: access.engine.has(&access.subject, CONNECTOR_USE, actor),
     };
-    let connector_tools = connectors
-        .tools_for(access.subject.tenant_id, served)
-        .await?;
+    let tenant_id = access.subject.tenant_id;
+    let connector_tools = if patient {
+        connectors.tools_within_patience(tenant_id, served).await?
+    } else {
+        connectors.tools_for(tenant_id, served).await?
+    };
     run_tools(access, actor, ports, connector_tools)
 }
 

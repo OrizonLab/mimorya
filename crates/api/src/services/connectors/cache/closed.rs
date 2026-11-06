@@ -46,8 +46,6 @@ pub(super) fn closed(state: &mut State, id: SessionKey, version: Version) -> Opt
         version,
         until: Instant::now() + RETRY_AFTER,
         message: EXITED_AT_ONCE.into(),
-        // Told here, at once.
-        fresh: false,
     };
     state.slots.insert(id, failed);
     Some(Unavailable::new(EXITED_AT_ONCE))

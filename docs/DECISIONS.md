@@ -11440,57 +11440,89 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     `configuration_hold`, `Hold`), et non plus pendant une durée : les tests de
     concurrence ne dépendent d'aucun délai, ceux d'ADR-175 compris.
 
-## ADR-177 — Connecteurs : un démarrage en arrière-plan, qu'un run n'attend que sa patience (lot 48)
+## ADR-177 — Connecteurs : un démarrage en arrière-plan, qu'une personne n'attend que sa patience (lot 48)
 
 - **Statut** : accepté (2026-11-06) · complète ADR-049, ADR-163 et ADR-174.
 - **Contexte** : un run qui a besoin d'une instance de connecteur la démarre, ou attend
   la tentative en cours qu'un autre run a lancée (ADR-049). Il l'attend jusqu'au bout,
-  donc jusqu'au délai de démarrage (20 s par défaut, `MIMORYA_MCP_START_TIMEOUT_SECS`)
-  pour un serveur qui ne répond pas. La tentative vivait dans le run qui l'avait
-  lancée : abandonnée avec lui (requête annulée), elle était reprise par un run qui
-  l'attendait. Un serveur lent faisait donc attendre la première réponse de chaque run
-  du délai entier. Les audits l'avaient relevé.
+  c'est-à-dire jusqu'au délai de démarrage (20 s par défaut,
+  `MIMORYA_MCP_START_TIMEOUT_SECS`) pour un serveur qui ne répond pas. La tentative
+  vivait dans le run qui l'avait lancée : abandonnée avec lui (requête annulée), elle
+  était reprise par un run qui l'attendait. Une personne qui écrit à l'agent attendait
+  donc le délai entier pour sa première réponse si un serveur était lent. Les audits
+  l'avaient relevé.
 - **Décision** :
   - **le démarrage tourne en arrière-plan** (`services/connectors/cache/starting.rs`).
     Il possède ce dont il a besoin : réglages, type, configuration et jeton
-    (`start_instance`). Il laisse son issue dans le cache des instances : instance
-    vivante, ou échec retenu une minute (ADR-049). Les runs qui l'attendent la lisent,
-    comme ceux qui suivent. Un démarrage qu'un run abandonne continue. Les règles du
-    cache ne changent pas :
-    - une instance changée pendant son démarrage n'est pas gardée ;
-    - une instance plus récente déjà vivante est servie, celle de la tentative fermée ;
-  - **un run ne l'attend que sa patience** (`MIMORYA_MCP_START_PATIENCE_SECS`, 5 s par
-    défaut, de 0 à 120). Passé ce délai, le run continue sans ce connecteur. Il en est
-    prévenu comme d'un connecteur indisponible (« Le connecteur démarre encore : ses
-    outils serviront aux demandes suivantes », `STILL_STARTING`), et le modèle aussi.
-    Rien n'est retenu comme une panne : ni journal, ni état du connecteur, ni erreur
-    montrée aux administrateurs (`Origin::Starting`). Une patience au moins égale au
-    délai de démarrage n'en est pas une : le run attend alors l'issue, comme avant ;
-  - **une panne trouvée en arrière-plan est dite une fois** : par le premier run qui la
-    lit, qu'il ait attendu le démarrage ou qu'il vienne après. Ce run la journalise et
-    l'enregistre sur le connecteur (`Origin::Fresh`) ; les suivants la lisent retenue.
-    Avant, c'était toujours le run qui avait lancé la tentative ; il a pu partir depuis.
+    (`start_instance`). Il laisse son issue dans le cache des instances : une instance
+    vivante, ou un échec retenu une minute (ADR-049). Les runs qui l'attendent la
+    lisent, comme ceux qui suivent. Une tentative qu'un run abandonne continue. Une
+    tentative qui panique est un démarrage échoué, retenu comme les autres (« Le
+    démarrage du connecteur s'est interrompu »). Une tentative qui finit après la
+    fermeture du cache (arrêt du service) ferme ce qu'elle a démarré ;
+  - **une panne est dite là où elle est trouvée**, par le démarrage lui-même : il la
+    journalise, et pour l'instance de l'entreprise, l'enregistre sur le connecteur,
+    pour la version qui a échoué seulement. Ainsi une panne que plus aucun run
+    n'attend, quand la patience est passée, n'est jamais perdue : elle est montrée aux
+    administrateurs comme avant. Les runs qui la lisent la trouvent retenue
+    (`Origin::Remembered`) ;
+  - **seule une personne qui attend la première réponse de son tour a une patience**
+    (`MIMORYA_MCP_START_PATIENCE_SECS`, 5 s par défaut, de 0 à 120 ;
+    `tools_within_patience`). Passé ce délai, le run continue sans ce connecteur, qui
+    est compté parmi les connecteurs indisponibles et nommé à la personne et au modèle
+    comme tel. La raison (`STILL_STARTING`, « Le connecteur démarre encore… ») reste
+    dans ce que le run reçoit, sans être affichée. Rien n'est retenu comme une panne
+    (`Origin::Starting`) : ni journal, ni état du connecteur. Une patience au moins
+    égale au délai de démarrage n'en est pas une ;
+  - **les autres attendent l'issue** (`tools_for`) :
+    - un run repris après une validation ou un arrêt du service (`Resume`,
+      `Recover`) : l'action qu'une personne a validée est faite avec l'outil qu'elle
+      a validé, même si son connecteur doit redémarrer ;
+    - un run lancé par un déclencheur (`channel = hook`) ou une étape de mission :
+      personne n'attend sa première réponse ;
+    - une évaluation de compétence : son verdict ne dépend pas d'un serveur lent à
+      démarrer.
+
+    Une tâche planifiée reste un tour comme un autre, car rien ne l'en distingue
+    aujourd'hui dans le run : son premier démarrage d'un connecteur lent peut s'en
+    passer (point ouvert de la feuille de route) ;
+
+  - **une instance plus récente déjà vivante est servie** à un run qui a lu une version
+    plus ancienne sans que sa lecture soit périmée : c'est le cas de deux runs d'une
+    même personne de part et d'autre du renouvellement de son autorisation. C'est une
+    règle nouvelle du cache : avant, ce run démarrait l'ancienne version à la place
+    de la plus récente, qu'il fermait.
 - **Conséquences** :
-  - le premier run après un redémarrage du service, ou après un changement du
-    connecteur, peut se passer des outils d'un serveur lent à démarrer (au-delà de
-    cinq secondes). Les runs qui suivent les ont. Un serveur qui ne répond pas ne
-    retient plus un run que sa patience ;
-  - le tableau des démarrages en cours ne dépend plus de la vie des requêtes : rien
-    n'est démarré deux fois parce qu'un run est parti ;
+  - le premier tour d'une personne peut se passer des outils d'un serveur qui met plus
+    de cinq secondes à démarrer : juste après un redémarrage du service, sur un worker
+    qui n'a pas encore démarré ce connecteur, après un changement du connecteur, ou
+    quand l'instance d'une personne a été libérée (après quinze minutes sans run,
+    ADR-174) ou retirée avant l'échéance de son jeton (ADR-171). Ses tours suivants ont
+    ces outils. Un serveur qui ne répond pas ne retient plus une personne que sa
+    patience ;
+  - rien n'est démarré deux fois parce qu'un run est parti, et une panne trouvée en
+    arrière-plan est montrée aux administrateurs comme celle d'un run ;
   - un test d'un connecteur par l'administration attend toujours son démarrage entier
     (ADR-050, ADR-055) : il ne passe pas par ce cache ;
   - tests :
     - `crates/api/src/services/connectors/cache/tests.rs` :
-      - une tentative partagée ;
-      - une panne dite une fois, quel que soit le run qui la lit en premier ;
+      - une tentative partagée, sa panne retenue pour chacun ;
       - un run qui n'attend que sa patience, la tentative servant au run suivant ;
       - une tentative qui continue après le départ du run qui l'a demandée ;
-      - une panne trouvée en arrière-plan dite par le run suivant ;
+      - une panne trouvée en arrière-plan, retenue pour les runs suivants ;
+      - une instance plus récente servie à un run qui a lu une version plus
+        ancienne, sans en démarrer une ;
+      - une tentative qui panique, retenue comme échouée ;
+      - une tentative qui finit après la fermeture du cache, libérée ;
     - les tests des sessions fermées passent dans `cache/closed.rs` ;
-    - `crates/api/tests/connector_start_patience.rs` : un run revient après sa
-      patience face à un serveur retenu, prévenu, rien n'étant enregistré, et le
-      serveur sert le run suivant ;
-    - `crates/api/src/config/tests.rs` : bornes de la patience.
+    - `crates/api/tests/connector_start_patience.rs` :
+      - face à un serveur retenu, un tour revient après sa patience, sans que rien
+        soit enregistré, et le serveur sert le tour suivant ;
+      - une panne trouvée en arrière-plan, qu'aucun run ne lit, est journalisée et
+        enregistrée ;
+      - une action validée, son connecteur à redémarrer plus lentement que la
+        patience, est faite après la reprise ;
+    - tests unitaires de la patience (`connectors/mod.rs`, `config/tests.rs`).
 
     Ce lot reprend aussi les points de l'audit de la PR #209 :
     - l'en-tête du dépôt des autorisations des personnes cite la lecture de leurs

@@ -18,13 +18,12 @@ use mimorya_db::repositories::connectors::{
 };
 use uuid::Uuid;
 
-use mimorya_connectors::mcp::{OAUTH_EXPIRED_PERSON, OAUTH_REFUSED_PERSON, OAUTH_UNUSABLE_PERSON};
-
 use super::cache::{Origin, STILL_STARTING, SessionKey, Unavailable, Version};
+use super::failures::{record_failure, theirs_to_authorize};
 use super::{
     ConnectorIssue, ConnectorService, Credential, CredentialFor, Policies, TenantTools,
-    UNOPENED_PERSON, credential_for, credential_of, each_person, failure, read_policies,
-    scoped_overrides, start_instance,
+    credential_for, credential_of, each_person, failure, read_policies, scoped_overrides,
+    start_instance,
 };
 
 /// Whom a run's connectors are started for.
@@ -90,7 +89,31 @@ enum Prepared {
 }
 
 impl ConnectorService {
+    /// The tools of the company's connectors for a run, each instance
+    /// starting waited for until it ends: nobody waits for the run's first
+    /// answer, or an action a person validated is to be done (ADR-177).
     pub async fn tools_for(&self, tenant_id: Uuid, served: Served) -> anyhow::Result<TenantTools> {
+        self.tools_waiting(tenant_id, served, None).await
+    }
+
+    /// The same, for a run whose first answer a person waits for: an
+    /// instance still starting once the patience is over is gone without,
+    /// its start going on for the runs that follow (ADR-177).
+    pub async fn tools_within_patience(
+        &self,
+        tenant_id: Uuid,
+        served: Served,
+    ) -> anyhow::Result<TenantTools> {
+        let patience = self.settings.start_patience;
+        self.tools_waiting(tenant_id, served, patience).await
+    }
+
+    async fn tools_waiting(
+        &self,
+        tenant_id: Uuid,
+        served: Served,
+        patience: Option<std::time::Duration>,
+    ) -> anyhow::Result<TenantTools> {
         // Before anything is read: a renewal makes a new version.
         self.renew_before_run(tenant_id, served).await?;
         let ticket = self.cache.ticket().await;
@@ -110,7 +133,7 @@ impl ConnectorService {
             instances
                 .iter()
                 .zip(plans)
-                .map(|(instance, plan)| self.prepare(instance, plan, ticket)),
+                .map(|(instance, plan)| self.prepare(instance, plan, ticket, patience)),
         )
         .await;
         let mut result = TenantTools::default();
@@ -237,7 +260,13 @@ impl ConnectorService {
     }
 
     /// The instance's tools and policies for this run, or why not.
-    async fn prepare(&self, instance: &ConnectorInstanceRow, plan: Plan, ticket: u64) -> Prepared {
+    async fn prepare(
+        &self,
+        instance: &ConnectorInstanceRow,
+        plan: Plan,
+        ticket: u64,
+        patience: Option<std::time::Duration>,
+    ) -> Prepared {
         let (key, version, credential) = match plan {
             Plan::Missing {
                 message,
@@ -279,7 +308,7 @@ impl ConnectorService {
         };
         let shared = key.person.is_none();
         let outcome = self
-            .started(instance, key, version, credential, ticket)
+            .started(instance, key, version, credential, ticket, patience)
             .await
             .map(|runtime| {
                 let names: Vec<String> = runtime
@@ -304,61 +333,30 @@ impl ConnectorService {
         version: Version,
         credential: anyhow::Result<Credential>,
         ticket: u64,
+        patience: Option<std::time::Duration>,
     ) -> Result<std::sync::Arc<mimorya_connectors::ConnectorRuntime>, Unavailable> {
         let credential = credential.map_err(|error| Unavailable::new(error.to_string()))?;
-        // Started in the background, owning what it needs (ADR-177).
+        // Started in the background, owning what it needs (ADR-177); the
+        // company's failure recorded there, where it is found, for its
+        // version alone: no run may read it before it is forgotten.
         let settings = self.settings;
         let connector = instance.connector_type.clone();
         let config = instance.config.clone();
+        let recorder = key.person.is_none().then(|| {
+            let at = (instance.tenant_id, instance.id, instance.updated_at);
+            (self.db.clone(), at)
+        });
         let start = move || async move {
-            start_instance(settings, &connector, &config, &credential)
+            let started = start_instance(settings, &connector, &config, &credential)
                 .await
-                .map_err(|error| failure(&error, credential.token.as_deref()))
+                .map_err(|error| failure(&error, credential.token.as_deref()));
+            if let (Err(message), Some((db, (tenant_id, id, version)))) = (&started, recorder) {
+                record_failure(&db, tenant_id, id, version, message).await;
+            }
+            started
         };
-        let patience = self.settings.start_patience;
         self.cache
             .get_or_start(key, version, ticket, patience, start)
             .await
-    }
-}
-
-/// Whether a person's instance failed for their authorization's token,
-/// expired, refused by the server, unusable or unopenable: theirs to give
-/// anew (ADR-174).
-fn theirs_to_authorize(message: &str) -> bool {
-    [
-        OAUTH_EXPIRED_PERSON,
-        OAUTH_REFUSED_PERSON,
-        OAUTH_UNUSABLE_PERSON,
-        UNOPENED_PERSON,
-    ]
-    .iter()
-    .any(|said| message.starts_with(said))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_person_s_own_token_failing_is_theirs_to_authorize_again() {
-        for said in [
-            OAUTH_EXPIRED_PERSON,
-            OAUTH_REFUSED_PERSON,
-            OAUTH_UNUSABLE_PERSON,
-            UNOPENED_PERSON,
-        ] {
-            assert!(theirs_to_authorize(said), "{said}");
-            let detailed = format!("{said} (détail : HTTP 401)");
-            assert!(theirs_to_authorize(&detailed), "{detailed}");
-        }
-        // The server's own failures stay unavailable.
-        for said in [
-            "Le serveur MCP a renvoyé une erreur",
-            "Délai dépassé",
-            mimorya_connectors::mcp::OAUTH_REFUSED,
-        ] {
-            assert!(!theirs_to_authorize(said), "{said}");
-        }
     }
 }

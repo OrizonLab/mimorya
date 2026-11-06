@@ -4,11 +4,11 @@
 //! start rather than make its own (ADR-049): a server that does not answer
 //! delays the runs of one start, then one run per retry delay, not every
 //! run. A start runs in the background, whoever asked for it (ADR-177): a
-//! run waits for it at most its patience, then goes without the instance,
-//! which serves the runs that follow; one the run gave up goes on. A
-//! failure found in the background is told, and recorded, by the first run
-//! that reads it. A start invalidated while it ran (instance changed,
-//! disabled or deleted) is released, never kept. A live instance whose session closed
+//! run waits for it at most its patience, if it has one, then goes without
+//! the instance, which serves the runs that follow; one the run gave up
+//! goes on. A failure is logged where it is found, by the start itself. A
+//! start invalidated while it ran (instance changed, disabled or deleted)
+//! is released, never kept, and one that ends after the cache closed too. A live instance whose session closed
 //! for good (a local server that exited, a server that no longer answers a
 //! ping, ADR-164) is released and started again by the next run that needs
 //! it, or remembered as a failed start (`closed`, ADR-163). On a server
@@ -98,9 +98,6 @@ enum Slot {
         version: Version,
         until: Instant,
         message: String,
-        /// Found in the background and told to no run yet: the first run
-        /// that reads it logs and records it.
-        fresh: bool,
     },
     /// A start in progress: `done` changes or closes when it ends, or when
     /// the run that makes it gives it up.
@@ -120,6 +117,8 @@ struct State {
     /// The generation at which each person's instance was last forgotten,
     /// and when: forgotten in turn once no start could still read it.
     forgotten: HashMap<SessionKey, (u64, Instant)>,
+    /// Closed (shutdown): a start that ends now releases what it started.
+    closed: bool,
 }
 
 impl State {
@@ -195,19 +194,17 @@ impl RuntimeCache {
                         *used = Instant::now();
                         return Ok(runtime.clone());
                     }
+                    // Logged by its start, recorded by it if it is the
+                    // company's (ADR-177).
                     Some(Slot::Failed {
                         version: v,
                         until,
                         message,
-                        fresh,
                     }) if *v == version && Instant::now() < *until => {
-                        let origin = if std::mem::take(fresh) {
-                            Origin::Fresh
-                        } else {
-                            Origin::Remembered
-                        };
-                        let message = message.clone();
-                        return Err(Unavailable { message, origin });
+                        return Err(Unavailable {
+                            message: message.clone(),
+                            origin: Origin::Remembered,
+                        });
                     }
                     // The instance of this version (same configuration, same
                     // token) serves even a caller whose reading is stale; any
@@ -313,16 +310,14 @@ impl RuntimeCache {
         people::release_idle(&mut *self.state.lock().await, Instant::now());
     }
 
-    /// Releases every live instance (shutdown).
+    /// Releases every live instance (shutdown), and those of the starts
+    /// still under way once they end.
     pub async fn close(&self) {
-        let slots: Vec<Slot> = self
-            .state
-            .lock()
-            .await
-            .slots
-            .drain()
-            .map(|(_, s)| s)
-            .collect();
+        let slots: Vec<Slot> = {
+            let mut state = self.state.lock().await;
+            state.closed = true;
+            state.slots.drain().map(|(_, s)| s).collect()
+        };
         for slot in slots {
             if let Slot::Live { runtime, .. } = slot
                 && let Some(closer) = &runtime.closer
