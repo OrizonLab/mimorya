@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
-import { Button, ErrorNote, Field, Input, Radio } from '@/components/ui';
+import { Button, Checkbox, ErrorNote, Field, Input, Radio } from '@/components/ui';
 import { api, useAction, type ConnectorView, type McpOAuthDeclaration } from '@/lib/api';
 import { REGISTERED_CLIENT_STAYS } from './registered-client';
 
@@ -11,7 +11,9 @@ import { REGISTERED_CLIENT_STAYS } from './registered-client';
  * there itself (ADR-173) when it has its master key; the authorization
  * server is found from the server itself, its issuer given only when the
  * server names several, or none. The company authorizes it once, or each
- * person for themself in their account (ADR-174). Declared again,
+ * person for themself in their account (ADR-174), and then whether its
+ * authorization server must prove that each authorizes with their own
+ * account (OpenID Connect, ADR-175). Declared again,
  * everything is replaced, the secret too, and the authorizations given
  * under the former declaration go. A typed token goes as well: OAuth
  * replaces it.
@@ -36,6 +38,7 @@ export function McpOAuthForm({
   const [secret, setSecret] = useState('');
   const [scopes, setScopes] = useState(declared?.scopes.join(' ') ?? '');
   const [perPerson, setPerPerson] = useState(declared?.perPerson ?? false);
+  const [verifyIdentity, setVerifyIdentity] = useState(declared?.verifiesIdentity ?? false);
   const action = useAction();
 
   async function submit(event: FormEvent) {
@@ -68,6 +71,7 @@ export function McpOAuthForm({
       clientSecret: register ? undefined : secret.trim() || undefined,
       scopes: asked ? asked.split(/\s+/) : undefined,
       perPerson,
+      verifyIdentity: perPerson && verifyIdentity,
     } satisfies McpOAuthDeclaration;
     const saved = await action.run(() => api.put(`/admin/connectors/${connector.id}/oauth`, body));
     if (saved) onDone(true);
@@ -115,6 +119,20 @@ export function McpOAuthForm({
           Chaque personne, pour elle-même, dans « Mon compte »
         </label>
       </fieldset>
+      {perPerson && (
+        <label className="flex items-start gap-2 text-sm">
+          <Checkbox
+            className="mt-0.5"
+            checked={verifyIdentity}
+            onChange={(e) => setVerifyIdentity(e.target.checked)}
+          />
+          <span>
+            Vérifier que chacun l’autorise avec son propre compte : le serveur d’autorisation,
+            fournisseur OpenID Connect, doit prouver l’adresse du compte autorisé, qui doit être
+            celle de la personne. Les portées openid, email et profile sont demandées en plus.
+          </span>
+        </label>
+      )}
       <p className="text-sm text-muted">
         {register ? (
           <>

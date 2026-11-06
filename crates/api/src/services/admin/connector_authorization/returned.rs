@@ -38,6 +38,10 @@ pub struct OAuthReturn {
 pub struct AuthorizationFailure {
     pub connector_id: Option<Uuid>,
     pub reason: String,
+    /// The account authorized is proven another address's than the
+    /// person's (ADR-175): their account says so, for them to authorize
+    /// again with their own.
+    pub other_account: bool,
 }
 
 impl AuthorizationFailure {
@@ -45,6 +49,7 @@ impl AuthorizationFailure {
         Self {
             connector_id,
             reason: reason.into(),
+            other_account: false,
         }
     }
 }

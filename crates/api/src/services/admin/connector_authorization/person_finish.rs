@@ -180,6 +180,7 @@ async fn keep(
             "renewable": sealed.refresh.is_some(),
             "expiresAt": sealed.expires_at.as_ref().map(iso),
             "replaced": replaced,
+            "identityVerified": declared.verifies_identity,
         })),
     )
     .await

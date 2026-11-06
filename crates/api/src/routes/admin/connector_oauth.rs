@@ -41,6 +41,8 @@ const FAILED: &str = "/admin?autorisation=echec";
 /// Where a person's own authorization lands (ADR-174): their account.
 const PERSON_AUTHORIZED_BACK: &str = "/account?serveur=ok";
 const PERSON_FAILED_BACK: &str = "/account?serveur=echec";
+/// A person's, refused for authorizing with another's account (ADR-175).
+const PERSON_OTHER_ACCOUNT_BACK: &str = "/account?serveur=autre-compte";
 /// Without a session, nothing can be authorized: the sign-in page.
 const SIGNED_OUT: &str = "/login";
 
@@ -190,6 +192,7 @@ pub async fn callback(
         Err(AuthorizationFailure {
             connector_id: None,
             reason: "Trop de tentatives".into(),
+            other_account: false,
         })
     };
     let (action, authorized, failed) = if person {
@@ -204,8 +207,13 @@ pub async fn callback(
     match outcome {
         Ok(_) => away(authorized),
         Err(failure) => {
+            let back = if person && failure.other_account {
+                PERSON_OTHER_ACCOUNT_BACK
+            } else {
+                failed
+            };
             record_refusal(&state, &context, &access, action, failure).await;
-            away(failed)
+            away(back)
         }
     }
 }

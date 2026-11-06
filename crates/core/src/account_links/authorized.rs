@@ -9,7 +9,7 @@
 //! verified. That address must be the person's, but for case.
 
 use super::{LinkKind, LinkRefusal, LinkedIdentity, MAX_ADDRESS_CHARS, MAX_SUBJECT_CHARS};
-use crate::identity_providers::{GOOGLE_ISSUER, TokenClaims, issuer_own_kind};
+use crate::identity_providers::{ProviderKind, TokenClaims, issuer_kind};
 
 /// The scopes asked besides those declared, for the identity token and
 /// what the rules read of it: the address, and the sign-in name and object
@@ -23,19 +23,15 @@ pub fn authorizing_identity(
     claims: &TokenClaims<'_>,
     account_email: &str,
 ) -> Result<LinkedIdentity, LinkRefusal> {
-    match issuer_own_kind(issuer) {
-        None => verified_address(claims, account_email),
-        Some(_) if is_google(issuer) => {
+    match issuer_kind(issuer) {
+        Some(ProviderKind::Microsoft) => {
+            LinkKind::Microsoft365.linked_identity(claims, account_email)
+        }
+        Some(ProviderKind::Google) => {
             LinkKind::GoogleWorkspace.linked_identity(claims, account_email)
         }
-        Some(_) => LinkKind::Microsoft365.linked_identity(claims, account_email),
+        _ => verified_address(claims, account_email),
     }
-}
-
-fn is_google(issuer: &str) -> bool {
-    issuer
-        .trim_end_matches('/')
-        .eq_ignore_ascii_case(GOOGLE_ISSUER)
 }
 
 /// Any other issuer: its subject, and an address it says it verified.
@@ -63,6 +59,7 @@ fn verified_address(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::identity_providers::GOOGLE_ISSUER;
 
     const ISSUER: &str = "https://auth.example.com";
     const MARC: &str = "marc.durand@neo-maintenance.example";

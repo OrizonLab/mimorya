@@ -2,9 +2,10 @@
 //! its authorization server, an OpenID provider, proves by an identity
 //! token, verified against its published keys, for the declared client and
 //! the attempt's nonce, that the account authorized is the person's own.
-//! Another person's account, an address the server does not vouch for, a
-//! missing or spoiled token: refused, nothing kept, the tokens granted
-//! revoked, the reason audited. Never asked of a server without it, nor of
+//! Another person's account (said to them in their account), an address
+//! the server does not vouch for, a missing or spoiled token: refused,
+//! nothing kept, the tokens granted revoked, the reason audited; a success
+//! audited as verified. Never asked of a server without it, nor of
 //! the company's authorization, nor declared for a server that is no
 //! OpenID provider.
 
@@ -20,7 +21,10 @@ use support::person_authorizations::{
     PERSON_AUTHORIZED, PERSON_FAILED, declared_per_person, last_metadata, person_authorize,
     person_kept, person_start,
 };
-use support::person_identity::{declare, declared_verifying, refused_because, signed_in_as};
+use support::person_identity::{
+    PERSON_AUTHORIZED_ACTION, PERSON_OTHER_ACCOUNT, declare, declared_verifying, refused_because,
+    signed_in_as,
+};
 use support::person_renewals::{asked_at, revoked_until};
 use support::sso::location;
 use support::{connector_oauth, email};
@@ -59,6 +63,8 @@ async fn a_person_proves_the_account_they_authorize_with_is_theirs() {
     assert!(params.get("nonce").is_some_and(|nonce| nonce.len() >= 16));
     assert!(params["scope"].split(' ').any(|scope| scope == "openid"));
     assert!(refused_because(&api, &id, user::MARC).await.is_none());
+    let audited = last_metadata(&api, &id, PERSON_AUTHORIZED_ACTION).await;
+    assert_eq!(audited["identityVerified"], true, "{audited}");
 }
 
 #[tokio::test]
@@ -72,9 +78,10 @@ async fn another_person_s_account_is_refused_and_its_tokens_revoked() {
     signed_in_as(&authority, user::PAUL);
     let (_, id) = declared_verifying(&paul, &authority, "autrecompte").await;
 
+    // Told so in their account, to authorize again with their own.
     assert_eq!(
         location(&person_authorize(&marc, &authority, &id).await),
-        PERSON_FAILED
+        PERSON_OTHER_ACCOUNT
     );
     assert!(person_kept(&api, &id, user::MARC).await.is_none());
     let reason = refused_because(&api, &id, user::MARC)
@@ -130,6 +137,7 @@ async fn a_missing_or_spoiled_identity_token_is_refused() {
         (IdTokenQuirk::Missing, "pas donné de jeton d’identité"),
         (IdTokenQuirk::OtherNonce, "jeton d’identité"),
         (IdTokenQuirk::OtherAudience, "jeton d’identité"),
+        (IdTokenQuirk::OtherIssuer, "jeton d’identité"),
         (IdTokenQuirk::Forged, "jeton d’identité"),
         (IdTokenQuirk::Expired, "jeton d’identité"),
     ];
@@ -150,7 +158,7 @@ async fn a_missing_or_spoiled_identity_token_is_refused() {
         assert!(reason.contains(said), "{quirk:?}: {reason}");
     }
     // Each grant revoked: two tokens each.
-    assert_eq!(revoked_until(&authority, 10).await.len(), 10);
+    assert_eq!(revoked_until(&authority, 12).await.len(), 12);
 }
 
 #[tokio::test]
@@ -173,6 +181,8 @@ async fn without_the_verification_no_identity_is_asked() {
         location(&person_authorize(&marc, &authority, &id).await),
         PERSON_AUTHORIZED
     );
+    let audited = last_metadata(&api, &id, PERSON_AUTHORIZED_ACTION).await;
+    assert_eq!(audited["identityVerified"], false, "{audited}");
 }
 
 #[tokio::test]

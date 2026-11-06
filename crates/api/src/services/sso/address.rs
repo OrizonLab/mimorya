@@ -3,7 +3,8 @@
 //! authorization endpoints its declaration lists) is checked before any
 //! connection. Names resolve to public addresses only (the client's
 //! resolver); an address written as an IP is never resolved, so it is
-//! checked here.
+//! checked here. The end-to-end tests' simulated servers are reached as the
+//! connectors reach them, by their exact address and port (ADR-175).
 
 use std::net::IpAddr;
 
@@ -15,7 +16,7 @@ pub fn address_problem(address: &str, policy: NetworkPolicy) -> Option<String> {
     let Ok(url) = Url::parse(address) else {
         return Some("adresse invalide".into());
     };
-    let private = policy.allow_private_network;
+    let private = policy.allow_private_network || policy.serves_tests(&url);
     if !(url.scheme() == "https" || (private && url.scheme() == "http")) {
         return Some(format!("{} : https:// attendu", url.scheme()));
     }
@@ -52,6 +53,28 @@ mod tests {
         proxy: None,
         test_servers: &[],
     };
+    const TESTED: [std::net::SocketAddr; 1] = [std::net::SocketAddr::new(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        4110,
+    )];
+
+    #[test]
+    fn the_end_to_end_tests_servers_alone_by_their_address_and_port() {
+        let tests = NetworkPolicy {
+            test_servers: &TESTED,
+            ..SAAS
+        };
+        let server = "http://127.0.0.1:4110/.well-known/openid-configuration";
+        assert_eq!(address_problem(server, tests), None);
+        for refused in [
+            "http://127.0.0.1:4111/jwks",
+            "http://127.0.0.2:4110/jwks",
+            "http://10.0.0.12:4110/",
+        ] {
+            assert!(address_problem(refused, tests).is_some(), "{refused}");
+        }
+        assert!(address_problem(server, SAAS).is_some());
+    }
 
     #[test]
     fn only_public_https_addresses_unless_the_operator_allows_more() {

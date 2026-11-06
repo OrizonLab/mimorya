@@ -28,6 +28,9 @@ pub struct PersonServer {
     /// Whether they may authorize it now: enabled, declared for each
     /// person, and they may use connectors.
     pub available: bool,
+    /// Whether its authorization server must prove the account authorized
+    /// is the person's own (ADR-175).
+    pub verifies_identity: bool,
     pub authorization: Option<PersonAuthorizationRow>,
 }
 
@@ -46,10 +49,13 @@ pub async fn list_person_servers(
     let mut servers = Vec::new();
     for instance in instances {
         let (id, name, enabled) = (instance.id, instance.name.clone(), instance.enabled);
-        let each_person = McpServer::of(Some(instance))
+        let declared = McpServer::of(Some(instance))
             .ok()
-            .and_then(|server| server.declared)
+            .and_then(|server| server.declared);
+        let each_person = declared
+            .as_ref()
             .is_some_and(|declared| declared.holder == OAuthHolder::Person);
+        let verifies_identity = declared.is_some_and(|declared| declared.verifies_identity);
         let position = authorizations.iter().position(|row| row.connector_id == id);
         let authorization = position.map(|at| authorizations.swap_remove(at));
         let available = may_use && enabled && each_person;
@@ -58,6 +64,7 @@ pub async fn list_person_servers(
                 connector_id: id,
                 name,
                 available,
+                verifies_identity,
                 authorization,
             });
         }

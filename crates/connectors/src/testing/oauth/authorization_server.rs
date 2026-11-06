@@ -15,10 +15,11 @@ use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
-use serde_json::json;
 
 use super::openid::{IdTokenQuirk, SignedIn};
-use super::{openid, registration_endpoint, revocation_endpoint, token_endpoint};
+use super::{
+    metadata_endpoint, openid, registration_endpoint, revocation_endpoint, token_endpoint,
+};
 use crate::outbound::{NetworkPolicy, http_client};
 
 pub const CLIENT_ID: &str = "mimorya-test-client";
@@ -62,6 +63,8 @@ pub struct Settings {
     pub identity: Option<SignedIn>,
     /// How it spoils the identity tokens it gives.
     pub id_token_quirk: IdTokenQuirk,
+    /// Its metadata kept back this long: a discovery that takes its time.
+    pub held_metadata: Option<Duration>,
 }
 
 impl Default for Settings {
@@ -85,6 +88,7 @@ impl Default for Settings {
             secret_lifetime: None,
             identity: None,
             id_token_quirk: IdTokenQuirk::None,
+            held_metadata: None,
         }
     }
 }
@@ -132,6 +136,8 @@ pub(super) struct Inner {
     pub(super) clients: HashMap<String, Client>,
     pub(super) next: u64,
     pub(super) requests: Vec<AuthRequest>,
+    /// How many times its metadata was asked for.
+    pub(super) metadata_asked: usize,
 }
 
 /// The server, served at `issuer` until the process ends.
@@ -157,7 +163,10 @@ impl FakeAuthorizationServer {
             inner: Arc::default(),
         };
         let router = Router::new()
-            .route("/.well-known/oauth-authorization-server", get(metadata))
+            .route(
+                "/.well-known/oauth-authorization-server",
+                get(metadata_endpoint::metadata),
+            )
             .route("/authorize", get(authorize))
             .route("/token", post(token_endpoint::token))
             .route("/revoke", post(revocation_endpoint::revoke))
@@ -224,6 +233,11 @@ impl FakeAuthorizationServer {
             .to_string()
     }
 
+    /// How many times its metadata was asked for (RFC 8414).
+    pub fn metadata_asked(&self) -> usize {
+        self.inner.lock().expect("server").metadata_asked
+    }
+
     /// The clients registered so far.
     pub fn registered(&self) -> Vec<String> {
         let inner = self.inner.lock().expect("server");
@@ -284,32 +298,6 @@ pub(super) fn issue_access(inner: &mut Inner, grant: u64, resource: Option<Strin
         .access
         .insert(token.clone(), (grant, resource, expires));
     token
-}
-
-async fn metadata(State(server): State<FakeAuthorizationServer>) -> Response {
-    let settings = server.inner.lock().expect("server").settings.clone();
-    let issuer = &server.issuer;
-    let named = if settings.wrong_issuer {
-        format!("{issuer}/autre")
-    } else {
-        issuer.clone()
-    };
-    let revocation = settings.revocation.then(|| format!("{issuer}/revoke"));
-    let registration = settings.registration.then(|| format!("{issuer}/register"));
-    axum::Json(json!({
-        "issuer": named,
-        "revocation_endpoint": revocation,
-        "registration_endpoint": registration,
-        "authorization_endpoint": format!("{issuer}/authorize"),
-        "token_endpoint": format!("{issuer}/token"),
-        "response_types_supported": ["code"],
-        "code_challenge_methods_supported": ["S256"],
-        "grant_types_supported": ["authorization_code", "refresh_token"],
-        "token_endpoint_auth_methods_supported": settings.auth_methods,
-        "scopes_supported": ["files:read", "offline_access"],
-        "authorization_response_iss_parameter_supported": settings.iss_on_return,
-    }))
-    .into_response()
 }
 
 async fn authorize(

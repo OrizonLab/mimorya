@@ -27,7 +27,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use super::connector_authorization::{revocable_under, revoke, take_authorizations};
-use super::connector_identity::{identity_scopes, verifies_identity};
+use super::connector_identity::{identity_scopes, verification_unchanged, verifies_identity};
 use super::connectors::{ConnectorAdmin, PERMISSION};
 use super::mcp_config::{Unreadable, mcp_config, stored_oauth};
 use super::oauth_client::{Declared, OAuthClient, declared};
@@ -117,6 +117,7 @@ pub async fn declare_oauth(
     let read_holder = read.declared.as_ref().map(|declared| declared.holder);
     let holder = input.holder.or(read_holder).unwrap_or_default();
     let verify = verifies_identity(input.verify_identity, holder, read.declared.as_ref())?;
+    let read_verifies = read.declared.as_ref().is_some_and(|d| d.verifies_identity);
     let url = read.url;
     // Found, and the platform's client registered there if it is asked to.
     let (mut declaration, client_secret) = {
@@ -147,12 +148,8 @@ pub async fn declare_oauth(
     let kept = current.declared.as_ref().map(|current| current.holder);
     declaration.holder = input.holder.or(kept).unwrap_or_default();
     declaration.verifies_identity = verify;
-    if verify && declaration.holder != OAuthHolder::Person {
-        return Err(DomainError::conflict(
-            "Qui autorise ce serveur a changé pendant sa déclaration : recommencez",
-        )
-        .into());
-    }
+    let (asked, now) = (input.verify_identity, current.declared.as_ref());
+    verification_unchanged(verify, asked, read_verifies, declaration.holder, now)?;
     if current.url != url {
         return Err(DomainError::conflict(
             "L’adresse du serveur a changé pendant la recherche de son autorisation : recommencez",

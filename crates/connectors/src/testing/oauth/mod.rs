@@ -6,6 +6,7 @@
 
 mod authorization_server;
 mod hostile;
+mod metadata_endpoint;
 mod openid;
 mod protected;
 mod registration_endpoint;

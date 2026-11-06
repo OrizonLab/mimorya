@@ -11,15 +11,23 @@ function counted(count: number): string {
 
 /**
  * A server each person authorizes for themself (ADR-174), as its card says
- * it: how many did, and what it means for runs and for its test.
+ * it: how many did, whether each is verified to use their own account
+ * (ADR-175), and what it means for runs and for its test.
  */
 export function PersonAuthorizedState({ oauth }: { oauth: McpOAuth }) {
   return (
     <>
       <p className="flex flex-wrap items-center gap-2">
         <Badge tone="neutral">Chaque personne l’autorise</Badge>
+        {oauth.verifiesIdentity && <Badge tone="ok">Compte vérifié</Badge>}
         <span>{counted(oauth.personAuthorizations)}</span>
       </p>
+      {oauth.verifiesIdentity && (
+        <p className="text-xs text-muted">
+          Son serveur d’autorisation prouve que chacun l’autorise avec son propre compte : une
+          autorisation donnée avec le compte d’une autre adresse est refusée.
+        </p>
+      )}
       <p className="text-xs text-muted">
         Chaque run utilise l’autorisation de la personne qu’il sert, jamais celle d’une autre ni
         celle de l’entreprise. Pour tester ce serveur, autorisez-le d’abord pour vous dans « Mon
@@ -48,10 +56,13 @@ export function holderChange(oauth: McpOAuth): {
       oauth.personAuthorizations === 0
         ? 'Aucune autorisation de personne n’est à retirer.'
         : `Les autorisations des personnes (${oauth.personAuthorizations}) sont retirées ; ${revoked}.`;
+    const verification = oauth.verifiesIdentity
+      ? ' La vérification du compte de chacun est retirée.'
+      : '';
     return {
       perPerson: false,
       label: 'Faire autoriser par l’entreprise',
-      question: `Faire autoriser ce serveur par l’entreprise, une fois pour tous les runs ? ${taken} Un administrateur l’autorise ensuite ici.`,
+      question: `Faire autoriser ce serveur par l’entreprise, une fois pour tous les runs ? ${taken}${verification} Un administrateur l’autorise ensuite ici.`,
     };
   }
   const revoked = oauth.revocable ? REVOCATION_ASKED : NO_REVOCATION;
