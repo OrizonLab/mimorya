@@ -37,7 +37,7 @@ pub struct NetworkPolicy {
 impl NetworkPolicy {
     /// Whether `url` names one of the tests' simulated servers, by its
     /// literal address and port.
-    fn serves_tests(self, url: &Url) -> bool {
+    pub fn serves_tests(self, url: &Url) -> bool {
         let ip = match url.host() {
             Some(url::Host::Ipv4(ip)) => IpAddr::V4(ip),
             Some(url::Host::Ipv6(ip)) => IpAddr::V6(ip),

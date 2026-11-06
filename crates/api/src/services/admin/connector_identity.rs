@@ -34,6 +34,29 @@ pub(super) fn verifies_identity(
     }
 }
 
+/// Why a declaration that took long to find its server starts again.
+const CHANGED_MEANWHILE: &str = "Qui autorise ce serveur, ou la vérification de l’identité, a \
+     changé pendant sa déclaration : recommencez";
+
+/// Whether `verify`, decided on the declaration read before the discovery
+/// (`read`), still holds under the lock: refused, to start again, if each
+/// person no longer authorizes the server, or if the declaration, kept as
+/// the one replaced said (`asked` unsaid), changed its verification
+/// meanwhile, another administrator's change never undone unseen.
+pub(super) fn verification_unchanged(
+    verify: bool,
+    asked: Option<bool>,
+    read: bool,
+    holder: OAuthHolder,
+    current: Option<&OAuthDeclaration>,
+) -> Result<(), DomainError> {
+    let now = current.is_some_and(|declared| declared.verifies_identity);
+    if (verify && holder != OAuthHolder::Person) || (asked.is_none() && now != read) {
+        return Err(DomainError::conflict(CHANGED_MEANWHILE));
+    }
+    Ok(())
+}
+
 /// The scopes to ask for, those of the identity token added, once the
 /// authorization server `found` reads as an OpenID provider.
 pub(super) async fn identity_scopes(
@@ -70,9 +93,9 @@ mod tests {
         assert_eq!(verifies_identity(None, company, None).ok(), Some(false));
     }
 
-    #[test]
-    fn a_declaration_written_again_keeps_the_verification_while_each_person_authorizes() {
-        let verifying: OAuthDeclaration = serde_json::from_value(serde_json::json!({
+    /// A declaration each person authorizes, verifying who does.
+    fn verifying() -> OAuthDeclaration {
+        serde_json::from_value(serde_json::json!({
             "issuer": "https://as.example",
             "resource": "https://mcp.example/mcp",
             "authorizationEndpoint": "https://as.example/authorize",
@@ -84,7 +107,12 @@ mod tests {
             "holder": "person",
             "verifiesIdentity": true,
         }))
-        .expect("declaration");
+        .expect("declaration")
+    }
+
+    #[test]
+    fn a_declaration_written_again_keeps_the_verification_while_each_person_authorizes() {
+        let verifying = verifying();
         let current = Some(&verifying);
         assert_eq!(
             verifies_identity(None, OAuthHolder::Person, current).ok(),
@@ -99,5 +127,21 @@ mod tests {
             verifies_identity(None, OAuthHolder::Company, current).ok(),
             Some(false)
         );
+    }
+
+    #[test]
+    fn a_verification_changed_meanwhile_starts_the_declaration_again() {
+        let (person, company) = (OAuthHolder::Person, OAuthHolder::Company);
+        let verifying = verifying();
+        // Nothing changed: kept, asked or not.
+        assert!(verification_unchanged(true, None, true, person, Some(&verifying)).is_ok());
+        assert!(verification_unchanged(false, Some(false), true, person, Some(&verifying)).is_ok());
+        // Turned on by another while this one, unsaid, read it off.
+        assert!(verification_unchanged(false, None, false, person, Some(&verifying)).is_err());
+        // Turned off meanwhile while this one kept it on.
+        assert!(verification_unchanged(true, None, true, person, None).is_err());
+        // The company now authorizes the server.
+        assert!(verification_unchanged(true, Some(true), false, company, None).is_err());
+        assert!(verification_unchanged(false, Some(false), false, company, None).is_ok());
     }
 }

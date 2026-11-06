@@ -2042,7 +2042,12 @@ export type PersonAuthorizationView = { connectorId: string, name: string,
  * person, and the person may use the company's connectors. Otherwise
  * their authorization stays theirs to withdraw.
  */
-available: boolean, authorization: PersonAuthorizationState | null, };
+available: boolean,
+/**
+ * Whether its authorization server must prove that the account they
+ * authorize with is their own, any other refused (ADR-175).
+ */
+verifiesIdentity: boolean, authorization: PersonAuthorizationState | null, };
 
 /**
  * `GET /account/connector-authorizations`.

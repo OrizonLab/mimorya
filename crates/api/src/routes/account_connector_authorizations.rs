@@ -44,6 +44,7 @@ async fn list(
             connector_id: server.connector_id,
             name: server.name,
             available: server.available,
+            verifies_identity: server.verifies_identity,
             authorization: server.authorization.map(Into::into),
         })
         .collect();

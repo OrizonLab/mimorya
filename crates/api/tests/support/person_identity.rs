@@ -13,6 +13,8 @@ use super::{Client, TestApi, TestResponse, email};
 
 /// What the audit calls a person's own authorization.
 pub const PERSON_AUTHORIZED_ACTION: &str = "connector.person_oauth_authorized";
+/// Where a person refused for another's account is sent back.
+pub const PERSON_OTHER_ACCOUNT: &str = "/account?serveur=autre-compte";
 
 /// Signs `person` in at the authorization server, their address verified.
 pub fn signed_in_as(authority: &FakeAuthorizationServer, person: Uuid) {

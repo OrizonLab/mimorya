@@ -157,7 +157,7 @@ Repères à l'intérieur des crates :
   ADR-141), `connectors/src/testing/`
   (serveurs simulés des tests : MCP, dont des réponses sans fin (`endless.rs`) et un
   serveur lent qui compte les pings qu'il voit (`slow.rs`), et un serveur protégé par
-  OAuth avec son serveur d'autorisation, hostile à volonté, qui enregistre des clients (`oauth/`, ADR-171, ADR-173), fournisseur OpenID Connect quand un test y connecte quelqu'un (`oauth/openid.rs`, ADR-175), mandataire
+  OAuth avec son serveur d'autorisation, hostile à volonté, qui enregistre des clients (`oauth/`, ADR-171, ADR-173), fournisseur OpenID Connect quand un test y connecte quelqu'un (`oauth/openid.rs`, ADR-175), ses métadonnées retenues à volonté (`oauth/metadata_endpoint.rs`), mandataire
   HTTP qui note où il va (`proxy.rs`), API REST, Microsoft Graph, Gmail et agenda Google,
   Slack, qui signe les événements comme lui, Telegram, Microsoft pour Teams, qui signe
   les activités avec une clé de test).
@@ -190,7 +190,7 @@ Repères à l'intérieur des crates :
   (`absences.rs`, ADR-078), organisation, habilitations, connecteurs : ce que
   l'administration change de chacun (`connector_config.rs`), OAuth déclaré sur un serveur
   MCP (`connector_oauth.rs`, sa configuration gardée : `mcp_config.rs`, ADR-171 ; client saisi ou enregistré par la plateforme : `oauth_client.rs`, ADR-173) et son
-  autorisation, départ, retour et jetons scellés (`connector_authorization/`), révoqués chez le serveur quand l'administration les laisse, ceux de l'entreprise et ceux des personnes (`connector_authorization/revocation/`, ADR-172, ADR-174), autorisation d'un serveur par chacun pour soi, son retour à la même adresse, sa liste et son retrait (`connector_authorization/person.rs`, `person_finish.rs`, ce que partagent les deux retours : `returned.rs`, routes `account_connector_authorizations.rs`, ADR-174), identité de qui l'autorise prouvée par le jeton d'identité au retour (`connector_authorization/identity.rs`), option déclarée et serveur lu comme fournisseur OpenID Connect (`connector_identity.rs`, ADR-175), test d'un connecteur, d'un serveur que chacun autorise avec l'autorisation de l'administrateur (`connector_test.rs`, ADR-174), qui l'autorise, l'entreprise ou chacun, changé sur place (`connector_oauth_holder.rs`, ADR-174), seules
+  autorisation, départ, retour et jetons scellés (`connector_authorization/`), révoqués chez le serveur quand l'administration les laisse, ceux de l'entreprise et ceux des personnes (`connector_authorization/revocation/`, ADR-172, ADR-174), autorisation d'un serveur par chacun pour soi, son retour à la même adresse, sa liste et son retrait (`connector_authorization/person.rs`, `person_finish.rs`, ce que partagent les deux retours : `returned.rs`, routes `account_connector_authorizations.rs`, ADR-174), identité de qui l'autorise prouvée par le jeton d'identité au retour (`connector_authorization/identity.rs`), option déclarée, serveur lu comme fournisseur OpenID Connect et option changée pendant une déclaration (`connector_identity.rs`, ADR-175), test d'un connecteur, d'un serveur que chacun autorise avec l'autorisation de l'administrateur (`connector_test.rs`, ADR-174), qui l'autorise, l'entreprise ou chacun, changé sur place (`connector_oauth_holder.rs`, ADR-174), seules
   les politiques changées
   tracées (`policy_changes.rs`, ADR-160) et API REST ajoutées
   (`rest_connectors.rs`, ADR-112, opérations lues d'une description OpenAPI, ADR-114),
@@ -332,14 +332,15 @@ Repères à l'intérieur des crates :
   `app/account/gateway-link` hors du cadre de l'application, ADR-126, et le compte
   Telegram relié avec l'accord donné dans Telegram, ADR-134, et le compte Teams relié
   par le lien du bot, ADR-139, et les serveurs MCP que chacun autorise pour soi
-  (`server-authorizations.tsx`), ADR-174 —,
+  (`server-authorizations.tsx`), ADR-174, ceux qui vérifient le compte de chacun et le
+  refus d'un autre compte, ADR-175 —,
   admin — dont `admin/connectors/` : serveurs MCP et API REST décrites opération par
   opération, ADR-113, et leurs opérations importées d'une description OpenAPI, JSON ou
   YAML converti dans le navigateur, ADR-115, et l'application Microsoft 365, ADR-118,
   dont l'écriture permise, ADR-120, et le client Google Workspace, ADR-124, et les
   passerelles de conversation, l'application Slack, ADR-126, et ses permissions
   vérifiées, ADR-132, le bot Telegram, ADR-134, le bot Teams, ADR-139,
-  et l'OAuth d'un serveur MCP : déclaration, autorisation, état et retraits, ADR-171, client saisi ou enregistré par la plateforme, ADR-173, qui l'autorise, l'entreprise ou chacun, et combien l'ont fait (`mcp-oauth-holder.tsx`), ADR-174,
+  et l'OAuth d'un serveur MCP : déclaration, autorisation, état et retraits, ADR-171, client saisi ou enregistré par la plateforme, ADR-173, qui l'autorise, l'entreprise ou chacun, et combien l'ont fait (`mcp-oauth-holder.tsx`), ADR-174, et si le compte de chacun est vérifié, ADR-175,
   `admin/knowledge-shares/` : partages de connaissances entre unités, ADR-144, `admin/policies/` : refus écrits aussitôt et autorisations proposées, approuvées par un autre administrateur, ADR-169, `admin/llm/` : modèle des conversations et modèle de contrôle des réponses, ADR-108, recherche dans la mémoire, leçons et limites des missions, ADR-075,
   ADR-077, ADR-093, limite de coût des évaluations des compétences, ADR-155, `admin/users/` :
   comptes, dont l'absence d'un collaborateur empêché, ADR-079, et `admin/skills/` :
@@ -384,7 +385,7 @@ Repères à l'intérieur des crates :
   autre dont le serveur d'autorisation n'annonce pas de révocation, ADR-172, les
   seules adresses privées que ses connecteurs joignent,
   `BuildOptions::connector_test_servers`, une déclaration OAuth illisible laissée au
-  démarrage, `unreadable_oauth.rs`, ADR-171, et l'autorisation de Lucas d'un serveur que chacun autorise, son renouvellement échoué, `person_renewal.rs`, ADR-174).
+  démarrage, `unreadable_oauth.rs`, ADR-171, et l'autorisation de Lucas d'un serveur que chacun autorise, son renouvellement échoué, `person_renewal.rs`, ADR-174 ; ses serveurs MCP protégés par OAuth et leurs serveurs d'autorisation, dont un fournisseur OpenID Connect où Marc est connecté, `oauth_servers.rs`, ADR-175).
 - `infra/` : `docker/` (images de l'API et de l'interface, liste des images publiées
   `images.json`, test de fumée de la démonstration, test d'installation de la production,
   sauvegarde et restauration de la pile de production `backup-test.sh`, ADR-166,

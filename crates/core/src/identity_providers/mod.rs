@@ -156,6 +156,16 @@ pub fn declared_issuer(
 /// generic provider declared with such an issuer before this rule creates
 /// no account (ADR-067).
 pub fn issuer_own_kind(issuer: &str) -> Option<&'static str> {
+    issuer_kind(issuer).map(|kind| match kind {
+        ProviderKind::Google => "Google Workspace",
+        _ => "Microsoft 365",
+    })
+}
+
+/// The kind whose provider an issuer is, if it is Microsoft's or Google's:
+/// the one place either is recognised (`issuer_own_kind`, and the account a
+/// person authorizes an MCP server with, ADR-175).
+pub fn issuer_kind(issuer: &str) -> Option<ProviderKind> {
     let issuer = issuer.trim_end_matches('/').to_ascii_lowercase();
     // Microsoft's public cloud, and its national ones.
     let microsoft = [
@@ -166,9 +176,9 @@ pub fn issuer_own_kind(issuer: &str) -> Option<&'static str> {
         "https://login.chinacloudapi.cn/",
     ];
     if issuer == GOOGLE_ISSUER {
-        Some("Google Workspace")
+        Some(ProviderKind::Google)
     } else if microsoft.iter().any(|host| issuer.starts_with(host)) {
-        Some("Microsoft 365")
+        Some(ProviderKind::Microsoft)
     } else {
         None
     }

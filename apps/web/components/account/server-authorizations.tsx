@@ -14,7 +14,7 @@ import { authorizationSummary } from '@/lib/format';
 
 const SERVERS = '/account/connector-authorizations';
 
-/** What the return from the authorization server says (ADR-174). */
+/** What the return from the authorization server says (ADR-174, ADR-175). */
 const OUTCOMES = {
   ok: {
     failed: false,
@@ -23,6 +23,10 @@ const OUTCOMES = {
   echec: {
     failed: true,
     text: 'L’autorisation a échoué : rien n’a été gardé. Réessayez ; si l’échec persiste, votre administrateur peut vérifier la déclaration du serveur.',
+  },
+  'autre-compte': {
+    failed: true,
+    text: 'Le compte choisi chez le serveur d’autorisation n’est pas le vôtre : rien n’a été gardé. Autorisez de nouveau en vous connectant avec votre propre compte.',
   },
 } as const;
 
@@ -38,7 +42,9 @@ function isOutcome(value: string | null): value is Outcome {
  * authorization, never another's. Authorized at the server's authorization
  * server, where the browser goes and comes back here; its state, its
  * renewal and why the last one failed; withdrawn. Shown once such a server
- * is in their reach, or while they keep an authorization of one.
+ * is in their reach, or while they keep an authorization of one. A server
+ * whose authorization server proves the account is theirs says so; the
+ * others are not checked (ADR-175).
  */
 export function ServerAuthorizations() {
   const state = useApiData<PersonAuthorizations>(SERVERS);
@@ -60,8 +66,9 @@ export function ServerAuthorizations() {
             <h2 className="font-medium">Serveurs que vous autorisez</h2>
             <p className="text-sm text-muted">
               L’agent utilise ces serveurs pour vous avec votre propre autorisation. Connectez-vous
-              chez leur serveur d’autorisation avec votre propre compte : la plateforme ne vérifie
-              pas lequel vous choisissez, et un compte partagé avec d’autres peut voir leur accord
+              chez leur serveur d’autorisation avec votre propre compte : un serveur marqué « Compte
+              vérifié » refuse tout autre compte ; pour les autres, la plateforme ne vérifie pas
+              lequel vous choisissez, et un compte partagé avec d’autres peut voir leur accord
               retirer le vôtre.
             </p>
             {outcome &&
@@ -116,6 +123,7 @@ function ServerRow({
     <section aria-label={server.name} className="flex flex-col gap-2 border-t border-line pt-3">
       <div className="flex flex-wrap items-center gap-2">
         <p className="flex-1 text-sm font-medium">{server.name}</p>
+        {server.verifiesIdentity && <Badge tone="neutral">Compte vérifié</Badge>}
         <Badge tone={authorization ? 'ok' : 'neutral'}>
           {authorization ? 'Autorisé' : 'Non autorisé'}
         </Badge>

@@ -91,12 +91,14 @@ pub async fn finish_person_authorization(
     if let Some(refused) = issuer_refused(back.iss.as_deref(), &server.declared) {
         return Err(at(refused));
     }
-    let granted = exchanged(admin, access, &attempt, &server, &code, web_origin).await?;
-    let kept = async {
-        proven_identity(admin, access, &attempt, &server, &granted).await?;
-        keep(admin, access, &attempt, &server.declared, &granted).await
-    }
-    .await;
+    let (granted, start) = exchanged(admin, access, &attempt, &server, &code, web_origin).await?;
+    // The exchange's place kept while the server is asked who authorized.
+    let proven = proven_identity(admin, access, &attempt, &server, &granted).await;
+    drop(start);
+    let kept = match proven {
+        Ok(()) => keep(admin, access, &attempt, &server.declared, &granted).await,
+        Err(refused) => Err(refused),
+    };
     if kept.is_err() {
         // Granted, kept nowhere (ADR-172).
         admin.connectors.revoke_unkept(Unkept {
@@ -180,6 +182,7 @@ async fn keep(
             "renewable": sealed.refresh.is_some(),
             "expiresAt": sealed.expires_at.as_ref().map(iso),
             "replaced": replaced,
+            "identityVerified": declared.verifies_identity,
         })),
     )
     .await

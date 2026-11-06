@@ -26,6 +26,9 @@ pub struct PersonAuthorizationView {
     /// person, and the person may use the company's connectors. Otherwise
     /// their authorization stays theirs to withdraw.
     pub available: bool,
+    /// Whether its authorization server must prove that the account they
+    /// authorize with is their own, any other refused (ADR-175).
+    pub verifies_identity: bool,
     pub authorization: Option<PersonAuthorizationState>,
 }
 

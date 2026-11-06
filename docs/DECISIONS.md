@@ -11298,5 +11298,43 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       OpenID Connect déclaré quand même ; jetons d'un retour refusé non révoqués ;
       portées de l'identité non ajoutées ; jeton d'identité perdu à l'échange ; option
       oubliée par la déclaration ; `email_verified` ignoré.
-  - Le refus d'un autre compte est seulement tracé jusqu'au lot 45b : le retour mène à
-    « Mon compte » comme tout échec.
+  - lot 45b : les écrans et le parcours de bout en bout, et les suites de l'audit du
+    lot 45a :
+    - dans « Connecteurs », la déclaration d'un serveur que chacun autorise propose de
+      vérifier le compte de chacun (`mcp-oauth-form.tsx`) ; sa carte le dit (« Compte
+      vérifié »), et la confirmation du passage à l'entreprise dit que la vérification
+      est retirée (`mcp-oauth-holder.tsx`) ;
+    - « Mon compte » marque ces serveurs (« Compte vérifié », `verifiesIdentity` dans la
+      liste de la personne) et ne dit plus que rien n'est vérifié que pour les autres
+      (`server-authorizations.tsx`) ; un refus pour le compte d'une autre adresse y mène
+      (`/account?serveur=autre-compte`) et le dit une fois : rien n'est gardé, autoriser
+      de nouveau avec son propre compte ; tout autre refus reste un échec ;
+    - l'audit d'une autorisation réussie dit si l'identité a été prouvée
+      (`identityVerified`) ; la découverte OpenID du retour se fait sous la place que
+      l'échange du code a prise parmi les démarrages de l'entreprise, gardée jusqu'à la
+      fin de la vérification : un refus faute de place n'arrive jamais après que les
+      jetons sont accordés ;
+    - une déclaration écrite de nouveau sans parler de la vérification est refusée, à
+      recommencer, si un autre administrateur l'a changée pendant sa découverte, comme
+      si l'entreprise est devenue qui autorise (`verification_unchanged`,
+      `services/admin/connector_identity.rs`) ;
+    - un émetteur Microsoft ou Google n'est plus reconnu qu'à un seul endroit
+      (`issuer_kind`, `core/src/identity_providers/mod.rs`) ;
+    - le client HTTP des fournisseurs (`sso/address.rs`) joint aussi les serveurs simulés
+      des tests de bout en bout, par leur adresse et leur port exacts, comme les
+      connecteurs (`NetworkPolicy::serves_tests`, vide en production) ;
+    - le serveur d'autorisation simulé donne aussi un jeton d'un autre émetteur, un jeton
+      signé par le secret du client (HS256), et retient ses métadonnées à volonté
+      (`metadata_endpoint.rs`) ; le serveur de bout en bout sert un fournisseur OpenID
+      Connect où Marc est connecté (`examples/e2e_server/oauth_servers.rs`) ;
+    - tests : `crates/api/tests/connector_person_identity_clients.rs` (client public :
+      vérifié, jamais un jeton signé par un secret qu'il n'a pas, que prend un client qui
+      l'a ; client enregistré par la plateforme vérifié de même),
+      `connector_person_identity_races.rs` (vérification activée par un autre
+      administrateur pendant une déclaration qui n'en parle pas, et entreprise devenue qui
+      autorise pendant une déclaration qui la demande : refusées, le changement gardé),
+      `connector_person_identity.rs` (autre émetteur refusé, retour « autre compte »,
+      `identityVerified`), tests unitaires de `verification_unchanged` et de l'adresse
+      des serveurs de test ; `apps/web/e2e/mcp-person-oauth-identity.spec.ts` (déclaré
+      pour chacun avec la vérification, carte et « Mon compte » qui le disent, Marc
+      autorisé, Lucas connecté chez le serveur comme Marc refusé et prévenu une fois, puis le serveur passé à l'entreprise, la confirmation disant la vérification retirée) ; la case de la déclaration porte un libellé court, son explication lui étant liée (`aria-describedby`), et « Compte vérifié » a le même ton sur la carte et dans « Mon compte ».

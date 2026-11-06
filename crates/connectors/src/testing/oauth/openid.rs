@@ -11,9 +11,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
+use base64::Engine;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use ring::hmac;
 use serde_json::{Value, json};
 
-use super::authorization_server::{FakeAuthorizationServer, Settings};
+use super::authorization_server::{CLIENT_SECRET, FakeAuthorizationServer, Settings};
 use crate::testing::teams::{Signer, published_key, signed_as};
 
 /// The name the server publishes its key under.
@@ -45,12 +48,17 @@ pub enum IdTokenQuirk {
     None,
     /// No identity token at all.
     Missing,
-    /// Another attempt's nonce, or none.
+    /// Another attempt's nonce.
     OtherNonce,
     /// Issued to another client.
     OtherAudience,
+    /// Issued by another issuer than the server.
+    OtherIssuer,
     /// Signed with a key the server never published.
     Forged,
+    /// Signed with the test client's secret (HS256), which a client
+    /// without a secret never takes.
+    SignedWithSecret,
     /// Expired an hour ago.
     Expired,
 }
@@ -70,7 +78,7 @@ pub(super) async fn configuration(State(server): State<FakeAuthorizationServer>)
         "jwks_uri": format!("{issuer}/jwks"),
         "response_types_supported": ["code"],
         "subject_types_supported": ["public"],
-        "id_token_signing_alg_values_supported": ["RS256"],
+        "id_token_signing_alg_values_supported": ["RS256", "HS256"],
         "scopes_supported": ["openid", "email", "profile", "files:read", "offline_access"],
         "code_challenge_methods_supported": ["S256"],
         "token_endpoint_auth_methods_supported": settings.auth_methods,
@@ -108,8 +116,12 @@ pub(super) fn id_token(
         IdTokenQuirk::OtherAudience => "un-autre-client",
         _ => client_id,
     };
+    let issued_by = match quirk {
+        IdTokenQuirk::OtherIssuer => format!("{issuer}/autre"),
+        _ => issuer.to_string(),
+    };
     let mut claims = json!({
-        "iss": issuer,
+        "iss": issued_by,
         "sub": person.subject,
         "aud": audience,
         "iat": issued,
@@ -125,8 +137,22 @@ pub(super) fn id_token(
         (_, None) => {}
     }
     let signer = match quirk {
+        IdTokenQuirk::SignedWithSecret => return Some(signed_with_secret(&claims)),
         IdTokenQuirk::Forged => Signer::Forger,
         _ => Signer::BotFramework,
     };
     Some(signed_as(signer, KEY_ID, &claims))
+}
+
+/// `claims` signed with the test client's secret (HS256).
+fn signed_with_secret(claims: &Value) -> String {
+    let header = json!({ "alg": "HS256", "typ": "JWT" });
+    let input = format!(
+        "{}.{}",
+        URL_SAFE_NO_PAD.encode(header.to_string()),
+        URL_SAFE_NO_PAD.encode(claims.to_string())
+    );
+    let key = hmac::Key::new(hmac::HMAC_SHA256, CLIENT_SECRET.as_bytes());
+    let tag = hmac::sign(&key, input.as_bytes());
+    format!("{input}.{}", URL_SAFE_NO_PAD.encode(tag.as_ref()))
 }

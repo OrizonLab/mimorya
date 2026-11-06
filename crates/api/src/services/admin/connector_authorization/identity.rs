@@ -68,6 +68,9 @@ pub(super) async fn proven_identity(
     .map(|_| ())
     .map_err(|refusal| match refusal {
         LinkRefusal::Unidentified => at(UNIDENTIFIED),
-        LinkRefusal::NotTheirs => at(OTHER_ACCOUNT),
+        LinkRefusal::NotTheirs => AuthorizationFailure {
+            other_account: true,
+            ..at(OTHER_ACCOUNT)
+        },
     })
 }
