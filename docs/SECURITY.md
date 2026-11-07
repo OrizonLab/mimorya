@@ -789,8 +789,11 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   est notée, avant la lecture : un jeton retiré pendant une lecture ne lit rien. Au-delà
   du départ, le SIEM donne le sceau de la place d'où il reprend ; une place que la
   chaîne ne compte plus, ou dont le sceau n'est plus celui-là, est refusée (409) avec
-  la dernière place de la chaîne : une restauration derrière lui ne lui fait rien
-  manquer en silence. Un serveur sans clé maître n'exporte rien.
+  la dernière place de la chaîne (`lastPlace`), l'usage du jeton noté : une
+  restauration derrière lui ne lui fait rien manquer en silence. Un serveur sans clé
+  maître n'exporte rien. Les jetons se gèrent depuis l'onglet « Journal d'audit »,
+  ouvert à qui exporte le journal même sans le lire, leur secret montré une fois
+  (ADR-182).
 - Chaînage des entrées fait (ADR-178), vérifiable par l'entreprise (ADR-179) et exporté
   vers son SIEM (ADR-181).
 

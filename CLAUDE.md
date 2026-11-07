@@ -361,7 +361,7 @@ Repères à l'intérieur des crates :
   passerelles de conversation, l'application Slack, ADR-126, et ses permissions
   vérifiées, ADR-132, le bot Telegram, ADR-134, le bot Teams, ADR-139,
   et l'OAuth d'un serveur MCP : déclaration, autorisation, état et retraits, ADR-171, client saisi ou enregistré par la plateforme, ADR-173, qui l'autorise, l'entreprise ou chacun, et combien l'ont fait (`mcp-oauth-holder.tsx`), ADR-174, et si le compte de chacun est vérifié, ADR-175, une déclaration refusée si elle a changé depuis l'ouverture de son formulaire, ADR-176,
-  `admin/knowledge-shares/` : partages de connaissances entre unités, ADR-144, `admin/policies/` : refus écrits aussitôt et autorisations proposées, approuvées par un autre administrateur, ADR-169, `admin/audit-chain/` : vérification du journal d'audit à la demande et ancres gardées, ADR-179, `admin/llm/` : modèle des conversations et modèle de contrôle des réponses, ADR-108, recherche dans la mémoire, leçons et limites des missions, ADR-075,
+  `admin/knowledge-shares/` : partages de connaissances entre unités, ADR-144, `admin/policies/` : refus écrits aussitôt et autorisations proposées, approuvées par un autre administrateur, ADR-169, `admin/audit-chain/` : vérification du journal d'audit à la demande et ancres gardées, ADR-179, `admin/audit-export/` : jetons de l'export du journal vers le SIEM de l'entreprise, secret montré une fois, l'onglet ouvert à qui lit ou exporte le journal (`lib/admin-sections.ts`), ADR-182, `admin/llm/` : modèle des conversations et modèle de contrôle des réponses, ADR-108, recherche dans la mémoire, leçons et limites des missions, ADR-075,
   ADR-077, ADR-093, limite de coût des évaluations des compétences, ADR-155, `admin/users/` :
   comptes, dont l'absence d'un collaborateur empêché, ADR-079, et `admin/skills/` :
   compétences, propositions de l'agent, ADR-101, cas d'évaluation et évaluations,
@@ -374,7 +374,7 @@ Repères à l'intérieur des crates :
   scheduled-tasks — tâches planifiées, ADR-081 —, inbound-hooks — déclencheurs et leur
   jeton montré une fois, ADR-110 —,
   shell), `web/components/ui/`
-  (`Loaded` verrouille son contenu pendant un rechargement, ADR-042), `web/lib/api/` (client, `contract.ts`
+  (`Loaded` verrouille son contenu pendant un rechargement, ADR-042 ; `SecretNotice`, secret montré une fois, ADR-182), `web/lib/api/` (client, `contract.ts`
   généré par `pnpm contract`, `useApiData`), `web/lib/use-synced-state.ts` (état d'un
   formulaire repris de la liste rechargée, ADR-041), `web/lib/focus-keeper.ts` (focus rendu
   au contrôle réactivé, ADR-043), `web/lib/use-refresh-while.ts` (liste relue tant

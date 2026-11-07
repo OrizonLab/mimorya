@@ -9,7 +9,7 @@ use uuid::Uuid;
 use validator::Validate;
 
 use crate::http::{iso, trimmed};
-use crate::services::audit_export::NAME_LENGTH;
+use crate::services::audit_export::{MAX_TOKENS, NAME_LENGTH};
 
 /// The longest name, as the validation counts it.
 const NAME_TAKEN: u64 = NAME_LENGTH as u64;
@@ -37,13 +37,38 @@ impl From<&AuditExportTokenRow> for AuditExportTokenView {
     }
 }
 
-/// `GET /admin/audit/export-tokens`: the company's tokens, and whether this
-/// server seals the audit log, without which nothing is exported.
+/// `GET /admin/audit/export-tokens`: the company's tokens, whether this
+/// server seals the audit log, without which nothing is exported, the
+/// address the SIEM reads, and the limits a new token meets.
 #[derive(Debug, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct AuditExportTokens {
     pub tokens: Vec<AuditExportTokenView>,
     pub sealing: bool,
+    pub export_url: String,
+    /// The tokens a company may keep.
+    pub max_tokens: i64,
+    /// The longest name a token takes, in characters.
+    pub name_length: u32,
+}
+
+/// The address a SIEM reads the audit log at, from the application's.
+pub fn export_url(web_origin: &str) -> String {
+    format!("{}/api/audit/export", web_origin.trim_end_matches('/'))
+}
+
+impl AuditExportTokens {
+    /// The company's `tokens`, as a server that seals or not (`sealing`)
+    /// and the application at `web_origin` show them.
+    pub fn of(tokens: &[AuditExportTokenRow], sealing: bool, web_origin: &str) -> Self {
+        Self {
+            tokens: tokens.iter().map(AuditExportTokenView::from).collect(),
+            sealing,
+            export_url: export_url(web_origin),
+            max_tokens: MAX_TOKENS,
+            name_length: NAME_TAKEN as u32,
+        }
+    }
 }
 
 /// Body of `POST /admin/audit/export-tokens`.
@@ -63,4 +88,17 @@ pub struct NewAuditExportToken {
 pub struct AuditExportTokenCreated {
     pub token: AuditExportTokenView,
     pub secret: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_export_address_is_the_application_s() {
+        assert_eq!(
+            export_url("https://mimorya.example/"),
+            "https://mimorya.example/api/audit/export"
+        );
+    }
 }

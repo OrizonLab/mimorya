@@ -23,10 +23,11 @@ pub async fn list(
 ) -> ApiResult<Json<AuditExportTokens>> {
     let access = state.access.context(identity).await?;
     let tokens = audit_export_tokens(&state.db, &access).await?;
-    Ok(Json(AuditExportTokens {
-        tokens: tokens.iter().map(AuditExportTokenView::from).collect(),
-        sealing: state.config.secrets.is_some(),
-    }))
+    Ok(Json(AuditExportTokens::of(
+        &tokens,
+        state.config.secrets.is_some(),
+        &state.config.web_origin,
+    )))
 }
 
 pub async fn create(

@@ -38,6 +38,13 @@ async fn a_siem_reads_the_sealed_log_page_after_page_with_its_token() {
     assert!(!listed.text().contains(&secret));
     let tokens = listed.json();
     assert_eq!(tokens["sealing"], true);
+    let address = tokens["exportUrl"].as_str().unwrap();
+    assert!(address.ends_with("/api/audit/export"), "{address}");
+    // The limits a new token meets, as the screen offers them.
+    assert_eq!(
+        (&tokens["maxTokens"], &tokens["nameLength"]),
+        (&json!(5), &json!(80))
+    );
     let token = &tokens["tokens"][0];
     assert_eq!(
         (&token["id"], &token["name"], &token["createdBy"]),
