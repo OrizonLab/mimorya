@@ -31,6 +31,10 @@ pub async fn verify_audit(
     let mut used = vec![false; anchors.len()];
     let companies = to_verify(audit_log_tenants(db.pool(), false).await?, anchors);
     for tenant_id in &companies {
+        // Named by its identifier, an anchor is the company's, read or not.
+        for index in anchors_of(anchors, *tenant_id, "") {
+            used[index] = true;
+        }
         let company = match company(db, *tenant_id).await {
             Ok(company) => company,
             Err(error) => {
@@ -89,7 +93,7 @@ fn to_verify(mut companies: Vec<Uuid>, anchors: &[Anchor]) -> Vec<Uuid> {
 }
 
 /// The anchors of the company `tenant_id`, named by its identifier or by
-/// its slug: their places in `anchors`.
+/// its slug (none by an empty one): their places in `anchors`.
 fn anchors_of(anchors: &[Anchor], tenant_id: Uuid, slug: &str) -> Vec<usize> {
     let names = |anchor: &Anchor| {
         anchor.company == slug || Uuid::parse_str(&anchor.company) == Ok(tenant_id)
@@ -135,6 +139,7 @@ mod tests {
             named("beta".into()),
         ];
         assert_eq!(anchors_of(&anchors, acme, "acme"), [0, 1]);
+        assert_eq!(anchors_of(&anchors, acme, ""), [0]);
         assert_eq!(anchors_of(&anchors, other, "autre"), [2]);
         // A company an anchor names by its identifier is verified, even
         // without an entry left; a slug alone names none.

@@ -11715,7 +11715,9 @@ found`), même quand un lot suivant échoue, avec leur ancre toute écrite :
     - `crates/api/tests/audit_chain_guards.rs` : une fin de chaîne retirée, ou des
       sceaux retirés puis posés à nouveau sur une entrée changée, refusés par le
       processus qui scellait ou qui les a trouvés à son démarrage, et montrés par
-      l'ancre journalisée (absente, ou un autre sceau à sa place) ; une chaîne saine
+      l'ancre journalisée (absente, ou un autre sceau à sa place), même après une
+      nouvelle lecture des chaînes ; une chaîne illisible au démarrage lue à l'essai
+      suivant, puis jamais relue ; une chaîne saine
       jamais refusée : scellée tour à tour par deux processus, par un processus démarré
       depuis, ou dans une entreprise venue après le démarrage ;
     - `crates/api/src/bin/admin/` : la commande et ses ancres lues, une ancre lue telle

@@ -2,9 +2,10 @@
 //! the guards kept outside it: entries removed from the chain's end, and
 //! seals taken away then set again on changed entries, give a chain that
 //! verifies; the sealing that set or found the last seal refuses to go on,
-//! and the anchor it logged shows the change. A sound chain is never
-//! refused: sealed in turn by several processes, by a process started
-//! since, or a company's first seals.
+//! and the anchor it logged shows the change. A process reads the chains at
+//! its start until it has read them all, never one it remembers again. A
+//! sound chain is never refused: sealed in turn by several processes, by a
+//! process started since, or a company's first seals.
 
 mod support;
 
@@ -14,7 +15,7 @@ use mimorya_api::services::audit_chain::{
 use support::audit_chain::{
     append, as_owner, as_owner_over_the_seals, chain, intact, key, seal, verify,
 };
-use support::{TestApi, companies};
+use support::{TestApi, companies, owner_url};
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
@@ -51,7 +52,10 @@ async fn the_chain_s_end_removed_is_refused_and_shown_against_an_anchor() {
         .unwrap();
     assert_eq!(anchored.anchors, [AnchorFound::Missing]);
     assert!(!anchored.holds());
-    // The sealing that set it refuses to go on from a shorter chain.
+    // The sealing that set it refuses to go on from a shorter chain, even
+    // after its process read the chains again: a company it remembers is
+    // never read again.
+    heads.load(db).await.unwrap();
     append(db, company.tenant_id, "test.after").await;
     let refused = seal(db, &heads, company.tenant_id).await.unwrap_err();
     assert!(refused.is::<ChainMoved>(), "{refused:#}");
@@ -151,4 +155,45 @@ async fn a_sound_chain_is_never_refused() {
         let places = chain(db, tenant_id).await.len() as i64;
         intact(&verify(db, tenant_id).await, places);
     }
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn chains_not_read_at_startup_are_read_at_the_next_try_and_then_kept() {
+    let api = TestApi::start().await;
+    let db = &api.app.services.db;
+    let company = companies::create(&api, "chaine-relue", "jeanne@chaine-relue.example").await;
+    append(db, company.tenant_id, "test.read").await;
+    seal(db, &SealedHeads::default(), company.tenant_id)
+        .await
+        .unwrap();
+
+    // The chains cannot be read: the process remembers none of them, and
+    // says so, for the maintenance to try again.
+    let restarted = SealedHeads::default();
+    let owner = sqlx::PgPool::connect(owner_url()).await.unwrap();
+    sqlx::query("revoke select on audit_log from mimorya_app")
+        .execute(&owner)
+        .await
+        .unwrap();
+    let unread = restarted.load(db).await;
+    sqlx::query("grant select on audit_log to mimorya_app")
+        .execute(&owner)
+        .await
+        .unwrap();
+    owner.close().await;
+    assert!(unread.is_err(), "{unread:?}");
+
+    // Tried again, it remembers each chain as it finds it.
+    restarted.load(db).await.unwrap();
+    let places = chain(db, company.tenant_id).await;
+    let last = places[places.len() - 1].0;
+    as_owner("delete from audit_log where id = $1", last)
+        .await
+        .unwrap();
+    // Read once more, the chain changed meanwhile is not taken for its own.
+    restarted.load(db).await.unwrap();
+    append(db, company.tenant_id, "test.after").await;
+    let refused = seal(db, &restarted, company.tenant_id).await.unwrap_err();
+    assert!(refused.is::<ChainMoved>(), "{refused:#}");
 }

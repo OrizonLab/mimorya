@@ -19,7 +19,8 @@ Commandes :
                    chaîne ne porte plus un sceau relevé dans les journaux (« Audit log
                    sealed », « Audit chain found ») : seul ce sceau montre des entrées
                    retirées de la fin d’une chaîne, ou des sceaux posés à nouveau
-                     [--anchor <sigle>:<place>:<sceau>]…   (autant que voulu)
+                     [--anchor <entreprise>:<place>:<sceau>]…   (autant que voulu ;
+                     l’entreprise par son identifiant, tel que journalisé, ou son sigle)
   help             affiche cette aide
 
 create-company, invite et verify-audit passent par DATABASE_APP_URL ; les liens mènent à

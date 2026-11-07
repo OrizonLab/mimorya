@@ -1,11 +1,12 @@
 //! An anchor given to `mimorya-admin verify-audit` (ADR-178): a company's
 //! place in its audit chain and the seal the sealing logged there, as
-//! `<sigle>:<place>:<sceau>`, the seal in hexadecimal as logged.
+//! `<company>:<place>:<seal>`, the company by its identifier as logged or
+//! by its slug, the seal in hexadecimal as logged.
 
 /// A place of a company's chain and the seal logged there.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Anchor {
-    /// The company's slug.
+    /// The company: its identifier, as logged, or its slug.
     pub company: String,
     pub seq: i64,
     pub seal: Vec<u8>,
@@ -15,7 +16,7 @@ impl Anchor {
     /// The anchor `value` writes, or what is wrong with it.
     pub fn parse(value: &str) -> Result<Self, String> {
         let wrong =
-            || format!("Ancre attendue sous la forme <sigle>:<place>:<sceau>, reçu : {value}");
+            || format!("Ancre attendue sous la forme <entreprise>:<place>:<sceau>, reçu : {value}");
         let mut parts = value.trim().split(':');
         let (Some(company), Some(seq), Some(seal), None) =
             (parts.next(), parts.next(), parts.next(), parts.next())
