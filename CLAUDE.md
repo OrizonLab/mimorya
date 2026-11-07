@@ -257,9 +257,12 @@ Repères à l'intérieur des crates :
   `api/src/services/audit_chain/` (journal d'audit chaîné par entreprise : sceau sous une
   clé dérivée de la clé maître, encodage épinglé (`digest.rs`), scellement chaque minute
   par la maintenance, un processus à la fois (`seal.rs`), refusé là où la chaîne a reculé
-  derrière le dernier sceau posé ou trouvé au démarrage (`heads.rs`), vérification de
-  chaque chaîne depuis sa première place et des ancres journalisées (`verify.rs`),
-  ADR-178),
+  derrière le dernier sceau posé ou trouvé au démarrage (`heads.rs`), passage de la
+  maintenance : chaînes lues jusqu'à les avoir toutes, puis scellées (`sweep.rs`),
+  vérification de chaque chaîne depuis sa première place et des ancres journalisées
+  (`verify.rs`), ancre lue (`anchor.rs`), ADR-178 ; vérification demandée par qui lit le
+  journal de toute l'entreprise, contre ses ancres, tracée, deux à la fois par processus
+  (`on_demand.rs`, ADR-179)),
   `api/src/services/skill_proposal_notice/` (propositions de l'agent annoncées par e-mail
   aux administrateurs des compétences, ADR-102),
   `api/src/services/policy_proposal_notice/` (autorisations proposées annoncées par e-mail
@@ -333,8 +336,8 @@ Repères à l'intérieur des crates :
   `domain_proofs.rs`),
   `api/src/services/provisioning/` et `api/src/bin/admin/` (commandes d'exploitation :
   migrations, création d'une entreprise réelle et de son administrateur, ADR-033,
-  vérification du journal d'audit scellé, `verify.rs`, ses ancres, `anchor.rs`, et ce
-  qu'elle dit à l'exploitant, `report.rs`, ADR-178),
+  vérification du journal d'audit scellé, `verify.rs`, et ce qu'elle dit à
+  l'exploitant, `report.rs`, ADR-178),
   `api/src/mail/` (envoi SMTP), `api/src/secrets/` (chiffrement AES-256-GCM des secrets),
   `api/tests/` (intégration, harnais dans `support/`, dont les fournisseurs d'identité
   simulés, OpenID Connect (qui joue aussi Google, ADR-121) et SAML).
@@ -353,7 +356,7 @@ Repères à l'intérieur des crates :
   passerelles de conversation, l'application Slack, ADR-126, et ses permissions
   vérifiées, ADR-132, le bot Telegram, ADR-134, le bot Teams, ADR-139,
   et l'OAuth d'un serveur MCP : déclaration, autorisation, état et retraits, ADR-171, client saisi ou enregistré par la plateforme, ADR-173, qui l'autorise, l'entreprise ou chacun, et combien l'ont fait (`mcp-oauth-holder.tsx`), ADR-174, et si le compte de chacun est vérifié, ADR-175, une déclaration refusée si elle a changé depuis l'ouverture de son formulaire, ADR-176,
-  `admin/knowledge-shares/` : partages de connaissances entre unités, ADR-144, `admin/policies/` : refus écrits aussitôt et autorisations proposées, approuvées par un autre administrateur, ADR-169, `admin/llm/` : modèle des conversations et modèle de contrôle des réponses, ADR-108, recherche dans la mémoire, leçons et limites des missions, ADR-075,
+  `admin/knowledge-shares/` : partages de connaissances entre unités, ADR-144, `admin/policies/` : refus écrits aussitôt et autorisations proposées, approuvées par un autre administrateur, ADR-169, `admin/audit-chain/` : vérification du journal d'audit à la demande et ancres gardées, ADR-179, `admin/llm/` : modèle des conversations et modèle de contrôle des réponses, ADR-108, recherche dans la mémoire, leçons et limites des missions, ADR-075,
   ADR-077, ADR-093, limite de coût des évaluations des compétences, ADR-155, `admin/users/` :
   comptes, dont l'absence d'un collaborateur empêché, ADR-079, et `admin/skills/` :
   compétences, propositions de l'agent, ADR-101, cas d'évaluation et évaluations,
@@ -385,7 +388,7 @@ Repères à l'intérieur des crates :
   `skill_evaluations.rs`, ADR-105, ce qu'ont laissé les évaluations de l'entreprise, leur
   dépense du jour et une évaluation jouée sans les connecteurs qui joignent l'extérieur,
   écrites au démarrage, `evaluation_records.rs`, ADR-155, ADR-156, et ce qu'envoie un déclencheur, `hooks.rs`, ADR-110, et quatre conversations de Marc déjà
-  résumées, dont deux de plus de 200 messages et une en retard d'un message, `summaries.rs`, ADR-146, et ce qu'une personne écrit dans Slack,
+  résumées, dont deux de plus de 200 messages et une en retard d'un message, `summaries.rs`, ADR-146, et le journal d'audit de l'entreprise scellé dès le démarrage, `audit_chain.rs`, ADR-179, et ce qu'une personne écrit dans Slack,
   `slack.rs`, ADR-128, ou au bot Telegram, `telegram.rs`, ADR-135, ou au bot Teams, `teams.rs`, ADR-140 ; les personnes y sont envoyées
   au fournisseur simulé au lieu de Microsoft ou Google, `BuildOptions::account_link_issuer`,
   ADR-118, ADR-121, et les passerelles parlent à un Slack simulé qui liste ce que

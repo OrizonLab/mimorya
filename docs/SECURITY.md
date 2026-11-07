@@ -715,6 +715,12 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   chaîne est rompue ou si une ancre n'est pas retrouvée. Les entrées de moins d'une
   minute, et toutes celles d'un serveur sans clé maître (signalé au démarrage en
   production), ne sont pas encore scellées.
+- **Vérifiée à la demande par l'entreprise** (ADR-179) : qui lit le journal d'audit de
+  toute l'entreprise (`audit:read`) vérifie sa chaîne depuis l'onglet « Journal d'audit »,
+  contre les ancres qu'il a gardées hors de la plateforme (celles de son entreprise
+  seulement : une autre est refusée sans être cherchée). Chaque vérification est tracée
+  (`audit.chain_verified`, en échec si la chaîne n'est pas tenue) ; deux à la fois par
+  processus. Elle ne protège pas d'un exploitant qui détient la clé maître et le code.
 - Ni effacement ni réécriture indirecte : le rôle applicatif ne peut pas supprimer les
   entreprises, utilisateurs, conversations et runs que l'audit référence (les clés
   étrangères effaceraient ou videraient des entrées). Leur suppression relève du rôle
@@ -761,7 +767,8 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   son titre ni son texte. Les fichiers
   refusés pour leur forme (taille, type, chiffrement, texte absent) ne sont pas tracés,
   comme les autres requêtes invalides.
-- Chaînage des entrées fait (ADR-178) ; export vers un SIEM à venir (phase 3).
+- Chaînage des entrées fait (ADR-178), vérifiable par l'entreprise (ADR-179) ; export vers
+  un SIEM à venir (phase 3).
 
 ## 9. Protection des données (RGPD)
 

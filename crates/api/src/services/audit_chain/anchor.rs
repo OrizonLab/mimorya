@@ -1,7 +1,12 @@
-//! An anchor given to `mimorya-admin verify-audit` (ADR-178): a company's
-//! place in its audit chain and the seal the sealing logged there, as
-//! `<company>:<place>:<seal>`, the company by its identifier as logged or
-//! by its slug, the seal in hexadecimal as logged.
+//! An anchor (ADR-178): a company's place in its audit chain and the seal
+//! the sealing logged there, kept outside the database, as
+//! `<company>:<place>:<seal>` (`anchor_text`), the company by its
+//! identifier as logged or by its slug, the seal in hexadecimal as logged.
+//! Given to `mimorya-admin verify-audit` by the operator, or to the
+//! verification an administrator asks for in their company (ADR-179).
+
+use mimorya_db::repositories::audit_chain::ChainHead;
+use uuid::Uuid;
 
 /// A place of a company's chain and the seal logged there.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,6 +40,20 @@ impl Anchor {
             seq,
             seal,
         })
+    }
+
+    /// Whether the anchor names the company `tenant_id`, by its identifier
+    /// or by its slug `slug` (never an empty one: an anchor names a company).
+    pub fn names(&self, tenant_id: Uuid, slug: &str) -> bool {
+        self.company == slug || Uuid::parse_str(&self.company) == Ok(tenant_id)
+    }
+
+    /// The place and the seal the chain must hold there.
+    pub fn head(&self) -> ChainHead {
+        ChainHead {
+            chain_seq: self.seq,
+            chain_hash: self.seal.clone(),
+        }
     }
 }
 
@@ -71,22 +90,38 @@ mod tests {
 
     #[test]
     fn reads_an_anchor_as_the_sealing_logs_it() {
-        use mimorya_api::services::audit_chain::anchor_text;
-        use mimorya_db::repositories::audit_chain::ChainHead;
+        use super::super::anchor_text;
         let company = uuid::Uuid::from_u128(0x0000_0000_0000_4000_8000_0000_0000_00ab);
         let head = ChainHead {
             chain_seq: 1234,
             chain_hash: (0..32).collect(),
         };
         let logged = anchor_text(company, &head);
+        let anchor = Anchor::parse(&logged).unwrap();
         assert_eq!(
-            Anchor::parse(&logged),
-            Ok(Anchor {
+            anchor,
+            Anchor {
                 company: company.to_string(),
                 seq: 1234,
                 seal: (0..32).collect(),
-            })
+            }
         );
+        assert_eq!(anchor.head(), head);
+    }
+
+    #[test]
+    fn names_a_company_by_its_identifier_or_its_slug() {
+        let (acme, other) = (Uuid::from_u128(1), Uuid::from_u128(2));
+        let named = |company: &str| Anchor::parse(&format!("{company}:1:{}", "cd".repeat(32)));
+        let by_id = named(&acme.to_string()).unwrap();
+        assert!(by_id.names(acme, "acme") && by_id.names(acme, ""));
+        assert!(!by_id.names(other, "acme"));
+        let by_slug = named("acme").unwrap();
+        assert!(by_slug.names(acme, "acme") && by_slug.names(other, "acme"));
+        assert!(!by_slug.names(acme, "") && !by_slug.names(acme, "beta"));
+        // An identifier written in capitals is the same identifier.
+        let upper = named(&acme.to_string().to_uppercase()).unwrap();
+        assert!(upper.names(acme, ""));
     }
 
     #[test]

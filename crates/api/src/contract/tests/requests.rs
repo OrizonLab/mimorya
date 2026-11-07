@@ -201,6 +201,8 @@ fn administration_bodies_read_what_the_web_client_sends() {
         json!({ "provider": "anthropic" }),
         json!({ "provider": "openai_compatible", "model": "m", "baseUrl": "https://llm.example/v1", "apiKey": "cle" }),
     );
+    let anchor = format!("neo-maintenance:12:{}", "ab".repeat(32));
+    strict::<AuditChainCheck>(json!({ "anchors": [] }), json!({ "anchors": [anchor] }));
 }
 
 /// A tool policy and a role's scope refuse unknown fields too.

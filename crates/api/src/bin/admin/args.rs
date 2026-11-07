@@ -1,7 +1,7 @@
 //! The command line of `mimorya-admin`: a command, then its options as
 //! `--option value` pairs, each given once but `--anchor`.
 
-use super::anchor::Anchor;
+use mimorya_api::services::audit_chain::Anchor;
 
 pub const USAGE: &str = "\
 Usage : mimorya-admin <commande> [options]

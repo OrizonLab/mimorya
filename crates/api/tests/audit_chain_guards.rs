@@ -3,19 +3,21 @@
 //! seals taken away then set again on changed entries, give a chain that
 //! verifies; the sealing that set or found the last seal refuses to go on,
 //! and the anchor it logged shows the change. A process reads the chains at
-//! its start until it has read them all, never one it remembers again. A
+//! its start until it has read them all, never one it remembers again, as
+//! the maintenance's passes do (`AuditSealing`). A
 //! sound chain is never refused: sealed in turn by several processes, by a
 //! process started since, or a company's first seals.
 
 mod support;
 
 use mimorya_api::services::audit_chain::{
-    AnchorFound, ChainMoved, SealedHeads, anchor_text, verify_company,
+    AnchorFound, AuditSealing, ChainMoved, SealedHeads, anchor_text, verify_company,
 };
 use support::audit_chain::{
     append, as_owner, as_owner_over_the_seals, chain, intact, key, seal, verify,
 };
-use support::{TestApi, companies, owner_url};
+use support::privileges::without_select;
+use support::{TestApi, companies};
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
@@ -171,17 +173,7 @@ async fn chains_not_read_at_startup_are_read_at_the_next_try_and_then_kept() {
     // The chains cannot be read: the process remembers none of them, and
     // says so, for the maintenance to try again.
     let restarted = SealedHeads::default();
-    let owner = sqlx::PgPool::connect(owner_url()).await.unwrap();
-    sqlx::query("revoke select on audit_log from mimorya_app")
-        .execute(&owner)
-        .await
-        .unwrap();
-    let unread = restarted.load(db).await;
-    sqlx::query("grant select on audit_log to mimorya_app")
-        .execute(&owner)
-        .await
-        .unwrap();
-    owner.close().await;
+    let unread = without_select("audit_log", restarted.load(db)).await;
     assert!(unread.is_err(), "{unread:?}");
 
     // Tried again, it remembers each chain as it finds it.
@@ -196,4 +188,35 @@ async fn chains_not_read_at_startup_are_read_at_the_next_try_and_then_kept() {
     append(db, company.tenant_id, "test.after").await;
     let refused = seal(db, &restarted, company.tenant_id).await.unwrap_err();
     assert!(refused.is::<ChainMoved>(), "{refused:#}");
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn the_maintenance_s_passes_read_the_chains_until_they_have_then_guard_them() {
+    let api = TestApi::start().await;
+    let db = &api.app.services.db;
+    let company = companies::create(&api, "chaine-balayee", "jeanne@chaine-balayee.example").await;
+    append(db, company.tenant_id, "test.swept").await;
+    seal(db, &SealedHeads::default(), company.tenant_id)
+        .await
+        .unwrap();
+
+    // The first pass cannot read the chains; the next one reads them,
+    // though this company has nothing to seal.
+    let mut sealing = AuditSealing::new(key(0));
+    assert_eq!(without_select("audit_log", sealing.pass(db)).await, 0);
+    assert!(!sealing.has_read_the_chains());
+    sealing.pass(db).await;
+    assert!(sealing.has_read_the_chains());
+
+    // The chain's end removed since: the passes no longer seal after it.
+    let places = chain(db, company.tenant_id).await;
+    let last = places[places.len() - 1].0;
+    as_owner("delete from audit_log where id = $1", last)
+        .await
+        .unwrap();
+    let after = append(db, company.tenant_id, "test.after").await;
+    sealing.pass(db).await;
+    let sealed = chain(db, company.tenant_id).await;
+    assert!(sealed.iter().all(|(id, _)| *id != after), "{sealed:?}");
 }

@@ -48,7 +48,7 @@ use mimorya_db::repositories::skill_evaluations::purge_finished_evaluations;
 use tokio::task::JoinHandle;
 
 use crate::app::AppState;
-use crate::services::audit_chain::{SealedHeads, seal_audit_log, server_key};
+use crate::services::audit_chain::AuditSealing;
 use crate::services::event_bus::RunEventBus;
 use crate::services::missions::tell_ended_missions;
 use crate::services::policy_proposal_notice::announce_policy_proposals;
@@ -75,11 +75,8 @@ const POLICY_PROPOSALS_KEPT: chrono::Duration = chrono::Duration::days(90);
 pub fn spawn_maintenance(services: AppState) -> JoinHandle<()> {
     tokio::spawn(async move {
         let (db, bus) = (&services.db, &services.bus);
-        let audit_key = server_key(&services.config);
-        // Each company's last seal, remembered and logged from the start,
-        // read again at each pass until every chain was read.
-        let sealed_heads = SealedHeads::default();
-        let mut heads_read = false;
+        // Each company's last seal, remembered and logged from the start.
+        let mut audit_sealing = AuditSealing::of(&services.config);
         // Ticks at startup, then every `SWEEP_INTERVAL` from it: the uptimes
         // the sweeps wait for fall on ticks.
         let started = tokio::time::Instant::now();
@@ -109,16 +106,8 @@ pub fn spawn_maintenance(services: AppState) -> JoinHandle<()> {
             // A person who stopped running keeps no session here (ADR-174).
             services.connectors.release_idle().await;
             // Each company's sealed chain logged as it ends (ADR-178).
-            if let Some(key) = &audit_key {
-                if !heads_read {
-                    match sealed_heads.load(db).await {
-                        Ok(()) => heads_read = true,
-                        Err(error) => tracing::warn!(error = %error, "Audit chains not all read"),
-                    }
-                }
-                if let Err(error) = seal_audit_log(db, key, &sealed_heads).await {
-                    tracing::warn!(error = %error, "Audit log sealing failed");
-                }
+            if let Some(sealing) = &mut audit_sealing {
+                sealing.pass(db).await;
             }
             if sweeps_stale_runs(started.elapsed()) {
                 match sweep_stale_runs(db, bus, STALE_AFTER).await {

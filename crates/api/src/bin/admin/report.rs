@@ -6,10 +6,8 @@
 
 use anyhow::bail;
 use mimorya_api::services::audit_chain::{
-    AnchorFound, ChainBreak, ChainReport, LISTED_BREAKS, hex,
+    Anchor, AnchorFound, ChainBreak, ChainReport, LISTED_BREAKS, hex,
 };
-
-use crate::anchor::Anchor;
 
 /// What the verification found wrong, company by company.
 #[derive(Debug, Default)]
