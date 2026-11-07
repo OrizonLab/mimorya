@@ -12,13 +12,12 @@
 
 use anyhow::anyhow;
 use mimorya_api::AppConfig;
-use mimorya_api::services::audit_chain::{ChainKey, verify_company};
+use mimorya_api::services::audit_chain::{Anchor, ChainKey, verify_company};
 use mimorya_db::Database;
 use mimorya_db::repositories::audit_chain::{ChainHead, audit_log_tenants};
 use mimorya_db::repositories::tenants::tenant_slug;
 use uuid::Uuid;
 
-use crate::anchor::Anchor;
 use crate::report::{Tally, told};
 
 pub async fn verify_audit(
@@ -46,13 +45,7 @@ pub async fn verify_audit(
         let theirs = anchors_of(anchors, *tenant_id, &company);
         theirs.iter().for_each(|index| used[*index] = true);
         let theirs: Vec<&Anchor> = theirs.iter().map(|index| &anchors[*index]).collect();
-        let heads: Vec<ChainHead> = theirs
-            .iter()
-            .map(|anchor| ChainHead {
-                chain_seq: anchor.seq,
-                chain_hash: anchor.seal.clone(),
-            })
-            .collect();
+        let heads: Vec<ChainHead> = theirs.iter().map(|anchor| anchor.head()).collect();
         match verify_company(db, &key, *tenant_id, &heads).await {
             Ok(report) => {
                 println!("{}", told(&company, &report, &theirs));
@@ -95,11 +88,8 @@ fn to_verify(mut companies: Vec<Uuid>, anchors: &[Anchor]) -> Vec<Uuid> {
 /// The anchors of the company `tenant_id`, named by its identifier or by
 /// its slug (none by an empty one): their places in `anchors`.
 fn anchors_of(anchors: &[Anchor], tenant_id: Uuid, slug: &str) -> Vec<usize> {
-    let names = |anchor: &Anchor| {
-        anchor.company == slug || Uuid::parse_str(&anchor.company) == Ok(tenant_id)
-    };
     (0..anchors.len())
-        .filter(|index| names(&anchors[*index]))
+        .filter(|index| anchors[*index].names(tenant_id, slug))
         .collect()
 }
 

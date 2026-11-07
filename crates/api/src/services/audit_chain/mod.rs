@@ -1,19 +1,26 @@
 //! The audit log chained by company (ADR-178): each entry sealed after the
 //! fact, in its company's chain, under a key derived from the master key
-//! (`digest.rs`), by a sweep of the maintenance (`seal.rs`) that refuses to
-//! go on where the chain moved behind it (`heads.rs`); a chain verified
-//! from its first place, and against anchors logged by the sealing
-//! (`verify.rs`), by `mimorya-admin verify-audit`. Without a master key,
-//! nothing is sealed.
+//! (`digest.rs`), by a sweep of the maintenance (`sweep.rs`, `seal.rs`)
+//! that refuses to go on where the chain moved behind it (`heads.rs`); a
+//! chain verified from its first place, and against anchors logged by the
+//! sealing (`anchor.rs`, `verify.rs`), by `mimorya-admin verify-audit` or
+//! by an administrator of the company (`on_demand.rs`, ADR-179). Without a
+//! master key, nothing is sealed.
 
+mod anchor;
 mod digest;
 mod heads;
+mod on_demand;
 mod seal;
+mod sweep;
 mod verify;
 
+pub use anchor::Anchor;
 pub use digest::ChainKey;
 pub use heads::{ChainMoved, SealedHeads};
+pub use on_demand::{CHECKS_AT_ONCE, ChainChecks, MAX_ANCHORS, OwnChainCheck, verify_own_chain};
 pub use seal::{AUDIT_CHAIN_SWEEP, seal_audit_log, seal_company};
+pub use sweep::AuditSealing;
 pub use verify::{AnchorFound, ChainBreak, ChainReport, LISTED_BREAKS, verify_company};
 
 use mimorya_db::repositories::audit_chain::ChainHead;

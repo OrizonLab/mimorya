@@ -240,6 +240,78 @@ available: boolean, };
 export type AuditActor = "user" | "agent" | "system";
 
 /**
+ * An anchor given, and what the chain holds at its place.
+ */
+export type AuditAnchorCheck = { place: number, seal: string, found: AuditAnchorFound, };
+
+/**
+ * What the chain holds at an anchor's place.
+ */
+export type AuditAnchorFound = "held" | "differs" | "missing";
+
+/**
+ * Where the chain breaks.
+ */
+export type AuditChainBreak = { "kind": "missing", from: number, to: number, } | { "kind": "altered", place: number, entryId: number, };
+
+/**
+ * Body of `POST /admin/audit/verifications`.
+ */
+export type AuditChainCheck = {
+/**
+ * Anchors kept outside the platform, as the verification shows them
+ * or the sealing logs them: `<company>:<place>:<seal>`, the company by
+ * its identifier or its slug.
+ */
+anchors: Array<string>, };
+
+/**
+ * A place of the chain and its seal, with the anchor that keeps it.
+ */
+export type AuditChainPlace = { place: number,
+/**
+ * In hexadecimal.
+ */
+seal: string,
+/**
+ * `<company>:<place>:<seal>`, the company by its identifier.
+ */
+anchor: string, };
+
+/**
+ * `POST /admin/audit/verifications`.
+ */
+export type AuditChainVerification = {
+/**
+ * Whether the chain breaks nowhere and holds every anchor given.
+ */
+holds: boolean,
+/**
+ * Entries whose seal holds.
+ */
+verified: number,
+/**
+ * Entries not sealed yet: sealed within a minute or so.
+ */
+unsealed: number,
+/**
+ * The last sealed place: the anchor to keep.
+ */
+last: AuditChainPlace | null,
+/**
+ * Every break: each altered entry, each missing place.
+ */
+broken: number,
+/**
+ * The first breaks.
+ */
+breaks: Array<AuditChainBreak>,
+/**
+ * In the order they were given.
+ */
+anchors: Array<AuditAnchorCheck>, verifiedAt: string, };
+
+/**
  * One entry of the audit trail. It names what changed, never a secret or
  * a message's content.
  */

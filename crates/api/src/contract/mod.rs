@@ -156,6 +156,7 @@ pub fn typescript() -> String {
     declarations.add::<admin::OAuthAuthorizationStart>();
     declarations.add::<admin::RestImport>();
     declarations.add::<admin::AuditLog>();
+    declarations.add::<admin::AuditChainVerification>();
     declarations.add::<admin::UsageSummary>();
     declarations.add::<ErrorBody>();
     macro_rules! declare {
@@ -232,7 +233,8 @@ macro_rules! request_bodies {
             admin::NewIdentityProvider,
             admin::IdentityProviderUpdate,
             admin::DomainProofRequest,
-            admin::ApprovalRoutingUpdate
+            admin::ApprovalRoutingUpdate,
+            admin::AuditChainCheck
         )
     };
 }

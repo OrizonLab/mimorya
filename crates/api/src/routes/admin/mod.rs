@@ -9,6 +9,7 @@ mod absences;
 mod activity;
 mod approval_routing;
 mod assignments;
+mod audit_chain;
 mod connector_applications;
 mod connector_oauth;
 pub(crate) mod connectors;
@@ -218,6 +219,7 @@ pub fn routes(state: &AppState) -> Router<AppState> {
             get(skill_evaluations::show),
         )
         .route("/admin/audit", get(activity::audit))
+        .route("/admin/audit/verifications", post(audit_chain::verify))
         .route("/admin/usage", get(activity::usage))
         // Last: a route layer only wraps the routes declared before it.
         .route_layer(from_fn_with_state(state.clone(), audit_refusals))

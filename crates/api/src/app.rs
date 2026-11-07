@@ -35,6 +35,7 @@ use crate::plugins::session::resolve_identity;
 use crate::routes;
 use crate::secrets::SecretStore;
 use crate::services::account_links::AccountLinkService;
+use crate::services::audit_chain::ChainChecks;
 use crate::services::background::BackgroundTasks;
 use crate::services::connectors::ConnectorSettings;
 use crate::services::documents::{DocumentService, Extractor};
@@ -77,6 +78,9 @@ pub struct Services {
     /// The companies whose skill evaluations this process plays at once
     /// (ADR-157).
     pub evaluation_slots: EvaluationSlots,
+    /// The verifications of their audit chain administrators ask for that
+    /// this process runs at once (ADR-179).
+    pub audit_checks: ChainChecks,
     /// Sends the invitation and reset e-mails; `None` when no relay is
     /// configured.
     pub mailer: Option<Arc<dyn Mailer>>,
@@ -257,6 +261,7 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
         account_links,
         gateways,
         evaluation_slots: EvaluationSlots::default(),
+        audit_checks: ChainChecks::default(),
         mailer,
         config,
         db: db.clone(),

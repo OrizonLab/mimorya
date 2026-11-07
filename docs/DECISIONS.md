@@ -11725,3 +11725,78 @@ found`), même quand un lot suivant échoue, avec leur ancre toute écrite :
       identifiant ou par sigle, ce qu'elle dit d'une chaîne intacte ou rompue (des
       places manquantes en plage) et de ses ancres, son échec si une chaîne est rompue,
       une ancre non retrouvée ou une entreprise non vérifiée, son refus sans clé maître.
+
+## ADR-179 — Vérification du journal d'audit chaîné à la demande, depuis l'administration (lot 51b)
+
+- **Statut** : accepté (2026-11-07) · complète ADR-178 et ADR-038 (refus tracés).
+- **Contexte** : seul l'exploitant vérifiait les chaînes du journal d'audit
+  (`mimorya-admin verify-audit`), avec les ancres journalisées par le serveur. Une
+  entreprise n'avait aucun moyen de constater elle-même que son journal n'a pas été
+  réécrit, ni de garder ses propres ancres, hors de la plateforme et des journaux de
+  l'exploitant.
+- **Décision** :
+  - **qui vérifie** : `POST /admin/audit/verifications`, à qui lit le journal d'audit de
+    toute l'entreprise (`audit:read` sur l'entreprise ; un administrateur d'une unité
+    seulement est refusé, et le refus tracé comme les autres refus de l'administration).
+    La vérification ne porte que sur sa propre entreprise, dans un même instantané, sous
+    la clé du serveur (`services/audit_chain/on_demand.rs`) : la même que celle de
+    l'exploitant (`verify.rs`). Un serveur sans clé maître ne scelle rien et répond qu'il
+    ne vérifie rien (503), en nommant l'exploitant ;
+  - **les ancres de l'entreprise** : la vérification montre la dernière place scellée et
+    son ancre toute écrite, `<entreprise>:<place>:<sceau>`, celle que journalise le
+    scellement. L'administrateur la garde hors de la plateforme et la redonne plus tard,
+    une par ligne, vingt au plus, avec celles que l'exploitant lui transmettrait. L'ancre
+    est lue par la bibliothèque (`services/audit_chain/anchor.rs`), pour la commande comme
+    pour l'administration. Chaque ancre doit nommer son entreprise, par son identifiant ou
+    par son sigle : une autre est refusée (400) sans que l'entreprise nommée soit cherchée,
+    en des mots identiques qu'elle existe ou non. Chaque ancre est dite tenue, portant un
+    autre sceau à sa place (la chaîne a été scellée à nouveau depuis), ou absente (la
+    chaîne s'arrête avant, ou y manque) ;
+  - **ce qu'elle dit** : chaîne tenue ou non, entrées vérifiées, entrées encore à
+    sceller, dernière place et son ancre, ruptures (les vingt premières, chaque place
+    manquante comptée, les places qui se suivent en une plage) et ancres. L'onglet
+    « Journal d'audit » la montre au-dessus du journal, rechargé après elle ;
+  - **tracée** : chaque vérification ajoute au journal `audit.chain_verified`, au nom de
+    son auteur, avec ce qu'elle a trouvé (entrées vérifiées et à sceller, dernière place,
+    ruptures, ancres données et non tenues), en échec avec sa raison quand la chaîne n'est
+    pas tenue, ce que le serveur journalise aussi comme une erreur pour l'exploitant.
+    Cette entrée est scellée au passage suivant, comme les autres ;
+  - **bornée** : deux vérifications à la fois par processus (`CHECKS_AT_ONCE`), chacune
+    relisant toute une chaîne ; au-delà, un refus (503) à réessayer dans un instant ;
+  - **suites de l'audit du lot 51a** : le passage de la maintenance (relire les chaînes
+    jusqu'à les avoir toutes lues, puis sceller) sort de sa boucle (`AuditSealing`,
+    `services/audit_chain/sweep.rs`), testé tel qu'elle le joue ; l'aide des tests qui
+    retire un privilège à l'application retire aussi la lecture (`without_select`).
+- **Conséquences** :
+  - une entreprise constate elle-même l'intégrité de son journal et garde ses propres
+    ancres : une réécriture par qui ne détient pas la clé maître, ou des sceaux posés à
+    nouveau, se voient contre elles sans dépendre des journaux de l'exploitant. Elle n'est
+    pas protégée ainsi d'un exploitant qui détient la clé maître et le code du serveur :
+    c'est le serveur qui vérifie ;
+  - une vérification relit toute la chaîne de l'entreprise, par pages de mille entrées :
+    sa durée croît avec le journal, et la requête l'attend ;
+  - les entrées de moins d'une minute ne sont pas encore scellées : elles sont comptées
+    « en attente », non vérifiées ;
+  - à venir (lot 51c) : la vérification dans les piles de production de la CI, avant et
+    après une restauration ;
+  - tests :
+    - `crates/api/tests/audit_chain_verifications.rs` : un administrateur vérifie la
+      chaîne, l'ancre montrée est celle que journalise le scellement, tenue par
+      identifiant et par sigle, un autre sceau ou une place au-delà de la chaîne non
+      tenus ; chaque vérification tracée, en échec quand une ancre n'est pas tenue ou
+      quand une entrée modifiée rompt la chaîne (rupture nommée) ; refusée à qui n'a pas
+      `audit:read`, à un administrateur d'une équipe seulement, permise à qui n'a que
+      `audit:read` ; une ancre d'une autre entreprise, par identifiant ou par sigle,
+      refusée en mêmes mots qu'elle existe ou non, une ancre mal écrite et plus de vingt
+      refusées ; un serveur sans clé maître, ou qui vérifie déjà autant qu'il peut,
+      refuse ;
+    - `crates/api/tests/audit_chain_guards.rs` : les passages de la maintenance lisent
+      les chaînes au premier qui le peut, même sans rien à sceller, puis refusent de
+      sceller après une fin de chaîne retirée ;
+    - `crates/api/src/services/audit_chain/anchor.rs` (ancre lue telle que journalisée,
+      nommant son entreprise par identifiant ou par sigle) et `on_demand.rs` (ancre d'une
+      autre entreprise ou trop longue refusée, places des vérifications d'un processus) ;
+      `crates/api/src/contract/tests/requests.rs` : le corps strict ;
+    - `apps/web/e2e/audit-chain.spec.ts` : depuis « Journal d'audit », la chaîne
+      vérifiée intacte, l'ancre montrée redonnée tenue, la même place sous un autre sceau
+      non tenue, les deux vérifications tracées dans le journal relu.

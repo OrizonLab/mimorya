@@ -4,6 +4,7 @@ mod absences;
 mod activity;
 mod approval_routing;
 mod assignments;
+mod audit_chain;
 mod connectors;
 mod domain_proofs;
 mod embedding;
@@ -34,6 +35,10 @@ pub use activity::{
 };
 pub use approval_routing::{ApprovalRoutingUpdate, ApprovalRoutingView};
 pub use assignments::{Assignment, AssignmentScope, RoleGrant};
+pub use audit_chain::{
+    AuditAnchorCheck, AuditAnchorFound, AuditChainBreak, AuditChainCheck, AuditChainPlace,
+    AuditChainVerification,
+};
 pub use connectors::{
     ConnectorDetails, ConnectorStatus, ConnectorTest, ConnectorTrial, ConnectorType,
     ConnectorUpdate, ConnectorView, Connectors, DelegablePermission, McpEndpoint, NewConnector,

@@ -4,7 +4,6 @@
 //! sealed audit log against the seals logged (ADR-178). The link is printed
 //! for the operator to transmit, and nowhere else.
 
-mod anchor;
 mod args;
 mod report;
 mod verify;
