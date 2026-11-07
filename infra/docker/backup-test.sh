@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Backs up a running production stack and restores it into a new database
-# (ADR-166), as an operator would. A company is opened first; the stack is
-# backed up for an age key made here. The backup is checked:
+# (ADR-166), as an operator would. A company is opened first, and its audit
+# log sealed: the anchor the sealing logged is found by the operator and by
+# the company's administrator (ADR-178, ADR-179). The stack is backed up for
+# an age key made here; a sign-in written after the backup is sealed, its
+# anchor kept too. The backup is checked:
 #   - readable by its owner only;
 #   - encrypted: another identity cannot open it, the right one decrypts it
 #     to its end, a PostgreSQL archive;
@@ -21,15 +24,20 @@
 #     security, policies and rights of the application role;
 #   - the company's administrator, who signs in with the password chosen
 #     before the backup;
+#   - its audit chains as they were at the backup (ADR-180): the anchor kept
+#     before it is found, the one sealed after it is not, by the operator as
+#     by the administrator;
 #   - the migrations, which apply again without change.
 #
 # It throws the stack's volumes away: for a stack thrown away afterwards
 # only (the CI's), hence DISPOSABLE_STACK=yes. The stack's variables and
-# compose files as for production-test.sh. Needs age and age-keygen.
+# compose files as for production-test.sh, a master key among them
+# (MIMORYA_MASTER_KEY). Needs age, age-keygen and jq.
 #   DISPOSABLE_STACK=yes infra/docker/backup-test.sh [https://localhost]
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 source infra/docker/checks.sh
+source infra/docker/audit-chain.sh
 
 check_name="backup test"
 base=${1:-https://localhost}
@@ -37,6 +45,7 @@ export COMPOSE_FILE=${COMPOSE_FILE:-compose.production.yml}
 [[ ${DISPOSABLE_STACK:-} == yes ]] ||
   fail "it throws the stack's database away: set DISPOSABLE_STACK=yes on a throwaway stack only"
 command -v age-keygen >/dev/null || fail "age is not installed"
+command -v jq >/dev/null || fail "jq is not installed"
 
 companies() {
   docker compose exec -T db psql -U mimorya -d mimorya -tAc \
@@ -63,10 +72,19 @@ guards() {
 wait_for_stack "$base"
 slug=backup-$(date +%s)
 password=$(openssl rand -hex 24)
-open_company "$base" "$slug" 'Entreprise sauvegardée' "$password" >/dev/null
+session=$(open_company "$base" "$slug" 'Entreprise sauvegardée' "$password")
 before=$(companies)
 guarded=$(guards)
 ((${guarded%% *} > 0)) || fail "no table is under row level security: $guarded"
+
+# The company's audit log sealed: the anchor the sealing logged is found by
+# the operator, and by the company's administrator.
+tenant=$(company_id "$slug")
+kept=$(sealed_anchor "$tenant")
+kept_place=$(cut -d: -f2 <<<"$kept")
+said=$(operator_verifies "$kept") || fail "the operator's verification failed: $said"
+grep -q "ancre n° $kept_place : retrouvée" <<<"$said" || fail "the anchor was not found: $said"
+check_report "$(company_verifies "$base" "$session" "$kept")" true held
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
@@ -84,6 +102,13 @@ fi
 magic=$(age --decrypt --identity "$work/identity.txt" "$work/stack.dump.age" |
   { head -c 5; cat >/dev/null; }) || fail "the backup does not decrypt to its end"
 [[ $magic == PGDMP ]] || fail "the backup does not hold a PostgreSQL archive"
+
+# Written after the backup, then sealed: a sign-in, audited. Its anchor will
+# be lost once the backup is restored.
+sign_in "$base" "admin@$slug.example" "$password" >/dev/null
+later=$(sealed_anchor "$tenant")
+(($(cut -d: -f2 <<<"$later") > kept_place)) ||
+  fail "nothing was sealed after the backup: $kept, then $later"
 
 # A docker standing for the real one: after a dump it makes the folder
 # FOLDER_DURING_DUMP names, if any, then waits DUMP_DELAY seconds, as if both
@@ -202,6 +227,15 @@ restored=$(guards)
   fail "row level security and rights before ($guarded) and after ($restored) differ"
 session=$(sign_in "$base" "admin@$slug.example" "$password")
 check_company_of "$base" "$session" 'Entreprise sauvegardée'
+# The audit chains as they were at the backup: the anchor kept before it is
+# found, the one sealed after it is not.
+said=$(operator_verifies "$kept") || fail "the anchor kept before the backup is lost: $said"
+if said=$(operator_verifies "$later"); then
+  fail "an anchor sealed after the backup is found once it is restored: $said"
+fi
+grep -q '1 ancre(s) non retrouvée(s)' <<<"$said" ||
+  fail "the anchor sealed after the backup was not said lost: $said"
+check_report "$(company_verifies "$base" "$session" "$kept" "$later")" false 'held,(differs|missing)'
 docker compose run --rm --no-deps migrate >/dev/null || fail "migrations not re-applied"
 
 echo "backup test passed: $base"

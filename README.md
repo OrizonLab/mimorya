@@ -129,7 +129,8 @@ hors de la base. `verify-audit` échoue si une entrée scellée a été modifié
 ou si une chaîne ne porte plus le sceau d'une ancre donnée telle quelle par `--anchor`
 (autant que voulu) : seul ce sceau montre des entrées retirées de la fin d'une chaîne, ou
 des sceaux posés à nouveau. Après une restauration, redémarrez l'API et les workers, et
-vérifiez avec les ancres d'avant la sauvegarde. Chaque entreprise vérifie aussi sa chaîne
+vérifiez avec les ancres d'avant la sauvegarde : elles sont retrouvées, celles posées
+depuis ne le sont plus, ce que la CI vérifie à chaque PR (ADR-180). Chaque entreprise vérifie aussi sa chaîne
 depuis l'onglet « Journal d'audit » de son administration, contre les ancres qu'elle a
 gardées (ADR-179). Le
 lien d'invitation (valable 7 jours) n'est affiché qu'une fois : transmettez-le par un canal

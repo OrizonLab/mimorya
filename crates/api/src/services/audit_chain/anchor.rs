@@ -57,8 +57,10 @@ impl Anchor {
     }
 }
 
+/// The bytes `text` writes in hexadecimal digits, and nothing else: no sign
+/// or space a number's reading would take.
 fn unhex(text: &str) -> Option<Vec<u8>> {
-    if !text.len().is_multiple_of(2) || !text.is_ascii() {
+    if !text.len().is_multiple_of(2) || !text.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return None;
     }
     (0..text.len())
@@ -138,6 +140,9 @@ mod tests {
             "acme:3:abcd".to_string(),
             format!("acme:3:{}", "zz".repeat(32)),
             format!("acme:3:{}é", "ab".repeat(31)),
+            // What reading a number would take: a sign, a space.
+            format!("acme:3:{}", "+a".repeat(32)),
+            format!("acme:3:{} a", "ab".repeat(31)),
         ] {
             assert!(Anchor::parse(&wrong).is_err(), "{wrong:?}");
         }

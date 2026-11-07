@@ -2,6 +2,7 @@
 //! (ADR-085), serve the HTTP API, execute runs, or both, until SIGINT or
 //! SIGTERM, letting background runs finish before exiting.
 
+use std::io::IsTerminal;
 use std::net::SocketAddr;
 
 use mimorya_api::{App, AppConfig, BuildOptions, build_app, log_filter};
@@ -12,8 +13,11 @@ async fn main() -> anyhow::Result<()> {
     // A missing .env file is fine: the environment may come from elsewhere.
     let _ = dotenvy::dotenv();
     let config = AppConfig::from_env()?;
+    // Colours only for a terminal: logs kept by Docker or a collector read
+    // as plain text, an anchor copied as it is written (ADR-180).
     tracing_subscriber::fmt()
         .with_env_filter(log_filter(&config.log_level)?)
+        .with_ansi(std::io::stdout().is_terminal())
         .init();
 
     if let Some(proxy) = config.mcp_network.proxy {
