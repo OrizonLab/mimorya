@@ -3,7 +3,8 @@
 //! permission or the ownership of the resource before answering. Exceptions:
 //! login, invitation and password reset links and health need no identity,
 //! nor a delivery to an inbound hook, proved by its token (ADR-109), nor an
-//! event Slack sends a gateway, proved by its signature (ADR-125);
+//! event Slack sends a gateway, proved by its signature (ADR-125), nor the
+//! audit log a company's SIEM reads, proved by its token (ADR-181);
 //! logout takes `MaybeAuth`; `/auth/me`
 //! and `/account/password` take `AuthPendingPasswordChange`, so that an
 //! account holding a temporary password can replace it.
@@ -15,6 +16,7 @@ mod account_links;
 mod admin;
 mod approval_delegation;
 mod approvals;
+mod audit_export;
 mod auth;
 mod conversations;
 mod documents;
@@ -64,6 +66,7 @@ pub fn router(state: &AppState) -> Router<AppState> {
         .merge(scheduled_tasks::routes())
         .merge(inbound_hooks::routes())
         .merge(hooks::routes())
+        .merge(audit_export::routes())
         .merge(gateways::routes())
         .merge(missions::routes())
         .merge(admin::routes(state))

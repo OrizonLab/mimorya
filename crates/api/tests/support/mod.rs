@@ -9,6 +9,7 @@ pub mod account_links;
 pub mod accounts;
 pub mod approver_notices;
 pub mod audit_chain;
+pub mod audit_exports;
 mod client;
 pub mod companies;
 pub mod connector_oauth;

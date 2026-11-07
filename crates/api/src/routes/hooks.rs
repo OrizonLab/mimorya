@@ -9,7 +9,7 @@
 use axum::Router;
 use axum::body::Body;
 use axum::extract::{Path, State};
-use axum::http::header::{AUTHORIZATION, CONTENT_LENGTH, RETRY_AFTER};
+use axum::http::header::{CONTENT_LENGTH, RETRY_AFTER};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
@@ -18,7 +18,7 @@ use mimorya_core::DomainError;
 use uuid::Uuid;
 
 use crate::app::AppState;
-use crate::http::{ApiError, ApiResult};
+use crate::http::{ApiError, ApiResult, bearer};
 use crate::services::inbound_hooks::{MAX_BODY_BYTES, Refusal, deliver, unknown};
 
 /// Where a system posts: one of the three routes a request without the
@@ -76,12 +76,4 @@ async fn receive(
         Err(Refusal::Refused) => Err(DomainError::conflict(REFUSED).into()),
         Err(Refusal::Failed) => Err(DomainError::unavailable(FAILED).into()),
     }
-}
-
-/// The token sent as `Authorization: Bearer <token>`, if any.
-fn bearer(headers: &HeaderMap) -> Option<&str> {
-    let value = headers.get(AUTHORIZATION)?.to_str().ok()?;
-    let (scheme, token) = value.split_once(' ')?;
-    let token = token.trim();
-    (scheme.eq_ignore_ascii_case("bearer") && !token.is_empty()).then_some(token)
 }
