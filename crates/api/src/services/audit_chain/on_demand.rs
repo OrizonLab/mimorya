@@ -4,11 +4,10 @@
 //! administrator kept outside the platform. An anchor must name their
 //! company, by its identifier or its slug: one that names another is refused
 //! without that company being looked up, so that nothing tells whether it
-//! exists. A few verifications at once in a process, each traced in the
-//! audit log with what it found, as a failure when the chain does not hold.
+//! exists. A few verifications at once in a process, one for a company
+//! (`places.rs`), each traced in the audit log with what it found, as a
+//! failure when the chain does not hold.
 //! A server without a master key seals nothing, and verifies nothing.
-
-use std::sync::Arc;
 
 use mimorya_core::DomainError;
 use mimorya_db::Database;
@@ -16,15 +15,12 @@ use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::audit_chain::ChainHead;
 use mimorya_db::repositories::tenants::tenant_slug;
 use serde_json::json;
-use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use uuid::Uuid;
 
-use super::{Anchor, AnchorFound, ChainKey, ChainReport, verify_company};
+use super::{Anchor, AnchorFound, ChainChecks, ChainKey, ChainReport, verify_company};
 use crate::config::AppConfig;
 use crate::services::AccessContext;
 
-/// Verifications one process runs at once: each reads a whole chain.
-pub const CHECKS_AT_ONCE: usize = 2;
 /// Anchors one verification takes.
 pub const MAX_ANCHORS: usize = 20;
 /// The longest anchor read: one as written is about a hundred characters.
@@ -33,27 +29,7 @@ const PERMISSION: &str = "audit:read";
 
 const UNSEALED: &str = "Ce serveur ne scelle pas le journal d’audit : aucune clé maître \
      (MIMORYA_MASTER_KEY) n’y est configurée. Adressez-vous à l’exploitant de la plateforme.";
-const BUSY: &str = "D’autres vérifications du journal d’audit sont en cours : réessayez dans un \
-     instant.";
 const TOO_LONG: &str = "Une ancre compte au plus 200 caractères.";
-
-/// The places of the verifications this process runs at once.
-#[derive(Clone)]
-pub struct ChainChecks(Arc<Semaphore>);
-
-impl Default for ChainChecks {
-    fn default() -> Self {
-        Self(Arc::new(Semaphore::new(CHECKS_AT_ONCE)))
-    }
-}
-
-impl ChainChecks {
-    /// A place for one verification, held until dropped; `None` when this
-    /// process runs as many as it may.
-    pub fn take(&self) -> Option<OwnedSemaphorePermit> {
-        Arc::clone(&self.0).try_acquire_owned().ok()
-    }
-}
 
 /// What the verification of a company's chain found, and the anchors it
 /// was given, in their order.
@@ -80,9 +56,7 @@ pub async fn verify_own_chain(
     };
     let key = ChainKey::of(cipher)?;
     let anchors = own_anchors(db, tenant_id, anchors).await?;
-    let Some(_place) = checks.take() else {
-        return Err(DomainError::unavailable(BUSY).into());
-    };
+    let _place = checks.take(tenant_id)?;
     let heads: Vec<ChainHead> = anchors.iter().map(Anchor::head).collect();
     let report = verify_company(db, &key, tenant_id, &heads).await?;
     if !report.holds() {
@@ -199,15 +173,5 @@ mod tests {
             own_anchor(&long, acme, "acme").unwrap_err().message,
             TOO_LONG
         );
-    }
-
-    #[test]
-    fn a_process_runs_a_few_verifications_at_once() {
-        let checks = ChainChecks::default();
-        let places: Vec<_> = (0..CHECKS_AT_ONCE).map_while(|_| checks.take()).collect();
-        assert_eq!(places.len(), CHECKS_AT_ONCE);
-        assert!(checks.take().is_none());
-        drop(places);
-        assert!(checks.take().is_some());
     }
 }

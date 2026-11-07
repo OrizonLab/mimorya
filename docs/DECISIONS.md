@@ -11805,3 +11805,59 @@ found`), même quand un lot suivant échoue, avec leur ancre toute écrite :
       vérifiée intacte, l'ancre montrée redonnée tenue, la même place sous un autre sceau
       non tenue et aucune ancre alors proposée, les deux vérifications tracées dans le
       journal relu.
+
+## ADR-180 — Journal d'audit chaîné vérifié à travers une restauration, une vérification à la fois par entreprise (lot 51c)
+
+- **Statut** : accepté (2026-11-07) · complète ADR-166 (sauvegarde), ADR-178 et ADR-179.
+- **Contexte** : ADR-178 dit qu'une restauration ramène les chaînes à leur état de la
+  sauvegarde, les ancres d'avant elle retrouvées et celles posées depuis perdues ; rien ne
+  le vérifiait, la pile de production de la CI n'ayant pas de clé maître, donc pas de
+  sceau. Restaient aussi trois suites des audits du lot 51b : un administrateur d'une
+  unité refusé dont le refus n'était vérifié qu'à son statut, un sceau d'ancre lu comme un
+  nombre (un `+` en tête accepté), et une entreprise qui pouvait prendre toutes les places
+  de vérification d'un processus.
+- **Décision** :
+  - **la pile de production de la CI a une clé maître**, tirée au hasard pour le job et
+    masquée dans ses journaux, comme ses mots de passe. Ses workers scellent donc les
+    journaux d'audit ;
+  - **le test de sauvegarde et de restauration vérifie les chaînes**
+    (`infra/docker/backup-test.sh`, ses aides dans `infra/docker/audit-chain.sh`) :
+    - avant la sauvegarde, il attend que le journal de l'entreprise ouverte soit scellé et
+      que la dernière place soit journalisée. Il garde l'ancre telle que les processus la
+      journalisent (`anchor=…`), comme l'exploitant ;
+    - `mimorya-admin verify-audit --anchor` la retrouve, et l'administrateur de
+      l'entreprise la retrouve aussi par l'API (ADR-179) ;
+    - après la sauvegarde, une connexion de l'administrateur (auditée) est scellée, son
+      ancre gardée ;
+    - après la restauration : l'ancre d'avant la sauvegarde est retrouvée par l'exploitant
+      et par l'entreprise, toutes les chaînes intactes ; celle d'après ne l'est plus (un
+      autre sceau à sa place, ou plus rien) et la commande échoue en le disant ;
+  - **une vérification à la fois par entreprise** (`services/audit_chain/places.rs`), dans
+    les deux places d'un processus : une deuxième demande de la même entreprise est
+    refusée (409) tant que la première court ; une entreprise ne prend donc jamais toutes
+    les places aux autres. Une limite dans le temps n'est pas ajoutée : la vérification
+    est réservée à qui lit tout le journal, bornée par processus et par entreprise, et
+    chacune est tracée ;
+  - **les journaux des processus sont en texte simple hors d'un terminal** : les couleurs
+    que `tracing` y mettait par défaut entouraient le nom et la valeur d'un champ de codes
+    d'échappement, jusque dans les journaux gardés par Docker ou un collecteur. Une ligne
+    `anchor=…` se copie désormais telle quelle, ce que le test lit dans les journaux de la
+    pile ;
+  - **le sceau d'une ancre n'est fait que de chiffres hexadécimaux** : un signe ou un
+    espace qu'accepterait la lecture d'un nombre est refusé ;
+  - **le refus d'une vérification est tracé**, vérifié pour qui n'a pas `audit:read` et
+    pour un administrateur d'une unité seulement (`admin.refused`, ADR-038).
+- **Conséquences** :
+  - le job Docker de la CI attend au plus deux passages du scellement (une minute chacun)
+    avant et après la sauvegarde ;
+  - la pile de démonstration de la CI reçoit la même clé : ses journaux sont scellés
+    aussi, sans test de plus ;
+  - tests :
+    - `infra/docker/backup-test.sh` : à chaque PR, en CI, ce que dit la décision ;
+    - `crates/api/src/services/audit_chain/places.rs` : deux places, une par entreprise,
+      rendues à leur abandon ;
+    - `crates/api/tests/audit_chain_verifications.rs` : une entreprise qui vérifie déjà
+      refusée (409), un processus plein refusé (503), ni l'un ni l'autre ne gardant la
+      place ; les refus de qui n'a pas `audit:read` et d'un administrateur d'une équipe
+      tracés ;
+    - `anchor.rs` : un `+` ou un espace dans le sceau refusés.

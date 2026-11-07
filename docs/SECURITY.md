@@ -719,8 +719,12 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   toute l'entreprise (`audit:read`) vérifie sa chaîne depuis l'onglet « Journal d'audit »,
   contre les ancres qu'il a gardées hors de la plateforme (celles de son entreprise
   seulement : une autre est refusée sans être cherchée). Chaque vérification est tracée
-  (`audit.chain_verified`, en échec si la chaîne n'est pas tenue) ; deux à la fois par
-  processus. Elle ne protège pas d'un exploitant qui détient la clé maître et le code.
+  (`audit.chain_verified`, en échec si la chaîne n'est pas tenue), un refus aussi ; deux à
+  la fois par processus, une seule par entreprise (ADR-180). Elle ne protège pas d'un
+  exploitant qui détient la clé maître et le code.
+- **Vérifiée à travers une restauration** (ADR-180) : la CI scelle le journal de la pile
+  de production, le vérifie avec l'ancre journalisée, sauvegarde, puis restaure : l'ancre
+  d'avant la sauvegarde y est retrouvée, celle d'une entrée scellée après ne l'est plus.
 - Ni effacement ni réécriture indirecte : le rôle applicatif ne peut pas supprimer les
   entreprises, utilisateurs, conversations et runs que l'audit référence (les clés
   étrangères effaceraient ou videraient des entrées). Leur suppression relève du rôle

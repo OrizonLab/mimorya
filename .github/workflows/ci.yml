@@ -174,13 +174,18 @@ jobs:
       MIMORYA_TLS: internal
     steps:
       - uses: actions/checkout@v4
-      - name: Choose the production stack's database passwords
+      - name: Choose the production stack's database passwords and master key
         run: |
           for name in POSTGRES_PASSWORD MIMORYA_APP_DB_PASSWORD; do
             value=$(openssl rand -hex 24)
             echo "::add-mask::$value"
             echo "$name=$value" >> "$GITHUB_ENV"
           done
+          # The stacks' audit logs are sealed under a key derived from it
+          # (ADR-178): the backup test verifies them across a restore.
+          key=$(openssl rand -base64 32)
+          echo "::add-mask::$key"
+          echo "MIMORYA_MASTER_KEY=$key" >> "$GITHUB_ENV"
       # Built from this checkout, under local names (ADR-051).
       - name: Build the images
         run: |

@@ -1,9 +1,10 @@
 //! The verification of its company's audit chain an administrator asks for
 //! (ADR-179): the whole chain read under the server's key, against the
 //! anchors they kept, their company's only; each verification traced, as a
-//! failure when the chain does not hold. Who may not ask, an anchor naming
-//! another company, a server without a master key and a process already
-//! running its verifications are refused.
+//! failure when the chain does not hold. Who may not ask (the refusal
+//! traced), an anchor naming another company, a server without a master
+//! key, a company verifying already and a process running as many
+//! verifications as it may are refused.
 
 mod support;
 
@@ -16,6 +17,7 @@ use support::accounts::{INVITED_PASSWORD, accept, activate, create_partial_admin
 use support::audit_chain::{append, as_owner, chain, seal};
 use support::mcp::capture_logs;
 use support::{Client, TestApi, TestResponse, companies, llm};
+use uuid::Uuid;
 
 const VERIFY: &str = "/admin/audit/verifications";
 
@@ -25,6 +27,21 @@ async fn keyed() -> TestApi {
 
 async fn verify(client: &Client<'_>, anchors: &[String]) -> TestResponse {
     client.post(VERIFY, json!({ "anchors": anchors })).await
+}
+
+/// Whether the company's audit log traces a refused verification by
+/// `user_id`.
+async fn refusal_traced(client: &Client<'_>, user_id: Uuid) -> bool {
+    let log = client.get("/admin/audit?limit=100").await.json();
+    log["entries"].as_array().unwrap().iter().any(|entry| {
+        entry["action"] == "admin.refused"
+            && entry["outcome"] == "denied"
+            && entry["actorUserId"] == json!(user_id)
+            && entry["metadata"]["method"] == "POST"
+            && entry["metadata"]["route"]
+                .as_str()
+                .is_some_and(|route| route.ends_with(VERIFY))
+    })
 }
 
 /// The last verification the company's audit log traces.
@@ -169,11 +186,21 @@ async fn only_a_company_wide_audit_reader_verifies_and_only_with_their_company_s
     // Reading the audit log company-wide is enough.
     let officer = holder_of(&api, &paul, "verif.journal", &["audit:read"]).await;
     assert_eq!(verify(&officer, &[]).await.status, StatusCode::OK);
+    // Both refusals traced, as the administration's are (ADR-038).
+    for (refused, user_id) in [
+        (user::LUCAS, "Lucas"),
+        (partial.id, "the team administrator"),
+    ] {
+        assert!(
+            refusal_traced(&paul, refused).await,
+            "{user_id}'s refused verification is not traced"
+        );
+    }
 
     // Another company's anchor, by its identifier or its slug, is refused
     // alike whether that company exists or not.
     let seal_text = "ab".repeat(32);
-    let unknown = uuid::Uuid::new_v4();
+    let unknown = Uuid::new_v4();
     for (named, absent) in [
         (
             mimorya_db::testing::OTHER_TENANT_ID.to_string(),
@@ -227,11 +254,24 @@ async fn a_server_without_a_master_key_or_already_verifying_refuses() {
     let api = keyed().await;
     let paul = api.sign_in(user::PAUL).await;
     let checks = &api.app.services.audit_checks;
-    let places: Vec<_> = (0..CHECKS_AT_ONCE).map_while(|_| checks.take()).collect();
-    assert_eq!(places.len(), CHECKS_AT_ONCE);
+    // The company verifying already, whatever place is free.
+    let own = checks.take(tenant::ID).unwrap();
+    let verifying = verify(&paul, &[]).await;
+    assert_eq!(verifying.status, StatusCode::CONFLICT);
+    assert!(
+        verifying.text().contains("déjà en cours"),
+        "{}",
+        verifying.text()
+    );
+    drop(own);
+    // Every place taken by other companies.
+    let places: Vec<_> = (1..=CHECKS_AT_ONCE as u128)
+        .map(|n| checks.take(Uuid::from_u128(n)).unwrap())
+        .collect();
     let busy = verify(&paul, &[]).await;
     assert_eq!(busy.status, StatusCode::SERVICE_UNAVAILABLE);
     assert!(busy.text().contains("en cours"), "{}", busy.text());
+    // Neither refusal kept the company's place.
     drop(places);
     assert_eq!(verify(&paul, &[]).await.status, StatusCode::OK);
 }

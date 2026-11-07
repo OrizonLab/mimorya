@@ -261,8 +261,8 @@ Repères à l'intérieur des crates :
   maintenance : chaînes lues jusqu'à les avoir toutes, puis scellées (`sweep.rs`),
   vérification de chaque chaîne depuis sa première place et des ancres journalisées
   (`verify.rs`), ancre lue (`anchor.rs`), ADR-178 ; vérification demandée par qui lit le
-  journal de toute l'entreprise, contre ses ancres, tracée, deux à la fois par processus
-  (`on_demand.rs`, ADR-179)),
+  journal de toute l'entreprise, contre ses ancres, tracée (`on_demand.rs`, ADR-179),
+  deux à la fois par processus, une par entreprise (`places.rs`, ADR-180)),
   `api/src/services/skill_proposal_notice/` (propositions de l'agent annoncées par e-mail
   aux administrateurs des compétences, ADR-102),
   `api/src/services/policy_proposal_notice/` (autorisations proposées annoncées par e-mail
@@ -403,7 +403,9 @@ Repères à l'intérieur des crates :
   démarrage, `unreadable_oauth.rs`, ADR-171, et l'autorisation de Lucas d'un serveur que chacun autorise, son renouvellement échoué, `person_renewal.rs`, ADR-174 ; ses serveurs MCP protégés par OAuth et leurs serveurs d'autorisation, dont un fournisseur OpenID Connect où Marc est connecté, `oauth_servers.rs`, ADR-175).
 - `infra/` : `docker/` (images de l'API et de l'interface, liste des images publiées
   `images.json`, test de fumée de la démonstration, test d'installation de la production,
-  sauvegarde et restauration de la pile de production `backup-test.sh`, ADR-166,
+  sauvegarde et restauration de la pile de production `backup-test.sh`, ADR-166, son
+  journal d'audit vérifié avant et après par l'exploitant et l'entreprise, ancres lues
+  dans les journaux des processus, `audit-chain.sh`, ADR-180,
   vérifications partagées `checks.sh`, dont les rôles des processus lus dans la base),
   `backup/` (sauvegarde de la base chiffrée par age pour des clés publiques, restauration
   dans une pile nouvelle, ADR-166), `caddy/`

@@ -4,13 +4,15 @@
 //! that refuses to go on where the chain moved behind it (`heads.rs`); a
 //! chain verified from its first place, and against anchors logged by the
 //! sealing (`anchor.rs`, `verify.rs`), by `mimorya-admin verify-audit` or
-//! by an administrator of the company (`on_demand.rs`, ADR-179). Without a
+//! by an administrator of the company (`on_demand.rs`, `places.rs`,
+//! ADR-179). Without a
 //! master key, nothing is sealed.
 
 mod anchor;
 mod digest;
 mod heads;
 mod on_demand;
+mod places;
 mod seal;
 mod sweep;
 mod verify;
@@ -18,7 +20,8 @@ mod verify;
 pub use anchor::Anchor;
 pub use digest::ChainKey;
 pub use heads::{ChainMoved, SealedHeads};
-pub use on_demand::{CHECKS_AT_ONCE, ChainChecks, MAX_ANCHORS, OwnChainCheck, verify_own_chain};
+pub use on_demand::{MAX_ANCHORS, OwnChainCheck, verify_own_chain};
+pub use places::{CHECKS_AT_ONCE, ChainChecks, CheckPlace};
 pub use seal::{AUDIT_CHAIN_SWEEP, seal_audit_log, seal_company};
 pub use sweep::AuditSealing;
 pub use verify::{AnchorFound, ChainBreak, ChainReport, LISTED_BREAKS, verify_company};
