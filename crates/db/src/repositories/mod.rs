@@ -11,6 +11,7 @@ pub mod approval_settings;
 pub mod approval_views;
 pub mod approvals;
 pub mod audit;
+pub mod audit_chain;
 pub mod auth;
 pub mod author_notices;
 pub mod connector_authorizations;

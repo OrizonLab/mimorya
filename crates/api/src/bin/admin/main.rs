@@ -1,9 +1,13 @@
 //! Operator commands of a private installation (ADR-033), run with the API's
 //! environment: apply the migrations without any data, create a company with
-//! its first administrator, give an invited account a new link. The link is
-//! printed for the operator to transmit, and nowhere else.
+//! its first administrator, give an invited account a new link, verify the
+//! sealed audit log against the seals logged (ADR-178). The link is printed
+//! for the operator to transmit, and nowhere else.
 
+mod anchor;
 mod args;
+mod report;
+mod verify;
 
 use std::process::ExitCode;
 
@@ -51,7 +55,8 @@ async fn run(command: Command) -> anyhow::Result<()> {
             println!("Migrations appliquées.");
         }
         Command::CreateCompany(company) => {
-            let (db, web_origin) = connect().await?;
+            let (db, config) = connect().await?;
+            let web_origin = config.web_origin;
             let (name, slug) = (company.name.trim(), company.slug.trim());
             let named = format!("« {name} » (sigle {slug})");
             let email = company.admin_email.trim().to_lowercase();
@@ -76,18 +81,25 @@ async fn run(command: Command) -> anyhow::Result<()> {
             print_link(&created.invitation, &email);
         }
         Command::Invite { email } => {
-            let (db, web_origin) = connect().await?;
-            let invitation = reinvite(&db, &web_origin, &email).await;
+            let (db, config) = connect().await?;
+            let invitation = reinvite(&db, &config.web_origin, &email).await;
             db.close().await;
             let email = email.trim().to_lowercase();
             print_link(&invitation?, &email);
+        }
+        Command::VerifyAudit { anchors } => {
+            let (db, config) = connect().await?;
+            let verified = verify::verify_audit(&config, &db, &anchors).await;
+            db.close().await;
+            verified?;
         }
     }
     Ok(())
 }
 
-/// The runtime connection (row-level security applies) and where links lead.
-async fn connect() -> anyhow::Result<(Database, String)> {
+/// The runtime connection (row-level security applies) and the API's
+/// configuration (where links lead, the master key).
+async fn connect() -> anyhow::Result<(Database, AppConfig)> {
     let config = AppConfig::from_env()?;
     let db = Database::connect(
         &config.database_app_url,
@@ -97,7 +109,7 @@ async fn connect() -> anyhow::Result<(Database, String)> {
         },
     )
     .await?;
-    Ok((db, config.web_origin))
+    Ok((db, config))
 }
 
 fn print_link(invitation: &OperatorInvitation, email: &str) {

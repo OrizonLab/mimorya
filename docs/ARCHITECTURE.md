@@ -447,7 +447,9 @@ qu'au-delà de ce que PostgreSQL tient.
 
 - Logs structurés (`tracing`) avec `request_id` et `run_id` ; **jamais** d'en-têtes,
   de secrets, de mots de passe, de jetons ni de contenu de message.
-- Journal d'audit métier séparé (table `audit_log`, en ajout seul).
+- Journal d'audit métier séparé (table `audit_log`, en ajout seul), chaîné par entreprise :
+  chaque entrée scellée après coup sous une clé dérivée de la clé maître, la chaîne
+  vérifiée par `mimorya-admin verify-audit` (ADR-178).
 - Événements de run persistés : rejouables pour le support et l'analyse.
 - Phase 3 : OpenTelemetry (traces), métriques Prometheus, tableaux de bord
   d'exploitation, alertes de coût.

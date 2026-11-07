@@ -11571,3 +11571,157 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     - deux en-têtes sont recoupés ;
     - un renouvellement de l'autorisation d'une personne ne change pas la version de
       la déclaration (`connector_person_renewals.rs`).
+
+## ADR-178 — Journal d'audit chaîné par entreprise, scellé sous une clé dérivée de la clé maître (lot 51a)
+
+- **Statut** : accepté (2026-11-07) · complète ADR-024 (clé maître), ADR-086 (balayages
+  dans un processus à la fois) et ADR-152 (clés dérivées).
+- **Contexte** : le journal d'audit est en ajout seul pour l'application (`INSERT` et
+  `SELECT`, ni `UPDATE` ni `DELETE`, SECURITY.md §8). Le rôle propriétaire de la base, un
+  administrateur de la base ou quiconque restaure une sauvegarde modifiée peut pourtant
+  réécrire ou supprimer une entrée sans que rien ne le montre. La feuille de route prévoit
+  un audit chaîné (phase 3, Conformité).
+- **Décision** :
+  - **chaque entreprise a sa chaîne** : chaque entrée reçoit après coup une place
+    (`chain_seq`, à partir de 1, sans trou) et un sceau (`chain_hash`, 32 octets) : le
+    HMAC-SHA256, sous une clé dérivée de la clé maître (`MIMORYA_MASTER_KEY`, HKDF,
+    usage `audit-chain`, ADR-152), du sceau précédent de la chaîne, de la place et du
+    contenu de l'entrée : identifiant, entreprise, date (en microsecondes depuis 1970),
+    acteur, compte pour lequel il agit, run, action, ressource, issue, raison,
+    métadonnées (texte canonique `jsonb`), adresse IP et identifiant de requête. Chaque
+    partie est écrite avec sa présence et sa longueur : une valeur déplacée d'un champ au
+    suivant, ou une chaîne vide prise pour une absence, change le sceau. L'encodage est
+    épinglé par un test (`services/audit_chain/digest.rs`), recalculé hors du code ;
+  - **l'application ne scelle que par une fonction gardée** : elle ne peut insérer que
+    les colonnes du contenu (privilège `INSERT` par colonne), jamais une place ni un
+    sceau, et ne peut toujours ni modifier ni supprimer. Une seule fonction pose les
+    sceaux, `system_seal_audit_entries` (`SECURITY DEFINER`) : dans la transaction de
+    l'entreprise, sous un verrou de sa chaîne, chaque place suit la dernière, chaque
+    entrée est une entrée de l'entreprise encore sans sceau, scellée une fois ; sinon
+    rien n'est scellé. Un sceau faux posé ainsi (l'application l'appelle) n'est pas
+    empêché : la vérification le trouve. `system_audit_log_tenants` liste les
+    entreprises qui ont des entrées, ou des entrées à sceller, chaque requête la sienne
+    pour que l'index des entrées sans sceau serve : identifiant seulement ;
+  - **un sceau n'est plus ni changé ni retiré** : un déclencheur
+    (`audit_log_keep_seals`) le refuse, au propriétaire de la base comme à tout autre,
+    qui doit d'abord le lever. Il ne porte que sur les colonnes du sceau : les clés
+    étrangères et la suppression d'une entreprise n'y touchent pas ;
+  - **le scellement est un balayage de la maintenance** (`services/audit_chain/seal.rs`) :
+    chaque minute, dans un processus qui exécute les runs, un processus à la fois
+    (verrou `audit-chain`, ADR-086), les entrées de chaque entreprise sont scellées dans
+    l'ordre où elles ont été écrites, par lots de 500 dans leur transaction, au plus
+    vingt lots par entreprise et cent par passage pour laisser leur tour aux autres
+    balayages. Une entrée validée plus tard qu'une suivante prend la place suivante :
+    l'ordre de la chaîne est celui du scellement. Sans clé maître, rien n'est scellé, et
+    la production le dit au démarrage ; les entrées attendent, scellées dès qu'une clé
+    est donnée ;
+  - **ce que la base seule ne montre pas est gardé hors d'elle** : retirer les sceaux
+    puis laisser la maintenance les poser à nouveau sur des entrées modifiées, ou retirer
+    des entrées de la fin d'une chaîne, donne une chaîne qui se vérifie. Deux gardes le
+    montrent :
+    - le processus qui scelle retient, pour chaque entreprise, le dernier sceau qu'il a
+      posé, ou trouvé et journalisé à son démarrage (`Audit chain found`,
+      `services/audit_chain/heads.rs`) ; avant chaque lot, sous le verrou de la chaîne,
+      ce sceau doit être encore à sa place. Sinon la chaîne a reculé derrière lui : il
+      refuse de sceller cette entreprise et le journalise comme une erreur. Cette garde
+      joue quand l'entreprise a des entrées à sceller : une fin de chaîne retirée est
+      refusée à l'arrivée de l'entrée suivante. Un processus ne retient que depuis son
+      démarrage ; une entreprise qu'il n'a pu lire alors est relue au passage suivant,
+      et une entreprise déjà retenue n'est jamais relue, pour qu'une chaîne changée
+      entre-temps ne soit pas prise pour la sienne ;
+    - le dernier sceau posé dans chaque entreprise à chaque passage, et celui trouvé au
+      démarrage, sont **journalisés** au niveau `info` (`Audit log sealed`, `Audit chain
+found`), même quand un lot suivant échoue, avec leur ancre toute écrite :
+      `anchor=<entreprise>:<place>:<sceau>`, l'entreprise par son identifiant, le sceau
+      en hexadécimal (`audit_chain::anchor_text`). Gardée hors de la base, chacune de ces
+      lignes se donne telle quelle à `mimorya-admin verify-audit --anchor` (autant que
+      voulu ; l'entreprise peut aussi y être nommée par son sigle), qui vérifie que la
+      chaîne porte encore ce sceau à cette place ; une entreprise nommée par son
+      identifiant est vérifiée même s'il ne reste aucune entrée dans son journal ;
+  - **la vérification** (`services/audit_chain/verify.rs`) relit les entrées scellées
+    d'une entreprise dans l'ordre de la chaîne, dans un même instantané, et recalcule
+    chaque sceau à partir de celui enregistré avant lui. Une place sans entrée
+    (`Missing`, entrée supprimée) ou une entrée qui n'est plus celle qui a été scellée
+    (`Altered` : contenu, place ou sceau changés, place tenue deux fois) rompt la chaîne
+    là ; la vérification continue à partir du sceau enregistré, compte chaque rupture,
+    chaque place manquante pour une, et nomme les vingt premières, des places manquantes
+    qui se suivent comme une seule plage. L'entrée qui suit des places manquantes ne
+    peut pas être vérifiée : son sceau a été calculé avec celui de la dernière d'entre
+    elles. Elle compte les
+    entrées encore sans sceau et dit, pour chaque ancre, si la chaîne la porte, porte un
+    autre sceau à sa place, ou ne va pas jusque-là. L'exploitant la lance par
+    `mimorya-admin verify-audit` (toutes les entreprises, `DATABASE_APP_URL` et la clé
+    maître) : une ligne par entreprise (entrées vérifiées, à sceller, dernier sceau,
+    ruptures, ancres) ; une entreprise qui ne peut être vérifiée est dite, et les autres
+    le sont quand même ; la commande échoue si une chaîne est rompue, si une ancre n'est
+    pas retrouvée ou si une entreprise n'a pu être vérifiée.
+- **Conséquences** :
+  - une entrée scellée, modifiée ou supprimée au milieu de la chaîne par qui ne détient
+    pas la clé maître est trouvée par la vérification seule. Des sceaux retirés puis
+    posés à nouveau, ou une fin de chaîne retirée, ne le sont que par les gardes hors de
+    la base : le refus du processus qui scelle, s'il les retenait, et une ancre
+    journalisée donnée à la vérification. Une entrée pas encore scellée (moins d'une
+    minute, ou tant qu'aucune clé n'est donnée) n'est pas couverte. La chaîne prouve
+    qu'une entrée n'a pas changé depuis son sceau, pas qu'elle a été écrite par
+    l'application : qui peut écrire dans la base peut y ajouter une entrée, que la
+    maintenance scellera ;
+  - une restauration de sauvegarde (ADR-166) ramène les chaînes à leur état d'alors :
+    les ancres journalisées depuis la sauvegarde ne sont plus retrouvées (une autre
+    entrée à leur place, ou rien), et un processus qui les retenait refuse de sceller
+    jusqu'à son redémarrage. Après une restauration, l'exploitant redémarre les
+    processus et vérifie avec les ancres d'avant la sauvegarde. De même, `mimorya-seed
+--reset` recrée l'entreprise de démonstration et sa chaîne ;
+  - changer de clé maître casse la vérification des chaînes scellées sous l'ancienne,
+    comme il rend illisibles les secrets scellés (ADR-024) : une rotation de clé devra
+    les reprendre ;
+  - l'application ne supprime ni entreprise, ni compte, ni conversation, ni run
+    (DATA_MODEL.md §4) : aucune clé étrangère ne vide donc une référence d'une entrée
+    scellée. Une procédure d'effacement à venir, par le rôle propriétaire, qui viderait
+    `actor_user_id`, `on_behalf_of_user_id` ou `run_id` romprait la chaîne à cette
+    entrée : elle devra dire comment la chaîne le consigne. Supprimer une entreprise
+    supprime sa chaîne avec elle. De même, la purge de rétention du journal d'audit, à
+    venir (DATA_MODEL.md §5), retirera le début des chaînes : elle devra garder un point
+    de départ ancré (la place et le sceau de la dernière entrée purgée), d'où la
+    vérification repartira ;
+  - une colonne ajoutée plus tard au journal d'audit doit recevoir son privilège
+    `INSERT` explicitement (migration 0078), et entrer dans le sceau par une nouvelle
+    version de l'encodage ;
+  - l'aide des tests qui retire un instant l'insertion à l'application rend ensuite
+    exactement les droits d'avant (les colonnes du contenu pour le journal d'audit,
+    `tests/support/privileges.rs`) ;
+  - à venir (lot 51b) : la vérification à la demande depuis l'administration, et dans
+    les piles de production de la CI, avant et après une restauration ;
+  - tests :
+    - `crates/api/src/services/audit_chain/digest.rs` : encodage épinglé, chaque partie
+      change le sceau, une valeur vide ou déplacée ne passe pas pour une autre, une
+      autre clé scelle autrement ; `mod.rs` : seul un serveur avec une clé maître a de
+      quoi sceller ;
+    - `crates/db/tests/audit_chain.rs` : l'application ne pose aucun sceau (insertion ou
+      modification refusées) ; un sceau refusé s'il saute une place, ne suit pas la
+      précédente, vise l'entrée d'une autre entreprise, est posé dans la transaction
+      d'une autre, n'a pas 32 octets, ou si les listes n'ont pas la même longueur, et
+      rien n'est alors scellé ; une entrée scellée une seule fois ;
+    - `crates/db/tests/definer_functions.rs` : les deux fonctions ajoutées ;
+    - `crates/api/tests/audit_chain.rs` : chaque entreprise dans sa propre chaîne,
+      places sans trou dans l'ordre écrit, vérifiée intacte, la suite scellée après la
+      dernière place, une entrée à sceller comptée ; une autre clé (chaque sceau
+      compté), une action, des métadonnées, une date ou une adresse changées, deux
+      places échangées, un sceau réécrit rompent la chaîne à leur place ; un sceau ni
+      changé ni retiré par le propriétaire tant qu'il ne lève pas la règle ; une entrée
+      supprimée laisse sa place manquante, les suivantes vérifiées, plusieurs à la
+      suite (jusqu'à la première place) comptées chacune, dites en une plage ; une
+      entreprise dont le journal est scellé reste supprimée avec sa chaîne ; la
+      maintenance d'un serveur avec une clé maître scelle le journal ;
+    - `crates/api/tests/audit_chain_guards.rs` : une fin de chaîne retirée, ou des
+      sceaux retirés puis posés à nouveau sur une entrée changée, refusés par le
+      processus qui scellait ou qui les a trouvés à son démarrage, et montrés par
+      l'ancre journalisée (absente, ou un autre sceau à sa place), même après une
+      nouvelle lecture des chaînes ; une chaîne illisible au démarrage lue à l'essai
+      suivant, puis jamais relue ; une chaîne saine
+      jamais refusée : scellée tour à tour par deux processus, par un processus démarré
+      depuis, ou dans une entreprise venue après le démarrage ;
+    - `crates/api/src/bin/admin/` : la commande et ses ancres lues, une ancre lue telle
+      que le scellement la journalise, une ancre rapportée à son entreprise par
+      identifiant ou par sigle, ce qu'elle dit d'une chaîne intacte ou rompue (des
+      places manquantes en plage) et de ses ancres, son échec si une chaîne est rompue,
+      une ancre non retrouvée ou une entreprise non vérifiée, son refus sans clé maître.

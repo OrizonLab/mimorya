@@ -688,7 +688,33 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
 
 ## 8. Journal d'audit
 
-- Table `audit_log` en **ajout seul** : le rôle applicatif n'a que `INSERT` et `SELECT`.
+- Table `audit_log` en **ajout seul** : le rôle applicatif n'a que `INSERT` et `SELECT`,
+  et l'`INSERT` ne porte que sur les colonnes du contenu d'une entrée, jamais sur sa place
+  ni sur son sceau (ADR-178).
+- **Chaînée par entreprise** (ADR-178) : chaque minute, la maintenance scelle les
+  nouvelles entrées de chaque entreprise, dans l'ordre, chacune par le HMAC-SHA256, sous
+  une clé dérivée de la clé maître, du sceau précédent, de sa place et de son contenu.
+  L'application ne pose un sceau que par la fonction `system_seal_audit_entries`, dans la
+  transaction de l'entreprise, à la place qui suit la dernière, sur une entrée encore
+  sans sceau, une seule fois ; un sceau faux posé ainsi n'est pas empêché, il est
+  trouvé par la vérification. Un sceau posé n'est plus ni changé ni retiré, pas même par
+  le propriétaire de la base, à moins qu'il ne lève d'abord cette règle (déclencheur
+  `audit_log_keep_seals`).
+- **Ce que la base seule ne montre pas** : des sceaux retirés puis posés à nouveau par
+  la maintenance sur des entrées modifiées, ou des entrées retirées de la fin d'une
+  chaîne, donnent une chaîne qui se vérifie. Deux gardes, hors de la base, le montrent :
+  - le processus qui scelle retient, pour chaque entreprise, le dernier sceau qu'il a
+    posé ou trouvé à son démarrage, et refuse de sceller une chaîne qui ne le porte plus
+    à sa place (erreur journalisée) ;
+  - le dernier sceau posé dans chaque entreprise à chaque passage, et celui trouvé au
+    démarrage, sont journalisés au niveau `info` avec leur ancre toute écrite
+    (`anchor=<entreprise>:<place>:<sceau>`). `mimorya-admin verify-audit --anchor`, qui
+    la prend telle quelle, vérifie que la chaîne porte encore ce sceau à cette place.
+- `mimorya-admin verify-audit` recalcule chaque chaîne, compte et nomme ses ruptures
+  (entrée modifiée, chaque place manquante) et vérifie les ancres données ; il échoue si une
+  chaîne est rompue ou si une ancre n'est pas retrouvée. Les entrées de moins d'une
+  minute, et toutes celles d'un serveur sans clé maître (signalé au démarrage en
+  production), ne sont pas encore scellées.
 - Ni effacement ni réécriture indirecte : le rôle applicatif ne peut pas supprimer les
   entreprises, utilisateurs, conversations et runs que l'audit référence (les clés
   étrangères effaceraient ou videraient des entrées). Leur suppression relève du rôle
@@ -735,7 +761,7 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   son titre ni son texte. Les fichiers
   refusés pour leur forme (taille, type, chiffrement, texte absent) ne sont pas tracés,
   comme les autres requêtes invalides.
-- Phase 3 : chaînage cryptographique des entrées et export vers un SIEM.
+- Chaînage des entrées fait (ADR-178) ; export vers un SIEM à venir (phase 3).
 
 ## 9. Protection des données (RGPD)
 
