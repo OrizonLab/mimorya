@@ -11845,8 +11845,14 @@ found`), même quand un lot suivant échoue, avec leur ancre toute écrite :
     pile ;
   - **le sceau d'une ancre n'est fait que de chiffres hexadécimaux** : un signe ou un
     espace qu'accepterait la lecture d'un nombre est refusé ;
-  - **le refus d'une vérification est tracé**, vérifié pour qui n'a pas `audit:read` et
-    pour un administrateur d'une unité seulement (`admin.refused`, ADR-038).
+  - **le refus d'une vérification faute de permission est tracé** (`admin.refused`,
+    ADR-038), vérifié pour qui n'a pas `audit:read` et pour un administrateur d'une unité
+    seulement. Les autres refus ne le sont pas : une vérification déjà en cours dans
+    l'entreprise (409), un processus plein ou un serveur sans clé maître (503), une ancre
+    d'une autre entreprise ou mal écrite (400), comme les autres requêtes invalides ;
+  - **les journaux ne sont pas colorés dans un terminal où `NO_COLOR` est posé**
+    (no-color.org) : le choix des couleurs (`log_colours`) le respecte, comme la valeur
+    par défaut de `tracing` qu'il remplace (suite de l'audit du lot 51c, lot 51d).
 - **Conséquences** :
   - le job Docker de la CI attend au plus deux passages du scellement (une minute chacun)
     avant et après la sauvegarde ;
@@ -11860,4 +11866,6 @@ found`), même quand un lot suivant échoue, avec leur ancre toute écrite :
       refusée (409), un processus plein refusé (503), ni l'un ni l'autre ne gardant la
       place ; les refus de qui n'a pas `audit:read` et d'un administrateur d'une équipe
       tracés ;
-    - `anchor.rs` : un `+` ou un espace dans le sceau refusés.
+    - `anchor.rs` : un `+` ou un espace dans le sceau refusés ;
+    - `crates/api/src/logging.rs` : couleurs pour un terminal seulement, jamais quand
+      `NO_COLOR` est posé et non vide.

@@ -84,7 +84,8 @@ kept=$(sealed_anchor "$tenant")
 kept_place=$(cut -d: -f2 <<<"$kept")
 said=$(operator_verifies "$kept") || fail "the operator's verification failed: $said"
 grep -q "ancre n° $kept_place : retrouvée" <<<"$said" || fail "the anchor was not found: $said"
-check_report "$(company_verifies "$base" "$session" "$kept")" true held
+report=$(company_verifies "$base" "$session" "$kept")
+check_report "$report" true held
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
@@ -235,7 +236,8 @@ if said=$(operator_verifies "$later"); then
 fi
 grep -q '1 ancre(s) non retrouvée(s)' <<<"$said" ||
   fail "the anchor sealed after the backup was not said lost: $said"
-check_report "$(company_verifies "$base" "$session" "$kept" "$later")" false 'held,(differs|missing)'
+report=$(company_verifies "$base" "$session" "$kept" "$later")
+check_report "$report" false 'held,(differs|missing)'
 docker compose run --rm --no-deps migrate >/dev/null || fail "migrations not re-applied"
 
 echo "backup test passed: $base"

@@ -187,13 +187,13 @@ async fn only_a_company_wide_audit_reader_verifies_and_only_with_their_company_s
     let officer = holder_of(&api, &paul, "verif.journal", &["audit:read"]).await;
     assert_eq!(verify(&officer, &[]).await.status, StatusCode::OK);
     // Both refusals traced, as the administration's are (ADR-038).
-    for (refused, user_id) in [
+    for (refused, who) in [
         (user::LUCAS, "Lucas"),
         (partial.id, "the team administrator"),
     ] {
         assert!(
             refusal_traced(&paul, refused).await,
-            "{user_id}'s refused verification is not traced"
+            "{who}'s refused verification is not traced"
         );
     }
 
