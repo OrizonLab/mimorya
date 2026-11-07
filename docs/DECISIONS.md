@@ -11505,14 +11505,16 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     récente** (lot 49) : un démarrage qui finit alors qu'une version plus récente
     démarre, vit ou a échoué, son échec encore retenu, ferme ce qu'il a démarré et
     laisse l'entrée en place ; un échec oublié ne retient plus rien, comme pour les
-    runs qui le lisent. Une seule règle dit quelle entrée plus récente garde la place,
-    pour les runs comme pour les démarrages (`Slot::newer_than`, lot 50) ; un
-    démarrage juge d'abord la session d'une instance vivante en place, comme un run :
-    fermée pour de bon, elle est libérée, ou, fermée moins d'une minute après son
-    démarrage, remplacée par son échec retenu, qui garde la place ; le démarrage
-    journalise alors cet échec, qu'il a trouvé (lot 50).
-    Avant, il la remplaçait, et les runs de la version plus récente démarraient la
-    leur une deuxième fois, ou oubliaient son échec retenu.
+    runs qui le lisent. Avant, il la remplaçait, et les runs de la version plus
+    récente démarraient la leur une deuxième fois, ou oubliaient son échec retenu ;
+  - **une seule règle dit quelle entrée plus récente garde la place**, pour les runs
+    comme pour les démarrages (`Slot::newer_than`, lot 50). Un démarrage juge d'abord
+    la session d'une instance vivante en place, comme un run : fermée pour de bon,
+    elle est libérée, ou, fermée moins d'une minute après son démarrage, remplacée
+    par son échec retenu, qui garde la place ; le démarrage journalise alors cet
+    échec, qu'il a trouvé. Une lecture périmée, d'un run comme d'un démarrage, ne juge
+    pas une instance plus récente : elle la laisse aux runs de sa version, qui en
+    enregistrent l'échec sur le connecteur.
 - **Conséquences** :
   - le premier tour d'une personne peut se passer des outils d'un serveur qui met plus
     de cinq secondes à démarrer : juste après un redémarrage du service, sur un worker
@@ -11543,10 +11545,12 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
         périmée, et tant qu'il est retenu ;
     - un démarrage qui panique devient interrompu, à enregistrer
       (`connectors/failures.rs`) ;
-    - les tests des sessions fermées passent dans `cache/closed.rs`, dont, au lot 49,
+    - les tests des sessions fermées passent dans `cache/closed.rs` (puis, au lot 50,
+      `cache/tests/closed.rs`), dont, au lot 49,
       une instance plus récente fermée, tôt ou tard, jugée avant de servir un run plus
       ancien, et, au lot 50, par un démarrage plus ancien qui finit tard, fermée tard
-      (libérée) ou tôt (son échec retenu, journalisé) ;
+      (libérée) ou tôt (son échec retenu, journalisé), mais pas par une lecture
+      périmée (`cache/tests/closed.rs`, `closed_versions.rs`) ;
     - `crates/api/tests/connector_start_patience.rs` :
       - face à un serveur retenu, un tour revient après sa patience, sans que rien
         soit enregistré, et le serveur sert le tour suivant ;

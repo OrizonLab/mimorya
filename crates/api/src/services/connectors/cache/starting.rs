@@ -71,8 +71,10 @@ impl Start {
         // A live instance in place is judged first, as for a run: one whose
         // session closed for good is released, or replaced by its failure,
         // remembered, if it lived less than a minute (ADR-163); that failure,
-        // found here, is logged here.
-        if let Some(exited) = closed(&mut state, id, version) {
+        // found here, is logged here. Not by a stale start, whose outcome is
+        // discarded whatever is in place: that instance is left to the runs
+        // of its version, which record its failure on the connector.
+        if !stale && let Some(exited) = closed(&mut state, id, version, false) {
             let connector = id.instance;
             tracing::warn!(%connector, error = %exited.message, "Connector unavailable");
         }

@@ -4,8 +4,10 @@
 //! for one is gone, their failure remembered, a start that panics failed,
 //! one ending after the cache closed released. Instances changed while
 //! they start, and newer ones: `versions`; the sessions closed for good:
-//! `closed`.
+//! `closed`, and newer instances closed so: `closed_versions`.
 
+mod closed;
+mod closed_versions;
 mod versions;
 
 use std::pin::Pin;
@@ -100,7 +102,9 @@ pub(super) async fn raised(flag: &AtomicBool) -> bool {
 }
 
 /// What the cache logs on this thread while kept: the test's own runtime
-/// runs every start on it.
+/// runs every start on it. Only while no other thread meets the same log
+/// line first with no subscriber of its own: `tracing` keeps the interest
+/// it computed then (no other test of this crate logs where these do).
 pub(super) struct Logs {
     written: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
     _guard: tracing::subscriber::DefaultGuard,

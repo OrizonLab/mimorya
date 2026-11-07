@@ -201,10 +201,10 @@ impl RuntimeCache {
             let mut waiting = {
                 let mut state = self.state.lock().await;
                 people::release_idle(&mut state, Instant::now());
-                if let Some(failed) = closed(&mut state, id, version) {
+                let stale = state.stale(id, ticket);
+                if let Some(failed) = closed(&mut state, id, version, stale) {
                     return Err(failed);
                 }
-                let stale = state.stale(id, ticket);
                 match state.slots.get_mut(&id) {
                     Some(Slot::Live {
                         version: v,
