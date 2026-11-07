@@ -15,10 +15,10 @@ const NOT_COPIED =
  * A secret shown this once, the API keeping only its digest (a hook's token,
  * ADR-110; an audit export token, ADR-182): what `children` say of its use
  * first, the secret in a read-only field, `warning`, a copy button whose
- * outcome a status region always there announces, an `example`, and
- * `onClose`. It takes the focus when shown, to be read first; another secret
- * is shown by another notice (its `key`), so that nothing said of the former
- * (« Jeton copié ») stays.
+ * outcome a status region always there says, alone, afresh at each attempt
+ * even when it is the same, an `example`, and `onClose`. It takes the focus
+ * when shown, to be read first; another secret is shown by another notice
+ * (its `key`), so that nothing said of the former (« Jeton copié ») stays.
  */
 export function SecretNotice({
   heading,
@@ -43,19 +43,22 @@ export function SecretNotice({
 }) {
   const headingId = useId();
   const headingRef = useRef<HTMLHeadingElement>(null);
-  // Whether the secret went to the clipboard, once tried.
-  const [copied, setCopied] = useState<boolean | null>(null);
+  // Whether the secret went to the clipboard at the last attempt, and which
+  // attempt that was: each one's outcome is a new text in the status region,
+  // announced even when the former said the same.
+  const [copied, setCopied] = useState<{ ok: boolean; attempt: number } | null>(null);
   const Heading = level;
 
   useEffect(() => headingRef.current?.focus(), []);
 
   async function copy() {
+    let ok = true;
     try {
       await navigator.clipboard.writeText(secret);
-      setCopied(true);
     } catch {
-      setCopied(false);
+      ok = false;
     }
+    setCopied((former) => ({ ok, attempt: (former?.attempt ?? 0) + 1 }));
   }
 
   return (
@@ -80,11 +83,15 @@ export function SecretNotice({
         </Field>
         <p className="text-xs text-warn">{warning}</p>
         <Button variant="secondary" className="w-fit" onClick={copy}>
-          {copied ? 'Jeton copié' : 'Copier le jeton'}
+          Copier le jeton
         </Button>
-        {/* There before it speaks, so that what it says is announced. */}
-        <p role="status" className={cx('text-xs', copied === false ? 'text-warn' : 'text-muted')}>
-          {copied === null ? '' : copied ? COPIED : NOT_COPIED}
+        {/* There before it speaks, so that what it says is announced; each
+            attempt's words a node of their own, added to it. */}
+        <p
+          role="status"
+          className={cx('text-xs', copied?.ok === false ? 'text-warn' : 'text-muted')}
+        >
+          {copied && <span key={copied.attempt}>{copied.ok ? COPIED : NOT_COPIED}</span>}
         </p>
         <details className="text-xs text-muted">
           <summary className="cursor-pointer select-none hover:text-fg">{example.summary}</summary>
