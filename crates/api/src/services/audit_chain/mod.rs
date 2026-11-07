@@ -4,8 +4,8 @@
 //! that refuses to go on where the chain moved behind it (`heads.rs`); a
 //! chain verified from its first place, and against anchors logged by the
 //! sealing (`anchor.rs`, `verify.rs`), by `mimorya-admin verify-audit` or
-//! by an administrator of the company (`on_demand.rs`, `places.rs`,
-//! ADR-179). Without a
+//! by an administrator of the company (`on_demand.rs`, ADR-179), two at
+//! once in a process, one for a company (`places.rs`, ADR-180). Without a
 //! master key, nothing is sealed.
 
 mod anchor;

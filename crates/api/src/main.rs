@@ -5,7 +5,7 @@
 use std::io::IsTerminal;
 use std::net::SocketAddr;
 
-use mimorya_api::{App, AppConfig, BuildOptions, build_app, log_filter};
+use mimorya_api::{App, AppConfig, BuildOptions, build_app, log_colours, log_filter};
 use tokio::net::TcpListener;
 
 #[tokio::main]
@@ -13,11 +13,13 @@ async fn main() -> anyhow::Result<()> {
     // A missing .env file is fine: the environment may come from elsewhere.
     let _ = dotenvy::dotenv();
     let config = AppConfig::from_env()?;
-    // Colours only for a terminal: logs kept by Docker or a collector read
-    // as plain text, an anchor copied as it is written (ADR-180).
+    let colours = log_colours(
+        std::io::stdout().is_terminal(),
+        std::env::var_os("NO_COLOR").as_deref(),
+    );
     tracing_subscriber::fmt()
         .with_env_filter(log_filter(&config.log_level)?)
-        .with_ansi(std::io::stdout().is_terminal())
+        .with_ansi(colours)
         .init();
 
     if let Some(proxy) = config.mcp_network.proxy {

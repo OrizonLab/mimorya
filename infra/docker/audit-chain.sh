@@ -13,8 +13,10 @@ company_id() {
 }
 
 # The anchor of the furthest place the stack's processes logged for the
-# company $1, empty if none. Places only grow until a restore, after which
-# the logs of the processes before it are gone with them.
+# company $1, empty if none: sealed by a pass (`Audit log sealed`) or found
+# by a process at its start (`Audit chain found`), the same seal at the
+# same place. Places only grow until a restore, after which the logs of the
+# processes before it are gone with them.
 logged_anchor() {
   docker compose logs --no-color 2>/dev/null |
     grep -o "anchor=$1:[0-9]*:[0-9a-f]\{64\}" |
