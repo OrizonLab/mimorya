@@ -12067,3 +12067,39 @@ found`), même quand un lot suivant échoue, avec leur ancre toute écrite :
       l'application ;
     - `tests/support/audit_exports.rs` : l'attente d'un verrou échoue au bout de cinq
       secondes, au lieu de laisser un test passer sans avoir joué ce qu'il dit.
+- **Complément (lot 52c, suites de l'audit de la PR #218)** :
+  - **le focus ne tombe plus sur la page après un refus**. Ce qui avait le focus au
+    début d'une tentative est retenu jusqu'à ce que la liste soit relue. S'il est parti
+    avec elle et que rien d'autre n'a pris le focus, le titre de la section le prend :
+    - la ligne d'un jeton retiré, même si le retrait est refusé parce qu'un autre
+      administrateur l'avait déjà retiré (404) ;
+    - le formulaire que la limite remplace, même si la création est refusée parce
+      qu'un autre a fait le cinquième jeton (409).
+
+    Un contrôle seulement verrouillé pendant la relecture retrouve le focus de lui-même
+    (`keepFocusAcrossDisabling`, ADR-043) ;
+
+  - **l'avis du secret est hors de la liste** : il n'est plus verrouillé pendant la
+    relecture qui suit la création. Il montre l'adresse de la dernière lecture ;
+  - **l'avis commun dit l'issue d'une copie une seule fois**, dans sa région d'état ; le
+    bouton garde son nom (« Copier le jeton »). Chaque tentative y écrit des mots
+    nouveaux, un nœud à eux, annoncés même s'ils répètent ceux de la tentative
+    précédente ;
+  - le refus à la limite dit « retirez-en un », comme l'écran ;
+  - **les comptes qu'un test de bout en bout fait pour lui** sont faits et retirés par
+    `apps/web/e2e/support/accounts.ts` : rôle, compte, attribution sur toute
+    l'entreprise, activation par l'invitation, puis attributions retirées, compte
+    désactivé et rôles supprimés, quoi qu'il arrive. `policy-proposals.spec.ts` et
+    `audit-export-access.spec.ts` s'en servent ;
+  - tests :
+    - `apps/web/e2e/audit-export.spec.ts`, second test :
+      - quatre jetons faits ailleurs, puis un cinquième pendant que l'écran en montre
+        quatre ; la création d'un sixième est refusée, le formulaire laisse place à la
+        limite et le focus est sur le titre ;
+      - un jeton retiré ailleurs, puis retiré depuis l'écran : le retrait est refusé, sa
+        ligne part et le focus est sur le titre ;
+      - sous la limite, la création est de nouveau offerte ;
+    - le premier test copie le jeton deux fois : la seconde copie écrit des mots
+      nouveaux ;
+    - `apps/web/e2e/inbound-hooks.spec.ts` lit l'issue de la copie dans la région
+      d'état.

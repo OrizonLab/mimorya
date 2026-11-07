@@ -29,7 +29,7 @@ const RESOURCE: &str = "audit_export_token";
 const UNKNOWN_TOKEN: &str = "Jeton d’export introuvable";
 
 fn too_many() -> String {
-    format!("L’entreprise a déjà {MAX_TOKENS} jetons d’export : supprimez-en un d’abord.")
+    format!("L’entreprise a déjà {MAX_TOKENS} jetons d’export : retirez-en un d’abord.")
 }
 
 fn no_name() -> String {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button, Card, Cell, DataTable, ErrorNote, Field, Input, Loaded } from '@/components/ui';
 import {
   api,
@@ -22,10 +22,12 @@ const TOKENS = '/admin/audit/export-tokens';
  * ADR-182), for who may export it (`audit:export`): listed by name, when
  * made and last used, never their secret; made with a name, the secret shown
  * this once; removed, after a confirmation. The limits a new token meets are
- * the API's. The list is read again after any attempt, refused or not, and
- * the focus goes back to the section's title when the notice or a removed
- * token's row goes. `onChanged` reloads what traces the change, the audit
- * log, when it is shown.
+ * the API's. The list is read again after any attempt, refused or not; the
+ * focus goes back to the section's title when the notice closes, and when
+ * what had it goes with the list read again (a removed row, the form the
+ * limit replaces), even after a refusal. The notice stands outside the
+ * list, never locked by its reading. `onChanged` reloads what traces the
+ * change, the audit log, when it is shown.
  */
 export function ExportTokens({ onChanged }: { onChanged?: () => void }) {
   const state = useApiData<AuditExportTokens>(TOKENS);
@@ -33,11 +35,34 @@ export function ExportTokens({ onChanged }: { onChanged?: () => void }) {
   const [made, setMade] = useState<AuditExportTokenCreated | null>(null);
   const action = useAction();
   const titleRef = useRef<HTMLHeadingElement>(null);
+  // What had the focus when an attempt began, until the list is read again.
+  const focusedBefore = useRef<Element | null>(null);
+
+  // The list read again after an attempt: if what had the focus went with
+  // it, and nothing else took it, the title takes it rather than the page.
+  // A control kept only locked by the reading gets it back on its own
+  // (`keepFocusAcrossDisabling`).
+  useEffect(() => {
+    const before = focusedBefore.current;
+    if (state.loading || before === null) return;
+    focusedBefore.current = null;
+    const active = document.activeElement;
+    if (!before.isConnected && (active === null || active === document.body)) {
+      titleRef.current?.focus();
+    }
+  }, [state.loading]);
+
+  /** Reads the list again after an attempt that began with `before` focused. */
+  function readAgain(before: Element | null) {
+    focusedBefore.current = before;
+    state.reload();
+  }
 
   async function create() {
+    const before = document.activeElement;
     const body = { name } satisfies NewAuditExportToken;
     const created = await action.run(() => api.post<AuditExportTokenCreated>(TOKENS, body));
-    state.reload();
+    readAgain(before);
     if (created) {
       setMade(created);
       setName('');
@@ -48,13 +73,12 @@ export function ExportTokens({ onChanged }: { onChanged?: () => void }) {
   async function remove(token: AuditExportTokenView) {
     const asked = `Retirer le jeton « ${token.name} » ? Le SIEM qui le détient ne lira plus rien.`;
     if (!window.confirm(asked)) return;
+    const before = document.activeElement;
     const done = await action.run(() => api.delete<Done>(`${TOKENS}/${token.id}`));
-    state.reload();
+    readAgain(before);
     if (done) {
       if (made?.token.id === token.id) setMade(null);
       onChanged?.();
-      // Its row, and the button that had the focus, are gone.
-      titleRef.current?.focus();
     }
   }
 
@@ -73,6 +97,14 @@ export function ExportTokens({ onChanged }: { onChanged?: () => void }) {
         l’ordre de la chaîne. Chaque entrée porte sa place et son sceau : il reprend après la
         dernière place lue, en donnant son sceau, et garde les sceaux comme ancres à vérifier.
       </p>
+      {made && state.data && (
+        <ExportTokenNotice
+          key={made.token.id}
+          made={made}
+          exportUrl={state.data.exportUrl}
+          onClose={closeNotice}
+        />
+      )}
       <Loaded state={state}>
         {(data) => (
           <>
@@ -88,14 +120,6 @@ export function ExportTokens({ onChanged }: { onChanged?: () => void }) {
                 {data.exportUrl}
               </code>
             </p>
-            {made && (
-              <ExportTokenNotice
-                key={made.token.id}
-                made={made}
-                exportUrl={data.exportUrl}
-                onClose={closeNotice}
-              />
-            )}
             <DataTable columns={['Jeton', 'Créé le', 'Dernier usage', '']}>
               {data.tokens.map((token) => (
                 <tr key={token.id}>

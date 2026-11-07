@@ -382,7 +382,7 @@ Repères à l'intérieur des crates :
   `web/lib/input-patterns.ts` (ce qu'acceptent les champs, comme le serveur, ADR-139),
   `web/proxy.ts` et
   `web/lib/security/` (CSP à nonce par page, ADR-030), `web/e2e/` (tests de bout en
-  bout, un fichier par parcours, `support/`) et `api/examples/e2e_server/` (l'API qu'ils
+  bout, un fichier par parcours, `support/`, dont les comptes qu'un test fait pour lui et retire, `support/accounts.ts`) et `api/examples/e2e_server/` (l'API qu'ils
   pilotent, avec un fournisseur OpenID Connect et un fournisseur SAML simulés, ADR-031,
   ADR-063, ADR-068, une relecture des leçons à part, `lessons.rs`, ADR-077, une tâche
   planifiée dont l'occurrence est manquée au démarrage, `scheduled.rs`, ADR-081, et des

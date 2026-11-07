@@ -15,26 +15,24 @@
 // waiting, and Claire's account without role, disabled. The rules
 // themselves are tested on the API (`crates/api/tests/policy_proposal*.rs`).
 import type { Page } from '@playwright/test';
-import type {
-  AccountUpdate,
-  Directory,
-  NewAccount,
-  NewRole,
-  Policies,
-  PolicyProposals,
-  PolicyProposalView,
-  RoleGrant,
-} from '../lib/api/contract';
+import type { Policies, PolicyProposals, PolicyProposalView } from '../lib/api/contract';
+import {
+  activate,
+  grantCompanyWide,
+  makeAccount,
+  makeRole,
+  retire,
+  type MadeAccounts,
+} from './support/accounts';
 import { cardWith, openAdmin } from './support/admin';
 import { expect, noError, test } from './support/fixtures';
-import { lastLink } from './support/mail';
 
 const WRITE = { 'X-Mimorya-Request': '1' };
 const MARK = '(e2e double validation)';
 const CHOSEN = 'phrase-de-passe-politiques-e2e';
 
-/** What a test made, for its cleanup. */
-const made: { paul?: Page; claire?: string; role?: string } = {};
+/** What a test made, for its cleanup: Claire's account and role, and Paul's page. */
+const made: MadeAccounts & { paul?: Page } = { roles: [] };
 
 test.afterEach(async () => {
   const paul = made.paul;
@@ -58,28 +56,8 @@ test.afterEach(async () => {
     }
   } finally {
     // Whatever happened above, Claire keeps no role and no active account.
-    if (made.claire) {
-      const directory = (await (await paul.request.get('/api/admin/users')).json()) as Directory;
-      const claire = directory.users.find((user) => user.id === made.claire);
-      for (const assignment of claire?.assignments ?? []) {
-        const revoked = await paul.request.delete(`/api/admin/assignments/${assignment.id}`, {
-          headers: WRITE,
-        });
-        expect.soft(revoked.status()).toBe(200);
-      }
-      const disabled = await paul.request.patch(`/api/admin/users/${made.claire}`, {
-        headers: WRITE,
-        data: { status: 'disabled' } satisfies AccountUpdate,
-      });
-      expect.soft(disabled.status()).toBe(200);
-    }
-    if (made.role) {
-      const removed = await paul.request.delete(`/api/admin/roles/${made.role}`, {
-        headers: WRITE,
-      });
-      expect.soft(removed.status()).toBe(200);
-    }
-    made.paul = made.claire = made.role = undefined;
+    made.paul = undefined;
+    await retire(paul, made);
   }
 });
 
@@ -120,34 +98,14 @@ async function administrators(paul: Page, claire: Page) {
   made.paul = paul;
   const stamp = Date.now();
   const email = `claire.politiques.${stamp}@neo-maintenance.example`;
-  const role = await paul.request.post('/api/admin/roles', {
-    headers: WRITE,
-    data: {
-      name: `Politiques d’accès ${stamp} ${MARK}`,
-      description: 'Administre les politiques d’accès, pour le test',
-      permissions: ['policy:manage'],
-    } satisfies NewRole,
+  const role = await makeRole(paul, made, {
+    name: `Politiques d’accès ${stamp} ${MARK}`,
+    description: 'Administre les politiques d’accès, pour le test',
+    permissions: ['policy:manage'],
   });
-  expect(role.status()).toBe(201);
-  made.role = ((await role.json()) as { id: string }).id;
-  const account = await paul.request.post('/api/admin/users', {
-    headers: WRITE,
-    data: { email, displayName: 'Claire Dumas' } satisfies NewAccount,
-  });
-  expect(account.status()).toBe(201);
-  made.claire = ((await account.json()) as { id: string }).id;
-  const granted = await paul.request.post(`/api/admin/users/${made.claire}/assignments`, {
-    headers: WRITE,
-    data: { roleId: made.role, scope: { type: 'tenant' } } satisfies RoleGrant,
-  });
-  expect(granted.status()).toBe(201);
-
-  const { link } = await lastLink(email, 'invitation');
-  await claire.goto(link);
-  await claire.getByLabel('Mot de passe (12 caractères minimum)').fill(CHOSEN);
-  await claire.getByLabel('Confirmation').fill(CHOSEN);
-  await claire.getByRole('button', { name: 'Activer mon compte' }).click();
-  await claire.waitForURL('**/chat');
+  const account = await makeAccount(paul, made, { email, displayName: 'Claire Dumas' });
+  await grantCompanyWide(paul, account, role);
+  await activate(claire, email, CHOSEN);
 }
 
 /** Opens « Politiques d’accès » afresh in a signed-in page. */

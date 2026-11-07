@@ -25,6 +25,8 @@ const POSTED = '{"alerte": "Pompe P2 à l’arrêt", "site": "Lyon Nord"}';
 const POSTED_HIDING = POSTED.replace('Lyon', 'Lyon\u200b');
 /** What the end-to-end model answers what a hook sends (`e2e_server/hooks.rs`). */
 const ANSWER = 'Panne reçue de la supervision';
+/** What the notice says of a copy the clipboard took. */
+const COPIED = 'Jeton copié dans le presse-papiers.';
 
 /** The page the test signed in, for its cleanup. */
 const left: { page?: Page } = {};
@@ -94,7 +96,7 @@ test('a person makes a hook, another system posts to it, and she reads the run',
   const token = await notice.getByLabel(/^Jeton, à envoyer/).inputValue();
   expect(token).toMatch(/^mhk_/);
   await notice.getByRole('button', { name: 'Copier le jeton' }).click();
-  await expect(notice.getByRole('button', { name: 'Jeton copié' })).toBeVisible();
+  await expect(notice.getByRole('status')).toHaveText(COPIED);
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(token);
   await expect(form.getByLabel('Intitulé')).toHaveValue('');
   const made = await hook(page, TITLE);
@@ -151,10 +153,10 @@ test('a person makes a hook, another system posts to it, and she reads the run',
   // Copied, then renewed again while shown: the notice says nothing of the
   // former's copy.
   await renewed.getByRole('button', { name: 'Copier le jeton' }).click();
-  await expect(renewed.getByRole('button', { name: 'Jeton copié' })).toBeVisible();
+  await expect(renewed.getByRole('status')).toHaveText(COPIED);
   await card.getByRole('button', { name: `Nouveau jeton pour « ${TITLE} »` }).click();
   await expect(field).not.toHaveValue(newToken);
-  await expect(renewed.getByRole('button', { name: 'Copier le jeton' })).toBeVisible();
+  await expect(renewed.getByRole('status')).toHaveText('');
   expect((await deliver(request, url, newToken)).status()).toBe(404);
   // A copy the browser refuses says so.
   await page.evaluate(() => {
