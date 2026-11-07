@@ -73,7 +73,9 @@ Repères à l'intérieur des crates :
 - `db/migrations/` (SQL numéroté, source de vérité du schéma),
   `db/src/repositories/` (un fichier par entité ; résumé d'une conversation et messages
   qu'il ne couvre pas : `conversation_summaries.rs`, ADR-145 ; la mémoire : `memory.rs`, recherche
-  hybride `memory_search.rs`, vecteurs `memory_embeddings.rs`, ADR-074 ; fenêtres des
+  hybride `memory_search.rs`, vecteurs `memory_embeddings.rs`, ADR-074 ; journal d'audit
+  chaîné : entrées à sceller, dernière place, sceaux posés, entrées relues dans l'ordre de
+  la chaîne : `audit_chain.rs`, ADR-178 ; fenêtres des
   limites d'authentification partagées : `rate_limits.rs`, ADR-088 ; avis à l'auteur
   d'une tâche planifiée ou d'une mission dont le run attend sa validation :
   `author_notices.rs`, ADR-082, ADR-091, et d'un déclencheur, ADR-111 ; missions terminées à annoncer :
@@ -169,7 +171,8 @@ Repères à l'intérieur des crates :
   en-têtes de sécurité, audit des modifications d'administration refusées, sur une ressource introuvable ou envoyant un identifiant inconnu,
   maintenance périodique : runs bloqués, liens expirés, absences terminées, demandes de
   validation échues et relances avant échéance, ADR-061, ADR-062, cartes des avis Teams
-  oubliées, ADR-142, propositions de politiques décidées ou expirées, ADR-168 ; indexation de la
+  oubliées, ADR-142, propositions de politiques décidées ou expirées, ADR-168, journal d'audit
+  scellé, ADR-178 ; indexation de la
   mémoire et des passages des documents en arrière-plan, `memory_indexing.rs`, ADR-074,
   ADR-096 ; tâches planifiées lancées
   chaque minute, `scheduled_tasks.rs`, ADR-080 ; fin des missions annoncée à leur
@@ -251,6 +254,10 @@ Repères à l'intérieur des crates :
   `services/admin/teams_gateway.rs`, ADR-138),
   `api/src/services/notification_settings.rs` (e-mails que chacun choisit de recevoir,
   lus au moment d'envoyer chaque avis, ADR-094),
+  `api/src/services/audit_chain/` (journal d'audit chaîné par entreprise : sceau sous une
+  clé dérivée de la clé maître, encodage épinglé (`digest.rs`), scellement chaque minute
+  par la maintenance, un processus à la fois (`seal.rs`), vérification de chaque chaîne
+  depuis sa première place (`verify.rs`), ADR-178),
   `api/src/services/skill_proposal_notice/` (propositions de l'agent annoncées par e-mail
   aux administrateurs des compétences, ADR-102),
   `api/src/services/policy_proposal_notice/` (autorisations proposées annoncées par e-mail
@@ -323,7 +330,8 @@ Repères à l'intérieur des crates :
   dont `provider_designation.rs` : ce qui désigne un fournisseur déclaré, et
   `domain_proofs.rs`),
   `api/src/services/provisioning/` et `api/src/bin/admin/` (commandes d'exploitation :
-  migrations, création d'une entreprise réelle et de son administrateur, ADR-033),
+  migrations, création d'une entreprise réelle et de son administrateur, ADR-033,
+  vérification du journal d'audit scellé, `verify.rs`, ADR-178),
   `api/src/mail/` (envoi SMTP), `api/src/secrets/` (chiffrement AES-256-GCM des secrets),
   `api/tests/` (intégration, harnais dans `support/`, dont les fournisseurs d'identité
   simulés, OpenID Connect (qui joue aussi Google, ADR-121) et SAML).

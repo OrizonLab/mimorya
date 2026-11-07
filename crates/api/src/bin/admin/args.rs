@@ -12,9 +12,12 @@ Commandes :
   invite           nouveau lien d’invitation d’un compte qui n’a pas encore choisi
                    son mot de passe
                      --email <adresse>
+  verify-audit     vérifie le journal d’audit scellé de chaque entreprise (MIMORYA_MASTER_KEY) ;
+                   échoue si une entrée a été modifiée ou supprimée
   help             affiche cette aide
 
-create-company et invite écrivent avec DATABASE_APP_URL ; les liens mènent à WEB_ORIGIN.";
+create-company, invite et verify-audit passent par DATABASE_APP_URL ; les liens mènent à
+WEB_ORIGIN.";
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Command {
@@ -22,6 +25,7 @@ pub enum Command {
     Migrate,
     CreateCompany(CompanyArgs),
     Invite { email: String },
+    VerifyAudit,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -50,6 +54,7 @@ pub fn parse(args: &[String]) -> Result<Command, String> {
         "invite" => Command::Invite {
             email: options.take("--email")?,
         },
+        "verify-audit" => Command::VerifyAudit,
         other => return Err(format!("Commande inconnue : {other}")),
     };
     options.finish()?;
@@ -111,6 +116,7 @@ mod tests {
         assert_eq!(parse_line(&[]), Ok(Command::Help));
         assert_eq!(parse_line(&["--help"]), Ok(Command::Help));
         assert_eq!(parse_line(&["migrate"]), Ok(Command::Migrate));
+        assert_eq!(parse_line(&["verify-audit"]), Ok(Command::VerifyAudit));
         assert_eq!(
             parse_line(&[
                 "create-company",
@@ -140,7 +146,7 @@ mod tests {
 
     #[test]
     fn refuses_what_it_does_not_understand() {
-        let refused: [&[&str]; 7] = [
+        let refused: [&[&str]; 8] = [
             &["deploy"],
             &["invite"],
             &["invite", "--email"],
@@ -148,6 +154,7 @@ mod tests {
             &["invite", "--email", "a@b.example", "--email", "c@d.example"],
             &["invite", "--email", "a@b.example", "--name", "Acme"],
             &["migrate", "--force", "yes"],
+            &["verify-audit", "--company", "acme"],
         ];
         for line in refused {
             assert!(parse_line(line).is_err(), "{line:?}");

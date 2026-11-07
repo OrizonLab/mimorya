@@ -4,6 +4,7 @@ pub mod access;
 pub mod account;
 pub mod account_links;
 pub mod admin;
+pub mod audit_chain;
 pub mod background;
 pub mod connectors;
 pub mod documents;

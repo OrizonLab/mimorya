@@ -688,7 +688,20 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
 
 ## 8. Journal d'audit
 
-- Table `audit_log` en **ajout seul** : le rôle applicatif n'a que `INSERT` et `SELECT`.
+- Table `audit_log` en **ajout seul** : le rôle applicatif n'a que `INSERT` et `SELECT`,
+  et l'`INSERT` ne porte que sur les colonnes du contenu d'une entrée, jamais sur sa place
+  ni sur son sceau (ADR-178).
+- **Chaînée par entreprise** (ADR-178) : chaque minute, la maintenance scelle les
+  nouvelles entrées de chaque entreprise, dans l'ordre, chacune par le HMAC-SHA256, sous
+  une clé dérivée de la clé maître, du sceau précédent, de sa place et de son contenu ;
+  seule la fonction `system_seal_audit_entries` pose un sceau, dans la transaction de
+  l'entreprise, à la place qui suit la dernière, sur une entrée encore sans sceau. La
+  dernière place et son sceau sont journalisés à chaque passage. `mimorya-admin
+verify-audit` recalcule chaque chaîne et nomme la première entrée modifiée ou
+  manquante ; une entrée retirée de la fin ne se voit qu'en comparant la dernière place
+  vérifiée aux places journalisées. Les entrées de moins d'une minute, et toutes celles
+  d'un serveur sans clé maître (signalé au démarrage en production), ne sont pas encore
+  scellées.
 - Ni effacement ni réécriture indirecte : le rôle applicatif ne peut pas supprimer les
   entreprises, utilisateurs, conversations et runs que l'audit référence (les clés
   étrangères effaceraient ou videraient des entrées). Leur suppression relève du rôle

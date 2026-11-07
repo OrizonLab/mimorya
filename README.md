@@ -116,9 +116,13 @@ mimorya-admin migrate          # DATABASE_URL (rôle propriétaire) : schéma se
 mimorya-admin create-company --name 'Acme Industrie' --slug acme \
   --admin-email jeanne.martin@acme.example --admin-name 'Jeanne Martin'
 mimorya-admin invite --email jeanne.martin@acme.example   # nouveau lien, si le premier a expiré
+mimorya-admin verify-audit     # vérifie le journal d'audit scellé de chaque entreprise (ADR-178)
 ```
 
-`create-company` et `invite` utilisent `DATABASE_APP_URL` et `WEB_ORIGIN` comme l'API. Le
+`create-company`, `invite` et `verify-audit` utilisent `DATABASE_APP_URL` comme l'API, les
+deux premières `WEB_ORIGIN`, la dernière `MIMORYA_MASTER_KEY` : le journal d'audit de chaque
+entreprise est scellé chaque minute sous une clé qui en dérive, et la commande échoue si
+une entrée a été modifiée ou supprimée depuis. Le
 lien d'invitation (valable 7 jours) n'est affiché qu'une fois : transmettez-le par un canal
 sûr, l'administrateur y choisit son mot de passe puis construit son organisation depuis
 l'administration. Lancez ces commandes dans un terminal (par exemple

@@ -32,3 +32,11 @@ pub async fn tenant_status(conn: &mut PgConnection, id: Uuid) -> sqlx::Result<Op
         .fetch_optional(conn)
         .await
 }
+
+/// The company's slug, as its operator knows it.
+pub async fn tenant_slug(conn: &mut PgConnection, id: Uuid) -> sqlx::Result<Option<String>> {
+    sqlx::query_scalar("select slug from tenants where id = $1")
+        .bind(id)
+        .fetch_optional(conn)
+        .await
+}
