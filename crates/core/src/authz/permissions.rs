@@ -144,6 +144,12 @@ pub const PLATFORM_PERMISSIONS: &[PermissionInfo] = &[
     ),
     info("audit:read", "Consulter le journal d’audit", false, Holder),
     info(
+        "audit:export",
+        "Exporter le journal d’audit vers un SIEM",
+        false,
+        Holder,
+    ),
+    info(
         "settings:manage",
         "Paramétrer l’espace entreprise",
         false,

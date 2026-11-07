@@ -19,6 +19,7 @@ pub const TENANT_WIDE_PERMISSIONS: &[&str] = &[
     "settings:manage",
     "memory:manage",
     "audit:read",
+    "audit:export",
     "usage:read",
 ];
 

@@ -5,6 +5,7 @@ mod activity;
 mod approval_routing;
 mod assignments;
 mod audit_chain;
+mod audit_export;
 mod connectors;
 mod domain_proofs;
 mod embedding;
@@ -38,6 +39,9 @@ pub use assignments::{Assignment, AssignmentScope, RoleGrant};
 pub use audit_chain::{
     AuditAnchorCheck, AuditAnchorFound, AuditChainBreak, AuditChainCheck, AuditChainPlace,
     AuditChainVerification,
+};
+pub use audit_export::{
+    AuditExportTokenCreated, AuditExportTokenView, AuditExportTokens, NewAuditExportToken,
 };
 pub use connectors::{
     ConnectorDetails, ConnectorStatus, ConnectorTest, ConnectorTrial, ConnectorType,

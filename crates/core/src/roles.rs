@@ -44,6 +44,7 @@ pub const PLATFORM_ROLE_TEMPLATES: &[RoleTemplate] = &[
             "settings:manage",
             "memory:manage",
             "audit:read",
+            "audit:export",
             "usage:read",
         ],
     },

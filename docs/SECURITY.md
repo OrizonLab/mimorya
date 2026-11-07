@@ -316,6 +316,13 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   d'accès peuvent le lire (`context.channel`). Un envoi refusé ne dit à l'expéditeur que
   son statut (409, 503) : la raison est gardée pour l'auteur seul ; au-delà de la
   limite horaire, seul le premier refus de l'heure est gardé et tracé.
+- Export du journal d'audit (ADR-181) : le SIEM de l'entreprise lit son journal avec un
+  jeton d'export (`Authorization: Bearer`, `mae_` et 256 bits, gardé en empreinte
+  SHA-256, montré une fois, jamais journalisé ni audité), fait par qui détient
+  `audit:export` sur toute l'entreprise, cinq au plus. Un jeton absent, inconnu, retiré
+  ou d'une entreprise suspendue répond de même (401) ; une session n'en tient pas lieu.
+  Il ne lit que les entrées scellées de son entreprise, sous la RLS : seule l'entreprise
+  du jeton se cherche hors d'elle (`auth_audit_export_token`).
 - Limitation de débit sur la connexion :
   - **par compte** : 10 échecs par quart d'heure et par adresse e-mail, comptes
     inconnus compris (rien ne distingue un compte existant). Chaque tentative réserve
@@ -773,8 +780,15 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   son titre ni son texte. Les fichiers
   refusés pour leur forme (taille, type, chiffrement, texte absent) ne sont pas tracés,
   comme les autres requêtes invalides.
-- Chaînage des entrées fait (ADR-178), vérifiable par l'entreprise (ADR-179) ; export vers
-  un SIEM à venir (phase 3).
+- **Lu par le SIEM de l'entreprise** (ADR-181) : avec un jeton d'export (§4), les entrées
+  scellées dans l'ordre de la chaîne, page après page depuis une place, chacune avec sa
+  place et son sceau, que l'entreprise garde comme ancres. La création et le retrait d'un
+  jeton sont audités avec son nom (`audit.export_token_created`,
+  `audit.export_token_deleted`), jamais son secret ; une lecture ne l'est pas (elle
+  ferait grossir sans fin ce qu'elle exporte), seule la date du dernier usage du jeton
+  est notée. Un serveur sans clé maître n'exporte rien.
+- Chaînage des entrées fait (ADR-178), vérifiable par l'entreprise (ADR-179) et exporté
+  vers son SIEM (ADR-181).
 
 ## 9. Protection des données (RGPD)
 
@@ -804,6 +818,11 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   inexistant, et ses passages lui sont remis comme données. Une suppression n'atteint
   pas les sauvegardes déjà faites (ADR-166) : la donnée y reste, chiffrée, jusqu'à ce
   que la conservation fixée par l'exploitant retire ces sauvegardes.
+- **Export du journal d'audit** (ADR-181) : le SIEM de l'entreprise reçoit les
+  identifiants des comptes et les adresses IP que le journal porte ; l'entreprise,
+  responsable du traitement, le décide par un administrateur habilité (`audit:export`)
+  et répond de leur conservation dans son outil. Ce qui est exporté ne s'efface plus
+  depuis la plateforme.
 - **Rétention** paramétrable (voir [DATA_MODEL.md](DATA_MODEL.md) §5).
 - **Sous-traitants** : choix du fournisseur LLM et de sa région par entreprise ;
   possibilité de modèles locaux ; registre des sous-traitants et DPA.

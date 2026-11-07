@@ -318,6 +318,29 @@ anchors: Array<AuditAnchorCheck>, verifiedAt: string, };
 export type AuditEntry = { id: number, occurredAt: string, actorType: AuditActor, actorUserId: string | null, onBehalfOfUserId: string | null, runId: string | null, action: string, resourceType: string | null, resourceId: string | null, outcome: AuditOutcome, reason: string | null, metadata: Record<string, unknown>, };
 
 /**
+ * `GET /audit/export`: the company, its entries after the place asked, and
+ * whether more follow the last one.
+ */
+export type AuditExport = { company: string, entries: Array<ExportedAuditEntry>, more: boolean, };
+
+/**
+ * `POST /admin/audit/export-tokens`: the token made, and its secret, shown
+ * this once.
+ */
+export type AuditExportTokenCreated = { token: AuditExportTokenView, secret: string, };
+
+/**
+ * A token as listed: never its secret.
+ */
+export type AuditExportTokenView = { id: string, name: string, createdBy: string | null, createdAt: string, lastUsedAt: string | null, };
+
+/**
+ * `GET /admin/audit/export-tokens`: the company's tokens, and whether this
+ * server seals the audit log, without which nothing is exported.
+ */
+export type AuditExportTokens = { tokens: Array<AuditExportTokenView>, sealing: boolean, };
+
+/**
  * `GET /admin/audit`, newest first.
  */
 export type AuditLog = { entries: Array<AuditEntry>, };
@@ -872,6 +895,22 @@ minCostMicros: number,
 maxCostCeilingMicros: number, };
 
 export type EvaluationStatus = "queued" | "running" | "completed" | "failed";
+
+/**
+ * An entry as exported: its place and seal in the company's chain, then
+ * what it records. It names what changed, never a secret or a message's
+ * content.
+ */
+export type ExportedAuditEntry = { place: number,
+/**
+ * In hexadecimal.
+ */
+seal: string, id: number, occurredAt: string, actorType: AuditActor, actorUserId: string | null, onBehalfOfUserId: string | null, runId: string | null, action: string, resourceType: string | null, resourceId: string | null, outcome: AuditOutcome, reason: string | null, metadata: Record<string, unknown>,
+/**
+ * The address the request came from, without the mask of a single
+ * host.
+ */
+ip: string | null, requestId: string | null, };
 
 /**
  * Who the person is on the gateway's service.
@@ -1720,6 +1759,15 @@ export type NewAccount = { email: string, displayName: string, jobTitle?: string
  * Absent: `internal`.
  */
 clearance?: Sensitivity, };
+
+/**
+ * Body of `POST /admin/audit/export-tokens`.
+ */
+export type NewAuditExportToken = {
+/**
+ * What the token is for: the SIEM that holds it.
+ */
+name: string, };
 
 /**
  * Body of `POST /admin/connectors`: an MCP server over HTTPS. The prefix,

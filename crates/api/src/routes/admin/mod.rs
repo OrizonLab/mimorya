@@ -10,6 +10,7 @@ mod activity;
 mod approval_routing;
 mod assignments;
 mod audit_chain;
+mod audit_export;
 mod connector_applications;
 mod connector_oauth;
 pub(crate) mod connectors;
@@ -220,6 +221,14 @@ pub fn routes(state: &AppState) -> Router<AppState> {
         )
         .route("/admin/audit", get(activity::audit))
         .route("/admin/audit/verifications", post(audit_chain::verify))
+        .route(
+            "/admin/audit/export-tokens",
+            get(audit_export::list).post(audit_export::create),
+        )
+        .route(
+            "/admin/audit/export-tokens/{id}",
+            delete(audit_export::remove),
+        )
         .route("/admin/usage", get(activity::usage))
         // Last: a route layer only wraps the routes declared before it.
         .route_layer(from_fn_with_state(state.clone(), audit_refusals))

@@ -450,7 +450,8 @@ qu'au-delà de ce que PostgreSQL tient.
 - Journal d'audit métier séparé (table `audit_log`, en ajout seul), chaîné par entreprise :
   chaque entrée scellée après coup sous une clé dérivée de la clé maître, la chaîne
   vérifiée par `mimorya-admin verify-audit` (ADR-178) ou, pour la sienne, par qui lit le
-  journal de toute l'entreprise, depuis l'administration (ADR-179).
+  journal de toute l'entreprise, depuis l'administration (ADR-179) ; lu par le SIEM de
+  l'entreprise avec un jeton d'export, page après page dans l'ordre de la chaîne (ADR-181).
 - Événements de run persistés : rejouables pour le support et l'analyse.
 - Phase 3 : OpenTelemetry (traces), métriques Prometheus, tableaux de bord
   d'exploitation, alertes de coût.

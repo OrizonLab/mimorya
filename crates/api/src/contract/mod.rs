@@ -7,6 +7,7 @@ mod account_links;
 pub mod admin;
 mod approval_delegation;
 mod approvals;
+mod audit_export;
 mod common;
 mod conversations;
 mod documents;
@@ -30,6 +31,7 @@ mod typescript;
 pub use account_links::{AccountLinkStart, AccountLinkView, AccountLinks, LinkedAccount};
 pub use approval_delegation::{Absence, ApprovalDelegations, Delegation};
 pub use approvals::{Approval, ApprovalDecided, ApprovalList, ApprovalPerson, ApprovalVerdict};
+pub use audit_export::{AuditExport, ExportedAuditEntry};
 pub use common::{Created, Done};
 pub use conversations::{
     Citation, ConversationChanges, ConversationCreated, ConversationDetail, ConversationList,
@@ -157,6 +159,9 @@ pub fn typescript() -> String {
     declarations.add::<admin::RestImport>();
     declarations.add::<admin::AuditLog>();
     declarations.add::<admin::AuditChainVerification>();
+    declarations.add::<admin::AuditExportTokens>();
+    declarations.add::<admin::AuditExportTokenCreated>();
+    declarations.add::<AuditExport>();
     declarations.add::<admin::UsageSummary>();
     declarations.add::<ErrorBody>();
     macro_rules! declare {
@@ -234,7 +239,8 @@ macro_rules! request_bodies {
             admin::IdentityProviderUpdate,
             admin::DomainProofRequest,
             admin::ApprovalRoutingUpdate,
-            admin::AuditChainCheck
+            admin::AuditChainCheck,
+            admin::NewAuditExportToken
         )
     };
 }
