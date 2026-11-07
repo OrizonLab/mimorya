@@ -24,7 +24,8 @@ pub const EXITED_AT_ONCE: &str = "Le serveur a cessé de répondre moins d’une
 /// Releases the live instance that would serve a run that read `version`
 /// (of that version, or a newer one) if its session closed for good: the
 /// run then starts the version it read; remembered as a failed start of its
-/// own version, and told so, if it lived less than `QUICK_EXIT`.
+/// own version, and told so, if it lived less than `QUICK_EXIT`, the failure
+/// then logged by the caller that found it, a run or a start.
 pub(super) fn closed(state: &mut State, id: SessionKey, version: Version) -> Option<Unavailable> {
     let (lived, version) = match state.slots.get(&id) {
         Some(Slot::Live {
@@ -68,7 +69,7 @@ mod tests {
     use mimorya_connectors::ConnectorRuntime;
     use uuid::Uuid;
 
-    use super::super::tests::{Started, gated, raised, unavailable};
+    use super::super::tests::{Started, capture_logs, gated, raised, unavailable};
     use super::super::{Origin, RuntimeCache};
     use super::*;
 
@@ -254,8 +255,9 @@ mod tests {
                 closer: None,
             })
         });
-        // Not bounded by a timeout: the clock jumps past `QUICK_EXIT`.
-        let (waited, ()) =
+        // Bounded beyond the clock's jump past `QUICK_EXIT`.
+        let bound = QUICK_EXIT + std::time::Duration::from_secs(5);
+        let ended = tokio::time::timeout(bound, async {
             tokio::join!(cache.get_or_start(id, older, 0, None, older_start), async {
                 tokio::time::sleep(std::time::Duration::from_millis(10)).await;
                 let started = cache.get_or_start(id, newer, 0, None, with(&starts, &session));
@@ -263,10 +265,59 @@ mod tests {
                 tokio::time::advance(QUICK_EXIT).await;
                 session.closed.store(true, Ordering::SeqCst);
                 gate.notify_one();
-            });
+            })
+        });
+        let Ok((waited, ())) = ended.await else {
+            panic!("a run kept waiting");
+        };
         assert!(waited.is_ok(), "the older start's instance serves its run");
         assert_eq!(starts.load(Ordering::SeqCst), 2);
         released(&session).await;
+    }
+
+    /// The same, the newer instance's session closed soon after its start:
+    /// it is replaced by its failure, remembered and logged by the start that
+    /// found it, which holds the place; the older start's instance is
+    /// released, and the run that waited for it told that failure.
+    #[tokio::test(start_paused = true)]
+    async fn an_older_start_ending_late_finds_a_newer_instance_closed_at_once() {
+        let logs = capture_logs();
+        let cache = RuntimeCache::default();
+        let id = Uuid::new_v4();
+        let (older, newer) = (Utc::now(), Utc::now() + chrono::Duration::seconds(1));
+        let starts = Arc::new(AtomicUsize::new(0));
+        let (session, own) = (Arc::new(Session::default()), Arc::new(Session::default()));
+        let gate = Arc::new(tokio::sync::Notify::new());
+        let kept = own.clone();
+        let older_start = gated(&starts, &gate, move || {
+            Ok(ConnectorRuntime {
+                tools: Vec::new(),
+                closer: Some(Box::new(Closer(kept))),
+            })
+        });
+        let ended = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            tokio::join!(cache.get_or_start(id, older, 0, None, older_start), async {
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                let started = cache.get_or_start(id, newer, 0, None, with(&starts, &session));
+                assert!(started.await.is_ok(), "the newer instance went live");
+                session.closed.store(true, Ordering::SeqCst);
+                gate.notify_one();
+            })
+        });
+        let Ok((waited, ())) = ended.await else {
+            panic!("a run kept waiting");
+        };
+        let told = unavailable(waited);
+        assert_eq!(told.message, EXITED_AT_ONCE);
+        assert_eq!(told.origin, Origin::Remembered);
+        released(&own).await;
+        released(&session).await;
+        let other = Arc::new(Session::default());
+        let read_newer = cache.get_or_start(id, newer, 0, None, with(&starts, &other));
+        assert_eq!(unavailable(read_newer.await).origin, Origin::Remembered);
+        assert_eq!(starts.load(Ordering::SeqCst), 2);
+        let logged = logs.text();
+        assert!(logged.contains("Connector unavailable"), "{logged}");
     }
 
     #[tokio::test(start_paused = true)]

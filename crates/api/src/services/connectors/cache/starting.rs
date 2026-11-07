@@ -5,8 +5,9 @@
 //! closed, or another took its place meanwhile: an instance of its version
 //! live, or a newer entry as the runs read it (`Slot::newer_than`), a live
 //! one judged first by its session. An older version never replaces it. A
-//! failure is remembered, and logged here, where it is found: no run may
-//! read it before it is forgotten. A start that panics is a failure too.
+//! failure is remembered, and logged here, where it is found, its own or a
+//! live instance's that closed at once: no run may read it before it is
+//! forgotten. A start that panics is a failure too.
 
 use std::future::Future;
 use std::sync::Arc;
@@ -68,8 +69,13 @@ impl Start {
         }
         let stale = state.stale(id, ticket) || state.closed;
         // A live instance in place is judged first, as for a run: one whose
-        // session closed for good holds no place (ADR-163).
-        let _ = closed(&mut state, id, version);
+        // session closed for good is released, or replaced by its failure,
+        // remembered, if it lived less than a minute (ADR-163); that failure,
+        // found here, is logged here.
+        if let Some(exited) = closed(&mut state, id, version) {
+            let connector = id.instance;
+            tracing::warn!(%connector, error = %exited.message, "Connector unavailable");
+        }
         // Then the place is held as `get_or_start` reads it: by an instance
         // of its version live (another start's), or by a newer entry.
         let now = Instant::now();

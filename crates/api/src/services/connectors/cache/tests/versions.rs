@@ -242,15 +242,21 @@ async fn an_older_start_ending_after_a_newer_failure_forgotten_keeps_its_instanc
     let starts = Arc::new(AtomicUsize::new(0));
     let gate = Arc::new(Notify::new());
     let older_start = gated(&starts, &gate, || Ok(runtime()));
-    // Not bounded by `within`: the clock jumps past the retry delay.
-    let (waited, ()) = tokio::join!(cache.get_or_start(id, older, 0, None, older_start), async {
-        tokio::time::sleep(Duration::from_millis(10)).await;
-        let newer_start = counted(&starts, failing);
-        let failed = cache.get_or_start(id, newer, 0, None, newer_start).await;
-        assert_eq!(unavailable(failed).message, "injoignable");
-        tokio::time::advance(RETRY_AFTER).await;
-        gate.notify_one();
+    // Bounded beyond the clock's jump past the retry delay.
+    let bound = RETRY_AFTER + Duration::from_secs(5);
+    let ended = tokio::time::timeout(bound, async {
+        tokio::join!(cache.get_or_start(id, older, 0, None, older_start), async {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            let newer_start = counted(&starts, failing);
+            let failed = cache.get_or_start(id, newer, 0, None, newer_start).await;
+            assert_eq!(unavailable(failed).message, "injoignable");
+            tokio::time::advance(RETRY_AFTER).await;
+            gate.notify_one();
+        })
     });
+    let Ok((waited, ())) = ended.await else {
+        panic!("a run kept waiting");
+    };
     assert!(waited.is_ok(), "the older start's instance serves its run");
     assert_eq!(starts.load(Ordering::SeqCst), 2);
 }

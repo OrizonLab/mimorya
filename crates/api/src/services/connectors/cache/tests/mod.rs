@@ -99,6 +99,47 @@ pub(super) async fn raised(flag: &AtomicBool) -> bool {
     false
 }
 
+/// What the cache logs on this thread while kept: the test's own runtime
+/// runs every start on it.
+pub(super) struct Logs {
+    written: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
+    _guard: tracing::subscriber::DefaultGuard,
+}
+
+impl Logs {
+    pub(super) fn text(&self) -> String {
+        let written = self.written.lock().expect("logs");
+        String::from_utf8_lossy(&written).into_owned()
+    }
+}
+
+#[derive(Clone)]
+struct Written(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+
+impl std::io::Write for Written {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().expect("logs").extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+pub(super) fn capture_logs() -> Logs {
+    let written = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let writer = Written(written.clone());
+    let subscriber = tracing_subscriber::fmt()
+        .with_writer(move || writer.clone())
+        .with_ansi(false)
+        .finish();
+    Logs {
+        written,
+        _guard: tracing::subscriber::set_default(subscriber),
+    }
+}
+
 /// Bounded: a run that kept waiting would never end.
 async fn within<T>(waited: impl Future<Output = T>) -> T {
     let Ok(got) = tokio::time::timeout(Duration::from_secs(5), waited).await else {

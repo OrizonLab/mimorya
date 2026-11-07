@@ -11508,7 +11508,9 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     runs qui le lisent. Une seule règle dit quelle entrée plus récente garde la place,
     pour les runs comme pour les démarrages (`Slot::newer_than`, lot 50) ; un
     démarrage juge d'abord la session d'une instance vivante en place, comme un run :
-    fermée pour de bon, elle ne garde pas la place (lot 50).
+    fermée pour de bon, elle est libérée, ou, fermée moins d'une minute après son
+    démarrage, remplacée par son échec retenu, qui garde la place ; le démarrage
+    journalise alors cet échec, qu'il a trouvé (lot 50).
     Avant, il la remplaçait, et les runs de la version plus récente démarraient la
     leur une deuxième fois, ou oubliaient son échec retenu.
 - **Conséquences** :
@@ -11543,8 +11545,8 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       (`connectors/failures.rs`) ;
     - les tests des sessions fermées passent dans `cache/closed.rs`, dont, au lot 49,
       une instance plus récente fermée, tôt ou tard, jugée avant de servir un run plus
-      ancien, et, au lot 50, avant qu'un démarrage plus ancien qui finit tard lui cède
-      la place ;
+      ancien, et, au lot 50, par un démarrage plus ancien qui finit tard, fermée tard
+      (libérée) ou tôt (son échec retenu, journalisé) ;
     - `crates/api/tests/connector_start_patience.rs` :
       - face à un serveur retenu, un tour revient après sa patience, sans que rien
         soit enregistré, et le serveur sert le tour suivant ;
