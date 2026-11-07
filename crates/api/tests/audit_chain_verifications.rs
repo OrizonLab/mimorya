@@ -14,6 +14,7 @@ use mimorya_db::repositories::audit_chain::ChainHead;
 use serde_json::{Value, json};
 use support::accounts::{INVITED_PASSWORD, accept, activate, create_partial_admin, holder_of};
 use support::audit_chain::{append, as_owner, chain, seal};
+use support::mcp::capture_logs;
 use support::{Client, TestApi, TestResponse, companies, llm};
 
 const VERIFY: &str = "/admin/audit/verifications";
@@ -127,9 +128,19 @@ async fn a_broken_chain_is_told_and_traced_as_a_failure() {
     .await
     .unwrap();
 
+    let logs = capture_logs();
     let broken = verify(&jeanne, &[]).await;
     assert_eq!(broken.status, StatusCode::OK, "{}", broken.text());
     let report = broken.json();
+    // The operator is told too, of the company and its count, never a seal.
+    let logged = logs.text();
+    assert!(
+        logged.contains("Audit chain verified on demand does not hold")
+            && logged.contains(&company.tenant_id.to_string()),
+        "{logged}"
+    );
+    let seal_text = report["last"]["seal"].as_str().unwrap();
+    assert!(!logged.contains(seal_text), "{logged}");
     assert_eq!(
         (&report["holds"], &report["broken"]),
         (&json!(false), &json!(1))
@@ -193,6 +204,10 @@ async fn only_a_company_wide_audit_reader_verifies_and_only_with_their_company_s
         .map(|place| format!("{}:{place}:{seal_text}", tenant::SLUG))
         .collect();
     assert_eq!(verify(&paul, &many).await.status, StatusCode::BAD_REQUEST);
+    // Twenty are taken, each told.
+    let twenty = verify(&paul, &many[..20]).await;
+    assert_eq!(twenty.status, StatusCode::OK, "{}", twenty.text());
+    assert_eq!(twenty.json()["anchors"].as_array().map(Vec::len), Some(20));
 }
 
 #[tokio::test]

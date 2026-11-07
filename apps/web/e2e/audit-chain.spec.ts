@@ -1,7 +1,8 @@
 // The verification of the company's audit chain from the « Journal d’audit »
 // tab (ADR-179): Paul verifies the chain, which the end-to-end server sealed
 // at start, and keeps the anchor shown; verified again with it and with the
-// same place under another seal, the first holds and the second does not.
+// same place under another seal, the first holds and the second does not, and
+// no anchor to keep is then offered.
 // The log traces both verifications, read again after reloading. The rules
 // themselves are tested on the API (`crates/api/tests/audit_chain*.rs`).
 import { openAdmin } from './support/admin';
@@ -25,6 +26,9 @@ test('an administrator verifies the audit chain against the anchor they kept', a
   await page.getByLabel(/Ancres à vérifier/).fill(`${anchor}\n\n${resealed}\n`);
   await verify.click();
   await expect(report.getByText('Ancre non tenue')).toBeVisible();
+  // A chain that does not hold gives no anchor to keep.
+  await expect(report.getByLabel('Ancre à conserver')).toHaveCount(0);
+  await expect(report.getByText(/gardez les ancres que vous aviez/)).toBeVisible();
   const anchors = report.getByRole('listitem');
   await expect(anchors).toHaveText([
     `Ancre de la place ${place} : tenue.`,

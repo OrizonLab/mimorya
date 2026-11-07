@@ -24,6 +24,8 @@ export function ChainCheck({ onVerified }: { onVerified: () => void }) {
   const action = useAction();
 
   async function verify() {
+    // A report shown is always that of the anchors last sent.
+    setReport(null);
     const body = { anchors: anchorsOf(anchors) } satisfies AuditChainCheck;
     const verified = await action.run(() =>
       api.post<AuditChainVerification>('/admin/audit/verifications', body),

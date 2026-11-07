@@ -11755,7 +11755,11 @@ found`), même quand un lot suivant échoue, avec leur ancre toute écrite :
   - **ce qu'elle dit** : chaîne tenue ou non, entrées vérifiées, entrées encore à
     sceller, dernière place et son ancre, ruptures (les vingt premières, chaque place
     manquante comptée, les places qui se suivent en une plage) et ancres. L'onglet
-    « Journal d'audit » la montre au-dessus du journal, rechargé après elle ;
+    « Journal d'audit » la montre au-dessus du journal, rechargé après elle. L'ancre à
+    conserver n'est proposée que si la chaîne est tenue : sinon l'écran dit de garder
+    les ancres déjà prises. Les entrées en attente sont dites « normalement scellées dans
+    la minute », un nombre qui ne baisse pas étant à signaler à l'exploitant (le
+    scellement refuse de continuer une chaîne qui a reculé) ;
   - **tracée** : chaque vérification ajoute au journal `audit.chain_verified`, au nom de
     son auteur, avec ce qu'elle a trouvé (entrées vérifiées et à sceller, dernière place,
     ruptures, ancres données et non tenues), en échec avec sa raison quand la chaîne n'est
@@ -11788,8 +11792,8 @@ found`), même quand un lot suivant échoue, avec leur ancre toute écrite :
       `audit:read`, à un administrateur d'une équipe seulement, permise à qui n'a que
       `audit:read` ; une ancre d'une autre entreprise, par identifiant ou par sigle,
       refusée en mêmes mots qu'elle existe ou non, une ancre mal écrite et plus de vingt
-      refusées ; un serveur sans clé maître, ou qui vérifie déjà autant qu'il peut,
-      refuse ;
+      refusées, vingt prises ; la chaîne rompue journalisée pour l'exploitant, sans
+      sceau ; un serveur sans clé maître, ou qui vérifie déjà autant qu'il peut, refuse ;
     - `crates/api/tests/audit_chain_guards.rs` : les passages de la maintenance lisent
       les chaînes au premier qui le peut, même sans rien à sceller, puis refusent de
       sceller après une fin de chaîne retirée ;
@@ -11799,4 +11803,5 @@ found`), même quand un lot suivant échoue, avec leur ancre toute écrite :
       `crates/api/src/contract/tests/requests.rs` : le corps strict ;
     - `apps/web/e2e/audit-chain.spec.ts` : depuis « Journal d'audit », la chaîne
       vérifiée intacte, l'ancre montrée redonnée tenue, la même place sous un autre sceau
-      non tenue, les deux vérifications tracées dans le journal relu.
+      non tenue et aucune ancre alors proposée, les deux vérifications tracées dans le
+      journal relu.

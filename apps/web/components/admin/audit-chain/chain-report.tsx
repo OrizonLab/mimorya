@@ -37,19 +37,26 @@ export function ChainReport({ report }: { report: AuditChainVerification }) {
         </Badge>
       </div>
       <p>
-        {report.verified} entrée(s) vérifiée(s) · {report.unsealed} en attente de scellement
-        (scellées dans la minute).
+        {report.verified} entrée(s) vérifiée(s) · {report.unsealed} en attente de scellement,
+        normalement scellée(s) dans la minute : un nombre qui ne baisse pas est à signaler à
+        l’exploitant de la plateforme.
       </p>
-      {report.last ? (
+      {report.last && report.holds && (
         <p className="flex flex-col gap-1">
           <span>Dernière place scellée : n° {report.last.place}. Ancre à conserver :</span>
           <code aria-label="Ancre à conserver" className="font-mono text-xs break-all select-all">
             {report.last.anchor}
           </code>
         </p>
-      ) : (
-        <p>Aucune entrée n’est encore scellée.</p>
       )}
+      {report.last && !report.holds && (
+        <p className="text-danger">
+          Dernière place lue : n° {report.last.place}. La chaîne n’étant pas tenue, gardez les
+          ancres que vous aviez : n’en prenez pas une nouvelle avant que l’exploitant n’ait examiné
+          le journal.
+        </p>
+      )}
+      {!report.last && <p>Aucune entrée n’est encore scellée.</p>}
       {report.broken > 0 && (
         <div>
           <p className="text-danger">{report.broken} rupture(s) :</p>
