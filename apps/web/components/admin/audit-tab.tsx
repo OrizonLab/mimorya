@@ -1,9 +1,12 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import { Cell, DataTable, LabelBadge, Loaded, type ToneLabel } from '@/components/ui';
 import { useApiData, type AuditActor, type AuditLog, type AuditOutcome } from '@/lib/api';
 import { formatDate } from '@/lib/format';
+import { useMe } from '@/lib/me-context';
 import { ChainCheck } from './audit-chain/chain-check';
+import { ExportTokens } from './audit-export/export-tokens';
 
 const ACTORS: Record<AuditActor, ToneLabel> = {
   agent: { label: 'Agent', tone: 'accent' },
@@ -17,11 +20,30 @@ const OUTCOMES: Record<AuditOutcome, ToneLabel> = {
   failure: { label: 'Échec', tone: 'warn' },
 };
 
+/**
+ * The « Journal d’audit » tab (ADR-182): the log and its verification for
+ * who reads it (`audit:read`), the SIEM's export tokens for who exports it
+ * (`audit:export`); either opens the tab, each part shown to its holder.
+ */
 export function AuditTab() {
+  const me = useMe();
+  const exports = me.permissions.includes('audit:export');
+  if (!me.permissions.includes('audit:read')) {
+    return exports ? <ExportTokens /> : null;
+  }
+  return <AuditLogView>{(reload) => exports && <ExportTokens onChanged={reload} />}</AuditLogView>;
+}
+
+/**
+ * The log, its verification first, then what `between` shows, given what
+ * reloads the log.
+ */
+function AuditLogView({ children: between }: { children: (reload: () => void) => ReactNode }) {
   const state = useApiData<AuditLog>('/admin/audit?limit=200');
   return (
     <div className="flex flex-col gap-4">
       <ChainCheck onVerified={state.reload} />
+      {between(state.reload)}
       <Loaded state={state}>
         {(data) => (
           <DataTable columns={['Date', 'Acteur', 'Action', 'Résultat', 'Détail']}>

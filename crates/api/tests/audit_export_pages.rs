@@ -81,13 +81,27 @@ async fn a_page_asked_amiss_or_past_the_chain_is_refused() {
     .await;
     assert_eq!(past.status, StatusCode::CONFLICT, "{}", past.text());
     assert!(past.text().contains("ne compte plus la place"));
-    // Each refusal names the chain's last place, to resume from one shared.
-    for refused in [changed.text(), past.text()] {
-        assert!(
-            refused.contains(&format!("{head} places scellées")),
-            "{refused}"
-        );
+    // Each refusal names the chain's last place, to resume from one shared,
+    // in its words and in its details.
+    for refused in [&changed, &past] {
+        let said = refused.text();
+        assert!(said.contains(&format!("{head} places scellées")), "{said}");
+        assert_eq!(refused.json()["error"]["details"]["lastPlace"], head);
     }
+    // A token whose only read is refused is noted as used all the same.
+    let (refused_id, refused_secret) = made(&paul, "SIEM restauré").await;
+    let query = format!("?after={head}&seal={some_seal}");
+    let refused = read(&api, Some(&refused_secret), &query).await;
+    assert_eq!(refused.status, StatusCode::CONFLICT);
+    let tokens = paul.get(TOKENS).await.json();
+    let noted = tokens["tokens"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|token| token["id"] == refused_id.as_str())
+        .map(|token| token["lastUsedAt"].is_string());
+    assert_eq!(noted, Some(true), "{tokens}");
+    removed(&paul, &refused_id).await;
     removed(&paul, &id).await;
 }
 

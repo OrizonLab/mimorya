@@ -11918,7 +11918,9 @@ found`), même quand un lot suivant échoue, avec leur ancre toute écrite :
       savoir ;
     - une entrée pas encore scellée (moins d'une minute) est lue une fois scellée. Hors
       restauration de la base, une place ne change pas : le SIEM n'a rien à
-      dédoublonner. Après une restauration, il remplace les places qu'il relit ;
+      dédoublonner. Après une restauration, il garde à côté de ce qu'il relit les
+      entrées et les sceaux qu'il détenait à ces places, marqués comme remplacés : ce
+      sont eux que ses ancres disent perdus (suite de l'audit, lot 52b) ;
     - le SIEM ne vérifie pas un sceau lui-même (HMAC sous la clé du serveur). Il le garde
       comme ancre, que l'entreprise donne à sa vérification (ADR-179) ;
   - **une chaîne restaurée derrière le SIEM est dite** (suite de l'audit) :
@@ -11930,9 +11932,11 @@ found`), même quand un lot suivant échoue, avec leur ancre toute écrite :
       refusée (409). Le sceau étant demandé avec toute place sauf le départ, une
       restauration est vue même quand la chaîne a déjà dépassé de nouveau la place du
       SIEM ;
-    - le refus donne la dernière place que la chaîne compte. Le SIEM reprend depuis une
-      place qu'il détient et dont la chaîne porte encore le sceau, en remplaçant celles
-      qu'il relit ; ses ancres disent ce qui est perdu ;
+    - le refus donne la dernière place que la chaîne compte, dans son message et dans
+      ses détails (`lastPlace`, lot 52b), et l'usage du jeton y est noté. Le SIEM
+      reprend depuis une place qu'il détient et dont la chaîne porte encore le sceau,
+      en gardant ce qu'il détenait au-delà, marqué comme remplacé ; ses ancres disent
+      ce qui est perdu ;
   - **avant toute session, le jeton seul prouve** :
     - un cookie de session n'est pas une preuve ici (401) ;
     - le jeton est cherché par une fonction `SECURITY DEFINER` minimale
@@ -11995,3 +11999,58 @@ found`), même quand un lot suivant échoue, avec leur ancre toute écrite :
     - `crates/db/tests/definer_functions.rs` : la fonction listée ;
     - `plugins/refusal_audit.rs` : la ressource d'une route dont la collection compte deux
       segments (`audit/export-tokens`) nommée.
+
+## ADR-182 — Jetons d'export du journal d'audit dans l'onglet « Journal d'audit » (lot 52b)
+
+- **Statut** : accepté (2026-11-07) · complète ADR-181.
+- **Contexte** : ADR-181 laissait les jetons d'export se gérer par l'API seule. Il
+  restait aussi des constats non bloquants du dernier audit du lot 52a :
+  - la règle « sceau exigé au-delà du départ » n'était portée que par la route ;
+  - un refus 409 effaçait l'usage du jeton qu'il venait de noter ;
+  - la dernière place de la chaîne n'était donnée que dans le texte du refus ;
+  - l'ADR-181 conseillait au SIEM de remplacer, après une restauration, les places
+    qu'il relit, et donc d'effacer les sceaux qui prouvent la restauration.
+- **Décision** :
+  - **l'onglet « Journal d'audit » s'ouvre à qui lit le journal (`audit:read`) ou
+    l'exporte (`audit:export`)**, l'un ou l'autre. Chacun n'y voit que sa part : le
+    journal et sa vérification pour le premier, les jetons pour le second. Une
+    section de l'administration s'ouvre désormais à une liste de permissions
+    (`lib/admin-sections.ts`), dont une suffit. L'API vérifie toujours la sienne ;
+  - **la section « Export vers un SIEM »** (`components/admin/audit-export/`) :
+    - elle donne l'adresse à lire, que l'API donne (`exportUrl`, de l'origine de
+      l'application), et dit quand le serveur ne scelle pas le journal ;
+    - elle liste les jetons par nom, date de création et dernier usage (« Jamais »
+      avant le premier), jamais leur secret ;
+    - un jeton se crée avec un nom (80 caractères au plus). Son secret est montré
+      cette seule fois, avec un exemple de lecture page après page, jusqu'à « J'ai
+      noté le jeton » ;
+    - un jeton se retire après une confirmation ; le SIEM qui le détient ne lit plus
+      rien. Au-delà de cinq, la création n'est plus offerte ;
+    - le journal, quand il est montré, est relu après une création ou un retrait,
+      qu'il trace ;
+  - **reprise typée dans le service** : `Resume::Start` ou `Resume::After { place,
+seal }`. Le service ne peut plus être appelé au-delà du départ sans sceau, quel que
+    soit son appelant ;
+  - **un refus 409 note l'usage du jeton** : la date est validée avant le refus. Après
+    une restauration, l'administration voit que le SIEM interroge toujours ;
+  - **la dernière place de la chaîne est donnée dans les détails du refus**
+    (`lastPlace`), en plus de son message, pour qu'un SIEM la lise sans analyser le
+    texte ;
+  - **le SIEM garde ce qu'une restauration a remplacé** : l'ADR-181 est corrigée en ce
+    sens.
+- **Conséquences** :
+  - un administrateur qui exporte sans lire le journal voit l'onglet, avec les seuls
+    jetons ;
+  - tests :
+    - `apps/web/e2e/audit-export.spec.ts` : jeton créé, secret montré une fois et lu
+      par l'export à l'adresse montrée ; après rechargement, jeton listé avec son
+      dernier usage, secret absent, création tracée ; retrait confirmé, jeton refusé
+      ensuite (401) ;
+    - `crates/api/tests/audit_export_pages.rs` : `lastPlace` dans les détails du refus,
+      usage d'un jeton noté sur un refus ;
+    - `crates/api/tests/audit_exports.rs` : adresse d'export donnée ;
+    - `services/audit_export/reading.rs` : détails du refus ;
+    - `contract/admin/audit_export.rs` : adresse d'export tirée de l'origine de
+      l'application ;
+    - `tests/support/audit_exports.rs` : l'attente d'un verrou échoue au bout de cinq
+      secondes, au lieu de laisser un test passer sans avoir joué ce qu'il dit.

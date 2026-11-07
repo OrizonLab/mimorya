@@ -6,8 +6,9 @@
 //! anchors to give the company's verification (ADR-179). An entry not yet
 //! sealed is read once it is, within the minute. Past the start, the SIEM
 //! gives the seal of the place it resumes after, which each exported entry
-//! carries: a place the chain no longer counts, or whose seal is no longer
-//! the one given, is refused (409) with the chain's last place. The chain
+//! carries (`Resume`): a place the chain no longer counts, or whose seal is
+//! no longer the one given, is refused (409) with the chain's last place
+//! (`lastPlace` in its details), the token's use noted all the same. The chain
 //! was restored behind the SIEM, which resumes from a place it still shares
 //! with it rather than miss what was sealed again.
 //! Reading is noted on the token (when it was last used), not in the audit
@@ -23,6 +24,7 @@ use mimorya_db::repositories::audit_chain::{
 use mimorya_db::repositories::audit_export_tokens::{
     audit_export_token_tenant, touch_audit_export_token,
 };
+use serde_json::json;
 use uuid::Uuid;
 
 use crate::auth::credentials::hash_token;
@@ -40,13 +42,20 @@ const UNSEALED: &str = "Ce serveur ne scelle pas le journal d’audit : aucune c
      (MIMORYA_MASTER_KEY) n’y est configurée, rien n’en est exporté. Adressez-vous à \
      l’exploitant de la plateforme.";
 
-/// What the SIEM asks: the entries after the place `after`, at most `limit`;
-/// the seal it holds at that place, in hexadecimal, past the start.
+/// Where the SIEM resumes: from the start, or after a place it holds, with
+/// its seal there in hexadecimal (any case). Past the start, the seal is
+/// always given: a restore behind the SIEM is never missed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Resume<'a> {
+    Start,
+    After { place: i64, seal: &'a str },
+}
+
+/// What the SIEM asks: the entries after where it resumes, at most `limit`.
 #[derive(Debug, Clone, Copy)]
 pub struct ExportPage<'a> {
-    pub after: i64,
+    pub resume: Resume<'a>,
     pub limit: i64,
-    pub seal: Option<&'a str>,
 }
 
 /// The page of the audit log the token `token` reads.
@@ -62,21 +71,26 @@ pub async fn export_audit_log(
         return Err(DomainError::unavailable(UNSEALED).into());
     }
     let limit = page.limit.clamp(1, MAX_PAGE);
-    let after = page.after.max(0);
     let mut tx = db.begin(tenant_id).await?;
     // Removed meanwhile, the token reads nothing.
     if !touch_audit_export_token(&mut tx, token_id, now).await? {
         return Err(DomainError::unauthenticated(UNKNOWN).into());
     }
-    if after > 0 {
-        let held = audit_seal_at(&mut tx, after).await?;
-        if let Some(unshared) = unshared(held.as_deref(), page.seal) {
-            let last = audit_chain_head(&mut tx)
-                .await?
-                .map_or(0, |head| head.chain_seq);
-            return Err(unshared.refusal(after, last).into());
+    let after = match page.resume {
+        Resume::Start => 0,
+        Resume::After { place, seal } => {
+            let held = audit_seal_at(&mut tx, place).await?;
+            if let Some(unshared) = unshared(held.as_deref(), seal) {
+                let last = audit_chain_head(&mut tx)
+                    .await?
+                    .map_or(0, |head| head.chain_seq);
+                // Its use noted all the same: refused, the SIEM still reads.
+                tx.commit().await?;
+                return Err(unshared.refusal(place, last).into());
+            }
+            place
         }
-    }
+    };
     // One more than the page: whether others follow.
     let mut entries = sealed_audit_entries(&mut tx, (after, i64::MAX), limit + 1).await?;
     tx.commit().await?;
@@ -113,19 +127,17 @@ enum Unshared {
 
 /// Whether the chain, holding `held` at the place the SIEM resumes after,
 /// still shares it with the SIEM, which gives `given` (any case).
-fn unshared(held: Option<&[u8]>, given: Option<&str>) -> Option<Unshared> {
-    match (held, given) {
-        (None, _) => Some(Unshared::Gone),
-        (Some(held), Some(given)) if !given.eq_ignore_ascii_case(&hex(held)) => {
-            Some(Unshared::Changed)
-        }
-        // Without a seal there is nothing to compare: the route asks for one.
-        (Some(_), _) => None,
+fn unshared(held: Option<&[u8]>, given: &str) -> Option<Unshared> {
+    match held {
+        None => Some(Unshared::Gone),
+        Some(held) if !given.eq_ignore_ascii_case(&hex(held)) => Some(Unshared::Changed),
+        Some(_) => None,
     }
 }
 
 impl Unshared {
-    /// The refusal of a read after `after`, the chain counting `last` places.
+    /// The refusal of a read after `after`, the chain counting `last` places,
+    /// which its details give the SIEM (`lastPlace`).
     fn refusal(self, after: i64, last: i64) -> DomainError {
         let what = match self {
             Unshared::Gone => format!("ne compte plus la place {after}"),
@@ -136,6 +148,7 @@ impl Unshared {
              {last} places scellées. Reprenez depuis une place que vous détenez et dont il \
              porte encore le sceau."
         ))
+        .with_details(json!({ "lastPlace": last }))
     }
 }
 
@@ -146,12 +159,14 @@ mod tests {
     #[test]
     fn a_place_the_chain_no_longer_shares_is_refused_with_its_last_place() {
         let seal = [0xab_u8; 32];
-        assert_eq!(unshared(Some(&seal), Some(&"ab".repeat(32))), None);
-        assert_eq!(unshared(Some(&seal), Some(&"AB".repeat(32))), None);
-        let changed = unshared(Some(&seal), Some(&"cd".repeat(32)));
+        assert_eq!(unshared(Some(&seal), &"ab".repeat(32)), None);
+        assert_eq!(unshared(Some(&seal), &"AB".repeat(32)), None);
+        let changed = unshared(Some(&seal), &"cd".repeat(32));
         assert_eq!(changed, Some(Unshared::Changed));
-        assert_eq!(unshared(None, Some(&"ab".repeat(32))), Some(Unshared::Gone));
-        let refused = Unshared::Changed.refusal(4, 3).message;
+        assert_eq!(unshared(None, &"ab".repeat(32)), Some(Unshared::Gone));
+        let refusal = Unshared::Changed.refusal(4, 3);
+        assert_eq!(refusal.details, Some(json!({ "lastPlace": 3 })));
+        let refused = refusal.message;
         assert!(
             refused.contains("ne porte plus ce sceau à la place 4"),
             "{refused}"

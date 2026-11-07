@@ -5,7 +5,7 @@
 mod reading;
 mod tokens;
 
-pub use reading::{DEFAULT_PAGE, ExportPage, MAX_PAGE, export_audit_log};
+pub use reading::{DEFAULT_PAGE, ExportPage, MAX_PAGE, Resume, export_audit_log};
 pub use tokens::{
     MAX_TOKENS, NAME_LENGTH, TOKEN_PREFIX, audit_export_tokens, create_audit_export_token,
     delete_audit_export_token,

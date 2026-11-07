@@ -55,8 +55,9 @@ pub async fn seal_at(db: &mimorya_db::Database, tenant_id: uuid::Uuid, place: i6
     mimorya_api::services::audit_chain::hex(&seal)
 }
 
-/// Waits, five seconds at most, until `count` sessions of the database wait
-/// for a lock: the requests a test holds back have reached it.
+/// Waits until `count` sessions of the database wait for a lock: the
+/// requests a test holds back have reached it. Five seconds at most: the test
+/// fails then, having not played what it says.
 pub async fn waiting_on_locks(db: &mimorya_db::Database, count: i64) {
     for _ in 0..250 {
         let waiting: i64 = sqlx::query_scalar(
@@ -71,4 +72,5 @@ pub async fn waiting_on_locks(db: &mimorya_db::Database, count: i64) {
         }
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
     }
+    panic!("fewer than {count} requests wait for a lock after five seconds");
 }

@@ -1,22 +1,27 @@
-/** Administration sections and the permission each one requires. */
+/**
+ * Administration sections and the permissions that open each one, any of
+ * them: the audit log's, to read it or to export it (ADR-182).
+ */
 export const ADMIN_SECTIONS = [
-  { key: 'org', label: 'Organisation', permission: 'org:read' },
-  { key: 'users', label: 'Utilisateurs', permission: 'user:read' },
-  { key: 'roles', label: 'Rôles', permission: 'role:manage' },
-  { key: 'policies', label: 'Politiques d’accès', permission: 'policy:manage' },
-  { key: 'approvalRouting', label: 'Circuit de validation', permission: 'policy:manage' },
-  { key: 'knowledgeShares', label: 'Partage de connaissances', permission: 'policy:manage' },
-  { key: 'audit', label: 'Journal d’audit', permission: 'audit:read' },
-  { key: 'usage', label: 'Consommation', permission: 'usage:read' },
-  { key: 'llm', label: 'Modèle d’IA', permission: 'settings:manage' },
-  { key: 'identityProviders', label: 'Connexion', permission: 'settings:manage' },
-  { key: 'connectors', label: 'Connecteurs', permission: 'connector:manage' },
-  { key: 'skills', label: 'Compétences', permission: 'skill:manage' },
+  { key: 'org', label: 'Organisation', permissions: ['org:read'] },
+  { key: 'users', label: 'Utilisateurs', permissions: ['user:read'] },
+  { key: 'roles', label: 'Rôles', permissions: ['role:manage'] },
+  { key: 'policies', label: 'Politiques d’accès', permissions: ['policy:manage'] },
+  { key: 'approvalRouting', label: 'Circuit de validation', permissions: ['policy:manage'] },
+  { key: 'knowledgeShares', label: 'Partage de connaissances', permissions: ['policy:manage'] },
+  { key: 'audit', label: 'Journal d’audit', permissions: ['audit:read', 'audit:export'] },
+  { key: 'usage', label: 'Consommation', permissions: ['usage:read'] },
+  { key: 'llm', label: 'Modèle d’IA', permissions: ['settings:manage'] },
+  { key: 'identityProviders', label: 'Connexion', permissions: ['settings:manage'] },
+  { key: 'connectors', label: 'Connecteurs', permissions: ['connector:manage'] },
+  { key: 'skills', label: 'Compétences', permissions: ['skill:manage'] },
 ] as const;
 
 export type AdminSectionKey = (typeof ADMIN_SECTIONS)[number]['key'];
 
 /** Sections the user may open; the API enforces the same permissions. */
 export function visibleAdminSections(permissions: readonly string[]) {
-  return ADMIN_SECTIONS.filter((s) => permissions.includes(s.permission));
+  return ADMIN_SECTIONS.filter((s) =>
+    (s.permissions as readonly string[]).some((p) => permissions.includes(p)),
+  );
 }

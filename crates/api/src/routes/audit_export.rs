@@ -18,7 +18,7 @@ use validator::Validate;
 use crate::app::AppState;
 use crate::contract::AuditExport;
 use crate::http::{ApiError, ApiResult, Query, bearer};
-use crate::services::audit_export::{DEFAULT_PAGE, ExportPage, MAX_PAGE, export_audit_log};
+use crate::services::audit_export::{DEFAULT_PAGE, ExportPage, MAX_PAGE, Resume, export_audit_log};
 
 pub fn routes() -> Router<AppState> {
     Router::new().route("/audit/export", get(export))
@@ -39,17 +39,17 @@ struct ExportQuery {
 const SEAL: &str = "seal : le sceau de la place after que vous détenez, 64 chiffres \
      hexadécimaux, demandé avec toute place sauf le départ (after=0)";
 
-/// The seal of the place `after`, as the export writes it: given with any
-/// place but the start, and only then.
-fn checked_seal(query: &ExportQuery) -> ApiResult<Option<&str>> {
+/// Where the SIEM resumes, as it asks: the start without a seal, or a place
+/// with its seal there, as the export writes it.
+fn resume(query: &ExportQuery) -> ApiResult<Resume<'_>> {
     match (query.after, query.seal.as_deref()) {
-        (0, None) => Ok(None),
-        (after, Some(seal))
-            if after > 0
+        (0, None) => Ok(Resume::Start),
+        (place, Some(seal))
+            if place > 0
                 && seal.len() == 64
                 && seal.bytes().all(|byte| byte.is_ascii_hexdigit()) =>
         {
-            Ok(Some(seal))
+            Ok(Resume::After { place, seal })
         }
         _ => Err(ApiError::invalid(vec![SEAL.to_string()])),
     }
@@ -65,9 +65,8 @@ async fn export(
     Query(query): Query<ExportQuery>,
 ) -> ApiResult<Json<AuditExport>> {
     let page = ExportPage {
-        after: query.after,
+        resume: resume(&query)?,
         limit: query.limit,
-        seal: checked_seal(&query)?,
     };
     let export =
         export_audit_log(&state.db, &state.config, bearer(&headers), page, Utc::now()).await?;
