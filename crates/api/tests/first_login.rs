@@ -260,6 +260,9 @@ const AUTHENTICATED_ROUTES: &[(&str, &str)] = &[
     ("GET", "/admin/skill-evaluations/{id}"),
     ("GET", "/admin/audit"),
     ("POST", "/admin/audit/verifications"),
+    ("GET", "/admin/audit/export-tokens"),
+    ("POST", "/admin/audit/export-tokens"),
+    ("DELETE", "/admin/audit/export-tokens/{id}"),
     ("GET", "/admin/usage"),
 ];
 
@@ -301,6 +304,7 @@ async fn every_authenticated_route_holds_a_temporary_password_back() {
 const OTHER_ROUTES: &[(&str, &str)] = &[
     ("GET", "/health"),
     ("POST", "/hooks/{id}"),
+    ("GET", "/audit/export"),
     ("POST", "/gateways/slack/{id}"),
     ("POST", "/gateways/telegram/{id}"),
     ("POST", "/gateways/teams/{id}"),

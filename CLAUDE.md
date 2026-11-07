@@ -75,7 +75,8 @@ Repères à l'intérieur des crates :
   qu'il ne couvre pas : `conversation_summaries.rs`, ADR-145 ; la mémoire : `memory.rs`, recherche
   hybride `memory_search.rs`, vecteurs `memory_embeddings.rs`, ADR-074 ; journal d'audit
   chaîné : entrées à sceller, dernière place, sceaux posés, entrées relues dans l'ordre de
-  la chaîne : `audit_chain.rs`, ADR-178 ; fenêtres des
+  la chaîne : `audit_chain.rs`, ADR-178 ; jetons de son export vers le SIEM de
+  l'entreprise : `audit_export_tokens.rs`, ADR-181 ; fenêtres des
   limites d'authentification partagées : `rate_limits.rs`, ADR-088 ; avis à l'auteur
   d'une tâche planifiée ou d'une mission dont le run attend sa validation :
   `author_notices.rs`, ADR-082, ADR-091, et d'un déclencheur, ADR-111 ; missions terminées à annoncer :
@@ -263,6 +264,10 @@ Repères à l'intérieur des crates :
   (`verify.rs`), ancre lue (`anchor.rs`), ADR-178 ; vérification demandée par qui lit le
   journal de toute l'entreprise, contre ses ancres, tracée (`on_demand.rs`, ADR-179),
   deux à la fois par processus, une par entreprise (`places.rs`, ADR-180)),
+  `api/src/services/audit_export/` (journal d'audit lu par le SIEM de l'entreprise avec un
+  jeton, avant toute session : jetons faits, listés et retirés (`tokens.rs`), entrées
+  scellées lues page après page (`reading.rs`), route `routes/audit_export.rs`, jeton
+  porteur lu par `http/bearer.rs`, ADR-181),
   `api/src/services/skill_proposal_notice/` (propositions de l'agent annoncées par e-mail
   aux administrateurs des compétences, ADR-102),
   `api/src/services/policy_proposal_notice/` (autorisations proposées annoncées par e-mail

@@ -136,7 +136,8 @@ async fn record(
 /// such (ADR-054).
 fn resource_of(route: &str, id: &str) -> Option<(&'static str, Uuid)> {
     let id = id.parse().ok()?;
-    let collection = route.strip_prefix("/admin/")?.split('/').next()?;
+    // What precedes the identifier: one segment, or more (`audit/export-tokens`).
+    let collection = route.strip_prefix("/admin/")?.split("/{id}").next()?;
     let resource_type = match collection {
         "org-units" => "org_unit",
         "users" => "user",
@@ -151,6 +152,7 @@ fn resource_of(route: &str, id: &str) -> Option<(&'static str, Uuid)> {
         "skills" => "skill",
         "skill-cases" => "skill_eval_case",
         "skill-evaluations" => "skill_evaluation",
+        "audit/export-tokens" => "audit_export_token",
         _ => return None,
     };
     Some((resource_type, id))
@@ -191,6 +193,7 @@ mod tests {
             ("/admin/skill-cases/{id}", "skill_eval_case"),
             ("/admin/skills/{id}/evaluations", "skill"),
             ("/admin/skill-evaluations/{id}", "skill_evaluation"),
+            ("/admin/audit/export-tokens/{id}", "audit_export_token"),
         ] {
             assert_eq!(resource_of(route, ID), Some((resource_type, id)), "{route}");
         }
