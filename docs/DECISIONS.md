@@ -12103,3 +12103,106 @@ found`), même quand un lot suivant échoue, avec leur ancre toute écrite :
       nouveaux ;
     - `apps/web/e2e/inbound-hooks.spec.ts` lit l'issue de la copie dans la région
       d'état.
+
+## ADR-183 — Provisionnement des comptes par SCIM 2.0 : jetons, lecture et création (lot 53a)
+
+- **Statut** : accepté (2026-11-07).
+- **Contexte** : une entreprise gère ses collaborateurs dans son fournisseur d'identité
+  (Microsoft Entra ID, Okta…). La connexion par ce fournisseur existait (ADR-063), et la
+  création d'un compte à la première connexion aussi (ADR-067). Il manquait le
+  provisionnement : le fournisseur crée lui-même les comptes, avant toute connexion,
+  et les désactive au départ d'une personne. Le standard est SCIM 2.0 (RFC 7643,
+  RFC 7644). La feuille de route le marquait 🔜 (« Conformité »).
+- **Décision** :
+  - **un jeton SCIM par fournisseur**. Il est fait, listé et retiré dans
+    l'administration par qui gère les comptes de toute l'entreprise (`user:manage`),
+    puisqu'il en détient le pouvoir : aucune permission nouvelle. Comme le jeton
+    d'export (ADR-181) :
+    - préfixe `msc_`, 256 bits, empreinte SHA-256 seule gardée, secret montré une fois,
+      jamais journalisé ni audité ; cinq au plus, nommés ;
+    - leur fabrication et leur retrait sont audités, avec leur nom ;
+    - avant toute session, l'entreprise d'un jeton se cherche par
+      `auth_scim_token`, si l'entreprise est active ;
+    - l'usage est noté dans la transaction de la requête : un jeton retiré pendant une
+      requête n'atteint plus rien ;
+    - la réponse donne l'adresse SCIM à remettre au fournisseur
+      (`<origine>/api/scim/v2`) ;
+  - **les jetons des autres systèmes partagent leur code** : table par sorte
+    (`TokenTable`, `repositories/bearer_tokens.rs`), sorte décrite une fois
+    (`TokenKind`, `services/bearer_tokens.rs`), types du contrat communs
+    (`BearerTokenView`, `BearerTokenCreated`, `NewBearerToken`). L'export du journal
+    d'audit en est la première sorte, sans changement de comportement ;
+  - **ce que SCIM offre dans ce lot** :
+    - `GET /scim/v2/ServiceProviderConfig` ;
+    - `GET /scim/v2/Users`, page après page dans l'ordre de création (`startIndex` à
+      partir de 1, `count` de 200 au plus), ou filtré par `userName eq "…"` (adresse,
+      sans casse) ou `externalId eq "…"` (exactement). Tout autre filtre est refusé
+      (`invalidFilter`) plutôt que lu approximativement : il désignerait le mauvais
+      compte ;
+    - `GET /scim/v2/Users/{id}` ;
+    - `POST /scim/v2/Users`.
+
+    Le fournisseur voit tous les comptes de l'entreprise, ceux créés par
+    l'administration compris : c'est ainsi qu'il les rapproche des siens. Un compte
+    invité est `active` ; seul un compte désactivé ne l'est pas ;
+
+  - **un compte créé par SCIM** :
+    - l'adresse (`userName`, une adresse e-mail, en minuscules) ;
+    - un nom (`displayName`, sinon `name.formatted`, sinon prénom et nom, sinon la
+      partie locale de l'adresse) ;
+    - la fonction (`title`) et l'identifiant du fournisseur (`externalId`, unique dans
+      l'entreprise, table `scim_accounts`) ;
+    - actif ou désactivé selon `active`, sans mot de passe, de la confidentialité par
+      défaut, dans aucune unité, avec le seul rôle de base sur ses propres données.
+
+    La personne se connecte par le fournisseur d'identité de l'entreprise (ADR-063), ou
+    choisit un mot de passe par « Mot de passe oublié » (ADR-028). Les règles de
+    l'administration s'appliquent : adresse unique sur la plateforme, jamais dans un
+    domaine qu'une autre entreprise a prouvé (ADR-069). La création se fait sous le
+    verrou d'administration de l'entreprise. Elle est auditée au nom de la plateforme
+    (`system`, `via: scim`, identifiant du jeton) ;
+
+  - **un corps SCIM lu avec souplesse**, comme SCIM le demande :
+    - noms d'attributs dans toute casse ;
+    - `active` en booléen ou en chaîne (« True », comme l'envoie Entra ID) ;
+    - attributs non gardés ignorés, jamais stockés ; un attribut gardé d'un mauvais type
+      est refusé ;
+    - `application/scim+json` ou `application/json`.
+
+    Contrairement aux corps de l'application, il n'est pas strict : un fournisseur
+    envoie tout ce que contient sa correspondance d'attributs, et un corps strict
+    refuserait ses comptes. Réponses et refus sont ceux de SCIM : `application/scim+json`,
+    `schemas`, `status`, `scimType` et un détail en français, `WWW-Authenticate` sur un 401 ;
+
+  - **exception CSRF par préfixe** : toute requête sous `/scim/v2/` est dispensée de
+    l'en-tête `X-Mimorya-Request` et du contrôle d'origine. Aucune route de ce préfixe
+    ne lit de session : le jeton seul prouve, et un navigateur ne peut pas l'envoyer
+    d'un autre site. Une session ne tient pas lieu de jeton. Les chemins voisins
+    (`/scim/v2` sans barre finale, `/admin/scim/…`) exigent toujours l'en-tête ;
+  - **un refus SCIM note l'usage du jeton** : un fournisseur refusé appelle toujours,
+    et l'administration le voit.
+- **Conséquences** :
+  - lot suivant : remplacement et modification (`PUT`, `PATCH`), désactivation et
+    suppression (`DELETE`) par SCIM, avec les effets d'une désactivation par
+    l'administration (sessions, liaisons, autorisations des serveurs MCP) ; changement
+    d'adresse ; puis l'écran des jetons. Les groupes SCIM viendront après ;
+  - données personnelles : l'identifiant du fournisseur est gardé avec le compte et
+    supprimé avec lui ;
+  - tests :
+    - `crates/api/tests/scim_tokens.rs` : jetons faits, montrés une fois, listés avec
+      l'adresse SCIM, cinq au plus, retirés, audités sans leur secret ; refusés à un
+      administrateur d'unité et à qui lit le journal ;
+    - `crates/api/tests/scim_users.rs` :
+      - compte créé comme l'envoie Entra ID, relu par identifiant, adresse et
+        `externalId`, base de rôle seule, création auditée ;
+      - pages ;
+      - refus SCIM qui ne créent rien ;
+    - `crates/api/tests/scim_isolation.rs` :
+      - un jeton n'atteint que son entreprise, rien tant qu'elle est suspendue ;
+      - domaine prouvé par une autre entreprise refusé ;
+      - une session ne prouve rien, et l'exception CSRF ne déborde pas du préfixe ;
+    - `crates/core/src/scim/` : filtres acceptés et refusés, compte lu ;
+    - `crates/api/src/contract/scim*.rs` : corps lu comme Entra ID l'envoie, ressource
+      écrite ;
+    - `plugins/csrf.rs` : `only_the_scim_prefix_goes_without_the_header` ;
+    - `crates/db/tests/definer_functions.rs` : `auth_scim_token`.

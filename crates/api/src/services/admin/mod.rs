@@ -126,6 +126,7 @@ pub use skills::{
 };
 pub use teams_gateway::{NewTeamsGatewayInput, declare_teams_gateway};
 pub use telegram_gateway::{NewTelegramGatewayInput, declare_telegram_gateway};
+pub(crate) use users::grant_member_role;
 pub use users::{NewUserInput, UserChanges, create_user, reset_password, update_user};
 
 use mimorya_core::DomainError;

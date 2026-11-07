@@ -4,6 +4,7 @@ pub mod bearer;
 pub mod error;
 pub mod extract;
 pub mod format;
+pub mod scim;
 
 pub use bearer::bearer;
 pub use error::{ApiError, ApiResult, Refusal};

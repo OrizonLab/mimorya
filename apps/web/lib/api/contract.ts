@@ -324,22 +324,11 @@ export type AuditEntry = { id: number, occurredAt: string, actorType: AuditActor
 export type AuditExport = { company: string, entries: Array<ExportedAuditEntry>, more: boolean, };
 
 /**
- * `POST /admin/audit/export-tokens`: the token made, and its secret, shown
- * this once.
- */
-export type AuditExportTokenCreated = { token: AuditExportTokenView, secret: string, };
-
-/**
- * A token as listed: never its secret.
- */
-export type AuditExportTokenView = { id: string, name: string, createdBy: string | null, createdAt: string, lastUsedAt: string | null, };
-
-/**
  * `GET /admin/audit/export-tokens`: the company's tokens, whether this
  * server seals the audit log, without which nothing is exported, the
  * address the SIEM reads, and the limits a new token meets.
  */
-export type AuditExportTokens = { tokens: Array<AuditExportTokenView>, sealing: boolean, exportUrl: string,
+export type AuditExportTokens = { tokens: Array<BearerTokenView>, sealing: boolean, exportUrl: string,
 /**
  * The tokens a company may keep.
  */
@@ -364,6 +353,16 @@ export type AuthOptions = {
  * An e-mail relay is configured: "forgotten password" can send a link.
  */
 passwordReset: boolean, };
+
+/**
+ * A token made, and its secret, shown this once.
+ */
+export type BearerTokenCreated = { token: BearerTokenView, secret: string, };
+
+/**
+ * A token as listed: never its secret.
+ */
+export type BearerTokenView = { id: string, name: string, createdBy: string | null, createdAt: string, lastUsedAt: string | null, };
 
 /**
  * As `skill_evaluations::CaseOutcome` stores it.
@@ -1770,11 +1769,12 @@ export type NewAccount = { email: string, displayName: string, jobTitle?: string
 clearance?: Sensitivity, };
 
 /**
- * Body of `POST /admin/audit/export-tokens`.
+ * Body of the making of a token (`POST /admin/audit/export-tokens`,
+ * `POST /admin/scim/tokens`).
  */
-export type NewAuditExportToken = {
+export type NewBearerToken = {
 /**
- * What the token is for: the SIEM that holds it.
+ * What the token is for: the system that holds it.
  */
 name: string, };
 
@@ -2506,6 +2506,78 @@ maxTasks: number, };
  * Body of `PATCH /scheduled-tasks/{id}`: what changes; the rest stays.
  */
 export type ScheduledTaskUpdate = { title?: string, instruction?: string, weekdays?: Array<number>, time?: string, timeZone?: string, enabled?: boolean, };
+
+export type ScimAuthenticationScheme = { type: string, name: string, description: string, primary: boolean, };
+
+export type ScimBulk = { supported: boolean, maxOperations: number, maxPayloadSize: number, };
+
+export type ScimConfigMeta = { resourceType: string, location: string, };
+
+export type ScimEmail = { value: string, type: string, primary: boolean, };
+
+/**
+ * A refusal, as SCIM writes it.
+ */
+export type ScimErrorBody = { schemas: Array<string>,
+/**
+ * The HTTP status, as a string.
+ */
+status: string, scimType?: string, detail: string, };
+
+export type ScimFilterSupport = { supported: boolean, maxResults: number, };
+
+export type ScimMeta = { resourceType: string, created: string, lastModified: string, location: string, };
+
+/**
+ * What this server supports (`GET /scim/v2/ServiceProviderConfig`).
+ */
+export type ScimServiceProviderConfig = { schemas: Array<string>, patch: ScimSupported, bulk: ScimBulk, filter: ScimFilterSupport, changePassword: ScimSupported, sort: ScimSupported, etag: ScimSupported, authenticationSchemes: Array<ScimAuthenticationScheme>, meta: ScimConfigMeta, };
+
+export type ScimSupported = { supported: boolean, };
+
+/**
+ * `GET /admin/scim/tokens`: the company's tokens, where the provider
+ * reaches SCIM, and the limits a new token meets.
+ */
+export type ScimTokens = { tokens: Array<BearerTokenView>,
+/**
+ * The SCIM base address to give the identity provider.
+ */
+scimUrl: string,
+/**
+ * The tokens a company may keep.
+ */
+maxTokens: number,
+/**
+ * The longest name a token takes, in characters.
+ */
+nameLength: number, };
+
+/**
+ * An account, as the provider reads it.
+ */
+export type ScimUser = { schemas: Array<string>, id: string, externalId?: string,
+/**
+ * The account's address.
+ */
+userName: string, displayName: string, title?: string, emails: Array<ScimEmail>,
+/**
+ * Neither disabled nor removed: an account still invited is active.
+ */
+active: boolean, meta: ScimMeta, };
+
+/**
+ * A page of accounts (`GET /scim/v2/Users`).
+ */
+export type ScimUserList = { schemas: Array<string>,
+/**
+ * Every account the request matches, on this page or not.
+ */
+totalResults: number,
+/**
+ * The place of the page's first account, from 1.
+ */
+startIndex: number, itemsPerPage: number, Resources: Array<ScimUser>, };
 
 /**
  * Highest sensitivity of the data an account may read.

@@ -44,7 +44,7 @@ Repères à l'intérieur des crates :
   d'une version, ADR-106), `core/src/identity_providers/` (fournisseurs d'identité : émetteur de
   chaque type, domaines, ce que prouve un jeton ou une assertion SAML, nom d'un compte
   créé, enregistrement DNS qui prouve un domaine (`domain_proof.rs`), ADR-063, ADR-067,
-  ADR-068, ADR-069), `core/src/schedule.rs` (heure d'une tâche planifiée, ADR-080),
+  ADR-068, ADR-069), `core/src/schedule.rs` (heure d'une tâche planifiée, ADR-080), `core/src/scim/` (SCIM 2.0 : filtres acceptés, ce qu'un compte envoyé par le fournisseur d'identité peut contenir et ce qui en est gardé, ADR-183),
   `core/src/conversation_summary.rs` (messages d'une conversation repliés dans son
   résumé, et quand, ADR-145 ; passes enchaînées et messages laissés hors de
   l'historique, ADR-149),
@@ -75,8 +75,10 @@ Repères à l'intérieur des crates :
   qu'il ne couvre pas : `conversation_summaries.rs`, ADR-145 ; la mémoire : `memory.rs`, recherche
   hybride `memory_search.rs`, vecteurs `memory_embeddings.rs`, ADR-074 ; journal d'audit
   chaîné : entrées à sceller, dernière place, sceaux posés, entrées relues dans l'ordre de
-  la chaîne : `audit_chain.rs`, ADR-178 ; jetons de son export vers le SIEM de
-  l'entreprise : `audit_export_tokens.rs`, ADR-181 ; fenêtres des
+  la chaîne : `audit_chain.rs`, ADR-178 ; jetons que d'autres systèmes détiennent de
+  l'entreprise, une table par sorte (export du journal vers son SIEM, ADR-181, SCIM,
+  ADR-183) : `bearer_tokens.rs` ; comptes tels que SCIM les lit et les crée, et
+  l'identifiant que leur donne le fournisseur : `scim_users.rs`, ADR-183 ; fenêtres des
   limites d'authentification partagées : `rate_limits.rs`, ADR-088 ; avis à l'auteur
   d'une tâche planifiée ou d'une mission dont le run attend sa validation :
   `author_notices.rs`, ADR-082, ADR-091, et d'un déclencheur, ADR-111 ; missions terminées à annoncer :
@@ -167,8 +169,8 @@ Repères à l'intérieur des crates :
 - `api/src/plugins/` (contexte de requête, limitation de débit (globale par processus ;
   d'authentification partagée par PostgreSQL, clés en HMAC sous une clé dérivée de la clé maître, `shared_limit.rs`, ADR-088, ADR-152), CSRF (sauf la réception
   des réponses SAML, ADR-068, l'envoi à un déclencheur, ADR-109, les événements de
-  Slack, ADR-125, les mises à jour de Telegram, ADR-133, et les activités du Bot
-  Framework, ADR-138), session,
+  Slack, ADR-125, les mises à jour de Telegram, ADR-133, les activités du Bot
+  Framework, ADR-138, et les requêtes SCIM, tout leur préfixe, ADR-183), session,
   en-têtes de sécurité, audit des modifications d'administration refusées, sur une ressource introuvable ou envoyant un identifiant inconnu,
   maintenance périodique : runs bloqués, liens expirés, absences terminées, demandes de
   validation échues et relances avant échéance, ADR-061, ADR-062, cartes des avis Teams
@@ -268,6 +270,15 @@ Repères à l'intérieur des crates :
   jeton, avant toute session : jetons faits, listés et retirés (`tokens.rs`), entrées
   scellées lues page après page (`reading.rs`), route `routes/audit_export.rs`, jeton
   porteur lu par `http/bearer.rs`, ADR-181),
+  `api/src/services/bearer_tokens.rs` (jetons que d'autres systèmes détiennent de
+  l'entreprise : une sorte (`TokenKind`) décrit sa table, sa permission, son préfixe et
+  ses mots ; faits, listés, retirés, entreprise trouvée avant toute session, usage noté,
+  ADR-181, ADR-183),
+  `api/src/services/scim/` (provisionnement SCIM 2.0 des comptes par le fournisseur
+  d'identité de l'entreprise : jetons (`tokens.rs`), entreprise et jeton d'une requête,
+  usage noté même refusée (`caller.rs`), comptes lus et créés (`users.rs`), routes
+  `routes/scim.rs` et `routes/admin/scim.rs`, refus, réponses et corps de SCIM
+  (`http/scim.rs`), corps lu souplement (`contract/scim_body.rs`), ADR-183),
   `api/src/services/skill_proposal_notice/` (propositions de l'agent annoncées par e-mail
   aux administrateurs des compétences, ADR-102),
   `api/src/services/policy_proposal_notice/` (autorisations proposées annoncées par e-mail
@@ -536,7 +547,7 @@ Avant chaque commit : `pnpm check && pnpm test:int` doivent passer.
    `access.context()` et vérifie la permission (`require`) ou la propriété de la
    ressource côté serveur ; une ressource hors périmètre répond 404. Les requêtes
    modifiantes exigent l'en-tête `X-Mimorya-Request: 1` et, si le navigateur la donne,
-   l'origine de l'application. Cinq en sont dispensées, de l'un comme de l'autre : la
+   l'origine de l'application. Six en sont dispensées, de l'un comme de l'autre : la
    réception des réponses SAML (`POST /api/auth/saml/acs`, ADR-068), que le fournisseur
    poste depuis son propre site, seules la liant au navigateur la tentative scellée dans
    son cookie, la demande qu'elle attend et la signature de l'assertion ; l'envoi d'un
@@ -547,8 +558,10 @@ Avant chaque commit : `pnpm check && pnpm test:int` doivent passer.
    envoie au bot d'une entreprise (`POST /api/gateways/telegram/{id}`, chemin exact,
    ADR-133), que le secret de son webhook seul prouve ; et les activités que le Bot
    Framework envoie au bot Teams d'une entreprise (`POST /api/gateways/teams/{id}`,
-   chemin exact, ADR-138), que le jeton signé par Microsoft seul prouve. Aucune autre
-   exception sans ADR ;
+   chemin exact, ADR-138), que le jeton signé par Microsoft seul prouve ; et les requêtes
+   que le fournisseur d'identité d'une entreprise envoie par SCIM (tout le préfixe
+   `/api/scim/v2/`, ADR-183), que son jeton seul prouve, aucune route de ce préfixe ne
+   lisant de session. Aucune autre exception sans ADR ;
    les tests `only_the_saml_reception_goes_without_the_header`
    (`crates/api/tests/auth.rs`), `only_a_delivery_goes_without_the_header`
    (`crates/api/tests/inbound_hook_deliveries.rs`),
@@ -557,7 +570,10 @@ Avant chaque commit : `pnpm check && pnpm test:int` doivent passer.
    `only_a_bot_s_updates_go_without_the_header`
    (`crates/api/tests/telegram_gateway_updates.rs`) et
    `only_a_teams_activity_goes_without_the_header`
-   (`crates/api/tests/teams_gateway_activities.rs`) tentent de les contourner.
+   (`crates/api/tests/teams_gateway_activities.rs`),
+   `only_the_scim_prefix_goes_without_the_header` (`plugins/csrf.rs`) et
+   `a_session_proves_nothing_to_scim` (`crates/api/tests/scim_isolation.rs`) tentent de
+   les contourner.
 
 ## Règles de sécurité (non négociables)
 

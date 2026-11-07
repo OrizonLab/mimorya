@@ -6,6 +6,7 @@ mod approval_routing;
 mod assignments;
 mod audit_chain;
 mod audit_export;
+mod bearer_tokens;
 mod connectors;
 mod domain_proofs;
 mod embedding;
@@ -25,6 +26,7 @@ mod policy_proposals;
 mod rest_connectors;
 mod rest_import;
 mod roles;
+mod scim;
 mod skill_eval_cases;
 mod skill_evaluations;
 mod skills;
@@ -40,9 +42,8 @@ pub use audit_chain::{
     AuditAnchorCheck, AuditAnchorFound, AuditChainBreak, AuditChainCheck, AuditChainPlace,
     AuditChainVerification,
 };
-pub use audit_export::{
-    AuditExportTokenCreated, AuditExportTokenView, AuditExportTokens, NewAuditExportToken,
-};
+pub use audit_export::AuditExportTokens;
+pub use bearer_tokens::{BearerTokenCreated, BearerTokenView, NewBearerToken};
 pub use connectors::{
     ConnectorDetails, ConnectorStatus, ConnectorTest, ConnectorTrial, ConnectorType,
     ConnectorUpdate, ConnectorView, Connectors, DelegablePermission, McpEndpoint, NewConnector,
@@ -81,6 +82,7 @@ pub use rest_connectors::{
     RestParameter,
 };
 pub use rest_import::{OpenApiDescription, RestImport};
+pub use scim::ScimTokens;
 
 pub use organization::{
     NewOrgUnit, OrgPerson, OrgUnitType, OrgUnitUpdate, OrgUnitView, Organization,

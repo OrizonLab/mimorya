@@ -6,11 +6,11 @@ import {
   api,
   useAction,
   useApiData,
-  type AuditExportTokenCreated,
+  type BearerTokenCreated,
   type AuditExportTokens,
-  type AuditExportTokenView,
+  type BearerTokenView,
   type Done,
-  type NewAuditExportToken,
+  type NewBearerToken,
 } from '@/lib/api';
 import { formatDate } from '@/lib/format';
 import { ExportTokenNotice } from './export-token-notice';
@@ -32,7 +32,7 @@ const TOKENS = '/admin/audit/export-tokens';
 export function ExportTokens({ onChanged }: { onChanged?: () => void }) {
   const state = useApiData<AuditExportTokens>(TOKENS);
   const [name, setName] = useState('');
-  const [made, setMade] = useState<AuditExportTokenCreated | null>(null);
+  const [made, setMade] = useState<BearerTokenCreated | null>(null);
   const action = useAction();
   const titleRef = useRef<HTMLHeadingElement>(null);
   // What had the focus when an attempt began, until the list is read again.
@@ -60,8 +60,8 @@ export function ExportTokens({ onChanged }: { onChanged?: () => void }) {
 
   async function create() {
     const before = document.activeElement;
-    const body = { name } satisfies NewAuditExportToken;
-    const created = await action.run(() => api.post<AuditExportTokenCreated>(TOKENS, body));
+    const body = { name } satisfies NewBearerToken;
+    const created = await action.run(() => api.post<BearerTokenCreated>(TOKENS, body));
     readAgain(before);
     if (created) {
       setMade(created);
@@ -70,7 +70,7 @@ export function ExportTokens({ onChanged }: { onChanged?: () => void }) {
     }
   }
 
-  async function remove(token: AuditExportTokenView) {
+  async function remove(token: BearerTokenView) {
     const asked = `Retirer le jeton « ${token.name} » ? Le SIEM qui le détient ne lira plus rien.`;
     if (!window.confirm(asked)) return;
     const before = document.activeElement;

@@ -32,6 +32,7 @@ mod run_events;
 mod runs;
 mod saml;
 mod scheduled_tasks;
+mod scim;
 mod sso;
 
 use axum::Router;
@@ -43,6 +44,7 @@ use crate::http::ApiError;
 pub use gateways::{SLACK_EVENTS_PREFIX, TEAMS_ACTIVITIES_PREFIX, TELEGRAM_UPDATES_PREFIX};
 pub use hooks::DELIVERY_PREFIX as HOOK_DELIVERY_PREFIX;
 pub use saml::ACS_ROUTE as SAML_ACS_ROUTE;
+pub use scim::PREFIX as SCIM_PREFIX;
 
 pub fn router(state: &AppState) -> Router<AppState> {
     Router::new()
@@ -67,6 +69,7 @@ pub fn router(state: &AppState) -> Router<AppState> {
         .merge(inbound_hooks::routes())
         .merge(hooks::routes())
         .merge(audit_export::routes())
+        .merge(scim::routes())
         .merge(gateways::routes())
         .merge(missions::routes())
         .merge(admin::routes(state))
