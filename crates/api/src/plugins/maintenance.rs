@@ -76,13 +76,10 @@ pub fn spawn_maintenance(services: AppState) -> JoinHandle<()> {
     tokio::spawn(async move {
         let (db, bus) = (&services.db, &services.bus);
         let audit_key = server_key(&services.config);
-        // Each company's last seal, remembered and logged from the start.
+        // Each company's last seal, remembered and logged from the start,
+        // read again at each pass until every chain was read.
         let sealed_heads = SealedHeads::default();
-        if audit_key.is_some()
-            && let Err(error) = sealed_heads.load(db).await
-        {
-            tracing::warn!(error = %error, "Audit chains not read at startup");
-        }
+        let mut heads_read = false;
         // Ticks at startup, then every `SWEEP_INTERVAL` from it: the uptimes
         // the sweeps wait for fall on ticks.
         let started = tokio::time::Instant::now();
@@ -112,10 +109,16 @@ pub fn spawn_maintenance(services: AppState) -> JoinHandle<()> {
             // A person who stopped running keeps no session here (ADR-174).
             services.connectors.release_idle().await;
             // Each company's sealed chain logged as it ends (ADR-178).
-            if let Some(key) = &audit_key
-                && let Err(error) = seal_audit_log(db, key, &sealed_heads).await
-            {
-                tracing::warn!(error = %error, "Audit log sealing failed");
+            if let Some(key) = &audit_key {
+                if !heads_read {
+                    match sealed_heads.load(db).await {
+                        Ok(()) => heads_read = true,
+                        Err(error) => tracing::warn!(error = %error, "Audit chains not all read"),
+                    }
+                }
+                if let Err(error) = seal_audit_log(db, key, &sealed_heads).await {
+                    tracing::warn!(error = %error, "Audit log sealing failed");
+                }
             }
             if sweeps_stale_runs(started.elapsed()) {
                 match sweep_stale_runs(db, bus, STALE_AFTER).await {

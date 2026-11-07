@@ -333,8 +333,8 @@ Repères à l'intérieur des crates :
   `domain_proofs.rs`),
   `api/src/services/provisioning/` et `api/src/bin/admin/` (commandes d'exploitation :
   migrations, création d'une entreprise réelle et de son administrateur, ADR-033,
-  vérification du journal d'audit scellé, `verify.rs`, et ses ancres, `anchor.rs`,
-  ADR-178),
+  vérification du journal d'audit scellé, `verify.rs`, ses ancres, `anchor.rs`, et ce
+  qu'elle dit à l'exploitant, `report.rs`, ADR-178),
   `api/src/mail/` (envoi SMTP), `api/src/secrets/` (chiffrement AES-256-GCM des secrets),
   `api/tests/` (intégration, harnais dans `support/`, dont les fournisseurs d'identité
   simulés, OpenID Connect (qui joue aussi Google, ADR-121) et SAML).

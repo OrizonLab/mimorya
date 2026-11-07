@@ -69,6 +69,26 @@ mod tests {
     }
 
     #[test]
+    fn reads_an_anchor_as_the_sealing_logs_it() {
+        use mimorya_api::services::audit_chain::anchor_text;
+        use mimorya_db::repositories::audit_chain::ChainHead;
+        let company = uuid::Uuid::from_u128(0x0000_0000_0000_4000_8000_0000_0000_00ab);
+        let head = ChainHead {
+            chain_seq: 1234,
+            chain_hash: (0..32).collect(),
+        };
+        let logged = anchor_text(company, &head);
+        assert_eq!(
+            Anchor::parse(&logged),
+            Ok(Anchor {
+                company: company.to_string(),
+                seq: 1234,
+                seal: (0..32).collect(),
+            })
+        );
+    }
+
+    #[test]
     fn refuses_what_is_not_one() {
         let seal = "ab".repeat(32);
         for wrong in [

@@ -16,6 +16,9 @@ pub use heads::{ChainMoved, SealedHeads};
 pub use seal::{AUDIT_CHAIN_SWEEP, seal_audit_log, seal_company};
 pub use verify::{AnchorFound, ChainBreak, ChainReport, LISTED_BREAKS, verify_company};
 
+use mimorya_db::repositories::audit_chain::ChainHead;
+use uuid::Uuid;
+
 use crate::config::{AppConfig, Environment};
 
 /// The key that seals this server's audit log: none without a master key,
@@ -39,6 +42,12 @@ pub fn server_key(config: &AppConfig) -> Option<ChainKey> {
 /// A seal as written in the logs and to the operator.
 pub fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+/// An anchor as the sealing logs it, and as `mimorya-admin verify-audit
+/// --anchor` takes it: the company, the place and the seal there.
+pub fn anchor_text(tenant_id: Uuid, head: &ChainHead) -> String {
+    format!("{tenant_id}:{}:{}", head.chain_seq, hex(&head.chain_hash))
 }
 
 #[cfg(test)]

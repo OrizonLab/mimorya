@@ -17,7 +17,7 @@ use mimorya_db::repositories::audit_chain::{
 use sqlx::PgConnection;
 use uuid::Uuid;
 
-use super::hex;
+use super::anchor_text;
 
 /// The chain of a company no longer holds, at the place `seq`, the seal the
 /// sealing set or found there.
@@ -53,25 +53,36 @@ impl SealedHeads {
         heads.insert(tenant_id, head);
     }
 
-    /// Remembers, and logs, the last seal of every company, as the process
-    /// starts: each logged is an anchor. A company that cannot be read is
-    /// left out, and logged.
+    /// Remembers, and logs, the last seal of every company not remembered
+    /// yet, as the process starts: each logged is an anchor. A company that
+    /// cannot be read is logged and left for the next call, which the
+    /// failure asks for; one remembered already is never read again, so
+    /// that a chain changed meanwhile is not taken for its own.
     pub async fn load(&self, db: &Database) -> anyhow::Result<()> {
+        let mut unread = 0;
         for tenant_id in audit_log_tenants(db.pool(), false).await? {
-            let mut tx = db.begin(tenant_id).await?;
-            match audit_chain_head(&mut tx).await {
+            if self.get(tenant_id).is_some() {
+                continue;
+            }
+            match last_seal(db, tenant_id).await {
                 Ok(Some(head)) => {
-                    let (seq, seal) = (head.chain_seq, hex(&head.chain_hash));
-                    tracing::info!(tenant_id = %tenant_id, seq, head = %seal, "Audit chain found");
+                    let anchor = anchor_text(tenant_id, &head);
+                    tracing::info!(tenant_id = %tenant_id, anchor = %anchor, "Audit chain found");
                     self.remember(tenant_id, head);
                 }
                 Ok(None) => {}
-                Err(error) => tracing::warn!(
-                    tenant_id = %tenant_id,
-                    error = %error,
-                    "Audit chain not read at startup"
-                ),
+                Err(error) => {
+                    unread += 1;
+                    tracing::warn!(
+                        tenant_id = %tenant_id,
+                        error = format!("{error:#}"),
+                        "Audit chain not read at startup"
+                    );
+                }
             }
+        }
+        if unread > 0 {
+            anyhow::bail!("{unread} audit chain(s) not read");
         }
         Ok(())
     }
@@ -95,4 +106,9 @@ impl SealedHeads {
         }
         Ok(())
     }
+}
+
+async fn last_seal(db: &Database, tenant_id: Uuid) -> anyhow::Result<Option<ChainHead>> {
+    let mut tx = db.begin(tenant_id).await?;
+    Ok(audit_chain_head(&mut tx).await?)
 }

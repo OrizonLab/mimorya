@@ -706,11 +706,12 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   - le processus qui scelle retient, pour chaque entreprise, le dernier sceau qu'il a
     posé ou trouvé à son démarrage, et refuse de sceller une chaîne qui ne le porte plus
     à sa place (erreur journalisée) ;
-  - chaque sceau posé ou trouvé est journalisé (`Audit log sealed`, `Audit chain
-found` : entreprise, place, sceau). `mimorya-admin verify-audit --anchor
-<sigle>:<place>:<sceau>` vérifie que la chaîne porte encore ce sceau à cette place.
+  - le dernier sceau posé dans chaque entreprise à chaque passage, et celui trouvé au
+    démarrage, sont journalisés au niveau `info` avec leur ancre toute écrite
+    (`anchor=<entreprise>:<place>:<sceau>`). `mimorya-admin verify-audit --anchor`, qui
+    la prend telle quelle, vérifie que la chaîne porte encore ce sceau à cette place.
 - `mimorya-admin verify-audit` recalcule chaque chaîne, compte et nomme ses ruptures
-  (entrée modifiée, place manquante) et vérifie les ancres données ; il échoue si une
+  (entrée modifiée, chaque place manquante) et vérifie les ancres données ; il échoue si une
   chaîne est rompue ou si une ancre n'est pas retrouvée. Les entrées de moins d'une
   minute, et toutes celles d'un serveur sans clé maître (signalé au démarrage en
   production), ne sont pas encore scellées.

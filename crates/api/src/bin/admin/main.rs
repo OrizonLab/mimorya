@@ -6,6 +6,7 @@
 
 mod anchor;
 mod args;
+mod report;
 mod verify;
 
 use std::process::ExitCode;

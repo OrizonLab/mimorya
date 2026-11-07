@@ -11623,21 +11623,31 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       posé, ou trouvé et journalisé à son démarrage (`Audit chain found`,
       `services/audit_chain/heads.rs`) ; avant chaque lot, sous le verrou de la chaîne,
       ce sceau doit être encore à sa place. Sinon la chaîne a reculé derrière lui : il
-      refuse de sceller cette entreprise et le journalise comme une erreur. Un
-      processus ne retient que depuis son démarrage ;
-    - chaque sceau posé ou trouvé est **journalisé** (`Audit log sealed`, `Audit chain
-found` : entreprise, place, sceau en hexadécimal), même quand un lot suivant
-      échoue. Gardée hors de la base, chacune de ces lignes est une ancre :
-      `mimorya-admin verify-audit --anchor <sigle>:<place>:<sceau>` (autant que voulu)
-      vérifie que la chaîne porte encore ce sceau à cette place ;
+      refuse de sceller cette entreprise et le journalise comme une erreur. Cette garde
+      joue quand l'entreprise a des entrées à sceller : une fin de chaîne retirée est
+      refusée à l'arrivée de l'entrée suivante. Un processus ne retient que depuis son
+      démarrage ; une entreprise qu'il n'a pu lire alors est relue au passage suivant,
+      et une entreprise déjà retenue n'est jamais relue, pour qu'une chaîne changée
+      entre-temps ne soit pas prise pour la sienne ;
+    - le dernier sceau posé dans chaque entreprise à chaque passage, et celui trouvé au
+      démarrage, sont **journalisés** au niveau `info` (`Audit log sealed`, `Audit chain
+found`), même quand un lot suivant échoue, avec leur ancre toute écrite :
+      `anchor=<entreprise>:<place>:<sceau>`, l'entreprise par son identifiant, le sceau
+      en hexadécimal (`audit_chain::anchor_text`). Gardée hors de la base, chacune de ces
+      lignes se donne telle quelle à `mimorya-admin verify-audit --anchor` (autant que
+      voulu ; l'entreprise peut aussi y être nommée par son sigle), qui vérifie que la
+      chaîne porte encore ce sceau à cette place ; une entreprise nommée par son
+      identifiant est vérifiée même s'il ne reste aucune entrée dans son journal ;
   - **la vérification** (`services/audit_chain/verify.rs`) relit les entrées scellées
     d'une entreprise dans l'ordre de la chaîne, dans un même instantané, et recalcule
     chaque sceau à partir de celui enregistré avant lui. Une place sans entrée
     (`Missing`, entrée supprimée) ou une entrée qui n'est plus celle qui a été scellée
     (`Altered` : contenu, place ou sceau changés, place tenue deux fois) rompt la chaîne
-    là ; la vérification continue à partir du sceau enregistré, compte chaque rupture et
-    nomme les vingt premières. L'entrée qui suit une place manquante ne peut pas être
-    vérifiée : son sceau a été calculé avec celui de l'entrée manquante. Elle compte les
+    là ; la vérification continue à partir du sceau enregistré, compte chaque rupture,
+    chaque place manquante pour une, et nomme les vingt premières, des places manquantes
+    qui se suivent comme une seule plage. L'entrée qui suit des places manquantes ne
+    peut pas être vérifiée : son sceau a été calculé avec celui de la dernière d'entre
+    elles. Elle compte les
     entrées encore sans sceau et dit, pour chaque ancre, si la chaîne la porte, porte un
     autre sceau à sa place, ou ne va pas jusque-là. L'exploitant la lance par
     `mimorya-admin verify-audit` (toutes les entreprises, `DATABASE_APP_URL` et la clé
@@ -11655,6 +11665,12 @@ found` : entreprise, place, sceau en hexadécimal), même quand un lot suivant
     qu'une entrée n'a pas changé depuis son sceau, pas qu'elle a été écrite par
     l'application : qui peut écrire dans la base peut y ajouter une entrée, que la
     maintenance scellera ;
+  - une restauration de sauvegarde (ADR-166) ramène les chaînes à leur état d'alors :
+    les ancres journalisées depuis la sauvegarde ne sont plus retrouvées (une autre
+    entrée à leur place, ou rien), et un processus qui les retenait refuse de sceller
+    jusqu'à son redémarrage. Après une restauration, l'exploitant redémarre les
+    processus et vérifie avec les ancres d'avant la sauvegarde. De même, `mimorya-seed
+--reset` recrée l'entreprise de démonstration et sa chaîne ;
   - changer de clé maître casse la vérification des chaînes scellées sous l'ancienne,
     comme il rend illisibles les secrets scellés (ADR-024) : une rotation de clé devra
     les reprendre ;
@@ -11692,11 +11708,18 @@ found` : entreprise, place, sceau en hexadécimal), même quand un lot suivant
       compté), une action, des métadonnées, une date ou une adresse changées, deux
       places échangées, un sceau réécrit rompent la chaîne à leur place ; un sceau ni
       changé ni retiré par le propriétaire tant qu'il ne lève pas la règle ; une entrée
-      supprimée laisse sa place manquante, les suivantes vérifiées ; une fin de chaîne
-      retirée, ou des sceaux retirés puis posés à nouveau sur une entrée changée,
-      refusés par le processus qui scellait ou qui les a trouvés à son démarrage, et
-      montrés par l'ancre journalisée (absente, ou un autre sceau à sa place) ; la
+      supprimée laisse sa place manquante, les suivantes vérifiées, plusieurs à la
+      suite (jusqu'à la première place) comptées chacune, dites en une plage ; une
+      entreprise dont le journal est scellé reste supprimée avec sa chaîne ; la
       maintenance d'un serveur avec une clé maître scelle le journal ;
-    - `crates/api/src/bin/admin/` : la commande et ses ancres lues, ce qu'elle dit d'une
-      chaîne intacte ou rompue et de ses ancres, son échec si une chaîne est rompue, une
-      ancre non retrouvée ou une entreprise non vérifiée, son refus sans clé maître.
+    - `crates/api/tests/audit_chain_guards.rs` : une fin de chaîne retirée, ou des
+      sceaux retirés puis posés à nouveau sur une entrée changée, refusés par le
+      processus qui scellait ou qui les a trouvés à son démarrage, et montrés par
+      l'ancre journalisée (absente, ou un autre sceau à sa place) ; une chaîne saine
+      jamais refusée : scellée tour à tour par deux processus, par un processus démarré
+      depuis, ou dans une entreprise venue après le démarrage ;
+    - `crates/api/src/bin/admin/` : la commande et ses ancres lues, une ancre lue telle
+      que le scellement la journalise, une ancre rapportée à son entreprise par
+      identifiant ou par sigle, ce qu'elle dit d'une chaîne intacte ou rompue (des
+      places manquantes en plage) et de ses ancres, son échec si une chaîne est rompue,
+      une ancre non retrouvée ou une entreprise non vérifiée, son refus sans clé maître.

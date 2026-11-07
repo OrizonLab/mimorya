@@ -2,111 +2,22 @@
 //! of a server with a master key, each company in its own chain, verified
 //! from its first place. An entry the database's owner changes or removes,
 //! a seal rewritten, two places swapped or another key break the chain
-//! where they are, and every break is counted. A seal is never changed nor
-//! taken away, even by the owner, unless they drop that rule first; seals
-//! taken away and set again, or entries removed from the chain's end, are
-//! refused by the sealing that remembers the last seal, and shown by an
-//! anchor logged outside the database.
+//! where they are, and every break is counted, each missing place one. A
+//! seal is never changed nor taken away, even by the owner, unless they
+//! drop that rule first; a company whose log is sealed is still deleted.
+//! What the database alone cannot show is in `audit_chain_guards.rs`.
 
 mod support;
 
 use std::time::Duration;
 
-use mimorya_api::secrets::{PUBLIC_TEST_MASTER_KEYS, SecretCipher};
-use mimorya_api::services::audit_chain::{
-    AnchorFound, ChainBreak, ChainKey, ChainMoved, ChainReport, SealedHeads, seal_audit_log,
-    seal_company, verify_company,
+use mimorya_api::secrets::PUBLIC_TEST_MASTER_KEYS;
+use mimorya_api::services::audit_chain::{ChainBreak, SealedHeads, seal_audit_log, verify_company};
+use support::audit_chain::{
+    altered, append, as_owner, as_owner_over_the_seals, chain, first_break, intact, key, seal,
+    verify,
 };
-use mimorya_db::Database;
 use support::{TestApi, companies, owner_url};
-use uuid::Uuid;
-
-fn key(index: usize) -> ChainKey {
-    ChainKey::of(&SecretCipher::from_base64(PUBLIC_TEST_MASTER_KEYS[index]).unwrap()).unwrap()
-}
-
-async fn append(db: &Database, tenant_id: Uuid, action: &str) -> i64 {
-    let mut tx = db.begin(tenant_id).await.unwrap();
-    let id = sqlx::query_scalar(
-        "insert into audit_log (tenant_id, actor_type, action, outcome, metadata, ip) \
-         values ($1, 'user', $2, 'success', '{\"détail\": [1, 2.50, null]}', '192.0.2.7') \
-         returning id",
-    )
-    .bind(tenant_id)
-    .bind(action)
-    .fetch_one(&mut *tx)
-    .await
-    .unwrap();
-    tx.commit().await.unwrap();
-    id
-}
-
-/// The company's sealed entries, in the chain's order: entry and place.
-async fn chain(db: &Database, tenant_id: Uuid) -> Vec<(i64, i64)> {
-    let mut tx = db.begin(tenant_id).await.unwrap();
-    sqlx::query_as(
-        "select id, chain_seq from audit_log where chain_seq is not null order by chain_seq",
-    )
-    .fetch_all(&mut *tx)
-    .await
-    .unwrap()
-}
-
-/// Runs `statement` on the entry `id` as the database's owner, who is not
-/// held by the application's rights.
-async fn as_owner(statement: &str, id: i64) -> sqlx::Result<()> {
-    let owner = sqlx::PgPool::connect(owner_url()).await.unwrap();
-    let done = sqlx::query(statement).bind(id).execute(&owner).await;
-    owner.close().await;
-    done.map(|_| ())
-}
-
-/// The same, the rule that keeps the seals dropped for the statement, as
-/// an owner set on changing them would.
-async fn as_owner_over_the_seals(statement: &str, id: i64) {
-    let owner = sqlx::PgPool::connect(owner_url()).await.unwrap();
-    let mut tx = owner.begin().await.unwrap();
-    sqlx::query("alter table audit_log disable trigger audit_log_keep_seals")
-        .execute(&mut *tx)
-        .await
-        .unwrap();
-    sqlx::query(statement)
-        .bind(id)
-        .execute(&mut *tx)
-        .await
-        .unwrap();
-    sqlx::query("alter table audit_log enable trigger audit_log_keep_seals")
-        .execute(&mut *tx)
-        .await
-        .unwrap();
-    tx.commit().await.unwrap();
-    owner.close().await;
-}
-
-async fn seal(db: &Database, heads: &SealedHeads, tenant_id: Uuid) -> anyhow::Result<usize> {
-    seal_company(db, &key(0), heads, tenant_id).await
-}
-
-async fn verify(db: &Database, tenant_id: Uuid) -> ChainReport {
-    verify_company(db, &key(0), tenant_id, &[]).await.unwrap()
-}
-
-fn intact(report: &ChainReport, verified: i64) {
-    assert_eq!(report.broken, 0, "{report:?}");
-    assert_eq!(report.verified, verified, "{report:?}");
-    assert_eq!(
-        report.head.as_ref().map(|head| head.chain_seq),
-        Some(verified)
-    );
-}
-
-fn first_break(report: &ChainReport) -> Option<ChainBreak> {
-    report.breaks.first().cloned()
-}
-
-fn altered((entry_id, seq): (i64, i64)) -> Option<ChainBreak> {
-    Some(ChainBreak::Altered { seq, entry_id })
-}
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
@@ -258,103 +169,82 @@ async fn a_seal_is_never_changed_nor_taken_away_even_by_the_owner() {
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
-async fn an_entry_removed_breaks_at_its_place_and_the_end_shows_against_an_anchor() {
+async fn entries_removed_leave_each_place_missing_and_the_others_verified() {
     let api = TestApi::start().await;
     let db = &api.app.services.db;
     let company = companies::create(&api, "chaine-trouee", "jeanne@chaine-trouee.example").await;
-    for action in ["test.a", "test.b", "test.c"] {
+    for action in ["test.a", "test.b", "test.c", "test.d", "test.e", "test.f"] {
         append(db, company.tenant_id, action).await;
     }
-    let heads = SealedHeads::default();
-    seal(db, &heads, company.tenant_id).await.unwrap();
-    let places = chain(db, company.tenant_id).await;
-    let count = places.len() as i64;
-    let logged = verify(db, company.tenant_id).await.head.unwrap();
-
-    // The chain's end removed: what is left is intact, but the seal logged
-    // at the last place is no longer there.
-    let last = places[places.len() - 1].0;
-    as_owner("delete from audit_log where id = $1", last)
-        .await
-        .unwrap();
-    intact(&verify(db, company.tenant_id).await, count - 1);
-    let anchors = [logged.clone()];
-    let anchored = verify_company(db, &key(0), company.tenant_id, &anchors)
-        .await
-        .unwrap();
-    assert_eq!(anchored.anchors, [AnchorFound::Missing]);
-    assert!(!anchored.holds());
-    // The sealing that set it refuses to go on from a shorter chain.
-    append(db, company.tenant_id, "test.after").await;
-    let refused = seal(db, &heads, company.tenant_id).await.unwrap_err();
-    assert!(refused.is::<ChainMoved>(), "{refused:#}");
-    // A sealing that does not remember it seals the new entry at the
-    // removed one's place: the chain then holds another seal there.
     seal(db, &SealedHeads::default(), company.tenant_id)
         .await
         .unwrap();
-    intact(&verify(db, company.tenant_id).await, count);
-    let anchored = verify_company(db, &key(0), company.tenant_id, &anchors)
-        .await
-        .unwrap();
-    assert_eq!(anchored.anchors, [AnchorFound::Differs]);
+    let places = chain(db, company.tenant_id).await;
+    let count = places.len() as i64;
+    assert!(count > 6, "{places:?}");
 
-    // An entry in the middle removed: its place is missing, the next entry
+    // One entry in the middle removed: its place is missing, the next entry
     // cannot be checked, the others still are.
-    let (removed, seq) = places[1];
+    let (removed, seq) = places[2];
     as_owner("delete from audit_log where id = $1", removed)
         .await
         .unwrap();
     let report = verify(db, company.tenant_id).await;
-    assert_eq!(report.breaks, [ChainBreak::Missing { seq }]);
+    assert_eq!(report.breaks, [ChainBreak::Missing { from: seq, to: seq }]);
     assert_eq!((report.broken, report.verified), (1, count - 2));
+
+    // Two more removed one after the other: each place is counted, the
+    // range told once.
+    for (removed, _) in &places[3..5] {
+        as_owner("delete from audit_log where id = $1", *removed)
+            .await
+            .unwrap();
+    }
+    let report = verify(db, company.tenant_id).await;
+    let range = ChainBreak::Missing {
+        from: seq,
+        to: seq + 2,
+    };
+    assert_eq!((report.breaks, report.broken), (vec![range], 3));
+
+    // The first ones removed too: the chain is missing from its first place
+    // to the end of the range.
+    for (removed, _) in &places[..2] {
+        as_owner("delete from audit_log where id = $1", *removed)
+            .await
+            .unwrap();
+    }
+    let report = verify(db, company.tenant_id).await;
+    let from_the_start = ChainBreak::Missing {
+        from: 1,
+        to: seq + 2,
+    };
+    assert_eq!((report.breaks, report.broken), (vec![from_the_start], 5));
 }
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
-async fn seals_taken_away_then_set_again_show_against_the_seals_remembered_and_logged() {
+async fn a_company_whose_log_is_sealed_is_still_deleted() {
     let api = TestApi::start().await;
     let db = &api.app.services.db;
     let company =
-        companies::create(&api, "chaine-rescellee", "jeanne@chaine-rescellee.example").await;
-    for action in ["test.a", "test.b", "test.c"] {
-        append(db, company.tenant_id, action).await;
-    }
-    let heads = SealedHeads::default();
-    seal(db, &heads, company.tenant_id).await.unwrap();
-    let places = chain(db, company.tenant_id).await;
-    let logged = verify(db, company.tenant_id).await.head.unwrap();
-    // A process started since remembers the chain as it found it.
-    let restarted = SealedHeads::default();
-    restarted.load(db).await.unwrap();
-
-    // The owner takes every seal away, past the rule that keeps them, and
-    // changes an entry.
-    as_owner_over_the_seals(
-        "update audit_log set chain_seq = null, chain_hash = null \
-         where tenant_id = (select tenant_id from audit_log where id = $1)",
-        places[0].0,
-    )
-    .await;
-    let change = "update audit_log set action = 'test.falsifiée' where id = $1";
-    as_owner(change, places[1].0).await.unwrap();
-
-    // The sealing that set or found the seals refuses to seal again.
-    for remembered in [&heads, &restarted] {
-        let refused = seal(db, remembered, company.tenant_id).await.unwrap_err();
-        assert!(refused.is::<ChainMoved>(), "{refused:#}");
-        assert_eq!(chain(db, company.tenant_id).await, []);
-    }
-    // One that remembers nothing seals again: the database alone shows an
-    // intact chain, the seal logged before does not hold.
+        companies::create(&api, "chaine-supprimee", "jeanne@chaine-supprimee.example").await;
+    append(db, company.tenant_id, "test.sealed").await;
     seal(db, &SealedHeads::default(), company.tenant_id)
         .await
         .unwrap();
-    intact(&verify(db, company.tenant_id).await, places.len() as i64);
-    let anchored = verify_company(db, &key(0), company.tenant_id, &[logged])
+    assert!(!chain(db, company.tenant_id).await.is_empty());
+
+    // The rule that keeps the seals bears on their columns only: the
+    // company's deletion takes its chain with it.
+    let owner = sqlx::PgPool::connect(owner_url()).await.unwrap();
+    sqlx::query("delete from tenants where id = $1")
+        .bind(company.tenant_id)
+        .execute(&owner)
         .await
         .unwrap();
-    assert_eq!(anchored.anchors, [AnchorFound::Differs]);
+    owner.close().await;
+    assert!(chain(db, company.tenant_id).await.is_empty());
 }
 
 #[tokio::test]

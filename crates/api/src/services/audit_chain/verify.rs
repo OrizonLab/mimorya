@@ -4,8 +4,9 @@
 //! entry (an entry removed) or an entry that is not as sealed (its content,
 //! place or seal changed, or a place held twice) breaks the chain there;
 //! the verification goes on from the seal recorded, so that every break is
-//! counted, the first ones listed. The entry that follows a missing place
-//! cannot be checked: its seal was computed from the missing one's.
+//! counted, each missing place one, the first ones listed (missing places
+//! that follow each other as one range). The entry that follows missing
+//! places cannot be checked: its seal was computed from the last one's.
 //!
 //! What the database alone cannot show (seals taken away then set again by
 //! the sealing on altered entries, entries removed from the chain's end),
@@ -29,8 +30,8 @@ pub const LISTED_BREAKS: usize = 20;
 /// Where a chain breaks.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ChainBreak {
-    /// No entry holds the place `seq`: an entry was removed.
-    Missing { seq: i64 },
+    /// No entry holds the places `from` to `to`: entries were removed.
+    Missing { from: i64, to: i64 },
     /// The entry `entry_id`, at the place `seq`, is not as sealed.
     Altered { seq: i64, entry_id: i64 },
 }
@@ -57,7 +58,7 @@ pub struct ChainReport {
     pub head: Option<ChainHead>,
     /// The first breaks, at most `LISTED_BREAKS`.
     pub breaks: Vec<ChainBreak>,
-    /// Every break.
+    /// Every break: each altered entry, each missing place.
     pub broken: i64,
     /// What the chain holds at each anchor given, in their order.
     pub anchors: Vec<AnchorFound>,
@@ -70,7 +71,10 @@ impl ChainReport {
     }
 
     fn breaks_at(&mut self, at: ChainBreak) {
-        self.broken += 1;
+        self.broken += match at {
+            ChainBreak::Missing { from, to } => to - from + 1,
+            ChainBreak::Altered { .. } => 1,
+        };
         if self.breaks.len() < LISTED_BREAKS {
             self.breaks.push(at);
         }
@@ -113,7 +117,10 @@ pub async fn verify_company(
                 continue;
             }
             if seq > expected {
-                report.breaks_at(ChainBreak::Missing { seq: expected });
+                report.breaks_at(ChainBreak::Missing {
+                    from: expected,
+                    to: seq - 1,
+                });
                 previous = None;
             }
             if let Some(previous) = &previous {

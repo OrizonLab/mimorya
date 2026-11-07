@@ -6,11 +6,12 @@
 //! backlog leaves the other sweeps their turn. Before each batch, the seal
 //! this process remembers for the company must still be at its place
 //! (`heads.rs`): otherwise the chain moved behind the sealing, which
-//! refuses to go on for that company and logs it as an error. The last
-//! place and seal set are logged, even when a later batch fails: kept apart
-//! from the database, they are the anchors that show seals taken away and
-//! entries removed from the chain's end. A company failing leaves the
-//! others sealed.
+//! refuses to go on for that company and logs it as an error; that guard
+//! acts when the company has entries to seal. The last place and seal a
+//! pass set for a company are logged, as an anchor the verification takes
+//! as is, even when a later batch fails: kept apart from the database, they
+//! show seals taken away and entries removed from the chain's end. A
+//! company failing leaves the others sealed.
 
 use mimorya_db::Database;
 use mimorya_db::repositories::audit_chain::{
@@ -20,7 +21,7 @@ use mimorya_db::repositories::audit_chain::{
 use uuid::Uuid;
 
 use super::heads::{ChainMoved, SealedHeads};
-use super::{ChainKey, hex};
+use super::{ChainKey, anchor_text};
 
 /// The sweep's lock (ADR-086).
 pub const AUDIT_CHAIN_SWEEP: &str = "audit-chain";
@@ -125,8 +126,8 @@ async fn seal_batches(
         }
     }
     if let Some(head) = head {
-        let (seq, seal) = (head.chain_seq, hex(&head.chain_hash));
-        tracing::info!(tenant_id = %tenant_id, seq, head = %seal, "Audit log sealed");
+        let anchor = anchor_text(tenant_id, &head);
+        tracing::info!(tenant_id = %tenant_id, anchor = %anchor, "Audit log sealed");
     }
     pass
 }
