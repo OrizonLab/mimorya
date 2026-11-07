@@ -43,3 +43,32 @@ pub async fn audit_log(client: &Client<'_>) -> Vec<Value> {
     let log = client.get("/admin/audit?limit=100").await.json();
     log["entries"].as_array().unwrap().clone()
 }
+
+/// The seal the company `tenant_id`'s chain holds at the place `place`, as
+/// the export writes it.
+pub async fn seal_at(db: &mimorya_db::Database, tenant_id: uuid::Uuid, place: i64) -> String {
+    let mut tx = db.begin(tenant_id).await.unwrap();
+    let seal = mimorya_db::repositories::audit_chain::audit_seal_at(&mut tx, place)
+        .await
+        .unwrap()
+        .expect("a sealed place");
+    mimorya_api::services::audit_chain::hex(&seal)
+}
+
+/// Waits, five seconds at most, until `count` sessions of the database wait
+/// for a lock: the requests a test holds back have reached it.
+pub async fn waiting_on_locks(db: &mimorya_db::Database, count: i64) {
+    for _ in 0..250 {
+        let waiting: i64 = sqlx::query_scalar(
+            "select count(*) from pg_stat_activity \
+             where datname = current_database() and wait_event_type = 'Lock'",
+        )
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
+        if waiting >= count {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+}

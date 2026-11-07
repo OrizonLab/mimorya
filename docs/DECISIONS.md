@@ -11879,8 +11879,9 @@ found`), même quand un lot suivant échoue, avec leur ancre toute écrite :
   vérification (ADR-179). Un SIEM n'a pas de session. Deux façons de faire : la plateforme
   pousse (syslog, webhook) ou le SIEM tire (il lit une API).
 - **Décision** :
-  - **le SIEM tire** : `GET /api/audit/export?after=<place>&limit=<n>`, et s'il le veut
-    `&seal=<sceau>`, le sceau qu'il détient à cette place.
+  - **le SIEM tire** : `GET /api/audit/export?after=<place>&seal=<sceau>&limit=<n>`.
+    `seal` est le sceau de la place `after`, que porte chaque entrée exportée. Il est
+    demandé avec toute place sauf le départ (`after=0`, sans `seal`).
     - Aucune adresse sortante n'est à déclarer ni à joindre depuis la plateforme (pas de
       chemin réseau sortant de plus, ADR-025, ADR-162).
     - Une panne du SIEM ne perd rien : il redemande après la dernière place qu'il détient.
@@ -11915,8 +11916,9 @@ found`), même quand un lot suivant échoue, avec leur ancre toute écrite :
       l'identifiant de requête ;
     - `more` dit si d'autres suivent : une entrée de plus que la page est lue pour le
       savoir ;
-    - une entrée pas encore scellée (moins d'une minute) est lue une fois scellée. Une
-      place ne change pas : le SIEM n'a rien à dédoublonner ;
+    - une entrée pas encore scellée (moins d'une minute) est lue une fois scellée. Hors
+      restauration de la base, une place ne change pas : le SIEM n'a rien à
+      dédoublonner. Après une restauration, il remplace les places qu'il relit ;
     - le SIEM ne vérifie pas un sceau lui-même (HMAC sous la clé du serveur). Il le garde
       comme ancre, que l'entreprise donne à sa vérification (ADR-179) ;
   - **une chaîne restaurée derrière le SIEM est dite** (suite de l'audit) :
@@ -11925,10 +11927,12 @@ found`), même quand un lot suivant échoue, avec leur ancre toute écrite :
       place sauterait sans le savoir celles scellées à nouveau en deçà ;
     - une place `after` que la chaîne ne compte plus, ou dont le sceau n'est plus celui
       que le SIEM donne (`seal`, en hexadécimal, sans égard à la casse), est donc
-      refusée (409). Le SIEM reprend depuis une place dont la chaîne porte encore le
-      sceau ; ses ancres disent ce qui est perdu ;
-    - sans `seal`, seule une place que la chaîne ne compte plus est vue. Un SIEM qui
-      donne le sceau voit aussi une chaîne restaurée qui a déjà dépassé sa place ;
+      refusée (409). Le sceau étant demandé avec toute place sauf le départ, une
+      restauration est vue même quand la chaîne a déjà dépassé de nouveau la place du
+      SIEM ;
+    - le refus donne la dernière place que la chaîne compte. Le SIEM reprend depuis une
+      place qu'il détient et dont la chaîne porte encore le sceau, en remplaçant celles
+      qu'il relit ; ses ancres disent ce qui est perdu ;
   - **avant toute session, le jeton seul prouve** :
     - un cookie de session n'est pas une preuve ici (401) ;
     - le jeton est cherché par une fonction `SECURITY DEFINER` minimale
@@ -11965,17 +11969,19 @@ found`), même quand un lot suivant échoue, avec leur ancre toute écrite :
       - dernier sceau lu tenu par la vérification de l'entreprise ;
       - lecture notée sur le jeton, pas dans le journal ;
       - secret ni listé, ni audité, ni journalisé ;
-      - jeton qui ne lit que son entreprise, refusé de même une fois retiré, son
+      - jeton qui ne lit que son entreprise, refusé (409) avec la place et le sceau d'une
+        autre, refusé de même une fois retiré, son
         entreprise suspendue, sans jeton ou avec une session seulement ;
       - permission tenue sur toute l'entreprise, refus tracés, retrait d'un jeton
         introuvable tracé ;
       - sixième jeton refusé, et deux créations simultanées qui n'en font qu'un de plus ;
       - nom vide ou trop long refusé ;
     - `crates/api/tests/audit_export_pages.rs` :
-      - page mal demandée refusée, sceau compris ;
+      - page mal demandée refusée, place sans son sceau comprise ;
       - `more` exact ;
       - lecture reprise avec le sceau détenu ;
-      - autre sceau à la place, ou place au-delà de la chaîne : refus (409) ;
+      - autre sceau à la place, ou place au-delà de la chaîne : refus (409) donnant la
+        dernière place de la chaîne ;
       - jeton retiré pendant qu'une lecture l'attend : rien de lu ;
       - serveur sans clé maître ;
     - `crates/db/tests/audit_export_roles.rs` : la part de la migration qui donne

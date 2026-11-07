@@ -16,7 +16,9 @@ use mimorya_core::demo::{tenant, user};
 use serde_json::{Value, json};
 use support::accounts::{INVITED_PASSWORD, accept, activate, create_partial_admin, holder_of};
 use support::audit_chain::{append, chain, seal};
-use support::audit_exports::{TOKENS, audit_log, keyed, made, read, removed};
+use support::audit_exports::{
+    TOKENS, audit_log, keyed, made, read, removed, seal_at, waiting_on_locks,
+};
 use support::companies;
 use support::mcp::capture_logs;
 use support::queue::as_owner;
@@ -63,11 +65,14 @@ async fn a_siem_reads_the_sealed_log_page_after_page_with_its_token() {
         .1
         - 1;
 
-    // Two at a time from the place before the first, until none follow.
+    // Two at a time from the place before the first, with its seal, until
+    // none follow.
     let mut read_back = Vec::new();
     let mut after = start;
+    let mut held = seal_at(db, tenant::ID, start).await;
     loop {
-        let page = read(&api, Some(&secret), &format!("?after={after}&limit=2")).await;
+        let query = format!("?after={after}&seal={held}&limit=2");
+        let page = read(&api, Some(&secret), &query).await;
         assert_eq!(page.status, StatusCode::OK, "{}", page.text());
         let page = page.json();
         assert_eq!(page["company"], json!(tenant::ID));
@@ -81,6 +86,7 @@ async fn a_siem_reads_the_sealed_log_page_after_page_with_its_token() {
                 entry["id"].as_i64().unwrap(),
                 entry["place"].as_i64().unwrap(),
             ));
+            held = seal_text.to_string();
             if entry["id"] == json!(first) {
                 assert_eq!(entry["action"], "test.exported");
                 assert_eq!(
@@ -110,7 +116,9 @@ async fn a_siem_reads_the_sealed_log_page_after_page_with_its_token() {
 
     // A read is noted on the token, not in the audit log.
     let newest = audit_log(&paul).await[0]["id"].clone();
-    let last = read(&api, Some(&secret), &format!("?after={}", reached - 1)).await;
+    let before_last = seal_at(db, tenant::ID, reached - 1).await;
+    let query = format!("?after={}&seal={before_last}", reached - 1);
+    let last = read(&api, Some(&secret), &query).await;
     let last = last.json();
     assert_eq!(audit_log(&paul).await[0]["id"], newest);
     // The last seal read is an anchor the company's verification holds.
@@ -179,6 +187,14 @@ async fn a_token_reads_its_company_only_and_nothing_once_removed_or_suspended() 
             .collect();
         assert_eq!(ids, own[..ids.len()]);
         assert_eq!(page["entries"][0]["place"], 1);
+    }
+    // Another company's place and seal are no place of its chain.
+    let ours_last = chain(db, tenant::ID).await.last().unwrap().1;
+    for place in [1, ours_last] {
+        let their_seal = seal_at(db, tenant::ID, place).await;
+        let query = format!("?after={place}&seal={their_seal}");
+        let crossed = read(&api, Some(&their_secret), &query).await;
+        assert_eq!(crossed.status, StatusCode::CONFLICT, "{}", crossed.text());
     }
     // Another company's token is not listed, nor removed.
     assert!(!paul.get(TOKENS).await.text().contains(&theirs));
@@ -285,7 +301,7 @@ async fn only_a_company_wide_exporter_manages_the_tokens_five_at_most() {
         exporter.post(TOKENS, json!({ "name": "SIEM A" })),
         exporter.post(TOKENS, json!({ "name": "SIEM B" })),
         async {
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            waiting_on_locks(&api.app.services.db, 2).await;
             held.commit().await.unwrap();
         },
     );

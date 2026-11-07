@@ -4,10 +4,12 @@
 //! place asked, in the chain's order, each with its place and its seal, so
 //! that the SIEM resumes after the last place it holds and keeps seals as
 //! anchors to give the company's verification (ADR-179). An entry not yet
-//! sealed is read once it is, within the minute. A place the chain no longer
-//! counts, or whose seal is no longer the one the SIEM holds, is refused
-//! (409): the chain was restored behind it, and the SIEM resumes from a
-//! place it still shares with it rather than miss what was sealed again.
+//! sealed is read once it is, within the minute. Past the start, the SIEM
+//! gives the seal of the place it resumes after, which each exported entry
+//! carries: a place the chain no longer counts, or whose seal is no longer
+//! the one given, is refused (409) with the chain's last place. The chain
+//! was restored behind the SIEM, which resumes from a place it still shares
+//! with it rather than miss what was sealed again.
 //! Reading is noted on the token (when it was last used), not in the audit
 //! log, which each read would otherwise grow. A server without a master key
 //! seals nothing, and exports nothing.
@@ -15,7 +17,9 @@
 use chrono::{DateTime, Utc};
 use mimorya_core::DomainError;
 use mimorya_db::Database;
-use mimorya_db::repositories::audit_chain::{audit_seal_at, sealed_audit_entries};
+use mimorya_db::repositories::audit_chain::{
+    audit_chain_head, audit_seal_at, sealed_audit_entries,
+};
 use mimorya_db::repositories::audit_export_tokens::{
     audit_export_token_tenant, touch_audit_export_token,
 };
@@ -37,7 +41,7 @@ const UNSEALED: &str = "Ce serveur ne scelle pas le journal d’audit : aucune c
      l’exploitant de la plateforme.";
 
 /// What the SIEM asks: the entries after the place `after`, at most `limit`;
-/// the seal it holds at that place, if it gives it, in hexadecimal.
+/// the seal it holds at that place, in hexadecimal, past the start.
 #[derive(Debug, Clone, Copy)]
 pub struct ExportPage<'a> {
     pub after: i64,
@@ -66,7 +70,12 @@ pub async fn export_audit_log(
     }
     if after > 0 {
         let held = audit_seal_at(&mut tx, after).await?;
-        shared_place(after, held.as_deref(), page.seal)?;
+        if let Some(unshared) = unshared(held.as_deref(), page.seal) {
+            let last = audit_chain_head(&mut tx)
+                .await?
+                .map_or(0, |head| head.chain_seq);
+            return Err(unshared.refusal(after, last).into());
+        }
     }
     // One more than the page: whether others follow.
     let mut entries = sealed_audit_entries(&mut tx, (after, i64::MAX), limit + 1).await?;
@@ -93,23 +102,40 @@ async fn token_company(db: &Database, token: Option<&str>) -> anyhow::Result<(Uu
     found.ok_or_else(|| DomainError::unauthenticated(UNKNOWN).into())
 }
 
-/// Whether the place `after` the SIEM holds is still the chain's: the chain
-/// holds `held` there, and the SIEM, if it says, `given`.
-fn shared_place(after: i64, held: Option<&[u8]>, given: Option<&str>) -> Result<(), DomainError> {
-    let Some(held) = held else {
-        return Err(DomainError::conflict(format!(
-            "Le journal d’audit ne compte plus la place {after} : il a été restauré en deçà. \
-             Reprenez depuis une place que vous détenez et qu’il porte encore."
-        )));
-    };
-    match given {
-        Some(given) if !given.eq_ignore_ascii_case(&hex(held)) => {
-            Err(DomainError::conflict(format!(
-                "Le journal d’audit ne porte plus ce sceau à la place {after} : il a été \
-                 restauré en deçà. Reprenez depuis une place dont il porte encore le sceau."
-            )))
+/// How the place the SIEM resumes after is no longer the chain's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Unshared {
+    /// The chain no longer counts it.
+    Gone,
+    /// It holds another seal there.
+    Changed,
+}
+
+/// Whether the chain, holding `held` at the place the SIEM resumes after,
+/// still shares it with the SIEM, which gives `given` (any case).
+fn unshared(held: Option<&[u8]>, given: Option<&str>) -> Option<Unshared> {
+    match (held, given) {
+        (None, _) => Some(Unshared::Gone),
+        (Some(held), Some(given)) if !given.eq_ignore_ascii_case(&hex(held)) => {
+            Some(Unshared::Changed)
         }
-        _ => Ok(()),
+        // Without a seal there is nothing to compare: the route asks for one.
+        (Some(_), _) => None,
+    }
+}
+
+impl Unshared {
+    /// The refusal of a read after `after`, the chain counting `last` places.
+    fn refusal(self, after: i64, last: i64) -> DomainError {
+        let what = match self {
+            Unshared::Gone => format!("ne compte plus la place {after}"),
+            Unshared::Changed => format!("ne porte plus ce sceau à la place {after}"),
+        };
+        DomainError::conflict(format!(
+            "Le journal d’audit {what} : il a été restauré en deçà et compte aujourd’hui \
+             {last} places scellées. Reprenez depuis une place que vous détenez et dont il \
+             porte encore le sceau."
+        ))
     }
 }
 
@@ -118,19 +144,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_place_the_chain_no_longer_shares_is_refused() {
+    fn a_place_the_chain_no_longer_shares_is_refused_with_its_last_place() {
         let seal = [0xab_u8; 32];
-        assert!(shared_place(4, Some(&seal), None).is_ok());
-        assert!(shared_place(4, Some(&seal), Some(&"ab".repeat(32))).is_ok());
-        assert!(shared_place(4, Some(&seal), Some(&"AB".repeat(32))).is_ok());
-        let changed = shared_place(4, Some(&seal), Some(&"cd".repeat(32))).unwrap_err();
+        assert_eq!(unshared(Some(&seal), Some(&"ab".repeat(32))), None);
+        assert_eq!(unshared(Some(&seal), Some(&"AB".repeat(32))), None);
+        let changed = unshared(Some(&seal), Some(&"cd".repeat(32)));
+        assert_eq!(changed, Some(Unshared::Changed));
+        assert_eq!(unshared(None, Some(&"ab".repeat(32))), Some(Unshared::Gone));
+        let refused = Unshared::Changed.refusal(4, 3).message;
         assert!(
-            changed
-                .message
-                .contains("ne porte plus ce sceau à la place 4")
+            refused.contains("ne porte plus ce sceau à la place 4"),
+            "{refused}"
         );
-        let gone = shared_place(4, None, None).unwrap_err();
-        assert!(gone.message.contains("ne compte plus la place 4"));
-        assert!(shared_place(4, None, Some(&"ab".repeat(32))).is_err());
+        assert!(
+            refused.contains("compte aujourd’hui 3 places scellées"),
+            "{refused}"
+        );
+        let gone = Unshared::Gone.refusal(9, 3).message;
+        assert!(gone.contains("ne compte plus la place 9"), "{gone}");
     }
 }

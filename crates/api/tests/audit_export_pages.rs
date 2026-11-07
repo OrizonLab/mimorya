@@ -1,20 +1,19 @@
 //! The pages a SIEM reads of its company's audit log (ADR-181), past the
-//! token: a page asked amiss refused; whether more follow said exactly; a
-//! place the chain no longer counts, or whose seal is no longer the one the
-//! SIEM holds, refused as a chain restored behind it; a token removed while
-//! its read waits reading nothing; a server without a master key exporting
-//! nothing, which only a valid token is told.
+//! token: a page asked amiss refused, a place past the start without its
+//! seal among them; whether more follow said exactly; a place the chain no
+//! longer counts, or whose seal is no longer the one the SIEM gives, refused
+//! as a chain restored behind it, with the chain's last place; a token
+//! removed while its read waits reading nothing; a server without a master
+//! key exporting nothing, which only a valid token is told.
 
 mod support;
-
-use std::time::Duration;
 
 use axum::http::StatusCode;
 use mimorya_api::services::audit_chain::SealedHeads;
 use mimorya_core::demo::{tenant, user};
 use support::TestApi;
 use support::audit_chain::{append, chain, seal};
-use support::audit_exports::{TOKENS, keyed, made, read, removed};
+use support::audit_exports::{TOKENS, keyed, made, read, removed, seal_at, waiting_on_locks};
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
@@ -35,8 +34,10 @@ async fn a_page_asked_amiss_or_past_the_chain_is_refused() {
         "?limit=beaucoup".to_string(),
         "?after=-1".to_string(),
         "?depuis=3".to_string(),
-        // A seal comes with the place it is at, as the export writes it.
+        // A seal comes with the place it is at, as the export writes it, and
+        // a place past the start with its seal.
         format!("?seal={some_seal}"),
+        format!("?after={head}"),
         format!("?after={head}&seal={}", &some_seal[1..]),
         format!("?after={head}&seal={}", "zz".repeat(32)),
     ] {
@@ -47,11 +48,14 @@ async fn a_page_asked_amiss_or_past_the_chain_is_refused() {
     assert_eq!(most.status, StatusCode::OK, "{}", most.text());
 
     // Whether more follow, exactly: two left, two asked, none after.
-    let last_two = read(&api, Some(&secret), &format!("?after={}&limit=2", head - 2)).await;
+    let page_after = |place: i64, seal: String| format!("?after={place}&seal={seal}&limit=2");
+    let query = page_after(head - 2, seal_at(db, tenant::ID, head - 2).await);
+    let last_two = read(&api, Some(&secret), &query).await;
     let last_two = last_two.json();
     assert_eq!(last_two["entries"].as_array().map(Vec::len), Some(2));
     assert_eq!(last_two["more"], false, "{last_two}");
-    let before = read(&api, Some(&secret), &format!("?after={}&limit=2", head - 3)).await;
+    let query = page_after(head - 3, seal_at(db, tenant::ID, head - 3).await);
+    let before = read(&api, Some(&secret), &query).await;
     assert_eq!(before.json()["more"], true);
 
     // The seal held at the last place, in either case, resumes the reading.
@@ -69,13 +73,20 @@ async fn a_page_asked_amiss_or_past_the_chain_is_refused() {
     .await;
     assert_eq!(changed.status, StatusCode::CONFLICT, "{}", changed.text());
     assert!(changed.text().contains("ne porte plus ce sceau"));
-    for query in [
-        format!("?after={}", head + 1000),
-        format!("?after={}&seal={held}", head + 1000),
-    ] {
-        let past = read(&api, Some(&secret), &query).await;
-        assert_eq!(past.status, StatusCode::CONFLICT, "{query}");
-        assert!(past.text().contains("ne compte plus la place"));
+    let past = read(
+        &api,
+        Some(&secret),
+        &format!("?after={}&seal={held}", head + 1000),
+    )
+    .await;
+    assert_eq!(past.status, StatusCode::CONFLICT, "{}", past.text());
+    assert!(past.text().contains("ne compte plus la place"));
+    // Each refusal names the chain's last place, to resume from one shared.
+    for refused in [changed.text(), past.text()] {
+        assert!(
+            refused.contains(&format!("{head} places scellées")),
+            "{refused}"
+        );
     }
     removed(&paul, &id).await;
 }
@@ -96,7 +107,7 @@ async fn a_token_removed_while_its_read_waits_reads_nothing() {
         .await
         .unwrap();
     let (waited, ()) = tokio::join!(read(&api, Some(&secret), ""), async {
-        tokio::time::sleep(Duration::from_millis(300)).await;
+        waiting_on_locks(db, 1).await;
         removal.commit().await.unwrap();
     });
     assert_eq!(waited.status, StatusCode::UNAUTHORIZED, "{}", waited.text());

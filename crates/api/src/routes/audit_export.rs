@@ -1,8 +1,9 @@
 //! Where the company's SIEM reads its audit log (ADR-181), before any
 //! session: its token, sent as `Authorization: Bearer <token>`, is its only
 //! proof; a session cookie proves nothing here. `after` names the last place
-//! the SIEM holds (0 to start), `seal` its seal there if it gives it, `limit`
-//! how many entries it takes at most.
+//! the SIEM holds (0 to start), `seal` its seal there (each exported entry
+//! carries it), asked with any place but the start, `limit` how many entries
+//! it takes at most.
 //! A read changes nothing but when the token was last used: the request
 //! header the browser's changes carry is not asked of it.
 
@@ -35,21 +36,22 @@ struct ExportQuery {
     seal: Option<String>,
 }
 
-const SEAL: &str = "seal : le sceau d’une place que vous détenez, 64 chiffres hexadécimaux, \
-     avec cette place (after)";
+const SEAL: &str = "seal : le sceau de la place after que vous détenez, 64 chiffres \
+     hexadécimaux, demandé avec toute place sauf le départ (after=0)";
 
-/// A seal is given with the place it is at, written as the export writes it.
+/// The seal of the place `after`, as the export writes it: given with any
+/// place but the start, and only then.
 fn checked_seal(query: &ExportQuery) -> ApiResult<Option<&str>> {
-    match query.seal.as_deref() {
-        None => Ok(None),
-        Some(seal)
-            if query.after > 0
+    match (query.after, query.seal.as_deref()) {
+        (0, None) => Ok(None),
+        (after, Some(seal))
+            if after > 0
                 && seal.len() == 64
                 && seal.bytes().all(|byte| byte.is_ascii_hexdigit()) =>
         {
             Ok(Some(seal))
         }
-        Some(_) => Err(ApiError::invalid(vec![SEAL.to_string()])),
+        _ => Err(ApiError::invalid(vec![SEAL.to_string()])),
     }
 }
 

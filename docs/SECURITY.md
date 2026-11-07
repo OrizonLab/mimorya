@@ -786,10 +786,11 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   jeton sont audités avec son nom (`audit.export_token_created`,
   `audit.export_token_deleted`), jamais son secret ; une lecture ne l'est pas (elle
   ferait grossir sans fin ce qu'elle exporte), seule la date du dernier usage du jeton
-  est notée, avant la lecture : un jeton retiré pendant une lecture ne lit rien. Une
-  place que la chaîne ne compte plus, ou dont le sceau n'est plus celui que le SIEM
-  donne, est refusée (409) : une restauration derrière lui ne lui fait rien manquer en
-  silence. Un serveur sans clé maître n'exporte rien.
+  est notée, avant la lecture : un jeton retiré pendant une lecture ne lit rien. Au-delà
+  du départ, le SIEM donne le sceau de la place d'où il reprend ; une place que la
+  chaîne ne compte plus, ou dont le sceau n'est plus celui-là, est refusée (409) avec
+  la dernière place de la chaîne : une restauration derrière lui ne lui fait rien
+  manquer en silence. Un serveur sans clé maître n'exporte rien.
 - Chaînage des entrées fait (ADR-178), vérifiable par l'entreprise (ADR-179) et exporté
   vers son SIEM (ADR-181).
 

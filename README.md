@@ -133,8 +133,8 @@ vérifiez avec les ancres d'avant la sauvegarde : elles sont retrouvées, celles
 depuis ne le sont plus, ce que la CI vérifie à chaque PR (ADR-180). Chaque entreprise vérifie aussi sa chaîne
 depuis l'onglet « Journal d'audit » de son administration, contre les ancres qu'elle a
 gardées (ADR-179), et le fait lire par son SIEM avec un jeton d'export, page après page
-(`GET /api/audit/export?after=<place>&seal=<sceau>`, `Authorization: Bearer mae_…` ;
-une place que la chaîne restaurée ne porte plus est refusée, ADR-181). Le
+(`GET /api/audit/export?after=<place>&seal=<sceau de cette place>`, `Authorization:
+Bearer mae_…` ; une place que la chaîne restaurée ne porte plus est refusée, ADR-181). Le
 lien d'invitation (valable 7 jours) n'est affiché qu'une fois : transmettez-le par un canal
 sûr, l'administrateur y choisit son mot de passe puis construit son organisation depuis
 l'administration. Lancez ces commandes dans un terminal (par exemple
