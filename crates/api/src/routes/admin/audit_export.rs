@@ -10,7 +10,6 @@ use crate::app::AppState;
 use crate::contract::Done;
 use crate::contract::admin::{
     AuditExportTokenCreated, AuditExportTokenView, AuditExportTokens, NewAuditExportToken,
-    export_url,
 };
 use crate::http::{ApiResult, Body, PathId};
 use crate::plugins::Auth;
@@ -24,11 +23,11 @@ pub async fn list(
 ) -> ApiResult<Json<AuditExportTokens>> {
     let access = state.access.context(identity).await?;
     let tokens = audit_export_tokens(&state.db, &access).await?;
-    Ok(Json(AuditExportTokens {
-        tokens: tokens.iter().map(AuditExportTokenView::from).collect(),
-        sealing: state.config.secrets.is_some(),
-        export_url: export_url(&state.config.web_origin),
-    }))
+    Ok(Json(AuditExportTokens::of(
+        &tokens,
+        state.config.secrets.is_some(),
+        &state.config.web_origin,
+    )))
 }
 
 pub async fn create(

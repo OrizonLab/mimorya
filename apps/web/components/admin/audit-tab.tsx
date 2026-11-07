@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import { Cell, DataTable, LabelBadge, Loaded, type ToneLabel } from '@/components/ui';
 import { useApiData, type AuditActor, type AuditLog, type AuditOutcome } from '@/lib/api';
 import { formatDate } from '@/lib/format';
-import { useMe } from '@/lib/me-context';
+import { useCan } from '@/lib/me-context';
 import { ChainCheck } from './audit-chain/chain-check';
 import { ExportTokens } from './audit-export/export-tokens';
 
@@ -26,9 +26,9 @@ const OUTCOMES: Record<AuditOutcome, ToneLabel> = {
  * (`audit:export`); either opens the tab, each part shown to its holder.
  */
 export function AuditTab() {
-  const me = useMe();
-  const exports = me.permissions.includes('audit:export');
-  if (!me.permissions.includes('audit:read')) {
+  const reads = useCan('audit:read');
+  const exports = useCan('audit:export');
+  if (!reads) {
     return exports ? <ExportTokens /> : null;
   }
   return <AuditLogView>{(reload) => exports && <ExportTokens onChanged={reload} />}</AuditLogView>;

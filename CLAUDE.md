@@ -374,7 +374,7 @@ Repères à l'intérieur des crates :
   scheduled-tasks — tâches planifiées, ADR-081 —, inbound-hooks — déclencheurs et leur
   jeton montré une fois, ADR-110 —,
   shell), `web/components/ui/`
-  (`Loaded` verrouille son contenu pendant un rechargement, ADR-042), `web/lib/api/` (client, `contract.ts`
+  (`Loaded` verrouille son contenu pendant un rechargement, ADR-042 ; `SecretNotice`, secret montré une fois, ADR-182), `web/lib/api/` (client, `contract.ts`
   généré par `pnpm contract`, `useApiData`), `web/lib/use-synced-state.ts` (état d'un
   formulaire repris de la liste rechargée, ADR-041), `web/lib/focus-keeper.ts` (focus rendu
   au contrôle réactivé, ADR-043), `web/lib/use-refresh-while.ts` (liste relue tant

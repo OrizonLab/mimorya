@@ -336,10 +336,18 @@ export type AuditExportTokenView = { id: string, name: string, createdBy: string
 
 /**
  * `GET /admin/audit/export-tokens`: the company's tokens, whether this
- * server seals the audit log, without which nothing is exported, and the
- * address the SIEM reads.
+ * server seals the audit log, without which nothing is exported, the
+ * address the SIEM reads, and the limits a new token meets.
  */
-export type AuditExportTokens = { tokens: Array<AuditExportTokenView>, sealing: boolean, exportUrl: string, };
+export type AuditExportTokens = { tokens: Array<AuditExportTokenView>, sealing: boolean, exportUrl: string,
+/**
+ * The tokens a company may keep.
+ */
+maxTokens: number,
+/**
+ * The longest name a token takes, in characters.
+ */
+nameLength: number, };
 
 /**
  * `GET /admin/audit`, newest first.

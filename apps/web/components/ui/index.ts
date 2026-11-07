@@ -10,4 +10,5 @@ export { DISABLED_LOOK, Field, Input, Select, Textarea } from './field';
 export { Loaded } from './loaded';
 export { Markdown } from './markdown';
 export { PageHeader } from './page-header';
+export { SecretNotice } from './secret-notice';
 export { Cell, DataTable } from './table';

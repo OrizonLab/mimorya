@@ -12021,16 +12021,24 @@ found`), même quand un lot suivant échoue, avec leur ancre toute écrite :
       l'application), et dit quand le serveur ne scelle pas le journal ;
     - elle liste les jetons par nom, date de création et dernier usage (« Jamais »
       avant le premier), jamais leur secret ;
-    - un jeton se crée avec un nom (80 caractères au plus). Son secret est montré
-      cette seule fois, avec un exemple de lecture page après page, jusqu'à « J'ai
-      noté le jeton » ;
+    - un jeton se crée avec un nom. Son secret est montré cette seule fois, avec un
+      exemple de lecture page après page, jusqu'à « J'ai noté le jeton » ;
     - un jeton se retire après une confirmation ; le SIEM qui le détient ne lit plus
-      rien. Au-delà de cinq, la création n'est plus offerte ;
-    - le journal, quand il est montré, est relu après une création ou un retrait,
-      qu'il trace ;
-  - **reprise typée dans le service** : `Resume::Start` ou `Resume::After { place,
-seal }`. Le service ne peut plus être appelé au-delà du départ sans sceau, quel que
-    soit son appelant ;
+      rien ;
+    - les limites d'un nouveau jeton sont celles de l'API, qui les donne
+      (`maxTokens`, `nameLength`) : au-delà de cinq jetons, la création n'est plus
+      offerte ; un nom compte 80 caractères au plus ;
+    - la liste est relue après toute tentative, refusée ou non ; le journal, quand il
+      est montré, l'est après une création ou un retrait, qu'il trace ;
+    - le focus revient au titre de la section quand l'avis du secret se ferme ou que
+      la ligne d'un jeton retiré disparaît, au lieu de tomber sur la page ;
+  - **un avis de secret commun** (`components/ui/secret-notice.tsx`) montre le jeton
+    d'export comme celui d'un déclencheur (ADR-110) : focus sur son titre, champ en
+    lecture seule, copie dont l'issue est annoncée par une région d'état toujours
+    présente, exemple, fermeture ;
+  - **reprise typée dans le service** : `Resume::Start` au départ, `Resume::After`
+    au-delà, qui porte la place et son sceau. Le service ne peut plus être appelé
+    au-delà du départ sans sceau, quel que soit son appelant ;
   - **un refus 409 note l'usage du jeton** : la date est validée avant le refus. Après
     une restauration, l'administration voit que le SIEM interroge toujours ;
   - **la dernière place de la chaîne est donnée dans les détails du refus**
@@ -12043,12 +12051,17 @@ seal }`. Le service ne peut plus être appelé au-delà du départ sans sceau, q
     jetons ;
   - tests :
     - `apps/web/e2e/audit-export.spec.ts` : jeton créé, secret montré une fois et lu
-      par l'export à l'adresse montrée ; après rechargement, jeton listé avec son
-      dernier usage, secret absent, création tracée ; retrait confirmé, jeton refusé
-      ensuite (401) ;
+      par l'export à l'adresse montrée ; focus rendu au titre à la fermeture de l'avis
+      et au retrait ; après rechargement, jeton listé avec son dernier usage, secret
+      absent, création tracée ; retrait confirmé, jeton refusé ensuite (401) ;
+    - `apps/web/e2e/audit-export-access.spec.ts` : un compte qui n'exporte que le
+      journal voit l'onglet avec les seuls jetons ; le même, qui ne fait plus que le
+      lire, voit le journal et sa vérification, sans les jetons ;
+    - `apps/web/e2e/inbound-hooks.spec.ts` : l'avis du jeton d'un déclencheur, sur
+      l'avis commun ;
     - `crates/api/tests/audit_export_pages.rs` : `lastPlace` dans les détails du refus,
       usage d'un jeton noté sur un refus ;
-    - `crates/api/tests/audit_exports.rs` : adresse d'export donnée ;
+    - `crates/api/tests/audit_exports.rs` : adresse d'export et limites données ;
     - `services/audit_export/reading.rs` : détails du refus ;
     - `contract/admin/audit_export.rs` : adresse d'export tirée de l'origine de
       l'application ;

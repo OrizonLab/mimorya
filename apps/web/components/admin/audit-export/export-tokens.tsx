@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Button, Card, Cell, DataTable, ErrorNote, Field, Input, Loaded } from '@/components/ui';
 import {
   api,
@@ -16,30 +16,31 @@ import { formatDate } from '@/lib/format';
 import { ExportTokenNotice } from './export-token-notice';
 
 const TOKENS = '/admin/audit/export-tokens';
-/** The tokens a company keeps, and the longest name, as the API counts them. */
-const MAX_TOKENS = 5;
-const NAME_LENGTH = 80;
 
 /**
  * The tokens with which the company's SIEM reads its audit log (ADR-181,
  * ADR-182), for who may export it (`audit:export`): listed by name, when
  * made and last used, never their secret; made with a name, the secret shown
- * this once; removed, after a confirmation. `onChanged` reloads what traces
- * the change, the audit log, when it is shown.
+ * this once; removed, after a confirmation. The limits a new token meets are
+ * the API's. The list is read again after any attempt, refused or not, and
+ * the focus goes back to the section's title when the notice or a removed
+ * token's row goes. `onChanged` reloads what traces the change, the audit
+ * log, when it is shown.
  */
 export function ExportTokens({ onChanged }: { onChanged?: () => void }) {
   const state = useApiData<AuditExportTokens>(TOKENS);
   const [name, setName] = useState('');
   const [made, setMade] = useState<AuditExportTokenCreated | null>(null);
   const action = useAction();
+  const titleRef = useRef<HTMLHeadingElement>(null);
 
   async function create() {
     const body = { name } satisfies NewAuditExportToken;
     const created = await action.run(() => api.post<AuditExportTokenCreated>(TOKENS, body));
+    state.reload();
     if (created) {
       setMade(created);
       setName('');
-      state.reload();
       onChanged?.();
     }
   }
@@ -48,16 +49,25 @@ export function ExportTokens({ onChanged }: { onChanged?: () => void }) {
     const asked = `Retirer le jeton « ${token.name} » ? Le SIEM qui le détient ne lira plus rien.`;
     if (!window.confirm(asked)) return;
     const done = await action.run(() => api.delete<Done>(`${TOKENS}/${token.id}`));
+    state.reload();
     if (done) {
       if (made?.token.id === token.id) setMade(null);
-      state.reload();
       onChanged?.();
+      // Its row, and the button that had the focus, are gone.
+      titleRef.current?.focus();
     }
+  }
+
+  function closeNotice() {
+    setMade(null);
+    titleRef.current?.focus();
   }
 
   return (
     <Card className="flex flex-col gap-3 p-4">
-      <h2 className="font-medium">Export vers un SIEM</h2>
+      <h2 ref={titleRef} tabIndex={-1} className="font-medium outline-none">
+        Export vers un SIEM
+      </h2>
       <p className="text-sm text-muted">
         Votre outil de sécurité (SIEM) lit le journal scellé avec un jeton, page après page, dans
         l’ordre de la chaîne. Chaque entrée porte sa place et son sceau : il reprend après la
@@ -83,7 +93,7 @@ export function ExportTokens({ onChanged }: { onChanged?: () => void }) {
                 key={made.token.id}
                 made={made}
                 exportUrl={data.exportUrl}
-                onClose={() => setMade(null)}
+                onClose={closeNotice}
               />
             )}
             <DataTable columns={['Jeton', 'Créé le', 'Dernier usage', '']}>
@@ -115,7 +125,7 @@ export function ExportTokens({ onChanged }: { onChanged?: () => void }) {
                 </tr>
               )}
             </DataTable>
-            {data.tokens.length < MAX_TOKENS ? (
+            {data.tokens.length < data.maxTokens ? (
               <form
                 className="flex flex-wrap items-end gap-2"
                 onSubmit={(e) => {
@@ -126,7 +136,7 @@ export function ExportTokens({ onChanged }: { onChanged?: () => void }) {
                 <Field label="Nom du nouveau jeton : le SIEM qui le détiendra" className="grow">
                   <Input
                     value={name}
-                    maxLength={NAME_LENGTH}
+                    maxLength={data.nameLength}
                     onChange={(e) => setName(e.target.value)}
                   />
                 </Field>
@@ -136,7 +146,7 @@ export function ExportTokens({ onChanged }: { onChanged?: () => void }) {
               </form>
             ) : (
               <p className="text-sm text-muted">
-                L’entreprise a déjà {MAX_TOKENS} jetons : retirez-en un pour en créer un autre.
+                L’entreprise a déjà {data.maxTokens} jetons : retirez-en un pour en créer un autre.
               </p>
             )}
           </>

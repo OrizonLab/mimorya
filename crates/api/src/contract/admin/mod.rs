@@ -42,7 +42,6 @@ pub use audit_chain::{
 };
 pub use audit_export::{
     AuditExportTokenCreated, AuditExportTokenView, AuditExportTokens, NewAuditExportToken,
-    export_url,
 };
 pub use connectors::{
     ConnectorDetails, ConnectorStatus, ConnectorTest, ConnectorTrial, ConnectorType,
