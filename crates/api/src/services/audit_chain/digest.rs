@@ -42,12 +42,19 @@ fn text(value: &Option<String>) -> Option<&[u8]> {
 fn encode(previous: Option<&[u8]>, seq: i64, entry: &ChainEntry) -> Vec<u8> {
     let mut bytes = Vec::with_capacity(256 + entry.metadata.len());
     bytes.extend_from_slice(DOMAIN);
+    // Bound here: the parts below borrow them (Rust 1.88 drops temporaries
+    // at the end of the statement).
+    let (seq, id, occurred) = (
+        seq.to_be_bytes(),
+        entry.id.to_be_bytes(),
+        entry.occurred_us.to_be_bytes(),
+    );
     let parts: [Option<&[u8]>; 17] = [
         previous,
-        Some(&seq.to_be_bytes()),
-        Some(&entry.id.to_be_bytes()),
+        Some(&seq),
+        Some(&id),
         Some(entry.tenant_id.as_bytes()),
-        Some(&entry.occurred_us.to_be_bytes()),
+        Some(&occurred),
         Some(entry.actor_type.as_bytes()),
         text(&entry.actor_user_id),
         text(&entry.on_behalf_of_user_id),
