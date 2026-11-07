@@ -1,5 +1,7 @@
 //! The command line of `mimorya-admin`: a command, then its options as
-//! `--option value` pairs, each given once.
+//! `--option value` pairs, each given once but `--anchor`.
+
+use super::anchor::Anchor;
 
 pub const USAGE: &str = "\
 Usage : mimorya-admin <commande> [options]
@@ -13,7 +15,11 @@ Commandes :
                    son mot de passe
                      --email <adresse>
   verify-audit     vérifie le journal d’audit scellé de chaque entreprise (MIMORYA_MASTER_KEY) ;
-                   échoue si une entrée a été modifiée ou supprimée
+                   échoue si une entrée scellée a été modifiée ou supprimée, ou si une
+                   chaîne ne porte plus un sceau relevé dans les journaux (« Audit log
+                   sealed », « Audit chain found ») : seul ce sceau montre des entrées
+                   retirées de la fin d’une chaîne, ou des sceaux posés à nouveau
+                     [--anchor <sigle>:<place>:<sceau>]…   (autant que voulu)
   help             affiche cette aide
 
 create-company, invite et verify-audit passent par DATABASE_APP_URL ; les liens mènent à
@@ -25,7 +31,7 @@ pub enum Command {
     Migrate,
     CreateCompany(CompanyArgs),
     Invite { email: String },
-    VerifyAudit,
+    VerifyAudit { anchors: Vec<Anchor> },
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -54,7 +60,13 @@ pub fn parse(args: &[String]) -> Result<Command, String> {
         "invite" => Command::Invite {
             email: options.take("--email")?,
         },
-        "verify-audit" => Command::VerifyAudit,
+        "verify-audit" => Command::VerifyAudit {
+            anchors: options
+                .take_all("--anchor")
+                .iter()
+                .map(|anchor| Anchor::parse(anchor))
+                .collect::<Result<_, _>>()?,
+        },
         other => return Err(format!("Commande inconnue : {other}")),
     };
     options.finish()?;
@@ -62,6 +74,9 @@ pub fn parse(args: &[String]) -> Result<Command, String> {
 }
 
 struct Options(Vec<(String, String)>);
+
+/// The only option given as many times as wanted.
+const REPEATED: &str = "--anchor";
 
 impl Options {
     fn read(args: &[String]) -> Result<Self, String> {
@@ -74,7 +89,7 @@ impl Options {
             let Some(value) = args.next() else {
                 return Err(format!("Valeur manquante pour {name}"));
             };
-            if pairs.iter().any(|(given, _)| given == name) {
+            if name != REPEATED && pairs.iter().any(|(given, _)| given == name) {
                 return Err(format!("Option donnée deux fois : {name}"));
             }
             pairs.push((name.clone(), value.clone()));
@@ -87,6 +102,15 @@ impl Options {
             Some(index) => Ok(self.0.remove(index).1),
             None => Err(format!("Option obligatoire : {name}")),
         }
+    }
+
+    /// Every value given to `name`, in their order.
+    fn take_all(&mut self, name: &str) -> Vec<String> {
+        let (taken, kept) = std::mem::take(&mut self.0)
+            .into_iter()
+            .partition(|(given, _)| given == name);
+        self.0 = kept;
+        taken.into_iter().map(|(_, value)| value).collect()
     }
 
     /// Refuses the options the command does not know.
@@ -116,7 +140,26 @@ mod tests {
         assert_eq!(parse_line(&[]), Ok(Command::Help));
         assert_eq!(parse_line(&["--help"]), Ok(Command::Help));
         assert_eq!(parse_line(&["migrate"]), Ok(Command::Migrate));
-        assert_eq!(parse_line(&["verify-audit"]), Ok(Command::VerifyAudit));
+        assert_eq!(
+            parse_line(&["verify-audit"]),
+            Ok(Command::VerifyAudit {
+                anchors: Vec::new()
+            })
+        );
+        let (one, two) = (
+            format!("acme:3:{}", "ab".repeat(32)),
+            format!("beta:9:{}", "cd".repeat(32)),
+        );
+        let Ok(Command::VerifyAudit { anchors }) =
+            parse_line(&["verify-audit", "--anchor", &one, "--anchor", &two])
+        else {
+            panic!("anchors not read");
+        };
+        let read: Vec<(&str, i64)> = anchors
+            .iter()
+            .map(|a| (a.company.as_str(), a.seq))
+            .collect();
+        assert_eq!(read, [("acme", 3), ("beta", 9)]);
         assert_eq!(
             parse_line(&[
                 "create-company",
@@ -146,7 +189,7 @@ mod tests {
 
     #[test]
     fn refuses_what_it_does_not_understand() {
-        let refused: [&[&str]; 8] = [
+        let refused: [&[&str]; 9] = [
             &["deploy"],
             &["invite"],
             &["invite", "--email"],
@@ -155,6 +198,7 @@ mod tests {
             &["invite", "--email", "a@b.example", "--name", "Acme"],
             &["migrate", "--force", "yes"],
             &["verify-audit", "--company", "acme"],
+            &["verify-audit", "--anchor", "acme:3:abcd"],
         ];
         for line in refused {
             assert!(parse_line(line).is_err(), "{line:?}");

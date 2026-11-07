@@ -116,13 +116,17 @@ mimorya-admin migrate          # DATABASE_URL (rôle propriétaire) : schéma se
 mimorya-admin create-company --name 'Acme Industrie' --slug acme \
   --admin-email jeanne.martin@acme.example --admin-name 'Jeanne Martin'
 mimorya-admin invite --email jeanne.martin@acme.example   # nouveau lien, si le premier a expiré
-mimorya-admin verify-audit     # vérifie le journal d'audit scellé de chaque entreprise (ADR-178)
+mimorya-admin verify-audit --anchor acme:1234:<sceau>   # journal d'audit scellé (ADR-178)
 ```
 
 `create-company`, `invite` et `verify-audit` utilisent `DATABASE_APP_URL` comme l'API, les
-deux premières `WEB_ORIGIN`, la dernière `MIMORYA_MASTER_KEY` : le journal d'audit de chaque
-entreprise est scellé chaque minute sous une clé qui en dérive, et la commande échoue si
-une entrée a été modifiée ou supprimée depuis. Le
+deux premières `WEB_ORIGIN`, la dernière `MIMORYA_MASTER_KEY`. Le journal d'audit de chaque
+entreprise est scellé chaque minute sous une clé qui en dérive, et chaque sceau posé est
+journalisé (`Audit log sealed` : entreprise, place, sceau) : conservez ces lignes hors de
+la base. `verify-audit` échoue si une entrée scellée a été modifiée ou supprimée, ou si une
+chaîne ne porte plus un sceau relevé dans ces journaux et donné par `--anchor` (autant
+que voulu) : seul ce sceau montre des entrées retirées de la fin d'une chaîne, ou des
+sceaux posés à nouveau. Le
 lien d'invitation (valable 7 jours) n'est affiché qu'une fois : transmettez-le par un canal
 sûr, l'administrateur y choisit son mot de passe puis construit son organisation depuis
 l'administration. Lancez ces commandes dans un terminal (par exemple

@@ -256,8 +256,10 @@ Repères à l'intérieur des crates :
   lus au moment d'envoyer chaque avis, ADR-094),
   `api/src/services/audit_chain/` (journal d'audit chaîné par entreprise : sceau sous une
   clé dérivée de la clé maître, encodage épinglé (`digest.rs`), scellement chaque minute
-  par la maintenance, un processus à la fois (`seal.rs`), vérification de chaque chaîne
-  depuis sa première place (`verify.rs`), ADR-178),
+  par la maintenance, un processus à la fois (`seal.rs`), refusé là où la chaîne a reculé
+  derrière le dernier sceau posé ou trouvé au démarrage (`heads.rs`), vérification de
+  chaque chaîne depuis sa première place et des ancres journalisées (`verify.rs`),
+  ADR-178),
   `api/src/services/skill_proposal_notice/` (propositions de l'agent annoncées par e-mail
   aux administrateurs des compétences, ADR-102),
   `api/src/services/policy_proposal_notice/` (autorisations proposées annoncées par e-mail
@@ -331,7 +333,8 @@ Repères à l'intérieur des crates :
   `domain_proofs.rs`),
   `api/src/services/provisioning/` et `api/src/bin/admin/` (commandes d'exploitation :
   migrations, création d'une entreprise réelle et de son administrateur, ADR-033,
-  vérification du journal d'audit scellé, `verify.rs`, ADR-178),
+  vérification du journal d'audit scellé, `verify.rs`, et ses ancres, `anchor.rs`,
+  ADR-178),
   `api/src/mail/` (envoi SMTP), `api/src/secrets/` (chiffrement AES-256-GCM des secrets),
   `api/tests/` (intégration, harnais dans `support/`, dont les fournisseurs d'identité
   simulés, OpenID Connect (qui joue aussi Google, ADR-121) et SAML).

@@ -1,9 +1,10 @@
 //! Operator commands of a private installation (ADR-033), run with the API's
 //! environment: apply the migrations without any data, create a company with
 //! its first administrator, give an invited account a new link, verify the
-//! sealed audit log (ADR-178). The link is printed for the operator to
-//! transmit, and nowhere else.
+//! sealed audit log against the seals logged (ADR-178). The link is printed
+//! for the operator to transmit, and nowhere else.
 
+mod anchor;
 mod args;
 mod verify;
 
@@ -85,9 +86,9 @@ async fn run(command: Command) -> anyhow::Result<()> {
             let email = email.trim().to_lowercase();
             print_link(&invitation?, &email);
         }
-        Command::VerifyAudit => {
+        Command::VerifyAudit { anchors } => {
             let (db, config) = connect().await?;
-            let verified = verify::verify_audit(&config, &db).await;
+            let verified = verify::verify_audit(&config, &db, &anchors).await;
             db.close().await;
             verified?;
         }

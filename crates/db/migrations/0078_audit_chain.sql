@@ -2,14 +2,19 @@
 -- the fact, its place in its company's chain (`chain_seq`, from 1, with no
 -- gap) and a seal (`chain_hash`): the HMAC, under a key derived from the
 -- server's master key, of the previous seal, its place and its content. An
--- entry altered or removed afterwards, even by the owner of the database,
--- breaks the chain where it was; only who holds the master key can seal.
+-- entry altered or removed after its seal breaks the chain where it was;
+-- only who holds the master key computes a seal that holds. What the
+-- database alone cannot tell (seals taken away, then set again by the
+-- sealing on altered entries; entries removed from the chain's end), the
+-- seals logged outside it tell (ADR-178).
 --
--- The application writes entries but never a seal: it may insert only the
--- columns of an entry's content, listed below (a column added to the audit
--- log later must be granted here too), and still may not update nor
--- delete. A seal is set by `system_seal_audit_entries` alone, once, in
--- order after its company's last one.
+-- The application writes entries but never a seal directly: it may insert
+-- only the columns of an entry's content, listed below (a column added to
+-- the audit log later must be granted here too), and still may not update
+-- nor delete. A seal is set by `system_seal_audit_entries` alone, once, in
+-- order after its company's last one; a false one set so is not prevented,
+-- it is found by the verification. Once set, a seal is never changed nor
+-- taken away: the owner of the database must drop that rule first.
 
 ALTER TABLE audit_log
   ADD COLUMN chain_seq bigint,
@@ -31,22 +36,50 @@ GRANT INSERT (tenant_id, occurred_at, actor_type, actor_user_id, on_behalf_of_us
               action, resource_type, resource_id, outcome, reason, metadata, ip, request_id)
   ON audit_log TO mimorya_app;
 
+-- A seal, once set, is never changed nor taken away.
+CREATE FUNCTION audit_log_keep_seals() RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+  IF OLD.chain_seq IS NOT NULL
+     AND (NEW.chain_seq IS DISTINCT FROM OLD.chain_seq
+          OR NEW.chain_hash IS DISTINCT FROM OLD.chain_hash) THEN
+    RAISE EXCEPTION 'audit chain: a seal is never changed nor taken away';
+  END IF;
+  RETURN NEW;
+END
+$$;
+
+CREATE TRIGGER audit_log_keep_seals
+  BEFORE UPDATE OF chain_seq, chain_hash ON audit_log
+  FOR EACH ROW EXECUTE FUNCTION audit_log_keep_seals();
+
 -- The companies whose audit log has entries: with `p_unsealed`, only those
--- with entries still to seal. Only their identifier crosses the companies'
--- boundary.
+-- with entries still to seal (each query its own, so that the index of the
+-- entries still to seal serves). Only their identifier crosses the
+-- companies' boundary.
 CREATE FUNCTION system_audit_log_tenants(p_unsealed boolean)
 RETURNS TABLE (tenant_id uuid)
-LANGUAGE sql
+LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
-  SELECT tenants.id
-    FROM tenants
-   WHERE EXISTS (SELECT 1 FROM audit_log
-                  WHERE audit_log.tenant_id = tenants.id
-                    AND (NOT p_unsealed OR audit_log.chain_seq IS NULL))
-   ORDER BY tenants.id
+BEGIN
+  IF p_unsealed THEN
+    RETURN QUERY
+      SELECT tenants.id FROM tenants
+       WHERE EXISTS (SELECT 1 FROM audit_log
+                      WHERE audit_log.tenant_id = tenants.id AND audit_log.chain_seq IS NULL)
+       ORDER BY tenants.id;
+  ELSE
+    RETURN QUERY
+      SELECT tenants.id FROM tenants
+       WHERE EXISTS (SELECT 1 FROM audit_log WHERE audit_log.tenant_id = tenants.id)
+       ORDER BY tenants.id;
+  END IF;
+END
 $$;
 
 REVOKE ALL ON FUNCTION system_audit_log_tenants(boolean) FROM PUBLIC;

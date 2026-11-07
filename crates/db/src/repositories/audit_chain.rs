@@ -76,6 +76,14 @@ pub async fn audit_chain_head(conn: &mut PgConnection) -> sqlx::Result<Option<Ch
     .await
 }
 
+/// The seal the company's chain holds at the place `seq`, if any.
+pub async fn audit_seal_at(conn: &mut PgConnection, seq: i64) -> sqlx::Result<Option<Vec<u8>>> {
+    sqlx::query_scalar("select chain_hash from audit_log where chain_seq = $1")
+        .bind(seq)
+        .fetch_optional(conn)
+        .await
+}
+
 /// The company's entries still to seal, in the order they were written, at
 /// most `limit`.
 pub async fn unsealed_audit_entries(
