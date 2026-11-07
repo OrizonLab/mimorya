@@ -4,8 +4,10 @@
 //! for one is gone, their failure remembered, a start that panics failed,
 //! one ending after the cache closed released. Instances changed while
 //! they start, and newer ones: `versions`; the sessions closed for good:
-//! `closed`.
+//! `closed`, and newer instances closed so: `closed_versions`.
 
+mod closed;
+mod closed_versions;
 mod versions;
 
 use std::pin::Pin;
@@ -50,7 +52,7 @@ pub(super) fn counted(
 
 /// A start that counts itself, then waits for `gate` before it gives what
 /// `make` makes.
-fn gated(
+pub(super) fn gated(
     starts: &Arc<AtomicUsize>,
     gate: &Arc<Notify>,
     make: impl FnOnce() -> Result<ConnectorRuntime, String> + Send + 'static,
@@ -97,6 +99,49 @@ pub(super) async fn raised(flag: &AtomicBool) -> bool {
         tokio::task::yield_now().await;
     }
     false
+}
+
+/// What the cache logs on this thread while kept: the test's own runtime
+/// runs every start on it. Only while no other thread meets the same log
+/// line first with no subscriber of its own: `tracing` keeps the interest
+/// it computed then (no other test of this crate logs where these do).
+pub(super) struct Logs {
+    written: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
+    _guard: tracing::subscriber::DefaultGuard,
+}
+
+impl Logs {
+    pub(super) fn text(&self) -> String {
+        let written = self.written.lock().expect("logs");
+        String::from_utf8_lossy(&written).into_owned()
+    }
+}
+
+#[derive(Clone)]
+struct Written(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+
+impl std::io::Write for Written {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().expect("logs").extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+pub(super) fn capture_logs() -> Logs {
+    let written = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let writer = Written(written.clone());
+    let subscriber = tracing_subscriber::fmt()
+        .with_writer(move || writer.clone())
+        .with_ansi(false)
+        .finish();
+    Logs {
+        written,
+        _guard: tracing::subscriber::set_default(subscriber),
+    }
 }
 
 /// Bounded: a run that kept waiting would never end.

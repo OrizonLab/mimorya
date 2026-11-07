@@ -111,6 +111,23 @@ enum Slot {
     },
 }
 
+impl Slot {
+    /// Whether this entry, of a newer version than `version`, holds the
+    /// place against it: live, still starting, or failed while its failure
+    /// is remembered. It serves the runs that read `version`, and the
+    /// outcome of `version`'s start never replaces it (ADR-177): one rule
+    /// for both.
+    fn newer_than(&self, version: Version, now: Instant) -> bool {
+        match self {
+            Slot::Live { version: v, .. } => *v > version,
+            Slot::Starting { version: v, done } => *v > version && done.has_changed().is_ok(),
+            Slot::Failed {
+                version: v, until, ..
+            } => *v > version && now < *until,
+        }
+    }
+}
+
 #[derive(Default)]
 struct State {
     slots: HashMap<SessionKey, Slot>,
@@ -184,10 +201,10 @@ impl RuntimeCache {
             let mut waiting = {
                 let mut state = self.state.lock().await;
                 people::release_idle(&mut state, Instant::now());
-                if let Some(failed) = closed(&mut state, id, version) {
+                let stale = state.stale(id, ticket);
+                if let Some(failed) = closed(&mut state, id, version, stale) {
                     return Err(failed);
                 }
-                let stale = state.stale(id, ticket);
                 match state.slots.get_mut(&id) {
                     Some(Slot::Live {
                         version: v,
@@ -214,35 +231,28 @@ impl RuntimeCache {
                     // token) serves even a caller whose reading is stale; any
                     // other start would be discarded.
                     _ if stale => return Err(Unavailable::changed()),
-                    // Unless its start ended without leaving an outcome; a
-                    // newer one's serves the run as its instance would.
+                    // Unless its start ended without leaving an outcome.
                     Some(Slot::Starting { version: v, done })
-                        if *v >= version && done.has_changed().is_ok() =>
+                        if *v == version && done.has_changed().is_ok() =>
                     {
                         done.clone()
                     }
-                    // A newer one, live meanwhile: the run gets it rather
-                    // than start an older one in its place.
-                    Some(Slot::Live {
-                        version: v,
-                        runtime,
-                        used,
-                        ..
-                    }) if *v > version => {
-                        *used = Instant::now();
-                        return Ok(runtime.clone());
-                    }
-                    // Or its failure, remembered as it is for its own runs.
-                    Some(Slot::Failed {
-                        version: v,
-                        until,
-                        message,
-                    }) if *v > version && Instant::now() < *until => {
-                        return Err(Unavailable {
-                            message: message.clone(),
-                            origin: Origin::Remembered,
-                        });
-                    }
+                    // A newer one serves the run as its own would, rather
+                    // than it start an older one in its place: live, its
+                    // start waited for, or its failure remembered.
+                    Some(slot) if slot.newer_than(version, Instant::now()) => match slot {
+                        Slot::Live { runtime, used, .. } => {
+                            *used = Instant::now();
+                            return Ok(runtime.clone());
+                        }
+                        Slot::Starting { done, .. } => done.clone(),
+                        Slot::Failed { message, .. } => {
+                            return Err(Unavailable {
+                                message: message.clone(),
+                                origin: Origin::Remembered,
+                            });
+                        }
+                    },
                     _ => {
                         // Its own start ended, and another took its place.
                         let Some(start) = start.take() else {

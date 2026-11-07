@@ -3,9 +3,10 @@
 //! outcome in the cache for them and for the runs that follow. Its outcome
 //! is kept unless the instance was invalidated while it ran, the cache
 //! closed, or another took its place meanwhile: an instance of its version
-//! or a newer one live, a newer one starting, or a newer one's failure still
-//! remembered. An older version never replaces it. A failure is remembered,
-//! and logged here, where it is found: no run may read it before it is
+//! live, or a newer entry as the runs read it (`Slot::newer_than`), a live
+//! one judged first by its session. An older version never replaces it. A
+//! failure is remembered, and logged here, where it is found, its own or a
+//! live instance's that closed at once: no run may read it before it is
 //! forgotten. A start that panics is a failure too.
 
 use std::future::Future;
@@ -15,7 +16,9 @@ use mimorya_connectors::ConnectorRuntime;
 use tokio::sync::{Mutex, watch};
 use tokio::time::Instant;
 
-use super::{RETRY_AFTER, SessionKey, Slot, State, Version, close_in_background, people, release};
+use super::{
+    RETRY_AFTER, SessionKey, Slot, State, Version, close_in_background, closed, people, release,
+};
 
 /// Why a run goes without an instance still starting when its patience ran
 /// out: its tools serve the runs that follow.
@@ -65,16 +68,24 @@ impl Start {
             state.slots.remove(&id);
         }
         let stale = state.stale(id, ticket) || state.closed;
-        // As `get_or_start` reads them: a newer failure forgotten is gone.
-        let newer = match state.slots.get(&id) {
-            Some(Slot::Live { version: v, .. }) => *v >= version,
-            Some(Slot::Starting { version: v, .. }) => *v > version,
-            Some(Slot::Failed {
-                version: v, until, ..
-            }) => *v > version && Instant::now() < *until,
-            None => false,
-        };
-        if stale || newer {
+        // A live instance in place is judged first, as for a run: one whose
+        // session closed for good is released, or replaced by its failure,
+        // remembered, if it lived less than a minute (ADR-163); that failure,
+        // found here, is logged here. Not by a stale start, whose outcome is
+        // discarded whatever is in place: that instance is left to the runs
+        // of its version, which record its failure on the connector.
+        if !stale && let Some(exited) = closed(&mut state, id, version, false) {
+            let connector = id.instance;
+            tracing::warn!(%connector, error = %exited.message, "Connector unavailable");
+        }
+        // Then the place is held as `get_or_start` reads it: by an instance
+        // of its version live (another start's), or by a newer entry.
+        let now = Instant::now();
+        let held = state.slots.get(&id).is_some_and(|slot| {
+            matches!(slot, Slot::Live { version: v, .. } if *v == version)
+                || slot.newer_than(version, now)
+        });
+        if stale || held {
             if let Ok(runtime) = started {
                 close_in_background(Arc::new(runtime));
             }
