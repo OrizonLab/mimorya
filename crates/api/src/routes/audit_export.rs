@@ -1,7 +1,8 @@
 //! Where the company's SIEM reads its audit log (ADR-181), before any
 //! session: its token, sent as `Authorization: Bearer <token>`, is its only
 //! proof; a session cookie proves nothing here. `after` names the last place
-//! the SIEM holds (0 to start), `limit` how many entries it takes at most.
+//! the SIEM holds (0 to start), `seal` its seal there if it gives it, `limit`
+//! how many entries it takes at most.
 //! A read changes nothing but when the token was last used: the request
 //! header the browser's changes carry is not asked of it.
 
@@ -15,7 +16,7 @@ use validator::Validate;
 
 use crate::app::AppState;
 use crate::contract::AuditExport;
-use crate::http::{ApiResult, Query, bearer};
+use crate::http::{ApiError, ApiResult, Query, bearer};
 use crate::services::audit_export::{DEFAULT_PAGE, ExportPage, MAX_PAGE, export_audit_log};
 
 pub fn routes() -> Router<AppState> {
@@ -31,6 +32,25 @@ struct ExportQuery {
     #[serde(default = "default_page")]
     #[validate(range(min = 1, max = MAX_PAGE))]
     limit: i64,
+    seal: Option<String>,
+}
+
+const SEAL: &str = "seal : le sceau d’une place que vous détenez, 64 chiffres hexadécimaux, \
+     avec cette place (after)";
+
+/// A seal is given with the place it is at, written as the export writes it.
+fn checked_seal(query: &ExportQuery) -> ApiResult<Option<&str>> {
+    match query.seal.as_deref() {
+        None => Ok(None),
+        Some(seal)
+            if query.after > 0
+                && seal.len() == 64
+                && seal.bytes().all(|byte| byte.is_ascii_hexdigit()) =>
+        {
+            Ok(Some(seal))
+        }
+        Some(_) => Err(ApiError::invalid(vec![SEAL.to_string()])),
+    }
 }
 
 fn default_page() -> i64 {
@@ -45,6 +65,7 @@ async fn export(
     let page = ExportPage {
         after: query.after,
         limit: query.limit,
+        seal: checked_seal(&query)?,
     };
     let export =
         export_audit_log(&state.db, &state.config, bearer(&headers), page, Utc::now()).await?;

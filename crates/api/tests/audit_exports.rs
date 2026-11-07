@@ -4,56 +4,22 @@
 //! anchor the company's verification holds. A token reads its company only,
 //! nothing once removed or while its company is suspended; a session proves
 //! nothing there. Only who may export the log on the whole company manages
-//! the tokens (the refusals traced), five at most. A server without a master
-//! key exports nothing.
+//! the tokens (the refusals traced), five at most, two makings at once
+//! counting each other. Pages asked amiss, a chain restored behind the SIEM
+//! and a server without a master key: `audit_export_pages.rs`.
 
 mod support;
 
-use axum::body::Body;
-use axum::http::{Request, StatusCode};
+use axum::http::StatusCode;
 use mimorya_api::services::audit_chain::SealedHeads;
 use mimorya_core::demo::{tenant, user};
 use serde_json::{Value, json};
 use support::accounts::{INVITED_PASSWORD, accept, activate, create_partial_admin, holder_of};
 use support::audit_chain::{append, chain, seal};
+use support::audit_exports::{TOKENS, audit_log, keyed, made, read, removed};
+use support::companies;
 use support::mcp::capture_logs;
 use support::queue::as_owner;
-use support::{Client, TestApi, TestResponse, companies, llm};
-
-const TOKENS: &str = "/admin/audit/export-tokens";
-
-async fn keyed() -> TestApi {
-    TestApi::start_with(&[("MIMORYA_MASTER_KEY", llm::MASTER_KEY)]).await
-}
-
-/// What a SIEM holding `token` reads at `/audit/export{query}`.
-async fn read(api: &TestApi, token: Option<&str>, query: &str) -> TestResponse {
-    let mut request = Request::get(format!("/audit/export{query}"));
-    if let Some(token) = token {
-        request = request.header("authorization", format!("Bearer {token}"));
-    }
-    api.send(request.body(Body::empty()).unwrap()).await
-}
-
-/// A token named `name`: its identifier and its secret.
-async fn made(client: &Client<'_>, name: &str) -> (String, String) {
-    let created = client.post(TOKENS, json!({ "name": name })).await;
-    assert_eq!(created.status, StatusCode::CREATED, "{}", created.text());
-    let body = created.json();
-    let id = body["token"]["id"].as_str().unwrap().to_string();
-    (id, body["secret"].as_str().unwrap().to_string())
-}
-
-async fn removed(client: &Client<'_>, id: &str) {
-    let deleted = client.delete(&format!("{TOKENS}/{id}")).await;
-    assert_eq!(deleted.status, StatusCode::OK, "{}", deleted.text());
-}
-
-/// The company's audit log, newest first, as its administration reads it.
-async fn audit_log(client: &Client<'_>) -> Vec<Value> {
-    let log = client.get("/admin/audit?limit=100").await.json();
-    log["entries"].as_array().unwrap().clone()
-}
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
@@ -304,10 +270,34 @@ async fn only_a_company_wide_exporter_manages_the_tokens_five_at_most() {
         .as_array()
         .unwrap()
         .len()
-        < 5
+        < 4
     {
         kept.push(made(&exporter, &format!("SIEM {}", kept.len())).await.0);
     }
+    // Two makings at once count each other: one is the fifth, not both. The
+    // table held in share mode, each would count, then wait to write.
+    let mut held = api.app.services.db.begin(tenant::ID).await.unwrap();
+    sqlx::query("lock table audit_export_tokens in share mode")
+        .execute(&mut *held)
+        .await
+        .unwrap();
+    let (one, other, ()) = tokio::join!(
+        exporter.post(TOKENS, json!({ "name": "SIEM A" })),
+        exporter.post(TOKENS, json!({ "name": "SIEM B" })),
+        async {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            held.commit().await.unwrap();
+        },
+    );
+    let mut statuses = [one.status.as_u16(), other.status.as_u16()];
+    statuses.sort_unstable();
+    assert_eq!(statuses, [201, 409], "{} {}", one.text(), other.text());
+    let fifth = if one.status == StatusCode::CREATED {
+        one
+    } else {
+        other
+    };
+    kept.push(fifth.json()["token"]["id"].as_str().unwrap().to_string());
     let sixth = exporter
         .post(TOKENS, json!({ "name": "SIEM de trop" }))
         .await;
@@ -340,44 +330,4 @@ async fn only_a_company_wide_exporter_manages_the_tokens_five_at_most() {
     for id in &kept {
         removed(&exporter, id).await;
     }
-}
-
-#[tokio::test]
-#[ignore = "requires PostgreSQL"]
-async fn a_page_asked_amiss_or_a_server_without_a_master_key_is_refused() {
-    let api = keyed().await;
-    let paul = api.sign_in(user::PAUL).await;
-    let (id, secret) = made(&paul, "SIEM").await;
-    for query in [
-        "?limit=0",
-        "?limit=1001",
-        "?limit=beaucoup",
-        "?after=-1",
-        "?depuis=3",
-    ] {
-        let refused = read(&api, Some(&secret), query).await;
-        assert_eq!(refused.status, StatusCode::BAD_REQUEST, "{query}");
-    }
-    let most = read(&api, Some(&secret), "?limit=1000").await;
-    assert_eq!(most.status, StatusCode::OK, "{}", most.text());
-    removed(&paul, &id).await;
-    drop(paul);
-    drop(api);
-
-    // Tokens are made where nothing is sealed, but read nothing there.
-    let unsealed = TestApi::start().await;
-    let paul = unsealed.sign_in(user::PAUL).await;
-    let (id, secret) = made(&paul, "SIEM").await;
-    assert_eq!(paul.get(TOKENS).await.json()["sealing"], false);
-    let refused = read(&unsealed, Some(&secret), "").await;
-    assert_eq!(refused.status, StatusCode::SERVICE_UNAVAILABLE);
-    assert!(
-        refused.text().contains("MIMORYA_MASTER_KEY"),
-        "{}",
-        refused.text()
-    );
-    // An unknown token is refused first.
-    let unknown = read(&unsealed, Some("mae_inconnu"), "").await;
-    assert_eq!(unknown.status, StatusCode::UNAUTHORIZED);
-    removed(&paul, &id).await;
 }

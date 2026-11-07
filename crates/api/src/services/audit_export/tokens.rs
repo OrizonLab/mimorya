@@ -19,14 +19,22 @@ use crate::services::AccessContext;
 
 /// The tokens a company may keep.
 pub const MAX_TOKENS: i64 = 5;
+/// The longest name a token takes, in characters.
+pub const NAME_LENGTH: usize = 80;
 /// What a token starts with: told apart from any other secret.
 pub const TOKEN_PREFIX: &str = "mae_";
 const PERMISSION: &str = "audit:export";
 const RESOURCE: &str = "audit_export_token";
 
 const UNKNOWN_TOKEN: &str = "Jeton d’export introuvable";
-const TOO_MANY: &str = "L’entreprise a déjà 5 jetons d’export : supprimez-en un d’abord.";
-const NO_NAME: &str = "Nommez le jeton : le SIEM qui le détiendra, en 80 caractères au plus.";
+
+fn too_many() -> String {
+    format!("L’entreprise a déjà {MAX_TOKENS} jetons d’export : supprimez-en un d’abord.")
+}
+
+fn no_name() -> String {
+    format!("Nommez le jeton : le SIEM qui le détiendra, en {NAME_LENGTH} caractères au plus.")
+}
 
 /// A token's secret, and its digest, kept alone.
 fn new_token() -> (String, String) {
@@ -56,15 +64,15 @@ pub async fn create_audit_export_token(
 ) -> anyhow::Result<(AuditExportTokenRow, String)> {
     access.require_tenant_wide(PERMISSION)?;
     let name = name.trim();
-    if name.is_empty() || name.chars().count() > 80 || name.contains('\0') {
-        return Err(DomainError::validation(NO_NAME).into());
+    if name.is_empty() || name.chars().count() > NAME_LENGTH || name.contains('\0') {
+        return Err(DomainError::validation(no_name()).into());
     }
     let tenant_id = access.subject.tenant_id;
     let mut tx = db.begin(tenant_id).await?;
     // Two makings at once count each other.
     tx.lock_administration().await?;
     if count_audit_export_tokens(&mut tx).await? >= MAX_TOKENS {
-        return Err(DomainError::conflict(TOO_MANY).into());
+        return Err(DomainError::conflict(too_many()).into());
     }
     let (secret, digest) = new_token();
     let token = stored::create_audit_export_token(
@@ -126,5 +134,11 @@ mod tests {
         assert_eq!(digest.len(), 64);
         assert!(!digest.contains(&secret[TOKEN_PREFIX.len()..]));
         assert_ne!(new_token().0, secret);
+    }
+
+    #[test]
+    fn the_refusals_name_the_limits() {
+        assert!(too_many().contains(&format!("déjà {MAX_TOKENS} jetons")));
+        assert!(no_name().contains(&format!("{NAME_LENGTH} caractères")));
     }
 }

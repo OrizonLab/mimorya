@@ -11879,7 +11879,8 @@ found`), même quand un lot suivant échoue, avec leur ancre toute écrite :
   vérification (ADR-179). Un SIEM n'a pas de session. Deux façons de faire : la plateforme
   pousse (syslog, webhook) ou le SIEM tire (il lit une API).
 - **Décision** :
-  - **le SIEM tire** : `GET /api/audit/export?after=<place>&limit=<n>`.
+  - **le SIEM tire** : `GET /api/audit/export?after=<place>&limit=<n>`, et s'il le veut
+    `&seal=<sceau>`, le sceau qu'il détient à cette place.
     - Aucune adresse sortante n'est à déclarer ni à joindre depuis la plateforme (pas de
       chemin réseau sortant de plus, ADR-025, ADR-162).
     - Une panne du SIEM ne perd rien : il redemande après la dernière place qu'il détient.
@@ -11893,7 +11894,8 @@ found`), même quand un lot suivant échoue, avec leur ancre toute écrite :
       l'envoyer hors de la plateforme ;
   - **des jetons d'export** :
     - nommés (le SIEM qui les détient, 80 caractères au plus), cinq au plus par
-      entreprise ;
+      entreprise. Deux créations simultanées se comptent l'une l'autre, sous le verrou
+      de l'administration de l'entreprise ;
     - faits, listés et retirés par qui détient `audit:export` ; un refus faute de
       permission est tracé (`admin.refused`, ADR-038), comme le retrait d'un jeton
       introuvable (`admin.not_found`, ADR-047) ;
@@ -11911,11 +11913,22 @@ found`), même quand un lot suivant échoue, avec leur ancre toute écrite :
     - chacune avec sa place, son sceau en hexadécimal et son contenu tel que
       l'administration le montre, plus l'adresse IP (sans le masque d'un hôte) et
       l'identifiant de requête ;
-    - `more` dit si d'autres suivent ;
+    - `more` dit si d'autres suivent : une entrée de plus que la page est lue pour le
+      savoir ;
     - une entrée pas encore scellée (moins d'une minute) est lue une fois scellée. Une
-      place ne change jamais : le SIEM n'a rien à dédoublonner ;
+      place ne change pas : le SIEM n'a rien à dédoublonner ;
     - le SIEM ne vérifie pas un sceau lui-même (HMAC sous la clé du serveur). Il le garde
       comme ancre, que l'entreprise donne à sa vérification (ADR-179) ;
+  - **une chaîne restaurée derrière le SIEM est dite** (suite de l'audit) :
+    - après une restauration de la base (ADR-166), les places au-delà de la sauvegarde
+      sont données à de nouvelles entrées. Un SIEM qui reprendrait après sa dernière
+      place sauterait sans le savoir celles scellées à nouveau en deçà ;
+    - une place `after` que la chaîne ne compte plus, ou dont le sceau n'est plus celui
+      que le SIEM donne (`seal`, en hexadécimal, sans égard à la casse), est donc
+      refusée (409). Le SIEM reprend depuis une place dont la chaîne porte encore le
+      sceau ; ses ancres disent ce qui est perdu ;
+    - sans `seal`, seule une place que la chaîne ne compte plus est vue. Un SIEM qui
+      donne le sceau voit aussi une chaîne restaurée qui a déjà dépassé sa place ;
   - **avant toute session, le jeton seul prouve** :
     - un cookie de session n'est pas une preuve ici (401) ;
     - le jeton est cherché par une fonction `SECURITY DEFINER` minimale
@@ -11924,6 +11937,9 @@ found`), même quand un lot suivant échoue, avec leur ancre toute écrite :
       sous la RLS ;
     - un jeton absent, inconnu, retiré ou d'une entreprise suspendue est refusé de même
       (401, même message) ;
+    - son usage est noté dans la transaction de l'entreprise, avant toute lecture. Un
+      retrait en cours est attendu puis vu : un jeton retiré pendant une lecture ne lit
+      rien ;
     - le jeton est vérifié avant la clé maître. Un serveur sans clé maître ne scelle rien
       et n'exporte rien (503), et ne le dit qu'à un jeton valide ;
   - **une lecture n'est pas auditée** :
@@ -11934,8 +11950,10 @@ found`), même quand un lot suivant échoue, avec leur ancre toute écrite :
   - **pas de limite de débit propre** : la limite globale par processus s'applique, et
     chaque page est une lecture bornée sur l'index `(tenant_id, chain_seq)`.
 - **Conséquences** :
-  - **données personnelles** : l'export envoie des identifiants de comptes et des
-    adresses IP vers un outil de l'entreprise, qui en répond (conservation, accès).
+  - **données personnelles** : l'export envoie vers un outil de l'entreprise, qui en
+    répond (conservation, accès), les identifiants des comptes, les adresses IP et les
+    identifiants des personnes chez Slack, Telegram ou Teams que portent les entrées des
+    passerelles.
     L'entreprise, responsable du traitement, le décide par un administrateur habilité.
     Ce qui est exporté ne s'efface plus depuis la plateforme ;
   - l'écran des jetons, dans l'onglet « Journal d'audit », suit au lot 52b. D'ici là, les
@@ -11951,9 +11969,22 @@ found`), même quand un lot suivant échoue, avec leur ancre toute écrite :
         entreprise suspendue, sans jeton ou avec une session seulement ;
       - permission tenue sur toute l'entreprise, refus tracés, retrait d'un jeton
         introuvable tracé ;
-      - sixième jeton refusé, nom vide ou trop long refusé, page mal demandée refusée ;
+      - sixième jeton refusé, et deux créations simultanées qui n'en font qu'un de plus ;
+      - nom vide ou trop long refusé ;
+    - `crates/api/tests/audit_export_pages.rs` :
+      - page mal demandée refusée, sceau compris ;
+      - `more` exact ;
+      - lecture reprise avec le sceau détenu ;
+      - autre sceau à la place, ou place au-delà de la chaîne : refus (409) ;
+      - jeton retiré pendant qu'une lecture l'attend : rien de lu ;
       - serveur sans clé maître ;
-    - `services/audit_export/tokens.rs` : jeton préfixé, son empreinte seule gardée ;
+    - `crates/db/tests/audit_export_roles.rs` : la part de la migration qui donne
+      `audit:export` au rôle d'administrateur de la plateforme, une seule fois, jamais à
+      un rôle propre à l'entreprise ni aux autres rôles de la plateforme ;
+    - `crates/core/tests/authz_engine.rs` : `audit:export` jamais exercée par un agent ;
+    - `services/audit_export/tokens.rs` : jeton préfixé, son empreinte seule gardée,
+      limites nommées dans les refus ;
+    - `services/audit_export/reading.rs` : place que la chaîne ne partage plus ;
     - `contract/audit_export.rs` : adresse d'un hôte sans son masque ;
     - `crates/db/tests/definer_functions.rs` : la fonction listée ;
     - `plugins/refusal_audit.rs` : la ressource d'une route dont la collection compte deux

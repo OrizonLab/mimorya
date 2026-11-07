@@ -181,6 +181,9 @@ fn agents_never_exercise_non_delegable_permissions() {
     assert!(engine.has(&paul, "role:manage", &Actor::user()));
     assert!(!engine.has(&paul, "role:manage", &agent));
     assert!(!engine.has(&paul, "user:manage", &agent));
+    // The audit log leaves the platform only by an administrator (ADR-181).
+    assert!(engine.has(&paul, "audit:export", &Actor::user()));
+    assert!(!engine.has(&paul, "audit:export", &agent));
     assert!(!engine.has(&demo::subject(user::MARC), "approval:decide", &agent));
     // A document the agent wrote every colleague's runs would read (ADR-095).
     let julien = demo::subject(user::JULIEN);

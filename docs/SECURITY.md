@@ -786,7 +786,10 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   jeton sont audités avec son nom (`audit.export_token_created`,
   `audit.export_token_deleted`), jamais son secret ; une lecture ne l'est pas (elle
   ferait grossir sans fin ce qu'elle exporte), seule la date du dernier usage du jeton
-  est notée. Un serveur sans clé maître n'exporte rien.
+  est notée, avant la lecture : un jeton retiré pendant une lecture ne lit rien. Une
+  place que la chaîne ne compte plus, ou dont le sceau n'est plus celui que le SIEM
+  donne, est refusée (409) : une restauration derrière lui ne lui fait rien manquer en
+  silence. Un serveur sans clé maître n'exporte rien.
 - Chaînage des entrées fait (ADR-178), vérifiable par l'entreprise (ADR-179) et exporté
   vers son SIEM (ADR-181).
 
@@ -819,7 +822,8 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   pas les sauvegardes déjà faites (ADR-166) : la donnée y reste, chiffrée, jusqu'à ce
   que la conservation fixée par l'exploitant retire ces sauvegardes.
 - **Export du journal d'audit** (ADR-181) : le SIEM de l'entreprise reçoit les
-  identifiants des comptes et les adresses IP que le journal porte ; l'entreprise,
+  identifiants des comptes, les adresses IP et les identifiants des personnes chez
+  Slack, Telegram ou Teams que le journal porte ; l'entreprise,
   responsable du traitement, le décide par un administrateur habilité (`audit:export`)
   et répond de leur conservation dans son outil. Ce qui est exporté ne s'efface plus
   depuis la plateforme.

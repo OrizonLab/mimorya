@@ -9,6 +9,10 @@ use uuid::Uuid;
 use validator::Validate;
 
 use crate::http::{iso, trimmed};
+use crate::services::audit_export::NAME_LENGTH;
+
+/// The longest name, as the validation counts it.
+const NAME_TAKEN: u64 = NAME_LENGTH as u64;
 
 /// A token as listed: never its secret.
 #[derive(Debug, Serialize, TS)]
@@ -48,7 +52,7 @@ pub struct AuditExportTokens {
 pub struct NewAuditExportToken {
     /// What the token is for: the SIEM that holds it.
     #[serde(deserialize_with = "trimmed")]
-    #[validate(length(min = 1, max = 80))]
+    #[validate(length(min = 1, max = NAME_TAKEN))]
     pub name: String,
 }
 

@@ -82,16 +82,17 @@ pub async fn audit_export_token_tenant(
         .await
 }
 
-/// Notes that the company's token `id` was used at `now`.
+/// Notes that the company's token `id` was used at `now`; whether it is
+/// still there. A removal under way is waited for, and seen.
 pub async fn touch_audit_export_token(
     conn: &mut PgConnection,
     id: Uuid,
     now: DateTime<Utc>,
-) -> sqlx::Result<()> {
-    sqlx::query("update audit_export_tokens set last_used_at = $2 where id = $1")
+) -> sqlx::Result<bool> {
+    let touched = sqlx::query("update audit_export_tokens set last_used_at = $2 where id = $1")
         .bind(id)
         .bind(now)
         .execute(conn)
         .await?;
-    Ok(())
+    Ok(touched.rows_affected() == 1)
 }
